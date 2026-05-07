@@ -29,7 +29,7 @@ use crate::tools::subagent::SubAgentStatus;
 use crate::tools::todo::new_shared_todo_list;
 use crate::tui::app::AppMode;
 
-const EVENT_CHANNEL_CAPACITY: usize = 1024;
+const EVENT_CHANNEL_CAPACITY: usize = 4096;
 const MAX_ACTIVE_THREADS_DEFAULT: usize = 8;
 const SUMMARY_LIMIT: usize = 280;
 /// Bumped to 2 for v0.6.6 — see issue #124. The persisted thread/turn/item

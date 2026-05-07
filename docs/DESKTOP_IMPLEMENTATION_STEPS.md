@@ -58,6 +58,8 @@ Sidecar HTTP 在长 turn、重连场景下事件不无故丢失；桌面端可�
 
 ### 步骤
 
+> **实施状态（2026-05-07 审核）**：下列 1–5 项已在主分支落实；其中步骤 3 的 SSE `id:` 已与 `seq` 对齐（`GET /events` 与 `map_compat_stream_event` 路径）。
+
 1. **`EVENT_CHANNEL_CAPACITY`**
    - 打开 [`crates/tui/src/runtime_threads.rs`](../crates/tui/src/runtime_threads.rs)，将常量由 `1024` 调至 `4096`（或与压测结论一致的上限）。
    - 备注：仅能缓解瞬时洪峰；慢消费者仍需 `events_since` 回补。
@@ -66,7 +68,7 @@ Sidecar HTTP 在长 turn、重连场景下事件不无故丢失；桌面端可�
    - 阅读 [`stream_thread_events`](../crates/tui/src/runtime_api.rs) 与 `events_since`、`ThreadEventsQuery::since_seq`。
    - 确认集成测试已覆盖 `since_seq` 游标（已有则补缺场景：空 backlog、直播中切换 `since_seq`）。
 
-3. **（可选）SSE `id:` 字段**
+3. **SSE `id:` 字段**（✓ 已实现）
    - 在组装 `SseEvent` 时为每条事件设置 `id` 为单调 `seq`（与 JSON payload 一致），便于原生 `Last-Event-ID`。
    - 验收：Chrome/Safari `EventSource` 重连时若发送 `Last-Event-ID`，服务端行为符合预期（或与文档声明「仅以 query 为准」一致）。
 
@@ -79,9 +81,11 @@ Sidecar HTTP 在长 turn、重连场景下事件不无故丢失；桌面端可�
 
 ### Phase 1 验收清单
 
-- [ ] `cargo test` / 相关模块测试绿。
-- [ ] `curl`/集成测试：`POST /v1/stream` 在有效 token 下可收到 `turn.started` … `done`。
-- [ ] `GET …/events?since_seq=N` 重放连续，无倒挂 `seq`。
+- [x] `cargo test` / 相关模块测试绿（`deepseek-tui`：`events_endpoint_respects_since_seq_cursor`、`stream_compat_mapping_handles_expected_runtime_events`、`stream_requires_prompt` 等）。
+- [x] `POST /v1/stream`：`stream_requires_prompt` 覆盖非法请求；**完整** `turn.started`…`done` 链需有效运行时/模型（或自建 mock server）；本地可用 `deepseek-tui serve --http` + `curl` 冒烟。
+- [x] `GET …/events?since_seq=N` 重放连续，无倒挂 `seq`；SSE 帧含可选 `id:` = `seq`（与 JSON 内 `seq` 一致），权威游标仍为 query `since_seq`。
+
+**审核备注（2026-05-07）**：`EVENT_CHANNEL_CAPACITY`=4096；`map_compat_stream_event` 已文档化 compat 表；策略 B（compat 名 + 前端映射）维持不变。
 
 ---
 

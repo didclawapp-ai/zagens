@@ -1126,8 +1126,10 @@ async fn stream_thread_events(
     let thread_id = id.clone();
     let stream = stream! {
         for event in backlog {
+            let seq = event.seq;
             let event_name = event.event.clone();
-            yield Ok(sse_json(&event_name, runtime_event_payload(event)));
+            let payload = runtime_event_payload(event);
+            yield Ok(sse_json_seq(seq, &event_name, payload));
         }
         loop {
             let incoming = live.recv().await;
@@ -1141,8 +1143,10 @@ async fn stream_thread_events(
                 continue;
             }
             last_seq = event.seq;
+            let seq = event.seq;
             let event_name = event.event.clone();
-            yield Ok(sse_json(&event_name, runtime_event_payload(event)));
+            let payload = runtime_event_payload(event);
+            yield Ok(sse_json_seq(seq, &event_name, payload));
         }
     };
 
@@ -1280,6 +1284,25 @@ fn runtime_event_payload(event: crate::runtime_threads::RuntimeEventRecord) -> s
     })
 }
 
+/// Map a raw runtime event to a compat SSE event name and payload.
+///
+/// # SSE event names (stable compat surface):
+///
+/// | SSE `event`      | Source                 | Description               |
+/// |------------------|------------------------|---------------------------|
+/// | `message.delta`  | `item.delta` (agent)   | Assistant text increment  |
+/// | `tool.progress`  | `item.delta` (tool)    | Tool output streaming     |
+/// | `tool.started`   | `item.started` (tool)  | Tool call began           |
+/// | `tool.completed` | `item.completed` (tool)| Tool call finished        |
+/// | `status`         | `item.completed`       | Status/notification       |
+/// | `error`          | `item.completed`       | Error message             |
+/// | `approval.required` | `approval.required` | Exec approval needed      |
+/// | `sandbox.denied` | `sandbox.denied`       | Sandbox policy denied     |
+/// | `turn.completed` | `turn.completed`       | Turn ended with usage     |
+///
+/// Additional events emitted outside this function by stream_turn:
+/// - `turn.started` — emitted as first frame
+/// - `done` — emitted as final frame to close SSE
 fn map_compat_stream_event(event: &crate::runtime_threads::RuntimeEventRecord) -> Option<SseEvent> {
     let payload = &event.payload;
     match event.event.as_str() {
@@ -1293,13 +1316,21 @@ fn map_compat_stream_event(event: &crate::runtime_threads::RuntimeEventRecord) -
                     .get("delta")
                     .and_then(|v| v.as_str())
                     .unwrap_or_default();
-                Some(sse_json("message.delta", json!({ "content": content })))
+                Some(sse_json_seq(
+                    event.seq,
+                    "message.delta",
+                    json!({ "content": content }),
+                ))
             } else if kind == "tool_call" {
                 let output = payload
                     .get("delta")
                     .and_then(|v| v.as_str())
                     .unwrap_or_default();
-                Some(sse_json("tool.progress", json!({ "output": output })))
+                Some(sse_json_seq(
+                    event.seq,
+                    "tool.progress",
+                    json!({ "output": output }),
+                ))
             } else {
                 None
             }
@@ -1309,7 +1340,8 @@ fn map_compat_stream_event(event: &crate::runtime_threads::RuntimeEventRecord) -
             let id = tool.get("id").cloned().unwrap_or(Value::Null);
             let name = tool.get("name").cloned().unwrap_or(Value::Null);
             let input = tool.get("input").cloned().unwrap_or(Value::Null);
-            Some(sse_json(
+            Some(sse_json_seq(
+                event.seq,
                 "tool.started",
                 json!({
                     "id": id,
@@ -1335,7 +1367,8 @@ fn map_compat_stream_event(event: &crate::runtime_threads::RuntimeEventRecord) -
                             .to_string(),
                     )
                 });
-                Some(sse_json(
+                Some(sse_json_seq(
+                    event.seq,
                     "tool.completed",
                     json!({
                         "id": id,
@@ -1349,27 +1382,43 @@ fn map_compat_stream_event(event: &crate::runtime_threads::RuntimeEventRecord) -
                     .and_then(|v| v.as_str())
                     .or_else(|| item.get("summary").and_then(|v| v.as_str()))
                     .unwrap_or_default();
-                Some(sse_json("status", json!({ "message": message })))
+                Some(sse_json_seq(
+                    event.seq,
+                    "status",
+                    json!({ "message": message }),
+                ))
             } else if kind == "error" {
                 let message = item
                     .get("detail")
                     .and_then(|v| v.as_str())
                     .or_else(|| item.get("summary").and_then(|v| v.as_str()))
                     .unwrap_or_default();
-                Some(sse_json("error", json!({ "message": message })))
+                Some(sse_json_seq(
+                    event.seq,
+                    "error",
+                    json!({ "message": message }),
+                ))
             } else {
                 None
             }
         }
-        "approval.required" => Some(sse_json("approval.required", payload.clone())),
-        "sandbox.denied" => Some(sse_json("sandbox.denied", payload.clone())),
+        "approval.required" => Some(sse_json_seq(
+            event.seq,
+            "approval.required",
+            payload.clone(),
+        )),
+        "sandbox.denied" => Some(sse_json_seq(event.seq, "sandbox.denied", payload.clone())),
         "turn.completed" => {
             let usage = payload
                 .get("turn")
                 .and_then(|turn| turn.get("usage"))
                 .cloned()
                 .unwrap_or(json!(null));
-            Some(sse_json("turn.completed", json!({ "usage": usage })))
+            Some(sse_json_seq(
+                event.seq,
+                "turn.completed",
+                json!({ "usage": usage }),
+            ))
         }
         _ => None,
     }
@@ -1378,6 +1427,18 @@ fn map_compat_stream_event(event: &crate::runtime_threads::RuntimeEventRecord) -
 fn sse_json(event: &str, payload: serde_json::Value) -> SseEvent {
     let data = serde_json::to_string(&payload).unwrap_or_else(|_| "{}".to_string());
     SseEvent::default().event(event).data(data)
+}
+
+/// SSE frame with `id:` set to the durable monotonic `seq` (matches JSON `payload.seq` where present).
+///
+/// Clients MAY use browser `Last-Event-ID` on reconnect; the authoritative cursor is still
+/// `since_seq` on `GET /v1/threads/{id}/events` (this handler does not read `Last-Event-ID` today).
+fn sse_json_seq(seq: u64, event: &str, payload: serde_json::Value) -> SseEvent {
+    let data = serde_json::to_string(&payload).unwrap_or_else(|_| "{}".to_string());
+    SseEvent::default()
+        .event(event)
+        .id(seq.to_string())
+        .data(data)
 }
 
 fn truncate_text(text: &str, max_chars: usize) -> String {
@@ -2461,6 +2522,10 @@ mod tests {
             .get("seq")
             .and_then(Value::as_u64)
             .context("missing seq in first replay frame")?;
+        assert!(
+            frame_a.contains("id:") && frame_a.contains(&seq_a.to_string()),
+            "expected SSE id field to match seq, frame: {frame_a}"
+        );
 
         let resp_b = client
             .get(format!(

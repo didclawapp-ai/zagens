@@ -184,8 +184,19 @@ accept an empty string to clear a previously-set value. Added in v0.8.10 (#562):
 **Events** (SSE replay + live stream)
 - `GET /v1/threads/{id}/events?since_seq=<u64>`
 
+Each SSE frame for persisted/live thread events includes an `id:` field equal to the
+monotonic `seq` (same value as in the JSON `data` object). Browsers may send
+`Last-Event-ID` on reconnect; the server currently treats **`since_seq` in the query
+string as the authoritative replay cursor**—clients should keep the high-water `seq`
+from payloads (or from `id:`) and pass it as `since_seq` after reconnect if needed.
+
 **Compatibility stream** (one-shot, backwards-compatible)
 - `POST /v1/stream`
+
+Compat mapping from runtime records to SSE `event:` names is documented on
+`map_compat_stream_event` in `crates/tui/src/runtime_api.rs` (stable names such as
+`message.delta`, `tool.started`, `tool.completed`, `turn.completed`, `done`, etc.).
+Synthetic frames `turn.started` and `done` emitted by `POST /v1/stream` have no `id:`.
 
 **Tasks** (durable background work)
 - `GET /v1/tasks`
