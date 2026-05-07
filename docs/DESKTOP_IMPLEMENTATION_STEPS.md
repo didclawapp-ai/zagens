@@ -156,6 +156,8 @@ Sidecar HTTP 在长 turn、重连场景下事件不无故丢失；桌面端可�
 
 ### 步骤（建议顺序）
 
+> **实施状态（2026-05-07 审核收尾）**：引擎侧沿用 `mpsc` 审批通道；runtime 在 `ApprovalRequired` 时登记 pending + 超时任务；HTTP 单端点 `resolve-approval` 已落地并校验 thread/turn 作用域。
+
 1. **现状走读（半日）**
    - [`RuntimeThreadManager` 中 `EngineEvent::ApprovalRequired`](../crates/tui/src/runtime_threads.rs) 分支。
    - `Engine`：[`approve_tool_call` / `deny_tool_call`](../crates/tui/src/core/engine.rs) 与 turn 循环如何等待。
@@ -166,16 +168,15 @@ Sidecar HTTP 在长 turn、重连场景下事件不无故丢失；桌面端可�
    |------|------|
    | pending 唯一键 | `(thread_id, turn_id, tool_call_id)` 三元组；`tool_call_id` 由 Engine 生成，全局唯一 |
    | 同 turn 多个待批 | **不可能**——Engine 的 turn loop 是顺序执行工具调用的，一次只一个待审批工具 |
-   | 阻塞/唤醒机制 | `tokio::sync::oneshot`——Engine 端发 `tx`，`ApprovalRequired` 处理时 `await rx`；HTTP approve 路由拿到 `tx` 后 `send(Decision)` |
-   | 超时策略 | 与 TUI 对齐：超时默认 **deny**，释放 Engine；超时时长通过 `config.toml` 的 `[exec] approval_timeout_secs` 配置，默认 120s |
+   | 阻塞/唤醒机制 | **`mpsc::Sender<ApprovalDecision>`**（`EngineHandle::approve_tool_call` / `deny_tool_call`）— HTTP `resolve-approval` 向同一 channel 投递决策，与 TUI 一致；设计表中的 `oneshot` 已为实现细节替代方案。 |
+   | 超时策略 | 与 TUI 对齐：超时默认 **deny**，释放 Engine；超时时长默认 **120s**，可通过环境变量 `DEEPSEEK_RUNTIME_APPROVAL_TIMEOUT_SECS` 覆盖（与 `config.toml` `[exec] approval_timeout_secs` 的长期对齐可在后续做）。 |
 
 3. **运行时改造**
    - `ApprovalRequired`：**当需要用户介入时**不立即 `deny`；登记 pending 并向 Engine 侧发送「等待信号」。
    - Engine/turn：在继续执行工具前阻塞在 await 上；HTTP 路由收到决策后调用已有 `approve`/`deny` 并完成 notify。
 
 4. **HTTP 路由（[`runtime_api.rs`](../crates/tui/src/runtime_api.rs)）**
-   - 注册 `POST …/approve` 与 `…/deny`（或单一 `decision` 端点）；路径与总体规划一致以便前端缓存。
-   - 鉴权：沿用 `/v1` 层 middleware。
+   - 已实现：`POST /v1/threads/{id}/turns/{turn_id}/resolve-approval`，body：`{ "tool_call_id", "decision": "approve" | "deny" }`；鉴权沿用 `/v1` middleware；URL 必须与 pending 的 thread/turn 一致。
 
 5. **SSE**
    - 保持 `approval.required` 先于用户操作到达前端；批准后后续 `tool.*` 事件与原流一致。
@@ -185,10 +186,12 @@ Sidecar HTTP 在长 turn、重连场景下事件不无故丢失；桌面端可�
 
 ### Phase 2a 验收清单
 
-- [ ] `auto_approve: false` + 触发 shell/write 等：流在 `approval.required` 后可恢复。
-- [ ] deny 路径：模型/工具收到拒绝语义，无前缀死锁。
-- [ ] 无审批 API 的旧客户端：行为明确（破坏性变更则写 CHANGELOG）。
-- [ ] `cargo test` 覆盖新增路径。
+- [x] `auto_approve: false` + `ApprovalRequired`：pending + HTTP `resolve-approval` 后引擎收到 approve（见 `runtime_threads` 集成测试）。
+- [x] deny 路径：`resolve_approval(..., false)` → `deny_tool_call`（与引擎 `await_tool_approval` 一致）。
+- [x] 旧客户端：未调审批时 turn 阻塞直至超时 auto-deny — 已写入 `CHANGELOG.md` **[Unreleased]**。
+- [x] `cargo test`：`resolve_approval_sends_decision_*`、`resolve_approval_rejects_wrong_turn_id`。
+
+**审核备注（2026-05-07 收尾）**：补全 `turn_id` 与 pending 的校验；超时从 `RuntimeThreadManagerConfig.http_approval_timeout_secs` + 环境变量读取，替换硬编码 120s。
 
 ---
 

@@ -179,6 +179,10 @@ accept an empty string to clear a previously-set value. Added in v0.8.10 (#562):
 - `POST /v1/threads/{id}/turns`
 - `POST /v1/threads/{id}/turns/{turn_id}/steer`
 - `POST /v1/threads/{id}/turns/{turn_id}/interrupt`
+- `POST /v1/threads/{id}/turns/{turn_id}/resolve-approval` — when `auto_approve`
+  is false and the engine emits `approval.required`, submit
+  `{ "tool_call_id": "<id from SSE payload>", "decision": "approve" | "deny" }`.
+  Path `thread_id` and `turn_id` must match the pending approval scope.
 - `POST /v1/threads/{id}/compact` (manual compaction)
 
 **Events** (SSE replay + live stream)

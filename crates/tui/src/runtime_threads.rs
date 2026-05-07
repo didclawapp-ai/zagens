@@ -484,6 +484,10 @@ pub struct RuntimeThreadManagerConfig {
     pub data_dir: PathBuf,
     pub task_data_dir: PathBuf,
     pub max_active_threads: usize,
+    /// HTTP/API clients must call `resolve-approval` before this elapses, or the
+    /// tool is auto-denied (same default as historical TUI behavior: 120s).
+    /// Override with `DEEPSEEK_RUNTIME_APPROVAL_TIMEOUT_SECS`.
+    pub http_approval_timeout_secs: u64,
 }
 
 impl RuntimeThreadManagerConfig {
@@ -498,10 +502,17 @@ impl RuntimeThreadManagerConfig {
         } else {
             task_data_dir.join("runtime")
         };
+        let http_approval_timeout_secs = std::env::var("DEEPSEEK_RUNTIME_APPROVAL_TIMEOUT_SECS")
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+            .filter(|&s| s > 0)
+            .unwrap_or(120);
+
         Self {
             data_dir,
             task_data_dir,
             max_active_threads: MAX_ACTIVE_THREADS_DEFAULT,
+            http_approval_timeout_secs,
         }
     }
 }
@@ -656,6 +667,15 @@ struct ActiveThreadState {
 struct ActiveThreads {
     engines: HashMap<String, ActiveThreadState>,
     lru: VecDeque<String>,
+    pending_approvals: HashMap<String, PendingApproval>,
+}
+
+#[allow(dead_code)]
+struct PendingApproval {
+    thread_id: String,
+    turn_id: String,
+    tool_call_id: String,
+    deadline: tokio::time::Instant,
 }
 
 pub type SharedRuntimeThreadManager = Arc<RuntimeThreadManager>;
@@ -2463,7 +2483,36 @@ impl RuntimeThreadManager {
                         }
                         RuntimeApprovalDecision::DenyTool
                         | RuntimeApprovalDecision::RetryWithFullAccess => {
-                            let _ = engine.deny_tool_call(id).await;
+                            // Register as pending — wait for HTTP approval
+                            // instead of immediate deny. A spawned timeout guard
+                            // will auto-deny after the configured interval.
+                            let timeout_secs = self.manager_cfg.http_approval_timeout_secs.max(1);
+                            let deadline = tokio::time::Instant::now()
+                                + std::time::Duration::from_secs(timeout_secs);
+                            {
+                                let mut active = self.active.lock().await;
+                                active.pending_approvals.insert(
+                                    id.clone(),
+                                    PendingApproval {
+                                        thread_id: thread_id.clone(),
+                                        turn_id: turn_id.clone(),
+                                        tool_call_id: id.clone(),
+                                        deadline,
+                                    },
+                                );
+                            }
+
+                            let this = self.clone();
+                            let engine_handle = engine.clone();
+                            let tool_id = id.clone();
+                            tokio::spawn(async move {
+                                tokio::time::sleep_until(deadline).await;
+                                let mut active = this.active.lock().await;
+                                if active.pending_approvals.remove(&tool_id).is_some() {
+                                    drop(active);
+                                    let _ = engine_handle.deny_tool_call(tool_id).await;
+                                }
+                            });
                         }
                     }
                 }
@@ -2677,6 +2726,44 @@ impl RuntimeThreadManager {
             return None;
         }
         Some((turn.auto_approve, turn.trust_mode))
+    }
+
+    pub async fn resolve_approval(
+        &self,
+        thread_id: &str,
+        turn_id: &str,
+        tool_call_id: &str,
+        approved: bool,
+    ) -> Result<()> {
+        let engine = {
+            let mut active = self.active.lock().await;
+            let pending = active
+                .pending_approvals
+                .remove(tool_call_id)
+                .ok_or_else(|| anyhow!("no pending approval for {tool_call_id}"))?;
+            if pending.thread_id != thread_id || pending.turn_id != turn_id {
+                let expected_thread = pending.thread_id.clone();
+                let expected_turn = pending.turn_id.clone();
+                active
+                    .pending_approvals
+                    .insert(tool_call_id.to_string(), pending);
+                bail!(
+                    "pending approval scope mismatch for {tool_call_id}: expected thread {expected_thread} turn {expected_turn}, URL had thread {thread_id} turn {turn_id}"
+                );
+            }
+            let state = active
+                .engines
+                .get(thread_id)
+                .ok_or_else(|| anyhow!("engine not found for {thread_id}"))?;
+            state.engine.clone()
+        };
+
+        if approved {
+            engine.approve_tool_call(tool_call_id).await?;
+        } else {
+            engine.deny_tool_call(tool_call_id).await?;
+        }
+        Ok(())
     }
 
     fn approval_decision(
@@ -2928,6 +3015,7 @@ mod tests {
     use super::*;
     use crate::core::engine::{MockApprovalEvent, mock_engine_handle};
     use crate::core::events::{Event as EngineEvent, TurnOutcomeStatus};
+    use crate::core::ops::Op;
     use std::time::{Duration, Instant};
     use tokio::sync::oneshot;
     use tokio::time::sleep;
@@ -2942,6 +3030,7 @@ mod tests {
             task_data_dir: data_dir.clone(),
             data_dir,
             max_active_threads: 4,
+            http_approval_timeout_secs: 120,
         }
     }
 
@@ -3860,6 +3949,175 @@ mod tests {
 
         let terminal = wait_for_terminal_turn(&manager, &turn.id, Duration::from_secs(2)).await?;
         assert_eq!(terminal.status, RuntimeTurnStatus::Completed);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn resolve_approval_sends_decision_to_engine_when_auto_approve_off() -> Result<()> {
+        let manager = test_manager(test_runtime_dir())?;
+        let thread = manager
+            .create_thread(CreateThreadRequest {
+                model: None,
+                workspace: None,
+                mode: None,
+                allow_shell: None,
+                trust_mode: None,
+                auto_approve: Some(false),
+                archived: false,
+                system_prompt: None,
+                task_id: None,
+            })
+            .await?;
+
+        let mut harness = install_mock_engine(&manager, &thread.id).await;
+        let turn = manager
+            .start_turn(
+                &thread.id,
+                StartTurnRequest {
+                    prompt: "needs http approval".to_string(),
+                    input_summary: None,
+                    model: None,
+                    mode: None,
+                    allow_shell: None,
+                    trust_mode: None,
+                    auto_approve: Some(false),
+                },
+            )
+            .await?;
+
+        assert!(matches!(
+            harness.rx_op.recv().await,
+            Some(Op::SendMessage { .. })
+        ));
+
+        harness
+            .tx_event
+            .send(EngineEvent::ApprovalRequired {
+                approval_key: "key1".to_string(),
+                id: "tool_http1".to_string(),
+                tool_name: "exec_command".to_string(),
+                description: "run".to_string(),
+            })
+            .await?;
+
+        let no_early =
+            tokio::time::timeout(Duration::from_millis(80), harness.recv_approval_event()).await;
+        assert!(
+            no_early.is_err(),
+            "engine should not receive approve/deny until HTTP resolve"
+        );
+
+        manager
+            .resolve_approval(&thread.id, &turn.id, "tool_http1", true)
+            .await?;
+
+        assert_eq!(
+            harness.recv_approval_event().await,
+            Some(MockApprovalEvent::Approved {
+                id: "tool_http1".to_string(),
+            })
+        );
+
+        harness
+            .tx_event
+            .send(EngineEvent::TurnComplete {
+                usage: Usage {
+                    input_tokens: 0,
+                    output_tokens: 0,
+                    ..Usage::default()
+                },
+                status: TurnOutcomeStatus::Completed,
+                error: None,
+            })
+            .await?;
+
+        let terminal = wait_for_terminal_turn(&manager, &turn.id, Duration::from_secs(2)).await?;
+        assert_eq!(terminal.status, RuntimeTurnStatus::Completed);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn resolve_approval_rejects_wrong_turn_id() -> Result<()> {
+        let manager = test_manager(test_runtime_dir())?;
+        let thread = manager
+            .create_thread(CreateThreadRequest {
+                model: None,
+                workspace: None,
+                mode: None,
+                allow_shell: None,
+                trust_mode: None,
+                auto_approve: Some(false),
+                archived: false,
+                system_prompt: None,
+                task_id: None,
+            })
+            .await?;
+
+        let mut harness = install_mock_engine(&manager, &thread.id).await;
+        let turn = manager
+            .start_turn(
+                &thread.id,
+                StartTurnRequest {
+                    prompt: "needs approval".to_string(),
+                    input_summary: None,
+                    model: None,
+                    mode: None,
+                    allow_shell: None,
+                    trust_mode: None,
+                    auto_approve: Some(false),
+                },
+            )
+            .await?;
+
+        assert!(matches!(
+            harness.rx_op.recv().await,
+            Some(Op::SendMessage { .. })
+        ));
+
+        harness
+            .tx_event
+            .send(EngineEvent::ApprovalRequired {
+                approval_key: "k".to_string(),
+                id: "tool_scope".to_string(),
+                tool_name: "exec_command".to_string(),
+                description: "x".to_string(),
+            })
+            .await?;
+
+        // Let the runtime task register `pending_approvals` before HTTP resolve.
+        sleep(Duration::from_millis(150)).await;
+
+        let err = manager
+            .resolve_approval(&thread.id, "wrong-turn-id", "tool_scope", true)
+            .await
+            .expect_err("expected scope error");
+        assert!(format!("{err:#}").contains("scope mismatch"), "got {err:#}");
+
+        manager
+            .resolve_approval(&thread.id, &turn.id, "tool_scope", true)
+            .await?;
+
+        assert_eq!(
+            harness.recv_approval_event().await,
+            Some(MockApprovalEvent::Approved {
+                id: "tool_scope".to_string(),
+            })
+        );
+
+        harness
+            .tx_event
+            .send(EngineEvent::TurnComplete {
+                usage: Usage {
+                    input_tokens: 0,
+                    output_tokens: 0,
+                    ..Usage::default()
+                },
+                status: TurnOutcomeStatus::Completed,
+                error: None,
+            })
+            .await?;
+
+        let _ = wait_for_terminal_turn(&manager, &turn.id, Duration::from_secs(2)).await?;
         Ok(())
     }
 

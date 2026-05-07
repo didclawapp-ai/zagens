@@ -95,6 +95,12 @@ struct StreamTurnRequest {
     auto_approve: Option<bool>,
 }
 
+#[derive(Debug, Deserialize)]
+struct ResolveApprovalRequest {
+    tool_call_id: String,
+    decision: String,
+}
+
 #[derive(Debug, Serialize)]
 struct HealthResponse {
     status: &'static str,
@@ -365,6 +371,10 @@ pub fn build_router(state: RuntimeApiState) -> Router {
         .route(
             "/v1/threads/{id}/turns/{turn_id}/steer",
             post(steer_thread_turn),
+        )
+        .route(
+            "/v1/threads/{id}/turns/{turn_id}/resolve-approval",
+            post(resolve_approval),
         )
         .route(
             "/v1/threads/{id}/turns/{turn_id}/interrupt",
@@ -1034,6 +1044,33 @@ async fn steer_thread_turn(
         .await
         .map_err(map_thread_err)?;
     Ok(Json(turn))
+}
+
+async fn resolve_approval(
+    State(state): State<RuntimeApiState>,
+    Path((id, turn_id)): Path<(String, String)>,
+    Json(req): Json<ResolveApprovalRequest>,
+) -> Result<Json<Value>, ApiError> {
+    let approved = match req.decision.as_str() {
+        "approve" => true,
+        "deny" => false,
+        _ => {
+            return Err(ApiError::bad_request(
+                "decision must be 'approve' or 'deny'",
+            ));
+        }
+    };
+    state
+        .runtime_threads
+        .resolve_approval(&id, &turn_id, &req.tool_call_id, approved)
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
+    Ok(Json(json!({
+        "ok": true,
+        "tool_call_id": req.tool_call_id,
+        "decision": req.decision,
+        "turn_id": turn_id,
+    })))
 }
 
 async fn interrupt_thread_turn(

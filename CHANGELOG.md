@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Runtime HTTP interactive tool approval** — when a thread turn runs with
+  `auto_approve: false`, the runtime emits an `approval.required` event and
+  blocks until `POST /v1/threads/{thread_id}/turns/{turn_id}/resolve-approval`
+  with body `{ "tool_call_id", "decision": "approve" | "deny" }`, or until a
+  timeout (default **120s**, overridable via `DEEPSEEK_RUNTIME_APPROVAL_TIMEOUT_SECS`)
+  auto-denies the tool. Clients that never call this endpoint will see the turn
+  stall until that timeout.
+
 ## [0.8.15] - 2026-05-06
 
 An auth, Windows, editor-integration, and setup stabilization release. This
