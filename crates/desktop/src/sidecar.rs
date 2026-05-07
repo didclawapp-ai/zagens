@@ -1,10 +1,10 @@
 use std::time::Duration;
 
 use anyhow::{Context, Result};
+use reqwest::StatusCode;
 use tauri::AppHandle;
 use tokio::process::Command;
 use tokio::time::sleep;
-use reqwest::StatusCode;
 
 const HEALTH_CHECK_INTERVAL_SECS: u64 = 5;
 const MAX_STARTUP_RETRIES: u32 = 10;
@@ -14,7 +14,12 @@ const MAX_HEALTH_FAILURES: u32 = 3;
 async fn is_healthy(port: u16, _token: &str) -> bool {
     let url = format!("http://127.0.0.1:{port}/health");
     let client = reqwest::Client::new();
-    match client.get(&url).timeout(Duration::from_secs(2)).send().await {
+    match client
+        .get(&url)
+        .timeout(Duration::from_secs(2))
+        .send()
+        .await
+    {
         Ok(resp) => resp.status() == StatusCode::OK,
         Err(_) => false,
     }
@@ -95,10 +100,7 @@ pub async fn start_and_monitor(_app: &AppHandle, port: u16, token: &str) -> Resu
 }
 
 fn find_deepseek_binary() -> String {
-    let candidates = [
-        "deepseek-tui",
-        "deepseek",
-    ];
+    let candidates = ["deepseek-tui", "deepseek"];
 
     for name in &candidates {
         if std::process::Command::new(name)
@@ -110,10 +112,16 @@ fn find_deepseek_binary() -> String {
         }
     }
 
-    let profile = if cfg!(debug_assertions) { "debug" } else { "release" };
+    let profile = if cfg!(debug_assertions) {
+        "debug"
+    } else {
+        "release"
+    };
     for name in &candidates {
         let path = format!("../../target/{profile}/{name}");
-        if std::path::Path::new(&path).exists() || std::path::Path::new(&format!("{path}.exe")).exists() {
+        if std::path::Path::new(&path).exists()
+            || std::path::Path::new(&format!("{path}.exe")).exists()
+        {
             return path;
         }
     }
