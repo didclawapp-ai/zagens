@@ -97,6 +97,8 @@ Sidecar HTTP 在长 turn、重连场景下事件不无故丢失；桌面端可�
 
 ### 步骤
 
+> **实施状态（2026-05-07 审核收尾）**：`crates/desktop` + Vite/React 壳已接入；sidecar 命令与 `ServeArgs` 一致；下列 1–7 已在代码中落实（会话「续聊」同线程见验收表下「已知限制」）。
+
 1. **Workspace 与 crate**
    - 根 [`Cargo.toml`](../Cargo.toml) 增加 `crates/desktop` member。
    - 新建 `crates/desktop/`：Tauri 2 应用 scaffold，`web-ui/` 使用 Vite + React + TS（与总体规划一致）。
@@ -121,17 +123,28 @@ Sidecar HTTP 在长 turn、重连场景下事件不无故丢失；桌面端可�
    - 按事件增量更新消息区（先文本即可）。
 
 6. **会话列表（只读即可）**
-   - `GET /v1/sessions`，侧边栏或单独页展示；点击后 `GET /v1/sessions/{id}/resume-thread` 解析并渲染历史（字段以实际 API 为准）。
+   - `GET /v1/sessions`，侧边栏或单独页展示；点击后 `GET /v1/sessions/{id}` 拉取详情并 `POST /v1/sessions/{id}/resume-thread` 在 runtime 中恢复线程（字段以实际 API 为准）。
 
 7. **健康检查与重启**
    - 周期 `GET /health`；连续失败触发 sidecar 重启；限制重试避免死循环。
 
 ### Phase 2 验收清单
 
-- [ ] 无 API Key 时错误提示清晰（来自 runtime 或配置层）。
-- [ ] 流式正文可见（`message.delta` 等）。
-- [ ] Token 错误时 401，不白屏。
-- [ ] `cargo build` 含 desktop member 成功（若 CI 尚未加，至少本地通过）。
+- [x] 无 API Key 时：流式失败文案会提示配置 `config.toml` / `DEEPSEEK_API_KEY`（启发式匹配响应/状态）。
+- [x] 流式正文：`message.delta` 经修正后的 SSE 解析逐块送达 `ChatView`。
+- [x] Token 错误：`fetchJson` / `postStreamTurn` 携带 `status`，顶部横幅提示 401，不在空白页。
+- [x] `cargo build -p deepseek-desktop` 通过；`web-ui` 生产构建通过。
+
+**审核备注（2026-05-07 收尾）**：
+
+| 原状 | 处理 |
+|------|------|
+| 未注入 Bearer，凡启用 `--auth-token` 时 `/v1/*` 恒 401 | `main.tsx` 启动时 `invoke(get_runtime_port/get_runtime_token)`，并写入模块内 base URL + token |
+| `client.ts` SSE 解析错误 | 按 `\n\n` 块解析 `event:` / `data:` |
+| 侧边栏点击无回调 | `POST /v1/sessions/{id}/resume-thread` + `GET /v1/sessions/{id}` 渲染历史 |
+| 缺 `@tauri-apps/api` | 已加入依赖 |
+
+**已知限制（可后续 Phase 做）**：`POST /v1/stream` 每次仍新建运行时线程；恢复会话后的「继续同线程对话」需改用 `POST /v1/threads/{id}/turns` 等（与 Phase 3/4 衔接）。
 
 ---
 
