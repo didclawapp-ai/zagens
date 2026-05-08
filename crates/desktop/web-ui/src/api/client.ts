@@ -9,6 +9,8 @@ export interface StreamTurnRequest {
   mode: string;
   model?: string;
   auto_approve?: boolean;
+  trust_mode?: boolean;
+  allow_shell?: boolean;
 }
 
 export interface SessionInfo {
@@ -248,6 +250,21 @@ export async function postJson<T>(path: string, body: unknown): Promise<T> {
   return res.json();
 }
 
+export async function patchJson<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${runtimeBase}${path}`, {
+    method: 'PATCH',
+    headers: authHeaders(),
+    body: JSON.stringify(body ?? {}),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    const err = new Error(`HTTP ${res.status}: ${text}`);
+    (err as Error & { status?: number }).status = res.status;
+    throw err;
+  }
+  return res.json();
+}
+
 export async function postResolveApproval(
   threadId: string,
   turnId: string,
@@ -280,8 +297,35 @@ export async function startThreadTurn(
   return postJson(`/v1/threads/${encodeURIComponent(threadId)}/turns`, body);
 }
 
-export async function getThreadDetail(threadId: string): Promise<{ latest_seq: number }> {
+/** Minimal thread fields used by desktop UI; backend returns full `ThreadRecord`. */
+export interface RuntimeThreadRecord {
+  id: string;
+  workspace: string;
+}
+
+export interface ThreadDetailResponse {
+  thread: RuntimeThreadRecord;
+  latest_seq: number;
+}
+
+export async function getThreadDetail(threadId: string): Promise<ThreadDetailResponse> {
   return fetchJson(`/v1/threads/${encodeURIComponent(threadId)}`);
+}
+
+export type PatchThreadBody = Partial<{
+  archived: boolean;
+  allow_shell: boolean;
+  trust_mode: boolean;
+  auto_approve: boolean;
+  model: string;
+  mode: string;
+  title: string;
+  system_prompt: string;
+  workspace: string;
+}>;
+
+export async function patchThread(threadId: string, body: PatchThreadBody): Promise<RuntimeThreadRecord> {
+  return patchJson(`/v1/threads/${encodeURIComponent(threadId)}`, body);
 }
 
 export async function persistThreadSession(

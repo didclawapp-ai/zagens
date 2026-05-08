@@ -20,7 +20,7 @@ export default function ApprovalDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: 'var(--color-overlay)' }}>
+    <div className="fixed inset-0 z-[10100] flex items-center justify-center px-4" style={{ background: 'var(--color-overlay)' }}>
       <div
         className="w-full max-w-lg rounded-xl border border-amber/30 bg-card shadow-md p-6"
         role="dialog"

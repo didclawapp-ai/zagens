@@ -22,7 +22,7 @@ const titles: Record<RightPanelView, string> = {
   settings: '设置',
 };
 
-const sampleMarkdown = `# deepseek-desktop-overview
+const sampleMarkdown = `# ds-pick-overview
 
 *右侧预览面板 — 支持 Markdown 渲染与代码高亮。*
 
@@ -30,7 +30,7 @@ const sampleMarkdown = `# deepseek-desktop-overview
 
 ## 技术栈
 
-- Tauri 壳 + \`web-ui\`（Vite / React）
+- **DS Pick**：Tauri 壳 + \`web-ui\`（Vite / React）
 - Sidecar：\`deepseek-tui serve --http\`
 - 流式：\`POST /v1/stream\`（SSE）
 
@@ -38,11 +38,11 @@ const sampleMarkdown = `# deepseek-desktop-overview
 
 \`\`\`rust
 fn main() {
-    println!("DeepSeek Desktop");
+    println!("DS Pick");
 }
 \`\`\`
 
-> 这是一个桌面端的 AI 编码助手，可以管理会话、流式对话、审批工具调用。
+> 桌面端 AI 编码助手；命令行与配置仍使用 \`deepseek\` / \`~/.deepseek\`。
 `;
 
 export default function RightPanel({

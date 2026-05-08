@@ -48,5 +48,5 @@ fn main() {
             commands::save_deepseek_api_key,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running DeepSeek Desktop");
+        .expect("error while running DS Pick");
 }

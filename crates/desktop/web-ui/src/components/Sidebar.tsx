@@ -58,7 +58,7 @@ export default function Sidebar({
               ✦
             </span>
             <span className="text-sm font-semibold text-t-text">
-              DeepSeek<span className="opacity-70 font-medium"> Desk</span>
+              DS<span className="opacity-70 font-medium"> Pick</span>
             </span>
           </div>
         </div>
@@ -198,8 +198,11 @@ export default function Sidebar({
         </button>
       </div>
 
-      <div className="shrink-0 px-3.5 py-2.5 border-t border-divider">
-        <p className="text-[10px] text-t-text-muted">DeepSeek Desktop v0.1</p>
+      <div className="shrink-0 px-3.5 py-2.5 border-t border-divider space-y-0.5">
+        <p className="text-[10px] text-t-text-muted">DS Pick v0.8.15</p>
+        <p className="text-[10px] text-t-text-muted/80 leading-snug">
+          基于 DeepSeek TUI 运行时（<code className="font-mono">deepseek</code> CLI）
+        </p>
       </div>
     </aside>
   );

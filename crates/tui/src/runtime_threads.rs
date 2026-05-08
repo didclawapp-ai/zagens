@@ -562,6 +562,11 @@ pub struct UpdateThreadRequest {
     pub mode: Option<String>,
     pub title: Option<String>,
     pub system_prompt: Option<String>,
+    /// When set, rebind tool workspace for this thread. Path must exist and be a
+    /// directory. Relative paths resolve against the runtime API default workspace.
+    /// Unloads cached engine entry when changed (disallowed while a turn is in progress).
+    #[serde(default)]
+    pub workspace: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -954,6 +959,7 @@ impl RuntimeThreadManager {
             && req.mode.is_none()
             && req.title.is_none()
             && req.system_prompt.is_none()
+            && req.workspace.is_none()
         {
             bail!("At least one thread field is required");
         }
@@ -971,6 +977,7 @@ impl RuntimeThreadManager {
 
         let mut thread = self.get_thread(id).await?;
         let mut changes = serde_json::Map::new();
+        let mut eviction_needed = false;
 
         if let Some(archived) = req.archived
             && thread.archived != archived
@@ -1031,6 +1038,19 @@ impl RuntimeThreadManager {
                 changes.insert("system_prompt".to_string(), json!(new_sys));
             }
         }
+        if let Some(workspace_raw) = req.workspace.clone() {
+            let new_ws = Self::resolve_thread_workspace_path(&self.workspace, &workspace_raw)?;
+            let old_canonical =
+                fs::canonicalize(&thread.workspace).unwrap_or_else(|_| thread.workspace.clone());
+            if new_ws != old_canonical {
+                thread.workspace = new_ws;
+                eviction_needed = true;
+                changes.insert(
+                    "workspace".to_string(),
+                    json!(thread.workspace.display().to_string()),
+                );
+            }
+        }
 
         if !changes.is_empty() {
             thread.updated_at = Utc::now();
@@ -1046,6 +1066,10 @@ impl RuntimeThreadManager {
                 }),
             )
             .await?;
+        }
+
+        if eviction_needed {
+            self.unload_idle_thread_engine(id).await?;
         }
 
         Ok(thread)
@@ -1899,6 +1923,51 @@ impl RuntimeThreadManager {
             let _ = handle.send(Op::Shutdown).await;
         }
         Ok(engine)
+    }
+
+    fn resolve_thread_workspace_path(manager_workspace: &Path, raw: &str) -> Result<PathBuf> {
+        let trimmed = raw.trim();
+        let candidate = if trimmed.is_empty() || trimmed == "." {
+            manager_workspace.to_path_buf()
+        } else {
+            let p = PathBuf::from(trimmed);
+            if p.is_absolute() {
+                p
+            } else {
+                manager_workspace.join(p)
+            }
+        };
+        let canon = fs::canonicalize(&candidate).with_context(|| {
+            anyhow!(
+                "workspace path does not exist or is not reachable: {}",
+                candidate.display()
+            )
+        })?;
+        let meta =
+            fs::metadata(&canon).with_context(|| format!("workspace stat {}", canon.display()))?;
+        if !meta.is_dir() {
+            bail!("workspace path is not a directory: {}", canon.display());
+        }
+        Ok(canon)
+    }
+
+    async fn unload_idle_thread_engine(&self, thread_id: &str) -> Result<()> {
+        let maybe_engine = {
+            let mut active = self.active.lock().await;
+            if let Some(st) = active.engines.get(thread_id)
+                && st.active_turn.is_some()
+            {
+                bail!("thread has an active turn; finish or interrupt before rebinding workspace");
+            }
+            if let Some(idx) = active.lru.iter().position(|id| id.as_str() == thread_id) {
+                active.lru.remove(idx);
+            }
+            active.engines.remove(thread_id).map(|s| s.engine)
+        };
+        if let Some(engine) = maybe_engine {
+            let _ = engine.send(Op::Shutdown).await;
+        }
+        Ok(())
     }
 
     fn reconstruct_messages_from_turns(&self, turns: &[TurnRecord]) -> Result<Vec<Message>> {

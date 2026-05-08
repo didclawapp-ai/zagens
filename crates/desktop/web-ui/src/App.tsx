@@ -5,6 +5,7 @@ import {
   getSessionDetail,
   resumeSessionThread,
   getThreadDetail,
+  patchThread,
   startThreadTurn,
   getThreadEvents,
   postResolveApproval,
@@ -18,10 +19,17 @@ import {
 } from './api/client';
 import { normalizeDesktopStreamEvent, type NormalizedStreamEvent } from './api/streamNormalize';
 import ChatView from './components/ChatView';
-import Composer from './components/Composer';
+import Composer, { type ComposerOutboundMessage } from './components/Composer';
 import Sidebar from './components/Sidebar';
 import ApprovalDialog from './components/ApprovalDialog';
 import RightPanel, { type RightPanelView } from './components/RightPanel';
+import { streamFlagsForRunMode } from './lib/runtimeMode';
+import {
+  type DesktopModelId,
+  type DesktopRunModeId,
+  parseDesktopModelId,
+  parseDesktopRunModeId,
+} from './types/desktop';
 
 interface Message {
   id: string;
@@ -81,6 +89,30 @@ function toolOutputString(output: unknown): string {
 
 type Theme = 'light' | 'dark';
 
+function loadRunModePreference(): DesktopRunModeId {
+  try {
+    return parseDesktopRunModeId(localStorage.getItem('deepseek-desktop-run-mode')) ?? 'agent';
+  } catch {
+    return 'agent';
+  }
+}
+
+function loadComposerPrefs(): {
+  model: DesktopModelId;
+  workspace: string;
+} {
+  try {
+    const wm = parseDesktopModelId(localStorage.getItem('deepseek-desktop-model'));
+    const ws = localStorage.getItem('deepseek-desktop-workspace');
+    return {
+      model: wm ?? 'deepseek-v4-pro',
+      workspace: ws != null && ws.trim().length > 0 ? ws.trim() : '.',
+    };
+  } catch {
+    return { model: 'deepseek-v4-pro', workspace: '.' };
+  }
+}
+
 function loadTheme(): Theme {
   try {
     const stored = localStorage.getItem('deepseek-theme');
@@ -102,6 +134,8 @@ function applyTheme(theme: Theme) {
 
 export default function App() {
   const [theme, setTheme] = useState<Theme>(loadTheme);
+  const [selectedModel, setSelectedModel] = useState<DesktopModelId>(() => loadComposerPrefs().model);
+  const [selectedWorkspace, setSelectedWorkspace] = useState(() => loadComposerPrefs().workspace);
   const [messages, setMessages] = useState<Message[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
@@ -110,6 +144,7 @@ export default function App() {
   const [resumedThreadId, setResumedThreadId] = useState<string | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [autoApprove, setAutoApprove] = useState(true);
+  const [runMode, setRunMode] = useState<DesktopRunModeId>(() => loadRunModePreference());
   const [approval, setApproval] = useState<ApprovalState | null>(null);
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [desktopHost, setDesktopHost] = useState(false);
@@ -131,6 +166,30 @@ export default function App() {
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('deepseek-desktop-model', selectedModel);
+    } catch {
+      /* ignore */
+    }
+  }, [selectedModel]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('deepseek-desktop-workspace', selectedWorkspace);
+    } catch {
+      /* ignore */
+    }
+  }, [selectedWorkspace]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('deepseek-desktop-run-mode', runMode);
+    } catch {
+      /* ignore */
+    }
+  }, [runMode]);
 
   const toggleTheme = useCallback(() => {
     setTheme((prev) => {
@@ -290,6 +349,13 @@ export default function App() {
         const resumed = await resumeSessionThread(sessionId);
         setResumedThreadId(resumed.thread_id);
         threadTurnRef.current = { threadId: resumed.thread_id, turnId: '' };
+        try {
+          const threadDetail = await getThreadDetail(resumed.thread_id);
+          setSelectedWorkspace(threadDetail.thread.workspace);
+        } catch (syncErr) {
+          const errMsg = syncErr instanceof Error ? syncErr.message : String(syncErr);
+          setBanner(`已恢复运行时线程，但读取线程工作区失败：${errMsg}`);
+        }
       } catch (e) {
         const err = e as Error & { status?: number };
         if (err.status === 401) {
@@ -334,9 +400,38 @@ export default function App() {
     eventAbortRef.current?.abort();
   }, []);
 
+  const handleComposerWorkspaceChange = useCallback(
+    async (next: string) => {
+      const trimmed = next.trim();
+      if (!trimmed) {
+        throw new Error('工作区不能为空');
+      }
+      if (!resumedThreadId) {
+        setSelectedWorkspace(trimmed);
+        return;
+      }
+      try {
+        const updated = await patchThread(resumedThreadId, { workspace: trimmed });
+        setSelectedWorkspace(typeof updated.workspace === 'string' ? updated.workspace : trimmed);
+      } catch (e) {
+        const err = e as Error & { status?: number };
+        let msg = err.message ?? String(e);
+        if (/active turn|finish or interrupt/i.test(msg)) {
+          setBanner(
+            '当前线程有进行中的回合，暂无法切换工作区。请先停止生成或等待该回合结束后再试。',
+          );
+        } else {
+          setBanner(`更新线程工作区失败：${msg}`);
+        }
+        throw err;
+      }
+    },
+    [resumedThreadId],
+  );
+
   const handleSend = useCallback(
-    async (text: string) => {
-      if (!text.trim() || streaming) return;
+    async (outbound: ComposerOutboundMessage) => {
+      if (!outbound.apiPrompt.trim() || streaming) return;
 
       eventAbortRef.current?.abort();
       eventAbortRef.current = new AbortController();
@@ -345,7 +440,7 @@ export default function App() {
       const userMsg: Message = {
         id: nextId(),
         role: 'user',
-        content: text,
+        content: outbound.displayContent,
       };
       setMessages((prev) => [...prev, userMsg]);
 
@@ -543,6 +638,8 @@ export default function App() {
         finishOnce();
       };
 
+      const streamOpts = streamFlagsForRunMode(runMode, autoApprove);
+
       try {
         if (resumedThreadId) {
           const detail = await getThreadDetail(resumedThreadId);
@@ -552,9 +649,12 @@ export default function App() {
           }
           const sinceSeq = detail.latest_seq ?? 0;
           const { turn } = await startThreadTurn(resumedThreadId, {
-            prompt: text,
-            mode: 'agent',
-            auto_approve: autoApprove,
+            prompt: outbound.apiPrompt,
+            model: selectedModel,
+            mode: streamOpts.mode,
+            allow_shell: streamOpts.allow_shell,
+            trust_mode: streamOpts.trust_mode,
+            auto_approve: streamOpts.auto_approve,
           });
           if (signal.aborted) {
             finishOnce();
@@ -576,10 +676,13 @@ export default function App() {
         } else {
           await postStreamTurn(
             {
-              prompt: text,
-              workspace: '.',
-              mode: 'agent',
-              auto_approve: autoApprove,
+              prompt: outbound.apiPrompt,
+              workspace: selectedWorkspace,
+              mode: streamOpts.mode,
+              model: selectedModel,
+              allow_shell: streamOpts.allow_shell,
+              trust_mode: streamOpts.trust_mode,
+              auto_approve: streamOpts.auto_approve,
             },
             (ev) => onSseEvent(ev),
             () => finishOnce(),
@@ -595,7 +698,7 @@ export default function App() {
         handleHttpError(e as Error & { status?: number });
       }
     },
-    [streaming, resumedThreadId, autoApprove, refreshSessions],
+    [streaming, resumedThreadId, autoApprove, runMode, selectedModel, selectedWorkspace, refreshSessions],
   );
 
   const handleApproveDecision = async (decision: 'approve' | 'deny') => {
@@ -676,6 +779,13 @@ export default function App() {
           disabled={streaming}
           autoApprove={autoApprove}
           onAutoApproveChange={setAutoApprove}
+          runMode={runMode}
+          onRunModeChange={setRunMode}
+          model={selectedModel}
+          onModelChange={setSelectedModel}
+          workspace={selectedWorkspace}
+          onWorkspaceChange={handleComposerWorkspaceChange}
+          resumedThreadActive={resumedThreadId != null && resumedThreadId.length > 0}
         />
       </div>
       <RightPanel

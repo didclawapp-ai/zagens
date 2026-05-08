@@ -28,7 +28,7 @@ export default function ChatView({ messages }: Props) {
         <div className="flex items-center justify-center h-full">
           <div className="text-center">
             <h1 className="text-3xl font-bold mb-2 text-accent font-display">
-              DeepSeek
+              DS<span className="opacity-85 font-semibold"> Pick</span>
             </h1>
             <p className="text-lg text-t-text-secondary">你的 AI 编码助手</p>
             <p className="text-sm mt-2 text-t-text-muted">在下方输入问题开始对话</p>

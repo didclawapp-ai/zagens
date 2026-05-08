@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicepage/native/refs/heads/dev/packages/desktop-toolkit/tauri-schema.json",
-  "productName": "DeepSeek",
+  "productName": "DS Pick",
   "version": "0.8.15",
   "identifier": "com.deepseek.desktop",
   "build": {
@@ -19,7 +19,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "DeepSeek",
+        "title": "DS Pick",
         "width": 1200,
         "height": 800,
         "minWidth": 800,

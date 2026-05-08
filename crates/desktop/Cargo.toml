@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "DeepSeek Desktop — Tauri-powered GUI shell for the DeepSeek coding agent"
+description = "DS Pick — Tauri GUI shell for DeepSeek TUI (deepseek CLI)"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
