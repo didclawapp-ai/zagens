@@ -2,6 +2,7 @@
 
 export type NormalizedStreamEvent =
   | { kind: 'turn_started'; threadId: string; turnId: string }
+  | { kind: 'thinking_delta'; content: string }
   | { kind: 'message_delta'; content: string }
   | { kind: 'tool_started'; id: string; name: string; input: unknown }
   | { kind: 'tool_progress'; output: string }
@@ -39,6 +40,9 @@ export function normalizeDesktopStreamEvent(
   }
   if (sse === 'done') {
     return { kind: 'done' };
+  }
+  if (sse === 'thinking.delta') {
+    return { kind: 'thinking_delta', content: String(j.content ?? '') };
   }
   if (sse === 'message.delta') {
     return { kind: 'message_delta', content: String(j.content ?? '') };
@@ -89,6 +93,9 @@ export function normalizeDesktopStreamEvent(
     const kind = String(inner.kind ?? '');
     if (kind === 'agent_message') {
       return { kind: 'message_delta', content: String(inner.delta ?? '') };
+    }
+    if (kind === 'thinking') {
+      return { kind: 'thinking_delta', content: String(inner.delta ?? '') };
     }
     if (kind === 'tool_call') {
       return { kind: 'tool_progress', output: String(inner.delta ?? '') };

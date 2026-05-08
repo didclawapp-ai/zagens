@@ -1941,6 +1941,8 @@ impl RuntimeThreadManager {
         engine: EngineHandle,
     ) -> Result<()> {
         let mut current_message_item: Option<(String, String)> = None;
+        // Synthetic item id for thinking/reasoning deltas (not persisted as a TurnItem).
+        let mut thinking_stream_item_id: Option<String> = None;
         let mut tool_items: HashMap<String, String> = HashMap::new();
         let mut compaction_items: HashMap<String, String> = HashMap::new();
         let mut turn_usage: Option<Usage> = None;
@@ -1973,6 +1975,25 @@ impl RuntimeThreadManager {
                         json!({ "status": "in_progress" }),
                     )
                     .await?;
+                }
+                EngineEvent::ThinkingStarted { .. } => {
+                    thinking_stream_item_id =
+                        Some(format!("item_{}", &Uuid::new_v4().to_string()[..8]));
+                }
+                EngineEvent::ThinkingDelta { content, .. } => {
+                    if let Some(ref item_id) = thinking_stream_item_id {
+                        self.emit_event(
+                            &thread_id,
+                            Some(&turn_id),
+                            Some(item_id.as_str()),
+                            "item.delta",
+                            json!({ "delta": content, "kind": "thinking" }),
+                        )
+                        .await?;
+                    }
+                }
+                EngineEvent::ThinkingComplete { .. } => {
+                    thinking_stream_item_id = None;
                 }
                 EngineEvent::MessageStarted { .. } => {
                     let item_id = format!("item_{}", &Uuid::new_v4().to_string()[..8]);
@@ -2460,19 +2481,6 @@ impl RuntimeThreadManager {
                     description,
                     ..
                 } => {
-                    self.emit_event(
-                        &thread_id,
-                        Some(&turn_id),
-                        None,
-                        "approval.required",
-                        json!({
-                            "id": id,
-                            "tool_name": tool_name,
-                            "description": description,
-                        }),
-                    )
-                    .await?;
-
                     let (auto_approve, trust_mode) = self
                         .active_turn_flags(&thread_id, &turn_id)
                         .await
@@ -2483,6 +2491,19 @@ impl RuntimeThreadManager {
                         }
                         RuntimeApprovalDecision::DenyTool
                         | RuntimeApprovalDecision::RetryWithFullAccess => {
+                            self.emit_event(
+                                &thread_id,
+                                Some(&turn_id),
+                                None,
+                                "approval.required",
+                                json!({
+                                    "id": id,
+                                    "tool_name": tool_name,
+                                    "description": description,
+                                }),
+                            )
+                            .await?;
+
                             // Register as pending — wait for HTTP approval
                             // instead of immediate deny. A spawned timeout guard
                             // will auto-deny after the configured interval.

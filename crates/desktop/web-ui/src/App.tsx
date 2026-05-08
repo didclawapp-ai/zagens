@@ -317,7 +317,6 @@ export default function App() {
       setBanner(null);
 
       const ctx = {
-        beforeFirstTool: { current: true },
         currentToolId: { current: null as string | null },
       };
 
@@ -339,21 +338,25 @@ export default function App() {
               turnId: norm.turnId,
             };
             break;
-          case 'message_delta': {
-            const isThinking = ctx.beforeFirstTool.current;
+          case 'thinking_delta': {
             setMessages((prev) =>
               prev.map((m) => {
                 if (m.id !== assistantId) return m;
-                if (isThinking) {
-                  return { ...m, thinking: (m.thinking ?? '') + norm.content };
-                }
+                return { ...m, thinking: (m.thinking ?? '') + norm.content };
+              }),
+            );
+            break;
+          }
+          case 'message_delta': {
+            setMessages((prev) =>
+              prev.map((m) => {
+                if (m.id !== assistantId) return m;
                 return { ...m, content: m.content + norm.content };
               }),
             );
             break;
           }
           case 'tool_started': {
-            ctx.beforeFirstTool.current = false;
             ctx.currentToolId.current = norm.id;
             const inputStr = stringifyInput(norm.input);
             setMessages((prev) =>
@@ -538,8 +541,14 @@ export default function App() {
     try {
       await postResolveApproval(threadId, turnId, approval.toolCallId, decision);
     } catch (e) {
-      const err = e as Error;
-      setBanner(`审批提交失败：${err.message}`);
+      const err = e as Error & { status?: number };
+      if (err.status === 409) {
+        setBanner(
+          '该工具审批已失效（可能已自动批准/拒绝或已超时）。若未勾选「自动批准」，请在时限内操作；可关闭此提示并继续对话。',
+        );
+      } else {
+        setBanner(`审批提交失败：${err.message}`);
+      }
     } finally {
       setApprovalBusy(false);
       setApproval(null);

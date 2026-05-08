@@ -1064,7 +1064,7 @@ async fn resolve_approval(
         .runtime_threads
         .resolve_approval(&id, &turn_id, &req.tool_call_id, approved)
         .await
-        .map_err(|e| ApiError::internal(e.to_string()))?;
+        .map_err(map_thread_err)?;
     Ok(Json(json!({
         "ok": true,
         "tool_call_id": req.tool_call_id,
@@ -1327,6 +1327,7 @@ fn runtime_event_payload(event: crate::runtime_threads::RuntimeEventRecord) -> s
 ///
 /// | SSE `event`      | Source                 | Description               |
 /// |------------------|------------------------|---------------------------|
+/// | `thinking.delta` | `item.delta` (thinking) | Reasoning / thinking increment |
 /// | `message.delta`  | `item.delta` (agent)   | Assistant text increment  |
 /// | `tool.progress`  | `item.delta` (tool)    | Tool output streaming     |
 /// | `tool.started`   | `item.started` (tool)  | Tool call began           |
@@ -1356,6 +1357,16 @@ fn map_compat_stream_event(event: &crate::runtime_threads::RuntimeEventRecord) -
                 Some(sse_json_seq(
                     event.seq,
                     "message.delta",
+                    json!({ "content": content }),
+                ))
+            } else if kind == "thinking" {
+                let content = payload
+                    .get("delta")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default();
+                Some(sse_json_seq(
+                    event.seq,
+                    "thinking.delta",
                     json!({ "content": content }),
                 ))
             } else if kind == "tool_call" {
@@ -1704,6 +1715,8 @@ fn map_thread_err(err: anyhow::Error) -> ApiError {
     } else if message.contains("already has an active turn")
         || message.contains("No active turn")
         || message.contains("is not active")
+        || message.contains("no pending approval for")
+        || message.contains("pending approval scope mismatch")
     {
         ApiError {
             status: StatusCode::CONFLICT,
@@ -2745,6 +2758,29 @@ mod tests {
         let text = String::from_utf8_lossy(&body);
         assert!(text.contains("event: message.delta"));
         assert!(text.contains("\"content\":\"hello\""));
+
+        let think_delta = RuntimeEventRecord {
+            schema_version: 1,
+            seq: 10,
+            timestamp: chrono::Utc::now(),
+            thread_id: "thr_test".to_string(),
+            turn_id: Some("turn_test".to_string()),
+            item_id: Some("item_think".to_string()),
+            event: "item.delta".to_string(),
+            payload: json!({
+                "kind": "thinking",
+                "delta": "step 1…",
+            }),
+        };
+        let mapped = map_compat_stream_event(&think_delta).context("missing thinking SSE event")?;
+        let stream = async_stream::stream! {
+            yield Ok::<_, Infallible>(mapped);
+        };
+        let body =
+            axum::body::to_bytes(Sse::new(stream).into_response().into_body(), usize::MAX).await?;
+        let text = String::from_utf8_lossy(&body);
+        assert!(text.contains("event: thinking.delta"));
+        assert!(text.contains("\"content\":\"step 1"));
 
         let tool_start = RuntimeEventRecord {
             schema_version: 1,

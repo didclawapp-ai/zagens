@@ -11,6 +11,12 @@ interface Message {
 
 export function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user';
+  const likelyInReasoningPhase =
+    Boolean(message.isStreaming) &&
+    !isUser &&
+    !message.content &&
+    !(message.tools && message.tools.length > 0);
+  const showReasoningBlock = Boolean(message.thinking) || likelyInReasoningPhase;
 
   return (
     <div
@@ -23,13 +29,12 @@ export function MessageBubble({ message }: { message: Message }) {
             : 'bg-gray-800 text-gray-100 rounded-bl-sm border border-gray-700/50'
         }`}
       >
-        {message.thinking && (
-          <div className="mb-2 p-2 bg-gray-700/50 rounded text-xs text-gray-400">
-            <div className="font-medium text-indigo-400 mb-1">
-              💭 Reasoning
-            </div>
-            <div className="whitespace-pre-wrap max-h-40 overflow-y-auto">
-              {message.thinking}
+        {showReasoningBlock && (
+          <div className="mb-2 p-2 bg-gray-700/50 rounded text-xs text-gray-400 min-h-[3rem]">
+            <div className="font-medium text-indigo-400 mb-1">💭 Reasoning</div>
+            <div className="whitespace-pre-wrap max-h-[48vh] overflow-y-auto text-gray-300">
+              {message.thinking ||
+                (message.isStreaming ? '推理中…（内容流式到达后会显示在这里）' : '')}
             </div>
           </div>
         )}
@@ -47,7 +52,7 @@ export function MessageBubble({ message }: { message: Message }) {
         >
           {message.content || (message.isStreaming ? '' : '...')}
         </div>
-        {message.isStreaming && (
+        {message.isStreaming && !likelyInReasoningPhase && (
           <span className="inline-block w-2 h-4 ml-0.5 bg-indigo-400 animate-pulse rounded-sm align-middle" />
         )}
       </div>
