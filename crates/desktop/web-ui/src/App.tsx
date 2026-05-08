@@ -9,6 +9,7 @@ import {
   getThreadEvents,
   postResolveApproval,
   deleteSession,
+  persistThreadSession,
   waitForRuntimeReady,
   probeRuntimeConnection,
   type RuntimeConnectionState,
@@ -20,7 +21,7 @@ import ChatView from './components/ChatView';
 import Composer from './components/Composer';
 import Sidebar from './components/Sidebar';
 import ApprovalDialog from './components/ApprovalDialog';
-import ApiKeyDialog from './components/ApiKeyDialog';
+import RightPanel, { type RightPanelView } from './components/RightPanel';
 
 interface Message {
   id: string;
@@ -82,14 +83,13 @@ export default function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [activeInspector, setActiveInspector] = useState<RightPanelView>('workspace');
   const [banner, setBanner] = useState<string | null>(null);
   const [resumedThreadId, setResumedThreadId] = useState<string | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [autoApprove, setAutoApprove] = useState(true);
   const [approval, setApproval] = useState<ApprovalState | null>(null);
   const [approvalBusy, setApprovalBusy] = useState(false);
-  const [apiKeyDialogOpen, setApiKeyDialogOpen] = useState(false);
   const [desktopHost, setDesktopHost] = useState(false);
   const [desktopApiKeyConfigured, setDesktopApiKeyConfigured] = useState<boolean | null>(null);
   const [runtimeConn, setRuntimeConn] = useState<RuntimeConnectionState>('checking');
@@ -99,6 +99,12 @@ export default function App() {
     threadId: '',
     turnId: '',
   });
+  const activeSessionIdRef = useRef<string | null>(null);
+  const lastPersistedTurnRef = useRef<string>('');
+
+  useEffect(() => {
+    activeSessionIdRef.current = activeSessionId;
+  }, [activeSessionId]);
 
   const refreshSessions = useCallback(async () => {
     try {
@@ -239,13 +245,13 @@ export default function App() {
       eventAbortRef.current?.abort();
       setBanner(null);
       setActiveSessionId(sessionId);
+      lastPersistedTurnRef.current = '';
       try {
         const detail = await getSessionDetail(sessionId);
         setMessages(mapSessionMessages(detail));
         const resumed = await resumeSessionThread(sessionId);
         setResumedThreadId(resumed.thread_id);
         threadTurnRef.current = { threadId: resumed.thread_id, turnId: '' };
-        setSidebarOpen(false);
       } catch (e) {
         const err = e as Error & { status?: number };
         if (err.status === 401) {
@@ -264,6 +270,7 @@ export default function App() {
     setResumedThreadId(null);
     setActiveSessionId(null);
     threadTurnRef.current = { threadId: '', turnId: '' };
+    lastPersistedTurnRef.current = '';
     setApproval(null);
   }, []);
 
@@ -330,6 +337,23 @@ export default function App() {
         );
       };
 
+      const maybePersistCompletedTurn = () => {
+        const { threadId, turnId } = threadTurnRef.current;
+        if (!threadId || !turnId || turnId === lastPersistedTurnRef.current) {
+          return;
+        }
+        lastPersistedTurnRef.current = turnId;
+        void (async () => {
+          try {
+            const res = await persistThreadSession(threadId, activeSessionIdRef.current);
+            setActiveSessionId(res.session_id);
+            await refreshSessions();
+          } catch (e) {
+            setBanner(`会话未写入 ~/.deepseek/sessions：${(e as Error).message}`);
+          }
+        })();
+      };
+
       const applyNorm = (norm: NormalizedStreamEvent) => {
         switch (norm.kind) {
           case 'turn_started':
@@ -337,6 +361,13 @@ export default function App() {
               threadId: norm.threadId,
               turnId: norm.turnId,
             };
+            // Keep `POST /v1/stream` turns on the same runtime thread so the model
+            // sees prior turns (matches Cursor-style chat continuity). Only the ref
+            // was updated before, so `resumedThreadId` stayed null and every send
+            // created a new isolated thread.
+            if (norm.threadId) {
+              setResumedThreadId(norm.threadId);
+            }
             break;
           case 'thinking_delta': {
             setMessages((prev) =>
@@ -427,8 +458,12 @@ export default function App() {
             });
             break;
           case 'turn_completed':
+            finishOnce();
+            maybePersistCompletedTurn();
+            break;
           case 'done':
             finishOnce();
+            maybePersistCompletedTurn();
             break;
           case 'error':
             finishOnce();
@@ -526,7 +561,7 @@ export default function App() {
         handleHttpError(e as Error & { status?: number });
       }
     },
-    [streaming, resumedThreadId, autoApprove],
+    [streaming, resumedThreadId, autoApprove, refreshSessions],
   );
 
   const handleApproveDecision = async (decision: 'approve' | 'deny') => {
@@ -565,62 +600,19 @@ export default function App() {
         onApprove={() => void handleApproveDecision('approve')}
         onDeny={() => void handleApproveDecision('deny')}
       />
-      <ApiKeyDialog
-        open={apiKeyDialogOpen}
-        onClose={() => setApiKeyDialogOpen(false)}
-        onSaved={() => {
-          refreshApiKeyStatus();
-          setBanner(null);
-        }}
-      />
       <Sidebar
         sessions={sessions}
-        isOpen={sidebarOpen}
-        onToggle={() => setSidebarOpen(!sidebarOpen)}
+        activeSessionId={activeSessionId}
         onNewSession={handleNewSession}
         onSelectSession={handleSelectSession}
         onDeleteSession={handleDeleteSession}
+        desktopHost={desktopHost}
+        runtimeConn={runtimeConn}
+        apiKeyConfigured={desktopApiKeyConfigured}
+        activeInspector={activeInspector}
+        onInspectorChange={setActiveInspector}
       />
-      <div className="flex flex-1 flex-col min-w-0">
-        {desktopHost && (
-          <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 px-3 py-1.5 border-b border-gray-800/80 bg-gray-950/80">
-            <div
-              className="flex items-center gap-2 min-w-0 text-xs text-gray-400"
-              title="与本地 deepseek-tui 运行时 (127.0.0.1:7878) 的连接状态"
-            >
-              <span
-                className={`shrink-0 inline-block w-2 h-2 rounded-full ${
-                  runtimeConn === 'connected'
-                    ? 'bg-emerald-500'
-                    : runtimeConn === 'auth_mismatch'
-                      ? 'bg-amber-400 animate-pulse'
-                      : runtimeConn === 'offline'
-                        ? 'bg-red-500'
-                        : 'bg-gray-500'
-                }`}
-              />
-              <span className="truncate">
-                {runtimeConn === 'checking' && '正在检测本地运行时…'}
-                {runtimeConn === 'connected' && '本地运行时已连接'}
-                {runtimeConn === 'offline' && '本地运行时离线或未就绪'}
-                {runtimeConn === 'auth_mismatch' &&
-                  '会话令牌不一致（应用正在尝试回收旧进程，或请点击「重试连接」）'}
-              </span>
-            </div>
-            <div className="flex flex-wrap items-center justify-end gap-3 shrink-0">
-              <button
-                type="button"
-                onClick={() => setApiKeyDialogOpen(true)}
-                className="text-xs text-indigo-400 hover:text-indigo-300"
-              >
-                API Key 设置
-              </button>
-              {desktopApiKeyConfigured === false && (
-                <span className="text-xs text-amber-500/90">未检测到本地 API Key，发送消息可能失败</span>
-              )}
-            </div>
-          </div>
-        )}
+      <div className="flex flex-1 flex-col min-w-0 border-r border-gray-800">
         {banner && (
           <div className="shrink-0 px-4 py-2 bg-amber-900/80 text-amber-100 text-sm border-b border-amber-800">
             {banner}
@@ -650,6 +642,16 @@ export default function App() {
           onAutoApproveChange={setAutoApprove}
         />
       </div>
+      <RightPanel
+        view={activeInspector}
+        desktopHost={desktopHost}
+        runtimeConn={runtimeConn}
+        apiKeyConfigured={desktopApiKeyConfigured}
+        onSavedApiKey={() => {
+          refreshApiKeyStatus();
+          setBanner(null);
+        }}
+      />
     </div>
   );
 }

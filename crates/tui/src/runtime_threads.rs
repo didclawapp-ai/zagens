@@ -1934,6 +1934,28 @@ impl RuntimeThreadManager {
         Ok(messages)
     }
 
+    /// Serialised turn items → API messages plus approximate token totals for session files.
+    pub fn export_thread_for_session_persist(&self, thread_id: &str) -> Result<(Vec<Message>, u64)> {
+        let turns = self
+            .store
+            .list_turns_for_thread(thread_id)
+            .with_context(|| format!("list turns for thread {thread_id}"))?;
+        let mut total_tokens: u64 = 0;
+        for t in &turns {
+            if let Some(u) = &t.usage {
+                total_tokens += u64::from(u.input_tokens) + u64::from(u.output_tokens);
+                if let Some(r) = u.reasoning_tokens {
+                    total_tokens += u64::from(r);
+                }
+                if let Some(rr) = u.reasoning_replay_tokens {
+                    total_tokens += u64::from(rr);
+                }
+            }
+        }
+        let messages = self.reconstruct_messages_from_turns(&turns)?;
+        Ok((messages, total_tokens))
+    }
+
     async fn monitor_turn(
         &self,
         thread_id: String,

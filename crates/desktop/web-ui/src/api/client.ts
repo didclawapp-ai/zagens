@@ -284,6 +284,15 @@ export async function getThreadDetail(threadId: string): Promise<{ latest_seq: n
   return fetchJson(`/v1/threads/${encodeURIComponent(threadId)}`);
 }
 
+export async function persistThreadSession(
+  threadId: string,
+  sessionId?: string | null,
+): Promise<{ session_id: string; message_count: number }> {
+  return postJson(`/v1/threads/${encodeURIComponent(threadId)}/persist-session`, {
+    session_id: sessionId?.trim() || undefined,
+  });
+}
+
 export async function deleteSession(sessionId: string): Promise<void> {
   const res = await fetch(`${runtimeBase}/v1/sessions/${encodeURIComponent(sessionId)}`, {
     method: 'DELETE',

@@ -37,7 +37,11 @@ use crate::runtime_threads::{
     SharedRuntimeThreadManager, StartTurnRequest, SteerTurnRequest, ThreadDetail, ThreadListFilter,
     ThreadRecord, TurnItemKind, TurnRecord, UpdateThreadRequest, UsageGroupBy,
 };
-use crate::session_manager::{SavedSession, SessionManager, SessionMetadata, default_sessions_dir};
+use crate::models::SystemPrompt;
+use crate::session_manager::{
+    SavedSession, SessionManager, SessionMetadata, create_saved_session_with_mode, default_sessions_dir,
+    update_session,
+};
 use crate::skills::SkillRegistry;
 use crate::task_manager::{
     NewTaskRequest, SharedTaskManager, TaskManager, TaskManagerConfig, TaskRecord, TaskSummary,
@@ -381,6 +385,7 @@ pub fn build_router(state: RuntimeApiState) -> Router {
             post(interrupt_thread_turn),
         )
         .route("/v1/threads/{id}/compact", post(compact_thread))
+        .route("/v1/threads/{id}/persist-session", post(persist_thread_session))
         .route("/v1/threads/{id}/events", get(stream_thread_events))
         .route("/v1/tasks", get(list_tasks).post(create_task))
         .route("/v1/tasks/{id}", get(get_task))
@@ -570,6 +575,89 @@ async fn delete_session(
         .delete_session(&id)
         .map_err(|e| map_session_err(&id, e, "delete"))?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Debug, Deserialize)]
+struct PersistThreadSessionRequest {
+    #[serde(default)]
+    session_id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct PersistThreadSessionResponse {
+    session_id: String,
+    message_count: usize,
+}
+
+/// Writes the thread's turn/item history to `~/.deepseek/sessions/*.json` (same format as TUI).
+async fn persist_thread_session(
+    State(state): State<RuntimeApiState>,
+    Path(thread_id): Path<String>,
+    Json(req): Json<PersistThreadSessionRequest>,
+) -> Result<Json<PersistThreadSessionResponse>, ApiError> {
+    let thread = state
+        .runtime_threads
+        .get_thread(&thread_id)
+        .await
+        .map_err(|e| ApiError::not_found(e.to_string()))?;
+
+    let (messages, total_tokens) = state
+        .runtime_threads
+        .export_thread_for_session_persist(&thread_id)
+        .map_err(|e| ApiError::internal(format!("Failed to export thread: {e}")))?;
+
+    let sid = req.session_id.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty());
+    if sid.is_none() && messages.is_empty() {
+        return Err(ApiError::bad_request(
+            "thread has no messages to persist; wait for turn.completed",
+        ));
+    }
+
+    let manager = SessionManager::new(state.sessions_dir.clone())
+        .map_err(|e| ApiError::internal(format!("Failed to open sessions dir: {e}")))?;
+
+    let sys = thread
+        .system_prompt
+        .as_ref()
+        .map(|s| SystemPrompt::Text(s.clone()));
+
+    let session = if let Some(existing_id) = sid {
+        let existing = manager
+            .load_session(existing_id)
+            .map_err(|e| map_session_err(existing_id, e, "read"))?;
+        let mut session = update_session(existing, &messages, total_tokens, sys.as_ref());
+        session.metadata.model = thread.model.clone();
+        session.metadata.workspace = thread.workspace.clone();
+        session.metadata.mode = Some(thread.mode.clone());
+        if let Some(title) = &thread.title {
+            session.metadata.title = title.clone();
+        }
+        manager
+            .save_session(&session)
+            .map_err(|e| ApiError::internal(format!("Failed to save session: {e}")))?;
+        session
+    } else {
+        let mut session = create_saved_session_with_mode(
+            &messages,
+            &thread.model,
+            &thread.workspace,
+            total_tokens,
+            sys.as_ref(),
+            Some(thread.mode.as_str()),
+        );
+        if let Some(title) = &thread.title {
+            session.metadata.title = title.clone();
+        }
+        manager
+            .save_session(&session)
+            .map_err(|e| ApiError::internal(format!("Failed to save session: {e}")))?;
+        session
+    };
+
+    Ok(Json(PersistThreadSessionResponse {
+        session_id: session.metadata.id.clone(),
+        message_count: session.messages.len(),
+    }))
 }
 
 fn session_to_detail(session: SavedSession) -> SessionDetailResponse {
