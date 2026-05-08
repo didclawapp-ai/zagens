@@ -28,8 +28,8 @@ export default function ApiKeyForm({ onSaved, className = '' }: Props) {
 
   return (
     <div className={className}>
-      <p className="text-xs text-gray-500">
-        将写入用户目录下的 <code className="text-gray-400">.deepseek/config.toml</code>
+      <p className="text-xs text-t-text-muted leading-relaxed">
+        将写入用户目录下的 <code className="text-t-text-secondary bg-canvas-alt px-1 py-0.5 rounded text-[11px] font-mono">.deepseek/config.toml</code>
         （与 CLI/TUI 共用）。保存后运行时侧载会重启以生效。
       </p>
       <form onSubmit={(e) => void handleSubmit(e)} className="mt-4 space-y-3">
@@ -40,13 +40,13 @@ export default function ApiKeyForm({ onSaved, className = '' }: Props) {
           onChange={(e) => setKey(e.target.value)}
           placeholder="sk-…"
           disabled={busy}
-          className="w-full rounded-lg bg-gray-950 border border-gray-600 px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:border-indigo-500 focus:outline-none disabled:opacity-50"
+          className="w-full rounded-lg bg-input-bg border border-input-border px-3 py-2 text-sm text-t-text placeholder-t-text-muted focus:border-accent focus:outline-none disabled:opacity-50 transition-colors"
         />
-        {error && <p className="text-xs text-red-400">{error}</p>}
+        {error && <p className="text-xs text-error-text">{error}</p>}
         <button
           type="submit"
           disabled={busy || !key.trim()}
-          className="w-full px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-50 text-sm"
+          className="w-full px-4 py-2 rounded-lg bg-accent text-accent-text hover:bg-accent-hover disabled:opacity-50 text-sm font-medium transition-colors"
         >
           {busy ? '保存中…' : '保存'}
         </button>

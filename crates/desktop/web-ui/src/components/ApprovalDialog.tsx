@@ -20,18 +20,21 @@ export default function ApprovalDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: 'var(--color-overlay)' }}>
       <div
-        className="w-full max-w-lg rounded-xl border border-amber-700/50 bg-gray-900 shadow-2xl p-6"
+        className="w-full max-w-lg rounded-xl border border-amber/30 bg-card shadow-md p-6"
         role="dialog"
         aria-modal="true"
         aria-labelledby="approval-title"
       >
-        <h2 id="approval-title" className="text-lg font-semibold text-amber-200">
-          需要你的审批
-        </h2>
-        <p className="mt-1 text-sm text-gray-400">工具：{toolName}</p>
-        <div className="mt-4 rounded-lg bg-gray-950 border border-gray-700 p-3 text-sm text-gray-200 max-h-48 overflow-y-auto whitespace-pre-wrap">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-xl">⚠️</span>
+          <h2 id="approval-title" className="text-lg font-semibold text-amber-text">
+            需要你的审批
+          </h2>
+        </div>
+        <p className="mt-1 text-sm text-t-text-secondary">工具：{toolName}</p>
+        <div className="mt-4 rounded-lg bg-canvas-alt border border-card-border p-3 text-sm text-t-text max-h-48 overflow-y-auto whitespace-pre-wrap leading-relaxed">
           {description || '（无描述）'}
         </div>
         <div className="mt-6 flex justify-end gap-3">
@@ -39,7 +42,7 @@ export default function ApprovalDialog({
             type="button"
             disabled={busy}
             onClick={onDeny}
-            className="px-4 py-2 rounded-lg border border-gray-600 text-gray-200 hover:bg-gray-800 disabled:opacity-50"
+            className="px-4 py-2 rounded-lg border border-card-border text-t-text-secondary hover:bg-hover disabled:opacity-50 transition-colors"
           >
             拒绝
           </button>
@@ -47,7 +50,7 @@ export default function ApprovalDialog({
             type="button"
             disabled={busy}
             onClick={onApprove}
-            className="px-4 py-2 rounded-lg bg-amber-600 text-white hover:bg-amber-500 disabled:opacity-50"
+            className="px-4 py-2 rounded-lg bg-amber text-white hover:brightness-105 disabled:opacity-50 transition-all"
           >
             批准
           </button>

@@ -79,7 +79,29 @@ function toolOutputString(output: unknown): string {
   }
 }
 
+type Theme = 'light' | 'dark';
+
+function loadTheme(): Theme {
+  try {
+    const stored = localStorage.getItem('deepseek-theme');
+    if (stored === 'dark' || stored === 'light') return stored;
+  } catch {
+    /* ignore */
+  }
+  return 'light';
+}
+
+function applyTheme(theme: Theme) {
+  const root = document.documentElement;
+  if (theme === 'dark') {
+    root.classList.add('dark');
+  } else {
+    root.classList.remove('dark');
+  }
+}
+
 export default function App() {
+  const [theme, setTheme] = useState<Theme>(loadTheme);
   const [messages, setMessages] = useState<Message[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
@@ -105,6 +127,22 @@ export default function App() {
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
   }, [activeSessionId]);
+
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
+
+  const toggleTheme = useCallback(() => {
+    setTheme((prev) => {
+      const next: Theme = prev === 'light' ? 'dark' : 'light';
+      try {
+        localStorage.setItem('deepseek-theme', next);
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, []);
 
   const refreshSessions = useCallback(async () => {
     try {
@@ -361,10 +399,6 @@ export default function App() {
               threadId: norm.threadId,
               turnId: norm.turnId,
             };
-            // Keep `POST /v1/stream` turns on the same runtime thread so the model
-            // sees prior turns (matches Cursor-style chat continuity). Only the ref
-            // was updated before, so `resumedThreadId` stayed null and every send
-            // created a new isolated thread.
             if (norm.threadId) {
               setResumedThreadId(norm.threadId);
             }
@@ -591,7 +625,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen w-screen bg-gray-950">
+    <div className="flex h-screen w-screen bg-canvas">
       <ApprovalDialog
         open={approval != null}
         toolName={approval?.toolName ?? ''}
@@ -611,17 +645,19 @@ export default function App() {
         apiKeyConfigured={desktopApiKeyConfigured}
         activeInspector={activeInspector}
         onInspectorChange={setActiveInspector}
+        theme={theme}
+        onToggleTheme={toggleTheme}
       />
-      <div className="flex flex-1 flex-col min-w-0 border-r border-gray-800">
+      <div className="flex flex-1 flex-col min-w-0 border-r border-divider">
         {banner && (
-          <div className="shrink-0 px-4 py-2 bg-amber-900/80 text-amber-100 text-sm border-b border-amber-800">
+          <div className="shrink-0 border-b border-divider bg-amber-bg px-4 py-2 text-sm text-amber-text">
             {banner}
             <button type="button" className="ml-3 underline" onClick={() => setBanner(null)}>
               关闭
             </button>
             <button
               type="button"
-              className="ml-3 underline text-amber-50"
+              className="ml-3 underline"
               onClick={() => void retryConnectAndSessions()}
             >
               重试连接
@@ -629,7 +665,7 @@ export default function App() {
           </div>
         )}
         {resumedThreadId && (
-          <p className="shrink-0 px-4 py-1 text-xs text-gray-500 border-b border-gray-800">
+          <p className="shrink-0 px-4 py-1 text-xs text-t-text-muted border-b border-divider">
             已恢复线程（runtime）：{resumedThreadId.slice(0, 8)}… · 继续对话将订阅该线程事件流
           </p>
         )}
@@ -651,6 +687,8 @@ export default function App() {
           refreshApiKeyStatus();
           setBanner(null);
         }}
+        theme={theme}
+        onToggleTheme={toggleTheme}
       />
     </div>
   );

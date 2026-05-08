@@ -2,10 +2,102 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --color-canvas: #ebecef;
+  --color-canvas-alt: #f0f1f4;
+  --color-card: #ffffff;
+  --color-card-border: #e4e6eb;
+  --color-text: #1a1d24;
+  --color-text-secondary: #5c6370;
+  --color-text-muted: #9aa0a8;
+  --color-accent: #2563eb;
+  --color-accent-hover: #1d4ed8;
+  --color-accent-soft: rgba(37, 99, 235, 0.12);
+  --color-accent-text: #ffffff;
+  --color-warning: #f59e0b;
+  --color-warning-bg: rgba(245, 158, 11, 0.1);
+  --color-warning-text: #92400e;
+  --color-error: #ef4444;
+  --color-error-bg: rgba(239, 68, 68, 0.08);
+  --color-error-text: #b91c1c;
+  --color-success: #10b981;
+  --color-success-bg: rgba(16, 185, 129, 0.08);
+  --color-amber: #d97706;
+  --color-amber-bg: rgba(217, 119, 6, 0.08);
+  --color-amber-text: #92400e;
+  --color-input-bg: #fafbfc;
+  --color-input-border: #e4e6eb;
+  --color-hover: #f6f7f9;
+  --color-hover-strong: #f3f4f6;
+  --color-divider: rgba(0, 0, 0, 0.06);
+  --color-toolbar-bg: rgba(255, 255, 255, 0.72);
+  --color-dot: #d1d4db;
+  --color-shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --color-shadow-md: 0 8px 24px rgba(16, 24, 40, 0.08), 0 2px 8px rgba(16, 24, 40, 0.04);
+  --color-overlay: rgba(0, 0, 0, 0.5);
+  --radius-lg: 14px;
+  --radius-md: 10px;
+  --radius-sm: 8px;
+  --radius-pill: 999px;
+  --font-ui: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'PingFang SC',
+    'Microsoft YaHei', sans-serif;
+  --font-mono: ui-monospace, 'Consolas', 'Cascadia Code', 'Source Code Pro', monospace;
+  --font-display: 'Georgia', 'Times New Roman', 'Noto Serif SC', 'Source Han Serif SC', serif;
+}
+
+.dark {
+  --color-canvas: #030712;
+  --color-canvas-alt: #0f1117;
+  --color-card: #111827;
+  --color-card-border: #1f2937;
+  --color-text: #f3f4f6;
+  --color-text-secondary: #9ca3af;
+  --color-text-muted: #6b7280;
+  --color-accent: #6366f1;
+  --color-accent-hover: #818cf8;
+  --color-accent-soft: rgba(99, 102, 241, 0.15);
+  --color-accent-text: #ffffff;
+  --color-warning: #f59e0b;
+  --color-warning-bg: rgba(245, 158, 11, 0.15);
+  --color-warning-text: #fde68a;
+  --color-error: #f87171;
+  --color-error-bg: rgba(248, 113, 113, 0.1);
+  --color-error-text: #fca5a5;
+  --color-success: #34d399;
+  --color-success-bg: rgba(52, 211, 153, 0.1);
+  --color-amber: #f59e0b;
+  --color-amber-bg: rgba(245, 158, 11, 0.12);
+  --color-amber-text: #fde68a;
+  --color-input-bg: #1f2937;
+  --color-input-border: #374151;
+  --color-hover: #1f2937;
+  --color-hover-strong: #374151;
+  --color-divider: rgba(255, 255, 255, 0.06);
+  --color-toolbar-bg: rgba(17, 24, 39, 0.85);
+  --color-dot: #374151;
+  --color-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --color-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3);
+  --color-overlay: rgba(0, 0, 0, 0.7);
+}
+
+/* highlight.js/github theme assumes light backgrounds; align with canvas in dark UI */
+.dark pre code.hljs,
+.dark code.hljs {
+  background-color: var(--color-canvas-alt) !important;
+}
+
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--color-text);
+  background-color: var(--color-canvas);
   overflow: hidden;
+}
+
+body {
+  background-image: radial-gradient(var(--color-dot) 0.6px, transparent 0.6px);
+  background-size: 14px 14px;
 }
 
 #root {
@@ -16,13 +108,116 @@ body {
 ::-webkit-scrollbar {
   width: 6px;
 }
+
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
 ::-webkit-scrollbar-thumb {
-  background: #374151;
+  background: var(--color-text-muted);
   border-radius: 3px;
+  opacity: 0.5;
 }
+
 ::-webkit-scrollbar-thumb:hover {
-  background: #4b5563;
+  background: var(--color-text-secondary);
+}
+
+@layer components {
+  .btn-icon {
+    @apply inline-flex items-center justify-center w-[34px] h-[30px] rounded-md;
+    color: var(--color-text-secondary);
+  }
+
+  .btn-icon:hover {
+    background: rgba(128, 128, 128, 0.1);
+    color: var(--color-text);
+  }
+
+  .btn-icon:disabled {
+    opacity: 0.35;
+    pointer-events: none;
+  }
+
+  .btn-icon svg {
+    width: 18px;
+    height: 18px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 1.6;
+  }
+
+  .card {
+    background: var(--color-card);
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--color-shadow-sm);
+  }
+
+  .card-md {
+    background: var(--color-card);
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--color-shadow-sm);
+  }
+
+  .card-elevated {
+    background: var(--color-card);
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--color-shadow-md);
+  }
+
+  .pill-btn {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-full;
+    border: 1px solid var(--color-card-border);
+    color: var(--color-text-secondary);
+    background: var(--color-input-bg);
+  }
+
+  .pill-btn:hover {
+    background: var(--color-hover);
+    color: var(--color-text);
+  }
+
+  .pill-btn svg {
+    width: 14px;
+    height: 14px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 1.6;
+  }
+
+  .nav-item {
+    @apply flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px];
+    color: var(--color-text);
+  }
+
+  .nav-item:hover {
+    background: var(--color-hover);
+  }
+
+  .nav-item svg {
+    width: 18px;
+    height: 18px;
+    stroke: var(--color-text-secondary);
+    fill: none;
+    stroke-width: 1.6;
+  }
+
+  .streaming-cursor::after {
+    content: '▊';
+    animation: blink 1s step-end infinite;
+    color: var(--color-accent);
+  }
+
+  @keyframes blink {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0;
+    }
+  }
 }

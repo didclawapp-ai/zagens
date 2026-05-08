@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>布局演示 D：光亮工作台（Cowork / Claude 风格）| DeepSeek Desktop</title>
+<style>
+  :root {
+    --canvas: #ebecef;
+    --card: #ffffff;
+    --card-border: #e4e6eb;
+    --text: #1a1d24;
+    --text-secondary: #5c6370;
+    --text-muted: #9aa0a8;
+    --accent: #2563eb;
+    --accent-soft: rgba(37, 99, 235, 0.12);
+    --dot: #d1d4db;
+    --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+    --shadow-md: 0 8px 24px rgba(16, 24, 40, 0.08), 0 2px 8px rgba(16, 24, 40, 0.04);
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 8px;
+    --sidebar-w: 260px;
+    --topbar-h: 40px;
+    --font-ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+    --font-display: "Georgia", "Times New Roman", "Noto Serif SC", "Source Han Serif SC", serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--font-ui);
+    font-size: 13px;
+    color: var(--text);
+    background-color: var(--canvas);
+    background-image: radial-gradient(var(--dot) 0.6px, transparent 0.6px);
+    background-size: 14px 14px;
+    overflow: hidden;
+  }
+
+  button {
+    font: inherit;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    color: inherit;
+  }
+  button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .app {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+  }
+
+  /* ── Topbar ── */
+  .topbar {
+    height: var(--topbar-h);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    padding: 0 10px 0 12px;
+    gap: 4px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: blur(10px);
+    -webkit-app-region: drag;
+    user-select: none;
+  }
+  .topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    -webkit-app-region: no-drag;
+    position: relative;
+  }
+  .icon-btn {
+    width: 34px;
+    height: 30px;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+  }
+  .icon-btn:hover { background: rgba(0, 0, 0, 0.05); color: var(--text); }
+  .icon-btn:disabled { opacity: 0.35; pointer-events: none; }
+  .icon-btn svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+
+  .topbar-spacer { flex: 1; }
+  .window-dots {
+    display: flex;
+    gap: 6px;
+    -webkit-app-region: no-drag;
+    opacity: 0.45;
+  }
+  .window-dots span {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #c4c8d0;
+  }
+
+  /* Menu popover */
+  .menu-pop {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    min-width: 200px;
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+    padding: 6px;
+    z-index: 50;
+    display: none;
+  }
+  .menu-pop.open { display: block; }
+  .menu-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+    color: var(--text);
+    text-align: left;
+  }
+  .menu-item:hover { background: #f3f4f6; }
+  .menu-item .chev { color: var(--text-muted); font-size: 12px; }
+
+  /* ── Main row ── */
+  .main-row {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    padding: 10px 12px 12px;
+    gap: 12px;
+  }
+
+  .sidebar-wrap {
+    width: var(--sidebar-w);
+    flex-shrink: 0;
+    min-width: 0;
+    transition: width 0.22s ease, margin 0.22s ease, opacity 0.18s ease;
+  }
+  .sidebar-wrap.collapsed {
+    width: 0;
+    margin-left: -6px;
+    opacity: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+
+  .sidebar-card {
+    height: 100%;
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .brand-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 14px 10px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  }
+  .brand-pill {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    background: #f3f4f6;
+    font-weight: 600;
+    font-size: 14px;
+  }
+  .brand-pill .spark {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    background: linear-gradient(135deg, #93c5fd, #3b82f6);
+    display: grid;
+    place-items: center;
+    color: #fff;
+    font-size: 12px;
+  }
+  .code-chip {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: 1px solid var(--card-border);
+    display: grid;
+    place-items: center;
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-family: ui-monospace, monospace;
+  }
+
+  .nav-list { padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; }
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 10px;
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 13px;
+  }
+  .nav-item:hover { background: #f6f7f9; }
+  .nav-item svg { width: 18px; height: 18px; stroke: var(--text-secondary); stroke-width: 1.6; fill: none; }
+
+  .section-label {
+    padding: 16px 16px 6px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .pin-placeholder {
+    margin: 0 12px;
+    padding: 20px 12px;
+    border: 1px dashed #d8dbe2;
+    border-radius: var(--radius-sm);
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+  .pin-placeholder svg { width: 20px; height: 20px; stroke: var(--text-muted); fill: none; stroke-width: 1.4; }
+
+  .recent-list { padding: 4px 8px 12px; flex: 1; overflow-y: auto; min-height: 0; }
+  .recent-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .recent-item:hover { background: #f6f7f9; }
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-top: 5px;
+    flex-shrink: 0;
+  }
+  .dot.filled { background: var(--accent); }
+  .dot.hollow { border: 2px solid #c5cad3; background: transparent; }
+  .recent-text { min-width: 0; }
+  .recent-title {
+    font-size: 13px;
+    color: var(--text);
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .recent-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+  .sidebar-footer {
+    padding: 10px 12px 12px;
+    border-top: 1px solid rgba(0, 0, 0, 0.05);
+  }
+  .footer-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: #f3f4f6;
+    font-size: 11px;
+    color: var(--text-secondary);
+    border: 1px solid var(--card-border);
+  }
+  .footer-pill .mini {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    background: linear-gradient(135deg, #fdba74, #ea580c);
+  }
+
+  .content-wrap {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    gap: 12px;
+  }
+
+  .center-col {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 8px 8px 0;
+    overflow-y: auto;
+  }
+
+  .hero {
+    text-align: center;
+    max-width: 560px;
+    margin: 28px auto 20px;
+    padding: 0 12px;
+  }
+  .hero-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .hero h1 {
+    font-family: var(--font-display);
+    font-size: clamp(22px, 3.2vw, 30px);
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+  }
+  .hero-sub {
+    margin-top: 10px;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+  .hero-sub a { color: var(--accent); text-decoration: none; }
+  .hero-sub a:hover { text-decoration: underline; }
+
+  .composer-wrap {
+    width: 100%;
+    max-width: 640px;
+    margin-bottom: 24px;
+  }
+  .composer {
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: 16px;
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+  }
+  .composer textarea {
+    width: 100%;
+    min-height: 100px;
+    max-height: 220px;
+    resize: vertical;
+    border: none;
+    padding: 16px 16px 8px;
+    font: inherit;
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--text);
+    background: transparent;
+  }
+  .composer textarea::placeholder { color: #b0b5bd; }
+  .composer textarea:focus { outline: none; }
+
+  .composer-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px 10px;
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+  }
+  .composer-toolbar .grow { flex: 1; }
+  .pill-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--card-border);
+    font-size: 12px;
+    color: var(--text-secondary);
+    background: #fafbfc;
+  }
+  .pill-btn:hover { background: #f3f4f6; color: var(--text); }
+  .pill-btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+
+  .send-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    display: grid;
+    place-items: center;
+    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35);
+  }
+  .send-btn:hover { filter: brightness(1.05); }
+  .send-btn svg { width: 18px; height: 18px; stroke: #fff; fill: none; stroke-width: 2; }
+
+  .active-block {
+    width: 100%;
+    max-width: 640px;
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+    padding-top: 18px;
+  }
+  .active-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    padding: 0 4px;
+  }
+  .active-head h2 { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+  .active-head button { font-size: 12px; color: var(--accent); }
+
+  .active-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 4px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  }
+  .active-row:last-child { border-bottom: none; }
+
+  .suggest {
+    margin-top: 22px;
+    width: 100%;
+    max-width: 640px;
+    padding-bottom: 32px;
+  }
+  .suggest-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .suggest-card {
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-md);
+    padding: 14px 16px;
+    background: var(--card);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    box-shadow: var(--shadow-sm);
+  }
+  .suggest-card:hover { border-color: #cfd3dc; }
+  .suggest-card .emoji { font-size: 22px; }
+
+  .preview-col {
+    width: min(38%, 420px);
+    flex-shrink: 0;
+    min-width: 280px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .preview-card {
+    flex: 1;
+    min-height: 0;
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .preview-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .preview-toolbar .title {
+    flex: 1;
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .preview-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 22px 28px;
+    font-family: var(--font-display);
+  }
+  .preview-body h1 {
+    font-size: 26px;
+    margin-bottom: 8px;
+    letter-spacing: -0.02em;
+  }
+  .preview-body .lead {
+    font-style: italic;
+    color: var(--text-secondary);
+    font-size: 14px;
+    margin-bottom: 16px;
+  }
+  .preview-body hr {
+    border: none;
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+    margin: 16px 0;
+  }
+  .preview-body h2 {
+    font-size: 15px;
+    margin: 12px 0 8px;
+    font-family: var(--font-ui);
+    font-weight: 600;
+  }
+  .preview-body ul {
+    padding-left: 18px;
+    font-family: var(--font-ui);
+    font-size: 13px;
+    line-height: 1.65;
+    color: var(--text);
+  }
+  code.inline {
+    font-family: ui-monospace, "Consolas", monospace;
+    font-size: 12px;
+    background: rgba(239, 68, 68, 0.08);
+    padding: 1px 5px;
+    border-radius: 4px;
+    color: #b91c1c;
+  }
+
+  @media (max-width: 960px) {
+    .preview-col { display: none; }
+    :root { --sidebar-w: 240px; }
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="topbar-actions">
+      <button type="button" class="icon-btn" id="btn-menu" aria-expanded="false" aria-haspopup="true" title="菜单">
+        <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+      <div class="menu-pop" id="menu-pop" role="menu" aria-labelledby="btn-menu">
+        <button type="button" class="menu-item" role="menuitem">文件 <span class="chev">›</span></button>
+        <button type="button" class="menu-item" role="menuitem">编辑 <span class="chev">›</span></button>
+        <button type="button" class="menu-item" role="menuitem">视图 <span class="chev">›</span></button>
+        <button type="button" class="menu-item" role="menuitem">帮助 <span class="chev">›</span></button>
+      </div>
+      <button type="button" class="icon-btn" id="btn-toggle-sidebar" title="切换侧栏" aria-pressed="false">
+        <svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M9 5v14"/></svg>
+      </button>
+      <button type="button" class="icon-btn" title="搜索">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4-4"/></svg>
+      </button>
+      <button type="button" class="icon-btn" title="后退">
+        <svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>
+      </button>
+      <button type="button" class="icon-btn" disabled title="前进">
+        <svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
+      </button>
+    </div>
+    <div class="topbar-spacer"></div>
+    <div class="window-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+  </header>
+
+  <div class="main-row">
+    <aside class="sidebar-wrap" id="sidebar-wrap">
+      <div class="sidebar-card">
+        <div class="brand-row">
+          <div class="brand-pill"><span class="spark">✦</span> DeepSeek<span style="opacity:.85;font-weight:500"> Desk</span></div>
+          <div class="code-chip" title="开发者">&lt;/&gt;</div>
+        </div>
+        <nav class="nav-list" aria-label="主要">
+          <button type="button" class="nav-item">
+            <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+            新对话
+          </button>
+          <button type="button" class="nav-item">
+            <svg viewBox="0 0 24 24"><path d="M4 6h16v12H4z M8 6V4h8v2"/></svg>
+            工作区
+          </button>
+          <button type="button" class="nav-item">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v5l3 2"/></svg>
+            计划任务
+          </button>
+          <button type="button" class="nav-item">
+            <svg viewBox="0 0 24 24"><path d="M4 14l4-4 4 4 8-8"/><path d="M4 20h16"/></svg>
+            偏好设置
+          </button>
+        </nav>
+        <div class="section-label">置顶</div>
+        <div class="pin-placeholder">
+          <svg viewBox="0 0 24 24"><path d="M12 17v5M9 21h6M7 13l5-10 5 10"/><path d="M9 13h6"/></svg>
+          拖拽会话到此处置顶
+        </div>
+        <div class="section-label">最近</div>
+        <div class="recent-list">
+          <div class="recent-item">
+            <span class="dot filled" aria-hidden="true"></span>
+            <div class="recent-text">
+              <div class="recent-title">排查无法打开的 DOCX 文件</div>
+              <div class="recent-meta">4 天前</div>
+            </div>
+          </div>
+          <div class="recent-item">
+            <span class="dot filled" aria-hidden="true"></span>
+            <div class="recent-text">
+              <div class="recent-title">熟悉本仓库 runtime API 结构</div>
+              <div class="recent-meta">昨天</div>
+            </div>
+          </div>
+          <div class="recent-item">
+            <span class="dot hollow" aria-hidden="true"></span>
+            <div class="recent-text">
+              <div class="recent-title">会话欢迎语（示例）</div>
+              <div class="recent-meta">2 小时前</div>
+            </div>
+          </div>
+        </div>
+        <div class="sidebar-footer">
+          <span class="footer-pill"><span class="mini"></span> 演示版 · localhost</span>
+        </div>
+      </div>
+    </aside>
+
+    <div class="content-wrap">
+      <main class="center-col">
+        <div class="hero">
+          <div class="hero-row">
+            <span style="font-size:28px;opacity:.9">✦</span>
+            <h1>Let's knock something off your list</h1>
+          </div>
+          <p class="hero-sub"><a href="#">了解如何更安全地使用桌面端（演示链接）</a></p>
+        </div>
+
+        <div class="composer-wrap">
+          <div class="composer">
+            <label class="sr-only" for="q">输入消息</label>
+            <textarea id="q" placeholder="今天需要什么帮助？" rows="3"></textarea>
+            <div class="composer-toolbar">
+              <button type="button" class="pill-btn" title="附件">
+                <svg viewBox="0 0 24 24"><path d="M12 5v14 M5 12h14"/></svg>
+              </button>
+              <div class="grow"></div>
+              <button type="button" class="pill-btn">
+                <svg viewBox="0 0 24 24"><path d="M4 6h16v12H4z M8 6V4h8v2"/></svg>
+                工作区
+              </button>
+              <button type="button" class="pill-btn">
+                deepseek-v4-pro
+                <svg viewBox="0 0 24 24" style="width:12px;height:12px"><path d="M6 9l6 6 6-6"/></svg>
+              </button>
+              <button type="button" class="send-btn" title="发送">
+                <svg viewBox="0 0 24 24"><path d="M12 19V5M12 5l-6 6M12 5l6 6"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <section class="active-block" aria-label="进行中的任务">
+          <div class="active-head">
+            <h2>进行中</h2>
+            <button type="button">全部清除</button>
+          </div>
+          <div class="active-row">
+            <span class="dot filled"></span>
+            <div class="recent-text">
+              <div class="recent-title">为桌面端补全审批流 UI</div>
+              <div class="recent-meta">刚刚</div>
+            </div>
+          </div>
+        </section>
+
+        <div class="suggest">
+          <div class="suggest-label">随便挑一件 →</div>
+          <div class="suggest-card" role="button" tabindex="0">
+            <span class="emoji" aria-hidden="true">🌅</span>
+            <div>
+              <strong style="font-size:14px">优化我本周的安排</strong>
+              <div style="font-size:12px;color:var(--text-muted);margin-top:2px">示例建议卡片</div>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <aside class="preview-col" aria-label="预览">
+        <div class="preview-card">
+          <div class="preview-toolbar">
+            <button type="button" class="icon-btn" style="width:30px;height:28px" title="预览"><svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
+            <button type="button" class="icon-btn" style="width:30px;height:28px" title="源码">&lt;/&gt;</button>
+            <span class="title">项目概览 · overview.md</span>
+            <button type="button" class="icon-btn" style="width:30px;height:28px" title="关闭">×</button>
+          </div>
+          <div class="preview-body">
+            <h1>deepseek-desktop-overview</h1>
+            <p class="lead">右侧使用衬线体强调「阅读」与左侧对话区分（纯演示文案）。</p>
+            <hr>
+            <h2>技术栈</h2>
+            <ul>
+              <li>Tauri 壳 + <code class="inline">web-ui</code>（Vite / React）</li>
+              <li>Sidecar：<code class="inline">deepseek-tui serve --http</code></li>
+              <li>流式：<code class="inline">POST /v1/stream</code>（SSE）</li>
+            </ul>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var btnMenu = document.getElementById('btn-menu');
+  var menu = document.getElementById('menu-pop');
+  var sidebar = document.getElementById('sidebar-wrap');
+  var btnSidebar = document.getElementById('btn-toggle-sidebar');
+
+  function closeMenu() {
+    menu.classList.remove('open');
+    btnMenu.setAttribute('aria-expanded', 'false');
+  }
+
+  btnMenu.addEventListener('click', function (e) {
+    e.stopPropagation();
+    var open = menu.classList.toggle('open');
+    btnMenu.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+
+  document.addEventListener('click', function () {
+    closeMenu();
+  });
+  menu.addEventListener('click', function (e) {
+    e.stopPropagation();
+  });
+
+  btnSidebar.addEventListener('click', function () {
+    var collapsed = sidebar.classList.toggle('collapsed');
+    btnSidebar.setAttribute('aria-pressed', collapsed ? 'true' : 'false');
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeMenu();
+  });
+})();
+</script>
+</body>
+</html>

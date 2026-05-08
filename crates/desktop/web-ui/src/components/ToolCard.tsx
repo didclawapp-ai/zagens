@@ -9,25 +9,34 @@ export interface ToolCardModel {
 export function ToolCard({ tool }: { tool: ToolCardModel }) {
   const statusColor =
     tool.status === 'running'
-      ? 'text-amber-300'
+      ? 'text-amber border-amber/30'
       : tool.status === 'error'
-        ? 'text-red-400'
-        : 'text-emerald-400';
+        ? 'text-t-error border-t-error/30'
+        : 'text-success border-success/30';
+
+  const statusBg =
+    tool.status === 'running'
+      ? 'bg-amber-bg'
+      : tool.status === 'error'
+        ? 'bg-error-bg'
+        : 'bg-success-bg';
 
   return (
-    <div className="mt-2 rounded-lg border border-gray-600/50 bg-gray-900/50 p-2 text-xs">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="font-semibold text-amber-200/90">{tool.name}</span>
-        <span className="text-gray-500 font-mono">{tool.id.slice(0, 12)}</span>
-        <span className={`${statusColor} ml-auto`}>{tool.status}</span>
+    <div className="mt-2 rounded-lg border border-card-border bg-canvas-alt p-2.5 text-xs">
+      <div className="flex flex-wrap items-center gap-2 mb-1">
+        <span className="font-semibold text-t-text">{tool.name}</span>
+        <span className="text-t-text-muted font-mono text-[11px]">{tool.id.slice(0, 12)}</span>
+        <span className={`ml-auto px-1.5 py-0.5 rounded text-[11px] font-medium border ${statusColor} ${statusBg}`}>
+          {tool.status}
+        </span>
       </div>
       {tool.input ? (
-        <pre className="mt-1 max-h-28 overflow-auto text-gray-400 whitespace-pre-wrap break-words">
+        <pre className="mt-1 max-h-28 overflow-auto text-t-text-secondary whitespace-pre-wrap break-words leading-relaxed">
           {tool.input}
         </pre>
       ) : null}
       {tool.output != null && tool.output !== '' ? (
-        <pre className="mt-1 max-h-36 overflow-y-auto text-gray-300 whitespace-pre-wrap break-words border-t border-gray-700/50 pt-1">
+        <pre className="mt-1.5 max-h-36 overflow-y-auto text-t-text whitespace-pre-wrap break-words border-t border-divider pt-1.5 leading-relaxed">
           {tool.output}
         </pre>
       ) : null}

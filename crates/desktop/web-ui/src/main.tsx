@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import { initRuntimeConfig } from './api/client';
 import './styles/globals.css';
+import 'highlight.js/styles/github.css';
 
 async function bootstrap() {
   await initRuntimeConfig();

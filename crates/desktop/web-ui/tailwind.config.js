@@ -1,3 +1,5 @@
+import typography from '@tailwindcss/typography';
+
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
@@ -5,15 +7,53 @@ export default {
   theme: {
     extend: {
       colors: {
-        deepseek: {
-          50: '#eef2ff',
-          500: '#6366f1',
-          600: '#4f46e5',
-          700: '#4338ca',
-          900: '#1e1b4b',
-        },
+        canvas: 'var(--color-canvas)',
+        'canvas-alt': 'var(--color-canvas-alt)',
+        card: 'var(--color-card)',
+        'card-border': 'var(--color-card-border)',
+        't-text': 'var(--color-text)',
+        't-text-secondary': 'var(--color-text-secondary)',
+        't-text-muted': 'var(--color-text-muted)',
+        accent: 'var(--color-accent)',
+        'accent-hover': 'var(--color-accent-hover)',
+        'accent-soft': 'var(--color-accent-soft)',
+        'accent-text': 'var(--color-accent-text)',
+        warning: 'var(--color-warning)',
+        'warning-bg': 'var(--color-warning-bg)',
+        'warning-text': 'var(--color-warning-text)',
+        't-error': 'var(--color-error)',
+        'error-bg': 'var(--color-error-bg)',
+        'error-text': 'var(--color-error-text)',
+        success: 'var(--color-success)',
+        'success-bg': 'var(--color-success-bg)',
+        amber: 'var(--color-amber)',
+        'amber-bg': 'var(--color-amber-bg)',
+        'amber-text': 'var(--color-amber-text)',
+        'input-bg': 'var(--color-input-bg)',
+        'input-border': 'var(--color-input-border)',
+        hover: 'var(--color-hover)',
+        'hover-strong': 'var(--color-hover-strong)',
+        divider: 'var(--color-divider)',
+        'toolbar-bg': 'var(--color-toolbar-bg)',
+        dot: 'var(--color-dot)',
+        overlay: 'var(--color-overlay)',
+      },
+      fontFamily: {
+        ui: 'var(--font-ui)',
+        mono: 'var(--font-mono)',
+        display: 'var(--font-display)',
+      },
+      borderRadius: {
+        lg: 'var(--radius-lg)',
+        md: 'var(--radius-md)',
+        sm: 'var(--radius-sm)',
+        pill: 'var(--radius-pill)',
+      },
+      boxShadow: {
+        sm: 'var(--color-shadow-sm)',
+        md: 'var(--color-shadow-md)',
       },
     },
   },
-  plugins: [],
+  plugins: [typography],
 };
