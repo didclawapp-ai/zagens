@@ -1642,6 +1642,9 @@ const DEFAULT_CORS_ORIGINS: &[&str] = &[
     "http://localhost:1420",
     "http://127.0.0.1:1420",
     "tauri://localhost",
+    // Tauri 2 WebView2 uses this origin for `fetch` to loopback (desktop shell).
+    "http://tauri.localhost",
+    "https://tauri.localhost",
 ];
 
 fn cors_layer(extra_origins: &[String]) -> CorsLayer {

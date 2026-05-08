@@ -1,33 +1,28 @@
 import { useEffect, useRef } from 'react';
 import { MessageBubble } from './MessageBubble';
+import type { ToolCardModel } from './ToolCard';
 
 interface Message {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
   thinking?: string;
-  tools?: any[];
+  tools?: ToolCardModel[];
   isStreaming?: boolean;
 }
 
 interface Props {
   messages: Message[];
-  thinking: string;
-  currentText: string;
-  streaming: boolean;
 }
 
 export default function ChatView({
   messages,
-  thinking,
-  currentText,
-  streaming,
 }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, currentText]);
+  }, [messages]);
 
   return (
     <div className="flex-1 overflow-y-auto px-4 py-4">
@@ -46,17 +41,6 @@ export default function ChatView({
       {messages.map((msg) => (
         <MessageBubble key={msg.id} message={msg} />
       ))}
-
-      {thinking && (
-        <div className="my-2 p-3 bg-gray-800/50 rounded-lg border border-gray-700/50">
-          <div className="text-xs text-indigo-400 font-medium mb-1">
-            💭 Thinking
-          </div>
-          <div className="text-sm text-gray-400 whitespace-pre-wrap">
-            {thinking.slice(-300)}
-          </div>
-        </div>
-      )}
 
       <div ref={bottomRef} />
     </div>

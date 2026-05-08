@@ -2,10 +2,19 @@ import { useState, useRef, useEffect } from 'react';
 
 interface Props {
   onSend: (text: string) => void;
+  onCancel?: () => void;
   disabled: boolean;
+  autoApprove: boolean;
+  onAutoApproveChange: (value: boolean) => void;
 }
 
-export default function Composer({ onSend, disabled }: Props) {
+export default function Composer({
+  onSend,
+  onCancel,
+  disabled,
+  autoApprove,
+  onAutoApproveChange,
+}: Props) {
   const [text, setText] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -32,6 +41,18 @@ export default function Composer({ onSend, disabled }: Props) {
 
   return (
     <div className="border-t border-gray-800 px-4 py-3">
+      <div className="flex items-center gap-2 max-w-3xl mx-auto mb-2 text-xs text-gray-400">
+        <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={autoApprove}
+            onChange={(e) => onAutoApproveChange(e.target.checked)}
+            disabled={disabled}
+            className="rounded border-gray-600 bg-gray-800 text-indigo-500 focus:ring-indigo-500"
+          />
+          自动批准工具调用
+        </label>
+      </div>
       <div className="flex items-end gap-2 max-w-3xl mx-auto">
         <textarea
           ref={textareaRef}
@@ -46,6 +67,7 @@ export default function Composer({ onSend, disabled }: Props) {
                      placeholder-gray-500 disabled:opacity-50"
         />
         <button
+          type="button"
           onClick={handleSend}
           disabled={disabled || !text.trim()}
           className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700
@@ -54,6 +76,15 @@ export default function Composer({ onSend, disabled }: Props) {
         >
           发送
         </button>
+        {disabled && onCancel ? (
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-5 py-2.5 bg-gray-700 hover:bg-gray-600 text-gray-100 text-sm font-medium rounded-lg flex-shrink-0"
+          >
+            停止
+          </button>
+        ) : null}
       </div>
     </div>
   );

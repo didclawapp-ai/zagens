@@ -11,6 +11,7 @@ interface Props {
   onToggle: () => void;
   onNewSession: () => void;
   onSelectSession?: (id: string) => void;
+  onDeleteSession?: (id: string) => void;
 }
 
 export default function Sidebar({
@@ -19,6 +20,7 @@ export default function Sidebar({
   onToggle,
   onNewSession,
   onSelectSession,
+  onDeleteSession,
 }: Props) {
   return (
     <>
@@ -64,13 +66,31 @@ export default function Sidebar({
             </p>
           )}
           {sessions.map((s) => (
-            <button
+            <div
               key={s.id}
-              onClick={() => onSelectSession?.(s.id)}
-              className="w-full px-3 py-2 text-sm text-gray-400 hover:bg-gray-800 rounded-lg text-left truncate block"
+              className="flex items-center gap-1 rounded-lg hover:bg-gray-800 group"
             >
-              {s.name || s.id.slice(0, 8)}
-            </button>
+              <button
+                type="button"
+                onClick={() => onSelectSession?.(s.id)}
+                className="flex-1 min-w-0 px-3 py-2 text-sm text-gray-400 text-left truncate"
+              >
+                {s.name || s.id.slice(0, 8)}
+              </button>
+              {onDeleteSession && (
+                <button
+                  type="button"
+                  title="删除会话"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteSession(s.id);
+                  }}
+                  className="shrink-0 px-2 py-2 text-gray-600 hover:text-red-400 opacity-60 group-hover:opacity-100"
+                >
+                  ×
+                </button>
+              )}
+            </div>
           ))}
         </div>
 

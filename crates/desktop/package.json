@@ -1,0 +1,9 @@
+{
+  "name": "deepseek-desktop-bundle",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "bundle:prepare": "node ./scripts/prepare-bundle.mjs"
+  }
+}

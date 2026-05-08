@@ -1,9 +1,11 @@
+import { ToolCard, type ToolCardModel } from './ToolCard';
+
 interface Message {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
   thinking?: string;
-  tools?: any[];
+  tools?: ToolCardModel[];
   isStreaming?: boolean;
 }
 
@@ -26,7 +28,16 @@ export function MessageBubble({ message }: { message: Message }) {
             <div className="font-medium text-indigo-400 mb-1">
               💭 Reasoning
             </div>
-            <div className="whitespace-pre-wrap">{message.thinking.slice(-200)}</div>
+            <div className="whitespace-pre-wrap max-h-40 overflow-y-auto">
+              {message.thinking}
+            </div>
+          </div>
+        )}
+        {!isUser && message.tools && message.tools.length > 0 && (
+          <div className="space-y-1 mb-2">
+            {message.tools.map((t) => (
+              <ToolCard key={t.id} tool={t} />
+            ))}
           </div>
         )}
         <div

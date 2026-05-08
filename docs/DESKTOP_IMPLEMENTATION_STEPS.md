@@ -144,7 +144,7 @@ Sidecar HTTP 在长 turn、重连场景下事件不无故丢失；桌面端可�
 | 侧边栏点击无回调 | `POST /v1/sessions/{id}/resume-thread` + `GET /v1/sessions/{id}` 渲染历史 |
 | 缺 `@tauri-apps/api` | 已加入依赖 |
 
-**已知限制（可后续 Phase 做）**：`POST /v1/stream` 每次仍新建运行时线程；恢复会话后的「继续同线程对话」需改用 `POST /v1/threads/{id}/turns` 等（与 Phase 3/4 衔接）。
+**已知限制（2026-05-07 更新）**：桌面 **Web UI** 在 `resume-thread` 之后已使用 **`POST /v1/threads/{id}/turns` + `GET …/events`** 同线程续聊；未恢复会话时仍走 **`POST /v1/stream`**（每次新建运行时线程）。健康检查 / 周期 `GET /health` 与 sidecar 自动重启仍为后续项。
 
 ---
 
@@ -213,8 +213,8 @@ Sidecar HTTP 在长 turn、重连场景下事件不无故丢失；桌面端可�
 
 ### Phase 3 验收清单
 
-- [ ] Phase 3 所列工具族在端到端跑一次可见（或记录明确除外项）。
-- [ ] 交互式审批在桌面完整闭环。
+- [ ] Phase 3 所列工具族在端到端跑一次可见（或记录明确除外项）；当前为通用 `ToolCard`（running/done/error）+ SSE 归一化。
+- [x] 交互式审批在桌面完整闭环（`ApprovalDialog` → `POST …/resolve-approval`，`auto_approve` 可由 Composer 勾选；流式可 **AbortSignal** 取消 +「停止」按钮）。
 - [ ] 大消息列表滚动性能可接受（虚拟列表可选）。
 
 ---
@@ -232,6 +232,8 @@ Sidecar HTTP 在长 turn、重连场景下事件不无故丢失；桌面端可�
 
 - [ ] 改配置后新 turn 生效策略明确（reload sidecar vs 热读）。
 - [ ] 不破坏 CLI/TUI 共享配置文件。
+
+**进度备注**：Sidebar 已支持 **`DELETE /v1/sessions/{id}`** 与会话列表刷新；其余 ConfigPanel / onboarding 仍待办。
 
 ---
 

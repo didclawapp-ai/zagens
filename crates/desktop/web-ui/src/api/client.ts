@@ -56,6 +56,70 @@ export function getRuntimeBase(): string {
   return runtimeBase;
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Poll until `/health` and (when `runtimeToken` is set) `/v1/sessions` with Bearer succeed. */
+export async function waitForRuntimeReady(options?: {
+  timeoutMs?: number;
+  intervalMs?: number;
+}): Promise<boolean> {
+  const timeoutMs = options?.timeoutMs ?? 90_000;
+  const intervalMs = options?.intervalMs ?? 400;
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const r = await fetch(`${runtimeBase}/health`, { method: 'GET' });
+      if (r.ok) {
+        if (!runtimeToken.trim()) {
+          return true;
+        }
+        const ar = await fetch(`${runtimeBase}/v1/sessions`, { headers: authHeaders() });
+        if (ar.ok) {
+          return true;
+        }
+        /* health up but API not ready yet or stale sidecar being replaced */
+      }
+    } catch {
+      /* ECONNREFUSED until sidecar binds */
+    }
+    await sleep(intervalMs);
+  }
+  return false;
+}
+
+export type RuntimeConnectionState =
+  | 'checking'
+  | 'connected'
+  | 'offline'
+  | 'auth_mismatch';
+
+/** Single probe for UI status indicator (lighter than full session list). */
+export async function probeRuntimeConnection(): Promise<Exclude<RuntimeConnectionState, 'checking'>> {
+  try {
+    const r = await fetch(`${runtimeBase}/health`, { method: 'GET' });
+    if (!r.ok) {
+      return 'offline';
+    }
+  } catch {
+    return 'offline';
+  }
+  if (!runtimeToken.trim()) {
+    return 'connected';
+  }
+  try {
+    const ar = await fetch(`${runtimeBase}/v1/sessions`, { headers: authHeaders() });
+    if (ar.status === 401) {
+      return 'auth_mismatch';
+    }
+    if (ar.ok) {
+      return 'connected';
+    }
+    return 'offline';
+  } catch {
+    return 'offline';
+  }
+}
+
 function authHeaders(): Record<string, string> {
   if (!runtimeToken) {
     return { 'Content-Type': 'application/json' };
@@ -91,17 +155,26 @@ function drainSseBlocks(buffer: string): { drained: SseTurnEvent[]; rest: string
   return { drained, rest };
 }
 
+function isAbortError(err: unknown): boolean {
+  if (err instanceof DOMException) {
+    return err.name === 'AbortError' || err.code === DOMException.ABORT_ERR;
+  }
+  return err instanceof Error && err.name === 'AbortError';
+}
+
 export async function postStreamTurn(
   req: StreamTurnRequest,
   onEvent: (event: SseTurnEvent) => void,
   onDone: () => void,
   onError: (err: Error) => void,
+  options?: { signal?: AbortSignal },
 ): Promise<void> {
   try {
     const response = await fetch(`${runtimeBase}/v1/stream`, {
       method: 'POST',
       headers: authHeaders(),
       body: JSON.stringify(req),
+      signal: options?.signal,
     });
 
     if (!response.ok) {
@@ -139,6 +212,10 @@ export async function postStreamTurn(
 
     onDone();
   } catch (err) {
+    if (isAbortError(err)) {
+      onDone();
+      return;
+    }
     onError(err instanceof Error ? err : new Error(String(err)));
   }
 }
@@ -169,6 +246,56 @@ export async function postJson<T>(path: string, body: unknown): Promise<T> {
     throw err;
   }
   return res.json();
+}
+
+export async function postResolveApproval(
+  threadId: string,
+  turnId: string,
+  toolCallId: string,
+  decision: 'approve' | 'deny',
+): Promise<unknown> {
+  return postJson(
+    `/v1/threads/${encodeURIComponent(threadId)}/turns/${encodeURIComponent(turnId)}/resolve-approval`,
+    { tool_call_id: toolCallId, decision },
+  );
+}
+
+export interface TurnRecord {
+  id: string;
+  thread_id: string;
+  status: string;
+}
+
+export async function startThreadTurn(
+  threadId: string,
+  body: {
+    prompt: string;
+    model?: string;
+    mode?: string;
+    allow_shell?: boolean;
+    trust_mode?: boolean;
+    auto_approve?: boolean;
+  },
+): Promise<{ thread: unknown; turn: TurnRecord }> {
+  return postJson(`/v1/threads/${encodeURIComponent(threadId)}/turns`, body);
+}
+
+export async function getThreadDetail(threadId: string): Promise<{ latest_seq: number }> {
+  return fetchJson(`/v1/threads/${encodeURIComponent(threadId)}`);
+}
+
+export async function deleteSession(sessionId: string): Promise<void> {
+  const res = await fetch(`${runtimeBase}/v1/sessions/${encodeURIComponent(sessionId)}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  if (res.ok || res.status === 204) {
+    return;
+  }
+  const text = await res.text();
+  const err = new Error(`HTTP ${res.status}: ${text}`) as Error & { status?: number };
+  err.status = res.status;
+  throw err;
 }
 
 export async function getSessions(): Promise<SessionInfo[]> {

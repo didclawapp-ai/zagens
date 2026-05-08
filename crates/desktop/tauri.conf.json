@@ -6,8 +6,14 @@
   "build": {
     "frontendDist": "./web-ui/dist",
     "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "cd web-ui && npm run dev",
-    "beforeBuildCommand": "cd web-ui && npm run build"
+    "beforeDevCommand": {
+      "script": "npm run dev",
+      "cwd": "web-ui"
+    },
+    "beforeBuildCommand": {
+      "script": "npm run bundle:prepare",
+      "cwd": "."
+    }
   },
   "app": {
     "windows": [
@@ -33,6 +39,6 @@
     "icon": [
       "icons/icon.ico"
     ],
-    "externalBin": []
+    "externalBin": ["binaries/deepseek-tui"]
   }
 }

@@ -10,6 +10,8 @@ description = "DeepSeek Desktop — Tauri-powered GUI shell for the DeepSeek cod
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+deepseek-config = { path = "../config", version = "0.8.15" }
+toml.workspace = true
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
