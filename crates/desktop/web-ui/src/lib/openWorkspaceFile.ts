@@ -52,6 +52,7 @@ export async function loadWorkspaceFileIntoPreview(opts: {
       return {
         title,
         fileName: relPath.split('/').pop(),
+        workspaceRelPath: relPath,
         content: bin.base64,
         fileType,
         size: bin.size,
@@ -63,6 +64,7 @@ export async function loadWorkspaceFileIntoPreview(opts: {
     return {
       title,
       fileName: relPath.split('/').pop(),
+      workspaceRelPath: relPath,
       content: file.content,
       language: file.language_hint ?? undefined,
       fileType: detectFileType(relPath.split('/').pop(), file.language_hint),
@@ -89,6 +91,7 @@ export async function loadWorkspaceFileIntoPreview(opts: {
     return {
       title,
       fileName: relPath.split('/').pop(),
+      workspaceRelPath: relPath,
       content: bin.base64,
       fileType,
       size: bin.size,
@@ -101,6 +104,7 @@ export async function loadWorkspaceFileIntoPreview(opts: {
   return {
     title,
     fileName: relPath.split('/').pop(),
+    workspaceRelPath: relPath,
     content: file.content,
     language: file.language_hint ?? undefined,
     fileType: detectFileType(relPath.split('/').pop(), file.language_hint),

@@ -415,7 +415,15 @@ export default function RightPanel({
             )}
             {preview ? (
               <PreviewContainer title={preview.title} onClose={onClosePreview}>
-                <PreviewDispatcher state={preview} />
+                <PreviewDispatcher
+                  state={preview}
+                  onOpenWorkspaceRelativePath={(rel) => {
+                    void openWorkspaceFile(rel).catch((err) => {
+                      const e = err as Error & { status?: number };
+                      setBrowseError(e.message ?? String(err));
+                    });
+                  }}
+                />
               </PreviewContainer>
             ) : (
               <>

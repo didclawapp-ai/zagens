@@ -11,23 +11,27 @@ import {
   CsvRenderer,
 } from './renderers';
 
-export function PreviewDispatcher({ state }: RendererProps) {
+export function PreviewDispatcher({
+  state,
+  onOpenWorkspaceRelativePath,
+}: RendererProps) {
+  const common = { state, onOpenWorkspaceRelativePath };
   switch (state.fileType) {
     case FileType.Markdown:
-      return <MarkdownRenderer state={state} />;
+      return <MarkdownRenderer {...common} />;
     case FileType.Code:
-      return <CodeRenderer state={state} />;
+      return <CodeRenderer {...common} />;
     case FileType.Image:
-      return <ImageRenderer state={state} />;
+      return <ImageRenderer {...common} />;
     case FileType.Csv:
-      return <CsvRenderer state={state} />;
+      return <CsvRenderer {...common} />;
     case FileType.Pdf:
     case FileType.Office:
-      return <OfficePlaceholder state={state} />;
+      return <OfficePlaceholder {...common} />;
     case FileType.Text:
     case FileType.Unknown:
     default:
-      return <TextRenderer state={state} />;
+      return <TextRenderer {...common} />;
   }
 }
 

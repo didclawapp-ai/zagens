@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### DS Pick (desktop)
 
+- **Markdown preview links** — 预览区内相对路径链接改为在应用内打开下一篇文档，
+  不再触发 WebView 整页跳转（避免打断流式生成并丢失未落盘的会话 UI 状态）。`http(s)://`
+  等外链仍在新窗口打开；`#` 锚点仅滚动当前预览。
 - **Chat markdown + clickable workspace files** — assistant/user 消息按 Markdown
   渲染；形如 `` `docs/foo.md` `` 的本地路径、以及相对路径形式的 `[](…)` 链接在点击
   时在右侧 **工作台** 打开与目录树相同的预览（文本 / 图片 / 二进制等），并自动

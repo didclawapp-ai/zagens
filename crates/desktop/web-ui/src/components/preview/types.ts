@@ -16,6 +16,11 @@ export enum FileType {
 export interface PreviewState {
   /** Breadcrumb / display name shown in the overlay header. */
   title: string;
+  /**
+   * Workspace-relative path of this file (POSIX slashes), e.g. `docs/desktop/foo.md`.
+   * Used to resolve relative Markdown links in-app instead of letting the webview navigate.
+   */
+  workspaceRelPath?: string;
   /** Original file name (used for extension-based detection). */
   fileName?: string;
   /**
@@ -38,4 +43,9 @@ export interface PreviewState {
 /** Every renderer receives the full PreviewState and decides what to render. */
 export interface RendererProps {
   state: PreviewState;
+  /**
+   * Open another workspace file in the preview overlay (Markdown relative links).
+   * If unset, relative links may still default-navigate the webview and reset the app.
+   */
+  onOpenWorkspaceRelativePath?: (relPath: string) => void | Promise<void>;
 }
