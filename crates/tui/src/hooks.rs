@@ -626,7 +626,7 @@ impl HookExecutor {
                 let tool_category = context.tool_name.as_ref().map(|name| match name.as_str() {
                     "exec_shell" => "shell",
                     "write_file" | "edit_file" | "apply_patch" => "file_write",
-                    "read_file" | "list_dir" | "grep_files" => "safe",
+                    "read_file" | "file_info" | "list_dir" | "grep_files" => "safe",
                     _ => "other",
                 });
                 tool_category.is_some_and(|c| c == category.as_str())

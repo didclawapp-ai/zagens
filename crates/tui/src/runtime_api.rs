@@ -32,15 +32,15 @@ use crate::automation_manager::{
 };
 use crate::config::{Config, DEFAULT_TEXT_MODEL};
 use crate::mcp::{McpConfig, McpPool};
+use crate::models::SystemPrompt;
 use crate::runtime_threads::{
     CompactThreadRequest, CreateThreadRequest, RuntimeThreadManager, RuntimeThreadManagerConfig,
     SharedRuntimeThreadManager, StartTurnRequest, SteerTurnRequest, ThreadDetail, ThreadListFilter,
     ThreadRecord, TurnItemKind, TurnRecord, UpdateThreadRequest, UsageGroupBy,
 };
-use crate::models::SystemPrompt;
 use crate::session_manager::{
-    SavedSession, SessionManager, SessionMetadata, create_saved_session_with_mode, default_sessions_dir,
-    update_session,
+    SavedSession, SessionManager, SessionMetadata, create_saved_session_with_mode,
+    default_sessions_dir, update_session,
 };
 use crate::skills::SkillRegistry;
 use crate::task_manager::{
@@ -385,7 +385,10 @@ pub fn build_router(state: RuntimeApiState) -> Router {
             post(interrupt_thread_turn),
         )
         .route("/v1/threads/{id}/compact", post(compact_thread))
-        .route("/v1/threads/{id}/persist-session", post(persist_thread_session))
+        .route(
+            "/v1/threads/{id}/persist-session",
+            post(persist_thread_session),
+        )
         .route("/v1/threads/{id}/events", get(stream_thread_events))
         .route("/v1/tasks", get(list_tasks).post(create_task))
         .route("/v1/tasks/{id}", get(get_task))
@@ -606,7 +609,11 @@ async fn persist_thread_session(
         .export_thread_for_session_persist(&thread_id)
         .map_err(|e| ApiError::internal(format!("Failed to export thread: {e}")))?;
 
-    let sid = req.session_id.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty());
+    let sid = req
+        .session_id
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty());
     if sid.is_none() && messages.is_empty() {
         return Err(ApiError::bad_request(
             "thread has no messages to persist; wait for turn.completed",

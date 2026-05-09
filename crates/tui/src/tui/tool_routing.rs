@@ -684,7 +684,10 @@ fn push_orphan_tool_completion(
 }
 
 fn is_exploring_tool(name: &str) -> bool {
-    matches!(name, "read_file" | "list_dir" | "grep_files" | "list_files")
+    matches!(
+        name,
+        "read_file" | "file_info" | "list_dir" | "grep_files" | "list_files"
+    )
 }
 
 fn is_exec_tool(name: &str) -> bool {
@@ -702,6 +705,10 @@ pub(super) fn exploring_label(name: &str, input: &serde_json::Value) -> String {
             .and_then(|o| o.get("path"))
             .and_then(|v| v.as_str())
             .map_or(fallback, |path| format!("Reading {path}")),
+        "file_info" => obj
+            .and_then(|o| o.get("path"))
+            .and_then(|v| v.as_str())
+            .map_or(fallback, |path| format!("Inspecting {path}")),
         "list_dir" => obj
             .and_then(|o| o.get("path"))
             .and_then(|v| v.as_str())

@@ -7,6 +7,7 @@ pub mod automation;
 pub mod diagnostics;
 pub mod diff_format;
 pub mod file;
+pub mod file_info;
 pub mod file_search;
 pub mod finance;
 

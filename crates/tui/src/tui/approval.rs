@@ -181,6 +181,7 @@ pub fn get_tool_category(name: &str) -> ToolCategory {
     } else if matches!(
         name,
         "read_file"
+            | "file_info"
             | "list_dir"
             | "todo_write"
             | "todo_read"
@@ -858,6 +859,7 @@ mod tests {
     #[test]
     fn test_get_tool_category_safe_tools() {
         assert_eq!(get_tool_category("read_file"), ToolCategory::Safe);
+        assert_eq!(get_tool_category("file_info"), ToolCategory::Safe);
         assert_eq!(get_tool_category("list_dir"), ToolCategory::Safe);
         assert_eq!(get_tool_category("todo_write"), ToolCategory::Safe);
         assert_eq!(get_tool_category("todo_read"), ToolCategory::Safe);

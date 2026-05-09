@@ -413,18 +413,22 @@ impl ToolRegistryBuilder {
     #[must_use]
     pub fn with_file_tools(self) -> Self {
         use super::file::{EditFileTool, ListDirTool, ReadFileTool, WriteFileTool};
+        use super::file_info::FileInfoTool;
         self.with_tool(Arc::new(ReadFileTool))
             .with_tool(Arc::new(WriteFileTool))
             .with_tool(Arc::new(EditFileTool))
             .with_tool(Arc::new(ListDirTool))
+            .with_tool(Arc::new(FileInfoTool))
     }
 
     /// Include only read-only file tools (read, list).
     #[must_use]
     pub fn with_read_only_file_tools(self) -> Self {
         use super::file::{ListDirTool, ReadFileTool};
+        use super::file_info::FileInfoTool;
         self.with_tool(Arc::new(ReadFileTool))
             .with_tool(Arc::new(ListDirTool))
+            .with_tool(Arc::new(FileInfoTool))
     }
 
     /// Include shell execution tool.

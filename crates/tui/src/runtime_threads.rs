@@ -2004,7 +2004,10 @@ impl RuntimeThreadManager {
     }
 
     /// Serialised turn items → API messages plus approximate token totals for session files.
-    pub fn export_thread_for_session_persist(&self, thread_id: &str) -> Result<(Vec<Message>, u64)> {
+    pub fn export_thread_for_session_persist(
+        &self,
+        thread_id: &str,
+    ) -> Result<(Vec<Message>, u64)> {
         let turns = self
             .store
             .list_turns_for_thread(thread_id)

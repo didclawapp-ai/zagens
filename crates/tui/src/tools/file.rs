@@ -6,13 +6,21 @@
 use super::diff_format::make_unified_diff;
 use super::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
-    lsp_diagnostics_for_paths, optional_str, required_str,
+    lsp_diagnostics_for_paths, optional_str, optional_u64, required_str,
 };
 use async_trait::async_trait;
+use regex::Regex;
 use serde_json::{Value, json};
 use std::fs;
+use std::io::Read;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::sync::LazyLock;
+
+const MAX_FILE_SIZE: u64 = 100 * 1024 * 1024;
+const FILE_SIZE_LINE_COUNT_LIMIT: u64 = 10 * 1024 * 1024;
+const DEFAULT_LIMIT: usize = 2000;
+const MAX_LIMIT: usize = 5000;
 
 // === ReadFileTool ===
 
@@ -26,7 +34,7 @@ impl ToolSpec for ReadFileTool {
     }
 
     fn description(&self) -> &'static str {
-        "Read a file from the workspace. Plain text is returned as-is; PDFs are auto-extracted via `pdftotext` (poppler) when available."
+        "Read a file from the workspace. Plain text supports line paging (start_line or offset alias, plus limit). PDFs use `pdftotext` (poppler) or `pdf-extract` fallback."
     }
 
     fn input_schema(&self) -> Value {
@@ -36,6 +44,18 @@ impl ToolSpec for ReadFileTool {
                 "path": {
                     "type": "string",
                     "description": "Path to the file (relative to workspace or absolute)"
+                },
+                "start_line": {
+                    "type": "integer",
+                    "description": "First line to read (1-based, default: 1). Preferred over \"offset\"."
+                },
+                "offset": {
+                    "type": "integer",
+                    "description": "Alias for start_line (1-based, default: 1). Ignored when \"start_line\" is also set."
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum lines to read (default: 2000, max: 5000)"
                 },
                 "pages": {
                     "type": "string",
@@ -63,11 +83,108 @@ impl ToolSpec for ReadFileTool {
             return read_pdf(&file_path, pages);
         }
 
-        let contents = fs::read_to_string(&file_path).map_err(|e| {
-            ToolError::execution_failed(format!("Failed to read {}: {}", file_path.display(), e))
+        if is_docx(&file_path)? {
+            return read_docx(&file_path);
+        }
+
+        let start_line = match (
+            input.get("start_line").and_then(Value::as_u64),
+            input.get("offset").and_then(Value::as_u64),
+        ) {
+            (Some(s), _) => s.max(1),
+            (None, Some(o)) => o.max(1),
+            (None, None) => 1,
+        };
+        let limit =
+            optional_u64(&input, "limit", DEFAULT_LIMIT as u64).clamp(1, MAX_LIMIT as u64) as usize;
+
+        let metadata_result = fs::metadata(&file_path);
+        let size_bytes = metadata_result.as_ref().ok().map(|m| m.len());
+
+        if size_bytes.is_some_and(|s| s > MAX_FILE_SIZE) {
+            return Err(ToolError::execution_failed(format!(
+                "[TOO_LARGE] 文件 {} 大小 {} 超过读取上限 ({}MB)",
+                file_path.display(),
+                size_bytes.unwrap(),
+                MAX_FILE_SIZE / 1024 / 1024
+            )));
+        }
+
+        let bytes = fs::read(&file_path).map_err(|e| {
+            let kind = e.kind();
+            if kind == std::io::ErrorKind::NotFound {
+                ToolError::execution_failed(format!(
+                    "[NOT_FOUND] 文件 {} 不存在: {e}",
+                    file_path.display()
+                ))
+            } else if kind == std::io::ErrorKind::PermissionDenied {
+                ToolError::execution_failed(format!(
+                    "[PERMISSION] 没有权限读取 {}: {e}",
+                    file_path.display()
+                ))
+            } else {
+                ToolError::execution_failed(format!("Failed to read {}: {e}", file_path.display()))
+            }
         })?;
 
-        Ok(ToolResult::success(contents))
+        let (text, encoding_used, encoding_detected_via) = detect_and_decode(&bytes);
+
+        let all_lines: Vec<&str> = text.lines().collect();
+        let total_lines_known = if size_bytes.is_some_and(|s| s <= FILE_SIZE_LINE_COUNT_LIMIT) {
+            Some(all_lines.len())
+        } else {
+            None
+        };
+
+        let skip = (start_line as usize).saturating_sub(1);
+        let end = (skip + limit).min(all_lines.len());
+        let collected: Vec<&str> = if skip < all_lines.len() {
+            all_lines[skip..end].to_vec()
+        } else {
+            Vec::new()
+        };
+
+        // True only when more lines exist after this window — avoids treating
+        // "exactly `limit` lines and EOF" as truncated when total line count was unknown.
+        let truncated = skip + collected.len() < all_lines.len();
+
+        let mut content = collected.join("\n");
+
+        if truncated && !collected.is_empty() {
+            let line_range = format!(
+                "第 {}-{} 行",
+                start_line,
+                start_line + collected.len() as u64 - 1
+            );
+            let next = start_line + collected.len() as u64;
+            if let Some(t) = total_lines_known {
+                content.push_str(&format!(
+                    "\n\n... ({} 行，共 {} 行; 下一窗口设 start_line={} 或 offset={} 接续)",
+                    line_range, t, next, next,
+                ));
+            } else {
+                content.push_str(&format!(
+                    "\n\n... ({} 行; 下一窗口设 start_line={} 或 offset={} 接续 — 文件中还有更多行)",
+                    line_range, next, next,
+                ));
+            }
+        }
+
+        let mut metadata = json!({
+            "path": file_path.to_string_lossy(),
+            "lines_read": collected.len(),
+            "truncated": truncated,
+            "encoding_used": encoding_used,
+            "encoding_detected_via": encoding_detected_via,
+        });
+        if let Some(s) = size_bytes {
+            metadata["size_bytes"] = json!(s);
+        }
+        if let Some(t) = total_lines_known {
+            metadata["total_lines_known"] = json!(t);
+        }
+
+        Ok(ToolResult::success(content).with_metadata(metadata))
     }
 }
 
@@ -116,17 +233,145 @@ fn parse_pages_arg(spec: &str) -> Option<(u32, u32)> {
     }
 }
 
+fn detect_and_decode(bytes: &[u8]) -> (String, String, String) {
+    if bytes.is_empty() {
+        return (String::new(), "utf-8".into(), "empty".into());
+    }
+
+    // 1. BOM detection via encoding_rs
+    if let Some((enc, bom_len)) = encoding_rs::Encoding::for_bom(bytes) {
+        let (cow, _encoding, _had_errors) = enc.decode(&bytes[bom_len..]);
+        let label = enc.name().to_lowercase();
+        return (cow.into_owned(), label, "bom".into());
+    }
+
+    // 2. Try UTF-8
+    if let Ok(text) = std::str::from_utf8(bytes) {
+        return (text.to_string(), "utf-8".into(), "default".into());
+    }
+
+    // 3. Try GB18030 (covers GBK, common for Chinese users)
+    let (cow, _enc, had_errors) = encoding_rs::GB18030.decode(bytes);
+    if !had_errors {
+        return (cow.into_owned(), "gb18030".into(), "fallback".into());
+    }
+
+    // 4. Fallback to Windows-1252 (Latin-1 superset, never fails)
+    let (cow, _enc, _had_errors) = encoding_rs::WINDOWS_1252.decode(bytes);
+    let label = "windows-1252 (gb18030 had errors)".to_string();
+    (cow.into_owned(), label, "fallback".into())
+}
+
+/// Best-effort encoding label from a leading slice (for [`file_info`]). Not a guarantee on full-file decode.
+pub(super) fn sniff_encoding_label(sample: &[u8]) -> Option<String> {
+    if sample.is_empty() {
+        return None;
+    }
+    if let Some((enc, _bom_len)) = encoding_rs::Encoding::for_bom(sample) {
+        return Some(enc.name().to_ascii_lowercase());
+    }
+    if std::str::from_utf8(sample).is_ok() {
+        return Some("utf-8".into());
+    }
+    let (_cow, _, had_errors) = encoding_rs::GB18030.decode(sample);
+    if !had_errors {
+        return Some("gb18030".into());
+    }
+    Some("windows-1252-likely".into())
+}
+
+static DOCX_WT_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"<w:t[^>]*>(.*?)</w:t>").unwrap());
+
+fn is_docx(path: &Path) -> Result<bool, ToolError> {
+    // Extension-only: many ZIP formats share the PK header; `.docx` is unambiguous enough.
+    Ok(path
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("docx")))
+}
+
+fn read_docx(path: &Path) -> Result<ToolResult, ToolError> {
+    let size_bytes = fs::metadata(path).map(|m| m.len()).ok();
+    let file = fs::File::open(path).map_err(|e| {
+        ToolError::execution_failed(format!(
+            "[NOT_FOUND] 无法打开 DOCX 文件 {}: {e}",
+            path.display()
+        ))
+    })?;
+
+    let mut archive = zip::ZipArchive::new(file).map_err(|e| {
+        ToolError::execution_failed(format!(
+            "[BINARY] 无法解析 DOCX/ZIP {}: {e}",
+            path.display()
+        ))
+    })?;
+
+    let mut doc_xml = String::new();
+    match archive.by_name("word/document.xml") {
+        Ok(mut entry) => {
+            entry.read_to_string(&mut doc_xml).map_err(|e| {
+                ToolError::execution_failed(format!(
+                    "Failed to read word/document.xml from {}: {e}",
+                    path.display()
+                ))
+            })?;
+        }
+        Err(e) => {
+            return Err(ToolError::execution_failed(format!(
+                "[BINARY] word/document.xml not found in {}: {e}",
+                path.display()
+            )));
+        }
+    }
+
+    let mut result = String::new();
+
+    for para in doc_xml.split("</w:p>") {
+        let mut line = String::new();
+        for cap in DOCX_WT_RE.captures_iter(para) {
+            if let Some(m) = cap.get(1) {
+                line.push_str(m.as_str());
+            }
+        }
+        let trimmed = line.trim();
+        if !trimmed.is_empty() {
+            if !result.is_empty() {
+                result.push('\n');
+            }
+            result.push_str(trimmed);
+        }
+    }
+
+    if result.is_empty() {
+        return Ok(
+            ToolResult::success("[DOCX] 文件内容为空或仅包含非文本元素。").with_metadata(json!({
+                "path": path.to_string_lossy(),
+                "kind": "docx",
+                "size_bytes": size_bytes,
+            })),
+        );
+    }
+
+    Ok(ToolResult::success(result).with_metadata(json!({
+        "path": path.to_string_lossy(),
+        "kind": "docx",
+        "size_bytes": size_bytes,
+    })))
+}
+
 fn read_pdf(path: &Path, pages: Option<&str>) -> Result<ToolResult, ToolError> {
-    // Try pdftotext (from the poppler suite). Other extractors (mutool,
-    // pdfminer) could be added later behind the same dispatch.
+    let size_bytes = fs::metadata(path).map(|m| m.len()).ok();
+
     let mut cmd = Command::new("pdftotext");
     cmd.arg("-layout");
 
-    if let Some(spec) = pages {
+    let valid_pages = if let Some(spec) = pages {
         match parse_pages_arg(spec) {
-            Some((start, end)) => {
-                cmd.arg("-f").arg(start.to_string());
-                cmd.arg("-l").arg(end.to_string());
+            Some(range) => {
+                cmd.arg("-f").arg(range.0.to_string());
+                cmd.arg("-l").arg(range.1.to_string());
+                Some(range)
             }
             None => {
                 return Err(ToolError::invalid_input(format!(
@@ -134,49 +379,112 @@ fn read_pdf(path: &Path, pages: Option<&str>) -> Result<ToolResult, ToolError> {
                 )));
             }
         }
-    }
+    } else {
+        None
+    };
 
-    cmd.arg(path).arg("-"); // output to stdout
+    cmd.arg(path).arg("-");
     cmd.stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    let child = match cmd.spawn() {
-        Ok(c) => c,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            // Structured "binary unavailable" — caller knows what to suggest.
-            return ToolResult::json(&json!({
-                "type": "binary_unavailable",
-                "path": path.display().to_string(),
+    match cmd.spawn() {
+        Ok(child) => {
+            let output = child.wait_with_output().map_err(|e| {
+                ToolError::execution_failed(format!("pdftotext failed to complete: {e}"))
+            })?;
+
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                return Err(ToolError::execution_failed(format!(
+                    "pdftotext failed (exit {:?}): {stderr}",
+                    output.status.code()
+                )));
+            }
+
+            let text = String::from_utf8_lossy(&output.stdout).to_string();
+            let mut metadata = json!({
+                "path": path.to_string_lossy(),
                 "kind": "pdf",
-                "reason": "pdftotext not installed",
-                "hint": "install poppler (macOS: `brew install poppler`; Debian/Ubuntu: `apt install poppler-utils`)"
-            }))
-            .map_err(|e| {
-                ToolError::execution_failed(format!("failed to serialize response: {e}"))
+                "extractor": "pdftotext",
+                "size_bytes": size_bytes,
             });
+            if let Some(range) = valid_pages {
+                metadata["pages"] = json!(format!("{}-{}", range.0, range.1));
+            }
+            return Ok(ToolResult::success(text).with_metadata(metadata));
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            // Fall through to pdf-extract fallback
         }
         Err(e) => {
             return Err(ToolError::execution_failed(format!(
                 "failed to launch pdftotext: {e}"
             )));
         }
-    };
-
-    let output = child
-        .wait_with_output()
-        .map_err(|e| ToolError::execution_failed(format!("pdftotext failed to complete: {e}")))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        return Err(ToolError::execution_failed(format!(
-            "pdftotext failed (exit {:?}): {stderr}",
-            output.status.code()
-        )));
     }
 
-    let text = String::from_utf8_lossy(&output.stdout).to_string();
-    Ok(ToolResult::success(text))
+    // pdf-extract fallback: pure Rust, no system dependency
+    let bytes = match fs::read(path) {
+        Ok(b) => b,
+        Err(e) => {
+            return ToolResult::json(&json!({
+                "type": "binary_unavailable",
+                "path": path.display().to_string(),
+                "kind": "pdf",
+                "reason": "pdftotext not installed and failed to read file for pdf-extract",
+                "detail": e.to_string(),
+                "hint": "install poppler for better PDF support (macOS: `brew install poppler`; Debian/Ubuntu: `apt install poppler-utils`)"
+            }))
+            .map_err(|e| ToolError::execution_failed(format!("failed to serialize response: {e}")));
+        }
+    };
+
+    let text = match pdf_extract::extract_text_from_mem(&bytes) {
+        Ok(t) => t,
+        Err(e) => {
+            return ToolResult::json(&json!({
+                "type": "binary_unavailable",
+                "path": path.display().to_string(),
+                "kind": "pdf",
+                "reason": "pdftotext not installed and pdf-extract failed",
+                "detail": e.to_string(),
+                "hint": "install poppler for better PDF support (macOS: `brew install poppler`; Debian/Ubuntu: `apt install poppler-utils`)"
+            }))
+            .map_err(|e| ToolError::execution_failed(format!("failed to serialize response: {e}")));
+        }
+    };
+
+    if text.trim().is_empty() {
+        return ToolResult::json(&json!({
+            "type": "binary_unavailable",
+            "path": path.display().to_string(),
+            "kind": "pdf",
+            "reason": "pdf-extract returned empty text — the PDF may be scanned, encrypted, or uses unsupported features",
+            "hint": "install poppler for better PDF support (macOS: `brew install poppler`; Debian/Ubuntu: `apt install poppler-utils`)"
+        }))
+        .map_err(|e| ToolError::execution_failed(format!("failed to serialize response: {e}")));
+    }
+
+    let note = if valid_pages.is_some() {
+        "\n\n[注意: pdf-extract 不支持分页，已返回全文。安装 poppler 可启用 --pages 功能。]\n"
+    } else {
+        ""
+    };
+
+    let mut metadata = json!({
+        "path": path.to_string_lossy(),
+        "kind": "pdf",
+        "extractor": "pdf-extract",
+        "fallback_from_missing_pdftotext": true,
+        "size_bytes": size_bytes,
+    });
+    if valid_pages.is_some() {
+        metadata["pdf_extract_pages_note"] =
+            json!("pages only apply when pdftotext is installed; full document returned")
+    }
+
+    Ok(ToolResult::success(format!("{note}{text}")).with_metadata(metadata))
 }
 
 // === WriteFileTool ===
@@ -334,7 +642,20 @@ impl ToolSpec for EditFileTool {
         let file_path = context.resolve_path(path_str)?;
 
         let contents = fs::read_to_string(&file_path).map_err(|e| {
-            ToolError::execution_failed(format!("Failed to read {}: {}", file_path.display(), e))
+            let kind = e.kind();
+            if kind == std::io::ErrorKind::NotFound {
+                ToolError::execution_failed(format!(
+                    "[NOT_FOUND] 文件 {} 不存在: {e}",
+                    file_path.display()
+                ))
+            } else if kind == std::io::ErrorKind::PermissionDenied {
+                ToolError::execution_failed(format!(
+                    "[PERMISSION] 没有权限读取 {}: {e}",
+                    file_path.display()
+                ))
+            } else {
+                ToolError::execution_failed(format!("Failed to read {}: {e}", file_path.display()))
+            }
         })?;
 
         let count = contents.matches(search).count();
@@ -525,11 +846,71 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn read_file_returns_binary_unavailable_when_pdftotext_missing() {
-        // We can't reliably remove pdftotext from $PATH in a test, but if
-        // it's missing on the runner this test exercises that branch. If
-        // it's installed, the test exits early — covered by the parse_pages
-        // and is_pdf tests above.
+    async fn read_file_offset_alias_matches_start_line_precedence() {
+        let tmp = tempdir().expect("tempdir");
+        let ctx = ToolContext::new(tmp.path().to_path_buf());
+
+        let test_file = tmp.path().join("lines.txt");
+        fs::write(&test_file, "a\nb\nc").expect("write");
+
+        let by_offset = ReadFileTool
+            .execute(json!({"path": "lines.txt", "offset": 2}), &ctx)
+            .await
+            .expect("execute");
+
+        assert_eq!(by_offset.content, "b\nc");
+
+        let by_start_line = ReadFileTool
+            .execute(json!({"path": "lines.txt", "start_line": 2}), &ctx)
+            .await
+            .expect("execute");
+
+        assert_eq!(by_start_line.content, "b\nc");
+
+        let start_line_wins = ReadFileTool
+            .execute(
+                json!({"path": "lines.txt", "start_line": 1, "offset": 3}),
+                &ctx,
+            )
+            .await
+            .expect("execute");
+
+        assert!(
+            start_line_wins.content.starts_with('a'),
+            "{}",
+            start_line_wins.content
+        );
+    }
+
+    #[tokio::test]
+    async fn read_file_exact_window_to_eof_without_trunc_notice_when_total_unknown() {
+        // Large files skip total_lines_known — ensure we don't emit a truncation
+        // footer when we read exactly to EOF (within the small-file line-count budget).
+
+        let tmp = tempdir().expect("tempdir");
+        let ctx = ToolContext::new(tmp.path().to_path_buf());
+
+        let lines: Vec<String> = (1..=800).map(|i| format!("line{i}")).collect();
+        let content = lines.join("\n");
+        assert!(content.len() < FILE_SIZE_LINE_COUNT_LIMIT as usize);
+        let test_file = tmp.path().join("exact.txt");
+        fs::write(&test_file, &content).expect("write");
+
+        let result = ReadFileTool
+            .execute(json!({"path": "exact.txt", "limit": 800}), &ctx)
+            .await
+            .expect("execute");
+
+        assert!(result.success);
+        assert!(!result.content.contains("接续"), "{}", result.content);
+        let metadata = result.metadata.expect("metadata");
+        assert!(!metadata["truncated"].as_bool().unwrap());
+    }
+
+    #[tokio::test]
+    async fn read_file_returns_binary_unavailable_when_pdftotext_missing_and_pdf_extract_fails() {
+        // When pdftotext is missing and pdf-extract cannot parse the PDF,
+        // a structured binary_unavailable response is returned.
         if Command::new("pdftotext")
             .arg("-v")
             .stdout(Stdio::null())
@@ -549,7 +930,6 @@ mod tests {
             .expect("structured response, not error");
         assert!(result.success);
         assert!(result.content.contains("binary_unavailable"));
-        assert!(result.content.contains("pdftotext"));
     }
 
     #[tokio::test]
@@ -789,7 +1169,15 @@ mod tests {
         // Verify all tools have valid JSON schemas
         let read_schema = ReadFileTool.input_schema();
         assert!(read_schema.get("type").is_some());
-        assert!(read_schema.get("properties").is_some());
+        let props = read_schema
+            .get("properties")
+            .and_then(|v| v.as_object())
+            .expect("read schema should have properties");
+        assert!(props.contains_key("path"));
+        assert!(props.contains_key("start_line"));
+        assert!(props.contains_key("offset"));
+        assert!(props.contains_key("limit"));
+        assert!(props.contains_key("pages"));
 
         let write_schema = WriteFileTool.input_schema();
         let required = write_schema
@@ -812,5 +1200,101 @@ mod tests {
             .and_then(|value| value.as_array())
             .expect("list schema should include required array");
         assert!(required.is_empty()); // path is optional
+    }
+
+    #[tokio::test]
+    async fn read_file_start_line_skips_leading_lines() {
+        let tmp = tempdir().expect("tempdir");
+        let ctx = ToolContext::new(tmp.path().to_path_buf());
+
+        let test_file = tmp.path().join("multiline.txt");
+        fs::write(&test_file, "line1\nline2\nline3\nline4\nline5").expect("write");
+
+        let result = ReadFileTool
+            .execute(json!({"path": "multiline.txt", "start_line": 3}), &ctx)
+            .await
+            .expect("execute");
+
+        assert!(result.success);
+        assert_eq!(result.content, "line3\nline4\nline5");
+
+        let metadata = result.metadata.expect("should have metadata");
+        assert_eq!(metadata["lines_read"], 3);
+        assert_eq!(metadata["total_lines_known"], 5);
+        assert!(!metadata["truncated"].as_bool().unwrap());
+    }
+
+    #[tokio::test]
+    async fn read_file_limit_truncates_with_notice() {
+        let tmp = tempdir().expect("tempdir");
+        let ctx = ToolContext::new(tmp.path().to_path_buf());
+
+        let lines: Vec<String> = (1..=50).map(|i| format!("line{i}")).collect();
+        let content = lines.join("\n");
+        let test_file = tmp.path().join("many_lines.txt");
+        fs::write(&test_file, &content).expect("write");
+
+        let result = ReadFileTool
+            .execute(
+                json!({"path": "many_lines.txt", "start_line": 1, "limit": 10}),
+                &ctx,
+            )
+            .await
+            .expect("execute");
+
+        assert!(result.success);
+        assert!(result.content.contains("line1\nline2"));
+        assert!(result.content.contains("line10"));
+        assert!(!result.content.contains("line11"));
+        assert!(result.content.contains("..."));
+        assert!(result.content.contains("共 50 行"));
+
+        let metadata = result.metadata.expect("should have metadata");
+        assert_eq!(metadata["lines_read"], 10);
+        assert_eq!(metadata["total_lines_known"], 50);
+        assert!(metadata["truncated"].as_bool().unwrap());
+    }
+
+    #[tokio::test]
+    async fn read_file_metadata_includes_path_and_size() {
+        let tmp = tempdir().expect("tempdir");
+        let ctx = ToolContext::new(tmp.path().to_path_buf());
+
+        let test_file = tmp.path().join("meta_test.txt");
+        let body = "hello metadata test";
+        fs::write(&test_file, body).expect("write");
+
+        let result = ReadFileTool
+            .execute(json!({"path": "meta_test.txt"}), &ctx)
+            .await
+            .expect("execute");
+
+        assert!(result.success);
+        let metadata = result.metadata.expect("should have metadata");
+        assert!(metadata["path"].as_str().unwrap().contains("meta_test.txt"));
+        assert!(metadata["size_bytes"].as_u64().unwrap() > 0);
+        assert_eq!(metadata["lines_read"], 1);
+        assert!(!metadata["truncated"].as_bool().unwrap());
+    }
+
+    #[tokio::test]
+    async fn read_file_start_line_past_end_returns_empty_with_metadata() {
+        let tmp = tempdir().expect("tempdir");
+        let ctx = ToolContext::new(tmp.path().to_path_buf());
+
+        let test_file = tmp.path().join("short.txt");
+        fs::write(&test_file, "only two\nlines here").expect("write");
+
+        let result = ReadFileTool
+            .execute(json!({"path": "short.txt", "start_line": 10}), &ctx)
+            .await
+            .expect("execute");
+
+        assert!(result.success);
+        assert!(result.content.is_empty());
+
+        let metadata = result.metadata.expect("should have metadata");
+        assert_eq!(metadata["lines_read"], 0);
+        assert_eq!(metadata["total_lines_known"], 2);
     }
 }

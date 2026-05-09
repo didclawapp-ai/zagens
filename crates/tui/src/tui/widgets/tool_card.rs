@@ -75,7 +75,7 @@ pub fn tool_family_for_title(title: &str) -> ToolFamily {
 #[must_use]
 pub fn tool_family_for_name(name: &str) -> ToolFamily {
     match name {
-        "read_file" | "list_dir" | "view_image" => ToolFamily::Read,
+        "read_file" | "file_info" | "list_dir" | "view_image" => ToolFamily::Read,
         "edit_file" | "apply_patch" | "write_file" => ToolFamily::Patch,
         "exec_shell" | "exec_shell_wait" | "exec_shell_interact" => ToolFamily::Run,
         "grep_files" | "file_search" | "web_search" | "fetch_url" => ToolFamily::Find,
