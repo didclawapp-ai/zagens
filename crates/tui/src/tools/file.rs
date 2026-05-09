@@ -12,7 +12,7 @@ use async_trait::async_trait;
 use regex::Regex;
 use serde_json::{Value, json};
 use std::fs;
-use std::io::Read;
+use std::io::{BufRead, BufReader, Read};
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::LazyLock;
@@ -34,7 +34,7 @@ impl ToolSpec for ReadFileTool {
     }
 
     fn description(&self) -> &'static str {
-        "Read a file from the workspace. Plain text supports line paging (start_line or offset alias, plus limit). PDFs use `pdftotext` (poppler) or `pdf-extract` fallback."
+        "Read a file from the workspace. Plain text uses line paging (start_line or offset + limit) with streaming newline decode (low memory); files starting with UTF-16/UTF-32 BOM use full-file decode. PDFs: `pdftotext` or `pdf-extract`."
     }
 
     fn input_schema(&self) -> Value {
@@ -110,43 +110,43 @@ impl ToolSpec for ReadFileTool {
             )));
         }
 
-        let bytes = fs::read(&file_path).map_err(|e| {
-            let kind = e.kind();
-            if kind == std::io::ErrorKind::NotFound {
-                ToolError::execution_failed(format!(
-                    "[NOT_FOUND] 文件 {} 不存在: {e}",
-                    file_path.display()
-                ))
-            } else if kind == std::io::ErrorKind::PermissionDenied {
-                ToolError::execution_failed(format!(
-                    "[PERMISSION] 没有权限读取 {}: {e}",
-                    file_path.display()
-                ))
+        let sniff_totals = size_bytes.is_some_and(|s| s <= FILE_SIZE_LINE_COUNT_LIMIT);
+
+        let skip = start_line.saturating_sub(1) as usize;
+
+        let (collected, truncated, total_lines_known, encoding_used, encoding_detected_via) =
+            if file_needs_bulk_text_decode(&file_path)? {
+                let bytes =
+                    fs::read(&file_path).map_err(|e| map_plain_read_io_error(&file_path, e))?;
+                let (text, encoding_used, encoding_detected_via) = detect_and_decode(&bytes);
+
+                let all_lines: Vec<&str> = text.lines().collect();
+                let total_lines_known = sniff_totals.then_some(all_lines.len());
+
+                let end = (skip + limit).min(all_lines.len());
+                let collected: Vec<String> = if skip < all_lines.len() {
+                    all_lines[skip..end]
+                        .iter()
+                        .copied()
+                        .map(String::from)
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+
+                let truncated = skip + collected.len() < all_lines.len();
+
+                (
+                    collected,
+                    truncated,
+                    total_lines_known,
+                    encoding_used,
+                    encoding_detected_via,
+                )
             } else {
-                ToolError::execution_failed(format!("Failed to read {}: {e}", file_path.display()))
-            }
-        })?;
-
-        let (text, encoding_used, encoding_detected_via) = detect_and_decode(&bytes);
-
-        let all_lines: Vec<&str> = text.lines().collect();
-        let total_lines_known = if size_bytes.is_some_and(|s| s <= FILE_SIZE_LINE_COUNT_LIMIT) {
-            Some(all_lines.len())
-        } else {
-            None
-        };
-
-        let skip = (start_line as usize).saturating_sub(1);
-        let end = (skip + limit).min(all_lines.len());
-        let collected: Vec<&str> = if skip < all_lines.len() {
-            all_lines[skip..end].to_vec()
-        } else {
-            Vec::new()
-        };
-
-        // True only when more lines exist after this window — avoids treating
-        // "exactly `limit` lines and EOF" as truncated when total line count was unknown.
-        let truncated = skip + collected.len() < all_lines.len();
+                read_plain_lines_stream(&file_path, skip, limit, sniff_totals)
+                    .map_err(|e| map_plain_read_io_error(&file_path, e))?
+            };
 
         let mut content = collected.join("\n");
 
@@ -278,6 +278,146 @@ pub(super) fn sniff_encoding_label(sample: &[u8]) -> Option<String> {
         return Some("gb18030".into());
     }
     Some("windows-1252-likely".into())
+}
+
+#[derive(Clone, Copy)]
+enum PhysicalLineEnc {
+    Utf8,
+    Gb18030,
+    Win1252,
+}
+
+fn map_plain_read_io_error(path: &Path, e: std::io::Error) -> ToolError {
+    let kind = e.kind();
+    if kind == std::io::ErrorKind::NotFound {
+        ToolError::execution_failed(format!("[NOT_FOUND] 文件 {} 不存在: {e}", path.display()))
+    } else if kind == std::io::ErrorKind::PermissionDenied {
+        ToolError::execution_failed(format!("[PERMISSION] 没有权限读取 {}: {e}", path.display()))
+    } else {
+        ToolError::execution_failed(format!("Failed to read {}: {e}", path.display()))
+    }
+}
+
+/// Returns true when the file begins with a UTF-16 / UTF-32 BOM. Those encodings need a full
+/// buffer decode so newlines are interpreted correctly.
+fn file_needs_bulk_text_decode(path: &Path) -> Result<bool, ToolError> {
+    let mut file = fs::File::open(path).map_err(|e| map_plain_read_io_error(path, e))?;
+    let mut probe = [0u8; 4];
+    let read = file
+        .read(&mut probe)
+        .map_err(|e| map_plain_read_io_error(path, e))?;
+    if read < 2 {
+        return Ok(false);
+    }
+    if read >= 4
+        && (probe.starts_with(&[0xFF, 0xFE, 0x00, 0x00])
+            || probe.starts_with(&[0x00, 0x00, 0xFE, 0xFF]))
+    {
+        return Ok(true);
+    }
+    if probe.starts_with(&[0xFF, 0xFE]) || probe.starts_with(&[0xFE, 0xFF]) {
+        return Ok(true);
+    }
+    Ok(false)
+}
+
+fn trim_line_terminator(mut b: &[u8]) -> &[u8] {
+    if b.ends_with(b"\r\n") {
+        return &b[..b.len() - 2];
+    }
+    if let Some(rest) = b.strip_suffix(b"\n") {
+        b = rest;
+    }
+    b.strip_suffix(b"\r").unwrap_or(b)
+}
+
+fn decode_physical_line(bytes: &[u8], strip_utf8_bom: bool) -> (String, PhysicalLineEnc) {
+    let mut slice = trim_line_terminator(bytes);
+    if strip_utf8_bom && slice.len() >= 3 && slice.starts_with(&[0xEF, 0xBB, 0xBF]) {
+        slice = &slice[3..];
+    }
+    if slice.is_empty() {
+        return (String::new(), PhysicalLineEnc::Utf8);
+    }
+    if std::str::from_utf8(slice).is_ok() {
+        // Safety: validated above
+        return (
+            std::str::from_utf8(slice)
+                .expect("utf-8 checked")
+                .to_string(),
+            PhysicalLineEnc::Utf8,
+        );
+    }
+    let (cow_gbk, _, had_errors) = encoding_rs::GB18030.decode(slice);
+    if !had_errors {
+        return (cow_gbk.into_owned(), PhysicalLineEnc::Gb18030);
+    }
+    let (cow, _, _) = encoding_rs::WINDOWS_1252.decode(slice);
+    (cow.into_owned(), PhysicalLineEnc::Win1252)
+}
+
+fn summarize_physical_line_encoding(utf: u64, gbk: u64, win: u64) -> String {
+    let kinds = (utf > 0) as u8 + (gbk > 0) as u8 + (win > 0) as u8;
+    if kinds <= 1 {
+        if gbk > 0 {
+            return "gb18030".into();
+        }
+        if win > 0 {
+            return "windows-1252".into();
+        }
+        return "utf-8".into();
+    }
+    format!("mixed(utf8_lines={utf}, gb18030_lines={gbk}, windows1252_lines={win})")
+}
+
+fn read_plain_lines_stream(
+    path: &Path,
+    skip: usize,
+    limit: usize,
+    sniff_totals: bool,
+) -> Result<(Vec<String>, bool, Option<usize>, String, String), std::io::Error> {
+    let file = fs::File::open(path)?;
+    let mut reader = BufReader::new(file);
+    let mut buf = Vec::new();
+    let mut lineno: u64 = 0;
+    let mut out = Vec::new();
+    let mut utf = 0u64;
+    let mut gbk = 0u64;
+    let mut win = 0u64;
+    let skip_u64 = skip as u64;
+
+    loop {
+        buf.clear();
+        let n = reader.read_until(b'\n', &mut buf)?;
+        if n == 0 {
+            break;
+        }
+        lineno += 1;
+        let (decoded, enc) = decode_physical_line(&buf, lineno == 1);
+        match enc {
+            PhysicalLineEnc::Utf8 => utf += 1,
+            PhysicalLineEnc::Gb18030 => gbk += 1,
+            PhysicalLineEnc::Win1252 => win += 1,
+        }
+        if lineno <= skip_u64 {
+            continue;
+        }
+        if out.len() < limit {
+            out.push(decoded);
+        }
+    }
+
+    let eligible = lineno.saturating_sub(skip_u64);
+    let truncated = eligible > limit as u64;
+    let total_lines_known = sniff_totals.then_some(lineno as usize);
+    let encoding_used = summarize_physical_line_encoding(utf, gbk, win);
+    Ok((
+        out,
+        truncated,
+        total_lines_known,
+        encoding_used,
+        "streaming-line".into(),
+    ))
 }
 
 static DOCX_WT_RE: LazyLock<Regex> =
@@ -781,6 +921,9 @@ mod tests {
 
         assert!(result.success);
         assert_eq!(result.content, "hello world");
+
+        let md = result.metadata.as_ref().expect("metadata");
+        assert_eq!(md["encoding_detected_via"], "streaming-line");
     }
 
     #[tokio::test]

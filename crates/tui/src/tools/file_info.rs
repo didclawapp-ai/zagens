@@ -6,9 +6,9 @@
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
-use std::time::UNIX_EPOCH;
 
 use async_trait::async_trait;
+use chrono::{DateTime, SecondsFormat, Utc};
 use serde_json::{Value, json};
 
 use super::file::sniff_encoding_label;
@@ -27,7 +27,7 @@ impl ToolSpec for FileInfoTool {
     }
 
     fn description(&self) -> &'static str {
-        "Get file metadata: size, modification time, text/binary classification, PDF detection, line count (for files ≤10MB). Use before read_file for large or unknown files."
+        "Get file metadata: size, mtime (RFC3339 UTC), text/binary sniff, PDF detection, line count for files ≤10MB, encoding_guess from a head sample."
     }
 
     fn input_schema(&self) -> Value {
@@ -76,8 +76,7 @@ impl ToolSpec for FileInfoTool {
         let mtime = metadata
             .modified()
             .ok()
-            .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-            .map(|d| d.as_secs());
+            .map(|st| DateTime::<Utc>::from(st).to_rfc3339_opts(SecondsFormat::Secs, true));
 
         let is_pdf_flag = is_pdf(&file_path).unwrap_or(false);
 
@@ -144,10 +143,11 @@ fn is_pdf(path: &Path) -> Result<bool, ToolError> {
 }
 
 fn read_sniff_sample(path: &Path, limit: usize) -> Result<Vec<u8>, ToolError> {
-    let file = fs::File::open(path).map_err(|e| ToolError::execution_failed(e.to_string()))?;
-    let mut buf = vec![0u8; limit];
     use std::io::Read;
-    let n = file
+
+    let mut buf = vec![0u8; limit];
+    let n = fs::File::open(path)
+        .map_err(|e| ToolError::execution_failed(e.to_string()))?
         .take(limit as u64)
         .read(&mut buf)
         .map_err(|e| ToolError::execution_failed(e.to_string()))?;
