@@ -165,6 +165,7 @@ export default function App() {
   const [activeInspector, setActiveInspector] = useState<RightPanelView>('workspace');
   const [banner, setBanner] = useState<string | null>(null);
   const [resumedThreadId, setResumedThreadId] = useState<string | null>(null);
+  const [threadTrustMode, setThreadTrustMode] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [autoApprove, setAutoApprove] = useState(true);
   const [runMode, setRunMode] = useState<DesktopRunModeId>(() => loadRunModePreference());
@@ -382,9 +383,11 @@ export default function App() {
         const resumed = await resumeSessionThread(sessionId);
         setResumedThreadId(resumed.thread_id);
         threadTurnRef.current = { threadId: resumed.thread_id, turnId: '' };
+        setThreadTrustMode(false);
         try {
           const threadDetail = await getThreadDetail(resumed.thread_id);
           setSelectedWorkspace(threadDetail.thread.workspace);
+          setThreadTrustMode(Boolean(threadDetail.thread.trust_mode));
         } catch (syncErr) {
           const errMsg = syncErr instanceof Error ? syncErr.message : String(syncErr);
           setBanner(`已恢复运行时线程，但读取线程工作区失败：${errMsg}`);
@@ -407,6 +410,7 @@ export default function App() {
     eventAbortRef.current?.abort();
     setMessages([]);
     setResumedThreadId(null);
+    setThreadTrustMode(false);
     setActiveSessionId(null);
     threadTurnRef.current = { threadId: '', turnId: '' };
     lastPersistedTurnRef.current = '';
@@ -834,6 +838,20 @@ export default function App() {
         }}
         theme={theme}
         onToggleTheme={toggleTheme}
+        workspaceRoot={selectedWorkspace}
+        resumedThreadId={resumedThreadId}
+        threadTrustMode={threadTrustMode}
+        onEnableTrust={async () => {
+          if (!resumedThreadId) return;
+          try {
+            await patchThread(resumedThreadId, { trust_mode: true });
+            setThreadTrustMode(true);
+            setBanner(null);
+          } catch (e) {
+            const err = e as Error & { status?: number };
+            setBanner(`启用信任模式失败：${err.message}`);
+          }
+        }}
       />
     </div>
   );

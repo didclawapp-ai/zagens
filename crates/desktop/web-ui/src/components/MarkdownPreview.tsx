@@ -110,7 +110,10 @@ export default function MarkdownPreview({ content, fileName, language }: Props) 
           prose-blockquote:border-l-accent prose-blockquote:bg-accent-soft prose-blockquote:rounded-r-lg prose-blockquote:py-1 prose-blockquote:px-3
           prose-hr:border-divider
           dark:prose-invert
-          [&_pre_code.hljs]:rounded-lg [&_pre_code.hljs]:p-4 [&_code.hljs]:bg-transparent [&_code.hljs]:p-0 [&_code.hljs]:text-sm"
+          [&_pre_code.hljs]:rounded-lg [&_pre_code.hljs]:p-4 [&_code.hljs]:bg-transparent [&_code.hljs]:p-0 [&_code.hljs]:text-sm
+          [&_table]:my-4 [&_table]:w-full [&_table]:border-collapse [&_table]:text-sm
+          [&_th]:border [&_th]:border-divider [&_th]:bg-canvas-alt/50 [&_th]:px-3 [&_th]:py-2 [&_th]:align-top
+          [&_td]:border [&_td]:border-divider [&_td]:px-3 [&_td]:py-2 [&_td]:align-top"
         dangerouslySetInnerHTML={{ __html: rendered }}
       />
     </div>

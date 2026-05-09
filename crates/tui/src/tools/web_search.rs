@@ -1,5 +1,9 @@
 //! Web search tool backed by DuckDuckGo HTML results (with Bing fallback).
 //!
+//! If the DuckDuckGo request fails (network/TLS/DNS/timeout), or returns a
+//! non-success HTTP status, we try Bing — so environments where DDG is blocked
+//! (e.g. some regional networks) can still search when Bing is reachable.
+//!
 //! This is the primary web search surface for agents. For browsing workflows
 //! (page open, click, screenshot) use a direct URL approach instead.
 
@@ -189,7 +193,11 @@ impl ToolSpec for WebSearchTool {
 
         let encoded = url_encode(&query);
         let url = format!("https://html.duckduckgo.com/html/?q={encoded}");
-        let resp = client
+        let mut results;
+        let mut source;
+        let mut message_suffix: Option<String> = None;
+
+        let ddg_resp = client
             .get(&url)
             .header(
                 "Accept",
@@ -197,56 +205,118 @@ impl ToolSpec for WebSearchTool {
             )
             .header("Accept-Language", "en-US,en;q=0.5")
             .send()
-            .await
-            .map_err(|e| ToolError::execution_failed(format!("Web search request failed: {e}")))?;
+            .await;
 
-        let status = resp.status();
-        let body = resp
-            .text()
-            .await
-            .map_err(|e| ToolError::execution_failed(format!("Failed to read response: {e}")))?;
-
-        if !status.is_success() {
-            return Err(ToolError::execution_failed(format!(
-                "Web search failed: HTTP {}",
-                status.as_u16()
-            )));
-        }
-
-        let mut results = parse_duckduckgo_results(&body, max_results);
-        let mut source = "duckduckgo".to_string();
-        let mut message_suffix = None;
-        if results.is_empty() {
-            let duckduckgo_blocked = is_duckduckgo_challenge(&body);
-            // Bing is a separate host — gate it independently so a deny on
-            // DuckDuckGo doesn't silently let Bing through (and vice versa).
-            check_policy(decider, BING_HOST)?;
-            match run_bing_search(&client, &query, max_results).await {
-                Ok(fallback_results) if !fallback_results.is_empty() => {
-                    results = fallback_results;
-                    source = "bing".to_string();
-                    message_suffix = Some(if duckduckgo_blocked {
-                        "DuckDuckGo returned a bot challenge; used Bing fallback"
-                    } else {
-                        "DuckDuckGo returned no parseable results; used Bing fallback"
-                    });
+        match ddg_resp {
+            Err(ddg_err) => {
+                check_policy(decider, BING_HOST)?;
+                match run_bing_search(&client, &query, max_results).await {
+                    Ok(fallback) if !fallback.is_empty() => {
+                        results = fallback;
+                        source = "bing".to_string();
+                        message_suffix = Some(format!(
+                            "DuckDuckGo request failed ({ddg_err}); used Bing fallback"
+                        ));
+                    }
+                    Ok(_) => {
+                        return Err(ToolError::execution_failed(format!(
+                            "Web search failed: DuckDuckGo error ({ddg_err}); Bing fallback returned no results"
+                        )));
+                    }
+                    Err(bing_err) => {
+                        return Err(ToolError::execution_failed(format!(
+                            "Web search failed: DuckDuckGo error ({ddg_err}); Bing fallback: {bing_err}"
+                        )));
+                    }
                 }
-                Ok(_) if duckduckgo_blocked => {
-                    return Err(ToolError::execution_failed(
-                        "DuckDuckGo returned a bot challenge and Bing fallback returned no results",
-                    ));
+            }
+            Ok(resp) => {
+                let status = resp.status();
+                if !status.is_success() {
+                    check_policy(decider, BING_HOST)?;
+                    let code = status.as_u16();
+                    match run_bing_search(&client, &query, max_results).await {
+                        Ok(fallback) if !fallback.is_empty() => {
+                            results = fallback;
+                            source = "bing".to_string();
+                            message_suffix = Some(format!(
+                                "DuckDuckGo returned HTTP {code}; used Bing fallback"
+                            ));
+                        }
+                        Ok(_) => {
+                            return Err(ToolError::execution_failed(format!(
+                                "Web search failed: DuckDuckGo HTTP {code} and Bing fallback returned no results"
+                            )));
+                        }
+                        Err(bing_err) => {
+                            return Err(ToolError::execution_failed(format!(
+                                "Web search failed: DuckDuckGo HTTP {code}; Bing fallback: {bing_err}"
+                            )));
+                        }
+                    }
+                } else {
+                    match resp.text().await {
+                        Ok(body) => {
+                            source = "duckduckgo".to_string();
+                            results = parse_duckduckgo_results(&body, max_results);
+                            if results.is_empty() {
+                                let duckduckgo_blocked = is_duckduckgo_challenge(&body);
+                                check_policy(decider, BING_HOST)?;
+                                match run_bing_search(&client, &query, max_results).await {
+                                    Ok(fallback_results) if !fallback_results.is_empty() => {
+                                        results = fallback_results;
+                                        source = "bing".to_string();
+                                        message_suffix = Some(if duckduckgo_blocked {
+                                            "DuckDuckGo returned a bot challenge; used Bing fallback"
+                                                    .to_string()
+                                        } else {
+                                            "DuckDuckGo returned no parseable results; used Bing fallback"
+                                                    .to_string()
+                                        });
+                                    }
+                                    Ok(_) if duckduckgo_blocked => {
+                                        return Err(ToolError::execution_failed(
+                                            "DuckDuckGo returned a bot challenge and Bing fallback returned no results",
+                                        ));
+                                    }
+                                    Err(err) if duckduckgo_blocked => {
+                                        return Err(ToolError::execution_failed(format!(
+                                            "DuckDuckGo returned a bot challenge and Bing fallback failed: {err}"
+                                        )));
+                                    }
+                                    Ok(_) | Err(_) => {}
+                                }
+                            }
+                        }
+                        Err(read_err) => {
+                            check_policy(decider, BING_HOST)?;
+                            match run_bing_search(&client, &query, max_results).await {
+                                Ok(fallback) if !fallback.is_empty() => {
+                                    results = fallback;
+                                    source = "bing".to_string();
+                                    message_suffix = Some(format!(
+                                        "Failed to read DuckDuckGo response ({read_err}); used Bing fallback"
+                                    ));
+                                }
+                                Ok(_) => {
+                                    return Err(ToolError::execution_failed(format!(
+                                        "Web search failed: failed to read DuckDuckGo response ({read_err}); Bing returned no results"
+                                    )));
+                                }
+                                Err(bing_err) => {
+                                    return Err(ToolError::execution_failed(format!(
+                                        "Web search failed: failed to read DuckDuckGo response ({read_err}); Bing fallback: {bing_err}"
+                                    )));
+                                }
+                            }
+                        }
+                    }
                 }
-                Err(err) if duckduckgo_blocked => {
-                    return Err(ToolError::execution_failed(format!(
-                        "DuckDuckGo returned a bot challenge and Bing fallback failed: {err}"
-                    )));
-                }
-                Ok(_) | Err(_) => {}
             }
         }
         let message = if results.is_empty() {
             "No results found".to_string()
-        } else if let Some(suffix) = message_suffix {
+        } else if let Some(suffix) = message_suffix.as_deref() {
             format!("Found {} result(s). {suffix}", results.len())
         } else {
             format!("Found {} result(s)", results.len())

@@ -1011,10 +1011,7 @@ impl Engine {
                     if let Some(runtime) = runtime {
                         Some(
                             builder
-                                .with_subagent_tools(
-                                    self.subagent_manager.clone(),
-                                    runtime,
-                                )
+                                .with_subagent_tools(self.subagent_manager.clone(), runtime)
                                 .build(tool_context),
                         )
                     } else {

@@ -359,6 +359,7 @@ export async function startThreadTurn(
 export interface RuntimeThreadRecord {
   id: string;
   workspace: string;
+  trust_mode?: boolean;
 }
 
 export interface ThreadDetailResponse {
@@ -368,6 +369,72 @@ export interface ThreadDetailResponse {
 
 export async function getThreadDetail(threadId: string): Promise<ThreadDetailResponse> {
   return fetchJson(`/v1/threads/${encodeURIComponent(threadId)}`);
+}
+
+/** Side-git snapshots for a runtime thread (`GET /v1/threads/{id}/snapshots`). */
+export interface ThreadSnapshotEntry {
+  n: number;
+  id: string;
+  label: string;
+  timestamp: number;
+}
+
+export interface SnapshotsListResponse {
+  workspace: string;
+  snapshots: ThreadSnapshotEntry[];
+}
+
+export async function getThreadSnapshots(
+  threadId: string,
+  options?: { limit?: number },
+): Promise<SnapshotsListResponse> {
+  const lim = options?.limit;
+  const q = lim != null ? `?limit=${encodeURIComponent(String(lim))}` : '';
+  return fetchJson(`/v1/threads/${encodeURIComponent(threadId)}/snapshots${q}`);
+}
+
+export async function restoreThreadSnapshot(
+  threadId: string,
+  n: number,
+): Promise<{ restored: boolean; label: string; id: string }> {
+  return postJson(`/v1/threads/${encodeURIComponent(threadId)}/snapshots/restore`, { n });
+}
+
+export interface BrowseWorkspaceEntry {
+  name: string;
+  kind: string;
+  size?: number;
+}
+
+export interface BrowseWorkspaceListResponse {
+  workspace: string;
+  path: string;
+  entries: BrowseWorkspaceEntry[];
+}
+
+export async function browseThreadWorkspace(
+  threadId: string,
+  relativePath?: string,
+): Promise<BrowseWorkspaceListResponse> {
+  const trimmed = relativePath?.trim() ?? '';
+  const q = trimmed.length > 0 ? `?path=${encodeURIComponent(trimmed)}` : '';
+  return fetchJson(`/v1/threads/${encodeURIComponent(threadId)}/workspace/browse${q}`);
+}
+
+export interface WorkspaceFileResponse {
+  path: string;
+  content: string;
+  truncated: boolean;
+  language_hint?: string | null;
+}
+
+export async function readThreadWorkspaceFile(
+  threadId: string,
+  relativePath: string,
+): Promise<WorkspaceFileResponse> {
+  return fetchJson(
+    `/v1/threads/${encodeURIComponent(threadId)}/workspace/file?path=${encodeURIComponent(relativePath)}`,
+  );
 }
 
 export type PatchThreadBody = Partial<{

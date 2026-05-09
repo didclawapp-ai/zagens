@@ -185,6 +185,12 @@ accept an empty string to clear a previously-set value. Added in v0.8.10 (#562):
   Path `thread_id` and `turn_id` must match the pending approval scope.
 - `POST /v1/threads/{id}/compact` (manual compaction)
 
+**Thread workspace** (side-git snapshots + directory read — desktop UI / supervisors)
+- `GET /v1/threads/{id}/snapshots?limit=<optional, default 50, max 100>` — newest-first list; each entry includes 1-based `n` (same index as TUI `/restore N`), `id`, `label`, `timestamp`.
+- `POST /v1/threads/{id}/snapshots/restore` — body `{ "n": <usize> }`; restores workspace from that snapshot. **Requires `trust_mode: true` on the thread** (set via `PATCH /v1/threads/{id}` or TUI `/trust on`); otherwise HTTP 403.
+- `GET /v1/threads/{id}/workspace/browse?path=<optional>` — list files and subdirectories under the thread workspace; `path` is relative (POSIX `/`), empty = root; `.git` at the workspace root is omitted from listings.
+- `GET /v1/threads/{id}/workspace/file?path=<required>` — return UTF-8 text content (non–UTF-8 and oversized files are rejected); suitable for preview only.
+
 **Events** (SSE replay + live stream)
 - `GET /v1/threads/{id}/events?since_seq=<u64>`
 

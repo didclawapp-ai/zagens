@@ -1660,11 +1660,9 @@ async fn run_doctor(config: &Config, workspace: &Path, config_path_override: Opt
     let env_has_key = std::env::var("DEEPSEEK_API_KEY")
         .ok()
         .is_some_and(|k| !k.trim().is_empty());
-    if config_has_key && env_has_key
-        && std::env::var("DEEPSEEK_API_KEY_SOURCE")
-            .ok()
-            .as_deref()
-            != Some("config")
+    if config_has_key
+        && env_has_key
+        && std::env::var("DEEPSEEK_API_KEY_SOURCE").ok().as_deref() != Some("config")
     {
         eprintln!(
             "  {} DEEPSEEK_API_KEY is set in both ~/.deepseek/config.toml and the environment.\n\

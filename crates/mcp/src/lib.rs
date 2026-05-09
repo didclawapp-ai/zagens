@@ -252,9 +252,7 @@ impl McpManager {
             .get(server_name)
             .with_context(|| format!("MCP server '{server_name}' not registered"))?;
         if !allowed_by_filter(tool_name, filter) {
-            bail!(
-                "MCP tool '{tool_name}' on server '{server_name}' is blocked by tool filter"
-            );
+            bail!("MCP tool '{tool_name}' on server '{server_name}' is blocked by tool filter");
         }
         let client = self
             .clients

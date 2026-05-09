@@ -104,9 +104,7 @@ fn write_user_config_bytes(path: &Path, body: &str) -> Result<(), String> {
         // write but log a security warning.
         let in_userprofile = std::env::var_os("USERPROFILE")
             .map(std::path::PathBuf::from)
-            .is_some_and(|up| {
-                std::path::absolute(path).is_ok_and(|abs| abs.starts_with(&up))
-            });
+            .is_some_and(|up| std::path::absolute(path).is_ok_and(|abs| abs.starts_with(&up)));
         if !in_userprofile {
             eprintln!(
                 "deepseek-desktop: writing API key to {} which is outside USERPROFILE; \

@@ -83,7 +83,7 @@ export default function Sidebar({
           <svg viewBox="0 0 24 24" className="inline w-4 h-4 mr-2 stroke-current align-text-bottom" style={{ fill: 'none', strokeWidth: 1.6 }}>
             <path d="M4 6h16v12H4z M8 6V4h8v2" />
           </svg>
-          预览 / 项目文件
+          工作台
         </button>
         {desktopHost && (
           <button

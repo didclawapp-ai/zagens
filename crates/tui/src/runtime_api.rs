@@ -4,14 +4,14 @@ use std::collections::HashSet;
 use std::convert::Infallible;
 use std::fs;
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow, bail};
 use async_stream::stream;
-use axum::extract::{Path, Query, Request, State};
+use axum::extract::{Path as AxumPath, Query, Request, State};
 use axum::http::{HeaderValue, Method, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::sse::{Event as SseEvent, KeepAlive, Sse};
@@ -43,6 +43,7 @@ use crate::session_manager::{
     default_sessions_dir, update_session,
 };
 use crate::skills::SkillRegistry;
+use crate::snapshot::SnapshotRepo;
 use crate::task_manager::{
     NewTaskRequest, SharedTaskManager, TaskManager, TaskManagerConfig, TaskRecord, TaskSummary,
 };
@@ -389,6 +390,19 @@ pub fn build_router(state: RuntimeApiState) -> Router {
             "/v1/threads/{id}/persist-session",
             post(persist_thread_session),
         )
+        .route("/v1/threads/{id}/snapshots", get(list_thread_snapshots))
+        .route(
+            "/v1/threads/{id}/snapshots/restore",
+            post(restore_thread_snapshot),
+        )
+        .route(
+            "/v1/threads/{id}/workspace/browse",
+            get(browse_thread_workspace),
+        )
+        .route(
+            "/v1/threads/{id}/workspace/file",
+            get(read_thread_workspace_file),
+        )
         .route("/v1/threads/{id}/events", get(stream_thread_events))
         .route("/v1/tasks", get(list_tasks).post(create_task))
         .route("/v1/tasks/{id}", get(get_task))
@@ -489,7 +503,7 @@ async fn list_sessions(
 
 async fn get_session(
     State(state): State<RuntimeApiState>,
-    Path(id): Path<String>,
+    AxumPath(id): AxumPath<String>,
 ) -> Result<Json<SessionDetailResponse>, ApiError> {
     let manager = SessionManager::new(state.sessions_dir.clone())
         .map_err(|e| ApiError::internal(format!("Failed to open sessions dir: {e}")))?;
@@ -501,7 +515,7 @@ async fn get_session(
 
 async fn resume_session_thread(
     State(state): State<RuntimeApiState>,
-    Path(id): Path<String>,
+    AxumPath(id): AxumPath<String>,
     Json(req): Json<ResumeSessionRequest>,
 ) -> Result<(StatusCode, Json<ResumeSessionResponse>), ApiError> {
     let manager = SessionManager::new(state.sessions_dir.clone())
@@ -564,7 +578,7 @@ async fn resume_session_thread(
 
 async fn delete_session(
     State(state): State<RuntimeApiState>,
-    Path(id): Path<String>,
+    AxumPath(id): AxumPath<String>,
 ) -> Result<StatusCode, ApiError> {
     let manager = SessionManager::new(state.sessions_dir.clone())
         .map_err(|e| ApiError::internal(format!("Failed to open sessions dir: {e}")))?;
@@ -589,7 +603,7 @@ struct PersistThreadSessionResponse {
 /// Writes the thread's turn/item history to `~/.deepseek/sessions/*.json` (same format as TUI).
 async fn persist_thread_session(
     State(state): State<RuntimeApiState>,
-    Path(thread_id): Path<String>,
+    AxumPath(thread_id): AxumPath<String>,
     Json(req): Json<PersistThreadSessionRequest>,
 ) -> Result<Json<PersistThreadSessionResponse>, ApiError> {
     let thread = state
@@ -871,6 +885,339 @@ async fn workspace_status(
     Ok(Json(collect_workspace_status(&state.workspace)))
 }
 
+// --- Thread workspace: snapshots, directory browse, text file read (desktop shell) ---
+
+const MAX_SNAPSHOT_LIST: usize = 100;
+const MAX_WORKSPACE_FILE_BYTES: usize = 512 * 1024;
+
+#[derive(Debug, Deserialize)]
+struct BrowseWorkspaceQuery {
+    /// Path relative to thread workspace (`/` or `\` optional; no `..`).
+    #[serde(default)]
+    path: String,
+}
+
+#[derive(Debug, Serialize)]
+struct BrowseWorkspaceEntry {
+    name: String,
+    kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    size: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+struct BrowseWorkspaceResponse {
+    workspace: String,
+    /// Relative path using `/` (empty = root).
+    path: String,
+    entries: Vec<BrowseWorkspaceEntry>,
+}
+
+#[derive(Debug, Serialize)]
+struct SnapshotListEntryJson {
+    /// 1-based, newest first (same as TUI `/restore N`).
+    n: usize,
+    id: String,
+    label: String,
+    timestamp: i64,
+}
+
+#[derive(Debug, Serialize)]
+struct SnapshotsListResponse {
+    workspace: String,
+    snapshots: Vec<SnapshotListEntryJson>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RestoreSnapshotBody {
+    /// 1-based index into newest-first list (`1` = latest).
+    n: usize,
+}
+
+#[derive(Debug, Serialize)]
+struct RestoreSnapshotResponse {
+    restored: bool,
+    label: String,
+    id: String,
+}
+
+#[derive(Debug, Serialize)]
+struct WorkspaceFileResponse {
+    path: String,
+    content: String,
+    truncated: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    language_hint: Option<String>,
+}
+
+fn safe_thread_subpath(workspace_root: &Path, rel: &str) -> Result<PathBuf, ApiError> {
+    let base = workspace_root
+        .canonicalize()
+        .map_err(|e| ApiError::bad_request(format!("workspace path: {e}")))?;
+    let trimmed = rel.trim().trim_start_matches(['/', '\\']);
+    if trimmed.is_empty() {
+        return Ok(base);
+    }
+    let rel_pb = PathBuf::from(trimmed);
+    if rel_pb.is_absolute() {
+        return Err(ApiError::bad_request("path must be relative to workspace"));
+    }
+    for c in rel_pb.components() {
+        if matches!(c, Component::ParentDir) {
+            return Err(ApiError::bad_request("invalid path"));
+        }
+    }
+    let candidate = base.join(&rel_pb);
+    let canon = candidate
+        .canonicalize()
+        .map_err(|_| ApiError::not_found("path not found"))?;
+    if !canon.starts_with(&base) {
+        return Err(ApiError::forbidden("path outside workspace"));
+    }
+    Ok(canon)
+}
+
+fn workspace_relative_posix(ws: &Path, full: &Path) -> String {
+    full.strip_prefix(ws)
+        .map(|p| {
+            p.iter()
+                .filter_map(|s| s.to_str())
+                .collect::<Vec<_>>()
+                .join("/")
+        })
+        .unwrap_or_default()
+}
+
+fn read_dir_sorted(path: &Path) -> std::io::Result<Vec<BrowseWorkspaceEntry>> {
+    let mut out = Vec::new();
+    for ent in fs::read_dir(path)? {
+        let ent = ent?;
+        let name = ent.file_name().to_string_lossy().to_string();
+        if name == ".git" && path.file_name().and_then(|n| n.to_str()) != Some(".git") {
+            continue;
+        }
+        let meta = ent.metadata()?;
+        if meta.is_dir() {
+            out.push(BrowseWorkspaceEntry {
+                name,
+                kind: "directory".to_string(),
+                size: None,
+            });
+        } else if meta.is_file() {
+            out.push(BrowseWorkspaceEntry {
+                name,
+                kind: "file".to_string(),
+                size: Some(meta.len()),
+            });
+        } else {
+            continue;
+        }
+    }
+    out.sort_by(|a, b| {
+        let rank = |k: &str| match k {
+            "directory" => 0,
+            _ => 1,
+        };
+        rank(&a.kind)
+            .cmp(&rank(&b.kind))
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+    });
+    Ok(out)
+}
+
+fn language_from_name(name: &str) -> Option<String> {
+    let ext = Path::new(name).extension()?.to_str()?.to_lowercase();
+    match ext.as_str() {
+        "rs" => Some("rust".to_string()),
+        "ts" | "tsx" => Some("typescript".to_string()),
+        "js" | "jsx" | "mjs" | "cjs" => Some("javascript".to_string()),
+        "md" | "mdx" => Some("markdown".to_string()),
+        "json" => Some("json".to_string()),
+        "toml" => Some("toml".to_string()),
+        "yml" | "yaml" => Some("yaml".to_string()),
+        "css" => Some("css".to_string()),
+        "html" | "htm" => Some("html".to_string()),
+        "py" => Some("python".to_string()),
+        "sh" | "bash" => Some("bash".to_string()),
+        "go" => Some("go".to_string()),
+        "c" | "h" => Some("c".to_string()),
+        "cpp" | "cc" | "hpp" => Some("cpp".to_string()),
+        _ => None,
+    }
+}
+
+async fn list_thread_snapshots(
+    State(state): State<RuntimeApiState>,
+    AxumPath(id): AxumPath<String>,
+    Query(q): Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<SnapshotsListResponse>, ApiError> {
+    let detail = state
+        .runtime_threads
+        .get_thread_detail(&id)
+        .await
+        .map_err(map_thread_err)?;
+    let workspace_display = detail.thread.workspace.display().to_string();
+    let ws = detail.thread.workspace.clone();
+    let limit = q
+        .get("limit")
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(50)
+        .clamp(1, MAX_SNAPSHOT_LIST);
+    let snapshots = tokio::task::spawn_blocking(move || {
+        let repo = SnapshotRepo::open_or_init(&ws)?;
+        repo.list(limit)
+    })
+    .await
+    .map_err(|e| ApiError::internal(format!("snapshot task: {e}")))?
+    .map_err(|e| {
+        ApiError::bad_request(format!(
+            "snapshots unavailable for {}: {e}",
+            workspace_display
+        ))
+    })?;
+    let mut entries = Vec::with_capacity(snapshots.len());
+    for (i, s) in snapshots.iter().enumerate() {
+        entries.push(SnapshotListEntryJson {
+            n: i + 1,
+            id: s.id.as_str().to_string(),
+            label: s.label.clone(),
+            timestamp: s.timestamp,
+        });
+    }
+    Ok(Json(SnapshotsListResponse {
+        workspace: workspace_display,
+        snapshots: entries,
+    }))
+}
+
+async fn restore_thread_snapshot(
+    State(state): State<RuntimeApiState>,
+    AxumPath(id): AxumPath<String>,
+    Json(body): Json<RestoreSnapshotBody>,
+) -> Result<Json<RestoreSnapshotResponse>, ApiError> {
+    if body.n < 1 {
+        return Err(ApiError::bad_request("n must be >= 1"));
+    }
+    let detail = state
+        .runtime_threads
+        .get_thread_detail(&id)
+        .await
+        .map_err(map_thread_err)?;
+    if !detail.thread.trust_mode {
+        return Err(ApiError::forbidden(
+            "restore requires trust_mode on this thread (PATCH /v1/threads/{id} with {\"trust_mode\": true} or use TUI `/trust on`).",
+        ));
+    }
+    let ws = detail.thread.workspace.clone();
+    let n = body.n;
+    let restored = tokio::task::spawn_blocking(move || {
+        let repo = SnapshotRepo::open_or_init(&ws)?;
+        let snaps = repo.list(MAX_SNAPSHOT_LIST)?;
+        if n > snaps.len() {
+            return Err(ApiError::bad_request(format!(
+                "only {} snapshot(s); n={n} out of range",
+                snaps.len()
+            )));
+        }
+        let target = &snaps[n - 1];
+        let id_snap = target.id.clone();
+        let label = target.label.clone();
+        repo.restore(&id_snap)?;
+        Ok::<_, ApiError>((label, id_snap))
+    })
+    .await
+    .map_err(|e| ApiError::internal(format!("restore task: {e}")))??;
+    Ok(Json(RestoreSnapshotResponse {
+        restored: true,
+        label: restored.0,
+        id: restored.1.as_str().to_string(),
+    }))
+}
+
+async fn browse_thread_workspace(
+    State(state): State<RuntimeApiState>,
+    AxumPath(id): AxumPath<String>,
+    Query(q): Query<BrowseWorkspaceQuery>,
+) -> Result<Json<BrowseWorkspaceResponse>, ApiError> {
+    let detail = state
+        .runtime_threads
+        .get_thread_detail(&id)
+        .await
+        .map_err(map_thread_err)?;
+    let ws_path = detail.thread.workspace.as_path();
+    let base = ws_path
+        .canonicalize()
+        .map_err(|e| ApiError::bad_request(format!("workspace: {e}")))?;
+    let dir_path = safe_thread_subpath(ws_path, &q.path)?;
+    if !dir_path.is_dir() {
+        return Err(ApiError::bad_request("not a directory"));
+    }
+    let dir_for_rel = dir_path.clone();
+    let entries = tokio::task::spawn_blocking(move || read_dir_sorted(&dir_path))
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?
+        .map_err(|e| ApiError::internal(e.to_string()))?;
+    let rel = workspace_relative_posix(&base, &dir_for_rel);
+    Ok(Json(BrowseWorkspaceResponse {
+        workspace: base.display().to_string(),
+        path: rel,
+        entries,
+    }))
+}
+
+async fn read_thread_workspace_file(
+    State(state): State<RuntimeApiState>,
+    AxumPath(id): AxumPath<String>,
+    Query(q): Query<BrowseWorkspaceQuery>,
+) -> Result<Json<WorkspaceFileResponse>, ApiError> {
+    let detail = state
+        .runtime_threads
+        .get_thread_detail(&id)
+        .await
+        .map_err(map_thread_err)?;
+    let ws = detail.thread.workspace.clone();
+    let base = ws
+        .canonicalize()
+        .map_err(|e| ApiError::bad_request(format!("workspace: {e}")))?;
+    if q.path.trim().is_empty() {
+        return Err(ApiError::bad_request("path query required"));
+    }
+    let file_path = safe_thread_subpath(&ws, &q.path)?;
+    if !file_path.is_file() {
+        return Err(ApiError::bad_request("not a file"));
+    }
+    let rel = workspace_relative_posix(&base, &file_path);
+    let path_clone = file_path.clone();
+    let (content, truncated) = tokio::task::spawn_blocking(move || {
+        let meta =
+            fs::metadata(&path_clone).map_err(|e| ApiError::internal(format!("metadata: {e}")))?;
+        let len = meta.len() as usize;
+        if len > MAX_WORKSPACE_FILE_BYTES {
+            return Err(ApiError::bad_request(format!(
+                "file too large (max {MAX_WORKSPACE_FILE_BYTES} bytes)"
+            )));
+        }
+        let bytes = fs::read(&path_clone).map_err(|e| ApiError::internal(e.to_string()))?;
+        let text = String::from_utf8(bytes).map_err(|_| {
+            ApiError::bad_request("file is not UTF-8 text; binary preview not supported")
+        })?;
+        Ok::<_, ApiError>((text, false))
+    })
+    .await
+    .map_err(|e| ApiError::internal(e.to_string()))??;
+    let name = file_path
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let language_hint = language_from_name(&name);
+    Ok(Json(WorkspaceFileResponse {
+        path: rel,
+        content,
+        truncated,
+        language_hint,
+    }))
+}
+
 async fn list_skills(
     State(state): State<RuntimeApiState>,
 ) -> Result<Json<SkillsResponse>, ApiError> {
@@ -982,7 +1329,7 @@ async fn create_automation(
 
 async fn get_automation(
     State(state): State<RuntimeApiState>,
-    Path(id): Path<String>,
+    AxumPath(id): AxumPath<String>,
 ) -> Result<Json<AutomationRecord>, ApiError> {
     let manager = state.automations.lock().await;
     let automation = manager.get_automation(&id).map_err(map_automation_err)?;
@@ -991,7 +1338,7 @@ async fn get_automation(
 
 async fn update_automation(
     State(state): State<RuntimeApiState>,
-    Path(id): Path<String>,
+    AxumPath(id): AxumPath<String>,
     Json(req): Json<UpdateAutomationRequest>,
 ) -> Result<Json<AutomationRecord>, ApiError> {
     let manager = state.automations.lock().await;
@@ -1003,7 +1350,7 @@ async fn update_automation(
 
 async fn delete_automation(
     State(state): State<RuntimeApiState>,
-    Path(id): Path<String>,
+    AxumPath(id): AxumPath<String>,
 ) -> Result<Json<AutomationRecord>, ApiError> {
     let manager = state.automations.lock().await;
     let automation = manager.delete_automation(&id).map_err(map_automation_err)?;
@@ -1012,7 +1359,7 @@ async fn delete_automation(
 
 async fn run_automation(
     State(state): State<RuntimeApiState>,
-    Path(id): Path<String>,
+    AxumPath(id): AxumPath<String>,
 ) -> Result<Json<AutomationRunRecord>, ApiError> {
     let manager = state.automations.lock().await;
     let run = manager
@@ -1024,7 +1371,7 @@ async fn run_automation(
 
 async fn pause_automation(
     State(state): State<RuntimeApiState>,
-    Path(id): Path<String>,
+    AxumPath(id): AxumPath<String>,
 ) -> Result<Json<AutomationRecord>, ApiError> {
     let manager = state.automations.lock().await;
     let automation = manager.pause_automation(&id).map_err(map_automation_err)?;
@@ -1033,7 +1380,7 @@ async fn pause_automation(
 
 async fn resume_automation(
     State(state): State<RuntimeApiState>,
-    Path(id): Path<String>,
+    AxumPath(id): AxumPath<String>,
 ) -> Result<Json<AutomationRecord>, ApiError> {
     let manager = state.automations.lock().await;
     let automation = manager.resume_automation(&id).map_err(map_automation_err)?;
@@ -1042,7 +1389,7 @@ async fn resume_automation(
 
 async fn list_automation_runs(
     State(state): State<RuntimeApiState>,
-    Path(id): Path<String>,
+    AxumPath(id): AxumPath<String>,
     Query(query): Query<AutomationRunsQuery>,
 ) -> Result<Json<Vec<AutomationRunRecord>>, ApiError> {
     let manager = state.automations.lock().await;
@@ -1054,7 +1401,7 @@ async fn list_automation_runs(
 
 async fn get_thread(
     State(state): State<RuntimeApiState>,
-    Path(id): Path<String>,
+    AxumPath(id): AxumPath<String>,
 ) -> Result<Json<ThreadDetail>, ApiError> {
     let detail = state
         .runtime_threads
@@ -1066,7 +1413,7 @@ async fn get_thread(
 
 async fn update_thread(
     State(state): State<RuntimeApiState>,
-    Path(id): Path<String>,
+    AxumPath(id): AxumPath<String>,
     Json(req): Json<UpdateThreadRequest>,
 ) -> Result<Json<ThreadRecord>, ApiError> {
     let thread = state
@@ -1079,7 +1426,7 @@ async fn update_thread(
 
 async fn resume_thread(
     State(state): State<RuntimeApiState>,
-    Path(id): Path<String>,
+    AxumPath(id): AxumPath<String>,
 ) -> Result<Json<ThreadRecord>, ApiError> {
     let thread = state
         .runtime_threads
@@ -1091,7 +1438,7 @@ async fn resume_thread(
 
 async fn fork_thread(
     State(state): State<RuntimeApiState>,
-    Path(id): Path<String>,
+    AxumPath(id): AxumPath<String>,
 ) -> Result<(StatusCode, Json<ThreadRecord>), ApiError> {
     let thread = state
         .runtime_threads
@@ -1103,7 +1450,7 @@ async fn fork_thread(
 
 async fn start_thread_turn(
     State(state): State<RuntimeApiState>,
-    Path(id): Path<String>,
+    AxumPath(id): AxumPath<String>,
     Json(req): Json<StartTurnRequest>,
 ) -> Result<(StatusCode, Json<StartTurnResponse>), ApiError> {
     let turn = state
@@ -1124,7 +1471,7 @@ async fn start_thread_turn(
 
 async fn steer_thread_turn(
     State(state): State<RuntimeApiState>,
-    Path((id, turn_id)): Path<(String, String)>,
+    AxumPath((id, turn_id)): AxumPath<(String, String)>,
     Json(req): Json<SteerTurnRequest>,
 ) -> Result<Json<TurnRecord>, ApiError> {
     let turn = state
@@ -1137,7 +1484,7 @@ async fn steer_thread_turn(
 
 async fn resolve_approval(
     State(state): State<RuntimeApiState>,
-    Path((id, turn_id)): Path<(String, String)>,
+    AxumPath((id, turn_id)): AxumPath<(String, String)>,
     Json(req): Json<ResolveApprovalRequest>,
 ) -> Result<Json<Value>, ApiError> {
     let approved = match req.decision.as_str() {
@@ -1164,7 +1511,7 @@ async fn resolve_approval(
 
 async fn interrupt_thread_turn(
     State(state): State<RuntimeApiState>,
-    Path((id, turn_id)): Path<(String, String)>,
+    AxumPath((id, turn_id)): AxumPath<(String, String)>,
 ) -> Result<Json<TurnRecord>, ApiError> {
     let turn = state
         .runtime_threads
@@ -1176,7 +1523,7 @@ async fn interrupt_thread_turn(
 
 async fn compact_thread(
     State(state): State<RuntimeApiState>,
-    Path(id): Path<String>,
+    AxumPath(id): AxumPath<String>,
     Json(req): Json<CompactThreadRequest>,
 ) -> Result<(StatusCode, Json<StartTurnResponse>), ApiError> {
     let turn = state
@@ -1206,7 +1553,7 @@ async fn list_tasks(
 
 async fn get_task(
     State(state): State<RuntimeApiState>,
-    Path(id): Path<String>,
+    AxumPath(id): AxumPath<String>,
 ) -> Result<Json<TaskRecord>, ApiError> {
     let task = state
         .task_manager
@@ -1218,7 +1565,7 @@ async fn get_task(
 
 async fn cancel_task(
     State(state): State<RuntimeApiState>,
-    Path(id): Path<String>,
+    AxumPath(id): AxumPath<String>,
 ) -> Result<Json<TaskRecord>, ApiError> {
     let task = state
         .task_manager
@@ -1230,7 +1577,7 @@ async fn cancel_task(
 
 async fn stream_thread_events(
     State(state): State<RuntimeApiState>,
-    Path(id): Path<String>,
+    AxumPath(id): AxumPath<String>,
     Query(query): Query<ThreadEventsQuery>,
 ) -> Result<Sse<impl futures_util::Stream<Item = Result<SseEvent, Infallible>>>, ApiError> {
     let _ = state
@@ -1842,6 +2189,19 @@ impl ApiError {
             status: StatusCode::INTERNAL_SERVER_ERROR,
             message: message.into(),
         }
+    }
+
+    fn forbidden(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::FORBIDDEN,
+            message: message.into(),
+        }
+    }
+}
+
+impl From<std::io::Error> for ApiError {
+    fn from(e: std::io::Error) -> Self {
+        ApiError::internal(e.to_string())
     }
 }
 
