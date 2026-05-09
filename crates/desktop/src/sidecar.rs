@@ -18,6 +18,19 @@ const MAX_HEALTH_FAILURES: u32 = 3;
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
+/// Avoid inheriting System32/System as the implicit cwd for embedded `deepseek serve`:
+/// tooling defaults (and broken session resumes) would otherwise latch onto that directory.
+fn sidecar_spawn_cwd() -> Option<PathBuf> {
+    #[cfg(windows)]
+    {
+        return std::env::var_os("USERPROFILE").map(PathBuf::from);
+    }
+    #[cfg(not(windows))]
+    {
+        std::env::var_os("HOME").map(PathBuf::from)
+    }
+}
+
 fn spawn_sidecar(deepseek_bin: &str, port: u16, token: &str) -> Result<Command> {
     let port_s = port.to_string();
     let mut std_cmd = std::process::Command::new(deepseek_bin);
@@ -39,6 +52,11 @@ fn spawn_sidecar(deepseek_bin: &str, port: u16, token: &str) -> Result<Command> 
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
+    if let Some(cwd) = sidecar_spawn_cwd()
+        && cwd.is_dir()
+    {
+        std_cmd.current_dir(cwd);
+    }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -139,8 +157,7 @@ pub async fn start_and_monitor(
     'supervisor: loop {
         let mut child: Option<tokio::process::Child> = None;
 
-        let ready =
-            is_healthy(port, token).await && runtime_api_accepts_token(port, token).await;
+        let ready = is_healthy(port, token).await && runtime_api_accepts_token(port, token).await;
 
         if !ready {
             if is_healthy(port, token).await && !runtime_api_accepts_token(port, token).await {
@@ -165,7 +182,9 @@ pub async fn start_and_monitor(
                     if let Some(mut ch) = child.take() {
                         ch.kill().await.ok();
                     }
-                    anyhow::bail!("sidecar failed to become healthy after {MAX_STARTUP_RETRIES} retries");
+                    anyhow::bail!(
+                        "sidecar failed to become healthy after {MAX_STARTUP_RETRIES} retries"
+                    );
                 }
             }
         }
@@ -212,11 +231,9 @@ fn scan_sidecar_dir(dir: &Path) -> Option<PathBuf> {
         .filter_map(std::result::Result::ok)
         .map(|e| e.path())
         .filter(|p| {
-            p.file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|n| {
-                    n.starts_with("deepseek-tui") && n != "deepseek-tui" && n != "deepseek-tui.exe"
-                })
+            p.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
+                n.starts_with("deepseek-tui") && n != "deepseek-tui" && n != "deepseek-tui.exe"
+            })
         })
         .collect();
     matches.sort();

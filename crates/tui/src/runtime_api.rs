@@ -529,11 +529,15 @@ async fn resume_session_thread(
             .unwrap_or_else(|| "agent".to_string())
     });
 
+    // Bind the resurrected thread to the workspace persisted in the session file.
+    // The runtime API default workspace often follows the OS process cwd (e.g.
+    // `C:\Windows\System32` for a GUI-spawned sidecar); using it here wipes the user's
+    // project folder in the desktop shell after "resume".
     let thread = state
         .runtime_threads
         .create_thread(CreateThreadRequest {
             model: Some(model),
-            workspace: Some(state.workspace.clone()),
+            workspace: Some(session.metadata.workspace.clone()),
             mode: Some(mode),
             allow_shell: None,
             trust_mode: None,
@@ -3132,6 +3136,9 @@ mod tests {
         let sessions_dir = root.join("sessions");
         fs::create_dir_all(&sessions_dir)?;
         let session_id = "sess_test_resume";
+        let saved_ws = root.join("saved_workspace");
+        fs::create_dir_all(&saved_ws)?;
+        let saved_ws_display = saved_ws.display().to_string();
         let session = json!({
             "schema_version": 1,
             "metadata": {
@@ -3142,7 +3149,7 @@ mod tests {
                 "message_count": 2,
                 "total_tokens": 100,
                 "model": "deepseek-v4-pro",
-                "workspace": "/tmp/test",
+                "workspace": saved_ws_display,
                 "mode": "agent"
             },
             "messages": [
@@ -3194,6 +3201,11 @@ mod tests {
         assert_eq!(detail["thread"]["id"], thread_id);
         assert_eq!(detail["turns"].as_array().map_or(0, Vec::len), 1);
         assert_eq!(detail["items"].as_array().map_or(0, Vec::len), 2);
+
+        let got_ws = PathBuf::from(detail["thread"]["workspace"].as_str().unwrap());
+        let canon_saved = fs::canonicalize(&saved_ws)?;
+        let canon_got = fs::canonicalize(&got_ws)?;
+        assert_eq!(canon_got, canon_saved);
 
         handle.abort();
         Ok(())
