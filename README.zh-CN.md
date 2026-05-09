@@ -64,6 +64,12 @@ DeepSeek TUI 是一个完全运行在终端里的编程智能体。它让 DeepSe
 - **实时成本跟踪** —— 按轮次和会话统计 token 用量与成本估算，含缓存命中/未命中明细
 - **技能系统** —— 可通过 GitHub 安装的组合式指令包，无需后端服务
 
+### DS Pick（可选桌面客户端）
+
+**DS Pick** 是本仓库中的 **Tauri 2** 桌面应用（代码在 [`crates/desktop/`](crates/desktop/)）：使用 React + 系统 WebView，通过 **HTTP/SSE** 与同一套运行时通信，由安装包内置的 **`deepseek-tui serve --http` sidecar** 提供 API。实施阶段与验收清单见 [docs/desktop/README.md](docs/desktop/README.md)；接口约定见 [docs/RUNTIME_API.md](docs/RUNTIME_API.md)。
+
+**从源码构建：** 在 `crates/desktop` 下执行 `npm run bundle:prepare`（构建前端并把 release 版 `deepseek-tui` 复制到 `binaries/`），再 `cargo build -p deepseek-desktop`；需要安装包时可使用 `npx @tauri-apps/cli@2 build`（需满足 [Tauri 环境要求](https://v2.tauri.app/start/prerequisites/)）。
+
 ---
 
 ## 架构说明
@@ -71,6 +77,16 @@ DeepSeek TUI 是一个完全运行在终端里的编程智能体。它让 DeepSe
 `deepseek`（调度器 CLI）→ `deepseek-tui`（伴随二进制）→ ratatui 界面 ↔ 异步引擎 ↔ OpenAI 兼容流式客户端。工具调用通过类型化注册表（shell、文件操作、git、web、子智能体、MCP、RLM）路由，结果流式返回对话记录。引擎管理会话状态、轮次追踪、持久化任务队列和 LSP 子系统——它在下一步推理前将编辑后诊断反馈到模型上下文中。
 
 详见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
+
+### 仓库结构（摘要）
+
+| 路径 | 作用 |
+|------|------|
+| [`crates/cli/`](crates/cli/) | `deepseek` 命令行入口（调度器） |
+| [`crates/tui/`](crates/tui/) | 终端 UI、引擎、工具集、`deepseek-tui` 二进制、HTTP 运行时 |
+| [`crates/desktop/`](crates/desktop/) | DS Pick Tauri 壳与 `web-ui/` 前端 |
+| [`crates/core/`](crates/core/)、[`crates/tools/`](crates/tools/)、[`crates/protocol/`](crates/protocol/) | 共享引擎、工具协议、事件协议 |
+| [`docs/`](docs/) | 用户与贡献者文档 |
 
 ---
 
@@ -345,6 +361,7 @@ description: 当 DeepSeek 需要遵循我的自定义工作流时使用这个技
 | [MODES.md](docs/MODES.md) | Plan / Agent / YOLO 模式 |
 | [MCP.md](docs/MCP.md) | Model Context Protocol 集成 |
 | [RUNTIME_API.md](docs/RUNTIME_API.md) | HTTP/SSE API 服务 |
+| [docs/desktop/](docs/desktop/README.md) | DS Pick（Tauri 桌面）规划与实施清单 |
 | [INSTALL.md](docs/INSTALL.md) | 各平台安装指南 |
 | [MEMORY.md](docs/MEMORY.md) | 用户记忆功能指南 |
 | [SUBAGENTS.md](docs/SUBAGENTS.md) | 子智能体角色分类与生命周期 |

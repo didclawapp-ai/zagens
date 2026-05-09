@@ -69,6 +69,12 @@ It is built around DeepSeek V4 (`deepseek-v4-pro` / `deepseek-v4-flash`), includ
 - **Live cost tracking** — per-turn and session-level token usage and cost estimates; cache hit/miss breakdown
 - **Skills system** — composable, installable instruction packs from GitHub with no backend service required
 
+### DS Pick (optional desktop shell)
+
+**DS Pick** is a **Tauri 2** desktop app in [`crates/desktop/`](crates/desktop/): React + WebView UI that talks to the same agent runtime over **HTTP/SSE** by spawning `deepseek-tui serve --http` as a **sidecar**. Planning and phase checklist: [docs/desktop/README.md](docs/desktop/README.md). API contract: [docs/RUNTIME_API.md](docs/RUNTIME_API.md).
+
+**Build from source:** `cd crates/desktop && npm run bundle:prepare` (Vite build + copy `deepseek-tui` release into `binaries/`), then `cargo build -p deepseek-desktop`; for an installer, use `npx @tauri-apps/cli@2 build` from `crates/desktop` (needs [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)).
+
 ---
 
 ## How It's Wired
@@ -76,6 +82,16 @@ It is built around DeepSeek V4 (`deepseek-v4-pro` / `deepseek-v4-flash`), includ
 `deepseek` (dispatcher CLI) → `deepseek-tui` (companion binary) → ratatui interface ↔ async engine ↔ OpenAI-compatible streaming client. Tool calls route through a typed registry (shell, file ops, git, web, sub-agents, MCP, RLM) and results stream back into the transcript. The engine manages session state, turn tracking, the durable task queue, and an LSP subsystem that feeds post-edit diagnostics into the model's context before the next reasoning step.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full walkthrough.
+
+### Repository layout (high level)
+
+| Path | Role |
+|------|------|
+| [`crates/cli/`](crates/cli/) | `deepseek` dispatcher entrypoint |
+| [`crates/tui/`](crates/tui/) | TUI, engine, tools, `deepseek-tui` binary, runtime HTTP server |
+| [`crates/desktop/`](crates/desktop/) | DS Pick Tauri shell + `web-ui/` |
+| [`crates/core/`](crates/core/), [`crates/tools/`](crates/tools/), [`crates/protocol/`](crates/protocol/) | Shared engine, tool definitions, event protocol |
+| [`docs/`](docs/) | User and contributor documentation |
 
 ---
 
