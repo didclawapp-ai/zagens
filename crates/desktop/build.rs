@@ -36,10 +36,7 @@ fn ensure_sidecar_binaries() -> Result<(), String> {
 
     let bin = format!("deepseek-tui{ext}");
     let candidates = [
-        manifest_dir
-            .join("../../target")
-            .join(&profile)
-            .join(&bin),
+        manifest_dir.join("../../target").join(&profile).join(&bin),
         manifest_dir.join("../../target/release").join(&bin),
         manifest_dir.join("../../target/debug").join(&bin),
     ];

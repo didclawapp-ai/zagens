@@ -60,6 +60,63 @@ export function getRuntimeBase(): string {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+function isAbortError(err: unknown): boolean {
+  if (err instanceof DOMException) {
+    return err.name === 'AbortError' || err.code === DOMException.ABORT_ERR;
+  }
+  return err instanceof Error && err.name === 'AbortError';
+}
+
+const RUNTIME_FETCH_ATTEMPTS = 5;
+const RUNTIME_FETCH_BASE_DELAY_MS = 350;
+
+/** True when `fetch` failed before an HTTP response (sidecar still starting, RST, etc.). */
+export function isTransientRuntimeFetchError(err: unknown): boolean {
+  if (isAbortError(err)) {
+    return false;
+  }
+  if (err instanceof TypeError) {
+    return true;
+  }
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return (
+    msg.includes('failed to fetch') ||
+    msg.includes('networkerror') ||
+    msg.includes('load failed') ||
+    msg.includes('network request failed')
+  );
+}
+
+function enrichRuntimeNetworkError(original: unknown): Error {
+  const base = original instanceof Error ? original : new Error(String(original));
+  if (base.message.includes('若刚重启应用')) {
+    return base;
+  }
+  return new Error(
+    `${base.message} （${runtimeBase}）若刚重启应用，本地 sidecar 可能仍在启动：请稍后点击横幅中的「重试连接」。`,
+  );
+}
+
+async function fetchResponseWithBackoff(
+  run: () => Promise<Response>,
+  context: string,
+): Promise<Response> {
+  let last: unknown;
+  for (let attempt = 0; attempt < RUNTIME_FETCH_ATTEMPTS; attempt++) {
+    try {
+      return await run();
+    } catch (e) {
+      last = e;
+      if (!isTransientRuntimeFetchError(e) || attempt === RUNTIME_FETCH_ATTEMPTS - 1) {
+        break;
+      }
+      await sleep(RUNTIME_FETCH_BASE_DELAY_MS * 2 ** attempt);
+    }
+  }
+  console.warn(`[ds-pick] ${context}: fetch failed after ${RUNTIME_FETCH_ATTEMPTS} attempts`, last);
+  throw enrichRuntimeNetworkError(last);
+}
+
 /** Poll until `/health` and (when `runtimeToken` is set) `/v1/sessions` with Bearer succeed. */
 export async function waitForRuntimeReady(options?: {
   timeoutMs?: number;
@@ -157,13 +214,6 @@ function drainSseBlocks(buffer: string): { drained: SseTurnEvent[]; rest: string
   return { drained, rest };
 }
 
-function isAbortError(err: unknown): boolean {
-  if (err instanceof DOMException) {
-    return err.name === 'AbortError' || err.code === DOMException.ABORT_ERR;
-  }
-  return err instanceof Error && err.name === 'AbortError';
-}
-
 export async function postStreamTurn(
   req: StreamTurnRequest,
   onEvent: (event: SseTurnEvent) => void,
@@ -223,9 +273,13 @@ export async function postStreamTurn(
 }
 
 export async function fetchJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${runtimeBase}${path}`, {
-    headers: authHeaders(),
-  });
+  const res = await fetchResponseWithBackoff(
+    () =>
+      fetch(`${runtimeBase}${path}`, {
+        headers: authHeaders(),
+      }),
+    `GET ${path}`,
+  );
   if (!res.ok) {
     const text = await res.text();
     const err = new Error(`HTTP ${res.status}: ${text}`);
@@ -236,11 +290,15 @@ export async function fetchJson<T>(path: string): Promise<T> {
 }
 
 export async function postJson<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${runtimeBase}${path}`, {
-    method: 'POST',
-    headers: authHeaders(),
-    body: JSON.stringify(body ?? {}),
-  });
+  const res = await fetchResponseWithBackoff(
+    () =>
+      fetch(`${runtimeBase}${path}`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify(body ?? {}),
+      }),
+    `POST ${path}`,
+  );
   if (!res.ok) {
     const text = await res.text();
     const err = new Error(`HTTP ${res.status}: ${text}`);
@@ -251,11 +309,15 @@ export async function postJson<T>(path: string, body: unknown): Promise<T> {
 }
 
 export async function patchJson<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${runtimeBase}${path}`, {
-    method: 'PATCH',
-    headers: authHeaders(),
-    body: JSON.stringify(body ?? {}),
-  });
+  const res = await fetchResponseWithBackoff(
+    () =>
+      fetch(`${runtimeBase}${path}`, {
+        method: 'PATCH',
+        headers: authHeaders(),
+        body: JSON.stringify(body ?? {}),
+      }),
+    `PATCH ${path}`,
+  );
   if (!res.ok) {
     const text = await res.text();
     const err = new Error(`HTTP ${res.status}: ${text}`);
@@ -338,10 +400,14 @@ export async function persistThreadSession(
 }
 
 export async function deleteSession(sessionId: string): Promise<void> {
-  const res = await fetch(`${runtimeBase}/v1/sessions/${encodeURIComponent(sessionId)}`, {
-    method: 'DELETE',
-    headers: authHeaders(),
-  });
+  const res = await fetchResponseWithBackoff(
+    () =>
+      fetch(`${runtimeBase}/v1/sessions/${encodeURIComponent(sessionId)}`, {
+        method: 'DELETE',
+        headers: authHeaders(),
+      }),
+    `DELETE /v1/sessions/${sessionId}`,
+  );
   if (res.ok || res.status === 204) {
     return;
   }

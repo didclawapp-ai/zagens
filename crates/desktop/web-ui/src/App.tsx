@@ -13,6 +13,8 @@ import {
   persistThreadSession,
   waitForRuntimeReady,
   probeRuntimeConnection,
+  initRuntimeConfig,
+  getRuntimeBase,
   type RuntimeConnectionState,
   type SessionInfo,
   type SseTurnEvent,
@@ -30,6 +32,27 @@ import {
   parseDesktopModelId,
   parseDesktopRunModeId,
 } from './types/desktop';
+
+/**
+ * When `/health` + `/v1/sessions` probe is `connected`, these banners are usually stale:
+ * the failure was a transient fetch or a race before the sidecar finished starting.
+ * (We do not clear generic HTTP 4xx/5xx bodies — those may still be actionable.)
+ */
+function shouldClearBannerWhenRuntimeConnected(banner: string): boolean {
+  if (/token|未授权|401|Bearer|运行时 token/i.test(banner)) {
+    return true;
+  }
+  if (/无法连接本地运行时|仍未连接本地运行时/.test(banner)) {
+    return true;
+  }
+  const transport = /failed to fetch|load failed|networkerror|network request failed|econnrefused|若刚重启应用|127\.0\.0\.1:\d+/i.test(
+    banner,
+  );
+  if (transport) {
+    return true;
+  }
+  return false;
+}
 
 interface Message {
   id: string;
@@ -203,6 +226,16 @@ export default function App() {
     });
   }, []);
 
+  /** Re-sync sidebar runtime dot; if probe is OK, drop stale transport-level error banners. */
+  const reconcileRuntimeAfterFetchFailure = useCallback(() => {
+    void probeRuntimeConnection().then((s) => {
+      setRuntimeConn(s);
+      if (s === 'connected') {
+        setBanner((b) => (!b ? null : shouldClearBannerWhenRuntimeConnected(b) ? null : b));
+      }
+    });
+  }, []);
+
   const refreshSessions = useCallback(async () => {
     try {
       const list = await getSessions();
@@ -217,19 +250,22 @@ export default function App() {
       } else {
         setBanner(`无法加载会话列表：${err.message}`);
       }
+      reconcileRuntimeAfterFetchFailure();
     }
-  }, []);
+  }, [reconcileRuntimeAfterFetchFailure]);
 
   const retryConnectAndSessions = useCallback(async () => {
     setBanner(null);
     setRuntimeConn('checking');
     try {
+      await initRuntimeConfig();
+      const runtimeUrl = getRuntimeBase();
       const ok = await waitForRuntimeReady({ timeoutMs: 60_000, intervalMs: 400 });
       const probed = await probeRuntimeConnection();
       setRuntimeConn(probed);
       if (!ok) {
         setBanner(
-          '仍未连接本地运行时（http://127.0.0.1:7878）。请确认已安装带 sidecar 的版本，或重启应用后再试。',
+          `仍未连接本地运行时（${runtimeUrl}）。请确认已安装带 sidecar 的版本，或重启应用后再试。`,
         );
         return;
       }
@@ -254,7 +290,7 @@ export default function App() {
         }
         if (!ok) {
           setBanner(
-            '无法连接本地运行时（http://127.0.0.1:7878）。本地服务可能仍在启动，请点击「重试连接」；若多次失败请重启应用或检查是否已内置 sidecar。',
+            `无法连接本地运行时（${getRuntimeBase()}）。本地服务可能仍在启动，请点击「重试连接」；若多次失败请重启应用或检查是否已内置 sidecar。`,
           );
           return;
         }
@@ -302,10 +338,7 @@ export default function App() {
           if (!b) {
             return null;
           }
-          if (/token|未授权|401|Bearer|运行时 token/i.test(b)) {
-            return null;
-          }
-          return b;
+          return shouldClearBannerWhenRuntimeConnected(b) ? null : b;
         });
       }
     };
@@ -355,6 +388,7 @@ export default function App() {
         } catch (syncErr) {
           const errMsg = syncErr instanceof Error ? syncErr.message : String(syncErr);
           setBanner(`已恢复运行时线程，但读取线程工作区失败：${errMsg}`);
+          reconcileRuntimeAfterFetchFailure();
         }
       } catch (e) {
         const err = e as Error & { status?: number };
@@ -363,9 +397,10 @@ export default function App() {
         } else {
           setBanner(`加载会话失败：${err.message}`);
         }
+        reconcileRuntimeAfterFetchFailure();
       }
     },
-    [mapSessionMessages],
+    [mapSessionMessages, reconcileRuntimeAfterFetchFailure],
   );
 
   const handleNewSession = useCallback(() => {

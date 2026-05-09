@@ -7,8 +7,10 @@ use tokio::sync::Notify;
 
 /// Workspace `config.example.toml`, shipped as the canonical full default layout when
 /// the desktop app saves an API key (matches upstream `Hmbown/DeepSeek-TUI`).
-const CONFIG_EXAMPLE_TEMPLATE: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../config.example.toml"));
+const CONFIG_EXAMPLE_TEMPLATE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../config.example.toml"
+));
 
 const PLACEHOLDER_TOP_API_KEY_LINE: &str =
     r#"api_key = "YOUR_DEEPSEEK_API_KEY" # must be non-empty"#;
