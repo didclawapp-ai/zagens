@@ -49,7 +49,7 @@ Before opening a PR, run `cargo build` (not `cargo +nightly build`) and
 make sure the workspace's declared `rust-version` is enough to compile.
 
 ### Documentation
-See README.md for project overview, docs/ARCHITECTURE.md for internals.
+See README.md for project overview, docs/ARCHITECTURE.md for internals. Desktop (DS Pick): docs/desktop/.
 
 ## DeepSeek-Specific Notes
 

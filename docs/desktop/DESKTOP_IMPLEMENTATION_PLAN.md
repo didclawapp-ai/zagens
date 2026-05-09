@@ -24,7 +24,7 @@
 |------------|------------|
 | `app-server` 的 `POST /thread` 能跑完整 turn | `core::Runtime::handle_thread(Message)` 只做入队 + 返回 `"accepted"`/`"queued"` 占位事件 |
 | 桌面端需要全新 SSE 端点 | `crates/tui/src/runtime_api.rs` **已有** `POST /v1/stream` SSE 端点，可创建 thread、启动 turn、实时流式推送事件 |
-| 需要自己造事件流 | [`crates/tui/src/runtime_threads.rs`](../crates/tui/src/runtime_threads.rs) 已有完整的 Engine 管理 + broadcast 事件通道 |
+| 需要自己造事件流 | [`crates/tui/src/runtime_threads.rs`](../../crates/tui/src/runtime_threads.rs) 已有完整的 Engine 管理 + broadcast 事件通道 |
 | `app-server` 是唯一 HTTP 层 | `runtime_api` 已有 20+ 个 REST 端点（threads、sessions、tasks、automations、mcp 等）|
 | SSE 事件名可自定义 | 已有 `RuntimeEventRecord` + `map_compat_stream_event()`（如 `message.delta`、`tool.started`）；若要对齐 `EventFrame`，需在服务端做一次映射/收口 |
 
@@ -53,10 +53,10 @@
 
 | 维度 | A: `app-server` → `core::Runtime` | B: `runtime_api` → `RuntimeThreadManager` → `Engine` |
 |------|----------------------------------|------------------------------------------------------|
-| **代码位置** | [`crates/core/src/lib.rs`](../crates/core/src/lib.rs) | [`crates/tui/src/runtime_threads.rs`](../crates/tui/src/runtime_threads.rs) |
+| **代码位置** | [`crates/core/src/lib.rs`](../../crates/core/src/lib.rs) | [`crates/tui/src/runtime_threads.rs`](../../crates/tui/src/runtime_threads.rs) |
 | **`handle_thread(Message)` 行为** | 入队 + 返回 `"accepted"` 占位事件 ← **不跑 turn** | 通过 `start_turn()` → `Engine` **真跑完整 turn** |
 | **`handle_prompt` 行为** | 只解析模型 + 记录 hook 事件 ← **不调 LLM** | 不通过该路径，走 `stream_turn` |
-| **LLM 流式** | ❌ 无 | ✅ `Engine::handle_deepseek_turn()`（[`turn_loop.rs`](../crates/tui/src/core/engine/turn_loop.rs)） |
+| **LLM 流式** | ❌ 无 | ✅ `Engine::handle_deepseek_turn()`（[`turn_loop.rs`](../../crates/tui/src/core/engine/turn_loop.rs)） |
 | **工具执行** | `invoke_tool`（单次调用，需外部触发） | `Engine` 自动编排（turn loop 内嵌） |
 | **审批流** | 策略引擎存在但不自动触发 | `Engine` 内审批；**注意**：`RuntimeThreadManager` 在收到 `ApprovalRequired` 时会按 `auto_approve`/`trust_mode` **同步**调用 `approve`/`deny`，**无**「等待 HTTP 再批准」——桌面若要交互式审批需新增运行时能力（见 §4.2） |
 | **SSE 端点** | 无（一次性 JSON） | **已有** `POST /v1/stream` |
@@ -294,7 +294,7 @@ Web UI: 侧边栏显示会话列表
 
 ### 5.1 事件类型映射
 
-`runtime_api` 当前使用 `RuntimeEventRecord`（含 `event: String` 字段，如 `"turn.started"`），`stream_turn` 通过 `map_compat_stream_event()` 做了一层映射。对于桌面端，SSE 事件应该**直接序列化 `EventFrame`**（见 [`crates/protocol/src/lib.rs`](../crates/protocol/src/lib.rs) 中 `EventFrame` 定义），避免维护两套平行的事件名称。
+`runtime_api` 当前使用 `RuntimeEventRecord`（含 `event: String` 字段，如 `"turn.started"`），`stream_turn` 通过 `map_compat_stream_event()` 做了一层映射。对于桌面端，SSE 事件应该**直接序列化 `EventFrame`**（见 [`crates/protocol/src/lib.rs`](../../crates/protocol/src/lib.rs) 中 `EventFrame` 定义），避免维护两套平行的事件名称。
 
 ```rust
 // EventFrame 枚举（protocol crate，已存在，不改）

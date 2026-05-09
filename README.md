@@ -374,6 +374,7 @@ Commands: `/skills` (list), `/skill <name>` (activate), `/skill new` (scaffold),
 | [MODES.md](docs/MODES.md) | Plan / Agent / YOLO modes |
 | [MCP.md](docs/MCP.md) | Model Context Protocol integration |
 | [RUNTIME_API.md](docs/RUNTIME_API.md) | HTTP/SSE API server |
+| [docs/desktop/](docs/desktop/README.md) | DS Pick (Tauri desktop) planning & implementation checklist |
 | [INSTALL.md](docs/INSTALL.md) | Platform-specific install guide |
 | [MEMORY.md](docs/MEMORY.md) | User memory feature guide |
 | [SUBAGENTS.md](docs/SUBAGENTS.md) | Sub-agent role taxonomy and lifecycle |

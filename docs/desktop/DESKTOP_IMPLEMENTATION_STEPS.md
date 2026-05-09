@@ -61,11 +61,11 @@ Sidecar HTTP 在长 turn、重连场景下事件不无故丢失；桌面端可�
 > **实施状态（2026-05-07 审核）**：下列 1–5 项已在主分支落实；其中步骤 3 的 SSE `id:` 已与 `seq` 对齐（`GET /events` 与 `map_compat_stream_event` 路径）。
 
 1. **`EVENT_CHANNEL_CAPACITY`**
-   - 打开 [`crates/tui/src/runtime_threads.rs`](../crates/tui/src/runtime_threads.rs)，将常量由 `1024` 调至 `4096`（或与压测结论一致的上限）。
+   - 打开 [`crates/tui/src/runtime_threads.rs`](../../crates/tui/src/runtime_threads.rs)，将常量由 `1024` 调至 `4096`（或与压测结论一致的上限）。
    - 备注：仅能缓解瞬时洪峰；慢消费者仍需 `events_since` 回补。
 
 2. **`GET /v1/threads/{id}/events` 与消费者行为**
-   - 阅读 [`stream_thread_events`](../crates/tui/src/runtime_api.rs) 与 `events_since`、`ThreadEventsQuery::since_seq`。
+   - 阅读 [`stream_thread_events`](../../crates/tui/src/runtime_api.rs) 与 `events_since`、`ThreadEventsQuery::since_seq`。
    - 确认集成测试已覆盖 `since_seq` 游标（已有则补缺场景：空 backlog、直播中切换 `since_seq`）。
 
 3. **SSE `id:` 字段**（✓ 已实现）
@@ -73,7 +73,7 @@ Sidecar HTTP 在长 turn、重连场景下事件不无故丢失；桌面端可�
    - 验收：Chrome/Safari `EventSource` 重连时若发送 `Last-Event-ID`，服务端行为符合预期（或与文档声明「仅以 query 为准」一致）。
 
 4. **POST `/v1/stream` 语义冻结**
-   - 对照 [`map_compat_stream_event`](../crates/tui/src/runtime_api.rs) 列出对外事件名表（如 `message.delta`、`tool.started`），写入团队可见的短文或 codegen 注释，供前端生成 TS 类型。
+   - 对照 [`map_compat_stream_event`](../../crates/tui/src/runtime_api.rs) 列出对外事件名表（如 `message.delta`、`tool.started`），写入团队可见的短文或 codegen 注释，供前端生成 TS 类型。
 
 5. **`EventFrame` 对齐策略：默认选 B（保留 compat 名 + 前端映射）**
    - 理由：`map_compat_stream_event` 已在生产运行，改序列化层有回归风险；前端维护映射成本极低（一个 `switch`）。
@@ -100,19 +100,19 @@ Sidecar HTTP 在长 turn、重连场景下事件不无故丢失；桌面端可�
 > **实施状态（2026-05-07 审核收尾）**：`crates/desktop` + Vite/React 壳已接入；sidecar 命令与 `ServeArgs` 一致；下列 1–7 已在代码中落实（会话「续聊」同线程见验收表下「已知限制」）。
 
 1. **Workspace 与 crate**
-   - 根 [`Cargo.toml`](../Cargo.toml) 增加 `crates/desktop` member。
+   - 根 [`Cargo.toml`](../../Cargo.toml) 增加 `crates/desktop` member。
    - 新建 `crates/desktop/`：Tauri 2 应用 scaffold，`web-ui/` 使用 Vite + React + TS（与总体规划一致）。
 
 2. **Sidecar 启动命令（禁止臆造 flag）**
    - 调用：`deepseek-tui serve --http --host 127.0.0.1 --port <P> --auth-token <T>`。
-   - 端口：默认可与配置一致或可探测空闲端口；与 `ServeArgs`（[`main.rs`](../crates/tui/src/main.rs)）对齐。
+   - 端口：默认可与配置一致或可探测空闲端口；与 `ServeArgs`（[`main.rs`](../../crates/tui/src/main.rs)）对齐。
    - 将 token 写入子进程环境或参数；**同源**传给 Web（见下）。
 
    2a. **API Key 注入**：sidecar 启动时需确保 API Key 可用。若用户已在 `~/.deepseek/config.toml` 中配置，sidecar 自动读取；若首次使用，前端通过 `POST /v1/stream` 返回的错误码判断缺 Key，引导进入 onboarding。
 
 3. **Token 传递到前端**
    - Tauri：`window.__DEEPSEEK_RUNTIME_TOKEN__` 或 `invoke('get_runtime_token')`（二选一统一）。
-   - 所有 `/v1/*` 请求：`Authorization: Bearer …`（或运行时支持的 header/query，与 [`require_runtime_token`](../crates/tui/src/runtime_api.rs) 一致）。
+   - 所有 `/v1/*` 请求：`Authorization: Bearer …`（或运行时支持的 header/query，与 [`require_runtime_token`](../../crates/tui/src/runtime_api.rs) 一致）。
 
 4. **HTTP + SSE 客户端**
    - 实现 **`postStreamSse`**：`fetch` + `ReadableStream` 解析 SSE 帧（**不用** `EventSource` POST）。
@@ -159,8 +159,8 @@ Sidecar HTTP 在长 turn、重连场景下事件不无故丢失；桌面端可�
 > **实施状态（2026-05-07 审核收尾）**：引擎侧沿用 `mpsc` 审批通道；runtime 在 `ApprovalRequired` 时登记 pending + 超时任务；HTTP 单端点 `resolve-approval` 已落地并校验 thread/turn 作用域。
 
 1. **现状走读（半日）**
-   - [`RuntimeThreadManager` 中 `EngineEvent::ApprovalRequired`](../crates/tui/src/runtime_threads.rs) 分支。
-   - `Engine`：[`approve_tool_call` / `deny_tool_call`](../crates/tui/src/core/engine.rs) 与 turn 循环如何等待。
+   - [`RuntimeThreadManager` 中 `EngineEvent::ApprovalRequired`](../../crates/tui/src/runtime_threads.rs) 分支。
+   - `Engine`：[`approve_tool_call` / `deny_tool_call`](../../crates/tui/src/core/engine.rs) 与 turn 循环如何等待。
 
 2. **设计文档（半日，以下结论直接固化，避免实施时讨论）**
 
@@ -175,7 +175,7 @@ Sidecar HTTP 在长 turn、重连场景下事件不无故丢失；桌面端可�
    - `ApprovalRequired`：**当需要用户介入时**不立即 `deny`；登记 pending 并向 Engine 侧发送「等待信号」。
    - Engine/turn：在继续执行工具前阻塞在 await 上；HTTP 路由收到决策后调用已有 `approve`/`deny` 并完成 notify。
 
-4. **HTTP 路由（[`runtime_api.rs`](../crates/tui/src/runtime_api.rs)）**
+4. **HTTP 路由（[`runtime_api.rs`](../../crates/tui/src/runtime_api.rs)）**
    - 已实现：`POST /v1/threads/{id}/turns/{turn_id}/resolve-approval`，body：`{ "tool_call_id", "decision": "approve" | "deny" }`；鉴权沿用 `/v1` middleware；URL 必须与 pending 的 thread/turn 一致。
 
 5. **SSE**
@@ -224,7 +224,7 @@ Sidecar HTTP 在长 turn、重连场景下事件不无故丢失；桌面端可�
 ### 步骤摘要
 
 1. Sidebar：会话 CRUD（以 `GET/PATCH/DELETE` 等与现有 routes 对齐为准）。
-2. ConfigPanel：API Key / 模型 / profile；写入路径与 [`deepseek-config`](../crates/config) 约定一致。
+2. ConfigPanel：API Key / 模型 / profile；写入路径与 [`deepseek-config`](../../crates/config) 约定一致。
 3. 主题与语言：Tauri OS 钩子 + 本地存储。
 4. Onboarding：首次缺 Key 引导。
 
