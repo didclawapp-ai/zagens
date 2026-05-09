@@ -11,8 +11,10 @@ import type { PreviewState } from './preview/types';
 import type { RuntimeConnectionState } from '../api/client';
 import {
   browseThreadWorkspace,
+  browseComposerWorkspace,
   getThreadSnapshots,
   readThreadWorkspaceFile,
+  readComposerWorkspaceFile,
   restoreThreadSnapshot,
 } from '../api/client';
 
@@ -165,16 +167,28 @@ export default function RightPanel({
     setSnapshots([]);
     setSnapError(null);
     setRestoreMessage(null);
-  }, [resumedThreadId]);
+  }, [resumedThreadId, workspaceRoot]);
 
   useEffect(() => {
-    if (view !== 'workspace' || workspaceTab !== 'files' || !resumedThreadId || !runtimeOk) {
+    if (view !== 'workspace' || workspaceTab !== 'files' || !runtimeOk) {
       return;
     }
+    const root = workspaceRoot.trim();
+    const hasThread = Boolean(resumedThreadId?.length);
+    if (!hasThread && root.length === 0) {
+      setBrowseLoading(false);
+      setBrowseEntries([]);
+      setBrowseWorkspace(null);
+      return;
+    }
+
     let cancelled = false;
     setBrowseLoading(true);
     setBrowseError(null);
-    void browseThreadWorkspace(resumedThreadId, browseRelPath || undefined)
+    const req = hasThread
+      ? browseThreadWorkspace(resumedThreadId!, browseRelPath || undefined)
+      : browseComposerWorkspace(root, browseRelPath || undefined);
+    void req
       .then((res) => {
         if (cancelled) return;
         setBrowseWorkspace(res.workspace);
@@ -192,7 +206,7 @@ export default function RightPanel({
     return () => {
       cancelled = true;
     };
-  }, [view, workspaceTab, resumedThreadId, browseRelPath, browseNonce, runtimeOk]);
+  }, [view, workspaceTab, resumedThreadId, workspaceRoot, browseRelPath, browseNonce, runtimeOk]);
 
   useEffect(() => {
     if (view !== 'workspace' || workspaceTab !== 'restore' || !resumedThreadId || !runtimeOk) {
@@ -230,24 +244,77 @@ export default function RightPanel({
     setPreview(null);
   }, []);
 
+  const canBrowseComposerFiles =
+    runtimeOk && (Boolean(resumedThreadId?.length) || workspaceRoot.trim().length > 0);
+
   const onOpenFile = useCallback(
     async (relPath: string, title: string) => {
-      if (!resumedThreadId || !runtimeOk) return;
-
+      if (!runtimeOk) return;
+      const root = workspaceRoot.trim();
       const fileType = detectFileType(title);
 
-      // Binary files (Image/Pdf/Office) must go through the Tauri command
-      // because the runtime API rejects non-UTF-8 content
-      // (see crates/tui/src/runtime_api.rs:1204).
+      if (resumedThreadId) {
+        if (isBinaryFileType(fileType)) {
+          try {
+            const bin = await invoke<{
+              mime_type: string;
+              base64: string;
+              size: number;
+              truncated: boolean;
+            }>('read_thread_workspace_binary', {
+              threadId: resumedThreadId,
+              relativePath: relPath,
+            });
+            openPreview({
+              title,
+              fileName: relPath.split('/').pop(),
+              content: bin.base64,
+              fileType,
+              size: bin.size,
+              mimeType: bin.mime_type,
+              truncated: bin.truncated,
+            });
+          } catch (e) {
+            const err = e as Error & { status?: number };
+            setBrowseError(err.message ?? String(e));
+          }
+          return;
+        }
+
+        try {
+          const file = await readThreadWorkspaceFile(resumedThreadId, relPath);
+          openPreview({
+            title,
+            fileName: relPath.split('/').pop(),
+            content: file.content,
+            language: file.language_hint ?? undefined,
+            fileType: detectFileType(relPath.split('/').pop(), file.language_hint),
+          });
+        } catch (e) {
+          const err = e as Error & { status?: number };
+          setBrowseError(err.message ?? String(e));
+        }
+        return;
+      }
+
+      if (!root) {
+        setBrowseError('请先设置 Composer 工作区路径。');
+        return;
+      }
+
       if (isBinaryFileType(fileType)) {
+        if (!desktopHost) {
+          setBrowseError('二进制预览需使用桌面应用，或先发消息创建会话后再试。');
+          return;
+        }
         try {
           const bin = await invoke<{
             mime_type: string;
             base64: string;
             size: number;
             truncated: boolean;
-          }>('read_thread_workspace_binary', {
-            threadId: resumedThreadId,
+          }>('read_workspace_binary_at_root', {
+            workspaceRoot: root,
             relativePath: relPath,
           });
           openPreview({
@@ -267,7 +334,7 @@ export default function RightPanel({
       }
 
       try {
-        const file = await readThreadWorkspaceFile(resumedThreadId, relPath);
+        const file = await readComposerWorkspaceFile(root, relPath);
         openPreview({
           title,
           fileName: relPath.split('/').pop(),
@@ -280,7 +347,7 @@ export default function RightPanel({
         setBrowseError(err.message ?? String(e));
       }
     },
-    [resumedThreadId, runtimeOk, openPreview],
+    [resumedThreadId, runtimeOk, workspaceRoot, desktopHost, openPreview],
   );
 
   const onRestore = useCallback(
@@ -583,12 +650,12 @@ export default function RightPanel({
                         {browseError && (
                           <p className="text-xs text-red-300/90 break-words mb-2">{browseError}</p>
                         )}
-                        {!resumedThreadId && (
+                        {!canBrowseComposerFiles && (
                           <p className="text-xs text-amber-text/90">
-                            请先选择会话并恢复运行时线程，以浏览该线程的工作区目录。
+                            请先连接本地运行时，并设置 Composer 工作区路径；或选择会话并恢复线程后再浏览目录。
                           </p>
                         )}
-                        {resumedThreadId && runtimeOk && !browseLoading && (
+                        {canBrowseComposerFiles && !browseLoading && (
                           <ul className="space-y-0.5">
                             {browseEntries.map((ent) => {
                               const rel = joinRel(browseRelPath, ent.name);
@@ -626,7 +693,10 @@ export default function RightPanel({
                             })}
                           </ul>
                         )}
-                        {resumedThreadId && browseEntries.length === 0 && !browseLoading && !browseError && (
+                        {canBrowseComposerFiles &&
+                          browseEntries.length === 0 &&
+                          !browseLoading &&
+                          !browseError && (
                           <p className="text-[11px] text-t-text-muted mt-2">此目录为空。</p>
                         )}
                       </div>

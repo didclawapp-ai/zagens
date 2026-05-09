@@ -1,0 +1,13 @@
+---
+description: Rust workspace — stable toolchain and canonical binaries
+globs: "**/*.rs"
+alwaysApply: false
+---
+
+# Rust workspace
+
+- **Toolchain:** Rust **1.88+**, **stable only** (see [AGENTS.md](AGENTS.md): no nightly `feature`, watch `if let` match-arm guards on `< 1.94`; `let_chains` in `if`/`while` is OK on 1.88+).
+- **Verify:** `cargo build`, `cargo test --workspace --all-features`, `cargo clippy --workspace --all-targets --all-features` before claiming the change compiles.
+- **Modules:** Prefer **smaller sources** (~**1000** lines soft cap); split rather than growing one file. See **code-organization** rule for extraction policy on legacy large files.
+- **CLI entry:** prefer documenting **`deepseek`** (dispatcher); not `deepseek-tui` alone for general flows.
+- **HTTP runtime:** [docs/RUNTIME_API.md](docs/RUNTIME_API.md) for `/v1/...` contracts used by DS Pick WebView.

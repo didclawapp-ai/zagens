@@ -14,7 +14,8 @@ import typescript from 'highlight.js/lib/languages/typescript';
 import javascript from 'highlight.js/lib/languages/javascript';
 import json from 'highlight.js/lib/languages/json';
 import bash from 'highlight.js/lib/languages/bash';
-import toml from 'highlight.js/lib/languages/toml';
+// highlight.js 11 npm 包未带 toml.js；用 ini 近似高亮键值与段标题。
+import ini from 'highlight.js/lib/languages/ini';
 import yaml from 'highlight.js/lib/languages/yaml';
 import python from 'highlight.js/lib/languages/python';
 import css from 'highlight.js/lib/languages/css';
@@ -42,7 +43,7 @@ hljs.registerLanguage('json', json);
 hljs.registerLanguage('bash', bash);
 hljs.registerLanguage('sh', bash);
 hljs.registerLanguage('shell', bash);
-hljs.registerLanguage('toml', toml);
+hljs.registerLanguage('toml', ini);
 hljs.registerLanguage('yaml', yaml);
 hljs.registerLanguage('yml', yaml);
 hljs.registerLanguage('python', python);

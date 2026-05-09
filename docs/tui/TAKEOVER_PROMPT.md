@@ -42,7 +42,7 @@ Verify before trusting any claim:
 1. `git status --short --branch`
 2. `cargo check --workspace --all-targets --locked`
 3. `cargo test --workspace --all-features --locked` if check passes
-4. read `AGENTS.md`, `V086_BRIEF.md`, `docs/ARCHITECTURE.md`, and issue #402
+4. read `AGENTS.md`, `docs/tui/V086_BRIEF.md`, `docs/ARCHITECTURE.md`, and issue #402
 
 Known partial work from the interrupted session:
 

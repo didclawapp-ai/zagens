@@ -402,6 +402,20 @@ pub async fn read_thread_workspace_binary(
     read_binary_file_at(&path)
 }
 
+#[tauri::command]
+pub fn read_workspace_binary_at_root(
+    workspace_root: String,
+    relative_path: String,
+) -> Result<BinaryFileResponse, String> {
+    let trimmed = workspace_root.trim();
+    if trimmed.is_empty() {
+        return Err("工作区路径不能为空".to_string());
+    }
+    let root = PathBuf::from(trimmed);
+    let path = resolve_under_workspace(&root, &relative_path)?;
+    read_binary_file_at(&path)
+}
+
 fn sniff_mime(data: &[u8]) -> String {
     if data.len() >= 8 && &data[0..8] == b"\x89PNG\r\n\x1a\n" {
         return "image/png".into();

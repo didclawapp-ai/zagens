@@ -22,7 +22,7 @@ export function ToolCard({ tool }: { tool: ToolCardModel }) {
         : 'bg-success-bg';
 
   return (
-    <div className="mt-2 rounded-lg border border-card-border bg-canvas-alt p-2.5 text-xs">
+    <div className="rounded-lg border border-card-border bg-canvas-alt p-2.5 text-xs">
       <div className="flex flex-wrap items-center gap-2 mb-1">
         <span className="font-semibold text-t-text">{tool.name}</span>
         <span className="text-t-text-muted font-mono text-[11px]">{tool.id.slice(0, 12)}</span>

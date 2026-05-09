@@ -146,6 +146,30 @@ function loadTheme(): Theme {
   return 'light';
 }
 
+const ACTIVE_SESSION_STORAGE_KEY = 'deepseek-desktop-active-session-id';
+const ACTIVE_INSPECTOR_STORAGE_KEY = 'deepseek-desktop-active-inspector';
+
+function loadStoredActiveSessionId(): string | null {
+  try {
+    const s = localStorage.getItem(ACTIVE_SESSION_STORAGE_KEY)?.trim();
+    return s && s.length > 0 ? s : null;
+  } catch {
+    return null;
+  }
+}
+
+function loadStoredInspector(): RightPanelView {
+  try {
+    const s = localStorage.getItem(ACTIVE_INSPECTOR_STORAGE_KEY);
+    if (s === 'workspace' || s === 'api-key' || s === 'settings') {
+      return s;
+    }
+  } catch {
+    /* ignore */
+  }
+  return 'workspace';
+}
+
 function applyTheme(theme: Theme) {
   const root = document.documentElement;
   if (theme === 'dark') {
@@ -162,7 +186,7 @@ export default function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
-  const [activeInspector, setActiveInspector] = useState<RightPanelView>('workspace');
+  const [activeInspector, setActiveInspector] = useState<RightPanelView>(() => loadStoredInspector());
   const [banner, setBanner] = useState<string | null>(null);
   const [resumedThreadId, setResumedThreadId] = useState<string | null>(null);
   const [threadTrustMode, setThreadTrustMode] = useState(false);
@@ -182,6 +206,8 @@ export default function App() {
   });
   const activeSessionIdRef = useRef<string | null>(null);
   const lastPersistedTurnRef = useRef<string>('');
+  const selectSessionGenerationRef = useRef(0);
+  const startupSessionRestoredRef = useRef(false);
 
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
@@ -214,6 +240,14 @@ export default function App() {
       /* ignore */
     }
   }, [runMode]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(ACTIVE_INSPECTOR_STORAGE_KEY, activeInspector);
+    } catch {
+      /* ignore */
+    }
+  }, [activeInspector]);
 
   const toggleTheme = useCallback(() => {
     setTheme((prev) => {
@@ -373,27 +407,49 @@ export default function App() {
 
   const handleSelectSession = useCallback(
     async (sessionId: string) => {
+      const gen = ++selectSessionGenerationRef.current;
       eventAbortRef.current?.abort();
       setBanner(null);
       setActiveSessionId(sessionId);
+      setResumedThreadId(null);
+      setThreadTrustMode(false);
       lastPersistedTurnRef.current = '';
       try {
         const detail = await getSessionDetail(sessionId);
+        if (gen !== selectSessionGenerationRef.current) {
+          return;
+        }
         setMessages(mapSessionMessages(detail));
         const resumed = await resumeSessionThread(sessionId);
+        if (gen !== selectSessionGenerationRef.current) {
+          return;
+        }
         setResumedThreadId(resumed.thread_id);
         threadTurnRef.current = { threadId: resumed.thread_id, turnId: '' };
-        setThreadTrustMode(false);
         try {
           const threadDetail = await getThreadDetail(resumed.thread_id);
+          if (gen !== selectSessionGenerationRef.current) {
+            return;
+          }
           setSelectedWorkspace(threadDetail.thread.workspace);
           setThreadTrustMode(Boolean(threadDetail.thread.trust_mode));
         } catch (syncErr) {
+          if (gen !== selectSessionGenerationRef.current) {
+            return;
+          }
           const errMsg = syncErr instanceof Error ? syncErr.message : String(syncErr);
           setBanner(`已恢复运行时线程，但读取线程工作区失败：${errMsg}`);
           reconcileRuntimeAfterFetchFailure();
         }
+        try {
+          localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, sessionId);
+        } catch {
+          /* ignore */
+        }
       } catch (e) {
+        if (gen !== selectSessionGenerationRef.current) {
+          return;
+        }
         const err = e as Error & { status?: number };
         if (err.status === 401) {
           setBanner('未授权 (401)：请使用桌面壳启动 sidecar 或提供正确的运行时 token。');
@@ -406,12 +462,41 @@ export default function App() {
     [mapSessionMessages, reconcileRuntimeAfterFetchFailure],
   );
 
+  /** After the sidebar session list loads, re-open the last desktop session (if still present). */
+  useEffect(() => {
+    if (sessions.length === 0 || startupSessionRestoredRef.current) {
+      return;
+    }
+    const stored = loadStoredActiveSessionId();
+    if (!stored) {
+      startupSessionRestoredRef.current = true;
+      return;
+    }
+    if (!sessions.some((s) => s.id === stored)) {
+      try {
+        localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
+      } catch {
+        /* ignore */
+      }
+      startupSessionRestoredRef.current = true;
+      return;
+    }
+    startupSessionRestoredRef.current = true;
+    void handleSelectSession(stored);
+  }, [sessions, handleSelectSession]);
+
   const handleNewSession = useCallback(() => {
     eventAbortRef.current?.abort();
+    selectSessionGenerationRef.current += 1;
     setMessages([]);
     setResumedThreadId(null);
     setThreadTrustMode(false);
     setActiveSessionId(null);
+    try {
+      localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
     threadTurnRef.current = { threadId: '', turnId: '' };
     lastPersistedTurnRef.current = '';
     setApproval(null);
@@ -519,6 +604,11 @@ export default function App() {
           try {
             const res = await persistThreadSession(threadId, activeSessionIdRef.current);
             setActiveSessionId(res.session_id);
+            try {
+              localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, res.session_id);
+            } catch {
+              /* ignore */
+            }
             await refreshSessions();
           } catch (e) {
             setBanner(`会话未写入 ~/.deepseek/sessions：${(e as Error).message}`);

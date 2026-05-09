@@ -1,0 +1,15 @@
+---
+description: DS Pick Vite + React UI under crates/desktop/web-ui
+globs: crates/desktop/web-ui/**
+alwaysApply: false
+---
+
+# DS Pick web UI
+
+- **Stack:** Vite 6, React 18, TypeScript, Tailwind; runtime via [crates/desktop/web-ui/src/api/client.ts](crates/desktop/web-ui/src/api/client.ts) (same [RUNTIME_API.md](docs/RUNTIME_API.md) as sidecar).
+- **Desktop bridge:** Tauri `invoke` where already used ([RightPanel](crates/desktop/web-ui/src/components/RightPanel.tsx), [ApiKeyForm](crates/desktop/web-ui/src/components/ApiKeyForm.tsx), etc.); follow existing patterns.
+- **Build:** from `crates/desktop/web-ui`, `npm run build`; bundle sizing: `npm run build:analyze` → `dist/bundle-stats.html`.
+- **TypeScript:** Project uses **`strict: true`** ([tsconfig.json](crates/desktop/web-ui/tsconfig.json)). Avoid **`any`**; use proper types, `unknown` + narrowing, or shared types colocated / under `src/types/`. Run **`npm run build`** (`tsc -b`) after substantive edits.
+- **Scope:** match surrounding styles and types; avoid unrelated refactors. Prefer small, task-scoped diffs.
+
+**Rust shell** (windows, sidecar): `crates/desktop/src/`.

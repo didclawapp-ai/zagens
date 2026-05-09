@@ -2,6 +2,8 @@
 
 This file provides context for AI assistants working on this project.
 
+**Product framing:** The repository root README leads with **DS Pick** (Tauri desktop in `crates/desktop/`). The terminal TUI and `deepseek` CLI remain first-class surfaces in the same workspace; fuller TUI-centric install/feature copy is archived under **`docs/archive/tui-readme-era/`**.
+
 ## Project Type: Rust
 
 ### Commands
@@ -49,7 +51,7 @@ Before opening a PR, run `cargo build` (not `cargo +nightly build`) and
 make sure the workspace's declared `rust-version` is enough to compile.
 
 ### Documentation
-See README.md for project overview, docs/ARCHITECTURE.md for internals. Desktop (DS Pick): docs/desktop/.
+See README.md for project overview, docs/ARCHITECTURE.md for internals. Desktop (DS Pick): docs/desktop/. **Portable rule digest:** [project_rules.md](project_rules.md) (same content as `.cursor/rules/*.mdc` for non-Cursor tools). **Cursor IDE:** `.cursor/rules` — product (`ds-pick-repo`), **security** (`security-trust`), **file/module size** (`code-organization`), Rust (`rust-workspace`), web UI + **TypeScript strict** (`desktop-web-ui`). **Changelog:** record notable changes in root `CHANGELOG.md` (DS Pick has its own semver line; see file header).
 
 ## DeepSeek-Specific Notes
 
@@ -112,4 +114,4 @@ Long sessions in DeepSeek TUI WILL degrade and crash if you work sequentially. T
 
 6. **After every 3 turns, check:** context under 60%? Sub-agents still running? PRs ready to push? `cargo check` still passes?
 
-**The "mismanaged genius" problem:** The system prompt was written for a less capable model and treats sub-agents, RLM, and parallel execution as specialty escape hatches. The model *can* do all of this — the prompt just doesn't encourage it strongly enough. We fixed this in v0.8.6 (see `PROMPT_ANALYSIS.md`).
+**The "mismanaged genius" problem:** The system prompt was written for a less capable model and treats sub-agents, RLM, and parallel execution as specialty escape hatches. The model *can* do all of this — the prompt just doesn't encourage it strongly enough. We fixed this in v0.8.6 (see [docs/tui/PROMPT_ANALYSIS.md](docs/tui/PROMPT_ANALYSIS.md)).

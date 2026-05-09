@@ -2,10 +2,37 @@
 
 All notable changes to this project will be documented in this file.
 
+**Update policy:** Record **every notable change** (features, fixes, docs, DS
+Pick desktop, CLI/TUI, tooling) in this file—typically under `[Unreleased]`,
+in the **same PR/commit** as the change when practical.
+
+**DS Pick** (desktop app in `crates/desktop/`) has its **own** version line:
+**MAJOR.MINOR.PATCH** in **SemVer** (e.g. **v0.2.0**). Display form **vX.Y.Z**;
+each numeric segment is one or more digits (e.g. `0.2.0`, `0.10.3`). This line
+**does not** follow the root workspace version used by `deepseek` / `deepseek-tui`
+crates (see root `Cargo.toml` `[workspace.package] version`).
+
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### DS Pick (desktop)
+
+- **v0.2.0** — Independent desktop semver: `deepseek-desktop` crate, Tauri
+  `version`, and `crates/desktop/web-ui/package.json`; sidebar label **DS Pick
+  v0.2.0**. Dependency pins to workspace crates (e.g. `deepseek-config`) remain
+  at the shared workspace release (e.g. `0.8.15`).
+
+### Process
+
+- Documented changelog maintenance and DS Pick versioning rules (this file,
+  header section).
+- **Portable rules:** root [project_rules.md](project_rules.md) aggregates `.cursor/rules/*.mdc` for non-Cursor environments (file was `CURSOR_RULES.md`; renamed for clarity).
+- **Cursor rules:** `.cursor/rules/security-trust.mdc` (trust & safe changes),
+  `code-organization.mdc` (~1000-line soft cap, module layout); `rust-workspace.mdc`
+  and `desktop-web-ui.mdc` updated for module size and **TypeScript `strict`** /
+  avoid `any`. [AGENTS.md](AGENTS.md) lists rule files for contributors.
 
 ### Added
 - **Runtime HTTP interactive tool approval** — when a thread turn runs with

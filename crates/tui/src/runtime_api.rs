@@ -366,6 +366,8 @@ pub fn build_router(state: RuntimeApiState) -> Router {
             post(resume_session_thread),
         )
         .route("/v1/workspace/status", get(workspace_status))
+        .route("/v1/workspace/browse", get(browse_workspace_by_root))
+        .route("/v1/workspace/file", get(read_workspace_file_by_root))
         .route("/v1/stream", post(stream_turn))
         .route("/v1/threads", get(list_threads).post(create_thread))
         .route("/v1/threads/summary", get(list_threads_summary))
@@ -897,6 +899,20 @@ struct BrowseWorkspaceQuery {
     path: String,
 }
 
+/// Browse a directory on disk by absolute workspace root (Composer path before a runtime thread exists).
+#[derive(Debug, Deserialize)]
+struct BrowseWorkspaceByRootQuery {
+    workspace: String,
+    #[serde(default)]
+    path: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ReadWorkspaceFileByRootQuery {
+    workspace: String,
+    path: String,
+}
+
 #[derive(Debug, Serialize)]
 struct BrowseWorkspaceEntry {
     name: String,
@@ -1162,6 +1178,90 @@ async fn browse_thread_workspace(
         workspace: base.display().to_string(),
         path: rel,
         entries,
+    }))
+}
+
+async fn browse_workspace_by_root(
+    Query(q): Query<BrowseWorkspaceByRootQuery>,
+) -> Result<Json<BrowseWorkspaceResponse>, ApiError> {
+    let ws_raw = q.workspace.trim();
+    if ws_raw.is_empty() {
+        return Err(ApiError::bad_request("workspace query required"));
+    }
+    let ws_path = PathBuf::from(ws_raw);
+    let base = ws_path
+        .canonicalize()
+        .map_err(|e| ApiError::bad_request(format!("workspace: {e}")))?;
+    if !base.is_dir() {
+        return Err(ApiError::bad_request("workspace is not a directory"));
+    }
+    let dir_path = safe_thread_subpath(&base, &q.path)?;
+    if !dir_path.is_dir() {
+        return Err(ApiError::bad_request("not a directory"));
+    }
+    let dir_for_rel = dir_path.clone();
+    let entries = tokio::task::spawn_blocking(move || read_dir_sorted(&dir_path))
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?
+        .map_err(|e| ApiError::internal(e.to_string()))?;
+    let rel = workspace_relative_posix(&base, &dir_for_rel);
+    Ok(Json(BrowseWorkspaceResponse {
+        workspace: base.display().to_string(),
+        path: rel,
+        entries,
+    }))
+}
+
+async fn read_workspace_file_by_root(
+    Query(q): Query<ReadWorkspaceFileByRootQuery>,
+) -> Result<Json<WorkspaceFileResponse>, ApiError> {
+    let ws_raw = q.workspace.trim();
+    if ws_raw.is_empty() {
+        return Err(ApiError::bad_request("workspace query required"));
+    }
+    let ws_path = PathBuf::from(ws_raw);
+    let base = ws_path
+        .canonicalize()
+        .map_err(|e| ApiError::bad_request(format!("workspace: {e}")))?;
+    if !base.is_dir() {
+        return Err(ApiError::bad_request("workspace is not a directory"));
+    }
+    if q.path.trim().is_empty() {
+        return Err(ApiError::bad_request("path query required"));
+    }
+    let file_path = safe_thread_subpath(&base, &q.path)?;
+    if !file_path.is_file() {
+        return Err(ApiError::bad_request("not a file"));
+    }
+    let rel = workspace_relative_posix(&base, &file_path);
+    let path_clone = file_path.clone();
+    let (content, truncated) = tokio::task::spawn_blocking(move || {
+        let meta =
+            fs::metadata(&path_clone).map_err(|e| ApiError::internal(format!("metadata: {e}")))?;
+        let len = meta.len() as usize;
+        if len > MAX_WORKSPACE_FILE_BYTES {
+            return Err(ApiError::bad_request(format!(
+                "file too large (max {MAX_WORKSPACE_FILE_BYTES} bytes)"
+            )));
+        }
+        let bytes = fs::read(&path_clone).map_err(|e| ApiError::internal(e.to_string()))?;
+        let text = String::from_utf8(bytes).map_err(|_| {
+            ApiError::bad_request("file is not UTF-8 text; binary preview not supported")
+        })?;
+        Ok::<_, ApiError>((text, false))
+    })
+    .await
+    .map_err(|e| ApiError::internal(e.to_string()))??;
+    let name = file_path
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let language_hint = language_from_name(&name);
+    Ok(Json(WorkspaceFileResponse {
+        path: rel,
+        content,
+        truncated,
+        language_hint,
     }))
 }
 

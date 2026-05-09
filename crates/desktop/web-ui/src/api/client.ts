@@ -421,6 +421,20 @@ export async function browseThreadWorkspace(
   return fetchJson(`/v1/threads/${encodeURIComponent(threadId)}/workspace/browse${q}`);
 }
 
+/** List directory under Composer workspace path (no runtime thread yet). */
+export async function browseComposerWorkspace(
+  workspaceRoot: string,
+  relativePath?: string,
+): Promise<BrowseWorkspaceListResponse> {
+  const root = workspaceRoot.trim();
+  if (!root) {
+    throw new Error('workspace root required');
+  }
+  const rel = relativePath?.trim() ?? '';
+  const pathQ = rel.length > 0 ? `&path=${encodeURIComponent(rel)}` : '';
+  return fetchJson(`/v1/workspace/browse?workspace=${encodeURIComponent(root)}${pathQ}`);
+}
+
 export interface WorkspaceFileResponse {
   path: string;
   content: string;
@@ -434,6 +448,19 @@ export async function readThreadWorkspaceFile(
 ): Promise<WorkspaceFileResponse> {
   return fetchJson(
     `/v1/threads/${encodeURIComponent(threadId)}/workspace/file?path=${encodeURIComponent(relativePath)}`,
+  );
+}
+
+export async function readComposerWorkspaceFile(
+  workspaceRoot: string,
+  relativePath: string,
+): Promise<WorkspaceFileResponse> {
+  const root = workspaceRoot.trim();
+  if (!root) {
+    throw new Error('workspace root required');
+  }
+  return fetchJson(
+    `/v1/workspace/file?workspace=${encodeURIComponent(root)}&path=${encodeURIComponent(relativePath)}`,
   );
 }
 
