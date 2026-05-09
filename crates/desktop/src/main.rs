@@ -46,6 +46,7 @@ fn main() {
             commands::get_locale,
             commands::get_api_key_status,
             commands::save_deepseek_api_key,
+            commands::read_thread_workspace_binary,
         ])
         .run(tauri::generate_context!())
         .expect("error while running DS Pick");

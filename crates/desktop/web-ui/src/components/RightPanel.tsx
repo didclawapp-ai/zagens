@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import ApiKeyForm from './ApiKeyForm';
-import MarkdownPreview from './MarkdownPreview';
+import {
+  PreviewContainer,
+  PreviewDispatcher,
+  detectFileType,
+  isBinaryFileType,
+} from './preview';
+import type { PreviewState } from './preview/types';
 import type { RuntimeConnectionState } from '../api/client';
 import {
   browseThreadWorkspace,
@@ -38,13 +45,6 @@ function readStoredPanelWidth(): number {
     /* ignore */
   }
   return PANEL_DEFAULT_PX;
-}
-
-interface PreviewState {
-  title: string;
-  fileName?: string;
-  content: string;
-  language?: string;
 }
 
 interface Props {
@@ -233,6 +233,39 @@ export default function RightPanel({
   const onOpenFile = useCallback(
     async (relPath: string, title: string) => {
       if (!resumedThreadId || !runtimeOk) return;
+
+      const fileType = detectFileType(title);
+
+      // Binary files (Image/Pdf/Office) must go through the Tauri command
+      // because the runtime API rejects non-UTF-8 content
+      // (see crates/tui/src/runtime_api.rs:1204).
+      if (isBinaryFileType(fileType)) {
+        try {
+          const bin = await invoke<{
+            mime_type: string;
+            base64: string;
+            size: number;
+            truncated: boolean;
+          }>('read_thread_workspace_binary', {
+            threadId: resumedThreadId,
+            relativePath: relPath,
+          });
+          openPreview({
+            title,
+            fileName: relPath.split('/').pop(),
+            content: bin.base64,
+            fileType,
+            size: bin.size,
+            mimeType: bin.mime_type,
+            truncated: bin.truncated,
+          });
+        } catch (e) {
+          const err = e as Error & { status?: number };
+          setBrowseError(err.message ?? String(e));
+        }
+        return;
+      }
+
       try {
         const file = await readThreadWorkspaceFile(resumedThreadId, relPath);
         openPreview({
@@ -240,6 +273,7 @@ export default function RightPanel({
           fileName: relPath.split('/').pop(),
           content: file.content,
           language: file.language_hint ?? undefined,
+          fileType: detectFileType(relPath.split('/').pop(), file.language_hint),
         });
       } catch (e) {
         const err = e as Error & { status?: number };
@@ -400,27 +434,9 @@ export default function RightPanel({
               </p>
             )}
             {preview ? (
-              <div className="flex flex-1 flex-col min-h-0">
-                <div className="shrink-0 flex items-center gap-2 border-b border-divider px-3 py-2 bg-canvas-alt/50">
-                  <button
-                    type="button"
-                    className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-accent hover:bg-hover"
-                    onClick={closePreview}
-                  >
-                    关闭预览
-                  </button>
-                  <span className="truncate text-xs font-medium text-t-text" title={preview.title}>
-                    {preview.title}
-                  </span>
-                </div>
-                <div className="flex-1 min-h-0 overflow-y-auto">
-                  <MarkdownPreview
-                    content={preview.content}
-                    fileName={preview.fileName}
-                    language={preview.language}
-                  />
-                </div>
-              </div>
+              <PreviewContainer title={preview.title} onClose={closePreview}>
+                <PreviewDispatcher state={preview} />
+              </PreviewContainer>
             ) : (
               <>
                 <div

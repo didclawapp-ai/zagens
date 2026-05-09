@@ -1,8 +1,9 @@
 use deepseek_config::{ConfigStore, ConfigToml};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::Notify;
 
 /// Workspace `config.example.toml`, shipped as the canonical full default layout when
@@ -237,4 +238,197 @@ mod save_config_tests {
 #[tauri::command]
 pub async fn get_locale() -> Result<String, String> {
     Ok("zh-CN".to_string())
+}
+
+// ---------------------------------------------------------------------------
+// Binary file reader — used by the preview system for images, PDFs, and
+// Office documents.  The runtime API (`/v1/threads/:id/workspace/file`)
+// rejects non-UTF-8 content, so this Tauri command is the *only* path for
+// binary preview.
+//
+// Security: resolves workspace root via the local runtime (`GET /v1/threads/:id`)
+// and only reads paths validated against that root (same rules as
+// `safe_thread_subpath` in `runtime_api.rs`).
+// ---------------------------------------------------------------------------
+
+const PREVIEW_MAX_BINARY_BYTES: u64 = 10 * 1024 * 1024; // 10 MB
+
+#[derive(Serialize)]
+pub struct BinaryFileResponse {
+    pub mime_type: String,
+    pub base64: String,
+    pub size: u64,
+    pub truncated: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct ThreadDetailWire {
+    thread: ThreadRecordWire,
+}
+
+#[derive(Debug, Deserialize)]
+struct ThreadRecordWire {
+    workspace: String,
+}
+
+/// Percent-encode a `{id}` path segment for `GET /v1/threads/{id}`.
+fn percent_encode_path_segment(s: &str) -> String {
+    use std::fmt::Write;
+    let mut out = String::with_capacity(s.len());
+    for b in s.as_bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(char::from(*b));
+            }
+            _ => {
+                let _ = write!(&mut out, "%{b:02X}");
+            }
+        }
+    }
+    out
+}
+
+async fn fetch_thread_workspace_root(
+    port: u16,
+    token: &str,
+    thread_id: &str,
+) -> Result<PathBuf, String> {
+    let enc = percent_encode_path_segment(thread_id.trim());
+    if enc.is_empty() {
+        return Err("thread_id 无效".to_string());
+    }
+    let url = format!("http://127.0.0.1:{port}/v1/threads/{enc}");
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(12))
+        .build()
+        .map_err(|e| format!("HTTP 客户端: {e}"))?;
+
+    let resp = client
+        .get(&url)
+        .header(reqwest::header::AUTHORIZATION, format!("Bearer {token}"))
+        .send()
+        .await
+        .map_err(|e| format!("无法连接运行时: {e}"))?;
+
+    if !resp.status().is_success() {
+        return Err(format!(
+            "无法获取线程工作区 (HTTP {})",
+            resp.status().as_u16()
+        ));
+    }
+
+    let detail: ThreadDetailWire = resp
+        .json()
+        .await
+        .map_err(|e| format!("运行时响应无效: {e}"))?;
+
+    let root = detail.thread.workspace.trim();
+    if root.is_empty() {
+        return Err("线程未配置工作区路径".to_string());
+    }
+    Ok(PathBuf::from(root))
+}
+
+/// Resolve `relative_path` under `workspace_root`, forbid `..` and escapes
+/// (mirrors `safe_thread_subpath` in `crates/tui/src/runtime_api.rs`).
+fn resolve_under_workspace(workspace_root: &Path, rel: &str) -> Result<PathBuf, String> {
+    let base = workspace_root
+        .canonicalize()
+        .map_err(|e| format!("工作区路径无效: {e}"))?;
+
+    let trimmed = rel.trim().trim_start_matches(['/', '\\']);
+    if trimmed.is_empty() {
+        return Err("文件相对路径不能为空".to_string());
+    }
+
+    let rel_pb = PathBuf::from(trimmed);
+    if rel_pb.is_absolute() {
+        return Err("路径必须相对于工作区".to_string());
+    }
+
+    for c in rel_pb.components() {
+        if matches!(c, Component::ParentDir) {
+            return Err("路径不能包含 ..".to_string());
+        }
+    }
+
+    let candidate = base.join(&rel_pb);
+    let canon = candidate
+        .canonicalize()
+        .map_err(|_| format!("文件不存在或无法访问: {}", candidate.display()))?;
+
+    if !canon.starts_with(&base) {
+        return Err("路径越出工作区".to_string());
+    }
+
+    Ok(canon)
+}
+
+fn read_binary_file_at(canonical_file: &Path) -> Result<BinaryFileResponse, String> {
+    use base64::Engine;
+
+    let meta = std::fs::metadata(canonical_file).map_err(|e| format!("无法获取文件信息: {e}"))?;
+    let size = meta.len();
+    let truncated = size > PREVIEW_MAX_BINARY_BYTES;
+    let read_limit = if truncated {
+        PREVIEW_MAX_BINARY_BYTES as usize
+    } else {
+        size as usize
+    };
+
+    let data = std::fs::read(canonical_file).map_err(|e| format!("无法读取文件: {e}"))?;
+    let data = &data[..read_limit.min(data.len())];
+
+    let mime_type = sniff_mime(data);
+    let b64 = base64::engine::general_purpose::STANDARD.encode(data);
+
+    Ok(BinaryFileResponse {
+        mime_type,
+        base64: b64,
+        size,
+        truncated,
+    })
+}
+
+#[tauri::command]
+pub async fn read_thread_workspace_binary(
+    thread_id: String,
+    relative_path: String,
+    ctx: tauri::State<'_, AppContext>,
+) -> Result<BinaryFileResponse, String> {
+    let root =
+        fetch_thread_workspace_root(ctx.runtime_port, &ctx.runtime_token, &thread_id).await?;
+    let path = resolve_under_workspace(&root, &relative_path)?;
+    read_binary_file_at(&path)
+}
+
+fn sniff_mime(data: &[u8]) -> String {
+    if data.len() >= 8 && &data[0..8] == b"\x89PNG\r\n\x1a\n" {
+        return "image/png".into();
+    }
+    if data.len() >= 3 && &data[0..3] == b"\xff\xd8\xff" {
+        return "image/jpeg".into();
+    }
+    if data.len() >= 4 && &data[0..4] == b"GIF8" {
+        return "image/gif".into();
+    }
+    if data.len() >= 4 && &data[0..4] == b"RIFF" && data.len() >= 12 && &data[8..12] == b"WEBP" {
+        return "image/webp".into();
+    }
+    if data.len() >= 4 && &data[0..4] == b"<svg" {
+        return "image/svg+xml".into();
+    }
+    if data.len() >= 2 && &data[0..2] == b"BM" {
+        return "image/bmp".into();
+    }
+    if data.len() >= 4 && &data[0..4] == b"PK\x03\x04" {
+        // ZIP-based formats: docx, xlsx, pptx are all ZIP archives
+        // For now, return a generic Office MIME — the frontend
+        // dispatches to OfficePlaceholder.
+        return "application/zip".into();
+    }
+    if data.len() >= 4 && &data[0..4] == b"%PDF" {
+        return "application/pdf".into();
+    }
+    "application/octet-stream".into()
 }

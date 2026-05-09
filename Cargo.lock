@@ -1457,6 +1457,7 @@ name = "deepseek-desktop"
 version = "0.8.15"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "deepseek-config",
  "reqwest",
  "serde",
