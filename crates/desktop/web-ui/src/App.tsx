@@ -245,7 +245,7 @@ export default function App() {
       const err = e as Error & { status?: number };
       if (err.status === 401) {
         setBanner(
-          '未授权：运行时 token 无效。请通过桌面应用启动（或检查 sidecar --auth-token 是否一致）。',
+          '未授权：运行时 token 无效。请通过桌面应用启动（或检查 DEEPSEEK_RUNTIME_TOKEN / sidecar 与 WebView 是否同一会话）。',
         );
       } else {
         setBanner(`无法加载会话列表：${err.message}`);

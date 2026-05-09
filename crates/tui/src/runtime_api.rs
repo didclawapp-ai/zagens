@@ -441,8 +441,7 @@ async fn require_runtime_token(
             .headers()
             .get("x-deepseek-runtime-token")
             .and_then(|value| value.to_str().ok())
-            .is_some_and(|token| token == expected)
-        || token_from_query(req.uri().query()).is_some_and(|token| token == expected);
+            .is_some_and(|token| token == expected);
 
     if authorized {
         next.run(req).await
@@ -458,15 +457,6 @@ async fn require_runtime_token(
         )
             .into_response()
     }
-}
-
-fn token_from_query(query: Option<&str>) -> Option<&str> {
-    query.and_then(|query| {
-        query.split('&').find_map(|pair| {
-            let (key, value) = pair.split_once('=')?;
-            (key == "token").then_some(value)
-        })
-    })
 }
 
 async fn health() -> Json<HealthResponse> {
@@ -2188,12 +2178,20 @@ mod tests {
             .error_for_status()?;
         assert_eq!(bearer.status(), StatusCode::OK);
 
-        let query_token = client
+        // Query-string tokens are intentionally not accepted (log/Referer leakage).
+        let query_only = client
             .get(format!("http://{addr}/v1/threads/summary?token={token}"))
+            .send()
+            .await?;
+        assert_eq!(query_only.status(), StatusCode::UNAUTHORIZED);
+
+        let header_token = client
+            .get(format!("http://{addr}/v1/threads/summary"))
+            .header("x-deepseek-runtime-token", &token)
             .send()
             .await?
             .error_for_status()?;
-        assert_eq!(query_token.status(), StatusCode::OK);
+        assert_eq!(header_token.status(), StatusCode::OK);
 
         handle.abort();
         Ok(())

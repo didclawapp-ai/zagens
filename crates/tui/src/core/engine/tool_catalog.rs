@@ -18,6 +18,8 @@ use crate::tui::app::AppMode;
 pub(super) const MULTI_TOOL_PARALLEL_NAME: &str = "multi_tool_use.parallel";
 pub(super) const REQUEST_USER_INPUT_NAME: &str = "request_user_input";
 pub(super) const CODE_EXECUTION_TOOL_NAME: &str = "code_execution";
+// Reserved for future API-defined tool payloads (OpenAI code_execution).
+#[allow(dead_code)]
 const CODE_EXECUTION_TOOL_TYPE: &str = "code_execution_20250825";
 const TOOL_SEARCH_REGEX_NAME: &str = "tool_search_tool_regex";
 const TOOL_SEARCH_REGEX_TYPE: &str = "tool_search_tool_regex_20251119";
@@ -119,25 +121,8 @@ pub(super) fn build_model_tool_catalog(
 }
 
 pub(super) fn ensure_advanced_tooling(catalog: &mut Vec<Tool>) {
-    if !catalog.iter().any(|t| t.name == CODE_EXECUTION_TOOL_NAME) {
-        catalog.push(Tool {
-            tool_type: Some(CODE_EXECUTION_TOOL_TYPE.to_string()),
-            name: CODE_EXECUTION_TOOL_NAME.to_string(),
-            description: "Execute Python code in a local sandboxed runtime and return stdout/stderr/return_code as JSON.".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "code": { "type": "string", "description": "Python source code to execute." }
-                },
-                "required": ["code"]
-            }),
-            allowed_callers: Some(vec!["direct".to_string()]),
-            defer_loading: Some(false),
-            input_examples: None,
-            strict: None,
-            cache_control: None,
-        });
-    }
+    // code_execution tool is disabled by default (#D4 / H10).
+    // To re-enable, uncomment the block below or add it via a custom tool register.
 
     if !catalog.iter().any(|t| t.name == TOOL_SEARCH_REGEX_NAME) {
         catalog.push(Tool {

@@ -12,7 +12,7 @@ use anyhow::{Context, Result, bail};
 use std::io::Write;
 
 /// Run the self-update workflow.
-pub fn run_update() -> Result<()> {
+pub fn run_update(ignore_checksum: bool) -> Result<()> {
     let current_exe =
         std::env::current_exe().context("failed to determine current executable path")?;
 
@@ -55,9 +55,20 @@ pub fn run_update() -> Result<()> {
             // Parse "hash  filename" format
             sha_text.split_whitespace().next().map(|s| s.to_string())
         }
-        Err(_) => {
-            println!("  (no SHA256 checksum file found; skipping verification)");
-            None
+        Err(e) => {
+            if ignore_checksum {
+                eprintln!(
+                    "  warning: SHA256 checksum unavailable ({e}); \
+                     proceeding without verification (--ignore-checksum)"
+                );
+                None
+            } else {
+                bail!(
+                    "SHA256 checksum file is unavailable ({e}).\n\
+                     Refusing to install an unsigned binary.\n\
+                     Re-run with --ignore-checksum if you understand the risk."
+                );
+            }
         }
     };
 

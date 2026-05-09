@@ -724,6 +724,15 @@ async fn main() -> Result<()> {
                 if args.mcp {
                     mcp_server::run_mcp_server(workspace)
                 } else if args.http {
+                    if args.host != "127.0.0.1" && args.host != "localhost" {
+                        eprintln!(
+                            "⚠ deepseek serve --http is binding to {host} (not localhost).\n\
+                             The runtime API will be reachable from other machines on the network.\n\
+                             Make sure you have set --auth-token (or DEEPSEEK_RUNTIME_TOKEN) and\n\
+                             configured restrictive CORS origins via --cors-origin or config.toml.",
+                            host = args.host,
+                        );
+                    }
                     let config = load_config_from_cli(&cli)?;
                     let cors_origins = resolve_cors_origins(&config, &args.cors_origin);
                     runtime_api::run_http_server(
@@ -1642,6 +1651,28 @@ async fn run_doctor(config: &Config, workspace: &Path, config_path_override: Opt
         );
     }
     println!("  · credential precedence: ~/.deepseek/config.toml, OS keyring, then env");
+
+    // Warn when both config and env define different keys (#H2 / E2).
+    let config_has_key = config
+        .api_key
+        .as_ref()
+        .is_some_and(|k| !k.trim().is_empty());
+    let env_has_key = std::env::var("DEEPSEEK_API_KEY")
+        .ok()
+        .is_some_and(|k| !k.trim().is_empty());
+    if config_has_key && env_has_key
+        && std::env::var("DEEPSEEK_API_KEY_SOURCE")
+            .ok()
+            .as_deref()
+            != Some("config")
+    {
+        eprintln!(
+            "  {} DEEPSEEK_API_KEY is set in both ~/.deepseek/config.toml and the environment.\n\
+             \x20    The config.toml key takes precedence; the environment variable may be stale.\n\
+             \x20    Run `deepseek auth status` to inspect, or `deepseek logout` to clean up.",
+            "⚠".truecolor(sky_r, sky_g, sky_b),
+        );
+    }
 
     let api_key_source = resolve_api_key_source(config);
     let has_api_key = if config.deepseek_api_key().is_ok() {

@@ -189,7 +189,14 @@ The command prints the completion script to stdout; redirect it to a path your s
     /// Print a usage rollup from the audit log and session store.
     Metrics(MetricsArgs),
     /// Check for and apply updates to the `deepseek` binary.
-    Update,
+    Update(UpdateArgs),
+}
+
+#[derive(Debug, Args)]
+struct UpdateArgs {
+    /// Skip SHA256 verification (only if checksum file is unavailable)
+    #[arg(long, default_value_t = false)]
+    ignore_checksum: bool,
 }
 
 #[derive(Debug, Args)]
@@ -509,7 +516,7 @@ fn run() -> Result<()> {
             Ok(())
         }
         Some(Commands::Metrics(args)) => run_metrics_command(args),
-        Some(Commands::Update) => update::run_update(),
+        Some(Commands::Update(args)) => update::run_update(args.ignore_checksum),
         None => {
             let resolved_runtime = resolve_runtime_for_dispatch(&mut store, &runtime_overrides);
             let mut forwarded = Vec::new();

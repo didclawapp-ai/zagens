@@ -71,6 +71,11 @@ function executableName(base, platform) {
 }
 
 function releaseBaseUrl(version, repo = "Hmbown/DeepSeek-TUI") {
+  // ⚠ SECURITY: DEEPSEEK_TUI_RELEASE_BASE_URL overrides BOTH the binary
+  // download AND the SHA-256 checksum origin. An attacker who controls this
+  // environment variable can serve a malicious binary with a matching
+  // checksum, completely bypassing integrity verification. Only set this
+  // when you trust the override source (e.g. an internal mirror).
   const override =
     process.env.DEEPSEEK_TUI_RELEASE_BASE_URL || process.env.DEEPSEEK_RELEASE_BASE_URL;
   if (override) {

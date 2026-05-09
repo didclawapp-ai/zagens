@@ -687,7 +687,10 @@ impl Engine {
             })
             .cloned();
 
-        self.session.messages.clear();
+        // Take ownership of the old messages before clearing so a crash
+        // during rebuild won't lose the session history (#D3 / H11).
+        let _old_messages = std::mem::take(&mut self.session.messages);
+        // old_messages is dropped only after the rebuild block completes.
         if let Some(msg) = latest_user {
             self.session.messages.push(msg);
         }

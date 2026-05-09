@@ -44,13 +44,9 @@ export async function initRuntimeConfig(): Promise<void> {
     ]);
     runtimeBase = `http://127.0.0.1:${port}`;
     runtimeToken = token;
-    (window as unknown as { __DEEPSEEK_RUNTIME_TOKEN__?: string }).__DEEPSEEK_RUNTIME_TOKEN__ =
-      token;
+    // Token stays module-private (closure scope); never on window.
   } catch {
-    /* Not in Tauri webview — rely on optional window global or open API (no auth). */
-    runtimeToken =
-      (window as unknown as { __DEEPSEEK_RUNTIME_TOKEN__?: string }).__DEEPSEEK_RUNTIME_TOKEN__ ||
-      '';
+    /* Not in Tauri webview — open API (no auth). */
   }
 }
 

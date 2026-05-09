@@ -96,7 +96,39 @@ fn write_user_config_bytes(path: &Path, body: &str) -> Result<(), String> {
         file.set_permissions(std::fs::Permissions::from_mode(0o600))
             .map_err(|e| e.to_string())?;
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        // On Windows, verify the file is under USERPROFILE — config.toml
+        // contains the user's API key and should stay within the user's
+        // already-ACL-isolated home directory (#C1). If it isn't, still
+        // write but log a security warning.
+        let in_userprofile = std::env::var_os("USERPROFILE")
+            .map(std::path::PathBuf::from)
+            .is_some_and(|up| {
+                std::path::absolute(path).is_ok_and(|abs| abs.starts_with(&up))
+            });
+        if !in_userprofile {
+            eprintln!(
+                "deepseek-desktop: writing API key to {} which is outside USERPROFILE; \
+                 consider moving config.toml to ~/.deepseek/",
+                path.display()
+            );
+        }
+        // Prevent other processes from reading the file while we write it.
+        // After close, directory-inherited ACLs take effect (USERPROFILE
+        // typically grants read only to the owner + SYSTEM).
+        use std::os::windows::fs::OpenOptionsExt;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .share_mode(0) // deny read/write/delete until we close
+            .open(path)
+            .map_err(|e| e.to_string())?;
+        use std::io::Write;
+        file.write_all(body.as_bytes()).map_err(|e| e.to_string())?;
+    }
+    #[cfg(not(any(unix, windows)))]
     {
         fs::write(path, body).map_err(|e| e.to_string())?;
     }

@@ -1006,14 +1006,20 @@ impl Engine {
                     } else {
                         None
                     };
-                    Some(
-                        builder
-                            .with_subagent_tools(
-                                self.subagent_manager.clone(),
-                                runtime.expect("sub-agent runtime should exist with active client"),
-                            )
-                            .build(tool_context),
-                    )
+                    // If runtime is absent (no ConfigStore client), skip sub-agent
+                    // tools gracefully instead of panicking (#D2).
+                    if let Some(runtime) = runtime {
+                        Some(
+                            builder
+                                .with_subagent_tools(
+                                    self.subagent_manager.clone(),
+                                    runtime,
+                                )
+                                .build(tool_context),
+                        )
+                    } else {
+                        Some(builder.build(tool_context))
+                    }
                 } else {
                     Some(builder.build(tool_context))
                 }

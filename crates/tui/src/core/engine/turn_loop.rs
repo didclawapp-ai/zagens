@@ -16,10 +16,12 @@ impl Engine {
         mode: AppMode,
         force_update_plan_first: bool,
     ) -> (TurnOutcomeStatus, Option<String>) {
-        let client = self
-            .deepseek_client
-            .clone()
-            .expect("DeepSeek client should be configured");
+        let Some(client) = self.deepseek_client.clone() else {
+            return (
+                TurnOutcomeStatus::Failed,
+                Some("DeepSeek client is not configured".to_string()),
+            );
+        };
 
         let mut consecutive_tool_error_steps = 0u32;
         let mut turn_error: Option<String> = None;

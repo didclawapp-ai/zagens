@@ -247,6 +247,15 @@ impl McpManager {
     }
 
     pub fn call_tool(&self, server_name: &str, tool_name: &str, arguments: Value) -> Result<Value> {
+        let (_, filter) = self
+            .configs
+            .get(server_name)
+            .with_context(|| format!("MCP server '{server_name}' not registered"))?;
+        if !allowed_by_filter(tool_name, filter) {
+            bail!(
+                "MCP tool '{tool_name}' on server '{server_name}' is blocked by tool filter"
+            );
+        }
         let client = self
             .clients
             .get(server_name)

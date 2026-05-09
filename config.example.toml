@@ -95,7 +95,7 @@ memory_path = "~/.deepseek/memory.md"
 # ─────────────────────────────────────────────────────────────────────────────────
 # Security
 # ─────────────────────────────────────────────────────────────────────────────────
-allow_shell = true
+allow_shell = false
 approval_policy = "on-request" # on-request | untrusted | never
 sandbox_mode = "workspace-write" # read-only | workspace-write | danger-full-access | external-sandbox
 
@@ -351,7 +351,7 @@ base_url = "https://api.deepseek.com/beta"
 
 [profiles.dev]
 api_key = "DEV_DEEPSEEK_API_KEY"
-allow_shell = true
+allow_shell = false
 
 [profiles.nvidia-nim]
 provider = "nvidia-nim"

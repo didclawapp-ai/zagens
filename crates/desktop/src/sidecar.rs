@@ -31,9 +31,33 @@ fn sidecar_spawn_cwd() -> Option<PathBuf> {
     }
 }
 
+/// Path to the sidecar stderr log file. Created under `~/.deepseek/logs/` on
+/// first spawn — the parent directory is ensured before opening the file (#H4).
+fn sidecar_stderr_log_path() -> Option<PathBuf> {
+    let home = sidecar_spawn_cwd()?;
+    let log_dir = home.join(".deepseek").join("logs");
+    std::fs::create_dir_all(&log_dir).ok()?;
+    Some(log_dir.join("sidecar.log"))
+}
+
+/// Read the last `max_lines` lines from a text file, best-effort.
+fn read_log_tail(path: &Path, max_lines: usize) -> String {
+    let Ok(data) = std::fs::read_to_string(path) else {
+        return "(log unreadable)".to_string();
+    };
+    let lines: Vec<&str> = data.lines().collect();
+    let start = lines.len().saturating_sub(max_lines);
+    lines[start..].join("\n")
+}
+
 fn spawn_sidecar(deepseek_bin: &str, port: u16, token: &str) -> Result<Command> {
     let port_s = port.to_string();
     let mut std_cmd = std::process::Command::new(deepseek_bin);
+    // Pass the auth token via environment variable (DEEPSEEK_RUNTIME_TOKEN)
+    // instead of --auth-token CLI arg to keep it out of `ps` / process lists
+    // on all platforms (#H5). The serve binary reads this env as a fallback
+    // for RuntimeApiOptions::auth_token.
+    std_cmd.env("DEEPSEEK_RUNTIME_TOKEN", token);
     std_cmd
         .args([
             "serve",
@@ -42,16 +66,23 @@ fn spawn_sidecar(deepseek_bin: &str, port: u16, token: &str) -> Result<Command> 
             "127.0.0.1",
             "--port",
             port_s.as_str(),
-            "--auth-token",
-            token,
             "--cors-origin",
             "http://tauri.localhost",
             "--cors-origin",
             "https://tauri.localhost",
         ])
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+        .stdout(Stdio::null());
+    if let Some(log_path) = sidecar_stderr_log_path() {
+        let log_file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log_path)
+            .unwrap_or_else(|_| std::fs::File::create(&log_path).unwrap());
+        std_cmd.stderr(Stdio::from(log_file));
+    } else {
+        std_cmd.stderr(Stdio::null());
+    }
     if let Some(cwd) = sidecar_spawn_cwd()
         && cwd.is_dir()
     {
@@ -182,8 +213,14 @@ pub async fn start_and_monitor(
                     if let Some(mut ch) = child.take() {
                         ch.kill().await.ok();
                     }
+                    let log_tail = sidecar_stderr_log_path()
+                        .as_deref()
+                        .map(|p| read_log_tail(p, 30))
+                        .filter(|s| !s.is_empty() && s != "(log unreadable)")
+                        .map(|s| format!("\nsidecar stderr tail:\n{s}"))
+                        .unwrap_or_default();
                     anyhow::bail!(
-                        "sidecar failed to become healthy after {MAX_STARTUP_RETRIES} retries"
+                        "sidecar failed to become healthy after {MAX_STARTUP_RETRIES} retries{log_tail}"
                     );
                 }
             }
@@ -209,6 +246,14 @@ pub async fn start_and_monitor(
                     } else {
                         failures += 1;
                         if failures >= MAX_HEALTH_FAILURES {
+                            let log_snippet = sidecar_stderr_log_path()
+                                .as_deref()
+                                .map(|p| read_log_tail(p, 20))
+                                .unwrap_or_default();
+                            eprintln!(
+                                "deepseek-desktop: sidecar unresponsive ({} health failures); restarting. stderr tail:\n{log_snippet}",
+                                failures
+                            );
                             if let Some(mut ch) = child.take() {
                                 ch.kill().await.ok();
                             } else {

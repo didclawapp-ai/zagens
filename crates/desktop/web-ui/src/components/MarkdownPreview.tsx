@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import MarkdownIt from 'markdown-it';
+import DOMPurify from 'dompurify';
 import hljs from 'highlight.js/lib/core';
 import plaintext from 'highlight.js/lib/languages/plaintext';
 import javascript from 'highlight.js/lib/languages/javascript';
@@ -73,7 +74,12 @@ export default function MarkdownPreview({ content, fileName, language }: Props) 
         const escaped = escapeFallback(raw);
         return `<pre class="text-sm whitespace-pre-wrap font-mono leading-relaxed">${escaped}</pre>`;
       }
-      return md.render(raw);
+      // Sanitize markdown-it output: allow only safe URL protocols
+      // (https://, mailto:) and strip executable attributes (#M9).
+      return DOMPurify.sanitize(md.render(raw), {
+        ALLOWED_URI_REGEXP:
+          /^(?:(?:https?|ftp|mailto|tel):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
+      });
     },
     [fileName, language],
   );
