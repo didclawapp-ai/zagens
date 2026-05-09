@@ -25,6 +25,8 @@ import Composer, { type ComposerOutboundMessage } from './components/Composer';
 import Sidebar from './components/Sidebar';
 import ApprovalDialog from './components/ApprovalDialog';
 import RightPanel, { type RightPanelView } from './components/RightPanel';
+import { loadWorkspaceFileIntoPreview } from './lib/openWorkspaceFile';
+import type { PreviewState } from './components/preview/types';
 import { streamFlagsForRunMode } from './lib/runtimeMode';
 import {
   type DesktopModelId,
@@ -195,6 +197,8 @@ export default function App() {
   const [runMode, setRunMode] = useState<DesktopRunModeId>(() => loadRunModePreference());
   const [approval, setApproval] = useState<ApprovalState | null>(null);
   const [approvalBusy, setApprovalBusy] = useState(false);
+  const [panelPreview, setPanelPreview] = useState<PreviewState | null>(null);
+  const [focusWorkspaceFilesNonce, setFocusWorkspaceFilesNonce] = useState(0);
   const [desktopHost, setDesktopHost] = useState(false);
   const [desktopApiKeyConfigured, setDesktopApiKeyConfigured] = useState<boolean | null>(null);
   const [runtimeConn, setRuntimeConn] = useState<RuntimeConnectionState>('checking');
@@ -413,6 +417,7 @@ export default function App() {
       setActiveSessionId(sessionId);
       setResumedThreadId(null);
       setThreadTrustMode(false);
+      setPanelPreview(null);
       lastPersistedTurnRef.current = '';
       try {
         const detail = await getSessionDetail(sessionId);
@@ -491,6 +496,7 @@ export default function App() {
     setMessages([]);
     setResumedThreadId(null);
     setThreadTrustMode(false);
+    setPanelPreview(null);
     setActiveSessionId(null);
     try {
       localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
@@ -551,6 +557,41 @@ export default function App() {
       }
     },
     [resumedThreadId],
+  );
+
+  const closePanelPreview = useCallback(() => {
+    setPanelPreview(null);
+  }, []);
+
+  const openWorkspaceFileForPreview = useCallback(
+    async (relPath: string, title?: string) => {
+      if (runtimeConn !== 'connected') {
+        throw new Error('本地运行时未连接');
+      }
+      setActiveInspector('workspace');
+      setFocusWorkspaceFilesNonce((n) => n + 1);
+      const state = await loadWorkspaceFileIntoPreview({
+        relPath,
+        title,
+        workspaceRoot: selectedWorkspace,
+        resumedThreadId,
+        desktopHost,
+      });
+      setPanelPreview(state);
+    },
+    [runtimeConn, selectedWorkspace, resumedThreadId, desktopHost],
+  );
+
+  const handleChatOpenWorkspacePath = useCallback(
+    async (relPath: string) => {
+      try {
+        await openWorkspaceFileForPreview(relPath);
+      } catch (e) {
+        const err = e instanceof Error ? e.message : String(e);
+        setBanner(`无法打开文件：${err}`);
+      }
+    },
+    [openWorkspaceFileForPreview],
   );
 
   const handleSend = useCallback(
@@ -901,7 +942,7 @@ export default function App() {
             已恢复线程（runtime）：{resumedThreadId.slice(0, 8)}… · 继续对话将订阅该线程事件流
           </p>
         )}
-        <ChatView messages={messages} />
+        <ChatView messages={messages} onOpenWorkspacePath={handleChatOpenWorkspacePath} />
         <Composer
           onSend={handleSend}
           onCancel={handleCancelStream}
@@ -942,6 +983,10 @@ export default function App() {
             setBanner(`启用信任模式失败：${err.message}`);
           }
         }}
+        preview={panelPreview}
+        onClosePreview={closePanelPreview}
+        openWorkspaceFile={openWorkspaceFileForPreview}
+        focusFilesNonce={focusWorkspaceFilesNonce}
       />
     </div>
   );

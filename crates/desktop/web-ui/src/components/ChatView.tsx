@@ -13,9 +13,10 @@ interface Message {
 
 interface Props {
   messages: Message[];
+  onOpenWorkspacePath: (relPath: string) => void | Promise<void>;
 }
 
-export default function ChatView({ messages }: Props) {
+export default function ChatView({ messages, onOpenWorkspacePath }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -37,7 +38,7 @@ export default function ChatView({ messages }: Props) {
       )}
 
       {messages.map((msg) => (
-        <MessageBubble key={msg.id} message={msg} />
+        <MessageBubble key={msg.id} message={msg} onOpenWorkspacePath={onOpenWorkspacePath} />
       ))}
 
       <div ref={bottomRef} />

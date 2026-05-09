@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### DS Pick (desktop)
 
+- **Chat markdown + clickable workspace files** — assistant/user 消息按 Markdown
+  渲染；形如 `` `docs/foo.md` `` 的本地路径、以及相对路径形式的 `[](…)` 链接在点击
+  时在右侧 **工作台** 打开与目录树相同的预览（文本 / 图片 / 二进制等），并自动
+  切到「工作区目录」视图。
 - **v0.2.0** — Independent desktop semver: `deepseek-desktop` crate, Tauri
   `version`, and `crates/desktop/web-ui/package.json`; sidebar label **DS Pick
   v0.2.0**. Dependency pins to workspace crates (e.g. `deepseek-config`) remain
@@ -33,6 +37,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `code-organization.mdc` (~1000-line soft cap, module layout); `rust-workspace.mdc`
   and `desktop-web-ui.mdc` updated for module size and **TypeScript `strict`** /
   avoid `any`. [AGENTS.md](AGENTS.md) lists rule files for contributors.
+
+### Docs
+
+- **DS Pick:** [TUI vs DS Pick feature parity gap](docs/desktop/TUI_DS_PICK_GAP.md)
+  — planning inventory (aligned areas, gaps, suggested prioritization).
 
 ### Added
 - **Runtime HTTP interactive tool approval** — when a thread turn runs with

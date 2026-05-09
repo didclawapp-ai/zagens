@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ChatMarkdown } from './ChatMarkdown';
 import { ToolCard, type ToolCardModel } from './ToolCard';
 
 interface Message {
@@ -10,7 +11,13 @@ interface Message {
   isStreaming?: boolean;
 }
 
-export function MessageBubble({ message }: { message: Message }) {
+export function MessageBubble({
+  message,
+  onOpenWorkspacePath,
+}: {
+  message: Message;
+  onOpenWorkspacePath: (relPath: string) => void | Promise<void>;
+}) {
   const isUser = message.role === 'user';
   const likelyInReasoningPhase =
     Boolean(message.isStreaming) &&
@@ -97,12 +104,19 @@ export function MessageBubble({ message }: { message: Message }) {
             )}
           </div>
         )}
-        <div
-          className={`text-sm leading-relaxed break-words whitespace-pre-wrap ${
-            message.isStreaming ? 'streaming-cursor' : ''
-          }`}
-        >
-          {message.content || (message.isStreaming ? '' : '...')}
+        <div className="text-sm leading-relaxed break-words">
+          {message.content.trim() ? (
+            <ChatMarkdown
+              content={message.content}
+              variant={message.role === 'user' ? 'user' : message.role === 'system' ? 'system' : 'assistant'}
+              isStreaming={message.isStreaming}
+              onOpenWorkspacePath={onOpenWorkspacePath}
+            />
+          ) : (
+            <span className={`whitespace-pre-wrap ${message.isStreaming ? 'streaming-cursor' : ''}`}>
+              {!message.isStreaming ? '...' : ''}
+            </span>
+          )}
         </div>
       </div>
     </div>

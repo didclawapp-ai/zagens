@@ -1,11 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import ApiKeyForm from './ApiKeyForm';
 import {
   PreviewContainer,
   PreviewDispatcher,
-  detectFileType,
-  isBinaryFileType,
 } from './preview';
 import type { PreviewState } from './preview/types';
 import type { RuntimeConnectionState } from '../api/client';
@@ -13,8 +10,6 @@ import {
   browseThreadWorkspace,
   browseComposerWorkspace,
   getThreadSnapshots,
-  readThreadWorkspaceFile,
-  readComposerWorkspaceFile,
   restoreThreadSnapshot,
 } from '../api/client';
 
@@ -64,6 +59,12 @@ interface Props {
   /** From runtime thread detail — restore requires trust on server */
   threadTrustMode: boolean;
   onEnableTrust: () => Promise<void>;
+  /** Preview overlay state (owned by App — chat bubbles can open files here too). */
+  preview: PreviewState | null;
+  onClosePreview: () => void;
+  openWorkspaceFile: (relPath: string, title?: string) => Promise<void>;
+  /** Bumped when parent wants the workspace panel to show the Files tab (e.g. chat link). */
+  focusFilesNonce: number;
 }
 
 const panelTitles: Record<RightPanelView, string> = {
@@ -119,6 +120,10 @@ export default function RightPanel({
   resumedThreadId,
   threadTrustMode,
   onEnableTrust,
+  preview,
+  onClosePreview,
+  openWorkspaceFile,
+  focusFilesNonce,
 }: Props) {
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTabId>(() => {
     try {
@@ -129,8 +134,6 @@ export default function RightPanel({
     }
     return 'files';
   });
-
-  const [preview, setPreview] = useState<PreviewState | null>(null);
 
   const [browseRelPath, setBrowseRelPath] = useState('');
   const [browseNonce, setBrowseNonce] = useState(0);
@@ -236,118 +239,28 @@ export default function RightPanel({
 
   const crumbs = useMemo(() => pathBreadcrumbs(browseRelPath), [browseRelPath]);
 
-  const openPreview = useCallback((p: PreviewState) => {
-    setPreview(p);
-  }, []);
-
-  const closePreview = useCallback(() => {
-    setPreview(null);
-  }, []);
+  useEffect(() => {
+    if (focusFilesNonce > 0) {
+      setWorkspaceTab('files');
+    }
+  }, [focusFilesNonce]);
 
   const canBrowseComposerFiles =
     runtimeOk && (Boolean(resumedThreadId?.length) || workspaceRoot.trim().length > 0);
 
-  const onOpenFile = useCallback(
+  const onOpenFileFromTree = useCallback(
     async (relPath: string, title: string) => {
-      if (!runtimeOk) return;
-      const root = workspaceRoot.trim();
-      const fileType = detectFileType(title);
-
-      if (resumedThreadId) {
-        if (isBinaryFileType(fileType)) {
-          try {
-            const bin = await invoke<{
-              mime_type: string;
-              base64: string;
-              size: number;
-              truncated: boolean;
-            }>('read_thread_workspace_binary', {
-              threadId: resumedThreadId,
-              relativePath: relPath,
-            });
-            openPreview({
-              title,
-              fileName: relPath.split('/').pop(),
-              content: bin.base64,
-              fileType,
-              size: bin.size,
-              mimeType: bin.mime_type,
-              truncated: bin.truncated,
-            });
-          } catch (e) {
-            const err = e as Error & { status?: number };
-            setBrowseError(err.message ?? String(e));
-          }
-          return;
-        }
-
-        try {
-          const file = await readThreadWorkspaceFile(resumedThreadId, relPath);
-          openPreview({
-            title,
-            fileName: relPath.split('/').pop(),
-            content: file.content,
-            language: file.language_hint ?? undefined,
-            fileType: detectFileType(relPath.split('/').pop(), file.language_hint),
-          });
-        } catch (e) {
-          const err = e as Error & { status?: number };
-          setBrowseError(err.message ?? String(e));
-        }
+      if (!runtimeOk) {
         return;
       }
-
-      if (!root) {
-        setBrowseError('请先设置 Composer 工作区路径。');
-        return;
-      }
-
-      if (isBinaryFileType(fileType)) {
-        if (!desktopHost) {
-          setBrowseError('二进制预览需使用桌面应用，或先发消息创建会话后再试。');
-          return;
-        }
-        try {
-          const bin = await invoke<{
-            mime_type: string;
-            base64: string;
-            size: number;
-            truncated: boolean;
-          }>('read_workspace_binary_at_root', {
-            workspaceRoot: root,
-            relativePath: relPath,
-          });
-          openPreview({
-            title,
-            fileName: relPath.split('/').pop(),
-            content: bin.base64,
-            fileType,
-            size: bin.size,
-            mimeType: bin.mime_type,
-            truncated: bin.truncated,
-          });
-        } catch (e) {
-          const err = e as Error & { status?: number };
-          setBrowseError(err.message ?? String(e));
-        }
-        return;
-      }
-
       try {
-        const file = await readComposerWorkspaceFile(root, relPath);
-        openPreview({
-          title,
-          fileName: relPath.split('/').pop(),
-          content: file.content,
-          language: file.language_hint ?? undefined,
-          fileType: detectFileType(relPath.split('/').pop(), file.language_hint),
-        });
+        await openWorkspaceFile(relPath, title);
       } catch (e) {
         const err = e as Error & { status?: number };
         setBrowseError(err.message ?? String(e));
       }
     },
-    [resumedThreadId, runtimeOk, workspaceRoot, desktopHost, openPreview],
+    [runtimeOk, openWorkspaceFile],
   );
 
   const onRestore = useCallback(
@@ -501,7 +414,7 @@ export default function RightPanel({
               </p>
             )}
             {preview ? (
-              <PreviewContainer title={preview.title} onClose={closePreview}>
+              <PreviewContainer title={preview.title} onClose={onClosePreview}>
                 <PreviewDispatcher state={preview} />
               </PreviewContainer>
             ) : (
@@ -675,7 +588,7 @@ export default function RightPanel({
                                     <button
                                       type="button"
                                       className="w-full text-left rounded-md px-2 py-1.5 text-xs text-t-text hover:bg-hover flex items-center gap-2"
-                                      onClick={() => void onOpenFile(rel, ent.name)}
+                                      onClick={() => void onOpenFileFromTree(rel, ent.name)}
                                     >
                                       <span className="text-t-text-muted">◇</span>
                                       <span className="truncate">{ent.name}</span>
