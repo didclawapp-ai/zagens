@@ -91,7 +91,10 @@ export function ChatMarkdown({
   const proseUser =
     variant === 'user'
       ? `prose-a:text-accent prose-a:underline-offset-2 prose-a:decoration-2
-         prose-code:bg-canvas-alt prose-code:text-t-text`
+         prose-code:bg-canvas-alt prose-code:text-msg-user-text
+         [--tw-prose-body:var(--color-msg-user-text)][--tw-prose-headings:var(--color-msg-user-text)][--tw-prose-bold:var(--color-msg-user-text)]
+         [--tw-prose-code:var(--color-msg-user-text)][--tw-prose-quotes:var(--color-text-secondary)]
+         [--tw-prose-counters:var(--color-text-muted)][--tw-prose-bullets:var(--color-text-muted)]`
       : '';
 
   const className = useMemo(

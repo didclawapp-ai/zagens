@@ -39,6 +39,7 @@ export default {
         'msg-assistant-border': 'var(--color-msg-assistant-border)',
         'msg-user': 'var(--color-msg-user-bg)',
         'msg-user-border': 'var(--color-msg-user-border)',
+        'msg-user-text': 'var(--color-msg-user-text)',
         'toolbar-bg': 'var(--color-toolbar-bg)',
         dot: 'var(--color-dot)',
         overlay: 'var(--color-overlay)',
