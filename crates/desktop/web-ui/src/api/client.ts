@@ -63,6 +63,47 @@ export function getRuntimeBase(): string {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** Per-probe ceiling so a wedged socket does not stall the UI for the browser default. */
+const RUNTIME_PROBE_FETCH_TIMEOUT_MS = 2_500;
+
+function runtimeProbeInit(): RequestInit {
+  const init: RequestInit = { method: 'GET' };
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+    init.signal = AbortSignal.timeout(RUNTIME_PROBE_FETCH_TIMEOUT_MS);
+  }
+  return init;
+}
+
+function authHeaders(): Record<string, string> {
+  if (!runtimeToken) {
+    return { 'Content-Type': 'application/json' };
+  }
+  return {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${runtimeToken}`,
+  };
+}
+
+/** Single attempt: `/health` then (if authed desktop) `/v1/sessions` — sequential while the port is down avoids doubling refused connections in DevTools. */
+async function tryRuntimeFullyReady(): Promise<boolean> {
+  try {
+    const h = await fetch(`${runtimeBase}/health`, runtimeProbeInit());
+    if (!h.ok) {
+      return false;
+    }
+    if (!runtimeToken.trim()) {
+      return true;
+    }
+    const s = await fetch(`${runtimeBase}/v1/sessions`, {
+      ...runtimeProbeInit(),
+      headers: authHeaders(),
+    });
+    return s.ok;
+  } catch {
+    return false;
+  }
+}
+
 function isAbortError(err: unknown): boolean {
   if (err instanceof DOMException) {
     return err.name === 'AbortError' || err.code === DOMException.ABORT_ERR;
@@ -126,27 +167,36 @@ export async function waitForRuntimeReady(options?: {
   intervalMs?: number;
 }): Promise<boolean> {
   const timeoutMs = options?.timeoutMs ?? 90_000;
-  const intervalMs = options?.intervalMs ?? 400;
+  const intervalMs = options?.intervalMs ?? 150;
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    try {
-      const r = await fetch(`${runtimeBase}/health`, { method: 'GET' });
-      if (r.ok) {
-        if (!runtimeToken.trim()) {
-          return true;
-        }
-        const ar = await fetch(`${runtimeBase}/v1/sessions`, { headers: authHeaders() });
-        if (ar.ok) {
-          return true;
-        }
-        /* health up but API not ready yet or stale sidecar being replaced */
-      }
-    } catch {
-      /* ECONNREFUSED until sidecar binds */
+    if (await tryRuntimeFullyReady()) {
+      return true;
     }
     await sleep(intervalMs);
   }
   return false;
+}
+
+/**
+ * First boot only: React StrictMode runs mount effects twice in dev — share one wait so we do not
+ * double poll the sidecar. Invalidate on explicit reconnect (`retry`) or sidecar restart.
+ */
+let bootRuntimeReadyPromise: Promise<boolean> | null = null;
+
+export function invalidateRuntimeBootReadyCache(): void {
+  bootRuntimeReadyPromise = null;
+}
+
+export function waitForRuntimeBootReady(options?: {
+  timeoutMs?: number;
+  intervalMs?: number;
+}): Promise<boolean> {
+  bootRuntimeReadyPromise ??= waitForRuntimeReady({
+    timeoutMs: options?.timeoutMs ?? 90_000,
+    intervalMs: options?.intervalMs ?? 150,
+  });
+  return bootRuntimeReadyPromise;
 }
 
 export type RuntimeConnectionState =
@@ -157,19 +207,23 @@ export type RuntimeConnectionState =
 
 /** Single probe for UI status indicator (lighter than full session list). */
 export async function probeRuntimeConnection(): Promise<Exclude<RuntimeConnectionState, 'checking'>> {
-  try {
-    const r = await fetch(`${runtimeBase}/health`, { method: 'GET' });
-    if (!r.ok) {
+  if (!runtimeToken.trim()) {
+    try {
+      const r = await fetch(`${runtimeBase}/health`, runtimeProbeInit());
+      return r.ok ? 'connected' : 'offline';
+    } catch {
       return 'offline';
     }
-  } catch {
-    return 'offline';
-  }
-  if (!runtimeToken.trim()) {
-    return 'connected';
   }
   try {
-    const ar = await fetch(`${runtimeBase}/v1/sessions`, { headers: authHeaders() });
+    const h = await fetch(`${runtimeBase}/health`, runtimeProbeInit());
+    if (!h.ok) {
+      return 'offline';
+    }
+    const ar = await fetch(`${runtimeBase}/v1/sessions`, {
+      ...runtimeProbeInit(),
+      headers: authHeaders(),
+    });
     if (ar.status === 401) {
       return 'auth_mismatch';
     }
@@ -180,16 +234,6 @@ export async function probeRuntimeConnection(): Promise<Exclude<RuntimeConnectio
   } catch {
     return 'offline';
   }
-}
-
-function authHeaders(): Record<string, string> {
-  if (!runtimeToken) {
-    return { 'Content-Type': 'application/json' };
-  }
-  return {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${runtimeToken}`,
-  };
 }
 
 /** Drain complete SSE blocks (`\n\n` delimited); `rest` is incomplete tail. */

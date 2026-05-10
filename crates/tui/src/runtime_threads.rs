@@ -370,6 +370,39 @@ impl RuntimeThreadStore {
         Ok(out)
     }
 
+    /// One linear scan of `turns_dir` for startup recovery (avoids O(threads ×
+    /// turns) when `list_turns_for_thread` is called per thread).
+    pub fn list_incomplete_turns(&self) -> Result<Vec<TurnRecord>> {
+        let mut out = Vec::new();
+        for entry in fs::read_dir(&self.turns_dir)
+            .with_context(|| format!("Failed to read {}", self.turns_dir.display()))?
+        {
+            let entry = entry?;
+            let path = entry.path();
+            if path.extension().is_none_or(|ext| ext != "json") {
+                continue;
+            }
+            let raw = fs::read_to_string(&path)
+                .with_context(|| format!("Failed to read {}", path.display()))?;
+            let turn: TurnRecord = serde_json::from_str(&raw)
+                .with_context(|| format!("Failed to parse {}", path.display()))?;
+            if turn.schema_version > CURRENT_RUNTIME_SCHEMA_VERSION {
+                bail!(
+                    "Turn schema v{} is newer than supported v{}",
+                    turn.schema_version,
+                    CURRENT_RUNTIME_SCHEMA_VERSION
+                );
+            }
+            if matches!(
+                turn.status,
+                RuntimeTurnStatus::Queued | RuntimeTurnStatus::InProgress
+            ) {
+                out.push(turn);
+            }
+        }
+        Ok(out)
+    }
+
     pub fn list_items_for_turn(&self, turn_id: &str) -> Result<Vec<TurnItemRecord>> {
         let mut out = Vec::new();
         for entry in fs::read_dir(&self.items_dir)
@@ -1395,11 +1428,8 @@ impl RuntimeThreadManager {
             }
 
             if let Some(assistant_text) = assistant_text {
-                let asst_summary = if assistant_text.len() > SUMMARY_LIMIT {
-                    format!("{}...", &assistant_text[..SUMMARY_LIMIT.saturating_sub(3)])
-                } else {
-                    assistant_text.clone()
-                };
+                let asst_summary =
+                    crate::utils::truncate_with_ellipsis(&assistant_text, SUMMARY_LIMIT, "...");
                 let item_id = format!("item_{}", &Uuid::new_v4().to_string()[..8]);
                 self.store.save_item(&TurnItemRecord {
                     schema_version: CURRENT_RUNTIME_SCHEMA_VERSION,
@@ -2960,16 +2990,24 @@ impl RuntimeThreadManager {
 
     fn recover_interrupted_state(&self) -> Result<()> {
         let now = Utc::now();
-        for mut thread in self.store.list_threads()? {
-            let mut thread_changed = false;
-            for mut turn in self.store.list_turns_for_thread(&thread.id)? {
-                if !matches!(
-                    turn.status,
-                    RuntimeTurnStatus::Queued | RuntimeTurnStatus::InProgress
-                ) {
-                    continue;
-                }
+        let incomplete = self.store.list_incomplete_turns()?;
+        let mut by_thread: HashMap<String, Vec<TurnRecord>> = HashMap::new();
+        for turn in incomplete {
+            by_thread
+                .entry(turn.thread_id.clone())
+                .or_default()
+                .push(turn);
+        }
+        for turns in by_thread.values_mut() {
+            turns.sort_by_key(|t| t.created_at);
+        }
 
+        for mut thread in self.store.list_threads()? {
+            let Some(mut turns) = by_thread.remove(&thread.id) else {
+                continue;
+            };
+            let mut thread_changed = false;
+            for mut turn in turns.drain(..) {
                 turn.status = RuntimeTurnStatus::Interrupted;
                 turn.error = Some(RUNTIME_RESTART_REASON.to_string());
                 turn.ended_at = Some(now);

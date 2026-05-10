@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -11,12 +11,24 @@ use tokio::sync::Notify;
 use tokio::time::sleep;
 
 const HEALTH_CHECK_INTERVAL_SECS: u64 = 5;
-const MAX_STARTUP_RETRIES: u32 = 10;
-const STARTUP_RETRY_DELAY_MS: u64 = 1000;
+/// After spawning the sidecar, poll quickly so we detect `/health` as soon as it binds (1s was
+/// a fixed blind wait that added up to ~1s latency on fast starts and aligned poorly with UI polls).
+const MAX_STARTUP_RETRIES: u32 = 60;
+const STARTUP_FIRST_DELAY_MS: u64 = 60;
+const STARTUP_RETRY_DELAY_MS: u64 = 200;
 const MAX_HEALTH_FAILURES: u32 = 3;
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// Shared client for localhost probes (avoids reconstructing TLS stacks per request on Windows).
+static SIDECAR_PROBE_HTTP: LazyLock<reqwest::Client> = LazyLock::new(|| {
+    reqwest::Client::builder()
+        .connect_timeout(Duration::from_millis(400))
+        .timeout(Duration::from_secs(2))
+        .build()
+        .expect("sidecar probe reqwest client")
+});
 
 /// Avoid inheriting System32/System as the implicit cwd for embedded `deepseek serve`:
 /// tooling defaults (and broken session resumes) would otherwise latch onto that directory.
@@ -71,16 +83,27 @@ fn spawn_sidecar(deepseek_bin: &str, port: u16, token: &str) -> Result<Command> 
             "--cors-origin",
             "https://tauri.localhost",
         ])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null());
+        .stdin(Stdio::null());
     if let Some(log_path) = sidecar_stderr_log_path() {
         let log_file = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
             .open(&log_path)
             .unwrap_or_else(|_| std::fs::File::create(&log_path).unwrap());
-        std_cmd.stderr(Stdio::from(log_file));
+        // `deepseek serve` logs "Runtime API listening" to stdout; merge both streams into the
+        // same file so `~/.deepseek/logs/sidecar.log` is actually useful on Windows.
+        match log_file.try_clone() {
+            Ok(stderr_dup) => {
+                std_cmd.stdout(Stdio::from(log_file));
+                std_cmd.stderr(Stdio::from(stderr_dup));
+            }
+            Err(_) => {
+                std_cmd.stdout(Stdio::null());
+                std_cmd.stderr(Stdio::from(log_file));
+            }
+        }
     } else {
+        std_cmd.stdout(Stdio::null());
         std_cmd.stderr(Stdio::null());
     }
     if let Some(cwd) = sidecar_spawn_cwd()
@@ -100,16 +123,19 @@ fn spawn_sidecar(deepseek_bin: &str, port: u16, token: &str) -> Result<Command> 
 
 async fn is_healthy(port: u16, _token: &str) -> bool {
     let url = format!("http://127.0.0.1:{port}/health");
-    let client = reqwest::Client::new();
-    match client
-        .get(&url)
-        .timeout(Duration::from_secs(2))
-        .send()
-        .await
-    {
+    match SIDECAR_PROBE_HTTP.get(&url).send().await {
         Ok(resp) => resp.status() == StatusCode::OK,
         Err(_) => false,
     }
+}
+
+/// Both `/health` and a token-authenticated `/v1/sessions` probe succeed (runs probes concurrently).
+async fn sidecar_ready(port: u16, token: &str) -> bool {
+    let (health_ok, api_ok) = tokio::join!(
+        is_healthy(port, token),
+        runtime_api_accepts_token(port, token)
+    );
+    health_ok && api_ok
 }
 
 /// True when `/v1/*` accepts this install's bearer token (not only `/health`).
@@ -118,11 +144,9 @@ async fn runtime_api_accepts_token(port: u16, token: &str) -> bool {
         return true;
     }
     let url = format!("http://127.0.0.1:{port}/v1/sessions");
-    let client = reqwest::Client::new();
-    match client
+    match SIDECAR_PROBE_HTTP
         .get(&url)
         .header(reqwest::header::AUTHORIZATION, format!("Bearer {token}"))
-        .timeout(Duration::from_secs(2))
         .send()
         .await
     {
@@ -188,10 +212,14 @@ pub async fn start_and_monitor(
     'supervisor: loop {
         let mut child: Option<tokio::process::Child> = None;
 
-        let ready = is_healthy(port, token).await && runtime_api_accepts_token(port, token).await;
+        let ready = sidecar_ready(port, token).await;
 
         if !ready {
-            if is_healthy(port, token).await && !runtime_api_accepts_token(port, token).await {
+            let (health_ok, api_ok) = tokio::join!(
+                is_healthy(port, token),
+                runtime_api_accepts_token(port, token)
+            );
+            if health_ok && !api_ok {
                 eprintln!(
                     "deepseek-desktop: {port}/health OK but runtime API rejected this session token; stopping stale listener(s)."
                 );
@@ -205,8 +233,13 @@ pub async fn start_and_monitor(
             child = Some(c);
 
             for i in 0..MAX_STARTUP_RETRIES {
-                sleep(Duration::from_millis(STARTUP_RETRY_DELAY_MS)).await;
-                if is_healthy(port, token).await && runtime_api_accepts_token(port, token).await {
+                let delay_ms = if i == 0 {
+                    STARTUP_FIRST_DELAY_MS
+                } else {
+                    STARTUP_RETRY_DELAY_MS
+                };
+                sleep(Duration::from_millis(delay_ms)).await;
+                if sidecar_ready(port, token).await {
                     break;
                 }
                 if i == MAX_STARTUP_RETRIES - 1 {
@@ -241,7 +274,7 @@ pub async fn start_and_monitor(
                     continue 'supervisor;
                 }
                 _ = sleep(Duration::from_secs(HEALTH_CHECK_INTERVAL_SECS)) => {
-                    if is_healthy(port, token).await && runtime_api_accepts_token(port, token).await {
+                    if sidecar_ready(port, token).await {
                         failures = 0;
                     } else {
                         failures += 1;

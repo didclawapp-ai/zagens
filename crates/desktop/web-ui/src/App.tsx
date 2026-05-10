@@ -12,6 +12,8 @@ import {
   deleteSession,
   persistThreadSession,
   waitForRuntimeReady,
+  waitForRuntimeBootReady,
+  invalidateRuntimeBootReadyCache,
   probeRuntimeConnection,
   initRuntimeConfig,
   getRuntimeBase,
@@ -420,9 +422,10 @@ export default function App() {
     setBanner(null);
     setRuntimeConn('checking');
     try {
+      invalidateRuntimeBootReadyCache();
       await initRuntimeConfig();
       const runtimeUrl = getRuntimeBase();
-      const ok = await waitForRuntimeReady({ timeoutMs: 60_000, intervalMs: 400 });
+      const ok = await waitForRuntimeReady({ timeoutMs: 60_000, intervalMs: 150 });
       const probed = await probeRuntimeConnection();
       setRuntimeConn(probed);
       if (!ok) {
@@ -442,7 +445,7 @@ export default function App() {
     let cancelled = false;
     void (async () => {
       try {
-        const ok = await waitForRuntimeReady({ timeoutMs: 90_000, intervalMs: 400 });
+        const ok = await waitForRuntimeBootReady({ timeoutMs: 90_000, intervalMs: 150 });
         if (!cancelled) {
           const probed = await probeRuntimeConnection();
           setRuntimeConn(probed);

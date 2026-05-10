@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react';
-import { fetchMcpServers, fetchMcpTools, mergeMcpConfigJson, type RuntimeConnectionState } from '../api/client';
+import {
+  fetchMcpServers,
+  fetchMcpTools,
+  mergeMcpConfigJson,
+  invalidateRuntimeBootReadyCache,
+  type RuntimeConnectionState,
+} from '../api/client';
 import type { McpServerEntry, McpToolEntry } from '../types/mcp';
 
 export default function McpPanel({ runtimeConn }: { runtimeConn: RuntimeConnectionState }) {
@@ -52,6 +58,7 @@ export default function McpPanel({ runtimeConn }: { runtimeConn: RuntimeConnecti
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('restart_sidecar');
+      invalidateRuntimeBootReadyCache();
     } catch {
       /* Best-effort — desktop invoke may throw in browser mode */
     } finally {

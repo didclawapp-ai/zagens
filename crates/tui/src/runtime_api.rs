@@ -302,6 +302,11 @@ pub async fn run_http_server(
         bail!("Port must be > 0");
     }
 
+    let t0 = std::time::Instant::now();
+    eprintln!(
+        "[deepseek-runtime] starting HTTP API (task manager, threads, scheduler)…"
+    );
+
     let task_cfg = TaskManagerConfig::from_runtime(
         &config,
         workspace.clone(),
@@ -313,9 +318,17 @@ pub async fn run_http_server(
         workspace.clone(),
         RuntimeThreadManagerConfig::from_task_data_dir(task_cfg.data_dir.clone()),
     )?);
+    eprintln!(
+        "[deepseek-runtime] RuntimeThreadManager::open ok (+{:?})",
+        t0.elapsed()
+    );
     let task_manager =
         TaskManager::start_with_runtime_manager(task_cfg, config.clone(), runtime_threads.clone())
             .await?;
+    eprintln!(
+        "[deepseek-runtime] TaskManager::start ok (+{:?})",
+        t0.elapsed()
+    );
     let automations = Arc::new(Mutex::new(AutomationManager::default_location()?));
     runtime_threads.attach_automation_manager(automations.clone());
     let scheduler_cancel = CancellationToken::new();
@@ -357,10 +370,14 @@ pub async fn run_http_server(
         .await
         .with_context(|| format!("Failed to bind {addr}"))?;
 
-    println!("Runtime API listening on http://{addr}");
-    println!("Security: this server is local-first. Do not expose it to untrusted networks.");
+    eprintln!(
+        "[deepseek-runtime] bound {addr}, serving (+{:?}) — output also on stderr (see sidecar.log if launched from DS Pick)",
+        t0.elapsed()
+    );
+    eprintln!("Runtime API listening on http://{addr}");
+    eprintln!("Security: this server is local-first. Do not expose it to untrusted networks.");
     if auth_enabled {
-        println!("Runtime API auth: bearer token required for /v1/* routes.");
+        eprintln!("Runtime API auth: bearer token required for /v1/* routes.");
     }
     let serve_result = axum::serve(listener, app)
         .await
