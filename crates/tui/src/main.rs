@@ -734,6 +734,14 @@ async fn main() -> Result<()> {
                         );
                     }
                     let config = load_config_from_cli(&cli)?;
+                    // Auto-install bundled system skills in background —
+                    // must not block the HTTP server from binding its port.
+                    let skills_dir = config.skills_dir();
+                    tokio::spawn(async move {
+                        if let Err(e) = crate::skills::install_system_skills(&skills_dir) {
+                            logging::warn(format!("Failed to install system skills: {e}"));
+                        }
+                    });
                     let cors_origins = resolve_cors_origins(&config, &args.cors_origin);
                     runtime_api::run_http_server(
                         config,

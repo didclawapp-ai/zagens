@@ -1638,6 +1638,92 @@ pub fn add_server_config(
     save_config(path, &cfg)
 }
 
+/// Merge servers (and optionally `timeouts`) from a JSON fragment into `mcp.json`.
+///
+/// Supported shapes:
+/// - Full config: `{ "mcpServers"|"servers": { "name": { … } }, "timeouts"?: … }`
+/// - Server map: `{ "filesystem": { "command": "npx", "args": [] }, … }`
+/// - Single server: `{ "name": "fs", "command": "…", "args": [] }` or `"url"`
+///
+/// Existing servers with the same name are replaced. Returns the number of server entries merged.
+pub fn merge_mcp_json_fragment(path: &Path, fragment: &str) -> Result<usize> {
+    let fragment = fragment.trim();
+    if fragment.is_empty() {
+        anyhow::bail!("JSON 不能为空");
+    }
+    let v: serde_json::Value =
+        serde_json::from_str(fragment).context("无效的 JSON：请检查语法（逗号、引号、括号）")?;
+    let obj = v
+        .as_object()
+        .context("根节点必须是 JSON 对象 { … }")?;
+
+    let mut cfg = load_config(path)?;
+    let mut merged = 0usize;
+
+    if obj.contains_key("mcpServers") || obj.contains_key("servers") {
+        let partial: McpConfig = serde_json::from_value(v.clone())
+            .context("无法解析为 MCP 配置（检查 mcpServers / servers 字段）")?;
+        if obj.contains_key("timeouts") {
+            cfg.timeouts = partial.timeouts;
+        }
+        if partial.servers.is_empty() && !obj.contains_key("timeouts") {
+            anyhow::bail!("servers 为空：请至少包含一个服务器条目，或同时提供 timeouts");
+        }
+        for (name, sc) in partial.servers {
+            cfg.servers.insert(name, sc);
+            merged += 1;
+        }
+        save_config(path, &cfg)?;
+        return Ok(merged);
+    }
+
+    if obj.contains_key("name") {
+        let name = obj
+            .get("name")
+            .and_then(|x| x.as_str())
+            .context("name 必须是字符串")?;
+        if name.trim().is_empty() {
+            anyhow::bail!("name 不能为空");
+        }
+        let mut inner = obj.clone();
+        inner.remove("name");
+        let server: McpServerConfig = serde_json::from_value(serde_json::Value::Object(inner))
+            .context("服务器字段无效（可与 ~/.deepseek/mcp.json 中条目对照）")?;
+        if server.command.is_none() && server.url.is_none() {
+            anyhow::bail!("必须提供 command 或 url");
+        }
+        cfg.servers.insert(name.trim().to_string(), server);
+        merged = 1;
+        save_config(path, &cfg)?;
+        return Ok(merged);
+    }
+
+    let mut timeout_updated = false;
+    let mut incoming: HashMap<String, McpServerConfig> = HashMap::new();
+    for (key, val) in obj {
+        if key == "timeouts" {
+            cfg.timeouts = serde_json::from_value(val.clone()).context("timeouts 格式无效")?;
+            timeout_updated = true;
+            continue;
+        }
+        let server: McpServerConfig = serde_json::from_value(val.clone())
+            .with_context(|| format!("服务器 \"{key}\" 的配置无效"))?;
+        incoming.insert(key.clone(), server);
+    }
+
+    if incoming.is_empty() && !timeout_updated {
+        anyhow::bail!(
+            "未找到服务器条目。可粘贴完整 mcpServers 块，或形如 {{ \"myserver\": {{ \"command\": \"npx\", \"args\": [] }} }}"
+        );
+    }
+    for (k, s) in incoming {
+        cfg.servers.insert(k, s);
+        merged += 1;
+    }
+    save_config(path, &cfg)?;
+    Ok(merged)
+}
+
 pub fn remove_server_config(path: &Path, name: &str) -> Result<()> {
     let mut cfg = load_config(path)?;
     if cfg.servers.remove(name).is_none() {

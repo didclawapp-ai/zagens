@@ -1,3 +1,8 @@
+import type { McpServersResponse, McpToolsResponse } from '../types/mcp';
+import type { UsageAggregation, UsageParams } from '../types/usage';
+import type { TaskSummary, TasksResponse, AutomationRecord, SkillEntry } from '../types/automation';
+import type { RoutingRulesResponse, RoutingRule } from '../types/routing';
+
 export interface SseTurnEvent {
   event: string;
   data: string;
@@ -11,6 +16,8 @@ export interface StreamTurnRequest {
   auto_approve?: boolean;
   trust_mode?: boolean;
   allow_shell?: boolean;
+  /** When set, runtime matches `routing_rules.json` intent → model (see RoutingPanel). */
+  route_intent?: string;
 }
 
 export interface SessionInfo {
@@ -350,6 +357,7 @@ export async function startThreadTurn(
     allow_shell?: boolean;
     trust_mode?: boolean;
     auto_approve?: boolean;
+    route_intent?: string;
   },
 ): Promise<{ thread: unknown; turn: TurnRecord }> {
   return postJson(`/v1/threads/${encodeURIComponent(threadId)}/turns`, body);
@@ -488,6 +496,82 @@ export async function persistThreadSession(
     session_id: sessionId?.trim() || undefined,
   });
 }
+
+// ========== Usage ==========
+
+export async function fetchUsage(params?: UsageParams): Promise<UsageAggregation> {
+  const qs = new URLSearchParams();
+  if (params?.since) qs.set('since', params.since);
+  if (params?.until) qs.set('until', params.until);
+  if (params?.group_by) qs.set('group_by', params.group_by);
+  const suffix = qs.toString();
+  return fetchJson<UsageAggregation>(`/v1/usage${suffix ? `?${suffix}` : ''}`);
+}
+
+// ========== Tasks / Automations / Skills ==========
+
+export async function fetchTasks(): Promise<TaskSummary[]> {
+  const res = await fetchJson<TasksResponse>('/v1/tasks');
+  return res.tasks;
+}
+
+export async function fetchAutomations(): Promise<AutomationRecord[]> {
+  return fetchJson<AutomationRecord[]>('/v1/automations');
+}
+
+export interface SkillsResponse {
+  skills: SkillEntry[];
+}
+
+export async function fetchSkills(): Promise<SkillsResponse> {
+  return fetchJson<SkillsResponse>('/v1/skills');
+}
+
+// ========== Routing ==========
+
+export async function fetchRoutingRules(): Promise<RoutingRulesResponse> {
+  return fetchJson<RoutingRulesResponse>('/v1/apps/routing/rules');
+}
+
+export async function setRoutingRules(rules: RoutingRule[]): Promise<RoutingRulesResponse> {
+  return postJson<RoutingRulesResponse>('/v1/apps/routing/rules', { rules });
+}
+
+// ========== MCP ==========
+
+export async function fetchMcpServers(): Promise<McpServersResponse> {
+  return fetchJson<McpServersResponse>('/v1/apps/mcp/servers');
+}
+
+export async function fetchMcpTools(server?: string): Promise<McpToolsResponse> {
+  const qs = server ? `?server=${encodeURIComponent(server)}` : '';
+  return fetchJson<McpToolsResponse>(`/v1/apps/mcp/tools${qs}`);
+}
+
+export interface AddMcpServerRequest {
+  name: string;
+  command?: string;
+  url?: string;
+  args?: string[];
+}
+
+export async function addMcpServer(req: AddMcpServerRequest): Promise<void> {
+  await postJson('/v1/apps/mcp/servers', req);
+}
+
+/** Merge MCP servers (and optional timeouts) from a JSON fragment into ~/.deepseek/mcp.json. */
+export async function mergeMcpConfigJson(fragmentText: string): Promise<{ merged_servers: number }> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(fragmentText.trim());
+  } catch {
+    const err = new Error('JSON 语法无效，请检查括号与引号') as Error & { status?: number };
+    throw err;
+  }
+  return postJson<{ merged_servers: number }>('/v1/apps/mcp/config/merge', parsed);
+}
+
+// ========== Sessions ==========
 
 export async function deleteSession(sessionId: string): Promise<void> {
   const res = await fetchResponseWithBackoff(

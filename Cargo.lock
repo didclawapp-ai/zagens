@@ -1459,6 +1459,7 @@ dependencies = [
  "anyhow",
  "base64 0.22.1",
  "deepseek-config",
+ "ignore",
  "reqwest",
  "serde",
  "serde_json",

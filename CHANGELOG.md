@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### DS Pick (desktop)
 
+- **任务与技能面板** — 侧栏「设置」下入口文案为「任务与技能」（右栏 `view` 仍为 `automation`）；**定时自动化**（`/v1/automations` 列表 UI）按产品决定暂不展示，`fetchAutomations` 仍保留在 `client.ts`。
+- **文档** — `docs/desktop/TUI_DS_PICK_GAP.md` 实施审核收尾：更新差距表与实施状态；定时自动化 UI 标为暂缓。
 - **Markdown preview links** — 预览区内相对路径链接改为在应用内打开下一篇文档，
   不再触发 WebView 整页跳转（避免打断流式生成并丢失未落盘的会话 UI 状态）。`http(s)://`
   等外链仍在新窗口打开；`#` 锚点仅滚动当前预览。

@@ -11,6 +11,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow, bail};
 use async_stream::stream;
+use axum::body::Bytes;
 use axum::extract::{Path as AxumPath, Query, Request, State};
 use axum::http::{HeaderValue, Method, StatusCode, header};
 use axum::middleware::{self, Next};
@@ -21,6 +22,7 @@ use axum::{Json, Router};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use ignore::WalkBuilder;
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
@@ -98,6 +100,8 @@ struct StreamTurnRequest {
     allow_shell: Option<bool>,
     trust_mode: Option<bool>,
     auto_approve: Option<bool>,
+    #[serde(default)]
+    route_intent: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -264,6 +268,15 @@ struct McpToolsResponse {
 }
 
 #[derive(Debug, Deserialize)]
+struct McpAddServerRequest {
+    name: String,
+    command: Option<String>,
+    url: Option<String>,
+    #[serde(default)]
+    args: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
 struct AutomationRunsQuery {
     limit: Option<usize>,
 }
@@ -410,7 +423,8 @@ pub fn build_router(state: RuntimeApiState) -> Router {
         .route("/v1/tasks/{id}", get(get_task))
         .route("/v1/tasks/{id}/cancel", post(cancel_task))
         .route("/v1/skills", get(list_skills))
-        .route("/v1/apps/mcp/servers", get(list_mcp_servers))
+        .route("/v1/apps/mcp/servers", get(list_mcp_servers).post(add_mcp_server))
+        .route("/v1/apps/mcp/config/merge", post(merge_mcp_config_json))
         .route("/v1/apps/mcp/tools", get(list_mcp_tools))
         .route(
             "/v1/automations",
@@ -427,6 +441,10 @@ pub fn build_router(state: RuntimeApiState) -> Router {
         .route("/v1/automations/{id}/resume", post(resume_automation))
         .route("/v1/automations/{id}/runs", get(list_automation_runs))
         .route("/v1/usage", get(get_usage))
+        .route(
+            "/v1/apps/routing/rules",
+            get(get_routing_rules).put(set_routing_rules),
+        )
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             require_runtime_token,
@@ -993,6 +1011,125 @@ fn safe_thread_subpath(workspace_root: &Path, rel: &str) -> Result<PathBuf, ApiE
     Ok(canon)
 }
 
+/// Cap for git-aware suffix walks when resolving ambiguous model paths.
+const WORKSPACE_RESOLVE_WALK_MAX: usize = 12_000;
+const WORKSPACE_RESOLVE_MATCH_MAX: usize = 24;
+
+fn normalize_workspace_rel_query(rel: &str) -> String {
+    rel.trim()
+        .trim_start_matches(['/', '\\'])
+        .replace('\\', "/")
+}
+
+/// True when a suffix-only search is unlikely to explode (e.g. `mod.rs`).
+fn workspace_suffix_walk_is_safe(suffix_norm: &str) -> bool {
+    let parts: Vec<&str> = suffix_norm.split('/').filter(|s| !s.is_empty()).collect();
+    if parts.len() >= 2 {
+        return true;
+    }
+    if parts.len() == 1 {
+        let name = parts[0];
+        if matches!(
+            name,
+            "mod.rs"
+                | "lib.rs"
+                | "main.rs"
+                | "index.ts"
+                | "index.js"
+                | "index.tsx"
+                | "index.jsx"
+        ) {
+            return false;
+        }
+        return name.contains('.') && name.len() >= 5;
+    }
+    false
+}
+
+/// Resolve a workspace-relative file path for opens/preview: exact path, common `src/` omission,
+/// then git-aware walk by path suffix (monorepo / wrong root segment).
+fn resolve_existing_file_in_workspace(
+    workspace_root: &Path,
+    rel_raw: &str,
+) -> Result<PathBuf, ApiError> {
+    let n = normalize_workspace_rel_query(rel_raw);
+    if n.is_empty() {
+        return Err(ApiError::bad_request("path query required"));
+    }
+    if n.contains("..") {
+        return Err(ApiError::bad_request("invalid path"));
+    }
+
+    let mut candidates: Vec<String> = Vec::new();
+    candidates.push(n.clone());
+    if !n.starts_with("src/") && !n.starts_with("crates/") && !n.starts_with("lib/") {
+        candidates.push(format!("src/{n}"));
+    }
+
+    for c in &candidates {
+        match safe_thread_subpath(workspace_root, c) {
+            Ok(p) if p.is_file() => return Ok(p),
+            Ok(_) => {}
+            Err(e) => {
+                if e.status == StatusCode::BAD_REQUEST {
+                    return Err(e);
+                }
+            }
+        }
+    }
+
+    if !workspace_suffix_walk_is_safe(&n) {
+        return Err(ApiError::not_found("path not found"));
+    }
+
+    let base = workspace_root
+        .canonicalize()
+        .map_err(|e| ApiError::bad_request(format!("workspace: {e}")))?;
+    let suffix_norm = n.trim_start_matches('/');
+    let mut matches: Vec<PathBuf> = Vec::new();
+    let walker = WalkBuilder::new(&base)
+        .hidden(false)
+        .git_ignore(true)
+        .build();
+
+    for (idx, entry) in walker.enumerate() {
+        if idx > WORKSPACE_RESOLVE_WALK_MAX {
+            break;
+        }
+        let entry = entry.map_err(|e| ApiError::internal(e.to_string()))?;
+        let ft = entry.file_type();
+        if !ft.map(|t| t.is_file()).unwrap_or(false) {
+            continue;
+        }
+        let path = entry.path();
+        let Ok(rel) = path.strip_prefix(&base) else {
+            continue;
+        };
+        let rel_str = rel.to_string_lossy().replace('\\', "/");
+        if rel_str == suffix_norm || rel_str.ends_with(&format!("/{suffix_norm}")) {
+            matches.push(path.to_path_buf());
+            if matches.len() > WORKSPACE_RESOLVE_MATCH_MAX {
+                return Err(ApiError::not_found("path not found"));
+            }
+        }
+    }
+
+    match matches.len() {
+        0 => Err(ApiError::not_found("path not found")),
+        1 => Ok(matches[0].clone()),
+        _ => {
+            matches.sort_by_key(|p| {
+                std::cmp::Reverse(
+                    p.strip_prefix(&base)
+                        .map(|x| x.components().count())
+                        .unwrap_or(0),
+                )
+            });
+            Ok(matches[0].clone())
+        }
+    }
+}
+
 fn workspace_relative_posix(ws: &Path, full: &Path) -> String {
     full.strip_prefix(ws)
         .map(|p| {
@@ -1229,10 +1366,7 @@ async fn read_workspace_file_by_root(
     if q.path.trim().is_empty() {
         return Err(ApiError::bad_request("path query required"));
     }
-    let file_path = safe_thread_subpath(&base, &q.path)?;
-    if !file_path.is_file() {
-        return Err(ApiError::bad_request("not a file"));
-    }
+    let file_path = resolve_existing_file_in_workspace(&base, &q.path)?;
     let rel = workspace_relative_posix(&base, &file_path);
     let path_clone = file_path.clone();
     let (content, truncated) = tokio::task::spawn_blocking(move || {
@@ -1282,10 +1416,7 @@ async fn read_thread_workspace_file(
     if q.path.trim().is_empty() {
         return Err(ApiError::bad_request("path query required"));
     }
-    let file_path = safe_thread_subpath(&ws, &q.path)?;
-    if !file_path.is_file() {
-        return Err(ApiError::bad_request("not a file"));
-    }
+    let file_path = resolve_existing_file_in_workspace(&ws, &q.path)?;
     let rel = workspace_relative_posix(&base, &file_path);
     let path_clone = file_path.clone();
     let (content, truncated) = tokio::task::spawn_blocking(move || {
@@ -1344,12 +1475,18 @@ async fn list_mcp_servers(
 ) -> Result<Json<McpServersResponse>, ApiError> {
     let config = load_mcp_config_or_default(&state.mcp_config_path)?;
     let mut pool = McpPool::new(config.clone());
-    let _errors = pool.connect_all().await;
-    let connected: HashSet<String> = pool
-        .connected_servers()
-        .into_iter()
-        .map(str::to_string)
-        .collect();
+    let connected: HashSet<String> = if config.servers.is_empty() {
+        HashSet::new()
+    } else {
+        match tokio::time::timeout(Duration::from_secs(2), pool.connect_all()).await {
+            Ok(_) => pool
+                .connected_servers()
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+            Err(_elapsed) => HashSet::new(),
+        }
+    };
 
     let mut servers = Vec::new();
     for (name, server_cfg) in config.servers {
@@ -1369,13 +1506,44 @@ async fn list_mcp_servers(
     Ok(Json(McpServersResponse { servers }))
 }
 
+async fn merge_mcp_config_json(
+    State(state): State<RuntimeApiState>,
+    body: Bytes,
+) -> Result<(StatusCode, Json<Value>), ApiError> {
+    let s = std::str::from_utf8(&body)
+        .map_err(|_| ApiError::bad_request("请求体须为 UTF-8"))?;
+    let merged = crate::mcp::merge_mcp_json_fragment(&state.mcp_config_path, s)
+        .map_err(|e| ApiError::bad_request(e.to_string()))?;
+    Ok((
+        StatusCode::OK,
+        Json(json!({
+            "merged_servers": merged,
+        })),
+    ))
+}
+
+async fn add_mcp_server(
+    State(state): State<RuntimeApiState>,
+    Json(req): Json<McpAddServerRequest>,
+) -> Result<StatusCode, ApiError> {
+    crate::mcp::add_server_config(
+        &state.mcp_config_path,
+        req.name,
+        req.command,
+        req.url,
+        req.args,
+    )
+    .map_err(|e| ApiError::bad_request(format!("添加 MCP 服务器失败：{e}")))?;
+    Ok(StatusCode::CREATED)
+}
+
 async fn list_mcp_tools(
     State(state): State<RuntimeApiState>,
     Query(query): Query<McpToolsQuery>,
 ) -> Result<Json<McpToolsResponse>, ApiError> {
     let mut pool = McpPool::from_config_path(&state.mcp_config_path)
         .map_err(|e| ApiError::internal(format!("Failed to load MCP config: {e}")))?;
-    let _errors = pool.connect_all().await;
+    let _ = tokio::time::timeout(Duration::from_secs(2), pool.connect_all()).await;
 
     let mut tools = Vec::new();
     for (prefixed_name, tool) in pool.all_tools() {
@@ -1783,6 +1951,7 @@ async fn stream_turn(
                 allow_shell: Some(allow_shell),
                 trust_mode: Some(trust_mode),
                 auto_approve: Some(auto_approve),
+                route_intent: req.route_intent.clone(),
             },
         )
         .await
@@ -2180,6 +2349,28 @@ async fn get_usage(
         .await
         .map_err(|e| ApiError::internal(e.to_string()))?;
     Ok(Json(json!(aggregation)))
+}
+
+// ============== Routing Rules ==============
+
+async fn get_routing_rules(
+    State(state): State<RuntimeApiState>,
+) -> Result<Json<Value>, ApiError> {
+    let rules = state.runtime_threads.get_routing_rules().await;
+    Ok(Json(json!({ "rules": rules })))
+}
+
+async fn set_routing_rules(
+    State(state): State<RuntimeApiState>,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<Value>, ApiError> {
+    let rules: Vec<crate::runtime_threads::RoutingRule> = serde_json::from_value(
+        body.get("rules").cloned().unwrap_or(serde_json::Value::Array(vec![])),
+    )
+    .map_err(|e| ApiError::bad_request(format!("Invalid rules: {e}")))?;
+    state.runtime_threads.set_routing_rules(rules).await.map_err(|e| ApiError::internal(e.to_string()))?;
+    let updated = state.runtime_threads.get_routing_rules().await;
+    Ok(Json(json!({ "rules": updated })))
 }
 
 /// Built-in dev origins always allowed by the runtime API (whalescale#255).

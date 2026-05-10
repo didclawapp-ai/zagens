@@ -3,8 +3,9 @@
 @tailwind utilities;
 
 :root {
-  --color-canvas: #ebecef;
-  --color-canvas-alt: #f0f1f4;
+  /* Single continuous “shell” tone — side rails match center (Claude / Cowork–like) */
+  --color-canvas: #eef0f4;
+  --color-canvas-alt: #e9ebf0;
   --color-card: #ffffff;
   --color-card-border: #e4e6eb;
   --color-text: #1a1d24;
@@ -29,9 +30,16 @@
   --color-input-border: #e4e6eb;
   --color-hover: #f6f7f9;
   --color-hover-strong: #f3f4f6;
-  --color-divider: rgba(0, 0, 0, 0.06);
+  --color-divider: rgba(15, 23, 42, 0.06);
+  /* Column rails — visible but not heavy */
+  --color-rail-edge: rgba(15, 23, 42, 0.12);
+  /* Chat bubbles (softer than pure card white / less saturated than accent fills) */
+  --color-msg-assistant-bg: #f4f5f8;
+  --color-msg-assistant-border: rgba(15, 23, 42, 0.09);
+  --color-msg-user-bg: #e4e7ee;
+  --color-msg-user-border: rgba(15, 23, 42, 0.11);
   --color-toolbar-bg: rgba(255, 255, 255, 0.72);
-  --color-dot: #d1d4db;
+  --color-dot: rgba(100, 116, 139, 0.09);
   --color-shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
   --color-shadow-md: 0 8px 24px rgba(16, 24, 40, 0.08), 0 2px 8px rgba(16, 24, 40, 0.04);
   --color-overlay: rgba(0, 0, 0, 0.5);
@@ -42,13 +50,15 @@
   --font-ui: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'PingFang SC',
     'Microsoft YaHei', sans-serif;
   --font-mono: ui-monospace, 'Consolas', 'Cascadia Code', 'Source Code Pro', monospace;
-  --font-display: 'Georgia', 'Times New Roman', 'Noto Serif SC', 'Source Han Serif SC', serif;
+  /* Claude Code–style document body: system UI serif first (e.g. New York on Apple), then Charter / Georgia */
+  --font-display: ui-serif, Charter, 'Bitstream Charter', 'Sitka Text', Georgia, 'Times New Roman',
+    'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'STSong', 'SimSun', serif;
 }
 
 .dark {
-  --color-canvas: #030712;
-  --color-canvas-alt: #0f1117;
-  --color-card: #111827;
+  --color-canvas: #0b0f14;
+  --color-canvas-alt: #121820;
+  --color-card: #141a22;
   --color-card-border: #1f2937;
   --color-text: #f3f4f6;
   --color-text-secondary: #9ca3af;
@@ -72,9 +82,14 @@
   --color-input-border: #374151;
   --color-hover: #1f2937;
   --color-hover-strong: #374151;
-  --color-divider: rgba(255, 255, 255, 0.06);
+  --color-divider: rgba(255, 255, 255, 0.07);
+  --color-rail-edge: rgba(255, 255, 255, 0.12);
+  --color-msg-assistant-bg: #161d26;
+  --color-msg-assistant-border: rgba(255, 255, 255, 0.1);
+  --color-msg-user-bg: #1f2938;
+  --color-msg-user-border: rgba(255, 255, 255, 0.12);
   --color-toolbar-bg: rgba(17, 24, 39, 0.85);
-  --color-dot: #374151;
+  --color-dot: rgba(148, 163, 184, 0.06);
   --color-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --color-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3);
   --color-overlay: rgba(0, 0, 0, 0.7);
@@ -203,6 +218,13 @@ body {
     stroke: var(--color-text-secondary);
     fill: none;
     stroke-width: 1.6;
+  }
+
+  /* Session markdown: match “document UI” readability (serif body, comfortable metrics) */
+  .chat-md-wrap {
+    font-family: var(--font-display);
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
   }
 
   .streaming-cursor::after {

@@ -1,0 +1,1208 @@
+<!DOCTYPE html>
+<html lang="zh-Hans" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DS Pick — 功能对标 Demo（实施步骤计划 UI 预览）</title>
+<style>
+/* ===== DS Pick Design Tokens (dark theme) ===== */
+:root {
+  --canvas: #030712;
+  --canvas-alt: #0f1117;
+  --card: #111827;
+  --card-border: #1f2937;
+  --text: #f3f4f6;
+  --text-secondary: #9ca3af;
+  --text-muted: #6b7280;
+  --accent: #6366f1;
+  --accent-hover: #818cf8;
+  --accent-soft: rgba(99,102,241,0.15);
+  --accent-text: #ffffff;
+  --warning: #f59e0b;
+  --warning-bg: rgba(245,158,11,0.1);
+  --warning-text: #fbbf24;
+  --error: #ef4444;
+  --error-bg: rgba(239,68,68,0.08);
+  --error-text: #fca5a5;
+  --success: #10b981;
+  --success-bg: rgba(16,185,129,0.08);
+  --amber: #d97706;
+  --amber-bg: rgba(217,119,6,0.08);
+  --amber-text: #fcd34d;
+  --input-bg: #1f2937;
+  --input-border: #374151;
+  --hover: #1f2937;
+  --hover-strong: #2d3748;
+  --divider: rgba(255,255,255,0.06);
+  --toolbar-bg: rgba(17,24,39,0.85);
+  --dot: #374151;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+  --shadow-md: 0 8px 24px rgba(0,0,0,0.4), 0 2px 8px rgba(0,0,0,0.3);
+  --overlay: rgba(0,0,0,0.6);
+  --radius-lg: 14px;
+  --radius-md: 10px;
+  --radius-sm: 8px;
+  --radius-pill: 999px;
+  --font-ui: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-mono: ui-monospace, 'Consolas', 'Cascadia Code', 'Source Code Pro', monospace;
+  --font-display: 'Georgia', 'Times New Roman', 'Noto Serif SC', serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: var(--font-ui);
+  background: var(--canvas);
+  color: var(--text);
+  overflow: hidden;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ===== LAYOUT ===== */
+.app-layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ===== SIDEBAR ===== */
+.sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--divider);
+  background: var(--card);
+}
+.sidebar-brand {
+  padding: 14px;
+  border-bottom: 1px solid var(--divider);
+}
+.sidebar-brand-inner {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  background: var(--hover);
+}
+.sidebar-brand-star {
+  width: 22px; height: 22px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #93c5fd, #3b82f6);
+  color: #fff; font-size: 11px;
+}
+.sidebar-brand span:last-child { font-size: 14px; font-weight: 600; }
+.sidebar-brand span:last-child em { opacity: 0.7; font-weight: 500; font-style: normal; }
+
+.sidebar-nav { padding: 8px; display: flex; flex-direction: column; gap: 2px; }
+.sidebar-nav button {
+  all: unset;
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.sidebar-nav button:hover { background: var(--hover); color: var(--text); }
+.sidebar-nav button.active { background: var(--hover-strong); color: var(--accent); border: 1px solid rgba(99,102,241,0.2); }
+.sidebar-nav button svg { width: 16px; height: 16px; flex-shrink: 0; stroke: currentColor; fill: none; stroke-width: 1.6; }
+.sidebar-nav button .badge {
+  margin-left: auto;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.sidebar-section-label {
+  padding: 8px 14px 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.sidebar-divider { margin: 4px 10px; border: none; border-top: 1px solid var(--divider); }
+
+.sidebar-sessions { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 8px; }
+.sidebar-session {
+  display: flex; align-items: center; gap: 4px;
+  border-radius: var(--radius-md);
+  padding: 0;
+  margin-bottom: 1px;
+}
+.sidebar-session:hover { background: var(--hover); }
+.sidebar-session.active { background: var(--accent-soft); box-shadow: 0 0 0 1px rgba(99,102,241,0.3); }
+.sidebar-session button {
+  all: unset; flex: 1; min-width: 0; padding: 8px 12px;
+  font-size: 13px; cursor: pointer; text-align: left;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sidebar-session.active button { color: var(--accent); font-weight: 500; }
+
+.sidebar-footer { padding: 10px 12px; border-top: 1px solid var(--divider); font-size: 10px; color: var(--text-muted); }
+.sidebar-footer .status-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 4px; }
+.sidebar-footer .status-dot.connected { background: var(--success); }
+.sidebar-version { padding: 10px 16px; border-top: 1px solid var(--divider); font-size: 10px; color: var(--text-muted); }
+
+/* ===== MAIN AREA ===== */
+.main-area {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column;
+}
+
+/* ===== CHAT VIEW ===== */
+.chat-view {
+  flex: 1; overflow-y: auto; padding: 16px 24px;
+}
+.chat-empty {
+  display: flex; align-items: center; justify-content: center;
+  height: 100%; text-align: center;
+}
+.chat-empty h1 { font-size: 32px; font-weight: 700; margin-bottom: 6px; color: var(--accent); font-family: var(--font-display); }
+.chat-empty h1 em { opacity: 0.85; font-weight: 600; font-style: normal; }
+.chat-empty p { font-size: 15px; color: var(--text-secondary); }
+.chat-empty p.small { font-size: 12px; margin-top: 8px; color: var(--text-muted); }
+
+/* ===== MESSAGE BUBBLE ===== */
+.msg { margin-bottom: 20px; }
+.msg.user { display: flex; justify-content: flex-end; }
+.msg.user .bubble { background: var(--accent-soft); border: 1px solid rgba(99,102,241,0.2); border-radius: var(--radius-md) var(--radius-md) 4px var(--radius-md); max-width: 75%; }
+.msg.assistant .bubble { background: var(--card); border: 1px solid var(--card-border); border-radius: var(--radius-md) var(--radius-md) var(--radius-md) 4px; max-width: 85%; }
+.bubble { padding: 12px 16px; font-size: 14px; line-height: 1.6; }
+.bubble-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.bubble-header .role-tag { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+.bubble-header .edit-btn {
+  all: unset; font-size: 11px; color: var(--text-muted);
+  cursor: pointer; padding: 2px 8px; border-radius: 4px;
+  opacity: 0; transition: opacity 0.15s, color 0.15s;
+}
+.msg.user:hover .edit-btn { opacity: 1; }
+.edit-btn:hover { color: var(--accent); background: var(--accent-soft); }
+
+/* ===== COMPOSER ===== */
+.composer {
+  border-top: 1px solid var(--divider);
+  padding: 12px 24px 16px;
+  background: var(--canvas-alt);
+}
+.composer-inner { display: flex; gap: 10px; align-items: flex-end; }
+.composer textarea {
+  flex: 1; resize: none;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  font-size: 14px; font-family: var(--font-ui);
+  color: var(--text);
+  outline: none;
+  min-height: 44px; max-height: 160px;
+}
+.composer textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(99,102,241,0.15); }
+.composer .model-select {
+  all: unset;
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  font-size: 13px; cursor: pointer;
+  color: var(--text-secondary);
+}
+.composer .model-select:hover { border-color: var(--accent); color: var(--text); }
+.composer .model-select .gear-icon {
+  width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.6;
+  cursor: pointer; padding: 2px; border-radius: 4px;
+}
+.composer .model-select .gear-icon:hover { background: var(--accent-soft); color: var(--accent); }
+.composer .send-btn {
+  all: unset;
+  padding: 10px 18px;
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 14px; font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.composer .send-btn:hover { background: var(--accent-hover); }
+
+/* ===== RIGHT PANEL ===== */
+.right-panel {
+  width: 320px; flex-shrink: 0;
+  border-left: 1px solid var(--divider);
+  background: var(--card);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+.panel-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--divider);
+  font-size: 14px; font-weight: 600;
+  display: flex; align-items: center; gap: 8px;
+}
+.panel-header .panel-icon { width: 18px; height: 18px; stroke: var(--accent); fill: none; stroke-width: 1.8; }
+.panel-body { flex: 1; overflow-y: auto; padding: 12px; }
+.panel-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--divider); margin-bottom: 12px; }
+.panel-tab {
+  all: unset; padding: 8px 16px; font-size: 12px; font-weight: 500;
+  color: var(--text-muted); cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+.panel-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.panel-tab:hover { color: var(--text); }
+
+/* ===== PANEL CONTENT CARDS ===== */
+.panel-card {
+  background: var(--canvas-alt);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  margin-bottom: 8px;
+}
+.panel-card .card-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+.panel-card .card-meta { font-size: 11px; color: var(--text-muted); }
+.panel-card .card-status {
+  display: inline-block; padding: 2px 8px; border-radius: var(--radius-pill);
+  font-size: 10px; font-weight: 500;
+}
+.card-status.connected { background: var(--success-bg); color: var(--success); }
+.card-status.disconnected { background: var(--error-bg); color: var(--error-text); }
+
+/* ===== TOOL CARD ===== */
+.tool-card {
+  background: var(--canvas-alt);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  font-size: 12px;
+  margin: 8px 0;
+}
+.tool-card .tool-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.tool-card .tool-name { font-weight: 600; }
+.tool-card .tool-id { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+.tool-card .tool-status { margin-left: auto; padding: 2px 8px; border-radius: var(--radius-pill); font-size: 10px; font-weight: 500; }
+.tool-card .tool-status.running { background: var(--amber-bg); color: var(--amber-text); border: 1px solid rgba(217,119,6,0.3); }
+.tool-card .tool-status.done { background: var(--success-bg); color: var(--success); border: 1px solid rgba(16,185,129,0.3); }
+.tool-card pre {
+  margin-top: 6px; max-height: 120px; overflow: auto;
+  font-family: var(--font-mono); font-size: 11px;
+  color: var(--text-secondary); white-space: pre-wrap; word-break: break-all;
+  line-height: 1.5;
+}
+
+/* ===== TERMINAL CARD (xterm.js simulation) ===== */
+.terminal-card {
+  background: #0a0a0a;
+  border: 1px solid #2a2a2a;
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  margin: 8px 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: #e0e0e0;
+  line-height: 1.5;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.terminal-card .term-line { white-space: pre-wrap; }
+.terminal-card .term-line.prompt { color: #6366f1; }
+.terminal-card .term-line.output { color: #a0aec0; }
+.terminal-card .term-header {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 6px; padding-bottom: 6px;
+  border-bottom: 1px solid #2a2a2a;
+  font-size: 11px; color: #6b7280;
+}
+.terminal-card .term-dot { width: 8px; height: 8px; border-radius: 50%; }
+.terminal-card .term-dot.r { background: #ef4444; }
+.terminal-card .term-dot.y { background: #f59e0b; }
+.terminal-card .term-dot.g { background: #10b981; }
+
+/* ===== DIFF CARD ===== */
+.diff-card {
+  background: var(--canvas-alt);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-sm);
+  margin: 8px 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.diff-card .diff-header {
+  padding: 8px 12px;
+  font-size: 12px; font-weight: 600;
+  background: var(--hover);
+  border-bottom: 1px solid var(--divider);
+  color: var(--text-secondary);
+}
+.diff-card .diff-line { padding: 2px 12px; white-space: pre-wrap; line-height: 1.5; }
+.diff-card .diff-line.add { background: rgba(16,185,129,0.08); color: var(--success); }
+.diff-card .diff-line.del { background: rgba(239,68,68,0.08); color: var(--error-text); }
+.diff-card .diff-line.ctx { color: var(--text-muted); }
+
+/* ===== AGENT CARD ===== */
+.agent-badge { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; font-size: 10px; }
+.agent-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+.agent-dot.running { background: var(--amber); animation: pulse 1.5s infinite; }
+.agent-dot.done { background: var(--success); }
+
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+/* ===== MODAL ===== */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: var(--overlay);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100;
+}
+.modal {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  min-width: 380px;
+  box-shadow: var(--shadow-md);
+}
+.modal h3 { font-size: 16px; font-weight: 600; margin-bottom: 16px; }
+.modal label { display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; margin-top: 12px; }
+.modal input[type="range"] { width: 100%; accent-color: var(--accent); }
+.modal .range-row { display: flex; align-items: center; gap: 12px; }
+.modal .range-val { font-size: 13px; font-weight: 600; color: var(--accent); min-width: 36px; }
+.modal select, .modal input[type="number"] {
+  width: 100%; padding: 8px 12px;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-sm);
+  color: var(--text); font-size: 13px;
+}
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+.modal-actions button {
+  all: unset; padding: 8px 16px;
+  border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; cursor: pointer;
+}
+.modal-actions .btn-primary { background: var(--accent); color: var(--accent-text); }
+.modal-actions .btn-ghost { color: var(--text-secondary); }
+.modal-actions .btn-ghost:hover { background: var(--hover); }
+
+/* ===== DROPDOWN MENU ===== */
+.menu-trigger { position: relative; cursor: pointer; }
+.menu-dropdown {
+  position: absolute; top: 100%; right: 0;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-sm);
+  padding: 4px;
+  box-shadow: var(--shadow-md);
+  min-width: 160px;
+  z-index: 50;
+  display: none;
+}
+.menu-dropdown.open { display: block; }
+.menu-dropdown button {
+  all: unset;
+  display: block; width: 100%; padding: 8px 12px;
+  font-size: 12px; border-radius: 4px;
+  color: var(--text-secondary); cursor: pointer;
+}
+.menu-dropdown button:hover { background: var(--hover); color: var(--text); }
+
+/* ===== OPEN IN EXPLORER BUTTON ===== */
+.explorer-btn {
+  all: unset;
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 10px; border-radius: 4px;
+  font-size: 11px; color: var(--text-muted);
+  cursor: pointer;
+}
+.explorer-btn:hover { background: var(--hover); color: var(--text); }
+.explorer-btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+
+/* ===== USAGE DASHBOARD ===== */
+.usage-stat { text-align: center; padding: 12px; }
+.usage-stat .big-num { font-size: 28px; font-weight: 700; color: var(--accent); font-family: var(--font-display); }
+.usage-stat .stat-label { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.usage-chart { margin-top: 12px; }
+.usage-bar {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+}
+.usage-bar .bar-label { width: 60px; font-size: 11px; color: var(--text-muted); text-align: right; }
+.usage-bar .bar-track { flex: 1; height: 20px; background: var(--canvas-alt); border-radius: 4px; overflow: hidden; }
+.usage-bar .bar-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+.usage-bar .bar-fill.model-a { background: #6366f1; }
+.usage-bar .bar-fill.model-b { background: #8b5cf6; }
+.usage-bar .bar-val { width: 50px; font-size: 11px; color: var(--text-secondary); }
+
+/* ===== TASKS LIST ===== */
+.task-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--divider); }
+.task-row .task-id { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+.task-row .task-name { font-size: 13px; flex: 1; }
+.task-badge {
+  padding: 2px 8px; border-radius: var(--radius-pill); font-size: 10px; font-weight: 500;
+}
+.task-badge.running { background: var(--amber-bg); color: var(--amber-text); }
+.task-badge.done { background: var(--success-bg); color: var(--success); }
+
+/* ===== SKILLS LIST ===== */
+.skill-card { margin-bottom: 8px; }
+.skill-card .skill-name { font-size: 13px; font-weight: 600; }
+.skill-card .skill-desc { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+/* ===== ROUTING RULES ===== */
+.route-rule {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px; border-radius: var(--radius-sm);
+  background: var(--canvas-alt); margin-bottom: 6px;
+}
+.route-rule .route-intent {
+  padding: 2px 8px; border-radius: var(--radius-pill);
+  font-size: 10px; font-weight: 600;
+  background: var(--accent-soft); color: var(--accent);
+}
+.route-rule .route-arrow { color: var(--text-muted); font-size: 14px; }
+.route-rule .route-model { font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); }
+.route-log { font-size: 11px; color: var(--text-muted); padding: 4px 8px; }
+
+/* ===== THEME TOGGLE ===== */
+.theme-toggle { 
+  all: unset; display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 6px 10px; border-radius: var(--radius-md); cursor: pointer;
+  font-size: 12px; color: var(--text-secondary);
+}
+.theme-toggle:hover { background: var(--hover); }
+
+/* ===== NUDGE MARKER ===== */
+.nudge-marker {
+  display: inline-block;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 9px;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+/* ===== SETTINGS SUB-MENU (accordion) ===== */
+.settings-toggle { position: relative; }
+.settings-toggle .expand-arrow {
+  margin-left: auto;
+  transition: transform 0.2s;
+  width: 14px; height: 14px;
+  stroke: currentColor; fill: none; stroke-width: 2;
+}
+.settings-toggle.expanded .expand-arrow { transform: rotate(90deg); }
+
+.settings-sub {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.25s ease;
+  padding-left: 4px;
+}
+.settings-sub.open { max-height: 500px; }
+
+.sub-nav-item {
+  all: unset;
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 12px 6px 28px;   /* indented */
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  width: 100%;
+  transition: background 0.15s, color 0.15s;
+}
+.sub-nav-item:hover { background: var(--hover); color: var(--text-secondary); }
+.sub-nav-item.active { background: var(--hover-strong); color: var(--accent); border: 1px solid rgba(99,102,241,0.2); }
+.sub-nav-item svg { width: 14px; height: 14px; flex-shrink: 0; stroke: currentColor; fill: none; stroke-width: 1.6; }
+.sub-nav-item .badge {
+  margin-left: auto;
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* ===== HIDE/SHOW ===== */
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<div class="app-layout">
+
+<!-- ========== SIDEBAR ========== -->
+<aside class="sidebar">
+  <div class="sidebar-brand">
+    <div class="sidebar-brand-inner">
+      <div class="sidebar-brand-star">✦</div>
+      <span>DS<em> Pick</em></span>
+    </div>
+  </div>
+
+  <div class="sidebar-nav">
+    <button onclick="newSession()">
+      <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+      新对话
+    </button>
+
+    <button class="active" data-panel="workspace" onclick="switchPanel('workspace')">
+      <svg viewBox="0 0 24 24"><path d="M4 6h16v12H4z M8 6V4h8v2"/></svg>
+      工作台
+    </button>
+
+    <!-- ===== SETTINGS ACCORDION ===== -->
+    <button class="settings-toggle" id="settingsToggle" onclick="toggleSettings()">
+      <svg viewBox="0 0 24 24"><path d="M4 14l4-4 4 4 8-8"/><path d="M4 20h16"/></svg>
+      设置
+      <svg class="expand-arrow" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>
+    </button>
+
+    <div class="settings-sub" id="settingsSub">
+      <button class="sub-nav-item" data-panel="api-key" onclick="switchPanel('api-key')">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v5l3 2"/></svg>
+        API Key
+      </button>
+      <button class="sub-nav-item" data-panel="mcp" onclick="switchPanel('mcp')">
+        <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="6" cy="6" r="1.5"/><circle cx="6" cy="12" r="1.5"/><circle cx="6" cy="18" r="1.5"/></svg>
+        MCP 服务器 <span class="badge">2</span>
+      </button>
+      <button class="sub-nav-item" data-panel="usage" onclick="switchPanel('usage')">
+        <svg viewBox="0 0 24 24"><path d="M3 20h18M5 16V8l4 5 4-8 4 6v5"/></svg>
+        用量仪表盘
+      </button>
+      <button class="sub-nav-item" data-panel="automation" onclick="switchPanel('automation')">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        自动化
+      </button>
+      <button class="sub-nav-item" data-panel="agents" onclick="switchPanel('agents')">
+        <svg viewBox="0 0 24 24"><circle cx="8" cy="8" r="3"/><circle cx="16" cy="8" r="3"/><path d="M5 16c0-3 6-3 6 0M11 16c0-3 6-3 6 0"/></svg>
+        子代理 <span class="badge" id="agentBadge" style="display:none">1</span>
+      </button>
+      <button class="sub-nav-item" data-panel="routing" onclick="switchPanel('routing')">
+        <svg viewBox="0 0 24 24"><path d="M12 2l3 6 6 1-4 4 1 6-6-3-6 3 1-6-4-4 6-1z"/></svg>
+        模型路由
+      </button>
+    </div>
+  </div>
+
+  <div class="sidebar-sessions">
+    <div class="sidebar-section-label">会话</div>
+    <div class="sidebar-session active"><button>📁 重构 desktop UI</button></div>
+    <div class="sidebar-session"><button>🐛 修复 CORS 问题</button></div>
+    <div class="sidebar-session"><button>📊 性能 profiling</button></div>
+  </div>
+
+  <div class="sidebar-footer">
+    <span class="status-dot connected"></span> 运行时就绪 · 127.0.0.1:7878
+  </div>
+  <button class="theme-toggle" onclick="toggleTheme()" style="border-top:1px solid var(--divider);border-radius:0;">
+    <svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.6;">
+      <circle cx="12" cy="12" r="5"/>
+      <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+    </svg>
+    暗色模式
+  </button>
+  <div class="sidebar-version">
+    DS Pick v0.2.0 · <code style="font-family:var(--font-mono)">deepseek</code> CLI
+  </div>
+</aside>
+
+<!-- ========== MAIN AREA ========== -->
+<div class="main-area">
+
+  <!-- ===== CHAT VIEW ===== -->
+  <div class="chat-view" id="chatView">
+
+    <!-- Message: user (with inline edit button) -->
+    <div class="msg user">
+      <div class="bubble">
+        <div class="bubble-header">
+          <span class="role-tag">你</span>
+          <button class="edit-btn" title="编辑此消息" onclick="showToast('✏️ 内联编辑：此功能在当前 demo 中模拟')">✎ 编辑</button>
+          <span style="margin-left:auto;display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text-muted);cursor:pointer" onclick="toggleMenu(event, 'msgMenu1')">⋯</span>
+          <div class="menu-dropdown" id="msgMenu1">
+            <button onclick="showToast('📋 已复制')">复制消息</button>
+            <button onclick="showToast('🗑️ 已删除')">删除</button>
+            <button onclick="showToast('📤 导出会话 JSON 功能开发中')">导出 JSON</button>
+          </div>
+        </div>
+        帮我重构 <code>crates/desktop/src/commands.rs</code>，把 workspace 相关逻辑抽到单独模块。
+      </div>
+    </div>
+
+    <!-- Message: assistant with ToolCard (agent_spawn) + Agent tracking -->
+    <div class="msg assistant">
+      <div class="bubble">
+        <div class="bubble-header"><span class="role-tag">DeepSeek</span></div>
+        我先分析现有代码结构。
+
+        <!-- ToolCard: agent_spawn with sub-agent status block -->
+        <div class="tool-card">
+          <div class="tool-header">
+            <span class="tool-name">agent_spawn</span>
+            <span class="tool-id">ag_7f3a1b</span>
+            <span class="tool-status done">done</span>
+          </div>
+          <pre>{"task": "analyze commands.rs structure", "agent_id": "ag_7f3a1b"}</pre>
+
+          <!-- === NEW: sub-agent live status block === -->
+          <div style="margin-top:8px;padding:8px;border-radius:6px;background:var(--hover);border:1px solid var(--divider);">
+            <div style="display:flex;align-items:center;gap:6px;font-size:11px;">
+              <span class="agent-dot done"></span>
+              <span style="color:var(--text-secondary)">子代理 ag_7f3a1b</span>
+              <span style="margin-left:auto;color:var(--success);font-size:10px;">已完成</span>
+            </div>
+            <div style="margin-top:4px;font-size:10px;color:var(--text-muted);">
+              3 次 tool call · 12.4k tokens · 8.2s
+            </div>
+            <div style="margin-top:6px;padding:6px;border-radius:4px;background:var(--canvas-alt);font-size:11px;color:var(--text-secondary);line-height:1.4;">
+              commands.rs 共 448 行，6 个 Tauri command，2 个 helper 函数。建议拆分为 workspace.rs（browse/read/binary）、session.rs（export JSON）、utils.rs（resolve/sniff_mime）。
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Message: assistant with TerminalCard -->
+    <div class="msg assistant">
+      <div class="bubble">
+        <div class="bubble-header"><span class="role-tag">DeepSeek</span></div>
+        先运行测试确认当前状态。
+
+        <!-- === NEW: TerminalCard (xterm.js simulation) === -->
+        <div class="terminal-card">
+          <div class="term-header">
+            <span class="term-dot r"></span><span class="term-dot y"></span><span class="term-dot g"></span>
+            <span style="flex:1;text-align:center;">exec_shell · cargo test --package desktop</span>
+            <span style="font-size:10px;">⏱ 3.2s</span>
+          </div>
+          <div class="term-line prompt">$ cargo test --package desktop</div>
+          <div class="term-line output">   Compiling deepseek-desktop v0.2.0</div>
+          <div class="term-line output">    <span style="color:#10b981;">Finished</span> test [unoptimized + debuginfo] in 1.42s</div>
+          <div class="term-line output">   Running tests\commands_tests.rs</div>
+          <div class="term-line output"></div>
+          <div class="term-line output"><span style="color:#10b981;">test result: ok.</span> 12 passed; 0 failed; 0 ignored</div>
+          <div class="term-line prompt">$</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Message: assistant with DiffCard -->
+    <div class="msg assistant">
+      <div class="bubble">
+        <div class="bubble-header"><span class="role-tag">DeepSeek</span></div>
+        创建新模块 <code>crates/desktop/src/workspace.rs</code>：
+
+        <!-- === NEW: DiffCard === -->
+        <div class="diff-card">
+          <div class="diff-header">📝 crates/desktop/src/workspace.rs (新建)</div>
+          <div class="diff-line add">+ use std::path::{Path, PathBuf};</div>
+          <div class="diff-line add">+ use anyhow::Result;</div>
+          <div class="diff-line add">+ </div>
+          <div class="diff-line add">+ pub fn resolve_under_workspace(root: &Path, rel: &str) -> Result<PathBuf> {</div>
+          <div class="diff-line add">+     let path = root.join(rel);</div>
+          <div class="diff-line add">+     // … canonicalize + bounds check</div>
+          <div class="diff-line add">+     Ok(path)</div>
+          <div class="diff-line add">+ }</div>
+        </div>
+
+        <div style="margin-top:8px;">
+          同时也从 <code>commands.rs</code> 删除对应代码：
+        </div>
+
+        <div class="diff-card">
+          <div class="diff-header">📝 crates/desktop/src/commands.rs</div>
+          <div class="diff-line ctx">  #[tauri::command]</div>
+          <div class="diff-line ctx">  pub async fn read_thread_workspace_binary(…)</div>
+          <div class="diff-line del">- fn resolve_under_workspace(root: &Path, rel: &str) → Result<PathBuf> {</div>
+          <div class="diff-line del">-     let path = root.join(rel);</div>
+          <div class="diff-line del">-     path.canonicalize()…</div>
+          <div class="diff-line del">- }</div>
+          <div class="diff-line del">- </div>
+          <div class="diff-line del">- fn sniff_mime(data: &[u8]) → String {</div>
+          <div class="diff-line del">-     if data.len() >= 8 …</div>
+          <div class="diff-line ctx">  }</div>
+          <div class="diff-line add">+ use crate::workspace::{resolve_under_workspace, sniff_mime};</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Message: assistant normal -->
+    <div class="msg assistant">
+      <div class="bubble">
+        <div class="bubble-header"><span class="role-tag">DeepSeek</span></div>
+        重构完成。我将 <code>resolve_under_workspace</code> 和 <code>sniff_mime</code> 抽到 <code>workspace.rs</code>，command 函数只保留 Tauri 特定的薄封装。需要我继续优化别的部分吗？
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ===== COMPOSER ===== -->
+  <div class="composer">
+    <div class="composer-inner">
+      <div style="position:relative;">
+        <div class="model-select" onclick="openModelParams()">
+          <span>🧠 V4 Pro</span>
+          <svg class="gear-icon" viewBox="0 0 24 24" onclick="event.stopPropagation();openModelParams()" title="模型参数">
+            <path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/>
+            <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
+          </svg>
+        </div>
+      </div>
+      <textarea rows="2" placeholder="输入你的问题… (Ctrl+K 命令面板 · Ctrl+N 新对话)"></textarea>
+      <button class="send-btn">发送</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== RIGHT PANEL ========== -->
+<div class="right-panel" id="rightPanel">
+
+  <!-- PANEL: Workspace (existing) -->
+  <div id="panel-workspace">
+    <div class="panel-header">
+      <svg class="panel-icon" viewBox="0 0 24 24"><path d="M4 6h16v12H4z M8 6V4h8v2"/></svg>
+      工作台
+      <!-- === NEW: Open in Explorer button === -->
+      <button class="explorer-btn" style="margin-left:auto;" onclick="showToast('📂 已在系统文件管理器中打开工作区根目录')" title="在资源管理器中打开">
+        <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+        打开文件夹
+      </button>
+    </div>
+    <div class="panel-tabs">
+      <button class="panel-tab active">文件</button>
+      <button class="panel-tab">快照恢复</button>
+    </div>
+    <div class="panel-body">
+      <div class="panel-card" style="font-size:12px;">
+        📁 crates/desktop/<br>
+        <span style="color:var(--text-muted);margin-left:16px;">├── src/</span><br>
+        <span style="color:var(--text-muted);margin-left:20px;">│ ├── <span style="color:var(--warning-text)">commands.rs</span></span><br>
+        <span style="color:var(--text-muted);margin-left:20px;">│ ├── <span style="color:var(--success)">workspace.rs</span> <span style="font-size:10px;color:var(--accent)">NEW</span></span><br>
+        <span style="color:var(--text-muted);margin-left:20px;">│ ├── sidecar.rs</span><br>
+        <span style="color:var(--text-muted);margin-left:20px;">│ └── main.rs</span><br>
+      </div>
+    </div>
+  </div>
+
+  <!-- PANEL: API Key (existing) -->
+  <div id="panel-api-key" class="hidden">
+    <div class="panel-header">
+      <svg class="panel-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v5l3 2"/></svg>
+      API Key
+    </div>
+    <div class="panel-body">
+      <div class="panel-card">
+        <div class="card-title">DeepSeek API Key</div>
+        <div class="card-meta">已配置 (sk-••••••••)</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PANEL: Settings (existing) -->
+  <div id="panel-settings" class="hidden">
+    <div class="panel-header">
+      <svg class="panel-icon" viewBox="0 0 24 24"><path d="M4 14l4-4 4 4 8-8"/><path d="M4 20h16"/></svg>
+      设置
+    </div>
+    <div class="panel-body">
+      <div class="panel-card">
+        <div class="card-title">运行时就绪</div>
+        <div class="card-meta">deepseek CLI · 127.0.0.1:7878</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== NEW: PANEL - MCP ===== -->
+  <div id="panel-mcp" class="hidden">
+    <div class="panel-header">
+      <svg class="panel-icon" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="6" cy="6" r="1.5"/><circle cx="6" cy="12" r="1.5"/><circle cx="6" cy="18" r="1.5"/></svg>
+      MCP 服务器
+      <span style="margin-left:auto;font-size:11px;color:var(--text-muted);">2 个已连接</span>
+    </div>
+    <div class="panel-body">
+
+      <!-- Mock MCP Server 1 -->
+      <div class="panel-card">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div class="card-title" style="flex:1;">GitHub API</div>
+          <span class="card-status connected">已连接</span>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+            <input type="checkbox" checked style="accent-color:var(--accent);"> 
+            <span style="font-size:10px;color:var(--text-muted);">启用</span>
+          </label>
+        </div>
+        <div class="card-meta">stdio · npx @anthropic/mcp-github</div>
+        <div style="margin-top:8px;font-size:11px;color:var(--text-muted);">
+          工具: create_issue, list_issues, get_pr, create_pr, search_code
+        </div>
+      </div>
+
+      <!-- Mock MCP Server 2 -->
+      <div class="panel-card">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div class="card-title" style="flex:1;">Filesystem</div>
+          <span class="card-status connected">已连接</span>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+            <input type="checkbox" checked style="accent-color:var(--accent);"> 
+            <span style="font-size:10px;color:var(--text-muted);">启用</span>
+          </label>
+        </div>
+        <div class="card-meta">stdio · npx @anthropic/mcp-filesystem</div>
+        <div style="margin-top:8px;font-size:11px;color:var(--text-muted);">
+          工具: read_file, write_file, edit_file, list_directory
+        </div>
+      </div>
+
+      <!-- Empty state hint -->
+      <div style="padding:20px;text-align:center;color:var(--text-muted);font-size:12px;">
+        <p style="margin-bottom:4px;">+ 添加 MCP 服务器</p>
+        <p style="font-size:10px;">在 <code>mcp.json</code> 中配置后自动发现</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== NEW: PANEL - USAGE DASHBOARD ===== -->
+  <div id="panel-usage" class="hidden">
+    <div class="panel-header">
+      <svg class="panel-icon" viewBox="0 0 24 24"><path d="M3 20h18M5 16V8l4 5 4-8 4 6v5"/></svg>
+      用量仪表盘
+      <select style="margin-left:auto;padding:4px 8px;font-size:11px;background:var(--input-bg);border:1px solid var(--input-border);border-radius:4px;color:var(--text-secondary);" onchange="showToast('切换分组维度: ' + this.value)">
+        <option>按日</option>
+        <option>按模型</option>
+        <option>按线程</option>
+      </select>
+    </div>
+    <div class="panel-body">
+      <div style="display:flex;gap:8px;">
+        <div class="panel-card" style="flex:1;text-align:center;">
+          <div class="big-num" style="font-size:22px;">248.6k</div>
+          <div class="stat-label">今日 Token</div>
+        </div>
+        <div class="panel-card" style="flex:1;text-align:center;">
+          <div class="big-num" style="font-size:22px;color:var(--warning);">¥0.34</div>
+          <div class="stat-label">估算费用</div>
+        </div>
+      </div>
+
+      <!-- Mock chart bars -->
+      <div style="margin-top:8px;">
+        <div style="font-size:11px;font-weight:600;color:var(--text-secondary);margin-bottom:8px;">Token 消耗 (按模型)</div>
+        <div class="usage-bar">
+          <span class="bar-label">V4 Pro</span>
+          <div class="bar-track"><div class="bar-fill model-a" style="width:75%"></div></div>
+          <span class="bar-val">186.5k</span>
+        </div>
+        <div class="usage-bar">
+          <span class="bar-label">V4 Flash</span>
+          <div class="bar-track"><div class="bar-fill model-b" style="width:25%"></div></div>
+          <span class="bar-val">62.1k</span>
+        </div>
+      </div>
+
+      <div style="margin-top:12px;font-size:10px;color:var(--text-muted);text-align:center;">
+        最近 7 天 · 昨: 312k · 前: 198k<br>
+        <span style="color:var(--accent);cursor:pointer;" onclick="showToast('跳转到完整用量仪表盘')">查看完整报告 →</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== NEW: PANEL - AUTOMATION (Tasks / Automations / Skills) ===== -->
+  <div id="panel-automation" class="hidden">
+    <div class="panel-header">
+      <svg class="panel-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      自动化
+    </div>
+    <div class="panel-tabs">
+      <button class="panel-tab active" onclick="switchAutomationTab(event, 'tasks')">任务</button>
+      <button class="panel-tab" onclick="switchAutomationTab(event, 'automations')">自动化</button>
+      <button class="panel-tab" onclick="switchAutomationTab(event, 'skills')">技能</button>
+    </div>
+    <div class="panel-body" id="automationBody">
+      <!-- Tasks tab -->
+      <div id="automation-tasks">
+        <div class="task-row">
+          <span class="task-id">task_01</span>
+          <span class="task-name">重构 desktop UI 组件</span>
+          <span class="task-badge running">运行中</span>
+        </div>
+        <div class="task-row">
+          <span class="task-id">task_02</span>
+          <span class="task-name">添加 MCP 管理面板</span>
+          <span class="task-badge done">完成</span>
+        </div>
+        <div class="task-row">
+          <span class="task-id">task_03</span>
+          <span class="task-name">CORS 配置跨平台测试</span>
+          <span class="task-badge running">运行中</span>
+        </div>
+        <div style="margin-top:12px;text-align:center;font-size:11px;color:var(--text-muted);cursor:pointer;" onclick="showToast('创建新任务…')">
+          + 新建任务
+        </div>
+      </div>
+      <!-- Automations tab -->
+      <div id="automation-automations" class="hidden">
+        <div class="panel-card">
+          <div class="card-title">每日代码审查</div>
+          <div class="card-meta">cron: 0 9 * * * · 下次: 明天 09:00</div>
+          <button style="all:unset;font-size:10px;color:var(--accent);cursor:pointer;margin-top:4px;" onclick="showToast('暂停自动化')">暂停</button>
+        </div>
+        <div class="panel-card">
+          <div class="card-title">每周 Release Notes 生成</div>
+          <div class="card-meta">cron: 0 10 * * 1 · 下次: 周一</div>
+        </div>
+      </div>
+      <!-- Skills tab -->
+      <div id="automation-skills" class="hidden">
+        <div class="panel-card skill-card">
+          <div class="skill-name">🐳 docker-compose</div>
+          <div class="skill-desc">Docker Compose 编排与服务管理</div>
+        </div>
+        <div class="panel-card skill-card">
+          <div class="skill-name">🦀 rust-refactor</div>
+          <div class="skill-desc">Rust 代码重构模式与最佳实践</div>
+        </div>
+        <div class="panel-card skill-card">
+          <div class="skill-name">🔐 security-audit</div>
+          <div class="skill-desc">安全审计与依赖漏洞扫描</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== NEW: PANEL - AGENTS ===== -->
+  <div id="panel-agents" class="hidden">
+    <div class="panel-header">
+      <svg class="panel-icon" viewBox="0 0 24 24"><circle cx="8" cy="8" r="3"/><circle cx="16" cy="8" r="3"/><path d="M5 16c0-3 6-3 6 0M11 16c0-3 6-3 6 0"/></svg>
+      子代理
+    </div>
+    <div class="panel-body">
+      <!-- Summary -->
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <div class="panel-card" style="flex:1;text-align:center;">
+          <span style="display:block;font-size:18px;font-weight:700;color:var(--amber);">0</span>
+          <span style="font-size:10px;color:var(--text-muted);">运行中</span>
+        </div>
+        <div class="panel-card" style="flex:1;text-align:center;">
+          <span style="display:block;font-size:18px;font-weight:700;color:var(--success);">1</span>
+          <span style="font-size:10px;color:var(--text-muted);">已完成</span>
+        </div>
+      </div>
+
+      <!-- Agent card: completed -->
+      <div class="panel-card" style="cursor:pointer;" onclick="this.querySelector('.agent-detail').classList.toggle('hidden')">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span class="agent-dot done"></span>
+          <span style="flex:1;font-size:13px;font-weight:500;">ag_7f3a1b</span>
+          <span style="font-size:10px;color:var(--success);">已完成</span>
+        </div>
+        <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">
+          analyze commands.rs · 3 tools · 12.4k tokens · 8.2s
+        </div>
+        <div class="agent-detail hidden" style="margin-top:8px;padding:6px;border-radius:4px;background:var(--canvas-alt);font-size:11px;line-height:1.5;">
+          <div style="color:var(--text-muted);">Tool calls:</div>
+          <div>1. read_file (commands.rs:1-50)</div>
+          <div>2. read_file (commands.rs:200-250)</div>
+          <div>3. grep_files (pattern: "fn ") </div>
+          <div style="margin-top:4px;color:var(--text-muted);">Result:</div>
+          <div style="color:var(--text-secondary);">建议拆分为 workspace.rs / session.rs / utils.rs</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== NEW: PANEL - MODEL ROUTING ===== -->
+  <div id="panel-routing" class="hidden">
+    <div class="panel-header">
+      <svg class="panel-icon" viewBox="0 0 24 24"><path d="M12 2l3 6 6 1-4 4 1 6-6-3-6 3 1-6-4-4 6-1z"/></svg>
+      模型路由
+    </div>
+    <div class="panel-body">
+      <!-- Rules -->
+      <div style="font-size:12px;font-weight:600;margin-bottom:8px;">路由规则</div>
+      <div class="route-rule">
+        <span class="route-intent">code</span>
+        <span class="route-arrow">→</span>
+        <span class="route-model">deepseek-v4-pro</span>
+        <button style="all:unset;margin-left:auto;font-size:10px;color:var(--text-muted);cursor:pointer;" onclick="showToast('删除规则')">✕</button>
+      </div>
+      <div class="route-rule">
+        <span class="route-intent">chat</span>
+        <span class="route-arrow">→</span>
+        <span class="route-model">deepseek-v4-flash</span>
+        <button style="all:unset;margin-left:auto;font-size:10px;color:var(--text-muted);cursor:pointer;" onclick="showToast('删除规则')">✕</button>
+      </div>
+      <div class="route-rule">
+        <span class="route-intent">research</span>
+        <span class="route-arrow">→</span>
+        <span class="route-model">deepseek-v4-pro</span>
+        <button style="all:unset;margin-left:auto;font-size:10px;color:var(--text-muted);cursor:pointer;" onclick="showToast('删除规则')">✕</button>
+      </div>
+      <div style="text-align:center;margin-top:8px;font-size:11px;color:var(--accent);cursor:pointer;" onclick="showToast('添加新路由规则')">+ 添加规则</div>
+
+      <!-- Route log -->
+      <div style="font-size:12px;font-weight:600;margin:16px 0 8px;">最近路由决策</div>
+      <div class="panel-card" style="padding:8px;font-size:11px;">
+        <div class="route-log">10:23 · "帮我重构 commands.rs" → <span style="color:var(--accent);">code</span> → v4-pro (置信度 0.92)</div>
+        <div class="route-log">10:18 · "解释 Rust trait" → <span style="color:var(--warning);">chat</span> → v4-flash (置信度 0.78)</div>
+        <div class="route-log">10:05 · "分析 Cargo.toml 依赖安全性" → <span style="color:var(--success);">research</span> → v4-pro (置信度 0.85)</div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /right-panel -->
+</div><!-- /app-layout -->
+
+<!-- ========== MODEL PARAMS MODAL ========== -->
+<div class="modal-overlay hidden" id="modelParamsModal">
+  <div class="modal">
+    <h3>⚙️ 模型参数</h3>
+    <div>
+      <label>模型</label>
+      <select>
+        <option>deepseek-v4-pro</option>
+        <option>deepseek-v4-flash</option>
+      </select>
+    </div>
+    <div>
+      <label>Temperature</label>
+      <div class="range-row">
+        <input type="range" min="0" max="2" step="0.1" value="0.7" oninput="this.parentElement.querySelector('.range-val').textContent=this.value">
+        <span class="range-val">0.7</span>
+      </div>
+    </div>
+    <div>
+      <label>Top P</label>
+      <div class="range-row">
+        <input type="range" min="0" max="1" step="0.05" value="0.9" oninput="this.parentElement.querySelector('.range-val').textContent=this.value">
+        <span class="range-val">0.9</span>
+      </div>
+    </div>
+    <div>
+      <label>Max Tokens</label>
+      <input type="number" min="256" max="65536" value="8192">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-ghost" onclick="closeModelParams()">取消</button>
+      <button class="btn-primary" onclick="showToast('✅ 参数已更新');closeModelParams()">应用</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== TOAST ========== -->
+<div id="toast" style="position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--card);border:1px solid var(--card-border);border-radius:var(--radius-pill);padding:8px 20px;font-size:13px;box-shadow:var(--shadow-md);z-index:200;display:none;transition:opacity 0.2s;"></div>
+
+<script>
+// ===== Panel Switching =====
+let settingsExpanded = false;
+
+function switchPanel(panelId) {
+  // Update top-level nav buttons (not sub-items)
+  document.querySelectorAll('.sidebar-nav > button[data-panel]').forEach(b => {
+    b.classList.toggle('active', b.dataset.panel === panelId);
+  });
+  // Update sub-nav items
+  document.querySelectorAll('.sub-nav-item[data-panel]').forEach(b => {
+    b.classList.toggle('active', b.dataset.panel === panelId);
+  });
+  // If switching to a sub-item panel, ensure settings is expanded
+  const isSubPanel = document.querySelector(`.sub-nav-item[data-panel="${panelId}"]`);
+  if (isSubPanel && !settingsExpanded) {
+    expandSettings(true);
+  }
+  // Show correct panel
+  document.querySelectorAll('#rightPanel > div').forEach(d => d.classList.add('hidden'));
+  const target = document.getElementById('panel-' + panelId);
+  if (target) target.classList.remove('hidden');
+}
+
+// ===== Settings Accordion =====
+function toggleSettings() {
+  expandSettings(!settingsExpanded);
+}
+
+function expandSettings(open) {
+  settingsExpanded = open;
+  const sub = document.getElementById('settingsSub');
+  const toggle = document.getElementById('settingsToggle');
+  if (open) {
+    sub.classList.add('open');
+    toggle.classList.add('expanded');
+  } else {
+    sub.classList.remove('open');
+    toggle.classList.remove('expanded');
+  }
+}
+
+// ===== Automation Sub-tab Switching =====
+function switchAutomationTab(event, tab) {
+  // Update tab buttons
+  event.target.parentElement.querySelectorAll('.panel-tab').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  // Show correct sub-panel
+  document.querySelectorAll('#automationBody > div').forEach(d => d.classList.add('hidden'));
+  document.getElementById('automation-' + tab).classList.remove('hidden');
+}
+
+// ===== Model Params Modal =====
+function openModelParams() {
+  document.getElementById('modelParamsModal').classList.remove('hidden');
+}
+function closeModelParams() {
+  document.getElementById('modelParamsModal').classList.add('hidden');
+}
+document.getElementById('modelParamsModal').addEventListener('click', function(e) {
+  if (e.target === this) closeModelParams();
+});
+
+// ===== Toast =====
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  t.style.opacity = '1';
+  clearTimeout(t._timeout);
+  t._timeout = setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.style.display = 'none', 200); }, 2000);
+}
+
+// ===== Dropdown Menus =====
+function toggleMenu(event, menuId) {
+  event.stopPropagation();
+  const menu = document.getElementById(menuId);
+  const wasOpen = menu.classList.contains('open');
+  document.querySelectorAll('.menu-dropdown.open').forEach(m => m.classList.remove('open'));
+  if (!wasOpen) menu.classList.add('open');
+}
+document.addEventListener('click', () => {
+  document.querySelectorAll('.menu-dropdown.open').forEach(m => m.classList.remove('open'));
+});
+
+// ===== Theme Toggle (模拟) =====
+function toggleTheme() {
+  showToast('主题切换（demo 保持暗色模式）');
+}
+
+// ===== New Session =====
+function newSession() {
+  showToast('✨ 新对话已创建');
+}
+
+// ===== Keyboard Shortcut Hints =====
+document.addEventListener('keydown', function(e) {
+  if (e.ctrlKey && e.key === 'k') { e.preventDefault(); showToast('⌨️ Ctrl+K: 命令面板（功能开发中）'); }
+  if (e.ctrlKey && e.key === 'n') { e.preventDefault(); newSession(); }
+});
+
+// ===== Show agent badge for demo =====
+document.getElementById('agentBadge').style.display = 'inline';
+</script>
+
+</body>
+</html>

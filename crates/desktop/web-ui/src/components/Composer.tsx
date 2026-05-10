@@ -6,8 +6,16 @@ import {
   useCallback,
 } from 'react';
 import { createPortal } from 'react-dom';
-import type { DesktopModelId, DesktopRunModeId } from '../types/desktop';
-import { DESKTOP_MODEL_LABELS, DESKTOP_RUN_MODE_HINTS, DESKTOP_RUN_MODE_LABELS } from '../types/desktop';
+import type { DesktopModelId, DesktopRouteIntentOption, DesktopRunModeId } from '../types/desktop';
+import {
+  DESKTOP_MODEL_LABELS,
+  DESKTOP_ROUTE_INTENT_HINTS,
+  DESKTOP_ROUTE_INTENT_LABELS,
+  DESKTOP_RUN_MODE_HINTS,
+  DESKTOP_RUN_MODE_LABELS,
+} from '../types/desktop';
+
+const ROUTE_INTENT_IDS: DesktopRouteIntentOption[] = ['off', 'follow_runmode', 'code', 'chat', 'research'];
 
 const MAX_FILE_BYTES = 128 * 1024; // 128 KB per file
 const MAX_ATTACHMENTS = 8;
@@ -262,12 +270,19 @@ interface Props {
   onAutoApproveChange: (value: boolean) => void;
   runMode: DesktopRunModeId;
   onRunModeChange: (mode: DesktopRunModeId) => void;
+  routeIntent: DesktopRouteIntentOption;
+  onRouteIntentChange: (v: DesktopRouteIntentOption) => void;
+  sessionExportEnabled: boolean;
+  threadExportEnabled: boolean;
+  onExportSessionJson: () => void;
+  onExportThreadJson: () => void;
   model: DesktopModelId;
   onModelChange: (model: DesktopModelId) => void;
   workspace: string;
   onWorkspaceChange: (ws: string) => void | Promise<void>;
   /** Session is bound to a restored runtime thread; workspace commits via PATCH when changed */
   resumedThreadActive?: boolean;
+  onOpenModelParams?: () => void;
 }
 
 export default function Composer({
@@ -278,16 +293,24 @@ export default function Composer({
   onAutoApproveChange,
   runMode,
   onRunModeChange,
+  routeIntent,
+  onRouteIntentChange,
+  sessionExportEnabled,
+  threadExportEnabled,
+  onExportSessionJson,
+  onExportThreadJson,
   model,
   onModelChange,
   workspace,
   onWorkspaceChange,
   resumedThreadActive = false,
+  onOpenModelParams,
 }: Props) {
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState<AttachedFile[]>([]);
   const [modelOpen, setModelOpen] = useState(false);
   const [runModeOpen, setRunModeOpen] = useState(false);
+  const [routeIntentOpen, setRouteIntentOpen] = useState(false);
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [workspaceInput, setWorkspaceInput] = useState(workspace);
   const [isPickingDir, setIsPickingDir] = useState(false);
@@ -301,6 +324,7 @@ export default function Composer({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const modelMenuRef = useRef<HTMLDivElement>(null);
   const runModeMenuRef = useRef<HTMLDivElement>(null);
+  const routeIntentMenuRef = useRef<HTMLDivElement>(null);
   const workspaceTriggerWrapRef = useRef<HTMLDivElement>(null);
   const workspacePopoverPanelRef = useRef<HTMLDivElement>(null);
 
@@ -384,6 +408,17 @@ export default function Composer({
   }, [runModeOpen]);
 
   useEffect(() => {
+    if (!routeIntentOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (routeIntentMenuRef.current && !routeIntentMenuRef.current.contains(e.target as Node)) {
+        setRouteIntentOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [routeIntentOpen]);
+
+  useEffect(() => {
     if (!workspaceOpen) return;
     const handler = (e: MouseEvent) => {
       const node = e.target as Node | null;
@@ -399,17 +434,18 @@ export default function Composer({
   }, [workspaceOpen]);
 
   useEffect(() => {
-    if (!modelOpen && !workspaceOpen && !runModeOpen) return;
+    if (!modelOpen && !workspaceOpen && !runModeOpen && !routeIntentOpen) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setModelOpen(false);
         setWorkspaceOpen(false);
         setRunModeOpen(false);
+        setRouteIntentOpen(false);
       }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [modelOpen, workspaceOpen, runModeOpen]);
+  }, [modelOpen, workspaceOpen, runModeOpen, routeIntentOpen]);
 
   const handleSend = () => {
     if ((!text.trim() && attachments.length === 0) || disabled) return;
@@ -428,12 +464,58 @@ export default function Composer({
     }
   };
 
+  /** Smart paste: strip HTML formatting, auto-wrap code blocks, inject plain text. */
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const html = e.clipboardData.getData('text/html');
+    if (html) {
+      e.preventDefault();
+
+      // Strip HTML → plain text
+      const tmp = document.createElement('div');
+      tmp.innerHTML = html;
+      let pasted = tmp.textContent || tmp.innerText || '';
+
+      // Guess if it looks like code (contains braces, indentation, semicolons, etc.)
+      const looksLikeCode =
+        /[{}\[\]()]/.test(pasted) &&
+        (pasted.includes('\n') || pasted.includes(';') || /^\s{2,}/m.test(pasted));
+
+      if (looksLikeCode) {
+        // Auto-wrap in Markdown code fence
+        const lang = guessCodeLanguage(pasted);
+        pasted = `\`\`\`${lang}\n${pasted.trim()}\n\`\`\``;
+      }
+
+      // Insert at cursor position
+      const ta = e.currentTarget;
+      const start = ta.selectionStart;
+      const end = ta.selectionEnd;
+      const before = text.slice(0, start);
+      const after = text.slice(end);
+      setText(before + pasted + after);
+
+      // Restore cursor after the pasted text
+      requestAnimationFrame(() => {
+        const newPos = start + pasted.length;
+        ta.setSelectionRange(newPos, newPos);
+      });
+    }
+  };
+
   const selectRunMode = useCallback(
     (m: DesktopRunModeId) => {
       onRunModeChange(m);
       setRunModeOpen(false);
     },
     [onRunModeChange],
+  );
+
+  const selectRouteIntent = useCallback(
+    (v: DesktopRouteIntentOption) => {
+      onRouteIntentChange(v);
+      setRouteIntentOpen(false);
+    },
+    [onRouteIntentChange],
   );
 
   const selectModel = useCallback(
@@ -651,6 +733,67 @@ export default function Composer({
                 </div>
               )}
             </div>
+            <div className="hidden h-4 w-px shrink-0 bg-divider sm:block" aria-hidden />
+            <div className="relative" ref={routeIntentMenuRef}>
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => setRouteIntentOpen((o) => !o)}
+                aria-expanded={routeIntentOpen}
+                aria-haspopup="listbox"
+                title={DESKTOP_ROUTE_INTENT_HINTS[routeIntent]}
+                className="pill-btn font-medium text-t-text-secondary max-w-[min(100vw-4rem,14rem)]"
+              >
+                <span className="truncate">{DESKTOP_ROUTE_INTENT_LABELS[routeIntent]}</span>
+                <svg viewBox="0 0 24 24" style={{ width: 12, height: 12 }} className="shrink-0">
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </button>
+              {routeIntentOpen && (
+                <div
+                  className="absolute bottom-full left-0 z-[10040] mb-1 w-[min(100vw-2rem,22rem)] max-w-[360px] rounded-lg border border-card-border bg-card p-1.5 shadow-lg ring-1 ring-black/[0.06] dark:ring-white/[0.08]"
+                  role="listbox"
+                  aria-label="路由意图（routing_rules.json）"
+                >
+                  {ROUTE_INTENT_IDS.map((id) => (
+                    <button
+                      key={id}
+                      type="button"
+                      role="option"
+                      aria-selected={id === routeIntent}
+                      title={DESKTOP_ROUTE_INTENT_HINTS[id]}
+                      onClick={() => selectRouteIntent(id)}
+                      className={`flex w-full flex-col gap-0.5 rounded-md px-3 py-2 text-left text-sm transition-colors ${
+                        id === routeIntent ? 'bg-accent-soft text-accent' : 'text-t-text hover:bg-hover'
+                      }`}
+                    >
+                      <span className="font-medium">{DESKTOP_ROUTE_INTENT_LABELS[id]}</span>
+                      <span className="text-[11px] leading-snug text-t-text-muted">{DESKTOP_ROUTE_INTENT_HINTS[id]}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+              <button
+                type="button"
+                disabled={!sessionExportEnabled}
+                onClick={onExportSessionJson}
+                title="导出当前侧栏会话快照（与 ~/.deepseek/sessions 一致）"
+                className="pill-btn text-[11px] font-medium disabled:opacity-40"
+              >
+                导出会话 JSON
+              </button>
+              <button
+                type="button"
+                disabled={!threadExportEnabled}
+                onClick={onExportThreadJson}
+                title="导出运行时线程 JSON（ThreadRecord）"
+                className="pill-btn text-[11px] font-medium disabled:opacity-40"
+              >
+                导出线程 JSON
+              </button>
+            </div>
           </div>
         <div className="card overflow-visible">
           {attachments.length > 0 && (
@@ -689,6 +832,8 @@ export default function Composer({
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
+            aria-label="输入消息"
             placeholder="今天需要什么帮助？"
             disabled={disabled}
             rows={2}
@@ -753,6 +898,19 @@ export default function Composer({
                   <path d="M6 9l6 6 6-6" />
                 </svg>
               </button>
+              {onOpenModelParams && (
+                <button
+                  type="button"
+                  className="pill-btn px-2"
+                  title="模型参数"
+                  onClick={(e) => { e.stopPropagation(); onOpenModelParams(); }}
+                >
+                  <svg viewBox="0 0 24 24" style={{ width: 14, height: 14, stroke: 'currentColor', fill: 'none', strokeWidth: 1.6 }}>
+                    <path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/>
+                    <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
+                  </svg>
+                </button>
+              )}
               {modelOpen && (
                 <div
                   className="absolute bottom-full left-0 z-[10040] mb-1 w-48 rounded-lg border border-card-border bg-card p-1.5 shadow-lg ring-1 ring-black/[0.06] dark:ring-white/[0.08]"
@@ -825,4 +983,20 @@ export default function Composer({
       {workspacePopover}
     </>
   );
+}
+
+/** Guess a programming language from paste content for Markdown fence. */
+function guessCodeLanguage(code: string): string {
+  if (/^#include|^int main|->/.test(code)) return 'cpp';
+  if (/^use |^fn |^let |^mut |^impl |^pub /.test(code) || /::/.test(code)) return 'rust';
+  if (/^import |^from |^def |^class |^if __name__/.test(code)) return 'python';
+  if (/^import |^export |^const |^function |^interface |^type /.test(code) || /=>/.test(code))
+    return 'typescript';
+  if (/<\/?[a-z]+/.test(code) || /style=/.test(code)) return 'html';
+  if (/[{]/.test(code) && /[;]/.test(code) && /console\./.test(code)) return 'javascript';
+  if (/^SELECT|^INSERT|^UPDATE|^CREATE TABLE/i.test(code)) return 'sql';
+  if (/^#!\/bin\//.test(code) || /^echo /.test(code)) return 'bash';
+  if (/^package |^import /.test(code) && /;/.test(code)) return 'java';
+  if (/^module |^require /.test(code)) return 'ruby';
+  return '';
 }

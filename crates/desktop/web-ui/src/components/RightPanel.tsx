@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { invoke as InvokeFn } from '@tauri-apps/api/core';
 import ApiKeyForm from './ApiKeyForm';
+import McpPanel from './McpPanel';
+import UsageDashboard from './UsageDashboard';
+import AutomationPanel from './AutomationPanel';
+import AgentPanel from './AgentPanel';
+import RoutingPanel from './RoutingPanel';
+import type { AgentState } from '../types/agent';
 import {
   PreviewContainer,
   PreviewDispatcher,
@@ -13,7 +20,15 @@ import {
   restoreThreadSnapshot,
 } from '../api/client';
 
-export type RightPanelView = 'workspace' | 'api-key' | 'settings';
+export type RightPanelView =
+  | 'workspace'
+  | 'api-key'
+  | 'settings'
+  | 'mcp'
+  | 'usage'
+  | 'tasks-skills'
+  | 'agents'
+  | 'routing';
 
 export type WorkspaceTabId = 'restore' | 'files';
 
@@ -65,12 +80,18 @@ interface Props {
   openWorkspaceFile: (relPath: string, title?: string) => Promise<void>;
   /** Bumped when parent wants the workspace panel to show the Files tab (e.g. chat link). */
   focusFilesNonce: number;
+  agentStates: AgentState[];
 }
 
 const panelTitles: Record<RightPanelView, string> = {
   workspace: '工作台',
   'api-key': 'API Key',
   settings: '设置',
+  mcp: 'MCP 服务器',
+  usage: '用量仪表盘',
+  'tasks-skills': '任务与技能',
+  agents: '子代理',
+  routing: '模型路由',
 };
 
 function tabBtn(active: boolean) {
@@ -124,6 +145,7 @@ export default function RightPanel({
   onClosePreview,
   openWorkspaceFile,
   focusFilesNonce,
+  agentStates,
 }: Props) {
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTabId>(() => {
     try {
@@ -374,7 +396,7 @@ export default function RightPanel({
         aria-label="拖拽调整面板宽度"
         tabIndex={0}
         className={`w-1.5 shrink-0 cursor-col-resize touch-none select-none transition-colors ${
-          panelResizing ? 'bg-accent/30' : 'hover:bg-accent/20'
+          panelResizing ? 'bg-divider/80' : 'hover:bg-divider/50'
         }`}
         onPointerDown={onResizePointerDown}
         onPointerMove={onResizePointerMove}
@@ -398,11 +420,31 @@ export default function RightPanel({
         }}
       />
       <aside
-        className="flex min-w-0 shrink-0 flex-col border-l border-divider bg-card overflow-hidden"
+        className="flex min-w-0 shrink-0 flex-col border-l border-rail-edge bg-canvas overflow-hidden"
         style={{ width: panelWidth }}
       >
-      <div className="flex shrink-0 items-center border-b border-divider px-4 py-3">
+      <div className="flex shrink-0 items-center border-b border-divider/60 px-4 py-3">
         <h2 className="flex-1 text-sm font-semibold text-t-text">{panelTitles[view]}</h2>
+        {view === 'workspace' && desktopHost && (
+          <button
+            type="button"
+            className="ml-auto px-2 py-1 text-[10px] text-t-text-muted hover:text-t-text hover:bg-hover rounded transition-colors"
+            title="在文件管理器中打开工作区"
+            onClick={async () => {
+              try {
+                const { invoke } = await import('@tauri-apps/api/core');
+                await invoke('open_in_shell', { path: workspaceRoot });
+              } catch {
+                /* ignore */
+              }
+            }}
+          >
+            <svg viewBox="0 0 24 24" className="inline w-3.5 h-3.5 mr-1 stroke-current" style={{ fill: 'none', strokeWidth: 1.6 }}>
+              <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
+            </svg>
+            打开文件夹
+          </button>
+        )}
       </div>
 
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden text-sm text-t-text">
@@ -428,7 +470,7 @@ export default function RightPanel({
             ) : (
               <>
                 <div
-                  className="shrink-0 flex border-b border-divider bg-card"
+                  className="shrink-0 flex border-b border-divider/60 bg-canvas-alt"
                   role="tablist"
                   aria-label="工作台分区"
                 >
@@ -647,6 +689,16 @@ export default function RightPanel({
             )}
           </div>
         )}
+
+        {view === 'mcp' && <McpPanel runtimeConn={runtimeConn} />}
+
+        {view === 'usage' && <UsageDashboard runtimeConn={runtimeConn} />}
+
+        {view === 'tasks-skills' && <AutomationPanel runtimeConn={runtimeConn} />}
+
+        {view === 'agents' && <AgentPanel agents={agentStates} />}
+
+        {view === 'routing' && <RoutingPanel runtimeConn={runtimeConn} />}
 
         {view === 'settings' && (
           <div className="p-4 space-y-4 overflow-y-auto">

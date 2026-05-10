@@ -90,28 +90,38 @@ export function ChatMarkdown({
 
   const proseUser =
     variant === 'user'
-      ? `prose-a:text-inherit prose-a:underline-offset-2 prose-a:decoration-2
-         prose-code:bg-white/20 prose-code:text-inherit`
+      ? `prose-a:text-accent prose-a:underline-offset-2 prose-a:decoration-2
+         prose-code:bg-canvas-alt prose-code:text-t-text`
       : '';
 
   const className = useMemo(
     () =>
       [
-        'chat-md-wrap text-sm leading-relaxed break-words',
-        'prose prose-sm max-w-none font-display',
-        'prose-headings:font-ui prose-headings:font-semibold prose-headings:my-2',
-        'prose-p:my-1.5 prose-p:leading-relaxed',
+        'chat-md-wrap break-words',
+        variant === 'user' ? 'prose prose-sm max-w-none' : 'prose prose-base max-w-none',
+        'font-display',
+        'prose-headings:font-display prose-headings:font-semibold prose-headings:tracking-tight',
+        variant === 'user' ? 'prose-headings:my-2' : 'prose-headings:my-3',
+        variant === 'user'
+          ? 'prose-p:my-1.5 prose-p:leading-relaxed'
+          : 'prose-p:my-2 prose-p:leading-[1.65]',
         'prose-code:font-mono prose-code:text-[0.9em] prose-code:px-1 prose-code:py-0.5 prose-code:rounded',
         'prose-pre:my-2 prose-pre:p-0 prose-pre:bg-transparent prose-pre:border-0',
-        'prose-ul:my-2 prose-ol:my-2',
+        variant === 'user' ? 'prose-ul:my-2 prose-ol:my-2' : 'prose-ul:my-3 prose-ol:my-3',
         'prose-li:my-0.5',
         'prose-strong:font-semibold',
         variant === 'user'
           ? 'prose-headings:text-inherit prose-p:text-inherit prose-li:text-inherit prose-strong:text-inherit prose-code:text-inherit prose-th:text-inherit prose-td:text-inherit'
-          : 'prose-headings:text-t-text prose-p:text-t-text prose-li:text-t-text prose-strong:text-t-text',
+          : [
+              'dark:prose-invert',
+              'prose-headings:text-t-text prose-p:text-t-text prose-li:text-t-text prose-ol:text-t-text prose-ul:text-t-text prose-strong:text-t-text',
+              'prose-th:text-t-text prose-td:text-t-text',
+              'prose-blockquote:text-t-text-secondary prose-blockquote:border-divider',
+              'prose-hr:border-divider',
+            ].join(' '),
         variant === 'user' ? '' : 'prose-code:bg-canvas-alt prose-code:text-t-text',
         variant === 'user'
-          ? 'prose-a:text-inherit prose-a:underline'
+          ? 'prose-a:text-accent prose-a:underline hover:prose-a:text-accent-hover'
           : 'prose-a:text-accent prose-a:no-underline hover:prose-a:underline',
         proseUser,
         isStreaming ? 'streaming-cursor' : '',

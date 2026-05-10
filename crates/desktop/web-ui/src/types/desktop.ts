@@ -20,6 +20,45 @@ export function parseDesktopRunModeId(raw: unknown): DesktopRunModeId | undefine
   return undefined;
 }
 
+/**
+ * Optional intent passed as `route_intent` on thread/stream turns.
+ * Runtime matches against `~/.deepseek/routing_rules.json` (RoutingPanel).
+ */
+export type DesktopRouteIntentOption = 'off' | 'follow_runmode' | 'code' | 'chat' | 'research';
+
+export function parseDesktopRouteIntentOption(raw: unknown): DesktopRouteIntentOption | undefined {
+  if (raw === 'off' || raw === 'follow_runmode' || raw === 'code' || raw === 'chat' || raw === 'research') {
+    return raw;
+  }
+  return undefined;
+}
+
+export const DESKTOP_ROUTE_INTENT_LABELS: Record<DesktopRouteIntentOption, string> = {
+  off: '路由：关闭',
+  follow_runmode: '路由：跟随模式',
+  code: '路由：code',
+  chat: '路由：chat',
+  research: '路由：research',
+};
+
+export const DESKTOP_ROUTE_INTENT_HINTS: Record<DesktopRouteIntentOption, string> = {
+  off: '不向运行时发送 route_intent（仅用 Composer 所选模型）',
+  follow_runmode: '将当前 Plan / Agent / YOLO 作为意图传给 routing_rules.json',
+  code: '固定意图 code（用于路由规则匹配）',
+  chat: '固定意图 chat',
+  research: '固定意图 research',
+};
+
+/** Resolved value for API; omit field when `undefined`. */
+export function resolveRouteIntentForApi(
+  opt: DesktopRouteIntentOption,
+  runMode: DesktopRunModeId,
+): string | undefined {
+  if (opt === 'off') return undefined;
+  if (opt === 'follow_runmode') return runMode;
+  return opt;
+}
+
 export type DesktopModelId = 'deepseek-v4-pro' | 'deepseek-v4-flash';
 
 export const DESKTOP_MODEL_LABELS: Record<DesktopModelId, string> = {

@@ -15,6 +15,7 @@ import {
   probeRuntimeConnection,
   initRuntimeConfig,
   getRuntimeBase,
+  fetchJson,
   type RuntimeConnectionState,
   type SessionInfo,
   type SseTurnEvent,
@@ -27,12 +28,18 @@ import ApprovalDialog from './components/ApprovalDialog';
 import RightPanel, { type RightPanelView } from './components/RightPanel';
 import { loadWorkspaceFileIntoPreview } from './lib/openWorkspaceFile';
 import type { PreviewState } from './components/preview/types';
+import ModelParamsDialog, { type ModelParams } from './components/ModelParamsDialog';
+import type { AgentState } from './types/agent';
+import useKeyboardShortcuts from './hooks/useKeyboardShortcuts';
 import { streamFlagsForRunMode } from './lib/runtimeMode';
 import {
   type DesktopModelId,
+  type DesktopRouteIntentOption,
   type DesktopRunModeId,
   parseDesktopModelId,
+  parseDesktopRouteIntentOption,
   parseDesktopRunModeId,
+  resolveRouteIntentForApi,
 } from './types/desktop';
 
 /**
@@ -150,6 +157,18 @@ function loadTheme(): Theme {
 
 const ACTIVE_SESSION_STORAGE_KEY = 'deepseek-desktop-active-session-id';
 const ACTIVE_INSPECTOR_STORAGE_KEY = 'deepseek-desktop-active-inspector';
+const ROUTE_INTENT_STORAGE_KEY = 'deepseek-desktop-route-intent';
+
+/** Periodically persist session file during streaming (loss reduction vs turn-only persist). */
+const SESSION_CHECKPOINT_MS = 18_000;
+
+function loadRouteIntentPreference(): DesktopRouteIntentOption {
+  try {
+    return parseDesktopRouteIntentOption(localStorage.getItem(ROUTE_INTENT_STORAGE_KEY)) ?? 'off';
+  } catch {
+    return 'off';
+  }
+}
 
 function loadStoredActiveSessionId(): string | null {
   try {
@@ -162,8 +181,25 @@ function loadStoredActiveSessionId(): string | null {
 
 function loadStoredInspector(): RightPanelView {
   try {
-    const s = localStorage.getItem(ACTIVE_INSPECTOR_STORAGE_KEY);
-    if (s === 'workspace' || s === 'api-key' || s === 'settings') {
+    let s = localStorage.getItem(ACTIVE_INSPECTOR_STORAGE_KEY);
+    if (s === 'automation') {
+      s = 'tasks-skills';
+      try {
+        localStorage.setItem(ACTIVE_INSPECTOR_STORAGE_KEY, 'tasks-skills');
+      } catch {
+        /* ignore */
+      }
+    }
+    if (
+      s === 'workspace' ||
+      s === 'api-key' ||
+      s === 'settings' ||
+      s === 'mcp' ||
+      s === 'usage' ||
+      s === 'tasks-skills' ||
+      s === 'agents' ||
+      s === 'routing'
+    ) {
       return s;
     }
   } catch {
@@ -195,13 +231,22 @@ export default function App() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [autoApprove, setAutoApprove] = useState(true);
   const [runMode, setRunMode] = useState<DesktopRunModeId>(() => loadRunModePreference());
+  const [routeIntent, setRouteIntent] = useState<DesktopRouteIntentOption>(() => loadRouteIntentPreference());
   const [approval, setApproval] = useState<ApprovalState | null>(null);
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [panelPreview, setPanelPreview] = useState<PreviewState | null>(null);
   const [focusWorkspaceFilesNonce, setFocusWorkspaceFilesNonce] = useState(0);
+  const [agentStates, setAgentStates] = useState<AgentState[]>([]);
+  const [modelParamsOpen, setModelParamsOpen] = useState(false);
+  const [modelParams, setModelParams] = useState<ModelParams>({ temperature: 0.7, topP: 0.9, maxTokens: 8192 });
   const [desktopHost, setDesktopHost] = useState(false);
   const [desktopApiKeyConfigured, setDesktopApiKeyConfigured] = useState<boolean | null>(null);
   const [runtimeConn, setRuntimeConn] = useState<RuntimeConnectionState>('checking');
+
+  useKeyboardShortcuts([
+    { key: 'k', ctrl: true, description: '新对话', handler: () => handleNewSession() },
+    { key: 'n', ctrl: true, description: '工作台', handler: () => setActiveInspector('workspace') },
+  ]);
 
   const eventAbortRef = useRef<AbortController | null>(null);
   const threadTurnRef = useRef<{ threadId: string; turnId: string }>({
@@ -244,6 +289,14 @@ export default function App() {
       /* ignore */
     }
   }, [runMode]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(ROUTE_INTENT_STORAGE_KEY, routeIntent);
+    } catch {
+      /* ignore */
+    }
+  }, [routeIntent]);
 
   useEffect(() => {
     try {
@@ -292,6 +345,60 @@ export default function App() {
       reconcileRuntimeAfterFetchFailure();
     }
   }, [reconcileRuntimeAfterFetchFailure]);
+
+  /** Checkpoint session JSON during long streams / tab hide (best-effort). */
+  useEffect(() => {
+    if (!streaming || !resumedThreadId) {
+      return;
+    }
+    const tid = resumedThreadId;
+    const tick = () => {
+      void (async () => {
+        try {
+          const res = await persistThreadSession(tid, activeSessionIdRef.current);
+          setActiveSessionId(res.session_id);
+          try {
+            localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, res.session_id);
+          } catch {
+            /* ignore */
+          }
+          await refreshSessions();
+        } catch {
+          /* avoid toast spam — turn-complete persist will retry */
+        }
+      })();
+    };
+    const id = window.setInterval(tick, SESSION_CHECKPOINT_MS);
+    return () => window.clearInterval(id);
+  }, [streaming, resumedThreadId, refreshSessions]);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState !== 'hidden') {
+        return;
+      }
+      if (!streaming || !resumedThreadId) {
+        return;
+      }
+      const tid = resumedThreadId;
+      void (async () => {
+        try {
+          const res = await persistThreadSession(tid, activeSessionIdRef.current);
+          setActiveSessionId(res.session_id);
+          try {
+            localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, res.session_id);
+          } catch {
+            /* ignore */
+          }
+          await refreshSessions();
+        } catch {
+          /* ignore */
+        }
+      })();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [streaming, resumedThreadId, refreshSessions]);
 
   const retryConnectAndSessions = useCallback(async () => {
     setBanner(null);
@@ -594,6 +701,70 @@ export default function App() {
     [openWorkspaceFileForPreview],
   );
 
+  const handleExportSessionJson = useCallback(async () => {
+    if (!activeSessionId) {
+      setBanner('导出会话快照请先在侧栏选中一条会话');
+      return;
+    }
+    const sid = activeSessionId;
+    try {
+      const { save } = await import('@tauri-apps/plugin-dialog');
+      const { invoke } = await import('@tauri-apps/api/core');
+      const savePath = await save({
+        title: '导出会话 JSON（与 ~/.deepseek/sessions 快照一致）',
+        defaultPath: `deepseek-session-${sid.slice(0, 8)}.json`,
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      });
+      if (!savePath) return;
+      await invoke('export_session_json', { sessionId: sid, savePath });
+    } catch {
+      try {
+        const data = await getSessionDetail(sid);
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `deepseek-session-${sid.slice(0, 8)}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch {
+        setBanner('导出失败：无法获取会话数据');
+      }
+    }
+  }, [activeSessionId]);
+
+  const handleExportThreadJson = useCallback(async () => {
+    if (!resumedThreadId) {
+      setBanner('导出线程 JSON 需要先恢复运行时线程（继续对话后即有线程 ID）');
+      return;
+    }
+    const tid = resumedThreadId;
+    try {
+      const { save } = await import('@tauri-apps/plugin-dialog');
+      const { invoke } = await import('@tauri-apps/api/core');
+      const savePath = await save({
+        title: '导出线程 JSON（运行时 ThreadRecord）',
+        defaultPath: `deepseek-thread-${tid.slice(0, 8)}.json`,
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      });
+      if (!savePath) return;
+      await invoke('export_thread_json', { threadId: tid, savePath });
+    } catch {
+      try {
+        const data = await fetchJson(`/v1/threads/${encodeURIComponent(tid)}`);
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `deepseek-thread-${tid.slice(0, 8)}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch {
+        setBanner('导出失败：无法获取线程数据');
+      }
+    }
+  }, [resumedThreadId]);
+
   const handleSend = useCallback(
     async (outbound: ComposerOutboundMessage) => {
       if (!outbound.apiPrompt.trim() || streaming) return;
@@ -775,6 +946,60 @@ export default function App() {
             );
             setBanner(norm.message || '流式错误');
             break;
+          case 'agent_spawned':
+            setAgentStates((prev) => {
+              const exists = prev.some((a) => a.agentId === norm.agentId);
+              if (exists) return prev;
+              return [
+                ...prev,
+                {
+                  agentId: norm.agentId,
+                  status: 'spawned',
+                  toolCalls: [],
+                  resultSummary: null,
+                  tokens: 0,
+                  spawnedAt: Date.now(),
+                  completedAt: null,
+                },
+              ];
+            });
+            break;
+          case 'agent_progress':
+            setAgentStates((prev) =>
+              prev.map((a) =>
+                a.agentId === norm.agentId ? { ...a, status: 'running' as const } : a,
+              ),
+            );
+            break;
+          case 'agent_completed':
+            setAgentStates((prev) =>
+              prev.map((a) =>
+                a.agentId === norm.agentId
+                  ? { ...a, status: 'completed' as const, resultSummary: norm.result, completedAt: Date.now() }
+                  : a,
+              ),
+            );
+            break;
+          case 'agent_list':
+            setAgentStates((prev) => {
+              const now = Date.now();
+              return norm.agents.map((a) => {
+                const existing = prev.find((e) => e.agentId === a.id);
+                if (existing) return existing;
+                return {
+                  agentId: a.id,
+                  status: a.status === 'Completed' ? 'completed' as const
+                    : a.status === 'Interrupted' ? 'interrupted' as const
+                    : 'running' as const,
+                  toolCalls: [],
+                  resultSummary: null,
+                  tokens: 0,
+                  spawnedAt: now,
+                  completedAt: a.status === 'Completed' ? now : null,
+                };
+              });
+            });
+            break;
           default:
             break;
         }
@@ -809,6 +1034,7 @@ export default function App() {
       };
 
       const streamOpts = streamFlagsForRunMode(runMode, autoApprove);
+      const routeIntentApi = resolveRouteIntentForApi(routeIntent, runMode);
 
       try {
         if (resumedThreadId) {
@@ -825,6 +1051,7 @@ export default function App() {
             allow_shell: streamOpts.allow_shell,
             trust_mode: streamOpts.trust_mode,
             auto_approve: streamOpts.auto_approve,
+            ...(routeIntentApi != null ? { route_intent: routeIntentApi } : {}),
           });
           if (signal.aborted) {
             finishOnce();
@@ -853,6 +1080,7 @@ export default function App() {
               allow_shell: streamOpts.allow_shell,
               trust_mode: streamOpts.trust_mode,
               auto_approve: streamOpts.auto_approve,
+              ...(routeIntentApi != null ? { route_intent: routeIntentApi } : {}),
             },
             (ev) => onSseEvent(ev),
             () => finishOnce(),
@@ -868,7 +1096,16 @@ export default function App() {
         handleHttpError(e as Error & { status?: number });
       }
     },
-    [streaming, resumedThreadId, autoApprove, runMode, selectedModel, selectedWorkspace, refreshSessions],
+    [
+      streaming,
+      resumedThreadId,
+      autoApprove,
+      runMode,
+      routeIntent,
+      selectedModel,
+      selectedWorkspace,
+      refreshSessions,
+    ],
   );
 
   const handleApproveDecision = async (decision: 'approve' | 'deny') => {
@@ -898,7 +1135,9 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen w-screen bg-canvas">
+    <div className="flex flex-col h-screen w-screen bg-canvas">
+      <TitleBar />
+      <div className="flex flex-1 min-h-0">
       <ApprovalDialog
         open={approval != null}
         toolName={approval?.toolName ?? ''}
@@ -921,7 +1160,7 @@ export default function App() {
         theme={theme}
         onToggleTheme={toggleTheme}
       />
-      <div className="flex flex-1 flex-col min-w-0 border-r border-divider">
+      <div className="flex min-h-0 flex-1 flex-col min-w-0">
         {banner && (
           <div className="shrink-0 border-b border-divider bg-amber-bg px-4 py-2 text-sm text-amber-text">
             {banner}
@@ -951,11 +1190,18 @@ export default function App() {
           onAutoApproveChange={setAutoApprove}
           runMode={runMode}
           onRunModeChange={setRunMode}
+          routeIntent={routeIntent}
+          onRouteIntentChange={setRouteIntent}
+          sessionExportEnabled={Boolean(activeSessionId)}
+          threadExportEnabled={Boolean(resumedThreadId)}
+          onExportSessionJson={() => void handleExportSessionJson()}
+          onExportThreadJson={() => void handleExportThreadJson()}
           model={selectedModel}
           onModelChange={setSelectedModel}
           workspace={selectedWorkspace}
           onWorkspaceChange={handleComposerWorkspaceChange}
           resumedThreadActive={resumedThreadId != null && resumedThreadId.length > 0}
+          onOpenModelParams={() => setModelParamsOpen(true)}
         />
       </div>
       <RightPanel
@@ -987,7 +1233,74 @@ export default function App() {
         onClosePreview={closePanelPreview}
         openWorkspaceFile={openWorkspaceFileForPreview}
         focusFilesNonce={focusWorkspaceFilesNonce}
+        agentStates={agentStates}
       />
+      <ModelParamsDialog
+        open={modelParamsOpen}
+        onClose={() => setModelParamsOpen(false)}
+        onApply={(p) => { setModelParams(p); setModelParamsOpen(false); }}
+        initial={modelParams}
+      />
+    </div>
+      </div>
+  );
+}
+
+function TitleBar() {
+  const handleMinimize = () => {
+    import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
+      getCurrentWindow().minimize();
+    }).catch(() => {});
+  };
+  const handleToggleMaximize = () => {
+    import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
+      const w = getCurrentWindow();
+      w.isMaximized().then((max) => max ? w.unmaximize() : w.maximize());
+    }).catch(() => {});
+  };
+  const handleClose = () => {
+    import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
+      getCurrentWindow().close();
+    }).catch(() => {});
+  };
+
+  return (
+    <div
+      data-tauri-drag-region
+      className="flex items-center h-9 shrink-0 bg-card border-b border-divider select-none"
+    >
+      <span className="pl-3 text-[11px] font-semibold text-t-text-muted">DS Pick</span>
+      <div className="flex-1" data-tauri-drag-region />
+      <button
+        type="button"
+        onClick={handleMinimize}
+        className="px-3 py-2 text-t-text-muted hover:text-t-text hover:bg-hover transition-colors"
+        aria-label="最小化"
+      >
+        <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 stroke-current" style={{ fill: 'none', strokeWidth: 1.6 }}>
+          <path d="M5 12h14" />
+        </svg>
+      </button>
+      <button
+        type="button"
+        onClick={handleToggleMaximize}
+        className="px-3 py-2 text-t-text-muted hover:text-t-text hover:bg-hover transition-colors"
+        aria-label="最大化/还原"
+      >
+        <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 stroke-current" style={{ fill: 'none', strokeWidth: 1.6 }}>
+          <path d="M4 4h16v16H4z" />
+        </svg>
+      </button>
+      <button
+        type="button"
+        onClick={handleClose}
+        className="px-3 py-2 text-t-text-muted hover:text-white hover:bg-t-error transition-colors"
+        aria-label="关闭"
+      >
+        <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 stroke-current" style={{ fill: 'none', strokeWidth: 1.6 }}>
+          <path d="M18 6L6 18M6 6l12 12" />
+        </svg>
+      </button>
     </div>
   );
 }

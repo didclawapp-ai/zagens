@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { ChatMarkdown } from './ChatMarkdown';
 import { ToolCard, type ToolCardModel } from './ToolCard';
+import TerminalCard from './TerminalCard';
+import DiffCard from './DiffCard';
 
 interface Message {
   id: string;
@@ -14,9 +16,11 @@ interface Message {
 export function MessageBubble({
   message,
   onOpenWorkspacePath,
+  onEditMessage,
 }: {
   message: Message;
   onOpenWorkspacePath: (relPath: string) => void | Promise<void>;
+  onEditMessage?: (messageId: string, content: string) => void;
 }) {
   const isUser = message.role === 'user';
   const likelyInReasoningPhase =
@@ -42,10 +46,10 @@ export function MessageBubble({
   return (
     <div className={`my-3 flex ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`max-w-[80%] rounded-xl px-4 py-3 ${
+        className={`rounded-xl px-4 py-3 ${
           isUser
-            ? 'bg-accent text-accent-text rounded-br-sm'
-            : 'bg-card text-t-text rounded-bl-sm border border-card-border shadow-sm'
+            ? 'max-w-[80%] bg-msg-user text-t-text rounded-br-sm border border-msg-user-border shadow-sm'
+            : 'w-full min-w-0 bg-msg-assistant text-t-text rounded-bl-sm border border-msg-assistant-border shadow-sm'
         }`}
       >
         {showReasoningBlock && (
@@ -97,11 +101,21 @@ export function MessageBubble({
             </button>
             {toolsExpanded && (
               <div className="space-y-1.5 border-t border-divider px-2.5 pb-2.5 pt-2">
-                {message.tools.map((t) => (
-                  <ToolCard key={t.id} tool={t} />
-                ))}
+                {message.tools.map((t) => renderToolCard(t))}
               </div>
             )}
+          </div>
+        )}
+        {isUser && onEditMessage && (
+          <div className="flex justify-end gap-0.5 mb-1 opacity-0 hover:opacity-100 transition-opacity">
+            <button
+              type="button"
+              onClick={() => onEditMessage(message.id, message.content)}
+              className="text-[10px] text-t-text-muted hover:text-accent px-2 py-0.5 rounded"
+              title="编辑此消息"
+            >
+              ✎ 编辑
+            </button>
           </div>
         )}
         <div className="text-sm leading-relaxed break-words">
@@ -121,4 +135,62 @@ export function MessageBubble({
       </div>
     </div>
   );
+}
+
+/** Route tool cards to specialized renderers based on tool name. */
+function renderToolCard(tool: ToolCardModel) {
+  // Shell tools → TerminalCard
+  if (
+    tool.name === 'exec_shell' ||
+    tool.name === 'task_shell_start' ||
+    tool.name === 'task_shell_wait'
+  ) {
+    return (
+      <TerminalCard
+        key={tool.id}
+        output={tool.output ?? ''}
+        command={tool.input ? tryParseCommand(tool.input) : undefined}
+      />
+    );
+  }
+
+  // Diff-producing tools → DiffCard
+  if (
+    tool.name === 'edit_file' ||
+    tool.name === 'apply_patch' ||
+    tool.name === 'write_file'
+  ) {
+    // Try to extract a unified diff from the output
+    const diffText = tool.output ?? '';
+    const fileName = tryParseFileName(tool.input);
+
+    if (looksLikeDiff(diffText)) {
+      return <DiffCard key={tool.id} diffText={diffText} fileName={fileName} />;
+    }
+  }
+
+  // Default: plain ToolCard
+  return <ToolCard key={tool.id} tool={tool} />;
+}
+
+function tryParseCommand(input: string): string | undefined {
+  try {
+    const j = JSON.parse(input) as Record<string, unknown>;
+    return typeof j.command === 'string' ? j.command : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function tryParseFileName(input: string): string | undefined {
+  try {
+    const j = JSON.parse(input) as Record<string, unknown>;
+    return typeof j.path === 'string' ? j.path : typeof j.file_path === 'string' ? j.file_path : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function looksLikeDiff(text: string): boolean {
+  return /^--- /m.test(text) || /^\+\+\+ /m.test(text) || /^@@ .* @@/m.test(text) || /^diff --git /m.test(text);
 }

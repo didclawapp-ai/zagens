@@ -1,4 +1,5 @@
 use deepseek_config::{ConfigStore, ConfigToml};
+use ignore::WalkBuilder;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
@@ -329,9 +330,41 @@ async fn fetch_thread_workspace_root(
     Ok(PathBuf::from(root))
 }
 
-/// Resolve `relative_path` under `workspace_root`, forbid `..` and escapes
-/// (mirrors `safe_thread_subpath` in `crates/tui/src/runtime_api.rs`).
-fn resolve_under_workspace(workspace_root: &Path, rel: &str) -> Result<PathBuf, String> {
+const WORKSPACE_RESOLVE_WALK_MAX: usize = 12_000;
+const WORKSPACE_RESOLVE_MATCH_MAX: usize = 24;
+
+fn normalize_workspace_rel_query(rel: &str) -> String {
+    rel.trim()
+        .trim_start_matches(['/', '\\'])
+        .replace('\\', "/")
+}
+
+fn workspace_suffix_walk_is_safe(suffix_norm: &str) -> bool {
+    let parts: Vec<&str> = suffix_norm.split('/').filter(|s| !s.is_empty()).collect();
+    if parts.len() >= 2 {
+        return true;
+    }
+    if parts.len() == 1 {
+        let name = parts[0];
+        if matches!(
+            name,
+            "mod.rs"
+                | "lib.rs"
+                | "main.rs"
+                | "index.ts"
+                | "index.js"
+                | "index.tsx"
+                | "index.jsx"
+        ) {
+            return false;
+        }
+        return name.contains('.') && name.len() >= 5;
+    }
+    false
+}
+
+/// Try one relative path under workspace; `Ok(None)` = not an existing file.
+fn try_file_under_workspace(workspace_root: &Path, rel: &str) -> Result<Option<PathBuf>, String> {
     let base = workspace_root
         .canonicalize()
         .map_err(|e| format!("工作区路径无效: {e}"))?;
@@ -353,15 +386,94 @@ fn resolve_under_workspace(workspace_root: &Path, rel: &str) -> Result<PathBuf, 
     }
 
     let candidate = base.join(&rel_pb);
-    let canon = candidate
-        .canonicalize()
-        .map_err(|_| format!("文件不存在或无法访问: {}", candidate.display()))?;
+    let Ok(canon) = candidate.canonicalize() else {
+        return Ok(None);
+    };
 
     if !canon.starts_with(&base) {
         return Err("路径越出工作区".to_string());
     }
 
-    Ok(canon)
+    if canon.is_file() {
+        Ok(Some(canon))
+    } else {
+        Ok(None)
+    }
+}
+
+fn resolve_under_workspace(workspace_root: &Path, rel: &str) -> Result<PathBuf, String> {
+    let n = normalize_workspace_rel_query(rel);
+    if n.is_empty() {
+        return Err("文件相对路径不能为空".to_string());
+    }
+    if n.contains("..") {
+        return Err("路径不能包含 ..".to_string());
+    }
+
+    let mut candidates: Vec<String> = Vec::new();
+    candidates.push(n.clone());
+    if !n.starts_with("src/") && !n.starts_with("crates/") && !n.starts_with("lib/") {
+        candidates.push(format!("src/{n}"));
+    }
+
+    for c in &candidates {
+        match try_file_under_workspace(workspace_root, c) {
+            Ok(Some(p)) => return Ok(p),
+            Ok(None) => {}
+            Err(e) => return Err(e),
+        }
+    }
+
+    if !workspace_suffix_walk_is_safe(&n) {
+        return Err(format!("文件不存在或无法访问（已尝试: {}）", candidates.join(", ")));
+    }
+
+    let base = workspace_root
+        .canonicalize()
+        .map_err(|e| format!("工作区路径无效: {e}"))?;
+    let suffix_norm = n.trim_start_matches('/');
+    let mut matches: Vec<PathBuf> = Vec::new();
+    let walker = WalkBuilder::new(&base)
+        .hidden(false)
+        .git_ignore(true)
+        .build();
+
+    for (idx, entry) in walker.enumerate() {
+        if idx > WORKSPACE_RESOLVE_WALK_MAX {
+            break;
+        }
+        let entry = entry.map_err(|e| e.to_string())?;
+        let ft = entry.file_type();
+        if !ft.map(|t| t.is_file()).unwrap_or(false) {
+            continue;
+        }
+        let path = entry.path();
+        let Ok(rel) = path.strip_prefix(&base) else {
+            continue;
+        };
+        let rel_str = rel.to_string_lossy().replace('\\', "/");
+        if rel_str == suffix_norm || rel_str.ends_with(&format!("/{suffix_norm}")) {
+            matches.push(path.to_path_buf());
+            if matches.len() > WORKSPACE_RESOLVE_MATCH_MAX {
+                return Err("路径匹配结果过多，请使用更具体的相对路径".to_string());
+            }
+        }
+    }
+
+    match matches.len() {
+        0 => Err(format!("文件不存在或无法访问（已尝试: {}）", candidates.join(", "))),
+        1 => Ok(matches[0].clone()),
+        _ => {
+            matches.sort_by_key(|p| {
+                std::cmp::Reverse(
+                    p.strip_prefix(&base)
+                        .map(|x| x.components().count())
+                        .unwrap_or(0),
+                )
+            });
+            Ok(matches[0].clone())
+        }
+    }
 }
 
 fn read_binary_file_at(canonical_file: &Path) -> Result<BinaryFileResponse, String> {
@@ -445,4 +557,150 @@ fn sniff_mime(data: &[u8]) -> String {
         return "application/pdf".into();
     }
     "application/octet-stream".into()
+}
+
+// ---------------------------------------------------------------------------
+// open_in_shell — opens a directory in the system file manager
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub fn open_in_shell(path: String) -> Result<(), String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Ok(());
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(trimmed)
+            .spawn()
+            .map_err(|e| format!("无法打开文件管理器: {e}"))?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(trimmed)
+            .spawn()
+            .map_err(|e| format!("无法打开文件管理器: {e}"))?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(trimmed)
+            .spawn()
+            .map_err(|e| format!("无法打开文件管理器: {e}"))?;
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// export_thread_json — fetches thread from runtime and writes to a file
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn export_thread_json(
+    thread_id: String,
+    save_path: String,
+    ctx: tauri::State<'_, AppContext>,
+) -> Result<(), String> {
+    let enc = percent_encode_path_segment(thread_id.trim());
+    if enc.is_empty() {
+        return Err("thread_id 无效".to_string());
+    }
+    let url = format!(
+        "http://127.0.0.1:{}/v1/threads/{}",
+        ctx.runtime_port, enc
+    );
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("HTTP 客户端: {e}"))?;
+
+    let resp = client
+        .get(&url)
+        .header(
+            reqwest::header::AUTHORIZATION,
+            format!("Bearer {}", ctx.runtime_token),
+        )
+        .send()
+        .await
+        .map_err(|e| format!("无法连接运行时: {e}"))?;
+
+    if !resp.status().is_success() {
+        return Err(format!(
+            "无法获取线程数据 (HTTP {})",
+            resp.status().as_u16()
+        ));
+    }
+
+    let body: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("运行时响应无效: {e}"))?;
+
+    let json = serde_json::to_string_pretty(&body)
+        .map_err(|e| format!("JSON 序列化失败: {e}"))?;
+
+    std::fs::write(&save_path, json).map_err(|e| format!("保存失败: {e}"))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn restart_sidecar(ctx: tauri::State<'_, AppContext>) -> Result<(), String> {
+    ctx.sidecar_restart.notify_one();
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// export_session_json — GET /v1/sessions/{id} and write pretty JSON (desktop UX)
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn export_session_json(
+    session_id: String,
+    save_path: String,
+    ctx: tauri::State<'_, AppContext>,
+) -> Result<(), String> {
+    let enc = percent_encode_path_segment(session_id.trim());
+    if enc.is_empty() {
+        return Err("session_id 无效".to_string());
+    }
+    let url = format!(
+        "http://127.0.0.1:{}/v1/sessions/{}",
+        ctx.runtime_port, enc
+    );
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("HTTP 客户端: {e}"))?;
+
+    let resp = client
+        .get(&url)
+        .header(
+            reqwest::header::AUTHORIZATION,
+            format!("Bearer {}", ctx.runtime_token),
+        )
+        .send()
+        .await
+        .map_err(|e| format!("无法连接运行时: {e}"))?;
+
+    if !resp.status().is_success() {
+        return Err(format!(
+            "无法获取会话数据 (HTTP {})",
+            resp.status().as_u16()
+        ));
+    }
+
+    let body: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("运行时响应无效: {e}"))?;
+
+    let json = serde_json::to_string_pretty(&body)
+        .map_err(|e| format!("JSON 序列化失败: {e}"))?;
+
+    std::fs::write(&save_path, json).map_err(|e| format!("保存失败: {e}"))?;
+
+    Ok(())
 }

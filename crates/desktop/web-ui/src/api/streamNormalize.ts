@@ -11,7 +11,11 @@ export type NormalizedStreamEvent =
   | { kind: 'turn_completed' }
   | { kind: 'done' }
   | { kind: 'error'; message: string }
-  | { kind: 'status'; message: string };
+  | { kind: 'status'; message: string }
+  | { kind: 'agent_spawned'; agentId: string }
+  | { kind: 'agent_progress'; agentId: string }
+  | { kind: 'agent_completed'; agentId: string; result: string }
+  | { kind: 'agent_list'; agents: Array<{ id: string; status: string }> };
 
 export function normalizeDesktopStreamEvent(
   ev: { event: string; data: string },
@@ -153,6 +157,46 @@ export function normalizeDesktopStreamEvent(
   }
   if (recordEvent === 'turn.completed') {
     return { kind: 'turn_completed' };
+  }
+
+  // —— agent.* events ———
+  if (recordEvent === 'agent.spawned') {
+    const agentId = String((inner ?? j).agent_id ?? '');
+    if (agentId) return { kind: 'agent_spawned', agentId };
+  }
+  if (recordEvent === 'agent.progress') {
+    const agentId = String((inner ?? j).agent_id ?? '');
+    if (agentId) return { kind: 'agent_progress', agentId };
+  }
+  if (recordEvent === 'agent.completed') {
+    const agentId = String((inner ?? j).agent_id ?? '');
+    if (agentId) {
+      const item = inner?.item as Record<string, unknown> | undefined;
+      const result = String(item?.detail ?? item?.summary ?? '');
+      return { kind: 'agent_completed', agentId, result };
+    }
+  }
+  if (recordEvent === 'agent.list') {
+    const raw = (inner ?? j).agents as Array<Record<string, unknown>> | undefined;
+    if (raw) {
+      return {
+        kind: 'agent_list',
+        agents: raw.map((a) => ({
+          id: String(a.id ?? a.agent_id ?? ''),
+          status: String(a.status ?? 'running'),
+        })),
+      };
+    }
+  }
+
+  // Detect tool calls that are agent_spawn and emit agent_spawned
+  if (recordEvent === 'item.started' && inner) {
+    const tool = inner.tool as Record<string, unknown> | undefined;
+    const toolName = String(tool?.name ?? '');
+    if (toolName === 'agent_spawn' || toolName === 'spawn_agent' || toolName === 'delegate_to_agent') {
+      const agentId = String(j.agent_id ?? tool?.id ?? '');
+      if (agentId) return { kind: 'agent_spawned', agentId };
+    }
   }
 
   return null;

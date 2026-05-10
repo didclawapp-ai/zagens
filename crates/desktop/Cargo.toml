@@ -22,6 +22,7 @@ uuid.workspace = true
 tauri = { version = "2", features = [] }
 reqwest = { workspace = true, features = ["json", "rustls"] }
 tauri-plugin-shell = "2"
+ignore = "0.4"
 tauri-plugin-dialog = "2"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-notification = "2"

@@ -570,6 +570,17 @@ pub struct UpdateThreadRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RoutingRule {
+    pub intent: String,
+    pub model: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RoutingRulesDoc {
+    pub rules: Vec<RoutingRule>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StartTurnRequest {
     pub prompt: String,
     #[serde(default)]
@@ -579,6 +590,8 @@ pub struct StartTurnRequest {
     pub allow_shell: Option<bool>,
     pub trust_mode: Option<bool>,
     pub auto_approve: Option<bool>,
+    #[serde(default)]
+    pub route_intent: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -642,6 +655,27 @@ pub struct UsageAggregation {
 /// Best-effort provider classification from a model name. Used as a grouping
 /// key for `/v1/usage?group_by=provider`. Cost-tracking already runs the
 /// model→pricing→cost path; this only labels the bucket.
+fn load_routing_rules(path: &Path) -> Result<Vec<RoutingRule>> {
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let data = std::fs::read_to_string(path)?;
+    let doc: RoutingRulesDoc = serde_json::from_str(&data)?;
+    Ok(doc.rules)
+}
+
+fn save_routing_rules(path: &Path, rules: &[RoutingRule]) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let doc = RoutingRulesDoc {
+        rules: rules.to_vec(),
+    };
+    let json = serde_json::to_string_pretty(&doc)?;
+    std::fs::write(path, json)?;
+    Ok(())
+}
+
 fn provider_label_for_model(model: &str) -> &'static str {
     if model.starts_with("deepseek-ai/") {
         "nvidia-nim"
@@ -710,6 +744,8 @@ pub struct RuntimeThreadManager {
     cancel_token: CancellationToken,
     task_manager: Arc<StdMutex<Option<crate::task_manager::SharedTaskManager>>>,
     automations: Arc<StdMutex<Option<crate::automation_manager::SharedAutomationManager>>>,
+    routing_rules: Arc<Mutex<Vec<RoutingRule>>>,
+    routing_rules_path: PathBuf,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -727,6 +763,8 @@ impl RuntimeThreadManager {
     ) -> Result<Self> {
         let store = RuntimeThreadStore::open(manager_cfg.data_dir.clone())?;
         let (event_tx, _event_rx) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
+        let routing_rules_path = manager_cfg.data_dir.join("routing_rules.json");
+        let routing_rules = load_routing_rules(&routing_rules_path).unwrap_or_default();
         let manager = Self {
             config,
             workspace,
@@ -737,6 +775,8 @@ impl RuntimeThreadManager {
             cancel_token: CancellationToken::new(),
             task_manager: Arc::new(StdMutex::new(None)),
             automations: Arc::new(StdMutex::new(None)),
+            routing_rules: Arc::new(Mutex::new(routing_rules)),
+            routing_rules_path,
         };
         manager.recover_interrupted_state()?;
         Ok(manager)
@@ -942,6 +982,15 @@ impl RuntimeThreadManager {
             totals,
             buckets: buckets.into_values().collect(),
         })
+    }
+
+    pub async fn get_routing_rules(&self) -> Vec<RoutingRule> {
+        self.routing_rules.lock().await.clone()
+    }
+
+    pub async fn set_routing_rules(&self, rules: Vec<RoutingRule>) -> Result<()> {
+        *self.routing_rules.lock().await = rules.clone();
+        save_routing_rules(&self.routing_rules_path, &rules)
     }
 
     pub async fn get_thread(&self, id: &str) -> Result<ThreadRecord> {
@@ -1404,6 +1453,15 @@ impl RuntimeThreadManager {
         let prompt = req.prompt.trim().to_string();
         if prompt.is_empty() {
             bail!("prompt is required");
+        }
+
+        // —— Model routing ———
+        let mut req = req;
+        if let Some(ref intent) = req.route_intent {
+            let rules = self.routing_rules.lock().await;
+            if let Some(rule) = rules.iter().find(|r| r.intent.eq_ignore_ascii_case(intent)) {
+                req.model = Some(rule.model.clone());
+            }
         }
 
         let mut thread = self.get_thread(thread_id).await?;
