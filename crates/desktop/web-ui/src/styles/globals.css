@@ -59,8 +59,10 @@
   --color-canvas: #0b0f14;
   --color-canvas-alt: #121820;
   --color-card: #141a22;
-  --color-card-border: #1f2937;
-  --color-text: #f3f4f6;
+  /* Softer hairlines — avoid “bright gray rails” on near-black canvas */
+  --color-card-border: rgba(255, 255, 255, 0.065);
+  /* Primary copy: off-white (less glare than gray-50 / #f9fafb) */
+  --color-text: #d4dae3;
   --color-text-secondary: #9ca3af;
   --color-text-muted: #6b7280;
   --color-accent: #6366f1;
@@ -79,15 +81,15 @@
   --color-amber-bg: rgba(245, 158, 11, 0.12);
   --color-amber-text: #fde68a;
   --color-input-bg: #1f2937;
-  --color-input-border: #374151;
+  --color-input-border: rgba(255, 255, 255, 0.1);
   --color-hover: #1f2937;
   --color-hover-strong: #374151;
-  --color-divider: rgba(255, 255, 255, 0.07);
-  --color-rail-edge: rgba(255, 255, 255, 0.12);
+  --color-divider: rgba(255, 255, 255, 0.045);
+  --color-rail-edge: rgba(255, 255, 255, 0.065);
   --color-msg-assistant-bg: #161d26;
-  --color-msg-assistant-border: rgba(255, 255, 255, 0.1);
+  --color-msg-assistant-border: rgba(255, 255, 255, 0.07);
   --color-msg-user-bg: #1f2938;
-  --color-msg-user-border: rgba(255, 255, 255, 0.12);
+  --color-msg-user-border: rgba(255, 255, 255, 0.08);
   --color-toolbar-bg: rgba(17, 24, 39, 0.85);
   --color-dot: rgba(148, 163, 184, 0.06);
   --color-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);

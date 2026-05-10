@@ -118,6 +118,10 @@ export function ChatMarkdown({
               'prose-th:text-t-text prose-td:text-t-text',
               'prose-blockquote:text-t-text-secondary prose-blockquote:border-divider',
               'prose-hr:border-divider',
+              /* Tables: use theme hairlines (default prose-invert borders read as overly bright in dark UI) */
+              '[&_table]:w-full [&_table]:border-collapse [&_table]:my-3 [&_table]:text-sm',
+              '[&_th]:border [&_th]:border-divider [&_th]:bg-canvas-alt/40 [&_th]:px-3 [&_th]:py-2 [&_th]:align-top',
+              '[&_td]:border [&_td]:border-divider [&_td]:px-3 [&_td]:py-2 [&_td]:align-top',
             ].join(' '),
         variant === 'user' ? '' : 'prose-code:bg-canvas-alt prose-code:text-t-text',
         variant === 'user'

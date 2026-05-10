@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### DS Pick (desktop)
 
+- **技能** — 运行时新增 `POST /v1/skills`（在选定技能根目录下创建 `SKILL.md` 模板）；侧栏「任务与技能」面板支持「新建技能」、全局/工作区选择与（桌面）文件夹选择器。
 - **任务与技能面板** — 侧栏「设置」下入口文案为「任务与技能」（右栏 `view` 仍为 `automation`）；**定时自动化**（`/v1/automations` 列表 UI）按产品决定暂不展示，`fetchAutomations` 仍保留在 `client.ts`。
 - **文档** — `docs/desktop/TUI_DS_PICK_GAP.md` 实施审核收尾：更新差距表与实施状态；定时自动化 UI 标为暂缓。
 - **Markdown preview links** — 预览区内相对路径链接改为在应用内打开下一篇文档，
@@ -49,6 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   — planning inventory (aligned areas, gaps, suggested prioritization).
 
 ### Added
+- **Runtime API: `POST /v1/skills`** — create `<skills_root>/<name>/SKILL.md` with a starter frontmatter template under the configured global skills directory, workspace `.agents/skills/` / `skills/`, or an existing allowed root passed as `parent_directory` (desktop folder picker). See [docs/RUNTIME_API.md](docs/RUNTIME_API.md) § Skills.
 - **Runtime HTTP interactive tool approval** — when a thread turn runs with
   `auto_approve: false`, the runtime emits an `approval.required` event and
   blocks until `POST /v1/threads/{thread_id}/turns/{turn_id}/resolve-approval`

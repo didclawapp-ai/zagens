@@ -1,6 +1,15 @@
-import type { McpServersResponse, McpToolsResponse } from '../types/mcp';
+import type { McpServersResponse, McpToolsResponse, McpServerConfigPayload } from '../types/mcp';
 import type { UsageAggregation, UsageParams } from '../types/usage';
-import type { TaskSummary, TasksResponse, AutomationRecord, SkillEntry } from '../types/automation';
+import type {
+  TaskSummary,
+  TasksResponse,
+  AutomationRecord,
+  TaskRecord,
+  SkillsApiResponse,
+  CreateTaskRequest,
+  CreateSkillRequest,
+  CreateSkillResponse,
+} from '../types/automation';
 import type { RoutingRulesResponse, RoutingRule } from '../types/routing';
 
 export interface SseTurnEvent {
@@ -374,6 +383,42 @@ export async function patchJson<T>(path: string, body: unknown): Promise<T> {
   return res.json();
 }
 
+export async function putJson<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetchResponseWithBackoff(
+    () =>
+      fetch(`${runtimeBase}${path}`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify(body ?? {}),
+      }),
+    `PUT ${path}`,
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    const err = new Error(`HTTP ${res.status}: ${text}`);
+    (err as Error & { status?: number }).status = res.status;
+    throw err;
+  }
+  return res.json();
+}
+
+export async function deleteJson(path: string): Promise<void> {
+  const res = await fetchResponseWithBackoff(
+    () =>
+      fetch(`${runtimeBase}${path}`, {
+        method: 'DELETE',
+        headers: authHeaders(),
+      }),
+    `DELETE ${path}`,
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    const err = new Error(`HTTP ${res.status}: ${text}`);
+    (err as Error & { status?: number }).status = res.status;
+    throw err;
+  }
+}
+
 export async function postResolveApproval(
   threadId: string,
   turnId: string,
@@ -559,16 +604,24 @@ export async function fetchTasks(): Promise<TaskSummary[]> {
   return res.tasks;
 }
 
+export async function createTask(body: CreateTaskRequest): Promise<TaskRecord> {
+  return postJson<TaskRecord>('/v1/tasks', body);
+}
+
+export async function cancelTask(taskId: string): Promise<TaskRecord> {
+  return postJson<TaskRecord>(`/v1/tasks/${encodeURIComponent(taskId)}/cancel`, {});
+}
+
 export async function fetchAutomations(): Promise<AutomationRecord[]> {
   return fetchJson<AutomationRecord[]>('/v1/automations');
 }
 
-export interface SkillsResponse {
-  skills: SkillEntry[];
+export async function fetchSkills(): Promise<SkillsApiResponse> {
+  return fetchJson<SkillsApiResponse>('/v1/skills');
 }
 
-export async function fetchSkills(): Promise<SkillsResponse> {
-  return fetchJson<SkillsResponse>('/v1/skills');
+export async function createSkill(body: CreateSkillRequest): Promise<CreateSkillResponse> {
+  return postJson<CreateSkillResponse>('/v1/skills', body);
 }
 
 // ========== Routing ==========
@@ -587,6 +640,18 @@ export async function fetchMcpServers(): Promise<McpServersResponse> {
   return fetchJson<McpServersResponse>('/v1/apps/mcp/servers');
 }
 
+export async function getMcpServer(name: string): Promise<McpServerConfigPayload> {
+  return fetchJson<McpServerConfigPayload>(`/v1/apps/mcp/servers/${encodeURIComponent(name)}`);
+}
+
+export async function putMcpServer(name: string, body: McpServerConfigPayload): Promise<{ ok: boolean }> {
+  return putJson<{ ok: boolean }>(`/v1/apps/mcp/servers/${encodeURIComponent(name)}`, body);
+}
+
+export async function deleteMcpServer(name: string): Promise<void> {
+  await deleteJson(`/v1/apps/mcp/servers/${encodeURIComponent(name)}`);
+}
+
 export async function fetchMcpTools(server?: string): Promise<McpToolsResponse> {
   const qs = server ? `?server=${encodeURIComponent(server)}` : '';
   return fetchJson<McpToolsResponse>(`/v1/apps/mcp/tools${qs}`);
@@ -600,7 +665,21 @@ export interface AddMcpServerRequest {
 }
 
 export async function addMcpServer(req: AddMcpServerRequest): Promise<void> {
-  await postJson('/v1/apps/mcp/servers', req);
+  const res = await fetchResponseWithBackoff(
+    () =>
+      fetch(`${runtimeBase}/v1/apps/mcp/servers`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify(req),
+      }),
+    'POST /v1/apps/mcp/servers',
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    const err = new Error(`HTTP ${res.status}: ${text}`);
+    (err as Error & { status?: number }).status = res.status;
+    throw err;
+  }
 }
 
 /** Merge MCP servers (and optional timeouts) from a JSON fragment into ~/.deepseek/mcp.json. */

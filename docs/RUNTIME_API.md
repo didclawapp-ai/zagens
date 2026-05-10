@@ -227,9 +227,48 @@ Synthetic frames `turn.started` and `done` emitted by `POST /v1/stream` have no 
 
 **Introspection**
 - `GET /v1/workspace/status`
-- `GET /v1/skills`
+- `GET /v1/skills` — list skills under the resolved skills directory (see **Skills** below)
+- `POST /v1/skills` — create `<skills_root>/<name>/SKILL.md` with a starter template (see **Skills** below)
 - `GET /v1/apps/mcp/servers`
 - `GET /v1/apps/mcp/tools?server=<optional>`
+
+### Skills
+
+`GET /v1/skills` returns `{ "directory", "warnings", "skills": [{ "name", "description", "path" }] }`.
+`directory` follows the same precedence as the TUI doctor “selected” path: workspace `.agents/skills/` if present, else workspace `skills/`, else configured global skills directory (typically `~/.deepseek/skills`).
+
+`POST /v1/skills` returns **201 Created** with:
+
+```json
+{
+  "skill": {
+    "name": "my-skill",
+    "description": "Describe what this skill does.",
+    "path": "/path/to/skills_root/my-skill/SKILL.md"
+  },
+  "directory": "/path/used/by/GET/v1/skills",
+  "skills_root": "/path/where/the/folder/was/created",
+  "warnings": []
+}
+```
+
+`directory` (listing root) may differ from `skills_root` (actual parent of the new folder) when workspace layout causes `GET` and `POST` to target different roots.
+
+Request body:
+
+```json
+{
+  "name": "my-skill",
+  "scope": "workspace",
+  "parent_directory": "/optional/existing/skills/root"
+}
+```
+
+- `name` (required): directory segment only; ASCII letters, digits, `_`, `-`, `.`; max length 96; no `\/` or `.` / `..` alone.
+- `scope` (optional, default `"workspace"`): `"global"` uses the configured global skills directory (created if missing); `"workspace"` uses `.agents/skills/` or `skills/` under the runtime workspace (creating `.agents/skills/` when neither exists). **Ignored** when `parent_directory` is set.
+- `parent_directory` (optional): absolute path to an **existing** allowed skills root — the canonical global skills directory or an existing workspace `skills/` / `.agents/skills/`. Used by DS Pick when the user picks a folder in the native dialog.
+
+**409 Conflict** if the skill directory or `SKILL.md` already exists. **400** if `parent_directory` is not allowed or cannot be resolved.
 
 **Usage** (token/cost aggregation across threads)
 - `GET /v1/usage?since=<rfc3339>&until=<rfc3339>&group_by=<day|model|provider|thread>`

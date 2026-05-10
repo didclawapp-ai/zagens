@@ -5,9 +5,25 @@ export interface McpServerEntry {
   required: boolean;
   command: string | null;
   url: string | null;
-  transport: string | null;
+  args: string[];
+  transport?: string | null;
   connected: boolean;
-  tool_count: number;
+  enabled_tools: string[];
+  disabled_tools: string[];
+}
+
+/** One server block from GET /v1/apps/mcp/servers/{name} (matches `McpServerConfig`). */
+export interface McpServerConfigPayload {
+  command?: string | null;
+  args: string[];
+  env: Record<string, string>;
+  url?: string | null;
+  connect_timeout?: number | null;
+  execute_timeout?: number | null;
+  read_timeout?: number | null;
+  disabled: boolean;
+  enabled: boolean;
+  required: boolean;
   enabled_tools: string[];
   disabled_tools: string[];
 }

@@ -1638,6 +1638,35 @@ pub fn add_server_config(
     save_config(path, &cfg)
 }
 
+/// Load a single server block from `mcp.json` (for edit UIs).
+#[must_use]
+pub fn get_server_entry(path: &Path, name: &str) -> Result<Option<McpServerConfig>> {
+    let cfg = load_config(path)?;
+    Ok(cfg.servers.get(name).cloned())
+}
+
+/// Remove a server entry and persist. Errors if the name is missing.
+pub fn remove_server_from_config(path: &Path, name: &str) -> Result<()> {
+    let mut cfg = load_config(path)?;
+    if cfg.servers.remove(name).is_none() {
+        anyhow::bail!("MCP server '{name}' is not configured");
+    }
+    save_config(path, &cfg)
+}
+
+/// Replace an existing server block (full document for that key). Errors if the name is missing.
+pub fn replace_server_in_config(path: &Path, name: &str, server: McpServerConfig) -> Result<()> {
+    if server.command.is_none() && server.url.is_none() {
+        anyhow::bail!("MCP server '{name}': provide either `command` or `url`");
+    }
+    let mut cfg = load_config(path)?;
+    if !cfg.servers.contains_key(name) {
+        anyhow::bail!("MCP server '{name}' is not configured");
+    }
+    cfg.servers.insert(name.to_string(), server);
+    save_config(path, &cfg)
+}
+
 /// Merge servers (and optionally `timeouts`) from a JSON fragment into `mcp.json`.
 ///
 /// Supported shapes:

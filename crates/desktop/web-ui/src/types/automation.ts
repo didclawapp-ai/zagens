@@ -1,3 +1,5 @@
+export type TaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'canceled';
+
 /** Task record from GET /v1/tasks/:id (detail) */
 export interface TaskRecord {
   schema_version: number;
@@ -35,9 +37,9 @@ export interface TaskSummary {
   turn_id: string | null;
 }
 
+/** Matches runtime `task_manager::TaskCounts` (GET /v1/tasks). */
 export interface TaskCounts {
-  total: number;
-  pending: number;
+  queued: number;
   running: number;
   completed: number;
   failed: number;
@@ -48,14 +50,6 @@ export interface TasksResponse {
   tasks: TaskSummary[];
   counts: TaskCounts;
 }
-
-export type TaskStatus =
-  | 'pending'
-  | 'running'
-  | 'paused'
-  | 'completed'
-  | 'failed'
-  | 'canceled';
 
 /** Automation record from GET /v1/automations */
 export type AutomationStatus =
@@ -84,4 +78,39 @@ export interface SkillEntry {
   name: string;
   description: string;
   path: string;
+}
+
+/** Full GET /v1/skills payload */
+export interface SkillsApiResponse {
+  directory: string;
+  warnings: string[];
+  skills: SkillEntry[];
+}
+
+/** Body for POST /v1/skills */
+export interface CreateSkillRequest {
+  name: string;
+  /** Default `workspace` when omitted. Ignored when `parent_directory` is set. */
+  scope?: 'global' | 'workspace';
+  /** Absolute path to an existing allowed skills root (desktop folder picker). */
+  parent_directory?: string;
+}
+
+/** Response for POST /v1/skills (201 Created) */
+export interface CreateSkillResponse {
+  skill: SkillEntry;
+  directory: string;
+  skills_root: string;
+  warnings: string[];
+}
+
+/** Body for POST /v1/tasks */
+export interface CreateTaskRequest {
+  prompt: string;
+  model?: string;
+  workspace?: string;
+  mode?: string;
+  allow_shell?: boolean;
+  trust_mode?: boolean;
+  auto_approve?: boolean;
 }

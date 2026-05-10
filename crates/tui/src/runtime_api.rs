@@ -33,7 +33,7 @@ use crate::automation_manager::{
     CreateAutomationRequest, SharedAutomationManager, UpdateAutomationRequest, spawn_scheduler,
 };
 use crate::config::{Config, DEFAULT_TEXT_MODEL};
-use crate::mcp::{McpConfig, McpPool};
+use crate::mcp::{McpConfig, McpPool, McpServerConfig};
 use crate::models::SystemPrompt;
 use crate::runtime_threads::{
     CompactThreadRequest, CreateThreadRequest, RuntimeThreadManager, RuntimeThreadManagerConfig,
@@ -231,6 +231,36 @@ struct SkillsResponse {
     skills: Vec<SkillEntry>,
 }
 
+#[derive(Debug, Deserialize)]
+struct CreateSkillRequest {
+    /// Directory name for the skill (becomes `<skills_root>/<name>/SKILL.md`).
+    name: String,
+    /// `global` → configured skills dir (default `~/.deepseek/skills`). `workspace`
+    /// → workspace `.agents/skills` or `skills/`, creating `.agents/skills` when
+    /// neither exists. Ignored when `parent_directory` is set.
+    #[serde(default = "default_create_skill_scope")]
+    scope: String,
+    /// Optional skills root chosen in the desktop folder picker; must match an
+    /// allowed root after canonicalization (global dir or an existing workspace
+    /// skills directory).
+    #[serde(default)]
+    parent_directory: Option<PathBuf>,
+}
+
+fn default_create_skill_scope() -> String {
+    "workspace".to_string()
+}
+
+#[derive(Debug, Serialize)]
+struct CreateSkillResponse {
+    skill: SkillEntry,
+    /// Directory scanned by `GET /v1/skills` (may differ from `skills_root`).
+    directory: PathBuf,
+    /// Skills root where this skill was created (`<skills_root>/<name>/SKILL.md`).
+    skills_root: PathBuf,
+    warnings: Vec<String>,
+}
+
 #[derive(Debug, Serialize)]
 struct McpServerEntry {
     name: String,
@@ -238,6 +268,7 @@ struct McpServerEntry {
     required: bool,
     command: Option<String>,
     url: Option<String>,
+    args: Vec<String>,
     connected: bool,
     enabled_tools: Vec<String>,
     disabled_tools: Vec<String>,
@@ -439,8 +470,14 @@ pub fn build_router(state: RuntimeApiState) -> Router {
         .route("/v1/tasks", get(list_tasks).post(create_task))
         .route("/v1/tasks/{id}", get(get_task))
         .route("/v1/tasks/{id}/cancel", post(cancel_task))
-        .route("/v1/skills", get(list_skills))
+        .route("/v1/skills", get(list_skills).post(create_skill))
         .route("/v1/apps/mcp/servers", get(list_mcp_servers).post(add_mcp_server))
+        .route(
+            "/v1/apps/mcp/servers/{name}",
+            get(get_mcp_server)
+                .put(update_mcp_server)
+                .delete(delete_mcp_server),
+        )
         .route("/v1/apps/mcp/config/merge", post(merge_mcp_config_json))
         .route("/v1/apps/mcp/tools", get(list_mcp_tools))
         .route(
@@ -1487,6 +1524,76 @@ async fn list_skills(
     }))
 }
 
+async fn create_skill(
+    State(state): State<RuntimeApiState>,
+    Json(req): Json<CreateSkillRequest>,
+) -> Result<(StatusCode, Json<CreateSkillResponse>), ApiError> {
+    let name = validate_skill_directory_name(&req.name)?;
+    let name_for_task = name.clone();
+    let config = state.config.clone();
+    let workspace = state.workspace.clone();
+    let parent_directory = req.parent_directory.clone();
+    let scope = req.scope.clone();
+
+    let (skills_root_used, skill_md_path, warnings) =
+        tokio::task::spawn_blocking(move || {
+            let root =
+                resolve_create_skill_parent(&config, &workspace, parent_directory.as_ref(), &scope)?;
+            fs::create_dir_all(&root).map_err(|e| {
+                ApiError::internal(format!(
+                    "failed to create skills directory {}: {e}",
+                    root.display()
+                ))
+            })?;
+
+            let skill_dir = root.join(&name_for_task);
+            if skill_dir.exists() {
+                return Err(ApiError::conflict(format!(
+                    "skill directory already exists: {}",
+                    skill_dir.display()
+                )));
+            }
+            fs::create_dir_all(&skill_dir).map_err(|e| {
+                ApiError::internal(format!("failed to create skill directory: {e}"))
+            })?;
+            let md_path = skill_dir.join("SKILL.md");
+            if md_path.exists() {
+                return Err(ApiError::conflict("SKILL.md already exists".to_string()));
+            }
+            let body = skill_md_template(&name_for_task);
+            fs::write(&md_path, body).map_err(|e| ApiError::internal(e.to_string()))?;
+
+            let registry = SkillRegistry::discover(&root);
+            let warnings = registry.warnings().to_vec();
+            Ok::<_, ApiError>((root, md_path, warnings))
+        })
+        .await
+        .map_err(|e| ApiError::internal(format!("create skill task: {e}")))??;
+
+    let list_directory = resolve_skills_dir(&state.config, &state.workspace);
+    let reg_list = SkillRegistry::discover(&skills_root_used);
+    let description = reg_list
+        .get(&name)
+        .map(|s| s.description.clone())
+        .unwrap_or_else(|| "Describe what this skill does.".to_string());
+
+    let skill_entry = SkillEntry {
+        name,
+        description,
+        path: skill_md_path,
+    };
+
+    Ok((
+        StatusCode::CREATED,
+        Json(CreateSkillResponse {
+            skill: skill_entry,
+            directory: list_directory,
+            skills_root: skills_root_used,
+            warnings,
+        }),
+    ))
+}
+
 async fn list_mcp_servers(
     State(state): State<RuntimeApiState>,
 ) -> Result<Json<McpServersResponse>, ApiError> {
@@ -1513,6 +1620,7 @@ async fn list_mcp_servers(
             required: server_cfg.required,
             command: server_cfg.command.clone(),
             url: server_cfg.url.clone(),
+            args: server_cfg.args.clone(),
             connected: connected.contains(&name),
             enabled_tools: server_cfg.enabled_tools.clone(),
             disabled_tools: server_cfg.disabled_tools.clone(),
@@ -1552,6 +1660,37 @@ async fn add_mcp_server(
     )
     .map_err(|e| ApiError::bad_request(format!("添加 MCP 服务器失败：{e}")))?;
     Ok(StatusCode::CREATED)
+}
+
+async fn get_mcp_server(
+    State(state): State<RuntimeApiState>,
+    AxumPath(name): AxumPath<String>,
+) -> Result<Json<McpServerConfig>, ApiError> {
+    let entry = crate::mcp::get_server_entry(&state.mcp_config_path, &name)
+        .map_err(|e| ApiError::internal(e.to_string()))?;
+    let Some(cfg) = entry else {
+        return Err(ApiError::not_found(format!("MCP server '{name}' not found")));
+    };
+    Ok(Json(cfg))
+}
+
+async fn update_mcp_server(
+    State(state): State<RuntimeApiState>,
+    AxumPath(name): AxumPath<String>,
+    Json(cfg): Json<McpServerConfig>,
+) -> Result<Json<Value>, ApiError> {
+    crate::mcp::replace_server_in_config(&state.mcp_config_path, &name, cfg)
+        .map_err(|e| ApiError::bad_request(format!("更新 MCP 服务器失败：{e}")))?;
+    Ok(Json(json!({ "ok": true })))
+}
+
+async fn delete_mcp_server(
+    State(state): State<RuntimeApiState>,
+    AxumPath(name): AxumPath<String>,
+) -> Result<StatusCode, ApiError> {
+    crate::mcp::remove_server_from_config(&state.mcp_config_path, &name)
+        .map_err(|e| ApiError::bad_request(format!("删除 MCP 服务器失败：{e}")))?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn list_mcp_tools(
@@ -2288,6 +2427,140 @@ fn run_git(workspace: &std::path::Path, args: &[&str]) -> Option<String> {
     String::from_utf8(output.stdout).ok()
 }
 
+fn validate_skill_directory_name(raw: &str) -> Result<String, ApiError> {
+    let s = raw.trim();
+    if s.is_empty() {
+        return Err(ApiError::bad_request("name is required"));
+    }
+    if s.len() > 96 {
+        return Err(ApiError::bad_request("name is too long (max 96)"));
+    }
+    if s == "." || s == ".." {
+        return Err(ApiError::bad_request("invalid skill name"));
+    }
+    for c in s.chars() {
+        if c == '/' || c == '\\' {
+            return Err(ApiError::bad_request(
+                "skill name must not contain path separators",
+            ));
+        }
+        if !(c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.') {
+            return Err(ApiError::bad_request(
+                "skill name may only contain ASCII letters, digits, '.', '-', and '_'",
+            ));
+        }
+    }
+    Ok(s.to_string())
+}
+
+fn skill_md_template(name: &str) -> String {
+    format!(
+        r#"---
+name: {name}
+description: Describe what this skill does.
+allowed-tools: read_file, list_dir
+---
+
+Write skill instructions here.
+"#
+    )
+}
+
+/// Skills roots that exist (and global dir, which is created if missing) for
+/// validating `parent_directory` from the desktop folder picker.
+fn allowed_skill_roots_for_picker(
+    config: &Config,
+    workspace: &std::path::Path,
+) -> Result<Vec<PathBuf>, ApiError> {
+    let mut roots: Vec<PathBuf> = Vec::new();
+
+    let global = config.skills_dir();
+    fs::create_dir_all(&global).map_err(|e| {
+        ApiError::internal(format!(
+            "failed to ensure global skills dir {}: {e}",
+            global.display()
+        ))
+    })?;
+    let global_canon = global.canonicalize().map_err(|e| {
+        ApiError::internal(format!("failed to canonicalize global skills dir: {e}"))
+    })?;
+    roots.push(global_canon);
+
+    let ws = workspace.canonicalize().map_err(|e| {
+        ApiError::bad_request(format!("workspace path could not be resolved: {e}"))
+    })?;
+    for rel in [".agents/skills", "skills"] {
+        let p = ws.join(rel);
+        if p.is_dir() {
+            if let Ok(c) = p.canonicalize() {
+                roots.push(c);
+            }
+        }
+    }
+
+    roots.sort_unstable();
+    roots.dedup();
+    Ok(roots)
+}
+
+fn resolve_create_skill_parent(
+    config: &Config,
+    workspace: &std::path::Path,
+    parent_directory: Option<&PathBuf>,
+    scope: &str,
+) -> Result<PathBuf, ApiError> {
+    if let Some(user_parent) = parent_directory {
+        let user = user_parent.canonicalize().map_err(|_| {
+            ApiError::bad_request(
+                "parent_directory must exist and be readable (pick an existing skills root)",
+            )
+        })?;
+        let allowed = allowed_skill_roots_for_picker(config, workspace)?;
+        if !allowed.iter().any(|r| r == &user) {
+            return Err(ApiError::bad_request(
+                "parent_directory is not an allowed skills root; use global or workspace skills directory",
+            ));
+        }
+        return Ok(user);
+    }
+
+    match scope.trim().to_ascii_lowercase().as_str() {
+        "global" => {
+            let global = config.skills_dir();
+            fs::create_dir_all(&global).map_err(|e| {
+                ApiError::internal(format!(
+                    "failed to create global skills dir {}: {e}",
+                    global.display()
+                ))
+            })?;
+            Ok(global)
+        }
+        "workspace" => {
+            let ws = workspace.canonicalize().map_err(|e| {
+                ApiError::bad_request(format!("workspace path could not be resolved: {e}"))
+            })?;
+            let agents = ws.join(".agents").join("skills");
+            let flat = ws.join("skills");
+            if agents.is_dir() {
+                Ok(agents)
+            } else if flat.is_dir() {
+                Ok(flat)
+            } else {
+                fs::create_dir_all(&agents).map_err(|e| {
+                    ApiError::internal(format!(
+                        "failed to create workspace skills dir {}: {e}",
+                        agents.display()
+                    ))
+                })?;
+                Ok(agents)
+            }
+        }
+        _ => Err(ApiError::bad_request(
+            "scope must be \"global\" or \"workspace\" (or pass parent_directory)",
+        )),
+    }
+}
+
 fn resolve_skills_dir(config: &Config, workspace: &std::path::Path) -> PathBuf {
     let agents_skills = workspace.join(".agents").join("skills");
     if agents_skills.exists() {
@@ -2505,6 +2778,13 @@ impl ApiError {
             message: message.into(),
         }
     }
+
+    fn conflict(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::CONFLICT,
+            message: message.into(),
+        }
+    }
 }
 
 impl From<std::io::Error> for ApiError {
@@ -2542,6 +2822,23 @@ mod tests {
     use tokio::sync::{Mutex, mpsc};
     use tokio::time::sleep;
     use uuid::Uuid;
+
+    #[test]
+    fn skill_directory_name_validation() {
+        assert_eq!(
+            validate_skill_directory_name("my-skill").unwrap(),
+            "my-skill"
+        );
+        assert_eq!(
+            validate_skill_directory_name("  trim_me  ").unwrap(),
+            "trim_me"
+        );
+        assert!(validate_skill_directory_name("").is_err());
+        assert!(validate_skill_directory_name("a/b").is_err());
+        assert!(validate_skill_directory_name(".").is_err());
+        assert!(validate_skill_directory_name("..").is_err());
+        assert!(validate_skill_directory_name("bad name").is_err());
+    }
 
     struct MockExecutor;
 
