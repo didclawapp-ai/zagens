@@ -29,7 +29,7 @@ interface Props {
 const navBtn = (active: boolean) =>
   `w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
     active
-      ? 'bg-hover-strong text-accent border border-accent/20'
+      ? 'bg-hover-strong text-accent border border-accent/14'
       : 'text-t-text-secondary hover:bg-hover hover:text-t-text'
   }`;
 
@@ -52,7 +52,7 @@ export default function Sidebar({
       className="flex w-60 shrink-0 flex-col border-r border-rail-edge bg-canvas"
       aria-label="会话与导航"
     >
-      <div className="shrink-0 border-b border-divider/60 px-3.5 py-3.5">
+      <div className="shrink-0 border-b border-divider px-3.5 py-3.5">
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-2 flex-1 px-2.5 py-2 rounded-lg bg-hover">
             <span className="flex size-[22px] items-center justify-center rounded-md bg-gradient-to-br from-blue-300 to-blue-600 text-[11px] text-white">
@@ -108,7 +108,7 @@ export default function Sidebar({
             <div
               key={s.id}
               className={`flex items-center gap-1 rounded-lg group ${
-                isActive ? 'bg-accent-soft ring-1 ring-accent/30' : 'hover:bg-hover'
+                isActive ? 'bg-accent-soft ring-1 ring-accent/22' : 'hover:bg-hover'
               }`}
             >
               <button
@@ -138,7 +138,7 @@ export default function Sidebar({
         })}
       </div>
 
-      <div className="shrink-0 border-t border-divider/60 px-3 py-2.5 space-y-2">
+      <div className="shrink-0 border-t border-divider px-3 py-2.5 space-y-2">
         <div className="flex items-center gap-2 px-1 py-1 text-xs text-t-text-muted"
           title="与本地 deepseek-tui 运行时 (127.0.0.1:7878) 的连接状态">
           <span
@@ -182,7 +182,7 @@ export default function Sidebar({
         </button>
       </div>
 
-      <div className="shrink-0 px-3.5 py-2.5 border-t border-divider/60 space-y-0.5">
+      <div className="shrink-0 px-3.5 py-2.5 border-t border-divider space-y-0.5">
         <p className="text-[10px] text-t-text-muted">DS Pick v0.2.1</p>
         <p className="text-[10px] text-t-text-muted/80 leading-snug">
           基于 DeepSeek TUI 运行时（<code className="font-mono">deepseek</code> CLI）
@@ -201,7 +201,7 @@ type SettingsTab = 'api-key' | 'mcp' | 'usage' | 'tasks-skills' | 'agents' | 'ro
 function subNavBtn(active: boolean) {
   return `w-full text-left pl-7 pr-3 py-2 rounded-lg text-xs transition-colors ${
     active
-      ? 'bg-hover-strong text-accent border border-accent/20'
+      ? 'bg-hover-strong text-accent border border-accent/14'
       : 'text-t-text-muted hover:bg-hover hover:text-t-text-secondary'
   }`;
 }

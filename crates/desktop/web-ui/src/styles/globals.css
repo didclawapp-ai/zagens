@@ -2,6 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Preflight sets * { border-color: #e5e7eb }. Colors defined as var(--token) do not support
+ * Tailwind opacity modifiers (border-divider/40 never compiles), so borders fell back to
+ * gray-200. Default borders to our divider token; components keep using border-divider /
+ * border-card-border without /NN.
+ */
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--color-divider);
+  }
+}
+
 :root {
   /* Single continuous “shell” tone — side rails match center (Claude / Cowork–like) */
   --color-canvas: #eef0f4;
@@ -61,10 +75,10 @@
   --color-card: #141a22;
   /* Softer hairlines — avoid “bright gray rails” on near-black canvas */
   --color-card-border: rgba(255, 255, 255, 0.065);
-  /* Primary copy: off-white (less glare than gray-50 / #f9fafb) */
-  --color-text: #d4dae3;
-  --color-text-secondary: #9ca3af;
-  --color-text-muted: #6b7280;
+  /* Primary copy — softer than before; closer to comfortable “UI gray” in dim rooms */
+  --color-text: #c5ced9;
+  --color-text-secondary: #97a3af;
+  --color-text-muted: #6d7785;
   --color-accent: #6366f1;
   --color-accent-hover: #818cf8;
   --color-accent-soft: rgba(99, 102, 241, 0.15);
@@ -84,8 +98,9 @@
   --color-input-border: rgba(255, 255, 255, 0.1);
   --color-hover: #1f2937;
   --color-hover-strong: #374151;
-  --color-divider: rgba(255, 255, 255, 0.045);
-  --color-rail-edge: rgba(255, 255, 255, 0.065);
+  /* Chrome hairlines — title bar + column edges share low-alpha whites */
+  --color-divider: rgba(255, 255, 255, 0.032);
+  --color-rail-edge: rgba(255, 255, 255, 0.038);
   --color-msg-assistant-bg: #161d26;
   --color-msg-assistant-border: rgba(255, 255, 255, 0.07);
   --color-msg-user-bg: #1f2938;

@@ -395,8 +395,8 @@ export default function RightPanel({
         aria-orientation="vertical"
         aria-label="拖拽调整面板宽度"
         tabIndex={0}
-        className={`w-1.5 shrink-0 cursor-col-resize touch-none select-none transition-colors ${
-          panelResizing ? 'bg-divider/80' : 'hover:bg-divider/50'
+        className={`w-1.5 shrink-0 cursor-col-resize touch-none select-none transition-colors bg-canvas ${
+          panelResizing ? 'bg-canvas-alt' : 'hover:bg-hover'
         }`}
         onPointerDown={onResizePointerDown}
         onPointerMove={onResizePointerMove}
@@ -423,7 +423,7 @@ export default function RightPanel({
         className="flex min-w-0 shrink-0 flex-col border-l border-rail-edge bg-canvas overflow-hidden"
         style={{ width: panelWidth }}
       >
-      <div className="flex shrink-0 items-center border-b border-divider/60 px-4 py-3">
+      <div className="flex shrink-0 items-center border-b border-divider px-4 py-3">
         <h2 className="flex-1 text-sm font-semibold text-t-text">{panelTitles[view]}</h2>
         {view === 'workspace' && desktopHost && (
           <button
@@ -470,7 +470,7 @@ export default function RightPanel({
             ) : (
               <>
                 <div
-                  className="shrink-0 flex border-b border-divider/60 bg-canvas-alt"
+                  className="shrink-0 flex border-b border-divider bg-canvas-alt"
                   role="tablist"
                   aria-label="工作台分区"
                 >

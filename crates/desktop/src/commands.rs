@@ -136,11 +136,14 @@ fn write_user_config_bytes(path: &Path, body: &str) -> Result<(), String> {
 }
 
 #[derive(Clone)]
+#[allow(dead_code)]
 pub struct AppContext {
     pub runtime_port: u16,
     pub runtime_token: String,
     /// Wake the sidecar supervisor to restart `deepseek-tui`'s HTTP server (reload `config.toml`).
     pub sidecar_restart: Arc<Notify>,
+    /// Signal the sidecar supervisor to shut down (kill the child process and exit).
+    pub shutdown: Arc<Notify>,
 }
 
 #[derive(Debug, Serialize)]

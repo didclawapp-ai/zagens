@@ -26,7 +26,7 @@ export default function ChatView({ messages, onOpenWorkspacePath, onEditMessage 
 
   return (
     <div
-      className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-4"
+      className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-canvas px-4 py-4"
       role="log"
       aria-label="对话记录"
       aria-live="polite"

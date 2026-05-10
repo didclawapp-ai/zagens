@@ -9,6 +9,9 @@ use tauri::Manager;
 use tokio::sync::Notify;
 
 fn main() {
+    let shutdown = Arc::new(Notify::new());
+    let shutdown_for_window = shutdown.clone();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
@@ -16,20 +19,27 @@ fn main() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_process::init())
-        .setup(|app| {
+        .on_window_event(move |_window, event| {
+            if let tauri::WindowEvent::Destroyed = event {
+                shutdown_for_window.notify_one();
+            }
+        })
+        .setup(move |app| {
             let token = uuid::Uuid::new_v4().to_string();
             let sidecar_restart = Arc::new(Notify::new());
             app.manage(commands::AppContext {
                 runtime_port: 7878,
                 runtime_token: token.clone(),
                 sidecar_restart: sidecar_restart.clone(),
+                shutdown: shutdown.clone(),
             });
 
             let handle = app.handle().clone();
             let token_for_sidecar = token.clone();
+            let shutdown_for_sidecar = shutdown.clone();
             tauri::async_runtime::spawn(async move {
                 if let Err(e) =
-                    sidecar::start_and_monitor(&handle, 7878, &token_for_sidecar, sidecar_restart)
+                    sidecar::start_and_monitor(&handle, 7878, &token_for_sidecar, sidecar_restart, shutdown_for_sidecar)
                         .await
                 {
                     eprintln!("sidecar error: {e}");

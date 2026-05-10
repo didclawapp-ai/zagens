@@ -1156,7 +1156,7 @@ export default function App() {
   return (
     <div className="flex flex-col h-screen w-screen bg-canvas">
       <TitleBar />
-      <div className="flex flex-1 min-h-0">
+      <div className="flex flex-1 min-h-0 bg-canvas">
       <ApprovalDialog
         open={approval != null}
         toolName={approval?.toolName ?? ''}
@@ -1179,7 +1179,7 @@ export default function App() {
         theme={theme}
         onToggleTheme={toggleTheme}
       />
-      <div className="flex min-h-0 flex-1 flex-col min-w-0">
+      <div className="flex min-h-0 flex-1 flex-col min-w-0 bg-canvas">
         {banner && (
           <div className="shrink-0 border-b border-divider bg-amber-bg px-4 py-2 text-sm text-amber-text">
             {banner}
@@ -1284,7 +1284,7 @@ function TitleBar() {
   return (
     <div
       data-tauri-drag-region
-      className="flex items-center h-9 shrink-0 bg-canvas border-b border-divider/70 select-none"
+      className="flex items-center h-9 shrink-0 bg-canvas border-b border-divider select-none"
     >
       <span className="pl-3 text-[11px] font-semibold text-t-text-secondary">DS Pick</span>
       <div className="flex-1 min-w-8" data-tauri-drag-region />

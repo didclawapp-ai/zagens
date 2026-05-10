@@ -72,7 +72,7 @@ export function MessageBubble({
               )}
             </button>
             {reasoningExpanded && (
-              <div className="max-h-[48vh] overflow-y-auto border-t border-card-border/40 px-2.5 pb-2.5 pt-0 leading-relaxed text-t-text-secondary whitespace-pre-wrap">
+              <div className="max-h-[48vh] overflow-y-auto border-t border-card-border px-2.5 pb-2.5 pt-0 leading-relaxed text-t-text-secondary whitespace-pre-wrap">
                 {message.thinking ||
                   (message.isStreaming ? '推理中…（内容流式到达后会显示在这里）' : '')}
               </div>

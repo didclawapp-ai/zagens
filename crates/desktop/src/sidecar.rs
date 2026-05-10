@@ -206,6 +206,7 @@ pub async fn start_and_monitor(
     port: u16,
     token: &str,
     restart: Arc<Notify>,
+    shutdown: Arc<Notify>,
 ) -> Result<()> {
     let deepseek_bin = find_deepseek_binary(app);
 
@@ -263,6 +264,13 @@ pub async fn start_and_monitor(
         loop {
             tokio::select! {
                 biased;
+                _ = shutdown.notified() => {
+                    eprintln!("deepseek-desktop: shutting down sidecar…");
+                    if let Some(mut ch) = child.take() {
+                        ch.kill().await.ok();
+                    }
+                    return Ok(());
+                }
                 _ = restart.notified() => {
                     eprintln!("deepseek-desktop: restarting sidecar to pick up config changes…");
                     if let Some(mut ch) = child.take() {
