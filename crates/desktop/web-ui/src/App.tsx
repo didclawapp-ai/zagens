@@ -243,9 +243,25 @@ export default function App() {
   const [desktopApiKeyConfigured, setDesktopApiKeyConfigured] = useState<boolean | null>(null);
   const [runtimeConn, setRuntimeConn] = useState<RuntimeConnectionState>('checking');
 
+  const toggleDevtools = useCallback(() => {
+    if (!desktopHost) return;
+    void import('@tauri-apps/api/core').then(({ invoke }) =>
+      invoke('plugin:webview|internal_toggle_devtools'),
+    );
+  }, [desktopHost]);
+
   useKeyboardShortcuts([
     { key: 'k', ctrl: true, description: '新对话', handler: () => handleNewSession() },
     { key: 'n', ctrl: true, description: '工作台', handler: () => setActiveInspector('workspace') },
+    { key: 'f12', global: true, description: '开发者工具', handler: () => toggleDevtools() },
+    {
+      key: 'i',
+      ctrl: true,
+      shift: true,
+      global: true,
+      description: '开发者工具',
+      handler: () => toggleDevtools(),
+    },
   ]);
 
   const eventAbortRef = useRef<AbortController | null>(null);
@@ -1248,31 +1264,30 @@ export default function App() {
 
 function TitleBar() {
   const handleMinimize = () => {
-    import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
-      getCurrentWindow().minimize();
-    }).catch(() => {});
+    void import('@tauri-apps/api/window').then(({ getCurrentWindow }) => getCurrentWindow().minimize());
   };
   const handleToggleMaximize = () => {
-    import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
+    void import('@tauri-apps/api/window').then(async ({ getCurrentWindow }) => {
       const w = getCurrentWindow();
-      w.isMaximized().then((max) => max ? w.unmaximize() : w.maximize());
-    }).catch(() => {});
+      const max = await w.isMaximized();
+      if (max) await w.unmaximize();
+      else await w.maximize();
+    });
   };
   const handleClose = () => {
-    import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
-      getCurrentWindow().close();
-    }).catch(() => {});
+    void import('@tauri-apps/api/window').then(({ getCurrentWindow }) => getCurrentWindow().close());
   };
 
   return (
     <div
       data-tauri-drag-region
-      className="flex items-center h-9 shrink-0 bg-card border-b border-divider select-none"
+      className="flex items-center h-9 shrink-0 bg-canvas border-b border-divider/70 select-none"
     >
-      <span className="pl-3 text-[11px] font-semibold text-t-text-muted">DS Pick</span>
-      <div className="flex-1" data-tauri-drag-region />
+      <span className="pl-3 text-[11px] font-semibold text-t-text-secondary">DS Pick</span>
+      <div className="flex-1 min-w-8" data-tauri-drag-region />
       <button
         type="button"
+        data-tauri-drag-region="false"
         onClick={handleMinimize}
         className="px-3 py-2 text-t-text-muted hover:text-t-text hover:bg-hover transition-colors"
         aria-label="最小化"
@@ -1283,6 +1298,7 @@ function TitleBar() {
       </button>
       <button
         type="button"
+        data-tauri-drag-region="false"
         onClick={handleToggleMaximize}
         className="px-3 py-2 text-t-text-muted hover:text-t-text hover:bg-hover transition-colors"
         aria-label="最大化/还原"
@@ -1293,6 +1309,7 @@ function TitleBar() {
       </button>
       <button
         type="button"
+        data-tauri-drag-region="false"
         onClick={handleClose}
         className="px-3 py-2 text-t-text-muted hover:text-white hover:bg-t-error transition-colors"
         aria-label="关闭"

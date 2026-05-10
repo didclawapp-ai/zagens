@@ -6,6 +6,8 @@ interface ShortcutDef {
   key: string;
   ctrl?: boolean;
   shift?: boolean;
+  /** When set, also fires while an input/textarea/select is focused (default skips most shortcuts there). */
+  global?: boolean;
   handler: ShortcutHandler;
   description: string;
 }
@@ -25,8 +27,11 @@ export default function useKeyboardShortcuts(shortcuts: ShortcutDef[]) {
         const ctrlMatch = s.ctrl ? (e.ctrlKey || e.metaKey) : true;
         const shiftMatch = s.shift ? e.shiftKey : !e.shiftKey;
         if (e.key.toLowerCase() === s.key.toLowerCase() && ctrlMatch && shiftMatch) {
-          // Allow Ctrl+K/N even when in input fields
-          if (isInput && !(s.ctrl && (s.key === 'k' || s.key === 'n'))) {
+          if (
+            isInput &&
+            !s.global &&
+            !(s.ctrl && (s.key === 'k' || s.key === 'n'))
+          ) {
             continue;
           }
           e.preventDefault();
