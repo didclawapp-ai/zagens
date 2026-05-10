@@ -137,19 +137,24 @@ export function MessageBubble({
   );
 }
 
+const ANSI_CSI = /\x1B\[/;
+
 /** Route tool cards to specialized renderers based on tool name. */
 function renderToolCard(tool: ToolCardModel) {
-  // Shell tools → TerminalCard
+  const outputHasAnsi = Boolean(tool.output && ANSI_CSI.test(tool.output));
+
+  // Shell tools, or any tool whose output carries terminal SGR sequences (avoids “black slab” in <pre>)
   if (
     tool.name === 'exec_shell' ||
     tool.name === 'task_shell_start' ||
-    tool.name === 'task_shell_wait'
+    tool.name === 'task_shell_wait' ||
+    outputHasAnsi
   ) {
     return (
       <TerminalCard
         key={tool.id}
         output={tool.output ?? ''}
-        command={tool.input ? tryParseCommand(tool.input) : undefined}
+        command={tryParseCommand(tool.input) ?? tool.name}
       />
     );
   }

@@ -15,8 +15,9 @@ function formatTokens(n: number): string {
   return String(n);
 }
 
-function formatCost(n: number): string {
-  return `¥${n.toFixed(2)}`;
+/** Backend `cost_usd` is USD from `pricing::calculate_turn_cost_from_usage` (not CNY). */
+function formatCostUsd(n: number): string {
+  return `$${n.toFixed(2)}`;
 }
 
 export default function UsageDashboard({ runtimeConn }: { runtimeConn: RuntimeConnectionState }) {
@@ -82,9 +83,9 @@ export default function UsageDashboard({ runtimeConn }: { runtimeConn: RuntimeCo
         </div>
         <div className="rounded-lg border border-card-border bg-canvas-alt p-3 text-center">
           <div className="text-lg font-bold text-warning font-display">
-            {formatCost(data.totals.cost_usd)}
+            {formatCostUsd(data.totals.cost_usd)}
           </div>
-          <div className="text-[10px] text-t-text-muted mt-0.5">估算费用</div>
+          <div className="text-[10px] text-t-text-muted mt-0.5">估算费用（USD）</div>
         </div>
         <div className="rounded-lg border border-card-border bg-canvas-alt p-3 text-center">
           <div className="text-lg font-bold text-t-text font-display">{data.totals.turns}</div>

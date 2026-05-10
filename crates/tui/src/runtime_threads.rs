@@ -3,7 +3,7 @@
 //! This module keeps DeepSeek-only execution while exposing Codex-like lifecycle
 //! semantics (threads, turns, items, interrupt/steer, and replayable events).
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -685,6 +685,108 @@ pub struct UsageAggregation {
     pub buckets: Vec<UsageBucket>,
 }
 
+impl RuntimeThreadStore {
+    /// One linear scan of `turns_dir` for `GET /v1/usage`.
+    ///
+    /// The naive path called `list_turns_for_thread` per thread; that helper
+    /// re-walks every `*.json` in `turns_dir`, so usage aggregation became
+    /// **O(threads × turns)** file reads and could stall the desktop dashboard
+    /// on large stores.
+    pub fn aggregate_usage_linear(
+        &self,
+        thread_models: &HashMap<String, String>,
+        since: Option<DateTime<Utc>>,
+        until: Option<DateTime<Utc>>,
+        group_by: UsageGroupBy,
+    ) -> Result<UsageAggregation> {
+        let mut buckets: BTreeMap<String, UsageBucket> = BTreeMap::new();
+        let mut totals = UsageTotals::default();
+
+        for entry in fs::read_dir(&self.turns_dir)
+            .with_context(|| format!("Failed to read {}", self.turns_dir.display()))?
+        {
+            let entry = entry?;
+            let path = entry.path();
+            if path.extension().is_none_or(|ext| ext != "json") {
+                continue;
+            }
+            let raw = fs::read_to_string(&path)
+                .with_context(|| format!("Failed to read {}", path.display()))?;
+            let turn: TurnRecord = serde_json::from_str(&raw)
+                .with_context(|| format!("Failed to parse {}", path.display()))?;
+            if turn.schema_version > CURRENT_RUNTIME_SCHEMA_VERSION {
+                bail!(
+                    "Turn schema v{} is newer than supported v{}",
+                    turn.schema_version,
+                    CURRENT_RUNTIME_SCHEMA_VERSION
+                );
+            }
+            let Some(model) = thread_models.get(&turn.thread_id) else {
+                continue;
+            };
+            if let Some(s) = since
+                && turn.created_at < s
+            {
+                continue;
+            }
+            if let Some(u) = until
+                && turn.created_at > u
+            {
+                continue;
+            }
+            let Some(usage) = turn.usage.as_ref() else {
+                continue;
+            };
+            let cached = usage.prompt_cache_hit_tokens.unwrap_or(0) as u64;
+            let reasoning = usage.reasoning_tokens.unwrap_or(0) as u64;
+            let input = usage.input_tokens as u64;
+            let output = usage.output_tokens as u64;
+            let cost =
+                crate::pricing::calculate_turn_cost_from_usage(model, usage).unwrap_or(0.0);
+
+            totals.input_tokens += input;
+            totals.output_tokens += output;
+            totals.cached_tokens += cached;
+            totals.reasoning_tokens += reasoning;
+            totals.cost_usd += cost;
+            totals.turns += 1;
+
+            let key = match group_by {
+                UsageGroupBy::Day => turn.created_at.format("%Y-%m-%d").to_string(),
+                UsageGroupBy::Model => model.clone(),
+                UsageGroupBy::Provider => provider_label_for_model(model).to_string(),
+                UsageGroupBy::Thread => turn.thread_id.clone(),
+            };
+            let bucket = buckets.entry(key.clone()).or_insert_with(|| UsageBucket {
+                key,
+                ..UsageBucket::default()
+            });
+            bucket.input_tokens += input;
+            bucket.output_tokens += output;
+            bucket.cached_tokens += cached;
+            bucket.reasoning_tokens += reasoning;
+            bucket.cost_usd += cost;
+            bucket.turns += 1;
+        }
+
+        let group_by_str = match group_by {
+            UsageGroupBy::Day => "day",
+            UsageGroupBy::Model => "model",
+            UsageGroupBy::Provider => "provider",
+            UsageGroupBy::Thread => "thread",
+        }
+        .to_string();
+
+        Ok(UsageAggregation {
+            since,
+            until,
+            group_by: group_by_str,
+            totals,
+            buckets: buckets.into_values().collect(),
+        })
+    }
+}
+
 /// Best-effort provider classification from a model name. Used as a grouping
 /// key for `/v1/usage?group_by=provider`. Cost-tracking already runs the
 /// model→pricing→cost path; this only labels the bucket.
@@ -946,75 +1048,11 @@ impl RuntimeThreadManager {
         until: Option<DateTime<Utc>>,
         group_by: UsageGroupBy,
     ) -> Result<UsageAggregation> {
-        use std::collections::BTreeMap;
-
-        let mut buckets: BTreeMap<String, UsageBucket> = BTreeMap::new();
-        let mut totals = UsageTotals::default();
-
-        for thread in self.store.list_threads()? {
-            let turns = self.store.list_turns_for_thread(&thread.id)?;
-            for turn in turns {
-                if let Some(s) = since
-                    && turn.created_at < s
-                {
-                    continue;
-                }
-                if let Some(u) = until
-                    && turn.created_at > u
-                {
-                    continue;
-                }
-                let Some(usage) = turn.usage.as_ref() else {
-                    continue;
-                };
-                let cached = usage.prompt_cache_hit_tokens.unwrap_or(0) as u64;
-                let reasoning = usage.reasoning_tokens.unwrap_or(0) as u64;
-                let input = usage.input_tokens as u64;
-                let output = usage.output_tokens as u64;
-                let cost = crate::pricing::calculate_turn_cost_from_usage(&thread.model, usage)
-                    .unwrap_or(0.0);
-
-                totals.input_tokens += input;
-                totals.output_tokens += output;
-                totals.cached_tokens += cached;
-                totals.reasoning_tokens += reasoning;
-                totals.cost_usd += cost;
-                totals.turns += 1;
-
-                let key = match group_by {
-                    UsageGroupBy::Day => turn.created_at.format("%Y-%m-%d").to_string(),
-                    UsageGroupBy::Model => thread.model.clone(),
-                    UsageGroupBy::Provider => provider_label_for_model(&thread.model).to_string(),
-                    UsageGroupBy::Thread => thread.id.clone(),
-                };
-                let bucket = buckets.entry(key.clone()).or_insert_with(|| UsageBucket {
-                    key,
-                    ..UsageBucket::default()
-                });
-                bucket.input_tokens += input;
-                bucket.output_tokens += output;
-                bucket.cached_tokens += cached;
-                bucket.reasoning_tokens += reasoning;
-                bucket.cost_usd += cost;
-                bucket.turns += 1;
-            }
-        }
-
-        let group_by_str = match group_by {
-            UsageGroupBy::Day => "day",
-            UsageGroupBy::Model => "model",
-            UsageGroupBy::Provider => "provider",
-            UsageGroupBy::Thread => "thread",
-        }
-        .to_string();
-
-        Ok(UsageAggregation {
-            since,
-            until,
-            group_by: group_by_str,
-            totals,
-            buckets: buckets.into_values().collect(),
-        })
+        let threads = self.store.list_threads()?;
+        let thread_models: HashMap<String, String> =
+            threads.into_iter().map(|t| (t.id, t.model)).collect();
+        self.store
+            .aggregate_usage_linear(&thread_models, since, until, group_by)
     }
 
     pub async fn get_routing_rules(&self) -> Vec<RoutingRule> {
@@ -3645,6 +3683,7 @@ mod tests {
                     allow_shell: None,
                     trust_mode: None,
                     auto_approve: None,
+                    route_intent: None,
                 },
             )
             .await?;
@@ -3730,6 +3769,7 @@ mod tests {
                     allow_shell: None,
                     trust_mode: None,
                     auto_approve: Some(true),
+                    route_intent: None,
                 },
             )
             .await?;
@@ -3773,6 +3813,7 @@ mod tests {
                     allow_shell: None,
                     trust_mode: None,
                     auto_approve: Some(false),
+                    route_intent: None,
                 },
             )
             .await?;
@@ -3940,6 +3981,7 @@ mod tests {
                     allow_shell: None,
                     trust_mode: None,
                     auto_approve: None,
+                    route_intent: None,
                 },
             )
             .await?;
@@ -3957,6 +3999,7 @@ mod tests {
                     allow_shell: None,
                     trust_mode: None,
                     auto_approve: None,
+                    route_intent: None,
                 },
             )
             .await?;
@@ -4044,6 +4087,7 @@ mod tests {
                     allow_shell: None,
                     trust_mode: None,
                     auto_approve: None,
+                    route_intent: None,
                 },
             )
             .await?;
@@ -4111,6 +4155,7 @@ mod tests {
                     allow_shell: None,
                     trust_mode: None,
                     auto_approve: Some(true),
+                    route_intent: None,
                 },
             )
             .await?;
@@ -4192,6 +4237,7 @@ mod tests {
                     allow_shell: None,
                     trust_mode: None,
                     auto_approve: Some(false),
+                    route_intent: None,
                 },
             )
             .await?;
@@ -4276,6 +4322,7 @@ mod tests {
                     allow_shell: None,
                     trust_mode: None,
                     auto_approve: Some(false),
+                    route_intent: None,
                 },
             )
             .await?;
@@ -4361,6 +4408,7 @@ mod tests {
                     allow_shell: None,
                     trust_mode: Some(true),
                     auto_approve: Some(true),
+                    route_intent: None,
                 },
             )
             .await?;
@@ -4484,6 +4532,7 @@ mod tests {
                     allow_shell: None,
                     trust_mode: None,
                     auto_approve: None,
+                    route_intent: None,
                 },
             )
             .await?;
@@ -4630,6 +4679,7 @@ mod tests {
                     allow_shell: None,
                     trust_mode: None,
                     auto_approve: None,
+                    route_intent: None,
                 },
             )
             .await?;
