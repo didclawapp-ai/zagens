@@ -7,8 +7,8 @@ Pick desktop, CLI/TUI, tooling) in this file—typically under `[Unreleased]`,
 in the **same PR/commit** as the change when practical.
 
 **DS Pick** (desktop app in `crates/desktop/`) has its **own** version line:
-**MAJOR.MINOR.PATCH** in **SemVer** (e.g. **v0.2.0**). Display form **vX.Y.Z**;
-each numeric segment is one or more digits (e.g. `0.2.0`, `0.10.3`). This line
+**MAJOR.MINOR.PATCH** in **SemVer** (e.g. **v0.2.1**). Display form **vX.Y.Z**;
+each numeric segment is one or more digits (e.g. `0.2.1`, `0.10.3`). This line
 **does not** follow the root workspace version used by `deepseek` / `deepseek-tui`
 crates (see root `Cargo.toml` `[workspace.package] version`).
 
@@ -28,9 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   渲染；形如 `` `docs/foo.md` `` 的本地路径、以及相对路径形式的 `[](…)` 链接在点击
   时在右侧 **工作台** 打开与目录树相同的预览（文本 / 图片 / 二进制等），并自动
   切到「工作区目录」视图。
-- **v0.2.0** — Independent desktop semver: `deepseek-desktop` crate, Tauri
+- **v0.2.1** — Independent desktop semver: `deepseek-desktop` crate, Tauri
   `version`, and `crates/desktop/web-ui/package.json`; sidebar label **DS Pick
-  v0.2.0**. Dependency pins to workspace crates (e.g. `deepseek-config`) remain
+  v0.2.1**. Dependency pins to workspace crates (e.g. `deepseek-config`) remain
   at the shared workspace release (e.g. `0.8.15`).
 
 ### Process
@@ -1887,7 +1887,8 @@ Welcome — and thank you.
 [0.3.2]: https://github.com/Hmbown/DeepSeek-TUI/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/Hmbown/DeepSeek-TUI/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Hmbown/DeepSeek-TUI/compare/v0.2.2...v0.3.0
-[0.2.2]: https://github.com/Hmbown/DeepSeek-TUI/compare/v0.2.0...v0.2.2
+[0.2.2]: https://github.com/Hmbown/DeepSeek-TUI/compare/v0.2.1...v0.2.2
+[0.2.1]: https://github.com/Hmbown/DeepSeek-TUI/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Hmbown/DeepSeek-TUI/releases/tag/v0.2.0
 [0.0.2]: https://github.com/Hmbown/DeepSeek-TUI/releases/tag/v0.0.2
 [0.0.1]: https://github.com/Hmbown/DeepSeek-TUI/releases/tag/v0.0.1

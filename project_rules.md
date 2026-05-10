@@ -15,7 +15,7 @@ This document consolidates the same guidance as [`.cursor/rules/*.mdc`](.cursor/
 - **TUI / CLI lineage docs:** [`docs/tui/README.md`](docs/tui/README.md) — prompts analysis, dependency graph, handoffs, reviews.
 - **Archived TUI-first root README copies:** [`docs/archive/tui-readme-era/ABOUT.md`](docs/archive/tui-readme-era/ABOUT.md).
 - **Authoritative agent instructions:** [`AGENTS.md`](AGENTS.md).
-- **Versions:** DS Pick uses its **own** SemVer (e.g. **v0.2.0**), separate from the workspace `deepseek` line; see [`CHANGELOG.md`](CHANGELOG.md) header.
+- **Versions:** DS Pick uses its **own** SemVer (e.g. **v0.2.1**), separate from the workspace `deepseek` line; see [`CHANGELOG.md`](CHANGELOG.md) header.
 
 When summarizing the project, **lead with DS Pick + shared runtime**, not “TUI-only.”
 
