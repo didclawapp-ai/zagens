@@ -476,12 +476,12 @@ enum Recoverability {
 ### 概览
 
 ```
-Step 1 (紧急)    安全 + 依赖修复 ── 4 项，预计 1-2 天，零破坏
-Step 2 (高优先级) 架构瘦身一阶段   ── 4 项，预计 3-5 天，文件结构变动
-Step 3 (高优先级) 架构瘦身二阶段   ── 4 项，预计 3-5 天，函数级拆分
-Step 4 (重要)     测试补强         ── 7 项，预计 3-5 天，纯增量
-Step 5 (重要)     引擎可测性重构   ── 2 项，预计 2-3 天，涉及 trait 抽象
-Step 6 (计划)     工程改善         ── 8 项，预计 3-5 天，长期迭代
+Step 1 (紧急)    ✅ 已完成 — 2025-05-11
+Step 2 (高优先级) ⏸ 待窗口期 — 架构瘦身一阶段（4 项，预计 3-5 天）
+Step 3 (高优先级) ⏸ 待窗口期 — 架构瘦身二阶段（4 项，预计 3-5 天）
+Step 4 (重要)     ⏸ 待窗口期 — 测试补强（7 项，预计 3-5 天）
+Step 5 (重要)     ⏸ 待窗口期 — 引擎可测性重构（2 项，预计 2-3 天）
+Step 6 (计划)     ⏸ 待窗口期 — 工程改善（8 项，预计 3-5 天）
 ```
 
 ---
@@ -594,9 +594,11 @@ Op::EditLastTurn => {
 
 **验证**：现有 shell/tests.rs 和 engine/tests.rs 全部通过。
 
+**✅ 已实施并测试通过（2025-05-11）**。变更内容：15 个 Cargo.toml 加入 `rust-version.workspace = true`；`tui/Cargo.toml` 17 个依赖切换为 workspace 继承；`sandbox/mod.rs` `prepare_landlock` / `prepare_windows` 文档注释增强 ⚠️ SECURITY NOTICE；`EditLastTurn` 经核实 `truncate()` 语义在工具调用场景下正确，无需修改。commit `0bb7447`。
+
 ---
 
-### Step 2 — 架构瘦身一阶段：文件级拆分（高优先级）
+### Step 2 — 架构瘦身一阶段：文件级拆分（高优先级） ⏸
 
 > **目标**: 将 6 个巨型文件中的 4 个拆分为可管理的子文件，降低认知负荷。  
 > **验收标准**: `cargo check/clippy/test --workspace` 全部通过，外部 API 无变更。
@@ -668,7 +670,7 @@ Op::EditLastTurn => {
 
 ---
 
-### Step 3 — 架构瘦身二阶段：函数级拆分（高优先级）
+### Step 3 — 架构瘦身二阶段：函数级拆分（高优先级） ⏸
 
 > **目标**: 降低 `handle_deepseek_turn` 等复杂函数的认知负担，配合依赖治理。  
 > **验收标准**: 每个提取出的子函数有独立单元测试，引擎行为不变。
@@ -752,7 +754,7 @@ scripting = ["dep:starlark"]
 
 ---
 
-### Step 4 — 测试补强（高优先级）
+### Step 4 — 测试补强（高优先级） ⏸
 
 > **目标**: 补齐基础 crate 测试缺口，增加 CI 质量门禁。  
 > **验收标准**: CI `cargo test --workspace` 全绿，新增 `cargo audit` 零已知漏洞。
@@ -840,7 +842,7 @@ scripting = ["dep:starlark"]
 
 ---
 
-### Step 5 — 引擎可测性重构（高优先级）
+### Step 5 — 引擎可测性重构（高优先级） ⏸
 
 > **目标**: 使 Engine 支持 trait mock，解锁 4 个被 ignore 的端到端测试。  
 > **验收标准**: `integration_mock_llm.rs` 中 4 个 `#[ignore]` 测试改为正常运行且全部通过。
@@ -872,7 +874,7 @@ scripting = ["dep:starlark"]
 
 ---
 
-### Step 6 — 工程改善（计划，长期迭代）
+### Step 6 — 工程改善（计划，长期迭代） ⏸
 
 > **目标**: 消除代码异味，统一依赖风格，提升用户信任。  
 > **验收标准**: 逐项交付，不要求一次性完成。
