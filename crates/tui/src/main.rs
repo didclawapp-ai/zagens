@@ -46,6 +46,7 @@ mod network_policy;
 mod palette;
 mod pricing;
 mod project_context;
+mod python_env;
 mod project_doc;
 mod prompts;
 pub mod repl;

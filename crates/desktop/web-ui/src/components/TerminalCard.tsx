@@ -77,18 +77,44 @@ function useDocumentDarkClass(): boolean {
   return dark;
 }
 
+/**
+ * Normalize captured shell output for read-only xterm display.
+ * In light UI, strip SGR/OSC — PowerShell and Windows consoles often emit pale / true-color
+ * sequences that were meant for dark terminals and read as “empty” on our light theme.
+ */
+function prepareTerminalOutput(text: string, lightUi: boolean): string {
+  let s = text
+    .replace(/\u0000/g, '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n');
+  if (lightUi) {
+    // OSC (hyperlinks, VS Code / pwsh semantic prompts, etc.)
+    s = s.replace(/\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g, '');
+    // CSI (SGR colors, cursor motion — dropping is fine for static logs)
+    // CSI … final byte (ECMA-48): param bytes, optional intermediates, final 0x40–0x7e
+    s = s.replace(/\u001b\[[\x30-\x3f]*[\x20-\x2f]*[\x40-\x7e]/g, '');
+    // Other two-char ESC sequences
+    s = s.replace(/\u001b[ -/][@-~]/g, '');
+  }
+  return s;
+}
+
 export default function TerminalCard({ output, command }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
+  const outputRef = useRef(output);
+  outputRef.current = output;
   const isDark = useDocumentDarkClass();
 
   useEffect(() => {
-    if (!containerRef.current) return;
+    const container = containerRef.current;
+    if (!container) return;
 
     const term = new Terminal({
       cursorBlink: false,
       disableStdin: true,
+      convertEol: true,
       fontSize: 11,
       fontFamily: "'Cascadia Code', 'Consolas', 'Fira Code', monospace",
       theme: xtermThemeForAppDarkMode(isDark),
@@ -97,21 +123,39 @@ export default function TerminalCard({ output, command }: Props) {
 
     const fit = new FitAddon();
     term.loadAddon(fit);
-    term.open(containerRef.current);
+    term.open(container);
 
-    // Fit after a short delay so the container has dimensions
-    setTimeout(() => {
+    const lightUi = !isDark;
+    const repaint = () => {
       try {
         fit.fit();
       } catch {
-        /* ignore */
+        /* narrow flex layouts may throw until width stabilizes */
       }
-    }, 50);
+      term.clear();
+      term.write(prepareTerminalOutput(outputRef.current, lightUi));
+    };
+
+    // Initial paint + deferred fits: first open often sees width 0 in flex; fit() then fixes cols.
+    repaint();
+    const t1 = window.setTimeout(repaint, 50);
+    const t2 = window.setTimeout(repaint, 250);
+
+    let roRaf = 0;
+    const ro = new ResizeObserver(() => {
+      cancelAnimationFrame(roRaf);
+      roRaf = window.requestAnimationFrame(repaint);
+    });
+    ro.observe(container);
 
     termRef.current = term;
     fitRef.current = fit;
 
     return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      cancelAnimationFrame(roRaf);
+      ro.disconnect();
       term.dispose();
       termRef.current = null;
       fitRef.current = null;
@@ -121,9 +165,13 @@ export default function TerminalCard({ output, command }: Props) {
   useEffect(() => {
     const term = termRef.current;
     if (!term) return;
-    // Clear and rewrite output
+    try {
+      fitRef.current?.fit();
+    } catch {
+      /* ignore */
+    }
     term.clear();
-    term.write(output.replace(/\r\n/g, '\n').replace(/\r/g, '\n'));
+    term.write(prepareTerminalOutput(output, !isDark));
   }, [output, isDark]);
 
   return (
@@ -138,7 +186,7 @@ export default function TerminalCard({ output, command }: Props) {
         </span>
       </div>
       {/* xterm container */}
-      <div ref={containerRef} className="terminal-container px-1 min-h-[8rem]" />
+      <div ref={containerRef} className="terminal-container w-full min-w-0 px-1 min-h-[8rem]" />
     </div>
   );
 }

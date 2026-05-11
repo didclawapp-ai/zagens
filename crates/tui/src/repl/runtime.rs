@@ -179,7 +179,10 @@ impl PythonRuntime {
         let session_id = Uuid::new_v4().simple().to_string();
         let bootstrap = render_bootstrap(&session_id);
 
-        let mut cmd = Command::new("python3");
+        let python_bin = crate::python_env::find_python()
+            .map(|(bin, _, _)| bin)
+            .unwrap_or_else(|| "python3".to_string());
+        let mut cmd = Command::new(&python_bin);
         cmd.arg("-u")
             .arg("-c")
             .arg(&bootstrap)
@@ -194,16 +197,16 @@ impl PythonRuntime {
 
         let mut child = cmd
             .spawn()
-            .map_err(|e| format!("failed to spawn python3: {e}"))?;
+            .map_err(|e| format!("failed to spawn {python_bin}: {e}"))?;
 
         let stdin = child
             .stdin
             .take()
-            .ok_or_else(|| "python3 stdin pipe missing".to_string())?;
+            .ok_or_else(|| format!("{python_bin} stdin pipe missing"))?;
         let raw_stdout = child
             .stdout
             .take()
-            .ok_or_else(|| "python3 stdout pipe missing".to_string())?;
+            .ok_or_else(|| format!("{python_bin} stdout pipe missing"))?;
         let stdout = BufReader::new(raw_stdout);
 
         let mut rt = Self {

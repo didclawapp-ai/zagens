@@ -421,6 +421,13 @@ impl ToolRegistryBuilder {
             .with_tool(Arc::new(FileInfoTool))
     }
 
+    /// Include the office document generation tool (`write_office`).
+    #[must_use]
+    pub fn with_office_write_tool(self) -> Self {
+        use super::office_write::WriteOfficeTool;
+        self.with_tool(Arc::new(WriteOfficeTool))
+    }
+
     /// Include only read-only file tools (read, list).
     #[must_use]
     pub fn with_read_only_file_tools(self) -> Self {
@@ -691,6 +698,7 @@ impl ToolRegistryBuilder {
             .with_diagnostics_tool()
             .with_project_tools()
             .with_skill_tools()
+            .with_office_write_tool()
             .with_test_runner_tool()
             .with_validation_tools()
             .with_runtime_task_tools()

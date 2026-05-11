@@ -1587,6 +1587,7 @@ dependencies = [
  "ratatui 0.29.0",
  "regex",
  "reqwest",
+ "rust_xlsxwriter",
  "rustyline 15.0.0",
  "schemars 1.2.1",
  "schemaui",
@@ -5341,6 +5342,15 @@ dependencies = [
  "hashlink",
  "libsqlite3-sys",
  "smallvec",
+]
+
+[[package]]
+name = "rust_xlsxwriter"
+version = "0.81.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "56c615b4e9c5b7be8e813d0c286734c8a9f336177810f5f91d4da0fa61ad4b4f"
+dependencies = [
+ "zip",
 ]
 
 [[package]]

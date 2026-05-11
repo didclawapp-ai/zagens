@@ -65,6 +65,7 @@ pub(super) fn should_default_defer_tool(name: &str, mode: AppMode) -> bool {
             | "update_plan"
             | "checklist_write"
             | "todo_write"
+            | "write_office"
             | "task_create"
             | "task_list"
             | "task_read"
@@ -431,7 +432,10 @@ pub(super) async fn execute_code_execution_tool(
     workspace: &Path,
 ) -> Result<ToolResult, ToolError> {
     let code = required_str(input, "code")?;
-    let mut cmd = tokio::process::Command::new("python3");
+    let python_bin = crate::python_env::find_python()
+        .map(|(bin, _, _)| bin)
+        .unwrap_or_else(|| "python3".to_string());
+    let mut cmd = tokio::process::Command::new(&python_bin);
     cmd.arg("-c");
     cmd.arg(code);
     cmd.current_dir(workspace);

@@ -71,6 +71,7 @@ flate2 = "1.1"
 sha2 = "0.10"
 encoding_rs = "0.8"
 zip = "2.2"
+rust_xlsxwriter = "0.81"
 
 [dev-dependencies]
 wiremock = "0.6"

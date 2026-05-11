@@ -50,6 +50,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   — planning inventory (aligned areas, gaps, suggested prioritization).
 
 ### Added
+- **办公文档读写** — `read_file` 新增 `.xlsx` / `.pptx` 文本提取（与现有 `.pdf` / `.docx` 同级，通过 OOXML ZIP 解包 + 正则提取纯文本）。`write_office` 工具：从结构化 JSON 生成 `.xlsx`（纯 Rust，`rust_xlsxwriter`）、`.docx`（Python `python-docx` 首选，纯 Rust 最小 OOXML 兜底）、`.pptx`（Python `python-pptx`；`theme` 支持预设 4 套 + 自定义 hex 色板，`subtitle` 显式封面副标题；16:9 宽屏，自动封面+尾页），详见 [docs/office-doc-capability-plan.md](docs/office-doc-capability-plan.md)。
+- **Python 运行时检测** — 新增 `python_env.rs`：`find_python()` 统一检测 Python ≥ 3.8（候选链 `python3 → python → py -3`），`ensure_office_venv()` 管理 `~/.deepseek/office-py/` 专用 venv + pinned 依赖（`python-docx` / `python-pptx`）。RLM 和 `code_execution` 同步消除硬编码 `"python3"`。
 - **Runtime API: `POST /v1/skills`** — create `<skills_root>/<name>/SKILL.md` with a starter frontmatter template under the configured global skills directory, workspace `.agents/skills/` / `skills/`, or an existing allowed root passed as `parent_directory` (desktop folder picker). See [docs/RUNTIME_API.md](docs/RUNTIME_API.md) § Skills.
 - **Runtime HTTP interactive tool approval** — when a thread turn runs with
   `auto_approve: false`, the runtime emits an `approval.required` event and

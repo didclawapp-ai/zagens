@@ -34,7 +34,7 @@ impl ToolSpec for ReadFileTool {
     }
 
     fn description(&self) -> &'static str {
-        "Read a file from the workspace. Plain text uses line paging (start_line or offset + limit) with streaming newline decode (low memory); files starting with UTF-16/UTF-32 BOM use full-file decode. PDFs: `pdftotext` or `pdf-extract`."
+        "Read a file from the workspace. Plain text uses line paging (start_line or offset + limit) with streaming newline decode (low memory); files starting with UTF-16/UTF-32 BOM use full-file decode. PDFs: `pdftotext` or `pdf-extract`. DOCX/XLSX/PPTX: extracts text from OOXML ZIP."
     }
 
     fn input_schema(&self) -> Value {
@@ -85,6 +85,14 @@ impl ToolSpec for ReadFileTool {
 
         if is_docx(&file_path)? {
             return read_docx(&file_path);
+        }
+
+        if is_xlsx(&file_path)? {
+            return read_xlsx(&file_path);
+        }
+
+        if is_pptx(&file_path)? {
+            return read_pptx(&file_path);
         }
 
         let start_line = match (
@@ -423,12 +431,34 @@ fn read_plain_lines_stream(
 static DOCX_WT_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"<w:t[^>]*>(.*?)</w:t>").unwrap());
 
+static XLSX_SI_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"<si>(.*?)</si>").unwrap());
+static XLSX_T_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"<t[^>]*>(.*?)</t>").unwrap());
+
+static PPTX_AT_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"<a:t[^>]*>(.*?)</a:t>").unwrap());
+
 fn is_docx(path: &Path) -> Result<bool, ToolError> {
     // Extension-only: many ZIP formats share the PK header; `.docx` is unambiguous enough.
     Ok(path
         .extension()
         .and_then(|e| e.to_str())
         .is_some_and(|ext| ext.eq_ignore_ascii_case("docx")))
+}
+
+fn is_xlsx(path: &Path) -> Result<bool, ToolError> {
+    Ok(path
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("xlsx")))
+}
+
+fn is_pptx(path: &Path) -> Result<bool, ToolError> {
+    Ok(path
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("pptx")))
 }
 
 fn read_docx(path: &Path) -> Result<ToolResult, ToolError> {
@@ -496,6 +526,195 @@ fn read_docx(path: &Path) -> Result<ToolResult, ToolError> {
     Ok(ToolResult::success(result).with_metadata(json!({
         "path": path.to_string_lossy(),
         "kind": "docx",
+        "size_bytes": size_bytes,
+    })))
+}
+
+fn read_xlsx(path: &Path) -> Result<ToolResult, ToolError> {
+    let size_bytes = fs::metadata(path).map(|m| m.len()).ok();
+    let file = fs::File::open(path).map_err(|e| {
+        ToolError::execution_failed(format!(
+            "[NOT_FOUND] 无法打开 XLSX 文件 {}: {e}",
+            path.display()
+        ))
+    })?;
+
+    let mut archive = zip::ZipArchive::new(file).map_err(|e| {
+        ToolError::execution_failed(format!(
+            "[BINARY] 无法解析 XLSX/ZIP {}: {e}",
+            path.display()
+        ))
+    })?;
+
+    // 1. 读取共享字符串表
+    let mut shared_strings: Vec<String> = Vec::new();
+    if let Ok(mut entry) = archive.by_name("xl/sharedStrings.xml") {
+        let mut ss_xml = String::new();
+        entry.read_to_string(&mut ss_xml).ok();
+        for si_cap in XLSX_SI_RE.captures_iter(&ss_xml) {
+            let si_text = si_cap.get(1).map(|m| m.as_str()).unwrap_or("");
+            let mut merged = String::new();
+            for t_cap in XLSX_T_RE.captures_iter(si_text) {
+                if let Some(tm) = t_cap.get(1) {
+                    merged.push_str(tm.as_str());
+                }
+            }
+            shared_strings.push(merged);
+        }
+    }
+
+    // 2. 读取 workbook.xml 获取 sheet 名称
+    let mut sheet_names: Vec<String> = Vec::new();
+    if let Ok(mut entry) = archive.by_name("xl/workbook.xml") {
+        let mut wb_xml = String::new();
+        entry.read_to_string(&mut wb_xml).ok();
+        let name_re = regex::Regex::new(r#"name="([^"]*)""#).unwrap();
+        for cap in name_re.captures_iter(&wb_xml) {
+            sheet_names.push(cap[1].to_string());
+        }
+    }
+
+    // 3. 枚举并解析所有 sheet
+    let sheet_re = regex::Regex::new(r#"<c r="([A-Z]+)(\d+)"(?:\s+t="([^"]*)")?>(?:<v>([^<]*)</v>)?</c>"#).unwrap();
+    let mut result = String::new();
+
+    for i in 1.. {
+        let sheet_path = format!("xl/worksheets/sheet{i}.xml");
+        let sheet_xml = match archive.by_name(&sheet_path) {
+            Ok(mut entry) => {
+                let mut s = String::new();
+                entry.read_to_string(&mut s).ok();
+                s
+            }
+            Err(_) => break,
+        };
+
+        // Replace XML-escaped characters in values
+        let name = sheet_names.get(i - 1).cloned().unwrap_or_else(|| format!("Sheet{i}"));
+        if !result.is_empty() {
+            result.push('\n');
+        }
+        result.push_str(&format!("=== Sheet: {name} ===\n"));
+
+        // Group cells by row for cleaner output
+        let mut rows: std::collections::BTreeMap<u64, Vec<(String, String)>> = std::collections::BTreeMap::new();
+
+        // Pass 1: inlineStr cells — XML layout: <c r="A1" t="inlineStr"><is><t>text</t></is></c>
+        // These have no <v> tag so the main sheet_re does not match them.
+        let inline_re = regex::Regex::new(
+            r#"<c r="([A-Z]+)(\d+)"[^>]*t="inlineStr"[^>]*>.*?<t[^>]*>(.*?)</t>.*?</c>"#,
+        )
+        .unwrap();
+        for cap in inline_re.captures_iter(&sheet_xml) {
+            let col = cap.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
+            let row: u64 = cap.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
+            let text = cap.get(3).map(|m| m.as_str()).unwrap_or("");
+            rows.entry(row).or_default().push((col, text.to_string()));
+        }
+
+        // Pass 2: regular cells (t="s" SSI ref, t="str", no type)
+        for cap in sheet_re.captures_iter(&sheet_xml) {
+            let col = cap.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
+            let row: u64 = cap.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
+            let t_type = cap.get(3).map(|m| m.as_str()).unwrap_or("");
+            let val = cap.get(4).map(|m| m.as_str()).unwrap_or("");
+
+            if t_type == "inlineStr" {
+                continue; // handled by pass 1
+            }
+
+            let cell_text = if t_type == "s" {
+                let idx: usize = val.parse().unwrap_or(0);
+                shared_strings.get(idx).cloned().unwrap_or_default()
+            } else {
+                val.to_string()
+            };
+
+            rows.entry(row).or_default().push((col, cell_text));
+        }
+
+        for (_row_idx, cells) in &rows {
+            let line: Vec<String> = cells.iter().map(|(col, txt)| format!("[{col}] {txt}")).collect();
+            result.push_str(&line.join("  "));
+            result.push('\n');
+        }
+    }
+
+    if result.is_empty() {
+        return Ok(
+            ToolResult::success("[XLSX] 文件内容为空或无有效数据。").with_metadata(json!({
+                "path": path.to_string_lossy(),
+                "kind": "xlsx",
+                "size_bytes": size_bytes,
+            })),
+        );
+    }
+
+    Ok(ToolResult::success(result.trim_end().to_string()).with_metadata(json!({
+        "path": path.to_string_lossy(),
+        "kind": "xlsx",
+        "size_bytes": size_bytes,
+    })))
+}
+
+fn read_pptx(path: &Path) -> Result<ToolResult, ToolError> {
+    let size_bytes = fs::metadata(path).map(|m| m.len()).ok();
+    let file = fs::File::open(path).map_err(|e| {
+        ToolError::execution_failed(format!(
+            "[NOT_FOUND] 无法打开 PPTX 文件 {}: {e}",
+            path.display()
+        ))
+    })?;
+
+    let mut archive = zip::ZipArchive::new(file).map_err(|e| {
+        ToolError::execution_failed(format!(
+            "[BINARY] 无法解析 PPTX/ZIP {}: {e}",
+            path.display()
+        ))
+    })?;
+
+    let mut result = String::new();
+
+    for i in 1.. {
+        let slide_path = format!("ppt/slides/slide{i}.xml");
+        let slide_xml = match archive.by_name(&slide_path) {
+            Ok(mut entry) => {
+                let mut s = String::new();
+                entry.read_to_string(&mut s).ok();
+                s
+            }
+            Err(_) => break,
+        };
+
+        let mut slide_text = String::new();
+        for cap in PPTX_AT_RE.captures_iter(&slide_xml) {
+            if let Some(m) = cap.get(1) {
+                slide_text.push_str(m.as_str());
+            }
+        }
+        let trimmed = slide_text.trim();
+        if !trimmed.is_empty() {
+            if !result.is_empty() {
+                result.push('\n');
+            }
+            result.push_str(&format!("=== Slide {i} ===\n"));
+            result.push_str(trimmed);
+        }
+    }
+
+    if result.is_empty() {
+        return Ok(
+            ToolResult::success("[PPTX] 文件内容为空或仅包含非文本元素。").with_metadata(json!({
+                "path": path.to_string_lossy(),
+                "kind": "pptx",
+                "size_bytes": size_bytes,
+            })),
+        );
+    }
+
+    Ok(ToolResult::success(result).with_metadata(json!({
+        "path": path.to_string_lossy(),
+        "kind": "pptx",
         "size_bytes": size_bytes,
     })))
 }
