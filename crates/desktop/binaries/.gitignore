@@ -2,3 +2,4 @@
 *.exe
 # Bundled Python runtime (downloaded by prepare-python.mjs)
 python-standalone/
+*.tar.gz
