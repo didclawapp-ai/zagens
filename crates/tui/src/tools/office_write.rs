@@ -3,7 +3,10 @@
 //! Architecture:
 //! - XLSX: pure Rust via `rust_xlsxwriter` (no Python dependency).
 //! - DOCX: Python + `python-docx` (primary); pure-Rust minimal OOXML fallback.
-//! - PPTX: Python + `python-pptx` only; clear error if Python unavailable.
+//! - PPTX: Python + `python-pptx` (+ optional matplotlib paths in bundled builds).
+//!
+//! DOCX/PPTX subprocess uses [`crate::python_env::resolve_python_for_office`] —
+//! prefers the bundled interpreter when shipped (offline), else an office venv.
 //!
 //! The tool uses `spawn_blocking` so the synchronous file-generation and
 //! subprocess calls don't block the async runtime.
@@ -31,7 +34,7 @@ impl ToolSpec for WriteOfficeTool {
     }
 
     fn description(&self) -> &'static str {
-        "Generate .xlsx / .docx / .pptx files from structured JSON data. XLSX uses pure Rust (no Python needed). DOCX/PPTX require Python 3.8+ with python-docx / python-pptx."
+        "Generate .xlsx / .docx / .pptx files from structured JSON data. XLSX uses pure Rust (no Python needed). DOCX/PPTX use Python: desktop builds ship an embedded runtime (offline-capable); otherwise Python 3.8+ with python-docx / python-pptx (venv may pip-install on first use)."
     }
 
     fn input_schema(&self) -> Value {
@@ -113,11 +116,7 @@ impl ToolSpec for WriteOfficeTool {
         true
     }
 
-    async fn execute(
-        &self,
-        input: Value,
-        context: &ToolContext,
-    ) -> Result<ToolResult, ToolError> {
+    async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
         let format = required_str(&input, "format")?;
         let path_str = required_str(&input, "path")?;
         let output_path = context.resolve_path(path_str)?;
@@ -125,11 +124,7 @@ impl ToolSpec for WriteOfficeTool {
         // Ensure parent directory exists
         if let Some(parent) = output_path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
-                ToolError::execution_failed(format!(
-                    "无法创建目录 {}: {}",
-                    parent.display(),
-                    e
-                ))
+                ToolError::execution_failed(format!("无法创建目录 {}: {}", parent.display(), e))
             })?;
         }
 
@@ -171,17 +166,20 @@ fn generate_xlsx(input: &Value, path: &PathBuf) -> Result<String, String> {
     use rust_xlsxwriter::*;
 
     let mut workbook = Workbook::new();
-    let sheets = input["sheets"].as_array().ok_or("`sheets` 字段必须是数组")?;
+    let sheets = input["sheets"]
+        .as_array()
+        .ok_or("`sheets` 字段必须是数组")?;
 
     for sheet_val in sheets {
-        let name = sheet_val["name"]
-            .as_str()
-            .unwrap_or("Sheet1")
-            .to_string();
-        let rows = sheet_val["rows"].as_array().ok_or("每个 sheet 的 `rows` 必须是二维数组")?;
+        let name = sheet_val["name"].as_str().unwrap_or("Sheet1").to_string();
+        let rows = sheet_val["rows"]
+            .as_array()
+            .ok_or("每个 sheet 的 `rows` 必须是二维数组")?;
 
         let worksheet = workbook.add_worksheet();
-        worksheet.set_name(&name).map_err(|e| format!("设置工作表名称失败: {e}"))?;
+        worksheet
+            .set_name(&name)
+            .map_err(|e| format!("设置工作表名称失败: {e}"))?;
 
         for (row_idx, row_val) in rows.iter().enumerate() {
             let row = row_val.as_array().ok_or("每行必须是数组")?;
@@ -222,7 +220,9 @@ fn generate_xlsx(input: &Value, path: &PathBuf) -> Result<String, String> {
         }
     }
 
-    workbook.save(path).map_err(|e| format!("保存 XLSX 失败: {e}"))?;
+    workbook
+        .save(path)
+        .map_err(|e| format!("保存 XLSX 失败: {e}"))?;
     Ok("rust_xlsxwriter".to_string())
 }
 
@@ -250,7 +250,9 @@ fn generate_docx(input: &Value, path: &PathBuf) -> Result<String, String> {
 fn generate_docx_rust_fallback(input: &Value, path: &PathBuf) -> Result<(), String> {
     use std::io::Write;
 
-    let blocks = input["blocks"].as_array().ok_or("`blocks` 字段必须是数组")?;
+    let blocks = input["blocks"]
+        .as_array()
+        .ok_or("`blocks` 字段必须是数组")?;
     let title = optional_str(input, "title").unwrap_or("");
 
     let mut doc_xml = String::from(
@@ -286,7 +288,11 @@ fn generate_docx_rust_fallback(input: &Value, path: &PathBuf) -> Result<(), Stri
             }
             "list" => {
                 let style = block["style"].as_str().unwrap_or("bullet");
-                let style_name = if style == "number" { "ListNumber" } else { "ListBullet" };
+                let style_name = if style == "number" {
+                    "ListNumber"
+                } else {
+                    "ListBullet"
+                };
                 let items = block["items"].as_array();
                 if let Some(items) = items {
                     for item in items {
@@ -327,17 +333,24 @@ fn generate_docx_rust_fallback(input: &Value, path: &PathBuf) -> Result<(), Stri
     let mut zip = zip::ZipWriter::new(file);
     let opts = zip::write::SimpleFileOptions::default();
 
-    zip.start_file("[Content_Types].xml", opts).map_err(|e| e.to_string())?;
-    zip.write_all(content_types.as_bytes()).map_err(|e| e.to_string())?;
+    zip.start_file("[Content_Types].xml", opts)
+        .map_err(|e| e.to_string())?;
+    zip.write_all(content_types.as_bytes())
+        .map_err(|e| e.to_string())?;
 
-    zip.start_file("_rels/.rels", opts).map_err(|e| e.to_string())?;
+    zip.start_file("_rels/.rels", opts)
+        .map_err(|e| e.to_string())?;
     zip.write_all(rels.as_bytes()).map_err(|e| e.to_string())?;
 
-    zip.start_file("word/document.xml", opts).map_err(|e| e.to_string())?;
-    zip.write_all(doc_xml.as_bytes()).map_err(|e| e.to_string())?;
+    zip.start_file("word/document.xml", opts)
+        .map_err(|e| e.to_string())?;
+    zip.write_all(doc_xml.as_bytes())
+        .map_err(|e| e.to_string())?;
 
-    zip.start_file("word/_rels/document.xml.rels", opts).map_err(|e| e.to_string())?;
-    zip.write_all(doc_rels.as_bytes()).map_err(|e| e.to_string())?;
+    zip.start_file("word/_rels/document.xml.rels", opts)
+        .map_err(|e| e.to_string())?;
+    zip.write_all(doc_rels.as_bytes())
+        .map_err(|e| e.to_string())?;
 
     zip.finish().map_err(|e| e.to_string())?;
     Ok(())
@@ -354,7 +367,7 @@ fn generate_pptx(input: &Value, path: &PathBuf) -> Result<String, String> {
 
 /// Spawn the office venv Python with a stdin JSON payload, return stdout.
 fn generate_via_python(format: &str, input: &Value, path: &PathBuf) -> Result<(), String> {
-    let venv_python = crate::python_env::ensure_office_venv()?;
+    let python_exe = crate::python_env::resolve_python_for_office()?;
     let script = find_office_script(format)?;
 
     // Serialise payload: only data fields (no path — that goes via --output)
@@ -369,7 +382,10 @@ fn generate_via_python(format: &str, input: &Value, path: &PathBuf) -> Result<()
         "pptx" => {
             let title = optional_str(input, "title").unwrap_or("");
             let subtitle = optional_str(input, "subtitle").unwrap_or("");
-            let theme = input.get("theme").cloned().unwrap_or(Value::String("dark".to_string()));
+            let theme = input
+                .get("theme")
+                .cloned()
+                .unwrap_or(Value::String("dark".to_string()));
             serde_json::json!({
                 "title": title,
                 "subtitle": subtitle,
@@ -380,7 +396,7 @@ fn generate_via_python(format: &str, input: &Value, path: &PathBuf) -> Result<()
         _ => input.clone(),
     };
 
-    let mut child = Command::new(&venv_python)
+    let mut child = Command::new(&python_exe)
         .env("PYTHONIOENCODING", "utf-8")
         .arg(&script)
         .arg("--output")
@@ -394,8 +410,7 @@ fn generate_via_python(format: &str, input: &Value, path: &PathBuf) -> Result<()
     // Write JSON payload to stdin
     {
         let stdin = child.stdin.as_mut().unwrap();
-        serde_json::to_writer(stdin, &data_payload)
-            .map_err(|e| format!("写入 stdin 失败: {e}"))?;
+        serde_json::to_writer(stdin, &data_payload).map_err(|e| format!("写入 stdin 失败: {e}"))?;
     }
 
     let exit_status = child
@@ -415,14 +430,17 @@ fn generate_via_python(format: &str, input: &Value, path: &PathBuf) -> Result<()
                 Some(String::from_utf8_lossy(&buf).to_string())
             })
             .unwrap_or_default();
-        return Err(format!("Python 脚本执行失败 (exit {:?}):\n{stderr_output}", exit_status.code()));
+        return Err(format!(
+            "Python 脚本执行失败 (exit {:?}):\n{stderr_output}",
+            exit_status.code()
+        ));
     }
 
     Ok(())
 }
 
 /// Embedded Python scripts version — bump when scripts change.
-const SCRIPTS_VERSION: &str = "8";
+const SCRIPTS_VERSION: &str = "9";
 
 /// Resolve the Python script path for a given format.
 fn find_office_script(format: &str) -> Result<PathBuf, String> {
@@ -434,7 +452,9 @@ fn find_office_script(format: &str) -> Result<PathBuf, String> {
     let marker = scripts_dir.join(".scripts-installed-version");
 
     let need_install = !script_path.exists()
-        || std::fs::read_to_string(&marker).ok().map_or(true, |v| v.trim() != SCRIPTS_VERSION);
+        || std::fs::read_to_string(&marker)
+            .ok()
+            .map_or(true, |v| v.trim() != SCRIPTS_VERSION);
 
     if need_install {
         install_embedded_scripts(&scripts_dir)?;
@@ -454,14 +474,12 @@ fn install_embedded_scripts(dir: &PathBuf) -> Result<(), String> {
 
     for (name, content) in scripts {
         let path = dir.join(name);
-        std::fs::write(&path, content)
-            .map_err(|e| format!("写入脚本 {name} 失败: {e}"))?;
+        std::fs::write(&path, content).map_err(|e| format!("写入脚本 {name} 失败: {e}"))?;
     }
 
     // pptx_engine/ package directory
     let engine_dir = dir.join("pptx_engine");
-    std::fs::create_dir_all(&engine_dir)
-        .map_err(|e| format!("创建 pptx_engine 目录失败: {e}"))?;
+    std::fs::create_dir_all(&engine_dir).map_err(|e| format!("创建 pptx_engine 目录失败: {e}"))?;
 
     let engine_modules: &[(&str, &str)] = &[
         ("__init__.py", PPTX_ENGINE_INIT),
@@ -475,13 +493,11 @@ fn install_embedded_scripts(dir: &PathBuf) -> Result<(), String> {
 
     for (name, content) in engine_modules {
         let path = engine_dir.join(name);
-        std::fs::write(&path, content)
-            .map_err(|e| format!("写入 pptx_engine/{name} 失败: {e}"))?;
+        std::fs::write(&path, content).map_err(|e| format!("写入 pptx_engine/{name} 失败: {e}"))?;
     }
 
     let marker = dir.join(".scripts-installed-version");
-    std::fs::write(&marker, SCRIPTS_VERSION)
-        .map_err(|e| format!("写入脚本版本标记失败: {e}"))?;
+    std::fs::write(&marker, SCRIPTS_VERSION).map_err(|e| format!("写入脚本版本标记失败: {e}"))?;
 
     Ok(())
 }

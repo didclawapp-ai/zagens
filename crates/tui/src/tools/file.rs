@@ -431,10 +431,8 @@ fn read_plain_lines_stream(
 static DOCX_WT_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"<w:t[^>]*>(.*?)</w:t>").unwrap());
 
-static XLSX_SI_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"<si>(.*?)</si>").unwrap());
-static XLSX_T_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"<t[^>]*>(.*?)</t>").unwrap());
+static XLSX_SI_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<si>(.*?)</si>").unwrap());
+static XLSX_T_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<t[^>]*>(.*?)</t>").unwrap());
 
 static PPTX_AT_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"<a:t[^>]*>(.*?)</a:t>").unwrap());
@@ -575,7 +573,9 @@ fn read_xlsx(path: &Path) -> Result<ToolResult, ToolError> {
     }
 
     // 3. 枚举并解析所有 sheet
-    let sheet_re = regex::Regex::new(r#"<c r="([A-Z]+)(\d+)"(?:\s+t="([^"]*)")?>(?:<v>([^<]*)</v>)?</c>"#).unwrap();
+    let sheet_re =
+        regex::Regex::new(r#"<c r="([A-Z]+)(\d+)"(?:\s+t="([^"]*)")?>(?:<v>([^<]*)</v>)?</c>"#)
+            .unwrap();
     let mut result = String::new();
 
     for i in 1.. {
@@ -590,14 +590,18 @@ fn read_xlsx(path: &Path) -> Result<ToolResult, ToolError> {
         };
 
         // Replace XML-escaped characters in values
-        let name = sheet_names.get(i - 1).cloned().unwrap_or_else(|| format!("Sheet{i}"));
+        let name = sheet_names
+            .get(i - 1)
+            .cloned()
+            .unwrap_or_else(|| format!("Sheet{i}"));
         if !result.is_empty() {
             result.push('\n');
         }
         result.push_str(&format!("=== Sheet: {name} ===\n"));
 
         // Group cells by row for cleaner output
-        let mut rows: std::collections::BTreeMap<u64, Vec<(String, String)>> = std::collections::BTreeMap::new();
+        let mut rows: std::collections::BTreeMap<u64, Vec<(String, String)>> =
+            std::collections::BTreeMap::new();
 
         // Pass 1: inlineStr cells — XML layout: <c r="A1" t="inlineStr"><is><t>text</t></is></c>
         // These have no <v> tag so the main sheet_re does not match them.
@@ -607,7 +611,10 @@ fn read_xlsx(path: &Path) -> Result<ToolResult, ToolError> {
         .unwrap();
         for cap in inline_re.captures_iter(&sheet_xml) {
             let col = cap.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
-            let row: u64 = cap.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
+            let row: u64 = cap
+                .get(2)
+                .and_then(|m| m.as_str().parse().ok())
+                .unwrap_or(0);
             let text = cap.get(3).map(|m| m.as_str()).unwrap_or("");
             rows.entry(row).or_default().push((col, text.to_string()));
         }
@@ -615,7 +622,10 @@ fn read_xlsx(path: &Path) -> Result<ToolResult, ToolError> {
         // Pass 2: regular cells (t="s" SSI ref, t="str", no type)
         for cap in sheet_re.captures_iter(&sheet_xml) {
             let col = cap.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
-            let row: u64 = cap.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
+            let row: u64 = cap
+                .get(2)
+                .and_then(|m| m.as_str().parse().ok())
+                .unwrap_or(0);
             let t_type = cap.get(3).map(|m| m.as_str()).unwrap_or("");
             let val = cap.get(4).map(|m| m.as_str()).unwrap_or("");
 
@@ -634,7 +644,10 @@ fn read_xlsx(path: &Path) -> Result<ToolResult, ToolError> {
         }
 
         for (_row_idx, cells) in &rows {
-            let line: Vec<String> = cells.iter().map(|(col, txt)| format!("[{col}] {txt}")).collect();
+            let line: Vec<String> = cells
+                .iter()
+                .map(|(col, txt)| format!("[{col}] {txt}"))
+                .collect();
             result.push_str(&line.join("  "));
             result.push('\n');
         }
@@ -650,11 +663,13 @@ fn read_xlsx(path: &Path) -> Result<ToolResult, ToolError> {
         );
     }
 
-    Ok(ToolResult::success(result.trim_end().to_string()).with_metadata(json!({
-        "path": path.to_string_lossy(),
-        "kind": "xlsx",
-        "size_bytes": size_bytes,
-    })))
+    Ok(
+        ToolResult::success(result.trim_end().to_string()).with_metadata(json!({
+            "path": path.to_string_lossy(),
+            "kind": "xlsx",
+            "size_bytes": size_bytes,
+        })),
+    )
 }
 
 fn read_pptx(path: &Path) -> Result<ToolResult, ToolError> {

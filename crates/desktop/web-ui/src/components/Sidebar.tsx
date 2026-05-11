@@ -183,7 +183,7 @@ export default function Sidebar({
       </div>
 
       <div className="shrink-0 px-3.5 py-2.5 border-t border-divider space-y-0.5">
-        <p className="text-[10px] text-t-text-muted">DS Pick v0.2.1</p>
+        <p className="text-[10px] text-t-text-muted">DS Pick v0.2.2</p>
         <p className="text-[10px] text-t-text-muted/80 leading-snug">
           基于 DeepSeek TUI 运行时（<code className="font-mono">deepseek</code> CLI）
         </p>

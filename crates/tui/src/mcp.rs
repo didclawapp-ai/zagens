@@ -1682,9 +1682,7 @@ pub fn merge_mcp_json_fragment(path: &Path, fragment: &str) -> Result<usize> {
     }
     let v: serde_json::Value =
         serde_json::from_str(fragment).context("无效的 JSON：请检查语法（逗号、引号、括号）")?;
-    let obj = v
-        .as_object()
-        .context("根节点必须是 JSON 对象 { … }")?;
+    let obj = v.as_object().context("根节点必须是 JSON 对象 { … }")?;
 
     let mut cfg = load_config(path)?;
     let mut merged = 0usize;

@@ -351,13 +351,7 @@ fn workspace_suffix_walk_is_safe(suffix_norm: &str) -> bool {
         let name = parts[0];
         if matches!(
             name,
-            "mod.rs"
-                | "lib.rs"
-                | "main.rs"
-                | "index.ts"
-                | "index.js"
-                | "index.tsx"
-                | "index.jsx"
+            "mod.rs" | "lib.rs" | "main.rs" | "index.ts" | "index.js" | "index.tsx" | "index.jsx"
         ) {
             return false;
         }
@@ -428,7 +422,10 @@ fn resolve_under_workspace(workspace_root: &Path, rel: &str) -> Result<PathBuf, 
     }
 
     if !workspace_suffix_walk_is_safe(&n) {
-        return Err(format!("文件不存在或无法访问（已尝试: {}）", candidates.join(", ")));
+        return Err(format!(
+            "文件不存在或无法访问（已尝试: {}）",
+            candidates.join(", ")
+        ));
     }
 
     let base = workspace_root
@@ -464,7 +461,10 @@ fn resolve_under_workspace(workspace_root: &Path, rel: &str) -> Result<PathBuf, 
     }
 
     match matches.len() {
-        0 => Err(format!("文件不存在或无法访问（已尝试: {}）", candidates.join(", "))),
+        0 => Err(format!(
+            "文件不存在或无法访问（已尝试: {}）",
+            candidates.join(", ")
+        )),
         1 => Ok(matches[0].clone()),
         _ => {
             matches.sort_by_key(|p| {
@@ -610,10 +610,7 @@ pub async fn export_thread_json(
     if enc.is_empty() {
         return Err("thread_id 无效".to_string());
     }
-    let url = format!(
-        "http://127.0.0.1:{}/v1/threads/{}",
-        ctx.runtime_port, enc
-    );
+    let url = format!("http://127.0.0.1:{}/v1/threads/{}", ctx.runtime_port, enc);
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
         .build()
@@ -641,8 +638,7 @@ pub async fn export_thread_json(
         .await
         .map_err(|e| format!("运行时响应无效: {e}"))?;
 
-    let json = serde_json::to_string_pretty(&body)
-        .map_err(|e| format!("JSON 序列化失败: {e}"))?;
+    let json = serde_json::to_string_pretty(&body).map_err(|e| format!("JSON 序列化失败: {e}"))?;
 
     std::fs::write(&save_path, json).map_err(|e| format!("保存失败: {e}"))?;
 
@@ -669,10 +665,7 @@ pub async fn export_session_json(
     if enc.is_empty() {
         return Err("session_id 无效".to_string());
     }
-    let url = format!(
-        "http://127.0.0.1:{}/v1/sessions/{}",
-        ctx.runtime_port, enc
-    );
+    let url = format!("http://127.0.0.1:{}/v1/sessions/{}", ctx.runtime_port, enc);
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
         .build()
@@ -700,8 +693,7 @@ pub async fn export_session_json(
         .await
         .map_err(|e| format!("运行时响应无效: {e}"))?;
 
-    let json = serde_json::to_string_pretty(&body)
-        .map_err(|e| format!("JSON 序列化失败: {e}"))?;
+    let json = serde_json::to_string_pretty(&body).map_err(|e| format!("JSON 序列化失败: {e}"))?;
 
     std::fs::write(&save_path, json).map_err(|e| format!("保存失败: {e}"))?;
 

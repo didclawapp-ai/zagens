@@ -3,8 +3,10 @@
 //! Provides:
 //! - `find_python()` — locate a Python ≥3.8 interpreter (shared by RLM,
 //!   `code_execution`, `write_office`).
-//! - `ensure_office_venv()` — create/manage `~/.deepseek/office-py/` venv
-//!   with pinned `python-docx`, `python-pptx` deps for `WriteOfficeTool`.
+//! - `resolve_python_for_office()` — interpreter for `write_office`: prefers
+//!   the **bundled** PBS runtime (offline, deps pre-installed at app build).
+//! - `ensure_office_venv()` — fallback: isolated venv under `~/.deepseek/office-py/`
+//!   + `pip install` pinned deps (needs network on first setup).
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -22,7 +24,12 @@ const MIN_PYTHON_MINOR: u16 = 8;
 /// Office venv marker file — written after successful `pip install`.
 const OFFICE_VENV_MARKER: &str = ".requirements-installed-v1";
 
-/// Pinned requirements for the office venv.
+/// Pinned requirements for the office venv (runtime fallback path).
+///
+/// When a bundled Python runtime is present (see `find_bundled_python`),
+/// dependencies are pre-installed during the build and this list is
+/// not used at runtime.  It is only consumed when building a system‑Python
+/// venv as a fallback.
 const OFFICE_REQUIREMENTS: &str = "\
 python-docx==1.1.2
 python-pptx==1.0.2
@@ -35,6 +42,17 @@ python-pptx==1.0.2
 /// Returns `(binary_name, major, minor)` on success, or `None` if no
 /// suitable Python was found.
 pub fn find_python() -> Option<(String, u16, u16)> {
+    // ── Path 1: Bundled Python (shipped with the app) ──
+    if let Some(py) = find_bundled_python() {
+        if let Some(ver) = probe_python(&py.to_string_lossy(), &[]) {
+            if ver.0 > MIN_PYTHON_MAJOR || (ver.0 == MIN_PYTHON_MAJOR && ver.1 >= MIN_PYTHON_MINOR)
+            {
+                return Some((py.to_string_lossy().into_owned(), ver.0, ver.1));
+            }
+        }
+    }
+
+    // ── Path 2: System PATH scan ──
     for args in PYTHON_CANDIDATES {
         let (bin, extra) = (args[0], &args[1..]);
         if let Some(ver) = probe_python(bin, extra) {
@@ -63,6 +81,59 @@ fn probe_python(binary: &str, extra_args: &[&str]) -> Option<(u16, u16)> {
     parse_version_tuple(stdout.trim())
 }
 
+// ── Bundled Python discovery ────────────────────────────────────────────
+
+fn python_bin_name() -> &'static str {
+    #[cfg(windows)]
+    {
+        "python.exe"
+    }
+    #[cfg(target_os = "macos")]
+    {
+        "python3.12" // PBS macOS ships as "python3.12"
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        "python3"
+    }
+}
+
+/// Try to locate a bundled PBS Python runtime shipped alongside the binary.
+///
+/// **DS Pick (Tauri):**
+///   `<app_dir>/Resources/python/python3.12`  (macOS)
+///   `<app_dir>/python/python.exe`            (Windows/Linux)
+///
+/// **CLI/TUI standalone:**
+///   `<exe_dir>/python-standalone/python-install/python(.exe)`
+///
+/// Returns the path to the python executable, or `None`.
+pub fn find_bundled_python() -> Option<PathBuf> {
+    let exe_dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
+
+    let candidates = [
+        // Tauri resource path on macOS
+        exe_dir
+            .join("../../Resources/python")
+            .join(python_bin_name()),
+        // Tauri resource path on Windows/Linux
+        exe_dir.join("python").join(python_bin_name()),
+        // Local dev / CLI sidecar
+        exe_dir
+            .join("python-standalone/python-install")
+            .join(python_bin_name()),
+    ];
+
+    for path in candidates {
+        if path.is_file() {
+            if probe_python(&path.to_string_lossy(), &[]).is_some() {
+                return Some(path);
+            }
+        }
+    }
+    None
+}
+
 /// Parse `(major, minor)` from output like `(3, 11)` or `(3, 11)\r\n`.
 fn parse_version_tuple(s: &str) -> Option<(u16, u16)> {
     let s = s.trim();
@@ -71,6 +142,22 @@ fn parse_version_tuple(s: &str) -> Option<(u16, u16)> {
     let major: u16 = parts.next()?.trim().parse().ok()?;
     let minor: u16 = parts.next()?.trim().parse().ok()?;
     Some((major, minor))
+}
+
+// ── WriteOffice interpreter ─────────────────────────────────────────────────
+
+/// Python executable used by `write_office` for DOCX/PPTX generation.
+///
+/// **Bundled interpreter first** ([`find_bundled_python`]): DS Pick / portable
+/// builds ship PBS + wheels from `prepare-python.mjs`; no `pip` and no network.
+///
+/// Otherwise falls back to [`ensure_office_venv`] (PATH Python + first-time
+/// `pip install`, typically needs internet).
+pub fn resolve_python_for_office() -> Result<PathBuf, String> {
+    if let Some(py) = find_bundled_python() {
+        return Ok(py);
+    }
+    ensure_office_venv()
 }
 
 // ── venv management ─────────────────────────────────────────────────────
@@ -110,14 +197,14 @@ pub fn ensure_office_venv() -> Result<PathBuf, String> {
         }
     }
 
-    // Need to create venv — find system Python first.
-    let (python_bin, major, minor) =
-        find_python().ok_or_else(|| {
-            "未找到 Python ≥ 3.8。请安装 Python 后重试。\n\
+    // Need to create venv — Python from PATH / `py` launcher (bundled was
+    // already tried in `resolve_python_for_office`).
+    let (python_bin, major, minor) = find_python().ok_or_else(|| {
+        "未找到 Python ≥ 3.8。请安装 Python 后重试。\n\
              下载: https://www.python.org/downloads/\n\
              Windows 用户也可通过 `winget install Python.Python.3.12` 安装"
-                .to_string()
-        })?;
+            .to_string()
+    })?;
 
     // Create venv.
     let _ = std::fs::create_dir_all(venv_dir.parent().unwrap());
@@ -137,7 +224,10 @@ pub fn ensure_office_venv() -> Result<PathBuf, String> {
 
     let venv_python = office_venv_python(&venv_dir);
     if !venv_python.exists() {
-        return Err(format!("venv 创建后未找到解释器: {}", venv_python.display()));
+        return Err(format!(
+            "venv 创建后未找到解释器: {}",
+            venv_python.display()
+        ));
     }
 
     // pip install dependencies.
@@ -149,7 +239,13 @@ pub fn ensure_office_venv() -> Result<PathBuf, String> {
 
     let output = Command::new(&venv_python)
         .env("PYTHONIOENCODING", "utf-8")
-        .args(["-m", "pip", "install", "--quiet", "--disable-pip-version-check"])
+        .args([
+            "-m",
+            "pip",
+            "install",
+            "--quiet",
+            "--disable-pip-version-check",
+        ])
         .args(["-r"])
         .arg(&req_path)
         .stdout(std::process::Stdio::null())

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """write_pptx.py — thin CLI wrapper for pptx_engine.
 
-Called by WriteOfficeTool via venv Python.
+Called by WriteOfficeTool (bundled PBS Python or ~/.deepseek/office-py venv).
 Args: --output PATH  [--input FILE]   (if --input omitted, reads JSON from stdin)
 
 Payload schema: see docs/pptx-generation-engine-plan.md and

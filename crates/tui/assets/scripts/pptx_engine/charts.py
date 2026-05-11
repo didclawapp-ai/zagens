@@ -26,6 +26,142 @@ CHART_TYPES = {
 }
 
 
+def _try_category_axis(chart):
+    """Return category/date axis or None (pie/donut/scatter layouts vary)."""
+    try:
+        return chart.category_axis
+    except ValueError:
+        return None
+
+
+def _try_value_axis(chart):
+    """Return primary value axis or None."""
+    try:
+        return chart.value_axis
+    except ValueError:
+        return None
+
+
+def _apply_rgb_to_textframe(tf, rgb):
+    """Force RGB on defRPr, every paragraph, and every run.
+
+    Word inserts theme-based runs; paragraph-level color alone is often ignored
+    when the slide uses a dark background.
+    """
+    if tf is None:
+        return
+    try:
+        tf.paragraphs[0].font.color.rgb = rgb
+    except (AttributeError, TypeError, ValueError):
+        pass
+    for p in tf.paragraphs:
+        try:
+            p.font.color.rgb = rgb
+        except (AttributeError, TypeError, ValueError):
+            pass
+        for run in p.runs:
+            try:
+                run.font.color.rgb = rgb
+            except (AttributeError, TypeError, ValueError):
+                pass
+
+
+def _apply_theme_to_chart(chart, cd, t):
+    """Make chart chrome (title, axes, legend, data labels) readable on slide bg."""
+    body = t["body"]
+    title_rgb = t.get("title", body)
+    # Tick/legend: use body (not muted) so contrast holds on dark presets
+    label_rgb = body
+
+    # Drop gallery style early — it often forces dark text on transparent plot
+    try:
+        chart.chart_style = None
+    except (AttributeError, TypeError, ValueError):
+        pass
+
+    # Chart-wide default text (inherited where OOXML allows)
+    try:
+        chart.font.size = Pt(11)
+        chart.font.color.rgb = label_rgb
+        if t.get("font"):
+            chart.font.name = t["font"]
+    except (AttributeError, TypeError, ValueError):
+        pass
+
+    # Area fill → transparent over slide background
+    try:
+        chart.fill.background()
+    except (AttributeError, TypeError, ValueError):
+        pass
+
+    # ── Title ──
+    if chart.has_title:
+        try:
+            tf = chart.chart_title.text_frame
+            _apply_rgb_to_textframe(tf, title_rgb)
+            for p in tf.paragraphs:
+                try:
+                    p.font.size = Pt(14)
+                except (AttributeError, TypeError, ValueError):
+                    pass
+        except (AttributeError, TypeError, ValueError):
+            try:
+                chart.chart_title.text_frame.paragraphs[0].font.color.rgb = title_rgb
+            except (AttributeError, TypeError, ValueError):
+                pass
+
+    cat_ax = _try_category_axis(chart)
+    val_ax = _try_value_axis(chart)
+
+    x_label = cd.get("x_label", "")
+    y_label = cd.get("y_label", "")
+
+    if cat_ax is not None:
+        try:
+            if x_label and cat_ax.has_title:
+                tf = cat_ax.axis_title.text_frame
+                _apply_rgb_to_textframe(tf, label_rgb)
+            cat_ax.tick_labels.font.size = Pt(10)
+            cat_ax.tick_labels.font.color.rgb = label_rgb
+        except (AttributeError, TypeError, ValueError):
+            pass
+
+    if val_ax is not None:
+        try:
+            if y_label and val_ax.has_title:
+                tf = val_ax.axis_title.text_frame
+                _apply_rgb_to_textframe(tf, label_rgb)
+            val_ax.tick_labels.font.size = Pt(10)
+            val_ax.tick_labels.font.color.rgb = label_rgb
+        except (AttributeError, TypeError, ValueError):
+            pass
+
+    # Major gridlines — faint light lines on dark slides
+    try:
+        if val_ax is not None and val_ax.has_major_gridlines:
+            val_ax.major_gridlines.format.line.color.rgb = t.get("muted", label_rgb)
+    except (AttributeError, TypeError, ValueError):
+        pass
+
+    # Legend
+    if chart.has_legend and chart.legend is not None:
+        try:
+            chart.legend.font.size = Pt(11)
+            chart.legend.font.color.rgb = label_rgb
+        except (AttributeError, TypeError, ValueError):
+            pass
+
+    # Data labels
+    if cd.get("data_labels") is not False and chart.series:
+        for s in chart.series:
+            try:
+                s.has_data_labels = True
+                s.data_labels.font.size = Pt(9)
+                s.data_labels.font.color.rgb = label_rgb
+            except AttributeError:
+                pass
+
+
 def add_chart(slide, chart_data, left, top, width, height, t=None):
     """Add a styled OOXML chart at the given position.
 
@@ -86,12 +222,14 @@ def add_chart(slide, chart_data, left, top, width, height, t=None):
 
     x_label = cd.get("x_label", "")
     y_label = cd.get("y_label", "")
-    if x_label and chart.category_axis:
-        chart.category_axis.has_title = True
-        chart.category_axis.axis_title.text_frame.paragraphs[0].text = x_label
-    if y_label and chart.value_axis:
-        chart.value_axis.has_title = True
-        chart.value_axis.axis_title.text_frame.paragraphs[0].text = y_label
+    cat_ax = _try_category_axis(chart)
+    val_ax = _try_value_axis(chart)
+    if x_label and cat_ax is not None:
+        cat_ax.has_title = True
+        cat_ax.axis_title.text_frame.paragraphs[0].text = x_label
+    if y_label and val_ax is not None:
+        val_ax.has_title = True
+        val_ax.axis_title.text_frame.paragraphs[0].text = y_label
 
     # Data labels — default ON; set "data_labels": false to suppress
     if cd.get("data_labels") is not False and chart.series:
@@ -102,52 +240,9 @@ def add_chart(slide, chart_data, left, top, width, height, t=None):
         except AttributeError:
             pass  # scatter (XySeries) doesn't support data_labels the same way
 
-    # ── Apply theme colors so text is readable on dark backgrounds ──
+    # Theme: readable foreground on dark (and consistent on light) slides
     if t:
-        body_color = t["body"]
-        muted_color = t.get("muted", body_color)
-
-        # Chart title
-        if chart.has_title:
-            chart.chart_title.text_frame.paragraphs[0].font.color.rgb = body_color
-
-        # Axis titles / tick labels — Pie/Donut have no axes
-        try:
-            if x_label and chart.category_axis and chart.category_axis.has_title:
-                chart.category_axis.axis_title.text_frame.paragraphs[0].font.color.rgb = muted_color
-            if chart.category_axis:
-                chart.category_axis.tick_labels.font.color.rgb = muted_color
-        except (AttributeError, ValueError, TypeError):
-            pass
-        try:
-            if y_label and chart.value_axis and chart.value_axis.has_title:
-                chart.value_axis.axis_title.text_frame.paragraphs[0].font.color.rgb = muted_color
-            if chart.value_axis:
-                chart.value_axis.tick_labels.font.color.rgb = muted_color
-        except (AttributeError, ValueError, TypeError):
-            pass
-
-        # Legend
-        if chart.has_legend:
-            chart.legend.font.color.rgb = muted_color
-
-        # Data label colors
-        if cd.get("data_labels") is not False and chart.series:
-            try:
-                for s in chart.series:
-                    s.data_labels.font.color.rgb = body_color
-            except AttributeError:
-                pass
-
-        # Chart area background → transparent (blend with slide bg)
-        try:
-            chart.chart_style = None  # remove default white style
-        except Exception:
-            pass
-        try:
-            chart.fill.background()
-        except Exception:
-            pass
+        _apply_theme_to_chart(chart, cd, t)
 
     return _inches(height)  # EMU → inches
 

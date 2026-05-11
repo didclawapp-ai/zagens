@@ -38,9 +38,14 @@ fn main() {
             let token_for_sidecar = token.clone();
             let shutdown_for_sidecar = shutdown.clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(e) =
-                    sidecar::start_and_monitor(&handle, 7878, &token_for_sidecar, sidecar_restart, shutdown_for_sidecar)
-                        .await
+                if let Err(e) = sidecar::start_and_monitor(
+                    &handle,
+                    7878,
+                    &token_for_sidecar,
+                    sidecar_restart,
+                    shutdown_for_sidecar,
+                )
+                .await
                 {
                     eprintln!("sidecar error: {e}");
                 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """write_docx.py — generate .docx from JSON stdin payload.
 
-Called by WriteOfficeTool via venv Python.
+Called by WriteOfficeTool (bundled PBS Python or ~/.deepseek/office-py venv).
 Args: --output PATH   (output .docx path)
 Stdin: JSON object with `title` (optional) and `blocks` array.
 

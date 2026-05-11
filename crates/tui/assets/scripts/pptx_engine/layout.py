@@ -236,6 +236,15 @@ def _build_blocks_inner(slide, data, num, total, t):
     _add_notes_and_page_num(slide, data, num, total, t)
 
 
+def _footer_text_color(t):
+    """Readable page number on dark slides (muted alone is often too dim)."""
+    bg = t["bg"]
+    lum = (bg[0] * 299 + bg[1] * 587 + bg[2] * 114) / 1000.0
+    if lum < 140:
+        return t["body"]
+    return t.get("muted", t["body"])
+
+
 # ── Shared helpers ───────────────────────────────────────────────────────
 
 def _add_notes_and_page_num(slide, data, num, total, t):
@@ -245,5 +254,5 @@ def _add_notes_and_page_num(slide, data, num, total, t):
         slide.notes_slide.notes_text_frame.text = notes
 
     tf_pn = add_textbox(slide, Inches(11.8), Inches(7.0), Inches(1.2), Inches(0.4))
-    add_para(tf_pn, f"{num}/{total}", 10, t["muted"], t["font"],
+    add_para(tf_pn, f"{num}/{total}", 10, _footer_text_color(t), t["font"],
              align=PP_ALIGN.RIGHT, first=True)

@@ -40,6 +40,9 @@
     "icon": [
       "icons/icon.ico"
     ],
-    "externalBin": ["binaries/deepseek-tui"]
+    "externalBin": ["binaries/deepseek-tui"],
+    "resources": {
+      "binaries/python-standalone/python-install": "python/"
+    }
   }
 }

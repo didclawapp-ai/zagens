@@ -20,9 +20,9 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use chrono::Utc;
+use ignore::WalkBuilder;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use ignore::WalkBuilder;
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
@@ -334,9 +334,7 @@ pub async fn run_http_server(
     }
 
     let t0 = std::time::Instant::now();
-    eprintln!(
-        "[deepseek-runtime] starting HTTP API (task manager, threads, scheduler)…"
-    );
+    eprintln!("[deepseek-runtime] starting HTTP API (task manager, threads, scheduler)…");
 
     let task_cfg = TaskManagerConfig::from_runtime(
         &config,
@@ -471,7 +469,10 @@ pub fn build_router(state: RuntimeApiState) -> Router {
         .route("/v1/tasks/{id}", get(get_task))
         .route("/v1/tasks/{id}/cancel", post(cancel_task))
         .route("/v1/skills", get(list_skills).post(create_skill))
-        .route("/v1/apps/mcp/servers", get(list_mcp_servers).post(add_mcp_server))
+        .route(
+            "/v1/apps/mcp/servers",
+            get(list_mcp_servers).post(add_mcp_server),
+        )
         .route(
             "/v1/apps/mcp/servers/{name}",
             get(get_mcp_server)
@@ -1085,13 +1086,7 @@ fn workspace_suffix_walk_is_safe(suffix_norm: &str) -> bool {
         let name = parts[0];
         if matches!(
             name,
-            "mod.rs"
-                | "lib.rs"
-                | "main.rs"
-                | "index.ts"
-                | "index.js"
-                | "index.tsx"
-                | "index.jsx"
+            "mod.rs" | "lib.rs" | "main.rs" | "index.ts" | "index.js" | "index.tsx" | "index.jsx"
         ) {
             return false;
         }
@@ -1535,40 +1530,38 @@ async fn create_skill(
     let parent_directory = req.parent_directory.clone();
     let scope = req.scope.clone();
 
-    let (skills_root_used, skill_md_path, warnings) =
-        tokio::task::spawn_blocking(move || {
-            let root =
-                resolve_create_skill_parent(&config, &workspace, parent_directory.as_ref(), &scope)?;
-            fs::create_dir_all(&root).map_err(|e| {
-                ApiError::internal(format!(
-                    "failed to create skills directory {}: {e}",
-                    root.display()
-                ))
-            })?;
+    let (skills_root_used, skill_md_path, warnings) = tokio::task::spawn_blocking(move || {
+        let root =
+            resolve_create_skill_parent(&config, &workspace, parent_directory.as_ref(), &scope)?;
+        fs::create_dir_all(&root).map_err(|e| {
+            ApiError::internal(format!(
+                "failed to create skills directory {}: {e}",
+                root.display()
+            ))
+        })?;
 
-            let skill_dir = root.join(&name_for_task);
-            if skill_dir.exists() {
-                return Err(ApiError::conflict(format!(
-                    "skill directory already exists: {}",
-                    skill_dir.display()
-                )));
-            }
-            fs::create_dir_all(&skill_dir).map_err(|e| {
-                ApiError::internal(format!("failed to create skill directory: {e}"))
-            })?;
-            let md_path = skill_dir.join("SKILL.md");
-            if md_path.exists() {
-                return Err(ApiError::conflict("SKILL.md already exists".to_string()));
-            }
-            let body = skill_md_template(&name_for_task);
-            fs::write(&md_path, body).map_err(|e| ApiError::internal(e.to_string()))?;
+        let skill_dir = root.join(&name_for_task);
+        if skill_dir.exists() {
+            return Err(ApiError::conflict(format!(
+                "skill directory already exists: {}",
+                skill_dir.display()
+            )));
+        }
+        fs::create_dir_all(&skill_dir)
+            .map_err(|e| ApiError::internal(format!("failed to create skill directory: {e}")))?;
+        let md_path = skill_dir.join("SKILL.md");
+        if md_path.exists() {
+            return Err(ApiError::conflict("SKILL.md already exists".to_string()));
+        }
+        let body = skill_md_template(&name_for_task);
+        fs::write(&md_path, body).map_err(|e| ApiError::internal(e.to_string()))?;
 
-            let registry = SkillRegistry::discover(&root);
-            let warnings = registry.warnings().to_vec();
-            Ok::<_, ApiError>((root, md_path, warnings))
-        })
-        .await
-        .map_err(|e| ApiError::internal(format!("create skill task: {e}")))??;
+        let registry = SkillRegistry::discover(&root);
+        let warnings = registry.warnings().to_vec();
+        Ok::<_, ApiError>((root, md_path, warnings))
+    })
+    .await
+    .map_err(|e| ApiError::internal(format!("create skill task: {e}")))??;
 
     let list_directory = resolve_skills_dir(&state.config, &state.workspace);
     let reg_list = SkillRegistry::discover(&skills_root_used);
@@ -1635,8 +1628,7 @@ async fn merge_mcp_config_json(
     State(state): State<RuntimeApiState>,
     body: Bytes,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
-    let s = std::str::from_utf8(&body)
-        .map_err(|_| ApiError::bad_request("请求体须为 UTF-8"))?;
+    let s = std::str::from_utf8(&body).map_err(|_| ApiError::bad_request("请求体须为 UTF-8"))?;
     let merged = crate::mcp::merge_mcp_json_fragment(&state.mcp_config_path, s)
         .map_err(|e| ApiError::bad_request(e.to_string()))?;
     Ok((
@@ -1669,7 +1661,9 @@ async fn get_mcp_server(
     let entry = crate::mcp::get_server_entry(&state.mcp_config_path, &name)
         .map_err(|e| ApiError::internal(e.to_string()))?;
     let Some(cfg) = entry else {
-        return Err(ApiError::not_found(format!("MCP server '{name}' not found")));
+        return Err(ApiError::not_found(format!(
+            "MCP server '{name}' not found"
+        )));
     };
     Ok(Json(cfg))
 }
@@ -2486,9 +2480,9 @@ fn allowed_skill_roots_for_picker(
     })?;
     roots.push(global_canon);
 
-    let ws = workspace.canonicalize().map_err(|e| {
-        ApiError::bad_request(format!("workspace path could not be resolved: {e}"))
-    })?;
+    let ws = workspace
+        .canonicalize()
+        .map_err(|e| ApiError::bad_request(format!("workspace path could not be resolved: {e}")))?;
     for rel in [".agents/skills", "skills"] {
         let p = ws.join(rel);
         if p.is_dir() {
@@ -2643,9 +2637,7 @@ async fn get_usage(
 
 // ============== Routing Rules ==============
 
-async fn get_routing_rules(
-    State(state): State<RuntimeApiState>,
-) -> Result<Json<Value>, ApiError> {
+async fn get_routing_rules(State(state): State<RuntimeApiState>) -> Result<Json<Value>, ApiError> {
     let rules = state.runtime_threads.get_routing_rules().await;
     Ok(Json(json!({ "rules": rules })))
 }
@@ -2655,10 +2647,16 @@ async fn set_routing_rules(
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<Value>, ApiError> {
     let rules: Vec<crate::runtime_threads::RoutingRule> = serde_json::from_value(
-        body.get("rules").cloned().unwrap_or(serde_json::Value::Array(vec![])),
+        body.get("rules")
+            .cloned()
+            .unwrap_or(serde_json::Value::Array(vec![])),
     )
     .map_err(|e| ApiError::bad_request(format!("Invalid rules: {e}")))?;
-    state.runtime_threads.set_routing_rules(rules).await.map_err(|e| ApiError::internal(e.to_string()))?;
+    state
+        .runtime_threads
+        .set_routing_rules(rules)
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
     let updated = state.runtime_threads.get_routing_rules().await;
     Ok(Json(json!({ "rules": updated })))
 }
