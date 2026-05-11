@@ -1,0 +1,56 @@
+{
+  "title": "Blocks Pipeline Test",
+  "subtitle": "Grid layout + richtext + chart + table + image",
+  "theme": "dark",
+  "slides": [
+    {
+      "title": "Single column: richtext",
+      "blocks": [
+        {"type": "richtext", "runs": [
+          {"t": "关键指标 ", "size": 18},
+          {"t": "96.2%", "bold": true, "color": "#00AA66", "size": 24},
+          {"t": "  较上季度提升 ", "size": 18},
+          {"t": "+3.8%", "bold": true, "color": "#00D4AA", "size": 24}
+        ]}
+      ]
+    },
+    {
+      "title": "Two columns: chart + richtext",
+      "layout": {"kind": "grid", "cols": [0.55, 0.45], "gap": "0.3in", "padding": "0.1in"},
+      "blocks": [
+        {
+          "type": "chart",
+          "chart": {
+            "type": "bar",
+            "categories": ["Q1", "Q2", "Q3", "Q4"],
+            "series": [{"name": "Revenue", "values": [120, 145, 168, 192]}],
+            "chart_title": "季度营收 (万元)",
+            "data_labels": true
+          }
+        },
+        {
+          "type": "richtext",
+          "runs": [
+            {"t": "Q4亮点\n\n", "size": 20, "bold": true, "color": "#00D4AA"},
+            {"t": "• 营收 192万 创新高\n", "size": 14},
+            {"t": "• 环比增长 14.3%\n", "size": 14},
+            {"t": "• 客户续约率 ", "size": 14},
+            {"t": "97.5%", "size": 18, "bold": true, "color": "#00AA66"}
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Table block + bullets (old pipeline for comparison)",
+      "table": {
+        "headers": ["项目", "状态", "负责人"],
+        "rows": [
+          ["需求评审", "✅ 完成", "张三"],
+          ["UI设计", "进行中", "李四"],
+          ["后端开发", "进行中", "王五"]
+        ]
+      },
+      "bullets": ["本周完成需求评审，进入设计阶段", "后端API已定义，开发进度30%"]
+    }
+  ]
+}

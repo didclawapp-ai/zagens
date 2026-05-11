@@ -422,7 +422,7 @@ fn generate_via_python(format: &str, input: &Value, path: &PathBuf) -> Result<()
 }
 
 /// Embedded Python scripts version — bump when scripts change.
-const SCRIPTS_VERSION: &str = "7";
+const SCRIPTS_VERSION: &str = "8";
 
 /// Resolve the Python script path for a given format.
 fn find_office_script(format: &str) -> Result<PathBuf, String> {
@@ -446,6 +446,7 @@ fn find_office_script(format: &str) -> Result<PathBuf, String> {
 fn install_embedded_scripts(dir: &PathBuf) -> Result<(), String> {
     std::fs::create_dir_all(dir).map_err(|e| format!("创建 scripts 目录失败: {e}"))?;
 
+    // Single-file scripts
     let scripts: &[(&str, &str)] = &[
         ("write_docx.py", WRITE_DOCX_PY),
         ("write_pptx.py", WRITE_PPTX_PY),
@@ -455,6 +456,27 @@ fn install_embedded_scripts(dir: &PathBuf) -> Result<(), String> {
         let path = dir.join(name);
         std::fs::write(&path, content)
             .map_err(|e| format!("写入脚本 {name} 失败: {e}"))?;
+    }
+
+    // pptx_engine/ package directory
+    let engine_dir = dir.join("pptx_engine");
+    std::fs::create_dir_all(&engine_dir)
+        .map_err(|e| format!("创建 pptx_engine 目录失败: {e}"))?;
+
+    let engine_modules: &[(&str, &str)] = &[
+        ("__init__.py", PPTX_ENGINE_INIT),
+        ("theme.py", PPTX_ENGINE_THEME),
+        ("layout.py", PPTX_ENGINE_LAYOUT),
+        ("blocks.py", PPTX_ENGINE_BLOCKS),
+        ("charts.py", PPTX_ENGINE_CHARTS),
+        ("mpl.py", PPTX_ENGINE_MPL),
+        ("template.py", PPTX_ENGINE_TEMPLATE),
+    ];
+
+    for (name, content) in engine_modules {
+        let path = engine_dir.join(name);
+        std::fs::write(&path, content)
+            .map_err(|e| format!("写入 pptx_engine/{name} 失败: {e}"))?;
     }
 
     let marker = dir.join(".scripts-installed-version");
@@ -468,6 +490,14 @@ fn install_embedded_scripts(dir: &PathBuf) -> Result<(), String> {
 
 const WRITE_DOCX_PY: &str = include_str!("../../assets/scripts/write_docx.py");
 const WRITE_PPTX_PY: &str = include_str!("../../assets/scripts/write_pptx.py");
+
+const PPTX_ENGINE_INIT: &str = include_str!("../../assets/scripts/pptx_engine/__init__.py");
+const PPTX_ENGINE_THEME: &str = include_str!("../../assets/scripts/pptx_engine/theme.py");
+const PPTX_ENGINE_LAYOUT: &str = include_str!("../../assets/scripts/pptx_engine/layout.py");
+const PPTX_ENGINE_BLOCKS: &str = include_str!("../../assets/scripts/pptx_engine/blocks.py");
+const PPTX_ENGINE_CHARTS: &str = include_str!("../../assets/scripts/pptx_engine/charts.py");
+const PPTX_ENGINE_MPL: &str = include_str!("../../assets/scripts/pptx_engine/mpl.py");
+const PPTX_ENGINE_TEMPLATE: &str = include_str!("../../assets/scripts/pptx_engine/template.py");
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 

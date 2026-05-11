@@ -155,6 +155,7 @@ function renderToolCard(tool: ToolCardModel) {
         key={tool.id}
         output={tool.output ?? ''}
         command={tryParseCommand(tool.input) ?? tool.name}
+        status={tool.status}
       />
     );
   }

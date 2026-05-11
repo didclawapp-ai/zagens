@@ -1,0 +1,149 @@
+{
+  "title": "{{PROJECT_NAME}}",
+  "subtitle": "项目提案  |  发起人：{{SPONSOR}}  |  日期：{{DATE}}  |  版本：{{VERSION}}",
+  "theme": {
+    "bg": "#0D1B2A",
+    "accent": "#00AA66",
+    "title": "#F1FAEE",
+    "body": "#D0D4DC",
+    "muted": "#7A8498",
+    "font": "Microsoft YaHei"
+  },
+  "slides": [
+    {
+      "title": "项目背景与问题陈述",
+      "layout": {"kind": "grid", "cols": [0.45, 0.55], "gap": "0.3in", "padding": "0.15in"},
+      "blocks": [
+        {
+          "type": "richtext",
+          "runs": [
+            {"t": "当前状况\n\n", "size": 18, "bold": true, "color": "#00AA66"},
+            {"t": "{{CURRENT_SITUATION_1}}\n\n", "size": 13},
+            {"t": "{{CURRENT_SITUATION_2}}\n\n", "size": 13},
+            {"t": "问题影响\n\n", "size": 18, "bold": true, "color": "#FF6644"},
+            {"t": "{{IMPACT_1}}\n", "size": 13},
+            {"t": "{{IMPACT_2}}\n", "size": 13},
+            {"t": "{{IMPACT_3}}", "size": 13}
+          ]
+        },
+        {
+          "type": "chart",
+          "chart": {
+            "type": "bar",
+            "categories": ["效率", "成本", "质量", "满意度", "风险"],
+            "series": [
+              {"name": "现状评分", "values": [4.2, 5.8, 6.5, 5.0, 7.2]},
+              {"name": "行业基准", "values": [7.5, 7.0, 8.0, 7.5, 4.0]}
+            ],
+            "chart_title": "现状 vs 行业基准",
+            "data_labels": true
+          }
+        }
+      ]
+    },
+    {
+      "title": "解决方案",
+      "layout": {"kind": "grid", "cols": [0.4, 0.6], "gap": "0.2in", "padding": "0.1in"},
+      "blocks": [
+        {
+          "type": "richtext",
+          "runs": [
+            {"t": "方案概述\n\n", "size": 18, "bold": true, "color": "#00AA66"},
+            {"t": "{{SOLUTION_OVERVIEW}}\n\n", "size": 13},
+            {"t": "核心优势\n\n", "size": 16, "bold": true, "color": "#00AA66"},
+            {"t": "{{ADVANTAGE_1}}\n", "size": 13},
+            {"t": "{{ADVANTAGE_2}}\n", "size": 13},
+            {"t": "{{ADVANTAGE_3}}\n", "size": 13},
+            {"t": "{{ADVANTAGE_4}}", "size": 13}
+          ]
+        },
+        {
+          "type": "table",
+          "table": {
+            "headers": ["方案对比", "方案A (推荐)", "方案B", "方案C"],
+            "rows": [
+              ["实施周期", "{{SA_TIME}}", "{{SB_TIME}}", "{{SC_TIME}}"],
+              ["初始投入", "{{SA_COST}}", "{{SB_COST}}", "{{SC_COST}}"],
+              ["预期ROI", "{{SA_ROI}}", "{{SB_ROI}}", "{{SC_ROI}}"],
+              ["风险等级", "{{SA_RISK}}", "{{SB_RISK}}", "{{SC_RISK}}"],
+              ["可扩展性", "{{SA_SCALE}}", "{{SB_SCALE}}", "{{SC_SCALE}}"]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "title": "实施计划与甘特图",
+      "layout": {"kind": "grid", "cols": [1.0], "gap": "0in", "padding": "0.05in"},
+      "blocks": [
+        {
+          "type": "mpl",
+          "mpl": {
+            "chart_type": "gantt",
+            "title": "项目实施里程碑",
+            "width": 1400,
+            "height": 450,
+            "data": {
+              "tasks": [
+                {"name": "{{IMP1_NAME}}", "start": "{{IMP1_START}}", "end": "{{IMP1_END}}", "owner": "{{IMP1_OWNER}}", "status": "active"},
+                {"name": "{{IMP2_NAME}}", "start": "{{IMP2_START}}", "end": "{{IMP2_END}}", "owner": "{{IMP2_OWNER}}", "status": "pending"},
+                {"name": "{{IMP3_NAME}}", "start": "{{IMP3_START}}", "end": "{{IMP3_END}}", "owner": "{{IMP3_OWNER}}", "status": "pending"},
+                {"name": "{{IMP4_NAME}}", "start": "{{IMP4_START}}", "end": "{{IMP4_END}}", "owner": "{{IMP4_OWNER}}", "status": "pending"},
+                {"name": "{{IMP5_NAME}}", "start": "{{IMP5_START}}", "end": "{{IMP5_END}}", "owner": "{{IMP5_OWNER}}", "status": "pending"},
+                {"name": "{{IMP6_NAME}}", "start": "{{IMP6_START}}", "end": "{{IMP6_END}}", "owner": "{{IMP6_OWNER}}", "status": "pending"}
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "title": "预算与资源需求",
+      "table": {
+        "headers": ["预算项", "金额 (万元)", "占比", "备注"],
+        "rows": [
+          ["{{BUDGET1_NAME}}", "{{BUDGET1_AMOUNT}}", "{{BUDGET1_PCT}}", "{{BUDGET1_NOTE}}"],
+          ["{{BUDGET2_NAME}}", "{{BUDGET2_AMOUNT}}", "{{BUDGET2_PCT}}", "{{BUDGET2_NOTE}}"],
+          ["{{BUDGET3_NAME}}", "{{BUDGET3_AMOUNT}}", "{{BUDGET3_PCT}}", "{{BUDGET3_NOTE}}"],
+          ["{{BUDGET4_NAME}}", "{{BUDGET4_AMOUNT}}", "{{BUDGET4_PCT}}", "{{BUDGET4_NOTE}}"],
+          ["{{BUDGET5_NAME}}", "{{BUDGET5_AMOUNT}}", "{{BUDGET5_PCT}}", "{{BUDGET5_NOTE}}"],
+          ["合计", "{{BUDGET_TOTAL}}", "100%", ""]
+        ]
+      },
+      "bullets": [
+        "{{BUDGET_SUMMARY}}"
+      ]
+    },
+    {
+      "title": "项目团队与致谢",
+      "layout": {"kind": "grid", "cols": [0.45, 0.55], "gap": "0.3in", "padding": "0.2in"},
+      "blocks": [
+        {
+          "type": "table",
+          "table": {
+            "headers": ["角色", "姓名", "投入比例"],
+            "rows": [
+              ["项目发起人", "{{SPONSOR}}", "{{SPONSOR_PCT}}"],
+              ["项目经理", "{{PM_NAME}}", "{{PM_PCT}}"],
+              ["技术负责人", "{{TECH_NAME}}", "{{TECH_PCT}}"],
+              ["业务分析师", "{{BA_NAME}}", "{{BA_PCT}}"],
+              ["开发工程师", "{{DEV_NAME}}", "{{DEV_PCT}}"]
+            ]
+          }
+        },
+        {
+          "type": "richtext",
+          "runs": [
+            {"t": "预期收益\n\n", "size": 18, "bold": true, "color": "#00AA66"},
+            {"t": "年度节省\n", "size": 13},
+            {"t": "{{ANNUAL_SAVING}}\n\n", "size": 20, "bold": true, "color": "#00AA66"},
+            {"t": "投资回收期\n", "size": 13},
+            {"t": "{{PAYBACK_PERIOD}}\n\n", "size": 16, "bold": true},
+            {"t": "3年净现值\n", "size": 13},
+            {"t": "{{NPV_3Y}}", "size": 16, "bold": true, "color": "#D4AF37"}
+          ]
+        }
+      ]
+    }
+  ]
+}

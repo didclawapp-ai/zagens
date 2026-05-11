@@ -1,0 +1,145 @@
+{
+  "title": "Phase 2 综合测试",
+  "subtitle": "mpl charts + table merges + template test",
+  "theme": "dark",
+  "slides": [
+    {
+      "title": "甘特图：项目里程碑",
+      "layout": {"kind": "grid", "cols": [1.0], "gap": "0in", "padding": "0.1in"},
+      "blocks": [
+        {
+          "type": "mpl",
+          "mpl": {
+            "chart_type": "gantt",
+            "title": "智能仓储系统V3 — 实施计划",
+            "width": 1400,
+            "height": 500,
+            "data": {
+              "tasks": [
+                {"name": "需求评审", "start": "2026-04-01", "end": "2026-04-15", "owner": "陈志明", "status": "done"},
+                {"name": "技术方案设计", "start": "2026-04-10", "end": "2026-04-25", "owner": "王建国", "status": "done"},
+                {"name": "核心模块开发", "start": "2026-04-20", "end": "2026-05-16", "owner": "李明", "status": "active"},
+                {"name": "API联调集成", "start": "2026-05-10", "end": "2026-05-22", "owner": "王建国", "status": "active"},
+                {"name": "UAT测试", "start": "2026-05-20", "end": "2026-05-30", "owner": "张美琪", "status": "pending"},
+                {"name": "上线部署", "start": "2026-05-28", "end": "2026-06-05", "owner": "赵伟", "status": "pending"}
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "title": "鱼骨图：交付延期根因分析",
+      "layout": {"kind": "grid", "cols": [1.0], "gap": "0in", "padding": "0.1in"},
+      "blocks": [
+        {
+          "type": "mpl",
+          "mpl": {
+            "chart_type": "fishbone",
+            "title": "API联调延期原因分析",
+            "width": 1400,
+            "height": 600,
+            "data": {
+              "problem": "API联调\n延期5天",
+              "categories": [
+                {"name": "人员", "causes": ["关键开发\n请假3天", "接口人\n变更"]},
+                {"name": "方法", "causes": ["联调流程\n不规范", "缺少Mock\n服务"]},
+                {"name": "环境", "causes": ["供应商\n测试环境\n不稳定"]},
+                {"name": "物料", "causes": ["API文档\n版本滞后", "接口变更\n未通知"]}
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "title": "雷达图：供应商综合评估",
+      "layout": {"kind": "grid", "cols": [0.55, 0.45], "gap": "0.2in", "padding": "0.1in"},
+      "blocks": [
+        {
+          "type": "mpl",
+          "mpl": {
+            "chart_type": "radar",
+            "title": "供应商A vs 供应商B",
+            "width": 800,
+            "height": 600,
+            "data": {
+              "categories": ["价格", "质量", "交期", "服务", "技术", "稳定性"],
+              "series": [
+                {"name": "供应商A", "values": [7.5, 9.2, 8.1, 7.8, 9.0, 8.5]},
+                {"name": "供应商B", "values": [8.8, 6.5, 7.2, 8.5, 6.0, 7.0]}
+              ]
+            }
+          }
+        },
+        {
+          "type": "richtext",
+          "runs": [
+            {"t": "评估结论\n\n", "size": 18, "bold": true, "color": "#00D4AA"},
+            {"t": "供应商A\n", "size": 14, "bold": true},
+            {"t": "• 质量/技术领先\n", "size": 12},
+            {"t": "• 价格偏高\n", "size": 12},
+            {"t": "综合评分 8.5/10\n\n", "size": 12},
+            {"t": "供应商B\n", "size": 14, "bold": true},
+            {"t": "• 价格优势明显\n", "size": 12},
+            {"t": "• 质量不稳定\n", "size": 12},
+            {"t": "综合评分 7.3/10", "size": 12}
+          ]
+        }
+      ]
+    },
+    {
+      "title": "漏斗图：销售转化",
+      "layout": {"kind": "grid", "cols": [0.5, 0.5], "gap": "0.2in", "padding": "0.1in"},
+      "blocks": [
+        {
+          "type": "mpl",
+          "mpl": {
+            "chart_type": "funnel",
+            "title": "Q1 销售漏斗",
+            "width": 700,
+            "height": 500,
+            "data": {
+              "stages": [
+                {"name": "线索", "value": 1200},
+                {"name": "商机", "value": 480},
+                {"name": "方案", "value": 210},
+                {"name": "报价", "value": 95},
+                {"name": "成交", "value": 38}
+              ]
+            }
+          }
+        },
+        {
+          "type": "table",
+          "table": {
+            "headers": ["阶段", "数量", "转化率"],
+            "rows": [
+              ["线索→商机", "1200→480", "40.0%"],
+              ["商机→方案", "480→210", "43.8%"],
+              ["方案→报价", "210→95", "45.2%"],
+              ["报价→成交", "95→38", "40.0%"],
+              ["整体转化", "1200→38", "3.2%"]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "title": "合并单元格表格",
+      "table": {
+        "headers": ["模块", "子模块", "负责人", "进度", "备注"],
+        "rows": [
+          ["入库模块", "扫码枪SDK", "李明", "100%", "已完成"],
+          ["入库模块", "重量传感器", "李明", "85%", ""],
+          ["出库模块", "拣货路径", "王建国", "60%", ""],
+          ["出库模块", "包装校验", "王建国", "40%", ""],
+          ["报表模块", "库存看板", "张美琪", "100%", "已完成"],
+          ["报表模块", "Excel导出", "张美琪", "90%", ""]
+        ],
+        "merges": [[0, 0, 1, 0], [2, 0, 3, 0], [4, 0, 5, 0]]
+      },
+      "notes": "合并单元格功能测试：模块列纵向合并"
+    }
+  ]
+}

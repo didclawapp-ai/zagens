@@ -1,0 +1,54 @@
+{
+  "title": "竞品分析",
+  "subtitle": "智能仓储系统 — 竞品对比 (2026Q2)",
+  "theme": {
+    "bg": "#0D1B2A",
+    "accent": "#E63946",
+    "title": "#F1FAEE",
+    "body": "#D0D4DC",
+    "muted": "#7A8498",
+    "font": "Microsoft YaHei"
+  },
+  "slides": [
+    {
+      "title": "核心维度对比",
+      "layout": {"kind": "grid", "cols": [0.38, 0.62], "gap": "0.3in", "padding": "0.15in"},
+      "blocks": [
+        {
+          "type": "richtext",
+          "runs": [
+            {"t": "市场格局\n\n", "size": 22, "bold": true, "color": "#E63946"},
+            {"t": "我们 ", "size": 15},
+            {"t": "第2位", "size": 24, "bold": true, "color": "#00D4AA"},
+            {"t": "\n市场份额 23.5%\n\n", "size": 15},
+            {"t": "主要差距\n", "size": 16, "bold": true, "color": "#E63946"},
+            {"t": "• AI预测精度落后 8%\n", "size": 13},
+            {"t": "• 移动端体验评分低 1.2分\n", "size": 13},
+            {"t": "• 中小企业方案缺失\n\n", "size": 13},
+            {"t": "我们的优势\n", "size": 16, "bold": true, "color": "#00D4AA"},
+            {"t": "• 硬件集成能力 ", "size": 13},
+            {"t": "行业第1\n", "size": 15, "bold": true, "color": "#00D4AA"},
+            {"t": "• 大客户续约率 ", "size": 13},
+            {"t": "97.3%\n", "size": 15, "bold": true, "color": "#00D4AA"},
+            {"t": "• 本地化服务网点 ", "size": 13},
+            {"t": "覆盖全国", "size": 15, "bold": true, "color": "#00D4AA"}
+          ]
+        },
+        {
+          "type": "chart",
+          "chart": {
+            "type": "bar",
+            "categories": ["AI预测\n准确率", "移动端\n体验", "硬件\n集成", "价格\n竞争力", "服务\n响应"],
+            "series": [
+              {"name": "我方", "values": [84, 7.2, 9.3, 7.8, 8.5]},
+              {"name": "竞品A (海康)", "values": [92, 8.4, 8.1, 7.2, 7.8]},
+              {"name": "竞品B (旷视)", "values": [78, 7.8, 7.5, 8.5, 7.2]}
+            ],
+            "chart_title": "五维雷达对比 (10分制)",
+            "data_labels": true
+          }
+        }
+      ]
+    }
+  ]
+}

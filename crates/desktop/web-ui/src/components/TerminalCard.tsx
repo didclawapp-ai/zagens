@@ -3,11 +3,15 @@ import { Terminal, type ITheme } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 
+export type TerminalToolStatus = 'running' | 'done' | 'error';
+
 interface Props {
   /** Output text — re-renders the terminal when it changes */
   output: string;
   /** Shell command that produced this output (shown in header) */
   command?: string;
+  /** Tool lifecycle — used when there is no stdout/stderr yet or ever */
+  status?: TerminalToolStatus;
 }
 
 /** Keep in sync with `globals.css` so the panel does not look like a solid black slab in light UI. */
@@ -90,16 +94,21 @@ function prepareTerminalOutput(text: string, lightUi: boolean): string {
   if (lightUi) {
     // OSC (hyperlinks, VS Code / pwsh semantic prompts, etc.)
     s = s.replace(/\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g, '');
-    // CSI (SGR colors, cursor motion — dropping is fine for static logs)
     // CSI … final byte (ECMA-48): param bytes, optional intermediates, final 0x40–0x7e
     s = s.replace(/\u001b\[[\x30-\x3f]*[\x20-\x2f]*[\x40-\x7e]/g, '');
-    // Other two-char ESC sequences
     s = s.replace(/\u001b[ -/][@-~]/g, '');
   }
   return s;
 }
 
-export default function TerminalCard({ output, command }: Props) {
+/** Whether there is any visible text after normalizing; strip ANSI so “empty” colored output still counts. */
+function hasTerminalText(output: string): boolean {
+  const plain = prepareTerminalOutput(output, true);
+  return plain.trim().length > 0;
+}
+
+/** Only mounted when there is something to show — avoids xterm’s fixed min-height slab for silent commands (common with `python …`). */
+function TerminalXtermView({ output }: { output: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -136,7 +145,6 @@ export default function TerminalCard({ output, command }: Props) {
       term.write(prepareTerminalOutput(outputRef.current, lightUi));
     };
 
-    // Initial paint + deferred fits: first open often sees width 0 in flex; fit() then fixes cols.
     repaint();
     const t1 = window.setTimeout(repaint, 50);
     const t2 = window.setTimeout(repaint, 250);
@@ -175,8 +183,30 @@ export default function TerminalCard({ output, command }: Props) {
   }, [output, isDark]);
 
   return (
+    <div ref={containerRef} className="terminal-container w-full min-w-0 px-1 min-h-[8rem]" />
+  );
+}
+
+function EmptyOutputHint({ status }: { status: TerminalToolStatus }) {
+  const line =
+    status === 'running'
+      ? '正在执行，尚未收到终端输出…（不少 Python 脚本成功时也不打印任何内容）'
+      : status === 'error'
+        ? '命令失败，且无 stderr/stdout 文本。'
+        : '命令未向终端打印任何内容（常见于脚本静默成功，仅由退出码表示结果）。';
+
+  return (
+    <div className="border-t border-divider bg-canvas px-3 py-2 text-[11px] leading-relaxed text-t-text-muted">
+      {line}
+    </div>
+  );
+}
+
+export default function TerminalCard({ output, command, status = 'done' }: Props) {
+  const showXterm = hasTerminalText(output);
+
+  return (
     <div className="rounded-lg border border-card-border overflow-hidden my-2">
-      {/* Terminal chrome bar */}
       <div className="flex items-center gap-2 px-3 py-1.5 bg-canvas-alt border-b border-divider">
         <span className="w-2.5 h-2.5 rounded-full bg-t-error/70" />
         <span className="w-2.5 h-2.5 rounded-full bg-amber/70" />
@@ -185,8 +215,7 @@ export default function TerminalCard({ output, command }: Props) {
           {command || 'shell'}
         </span>
       </div>
-      {/* xterm container */}
-      <div ref={containerRef} className="terminal-container w-full min-w-0 px-1 min-h-[8rem]" />
+      {showXterm ? <TerminalXtermView output={output} /> : <EmptyOutputHint status={status} />}
     </div>
   );
 }

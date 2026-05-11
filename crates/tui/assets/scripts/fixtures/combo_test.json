@@ -1,0 +1,40 @@
+{
+  "title": "Combo Chart Test",
+  "subtitle": "Pareto: bar + line overlay",
+  "theme": "dark",
+  "slides": [
+    {
+      "title": "Pareto Analysis: Defect Causes",
+      "layout": {"kind": "grid", "cols": [0.7, 0.3], "gap": "0.2in", "padding": "0.1in"},
+      "blocks": [
+        {
+          "type": "chart",
+          "chart": {
+            "type": "combo",
+            "categories": ["冲头磨损", "电镀失控", "润滑不足", "导柱精度", "材料硬度", "清洗不足"],
+            "series": [
+              {"name": "缺陷件数", "values": [1247, 518, 412, 389, 296, 210]},
+              {"name": "累计占比 %", "values": [40.6, 57.5, 70.9, 83.6, 93.2, 100.0]}
+            ],
+            "chart_title": "缺陷原因柏拉图",
+            "x_label": "原因类别",
+            "y_label": "件数 / 累计%",
+            "data_labels": true
+          }
+        },
+        {
+          "type": "richtext",
+          "runs": [
+            {"t": "关键发现\n\n", "size": 18, "bold": true, "color": "#00D4AA"},
+            {"t": "前3项原因贡献\n", "size": 13},
+            {"t": "70.9%", "size": 28, "bold": true, "color": "#FF6644"},
+            {"t": "\n的缺陷总量\n\n", "size": 13},
+            {"t": "■ 冲头磨损 40.6%\n", "size": 12},
+            {"t": "■ 电镀失控 16.9%\n", "size": 12},
+            {"t": "■ 润滑不足 13.4%", "size": 12}
+          ]
+        }
+      ]
+    }
+  ]
+}
