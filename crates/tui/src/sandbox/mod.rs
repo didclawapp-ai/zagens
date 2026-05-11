@@ -388,9 +388,18 @@ impl SandboxManager {
 
     /// Prepare a Landlock-sandboxed execution environment (Linux).
     ///
-    /// Note: Landlock restricts the current process, so for subprocess sandboxing
-    /// we would need a helper binary. For now, this prepares the environment with
-    /// appropriate markers but doesn't actually apply Landlock (would need helper).
+    /// **⚠️ SECURITY NOTICE**: This function currently does **not** apply any
+    /// Landlock rules. It only sets the `DEEPSEEK_SANDBOX` environment marker.
+    /// The command will execute with **full system access** — the Landlock
+    /// sandbox is not yet enforced. Full Landlock isolation requires a helper
+    /// binary (see `sandbox/landlock.rs` in the Step 6 implementation plan at
+    /// `docs/CODE_REVIEW_2025-05-11.md#625-实现-linux-landlock-沙箱`).
+    ///
+    /// Technical context: Landlock restricts the current process, so for
+    /// subprocess sandboxing we would need a helper binary that:
+    /// 1. Sets up the Landlock ruleset based on the policy
+    /// 2. Applies restrictions to itself (LandlockRestrictSelf)
+    /// 3. Execs the target command
     #[cfg(target_os = "linux")]
     fn prepare_landlock(spec: &CommandSpec) -> ExecEnv {
         // Build the original command
@@ -420,8 +429,12 @@ impl SandboxManager {
 
     /// Prepare a Windows-sandboxed execution environment.
     ///
-    /// Note: Windows sandboxing requires a helper process for full isolation.
-    /// This implementation marks intent and defers enforcement to a helper.
+    /// **⚠️ SECURITY NOTICE**: This function currently does **not** apply any
+    /// Windows sandbox isolation. It only sets environment markers
+    /// (`DEEPSEEK_SANDBOX` and optionally `DEEPSEEK_SANDBOX_BLOCK_NETWORK`).
+    /// The command will execute with **full system access** — the Windows
+    /// sandbox is not yet enforced. Full Windows sandboxing requires a helper
+    /// process or Windows Sandbox / AppContainer integration.
     #[cfg(target_os = "windows")]
     fn prepare_windows(spec: &CommandSpec) -> ExecEnv {
         let mut command = vec![spec.program.clone()];

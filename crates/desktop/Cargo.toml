@@ -5,6 +5,7 @@ version = "0.2.2"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+rust-version.workspace = true
 description = "DS Pick — Tauri GUI shell for DeepSeek TUI (deepseek CLI)"
 
 [build-dependencies]

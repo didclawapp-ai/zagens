@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+rust-version.workspace = true
 description = "MCP server lifecycle and tool proxy compatibility for DeepSeek workspace architecture"
 
 [dependencies]
