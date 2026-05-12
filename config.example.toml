@@ -491,6 +491,53 @@ default_text_model = "deepseek-ai/deepseek-v4-pro"
 # cors_origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
 # ─────────────────────────────────────────────────────────────────────────────────
+# Vision Bridge (image → vision model → text injected into context)
+# ─────────────────────────────────────────────────────────────────────────────────
+# Enables the `describe_image` tool. Reads an image file, sends it to
+# an OpenAI-compatible vision model, and injects the extracted text into
+# the main conversation. Used to let DeepSeek V4 "see" images via OCR.
+#
+#   VISION_API_KEY  — Bearer token (required for cloud providers)
+#   VISION_BASE_URL — OpenAI-compatible endpoint root
+#                      (default: https://api.siliconflow.cn/v1)
+#   VISION_MODEL    — model id
+#                      (default: deepseek-ai/DeepSeek-OCR)
+#   SILICONFLOW_API_KEY — fallback if VISION_API_KEY is not set
+#
+# Supported providers (any OpenAI Vision-compatible endpoint):
+#   SiliconFlow   — https://api.siliconflow.cn/v1
+#   DashScope      — https://dashscope.aliyuncs.com/compatible-mode/v1
+#   OpenRouter     — https://openrouter.ai/api/v1
+#
+# Set in .env or as system environment variables.
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# Vision Bridge — image OCR/description via external vision model
+# ─────────────────────────────────────────────────────────────────────────────────
+# Enables the `describe_image` tool. Reads image files and extracts text
+# via a configured vision model. Defaults to SiliconFlow-hosted DeepSeek-OCR.
+#
+# Can also be configured via environment variables:
+#   VISION_API_KEY     (env takes precedence over config file)
+#   VISION_BASE_URL
+#   VISION_MODEL
+#   SILICONFLOW_API_KEY (fallback if VISION_API_KEY is not set)
+#
+# DeepSeek-OCR on SiliconFlow expects the official `<image>` + `<|grounding|>` prompts
+# documented at: https://docs.siliconflow.cn/cn/userguide/capabilities/multimodal-vision
+# DS Pick / `describe_image` use the "Convert the document to markdown" template by default.
+#
+# [vision]
+# api_key = "sk-xxxxxxxx"       # Bearer token for vision provider
+# base_url = "https://api.siliconflow.cn/v1"
+# model = "deepseek-ai/DeepSeek-OCR"
+#
+# Alternative providers (any OpenAI Vision-compatible endpoint):
+#   SiliconFlow : https://api.siliconflow.cn/v1
+#   DashScope   : https://dashscope.aliyuncs.com/compatible-mode/v1
+#   OpenRouter  : https://openrouter.ai/api/v1
+
+# ─────────────────────────────────────────────────────────────────────────────────
 # Requirements (admin constraints) example file
 # ─────────────────────────────────────────────────────────────────────────────────
 # allowed_approval_policies = ["on-request", "untrusted", "never"]

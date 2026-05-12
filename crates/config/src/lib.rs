@@ -95,6 +95,18 @@ pub struct ProviderConfigToml {
     pub http_headers: BTreeMap<String, String>,
 }
 
+/// Vision bridge config — enables image→text extraction via an external
+/// vision model (e.g. DeepSeek-OCR hosted on SiliconFlow).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct VisionConfigToml {
+    /// Bearer token for the vision provider API.
+    pub api_key: Option<String>,
+    /// OpenAI-compatible endpoint root (default: https://api.siliconflow.cn/v1).
+    pub base_url: Option<String>,
+    /// Model id (default: deepseek-ai/DeepSeek-OCR).
+    pub model: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ProvidersToml {
     #[serde(default)]
@@ -190,6 +202,10 @@ pub struct ConfigToml {
     /// applies the defaults documented in [`LspConfigToml`].
     #[serde(default)]
     pub lsp: Option<LspConfigToml>,
+    /// Vision bridge for `describe_image` tool. Enables image→text
+    /// extraction via an external vision model.
+    #[serde(default)]
+    pub vision: Option<VisionConfigToml>,
     #[serde(flatten)]
     pub extras: BTreeMap<String, toml::Value>,
 }
@@ -442,6 +458,9 @@ impl ConfigToml {
             "providers.ollama.http_headers" => {
                 serialize_http_headers(&self.providers.ollama.http_headers)
             }
+            "vision.api_key" => self.vision.as_ref().and_then(|v| v.api_key.clone()),
+            "vision.base_url" => self.vision.as_ref().and_then(|v| v.base_url.clone()),
+            "vision.model" => self.vision.as_ref().and_then(|v| v.model.clone()),
             _ => self.extras.get(key).map(toml::Value::to_string),
         }
     }
@@ -577,6 +596,18 @@ impl ConfigToml {
             "providers.ollama.http_headers" => {
                 self.providers.ollama.http_headers = parse_http_headers(value)?;
             }
+            "vision.api_key" => {
+                let v = self.vision.get_or_insert_default();
+                v.api_key = Some(value.to_string());
+            }
+            "vision.base_url" => {
+                let v = self.vision.get_or_insert_default();
+                v.base_url = Some(value.to_string());
+            }
+            "vision.model" => {
+                let v = self.vision.get_or_insert_default();
+                v.model = Some(value.to_string());
+            }
             _ => {
                 self.extras
                     .insert(key.to_string(), toml::Value::String(value.to_string()));
@@ -649,6 +680,15 @@ impl ConfigToml {
             "providers.ollama.base_url" => self.providers.ollama.base_url = None,
             "providers.ollama.model" => self.providers.ollama.model = None,
             "providers.ollama.http_headers" => self.providers.ollama.http_headers.clear(),
+            "vision.api_key" => {
+                if let Some(v) = self.vision.as_mut() { v.api_key = None; }
+            }
+            "vision.base_url" => {
+                if let Some(v) = self.vision.as_mut() { v.base_url = None; }
+            }
+            "vision.model" => {
+                if let Some(v) = self.vision.as_mut() { v.model = None; }
+            }
             _ => {
                 self.extras.remove(key);
             }

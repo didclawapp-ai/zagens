@@ -742,6 +742,11 @@ pub struct Config {
     #[serde(default)]
     pub providers: Option<ProvidersConfig>,
 
+    /// Vision bridge for the `describe_image` tool — enables image→text
+    /// extraction via an external vision model (e.g. SiliconFlow DeepSeek-OCR).
+    #[serde(default)]
+    pub vision: Option<VisionConfig>,
+
     /// Desktop notification settings (OSC 9 / BEL on long turn completion).
     #[serde(default)]
     pub notifications: Option<NotificationsConfig>,
@@ -944,6 +949,13 @@ pub struct ProviderConfig {
     pub base_url: Option<String>,
     pub model: Option<String>,
     pub http_headers: Option<HashMap<String, String>>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct VisionConfig {
+    pub api_key: Option<String>,
+    pub base_url: Option<String>,
+    pub model: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -2270,6 +2282,7 @@ fn merge_config(base: Config, override_cfg: Config) -> Config {
         tui: override_cfg.tui.or(base.tui),
         hooks: override_cfg.hooks.or(base.hooks),
         providers: merge_providers(base.providers, override_cfg.providers),
+        vision: override_cfg.vision.or(base.vision),
         features: merge_features(base.features, override_cfg.features),
         notifications: override_cfg.notifications.or(base.notifications),
         network: override_cfg.network.or(base.network),

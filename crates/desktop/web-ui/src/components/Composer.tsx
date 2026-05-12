@@ -18,6 +18,7 @@ import {
 const ROUTE_INTENT_IDS: DesktopRouteIntentOption[] = ['off', 'follow_runmode', 'code', 'chat', 'research'];
 
 const MAX_FILE_BYTES = 128 * 1024; // 128 KB per file
+const MAX_IMAGE_BYTES = 20 * 1024 * 1024; // align with describe_image / vision_transcribe_image
 const MAX_ATTACHMENTS = 8;
 
 export interface ComposerOutboundMessage {
@@ -37,6 +38,10 @@ interface AttachedFile {
   /** When false, contents are never embedded — binary / unrecognized. */
   inlined: boolean;
   omitReason?: string;
+  /** Image attachments: transcribed via vision bridge before sending to the main model. */
+  kind?: 'text' | 'image';
+  /** data:image/...;base64,... when `kind === 'image'` and within size limits. */
+  imageDataUrl?: string;
 }
 
 function shortenPath(p: string): string {
@@ -105,6 +110,21 @@ function mimeImpliesBinary(mime: string): boolean {
   return false;
 }
 
+function isImageFile(file: File): boolean {
+  const t = file.type.toLowerCase();
+  if (t.startsWith('image/')) return true;
+  return /\.(png|jpe?g|gif|webp|bmp)$/i.test(file.name);
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ''));
+    reader.onerror = () => reject(new Error('read failed'));
+    reader.readAsDataURL(file);
+  });
+}
+
 async function readHead(file: File, max: number): Promise<ArrayBuffer> {
   const slice = file.slice(0, Math.min(max, file.size));
   return slice.arrayBuffer();
@@ -122,6 +142,42 @@ async function readFullUtf8(file: File): Promise<string> {
 async function fileToAttached(file: File): Promise<AttachedFile> {
   const size = file.size;
   const name = file.name;
+
+  if (isImageFile(file)) {
+    if (size > MAX_IMAGE_BYTES) {
+      return {
+        name,
+        content: '',
+        truncated: false,
+        size,
+        inlined: false,
+        kind: 'image',
+        omitReason: `图片超过 ${formatSize(MAX_IMAGE_BYTES)}，无法发送`,
+      };
+    }
+    try {
+      const imageDataUrl = await readFileAsDataUrl(file);
+      return {
+        name,
+        content: '',
+        truncated: false,
+        size,
+        inlined: false,
+        kind: 'image',
+        imageDataUrl,
+      };
+    } catch {
+      return {
+        name,
+        content: '',
+        truncated: false,
+        size,
+        inlined: false,
+        kind: 'image',
+        omitReason: '读取图片失败',
+      };
+    }
+  }
 
   if (BINARY_EXT.test(name)) {
     return {
@@ -184,8 +240,9 @@ function toCdata(payload: string): string {
 /** Model-facing prompt: user text + note for omitted files + inlined XML excerpts. */
 function buildApiPrompt(userText: string, files: AttachedFile[]): string {
   const trimmedUser = userText.trim();
-  const inlined = files.filter((f) => f.inlined);
-  const omitted = files.filter((f) => !f.inlined);
+  const fileStack = files.filter((f) => f.kind !== 'image');
+  const inlined = fileStack.filter((f) => f.inlined);
+  const omitted = fileStack.filter((f) => !f.inlined);
 
   const parts: string[] = [];
 
@@ -236,6 +293,12 @@ function buildDisplayContent(userText: string, files: AttachedFile[]): string {
   if (files.length > 0) {
     const attLines = files.map((f) => {
       const sz = formatSize(f.size);
+      if (f.kind === 'image') {
+        if (f.imageDataUrl) {
+          return `• ${f.name} · ${sz}（发送前经视觉桥接转写）`;
+        }
+        return `• ${f.name} · ${sz}（${f.omitReason ?? '无法发送'}）`;
+      }
       if (!f.inlined) {
         return `• ${f.name} · ${sz}（不会在气泡中展开正文）`;
       }
@@ -263,7 +326,7 @@ function workspacePickerDefaultPath(cwdHint: string): string | undefined {
 }
 
 interface Props {
-  onSend: (payload: ComposerOutboundMessage) => void;
+  onSend: (payload: ComposerOutboundMessage) => void | Promise<void>;
   onCancel?: () => void;
   disabled: boolean;
   autoApprove: boolean;
@@ -308,6 +371,8 @@ export default function Composer({
 }: Props) {
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState<AttachedFile[]>([]);
+  const [transcribing, setTranscribing] = useState(false);
+  const [bridgeError, setBridgeError] = useState<string | null>(null);
   const [modelOpen, setModelOpen] = useState(false);
   const [runModeOpen, setRunModeOpen] = useState(false);
   const [routeIntentOpen, setRouteIntentOpen] = useState(false);
@@ -447,12 +512,59 @@ export default function Composer({
     return () => document.removeEventListener('keydown', handler);
   }, [modelOpen, workspaceOpen, runModeOpen, routeIntentOpen]);
 
-  const handleSend = () => {
-    if ((!text.trim() && attachments.length === 0) || disabled) return;
-    const displayContent = buildDisplayContent(text, attachments);
-    const apiPrompt = buildApiPrompt(text, attachments);
+  const handleSend = async () => {
+    if ((!text.trim() && attachments.length === 0) || disabled || transcribing) return;
+
+    const badImages = attachments.filter((a) => a.kind === 'image' && !a.imageDataUrl);
+    if (badImages.length > 0) {
+      setBridgeError('存在无法转写的图片（过大或读取失败），请移除后重试。');
+      return;
+    }
+    setBridgeError(null);
+
+    const imageAtt = attachments.filter(
+      (a): a is AttachedFile & { kind: 'image'; imageDataUrl: string } =>
+        a.kind === 'image' && Boolean(a.imageDataUrl),
+    );
+    const textOnlyAtt = attachments.filter((a) => a.kind !== 'image');
+
+    let apiPrompt = buildApiPrompt(text, textOnlyAtt);
+
+    if (imageAtt.length > 0) {
+      setTranscribing(true);
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const preamble =
+          '【系统说明】以下是「视觉桥接」模型从你粘贴/附带图片中识别的文字描述；这是消息内嵌内容，不等同于当前工作区内任何路径上的文件。\n请直接据此回答用户提问，不要把工作区文件名与上述插图混为一谈。\n';
+        const chunks: string[] = [];
+        for (let i = 0; i < imageAtt.length; i++) {
+          const t = await invoke<string>('vision_transcribe_image', {
+            dataUrl: imageAtt[i].imageDataUrl,
+          });
+          const body = typeof t === 'string' ? t.trim() : String(t).trim();
+          if (!body) {
+            throw new Error('视觉桥接返回空内容，可能是提供商响应格式未被识别。');
+          }
+          chunks.push(`### 附图 ${i + 1}\n\n${body}`);
+        }
+        const bridge = `${preamble}\n${chunks.join('\n\n---\n\n')}`;
+        apiPrompt =
+          apiPrompt.trim().length > 0 ? `${bridge}\n\n---\n\n${apiPrompt}` : bridge;
+      } catch (err) {
+        setBridgeError(err instanceof Error ? err.message : String(err));
+        return;
+      } finally {
+        setTranscribing(false);
+      }
+    }
+
     if (!apiPrompt.trim()) return;
-    onSend({ displayContent, apiPrompt });
+
+    const displayContent =
+      buildDisplayContent(text, attachments) +
+      (imageAtt.length > 0 ? '\n\n[图片已先经视觉桥接转写并并入提示]' : '');
+
+    await Promise.resolve(onSend({ displayContent, apiPrompt }));
     setText('');
     setAttachments([]);
   };
@@ -460,12 +572,38 @@ export default function Composer({
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSend();
+      void handleSend();
     }
   };
 
-  /** Smart paste: strip HTML formatting, auto-wrap code blocks, inject plain text. */
+  /** Paste images from clipboard, or smart-paste HTML as plain / code. */
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const cd = e.clipboardData;
+    const imageItems: DataTransferItem[] = [];
+    if (cd?.items) {
+      for (let i = 0; i < cd.items.length; i++) {
+        const it = cd.items[i];
+        if (it.kind === 'file' && it.type.startsWith('image/')) {
+          imageItems.push(it);
+        }
+      }
+    }
+    if (imageItems.length > 0) {
+      e.preventDefault();
+      setBridgeError(null);
+      void (async () => {
+        const newAtts: AttachedFile[] = [];
+        for (const it of imageItems) {
+          const f = it.getAsFile();
+          if (!f) continue;
+          newAtts.push(await fileToAttached(f));
+        }
+        if (newAtts.length === 0) return;
+        setAttachments((prev) => [...prev, ...newAtts].slice(0, MAX_ATTACHMENTS));
+      })();
+      return;
+    }
+
     const html = e.clipboardData.getData('text/html');
     if (html) {
       e.preventDefault();
@@ -796,25 +934,44 @@ export default function Composer({
             </div>
           </div>
         <div className="card overflow-visible">
+          {bridgeError && (
+            <p className="px-3 pt-3 text-xs text-error-text leading-relaxed">{bridgeError}</p>
+          )}
+          {transcribing && (
+            <p className="px-3 pt-3 text-xs text-accent leading-relaxed">正在通过视觉桥接提取图片文字…</p>
+          )}
           {attachments.length > 0 && (
             <div className="flex flex-wrap gap-1.5 px-3 pt-3 pb-0">
               {attachments.map((f, i) => (
                 <span
                   key={`${f.name}-${i}`}
                   className="inline-flex items-center gap-1 rounded-md border border-card-border bg-canvas-alt px-2 py-1 text-[11px] text-t-text-secondary"
-                  title={`${f.name} · ${formatSize(f.size)}${!f.inlined ? ' · 不按文本嵌入' : ''}${f.truncated ? ' · 已截断至 128 KB（发送模型时）' : ''}${f.omitReason ? `\n${f.omitReason}` : ''}`}
+                  title={`${f.name} · ${formatSize(f.size)}${f.kind === 'image' ? ' · 发送前经视觉桥接' : ''}${!f.inlined && f.kind !== 'image' ? ' · 不按文本嵌入' : ''}${f.truncated ? ' · 已截断至 128 KB（发送模型时）' : ''}${f.omitReason ? `\n${f.omitReason}` : ''}`}
                 >
-                  <svg viewBox="0 0 24 24" className="size-3 stroke-current" style={{ fill: 'none', strokeWidth: 1.6 }}>
-                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-                    <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
-                  </svg>
+                  {f.kind === 'image' && f.imageDataUrl ? (
+                    <img
+                      src={f.imageDataUrl}
+                      alt=""
+                      className="h-7 w-7 shrink-0 rounded border border-card-border object-cover"
+                    />
+                  ) : (
+                    <svg viewBox="0 0 24 24" className="size-3 stroke-current" style={{ fill: 'none', strokeWidth: 1.6 }}>
+                      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                      <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
+                    </svg>
+                  )}
                   <span className="max-w-[200px] truncate">{f.name}</span>
-                  {!f.inlined && (
+                  {f.kind === 'image' && !f.imageDataUrl && (
+                    <span className="text-[10px] text-amber-text" title={f.omitReason}>
+                      无效
+                    </span>
+                  )}
+                  {f.kind !== 'image' && !f.inlined && (
                     <span className="text-[10px] text-amber-text" title={f.omitReason}>
                       仅引用
                     </span>
                   )}
-                  {f.inlined && f.truncated && <span className="text-amber-text">⧉</span>}
+                  {f.kind !== 'image' && f.inlined && f.truncated && <span className="text-amber-text">⧉</span>}
                   <button
                     type="button"
                     onClick={() => removeAttachment(i)}
@@ -830,12 +987,15 @@ export default function Composer({
           <textarea
             ref={textareaRef}
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => {
+              setBridgeError(null);
+              setText(e.target.value);
+            }}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             aria-label="输入消息"
-            placeholder="今天需要什么帮助？"
-            disabled={disabled}
+            placeholder="今天需要什么帮助？（可粘贴截图）"
+            disabled={disabled || transcribing}
             rows={2}
             className="w-full resize-none border-none bg-transparent px-4 py-3.5 text-sm text-t-text placeholder-t-text-muted focus:outline-none disabled:opacity-50"
             style={{ minHeight: '64px', lineHeight: 1.5 }}
@@ -847,13 +1007,13 @@ export default function Composer({
               multiple
               className="hidden"
               onChange={handleFilesSelected}
-              accept="text/*,application/json,application/xml,application/javascript,application/typescript,.rs,.py,.js,.ts,.tsx,.jsx,.css,.html,.json,.xml,.yaml,.yml,.toml,.md,.txt,.csv,.sh,.bash,.ps1,.sql,.env,.cfg,.ini,.conf,.log,.lock,.gradle,.proto,.graphql,.pdf"
+              accept="image/*,text/*,application/json,application/xml,application/javascript,application/typescript,.rs,.py,.js,.ts,.tsx,.jsx,.css,.html,.json,.xml,.yaml,.yml,.toml,.md,.txt,.csv,.sh,.bash,.ps1,.sql,.env,.cfg,.ini,.conf,.log,.lock,.gradle,.proto,.graphql,.pdf"
             />
             <button
               type="button"
               className="pill-btn"
-              title="附加文件（文本将嵌入发往模型；PDF/图片等为仅引用）"
-              disabled={disabled || attachments.length >= MAX_ATTACHMENTS}
+              title="附加文件或图片（图片在发送前经视觉桥接转写；纯文本文件可嵌入）"
+              disabled={disabled || transcribing || attachments.length >= MAX_ATTACHMENTS}
               onClick={handleAttachClick}
             >
               <svg viewBox="0 0 24 24">
@@ -954,10 +1114,10 @@ export default function Composer({
             </div>
             <button
               type="button"
-              onClick={handleSend}
-              disabled={disabled || (!text.trim() && attachments.length === 0)}
+              onClick={() => void handleSend()}
+              disabled={disabled || transcribing || (!text.trim() && attachments.length === 0)}
               className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-full bg-accent text-accent-text shadow-md hover:brightness-105 disabled:opacity-40 disabled:shadow-none"
-              title="发送"
+              title={transcribing ? '视觉桥接处理中…' : '发送'}
             >
               <svg
                 viewBox="0 0 24 24"

@@ -38,8 +38,37 @@ pub const HANDOFF_RELATIVE_PATH: &str = ".deepseek/handoff.md";
 /// marker rather than skipped entirely so the model still sees the head.
 const INSTRUCTIONS_FILE_MAX_BYTES: usize = 100 * 1024;
 
+/// Env value used when DS Pick spawns `deepseek serve` over HTTP.
+/// See `crates/desktop/src/sidecar.rs`.
+pub(crate) const CLIENT_SURFACE_DS_PICK: &str = "ds-pick";
+
+const CLIENT_IDENTITY_TERMINAL: &str = "You are DeepSeek TUI. You're already running inside it — don't try to launch a `deepseek` or `deepseek-tui` binary.";
+
+const CLIENT_IDENTITY_DS_PICK: &str = "You are assisting inside **DS Pick**, the DeepSeek desktop app (Tauri shell with an embedded chat UI). This session is hosted by DS Pick, which connects to the local `deepseek serve` runtime on the loopback interface. When the user asks what software this conversation uses, answer **DS Pick** — not \"DeepSeek TUI\" (that name refers to the terminal UI). Don't try to spawn another `deepseek` / `deepseek-tui` process unless the user explicitly asks.";
+
+fn resolved_ui_shell_label(client_surface: Option<&str>) -> Option<&'static str> {
+    match client_surface.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(s) if s.eq_ignore_ascii_case(CLIENT_SURFACE_DS_PICK) => Some("DS Pick (desktop)"),
+        _ => None,
+    }
+}
+
+fn client_identity_line(client_surface: Option<&str>) -> &'static str {
+    if resolved_ui_shell_label(client_surface).is_some() {
+        CLIENT_IDENTITY_DS_PICK
+    } else {
+        CLIENT_IDENTITY_TERMINAL
+    }
+}
+
+#[inline]
+fn client_identity_line_from_env() -> &'static str {
+    client_identity_line(std::env::var("DEEPSEEK_CLIENT_SURFACE").ok().as_deref())
+}
+
 /// Render a `## Environment` block listing the resolved locale tag,
-/// host platform, login shell, and current working directory.
+/// optional UI shell (when `DEEPSEEK_CLIENT_SURFACE` is set), host
+/// platform, login shell, and current working directory.
 ///
 /// The block is appended to the workspace-static portion of the
 /// system prompt (after mode prompt + project context, before
@@ -47,18 +76,30 @@ const INSTRUCTIONS_FILE_MAX_BYTES: usize = 100 * 1024;
 /// in `prompts/base.md` can reference it without the model having to
 /// guess from the user's first message. `locale_tag` is resolved by
 /// the caller from `Settings` so this function stays I/O-free.
-fn render_environment_block(workspace: &Path, locale_tag: &str) -> String {
+fn render_environment_block_inner(
+    workspace: &Path,
+    locale_tag: &str,
+    client_surface: Option<&str>,
+) -> String {
     let platform = std::env::consts::OS;
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "unknown".to_string());
     let pwd = workspace.display();
 
-    format!(
-        "## Environment\n\
-         \n\
-         - lang: {locale_tag}\n\
-         - platform: {platform}\n\
-         - shell: {shell}\n\
-         - pwd: {pwd}"
+    let mut out = format!("## Environment\n\n- lang: {locale_tag}\n");
+    if let Some(label) = resolved_ui_shell_label(client_surface) {
+        out.push_str(&format!("- ui_shell: {label}\n"));
+    }
+    out.push_str(&format!(
+        "- platform: {platform}\n- shell: {shell}\n- pwd: {pwd}"
+    ));
+    out
+}
+
+fn render_environment_block(workspace: &Path, locale_tag: &str) -> String {
+    render_environment_block_inner(
+        workspace,
+        locale_tag,
+        std::env::var("DEEPSEEK_CLIENT_SURFACE").ok().as_deref(),
     )
 }
 
@@ -129,6 +170,14 @@ fn load_handoff_block(workspace: &Path) -> Option<String> {
 /// Core: task execution, tool-use rules, output format, toolbox reference,
 /// "When NOT to use" guidance, sub-agent sentinel protocol.
 pub const BASE_PROMPT: &str = include_str!("prompts/base.md");
+
+fn compose_base_prompt_layer() -> String {
+    format!(
+        "{}\n\n{}",
+        client_identity_line_from_env(),
+        BASE_PROMPT.trim()
+    )
+}
 
 /// Personality overlays — voice and tone.
 pub const CALM_PERSONALITY: &str = include_str!("prompts/personalities/calm.md");
@@ -238,20 +287,20 @@ pub fn compose_prompt_with_approval(
     personality: Personality,
     approval_mode: ApprovalMode,
 ) -> String {
-    let parts: [&str; 4] = [
-        BASE_PROMPT.trim(),
+    let base = compose_base_prompt_layer();
+    let parts: [&str; 3] = [
         personality.prompt().trim(),
         mode_prompt(mode).trim(),
         approval_prompt_for_mode(mode, approval_mode).trim(),
     ];
 
-    let mut out =
-        String::with_capacity(parts.iter().map(|p| p.len()).sum::<usize>() + (parts.len() - 1) * 2);
-    for (i, part) in parts.iter().enumerate() {
-        if i > 0 {
-            out.push('\n');
-            out.push('\n');
-        }
+    let mut out = String::with_capacity(
+        base.len() + parts.iter().map(|p| p.len()).sum::<usize>() + parts.len() * 2,
+    );
+    out.push_str(base.trim());
+    for part in parts {
+        out.push('\n');
+        out.push('\n');
         out.push_str(part);
     }
     out
@@ -487,7 +536,7 @@ pub fn build_system_prompt(base: &str, project_context: Option<&ProjectContext>)
 // ── Legacy functions for backwards compatibility ──────────────────────
 
 pub fn base_system_prompt() -> SystemPrompt {
-    SystemPrompt::Text(BASE_PROMPT.trim().to_string())
+    SystemPrompt::Text(compose_base_prompt_layer())
 }
 
 pub fn normal_system_prompt() -> SystemPrompt {
@@ -520,12 +569,28 @@ mod tests {
     #[test]
     fn render_environment_block_lists_supplied_locale_and_workspace() {
         let tmp = tempdir().expect("tempdir");
-        let block = render_environment_block(tmp.path(), "zh-Hans");
+        let block = render_environment_block_inner(tmp.path(), "zh-Hans", None);
         assert!(block.starts_with("## Environment"));
         assert!(block.contains("- lang: zh-Hans"));
         assert!(block.contains(&format!("- pwd: {}", tmp.path().display())));
         assert!(block.contains("- platform:"));
         assert!(block.contains("- shell:"));
+        assert!(!block.contains("ui_shell"));
+    }
+
+    #[test]
+    fn render_environment_block_includes_ui_shell_for_ds_pick_surface() {
+        let tmp = tempdir().expect("tempdir");
+        let block = render_environment_block_inner(tmp.path(), "en", Some("ds-pick"));
+        assert!(block.contains("- ui_shell: DS Pick (desktop)"));
+        assert!(block.contains("- lang: en"));
+    }
+
+    #[test]
+    fn client_identity_reflects_client_surface_hint() {
+        assert!(super::client_identity_line(None).contains("DeepSeek TUI"));
+        assert!(super::client_identity_line(Some("ds-pick")).contains("DS Pick"));
+        assert!(super::client_identity_line(Some("DS-PICK")).contains("DS Pick"));
     }
 
     #[test]
@@ -611,7 +676,7 @@ mod tests {
     #[test]
     fn compose_prompt_deterministic_order() {
         let prompt = compose_prompt(AppMode::Yolo, Personality::Calm);
-        let base_pos = prompt.find("You are DeepSeek TUI").unwrap();
+        let base_pos = prompt.find("## Language").expect("base layer includes Language heading");
         let personality_pos = prompt.find("Personality: Calm").unwrap();
         let mode_pos = prompt.find("Mode: YOLO").unwrap();
         let approval_pos = prompt.find("Approval Policy: Auto").unwrap();

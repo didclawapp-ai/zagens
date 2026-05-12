@@ -428,6 +428,17 @@ impl ToolRegistryBuilder {
         self.with_tool(Arc::new(WriteOfficeTool))
     }
 
+    /// Include the image description tool (`describe_image`).
+    ///
+    /// Reads an image file and extracts its text content via a configured
+    /// vision model (defaults to SiliconFlow DeepSeek-OCR).
+    /// Requires `VISION_API_KEY` env var.
+    #[must_use]
+    pub fn with_describe_image_tool(self) -> Self {
+        use super::describe_image::DescribeImageTool;
+        self.with_tool(Arc::new(DescribeImageTool))
+    }
+
     /// Include only read-only file tools (read, list).
     #[must_use]
     pub fn with_read_only_file_tools(self) -> Self {
@@ -699,6 +710,7 @@ impl ToolRegistryBuilder {
             .with_project_tools()
             .with_skill_tools()
             .with_office_write_tool()
+            .with_describe_image_tool()
             .with_test_runner_tool()
             .with_validation_tools()
             .with_runtime_task_tools()

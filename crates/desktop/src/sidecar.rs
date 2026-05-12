@@ -70,6 +70,8 @@ fn spawn_sidecar(deepseek_bin: &str, port: u16, token: &str) -> Result<Command> 
     // on all platforms (#H5). The serve binary reads this env as a fallback
     // for RuntimeApiOptions::auth_token.
     std_cmd.env("DEEPSEEK_RUNTIME_TOKEN", token);
+    // Lets the shared runtime tune system prompts (e.g. DS Pick vs terminal TUI).
+    std_cmd.env("DEEPSEEK_CLIENT_SURFACE", "ds-pick");
     std_cmd
         .args([
             "serve",

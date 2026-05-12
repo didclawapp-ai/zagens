@@ -802,7 +802,7 @@ export default function App() {
   }, [resumedThreadId]);
 
   const handleSend = useCallback(
-    async (outbound: ComposerOutboundMessage) => {
+    (outbound: ComposerOutboundMessage) => {
       if (!outbound.apiPrompt.trim() || streaming) return;
 
       eventAbortRef.current?.abort();
@@ -828,6 +828,7 @@ export default function App() {
       setStreaming(true);
       setBanner(null);
 
+      void (async () => {
       const ctx = {
         currentToolId: { current: null as string | null },
       };
@@ -1133,6 +1134,7 @@ export default function App() {
         }
         handleHttpError(e as Error & { status?: number });
       }
+      })();
     },
     [
       streaming,

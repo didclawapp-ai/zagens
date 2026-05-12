@@ -1,138 +1,22 @@
 use deepseek_config::{ConfigStore, ConfigToml};
 use ignore::WalkBuilder;
 use serde::{Deserialize, Serialize};
-use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Notify;
 
-/// Workspace `config.example.toml`, shipped as the canonical full default layout when
-/// the desktop app saves an API key (matches upstream `Hmbown/DeepSeek-TUI`).
-const CONFIG_EXAMPLE_TEMPLATE: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../config.example.toml"
-));
-
-const PLACEHOLDER_TOP_API_KEY_LINE: &str =
-    r#"api_key = "YOUR_DEEPSEEK_API_KEY" # must be non-empty"#;
-
-/// Commented block under `[providers.deepseek]` in `config.example.toml`.
-const PLACEHOLDER_DEEPSEEK_PROVIDER_BLOCK: &str = r#"# api_key = "YOUR_DEEPSEEK_API_KEY"
-# base_url = "https://api.deepseek.com/beta"
-# model = "deepseek-v4-pro""#;
-
-fn escape_toml_basic_string(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 8);
-    for ch in s.chars() {
-        match ch {
-            '\\' => out.push_str("\\\\"),
-            '"' => out.push_str("\\\""),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if c.is_control() || c == '\u{7f}' => {
-                use std::fmt::Write;
-                let _ = write!(&mut out, "\\u{:04x}", c as u32);
-            }
-            c => out.push(c),
-        }
+/// Merges DeepSeek credentials into an existing [`ConfigToml`] without
+/// overwriting unrelated tables (e.g. `[vision]`).
+fn merge_deepseek_api_key(config: &mut ConfigToml, key: &str) {
+    config.api_key = Some(key.to_string());
+    config.providers.deepseek.api_key = Some(key.to_string());
+    if config.providers.deepseek.base_url.is_none() {
+        config.providers.deepseek.base_url = Some("https://api.deepseek.com/beta".to_string());
     }
-    out
-}
-
-/// Builds full on-disk config text: official example layout with DeepSeek key filled in
-/// (top-level `api_key` plus active `[providers.deepseek]` credentials).
-fn full_config_from_example_with_deepseek_key(key: &str) -> Result<String, String> {
-    let esc = escape_toml_basic_string(key);
-    let filled_top = format!(r#"api_key = "{esc}" # must be non-empty"#);
-    let filled_provider = format!(
-        r#"api_key = "{esc}"
-base_url = "https://api.deepseek.com/beta"
-model = "deepseek-v4-pro""#
-    );
-
-    let mut body = CONFIG_EXAMPLE_TEMPLATE.replace("\r\n", "\n");
-    if !body.contains(PLACEHOLDER_TOP_API_KEY_LINE) {
-        return Err(
-            "internal: config template missing top-level DeepSeek api_key placeholder".to_string(),
-        );
+    if config.providers.deepseek.model.is_none() {
+        config.providers.deepseek.model = Some("deepseek-v4-pro".to_string());
     }
-    if !body.contains(PLACEHOLDER_DEEPSEEK_PROVIDER_BLOCK) {
-        return Err(
-            "internal: config template missing [providers.deepseek] placeholder block".to_string(),
-        );
-    }
-    body = body.replace(PLACEHOLDER_DEEPSEEK_PROVIDER_BLOCK, &filled_provider);
-    body = body.replace(PLACEHOLDER_TOP_API_KEY_LINE, &filled_top);
-
-    if body.contains("YOUR_DEEPSEEK_API_KEY") {
-        return Err(
-            "internal: config template still contains DeepSeek placeholder after substitution"
-                .to_string(),
-        );
-    }
-
-    let _: ConfigToml =
-        toml::from_str(&body).map_err(|e| format!("generated config failed validation: {e}"))?;
-
-    Ok(body)
-}
-
-fn write_user_config_bytes(path: &Path, body: &str) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    #[cfg(unix)]
-    {
-        use std::io::Write;
-        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(path)
-            .map_err(|e| e.to_string())?;
-        file.write_all(body.as_bytes()).map_err(|e| e.to_string())?;
-        file.set_permissions(std::fs::Permissions::from_mode(0o600))
-            .map_err(|e| e.to_string())?;
-    }
-    #[cfg(windows)]
-    {
-        // On Windows, verify the file is under USERPROFILE — config.toml
-        // contains the user's API key and should stay within the user's
-        // already-ACL-isolated home directory (#C1). If it isn't, still
-        // write but log a security warning.
-        let in_userprofile = std::env::var_os("USERPROFILE")
-            .map(std::path::PathBuf::from)
-            .is_some_and(|up| std::path::absolute(path).is_ok_and(|abs| abs.starts_with(&up)));
-        if !in_userprofile {
-            eprintln!(
-                "deepseek-desktop: writing API key to {} which is outside USERPROFILE; \
-                 consider moving config.toml to ~/.deepseek/",
-                path.display()
-            );
-        }
-        // Prevent other processes from reading the file while we write it.
-        // After close, directory-inherited ACLs take effect (USERPROFILE
-        // typically grants read only to the owner + SYSTEM).
-        use std::os::windows::fs::OpenOptionsExt;
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .share_mode(0) // deny read/write/delete until we close
-            .open(path)
-            .map_err(|e| e.to_string())?;
-        use std::io::Write;
-        file.write_all(body.as_bytes()).map_err(|e| e.to_string())?;
-    }
-    #[cfg(not(any(unix, windows)))]
-    {
-        fs::write(path, body).map_err(|e| e.to_string())?;
-    }
-    Ok(())
 }
 
 #[derive(Clone)]
@@ -208,34 +92,288 @@ pub fn save_deepseek_api_key(key: String, ctx: tauri::State<'_, AppContext>) -> 
     if key.is_empty() {
         return Err("API key 不能为空".to_string());
     }
-    let body = full_config_from_example_with_deepseek_key(&key)?;
-    let store = ConfigStore::load(None).map_err(|e| e.to_string())?;
-    let path = store.path().to_path_buf();
-    write_user_config_bytes(&path, &body)?;
+    let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
+    merge_deepseek_api_key(&mut store.config, &key);
+    store.save().map_err(|e| e.to_string())?;
     ctx.sidecar_restart.notify_one();
     Ok(())
+}
+
+#[derive(Debug, Serialize)]
+pub struct VisionBridgeStatus {
+    pub configured: bool,
+    pub base_url: Option<String>,
+    pub model: Option<String>,
+}
+
+#[tauri::command]
+pub fn get_vision_bridge_status() -> Result<VisionBridgeStatus, String> {
+    let store = ConfigStore::load(None).map_err(|e| e.to_string())?;
+    let v = store.config.vision.as_ref();
+    let configured = v
+        .and_then(|x| x.api_key.as_ref())
+        .is_some_and(|s| !s.trim().is_empty());
+    Ok(VisionBridgeStatus {
+        configured,
+        base_url: v
+            .and_then(|x| x.base_url.clone())
+            .filter(|s| !s.trim().is_empty()),
+        model: v
+            .and_then(|x| x.model.clone())
+            .filter(|s| !s.trim().is_empty()),
+    })
+}
+
+#[tauri::command]
+pub fn save_vision_bridge(
+    api_key: String,
+    base_url: String,
+    model: String,
+    ctx: tauri::State<'_, AppContext>,
+) -> Result<(), String> {
+    let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
+    let key_trim = api_key.trim();
+    let mut v = store.config.vision.clone().unwrap_or_default();
+
+    if !key_trim.is_empty() {
+        v.api_key = Some(key_trim.to_string());
+    } else if v
+        .api_key
+        .as_ref()
+        .map_or(true, |s| s.trim().is_empty())
+    {
+        return Err(
+            "请填写视觉桥接 API Key；密钥保存后不会回显，修改端点或模型时也需要重新输入密钥或直接编辑 config.toml 中的 [vision] 表。"
+                .to_string(),
+        );
+    }
+
+    let bu = base_url.trim();
+    v.base_url = if bu.is_empty() {
+        None
+    } else {
+        Some(bu.to_string())
+    };
+    let m = model.trim();
+    v.model = if m.is_empty() { None } else { Some(m.to_string()) };
+
+    store.config.vision = Some(v);
+    store.save().map_err(|e| e.to_string())?;
+    ctx.sidecar_restart.notify_one();
+    Ok(())
+}
+
+#[tauri::command]
+pub fn clear_vision_bridge(ctx: tauri::State<'_, AppContext>) -> Result<(), String> {
+    let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
+    store.config.vision = None;
+    store.save().map_err(|e| e.to_string())?;
+    ctx.sidecar_restart.notify_one();
+    Ok(())
+}
+
+/// DeepSeek-OCR on SiliconFlow expects the grounding template from their multimodal docs
+/// (“文档转Markdown”示例). See: <https://docs.siliconflow.cn/cn/userguide/capabilities/multimodal-vision>
+const VISION_TRANSCRIBE_PROMPT: &str =
+    "<image>\n<|grounding|>Convert the document to markdown.";
+
+/// Rejects pathological OCR output (repeated unrelated template clauses) observed when the
+/// user prompt ignored SiliconFlow `grounding` format.
+fn reject_known_degenerate_ocr_output(text: &str) -> Result<(), String> {
+    let marker = "如果图中包含表格，请用表格形式输出";
+    if text.matches(marker).count() >= 2 {
+        return Err(
+            "视觉模型输出为无效重复模板句式。请确认已升级到使用 SiliconFlow DeepSeek-OCR 官方 grounding 提示词后重试。"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
+/// Some OpenAI-compatible vision providers return `message.content` as a string,
+/// others as an array of `{ "type":"text","text":"..." }` parts.
+fn coerce_chat_completion_message_text(content: &serde_json::Value) -> Result<String, String> {
+    if let Some(s) = content.as_str() {
+        return Ok(s.to_string());
+    }
+    let Some(parts) = content.as_array() else {
+        return Err("视觉桥接响应 message.content 格式无法识别".to_string());
+    };
+    let mut out: Vec<String> = Vec::new();
+    for item in parts {
+        if let Some(t) = item.get("text").and_then(|v| v.as_str()) {
+            if !t.trim().is_empty() {
+                out.push(t.to_string());
+            }
+        }
+    }
+    if out.is_empty() {
+        return Err(
+            "视觉桥接返回的 message.content 中无可读取的文本段落（可能为暂未支持的提供商格式）"
+                .to_string(),
+        );
+    }
+    Ok(out.join("\n"))
+}
+
+/// Runs the configured OpenAI-compatible vision bridge on a `data:image/...;base64,...` URL.
+/// Used by the web UI composer before sending user text to the main DeepSeek model.
+#[tauri::command]
+pub async fn vision_transcribe_image(data_url: String) -> Result<String, String> {
+    let data_url = data_url.trim();
+    if !data_url.starts_with("data:image/") {
+        return Err("仅支持 data:image/…;base64,… 格式的图片".to_string());
+    }
+    let b64_part = data_url
+        .split_once(";base64,")
+        .map(|x| x.1)
+        .ok_or_else(|| "无效的 data URL（缺少 ;base64,）".to_string())?;
+    let approx_bytes = (b64_part.len().saturating_mul(3)) / 4;
+    if approx_bytes > 20 * 1024 * 1024 {
+        return Err("图片过大（解码后约超过 20 MB）".to_string());
+    }
+
+    let store = ConfigStore::load(None).map_err(|e| e.to_string())?;
+    let vision = store.config.vision.as_ref().ok_or_else(|| {
+        "未配置视觉桥接：请在 设置 → API Key 中保存视觉桥接密钥（写入 config.toml 的 [vision] 表）".to_string()
+    })?;
+    let api_key = vision
+        .api_key
+        .as_ref()
+        .filter(|s| !s.trim().is_empty())
+        .ok_or_else(|| "未配置视觉桥接 API Key".to_string())?;
+    let base_url = vision
+        .base_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("https://api.siliconflow.cn/v1");
+    let base_url = base_url.trim_end_matches('/');
+    let model = vision
+        .model
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("deepseek-ai/DeepSeek-OCR");
+
+    let body = serde_json::json!({
+        "model": model,
+        "messages": [{
+            "role": "user",
+            "content": [
+                {"type": "image_url", "image_url": {"url": data_url, "detail": "high"}},
+                {"type": "text", "text": VISION_TRANSCRIBE_PROMPT}
+            ]
+        }],
+        "max_tokens": 4096,
+        "temperature": 0.0,
+        "stream": false,
+    });
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(120))
+        .build()
+        .map_err(|e| format!("创建 HTTP 客户端失败: {e}"))?;
+
+    let resp = client
+        .post(format!("{base_url}/chat/completions"))
+        .header("Authorization", format!("Bearer {}", api_key.trim()))
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("视觉桥接 HTTP 请求失败: {e}"))?;
+
+    let status = resp.status();
+    let resp_body: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("解析视觉桥接响应失败: {e}"))?;
+
+    if !status.is_success() {
+        let msg = resp_body
+            .get("message")
+            .and_then(|v| v.as_str())
+            .or_else(|| resp_body.get("error").and_then(|e| e.as_str()))
+            .unwrap_or("unknown error");
+        return Err(format!("视觉桥接返回错误 (HTTP {status}): {msg}"));
+    }
+
+    let content_raw = resp_body["choices"].get(0).and_then(|c| c.get("message")).and_then(|m| m.get("content")).ok_or_else(|| {
+        "视觉桥接响应格式异常：缺少 choices[0].message.content".to_string()
+    })?;
+    let text = coerce_chat_completion_message_text(content_raw)?;
+    let text = text.trim().to_string();
+    if text.is_empty() {
+        return Err("视觉桥接返回空文本，请稍后重试或更换视觉模型".to_string());
+    }
+    reject_known_degenerate_ocr_output(&text)?;
+
+    Ok(text)
 }
 
 #[cfg(test)]
 mod save_config_tests {
     use super::*;
+    use deepseek_config::VisionConfigToml;
+    use std::io::Write;
+    use uuid::Uuid;
+
+    fn temp_config_path() -> PathBuf {
+        std::env::temp_dir().join(format!("ds-pick-cfg-test-{}.toml", Uuid::new_v4()))
+    }
 
     #[test]
-    fn full_template_substitution_parses_and_strips_placeholders() {
-        let key = "sk-test\"\\\n\t\u{1f}x";
-        let body = full_config_from_example_with_deepseek_key(key).expect("build config");
-        assert!(!body.contains("YOUR_DEEPSEEK_API_KEY"));
-        let parsed: ConfigToml = toml::from_str(&body).expect("parse");
-        assert_eq!(parsed.api_key.as_deref(), Some(key));
-        assert_eq!(parsed.providers.deepseek.api_key.as_deref(), Some(key));
+    fn merge_deepseek_key_preserves_vision_section() {
+        let path = temp_config_path();
+        let mut f = std::fs::File::create(&path).expect("create");
+        f.write_all(
+            br#"api_key = "old"
+[vision]
+api_key = "vk"
+base_url = "https://api.siliconflow.cn/v1"
+model = "deepseek-ai/DeepSeek-OCR"
+"#,
+        )
+        .expect("write");
+
+        let mut store = ConfigStore::load(Some(path.clone())).expect("load");
+        merge_deepseek_api_key(&mut store.config, "new-key");
+        store.save().expect("save");
+
+        let parsed: ConfigToml =
+            toml::from_str(&std::fs::read_to_string(&path).expect("read")).expect("parse");
+        assert_eq!(parsed.api_key.as_deref(), Some("new-key"));
+        let vision = parsed.vision.expect("vision");
+        assert_eq!(vision.api_key.as_deref(), Some("vk"));
         assert_eq!(
-            parsed.providers.deepseek.base_url.as_deref(),
-            Some("https://api.deepseek.com/beta")
+            vision.base_url.as_deref(),
+            Some("https://api.siliconflow.cn/v1")
         );
-        assert_eq!(
-            parsed.providers.deepseek.model.as_deref(),
-            Some("deepseek-v4-pro")
-        );
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn save_vision_bridge_roundtrip() {
+        let path = temp_config_path();
+        let mut store = ConfigStore::load(Some(path.clone())).expect("load");
+        store.config.vision = Some(VisionConfigToml {
+            api_key: Some("vkey".to_string()),
+            base_url: Some("https://x/v1".to_string()),
+            model: Some("m".to_string()),
+        });
+        store.save().expect("save");
+
+        let mut store = ConfigStore::load(Some(path.clone())).expect("reload");
+        merge_deepseek_api_key(&mut store.config, "ds");
+        store.save().expect("save2");
+
+        let parsed: ConfigToml =
+            toml::from_str(&std::fs::read_to_string(&path).expect("read")).expect("parse");
+        assert_eq!(parsed.providers.deepseek.api_key.as_deref(), Some("ds"));
+        let v = parsed.vision.expect("vision");
+        assert_eq!(v.api_key.as_deref(), Some("vkey"));
+        std::fs::remove_file(&path).ok();
     }
 }
 

@@ -1482,10 +1482,9 @@ fn child_runtime_propagates_completion_tx_for_gating() {
 
 #[test]
 fn subagent_completion_payload_carries_existing_sentinel_format() {
-    // The payload format is the same one already documented in
-    // prompts/base.md: human summary on line 1, `<deepseek:subagent.done>`
-    // sentinel on line 2. This test pins the format so future refactors
-    // don't silently break the model's parsing contract.
+    // Matches `prompts/base.md` (Integration protocol / sub-agent sentinel):
+    // human summary on line 1 of the payload, `<deepseek:subagent.done>` on line 2.
+    // Pins the format so future refactors don't silently break the model contract.
     let mut snap = make_snapshot(SubAgentStatus::Completed);
     snap.result = Some("Found three errors.".to_string());
 
