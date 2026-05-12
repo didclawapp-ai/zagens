@@ -2,11 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import DOMPurify from 'dompurify';
 import 'highlight.js/styles/github.css';
 import { chatMarkdownIt } from '../lib/markdownChatCore';
-import { isSafeRelativeWorkspaceHref, isWorkspacePathlike } from '../lib/workspacePathLike';
+import {
+  CHAT_MARKDOWN_ALLOWED_URI,
+  isSafeRelativeWorkspaceHref,
+  isWorkspacePathlike,
+} from '../lib/workspacePathLike';
 import { normalizeWorkspaceRelPath } from '../lib/openWorkspaceFile';
-
-const URI_ALLOW =
-  /^(?:(?:https?|ftp|mailto|tel):|(?![a-z][a-z0-9+.-]*:)(?:[\w./-]+))$/i;
 
 function enhanceWorkspacePathTargets(html: string): string {
   if (typeof window === 'undefined' || !html) {
@@ -67,7 +68,7 @@ function enhanceWorkspacePathTargets(html: string): string {
 
 function sanitizeChatMarkdown(html: string): string {
   return DOMPurify.sanitize(html, {
-    ALLOWED_URI_REGEXP: URI_ALLOW,
+    ALLOWED_URI_REGEXP: CHAT_MARKDOWN_ALLOWED_URI,
   });
 }
 

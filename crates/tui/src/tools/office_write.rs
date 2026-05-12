@@ -95,6 +95,22 @@ impl ToolSpec for WriteOfficeTool {
                         "print":          { "type": "object" }
                     }
                 },
+                "page": {
+                    "type": "object",
+                    "description": "DOCX page setup: { paper?: A4|A3|Letter, orientation?: portrait|landscape, margins?: { top?, right?, bottom?, left? } }"
+                },
+                "header": {
+                    "type": "object",
+                    "description": "DOCX page header: { text?: str } or { left?, center?, right? }"
+                },
+                "footer": {
+                    "type": "object",
+                    "description": "DOCX page footer: { text?: str } or { left?, center?, right? }. &P=页码, &N=总页数"
+                },
+                "font": {
+                    "type": "object",
+                    "description": "DOCX global font: { name?: str, size?: num } (e.g. 微软雅黑, 11)"
+                },
                 "sheets": {
                     "type": "array",
                     "description": "XLSX sheets: [{ name, header?: bool, columns?: [{ width?, label?, format?: text|number|currency|percentage|date, number_format?, formula?, wrap? }], merged_cells?: [{ row, col, rows, cols }], charts?: [{ type: bar|line|pie|stacked_bar, title?, categories_range, values_range, position: { row, col }, size?: { width, height } }], conditional_formats?: [{ range: { row, col, rows, cols }, type: data_bar|cell_highlight, color?, condition?, value? }], rows: [[value...]] }]",
@@ -102,7 +118,7 @@ impl ToolSpec for WriteOfficeTool {
                 },
                 "blocks": {
                     "type": "array",
-                    "description": "DOCX content blocks: [{ type: heading|paragraph|list, ... }]",
+                    "description": "DOCX body blocks (python-docx when available). heading: {level,text}. paragraph: {text} or {runs:[{text,bold?,italic?,color? #RRGGBB,size? pt}], align?: left|center|right|justify, page_break_before?: bool}. list: {style: bullet|number, items: [str | {text, subitems?}]}. table: {headers?, rows:[[]], style? Word built-in table style name}. image: {path, width?, height? px @96dpi, caption?}. toc: {title?} (placeholder; update fields in Word). Top-level page|font|header|footer require Python; Rust fallback: heading, plain paragraph, list of strings, table only.",
                     "items": { "type": "object" }
                 },
                 "slides": {
@@ -1099,7 +1115,64 @@ fn generate_docx_rust_fallback(input: &Value, path: &PathBuf) -> Result<(), Stri
                 }
             }
             "table" => {
-                return Err("表格生成需要 Python 引擎。请安装 Python 3.8+ 后重试".to_string());
+                let headers = block["headers"].as_array();
+                let rows = block["rows"]
+                    .as_array()
+                    .ok_or("table 的 `rows` 必须是二维数组")?;
+
+                // Calculate grid
+                let ncols = if let Some(h) = headers {
+                    h.len()
+                } else {
+                    rows.first()
+                        .and_then(|r| r.as_array())
+                        .map(|r| r.len())
+                        .unwrap_or(0)
+                };
+                if ncols == 0 {
+                    continue;
+                }
+
+                // Start table wrapper
+                doc_xml.push_str(r#"<w:tbl><w:tblPr><w:tblStyle w:val="TableGrid"/></w:tblPr><w:tblGrid>"#);
+                for _ in 0..ncols {
+                    doc_xml.push_str(r#"<w:gridCol w:w="2000"/>"#);
+                }
+                doc_xml.push_str("</w:tblGrid>");
+
+                // Header row
+                if let Some(h) = headers {
+                    doc_xml.push_str("<w:tr>");
+                    for cell in h.iter().take(ncols) {
+                        let text = cell.as_str().unwrap_or("");
+                        doc_xml.push_str(&format!(
+                            r#"<w:tc><w:tcPr><w:tcW w:w="2000" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:b/></w:pPr><w:r><w:t>{}</w:t></w:r></w:p></w:tc>"#,
+                            xml_escape(text)
+                        ));
+                    }
+                    doc_xml.push_str("</w:tr>");
+                }
+
+                // Data rows
+                for row in rows.iter() {
+                    if let Some(cells) = row.as_array() {
+                        doc_xml.push_str("<w:tr>");
+                        for cell in cells.iter().take(ncols) {
+                            let text = match cell {
+                                Value::String(s) => s.clone(),
+                                Value::Null => String::new(),
+                                other => other.to_string(),
+                            };
+                            doc_xml.push_str(&format!(
+                                r#"<w:tc><w:tcPr><w:tcW w:w="2000" w:type="dxa"/></w:tcPr><w:p><w:r><w:t>{}</w:t></w:r></w:p></w:tc>"#,
+                                xml_escape(&text)
+                            ));
+                        }
+                        doc_xml.push_str("</w:tr>");
+                    }
+                }
+
+                doc_xml.push_str("</w:tbl>");
             }
             _ => {}
         }
@@ -1168,10 +1241,23 @@ fn generate_via_python(format: &str, input: &Value, path: &PathBuf) -> Result<()
     let data_payload = match format {
         "docx" => {
             let title = optional_str(input, "title").unwrap_or("");
-            serde_json::json!({
+            let mut payload = serde_json::json!({
                 "title": title,
                 "blocks": &input["blocks"],
-            })
+            });
+            if let Some(page) = input.get("page") {
+                payload["page"] = page.clone();
+            }
+            if let Some(header) = input.get("header") {
+                payload["header"] = header.clone();
+            }
+            if let Some(footer) = input.get("footer") {
+                payload["footer"] = footer.clone();
+            }
+            if let Some(font) = input.get("font") {
+                payload["font"] = font.clone();
+            }
+            payload
         }
         "pptx" => {
             let title = optional_str(input, "title").unwrap_or("");
@@ -1234,7 +1320,7 @@ fn generate_via_python(format: &str, input: &Value, path: &PathBuf) -> Result<()
 }
 
 /// Embedded Python scripts version — bump when scripts change.
-const SCRIPTS_VERSION: &str = "9";
+const SCRIPTS_VERSION: &str = "10";
 
 /// Resolve the Python script path for a given format.
 fn find_office_script(format: &str) -> Result<PathBuf, String> {

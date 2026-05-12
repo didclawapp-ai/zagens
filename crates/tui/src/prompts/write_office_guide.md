@@ -201,17 +201,28 @@
   "path": "文档.docx",
   "title": "文档标题（可选）",
 
+  "page": {
+    "paper": "A4",
+    "orientation": "portrait",
+    "margins": { "top": 2.54, "bottom": 2.54, "left": 3.18, "right": 3.18 }
+  },
+  "font": { "name": "微软雅黑", "size": 11 },
+  "header": { "left": "左", "center": "中", "right": "右" },
+  "footer": { "text": "&P / &N" },
+
   "blocks": [
     { "type": "heading",  "level": 1, "text": "一级标题" },
-    { "type": "heading",  "level": 2, "text": "二级标题" },
-    { "type": "paragraph", "text": "正文段落内容..." },
-    { "type": "list", "style": "bullet", "items": ["项目A", "项目B"] },
-    { "type": "list", "style": "number", "items": ["第一步", "第二步"] }
+    { "type": "paragraph", "text": "正文，可设 align:left|center|right|justify、page_break_before" },
+    { "type": "paragraph", "runs": [{ "text": "加粗", "bold": true }, { "text": "普通" }] },
+    { "type": "list", "style": "bullet", "items": ["项目A", { "text": "父项", "subitems": ["子项"] }] },
+    { "type": "table", "headers": ["列A", "列B"], "rows": [["1", 2]], "style": "Light Grid Accent 1" },
+    { "type": "image", "path": "图.png", "width": 400, "height": 300, "caption": "图注" },
+    { "type": "toc", "title": "目录" }
   ]
 }
 ```
 
-> DOCX 表格生成需要 Python 引擎。纯 Rust 后备引擎支持 heading/paragraph/list,不支持 table。
+> **引擎差异：** `page` / `font` / `header` / `footer`、`paragraph.runs` 与对齐、`list` 嵌套、`image`、`toc` 依赖 **Python（python-docx）**。无 Python 时 **Rust 兜底** 仅支持：`heading`、纯文本 `paragraph`、`list`（每项为字符串）、`table`。
 
 ## 最佳实践
 

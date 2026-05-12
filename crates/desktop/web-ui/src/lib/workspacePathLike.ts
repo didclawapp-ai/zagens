@@ -1,3 +1,18 @@
+/** Body: workspace-relative paths (CJK / Unicode filenames, percent-encoded segments). */
+const WS_REL_PATH_BODY = '[\\p{L}\\p{N}._/\\\\%-]+';
+
+/** Single- or multi-segment path under workspace root (no scheme). */
+export const WORKSPACE_REL_PATH_RE = new RegExp(`^${WS_REL_PATH_BODY}$`, 'u');
+
+/**
+ * DOMPurify `ALLOWED_URI_REGEXP` for chat markdown: http(s) / mailto / ftp / tel /
+ * relative workspace paths (must stay in sync with `isSafeRelativeWorkspaceHref`).
+ */
+export const CHAT_MARKDOWN_ALLOWED_URI = new RegExp(
+  `^(?:(?:https?|ftp|mailto|tel):|(?![a-z][a-z0-9+.-]*:)(?:${WS_REL_PATH_BODY}))$`,
+  'iu',
+);
+
 /**
  * Heuristic: string looks like a workspace-relative file path worth linking in chat.
  * Avoid short code tokens (e.g. `foo`, `T`) and URLs.
@@ -19,7 +34,7 @@ export function isWorkspacePathlike(s: string): boolean {
   if (t.startsWith('//')) {
     return false;
   }
-  if (!/^[\w./\\-]+$/.test(t)) {
+  if (!WORKSPACE_REL_PATH_RE.test(t)) {
     return false;
   }
 
@@ -45,5 +60,5 @@ export function isSafeRelativeWorkspaceHref(href: string): boolean {
   if (t.includes('..') || t.startsWith('//')) {
     return false;
   }
-  return /^[\w./-]+$/.test(t);
+  return WORKSPACE_REL_PATH_RE.test(t);
 }
