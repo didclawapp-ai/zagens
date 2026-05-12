@@ -1423,6 +1423,39 @@ const FOREGROUND_TIMEOUT_RECOVERY_HINT: &str = "Foreground exec_shell is for bou
 The timed-out process was killed; rerun long work with task_shell_start or exec_shell with \
 background: true, then poll with task_shell_wait or exec_shell_wait.";
 
+fn emit_shell_snapshot_stream(
+    context: &ToolContext,
+    snapshot: &ShellResult,
+    prev_stdout_len: &mut usize,
+    prev_stderr_len: &mut usize,
+) {
+    let Some(sink) = context.tool_progress.as_ref() else {
+        return;
+    };
+    let stdout = &snapshot.stdout;
+    let stderr = &snapshot.stderr;
+    if stdout.len() > *prev_stdout_len {
+        sink.emit_stdout(&stdout[*prev_stdout_len..]);
+        *prev_stdout_len = stdout.len();
+    }
+    if stderr.len() > *prev_stderr_len {
+        sink.emit_stderr(&stderr[*prev_stderr_len..]);
+        *prev_stderr_len = stderr.len();
+    }
+}
+
+fn emit_shell_delta_streams(context: &ToolContext, result: &ShellResult) {
+    let Some(sink) = context.tool_progress.as_ref() else {
+        return;
+    };
+    if !result.stdout.is_empty() {
+        sink.emit_stdout(&result.stdout);
+    }
+    if !result.stderr.is_empty() {
+        sink.emit_stderr(&result.stderr);
+    }
+}
+
 async fn execute_foreground_via_background(
     context: &ToolContext,
     command: &str,
@@ -1462,6 +1495,8 @@ async fn execute_foreground_via_background(
     }
 
     let deadline = Instant::now() + Duration::from_millis(timeout_ms);
+    let mut prev_stdout_len = 0usize;
+    let mut prev_stderr_len = 0usize;
     loop {
         if context
             .cancel_token
@@ -1485,6 +1520,13 @@ async fn execute_foreground_via_background(
             }
             manager.get_output(&task_id, false, 0)?
         };
+
+        emit_shell_snapshot_stream(
+            context,
+            &snapshot,
+            &mut prev_stdout_len,
+            &mut prev_stderr_len,
+        );
 
         if snapshot.status != ShellStatus::Running {
             return Ok(snapshot);
@@ -2046,6 +2088,7 @@ async fn wait_for_shell_delta_cancellable(
                 .get_output_delta(task_id, false, 0)
                 .map_err(|err| ToolError::execution_failed(err.to_string()))?;
             append_shell_delta_output(&mut stdout_accum, &mut stderr_accum, &delta.result);
+            emit_shell_delta_streams(context, &delta.result);
             return Ok((
                 shell_delta_with_accumulated_output(
                     delta.result,
@@ -2071,6 +2114,7 @@ async fn wait_for_shell_delta_cancellable(
         let stdout_total_len = delta.stdout_total_len;
         let stderr_total_len = delta.stderr_total_len;
         append_shell_delta_output(&mut stdout_accum, &mut stderr_accum, &delta.result);
+        emit_shell_delta_streams(context, &delta.result);
 
         let status = delta.result.status.clone();
         if status != ShellStatus::Running || Instant::now() >= deadline {
@@ -2296,6 +2340,7 @@ impl ToolSpec for ShellWaitTool {
             let delta = manager
                 .get_output_delta(task_id, false, timeout_ms)
                 .map_err(|err| ToolError::execution_failed(err.to_string()))?;
+            emit_shell_delta_streams(context, &delta.result);
             (delta, false)
         };
 
@@ -2411,6 +2456,7 @@ impl ToolSpec for ShellInteractTool {
                 let delta = manager
                     .get_output_delta(task_id, false, 0)
                     .map_err(|err| ToolError::execution_failed(err.to_string()))?;
+                emit_shell_delta_streams(context, &delta.result);
                 let mut result = build_shell_delta_tool_result(delta);
                 if let Some(metadata) = result.metadata.as_mut()
                     && let Some(object) = metadata.as_object_mut()
@@ -2435,6 +2481,7 @@ impl ToolSpec for ShellInteractTool {
                 || delta.result.status != ShellStatus::Running
                 || elapsed >= timeout_ms
             {
+                emit_shell_delta_streams(context, &delta.result);
                 return Ok(build_shell_delta_tool_result(delta));
             }
 

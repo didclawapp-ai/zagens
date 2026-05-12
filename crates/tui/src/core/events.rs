@@ -72,8 +72,7 @@ pub enum Event {
         input: Value,
     },
 
-    /// Tool execution progress (for long-running tools)
-    #[allow(dead_code)]
+    /// Tool execution progress (milestones + streamed tool output).
     ToolCallProgress { id: String, output: String },
 
     /// Tool call completed

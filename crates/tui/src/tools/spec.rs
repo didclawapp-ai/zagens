@@ -66,6 +66,13 @@ pub enum SandboxPolicy {
     None,
 }
 
+/// Streams incremental tool output to the engine/UI (`ToolCallProgress`), without
+/// pulling `Event` into `tools::spec` (that would cycle with `core::events`).
+pub trait ToolProgressEmit: Send + Sync {
+    fn emit_stdout(&self, chunk: &str);
+    fn emit_stderr(&self, chunk: &str);
+}
+
 /// Context passed to tools during execution.
 #[derive(Clone)]
 pub struct ToolContext {
@@ -135,6 +142,9 @@ pub struct ToolContext {
     pub workshop_vars: Option<
         std::sync::Arc<tokio::sync::Mutex<crate::tools::large_output_router::WorkshopVariables>>,
     >,
+
+    /// Incremental streaming for the active tool call (desktop SSE / TUI status).
+    pub tool_progress: Option<Arc<dyn ToolProgressEmit>>,
 }
 
 impl ToolContext {
@@ -165,6 +175,7 @@ impl ToolContext {
             lsp_manager: None,
             large_output_router: None,
             workshop_vars: None,
+            tool_progress: None,
         }
     }
 
@@ -198,6 +209,7 @@ impl ToolContext {
             lsp_manager: None,
             large_output_router: None,
             workshop_vars: None,
+            tool_progress: None,
         }
     }
 
@@ -231,6 +243,7 @@ impl ToolContext {
             lsp_manager: None,
             large_output_router: None,
             workshop_vars: None,
+            tool_progress: None,
         }
     }
 

@@ -4,7 +4,13 @@
 //! parallel-tool fanout out of `engine.rs`; the turn loop still owns planning,
 //! approval, and how tool results are written back into session state.
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::{fs::OpenOptions, io::Write};
+
+use serde_json::Value;
+
+use crate::tools::spec::{ToolContext, ToolProgressEmit};
 
 use super::*;
 
@@ -83,6 +89,115 @@ pub(super) fn emit_tool_audit(event: serde_json::Value) {
     }
     if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
         let _ = writeln!(file, "{line}");
+    }
+}
+
+async fn emit_tool_progress(tx: &mpsc::Sender<Event>, tool_call_id: &str, message: &str) {
+    let text = message.trim_end_matches('\n');
+    if text.is_empty() {
+        return;
+    }
+    let line = format!("{text}\n");
+    let _ = tx
+        .send(Event::ToolCallProgress {
+            id: tool_call_id.to_string(),
+            output: line,
+        })
+        .await;
+}
+
+fn tool_progress_opening_line(tool_name: &str, input: &Value) -> String {
+    match tool_name {
+        "write_file" | "edit_file" | "read_file" => match input.get("path").and_then(Value::as_str)
+        {
+            Some(p) if !p.is_empty() => format!("{tool_name} → {p}"),
+            _ => format!("{tool_name} …"),
+        },
+        "apply_patch" => "apply_patch → unified diff".to_string(),
+        "write_office" => {
+            let fmt = input.get("format").and_then(Value::as_str).unwrap_or("");
+            match input.get("path").and_then(Value::as_str) {
+                Some(p) if !p.is_empty() && !fmt.is_empty() => {
+                    format!("write_office ({fmt}) → {p}")
+                }
+                Some(p) if !p.is_empty() => format!("write_office → {p}"),
+                _ => "write_office …".to_string(),
+            }
+        }
+        "exec_shell" => match input.get("command").and_then(Value::as_str) {
+            Some(cmd) if cmd.len() > 120 => format!("exec_shell: {}…", &cmd[..120]),
+            Some(cmd) if !cmd.is_empty() => format!("exec_shell: {cmd}"),
+            _ => "exec_shell …".to_string(),
+        },
+        "task_shell_start" => match input.get("command").and_then(Value::as_str) {
+            Some(cmd) if cmd.len() > 120 => format!("task_shell_start: {}…", &cmd[..120]),
+            Some(cmd) if !cmd.is_empty() => format!("task_shell_start: {cmd}"),
+            _ => "task_shell_start …".to_string(),
+        },
+        "task_shell_wait" => match input.get("task_id").and_then(Value::as_str) {
+            Some(id) if !id.is_empty() => format!("task_shell_wait → {id}"),
+            _ => "task_shell_wait …".to_string(),
+        },
+        other => format!("{other} …"),
+    }
+}
+
+fn tool_progress_phase_line(tool_name: &str) -> &'static str {
+    match tool_name {
+        "write_file" => "Writing file and building diff preview…",
+        "edit_file" => "Reading target file and applying replacement…",
+        "apply_patch" => "Applying patch hunks to workspace…",
+        "read_file" => "Reading from disk…",
+        "write_office" => "Generating Office document (may take a few seconds)…",
+        "exec_shell" => "Running shell command…",
+        "task_shell_start" => "Starting background shell task…",
+        "task_shell_wait" => "Collecting task output…",
+        _ => "Executing tool…",
+    }
+}
+
+/// Bridges shell stdout/stderr polling to `Event::ToolCallProgress`.
+struct ChannelToolProgress {
+    tx: mpsc::Sender<Event>,
+    tool_call_id: String,
+    stderr_banner_sent: Arc<AtomicBool>,
+}
+
+impl ChannelToolProgress {
+    fn new_arc(tx: mpsc::Sender<Event>, tool_call_id: String) -> Arc<Self> {
+        Arc::new(Self {
+            tx,
+            tool_call_id,
+            stderr_banner_sent: Arc::new(AtomicBool::new(false)),
+        })
+    }
+
+    fn emit_raw(&self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+        let _ = self.tx.try_send(Event::ToolCallProgress {
+            id: self.tool_call_id.clone(),
+            output: text.to_string(),
+        });
+    }
+}
+
+impl ToolProgressEmit for ChannelToolProgress {
+    fn emit_stdout(&self, chunk: &str) {
+        self.emit_raw(chunk);
+    }
+
+    fn emit_stderr(&self, chunk: &str) {
+        if chunk.is_empty() {
+            return;
+        }
+        let mut buf = String::new();
+        if !self.stderr_banner_sent.swap(true, Ordering::SeqCst) {
+            buf.push_str("\n--- stderr ---\n");
+        }
+        buf.push_str(chunk);
+        self.emit_raw(&buf);
     }
 }
 
@@ -172,6 +287,7 @@ impl Engine {
                     Some(registry_ref),
                     mcp_pool,
                     None,
+                    None,
                 )
                 .await;
                 (tool_name, result)
@@ -220,6 +336,7 @@ impl Engine {
         registry: Option<&crate::tools::ToolRegistry>,
         mcp_pool: Option<Arc<AsyncMutex<McpPool>>>,
         context_override: Option<crate::tools::ToolContext>,
+        tool_progress_id: Option<String>,
     ) -> Result<ToolResult, ToolError> {
         let _guard = if supports_parallel {
             ToolExecGuard::Read(lock.read().await)
@@ -232,7 +349,13 @@ impl Engine {
         // `InteractiveTerminalGuard` doc-comment for the regression this
         // closes (parent terminal scrollback hijacking the TUI after a
         // cancelled interactive tool).
-        let _terminal = InteractiveTerminalGuard::engage(tx_event, interactive).await;
+        let _terminal = InteractiveTerminalGuard::engage(tx_event.clone(), interactive).await;
+
+        if let Some(ref tid) = tool_progress_id {
+            let opening = tool_progress_opening_line(&tool_name, &tool_input);
+            emit_tool_progress(&tx_event, tid, &opening).await;
+            emit_tool_progress(&tx_event, tid, tool_progress_phase_line(&tool_name)).await;
+        }
 
         if McpPool::is_mcp_tool(&tool_name) {
             if let Some(pool) = mcp_pool {
@@ -243,8 +366,25 @@ impl Engine {
                 )))
             }
         } else if let Some(registry) = registry {
+            let merged_ctx: Option<ToolContext> = match tool_progress_id.as_ref() {
+                Some(tid) => {
+                    let mut base = match &context_override {
+                        Some(co) => co.clone(),
+                        None => registry.context().clone(),
+                    };
+                    base.tool_progress =
+                        Some(ChannelToolProgress::new_arc(tx_event.clone(), tid.clone()));
+                    Some(base)
+                }
+                None => None,
+            };
+
+            let exec_ctx_owned = match merged_ctx {
+                Some(ctx) => Some(ctx),
+                None => context_override,
+            };
             registry
-                .execute_full_with_context(&tool_name, tool_input, context_override.as_ref())
+                .execute_full_with_context(&tool_name, tool_input, exec_ctx_owned.as_ref())
                 .await
         } else {
             Err(ToolError::not_available(format!(

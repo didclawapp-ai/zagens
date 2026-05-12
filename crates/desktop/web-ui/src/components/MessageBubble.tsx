@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ChatMarkdown } from './ChatMarkdown';
 import { ToolCard, type ToolCardModel } from './ToolCard';
 import TerminalCard from './TerminalCard';
@@ -43,6 +43,34 @@ export function MessageBubble({
     setToolsExpanded(live);
   }, [message.isStreaming]);
 
+  const reasoningScrollRef = useRef<HTMLDivElement>(null);
+  /** While streaming, follow new tokens unless the user scrolled up to read earlier text. */
+  const stickReasoningBottomRef = useRef(true);
+  const prevStreamingRef = useRef(false);
+
+  useEffect(() => {
+    const now = Boolean(message.isStreaming);
+    if (now && !prevStreamingRef.current) {
+      stickReasoningBottomRef.current = true;
+    }
+    prevStreamingRef.current = now;
+  }, [message.isStreaming]);
+
+  const onReasoningScroll = () => {
+    const el = reasoningScrollRef.current;
+    if (!el || !message.isStreaming) return;
+    const thresholdPx = 72;
+    stickReasoningBottomRef.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight <= thresholdPx;
+  };
+
+  useLayoutEffect(() => {
+    if (!reasoningExpanded || !showReasoningBlock) return;
+    const el = reasoningScrollRef.current;
+    if (!el || !stickReasoningBottomRef.current) return;
+    el.scrollTop = el.scrollHeight;
+  }, [message.thinking, message.isStreaming, reasoningExpanded, showReasoningBlock]);
+
   return (
     <div className={`my-3 flex ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div
@@ -72,7 +100,11 @@ export function MessageBubble({
               )}
             </button>
             {reasoningExpanded && (
-              <div className="max-h-[48vh] overflow-y-auto border-t border-card-border px-2.5 pb-2.5 pt-0 leading-relaxed text-t-text-secondary whitespace-pre-wrap">
+              <div
+                ref={reasoningScrollRef}
+                onScroll={onReasoningScroll}
+                className="max-h-[48vh] overflow-y-auto border-t border-card-border px-2.5 pb-2.5 pt-0 leading-relaxed text-t-text-secondary whitespace-pre-wrap"
+              >
                 {message.thinking ||
                   (message.isStreaming ? '推理中…（内容流式到达后会显示在这里）' : '')}
               </div>

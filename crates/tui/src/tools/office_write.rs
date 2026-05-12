@@ -34,7 +34,11 @@ impl ToolSpec for WriteOfficeTool {
     }
 
     fn description(&self) -> &'static str {
-        "Generate .xlsx / .docx / .pptx files from structured JSON data. XLSX uses pure Rust (no Python needed). DOCX/PPTX use Python: desktop builds ship an embedded runtime (offline-capable); otherwise Python 3.8+ with python-docx / python-pptx (venv may pip-install on first use)."
+        concat!(
+            "Generate .xlsx / .docx / .pptx files from structured JSON data. XLSX uses pure Rust (no Python needed). DOCX/PPTX use Python. ",
+            "READ THE USAGE GUIDE BELOW before constructing parameters.\n\n",
+            include_str!("../prompts/write_office_guide.md")
+        )
     }
 
     fn input_schema(&self) -> Value {
@@ -198,7 +202,8 @@ fn char_display_width(c: char) -> f64 {
         || (0xF900..=0xFAFF).contains(&code)  // CJK Compatibility
         || (0xFF01..=0xFF60).contains(&code)  // Fullwidth forms
         || (0xFFE0..=0xFFE6).contains(&code)  // Fullwidth signs
-        || (0x1F300..=0x1F9FF).contains(&code) // Emoticons / symbols
+        || (0x1F300..=0x1F9FF).contains(&code)
+    // Emoticons / symbols
     {
         2.0
     } else {
@@ -434,9 +439,7 @@ fn generate_xlsx(input: &Value, path: &PathBuf) -> Result<String, String> {
             .get("header")
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
-        let merged = sheet_val
-            .get("merged_cells")
-            .and_then(|v| v.as_array());
+        let merged = sheet_val.get("merged_cells").and_then(|v| v.as_array());
 
         let worksheet = workbook.add_worksheet();
         worksheet
@@ -484,9 +487,7 @@ fn generate_xlsx(input: &Value, path: &PathBuf) -> Result<String, String> {
             cols.iter()
                 .map(|c| {
                     let col_type = c.get("format").and_then(|v| v.as_str()).unwrap_or("text");
-                    let custom_nf = c
-                        .get("number_format")
-                        .and_then(|v| v.as_str());
+                    let custom_nf = c.get("number_format").and_then(|v| v.as_str());
                     let wrap = c.get("wrap").and_then(|v| v.as_bool()).unwrap_or(false);
                     let formula = c
                         .get("formula")
@@ -517,11 +518,7 @@ fn generate_xlsx(input: &Value, path: &PathBuf) -> Result<String, String> {
                         "date" => base.set_num_format(custom_nf.unwrap_or("yyyy-mm-dd")),
                         _ => {
                             // text – left-aligned is default
-                            if wrap {
-                                base.set_text_wrap()
-                            } else {
-                                base
-                            }
+                            if wrap { base.set_text_wrap() } else { base }
                         }
                     };
 
@@ -541,16 +538,13 @@ fn generate_xlsx(input: &Value, path: &PathBuf) -> Result<String, String> {
         let has_header_row: bool;
 
         // Priority: columns[].label > rows[0] (if header != false)
-        let use_col_labels = col_formats
-            .iter()
-            .enumerate()
-            .any(|(i, _)| {
-                columns
-                    .and_then(|cs| cs.get(i))
-                    .and_then(|c| c.get("label"))
-                    .and_then(|v| v.as_str())
-                    .is_some()
-            });
+        let use_col_labels = col_formats.iter().enumerate().any(|(i, _)| {
+            columns
+                .and_then(|cs| cs.get(i))
+                .and_then(|c| c.get("label"))
+                .and_then(|v| v.as_str())
+                .is_some()
+        });
 
         if use_col_labels && has_header {
             // Write labels from columns definition
@@ -650,10 +644,7 @@ fn generate_xlsx(input: &Value, path: &PathBuf) -> Result<String, String> {
 
                 // Determine format for this cell
                 let cell_fmt: &Format = if let Some(cf) = col_formats.get(ci) {
-                    if matches!(
-                        cf.formula_template,
-                        Some(_)
-                    ) {
+                    if matches!(cf.formula_template, Some(_)) {
                         // formula handled above; shouldn't reach here
                         base_fmt
                     } else {
@@ -748,9 +739,7 @@ fn generate_xlsx(input: &Value, path: &PathBuf) -> Result<String, String> {
                     .get(ci)
                     .and_then(|c| c.get("width"))
                     .and_then(|v| v.as_f64())
-                    .unwrap_or_else(|| {
-                        *auto_widths.get(ci).unwrap_or(&12.0)
-                    });
+                    .unwrap_or_else(|| *auto_widths.get(ci).unwrap_or(&12.0));
                 worksheet
                     .set_column_width(ci as u16, width)
                     .map_err(|e| format!("设置列宽失败: {e}"))?;
@@ -775,14 +764,7 @@ fn generate_xlsx(input: &Value, path: &PathBuf) -> Result<String, String> {
                 let r1 = if r_span > 0 { r0 + r_span - 1 } else { r0 };
                 let c1 = if c_span > 0 { c0 + c_span - 1 } else { c0 };
                 worksheet
-                    .merge_range(
-                        r0 + row_offset,
-                        c0,
-                        r1 + row_offset,
-                        c1,
-                        "",
-                        &data_fmt,
-                    )
+                    .merge_range(r0 + row_offset, c0, r1 + row_offset, c1, "", &data_fmt)
                     .map_err(|e| format!("合并单元格失败: {e}"))?;
             }
         }
@@ -913,23 +895,18 @@ fn generate_xlsx(input: &Value, path: &PathBuf) -> Result<String, String> {
                             .get("color")
                             .and_then(|v| v.as_str())
                             .unwrap_or("#4472C4");
-                        let cf = ConditionalFormatDataBar::new()
-                            .set_fill_color(xlsx_hex_color(color));
+                        let cf =
+                            ConditionalFormatDataBar::new().set_fill_color(xlsx_hex_color(color));
                         worksheet
                             .add_conditional_format(r0, c0, r1, c1, &cf)
-                            .map_err(|e| {
-                                format!("添加数据条条件格式失败: {e}")
-                            })?;
+                            .map_err(|e| format!("添加数据条条件格式失败: {e}"))?;
                     }
                     "cell_highlight" => {
                         let condition = cf_val
                             .get("condition")
                             .and_then(|v| v.as_str())
                             .unwrap_or("greater_than");
-                        let value = cf_val
-                            .get("value")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("0");
+                        let value = cf_val.get("value").and_then(|v| v.as_str()).unwrap_or("0");
                         let bg_color = cf_val
                             .get("color")
                             .and_then(|v| v.as_str())
@@ -941,9 +918,7 @@ fn generate_xlsx(input: &Value, path: &PathBuf) -> Result<String, String> {
                         let cf = match value.parse::<f64>() {
                             Ok(n) => {
                                 let rule = match condition {
-                                    "greater_than" => {
-                                        ConditionalFormatCellRule::GreaterThan(n)
-                                    }
+                                    "greater_than" => ConditionalFormatCellRule::GreaterThan(n),
                                     "less_than" => ConditionalFormatCellRule::LessThan(n),
                                     "equal_to" => ConditionalFormatCellRule::EqualTo(n),
                                     _ => ConditionalFormatCellRule::GreaterThan(n),
@@ -955,9 +930,7 @@ fn generate_xlsx(input: &Value, path: &PathBuf) -> Result<String, String> {
                             Err(_) => {
                                 let v = value.to_string();
                                 let rule = match condition {
-                                    "greater_than" => {
-                                        ConditionalFormatCellRule::GreaterThan(v)
-                                    }
+                                    "greater_than" => ConditionalFormatCellRule::GreaterThan(v),
                                     "less_than" => ConditionalFormatCellRule::LessThan(v),
                                     "equal_to" => ConditionalFormatCellRule::EqualTo(v),
                                     _ => ConditionalFormatCellRule::GreaterThan(v),
@@ -969,9 +942,7 @@ fn generate_xlsx(input: &Value, path: &PathBuf) -> Result<String, String> {
                         };
                         worksheet
                             .add_conditional_format(r0, c0, r1, c1, &cf)
-                            .map_err(|e| {
-                                format!("添加单元格高亮条件格式失败: {e}")
-                            })?;
+                            .map_err(|e| format!("添加单元格高亮条件格式失败: {e}"))?;
                     }
                     _ => {}
                 }
@@ -1026,7 +997,10 @@ fn generate_xlsx(input: &Value, path: &PathBuf) -> Result<String, String> {
                 let left = margins.get("left").and_then(|v| v.as_f64()).unwrap_or(0.7);
                 let right = margins.get("right").and_then(|v| v.as_f64()).unwrap_or(0.7);
                 let top = margins.get("top").and_then(|v| v.as_f64()).unwrap_or(0.75);
-                let bottom = margins.get("bottom").and_then(|v| v.as_f64()).unwrap_or(0.75);
+                let bottom = margins
+                    .get("bottom")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.75);
                 let header_margin = margins
                     .get("header")
                     .and_then(|v| v.as_f64())
@@ -1035,14 +1009,7 @@ fn generate_xlsx(input: &Value, path: &PathBuf) -> Result<String, String> {
                     .get("footer")
                     .and_then(|v| v.as_f64())
                     .unwrap_or(0.3);
-                first_sheet.set_margins(
-                    left,
-                    right,
-                    top,
-                    bottom,
-                    header_margin,
-                    footer_margin,
-                );
+                first_sheet.set_margins(left, right, top, bottom, header_margin, footer_margin);
             }
         }
     }

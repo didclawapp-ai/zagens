@@ -107,6 +107,23 @@ function stringifyInput(input: unknown): string {
   }
 }
 
+/** Keeps milestone lines from `tool.progress` visible above the final tool result. */
+const TOOL_OUTPUT_MERGE_SEPARATOR = '\n\n────────────────────────────────\n\n';
+
+/** Merge streamed shell/tool progress with the final payload without duplicating the shared suffix (stdout/stderr body). */
+function mergeStreamingToolOutput(prevRaw: string, finalRaw: string): string {
+  const prev = prevRaw.trimEnd();
+  const fin = finalRaw.trimEnd();
+  if (!prev) return finalRaw;
+  if (!fin) return prevRaw;
+  const pt = prev.trim();
+  const ft = fin.trim();
+  if (ft.length >= 16 && pt.endsWith(ft)) return prevRaw;
+  if (pt.length >= ft.length && pt.endsWith(ft)) return prevRaw;
+  if (fin.startsWith(prev)) return finalRaw;
+  return `${prevRaw.trimEnd()}${TOOL_OUTPUT_MERGE_SEPARATOR}${finalRaw}`;
+}
+
 function toolOutputString(output: unknown): string {
   if (output == null) {
     return '';
@@ -922,15 +939,17 @@ export default function App() {
             setMessages((prev) =>
               prev.map((m) => {
                 if (m.id !== assistantId) return m;
-                const tools = (m.tools ?? []).map((t) =>
-                  t.id === norm.id
-                    ? {
-                        ...t,
-                        output: outStr || t.output,
-                        status: norm.success ? ('done' as const) : ('error' as const),
-                      }
-                    : t,
-                );
+                const tools = (m.tools ?? []).map((t) => {
+                  if (t.id !== norm.id) return t;
+                  const prevOut = (t.output ?? '').trim();
+                  const finalOut = outStr.trim();
+                  const merged = mergeStreamingToolOutput(prevOut, finalOut || '');
+                  return {
+                    ...t,
+                    output: merged,
+                    status: norm.success ? ('done' as const) : ('error' as const),
+                  };
+                });
                 return { ...m, tools };
               }),
             );
