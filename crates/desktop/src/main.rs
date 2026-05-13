@@ -5,12 +5,15 @@ mod sidecar;
 
 use std::sync::Arc;
 
-use tauri::Manager;
+use tauri::{
+    menu::{MenuBuilder, MenuItemBuilder},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    Manager, WindowEvent,
+};
 use tokio::sync::Notify;
 
 fn main() {
     let shutdown = Arc::new(Notify::new());
-    let shutdown_for_window = shutdown.clone();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -19,9 +22,10 @@ fn main() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_process::init())
-        .on_window_event(move |_window, event| {
-            if let tauri::WindowEvent::Destroyed = event {
-                shutdown_for_window.notify_one();
+        .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
             }
         })
         .setup(move |app| {
@@ -34,6 +38,57 @@ fn main() {
                 shutdown: shutdown.clone(),
             });
 
+            // ── System tray ──
+            let tray_image = app
+                .default_window_icon()
+                .cloned()
+                .expect("no default icon configured in tauri.conf.json bundle.icon");
+
+            let show_item = MenuItemBuilder::with_id("show", "显示 DS Pick").build(app)?;
+            let quit_item = MenuItemBuilder::with_id("quit", "退出").build(app)?;
+
+            let tray_menu = MenuBuilder::new(app)
+                .item(&show_item)
+                .separator()
+                .item(&quit_item)
+                .build()?;
+
+            let _tray = TrayIconBuilder::new()
+                .icon(tray_image)
+                .tooltip("DS Pick")
+                .menu(&tray_menu)
+                .on_tray_icon_event(|tray: &tauri::tray::TrayIcon, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        if let Some(w) = tray.app_handle().get_webview_window("main") {
+                            let _ = w.show();
+                            let _ = w.set_focus();
+                        }
+                    }
+                })
+                .on_menu_event(|app: &tauri::AppHandle, event: tauri::menu::MenuEvent| match event.id().as_ref() {
+                    "show" => {
+                        if let Some(w) = app.get_webview_window("main") {
+                            let _ = w.show();
+                            let _ = w.set_focus();
+                        }
+                    }
+                    "quit" => {
+                        if let Some(ctx) = app.try_state::<commands::AppContext>() {
+                            ctx.shutdown.notify_one();
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(300));
+                        app.exit(0);
+                    }
+                    _ => {}
+                })
+                .build(app)?;
+
+            // ── Sidecar ──
             let handle = app.handle().clone();
             let token_for_sidecar = token.clone();
             let shutdown_for_sidecar = shutdown.clone();

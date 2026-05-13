@@ -1,10 +1,13 @@
 {
   "identifier": "default",
-  "description": "默认权限集：核心功能 + 对话框",
+  "description": "默认权限集：核心功能 + 对话框 + 托盘",
   "windows": ["main"],
   "permissions": [
     "core:default",
     "core:window:allow-close",
+    "core:window:allow-hide",
+    "core:window:allow-show",
+    "core:window:allow-set-focus",
     "core:window:allow-minimize",
     "core:window:allow-maximize",
     "core:window:allow-unmaximize",

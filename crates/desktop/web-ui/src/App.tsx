@@ -1299,7 +1299,7 @@ function TitleBar() {
     });
   };
   const handleClose = () => {
-    void import('@tauri-apps/api/window').then(({ getCurrentWindow }) => getCurrentWindow().close());
+    void import('@tauri-apps/api/window').then(({ getCurrentWindow }) => getCurrentWindow().hide());
   };
 
   return (
