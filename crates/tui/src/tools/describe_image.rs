@@ -1,4 +1,4 @@
-//! `describe_image` tool — use a vision model (e.g. DeepSeek-OCR via SiliconFlow)
+//! `describe_image` tool — use a vision model (e.g. Qwen3-VL on SiliconFlow)
 //! to extract text / describe an image file, then feed the result into the
 //! DeepSeek V4 chat context.
 //!
@@ -6,16 +6,22 @@
 //!   image file → base64 encode → POST vision model API → text
 //!      → injected into the main conversation as a user message.
 //!
-//! Configuration (env vars, optional — defaults to SiliconFlow DeepSeek-OCR):
+//! Configuration (env vars, optional — defaults to SiliconFlow Qwen3-VL; see
+//! `deepseek_config::DEFAULT_VISION_MODEL`):
 //!   VISION_API_KEY  — Bearer token (required)
 //!   VISION_BASE_URL — OpenAI-compatible endpoint root
 //!                      (default: https://api.siliconflow.cn/v1)
-//!   VISION_MODEL    — model id (default: deepseek-ai/DeepSeek-OCR)
+//!   VISION_MODEL    — model id (default: Qwen/Qwen3-VL-32B-Instruct when unset)
 //!
 //! The tool itself is read-only and network-only; it does not write files.
 
 use async_trait::async_trait;
 use base64::Engine as _;
+use std::error::Error;
+use deepseek_config::{
+    DEFAULT_VISION_MODEL, vision_should_check_degenerate_ocr_template,
+    vision_user_prompt_for_model,
+};
 use serde_json::Value;
 
 use super::spec::{
@@ -23,16 +29,25 @@ use super::spec::{
     optional_str, required_str,
 };
 
-/// SiliconFlow multimodal DeepSeek-OCR — “文档转 Markdown” grounding 模板：
-/// https://docs.siliconflow.cn/cn/userguide/capabilities/multimodal-vision
-const SILICONFLOW_DEEPSEEK_OCR_DEFAULT_PROMPT: &str =
-    "<image>\n<|grounding|>Convert the document to markdown.";
+fn chain_vision_transport_error_cn<E: Error + Send + Sync>(prefix: &str, err: &E) -> String {
+    let mut msg = format!("{prefix}: {err}");
+    let mut cur = err.source();
+    while let Some(next) = cur {
+        msg.push_str(" → ");
+        msg.push_str(&next.to_string());
+        cur = next.source();
+    }
+    msg.push_str(
+        "。若在个别电脑上出现：请在同一台机器测试能否访问硅基流动 API（浏览器或 curl）；检查防火墙、公司代理 HTTPS_PROXY、DNS 与地区网络。",
+    );
+    msg
+}
 
 fn reject_known_degenerate_ocr_output(text: &str) -> Result<(), String> {
     let marker = "如果图中包含表格，请用表格形式输出";
     if text.matches(marker).count() >= 2 {
         return Err(
-            "视觉模型输出为无效重复模板句式；请改用 SiliconFlow DeepSeek-OCR 官方 `<image>` + `<|grounding|>` 提示词。"
+            "视觉模型输出为无效重复模板句式。若使用 DeepSeek-OCR，请按硅基流动文档采用官方 `<image>` + `<|grounding|>` 提示词。"
                 .to_string(),
         );
     }
@@ -126,9 +141,11 @@ impl ToolSpec for DescribeImageTool {
         let b64 = base64::engine::general_purpose::STANDARD.encode(&image_bytes);
         let data_uri = format!("data:{mime};base64,{b64}");
 
-        let prompt = optional_str(&input, "prompt").unwrap_or(SILICONFLOW_DEEPSEEK_OCR_DEFAULT_PROMPT);
-
         let client = VisionClient::from_env();
+        let default_prompt = vision_user_prompt_for_model(&client.model);
+        let prompt = optional_str(&input, "prompt")
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or(default_prompt);
         let request = VisionRequest {
             model: &client.model,
             prompt,
@@ -217,13 +234,20 @@ impl VisionClient {
             .ok()
             .or(cfg_model)
             .filter(|m| !m.is_empty())
-            .unwrap_or_else(|| "deepseek-ai/DeepSeek-OCR".to_string());
+            .unwrap_or_else(|| DEFAULT_VISION_MODEL.to_string());
         Self { model, base_url, api_key }
     }
 
     fn call(&self, request: &VisionRequest) -> Result<String, String> {
+        let timeout_secs = std::env::var("VISION_TIMEOUT_SECS")
+            .ok()
+            .and_then(|v| v.trim().parse::<u64>().ok())
+            .filter(|&t| t >= 30)
+            .unwrap_or(120)
+            .min(600);
         let client = reqwest::blocking::Client::builder()
-            .timeout(std::time::Duration::from_secs(120))
+            .connect_timeout(std::time::Duration::from_secs(30))
+            .timeout(std::time::Duration::from_secs(timeout_secs))
             .build()
             .map_err(|e| format!("创建 HTTP 客户端失败: {e}"))?;
 
@@ -247,7 +271,7 @@ impl VisionClient {
             .header("Content-Type", "application/json")
             .json(&body)
             .send()
-            .map_err(|e| format!("HTTP 请求失败: {e}"))?;
+            .map_err(|e| chain_vision_transport_error_cn("视觉模型 HTTP 请求失败", &e))?;
 
         let status = resp.status();
         let resp_body: serde_json::Value = resp
@@ -287,7 +311,9 @@ impl VisionClient {
         if text.is_empty() {
             return Err("API 返回空文本内容".to_string());
         }
-        reject_known_degenerate_ocr_output(&text)?;
+        if vision_should_check_degenerate_ocr_template(self.model.as_str()) {
+            reject_known_degenerate_ocr_output(&text)?;
+        }
         Ok(text)
     }
 }

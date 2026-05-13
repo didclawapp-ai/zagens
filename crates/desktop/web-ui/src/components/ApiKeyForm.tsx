@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 
-/** Defaults match `describe_image` / config.example.toml SiliconFlow DeepSeek-OCR. */
+/** Defaults match `describe_image` / `DEFAULT_VISION_MODEL` (`deepseek-config`). */
 const PLACEHOLDER_VISION_BASE = 'https://api.siliconflow.cn/v1';
-const PLACEHOLDER_VISION_MODEL = 'deepseek-ai/DeepSeek-OCR';
+const PLACEHOLDER_VISION_MODEL = 'Qwen/Qwen3-VL-32B-Instruct';
 
 interface Props {
   onSaved: () => void;
@@ -134,7 +134,7 @@ export default function ApiKeyForm({ onSaved, className = '' }: Props) {
           <code className="text-t-text-secondary bg-canvas-alt px-1 py-0.5 rounded text-[11px] font-mono">
             [vision]
           </code>
-          。留空端点/模型时使用运行时默认（SiliconFlow + DeepSeek-OCR）。密钥保存后不会回显；若已保存过密钥，可只改端点/模型（不填密钥则保留原密钥）。
+          。留空端点/模型时使用运行时默认（硅基流动：`Qwen/Qwen3-VL-32B-Instruct`；仍可选用 `deepseek-ai/DeepSeek-OCR` 等）。密钥保存后不会回显；若已保存过密钥，可只改端点/模型（不填密钥则保留原密钥）。
         </p>
         {visionConfigured && (
           <p className="text-xs text-emerald-400/90">已检测到已保存的视觉桥接 API Key。</p>

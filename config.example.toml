@@ -495,13 +495,13 @@ default_text_model = "deepseek-ai/deepseek-v4-pro"
 # ─────────────────────────────────────────────────────────────────────────────────
 # Enables the `describe_image` tool. Reads an image file, sends it to
 # an OpenAI-compatible vision model, and injects the extracted text into
-# the main conversation. Used to let DeepSeek V4 "see" images via OCR.
+# the main conversation (default model: Qwen3-VL; see `DEFAULT_VISION_MODEL` in `crates/config`).
 #
 #   VISION_API_KEY  — Bearer token (required for cloud providers)
 #   VISION_BASE_URL — OpenAI-compatible endpoint root
 #                      (default: https://api.siliconflow.cn/v1)
 #   VISION_MODEL    — model id
-#                      (default: deepseek-ai/DeepSeek-OCR)
+#                      (default: Qwen/Qwen3-VL-32B-Instruct; DeepSeek-OCR uses `<|grounding|>` prompts)
 #   SILICONFLOW_API_KEY — fallback if VISION_API_KEY is not set
 #
 # Supported providers (any OpenAI Vision-compatible endpoint):
@@ -515,7 +515,7 @@ default_text_model = "deepseek-ai/deepseek-v4-pro"
 # Vision Bridge — image OCR/description via external vision model
 # ─────────────────────────────────────────────────────────────────────────────────
 # Enables the `describe_image` tool. Reads image files and extracts text
-# via a configured vision model. Defaults to SiliconFlow-hosted DeepSeek-OCR.
+# via a configured vision model. Default when unset: Qwen3-VL (see `DEFAULT_VISION_MODEL` in `crates/config`).
 #
 # Can also be configured via environment variables:
 #   VISION_API_KEY     (env takes precedence over config file)
@@ -523,14 +523,14 @@ default_text_model = "deepseek-ai/deepseek-v4-pro"
 #   VISION_MODEL
 #   SILICONFLOW_API_KEY (fallback if VISION_API_KEY is not set)
 #
-# DeepSeek-OCR on SiliconFlow expects the official `<image>` + `<|grounding|>` prompts
-# documented at: https://docs.siliconflow.cn/cn/userguide/capabilities/multimodal-vision
-# DS Pick / `describe_image` use the "Convert the document to markdown" template by default.
+# Prompts are model-specific: DeepSeek-OCR on SiliconFlow uses `<image>` + `<|grounding|>` per
+# https://docs.siliconflow.cn/cn/userguide/capabilities/multimodal-vision
+# Qwen-VL and other models use plain instructions (dimensions/symbols for CAD-style drawings).
 #
 # [vision]
 # api_key = "sk-xxxxxxxx"       # Bearer token for vision provider
 # base_url = "https://api.siliconflow.cn/v1"
-# model = "deepseek-ai/DeepSeek-OCR"
+# model = "Qwen/Qwen3-VL-32B-Instruct"   # or e.g. deepseek-ai/DeepSeek-OCR
 #
 # Alternative providers (any OpenAI Vision-compatible endpoint):
 #   SiliconFlow : https://api.siliconflow.cn/v1

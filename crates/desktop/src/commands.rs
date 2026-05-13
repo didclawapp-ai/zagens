@@ -1,10 +1,29 @@
-use deepseek_config::{ConfigStore, ConfigToml};
+use deepseek_config::{
+    ConfigStore, ConfigToml, DEFAULT_VISION_MODEL, vision_should_check_degenerate_ocr_template,
+    vision_user_prompt_for_model,
+};
 use ignore::WalkBuilder;
 use serde::{Deserialize, Serialize};
+use std::error::Error;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Notify;
+
+/// reqwest 顶层 `Display` 常为笼统的「error sending request」，展开 `source()` 链便于跨机排查。
+fn chain_transport_error_cn<E: Error + Send + Sync>(prefix: &str, err: &E) -> String {
+    let mut msg = format!("{prefix}: {err}");
+    let mut cur = err.source();
+    while let Some(next) = cur {
+        msg.push_str(" → ");
+        msg.push_str(&next.to_string());
+        cur = next.source();
+    }
+    msg.push_str(
+        "。若在个别电脑上出现：请在同一台机器用浏览器或 PowerShell/`curl` 访问该 API；检查防火墙或杀毒拦截、办公网代理（可设置环境变量 HTTPS_PROXY）、DNS 是否正常、以及地区网络是否能访问 siliconflow.cn。",
+    );
+    msg
+}
 
 /// Merges DeepSeek credentials into an existing [`ConfigToml`] without
 /// overwriting unrelated tables (e.g. `[vision]`).
@@ -172,18 +191,13 @@ pub fn clear_vision_bridge(ctx: tauri::State<'_, AppContext>) -> Result<(), Stri
     Ok(())
 }
 
-/// DeepSeek-OCR on SiliconFlow expects the grounding template from their multimodal docs
-/// (“文档转Markdown”示例). See: <https://docs.siliconflow.cn/cn/userguide/capabilities/multimodal-vision>
-const VISION_TRANSCRIBE_PROMPT: &str =
-    "<image>\n<|grounding|>Convert the document to markdown.";
-
-/// Rejects pathological OCR output (repeated unrelated template clauses) observed when the
-/// user prompt ignored SiliconFlow `grounding` format.
+/// Rejects pathological DeepSeek-OCR output (repeated template clauses) when the wrong
+/// user prompt was used. Only applied for DeepSeek-OCR models.
 fn reject_known_degenerate_ocr_output(text: &str) -> Result<(), String> {
     let marker = "如果图中包含表格，请用表格形式输出";
     if text.matches(marker).count() >= 2 {
         return Err(
-            "视觉模型输出为无效重复模板句式。请确认已升级到使用 SiliconFlow DeepSeek-OCR 官方 grounding 提示词后重试。"
+            "视觉模型输出为无效重复模板句式。若使用 DeepSeek-OCR，请在硅基流动文档中采用官方 `<image>` + `<|grounding|>` 提示词后重试。"
                 .to_string(),
         );
     }
@@ -254,7 +268,8 @@ pub async fn vision_transcribe_image(data_url: String) -> Result<String, String>
         .as_deref()
         .map(str::trim)
         .filter(|s| !s.is_empty())
-        .unwrap_or("deepseek-ai/DeepSeek-OCR");
+        .unwrap_or(DEFAULT_VISION_MODEL);
+    let user_prompt = vision_user_prompt_for_model(model);
 
     let body = serde_json::json!({
         "model": model,
@@ -262,7 +277,7 @@ pub async fn vision_transcribe_image(data_url: String) -> Result<String, String>
             "role": "user",
             "content": [
                 {"type": "image_url", "image_url": {"url": data_url, "detail": "high"}},
-                {"type": "text", "text": VISION_TRANSCRIBE_PROMPT}
+                {"type": "text", "text": user_prompt}
             ]
         }],
         "max_tokens": 4096,
@@ -270,19 +285,59 @@ pub async fn vision_transcribe_image(data_url: String) -> Result<String, String>
         "stream": false,
     });
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(120))
+    let timeout_secs = std::env::var("VISION_TIMEOUT_SECS")
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .filter(|&t| t >= 30)
+        .unwrap_or(120)
+        .min(600); // hard cap 10 minutes
+    let mut client_builder = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(30))
+        .timeout(Duration::from_secs(timeout_secs));
+
+    // reqwest with rustls backend does not auto-detect system proxies.
+    // Respect HTTPS_PROXY / ALL_PROXY / HTTP_PROXY manually.
+    let proxy_url = std::env::var("HTTPS_PROXY")
+        .or_else(|_| std::env::var("https_proxy"))
+        .or_else(|_| std::env::var("ALL_PROXY"))
+        .or_else(|_| std::env::var("all_proxy"))
+        .or_else(|_| std::env::var("HTTP_PROXY"))
+        .or_else(|_| std::env::var("http_proxy"))
+        .ok()
+        .filter(|s| !s.trim().is_empty());
+    if let Some(ref url) = proxy_url {
+        match reqwest::Proxy::all(url) {
+            Ok(proxy) => {
+                client_builder = client_builder.proxy(proxy);
+            }
+            Err(e) => {
+                eprintln!("[vision] 代理 URL 解析失败 ({url}): {e}，将直连");
+            }
+        }
+    }
+
+    let client = client_builder
         .build()
         .map_err(|e| format!("创建 HTTP 客户端失败: {e}"))?;
+
+    let body_bytes = serde_json::to_vec(&body).map_err(|e| format!("序列化请求失败: {e}"))?;
+    let body_mb = body_bytes.len() as f64 / (1024.0 * 1024.0);
+    let upload_est_seconds = |mbps: f64| -> f64 { (body_bytes.len() as f64 * 8.0) / (mbps * 1_000_000.0) };
+    eprintln!(
+        "[vision] POST {}/chat/completions  body={:.1} MB  model={}  timeout={}s \
+         上传耗时估算: 10Mbps≈{:.1}s 5Mbps≈{:.1}s 2Mbps≈{:.1}s 1Mbps≈{:.1}s",
+        base_url, body_mb, model, timeout_secs,
+        upload_est_seconds(10.0), upload_est_seconds(5.0), upload_est_seconds(2.0), upload_est_seconds(1.0),
+    );
 
     let resp = client
         .post(format!("{base_url}/chat/completions"))
         .header("Authorization", format!("Bearer {}", api_key.trim()))
         .header("Content-Type", "application/json")
-        .json(&body)
+        .body(body_bytes)
         .send()
         .await
-        .map_err(|e| format!("视觉桥接 HTTP 请求失败: {e}"))?;
+        .map_err(|e| chain_transport_error_cn("视觉桥接 HTTP 请求失败", &e))?;
 
     let status = resp.status();
     let resp_body: serde_json::Value = resp
@@ -307,7 +362,9 @@ pub async fn vision_transcribe_image(data_url: String) -> Result<String, String>
     if text.is_empty() {
         return Err("视觉桥接返回空文本，请稍后重试或更换视觉模型".to_string());
     }
-    reject_known_degenerate_ocr_output(&text)?;
+    if vision_should_check_degenerate_ocr_template(model) {
+        reject_known_degenerate_ocr_output(&text)?;
+    }
 
     Ok(text)
 }

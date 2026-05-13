@@ -20,6 +20,10 @@ const ROUTE_INTENT_IDS: DesktopRouteIntentOption[] = ['off', 'follow_runmode', '
 const MAX_FILE_BYTES = 128 * 1024; // 128 KB per file
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024; // align with describe_image / vision_transcribe_image
 const MAX_ATTACHMENTS = 8;
+// Image compression before vision bridge: reduces 4K screenshots from ~20MB to ~hundreds of KB.
+// Detail: "high" at the vision API means the model still gets adequate resolution after resize.
+const COMPRESS_MAX_PX = 1920;
+const COMPRESS_QUALITY = 0.85;
 
 export interface ComposerOutboundMessage {
   /** Rendered in the chat transcript (attachment names/summary only — no inlined file bodies). */
@@ -116,13 +120,48 @@ function isImageFile(file: File): boolean {
   return /\.(png|jpe?g|gif|webp|bmp)$/i.test(file.name);
 }
 
-function readFileAsDataUrl(file: File): Promise<string> {
+function readFileAsDataUrl(file: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result ?? ''));
     reader.onerror = () => reject(new Error('read failed'));
     reader.readAsDataURL(file);
   });
+}
+
+/** Compress image via Canvas before base64 encoding for the vision bridge.
+ *  JPEG output discards alpha (OK for OCR); GIF/BMP are re-encoded.
+ *  Falls back to the original file if Canvas API is unavailable or fails.
+ *  Typical reduction: 15-20 MB 4K PNG screenshot → 200-800 KB JPEG. */
+async function compressImage(
+  file: File,
+  maxPx = COMPRESS_MAX_PX,
+  quality = COMPRESS_QUALITY,
+): Promise<Blob | File> {
+  try {
+    const bmp = await createImageBitmap(file);
+    const scale = Math.min(1.0, maxPx / Math.max(bmp.width, bmp.height));
+    // Already within size limits AND in a lossy format — skip re-encode.
+    if (scale >= 1.0 && (file.type === 'image/jpeg' || file.type === 'image/webp')) {
+      bmp.close();
+      return file;
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bmp.width * scale);
+    canvas.height = Math.round(bmp.height * scale);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      bmp.close();
+      return file;
+    }
+    ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+    bmp.close();
+    return new Promise((resolve) => {
+      canvas.toBlob((blob) => resolve(blob ?? file), 'image/jpeg', quality);
+    });
+  } catch {
+    return file; // fallback to original — vision bridge still works, just slower
+  }
 }
 
 async function readHead(file: File, max: number): Promise<ArrayBuffer> {
@@ -156,7 +195,10 @@ async function fileToAttached(file: File): Promise<AttachedFile> {
       };
     }
     try {
-      const imageDataUrl = await readFileAsDataUrl(file);
+      // Compress to ~0.2-1 MB JPEG before base64 — 4K PNG screenshots
+      // are the common case.  Falls back to original on failure.
+      const compressed = await compressImage(file);
+      const imageDataUrl = await readFileAsDataUrl(compressed);
       return {
         name,
         content: '',

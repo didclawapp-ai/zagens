@@ -431,7 +431,7 @@ impl ToolRegistryBuilder {
     /// Include the image description tool (`describe_image`).
     ///
     /// Reads an image file and extracts its text content via a configured
-    /// vision model (defaults to SiliconFlow DeepSeek-OCR).
+    /// vision model (defaults to SiliconFlow `Qwen/Qwen3-VL-32B-Instruct`).
     /// Requires `VISION_API_KEY` env var.
     #[must_use]
     pub fn with_describe_image_tool(self) -> Self {

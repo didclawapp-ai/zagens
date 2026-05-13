@@ -96,15 +96,38 @@ pub struct ProviderConfigToml {
 }
 
 /// Vision bridge config — enables image→text extraction via an external
-/// vision model (e.g. DeepSeek-OCR hosted on SiliconFlow).
+/// vision model (e.g. Qwen3-VL or DeepSeek-OCR on SiliconFlow).
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct VisionConfigToml {
     /// Bearer token for the vision provider API.
     pub api_key: Option<String>,
     /// OpenAI-compatible endpoint root (default: https://api.siliconflow.cn/v1).
     pub base_url: Option<String>,
-    /// Model id (default: deepseek-ai/DeepSeek-OCR).
+    /// Model id (default: [`DEFAULT_VISION_MODEL`]).
     pub model: Option<String>,
+}
+
+/// Default vision model for SiliconFlow ([multimodal vision](https://docs.siliconflow.cn/cn/userguide/capabilities/multimodal-vision)):
+/// general VL (charts, photos, **engineering/CAD drawings** with dimensions) rather than OCR-only.
+pub const DEFAULT_VISION_MODEL: &str = "Qwen/Qwen3-VL-32B-Instruct";
+
+/// User `text` part for OpenAI-style vision `chat/completions`.
+/// [SiliconFlow DeepSeek-OCR](https://docs.siliconflow.cn/cn/userguide/capabilities/multimodal-vision) expects the official `<image>` + `<|grounding|>` templates;
+/// Qwen-VL and other models use plain instructions (no `grounding` token).
+#[must_use]
+pub fn vision_user_prompt_for_model(model_id: &str) -> &'static str {
+    let m = model_id.to_ascii_lowercase();
+    if m.contains("deepseek-ocr") {
+        "<image>\n<|grounding|>Convert the document to markdown."
+    } else {
+        "请仔细观察图片。完整转写图中所有文字、数字与标注；若是工程图或机械图，按视图列出尺寸线、数值、公差（±）、直径符号（Ø 或 ⌀）、孔位编号与引线说明；表格用 Markdown。无法辨认处标 [辨认不清]。\n\nFor technical drawings, list every dimension, tolerance, and symbol you can read."
+    }
+}
+
+/// Whether responses may show the known spurious repeated template when the wrong prompt was used (DeepSeek-OCR only).
+#[must_use]
+pub fn vision_should_check_degenerate_ocr_template(model_id: &str) -> bool {
+    model_id.to_ascii_lowercase().contains("deepseek-ocr")
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

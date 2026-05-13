@@ -743,7 +743,7 @@ pub struct Config {
     pub providers: Option<ProvidersConfig>,
 
     /// Vision bridge for the `describe_image` tool — enables image→text
-    /// extraction via an external vision model (e.g. SiliconFlow DeepSeek-OCR).
+    /// extraction via an external vision model (e.g. SiliconFlow Qwen3-VL).
     #[serde(default)]
     pub vision: Option<VisionConfig>,
 
