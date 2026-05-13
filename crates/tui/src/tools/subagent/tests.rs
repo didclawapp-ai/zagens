@@ -17,6 +17,7 @@ fn make_snapshot(status: SubAgentStatus) -> SubAgentResult {
         steps_taken: 0,
         duration_ms: 0,
         from_prior_session: false,
+        structured_verdict: None,
     }
 }
 
@@ -392,10 +393,81 @@ fn test_build_assignment_prompt_includes_metadata() {
         "Inspect parser behavior",
         &assignment,
         &SubAgentType::Explore,
+        None,
     );
     assert!(prompt.contains("Assignment metadata"));
     assert!(prompt.contains("resolved_type: explore"));
     assert!(prompt.contains("role: explorer"));
+}
+
+// ── CRAFT P0 tests ─────────────────────────────────────────────
+
+#[test]
+fn parse_structured_verdict_parses_valid_json() {
+    let text = "Some text\n<!-- craft-verdict -->\n{\"verdict\":\"BLOCKER\",\"items\":[{\"severity\":\"BLOCKER\",\"file\":\"auth/login.rs\",\"line\":42,\"description\":\"bad RNG\",\"rule\":\"CROSS_PLATFORM\"}],\"summary\":\"one blocker\"}\nMore text";
+    let verdict = parse_structured_verdict(text);
+    assert!(verdict.is_some(), "should parse valid JSON");
+    let v = verdict.unwrap();
+    assert_eq!(v.verdict, VerdictLevel::Blocker);
+    assert_eq!(v.items.len(), 1);
+    assert_eq!(v.items[0].file, "auth/login.rs");
+    assert_eq!(v.items[0].line, Some(42));
+    assert_eq!(v.items[0].rule.as_deref(), Some("CROSS_PLATFORM"));
+    assert_eq!(v.summary.as_deref(), Some("one blocker"));
+}
+
+#[test]
+fn parse_structured_verdict_returns_none_when_marker_absent() {
+    let text = "No structured output here.";
+    assert!(parse_structured_verdict(text).is_none());
+}
+
+#[test]
+fn parse_structured_verdict_returns_none_for_malformed_json() {
+    let text = "<!-- craft-verdict -->\n{not json at all}";
+    assert!(parse_structured_verdict(text).is_none());
+}
+
+#[test]
+fn parse_structured_verdict_handles_empty_items() {
+    let text = "<!-- craft-verdict -->\n{\"verdict\":\"PASS\",\"items\":[],\"summary\":\"clean\"}";
+    let verdict = parse_structured_verdict(text).expect("should parse");
+    assert_eq!(verdict.verdict, VerdictLevel::Pass);
+    assert!(verdict.items.is_empty());
+}
+
+#[test]
+fn parse_structured_verdict_extracts_from_mid_text() {
+    // Marker at offset, not start of string
+    let text = "SUMMARY\nEVIDENCE\n- foo.rs:1\nCHANGES\nNone.\nRISKS\nNone.\nBLOCKERS\nNone.\n\n<!-- craft-verdict -->\n{\"verdict\":\"MAJOR\",\"items\":[],\"summary\":null}";
+    let verdict = parse_structured_verdict(text).expect("should parse mid-text");
+    assert_eq!(verdict.verdict, VerdictLevel::Major);
+}
+
+// ── CRAFT P1 tests ─────────────────────────────────────────────
+
+#[test]
+fn build_assignment_prompt_includes_blackboard_when_provided() {
+    let assignment = SubAgentAssignment::new("Fix login bug".to_string(), Some("worker".to_string()));
+    let prompt = build_assignment_prompt(
+        "Fix the login bug",
+        &assignment,
+        &SubAgentType::Implementer,
+        Some("### Explorer findings\n- [high] `auth/login.rs` — bad RNG"),
+    );
+    assert!(prompt.contains("## Blackboard"));
+    assert!(prompt.contains("### Explorer findings"));
+    assert!(prompt.contains("bad RNG"));
+    assert!(prompt.contains("Task:\nFix the login bug"));
+}
+
+#[test]
+fn build_assignment_prompt_omits_blackboard_when_none() {
+    let assignment = SubAgentAssignment::new("fix".to_string(), None);
+    let prompt = build_assignment_prompt("fix", &assignment, &SubAgentType::General, None);
+    assert!(!prompt.contains("## Blackboard"));
+    assert!(prompt.contains("Task:\nfix"));
+    assert!(prompt.contains("Assignment metadata"));
 }
 
 #[test]
@@ -805,14 +877,21 @@ fn build_allowed_tools_general_returns_none_for_full_inheritance() {
 }
 
 #[test]
-fn build_allowed_tools_explore_returns_none_for_full_inheritance() {
-    // Per-type allowlists are now advisory — Explore also gets the full
-    // surface unless an explicit list is passed.
+fn build_allowed_tools_explore_returns_read_only_list() {
+    // CRAFT P3: Explore gets a hard read-only list (no write files, no shell).
     let result = build_allowed_tools(&SubAgentType::Explore, None, true).unwrap();
-    assert!(
-        result.is_none(),
-        "Explore with no explicit_tools should default to full inheritance"
-    );
+    assert!(result.is_some(), "Explore should get an explicit read-only list");
+    let tools = result.unwrap();
+    // Must include read tools
+    assert!(tools.iter().any(|t| t == "read_file"), "should have read_file");
+    assert!(tools.iter().any(|t| t == "grep_files"), "should have grep_files");
+    assert!(tools.iter().any(|t| t == "list_dir"), "should have list_dir");
+    // Must NOT include write tools
+    assert!(!tools.iter().any(|t| t == "write_file"), "should NOT have write_file");
+    assert!(!tools.iter().any(|t| t == "edit_file"), "should NOT have edit_file");
+    assert!(!tools.iter().any(|t| t == "apply_patch"), "should NOT have apply_patch");
+    // Must NOT include shell
+    assert!(!tools.iter().any(|t| t == "exec_shell"), "should NOT have exec_shell");
 }
 
 #[test]

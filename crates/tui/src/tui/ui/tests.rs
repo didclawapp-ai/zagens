@@ -875,6 +875,7 @@ fn make_subagent(
         steps_taken: 0,
         duration_ms: 0,
         from_prior_session: false,
+        structured_verdict: None,
     }
 }
 

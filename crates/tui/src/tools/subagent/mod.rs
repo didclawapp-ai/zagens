@@ -33,6 +33,9 @@ use crate::tools::spec::{
 use crate::tools::todo::{SharedTodoList, TodoList};
 use crate::utils::spawn_supervised;
 
+use self::blackboard::{read_blackboard_section, write_blackboard_partition};
+
+pub mod blackboard;
 pub mod mailbox;
 #[allow(unused_imports)]
 pub use mailbox::{Mailbox, MailboxEnvelope, MailboxMessage, MailboxReceiver};
@@ -423,6 +426,11 @@ pub struct SubAgentResult {
     /// keeping the records reachable via `include_archived=true`.
     #[serde(default, skip_serializing_if = "is_false")]
     pub from_prior_session: bool,
+    /// Structured verdict parsed from the agent's final output
+    /// (`<!-- craft-verdict -->` fence). `None` when the agent did not
+    /// produce a structured verdict or parsing failed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub structured_verdict: Option<StructuredVerdict>,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -433,6 +441,8 @@ fn is_false(b: &bool) -> bool {
 pub(crate) struct SubAgentSpawnOptions {
     pub model: Option<String>,
     pub nickname: Option<String>,
+    /// Optional task id for blackboard association (CRAFT P1).
+    pub task_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -492,6 +502,9 @@ struct SpawnRequest {
     /// locality. A global ownership table prevents two agents from holding
     /// a resident lease on the same file simultaneously.
     resident_file: Option<String>,
+    /// Optional task id for blackboard association (CRAFT P1).
+    /// When set, the child reads/writes `.deepseek/blackboards/{task_id}.json`.
+    task_id: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -835,6 +848,7 @@ impl SubAgent {
             // this in when it produces a snapshot via its own
             // `snapshot_for_listing` helper (#405).
             from_prior_session: false,
+            structured_verdict: None,
         }
     }
 }
@@ -1118,6 +1132,7 @@ impl SubAgentManager {
             started_at,
             max_steps,
             input_rx,
+            task_id: options.task_id.clone(),
         };
         let handle = spawn_supervised(
             "subagent-task",
@@ -1223,6 +1238,7 @@ impl SubAgentManager {
                 started_at: restarted_at,
                 max_steps: self.max_steps,
                 input_rx,
+                task_id: None,
             };
             let handle = spawn_supervised(
                 "subagent-task-resume",
@@ -1620,6 +1636,10 @@ impl ToolSpec for AgentSpawnTool {
                 "resident_file": {
                     "type": "string",
                     "description": "Optional file path for cache-aware resident mode. When set, the child's system prefix is augmented with the full contents of this file so DeepSeek's prefix cache stays warm across follow-up send_input calls. Only one agent may hold a resident lease on a given file at a time — a second spawn with the same path receives a conflict warning in the result."
+                },
+                "task_id": {
+                    "type": "string",
+                    "description": "Optional task id for CRAFT blackboard association. When set, the child reads/writes `.deepseek/blackboards/{task_id}.json` so subsequent agents in the same task see structured context from prior agents."
                 }
             }
         })
@@ -1752,6 +1772,7 @@ impl ToolSpec for AgentSpawnTool {
                 SubAgentSpawnOptions {
                     model: Some(effective_model),
                     nickname: None,
+                    task_id: spawn_request.task_id.clone(),
                 },
             )
             .map_err(|e| ToolError::execution_failed(format!("Failed to spawn sub-agent: {e}")))?;
@@ -2612,10 +2633,27 @@ struct SubAgentTask {
     started_at: Instant,
     max_steps: u32,
     input_rx: mpsc::UnboundedReceiver<SubAgentInput>,
+    /// Optional task id for blackboard association (CRAFT P1).
+    task_id: Option<String>,
 }
 
 #[allow(clippy::too_many_lines)]
 async fn run_subagent_task(task: SubAgentTask) {
+    // CRAFT P4-light: create a git stash safety net before
+    // the Implementer modifies files. Non-fatal — if git
+    // isn't available or there's nothing to stash, we
+    // proceed anyway. The stash is a manual recovery aid,
+    // not an automated revert mechanism.
+    if task.agent_type == SubAgentType::Implementer {
+        let workspace = &task.runtime.context.workspace;
+        let stash_msg = format!("craft-auto-{}", &task.agent_id[..8.min(task.agent_id.len())]);
+        let _ = std::process::Command::new("git")
+            .args(["stash", "push", "--include-untracked", "-m", &stash_msg])
+            .current_dir(workspace)
+            .output();
+    }
+
+    let agent_type_for_blackboard = task.agent_type.clone();
     let result = run_subagent(
         &task.runtime,
         task.agent_id.clone(),
@@ -2626,6 +2664,7 @@ async fn run_subagent_task(task: SubAgentTask) {
         task.started_at,
         task.max_steps,
         task.input_rx,
+        task.task_id.clone(),
     )
     .await;
 
@@ -2633,6 +2672,11 @@ async fn run_subagent_task(task: SubAgentTask) {
     match &result {
         Ok(res) => manager.update_from_result(&task.agent_id, res.clone()),
         Err(err) => manager.update_failed(&task.agent_id, err.to_string()),
+    }
+
+    // CRAFT P1: write structured output to blackboard
+    if let (Some(tid), Ok(res)) = (task.task_id.as_deref(), &result) {
+        let _ = write_blackboard_partition(tid, &agent_type_for_blackboard, res);
     }
 
     // Emit BOTH a human-friendly summary (rendered in the parent's
@@ -2743,7 +2787,13 @@ async fn run_subagent(
     started_at: Instant,
     max_steps: u32,
     mut input_rx: mpsc::UnboundedReceiver<SubAgentInput>,
+    task_id: Option<String>,
 ) -> Result<SubAgentResult> {
+    // CRAFT P1: read blackboard at spawn time (snapshot — no live reload)
+    let blackboard_section = task_id
+        .as_deref()
+        .and_then(|tid| read_blackboard_section(tid, &agent_type));
+
     let system_prompt = build_subagent_system_prompt(&agent_type, &assignment);
     let tool_registry = SubAgentToolRegistry::new(
         runtime.clone(),
@@ -2772,7 +2822,12 @@ async fn run_subagent(
     let mut messages = vec![Message {
         role: "user".to_string(),
         content: vec![ContentBlock::Text {
-            text: build_assignment_prompt(&prompt, &assignment, &agent_type),
+            text: build_assignment_prompt(
+                &prompt,
+                &assignment,
+                &agent_type,
+                blackboard_section.as_deref(),
+            ),
             cache_control: None,
         }],
     }];
@@ -2808,6 +2863,7 @@ async fn run_subagent(
                 steps_taken: steps,
                 duration_ms: u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX),
                 from_prior_session: false,
+                structured_verdict: None,
             });
         }
 
@@ -2882,6 +2938,7 @@ async fn run_subagent(
                     duration_ms: u64::try_from(started_at.elapsed().as_millis())
                         .unwrap_or(u64::MAX),
                     from_prior_session: false,
+                    structured_verdict: None,
                 });
             }
             api = tokio::time::timeout(STEP_API_TIMEOUT, runtime.client.create_message(request)) => {
@@ -3007,6 +3064,10 @@ async fn run_subagent(
 
     release_resident_leases_for(&agent_id);
 
+    let structured_verdict = final_result
+        .as_deref()
+        .and_then(parse_structured_verdict);
+
     Ok(SubAgentResult {
         agent_id,
         agent_type,
@@ -3018,6 +3079,7 @@ async fn run_subagent(
         steps_taken: steps,
         duration_ms: u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX),
         from_prior_session: false,
+        structured_verdict,
     })
 }
 
@@ -3329,6 +3391,12 @@ fn parse_spawn_request(input: &Value) -> Result<SpawnRequest, ToolError> {
         .map(str::to_string)
         .filter(|s| !s.trim().is_empty());
 
+    let task_id = input
+        .get("task_id")
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+        .filter(|s| !s.trim().is_empty());
+
     Ok(SpawnRequest {
         prompt: prompt.clone(),
         agent_type,
@@ -3337,6 +3405,7 @@ fn parse_spawn_request(input: &Value) -> Result<SpawnRequest, ToolError> {
         model,
         cwd,
         resident_file,
+        task_id,
     })
 }
 
@@ -3609,15 +3678,20 @@ fn build_assignment_prompt(
     prompt: &str,
     assignment: &SubAgentAssignment,
     agent_type: &SubAgentType,
+    blackboard_section: Option<&str>,
 ) -> String {
     let role = assignment.role.as_deref().unwrap_or("default");
-    format!(
-        "Assignment metadata:\n- objective: {}\n- role: {}\n- resolved_type: {}\n\nTask:\n{}",
+    let header = format!(
+        "Assignment metadata:\n- objective: {}\n- role: {}\n- resolved_type: {}",
         assignment.objective,
         role,
         agent_type.as_str(),
-        prompt
-    )
+    );
+    if let Some(bb) = blackboard_section {
+        format!("{header}\n\n## Blackboard\n\n{bb}\n\nTask:\n{prompt}")
+    } else {
+        format!("{header}\n\nTask:\n{prompt}")
+    }
 }
 
 fn emit_agent_progress(
@@ -3766,11 +3840,19 @@ fn build_allowed_tools(
         ));
     }
 
-    // Default: full registry inheritance from the parent. The child sees
-    // every tool the parent has, including the sub-agent management family
-    // (so it can recurse). Sandbox + workspace + depth cap remain the
-    // safety net.
-    Ok(None)
+    // CRAFT P3: hard tool clipping for read-only roles.
+    // Explore and Review return explicit narrow lists — no write files,
+    // no shell. Other types keep full inheritance.
+    match agent_type {
+        SubAgentType::Explore => Ok(Some(vec![
+            "list_dir", "read_file", "grep_files", "file_search",
+            "web.run", "web_search", "note",
+        ].into_iter().map(String::from).collect())),
+        SubAgentType::Review => Ok(Some(vec![
+            "list_dir", "read_file", "grep_files", "file_search", "note",
+        ].into_iter().map(String::from).collect())),
+        _ => Ok(None),
+    }
 }
 
 fn summarize_subagent_result(result: &SubAgentResult) -> String {
@@ -3855,6 +3937,30 @@ const EXPLORE_AGENT_PROMPT: &str = concat!(
     "CHANGES will almost always be \"None.\" for an explorer.\n",
     "\n",
     include_str!("../../prompts/subagent_output_format.md"),
+    "\n",
+    "## Structured Output (CRAFT P1)\n",
+    "\n",
+    "After the report, append a machine-readable findings block in a\n",
+    "`<!-- craft-verdict -->` JSON fence so the Implementer can consume\n",
+    "your discoveries without re-reading the full report:\n",
+    "\n",
+    "<!-- craft-verdict -->\n",
+    "{\n",
+    "  \"verdict\": \"PASS\",\n",
+    "  \"items\": [\n",
+    "    {\n",
+    "      \"severity\": \"high\" | \"medium\" | \"low\",\n",
+    "      \"file\": \"path/relative/to/repo/root\",\n",
+    "      \"description\": \"what you found\",\n",
+    "      \"suggestion\": \"recommended action\"\n",
+    "    }\n",
+    "  ],\n",
+    "  \"summary\": \"one-line impact summary\"\n",
+    "}\n",
+    "\n",
+    "If you discovered nothing actionable, emit `\"items\": []` and\n",
+    "`\"summary\": \"No findings\"`. If you cannot produce valid JSON,\n",
+    "omit the fence entirely.\n",
 );
 
 const PLAN_AGENT_PROMPT: &str = concat!(
@@ -3909,6 +4015,39 @@ const REVIEW_AGENT_PROMPT: &str = concat!(
     "CHANGES will almost always be \"None.\" for a reviewer.\n",
     "\n",
     include_str!("../../prompts/subagent_output_format.md"),
+    "\n",
+    "## Structured Verdict Output\n",
+    "\n",
+    "After the structured report above, append a machine-readable verdict\n",
+    "JSON block so the parent can act on blockers without re-reading your\n",
+    "full output. Use the `<!-- craft-verdict -->` fence:\n",
+    "\n",
+    "<!-- craft-verdict -->\n",
+    "{\n",
+    "  \"verdict\": \"PASS\" | \"BLOCKER\" | \"MAJOR\" | \"FAIL\",\n",
+    "  \"items\": [\n",
+    "    {\n",
+    "      \"severity\": \"BLOCKER\" | \"MAJOR\" | \"MINOR\",\n",
+    "      \"file\": \"path/relative/to/repo/root\",\n",
+    "      \"line\": <u32 or null>,\n",
+    "      \"description\": \"what is wrong\",\n",
+    "      \"rule\": \"RULE_ID or null\",\n",
+    "      \"suggestion\": \"how to fix or null\"\n",
+    "    }\n",
+    "  ],\n",
+    "  \"summary\": \"one-line summary or null\"\n",
+    "}\n",
+    "\n",
+    "- \"BLOCKER\": must fix before merge (security, data loss, build break).\n",
+    "- \"MAJOR\": should fix (correctness, perf regression).\n",
+    "- \"MINOR\": nice to fix (style, nit).\n",
+    "- \"PASS\": no issues found.\n",
+    "- \"FAIL\": review could not complete (env issue, missing context).\n",
+    "\n",
+    "The `items` array may be empty when verdict is PASS. If you cannot\n",
+    "produce valid JSON (e.g. the output was truncated), omit the fence\n",
+    "entirely — the parent falls back to reading your natural-language\n",
+    "EVIDENCE section.\n",
 );
 
 const CUSTOM_AGENT_PROMPT: &str = concat!(
@@ -3976,7 +4115,105 @@ const VERIFIER_AGENT_PROMPT: &str = concat!(
     "CHANGES will almost always be \"None.\" for a verifier.\n",
     "\n",
     include_str!("../../prompts/subagent_output_format.md"),
+    "\n",
+    "## Diagnostic Output (two layers)\n",
+    "\n",
+    "When tests fail, include a structured diagnostic block to help the\n",
+    "Implementer debug without re-running the full suite:\n",
+    "\n",
+    "- **`observed`** (fact): the exact failing assertion, actual vs expected\n",
+    "  value, and the test name + line. Do not guess — copy from the log.\n",
+    "  Example: `test_login line 85: expected token.uid == 42, got None`.\n",
+    "- **`hypothesis`** (guess): your best guess at the root cause, marked\n",
+    "  with a confidence score. This is speculative — tag it as such.\n",
+    "  Example: `{\"guess\": \"auth/login.rs:42 missing user_id\", \"confidence\": 0.4}`.\n",
+    "- Prefer `cargo test -p <crate>` (or equivalent incremental command)\n",
+    "  over the full workspace suite when only one crate was modified.\n",
+    "- If the same test fails twice in a row, mark it as FAIL.\n",
+    "  If it fails only once, mark it as FLAKY with retry count.\n",
+    "\n",
+    "After the structured report, append a `<!-- craft-verdict -->` JSON\n",
+    "block (same schema as the Reviewer) summarizing the outcome with\n",
+    "verdict FAIL for any test or lint failure.\n",
 );
+
+// === Structured Verdict (CRAFT P0) ===
+
+/// Structured verdict produced by Review / Verifier sub-agents.
+/// Parsed from `<!-- craft-verdict -->` fence in the agent's final output.
+/// `None` when no fence is present or parsing fails — graceful degradation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StructuredVerdict {
+    pub verdict: VerdictLevel,
+    pub items: Vec<VerdictItem>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum VerdictLevel {
+    #[serde(rename = "PASS")]
+    Pass,
+    #[serde(rename = "BLOCKER")]
+    Blocker,
+    #[serde(rename = "MAJOR")]
+    Major,
+    #[serde(rename = "FAIL")]
+    Fail,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct VerdictItem {
+    /// "BLOCKER" | "MAJOR" | "MINOR"
+    pub severity: String,
+    /// Repository-relative path (e.g. "crates/tui/src/auth/login.rs")
+    pub file: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line: Option<u32>,
+    /// Human-readable description of what is wrong
+    pub description: String,
+    /// Rule id (e.g. "CROSS_PLATFORM", "TOKEN_INSECURE_RNG")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rule: Option<String>,
+    /// Suggested fix
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub suggestion: Option<String>,
+}
+
+/// Parse a `<!-- craft-verdict -->` JSON fence from the agent's final text output.
+///
+/// Strategy: search for the marker, extract the first `{…}` JSON block
+/// that follows, and deserialize. Returns `None` if the marker is absent
+/// or the JSON is unparseable — the caller falls back to natural-language
+/// processing (graceful degradation).
+fn parse_structured_verdict(text: &str) -> Option<StructuredVerdict> {
+    let marker = "<!-- craft-verdict -->";
+    let after_marker = text.find(marker).map(|idx| &text[idx + marker.len()..])?;
+
+    // Find the first '{' and matching '}'
+    let brace_start = after_marker.find('{')?;
+    let slice = &after_marker[brace_start..];
+
+    // Naive brace matching: find the final '}' that balances
+    let mut depth = 0i32;
+    let mut end = None;
+    for (i, ch) in slice.char_indices() {
+        match ch {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    end = Some(i + ch.len_utf8());
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let json_str = end.map(|e| &slice[..e])?;
+    serde_json::from_str::<StructuredVerdict>(json_str).ok()
+}
 
 // === Tests ===
 

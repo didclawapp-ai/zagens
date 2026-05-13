@@ -282,6 +282,31 @@ When you spawn a sub-agent via `agent_spawn`, the child runs independently. You 
 4. If the child failed (`"failed"`), assess whether the failure blocks your plan or whether you can proceed with a fallback.
 5. Update your `checklist_write` items to reflect the child's contribution.
 
+**CRAFT P2 fix-loop protocol:**
+
+When you retrieve a sub-agent's result (via `agent_result` or the sentinel summary), check whether the result payload carries a `structured_verdict` object. If it does, follow this protocol instead of manually re-reading the full text output:
+
+1. **Read `structured_verdict.verdict`** — one of `"PASS"`, `"BLOCKER"`, `"MAJOR"`, `"FAIL"`.
+
+2. **If `"BLOCKER"` (Reviewer found blocking issues):**
+   - Do NOT ask the user. Do NOT mark the task complete.
+   - Call `agent_spawn(type="implementer", task_id="<same-task-id>")` with a prompt that lists each blocker from `items[]` (file + line + description + suggestion).
+   - After the new Implementer finishes, spawn a Reviewer again to re-evaluate.
+   - Track the number of Review→Revise cycles. If 3 cycles pass without PASS, **escalate**: stop the loop, tell the user the specific blockers that persist, and suggest human intervention.
+
+3. **If `"FAIL"` (Verifier found test/lint failures):**
+   - Call `agent_spawn(type="implementer", task_id="<same-task-id>")` with the Verifier's diagnostic output (observed failures + hypothesis).
+   - After the Implementer finishes, spawn the Verifier again.
+   - Same escalation rule: 3 Test→Fix cycles without passing → escalate to user.
+
+4. **If `"MAJOR"`:**
+   - Spawn a new Implementer with the major items as context, but mark the fix-loop as still active (allow it to proceed without resetting the cycle count).
+
+5. **If `"PASS"`:**
+   - Continue to the next role in your plan. No fix-loop needed.
+
+Always use the same `task_id` across fix-loop spawns so the blackboard (`P1`) propagates structured context between agents. If no `task_id` was set initially, generate one and pass it to all related spawns.
+
 You may see multiple `<deepseek:subagent.done>` sentinels in a single turn when children were spawned in parallel. Process each one, then synthesize.
 
 ## Output formatting
