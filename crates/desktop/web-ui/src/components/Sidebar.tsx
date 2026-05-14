@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useT, LOCALE_LABELS } from '../i18n';
+import type { Locale } from '../i18n';
 import type { RightPanelView } from './RightPanel';
 import type { RuntimeConnectionState } from '../api/client';
 
@@ -47,6 +49,7 @@ export default function Sidebar({
   theme,
   onToggleTheme,
 }: Props) {
+  const { t, locale, setLocale } = useT();
   return (
     <aside
       className="flex w-60 shrink-0 flex-col border-r border-rail-edge bg-canvas"
@@ -74,18 +77,18 @@ export default function Sidebar({
           <svg viewBox="0 0 24 24">
             <path d="M12 5v14M5 12h14" />
           </svg>
-          新对话
+          {t('sidebar.newSession')}
         </button>
         <button
           type="button"
           className={navBtn(activeInspector === 'workspace')}
           onClick={() => onInspectorChange('workspace')}
-          aria-label="工作台"
+          aria-label={t('sidebar.workspace')}
         >
           <svg viewBox="0 0 24 24" className="inline w-4 h-4 mr-2 stroke-current align-text-bottom" style={{ fill: 'none', strokeWidth: 1.6 }}>
             <path d="M4 6h16v12H4z M8 6V4h8v2" />
           </svg>
-          工作台
+          {t('sidebar.workspace')}
         </button>
         {/* 设置 accordion — sub-items expand/collapse on click */}
         <SettingsAccordion
@@ -97,10 +100,10 @@ export default function Sidebar({
 
       <div className="flex-1 min-h-0 overflow-y-auto px-2 py-2">
         <p className="px-2.5 py-2 text-[11px] font-semibold uppercase tracking-wider text-t-text-muted">
-          会话
+          Sessions
         </p>
         {sessions.length === 0 && (
-          <p className="text-xs text-t-text-muted px-2.5 py-4 text-center">暂无会话</p>
+          <p className="text-xs text-t-text-muted px-2.5 py-4 text-center">{t('common.noSessions')}</p>
         )}
         {sessions.map((s) => {
           const isActive = activeSessionId != null && s.id === activeSessionId;
@@ -153,10 +156,10 @@ export default function Sidebar({
             }`}
           />
           <span className="truncate">
-            {runtimeConn === 'checking' && '检测运行时…'}
-            {runtimeConn === 'connected' && '运行时就绪'}
-            {runtimeConn === 'offline' && '离线'}
-            {runtimeConn === 'auth_mismatch' && '令牌不一致'}
+            {runtimeConn === 'checking' && t('common.runtimeChecking')}
+            {runtimeConn === 'connected' && t('common.runtimeReady')}
+            {runtimeConn === 'offline' && t('common.runtimeOffline')}
+            {runtimeConn === 'auth_mismatch' && t('common.runtimeAuthMismatch')}
           </span>
         </div>
         {desktopHost && apiKeyConfigured === false && (
@@ -178,11 +181,26 @@ export default function Sidebar({
               <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
             )}
           </svg>
-          {theme === 'light' ? '暗色模式' : '浅色模式'}
+          {theme === 'light' ? t('sidebar.themeDark') : t('sidebar.themeLight')}
         </button>
       </div>
 
-      <div className="shrink-0 px-3.5 py-2.5 border-t border-divider space-y-0.5">
+      <div className="shrink-0 px-3.5 py-2 border-t border-divider space-y-1.5">
+        <label className="flex items-center gap-2 text-[10px] text-t-text-muted">
+          <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 stroke-current" style={{ fill: 'none', strokeWidth: 1.6 }}>
+            <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z" />
+            <path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
+          </svg>
+          <select
+            value={locale}
+            onChange={(e) => setLocale(e.target.value as Locale)}
+            className="bg-transparent text-t-text-muted cursor-pointer outline-none"
+          >
+            {(Object.entries(LOCALE_LABELS) as [Locale, string][]).map(([id, label]) => (
+              <option key={id} value={id}>{label}</option>
+            ))}
+          </select>
+        </label>
         <p className="text-[10px] text-t-text-muted">DS Pick v0.2.2</p>
         <p className="text-[10px] text-t-text-muted/80 leading-snug">
           基于 DeepSeek TUI 运行时（<code className="font-mono">deepseek</code> CLI）

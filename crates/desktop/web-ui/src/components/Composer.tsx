@@ -6,6 +6,7 @@ import {
   useCallback,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { useT } from '../i18n';
 import type { DesktopModelId, DesktopRouteIntentOption, DesktopRunModeId } from '../types/desktop';
 import {
   DESKTOP_MODEL_LABELS,
@@ -411,6 +412,7 @@ export default function Composer({
   resumedThreadActive = false,
   onOpenModelParams,
 }: Props) {
+  const { t } = useT();
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState<AttachedFile[]>([]);
   const [transcribing, setTranscribing] = useState(false);
@@ -559,7 +561,7 @@ export default function Composer({
 
     const badImages = attachments.filter((a) => a.kind === 'image' && !a.imageDataUrl);
     if (badImages.length > 0) {
-      setBridgeError('存在无法转写的图片（过大或读取失败），请移除后重试。');
+      setBridgeError(t('composer.badImagesError'));
       return;
     }
     setBridgeError(null);
@@ -580,12 +582,12 @@ export default function Composer({
           '【系统说明】以下是「视觉桥接」模型从你粘贴/附带图片中识别的文字描述；这是消息内嵌内容，不等同于当前工作区内任何路径上的文件。\n请直接据此回答用户提问，不要把工作区文件名与上述插图混为一谈。\n';
         const chunks: string[] = [];
         for (let i = 0; i < imageAtt.length; i++) {
-          const t = await invoke<string>('vision_transcribe_image', {
+          const transcription = await invoke<string>('vision_transcribe_image', {
             dataUrl: imageAtt[i].imageDataUrl,
           });
-          const body = typeof t === 'string' ? t.trim() : String(t).trim();
+          const body = typeof transcription === 'string' ? transcription.trim() : String(transcription).trim();
           if (!body) {
-            throw new Error('视觉桥接返回空内容，可能是提供商响应格式未被识别。');
+            throw new Error(t('composer.visionBridgeEmpty'));
           }
           chunks.push(`### 附图 ${i + 1}\n\n${body}`);
         }
@@ -715,7 +717,7 @@ export default function Composer({
       const selected = await open({
         directory: true,
         multiple: false,
-        title: '选择工作区目录',
+        title: t('composer.chooseWorkspace'),
         ...(defaultPath ? ({ defaultPath } as Record<string, string>) : {}),
       });
       const dir = firstDirectoryFromPickerResult(selected);
@@ -729,9 +731,7 @@ export default function Composer({
         /* Parent shows banner */
       }
     } catch {
-      setWorkspacePickError(
-        '无法唤起系统文件夹对话框（常见于浏览器或未集成 Tauri）。请直接使用下方输入路径，或在 DS Pick 桌面版中重试。',
-      );
+      setWorkspacePickError(t('composer.pickError'));
     } finally {
       setIsPickingDir(false);
       requestAnimationFrame(() => repositionWorkspacePopover());
@@ -795,12 +795,12 @@ export default function Composer({
       <div
         ref={workspacePopoverPanelRef}
         role="menu"
-        aria-label="选择工作区"
+        aria-label={t('composer.chooseWorkspace')}
         className="fixed z-[10050] w-72 max-h-[min(70vh,calc(100vh-24px))] overflow-y-auto rounded-lg border border-card-border bg-card p-3 shadow-lg ring-1 ring-black/[0.08] dark:ring-white/[0.12]"
         style={{ top: workspacePopoverPos.top, left: workspacePopoverPos.left }}
       >
         <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-t-text-muted">
-          工作区目录
+          {t('composer.workspaceLabel')}
         </p>
         <div className="mb-2 rounded-md border border-card-border bg-canvas-alt px-2.5 py-1.5 font-mono text-[11px] text-t-text-secondary break-all">
           {workspace}
@@ -814,19 +814,16 @@ export default function Composer({
           <svg viewBox="0 0 24 24" className="size-4 stroke-current" style={{ fill: 'none', strokeWidth: 1.6 }}>
             <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
           </svg>
-          {isPickingDir ? '正在打开文件夹对话框…' : '浏览文件夹…'}
+          {isPickingDir ? t('composer.selectingFolder') : t('composer.browseFolder')}
         </button>
         {workspacePickError && (
           <p className="mb-3 text-[11px] leading-snug text-amber-text">{workspacePickError}</p>
         )}
         {resumedThreadActive && (
-          <p className="mb-3 text-[11px] leading-snug text-t-text-secondary">
-            已恢复运行时线程：<code className="font-mono">read_file</code> 使用服务端绑定的<strong>线程工作区</strong>；
-            在此修改并经 PATCH 生效后才会切换绑定；回合进行中时服务端可能拒绝更改。
-          </p>
+          <p className="mb-3 text-[11px] leading-snug text-t-text-secondary" dangerouslySetInnerHTML={{ __html: t('composer.threadWorkspaceNotice') }} />
         )}
         <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-t-text-muted">
-          或手动输入路径
+          {t('composer.manualPath')}
         </div>
         <div className="flex gap-2">
           <input
@@ -842,7 +839,7 @@ export default function Composer({
             onClick={() => void confirmWorkspaceInput()}
             className="shrink-0 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-text hover:brightness-105"
           >
-            确定
+            {t('composer.confirm')}
           </button>
         </div>
       </div>,
@@ -863,13 +860,13 @@ export default function Composer({
                   disabled={disabled}
                   className="rounded border-input-border bg-input-bg text-accent focus:ring-accent"
                 />
-                自动批准工具调用
+                {t('composer.autoApprove')}
               </label>
             ) : (
               <span className="max-w-xs leading-snug text-t-text-muted">
                 {runMode === 'plan'
-                  ? 'Plan：只读勘探、关闭 Shell（allow_shell=false），沙箱不向 WorkspaceWrite + 网络 升格。'
-                  : 'YOLO：DangerFullAccess + trust_mode + auto_approve。'}
+                  ? t('composer.planModeHint')
+                  : t('composer.yoloModeHint')}
               </span>
             )}
             <div className="hidden h-4 w-px shrink-0 bg-divider sm:block" aria-hidden />
@@ -883,7 +880,7 @@ export default function Composer({
                 title={DESKTOP_RUN_MODE_HINTS[runMode]}
                 className="pill-btn font-medium text-t-text-secondary"
               >
-                模式：<span className="text-accent">{DESKTOP_RUN_MODE_LABELS[runMode]}</span>
+                {t('composer.modeLabel')}<span className="text-accent">{DESKTOP_RUN_MODE_LABELS[runMode]}</span>
                 <svg viewBox="0 0 24 24" style={{ width: 12, height: 12 }}>
                   <path d="M6 9l6 6 6-6" />
                 </svg>
@@ -892,7 +889,7 @@ export default function Composer({
                 <div
                   className="absolute bottom-full left-0 z-[10040] mb-1 w-[min(100vw-2rem,20rem)] max-w-[320px] rounded-lg border border-card-border bg-card p-1.5 shadow-lg ring-1 ring-black/[0.06] dark:ring-white/[0.08]"
                   role="listbox"
-                  aria-label="选择运行模式"
+                  aria-label={t('composer.selectMode')}
                 >
                   {(['plan', 'agent', 'yolo'] as DesktopRunModeId[]).map((id) => (
                     <button
@@ -933,7 +930,7 @@ export default function Composer({
                 <div
                   className="absolute bottom-full left-0 z-[10040] mb-1 w-[min(100vw-2rem,22rem)] max-w-[360px] rounded-lg border border-card-border bg-card p-1.5 shadow-lg ring-1 ring-black/[0.06] dark:ring-white/[0.08]"
                   role="listbox"
-                  aria-label="路由意图（routing_rules.json）"
+                  aria-label={t('composer.selectRouteIntent')}
                 >
                   {ROUTE_INTENT_IDS.map((id) => (
                     <button
@@ -959,19 +956,19 @@ export default function Composer({
                 type="button"
                 disabled={!sessionExportEnabled}
                 onClick={onExportSessionJson}
-                title="导出当前侧栏会话快照（与 ~/.deepseek/sessions 一致）"
+                title={t('composer.exportSessionTitle')}
                 className="pill-btn text-[11px] font-medium disabled:opacity-40"
               >
-                导出会话 JSON
+                {t('composer.exportSession')}
               </button>
               <button
                 type="button"
                 disabled={!threadExportEnabled}
                 onClick={onExportThreadJson}
-                title="导出运行时线程 JSON（ThreadRecord）"
+                title={t('composer.exportThreadTitle')}
                 className="pill-btn text-[11px] font-medium disabled:opacity-40"
               >
-                导出线程 JSON
+                {t('composer.exportThread')}
               </button>
             </div>
           </div>
@@ -980,7 +977,7 @@ export default function Composer({
             <p className="px-3 pt-3 text-xs text-error-text leading-relaxed">{bridgeError}</p>
           )}
           {transcribing && (
-            <p className="px-3 pt-3 text-xs text-accent leading-relaxed">正在通过视觉桥接提取图片文字…</p>
+            <p className="px-3 pt-3 text-xs text-accent leading-relaxed">{t('composer.transcribing')}</p>
           )}
           {attachments.length > 0 && (
             <div className="flex flex-wrap gap-1.5 px-3 pt-3 pb-0">
@@ -1005,12 +1002,12 @@ export default function Composer({
                   <span className="max-w-[200px] truncate">{f.name}</span>
                   {f.kind === 'image' && !f.imageDataUrl && (
                     <span className="text-[10px] text-amber-text" title={f.omitReason}>
-                      无效
+                      {t('composer.invalid')}
                     </span>
                   )}
                   {f.kind !== 'image' && !f.inlined && (
                     <span className="text-[10px] text-amber-text" title={f.omitReason}>
-                      仅引用
+                      {t('composer.onlyReference')}
                     </span>
                   )}
                   {f.kind !== 'image' && f.inlined && f.truncated && <span className="text-amber-text">⧉</span>}
@@ -1018,7 +1015,7 @@ export default function Composer({
                     type="button"
                     onClick={() => removeAttachment(i)}
                     className="ml-0.5 text-t-text-muted hover:text-t-error"
-                    title="移除"
+                    title={t('composer.removeAttachment')}
                   >
                     ×
                   </button>
@@ -1035,8 +1032,8 @@ export default function Composer({
             }}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            aria-label="输入消息"
-            placeholder="今天需要什么帮助？（可粘贴截图）"
+            aria-label={t('composer.inputMessage')}
+            placeholder={t('composer.placeholder')}
             disabled={disabled || transcribing}
             rows={2}
             className="w-full resize-none border-none bg-transparent px-4 py-3.5 text-sm text-t-text placeholder-t-text-muted focus:outline-none disabled:opacity-50"
@@ -1054,7 +1051,7 @@ export default function Composer({
             <button
               type="button"
               className="pill-btn"
-              title="附加文件或图片（图片在发送前经视觉桥接转写；纯文本文件可嵌入）"
+              title={t('composer.attach')}
               disabled={disabled || transcribing || attachments.length >= MAX_ATTACHMENTS}
               onClick={handleAttachClick}
             >
@@ -1104,7 +1101,7 @@ export default function Composer({
                 <button
                   type="button"
                   className="pill-btn px-2"
-                  title="模型参数"
+                  title={t('composer.modelParams')}
                   onClick={(e) => { e.stopPropagation(); onOpenModelParams(); }}
                 >
                   <svg viewBox="0 0 24 24" style={{ width: 14, height: 14, stroke: 'currentColor', fill: 'none', strokeWidth: 1.6 }}>
@@ -1117,7 +1114,7 @@ export default function Composer({
                 <div
                   className="absolute bottom-full left-0 z-[10040] mb-1 w-48 rounded-lg border border-card-border bg-card p-1.5 shadow-lg ring-1 ring-black/[0.06] dark:ring-white/[0.08]"
                   role="listbox"
-                  aria-label="选择模型"
+                  aria-label={t('composer.selectModel')}
                 >
                   {(Object.entries(DESKTOP_MODEL_LABELS) as [DesktopModelId, string][]).map(
                     ([id, label]) => (
@@ -1159,7 +1156,7 @@ export default function Composer({
               onClick={() => void handleSend()}
               disabled={disabled || transcribing || (!text.trim() && attachments.length === 0)}
               className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-full bg-accent text-accent-text shadow-md hover:brightness-105 disabled:opacity-40 disabled:shadow-none"
-              title={transcribing ? '视觉桥接处理中…' : '发送'}
+              title={transcribing ? t('composer.transcribing') : t('composer.send')}
             >
               <svg
                 viewBox="0 0 24 24"
@@ -1175,7 +1172,7 @@ export default function Composer({
                 onClick={onCancel}
                 className="flex-shrink-0 rounded-lg bg-hover-strong px-4 py-2 text-sm font-medium text-t-text transition-colors hover:bg-hover"
               >
-                停止
+                {t('composer.stop')}
               </button>
             ) : null}
           </div>

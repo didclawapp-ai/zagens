@@ -8,6 +8,7 @@ import {
   type RuntimeConnectionState,
 } from '../api/client';
 import type { TaskSummary, SkillEntry, CreateTaskRequest } from '../types/automation';
+import { useT } from '../i18n';
 
 /** 定时自动化（GET /v1/automations）暂不展示 — 见 docs/desktop/TUI_DS_PICK_GAP.md */
 type TabId = 'tasks' | 'skills';
@@ -56,6 +57,7 @@ function canCancelTask(status: string): boolean {
 }
 
 export default function AutomationPanel({ runtimeConn }: { runtimeConn: RuntimeConnectionState }) {
+  const { t } = useT();
   const [tab, setTab] = useState<TabId>('tasks');
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
   const [skills, setSkills] = useState<SkillEntry[]>([]);
@@ -120,22 +122,22 @@ export default function AutomationPanel({ runtimeConn }: { runtimeConn: RuntimeC
   if (runtimeConn !== 'connected') {
     return (
       <div className="p-4 text-xs text-t-text-muted text-center space-y-2">
-        <p>等待运行时连接…</p>
-        <p className="text-[10px]">任务与技能将在运行时就绪后自动加载。</p>
+        <p>{t('automation.waitingRuntime')}</p>
+        <p className="text-[10px]">{t('automation.waitingDetail')}</p>
       </div>
     );
   }
 
   if (loading && tasks.length === 0 && skills.length === 0) {
-    return <div className="p-4 text-xs text-t-text-muted text-center">正在加载…</div>;
+    return <div className="p-4 text-xs text-t-text-muted text-center">{t('automation.loading')}</div>;
   }
 
   if (error && tasks.length === 0 && skills.length === 0) {
     return (
       <div className="p-4 space-y-2">
-        <p className="text-xs text-t-error">加载失败：{error}</p>
+        <p className="text-xs text-t-error">{t('automation.loadFailed', { error })}</p>
         <button type="button" onClick={reload} className="text-xs text-accent hover:underline">
-          重试
+          {t('automation.retry')}
         </button>
       </div>
     );

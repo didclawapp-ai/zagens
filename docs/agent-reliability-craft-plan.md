@@ -607,10 +607,49 @@ P2 依赖 P0（`structured_verdict` 字段出现在 `agent_result` JSON 载荷�
 - [MODES.md](MODES.md) — Plan / Agent / YOLO 与审批  
 - [docs/desktop/DESKTOP_IMPLEMENTATION_PLAN.md](desktop/DESKTOP_IMPLEMENTATION_PLAN.md) — 桌面与 sidecar  
 - [docs/tui/PROMPT_ANALYSIS.md](tui/PROMPT_ANALYSIS.md) — 提示与委托策略  
+- [docs/LOCALIZATION.md](LOCALIZATION.md) — TUI 侧 locale（桌面 i18n 可日后对齐）
 
 ---
 
-**下一步：** P0-P4 全部交付。CRAFT 向的工程改动已完成。后续可：
-- 在实际编程任务中端到端验证 P0-P4 的精度提升效果（A/B 对比）
-- 收集 Reviewer 假阳性 / Verifier 根因假设准确率数据
-- 按真实需求评估 P4 完整版（worktree + Integrator）
+## 附录 A：行业「目标 / 闭环」形态与 CRAFT 的母题对齐
+
+> **说明：** 本节整理自公开测评、推文与图解类二手材料，用于**对齐概念**；不替代各产品官方文档，亦不构成对其工程实现的担保。
+
+多款编程 Agent 产品在相近时期集中强调 **`/goal`、Ralph Loop、completion condition** 等能力，与本文 **Verifier + 结构化裁决 + Fix-Loop** 同属一条母题：**完成条件必须可核验，且不能仅依赖执行模型自证「做完了」**。
+
+| 侧重点（市面叙述） | 典型做法（概念层） | 与本文 CRAFT 的映射 |
+|--------------------|---------------------|---------------------|
+| **Codex**：持久化、`update_goal`、断点续跑、上下文将尽时「软着陆」 | 目标作为**会话外仍存在的对象**，进度可写回本地层 | 可与 **P1 黑板 `task_id` + 会话持久化** 结合扩展为「显式 Goal 记录与恢复」 |
+| **Hermes**：看板 / SQLite、多 Worker 进程、心跳与僵尸回收、**嘴上说完成要先过验证**、`/rollback` 与快照 | **调度隔离 + 不烂尾 + 可回滚** | 对齐 **P3 工具硬裁剪**、Verifier **observed 事实门禁**；P4 stash 快照是轻量后悔药；**完整 worktree + 调度器** 仍可待独立 RFC |
+| **Claude Code**：`/goal` 条件循环、**独立小模型当验收官**（与执行模型分离）、`--resume` / 非交互 `-p`、`Agent View` | **Dual judge** + CLI/CI 友好 | 本文 P2 以 **`structured_verdict` + prompt 分支**起步；远期可加 **Cheap model / 规则引擎二次验收**，降低仅依赖主模型读 JSON 的脆弱性 |
+
+**结论：** 「/goal」类能力与 CRAFT **不是两套哲学**——包装不同，核心都是 **门禁 + 闭环 +（可选）独立验收**。本仓库落点重在 **开源 runtime、`agent_spawn` 角色 taxonomy、黑板渐进落地**。
+
+---
+
+## 11. 后续改进方向
+
+以下按 **与 CRAFT 直接相关 → 产品与生态 → 证据与演进** 排列，可作 issue/里程碑 backlog。
+
+### 11.1 与 CRAFT 直接衔接
+
+1. **端到端验证与 A/B** — 对比「单 Agent 长会话」与「CRAFT 角色链 / 黑板」：首轮正确率、闭环次数、token 与墙钟时间、人工介入次数。（亦见 §9 风险表。）
+2. **结构化输出质量数据** — 统计 `structured_verdict` 解析成功率、Reviewer 假阳性/假阴性、Verifier `hypothesis` 相对最终根因的命中率；驱动提示词或小验收模型迭代。
+3. **程序化闭环（Rust 钩子，可选）** — 若 P2 prompt 在实践中易被主模型跳过，评估 **spawn/turn 结束回调**（§5.4.1 选项 3）：仅处理 `BLOCKER` + `task_id` 再派发，减小对提示词依赖。
+4. **Goal 显性化（产品概念）** — UI/会话层展示「当前目标」，与 `task_id`/黑板绑定；远期支持恢复会话后继续同一 goal，贴近市面 `--resume` 叙事，底层仍复用 thread/session/blackboard。
+5. **P4 完整版 RFC（按需）** — `git worktree` / 副本工作区 + Integrator 合并闸门；仅在强隔离或多并行需求明确时再开。
+
+### 11.2 工作区约束与用户体验
+
+6. **工作区规则产品化** — 在既有 `instructions = [...]`（见 `config.example.toml`）之上，可增加 **约定文件自动装载**（如 `PROJECT_RULES.md`）、DS Pick **只读展示已加载规则**。`.cursor/rules` 不会自动进 runtime，需显式映入 `instructions`。
+7. **DS Pick** — Web UI **i18n**、**更新/升级**（从「关于 + 跳转 Release」到 Tauri updater）、对 **黑板 / task** 状态的轻量可视（仍遵守 §8：编排优先落在 `serve --http` 层）。
+
+### 11.3 文档、安全与近期动作
+
+8. **短文档蒸馏** — 将附录 A 与 §7「变更摘要」收成 contributor/用户向一页速读。
+9. **安全与供应链** — 自动化更新若涉及二进制拉取，须对齐 [SECURITY.md](SECURITY.md) 与 `.cursor/rules/security-trust.mdc`。
+10. **即刻可做** — 跑通全链 CRAFT、收集围栏缺失/JSON 截断样本、按上表拆解带验收标准的 issue。
+
+---
+
+**文档修订记录（摘要）：** 增补附录 A、§11；§10 增加 LOCALIZATION 链接。

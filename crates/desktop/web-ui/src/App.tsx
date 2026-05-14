@@ -22,6 +22,7 @@ import {
   type SessionInfo,
   type SseTurnEvent,
 } from './api/client';
+import { useT } from './i18n';
 import { normalizeDesktopStreamEvent, type NormalizedStreamEvent } from './api/streamNormalize';
 import ChatView from './components/ChatView';
 import Composer, { type ComposerOutboundMessage } from './components/Composer';
@@ -53,7 +54,7 @@ function shouldClearBannerWhenRuntimeConnected(banner: string): boolean {
   if (/token|未授权|401|Bearer|运行时 token/i.test(banner)) {
     return true;
   }
-  if (/无法连接本地运行时|仍未连接本地运行时/.test(banner)) {
+  if (/无法连接本地运行时|仍未连接本地运行时|still not connected|cannot reach local runtime/i.test(banner)) {
     return true;
   }
   const transport = /failed to fetch|load failed|networkerror|network request failed|econnrefused|若刚重启应用|127\.0\.0\.1:\d+/i.test(
@@ -237,6 +238,7 @@ function applyTheme(theme: Theme) {
 }
 
 export default function App() {
+  const { t } = useT();
   const [theme, setTheme] = useState<Theme>(loadTheme);
   const [selectedModel, setSelectedModel] = useState<DesktopModelId>(() => loadComposerPrefs().model);
   const [selectedWorkspace, setSelectedWorkspace] = useState(() => loadComposerPrefs().workspace);
@@ -270,15 +272,15 @@ export default function App() {
   }, [desktopHost]);
 
   useKeyboardShortcuts([
-    { key: 'k', ctrl: true, description: '新对话', handler: () => handleNewSession() },
-    { key: 'n', ctrl: true, description: '工作台', handler: () => setActiveInspector('workspace') },
-    { key: 'f12', global: true, description: '开发者工具', handler: () => toggleDevtools() },
+    { key: 'k', ctrl: true, description: t('keyboard.newSession'), handler: () => handleNewSession() },
+    { key: 'n', ctrl: true, description: t('keyboard.workspace'), handler: () => setActiveInspector('workspace') },
+    { key: 'f12', global: true, description: t('keyboard.devtools'), handler: () => toggleDevtools() },
     {
       key: 'i',
       ctrl: true,
       shift: true,
       global: true,
-      description: '开发者工具',
+      description: t('keyboard.devtools'),
       handler: () => toggleDevtools(),
     },
   ]);
@@ -371,11 +373,9 @@ export default function App() {
     } catch (e) {
       const err = e as Error & { status?: number };
       if (err.status === 401) {
-        setBanner(
-          '未授权：运行时 token 无效。请通过桌面应用启动（或检查 DEEPSEEK_RUNTIME_TOKEN / sidecar 与 WebView 是否同一会话）。',
-        );
+        setBanner(t('banner.unauthorized'));
       } else {
-        setBanner(`无法加载会话列表：${err.message}`);
+        setBanner(t('banner.loadSessionsError', { message: err.message }));
       }
       reconcileRuntimeAfterFetchFailure();
     }
@@ -446,14 +446,12 @@ export default function App() {
       const probed = await probeRuntimeConnection();
       setRuntimeConn(probed);
       if (!ok) {
-        setBanner(
-          `仍未连接本地运行时（${runtimeUrl}）。请确认已安装带 sidecar 的版本，或重启应用后再试。`,
-        );
+        setBanner(t('banner.runtimeUnreachableStartup', { url: runtimeUrl }));
         return;
       }
       await refreshSessions();
     } catch (e) {
-      setBanner(`重试失败：${(e as Error).message}`);
+      setBanner(t('banner.retryFailed', { message: (e as Error).message }));
       setRuntimeConn('offline');
     }
   }, [refreshSessions]);
@@ -471,15 +469,13 @@ export default function App() {
           return;
         }
         if (!ok) {
-          setBanner(
-            `无法连接本地运行时（${getRuntimeBase()}）。本地服务可能仍在启动，请点击「重试连接」；若多次失败请重启应用或检查是否已内置 sidecar。`,
-          );
+          setBanner(t('banner.runtimeUnreachable', { url: getRuntimeBase() }));
           return;
         }
         await refreshSessions();
       } catch (e) {
         if (!cancelled) {
-          setBanner(`启动检查失败：${(e as Error).message}`);
+          setBanner(t('banner.bootCheckFailed', { message: (e as Error).message }));
           setRuntimeConn('offline');
         }
       }
@@ -586,7 +582,7 @@ export default function App() {
             return;
           }
           const errMsg = syncErr instanceof Error ? syncErr.message : String(syncErr);
-          setBanner(`已恢复运行时线程，但读取线程工作区失败：${errMsg}`);
+          setBanner(t('banner.threadWorkspaceError', { errMsg }));
           reconcileRuntimeAfterFetchFailure();
         }
         try {
@@ -600,14 +596,14 @@ export default function App() {
         }
         const err = e as Error & { status?: number };
         if (err.status === 401) {
-          setBanner('未授权 (401)：请使用桌面壳启动 sidecar 或提供正确的运行时 token。');
+          setBanner(t('banner.unauthorized401'));
         } else {
-          setBanner(`加载会话失败：${err.message}`);
+          setBanner(t('banner.loadSessionFailed', { message: err.message }));
         }
         reconcileRuntimeAfterFetchFailure();
       }
     },
-    [mapSessionMessages, reconcileRuntimeAfterFetchFailure],
+    [mapSessionMessages, reconcileRuntimeAfterFetchFailure, t],
   );
 
   /** After the sidebar session list loads, re-open the last desktop session (if still present). */
@@ -653,7 +649,7 @@ export default function App() {
 
   const handleDeleteSession = useCallback(
     async (sessionId: string) => {
-      if (!confirm('确定删除此会话？')) return;
+      if (!confirm(t('sidebar.deleteConfirm'))) return;
       setBanner(null);
       try {
         await deleteSession(sessionId);
@@ -663,10 +659,10 @@ export default function App() {
         await refreshSessions();
       } catch (e) {
         const err = e as Error & { status?: number };
-        setBanner(`删除会话失败：${err.message}`);
+        setBanner(t('banner.deleteSessionFailed', { message: err.message }));
       }
     },
-    [activeSessionId, handleNewSession, refreshSessions],
+    [activeSessionId, handleNewSession, refreshSessions, t],
   );
 
   const handleCancelStream = useCallback(() => {
@@ -677,7 +673,7 @@ export default function App() {
     async (next: string) => {
       const trimmed = next.trim();
       if (!trimmed) {
-        throw new Error('工作区不能为空');
+        throw new Error(t('banner.workspaceEmpty'));
       }
       if (!resumedThreadId) {
         setSelectedWorkspace(trimmed);
@@ -690,16 +686,14 @@ export default function App() {
         const err = e as Error & { status?: number };
         let msg = err.message ?? String(e);
         if (/active turn|finish or interrupt/i.test(msg)) {
-          setBanner(
-            '当前线程有进行中的回合，暂无法切换工作区。请先停止生成或等待该回合结束后再试。',
-          );
+          setBanner(t('banner.activeTurnBlocking'));
         } else {
-          setBanner(`更新线程工作区失败：${msg}`);
+          setBanner(t('banner.updateThreadWorkspace', { msg }));
         }
         throw err;
       }
     },
-    [resumedThreadId],
+    [resumedThreadId, t],
   );
 
   const closePanelPreview = useCallback(() => {
@@ -709,7 +703,7 @@ export default function App() {
   const openWorkspaceFileForPreview = useCallback(
     async (relPath: string, title?: string) => {
       if (runtimeConn !== 'connected') {
-        throw new Error('本地运行时未连接');
+        throw new Error(t('banner.runtimeNotConnected'));
       }
       setActiveInspector('workspace');
       setFocusWorkspaceFilesNonce((n) => n + 1);
@@ -722,7 +716,7 @@ export default function App() {
       });
       setPanelPreview(state);
     },
-    [runtimeConn, selectedWorkspace, resumedThreadId, desktopHost],
+    [runtimeConn, selectedWorkspace, resumedThreadId, desktopHost, t],
   );
 
   const handleChatOpenWorkspacePath = useCallback(
@@ -731,15 +725,15 @@ export default function App() {
         await openWorkspaceFileForPreview(relPath);
       } catch (e) {
         const err = e instanceof Error ? e.message : String(e);
-        setBanner(`无法打开文件：${err}`);
+        setBanner(t('banner.openFileFailed', { err }));
       }
     },
-    [openWorkspaceFileForPreview],
+    [openWorkspaceFileForPreview, t],
   );
 
   const handleExportSessionJson = useCallback(async () => {
     if (!activeSessionId) {
-      setBanner('导出会话快照请先在侧栏选中一条会话');
+      setBanner(t('banner.exportNoSession'));
       return;
     }
     const sid = activeSessionId;
@@ -747,7 +741,7 @@ export default function App() {
       const { save } = await import('@tauri-apps/plugin-dialog');
       const { invoke } = await import('@tauri-apps/api/core');
       const savePath = await save({
-        title: '导出会话 JSON（与 ~/.deepseek/sessions 快照一致）',
+        title: t('composer.exportSessionTitle'),
         defaultPath: `deepseek-session-${sid.slice(0, 8)}.json`,
         filters: [{ name: 'JSON', extensions: ['json'] }],
       });
@@ -764,14 +758,14 @@ export default function App() {
         a.click();
         URL.revokeObjectURL(url);
       } catch {
-        setBanner('导出失败：无法获取会话数据');
+        setBanner(t('banner.exportNoData'));
       }
     }
-  }, [activeSessionId]);
+  }, [activeSessionId, t]);
 
   const handleExportThreadJson = useCallback(async () => {
     if (!resumedThreadId) {
-      setBanner('导出线程 JSON 需要先恢复运行时线程（继续对话后即有线程 ID）');
+      setBanner(t('banner.exportThreadNoId'));
       return;
     }
     const tid = resumedThreadId;
@@ -779,7 +773,7 @@ export default function App() {
       const { save } = await import('@tauri-apps/plugin-dialog');
       const { invoke } = await import('@tauri-apps/api/core');
       const savePath = await save({
-        title: '导出线程 JSON（运行时 ThreadRecord）',
+        title: t('composer.exportThreadTitle'),
         defaultPath: `deepseek-thread-${tid.slice(0, 8)}.json`,
         filters: [{ name: 'JSON', extensions: ['json'] }],
       });
@@ -796,10 +790,10 @@ export default function App() {
         a.click();
         URL.revokeObjectURL(url);
       } catch {
-        setBanner('导出失败：无法获取线程数据');
+        setBanner(t('banner.exportThreadNoData'));
       }
     }
-  }, [resumedThreadId]);
+  }, [resumedThreadId, t]);
 
   const handleSend = useCallback(
     (outbound: ComposerOutboundMessage) => {
@@ -860,7 +854,7 @@ export default function App() {
             }
             await refreshSessions();
           } catch (e) {
-            setBanner(`会话未写入 ~/.deepseek/sessions：${(e as Error).message}`);
+            setBanner(t('banner.persistSessionFailed', { message: (e as Error).message }));
           }
         })();
       };
@@ -983,7 +977,7 @@ export default function App() {
                   : m,
               ),
             );
-            setBanner(norm.message || '流式错误');
+            setBanner(norm.message ? norm.message : t('banner.streamError'));
             break;
           case 'agent_spawned':
             setAgentStates((prev) => {
@@ -1056,11 +1050,9 @@ export default function App() {
         const msg = err.message || String(err);
         const status = err.status;
         if (status === 401) {
-          setBanner('未授权 (401)：运行时 Bearer token 与 sidecar 不一致。');
+          setBanner(t('banner.unauthorizedBearer'));
         } else if (/api\s*key|DEEPSEEK_API_KEY|401|unauthorized/i.test(msg)) {
-          setBanner(
-            '可能缺少或无效的 DeepSeek API Key。请在 ~/.deepseek/config.toml 或环境变量 DEEPSEEK_API_KEY 中配置后再试。',
-          );
+          setBanner(t('banner.missingApiKey'));
         }
         setMessages((prev) =>
           prev.map((m) =>
@@ -1152,7 +1144,7 @@ export default function App() {
     if (!approval) return;
     const { threadId, turnId } = threadTurnRef.current;
     if (!threadId || !turnId) {
-      setBanner('无法解析审批：缺少 thread / turn。请等待 turn.started 后重试。');
+      setBanner(t('banner.approvalMissingThread'));
       setApproval(null);
       return;
     }
@@ -1162,11 +1154,9 @@ export default function App() {
     } catch (e) {
       const err = e as Error & { status?: number };
       if (err.status === 409) {
-        setBanner(
-          '该工具审批已失效（可能已自动批准/拒绝或已超时）。若未勾选「自动批准」，请在时限内操作；可关闭此提示并继续对话。',
-        );
+        setBanner(t('banner.approvalExpired'));
       } else {
-        setBanner(`审批提交失败：${err.message}`);
+        setBanner(t('banner.approvalSubmitFailed', { message: err.message }));
       }
     } finally {
       setApprovalBusy(false);
@@ -1205,20 +1195,20 @@ export default function App() {
           <div className="shrink-0 border-b border-divider bg-amber-bg px-4 py-2 text-sm text-amber-text">
             {banner}
             <button type="button" className="ml-3 underline" onClick={() => setBanner(null)}>
-              关闭
+              {t('common.close')}
             </button>
             <button
               type="button"
               className="ml-3 underline"
               onClick={() => void retryConnectAndSessions()}
             >
-              重试连接
+              {t('common.retryConnection')}
             </button>
           </div>
         )}
         {resumedThreadId && (
           <p className="shrink-0 px-4 py-1 text-xs text-t-text-muted border-b border-divider">
-            已恢复线程（runtime）：{resumedThreadId.slice(0, 8)}… · 继续对话将订阅该线程事件流
+            {t('thread.resumed', { id: resumedThreadId.slice(0, 8) })}
           </p>
         )}
         <ChatView messages={messages} onOpenWorkspacePath={handleChatOpenWorkspacePath} />
@@ -1266,7 +1256,7 @@ export default function App() {
             setBanner(null);
           } catch (e) {
             const err = e as Error & { status?: number };
-            setBanner(`启用信任模式失败：${err.message}`);
+            setBanner(t('banner.trustModeFailed', { message: err.message }));
           }
         }}
         preview={panelPreview}
@@ -1287,6 +1277,7 @@ export default function App() {
 }
 
 function TitleBar() {
+  const { t } = useT();
   const handleMinimize = () => {
     void import('@tauri-apps/api/window').then(({ getCurrentWindow }) => getCurrentWindow().minimize());
   };
@@ -1314,7 +1305,7 @@ function TitleBar() {
         data-tauri-drag-region="false"
         onClick={handleMinimize}
         className="px-3 py-2 text-t-text-muted hover:text-t-text hover:bg-hover transition-colors"
-        aria-label="最小化"
+        aria-label={t('titlebar.minimize')}
       >
         <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 stroke-current" style={{ fill: 'none', strokeWidth: 1.6 }}>
           <path d="M5 12h14" />
@@ -1325,7 +1316,7 @@ function TitleBar() {
         data-tauri-drag-region="false"
         onClick={handleToggleMaximize}
         className="px-3 py-2 text-t-text-muted hover:text-t-text hover:bg-hover transition-colors"
-        aria-label="最大化/还原"
+        aria-label={t('titlebar.maximize')}
       >
         <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 stroke-current" style={{ fill: 'none', strokeWidth: 1.6 }}>
           <path d="M4 4h16v16H4z" />
@@ -1336,7 +1327,7 @@ function TitleBar() {
         data-tauri-drag-region="false"
         onClick={handleClose}
         className="px-3 py-2 text-t-text-muted hover:text-white hover:bg-t-error transition-colors"
-        aria-label="关闭"
+        aria-label={t('titlebar.close')}
       >
         <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 stroke-current" style={{ fill: 'none', strokeWidth: 1.6 }}>
           <path d="M18 6L6 18M6 6l12 12" />
