@@ -649,3 +649,187 @@ settings: {
 | `cost_currency` 变更后 sidecar 重启，`Settings.cost_currency` 被 config.toml 的值覆盖 | 用户若在 TUI 内部通过 `/config` 修改了货币单位，桌面端保存后会被覆盖（config.toml 优先级高于运行时） | 这是预期行为：桌面端系统设置为权威来源。TUI 内的运行时修改不持久化到 settings.toml 时才能避免冲突 |
 | `save_system_settings` 写入 `features` 嵌套表时，仅触碰 `web_search` 和 `exec_policy` 两个 key | **数据丢失风险：** `ConfigToml.FeaturesToml` 使用命名字段（无 `#[serde(flatten)]`），若用户 `config.toml` 的 `[features]` 表中有其他 key（如 `apply_patch`, `mcp`, `subagents` 等），通过 ConfigStore 保存时这些未知 key 会被 serde **静默丢弃**（serde 默认忽略未知字段，序列化时仅输出 6 个命名字段，不同于 TUI 的 `FeaturesToml` 使用 `BTreeMap` 可保留所有 key） | **修复方案：** 给 `ConfigToml.FeaturesToml` 增加 `#[serde(flatten)] extras: BTreeMap<String, toml::Value>` 兜底字段，确保未知 key 在反序列化→序列化往返中不丢失。或者在 `save_system_settings` 的 features 写入处，先读取整个 `[features]` 表为 `toml::Value`，合并后再写回 |
 | 桌面端首次保存前，`allow_shell` 的 TUI 默认值为 `true`，桌面端按 `false` | 首次打开设置页时，sidecar 中 shell 可能仍是可用状态 | 保存后立即重启 sidecar 对齐；建议在 UI 中标注"保存后生效" |
+
+---
+
+## 7. 子代理设置对齐修正计划（v1.1）
+
+> **复审日期：** 2026-05-14  
+> **范围：** 桌面系统设置面板子代理配置项对齐 TUI 底层双轨
+
+### 7.0 问题发现
+
+对照 [`ConfigToml`](file:///F:/DeepSeek-TUI-desktop/crates/config/src/lib.rs#L241-L246)（桌面端写入层）、[`Config`](file:///F:/DeepSeek-TUI-desktop/crates/tui/src/config.rs#L1455-L1470)（TUI 读取层）、[`SystemSettings`](file:///F:/DeepSeek-TUI-desktop/crates/desktop/src/commands.rs#L847-L863)（桌面 API 模型）、[`SettingsPanel.tsx`](file:///F:/DeepSeek-TUI-desktop/crates/desktop/web-ui/src/components/SettingsPanel.tsx)（桌面 UI）四个层面的子代理配置，发现 3 个不一致问题：
+
+### 🔴 问题 A：`max_subagents` 显示值 ≠ 实际生效值
+
+**根因：** TUI `Config::max_subagents()` 有三层优先级：
+
+```
+[subagents].max_concurrent（最高）
+  → 顶层 max_subagents
+    → DEFAULT_MAX_SUBAGENTS = 10
+```
+
+桌面端 `get_system_settings` 只读顶层 `ConfigToml.max_subagents`：
+
+```rust
+// commands.rs:L896 — 只读顶层，不检查 [subagents].max_concurrent
+max_subagents: cfg.max_subagents.unwrap_or(10).clamp(1, 20),
+```
+
+**场景复现：** 用户手写 `[subagents] max_concurrent = 5` → 桌面面板显示 `max_subagents = 10`（顶层默认）→ TUI sidecar 实际生效 `5`（`[subagents]` 优先）。
+
+**修复方案：** `get_system_settings` 读取 `max_subagents` 时，同时检查 `ConfigToml` 是否需要新增 `subagents` 表支持。为保持简单，**save 时主动清掉 `[subagents].max_concurrent`**，确保顶层 `max_subagents` 为唯一来源。
+
+> **需要新增：** `ConfigToml` 增加 `pub subagents: Option<SubagentsConfigToml>` 字段，`SubagentsConfigToml` 仅含 `max_concurrent`（v1 不含模型覆盖）。`get_system_settings` 优先读 `subagents.max_concurrent`，`save_system_settings` 将值写入顶层 `max_subagents` 并置 `subagents.max_concurrent = None`。
+
+### 🟡 问题 B：`features.subagents` 功能开关缺失
+
+**当前状态：**
+
+| SystemSettings 字段 | 映射目标 | 面板 UI |
+|---|---|---|
+| `web_search: bool` | `ConfigToml.features.web_search` | ✅ 开关 |
+| `exec_policy: bool` | `ConfigToml.features.exec_policy` | ✅ 开关 |
+| — | `ConfigToml.features.subagents` | ❌ **缺失** |
+
+`ConfigToml.FeaturesToml` 已有命名字段 `subagents: Option<bool>`，但 `SystemSettings` 未暴露、UI 未渲染开关。
+
+**TUI 影响：** `Feature::Subagents` 默认 `true`，通过 `features.entries["subagents"]` 映射。如果用户在 TUI 中关闭了子代理，桌面面板完全看不出来，也无法重新打开。
+
+**修复方案：** `SystemSettings` 新增 `subagents_enabled: bool`，`get/save_system_settings` 读写 `ConfigToml.features.subagents`，UI 在"安全与行为"区域追加开关。
+
+### 🟢 问题 C：`[subagents]` 模型覆盖不可见
+
+TUI [`SubagentsConfig`](file:///F:/DeepSeek-TUI-desktop/crates/tui/src/config.rs#L670-L692) 包含 6 个按角色命名的模型覆盖 + 通用 `models: HashMap<String, String>`。桌面端 `ConfigToml` 无此表。
+
+**影响：** 用户无法通过桌面面板配置子代理使用的模型。这是高级功能，不阻塞 v1.1。
+
+**v1.1 策略：** 仅声明双轨结构体避免 TOML 往返丢失，UI **不暴露**。`ConfigToml` 用 `#[serde(default)] + extras` 兜底确保未知 key 保留。
+
+---
+
+### 7.1 涉及文件
+
+| # | 文件 | 改动类型 | 说明 |
+|---|------|----------|------|
+| 1 | `crates/config/src/lib.rs` | 修改 | `ConfigToml` 新增 `subagents: Option<SubagentsConfigToml>` 字段 + 结构体（仅 `max_concurrent`）；`merge_project_overrides` 补全 |
+| 2 | `crates/tui/src/config.rs` | **无需改** | `Config` 已有完整 `SubagentsConfig` |
+| 3 | `crates/desktop/src/commands.rs` | 修改 | `SystemSettings` 新增 `subagents_enabled`；`get` 优先读 `subagents.max_concurrent`；`save` 写入顶层并清 `subagents.max_concurrent` |
+| 4 | `crates/desktop/web-ui/src/components/SettingsPanel.tsx` | 修改 | "安全与行为"区域追加子代理开关 |
+| 5 | `crates/desktop/web-ui/src/api/client.ts` | 修改 | `SystemSettings` 接口新增 `subagents_enabled` |
+| 6 | `crates/desktop/web-ui/src/i18n/locales/zh-Hans.ts` | 修改 | 新增 `subagents` / `subagentsDesc` 键 |
+| 7 | `crates/desktop/web-ui/src/i18n/locales/en.ts` | 修改 | 同上英文 |
+
+---
+
+### 7.2 实施步骤
+
+**Step A1 — `crates/config/src/lib.rs`：ConfigToml + SubagentsConfigToml**
+
+在 `ConfigToml` 结构体中 `features` 之后追加：
+
+```rust
+/// Sub-agent configuration.
+#[serde(default)]
+pub subagents: Option<SubagentsConfigToml>,
+```
+
+新增结构体（放在 `FeaturesToml` 旁边）：
+
+```rust
+/// On-disk schema for the `[subagents]` table — mirrors TUI `SubagentsConfig`.
+/// v1 only exposes `max_concurrent` to the desktop settings panel;
+/// model overrides are preserved via extras for TOML round-trip safety.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SubagentsConfigToml {
+    #[serde(default)]
+    pub max_concurrent: Option<usize>,
+    #[serde(flatten)]
+    pub extras: BTreeMap<String, toml::Value>,
+}
+```
+
+`merge_project_overrides` 补全：
+
+```rust
+if project.subagents.is_some() {
+    self.subagents = project.subagents;
+}
+```
+
+**Step A2 — `crates/desktop/src/commands.rs`：SystemSettings + get/save**
+
+`SystemSettings` 新增字段：
+
+```rust
+pub subagents_enabled: bool,
+```
+
+`get_system_settings` — max_subagents 读取逻辑改写：
+
+```rust
+// max_subagents: [subagents].max_concurrent > 顶层 max_subagents > 默认 10
+max_subagents: cfg
+    .subagents
+    .as_ref()
+    .and_then(|s| s.max_concurrent)
+    .or(cfg.max_subagents)
+    .unwrap_or(10)
+    .clamp(1, 20),
+// features.subagents 开关
+subagents_enabled: cfg
+    .features
+    .as_ref()
+    .and_then(|f| f.subagents)
+    .unwrap_or(true),
+```
+
+`save_system_settings` — features + subagents 写入：
+
+```rust
+// features: 补全 subagents
+let features = cfg.features.get_or_insert_with(Default::default);
+features.web_search = Some(settings.web_search);
+features.exec_policy = Some(settings.exec_policy);
+features.subagents = Some(settings.subagents_enabled);
+
+// 将 max_subagents 写入顶层，并清掉 [subagents].max_concurrent
+// 避免两处数值不一致
+cfg.max_subagents = Some(settings.max_subagents);
+if let Some(ref mut s) = cfg.subagents {
+    s.max_concurrent = None;
+}
+```
+
+**Step A3 — `SettingsPanel.tsx` + `client.ts` + i18n**
+
+- `client.ts` `SystemSettings` 接口：新增 `subagents_enabled: boolean`
+- `SettingsPanel.tsx` 在"安全与行为"区域开关列表中追加 `['subagents_enabled', 'subagents']`
+- i18n `zh-Hans.ts`：`subagents: '子代理', subagentsDesc: '启用后台子代理工具（允许模型派生子代理并行执行任务）'`
+- i18n `en.ts`：`subagents: 'Sub-agents', subagentsDesc: 'Enable background sub-agent tooling (allows the model to spawn parallel sub-agents)'`
+
+---
+
+### 7.3 改动量估算
+
+| 文件 | 新增行 | 修改行 | 净增 |
+|------|--------|--------|------|
+| `crates/config/src/lib.rs` | ~25 | — | +25 |
+| `commands.rs` | ~15 | ~5 | +20 |
+| `SettingsPanel.tsx` | ~4 | — | +4 |
+| `client.ts` | — | ~1 | +1 |
+| `i18n/zh-Hans.ts` | ~2 | — | +2 |
+| `i18n/en.ts` | ~2 | — | +2 |
+| **合计** | **~48** | **~6** | **~54** |
+
+---
+
+### 7.4 不改动范围（v2 再议）
+
+| 项目 | 原因 |
+|------|------|
+| `[subagents]` 模型覆盖字段（`default_model`, `worker_model` 等 6 个） | 直接影响子代理模型选择，需在 UI 中增加复杂下拉控件；且 TUI 侧有 per-role 匹配逻辑，贸然暴露可能引入混淆。留到 v2 与模型覆盖面板一起做 |
+| `[subagents].models: HashMap` 通用覆盖 | 自由表单字段，UX 设计未定 |
+| `SubagentsConfigToml` 的完整模型字段 | 仅声明 `extras` 兜底即可保证 TOML 往返安全，不需要命名声明

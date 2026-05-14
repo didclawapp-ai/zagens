@@ -792,6 +792,7 @@ export interface SystemSettings {
   sandbox_mode: string;
   max_subagents: number;
   web_search: boolean;
+  subagents_enabled: boolean;
   exec_policy: boolean;
   memory_enabled: boolean;
   lsp_enabled: boolean;

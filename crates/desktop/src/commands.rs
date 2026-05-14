@@ -854,6 +854,7 @@ pub struct SystemSettings {
     pub sandbox_mode: String,
     pub max_subagents: usize,
     pub web_search: bool,
+    pub subagents_enabled: bool,
     pub exec_policy: bool,
     pub memory_enabled: bool,
     pub lsp_enabled: bool,
@@ -893,11 +894,23 @@ pub fn get_system_settings() -> Result<SystemSettings, String> {
             .clone()
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| "workspace-write".into()),
-        max_subagents: cfg.max_subagents.unwrap_or(10).clamp(1, 20),
+        // max_subagents: [subagents].max_concurrent > 顶层 max_subagents > 默认 10
+        max_subagents: cfg
+            .subagents
+            .as_ref()
+            .and_then(|s| s.max_concurrent)
+            .or(cfg.max_subagents)
+            .unwrap_or(10)
+            .clamp(1, 20),
         web_search: cfg
             .features
             .as_ref()
             .and_then(|f| f.web_search)
+            .unwrap_or(true),
+        subagents_enabled: cfg
+            .features
+            .as_ref()
+            .and_then(|f| f.subagents)
             .unwrap_or(true),
         exec_policy: cfg
             .features
@@ -938,11 +951,18 @@ pub fn save_system_settings(
     cfg.sandbox_mode = Some(settings.sandbox_mode);
     cfg.max_subagents = Some(settings.max_subagents);
 
+    // 清掉 [subagents].max_concurrent 避免与顶层 max_subagents 不一致
+    //（TUI Config::max_subagents() 优先读 [subagents] 表）
+    if let Some(ref mut s) = cfg.subagents {
+        s.max_concurrent = None;
+    }
+
     // features：使用 get_or_insert_with 而非 take() ——
     // 避免丢弃 config.toml 中已有的其他 features 字段
     let features = cfg.features.get_or_insert_with(Default::default);
     features.web_search = Some(settings.web_search);
     features.exec_policy = Some(settings.exec_policy);
+    features.subagents = Some(settings.subagents_enabled);
 
     // memory
     let memory = cfg.memory.get_or_insert_with(Default::default);
@@ -974,6 +994,63 @@ pub fn save_system_settings(
 #[tauri::command]
 pub fn restart_sidecar(ctx: tauri::State<'_, AppContext>) -> Result<(), String> {
     ctx.sidecar_restart.notify_one();
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// pick-rules — `.deepseek/pick-rules.md` per workspace (DS Pick project rules)
+// ---------------------------------------------------------------------------
+
+/// Matches `crates/tui/src/prompts.rs` `INSTRUCTIONS_FILE_MAX_BYTES`.
+const PICK_RULES_MAX_BYTES: usize = 100 * 1024;
+
+fn workspace_root_canonical(raw: &str) -> Result<PathBuf, String> {
+    let t = raw.trim();
+    if t.is_empty() {
+        return Err("工作区路径不能为空".to_string());
+    }
+    let p = PathBuf::from(t);
+    let base = p
+        .canonicalize()
+        .map_err(|e| format!("工作区路径无效: {e}"))?;
+    if !base.is_dir() {
+        return Err("工作区必须是目录".to_string());
+    }
+    Ok(base)
+}
+
+fn pick_rules_path_under_workspace(base: &Path) -> PathBuf {
+    base.join(".deepseek").join("pick-rules.md")
+}
+
+/// Read DS Pick project rules for a workspace. Returns empty string if the file is missing.
+#[tauri::command]
+pub fn read_pick_rules(workspace_root: String) -> Result<String, String> {
+    let base = workspace_root_canonical(&workspace_root)?;
+    let path = pick_rules_path_under_workspace(&base);
+    if !path.is_file() {
+        return Ok(String::new());
+    }
+    std::fs::read_to_string(&path).map_err(|e| format!("读取项目规则失败: {e}"))
+}
+
+/// Write DS Pick project rules. Creates `.deepseek/` when needed.
+#[tauri::command]
+pub fn save_pick_rules(workspace_root: String, content: String) -> Result<(), String> {
+    let base = workspace_root_canonical(&workspace_root)?;
+    let deepseek = base.join(".deepseek");
+    std::fs::create_dir_all(&deepseek).map_err(|e| format!("创建 .deepseek 目录失败: {e}"))?;
+    let path = pick_rules_path_under_workspace(&base);
+
+    if content.as_bytes().len() > PICK_RULES_MAX_BYTES {
+        return Err(format!(
+            "规则内容过长（最大 {} KiB，与 instructions 文件上限一致）",
+            PICK_RULES_MAX_BYTES / 1024
+        ));
+    }
+
+    std::fs::write(&path, content.as_str().as_bytes())
+        .map_err(|e| format!("写入项目规则失败: {e}"))?;
     Ok(())
 }
 

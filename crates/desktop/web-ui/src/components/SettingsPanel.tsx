@@ -150,10 +150,12 @@ export default function SettingsPanel({
               ['allow_shell', 'shellTool'] as const,
               ['web_search', 'webSearch'] as const,
               ['exec_policy', 'execPolicy'] as const,
-            ].map(([key, i18nKey]) => (
+              ['subagents_enabled', 'subagents', 'subagentsDesc'] as const,
+            ].map(([key, i18nKey, ...rest]) => (
               <label key={key} className="flex items-center justify-between gap-2 py-1">
                 <div className="flex-1 min-w-0">
                   <span className={labelCls}>{t(`settings.${i18nKey}` as any)}</span>
+                  {rest[0] && <p className={descCls}>{t(`settings.${rest[0]}` as any)}</p>}
                 </div>
                 <input
                   type="checkbox"

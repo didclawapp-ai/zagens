@@ -244,6 +244,9 @@ pub struct ConfigToml {
     /// 功能开关。
     #[serde(default)]
     pub features: Option<FeaturesToml>,
+    /// Sub-agent configuration.
+    #[serde(default)]
+    pub subagents: Option<SubagentsConfigToml>,
     /// 用户记忆。
     #[serde(default)]
     pub memory: Option<MemoryToml>,
@@ -374,6 +377,17 @@ pub struct FeaturesToml {
     pub extras: BTreeMap<String, toml::Value>,
 }
 
+/// On-disk schema for the `[subagents]` table — mirrors TUI `SubagentsConfig`.
+/// v1 only exposes `max_concurrent` to the desktop settings panel;
+/// model overrides are preserved via extras for TOML round-trip safety.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SubagentsConfigToml {
+    #[serde(default)]
+    pub max_concurrent: Option<usize>,
+    #[serde(flatten)]
+    pub extras: BTreeMap<String, toml::Value>,
+}
+
 /// On-disk schema for the `[memory]` table.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct MemoryToml {
@@ -500,6 +514,9 @@ impl ConfigToml {
         }
         if project.features.is_some() {
             self.features = project.features;
+        }
+        if project.subagents.is_some() {
+            self.subagents = project.subagents;
         }
         if project.memory.is_some() {
             self.memory = project.memory;
