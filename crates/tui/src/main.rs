@@ -61,6 +61,7 @@ mod session_manager;
 mod settings;
 mod skills;
 mod snapshot;
+mod symbol_index;
 mod task_manager;
 #[cfg(test)]
 mod test_support;
@@ -744,6 +745,28 @@ async fn main() -> Result<()> {
                         }
                     });
                     let cors_origins = resolve_cors_origins(&config, &args.cors_origin);
+
+                    // CRAFT retrieval pipeline: build symbol index for fast
+                    // symbol→file→line lookups during grep_files / read_file.
+                    // syn's recursive-descent parser needs a larger stack than
+                    // Windows' default 1 MB, especially on large files.
+                    let _ = std::thread::Builder::new()
+                        .name("symbol-index".into())
+                        .stack_size(8 * 1024 * 1024)
+                        .spawn({
+                            let ws = workspace.clone();
+                            move || {
+                                let index = symbol_index::build_index(&ws);
+                                let index_dir = ws.join(".deepseek");
+                                let _ = std::fs::create_dir_all(&index_dir);
+                                let index_path = index_dir.join("symbols.json");
+                                let _ = std::fs::write(
+                                    &index_path,
+                                    serde_json::to_string_pretty(&index).unwrap_or_default(),
+                                );
+                            }
+                        });
+
                     runtime_api::run_http_server(
                         config,
                         workspace,

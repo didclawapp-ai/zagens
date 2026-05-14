@@ -213,12 +213,21 @@ impl ToolSpec for GrepFilesTool {
             }
         }
 
+        // BM25 re-rank: order files by relevance so the model sees the
+        // most likely definitions / usages first, not filesystem order.
+        bm25_rank(&mut results, &pattern_str);
+
+        // Symbol index lookup: if the pattern matches a known Rust symbol,
+        // prepend file:line references so the model can jump to definitions.
+        let symbol_hits = lookup_symbol_hits(&context.workspace, &pattern_str);
+
         // Build result
         let result = json!({
             "matches": results,
             "total_matches": total_matches,
             "files_searched": files_searched,
             "truncated": total_matches > max_results,
+            "symbol_index_hits": symbol_hits,
         });
 
         ToolResult::json(&result).map_err(|e| ToolError::execution_failed(e.to_string()))
@@ -387,6 +396,124 @@ fn matches_simple_glob(text: &str, pattern: &str) -> bool {
     }
 
     text_chars.next().is_none()
+}
+
+/// Reorder `matches` by BM25 relevance score so files with more and rarer
+/// term matches appear first. Stable for files with equal scores.
+fn bm25_rank(matches: &mut Vec<GrepMatch>, pattern: &str) {
+    if matches.is_empty() {
+        return;
+    }
+
+    // 1. Extract query terms from the regex pattern.
+    let terms: Vec<String> = pattern
+        .replace(
+            ['.', '*', '+', '?', '(', ')', '[', ']', '{', '}', '^', '$', '|', '\\'],
+            " ",
+        )
+        .split_whitespace()
+        .map(|s| s.to_lowercase())
+        .filter(|s| s.len() >= 2)
+        .collect();
+    if terms.is_empty() {
+        return;
+    }
+
+    // 2. Group matches by file, count term occurrences per file.
+    let mut file_term_counts: std::collections::HashMap<String, std::collections::HashMap<String, usize>> =
+        std::collections::HashMap::new();
+    for m in matches.iter() {
+        let entry = file_term_counts
+            .entry(m.file.clone())
+            .or_default();
+        let line_lower = m.line.to_lowercase();
+        for term in &terms {
+            if line_lower.contains(term.as_str()) {
+                *entry.entry(term.clone()).or_insert(0) += 1;
+            }
+        }
+    }
+
+    let total_files = file_term_counts.len() as f64;
+
+    // 3. Compute IDF per term.
+    let mut term_idf: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
+    for term in &terms {
+        let n = file_term_counts
+            .values()
+            .filter(|counts| counts.contains_key(term.as_str()))
+            .count() as f64;
+        let idf = ((total_files - n + 0.5) / (n + 0.5) + 1.0).ln();
+        term_idf.insert(term.clone(), idf);
+    }
+
+    // 4. Compute BM25 score per file.
+    let k1: f64 = 1.2;
+    let b: f64 = 0.75;
+    let avgdl: f64 = total_files; // use file count as avgdl proxy
+
+    let mut file_scores: Vec<(String, f64)> = file_term_counts
+        .iter()
+        .map(|(file, counts)| {
+            let dl = matches.iter().filter(|m| &m.file == file).count() as f64;
+            let score: f64 = terms
+                .iter()
+                .filter_map(|term| {
+                    let tf = *counts.get(term)? as f64;
+                    let idf = term_idf.get(term)?;
+                    Some(idf * (tf * (k1 + 1.0)) / (tf + k1 * (1.0 - b + b * dl / avgdl.max(1.0))))
+                })
+                .sum();
+            (file.clone(), score)
+        })
+        .collect();
+
+    // 5. Sort by score descending, stable for equal scores.
+    file_scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    let rank: std::collections::HashMap<String, usize> = file_scores
+        .iter()
+        .enumerate()
+        .map(|(i, (f, _))| (f.clone(), i))
+        .collect();
+
+    matches.sort_by_key(|m| rank.get(&m.file).copied().unwrap_or(usize::MAX));
+}
+
+/// Try loading the symbol index and query it for symbols matching `pattern`.
+/// Returns file:line pairs for definition-side hits.
+fn lookup_symbol_hits(workspace: &Path, pattern: &str) -> Vec<serde_json::Value> {
+    let index_path = workspace.join(".deepseek").join("symbols.json");
+    let raw = match std::fs::read_to_string(&index_path) {
+        Ok(r) => r,
+        Err(_) => return Vec::new(),
+    };
+    let index: crate::symbol_index::SymbolIndex = match serde_json::from_str(&raw) {
+        Ok(idx) => idx,
+        Err(_) => return Vec::new(),
+    };
+
+    // Strip regex metacharacters to extract a plain symbol name.
+    let cleaned = pattern
+        .replace(['.', '*', '+', '?', '(', ')', '[', ']', '{', '}', '^', '$', '|', '\\'], " ");
+    let terms: Vec<&str> = cleaned.split_whitespace().collect();
+    if terms.is_empty() {
+        return Vec::new();
+    }
+
+    // Try each term as a symbol query. Stop at the first term that yields hits.
+    for term in &terms {
+        let hits = crate::symbol_index::query_symbol(&index, term);
+        if !hits.is_empty() {
+            return hits
+                .into_iter()
+                .map(|(file, line)| {
+                    json!({"symbol": term, "file": file, "line": line})
+                })
+                .collect();
+        }
+    }
+
+    Vec::new()
 }
 
 // === Unit Tests ===

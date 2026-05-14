@@ -158,6 +158,27 @@ impl ToolSpec for ReadFileTool {
 
         let mut content = collected.join("\n");
 
+        // CRAFT P3: prepend file structure summary for large files (>500 lines).
+        if let Some(total) = total_lines_known
+            && total >= 500
+        {
+            let rel = file_path
+                .strip_prefix(&context.workspace)
+                .unwrap_or(&file_path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            let index_path = context.workspace.join(".deepseek").join("symbols.json");
+            if let Ok(raw) = std::fs::read_to_string(&index_path) {
+                if let Ok(index) = serde_json::from_str::<crate::symbol_index::SymbolIndex>(&raw) {
+                    if let Some(summary) =
+                        crate::symbol_index::format_file_summary(&index, &rel, total)
+                    {
+                        content = format!("{summary}\n\n---\n\n{content}");
+                    }
+                }
+            }
+        }
+
         if truncated && !collected.is_empty() {
             let line_range = format!(
                 "第 {}-{} 行",
