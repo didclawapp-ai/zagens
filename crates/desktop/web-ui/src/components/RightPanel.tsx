@@ -14,6 +14,7 @@ import {
 } from './preview';
 import type { PreviewState } from './preview/types';
 import type { RuntimeConnectionState } from '../api/client';
+import { useT } from '../i18n';
 import {
   browseThreadWorkspace,
   browseComposerWorkspace,
@@ -32,7 +33,7 @@ export type RightPanelView =
   | 'agents'
   | 'routing';
 
-export type WorkspaceTabId = 'restore' | 'files';
+export type WorkspaceTabId = 'restore' | 'files' | 'rules';
 
 type Theme = 'light' | 'dark';
 
@@ -152,10 +153,11 @@ export default function RightPanel({
   focusFilesNonce,
   agentStates,
 }: Props) {
+  const { t } = useT();
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTabId>(() => {
     try {
       const s = sessionStorage.getItem(WORKSPACE_TAB_KEY);
-      if (s === 'restore' || s === 'files') return s;
+      if (s === 'restore' || s === 'files' || s === 'rules') return s;
     } catch {
       /* ignore */
     }
@@ -179,6 +181,12 @@ export default function RightPanel({
   const [restoreBusy, setRestoreBusy] = useState<number | null>(null);
   const [restoreMessage, setRestoreMessage] = useState<string | null>(null);
 
+  const [pickRulesBody, setPickRulesBody] = useState('');
+  const [pickRulesLoading, setPickRulesLoading] = useState(false);
+  const [pickRulesSaving, setPickRulesSaving] = useState(false);
+  const [pickRulesErr, setPickRulesErr] = useState<string | null>(null);
+  const [pickRulesOk, setPickRulesOk] = useState<string | null>(null);
+
   const runtimeOk = runtimeConn === 'connected';
 
   useEffect(() => {
@@ -198,6 +206,45 @@ export default function RightPanel({
     setSnapError(null);
     setRestoreMessage(null);
   }, [resumedThreadId, workspaceRoot]);
+
+  useEffect(() => {
+    if (view !== 'workspace' || workspaceTab !== 'rules' || !desktopHost) {
+      return;
+    }
+    const root = workspaceRoot.trim();
+    if (!root) {
+      setPickRulesBody('');
+      setPickRulesLoading(false);
+      setPickRulesErr(null);
+      setPickRulesOk(null);
+      return;
+    }
+    let cancelled = false;
+    setPickRulesLoading(true);
+    setPickRulesErr(null);
+    setPickRulesOk(null);
+    void (async () => {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const text = await invoke<string>('read_pick_rules', { workspaceRoot: root });
+        if (!cancelled) {
+          setPickRulesBody(text);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          const msg = e instanceof Error ? e.message : String(e);
+          setPickRulesErr(t('workspaceRules.loadError', { message: msg }));
+        }
+      } finally {
+        if (!cancelled) {
+          setPickRulesLoading(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [view, workspaceTab, desktopHost, workspaceRoot, t]);
 
   useEffect(() => {
     if (view !== 'workspace' || workspaceTab !== 'files' || !runtimeOk) {
@@ -324,6 +371,29 @@ export default function RightPanel({
       /* parent sets banner */
     }
   }, [onEnableTrust]);
+
+  const savePickRules = useCallback(async () => {
+    if (!desktopHost) {
+      return;
+    }
+    const root = workspaceRoot.trim();
+    if (!root) {
+      return;
+    }
+    setPickRulesSaving(true);
+    setPickRulesErr(null);
+    setPickRulesOk(null);
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('save_pick_rules', { workspaceRoot: root, content: pickRulesBody });
+      setPickRulesOk(t('workspaceRules.saved'));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setPickRulesErr(t('workspaceRules.saveError', { message: msg }));
+    } finally {
+      setPickRulesSaving(false);
+    }
+  }, [desktopHost, workspaceRoot, pickRulesBody, t]);
 
   const [panelWidth, setPanelWidth] = useState(readStoredPanelWidth);
   const resizeDragRef = useRef<{ pointerId: number; startX: number; startW: number } | null>(null);
@@ -497,6 +567,15 @@ export default function RightPanel({
                   >
                     工作区目录
                   </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={workspaceTab === 'rules'}
+                    className={tabBtn(workspaceTab === 'rules')}
+                    onClick={() => setWorkspaceTab('rules')}
+                  >
+                    {t('workspaceRules.tab')}
+                  </button>
                 </div>
 
                 <div className="flex-1 overflow-y-auto min-h-0" role="tabpanel">
@@ -668,6 +747,64 @@ export default function RightPanel({
                           <p className="text-[11px] text-t-text-muted mt-2">此目录为空。</p>
                         )}
                       </div>
+                    </div>
+                  )}
+
+                  {workspaceTab === 'rules' && (
+                    <div className="flex flex-col min-h-0 p-4 gap-3 text-xs text-t-text leading-relaxed">
+                      {!desktopHost && (
+                        <p className="text-amber-text/90">{t('workspaceRules.desktopOnly')}</p>
+                      )}
+                      {desktopHost && !workspaceRoot.trim() && (
+                        <p className="text-amber-text/90">{t('workspaceRules.needWorkspace')}</p>
+                      )}
+                      {desktopHost && Boolean(workspaceRoot.trim()) && (
+                        <>
+                          <div>
+                            <p className="text-[11px] font-medium uppercase tracking-wide text-t-text-muted">
+                              {t('workspaceRules.pathLabel')}
+                            </p>
+                            <code className="text-[11px] text-t-text-muted break-all">
+                              {t('workspaceRules.pathValue')}
+                            </code>
+                          </div>
+                          <p className="text-t-text-muted">{t('workspaceRules.hint')}</p>
+                          <p className="text-[11px] text-t-text-muted">{t('workspaceRules.emptyHint')}</p>
+                          {pickRulesLoading && (
+                            <p className="text-t-text-muted">{t('automation.loading')}</p>
+                          )}
+                          {pickRulesErr && (
+                            <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-red-200/90">
+                              {pickRulesErr}
+                            </p>
+                          )}
+                          {pickRulesOk && (
+                            <p className="rounded-lg border border-divider px-3 py-2 text-t-text-muted">
+                              {pickRulesOk}
+                            </p>
+                          )}
+                          <textarea
+                            value={pickRulesBody}
+                            onChange={(e) => {
+                              setPickRulesBody(e.target.value);
+                              setPickRulesOk(null);
+                            }}
+                            disabled={pickRulesLoading || pickRulesSaving}
+                            spellCheck={false}
+                            className="min-h-[200px] flex-1 w-full rounded-lg border border-divider bg-canvas px-3 py-2 text-xs font-mono text-t-text placeholder:text-t-text-muted focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
+                            placeholder="Markdown / plain text…"
+                            aria-label={t('workspaceRules.tab')}
+                          />
+                          <button
+                            type="button"
+                            className="shrink-0 self-start rounded-lg border border-divider px-4 py-2 text-xs font-medium text-accent hover:bg-hover disabled:opacity-50"
+                            disabled={pickRulesLoading || pickRulesSaving}
+                            onClick={() => void savePickRules()}
+                          >
+                            {pickRulesSaving ? t('workspaceRules.saving') : t('workspaceRules.save')}
+                          </button>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>

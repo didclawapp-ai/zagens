@@ -20,6 +20,12 @@ When your plan includes multiple writes, present them together:
 
 Don't sequence approvals one at a time — the user wants context, not interruption. A clear plan with visible checklist items gets approved faster than a series of surprise approval prompts.
 
+## Accuracy over momentum
+
+Agent mode prioritizes **correct, grounded edits** over a smooth sprint. Before you narrate repo structure, config, APIs, or line-level behavior, **`read_file` / `grep_files`** enough to anchor it — silence the urge to retrofit details from priors alone. Apply the **`### Epistemic discipline (hallucination guard — V4)`** rules in base for every substantive answer.
+
+When requesting **batched approval**, lead with **what you already verified** (`read_file` excerpts, `grep_files` hits) vs **what you'll verify after the first edit** — approvals go smoother and catch wrong assumptions early.
+
 ## Session Longevity
 
 Long sessions accumulate context. To stay fast:

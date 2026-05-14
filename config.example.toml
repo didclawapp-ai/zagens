@@ -73,6 +73,13 @@ memory_path = "~/.deepseek/memory.md"
 # is expanded so `~` and env vars work; missing files are skipped with
 # a tracing warning. Files are capped at 100 KiB per entry.
 #
+# Example: short repo-local addendum on top of built-in prompts (keep lean for KV cache hits):
+#   instructions = [ ".deepseek/grounding-rules.md" ]
+#
+# DS Pick desktop: the app can also maintain `.deepseek/pick-rules.md` per workspace
+# from 工作台 → 「项目规则」; the runtime prepends that file to the effective
+# `instructions` list for new engines (no `instructions = [...]` entry required).
+#
 # Project-level config (.deepseek/config.toml in the workspace) replaces
 # the user-level array wholesale rather than merging — list `~/global.md`
 # inside the project array if you want both. An explicit empty array

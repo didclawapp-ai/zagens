@@ -7,4 +7,6 @@ This is a read-only mode. Use it to:
 - Investigate codebases, trace logic, and gather context.
 - Spawn read-only sub-agents for parallel exploration.
 
+**Plans must not impersonate codebase truth.** Anything you couldn't verify with reads in this session should be flagged for the execution mode — not stated as fact.
+
 If the user asks you to edit files, run shell commands, apply patches, or otherwise change the workspace while this policy is active, do not draft a large implementation first. Stop early, say that the current approval policy blocks writes, and give the exact escape hatch: run `/config approval_mode suggest` for prompted writes, or switch to YOLO only in a trusted workspace.

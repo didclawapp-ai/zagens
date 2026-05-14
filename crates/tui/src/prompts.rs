@@ -31,6 +31,11 @@ pub struct PromptSessionContext<'a> {
 /// doesn't have to re-discover open blockers from scratch.
 pub const HANDOFF_RELATIVE_PATH: &str = ".deepseek/handoff.md";
 
+/// Workspace-local rules edited in **DS Pick** (and readable by any runtime using
+/// the same workspace). Loaded as the first `instructions` document when the
+/// file exists and has non-whitespace content — no `config.toml` entry required.
+pub const PICK_RULES_RELATIVE_PATH: &str = ".deepseek/pick-rules.md";
+
 /// Per-file size cap for `instructions = [...]` entries (#454). Mirrors
 /// the existing project-context cap in `project_context::load_context_file`
 /// so a malicious / oversized include can't blow the prompt budget on
@@ -163,6 +168,39 @@ fn load_handoff_block(workspace: &Path) -> Option<String> {
         "## Previous Session Handoff\n\nThe previous session in this workspace left a handoff at `{}`. Consider it the first artifact to read on this turn — open blockers, in-flight changes, and recent decisions live there. Update or rewrite it before exiting if state changes materially.\n\n{}",
         HANDOFF_RELATIVE_PATH, trimmed
     ))
+}
+
+/// If `.deepseek/pick-rules.md` exists under `workspace` and is non-empty after
+/// trim, prepend it to the config `instructions` list (deduped by canonical
+/// path). Order: **Pick rules first**, then paths from `config.toml`.
+#[must_use]
+pub fn merge_instruction_paths_with_pick_rules(
+    workspace: &Path,
+    config_paths: Vec<PathBuf>,
+) -> Vec<PathBuf> {
+    let pick = workspace.join(PICK_RULES_RELATIVE_PATH);
+    if !pick.is_file() {
+        return config_paths;
+    }
+    let Ok(body) = std::fs::read_to_string(&pick) else {
+        return config_paths;
+    };
+    if body.trim().is_empty() {
+        return config_paths;
+    }
+    let Ok(pick_canon) = pick.canonicalize() else {
+        return config_paths;
+    };
+
+    let mut out: Vec<PathBuf> = Vec::with_capacity(config_paths.len() + 1);
+    out.push(pick_canon.clone());
+    for p in config_paths {
+        let dup = p.canonicalize().ok().is_some_and(|c| c == pick_canon);
+        if !dup {
+            out.push(p);
+        }
+    }
+    out
 }
 
 // ── Prompt layers loaded at compile time ──────────────────────────────
@@ -1117,6 +1155,42 @@ mod tests {
         assert!(
             prompt.contains(&extra.display().to_string()),
             "instructions block must annotate its source path"
+        );
+    }
+
+    #[test]
+    fn merge_pick_rules_prepends_when_nonempty_file_exists() {
+        let tmp = tempdir().expect("tempdir");
+        let ws = tmp.path();
+        let ds = ws.join(".deepseek");
+        std::fs::create_dir_all(&ds).unwrap();
+        let pick = ds.join("pick-rules.md");
+        std::fs::write(&pick, "pick rules body").unwrap();
+        let other = ws.join("other.md");
+        std::fs::write(&other, "x").unwrap();
+        let merged = super::merge_instruction_paths_with_pick_rules(ws, vec![other.clone()]);
+        assert_eq!(merged.len(), 2);
+        assert_eq!(
+            merged[0].canonicalize().unwrap(),
+            pick.canonicalize().unwrap()
+        );
+    }
+
+    #[test]
+    fn merge_pick_rules_noop_when_missing_or_whitespace_only() {
+        let tmp = tempdir().expect("tempdir");
+        let ws = tmp.path();
+        let other = ws.join("o.md");
+        assert_eq!(
+            super::merge_instruction_paths_with_pick_rules(ws, vec![other.clone()]),
+            vec![other.clone()]
+        );
+        let ds = ws.join(".deepseek");
+        std::fs::create_dir_all(&ds).unwrap();
+        std::fs::write(ds.join("pick-rules.md"), " \n\t ").unwrap();
+        assert_eq!(
+            super::merge_instruction_paths_with_pick_rules(ws, vec![other.clone()]),
+            vec![other]
         );
     }
 }

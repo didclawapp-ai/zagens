@@ -9,3 +9,4 @@ These files used to live at the **repository root**. They focus on the **termina
 | [V086_BRIEF.md](./V086_BRIEF.md) | Release / planning brief |
 | [TAKEOVER_PROMPT.md](./TAKEOVER_PROMPT.md) | Contributor handoff checklist |
 | [CODE_REVIEW_REPORT.md](./CODE_REVIEW_REPORT.md) | Historical code review notes |
+| [UNDERLYING_ITERATION_REFERENCE.md](./UNDERLYING_ITERATION_REFERENCE.md) | TUI / runtime **self-maintained** iteration roadmap (post-fork posture) |

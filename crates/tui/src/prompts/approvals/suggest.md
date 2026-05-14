@@ -8,3 +8,5 @@ When you need approval:
 3. The user will see your proposed action and can approve or deny it.
 
 Decomposition is your best tool for earning approvals. A clear plan with verifiable steps gets approved faster than an opaque request.
+
+When the user sees the approval tray, **`Verified:`** facts (with tool echoes) convince faster than narrative alone. Separate **`Assumption`** from **`Confirmed`** in your preamble so hallucinated scope is caught before approve.

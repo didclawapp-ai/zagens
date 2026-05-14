@@ -33,6 +33,12 @@ DeepSeek V4 等模型的长上下文缓解「装不下」，但不自动保证�
 - **主 agent + 子 agent**：[`agent_spawn` 等编排](SUBAGENTS.md)，已有 `explore` / `implementer` / `review` / `verifier` / `custom` 等 **角色语调（role taxonomy）**。  
 - **CRAFT 式演进**：在上述 **同一套派发能力**上，增加 **结构化黑板、程序化闭环、硬性工具裁剪、可执行规范**，而非推翻重做。
 
+### 3.1 与「记忆地图」（topic graph）的配合
+
+CRAFT 解决的是 **单次任务可追溯与多角色交接**（黑板、门禁、闭环）。与本路线中 **下一阶段** 的「记忆地图」互补：后者从对话中维护 **topic 认知图**（衰减、关联、可生成注入用 Markdown），独立实现见开源库 [**topic-memory-graph**](https://github.com/didclawapp-ai/topic-memory-graph)。
+
+**已定序：** 先持续推进 CRAFT 落地，再将记忆地图 **系统化接入**（避免两条线同时争抢 prompt 空间却无合并策略）。并排开发时可约定：黑板写 **任务态事实与裁决**，记忆地图写 **跨轮话题骨架**；二者注入上下文时需明确 **先后顺序、字数上限与脱敏**。路线图、集成注意与 **记忆地图中长期潜力备忘**见 [docs/tui/UNDERLYING_ITERATION_REFERENCE.md §2.2–§2.3](tui/UNDERLYING_ITERATION_REFERENCE.md)。
+
 ## 4. 「精度天花板」归纳（编程场景）
 
 | 断点 | 表现 | CRAFT 向对策（概念） |
