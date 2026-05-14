@@ -840,6 +840,25 @@ export default function App() {
         );
       };
 
+      const notifyTurnCompleteIfAway = (desktop: boolean) => {
+        if (!desktop || !document.hidden) return;
+        void (async () => {
+          try {
+            const mod = await import('@tauri-apps/plugin-notification');
+            let granted = await mod.isPermissionGranted();
+            if (!granted) {
+              const perm = await mod.requestPermission();
+              granted = perm === 'granted';
+            }
+            if (granted) {
+              mod.sendNotification({ title: 'DS Pick', body: '模型已完成回答' });
+            }
+          } catch {
+            /* browser mode — not supported */
+          }
+        })();
+      };
+
       const maybePersistCompletedTurn = () => {
         const { threadId, turnId } = threadTurnRef.current;
         if (!threadId || !turnId || turnId === lastPersistedTurnRef.current) {
@@ -966,10 +985,12 @@ export default function App() {
           case 'turn_completed':
             finishOnce();
             maybePersistCompletedTurn();
+            notifyTurnCompleteIfAway(desktopHost);
             break;
           case 'done':
             finishOnce();
             maybePersistCompletedTurn();
+            notifyTurnCompleteIfAway(desktopHost);
             break;
           case 'error':
             finishOnce();
