@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // ImageRenderer — renders base64-encoded images via `<img>` data URI.
 //
-// Requires the Tauri CSP to include `img-src 'self' data:`.
+// Requires the Tauri CSP to include `img-src 'self' data: blob:` for clipboard/object URLs.
 // Content is expected to be a base64 string (no prefix) with `mimeType`
 // providing the MIME (e.g. "image/png").
 // ---------------------------------------------------------------------------

@@ -413,8 +413,8 @@ struct ServeArgs {
     /// Bind port for HTTP server
     #[arg(long, default_value_t = 7878)]
     port: u16,
-    /// Background task worker count (1-8)
-    #[arg(long, default_value_t = 2)]
+    /// Background task worker count (1-16)
+    #[arg(long, default_value_t = 8)]
     workers: usize,
     /// Additional CORS origin to allow (repeatable). Stacks on top of the
     /// built-in defaults (localhost:3000, localhost:1420, tauri://localhost).
@@ -750,7 +750,7 @@ async fn main() -> Result<()> {
                         runtime_api::RuntimeApiOptions {
                             host: args.host,
                             port: args.port,
-                            workers: args.workers.clamp(1, 8),
+                            workers: args.workers.clamp(1, 16),
                             cors_origins,
                             auth_token: args.auth_token,
                         },

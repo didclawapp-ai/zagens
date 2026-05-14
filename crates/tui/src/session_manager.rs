@@ -24,6 +24,19 @@ const MAX_SESSIONS: usize = 50;
 const MAX_PERSISTED_MESSAGES: usize = 500;
 const CURRENT_SESSION_SCHEMA_VERSION: u32 = 1;
 const CURRENT_QUEUE_SCHEMA_VERSION: u32 = 1;
+/// Maximum session file size in bytes (default 5 MB). Sessions larger
+/// than this may cause large serde allocations and block the runtime.
+/// Override with `DEEPSEEK_MAX_SESSION_FILE_MB` env var (0 = no limit).
+const DEFAULT_MAX_SESSION_FILE_SIZE: u64 = 5 * 1024 * 1024;
+
+fn max_session_file_size() -> u64 {
+    std::env::var("DEEPSEEK_MAX_SESSION_FILE_MB")
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .filter(|&mb| mb > 0)
+        .map(|mb| mb * 1024 * 1024)
+        .unwrap_or(DEFAULT_MAX_SESSION_FILE_SIZE)
+}
 
 const fn default_session_schema_version() -> u32 {
     CURRENT_SESSION_SCHEMA_VERSION
@@ -268,6 +281,25 @@ impl SessionManager {
     /// Load a session by ID
     pub fn load_session(&self, id: &str) -> std::io::Result<SavedSession> {
         let path = self.validated_session_path(id)?;
+
+        // Guard against accidentally loading huge session files that would
+        // cause serde to allocate hundreds of MB and block the runtime.
+        let size_limit = max_session_file_size();
+        if size_limit > 0 {
+            let meta = path.metadata()?;
+            if meta.len() > size_limit {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!(
+                        "Session file is {:.1} MB (limit is {:.1} MB). \
+                         Set DEEPSEEK_MAX_SESSION_FILE_MB=<mb> to raise or 0 to disable. \
+                         To shrink: delete old sessions in TUI or compact the conversation history.",
+                        meta.len() as f64 / (1024.0 * 1024.0),
+                        size_limit as f64 / (1024.0 * 1024.0),
+                    ),
+                ));
+            }
+        }
 
         let content = fs::read_to_string(&path)?;
         let session: SavedSession = serde_json::from_str(&content)
@@ -561,7 +593,8 @@ pub fn create_saved_session_with_mode(
         })
         .unwrap_or_else(|| "New Session".to_string());
 
-    let (capped_messages, truncation_note) = cap_messages(messages);
+    let (mut capped_messages, truncation_note) = cap_messages(messages);
+    strip_thinking_blocks(&mut capped_messages);
 
     SavedSession {
         schema_version: CURRENT_SESSION_SCHEMA_VERSION,
@@ -593,7 +626,8 @@ pub fn update_session(
     system_prompt: Option<&SystemPrompt>,
 ) -> SavedSession {
     session.schema_version = CURRENT_SESSION_SCHEMA_VERSION;
-    let (capped_messages, truncation_note) = cap_messages(messages);
+    let (mut capped_messages, truncation_note) = cap_messages(messages);
+    strip_thinking_blocks(&mut capped_messages);
     session.messages = capped_messages;
     session.metadata.updated_at = Utc::now();
     session.metadata.message_count = messages.len();
@@ -622,6 +656,18 @@ fn cap_messages(messages: &[Message]) -> (Vec<Message>, Option<String>) {
         messages[total - MAX_PERSISTED_MESSAGES..].to_vec(),
         Some(note),
     )
+}
+
+/// Strip [`ContentBlock::Thinking`] blocks from saved messages.
+///
+/// Reasoning content (thinking tokens) is only needed during an active API
+/// turn for tool-call replay. Persisting it across sessions wastes disk and
+/// inflates session files — V4 thinking can reach tens of thousands of tokens
+/// per turn. The text answer and tool results are preserved.
+fn strip_thinking_blocks(messages: &mut [Message]) {
+    for msg in messages {
+        msg.content.retain(|block| !matches!(block, ContentBlock::Thinking { .. }));
+    }
 }
 
 /// Merge an optional truncation note into the system prompt string.

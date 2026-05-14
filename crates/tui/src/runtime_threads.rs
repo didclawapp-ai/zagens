@@ -1064,6 +1064,11 @@ impl RuntimeThreadManager {
     }
 
     pub async fn get_thread(&self, id: &str) -> Result<ThreadRecord> {
+        self.load_thread_sync(id)
+    }
+
+    /// Sync version of `get_thread` callable from `spawn_blocking` context.
+    pub fn load_thread_sync(&self, id: &str) -> Result<ThreadRecord> {
         self.store
             .load_thread(id)
             .with_context(|| format!("Thread not found: {id}"))
@@ -2015,8 +2020,19 @@ impl RuntimeThreadManager {
 
         let engine = spawn_engine(engine_cfg, &self.config);
 
-        let turns = self.store.list_turns_for_thread(&thread.id)?;
-        let session_messages = self.reconstruct_messages_from_turns(&turns)?;
+        // list_turns_for_thread + list_items_for_turn scan the entire turns/ &
+        // items/ directories — O(n) across all threads. Run them on the
+        // blocking thread pool so they never block a tokio worker and starve
+        // the /health endpoint (ERR_CONNECTION_REFUSED loop).
+        let store = self.store.clone();
+        let thread_id = thread.id.clone();
+        let session_messages = tokio::task::spawn_blocking(move || -> Result<Vec<Message>> {
+            let turns = store.list_turns_for_thread(&thread_id)?;
+            reconstruct_messages_for_store(&store, &turns)
+        })
+        .await
+        .map_err(|e| anyhow!("ensure_engine_loaded panicked: {e}"))??;
+
         let sys_prompt = thread
             .system_prompt
             .as_ref()
@@ -2096,36 +2112,7 @@ impl RuntimeThreadManager {
     }
 
     fn reconstruct_messages_from_turns(&self, turns: &[TurnRecord]) -> Result<Vec<Message>> {
-        let mut messages = Vec::new();
-        for turn in turns {
-            let items = self.store.list_items_for_turn(&turn.id)?;
-            for item in items {
-                match item.kind {
-                    TurnItemKind::UserMessage => {
-                        let text = item.detail.unwrap_or(item.summary);
-                        messages.push(Message {
-                            role: "user".to_string(),
-                            content: vec![ContentBlock::Text {
-                                text,
-                                cache_control: None,
-                            }],
-                        });
-                    }
-                    TurnItemKind::AgentMessage => {
-                        let text = item.detail.unwrap_or(item.summary);
-                        messages.push(Message {
-                            role: "assistant".to_string(),
-                            content: vec![ContentBlock::Text {
-                                text,
-                                cache_control: None,
-                            }],
-                        });
-                    }
-                    _ => {}
-                }
-            }
-        }
-        Ok(messages)
+        reconstruct_messages_for_store(&self.store, turns)
     }
 
     /// Serialised turn items → API messages plus approximate token totals for session files.
@@ -3246,6 +3233,45 @@ fn duration_ms(start: DateTime<Utc>, end: DateTime<Utc>) -> u64 {
     } else {
         u64::try_from(millis).unwrap_or(u64::MAX)
     }
+}
+
+/// Standalone version of `reconstruct_messages_from_turns` that works on a
+/// cloned `RuntimeThreadStore` — so it can run inside `spawn_blocking` without
+/// holding a reference to the `RuntimeThreadManager` or its `Arc<Mutex<…>>` locks.
+fn reconstruct_messages_for_store(
+    store: &RuntimeThreadStore,
+    turns: &[TurnRecord],
+) -> Result<Vec<Message>> {
+    let mut messages = Vec::new();
+    for turn in turns {
+        let items = store.list_items_for_turn(&turn.id)?;
+        for item in items {
+            match item.kind {
+                TurnItemKind::UserMessage => {
+                    let text = item.detail.unwrap_or(item.summary);
+                    messages.push(Message {
+                        role: "user".to_string(),
+                        content: vec![ContentBlock::Text {
+                            text,
+                            cache_control: None,
+                        }],
+                    });
+                }
+                TurnItemKind::AgentMessage => {
+                    let text = item.detail.unwrap_or(item.summary);
+                    messages.push(Message {
+                        role: "assistant".to_string(),
+                        content: vec![ContentBlock::Text {
+                            text,
+                            cache_control: None,
+                        }],
+                    });
+                }
+                _ => {}
+            }
+        }
+    }
+    Ok(messages)
 }
 
 fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<()> {

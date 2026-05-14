@@ -84,7 +84,7 @@ impl Default for RuntimeApiOptions {
         Self {
             host: "127.0.0.1".to_string(),
             port: 7878,
-            workers: 2,
+            workers: 8,
             cors_origins: Vec::new(),
             auth_token: None,
         }
@@ -560,18 +560,25 @@ async fn list_sessions(
     State(state): State<RuntimeApiState>,
     Query(query): Query<SessionsQuery>,
 ) -> Result<Json<SessionsResponse>, ApiError> {
-    let manager = SessionManager::new(state.sessions_dir.clone())
-        .map_err(|e| ApiError::internal(format!("Failed to open sessions dir: {e}")))?;
-    let mut sessions = if let Some(search) = query.search {
-        manager
-            .search_sessions(&search)
-            .map_err(|e| ApiError::internal(format!("Failed to search sessions: {e}")))?
-    } else {
-        manager
-            .list_sessions()
-            .map_err(|e| ApiError::internal(format!("Failed to list sessions: {e}")))?
-    };
+    let sessions_dir = state.sessions_dir.clone();
+    let search = query.search.clone();
     let limit = query.limit.unwrap_or(50).clamp(1, 500);
+    let mut sessions = tokio::task::spawn_blocking(move || {
+        let manager = SessionManager::new(sessions_dir)
+            .map_err(|e| format!("Failed to open sessions dir: {e}"))?;
+        if let Some(search) = search {
+            manager
+                .search_sessions(&search)
+                .map_err(|e| format!("Failed to search sessions: {e}"))
+        } else {
+            manager
+                .list_sessions()
+                .map_err(|e| format!("Failed to list sessions: {e}"))
+        }
+    })
+    .await
+    .map_err(|e| ApiError::internal(format!("session list task panicked: {e}")))?
+    .map_err(|e: String| ApiError::internal(e))?;
     sessions.truncate(limit);
     Ok(Json(SessionsResponse { sessions }))
 }
@@ -580,12 +587,19 @@ async fn get_session(
     State(state): State<RuntimeApiState>,
     AxumPath(id): AxumPath<String>,
 ) -> Result<Json<SessionDetailResponse>, ApiError> {
-    let manager = SessionManager::new(state.sessions_dir.clone())
-        .map_err(|e| ApiError::internal(format!("Failed to open sessions dir: {e}")))?;
-    let session = manager
-        .load_session(&id)
-        .map_err(|e| map_session_err(&id, e, "read"))?;
-    Ok(Json(session_to_detail(session)))
+    let sessions_dir = state.sessions_dir.clone();
+    let detail = tokio::task::spawn_blocking({
+        let id = id.clone();
+        move || -> std::io::Result<SessionDetailResponse> {
+            let manager = SessionManager::new(sessions_dir)?;
+            let session = manager.load_session(&id)?;
+            Ok(session_to_detail(session))
+        }
+    })
+    .await
+    .map_err(|e| ApiError::internal(format!("get session task panicked: {e}")))?
+    .map_err(|e| map_session_err(&id, e, "read"))?;
+    Ok(Json(detail))
 }
 
 async fn resume_session_thread(
@@ -593,11 +607,24 @@ async fn resume_session_thread(
     AxumPath(id): AxumPath<String>,
     Json(req): Json<ResumeSessionRequest>,
 ) -> Result<(StatusCode, Json<ResumeSessionResponse>), ApiError> {
-    let manager = SessionManager::new(state.sessions_dir.clone())
-        .map_err(|e| ApiError::internal(format!("Failed to open sessions dir: {e}")))?;
-    let session = manager
-        .load_session(&id)
-        .map_err(|e| map_session_err(&id, e, "read"))?;
+    let t0 = std::time::Instant::now();
+    let sessions_dir = state.sessions_dir.clone();
+    let session = tokio::task::spawn_blocking({
+        let id = id.clone();
+        move || -> Result<SavedSession, std::io::Error> {
+            let manager = SessionManager::new(sessions_dir)?;
+            manager.load_session(&id)
+        }
+    })
+    .await
+    .map_err(|e| ApiError::internal(format!("resume session task panicked: {e}")))?
+    .map_err(|e| map_session_err(&id, e, "read"))?;
+    let t1 = t0.elapsed();
+    eprintln!(
+        "[resume-session] load_session done in {:.1}s, {} messages",
+        t1.as_secs_f64(),
+        session.messages.len(),
+    );
 
     let model = req.model.unwrap_or_else(|| session.metadata.model.clone());
     let mode = req.mode.unwrap_or_else(|| {
@@ -628,16 +655,42 @@ async fn resume_session_thread(
         .await
         .map_err(|e| ApiError::internal(format!("Failed to create thread: {e}")))?;
 
-    let msg_count = session.messages.len();
-    state
-        .runtime_threads
-        .seed_thread_from_messages(&thread.id, &session.messages)
-        .await
-        .map_err(|e| ApiError::internal(format!("Failed to seed thread history: {e}")))?;
+    // Take ownership of messages and drop the rest of the session struct
+    // early to free metadata/system_prompt memory before the 750+ file-write
+    // step that follows. seed_thread_from_messages is offloaded to the
+    // blocking thread pool 鈥?each save_item / save_turn is a synchronous
+    // serde_json + write_atomic that must not stall a tokio worker.
+    let messages = session.messages;
+    let msg_count = messages.len();
+    let title = session.metadata.title.clone();
+    // session dropped here (messages already moved out)
+
+    let threads = state.runtime_threads.clone();
+    let thread_id = thread.id.clone();
+    let thread_id_for_log = thread_id.clone();
+    tokio::task::spawn_blocking({
+        let rt = tokio::runtime::Handle::current();
+        move || {
+            rt.block_on(async {
+                threads
+                    .seed_thread_from_messages(&thread_id, &messages)
+                    .await
+            })
+        }
+    })
+    .await
+    .map_err(|e| ApiError::internal(format!("seed thread messages task panicked: {e}")))?
+    .map_err(|e| ApiError::internal(format!("Failed to seed thread history: {e}")))?;
+    let t2 = t0.elapsed();
+    eprintln!(
+        "[resume-session] seed done in {:.1}s total, thread={}",
+        t2.as_secs_f64(),
+        thread_id_for_log,
+    );
 
     let summary = format!(
         "Resumed session '{}' ({} messages) into thread {}",
-        session.metadata.title, msg_count, thread.id
+        title, msg_count, thread.id
     );
 
     Ok((
@@ -655,11 +708,17 @@ async fn delete_session(
     State(state): State<RuntimeApiState>,
     AxumPath(id): AxumPath<String>,
 ) -> Result<StatusCode, ApiError> {
-    let manager = SessionManager::new(state.sessions_dir.clone())
-        .map_err(|e| ApiError::internal(format!("Failed to open sessions dir: {e}")))?;
-    manager
-        .delete_session(&id)
-        .map_err(|e| map_session_err(&id, e, "delete"))?;
+    let sessions_dir = state.sessions_dir.clone();
+    tokio::task::spawn_blocking({
+        let id = id.clone();
+        move || -> Result<(), std::io::Error> {
+            let manager = SessionManager::new(sessions_dir)?;
+            manager.delete_session(&id)
+        }
+    })
+    .await
+    .map_err(|e| ApiError::internal(format!("delete session task panicked: {e}")))?
+    .map_err(|e| map_session_err(&id, e, "delete"))?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -681,68 +740,78 @@ async fn persist_thread_session(
     AxumPath(thread_id): AxumPath<String>,
     Json(req): Json<PersistThreadSessionRequest>,
 ) -> Result<Json<PersistThreadSessionResponse>, ApiError> {
-    let thread = state
-        .runtime_threads
-        .get_thread(&thread_id)
-        .await
-        .map_err(|e| ApiError::not_found(e.to_string()))?;
+    // All sync work — including the O(n) list_turns/list_items scans inside
+    // export_thread_for_session_persist, plus serde + atomic write — runs on
+    // the blocking thread pool so the /health endpoint stays responsive.
+    let session = tokio::task::spawn_blocking({
+        let threads = state.runtime_threads.clone();
+        let sessions_dir = state.sessions_dir.clone();
+        let sid = req
+            .session_id
+            .as_ref()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        move || -> Result<SavedSession, String> {
+            let thread = threads
+                .load_thread_sync(&thread_id)
+                .map_err(|e| format!("thread not found: {e}"))?;
 
-    let (messages, total_tokens) = state
-        .runtime_threads
-        .export_thread_for_session_persist(&thread_id)
-        .map_err(|e| ApiError::internal(format!("Failed to export thread: {e}")))?;
+            let (messages, total_tokens) = threads
+                .export_thread_for_session_persist(&thread_id)
+                .map_err(|e| format!("Failed to export thread: {e}"))?;
 
-    let sid = req
-        .session_id
-        .as_ref()
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty());
-    if sid.is_none() && messages.is_empty() {
-        return Err(ApiError::bad_request(
-            "thread has no messages to persist; wait for turn.completed",
-        ));
-    }
+            if sid.is_none() && messages.is_empty() {
+                return Err(
+                    "thread has no messages to persist; wait for turn.completed".to_string(),
+                );
+            }
 
-    let manager = SessionManager::new(state.sessions_dir.clone())
-        .map_err(|e| ApiError::internal(format!("Failed to open sessions dir: {e}")))?;
+            let sys = thread
+                .system_prompt
+                .as_ref()
+                .map(|s| SystemPrompt::Text(s.clone()));
 
-    let sys = thread
-        .system_prompt
-        .as_ref()
-        .map(|s| SystemPrompt::Text(s.clone()));
+            let manager = SessionManager::new(sessions_dir)
+                .map_err(|e| format!("Failed to open sessions dir: {e}"))?;
 
-    let session = if let Some(existing_id) = sid {
-        let existing = manager
-            .load_session(existing_id)
-            .map_err(|e| map_session_err(existing_id, e, "read"))?;
-        let mut session = update_session(existing, &messages, total_tokens, sys.as_ref());
-        session.metadata.model = thread.model.clone();
-        session.metadata.workspace = thread.workspace.clone();
-        session.metadata.mode = Some(thread.mode.clone());
-        if let Some(title) = &thread.title {
-            session.metadata.title = title.clone();
+            if let Some(existing_id) = sid {
+                let existing = manager
+                    .load_session(&existing_id)
+                    .map_err(|e| format!("read existing session: {e}"))?;
+                let mut session =
+                    update_session(existing, &messages, total_tokens, sys.as_ref());
+                session.metadata.model = thread.model.clone();
+                session.metadata.workspace = thread.workspace.clone();
+                session.metadata.mode = Some(thread.mode.clone());
+                if let Some(title) = &thread.title {
+                    session.metadata.title = title.clone();
+                }
+                manager
+                    .save_session(&session)
+                    .map_err(|e| format!("save session: {e}"))?;
+                Ok(session)
+            } else {
+                let mut session = create_saved_session_with_mode(
+                    &messages,
+                    &thread.model,
+                    &thread.workspace,
+                    total_tokens,
+                    sys.as_ref(),
+                    Some(thread.mode.as_str()),
+                );
+                if let Some(title) = &thread.title {
+                    session.metadata.title = title.clone();
+                }
+                manager
+                    .save_session(&session)
+                    .map_err(|e| format!("save session: {e}"))?;
+                Ok(session)
+            }
         }
-        manager
-            .save_session(&session)
-            .map_err(|e| ApiError::internal(format!("Failed to save session: {e}")))?;
-        session
-    } else {
-        let mut session = create_saved_session_with_mode(
-            &messages,
-            &thread.model,
-            &thread.workspace,
-            total_tokens,
-            sys.as_ref(),
-            Some(thread.mode.as_str()),
-        );
-        if let Some(title) = &thread.title {
-            session.metadata.title = title.clone();
-        }
-        manager
-            .save_session(&session)
-            .map_err(|e| ApiError::internal(format!("Failed to save session: {e}")))?;
-        session
-    };
+    })
+    .await
+    .map_err(|e| ApiError::internal(format!("persist session task panicked: {e}")))
+    .and_then(|r| r.map_err(ApiError::internal))?;
 
     Ok(Json(PersistThreadSessionResponse {
         session_id: session.metadata.id.clone(),
