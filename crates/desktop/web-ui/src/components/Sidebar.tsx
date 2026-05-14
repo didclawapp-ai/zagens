@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { useT, LOCALE_LABELS } from '../i18n';
-import type { Locale } from '../i18n';
+import { useT } from '../i18n';
 import type { RightPanelView } from './RightPanel';
 import type { RuntimeConnectionState } from '../api/client';
 
@@ -10,8 +9,6 @@ interface SessionInfo {
   created_at?: number;
   updated_at?: number;
 }
-
-type Theme = 'light' | 'dark';
 
 interface Props {
   sessions: SessionInfo[];
@@ -24,8 +21,6 @@ interface Props {
   apiKeyConfigured: boolean | null;
   activeInspector: RightPanelView;
   onInspectorChange: (view: RightPanelView) => void;
-  theme: Theme;
-  onToggleTheme: () => void;
 }
 
 const navBtn = (active: boolean) =>
@@ -46,10 +41,8 @@ export default function Sidebar({
   apiKeyConfigured,
   activeInspector,
   onInspectorChange,
-  theme,
-  onToggleTheme,
 }: Props) {
-  const { t, locale, setLocale } = useT();
+  const { t } = useT();
   return (
     <aside
       className="flex w-60 shrink-0 flex-col border-r border-rail-edge bg-canvas"
@@ -165,42 +158,9 @@ export default function Sidebar({
         {desktopHost && apiKeyConfigured === false && (
           <p className="px-1 text-[10px] text-amber-text/90 leading-snug">未配置 API Key</p>
         )}
-        <button
-          type="button"
-          onClick={onToggleTheme}
-          className="flex items-center gap-2 w-full px-2 py-1.5 rounded-lg text-xs text-t-text-secondary hover:bg-hover transition-colors"
-          title={theme === 'light' ? '切换到暗色模式' : '切换到浅色模式'}
-        >
-          <svg viewBox="0 0 24 24" className="w-4 h-4 stroke-current" style={{ fill: 'none', strokeWidth: 1.6 }}>
-            {theme === 'light' ? (
-              <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
-            ) : (
-              <circle cx="12" cy="12" r="5" />
-            )}
-            {theme === 'light' ? null : (
-              <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
-            )}
-          </svg>
-          {theme === 'light' ? t('sidebar.themeDark') : t('sidebar.themeLight')}
-        </button>
       </div>
 
       <div className="shrink-0 px-3.5 py-2 border-t border-divider space-y-1.5">
-        <label className="flex items-center gap-2 text-[10px] text-t-text-muted">
-          <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 stroke-current" style={{ fill: 'none', strokeWidth: 1.6 }}>
-            <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z" />
-            <path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
-          </svg>
-          <select
-            value={locale}
-            onChange={(e) => setLocale(e.target.value as Locale)}
-            className="bg-transparent text-t-text-muted cursor-pointer outline-none"
-          >
-            {(Object.entries(LOCALE_LABELS) as [Locale, string][]).map(([id, label]) => (
-              <option key={id} value={id}>{label}</option>
-            ))}
-          </select>
-        </label>
         <p className="text-[10px] text-t-text-muted">DS Pick v0.2.2</p>
         <p className="text-[10px] text-t-text-muted/80 leading-snug">
           基于 DeepSeek TUI 运行时（<code className="font-mono">deepseek</code> CLI）
@@ -214,7 +174,7 @@ export default function Sidebar({
 /*  Settings accordion: expands sub-nav items below the 设置 toggle   */
 /* ------------------------------------------------------------------ */
 
-type SettingsTab = 'api-key' | 'mcp' | 'usage' | 'tasks-skills' | 'agents' | 'routing';
+type SettingsTab = 'api-key' | 'mcp' | 'usage' | 'tasks-skills' | 'agents' | 'routing' | 'system';
 
 function subNavBtn(active: boolean) {
   return `w-full text-left pl-7 pr-3 py-2 rounded-lg text-xs transition-colors ${
@@ -250,6 +210,7 @@ function SettingsAccordion({
     { tab: 'tasks-skills', label: '任务与技能', show: true },
     { tab: 'agents', label: '子代理', show: true },
     { tab: 'routing', label: '模型路由', show: true },
+    { tab: 'system', label: '系统设置', show: true },
   ];
 
   return (
@@ -257,7 +218,7 @@ function SettingsAccordion({
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className={navBtn(activeInspector === 'settings' || isSubActive('api-key') || isSubActive('mcp') || isSubActive('usage') || isSubActive('tasks-skills') || isSubActive('agents') || isSubActive('routing'))}
+        className={navBtn(activeInspector === 'settings' || isSubActive('api-key') || isSubActive('mcp') || isSubActive('usage') || isSubActive('tasks-skills') || isSubActive('agents') || isSubActive('routing') || isSubActive('system'))}
       >
         <svg viewBox="0 0 24 24" className="inline w-4 h-4 mr-2 stroke-current align-text-bottom" style={{ fill: 'none', strokeWidth: 1.6 }}>
           <path d="M4 14l4-4 4 4 8-8" />

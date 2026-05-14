@@ -229,6 +229,30 @@ pub struct ConfigToml {
     /// extraction via an external vision model.
     #[serde(default)]
     pub vision: Option<VisionConfigToml>,
+    /// 推理深度（off / high / max / auto）。V4 思维链控制。
+    #[serde(default)]
+    pub reasoning_effort: Option<String>,
+    /// 货币单位（usd / cny），用量仪表盘的数字解读货币。
+    #[serde(default)]
+    pub cost_currency: Option<String>,
+    /// Shell 工具开关。桌面端默认 false。
+    #[serde(default)]
+    pub allow_shell: Option<bool>,
+    /// 最大并发子代理数（1-20）。
+    #[serde(default)]
+    pub max_subagents: Option<usize>,
+    /// 功能开关。
+    #[serde(default)]
+    pub features: Option<FeaturesToml>,
+    /// 用户记忆。
+    #[serde(default)]
+    pub memory: Option<MemoryToml>,
+    /// 通知设置。
+    #[serde(default)]
+    pub notifications: Option<NotificationsToml>,
+    /// Session 文件上限（MB，0 = 不限制）。
+    #[serde(default)]
+    pub session: Option<SessionToml>,
     #[serde(flatten)]
     pub extras: BTreeMap<String, toml::Value>,
 }
@@ -330,6 +354,63 @@ pub struct LspConfigToml {
     pub servers: Option<BTreeMap<String, Vec<String>>>,
 }
 
+/// On-disk schema for the `[features]` table. 命名字段 + extras 兜底保证
+/// TOML 往返不丢失未知 key。
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct FeaturesToml {
+    #[serde(default)]
+    pub shell_tool: Option<bool>,
+    #[serde(default)]
+    pub subagents: Option<bool>,
+    #[serde(default)]
+    pub web_search: Option<bool>,
+    #[serde(default)]
+    pub apply_patch: Option<bool>,
+    #[serde(default)]
+    pub mcp: Option<bool>,
+    #[serde(default)]
+    pub exec_policy: Option<bool>,
+    #[serde(flatten)]
+    pub extras: BTreeMap<String, toml::Value>,
+}
+
+/// On-disk schema for the `[memory]` table.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct MemoryToml {
+    #[serde(default)]
+    pub enabled: Option<bool>,
+}
+
+/// On-disk schema for the `[notifications]` table.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct NotificationsToml {
+    #[serde(default)]
+    pub method: Option<String>,
+    #[serde(default)]
+    pub threshold_secs: Option<u64>,
+    #[serde(default)]
+    pub include_summary: Option<bool>,
+}
+
+/// On-disk schema for the `[session]` table.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionToml {
+    #[serde(default = "default_session_max_file_mb")]
+    pub max_file_mb: u64,
+}
+
+fn default_session_max_file_mb() -> u64 {
+    5
+}
+
+impl Default for SessionToml {
+    fn default() -> Self {
+        Self {
+            max_file_mb: default_session_max_file_mb(),
+        }
+    }
+}
+
 impl ConfigToml {
     /// Merge project-level overrides from `$WORKSPACE/.deepseek/config.toml`.
     /// Only populated fields in `project` are applied; everything else
@@ -404,6 +485,30 @@ impl ConfigToml {
         }
         if project.lsp.is_some() {
             self.lsp = project.lsp;
+        }
+        if project.reasoning_effort.is_some() {
+            self.reasoning_effort = project.reasoning_effort;
+        }
+        if project.cost_currency.is_some() {
+            self.cost_currency = project.cost_currency;
+        }
+        if project.allow_shell.is_some() {
+            self.allow_shell = project.allow_shell;
+        }
+        if project.max_subagents.is_some() {
+            self.max_subagents = project.max_subagents;
+        }
+        if project.features.is_some() {
+            self.features = project.features;
+        }
+        if project.memory.is_some() {
+            self.memory = project.memory;
+        }
+        if project.notifications.is_some() {
+            self.notifications = project.notifications;
+        }
+        if project.session.is_some() {
+            self.session = project.session;
         }
         for (k, v) in project.extras {
             self.extras.insert(k, v);

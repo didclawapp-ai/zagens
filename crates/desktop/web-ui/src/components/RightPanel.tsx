@@ -6,6 +6,7 @@ import UsageDashboard from './UsageDashboard';
 import AutomationPanel from './AutomationPanel';
 import AgentPanel from './AgentPanel';
 import RoutingPanel from './RoutingPanel';
+import SettingsPanel from './SettingsPanel';
 import type { AgentState } from '../types/agent';
 import {
   PreviewContainer,
@@ -24,6 +25,7 @@ export type RightPanelView =
   | 'workspace'
   | 'api-key'
   | 'settings'
+  | 'system'
   | 'mcp'
   | 'usage'
   | 'tasks-skills'
@@ -67,6 +69,7 @@ interface Props {
   onSavedApiKey: () => void;
   theme: Theme;
   onToggleTheme: () => void;
+  platform: string;
   /** Current composer / thread workspace directory */
   workspaceRoot: string;
   /** Active runtime thread when session resumed — used for restore copy */
@@ -87,6 +90,7 @@ const panelTitles: Record<RightPanelView, string> = {
   workspace: '工作台',
   'api-key': 'API Key',
   settings: '设置',
+  system: '系统设置',
   mcp: 'MCP 服务器',
   usage: '用量仪表盘',
   'tasks-skills': '任务与技能',
@@ -137,6 +141,7 @@ export default function RightPanel({
   onSavedApiKey,
   theme,
   onToggleTheme,
+  platform,
   workspaceRoot,
   resumedThreadId,
   threadTrustMode,
@@ -700,39 +705,15 @@ export default function RightPanel({
 
         {view === 'routing' && <RoutingPanel runtimeConn={runtimeConn} />}
 
-        {view === 'settings' && (
-          <div className="p-4 space-y-4 overflow-y-auto">
-            <p className="text-xs text-t-text-muted leading-relaxed">
-              通用设置（主题、语言、默认模型等）将在此扩展。当前连接状态：
-            </p>
-            <dl className="space-y-2 text-xs">
-              <div className="flex justify-between gap-2 py-1.5 border-b border-divider">
-                <dt className="text-t-text-muted">本地运行时</dt>
-                <dd className="text-t-text">
-                  {runtimeConn === 'connected' && '已连接'}
-                  {runtimeConn === 'checking' && '检测中…'}
-                  {runtimeConn === 'offline' && '离线'}
-                  {runtimeConn === 'auth_mismatch' && '令牌不一致'}
-                </dd>
-              </div>
-              <div className="flex justify-between gap-2 py-1.5 border-b border-divider">
-                <dt className="text-t-text-muted">主题</dt>
-                <dd>
-                  <button
-                    type="button"
-                    onClick={onToggleTheme}
-                    className="text-accent hover:underline"
-                  >
-                    {theme === 'light' ? '浅色' : '暗色'}（点击切换）
-                  </button>
-                </dd>
-              </div>
-              <div className="flex justify-between gap-2 py-1.5">
-                <dt className="text-t-text-muted">Tauri 桌面</dt>
-                <dd className="text-t-text">{desktopHost ? '是' : '否（浏览器模式）'}</dd>
-              </div>
-            </dl>
-          </div>
+        {(view === 'settings' || view === 'system') && (
+          <SettingsPanel
+            runtimeConn={runtimeConn}
+            desktopHost={desktopHost}
+            apiKeyConfigured={apiKeyConfigured}
+            platform={platform}
+            theme={theme}
+            onToggleTheme={onToggleTheme}
+          />
         )}
       </div>
     </aside>

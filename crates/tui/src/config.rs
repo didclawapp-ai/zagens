@@ -418,6 +418,26 @@ pub struct MemoryConfig {
     pub enabled: Option<bool>,
 }
 
+/// Session file size limit (#402). Default 5 MB.
+/// 0 = no limit (maps to `u64::MAX` in bytes).
+#[derive(Debug, Clone, Deserialize)]
+pub struct SessionConfig {
+    #[serde(default = "default_session_max_file_mb")]
+    pub max_file_mb: u64,
+}
+
+fn default_session_max_file_mb() -> u64 {
+    5
+}
+
+impl Default for SessionConfig {
+    fn default() -> Self {
+        Self {
+            max_file_mb: default_session_max_file_mb(),
+        }
+    }
+}
+
 impl SnapshotsConfig {
     #[must_use]
     pub fn max_age(&self) -> std::time::Duration {
@@ -696,6 +716,10 @@ pub struct Config {
     /// DeepSeek reasoning-effort tier: `"off" | "low" | "medium" | "high" | "max"`.
     /// Defaults to `"max"` at runtime if unset.
     pub reasoning_effort: Option<String>,
+    /// Cost display currency: `"usd"` | `"cny"`. Defaults to `"usd"` at runtime
+    /// if unset. Consumed via `Settings.cost_currency` bridge on TUI boot.
+    #[serde(default)]
+    pub cost_currency: Option<String>,
     pub tools_file: Option<String>,
     pub skills_dir: Option<String>,
     pub mcp_config_path: Option<String>,
@@ -773,6 +797,11 @@ pub struct Config {
     /// `DEEPSEEK_MEMORY=on` is set.
     #[serde(default)]
     pub memory: Option<MemoryConfig>,
+
+    /// Session file size limit (#402). Default 5 MB.
+    /// 0 = no limit (maps to `u64::MAX` in bytes).
+    #[serde(default)]
+    pub session: Option<SessionConfig>,
 
     /// Post-edit LSP diagnostics injection (#136). When absent, the engine
     /// applies the defaults documented in [`LspConfigToml`].
@@ -1438,6 +1467,28 @@ impl Config {
         self.max_subagents
             .unwrap_or(DEFAULT_MAX_SUBAGENTS)
             .clamp(1, MAX_SUBAGENTS)
+    }
+
+    /// 读取 session 文件上限（MB）：`[session] max_file_mb` > 环境变量 > 默认 5。
+    /// **0 表示不限制**（返回 `u64::MAX`），与现有 `max_session_file_size()` 语义一致。
+    #[must_use]
+    pub fn session_max_file_mb(&self) -> u64 {
+        // 1. TOML [session] max_file_mb
+        if let Some(cfg) = self.session.as_ref() {
+            return if cfg.max_file_mb > 0 {
+                cfg.max_file_mb
+            } else {
+                u64::MAX // 0 = 不限制
+            };
+        }
+        // 2. 环境变量（向后兼容）
+        if let Ok(val) = std::env::var("DEEPSEEK_MAX_SESSION_FILE_MB") {
+            if let Ok(mb) = val.trim().parse::<u64>() {
+                return if mb > 0 { mb } else { u64::MAX };
+            }
+        }
+        // 3. 默认 5 MB
+        5
     }
 
     /// Raw sub-agent model override map. Values are validated at spawn time
@@ -2257,6 +2308,7 @@ fn merge_config(base: Config, override_cfg: Config) -> Config {
         http_headers: override_cfg.http_headers.or(base.http_headers),
         default_text_model: override_cfg.default_text_model.or(base.default_text_model),
         reasoning_effort: override_cfg.reasoning_effort.or(base.reasoning_effort),
+        cost_currency: override_cfg.cost_currency.or(base.cost_currency),
         tools_file: override_cfg.tools_file.or(base.tools_file),
         skills_dir: override_cfg.skills_dir.or(base.skills_dir),
         mcp_config_path: override_cfg.mcp_config_path.or(base.mcp_config_path),
@@ -2289,6 +2341,7 @@ fn merge_config(base: Config, override_cfg: Config) -> Config {
         skills: override_cfg.skills.or(base.skills),
         snapshots: override_cfg.snapshots.or(base.snapshots),
         memory: override_cfg.memory.or(base.memory),
+        session: override_cfg.session.or(base.session),
         lsp: override_cfg.lsp.or(base.lsp),
         context: ContextConfig {
             enabled: override_cfg.context.enabled.or(base.context.enabled),

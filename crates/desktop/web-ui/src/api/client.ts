@@ -780,3 +780,32 @@ export async function getThreadEvents(
     }
   }
 }
+
+// ========== System Settings (Desktop Tauri) ==========
+
+export interface SystemSettings {
+  default_model: string;
+  reasoning_effort: string;
+  cost_currency: string;
+  allow_shell: boolean;
+  approval_policy: string;
+  sandbox_mode: string;
+  max_subagents: number;
+  web_search: boolean;
+  exec_policy: boolean;
+  memory_enabled: boolean;
+  lsp_enabled: boolean;
+  snapshots_enabled: boolean;
+  notify_method: string;
+  session_file_mb: number;
+}
+
+export async function fetchSystemSettings(): Promise<SystemSettings> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  return invoke<SystemSettings>('get_system_settings');
+}
+
+export async function saveSystemSettings(settings: SystemSettings): Promise<void> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  await invoke('save_system_settings', { settings });
+}

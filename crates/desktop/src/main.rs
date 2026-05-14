@@ -126,6 +126,8 @@ fn main() {
             commands::export_thread_json,
             commands::export_session_json,
             commands::restart_sidecar,
+            commands::get_system_settings,
+            commands::save_system_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running DS Pick");

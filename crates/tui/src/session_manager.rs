@@ -30,12 +30,22 @@ const CURRENT_QUEUE_SCHEMA_VERSION: u32 = 1;
 const DEFAULT_MAX_SESSION_FILE_SIZE: u64 = 5 * 1024 * 1024;
 
 fn max_session_file_size() -> u64 {
-    std::env::var("DEEPSEEK_MAX_SESSION_FILE_MB")
-        .ok()
-        .and_then(|v| v.trim().parse::<u64>().ok())
-        .filter(|&mb| mb > 0)
-        .map(|mb| mb * 1024 * 1024)
-        .unwrap_or(DEFAULT_MAX_SESSION_FILE_SIZE)
+    // 1. Env var (highest precedence for backward compat)
+    if let Ok(mb_str) = std::env::var("DEEPSEEK_MAX_SESSION_FILE_MB")
+        && let Ok(mb) = mb_str.trim().parse::<u64>()
+    {
+        return if mb > 0 { mb * 1024 * 1024 } else { u64::MAX };
+    }
+    // 2. TOML [session] max_file_mb via Config struct
+    if let Ok(config_str) = std::fs::read_to_string(
+        dirs::home_dir().unwrap_or_default().join(".deepseek/config.toml"),
+    )
+        && let Ok(config) = toml::from_str::<crate::config::Config>(&config_str)
+    {
+        let mb = config.session_max_file_mb();
+        return if mb > 0 { mb * 1024 * 1024 } else { u64::MAX };
+    }
+    DEFAULT_MAX_SESSION_FILE_SIZE
 }
 
 const fn default_session_schema_version() -> u32 {

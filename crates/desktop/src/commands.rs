@@ -840,6 +840,137 @@ pub async fn export_thread_json(
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// system settings — 桌面系统设置面板读写 config.toml（双轨同步）
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SystemSettings {
+    pub default_model: String,
+    pub reasoning_effort: String,
+    pub cost_currency: String,
+    pub allow_shell: bool,
+    pub approval_policy: String,
+    pub sandbox_mode: String,
+    pub max_subagents: usize,
+    pub web_search: bool,
+    pub exec_policy: bool,
+    pub memory_enabled: bool,
+    pub lsp_enabled: bool,
+    pub snapshots_enabled: bool,
+    pub notify_method: String,
+    pub session_file_mb: u64,
+}
+
+#[tauri::command]
+pub fn get_system_settings() -> Result<SystemSettings, String> {
+    let store = ConfigStore::load(None).map_err(|e| e.to_string())?;
+    let cfg = &store.config;
+    Ok(SystemSettings {
+        default_model: cfg
+            .default_text_model
+            .clone()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "deepseek-v4-pro".into()),
+        reasoning_effort: cfg
+            .reasoning_effort
+            .clone()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "max".into()),
+        cost_currency: cfg
+            .cost_currency
+            .clone()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "usd".into()),
+        allow_shell: cfg.allow_shell.unwrap_or(false),
+        approval_policy: cfg
+            .approval_policy
+            .clone()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "on-request".into()),
+        sandbox_mode: cfg
+            .sandbox_mode
+            .clone()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "workspace-write".into()),
+        max_subagents: cfg.max_subagents.unwrap_or(10).clamp(1, 20),
+        web_search: cfg
+            .features
+            .as_ref()
+            .and_then(|f| f.web_search)
+            .unwrap_or(true),
+        exec_policy: cfg
+            .features
+            .as_ref()
+            .and_then(|f| f.exec_policy)
+            .unwrap_or(true),
+        memory_enabled: cfg
+            .memory
+            .as_ref()
+            .and_then(|m| m.enabled)
+            .unwrap_or(false),
+        lsp_enabled: cfg.lsp.as_ref().and_then(|l| l.enabled).unwrap_or(true),
+        snapshots_enabled: cfg.snapshots.as_ref().map(|s| s.enabled).unwrap_or(true),
+        notify_method: cfg
+            .notifications
+            .as_ref()
+            .and_then(|n| n.method.clone())
+            .filter(|m| !m.is_empty())
+            .unwrap_or_else(|| "auto".into()),
+        session_file_mb: cfg.session.as_ref().map(|s| s.max_file_mb).unwrap_or(5),
+    })
+}
+
+#[tauri::command]
+pub fn save_system_settings(
+    settings: SystemSettings,
+    ctx: tauri::State<'_, AppContext>,
+) -> Result<(), String> {
+    let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
+    let cfg = &mut store.config;
+
+    // 顶层标量字段
+    cfg.default_text_model = Some(settings.default_model);
+    cfg.reasoning_effort = Some(settings.reasoning_effort);
+    cfg.cost_currency = Some(settings.cost_currency);
+    cfg.allow_shell = Some(settings.allow_shell);
+    cfg.approval_policy = Some(settings.approval_policy);
+    cfg.sandbox_mode = Some(settings.sandbox_mode);
+    cfg.max_subagents = Some(settings.max_subagents);
+
+    // features：使用 get_or_insert_with 而非 take() ——
+    // 避免丢弃 config.toml 中已有的其他 features 字段
+    let features = cfg.features.get_or_insert_with(Default::default);
+    features.web_search = Some(settings.web_search);
+    features.exec_policy = Some(settings.exec_policy);
+
+    // memory
+    let memory = cfg.memory.get_or_insert_with(Default::default);
+    memory.enabled = Some(settings.memory_enabled);
+
+    // lsp
+    let lsp = cfg.lsp.get_or_insert_with(Default::default);
+    lsp.enabled = Some(settings.lsp_enabled);
+
+    // snapshots
+    let snapshots = cfg.snapshots.get_or_insert_with(Default::default);
+    snapshots.enabled = settings.snapshots_enabled;
+
+    // notifications
+    let notif = cfg.notifications.get_or_insert_with(Default::default);
+    notif.method = Some(settings.notify_method);
+
+    // session
+    let session = cfg.session.get_or_insert_with(Default::default);
+    session.max_file_mb = settings.session_file_mb;
+
+    store.save().map_err(|e| e.to_string())?;
+
+    // 重启 sidecar 使 TUI Config 重新读取 config.toml
+    ctx.sidecar_restart.notify_one();
+    Ok(())
+}
+
 #[tauri::command]
 pub fn restart_sidecar(ctx: tauri::State<'_, AppContext>) -> Result<(), String> {
     ctx.sidecar_restart.notify_one();

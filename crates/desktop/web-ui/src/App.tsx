@@ -240,6 +240,7 @@ function applyTheme(theme: Theme) {
 export default function App() {
   const { t } = useT();
   const [theme, setTheme] = useState<Theme>(loadTheme);
+  const [platform, setPlatform] = useState('unknown');
   const [selectedModel, setSelectedModel] = useState<DesktopModelId>(() => loadComposerPrefs().model);
   const [selectedWorkspace, setSelectedWorkspace] = useState(() => loadComposerPrefs().workspace);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -492,6 +493,8 @@ export default function App() {
         const s = await invoke<{ configured: boolean }>('get_api_key_status');
         setDesktopHost(true);
         setDesktopApiKeyConfigured(s.configured);
+        const info = await invoke<{ os: string; arch: string; version: string }>('get_platform_info');
+        setPlatform(info.os);
       } catch {
         setDesktopHost(false);
         setDesktopApiKeyConfigured(null);
@@ -1187,8 +1190,6 @@ export default function App() {
         apiKeyConfigured={desktopApiKeyConfigured}
         activeInspector={activeInspector}
         onInspectorChange={setActiveInspector}
-        theme={theme}
-        onToggleTheme={toggleTheme}
       />
       <div className="flex min-h-0 flex-1 flex-col min-w-0 bg-canvas">
         {banner && (
@@ -1245,6 +1246,7 @@ export default function App() {
         }}
         theme={theme}
         onToggleTheme={toggleTheme}
+        platform={platform}
         workspaceRoot={selectedWorkspace}
         resumedThreadId={resumedThreadId}
         threadTrustMode={threadTrustMode}

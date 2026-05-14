@@ -1133,8 +1133,15 @@ impl App {
         let show_thinking = settings.show_thinking;
         let show_tool_details = settings.show_tool_details;
         let ui_locale = resolve_locale(&settings.locale);
-        let cost_currency =
+        let mut cost_currency =
             CostCurrency::from_setting(&settings.cost_currency).unwrap_or(CostCurrency::Usd);
+        // 桥接 config.toml 的 cost_currency（桌面系统设置权威来源），
+        // 覆盖 settings.toml 的默认值。
+        if let Some(ref cc) = config.cost_currency
+            && let Some(parsed) = CostCurrency::from_setting(cc)
+        {
+            cost_currency = parsed;
+        }
         let composer_density = ComposerDensity::from_setting(&settings.composer_density);
         let composer_border = settings.composer_border;
         let composer_vim_enabled = settings
