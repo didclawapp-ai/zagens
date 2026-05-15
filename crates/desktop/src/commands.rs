@@ -984,6 +984,8 @@ pub fn save_system_settings(
     let session = cfg.session.get_or_insert_with(Default::default);
     session.max_file_mb = settings.session_file_mb;
 
+    tracing::info!("save_system_settings: writing config");
+
     store.save().map_err(|e| e.to_string())?;
 
     // 重启 sidecar 使 TUI Config 重新读取 config.toml

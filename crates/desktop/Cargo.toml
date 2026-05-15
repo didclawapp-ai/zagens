@@ -15,6 +15,7 @@ tauri-build = { version = "2", features = [] }
 deepseek-config = { path = "../config", version = "0.8.15" }
 toml.workspace = true
 anyhow.workspace = true
+chrono.workspace = true
 serde.workspace = true
 base64 = "0.22"
 serde_json.workspace = true
@@ -30,6 +31,7 @@ tauri-plugin-clipboard-manager = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-os = "2"
 tauri-plugin-process = "2"
+tracing.workspace = true
 
 [features]
 default = ["custom-protocol"]

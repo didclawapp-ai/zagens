@@ -220,6 +220,7 @@ impl ToolSpec for GrepFilesTool {
         // Symbol index lookup: if the pattern matches a known Rust symbol,
         // prepend file:line references so the model can jump to definitions.
         let symbol_hits = lookup_symbol_hits(&context.workspace, &pattern_str);
+        let symbol_status = crate::symbol_index::index_status(&context.workspace);
 
         // Build result
         let result = json!({
@@ -228,6 +229,7 @@ impl ToolSpec for GrepFilesTool {
             "files_searched": files_searched,
             "truncated": total_matches > max_results,
             "symbol_index_hits": symbol_hits,
+            "symbol_index_status": symbol_status,
         });
 
         ToolResult::json(&result).map_err(|e| ToolError::execution_failed(e.to_string()))

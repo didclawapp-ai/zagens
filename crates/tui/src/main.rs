@@ -756,7 +756,7 @@ async fn main() -> Result<()> {
                         .spawn({
                             let ws = workspace.clone();
                             move || {
-                                let index = symbol_index::build_index(&ws);
+                                let index = symbol_index::build_index(&ws, symbol_index::SymbolVisibility::Public);
                                 let index_dir = ws.join(".deepseek");
                                 let _ = std::fs::create_dir_all(&index_dir);
                                 let index_path = index_dir.join("symbols.json");

@@ -95,20 +95,23 @@ pub fn write_blackboard_partition(
     let path = blackboard_path(task_id);
     ensure_dir(&path);
 
+    // Read existing board first — needed by Implementer for round tracking
+    let existing_raw = std::fs::read_to_string(&path).unwrap_or_default();
+
     let (partition_key, partition_data) = match agent_type {
         SubAgentType::Explore => {
-            // Explorer: write findings from structured verdict (P1+
-            // — graceful when structured_verdict is still None)
+            // Explorer: write findings from structured verdict (P1+)
+            // CRAFT V2: also extract coverage metadata from the output
             ("explorer", json!({
                 "findings": build_explorer_findings(result),
                 "impact_summary": extract_impact_summary(result),
+                "files_examined": extract_files_examined(result),
+                "coverage_confidence": extract_coverage_confidence(result),
             }))
         }
         SubAgentType::Implementer => {
-            // Implementer: append a new round to rounds[]
-            ("implementer", json!({
-                "rounds": json!([]),  // placeholder — filled by merge logic
-            }))
+            // CRAFT V2: append current round to rounds[] history
+            ("implementer", build_implementer_rounds(result, &existing_raw))
         }
         SubAgentType::Review => {
             ("reviewer", json!({
@@ -129,8 +132,7 @@ pub fn write_blackboard_partition(
         _ => return, // General / Plan / Custom — no blackboard write
     };
 
-    // Read → merge → write atomically
-    let existing_raw = std::fs::read_to_string(&path).unwrap_or_default();
+    // Merge → write atomically (existing_raw already read above)
     let mut board: Value = if existing_raw.trim().is_empty() {
         json!({
             "schema_version": 1,
@@ -410,4 +412,107 @@ mod tests {
 
         let _ = std::fs::remove_file(blackboard_path(task_id));
     }
+}
+
+fn extract_files_examined(result: &SubAgentResult) -> Value {
+    // Parse "## Coverage Report" section from result text
+    let text = result.result.as_deref().unwrap_or("");
+    let marker = "## Coverage Report";
+    if let Some(after) = text.find(marker) {
+        let section = &text[after + marker.len()..];
+        // Extract "Files examined:" bullet list
+        let mut files: Vec<String> = Vec::new();
+        let mut in_files = false;
+        for line in section.lines() {
+            let trimmed = line.trim();
+            if trimmed.starts_with("- **Files examined**") || trimmed.starts_with("- Files examined") {
+                in_files = true;
+                continue;
+            }
+            if in_files {
+                if trimmed.starts_with("- ") && !trimmed.starts_with("- **") {
+                    let path = trimmed.trim_start_matches("- ").trim();
+                    if !path.is_empty() {
+                        files.push(path.to_string());
+                    }
+                } else if trimmed.starts_with("- **") || trimmed.starts_with("##") || trimmed.is_empty() {
+                    break;
+                }
+            }
+        }
+        json!(files)
+    } else {
+        json!([])
+    }
+}
+
+fn extract_coverage_confidence(result: &SubAgentResult) -> Value {
+    let text = result.result.as_deref().unwrap_or("");
+    let re = regex::Regex::new(r"(?im)^-?\s*\*\*Confidence\*\*:\s*(high|medium|low)").ok();
+    if let Some(re) = re {
+        if let Some(cap) = re.captures(text) {
+            if let Some(m) = cap.get(1) {
+                return json!(m.as_str());
+            }
+        }
+    }
+    json!("unknown")
+}
+
+fn build_implementer_rounds(result: &SubAgentResult, existing_raw: &str) -> Value {
+    // Read existing rounds, append a new one
+    let mut existing_rounds: Vec<Value> = if existing_raw.trim().is_empty() {
+        Vec::new()
+    } else {
+        serde_json::from_str::<Value>(existing_raw)
+            .ok()
+            .and_then(|v| v.get("implementer").cloned())
+            .and_then(|v| v.get("rounds").cloned())
+            .and_then(|v| v.as_array().cloned())
+            .unwrap_or_default()
+    };
+
+    let round_num = existing_rounds.len() + 1;
+    let changes = extract_changes_from_result(result);
+
+    let new_round = json!({
+        "round": round_num,
+        "changes": changes,
+    });
+
+    existing_rounds.push(new_round);
+    json!(existing_rounds)
+}
+
+fn extract_changes_from_result(result: &SubAgentResult) -> Value {
+    // Extract changed files from result text (look for path-like references)
+    let text = result.result.as_deref().unwrap_or("");
+    let re = regex::Regex::new(
+        r"(?m)^\s*(?:Modified|Changed|Added|Edited):\s*(.+)$"
+    ).ok();
+    let mut files: Vec<Value> = Vec::new();
+    if let Some(re) = re {
+        for cap in re.captures_iter(text) {
+            if let Some(m) = cap.get(1) {
+                files.push(json!(m.as_str().trim()));
+            }
+        }
+    }
+    if files.is_empty() {
+        // Fallback: look for file paths in the result
+        let path_re = regex::Regex::new(
+            r"`(crates/\S+\.(?:rs|toml|ts|tsx|js|json|md))`"
+        ).ok();
+        if let Some(re) = path_re {
+            for cap in re.captures_iter(text) {
+                if let Some(m) = cap.get(1) {
+                    let path = m.as_str().to_string();
+                    if !files.iter().any(|v| v.as_str() == Some(&path)) {
+                        files.push(json!(path));
+                    }
+                }
+            }
+        }
+    }
+    json!(files)
 }

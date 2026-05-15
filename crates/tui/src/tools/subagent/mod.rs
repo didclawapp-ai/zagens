@@ -3849,7 +3849,8 @@ fn build_allowed_tools(
             "web.run", "web_search", "note",
         ].into_iter().map(String::from).collect())),
         SubAgentType::Review => Ok(Some(vec![
-            "list_dir", "read_file", "grep_files", "file_search", "note",
+            "list_dir", "read_file", "grep_files", "file_search",
+            "exec_shell", "note",
         ].into_iter().map(String::from).collect())),
         _ => Ok(None),
     }
@@ -3961,6 +3962,18 @@ const EXPLORE_AGENT_PROMPT: &str = concat!(
     "If you discovered nothing actionable, emit `\"items\": []` and\n",
     "`\"summary\": \"No findings\"`. If you cannot produce valid JSON,\n",
     "omit the fence entirely.\n",
+    "\n",
+    "## Coverage Report (CRAFT V2)\n",
+    "\n",
+    "Before completing your analysis, append a `## Coverage Report` section.\n",
+    "This is mandatory — the Implementer relies on it to know what you did\n",
+    "and did not inspect:\n",
+    "\n",
+    "- **Files examined**: list every file path you read (relative to repo root)\n",
+    "- **Files NOT examined that may be relevant**: list paths you suspect are\n",
+    "  relevant but didn\'t read, with a one-line reason for each\n",
+    "- **Confidence**: `high` / `medium` / `low` — if medium or low, state what\n",
+    "  additional files you would need to read to reach high confidence\n",
 );
 
 const PLAN_AGENT_PROMPT: &str = concat!(

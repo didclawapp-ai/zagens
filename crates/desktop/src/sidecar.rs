@@ -1,7 +1,8 @@
 use std::collections::VecDeque;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::{Arc, LazyLock};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
@@ -65,6 +66,40 @@ fn sidecar_stderr_log_path() -> Option<PathBuf> {
     let log_dir = home.join(".deepseek").join("logs");
     std::fs::create_dir_all(&log_dir).ok()?;
     Some(log_dir.join("sidecar.log"))
+}
+
+/// DS Pick parent process (Tauri) supervisor events — same folder as `sidecar.log`, so GUI users
+/// without a console still get restart / health-check reasons on disk.
+fn supervisor_log_path() -> Option<PathBuf> {
+    let home = sidecar_spawn_cwd()?;
+    let log_dir = home.join(".deepseek").join("logs");
+    std::fs::create_dir_all(&log_dir).ok()?;
+    Some(log_dir.join("supervisor.log"))
+}
+
+static SUPERVISOR_LOG_MUTEX: Mutex<()> = Mutex::new(());
+
+/// Append a timestamped line to `~/.deepseek/logs/supervisor.log` and mirror to stderr.
+fn supervisor_log(message: impl AsRef<str>) {
+    let msg = message.as_ref().trim_end();
+    let stamped = format!(
+        "{} {}\n",
+        chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.3f"),
+        msg
+    );
+    if let Ok(_guard) = SUPERVISOR_LOG_MUTEX.lock() {
+        if let Some(path) = supervisor_log_path() {
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+            {
+                let _ = f.write_all(stamped.as_bytes());
+                let _ = f.flush();
+            }
+        }
+    }
+    eprintln!("{msg}");
 }
 
 /// Read the last `max_lines` lines from a text file, best-effort.
@@ -233,14 +268,16 @@ async fn wait_loopback_listen_port_free(port: u16, label: &'static str) {
         let available = std::net::TcpListener::bind(("127.0.0.1", port)).is_ok();
         if available {
             if elapsed > 0 {
-                eprintln!("deepseek-desktop: loopback:{port} released after {elapsed}ms ({label})");
+                supervisor_log(format!(
+                    "deepseek-desktop: loopback:{port} released after {elapsed}ms ({label})"
+                ));
             }
             return;
         }
         if elapsed >= PORT_FREE_MAX_WAIT_MS {
-            eprintln!(
+            supervisor_log(format!(
                 "deepseek-desktop: warning — loopback:{port} still busy after {PORT_FREE_MAX_WAIT_MS}ms ({label}); spawn may fail (EADDRINUSE / 10048)"
-            );
+            ));
             return;
         }
         sleep(Duration::from_millis(PORT_FREE_POLL_MS)).await;
@@ -256,6 +293,9 @@ pub async fn start_and_monitor(
     shutdown: Arc<Notify>,
 ) -> Result<()> {
     let deepseek_bin = find_deepseek_binary(app);
+    supervisor_log(format!(
+        "deepseek-desktop: supervisor start (port={port}, sidecar={deepseek_bin})"
+    ));
     let mut crash_times: VecDeque<Instant> = VecDeque::new();
 
     'supervisor: loop {
@@ -269,9 +309,9 @@ pub async fn start_and_monitor(
                 runtime_api_accepts_token(port, token)
             );
             if health_ok && !api_ok {
-                eprintln!(
+                supervisor_log(format!(
                     "deepseek-desktop: {port}/health OK but runtime API rejected this session token; stopping stale listener(s)."
-                );
+                ));
                 wait_loopback_listen_port_free(port, "stale-runtime-token").await;
             }
 
@@ -302,6 +342,9 @@ pub async fn start_and_monitor(
                         .filter(|s| !s.is_empty() && s != "(log unreadable)")
                         .map(|s| format!("\nsidecar stderr tail:\n{s}"))
                         .unwrap_or_default();
+                    supervisor_log(format!(
+                        "deepseek-desktop: sidecar failed to become healthy after {MAX_STARTUP_RETRIES} retries{log_tail}"
+                    ));
                     anyhow::bail!(
                         "sidecar failed to become healthy after {MAX_STARTUP_RETRIES} retries{log_tail}"
                     );
@@ -317,14 +360,16 @@ pub async fn start_and_monitor(
             tokio::select! {
                 biased;
                 _ = shutdown.notified() => {
-                    eprintln!("deepseek-desktop: shutting down sidecar…");
+                    supervisor_log("deepseek-desktop: shutting down sidecar…");
                     if let Some(mut ch) = child.take() {
                         ch.kill().await.ok();
                     }
                     return Ok(());
                 }
                 _ = restart.notified() => {
-                    eprintln!("deepseek-desktop: restarting sidecar to pick up config changes…");
+                    supervisor_log(
+                        "deepseek-desktop: restarting sidecar to pick up config changes…",
+                    );
                     loop {
                         tokio::select! {
                             _ = sleep(Duration::from_millis(RESTART_DEBOUNCE_MS)) => break,
@@ -342,10 +387,10 @@ pub async fn start_and_monitor(
                 _ = sleep(Duration::from_secs(HEALTH_CHECK_INTERVAL_SECS)) => {
                     if sidecar_ready(port, token).await {
                         if failures > 0 {
-                            eprintln!(
+                            supervisor_log(format!(
                                 "deepseek-desktop: health restored after {} failure(s)",
                                 failures
-                            );
+                            ));
                         }
                         failures = 0;
                     } else {
@@ -354,18 +399,18 @@ pub async fn start_and_monitor(
                         let child_died = if let Some(ref mut c) = child {
                             match c.try_wait() {
                                 Ok(Some(status)) => {
-                                    eprintln!(
+                                    supervisor_log(format!(
                                         "deepseek-desktop: sidecar child exited with {status:?}; {} health failures",
                                         failures + 1,
-                                    );
+                                    ));
                                     true
                                 }
                                 Ok(None) => false,
                                 Err(e) => {
-                                    eprintln!(
+                                    supervisor_log(format!(
                                         "deepseek-desktop: sidecar child try_wait error: {e}; {} health failures",
                                         failures + 1,
-                                    );
+                                    ));
                                     false
                                 }
                             }
@@ -383,10 +428,10 @@ pub async fn start_and_monitor(
                                 .as_deref()
                                 .map(|p| read_log_tail(p, 20))
                                 .unwrap_or_default();
-                            eprintln!(
+                            supervisor_log(format!(
                                 "deepseek-desktop: sidecar unresponsive ({}, {} failures, port={}, token_len={}); restarting. stderr tail:\n{log_snippet}",
                                 reason, failures, port, token.len(),
-                            );
+                            ));
                             if let Some(mut ch) = child.take() {
                                 ch.kill().await.ok();
                             } else {
@@ -407,14 +452,14 @@ pub async fn start_and_monitor(
                                 let wait_secs = 15u64.saturating_mul(
                                     (crash_times.len() - MAX_RAPID_RESTARTS) as u64
                                 );
-                                eprintln!(
+                                supervisor_log(format!(
                                     "deepseek-desktop: {} sidecar crashes in {} s; \
                                      pausing {wait_secs} s to avoid restart loop. \
                                      The session file may be too large to load — \
                                      try deleting old sessions or compacting the TUI history.",
                                     crash_times.len(),
                                     RAPID_RESTART_WINDOW_SECS,
-                                );
+                                ));
                                 sleep(Duration::from_secs(wait_secs)).await;
                                 // Prune again after the sleep so the count is fresh.
                                 let cutoff2 = Instant::now() - Duration::from_secs(RAPID_RESTART_WINDOW_SECS);

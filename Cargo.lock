@@ -1458,6 +1458,7 @@ version = "0.2.2"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
+ "chrono",
  "deepseek-config",
  "ignore",
  "reqwest",
@@ -1473,6 +1474,7 @@ dependencies = [
  "tauri-plugin-shell",
  "tokio",
  "toml 0.9.11+spec-1.1.0",
+ "tracing",
  "uuid",
 ]
 
