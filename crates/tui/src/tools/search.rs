@@ -11,8 +11,13 @@ use async_trait::async_trait;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+
+static SYMBOL_INDEX_BUILDING: std::sync::LazyLock<Mutex<HashSet<PathBuf>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashSet::new()));
 
 /// Maximum number of results to return to avoid overwhelming output
 const MAX_RESULTS: usize = 100;
@@ -483,15 +488,57 @@ fn bm25_rank(matches: &mut Vec<GrepMatch>, pattern: &str) {
 
 /// Try loading the symbol index and query it for symbols matching `pattern`.
 /// Returns file:line pairs for definition-side hits.
+///
+/// When the index is missing (first use per workspace) or stale (source files
+/// changed), a background thread rebuilds it. The current query uses whatever
+/// is immediately available — an empty result for missing, the stale index
+/// for stale — so the model is never blocked waiting for index build.
 fn lookup_symbol_hits(workspace: &Path, pattern: &str) -> Vec<serde_json::Value> {
-    let index_path = workspace.join(".deepseek").join("symbols.json");
-    let raw = match std::fs::read_to_string(&index_path) {
-        Ok(r) => r,
-        Err(_) => return Vec::new(),
+    let index_dir = workspace.join(".deepseek");
+    let index_path = index_dir.join("symbols.json");
+
+    // Try to load existing index
+    let index: Option<crate::symbol_index::SymbolIndex> = std::fs::read_to_string(&index_path)
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok());
+
+    // Determine build status
+    let needs_build = match &index {
+        Some(_idx) => {
+            // Stale check: skip if we already know it needs rebuild
+            crate::symbol_index::index_status(workspace) != crate::symbol_index::IndexStatus::Fresh
+        }
+        None => true,
     };
-    let index: crate::symbol_index::SymbolIndex = match serde_json::from_str(&raw) {
-        Ok(idx) => idx,
-        Err(_) => return Vec::new(),
+
+    // Schedule background build if needed and not already building this workspace
+    if needs_build {
+        let mut building = SYMBOL_INDEX_BUILDING.lock().unwrap();
+        let ws_canonical = workspace
+            .canonicalize()
+            .unwrap_or_else(|_| workspace.to_path_buf());
+        if building.insert(ws_canonical.clone()) {
+            drop(building);
+            let ws = ws_canonical;
+            std::thread::Builder::new()
+                .name("symbol-index".into())
+                .stack_size(8 * 1024 * 1024)
+                .spawn(move || {
+                    let index = crate::symbol_index::build_index(&ws, crate::symbol_index::SymbolVisibility::Public);
+                    let _ = std::fs::create_dir_all(ws.join(".deepseek"));
+                    let _ = std::fs::write(
+                        ws.join(".deepseek").join("symbols.json"),
+                        serde_json::to_string_pretty(&index).unwrap_or_default(),
+                    );
+                    SYMBOL_INDEX_BUILDING.lock().unwrap().remove(&ws);
+                })
+                .ok();
+        }
+    }
+
+    let index = match index {
+        Some(idx) => idx,
+        None => return Vec::new(),
     };
 
     // Strip regex metacharacters to extract a plain symbol name.

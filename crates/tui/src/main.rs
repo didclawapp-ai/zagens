@@ -748,26 +748,9 @@ async fn main() -> Result<()> {
                     });
                     let cors_origins = resolve_cors_origins(&config, &args.cors_origin);
 
-                    // CRAFT retrieval pipeline: build symbol index for fast
-                    // symbol→file→line lookups during grep_files / read_file.
-                    // syn's recursive-descent parser needs a larger stack than
-                    // Windows' default 1 MB, especially on large files.
-                    let _ = std::thread::Builder::new()
-                        .name("symbol-index".into())
-                        .stack_size(8 * 1024 * 1024)
-                        .spawn({
-                            let ws = workspace.clone();
-                            move || {
-                                let index = symbol_index::build_index(&ws, symbol_index::SymbolVisibility::Public);
-                                let index_dir = ws.join(".deepseek");
-                                let _ = std::fs::create_dir_all(&index_dir);
-                                let index_path = index_dir.join("symbols.json");
-                                let _ = std::fs::write(
-                                    &index_path,
-                                    serde_json::to_string_pretty(&index).unwrap_or_default(),
-                                );
-                            }
-                        });
+                    // Symbol index is now built lazily on first grep_files call
+                    // per workspace — no startup-time build needed.
+                    // See tools/search.rs `lookup_symbol_hits` for the lazy path.
 
                     match runtime_api::run_http_server(
                         config,
