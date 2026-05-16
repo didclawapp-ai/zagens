@@ -27,6 +27,7 @@ fn chain_transport_error_cn<E: Error + Send + Sync>(prefix: &str, err: &E) -> St
 
 /// Merges DeepSeek credentials into an existing [`ConfigToml`] without
 /// overwriting unrelated tables (e.g. `[vision]`).
+#[allow(dead_code)]
 fn merge_deepseek_api_key(config: &mut ConfigToml, key: &str) {
     config.api_key = Some(key.to_string());
     config.providers.deepseek.api_key = Some(key.to_string());
@@ -87,22 +88,9 @@ pub struct ApiKeyStatus {
 
 #[tauri::command]
 pub fn get_api_key_status() -> Result<ApiKeyStatus, String> {
-    let store = ConfigStore::load(None).map_err(|e| e.to_string())?;
-    let root = store
-        .config
-        .api_key
-        .as_ref()
-        .is_some_and(|s| !s.trim().is_empty());
-    let nested = store
-        .config
-        .providers
-        .deepseek
-        .api_key
-        .as_ref()
-        .is_some_and(|s| !s.trim().is_empty());
-    Ok(ApiKeyStatus {
-        configured: root || nested,
-    })
+    let secrets = deepseek_secrets::Secrets::auto_detect();
+    let configured = secrets.resolve("deepseek").is_some();
+    Ok(ApiKeyStatus { configured })
 }
 
 #[tauri::command]
@@ -111,9 +99,26 @@ pub fn save_deepseek_api_key(key: String, ctx: tauri::State<'_, AppContext>) -> 
     if key.is_empty() {
         return Err("API key 不能为空".to_string());
     }
+
+    // Write to OS keyring first — if this fails we do NOT clear config.toml
+    let secrets = deepseek_secrets::Secrets::auto_detect();
+    secrets
+        .set("deepseek", &key)
+        .map_err(|e| format!("无法保存到系统密钥链: {e}"))?;
+
+    // Remove plaintext key from config.toml; keep provider section structure
     let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
-    merge_deepseek_api_key(&mut store.config, &key);
+    store.config.api_key = None;
+    store.config.providers.deepseek.api_key = None;
+    if store.config.providers.deepseek.base_url.is_none() {
+        store.config.providers.deepseek.base_url =
+            Some("https://api.deepseek.com/beta".to_string());
+    }
+    if store.config.providers.deepseek.model.is_none() {
+        store.config.providers.deepseek.model = Some("deepseek-v4-pro".to_string());
+    }
     store.save().map_err(|e| e.to_string())?;
+
     ctx.sidecar_restart.notify_one();
     Ok(())
 }
@@ -127,11 +132,10 @@ pub struct VisionBridgeStatus {
 
 #[tauri::command]
 pub fn get_vision_bridge_status() -> Result<VisionBridgeStatus, String> {
+    let secrets = deepseek_secrets::Secrets::auto_detect();
+    let configured = secrets.resolve("vision").is_some();
     let store = ConfigStore::load(None).map_err(|e| e.to_string())?;
     let v = store.config.vision.as_ref();
-    let configured = v
-        .and_then(|x| x.api_key.as_ref())
-        .is_some_and(|s| !s.trim().is_empty());
     Ok(VisionBridgeStatus {
         configured,
         base_url: v
@@ -150,22 +154,27 @@ pub fn save_vision_bridge(
     model: String,
     ctx: tauri::State<'_, AppContext>,
 ) -> Result<(), String> {
-    let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
     let key_trim = api_key.trim();
-    let mut v = store.config.vision.clone().unwrap_or_default();
-
-    if !key_trim.is_empty() {
-        v.api_key = Some(key_trim.to_string());
-    } else if v
-        .api_key
-        .as_ref()
-        .map_or(true, |s| s.trim().is_empty())
-    {
-        return Err(
-            "请填写视觉桥接 API Key；密钥保存后不会回显，修改端点或模型时也需要重新输入密钥或直接编辑 config.toml 中的 [vision] 表。"
-                .to_string(),
-        );
+    if key_trim.is_empty() {
+        // If no new key is provided, check keyring for existing one
+        let secrets = deepseek_secrets::Secrets::auto_detect();
+        if secrets.resolve("vision").is_none() {
+            return Err(
+                "请填写视觉桥接 API Key；密钥保存后不会回显。修改端点或模型时也需要重新输入密钥。"
+                    .to_string(),
+            );
+        }
+    } else {
+        let secrets = deepseek_secrets::Secrets::auto_detect();
+        secrets
+            .set("vision", key_trim)
+            .map_err(|e| format!("无法保存视觉桥接密钥到系统密钥链: {e}"))?;
     }
+
+    let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
+    let mut v = store.config.vision.clone().unwrap_or_default();
+    // Never persist the key in config.toml
+    v.api_key = None;
 
     let bu = base_url.trim();
     v.base_url = if bu.is_empty() {
@@ -187,6 +196,9 @@ pub fn clear_vision_bridge(ctx: tauri::State<'_, AppContext>) -> Result<(), Stri
     let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
     store.config.vision = None;
     store.save().map_err(|e| e.to_string())?;
+    // Also clear from keyring
+    let secrets = deepseek_secrets::Secrets::auto_detect();
+    secrets.delete("vision").ok();
     ctx.sidecar_restart.notify_one();
     Ok(())
 }
@@ -249,13 +261,17 @@ pub async fn vision_transcribe_image(data_url: String) -> Result<String, String>
 
     let store = ConfigStore::load(None).map_err(|e| e.to_string())?;
     let vision = store.config.vision.as_ref().ok_or_else(|| {
-        "未配置视觉桥接：请在 设置 → API Key 中保存视觉桥接密钥（写入 config.toml 的 [vision] 表）".to_string()
+        "未配置视觉桥接：请在 设置 → API Key 中保存视觉桥接密钥".to_string()
     })?;
-    let api_key = vision
-        .api_key
-        .as_ref()
-        .filter(|s| !s.trim().is_empty())
-        .ok_or_else(|| "未配置视觉桥接 API Key".to_string())?;
+    // Key from OS keyring first, then config.toml fallback (legacy plaintext)
+    let secrets = deepseek_secrets::Secrets::auto_detect();
+    let api_key = secrets.resolve("vision").or_else(|| {
+        vision
+            .api_key
+            .as_ref()
+            .filter(|s| !s.trim().is_empty())
+            .cloned()
+    }).ok_or_else(|| "未配置视觉桥接 API Key".to_string())?;
     let base_url = vision
         .base_url
         .as_deref()

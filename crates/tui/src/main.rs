@@ -58,6 +58,8 @@ mod sandbox;
 mod schema_migration;
 mod seam_manager;
 mod session_manager;
+mod session_store_sqlite;
+mod thread_store_sqlite;
 mod settings;
 mod skills;
 mod snapshot;
@@ -767,7 +769,7 @@ async fn main() -> Result<()> {
                             }
                         });
 
-                    runtime_api::run_http_server(
+                    match runtime_api::run_http_server(
                         config,
                         workspace,
                         runtime_api::RuntimeApiOptions {
@@ -779,6 +781,18 @@ async fn main() -> Result<()> {
                         },
                     )
                     .await
+                    {
+                        Ok(()) => {
+                            eprintln!(
+                                "[deepseek-runtime] server shut down cleanly, exiting"
+                            );
+                            std::process::exit(0);
+                        }
+                        Err(e) => {
+                            eprintln!("[deepseek-runtime] fatal: {:#}", e);
+                            std::process::exit(1);
+                        }
+                    }
                 } else if args.acp {
                     let config = load_config_from_cli(&cli)?;
                     let model = config.default_model();
@@ -5132,6 +5146,7 @@ mod setup_helper_tests {
         let sources = [
             include_str!("config.rs"),
             include_str!("logging.rs"),
+            include_str!("tools/describe_image.rs"),
             include_str!("../../config/src/lib.rs"),
             include_str!("../../cli/src/main.rs"),
         ]

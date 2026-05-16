@@ -506,6 +506,31 @@ export default function App() {
     refreshApiKeyStatus();
   }, [refreshApiKeyStatus]);
 
+  // ── Startup gate: window starts invisible; sidecar::ready event shows it ──
+  useEffect(() => {
+    if (!desktopHost) return;
+    let timedOut = false;
+    const fallback = setTimeout(() => {
+      timedOut = true;
+      void import('@tauri-apps/api/window')
+         .then(({ getCurrentWindow }) => getCurrentWindow().show())
+         .catch(() => {});
+     }, 5000); // safety net: show anyway after 5s
+     void import('@tauri-apps/api/event')
+       .then(({ listen }) =>
+         listen<Record<string, unknown>>('sidecar://ready', () => {
+           clearTimeout(fallback);
+           if (!timedOut) {
+             void import('@tauri-apps/api/window')
+               .then(({ getCurrentWindow }) => getCurrentWindow().show())
+               .catch(() => {});
+          }
+        }),
+      )
+      .catch(() => {});
+    return () => clearTimeout(fallback);
+  }, [desktopHost]);
+
   useEffect(() => {
     let cancelled = false;
     const tick = async () => {

@@ -143,6 +143,8 @@ pub struct SavedSession {
 pub struct SessionManager {
     /// Directory where sessions are stored
     sessions_dir: PathBuf,
+    /// SQLite connection (None = fallback to JSON-per-file)
+    db: Option<std::sync::Mutex<rusqlite::Connection>>,
 }
 
 impl SessionManager {
@@ -166,11 +168,17 @@ impl SessionManager {
         Ok(self.sessions_dir.join(format!("{trimmed}.json")))
     }
 
-    /// Create a new `SessionManager` with the specified sessions directory
+    /// Create a new `SessionManager` with the specified sessions directory.
+    /// Tries to open SQLite DB at `sessions_dir/sessions.db` with auto-migration
+    /// from JSON files if present.
     pub fn new(sessions_dir: PathBuf) -> std::io::Result<Self> {
-        // Ensure the sessions directory exists
         fs::create_dir_all(&sessions_dir)?;
-        Ok(Self { sessions_dir })
+        let db_path = sessions_dir.join("sessions.db");
+        let db = crate::session_store_sqlite::open_sqlite_session_db(&db_path, &sessions_dir).ok();
+        Ok(Self {
+            sessions_dir,
+            db: db.map(std::sync::Mutex::new),
+        })
     }
 
     /// Create a `SessionManager` using the default location (~/.deepseek/sessions)
@@ -178,19 +186,18 @@ impl SessionManager {
         Self::new(default_sessions_dir()?)
     }
 
-    /// Save a session to disk using atomic write (temp file + fsync + rename).
+    /// Save a session to disk using SQLite (or atomic write JSON if no DB).
     pub fn save_session(&self, session: &SavedSession) -> std::io::Result<PathBuf> {
-        let path = self.validated_session_path(&session.metadata.id)?;
+        if let Some(ref db) = self.db {
+            sqlite_to_io(crate::session_store_sqlite::save_session_sqlite(&db.lock().unwrap(), session))?;
+            return Ok(self.validated_session_path(&session.metadata.id)?);
+        }
 
+        let path = self.validated_session_path(&session.metadata.id)?;
         let content = serde_json::to_string_pretty(session)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-
-        // Atomic write via write_atomic (NamedTempFile + fsync + persist)
         write_atomic(&path, content.as_bytes())?;
-
-        // Clean up old sessions if we have too many
         self.cleanup_old_sessions()?;
-
         Ok(path)
     }
 
@@ -288,12 +295,13 @@ impl SessionManager {
         Ok(())
     }
 
-    /// Load a session by ID
+    /// Load a session by ID (SQLite first, then JSON fallback)
     pub fn load_session(&self, id: &str) -> std::io::Result<SavedSession> {
-        let path = self.validated_session_path(id)?;
+        if let Some(ref db) = self.db {
+            return sqlite_to_io(crate::session_store_sqlite::load_session_sqlite(&db.lock().unwrap(), id));
+        }
 
-        // Guard against accidentally loading huge session files that would
-        // cause serde to allocate hundreds of MB and block the runtime.
+        let path = self.validated_session_path(id)?;
         let size_limit = max_session_file_size();
         if size_limit > 0 {
             let meta = path.metadata()?;
@@ -353,8 +361,12 @@ impl SessionManager {
         }
     }
 
-    /// List all saved sessions, sorted by most recently updated
+    /// List all saved sessions (SQLite indexed, then JSON fallback)
     pub fn list_sessions(&self) -> std::io::Result<Vec<SessionMetadata>> {
+        if let Some(ref db) = self.db {
+            return sqlite_to_io(crate::session_store_sqlite::list_sessions_sqlite(&db.lock().unwrap()));
+        }
+
         let mut sessions = Vec::new();
 
         for entry in fs::read_dir(&self.sessions_dir)? {
@@ -419,6 +431,9 @@ impl SessionManager {
 
     /// Delete a session by ID
     pub fn delete_session(&self, id: &str) -> std::io::Result<()> {
+        if let Some(ref db) = self.db {
+            return sqlite_to_io(crate::session_store_sqlite::delete_session_sqlite(&db.lock().unwrap(), id));
+        }
         let path = self.validated_session_path(id)?;
         fs::remove_file(path)
     }
@@ -860,6 +875,25 @@ fn format_age(dt: &DateTime<Utc>) -> String {
     }
 }
 
+/// Convert an `anyhow::Error` to `std::io::Error`, preserving NotFound / InvalidInput
+/// semantics for the session API error mapping.
+fn sqlite_to_io<T>(r: anyhow::Result<T>) -> std::io::Result<T> {
+    r.map_err(|e| {
+        let msg = format!("{e:#}");
+        // Check for NotFound / InvalidInput patterns
+        if msg.contains("not found") || msg.contains("NOT FOUND") {
+            std::io::Error::new(std::io::ErrorKind::NotFound, msg)
+        } else if msg.contains("InvalidInput")
+            || msg.contains("Invalid session id")
+            || msg.contains("cannot be empty")
+        {
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, msg)
+        } else {
+            std::io::Error::new(std::io::ErrorKind::Other, msg)
+        }
+    })
+}
+
 // === Unit Tests ===
 
 #[cfg(test)]
@@ -957,6 +991,8 @@ mod tests {
         let workspace_b = tmp.path().join("bb").join("bbb");
         fs::create_dir_all(&workspace_a).expect("mkdir workspace a");
         fs::create_dir_all(&workspace_b).expect("mkdir workspace b");
+        fs::create_dir_all(tmp.path().join("aa").join(".git")).expect("mkdir .git for a");
+        fs::create_dir_all(tmp.path().join("bb").join(".git")).expect("mkdir .git for b");
 
         write_session_record(
             &manager,

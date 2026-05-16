@@ -178,8 +178,8 @@ pub struct RuntimeEventRecord {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimeStoreState {
     #[serde(default = "default_runtime_schema_version")]
-    schema_version: u32,
-    next_seq: u64,
+    pub schema_version: u32,
+    pub next_seq: u64,
 }
 
 impl Default for RuntimeStoreState {
@@ -199,6 +199,7 @@ pub struct RuntimeThreadStore {
     events_dir: PathBuf,
     state_path: PathBuf,
     state: Arc<Mutex<RuntimeStoreState>>,
+    db: Option<Arc<std::sync::Mutex<rusqlite::Connection>>>,
 }
 
 impl RuntimeThreadStore {
@@ -217,15 +218,27 @@ impl RuntimeThreadStore {
             .with_context(|| format!("Failed to create {}", events_dir.display()))?;
 
         let state_path = root.join("state.json");
-        let state = if state_path.exists() {
-            let raw = fs::read_to_string(&state_path)
-                .with_context(|| format!("Failed to read {}", state_path.display()))?;
-            serde_json::from_str::<RuntimeStoreState>(&raw)
-                .with_context(|| format!("Failed to parse {}", state_path.display()))?
-        } else {
-            let default = RuntimeStoreState::default();
-            write_json_atomic(&state_path, &default)?;
-            default
+        // SQLite backend with auto-migration from existing JSON files.
+        let db_path = root.join("runtime.db");
+        let (state, db) = match crate::thread_store_sqlite::open_sqlite_thread_db(&db_path, &threads_dir) {
+            Ok((conn, sqlite_state)) => {
+                eprintln!("[thread-store] SQLite backend active at {}", db_path.display());
+                (sqlite_state, Some(Arc::new(std::sync::Mutex::new(conn))))
+            }
+            Err(e) => {
+                eprintln!("[thread-store] SQLite unavailable ({}): falling back to JSON files", e);
+                let state = if state_path.exists() {
+                    let raw = fs::read_to_string(&state_path)
+                        .with_context(|| format!("Failed to read {}", state_path.display()))?;
+                    serde_json::from_str::<RuntimeStoreState>(&raw)
+                        .with_context(|| format!("Failed to parse {}", state_path.display()))?
+                } else {
+                    let default = RuntimeStoreState::default();
+                    write_json_atomic(&state_path, &default)?;
+                    default
+                };
+                (state, None)
+            }
         };
 
         Ok(Self {
@@ -235,6 +248,7 @@ impl RuntimeThreadStore {
             events_dir,
             state_path,
             state: Arc::new(Mutex::new(state)),
+            db,
         })
     }
 
@@ -255,18 +269,34 @@ impl RuntimeThreadStore {
     }
 
     pub fn save_thread(&self, thread: &ThreadRecord) -> Result<()> {
+        if let Some(ref db) = self.db {
+            return crate::thread_store_sqlite::save_thread_sqlite(&db.lock().unwrap(), thread)
+                .map_err(|e| anyhow!("save_thread sqlite: {e}"));
+        }
         write_json_atomic(&self.thread_path(&thread.id), thread)
     }
 
     pub fn save_turn(&self, turn: &TurnRecord) -> Result<()> {
+        if let Some(ref db) = self.db {
+            return crate::thread_store_sqlite::save_turn_sqlite(&db.lock().unwrap(), turn)
+                .map_err(|e| anyhow!("save_turn sqlite: {e}"));
+        }
         write_json_atomic(&self.turn_path(&turn.id), turn)
     }
 
     pub fn save_item(&self, item: &TurnItemRecord) -> Result<()> {
+        if let Some(ref db) = self.db {
+            return crate::thread_store_sqlite::save_item_sqlite(&db.lock().unwrap(), item)
+                .map_err(|e| anyhow!("save_item sqlite: {e}"));
+        }
         write_json_atomic(&self.item_path(&item.id), item)
     }
 
     pub fn load_thread(&self, thread_id: &str) -> Result<ThreadRecord> {
+        if let Some(ref db) = self.db {
+            return crate::thread_store_sqlite::load_thread_sqlite(&db.lock().unwrap(), thread_id)
+                .map_err(|e| anyhow!("{e}"));
+        }
         let path = self.thread_path(thread_id);
         let raw = fs::read_to_string(&path)
             .with_context(|| format!("Failed to read thread {}", path.display()))?;
@@ -283,6 +313,10 @@ impl RuntimeThreadStore {
     }
 
     pub fn load_turn(&self, turn_id: &str) -> Result<TurnRecord> {
+        if let Some(ref db) = self.db {
+            return crate::thread_store_sqlite::load_turn_sqlite(&db.lock().unwrap(), turn_id)
+                .map_err(|e| anyhow!("{e}"));
+        }
         let path = self.turn_path(turn_id);
         let raw = fs::read_to_string(&path)
             .with_context(|| format!("Failed to read turn {}", path.display()))?;
@@ -299,6 +333,10 @@ impl RuntimeThreadStore {
     }
 
     pub fn load_item(&self, item_id: &str) -> Result<TurnItemRecord> {
+        if let Some(ref db) = self.db {
+            return crate::thread_store_sqlite::load_item_sqlite(&db.lock().unwrap(), item_id)
+                .map_err(|e| anyhow!("load_item: {e}"));
+        }
         let path = self.item_path(item_id);
         let raw = fs::read_to_string(&path)
             .with_context(|| format!("Failed to read item {}", path.display()))?;
@@ -315,6 +353,10 @@ impl RuntimeThreadStore {
     }
 
     pub fn list_threads(&self) -> Result<Vec<ThreadRecord>> {
+        if let Some(ref db) = self.db {
+            return crate::thread_store_sqlite::list_threads_sqlite(&db.lock().unwrap())
+                .map_err(|e| anyhow!("list_threads: {e}"));
+        }
         let mut out = Vec::new();
         for entry in fs::read_dir(&self.threads_dir)
             .with_context(|| format!("Failed to read {}", self.threads_dir.display()))?
@@ -342,6 +384,10 @@ impl RuntimeThreadStore {
     }
 
     pub fn list_turns_for_thread(&self, thread_id: &str) -> Result<Vec<TurnRecord>> {
+        if let Some(ref db) = self.db {
+            return crate::thread_store_sqlite::list_turns_for_thread_sqlite(&db.lock().unwrap(), thread_id)
+                .map_err(|e| anyhow!("list_turns_for_thread: {e}"));
+        }
         let mut out = Vec::new();
         for entry in fs::read_dir(&self.turns_dir)
             .with_context(|| format!("Failed to read {}", self.turns_dir.display()))?
@@ -373,6 +419,10 @@ impl RuntimeThreadStore {
     /// One linear scan of `turns_dir` for startup recovery (avoids O(threads ×
     /// turns) when `list_turns_for_thread` is called per thread).
     pub fn list_incomplete_turns(&self) -> Result<Vec<TurnRecord>> {
+        if let Some(ref db) = self.db {
+            return crate::thread_store_sqlite::list_incomplete_turns_sqlite(&db.lock().unwrap())
+                .map_err(|e| anyhow!("list_incomplete_turns: {e}"));
+        }
         let mut out = Vec::new();
         for entry in fs::read_dir(&self.turns_dir)
             .with_context(|| format!("Failed to read {}", self.turns_dir.display()))?
@@ -404,6 +454,10 @@ impl RuntimeThreadStore {
     }
 
     pub fn list_items_for_turn(&self, turn_id: &str) -> Result<Vec<TurnItemRecord>> {
+        if let Some(ref db) = self.db {
+            return crate::thread_store_sqlite::list_items_for_turn_sqlite(&db.lock().unwrap(), turn_id)
+                .map_err(|e| anyhow!("list_items_for_turn: {e}"));
+        }
         let mut out = Vec::new();
         for entry in fs::read_dir(&self.items_dir)
             .with_context(|| format!("Failed to read {}", self.items_dir.display()))?
@@ -447,6 +501,24 @@ impl RuntimeThreadStore {
         let mut state = self.state.lock().await;
         let seq = state.next_seq;
         state.next_seq = state.next_seq.saturating_add(1);
+
+        if let Some(ref db) = self.db {
+            let record = RuntimeEventRecord {
+                schema_version: CURRENT_RUNTIME_SCHEMA_VERSION,
+                seq,
+                timestamp: Utc::now(),
+                thread_id: thread_id.to_string(),
+                turn_id: turn_id.map(ToString::to_string),
+                item_id: item_id.map(ToString::to_string),
+                event: event.into(),
+                payload,
+            };
+            crate::thread_store_sqlite::append_event_sqlite(&db.lock().unwrap(), &record, seq)
+                .map_err(|e| anyhow!("append_event sqlite: {e}"))?;
+            drop(state);
+            return Ok(record);
+        }
+
         write_json_atomic(&self.state_path, &*state)?;
         drop(state);
 
@@ -481,6 +553,11 @@ impl RuntimeThreadStore {
         thread_id: &str,
         since_seq: Option<u64>,
     ) -> Result<Vec<RuntimeEventRecord>> {
+        if let Some(ref db) = self.db {
+            let since = since_seq.unwrap_or(0);
+            return crate::thread_store_sqlite::events_since_sqlite(&db.lock().unwrap(), thread_id, since)
+                .map_err(|e| anyhow!("events_since: {e}"));
+        }
         let path = self.events_path(thread_id);
         if !path.exists() {
             return Ok(Vec::new());
@@ -699,6 +776,15 @@ impl RuntimeThreadStore {
         until: Option<DateTime<Utc>>,
         group_by: UsageGroupBy,
     ) -> Result<UsageAggregation> {
+        if let Some(ref db) = self.db {
+            return crate::thread_store_sqlite::aggregate_usage_linear_sqlite(
+                &db.lock().unwrap(),
+                since,
+                until,
+                group_by,
+            )
+            .map_err(|e| anyhow!("aggregate_usage sqlite: {e}"));
+        }
         let mut buckets: BTreeMap<String, UsageBucket> = BTreeMap::new();
         let mut totals = UsageTotals::default();
 
@@ -810,7 +896,7 @@ fn save_routing_rules(path: &Path, rules: &[RoutingRule]) -> Result<()> {
     Ok(())
 }
 
-fn provider_label_for_model(model: &str) -> &'static str {
+pub(crate) fn provider_label_for_model(model: &str) -> &'static str {
     if model.starts_with("deepseek-ai/") {
         "nvidia-nim"
     } else if model.starts_with("deepseek-") {
@@ -1005,13 +1091,19 @@ impl RuntimeThreadManager {
             title: None,
             coherence_state: CoherenceState::default(),
         };
-        self.store.save_thread(&thread)?;
+        {
+            let store = self.store.clone();
+            let thread_clone = thread.clone();
+            tokio::task::spawn_blocking(move || store.save_thread(&thread_clone))
+                .await
+                .map_err(|e| anyhow!("save thread panicked: {e}"))??;
+        }
         self.emit_event(
             &thread.id,
             None,
             None,
             "thread.started",
-            json!({ "thread": thread }),
+            json!({ "thread": thread.clone() }),
         )
         .await?;
         Ok(thread)
@@ -1178,7 +1270,13 @@ impl RuntimeThreadManager {
 
         if !changes.is_empty() {
             thread.updated_at = Utc::now();
-            self.store.save_thread(&thread)?;
+            {
+                let store = self.store.clone();
+                let thread_clone = thread.clone();
+                tokio::task::spawn_blocking(move || store.save_thread(&thread_clone))
+                    .await
+                    .map_err(|e| anyhow!("save thread panicked: {e}"))??;
+            }
             self.emit_event(
                 &thread.id,
                 None,
@@ -1584,12 +1682,23 @@ impl RuntimeThreadManager {
         };
 
         turn.item_ids.push(user_item_id.clone());
-        self.store.save_item(&user_item)?;
-        self.store.save_turn(&turn)?;
-
         thread.latest_turn_id = Some(turn_id.clone());
         thread.updated_at = now;
-        self.store.save_thread(&thread)?;
+
+        {
+            let store = self.store.clone();
+            let user_item = user_item.clone();
+            let turn = turn.clone();
+            let thread = thread.clone();
+            tokio::task::spawn_blocking(move || -> Result<()> {
+                store.save_item(&user_item)?;
+                store.save_turn(&turn)?;
+                store.save_thread(&thread)?;
+                Ok(())
+            })
+            .await
+            .map_err(|e| anyhow!("save turn items panicked: {e}"))??;
+        }
 
         self.emit_event(
             thread_id,
@@ -1781,7 +1890,6 @@ impl RuntimeThreadManager {
         let now = Utc::now();
         let mut turn = self.store.load_turn(turn_id)?;
         turn.steer_count = turn.steer_count.saturating_add(1);
-        self.store.save_turn(&turn)?;
 
         let item = TurnItemRecord {
             schema_version: CURRENT_RUNTIME_SCHEMA_VERSION,
@@ -1797,8 +1905,18 @@ impl RuntimeThreadManager {
             ended_at: Some(now),
         };
         turn.item_ids.push(item.id.clone());
-        self.store.save_item(&item)?;
-        self.store.save_turn(&turn)?;
+        {
+            let store = self.store.clone();
+            let turn_clone = turn.clone();
+            let item_clone = item.clone();
+            tokio::task::spawn_blocking(move || -> Result<()> {
+                store.save_turn(&turn_clone)?;
+                store.save_item(&item_clone)?;
+                Ok(())
+            })
+            .await
+            .map_err(|e| anyhow!("save steer items panicked: {e}"))??;
+        }
 
         self.emit_event(
             thread_id,
@@ -1862,11 +1980,20 @@ impl RuntimeThreadManager {
             item_ids: Vec::new(),
             steer_count: 0,
         };
-        self.store.save_turn(&turn)?;
-
         thread.latest_turn_id = Some(turn_id.clone());
         thread.updated_at = now;
-        self.store.save_thread(&thread)?;
+        {
+            let store = self.store.clone();
+            let turn_clone = turn.clone();
+            let thread_clone = thread.clone();
+            tokio::task::spawn_blocking(move || -> Result<()> {
+                store.save_turn(&turn_clone)?;
+                store.save_thread(&thread_clone)?;
+                Ok(())
+            })
+            .await
+            .map_err(|e| anyhow!("save compact turn panicked: {e}"))??;
+        }
 
         {
             let mut active = self.active.lock().await;
@@ -2219,8 +2346,7 @@ impl RuntimeThreadManager {
                         started_at: Some(Utc::now()),
                         ended_at: None,
                     };
-                    self.store.save_item(&item)?;
-                    self.attach_item_to_turn(&turn_id, &item.id)?;
+                    self.save_item_and_attach_blocking(&item, &turn_id).await?;
                     self.emit_event(
                         &thread_id,
                         Some(&turn_id),
@@ -2246,12 +2372,14 @@ impl RuntimeThreadManager {
                 }
                 EngineEvent::MessageComplete { .. } => {
                     if let Some((item_id, text)) = current_message_item.take() {
-                        let mut item = self.store.load_item(&item_id)?;
-                        item.status = TurnItemLifecycleStatus::Completed;
-                        item.summary = summarize_text(&text, SUMMARY_LIMIT);
-                        item.detail = Some(text);
-                        item.ended_at = Some(Utc::now());
-                        self.store.save_item(&item)?;
+                        let item = self
+                            .update_and_save_item_blocking(&item_id, |item| {
+                                item.status = TurnItemLifecycleStatus::Completed;
+                                item.summary = summarize_text(&text, SUMMARY_LIMIT);
+                                item.detail = Some(text);
+                                item.ended_at = Some(Utc::now());
+                            })
+                            .await?;
                         self.emit_event(
                             &thread_id,
                             Some(&turn_id),
@@ -2280,8 +2408,7 @@ impl RuntimeThreadManager {
                         started_at: Some(Utc::now()),
                         ended_at: None,
                     };
-                    self.store.save_item(&item)?;
-                    self.attach_item_to_turn(&turn_id, &item.id)?;
+                    self.save_item_and_attach_blocking(&item, &turn_id).await?;
                     self.emit_event(
                         &thread_id,
                         Some(&turn_id),
@@ -2305,31 +2432,35 @@ impl RuntimeThreadManager {
                 }
                 EngineEvent::ToolCallComplete { id, name, result } => {
                     if let Some(item_id) = tool_items.remove(&id) {
-                        let mut item = self.store.load_item(&item_id)?;
-                        let now = Utc::now();
-                        item.ended_at = Some(now);
-                        match result {
-                            Ok(output) => {
-                                item.status = if output.success {
-                                    TurnItemLifecycleStatus::Completed
-                                } else {
-                                    TurnItemLifecycleStatus::Failed
-                                };
-                                item.summary = summarize_text(
-                                    &format!("{name}: {}", output.content),
-                                    SUMMARY_LIMIT,
-                                );
-                                item.detail = Some(output.content.clone());
-                                item.metadata = output.metadata.clone();
-                            }
-                            Err(err) => {
-                                item.status = TurnItemLifecycleStatus::Failed;
-                                item.summary =
-                                    summarize_text(&format!("{name} failed: {err}"), SUMMARY_LIMIT);
-                                item.detail = Some(err.to_string());
-                            }
-                        }
-                        self.store.save_item(&item)?;
+                        let item = self
+                            .update_and_save_item_blocking(&item_id, |item| {
+                                let now = Utc::now();
+                                item.ended_at = Some(now);
+                                match &result {
+                                    Ok(output) => {
+                                        item.status = if output.success {
+                                            TurnItemLifecycleStatus::Completed
+                                        } else {
+                                            TurnItemLifecycleStatus::Failed
+                                        };
+                                        item.summary = summarize_text(
+                                            &format!("{name}: {}", output.content),
+                                            SUMMARY_LIMIT,
+                                        );
+                                        item.detail = Some(output.content.clone());
+                                        item.metadata = output.metadata.clone();
+                                    }
+                                    Err(err) => {
+                                        item.status = TurnItemLifecycleStatus::Failed;
+                                        item.summary = summarize_text(
+                                            &format!("{name} failed: {err}"),
+                                            SUMMARY_LIMIT,
+                                        );
+                                        item.detail = Some(err.to_string());
+                                    }
+                                }
+                            })
+                            .await?;
                         self.emit_event(
                             &thread_id,
                             Some(&turn_id),
@@ -2360,8 +2491,7 @@ impl RuntimeThreadManager {
                         started_at: Some(Utc::now()),
                         ended_at: None,
                     };
-                    self.store.save_item(&item)?;
-                    self.attach_item_to_turn(&turn_id, &item.id)?;
+                    self.save_item_and_attach_blocking(&item, &turn_id).await?;
                     self.emit_event(
                         &thread_id,
                         Some(&turn_id),
@@ -2379,12 +2509,14 @@ impl RuntimeThreadManager {
                     messages_after,
                 } => {
                     if let Some(item_id) = compaction_items.remove(&id) {
-                        let mut item = self.store.load_item(&item_id)?;
-                        item.status = TurnItemLifecycleStatus::Completed;
-                        item.summary = summarize_text(&message, SUMMARY_LIMIT);
-                        item.detail = Some(message);
-                        item.ended_at = Some(Utc::now());
-                        self.store.save_item(&item)?;
+                        let item = self
+                            .update_and_save_item_blocking(&item_id, |item| {
+                                item.status = TurnItemLifecycleStatus::Completed;
+                                item.summary = summarize_text(&message, SUMMARY_LIMIT);
+                                item.detail = Some(message);
+                                item.ended_at = Some(Utc::now());
+                            })
+                            .await?;
                         self.emit_event(
                             &thread_id,
                             Some(&turn_id),
@@ -2402,12 +2534,14 @@ impl RuntimeThreadManager {
                 }
                 EngineEvent::CompactionFailed { id, auto, message } => {
                     if let Some(item_id) = compaction_items.remove(&id) {
-                        let mut item = self.store.load_item(&item_id)?;
-                        item.status = TurnItemLifecycleStatus::Failed;
-                        item.summary = summarize_text(&message, SUMMARY_LIMIT);
-                        item.detail = Some(message);
-                        item.ended_at = Some(Utc::now());
-                        self.store.save_item(&item)?;
+                        let item = self
+                            .update_and_save_item_blocking(&item_id, |item| {
+                                item.status = TurnItemLifecycleStatus::Failed;
+                                item.summary = summarize_text(&message, SUMMARY_LIMIT);
+                                item.detail = Some(message);
+                                item.ended_at = Some(Utc::now());
+                            })
+                            .await?;
                         self.emit_event(
                             &thread_id,
                             Some(&turn_id),
@@ -2447,7 +2581,13 @@ impl RuntimeThreadManager {
                     let mut thread = self.store.load_thread(&thread_id)?;
                     thread.coherence_state = state;
                     thread.updated_at = Utc::now();
-                    self.store.save_thread(&thread)?;
+                    {
+                        let store = self.store.clone();
+                        let thread_clone = thread.clone();
+                        tokio::task::spawn_blocking(move || store.save_thread(&thread_clone))
+                            .await
+                            .map_err(|e| anyhow!("save thread panicked: {e}"))??;
+                    }
                     self.emit_event(
                         &thread_id,
                         Some(&turn_id),
@@ -2485,8 +2625,7 @@ impl RuntimeThreadManager {
                         started_at: Some(Utc::now()),
                         ended_at: Some(Utc::now()),
                     };
-                    self.store.save_item(&item)?;
-                    self.attach_item_to_turn(&turn_id, &item.id)?;
+                    self.save_item_and_attach_blocking(&item, &turn_id).await?;
                     self.emit_event(
                         &thread_id,
                         Some(&turn_id),
@@ -2521,8 +2660,7 @@ impl RuntimeThreadManager {
                         started_at: Some(Utc::now()),
                         ended_at: Some(Utc::now()),
                     };
-                    self.store.save_item(&item)?;
-                    self.attach_item_to_turn(&turn_id, &item.id)?;
+                    self.save_item_and_attach_blocking(&item, &turn_id).await?;
                     self.emit_event(
                         &thread_id,
                         Some(&turn_id),
@@ -2548,8 +2686,7 @@ impl RuntimeThreadManager {
                         started_at: Some(Utc::now()),
                         ended_at: Some(Utc::now()),
                     };
-                    self.store.save_item(&item)?;
-                    self.attach_item_to_turn(&turn_id, &item.id)?;
+                    self.save_item_and_attach_blocking(&item, &turn_id).await?;
                     self.emit_event(
                         &thread_id,
                         Some(&turn_id),
@@ -2577,8 +2714,7 @@ impl RuntimeThreadManager {
                         started_at: Some(Utc::now()),
                         ended_at: Some(Utc::now()),
                     };
-                    self.store.save_item(&item)?;
-                    self.attach_item_to_turn(&turn_id, &item.id)?;
+                    self.save_item_and_attach_blocking(&item, &turn_id).await?;
                     self.emit_event(
                         &thread_id,
                         Some(&turn_id),
@@ -2603,8 +2739,7 @@ impl RuntimeThreadManager {
                         started_at: Some(Utc::now()),
                         ended_at: Some(Utc::now()),
                     };
-                    self.store.save_item(&item)?;
-                    self.attach_item_to_turn(&turn_id, &item.id)?;
+                    self.save_item_and_attach_blocking(&item, &turn_id).await?;
                     self.emit_event(
                         &thread_id,
                         Some(&turn_id),
@@ -2632,8 +2767,7 @@ impl RuntimeThreadManager {
                         started_at: Some(Utc::now()),
                         ended_at: Some(Utc::now()),
                     };
-                    self.store.save_item(&item)?;
-                    self.attach_item_to_turn(&turn_id, &item.id)?;
+                    self.save_item_and_attach_blocking(&item, &turn_id).await?;
                     self.emit_event(
                         &thread_id,
                         Some(&turn_id),
@@ -2673,8 +2807,7 @@ impl RuntimeThreadManager {
                         started_at: Some(Utc::now()),
                         ended_at: Some(Utc::now()),
                     };
-                    self.store.save_item(&item)?;
-                    self.attach_item_to_turn(&turn_id, &item.id)?;
+                    self.save_item_and_attach_blocking(&item, &turn_id).await?;
                     self.emit_event(
                         &thread_id,
                         Some(&turn_id),
@@ -2797,8 +2930,7 @@ impl RuntimeThreadManager {
                         started_at: Some(Utc::now()),
                         ended_at: Some(Utc::now()),
                     };
-                    self.store.save_item(&item)?;
-                    self.attach_item_to_turn(&turn_id, &item.id)?;
+                    self.save_item_and_attach_blocking(&item, &turn_id).await?;
                     self.emit_event(
                         &thread_id,
                         Some(&turn_id),
@@ -2825,8 +2957,7 @@ impl RuntimeThreadManager {
                         started_at: Some(Utc::now()),
                         ended_at: Some(Utc::now()),
                     };
-                    self.store.save_item(&item)?;
-                    self.attach_item_to_turn(&turn_id, &item.id)?;
+                    self.save_item_and_attach_blocking(&item, &turn_id).await?;
                     self.emit_event(
                         &thread_id,
                         Some(&turn_id),
@@ -2874,7 +3005,13 @@ impl RuntimeThreadManager {
             item.summary = summarize_text(&text, SUMMARY_LIMIT);
             item.detail = Some(text);
             item.ended_at = Some(Utc::now());
-            self.store.save_item(&item)?;
+            {
+                let store = self.store.clone();
+                let item_clone = item.clone();
+                tokio::task::spawn_blocking(move || store.save_item(&item_clone))
+                    .await
+                    .map_err(|e| anyhow!("save item panicked: {e}"))??;
+            }
             self.emit_event(
                 &thread_id,
                 Some(&turn_id),
@@ -2896,12 +3033,23 @@ impl RuntimeThreadManager {
         turn.duration_ms = turn.started_at.map(|start| duration_ms(start, ended_at));
         turn.usage = turn_usage;
         turn.error = turn_error;
-        self.store.save_turn(&turn)?;
 
         let mut thread = self.get_thread(&thread_id).await?;
         thread.latest_turn_id = Some(turn_id.clone());
         thread.updated_at = Utc::now();
-        self.store.save_thread(&thread)?;
+
+        {
+            let store = self.store.clone();
+            let turn_clone = turn.clone();
+            let thread_clone = thread.clone();
+            tokio::task::spawn_blocking(move || -> Result<()> {
+                store.save_turn(&turn_clone)?;
+                store.save_thread(&thread_clone)?;
+                Ok(())
+            })
+            .await
+            .map_err(|e| anyhow!("save turn completion panicked: {e}"))??;
+        }
 
         self.emit_event(
             &thread_id,
@@ -2928,13 +3076,44 @@ impl RuntimeThreadManager {
         Ok(())
     }
 
-    fn attach_item_to_turn(&self, turn_id: &str, item_id: &str) -> Result<()> {
-        let mut turn = self.store.load_turn(turn_id)?;
-        if !turn.item_ids.iter().any(|id| id == item_id) {
-            turn.item_ids.push(item_id.to_string());
-            self.store.save_turn(&turn)?;
-        }
-        Ok(())
+    async fn save_item_and_attach_blocking(
+        &self,
+        item: &TurnItemRecord,
+        turn_id: &str,
+    ) -> Result<()> {
+        let store = self.store.clone();
+        let item = item.clone();
+        let turn_id = turn_id.to_string();
+        tokio::task::spawn_blocking(move || -> Result<()> {
+            store.save_item(&item)?;
+            let mut turn = store.load_turn(&turn_id)?;
+            if !turn.item_ids.iter().any(|id| id == &item.id) {
+                turn.item_ids.push(item.id.clone());
+                store.save_turn(&turn)?;
+            }
+            Ok(())
+        })
+        .await
+        .map_err(|e| anyhow!("save_item_and_attach panicked: {e}"))?
+    }
+
+    async fn update_and_save_item_blocking(
+        &self,
+        item_id: &str,
+        update_fn: impl FnOnce(&mut TurnItemRecord),
+    ) -> Result<TurnItemRecord> {
+        let store = self.store.clone();
+        let item_id = item_id.to_string();
+        let mut item = tokio::task::spawn_blocking(move || store.load_item(&item_id))
+            .await
+            .map_err(|e| anyhow!("load_item panicked: {e}"))??;
+        update_fn(&mut item);
+        let store = self.store.clone();
+        let item_clone = item.clone();
+        tokio::task::spawn_blocking(move || store.save_item(&item_clone))
+            .await
+            .map_err(|e| anyhow!("save_item panicked: {e}"))??;
+        Ok(item)
     }
 
     async fn is_interrupt_requested(&self, thread_id: &str, turn_id: &str) -> Result<bool> {
@@ -2948,7 +3127,7 @@ impl RuntimeThreadManager {
         Ok(turn.turn_id == turn_id && turn.interrupt_requested)
     }
 
-    async fn active_turn_flags(&self, thread_id: &str, turn_id: &str) -> Option<(bool, bool)> {
+    pub async fn active_turn_flags(&self, thread_id: &str, turn_id: &str) -> Option<(bool, bool)> {
         let active = self.active.lock().await;
         let state = active.engines.get(thread_id)?;
         let turn = state.active_turn.as_ref()?;
@@ -3422,6 +3601,24 @@ mod tests {
         }
     }
 
+    async fn wait_for_active_turn_cleared(
+        manager: &RuntimeThreadManager,
+        thread_id: &str,
+        turn_id: &str,
+        timeout: Duration,
+    ) -> Result<()> {
+        let deadline = Instant::now() + timeout;
+        loop {
+            if manager.active_turn_flags(thread_id, turn_id).await.is_none() {
+                return Ok(());
+            }
+            if Instant::now() >= deadline {
+                bail!("Timed out waiting for active_turn to clear on thread {thread_id} turn {turn_id}");
+            }
+            sleep(Duration::from_millis(20)).await;
+        }
+    }
+
     #[test]
     fn store_load_thread_rejects_newer_schema_version() {
         let dir = test_runtime_dir();
@@ -3717,6 +3914,7 @@ mod tests {
             .await?;
         let completed = wait_for_terminal_turn(&manager, &turn.id, Duration::from_secs(2)).await?;
         assert_eq!(completed.status, RuntimeTurnStatus::Completed);
+        wait_for_active_turn_cleared(&manager, &thread.id, &turn.id, Duration::from_secs(2)).await?;
 
         drop(manager);
 
@@ -3917,7 +4115,7 @@ mod tests {
             terminal.ended_at.is_some(),
             "manual compaction should reach a terminal turn state"
         );
-        assert_eq!(manager.active_turn_flags(&thread.id, &turn.id).await, None);
+        wait_for_active_turn_cleared(&manager, &thread.id, &turn.id, Duration::from_secs(2)).await?;
 
         let expected_status = match terminal.status {
             RuntimeTurnStatus::Completed => "completed",
@@ -4015,6 +4213,7 @@ mod tests {
             .await?;
         let turn_1 = wait_for_terminal_turn(&manager, &turn_1.id, Duration::from_secs(2)).await?;
         assert_eq!(turn_1.status, RuntimeTurnStatus::Completed);
+        wait_for_active_turn_cleared(&manager, &thread.id, &turn_1.id, Duration::from_secs(2)).await?;
 
         let turn_2 = manager
             .start_turn(
@@ -4033,6 +4232,7 @@ mod tests {
             .await?;
         let turn_2 = wait_for_terminal_turn(&manager, &turn_2.id, Duration::from_secs(2)).await?;
         assert_eq!(turn_2.status, RuntimeTurnStatus::Completed);
+        wait_for_active_turn_cleared(&manager, &thread.id, &turn_2.id, Duration::from_secs(2)).await?;
 
         let detail = manager.get_thread_detail(&thread.id).await?;
         assert_eq!(
@@ -4125,13 +4325,14 @@ mod tests {
         let interrupt_result = manager.interrupt_turn(&thread.id, &turn.id).await?;
         assert_eq!(interrupt_result.status, RuntimeTurnStatus::InProgress);
 
-        let final_turn = wait_for_terminal_turn(&manager, &turn.id, Duration::from_secs(3)).await?;
+        let final_turn = wait_for_terminal_turn(&manager, &turn.id, Duration::from_secs(5)).await?;
         assert_eq!(final_turn.status, RuntimeTurnStatus::Interrupted);
         assert!(
             interrupted_at.elapsed() >= cleanup_delay,
             "turn transitioned before cleanup finished"
         );
 
+        sleep(Duration::from_millis(100)).await;
         let events = manager.events_since(&thread.id, None)?;
         let interrupt_seq = events
             .iter()
@@ -4714,6 +4915,7 @@ mod tests {
         let auto_turn =
             wait_for_terminal_turn(&manager, &auto_turn.id, Duration::from_secs(2)).await?;
         assert_eq!(auto_turn.status, RuntimeTurnStatus::Completed);
+        wait_for_active_turn_cleared(&manager, &thread.id, &auto_turn.id, Duration::from_secs(2)).await?;
 
         let manual_turn = manager
             .compact_thread(

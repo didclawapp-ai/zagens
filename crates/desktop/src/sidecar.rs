@@ -7,9 +7,12 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use reqwest::StatusCode;
-use tauri::{AppHandle, Manager};
+use serde::Deserialize;
+use sha2::{Digest, Sha256};
+use tauri::{AppHandle, Emitter, Manager};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
-use tokio::sync::Notify;
+use tokio::sync::{Notify, mpsc, oneshot};
 use tokio::time::sleep;
 
 const HEALTH_CHECK_INTERVAL_SECS: u64 = 5;
@@ -21,7 +24,10 @@ const STARTUP_RETRY_DELAY_MS: u64 = 200;
 /// Desktop probes loopback repeatedly; transient stalls (heavy git restore under the thread
 /// workspace, AV scanning on Windows, etc.) can exceed a short HTTP timeout without the sidecar
 /// being dead — too aggressive restarts surfaced as ERR_CONNECTION_RESET on in-flight `/v1/*`.
-const MAX_HEALTH_FAILURES: u32 = 6;
+/// Differentiated thresholds: connection-refused means the port is dead (immediate action),
+/// busy-timeout means the process is alive but overloaded (grace period).
+const MAX_CONNECT_REFUSED: u32 = 2;
+const MAX_BUSY_TIMEOUTS: u32 = 12;
 /// Coalesce rapid `sidecar_restart.notify_one()` bursts (e.g. saving API key + vision settings).
 const RESTART_DEBOUNCE_MS: u64 = 450;
 /// Poll interval while waiting for `127.0.0.1:port` to drop LISTEN after `kill` (Windows EADDRINUSE / 10048).
@@ -39,9 +45,7 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 static SIDECAR_PROBE_HTTP: LazyLock<reqwest::Client> = LazyLock::new(|| {
     reqwest::Client::builder()
         .connect_timeout(Duration::from_millis(400))
-        // Localhost can queue longer than 2s when the runtime is busy (e.g. snapshot restore);
-        // short timeouts falsely trigger supervisor kills and RST active WebView streams.
-        .timeout(Duration::from_secs(15))
+        .timeout(Duration::from_secs(3))
         .build()
         .expect("sidecar probe reqwest client")
 });
@@ -115,13 +119,16 @@ fn read_log_tail(path: &Path, max_lines: usize) -> String {
 fn spawn_sidecar(deepseek_bin: &str, port: u16, token: &str) -> Result<Command> {
     let port_s = port.to_string();
     let mut std_cmd = std::process::Command::new(deepseek_bin);
-    // Pass the auth token via environment variable (DEEPSEEK_RUNTIME_TOKEN)
-    // instead of --auth-token CLI arg to keep it out of `ps` / process lists
-    // on all platforms (#H5). The serve binary reads this env as a fallback
-    // for RuntimeApiOptions::auth_token.
     std_cmd.env("DEEPSEEK_RUNTIME_TOKEN", token);
-    // Lets the shared runtime tune system prompts (e.g. DS Pick vs terminal TUI).
     std_cmd.env("DEEPSEEK_CLIENT_SURFACE", "ds-pick");
+
+    // Pull the DeepSeek API key from OS keyring so it never sits in config.toml
+    // or any other file plaintext. The sidecar TUI picks it up via its existing
+    // env-var resolution path (DEEPSEEK_API_KEY).
+    let secrets = deepseek_secrets::Secrets::auto_detect();
+    if let Some(api_key) = secrets.resolve("deepseek") {
+        std_cmd.env("DEEPSEEK_API_KEY", api_key);
+    }
     std_cmd
         .args([
             "serve",
@@ -135,27 +142,23 @@ fn spawn_sidecar(deepseek_bin: &str, port: u16, token: &str) -> Result<Command> 
             "--cors-origin",
             "https://tauri.localhost",
         ])
-        .stdin(Stdio::null());
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped());
     if let Some(log_path) = sidecar_stderr_log_path() {
         let log_file = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
             .open(&log_path)
             .unwrap_or_else(|_| std::fs::File::create(&log_path).unwrap());
-        // `deepseek serve` logs "Runtime API listening" to stdout; merge both streams into the
-        // same file so `~/.deepseek/logs/sidecar.log` is actually useful on Windows.
         match log_file.try_clone() {
             Ok(stderr_dup) => {
-                std_cmd.stdout(Stdio::from(log_file));
                 std_cmd.stderr(Stdio::from(stderr_dup));
             }
             Err(_) => {
-                std_cmd.stdout(Stdio::null());
-                std_cmd.stderr(Stdio::from(log_file));
+                std_cmd.stderr(Stdio::null());
             }
         }
     } else {
-        std_cmd.stdout(Stdio::null());
         std_cmd.stderr(Stdio::null());
     }
     if let Some(cwd) = sidecar_spawn_cwd()
@@ -173,7 +176,61 @@ fn spawn_sidecar(deepseek_bin: &str, port: u16, token: &str) -> Result<Command> 
     Ok(cmd)
 }
 
-async fn is_healthy(port: u16, _token: &str) -> bool {
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct InternalProbeResponse {
+    status: String,
+    pid: u32,
+    started_at_ms: u128,
+    token_fingerprint: String,
+    version: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ProbeOutcome {
+    Ok,
+    Refused,
+    Timeout,
+    TokenMismatch,
+    Other(String),
+}
+
+fn compute_token_fingerprint(token: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(token.as_bytes());
+    let hash = hasher.finalize();
+    hash[..16].iter().map(|b| format!("{b:02x}")).collect()
+}
+
+async fn probe_sidecar(port: u16, expected_fp: &str) -> ProbeOutcome {
+    let url = format!("http://127.0.0.1:{port}/internal/probe");
+    match SIDECAR_PROBE_HTTP.get(&url).send().await {
+        Ok(resp) if resp.status().is_success() => {
+            match resp.json::<InternalProbeResponse>().await {
+                Ok(body) if body.token_fingerprint == expected_fp => ProbeOutcome::Ok,
+                Ok(_) => ProbeOutcome::TokenMismatch,
+                Err(e) => ProbeOutcome::Other(e.to_string()),
+            }
+        }
+        Ok(resp) => ProbeOutcome::Other(format!("HTTP {}", resp.status())),
+        Err(e) if e.is_connect() => ProbeOutcome::Refused,
+        Err(e) if e.is_timeout() => ProbeOutcome::Timeout,
+        Err(e) => ProbeOutcome::Other(e.to_string()),
+    }
+}
+
+/// Legacy: kept for fallback compatibility with older sidecars that don't serve /internal/probe.
+#[allow(dead_code)]
+async fn sidecar_ready_legacy(port: u16, token: &str) -> bool {
+    let (health_ok, api_ok) = tokio::join!(
+        is_healthy_legacy(port),
+        runtime_api_accepts_token_legacy(port, token)
+    );
+    health_ok && api_ok
+}
+
+#[allow(dead_code)]
+async fn is_healthy_legacy(port: u16) -> bool {
     let url = format!("http://127.0.0.1:{port}/health");
     match SIDECAR_PROBE_HTTP.get(&url).send().await {
         Ok(resp) => resp.status() == StatusCode::OK,
@@ -181,17 +238,8 @@ async fn is_healthy(port: u16, _token: &str) -> bool {
     }
 }
 
-/// Both `/health` and a token-authenticated `/v1/sessions` probe succeed (runs probes concurrently).
-async fn sidecar_ready(port: u16, token: &str) -> bool {
-    let (health_ok, api_ok) = tokio::join!(
-        is_healthy(port, token),
-        runtime_api_accepts_token(port, token)
-    );
-    health_ok && api_ok
-}
-
-/// True when `/v1/*` accepts this install's bearer token (not only `/health`).
-async fn runtime_api_accepts_token(port: u16, token: &str) -> bool {
+#[allow(dead_code)]
+async fn runtime_api_accepts_token_legacy(port: u16, token: &str) -> bool {
     if token.trim().is_empty() {
         return true;
     }
@@ -205,6 +253,68 @@ async fn runtime_api_accepts_token(port: u16, token: &str) -> bool {
         Ok(resp) => resp.status() != StatusCode::UNAUTHORIZED,
         Err(_) => false,
     }
+}
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+enum PongEvent {
+    Pong { seq: u64, pid: u32, uptime_ms: u64 },
+    Drain { state: String },
+}
+
+/// Forwards sidecar stdout lines to sidecar.log and watches for protocol lines.
+/// Returns (ready_rx, pong_rx) — ready fires once on DS_PICK_READY,
+/// pong_rx receives PongEvent for each DS_PICK_PONG / DS_PICK_DRAIN line.
+/// When the READY signal is received, emits `sidecar://ready` to the WebView.
+fn spawn_stdout_forwarder(
+    stdout: tokio::process::ChildStdout,
+    app: AppHandle,
+) -> (oneshot::Receiver<()>, mpsc::UnboundedReceiver<PongEvent>) {
+    let (ready_tx, ready_rx) = oneshot::channel();
+    let (pong_tx, pong_rx) = mpsc::unbounded_channel();
+    tokio::spawn(async move {
+        let mut reader = BufReader::new(stdout).lines();
+        let mut ready_tx = Some(ready_tx);
+        while let Ok(Some(line)) = reader.next_line().await {
+            if let Some(log_path) = sidecar_stderr_log_path() {
+                if let Ok(mut f) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&log_path)
+                {
+                    let _ = writeln!(f, "{line}");
+                }
+            }
+            if line.starts_with("DS_PICK_READY ") {
+                if let Some(tx) = ready_tx.take() {
+                    supervisor_log(format!("event=ready_signal line={line}"));
+                    let payload: serde_json::Value = line["DS_PICK_READY ".len()..]
+                        .parse()
+                        .unwrap_or_default();
+                    let _ = app.emit("sidecar://ready", &payload);
+                    let _ = tx.send(());
+                }
+            } else if line.starts_with("DS_PICK_PONG ") {
+                let payload = &line["DS_PICK_PONG ".len()..];
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(payload) {
+                    let seq = v.get("seq").and_then(|s| s.as_u64()).unwrap_or(0);
+                    let pid = v.get("pid").and_then(|p| p.as_u64()).unwrap_or(0) as u32;
+                    let uptime_ms = v.get("uptime_ms").and_then(|u| u.as_u64()).unwrap_or(0);
+                    let _ = pong_tx.send(PongEvent::Pong { seq, pid, uptime_ms });
+                }
+            } else if line.starts_with("DS_PICK_DRAIN ") {
+                let payload = &line["DS_PICK_DRAIN ".len()..];
+                let state = serde_json::from_str::<serde_json::Value>(payload)
+                    .ok()
+                    .and_then(|v| v.get("state").and_then(|s| s.as_str()).map(String::from))
+                    .unwrap_or_else(|| "draining".to_string());
+                supervisor_log(format!("event=drain_received state={state}"));
+                let _ = pong_tx.send(PongEvent::Drain { state });
+                break;
+            }
+        }
+    });
+    (ready_rx, pong_rx)
 }
 
 /// Best-effort: stop processes listening on loopback `port` so we can bind a new sidecar.
@@ -293,83 +403,116 @@ pub async fn start_and_monitor(
     shutdown: Arc<Notify>,
 ) -> Result<()> {
     let deepseek_bin = find_deepseek_binary(app);
+    let token_fp = compute_token_fingerprint(token);
     supervisor_log(format!(
-        "deepseek-desktop: supervisor start (port={port}, sidecar={deepseek_bin})"
+        "event=supervisor_start port={port} sidecar={deepseek_bin} token_fp={token_fp}"
     ));
     let mut crash_times: VecDeque<Instant> = VecDeque::new();
 
     'supervisor: loop {
         let mut child: Option<tokio::process::Child> = None;
+        let mut sidecar_stdin: Option<tokio::process::ChildStdin> = None;
+        let mut pong_rx: Option<mpsc::UnboundedReceiver<PongEvent>> = None;
 
-        let ready = sidecar_ready(port, token).await;
+        let outcome = probe_sidecar(port, &token_fp).await;
 
-        if !ready {
-            let (health_ok, api_ok) = tokio::join!(
-                is_healthy(port, token),
-                runtime_api_accepts_token(port, token)
-            );
-            if health_ok && !api_ok {
-                supervisor_log(format!(
-                    "deepseek-desktop: {port}/health OK but runtime API rejected this session token; stopping stale listener(s)."
-                ));
-                wait_loopback_listen_port_free(port, "stale-runtime-token").await;
+        if outcome != ProbeOutcome::Ok {
+            match outcome {
+                ProbeOutcome::TokenMismatch => {
+                    supervisor_log(format!(
+                        "event=token_mismatch port={port} action=reclaim_stale_listener"
+                    ));
+                    wait_loopback_listen_port_free(port, "stale-runtime-token").await;
+                }
+                ProbeOutcome::Other(_) => {
+                    supervisor_log(format!(
+                        "event=pre_spawn_probe port={port} outcome={outcome:?} action=spawn_new_sidecar"
+                    ));
+                }
+                _ => {}
             }
 
             wait_loopback_listen_port_free(port, "before-sidecar-spawn").await;
 
-            let c = spawn_sidecar(&deepseek_bin, port, token)?
+            let mut c = spawn_sidecar(&deepseek_bin, port, token)?
                 .spawn()
                 .with_context(|| format!("failed to start sidecar: {deepseek_bin}"))?;
+
+            let stdout = c.stdout.take();
+            sidecar_stdin = c.stdin.take();
+            let (ready_rx, rx) = stdout.map(|s| spawn_stdout_forwarder(s, app.clone())).unzip();
+            pong_rx = rx;
             child = Some(c);
 
-            for i in 0..MAX_STARTUP_RETRIES {
-                let delay_ms = if i == 0 {
-                    STARTUP_FIRST_DELAY_MS
-                } else {
-                    STARTUP_RETRY_DELAY_MS
-                };
-                sleep(Duration::from_millis(delay_ms)).await;
-                if sidecar_ready(port, token).await {
-                    break;
-                }
-                if i == MAX_STARTUP_RETRIES - 1 {
-                    if let Some(mut ch) = child.take() {
-                        ch.kill().await.ok();
+            let startup_t0 = Instant::now();
+
+            // Wait up to 60s for the READY signal from stdout.
+            let ready_signal = if let Some(rx) = ready_rx {
+                tokio::time::timeout(Duration::from_secs(60), rx).await.ok().and_then(|r| r.ok())
+            } else {
+                None
+            };
+
+            if ready_signal.is_some() {
+                supervisor_log(format!(
+                    "event=sidecar_ready signal=stdout startup_ms={} port={port}",
+                    startup_t0.elapsed().as_millis()
+                ));
+            } else {
+                // Fallback: HTTP probe loop
+                for i in 0..MAX_STARTUP_RETRIES {
+                    let delay_ms = if i == 0 {
+                        STARTUP_FIRST_DELAY_MS
+                    } else {
+                        STARTUP_RETRY_DELAY_MS
+                    };
+                    sleep(Duration::from_millis(delay_ms)).await;
+                    let outcome = probe_sidecar(port, &token_fp).await;
+                    if outcome == ProbeOutcome::Ok {
+                        supervisor_log(format!(
+                            "event=sidecar_ready signal=http startup_ms={} port={port}",
+                            startup_t0.elapsed().as_millis()
+                        ));
+                        break;
                     }
-                    let log_tail = sidecar_stderr_log_path()
-                        .as_deref()
-                        .map(|p| read_log_tail(p, 30))
-                        .filter(|s| !s.is_empty() && s != "(log unreadable)")
-                        .map(|s| format!("\nsidecar stderr tail:\n{s}"))
-                        .unwrap_or_default();
-                    supervisor_log(format!(
-                        "deepseek-desktop: sidecar failed to become healthy after {MAX_STARTUP_RETRIES} retries{log_tail}"
-                    ));
-                    anyhow::bail!(
-                        "sidecar failed to become healthy after {MAX_STARTUP_RETRIES} retries{log_tail}"
-                    );
+                    if i == MAX_STARTUP_RETRIES - 1 {
+                        if let Some(mut ch) = child.take() {
+                            ch.kill().await.ok();
+                        }
+                        let log_tail = sidecar_stderr_log_path()
+                            .as_deref()
+                            .map(|p| read_log_tail(p, 30))
+                            .filter(|s| !s.is_empty() && s != "(log unreadable)")
+                            .map(|s| format!("\nsidecar stderr tail:\n{s}"))
+                            .unwrap_or_default();
+                        supervisor_log(format!(
+                            "event=startup_failed retries={MAX_STARTUP_RETRIES} port={port}{log_tail}"
+                        ));
+                        anyhow::bail!(
+                            "sidecar failed to become healthy after {MAX_STARTUP_RETRIES} retries{log_tail}"
+                        );
+                    }
                 }
             }
         }
 
-        // Sidecar just came up (or was already up) — reset crash history.
         crash_times.clear();
 
-        let mut failures = 0u32;
+        let mut connect_refused: u32 = 0;
+        let mut busy_timeouts: u32 = 0;
+        let mut ping_seq: u64 = 0;
         loop {
             tokio::select! {
                 biased;
                 _ = shutdown.notified() => {
-                    supervisor_log("deepseek-desktop: shutting down sidecar…");
+                    supervisor_log("event=shutdown action=killing_sidecar");
                     if let Some(mut ch) = child.take() {
                         ch.kill().await.ok();
                     }
                     return Ok(());
                 }
                 _ = restart.notified() => {
-                    supervisor_log(
-                        "deepseek-desktop: restarting sidecar to pick up config changes…",
-                    );
+                    supervisor_log("event=restart reason=config_change");
                     loop {
                         tokio::select! {
                             _ = sleep(Duration::from_millis(RESTART_DEBOUNCE_MS)) => break,
@@ -385,91 +528,148 @@ pub async fn start_and_monitor(
                     continue 'supervisor;
                 }
                 _ = sleep(Duration::from_secs(HEALTH_CHECK_INTERVAL_SECS)) => {
-                    if sidecar_ready(port, token).await {
-                        if failures > 0 {
-                            supervisor_log(format!(
-                                "deepseek-desktop: health restored after {} failure(s)",
-                                failures
-                            ));
-                        }
-                        failures = 0;
-                    } else {
-                        // Check whether the child process exited on its own
-                        // (panic / OOM / exit code ≠ 0) vs. being alive-but-blocked.
-                        let child_died = if let Some(ref mut c) = child {
-                            match c.try_wait() {
-                                Ok(Some(status)) => {
-                                    supervisor_log(format!(
-                                        "deepseek-desktop: sidecar child exited with {status:?}; {} health failures",
-                                        failures + 1,
-                                    ));
-                                    true
+                    // Primary probe: ping/pong via stdin/stdout line protocol.
+                    // This is physically independent of the axum HTTP stack.
+                    let ping_ok = if let Some(ref mut stdin) = sidecar_stdin {
+                        // Drain any stale pong events before sending a new ping
+                        while pong_rx.as_mut().and_then(|rx| rx.try_recv().ok()).is_some() {}
+                        let ping = format!("{{\"op\":\"ping\",\"seq\":{ping_seq}}}\n");
+                        if stdin.write_all(ping.as_bytes()).await.is_ok() && stdin.flush().await.is_ok() {
+                            ping_seq += 1;
+                            // Wait up to 1s for the pong reply via stdout → forwarder → pong_rx
+                            if let Some(ref mut rx) = pong_rx {
+                                match tokio::time::timeout(Duration::from_secs(1), rx.recv()).await {
+                                    Ok(Some(PongEvent::Pong { .. })) => true,
+                                    _ => false,
                                 }
-                                Ok(None) => false,
-                                Err(e) => {
-                                    supervisor_log(format!(
-                                        "deepseek-desktop: sidecar child try_wait error: {e}; {} health failures",
-                                        failures + 1,
-                                    ));
-                                    false
-                                }
+                            } else {
+                                false
                             }
                         } else {
                             false
-                        };
-                        failures += 1;
-                        if failures >= MAX_HEALTH_FAILURES || child_died {
-                            let reason = if child_died {
-                                "child process exited"
-                            } else {
-                                "health timeout"
-                            };
-                            let log_snippet = sidecar_stderr_log_path()
-                                .as_deref()
-                                .map(|p| read_log_tail(p, 20))
-                                .unwrap_or_default();
-                            supervisor_log(format!(
-                                "deepseek-desktop: sidecar unresponsive ({}, {} failures, port={}, token_len={}); restarting. stderr tail:\n{log_snippet}",
-                                reason, failures, port, token.len(),
-                            ));
-                            if let Some(mut ch) = child.take() {
-                                ch.kill().await.ok();
-                            } else {
-                                kill_processes_listening_on_local_port(port).ok();
-                            }
-                            wait_loopback_listen_port_free(port, "health-restart").await;
+                        }
+                    } else {
+                        false
+                    };
 
-                            // Crash backoff: if the sidecar crashes too many times
-                            // within the window, pause before restarting to break
-                            // crash→restart→crash loops.
-                            let now = Instant::now();
-                            let cutoff = now - Duration::from_secs(RAPID_RESTART_WINDOW_SECS);
-                            crash_times.push_back(now);
-                            while crash_times.front().is_some_and(|&t| t < cutoff) {
+                    if ping_ok {
+                        if connect_refused > 0 || busy_timeouts > 0 {
+                            supervisor_log(format!(
+                                "event=health_restored signal=ping_pong connect_refused={connect_refused} busy_timeouts={busy_timeouts} port={port}"
+                            ));
+                        }
+                        connect_refused = 0;
+                        busy_timeouts = 0;
+                    } else {
+                        // Fallback: HTTP /internal/probe
+                        let outcome = probe_sidecar(port, &token_fp).await;
+                        match outcome {
+                            ProbeOutcome::Ok => {
+                                if connect_refused > 0 || busy_timeouts > 0 {
+                                    supervisor_log(format!(
+                                        "event=health_restored signal=http connect_refused={connect_refused} busy_timeouts={busy_timeouts} port={port}"
+                                    ));
+                                }
+                                connect_refused = 0;
+                                busy_timeouts = 0;
+                            }
+                            ProbeOutcome::Refused => {
+                                connect_refused += 1;
+                                supervisor_log(format!(
+                                    "event=probe_refused count={connect_refused} port={port}"
+                                ));
+                            }
+                            ProbeOutcome::Timeout => {
+                                busy_timeouts += 1;
+                                supervisor_log(format!(
+                                    "event=probe_busy count={busy_timeouts} port={port}"
+                                ));
+                            }
+                            ProbeOutcome::TokenMismatch => {
+                                supervisor_log(format!(
+                                    "event=token_mismatch port={port} action=reclaim_and_restart"
+                                ));
+                                if let Some(mut ch) = child.take() {
+                                    ch.kill().await.ok();
+                                } else {
+                                    kill_processes_listening_on_local_port(port).ok();
+                                }
+                                wait_loopback_listen_port_free(port, "token-mismatch").await;
+                                continue 'supervisor;
+                            }
+                            ProbeOutcome::Other(ref msg) => {
+                                busy_timeouts += 1;
+                                supervisor_log(format!(
+                                    "event=probe_error count={busy_timeouts} port={port} error={msg}"
+                                ));
+                            }
+                        }
+                    }
+
+                    let child_died = if let Some(ref mut c) = child {
+                        match c.try_wait() {
+                            Ok(Some(status)) => {
+                                supervisor_log(format!(
+                                    "event=child_exited status={status:?} port={port}"
+                                ));
+                                true
+                            }
+                            Ok(None) => false,
+                            Err(e) => {
+                                supervisor_log(format!(
+                                    "event=child_try_wait_error error={e} port={port}"
+                                ));
+                                false
+                            }
+                        }
+                    } else {
+                        false
+                    };
+
+                    let should_restart = child_died
+                        || connect_refused >= MAX_CONNECT_REFUSED
+                        || busy_timeouts >= MAX_BUSY_TIMEOUTS;
+
+                    if should_restart {
+                        let reason = if child_died {
+                            "child_exited"
+                        } else if connect_refused >= MAX_CONNECT_REFUSED {
+                            "connect_refused"
+                        } else {
+                            "busy_timeout"
+                        };
+                        supervisor_log(format!(
+                            "event=restart reason={reason} connect_refused={connect_refused} busy_timeouts={busy_timeouts} port={port}"
+                        ));
+                        if let Some(mut ch) = child.take() {
+                            ch.kill().await.ok();
+                        } else {
+                            kill_processes_listening_on_local_port(port).ok();
+                        }
+                        wait_loopback_listen_port_free(port, "health-restart").await;
+
+                        let now = Instant::now();
+                        let cutoff = now - Duration::from_secs(RAPID_RESTART_WINDOW_SECS);
+                        crash_times.push_back(now);
+                        while crash_times.front().is_some_and(|&t| t < cutoff) {
+                            crash_times.pop_front();
+                        }
+                        if crash_times.len() > MAX_RAPID_RESTARTS {
+                            let wait_secs = 15u64.saturating_mul(
+                                (crash_times.len() - MAX_RAPID_RESTARTS) as u64
+                            );
+                            supervisor_log(format!(
+                                "event=rapid_crash_backoff crashes={} window_s={RAPID_RESTART_WINDOW_SECS} wait_s={wait_secs} port={port}",
+                                crash_times.len(),
+                            ));
+                            sleep(Duration::from_secs(wait_secs)).await;
+                            let cutoff2 = Instant::now() - Duration::from_secs(RAPID_RESTART_WINDOW_SECS);
+                            while crash_times.front().is_some_and(|&t| t < cutoff2) {
                                 crash_times.pop_front();
                             }
-                            if crash_times.len() > MAX_RAPID_RESTARTS {
-                                let wait_secs = 15u64.saturating_mul(
-                                    (crash_times.len() - MAX_RAPID_RESTARTS) as u64
-                                );
-                                supervisor_log(format!(
-                                    "deepseek-desktop: {} sidecar crashes in {} s; \
-                                     pausing {wait_secs} s to avoid restart loop. \
-                                     The session file may be too large to load — \
-                                     try deleting old sessions or compacting the TUI history.",
-                                    crash_times.len(),
-                                    RAPID_RESTART_WINDOW_SECS,
-                                ));
-                                sleep(Duration::from_secs(wait_secs)).await;
-                                // Prune again after the sleep so the count is fresh.
-                                let cutoff2 = Instant::now() - Duration::from_secs(RAPID_RESTART_WINDOW_SECS);
-                                while crash_times.front().is_some_and(|&t| t < cutoff2) {
-                                    crash_times.pop_front();
-                                }
-                            }
-
-                            continue 'supervisor;
                         }
+
+                        continue 'supervisor;
                     }
                 }
             }

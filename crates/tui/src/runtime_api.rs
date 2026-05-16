@@ -1,13 +1,15 @@
 //! Runtime HTTP/SSE API for local DeepSeek automation.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
 use std::fs;
 use std::net::SocketAddr;
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use sha2::{Digest, Sha256};
 
 use anyhow::{Context, Result, anyhow, bail};
 use async_stream::stream;
@@ -23,8 +25,10 @@ use chrono::Utc;
 use ignore::WalkBuilder;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use tokio::io::AsyncBufReadExt;
+use tokio::io::BufReader;
 use tokio::net::TcpListener;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Semaphore};
 use tokio_util::sync::CancellationToken;
 use tower_http::cors::{Any, CorsLayer};
 
@@ -57,10 +61,13 @@ pub struct RuntimeApiState {
     task_manager: SharedTaskManager,
     runtime_threads: SharedRuntimeThreadManager,
     cors_origins: Vec<String>,
-    sessions_dir: PathBuf,
     mcp_config_path: PathBuf,
     automations: SharedAutomationManager,
     runtime_token: Option<String>,
+    process_started_at_ms: u128,
+    token_fingerprint: Arc<String>,
+    shared_session_manager: Arc<SessionManager>,
+    resume_tracker: ResumeTaskTracker,
 }
 
 #[derive(Debug, Clone)]
@@ -110,11 +117,90 @@ struct ResolveApprovalRequest {
     decision: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+struct ResumeTaskState {
+    thread_id: String,
+    session_id: String,
+    state: String,
+    items_written: usize,
+    items_total: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+#[derive(Clone)]
+struct ResumeTaskTracker {
+    tasks: Arc<Mutex<HashMap<String, ResumeTaskState>>>,
+    seed_gate: Arc<Semaphore>,
+}
+
+impl ResumeTaskTracker {
+    fn new() -> Self {
+        Self {
+            tasks: Arc::new(Mutex::new(HashMap::new())),
+            seed_gate: Arc::new(Semaphore::new(1)),
+        }
+    }
+
+    async fn register(&self, thread_id: &str, session_id: &str, items_total: usize) {
+        let mut tasks = self.tasks.lock().await;
+        tasks.insert(
+            thread_id.to_string(),
+            ResumeTaskState {
+                thread_id: thread_id.to_string(),
+                session_id: session_id.to_string(),
+                state: "seeding".to_string(),
+                items_written: 0,
+                items_total,
+                error: None,
+            },
+        );
+    }
+
+    async fn mark_ready(&self, thread_id: &str) {
+        let mut tasks = self.tasks.lock().await;
+        if let Some(task) = tasks.get_mut(thread_id) {
+            task.state = "ready".to_string();
+            task.items_written = task.items_total;
+        }
+    }
+
+    async fn mark_error(&self, thread_id: &str, error: String) {
+        let mut tasks = self.tasks.lock().await;
+        if let Some(task) = tasks.get_mut(thread_id) {
+            task.state = "error".to_string();
+            task.error = Some(error);
+        }
+    }
+
+    async fn get(&self, thread_id: &str) -> Option<ResumeTaskState> {
+        let tasks = self.tasks.lock().await;
+        tasks.get(thread_id).cloned()
+    }
+
+    async fn acquire_seed_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
+        self.seed_gate
+            .clone()
+            .acquire_owned()
+            .await
+            .expect("seed gate semaphore closed")
+    }
+}
+
 #[derive(Debug, Serialize)]
 struct HealthResponse {
     status: &'static str,
     service: &'static str,
     mode: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct InternalProbeResponse {
+    status: &'static str,
+    pid: u32,
+    started_at_ms: u128,
+    token_fingerprint: String,
+    version: &'static str,
 }
 
 #[derive(Debug, Serialize)]
@@ -140,7 +226,7 @@ struct ResumeSessionResponse {
     thread_id: String,
     session_id: String,
     message_count: usize,
-    summary: String,
+    state: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -342,11 +428,16 @@ pub async fn run_http_server(
         config.default_text_model.clone(),
         Some(options.workers),
     );
-    let runtime_threads = Arc::new(RuntimeThreadManager::open(
-        config.clone(),
-        workspace.clone(),
-        RuntimeThreadManagerConfig::from_task_data_dir(task_cfg.data_dir.clone()),
-    )?);
+    let manager_cfg = RuntimeThreadManagerConfig::from_task_data_dir(task_cfg.data_dir.clone());
+    let sb_config = config.clone();
+    let sb_workspace = workspace.clone();
+    let runtime_threads = Arc::new(
+        tokio::task::spawn_blocking(move || {
+            RuntimeThreadManager::open(sb_config, sb_workspace, manager_cfg)
+        })
+        .await
+        .map_err(|e| anyhow!("RuntimeThreadManager::open panicked: {e}"))??,
+    );
     eprintln!(
         "[deepseek-runtime] RuntimeThreadManager::open ok (+{:?})",
         t0.elapsed()
@@ -379,16 +470,38 @@ pub async fn run_http_server(
         .or_else(|| std::env::var("DEEPSEEK_RUNTIME_TOKEN").ok())
         .filter(|token| !token.trim().is_empty());
     let auth_enabled = runtime_token.is_some();
+
+    let process_started_at_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let token_fingerprint = {
+        let mut hasher = Sha256::new();
+        hasher.update(runtime_token.as_deref().unwrap_or(""));
+        let hash = hasher.finalize();
+        let fp: String = hash[..16].iter().map(|b| format!("{b:02x}")).collect();
+        Arc::new(fp)
+    };
+    let shared_session_manager = Arc::new(
+        SessionManager::new(sessions_dir.clone())
+            .context("Failed to create SessionManager")?,
+    );
+
+    let token_fp = token_fingerprint.as_ref().clone();
+    let port = options.port;
     let state = RuntimeApiState {
         config: config.clone(),
         workspace,
         task_manager,
         runtime_threads,
         cors_origins: options.cors_origins.clone(),
-        sessions_dir,
         mcp_config_path: config.mcp_config_path(),
         automations,
         runtime_token,
+        process_started_at_ms,
+        token_fingerprint,
+        shared_session_manager,
+        resume_tracker: ResumeTaskTracker::new(),
     };
     let app = build_router(state);
 
@@ -408,9 +521,63 @@ pub async fn run_http_server(
     if auth_enabled {
         eprintln!("Runtime API auth: bearer token required for /v1/* routes.");
     }
+
+    // Signal READY to the supervisor via stdout (line protocol).
+    // DS Pick's supervisor waits for this line before considering the sidecar healthy.
+    let ready_line = serde_json::json!({
+        "port": port,
+        "pid": std::process::id(),
+        "token_fp": token_fp,
+        "version": env!("CARGO_PKG_VERSION"),
+    });
+    println!("DS_PICK_READY {ready_line}");
+    let _ = std::io::Write::flush(&mut std::io::stdout());
+
+    let started_at = std::time::Instant::now();
+    tokio::spawn(async move {
+        let stdin = BufReader::new(tokio::io::stdin());
+        let mut lines = stdin.lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            let op: serde_json::Value = match serde_json::from_str(&line) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+            match op.get("op").and_then(|v| v.as_str()) {
+                Some("ping") => {
+                    let seq = op.get("seq").and_then(|v| v.as_u64()).unwrap_or(0);
+                    let pong = serde_json::json!({
+                        "op": "pong",
+                        "seq": seq,
+                        "pid": std::process::id(),
+                        "uptime_ms": started_at.elapsed().as_millis(),
+                    });
+                    println!("DS_PICK_PONG {pong}");
+                    let _ = std::io::Write::flush(&mut std::io::stdout());
+                }
+                Some("drain") => {
+                    let drain_resp = serde_json::json!({
+                        "op": "drain",
+                        "state": "draining",
+                    });
+                    println!("DS_PICK_DRAIN {drain_resp}");
+                    let _ = std::io::Write::flush(&mut std::io::stdout());
+                    break;
+                }
+                _ => {}
+            }
+        }
+    });
+
+    eprintln!(
+        "[deepseek-runtime] axum::serve started, listening on {addr}"
+    );
     let serve_result = axum::serve(listener, app)
         .await
         .map_err(|e| anyhow!("Runtime API server error: {e}"));
+    eprintln!(
+        "[deepseek-runtime] axum::serve returned: {:?}",
+        serve_result.as_ref().map(|_| "ok").map_err(|e| format!("{e:#}"))
+    );
     scheduler_cancel.cancel();
     scheduler_handle.abort();
     serve_result
@@ -424,6 +591,7 @@ pub fn build_router(state: RuntimeApiState) -> Router {
             "/v1/sessions/{id}/resume-thread",
             post(resume_session_thread),
         )
+        .route("/v1/resume-tasks/{thread_id}", get(get_resume_task))
         .route("/v1/workspace/status", get(workspace_status))
         .route("/v1/workspace/browse", get(browse_workspace_by_root))
         .route("/v1/workspace/file", get(read_workspace_file_by_root))
@@ -507,6 +675,7 @@ pub fn build_router(state: RuntimeApiState) -> Router {
 
     Router::new()
         .route("/health", get(health))
+        .route("/internal/probe", get(internal_probe))
         .merge(api_routes)
         .layer(cors_layer(&state.cors_origins))
         .with_state(state)
@@ -556,16 +725,24 @@ async fn health() -> Json<HealthResponse> {
     })
 }
 
+async fn internal_probe(State(state): State<RuntimeApiState>) -> Json<InternalProbeResponse> {
+    Json(InternalProbeResponse {
+        status: "ok",
+        pid: std::process::id(),
+        started_at_ms: state.process_started_at_ms,
+        token_fingerprint: state.token_fingerprint.as_ref().clone(),
+        version: env!("CARGO_PKG_VERSION"),
+    })
+}
+
 async fn list_sessions(
     State(state): State<RuntimeApiState>,
     Query(query): Query<SessionsQuery>,
 ) -> Result<Json<SessionsResponse>, ApiError> {
-    let sessions_dir = state.sessions_dir.clone();
+    let manager = state.shared_session_manager.clone();
     let search = query.search.clone();
     let limit = query.limit.unwrap_or(50).clamp(1, 500);
     let mut sessions = tokio::task::spawn_blocking(move || {
-        let manager = SessionManager::new(sessions_dir)
-            .map_err(|e| format!("Failed to open sessions dir: {e}"))?;
         if let Some(search) = search {
             manager
                 .search_sessions(&search)
@@ -587,11 +764,10 @@ async fn get_session(
     State(state): State<RuntimeApiState>,
     AxumPath(id): AxumPath<String>,
 ) -> Result<Json<SessionDetailResponse>, ApiError> {
-    let sessions_dir = state.sessions_dir.clone();
+    let manager = state.shared_session_manager.clone();
     let detail = tokio::task::spawn_blocking({
         let id = id.clone();
         move || -> std::io::Result<SessionDetailResponse> {
-            let manager = SessionManager::new(sessions_dir)?;
             let session = manager.load_session(&id)?;
             Ok(session_to_detail(session))
         }
@@ -608,11 +784,10 @@ async fn resume_session_thread(
     Json(req): Json<ResumeSessionRequest>,
 ) -> Result<(StatusCode, Json<ResumeSessionResponse>), ApiError> {
     let t0 = std::time::Instant::now();
-    let sessions_dir = state.sessions_dir.clone();
+    let manager = state.shared_session_manager.clone();
     let session = tokio::task::spawn_blocking({
         let id = id.clone();
         move || -> Result<SavedSession, std::io::Error> {
-            let manager = SessionManager::new(sessions_dir)?;
             manager.load_session(&id)
         }
     })
@@ -635,10 +810,6 @@ async fn resume_session_thread(
             .unwrap_or_else(|| "agent".to_string())
     });
 
-    // Bind the resurrected thread to the workspace persisted in the session file.
-    // The runtime API default workspace often follows the OS process cwd (e.g.
-    // `C:\Windows\System32` for a GUI-spawned sidecar); using it here wipes the user's
-    // project folder in the desktop shell after "resume".
     let thread = state
         .runtime_threads
         .create_thread(CreateThreadRequest {
@@ -655,51 +826,63 @@ async fn resume_session_thread(
         .await
         .map_err(|e| ApiError::internal(format!("Failed to create thread: {e}")))?;
 
-    // Take ownership of messages and drop the rest of the session struct
-    // early to free metadata/system_prompt memory before the 750+ file-write
-    // step that follows. seed_thread_from_messages is offloaded to the
-    // blocking thread pool 鈥?each save_item / save_turn is a synchronous
-    // serde_json + write_atomic that must not stall a tokio worker.
-    let messages = session.messages;
-    let msg_count = messages.len();
-    let title = session.metadata.title.clone();
-    // session dropped here (messages already moved out)
+    let msgs = session.messages;
+    let msg_count = msgs.len();
+    let tid = thread.id.clone();
+    let tid_log = tid.clone();
 
+    state
+        .resume_tracker
+        .register(&tid, &id, msg_count)
+        .await;
+
+    let tracker = state.resume_tracker.clone();
     let threads = state.runtime_threads.clone();
-    let thread_id = thread.id.clone();
-    let thread_id_for_log = thread_id.clone();
-    tokio::task::spawn_blocking({
-        let rt = tokio::runtime::Handle::current();
-        move || {
-            rt.block_on(async {
-                threads
-                    .seed_thread_from_messages(&thread_id, &messages)
-                    .await
-            })
-        }
-    })
-    .await
-    .map_err(|e| ApiError::internal(format!("seed thread messages task panicked: {e}")))?
-    .map_err(|e| ApiError::internal(format!("Failed to seed thread history: {e}")))?;
-    let t2 = t0.elapsed();
-    eprintln!(
-        "[resume-session] seed done in {:.1}s total, thread={}",
-        t2.as_secs_f64(),
-        thread_id_for_log,
-    );
+    tokio::spawn(async move {
+        let _permit = tracker.acquire_seed_permit().await;
 
-    let summary = format!(
-        "Resumed session '{}' ({} messages) into thread {}",
-        title, msg_count, thread.id
-    );
+        let seed_result = tokio::task::spawn_blocking({
+            let rt = tokio::runtime::Handle::current();
+            let tid_clone = tid.clone();
+            move || {
+                rt.block_on(async {
+                    threads
+                        .seed_thread_from_messages(&tid_clone, &msgs)
+                        .await
+                })
+            }
+        })
+        .await
+        .map_err(|e| format!("seed panicked: {e}"))
+        .and_then(|r| r.map_err(|e| format!("{e:#}")));
+
+        match seed_result {
+            Ok(()) => {
+                let elapsed = t0.elapsed();
+                eprintln!(
+                    "[resume-session] seed done in {:.1}s total, thread={}",
+                    elapsed.as_secs_f64(),
+                    tid_log,
+                );
+                tracker.mark_ready(&tid).await;
+            }
+            Err(err) => {
+                eprintln!(
+                    "[resume-session] seed failed, thread={}: {}",
+                    tid_log, err,
+                );
+                tracker.mark_error(&tid, err).await;
+            }
+        }
+    });
 
     Ok((
-        StatusCode::CREATED,
+        StatusCode::ACCEPTED,
         Json(ResumeSessionResponse {
             thread_id: thread.id,
             session_id: id,
             message_count: msg_count,
-            summary,
+            state: "seeding".to_string(),
         }),
     ))
 }
@@ -708,11 +891,10 @@ async fn delete_session(
     State(state): State<RuntimeApiState>,
     AxumPath(id): AxumPath<String>,
 ) -> Result<StatusCode, ApiError> {
-    let sessions_dir = state.sessions_dir.clone();
+    let manager = state.shared_session_manager.clone();
     tokio::task::spawn_blocking({
         let id = id.clone();
         move || -> Result<(), std::io::Error> {
-            let manager = SessionManager::new(sessions_dir)?;
             manager.delete_session(&id)
         }
     })
@@ -720,6 +902,18 @@ async fn delete_session(
     .map_err(|e| ApiError::internal(format!("delete session task panicked: {e}")))?
     .map_err(|e| map_session_err(&id, e, "delete"))?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+async fn get_resume_task(
+    State(state): State<RuntimeApiState>,
+    AxumPath(thread_id): AxumPath<String>,
+) -> Result<Json<ResumeTaskState>, ApiError> {
+    state
+        .resume_tracker
+        .get(&thread_id)
+        .await
+        .ok_or_else(|| ApiError::not_found(format!("resume task not found for thread {thread_id}")))
+        .map(Json)
 }
 
 #[derive(Debug, Deserialize)]
@@ -745,7 +939,7 @@ async fn persist_thread_session(
     // the blocking thread pool so the /health endpoint stays responsive.
     let session = tokio::task::spawn_blocking({
         let threads = state.runtime_threads.clone();
-        let sessions_dir = state.sessions_dir.clone();
+        let manager = state.shared_session_manager.clone();
         let sid = req
             .session_id
             .as_ref()
@@ -770,9 +964,6 @@ async fn persist_thread_session(
                 .system_prompt
                 .as_ref()
                 .map(|s| SystemPrompt::Text(s.clone()));
-
-            let manager = SessionManager::new(sessions_dir)
-                .map_err(|e| format!("Failed to open sessions dir: {e}"))?;
 
             if let Some(existing_id) = sid {
                 let existing = manager
@@ -3004,16 +3195,28 @@ mod tests {
         )?));
         runtime_threads.attach_automation_manager(automations.clone());
 
+        let token_fp = {
+            let mut hasher = Sha256::new();
+            hasher.update(runtime_token.as_deref().unwrap_or(""));
+            let hash = hasher.finalize();
+            let fp: String = hash[..16].iter().map(|b| format!("{b:02x}")).collect();
+            fp
+        };
+        let shared_sm = Arc::new(SessionManager::new(sessions_dir.clone())?);
+
         let state = RuntimeApiState {
             config: Config::default(),
             workspace: PathBuf::from("."),
             task_manager: manager,
             runtime_threads: runtime_threads.clone(),
             cors_origins: Vec::new(),
-            sessions_dir,
             mcp_config_path: root.join("mcp.json"),
             automations,
             runtime_token,
+            process_started_at_ms: 0,
+            token_fingerprint: Arc::new(token_fp),
+            shared_session_manager: shared_sm,
+            resume_tracker: ResumeTaskTracker::new(),
         };
         let app = build_router(state);
         let listener = match TcpListener::bind("127.0.0.1:0").await {
@@ -3562,6 +3765,20 @@ mod tests {
             Duration::from_secs(2),
         )
         .await?;
+
+        {
+            let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+            while runtime_threads
+                .active_turn_flags(&thread_id, &turn_id)
+                .await
+                .is_some()
+            {
+                if tokio::time::Instant::now() >= deadline {
+                    bail!("timed out waiting for active_turn to clear on thread {thread_id}");
+                }
+                sleep(Duration::from_millis(25)).await;
+            }
+        }
 
         let steer_resp = client
             .post(format!(
@@ -4213,14 +4430,32 @@ mod tests {
             .json(&json!({ "model": "deepseek-v4-pro" }))
             .send()
             .await?;
-        assert_eq!(resp.status(), StatusCode::CREATED);
+        assert_eq!(resp.status(), StatusCode::ACCEPTED);
         let resumed: serde_json::Value = resp.json().await?;
         assert_eq!(resumed["session_id"], session_id);
         assert_eq!(resumed["message_count"], 2);
+        assert_eq!(resumed["state"], "seeding");
 
         let thread_id = resumed["thread_id"]
             .as_str()
             .context("missing resumed thread id")?;
+
+        // Poll for seed completion since resume is now async
+        for _ in 0..30 {
+            let task_resp = client
+                .get(format!(
+                    "http://{addr}/v1/resume-tasks/{thread_id}"
+                ))
+                .send()
+                .await?;
+            if task_resp.status().is_success() {
+                let task_state: serde_json::Value = task_resp.json().await?;
+                if task_state["state"] == "ready" || task_state["state"] == "error" {
+                    break;
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
         let detail: serde_json::Value = client
             .get(format!("http://{addr}/v1/threads/{thread_id}"))
             .send()

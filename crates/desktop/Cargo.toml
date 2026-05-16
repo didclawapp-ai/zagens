@@ -13,12 +13,14 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 deepseek-config = { path = "../config", version = "0.8.15" }
+deepseek-secrets = { path = "../secrets", version = "0.8.15" }
 toml.workspace = true
 anyhow.workspace = true
 chrono.workspace = true
 serde.workspace = true
 base64 = "0.22"
 serde_json.workspace = true
+sha2.workspace = true
 tokio = { workspace = true, features = ["process", "time", "sync"] }
 uuid.workspace = true
 # `devtools`: keeps WebView 开发者工具在 release 也可用，并注入 Ctrl+Shift+I 切换脚本（见 Tauri 文档）。
