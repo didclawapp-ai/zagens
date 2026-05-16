@@ -76,21 +76,37 @@ function escapeHtml(str: string): string {
 export function CodeRenderer({ state }: RendererProps) {
   const { content, language, fileName, size } = state;
 
-  const html = useMemo(() => {
-    if (!content) return '';
+  const lines = useMemo(() => {
+    if (!content) return [];
     const truncated =
       content.length > 512_000 ? content.slice(0, 512_000) : content;
     const key = langKey(language);
+
+    // Highlight the whole file to preserve cross-line token context
+    // (block comments, multi-line strings, etc.).
+    let fullHtml: string;
     try {
-      return hljs.highlight(truncated, { language: key, ignoreIllegals: true })
-        .value;
+      fullHtml = hljs.highlight(truncated, {
+        language: key,
+        ignoreIllegals: true,
+      }).value;
     } catch {
-      return escapeHtml(truncated);
+      fullHtml = escapeHtml(truncated);
     }
+
+    // Split highlighted output by newline.  highlight.js preserves \n
+    // in its output, and tags don't span lines.
+    const htmlLines = fullHtml.split('\n');
+
+    return htmlLines.map((html, i) => ({
+      number: i + 1,
+      html: html || ' ', // keep empty lines visible
+    }));
   }, [content, language]);
 
   const truncated = content.length > 512_000;
   const displaySize = size ?? content.length;
+  const paddingWidth = String(lines.length).length;
 
   if (!content) {
     return (
@@ -101,15 +117,33 @@ export function CodeRenderer({ state }: RendererProps) {
   }
 
   return (
-    <div className="h-full overflow-y-auto p-5">
-      <pre className="hljs rounded-lg p-4 text-sm !bg-canvas-alt border border-card-border">
-        <code
-          className="hljs !bg-transparent !p-0 text-sm"
-          dangerouslySetInnerHTML={{ __html: html }}
-        />
-      </pre>
+    <div className="h-full overflow-y-auto">
+      <table className="w-full border-collapse text-sm font-mono leading-relaxed">
+        <tbody>
+          {lines.map((line) => (
+            <tr key={line.number} className="hover:bg-hover/40">
+              <td
+                className="select-none text-right pr-4 pl-5 py-0 w-1 align-top sticky left-0 bg-canvas-alt border-r border-divider"
+                style={{ minWidth: `${paddingWidth + 3}ch` }}
+              >
+                <span className="text-t-text-muted/50 text-xs tabular-nums">
+                  {String(line.number).padStart(paddingWidth, ' ')}
+                </span>
+              </td>
+              <td className="pl-4 pr-5 py-0">
+                <pre className="hljs !bg-transparent !p-0 !m-0 text-sm leading-relaxed">
+                  <code
+                    className="hljs !bg-transparent !p-0 text-sm"
+                    dangerouslySetInnerHTML={{ __html: line.html }}
+                  />
+                </pre>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
       {truncated && (
-        <p className="mt-2 text-xs text-amber-text/90">
+        <p className="mt-2 px-5 text-xs text-amber-text/90">
           文件过大（{(displaySize / 1024).toFixed(1)} KB），仅显示前 512 KB。
           {fileName ? `（${fileName}）` : ''}
         </p>

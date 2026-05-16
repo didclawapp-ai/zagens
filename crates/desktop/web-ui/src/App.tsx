@@ -178,6 +178,7 @@ function loadTheme(): Theme {
 const ACTIVE_SESSION_STORAGE_KEY = 'deepseek-desktop-active-session-id';
 const ACTIVE_INSPECTOR_STORAGE_KEY = 'deepseek-desktop-active-inspector';
 const ROUTE_INTENT_STORAGE_KEY = 'deepseek-desktop-route-intent';
+const SIDEBAR_WIDTH_KEY = 'deepseek-desktop-sidebar-width';
 
 /** Periodically persist session file during streaming (loss reduction vs turn-only persist). */
 const SESSION_CHECKPOINT_MS = 18_000;
@@ -264,6 +265,20 @@ export default function App() {
   const [desktopHost, setDesktopHost] = useState(false);
   const [desktopApiKeyConfigured, setDesktopApiKeyConfigured] = useState<boolean | null>(null);
   const [runtimeConn, setRuntimeConn] = useState<RuntimeConnectionState>('checking');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
+  const [sidebarWidth, setSidebarWidthState] = useState(() => {
+    try {
+      const n = parseInt(localStorage.getItem(SIDEBAR_WIDTH_KEY) ?? '', 10);
+      if (Number.isFinite(n) && n >= 180 && n <= 480) return n;
+    } catch { /* ignore */ }
+    return 240;
+  });
+
+  const setSidebarWidthPersisted = useCallback((px: number) => {
+    setSidebarWidthState(px);
+    try { localStorage.setItem(SIDEBAR_WIDTH_KEY, String(px)); } catch { /* ignore */ }
+  }, []);
 
   const toggleDevtools = useCallback(() => {
     if (!desktopHost) return;
@@ -1236,7 +1251,24 @@ export default function App() {
         apiKeyConfigured={desktopApiKeyConfigured}
         activeInspector={activeInspector}
         onInspectorChange={setActiveInspector}
+        sidebarWidth={sidebarWidth}
+        onSidebarWidthChange={setSidebarWidthPersisted}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed((v) => !v)}
       />
+      {/* left toggle strip — visible when sidebar collapsed */}
+      {sidebarCollapsed && (
+        <button
+          type="button"
+          onClick={() => setSidebarCollapsed(false)}
+          className="shrink-0 w-8 border-r border-rail-edge bg-canvas hover:bg-hover transition-colors flex items-center justify-center group"
+          title="展开侧边栏"
+        >
+          <svg className="w-3.5 h-3.5 text-t-text-muted group-hover:text-t-text transition-colors" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M5 4l6 4-6 4" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </button>
+      )}
       <div className="flex min-h-0 flex-1 flex-col min-w-0 bg-canvas">
         {banner && (
           <div className="shrink-0 border-b border-divider bg-amber-bg px-4 py-2 text-sm text-amber-text">
@@ -1258,7 +1290,13 @@ export default function App() {
             {t('thread.resumed', { id: resumedThreadId.slice(0, 8) })}
           </p>
         )}
-        <ChatView messages={messages} onOpenWorkspacePath={handleChatOpenWorkspacePath} />
+        <ChatView
+          messages={messages}
+          onOpenWorkspacePath={handleChatOpenWorkspacePath}
+          onRetryMessage={(content) =>
+            handleSend({ displayContent: content, apiPrompt: content })
+          }
+        />
         <Composer
           onSend={handleSend}
           onCancel={handleCancelStream}
@@ -1281,38 +1319,57 @@ export default function App() {
           onOpenModelParams={() => setModelParamsOpen(true)}
         />
       </div>
-      <RightPanel
-        view={activeInspector}
-        desktopHost={desktopHost}
-        runtimeConn={runtimeConn}
-        apiKeyConfigured={desktopApiKeyConfigured}
-        onSavedApiKey={() => {
-          refreshApiKeyStatus();
-          setBanner(null);
-        }}
-        theme={theme}
-        onToggleTheme={toggleTheme}
-        platform={platform}
-        workspaceRoot={selectedWorkspace}
-        resumedThreadId={resumedThreadId}
-        threadTrustMode={threadTrustMode}
-        onEnableTrust={async () => {
-          if (!resumedThreadId) return;
-          try {
-            await patchThread(resumedThreadId, { trust_mode: true });
-            setThreadTrustMode(true);
+      {/* right panel toggle strip */}
+      {!rightPanelCollapsed && (
+        <RightPanel
+          view={activeInspector}
+          desktopHost={desktopHost}
+          runtimeConn={runtimeConn}
+          apiKeyConfigured={desktopApiKeyConfigured}
+          onSavedApiKey={() => {
+            refreshApiKeyStatus();
             setBanner(null);
-          } catch (e) {
-            const err = e as Error & { status?: number };
-            setBanner(t('banner.trustModeFailed', { message: err.message }));
-          }
-        }}
-        preview={panelPreview}
-        onClosePreview={closePanelPreview}
-        openWorkspaceFile={openWorkspaceFileForPreview}
-        focusFilesNonce={focusWorkspaceFilesNonce}
-        agentStates={agentStates}
-      />
+          }}
+          theme={theme}
+          onToggleTheme={toggleTheme}
+          platform={platform}
+          workspaceRoot={selectedWorkspace}
+          resumedThreadId={resumedThreadId}
+          threadTrustMode={threadTrustMode}
+          onEnableTrust={async () => {
+            if (!resumedThreadId) return;
+            try {
+              await patchThread(resumedThreadId, { trust_mode: true });
+              setThreadTrustMode(true);
+              setBanner(null);
+            } catch (e) {
+              const err = e as Error & { status?: number };
+              setBanner(t('banner.trustModeFailed', { message: err.message }));
+            }
+          }}
+          preview={panelPreview}
+          onClosePreview={closePanelPreview}
+          openWorkspaceFile={openWorkspaceFileForPreview}
+          focusFilesNonce={focusWorkspaceFilesNonce}
+          agentStates={agentStates}
+          onRequestChecklist={() => setActiveInspector('checklist')}
+          messages={messages}
+          onRequestMermaid={() => setActiveInspector('mermaid')}
+          onCollapse={() => setRightPanelCollapsed(true)}
+        />
+      )}
+      {rightPanelCollapsed && (
+        <button
+          type="button"
+          onClick={() => setRightPanelCollapsed(false)}
+          className="shrink-0 w-8 border-l border-rail-edge bg-canvas hover:bg-hover transition-colors flex items-center justify-center group"
+          title="展开面板"
+        >
+          <svg className="w-3.5 h-3.5 text-t-text-muted group-hover:text-t-text transition-colors" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M5 4l6 4-6 4" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </button>
+      )}
       <ModelParamsDialog
         open={modelParamsOpen}
         onClose={() => setModelParamsOpen(false)}

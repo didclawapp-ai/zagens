@@ -237,6 +237,11 @@ pub enum SubAgentType {
     Verifier,
     /// Custom tool access defined at spawn time.
     Custom,
+    /// Auditing — read-only fact-checker that verifies every finding
+    /// in a parent-produced review report has a file_path, line_number,
+    /// and that the cited lines contain the symbols the finding names.
+    /// Mechanical only — no semantic judgment, no analysis, no suggestions.
+    Auditor,
 }
 
 impl SubAgentType {
@@ -253,6 +258,7 @@ impl SubAgentType {
             "implementer" | "implement" | "implementation" | "builder" => Some(Self::Implementer),
             "verifier" | "verify" | "verification" | "validator" | "tester" => Some(Self::Verifier),
             "custom" => Some(Self::Custom),
+            "auditor" | "audit" | "fact-checker" | "fact_checker" => Some(Self::Auditor),
             _ => None,
         }
     }
@@ -267,6 +273,7 @@ impl SubAgentType {
             Self::Implementer => "implementer",
             Self::Verifier => "verifier",
             Self::Custom => "custom",
+            Self::Auditor => "auditor",
         }
     }
 
@@ -281,6 +288,7 @@ impl SubAgentType {
             Self::Implementer => IMPLEMENTER_AGENT_PROMPT.to_string(),
             Self::Verifier => VERIFIER_AGENT_PROMPT.to_string(),
             Self::Custom => CUSTOM_AGENT_PROMPT.to_string(),
+            Self::Auditor => AUDITOR_AGENT_PROMPT.to_string(),
         }
     }
 
@@ -392,6 +400,13 @@ impl SubAgentType {
                 "note",
             ],
             Self::Custom => vec![], // Must be provided by caller.
+            Self::Auditor => vec![
+                "list_dir",
+                "read_file",
+                "grep_files",
+                "file_search",
+                "note",
+            ],
         }
     }
 }
@@ -616,6 +631,11 @@ pub struct SubAgentRuntime {
     /// parent isn't flooded with grandchild completions it didn't directly
     /// orchestrate. `None` when no consumer is wired (tests / legacy paths).
     pub parent_completion_tx: Option<mpsc::UnboundedSender<SubAgentCompletion>>,
+    /// Per-step LLM API call timeout. Each `create_message` request must
+    /// complete within this window or the step is treated as timed out.
+    /// Defaults to [`STEP_API_TIMEOUT`] (120 s). Increase for review/audit
+    /// workloads where a single step may read many files.
+    pub step_timeout: Duration,
 }
 
 impl SubAgentRuntime {
@@ -648,6 +668,7 @@ impl SubAgentRuntime {
             cancel_token: CancellationToken::new(),
             mailbox: None,
             parent_completion_tx: None,
+            step_timeout: STEP_API_TIMEOUT,
         }
     }
 
@@ -690,6 +711,15 @@ impl SubAgentRuntime {
     #[allow(dead_code)]
     pub fn with_max_spawn_depth(mut self, max: u32) -> Self {
         self.max_spawn_depth = max;
+        self
+    }
+
+    /// Override the per-step API timeout (default [`STEP_API_TIMEOUT`] = 120 s).
+    /// Increase for review/audit workloads where each child step may read
+    /// many files before returning.
+    #[must_use]
+    pub fn with_step_timeout(mut self, timeout: Duration) -> Self {
+        self.step_timeout = timeout;
         self
     }
 
@@ -764,6 +794,7 @@ impl SubAgentRuntime {
             cancel_token: self.cancel_token.child_token(),
             mailbox: self.mailbox.clone(),
             parent_completion_tx: self.parent_completion_tx.clone(),
+            step_timeout: self.step_timeout,
         }
     }
 
@@ -1640,6 +1671,12 @@ impl ToolSpec for AgentSpawnTool {
                 "task_id": {
                     "type": "string",
                     "description": "Optional task id for CRAFT blackboard association. When set, the child reads/writes `.deepseek/blackboards/{task_id}.json` so subsequent agents in the same task see structured context from prior agents."
+                },
+                "step_timeout_ms": {
+                    "type": "integer",
+                    "description": "Per-step API timeout in milliseconds (default: 120000, max: 600000). Increase for review/audit workloads where a single step may read many files.",
+                    "minimum": 10000,
+                    "maximum": 600000
                 }
             }
         })
@@ -1708,6 +1745,9 @@ impl ToolSpec for AgentSpawnTool {
         if let Some(cwd) = validated_cwd {
             child_runtime.context.workspace = cwd;
         }
+        let step_timeout_ms = optional_u64(&input, "step_timeout_ms", 120_000)
+            .clamp(10_000, 600_000);
+        child_runtime = child_runtime.with_step_timeout(Duration::from_millis(step_timeout_ms));
         let configured_model = match spawn_request.model.clone() {
             Some(model) => Some(model),
             None => configured_model_for_role_or_type(
@@ -4148,6 +4188,80 @@ const VERIFIER_AGENT_PROMPT: &str = concat!(
     "After the structured report, append a `<!-- craft-verdict -->` JSON\n",
     "block (same schema as the Reviewer) summarizing the outcome with\n",
     "verdict FAIL for any test or lint failure.\n",
+);
+
+const AUDITOR_AGENT_PROMPT: &str = concat!(
+    "You are an audit sub-agent (Auditor). Your job is mechanical fact-checking\n",
+    "only — no analysis, no suggestions, no judgment.\n",
+    "\n",
+    "## Input\n",
+    "\n",
+    "The parent agent sends a review report draft as your prompt.\n",
+    "The report contains numbered findings (HIGH/MEDIUM/LOW) with\n",
+    "claimed file paths and line numbers.\n",
+    "\n",
+    "## Rules\n",
+    "\n",
+    "For every finding, perform three checks in order:\n",
+    "\n",
+    "1. **Path check** — Does the finding cite a concrete file path?\n",
+    "   Missing → record \"[finding N] 缺失: file_path\"\n",
+    "\n",
+    "2. **Line check** — Does the finding cite a specific line number?\n",
+    "   Missing → record \"[finding N] 缺失: line_number\"\n",
+    "\n",
+    "3. **Symbol check (MECHANICAL ONLY — string containment)**\n",
+    "   Extract every concrete symbol name (function name, variable name,\n",
+    "   command name, annotation) from the finding's description.\n",
+    "   Use `read_file` to read the cited lines.\n",
+    "   - Lines exist? → pass step 3a.\n",
+    "   - Lines contain the extracted symbol names (string `contains`)? → pass step 3b.\n",
+    "   - Lines do not contain the symbol → record \"[finding N] 符号缺失: '{symbol}', 该行不包含\"\n",
+    "\n",
+    "   **CRITICAL**: Do NOT judge whether the code is \"correct\" or \"safe\".\n",
+    "   Do NOT judge whether the finding's conclusion follows from the code.\n",
+    "   Only check: does the cited code contain the symbols the finding names?\n",
+    "   Example: finding says \"no path check on save_path\" → check that the\n",
+    "   cited line contains \"save_path\" (the symbol). Do NOT check whether\n",
+    "   canonicalize is present or absent — that is semantic judgment, not\n",
+    "   yours to make.\n",
+    "\n",
+    "## Language routing\n",
+    "\n",
+    "Route each finding by file extension:\n",
+    "- `.rs` → Rust rules (audit_rules/rust.md)\n",
+    "- `.ts`, `.tsx` → TypeScript rules (audit_rules/typescript.md)\n",
+    "- Cross-boundary (`.rs` + `.ts`/`.tsx`) → Tauri-bridge rules (audit_rules/tauri_bridge.md)\n",
+    "- Unknown → Generic rules (audit_rules/generic.md)\n",
+    "\n",
+    "### Tauri-bridge rule (mandatory)\n",
+    "If a finding concerns a Tauri `invoke` command, it MUST cite BOTH:\n",
+    "- The `#[tauri::command]` function definition on the Rust side\n",
+    "- The `invoke('xxx')` call on the TS side\n",
+    "One side missing → FAIL.\n",
+    "\n",
+    "## Output format\n",
+    "\n",
+    "Only two outputs are valid:\n",
+    "\n",
+    "    ### AUDIT RESULT: PASS\n",
+    "    所有 N 条发现通过事实核查。\n",
+    "\n",
+    "    ### AUDIT RESULT: FAIL\n",
+    "    ### DETAIL\n",
+    "    - [发现 N] 结论: \"原文摘要\"\n",
+    "      缺失: file_path / line_number / 符号缺失\n",
+    "      原因: 具体描述\n",
+    "\n",
+    "## Prohibited actions\n",
+    "\n",
+    "- Do NOT analyze whether code is correct or safe.\n",
+    "- Do NOT suggest fixes.\n",
+    "- Do NOT judge severity.\n",
+    "- Do NOT produce new findings.\n",
+    "- Only audit the N findings in the prompt — no more, no fewer.\n",
+    "\n",
+    include_str!("../../prompts/subagent_output_format.md"),
 );
 
 // === Structured Verdict (CRAFT P0) ===

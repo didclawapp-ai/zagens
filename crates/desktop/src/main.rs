@@ -130,6 +130,7 @@ fn main() {
             commands::save_system_settings,
             commands::read_pick_rules,
             commands::save_pick_rules,
+            commands::rebuild_symbol_index,
         ])
         .run(tauri::generate_context!())
         .expect("error while running DS Pick");

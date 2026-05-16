@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useT } from '../i18n';
 import type { RightPanelView } from './RightPanel';
 import type { RuntimeConnectionState } from '../api/client';
@@ -21,6 +21,21 @@ interface Props {
   apiKeyConfigured: boolean | null;
   activeInspector: RightPanelView;
   onInspectorChange: (view: RightPanelView) => void;
+  /** Current sidebar width in px. */
+  sidebarWidth: number;
+  /** Called on drag resize. */
+  onSidebarWidthChange: (px: number) => void;
+  /** Whether sidebar is collapsed. When true, the parent should render a toggle strip instead. */
+  collapsed: boolean;
+  /** Called when collapse button clicked. */
+  onToggleCollapse: () => void;
+}
+
+const SIDEBAR_MIN_PX = 180;
+const SIDEBAR_MAX_PX = 480;
+
+function clampSidebarWidth(px: number): number {
+  return Math.min(SIDEBAR_MAX_PX, Math.max(SIDEBAR_MIN_PX, Math.round(px)));
 }
 
 const navBtn = (active: boolean) =>
@@ -41,11 +56,54 @@ export default function Sidebar({
   apiKeyConfigured,
   activeInspector,
   onInspectorChange,
+  sidebarWidth,
+  onSidebarWidthChange,
+  collapsed,
+  onToggleCollapse,
 }: Props) {
   const { t } = useT();
+
+  // ---- resize handle -------------------------------------------------------
+  const draggingRef = useRef(false);
+  const startXRef = useRef(0);
+  const startWRef = useRef(0);
+
+  const onPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      draggingRef.current = true;
+      startXRef.current = e.clientX;
+      startWRef.current = sidebarWidth;
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    },
+    [sidebarWidth],
+  );
+
+  const onPointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      if (!draggingRef.current) return;
+      const delta = e.clientX - startXRef.current;
+      const next = clampSidebarWidth(startWRef.current + delta);
+      onSidebarWidthChange(next);
+    },
+    [onSidebarWidthChange],
+  );
+
+  const onPointerUp = useCallback(
+    (e: React.PointerEvent) => {
+      if (!draggingRef.current) return;
+      draggingRef.current = false;
+      const delta = e.clientX - startXRef.current;
+      const next = clampSidebarWidth(startWRef.current + delta);
+      onSidebarWidthChange(next);
+      (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+    },
+    [onSidebarWidthChange],
+  );
+
   return (
     <aside
-      className="flex w-60 shrink-0 flex-col border-r border-rail-edge bg-canvas"
+      className="flex shrink-0 flex-col border-r border-rail-edge bg-canvas overflow-hidden transition-[width] duration-150"
+      style={{ width: collapsed ? 0 : sidebarWidth }}
       aria-label="会话与导航"
     >
       <div className="shrink-0 border-b border-divider px-3.5 py-3.5">
@@ -58,6 +116,16 @@ export default function Sidebar({
               DS<span className="opacity-70 font-medium"> Pick</span>
             </span>
           </div>
+          <button
+            type="button"
+            onClick={onToggleCollapse}
+            className="p-1 rounded text-t-text-muted hover:text-t-text hover:bg-hover transition-colors shrink-0"
+            title="收起侧边栏"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M11 4l-6 4 6 4" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
         </div>
       </div>
 
@@ -83,7 +151,6 @@ export default function Sidebar({
           </svg>
           {t('sidebar.workspace')}
         </button>
-        {/* 设置 accordion — sub-items expand/collapse on click */}
         <SettingsAccordion
           activeInspector={activeInspector}
           onInspectorChange={onInspectorChange}
@@ -166,6 +233,17 @@ export default function Sidebar({
           基于 DeepSeek TUI 运行时（<code className="font-mono">deepseek</code> CLI）
         </p>
       </div>
+
+      {/* Resize handle — right edge */}
+      {!collapsed && (
+        <div
+          className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-accent/30 transition-colors z-10"
+          style={{ background: draggingRef.current ? 'var(--tw-color-accent) / 0.25' : undefined }}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+        />
+      )}
     </aside>
   );
 }
@@ -206,7 +284,6 @@ function SettingsAccordion({
     { tab: 'api-key', label: 'API Key', show: desktopHost },
     { tab: 'mcp', label: 'MCP 服务器', show: true },
     { tab: 'usage', label: '用量仪表盘', show: true },
-    /** 右栏仍为 `automation` view id；仅含任务 + 技能，定时自动化不展示 */
     { tab: 'tasks-skills', label: '任务与技能', show: true },
     { tab: 'agents', label: '子代理', show: true },
     { tab: 'routing', label: '模型路由', show: true },

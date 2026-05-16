@@ -71,6 +71,12 @@ pub fn read_blackboard_section(
                 sections.push(s);
             }
         }
+        SubAgentType::Auditor => {
+            // Auditor cross-checks reviewer blockers against its own audit
+            if let Some(s) = format_reviewer_blockers(&board) {
+                sections.push(s);
+            }
+        }
         _ => {
             // Explorer, Plan, Custom — no blackboard injection needed
         }
@@ -127,6 +133,14 @@ pub fn write_blackboard_partition(
             ("verifier", json!({
                 "failures": json!([]),
                 "summary": extract_verifier_summary(result),
+            }))
+        }
+        SubAgentType::Auditor => {
+            ("auditor", json!({
+                "verdict": result.structured_verdict.as_ref()
+                    .map(|v| serde_json::to_value(&v.verdict).unwrap_or(json!("FAIL")))
+                    .unwrap_or(json!("FAIL")),
+                "details": extract_auditor_details(result),
             }))
         }
         _ => return, // General / Plan / Custom — no blackboard write
@@ -251,6 +265,25 @@ fn extract_verifier_summary(result: &SubAgentResult) -> String {
                 .unwrap_or("")
         )
         .to_string()
+}
+
+/// Extract audit failure details from the Auditor's structured_verdict.
+/// Falls back to scanning the result text for "FAIL" markers when no
+/// structured_verdict is present (graceful degradation for path B).
+fn extract_auditor_details(result: &SubAgentResult) -> Value {
+    if let Some(v) = &result.structured_verdict {
+        json!(v.items)
+    } else if let Some(text) = &result.result {
+        // Fallback: scan for FAIL markers in the text output
+        let details: Vec<Value> = text
+            .lines()
+            .filter(|l| l.contains("缺失:") || l.contains("FAIL"))
+            .map(|l| json!({"detail": l.trim().to_string()}))
+            .collect();
+        json!(details)
+    } else {
+        json!([])
+    }
 }
 
 // ── Tests ──────────────────────────────────────────────────────

@@ -78,3 +78,17 @@ almost always fail to apply.
   audits the tool log against your CHANGES section.
 - If a tool errored, surface the error in EVIDENCE; do not pretend it
   succeeded.
+
+## Auditor sub-agent output (Auditor only)
+
+When you are operating as an Auditor sub-agent, your primary output is the
+**AUDIT RESULT** block (PASS or FAIL with DETAIL). The standard
+SUMMARY/EVIDENCE/CHANGES/RISKS/BLOCKERS sections may be filled with minimal
+content:
+
+- SUMMARY: one line stating the verdict (e.g. "Audit PASS — all N findings
+  verified.")
+- EVIDENCE: list the `read_file` calls you performed and their results.
+- CHANGES: "None." (Auditor is read-only).
+- RISKS: "None observed." or note any findings you could not verify.
+- BLOCKERS: "None." unless you were unable to complete the audit.

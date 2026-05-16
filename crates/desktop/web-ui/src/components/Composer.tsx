@@ -957,18 +957,27 @@ export default function Composer({
                 disabled={!sessionExportEnabled}
                 onClick={onExportSessionJson}
                 title={t('composer.exportSessionTitle')}
-                className="pill-btn text-[11px] font-medium disabled:opacity-40"
+                className="pill-btn p-1.5 disabled:opacity-40"
+                aria-label={t('composer.exportSession')}
               >
-                {t('composer.exportSession')}
+                <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M8 1v10M4 7l4 4 4-4" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M2 13v1.5A1.5 1.5 0 003.5 16h9a1.5 1.5 0 001.5-1.5V13" strokeLinecap="round"/>
+                </svg>
               </button>
               <button
                 type="button"
                 disabled={!threadExportEnabled}
                 onClick={onExportThreadJson}
                 title={t('composer.exportThreadTitle')}
-                className="pill-btn text-[11px] font-medium disabled:opacity-40"
+                className="pill-btn p-1.5 disabled:opacity-40"
+                aria-label={t('composer.exportThread')}
               >
-                {t('composer.exportThread')}
+                <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M8 1v10M4 7l4 4 4-4" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M2 13v1.5A1.5 1.5 0 003.5 16h9a1.5 1.5 0 001.5-1.5V13" strokeLinecap="round"/>
+                  <circle cx="8" cy="8" r="1.5" />
+                </svg>
               </button>
             </div>
           </div>

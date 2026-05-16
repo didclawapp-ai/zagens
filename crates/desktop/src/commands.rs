@@ -1120,3 +1120,51 @@ pub async fn export_session_json(
 
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// rebuild_symbol_index — trigger symbol index rebuild for a workspace
+// ---------------------------------------------------------------------------
+
+/// Calls the runtime's `POST /v1/symbol-index/rebuild` endpoint.
+#[tauri::command]
+pub async fn rebuild_symbol_index(
+    ctx: tauri::State<'_, AppContext>,
+    workspace: String,
+) -> Result<(), String> {
+    let runtime_port = ctx.runtime_port;
+    let token = &ctx.runtime_token;
+    let client = reqwest::Client::new();
+    let url = format!(
+        "http://127.0.0.1:{runtime_port}/v1/symbol-index/rebuild?workspace={}",
+        urlencoding(&workspace)
+    );
+    let resp = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .timeout(Duration::from_secs(30))
+        .send()
+        .await
+        .map_err(|e| format!("请求失败: {e}"))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(format!("索引重建失败 ({status}): {body}"));
+    }
+    Ok(())
+}
+
+/// Percent-encode a string for use in URL query parameters.
+fn urlencoding(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' | b'/' | b':' => {
+                out.push(b as char);
+            }
+            _ => {
+                out.push_str(&format!("%{:02X}", b));
+            }
+        }
+    }
+    out
+}

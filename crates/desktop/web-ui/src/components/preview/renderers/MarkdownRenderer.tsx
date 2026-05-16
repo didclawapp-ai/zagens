@@ -3,7 +3,7 @@
 // Extracted from the original `MarkdownPreview.tsx` (which now re-exports).
 // ---------------------------------------------------------------------------
 
-import { useCallback, useEffect, useState, type MouseEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react';
 import MarkdownIt from 'markdown-it';
 import DOMPurify from 'dompurify';
 import { resolveMarkdownLinkToWorkspaceRel } from '../../../lib/resolveMarkdownWorkspaceLink';
@@ -77,11 +77,85 @@ const md = new MarkdownIt({
 const URI_ALLOW =
   /^(?:(?:https?|ftp|mailto|tel):|(?![a-z][a-z0-9+.-]*:)(?:[\w./-]+))$/i;
 
+// ---- copy-button injection ------------------------------------------------
+
+/** Clip-path checkmark SVG (16×16) shown for ~1.5 s after a successful copy. */
+const CHECK_SVG =
+  '<svg class="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">' +
+  '<path d="M2 8l4 4 8-8" stroke-linecap="round" stroke-linejoin="round"/>' +
+  '</svg>';
+
+/** Clipboard outline SVG (16×16) — shown when the button is idle. */
+const COPY_SVG =
+  '<svg class="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">' +
+  '<rect x="5" y="1" width="9" height="13.5" rx="1.5" />' +
+  '<path d="M3 4H2.5A1.5 1.5 0 001 5.5v9A1.5 1.5 0 002.5 16h7a1.5 1.5 0 001.5-1.5V13" />' +
+  '</svg>';
+
+interface CodeBlockEntry {
+  /** The <pre> element we wrapped. */
+  pre: HTMLPreElement;
+  /** The outer wrapper div so we can clean up later. */
+  wrapper: HTMLDivElement;
+}
+
+function attachCopyButtons(container: HTMLElement): void {
+  const pres = container.querySelectorAll('pre');
+  for (const pre of pres) {
+    // Skip if already wrapped
+    if (
+      pre.parentElement &&
+      pre.parentElement.classList.contains('ds-code-block-wrap')
+    ) {
+      continue;
+    }
+
+    const code = pre.querySelector('code');
+    const text = code?.textContent ?? pre.textContent ?? '';
+
+    // Build wrapper
+    const wrapper = document.createElement('div');
+    wrapper.className = 'ds-code-block-wrap relative group';
+
+    // Copy button
+    const btn = document.createElement('button');
+    btn.className =
+      'ds-copy-btn absolute top-2 right-2 z-10 flex items-center gap-1 ' +
+      'rounded-md px-2 py-1 text-xs font-medium ' +
+      'opacity-0 group-hover:opacity-100 transition-opacity duration-150 ' +
+      'bg-canvas-alt/80 hover:bg-canvas-alt text-t-text-muted hover:text-t-text ' +
+      'border border-card-border';
+    btn.title = 'Copy code';
+    btn.innerHTML = COPY_SVG;
+
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      try {
+        await navigator.clipboard.writeText(text);
+        btn.innerHTML = CHECK_SVG;
+        btn.classList.add('text-green-600', 'border-green-500/50');
+        setTimeout(() => {
+          btn.innerHTML = COPY_SVG;
+          btn.classList.remove('text-green-600', 'border-green-500/50');
+        }, 1500);
+      } catch {
+        // Clipboard write failed — silently ignore (e.g. insecure context)
+      }
+    });
+
+    // Insert wrapper before pre, then move pre into wrapper
+    pre.parentNode?.insertBefore(wrapper, pre);
+    wrapper.appendChild(pre);
+    wrapper.appendChild(btn);
+  }
+}
+
 // ---- component -------------------------------------------------------------
 
 export function MarkdownRenderer({ state, onOpenWorkspaceRelativePath }: RendererProps) {
   const { content } = state;
   const [rendered, setRendered] = useState('');
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const renderSafe = useCallback((raw: string) => {
     if (!raw) return '';
@@ -93,6 +167,13 @@ export function MarkdownRenderer({ state, onOpenWorkspaceRelativePath }: Rendere
   useEffect(() => {
     setRendered(renderSafe(content));
   }, [content, renderSafe]);
+
+  // After every render, inject copy buttons into <pre> blocks
+  useEffect(() => {
+    if (containerRef.current) {
+      attachCopyButtons(containerRef.current);
+    }
+  }, [rendered]);
 
   const onClickCapture = useCallback(
     (e: MouseEvent<HTMLDivElement>) => {
@@ -163,6 +244,7 @@ export function MarkdownRenderer({ state, onOpenWorkspaceRelativePath }: Rendere
   return (
     <div className="h-full overflow-y-auto p-5">
       <div
+        ref={containerRef}
         className="prose prose-sm max-w-none font-display leading-relaxed text-t-text
           prose-headings:font-ui prose-headings:font-semibold prose-headings:text-t-text
           prose-h1:text-2xl prose-h2:text-lg prose-h3:text-base

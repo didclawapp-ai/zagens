@@ -210,7 +210,7 @@ impl ToolSpec for ReadFileTool {
             metadata["size_bytes"] = json!(s);
         }
         if let Some(t) = total_lines_known {
-            metadata["total_lines_known"] = json!(t);
+            metadata["total_lines"] = json!(t);
         }
 
         Ok(ToolResult::success(content).with_metadata(metadata))

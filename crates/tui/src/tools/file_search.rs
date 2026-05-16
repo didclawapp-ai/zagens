@@ -124,7 +124,28 @@ fn search_files(
     let mut results: Vec<FileSearchMatch> = Vec::new();
 
     let mut builder = WalkBuilder::new(base_path);
-    builder.hidden(false).follow_links(true).require_git(false);
+    builder
+        .hidden(false)
+        .follow_links(true)
+        .require_git(false)
+        .git_ignore(true)
+        .git_global(true)
+        .filter_entry(move |entry| {
+            let name = entry.file_name().to_string_lossy();
+            !matches!(
+                name.as_ref(),
+                "target"
+                    | "node_modules"
+                    | ".git"
+                    | "dist"
+                    | "build"
+                    | "__pycache__"
+                    | ".venv"
+                    | "venv"
+                    | ".turbo"
+                    | ".next"
+            )
+        });
     let walker = builder.build();
 
     for entry in walker {

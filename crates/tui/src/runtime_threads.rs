@@ -966,6 +966,7 @@ pub struct RuntimeThreadManager {
     automations: Arc<StdMutex<Option<crate::automation_manager::SharedAutomationManager>>>,
     routing_rules: Arc<Mutex<Vec<RoutingRule>>>,
     routing_rules_path: PathBuf,
+    checklist_cache: Arc<StdMutex<HashMap<String, String>>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -997,9 +998,18 @@ impl RuntimeThreadManager {
             automations: Arc::new(StdMutex::new(None)),
             routing_rules: Arc::new(Mutex::new(routing_rules)),
             routing_rules_path,
+            checklist_cache: Arc::new(StdMutex::new(HashMap::new())),
         };
         manager.recover_interrupted_state()?;
         Ok(manager)
+    }
+
+    /// Return the cached checklist snapshot for a thread (for DS Pick WebView panel).
+    pub fn get_thread_checklist(&self, thread_id: &str) -> Option<String> {
+        self.checklist_cache
+            .lock()
+            .ok()
+            .and_then(|cache| cache.get(thread_id).cloned())
     }
 
     /// Attach the durable task manager so model-visible task tools work inside
@@ -2473,6 +2483,38 @@ impl RuntimeThreadManager {
                             json!({ "item": item }),
                         )
                         .await?;
+
+                        // Cache checklist snapshot for the WebView checklist panel
+                        if matches!(
+                            name.as_str(),
+                            "checklist_write"
+                                | "checklist_add"
+                                | "checklist_update"
+                                | "todo_write"
+                                | "todo_add"
+                                | "todo_update"
+                        ) {
+                            if let Ok(output) = &result {
+                                if output.success {
+                                    if let Some(meta) = &output.metadata {
+                                        if let Some(task_updates) = meta.get("task_updates") {
+                                            if let Some(checklist_json) =
+                                                task_updates.get("checklist")
+                                            {
+                                                if let Ok(mut cache) =
+                                                    self.checklist_cache.lock()
+                                                {
+                                                    cache.insert(
+                                                        thread_id.clone(),
+                                                        checklist_json.to_string(),
+                                                    );
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 EngineEvent::CompactionStarted { id, auto, message } => {

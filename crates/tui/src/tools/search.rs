@@ -81,6 +81,10 @@ impl ToolSpec for GrepFilesTool {
                 "max_results": {
                     "type": "integer",
                     "description": "Maximum number of results to return (default: 100)"
+                },
+                "symbol_index": {
+                    "type": "boolean",
+                    "description": "Also query the symbol index for definitions matching the pattern (default: false). Symbol line numbers may drift for macro-expanded code."
                 }
             },
             "required": ["pattern"]
@@ -101,6 +105,7 @@ impl ToolSpec for GrepFilesTool {
         let context_lines =
             usize::try_from(optional_u64(&input, "context_lines", 2)).unwrap_or(usize::MAX);
         let case_insensitive = optional_bool(&input, "case_insensitive", false);
+        let symbol_index_enabled = optional_bool(&input, "symbol_index", false);
         let max_results = usize::try_from(optional_u64(&input, "max_results", MAX_RESULTS as u64))
             .unwrap_or(MAX_RESULTS);
 
@@ -222,20 +227,71 @@ impl ToolSpec for GrepFilesTool {
         // most likely definitions / usages first, not filesystem order.
         bm25_rank(&mut results, &pattern_str);
 
-        // Symbol index lookup: if the pattern matches a known Rust symbol,
-        // prepend file:line references so the model can jump to definitions.
-        let symbol_hits = lookup_symbol_hits(&context.workspace, &pattern_str);
-        let symbol_status = crate::symbol_index::index_status(&context.workspace);
+        // Symbol index lookup: if enabled and the pattern matches a known
+        // Rust symbol, prepend file:line references so the model can jump
+        // to definitions. Disabled by default — enable with `symbol_index: true`
+        // when grep is used for definition search rather than call-site audit.
+        let (symbol_hits, symbol_status) = if symbol_index_enabled {
+            let hits = lookup_symbol_hits(&context.workspace, &pattern_str);
+            let status = crate::symbol_index::index_status(&context.workspace);
+
+            // Boost index hits: lines that match the symbol index float to the top
+            // of `matches` while preserving BM25 order among peers (stable).
+            boost_index_hits(&mut results, &hits);
+            (hits, status)
+        } else {
+            (Vec::new(), crate::symbol_index::IndexStatus::Missing)
+        };
 
         // Build result
-        let result = json!({
-            "matches": results,
-            "total_matches": total_matches,
-            "files_searched": files_searched,
-            "truncated": total_matches > max_results,
-            "symbol_index_hits": symbol_hits,
-            "symbol_index_status": symbol_status,
-        });
+        let mut extra = serde_json::Map::new();
+        if !symbol_hits.is_empty() {
+            extra.insert(
+                "symbol_index_note".into(),
+                serde_json::Value::String(
+                    "Line numbers from syn spans; may drift for macro-expanded code.".into(),
+                ),
+            );
+            // V3-4: human-readable summary (max 3 entries)
+            let summary_parts: Vec<String> = symbol_hits
+                .iter()
+                .take(3)
+                .filter_map(|h| {
+                    let sym = h.get("symbol")?.as_str()?;
+                    let file = h.get("file")?.as_str()?;
+                    let line = h.get("line")?.as_u64()?;
+                    Some(format!("{sym} -> {file}:{line}"))
+                })
+                .collect();
+            if !summary_parts.is_empty() {
+                let mut s = format!("Symbol index: {}", summary_parts.join(", "));
+                if symbol_hits.len() > 3 {
+                    s.push_str(&format!(" ... and {} more", symbol_hits.len() - 3));
+                }
+                extra.insert(
+                    "symbol_index_summary".into(),
+                    serde_json::Value::String(s),
+                );
+            }
+            // When symbol_index_hits include impl_fn (derive-expanded code),
+            // warn that line numbers may be off by 5-20 lines.
+            if symbol_hits.iter().any(|h| h.get("symbol") == Some(&json!("impl_fn"))) {
+                extra.insert(
+                    "symbol_index_warning".into(),
+                    json!("Some hits are 'impl_fn' — these come from #[derive] expansions and line numbers may be off by 5-20 lines. Use read_file with a wider range.")
+                );
+            }
+        }
+        let mut result_map = serde_json::Map::from_iter(vec![
+            ("matches".into(), serde_json::json!(results)),
+            ("total_matches".into(), serde_json::json!(total_matches)),
+            ("files_searched".into(), serde_json::json!(files_searched)),
+            ("truncated".into(), serde_json::json!(total_matches > max_results)),
+            ("symbol_index_hits".into(), serde_json::json!(symbol_hits)),
+            ("symbol_index_status".into(), serde_json::json!(symbol_status)),
+        ]);
+        result_map.extend(extra);
+        let result = serde_json::Value::Object(result_map);
 
         ToolResult::json(&result).map_err(|e| ToolError::execution_failed(e.to_string()))
     }
@@ -484,6 +540,33 @@ fn bm25_rank(matches: &mut Vec<GrepMatch>, pattern: &str) {
         .collect();
 
     matches.sort_by_key(|m| rank.get(&m.file).copied().unwrap_or(usize::MAX));
+}
+
+/// Boost matches that also appear in symbol index hits to the top.
+/// Uses a stable sort so existing BM25 order is preserved among peers.
+fn boost_index_hits(matches: &mut Vec<GrepMatch>, symbol_hits: &[serde_json::Value]) {
+    if symbol_hits.is_empty() || matches.is_empty() {
+        return;
+    }
+    use std::collections::HashSet;
+    let hit_set: HashSet<(String, usize)> = symbol_hits
+        .iter()
+        .filter_map(|h| {
+            let file = h.get("file")?.as_str()?;
+            let line = h.get("line")?.as_u64()?;
+            Some((file.to_string(), line as usize))
+        })
+        .collect();
+
+    matches.sort_by(|a, b| {
+        let a_boost = hit_set.contains(&(a.file.clone(), a.line_number));
+        let b_boost = hit_set.contains(&(b.file.clone(), b.line_number));
+        match (a_boost, b_boost) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => std::cmp::Ordering::Equal,
+        }
+    });
 }
 
 /// Try loading the symbol index and query it for symbols matching `pattern`.

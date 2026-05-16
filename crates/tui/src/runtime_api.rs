@@ -599,6 +599,7 @@ pub fn build_router(state: RuntimeApiState) -> Router {
         .route("/v1/threads", get(list_threads).post(create_thread))
         .route("/v1/threads/summary", get(list_threads_summary))
         .route("/v1/threads/{id}", get(get_thread).patch(update_thread))
+        .route("/v1/threads/{id}/checklist", get(get_thread_checklist))
         .route("/v1/threads/{id}/resume", post(resume_thread))
         .route("/v1/threads/{id}/fork", post(fork_thread))
         .route("/v1/threads/{id}/turns", post(start_thread_turn))
@@ -667,6 +668,10 @@ pub fn build_router(state: RuntimeApiState) -> Router {
         .route(
             "/v1/apps/routing/rules",
             get(get_routing_rules).put(set_routing_rules),
+        )
+        .route(
+            "/v1/symbol-index/rebuild",
+            post(rebuild_symbol_index),
         )
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
@@ -2220,6 +2225,20 @@ async fn compact_thread(
     ))
 }
 
+async fn get_thread_checklist(
+    State(state): State<RuntimeApiState>,
+    AxumPath(id): AxumPath<String>,
+) -> Result<Json<Value>, ApiError> {
+    match state.runtime_threads.get_thread_checklist(&id) {
+        Some(json_str) => {
+            let parsed: Value =
+                serde_json::from_str(&json_str).unwrap_or(Value::Null);
+            Ok(Json(parsed))
+        }
+        None => Ok(Json(Value::Null)),
+    }
+}
+
 async fn list_tasks(
     State(state): State<RuntimeApiState>,
     Query(query): Query<TasksQuery>,
@@ -2919,6 +2938,42 @@ async fn set_routing_rules(
         .map_err(|e| ApiError::internal(e.to_string()))?;
     let updated = state.runtime_threads.get_routing_rules().await;
     Ok(Json(json!({ "rules": updated })))
+}
+
+/// Built-in dev origins always allowed by the runtime API (whalescale#255).
+
+// ============== Symbol Index Rebuild ==============
+
+/// Query params for symbol index rebuild.
+#[derive(Deserialize)]
+struct RebuildSymbolIndexQuery {
+    workspace: String,
+}
+
+async fn rebuild_symbol_index(
+    State(_state): State<RuntimeApiState>,
+    Query(q): Query<RebuildSymbolIndexQuery>,
+) -> Result<Json<Value>, ApiError> {
+    let ws = PathBuf::from(&q.workspace);
+    if !ws.is_dir() {
+        return Err(ApiError::bad_request(format!(
+            "Not a directory: {}",
+            q.workspace
+        )));
+    }
+    let index =
+        crate::symbol_index::build_index(&ws, crate::symbol_index::SymbolVisibility::Public);
+    let path = ws.join(".deepseek").join("symbols.json");
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let json = serde_json::to_string_pretty(&index).unwrap_or_default();
+    std::fs::write(&path, &json).map_err(|e| ApiError::internal(e.to_string()))?;
+    Ok(Json(json!({
+        "status": "ok",
+        "path": path.to_string_lossy(),
+                "symbol_count": index.files.len(),
+    })))
 }
 
 /// Built-in dev origins always allowed by the runtime API (whalescale#255).

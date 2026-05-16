@@ -6,6 +6,8 @@ import UsageDashboard from './UsageDashboard';
 import AutomationPanel from './AutomationPanel';
 import AgentPanel from './AgentPanel';
 import RoutingPanel from './RoutingPanel';
+import ChecklistPanel from './ChecklistPanel';
+import MermaidPanel from './MermaidPanel';
 import SettingsPanel from './SettingsPanel';
 import type { AgentState } from '../types/agent';
 import {
@@ -31,7 +33,9 @@ export type RightPanelView =
   | 'usage'
   | 'tasks-skills'
   | 'agents'
-  | 'routing';
+  | 'routing'
+  | 'checklist'
+  | 'mermaid';
 
 export type WorkspaceTabId = 'restore' | 'files' | 'rules';
 
@@ -46,7 +50,7 @@ function clampPanelWidth(px: number): number {
   if (typeof window === 'undefined') {
     return Math.max(PANEL_MIN_PX, Math.round(px));
   }
-  const cap = Math.min(720, Math.floor(window.innerWidth * 0.55));
+  const cap = Math.min(1400, Math.floor(window.innerWidth * 0.8));
   return Math.min(cap, Math.max(PANEL_MIN_PX, Math.round(px)));
 }
 
@@ -85,6 +89,14 @@ interface Props {
   /** Bumped when parent wants the workspace panel to show the Files tab (e.g. chat link). */
   focusFilesNonce: number;
   agentStates: AgentState[];
+  /** Called when ChecklistPanel detects first data — parent switches view. */
+  onRequestChecklist?: () => void;
+  /** Chat messages — used by MermaidPanel to extract mermaid code blocks. */
+  messages: { id: string; role: string; content: string }[];
+  /** Called when MermaidPanel detects first mermaid block — parent switches view. */
+  onRequestMermaid?: () => void;
+  /** Called when user clicks collapse button in panel header. */
+  onCollapse?: () => void;
 }
 
 const panelTitles: Record<RightPanelView, string> = {
@@ -97,6 +109,8 @@ const panelTitles: Record<RightPanelView, string> = {
   'tasks-skills': '任务与技能',
   agents: '子代理',
   routing: '模型路由',
+  checklist: 'Checklist',
+  mermaid: 'Mermaid 图表',
 };
 
 function tabBtn(active: boolean) {
@@ -152,6 +166,10 @@ export default function RightPanel({
   openWorkspaceFile,
   focusFilesNonce,
   agentStates,
+  onRequestChecklist,
+  messages,
+  onRequestMermaid,
+  onCollapse,
 }: Props) {
   const { t } = useT();
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTabId>(() => {
@@ -500,6 +518,18 @@ export default function RightPanel({
       >
       <div className="flex shrink-0 items-center border-b border-divider px-4 py-3">
         <h2 className="flex-1 text-sm font-semibold text-t-text">{panelTitles[view]}</h2>
+        {onCollapse && (
+          <button
+            type="button"
+            onClick={onCollapse}
+            className="ml-2 p-1 rounded text-t-text-muted hover:text-t-text hover:bg-hover transition-colors"
+            title="收起面板"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M11 4l-6 4 6 4" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+        )}
         {view === 'workspace' && desktopHost && (
           <button
             type="button"
@@ -841,6 +871,23 @@ export default function RightPanel({
         {view === 'agents' && <AgentPanel agents={agentStates} />}
 
         {view === 'routing' && <RoutingPanel runtimeConn={runtimeConn} />}
+
+        {/* Always mounted (hidden when inactive) so polling can auto-trigger the view */}
+        <div style={{ display: view === 'checklist' ? undefined : 'none' }}>
+          <ChecklistPanel
+            threadId={resumedThreadId ?? ''}
+            onDetected={view !== 'checklist' ? () => onRequestChecklist?.() : undefined}
+          />
+        </div>
+
+        {/* Always mounted (hidden when inactive) so mermaid detection can auto-trigger the view */}
+        <div style={{ display: view === 'mermaid' ? undefined : 'none' }}>
+          <MermaidPanel
+            messages={messages}
+            theme={theme}
+            onDetected={view !== 'mermaid' ? () => onRequestMermaid?.() : undefined}
+          />
+        </div>
 
         {(view === 'settings' || view === 'system') && (
           <SettingsPanel

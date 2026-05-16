@@ -15,9 +15,10 @@ interface Props {
   messages: Message[];
   onOpenWorkspacePath: (relPath: string) => void | Promise<void>;
   onEditMessage?: (messageId: string, content: string) => void;
+  onRetryMessage?: (content: string) => void;
 }
 
-export default function ChatView({ messages, onOpenWorkspacePath, onEditMessage }: Props) {
+export default function ChatView({ messages, onOpenWorkspacePath, onEditMessage, onRetryMessage }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -51,6 +52,7 @@ export default function ChatView({ messages, onOpenWorkspacePath, onEditMessage 
             message={msg}
             onOpenWorkspacePath={onOpenWorkspacePath}
             onEditMessage={onEditMessage}
+            onRetryMessage={onRetryMessage}
           />
         ))}
 

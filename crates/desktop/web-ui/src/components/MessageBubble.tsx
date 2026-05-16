@@ -17,10 +17,12 @@ export function MessageBubble({
   message,
   onOpenWorkspacePath,
   onEditMessage,
+  onRetryMessage,
 }: {
   message: Message;
   onOpenWorkspacePath: (relPath: string) => void | Promise<void>;
   onEditMessage?: (messageId: string, content: string) => void;
+  onRetryMessage?: (content: string) => void;
 }) {
   const isUser = message.role === 'user';
   const likelyInReasoningPhase =
@@ -138,16 +140,42 @@ export function MessageBubble({
             )}
           </div>
         )}
-        {isUser && onEditMessage && (
+        {isUser && (
           <div className="flex justify-end gap-0.5 mb-1 opacity-0 hover:opacity-100 transition-opacity">
             <button
               type="button"
-              onClick={() => onEditMessage(message.id, message.content)}
-              className="text-[10px] text-t-text-muted hover:text-accent px-2 py-0.5 rounded"
-              title="编辑此消息"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(message.content);
+                } catch {
+                  /* clipboard write failed */
+                }
+              }}
+              className="text-[10px] text-t-text-muted hover:text-t-text px-2 py-0.5 rounded"
+              title="复制消息"
             >
-              ✎ 编辑
+              📋 复制
             </button>
+            {onRetryMessage && (
+              <button
+                type="button"
+                onClick={() => onRetryMessage(message.content)}
+                className="text-[10px] text-t-text-muted hover:text-accent px-2 py-0.5 rounded"
+                title="重新发送此消息"
+              >
+                🔄 重试
+              </button>
+            )}
+            {onEditMessage && (
+              <button
+                type="button"
+                onClick={() => onEditMessage(message.id, message.content)}
+                className="text-[10px] text-t-text-muted hover:text-accent px-2 py-0.5 rounded"
+                title="编辑此消息"
+              >
+                ✎ 编辑
+              </button>
+            )}
           </div>
         )}
         <div className="text-sm leading-relaxed break-words">

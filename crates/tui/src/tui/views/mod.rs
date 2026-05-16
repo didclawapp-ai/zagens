@@ -1693,6 +1693,7 @@ fn agent_type_order(agent_type: &SubAgentType) -> u8 {
         SubAgentType::Verifier => 4,
         SubAgentType::Review => 5,
         SubAgentType::Custom => 6,
+        SubAgentType::Auditor => 7,
     }
 }
 

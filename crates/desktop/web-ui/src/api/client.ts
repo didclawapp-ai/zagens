@@ -468,6 +468,10 @@ export async function getThreadDetail(threadId: string): Promise<ThreadDetailRes
   return fetchJson(`/v1/threads/${encodeURIComponent(threadId)}`);
 }
 
+export async function fetchThreadChecklist(threadId: string): Promise<any> {
+  return fetchJson(`/v1/threads/${encodeURIComponent(threadId)}/checklist`);
+}
+
 /** Side-git snapshots for a runtime thread (`GET /v1/threads/{id}/snapshots`). */
 export interface ThreadSnapshotEntry {
   n: number;
@@ -631,7 +635,7 @@ export async function fetchRoutingRules(): Promise<RoutingRulesResponse> {
 }
 
 export async function setRoutingRules(rules: RoutingRule[]): Promise<RoutingRulesResponse> {
-  return postJson<RoutingRulesResponse>('/v1/apps/routing/rules', { rules });
+  return putJson<RoutingRulesResponse>('/v1/apps/routing/rules', { rules });
 }
 
 // ========== MCP ==========
