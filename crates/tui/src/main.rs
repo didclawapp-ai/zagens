@@ -748,9 +748,11 @@ async fn main() -> Result<()> {
                     });
                     let cors_origins = resolve_cors_origins(&config, &args.cors_origin);
 
-                    // Symbol index is now built lazily on first grep_files call
-                    // per workspace — no startup-time build needed.
-                    // See tools/search.rs `lookup_symbol_hits` for the lazy path.
+                    // Warm up the symbol index in the background — non-blocking.
+                    // Subsequent grep_files calls will reuse the fresh index.
+                    crate::symbol_index::warmup_if_needed(&workspace);
+
+
 
                     match runtime_api::run_http_server(
                         config,
@@ -3845,6 +3847,9 @@ async fn run_interactive(
         .workspace
         .clone()
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    // Warm up the symbol index in the background so the first grep_files
+    // call doesn't block on a full workspace scan.
+    crate::symbol_index::warmup_if_needed(&workspace);
 
     // Merge project-level config from $WORKSPACE/.deepseek/config.toml
     // unless --no-project-config was passed (#485).

@@ -85,6 +85,10 @@ impl ToolSpec for GrepFilesTool {
                 "symbol_index": {
                     "type": "boolean",
                     "description": "Also query the symbol index for definitions matching the pattern (default: false). Symbol line numbers may drift for macro-expanded code."
+                },
+                "symbol_kind": {
+                    "type": "string",
+                    "description": "Filter symbol hits by kind, e.g. \"fn\", \"struct\", \"interface\", \"type\", \"enum\", \"const\", \"trait\", \"trait_fn\", \"impl_fn\", \"class\", \"method\"."
                 }
             },
             "required": ["pattern"]
@@ -106,6 +110,7 @@ impl ToolSpec for GrepFilesTool {
             usize::try_from(optional_u64(&input, "context_lines", 2)).unwrap_or(usize::MAX);
         let case_insensitive = optional_bool(&input, "case_insensitive", false);
         let symbol_index_enabled = optional_bool(&input, "symbol_index", false);
+        let symbol_kind = optional_str(&input, "symbol_kind").map(|s| s.to_string());
         let max_results = usize::try_from(optional_u64(&input, "max_results", MAX_RESULTS as u64))
             .unwrap_or(MAX_RESULTS);
 
@@ -227,12 +232,18 @@ impl ToolSpec for GrepFilesTool {
         // most likely definitions / usages first, not filesystem order.
         bm25_rank(&mut results, &pattern_str);
 
+        // Symbol index maintenance: trigger a background rebuild when the
+        // index is missing or stale (schema bump, new TS support, etc.).
+        // This runs unconditionally — `symbol_index` only controls whether
+        // query results are included in the response.
+        ensure_symbol_index(&context.workspace);
+
         // Symbol index lookup: if enabled and the pattern matches a known
-        // Rust symbol, prepend file:line references so the model can jump
-        // to definitions. Disabled by default — enable with `symbol_index: true`
+        // symbol, prepend file:line references so the model can jump to
+        // definitions. Disabled by default — enable with `symbol_index: true`
         // when grep is used for definition search rather than call-site audit.
         let (symbol_hits, symbol_status) = if symbol_index_enabled {
-            let hits = lookup_symbol_hits(&context.workspace, &pattern_str);
+            let hits = lookup_symbol_hits(&context.workspace, &pattern_str, symbol_kind.as_deref());
             let status = crate::symbol_index::index_status(&context.workspace);
 
             // Boost index hits: lines that match the symbol index float to the top
@@ -240,7 +251,7 @@ impl ToolSpec for GrepFilesTool {
             boost_index_hits(&mut results, &hits);
             (hits, status)
         } else {
-            (Vec::new(), crate::symbol_index::IndexStatus::Missing)
+            (Vec::new(), crate::symbol_index::index_status(&context.workspace))
         };
 
         // Build result
@@ -280,6 +291,40 @@ impl ToolSpec for GrepFilesTool {
                     "symbol_index_warning".into(),
                     json!("Some hits are 'impl_fn' — these come from #[derive] expansions and line numbers may be off by 5-20 lines. Use read_file with a wider range.")
                 );
+            }
+
+            // Attach per-file symbol summaries for the hit files (max 3)
+            // so the model doesn't need a follow-up read_file for context.
+            let hit_files: std::collections::BTreeSet<&str> = symbol_hits
+                .iter()
+                .filter_map(|h| h.get("file")?.as_str())
+                .collect();
+            if hit_files.len() <= 3 {
+                // Load the index once (already called ensure_symbol_index above).
+                let idx_path = context.workspace.join(".deepseek").join("symbols.json");
+                if let Ok(raw) = std::fs::read_to_string(&idx_path) {
+                    if let Ok(idx) = serde_json::from_str::<crate::symbol_index::SymbolIndex>(&raw) {
+                        let mut file_summaries = serde_json::Map::new();
+                        for file in hit_files {
+                            if let Some(fs) = idx.files.get(file) {
+                                let syms: Vec<serde_json::Value> = fs.symbols
+                                    .iter()
+                                    .map(|s| json!({"name": s.name, "kind": s.kind, "line": s.line}))
+                                    .collect();
+                                file_summaries.insert(
+                                    file.to_string(),
+                                    json!({"symbols": syms}),
+                                );
+                            }
+                        }
+                        if !file_summaries.is_empty() {
+                            extra.insert(
+                                "symbol_index_file_summaries".into(),
+                                serde_json::Value::Object(file_summaries),
+                            );
+                        }
+                    }
+                }
             }
         }
         let mut result_map = serde_json::Map::from_iter(vec![
@@ -569,32 +614,27 @@ fn boost_index_hits(matches: &mut Vec<GrepMatch>, symbol_hits: &[serde_json::Val
     });
 }
 
-/// Try loading the symbol index and query it for symbols matching `pattern`.
-/// Returns file:line pairs for definition-side hits.
+/// Ensure the symbol index exists and is up-to-date.
 ///
 /// When the index is missing (first use per workspace) or stale (source files
-/// changed), a background thread rebuilds it. The current query uses whatever
-/// is immediately available — an empty result for missing, the stale index
-/// for stale — so the model is never blocked waiting for index build.
-fn lookup_symbol_hits(workspace: &Path, pattern: &str) -> Vec<serde_json::Value> {
+/// changed / schema version bump), a background thread rebuilds it. Called
+/// unconditionally by `grep_files` so the index stays current regardless of
+/// `symbol_index: true|false`.
+fn ensure_symbol_index(workspace: &Path) {
     let index_dir = workspace.join(".deepseek");
     let index_path = index_dir.join("symbols.json");
 
-    // Try to load existing index
     let index: Option<crate::symbol_index::SymbolIndex> = std::fs::read_to_string(&index_path)
         .ok()
         .and_then(|raw| serde_json::from_str(&raw).ok());
 
-    // Determine build status
     let needs_build = match &index {
         Some(_idx) => {
-            // Stale check: skip if we already know it needs rebuild
             crate::symbol_index::index_status(workspace) != crate::symbol_index::IndexStatus::Fresh
         }
         None => true,
     };
 
-    // Schedule background build if needed and not already building this workspace
     if needs_build {
         let mut building = SYMBOL_INDEX_BUILDING.lock().unwrap();
         let ws_canonical = workspace
@@ -613,11 +653,29 @@ fn lookup_symbol_hits(workspace: &Path, pattern: &str) -> Vec<serde_json::Value>
                         ws.join(".deepseek").join("symbols.json"),
                         serde_json::to_string_pretty(&index).unwrap_or_default(),
                     );
+                    // Write fingerprint cache so the next index_status() can
+                    // skip the full mtime walk.
+                    let fp = crate::symbol_index::compute_fingerprint(&ws);
+                    let _ = std::fs::write(
+                        ws.join(".deepseek").join(".symbols_fingerprint"),
+                        fp,
+                    );
                     SYMBOL_INDEX_BUILDING.lock().unwrap().remove(&ws);
                 })
                 .ok();
         }
     }
+}
+
+/// Query the symbol index for definitions matching `pattern`.
+/// Returns file:line pairs with match_score. Assumes `ensure_symbol_index()`
+/// has been called recently — uses whatever index is on disk (may be stale).
+fn lookup_symbol_hits(workspace: &Path, pattern: &str, kind_filter: Option<&str>) -> Vec<serde_json::Value> {
+    let index_path = workspace.join(".deepseek").join("symbols.json");
+
+    let index: Option<crate::symbol_index::SymbolIndex> = std::fs::read_to_string(&index_path)
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok());
 
     let index = match index {
         Some(idx) => idx,
@@ -634,12 +692,25 @@ fn lookup_symbol_hits(workspace: &Path, pattern: &str) -> Vec<serde_json::Value>
 
     // Try each term as a symbol query. Stop at the first term that yields hits.
     for term in &terms {
-        let hits = crate::symbol_index::query_symbol(&index, term);
+        let hits = if let Some(kf) = kind_filter {
+            crate::symbol_index::query_symbol_with_mode(
+                &index, term,
+                crate::symbol_index::MatchMode::Substring,
+                Some(kf),
+            )
+        } else {
+            crate::symbol_index::query_symbol(&index, term)
+        };
         if !hits.is_empty() {
             return hits
                 .into_iter()
-                .map(|(file, line)| {
-                    json!({"symbol": term, "file": file, "line": line})
+                .map(|(file, line, kind, prio)| {
+                    let match_score = match prio {
+                        0 => 1.0,
+                        1 => 0.8,
+                        _ => 0.5,
+                    };
+                    json!({"symbol": term, "file": file, "line": line, "kind": kind, "match_score": match_score})
                 })
                 .collect();
         }

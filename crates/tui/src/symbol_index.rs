@@ -3,9 +3,11 @@
 //! The index is a JSON file at `.deepseek/symbols.json` mapping
 //! workspace-relative file paths → list of (kind, name, line).
 //!
-//! Rebuilt on every `serve --http` start. Supports incremental rebuild
-//! by comparing file mtimes. Missing/unparseable files are skipped
-//! silently — the index is best-effort and must never block the runtime.
+//! Warmed up at `serve --http` startup (non-blocking background build)
+//! and lazily refreshed on first `grep_files` call.  Supports incremental
+//! rebuild by comparing file mtimes and schema version.  Missing/unparseable
+//! files are skipped silently — the index is best-effort and must never
+//! block the runtime.
 
 #![allow(clippy::too_many_lines)]
 
@@ -36,6 +38,10 @@ pub struct SymbolEntry {
     /// Used for incremental rebuild.
     #[serde(default)]
     pub source_mtime: u64,
+    /// Known symbol names called within this function's body (best-effort).
+    /// Only records names present in the current project's index.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub calls: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,11 +49,29 @@ pub struct FileSymbols {
     pub symbols: Vec<SymbolEntry>,
 }
 
+/// Bump when the index format changes in a way that invalidates
+/// old caches (new file types, new symbol kinds, etc.).
+const CURRENT_SCHEMA_VERSION: u32 = 3;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SymbolIndex {
     pub schema_version: u32,
     pub generated_at: String,
     pub files: BTreeMap<String, FileSymbols>,
+    /// Optional: Tauri command bridge pairs (Rust ↔ TS).
+    #[serde(default)]
+    pub bridge_pairs: Vec<BridgePair>,
+}
+
+/// A cross-language Tauri command: Rust `#[tauri::command]` function
+/// paired with its TS `invoke()` caller.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BridgePair {
+    pub command: String,
+    pub rust_file: String,
+    pub rust_line: usize,
+    pub ts_file: String,
+    pub ts_line: usize,
 }
 
 /// Status of the symbol index relative to the current workspace.
@@ -93,9 +117,9 @@ pub fn build_index(
     let old_index = load_old_index(workspace);
 
     let mut files: BTreeMap<String, FileSymbols> = BTreeMap::new();
-    let rs_entries = walk_rs_files(workspace);
+    let src_entries = walk_source_files(workspace);
 
-    for (path, mtime) in rs_entries {
+    for (path, mtime, lang) in src_entries {
         let rel = match path.strip_prefix(workspace) {
             Ok(p) => p,
             Err(_) => continue,
@@ -110,21 +134,292 @@ pub fn build_index(
             }
         }
 
-        if let Some(symbols) = extract_symbols(&path, visibility, mtime) {
-            if !symbols.is_empty() {
-                files.insert(rel_str, FileSymbols { symbols });
+        let symbols = match lang {
+            "rs" => extract_symbols(&path, visibility, mtime),
+            "ts" => extract_ts_symbols(&path, mtime),
+            _ => None,
+        };
+
+        if let Some(syms) = symbols {
+            if !syms.is_empty() {
+                files.insert(rel_str, FileSymbols { symbols: syms });
             }
         }
     }
 
+    // Second pass: annotate calls for each function-like symbol.
+    annotate_calls(workspace, &mut files);
+
+    let bridge_pairs = build_bridge_pairs(workspace, &files);
+
+    // Write change log for CRAFT audit trail (compare old vs new index).
+    let _ = write_changes(workspace, &old_index, &files);
+
     SymbolIndex {
-        schema_version: 2,
+        schema_version: CURRENT_SCHEMA_VERSION,
         generated_at: chrono::Utc::now().to_rfc3339(),
         files,
+        bridge_pairs,
     }
 }
 
+/// Second pass: scan each function body for calls to known symbol names
+/// and record them in the `calls` field of the callee's SymbolEntry.
+///
+/// Only records names that appear in the current project's index
+/// (external crate calls like `tokio::spawn` are excluded).
+fn annotate_calls(workspace: &Path, files: &mut BTreeMap<String, FileSymbols>) {
+    use regex::Regex;
+
+    // Collect all known symbol names for lookup.
+    let known_names: std::collections::HashSet<&str> = files
+        .values()
+        .flat_map(|f| f.symbols.iter().map(|s| s.name.as_str()))
+        .collect();
+    if known_names.is_empty() {
+        return;
+    }
+
+    // Build a regex that matches any known symbol name as a word.
+    // (Sorted by length descending so longer names match first — avoids
+    // partial matches like "foo" inside "foo_bar".)
+    let mut sorted_names: Vec<&&str> = known_names.iter().collect();
+    sorted_names.sort_by_key(|n| -(n.len() as isize));
+    let pattern = sorted_names
+        .iter()
+        .map(|n| regex::escape(n))
+        .collect::<Vec<_>>()
+        .join("|");
+    let re_calls = match Regex::new(&pattern) {
+        Ok(r) => r,
+        Err(_) => return,
+    };
+
+    for (rel_path, file_syms) in files.iter_mut() {
+        let abs_path = workspace.join(rel_path.replace('/', std::path::MAIN_SEPARATOR_STR));
+        let body = match std::fs::read_to_string(&abs_path) {
+            Ok(b) => b,
+            Err(_) => continue,
+        };
+        // Build line-offset lookup for efficient line→offset mapping.
+        let line_offsets: Vec<usize> = std::iter::once(0)
+            .chain(body.match_indices('\n').map(|(i, _)| i + 1))
+            .collect();
+
+        // Pre-compute end-line for each symbol (needs immutable borrow).
+        let end_lines: Vec<usize> = file_syms
+            .symbols
+            .iter()
+            .map(|sym| {
+                file_syms
+                    .symbols
+                    .iter()
+                    .filter(|s| s.line > sym.line)
+                    .map(|s| s.line.saturating_sub(1))
+                    .min()
+                    .unwrap_or(body.lines().count())
+            })
+            .collect();
+
+        for (i, sym) in file_syms.symbols.iter_mut().enumerate() {
+            // Only function-like symbols get calls.
+            if !matches!(
+                sym.kind.as_str(),
+                "fn" | "impl_fn" | "method" | "trait_fn"
+            ) {
+                continue;
+            }
+            let start_line = sym.line.saturating_sub(1); // 0-based
+            let end_line = end_lines.get(i).copied().unwrap_or(body.lines().count());
+            let start = *line_offsets.get(start_line).unwrap_or(&0);
+            let end = *line_offsets.get(end_line.min(line_offsets.len() - 1)).unwrap_or(&body.len());
+            let fn_body = &body[start..end.min(body.len())];
+
+            let mut calls: Vec<String> = re_calls
+                .find_iter(fn_body)
+                .map(|m| m.as_str().to_string())
+                .filter(|c| *c != sym.name) // exclude self-calls
+                .collect();
+            calls.sort();
+            calls.dedup();
+            sym.calls = calls;
+        }
+    }
+}
+
+/// Write a lightweight change log comparing the new index against the
+/// old one.  Only keeps the most recent diff — no history stacking.
+fn write_changes(
+    workspace: &Path,
+    old_index: &BTreeMap<String, FileSymbols>,
+    new_files: &BTreeMap<String, FileSymbols>,
+) -> std::io::Result<()> {
+    let mut added: Vec<String> = Vec::new();
+    let mut removed: Vec<String> = Vec::new();
+    let mut modified: Vec<String> = Vec::new();
+
+    // Added / Modified: symbols in new but not old (or changed).
+    for (path, new_syms) in new_files {
+        if let Some(old_syms) = old_index.get(path) {
+            // Compare line numbers and calls.
+            let old_map: std::collections::HashMap<&str, (&str, usize)> = old_syms
+                .symbols
+                .iter()
+                .map(|s| (s.name.as_str(), (s.kind.as_str(), s.line)))
+                .collect();
+            let new_map: std::collections::HashMap<&str, (&str, usize)> = new_syms
+                .symbols
+                .iter()
+                .map(|s| (s.name.as_str(), (s.kind.as_str(), s.line)))
+                .collect();
+            for (name, &(_, new_line)) in &new_map {
+                if let Some(&(_, old_line)) = old_map.get(name) {
+                    if new_line.abs_diff(old_line) > 2 {
+                        modified.push(format!("{path}::{name}"));
+                    }
+                } else {
+                    added.push(format!("{path}::{name}"));
+                }
+            }
+        } else {
+            for s in &new_syms.symbols {
+                added.push(format!("{path}::{}", s.name));
+            }
+        }
+    }
+
+    // Removed: symbols in old but not new.
+    for (path, old_syms) in old_index {
+        if !new_files.contains_key(path) {
+            for s in &old_syms.symbols {
+                removed.push(format!("{path}::{}", s.name));
+            }
+        }
+    }
+
+    if added.is_empty() && removed.is_empty() && modified.is_empty() {
+        return Ok(());
+    }
+
+    let changes = serde_json::json!({
+        "rebuilt_at": chrono::Utc::now().to_rfc3339(),
+        "added": added,
+        "removed": removed,
+        "modified": modified,
+    });
+
+    let changes_dir = workspace.join(".deepseek");
+    std::fs::create_dir_all(&changes_dir)?;
+    std::fs::write(
+        changes_dir.join(".symbols_changes.json"),
+        serde_json::to_string_pretty(&changes).unwrap_or_default(),
+    )?;
+    Ok(())
+}
+
+/// Scan Rust and TS/TSX files for Tauri command bridges.
+///
+/// Rust side: locates `#[tauri::command]` attributes and the function
+/// right below them.
+/// TS side: matches `invoke('command_name')` calls.
+/// Pairs are joined by command name.
+fn build_bridge_pairs(workspace: &Path, _files: &BTreeMap<String, FileSymbols>) -> Vec<BridgePair> {
+    use regex::Regex;
+    let mut pairs: Vec<BridgePair> = Vec::new();
+
+    // Collect Rust tauri commands: find #[tauri::command] then next fn name.
+    let re_attr = Regex::new(r"#\[tauri::command\]").unwrap();
+    let re_fn = Regex::new(r"\bfn\s+(\w+)").unwrap();
+
+    // Collect TS invoke calls: invoke('cmd') or invoke("cmd").
+    let re_invoke = Regex::new(r#"invoke\s*\(\s*['"]([^'"]+)['"]"#).unwrap();
+
+    let mut rust_commands: std::collections::HashMap<String, (String, usize)> =
+        std::collections::HashMap::new();
+    let mut ts_commands: std::collections::HashMap<String, (String, usize)> =
+        std::collections::HashMap::new();
+
+    let src_entries = walk_source_files(workspace);
+    for (path, _, lang) in &src_entries {
+        let _ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        let rel = match path.strip_prefix(workspace) {
+            Ok(p) => p.to_string_lossy().replace('\\', "/"),
+            Err(_) => continue,
+        };
+
+        match *lang {
+            "rs" => {
+                if let Ok(body) = std::fs::read_to_string(path) {
+                    for m in re_attr.find_iter(&body) {
+                        let after = &body[m.end()..];
+                        if let Some(cap) = re_fn.captures(&after[..200.min(after.len())]) {
+                            let fn_name = cap[1].to_string();
+                            let pre = match std::str::from_utf8(&body.as_bytes()[..m.start()]) {
+                                Ok(s) => s,
+                                Err(_) => continue,
+                            };
+                            let line = pre.lines().count() + 1;
+                            rust_commands.insert(fn_name.clone(), (rel.clone(), line));
+                        }
+                    }
+                }
+            }
+            "ts" => {
+                if let Ok(body) = std::fs::read_to_string(path) {
+                    for cap in re_invoke.captures_iter(&body) {
+                        let cmd_name = cap[1].to_string();
+                        if cmd_name.is_empty() { continue; }
+                        let pre = &body[..cap.get(0).unwrap().start()];
+                        let line = pre.lines().count() + 1;
+                        ts_commands.insert(cmd_name, (rel.clone(), line));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // Match by command name.
+    for (name, (rust_file, rust_line)) in &rust_commands {
+        if let Some((ts_file, ts_line)) = ts_commands.get(name) {
+            pairs.push(BridgePair {
+                command: name.clone(),
+                rust_file: rust_file.clone(),
+                rust_line: *rust_line,
+                ts_file: ts_file.clone(),
+                ts_line: *ts_line,
+            });
+        }
+    }
+    pairs.sort_by(|a, b| a.command.cmp(&b.command));
+    pairs
+}
+
+/// Compute a hex-encoded SHA-256 fingerprint of all source files'
+/// paths + mtimes.  When this fingerprint matches the cached copy,
+/// `index_status()` can skip the expensive per-file mtime comparison.
+pub(crate) fn compute_fingerprint(workspace: &Path) -> String {
+    use sha2::{Sha256, Digest};
+    let mut hasher = Sha256::new();
+    // Sort for deterministic output.
+    let mut entries: Vec<(PathBuf, u64)> = walk_source_files(workspace)
+        .into_iter()
+        .map(|(p, m, _)| (p, m))
+        .collect();
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    for (path, mtime) in &entries {
+        hasher.update(path.to_string_lossy().as_bytes());
+        hasher.update(b"\x00");
+        hasher.update(&mtime.to_le_bytes());
+    }
+    format!("{:x}", hasher.finalize())
+}
+
 /// Determine the current status of the symbol index.
+///
+/// Returns `Stale` when the index schema version is older than the
+/// current version, or when any source file's on-disk mtime is newer
+/// than the index entry.
 pub fn index_status(workspace: &Path) -> IndexStatus {
     let index_path = workspace.join(".deepseek").join("symbols.json");
     if !index_path.exists() {
@@ -138,9 +433,24 @@ pub fn index_status(workspace: &Path) -> IndexStatus {
         return IndexStatus::Missing;
     };
 
-    // Find the newest .rs file mtime in the workspace.
+    // Schema version mismatch → force rebuild (e.g. new file types added).
+    if index.schema_version < CURRENT_SCHEMA_VERSION {
+        return IndexStatus::Stale;
+    }
+
+    // Fast path: if a cached fingerprint matches the current workspace,
+    // no source file has changed since the last build.
+    let fp_path = workspace.join(".deepseek").join(".symbols_fingerprint");
+    if let Ok(cached) = std::fs::read_to_string(&fp_path) {
+        let current = compute_fingerprint(workspace);
+        if cached.trim() == current {
+            return IndexStatus::Fresh;
+        }
+    }
+
+    // Slow path: fall back to per-file mtime comparison.
     let mut newest_rs_mtime: u64 = 0;
-    for (_path, mtime) in walk_rs_files(workspace) {
+    for (_path, mtime, _lang) in walk_source_files(workspace) {
         if mtime > newest_rs_mtime {
             newest_rs_mtime = mtime;
         }
@@ -167,18 +477,75 @@ pub fn index_status(workspace: &Path) -> IndexStatus {
     IndexStatus::Fresh
 }
 
+// ── Warmup ─────────────────────────────────────────────────────
+
+/// Call at startup (e.g. `serve --http`) to build the index in the
+/// background if it's missing or stale. Non-blocking — returns
+/// immediately; the build runs on a dedicated thread.
+///
+/// Idempotent: only one build runs per workspace at a time.
+pub fn warmup_if_needed(workspace: &Path) {
+    use std::collections::HashSet;
+    use std::sync::{LazyLock, Mutex};
+
+    static BUILDING: LazyLock<Mutex<HashSet<PathBuf>>> =
+        LazyLock::new(|| Mutex::new(HashSet::new()));
+
+    let ws_canonical = workspace
+        .canonicalize()
+        .unwrap_or_else(|_| workspace.to_path_buf());
+
+    {
+        let mut set = BUILDING.lock().unwrap();
+        if !set.insert(ws_canonical.clone()) {
+            return; // already building for this workspace
+        }
+    }
+
+    let ws = ws_canonical;
+    std::thread::Builder::new()
+        .name("symbol-index-warmup".into())
+        .stack_size(8 * 1024 * 1024)
+        .spawn(move || {
+            // Check freshness inside the thread so the caller
+            // (e.g. serve --http) never blocks on index_status().
+            if index_status(&ws) == IndexStatus::Fresh {
+                BUILDING.lock().unwrap().remove(&ws);
+                return;
+            }
+            let index = build_index(&ws, SymbolVisibility::Public);
+            let _ = std::fs::create_dir_all(ws.join(".deepseek"));
+            let _ = std::fs::write(
+                ws.join(".deepseek").join("symbols.json"),
+                serde_json::to_string_pretty(&index).unwrap_or_default(),
+            );
+            // Write fingerprint cache so the next index_status() can
+            // skip the full mtime walk.
+            let fp = compute_fingerprint(&ws);
+            let _ = std::fs::write(
+                ws.join(".deepseek").join(".symbols_fingerprint"),
+                fp,
+            );
+            BUILDING.lock().unwrap().remove(&ws);
+        })
+        .ok();
+}
+
 // ── Query ─────────────────────────────────────────────────────
 
 /// Query the index for a symbol name with configurable match mode
 /// and optional kind filter.
+///
+/// Returns (file, line, kind, match_priority) where priority is:
+/// 0 = exact name match, 1 = prefix, 2 = whole-word, 3 = substring.
 pub fn query_symbol_with_mode<'a>(
     index: &'a SymbolIndex,
     name: &str,
     mode: MatchMode,
     kind_filter: Option<&'a str>,
-) -> Vec<(&'a str, usize)> {
+) -> Vec<(&'a str, usize, &'a str, u8)> {
     let name_lower = name.to_lowercase();
-    let mut results: Vec<(&str, usize, u8)> = Vec::new(); // (file, line, priority 0=exact,1=prefix,2=word,3=substr)
+    let mut results: Vec<(&str, usize, &str, u8)> = Vec::new();
 
     for (file, file_syms) in &index.files {
         for sym in &file_syms.symbols {
@@ -228,16 +595,16 @@ pub fn query_symbol_with_mode<'a>(
                     }
                 }
             };
-            results.push((file.as_str(), sym.line, prio));
+            results.push((file.as_str(), sym.line, sym.kind.as_str(), prio));
         }
     }
 
-    results.sort_by(|a, b| a.2.cmp(&b.2).then_with(|| a.0.cmp(b.0)));
-    results.into_iter().map(|(f, l, _)| (f, l)).collect()
+    results.sort_by(|a, b| a.3.cmp(&b.3).then_with(|| a.0.cmp(b.0)));
+    results.into_iter().map(|(f, l, k, p)| (f, l, k, p)).collect()
 }
 
 /// Backward-compatible wrapper: substring match, no kind filter.
-pub fn query_symbol<'a>(index: &'a SymbolIndex, name: &str) -> Vec<(&'a str, usize)> {
+pub fn query_symbol<'a>(index: &'a SymbolIndex, name: &str) -> Vec<(&'a str, usize, &'a str, u8)> {
     query_symbol_with_mode(index, name, MatchMode::Substring, None)
 }
 
@@ -274,13 +641,13 @@ const SKIP_DIRS: &[&str] = &[
     "target", "node_modules", "dist", ".git", ".deepseek", "binaries",
 ];
 
-fn walk_rs_files(root: &Path) -> Vec<(PathBuf, u64)> {
+fn walk_source_files(root: &Path) -> Vec<(PathBuf, u64, &'static str)> {
     let mut files = Vec::new();
-    walk_rs_files_impl(root, &mut files);
+    walk_source_files_impl(root, &mut files);
     files
 }
 
-fn walk_rs_files_impl(dir: &Path, out: &mut Vec<(PathBuf, u64)>) {
+fn walk_source_files_impl(dir: &Path, out: &mut Vec<(PathBuf, u64, &'static str)>) {
     let Some(name) = dir.file_name().and_then(|n| n.to_str()) else {
         return;
     };
@@ -293,14 +660,19 @@ fn walk_rs_files_impl(dir: &Path, out: &mut Vec<(PathBuf, u64)>) {
     for entry in entries.flatten() {
         let p = entry.path();
         if p.is_dir() {
-            walk_rs_files_impl(&p, out);
-        } else if p.extension().map_or(false, |e| e == "rs") {
+            walk_source_files_impl(&p, out);
+        } else {
+            let lang = match p.extension().and_then(|e| e.to_str()) {
+                Some("rs") => "rs",
+                Some("ts") | Some("tsx") => "ts",
+                _ => continue,
+            };
             let mtime = std::fs::metadata(&p)
                 .ok()
                 .and_then(|m| m.modified().ok())
                 .map(|t| t.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs())
                 .unwrap_or(0);
-            out.push((p, mtime));
+            out.push((p, mtime, lang));
         }
     }
 }
@@ -333,32 +705,10 @@ fn extract_symbols(
         .chain(src.match_indices('\n').map(|(i, _)| i + 1))
         .collect();
 
-    // Top-level items (skip impl blocks — handled separately)
-    for item in &file.items {
-        if matches!(item, syn::Item::Impl(_)) {
-            continue;
-        }
-        if let Some(entry) = item_symbol(item, visibility, &line_starts, source_mtime) {
-            symbols.push(entry);
-        }
-    }
+    // Top-level items + nested mods (recursive).
+    extract_mod_items(&file.items, visibility, &line_starts, source_mtime, &mut symbols);
 
-    // Also visit items inside modules (nested mods)
-    for item in &file.items {
-        if let syn::Item::Mod(m) = item {
-            if let Some((_, ref content)) = m.content {
-                for inner in content {
-                    if !matches!(inner, syn::Item::Impl(_)) {
-                        if let Some(entry) = item_symbol(inner, visibility, &line_starts, source_mtime) {
-                            symbols.push(entry);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Handle impl blocks: collect method names with type prefix
+    // Handle impl blocks: collect method names with type prefix.
     for item in &file.items {
         if let syn::Item::Impl(imp) = item {
             let impl_for = match &*imp.self_ty {
@@ -387,8 +737,174 @@ fn extract_symbols(
         }
     }
 
+    // Handle trait methods: index as "TraitName::method_name" with kind "trait_fn".
+    for item in &file.items {
+        if let syn::Item::Trait(t) = item {
+            if visibility == SymbolVisibility::Public && !is_pub(&t.vis) {
+                continue;
+            }
+            let trait_name = t.ident.to_string();
+            for trait_item in &t.items {
+                if let syn::TraitItem::Fn(method) = trait_item {
+                    let name = format!("{}::{}", trait_name, method.sig.ident);
+                    symbols.push(make_entry(
+                        name,
+                        "trait_fn",
+                        method.sig.ident.span().byte_range().start,
+                        &line_starts,
+                        source_mtime,
+                    ));
+                }
+            }
+        }
+    }
+
     // Dedup by (kind, name)
     symbols.sort_by(|a, b| a.kind.cmp(&b.kind).then_with(|| a.name.cmp(&b.name)));
+    symbols.dedup_by(|a, b| a.kind == b.kind && a.name == b.name);
+
+    Some(symbols)
+}
+
+/// Recursively extract symbols from a list of items (handles nested mods).
+fn extract_mod_items(
+    items: &[syn::Item],
+    visibility: SymbolVisibility,
+    line_starts: &[usize],
+    source_mtime: u64,
+    symbols: &mut Vec<SymbolEntry>,
+) {
+    for item in items {
+        if matches!(item, syn::Item::Impl(_)) {
+            continue; // impl blocks handled separately
+        }
+        if let Some(entry) = item_symbol(item, visibility, line_starts, source_mtime) {
+            symbols.push(entry);
+        }
+        // Recurse into inline mod content.
+        if let syn::Item::Mod(m) = item {
+            if let Some((_, ref content)) = m.content {
+                extract_mod_items(content, visibility, line_starts, source_mtime, symbols);
+            }
+        }
+    }
+}
+
+/// Extract symbols from a TypeScript / TSX file using regex patterns.
+fn extract_ts_symbols(path: &Path, source_mtime: u64) -> Option<Vec<SymbolEntry>> {
+    use std::io::{BufRead, BufReader};
+
+    let file = std::fs::File::open(path).ok()?;
+    let reader = BufReader::new(file);
+    let mut symbols: Vec<SymbolEntry> = Vec::new();
+
+    // Patterns: (regex, kind). Order matters — first match wins per line.
+    let patterns: &[(&str, &str)] = &[
+        // export default function App / export default async function
+        (r"^export\s+default\s+(?:async\s+)?function\s+(\w+)", "fn"),
+        // export async function foo / export function foo
+        (r"^export\s+(?:async\s+)?function\s+(\w+)", "fn"),
+        // async function foo / function foo (non-exported)
+        (r"^(?:async\s+)?function\s+(\w+)", "fn"),
+        // export const foo = async () => / = () => / = (e: Event) =>
+        (r"^export\s+const\s+(\w+)\s*=\s*(?:async\s+)?(?:\(|[A-Za-z_]\w*\s*=>)", "fn"),
+        // export interface Foo / export default interface Foo
+        (r"^export\s+(?:default\s+)?interface\s+(\w+)", "interface"),
+        // interface Foo (non-exported)
+        (r"^interface\s+(\w+)", "interface"),
+        // export type Foo = / export type Foo<
+        (r"^export\s+type\s+(\w+)\s*[=<]", "type"),
+        // export class / export default class / class
+        (r"^(?:export\s+(?:default\s+)?)?class\s+(\w+)", "class"),
+        // export enum / enum (including const enum)
+        (r"^(?:export\s+)?(?:const\s+)?enum\s+(\w+)", "enum"),
+        // class methods (indented): public/private/protected/async methodName(
+        (r"^\s{2,}(?:(?:public|private|protected|static|async|readonly|override)\s+)*(\w+)\s*[<(]", "method"),
+    ];
+
+    let compiled: Vec<(regex::Regex, &str)> = patterns
+        .iter()
+        .filter_map(|(pat, kind)| regex::Regex::new(pat).ok().map(|r| (r, *kind)))
+        .collect();
+
+    // Keywords that regex might accidentally match as function names.
+    const SKIP_NAMES: &[&str] = &[
+        "if", "for", "while", "switch", "catch", "return", "new",
+        "typeof", "instanceof", "in", "of", "from", "import", "export",
+        "constructor", "super", "extends", "implements",
+    ];
+
+    let mut current_class: Option<String> = None;
+    let mut brace_depth: i32 = 0;
+    let mut class_brace_start: i32 = -1;
+
+    for (line_idx, line_result) in reader.lines().enumerate() {
+        let line = match line_result {
+            Ok(l) => l,
+            Err(_) => continue,
+        };
+        let line_num = line_idx + 1; // 1-based
+
+        // Track brace depth to know when class scope ends.
+        for ch in line.chars() {
+            match ch {
+                '{' => brace_depth += 1,
+                '}' => {
+                    brace_depth -= 1;
+                    if current_class.is_some() && brace_depth <= class_brace_start {
+                        current_class = None;
+                        class_brace_start = -1;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        // Skip pure comment lines.
+        let trimmed = line.trim();
+        if trimmed.starts_with("//")
+            || trimmed.starts_with('*')
+            || trimmed.starts_with("/*")
+        {
+            continue;
+        }
+
+        for (re, kind) in &compiled {
+            if let Some(cap) = re.captures(&line) {
+                if let Some(name_match) = cap.get(1) {
+                    let name = name_match.as_str().to_string();
+
+                    if SKIP_NAMES.contains(&name.as_str()) {
+                        continue;
+                    }
+
+                    let full_name = if *kind == "method" {
+                        match &current_class {
+                            Some(cls) => format!("{}::{}", cls, name),
+                            None => continue, // method outside class context — skip
+                        }
+                    } else {
+                        if *kind == "class" {
+                            current_class = Some(name.clone());
+                            class_brace_start = brace_depth;
+                        }
+                        name
+                    };
+
+                    symbols.push(SymbolEntry {
+                        kind: kind.to_string(),
+                        name: full_name,
+                        line: line_num,
+                        source_mtime,
+                        calls: vec![],
+                    });
+                    break; // first matching pattern wins
+                }
+            }
+        }
+    }
+
+    symbols.sort_by_key(|s| s.line);
     symbols.dedup_by(|a, b| a.kind == b.kind && a.name == b.name);
 
     Some(symbols)
@@ -414,6 +930,7 @@ fn make_entry(
         name,
         line: line_for_byte_offset(line_starts, span_byte_start),
         source_mtime,
+        calls: vec![],
     }
 }
 
@@ -618,6 +1135,7 @@ mod tests {
             schema_version: 1,
             generated_at: String::new(),
             files: BTreeMap::new(),
+            bridge_pairs: vec![],
         };
         index.files.insert(
             "src/lib.rs".into(),
@@ -627,12 +1145,15 @@ mod tests {
                     name: "build_router".into(),
                     line: 42,
                     source_mtime: 0,
+                    calls: vec![],
                 }],
             },
         );
         let hits = query_symbol(&index, "build_router");
         assert_eq!(hits.len(), 1);
-        assert_eq!(hits[0], ("src/lib.rs", 42));
+        assert_eq!(hits[0].0, "src/lib.rs");
+        assert_eq!(hits[0].1, 42);
+        assert_eq!(hits[0].2, "fn");
     }
 
     #[test]
@@ -645,10 +1166,10 @@ mod tests {
         std::fs::create_dir_all(&src).unwrap();
         std::fs::write(src.join("real.rs"), "pub fn real() {}").unwrap();
 
-        let files = walk_rs_files(tmp.path());
+        let files = walk_source_files(tmp.path());
         let names: Vec<String> = files
             .iter()
-            .map(|(p, _)| p.file_name().unwrap().to_string_lossy().into_owned())
+            .map(|(p, _, _)| p.file_name().unwrap().to_string_lossy().into_owned())
             .collect();
         assert!(names.contains(&"real.rs".into()));
         assert!(!names.contains(&"junk.rs".into()));
@@ -760,6 +1281,7 @@ mod tests {
             schema_version: 1,
             generated_at: String::new(),
             files: BTreeMap::new(),
+            bridge_pairs: vec![],
         }
     }
 
@@ -775,6 +1297,7 @@ mod tests {
                 name: name.into(),
                 line,
                 source_mtime: 0,
+                calls: vec![],
             });
     }
 }

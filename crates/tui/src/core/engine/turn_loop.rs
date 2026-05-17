@@ -1150,7 +1150,11 @@ impl Engine {
                     && let Some(spec) = registry.get(&tool_name)
                 {
                     approval_required = spec.approval_requirement() != ApprovalRequirement::Auto;
-                    approval_description = spec.description().to_string();
+                    approval_description = if tool_name == "edit_file" {
+                        build_edit_file_approval_desc(&tool_input)
+                    } else {
+                        spec.description().to_string()
+                    };
                     supports_parallel = spec.supports_parallel();
                     read_only = spec.is_read_only();
                 } else if tool_name == CODE_EXECUTION_TOOL_NAME {
@@ -1907,5 +1911,63 @@ fn resolve_auto_effort(reasoning_effort: Option<&str>, messages: &[Message]) -> 
         }
         Some(other) => Some(other.to_string()),
         None => None,
+    }
+}
+
+/// Build a human-readable approval description for `edit_file` tool calls,
+/// mirroring the actual operation being performed (delete_lines, insert_after,
+/// replace_line, or search_replace).
+fn build_edit_file_approval_desc(input: &serde_json::Value) -> String {
+    let path = input
+        .get("path")
+        .and_then(|v| v.as_str())
+        .unwrap_or("?");
+    let op = input
+        .get("operation")
+        .and_then(|v| v.as_str())
+        .unwrap_or("search_replace");
+
+    match op {
+        "delete_lines" => {
+            let start = input.get("start_line").and_then(|v| v.as_u64()).unwrap_or(0);
+            let end = input.get("end_line").and_then(|v| v.as_u64()).unwrap_or(0);
+            let count = if start > 0 && end >= start {
+                end - start + 1
+            } else {
+                0
+            };
+            format!("⚠️ DELETE {count} line(s) (lines {start}–{end}) in {path}")
+        }
+        "insert_after" => {
+            let after = input.get("after_line").and_then(|v| v.as_u64()).unwrap_or(0);
+            let text = input.get("text").and_then(|v| v.as_str()).unwrap_or("");
+            let preview: String = text
+                .lines()
+                .take(3)
+                .map(|l| l.trim())
+                .collect::<Vec<_>>()
+                .join(" | ");
+            let extra = if text.lines().count() > 3 { "…" } else { "" };
+            let pos = if after == 0 {
+                "beginning".to_string()
+            } else {
+                format!("after line {after}")
+            };
+            format!("Insert text at {pos} in {path}: «{preview}{extra}»")
+        }
+        "replace_line" => {
+            let line = input.get("line").and_then(|v| v.as_u64()).unwrap_or(0);
+            let text = input.get("text").and_then(|v| v.as_str()).unwrap_or("");
+            let preview: String = text.lines().take(2).map(|l| l.trim()).collect::<Vec<_>>().join(" | ");
+            format!("Replace line {line} in {path} with: «{preview}»")
+        }
+        _ => {
+            // search_replace (default / backward compat)
+            let search = input.get("search").and_then(|v| v.as_str()).unwrap_or("?");
+            let replace = input.get("replace").and_then(|v| v.as_str()).unwrap_or("?");
+            let search_preview: String = search.lines().take(2).map(|l| l.trim()).collect::<Vec<_>>().join(" | ");
+            let replace_preview: String = replace.lines().take(2).map(|l| l.trim()).collect::<Vec<_>>().join(" | ");
+            format!("Search/replace in {path}: «{search_preview}» → «{replace_preview}»")
+        }
     }
 }

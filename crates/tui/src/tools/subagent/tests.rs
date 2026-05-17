@@ -1250,6 +1250,7 @@ fn stub_runtime() -> SubAgentRuntime {
         cancel_token: CancellationToken::new(),
         mailbox: None,
         parent_completion_tx: None,
+        step_timeout: STEP_API_TIMEOUT,
     }
 }
 

@@ -2981,8 +2981,8 @@ async fn run_subagent(
                     structured_verdict: None,
                 });
             }
-            api = tokio::time::timeout(STEP_API_TIMEOUT, runtime.client.create_message(request)) => {
-                api.map_err(|_| anyhow!("API call timed out after {}s", STEP_API_TIMEOUT.as_secs()))??
+            api = tokio::time::timeout(runtime.step_timeout, runtime.client.create_message(request)) => {
+                api.map_err(|_| anyhow!("API call timed out after {}s", runtime.step_timeout.as_secs()))??
             }
         };
 

@@ -74,13 +74,38 @@ pub struct CommandSpec {
     pub justification: Option<String>,
 }
 
+/// Returns the best-available Windows shell as (program, arg_prefix).
+/// Tries PowerShell first (available on all supported Windows ≥10);
+/// falls back to cmd.exe only when PowerShell is absent.
+#[cfg(windows)]
+pub(crate) fn windows_shell() -> (&'static str, &'static str) {
+    use std::sync::OnceLock;
+    static DETECTED: OnceLock<(&'static str, &'static str)> = OnceLock::new();
+    *DETECTED.get_or_init(|| {
+        if std::process::Command::new("powershell")
+            .args(["-Command", "exit 0"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+        {
+            ("powershell", "-Command")
+        } else {
+            ("cmd", "/C")
+        }
+    })
+}
+
 impl CommandSpec {
     /// Create a `CommandSpec` for running a shell command via the platform shell.
     pub fn shell(command: &str, cwd: PathBuf, timeout: Duration) -> Self {
         #[cfg(windows)]
+        let (program, arg_prefix) = windows_shell();
+        #[cfg(windows)]
         let (program, args) = (
-            "cmd".to_string(),
-            vec!["/C".to_string(), command.to_string()],
+            program.to_string(),
+            vec![arg_prefix.to_string(), command.to_string()],
         );
         #[cfg(not(windows))]
         let (program, args) = (
@@ -144,6 +169,11 @@ impl CommandSpec {
         } else if self.program.eq_ignore_ascii_case("cmd")
             && self.args.len() == 2
             && self.args[0].eq_ignore_ascii_case("/C")
+        {
+            self.args[1].clone()
+        } else if self.program.eq_ignore_ascii_case("powershell")
+            && self.args.len() == 2
+            && self.args[0].eq_ignore_ascii_case("-Command")
         {
             self.args[1].clone()
         } else {
@@ -543,7 +573,8 @@ mod tests {
     fn expected_shell_command(command: &str) -> Vec<String> {
         #[cfg(windows)]
         {
-            vec!["cmd".to_string(), "/C".to_string(), command.to_string()]
+            let (shell, arg) = windows_shell();
+            vec![shell.to_string(), arg.to_string(), command.to_string()]
         }
         #[cfg(not(windows))]
         {
@@ -557,8 +588,9 @@ mod tests {
 
         #[cfg(windows)]
         {
-            assert_eq!(spec.program, "cmd");
-            assert_eq!(spec.args, vec!["/C", "echo hello"]);
+            let (shell, arg) = windows_shell();
+            assert_eq!(spec.program, shell);
+            assert_eq!(spec.args, vec![arg, "echo hello"]);
         }
         #[cfg(not(windows))]
         {

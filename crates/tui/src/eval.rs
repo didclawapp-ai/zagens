@@ -705,8 +705,25 @@ fn apply_patch(root: &Path, patch: &str) -> Result<()> {
 
 fn exec_shell(root: &Path, command: &str) -> Result<String> {
     #[cfg(windows)]
-    let output = Command::new("cmd")
-        .args(["/C", command])
+    let (shell, arg) = {
+        // Self-contained detection; eval.rs may be compiled in a test
+        // binary where `crate::sandbox` isn't in scope.
+        if std::process::Command::new("powershell")
+            .args(["-Command", "exit 0"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+        {
+            ("powershell", "-Command")
+        } else {
+            ("cmd", "/C")
+        }
+    };
+    #[cfg(windows)]
+    let output = Command::new(shell)
+        .args([arg, command])
         .current_dir(root)
         .output()
         .with_context(|| format!("failed to execute shell command: {command}"))?;
