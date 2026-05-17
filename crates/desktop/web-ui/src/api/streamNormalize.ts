@@ -1,5 +1,15 @@
 /** Normalizes compat (`POST /v1/stream`) and raw (`GET …/events`) SSE payloads for one UI pipeline. */
 
+/** Per-turn token usage from the runtime API `turn.completed` event. */
+export interface TurnUsage {
+  input_tokens: number;
+  output_tokens: number;
+  prompt_cache_hit_tokens?: number;
+  prompt_cache_miss_tokens?: number;
+  reasoning_tokens?: number;
+  reasoning_replay_tokens?: number;
+}
+
 export type NormalizedStreamEvent =
   | { kind: 'turn_started'; threadId: string; turnId: string }
   | { kind: 'thinking_delta'; content: string }
@@ -8,7 +18,7 @@ export type NormalizedStreamEvent =
   | { kind: 'tool_progress'; output: string }
   | { kind: 'tool_completed'; id: string; success: boolean; output: unknown }
   | { kind: 'approval_required'; id: string; toolName: string; description: string }
-  | { kind: 'turn_completed' }
+  | { kind: 'turn_completed'; usage?: TurnUsage }
   | { kind: 'done' }
   | { kind: 'error'; message: string }
   | { kind: 'status'; message: string }
@@ -80,7 +90,8 @@ export function normalizeDesktopStreamEvent(
     };
   }
   if (sse === 'turn.completed') {
-    return { kind: 'turn_completed' };
+    const usage = parseTurnUsage(j.usage as Record<string, unknown> | undefined);
+    return { kind: 'turn_completed', usage };
   }
   if (sse === 'error') {
     return { kind: 'error', message: String(j.message ?? '') };
@@ -156,7 +167,10 @@ export function normalizeDesktopStreamEvent(
     };
   }
   if (recordEvent === 'turn.completed') {
-    return { kind: 'turn_completed' };
+    const rawUsage = (inner?.turn as Record<string, unknown> | undefined)
+      ?.usage as Record<string, unknown> | undefined;
+    const usage = parseTurnUsage(rawUsage);
+    return { kind: 'turn_completed', usage };
   }
 
   // —— agent.* events ———
@@ -200,4 +214,26 @@ export function normalizeDesktopStreamEvent(
   }
 
   return null;
+}
+
+/** Extract a TurnUsage from a raw JSON object, handling type coercion. */
+function parseTurnUsage(raw: Record<string, unknown> | undefined): TurnUsage | undefined {
+  if (!raw) return undefined;
+  const input = Number(raw.input_tokens);
+  const output = Number(raw.output_tokens);
+  if (!Number.isFinite(input) && !Number.isFinite(output)) return undefined;
+  return {
+    input_tokens: Number.isFinite(input) ? input : 0,
+    output_tokens: Number.isFinite(output) ? output : 0,
+    prompt_cache_hit_tokens: toOptionalNum(raw.prompt_cache_hit_tokens),
+    prompt_cache_miss_tokens: toOptionalNum(raw.prompt_cache_miss_tokens),
+    reasoning_tokens: toOptionalNum(raw.reasoning_tokens),
+    reasoning_replay_tokens: toOptionalNum(raw.reasoning_replay_tokens),
+  };
+}
+
+function toOptionalNum(v: unknown): number | undefined {
+  if (v == null) return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
 }

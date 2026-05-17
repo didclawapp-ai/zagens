@@ -708,18 +708,21 @@ fn exec_shell(root: &Path, command: &str) -> Result<String> {
     let (shell, arg) = {
         // Self-contained detection; eval.rs may be compiled in a test
         // binary where `crate::sandbox` isn't in scope.
-        if std::process::Command::new("powershell")
-            .args(["-Command", "exit 0"])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false)
-        {
-            ("powershell", "-Command")
-        } else {
-            ("cmd", "/C")
+        let mut found = None;
+        for ps in &["pwsh", "powershell"] {
+            if std::process::Command::new(ps)
+                .args(["-NoProfile", "-NonInteractive", "-Command", "exit 0"])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false)
+            {
+                found = Some((*ps, "-Command"));
+                break;
+            }
         }
+        found.unwrap_or(("cmd", "/C"))
     };
     #[cfg(windows)]
     let output = Command::new(shell)

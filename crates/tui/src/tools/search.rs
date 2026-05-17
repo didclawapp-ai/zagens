@@ -14,11 +14,6 @@ use serde_json::{Value, json};
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
-
-static SYMBOL_INDEX_BUILDING: std::sync::LazyLock<Mutex<HashSet<PathBuf>>> =
-    std::sync::LazyLock::new(|| Mutex::new(HashSet::new()));
-
 /// Maximum number of results to return to avoid overwhelming output
 const MAX_RESULTS: usize = 100;
 
@@ -236,7 +231,7 @@ impl ToolSpec for GrepFilesTool {
         // index is missing or stale (schema bump, new TS support, etc.).
         // This runs unconditionally — `symbol_index` only controls whether
         // query results are included in the response.
-        ensure_symbol_index(&context.workspace);
+        crate::symbol_index::ensure_symbol_index(&context.workspace);
 
         // Symbol index lookup: if enabled and the pattern matches a known
         // symbol, prepend file:line references so the model can jump to
@@ -615,57 +610,6 @@ fn boost_index_hits(matches: &mut Vec<GrepMatch>, symbol_hits: &[serde_json::Val
 }
 
 /// Ensure the symbol index exists and is up-to-date.
-///
-/// When the index is missing (first use per workspace) or stale (source files
-/// changed / schema version bump), a background thread rebuilds it. Called
-/// unconditionally by `grep_files` so the index stays current regardless of
-/// `symbol_index: true|false`.
-fn ensure_symbol_index(workspace: &Path) {
-    let index_dir = workspace.join(".deepseek");
-    let index_path = index_dir.join("symbols.json");
-
-    let index: Option<crate::symbol_index::SymbolIndex> = std::fs::read_to_string(&index_path)
-        .ok()
-        .and_then(|raw| serde_json::from_str(&raw).ok());
-
-    let needs_build = match &index {
-        Some(_idx) => {
-            crate::symbol_index::index_status(workspace) != crate::symbol_index::IndexStatus::Fresh
-        }
-        None => true,
-    };
-
-    if needs_build {
-        let mut building = SYMBOL_INDEX_BUILDING.lock().unwrap();
-        let ws_canonical = workspace
-            .canonicalize()
-            .unwrap_or_else(|_| workspace.to_path_buf());
-        if building.insert(ws_canonical.clone()) {
-            drop(building);
-            let ws = ws_canonical;
-            std::thread::Builder::new()
-                .name("symbol-index".into())
-                .stack_size(8 * 1024 * 1024)
-                .spawn(move || {
-                    let index = crate::symbol_index::build_index(&ws, crate::symbol_index::SymbolVisibility::Public);
-                    let _ = std::fs::create_dir_all(ws.join(".deepseek"));
-                    let _ = std::fs::write(
-                        ws.join(".deepseek").join("symbols.json"),
-                        serde_json::to_string_pretty(&index).unwrap_or_default(),
-                    );
-                    // Write fingerprint cache so the next index_status() can
-                    // skip the full mtime walk.
-                    let fp = crate::symbol_index::compute_fingerprint(&ws);
-                    let _ = std::fs::write(
-                        ws.join(".deepseek").join(".symbols_fingerprint"),
-                        fp,
-                    );
-                    SYMBOL_INDEX_BUILDING.lock().unwrap().remove(&ws);
-                })
-                .ok();
-        }
-    }
-}
 
 /// Query the symbol index for definitions matching `pattern`.
 /// Returns file:line pairs with match_score. Assumes `ensure_symbol_index()`

@@ -6,7 +6,7 @@
 use super::diff_format::make_unified_diff;
 use super::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
-    lsp_diagnostics_for_paths, optional_str, optional_u64, required_str,
+    lsp_diagnostics_for_paths, optional_bool, optional_str, optional_u64, required_str,
 };
 use async_trait::async_trait;
 use regex::Regex;
@@ -1029,6 +1029,78 @@ fn find_match_line_numbers(contents: &str, search: &str, max_results: usize) -> 
     result
 }
 
+fn check_jsx_balance(content: &str) -> Option<String> {
+    let mut brace_depth: i32 = 0;
+    let mut paren_depth: i32 = 0;
+    let mut in_string = false;
+    let mut string_char = ' ';
+    let mut warnings = Vec::new();
+
+    for ch in content.chars() {
+        if in_string {
+            if ch == string_char {
+                in_string = false;
+            }
+            continue;
+        }
+        match ch {
+            '"' | '\'' | '`' => {
+                in_string = true;
+                string_char = ch;
+            }
+            '{' => brace_depth += 1,
+            '}' => {
+                brace_depth -= 1;
+                if brace_depth < 0 {
+                    warnings.push("unmatched closing brace '}'".to_string());
+                    brace_depth = 0;
+                }
+            }
+            '(' => paren_depth += 1,
+            ')' => {
+                paren_depth -= 1;
+                if paren_depth < 0 {
+                    warnings.push("unmatched closing paren ')'".to_string());
+                    paren_depth = 0;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if brace_depth != 0 {
+        warnings.push(format!(
+            "unbalanced braces: {} unclosed '{{'",
+            brace_depth.abs()
+        ));
+    }
+    if paren_depth != 0 {
+        warnings.push(format!(
+            "unbalanced parens: {} unclosed '('",
+            paren_depth.abs()
+        ));
+    }
+
+    if warnings.is_empty() {
+        None
+    } else {
+        Some(warnings.join("; "))
+    }
+}
+
+fn jsx_balance_warning(file_path: &std::path::Path, content: &str) -> String {
+    if matches!(
+        file_path.extension().and_then(|e| e.to_str()),
+        Some("tsx") | Some("jsx")
+    ) {
+        check_jsx_balance(content)
+            .map(|w| format!("\n[JSX_WARNING] {w} — run tsc to verify"))
+            .unwrap_or_default()
+    } else {
+        String::new()
+    }
+}
+
 // === EditFileTool ===
 
 /// Tool for search/replace editing of files.
@@ -1089,6 +1161,10 @@ impl ToolSpec for EditFileTool {
                 "line": {
                     "type": "integer",
                     "description": "[replace_line mode] The line number to replace (1-based)."
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "[delete_lines mode] If true, preview what would be deleted without modifying the file. Returns the lines that would be removed."
                 }
             },
             "required": ["path"]
@@ -1267,16 +1343,22 @@ impl EditFileTool {
             .map(|n| format!("line {n}"))
             .collect();
         let diff = make_unified_diff(&display, &contents, &updated);
+        let total_lines = updated.lines().count();
         let summary = if line_list.is_empty() {
-            format!("Replaced {count} occurrence(s) in {display}")
+            format!("Replaced {count} occurrence(s) in {display} — file now {total_lines} lines")
         } else {
-            format!("Replaced {count} occurrence(s) in {display} ({})", line_list.join(", "))
+            format!(
+                "Replaced {count} occurrence(s) in {display} ({}) — file now {total_lines} lines",
+                line_list.join(", ")
+            )
         };
         let body = if diff.is_empty() {
             format!("{summary}\n(no textual changes)")
         } else {
             format!("{diff}\n{summary}")
         };
+
+        let jsx_warning = jsx_balance_warning(&file_path, &updated);
 
         // Append LSP diagnostics for the edited file when enabled (#428).
         // V1-4: Append compact before/after for small changes (≤5 lines total).
@@ -1288,9 +1370,9 @@ impl EditFileTool {
 
         let diag_block = lsp_diagnostics_for_paths(context, &[file_path]).await;
         let full_body = if diag_block.is_empty() {
-            format!("{body}{compact}")
+            format!("{body}{compact}{jsx_warning}")
         } else {
-            format!("{body}{compact}\n{diag_block}")
+            format!("{body}{compact}{jsx_warning}\n{diag_block}")
         };
 
         Ok(ToolResult::success(full_body))
@@ -1353,6 +1435,7 @@ impl EditFileTool {
         let display = file_path.display().to_string();
         let diff = make_unified_diff(&display, &contents, &updated);
         let inserted_count = text_normalized.lines().count();
+        let total_lines = updated.lines().count();
         let position = if after_line == 0 {
             "beginning of file".to_string()
         } else if after_line == lines.len() {
@@ -1360,14 +1443,18 @@ impl EditFileTool {
         } else {
             format!("after line {after_line}")
         };
-        let summary = format!("Inserted {inserted_count} line(s) at {position} in {display}");
+        let summary = format!(
+            "Inserted {inserted_count} line(s) at {position} in {display} — file now {total_lines} lines"
+        );
         let body = format!("{diff}\n{summary}");
+
+        let jsx_warning = jsx_balance_warning(&file_path, &updated);
 
         let diag_block = lsp_diagnostics_for_paths(context, &[file_path]).await;
         let full_body = if diag_block.is_empty() {
-            body
+            format!("{body}{jsx_warning}")
         } else {
-            format!("{body}\n{diag_block}")
+            format!("{body}{jsx_warning}\n{diag_block}")
         };
         Ok(ToolResult::success(full_body))
     }
@@ -1417,8 +1504,31 @@ impl EditFileTool {
             )));
         }
         let e = end.min(lines.len());
+        let dry_run = optional_bool(input, "dry_run", false);
 
-        let mut new_lines: Vec<String> = Vec::with_capacity(lines.len() - (e - start + 1));
+        let deleted_lines: Vec<&str> = lines[start.saturating_sub(1)..e].to_vec();
+        let deleted_count = e.saturating_sub(start) + 1;
+        let range = if start == e {
+            format!("line {start}")
+        } else {
+            format!("lines {start}–{e}")
+        };
+
+        if dry_run {
+            let deleted_preview = deleted_lines
+                .iter()
+                .enumerate()
+                .map(|(i, l)| format!("  [{:>4}] {}", start + i, l))
+                .collect::<Vec<_>>()
+                .join("\n");
+            return Ok(ToolResult::success(format!(
+                "[DRY_RUN] Would delete {deleted_count} line(s) ({range}) in {}:\n{deleted_preview}\n\
+                To confirm, call delete_lines again with dry_run: false.",
+                file_path.display()
+            )));
+        }
+
+        let mut new_lines: Vec<String> = Vec::with_capacity(lines.len() - deleted_count);
         for l in &lines[..start.saturating_sub(1)] {
             new_lines.push(l.to_string());
         }
@@ -1433,20 +1543,19 @@ impl EditFileTool {
 
         let display = file_path.display().to_string();
         let diff = make_unified_diff(&display, &contents, &updated);
-        let deleted_count = e.saturating_sub(start) + 1;
-        let range = if start == e {
-            format!("line {start}")
-        } else {
-            format!("lines {start}–{e}")
-        };
-        let summary = format!("Deleted {deleted_count} line(s) ({range}) in {display}");
+        let total_lines = updated.lines().count();
+        let summary = format!(
+            "Deleted {deleted_count} line(s) ({range}) in {display} — file now {total_lines} lines"
+        );
         let body = format!("{diff}\n{summary}");
+
+        let jsx_warning = jsx_balance_warning(&file_path, &updated);
 
         let diag_block = lsp_diagnostics_for_paths(context, &[file_path]).await;
         let full_body = if diag_block.is_empty() {
-            body
+            format!("{body}{jsx_warning}")
         } else {
-            format!("{body}\n{diag_block}")
+            format!("{body}{jsx_warning}\n{diag_block}")
         };
         Ok(ToolResult::success(full_body))
     }
@@ -1514,14 +1623,17 @@ impl EditFileTool {
         let display = file_path.display().to_string();
         let diff = make_unified_diff(&display, &contents, &updated);
         let compact = make_compact_change(old_line, &text_normalized);
-        let summary = format!("Replaced line {line} in {display}");
+        let total_lines = updated.lines().count();
+        let summary = format!("Replaced line {line} in {display} — file now {total_lines} lines");
         let body = format!("{diff}\n--- compact ---\n{compact}{summary}");
+
+        let jsx_warning = jsx_balance_warning(&file_path, &updated);
 
         let diag_block = lsp_diagnostics_for_paths(context, &[file_path]).await;
         let full_body = if diag_block.is_empty() {
-            body
+            format!("{body}{jsx_warning}")
         } else {
-            format!("{body}\n{diag_block}")
+            format!("{body}{jsx_warning}\n{diag_block}")
         };
         Ok(ToolResult::success(full_body))
     }

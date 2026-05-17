@@ -389,6 +389,8 @@ interface Props {
   /** Session is bound to a restored runtime thread; workspace commits via PATCH when changed */
   resumedThreadActive?: boolean;
   onOpenModelParams?: () => void;
+  /** Cumulative context usage percentage (undef if no turns have completed). */
+  contextUsagePct?: number;
 }
 
 export default function Composer({
@@ -411,6 +413,7 @@ export default function Composer({
   onWorkspaceChange,
   resumedThreadActive = false,
   onOpenModelParams,
+  contextUsagePct,
 }: Props) {
   const { t } = useT();
   const [text, setText] = useState('');
@@ -1160,6 +1163,15 @@ export default function Composer({
                 </div>
               )}
             </div>
+            {contextUsagePct != null && contextUsagePct > 0 ? (
+              <span
+                className="flex-shrink-0 text-[11px] tabular-nums"
+                style={{ color: contextUsagePct >= 85 ? '#f87171' : contextUsagePct >= 65 ? '#fbbf24' : 'var(--t-text-muted)' }}
+                title={`${contextUsagePct.toFixed(1)}% of 1M context window used`}
+              >
+                {contextUsagePct.toFixed(0)}%
+              </span>
+            ) : null}
             <button
               type="button"
               onClick={() => void handleSend()}

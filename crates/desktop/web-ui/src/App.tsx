@@ -23,7 +23,7 @@ import {
   type SseTurnEvent,
 } from './api/client';
 import { useT } from './i18n';
-import { normalizeDesktopStreamEvent, type NormalizedStreamEvent } from './api/streamNormalize';
+import { normalizeDesktopStreamEvent, type NormalizedStreamEvent, type TurnUsage } from './api/streamNormalize';
 import ChatView from './components/ChatView';
 import Composer, { type ComposerOutboundMessage } from './components/Composer';
 import Sidebar from './components/Sidebar';
@@ -44,6 +44,9 @@ import {
   parseDesktopRunModeId,
   resolveRouteIntentForApi,
 } from './types/desktop';
+
+/** DeepSeek V4 context window in tokens (both Pro and Flash). */
+const V4_CONTEXT_WINDOW_TOKENS = 1_000_000;
 
 /**
  * When `/health` + `/v1/sessions` probe is `connected`, these banners are usually stale:
@@ -260,6 +263,8 @@ export default function App() {
   const [panelPreview, setPanelPreview] = useState<PreviewState | null>(null);
   const [focusWorkspaceFilesNonce, setFocusWorkspaceFilesNonce] = useState(0);
   const [agentStates, setAgentStates] = useState<AgentState[]>([]);
+  /** Cumulative input tokens from turn.completed usage — used for context-fill estimation. */
+  const [cumulativeInputTokens, setCumulativeInputTokens] = useState(0);
   const [modelParamsOpen, setModelParamsOpen] = useState(false);
   const [modelParams, setModelParams] = useState<ModelParams>({ temperature: 0.7, topP: 0.9, maxTokens: 8192 });
   const [desktopHost, setDesktopHost] = useState(false);
@@ -600,6 +605,7 @@ export default function App() {
       setResumedThreadId(null);
       setThreadTrustMode(false);
       setPanelPreview(null);
+      setCumulativeInputTokens(0);
       lastPersistedTurnRef.current = '';
       try {
         const detail = await getSessionDetail(sessionId);
@@ -680,6 +686,7 @@ export default function App() {
     setThreadTrustMode(false);
     setPanelPreview(null);
     setActiveSessionId(null);
+    setCumulativeInputTokens(0);
     try {
       localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
     } catch {
@@ -1026,6 +1033,9 @@ export default function App() {
             finishOnce();
             maybePersistCompletedTurn();
             notifyTurnCompleteIfAway(desktopHost);
+            if (norm.usage) {
+              setCumulativeInputTokens((prev) => prev + norm.usage!.input_tokens);
+            }
             break;
           case 'done':
             finishOnce();
@@ -1317,6 +1327,11 @@ export default function App() {
           onWorkspaceChange={handleComposerWorkspaceChange}
           resumedThreadActive={resumedThreadId != null && resumedThreadId.length > 0}
           onOpenModelParams={() => setModelParamsOpen(true)}
+          contextUsagePct={
+            cumulativeInputTokens > 0
+              ? Math.min(100, (cumulativeInputTokens / V4_CONTEXT_WINDOW_TOKENS) * 100)
+              : undefined
+          }
         />
       </div>
       {/* right panel toggle strip */}

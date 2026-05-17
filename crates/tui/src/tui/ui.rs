@@ -436,6 +436,9 @@ pub async fn run_tui(config: &Config, options: TuiOptions) -> Result<()> {
         let _ = app.execute_hooks(HookEvent::SessionEnd, &context);
     }
 
+    // Persist unsent composer input so it survives a restart.
+    crate::composer_history::save_draft(&app.composer.input);
+
     // Flush the persistence actor: clear checkpoint + graceful shutdown.
     persistence_actor::persist(PersistRequest::ClearCheckpoint);
     persistence_actor::persist(PersistRequest::Shutdown);
@@ -6503,8 +6506,18 @@ fn render_footer_from(
 /// Spans for the "context %" footer chip. Mirrors the header colour ramp so
 /// the two surfaces stay visually consistent when both are enabled.
 fn footer_context_percent_spans(app: &App) -> Vec<Span<'static>> {
-    let Some((_, _, percent)) = context_usage_snapshot(app) else {
-        return Vec::new();
+    let percent = match context_usage_snapshot(app) {
+        Some((_, _, pct)) => pct,
+        None => {
+            // No conversation yet — show 0% so the chip is always
+            // visible when enabled, not silently disappearing on
+            // fresh launch.
+            if context_window_for_model(app.effective_model_for_budget()).is_some() {
+                0.0
+            } else {
+                return Vec::new();
+            }
+        }
     };
     let color = if percent >= 95.0 {
         palette::STATUS_ERROR

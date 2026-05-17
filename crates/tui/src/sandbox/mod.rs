@@ -75,25 +75,26 @@ pub struct CommandSpec {
 }
 
 /// Returns the best-available Windows shell as (program, arg_prefix).
-/// Tries PowerShell first (available on all supported Windows ≥10);
-/// falls back to cmd.exe only when PowerShell is absent.
+/// Tries pwsh (PowerShell 7+) first, then powershell (Windows PowerShell 5.1);
+/// falls back to cmd.exe only when neither PowerShell is available.
 #[cfg(windows)]
 pub(crate) fn windows_shell() -> (&'static str, &'static str) {
     use std::sync::OnceLock;
     static DETECTED: OnceLock<(&'static str, &'static str)> = OnceLock::new();
     *DETECTED.get_or_init(|| {
-        if std::process::Command::new("powershell")
-            .args(["-Command", "exit 0"])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false)
-        {
-            ("powershell", "-Command")
-        } else {
-            ("cmd", "/C")
+        for ps in &["pwsh", "powershell"] {
+            if std::process::Command::new(ps)
+                .args(["-NoProfile", "-NonInteractive", "-Command", "exit 0"])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false)
+            {
+                return (ps, "-Command");
+            }
         }
+        ("cmd", "/C")
     })
 }
 

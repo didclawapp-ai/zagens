@@ -1247,7 +1247,17 @@ impl App {
                 let cursor = text.len();
                 (text, cursor)
             }
-            _ => (String::new(), 0),
+            _ => {
+                // Restore unsent composer draft from the previous
+                // session so closing the app doesn't lose work in
+                // progress.
+                if let Some(draft) = crate::composer_history::load_draft() {
+                    let cursor = draft.len();
+                    (draft, cursor)
+                } else {
+                    (String::new(), 0)
+                }
+            }
         };
         Self {
             mode: initial_mode,
@@ -3422,6 +3432,7 @@ impl App {
         self.history_index = None;
         self.history_navigation_draft = None;
         self.clear_input();
+        crate::composer_history::clear_draft();
         Some(input)
     }
 

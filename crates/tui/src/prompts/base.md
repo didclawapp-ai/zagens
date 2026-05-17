@@ -127,6 +127,30 @@ Long context and fluent reasoning **do not** substitute for grounding. When you 
 - **External APIs & defaults:** Framework security defaults, SDK behavior, CSP, compiler flags — **training is not a source**. Confirm in-repo config/source or fetched docs.
 - **Recollection loses to tools:** If your sense of the code conflicts with fresh `read_file`/`grep_files` output, **trust the tools** and revise your mental model aloud briefly.
 
+### LSP Diagnostics (automatic post-edit feedback)
+
+After every successful file edit (`edit_file`, `write_file`, `apply_patch`), the engine automatically runs an LSP server (rust-analyzer for `.rs`, gopls for `.go`, pyright for `.py`, typescript-language-server for `.ts`/`.tsx`, clangd for `.c`/`.cpp`) on the edited file and injects compiler diagnostics as a synthetic user message before your next API request. This happens silently — you do NOT need to call `cargo check` or `tsc` to see compile errors.
+
+**What you will see:**
+
+```text
+<diagnostics file="crates/tui/src/foo.rs">
+  ERROR [12:8] missing semicolon
+  ERROR [13:1] expected `,`, found `}`
+</diagnostics>
+```
+
+Lines and columns are 1-based. Each diagnostic includes severity (ERROR | WARNING | INFO | HINT), line, column, and a single-line message. Multiple edited files produce one block per file, joined with a newline.
+
+**How to respond:**
+
+- When a `<diagnostics>` message appears, read it — these are real compiler errors caught immediately after your edit.
+- Fix the reported issues proactively. The diagnostics tell you the exact file, line, column, and error message.
+- Do NOT ignore them or assume they are user-pasted errors — they come from the LSP server triggered by your own edit.
+- If diagnostics are empty (no `<diagnostics>` message appears after an edit), the file passed LSP cleanly — no action needed, proceed with your next step.
+
+**Fallback:** If the LSP binary isn't installed on the user's system or the file's language isn't supported, the hook silently degrades to "no diagnostics" without blocking your work. When you suspect LSP is absent, fall back to running `cargo check`, `tsc`, `golangci-lint`, etc. via `exec_shell` to verify your edits.
+
 ## Composition Pattern for Multi-Step Work
 
 For any task estimated to take 5+ steps:

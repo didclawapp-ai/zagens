@@ -207,6 +207,29 @@ export default function RightPanel({
 
   const runtimeOk = runtimeConn === 'connected';
 
+
+  // ---- context menu ----------------------------------------------------------
+  interface CtxEntry { absPath: string; relPath: string; name: string; kind: 'file'|'directory'; x: number; y: number; }
+  const [ctxMenu, setCtxMenu] = useState<CtxEntry | null>(null);
+
+  const sysOpenExts = useMemo(()=>new Set(['pdf','png','jpg','jpeg','gif','svg','webp','bmp','ico','xlsx','xls','docx','doc','pptx','ppt','zip','rar','7z','tar','gz']),[]);
+
+  const absPath = useCallback((rel:string)=>{
+    const base=(browseWorkspace??workspaceRoot).replace(/[\\/]+$/,'');
+    const sep=base.includes('\\')?'\\':'/';
+    return `${base}${sep}${rel}`;
+  },[browseWorkspace,workspaceRoot]);
+
+  const ctxCopyAbs=useCallback(async()=>{if(!ctxMenu)return;try{await navigator.clipboard.writeText(ctxMenu.absPath);}catch{}setCtxMenu(null);},[ctxMenu]);
+  const ctxCopyRel=useCallback(async()=>{if(!ctxMenu)return;try{await navigator.clipboard.writeText(ctxMenu.relPath);}catch{}setCtxMenu(null);},[ctxMenu]);
+  const ctxOpenExplorer=useCallback(async()=>{if(!ctxMenu)return;const t=ctxMenu.kind==='directory'?ctxMenu.absPath:ctxMenu.absPath.replace(/[\\/][^\\/]+$/,'');try{const{invoke}=await import('@tauri-apps/api/core');await invoke('open_in_shell',{path:t});}catch{}setCtxMenu(null);},[ctxMenu]);
+  const ctxSystemOpen=useCallback(async()=>{if(!ctxMenu)return;try{const{invoke}=await import('@tauri-apps/api/core');await invoke('open_with_system_app',{path:ctxMenu.absPath});}catch{}setCtxMenu(null);},[ctxMenu]);
+  const ctxAddConv=useCallback(async()=>{if(!ctxMenu)return;try{await openWorkspaceFile(ctxMenu.relPath||ctxMenu.name,ctxMenu.name);}catch(e){const err=e as Error&{status?:number};setBrowseError(err.message??String(e));}setCtxMenu(null);},[ctxMenu,openWorkspaceFile]);
+
+  useEffect(()=>{if(!ctxMenu)return;const c=()=>setCtxMenu(null);window.addEventListener('click',c,{once:true});return()=>window.removeEventListener('click',c);},[ctxMenu]);
+
+  const canSysOpen=(name:string)=>sysOpenExts.has((name.split('.').pop()??'').toLowerCase());
+
   useEffect(() => {
     try {
       sessionStorage.setItem(WORKSPACE_TAB_KEY, workspaceTab);
@@ -733,7 +756,7 @@ export default function RightPanel({
                           </p>
                         )}
                         {canBrowseComposerFiles && !browseLoading && (
-                          <ul className="space-y-0.5">
+                          <><ul className="space-y-0.5">
                             {browseEntries.map((ent) => {
                               const rel = joinRel(browseRelPath, ent.name);
                               const isDir = ent.kind === 'directory';
@@ -744,6 +767,7 @@ export default function RightPanel({
                                       type="button"
                                       className="w-full text-left rounded-md px-2 py-1.5 text-xs text-t-text hover:bg-hover flex items-center gap-2"
                                       onClick={() => setBrowseRelPath(rel)}
+                                      onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ absPath: absPath(rel), relPath: rel, name: ent.name, kind: 'directory', x: Math.min(e.clientX, window.innerWidth - 180), y: e.clientY }); }}
                                     >
                                       <span className="text-t-text-muted">▸</span>
                                       <span className="font-medium truncate">{ent.name}</span>
@@ -753,6 +777,7 @@ export default function RightPanel({
                                       type="button"
                                       className="w-full text-left rounded-md px-2 py-1.5 text-xs text-t-text hover:bg-hover flex items-center gap-2"
                                       onClick={() => void onOpenFileFromTree(rel, ent.name)}
+                                      onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ absPath: absPath(rel), relPath: rel, name: ent.name, kind: 'file', x: Math.min(e.clientX, window.innerWidth - 180), y: e.clientY }); }}
                                     >
                                       <span className="text-t-text-muted">◇</span>
                                       <span className="truncate">{ent.name}</span>
@@ -769,7 +794,35 @@ export default function RightPanel({
                               );
                             })}
                           </ul>
-                        )}
+                          {ctxMenu && (
+                            <div
+                              className="fixed z-50 min-w-[180px] rounded-lg border border-divider bg-canvas py-1 shadow-lg"
+                              style={{ left: `${ctxMenu.x}px`, top: `${ctxMenu.y}px` }}
+                            >
+                              <div className="px-3 py-1.5 text-[11px] font-medium text-t-text-muted truncate border-b border-divider" title={ctxMenu.name}>
+                                {ctxMenu.name}
+                              </div>
+                              <button className="w-full text-left px-3 py-1.5 text-xs text-t-text hover:bg-hover transition-colors" onClick={ctxCopyAbs}>
+                                复制路径
+                              </button>
+                              <button className="w-full text-left px-3 py-1.5 text-xs text-t-text hover:bg-hover transition-colors" onClick={ctxCopyRel}>
+                                复制相对路径
+                              </button>
+                              <button className="w-full text-left px-3 py-1.5 text-xs text-t-text hover:bg-hover transition-colors" onClick={ctxAddConv}>
+                                添加至对话
+                              </button>
+                              <div className="border-t border-divider my-0.5" />
+                              <button className="w-full text-left px-3 py-1.5 text-xs text-t-text hover:bg-hover transition-colors" onClick={ctxOpenExplorer}>
+                                在文件资源管理器打开
+                              </button>
+                              {ctxMenu.kind === 'file' && canSysOpen(ctxMenu.name) && (
+                                <button className="w-full text-left px-3 py-1.5 text-xs text-t-text hover:bg-hover transition-colors" onClick={ctxSystemOpen}>
+                                  用系统应用打开
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </>)}
                         {canBrowseComposerFiles &&
                           browseEntries.length === 0 &&
                           !browseLoading &&

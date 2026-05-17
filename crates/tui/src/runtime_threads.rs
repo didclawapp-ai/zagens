@@ -1270,6 +1270,12 @@ impl RuntimeThreadManager {
                 fs::canonicalize(&thread.workspace).unwrap_or_else(|_| thread.workspace.clone());
             if new_ws != old_canonical {
                 thread.workspace = new_ws;
+                // Trigger a background symbol index rebuild so the first
+                // grep_files call on the new workspace can use it immediately.
+                let rebuild_ws = thread.workspace.clone();
+                tokio::task::spawn_blocking(move || {
+                    crate::symbol_index::ensure_symbol_index(&rebuild_ws);
+                });
                 eviction_needed = true;
                 changes.insert(
                     "workspace".to_string(),

@@ -811,6 +811,80 @@ pub fn open_in_shell(path: String) -> Result<(), String> {
 // export_thread_json — fetches thread from runtime and writes to a file
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// open_with_system_app — opens a file with the system default application
+// ---------------------------------------------------------------------------
+
+/// File extensions that should be opened with the system app rather than
+/// the built-in text viewer.  Matched case-insensitively.
+fn is_system_openable(ext_lower: &str) -> bool {
+    matches!(
+        ext_lower,
+        "pdf"
+            | "png"
+            | "jpg"
+            | "jpeg"
+            | "gif"
+            | "svg"
+            | "webp"
+            | "bmp"
+            | "ico"
+            | "xlsx"
+            | "xls"
+            | "docx"
+            | "doc"
+            | "pptx"
+            | "ppt"
+            | "zip"
+            | "rar"
+            | "7z"
+            | "tar"
+            | "gz"
+    )
+}
+
+#[tauri::command]
+pub fn open_with_system_app(path: String) -> Result<(), String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("empty path".into());
+    }
+    let ext = std::path::Path::new(trimmed)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    if !is_system_openable(&ext) {
+        return Err(format!(
+            "不支持用系统应用打开 .{ext} 文件；仅支持 PDF、图片、Office 文档等格式"
+        ));
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", trimmed])
+            .spawn()
+            .map_err(|e| format!("无法打开文件: {e}"))?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(trimmed)
+            .spawn()
+            .map_err(|e| format!("无法打开文件: {e}"))?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(trimmed)
+            .spawn()
+            .map_err(|e| format!("无法打开文件: {e}"))?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn export_thread_json(
     thread_id: String,

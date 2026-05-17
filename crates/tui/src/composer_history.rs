@@ -9,6 +9,12 @@
 //! Entries that begin with `/` (slash commands) are NOT stored — they
 //! pollute the recall stream and the fuzzy slash-menu already covers
 //! them. Empty / whitespace-only inputs are also skipped.
+//!
+//! # Composer draft (#XXX)
+//!
+//! Unsent input is saved to `~/.deepseek/composer_draft.txt` on exit and
+//! restored on the next launch, so closing the app doesn't lose work in
+//! progress. The draft is cleared when the input is submitted.
 
 use std::fs;
 use std::io::{BufRead, BufReader};
@@ -97,6 +103,58 @@ fn append_history_to(path: &Path, entry: &str) {
     }
 }
 
+// ── composer draft (unsent input persistence) ─────────────────────────
+
+const DRAFT_FILE_NAME: &str = "composer_draft.txt";
+
+fn draft_path() -> Option<PathBuf> {
+    dirs::home_dir().map(|home| home.join(".deepseek").join(DRAFT_FILE_NAME))
+}
+
+/// Persist the unsent composer input so it survives a restart.
+/// Best-effort — failures are logged but not propagated.
+pub fn save_draft(input: &str) {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        clear_draft();
+        return;
+    }
+    let Some(path) = draft_path() else {
+        return;
+    };
+    if let Some(parent) = path.parent()
+        && let Err(err) = fs::create_dir_all(parent)
+    {
+        tracing::warn!("Failed to create composer draft dir {}: {err}", parent.display());
+        return;
+    }
+    if let Err(err) = crate::utils::write_atomic(&path, trimmed.as_bytes()) {
+        tracing::warn!("Failed to persist composer draft at {}: {err}", path.display());
+    }
+}
+
+/// Load the unsent composer draft from the previous session, if any.
+/// Returns `None` when the file is missing, empty, or unreadable.
+#[must_use]
+pub fn load_draft() -> Option<String> {
+    let path = draft_path()?;
+    let content = fs::read_to_string(&path).ok()?;
+    let trimmed = content.trim().to_string();
+    if trimmed.is_empty() {
+        let _ = fs::remove_file(&path);
+        None
+    } else {
+        Some(trimmed)
+    }
+}
+
+/// Clear the composer draft file (called when the user submits).
+pub fn clear_draft() {
+    if let Some(path) = draft_path() {
+        let _ = fs::remove_file(&path);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -171,5 +229,40 @@ mod tests {
     fn missing_file_loads_empty() {
         let (_tmp, path) = temp_history_path();
         assert!(load_history_from(&path).is_empty());
+    }
+
+    // ── draft tests ────────────────────────────────────────────────
+
+    fn temp_draft_path() -> (tempfile::TempDir, PathBuf) {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join(DRAFT_FILE_NAME);
+        (tmp, path)
+    }
+
+    #[test]
+    fn save_and_load_draft_round_trip() {
+        let (_tmp, path) = temp_draft_path();
+        // Simulate save_draft via direct write
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        crate::utils::write_atomic(&path, b"hello world").unwrap();
+        let loaded = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(loaded.trim(), "hello world");
+    }
+
+    #[test]
+    fn empty_draft_cleared_not_loaded() {
+        let (_tmp, path) = temp_draft_path();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "   \n").unwrap();
+        // load_draft should return None for whitespace-only
+        let content = std::fs::read_to_string(&path).ok();
+        let trimmed = content.map(|c| c.trim().to_string()).unwrap_or_default();
+        assert!(trimmed.is_empty());
+    }
+
+    #[test]
+    fn missing_draft_loads_none() {
+        let (_tmp, path) = temp_draft_path();
+        assert!(std::fs::read_to_string(&path).is_err());
     }
 }

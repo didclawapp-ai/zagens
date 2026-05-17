@@ -477,19 +477,33 @@ pub fn index_status(workspace: &Path) -> IndexStatus {
     IndexStatus::Fresh
 }
 
-// ── Warmup ─────────────────────────────────────────────────────
-
-/// Call at startup (e.g. `serve --http`) to build the index in the
-/// background if it's missing or stale. Non-blocking — returns
-/// immediately; the build runs on a dedicated thread.
-///
+/// Build or refresh the symbol index in the background if it's missing or stale.
+/// Non-blocking — spawns a background thread and returns immediately.
 /// Idempotent: only one build runs per workspace at a time.
-pub fn warmup_if_needed(workspace: &Path) {
+///
+/// Called from two places:
+/// - `grep_files` tool (on-demand, before the first symbol lookup)
+/// - `update_thread` (when workspace is changed by DS Pick or other clients)
+pub fn ensure_symbol_index(workspace: &Path) {
     use std::collections::HashSet;
     use std::sync::{LazyLock, Mutex};
 
     static BUILDING: LazyLock<Mutex<HashSet<PathBuf>>> =
         LazyLock::new(|| Mutex::new(HashSet::new()));
+
+    let index_path = workspace.join(".deepseek").join("symbols.json");
+    let index: Option<SymbolIndex> = std::fs::read_to_string(&index_path)
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok());
+
+    let needs_build = match &index {
+        Some(_idx) => index_status(workspace) != IndexStatus::Fresh,
+        None => true,
+    };
+
+    if !needs_build {
+        return;
+    }
 
     let ws_canonical = workspace
         .canonicalize()
@@ -504,23 +518,15 @@ pub fn warmup_if_needed(workspace: &Path) {
 
     let ws = ws_canonical;
     std::thread::Builder::new()
-        .name("symbol-index-warmup".into())
+        .name("symbol-index".into())
         .stack_size(8 * 1024 * 1024)
         .spawn(move || {
-            // Check freshness inside the thread so the caller
-            // (e.g. serve --http) never blocks on index_status().
-            if index_status(&ws) == IndexStatus::Fresh {
-                BUILDING.lock().unwrap().remove(&ws);
-                return;
-            }
             let index = build_index(&ws, SymbolVisibility::Public);
             let _ = std::fs::create_dir_all(ws.join(".deepseek"));
             let _ = std::fs::write(
                 ws.join(".deepseek").join("symbols.json"),
                 serde_json::to_string_pretty(&index).unwrap_or_default(),
             );
-            // Write fingerprint cache so the next index_status() can
-            // skip the full mtime walk.
             let fp = compute_fingerprint(&ws);
             let _ = std::fs::write(
                 ws.join(".deepseek").join(".symbols_fingerprint"),
@@ -531,7 +537,6 @@ pub fn warmup_if_needed(workspace: &Path) {
         .ok();
 }
 
-// ── Query ─────────────────────────────────────────────────────
 
 /// Query the index for a symbol name with configurable match mode
 /// and optional kind filter.
