@@ -252,7 +252,7 @@ export default function Sidebar({
 /*  Settings accordion: expands sub-nav items below the 设置 toggle   */
 /* ------------------------------------------------------------------ */
 
-type SettingsTab = 'api-key' | 'mcp' | 'usage' | 'tasks-skills' | 'agents' | 'routing' | 'system';
+type SettingsTab = 'api-key' | 'mcp' | 'usage' | 'tasks-skills' | 'agents' | 'routing' | 'system' | 'index';
 
 function subNavBtn(active: boolean) {
   return `w-full text-left pl-7 pr-3 py-2 rounded-lg text-xs transition-colors ${
@@ -287,6 +287,7 @@ function SettingsAccordion({
     { tab: 'tasks-skills', label: '任务与技能', show: true },
     { tab: 'agents', label: '子代理', show: true },
     { tab: 'routing', label: '模型路由', show: true },
+    { tab: 'index', label: '索引', show: true },
     { tab: 'system', label: '系统设置', show: true },
   ];
 
@@ -295,7 +296,7 @@ function SettingsAccordion({
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className={navBtn(activeInspector === 'settings' || isSubActive('api-key') || isSubActive('mcp') || isSubActive('usage') || isSubActive('tasks-skills') || isSubActive('agents') || isSubActive('routing') || isSubActive('system'))}
+        className={navBtn(activeInspector === 'settings' || subItems.some(({ tab }) => isSubActive(tab)))}
       >
         <svg viewBox="0 0 24 24" className="inline w-4 h-4 mr-2 stroke-current align-text-bottom" style={{ fill: 'none', strokeWidth: 1.6 }}>
           <path d="M4 14l4-4 4 4 8-8" />

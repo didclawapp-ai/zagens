@@ -48,6 +48,27 @@ import {
 /** DeepSeek V4 context window in tokens (both Pro and Flash). */
 const V4_CONTEXT_WINDOW_TOKENS = 1_000_000;
 
+/** Rough token estimate: ~1 token per 4 ASCII chars, ~1 per 1.5 CJK chars. */
+function estimateTokens(text: string): number {
+  let cjk = 0;
+  let ascii = 0;
+  for (const ch of text) {
+    const code = ch.charCodeAt(0);
+    if (
+      (code >= 0x4E00 && code <= 0x9FFF) ||
+      (code >= 0x3400 && code <= 0x4DBF) ||
+      (code >= 0x3000 && code <= 0x303F) ||
+      (code >= 0xFF00 && code <= 0xFFEF) ||
+      (code >= 0x2E80 && code <= 0x2FDF)
+    ) {
+      cjk++;
+    } else {
+      ascii++;
+    }
+  }
+  return Math.ceil(cjk / 1.3 + ascii / 4);
+}
+
 /**
  * When `/health` + `/v1/sessions` probe is `connected`, these banners are usually stale:
  * the failure was a transient fetch or a race before the sidecar finished starting.
@@ -265,6 +286,8 @@ export default function App() {
   const [agentStates, setAgentStates] = useState<AgentState[]>([]);
   /** Cumulative input tokens from turn.completed usage — used for context-fill estimation. */
   const [cumulativeInputTokens, setCumulativeInputTokens] = useState(0);
+  /** Estimated tokens for the current in-flight turn (set at send, cleared at turn_completed). */
+  const [estimatedPendingTokens, setEstimatedPendingTokens] = useState(0);
   const [modelParamsOpen, setModelParamsOpen] = useState(false);
   const [modelParams, setModelParams] = useState<ModelParams>({ temperature: 0.7, topP: 0.9, maxTokens: 8192 });
   const [desktopHost, setDesktopHost] = useState(false);
@@ -606,6 +629,7 @@ export default function App() {
       setThreadTrustMode(false);
       setPanelPreview(null);
       setCumulativeInputTokens(0);
+      setEstimatedPendingTokens(0);
       lastPersistedTurnRef.current = '';
       try {
         const detail = await getSessionDetail(sessionId);
@@ -687,6 +711,7 @@ export default function App() {
     setPanelPreview(null);
     setActiveSessionId(null);
     setCumulativeInputTokens(0);
+    setEstimatedPendingTokens(0);
     try {
       localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
     } catch {
@@ -717,6 +742,7 @@ export default function App() {
 
   const handleCancelStream = useCallback(() => {
     eventAbortRef.current?.abort();
+    setEstimatedPendingTokens(0);
   }, []);
 
   const handleComposerWorkspaceChange = useCallback(
@@ -871,6 +897,7 @@ export default function App() {
 
       setStreaming(true);
       setBanner(null);
+      setEstimatedPendingTokens(estimateTokens(outbound.apiPrompt));
 
       void (async () => {
       const ctx = {
@@ -1036,14 +1063,17 @@ export default function App() {
             if (norm.usage) {
               setCumulativeInputTokens((prev) => prev + norm.usage!.input_tokens);
             }
+            setEstimatedPendingTokens(0);
             break;
           case 'done':
             finishOnce();
             maybePersistCompletedTurn();
             notifyTurnCompleteIfAway(desktopHost);
+            setEstimatedPendingTokens(0);
             break;
           case 'error':
             finishOnce();
+            setEstimatedPendingTokens(0);
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === assistantId
@@ -1146,6 +1176,7 @@ export default function App() {
           const detail = await getThreadDetail(resumedThreadId);
           if (signal.aborted) {
             finishOnce();
+            setEstimatedPendingTokens(0);
             return;
           }
           const sinceSeq = detail.latest_seq ?? 0;
@@ -1160,6 +1191,7 @@ export default function App() {
           });
           if (signal.aborted) {
             finishOnce();
+            setEstimatedPendingTokens(0);
             return;
           }
           const turnId = turn.id;
@@ -1196,9 +1228,11 @@ export default function App() {
       } catch (e) {
         if ((e as Error).name === 'AbortError') {
           finishOnce();
+          setEstimatedPendingTokens(0);
           return;
         }
         handleHttpError(e as Error & { status?: number });
+        setEstimatedPendingTokens(0);
       }
       })();
     },
@@ -1328,9 +1362,7 @@ export default function App() {
           resumedThreadActive={resumedThreadId != null && resumedThreadId.length > 0}
           onOpenModelParams={() => setModelParamsOpen(true)}
           contextUsagePct={
-            cumulativeInputTokens > 0
-              ? Math.min(100, (cumulativeInputTokens / V4_CONTEXT_WINDOW_TOKENS) * 100)
-              : undefined
+            Math.min(100, ((cumulativeInputTokens + estimatedPendingTokens) / V4_CONTEXT_WINDOW_TOKENS) * 100)
           }
         />
       </div>

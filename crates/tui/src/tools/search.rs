@@ -322,6 +322,32 @@ impl ToolSpec for GrepFilesTool {
                 }
             }
         }
+        // Attach Tauri bridge pairs when the pattern matches a command name.
+        if symbol_index_enabled {
+            let idx_path = context.workspace.join(".deepseek").join("symbols.json");
+            if let Ok(raw) = std::fs::read_to_string(&idx_path) {
+                if let Ok(idx) = serde_json::from_str::<crate::symbol_index::SymbolIndex>(&raw) {
+                    let cleaned = pattern_str
+                        .replace(['.', '*', '+', '?', '(', ')', '[', ']', '{', '}', '^', '$', '|', '\\'], " ");
+                    let terms: Vec<&str> = cleaned.split_whitespace().collect();
+                    let matched_pairs: Vec<serde_json::Value> = idx.bridge_pairs
+                        .iter()
+                        .filter(|bp| terms.iter().any(|t| bp.command.to_lowercase().contains(&t.to_lowercase())))
+                        .map(|bp| json!({
+                            "command": bp.command,
+                            "rust": {"file": bp.rust_file, "line": bp.rust_line},
+                            "ts": {"file": bp.ts_file, "line": bp.ts_line},
+                        }))
+                        .collect();
+                    if !matched_pairs.is_empty() {
+                        extra.insert(
+                            "symbol_index_bridge_pairs".into(),
+                            serde_json::Value::Array(matched_pairs),
+                        );
+                    }
+                }
+            }
+        }
         let mut result_map = serde_json::Map::from_iter(vec![
             ("matches".into(), serde_json::json!(results)),
             ("total_matches".into(), serde_json::json!(total_matches)),

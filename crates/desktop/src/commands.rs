@@ -1227,6 +1227,135 @@ pub async fn rebuild_symbol_index(
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// symbol index management — inspect/manage the workspace symbol index
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+pub struct SymbolIndexInfo {
+    pub status: String,
+    pub path: String,
+    pub dir: String,
+    pub size_bytes: u64,
+    pub schema_version: u32,
+    pub file_count: usize,
+    pub symbol_count: usize,
+}
+
+#[tauri::command]
+pub fn get_symbol_index_info(workspace: String) -> Result<SymbolIndexInfo, String> {
+    let ws = PathBuf::from(workspace.trim());
+    if !ws.is_dir() {
+        return Err("工作区路径不存在".to_string());
+    }
+    let deepseek_dir = ws.join(".deepseek");
+    let index_path = deepseek_dir.join("symbols.json");
+
+    if !index_path.exists() {
+        return Ok(SymbolIndexInfo {
+            status: "missing".to_string(),
+            path: index_path.to_string_lossy().to_string(),
+            dir: deepseek_dir.to_string_lossy().to_string(),
+            size_bytes: 0,
+            schema_version: 0,
+            file_count: 0,
+            symbol_count: 0,
+        });
+    }
+
+    let meta = std::fs::metadata(&index_path).map_err(|e| format!("无法读取索引文件: {e}"))?;
+    let size_bytes = meta.len();
+    let raw = std::fs::read_to_string(&index_path).map_err(|e| format!("无法读取索引内容: {e}"))?;
+
+    let index: serde_json::Value =
+        serde_json::from_str(&raw).map_err(|e| format!("索引 JSON 解析失败: {e}"))?;
+
+    let schema_version = index.get("schema_version").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+    let file_count = index
+        .get("files")
+        .and_then(|v| v.as_object())
+        .map(|o| o.len())
+        .unwrap_or(0);
+    let symbol_count: usize = index
+        .get("files")
+        .and_then(|v| v.as_object())
+        .map(|files| {
+            files
+                .values()
+                .filter_map(|f| f.get("symbols").and_then(|s| s.as_array()))
+                .map(|s| s.len())
+                .sum()
+        })
+        .unwrap_or(0);
+
+    // Check freshness: compare index mtime against source files.
+    let status = {
+        let idx_mtime = meta
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let mut stale = false;
+        for dir_name in &["crates", "src"] {
+            let d = ws.join(dir_name);
+            if !d.is_dir() { continue; }
+            let walker = WalkBuilder::new(&d).max_depth(Some(4)).build();
+            for entry in walker.filter_map(|e| e.ok()) {
+                if entry.file_type().is_some_and(|ft| ft.is_file()) {
+                    let ext = entry.path().extension().and_then(|e| e.to_str()).unwrap_or("");
+                    if matches!(ext, "rs" | "ts" | "tsx") {
+                        if let Ok(mt) = entry.metadata() {
+                            if let Some(secs) = mt.modified()
+                                .ok()
+                                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                            {
+                                if secs.as_secs() > idx_mtime {
+                                    stale = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if stale { break; }
+        }
+        if stale { "stale" } else { "fresh" }
+    };
+
+    Ok(SymbolIndexInfo {
+        status: status.to_string(),
+        path: index_path.to_string_lossy().to_string(),
+        dir: deepseek_dir.to_string_lossy().to_string(),
+        size_bytes,
+        schema_version,
+        file_count,
+        symbol_count,
+    })
+}
+
+#[tauri::command]
+pub fn delete_symbol_index(workspace: String) -> Result<(), String> {
+    let ws = PathBuf::from(workspace.trim());
+    if !ws.is_dir() {
+        return Err("工作区路径不存在".to_string());
+    }
+    let index_path = ws.join(".deepseek").join("symbols.json");
+    if index_path.exists() {
+        std::fs::remove_file(&index_path).map_err(|e| format!("删除索引文件失败: {e}"))?;
+    }
+    let fp_path = ws.join(".deepseek").join(".symbols_fingerprint");
+    if fp_path.exists() {
+        let _ = std::fs::remove_file(&fp_path);
+    }
+    let changes_path = ws.join(".deepseek").join(".symbols_changes.json");
+    if changes_path.exists() {
+        let _ = std::fs::remove_file(&changes_path);
+    }
+    Ok(())
+}
+
 /// Percent-encode a string for use in URL query parameters.
 fn urlencoding(s: &str) -> String {
     let mut out = String::with_capacity(s.len());

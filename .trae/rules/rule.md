@@ -1,3 +1,7 @@
+---
+alwaysApply: false
+description: 
+---
 # Project rules (portable copy)
 
 This document consolidates the same guidance as [`.cursor/rules/*.mdc`](.cursor/rules/) so you can paste or attach it in **other IDEs, CI, or chat tools**. The `.mdc` files remain the **Cursor-native** source (with `alwaysApply` / `globs`); when they diverge, **update both** in the same change.

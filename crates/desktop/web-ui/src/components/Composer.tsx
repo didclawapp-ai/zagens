@@ -389,8 +389,8 @@ interface Props {
   /** Session is bound to a restored runtime thread; workspace commits via PATCH when changed */
   resumedThreadActive?: boolean;
   onOpenModelParams?: () => void;
-  /** Cumulative context usage percentage (undef if no turns have completed). */
-  contextUsagePct?: number;
+  /** Cumulative context usage percentage. Always provided (0% if no turns yet). */
+  contextUsagePct: number;
 }
 
 export default function Composer({
@@ -1163,13 +1163,13 @@ export default function Composer({
                 </div>
               )}
             </div>
-            {contextUsagePct != null && contextUsagePct > 0 ? (
+            {contextUsagePct != null ? (
               <span
                 className="flex-shrink-0 text-[11px] tabular-nums"
-                style={{ color: contextUsagePct >= 85 ? '#f87171' : contextUsagePct >= 65 ? '#fbbf24' : 'var(--t-text-muted)' }}
-                title={`${contextUsagePct.toFixed(1)}% of 1M context window used`}
+                style={{ color: contextUsagePct >= 85 ? '#f87171' : contextUsagePct >= 65 ? '#fbbf24' : contextUsagePct >= 45 ? 'var(--t-text-secondary)' : 'var(--t-text-muted)' }}
+                title={`${contextUsagePct.toFixed(1)}% of ${model === 'deepseek-v4-pro' ? '1M' : '1M'} context window (~${Math.round(contextUsagePct / 100 * 1000000).toLocaleString()} tokens)${disabled && contextUsagePct > 0 ? '\\nIncludes estimated tokens for current turn' : ''}`}
               >
-                {contextUsagePct.toFixed(0)}%
+                {disabled && contextUsagePct > 0 ? '~' : ''}{contextUsagePct.toFixed(1)}%
               </span>
             ) : null}
             <button

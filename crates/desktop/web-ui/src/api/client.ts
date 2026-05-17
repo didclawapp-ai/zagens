@@ -814,3 +814,25 @@ export async function saveSystemSettings(settings: SystemSettings): Promise<void
   const { invoke } = await import('@tauri-apps/api/core');
   await invoke('save_system_settings', { settings });
 }
+
+// ========== Symbol Index Management ==========
+
+export interface SymbolIndexInfo {
+  status: string;
+  path: string;
+  dir: string;
+  size_bytes: number;
+  schema_version: number;
+  file_count: number;
+  symbol_count: number;
+}
+
+export async function fetchSymbolIndexInfo(workspace: string): Promise<SymbolIndexInfo> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  return invoke<SymbolIndexInfo>('get_symbol_index_info', { workspace });
+}
+
+export async function deleteSymbolIndex(workspace: string): Promise<void> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  await invoke('delete_symbol_index', { workspace });
+}

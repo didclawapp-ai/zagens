@@ -220,6 +220,36 @@ fn format_implementer_changes(board: &Value) -> Option<String> {
             lines.push(format!("- `{file}` — {intent}"));
         }
     }
+    // Append factual symbol index change record (not model-narrated).
+    if let Some(round) = rounds.last() {
+        if let Some(sc) = round.get("symbol_changes") {
+            if !sc.is_null() {
+                lines.push(String::new());
+                lines.push("### Symbol index changes (factual)".to_string());
+                if let Some(added) = sc.get("added").and_then(|v| v.as_array()) {
+                    for a in added {
+                        if let Some(s) = a.as_str() {
+                            lines.push(format!("- added: `{s}`"));
+                        }
+                    }
+                }
+                if let Some(removed) = sc.get("removed").and_then(|v| v.as_array()) {
+                    for r in removed {
+                        if let Some(s) = r.as_str() {
+                            lines.push(format!("- removed: `{s}`"));
+                        }
+                    }
+                }
+                if let Some(modified) = sc.get("modified").and_then(|v| v.as_array()) {
+                    for m in modified {
+                        if let Some(s) = m.as_str() {
+                            lines.push(format!("- modified: `{s}`"));
+                        }
+                    }
+                }
+            }
+        }
+    }
     Some(lines.join("\n"))
 }
 
@@ -507,14 +537,25 @@ fn build_implementer_rounds(result: &SubAgentResult, existing_raw: &str) -> Valu
 
     let round_num = existing_rounds.len() + 1;
     let changes = extract_changes_from_result(result);
+    let symbol_changes = read_symbol_changes();
 
     let new_round = json!({
         "round": round_num,
         "changes": changes,
+        "symbol_changes": symbol_changes,
     });
 
     existing_rounds.push(new_round);
     json!(existing_rounds)
+}
+
+fn read_symbol_changes() -> Value {
+    let ws = workspace_root().unwrap_or_else(|| PathBuf::from("."));
+    let path = ws.join(".deepseek").join(".symbols_changes.json");
+    std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or(json!(null))
 }
 
 fn extract_changes_from_result(result: &SubAgentResult) -> Value {

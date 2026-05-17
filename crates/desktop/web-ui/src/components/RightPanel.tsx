@@ -9,6 +9,7 @@ import RoutingPanel from './RoutingPanel';
 import ChecklistPanel from './ChecklistPanel';
 import MermaidPanel from './MermaidPanel';
 import SettingsPanel from './SettingsPanel';
+import IndexPanel from './IndexPanel';
 import type { AgentState } from '../types/agent';
 import {
   PreviewContainer,
@@ -34,6 +35,7 @@ export type RightPanelView =
   | 'tasks-skills'
   | 'agents'
   | 'routing'
+  | 'index'
   | 'checklist'
   | 'mermaid';
 
@@ -109,6 +111,7 @@ const panelTitles: Record<RightPanelView, string> = {
   'tasks-skills': '任务与技能',
   agents: '子代理',
   routing: '模型路由',
+  index: '索引',
   checklist: 'Checklist',
   mermaid: 'Mermaid 图表',
 };
@@ -198,6 +201,8 @@ export default function RightPanel({
   const [snapError, setSnapError] = useState<string | null>(null);
   const [restoreBusy, setRestoreBusy] = useState<number | null>(null);
   const [restoreMessage, setRestoreMessage] = useState<string | null>(null);
+
+  const [rebuildingIndex, setRebuildingIndex] = useState(false);
 
   const [pickRulesBody, setPickRulesBody] = useState('');
   const [pickRulesLoading, setPickRulesLoading] = useState(false);
@@ -403,6 +408,19 @@ export default function RightPanel({
     },
     [resumedThreadId, runtimeOk],
   );
+
+  const onRebuildIndex = useCallback(async () => {
+    if (!desktopHost) return;
+    setRebuildingIndex(true);
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('rebuild_symbol_index', { workspace: workspaceRoot });
+    } catch {
+      // error handled by IndexPanel's next load
+    } finally {
+      setRebuildingIndex(false);
+    }
+  }, [desktopHost, workspaceRoot]);
 
   const onEnableTrustClick = useCallback(async () => {
     try {
@@ -950,6 +968,14 @@ export default function RightPanel({
             platform={platform}
             theme={theme}
             onToggleTheme={onToggleTheme}
+          />
+        )}
+
+        {view === 'index' && (
+          <IndexPanel
+            workspace={workspaceRoot}
+            onRebuild={onRebuildIndex}
+            rebuilding={rebuildingIndex}
           />
         )}
       </div>
