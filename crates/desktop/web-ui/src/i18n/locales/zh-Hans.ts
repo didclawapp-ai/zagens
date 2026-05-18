@@ -362,6 +362,10 @@ const zhHans = {
     deleteFailed: '删除失败',
     openDir: '打开目录',
   },
+  chatMarkdown: {
+    copyCode: '复制代码',
+    copied: '已复制',
+  },
   common: {
     close: '关闭',
     retry: '重试',

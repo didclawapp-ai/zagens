@@ -128,10 +128,74 @@
 | [task-type-prompt-architecture.md](../task-type-prompt-architecture.md) | TaskType MVP（✅） |
 | [prompt-hallucination-patch.md](../prompt-hallucination-patch.md) | 幻觉防控 V4（✅） |
 | [agent-reliability-craft-plan.md](../agent-reliability-craft-plan.md) | CRAFT、子代理、并行策略 |
+| [tui/回归测试.md](../tui/回归测试.md) | 幻觉防控 R1–R8 题库（可复用于 Claude 对照） |
 | [tui/UNDERLYING_ITERATION_REFERENCE.md](../tui/UNDERLYING_ITERATION_REFERENCE.md) | CRAFT → 记忆地图定序 |
 | [TOOLS_PRINCIPLES.md](../TOOLS_PRINCIPLES.md) | 工具设计原则 |
 | [API_DESIGN.md](../API_DESIGN.md) | HTTP API |
 | [TUI_DS_PICK_GAP.md](TUI_DS_PICK_GAP.md) | 桌面与 TUI 能力差距 |
+
+---
+
+## 2026-05-18 — Claude 对照实验（DS Pick runtime × 外来模型）
+
+**目的：** 在 **同一套 DS Pick 运行时**（`dispatch.rs`、子代理环、幻觉 patch、TaskType）下挂 Claude 等模型，观察行为差异——**不是**复刻 Claude Code 产品，也不与 Anthropic 整链产品对标。
+
+### 和 Claude Code 的本质差异
+
+| 维度 | Claude Code（+ Claude 模型） | DS Pick（+ 任意兼容 API 模型） |
+|------|------------------------------|--------------------------------|
+| 链条 | 客户端、系统提示、工具 schema、调度、模型对齐 **共设计** | 自研 runtime + prompt；**模型可换、宪法不变** |
+| 并行叙事 | 宽泛规则：「无依赖则并行」，易让模型推断 Edit 可并行 | **`should_parallelize_tool_batch`**：整批须 `read_only && supports_parallel` |
+| 推论 vs 事实 | 常先按原则回答，再读代码修正 | [prompt-hallucination-patch.md](../prompt-hallucination-patch.md) 要求能力/架构陈述 **先查代码** |
+| 外来模型 | 同族模型，摩擦小 | 例如 DeepSeek V4 在 CC 外壳里 = **指令层 + 模型层 + 执行层** 拼装缝 |
+
+**代码事实（与模型无关，换 Claude 也不变）：**
+
+| 问题 | DS Pick 结论 | 落点 |
+|------|--------------|------|
+| 主 agent 同轮并行 `edit_file`？ | **否** | `dispatch.rs` → `should_parallelize_tool_batch`；写工具非 `read_only` |
+| 主 agent 同轮并行多文件 `read_file`？ | **是**（批内全只读时） | `turn_loop.rs` → `FuturesUnordered` |
+| 子代理同 step 多 `read_file` 并行？ | **否** | `subagent/mod.rs` 串行 `for` + `await`，**不经过** `should_parallelize_tool_batch` |
+| 子代理并行写？ | explore/review 裁剪；implementer 可写但串行 | `build_allowed_tools` + 同上循环 |
+
+实测记录：在 Claude Code 里用 DeepSeek V4 问并行问题，模型曾按 CC **通用并行规则** 推论；读 DS Pick 源码后与上表一致。见 [回归测试 R1、R6](../tui/回归测试.md)。
+
+### 在 DS Pick 里接 Claude（当前可行路径）
+
+| 项 | 状态 | 说明 |
+|----|------|------|
+| 独立 `ApiProvider::Anthropic`（Messages API） | ⬜ | 未实现；需单独适配 tool 块格式 |
+| **OpenRouter / Novita 等** OpenAI-compat 网关 | ✅ | `config.toml` + `/provider openrouter` |
+| 桌面 Composer 模型下拉 | 🔶 | 仅 `deepseek-v4-pro` / `deepseek-v4-flash`；测 Claude 优先 **TUI** 或改 config 默认模型 |
+| `context_window_for_model("claude…")` | ✅ | 约 200K（`models.rs`） |
+
+**推荐步骤（TUI / sidecar 共用 `~/.deepseek/config.toml`）：**
+
+```toml
+provider = "openrouter"
+
+[providers.openrouter]
+api_key = "YOUR_OPENROUTER_KEY"
+base_url = "https://openrouter.ai/api/v1"
+model = "anthropic/claude-sonnet-4"   # 以 OpenRouter 模型列表为准
+```
+
+1. 保存配置，启动 TUI 或 DS Pick（sidecar 读同一 config）。
+2. TUI：`/provider openrouter`（或依赖上方 `provider =` 默认）。
+3. **新开 session / thread**，TaskType 选 **Code**（与日常开发对照一致）。
+4. 用 [回归测试](../tui/回归测试.md) **R1、R6** 等提问，要求 **引用 `dispatch.rs` / `subagent/mod.rs` 行号** 再结论。
+5. 记录：是否仍胡说并行写、是否遵守 Capability Claims Rule、工具调用是否稳定。
+
+**测什么 / 不测什么：**
+
+- **测：** 在 DS Pick prompt + 调度下，Claude 是否更少架构幻觉、工具链是否可靠、与 V4 的主观差异。
+- **不测：** Claude Code 客户端体验；Anthropic 原生 extended thinking / prompt cache；「Claude Code 里换模型」的等价体验。
+
+### 后续（可选）
+
+- Desktop：Composer 支持自定义 `model` 字符串或 provider 切换（透传 thread API）。
+- 第一方 Anthropic provider + 回归子集自动化。
+- 子代理只读批并行：在 `subagent/mod.rs` 复用 `should_parallelize_tool_batch`（性能项，非哲学项）。
 
 ---
 
@@ -152,4 +216,4 @@
 
 ---
 
-*（有新条目时按日期追加在本文件顶部「2026-05-18」节之后，或独立 dated 节。）*
+*（有新条目时按日期追加在本文件顶部，或独立 dated 节；2026-05-18 含「主动性北极星」与「Claude 对照实验」两节。）*

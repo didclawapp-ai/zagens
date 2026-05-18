@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import DOMPurify from 'dompurify';
 import 'highlight.js/styles/github.css';
+import { useT } from '../i18n';
+import { enhanceChatCodeBlocks } from '../lib/enhanceChatCodeBlocks';
 import { chatMarkdownIt } from '../lib/markdownChatCore';
 import {
   CHAT_MARKDOWN_ALLOWED_URI,
@@ -87,6 +89,8 @@ export function ChatMarkdown({
   isStreaming,
   onOpenWorkspacePath,
 }: Props) {
+  const { t } = useT();
+  const containerRef = useRef<HTMLDivElement>(null);
   const [html, setHtml] = useState('');
 
   const proseUser =
@@ -151,6 +155,13 @@ export function ChatMarkdown({
     setHtml(enhanceWorkspacePathTargets(safe));
   }, [content]);
 
+  useEffect(() => {
+    enhanceChatCodeBlocks(containerRef.current, {
+      copy: t('chatMarkdown.copyCode'),
+      copied: t('chatMarkdown.copied'),
+    });
+  }, [html, t]);
+
   const onClickCapture = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       const t = e.target as HTMLElement | null;
@@ -178,6 +189,7 @@ export function ChatMarkdown({
 
   return (
     <div
+      ref={containerRef}
       className={className}
       onClickCapture={onClickCapture}
       // eslint-disable-next-line react/no-danger

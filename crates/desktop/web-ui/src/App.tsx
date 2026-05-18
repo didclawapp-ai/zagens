@@ -55,9 +55,12 @@ import {
 } from './lib/defaultWorkspace';
 import { confirmDialog } from './lib/confirmDialog';
 import { coerceRunModeForSession, isOfficeSession } from './lib/taskTypeSession';
-
-/** DeepSeek V4 context window in tokens (both Pro and Flash). */
-const V4_CONTEXT_WINDOW_TOKENS = 1_000_000;
+import {
+  contextUsagePercent,
+  contextWindowTokensForModel,
+  DEFAULT_CONTEXT_WINDOW_TOKENS,
+  sumThreadInputTokens,
+} from './lib/contextUsage';
 
 /** Rough token estimate: ~1 token per 4 ASCII chars, ~1 per 1.5 CJK chars. */
 function estimateTokens(text: string): number {
@@ -332,6 +335,7 @@ export default function App() {
   const [cumulativeInputTokens, setCumulativeInputTokens] = useState(0);
   /** Estimated tokens for the current in-flight turn (set at send, cleared at turn_completed). */
   const [estimatedPendingTokens, setEstimatedPendingTokens] = useState(0);
+  const [contextWindowTokens, setContextWindowTokens] = useState(DEFAULT_CONTEXT_WINDOW_TOKENS);
   const [desktopHost, setDesktopHost] = useState(false);
   const [desktopApiKeyConfigured, setDesktopApiKeyConfigured] = useState<boolean | null>(null);
   const [runtimeConn, setRuntimeConn] = useState<RuntimeConnectionState>('checking');
@@ -710,7 +714,6 @@ export default function App() {
       setResumedThreadId(null);
       setThreadTrustMode(false);
       setPanelPreview(null);
-      setCumulativeInputTokens(0);
       setEstimatedPendingTokens(0);
       lastPersistedTurnRef.current = '';
       try {
@@ -730,12 +733,18 @@ export default function App() {
           if (gen !== selectSessionGenerationRef.current) {
             return;
           }
+          setCumulativeInputTokens(sumThreadInputTokens(threadDetail));
+          setContextWindowTokens(
+            contextWindowTokensForModel(threadDetail.thread.model ?? selectedModel),
+          );
           setSelectedWorkspace(threadDetail.thread.workspace);
           setThreadTrustMode(Boolean(threadDetail.thread.trust_mode));
         } catch (syncErr) {
           if (gen !== selectSessionGenerationRef.current) {
             return;
           }
+          setCumulativeInputTokens(0);
+          setContextWindowTokens(contextWindowTokensForModel(selectedModel));
           const errMsg = syncErr instanceof Error ? syncErr.message : String(syncErr);
           setBanner(t('banner.threadWorkspaceError', { errMsg }));
           reconcileRuntimeAfterFetchFailure();
@@ -795,6 +804,7 @@ export default function App() {
     setActiveSessionId(null);
     setCumulativeInputTokens(0);
     setEstimatedPendingTokens(0);
+    setContextWindowTokens(contextWindowTokensForModel(selectedModel));
     try {
       localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
     } catch {
@@ -1502,9 +1512,11 @@ export default function App() {
           workspace={selectedWorkspace}
           onWorkspaceChange={handleComposerWorkspaceChange}
           resumedThreadActive={resumedThreadId != null && resumedThreadId.length > 0}
-          contextUsagePct={
-            Math.min(100, ((cumulativeInputTokens + estimatedPendingTokens) / V4_CONTEXT_WINDOW_TOKENS) * 100)
-          }
+          contextUsagePct={contextUsagePercent(
+            cumulativeInputTokens,
+            estimatedPendingTokens,
+            contextWindowTokens,
+          )}
           officeSession={officeSession}
         />
       </div>

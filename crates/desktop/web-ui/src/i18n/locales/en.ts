@@ -364,6 +364,10 @@ const en: TranslationMap = {
     deleteFailed: 'Deletion failed',
     openDir: 'Open Directory',
   },
+  chatMarkdown: {
+    copyCode: 'Copy code',
+    copied: 'Copied',
+  },
   common: {
     close: 'Close',
     retry: 'Retry',

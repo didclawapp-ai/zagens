@@ -469,13 +469,26 @@ export async function startThreadTurn(
 export interface RuntimeThreadRecord {
   id: string;
   workspace: string;
+  model?: string;
   trust_mode?: boolean;
   task_type?: string;
+}
+
+/** Turn row included in full GET /v1/threads/{id} (ThreadDetail). */
+export interface ThreadTurnRecord {
+  id: string;
+  usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
+    reasoning_tokens?: number;
+  } | null;
 }
 
 export interface ThreadDetailResponse {
   thread: RuntimeThreadRecord;
   latest_seq: number;
+  /** Present on wire; used to restore context-fill % when re-opening a session. */
+  turns?: ThreadTurnRecord[];
 }
 
 export async function getThreadDetail(threadId: string): Promise<ThreadDetailResponse> {
