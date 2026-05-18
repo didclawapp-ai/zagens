@@ -27,8 +27,11 @@ const zhHans = {
     placeholder: '今天需要什么帮助？',
     inputMessage: '输入消息',
     send: '发送',
+    contextTooltip: '{{pct}}% · 约 {{used}} / {{max}} 上下文 token（按对话内容估算）',
+    lastTurnTokens: '↓ {{count}}',
+    lastTurnTokensTitle: '上一轮完成的输出 token 数',
     stop: '停止',
-    workspaceLabel: '工作区目录',
+    workspaceLabel: '目录',
     chooseWorkspace: '选择工作区目录',
     browseFolder: '浏览文件夹…',
     selectingFolder: '正在打开文件夹对话框…',
@@ -109,6 +112,16 @@ const zhHans = {
     workspace: '工作台',
     devtools: '开发者工具',
   },
+  diff: {
+    tab: 'Diff',
+    empty: '当前会话尚无文件 diff',
+    emptyHint: '当 Agent 调用 edit_file、apply_patch 或 write_file 并返回 unified diff 时会出现在此。',
+    count: '{{count}} 个变更',
+    sideBySide: '并排',
+    lineByLine: '逐行',
+    listLabel: '文件变更列表',
+    openInPanel: '侧栏',
+  },
   terminal: {
     tab: '终端',
     title: 'Terminal 1',
@@ -122,7 +135,7 @@ const zhHans = {
     maxSessions: '最多同时打开 {{max}} 个终端',
   },
   workspaceRules: {
-    tab: '项目规则',
+    tab: '规则',
     pathLabel: '文件位置（相对工作区根）',
     pathValue: '.deepseek/pick-rules.md',
     hint:

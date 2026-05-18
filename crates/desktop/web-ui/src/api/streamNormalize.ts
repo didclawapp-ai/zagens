@@ -136,9 +136,10 @@ export function normalizeDesktopStreamEvent(
     }
     const kind = String(item.kind ?? '');
     if (kind === 'tool_call' || kind === 'file_change' || kind === 'command_execution') {
+      const tool = inner.tool as Record<string, unknown> | undefined;
       return {
         kind: 'tool_completed',
-        id: String(item.id ?? ''),
+        id: String(tool?.id ?? item.id ?? ''),
         success: recordEvent === 'item.completed',
         output: item.detail ?? item.summary ?? '',
       };

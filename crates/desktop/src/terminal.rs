@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use serde::Serialize;
@@ -76,16 +76,32 @@ fn shell_command(cwd: &Path) -> CommandBuilder {
     cmd
 }
 
+#[cfg(windows)]
+fn executable_on_path(name: &str) -> bool {
+    let Some(paths) = std::env::var_os("PATH") else {
+        return false;
+    };
+    std::env::split_paths(&paths).any(|dir| dir.join(name).is_file())
+}
+
+#[cfg(windows)]
+fn windows_shell_exe() -> &'static str {
+    static SHELL: OnceLock<String> = OnceLock::new();
+    SHELL.get_or_init(|| {
+        if executable_on_path("pwsh.exe") {
+            "pwsh.exe".to_string()
+        } else {
+            "powershell.exe".to_string()
+        }
+    })
+}
+
 fn build_shell_program() -> CommandBuilder {
     #[cfg(windows)]
     {
-        if command_exists("pwsh.exe") {
-            let mut c = CommandBuilder::new("pwsh.exe");
-            c.arg("-NoLogo");
-            return c;
-        }
-        let mut c = CommandBuilder::new("powershell.exe");
+        let mut c = CommandBuilder::new(windows_shell_exe());
         c.arg("-NoLogo");
+        c.arg("-NoProfile");
         c
     }
     #[cfg(not(windows))]
@@ -98,19 +114,6 @@ fn build_shell_program() -> CommandBuilder {
         }
         CommandBuilder::new("bash")
     }
-}
-
-#[cfg(windows)]
-fn command_exists(exe: &str) -> bool {
-    std::process::Command::new(exe)
-        .arg("-NoLogo")
-        .arg("-Command")
-        .arg("exit")
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
 }
 
 fn pty_size(cols: u16, rows: u16) -> PtySize {

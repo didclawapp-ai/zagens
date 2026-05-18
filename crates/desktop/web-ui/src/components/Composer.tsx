@@ -400,8 +400,12 @@ interface Props {
   onWorkspaceChange: (ws: string) => void | Promise<void>;
   /** Session is bound to a restored runtime thread; workspace commits via PATCH when changed */
   resumedThreadActive?: boolean;
-  /** Cumulative context usage percentage. Always provided (0% if no turns yet). */
+  /** Estimated context fill percentage (from transcript + system overhead). */
   contextUsagePct: number;
+  contextUsedTokens: number;
+  contextWindowTokens: number;
+  /** Output tokens from the last completed turn (Claude-style hint). */
+  lastTurnOutputTokens?: number | null;
   /** Office task session — hides Plan/Yolo and code-only chrome. */
   officeSession?: boolean;
 }
@@ -429,6 +433,9 @@ export default function Composer({
   onWorkspaceChange,
   resumedThreadActive = false,
   contextUsagePct,
+  contextUsedTokens,
+  contextWindowTokens,
+  lastTurnOutputTokens = null,
   officeSession = false,
 }: Props) {
   const { t } = useT();
@@ -901,7 +908,7 @@ export default function Composer({
 
   return (
     <>
-      <div className="border-t border-divider px-4 py-2">
+      <div className="shrink-0 border-t border-divider px-4 py-2">
         <div className="mx-auto max-w-3xl">
           <div className="card overflow-visible">
             <div className="flex min-h-10 flex-wrap items-center gap-2 border-b border-divider px-3 py-2 text-xs">
@@ -1259,7 +1266,11 @@ export default function Composer({
             </div>
             <div
               className="flex shrink-0 items-center gap-1.5"
-              title={`${ctxPct.toFixed(1)}% · ~${Math.round((ctxPct / 100) * 1_000_000).toLocaleString()} tokens${disabled && ctxPct > 0 ? ' (含当前轮估算)' : ''}`}
+              title={t('composer.contextTooltip', {
+                pct: ctxPct.toFixed(1),
+                used: Math.round(contextUsedTokens).toLocaleString(),
+                max: contextWindowTokens.toLocaleString(),
+              })}
             >
               <div className="composer-ctx-bar" aria-hidden>
                 <div
@@ -1268,9 +1279,16 @@ export default function Composer({
                 />
               </div>
               <span className="text-[11px] tabular-nums text-t-text-muted">
-                {disabled && ctxPct > 0 ? '~' : ''}
-                {ctxPct.toFixed(1)}%
+                ~{ctxPct.toFixed(1)}%
               </span>
+              {lastTurnOutputTokens != null && lastTurnOutputTokens > 0 ? (
+                <span
+                  className="text-[10px] tabular-nums text-t-text-muted/80"
+                  title={t('composer.lastTurnTokensTitle')}
+                >
+                  {t('composer.lastTurnTokens', { count: lastTurnOutputTokens.toLocaleString() })}
+                </span>
+              ) : null}
             </div>
             <button
               type="button"

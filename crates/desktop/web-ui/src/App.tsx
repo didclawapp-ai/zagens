@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   postStreamTurn,
   getSessions,
@@ -34,6 +34,15 @@ import type { PreviewState } from './components/preview/types';
 import type { AgentState } from './types/agent';
 import useKeyboardShortcuts from './hooks/useKeyboardShortcuts';
 import { streamFlagsForRunMode } from './lib/runtimeMode';
+import { rebuildMessagesFromThreadEvents } from './lib/chat/rebuildMessagesFromThread';
+import { mapSessionDetailToMessages } from './lib/chat/sessionMessages';
+import {
+  appendCappedToolOutput,
+  capToolOutputForDisplay,
+  mergeStreamingToolOutput,
+  stringifyToolInput,
+  toolOutputString,
+} from './lib/chat/toolOutput';
 import {
   type DesktopModelId,
   type DesktopRouteIntentOption,
@@ -59,29 +68,8 @@ import {
   contextUsagePercent,
   contextWindowTokensForModel,
   DEFAULT_CONTEXT_WINDOW_TOKENS,
-  sumThreadInputTokens,
+  resolveContextUsedTokens,
 } from './lib/contextUsage';
-
-/** Rough token estimate: ~1 token per 4 ASCII chars, ~1 per 1.5 CJK chars. */
-function estimateTokens(text: string): number {
-  let cjk = 0;
-  let ascii = 0;
-  for (const ch of text) {
-    const code = ch.charCodeAt(0);
-    if (
-      (code >= 0x4E00 && code <= 0x9FFF) ||
-      (code >= 0x3400 && code <= 0x4DBF) ||
-      (code >= 0x3000 && code <= 0x303F) ||
-      (code >= 0xFF00 && code <= 0xFFEF) ||
-      (code >= 0x2E80 && code <= 0x2FDF)
-    ) {
-      cjk++;
-    } else {
-      ascii++;
-    }
-  }
-  return Math.ceil(cjk / 1.3 + ascii / 4);
-}
 
 /**
  * When `/health` + `/v1/sessions` probe is `connected`, these banners are usually stale:
@@ -130,51 +118,6 @@ interface ApprovalState {
 let msgId = 0;
 function nextId() {
   return `msg-${++msgId}`;
-}
-
-function stringifyInput(input: unknown): string {
-  if (input == null || input === '') {
-    return '';
-  }
-  if (typeof input === 'string') {
-    return input;
-  }
-  try {
-    return JSON.stringify(input, null, 2);
-  } catch {
-    return String(input);
-  }
-}
-
-/** Keeps milestone lines from `tool.progress` visible above the final tool result. */
-const TOOL_OUTPUT_MERGE_SEPARATOR = '\n\n────────────────────────────────\n\n';
-
-/** Merge streamed shell/tool progress with the final payload without duplicating the shared suffix (stdout/stderr body). */
-function mergeStreamingToolOutput(prevRaw: string, finalRaw: string): string {
-  const prev = prevRaw.trimEnd();
-  const fin = finalRaw.trimEnd();
-  if (!prev) return finalRaw;
-  if (!fin) return prevRaw;
-  const pt = prev.trim();
-  const ft = fin.trim();
-  if (ft.length >= 16 && pt.endsWith(ft)) return prevRaw;
-  if (pt.length >= ft.length && pt.endsWith(ft)) return prevRaw;
-  if (fin.startsWith(prev)) return finalRaw;
-  return `${prevRaw.trimEnd()}${TOOL_OUTPUT_MERGE_SEPARATOR}${finalRaw}`;
-}
-
-function toolOutputString(output: unknown): string {
-  if (output == null) {
-    return '';
-  }
-  if (typeof output === 'string') {
-    return output;
-  }
-  try {
-    return JSON.stringify(output, null, 2);
-  } catch {
-    return String(output);
-  }
 }
 
 type Theme = 'light' | 'dark';
@@ -330,12 +273,26 @@ export default function App() {
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [panelPreview, setPanelPreview] = useState<PreviewState | null>(null);
   const [focusWorkspaceFilesNonce, setFocusWorkspaceFilesNonce] = useState(0);
+  const [focusWorkspaceDiffNonce, setFocusWorkspaceDiffNonce] = useState(0);
   const [agentStates, setAgentStates] = useState<AgentState[]>([]);
-  /** Cumulative input tokens from turn.completed usage — used for context-fill estimation. */
-  const [cumulativeInputTokens, setCumulativeInputTokens] = useState(0);
-  /** Estimated tokens for the current in-flight turn (set at send, cleared at turn_completed). */
-  const [estimatedPendingTokens, setEstimatedPendingTokens] = useState(0);
   const [contextWindowTokens, setContextWindowTokens] = useState(DEFAULT_CONTEXT_WINDOW_TOKENS);
+  /** Thread detail for empty-transcript fallback only (not summed for context %). */
+  const [threadDetailForContext, setThreadDetailForContext] = useState<
+    import('./lib/contextUsage').ThreadDetailWithTurns | null
+  >(null);
+  /** Last completed turn output tokens (Claude-style “↓ N tokens” hint). */
+  const [lastTurnOutputTokens, setLastTurnOutputTokens] = useState<number | null>(null);
+
+  const contextUsedTokens = useMemo(
+    () => resolveContextUsedTokens(messages, threadDetailForContext, contextWindowTokens),
+    [messages, threadDetailForContext, contextWindowTokens],
+  );
+
+  const contextUsagePct = useMemo(
+    () => contextUsagePercent(contextUsedTokens, 0, contextWindowTokens),
+    [contextUsedTokens, contextWindowTokens],
+  );
+
   const [desktopHost, setDesktopHost] = useState(false);
   const [desktopApiKeyConfigured, setDesktopApiKeyConfigured] = useState<boolean | null>(null);
   const [runtimeConn, setRuntimeConn] = useState<RuntimeConnectionState>('checking');
@@ -384,6 +341,9 @@ export default function App() {
   const lastPersistedTurnRef = useRef<string>('');
   const selectSessionGenerationRef = useRef(0);
   const startupSessionRestoredRef = useRef(false);
+  const toolProgressPendingRef = useRef('');
+  const toolProgressRafRef = useRef<number | null>(null);
+  const selectSessionAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
@@ -685,55 +645,57 @@ export default function App() {
     };
   }, []);
 
-  const mapSessionMessages = useCallback((detail: Awaited<ReturnType<typeof getSessionDetail>>) => {
-    const out: Message[] = [];
-    for (const m of detail.messages) {
-      const role = m.role === 'user' || m.role === 'assistant' ? m.role : 'assistant';
-      const parts: string[] = [];
-      for (const b of m.content || []) {
-        if (b.type === 'text' && b.text) {
-          parts.push(b.text);
-        } else if (b.type === 'thinking' && b.text) {
-          parts.push(b.text);
-        }
-      }
-      const text = parts.join('\n').trim();
-      if (text) {
-        out.push({ id: nextId(), role, content: text });
-      }
-    }
-    return out;
-  }, []);
-
   const handleSelectSession = useCallback(
     async (sessionId: string) => {
       const gen = ++selectSessionGenerationRef.current;
       eventAbortRef.current?.abort();
+      selectSessionAbortRef.current?.abort();
+      const selectAbort = new AbortController();
+      selectSessionAbortRef.current = selectAbort;
       setBanner(null);
       setActiveSessionId(sessionId);
       setResumedThreadId(null);
       setThreadTrustMode(false);
       setPanelPreview(null);
-      setEstimatedPendingTokens(0);
       lastPersistedTurnRef.current = '';
       try {
         const detail = await getSessionDetail(sessionId);
         if (gen !== selectSessionGenerationRef.current) {
           return;
         }
-        setMessages(mapSessionMessages(detail));
         const resumed = await resumeSessionThread(sessionId);
         if (gen !== selectSessionGenerationRef.current) {
           return;
         }
+        const sessionFallback = mapSessionDetailToMessages(detail) as Message[];
+        setMessages(sessionFallback);
         setResumedThreadId(resumed.thread_id);
+        try {
+          const fromThread = await rebuildMessagesFromThreadEvents(resumed.thread_id, {
+            signal: selectAbort.signal,
+          });
+          if (gen !== selectSessionGenerationRef.current) {
+            return;
+          }
+          if (fromThread.length > 0) {
+            setMessages(fromThread as Message[]);
+          }
+        } catch {
+          /* runtime offline or empty event log — keep session text fallback */
+        }
         threadTurnRef.current = { threadId: resumed.thread_id, turnId: '' };
         try {
           const threadDetail = await getThreadDetail(resumed.thread_id);
           if (gen !== selectSessionGenerationRef.current) {
             return;
           }
-          setCumulativeInputTokens(sumThreadInputTokens(threadDetail));
+          setThreadDetailForContext(threadDetail);
+          const turns = threadDetail.turns ?? [];
+          const lastTurn = turns.length > 0 ? turns[turns.length - 1] : undefined;
+          const lastOut = lastTurn?.usage?.output_tokens;
+          setLastTurnOutputTokens(
+            lastOut != null && Number.isFinite(lastOut) && lastOut > 0 ? lastOut : null,
+          );
           setContextWindowTokens(
             contextWindowTokensForModel(threadDetail.thread.model ?? selectedModel),
           );
@@ -743,7 +705,7 @@ export default function App() {
           if (gen !== selectSessionGenerationRef.current) {
             return;
           }
-          setCumulativeInputTokens(0);
+          setThreadDetailForContext(null);
           setContextWindowTokens(contextWindowTokensForModel(selectedModel));
           const errMsg = syncErr instanceof Error ? syncErr.message : String(syncErr);
           setBanner(t('banner.threadWorkspaceError', { errMsg }));
@@ -767,7 +729,7 @@ export default function App() {
         reconcileRuntimeAfterFetchFailure();
       }
     },
-    [mapSessionMessages, reconcileRuntimeAfterFetchFailure, t],
+    [reconcileRuntimeAfterFetchFailure, t],
   );
 
   /** After the sidebar session list loads, re-open the last desktop session (if still present). */
@@ -795,6 +757,7 @@ export default function App() {
 
   const handleNewSession = useCallback(() => {
     eventAbortRef.current?.abort();
+    selectSessionAbortRef.current?.abort();
     selectSessionGenerationRef.current += 1;
     setMessages([]);
     setResumedThreadId(null);
@@ -802,8 +765,8 @@ export default function App() {
     setThreadTrustMode(false);
     setPanelPreview(null);
     setActiveSessionId(null);
-    setCumulativeInputTokens(0);
-    setEstimatedPendingTokens(0);
+    setThreadDetailForContext(null);
+    setLastTurnOutputTokens(null);
     setContextWindowTokens(contextWindowTokensForModel(selectedModel));
     try {
       localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
@@ -880,7 +843,7 @@ export default function App() {
 
   const handleCancelStream = useCallback(() => {
     eventAbortRef.current?.abort();
-    setEstimatedPendingTokens(0);
+    setLastTurnOutputTokens(null);
   }, []);
 
   const handleComposerWorkspaceChange = useCallback(
@@ -944,6 +907,16 @@ export default function App() {
     },
     [openWorkspaceFileForPreview, t],
   );
+
+  const openDiffInPanel = useCallback(() => {
+    setActiveInspector('workspace');
+    setRightPanelCollapsed(false);
+    setFocusWorkspaceDiffNonce((n) => n + 1);
+  }, []);
+
+  const handleRequestDiffPanel = useCallback(() => {
+    openDiffInPanel();
+  }, [openDiffInPanel]);
 
   const handleExportSessionJson = useCallback(async () => {
     if (!activeSessionId) {
@@ -1035,17 +1008,64 @@ export default function App() {
 
       setStreaming(true);
       setBanner(null);
-      setEstimatedPendingTokens(estimateTokens(outbound.apiPrompt));
-
+      toolProgressPendingRef.current = '';
+      if (toolProgressRafRef.current != null) {
+        cancelAnimationFrame(toolProgressRafRef.current);
+        toolProgressRafRef.current = null;
+      }
       void (async () => {
       const ctx = {
         currentToolId: { current: null as string | null },
+      };
+
+      const flushToolProgressToState = () => {
+        const chunk = toolProgressPendingRef.current;
+        if (!chunk) return;
+        toolProgressPendingRef.current = '';
+        setMessages((prev) =>
+          prev.map((m) => {
+            if (m.id !== assistantId) return m;
+            const tools = [...(m.tools ?? [])];
+            let idx = -1;
+            if (ctx.currentToolId.current) {
+              idx = tools.findIndex((t) => t.id === ctx.currentToolId.current);
+            }
+            if (idx < 0) {
+              for (let i = tools.length - 1; i >= 0; i--) {
+                if (tools[i].status === 'running') {
+                  idx = i;
+                  break;
+                }
+              }
+            }
+            if (idx < 0) return m;
+            const t = tools[idx];
+            tools[idx] = {
+              ...t,
+              output: appendCappedToolOutput(t.output ?? '', chunk),
+            };
+            return { ...m, tools };
+          }),
+        );
+      };
+
+      const scheduleToolProgressFlush = () => {
+        if (toolProgressRafRef.current != null) return;
+        toolProgressRafRef.current = requestAnimationFrame(() => {
+          toolProgressRafRef.current = null;
+          flushToolProgressToState();
+        });
       };
 
       let finished = false;
       const finishOnce = () => {
         if (finished) return;
         finished = true;
+        if (toolProgressRafRef.current != null) {
+          cancelAnimationFrame(toolProgressRafRef.current);
+          toolProgressRafRef.current = null;
+        }
+        flushToolProgressToState();
         setStreaming(false);
         setMessages((prev) =>
           prev.map((m) => (m.id === assistantId ? { ...m, isStreaming: false } : m)),
@@ -1124,7 +1144,7 @@ export default function App() {
           }
           case 'tool_started': {
             ctx.currentToolId.current = norm.id;
-            const inputStr = stringifyInput(norm.input);
+            const inputStr = stringifyToolInput(norm.input);
             setMessages((prev) =>
               prev.map((m) => {
                 if (m.id !== assistantId) return m;
@@ -1138,14 +1158,22 @@ export default function App() {
             break;
           }
           case 'tool_progress': {
+            toolProgressPendingRef.current += norm.output;
+            scheduleToolProgressFlush();
+            break;
+          }
+          case 'tool_completed': {
+            if (toolProgressRafRef.current != null) {
+              cancelAnimationFrame(toolProgressRafRef.current);
+              toolProgressRafRef.current = null;
+            }
+            flushToolProgressToState();
+            const outStr = capToolOutputForDisplay(toolOutputString(norm.output));
             setMessages((prev) =>
               prev.map((m) => {
                 if (m.id !== assistantId) return m;
                 const tools = [...(m.tools ?? [])];
-                let idx = -1;
-                if (ctx.currentToolId.current) {
-                  idx = tools.findIndex((t) => t.id === ctx.currentToolId.current);
-                }
+                let idx = tools.findIndex((t) => t.id === norm.id);
                 if (idx < 0) {
                   for (let i = tools.length - 1; i >= 0; i--) {
                     if (tools[i].status === 'running') {
@@ -1154,31 +1182,18 @@ export default function App() {
                     }
                   }
                 }
-                if (idx >= 0) {
-                  const t = tools[idx];
-                  tools[idx] = { ...t, output: (t.output ?? '') + norm.output };
-                }
-                return { ...m, tools };
-              }),
-            );
-            break;
-          }
-          case 'tool_completed': {
-            const outStr = toolOutputString(norm.output);
-            setMessages((prev) =>
-              prev.map((m) => {
-                if (m.id !== assistantId) return m;
-                const tools = (m.tools ?? []).map((t) => {
-                  if (t.id !== norm.id) return t;
-                  const prevOut = (t.output ?? '').trim();
-                  const finalOut = outStr.trim();
-                  const merged = mergeStreamingToolOutput(prevOut, finalOut || '');
-                  return {
-                    ...t,
-                    output: merged,
-                    status: norm.success ? ('done' as const) : ('error' as const),
-                  };
-                });
+                if (idx < 0) return m;
+                const t = tools[idx];
+                const prevOut = (t.output ?? '').trim();
+                const finalOut = outStr.trim();
+                const merged = capToolOutputForDisplay(
+                  mergeStreamingToolOutput(prevOut, finalOut || ''),
+                );
+                tools[idx] = {
+                  ...t,
+                  output: merged,
+                  status: norm.success ? ('done' as const) : ('error' as const),
+                };
                 return { ...m, tools };
               }),
             );
@@ -1198,20 +1213,17 @@ export default function App() {
             finishOnce();
             maybePersistCompletedTurn();
             notifyTurnCompleteIfAway(desktopHost);
-            if (norm.usage) {
-              setCumulativeInputTokens((prev) => prev + norm.usage!.input_tokens);
+            if (norm.usage?.output_tokens != null && norm.usage.output_tokens > 0) {
+              setLastTurnOutputTokens(norm.usage.output_tokens);
             }
-            setEstimatedPendingTokens(0);
             break;
           case 'done':
             finishOnce();
             maybePersistCompletedTurn();
             notifyTurnCompleteIfAway(desktopHost);
-            setEstimatedPendingTokens(0);
             break;
           case 'error':
             finishOnce();
-            setEstimatedPendingTokens(0);
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === assistantId
@@ -1314,7 +1326,6 @@ export default function App() {
           const detail = await getThreadDetail(resumedThreadId);
           if (signal.aborted) {
             finishOnce();
-            setEstimatedPendingTokens(0);
             return;
           }
           const sinceSeq = detail.latest_seq ?? 0;
@@ -1330,7 +1341,6 @@ export default function App() {
           });
           if (signal.aborted) {
             finishOnce();
-            setEstimatedPendingTokens(0);
             return;
           }
           const turnId = turn.id;
@@ -1368,11 +1378,9 @@ export default function App() {
       } catch (e) {
         if ((e as Error).name === 'AbortError') {
           finishOnce();
-          setEstimatedPendingTokens(0);
           return;
         }
         handleHttpError(e as Error & { status?: number });
-        setEstimatedPendingTokens(0);
       }
       })();
     },
@@ -1479,6 +1487,7 @@ export default function App() {
         <ChatView
           messages={messages}
           onOpenWorkspacePath={handleChatOpenWorkspacePath}
+          onOpenDiffInPanel={openDiffInPanel}
           onRetryMessage={(content) =>
             handleSend({ displayContent: content, apiPrompt: content })
           }
@@ -1512,11 +1521,10 @@ export default function App() {
           workspace={selectedWorkspace}
           onWorkspaceChange={handleComposerWorkspaceChange}
           resumedThreadActive={resumedThreadId != null && resumedThreadId.length > 0}
-          contextUsagePct={contextUsagePercent(
-            cumulativeInputTokens,
-            estimatedPendingTokens,
-            contextWindowTokens,
-          )}
+          contextUsagePct={contextUsagePct}
+          contextUsedTokens={contextUsedTokens}
+          contextWindowTokens={contextWindowTokens}
+          lastTurnOutputTokens={lastTurnOutputTokens}
           officeSession={officeSession}
         />
       </div>
@@ -1553,10 +1561,12 @@ export default function App() {
           onClosePreview={closePanelPreview}
           openWorkspaceFile={openWorkspaceFileForPreview}
           focusFilesNonce={focusWorkspaceFilesNonce}
+          focusDiffNonce={focusWorkspaceDiffNonce}
           agentStates={agentStates}
           onRequestChecklist={() => setActiveInspector('checklist')}
           messages={messages}
           onRequestMermaid={() => setActiveInspector('mermaid')}
+          onRequestDiff={handleRequestDiffPanel}
           onCollapse={() => setRightPanelCollapsed(true)}
           routeIntent={routeIntent}
           onRouteIntentChange={setRouteIntent}

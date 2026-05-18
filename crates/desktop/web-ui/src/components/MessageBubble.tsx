@@ -3,6 +3,7 @@ import { ChatMarkdown } from './ChatMarkdown';
 import { ToolCard, type ToolCardModel } from './ToolCard';
 import TerminalCard from './TerminalCard';
 import DiffCard from './DiffCard';
+import { extractUnifiedDiff, parseFileNameFromToolInput } from '../lib/diff/diffEntries';
 
 interface Message {
   id: string;
@@ -18,11 +19,13 @@ export function MessageBubble({
   onOpenWorkspacePath,
   onEditMessage,
   onRetryMessage,
+  onOpenDiffInPanel,
 }: {
   message: Message;
   onOpenWorkspacePath: (relPath: string) => void | Promise<void>;
   onEditMessage?: (messageId: string, content: string) => void;
   onRetryMessage?: (content: string) => void;
+  onOpenDiffInPanel?: () => void;
 }) {
   const isUser = message.role === 'user';
   const likelyInReasoningPhase =
@@ -135,7 +138,7 @@ export function MessageBubble({
             </button>
             {toolsExpanded && (
               <div className="space-y-1.5 border-t border-divider px-2.5 pb-2.5 pt-2">
-                {message.tools.map((t) => renderToolCard(t))}
+                {message.tools.map((t) => renderToolCard(t, onOpenDiffInPanel))}
               </div>
             )}
           </div>
@@ -200,7 +203,7 @@ export function MessageBubble({
 const ANSI_CSI = /\x1B\[/;
 
 /** Route tool cards to specialized renderers based on tool name. */
-function renderToolCard(tool: ToolCardModel) {
+function renderToolCard(tool: ToolCardModel, onOpenDiffInPanel?: () => void) {
   const outputHasAnsi = Boolean(tool.output && ANSI_CSI.test(tool.output));
 
   // Shell tools, or any tool whose output carries terminal SGR sequences (avoids “black slab” in <pre>)
@@ -226,12 +229,18 @@ function renderToolCard(tool: ToolCardModel) {
     tool.name === 'apply_patch' ||
     tool.name === 'write_file'
   ) {
-    // Try to extract a unified diff from the output
-    const diffText = tool.output ?? '';
-    const fileName = tryParseFileName(tool.input);
+    const diffText = extractUnifiedDiff(tool.output ?? '');
+    const fileName = parseFileNameFromToolInput(tool.input);
 
-    if (looksLikeDiff(diffText)) {
-      return <DiffCard key={tool.id} diffText={diffText} fileName={fileName} />;
+    if (diffText && tool.status === 'done') {
+      return (
+        <DiffCard
+          key={tool.id}
+          diffText={diffText}
+          fileName={fileName}
+          onOpenInPanel={onOpenDiffInPanel}
+        />
+      );
     }
   }
 
@@ -248,15 +257,3 @@ function tryParseCommand(input: string): string | undefined {
   }
 }
 
-function tryParseFileName(input: string): string | undefined {
-  try {
-    const j = JSON.parse(input) as Record<string, unknown>;
-    return typeof j.path === 'string' ? j.path : typeof j.file_path === 'string' ? j.file_path : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function looksLikeDiff(text: string): boolean {
-  return /^--- /m.test(text) || /^\+\+\+ /m.test(text) || /^@@ .* @@/m.test(text) || /^diff --git /m.test(text);
-}

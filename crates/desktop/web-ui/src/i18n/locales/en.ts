@@ -29,6 +29,9 @@ const en: TranslationMap = {
     placeholder: 'How can I help? (paste screenshots supported)',
     inputMessage: 'Message input',
     send: 'Send',
+    contextTooltip: '{{pct}}% · ~{{used}} / {{max}} context tokens (estimated from transcript)',
+    lastTurnTokens: '↓ {{count}}',
+    lastTurnTokensTitle: 'Output tokens from the last completed turn',
     stop: 'Stop',
     workspaceLabel: 'Workspace directory',
     chooseWorkspace: 'Choose workspace directory',
@@ -110,6 +113,17 @@ const en: TranslationMap = {
     newSession: 'New Chat',
     workspace: 'Workspace',
     devtools: 'Developer Tools',
+  },
+  diff: {
+    tab: 'Diff',
+    empty: 'No file diffs in this session yet',
+    emptyHint:
+      'Unified diffs from edit_file, apply_patch, or write_file tool results will show here.',
+    count: '{{count}} change(s)',
+    sideBySide: 'Side by side',
+    lineByLine: 'Line by line',
+    listLabel: 'File changes',
+    openInPanel: 'Panel',
   },
   terminal: {
     tab: 'Terminal',

@@ -487,7 +487,7 @@ export interface ThreadTurnRecord {
 export interface ThreadDetailResponse {
   thread: RuntimeThreadRecord;
   latest_seq: number;
-  /** Present on wire; used to restore context-fill % when re-opening a session. */
+  /** Present on wire; `usage.output_tokens` can restore last-turn hint; context % uses transcript estimate. */
   turns?: ThreadTurnRecord[];
 }
 
@@ -778,7 +778,84 @@ export async function getSessionDetail(sessionId: string): Promise<SessionDetail
 }
 
 /**
+ * Replay persisted thread events only (closes after backlog). Use for session restore —
+ * do not use open-ended `getThreadEvents` which follows the live subscription loop.
+ */
+export async function replayThreadEvents(
+  threadId: string,
+  sinceSeq: number,
+  onEvent: (ev: SseTurnEvent & { seq?: number }) => void,
+  options?: { signal?: AbortSignal },
+): Promise<void> {
+  const controller = new AbortController();
+  if (options?.signal) {
+    if (options.signal.aborted) {
+      controller.abort();
+    } else {
+      options.signal.addEventListener('abort', () => controller.abort(), { once: true });
+    }
+  }
+  let sawEvent = false;
+  let lastEventMs = 0;
+  const idleGuard = window.setInterval(() => {
+    if (sawEvent && Date.now() - lastEventMs > 750) {
+      controller.abort();
+    }
+  }, 200);
+  const maxGuard = window.setTimeout(() => controller.abort(), 120_000);
+  const url = `${runtimeBase}/v1/threads/${encodeURIComponent(threadId)}/events?since_seq=${sinceSeq}&replay_only=1`;
+  try {
+    const res = await fetch(url, {
+      headers: authHeaders(),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`HTTP ${res.status}: ${text}`);
+    }
+    const reader = res.body?.getReader();
+    if (!reader) {
+      throw new Error('No response body');
+    }
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      buffer += decoder.decode(value, { stream: true });
+      const { drained, rest } = drainSseBlocks(buffer);
+      buffer = rest;
+      for (const ev of drained) {
+        let seq: number | undefined;
+        try {
+          const p = JSON.parse(ev.data);
+          if (typeof p.seq === 'number') {
+            seq = p.seq;
+          }
+        } catch {
+          /* ignore */
+        }
+        sawEvent = true;
+        lastEventMs = Date.now();
+        onEvent({ ...ev, seq });
+      }
+    }
+  } catch (e) {
+    if (sawEvent && (e as Error).name === 'AbortError') {
+      return;
+    }
+    throw e;
+  } finally {
+    window.clearInterval(idleGuard);
+    window.clearTimeout(maxGuard);
+  }
+}
+
+/**
  * Subscribe to thread event stream (GET SSE). Updates `sinceSeq` from payload `seq` when present.
+ * Stays open for live events until the connection closes or `signal` aborts.
  */
 export async function getThreadEvents(
   threadId: string,

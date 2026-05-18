@@ -11,6 +11,7 @@ import MermaidPanel from './MermaidPanel';
 import SettingsPanel from './SettingsPanel';
 import IndexPanel from './IndexPanel';
 import TerminalPanel from './terminal/TerminalPanel';
+import DiffPanel from './diff/DiffPanel';
 import type { AgentState } from '../types/agent';
 import {
   PreviewContainer,
@@ -42,7 +43,7 @@ export type RightPanelView =
   | 'checklist'
   | 'mermaid';
 
-export type WorkspaceTabId = 'restore' | 'files' | 'rules' | 'terminal';
+export type WorkspaceTabId = 'restore' | 'files' | 'rules' | 'terminal' | 'diff';
 
 type Theme = 'light' | 'dark';
 
@@ -93,6 +94,9 @@ interface Props {
   openWorkspaceFile: (relPath: string, title?: string) => Promise<void>;
   /** Bumped when parent wants the workspace panel to show the Files tab (e.g. chat link). */
   focusFilesNonce: number;
+  /** Bumped when chat or auto-detect should show the Diff workspace tab. */
+  focusDiffNonce: number;
+  onRequestDiff?: () => void;
   agentStates: AgentState[];
   /** Called when ChecklistPanel detects first data — parent switches view. */
   onRequestChecklist?: () => void;
@@ -174,6 +178,8 @@ export default function RightPanel({
   onClosePreview,
   openWorkspaceFile,
   focusFilesNonce,
+  focusDiffNonce,
+  onRequestDiff,
   agentStates,
   onRequestChecklist,
   messages,
@@ -187,7 +193,8 @@ export default function RightPanel({
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTabId>(() => {
     try {
       const s = sessionStorage.getItem(WORKSPACE_TAB_KEY);
-      if (s === 'restore' || s === 'files' || s === 'rules' || s === 'terminal') return s;
+      if (s === 'restore' || s === 'files' || s === 'rules' || s === 'terminal' || s === 'diff')
+        return s;
     } catch {
       /* ignore */
     }
@@ -265,7 +272,12 @@ export default function RightPanel({
 
   useEffect(() => {
     if (!officeSession) return;
-    if (workspaceTab === 'restore' || workspaceTab === 'rules' || workspaceTab === 'terminal') {
+    if (
+      workspaceTab === 'restore' ||
+      workspaceTab === 'rules' ||
+      workspaceTab === 'terminal' ||
+      workspaceTab === 'diff'
+    ) {
       setWorkspaceTab('files');
     }
   }, [officeSession, workspaceTab]);
@@ -388,6 +400,12 @@ export default function RightPanel({
       setWorkspaceTab('files');
     }
   }, [focusFilesNonce]);
+
+  useEffect(() => {
+    if (focusDiffNonce > 0) {
+      setWorkspaceTab('diff');
+    }
+  }, [focusDiffNonce]);
 
   const canBrowseComposerFiles =
     runtimeOk && (Boolean(resumedThreadId?.length) || workspaceRoot.trim().length > 0);
@@ -664,7 +682,7 @@ export default function RightPanel({
                     className={tabBtn(workspaceTab === 'files')}
                     onClick={() => setWorkspaceTab('files')}
                   >
-                    工作区目录
+                    目录
                   </button>
                   {!officeSession && (
                     <button
@@ -688,10 +706,21 @@ export default function RightPanel({
                       {t('terminal.tab')}
                     </button>
                   )}
+                  {!officeSession && (
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={workspaceTab === 'diff'}
+                      className={tabBtn(workspaceTab === 'diff')}
+                      onClick={() => setWorkspaceTab('diff')}
+                    >
+                      {t('diff.tab')}
+                    </button>
+                  )}
                 </div>
 
                 <div
-                  className={`flex-1 min-h-0 ${workspaceTab === 'terminal' ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'}`}
+                  className={`flex-1 min-h-0 ${workspaceTab === 'terminal' || workspaceTab === 'diff' ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'}`}
                   role="tabpanel"
                 >
                   {workspaceTab === 'restore' && (
@@ -958,6 +987,21 @@ export default function RightPanel({
                       workspaceRoot={workspaceRoot}
                       desktopHost={desktopHost}
                       active={view === 'workspace' && workspaceTab === 'terminal'}
+                    />
+                  )}
+
+                  {workspaceTab === 'diff' && (
+                    <DiffPanel
+                      messages={messages}
+                      active={view === 'workspace' && workspaceTab === 'diff'}
+                      onDetected={
+                        view === 'workspace' && workspaceTab === 'diff'
+                          ? undefined
+                          : () => {
+                              setWorkspaceTab('diff');
+                              onRequestDiff?.();
+                            }
+                      }
                     />
                   )}
                 </div>

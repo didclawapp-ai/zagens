@@ -2500,7 +2500,8 @@ impl RuntimeThreadManager {
                             } else {
                                 "item.failed"
                             },
-                            json!({ "item": item }),
+                            // Include engine tool-call id so compat SSE (`tool.completed`) matches `tool.started`.
+                            json!({ "item": item, "tool": { "id": id, "name": name } }),
                         )
                         .await?;
 

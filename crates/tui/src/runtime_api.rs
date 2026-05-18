@@ -434,6 +434,8 @@ struct AutomationRunsQuery {
 #[derive(Debug, Deserialize)]
 struct ThreadEventsQuery {
     since_seq: Option<u64>,
+    /// When true, emit persisted backlog only and close — for desktop session restore replay.
+    replay_only: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -2527,6 +2529,7 @@ async fn stream_thread_events(
         last_seq = last.seq;
     }
 
+    let replay_only = query.replay_only.unwrap_or(false);
     let mut live = state.runtime_threads.subscribe_events();
     let thread_id = id.clone();
     let stream = stream! {
@@ -2535,6 +2538,9 @@ async fn stream_thread_events(
             let event_name = event.event.clone();
             let payload = runtime_event_payload(event);
             yield Ok(sse_json_seq(seq, &event_name, payload));
+        }
+        if replay_only {
+            return;
         }
         loop {
             let incoming = live.recv().await;
@@ -2780,7 +2786,11 @@ fn map_compat_stream_event(event: &crate::runtime_threads::RuntimeEventRecord) -
                 .and_then(|v| v.as_str())
                 .unwrap_or_default();
             if kind == "tool_call" || kind == "file_change" || kind == "command_execution" {
-                let id = item.get("id").cloned().unwrap_or(Value::Null);
+                let id = payload
+                    .get("tool")
+                    .and_then(|t| t.get("id"))
+                    .cloned()
+                    .unwrap_or_else(|| item.get("id").cloned().unwrap_or(Value::Null));
                 let success = event.event == "item.completed";
                 let output = item.get("detail").cloned().unwrap_or_else(|| {
                     Value::String(
@@ -4463,7 +4473,8 @@ mod tests {
                     "kind": "tool_call",
                     "summary": "ok",
                     "detail": "done"
-                }
+                },
+                "tool": { "id": "tool_1", "name": "exec_shell" }
             }),
         };
         let mapped = map_compat_stream_event(&tool_done).context("missing tool.completed event")?;
@@ -4475,6 +4486,10 @@ mod tests {
         let text = String::from_utf8_lossy(&body);
         assert!(text.contains("event: tool.completed"));
         assert!(text.contains("\"success\":true"));
+        assert!(
+            text.contains("\"id\":\"tool_1\""),
+            "tool.completed must use engine tool id, not item id: {text}"
+        );
 
         let unknown = RuntimeEventRecord {
             schema_version: 1,
