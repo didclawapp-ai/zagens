@@ -465,9 +465,42 @@ impl ToolRegistryBuilder {
     #[must_use]
     pub fn with_search_tools(self) -> Self {
         use super::file_search::FileSearchTool;
+        use super::glob_files::GlobFilesTool;
         use super::search::GrepFilesTool;
         self.with_tool(Arc::new(GrepFilesTool))
+            .with_tool(Arc::new(GlobFilesTool))
             .with_tool(Arc::new(FileSearchTool))
+    }
+
+    /// Office sessions: `glob_files` + `file_search` only (no `grep_files`).
+    #[must_use]
+    pub fn with_office_search_tools(self) -> Self {
+        use super::file_search::FileSearchTool;
+        use super::glob_files::GlobFilesTool;
+        self.with_tool(Arc::new(GlobFilesTool))
+            .with_tool(Arc::new(FileSearchTool))
+    }
+
+    /// Office task surface: read/list, write_file, write_office, search-without-grep, note.
+    #[must_use]
+    pub fn with_office_surface(self, include_web: bool) -> Self {
+        use super::file::{ListDirTool, ReadFileTool, WriteFileTool};
+        use super::file_info::FileInfoTool;
+        let builder = self
+            .with_tool(Arc::new(ReadFileTool))
+            .with_tool(Arc::new(ListDirTool))
+            .with_tool(Arc::new(FileInfoTool))
+            .with_tool(Arc::new(WriteFileTool))
+            .with_office_write_tool()
+            .with_office_search_tools()
+            .with_note_tool()
+            .with_user_input_tool()
+            .with_parallel_tool();
+        if include_web {
+            builder.with_web_tools()
+        } else {
+            builder
+        }
     }
 
     /// Include git inspection tools (`git_status`, `git_diff`).

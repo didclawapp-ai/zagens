@@ -62,6 +62,7 @@ mod session_store_sqlite;
 mod thread_store_sqlite;
 mod settings;
 mod skills;
+mod task_type;
 mod snapshot;
 mod symbol_index;
 mod task_manager;
@@ -4134,6 +4135,7 @@ async fn run_exec_agent(
         )
         .tag()
         .to_string(),
+        task_type: crate::task_type::TaskType::Code,
         workshop: config.workshop.clone(),
     };
 

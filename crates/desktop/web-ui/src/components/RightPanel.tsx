@@ -102,6 +102,7 @@ interface Props {
   onCollapse?: () => void;
   routeIntent: DesktopRouteIntentOption;
   onRouteIntentChange: (v: DesktopRouteIntentOption) => void;
+  officeSession?: boolean;
 }
 
 const panelTitles: Record<RightPanelView, string> = {
@@ -178,6 +179,7 @@ export default function RightPanel({
   onCollapse,
   routeIntent,
   onRouteIntentChange,
+  officeSession = false,
 }: Props) {
   const { t } = useT();
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTabId>(() => {
@@ -258,6 +260,13 @@ export default function RightPanel({
     setSnapError(null);
     setRestoreMessage(null);
   }, [resumedThreadId, workspaceRoot]);
+
+  useEffect(() => {
+    if (!officeSession) return;
+    if (view === 'workspace' && workspaceTab === 'files') {
+      setBrowseRelPath((prev) => (prev === '' ? 'deliverables' : prev));
+    }
+  }, [officeSession, view, workspaceTab, workspaceRoot]);
 
   useEffect(() => {
     if (view !== 'workspace' || workspaceTab !== 'rules' || !desktopHost) {
@@ -947,7 +956,7 @@ export default function RightPanel({
 
         {view === 'tasks-skills' && <AutomationPanel runtimeConn={runtimeConn} />}
 
-        {view === 'agents' && <AgentPanel agents={agentStates} />}
+        {view === 'agents' && !officeSession && <AgentPanel agents={agentStates} />}
 
         {view === 'routing' && (
           <RoutingPanel
@@ -958,12 +967,14 @@ export default function RightPanel({
         )}
 
         {/* Always mounted (hidden when inactive) so polling can auto-trigger the view */}
+        {!officeSession && (
         <div style={{ display: view === 'checklist' ? undefined : 'none' }}>
           <ChecklistPanel
             threadId={resumedThreadId ?? ''}
             onDetected={view !== 'checklist' ? () => onRequestChecklist?.() : undefined}
           />
         </div>
+        )}
 
         {/* Always mounted (hidden when inactive) so mermaid detection can auto-trigger the view */}
         <div
@@ -988,7 +999,7 @@ export default function RightPanel({
           />
         )}
 
-        {view === 'index' && (
+        {view === 'index' && !officeSession && (
           <IndexPanel
             workspace={workspaceRoot}
             onRebuild={onRebuildIndex}

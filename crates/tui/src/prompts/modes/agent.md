@@ -15,10 +15,11 @@ For multi-step initiatives, use `update_plan` (high-level strategy) + `checklist
 
 When your plan includes multiple writes, present them together:
 1. Show `checklist_write` with all write steps listed so the user sees the full scope
-2. Request approval for the batch ("I need to make 3 edits across 2 files...")
-3. Once approved, execute all writes in one turn (parallel `edit_file` / `apply_patch` calls)
+2. Request **one** approval for the whole batch ("I need to make 3 edits across 2 files...")
+3. After approval, apply the writes — you may issue several `edit_file` / `apply_patch` / `write_file` calls in one assistant turn, but the **runtime does not execute write tools in parallel** in that turn (`should_parallelize_tool_batch` in `crates/tui/src/core/engine/dispatch.rs` requires the batch to be `read_only`). Do **not** tell the user the dispatcher will run writes concurrently or that separate files unlock parallel writes.
+4. For **faster multi-file work**, batch **read-only** tools in one turn (`read_file`, `grep_files`, …), or spawn **`implementer`** sub-agents (`agent_spawn`) for independent write tasks (each agent runs its own turn loop).
 
-Don't sequence approvals one at a time — the user wants context, not interruption. A clear plan with visible checklist items gets approved faster than a series of surprise approval prompts.
+Don't sequence **approval prompts** one at a time — the user wants context, not interruption. A clear plan with visible checklist items gets approved faster than a series of surprise approval prompts.
 
 ## Accuracy over momentum
 

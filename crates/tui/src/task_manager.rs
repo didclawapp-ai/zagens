@@ -441,6 +441,7 @@ impl TaskExecutor for EngineTaskExecutor {
                 archived: false,
                 system_prompt: None,
                 task_id: Some(task.id.clone()),
+                task_type: None,
             })
             .await
         {

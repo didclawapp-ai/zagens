@@ -109,6 +109,8 @@ struct StreamTurnRequest {
     auto_approve: Option<bool>,
     #[serde(default)]
     route_intent: Option<String>,
+    #[serde(default)]
+    task_type: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -219,6 +221,8 @@ struct SessionDetailResponse {
 struct ResumeSessionRequest {
     model: Option<String>,
     mode: Option<String>,
+    #[serde(default)]
+    task_type: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -815,11 +819,17 @@ async fn resume_session_thread(
             .unwrap_or_else(|| "agent".to_string())
     });
 
+    let workspace = session.metadata.workspace.clone();
+    let task_type = crate::task_type::resolve_task_type(
+        req.task_type.as_deref(),
+        &workspace,
+        None,
+    );
     let thread = state
         .runtime_threads
         .create_thread(CreateThreadRequest {
             model: Some(model),
-            workspace: Some(session.metadata.workspace.clone()),
+            workspace: Some(workspace),
             mode: Some(mode),
             allow_shell: None,
             trust_mode: None,
@@ -827,6 +837,7 @@ async fn resume_session_thread(
             archived: false,
             system_prompt: session.system_prompt.clone(),
             task_id: None,
+            task_type: Some(task_type.as_str().to_string()),
         })
         .await
         .map_err(|e| ApiError::internal(format!("Failed to create thread: {e}")))?;
@@ -2351,6 +2362,11 @@ async fn stream_turn(
     let trust_mode = req.trust_mode.unwrap_or(false);
     let auto_approve = req.auto_approve.unwrap_or(false);
     let prompt = req.prompt;
+    let task_type = crate::task_type::resolve_task_type(
+        req.task_type.as_deref(),
+        &workspace,
+        Some(prompt.as_str()),
+    );
 
     let thread = state
         .runtime_threads
@@ -2364,6 +2380,7 @@ async fn stream_turn(
             archived: true,
             system_prompt: None,
             task_id: None,
+            task_type: Some(task_type.as_str().to_string()),
         })
         .await
         .map_err(|e| ApiError::internal(format!("Failed to create stream thread: {e}")))?;

@@ -29,6 +29,8 @@ interface Props {
   collapsed: boolean;
   /** Called when collapse button clicked. */
   onToggleCollapse: () => void;
+  /** Office task sessions hide code-only inspector tabs. */
+  officeSession?: boolean;
 }
 
 const SIDEBAR_MIN_PX = 180;
@@ -60,6 +62,7 @@ export default function Sidebar({
   onSidebarWidthChange,
   collapsed,
   onToggleCollapse,
+  officeSession = false,
 }: Props) {
   const { t } = useT();
 
@@ -155,6 +158,7 @@ export default function Sidebar({
           activeInspector={activeInspector}
           onInspectorChange={onInspectorChange}
           desktopHost={desktopHost}
+          officeSession={officeSession}
         />
       </div>
 
@@ -266,10 +270,12 @@ function SettingsAccordion({
   activeInspector,
   onInspectorChange,
   desktopHost,
+  officeSession,
 }: {
   activeInspector: RightPanelView;
   onInspectorChange: (v: RightPanelView) => void;
   desktopHost: boolean;
+  officeSession: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -285,9 +291,9 @@ function SettingsAccordion({
     { tab: 'mcp', label: 'MCP 服务器', show: true },
     { tab: 'usage', label: '用量仪表盘', show: true },
     { tab: 'tasks-skills', label: '任务与技能', show: true },
-    { tab: 'agents', label: '子代理', show: true },
+    { tab: 'agents', label: '子代理', show: !officeSession },
     { tab: 'routing', label: '模型路由', show: true },
-    { tab: 'index', label: '索引', show: true },
+    { tab: 'index', label: '索引', show: !officeSession },
     { tab: 'system', label: '系统设置', show: true },
   ];
 

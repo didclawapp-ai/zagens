@@ -1,24 +1,68 @@
 //! Search tools: `grep_files` for code search
 //!
-//! These tools provide powerful code search capabilities within the workspace,
-//! similar to ripgrep/grep functionality.
+//! Workspace traversal uses the same `ignore` stack as ripgrep (`WalkBuilder`):
+//! `.gitignore` / `.ignore` by default, skips common vendor/build dirs, and
+//! skips binary files (NUL sniff). Results are BM25-ranked for agent consumption.
 
 use super::spec::{
     ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_bool, optional_str,
     optional_u64, required_str,
 };
+use super::workspace_walk::{collect_workspace_files, is_probably_binary};
 use async_trait::async_trait;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GrepOutputMode {
+    Content,
+    FilesWithMatches,
+    Count,
+}
+
+impl GrepOutputMode {
+    fn parse(raw: &str) -> Result<Self, ToolError> {
+        match raw {
+            "content" => Ok(Self::Content),
+            "files_with_matches" => Ok(Self::FilesWithMatches),
+            "count" => Ok(Self::Count),
+            other => Err(ToolError::invalid_input(format!(
+                "output_mode must be content, files_with_matches, or count (got {other:?})"
+            ))),
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Content => "content",
+            Self::FilesWithMatches => "files_with_matches",
+            Self::Count => "count",
+        }
+    }
+}
 /// Maximum number of results to return to avoid overwhelming output
 const MAX_RESULTS: usize = 100;
 
-/// Maximum file size to search (skip large binaries)
+/// Maximum file size to search (skip very large files)
 const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024; // 10MB
+
+/// Fallback excludes when `respect_gitignore` is false (ripgrep `-uuu` style).
+const DEFAULT_EXCLUDE_PATTERNS: &[&str] = &[
+    "node_modules/**",
+    ".git/**",
+    "target/**",
+    "*.min.js",
+    "*.min.css",
+    "dist/**",
+    "build/**",
+    "__pycache__/**",
+    ".venv/**",
+    "venv/**",
+];
 
 /// Result of a grep match
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -40,7 +84,7 @@ impl ToolSpec for GrepFilesTool {
     }
 
     fn description(&self) -> &'static str {
-        "Search for a regex pattern in files within the workspace. Returns matching lines with context."
+        "Search file contents by regex (ripgrep-style walk, respects .gitignore). output_mode: content (lines+context), files_with_matches (paths only), count (per-file hits). NEVER use exec_shell with grep/rg — use this tool."
     }
 
     fn input_schema(&self) -> Value {
@@ -84,6 +128,15 @@ impl ToolSpec for GrepFilesTool {
                 "symbol_kind": {
                     "type": "string",
                     "description": "Filter symbol hits by kind, e.g. \"fn\", \"struct\", \"interface\", \"type\", \"enum\", \"const\", \"trait\", \"trait_fn\", \"impl_fn\", \"class\", \"method\"."
+                },
+                "respect_gitignore": {
+                    "type": "boolean",
+                    "description": "When true (default), honor .gitignore / .ignore and parent ignore files; also skips target/, node_modules/, etc. Set false to search ignored paths (like rg -uuu)."
+                },
+                "output_mode": {
+                    "type": "string",
+                    "enum": ["content", "files_with_matches", "count"],
+                    "description": "content: matching lines with context (default). files_with_matches: file paths only (saves tokens). count: per-file match counts."
                 }
             },
             "required": ["pattern"]
@@ -106,6 +159,11 @@ impl ToolSpec for GrepFilesTool {
         let case_insensitive = optional_bool(&input, "case_insensitive", false);
         let symbol_index_enabled = optional_bool(&input, "symbol_index", false);
         let symbol_kind = optional_str(&input, "symbol_kind").map(|s| s.to_string());
+        let respect_gitignore = optional_bool(&input, "respect_gitignore", true);
+        let output_mode = match optional_str(&input, "output_mode") {
+            Some(mode) => GrepOutputMode::parse(mode)?,
+            None => GrepOutputMode::Content,
+        };
         let max_results = usize::try_from(optional_u64(&input, "max_results", MAX_RESULTS as u64))
             .unwrap_or(MAX_RESULTS);
 
@@ -120,30 +178,25 @@ impl ToolSpec for GrepFilesTool {
             })
             .unwrap_or_default();
 
-        // Parse exclude patterns
-        let exclude_patterns: Vec<String> =
-            input.get("exclude").and_then(|v| v.as_array()).map_or_else(
-                || {
-                    // Default exclusions for common non-code directories
-                    vec![
-                        "node_modules/*".to_string(),
-                        ".git/*".to_string(),
-                        "target/*".to_string(),
-                        "*.min.js".to_string(),
-                        "*.min.css".to_string(),
-                        "dist/*".to_string(),
-                        "build/*".to_string(),
-                        "__pycache__/*".to_string(),
-                        ".venv/*".to_string(),
-                        "venv/*".to_string(),
-                    ]
-                },
-                |arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(String::from))
+        // Parse exclude patterns (supplement gitignore when respect_gitignore is true).
+        let exclude_patterns: Vec<String> = input
+            .get("exclude")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_else(|| {
+                if respect_gitignore {
+                    Vec::new()
+                } else {
+                    DEFAULT_EXCLUDE_PATTERNS
+                        .iter()
+                        .map(|s| (*s).to_string())
                         .collect()
-                },
-            );
+                }
+            });
 
         // Build regex
         let regex_pattern = if case_insensitive {
@@ -158,39 +211,66 @@ impl ToolSpec for GrepFilesTool {
         // Resolve search path
         let search_path = context.resolve_path(path_str)?;
 
-        // Collect files to search
-        let files = collect_files(&search_path, &include_patterns, &exclude_patterns)?;
+        // Collect files (ignore crate / ripgrep-style walk).
+        let files = collect_files(
+            &search_path,
+            &include_patterns,
+            &exclude_patterns,
+            respect_gitignore,
+        )?;
 
         // Search files
         let mut results: Vec<GrepMatch> = Vec::new();
+        let mut file_match_counts: HashMap<String, usize> = HashMap::new();
         let mut files_searched = 0;
+        let mut files_skipped_binary = 0u64;
+        let mut files_skipped_size = 0u64;
         let mut total_matches = 0;
 
-        for file_path in files {
-            if results.len() >= max_results {
+        'files: for file_path in files {
+            if output_mode == GrepOutputMode::Content && results.len() >= max_results {
+                break;
+            }
+            if output_mode == GrepOutputMode::FilesWithMatches
+                && file_match_counts.len() >= max_results
+            {
                 break;
             }
 
-            // Skip files that are too large
-            if let Ok(metadata) = fs::metadata(&file_path)
-                && metadata.len() > MAX_FILE_SIZE
-            {
+            if let Ok(metadata) = fs::metadata(&file_path) {
+                if metadata.len() > MAX_FILE_SIZE {
+                    files_skipped_size += 1;
+                    continue;
+                }
+            }
+
+            if is_probably_binary(&file_path) {
+                files_skipped_binary += 1;
                 continue;
             }
 
-            // Read file content
             let Ok(file_content) = fs::read_to_string(&file_path) else {
-                continue; // Skip binary or unreadable files
+                files_skipped_binary += 1;
+                continue;
             };
 
             files_searched += 1;
             let lines: Vec<&str> = file_content.lines().collect();
+            let relative_path = file_path
+                .strip_prefix(&context.workspace)
+                .unwrap_or(&file_path)
+                .to_string_lossy()
+                .to_string();
+            let mut hits_in_file = 0usize;
 
             for (line_idx, line) in lines.iter().enumerate() {
-                if regex.is_match(line) {
-                    total_matches += 1;
+                if !regex.is_match(line) {
+                    continue;
+                }
+                total_matches += 1;
+                hits_in_file += 1;
 
-                    // Get context lines
+                if output_mode == GrepOutputMode::Content {
                     let context_before: Vec<String> = (line_idx.saturating_sub(context_lines)
                         ..line_idx)
                         .filter_map(|i| lines.get(i).map(|s| (*s).to_string()))
@@ -201,15 +281,8 @@ impl ToolSpec for GrepFilesTool {
                         .filter_map(|i| lines.get(i).map(|s| (*s).to_string()))
                         .collect();
 
-                    // Get relative path from workspace
-                    let relative_path = file_path
-                        .strip_prefix(&context.workspace)
-                        .unwrap_or(&file_path)
-                        .to_string_lossy()
-                        .to_string();
-
                     results.push(GrepMatch {
-                        file: relative_path,
+                        file: relative_path.clone(),
                         line_number: line_idx + 1,
                         line: (*line).to_string(),
                         context_before,
@@ -221,11 +294,22 @@ impl ToolSpec for GrepFilesTool {
                     }
                 }
             }
+
+            if hits_in_file > 0 {
+                file_match_counts.insert(relative_path, hits_in_file);
+                if output_mode == GrepOutputMode::FilesWithMatches
+                    && file_match_counts.len() >= max_results
+                {
+                    break 'files;
+                }
+            }
         }
 
-        // BM25 re-rank: order files by relevance so the model sees the
-        // most likely definitions / usages first, not filesystem order.
-        bm25_rank(&mut results, &pattern_str);
+        if output_mode == GrepOutputMode::Content {
+            // BM25 re-rank: order files by relevance so the model sees the
+            // most likely definitions / usages first, not filesystem order.
+            bm25_rank(&mut results, &pattern_str);
+        }
 
         // Symbol index maintenance: trigger a background rebuild when the
         // index is missing or stale (schema bump, new TS support, etc.).
@@ -243,7 +327,9 @@ impl ToolSpec for GrepFilesTool {
 
             // Boost index hits: lines that match the symbol index float to the top
             // of `matches` while preserving BM25 order among peers (stable).
-            boost_index_hits(&mut results, &hits);
+            if output_mode == GrepOutputMode::Content {
+                boost_index_hits(&mut results, &hits);
+            }
             (hits, status)
         } else {
             (Vec::new(), crate::symbol_index::index_status(&context.workspace))
@@ -348,14 +434,67 @@ impl ToolSpec for GrepFilesTool {
                 }
             }
         }
+        let mut file_counts_json: Vec<Value> = file_match_counts
+            .iter()
+            .map(|(file, count)| json!({ "file": file, "match_count": count }))
+            .collect();
+        file_counts_json.sort_by(|a, b| {
+            let ca = a["match_count"].as_u64().unwrap_or(0);
+            let cb = b["match_count"].as_u64().unwrap_or(0);
+            cb.cmp(&ca).then_with(|| {
+                a["file"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .cmp(b["file"].as_str().unwrap_or_default())
+            })
+        });
+        let file_counts_truncated = file_counts_json.len() > max_results;
+        if file_counts_truncated {
+            file_counts_json.truncate(max_results);
+        }
+
+        let mut files_with_matches: Vec<String> = file_match_counts.keys().cloned().collect();
+        files_with_matches.sort_by(|a, b| {
+            let ca = file_match_counts.get(a).copied().unwrap_or(0);
+            let cb = file_match_counts.get(b).copied().unwrap_or(0);
+            cb.cmp(&ca).then_with(|| a.cmp(b))
+        });
+        let files_truncated = files_with_matches.len() > max_results;
+        if files_truncated {
+            files_with_matches.truncate(max_results);
+        }
+
+        let truncated = match output_mode {
+            GrepOutputMode::Content => total_matches > max_results || results.len() >= max_results,
+            GrepOutputMode::FilesWithMatches => {
+                files_truncated || file_match_counts.len() > max_results
+            }
+            GrepOutputMode::Count => file_counts_truncated || file_match_counts.len() > max_results,
+        };
+
         let mut result_map = serde_json::Map::from_iter(vec![
-            ("matches".into(), serde_json::json!(results)),
+            ("output_mode".into(), json!(output_mode.as_str())),
             ("total_matches".into(), serde_json::json!(total_matches)),
             ("files_searched".into(), serde_json::json!(files_searched)),
-            ("truncated".into(), serde_json::json!(total_matches > max_results)),
+            ("files_skipped_binary".into(), serde_json::json!(files_skipped_binary)),
+            ("files_skipped_size".into(), serde_json::json!(files_skipped_size)),
+            ("respect_gitignore".into(), serde_json::json!(respect_gitignore)),
+            ("truncated".into(), serde_json::json!(truncated)),
             ("symbol_index_hits".into(), serde_json::json!(symbol_hits)),
             ("symbol_index_status".into(), serde_json::json!(symbol_status)),
         ]);
+
+        match output_mode {
+            GrepOutputMode::Content => {
+                result_map.insert("matches".into(), serde_json::json!(results));
+            }
+            GrepOutputMode::FilesWithMatches => {
+                result_map.insert("files".into(), serde_json::json!(files_with_matches));
+            }
+            GrepOutputMode::Count => {
+                result_map.insert("file_counts".into(), Value::Array(file_counts_json));
+            }
+        }
         result_map.extend(extra);
         let result = serde_json::Value::Object(result_map);
 
@@ -363,62 +502,42 @@ impl ToolSpec for GrepFilesTool {
     }
 }
 
-/// Collect files to search based on include/exclude patterns
+/// Collect files to search: workspace walk + optional include/exclude globs.
 fn collect_files(
-    root: &Path,
+    search_path: &Path,
     include_patterns: &[String],
     exclude_patterns: &[String],
+    respect_gitignore: bool,
 ) -> Result<Vec<PathBuf>, ToolError> {
-    let mut files = Vec::new();
-
-    if root.is_file() {
-        files.push(root.to_path_buf());
-        return Ok(files);
+    if search_path.is_file() {
+        return Ok(vec![search_path.to_path_buf()]);
     }
 
-    collect_files_recursive(root, root, include_patterns, exclude_patterns, &mut files)?;
-    Ok(files)
-}
+    if !search_path.exists() {
+        return Err(ToolError::invalid_input(format!(
+            "Search path does not exist: {}",
+            search_path.display()
+        )));
+    }
 
-fn collect_files_recursive(
-    root: &Path,
-    current: &Path,
-    include_patterns: &[String],
-    exclude_patterns: &[String],
-    files: &mut Vec<PathBuf>,
-) -> Result<(), ToolError> {
-    let entries = fs::read_dir(current).map_err(|e| {
-        ToolError::execution_failed(format!(
-            "Failed to read directory {}: {}",
-            current.display(),
-            e
-        ))
-    })?;
+    if !search_path.is_dir() {
+        return Err(ToolError::invalid_input(format!(
+            "Search path is not a file or directory: {}",
+            search_path.display()
+        )));
+    }
 
-    for entry in entries {
-        let entry = entry.map_err(|e| ToolError::execution_failed(e.to_string()))?;
-        let path = entry.path();
-
-        // Get relative path for pattern matching
-        let relative = path.strip_prefix(root).unwrap_or(&path);
+    let mut files = collect_workspace_files(search_path, respect_gitignore);
+    files.retain(|path| {
+        let relative = path.strip_prefix(search_path).unwrap_or(path);
         let relative_str = relative.to_string_lossy();
-
-        // Check exclusions
         if should_exclude(&relative_str, exclude_patterns) {
-            continue;
+            return false;
         }
+        include_patterns.is_empty() || should_include(&relative_str, include_patterns)
+    });
 
-        if path.is_dir() {
-            collect_files_recursive(root, &path, include_patterns, exclude_patterns, files)?;
-        } else if path.is_file() {
-            // Check inclusions (if any specified)
-            if include_patterns.is_empty() || should_include(&relative_str, include_patterns) {
-                files.push(path);
-            }
-        }
-    }
-
-    Ok(())
+    Ok(files)
 }
 
 /// Check if a path matches any of the exclude patterns
@@ -868,5 +987,109 @@ mod tests {
     fn test_parallel_support_flags() {
         let tool = GrepFilesTool;
         assert!(tool.supports_parallel());
+    }
+
+    #[tokio::test]
+    async fn test_grep_files_respects_gitignore() {
+        let tmp = tempdir().expect("tempdir");
+        fs::write(tmp.path().join(".gitignore"), "ignored.txt\n").expect("write");
+        fs::write(tmp.path().join("ignored.txt"), "SECRET\n").expect("write");
+        fs::write(tmp.path().join("visible.txt"), "VISIBLE\n").expect("write");
+
+        let ctx = ToolContext::new(tmp.path().to_path_buf());
+        let tool = GrepFilesTool;
+        let result = tool
+            .execute(json!({"pattern": "SECRET"}), &ctx)
+            .await
+            .expect("execute");
+
+        assert!(result.success);
+        let parsed: Value = serde_json::from_str(&result.content).unwrap();
+        assert_eq!(parsed["total_matches"].as_u64().unwrap(), 0);
+
+        let all = tool
+            .execute(
+                json!({"pattern": "SECRET", "respect_gitignore": false}),
+                &ctx,
+            )
+            .await
+            .expect("execute");
+        let parsed_all: Value = serde_json::from_str(&all.content).unwrap();
+        assert!(parsed_all["total_matches"].as_u64().unwrap() >= 1);
+    }
+
+    #[tokio::test]
+    async fn test_grep_files_skips_binary() {
+        let tmp = tempdir().expect("tempdir");
+        let mut bytes = b"before\0after".to_vec();
+        bytes.extend_from_slice(b"\nplain line\n");
+        fs::write(tmp.path().join("binary.dat"), bytes).expect("write");
+        fs::write(tmp.path().join("plain.txt"), "findme\n").expect("write");
+
+        let ctx = ToolContext::new(tmp.path().to_path_buf());
+        let tool = GrepFilesTool;
+        let result = tool
+            .execute(json!({"pattern": "findme"}), &ctx)
+            .await
+            .expect("execute");
+
+        let parsed: Value = serde_json::from_str(&result.content).unwrap();
+        assert_eq!(parsed["total_matches"].as_u64().unwrap(), 1);
+        assert!(parsed["files_skipped_binary"].as_u64().unwrap() >= 1);
+    }
+
+    #[tokio::test]
+    async fn test_grep_files_output_mode_files_with_matches() {
+        let tmp = tempdir().expect("tempdir");
+        fs::write(tmp.path().join("a.rs"), "fn alpha() {}\n").expect("write");
+        fs::write(tmp.path().join("b.rs"), "fn beta() {}\n").expect("write");
+
+        let ctx = ToolContext::new(tmp.path().to_path_buf());
+        let tool = GrepFilesTool;
+        let result = tool
+            .execute(
+                json!({"pattern": "fn", "output_mode": "files_with_matches"}),
+                &ctx,
+            )
+            .await
+            .expect("execute");
+
+        let parsed: Value = serde_json::from_str(&result.content).unwrap();
+        assert_eq!(parsed["output_mode"], "files_with_matches");
+        let files = parsed["files"].as_array().unwrap();
+        assert_eq!(files.len(), 2);
+        assert!(parsed.get("matches").is_none());
+    }
+
+    #[tokio::test]
+    async fn test_grep_files_output_mode_count() {
+        let tmp = tempdir().expect("tempdir");
+        fs::write(tmp.path().join("a.rs"), "x\nx\n").expect("write");
+
+        let ctx = ToolContext::new(tmp.path().to_path_buf());
+        let tool = GrepFilesTool;
+        let result = tool
+            .execute(json!({"pattern": "x", "output_mode": "count"}), &ctx)
+            .await
+            .expect("execute");
+
+        let parsed: Value = serde_json::from_str(&result.content).unwrap();
+        assert_eq!(parsed["output_mode"], "count");
+        let counts = parsed["file_counts"].as_array().unwrap();
+        assert_eq!(counts[0]["match_count"].as_u64().unwrap(), 2);
+    }
+
+    #[test]
+    fn test_is_probably_binary() {
+        use crate::tools::workspace_walk::is_probably_binary;
+
+        let tmp = tempdir().expect("tempdir");
+        let bin = tmp.path().join("x.bin");
+        fs::write(&bin, b"a\0b").expect("write");
+        assert!(is_probably_binary(&bin));
+
+        let txt = tmp.path().join("x.txt");
+        fs::write(&txt, b"hello").expect("write");
+        assert!(!is_probably_binary(&txt));
     }
 }

@@ -27,6 +27,15 @@ export interface StreamTurnRequest {
   allow_shell?: boolean;
   /** When set, runtime matches `routing_rules.json` intent → model (see RoutingPanel). */
   route_intent?: string;
+  /** `auto` | `office` | `code` — resolved when the stream thread is created. */
+  task_type?: string;
+}
+
+export interface RuntimeThreadSummary {
+  id: string;
+  task_type?: string;
+  mode?: string;
+  workspace?: string;
 }
 
 export interface SessionInfo {
@@ -447,6 +456,7 @@ export async function startThreadTurn(
     trust_mode?: boolean;
     auto_approve?: boolean;
     route_intent?: string;
+    task_type?: string;
   },
 ): Promise<{ thread: unknown; turn: TurnRecord }> {
   return postJson(`/v1/threads/${encodeURIComponent(threadId)}/turns`, body);
@@ -457,6 +467,7 @@ export interface RuntimeThreadRecord {
   id: string;
   workspace: string;
   trust_mode?: boolean;
+  task_type?: string;
 }
 
 export interface ThreadDetailResponse {

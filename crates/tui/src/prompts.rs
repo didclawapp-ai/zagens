@@ -9,11 +9,12 @@
 
 use crate::models::SystemPrompt;
 use crate::project_context::{ProjectContext, load_project_context_with_parents};
+use crate::task_type::TaskType;
 use crate::tui::app::AppMode;
 use crate::tui::approval::ApprovalMode;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy)]
 pub struct PromptSessionContext<'a> {
     pub user_memory_block: Option<&'a str>,
     pub goal_objective: Option<&'a str>,
@@ -23,6 +24,19 @@ pub struct PromptSessionContext<'a> {
     /// disk I/O happens inside the prompt builder, so the workspace-
     /// static portion of the system prompt stays cache-friendly.
     pub locale_tag: &'a str,
+    /// Office vs Code overlay and prompt/tool trimming.
+    pub task_type: TaskType,
+}
+
+impl<'a> Default for PromptSessionContext<'a> {
+    fn default() -> Self {
+        Self {
+            user_memory_block: None,
+            goal_objective: None,
+            locale_tag: "en",
+            task_type: TaskType::Code,
+        }
+    }
 }
 
 /// Conventional location for the structured session-handoff artifact (#32).
@@ -208,13 +222,27 @@ pub fn merge_instruction_paths_with_pick_rules(
 /// Core: task execution, tool-use rules, output format, toolbox reference,
 /// "When NOT to use" guidance, sub-agent sentinel protocol.
 pub const BASE_PROMPT: &str = include_str!("prompts/base.md");
+pub const OFFICE_BASE_PROMPT: &str = include_str!("prompts/base-office.md");
+pub const TASK_OFFICE: &str = include_str!("prompts/tasks/office.md");
+pub const TASK_CODE: &str = include_str!("prompts/tasks/code.md");
+
+fn compose_base_prompt_layer_for_task(task_type: TaskType) -> String {
+    let body = match task_type {
+        TaskType::Office => OFFICE_BASE_PROMPT.trim(),
+        TaskType::Code => BASE_PROMPT.trim(),
+    };
+    format!("{}\n\n{}", client_identity_line_from_env(), body)
+}
 
 fn compose_base_prompt_layer() -> String {
-    format!(
-        "{}\n\n{}",
-        client_identity_line_from_env(),
-        BASE_PROMPT.trim()
-    )
+    compose_base_prompt_layer_for_task(TaskType::Code)
+}
+
+fn task_overlay(task_type: TaskType) -> &'static str {
+    match task_type {
+        TaskType::Office => TASK_OFFICE,
+        TaskType::Code => TASK_CODE,
+    }
 }
 
 /// Personality overlays — voice and tone.
@@ -317,18 +345,25 @@ fn approval_prompt_for_mode(mode: AppMode, approval_mode: ApprovalMode) -> &'sta
 /// Each layer is separated by a blank line for readability in the
 /// rendered prompt (the model sees them as contiguous sections).
 pub fn compose_prompt(mode: AppMode, personality: Personality) -> String {
-    compose_prompt_with_approval(mode, personality, default_approval_mode_for_mode(mode))
+    compose_prompt_with_approval(
+        mode,
+        personality,
+        default_approval_mode_for_mode(mode),
+        TaskType::Code,
+    )
 }
 
 pub fn compose_prompt_with_approval(
     mode: AppMode,
     personality: Personality,
     approval_mode: ApprovalMode,
+    task_type: TaskType,
 ) -> String {
-    let base = compose_base_prompt_layer();
-    let parts: [&str; 3] = [
+    let base = compose_base_prompt_layer_for_task(task_type);
+    let parts: [&str; 4] = [
         personality.prompt().trim(),
         mode_prompt(mode).trim(),
+        task_overlay(task_type).trim(),
         approval_prompt_for_mode(mode, approval_mode).trim(),
     ];
 
@@ -349,8 +384,12 @@ fn compose_mode_prompt(mode: AppMode) -> String {
     compose_prompt(mode, Personality::Calm)
 }
 
-fn compose_mode_prompt_with_approval(mode: AppMode, approval_mode: ApprovalMode) -> String {
-    compose_prompt_with_approval(mode, Personality::Calm, approval_mode)
+fn compose_mode_prompt_with_approval(
+    mode: AppMode,
+    approval_mode: ApprovalMode,
+    task_type: TaskType,
+) -> String {
+    compose_prompt_with_approval(mode, Personality::Calm, approval_mode, task_type)
 }
 
 // ── Public API ────────────────────────────────────────────────────────
@@ -419,6 +458,7 @@ pub fn system_prompt_for_mode_with_context_and_skills(
             user_memory_block,
             goal_objective: None,
             locale_tag: "en",
+            task_type: TaskType::Code,
         },
     )
 }
@@ -451,7 +491,8 @@ pub fn system_prompt_for_mode_with_context_skills_session_and_approval(
     session_context: PromptSessionContext<'_>,
     approval_mode: ApprovalMode,
 ) -> SystemPrompt {
-    let mode_prompt = compose_mode_prompt_with_approval(mode, approval_mode);
+    let task_type = session_context.task_type;
+    let mode_prompt = compose_mode_prompt_with_approval(mode, approval_mode, task_type);
 
     // Load project context from workspace
     let project_context = load_project_context_with_parents(workspace);
@@ -480,12 +521,9 @@ pub fn system_prompt_for_mode_with_context_skills_session_and_approval(
         render_environment_block(workspace, session_context.locale_tag),
     );
 
-    // 2.5a. Configured `instructions = [...]` files (#454). Loaded
-    // and concatenated in declared order. Lives above the skills
-    // block so it's part of the workspace-static layer that the KV
-    // prefix cache can hit, and so per-project overrides apply
-    // consistently turn-over-turn.
-    if let Some(paths) = instructions
+    // 2.5a. Configured `instructions = [...]` files (#454). Code sessions only.
+    if task_type.needs_full_code_prompt()
+        && let Some(paths) = instructions
         && let Some(block) = render_instructions_block(paths)
     {
         full_prompt = format!("{full_prompt}\n\n{block}");
@@ -509,23 +547,17 @@ pub fn system_prompt_for_mode_with_context_skills_session_and_approval(
         );
     }
 
-    // 3. Skills block. #432: walks every candidate workspace
-    // skills directory (`.agents/skills`, `skills`,
-    // `.opencode/skills`, `.claude/skills`, `.cursor/skills`) plus global
-    // `~/.agents/skills` / `~/.deepseek/skills` so skills installed for any
-    // AI-tool convention show up in the catalogue. The legacy
-    // single-`skills_dir` path is
-    // honoured as a fallback for callers that don't supply a
-    // workspace-aware view; it falls through to the same merged
-    // registry when available.
-    let skills_block = crate::skills::render_available_skills_context_for_workspace(workspace)
-        .or_else(|| skills_dir.and_then(crate::skills::render_available_skills_context));
-    if let Some(block) = skills_block {
-        full_prompt = format!("{full_prompt}\n\n{block}");
+    // 3. Skills block (Code sessions only).
+    if task_type.needs_full_code_prompt() {
+        let skills_block = crate::skills::render_available_skills_context_for_workspace(workspace)
+            .or_else(|| skills_dir.and_then(crate::skills::render_available_skills_context));
+        if let Some(block) = skills_block {
+            full_prompt = format!("{full_prompt}\n\n{block}");
+        }
     }
 
-    // 4. Context Management (Agent / Yolo only).
-    if matches!(mode, AppMode::Agent | AppMode::Yolo) {
+    // 4. Context Management (Agent / Yolo, Code sessions only).
+    if task_type.needs_full_code_prompt() && matches!(mode, AppMode::Agent | AppMode::Yolo) {
         full_prompt.push_str(
             "\n\n## Context Management\n\n\
              When the conversation gets long (you'll see a context usage indicator), you can:\n\
@@ -644,6 +676,7 @@ mod tests {
                 user_memory_block: None,
                 goal_objective: None,
                 locale_tag: "ja",
+                task_type: TaskType::Code,
             },
         ) {
             SystemPrompt::Text(text) => text,
@@ -738,7 +771,12 @@ mod tests {
     #[test]
     fn agent_prompt_can_reflect_never_approval_policy() {
         let prompt =
-            compose_prompt_with_approval(AppMode::Agent, Personality::Calm, ApprovalMode::Never);
+            compose_prompt_with_approval(
+                AppMode::Agent,
+                Personality::Calm,
+                ApprovalMode::Never,
+                TaskType::Code,
+            );
         assert!(prompt.contains("Mode: Agent"));
         assert!(prompt.contains("Approval Policy: Never"));
         assert!(prompt.contains("/config approval_mode suggest"));
@@ -786,6 +824,7 @@ mod tests {
                 user_memory_block: None,
                 goal_objective: Some("Fix transcript corruption"),
                 locale_tag: "en",
+                task_type: TaskType::Code,
             },
         ) {
             SystemPrompt::Text(text) => text,
@@ -813,6 +852,7 @@ mod tests {
                 user_memory_block: None,
                 goal_objective: Some("   "),
                 locale_tag: "en",
+                task_type: TaskType::Code,
             },
         ) {
             SystemPrompt::Text(text) => text,

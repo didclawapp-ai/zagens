@@ -4,6 +4,7 @@ use std::cmp::Ordering;
 use std::path::Path;
 
 use async_trait::async_trait;
+use super::workspace_walk::configure_workspace_walk;
 use ignore::WalkBuilder;
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -124,35 +125,10 @@ fn search_files(
     let mut results: Vec<FileSearchMatch> = Vec::new();
 
     let mut builder = WalkBuilder::new(base_path);
-    builder
-        .hidden(false)
-        .follow_links(true)
-        .require_git(false)
-        .git_ignore(true)
-        .git_global(true)
-        .filter_entry(move |entry| {
-            let name = entry.file_name().to_string_lossy();
-            !matches!(
-                name.as_ref(),
-                "target"
-                    | "node_modules"
-                    | ".git"
-                    | "dist"
-                    | "build"
-                    | "__pycache__"
-                    | ".venv"
-                    | "venv"
-                    | ".turbo"
-                    | ".next"
-            )
-        });
+    configure_workspace_walk(&mut builder, true);
     let walker = builder.build();
 
-    for entry in walker {
-        let entry = match entry {
-            Ok(entry) => entry,
-            Err(_) => continue,
-        };
+    for entry in walker.flatten() {
         if !entry.file_type().is_some_and(|ft| ft.is_file()) {
             continue;
         }

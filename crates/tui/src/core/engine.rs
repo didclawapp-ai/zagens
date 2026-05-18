@@ -151,6 +151,8 @@ pub struct EngineConfig {
     /// When true, force `tool_choice: "required"` so the model always calls
     /// a tool on every turn step (V4 strict tool-following mode).
     pub strict_tool_mode: bool,
+    /// Office vs Code task surface (session-fixed).
+    pub task_type: crate::task_type::TaskType,
     /// Workshop / large-tool-output routing (#548). `None` disables routing.
     pub workshop: Option<crate::tools::large_output_router::WorkshopConfig>,
 }
@@ -185,6 +187,7 @@ impl Default for EngineConfig {
             strict_tool_mode: false,
             goal_objective: None,
             locale_tag: "en".to_string(),
+            task_type: crate::task_type::TaskType::default(),
             workshop: None,
         }
     }
@@ -441,6 +444,7 @@ impl Engine {
                     user_memory_block: user_memory_block.as_deref(),
                     goal_objective: config.goal_objective.as_deref(),
                     locale_tag: &config.locale_tag,
+                    task_type: config.task_type,
                 },
                 session.approval_mode,
             );
@@ -950,7 +954,9 @@ impl Engine {
         // envelopes into `Event::SubAgentMailbox` so the UI can route them
         // to the matching in-transcript card. The drainer exits naturally
         // when every cloned sender is dropped at turn-end.
-        let mailbox_for_runtime = if self.config.features.enabled(Feature::Subagents) {
+        let mailbox_for_runtime = if self.config.task_type.uses_code_tool_surface()
+            && self.config.features.enabled(Feature::Subagents)
+        {
             let cancel_token = self.cancel_token.child_token();
             let (mailbox, mut receiver) = Mailbox::new(cancel_token.clone());
             let tx_event_clone = self.tx_event.clone();
@@ -979,7 +985,9 @@ impl Engine {
 
         let tool_registry = match mode {
             AppMode::Agent | AppMode::Yolo => {
-                if self.config.features.enabled(Feature::Subagents) {
+                if self.config.task_type.uses_code_tool_surface()
+                    && self.config.features.enabled(Feature::Subagents)
+                {
                     let runtime = if let Some(client) = self.deepseek_client.clone() {
                         let mut rt = SubAgentRuntime::new(
                             client,
@@ -1024,7 +1032,9 @@ impl Engine {
             _ => Some(builder.build(tool_context)),
         };
 
-        let mcp_tools = if self.config.features.enabled(Feature::Mcp) {
+        let mcp_tools = if self.config.task_type.uses_code_tool_surface()
+            && self.config.features.enabled(Feature::Mcp)
+        {
             self.mcp_tools().await
         } else {
             Vec::new()
@@ -1837,6 +1847,7 @@ impl Engine {
                 user_memory_block: user_memory_block.as_deref(),
                 goal_objective: self.config.goal_objective.as_deref(),
                 locale_tag: &self.config.locale_tag,
+                task_type: self.config.task_type,
             },
             self.session.approval_mode,
         );

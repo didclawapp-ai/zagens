@@ -18,6 +18,21 @@ use crate::runtime_threads::{
 
 const CURRENT_META_VERSION: u32 = 1;
 
+fn ensure_threads_task_type_column(db: &Connection) -> anyhow::Result<()> {
+    let mut stmt = db.prepare("PRAGMA table_info(threads)")?;
+    let has_col = stmt
+        .query_map([], |row| row.get::<_, String>(1))?
+        .filter_map(|r| r.ok())
+        .any(|name| name == "task_type");
+    if !has_col {
+        db.execute(
+            "ALTER TABLE threads ADD COLUMN task_type TEXT NOT NULL DEFAULT 'code'",
+            [],
+        )?;
+    }
+    Ok(())
+}
+
 pub fn open_sqlite_thread_db(
     db_path: &std::path::Path,
     threads_dir: &std::path::Path,
@@ -48,7 +63,8 @@ pub fn open_sqlite_thread_db(
             system_prompt TEXT,
             task_id TEXT,
             title TEXT,
-            coherence_state_json TEXT NOT NULL DEFAULT '{}'
+            coherence_state_json TEXT NOT NULL DEFAULT '{}',
+            task_type TEXT NOT NULL DEFAULT 'code'
         );
         CREATE TABLE IF NOT EXISTS turns (
             id TEXT PRIMARY KEY,
@@ -92,6 +108,7 @@ pub fn open_sqlite_thread_db(
         CREATE INDEX IF NOT EXISTS idx_events_seq ON events(seq);",
     )
     .context("Failed to create runtime tables")?;
+    ensure_threads_task_type_column(&db)?;
 
     let needs_migration: bool = db
         .query_row(
@@ -163,8 +180,8 @@ fn migrate_json_threads(
         let coherence_json = serde_json::to_string(&thread.coherence_state).unwrap_or_default();
         tx.execute(
             "INSERT OR REPLACE INTO threads
-             (id, created_at, updated_at, model, workspace, mode, allow_shell, trust_mode, auto_approve, latest_turn_id, latest_response_bookmark, archived, system_prompt, task_id, title, coherence_state_json)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)",
+             (id, created_at, updated_at, model, workspace, mode, allow_shell, trust_mode, auto_approve, latest_turn_id, latest_response_bookmark, archived, system_prompt, task_id, title, coherence_state_json, task_type)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17)",
             params![
                 thread.id,
                 thread.created_at.to_rfc3339(),
@@ -182,6 +199,7 @@ fn migrate_json_threads(
                 thread.task_id,
                 thread.title,
                 coherence_json,
+                thread.task_type,
             ],
         )?;
         migrated_threads += 1;
@@ -321,14 +339,40 @@ fn migrate_json_threads(
     })
 }
 
+fn thread_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ThreadRecord> {
+    let workspace: String = row.get(4)?;
+    let coherence_json: String = row.get(15)?;
+    let task_type: String = row.get(16).unwrap_or_else(|_| "code".to_string());
+    Ok(ThreadRecord {
+        schema_version: 2,
+        id: row.get(0)?,
+        created_at: parse_ts(row.get::<_, String>(1)?),
+        updated_at: parse_ts(row.get::<_, String>(2)?),
+        model: row.get(3)?,
+        workspace: PathBuf::from(workspace),
+        mode: row.get(5)?,
+        allow_shell: row.get::<_, i32>(6)? != 0,
+        trust_mode: row.get::<_, i32>(7)? != 0,
+        auto_approve: row.get::<_, i32>(8)? != 0,
+        latest_turn_id: row.get(9)?,
+        latest_response_bookmark: row.get(10)?,
+        archived: row.get::<_, i32>(11)? != 0,
+        system_prompt: row.get(12)?,
+        task_id: row.get(13)?,
+        title: row.get(14)?,
+        task_type,
+        coherence_state: serde_json::from_str(&coherence_json).unwrap_or_default(),
+    })
+}
+
 // === Thread operations ===
 
 pub fn save_thread_sqlite(db: &Connection, thread: &ThreadRecord) -> anyhow::Result<()> {
     let coherence_json = serde_json::to_string(&thread.coherence_state).unwrap_or_default();
     db.execute(
         "INSERT OR REPLACE INTO threads
-         (id, created_at, updated_at, model, workspace, mode, allow_shell, trust_mode, auto_approve, latest_turn_id, latest_response_bookmark, archived, system_prompt, task_id, title, coherence_state_json)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)",
+         (id, created_at, updated_at, model, workspace, mode, allow_shell, trust_mode, auto_approve, latest_turn_id, latest_response_bookmark, archived, system_prompt, task_id, title, coherence_state_json, task_type)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17)",
         params![
             thread.id,
             thread.created_at.to_rfc3339(),
@@ -346,6 +390,7 @@ pub fn save_thread_sqlite(db: &Connection, thread: &ThreadRecord) -> anyhow::Res
             thread.task_id,
             thread.title,
             coherence_json,
+            thread.task_type,
         ],
     )?;
     Ok(())
@@ -353,63 +398,19 @@ pub fn save_thread_sqlite(db: &Connection, thread: &ThreadRecord) -> anyhow::Res
 
 pub fn load_thread_sqlite(db: &Connection, thread_id: &str) -> anyhow::Result<ThreadRecord> {
     db.query_row(
-        "SELECT id, created_at, updated_at, model, workspace, mode, allow_shell, trust_mode, auto_approve, latest_turn_id, latest_response_bookmark, archived, system_prompt, task_id, title, coherence_state_json FROM threads WHERE id = ?1",
+        "SELECT id, created_at, updated_at, model, workspace, mode, allow_shell, trust_mode, auto_approve, latest_turn_id, latest_response_bookmark, archived, system_prompt, task_id, title, coherence_state_json, task_type FROM threads WHERE id = ?1",
         params![thread_id],
-        |row| {
-            let workspace: String = row.get(4)?;
-            let coherence_json: String = row.get(15)?;
-            Ok(ThreadRecord {
-                schema_version: 2,
-                id: row.get(0)?,
-                created_at: parse_ts(row.get::<_, String>(1)?),
-                updated_at: parse_ts(row.get::<_, String>(2)?),
-                model: row.get(3)?,
-                workspace: PathBuf::from(workspace),
-                mode: row.get(5)?,
-                allow_shell: row.get::<_, i32>(6)? != 0,
-                trust_mode: row.get::<_, i32>(7)? != 0,
-                auto_approve: row.get::<_, i32>(8)? != 0,
-                latest_turn_id: row.get(9)?,
-                latest_response_bookmark: row.get(10)?,
-                archived: row.get::<_, i32>(11)? != 0,
-                system_prompt: row.get(12)?,
-                task_id: row.get(13)?,
-                title: row.get(14)?,
-                coherence_state: serde_json::from_str(&coherence_json).unwrap_or_default(),
-            })
-        },
+        |row| thread_record_from_row(row),
     )
     .map_err(|e| anyhow::anyhow!("thread not found ({thread_id}): {e}"))
 }
 
 pub fn list_threads_sqlite(db: &Connection) -> anyhow::Result<Vec<ThreadRecord>> {
     let mut stmt = db.prepare(
-        "SELECT id, created_at, updated_at, model, workspace, mode, allow_shell, trust_mode, auto_approve, latest_turn_id, latest_response_bookmark, archived, system_prompt, task_id, title, coherence_state_json FROM threads ORDER BY updated_at DESC",
+        "SELECT id, created_at, updated_at, model, workspace, mode, allow_shell, trust_mode, auto_approve, latest_turn_id, latest_response_bookmark, archived, system_prompt, task_id, title, coherence_state_json, task_type FROM threads ORDER BY updated_at DESC",
     )?;
     let threads = stmt
-        .query_map([], |row| {
-            let workspace: String = row.get(4)?;
-            let coherence_json: String = row.get(15)?;
-            Ok(ThreadRecord {
-                schema_version: 2,
-                id: row.get(0)?,
-                created_at: parse_ts(row.get::<_, String>(1)?),
-                updated_at: parse_ts(row.get::<_, String>(2)?),
-                model: row.get(3)?,
-                workspace: PathBuf::from(workspace),
-                mode: row.get(5)?,
-                allow_shell: row.get::<_, i32>(6)? != 0,
-                trust_mode: row.get::<_, i32>(7)? != 0,
-                auto_approve: row.get::<_, i32>(8)? != 0,
-                latest_turn_id: row.get(9)?,
-                latest_response_bookmark: row.get(10)?,
-                archived: row.get::<_, i32>(11)? != 0,
-                system_prompt: row.get(12)?,
-                task_id: row.get(13)?,
-                title: row.get(14)?,
-                coherence_state: serde_json::from_str(&coherence_json).unwrap_or_default(),
-            })
-        })?
+        .query_map([], thread_record_from_row)?
         .filter_map(|r| r.ok())
         .collect();
     Ok(threads)

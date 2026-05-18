@@ -1090,6 +1090,16 @@ pub fn restart_sidecar(ctx: tauri::State<'_, AppContext>) -> Result<(), String> 
 }
 
 // ---------------------------------------------------------------------------
+// Composer workspace defaults (`<Documents>/DS Pick`)
+// ---------------------------------------------------------------------------
+
+/// Returns the default Composer workspace directory, creating it if needed.
+#[tauri::command]
+pub fn default_composer_workspace() -> Result<String, String> {
+    crate::workspace_defaults::default_composer_workspace()
+}
+
+// ---------------------------------------------------------------------------
 // pick-rules — `.deepseek/pick-rules.md` per workspace (DS Pick project rules)
 // ---------------------------------------------------------------------------
 

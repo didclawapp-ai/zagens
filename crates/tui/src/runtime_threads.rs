@@ -110,8 +110,15 @@ pub struct ThreadRecord {
     /// additive metadata — older readers ignore it without misinterpretation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// `office` | `code` — fixed for the thread lifetime.
+    #[serde(default = "default_thread_task_type")]
+    pub task_type: String,
     #[serde(default)]
     pub coherence_state: CoherenceState,
+}
+
+fn default_thread_task_type() -> String {
+    crate::task_type::TaskType::Code.as_str().to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -641,7 +648,7 @@ pub enum ThreadListFilter {
     ArchivedOnly,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CreateThreadRequest {
     pub model: Option<String>,
     pub workspace: Option<PathBuf>,
@@ -655,6 +662,9 @@ pub struct CreateThreadRequest {
     pub system_prompt: Option<String>,
     #[serde(default)]
     pub task_id: Option<String>,
+    /// `auto` | `office` | `code` — resolved to `office`/`code` on create.
+    #[serde(default)]
+    pub task_type: Option<String>,
 }
 
 /// Mutable fields accepted by `PATCH /v1/threads/{id}`.
@@ -1081,6 +1091,7 @@ impl RuntimeThreadManager {
         let allow_shell = req.allow_shell.unwrap_or_else(|| self.config.allow_shell());
         let trust_mode = req.trust_mode.unwrap_or(false);
         let auto_approve = req.auto_approve.unwrap_or(false);
+        let task_type = crate::task_type::resolve_task_type(req.task_type.as_deref(), &workspace, None);
 
         let thread = ThreadRecord {
             schema_version: CURRENT_RUNTIME_SCHEMA_VERSION,
@@ -1099,6 +1110,7 @@ impl RuntimeThreadManager {
             system_prompt: req.system_prompt,
             task_id: req.task_id,
             title: None,
+            task_type: task_type.as_str().to_string(),
             coherence_state: CoherenceState::default(),
         };
         {
@@ -2161,6 +2173,8 @@ impl RuntimeThreadManager {
             )
             .tag()
             .to_string(),
+            task_type: crate::task_type::TaskType::parse_str(&thread.task_type)
+                .unwrap_or(crate::task_type::TaskType::Code),
             workshop: self.config.workshop.clone(),
         };
 
@@ -3565,6 +3579,7 @@ mod tests {
             system_prompt: None,
             task_id: None,
             title: None,
+            task_type: default_thread_task_type(),
             coherence_state: CoherenceState::default(),
         }
     }
@@ -3898,6 +3913,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                task_type: None,
             })
             .await?;
 
@@ -4004,6 +4020,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                task_type: None,
             })
             .await?;
 
@@ -4026,6 +4043,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                task_type: None,
             })
             .await?;
 
@@ -4070,6 +4088,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                task_type: None,
             })
             .await?;
 
@@ -4114,6 +4133,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                task_type: None,
             })
             .await?;
 
@@ -4147,6 +4167,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                task_type: None,
             })
             .await?;
 
@@ -4197,6 +4218,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                task_type: None,
             })
             .await?;
 
@@ -4323,6 +4345,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                task_type: None,
             })
             .await?;
 
@@ -4417,6 +4440,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                task_type: None,
             })
             .await?;
 
@@ -4499,6 +4523,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                task_type: None,
             })
             .await?;
 
@@ -4584,6 +4609,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                task_type: None,
             })
             .await?;
 
@@ -4670,6 +4696,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                task_type: None,
             })
             .await?;
 
@@ -4754,6 +4781,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                task_type: None,
             })
             .await?;
 
@@ -4862,6 +4890,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                task_type: None,
             })
             .await?;
 
@@ -5065,6 +5094,7 @@ mod tests {
             system_prompt: None,
             task_id: None,
             title: None,
+            task_type: default_thread_task_type(),
             coherence_state: CoherenceState::default(),
         };
         manager.store.save_thread(&thread)?;
@@ -5374,6 +5404,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                task_type: None,
             })
             .await?;
         seed_turns_with_user_messages(&manager, &thread.id, &["first", "second", "third"])?;
@@ -5410,6 +5441,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                task_type: None,
             })
             .await?;
         seed_turns_with_user_messages(&manager, &thread.id, &["a", "b", "c", "d"])?;
@@ -5439,6 +5471,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                task_type: None,
             })
             .await?;
         seed_turns_with_user_messages(&manager, &thread.id, &["only"])?;
@@ -5465,6 +5498,7 @@ mod tests {
                 archived: false,
                 system_prompt: None,
                 task_id: None,
+                task_type: None,
             })
             .await?;
         let turn_ids = seed_turns_with_user_messages(&manager, &thread.id, &["x", "y", "z"])?;

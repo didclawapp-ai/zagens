@@ -1,6 +1,10 @@
 # DS Pick API 设计文档
 
-> 版本: 0.2.1 | 最后更新: 2026-05-18 | 基于仓库实际代码
+> **DS Pick 壳版本:** 0.2.2（`crates/desktop/Cargo.toml`）| **文档修订:** 2026-05-18 | **权威实现:** 本仓库 `commands.rs`、`runtime_api.rs` `build_router`、`web-ui/src/api/client.ts`
+
+本文档描述 **DS Pick 桌面壳** 的双通道集成 API，不是独立 OpenAPI 规范。协议类型见 `crates/protocol/`；HTTP 路由以 `crates/tui/src/runtime_api.rs` 中 `build_router` 为准（sidecar 内 `deepseek-tui serve --http`）。历史 `RUNTIME_API.md` 已移除，勿引用旧路径。
+
+**与 Agent 行为：** 同一 sidecar 载入的 runtime prompt 含 [幻觉防控子规则](prompt-hallucination-patch.md)（Capability / Architecture Claims）。回归显示 DS Pick 在「能力/架构类裸问」上幻觉率较未打 patch 的发行 TUI 明显下降；**本文档的 SSE 示意图与能力结论无关**，集成时以代码与 `streamNormalize.ts` 为准。
 
 ---
 
@@ -17,12 +21,12 @@ DS Pick 采用 **双通道 API** 架构：WebView 前端与 Rust 后端之间通
 │  │                     │    │                        │     │
 │  │  Channel A:         │    │  commands.rs           │     │
 │  │  Tauri invoke() ────┼───►│  sidecar.rs            │     │
-│  │  (原生桥接, 26 命令) │    │  main.rs               │     │
+│  │  (原生桥接, 25 命令) │    │  main.rs               │     │
 │  │                     │    │                        │     │
 │  │  Channel B:         │    │  ┌──────────────────┐  │     │
 │  │  HTTP fetch() ──────┼────┼─►│  Sidecar Process │  │     │
-│  │  (localhost:7878)   │    │  │  deepseek-tui    │  │     │
-│  │  ~45 REST 端点      │    │  │  (HTTP + SSE)    │  │     │
+│  │  (127.0.0.1:port)   │    │  │  deepseek-tui    │  │     │
+│  │  56 条 HTTP 路由*   │    │  │  (HTTP + SSE)    │  │     │
 │  └─────────────────────┘    │  └──────────────────┘  │     │
 │                             └────────────────────────┘     │
 └────────────────────────────────────────────────────────────┘
@@ -31,7 +35,11 @@ DS Pick 采用 **双通道 API** 架构：WebView 前端与 Rust 后端之间通
 | 通道 | 载体 | 用途 |
 |------|------|------|
 | **A — Tauri IPC** | `invoke()` → Rust `#[tauri::command]` | 系统级操作：密钥管理、文件对话框、二进制文件 I/O、工作区导出、符号索引管理 |
-| **B — Runtime HTTP** | `fetch()` → `http://127.0.0.1:7878` | Agent 运行时：对话线程、会话、流式响应、MCP 管理、任务自动化、用量统计 |
+| **B — Runtime HTTP** | `fetch()` → `http://127.0.0.1:{port}`（默认 7878，`get_runtime_port`） | Agent 运行时：对话线程、会话、流式响应、MCP 管理、任务自动化、用量统计 |
+
+\* §8「Channel B」表按 **方法 + 路径** 逐条计数共 56 行；与「资源组」数量不同。
+
+**与 CLI / `app-server`：** DS Pick **不** 启动 `crates/app-server`；桌面仅 spawn 捆绑的 `deepseek-tui` sidecar，HTTP 面即 `runtime_api.rs`。`app-server` 供其他入口（若有）参考，非 DS Pick 数据路径。
 
 ---
 
@@ -46,9 +54,9 @@ DS Pick 采用 **双通道 API** 架构：WebView 前端与 Rust 后端之间通
 |------|------|------|------|
 | `get_runtime_port` | — | `u16` | 获取 sidecar 监听端口（默认 7878） |
 | `get_runtime_token` | — | `String` | 获取 Bearer token，WebView 用此 token 访问 Runtime HTTP API |
-| `get_platform_info` | — | `PlatformInfo` | 返回 `{ os, arch, version }` |
-| `get_os_theme` | — | `String` | 固定返回 `"dark"` |
-| `get_locale` | — | `String` | 固定返回 `"zh-CN"` |
+| `get_platform_info` | — | `PlatformInfo` | `{ os, arch, version }` — 其中 `version` 为 **DS Pick 壳** SemVer（`CARGO_PKG_VERSION`），非操作系统版本 |
+| `get_os_theme` | — | `String` | **占位：** 当前固定 `"dark"`，未读系统主题 API |
+| `get_locale` | — | `String` | **占位：** 当前固定 `"zh-CN"`，未读系统 locale |
 | `restart_sidecar` | — | `()` | 触发 sidecar 进程重启（重载 config.toml） |
 
 ### 2.2 API 密钥管理
@@ -66,8 +74,19 @@ DS Pick 采用 **双通道 API** 架构：WebView 前端与 Rust 后端之间通
 
 | 命令 | 参数 | 返回 | 说明 |
 |------|------|------|------|
-| `read_thread_workspace_binary` | `thread_id, relative_path` | `BinaryFileResponse { data, mime }` | 读取线程工作区中的二进制文件（base64 + MIME） |
+| `read_thread_workspace_binary` | `thread_id, relative_path` | `BinaryFileResponse` | 读取线程工作区二进制（见下方结构）；Runtime `workspace/file` **仅 UTF-8 文本** |
 | `read_workspace_binary_at_root` | `workspace_root, relative_path` | `BinaryFileResponse` | 同上，无线程上下文 |
+
+**`BinaryFileResponse`**（`commands.rs`）:
+
+```json
+{
+  "mime_type": "image/png",
+  "base64": "...",
+  "size": 12345,
+  "truncated": false
+}
+```
 | `open_in_shell` | `path: String` | `()` | 在系统终端中打开指定路径 |
 | `open_with_system_app` | `path: String` | `()` | 用系统默认应用打开文件 |
 | `export_thread_json` | `thread_id: String` | 保存文件对话框 | 导出线程对话记录为 JSON |
@@ -96,28 +115,38 @@ snapshots_enabled: bool     notify_method: string           session_file_mb: num
 |------|------|------|------|
 | `read_pick_rules` | `workspace_root: String` | `String` | 读取 `.deepseek/pick-rules.md`（不存在则返回空） |
 | `save_pick_rules` | `workspace_root, content` | `()` | 写入项目规则文件 |
-| `rebuild_symbol_index` | `workspace: String` | `()` | 调用 Runtime API `POST /v1/symbol-index/rebuild` |
-| `get_symbol_index_info` | `workspace: String` | `SymbolIndexInfo` | 获取索引状态、大小、符号数等 |
-| `delete_symbol_index` | `workspace: String` | `()` | 删除工作区的符号索引 |
+| `rebuild_symbol_index` | `workspace: String` | `()` | HTTP `POST /v1/symbol-index/rebuild?workspace=…`（**query**，无 JSON body） |
+| `get_symbol_index_info` | `workspace: String` | `SymbolIndexInfo` | **仅 IPC**：读 `.deepseek/symbols.json`（status/size/count，含 stale 检测） |
+| `delete_symbol_index` | `workspace: String` | `()` | 删除工作区 `.deepseek/symbols.json` 等索引文件 |
 
 ---
 
 ## 3. Runtime HTTP API (Channel B)
 
-**服务端**: `deepseek-tui serve --http` (sidecar 进程)
-**监听地址**: `http://127.0.0.1:7878`
+**服务端**: sidecar 执行 `deepseek serve --http --host 127.0.0.1 --port {port}`（见 `sidecar.rs`）
+**监听地址**: `http://127.0.0.1:{port}`（默认 **7878**，以 `get_runtime_port` 为准）
+**Sidecar 环境**: `DEEPSEEK_RUNTIME_TOKEN`、`DEEPSEEK_CLIENT_SURFACE=ds-pick`、可选 `DEEPSEEK_API_KEY`（密钥链）
+**CORS**: sidecar 允许 `http(s)://tauri.localhost`（供 WebView 跨域访问）
 **序列化**: JSON (请求/响应体)
 **流式协议**: SSE (Server-Sent Events) — 用于 `/v1/stream` 和 `/v1/threads/{id}/events`
 
 ### 3.1 认证
 
-桌面模式下，所有 `/v1/*` 路由经过 Bearer Token 中间件校验：
+当 `RuntimeApiState.runtime_token` 已配置时，所有 `/v1/*` 路由经中间件校验，任选其一：
 
-```
+```http
 Authorization: Bearer <runtime_token>
 ```
 
-`runtime_token` 由 Tauri 主进程通过 `get_runtime_token` IPC 命令交付给 WebView。Token 仅存在于 JS 闭包作用域中，不暴露到 `window`。
+或
+
+```http
+x-deepseek-runtime-token: <runtime_token>
+```
+
+`runtime_token` 由 Tauri `main.rs` 生成 UUID v4，经 `get_runtime_token` IPC 交给 WebView；sidecar 通过 `DEEPSEEK_RUNTIME_TOKEN` 环境变量持有同一值。Token 仅存于 `client.ts` 模块闭包，不写入 `localStorage` / `window`。
+
+若 **未** 配置 `runtime_token`（部分测试/开发路径），中间件放行全部 `/v1/*` — 桌面正式路径始终带 token。
 
 公开端点（无需认证）：
 - `GET /health`
@@ -127,7 +156,25 @@ Authorization: Bearer <runtime_token>
 
 - **所有请求体**: `Content-Type: application/json`
 - **重试策略**: WebView 端对瞬态网络错误（`TypeError: Failed to fetch`、`NetworkError`）执行指数退避重试（5 次，基础延迟 350ms）
-- **运行时就绪探测**: 启动时轮询 `GET /health`（然后 `GET /v1/sessions`），最长 90s
+- **运行时就绪探测**: 启动时轮询 `GET /health`（token 就绪后再测 `GET /v1/sessions`），最长 90s
+- **有 body 的 POST/PATCH**: `Content-Type: application/json`；**例外：** `symbol-index/rebuild` 仅用 query（见 §3.3.11）
+
+### 3.2.1 SSE 事件（`event:` 字段）
+
+`POST /v1/stream` 与 `GET /v1/threads/{id}/events` 均输出 SSE。WebView 在 `streamNormalize.ts` 归一化为 UI 事件。Wire 格式常见值（非穷举）：
+
+| `event:` | 含义（摘要） |
+|----------|----------------|
+| `turn.started` | 新轮次开始（含 `thread_id` / `turn_id`） |
+| `thinking.delta` | 思考流片段 |
+| `message.delta` | 助手正文流片段 |
+| `tool.started` / `tool.progress` / `tool.completed` | 工具生命周期 |
+| `approval.required` | 需用户审批（见 `resolve-approval`） |
+| `turn.completed` | 轮次结束（可含 usage） |
+| `agent.*` | 子代理进度（spawned / progress / completed 等） |
+| `done` | 流结束 |
+
+勿将下文 §7 示意图中的 `thinking` / `tool_call` 当作真实 wire 事件名。
 
 ---
 
@@ -137,8 +184,33 @@ Authorization: Bearer <runtime_token>
 
 | 方法 | 路径 | 认证 | 说明 |
 |------|------|------|------|
-| GET | `/health` | 否 | 运行时存活检查，返回 `{ "ok": true }` |
-| GET | `/internal/probe` | 否 | 内部就绪探测 |
+| GET | `/health` | 否 | 运行时存活检查 |
+
+**`GET /health` 响应**:
+
+```json
+{
+  "status": "ok",
+  "service": "deepseek-runtime-api",
+  "mode": "local"
+}
+```
+
+| GET | `/internal/probe` | 否 | 内部就绪 / 排障（PID、启动时间、token 指纹、sidecar 版本） |
+
+**`GET /internal/probe` 响应**（摘要）:
+
+```json
+{
+  "status": "ok",
+  "pid": 12345,
+  "started_at_ms": 1710000000000,
+  "token_fingerprint": "...",
+  "version": "0.8.15"
+}
+```
+
+（`version` 为 **deepseek-tui / runtime crate** 版本，非 DS Pick 壳版本。）
 
 #### 3.3.2 流式对话
 
@@ -161,7 +233,14 @@ Authorization: Bearer <runtime_token>
 }
 ```
 
-**SSE 事件流**: 每个事件为 `event:` + `data:` 块，以 `\n\n` 分隔。
+**SSE 事件流**: 每个事件为 `event:` + `data:`（多为 JSON）块，以 `\n\n` 分隔。事件名见 §3.2.1。
+
+**对话双路径:**
+
+| 路径 | 适用 |
+|------|------|
+| `POST /v1/stream` | 快速单轮（匿名线程 + 一轮 turn） |
+| `POST /v1/threads` + `…/turns` + `GET …/events` | 持久线程、多轮、审批/中断 |
 
 #### 3.3.3 会话 (Sessions)
 
@@ -343,8 +422,7 @@ Authorization: Bearer <runtime_token>
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/v1/apps/routing/rules` | 获取模型路由规则 |
-| PUT | `/v1/apps/routing/rules` | 设置路由规则 |
-| `{ "rules": [...] }` |
+| PUT | `/v1/apps/routing/rules` | 设置路由规则；请求体 `{ "rules": [ ... ] }` |
 
 #### 3.3.10 用量统计 (Usage)
 
@@ -357,7 +435,19 @@ Authorization: Bearer <runtime_token>
 
 | 方法 | 路径 | 认证 | 说明 |
 |------|------|------|------|
-| POST | `/v1/symbol-index/rebuild` | Bearer | 重建指定工作区的符号索引 |
+| POST | `/v1/symbol-index/rebuild?workspace=/abs/path` | Bearer | 重建索引；**仅 query 参数** `workspace`，无请求体 |
+
+成功响应示例（JSON）:
+
+```json
+{
+  "status": "ok",
+  "path": "/path/to/.deepseek/symbols.json",
+  "symbol_count": 42
+}
+```
+
+索引 **状态/大小/是否 stale** 走 IPC `get_symbol_index_info`，无对应 GET HTTP 路由。
 
 ---
 
@@ -400,9 +490,7 @@ Authorization: Bearer <runtime_token>
 
 ### 5.1 Runtime HTTP 错误格式
 
-```json
-HTTP 4xx/5xx → Response body: plain text error message
-```
+失败时响应体多为 **纯文本** 或简短 JSON（视 handler 而定）。WebView **不** 假定固定 schema，统一 `await res.text()` 后构造 `Error`。
 
 WebView 端统一封装为 `Error` 对象，附带 `status` 属性：
 
@@ -471,10 +559,10 @@ WebView                          Sidecar                    LLM API
   │                                │ POST /chat/completions   │
   │                                │─────────────────────────►│
   │                                │      SSE streaming ◄────│
-  │◄── SSE: event=thinking ───────│                          │
-  │◄── SSE: event=tool_call ──────│                          │
-  │◄── SSE: event=text ───────────│                          │
-  │◄── SSE: event=done ───────────│                          │
+  │◄── SSE: thinking.delta ───────│                          │
+  │◄── SSE: tool.started ─────────│                          │
+  │◄── SSE: message.delta ────────│                          │
+  │◄── SSE: done ─────────────────│                          │
 ```
 
 ### 7.2 工具审批
@@ -482,13 +570,13 @@ WebView                          Sidecar                    LLM API
 ```
 WebView                          Sidecar
   │                                │
-  │◄── SSE: event=approval ───────│  (需要用户审批)
+  │◄── SSE: approval.required ────│  (需要用户审批)
   │                                │
-  │ POST /resolve-approval         │
-  │ { decision: "approve" }        │
+  │ POST …/resolve-approval        │
+  │ { tool_call_id, decision }     │
   │───────────────────────────────►│
   │                                │  继续执行工具调用
-  │◄── SSE: event=tool_result ────│
+  │◄── SSE: tool.completed ───────│
 ```
 
 ---
@@ -590,12 +678,34 @@ WebView                          Sidecar
 
 ## 9. 源文件索引
 
-| 组件 | 文件 | 行数 |
+| 组件 | 文件 | 说明 |
 |------|------|------|
-| Tauri 命令定义 | `crates/desktop/src/commands.rs` | 1381 |
-| Sidecar 进程管理 | `crates/desktop/src/sidecar.rs` | 741 |
-| Tauri 主入口 | `crates/desktop/src/main.rs` | 140 |
-| WebView API Client | `crates/desktop/web-ui/src/api/client.ts` | 838 |
-| Runtime HTTP 路由 | `crates/tui/src/runtime_api.rs` (build_router) | L586–682 |
-| App-Server 路由 | `crates/app-server/src/lib.rs` | 783 |
-| Protocol 定义 | `crates/protocol/src/` | — |
+| Tauri 命令注册 | `crates/desktop/src/main.rs` | `generate_handler!` — **25** 个 IPC 命令 |
+| Tauri 命令实现 | `crates/desktop/src/commands.rs` | 密钥、设置、二进制预览、符号索引 IPC |
+| Sidecar 进程管理 | `crates/desktop/src/sidecar.rs` | spawn、`serve --http`、健康检查、重启 |
+| WebView HTTP 客户端 | `crates/desktop/web-ui/src/api/client.ts` | Bearer、重试、就绪探测 |
+| SSE 归一化 | `crates/desktop/web-ui/src/api/streamNormalize.ts` | wire `event` → UI 事件 |
+| Runtime HTTP 路由 | `crates/tui/src/runtime_api.rs` | `build_router` ≈ L586–687 |
+| 协议类型 | `crates/protocol/src/` | 共享 DTO（若有） |
+| Agent prompt（sidecar） | `crates/tui/src/prompts/base.md` 等 | 含幻觉防控子规则；见 [prompt-hallucination-patch.md](prompt-hallucination-patch.md) |
+
+> `crates/app-server/` 为 monorepo 内其他入口所用，**DS Pick 桌面路径不经过此 crate**。行数为撰写时约数，以仓库为准。
+
+---
+
+## 10. 相关文档
+
+| 文档 | 内容 |
+|------|------|
+| [prompt-hallucination-patch.md](prompt-hallucination-patch.md) | V4 能力/架构断言防控、DS Pick vs 官方 TUI 0.8.39 回归 |
+| [tui/回归测试.md](tui/回归测试.md) | 幻觉防控与并行调度回归用例 |
+| [agent-reliability-craft-plan.md](agent-reliability-craft-plan.md) | CRAFT、子代理写路径 §3.2 |
+
+---
+
+## 修订记录
+
+| 日期 | 说明 |
+|------|------|
+| 2026-05-18 | 对照代码修正：health/probe、BinaryFileResponse、SSE 事件名、symbol-index query、认证 header、25 IPC / 56 HTTP、app-server 边界 |
+| 2026-05-18 | 初版（DS Pick API 双通道） |

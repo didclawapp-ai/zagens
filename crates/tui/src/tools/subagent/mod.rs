@@ -334,6 +334,7 @@ impl SubAgentType {
                 "list_dir",
                 "read_file",
                 "grep_files",
+                "glob_files",
                 "file_search",
                 "web.run",
                 "web_search",
@@ -347,6 +348,7 @@ impl SubAgentType {
                 "list_dir",
                 "read_file",
                 "grep_files",
+                "glob_files",
                 "file_search",
                 "web.run",
                 "note",
@@ -360,7 +362,7 @@ impl SubAgentType {
                 "todo_update",
                 "todo_list",
             ],
-            Self::Review => vec!["list_dir", "read_file", "grep_files", "file_search", "note"],
+            Self::Review => vec!["list_dir", "read_file", "grep_files", "glob_files", "file_search", "note"],
             Self::Implementer => vec![
                 "list_dir",
                 "read_file",
@@ -404,6 +406,7 @@ impl SubAgentType {
                 "list_dir",
                 "read_file",
                 "grep_files",
+                "glob_files",
                 "file_search",
                 "note",
             ],
@@ -3885,11 +3888,11 @@ fn build_allowed_tools(
     // no shell. Other types keep full inheritance.
     match agent_type {
         SubAgentType::Explore => Ok(Some(vec![
-            "list_dir", "read_file", "grep_files", "file_search",
+            "list_dir", "read_file", "grep_files", "glob_files", "file_search",
             "web.run", "web_search", "note",
         ].into_iter().map(String::from).collect())),
         SubAgentType::Review => Ok(Some(vec![
-            "list_dir", "read_file", "grep_files", "file_search",
+            "list_dir", "read_file", "grep_files", "glob_files", "file_search",
             "exec_shell", "note",
         ].into_iter().map(String::from).collect())),
         _ => Ok(None),
@@ -3964,7 +3967,7 @@ const EXPLORE_AGENT_PROMPT: &str = concat!(
     "task seems to require a write, stop and put it under BLOCKERS.\n",
     "\n",
     "Method:\n",
-    "- Start with `list_dir` and `file_search` to orient.\n",
+    "- Start with `glob_files` / `file_search` / `list_dir` to orient.\n",
     "- Use `grep_files` (NOT `exec_shell rg`) to find call sites, type defs,\n",
     "  and string literals. Prefer narrow, structured queries over broad scans.\n",
     "- Read each candidate file with `read_file`. Skim, then quote line ranges.\n",

@@ -38,11 +38,20 @@ import {
   type DesktopModelId,
   type DesktopRouteIntentOption,
   type DesktopRunModeId,
+  type DesktopTaskTypePreference,
+  type DesktopTaskTypeResolved,
   parseDesktopModelId,
   parseDesktopRouteIntentOption,
   parseDesktopRunModeId,
+  parseDesktopTaskTypePreference,
+  parseDesktopTaskTypeResolved,
   resolveRouteIntentForApi,
 } from './types/desktop';
+import {
+  fetchDefaultComposerWorkspace,
+  isUnsafeComposerWorkspace,
+} from './lib/defaultWorkspace';
+import { coerceRunModeForSession, isOfficeSession } from './lib/taskTypeSession';
 
 /** DeepSeek V4 context window in tokens (both Pro and Flash). */
 const V4_CONTEXT_WINDOW_TOKENS = 1_000_000;
@@ -178,13 +187,29 @@ function loadComposerPrefs(): {
 } {
   try {
     const wm = parseDesktopModelId(localStorage.getItem('deepseek-desktop-model'));
-    const ws = localStorage.getItem('deepseek-desktop-workspace');
+    const ws = localStorage.getItem('deepseek-desktop-workspace')?.trim() ?? '';
+    const workspace =
+      ws.length > 0 && !isUnsafeComposerWorkspace(ws) ? ws : '';
     return {
       model: wm ?? 'deepseek-v4-pro',
-      workspace: ws != null && ws.trim().length > 0 ? ws.trim() : '.',
+      workspace,
     };
   } catch {
-    return { model: 'deepseek-v4-pro', workspace: '.' };
+    return { model: 'deepseek-v4-pro', workspace: '' };
+  }
+}
+
+/** First-run or legacy `.` / System32 paths → `<Documents>/DS Pick`. */
+async function ensureDefaultComposerWorkspace(
+  current: string,
+  setWorkspace: (path: string) => void,
+): Promise<void> {
+  if (current.trim().length > 0 && !isUnsafeComposerWorkspace(current)) {
+    return;
+  }
+  const path = await fetchDefaultComposerWorkspace();
+  if (path.trim().length > 0 && !isUnsafeComposerWorkspace(path)) {
+    setWorkspace(path);
   }
 }
 
@@ -202,6 +227,15 @@ const ACTIVE_SESSION_STORAGE_KEY = 'deepseek-desktop-active-session-id';
 const ACTIVE_INSPECTOR_STORAGE_KEY = 'deepseek-desktop-active-inspector';
 const ROUTE_INTENT_STORAGE_KEY = 'deepseek-desktop-route-intent';
 const SIDEBAR_WIDTH_KEY = 'deepseek-desktop-sidebar-width';
+const TASK_TYPE_STORAGE_KEY = 'deepseek-desktop-task-type';
+
+function loadTaskTypePreference(): DesktopTaskTypePreference {
+  try {
+    return parseDesktopTaskTypePreference(localStorage.getItem(TASK_TYPE_STORAGE_KEY)) ?? 'auto';
+  } catch {
+    return 'auto';
+  }
+}
 
 /** Periodically persist session file during streaming (loss reduction vs turn-only persist). */
 const SESSION_CHECKPOINT_MS = 18_000;
@@ -277,6 +311,12 @@ export default function App() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [autoApprove, setAutoApprove] = useState(true);
   const [runMode, setRunMode] = useState<DesktopRunModeId>(() => loadRunModePreference());
+  const [taskTypePreference, setTaskTypePreference] = useState<DesktopTaskTypePreference>(
+    () => loadTaskTypePreference(),
+  );
+  const [lockedThreadTaskType, setLockedThreadTaskType] = useState<DesktopTaskTypeResolved | null>(
+    null,
+  );
   const [routeIntent, setRouteIntent] = useState<DesktopRouteIntentOption>(() => loadRouteIntentPreference());
   const [approval, setApproval] = useState<ApprovalState | null>(null);
   const [approvalBusy, setApprovalBusy] = useState(false);
@@ -353,12 +393,18 @@ export default function App() {
   }, [selectedModel]);
 
   useEffect(() => {
+    const ws = selectedWorkspace.trim();
+    if (!ws) return;
     try {
-      localStorage.setItem('deepseek-desktop-workspace', selectedWorkspace);
+      localStorage.setItem('deepseek-desktop-workspace', ws);
     } catch {
       /* ignore */
     }
   }, [selectedWorkspace]);
+
+  useEffect(() => {
+    void ensureDefaultComposerWorkspace(selectedWorkspace, setSelectedWorkspace);
+  }, []);
 
   useEffect(() => {
     try {
@@ -367,6 +413,36 @@ export default function App() {
       /* ignore */
     }
   }, [runMode]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(TASK_TYPE_STORAGE_KEY, taskTypePreference);
+    } catch {
+      /* ignore */
+    }
+  }, [taskTypePreference]);
+
+  const officeSession = isOfficeSession(
+    taskTypePreference,
+    lockedThreadTaskType,
+    Boolean(resumedThreadId),
+  );
+
+  useEffect(() => {
+    if (!resumedThreadId) {
+      setLockedThreadTaskType(null);
+      return;
+    }
+    let cancelled = false;
+    void getThreadDetail(resumedThreadId).then((detail) => {
+      if (cancelled) return;
+      const resolved = parseDesktopTaskTypeResolved(detail.thread.task_type);
+      setLockedThreadTaskType(resolved ?? 'code');
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [resumedThreadId]);
 
   useEffect(() => {
     try {
@@ -535,6 +611,10 @@ export default function App() {
         setDesktopApiKeyConfigured(s.configured);
         const info = await invoke<{ os: string; arch: string; version: string }>('get_platform_info');
         setPlatform(info.os);
+        await ensureDefaultComposerWorkspace(
+          localStorage.getItem('deepseek-desktop-workspace')?.trim() ?? '',
+          setSelectedWorkspace,
+        );
       } catch {
         setDesktopHost(false);
         setDesktopApiKeyConfigured(null);
@@ -704,6 +784,7 @@ export default function App() {
     selectSessionGenerationRef.current += 1;
     setMessages([]);
     setResumedThreadId(null);
+    setLockedThreadTaskType(null);
     setThreadTrustMode(false);
     setPanelPreview(null);
     setActiveSessionId(null);
@@ -718,6 +799,39 @@ export default function App() {
     lastPersistedTurnRef.current = '';
     setApproval(null);
   }, []);
+
+  useEffect(() => {
+    if (!officeSession) return;
+    if (activeInspector === 'agents' || activeInspector === 'index' || activeInspector === 'checklist') {
+      setActiveInspector('workspace');
+    }
+  }, [officeSession, activeInspector]);
+
+  useEffect(() => {
+    if (!officeSession) return;
+    setRunMode((m) => coerceRunModeForSession(m, true));
+  }, [officeSession]);
+
+  const handleTaskTypePreferenceChange = useCallback(
+    (next: DesktopTaskTypePreference) => {
+      if (resumedThreadId) {
+        if (
+          !window.confirm(
+            '切换任务类型将新建会话，当前对话不会带入。是否继续？',
+          )
+        ) {
+          return;
+        }
+        handleNewSession();
+      }
+      setTaskTypePreference(next);
+      if (next === 'office') {
+        setRunMode('agent');
+        setAutoApprove(true);
+      }
+    },
+    [resumedThreadId, handleNewSession],
+  );
 
   const handleDeleteSession = useCallback(
     async (sessionId: string) => {
@@ -1185,6 +1299,7 @@ export default function App() {
             trust_mode: streamOpts.trust_mode,
             auto_approve: streamOpts.auto_approve,
             ...(routeIntentApi != null ? { route_intent: routeIntentApi } : {}),
+            task_type: taskTypePreference,
           });
           if (signal.aborted) {
             finishOnce();
@@ -1215,6 +1330,7 @@ export default function App() {
               trust_mode: streamOpts.trust_mode,
               auto_approve: streamOpts.auto_approve,
               ...(routeIntentApi != null ? { route_intent: routeIntentApi } : {}),
+              task_type: taskTypePreference,
             },
             (ev) => onSseEvent(ev),
             () => finishOnce(),
@@ -1241,6 +1357,7 @@ export default function App() {
       routeIntent,
       selectedModel,
       selectedWorkspace,
+      taskTypePreference,
       refreshSessions,
     ],
   );
@@ -1296,6 +1413,7 @@ export default function App() {
         onSidebarWidthChange={setSidebarWidthPersisted}
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed((v) => !v)}
+        officeSession={officeSession}
       />
       {/* left toggle strip — visible when sidebar collapsed */}
       {sidebarCollapsed && (
@@ -1346,6 +1464,9 @@ export default function App() {
           onAutoApproveChange={setAutoApprove}
           runMode={runMode}
           onRunModeChange={setRunMode}
+          taskTypePreference={taskTypePreference}
+          lockedThreadTaskType={lockedThreadTaskType}
+          onTaskTypePreferenceChange={handleTaskTypePreferenceChange}
           routeIntent={routeIntent}
           onOpenRouting={() => {
             setRightPanelCollapsed(false);
@@ -1363,12 +1484,14 @@ export default function App() {
           contextUsagePct={
             Math.min(100, ((cumulativeInputTokens + estimatedPendingTokens) / V4_CONTEXT_WINDOW_TOKENS) * 100)
           }
+          officeSession={officeSession}
         />
       </div>
       {/* right panel toggle strip */}
       {!rightPanelCollapsed && (
         <RightPanel
           view={activeInspector}
+          officeSession={officeSession}
           desktopHost={desktopHost}
           runtimeConn={runtimeConn}
           apiKeyConfigured={desktopApiKeyConfigured}

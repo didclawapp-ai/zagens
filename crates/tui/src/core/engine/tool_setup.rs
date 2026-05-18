@@ -3,6 +3,7 @@
 //! This keeps mode/feature-specific registry construction out of the send path.
 
 use super::*;
+use crate::task_type::TaskType;
 
 impl Engine {
     pub(super) fn build_turn_tool_registry_builder(
@@ -11,6 +12,15 @@ impl Engine {
         todo_list: SharedTodoList,
         plan_state: SharedPlanState,
     ) -> ToolRegistryBuilder {
+        if self.config.task_type == TaskType::Office {
+            let mut builder = ToolRegistryBuilder::new()
+                .with_office_surface(self.config.features.enabled(Feature::WebSearch));
+            if self.config.memory_enabled {
+                builder = builder.with_remember_tool();
+            }
+            return builder;
+        }
+
         let mut builder = if mode == AppMode::Plan {
             ToolRegistryBuilder::new()
                 .with_read_only_file_tools()
@@ -43,15 +53,10 @@ impl Engine {
         if self.config.features.enabled(Feature::WebSearch) {
             builder = builder.with_web_tools();
         }
-        // Plan mode keeps shell available when the session allows it; command
-        // safety and approval checks still gate risky commands.
         if self.config.features.enabled(Feature::ShellTool) && self.session.allow_shell {
             builder = builder.with_shell_tools();
         }
 
-        // Register the `remember` tool only when the user has opted in to
-        // user-memory (#489). Without that opt-in the tool would always
-        // fail; surfacing it would just waste catalog slots.
         if self.config.memory_enabled {
             builder = builder.with_remember_tool();
         }

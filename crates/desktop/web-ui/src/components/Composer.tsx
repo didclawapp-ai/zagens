@@ -7,14 +7,24 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { useT } from '../i18n';
-import type { DesktopModelId, DesktopRouteIntentOption, DesktopRunModeId } from '../types/desktop';
+import type {
+  DesktopModelId,
+  DesktopRouteIntentOption,
+  DesktopRunModeId,
+  DesktopTaskTypePreference,
+  DesktopTaskTypeResolved,
+} from '../types/desktop';
 import {
   composerRoutingStatusLabel,
   DESKTOP_MODEL_LABELS,
   DESKTOP_MODEL_SHORT_LABELS,
   DESKTOP_RUN_MODE_HINTS,
   DESKTOP_RUN_MODE_LABELS,
+  DESKTOP_TASK_TYPE_HINTS,
+  DESKTOP_TASK_TYPE_LABELS,
+  OFFICE_COMPOSER_RUN_MODE_HINT,
 } from '../types/desktop';
+import { runModesForSession } from '../lib/taskTypeSession';
 
 const MAX_FILE_BYTES = 128 * 1024; // 128 KB per file
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024; // align with describe_image / vision_transcribe_image
@@ -374,6 +384,9 @@ interface Props {
   onAutoApproveChange: (value: boolean) => void;
   runMode: DesktopRunModeId;
   onRunModeChange: (mode: DesktopRunModeId) => void;
+  taskTypePreference: DesktopTaskTypePreference;
+  lockedThreadTaskType: DesktopTaskTypeResolved | null;
+  onTaskTypePreferenceChange: (value: DesktopTaskTypePreference) => void;
   /** Read-only; strategy is edited in RoutingPanel. */
   routeIntent: DesktopRouteIntentOption;
   onOpenRouting?: () => void;
@@ -389,6 +402,8 @@ interface Props {
   resumedThreadActive?: boolean;
   /** Cumulative context usage percentage. Always provided (0% if no turns yet). */
   contextUsagePct: number;
+  /** Office task session — hides Plan/Yolo and code-only chrome. */
+  officeSession?: boolean;
 }
 
 export default function Composer({
@@ -399,6 +414,9 @@ export default function Composer({
   onAutoApproveChange,
   runMode,
   onRunModeChange,
+  taskTypePreference,
+  lockedThreadTaskType,
+  onTaskTypePreferenceChange,
   routeIntent,
   onOpenRouting,
   sessionExportEnabled,
@@ -411,6 +429,7 @@ export default function Composer({
   onWorkspaceChange,
   resumedThreadActive = false,
   contextUsagePct,
+  officeSession = false,
 }: Props) {
   const { t } = useT();
   const [text, setText] = useState('');
@@ -419,6 +438,7 @@ export default function Composer({
   const [bridgeError, setBridgeError] = useState<string | null>(null);
   const [modelOpen, setModelOpen] = useState(false);
   const [runModeOpen, setRunModeOpen] = useState(false);
+  const [taskTypeOpen, setTaskTypeOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [workspaceInput, setWorkspaceInput] = useState(workspace);
@@ -433,6 +453,7 @@ export default function Composer({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const modelMenuRef = useRef<HTMLDivElement>(null);
   const runModeMenuRef = useRef<HTMLDivElement>(null);
+  const taskTypeMenuRef = useRef<HTMLDivElement>(null);
   const moreMenuRef = useRef<HTMLDivElement>(null);
   const workspaceTriggerWrapRef = useRef<HTMLDivElement>(null);
   const workspacePopoverPanelRef = useRef<HTMLDivElement>(null);
@@ -517,6 +538,17 @@ export default function Composer({
   }, [runModeOpen]);
 
   useEffect(() => {
+    if (!taskTypeOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (taskTypeMenuRef.current && !taskTypeMenuRef.current.contains(e.target as Node)) {
+        setTaskTypeOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [taskTypeOpen]);
+
+  useEffect(() => {
     if (!moreMenuOpen) return;
     const handler = (e: MouseEvent) => {
       if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
@@ -543,18 +575,19 @@ export default function Composer({
   }, [workspaceOpen]);
 
   useEffect(() => {
-    if (!modelOpen && !workspaceOpen && !runModeOpen && !moreMenuOpen) return;
+    if (!modelOpen && !workspaceOpen && !runModeOpen && !taskTypeOpen && !moreMenuOpen) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setModelOpen(false);
         setWorkspaceOpen(false);
         setRunModeOpen(false);
+        setTaskTypeOpen(false);
         setMoreMenuOpen(false);
       }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [modelOpen, workspaceOpen, runModeOpen, moreMenuOpen]);
+  }, [modelOpen, workspaceOpen, runModeOpen, taskTypeOpen, moreMenuOpen]);
 
   const handleSend = async () => {
     if ((!text.trim() && attachments.length === 0) || disabled || transcribing) return;
@@ -691,6 +724,23 @@ export default function Composer({
     },
     [onRunModeChange],
   );
+
+  const selectTaskType = useCallback(
+    (value: DesktopTaskTypePreference) => {
+      onTaskTypePreferenceChange(value);
+      setTaskTypeOpen(false);
+    },
+    [onTaskTypePreferenceChange],
+  );
+
+  const taskTypeChipLabel =
+    lockedThreadTaskType != null
+      ? DESKTOP_TASK_TYPE_LABELS[lockedThreadTaskType]
+      : DESKTOP_TASK_TYPE_LABELS[taskTypePreference];
+  const taskTypeChipHint =
+    lockedThreadTaskType != null
+      ? `本会话固定为${DESKTOP_TASK_TYPE_LABELS[lockedThreadTaskType]}模式`
+      : DESKTOP_TASK_TYPE_HINTS[taskTypePreference];
 
   const selectModel = useCallback(
     (m: DesktopModelId) => {
@@ -840,6 +890,9 @@ export default function Composer({
 
   const routingStatus = composerRoutingStatusLabel(routeIntent, runMode);
   const routingActive = routeIntent !== 'off';
+  const availableRunModes = runModesForSession(officeSession);
+  const runModePickerDisabled = availableRunModes.length <= 1;
+  const showAutoApprove = officeSession || runMode === 'agent';
   const ctxPct = contextUsagePct ?? 0;
   const ctxFillClass = ctxPct >= 85 ? 'danger' : ctxPct >= 65 ? 'warn' : '';
   const modelPickerTitle = routingActive
@@ -852,7 +905,7 @@ export default function Composer({
         <div className="mx-auto max-w-3xl">
           <div className="card overflow-visible">
             <div className="flex min-h-10 flex-wrap items-center gap-2 border-b border-divider px-3 py-2 text-xs">
-            {runMode === 'agent' ? (
+            {showAutoApprove ? (
               <label className="inline-flex cursor-pointer select-none items-center gap-2">
                 <input
                   type="checkbox"
@@ -875,25 +928,29 @@ export default function Composer({
             <div className="relative" ref={runModeMenuRef}>
               <button
                 type="button"
-                disabled={disabled}
-                onClick={() => setRunModeOpen((o) => !o)}
+                disabled={disabled || runModePickerDisabled}
+                onClick={() => !runModePickerDisabled && setRunModeOpen((o) => !o)}
                 aria-expanded={runModeOpen}
-                aria-haspopup="listbox"
-                title={DESKTOP_RUN_MODE_HINTS[runMode]}
-                className={`composer-chip ${runModeOpen ? 'active' : ''}`}
+                aria-haspopup={runModePickerDisabled ? undefined : 'listbox'}
+                title={
+                  officeSession ? OFFICE_COMPOSER_RUN_MODE_HINT : DESKTOP_RUN_MODE_HINTS[runMode]
+                }
+                className={`composer-chip ${runModeOpen ? 'active' : ''} ${runModePickerDisabled ? 'cursor-default opacity-90' : ''}`}
               >
                 {DESKTOP_RUN_MODE_LABELS[runMode]}
-                <svg viewBox="0 0 24 24">
-                  <path d="M6 9l6 6 6-6" />
-                </svg>
+                {!runModePickerDisabled && (
+                  <svg viewBox="0 0 24 24">
+                    <path d="M6 9l6 6 6-6" />
+                  </svg>
+                )}
               </button>
-              {runModeOpen && (
+              {runModeOpen && !runModePickerDisabled && (
                 <div
                   className="absolute bottom-full left-0 z-[10040] mb-1 w-[min(100vw-2rem,20rem)] max-w-[320px] rounded-lg border border-card-border bg-card p-1.5 shadow-lg ring-1 ring-black/[0.06] dark:ring-white/[0.08]"
                   role="listbox"
                   aria-label={t('composer.selectMode')}
                 >
-                  {(['plan', 'agent', 'yolo'] as DesktopRunModeId[]).map((id) => (
+                  {availableRunModes.map((id) => (
                     <button
                       key={id}
                       type="button"
@@ -907,6 +964,56 @@ export default function Composer({
                     >
                       <span className="font-medium">{DESKTOP_RUN_MODE_LABELS[id]}</span>
                       <span className="text-[11px] leading-snug text-t-text-muted">{DESKTOP_RUN_MODE_HINTS[id]}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="relative" ref={taskTypeMenuRef}>
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => setTaskTypeOpen((o) => !o)}
+                aria-expanded={taskTypeOpen}
+                aria-haspopup="listbox"
+                title={taskTypeChipHint}
+                className={`composer-chip ${taskTypeOpen ? 'active' : ''}`}
+              >
+                {taskTypeChipLabel}
+                <svg viewBox="0 0 24 24">
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </button>
+              {taskTypeOpen && (
+                <div
+                  className="absolute bottom-full left-0 z-[10040] mb-1 w-[min(100vw-2rem,18rem)] max-w-[288px] rounded-lg border border-card-border bg-card p-1.5 shadow-lg ring-1 ring-black/[0.06] dark:ring-white/[0.08]"
+                  role="listbox"
+                  aria-label="任务类型"
+                >
+                  {(['auto', 'office', 'code'] as DesktopTaskTypePreference[]).map((id) => (
+                    <button
+                      key={id}
+                      type="button"
+                      role="option"
+                      aria-selected={
+                        lockedThreadTaskType == null
+                          ? id === taskTypePreference
+                          : id === lockedThreadTaskType
+                      }
+                      title={DESKTOP_TASK_TYPE_HINTS[id]}
+                      onClick={() => selectTaskType(id)}
+                      className={`flex w-full flex-col gap-0.5 rounded-md px-3 py-2 text-left text-sm transition-colors ${
+                        (lockedThreadTaskType == null
+                          ? id === taskTypePreference
+                          : id === lockedThreadTaskType)
+                          ? 'bg-accent-soft text-accent'
+                          : 'text-t-text hover:bg-hover'
+                      }`}
+                    >
+                      <span className="font-medium">{DESKTOP_TASK_TYPE_LABELS[id]}</span>
+                      <span className="text-[11px] leading-snug text-t-text-muted">
+                        {DESKTOP_TASK_TYPE_HINTS[id]}
+                      </span>
                     </button>
                   ))}
                 </div>

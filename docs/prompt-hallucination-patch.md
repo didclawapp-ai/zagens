@@ -138,6 +138,21 @@
 
 ---
 
+## 改动三：消除 prompt 指令矛盾（2026-05-18）
+
+**问题：** `modes/agent.md` 的 **Efficient Approvals** 曾写 “Once approved, execute all writes in one turn (**parallel** `edit_file` / `apply_patch` calls)”，与 `dispatch.rs` 及 base 中 Capability Claims 示例矛盾；`base.md` 另有 “Multiple tool_calls in one turn run in parallel” 的全局句，易被理解成写工具也并行。
+
+**修改：**
+
+| 文件 | 调整 |
+|------|------|
+| `crates/tui/src/prompts/modes/agent.md` | 批批准 ≠ 批并行写；写明写工具同 turn **串行**；并行写走 `implementer` 子代理 |
+| `crates/tui/src/prompts/base.md` | Parallel-First / Toolbox / V4 段限定 **read-only** 并行 |
+
+**回归：** 仍用文末 R1 裸问；期望与 B1–B3 一致，且回复中不再引用 agent 模式「parallel edit_file」旧文案。
+
+---
+
 ## 预期效果
 
 基于 V4 的幻觉特性（不确定时94%概率大胆输出），这三条规则的设计原则是：

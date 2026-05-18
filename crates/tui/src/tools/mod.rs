@@ -16,6 +16,7 @@ pub mod fetch_url;
 pub mod fim;
 pub mod git;
 pub mod git_history;
+pub mod glob_files;
 pub mod github;
 pub mod large_output_router;
 pub mod office_write;
@@ -43,6 +44,7 @@ pub mod user_input;
 pub mod validate_data;
 pub mod web_run;
 pub mod web_search;
+mod workspace_walk;
 
 pub use registry::{ToolRegistry, ToolRegistryBuilder};
 pub use review::ReviewOutput;

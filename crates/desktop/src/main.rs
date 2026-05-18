@@ -2,6 +2,7 @@
 
 mod commands;
 mod sidecar;
+mod workspace_defaults;
 
 use std::sync::Arc;
 
@@ -129,6 +130,7 @@ fn main() {
             commands::restart_sidecar,
             commands::get_system_settings,
             commands::save_system_settings,
+            commands::default_composer_workspace,
             commands::read_pick_rules,
             commands::save_pick_rules,
             commands::rebuild_symbol_index,

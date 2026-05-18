@@ -2,6 +2,37 @@
 
 export type DesktopRunModeId = 'plan' | 'agent' | 'yolo';
 
+/** Session task type: office docs/chat vs full code agent. */
+export type DesktopTaskTypePreference = 'auto' | 'office' | 'code';
+
+export type DesktopTaskTypeResolved = 'office' | 'code';
+
+export const DESKTOP_TASK_TYPE_LABELS: Record<DesktopTaskTypePreference, string> = {
+  auto: '自动',
+  office: '办公',
+  code: '代码',
+};
+
+export const DESKTOP_TASK_TYPE_HINTS: Record<DesktopTaskTypePreference, string> = {
+  auto: '按工作区与首条消息推断；新建会话时生效',
+  office: '聊天与办公文档；精简工具与 prompt',
+  code: '完整编程 Agent 工具面',
+};
+
+/** Office sessions only use Agent run mode (Plan/Yolo are code-workflow oriented). */
+export const OFFICE_COMPOSER_RUN_MODE_HINT =
+  '办公模式仅使用 Agent（无 Plan / YOLO）';
+
+export function parseDesktopTaskTypePreference(raw: unknown): DesktopTaskTypePreference | undefined {
+  if (raw === 'auto' || raw === 'office' || raw === 'code') return raw;
+  return undefined;
+}
+
+export function parseDesktopTaskTypeResolved(raw: unknown): DesktopTaskTypeResolved | undefined {
+  if (raw === 'office' || raw === 'code') return raw;
+  return undefined;
+}
+
 /** UI labels aligned with crates/tui SandboxPolicy elevation in engine `build_tool_context` */
 export const DESKTOP_RUN_MODE_LABELS: Record<DesktopRunModeId, string> = {
   plan: 'Plan',
