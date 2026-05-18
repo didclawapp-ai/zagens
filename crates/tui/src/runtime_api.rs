@@ -49,6 +49,10 @@ use crate::session_manager::{
     default_sessions_dir, update_session,
 };
 use crate::skills::SkillRegistry;
+use crate::skills::install::{
+    self, DEFAULT_MAX_SIZE_BYTES, InstallError, InstallOutcome, InstallSource,
+    import_local_directory,
+};
 use crate::snapshot::SnapshotRepo;
 use crate::task_manager::{
     NewTaskRequest, SharedTaskManager, TaskManager, TaskManagerConfig, TaskRecord, TaskSummary,
@@ -351,6 +355,31 @@ struct CreateSkillResponse {
     warnings: Vec<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct ImportSkillLocalRequest {
+    /// Directory containing `SKILL.md` (the skill bundle root).
+    source_directory: PathBuf,
+    #[serde(default = "default_create_skill_scope")]
+    scope: String,
+    #[serde(default)]
+    parent_directory: Option<PathBuf>,
+    /// When true, replace an existing skill directory with the same frontmatter name.
+    #[serde(default)]
+    replace: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct InstallSkillRemoteRequest {
+    /// `github:owner/repo`, registry name, or direct tarball URL.
+    spec: String,
+    #[serde(default = "default_create_skill_scope")]
+    scope: String,
+    #[serde(default)]
+    parent_directory: Option<PathBuf>,
+    #[serde(default)]
+    replace: bool,
+}
+
 #[derive(Debug, Serialize)]
 struct McpServerEntry {
     name: String,
@@ -642,6 +671,8 @@ pub fn build_router(state: RuntimeApiState) -> Router {
         .route("/v1/tasks/{id}", get(get_task))
         .route("/v1/tasks/{id}/cancel", post(cancel_task))
         .route("/v1/skills", get(list_skills).post(create_skill))
+        .route("/v1/skills/import", post(import_skill_local))
+        .route("/v1/skills/install", post(install_skill_remote))
         .route(
             "/v1/apps/mcp/servers",
             get(list_mcp_servers).post(add_mcp_server),
@@ -1315,6 +1346,25 @@ struct WorkspaceFileResponse {
     language_hint: Option<String>,
 }
 
+/// Create a missing workspace subdirectory before browse (e.g. Office `deliverables`).
+fn ensure_workspace_browse_subdir(workspace_root: &Path, rel: &str) {
+    let trimmed = rel.trim().trim_start_matches(['/', '\\']);
+    if trimmed.is_empty() {
+        return;
+    }
+    let rel_pb = PathBuf::from(trimmed);
+    if rel_pb
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return;
+    }
+    let candidate = workspace_root.join(&rel_pb);
+    if candidate.starts_with(workspace_root) && !candidate.exists() {
+        let _ = std::fs::create_dir_all(&candidate);
+    }
+}
+
 fn safe_thread_subpath(workspace_root: &Path, rel: &str) -> Result<PathBuf, ApiError> {
     let base = workspace_root
         .canonicalize()
@@ -1626,6 +1676,7 @@ async fn browse_thread_workspace(
     let base = ws_path
         .canonicalize()
         .map_err(|e| ApiError::bad_request(format!("workspace: {e}")))?;
+    ensure_workspace_browse_subdir(&base, &q.path);
     let dir_path = safe_thread_subpath(ws_path, &q.path)?;
     if !dir_path.is_dir() {
         return Err(ApiError::bad_request("not a directory"));
@@ -1637,7 +1688,7 @@ async fn browse_thread_workspace(
         .map_err(|e| ApiError::internal(e.to_string()))?;
     let rel = workspace_relative_posix(&base, &dir_for_rel);
     Ok(Json(BrowseWorkspaceResponse {
-        workspace: base.display().to_string(),
+        workspace: path_for_api_display(&base),
         path: rel,
         entries,
     }))
@@ -1657,6 +1708,7 @@ async fn browse_workspace_by_root(
     if !base.is_dir() {
         return Err(ApiError::bad_request("workspace is not a directory"));
     }
+    ensure_workspace_browse_subdir(&base, &q.path);
     let dir_path = safe_thread_subpath(&base, &q.path)?;
     if !dir_path.is_dir() {
         return Err(ApiError::bad_request("not a directory"));
@@ -1668,10 +1720,24 @@ async fn browse_workspace_by_root(
         .map_err(|e| ApiError::internal(e.to_string()))?;
     let rel = workspace_relative_posix(&base, &dir_for_rel);
     Ok(Json(BrowseWorkspaceResponse {
-        workspace: base.display().to_string(),
+        workspace: path_for_api_display(&base),
         path: rel,
         entries,
     }))
+}
+
+fn path_for_api_display(path: &Path) -> String {
+    let s = path.display().to_string();
+    #[cfg(windows)]
+    {
+        if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+            return format!(r"\\{rest}");
+        }
+        if let Some(rest) = s.strip_prefix(r"\\?\") {
+            return rest.to_string();
+        }
+    }
+    s
 }
 
 async fn read_workspace_file_by_root(
@@ -1861,6 +1927,164 @@ async fn create_skill(
             warnings,
         }),
     ))
+}
+
+async fn import_skill_local(
+    State(state): State<RuntimeApiState>,
+    Json(req): Json<ImportSkillLocalRequest>,
+) -> Result<(StatusCode, Json<CreateSkillResponse>), ApiError> {
+    if req.source_directory.as_os_str().is_empty() {
+        return Err(ApiError::bad_request("source_directory is required"));
+    }
+    let config = state.config.clone();
+    let workspace = state.workspace.clone();
+    let parent_directory = req.parent_directory.clone();
+    let scope = req.scope.clone();
+    let source_directory = req.source_directory.clone();
+    let replace = req.replace;
+
+    let (skills_root_used, installed) = tokio::task::spawn_blocking(move || {
+        let root =
+            resolve_create_skill_parent(&config, &workspace, parent_directory.as_ref(), &scope)?;
+        fs::create_dir_all(&root).map_err(|e| {
+            ApiError::internal(format!(
+                "failed to create skills directory {}: {e}",
+                root.display()
+            ))
+        })?;
+        let installed = import_local_directory(
+            &source_directory,
+            &root,
+            replace,
+            DEFAULT_MAX_SIZE_BYTES,
+        )
+        .map_err(map_skill_install_api_error)?;
+        Ok::<_, ApiError>((root, installed))
+    })
+    .await
+    .map_err(|e| ApiError::internal(format!("import skill task: {e}")))??;
+
+    build_skill_mutation_response(
+        &state,
+        &skills_root_used,
+        &installed.name,
+        installed.path.join("SKILL.md"),
+    )
+    .await
+    .map(|json| (StatusCode::CREATED, json))
+}
+
+async fn install_skill_remote(
+    State(state): State<RuntimeApiState>,
+    Json(req): Json<InstallSkillRemoteRequest>,
+) -> Result<(StatusCode, Json<CreateSkillResponse>), ApiError> {
+    let spec = req.spec.trim();
+    if spec.is_empty() {
+        return Err(ApiError::bad_request("spec is required"));
+    }
+    let source = InstallSource::parse(spec)
+        .map_err(|e| ApiError::bad_request(format!("invalid install spec: {e}")))?;
+
+    let config = state.config.clone();
+    let workspace = state.workspace.clone();
+    let parent_directory = req.parent_directory;
+    let scope = req.scope;
+    let replace = req.replace;
+    let skills_cfg = config.skills.as_ref();
+    let registry_url = skills_cfg
+        .map(crate::config::SkillsConfig::registry_url)
+        .unwrap_or_else(|| install::DEFAULT_REGISTRY_URL.to_string());
+    let max_size = skills_cfg
+        .map(crate::config::SkillsConfig::max_install_size_bytes)
+        .unwrap_or(DEFAULT_MAX_SIZE_BYTES);
+    let network = config
+        .network
+        .clone()
+        .unwrap_or_default()
+        .into_runtime();
+
+    let skills_root = tokio::task::spawn_blocking({
+        let config = config.clone();
+        let workspace = workspace.clone();
+        move || {
+            resolve_create_skill_parent(&config, &workspace, parent_directory.as_ref(), &scope)
+        }
+    })
+    .await
+    .map_err(|e| ApiError::internal(format!("resolve skills root: {e}")))??;
+
+    fs::create_dir_all(&skills_root).map_err(|e| {
+        ApiError::internal(format!(
+            "failed to create skills directory {}: {e}",
+            skills_root.display()
+        ))
+    })?;
+
+    let outcome = install::install_with_registry(
+        source,
+        &skills_root,
+        max_size,
+        &network,
+        replace,
+        &registry_url,
+    )
+    .await
+    .map_err(|e| ApiError::internal(format!("skill install: {e:#}")))?;
+
+    let installed = match outcome {
+        InstallOutcome::Installed(skill) => skill,
+        InstallOutcome::NeedsApproval(host) => {
+            return Err(ApiError::forbidden(format!(
+                "network host '{host}' requires approval; add it to [network] allow in config.toml and retry"
+            )));
+        }
+        InstallOutcome::NetworkDenied(host) => {
+            return Err(ApiError::forbidden(format!(
+                "network host '{host}' is denied by policy"
+            )));
+        }
+    };
+
+    build_skill_mutation_response(
+        &state,
+        &skills_root,
+        &installed.name,
+        installed.path.join("SKILL.md"),
+    )
+    .await
+    .map(|json| (StatusCode::CREATED, json))
+}
+
+async fn build_skill_mutation_response(
+    state: &RuntimeApiState,
+    skills_root_used: &Path,
+    skill_name: &str,
+    skill_md_path: PathBuf,
+) -> Result<Json<CreateSkillResponse>, ApiError> {
+    let list_directory = resolve_skills_dir(&state.config, &state.workspace);
+    let reg_list = SkillRegistry::discover(skills_root_used);
+    let description = reg_list
+        .get(skill_name)
+        .map(|s| s.description.clone())
+        .unwrap_or_else(|| "Describe what this skill does.".to_string());
+    let warnings = reg_list.warnings().to_vec();
+    Ok(Json(CreateSkillResponse {
+        skill: SkillEntry {
+            name: skill_name.to_string(),
+            description,
+            path: skill_md_path,
+        },
+        directory: list_directory,
+        skills_root: skills_root_used.to_path_buf(),
+        warnings,
+    }))
+}
+
+fn map_skill_install_api_error(err: anyhow::Error) -> ApiError {
+    if let Some(InstallError::AlreadyInstalled(name)) = err.downcast_ref() {
+        return ApiError::conflict(format!("skill already installed: {name} (set replace=true to overwrite)"));
+    }
+    ApiError::bad_request(format!("{err:#}"))
 }
 
 async fn list_mcp_servers(

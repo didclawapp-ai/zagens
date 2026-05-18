@@ -41,6 +41,12 @@ impl TaskType {
         matches!(self, Self::Code)
     }
 
+    /// Whether the system prompt should list workspace/global skills and allow `load_skill`.
+    #[must_use]
+    pub fn includes_skills_catalog(self) -> bool {
+        matches!(self, Self::Office | Self::Code)
+    }
+
     pub fn parse_str(raw: &str) -> Option<Self> {
         match raw.trim().to_ascii_lowercase().as_str() {
             "office" => Some(Self::Office),

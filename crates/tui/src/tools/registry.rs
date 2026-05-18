@@ -481,7 +481,8 @@ impl ToolRegistryBuilder {
             .with_tool(Arc::new(FileSearchTool))
     }
 
-    /// Office task surface: read/list, write_file, write_office, search-without-grep, note.
+    /// Office task surface: read/list, write_file, write_office, filename search, skills,
+    /// note, and (when `include_web`) web_search / fetch_url / finance / web.run.
     #[must_use]
     pub fn with_office_surface(self, include_web: bool) -> Self {
         use super::file::{ListDirTool, ReadFileTool, WriteFileTool};
@@ -493,6 +494,7 @@ impl ToolRegistryBuilder {
             .with_tool(Arc::new(WriteFileTool))
             .with_office_write_tool()
             .with_office_search_tools()
+            .with_skill_tools()
             .with_note_tool()
             .with_user_input_tool()
             .with_parallel_tool();
@@ -1344,6 +1346,29 @@ mod tests {
         let readonly = registry.read_only_tools();
         assert_eq!(readonly.len(), 1);
         assert_eq!(readonly[0].name(), "reader");
+    }
+
+    #[test]
+    fn test_builder_office_surface_includes_web_research() {
+        let tmp = tempdir().expect("tempdir");
+        let ctx = ToolContext::new(tmp.path().to_path_buf());
+
+        let registry = ToolRegistryBuilder::new()
+            .with_office_surface(true)
+            .build(ctx);
+
+        for name in [
+            "write_office",
+            "load_skill",
+            "web_search",
+            "fetch_url",
+            "finance",
+            "web.run",
+        ] {
+            assert!(registry.contains(name), "office surface missing {name}");
+        }
+        assert!(!registry.contains("grep_files"));
+        assert!(!registry.contains("exec_shell"));
     }
 
     #[test]

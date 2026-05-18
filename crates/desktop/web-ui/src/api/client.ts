@@ -8,9 +8,12 @@ import type {
   SkillsApiResponse,
   CreateTaskRequest,
   CreateSkillRequest,
+  ImportSkillLocalRequest,
+  InstallSkillRemoteRequest,
   CreateSkillResponse,
 } from '../types/automation';
 import type { RoutingRulesResponse, RoutingRule } from '../types/routing';
+import { normalizeWorkspaceForApi } from '../lib/defaultWorkspace';
 
 export interface SseTurnEvent {
   event: string;
@@ -538,7 +541,7 @@ export async function browseComposerWorkspace(
   workspaceRoot: string,
   relativePath?: string,
 ): Promise<BrowseWorkspaceListResponse> {
-  const root = workspaceRoot.trim();
+  const root = normalizeWorkspaceForApi(workspaceRoot);
   if (!root) {
     throw new Error('workspace root required');
   }
@@ -567,7 +570,7 @@ export async function readComposerWorkspaceFile(
   workspaceRoot: string,
   relativePath: string,
 ): Promise<WorkspaceFileResponse> {
-  const root = workspaceRoot.trim();
+  const root = normalizeWorkspaceForApi(workspaceRoot);
   if (!root) {
     throw new Error('workspace root required');
   }
@@ -637,6 +640,18 @@ export async function fetchSkills(): Promise<SkillsApiResponse> {
 
 export async function createSkill(body: CreateSkillRequest): Promise<CreateSkillResponse> {
   return postJson<CreateSkillResponse>('/v1/skills', body);
+}
+
+export async function importSkillLocal(
+  body: ImportSkillLocalRequest,
+): Promise<CreateSkillResponse> {
+  return postJson<CreateSkillResponse>('/v1/skills/import', body);
+}
+
+export async function installSkillRemote(
+  body: InstallSkillRemoteRequest,
+): Promise<CreateSkillResponse> {
+  return postJson<CreateSkillResponse>('/v1/skills/install', body);
 }
 
 // ========== Routing ==========

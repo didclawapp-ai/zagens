@@ -4,6 +4,8 @@ import {
   fetchSkills,
   createTask,
   createSkill,
+  importSkillLocal,
+  installSkillRemote,
   cancelTask,
   type RuntimeConnectionState,
 } from '../api/client';
@@ -175,7 +177,7 @@ export default function AutomationPanel({ runtimeConn }: { runtimeConn: RuntimeC
                 }}
                 className="px-2.5 py-1 text-[11px] font-medium rounded-md border border-card-border bg-canvas-alt hover:bg-hover text-t-text"
               >
-                {showCreateSkill ? '关闭' : '新建技能'}
+                {showCreateSkill ? t('automation.close') : t('automation.addSkill')}
               </button>
               <button
                 type="button"
@@ -397,6 +399,105 @@ function TasksList({
   );
 }
 
+type TranslateFn = ReturnType<typeof useT>['t'];
+
+function SkillWriteLocationFields({
+  t,
+  scope,
+  setScope,
+  customParent,
+  setCustomParent,
+  pickBusy,
+  submitting,
+  onPickRoot,
+  replaceExisting,
+  setReplaceExisting,
+  showReplace,
+}: {
+  t: TranslateFn;
+  scope: 'global' | 'workspace';
+  setScope: (v: 'global' | 'workspace') => void;
+  customParent: string;
+  setCustomParent: (v: string) => void;
+  pickBusy: boolean;
+  submitting: boolean;
+  onPickRoot: () => void;
+  replaceExisting: boolean;
+  setReplaceExisting: (v: boolean) => void;
+  showReplace: boolean;
+}) {
+  return (
+    <>
+      <div className="text-[10px] text-t-text-muted flex flex-col gap-1">
+        <span className="text-t-text">{t('automation.writeLocation')}</span>
+        <label className="inline-flex items-center gap-1.5 cursor-pointer">
+          <input
+            type="radio"
+            name="skill-scope"
+            checked={scope === 'workspace'}
+            onChange={() => setScope('workspace')}
+            disabled={submitting}
+          />
+          {t('automation.skillWorkspace')}
+        </label>
+        <label className="inline-flex items-center gap-1.5 cursor-pointer">
+          <input
+            type="radio"
+            name="skill-scope"
+            checked={scope === 'global'}
+            onChange={() => setScope('global')}
+            disabled={submitting}
+          />
+          {t('automation.skillGlobal')}
+        </label>
+      </div>
+      <div className="space-y-1">
+        <div className="text-[10px] text-t-text-muted">{t('automation.skillCustomDir')}</div>
+        <div className="flex flex-wrap gap-2 items-center">
+          <input
+            type="text"
+            value={customParent}
+            onChange={(ev) => setCustomParent(ev.target.value)}
+            placeholder={t('automation.skillCustomPlaceholder')}
+            disabled={submitting}
+            className="flex-1 min-w-[160px] rounded-md border border-card-border bg-canvas px-2 py-1 text-[10px] text-t-text font-mono placeholder:text-t-text-muted/60"
+          />
+          <button
+            type="button"
+            onClick={onPickRoot}
+            disabled={submitting || pickBusy}
+            className="px-2 py-1 text-[10px] rounded-md border border-card-border bg-canvas hover:bg-hover text-t-text disabled:opacity-50"
+          >
+            {pickBusy ? t('automation.selectingFolder') : t('automation.selectFolder')}
+          </button>
+          {customParent ? (
+            <button
+              type="button"
+              onClick={() => setCustomParent('')}
+              disabled={submitting}
+              className="text-[10px] text-accent hover:underline disabled:opacity-50"
+            >
+              {t('automation.clear')}
+            </button>
+          ) : null}
+        </div>
+        <p className="text-[10px] text-t-text-muted leading-relaxed">{t('automation.skillCustomNotice')}</p>
+      </div>
+      {showReplace ? (
+        <label className="inline-flex items-center gap-1.5 text-[10px] text-t-text-muted cursor-pointer">
+          <input
+            type="checkbox"
+            checked={replaceExisting}
+            onChange={(ev) => setReplaceExisting(ev.target.checked)}
+            disabled={submitting}
+          />
+          {t('automation.replaceExisting')}
+        </label>
+      ) : null}
+    </>
+  );
+}
+
 function SkillsList({
   skills,
   skillsDirectory,
@@ -414,14 +515,26 @@ function SkillsList({
   showCreate: boolean;
   onSkillCreated: () => Promise<void>;
 }) {
+  const { t } = useT();
+  const [panelMode, setPanelMode] = useState<'create' | 'import'>('create');
+  const [importKind, setImportKind] = useState<'folder' | 'remote'>('folder');
   const [skillName, setSkillName] = useState('');
+  const [sourceDirectory, setSourceDirectory] = useState('');
+  const [installSpec, setInstallSpec] = useState('');
+  const [replaceExisting, setReplaceExisting] = useState(false);
   const [scope, setScope] = useState<'global' | 'workspace'>('workspace');
   const [customParent, setCustomParent] = useState('');
   const [pickBusy, setPickBusy] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const pickSkillsRoot = async () => {
+  const scopePayload = () => ({
+    scope,
+    ...(customParent.trim() ? { parent_directory: customParent.trim() } : {}),
+    ...(replaceExisting ? { replace: true } : {}),
+  });
+
+  const pickDirectory = async (title: string, onPick: (dir: string) => void, defaultPath?: string) => {
     setPickBusy(true);
     setSubmitError(null);
     try {
@@ -429,41 +542,48 @@ function SkillsList({
       const selected = await open({
         directory: true,
         multiple: false,
-        title: '选择技能根目录（须为已存在的全局或工作区技能目录）',
-        ...(skillsDirectory.trim()
-          ? ({ defaultPath: skillsDirectory.trim() } as Record<string, string>)
+        title,
+        ...(defaultPath?.trim()
+          ? ({ defaultPath: defaultPath.trim() } as Record<string, string>)
           : {}),
       });
       const dir = firstDirectoryFromPickerResult(selected);
       if (dir) {
-        setCustomParent(dir);
+        onPick(dir);
       }
     } catch {
-      setSubmitError(
-        '无法打开系统文件夹对话框。请在 DS Pick 桌面版重试，或手动填入「自定义根目录」绝对路径。',
-      );
+      setSubmitError(t('automation.dialogNotAvailable'));
     } finally {
       setPickBusy(false);
     }
+  };
+
+  const pickSkillsRoot = () =>
+    void pickDirectory(t('automation.selectSkillRoot'), (dir) => setCustomParent(dir), skillsDirectory);
+
+  const pickSkillSource = () =>
+    void pickDirectory(t('automation.pickSkillSourceDialog'), (dir) => setSourceDirectory(dir));
+
+  const resetFormFields = () => {
+    setSkillName('');
+    setSourceDirectory('');
+    setInstallSpec('');
+    setCustomParent('');
+    setReplaceExisting(false);
   };
 
   const submitCreate = async (e: FormEvent) => {
     e.preventDefault();
     const name = skillName.trim();
     if (!name) {
-      setSubmitError('请填写技能目录名');
+      setSubmitError(t('automation.skillDirRequired'));
       return;
     }
     setSubmitting(true);
     setSubmitError(null);
     try {
-      await createSkill({
-        name,
-        scope,
-        ...(customParent.trim() ? { parent_directory: customParent.trim() } : {}),
-      });
-      setSkillName('');
-      setCustomParent('');
+      await createSkill({ name, ...scopePayload() });
+      resetFormFields();
       await onSkillCreated();
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : String(err));
@@ -472,119 +592,240 @@ function SkillsList({
     }
   };
 
+  const submitImportFolder = async (e: FormEvent) => {
+    e.preventDefault();
+    const src = sourceDirectory.trim();
+    if (!src) {
+      setSubmitError(t('automation.importSourceRequired'));
+      return;
+    }
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      await importSkillLocal({ source_directory: src, ...scopePayload() });
+      resetFormFields();
+      await onSkillCreated();
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const submitInstallRemote = async (e: FormEvent) => {
+    e.preventDefault();
+    const spec = installSpec.trim();
+    if (!spec) {
+      setSubmitError(t('automation.installSpecRequired'));
+      return;
+    }
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      await installSkillRemote({ spec, ...scopePayload() });
+      resetFormFields();
+      await onSkillCreated();
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const modeTab = (id: 'create' | 'import', label: string) => (
+    <button
+      key={id}
+      type="button"
+      onClick={() => setPanelMode(id)}
+      disabled={submitting}
+      className={`px-2.5 py-1 text-[10px] font-medium rounded-md border transition-colors disabled:opacity-50 ${
+        panelMode === id
+          ? 'border-accent/40 bg-accent-soft text-accent'
+          : 'border-card-border bg-canvas text-t-text-muted hover:text-t-text hover:bg-hover'
+      }`}
+    >
+      {label}
+    </button>
+  );
+
+  const importKindTab = (id: 'folder' | 'remote', label: string) => (
+    <button
+      key={id}
+      type="button"
+      onClick={() => setImportKind(id)}
+      disabled={submitting}
+      className={`px-2 py-0.5 text-[10px] rounded border transition-colors disabled:opacity-50 ${
+        importKind === id
+          ? 'border-accent/30 bg-accent-soft/60 text-accent'
+          : 'border-transparent text-t-text-muted hover:text-t-text'
+      }`}
+    >
+      {label}
+    </button>
+  );
+
   return (
     <div className="space-y-3">
       {showCreate && (
-        <form
-          onSubmit={(ev) => void submitCreate(ev)}
-          className="rounded-lg border border-card-border bg-canvas-alt p-3 space-y-2 mb-2"
-        >
-          <div className="text-[11px] font-medium text-t-text">新建技能</div>
-          <p className="text-[10px] text-t-text-muted leading-relaxed">
-            将在选定目录下创建 <span className="font-mono">{'<名称>/SKILL.md'}</span>，对应运行时{' '}
-            <span className="font-mono">POST /v1/skills</span>。目录名仅允许字母、数字、<span className="font-mono">._-</span>。
-          </p>
-          <label className="text-[10px] text-t-text-muted flex flex-col gap-0.5">
-            技能目录名
-            <input
-              type="text"
-              value={skillName}
-              onChange={(ev) => setSkillName(ev.target.value)}
-              placeholder="例如 my-skill"
-              disabled={submitting}
-              className="rounded-md border border-card-border bg-canvas px-2 py-1 text-xs text-t-text font-mono placeholder:text-t-text-muted/60"
-            />
-          </label>
-          <div className="text-[10px] text-t-text-muted flex flex-col gap-1">
-            <span className="text-t-text">写入位置</span>
-            <label className="inline-flex items-center gap-1.5 cursor-pointer">
-              <input
-                type="radio"
-                name="skill-scope"
-                checked={scope === 'workspace'}
-                onChange={() => setScope('workspace')}
-                disabled={submitting}
-              />
-              工作区（<span className="font-mono">.agents/skills</span> 或 <span className="font-mono">skills/</span>；若均不存在会创建{' '}
-              <span className="font-mono">.agents/skills</span>）
-            </label>
-            <label className="inline-flex items-center gap-1.5 cursor-pointer">
-              <input
-                type="radio"
-                name="skill-scope"
-                checked={scope === 'global'}
-                onChange={() => setScope('global')}
-                disabled={submitting}
-              />
-              全局（配置中的 skills 目录，一般为 <span className="font-mono">~/.deepseek/skills</span>）
-            </label>
+        <div className="rounded-lg border border-card-border bg-canvas-alt p-3 space-y-2 mb-2">
+          <div className="flex flex-wrap gap-1.5">
+            {modeTab('create', t('automation.skillModeCreate'))}
+            {modeTab('import', t('automation.skillModeImport'))}
           </div>
-          <div className="space-y-1">
-            <div className="text-[10px] text-t-text-muted">自定义技能根目录（可选，设置后将优先使用该路径）</div>
-            <div className="flex flex-wrap gap-2 items-center">
-              <input
-                type="text"
-                value={customParent}
-                onChange={(ev) => setCustomParent(ev.target.value)}
-                placeholder="绝对路径，留空则以上方「写入位置」为准"
-                disabled={submitting}
-                className="flex-1 min-w-[160px] rounded-md border border-card-border bg-canvas px-2 py-1 text-[10px] text-t-text font-mono placeholder:text-t-text-muted/60"
-              />
-              <button
-                type="button"
-                onClick={() => void pickSkillsRoot()}
-                disabled={submitting || pickBusy}
-                className="px-2 py-1 text-[10px] rounded-md border border-card-border bg-canvas hover:bg-hover text-t-text disabled:opacity-50"
-              >
-                {pickBusy ? '选择中…' : '选择文件夹…'}
-              </button>
-              {customParent ? (
-                <button
-                  type="button"
-                  onClick={() => setCustomParent('')}
+          {panelMode === 'create' ? (
+            <form onSubmit={(ev) => void submitCreate(ev)} className="space-y-2">
+              <div className="text-[11px] font-medium text-t-text">{t('automation.createSkillTitle')}</div>
+              <p className="text-[10px] text-t-text-muted leading-relaxed">{t('automation.createSkillDesc')}</p>
+              <label className="text-[10px] text-t-text-muted flex flex-col gap-0.5">
+                {t('automation.skillDirName')}
+                <input
+                  type="text"
+                  value={skillName}
+                  onChange={(ev) => setSkillName(ev.target.value)}
+                  placeholder={t('automation.skillNamePlaceholder')}
                   disabled={submitting}
-                  className="text-[10px] text-accent hover:underline disabled:opacity-50"
+                  className="rounded-md border border-card-border bg-canvas px-2 py-1 text-xs text-t-text font-mono placeholder:text-t-text-muted/60"
+                />
+              </label>
+              <SkillWriteLocationFields
+                t={t}
+                scope={scope}
+                setScope={setScope}
+                customParent={customParent}
+                setCustomParent={setCustomParent}
+                pickBusy={pickBusy}
+                submitting={submitting}
+                onPickRoot={pickSkillsRoot}
+                replaceExisting={replaceExisting}
+                setReplaceExisting={setReplaceExisting}
+                showReplace={false}
+              />
+              {submitError ? <p className="text-[10px] text-t-error break-all">{submitError}</p> : null}
+              <div className="flex justify-end pt-1">
+                <button
+                  type="submit"
+                  disabled={submitting || !skillName.trim()}
+                  className="px-3 py-1.5 text-xs font-medium rounded-md bg-accent text-white hover:opacity-90 disabled:opacity-40"
                 >
-                  清除
+                  {submitting ? t('automation.creating') : t('automation.submit')}
                 </button>
-              ) : null}
+              </div>
+            </form>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-1 border-b border-card-border/60 pb-1.5">
+                {importKindTab('folder', t('automation.importFromFolder'))}
+                {importKindTab('remote', t('automation.importFromNetwork'))}
+              </div>
+              {importKind === 'folder' ? (
+                <form onSubmit={(ev) => void submitImportFolder(ev)} className="space-y-2">
+                  <div className="text-[11px] font-medium text-t-text">{t('automation.importFolderTitle')}</div>
+                  <p className="text-[10px] text-t-text-muted leading-relaxed">{t('automation.importFolderDesc')}</p>
+                  <div className="space-y-1">
+                    <div className="text-[10px] text-t-text-muted">{t('automation.importFolderSource')}</div>
+                    <div className="flex flex-wrap gap-2 items-center">
+                      <input
+                        type="text"
+                        value={sourceDirectory}
+                        onChange={(ev) => setSourceDirectory(ev.target.value)}
+                        placeholder={t('automation.skillCustomPlaceholder')}
+                        disabled={submitting}
+                        className="flex-1 min-w-[160px] rounded-md border border-card-border bg-canvas px-2 py-1 text-[10px] text-t-text font-mono placeholder:text-t-text-muted/60"
+                      />
+                      <button
+                        type="button"
+                        onClick={pickSkillSource}
+                        disabled={submitting || pickBusy}
+                        className="px-2 py-1 text-[10px] rounded-md border border-card-border bg-canvas hover:bg-hover text-t-text disabled:opacity-50"
+                      >
+                        {pickBusy ? t('automation.selectingFolder') : t('automation.pickSkillSource')}
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-t-text-muted leading-relaxed">{t('automation.importSkillSourceHint')}</p>
+                  </div>
+                  <SkillWriteLocationFields
+                    t={t}
+                    scope={scope}
+                    setScope={setScope}
+                    customParent={customParent}
+                    setCustomParent={setCustomParent}
+                    pickBusy={pickBusy}
+                    submitting={submitting}
+                    onPickRoot={pickSkillsRoot}
+                    replaceExisting={replaceExisting}
+                    setReplaceExisting={setReplaceExisting}
+                    showReplace
+                  />
+                  {submitError ? <p className="text-[10px] text-t-error break-all">{submitError}</p> : null}
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="submit"
+                      disabled={submitting || !sourceDirectory.trim()}
+                      className="px-3 py-1.5 text-xs font-medium rounded-md bg-accent text-white hover:opacity-90 disabled:opacity-40"
+                    >
+                      {submitting ? t('automation.importing') : t('automation.importAction')}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <form onSubmit={(ev) => void submitInstallRemote(ev)} className="space-y-2">
+                  <div className="text-[11px] font-medium text-t-text">{t('automation.importRemoteTitle')}</div>
+                  <p className="text-[10px] text-t-text-muted leading-relaxed">{t('automation.importRemoteDesc')}</p>
+                  <label className="text-[10px] text-t-text-muted flex flex-col gap-0.5">
+                    {t('automation.installSpec')}
+                    <input
+                      type="text"
+                      value={installSpec}
+                      onChange={(ev) => setInstallSpec(ev.target.value)}
+                      placeholder={t('automation.installSpecPlaceholder')}
+                      disabled={submitting}
+                      className="rounded-md border border-card-border bg-canvas px-2 py-1 text-xs text-t-text font-mono placeholder:text-t-text-muted/60"
+                    />
+                  </label>
+                  <SkillWriteLocationFields
+                    t={t}
+                    scope={scope}
+                    setScope={setScope}
+                    customParent={customParent}
+                    setCustomParent={setCustomParent}
+                    pickBusy={pickBusy}
+                    submitting={submitting}
+                    onPickRoot={pickSkillsRoot}
+                    replaceExisting={replaceExisting}
+                    setReplaceExisting={setReplaceExisting}
+                    showReplace
+                  />
+                  {submitError ? <p className="text-[10px] text-t-error break-all">{submitError}</p> : null}
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="submit"
+                      disabled={submitting || !installSpec.trim()}
+                      className="px-3 py-1.5 text-xs font-medium rounded-md bg-accent text-white hover:opacity-90 disabled:opacity-40"
+                    >
+                      {submitting ? t('automation.installing') : t('automation.installAction')}
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
-            <p className="text-[10px] text-t-text-muted leading-relaxed">
-              自定义路径须为<strong>已存在</strong>且已登记的技能根目录（与上方列表目录或全局/工作区约定之一一致）。
-            </p>
-          </div>
-          {submitError ? <p className="text-[10px] text-t-error break-all">{submitError}</p> : null}
-          <div className="flex justify-end pt-1">
-            <button
-              type="submit"
-              disabled={submitting || !skillName.trim()}
-              className="px-3 py-1.5 text-xs font-medium rounded-md bg-accent text-white hover:opacity-90 disabled:opacity-40"
-            >
-              {submitting ? '创建中…' : '创建'}
-            </button>
-          </div>
-        </form>
+          )}
+        </div>
       )}
       <div className="rounded-lg border border-card-border bg-canvas-alt p-3 space-y-2">
-        <p className="text-[10px] text-t-text-muted leading-relaxed">
-          技能由运行时扫描目录下的 <span className="font-mono">SKILL.md</span> 发现，当前列表目录：
-        </p>
+        <p className="text-[10px] text-t-text-muted leading-relaxed">{t('automation.skillDirectoryDesc')}</p>
         {skillsDirectory ? (
           <p className="text-[10px] font-mono text-t-text break-all">{skillsDirectory}</p>
         ) : (
-          <p className="text-[10px] text-t-text-muted">（连接后刷新可见）</p>
+          <p className="text-[10px] text-t-text-muted">{t('automation.skillLoadAfterConnect')}</p>
         )}
-        <p className="text-[10px] text-t-text-muted leading-relaxed">
-          可用「新建技能」或 <span className="font-mono">POST /v1/skills</span> 写入模板；社区包仍在终端 TUI 使用{' '}
-          <span className="font-mono">/skill install …</span>。若新建位置与上方面板目录不一致，刷新后可能不会出现在列表中（与工作区优先级有关）。
-        </p>
+        <p className="text-[10px] text-t-text-muted leading-relaxed">{t('automation.skillFooterDescImport')}</p>
         <button
           type="button"
           onClick={onRefresh}
           disabled={loading}
           className="text-[10px] text-accent hover:underline disabled:opacity-50"
         >
-          重新加载列表
+          {t('automation.reloadList')}
         </button>
       </div>
       {warnings.length > 0 && (
@@ -595,7 +836,7 @@ function SkillsList({
         </ul>
       )}
       {skills.length === 0 ? (
-        <p className="text-xs text-t-text-muted text-center py-4">未扫描到技能。</p>
+        <p className="text-xs text-t-text-muted text-center py-4">{t('automation.noSkills')}</p>
       ) : (
         <div className="space-y-2">
           {skills.map((s) => (

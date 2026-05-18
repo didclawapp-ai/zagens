@@ -48,9 +48,12 @@ import {
   resolveRouteIntentForApi,
 } from './types/desktop';
 import {
+  applyOfficeDefaultWorkspace,
   fetchDefaultComposerWorkspace,
   isUnsafeComposerWorkspace,
+  normalizeWorkspaceForApi,
 } from './lib/defaultWorkspace';
+import { confirmDialog } from './lib/confirmDialog';
 import { coerceRunModeForSession, isOfficeSession } from './lib/taskTypeSession';
 
 /** DeepSeek V4 context window in tokens (both Pro and Flash). */
@@ -187,7 +190,9 @@ function loadComposerPrefs(): {
 } {
   try {
     const wm = parseDesktopModelId(localStorage.getItem('deepseek-desktop-model'));
-    const ws = localStorage.getItem('deepseek-desktop-workspace')?.trim() ?? '';
+    const ws = normalizeWorkspaceForApi(
+      localStorage.getItem('deepseek-desktop-workspace')?.trim() ?? '',
+    );
     const workspace =
       ws.length > 0 && !isUnsafeComposerWorkspace(ws) ? ws : '';
     return {
@@ -802,10 +807,22 @@ export default function App() {
 
   useEffect(() => {
     if (!officeSession) return;
-    if (activeInspector === 'agents' || activeInspector === 'index' || activeInspector === 'checklist') {
+    if (
+      activeInspector === 'agents' ||
+      activeInspector === 'index' ||
+      activeInspector === 'checklist' ||
+      activeInspector === 'routing'
+    ) {
       setActiveInspector('workspace');
     }
   }, [officeSession, activeInspector]);
+
+  /** Office composer uses Documents/DS Pick when not bound to a resumed thread workspace. */
+  useEffect(() => {
+    if (!officeSession || resumedThreadId) return;
+    if (taskTypePreference !== 'office' && lockedThreadTaskType !== 'office') return;
+    void applyOfficeDefaultWorkspace(setSelectedWorkspace);
+  }, [officeSession, taskTypePreference, lockedThreadTaskType, resumedThreadId]);
 
   useEffect(() => {
     if (!officeSession) return;
@@ -814,28 +831,28 @@ export default function App() {
 
   const handleTaskTypePreferenceChange = useCallback(
     (next: DesktopTaskTypePreference) => {
-      if (resumedThreadId) {
-        if (
-          !window.confirm(
+      void (async () => {
+        if (resumedThreadId) {
+          const ok = await confirmDialog(
             '切换任务类型将新建会话，当前对话不会带入。是否继续？',
-          )
-        ) {
-          return;
+          );
+          if (!ok) return;
+          handleNewSession();
         }
-        handleNewSession();
-      }
-      setTaskTypePreference(next);
-      if (next === 'office') {
-        setRunMode('agent');
-        setAutoApprove(true);
-      }
+        setTaskTypePreference(next);
+        if (next === 'office') {
+          setRunMode('agent');
+          setAutoApprove(true);
+          await applyOfficeDefaultWorkspace(setSelectedWorkspace);
+        }
+      })();
     },
     [resumedThreadId, handleNewSession],
   );
 
   const handleDeleteSession = useCallback(
     async (sessionId: string) => {
-      if (!confirm(t('sidebar.deleteConfirm'))) return;
+      if (!(await confirmDialog(t('sidebar.deleteConfirm')))) return;
       setBanner(null);
       try {
         await deleteSession(sessionId);
@@ -1468,10 +1485,14 @@ export default function App() {
           lockedThreadTaskType={lockedThreadTaskType}
           onTaskTypePreferenceChange={handleTaskTypePreferenceChange}
           routeIntent={routeIntent}
-          onOpenRouting={() => {
-            setRightPanelCollapsed(false);
-            setActiveInspector('routing');
-          }}
+          onOpenRouting={
+            officeSession
+              ? undefined
+              : () => {
+                  setRightPanelCollapsed(false);
+                  setActiveInspector('routing');
+                }
+          }
           sessionExportEnabled={Boolean(activeSessionId)}
           threadExportEnabled={Boolean(resumedThreadId)}
           onExportSessionJson={() => void handleExportSessionJson()}

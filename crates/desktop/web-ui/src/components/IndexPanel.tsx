@@ -5,6 +5,7 @@ import {
   deleteSymbolIndex,
   type SymbolIndexInfo,
 } from '../api/client';
+import { confirmDialog } from '../lib/confirmDialog';
 
 interface Props {
   workspace: string;
@@ -57,7 +58,7 @@ export default function IndexPanel({ workspace, onRebuild, rebuilding, rebuildEr
   }, [rebuilding, load]);
 
   const handleDelete = useCallback(async () => {
-    if (!window.confirm(t('indexPanel.deleteConfirm'))) return;
+    if (!(await confirmDialog(t('indexPanel.deleteConfirm')))) return;
     setDeleting(true);
     try {
       await deleteSymbolIndex(workspace);

@@ -22,7 +22,7 @@ const MIN_PYTHON_MAJOR: u16 = 3;
 const MIN_PYTHON_MINOR: u16 = 8;
 
 /// Office venv marker file — written after successful `pip install`.
-const OFFICE_VENV_MARKER: &str = ".requirements-installed-v1";
+const OFFICE_VENV_MARKER: &str = ".requirements-installed-v2";
 
 /// Pinned requirements for the office venv (runtime fallback path).
 ///
@@ -33,6 +33,7 @@ const OFFICE_VENV_MARKER: &str = ".requirements-installed-v1";
 const OFFICE_REQUIREMENTS: &str = "\
 python-docx==1.1.2
 python-pptx==1.0.2
+reportlab==4.2.5
 ";
 
 // ── Discovery ───────────────────────────────────────────────────────────
@@ -98,9 +99,13 @@ fn python_bin_name() -> &'static str {
     }
 }
 
+/// Env var set by DS Pick when spawning the runtime sidecar (absolute path to bundled `python`).
+pub const ENV_BUNDLED_PYTHON: &str = "DEEPSEEK_BUNDLED_PYTHON";
+
 /// Try to locate a bundled PBS Python runtime shipped alongside the binary.
 ///
 /// **DS Pick (Tauri):**
+///   `DEEPSEEK_BUNDLED_PYTHON` (set by desktop shell)
 ///   `<app_dir>/Resources/python/python3.12`  (macOS)
 ///   `<app_dir>/python/python.exe`            (Windows/Linux)
 ///
@@ -109,6 +114,13 @@ fn python_bin_name() -> &'static str {
 ///
 /// Returns the path to the python executable, or `None`.
 pub fn find_bundled_python() -> Option<PathBuf> {
+    if let Ok(raw) = std::env::var(ENV_BUNDLED_PYTHON) {
+        let path = PathBuf::from(raw.trim());
+        if path.is_file() && probe_python(&path.to_string_lossy(), &[]).is_some() {
+            return Some(path);
+        }
+    }
+
     let exe_dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
 
     let candidates = [
@@ -146,15 +158,34 @@ fn parse_version_tuple(s: &str) -> Option<(u16, u16)> {
 
 // ── WriteOffice interpreter ─────────────────────────────────────────────────
 
-/// Python executable used by `write_office` for DOCX/PPTX generation.
+/// Verify bundled PBS has office wheels (build-time `prepare-python.mjs` lock).
+fn verify_bundled_office_imports(python: &Path) -> Result<(), String> {
+    let script = "import docx, pptx, reportlab, matplotlib, PIL; print('OK')";
+    let output = Command::new(python)
+        .args(["-c", script])
+        .env("PYTHONIOENCODING", "utf-8")
+        .output()
+        .map_err(|e| format!("无法运行捆绑 Python: {e}"))?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    Err(format!(
+        "安装包内捆绑 Python 缺少办公依赖（docx/pptx/reportlab 等）。\
+         请重新安装 DS Pick 或联系支持。详情: {stderr}"
+    ))
+}
+
+/// Python executable used by `write_office` for DOCX/PPTX/PDF generation.
 ///
 /// **Bundled interpreter first** ([`find_bundled_python`]): DS Pick / portable
 /// builds ship PBS + wheels from `prepare-python.mjs`; no `pip` and no network.
 ///
 /// Otherwise falls back to [`ensure_office_venv`] (PATH Python + first-time
-/// `pip install`, typically needs internet).
+/// `pip install`, typically needs internet) — dev / CLI only.
 pub fn resolve_python_for_office() -> Result<PathBuf, String> {
     if let Some(py) = find_bundled_python() {
+        verify_bundled_office_imports(&py)?;
         return Ok(py);
     }
     ensure_office_venv()

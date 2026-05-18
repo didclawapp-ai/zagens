@@ -1,9 +1,10 @@
-//! `write_office` tool — generate .xlsx / .docx / .pptx files.
+//! `write_office` tool — generate .xlsx / .docx / .pptx / .pdf files.
 //!
 //! Architecture:
 //! - XLSX: pure Rust via `rust_xlsxwriter` (no Python dependency).
 //! - DOCX: Python + `python-docx` (primary); pure-Rust minimal OOXML fallback.
 //! - PPTX: Python + `python-pptx` (+ optional matplotlib paths in bundled builds).
+//! - PDF: Python + `reportlab` (structured blocks, same vocabulary as DOCX).
 //!
 //! DOCX/PPTX subprocess uses [`crate::python_env::resolve_python_for_office`] —
 //! prefers the bundled interpreter when shipped (offline), else an office venv.
@@ -35,7 +36,7 @@ impl ToolSpec for WriteOfficeTool {
 
     fn description(&self) -> &'static str {
         concat!(
-            "Generate .xlsx / .docx / .pptx files from structured JSON data. XLSX uses pure Rust (no Python needed). DOCX/PPTX use Python. ",
+            "Generate .xlsx / .docx / .pptx / .pdf files from structured JSON data. XLSX uses pure Rust (no Python needed). DOCX/PPTX/PDF use Python. ",
             "READ THE USAGE GUIDE BELOW before constructing parameters.\n\n",
             include_str!("../prompts/write_office_guide.md")
         )
@@ -47,7 +48,7 @@ impl ToolSpec for WriteOfficeTool {
             "properties": {
                 "format": {
                     "type": "string",
-                    "enum": ["xlsx", "docx", "pptx"],
+                    "enum": ["xlsx", "docx", "pptx", "pdf"],
                     "description": "Output format"
                 },
                 "path": {
@@ -118,7 +119,7 @@ impl ToolSpec for WriteOfficeTool {
                 },
                 "blocks": {
                     "type": "array",
-                    "description": "DOCX body blocks (python-docx when available). heading: {level,text}. paragraph: {text} or {runs:[{text,bold?,italic?,color? #RRGGBB,size? pt}], align?: left|center|right|justify, page_break_before?: bool}. list: {style: bullet|number, items: [str | {text, subitems?}]}. table: {headers?, rows:[[]], style? Word built-in table style name}. image: {path, width?, height? px @96dpi, caption?}. toc: {title?} (placeholder; update fields in Word). Top-level page|font|header|footer require Python; Rust fallback: heading, plain paragraph, list of strings, table only.",
+                    "description": "DOCX/PDF body blocks. heading: {level,text}. paragraph: {text} or {runs:[{text,bold?,italic?,color? #RRGGBB,size? pt}], align?: left|center|right|justify, page_break_before?: bool}. list: {style: bullet|number, items: [str | {text, subitems?}]}. table: {headers?, rows:[[]]}. image: {path, width?, height? px @96dpi, caption?}. page_break: {} (PDF). toc: {title?} (DOCX only; Word field placeholder). DOCX-only: table style name; Rust DOCX fallback: heading, plain paragraph, list, table only.",
                     "items": { "type": "object" }
                 },
                 "slides": {
@@ -167,7 +168,8 @@ impl ToolSpec for WriteOfficeTool {
             "xlsx" => generate_xlsx(&data, &out),
             "docx" => generate_docx(&data, &out),
             "pptx" => generate_pptx(&data, &out),
-            other => Err(format!("不支持的格式: {other}。支持: xlsx, docx, pptx")),
+            "pdf" => generate_pdf(&data, &out),
+            other => Err(format!("不支持的格式: {other}。支持: xlsx, docx, pptx, pdf")),
         })
         .await
         .map_err(|e| ToolError::execution_failed(format!("spawn_blocking 失败: {e}")))?;
@@ -1036,6 +1038,13 @@ fn generate_xlsx(input: &Value, path: &PathBuf) -> Result<String, String> {
     Ok("rust_xlsxwriter".to_string())
 }
 
+// ── PDF (ReportLab) ──────────────────────────────────────────────────────
+
+fn generate_pdf(input: &Value, path: &PathBuf) -> Result<String, String> {
+    generate_via_python("pdf", input, path)?;
+    Ok("reportlab".to_string())
+}
+
 // ── DOCX ─────────────────────────────────────────────────────────────────
 
 fn generate_docx(input: &Value, path: &PathBuf) -> Result<String, String> {
@@ -1239,7 +1248,7 @@ fn generate_via_python(format: &str, input: &Value, path: &PathBuf) -> Result<()
 
     // Serialise payload: only data fields (no path — that goes via --output)
     let data_payload = match format {
-        "docx" => {
+        "docx" | "pdf" => {
             let title = optional_str(input, "title").unwrap_or("");
             let mut payload = serde_json::json!({
                 "title": title,
@@ -1320,7 +1329,7 @@ fn generate_via_python(format: &str, input: &Value, path: &PathBuf) -> Result<()
 }
 
 /// Embedded Python scripts version — bump when scripts change.
-const SCRIPTS_VERSION: &str = "10";
+const SCRIPTS_VERSION: &str = "11";
 
 /// Resolve the Python script path for a given format.
 fn find_office_script(format: &str) -> Result<PathBuf, String> {
@@ -1350,6 +1359,7 @@ fn install_embedded_scripts(dir: &PathBuf) -> Result<(), String> {
     let scripts: &[(&str, &str)] = &[
         ("write_docx.py", WRITE_DOCX_PY),
         ("write_pptx.py", WRITE_PPTX_PY),
+        ("write_pdf.py", WRITE_PDF_PY),
     ];
 
     for (name, content) in scripts {
@@ -1386,6 +1396,7 @@ fn install_embedded_scripts(dir: &PathBuf) -> Result<(), String> {
 
 const WRITE_DOCX_PY: &str = include_str!("../../assets/scripts/write_docx.py");
 const WRITE_PPTX_PY: &str = include_str!("../../assets/scripts/write_pptx.py");
+const WRITE_PDF_PY: &str = include_str!("../../assets/scripts/write_pdf.py");
 
 const PPTX_ENGINE_INIT: &str = include_str!("../../assets/scripts/pptx_engine/__init__.py");
 const PPTX_ENGINE_THEME: &str = include_str!("../../assets/scripts/pptx_engine/theme.py");

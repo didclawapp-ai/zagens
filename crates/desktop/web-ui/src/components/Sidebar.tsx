@@ -292,7 +292,7 @@ function SettingsAccordion({
     { tab: 'usage', label: '用量仪表盘', show: true },
     { tab: 'tasks-skills', label: '任务与技能', show: true },
     { tab: 'agents', label: '子代理', show: !officeSession },
-    { tab: 'routing', label: '模型路由', show: true },
+    { tab: 'routing', label: '模型路由', show: !officeSession },
     { tab: 'index', label: '索引', show: !officeSession },
     { tab: 'system', label: '系统设置', show: true },
   ];

@@ -116,11 +116,48 @@ fn read_log_tail(path: &Path, max_lines: usize) -> String {
     lines[start..].join("\n")
 }
 
-fn spawn_sidecar(deepseek_bin: &str, port: u16, token: &str) -> Result<Command> {
+/// Bundled PBS Python shipped in the installer (`tauri.conf.json` → `python/`).
+fn bundled_python_executable(app: &AppHandle) -> Option<PathBuf> {
+    #[cfg(windows)]
+    let py_name = "python.exe";
+    #[cfg(not(windows))]
+    let py_name = if cfg!(target_os = "macos") {
+        "python3.12"
+    } else {
+        "python3"
+    };
+
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Ok(res) = app.path().resource_dir() {
+        candidates.push(res.join("python").join(py_name));
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            candidates.push(dir.join("python").join(py_name));
+            #[cfg(target_os = "macos")]
+            candidates.push(
+                dir.join("../Resources/python")
+                    .join(py_name),
+            );
+        }
+    }
+
+    for path in candidates {
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+    None
+}
+
+fn spawn_sidecar(app: &AppHandle, deepseek_bin: &str, port: u16, token: &str) -> Result<Command> {
     let port_s = port.to_string();
     let mut std_cmd = std::process::Command::new(deepseek_bin);
     std_cmd.env("DEEPSEEK_RUNTIME_TOKEN", token);
     std_cmd.env("DEEPSEEK_CLIENT_SURFACE", "ds-pick");
+    if let Some(py) = bundled_python_executable(app) {
+        std_cmd.env("DEEPSEEK_BUNDLED_PYTHON", py);
+    }
 
     // Pull the DeepSeek API key from OS keyring so it never sits in config.toml
     // or any other file plaintext. The sidecar TUI picks it up via its existing
@@ -434,7 +471,7 @@ pub async fn start_and_monitor(
 
             wait_loopback_listen_port_free(port, "before-sidecar-spawn").await;
 
-            let mut c = spawn_sidecar(&deepseek_bin, port, token)?
+            let mut c = spawn_sidecar(app, &deepseek_bin, port, token)?
                 .spawn()
                 .with_context(|| format!("failed to start sidecar: {deepseek_bin}"))?;
 

@@ -13,8 +13,9 @@ impl Engine {
         plan_state: SharedPlanState,
     ) -> ToolRegistryBuilder {
         if self.config.task_type == TaskType::Office {
-            let mut builder = ToolRegistryBuilder::new()
-                .with_office_surface(self.config.features.enabled(Feature::WebSearch));
+            // Office always ships web_search / fetch_url / finance / web.run (install-time
+            // networking only). Code mode still respects Feature::WebSearch.
+            let mut builder = ToolRegistryBuilder::new().with_office_surface(true);
             if self.config.memory_enabled {
                 builder = builder.with_remember_tool();
             }

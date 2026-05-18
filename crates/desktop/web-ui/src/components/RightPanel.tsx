@@ -25,6 +25,7 @@ import {
   getThreadSnapshots,
   restoreThreadSnapshot,
 } from '../api/client';
+import { confirmDialog } from '../lib/confirmDialog';
 
 export type RightPanelView =
   | 'workspace'
@@ -263,6 +264,13 @@ export default function RightPanel({
 
   useEffect(() => {
     if (!officeSession) return;
+    if (workspaceTab === 'restore' || workspaceTab === 'rules') {
+      setWorkspaceTab('files');
+    }
+  }, [officeSession, workspaceTab]);
+
+  useEffect(() => {
+    if (!officeSession) return;
     if (view === 'workspace' && workspaceTab === 'files') {
       setBrowseRelPath((prev) => (prev === '' ? 'deliverables' : prev));
     }
@@ -401,7 +409,7 @@ export default function RightPanel({
   const onRestore = useCallback(
     async (n: number) => {
       if (!resumedThreadId || !runtimeOk) return;
-      if (!confirm(`确定将工作区恢复到快照 #${n}？`)) return;
+      if (!(await confirmDialog(`确定将工作区恢复到快照 #${n}？`))) return;
       setRestoreBusy(n);
       setRestoreMessage(null);
       try {
@@ -637,15 +645,17 @@ export default function RightPanel({
                   role="tablist"
                   aria-label="工作台分区"
                 >
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={workspaceTab === 'restore'}
-                    className={tabBtn(workspaceTab === 'restore')}
-                    onClick={() => setWorkspaceTab('restore')}
-                  >
-                    恢复
-                  </button>
+                  {!officeSession && (
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={workspaceTab === 'restore'}
+                      className={tabBtn(workspaceTab === 'restore')}
+                      onClick={() => setWorkspaceTab('restore')}
+                    >
+                      恢复
+                    </button>
+                  )}
                   <button
                     type="button"
                     role="tab"
@@ -655,15 +665,17 @@ export default function RightPanel({
                   >
                     工作区目录
                   </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={workspaceTab === 'rules'}
-                    className={tabBtn(workspaceTab === 'rules')}
-                    onClick={() => setWorkspaceTab('rules')}
-                  >
-                    {t('workspaceRules.tab')}
-                  </button>
+                  {!officeSession && (
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={workspaceTab === 'rules'}
+                      className={tabBtn(workspaceTab === 'rules')}
+                      onClick={() => setWorkspaceTab('rules')}
+                    >
+                      {t('workspaceRules.tab')}
+                    </button>
+                  )}
                 </div>
 
                 <div className="flex-1 overflow-y-auto min-h-0" role="tabpanel">
@@ -958,7 +970,7 @@ export default function RightPanel({
 
         {view === 'agents' && !officeSession && <AgentPanel agents={agentStates} />}
 
-        {view === 'routing' && (
+        {view === 'routing' && !officeSession && (
           <RoutingPanel
             runtimeConn={runtimeConn}
             routeIntent={routeIntent}

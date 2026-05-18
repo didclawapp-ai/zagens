@@ -2,17 +2,154 @@
 
 零散想法、后续方向与非正式排期；需要落地时再拆 issue / 写入 IMPLEMENTATION_STEPS。
 
----
-
-## 2026-05-09 — 会话持久化与崩溃恢复（后续大块）
-
-**背景：** 当前桌面端对 `~/.deepseek/sessions/*.json` 的更新大致在 **turn 完成** 后通过 `persist-session` 写入；进程异常退出、WebView 整页重载或最后一轮未结束时，UI 与磁盘快照可能脱节，表现为「上文对模型不可见」或侧栏历史不完整。
-
-**后续可做方向（另一块开发）：**
-
-1. **周期性 / 流式 checkpoint 写 session** — 在流式生成过程中按间隔或关键事件增量持久化（需权衡 IO、与 runtime 导出的一致性、以及与现有 `turn.completed` 语义的关系）。
-2. **崩溃恢复时从 runtime JSONL 尽力回填 UI** — 侧写事件已落在 `RuntimeThreadStore`（threads/turns/items/events）；重连后可尝试用服务端事件重放或合并，补全尚未写入 session 文件的进行中部份（需产品定义「可恢复边界」与冲突处理）。
+**图例：** ✅ 已落地 · 🔶 部分 / 雏形 · ⬜ 规划中（未做或未产品化）
 
 ---
 
-*（有新条目时按日期追加在本文件顶部或本条之后。）*
+## 2026-05-18 — Agent 方向与「主动性」北极星
+
+### 产品北极星（入座 briefing）
+
+**主动性**在此处的定义（非「更聪明的单轮回答」）：
+
+> 用户回到电脑前时，Agent **主动汇报**（离开期间/后台发生的事）、**主动问今天要做什么**，并优先通过 **语音** 交流，少依赖先打开 Composer 打字。
+
+可收成产品句：**入座 briefing** —— 像副驾接管开场白，而不是等用户发起对话。
+
+最小闭环（后续实现时参照）：
+
+1. **触发**：显式「我回来了」/ 空闲 N 分钟后首次键鼠 / 可配置（注意隐私，避免偷拍式监控）。
+2. **汇总**：只读聚合——未完成后台 task、当前 thread 断点、可选记忆图 Top-K、CRAFT/open loops（仅已验证状态，禁止编造）。
+3. **播报**：短稿 TTS（30～60 秒级）+ 一句带选项的开工问句（「继续 A 还是新任务 B？」）。
+4. **接入**：STT 或快捷键确认 → 进入对应 TaskType / 线程 / 工作区。
+
+**默认可关、可推迟、可仅文字**；Code / Office 分场景（语音偏意图路由，执行仍走现有工具面）。
+
+| 能力块 | 状态 | 说明 |
+|--------|------|------|
+| 入座 briefing 任务与 API | ⬜ | 建议落点：desktop + `runtime_api`（如 `POST /v1/briefing` 或 session resume hook） |
+| 在场检测 / 触发器 | ⬜ | 桌面 Tauri 侧；Windows 需单独设计 |
+| TTS / STT 语音栈 | ⬜ | 含打断、静音、「勿播报」 |
+| 汇报稿模板与幻觉约束 | 🔶 | 幻觉 patch、task 状态机可复用；尚无 briefing 专用聚合层 |
+| 周期内上下文 briefing | 🔶 | `cycle_manager` 的 `<carry_forward>` 为**轮次压缩**用，≠ 入座汇报 |
+
+---
+
+### 五条战略轴线（与北极星的关系）
+
+与官方 / 大厂招聘**不做对标**；个人项目尺子：**本地、可维护、少胡说、能值守**。
+
+#### 1. 长程任务（大厂也在酝酿的方向）
+
+跨轮、可中断、可恢复、可审计；Agent 记得「自己要干什么」。
+
+| 项 | 状态 | 落点 / 备注 |
+|----|------|-------------|
+| 持久线程 / turn / item（HTTP API） | ✅ | `runtime_threads`、`/v1/threads`、事件流 |
+| 后台 task（enqueue / cancel） | ✅ | `task_manager`、`/v1/tasks`；桌面「任务与技能」面板 |
+| 会话持久化（SQLite WAL） | ✅ | `session_store_sqlite.rs`、`SessionManager`；由 JSON 单文件改为 SQLite，支持从旧 JSON 自动迁移 |
+| Runtime 线程 / turn / item / 事件（SQLite） | ✅ | `thread_store_sqlite.rs`、`RuntimeThreadStore`；增量写入，含 `list_incomplete_turns` 等恢复语义 |
+| 桌面 persist / 流式 checkpoint | ✅ | `App.tsx` + `persist-session` API；与 runtime 共用 SQLite，见 [2026-05-09](#2026-05-09--会话持久化与崩溃恢复--已解决sqlite) |
+| Steer / 进行中回合控制 | ✅ | runtime steer API |
+| 工作区快照 | ✅ | `snapshots` 配置与 side-git |
+| 行业级「长程任务」产品化（日程、多 Agent 编排） | ⬜ | 非当前目标 |
+
+#### 2. 场景分裂（借鉴 Claude Code：通用运行时 + 专精面具）
+
+| 项 | 状态 | 落点 / 备注 |
+|----|------|-------------|
+| TaskType：`Office` / `Code` | ✅ | `task_type.rs`、overlay prompt、工具面裁剪 |
+| 切换 TaskType = 新 session（KV 前缀稳定） | ✅ | 见 [task-type-prompt-architecture.md](../task-type-prompt-architecture.md) |
+| Office：办公工具 + web + `load_skill` | ✅ | `tool_setup` / `with_office_surface` |
+| Office 默认工作区、桌面 UI 隐藏项 | ✅ | Composer / RightPanel / Sidebar |
+| Desktop Composer 切换与路由展示 | ✅ | `App.tsx`、`Composer.tsx` 等 |
+
+#### 3. 可靠性：约束 + 可验证（含「第三方检验」）
+
+高可行性输出场景引入 **第二进程 / 第二模型审核**（类似人类第三方检验）：主 Agent 产出 → 只读审核 → 结构化 verdict（pass / fix-list）→ 未通过则主 Agent 必须修。
+
+| 项 | 状态 | 落点 / 备注 |
+|----|------|-------------|
+| Prompt 幻觉防控 V4（能力声明 / 架构描述 / 子代理输出） | ✅ | [prompt-hallucination-patch.md](../prompt-hallucination-patch.md)、`prompts/base.md` |
+| 工具并行策略、子代理权限等「先查代码」清单 | ✅ | 文档 + `dispatch.rs`、`subagent` |
+| 子代理 `review` 角色（工具面裁剪） | 🔶 | 已有 review 类子代理思路；**非**独立审核回合与强制门禁 |
+| 高风险输出强制「审核子回合」（patch、定稿、对外文档等） | ⬜ | 今日方向；触发条件与 verdict 协议待设计 |
+| 双模型并行「评委」式对话 | ⬜ | 非目标；要可编程、窄工具面 |
+
+#### 4. 记忆：图谱 + 与 CRAFT / 用户记忆分工
+
+| 层 | 状态 | 职责 |
+|----|------|------|
+| `<user_memory>` / `memory.md` | ✅ | 用户级持久偏好，`#` 快录、`remember` 工具 |
+| Capacity memory（干预 JSONL） | ✅ | `capacity_memory.rs` |
+| CRAFT 黑板（任务内结构化交接） | 🔶 | [agent-reliability-craft-plan.md](../agent-reliability-craft-plan.md) 持续推进 |
+| **记忆图谱**（Topic Memory Graph） | 🔶 | 库与路线见 [UNDERLYING_ITERATION_REFERENCE.md §2.2–2.3](../tui/UNDERLYING_ITERATION_REFERENCE.md)（[topic-memory-graph](https://github.com/didclawapp-ai/topic-memory-graph)）；**未**系统化接入 runtime prompt |
+| 图谱接地（路径 / commit / task_id） | ⬜ | 文档已列方向 |
+| 图谱触发式注入（非每轮全图） | ⬜ | 服务「主动性」与入座 briefing |
+| 用户「忘掉这条」降权/删边 | ⬜ | |
+
+**定序（仍有效）：** 先 CRAFT 闭环，再记忆地图系统化接入，并约定与黑板、`<user_memory>` 的注入顺序与字数上限。
+
+#### 5. 技能与生态
+
+| 项 | 状态 | 落点 / 备注 |
+|----|------|-------------|
+| 技能扫描、`load_skill`、SKILL.md | ✅ | `skills/`、`SkillRegistry` |
+| TUI `/skill install`（网络） | ✅ | `skills/install.rs` |
+| Desktop：新建 / 本地导入 / 网络安装 API | ✅ | `POST /v1/skills`、`/import`、`/install`；AutomationPanel「添加技能」 |
+| 技能与 Office / Code 提示词 catalog | ✅ | `prompts.rs`、`includes_skills_catalog` |
+
+---
+
+### 主动性的三层（验收用，避免空泛）
+
+| 层 | 含义 | 状态 |
+|----|------|------|
+| **任务级** | 长程任务内拆步、记 open loops、blocked 换策略 | 🔶 task + CRAFT |
+| **注意力级** | 根据索引/图谱决定先读什么、提醒未决决策 | 🔶 符号索引 ✅；图谱 ⬜ |
+| **质量级** | 高风险产出前自发第三方审核 | ⬜ |
+
+北极星 **入座 briefing** 主要覆盖 **任务级 + 注意力级** 的「开场」；**质量级** 靠审核进程。
+
+---
+
+### 建议演进顺序（个人排期，可调整）
+
+1. **审核子回合最小闭环**（Code：multi-file patch 前强制 review）— 验证「可行性输出」。
+2. **入座 briefing**（先文字稿 + 按钮触发，再 TTS，再 STT）。
+3. **记忆图谱** 触发式注入 + 接地（与 briefing 共用聚合层）。
+
+---
+
+### 相关文档
+
+| 文档 | 内容 |
+|------|------|
+| [task-type-prompt-architecture.md](../task-type-prompt-architecture.md) | TaskType MVP（✅） |
+| [prompt-hallucination-patch.md](../prompt-hallucination-patch.md) | 幻觉防控 V4（✅） |
+| [agent-reliability-craft-plan.md](../agent-reliability-craft-plan.md) | CRAFT、子代理、并行策略 |
+| [tui/UNDERLYING_ITERATION_REFERENCE.md](../tui/UNDERLYING_ITERATION_REFERENCE.md) | CRAFT → 记忆地图定序 |
+| [TOOLS_PRINCIPLES.md](../TOOLS_PRINCIPLES.md) | 工具设计原则 |
+| [API_DESIGN.md](../API_DESIGN.md) | HTTP API |
+| [TUI_DS_PICK_GAP.md](TUI_DS_PICK_GAP.md) | 桌面与 TUI 能力差距 |
+
+---
+
+## 2026-05-09 — 会话持久化与崩溃恢复 — ✅ 已解决（SQLite）
+
+**原问题：** 桌面端依赖 `~/.deepseek/sessions/*.json` 等在 **turn 完成** 后才落盘；进程异常退出、WebView 重载或回合未完成时，UI 与磁盘快照易脱节（上文不可见、侧栏历史不全）。
+
+**现状（✅）：** 引入 **SQLite（WAL）** 作为主存储，会话与 runtime 线程状态均改为事务级增量写入，崩溃后重开可恢复到库内最后一笔一致状态。
+
+| 范围 | 状态 | 落点 |
+|------|------|------|
+| 会话列表与消息体（SQLite WAL） | ✅ | `session_store_sqlite.rs` + `session_manager.rs`（`open_sqlite_session_db`，空库时从旧 JSON 迁移） |
+| Runtime threads / turns / items / events | ✅ | `thread_store_sqlite.rs` + `runtime_threads.rs`（`open_sqlite_thread_db`；含未完成 turn 查询等） |
+| **桌面 DS Pick 对接** | ✅ | Web UI `persistThreadSession` → `POST /v1/threads/{id}/persist-session`（`runtime_api.rs` → `SessionManager::save_session` 写 SQLite）；流式生成中每 **18s** 周期 checkpoint（`App.tsx` `SESSION_CHECKPOINT_MS`）；`turn.completed` 等节点同样 persist；侧栏会话列表走 runtime 读 SQLite |
+| 原「流式 checkpoint / JSONL 回填 UI」专项 | ✅ | Runtime SQLite + 桌面周期 persist 覆盖，不再单列后续块 |
+
+**备注：** 旧 JSON 文件仍可作为迁移来源；新安装默认走 SQLite。桌面与 sidecar 共用同一 runtime 会话库，崩溃/重载后重连即可从库内恢复。若仍有边角（仅 UI 内存态未刷新的极端场景），按具体复现再开 issue。
+
+---
+
+*（有新条目时按日期追加在本文件顶部「2026-05-18」节之后，或独立 dated 节。）*

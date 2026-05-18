@@ -15,6 +15,7 @@ import {
     mkdirSync,
     renameSync,
     readdirSync,
+    readFileSync,
     unlinkSync,
     createWriteStream,
 } from 'node:fs';
@@ -55,10 +56,53 @@ const PBS_ARCHIVE_MAP = {
 const PIP_DEPS = [
     "python-pptx==1.0.2",
     "python-docx==1.1.2",
+    "reportlab==4.2.5",
     "matplotlib==3.9.3",
     "numpy==2.1.3",
     "Pillow>=10.0.0",
 ];
+
+/** Bump when PIP_DEPS change so CI/dev rebuilds wheels into the installer bundle. */
+const DEPS_LOCK_ID = "office-py-v2-reportlab";
+
+function depsMarkerUpToDate(markerPath) {
+    if (!existsSync(markerPath)) return false;
+    try {
+        return readFileSync(markerPath, "utf8").trim() === DEPS_LOCK_ID;
+    } catch {
+        return false;
+    }
+}
+
+function installPipDeps(pyExe, pyDir) {
+    console.log(`[python] installing pip dependencies (${DEPS_LOCK_ID})…`);
+    const pipArgs = [
+        "-m", "pip", "install",
+        "--no-cache-dir", "--disable-pip-version-check", "--quiet",
+        ...PIP_DEPS,
+    ];
+    execSync(`"${pyExe}" ${pipArgs.join(" ")}`, {
+        stdio: "inherit",
+        env: { ...process.env, PYTHONUNBUFFERED: "1" },
+    });
+
+    const verifyScript = [
+        "import pptx, docx, reportlab, matplotlib, PIL",
+        "matplotlib.use('Agg')",
+        "import matplotlib.pyplot as plt",
+        "plt.plot([1,2,3], [4,5,6])",
+        `plt.savefig('${join(pyDir, "_verify.png").replace(/\\/g, "\\\\")}')`,
+        'print("OK")',
+    ].join("\n");
+    execSync(`"${pyExe}" -c "${verifyScript}"`, { stdio: "inherit" });
+
+    const depsMarker = join(pyDir, ".deps-installed");
+    const escapedMarker = depsMarker.replace(/\\/g, "\\\\");
+    execSync(
+        `"${pyExe}" -c "open('${escapedMarker}','w').write('${DEPS_LOCK_ID}')"`,
+        { stdio: "inherit" },
+    );
+}
 
 export async function preparePythonRuntime(binariesDir, triple) {
     const info = PBS_ARCHIVE_MAP[triple];
@@ -71,9 +115,16 @@ export async function preparePythonRuntime(binariesDir, triple) {
     const pyExe = join(pyDir, "python-install", info.pythonExe);
     const depsMarker = join(pyDir, ".deps-installed");
 
-    // Already prepared?
-    if (existsSync(depsMarker)) {
-        console.log("[python] runtime already prepared");
+    // Python tree exists but lock predates reportlab (or other PIP_DEPS edits).
+    if (existsSync(pyExe) && !depsMarkerUpToDate(depsMarker)) {
+        console.log(`[python] refreshing bundled office deps → ${DEPS_LOCK_ID}`);
+        installPipDeps(pyExe, pyDir);
+        console.log(`[python] runtime ready at ${pyDir}`);
+        return;
+    }
+
+    if (depsMarkerUpToDate(depsMarker)) {
+        console.log(`[python] runtime already prepared (${DEPS_LOCK_ID})`);
         return;
     }
 
@@ -115,34 +166,10 @@ export async function preparePythonRuntime(binariesDir, triple) {
         renameSync(srcDir, dstDir);
     }
 
-    // 3. pip install deps
-    console.log(`[python] installing pip dependencies…`);
-    const pipArgs = [
-        "-m", "pip", "install",
-        "--no-cache-dir", "--disable-pip-version-check", "--quiet",
-        ...PIP_DEPS,
-    ];
-    execSync(`"${pyExe}" ${pipArgs.join(" ")}`, {
-        stdio: "inherit",
-        env: { ...process.env, PYTHONUNBUFFERED: "1" },
-    });
+    // 3. pip install + verify (offline-capable installer bundle)
+    installPipDeps(pyExe, pyDir);
 
-    // 4. Verify critical imports and matplotlib native rendering
-    const verifyScript = [
-        'import pptx, docx, matplotlib, PIL',
-        "matplotlib.use('Agg')",
-        'import matplotlib.pyplot as plt',
-        'plt.plot([1,2,3], [4,5,6])',
-        `plt.savefig('${join(pyDir, "_verify.png").replace(/\\/g, "\\\\")}')`,
-        'print("OK")',
-    ].join('\n');
-    execSync(`"${pyExe}" -c "${verifyScript}"`, { stdio: "inherit" });
-
-    // 5. Write marker
-    const escapedMarker = depsMarker.replace(/\\/g, "\\\\");
-    execSync(`"${pyExe}" -c "open('${escapedMarker}','w').write('installed')"`, { stdio: "inherit" });
-
-    // 6. Clean up archive (keep extracted files only)
+    // 4. Clean up archive (keep extracted files only)
     try {
         if (existsSync(archivePath)) {
             unlinkSync(archivePath);

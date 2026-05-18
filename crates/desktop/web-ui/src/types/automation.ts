@@ -104,6 +104,22 @@ export interface CreateSkillResponse {
   warnings: string[];
 }
 
+/** Body for POST /v1/skills/import */
+export interface ImportSkillLocalRequest {
+  source_directory: string;
+  scope?: 'global' | 'workspace';
+  parent_directory?: string;
+  replace?: boolean;
+}
+
+/** Body for POST /v1/skills/install */
+export interface InstallSkillRemoteRequest {
+  spec: string;
+  scope?: 'global' | 'workspace';
+  parent_directory?: string;
+  replace?: boolean;
+}
+
 /** Body for POST /v1/tasks */
 export interface CreateTaskRequest {
   prompt: string;

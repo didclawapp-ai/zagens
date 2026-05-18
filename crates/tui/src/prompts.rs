@@ -547,8 +547,8 @@ pub fn system_prompt_for_mode_with_context_skills_session_and_approval(
         );
     }
 
-    // 3. Skills block (Code sessions only).
-    if task_type.needs_full_code_prompt() {
+    // 3. Skills block (Office + Code — especially useful for office templates/workflows).
+    if task_type.includes_skills_catalog() {
         let skills_block = crate::skills::render_available_skills_context_for_workspace(workspace)
             .or_else(|| skills_dir.and_then(crate::skills::render_available_skills_context));
         if let Some(block) = skills_block {

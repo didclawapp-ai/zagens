@@ -1020,7 +1020,7 @@ export default function Composer({
               )}
             </div>
             <div className="min-w-[0.5rem] flex-1" />
-            {routingStatus && onOpenRouting ? (
+            {routingStatus && onOpenRouting && !officeSession ? (
               <button
                 type="button"
                 onClick={onOpenRouting}
@@ -1075,7 +1075,7 @@ export default function Composer({
                   >
                     {t('composer.exportThread')}
                   </button>
-                  {onOpenRouting ? (
+                  {onOpenRouting && !officeSession ? (
                     <>
                       <div className="my-1 h-px bg-divider" />
                       <button

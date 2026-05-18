@@ -58,6 +58,25 @@
 }
 ```
 
+### 用户要 PDF (.pdf) → 用 pdf 格式
+
+与 docx 共用 `blocks`（heading / paragraph / list / table / image）。默认写入 `deliverables/`。
+
+```json
+{
+  "format": "pdf",
+  "path": "deliverables/项目报告.pdf",
+  "title": "项目报告",
+  "blocks": [
+    { "type": "heading", "level": 1, "text": "摘要" },
+    { "type": "paragraph", "text": "本报告说明…" },
+    { "type": "table", "headers": ["指标", "数值"], "rows": [["完成率", "92%"]] }
+  ]
+}
+```
+
+可选：`page`（A4/A3/Letter、横竖、边距 mm）、`font`（`name`/`size`）、`header`/`footer`（与 docx 相同字段）。
+
 ## 格式选择决策树
 
 | 用户说 | 选择 | 原因 |
@@ -65,6 +84,7 @@
 | "表格" "数据" "报表" "统计" "Excel" | **xlsx** | 纯 Rust,离线可靠,秒级生成 |
 | "PPT" "幻灯片" "汇报" "演示" | **pptx** | Python引擎,支持图表/表格/封面 |
 | "文档" "合同" "报告" "Word" | **docx** | Python 优先，纯 Rust 兜底 |
+| "PDF" "导出 pdf" "打印版" | **pdf** | ReportLab；版式与 docx blocks 一致 |
 
 ## XLSX 完整参数速查
 
