@@ -33,12 +33,21 @@ export function parseDesktopRouteIntentOption(raw: unknown): DesktopRouteIntentO
   return undefined;
 }
 
+/** Order for routing strategy UI (RoutingPanel). */
+export const ROUTE_INTENT_OPTIONS: DesktopRouteIntentOption[] = [
+  'off',
+  'follow_runmode',
+  'code',
+  'chat',
+  'research',
+];
+
 export const DESKTOP_ROUTE_INTENT_LABELS: Record<DesktopRouteIntentOption, string> = {
-  off: '路由：关闭',
-  follow_runmode: '路由：跟随模式',
-  code: '路由：code',
-  chat: '路由：chat',
-  research: '路由：research',
+  off: '关闭路由',
+  follow_runmode: '跟随运行模式',
+  code: '固定意图 · code',
+  chat: '固定意图 · chat',
+  research: '固定意图 · research',
 };
 
 export const DESKTOP_ROUTE_INTENT_HINTS: Record<DesktopRouteIntentOption, string> = {
@@ -65,6 +74,21 @@ export const DESKTOP_MODEL_LABELS: Record<DesktopModelId, string> = {
   'deepseek-v4-pro': 'DeepSeek V4 Pro',
   'deepseek-v4-flash': 'DeepSeek V4 Flash',
 };
+
+export const DESKTOP_MODEL_SHORT_LABELS: Record<DesktopModelId, string> = {
+  'deepseek-v4-pro': 'V4 Pro',
+  'deepseek-v4-flash': 'V4 Flash',
+};
+
+/** Compact label for Composer routing status chip. */
+export function composerRoutingStatusLabel(
+  opt: DesktopRouteIntentOption,
+  runMode: DesktopRunModeId,
+): string | null {
+  if (opt === 'off') return null;
+  if (opt === 'follow_runmode') return `路由 · ${DESKTOP_RUN_MODE_LABELS[runMode]}`;
+  return `路由 · ${opt}`;
+}
 
 export function parseDesktopModelId(raw: unknown): DesktopModelId | undefined {
   if (raw === 'deepseek-v4-pro' || raw === 'deepseek-v4-flash') return raw;

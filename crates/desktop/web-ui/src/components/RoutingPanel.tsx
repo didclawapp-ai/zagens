@@ -1,11 +1,25 @@
 import { useCallback, useEffect, useState } from 'react';
 import { fetchRoutingRules, setRoutingRules, type RuntimeConnectionState } from '../api/client';
+import { useT } from '../i18n';
 import type { RoutingRule } from '../types/routing';
+import type { DesktopRouteIntentOption } from '../types/desktop';
+import {
+  DESKTOP_ROUTE_INTENT_HINTS,
+  DESKTOP_ROUTE_INTENT_LABELS,
+  ROUTE_INTENT_OPTIONS,
+} from '../types/desktop';
 
-const PRESET_INTENTS = ['code', 'chat', 'research'];
+const PRESET_INTENTS = ['plan', 'agent', 'yolo', 'code', 'chat', 'research'];
 const PRESET_MODELS = ['deepseek-v4-pro', 'deepseek-v4-flash'];
 
-export default function RoutingPanel({ runtimeConn }: { runtimeConn: RuntimeConnectionState }) {
+interface Props {
+  runtimeConn: RuntimeConnectionState;
+  routeIntent: DesktopRouteIntentOption;
+  onRouteIntentChange: (v: DesktopRouteIntentOption) => void;
+}
+
+export default function RoutingPanel({ runtimeConn, routeIntent, onRouteIntentChange }: Props) {
+  const { t } = useT();
   const [rules, setRules] = useState<RoutingRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -34,8 +48,8 @@ export default function RoutingPanel({ runtimeConn }: { runtimeConn: RuntimeConn
   if (runtimeConn !== 'connected') {
     return (
       <div className="p-4 text-xs text-t-text-muted text-center space-y-2">
-        <p>等待运行时连接…</p>
-        <p className="text-[10px]">路由规则将在运行时就绪后自动加载。</p>
+        <p>{t('routing.waitingRuntime')}</p>
+        <p className="text-[10px]">{t('routing.waitingDetail')}</p>
       </div>
     );
   }
@@ -54,7 +68,7 @@ export default function RoutingPanel({ runtimeConn }: { runtimeConn: RuntimeConn
     const intent = newIntent.trim();
     if (!intent || !newModel) return;
     if (rules.some((r) => r.intent.toLowerCase() === intent.toLowerCase())) {
-      setError('该意图已存在');
+      setError(t('routing.intentExists'));
       return;
     }
     save([...rules, { intent, model: newModel }]);
@@ -65,73 +79,119 @@ export default function RoutingPanel({ runtimeConn }: { runtimeConn: RuntimeConn
     save(rules.filter((r) => r.intent !== intent));
   };
 
-  if (loading && rules.length === 0) {
-    return <div className="p-4 text-xs text-t-text-muted text-center">正在加载…</div>;
-  }
-
   return (
-    <div className="overflow-y-auto px-3 py-3 space-y-3">
-      {/* Existing rules */}
-      {rules.length === 0 && (
-        <p className="text-xs text-t-text-muted text-center py-4">暂无路由规则。</p>
-      )}
-      {rules.map((r) => (
-        <div key={r.intent} className="flex items-center gap-2 rounded-lg border border-card-border bg-canvas-alt px-3 py-2">
-          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-accent-soft text-accent">
-            {r.intent}
-          </span>
-          <span className="text-[10px] text-t-text-muted">→</span>
-          <span className="font-mono text-[11px] text-t-text-secondary flex-1">{r.model}</span>
-          <button
-            type="button"
-            onClick={() => removeRule(r.intent)}
-            className="text-[10px] text-t-text-muted hover:text-t-error px-1"
-            title="删除规则"
-          >
-            ✕
-          </button>
+    <div className="overflow-y-auto px-3 py-3 space-y-4">
+      <section className="space-y-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-t-text-muted">
+          {t('routing.strategyTitle')}
+        </p>
+        <p className="text-[11px] leading-snug text-t-text-secondary">{t('routing.strategyDesc')}</p>
+        <div className="space-y-1" role="radiogroup" aria-label={t('routing.strategyTitle')}>
+          {ROUTE_INTENT_OPTIONS.map((id) => (
+            <label
+              key={id}
+              className={`flex cursor-pointer gap-2 rounded-lg border px-3 py-2 transition-colors ${
+                routeIntent === id
+                  ? 'border-accent/40 bg-accent-soft'
+                  : 'border-card-border bg-canvas-alt hover:bg-hover'
+              }`}
+            >
+              <input
+                type="radio"
+                name="route-strategy"
+                className="mt-0.5 accent-accent"
+                checked={routeIntent === id}
+                onChange={() => onRouteIntentChange(id)}
+              />
+              <div className="min-w-0 flex-1">
+                <span
+                  className={`block text-xs font-medium ${
+                    routeIntent === id ? 'text-accent' : 'text-t-text'
+                  }`}
+                >
+                  {DESKTOP_ROUTE_INTENT_LABELS[id]}
+                </span>
+                <span className="mt-0.5 block text-[10px] leading-snug text-t-text-muted">
+                  {DESKTOP_ROUTE_INTENT_HINTS[id]}
+                </span>
+              </div>
+            </label>
+          ))}
         </div>
-      ))}
+      </section>
 
-      {/* Add new rule */}
-      <div className="border-t border-divider pt-3">
-        <div className="text-[11px] font-medium text-t-text-secondary mb-2">添加规则</div>
-        <div className="flex items-center gap-2 mb-2">
-          <input
-            type="text"
-            list="intent-list"
-            value={newIntent}
-            onChange={(e) => setNewIntent(e.target.value)}
-            placeholder="意图 (code/chat/research/…)"
-            className="flex-1 px-2 py-1.5 text-xs rounded bg-input-bg border border-input-border text-t-text outline-none focus:border-accent"
-            onKeyDown={(e) => e.key === 'Enter' && addRule()}
-          />
-          <datalist id="intent-list">
-            {PRESET_INTENTS.map((i) => <option key={i} value={i} />)}
-          </datalist>
-          <span className="text-[10px] text-t-text-muted">→</span>
-          <select
-            value={newModel}
-            onChange={(e) => setNewModel(e.target.value)}
-            className="px-2 py-1.5 text-xs rounded bg-input-bg border border-input-border text-t-text"
+      <section className="space-y-2 border-t border-divider pt-3">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-t-text-muted">
+          {t('routing.rulesTitle')}
+        </p>
+        {loading && rules.length === 0 ? (
+          <p className="text-xs text-t-text-muted text-center py-3">{t('routing.loading')}</p>
+        ) : null}
+        {!loading && rules.length === 0 ? (
+          <p className="text-xs text-t-text-muted text-center py-3">{t('routing.noRules')}</p>
+        ) : null}
+        {rules.map((r) => (
+          <div
+            key={r.intent}
+            className="flex items-center gap-2 rounded-lg border border-card-border bg-canvas-alt px-3 py-2"
           >
-            {PRESET_MODELS.map((m) => (
-              <option key={m} value={m}>{m}</option>
-            ))}
-          </select>
-          <button
-            type="button"
-            onClick={addRule}
-            className="px-3 py-1.5 text-xs font-medium rounded bg-accent text-accent-text hover:opacity-90"
-          >
-            添加
-          </button>
+            <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-accent-soft text-accent">
+              {r.intent}
+            </span>
+            <span className="text-[10px] text-t-text-muted">→</span>
+            <span className="font-mono text-[11px] text-t-text-secondary flex-1">{r.model}</span>
+            <button
+              type="button"
+              onClick={() => removeRule(r.intent)}
+              className="text-[10px] text-t-text-muted hover:text-t-error px-1"
+              title={t('routing.deleteRule')}
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+
+        <div className="border-t border-divider pt-3">
+          <div className="text-[11px] font-medium text-t-text-secondary mb-2">{t('routing.addRule')}</div>
+          <div className="flex items-center gap-2 mb-2">
+            <input
+              type="text"
+              list="intent-list"
+              value={newIntent}
+              onChange={(e) => setNewIntent(e.target.value)}
+              placeholder={t('routing.intentPlaceholder')}
+              className="flex-1 px-2 py-1.5 text-xs rounded bg-input-bg border border-input-border text-t-text outline-none focus:border-accent"
+              onKeyDown={(e) => e.key === 'Enter' && addRule()}
+            />
+            <datalist id="intent-list">
+              {PRESET_INTENTS.map((i) => (
+                <option key={i} value={i} />
+              ))}
+            </datalist>
+            <span className="text-[10px] text-t-text-muted">→</span>
+            <select
+              value={newModel}
+              onChange={(e) => setNewModel(e.target.value)}
+              className="px-2 py-1.5 text-xs rounded bg-input-bg border border-input-border text-t-text"
+            >
+              {PRESET_MODELS.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={addRule}
+              className="px-3 py-1.5 text-xs font-medium rounded bg-accent text-accent-text hover:opacity-90"
+            >
+              {t('routing.add')}
+            </button>
+          </div>
         </div>
-      </div>
+      </section>
 
-      {error && (
-        <p className="text-[10px] text-t-error">{error}</p>
-      )}
+      {error ? <p className="text-[10px] text-t-error">{error}</p> : null}
     </div>
   );
 }

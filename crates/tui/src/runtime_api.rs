@@ -2961,9 +2961,13 @@ async fn rebuild_symbol_index(
             q.workspace
         )));
     }
-    let index =
-        crate::symbol_index::build_index(&ws, crate::symbol_index::SymbolVisibility::Public);
+    let ws_for_build = ws.clone();
     let path = ws.join(".deepseek").join("symbols.json");
+    let index = tokio::task::spawn_blocking(move || {
+        crate::symbol_index::build_index(&ws_for_build, crate::symbol_index::SymbolVisibility::Public)
+    })
+    .await
+    .map_err(|e| ApiError::internal(format!("build_index panicked: {e}")))?;
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
@@ -2972,7 +2976,7 @@ async fn rebuild_symbol_index(
     Ok(Json(json!({
         "status": "ok",
         "path": path.to_string_lossy(),
-                "symbol_count": index.files.len(),
+        "symbol_count": index.files.len(),
     })))
 }
 

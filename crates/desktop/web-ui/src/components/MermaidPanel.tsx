@@ -28,26 +28,49 @@ function clampZoom(v: number): number {
   return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, v));
 }
 
+/** Strip Mermaid max-width caps; keep vector crisp (no CSS bitmap scale). */
+function prepareMermaidSvg(svgText: string): string {
+  let s = svgText.replace(/max-width\s*:\s*[^;]+;?/gi, '');
+  const crisp =
+    'display:block;max-width:none;shape-rendering:geometricPrecision;text-rendering:geometricPrecision';
+  if (!/\bstyle\s*=/i.test(s)) {
+    return s.replace(/<svg/i, `<svg style="${crisp}"`);
+  }
+  return s.replace(/<svg([^>]*)\bstyle\s*=\s*"([^"]*)"/i, (_, attrs, style) => {
+    const merged = style.includes('display:') ? style : `${crisp};${style}`;
+    return `<svg${attrs}style="${merged.replace(/max-width\s*:[^;]+;?/gi, '')}"`;
+  });
+}
+
 /**
- * SVG-native scaling: modify width/height attrs so the browser rasterises
- * at the target resolution instead of bitmap-scaling via CSS transform.
- * Also strips max-width constraints that would defeat the scaling.
+ * Scale by setting SVG width/height from viewBox — stays vector-sharp.
+ * CSS transform:scale() rasterizes first and looks blurry when enlarged.
  */
-function scaleSvg(svgText: string, scale: number): string {
-  if (scale === 1) return svgText;
-  let result = svgText;
-  // Scale width + height attributes (supports optional unit suffix like "px")
-  result = result.replace(
-    /(<svg[^>]*?)\bwidth\s*=\s*"([\d.]+)([^"]*?)"([^>]*?)\bheight\s*=\s*"([\d.]+)([^"]*?)"/i,
-    (_, before, w, wUnit, mid, h, hUnit) => {
-      const newW = parseFloat(w) * scale;
-      const newH = parseFloat(h) * scale;
-      return `${before}width="${newW}${wUnit}"${mid}height="${newH}${hUnit}"`;
-    },
-  );
-  // Remove max-width constraint (Mermaid often adds max-width:XXXpx in style)
-  result = result.replace(/max-width\s*:\s*[\d.]+\s*px\s*;?/gi, '');
-  return result;
+function applySvgZoom(svgText: string, zoomPct: number): string {
+  const { w, h } = parseSvgDimensions(svgText);
+  const factor = zoomPct / 100;
+  const targetW = Math.max(1, Math.round(w * factor));
+  const targetH = Math.max(1, Math.round(h * factor));
+  let s = prepareMermaidSvg(svgText);
+  s = s.replace(/(<svg[^>]*?)\s+width\s*=\s*"[^"]*"/i, '$1');
+  s = s.replace(/(<svg[^>]*?)\s+height\s*=\s*"[^"]*"/i, '$1');
+  return s.replace(/<svg/i, `<svg width="${targetW}" height="${targetH}"`);
+}
+
+function parseSvgDimensions(svgText: string): { w: number; h: number } {
+  const viewBox = svgText.match(/viewBox\s*=\s*"([^"]+)"/i);
+  if (viewBox) {
+    const p = viewBox[1].trim().split(/[\s,]+/).map(Number);
+    if (p.length === 4 && p[2] > 0 && p[3] > 0) {
+      return { w: p[2], h: p[3] };
+    }
+  }
+  const wMatch = svgText.match(/\bwidth\s*=\s*"([\d.]+)/i);
+  const hMatch = svgText.match(/\bheight\s*=\s*"([\d.]+)/i);
+  const w = wMatch ? parseFloat(wMatch[1]) : 0;
+  const h = hMatch ? parseFloat(hMatch[1]) : 0;
+  if (w > 0 && h > 0) return { w, h };
+  return { w: 800, h: 500 };
 }
 
 function blockDigest(code: string): string {
@@ -66,7 +89,7 @@ function extractMermaidBlocks(messages: Message[]): MermaidBlock[] {
     if (msg.role !== 'assistant') continue;
     const content = msg.content;
     if (!content) continue;
-    const regex = /```mermaid\n([\s\S]*?)```/g;
+    const regex = /```mermaid\s*\n?([\s\S]*?)```/g;
     let match;
     while ((match = regex.exec(content)) !== null) {
       const code = match[1].trim();
@@ -124,116 +147,145 @@ function triggerDownload(dataUrl: string, filename: string) {
 const MERMAID_THEME_DEFAULT = 'default' as const;
 const MERMAID_THEME_DARK = 'dark' as const;
 
-// ── DiagramCanvas — wheel zoom + left-drag pan ──────────────────
+// ── DiagramViewport — CSS transform zoom + pointer pan ───────────
 
-function DiagramCanvas({
+function DiagramViewport({
   svg,
   zoom,
   digest,
   onZoom,
-  isFullscreen,
+  viewResetKey,
 }: {
   svg: string;
   zoom: number;
   digest: string;
   onZoom: (digest: string, zoom: number) => void;
-  isFullscreen: boolean;
+  viewResetKey: number;
 }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const dragState = useRef<{ sx: number; sy: number; sl: number; st: number } | null>(null);
-  const [grabbing, setGrabbing] = useState(false);
-  const pendingScroll = useRef<{ left: number; top: number } | null>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const panRef = useRef({ x: 0, y: 0 });
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const dragRef = useRef<{ px: number; py: number; ox: number; oy: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const fitKeyRef = useRef('');
 
-  // Apply pending scroll after zoom-triggered re-render (synchronous, before paint)
-  useLayoutEffect(() => {
-    if (pendingScroll.current && containerRef.current) {
-      containerRef.current.scrollLeft = pendingScroll.current.left;
-      containerRef.current.scrollTop = pendingScroll.current.top;
-      pendingScroll.current = null;
-    }
-  });
+  const { w: svgW, h: svgH } = useMemo(() => parseSvgDimensions(svg), [svg]);
+  const scaledSvg = useMemo(() => applySvgZoom(svg, zoom), [svg, zoom]);
+  const scale = zoom / 100;
 
-  // Attach wheel listener with { passive: false } so we can preventDefault
+  panRef.current = pan;
+
+  const centerAtZoom = useCallback(
+    (zoomPct: number) => {
+      const el = viewportRef.current;
+      if (!el) return;
+      const s = zoomPct / 100;
+      setPan({
+        x: Math.max(8, (el.clientWidth - svgW * s) / 2),
+        y: Math.max(8, (el.clientHeight - svgH * s) / 2),
+      });
+    },
+    [svgW, svgH],
+  );
+
+  const fitToViewport = useCallback(() => {
+    const el = viewportRef.current;
+    if (!el || svgW <= 0 || svgH <= 0) return;
+    const pad = 32;
+    const vw = Math.max(40, el.clientWidth - pad);
+    const vh = Math.max(40, el.clientHeight - pad);
+    const fitPct = clampZoom(Math.floor(Math.min(vw / svgW, vh / svgH, 1) * 100));
+    onZoom(digest, fitPct);
+    centerAtZoom(fitPct);
+  }, [digest, svgW, svgH, onZoom, centerAtZoom]);
+
   useEffect(() => {
-    const el = containerRef.current;
+    fitKeyRef.current = '';
+    setPan({ x: 0, y: 0 });
+  }, [digest]);
+
+  useLayoutEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const tryFit = () => {
+      if (el.clientWidth < 20 || el.clientHeight < 20) return;
+      const key = `${digest}:${viewResetKey}`;
+      if (fitKeyRef.current === key) return;
+      fitKeyRef.current = key;
+      fitToViewport();
+    };
+    tryFit();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(tryFit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [digest, viewResetKey, svg, fitToViewport]);
+
+  useEffect(() => {
+    const el = viewportRef.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
+      e.stopPropagation();
       const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
       const newZoom = clampZoom(zoom + delta);
       if (newZoom === zoom) return;
       const rect = el.getBoundingClientRect();
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
-      const ratio = newZoom / zoom;
-      pendingScroll.current = {
-        left: (mx + el.scrollLeft) * ratio - mx,
-        top: (my + el.scrollTop) * ratio - my,
-      };
+      const oldScale = zoom / 100;
+      const newScale = newZoom / 100;
+      const p = panRef.current;
+      setPan({
+        x: mx - ((mx - p.x) * newScale) / oldScale,
+        y: my - ((my - p.y) * newScale) / oldScale,
+      });
       onZoom(digest, newZoom);
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
   }, [zoom, digest, onZoom]);
 
-  // Drag-to-pan: mousedown starts tracking, mousemove adjusts scroll
-  useEffect(() => {
-    if (!grabbing) return;
-    const onMove = (e: MouseEvent) => {
-      if (!dragState.current || !containerRef.current) return;
-      const dx = dragState.current.sx - e.clientX;
-      const dy = dragState.current.sy - e.clientY;
-      containerRef.current.scrollLeft = dragState.current.sl + dx;
-      containerRef.current.scrollTop = dragState.current.st + dy;
-    };
-    const onUp = () => {
-      dragState.current = null;
-      setGrabbing(false);
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-    return () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-  }, [grabbing]);
-
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+  const onPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
-    const el = containerRef.current;
-    if (!el) return;
-    dragState.current = {
-      sx: e.clientX,
-      sy: e.clientY,
-      sl: el.scrollLeft,
-      st: el.scrollTop,
-    };
-    setGrabbing(true);
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragRef.current = { px: e.clientX, py: e.clientY, ox: panRef.current.x, oy: panRef.current.y };
+    setDragging(true);
     e.preventDefault();
   }, []);
 
-  const scaledSvg = useMemo(() => scaleSvg(svg, zoom / 100), [svg, zoom]);
+  const onPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current) return;
+    setPan({
+      x: dragRef.current.ox + (e.clientX - dragRef.current.px),
+      y: dragRef.current.oy + (e.clientY - dragRef.current.py),
+    });
+  }, []);
+
+  const endDrag = useCallback(() => {
+    dragRef.current = null;
+    setDragging(false);
+  }, []);
 
   return (
     <div
-      ref={containerRef}
-      className="overflow-auto p-3 select-none"
-      style={{
-        cursor: grabbing ? 'grabbing' : 'grab',
-        flex: 1,
-        minHeight: 0,
-      }}
-      onMouseDown={handleMouseDown}
+      ref={viewportRef}
+      className="relative min-h-0 flex-1 touch-none select-none overflow-hidden rounded-b-lg bg-canvas-alt/30"
+      style={{ cursor: dragging ? 'grabbing' : 'grab' }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
+      role="img"
+      aria-label="Mermaid diagram viewport"
     >
       <div
-        className="flex items-center justify-center"
-        style={{ minWidth: '100%', minHeight: '100%' }}
-      >
-        <div
-          dangerouslySetInnerHTML={{ __html: scaledSvg }}
-          style={{ display: 'inline-block' }}
-        />
-      </div>
+        className="absolute left-0 top-0 [&_svg]:block"
+        style={{
+          transform: `translate(${pan.x}px, ${pan.y}px)`,
+        }}
+        dangerouslySetInnerHTML={{ __html: scaledSvg }}
+      />
     </div>
   );
 }
@@ -245,6 +297,7 @@ export default function MermaidPanel({ messages, theme, onDetected }: Props) {
   const [zoomMap, setZoomMap] = useState<Record<string, number>>({});
   const [activeTab, setActiveTab] = useState(0);
   const [fullscreenBlock, setFullscreenBlock] = useState<string | null>(null);
+  const [viewResetKey, setViewResetKey] = useState(0);
 
   const blocks = useMemo(() => extractMermaidBlocks(messages), [messages]);
 
@@ -276,6 +329,7 @@ export default function MermaidPanel({ messages, theme, onDetected }: Props) {
       theme: theme === 'dark' ? MERMAID_THEME_DARK : MERMAID_THEME_DEFAULT,
       securityLevel: 'strict',
     });
+    setRenderMap({});
   }, [theme]);
 
   useEffect(() => {
@@ -323,7 +377,7 @@ export default function MermaidPanel({ messages, theme, onDetected }: Props) {
     renderAll();
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [blocks]);
+  }, [blocks, theme]);
 
   const setZoom = useCallback((digest: string, v: number) => {
     setZoomMap((prev) => ({ ...prev, [digest]: clampZoom(v) }));
@@ -343,6 +397,11 @@ export default function MermaidPanel({ messages, theme, onDetected }: Props) {
       delete next[digest];
       return next;
     });
+    setViewResetKey((k) => k + 1);
+  }, []);
+
+  const fitToWindow = useCallback(() => {
+    setViewResetKey((k) => k + 1);
   }, []);
 
   const handleExport = useCallback((digest: string, svgText: string, blockIdx: number) => {
@@ -401,7 +460,7 @@ export default function MermaidPanel({ messages, theme, onDetected }: Props) {
     zoom: number,
     isFullscreen: boolean,
   ) => (
-    <div className={`flex items-center gap-1 ${isFullscreen ? 'px-3 py-2' : 'px-2 py-1.5'} border-b border-divider`}>
+    <div className={`flex shrink-0 items-center gap-1 ${isFullscreen ? 'px-3 py-2' : 'px-2 py-1.5'} border-b border-divider`}>
       <span className="text-[10px] text-t-text-muted mr-1 tabular-nums w-8">
         {zoom}%
       </span>
@@ -427,12 +486,22 @@ export default function MermaidPanel({ messages, theme, onDetected }: Props) {
         type="button"
         className="px-1.5 py-0.5 rounded text-[10px] text-t-text-muted hover:text-t-text hover:bg-hover transition-colors"
         onClick={() => resetZoom(digest)}
-        disabled={zoom === ZOOM_DEFAULT}
-        title="重置缩放"
+        title="重置视图"
       >
         ↺
       </button>
-      <div className="flex-1" />
+      <button
+        type="button"
+        className="px-1.5 py-0.5 rounded text-[10px] text-t-text-muted hover:text-t-text hover:bg-hover transition-colors"
+        onClick={fitToWindow}
+        title="适应窗口"
+      >
+        ⊡
+      </button>
+      <span className="hidden sm:inline text-[10px] text-t-text-muted ml-0.5">
+        滚轮缩放 · 拖拽平移
+      </span>
+      <div className="flex-1 min-w-1" />
       {!isFullscreen && (
         <button
           type="button"
@@ -485,7 +554,7 @@ export default function MermaidPanel({ messages, theme, onDetected }: Props) {
   );
 
   return (
-    <div className="flex flex-col min-h-0">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       {/* Tab bar */}
       {blocks.length > 1 && (
         <div className="flex items-center overflow-x-auto border-b border-divider shrink-0 px-1">
@@ -538,20 +607,20 @@ export default function MermaidPanel({ messages, theme, onDetected }: Props) {
 
       {/* Active tab content */}
       {activeBlock && activeEntry && (
-        <div className="flex flex-col min-h-0">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {activeEntry.error ? (
-            <div className="p-4">
+            <div className="p-4 overflow-y-auto">
               {renderDiagramError(activeEntry, activeBlock)}
             </div>
           ) : (
             <>
               {renderToolbar(activeBlock.digest, activeEntry.svg, safeActive, activeZoom, false)}
-              <DiagramCanvas
+              <DiagramViewport
                 svg={activeEntry.svg}
                 zoom={activeZoom}
                 digest={activeBlock.digest}
                 onZoom={setZoom}
-                isFullscreen={false}
+                viewResetKey={viewResetKey}
               />
             </>
           )}
@@ -597,12 +666,12 @@ export default function MermaidPanel({ messages, theme, onDetected }: Props) {
               </button>
             </div>
             {/* Fullscreen diagram */}
-            <DiagramCanvas
+            <DiagramViewport
               svg={fsEntry.svg}
               zoom={fsZoom}
               digest={fullscreenBlock}
               onZoom={setZoom}
-              isFullscreen={true}
+              viewResetKey={viewResetKey}
             />
 
             {/* Fullscreen prev/next navigation */}

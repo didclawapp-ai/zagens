@@ -311,6 +311,107 @@ body {
     stroke-width: 1.6;
   }
 
+  .composer-chip {
+    @apply inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-full;
+    border: 1px solid transparent;
+    color: var(--color-text-secondary);
+    background: transparent;
+  }
+
+  .composer-chip:hover {
+    background: var(--color-hover);
+    color: var(--color-text);
+  }
+
+  .composer-chip.active {
+    background: var(--color-accent-soft);
+    color: var(--color-accent);
+  }
+
+  .composer-chip svg {
+    width: 12px;
+    height: 12px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 2;
+  }
+
+  .composer-icon-btn {
+    @apply grid place-items-center shrink-0;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-card-border);
+    background: var(--color-input-bg);
+    color: var(--color-text-secondary);
+  }
+
+  .composer-icon-btn:hover:not(:disabled) {
+    background: var(--color-hover);
+    color: var(--color-text);
+  }
+
+  .composer-icon-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .composer-icon-btn svg {
+    width: 16px;
+    height: 16px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 1.6;
+  }
+
+  .composer-send-pill {
+    @apply inline-flex items-center gap-1.5 shrink-0 px-3.5 py-2 text-xs font-semibold rounded-full;
+    background: var(--color-accent);
+    color: var(--color-accent-text);
+    box-shadow: var(--color-shadow-sm);
+  }
+
+  .composer-send-pill:hover:not(:disabled) {
+    filter: brightness(1.05);
+  }
+
+  .composer-send-pill:disabled {
+    opacity: 0.4;
+    box-shadow: none;
+    cursor: not-allowed;
+  }
+
+  .composer-send-pill svg {
+    width: 14px;
+    height: 14px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 2;
+  }
+
+  .composer-ctx-bar {
+    width: 36px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--color-card-border);
+    overflow: hidden;
+  }
+
+  .composer-ctx-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: var(--color-text-muted);
+    transition: width 0.25s ease;
+  }
+
+  .composer-ctx-fill.warn {
+    background: var(--color-warning);
+  }
+
+  .composer-ctx-fill.danger {
+    background: var(--color-error);
+  }
+
   .nav-item {
     @apply flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px];
     color: var(--color-text);

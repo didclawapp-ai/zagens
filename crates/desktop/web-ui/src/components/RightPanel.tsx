@@ -17,6 +17,7 @@ import {
 } from './preview';
 import type { PreviewState } from './preview/types';
 import type { RuntimeConnectionState } from '../api/client';
+import type { DesktopRouteIntentOption } from '../types/desktop';
 import { useT } from '../i18n';
 import {
   browseThreadWorkspace,
@@ -99,6 +100,8 @@ interface Props {
   onRequestMermaid?: () => void;
   /** Called when user clicks collapse button in panel header. */
   onCollapse?: () => void;
+  routeIntent: DesktopRouteIntentOption;
+  onRouteIntentChange: (v: DesktopRouteIntentOption) => void;
 }
 
 const panelTitles: Record<RightPanelView, string> = {
@@ -173,6 +176,8 @@ export default function RightPanel({
   messages,
   onRequestMermaid,
   onCollapse,
+  routeIntent,
+  onRouteIntentChange,
 }: Props) {
   const { t } = useT();
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTabId>(() => {
@@ -203,6 +208,7 @@ export default function RightPanel({
   const [restoreMessage, setRestoreMessage] = useState<string | null>(null);
 
   const [rebuildingIndex, setRebuildingIndex] = useState(false);
+  const [rebuildIndexError, setRebuildIndexError] = useState<string | null>(null);
 
   const [pickRulesBody, setPickRulesBody] = useState('');
   const [pickRulesLoading, setPickRulesLoading] = useState(false);
@@ -412,11 +418,13 @@ export default function RightPanel({
   const onRebuildIndex = useCallback(async () => {
     if (!desktopHost) return;
     setRebuildingIndex(true);
+    setRebuildIndexError(null);
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('rebuild_symbol_index', { workspace: workspaceRoot });
-    } catch {
-      // error handled by IndexPanel's next load
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setRebuildIndexError(msg);
     } finally {
       setRebuildingIndex(false);
     }
@@ -941,7 +949,13 @@ export default function RightPanel({
 
         {view === 'agents' && <AgentPanel agents={agentStates} />}
 
-        {view === 'routing' && <RoutingPanel runtimeConn={runtimeConn} />}
+        {view === 'routing' && (
+          <RoutingPanel
+            runtimeConn={runtimeConn}
+            routeIntent={routeIntent}
+            onRouteIntentChange={onRouteIntentChange}
+          />
+        )}
 
         {/* Always mounted (hidden when inactive) so polling can auto-trigger the view */}
         <div style={{ display: view === 'checklist' ? undefined : 'none' }}>
@@ -952,7 +966,10 @@ export default function RightPanel({
         </div>
 
         {/* Always mounted (hidden when inactive) so mermaid detection can auto-trigger the view */}
-        <div style={{ display: view === 'mermaid' ? undefined : 'none' }}>
+        <div
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
+          style={{ display: view === 'mermaid' ? undefined : 'none' }}
+        >
           <MermaidPanel
             messages={messages}
             theme={theme}
@@ -976,6 +993,7 @@ export default function RightPanel({
             workspace={workspaceRoot}
             onRebuild={onRebuildIndex}
             rebuilding={rebuildingIndex}
+            rebuildError={rebuildIndexError}
           />
         )}
       </div>

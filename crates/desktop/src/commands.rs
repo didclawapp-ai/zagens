@@ -1212,18 +1212,26 @@ pub async fn rebuild_symbol_index(
         "http://127.0.0.1:{runtime_port}/v1/symbol-index/rebuild?workspace={}",
         urlencoding(&workspace)
     );
+    eprintln!("[symbol-index] rebuild: POST {url}");
     let resp = client
         .post(&url)
         .header("Authorization", format!("Bearer {token}"))
-        .timeout(Duration::from_secs(30))
+        .timeout(Duration::from_secs(120))
         .send()
         .await
-        .map_err(|e| format!("请求失败: {e}"))?;
+        .map_err(|e| {
+            let msg = chain_transport_error_cn("请求失败", &e);
+            eprintln!("[symbol-index] rebuild failed: {msg}");
+            msg
+        })?;
     if !resp.status().is_success() {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
-        return Err(format!("索引重建失败 ({status}): {body}"));
+        let msg = format!("索引重建失败 ({status}): {body}");
+        eprintln!("[symbol-index] rebuild HTTP error: {msg}");
+        return Err(msg);
     }
+    eprintln!("[symbol-index] rebuild OK");
     Ok(())
 }
 

@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Composer 输入区改版 DEMO</title>
+  <style>
+    /* DS Pick light tokens (from globals.css) */
+    :root {
+      --canvas: #eef0f4;
+      --card: #ffffff;
+      --card-border: #e4e6eb;
+      --text: #1a1d24;
+      --text-secondary: #5c6370;
+      --text-muted: #9aa0a8;
+      --accent: #2563eb;
+      --accent-soft: rgba(37, 99, 235, 0.12);
+      --accent-text: #ffffff;
+      --input-bg: #fafbfc;
+      --hover: #f6f7f9;
+      --hover-strong: #f3f4f6;
+      --divider: rgba(15, 23, 42, 0.06);
+      --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+      --shadow-md: 0 8px 24px rgba(16, 24, 40, 0.08), 0 2px 8px rgba(16, 24, 40, 0.04);
+      --radius-lg: 14px;
+      --radius-md: 10px;
+      --radius-sm: 8px;
+      --ctx-safe: #9aa0a8;
+      --ctx-warn: #d97706;
+      --ctx-danger: #dc2626;
+      --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      --transition: 150ms ease;
+    }
+
+    .dark {
+      --canvas: #0b0f14;
+      --card: #141a22;
+      --card-border: rgba(255, 255, 255, 0.065);
+      --text: #c5ced9;
+      --text-secondary: #97a3af;
+      --text-muted: #6d7785;
+      --accent: #6366f1;
+      --accent-soft: rgba(99, 102, 241, 0.15);
+      --input-bg: #1f2937;
+      --hover: #1f2937;
+      --hover-strong: #374151;
+      --divider: rgba(255, 255, 255, 0.032);
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+      --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.4);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font);
+      background: var(--canvas);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+
+    /* ===== Page chrome ===== */
+    .page-header {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 20px;
+      background: color-mix(in srgb, var(--canvas) 88%, transparent);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--divider);
+    }
+    .page-header h1 {
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .page-header p {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .seg-control {
+      display: inline-flex;
+      padding: 3px;
+      border-radius: var(--radius-md);
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      box-shadow: var(--shadow-sm);
+    }
+    .seg-control button {
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 500;
+      padding: 6px 14px;
+      border-radius: 7px;
+      cursor: pointer;
+      transition: all var(--transition);
+    }
+    .seg-control button.active {
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+    .seg-control button:hover:not(.active) {
+      color: var(--text);
+      background: var(--hover);
+    }
+
+    .ghost-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--card-border);
+      background: var(--card);
+      color: var(--text-secondary);
+      font-size: 12px;
+      cursor: pointer;
+      transition: all var(--transition);
+    }
+    .ghost-btn:hover { background: var(--hover); color: var(--text); }
+
+    .demo-main {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 24px 20px 48px;
+    }
+
+    .compare-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      align-items: start;
+    }
+    @media (max-width: 820px) {
+      .compare-grid { grid-template-columns: 1fr; }
+    }
+
+    .panel-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .panel-label .badge {
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0;
+      text-transform: none;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: var(--hover);
+      color: var(--text-secondary);
+    }
+    .panel-label .badge.new {
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    /* Mock chat strip */
+    .mock-chat {
+      margin-bottom: 12px;
+      padding: 0 4px;
+    }
+    .mock-bubble {
+      max-width: 85%;
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      background: #f4f5f8;
+      border: 1px solid rgba(15, 23, 42, 0.09);
+    }
+    .dark .mock-bubble {
+      background: #161d26;
+      border-color: rgba(255, 255, 255, 0.07);
+    }
+
+    /* ===== Composer shell ===== */
+    .composer-outer {
+      border-top: 1px solid var(--divider);
+      padding: 12px 0 0;
+    }
+    .composer-outer.dense-old {
+      padding-top: 12px;
+    }
+
+    .composer-stack {
+      max-width: 48rem;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+  /* --- CURRENT (before) --- */
+    .old-top-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px 16px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .old-top-bar label {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      color: var(--text-muted);
+    }
+    .old-top-bar input[type="checkbox"] {
+      accent-color: var(--accent);
+      width: 14px;
+      height: 14px;
+    }
+    .old-sep {
+      width: 1px;
+      height: 16px;
+      background: var(--divider);
+      flex-shrink: 0;
+    }
+    .pill-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--card-border);
+      background: var(--input-bg);
+      color: var(--text-secondary);
+      font-size: 12px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all var(--transition);
+    }
+    .pill-btn:hover {
+      background: var(--hover);
+      color: var(--text);
+    }
+    .pill-btn svg {
+      width: 14px;
+      height: 14px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.6;
+      flex-shrink: 0;
+    }
+    .pill-btn .accent-val { color: var(--accent); font-weight: 500; }
+    .pill-btn.icon-only { padding: 6px; }
+    .old-export-group {
+      display: flex;
+      gap: 8px;
+      margin-left: auto;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-sm);
+      overflow: visible;
+    }
+
+    .card textarea {
+      width: 100%;
+      border: none;
+      background: transparent;
+      color: var(--text);
+      font: inherit;
+      font-size: 14px;
+      line-height: 1.5;
+      padding: 14px 16px;
+      resize: none;
+      outline: none;
+      min-height: 64px;
+    }
+    .card textarea::placeholder { color: var(--text-muted); }
+
+    .card-bottom {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-top: 1px solid var(--divider);
+      padding: 0 12px 12px;
+    }
+    .card-bottom .grow { flex: 1; min-width: 8px; }
+
+    .send-round {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      border: none;
+      background: var(--accent);
+      color: var(--accent-text);
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
+      flex-shrink: 0;
+    }
+    .send-round svg {
+      width: 18px;
+      height: 18px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 2;
+    }
+    .ctx-plain {
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+  /* --- NEW (after) --- */
+    .card-unified .control-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--divider);
+      font-size: 12px;
+      min-height: 40px;
+    }
+    .control-bar .grow { flex: 1; }
+
+    .ctrl-check {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      color: var(--text-secondary);
+      white-space: nowrap;
+      user-select: none;
+      font-size: 12px;
+    }
+    .ctrl-check input {
+      accent-color: var(--accent);
+      width: 14px;
+      height: 14px;
+    }
+    .ctrl-check .short { display: inline; }
+    .ctrl-check .long { display: none; }
+    @media (min-width: 520px) {
+      .ctrl-check .long { display: inline; }
+      .ctrl-check .short { display: none; }
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all var(--transition);
+    }
+    .chip:hover {
+      background: var(--hover);
+      color: var(--text);
+    }
+    .chip.active {
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+    .chip svg {
+      width: 12px;
+      height: 12px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 2;
+    }
+
+    .icon-btn {
+      display: grid;
+      place-items: center;
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--card-border);
+      background: var(--input-bg);
+      color: var(--text-secondary);
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: all var(--transition);
+    }
+    .icon-btn:hover {
+      background: var(--hover);
+      color: var(--text);
+    }
+    .icon-btn svg {
+      width: 16px;
+      height: 16px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.6;
+    }
+
+    .card-bottom-new {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 10px;
+      border-top: 1px solid var(--divider);
+    }
+
+    .ctx-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+      padding: 2px 0;
+      cursor: default;
+    }
+    .ctx-bar {
+      width: 36px;
+      height: 4px;
+      border-radius: 2px;
+      background: var(--card-border);
+      overflow: hidden;
+    }
+    .ctx-fill {
+      height: 100%;
+      border-radius: 2px;
+      background: var(--ctx-safe);
+      transition: width 0.3s ease;
+    }
+    .ctx-fill.warn { background: var(--ctx-warn); }
+    .ctx-fill.danger { background: var(--ctx-danger); }
+    .ctx-pct {
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      color: var(--text-muted);
+      min-width: 2.5em;
+    }
+
+    .send-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 7px 14px;
+      border-radius: 999px;
+      border: none;
+      background: var(--accent);
+      color: var(--accent-text);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: filter var(--transition);
+    }
+    .send-pill:hover { filter: brightness(1.06); }
+    .send-pill svg {
+      width: 14px;
+      height: 14px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 2;
+    }
+
+    /* Attachment chips */
+    .attachments {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 10px 12px 0;
+    }
+    .att-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      border-radius: 6px;
+      border: 1px solid var(--card-border);
+      background: var(--input-bg);
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+    .att-chip img {
+      width: 28px;
+      height: 28px;
+      border-radius: 4px;
+      object-fit: cover;
+    }
+
+    /* Popovers */
+    .relative { position: relative; }
+    .popover {
+      position: absolute;
+      bottom: calc(100% + 6px);
+      left: 0;
+      z-index: 100;
+      min-width: 200px;
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-md);
+      padding: 4px;
+      box-shadow: var(--shadow-md);
+      display: none;
+    }
+    .popover.open { display: block; }
+    .popover.right { left: auto; right: 0; }
+    .popover-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text);
+      font-size: 13px;
+      text-align: left;
+      cursor: pointer;
+      transition: background var(--transition);
+    }
+    .popover-item:hover { background: var(--hover); }
+    .popover-item.active {
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 500;
+    }
+    .popover-item .hint {
+      display: block;
+      font-size: 11px;
+      font-weight: 400;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+    .popover-divider {
+      height: 1px;
+      background: var(--divider);
+      margin: 4px 0;
+    }
+
+    .notes {
+      margin-top: 32px;
+      padding: 16px 18px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--card-border);
+      background: var(--card);
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+    .notes h2 {
+      font-size: 14px;
+      color: var(--text);
+      margin-bottom: 10px;
+    }
+    .notes ul {
+      padding-left: 18px;
+      line-height: 1.7;
+    }
+    .notes li { margin-bottom: 4px; }
+
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <header class="page-header">
+    <div>
+      <h1>Composer 输入区改版 DEMO</h1>
+      <p>左右对比「当前」与「改版」；可切换明暗主题、模拟上下文占用</p>
+    </div>
+    <div class="header-actions">
+      <div class="seg-control" role="tablist" aria-label="视图">
+        <button type="button" class="active" data-view="compare" role="tab" aria-selected="true">对比</button>
+        <button type="button" data-view="new-only" role="tab" aria-selected="false">仅改版</button>
+      </div>
+      <button type="button" class="ghost-btn" id="btn-theme" title="切换明暗">🌓 主题</button>
+      <button type="button" class="ghost-btn" id="btn-ctx" title="循环上下文占用演示">CTX 14.5%</button>
+    </div>
+  </header>
+
+  <main class="demo-main">
+    <div id="view-compare" class="compare-grid">
+      <!-- CURRENT -->
+      <section aria-label="当前实现">
+        <div class="panel-label">
+          当前
+          <span class="badge">两层 · 高密度</span>
+        </div>
+        <div class="mock-chat">
+          <div class="mock-bubble">（上方为示意对话区，输入区在底部）</div>
+        </div>
+        <div class="composer-outer dense-old">
+          <div class="composer-stack">
+            <div class="old-top-bar">
+              <label>
+                <input type="checkbox" checked />
+                自动批准工具调用
+              </label>
+              <span class="old-sep"></span>
+              <button type="button" class="pill-btn">
+                模式:<span class="accent-val">Agent</span>
+                <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+              </button>
+              <span class="old-sep"></span>
+              <button type="button" class="pill-btn">
+                路由: 跟随模式
+                <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+              </button>
+              <div class="old-export-group">
+                <button type="button" class="pill-btn icon-only" title="导出会话">
+                  <svg viewBox="0 0 16 16"><path d="M8 1v10M4 7l4 4 4-4" stroke-linecap="round"/><path d="M2 13v1.5A1.5 1.5 0 003.5 16h9a1.5 1.5 0 001.5-1.5V13" stroke-linecap="round"/></svg>
+                </button>
+                <button type="button" class="pill-btn icon-only" title="导出线程">
+                  <svg viewBox="0 0 16 16"><path d="M8 1v10M4 7l4 4 4-4" stroke-linecap="round"/><path d="M2 13v1.5A1.5 1.5 0 003.5 16h9a1.5 1.5 0 001.5-1.5V13" stroke-linecap="round"/><circle cx="8" cy="8" r="1.5"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="card">
+              <textarea rows="2" placeholder="今天需要什么帮助？（可粘贴截图）"></textarea>
+              <div class="card-bottom">
+                <button type="button" class="pill-btn icon-only" title="附件">
+                  <svg viewBox="0 0 24 24"><path d="M12 5v14 M5 12h14"/></svg>
+                </button>
+                <div class="grow"></div>
+                <button type="button" class="pill-btn">
+                  <svg viewBox="0 0 24 24"><path d="M4 6h16v12H4z M8 6V4h8v2"/></svg>
+                  DeepSeek-TUI-des…
+                  <svg viewBox="0 0 24 24" style="width:12px;height:12px"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <button type="button" class="pill-btn">
+                  DeepSeek V4 Pro
+                  <svg viewBox="0 0 24 24" style="width:12px;height:12px"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <span class="ctx-plain" id="ctx-old">14.5%</span>
+                <button type="button" class="send-round" title="发送">
+                  <svg viewBox="0 0 24 24"><path d="M12 19V5M12 5l-6 6M12 5l6 6"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- NEW -->
+      <section aria-label="改版方案">
+        <div class="panel-label">
+          改版
+          <span class="badge new">单卡片 · 分层控件</span>
+        </div>
+        <div class="mock-chat">
+          <div class="mock-bubble">同一对话上下文，输入区更紧凑、层次更清晰</div>
+        </div>
+        <div class="composer-outer">
+          <div class="composer-stack">
+            <div class="card card-unified">
+              <div class="control-bar">
+                <label class="ctrl-check" title="自动批准工具调用">
+                  <input type="checkbox" checked />
+                  <span class="long">自动批准工具调用</span>
+                  <span class="short">自动批准</span>
+                </label>
+                <span class="old-sep"></span>
+                <div class="relative" data-popover="mode">
+                  <button type="button" class="chip active" data-trigger>
+                    Agent
+                    <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+                  </button>
+                  <div class="popover" role="listbox">
+                    <button type="button" class="popover-item">Plan<span class="hint">只读规划，不执行工具</span></button>
+                    <button type="button" class="popover-item active">Agent<span class="hint">可调用工具，需批准</span></button>
+                    <button type="button" class="popover-item">YOLO<span class="hint">自动执行，高风险</span></button>
+                  </div>
+                </div>
+                <div class="relative" data-popover="route">
+                  <button type="button" class="chip" data-trigger>
+                    跟随模式
+                    <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+                  </button>
+                  <div class="popover" role="listbox">
+                    <button type="button" class="popover-item">关闭路由</button>
+                    <button type="button" class="popover-item active">跟随模式</button>
+                    <button type="button" class="popover-item">代码</button>
+                    <button type="button" class="popover-item">对话</button>
+                  </div>
+                </div>
+                <div class="grow"></div>
+                <div class="relative" data-popover="more">
+                  <button type="button" class="icon-btn" data-trigger title="更多">
+                    <svg viewBox="0 0 24 24"><circle cx="12" cy="6" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="18" r="1.5" fill="currentColor" stroke="none"/></svg>
+                  </button>
+                  <div class="popover right" role="menu">
+                    <button type="button" class="popover-item">导出会话 JSON</button>
+                    <button type="button" class="popover-item">导出线程 JSON</button>
+                    <div class="popover-divider"></div>
+                    <button type="button" class="popover-item">运行配置…</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="attachments" id="att-demo">
+                <span class="att-chip">
+                  <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28'%3E%3Crect fill='%23dbeafe' width='28' height='28'/%3E%3C/svg%3E" alt="" />
+                  screenshot.png
+                  <button type="button" style="border:none;background:none;color:var(--text-muted);cursor:pointer">×</button>
+                </span>
+              </div>
+
+              <textarea rows="2" placeholder="今天需要什么帮助？"></textarea>
+
+              <div class="card-bottom-new">
+                <button type="button" class="icon-btn" title="添加附件">
+                  <svg viewBox="0 0 24 24"><path d="M12 5v14 M5 12h14"/></svg>
+                </button>
+                <div class="relative" data-popover="workspace">
+                  <button type="button" class="icon-btn" data-trigger title="DeepSeek-TUI-desktop">
+                    <svg viewBox="0 0 24 24"><path d="M4 6h16v12H4z M8 6V4h8v2"/></svg>
+                  </button>
+                  <div class="popover" role="dialog">
+                    <p style="padding:8px 12px;font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">工作区</p>
+                    <p style="padding:0 12px 8px;font-size:11px;font-family:ui-monospace;word-break:break-all;color:var(--text-secondary)">F:/DeepSeek-TUI-desktop</p>
+                    <button type="button" class="popover-item">浏览文件夹…</button>
+                  </div>
+                </div>
+                <div class="grow"></div>
+                <div class="relative" data-popover="model">
+                  <button type="button" class="chip" data-trigger>
+                    V4 Pro
+                    <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+                  </button>
+                  <div class="popover right" role="listbox">
+                    <button type="button" class="popover-item active">DeepSeek V4 Pro</button>
+                    <button type="button" class="popover-item">DeepSeek Chat</button>
+                  </div>
+                </div>
+                <div class="ctx-indicator" title="约 145k / 1M tokens">
+                  <div class="ctx-bar"><div class="ctx-fill" id="ctx-fill" style="width:14.5%"></div></div>
+                  <span class="ctx-pct" id="ctx-new">14.5%</span>
+                </div>
+                <button type="button" class="send-pill" title="Enter 发送">
+                  发送
+                  <svg viewBox="0 0 24 24"><path d="M12 19V5M12 5l-6 6M12 5l6 6"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div id="view-new-only" class="hidden">
+      <div class="panel-label">
+        改版（全宽）
+        <span class="badge new">推荐布局</span>
+      </div>
+      <div class="mock-chat" style="max-width:48rem;margin:0 auto 12px">
+        <div class="mock-bubble">全宽预览 — 与主界面 max-w-3xl 对齐</div>
+      </div>
+      <!-- clone target filled by JS -->
+      <div id="new-only-slot"></div>
+    </div>
+
+    <aside class="notes">
+      <h2>改版要点（本 DEMO 已实现）</h2>
+      <ul>
+        <li>顶栏并入卡片 <code>control-bar</code>，去掉卡片外灰条，减少「两层盒子」感</li>
+        <li>模式 / 路由改为紧凑 <strong>chip</strong>（值为主，无前缀「模式:」）</li>
+        <li>两个导出按钮合并为「⋯」菜单</li>
+        <li>底栏：附件 / 工作区为 <strong>32px icon</strong>；模型显示短名「V4 Pro」</li>
+        <li>上下文：细进度条 + 百分比；发送改为胶囊「发送 ↑」</li>
+        <li>自动批准：窄屏显示「自动批准」短文案</li>
+      </ul>
+    </aside>
+  </main>
+
+  <script>
+    (function () {
+      const body = document.body;
+      const ctxLevels = [
+        { pct: 14.5, cls: '' },
+        { pct: 52, cls: '' },
+        { pct: 72, cls: 'warn' },
+        { pct: 91, cls: 'danger' },
+      ];
+      let ctxIdx = 0;
+
+      function applyCtx() {
+        const { pct, cls } = ctxLevels[ctxIdx];
+        const label = pct.toFixed(1) + '%';
+        document.getElementById('ctx-old').textContent = label;
+        document.getElementById('ctx-new').textContent = label;
+        const fill = document.getElementById('ctx-fill');
+        fill.style.width = pct + '%';
+        fill.className = 'ctx-fill' + (cls ? ' ' + cls : '');
+        document.getElementById('btn-ctx').textContent = 'CTX ' + label;
+      }
+
+      document.getElementById('btn-theme').addEventListener('click', () => {
+        body.classList.toggle('dark');
+      });
+
+      document.getElementById('btn-ctx').addEventListener('click', () => {
+        ctxIdx = (ctxIdx + 1) % ctxLevels.length;
+        applyCtx();
+      });
+
+      document.querySelectorAll('[data-popover]').forEach((wrap) => {
+        const trigger = wrap.querySelector('[data-trigger]');
+        const pop = wrap.querySelector('.popover');
+        if (!trigger || !pop) return;
+        trigger.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const open = pop.classList.contains('open');
+          document.querySelectorAll('.popover.open').forEach((p) => p.classList.remove('open'));
+          if (!open) pop.classList.add('open');
+        });
+        pop.querySelectorAll('.popover-item').forEach((item) => {
+          item.addEventListener('click', () => {
+            pop.querySelectorAll('.popover-item').forEach((i) => i.classList.remove('active'));
+            item.classList.add('active');
+            const chip = wrap.querySelector('.chip');
+            if (chip && item.childNodes[0]) {
+              const text = item.childNodes[0].textContent.trim();
+              const first = chip.childNodes[0];
+              if (first && first.nodeType === Node.TEXT_NODE) {
+                chip.childNodes[0].textContent = text === 'DeepSeek V4 Pro' ? 'V4 Pro' : text;
+              }
+            }
+            pop.classList.remove('open');
+          });
+        });
+      });
+
+      document.addEventListener('click', () => {
+        document.querySelectorAll('.popover.open').forEach((p) => p.classList.remove('open'));
+      });
+
+      const tabs = document.querySelectorAll('.seg-control button');
+      const viewCompare = document.getElementById('view-compare');
+      const viewNewOnly = document.getElementById('view-new-only');
+      const newSlot = document.getElementById('new-only-slot');
+
+      tabs.forEach((tab) => {
+        tab.addEventListener('click', () => {
+          tabs.forEach((t) => {
+            t.classList.toggle('active', t === tab);
+            t.setAttribute('aria-selected', t === tab ? 'true' : 'false');
+          });
+          const onlyNew = tab.dataset.view === 'new-only';
+          viewCompare.classList.toggle('hidden', onlyNew);
+          viewNewOnly.classList.toggle('hidden', !onlyNew);
+          if (onlyNew && !newSlot.dataset.cloned) {
+            const section = document.querySelector('[aria-label="改版方案"] .composer-outer');
+            if (section) {
+              newSlot.appendChild(section.cloneNode(true));
+              newSlot.dataset.cloned = '1';
+              newSlot.querySelectorAll('[data-popover]').forEach((wrap) => {
+                const trigger = wrap.querySelector('[data-trigger]');
+                const pop = wrap.querySelector('.popover');
+                if (!trigger || !pop) return;
+                trigger.addEventListener('click', (e) => {
+                  e.stopPropagation();
+                  const open = pop.classList.contains('open');
+                  newSlot.querySelectorAll('.popover.open').forEach((p) => p.classList.remove('open'));
+                  if (!open) pop.classList.add('open');
+                });
+              });
+            }
+          }
+        });
+      });
+
+      applyCtx();
+    })();
+  </script>
+</body>
+</html>

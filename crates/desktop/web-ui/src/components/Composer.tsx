@@ -9,14 +9,12 @@ import { createPortal } from 'react-dom';
 import { useT } from '../i18n';
 import type { DesktopModelId, DesktopRouteIntentOption, DesktopRunModeId } from '../types/desktop';
 import {
+  composerRoutingStatusLabel,
   DESKTOP_MODEL_LABELS,
-  DESKTOP_ROUTE_INTENT_HINTS,
-  DESKTOP_ROUTE_INTENT_LABELS,
+  DESKTOP_MODEL_SHORT_LABELS,
   DESKTOP_RUN_MODE_HINTS,
   DESKTOP_RUN_MODE_LABELS,
 } from '../types/desktop';
-
-const ROUTE_INTENT_IDS: DesktopRouteIntentOption[] = ['off', 'follow_runmode', 'code', 'chat', 'research'];
 
 const MAX_FILE_BYTES = 128 * 1024; // 128 KB per file
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024; // align with describe_image / vision_transcribe_image
@@ -376,8 +374,9 @@ interface Props {
   onAutoApproveChange: (value: boolean) => void;
   runMode: DesktopRunModeId;
   onRunModeChange: (mode: DesktopRunModeId) => void;
+  /** Read-only; strategy is edited in RoutingPanel. */
   routeIntent: DesktopRouteIntentOption;
-  onRouteIntentChange: (v: DesktopRouteIntentOption) => void;
+  onOpenRouting?: () => void;
   sessionExportEnabled: boolean;
   threadExportEnabled: boolean;
   onExportSessionJson: () => void;
@@ -388,7 +387,6 @@ interface Props {
   onWorkspaceChange: (ws: string) => void | Promise<void>;
   /** Session is bound to a restored runtime thread; workspace commits via PATCH when changed */
   resumedThreadActive?: boolean;
-  onOpenModelParams?: () => void;
   /** Cumulative context usage percentage. Always provided (0% if no turns yet). */
   contextUsagePct: number;
 }
@@ -402,7 +400,7 @@ export default function Composer({
   runMode,
   onRunModeChange,
   routeIntent,
-  onRouteIntentChange,
+  onOpenRouting,
   sessionExportEnabled,
   threadExportEnabled,
   onExportSessionJson,
@@ -412,7 +410,6 @@ export default function Composer({
   workspace,
   onWorkspaceChange,
   resumedThreadActive = false,
-  onOpenModelParams,
   contextUsagePct,
 }: Props) {
   const { t } = useT();
@@ -422,7 +419,7 @@ export default function Composer({
   const [bridgeError, setBridgeError] = useState<string | null>(null);
   const [modelOpen, setModelOpen] = useState(false);
   const [runModeOpen, setRunModeOpen] = useState(false);
-  const [routeIntentOpen, setRouteIntentOpen] = useState(false);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [workspaceInput, setWorkspaceInput] = useState(workspace);
   const [isPickingDir, setIsPickingDir] = useState(false);
@@ -436,7 +433,7 @@ export default function Composer({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const modelMenuRef = useRef<HTMLDivElement>(null);
   const runModeMenuRef = useRef<HTMLDivElement>(null);
-  const routeIntentMenuRef = useRef<HTMLDivElement>(null);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
   const workspaceTriggerWrapRef = useRef<HTMLDivElement>(null);
   const workspacePopoverPanelRef = useRef<HTMLDivElement>(null);
 
@@ -520,15 +517,15 @@ export default function Composer({
   }, [runModeOpen]);
 
   useEffect(() => {
-    if (!routeIntentOpen) return;
+    if (!moreMenuOpen) return;
     const handler = (e: MouseEvent) => {
-      if (routeIntentMenuRef.current && !routeIntentMenuRef.current.contains(e.target as Node)) {
-        setRouteIntentOpen(false);
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
+        setMoreMenuOpen(false);
       }
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [routeIntentOpen]);
+  }, [moreMenuOpen]);
 
   useEffect(() => {
     if (!workspaceOpen) return;
@@ -546,18 +543,18 @@ export default function Composer({
   }, [workspaceOpen]);
 
   useEffect(() => {
-    if (!modelOpen && !workspaceOpen && !runModeOpen && !routeIntentOpen) return;
+    if (!modelOpen && !workspaceOpen && !runModeOpen && !moreMenuOpen) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setModelOpen(false);
         setWorkspaceOpen(false);
         setRunModeOpen(false);
-        setRouteIntentOpen(false);
+        setMoreMenuOpen(false);
       }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [modelOpen, workspaceOpen, runModeOpen, routeIntentOpen]);
+  }, [modelOpen, workspaceOpen, runModeOpen, moreMenuOpen]);
 
   const handleSend = async () => {
     if ((!text.trim() && attachments.length === 0) || disabled || transcribing) return;
@@ -693,14 +690,6 @@ export default function Composer({
       setRunModeOpen(false);
     },
     [onRunModeChange],
-  );
-
-  const selectRouteIntent = useCallback(
-    (v: DesktopRouteIntentOption) => {
-      onRouteIntentChange(v);
-      setRouteIntentOpen(false);
-    },
-    [onRouteIntentChange],
   );
 
   const selectModel = useCallback(
@@ -849,11 +838,20 @@ export default function Composer({
       document.body,
     );
 
+  const routingStatus = composerRoutingStatusLabel(routeIntent, runMode);
+  const routingActive = routeIntent !== 'off';
+  const ctxPct = contextUsagePct ?? 0;
+  const ctxFillClass = ctxPct >= 85 ? 'danger' : ctxPct >= 65 ? 'warn' : '';
+  const modelPickerTitle = routingActive
+    ? `${DESKTOP_MODEL_LABELS[model]} — ${t('composer.modelFallback')}`
+    : DESKTOP_MODEL_LABELS[model];
+
   return (
     <>
-      <div className="border-t border-divider px-4 py-3">
-        <div className="mx-auto flex max-w-3xl flex-col gap-2">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-t-text-muted">
+      <div className="border-t border-divider px-4 py-2">
+        <div className="mx-auto max-w-3xl">
+          <div className="card overflow-visible">
+            <div className="flex min-h-10 flex-wrap items-center gap-2 border-b border-divider px-3 py-2 text-xs">
             {runMode === 'agent' ? (
               <label className="inline-flex cursor-pointer select-none items-center gap-2">
                 <input
@@ -863,10 +861,11 @@ export default function Composer({
                   disabled={disabled}
                   className="rounded border-input-border bg-input-bg text-accent focus:ring-accent"
                 />
-                {t('composer.autoApprove')}
+                <span className="hidden sm:inline">{t('composer.autoApprove')}</span>
+                <span className="sm:hidden">{t('composer.autoApproveShort')}</span>
               </label>
             ) : (
-              <span className="max-w-xs leading-snug text-t-text-muted">
+              <span className="max-w-[14rem] truncate leading-snug text-t-text-muted" title={runMode === 'plan' ? t('composer.planModeHint') : t('composer.yoloModeHint')}>
                 {runMode === 'plan'
                   ? t('composer.planModeHint')
                   : t('composer.yoloModeHint')}
@@ -881,10 +880,10 @@ export default function Composer({
                 aria-expanded={runModeOpen}
                 aria-haspopup="listbox"
                 title={DESKTOP_RUN_MODE_HINTS[runMode]}
-                className="pill-btn font-medium text-t-text-secondary"
+                className={`composer-chip ${runModeOpen ? 'active' : ''}`}
               >
-                {t('composer.modeLabel')}<span className="text-accent">{DESKTOP_RUN_MODE_LABELS[runMode]}</span>
-                <svg viewBox="0 0 24 24" style={{ width: 12, height: 12 }}>
+                {DESKTOP_RUN_MODE_LABELS[runMode]}
+                <svg viewBox="0 0 24 24">
                   <path d="M6 9l6 6 6-6" />
                 </svg>
               </button>
@@ -913,78 +912,82 @@ export default function Composer({
                 </div>
               )}
             </div>
-            <div className="hidden h-4 w-px shrink-0 bg-divider sm:block" aria-hidden />
-            <div className="relative" ref={routeIntentMenuRef}>
+            <div className="min-w-[0.5rem] flex-1" />
+            {routingStatus && onOpenRouting ? (
               <button
                 type="button"
-                disabled={disabled}
-                onClick={() => setRouteIntentOpen((o) => !o)}
-                aria-expanded={routeIntentOpen}
-                aria-haspopup="listbox"
-                title={DESKTOP_ROUTE_INTENT_HINTS[routeIntent]}
-                className="pill-btn font-medium text-t-text-secondary max-w-[min(100vw-4rem,14rem)]"
+                onClick={onOpenRouting}
+                className="composer-chip max-w-[10rem] truncate text-accent"
+                title={t('composer.openRouting')}
               >
-                <span className="truncate">{DESKTOP_ROUTE_INTENT_LABELS[routeIntent]}</span>
-                <svg viewBox="0 0 24 24" style={{ width: 12, height: 12 }} className="shrink-0">
-                  <path d="M6 9l6 6 6-6" />
+                {routingStatus}
+              </button>
+            ) : null}
+            <div className="relative" ref={moreMenuRef}>
+              <button
+                type="button"
+                className="composer-icon-btn"
+                disabled={disabled}
+                onClick={() => setMoreMenuOpen((o) => !o)}
+                aria-expanded={moreMenuOpen}
+                aria-haspopup="menu"
+                title={t('composer.moreMenu')}
+              >
+                <svg viewBox="0 0 24 24">
+                  <circle cx="12" cy="6" r="1.5" fill="currentColor" stroke="none" />
+                  <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+                  <circle cx="12" cy="18" r="1.5" fill="currentColor" stroke="none" />
                 </svg>
               </button>
-              {routeIntentOpen && (
+              {moreMenuOpen && (
                 <div
-                  className="absolute bottom-full left-0 z-[10040] mb-1 w-[min(100vw-2rem,22rem)] max-w-[360px] rounded-lg border border-card-border bg-card p-1.5 shadow-lg ring-1 ring-black/[0.06] dark:ring-white/[0.08]"
-                  role="listbox"
-                  aria-label={t('composer.selectRouteIntent')}
+                  className="absolute bottom-full right-0 z-[10040] mb-1 w-52 rounded-lg border border-card-border bg-card p-1 shadow-lg ring-1 ring-black/[0.06] dark:ring-white/[0.08]"
+                  role="menu"
                 >
-                  {ROUTE_INTENT_IDS.map((id) => (
-                    <button
-                      key={id}
-                      type="button"
-                      role="option"
-                      aria-selected={id === routeIntent}
-                      title={DESKTOP_ROUTE_INTENT_HINTS[id]}
-                      onClick={() => selectRouteIntent(id)}
-                      className={`flex w-full flex-col gap-0.5 rounded-md px-3 py-2 text-left text-sm transition-colors ${
-                        id === routeIntent ? 'bg-accent-soft text-accent' : 'text-t-text hover:bg-hover'
-                      }`}
-                    >
-                      <span className="font-medium">{DESKTOP_ROUTE_INTENT_LABELS[id]}</span>
-                      <span className="text-[11px] leading-snug text-t-text-muted">{DESKTOP_ROUTE_INTENT_HINTS[id]}</span>
-                    </button>
-                  ))}
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={!sessionExportEnabled}
+                    onClick={() => {
+                      setMoreMenuOpen(false);
+                      onExportSessionJson();
+                    }}
+                    className="flex w-full rounded-md px-3 py-2 text-left text-sm text-t-text hover:bg-hover disabled:opacity-40"
+                  >
+                    {t('composer.exportSession')}
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={!threadExportEnabled}
+                    onClick={() => {
+                      setMoreMenuOpen(false);
+                      onExportThreadJson();
+                    }}
+                    className="flex w-full rounded-md px-3 py-2 text-left text-sm text-t-text hover:bg-hover disabled:opacity-40"
+                  >
+                    {t('composer.exportThread')}
+                  </button>
+                  {onOpenRouting ? (
+                    <>
+                      <div className="my-1 h-px bg-divider" />
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setMoreMenuOpen(false);
+                          onOpenRouting();
+                        }}
+                        className="flex w-full rounded-md px-3 py-2 text-left text-sm text-t-text hover:bg-hover"
+                      >
+                        {t('composer.openRouting')}
+                      </button>
+                    </>
+                  ) : null}
                 </div>
               )}
             </div>
-            <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
-              <button
-                type="button"
-                disabled={!sessionExportEnabled}
-                onClick={onExportSessionJson}
-                title={t('composer.exportSessionTitle')}
-                className="pill-btn p-1.5 disabled:opacity-40"
-                aria-label={t('composer.exportSession')}
-              >
-                <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <path d="M8 1v10M4 7l4 4 4-4" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M2 13v1.5A1.5 1.5 0 003.5 16h9a1.5 1.5 0 001.5-1.5V13" strokeLinecap="round"/>
-                </svg>
-              </button>
-              <button
-                type="button"
-                disabled={!threadExportEnabled}
-                onClick={onExportThreadJson}
-                title={t('composer.exportThreadTitle')}
-                className="pill-btn p-1.5 disabled:opacity-40"
-                aria-label={t('composer.exportThread')}
-              >
-                <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <path d="M8 1v10M4 7l4 4 4-4" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M2 13v1.5A1.5 1.5 0 003.5 16h9a1.5 1.5 0 001.5-1.5V13" strokeLinecap="round"/>
-                  <circle cx="8" cy="8" r="1.5" />
-                </svg>
-              </button>
-            </div>
           </div>
-        <div className="card overflow-visible">
           {bridgeError && (
             <p className="px-3 pt-3 text-xs text-error-text leading-relaxed">{bridgeError}</p>
           )}
@@ -1048,10 +1051,10 @@ export default function Composer({
             placeholder={t('composer.placeholder')}
             disabled={disabled || transcribing}
             rows={2}
-            className="w-full resize-none border-none bg-transparent px-4 py-3.5 text-sm text-t-text placeholder-t-text-muted focus:outline-none disabled:opacity-50"
-            style={{ minHeight: '64px', lineHeight: 1.5 }}
+            className="w-full resize-none border-none bg-transparent px-4 py-3 text-sm text-t-text placeholder-t-text-muted focus:outline-none disabled:opacity-50"
+            style={{ minHeight: '56px', lineHeight: 1.5 }}
           />
-          <div className="flex items-center gap-2 border-t border-divider px-3 pb-3 pt-0">
+          <div className="flex items-center gap-1.5 border-t border-divider px-2.5 py-2">
             <input
               ref={fileInputRef}
               type="file"
@@ -1062,7 +1065,7 @@ export default function Composer({
             />
             <button
               type="button"
-              className="pill-btn"
+              className="composer-icon-btn"
               title={t('composer.attach')}
               disabled={disabled || transcribing || attachments.length >= MAX_ATTACHMENTS}
               onClick={handleAttachClick}
@@ -1071,11 +1074,10 @@ export default function Composer({
                 <path d="M12 5v14 M5 12h14" />
               </svg>
             </button>
-            <div className="flex-1 min-w-[2rem]" />
             <div className="relative z-40" ref={workspaceTriggerWrapRef}>
               <button
                 type="button"
-                className="pill-btn"
+                className="composer-icon-btn"
                 disabled={disabled}
                 onClick={() => setWorkspaceOpen((o) => !o)}
                 aria-expanded={workspaceOpen}
@@ -1085,22 +1087,20 @@ export default function Composer({
                 <svg viewBox="0 0 24 24">
                   <path d="M4 6h16v12H4z M8 6V4h8v2" />
                 </svg>
-                <span className="max-w-[120px] truncate">{shortenPath(workspace)}</span>
-                <svg viewBox="0 0 24 24" style={{ width: 12, height: 12 }}>
-                  <path d="M6 9l6 6 6-6" />
-                </svg>
               </button>
             </div>
+            <div className="min-w-[0.5rem] flex-1" />
             <div className="relative" ref={modelMenuRef}>
               <button
                 type="button"
-                className="pill-btn"
+                className={`composer-chip ${routingActive ? 'opacity-80' : ''}`}
                 disabled={disabled}
                 onClick={() => setModelOpen((o) => !o)}
                 aria-expanded={modelOpen}
                 aria-haspopup="listbox"
+                title={modelPickerTitle}
               >
-                {DESKTOP_MODEL_LABELS[model]}
+                {DESKTOP_MODEL_SHORT_LABELS[model]}
                 <svg
                   viewBox="0 0 24 24"
                   style={{ width: 12, height: 12 }}
@@ -1109,19 +1109,6 @@ export default function Composer({
                   <path d="M6 9l6 6 6-6" />
                 </svg>
               </button>
-              {onOpenModelParams && (
-                <button
-                  type="button"
-                  className="pill-btn px-2"
-                  title={t('composer.modelParams')}
-                  onClick={(e) => { e.stopPropagation(); onOpenModelParams(); }}
-                >
-                  <svg viewBox="0 0 24 24" style={{ width: 14, height: 14, stroke: 'currentColor', fill: 'none', strokeWidth: 1.6 }}>
-                    <path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/>
-                    <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
-                  </svg>
-                </button>
-              )}
               {modelOpen && (
                 <div
                   className="absolute bottom-full left-0 z-[10040] mb-1 w-48 rounded-lg border border-card-border bg-card p-1.5 shadow-lg ring-1 ring-black/[0.06] dark:ring-white/[0.08]"
@@ -1163,27 +1150,30 @@ export default function Composer({
                 </div>
               )}
             </div>
-            {contextUsagePct != null ? (
-              <span
-                className="flex-shrink-0 text-[11px] tabular-nums"
-                style={{ color: contextUsagePct >= 85 ? '#f87171' : contextUsagePct >= 65 ? '#fbbf24' : contextUsagePct >= 45 ? 'var(--t-text-secondary)' : 'var(--t-text-muted)' }}
-                title={`${contextUsagePct.toFixed(1)}% of ${model === 'deepseek-v4-pro' ? '1M' : '1M'} context window (~${Math.round(contextUsagePct / 100 * 1000000).toLocaleString()} tokens)${disabled && contextUsagePct > 0 ? '\\nIncludes estimated tokens for current turn' : ''}`}
-              >
-                {disabled && contextUsagePct > 0 ? '~' : ''}{contextUsagePct.toFixed(1)}%
+            <div
+              className="flex shrink-0 items-center gap-1.5"
+              title={`${ctxPct.toFixed(1)}% · ~${Math.round((ctxPct / 100) * 1_000_000).toLocaleString()} tokens${disabled && ctxPct > 0 ? ' (含当前轮估算)' : ''}`}
+            >
+              <div className="composer-ctx-bar" aria-hidden>
+                <div
+                  className={`composer-ctx-fill ${ctxFillClass}`}
+                  style={{ width: `${Math.min(100, ctxPct)}%` }}
+                />
+              </div>
+              <span className="text-[11px] tabular-nums text-t-text-muted">
+                {disabled && ctxPct > 0 ? '~' : ''}
+                {ctxPct.toFixed(1)}%
               </span>
-            ) : null}
+            </div>
             <button
               type="button"
               onClick={() => void handleSend()}
               disabled={disabled || transcribing || (!text.trim() && attachments.length === 0)}
-              className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-full bg-accent text-accent-text shadow-md hover:brightness-105 disabled:opacity-40 disabled:shadow-none"
+              className="composer-send-pill"
               title={transcribing ? t('composer.transcribing') : t('composer.send')}
             >
-              <svg
-                viewBox="0 0 24 24"
-                className="size-[18px]"
-                style={{ stroke: 'currentColor', fill: 'none', strokeWidth: 2 }}
-              >
+              {t('composer.send')}
+              <svg viewBox="0 0 24 24">
                 <path d="M12 19V5M12 5l-6 6M12 5l6 6" />
               </svg>
             </button>

@@ -31,7 +31,6 @@ import ApprovalDialog from './components/ApprovalDialog';
 import RightPanel, { type RightPanelView } from './components/RightPanel';
 import { loadWorkspaceFileIntoPreview } from './lib/openWorkspaceFile';
 import type { PreviewState } from './components/preview/types';
-import ModelParamsDialog, { type ModelParams } from './components/ModelParamsDialog';
 import type { AgentState } from './types/agent';
 import useKeyboardShortcuts from './hooks/useKeyboardShortcuts';
 import { streamFlagsForRunMode } from './lib/runtimeMode';
@@ -288,8 +287,6 @@ export default function App() {
   const [cumulativeInputTokens, setCumulativeInputTokens] = useState(0);
   /** Estimated tokens for the current in-flight turn (set at send, cleared at turn_completed). */
   const [estimatedPendingTokens, setEstimatedPendingTokens] = useState(0);
-  const [modelParamsOpen, setModelParamsOpen] = useState(false);
-  const [modelParams, setModelParams] = useState<ModelParams>({ temperature: 0.7, topP: 0.9, maxTokens: 8192 });
   const [desktopHost, setDesktopHost] = useState(false);
   const [desktopApiKeyConfigured, setDesktopApiKeyConfigured] = useState<boolean | null>(null);
   const [runtimeConn, setRuntimeConn] = useState<RuntimeConnectionState>('checking');
@@ -1350,7 +1347,10 @@ export default function App() {
           runMode={runMode}
           onRunModeChange={setRunMode}
           routeIntent={routeIntent}
-          onRouteIntentChange={setRouteIntent}
+          onOpenRouting={() => {
+            setRightPanelCollapsed(false);
+            setActiveInspector('routing');
+          }}
           sessionExportEnabled={Boolean(activeSessionId)}
           threadExportEnabled={Boolean(resumedThreadId)}
           onExportSessionJson={() => void handleExportSessionJson()}
@@ -1360,7 +1360,6 @@ export default function App() {
           workspace={selectedWorkspace}
           onWorkspaceChange={handleComposerWorkspaceChange}
           resumedThreadActive={resumedThreadId != null && resumedThreadId.length > 0}
-          onOpenModelParams={() => setModelParamsOpen(true)}
           contextUsagePct={
             Math.min(100, ((cumulativeInputTokens + estimatedPendingTokens) / V4_CONTEXT_WINDOW_TOKENS) * 100)
           }
@@ -1403,6 +1402,8 @@ export default function App() {
           messages={messages}
           onRequestMermaid={() => setActiveInspector('mermaid')}
           onCollapse={() => setRightPanelCollapsed(true)}
+          routeIntent={routeIntent}
+          onRouteIntentChange={setRouteIntent}
         />
       )}
       {rightPanelCollapsed && (
@@ -1417,12 +1418,6 @@ export default function App() {
           </svg>
         </button>
       )}
-      <ModelParamsDialog
-        open={modelParamsOpen}
-        onClose={() => setModelParamsOpen(false)}
-        onApply={(p) => { setModelParams(p); setModelParamsOpen(false); }}
-        initial={modelParams}
-      />
     </div>
       </div>
   );

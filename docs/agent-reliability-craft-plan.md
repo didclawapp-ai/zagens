@@ -39,6 +39,91 @@ CRAFT 解决的是 **单次任务可追溯与多角色交接**（黑板、门禁
 
 **已定序：** 先持续推进 CRAFT 落地，再将记忆地图 **系统化接入**（避免两条线同时争抢 prompt 空间却无合并策略）。并排开发时可约定：黑板写 **任务态事实与裁决**，记忆地图写 **跨轮话题骨架**；二者注入上下文时需明确 **先后顺序、字数上限与脱敏**。路线图、集成注意与 **记忆地图中长期潜力备忘**见 [docs/tui/UNDERLYING_ITERATION_REFERENCE.md §2.2–§2.3](tui/UNDERLYING_ITERATION_REFERENCE.md)。
 
+### 3.2 并行工具调度与子代理写路径（现状核对）
+
+> **核对日期：** 2026-05-17。对照 DS Pick / 主 agent 在会话中的自述与当前 `crates/tui` runtime 实现。用于纠正 prompt 中的过时说法，并指导 §11 / P4 的优先级。
+
+#### 3.2.1 结论摘要
+
+| 主题 | 模型常见说法 | 代码事实 |
+|------|--------------|----------|
+| 主代理同轮并行 `edit_file` | 「现在就做 / 习惯问题」 | **❌ 不支持**：调度器要求整批 `read_only && supports_parallel`（见 `dispatch.rs` `should_parallelize_tool_batch`）；`edit_file` 为 `WritesFiles` 且 `supports_parallel` 默认为 false |
+| 主代理同轮并行只读工具 | 较少强调 | **✅ 支持**：`read_file`、`grep_files`、`list_dir` 等同批可并行 |
+| 多文件一次写入 | `apply_patch` | **✅ 单工具内多文件**，仍属写工具，**不能**与同批其它写操作并行 |
+| 子代理能否写盘 | 「理论上可以、实际受限」 | **分角色**：`explore` / `review` 在 `build_allowed_tools` 中被硬裁剪（无 `edit_file`）；`implementer` 等默认 **继承父代理完整工具面**（v0.6.6+，`allowed_tools: None`） |
+| 子代理能否跑编译/测试 | 「❌ 不能编译」 | **⚠️ 过严**：若 `allow_shell` 且未裁剪，可通过 `exec_shell` / `run_tests` 等执行；非引擎级禁止 |
+| 子代理 LSP | 「写完看不到诊断」 | **⚠️ 半对**：无 engine 级 `run_post_edit_lsp_hook` + `flush_pending_lsp_diagnostics`；子代理 `ToolContext` 未接 `lsp_manager`，故 `edit_file` 内嵌的 `lsp_diagnostics_for_paths` 通常为空；可 **主动** 调用 `diagnostics` 工具 |
+| 并行 spawn 多子代理写同一仓库 | 后写覆盖、无 merge | **✅ 成立**；且子代理 **一步内** 多个 tool call 亦为 **串行** for 循环（`subagent/mod.rs`） |
+| 文件所有权 | 需要 `claim_file` | **仅有软约束**：`resident_file` + `RESIDENT_LEASES` 在 spawn 时 **warning**，不阻止并发写 |
+| 补丁队列 / 冲突检测 | 需要 `apply_patches` 原子合并 | **未实现**：`apply_patch` / `edit_file` 均直接落盘 |
+
+**一句话：** 并行子代理 **写代码** 的主要缺口在 **工具链与调度**（锁、LSP 回路、集成回合），不是「再加一个并行开关」；主代理 **也不能** 靠同轮多个 `edit_file` 绕过调度器。
+
+#### 3.2.2 主代理：工具批调度
+
+入口：`crates/tui/src/core/engine/dispatch.rs` — `should_parallelize_tool_batch` 要求计划中 **每一项** 同时满足：
+
+- `read_only`
+- `supports_parallel`
+- 非 `approval_required`、非 interactive
+
+`edit_file` / `write_file` / `apply_patch` 标记为 `WritesFiles`，`supports_parallel` 默认 **false**（`tools/spec.rs`；`file.rs` 测试断言 write 不可并行）。因此 **同轮多个写工具会串行执行**。
+
+**可行模式（今日）：**
+
+| 模式 | 说明 |
+|------|------|
+| 同轮并行只读 | 一次请求发多个 `read_file` / `grep_files` 等 |
+| 单次 `apply_patch` | `changes` 数组一次改多文件（仍为一个写工具调用） |
+| 多轮串行写 | 每轮一个或少量写工具，由主 agent 根据上轮结果决策 |
+| 并行 `agent_spawn` | 多个子代理 **同时** 跑（受 `max_concurrent` 限制），适合 **只读** 探索；并行 **写** 仍有踩脚风险 |
+
+#### 3.2.3 子代理：工具面、执行与 LSP
+
+**工具继承（v0.6.6+）：** `SubAgentToolRegistry` 默认 `allowed_tools: None` → 与父 Agent 模式相同的完整 registry（`subagent/mod.rs` `build_allowed_tools`）。例外：
+
+- `SubAgentType::Explore` / `Review` → 显式窄列表（无 `edit_file` / `write_file`），对应 CRAFT P3「硬裁剪」已部分落地。
+- `Custom` → 必须显式 `allowed_tools` 非空。
+
+**执行模型：** 子代理自有 turn 循环（`run_subagent_task`），**不** 走主 engine 的 `turn_loop` 并行派发；一步内多个 tool call **顺序** `execute`，连只读也不会在子代理内部并行。
+
+**LSP 双路径（主 vs 子）：**
+
+| 路径 | 主 agent | 子 agent |
+|------|----------|----------|
+| Tool 结果内嵌 | `lsp_diagnostics_for_paths(context, …)` — 仅当 `context.lsp_manager` 有值 | 子代理 `build_tool_context()` **未** `with_lsp_manager`，通常为空 |
+| Engine post-edit | `run_post_edit_lsp_hook` → `pending_lsp_blocks` → 下一轮前 `flush_pending_lsp_diagnostics`（`lsp_hooks.rs` / `turn_loop.rs`） | **无** |
+| 主动查询 | 可调 `diagnostics` 工具 | 同上（若工具面未裁剪） |
+
+主 agent 的 LSP 实际主要依赖 **engine 路径**（`Engine` 持有 `lsp_manager`，与 `ToolContext` 分离）。子代理若要「编辑后自动见诊断」，需在子代理 `ToolContext` 接线 `lsp_manager`，并在子代理 turn 末复用 flush 逻辑（或等价地在 tool 结果中保证 diag 块非空）。
+
+#### 3.2.4 并行写与所有权（缺口 ↔ CRAFT）
+
+与 §5.3.2 黑板「顺序写入」互补：**黑板解决角色间事实传递**；**文件级所有权**解决多子代理 / 多写者同时改盘。
+
+| 能力 | 现状 | 建议优先级 |
+|------|------|------------|
+| 硬文件锁 / `claim_file` | `resident_file` lease 仅 warning | **P1**（spawn 拒绝或排队） |
+| 子代理 LSP 回路 | 未接 `lsp_manager` | **P0**（低成本，见 §11.4） |
+| 子代理只产出 diff、主代理单点 apply | 无 | **P2**（集成回合 + `cargo check`） |
+| `git worktree` + Integrator | 未做 | **P4 RFC**（§11.1 第 5 项） |
+
+#### 3.2.5 方案对照（纠正模型自述）
+
+| 方案 | 可行性（当前代码） | 适合场景 |
+|------|-------------------|----------|
+| 主代理同轮并行 `edit_file` | ❌ 调度器不允许 | — |
+| 主代理同轮并行只读 + 单轮 `apply_patch` 多文件 | ✅ | 互不依赖的多文件小改 |
+| 子代理只读（`explore`）+ 主代理写 | ✅ 成熟 | 大面积调查后统一修改 |
+| 子代理 `implementer` 串行写 + 主代理集成 | ⚠️ 可用但无锁、无自动 LSP | 中等规模；需主 agent 编排与验证 |
+| 多子代理并行写同一 repo | ⚠️ 高风险 | 仅当文件分区明确且接受覆盖风险；待 P1/P2 工具链 |
+
+#### 3.2.6 与 CRAFT 阶段的关系
+
+- **P3 工具硬裁剪**：`explore` / `review` 无写路径 — **已在 runtime 落地**（`build_allowed_tools`）；其它类型仍全继承，需靠 spawn 时 `allowed_tools` 或 prompt 约束。
+- **P4 环境隔离**：`git worktree` / Integrator — 对应并行写的 **环境沙箱** 层（§5.2），与 §3.2.4 表一致。
+- **勿误导模型**：系统提示中应避免「同轮并行多个 `edit_file`」；应引导 **只读并行**、**单次 patch**、或 **spawn 分工 + 主代理集成**。
+
 ## 4. 「精度天花板」归纳（编程场景）
 
 | 断点 | 表现 | CRAFT 向对策（概念） |
@@ -645,6 +730,17 @@ P2 依赖 P0（`structured_verdict` 字段出现在 `agent_result` JSON 载荷�
 4. **Goal 显性化（产品概念）** — UI/会话层展示「当前目标」，与 `task_id`/黑板绑定；远期支持恢复会话后继续同一 goal，贴近市面 `--resume` 叙事，底层仍复用 thread/session/blackboard。
 5. **P4 完整版 RFC（按需）** — `git worktree` / 副本工作区 + Integrator 合并闸门；仅在强隔离或多并行需求明确时再开。
 
+### 11.4 并行写与 LSP（§3.2 落地项）
+
+与 [§3.2](#32-并行工具调度与子代理写路径现状核对) 对照，可独立于黑板 P1 推进的短项：
+
+| 优先级 | 项 | 改动要点 | 验收 |
+|--------|-----|----------|------|
+| **P0** | 子代理 LSP | `build_tool_context` / `SubAgentRuntime::child_runtime` 传递 `with_lsp_manager(engine.lsp_manager.clone())`；可选在子代理 step 末 flush diag | `implementer` 子代理 `edit_file` 后 tool 结果或下一轮可见 `<diagnostics>` |
+| **P1** | `resident_file` 硬锁 | lease 冲突时拒绝 spawn 或排队，而非仅 JSON warning | 两路 spawn 同 `resident_file` 时第二路失败或可观测等待 |
+| **P2** | 集成回合 | 子代理返回 unified diff / patch 文本；主代理单轮 `apply_patch` + `exec_shell` 验证 | 无并行落盘；冲突在主代理可见 |
+| **P4** | worktree | 见 §11.1 第 5 项 | 子代理写隔离副本，Integrator 合并 |
+
 ### 11.2 工作区约束与用户体验
 
 6. **工作区规则产品化** — 在既有 `instructions = [...]`（见 `config.example.toml`）之上，可增加 **约定文件自动装载**（如 `PROJECT_RULES.md`）、DS Pick **只读展示已加载规则**。`.cursor/rules` 不会自动进 runtime，需显式映入 `instructions`。
@@ -658,4 +754,4 @@ P2 依赖 P0（`structured_verdict` 字段出现在 `agent_result` JSON 载荷�
 
 ---
 
-**文档修订记录（摘要）：** 增补附录 A、§11；§10 增加 LOCALIZATION 链接。
+**文档修订记录（摘要）：** 增补 §3.2（并行调度与子代理写路径现状核对）、§11.4（LSP/锁/集成回合落地表）；既往：附录 A、§11；§10 增加 LOCALIZATION 链接。

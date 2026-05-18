@@ -352,7 +352,8 @@ fn build_bridge_pairs(workspace: &Path, _files: &BTreeMap<String, FileSymbols>) 
                 if let Ok(body) = std::fs::read_to_string(path) {
                     for m in re_attr.find_iter(&body) {
                         let after = &body[m.end()..];
-                        if let Some(cap) = re_fn.captures(&after[..200.min(after.len())]) {
+                        let limit = after.floor_char_boundary(200.min(after.len()));
+                        if let Some(cap) = re_fn.captures(&after[..limit]) {
                             let fn_name = cap[1].to_string();
                             let pre = match std::str::from_utf8(&body.as_bytes()[..m.start()]) {
                                 Ok(s) => s,

@@ -10,6 +10,8 @@ interface Props {
   workspace: string;
   onRebuild: () => void;
   rebuilding: boolean;
+  /** Error from the last rebuild attempt (cleared on next rebuild). */
+  rebuildError: string | null;
 }
 
 function formatBytes(bytes: number): string {
@@ -24,7 +26,7 @@ function formatBytes(bytes: number): string {
   return `${size.toFixed(1)} ${units[i]}`;
 }
 
-export default function IndexPanel({ workspace, onRebuild, rebuilding }: Props) {
+export default function IndexPanel({ workspace, onRebuild, rebuilding, rebuildError }: Props) {
   const { t } = useT();
   const [info, setInfo] = useState<SymbolIndexInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -99,8 +101,8 @@ export default function IndexPanel({ workspace, onRebuild, rebuilding }: Props) 
         <p className="text-xs text-t-text-muted">{t('indexPanel.isLoading')}</p>
       )}
 
-      {error && (
-        <p className="text-xs text-red-400">{`${t('indexPanel.rebuildFailed')}: ${error}`}</p>
+      {(error || rebuildError) && (
+        <p className="text-xs text-red-400">{`${t('indexPanel.rebuildFailed')}: ${rebuildError || error}`}</p>
       )}
 
       {info && (
