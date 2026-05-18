@@ -2,6 +2,7 @@
 
 mod commands;
 mod sidecar;
+mod terminal;
 mod workspace_defaults;
 
 use std::sync::Arc;
@@ -38,6 +39,7 @@ fn main() {
                 sidecar_restart: sidecar_restart.clone(),
                 shutdown: shutdown.clone(),
             });
+            app.manage(terminal::TerminalManager::default());
 
             // ── System tray ──
             let tray_image = app
@@ -136,6 +138,10 @@ fn main() {
             commands::rebuild_symbol_index,
             commands::get_symbol_index_info,
             commands::delete_symbol_index,
+            terminal::spawn_terminal,
+            terminal::write_terminal,
+            terminal::resize_terminal,
+            terminal::kill_terminal,
         ])
         .run(tauri::generate_context!())
         .expect("error while running DS Pick");

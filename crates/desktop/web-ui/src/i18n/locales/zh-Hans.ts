@@ -109,6 +109,18 @@ const zhHans = {
     workspace: '工作台',
     devtools: '开发者工具',
   },
+  terminal: {
+    tab: '终端',
+    title: 'Terminal 1',
+    menuTitle: 'Terminals',
+    new: '新建终端',
+    rename: '重命名终端',
+    renamePrompt: '终端名称',
+    close: '关闭终端',
+    spawning: '正在启动 Shell…',
+    desktopOnly: '集成终端仅在 DS Pick 桌面版（Tauri）中可用。',
+    maxSessions: '最多同时打开 {{max}} 个终端',
+  },
   workspaceRules: {
     tab: '项目规则',
     pathLabel: '文件位置（相对工作区根）',

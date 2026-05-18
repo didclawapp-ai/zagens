@@ -111,6 +111,18 @@ const en: TranslationMap = {
     workspace: 'Workspace',
     devtools: 'Developer Tools',
   },
+  terminal: {
+    tab: 'Terminal',
+    title: 'Terminal 1',
+    menuTitle: 'Terminals',
+    new: 'New terminal',
+    rename: 'Rename terminal',
+    renamePrompt: 'Terminal name',
+    close: 'Close terminal',
+    spawning: 'Starting shell…',
+    desktopOnly: 'Integrated terminal is only available in the DS Pick desktop app (Tauri).',
+    maxSessions: 'At most {{max}} terminals at once',
+  },
   workspaceRules: {
     tab: 'Project rules',
     pathLabel: 'File (relative to workspace root)',

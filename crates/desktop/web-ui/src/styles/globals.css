@@ -550,4 +550,29 @@ body {
       opacity: 0.45;
     }
   }
+
+  /* Integrated terminal (right panel, Code mode) */
+  .terminal-panel-xterm .xterm {
+    height: 100%;
+    padding: 0;
+  }
+
+  .terminal-panel-xterm .xterm-viewport {
+    overflow-y: auto;
+    scrollbar-color: #3f3f46 #121212;
+    scrollbar-width: thin;
+  }
+
+  .terminal-panel-xterm .xterm-viewport::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .terminal-panel-xterm .xterm-viewport::-webkit-scrollbar-thumb {
+    background: #3f3f46;
+    border-radius: 4px;
+  }
+
+  .terminal-panel-xterm .xterm-viewport::-webkit-scrollbar-track {
+    background: #121212;
+  }
 }

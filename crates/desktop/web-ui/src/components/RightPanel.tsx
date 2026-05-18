@@ -10,6 +10,7 @@ import ChecklistPanel from './ChecklistPanel';
 import MermaidPanel from './MermaidPanel';
 import SettingsPanel from './SettingsPanel';
 import IndexPanel from './IndexPanel';
+import TerminalPanel from './terminal/TerminalPanel';
 import type { AgentState } from '../types/agent';
 import {
   PreviewContainer,
@@ -41,7 +42,7 @@ export type RightPanelView =
   | 'checklist'
   | 'mermaid';
 
-export type WorkspaceTabId = 'restore' | 'files' | 'rules';
+export type WorkspaceTabId = 'restore' | 'files' | 'rules' | 'terminal';
 
 type Theme = 'light' | 'dark';
 
@@ -186,7 +187,7 @@ export default function RightPanel({
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTabId>(() => {
     try {
       const s = sessionStorage.getItem(WORKSPACE_TAB_KEY);
-      if (s === 'restore' || s === 'files' || s === 'rules') return s;
+      if (s === 'restore' || s === 'files' || s === 'rules' || s === 'terminal') return s;
     } catch {
       /* ignore */
     }
@@ -264,7 +265,7 @@ export default function RightPanel({
 
   useEffect(() => {
     if (!officeSession) return;
-    if (workspaceTab === 'restore' || workspaceTab === 'rules') {
+    if (workspaceTab === 'restore' || workspaceTab === 'rules' || workspaceTab === 'terminal') {
       setWorkspaceTab('files');
     }
   }, [officeSession, workspaceTab]);
@@ -676,9 +677,23 @@ export default function RightPanel({
                       {t('workspaceRules.tab')}
                     </button>
                   )}
+                  {!officeSession && (
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={workspaceTab === 'terminal'}
+                      className={tabBtn(workspaceTab === 'terminal')}
+                      onClick={() => setWorkspaceTab('terminal')}
+                    >
+                      {t('terminal.tab')}
+                    </button>
+                  )}
                 </div>
 
-                <div className="flex-1 overflow-y-auto min-h-0" role="tabpanel">
+                <div
+                  className={`flex-1 min-h-0 ${workspaceTab === 'terminal' ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'}`}
+                  role="tabpanel"
+                >
                   {workspaceTab === 'restore' && (
                     <div className="p-4 space-y-3 text-xs text-t-text leading-relaxed">
                       <p className="text-t-text-muted">
@@ -936,6 +951,14 @@ export default function RightPanel({
                         </>
                       )}
                     </div>
+                  )}
+
+                  {workspaceTab === 'terminal' && (
+                    <TerminalPanel
+                      workspaceRoot={workspaceRoot}
+                      desktopHost={desktopHost}
+                      active={view === 'workspace' && workspaceTab === 'terminal'}
+                    />
                   )}
                 </div>
               </>

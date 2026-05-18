@@ -24,7 +24,7 @@ pub fn default_composer_workspace() -> Result<String, String> {
 }
 
 /// Avoid `\\?\` verbatim prefixes in UI / HTTP query strings (Windows canonicalize).
-fn path_for_ui_display(path: PathBuf) -> String {
+pub(crate) fn path_for_ui_display(path: PathBuf) -> String {
     let s = path.to_string_lossy();
     #[cfg(windows)]
     {
