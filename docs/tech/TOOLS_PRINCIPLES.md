@@ -1,6 +1,7 @@
 # DS Pick 工具系统原理
 
-> 版本: 0.2.1 | 最后更新: 2026-05-18 | 基于仓库实际代码
+> **文档路径:** `docs/tech/TOOLS_PRINCIPLES.md`（与 [API_DESIGN.md](API_DESIGN.md) 同属 `docs/tech/`）  
+> **DS Pick 壳版本:** 0.2.2 | **最后更新:** 2026-05-18 | **权威实现:** `crates/tui/src/tools/`、`registry.rs`
 
 ---
 
@@ -73,6 +74,19 @@ ToolRegistryBuilder::new()
 ```
 
 `with_full_agent_surface` 展开为所有工具家族：文件、搜索、Shell、Git、Web、Patch、任务、子代理、Todo、Plan、Review、RLM、RecallArchive 等。
+
+### 1.4 TaskType 工具面裁剪（Office / Code）
+
+`TaskType`（`crates/tui/src/task_type.rs`）在 **注册层** 裁剪工具，不只靠 prompt 禁止。与 [task-type-prompt-architecture.md](../task-type-prompt-architecture.md) §4.2 矩阵一致。
+
+| 构建方法 | TaskType | 说明 |
+|----------|----------|------|
+| `with_office_surface(include_web)` | Office | 读/列目录/`file_info`、`write_file`、`write_office`、`glob_files` + `file_search`（**无** `grep_files`）、`load_skill`、`note`、`request_user_input`；`include_web` 时再加 `with_web_tools()` |
+| `with_agent_tools(allow_shell)` + `with_full_agent_surface(...)` | Code | 全量 Agent 面：文件写、`edit_file`/`apply_patch`、检索三件套、`grep_files`、Git、诊断、`run_tests`、任务/自动化、Web 四件套；`allow_shell` 为真时注册 Shell 家族 |
+
+**检索三件套（仅 Code）:** `glob_files` → `grep_files` → `read_file`（见 `crates/tui/src/prompts/base.md`）。Office 仅前两步中的路径发现（`glob_files`、`file_search`），内容搜索不走 `grep_files`，也 **禁止** `exec_shell` 跑 `grep`/`rg`。
+
+**Web 家族（`with_web_tools`）:** 固定注册 `web_search`、`fetch_url`、`finance`、`web.run` 四个工具；Office 在启用联网时与 Code 相同。
 
 ---
 
@@ -193,9 +207,27 @@ Replaced N occurrence(s) in path (line X, line Y) — file now Z lines
 
 ### 3.2 搜索工具
 
+代码检索三件套（推荐调用顺序）：`glob_files` → `grep_files` → `read_file`
+
+#### `glob_files` — 按 glob 模式查找文件
+
+源文件: `crates/tui/src/tools/glob_files.rs` (214 行)
+
+| 能力 | `ReadOnly`, `Sandboxable` |
+| 审批 | `Auto` |
+| 并行 | ✅ |
+
+**主要参数**: `pattern`（必需，如 `**/*login*.{ts,tsx}`）、`path`（相对工作区根，默认 `.`）、`limit`（默认/上限 100）、`respect_gitignore`（默认遵循 `.gitignore`）
+
+**原理**:
+
+1. `globset` 编译模式，遍历工作区文件（`workspace_walk::collect_workspace_files`）
+2. 按修改时间排序（最新优先），最多 100 条
+3. 用于文件名发现；模糊路径查询用 `file_search`；内容搜索用 `grep_files`（仅 Code）
+
 #### `grep_files` — 正则代码搜索
 
-源文件: `crates/tui/src/tools/search.rs` (872 行)
+源文件: `crates/tui/src/tools/search.rs` (1095 行)
 
 | 能力 | `ReadOnly`, `Sandboxable` |
 | 审批 | `Auto` |
@@ -213,7 +245,7 @@ Replaced N occurrence(s) in path (line X, line Y) — file now Z lines
 
 #### `file_search` — 模糊文件名搜索
 
-源文件: `crates/tui/src/tools/file_search.rs` (346 行)
+源文件: `crates/tui/src/tools/file_search.rs` (322 行)
 
 | 能力 | `ReadOnly`, `Sandboxable` |
 | 审批 | `Auto` |
@@ -381,19 +413,47 @@ Replaced N occurrence(s) in path (line X, line Y) — file now Z lines
 4. 超时默认 15s，最大 60s
 5. HTML 清洗: 正则去除 `<script>`、`<style>`、HTML 标签，压缩空白
 
-#### `web_run` — 浏览器自动化
+#### `web.run` — 浏览器自动化
 
-调用 Playwright/headless 浏览器执行页面操作（打开、点击、截图）。
+源文件: `crates/tui/src/tools/web_run.rs` (1826 行)
+
+| 能力 | `ReadOnly`, `Network`, `Sandboxable` |
+| 审批 | `Auto` |
+
+工具名为 `web.run`（点号分隔，API 层与 OpenAI 工具名一致）。单次调用可批量提交多类子命令，返回带 `ref_id` 的结构化结果供引用。
+
+**子命令数组**（均为可选，至少一种）:
+
+| 字段 | 作用 |
+|------|------|
+| `search_query` | 网页搜索（`q`、可选 `recency`/`max_results`/`domains`） |
+| `image_query` | 图片搜索 |
+| `open` | 按 `ref_id` 打开已缓存页面（可选 `lineno`） |
+| `click` | 在页面上点击元素（`ref_id` + `id`） |
+| `find` | 页内文本查找 |
+| `screenshot` | 页面截图（base64） |
+
+**会话状态**: 进程内 `WEB_RUN_STATE` 维护 namespace → 页面缓存；会话 TTL 30 分钟，最多 64 个 namespace、每 namespace 256 页。网络策略按 URL host 评估（内部 decider 键名亦兼容 `web_run`）。
 
 #### `finance` — 市场行情
 
-获取股票/加密货币实时报价。
+源文件: `crates/tui/src/tools/finance.rs` (951 行)
+
+| 能力 | `ReadOnly`, `Network`, `Sandboxable` |
+| 审批 | `Auto` |
+
+**原理**:
+
+1. 工具名 `finance`；拉取股票/加密货币报价（Yahoo Finance 风格公开端点）
+2. 优先 `quote` API，失败或无数据时回退 `chart`（5 日区间）
+3. 可通过 `DEEPSEEK_FINANCE_QUOTE_BASE_URL` / `DEEPSEEK_FINANCE_CHART_BASE_URL` 覆盖端点
+4. 默认超时 10s，最大 60s
 
 ---
 
 ### 3.7 子代理 (Sub-Agent) 工具
 
-源文件: `crates/tui/src/tools/subagent/mod.rs` (4348 行)
+源文件: `crates/tui/src/tools/subagent/mod.rs` (4351 行)
 
 子代理系统允许模型**递归派遣子任务**到独立的 Agent 实例。每个子代理运行在受限的工具集和上下文窗口中。
 
@@ -446,7 +506,7 @@ Replaced N occurrence(s) in path (line X, line Y) — file now Z lines
 | `github_issue_context` / `github_pr_context` | 只读拉取 GitHub issue/PR 内容 |
 | `github_comment` / `github_close_issue` | 写操作（需审批 + 证据） |
 | `pr_attempt_record` / `pr_attempt_list` / `pr_attempt_read` / `pr_attempt_preflight` | PR 尝试管理 |
-| 自动化系列 | `automation_*` — 创建/列出/运行/暂停/恢复自动化规则 |
+| 自动化系列 | `automation_create` / `automation_list` / `automation_read` / `automation_update` / `automation_run` / `automation_pause` / `automation_resume` / `automation_delete` — 共 8 个自动化管理工具 |
 
 ---
 
@@ -533,7 +593,9 @@ pub fn resolve_path(&self, path_str: &str) -> Result<PathBuf, ToolError>;
 
 ### 4.4 沙箱
 
-`crates/tui/src/sandbox/` 支持：
+> **注意**: `ToolContext` 中的 `sandbox_policy` 字段类型为 `spec::SandboxPolicy`，目前仅有 `None` 变体（默认无沙箱）。实际的沙箱策略枚举定义在 `crate::sandbox::SandboxPolicy`，由 Shell 工具在执行时注入。两者具有不同的语义：`spec::SandboxPolicy` 控制工具上下文层面，`crate::sandbox::SandboxPolicy` 控制进程隔离层面。
+
+沙箱模块 `crates/tui/src/sandbox/` 支持：
 
 - **macOS**: Seatbelt (`sandbox-exec`) — 限制文件系统访问、网络、进程派生
 - **Windows**: Job Object — 限制进程资源
@@ -599,8 +661,8 @@ Agent 在下一个 turn 收到诊断作为合成用户消息，可立即修复�
 ### 文件操作 (5)
 `read_file` `write_file` `edit_file` `list_dir` `file_info`
 
-### 搜索 (2)
-`grep_files` `file_search`
+### 搜索 (3)
+`grep_files` `glob_files` `file_search`
 
 ### Shell (8)
 `exec_shell` `exec_shell_wait` `exec_shell_interact` `exec_wait` `exec_interact`
@@ -613,7 +675,7 @@ Agent 在下一个 turn 收到诊断作为合成用户消息，可立即修复�
 `apply_patch`
 
 ### Web (4)
-`web_search` `fetch_url` `web_run` `finance`
+`web_search` `fetch_url` `web.run` `finance`
 
 ### 子代理 (8)
 `agent_spawn` `agent_result` `agent_wait` `agent_list` `agent_cancel`
@@ -623,7 +685,7 @@ Agent 在下一个 turn 收到诊断作为合成用户消息，可立即修复�
 `task_create` `task_list` `task_read` `task_cancel` `task_gate_run`
 `github_issue_context` `github_pr_context` `github_comment` `github_close_issue`
 `pr_attempt_record` `pr_attempt_list` `pr_attempt_read` `pr_attempt_preflight`
-`automation_*`（7 个：list/create/read/update/delete/run/pause/resume）
+`automation_create` `automation_list` `automation_read` `automation_update` `automation_run` `automation_pause` `automation_resume` `automation_delete`（8 个）
 
 ### 计划 & Todo (8)
 `update_plan` `checklist_write` `checklist_add` `checklist_update` `checklist_list`
@@ -637,26 +699,40 @@ Agent 在下一个 turn 收到诊断作为合成用户消息，可立即修复�
 `remember` `recall_archive` `revert_turn` `run_tests` `request_user_input`
 `fim_edit`
 
-### 延迟加载 (MCP 工具)
+### 延迟加载 / Engine 级工具
+
+以下工具不由 `ToolRegistryBuilder` 注册，而是由引擎层（`crates/tui/src/core/engine/tool_catalog.rs`）管理：
+
+`tool_search_tool_regex` `tool_search_tool_bm25` — 延迟工具发现（通过正则/BM25 搜索匹配已注册但未暴露的工具）
+
+`code_execution` — 保留的代码执行工具名（OpenAI `code_execution_20250825` 兼容），当前未激活
+
+### MCP 工具（延迟加载）
 MCP 工具名由 `mcp.json` 中的连接服务器动态生成，注册时标记 `defer_loading=true`。
 
 ---
 
 ## 7. 源文件索引
 
+行数为仓库快照（2026-05-18），以 `wc` 为准；大文件仅作导航。
+
 | 组件 | 文件 | 行数 |
 |------|------|------|
 | 工具抽象层 | `crates/tools/src/lib.rs` | 469 |
 | ToolSpec trait + ToolContext | `crates/tui/src/tools/spec.rs` | 791 |
-| 工具注册 | `crates/tui/src/tools/registry.rs` | 1337 |
+| 工具注册 | `crates/tui/src/tools/registry.rs` | 1395 |
 | 文件工具 | `crates/tui/src/tools/file.rs` | 2249 |
-| 搜索工具 | `crates/tui/src/tools/search.rs` | 872 |
+| 搜索工具 | `crates/tui/src/tools/search.rs` | 1095 |
+| 文件 glob | `crates/tui/src/tools/glob_files.rs` | 214 |
 | Shell 工具 | `crates/tui/src/tools/shell.rs` | 2560 |
 | Patch 工具 | `crates/tui/src/tools/apply_patch.rs` | 1489 |
 | Web 搜索 | `crates/tui/src/tools/web_search.rs` | 706 |
 | URL 获取 | `crates/tui/src/tools/fetch_url.rs` | 509 |
-| 子代理 | `crates/tui/src/tools/subagent/mod.rs` | 4348 |
+| Web 浏览 | `crates/tui/src/tools/web_run.rs` | 1826 |
+| 行情 | `crates/tui/src/tools/finance.rs` | 951 |
+| 子代理 | `crates/tui/src/tools/subagent/mod.rs` | 4351 |
 | Diff 生成 | `crates/tui/src/tools/diff_format.rs` | 77 |
 | 大输出路由 | `crates/tui/src/tools/large_output_router.rs` | 320 |
 | 诊断工具 | `crates/tui/src/tools/diagnostics.rs` | 251 |
-| 文件名搜索 | `crates/tui/src/tools/file_search.rs` | 346 |
+| 文件名搜索 | `crates/tui/src/tools/file_search.rs` | 322 |
+| TaskType | `crates/tui/src/task_type.rs` | — |

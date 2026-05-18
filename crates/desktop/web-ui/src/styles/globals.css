@@ -209,6 +209,86 @@
   background-color: #67060c;
 }
 
+/*
+ * diff2html ships light defaults + prefers-color-scheme dark.
+ * DS Pick uses class-based `.dark` — override d2h CSS variables on the wrapper.
+ */
+.d2h-wrapper {
+  font-size: 11px;
+  --d2h-bg-color: var(--color-card);
+  --d2h-border-color: var(--color-card-border);
+  --d2h-dim-color: var(--color-text-muted);
+  --d2h-line-border-color: var(--color-divider);
+  --d2h-file-header-bg-color: var(--color-canvas-alt);
+  --d2h-file-header-border-color: var(--color-card-border);
+  --d2h-empty-placeholder-bg-color: var(--color-hover);
+  --d2h-empty-placeholder-border-color: var(--color-divider);
+  --d2h-ins-bg-color: var(--color-success-bg);
+  --d2h-ins-border-color: rgba(16, 185, 129, 0.25);
+  --d2h-ins-highlight-bg-color: rgba(16, 185, 129, 0.35);
+  --d2h-ins-label-color: #047857;
+  --d2h-del-bg-color: var(--color-error-bg);
+  --d2h-del-border-color: rgba(239, 68, 68, 0.25);
+  --d2h-del-highlight-bg-color: rgba(239, 68, 68, 0.35);
+  --d2h-del-label-color: #b91c1c;
+  --d2h-info-bg-color: var(--color-accent-soft);
+  --d2h-info-border-color: rgba(99, 102, 241, 0.2);
+  --d2h-change-del-color: var(--color-amber-bg);
+  --d2h-change-ins-color: var(--color-success-bg);
+}
+
+.d2h-wrapper .d2h-code-line-ctn {
+  color: var(--color-text-secondary);
+}
+
+.d2h-wrapper .d2h-file-header {
+  color: var(--color-text-muted);
+}
+
+.dark .d2h-wrapper {
+  color: var(--color-text-secondary);
+  --d2h-bg-color: #121820;
+  --d2h-border-color: rgba(255, 255, 255, 0.065);
+  --d2h-dim-color: #6d7785;
+  --d2h-line-border-color: rgba(255, 255, 255, 0.04);
+  --d2h-file-header-bg-color: #161d26;
+  --d2h-file-header-border-color: rgba(255, 255, 255, 0.065);
+  --d2h-empty-placeholder-bg-color: #0f1419;
+  --d2h-empty-placeholder-border-color: rgba(255, 255, 255, 0.04);
+  --d2h-ins-bg-color: rgba(52, 211, 153, 0.1);
+  --d2h-ins-border-color: rgba(52, 211, 153, 0.2);
+  --d2h-ins-highlight-bg-color: rgba(52, 211, 153, 0.26);
+  --d2h-ins-label-color: #6ee7b7;
+  --d2h-del-bg-color: rgba(248, 113, 113, 0.09);
+  --d2h-del-border-color: rgba(248, 113, 113, 0.2);
+  --d2h-del-highlight-bg-color: rgba(248, 113, 113, 0.28);
+  --d2h-del-label-color: #fca5a5;
+  --d2h-info-bg-color: rgba(99, 102, 241, 0.1);
+  --d2h-info-border-color: rgba(99, 102, 241, 0.22);
+  --d2h-change-del-color: rgba(245, 158, 11, 0.14);
+  --d2h-change-ins-color: rgba(52, 211, 153, 0.16);
+  --d2h-change-label-color: #d4a72c;
+  --d2h-moved-label-color: #818cf8;
+}
+
+.dark .d2h-wrapper .d2h-code-line-ctn {
+  color: var(--color-text-secondary);
+}
+
+.dark .d2h-wrapper .d2h-code-line del,
+.dark .d2h-wrapper .d2h-code-side-line del {
+  color: #fecaca;
+}
+
+.dark .d2h-wrapper .d2h-code-line ins,
+.dark .d2h-wrapper .d2h-code-side-line ins {
+  color: #bbf7d0;
+}
+
+.dark .d2h-wrapper .d2h-info {
+  color: var(--color-text-muted);
+}
+
 body {
   margin: 0;
   font-family: var(--font-ui);

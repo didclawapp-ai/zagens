@@ -3,7 +3,7 @@
 **状态**: **MVP 已落地**（`crates/tui/src/task_type.rs`、prompt overlay、Office 工具裁剪、DS Pick Composer 切换）  
 **日期**: 2026-05-17（初稿，四类）· **2026-05-18**（收敛为二类，对齐当前工具与 prompt）  
 **基于**: [prompt-architecture.md](prompt-architecture.md)  
-**相关**: [prompt-hallucination-patch.md](prompt-hallucination-patch.md)、[TOOLS_PRINCIPLES.md](TOOLS_PRINCIPLES.md)、`crates/tui/src/prompts/base.md`（检索三件套）
+**相关**: [prompt-hallucination-patch.md](prompt-hallucination-patch.md)、[TOOLS_PRINCIPLES.md](tech/TOOLS_PRINCIPLES.md)、`crates/tui/src/prompts/base.md`（检索三件套）
 
 ---
 
@@ -293,7 +293,7 @@ default_type = "code"   # office | code | auto
 2. **架构评审**在 Code 下仍可能误写：MVP 依赖 Explore + prompt；监控误调 `edit_file` 再考虑 session `read_only`。  
 3. **自动推断**：关键词必有歧义；**含修复/实现意图 → Code**；UI 保留手动覆盖。  
 4. **Plan / Yolo**：TaskType 与 `AppMode` 叠加；Plan 会话仍以 `update_plan` 为主，Office 下是否允许 plan 工具需单独定一条规则（建议 Office 不注入 plan 长说明）。  
-5. **文档与代码同步**：实现后更新 [prompt-architecture.md](prompt-architecture.md) 增加 TaskType 层；[TOOLS_PRINCIPLES.md](TOOLS_PRINCIPLES.md) 工具表按 Office/Code 分列。
+5. **文档与代码同步**：实现后更新 [prompt-architecture.md](prompt-architecture.md) 增加 TaskType 层；[TOOLS_PRINCIPLES.md](tech/TOOLS_PRINCIPLES.md) §1.4 与工具表按 Office/Code 分列。
 
 ---
 

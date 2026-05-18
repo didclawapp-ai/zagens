@@ -130,8 +130,8 @@
 | [agent-reliability-craft-plan.md](../agent-reliability-craft-plan.md) | CRAFT、子代理、并行策略 |
 | [tui/回归测试.md](../tui/回归测试.md) | 幻觉防控 R1–R8 题库（可复用于 Claude 对照） |
 | [tui/UNDERLYING_ITERATION_REFERENCE.md](../tui/UNDERLYING_ITERATION_REFERENCE.md) | CRAFT → 记忆地图定序 |
-| [TOOLS_PRINCIPLES.md](../TOOLS_PRINCIPLES.md) | 工具设计原则 |
-| [API_DESIGN.md](../API_DESIGN.md) | HTTP API |
+| [TOOLS_PRINCIPLES.md](../tech/TOOLS_PRINCIPLES.md) | 工具设计原则 |
+| [API_DESIGN.md](../tech/API_DESIGN.md) | HTTP API |
 | [TUI_DS_PICK_GAP.md](TUI_DS_PICK_GAP.md) | 桌面与 TUI 能力差距 |
 
 ---

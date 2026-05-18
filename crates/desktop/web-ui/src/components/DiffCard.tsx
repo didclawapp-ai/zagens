@@ -34,21 +34,10 @@ export default function DiffCard({
         renderNothingWhenEmpty: false,
       });
 
-      containerRef.current.innerHTML = `<div class="d2h-wrapper" style="font-size:11px;">${diffHtml}</div>`;
-
-      const style = document.createElement('style');
-      style.textContent = `
-        .d2h-wrapper .d2h-file-header { background: var(--hover); border-color: var(--divider); }
-        .d2h-wrapper .d2h-code-line { font-size: 11px; }
-        .d2h-wrapper .d2h-ins { background: rgba(16,185,129,0.08) !important; }
-        .d2h-wrapper .d2h-del { background: rgba(239,68,68,0.08) !important; }
-        .d2h-wrapper .d2h-code-line-ctn { color: var(--text-secondary); }
-        .d2h-wrapper .d2h-file-diff { border-color: var(--divider); }
-      `;
-      containerRef.current.appendChild(style);
+      containerRef.current.innerHTML = `<div class="d2h-wrapper">${diffHtml}</div>`;
     } catch {
       if (containerRef.current) {
-        containerRef.current.innerHTML = `<pre style="font-size:11px;white-space:pre-wrap;color:var(--text-secondary);">${escapeHtml(diffText)}</pre>`;
+        containerRef.current.innerHTML = `<pre class="text-[11px] whitespace-pre-wrap text-t-text-secondary">${escapeHtml(diffText)}</pre>`;
       }
     }
   }, [diffText, outputFormat]);
