@@ -21,10 +21,6 @@ interface Props {
   apiKeyConfigured: boolean | null;
   activeInspector: RightPanelView;
   onInspectorChange: (view: RightPanelView) => void;
-  /** Current sidebar width in px. */
-  sidebarWidth: number;
-  /** Called on drag resize. */
-  onSidebarWidthChange: (px: number) => void;
   /** Whether sidebar is collapsed. When true, the parent should render a toggle strip instead. */
   collapsed: boolean;
   /** Called when collapse button clicked. */
@@ -33,18 +29,35 @@ interface Props {
   officeSession?: boolean;
 }
 
+const SIDEBAR_WIDTH_KEY = 'deepseek-desktop-sidebar-width';
 const SIDEBAR_MIN_PX = 180;
-const SIDEBAR_MAX_PX = 480;
+const SIDEBAR_DEFAULT_PX = 240;
 
 function clampSidebarWidth(px: number): number {
-  return Math.min(SIDEBAR_MAX_PX, Math.max(SIDEBAR_MIN_PX, Math.round(px)));
+  if (typeof window === 'undefined') {
+    return Math.max(SIDEBAR_MIN_PX, Math.round(px));
+  }
+  const cap = Math.min(560, Math.floor(window.innerWidth * 0.45));
+  return Math.min(cap, Math.max(SIDEBAR_MIN_PX, Math.round(px)));
+}
+
+function readStoredSidebarWidth(): number {
+  try {
+    const n = parseInt(localStorage.getItem(SIDEBAR_WIDTH_KEY) ?? '', 10);
+    if (Number.isFinite(n)) {
+      return clampSidebarWidth(n);
+    }
+  } catch {
+    /* ignore */
+  }
+  return SIDEBAR_DEFAULT_PX;
 }
 
 const navBtn = (active: boolean) =>
   `w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
     active
-      ? 'bg-hover-strong text-accent border border-accent/14'
-      : 'text-t-text-secondary hover:bg-hover hover:text-t-text'
+      ? 'bg-hover-strong font-medium text-accent'
+      : 'text-t-text hover:bg-hover'
   }`;
 
 export default function Sidebar({
@@ -58,64 +71,94 @@ export default function Sidebar({
   apiKeyConfigured,
   activeInspector,
   onInspectorChange,
-  sidebarWidth,
-  onSidebarWidthChange,
   collapsed,
   onToggleCollapse,
   officeSession = false,
 }: Props) {
   const { t } = useT();
+  const [sidebarWidth, setSidebarWidth] = useState(readStoredSidebarWidth);
+  const resizeDragRef = useRef<{ pointerId: number; startX: number; startW: number } | null>(null);
+  const liveSidebarWidthRef = useRef(sidebarWidth);
+  const [sidebarResizing, setSidebarResizing] = useState(false);
 
-  // ---- resize handle -------------------------------------------------------
-  const draggingRef = useRef(false);
-  const startXRef = useRef(0);
-  const startWRef = useRef(0);
+  useEffect(() => {
+    liveSidebarWidthRef.current = sidebarWidth;
+  }, [sidebarWidth]);
 
-  const onPointerDown = useCallback(
-    (e: React.PointerEvent) => {
-      draggingRef.current = true;
-      startXRef.current = e.clientX;
-      startWRef.current = sidebarWidth;
-      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  useEffect(() => {
+    const onResize = () => {
+      setSidebarWidth((w) => clampSidebarWidth(w));
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  const endSidebarResize = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    const d = resizeDragRef.current;
+    if (!d || e.pointerId !== d.pointerId) {
+      return;
+    }
+    resizeDragRef.current = null;
+    setSidebarResizing(false);
+    if (el.hasPointerCapture(e.pointerId)) {
+      el.releasePointerCapture(e.pointerId);
+    }
+    const finalW =
+      e.type === 'pointerup'
+        ? clampSidebarWidth(d.startW + (e.clientX - d.startX))
+        : liveSidebarWidthRef.current;
+    setSidebarWidth(finalW);
+    try {
+      localStorage.setItem(SIDEBAR_WIDTH_KEY, String(finalW));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const onResizePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.button !== 0) {
+        return;
+      }
+      e.preventDefault();
+      resizeDragRef.current = { pointerId: e.pointerId, startX: e.clientX, startW: sidebarWidth };
+      setSidebarResizing(true);
+      e.currentTarget.setPointerCapture(e.pointerId);
     },
     [sidebarWidth],
   );
 
-  const onPointerMove = useCallback(
-    (e: React.PointerEvent) => {
-      if (!draggingRef.current) return;
-      const delta = e.clientX - startXRef.current;
-      const next = clampSidebarWidth(startWRef.current + delta);
-      onSidebarWidthChange(next);
-    },
-    [onSidebarWidthChange],
-  );
-
-  const onPointerUp = useCallback(
-    (e: React.PointerEvent) => {
-      if (!draggingRef.current) return;
-      draggingRef.current = false;
-      const delta = e.clientX - startXRef.current;
-      const next = clampSidebarWidth(startWRef.current + delta);
-      onSidebarWidthChange(next);
-      (e.target as HTMLElement).releasePointerCapture(e.pointerId);
-    },
-    [onSidebarWidthChange],
-  );
+  const onResizePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const d = resizeDragRef.current;
+    if (!d || e.pointerId !== d.pointerId) {
+      return;
+    }
+    const next = clampSidebarWidth(d.startW + (e.clientX - d.startX));
+    liveSidebarWidthRef.current = next;
+    setSidebarWidth(next);
+  }, []);
 
   return (
+    <>
     <aside
-      className="flex shrink-0 flex-col border-r border-rail-edge bg-canvas overflow-hidden transition-[width] duration-150"
+      className={`flex shrink-0 flex-col bg-canvas overflow-hidden ${
+        sidebarResizing ? '' : 'transition-[width] duration-150'
+      }`}
       style={{ width: collapsed ? 0 : sidebarWidth }}
       aria-label="会话与导航"
     >
-      <div className="shrink-0 border-b border-divider px-3.5 py-3.5">
+      <div className="shrink-0 bg-canvas-alt/40 px-3.5 py-3.5">
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2 flex-1 px-2.5 py-2 rounded-lg bg-hover">
-            <span className="flex size-[22px] items-center justify-center rounded-md bg-gradient-to-br from-blue-300 to-blue-600 text-[11px] text-white">
-              ✦
-            </span>
-            <span className="text-sm font-semibold text-t-text">
+          <div className="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-2 rounded-lg bg-hover">
+            <img
+              src="/app-icon.png"
+              alt=""
+              className="size-[22px] shrink-0 rounded-md object-cover"
+              width={22}
+              height={22}
+            />
+            <span className="truncate text-sm font-semibold text-t-text">
               DS<span className="opacity-70 font-medium"> Pick</span>
             </span>
           </div>
@@ -188,14 +231,14 @@ export default function Sidebar({
             <div
               key={s.id}
               className={`flex items-center gap-1 rounded-lg group ${
-                isActive ? 'bg-accent-soft ring-1 ring-accent/22' : 'hover:bg-hover'
+                isActive ? 'bg-msg-user' : 'hover:bg-hover'
               }`}
             >
               <button
                 type="button"
                 onClick={() => onSelectSession?.(s.id)}
                 className={`flex-1 min-w-0 px-3 py-2 text-sm text-left truncate ${
-                  isActive ? 'text-accent font-medium' : 'text-t-text'
+                  isActive ? 'font-medium text-t-text' : 'text-t-text'
                 }`}
               >
                 {s.name || s.id.slice(0, 8)}
@@ -219,49 +262,59 @@ export default function Sidebar({
       </div>
 
       <div className="shrink-0 border-t border-divider px-3 py-2.5 space-y-2">
-        <div className="flex items-center gap-2 px-1 py-1 text-xs text-t-text-muted"
-          title="与本地 deepseek-tui 运行时 (127.0.0.1:7878) 的连接状态">
-          <span
-            className={`shrink-0 inline-block w-2 h-2 rounded-full ${
-              runtimeConn === 'connected'
-                ? 'bg-emerald-500'
-                : runtimeConn === 'auth_mismatch'
-                  ? 'bg-amber-400'
-                  : runtimeConn === 'offline'
-                    ? 'bg-red-500'
-                    : 'bg-gray-400'
-            }`}
-          />
-          <span className="truncate">
-            {runtimeConn === 'checking' && t('common.runtimeChecking')}
-            {runtimeConn === 'connected' && t('common.runtimeReady')}
-            {runtimeConn === 'offline' && t('common.runtimeOffline')}
-            {runtimeConn === 'auth_mismatch' && t('common.runtimeAuthMismatch')}
-          </span>
-        </div>
         {desktopHost && apiKeyConfigured === false && (
           <p className="px-1 text-[10px] text-amber-text/90 leading-snug">未配置 API Key</p>
         )}
-      </div>
-
-      <div className="shrink-0 px-3.5 py-2 border-t border-divider space-y-1.5">
-        <p className="text-[10px] text-t-text-muted">DS Pick v0.3.0</p>
-        <p className="text-[10px] text-t-text-muted/80 leading-snug">
-          基于 DeepSeek TUI 运行时（<code className="font-mono">deepseek</code> CLI）
-        </p>
-      </div>
-
-      {/* Resize handle — right edge */}
-      {!collapsed && (
         <div
-          className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-accent/30 transition-colors z-10"
-          style={{ background: draggingRef.current ? 'var(--tw-color-accent) / 0.25' : undefined }}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-        />
-      )}
+          className="flex items-center gap-2 px-1 py-1 text-xs text-t-text-muted"
+          title="与本地 deepseek-tui 运行时 (127.0.0.1:7878) 的连接状态"
+        >
+          <span
+            className={`shrink-0 inline-block w-2 h-2 rounded-full ${
+              runtimeConn === 'connected' ? 'bg-emerald-500' : 'bg-red-500'
+            }`}
+          />
+          <span className="truncate">
+            {runtimeConn === 'connected'
+              ? t('common.connectionNormal')
+              : t('common.connectionDisconnected')}
+          </span>
+        </div>
+      </div>
+
     </aside>
+    {!collapsed && (
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label={t('sidebar.resizeWidth')}
+        tabIndex={0}
+        className={`chrome-seam-r w-1.5 shrink-0 cursor-col-resize touch-none select-none transition-colors bg-canvas ${
+          sidebarResizing ? 'bg-canvas-alt' : 'hover:bg-hover'
+        }`}
+        onPointerDown={onResizePointerDown}
+        onPointerMove={onResizePointerMove}
+        onPointerUp={endSidebarResize}
+        onPointerCancel={endSidebarResize}
+        onKeyDown={(e) => {
+          const step = e.shiftKey ? 32 : 16;
+          if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+            e.preventDefault();
+            const delta = e.key === 'ArrowRight' ? step : -step;
+            setSidebarWidth((w) => {
+              const n = clampSidebarWidth(w + delta);
+              try {
+                localStorage.setItem(SIDEBAR_WIDTH_KEY, String(n));
+              } catch {
+                /* ignore */
+              }
+              return n;
+            });
+          }
+        }}
+      />
+    )}
+    </>
   );
 }
 
@@ -269,7 +322,16 @@ export default function Sidebar({
 /*  Settings accordion: expands sub-nav items below the 设置 toggle   */
 /* ------------------------------------------------------------------ */
 
-type SettingsTab = 'api-key' | 'mcp' | 'usage' | 'tasks-skills' | 'agents' | 'routing' | 'system' | 'index';
+type SettingsTab =
+  | 'api-key'
+  | 'mcp'
+  | 'usage'
+  | 'tasks-skills'
+  | 'agents'
+  | 'routing'
+  | 'system'
+  | 'index'
+  | 'about';
 
 function subNavBtn(active: boolean) {
   return `w-full text-left pl-7 pr-3 py-2 rounded-lg text-xs transition-colors ${
@@ -290,6 +352,7 @@ function SettingsAccordion({
   desktopHost: boolean;
   officeSession: boolean;
 }) {
+  const { t } = useT();
   const [open, setOpen] = useState(false);
 
   const isSubActive = (tab: SettingsTab) => activeInspector === tab;
@@ -308,6 +371,7 @@ function SettingsAccordion({
     { tab: 'routing', label: '模型路由', show: !officeSession },
     { tab: 'index', label: '索引', show: !officeSession },
     { tab: 'system', label: '系统设置', show: true },
+    { tab: 'about', label: t('sidebar.about'), show: true },
   ];
 
   return (

@@ -11,6 +11,7 @@ const en: TranslationMap = {
     newSession: 'New Chat',
     workspace: 'Workspace',
     checklist: 'Checklist',
+    resizeWidth: 'Drag to resize sidebar',
     apiKey: 'API Key',
     settings: 'Settings',
     mcp: 'MCP',
@@ -20,6 +21,11 @@ const en: TranslationMap = {
     themeLight: 'Light',
     themeDark: 'Dark',
     deleteConfirm: 'Delete this session?',
+    about: 'About',
+  },
+  about: {
+    description: 'DS Pick is a desktop coding assistant powered by the DeepSeek TUI runtime.',
+    runtimeLine: 'The runtime connects via the local deepseek CLI sidecar (127.0.0.1:7878).',
   },
   titlebar: {
     minimize: 'Minimize',
@@ -403,6 +409,8 @@ const en: TranslationMap = {
     sessions: 'Sessions',
     runtimeChecking: 'Checking runtime…',
     runtimeReady: 'Runtime ready',
+    connectionNormal: 'Connected',
+    connectionDisconnected: 'Not connected',
     runtimeOffline: 'Offline',
     runtimeAuthMismatch: 'Token mismatch',
     saving: 'Saving…',

@@ -908,10 +908,10 @@ export default function Composer({
 
   return (
     <>
-      <div className="shrink-0 border-t border-divider px-4 py-2">
+      <div className="shrink-0 px-4 py-3">
         <div className="mx-auto max-w-3xl">
           <div className="card overflow-visible">
-            <div className="flex min-h-10 flex-wrap items-center gap-2 border-b border-divider px-3 py-2 text-xs">
+            <div className="flex min-h-10 flex-wrap items-center gap-2 bg-canvas-alt/35 px-3 py-2 text-xs">
             {showAutoApprove ? (
               <label className="inline-flex cursor-pointer select-none items-center gap-2">
                 <input
@@ -1168,7 +1168,7 @@ export default function Composer({
             className="w-full resize-none border-none bg-transparent px-4 py-3 text-sm text-t-text placeholder-t-text-muted focus:outline-none disabled:opacity-50"
             style={{ minHeight: '56px', lineHeight: 1.5 }}
           />
-          <div className="flex items-center gap-1.5 border-t border-divider px-2.5 py-2">
+          <div className="flex items-center gap-1.5 bg-canvas-alt/30 px-2.5 py-2">
             <input
               ref={fileInputRef}
               type="file"

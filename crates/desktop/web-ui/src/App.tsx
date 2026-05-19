@@ -183,7 +183,6 @@ function loadTheme(): Theme {
 const ACTIVE_SESSION_STORAGE_KEY = 'deepseek-desktop-active-session-id';
 const ACTIVE_INSPECTOR_STORAGE_KEY = 'deepseek-desktop-active-inspector';
 const ROUTE_INTENT_STORAGE_KEY = 'deepseek-desktop-route-intent';
-const SIDEBAR_WIDTH_KEY = 'deepseek-desktop-sidebar-width';
 const TASK_TYPE_STORAGE_KEY = 'deepseek-desktop-task-type';
 
 function loadTaskTypePreference(): DesktopTaskTypePreference {
@@ -236,7 +235,8 @@ function loadStoredInspector(): RightPanelView {
       s === 'routing' ||
       s === 'index' ||
       s === 'checklist' ||
-      s === 'mermaid'
+      s === 'mermaid' ||
+      s === 'about'
     ) {
       return s;
     }
@@ -307,19 +307,6 @@ export default function App() {
   const [runtimeConn, setRuntimeConn] = useState<RuntimeConnectionState>('checking');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
-  const [sidebarWidth, setSidebarWidthState] = useState(() => {
-    try {
-      const n = parseInt(localStorage.getItem(SIDEBAR_WIDTH_KEY) ?? '', 10);
-      if (Number.isFinite(n) && n >= 180 && n <= 480) return n;
-    } catch { /* ignore */ }
-    return 240;
-  });
-
-  const setSidebarWidthPersisted = useCallback((px: number) => {
-    setSidebarWidthState(px);
-    try { localStorage.setItem(SIDEBAR_WIDTH_KEY, String(px)); } catch { /* ignore */ }
-  }, []);
-
   const toggleDevtools = useCallback(() => {
     if (!desktopHost) return;
     void import('@tauri-apps/api/core').then(({ invoke }) =>
@@ -1520,8 +1507,6 @@ export default function App() {
         apiKeyConfigured={desktopApiKeyConfigured}
         activeInspector={activeInspector}
         onInspectorChange={handleInspectorChange}
-        sidebarWidth={sidebarWidth}
-        onSidebarWidthChange={setSidebarWidthPersisted}
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed((v) => !v)}
         officeSession={officeSession}
@@ -1531,7 +1516,7 @@ export default function App() {
         <button
           type="button"
           onClick={() => setSidebarCollapsed(false)}
-          className="shrink-0 w-8 border-r border-rail-edge bg-canvas hover:bg-hover transition-colors flex items-center justify-center group"
+          className="chrome-seam-r shrink-0 w-8 bg-canvas hover:bg-hover transition-colors flex items-center justify-center group"
           title="展开侧边栏"
         >
           <svg className="w-3.5 h-3.5 text-t-text-muted group-hover:text-t-text transition-colors" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -1539,7 +1524,7 @@ export default function App() {
           </svg>
         </button>
       )}
-      <div className="flex min-h-0 flex-1 flex-col min-w-0 bg-canvas">
+      <div className="flex min-h-0 flex-1 flex-col min-w-0 bg-card">
         {banner && (
           <div className="shrink-0 border-b border-divider bg-amber-bg px-4 py-2 text-sm text-amber-text">
             {banner}
@@ -1654,7 +1639,7 @@ export default function App() {
         <button
           type="button"
           onClick={() => setRightPanelCollapsed(false)}
-          className="shrink-0 w-8 border-l border-rail-edge bg-canvas hover:bg-hover transition-colors flex items-center justify-center group"
+          className="chrome-seam-l shrink-0 w-8 bg-canvas hover:bg-hover transition-colors flex items-center justify-center group"
           title="展开面板"
         >
           <svg className="w-3.5 h-3.5 text-t-text-muted group-hover:text-t-text transition-colors" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -1689,7 +1674,6 @@ function TitleBar() {
       data-tauri-drag-region
       className="flex items-center h-9 shrink-0 bg-canvas border-b border-divider select-none"
     >
-      <span className="pl-3 text-[11px] font-semibold text-t-text-secondary">DS Pick</span>
       <div className="flex-1 min-w-8" data-tauri-drag-region />
       <button
         type="button"

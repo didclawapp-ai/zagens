@@ -34,6 +34,7 @@ export default {
         hover: 'var(--color-hover)',
         'hover-strong': 'var(--color-hover-strong)',
         divider: 'var(--color-divider)',
+        'chrome-seam': 'var(--color-chrome-seam)',
         'rail-edge': 'var(--color-rail-edge)',
         'msg-assistant': 'var(--color-msg-assistant-bg)',
         'msg-assistant-border': 'var(--color-msg-assistant-border)',
@@ -58,6 +59,7 @@ export default {
       boxShadow: {
         sm: 'var(--color-shadow-sm)',
         md: 'var(--color-shadow-md)',
+        lg: 'var(--color-shadow-lg)',
       },
     },
   },

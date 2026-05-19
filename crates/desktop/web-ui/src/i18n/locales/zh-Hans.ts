@@ -9,6 +9,7 @@ const zhHans = {
     newSession: '新对话',
     workspace: '工作台',
     checklist: '清单',
+    resizeWidth: '拖拽调整侧栏宽度',
     apiKey: 'API Key',
     settings: '设置',
     mcp: 'MCP',
@@ -18,6 +19,11 @@ const zhHans = {
     themeLight: '浅色',
     themeDark: '深色',
     deleteConfirm: '确定删除此会话？',
+    about: '关于',
+  },
+  about: {
+    description: 'DS Pick 是基于 DeepSeek TUI 运行时的桌面编码助手。',
+    runtimeLine: '运行时通过本地 deepseek CLI 侧车（127.0.0.1:7878）连接。',
   },
   titlebar: {
     minimize: '最小化',
@@ -400,6 +406,8 @@ const zhHans = {
     sessions: '会话',
     runtimeChecking: '检测运行时…',
     runtimeReady: '运行时就绪',
+    connectionNormal: '连接正常',
+    connectionDisconnected: '未连接',
     runtimeOffline: '离线',
     runtimeAuthMismatch: '令牌不一致',
     saving: '保存中…',

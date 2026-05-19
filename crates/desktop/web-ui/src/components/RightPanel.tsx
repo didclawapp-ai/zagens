@@ -28,6 +28,7 @@ import {
   restoreThreadSnapshot,
 } from '../api/client';
 import { confirmDialog } from '../lib/confirmDialog';
+import AboutPanel from './AboutPanel';
 
 export type RightPanelView =
   | 'workspace'
@@ -41,7 +42,8 @@ export type RightPanelView =
   | 'routing'
   | 'index'
   | 'checklist'
-  | 'mermaid';
+  | 'mermaid'
+  | 'about';
 
 export type WorkspaceTabId = 'restore' | 'files' | 'rules' | 'terminal' | 'diff';
 
@@ -126,6 +128,7 @@ const panelTitles: Record<RightPanelView, string> = {
   index: '索引',
   checklist: 'Checklist',
   mermaid: 'Mermaid 图表',
+  about: '关于',
 };
 
 function tabBtn(active: boolean) {
@@ -576,7 +579,7 @@ export default function RightPanel({
         aria-orientation="vertical"
         aria-label="拖拽调整面板宽度"
         tabIndex={0}
-        className={`w-1.5 shrink-0 cursor-col-resize touch-none select-none transition-colors bg-canvas ${
+        className={`chrome-seam-l w-1.5 shrink-0 cursor-col-resize touch-none select-none transition-colors bg-canvas ${
           panelResizing ? 'bg-canvas-alt' : 'hover:bg-hover'
         }`}
         onPointerDown={onResizePointerDown}
@@ -601,10 +604,10 @@ export default function RightPanel({
         }}
       />
       <aside
-        className="flex min-w-0 shrink-0 flex-col border-l border-rail-edge bg-canvas overflow-hidden"
+        className="flex min-w-0 shrink-0 flex-col bg-canvas overflow-hidden"
         style={{ width: panelWidth }}
       >
-      <div className="flex shrink-0 items-center border-b border-divider px-4 py-3">
+      <div className="flex shrink-0 items-center bg-canvas-alt/40 px-4 py-3">
         <h2 className="flex-1 text-sm font-semibold text-t-text">{panelTitles[view]}</h2>
         {onCollapse && (
           <button
@@ -663,7 +666,7 @@ export default function RightPanel({
             ) : (
               <>
                 <div
-                  className="shrink-0 flex border-b border-divider bg-canvas-alt"
+                  className="shrink-0 flex bg-canvas-alt/50"
                   role="tablist"
                   aria-label="工作台分区"
                 >
@@ -1081,6 +1084,8 @@ export default function RightPanel({
             onToggleTheme={onToggleTheme}
           />
         )}
+
+        {view === 'about' && <AboutPanel />}
 
         {view === 'index' && !officeSession && (
           <IndexPanel
