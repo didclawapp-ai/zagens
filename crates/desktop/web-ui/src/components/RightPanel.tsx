@@ -100,6 +100,8 @@ interface Props {
   agentStates: AgentState[];
   /** Called when ChecklistPanel detects first data — parent switches view. */
   onRequestChecklist?: () => void;
+  /** Model turn in progress — checklist panel polls faster. */
+  streaming?: boolean;
   /** Chat messages — used by MermaidPanel to extract mermaid code blocks. */
   messages: { id: string; role: string; content: string }[];
   /** Called when MermaidPanel detects first mermaid block — parent switches view. */
@@ -182,6 +184,7 @@ export default function RightPanel({
   onRequestDiff,
   agentStates,
   onRequestChecklist,
+  streaming = false,
   messages,
   onRequestMermaid,
   onCollapse,
@@ -1050,7 +1053,8 @@ export default function RightPanel({
         <div style={{ display: view === 'checklist' ? undefined : 'none' }}>
           <ChecklistPanel
             threadId={resumedThreadId ?? ''}
-            onDetected={view !== 'checklist' ? () => onRequestChecklist?.() : undefined}
+            pollFast={streaming || view === 'checklist'}
+            onDetected={onRequestChecklist}
           />
         </div>
         )}

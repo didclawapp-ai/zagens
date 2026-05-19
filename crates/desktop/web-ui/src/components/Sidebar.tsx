@@ -154,6 +154,19 @@ export default function Sidebar({
           </svg>
           {t('sidebar.workspace')}
         </button>
+        {!officeSession && (
+          <button
+            type="button"
+            className={navBtn(activeInspector === 'checklist')}
+            onClick={() => onInspectorChange('checklist')}
+            aria-label={t('sidebar.checklist')}
+          >
+            <svg viewBox="0 0 24 24" className="inline w-4 h-4 mr-2 stroke-current align-text-bottom" style={{ fill: 'none', strokeWidth: 1.6 }}>
+              <path d="M9 6h11M9 12h11M9 18h11M5 6h.01M5 12h.01M5 18h.01" strokeLinecap="round" />
+            </svg>
+            {t('sidebar.checklist')}
+          </button>
+        )}
         <SettingsAccordion
           activeInspector={activeInspector}
           onInspectorChange={onInspectorChange}

@@ -15,35 +15,62 @@ interface ChecklistData {
 
 interface Props {
   threadId: string;
+  /** Poll faster while the model is streaming or this panel is visible. */
+  pollFast?: boolean;
   /** Fired once when checklist data first arrives (auto-switches parent to this panel). */
   onDetected?: () => void;
 }
 
-export default function ChecklistPanel({ threadId, onDetected }: Props) {
+export default function ChecklistPanel({ threadId, pollFast = false, onDetected }: Props) {
   const [checklist, setChecklist] = useState<ChecklistData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const firedRef = useRef(false);
+  /** Auto-switch at most once per thread (do not reset when `onDetected` identity changes). */
+  const autoSwitchThreadRef = useRef<string | null>(null);
+  const onDetectedRef = useRef(onDetected);
+  onDetectedRef.current = onDetected;
 
   const fetchChecklist = useCallback(async () => {
-    if (!threadId) return;
+    if (!threadId) {
+      setChecklist(null);
+      return;
+    }
     try {
       const data = await fetchThreadChecklist(threadId);
-      setChecklist(data);
-      setError(null);
-      if (data && data.items && data.items.length > 0 && !firedRef.current) {
-        firedRef.current = true;
-        onDetected?.();
+      if (data && Array.isArray(data.items) && data.items.length > 0) {
+        setChecklist(data as ChecklistData);
+        setError(null);
+        if (autoSwitchThreadRef.current !== threadId) {
+          autoSwitchThreadRef.current = threadId;
+          onDetectedRef.current?.();
+        }
+      } else {
+        setChecklist(null);
+        setError(null);
       }
-    } catch {
-      setError(null); // silent — poll will retry
+    } catch (e) {
+      setChecklist(null);
+      const status = (e as Error & { status?: number }).status;
+      if (status === 404) {
+        setError(null);
+      } else {
+        setError(null);
+      }
     }
-  }, [threadId, onDetected]);
+  }, [threadId]);
 
   useEffect(() => {
-    fetchChecklist();
-    const interval = setInterval(fetchChecklist, 2000);
-    return () => clearInterval(interval);
-  }, [fetchChecklist]);
+    autoSwitchThreadRef.current = null;
+    setChecklist(null);
+  }, [threadId]);
+
+  useEffect(() => {
+    void fetchChecklist();
+    const ms = pollFast ? 2000 : 5000;
+    const interval = window.setInterval(() => {
+      void fetchChecklist();
+    }, ms);
+    return () => window.clearInterval(interval);
+  }, [fetchChecklist, pollFast]);
 
   if (error) {
     return <div className="p-4 text-sm text-t-text-muted">{error}</div>;

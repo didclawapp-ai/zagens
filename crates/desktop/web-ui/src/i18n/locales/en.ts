@@ -10,6 +10,7 @@ const en: TranslationMap = {
   sidebar: {
     newSession: 'New Chat',
     workspace: 'Workspace',
+    checklist: 'Checklist',
     apiKey: 'API Key',
     settings: 'Settings',
     mcp: 'MCP',

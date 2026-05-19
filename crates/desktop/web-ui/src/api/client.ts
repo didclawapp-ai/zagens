@@ -832,7 +832,7 @@ export async function replayThreadEvents(
     }
   }, 200);
   const maxGuard = window.setTimeout(() => controller.abort(), 120_000);
-  const url = `${runtimeBase}/v1/threads/${encodeURIComponent(threadId)}/events?since_seq=${sinceSeq}&replay_only=1`;
+  const url = `${runtimeBase}/v1/threads/${encodeURIComponent(threadId)}/events?since_seq=${sinceSeq}&replay_only=true`;
   try {
     const res = await fetch(url, {
       headers: authHeaders(),

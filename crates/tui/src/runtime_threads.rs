@@ -118,6 +118,9 @@ pub struct ThreadRecord {
     /// Active full-repo audit scratchpad directory name (Phase B).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scratchpad_run_id: Option<String>,
+    /// Latest `checklist_write` snapshot for DS Pick WebView checklist panel.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checklist_snapshot: Option<serde_json::Value>,
 }
 
 fn default_thread_task_type() -> String {
@@ -1048,10 +1051,33 @@ impl RuntimeThreadManager {
 
     /// Return the cached checklist snapshot for a thread (for DS Pick WebView panel).
     pub fn get_thread_checklist(&self, thread_id: &str) -> Option<String> {
-        self.checklist_cache
-            .lock()
-            .ok()
-            .and_then(|cache| cache.get(thread_id).cloned())
+        if let Ok(cache) = self.checklist_cache.lock() {
+            if let Some(json) = cache.get(thread_id) {
+                return Some(json.clone());
+            }
+        }
+        let thread = self.store.load_thread(thread_id).ok()?;
+        let json = thread
+            .checklist_snapshot
+            .and_then(|v| serde_json::to_string(&v).ok())?;
+        if let Ok(mut cache) = self.checklist_cache.lock() {
+            cache.insert(thread_id.to_string(), json.clone());
+        }
+        Some(json)
+    }
+
+    fn persist_thread_checklist(&self, thread_id: &str, checklist_json: &str) {
+        if let Ok(mut cache) = self.checklist_cache.lock() {
+            cache.insert(thread_id.to_string(), checklist_json.to_string());
+        }
+        let snapshot: Option<serde_json::Value> = serde_json::from_str(checklist_json).ok();
+        if let Ok(mut thread) = self.store.load_thread(thread_id) {
+            thread.checklist_snapshot = snapshot;
+            thread.updated_at = Utc::now();
+            if self.store.save_thread(&thread).is_err() {
+                tracing::warn!(thread_id, "failed to persist checklist snapshot on thread");
+            }
+        }
     }
 
     /// Attach the durable task manager so model-visible task tools work inside
@@ -1145,6 +1171,7 @@ impl RuntimeThreadManager {
             task_type: task_type.as_str().to_string(),
             coherence_state: CoherenceState::default(),
             scratchpad_run_id: None,
+            checklist_snapshot: None,
         };
         {
             let store = self.store.clone();
@@ -2586,12 +2613,12 @@ impl RuntimeThreadManager {
                                             if let Some(checklist_json) =
                                                 task_updates.get("checklist")
                                             {
-                                                if let Ok(mut cache) =
-                                                    self.checklist_cache.lock()
+                                                if let Ok(json_str) =
+                                                    serde_json::to_string(checklist_json)
                                                 {
-                                                    cache.insert(
-                                                        thread_id.clone(),
-                                                        checklist_json.to_string(),
+                                                    self.persist_thread_checklist(
+                                                        &thread_id,
+                                                        &json_str,
                                                     );
                                                 }
                                             }
@@ -3647,6 +3674,7 @@ mod tests {
             task_type: default_thread_task_type(),
             coherence_state: CoherenceState::default(),
             scratchpad_run_id: None,
+            checklist_snapshot: None,
         }
     }
 
@@ -5163,6 +5191,7 @@ mod tests {
             task_type: default_thread_task_type(),
             coherence_state: CoherenceState::default(),
             scratchpad_run_id: None,
+            checklist_snapshot: None,
         };
         manager.store.save_thread(&thread)?;
 

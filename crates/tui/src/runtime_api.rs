@@ -431,10 +431,28 @@ struct AutomationRunsQuery {
     limit: Option<usize>,
 }
 
+/// Accept `true`/`false`, `1`/`0`, and `yes`/`no` in query strings (desktop used `replay_only=1`).
+fn deserialize_query_bool_option<'de, D>(deserializer: D) -> Result<Option<bool>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw: Option<String> = Option::deserialize(deserializer)?;
+    match raw.as_deref() {
+        None => Ok(None),
+        Some("") => Ok(None),
+        Some("1") | Some("true") | Some("True") | Some("yes") | Some("Yes") => Ok(Some(true)),
+        Some("0") | Some("false") | Some("False") | Some("no") | Some("No") => Ok(Some(false)),
+        Some(other) => Err(serde::de::Error::custom(format!(
+            "invalid boolean for replay_only: '{other}' (use true/false or 1/0)"
+        ))),
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct ThreadEventsQuery {
     since_seq: Option<u64>,
     /// When true, emit persisted backlog only and close — for desktop session restore replay.
+    #[serde(default, deserialize_with = "deserialize_query_bool_option")]
     replay_only: Option<bool>,
 }
 
@@ -4151,6 +4169,44 @@ mod tests {
             chunk_text.contains("event:"),
             "expected SSE event chunk, got: {chunk_text}"
         );
+
+        handle.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn events_endpoint_accepts_replay_only_one_query() -> Result<()> {
+        let Some((addr, runtime_threads, handle)) = spawn_test_server().await? else {
+            return Ok(());
+        };
+        let client = reqwest::Client::new();
+
+        let created: serde_json::Value = client
+            .post(format!("http://{addr}/v1/threads"))
+            .json(&json!({}))
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        let thread_id = created["id"]
+            .as_str()
+            .context("thread id missing")?
+            .to_string();
+
+        let events_resp = client
+            .get(format!(
+                "http://{addr}/v1/threads/{thread_id}/events?since_seq=0&replay_only=1"
+            ))
+            .send()
+            .await?;
+        assert_eq!(events_resp.status(), StatusCode::OK);
+        let content_type = events_resp
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default();
+        assert!(content_type.starts_with("text/event-stream"));
 
         handle.abort();
         Ok(())

@@ -36,6 +36,11 @@ import type { AgentState } from './types/agent';
 import useKeyboardShortcuts from './hooks/useKeyboardShortcuts';
 import { streamFlagsForRunMode } from './lib/runtimeMode';
 import { rebuildMessagesFromThreadEvents } from './lib/chat/rebuildMessagesFromThread';
+import {
+  cacheSessionUiMessages,
+  getCachedSessionUiMessages,
+  type CachedUiMessage,
+} from './lib/chat/sessionUiCache';
 import { mapSessionDetailToMessages } from './lib/chat/sessionMessages';
 import {
   appendCappedToolOutput,
@@ -228,7 +233,10 @@ function loadStoredInspector(): RightPanelView {
       s === 'usage' ||
       s === 'tasks-skills' ||
       s === 'agents' ||
-      s === 'routing'
+      s === 'routing' ||
+      s === 'index' ||
+      s === 'checklist' ||
+      s === 'mermaid'
     ) {
       return s;
     }
@@ -345,10 +353,43 @@ export default function App() {
   const toolProgressPendingRef = useRef('');
   const toolProgressRafRef = useRef<number | null>(null);
   const selectSessionAbortRef = useRef<AbortController | null>(null);
+  /** Per-session UI snapshots so switching back restores tools + thinking without waiting on replay. */
+  const sessionUiCacheRef = useRef<Map<string, CachedUiMessage[]>>(new Map());
+  const messagesRef = useRef<Message[]>([]);
+  /** User chose another inspector tab; do not yank them back to checklist on poll. */
+  const suppressChecklistAutoSwitchRef = useRef(false);
 
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
   }, [activeSessionId]);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  useEffect(() => {
+    suppressChecklistAutoSwitchRef.current = false;
+  }, [resumedThreadId]);
+
+  const handleInspectorChange = useCallback(
+    (view: RightPanelView) => {
+      if (activeInspector === 'checklist' && view !== 'checklist') {
+        suppressChecklistAutoSwitchRef.current = true;
+      }
+      if (view === 'checklist') {
+        suppressChecklistAutoSwitchRef.current = false;
+      }
+      setActiveInspector(view);
+    },
+    [activeInspector],
+  );
+
+  const handleRequestChecklist = useCallback(() => {
+    if (suppressChecklistAutoSwitchRef.current) {
+      return;
+    }
+    setActiveInspector('checklist');
+  }, []);
 
   useEffect(() => {
     applyTheme(theme);
@@ -653,12 +694,30 @@ export default function App() {
       selectSessionAbortRef.current?.abort();
       const selectAbort = new AbortController();
       selectSessionAbortRef.current = selectAbort;
+
+      const outgoingSessionId = activeSessionIdRef.current;
+      if (outgoingSessionId && messagesRef.current.length > 0) {
+        cacheSessionUiMessages(
+          sessionUiCacheRef.current,
+          outgoingSessionId,
+          messagesRef.current,
+        );
+      }
+
       setBanner(null);
       setActiveSessionId(sessionId);
       setResumedThreadId(null);
       setThreadTrustMode(false);
       setPanelPreview(null);
       lastPersistedTurnRef.current = '';
+
+      const cachedUi = getCachedSessionUiMessages(sessionUiCacheRef.current, sessionId);
+      if (cachedUi?.length) {
+        setMessages(cachedUi as Message[]);
+      } else {
+        setMessages([]);
+      }
+
       try {
         const detail = await getSessionDetail(sessionId);
         if (gen !== selectSessionGenerationRef.current) {
@@ -669,7 +728,9 @@ export default function App() {
           return;
         }
         const sessionFallback = mapSessionDetailToMessages(detail) as Message[];
-        setMessages(sessionFallback);
+        if (!cachedUi?.length) {
+          setMessages(sessionFallback);
+        }
         setResumedThreadId(resumed.thread_id);
         try {
           const fromThread = await rebuildMessagesFromThreadEvents(resumed.thread_id, {
@@ -679,10 +740,17 @@ export default function App() {
             return;
           }
           if (fromThread.length > 0) {
-            setMessages(fromThread as Message[]);
+            const rebuilt = fromThread as Message[];
+            setMessages(rebuilt);
+            cacheSessionUiMessages(sessionUiCacheRef.current, sessionId, rebuilt);
+          } else if (!cachedUi?.length && sessionFallback.length > 0) {
+            cacheSessionUiMessages(sessionUiCacheRef.current, sessionId, sessionFallback);
           }
         } catch {
-          /* runtime offline or empty event log — keep session text fallback */
+          /* runtime replay failed — keep in-memory cache or session text fallback */
+          if (!cachedUi?.length && sessionFallback.length > 0) {
+            setMessages(sessionFallback);
+          }
         }
         threadTurnRef.current = { threadId: resumed.thread_id, turnId: '' };
         try {
@@ -1068,9 +1136,16 @@ export default function App() {
         }
         flushToolProgressToState();
         setStreaming(false);
-        setMessages((prev) =>
-          prev.map((m) => (m.id === assistantId ? { ...m, isStreaming: false } : m)),
-        );
+        setMessages((prev) => {
+          const next = prev.map((m) =>
+            m.id === assistantId ? { ...m, isStreaming: false } : m,
+          );
+          const sid = activeSessionIdRef.current;
+          if (sid) {
+            cacheSessionUiMessages(sessionUiCacheRef.current, sid, next);
+          }
+          return next;
+        });
       };
 
       const notifyTurnCompleteIfAway = (desktop: boolean) => {
@@ -1444,7 +1519,7 @@ export default function App() {
         runtimeConn={runtimeConn}
         apiKeyConfigured={desktopApiKeyConfigured}
         activeInspector={activeInspector}
-        onInspectorChange={setActiveInspector}
+        onInspectorChange={handleInspectorChange}
         sidebarWidth={sidebarWidth}
         onSidebarWidthChange={setSidebarWidthPersisted}
         collapsed={sidebarCollapsed}
@@ -1565,7 +1640,8 @@ export default function App() {
           focusFilesNonce={focusWorkspaceFilesNonce}
           focusDiffNonce={focusWorkspaceDiffNonce}
           agentStates={agentStates}
-          onRequestChecklist={() => setActiveInspector('checklist')}
+          onRequestChecklist={handleRequestChecklist}
+          streaming={streaming}
           messages={messages}
           onRequestMermaid={() => setActiveInspector('mermaid')}
           onRequestDiff={handleRequestDiffPanel}

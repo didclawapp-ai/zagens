@@ -35,9 +35,9 @@ export function MessageBubble({
     !(message.tools && message.tools.length > 0);
   const showReasoningBlock = Boolean(message.thinking) || likelyInReasoningPhase;
 
-  // Collapsed by default; user expands when they want the transcript (streaming or done).
-  const [reasoningExpanded, setReasoningExpanded] = useState(false);
+  const [reasoningExpanded, setReasoningExpanded] = useState(true);
   const [toolsExpanded, setToolsExpanded] = useState(false);
+  const toolsSummaryLabel = summarizeToolCalls(message.tools ?? []);
 
   const runningToolCount =
     message.tools?.filter((t) => t.status === 'running').length ?? 0;
@@ -128,8 +128,9 @@ export function MessageBubble({
                 {toolsExpanded ? '▼' : '▶'}
               </span>
               <span className="text-base leading-none">🔧</span>
-              <span>工具调用</span>
-              <span className="text-t-text-muted font-normal">({message.tools.length})</span>
+              <span className="min-w-0 truncate font-mono text-[11px] sm:text-xs sm:font-sans">
+                {toolsSummaryLabel}
+              </span>
               {!toolsExpanded && (
                 <span className="ml-auto truncate text-[11px] font-normal text-t-text-muted">
                   {runningToolCount > 0
@@ -257,5 +258,27 @@ function tryParseCommand(input: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/** Collapsed tools header: show actual tool name(s) instead of generic "工具调用". */
+function summarizeToolCalls(tools: ToolCardModel[]): string {
+  if (tools.length === 0) return '工具调用';
+
+  const running = tools.filter((t) => t.status === 'running');
+  if (running.length === 1) {
+    const name = running[0].name;
+    return tools.length === 1 ? name : `${name} 等 ${tools.length} 项`;
+  }
+
+  const uniqueNames = [...new Set(tools.map((t) => t.name))];
+  if (uniqueNames.length === 1) {
+    return tools.length === 1 ? uniqueNames[0] : `${uniqueNames[0]} ×${tools.length}`;
+  }
+
+  const head = uniqueNames.slice(0, 2).join(' · ');
+  if (uniqueNames.length > 2 || tools.length > 2) {
+    return `${head} 等 ${tools.length} 项`;
+  }
+  return head;
 }
 

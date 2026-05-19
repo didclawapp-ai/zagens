@@ -8,6 +8,7 @@ const zhHans = {
   sidebar: {
     newSession: '新对话',
     workspace: '工作台',
+    checklist: '清单',
     apiKey: 'API Key',
     settings: '设置',
     mcp: 'MCP',
