@@ -1675,6 +1675,10 @@ impl ToolSpec for AgentSpawnTool {
                     "type": "string",
                     "description": "Optional task id for CRAFT blackboard association. When set, the child reads/writes `.deepseek/blackboards/{task_id}.json` so subsequent agents in the same task see structured context from prior agents."
                 },
+                "scratchpad_run_id": {
+                    "type": "string",
+                    "description": "Optional audit scratchpad run_id. For type=auditor, runtime builds track A from verified notes and track B from prompt (prose draft). Defaults to the active thread scratchpad_run_id when set."
+                },
                 "step_timeout_ms": {
                     "type": "integer",
                     "description": "Per-step API timeout in milliseconds (default: 120000, max: 600000). Increase for review/audit workloads where a single step may read many files.",
@@ -1793,6 +1797,50 @@ impl ToolSpec for AgentSpawnTool {
             } else {
                 (spawn_request.prompt, None)
             };
+
+        let mut effective_prompt = effective_prompt;
+        if spawn_request.agent_type == SubAgentType::Auditor {
+            let scratchpad_cfg = self
+                .runtime
+                .context
+                .runtime
+                .scratchpad_config
+                .clone()
+                .unwrap_or_default();
+            let explicit_run = input
+                .get("scratchpad_run_id")
+                .and_then(|v| v.as_str());
+            let slot_run = self
+                .runtime
+                .context
+                .runtime
+                .scratchpad_run_id
+                .lock()
+                .ok()
+                .and_then(|g| g.clone());
+            if let Some(run_id) =
+                crate::scratchpad::resolve_auditor_run_id(explicit_run, slot_run.as_deref())
+            {
+                if let Some(tid) = spawn_request.task_id.as_deref() {
+                    crate::tools::subagent::blackboard::write_scratchpad_mirror(
+                        tid,
+                        &self.runtime.context.workspace,
+                        &run_id,
+                        &scratchpad_cfg,
+                    );
+                }
+                if scratchpad_cfg.auditor_from_scratchpad
+                    && let Some(section) = crate::scratchpad::build_auditor_assignment_sections(
+                        &self.runtime.context.workspace,
+                        &run_id,
+                        &effective_prompt,
+                        &scratchpad_cfg,
+                    )
+                {
+                    effective_prompt = format!("{section}\n\n---\n\n{effective_prompt}");
+                }
+            }
+        }
 
         let route =
             resolve_subagent_assignment_route(&self.runtime, configured_model, &effective_prompt)
@@ -4197,37 +4245,35 @@ const AUDITOR_AGENT_PROMPT: &str = concat!(
     "You are an audit sub-agent (Auditor). Your job is mechanical fact-checking\n",
     "only — no analysis, no suggestions, no judgment.\n",
     "\n",
-    "## Input\n",
+    "## Input (two tracks)\n",
     "\n",
-    "The parent agent sends a review report draft as your prompt.\n",
-    "The report contains numbered findings (HIGH/MEDIUM/LOW) with\n",
-    "claimed file paths and line numbers.\n",
+    "When the assignment includes **Scratchpad source of truth (Phase C2)**:\n",
     "\n",
-    "## Rules\n",
+    "- **Track A** — table of `note_id` rows from scratchpad (authoritative). Audit every\n",
+    "  row in track A with the checks below. Reference `note_id` in FAIL lines.\n",
+    "- **Track B** — prose report draft in a fenced block. Every **HIGH/MEDIUM** claim\n",
+    "  in prose must map to a `note_id` in track A. If prose cites a finding with no\n",
+    "  matching `note_id`, record `UNVERIFIED_CLAIM` (FAIL).\n",
     "\n",
-    "For every finding, perform three checks in order:\n",
+    "When no scratchpad section is present, audit numbered findings in the Task prompt.\n",
     "\n",
-    "1. **Path check** — Does the finding cite a concrete file path?\n",
-    "   Missing → record \"[finding N] 缺失: file_path\"\n",
+    "**MEDIUM gap:** If the assignment notes MEDIUM findings below the\n",
+    "`auditor_include_medium_min` threshold, those are **not** in track A — the parent\n",
+    "must self-verify them; do not FAIL for omissions in track A.\n",
     "\n",
-    "2. **Line check** — Does the finding cite a specific line number?\n",
-    "   Missing → record \"[finding N] 缺失: line_number\"\n",
+    "## Track A rules (per `note_id`)\n",
     "\n",
+    "1. **Path check** — concrete file path? Missing → `[note_id] 缺失: file_path`\n",
+    "2. **Line check** — specific line number? Missing → `[note_id] 缺失: line_number`\n",
     "3. **Symbol check (MECHANICAL ONLY — string containment)**\n",
-    "   Extract every concrete symbol name (function name, variable name,\n",
-    "   command name, annotation) from the finding's description.\n",
-    "   Use `read_file` to read the cited lines.\n",
-    "   - Lines exist? → pass step 3a.\n",
-    "   - Lines contain the extracted symbol names (string `contains`)? → pass step 3b.\n",
-    "   - Lines do not contain the symbol → record \"[finding N] 符号缺失: '{symbol}', 该行不包含\"\n",
+    "   Extract concrete symbol names from the claim. `read_file` the cited lines.\n",
+    "   - Lines exist? → pass.\n",
+    "   - Lines contain the symbols (string `contains`)? → pass.\n",
+    "   - Else → `[note_id] 符号缺失: '{symbol}'`\n",
     "\n",
     "   **CRITICAL**: Do NOT judge whether the code is \"correct\" or \"safe\".\n",
     "   Do NOT judge whether the finding's conclusion follows from the code.\n",
     "   Only check: does the cited code contain the symbols the finding names?\n",
-    "   Example: finding says \"no path check on save_path\" → check that the\n",
-    "   cited line contains \"save_path\" (the symbol). Do NOT check whether\n",
-    "   canonicalize is present or absent — that is semantic judgment, not\n",
-    "   yours to make.\n",
     "\n",
     "## Language routing\n",
     "\n",
@@ -4262,7 +4308,8 @@ const AUDITOR_AGENT_PROMPT: &str = concat!(
     "- Do NOT suggest fixes.\n",
     "- Do NOT judge severity.\n",
     "- Do NOT produce new findings.\n",
-    "- Only audit the N findings in the prompt — no more, no fewer.\n",
+    "- Track A: audit exactly the listed `note_id` rows — no more, no fewer.\n",
+    "- Track B: flag prose HIGH/MEDIUM without matching `note_id` as UNVERIFIED_CLAIM.\n",
     "\n",
     include_str!("../../prompts/subagent_output_format.md"),
 );

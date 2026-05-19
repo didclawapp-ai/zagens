@@ -573,6 +573,5 @@ default_text_model = "deepseek-ai/deepseek-v4-pro"
 # coverage_count_deferred_as_accounted = true
 # require_deferred_meta = true
 # coverage_reviewed_warn_ratio = 0.70
-# --- Phase C2 (planned) ---
 # auditor_from_scratchpad = true
 # auditor_include_medium_min = 3

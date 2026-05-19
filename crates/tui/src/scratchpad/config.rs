@@ -23,6 +23,10 @@ pub struct ScratchpadConfig {
     pub require_deferred_meta: bool,
     /// L0 lists deferred areas when `reviewed_ratio` is below this (default 0.70).
     pub coverage_reviewed_warn_ratio: f64,
+    /// Phase C2: prepend scratchpad verified `note_id` table to Auditor spawn.
+    pub auditor_from_scratchpad: bool,
+    /// Phase C2: include all MEDIUM in track A when count ≥ this (default 3).
+    pub auditor_include_medium_min: usize,
 }
 
 impl Default for ScratchpadConfig {
@@ -47,6 +51,8 @@ impl Default for ScratchpadConfig {
             coverage_count_deferred_as_accounted: true,
             require_deferred_meta: true,
             coverage_reviewed_warn_ratio: 0.70,
+            auditor_from_scratchpad: true,
+            auditor_include_medium_min: 3,
         }
     }
 }
@@ -79,6 +85,10 @@ pub struct ScratchpadConfigToml {
     pub require_deferred_meta: Option<bool>,
     #[serde(default)]
     pub coverage_reviewed_warn_ratio: Option<f64>,
+    #[serde(default)]
+    pub auditor_from_scratchpad: Option<bool>,
+    #[serde(default)]
+    pub auditor_include_medium_min: Option<usize>,
 }
 
 impl ScratchpadConfigToml {
@@ -117,6 +127,12 @@ impl ScratchpadConfigToml {
             coverage_reviewed_warn_ratio: self
                 .coverage_reviewed_warn_ratio
                 .unwrap_or(defaults.coverage_reviewed_warn_ratio),
+            auditor_from_scratchpad: self
+                .auditor_from_scratchpad
+                .unwrap_or(defaults.auditor_from_scratchpad),
+            auditor_include_medium_min: self
+                .auditor_include_medium_min
+                .unwrap_or(defaults.auditor_include_medium_min),
         }
     }
 }

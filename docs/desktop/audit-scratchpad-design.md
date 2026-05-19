@@ -1,6 +1,6 @@
 # 审计工作记忆（Audit Scratchpad）方案草稿
 
-> **状态：** Phase A ✅ · **Phase B ✅**（见 [audit-scratchpad-test.md](audit-scratchpad-test.md)）；**Phase C** 方案已定（§6.12，C0→C4 分 PR）  
+> **状态：** Phase A ✅ · **Phase B ✅** · **Phase C0–C3 ✅**（见 [audit-scratchpad-test.md](audit-scratchpad-test.md)）；**C4** 远期（§6.12.9）  
 > **范围：** DS Pick / TUI 共用 runtime；面向**长程、全库级代码审查**与同类「多步探索 → 最终报告」任务。  
 > **相关：** [agent-reliability-craft-plan.md](../agent-reliability-craft-plan.md)、[auditor-subagent-design.md](auditor-subagent-design.md)、`crates/tui/src/tools/subagent/blackboard.rs`、`crates/tui/src/prompts/base.md` § Full-repository code review mode。
 
@@ -512,7 +512,7 @@ Phase C 拟新增字段见 **§6.12.7**（实现前勿依赖）。
 
 ---
 
-### 6.12 Phase C — 与 CRAFT / Auditor 深集成（⬜ 排队）
+### 6.12 Phase C — 与 CRAFT / Auditor 深集成（✅ C0–C3 已落地）
 
 **依据：** Phase B 试跑（`2026-05-19-phase-b-smoke`，测试 1–4 ✅）；[audit-scratchpad-test.md §4](audit-scratchpad-test.md#4-未覆盖项留待-phase-c) 未覆盖项。  
 **目标：** 解决 **早收口写报告**、**报告与 scratchpad 事实脱节**（含 [auditor-subagent-design.md](auditor-subagent-design.md) M4 类误报）、**长会话 compact 丢 run 指针**；可选与 CRAFT blackboard 对齐。

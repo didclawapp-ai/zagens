@@ -5,7 +5,7 @@
 //! task reads the board at spawn time. No live reload — the snapshot is taken
 //! once and injected into the child's assignment prompt.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
@@ -72,7 +72,9 @@ pub fn read_blackboard_section(
             }
         }
         SubAgentType::Auditor => {
-            // Auditor cross-checks reviewer blockers against its own audit
+            if let Some(s) = format_scratchpad_mirror(&board) {
+                sections.push(s);
+            }
             if let Some(s) = format_reviewer_blockers(&board) {
                 sections.push(s);
             }
@@ -314,6 +316,95 @@ fn extract_auditor_details(result: &SubAgentResult) -> Value {
     } else {
         json!([])
     }
+}
+
+// ── Phase C3: scratchpad mirror partition ───────────────────────
+
+/// Write read-only scratchpad stats before `agent_spawn(type=auditor)` (§6.12.6).
+pub fn write_scratchpad_mirror(
+    task_id: &str,
+    workspace: &Path,
+    run_id: &str,
+    config: &crate::scratchpad::ScratchpadConfig,
+) {
+    let Some(store) = crate::scratchpad::try_open_store(workspace, Some(run_id), None, None) else {
+        return;
+    };
+    let Ok(inventory) = store.read_inventory() else {
+        return;
+    };
+    let Ok(notes) = store.read_notes() else {
+        return;
+    };
+    let stats = crate::scratchpad::compute_coverage_stats(&inventory, &notes, config);
+    let superseded = crate::scratchpad::compute_superseded_ids(&notes);
+    let high_note_ids: Vec<String> = notes
+        .iter()
+        .filter(|n| {
+            crate::scratchpad::is_verified_finding(n, &superseded)
+                && crate::scratchpad::is_high_severity(n.severity.as_deref())
+        })
+        .map(|n| n.id.clone())
+        .collect();
+
+    let partition = json!({
+        "run_id": store.run_id(),
+        "path": crate::scratchpad::display_run_path(store.run_id()),
+        "areas_done": stats.areas_accounted,
+        "areas_total": stats.areas_total,
+        "findings_verified": stats.verified_findings,
+        "high_note_ids": high_note_ids,
+    });
+    merge_board_partition(task_id, "scratchpad", partition);
+}
+
+fn merge_board_partition(task_id: &str, partition_key: &str, partition_data: Value) {
+    let path = blackboard_path(task_id);
+    ensure_dir(&path);
+    let existing_raw = std::fs::read_to_string(&path).unwrap_or_default();
+    let mut board: Value = if existing_raw.trim().is_empty() {
+        json!({
+            "schema_version": 1,
+            "task_id": task_id,
+        })
+    } else {
+        serde_json::from_str(&existing_raw).unwrap_or(json!({
+            "schema_version": 1,
+            "task_id": task_id,
+        }))
+    };
+    if let Value::Object(ref mut map) = board {
+        map.insert(partition_key.to_string(), partition_data);
+    }
+    let payload = serde_json::to_string_pretty(&board).unwrap_or_default();
+    let tmp_path = path.with_extension("tmp");
+    let _ = std::fs::write(&tmp_path, &payload);
+    let _ = std::fs::rename(&tmp_path, &path);
+}
+
+fn format_scratchpad_mirror(board: &Value) -> Option<String> {
+    let sp = board.get("scratchpad")?;
+    let run_id = sp.get("run_id")?.as_str()?;
+    let path = sp.get("path").and_then(|v| v.as_str()).unwrap_or("?");
+    let done = sp.get("areas_done").and_then(|v| v.as_u64()).unwrap_or(0);
+    let total = sp.get("areas_total").and_then(|v| v.as_u64()).unwrap_or(0);
+    let verified = sp
+        .get("findings_verified")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let highs = sp
+        .get("high_note_ids")
+        .and_then(|v| v.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+        .unwrap_or_default();
+    Some(format!(
+        "### Scratchpad mirror\n- run_id: `{run_id}`\n- path: `{path}`\n- areas accounted: {done}/{total}\n- verified findings: {verified}\n- high_note_ids: [{highs}]"
+    ))
 }
 
 // ── Tests ──────────────────────────────────────────────────────

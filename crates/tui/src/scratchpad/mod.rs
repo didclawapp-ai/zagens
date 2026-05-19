@@ -1,5 +1,6 @@
 //! Audit scratchpad store (`.deepseek/scratchpad/{run_id}/`).
 
+pub mod auditor;
 pub mod cleanup;
 pub mod config;
 pub mod coverage;
@@ -11,10 +12,10 @@ pub use schema::{
     is_verified_finding, parse_note_line,
 };
 pub use config::{ScratchpadConfig, ScratchpadConfigToml};
+pub use auditor::{build_auditor_assignment_sections, resolve_auditor_run_id};
 pub use coverage::{
-    CoverageGateOutcome, CoverageStats, area_meets_deferred_quality, build_l0_status_line,
-    compute_coverage_stats, coverage_gate, format_deferred_areas_l0_suffix,
-    resume_area_id_from_inventory,
+    CoverageGateOutcome, area_meets_deferred_quality, build_l0_status_line,
+    compute_coverage_stats, coverage_gate, resume_area_id_from_inventory,
 };
 pub use summary::{build_layered_summary, compute_superseded_ids};
 

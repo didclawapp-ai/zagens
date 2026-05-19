@@ -148,7 +148,7 @@
 |------|------|------|
 | **Phase A** | ✅ | `.deepseek/pick-rules.md` §7 · `base.md` · skill `audit-repo`；试跑见下 |
 | **Phase B** | ✅ | [audit-scratchpad-design.md §6](desktop/audit-scratchpad-design.md) — 工具、注入、提醒、桌面进度、TTL |
-| **Phase C** | 🟡 C0+C1 ✅ | [§6.12](desktop/audit-scratchpad-design.md#612-phase-c--与-craft--auditor-深集成-排队)：C0 compact pin + L0 handoff；C1 `coverage_gate` + deferred meta；**待做** C2 Auditor、C3 blackboard |
+| **Phase C** | ✅ C0–C3 | [§6.12](desktop/audit-scratchpad-design.md#612-phase-c--与-craft--auditor-深集成-排队)：compact、coverage gate、Auditor←scratchpad、blackboard 镜像 |
 
 **试跑（2026-05-19）：** Phase A：`skills` + 续审 + 多区 `tui/src`（14 area）；Phase B：`2026-05-19-phase-b-smoke`（工具/门禁/续审/合成）**✅** → [audit-scratchpad-test.md](desktop/audit-scratchpad-test.md)。
 

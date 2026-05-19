@@ -235,7 +235,16 @@ notes 只读该 area_id 的行，不要读 notes 文件尾部。run_id 是：202
 
 **Phase B（已实施）：** 见 [design §6](audit-scratchpad-design.md) — `scratchpad_*` 工具、B2 线程绑定、B3/B3b 注入与 handoff、B4 提醒、B5 API + 横条、B7 TTL；`supersedes` 传递闭包、每轮单次 `<scratchpad_summary>`。
 
-**Phase C（方案已定，未编码）：** [design §6.12](audit-scratchpad-design.md#612-phase-c--与-craft--auditor-深集成-排队) — 推荐顺序 **C0** compaction 指针 → **C1** 覆盖率门禁 → **C2** Auditor←scratchpad → **C3** blackboard 镜像 → **C4** 远期。
+**Phase C（C0–C3 已编码，待试跑）：** [design §6.12](audit-scratchpad-design.md#612-phase-c--与-craft--auditor-深集成-排队) — compact、coverage gate、Auditor track A/B、blackboard 镜像。
+
+### Phase C 试跑要点（复制用）
+
+| 项 | 操作 | 期望 |
+|----|------|------|
+| C1 覆盖率 | 未审完时「写审查报告」 | `<scratchpad_summary>` 含 WARNING 或 BLOCKED |
+| C1 deferred | `set_area(deferred)` 无 meta | reject |
+| C2 Auditor | `agent_spawn(type=auditor, scratchpad_run_id=…)` | assignment 含 Track A 表 + Track B prose |
+| C3 blackboard | 同上且带 `task_id` | `.deepseek/blackboards/{task_id}.json` 含 `scratchpad` 分区 |
 
 ---
 
