@@ -203,12 +203,16 @@ notes 只读该 area_id 的行，不要读 notes 文件尾部。run_id 是：202
 
 ## 4. 未覆盖项（留待 Phase C）
 
-| 项 | 说明 |
-|----|------|
-| 全仓 20～40 area（含 desktop 等） | 规模更大；依赖 B 的分层注入 |
-| `supersedes` 升级路径 | 未触发 |
-| 覆盖率硬门禁 / Auditor+scratchpad 深绑 | Phase C |
-| compaction 丢 scratchpad 指针 | 长会话 + compact 时再观察 |
+实现方案见 [audit-scratchpad-design.md §6.12](audit-scratchpad-design.md#612-phase-c--与-craft--auditor-深集成-排队)（C0→C4）。
+
+| 项 | Phase C 子阶段 | 说明 |
+|----|----------------|------|
+| 全仓 20～40 area（含 desktop 等） | — | B 分层注入已具备；可选压测（原测试 5） |
+| `supersedes` 升级路径 | C2 | Phase B smoke 已手动验证；C2 纳入 Auditor 闭环 |
+| 覆盖率硬门禁 | **C1** | `accounted_ratio` / `reviewed_ratio`，§6.12.4 |
+| Auditor+scratchpad 深绑 | **C2** | 结构化 `note_id` 输入，§6.12.5 |
+| compaction 丢 scratchpad 指针 | **C0** | compaction pin + L0，§6.12.3 |
+| B4 只读提醒压测 | — | 可选（原测试 6） |
 
 ---
 
@@ -231,7 +235,7 @@ notes 只读该 area_id 的行，不要读 notes 文件尾部。run_id 是：202
 
 **Phase B（已实施）：** 见 [design §6](audit-scratchpad-design.md) — `scratchpad_*` 工具、B2 线程绑定、B3/B3b 注入与 handoff、B4 提醒、B5 API + 横条、B7 TTL；`supersedes` 传递闭包、每轮单次 `<scratchpad_summary>`。
 
-**延后 Phase C：** 覆盖率硬拦、blackboard 分区、Auditor 绑定。
+**Phase C（方案已定，未编码）：** [design §6.12](audit-scratchpad-design.md#612-phase-c--与-craft--auditor-深集成-排队) — 推荐顺序 **C0** compaction 指针 → **C1** 覆盖率门禁 → **C2** Auditor←scratchpad → **C3** blackboard 镜像 → **C4** 远期。
 
 ---
 

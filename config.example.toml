@@ -566,3 +566,10 @@ default_text_model = "deepseek-ai/deepseek-v4-pro"
 # inject_summary_max_chars = 6000
 # inject_on_report_keywords = ["审查报告", "final report", "synthesize", "write the report"]
 # retention_days = 30
+# --- Phase C (planned; see docs/desktop/audit-scratchpad-design.md §6.12.7) ---
+# coverage_soft_ratio = 0.85
+# coverage_hard_ratio = 0.60
+# coverage_hard_block_enabled = true
+# coverage_count_deferred_as_accounted = true
+# auditor_from_scratchpad = true
+# auditor_include_medium_min = 3

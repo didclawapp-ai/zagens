@@ -148,9 +148,9 @@
 |------|------|------|
 | **Phase A** | ✅ | `.deepseek/pick-rules.md` §7 · `base.md` · skill `audit-repo`；试跑见下 |
 | **Phase B** | ✅ | [audit-scratchpad-design.md §6](desktop/audit-scratchpad-design.md) — 工具、注入、提醒、桌面进度、TTL |
-| **Phase C** | ⬜ 排队 | 覆盖率门禁、Auditor、blackboard |
+| **Phase C** | ⬜ 方案已定 | [§6.12](desktop/audit-scratchpad-design.md#612-phase-c--与-craft--auditor-深集成-排队)：C0 compact → C1 门禁 → C2 Auditor←scratchpad → C3 blackboard 镜像 |
 
-**试跑（2026-05-19）：** 单区 `skills` + 续审 + 多区 `tui/src`（14 area）**✅** → [audit-scratchpad-test.md](desktop/audit-scratchpad-test.md)（`2026-05-19-skills-review` / `2026-05-19-tui-src-review`）。
+**试跑（2026-05-19）：** Phase A：`skills` + 续审 + 多区 `tui/src`（14 area）；Phase B：`2026-05-19-phase-b-smoke`（工具/门禁/续审/合成）**✅** → [audit-scratchpad-test.md](desktop/audit-scratchpad-test.md)。
 
 ---
 

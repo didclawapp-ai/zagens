@@ -1,6 +1,6 @@
 # 审计工作记忆（Audit Scratchpad）方案草稿
 
-> **状态：** Phase A ✅ · **Phase B ✅**（见 [audit-scratchpad-test.md](audit-scratchpad-test.md)）；Phase C 排队  
+> **状态：** Phase A ✅ · **Phase B ✅**（见 [audit-scratchpad-test.md](audit-scratchpad-test.md)）；**Phase C** 方案已定（§6.12，C0→C4 分 PR）  
 > **范围：** DS Pick / TUI 共用 runtime；面向**长程、全库级代码审查**与同类「多步探索 → 最终报告」任务。  
 > **相关：** [agent-reliability-craft-plan.md](../agent-reliability-craft-plan.md)、[auditor-subagent-design.md](auditor-subagent-design.md)、`crates/tui/src/tools/subagent/blackboard.rs`、`crates/tui/src/prompts/base.md` § Full-repository code review mode。
 
@@ -471,7 +471,10 @@ remind_after_readonly_tools = 8
 remind_enabled = true
 inject_summary_max_chars = 6000
 inject_on_report_keywords = ["审查报告", "final report", "synthesize", "write the report"]
+retention_days = 30
 ```
+
+Phase C 拟新增字段见 **§6.12.7**（实现前勿依赖）。
 
 ---
 
@@ -495,9 +498,9 @@ inject_on_report_keywords = ["审查报告", "final report", "synthesize", "writ
 
 | 阶段 | 策略 |
 |------|------|
-| **Phase B 首版** | **不自动删**；文档说明路径 `<workspace>/.deepseek/scratchpad/`，用户可手动删旧 `run_id` 目录 |
-| **B7 / Phase C** | 与 session/snapshot 清理对齐：例如启动或每日维护时删除 **mtime &gt; 30 天** 的 `scratchpad/{run_id}/`（仅删子目录，不删进行中的 `thread.scratchpad_run_id`） |
-| **配置（可选）** | `[scratchpad] retention_days = 30` |
+| **Phase B 首版** | 文档说明路径 `<workspace>/.deepseek/scratchpad/`，用户可手动删旧 `run_id` 目录 |
+| **B7（✅ 已落地）** | `RuntimeThreadManager::open` 时调用 `cleanup_stale_scratchpads`：删除 **mtime &gt; retention_days**（默认 30）的子目录；**不删** 任一活跃 `thread.scratchpad_run_id` 指向的 run |
+| **配置** | `[scratchpad] retention_days = 30` |
 
 ---
 
@@ -509,16 +512,156 @@ inject_on_report_keywords = ["审查报告", "final report", "synthesize", "writ
 
 ---
 
-### Phase C — 与 CRAFT / Auditor 深集成（⬜ 排队）
+### 6.12 Phase C — 与 CRAFT / Auditor 深集成（⬜ 排队）
 
-| 能力 | 说明 |
+**依据：** Phase B 试跑（`2026-05-19-phase-b-smoke`，测试 1–4 ✅）；[audit-scratchpad-test.md §4](audit-scratchpad-test.md#4-未覆盖项留待-phase-c) 未覆盖项。  
+**目标：** 解决 **早收口写报告**、**报告与 scratchpad 事实脱节**（含 [auditor-subagent-design.md](auditor-subagent-design.md) M4 类误报）、**长会话 compact 丢 run 指针**；可选与 CRAFT blackboard 对齐。
+
+**Auditor 前提：** `SubAgentType::Auditor` 与 `AUDITOR_AGENT_PROMPT` **已落地**；C2 做的是 **引擎侧结构化喂数**，非新建子代理类型。
+
+#### 6.12.1 设计原则
+
+| # | 原则 |
+|---|------|
+| 1 | **单一事实源** — `inventory.json` + `notes.jsonl` 为准；blackboard / compaction 只存指针与统计，不复制全文 finding |
+| 2 | **门禁分两层** — **area 完成率**（首版必做）；**file 级覆盖率**（`git ls-files` vs `areas[].path`，成本高，放 C4） |
+| 3 | **`deferred` 语义** — 计入 **已交代**（`accounted`），不计入 **已审**（`reviewed`）；报告 L0 必须列出 deferred 区及原因 |
+| 4 | **Auditor 吃结构化 note 列表** — 以 `note_id` + `file:line` 为键；父代理 prose 报告仅作说明，核查以 scratchpad 为准 |
+| 5 | **子代理不写 scratchpad 文件** — explore 只写 blackboard（§10 #3）；C3 为 **镜像分区**，非双写 |
+| 6 | **可配置、可关** — 阈值与 `hard_block` 进 `[scratchpad]`，避免个人项目被硬拦死 |
+
+#### 6.12.2 子阶段与排期（推荐）
+
+```text
+C0 Compaction 指针  →  C1 覆盖率门禁  →  C2 Auditor 结构化  →  C3 Blackboard 镜像  →  C4 远期
+     (~0.5 PR)              (~1 PR)            (~1 PR)              (按需)           (有数据再做)
+```
+
+| 子阶段 | 能力 | 主要改动位置 | 优先级 |
+|--------|------|----------------|--------|
+| **C0** | Compaction / capacity refresh **保留** scratchpad 路径 + L0 摘要 | `capacity_flow.rs`、`engine.rs`（衔接已有 `scratchpad_handoff_line` / B3b） | **高** |
+| **C1** | P2 前 **覆盖率门禁**（软/硬） | `scratchpad_flow.rs`（`coverage_gate`）、`engine.rs`（报告关键词 + `maybe_summary_before_final_answer` 前） | **高** |
+| **C2** | **Auditor ← scratchpad** 结构化输入与 `note_id` 核查闭环 | spawn 路径、`AUDITOR_AGENT_PROMPT`、`summary.rs` 导出 finding 列表 | **高** |
+| **C3** | Blackboard 分区 **`scratchpad`**（统计镜像） | `blackboard.rs`；主代理在 status 变更或 P2 前写一次 | 中（常做 CRAFT+全库审查时） |
+| **C4** | File 级覆盖率、JSONL→SQLite、Office TaskType、导出排除 scratchpad | 见 §10 | 低 |
+
+#### 6.12.3 C0 — Compaction 保留
+
+**现状：** B3b 已在 `cycle_handoff` / capacity refresh 注入 `Active audit scratchpad: … (resume_area_id: …)`；**未**把 scratchpad 目录 pin 进 compaction。
+
+**行为：**
+
+- 当 `thread.scratchpad_run_id` 存在：将 `.deepseek/scratchpad/{run_id}/` 加入 compaction **pins** / `top_paths`（与现有 workspace 读路径安全一致）。
+- `merge_compaction_summary` 时若 store 可读：追加 **L0 一行**（复用 `build_layered_summary` 的 inventory 头），避免 compact 后只剩模糊 handoff。
+
+**验收：** 人工触发 compact 后，下一轮 `scratchpad_status` 与续审 prompt 仍指向同一 `run_id`。
+
+#### 6.12.4 C1 — 覆盖率门禁
+
+**解决的问题：** inventory 未审完就 synthesize / 写报告（试跑 §4「100% done 门禁延到 C」）。
+
+**指标（区分语义）：**
+
+| 指标 | 公式 | 用途 |
+|------|------|------|
+| `accounted_ratio` | `(areas_done + areas_deferred) / areas_total` | 能否进入 P2（软/硬拦） |
+| `reviewed_ratio` | `areas_done / areas_total` | 报告「完整度」、桌面横条副标题（可选） |
+| `pending_areas` | `status ∈ {pending, in_progress}` 的 `areas[].id` | 注入续审列表 |
+
+**默认阈值（可配置）：**
+
+| 条件 | 行为 |
 |------|------|
-| Blackboard 新分区 `scratchpad` | 与 `explorer` 并行；主代理写 findings 汇总，explore 写覆盖元数据 |
-| **覆盖率门禁** | P2 前若 `inventory` 完成率 &lt; 阈值（如 85%），soft warning；&lt; 60% hard block 写报告 |
-| **Auditor 输入** | Auditor prompt 同时收 scratchpad JSONL + 报告草稿，按 id 逐条 `read_file` 核对 |
-| **Compaction 保留** | `capacity_flow` 压缩对话时，**保留** scratchpad 路径指针，不删 workspace 文件 |
+| `accounted_ratio` &lt; **0.85** | **Soft：** 注入 user 消息，列出 `pending_areas`，要求续审或显式 `scratchpad_set_area(deferred)` + 原因 |
+| `accounted_ratio` &lt; **0.60** 且 `coverage_hard_block_enabled` | **Hard：** **不注入** `<scratchpad_summary>`；固定 system/user 文案说明缺口 |
+| `accounted_ratio` ≥ 0.85 且 `reviewed_ratio` &lt; **0.70** | **允许** P2，但 L0 强制 `deferred_areas: [...]` |
 
-依赖：[auditor-subagent-design.md](auditor-subagent-design.md) 中 Auditor 类型落地情况。
+**挂钩点：** 与 B3 相同 — 用户消息命中 `inject_on_report_keywords` 时（`engine.rs`）；以及无工具终稿前（`maybe_summary_before_final_answer`）。
+
+**API 草案：** `scratchpad_flow::coverage_gate(store, config) -> Allow | Warn { pending, ratios } | Block { reason }`。
+
+**C1 可选质量门（低成本）：** 除现有 `require_min_notes` 外，标 `done` 的 area 至少 1 条 `kind ∈ {finding, cleared}`（`deferred` 区除外），防止「空 done」。
+
+**首版不做：** `git ls-files` 与 `areas[].path` 的 file 级 diff（→ C4）。
+
+#### 6.12.5 C2 — Auditor + scratchpad 深绑
+
+**现状：** Auditor 走「父代理粘贴报告草稿」路径 B；scratchpad 的 `note_id`、`supersedes`、verified 集未进入核查闭环。
+
+**行为：**
+
+1. **引擎组装 Auditor assignment**（父代理不必手写全文）  
+   - 从 store 取 `kind=finding` + `status=verified` 且 **未**在 `superseded_ids` 中的行；  
+   - 按 `base.md` 阈值：**HIGH/BLOCKER 强制**；MEDIUM 当条数 ≥ `auditor_include_medium_min`（默认 3）时强制；  
+   - 固定表格：`note_id | severity | file:line[-line_end] | title | claim`（JSON 数组亦可）。
+
+2. **扩展 `AUDITOR_AGENT_PROMPT`**  
+   - 以 **`note_id`** 为主键逐条 `read_file`；FAIL 必须引用 `note_id`；  
+   - 父代理修正：**仅** `scratchpad_append` + `supersedes`，禁止改旧 JSONL 行；  
+   - Auditor **禁止**新增 finding（保持现有约束）。
+
+3. **可选 spawn 参数：** `scratchpad_run_id` 或 `audit_note_ids: ["note-008", …]`，runtime 自动拼 prompt。
+
+4. **与 `base.md` 对齐：** 「Auditor 输入 **必须** 来自 scratchpad verified 列表」；prose 报告为辅。
+
+**验收：** 故意错行号 → Auditor FAIL → supersede 修正 → PASS（smoke 中 note-002/008 流程产品化）。
+
+#### 6.12.6 C3 — Blackboard `scratchpad` 分区（镜像）
+
+**原则：** **Explore 仍只写 `explorer`**；主代理在 `scratchpad_status` 显著变更或 P2 前写一次 **只读镜像**（非 findings 全文）：
+
+```json
+"scratchpad": {
+  "run_id": "2026-05-19-tui-src-review",
+  "path": ".deepseek/scratchpad/2026-05-19-tui-src-review",
+  "areas_done": 12,
+  "areas_total": 14,
+  "findings_verified": 28,
+  "high_note_ids": ["note-042"]
+}
+```
+
+**读侧：** CRAFT 链路上 Auditor（`task_id` 存在）可读 `high_note_ids` 作交叉引用；Implementer/Review **不**依赖此分区。
+
+#### 6.12.7 Phase C 配置（`~/.deepseek/config.toml`）
+
+Phase B 已有字段见 §6.8。Phase C **拟新增**（实现时同步 `config.example.toml` 与 `ScratchpadConfig`）：
+
+```toml
+[scratchpad]
+# --- Phase C (planned) ---
+coverage_soft_ratio = 0.85
+coverage_hard_ratio = 0.60
+coverage_hard_block_enabled = true
+coverage_count_deferred_as_accounted = true
+auditor_from_scratchpad = true
+auditor_include_medium_min = 3
+```
+
+#### 6.12.8 Phase C 验收标准
+
+| # | 标准 |
+|---|------|
+| C0-1 | Compact 后同 thread 仍可 `scratchpad_status`，`run_id` 不变 |
+| C0-2 | Compaction 摘要含 scratchpad L0 或 handoff 行 |
+| C1-1 | `accounted_ratio` &lt; 0.60 时不注入 `<scratchpad_summary>`（hard 开时） |
+| C1-2 | `accounted_ratio` &lt; 0.85 时注入 pending 列表（soft） |
+| C1-3 | 全 `deferred` 冒充完成时，L0 列出 deferred 区 |
+| C2-1 | Auditor prompt 含 `note_id` 列表；FAIL 引用 `note_id` |
+| C2-2 | 修正仅经 `supersedes` append，旧行不出现在 Auditor 二次输入 |
+| C3-1 | `task_id` 存在时 blackboard 含 `scratchpad` 分区且与 `scratchpad_status` 一致 |
+| C3-2 | Explore 子代理不写 `notes.jsonl`（回归） |
+
+#### 6.12.9 C4 — 远期（有试点数据再定）
+
+| 项 | 触发条件 |
+|----|----------|
+| File 级覆盖率 | 多次「代表性文件」偷懒；`inventory.path` vs `git ls-files` |
+| JSONL → SQLite | 单 run `notes` &gt; `max_notes_per_run` 或 append 变慢（§10 #2） |
+| Office TaskType | 有需求再复用 schema（§10 #4） |
+| 导出 thread 排除 scratchpad | 隐私 / 分享场景（§8） |
+
+**依赖：** [auditor-subagent-design.md](auditor-subagent-design.md)（Auditor 类型 ✅）；Phase B store/tools（✅）。
 
 ---
 
@@ -527,9 +670,9 @@ inject_on_report_keywords = ["审查报告", "final report", "synthesize", "writ
 | 现有能力 | 关系 |
 |----------|------|
 | **Reasoning UI** | 保留；用户可回看，但不作为报告源 |
-| **CRAFT blackboard** | 子代理间快照；scratchpad 可汇总进 `explorer.findings` 或独立分区 |
-| **cycle_handoff / compact** | 压缩时 handoff 应指向 scratchpad 路径 + 未完成 inventory 行 |
-| **Auditor** | P3 消费者；scratchpad 提供可遍历的候选事实列表 |
+| **CRAFT blackboard** | 子代理间快照；Phase C3：`scratchpad` **镜像分区**（统计 + `high_note_ids`），非 findings 全文 |
+| **cycle_handoff / compact** | B3b handoff ✅；Phase C0：compaction **pin** 路径 + L0 摘要 |
+| **Auditor** | P3 消费者；Phase C2：输入 **必须** 来自 scratchpad verified `note_id` 列表 |
 | **topic-memory-graph** | **远期**跨会话话题图（独立库，未接入本仓库）；scratchpad 管**单次任务**事实。若将来并入，注入顺序与字数上限见 [agent-reliability-craft-plan.md §3.1](../agent-reliability-craft-plan.md) |
 
 ---
@@ -548,7 +691,7 @@ inject_on_report_keywords = ["审查报告", "final report", "synthesize", "writ
 | 指标 | 测量方式 |
 |------|----------|
 | 报告遗漏率 | 同一仓库，固定题库，专家标注「应有 finding」vs 报告 |
-| Inventory 完成率 | 自动化：`inventory.json` 中 `status=done` 占比 |
+| Inventory 完成率 | `reviewed_ratio`（`done/total`）与 `accounted_ratio`（`(done+deferred)/total`），见 §6.12.4 |
 | HIGH 可核对率 | Auditor PASS 比例 / 人工 spot-check `file:line` 存在 |
 | 用户主观 | 「是否明显更早放弃深度」Likert 1–5 |
 
@@ -564,7 +707,7 @@ inject_on_report_keywords = ["审查报告", "final report", "synthesize", "writ
 | 2 | JSONL 条目 &gt;2000 是否迁 SQLite | ⬜ 待试点数据 |
 | 3 | 子代理双写 scratchpad | **已定：** explore 只写 blackboard |
 | 4 | Office TaskType 复用 schema | ⬜ 二期 |
-| 5 | scratchpad TTL 自动清理 | B7 草案 §6.10；默认手动 |
+| 5 | scratchpad TTL 自动清理 | **✅ B7** §6.10（`retention_days`） |
 
 ---
 
@@ -573,15 +716,18 @@ inject_on_report_keywords = ["审查报告", "final report", "synthesize", "writ
 | 顺序 | 交付 | 状态 |
 |------|------|------|
 | 1 | Phase A + 试跑记录 | ✅ |
-| 2 | Phase B1–B3（工具 + store + 摘要注入） | ⬜ 下一 PR |
-| 3 | Phase B4–B5（提醒 + 桌面进度） | ⬜ |
-| 4 | Phase C（门禁、Auditor、blackboard） | ⬜ 依赖 Auditor |
+| 2 | Phase B（B1–B7 + 桌面横条 + 试跑 1–4） | ✅ `cfc1e72` |
+| 3 | Phase C0 — Compaction 指针 | ⬜ 下一 PR 建议 |
+| 4 | Phase C1 — 覆盖率门禁 | ⬜ |
+| 5 | Phase C2 — Auditor ← scratchpad | ⬜ |
+| 6 | Phase C3 — Blackboard 镜像 | ⬜ 按需 |
+| 7 | Phase C4 — 远期 | ⬜ 有数据再做 |
 
 ---
 
 ## 15. 多区试跑 Prompt
 
-见 [audit-scratchpad-test.md §6](audit-scratchpad-test.md#6-复现用-prompt-清单)。
+见 [audit-scratchpad-test.md §7](audit-scratchpad-test.md#7-复现用-prompt-清单)。
 
 ---
 
