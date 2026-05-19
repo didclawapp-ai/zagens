@@ -2,6 +2,11 @@
 
 use std::collections::{HashMap, HashSet};
 
+use crate::scratchpad::config::ScratchpadConfig;
+use crate::scratchpad::coverage::{
+    build_l0_status_line, compute_coverage_stats, format_deferred_areas_l0_suffix,
+    resume_area_id_from_inventory,
+};
 use crate::scratchpad::schema::{Inventory, NoteLine, is_high_severity, is_verified_finding};
 
 /// Ids excluded from P2 reports: every `supersedes` target, plus transitive closure
@@ -35,51 +40,26 @@ pub fn build_layered_summary(
     inventory: &Inventory,
     notes: &[NoteLine],
     max_chars: usize,
+    config: &ScratchpadConfig,
 ) -> String {
     let superseded = compute_superseded_ids(notes);
     let mut out = String::new();
 
-    // L0
-    let total = inventory.areas.len();
-    let done = inventory
-        .areas
-        .iter()
-        .filter(|a| matches!(a.status, crate::scratchpad::schema::AreaStatus::Done))
-        .count();
-    let deferred = inventory
-        .areas
-        .iter()
-        .filter(|a| matches!(a.status, crate::scratchpad::schema::AreaStatus::Deferred))
-        .count();
-    let in_progress = inventory
-        .areas
-        .iter()
-        .filter(|a| matches!(a.status, crate::scratchpad::schema::AreaStatus::InProgress))
-        .count();
-    let pending = inventory
-        .areas
-        .iter()
-        .filter(|a| matches!(a.status, crate::scratchpad::schema::AreaStatus::Pending))
-        .count();
-    let resume = inventory
-        .areas
-        .iter()
-        .find(|a| {
-            matches!(
-                a.status,
-                crate::scratchpad::schema::AreaStatus::Pending
-                    | crate::scratchpad::schema::AreaStatus::InProgress
-            )
-        })
-        .map(|a| a.id.as_str())
-        .unwrap_or("none");
-    let verified = notes
-        .iter()
-        .filter(|n| is_verified_finding(n, &superseded))
-        .count();
-    let l0 = format!(
-        "[L0] areas {done}/{total} done, {deferred} deferred, {in_progress} in_progress, {pending} pending; resume_area_id={resume}; verified_findings={verified}\n"
+    let stats = compute_coverage_stats(inventory, notes, config);
+    let resume = resume_area_id_from_inventory(inventory);
+    let mut l0 = format!(
+        "[L0] {};\n",
+        build_l0_status_line(
+            if inventory.run_id.is_empty() {
+                "unknown"
+            } else {
+                &inventory.run_id
+            },
+            &stats,
+            &resume,
+        )
     );
+    l0.push_str(&format_deferred_areas_l0_suffix(&stats, config));
     out.push_str(&l0);
 
     // L1 — HIGH/BLOCKER verified
@@ -226,7 +206,7 @@ mod tests {
             }),
             1,
         )];
-        let s = build_layered_summary(&inv, &notes, 8000);
+        let s = build_layered_summary(&inv, &notes, 8000, &ScratchpadConfig::default());
         assert!(s.contains("[L0]"));
         assert!(s.contains("note-1"));
     }

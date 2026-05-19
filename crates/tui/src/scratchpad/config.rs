@@ -12,6 +12,17 @@ pub struct ScratchpadConfig {
     pub inject_summary_max_chars: usize,
     pub inject_on_report_keywords: Vec<String>,
     pub retention_days: u32,
+    /// Phase C1: soft warn when `accounted_ratio` is below this (default 0.85).
+    pub coverage_soft_ratio: f64,
+    /// Phase C1: hard block P2 summary when below this (default 0.60).
+    pub coverage_hard_ratio: f64,
+    pub coverage_hard_block_enabled: bool,
+    /// When true, `deferred` counts toward accounted only with `kind=meta` reason (§6.12.4).
+    pub coverage_count_deferred_as_accounted: bool,
+    /// Phase C1: `set_area(deferred)` requires `kind=meta` with non-empty claim.
+    pub require_deferred_meta: bool,
+    /// L0 lists deferred areas when `reviewed_ratio` is below this (default 0.70).
+    pub coverage_reviewed_warn_ratio: f64,
 }
 
 impl Default for ScratchpadConfig {
@@ -30,6 +41,12 @@ impl Default for ScratchpadConfig {
                 "写报告".into(),
             ],
             retention_days: 30,
+            coverage_soft_ratio: 0.85,
+            coverage_hard_ratio: 0.60,
+            coverage_hard_block_enabled: true,
+            coverage_count_deferred_as_accounted: true,
+            require_deferred_meta: true,
+            coverage_reviewed_warn_ratio: 0.70,
         }
     }
 }
@@ -50,6 +67,18 @@ pub struct ScratchpadConfigToml {
     pub inject_on_report_keywords: Option<Vec<String>>,
     #[serde(default)]
     pub retention_days: Option<u32>,
+    #[serde(default)]
+    pub coverage_soft_ratio: Option<f64>,
+    #[serde(default)]
+    pub coverage_hard_ratio: Option<f64>,
+    #[serde(default)]
+    pub coverage_hard_block_enabled: Option<bool>,
+    #[serde(default)]
+    pub coverage_count_deferred_as_accounted: Option<bool>,
+    #[serde(default)]
+    pub require_deferred_meta: Option<bool>,
+    #[serde(default)]
+    pub coverage_reviewed_warn_ratio: Option<f64>,
 }
 
 impl ScratchpadConfigToml {
@@ -70,6 +99,24 @@ impl ScratchpadConfigToml {
                 .inject_on_report_keywords
                 .unwrap_or(defaults.inject_on_report_keywords),
             retention_days: self.retention_days.unwrap_or(defaults.retention_days),
+            coverage_soft_ratio: self
+                .coverage_soft_ratio
+                .unwrap_or(defaults.coverage_soft_ratio),
+            coverage_hard_ratio: self
+                .coverage_hard_ratio
+                .unwrap_or(defaults.coverage_hard_ratio),
+            coverage_hard_block_enabled: self
+                .coverage_hard_block_enabled
+                .unwrap_or(defaults.coverage_hard_block_enabled),
+            coverage_count_deferred_as_accounted: self
+                .coverage_count_deferred_as_accounted
+                .unwrap_or(defaults.coverage_count_deferred_as_accounted),
+            require_deferred_meta: self
+                .require_deferred_meta
+                .unwrap_or(defaults.require_deferred_meta),
+            coverage_reviewed_warn_ratio: self
+                .coverage_reviewed_warn_ratio
+                .unwrap_or(defaults.coverage_reviewed_warn_ratio),
         }
     }
 }

@@ -2,6 +2,7 @@
 
 pub mod cleanup;
 pub mod config;
+pub mod coverage;
 mod schema;
 mod summary;
 
@@ -10,6 +11,11 @@ pub use schema::{
     is_verified_finding, parse_note_line,
 };
 pub use config::{ScratchpadConfig, ScratchpadConfigToml};
+pub use coverage::{
+    CoverageGateOutcome, CoverageStats, area_meets_deferred_quality, build_l0_status_line,
+    compute_coverage_stats, coverage_gate, format_deferred_areas_l0_suffix,
+    resume_area_id_from_inventory,
+};
 pub use summary::{build_layered_summary, compute_superseded_ids};
 
 use std::collections::HashMap;
@@ -315,13 +321,25 @@ impl ScratchpadStore {
         status: AreaStatus,
         area_notes: Option<&str>,
         require_min_notes: usize,
+        config: &ScratchpadConfig,
     ) -> Result<Inventory, ToolError> {
-        if status == AreaStatus::Done && require_min_notes > 0 {
+        if matches!(status, AreaStatus::Done | AreaStatus::Deferred) && require_min_notes > 0 {
             let count = self.count_notes_for_area(area_id)?;
             if count < require_min_notes {
                 return Err(ToolError::invalid_input(format!(
                     "area '{area_id}' has {count} note(s) but require_min_notes={require_min_notes}; \
-                     call scratchpad_append first, then scratchpad_set_area(done)"
+                     call scratchpad_append first, then scratchpad_set_area({})",
+                    status.as_str()
+                )));
+            }
+        }
+
+        if status == AreaStatus::Deferred && config.require_deferred_meta {
+            let notes = self.read_notes()?;
+            if !area_meets_deferred_quality(area_id, &notes) {
+                return Err(ToolError::invalid_input(format!(
+                    "area '{area_id}' area quality: deferred requires at least one kind=meta note with non-empty claim; \
+                     call scratchpad_append first, then scratchpad_set_area(deferred)"
                 )));
             }
         }
@@ -433,6 +451,7 @@ fn atomic_write_json(path: &Path, value: &impl serde::Serialize) -> Result<(), T
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratchpad::config::ScratchpadConfig;
     use crate::scratchpad::schema::AreaStatus;
     use crate::tools::spec::ToolContext;
     use serde_json::json;
@@ -481,16 +500,42 @@ mod tests {
         let (_dir, ctx) = temp_workspace();
         write_fixture(&ctx, "test-run-2");
         let store = ScratchpadStore::open(&ctx, "test-run-2").expect("open");
+        let cfg = ScratchpadConfig::default();
         let err = store
-            .set_area_status("area-a", AreaStatus::Done, None, 1)
+            .set_area_status("area-a", AreaStatus::Done, None, 1, &cfg)
             .expect_err("need notes");
         assert!(err.to_string().contains("require_min_notes"));
         store
             .append_note(json!({"area_id": "area-a", "kind": "cleared", "claim": "ok"}))
             .expect("append");
         store
-            .set_area_status("area-a", AreaStatus::Done, None, 1)
+            .set_area_status("area-a", AreaStatus::Done, None, 1, &cfg)
             .expect("done ok");
+    }
+
+    #[test]
+    fn set_deferred_requires_meta() {
+        let (_dir, ctx) = temp_workspace();
+        write_fixture(&ctx, "test-run-deferred");
+        let store = ScratchpadStore::open(&ctx, "test-run-deferred").expect("open");
+        let cfg = ScratchpadConfig::default();
+        store
+            .append_note(json!({"area_id": "area-a", "kind": "cleared", "claim": "placeholder"}))
+            .expect("append");
+        let err = store
+            .set_area_status("area-a", AreaStatus::Deferred, None, 1, &cfg)
+            .expect_err("need meta");
+        assert!(err.to_string().contains("kind=meta"));
+        store
+            .append_note(json!({
+                "area_id": "area-a",
+                "kind": "meta",
+                "claim": "skipped: out of scope"
+            }))
+            .expect("append meta");
+        store
+            .set_area_status("area-a", AreaStatus::Deferred, None, 1, &cfg)
+            .expect("deferred ok");
     }
 
     #[test]

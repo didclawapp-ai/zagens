@@ -46,6 +46,8 @@ pub struct RuntimeToolServices {
     pub scratchpad_run_id: std::sync::Arc<StdMutex<Option<String>>>,
     /// Persist `run_id` on the active runtime thread after first scratchpad write.
     pub persist_scratchpad_run_id: Option<std::sync::Arc<dyn Fn(String) + Send + Sync>>,
+    /// Resolved `[scratchpad]` config for tools (Phase C1 gates on `set_area`).
+    pub scratchpad_config: Option<crate::scratchpad::ScratchpadConfig>,
 }
 
 impl Default for RuntimeToolServices {
@@ -60,6 +62,7 @@ impl Default for RuntimeToolServices {
             hook_executor: None,
             scratchpad_run_id: Arc::new(StdMutex::new(None)),
             persist_scratchpad_run_id: None,
+            scratchpad_config: None,
         }
     }
 }

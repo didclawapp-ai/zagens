@@ -2224,6 +2224,7 @@ impl RuntimeThreadManager {
                 hook_executor: None,
                 scratchpad_run_id: scratchpad_run_id_slot,
                 persist_scratchpad_run_id: Some(persist_scratchpad),
+                scratchpad_config: Some(self.config.scratchpad_config()),
             },
             subagent_model_overrides: self.config.subagent_model_overrides(),
             memory_enabled: self.config.memory_enabled(),

@@ -91,7 +91,12 @@ impl Engine {
                 .session
                 .working_set
                 .pinned_message_indices(&self.session.messages, &self.session.workspace);
-            let compaction_paths = self.session.working_set.top_paths(24);
+            let mut compaction_paths = self.session.working_set.top_paths(24);
+            scratchpad_flow::extend_compaction_paths(
+                &self.session.workspace,
+                self.scratchpad_run_id.as_deref(),
+                &mut compaction_paths,
+            );
 
             if self.config.compaction.enabled
                 && should_compact(

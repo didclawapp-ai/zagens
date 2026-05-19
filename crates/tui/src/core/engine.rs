@@ -1914,16 +1914,31 @@ impl Engine {
     }
 
     fn merge_compaction_summary(&mut self, summary_prompt: Option<SystemPrompt>) {
-        if summary_prompt.is_none() {
-            return;
+        if let Some(prompt) = summary_prompt {
+            self.session.compaction_summary_prompt = merge_system_prompts(
+                self.session.compaction_summary_prompt.as_ref(),
+                Some(prompt.clone()),
+            );
+            let merged = merge_system_prompts(self.session.system_prompt.as_ref(), Some(prompt));
+            self.session.last_system_prompt_hash = Some(system_prompt_hash(merged.as_ref()));
+            self.session.system_prompt = merged;
         }
-        self.session.compaction_summary_prompt = merge_system_prompts(
-            self.session.compaction_summary_prompt.as_ref(),
-            summary_prompt.clone(),
-        );
-        let merged = merge_system_prompts(self.session.system_prompt.as_ref(), summary_prompt);
-        self.session.last_system_prompt_hash = Some(system_prompt_hash(merged.as_ref()));
-        self.session.system_prompt = merged;
+
+        // C0: keep scratchpad L0 pointer in compaction summary (not full P2 layered text).
+        if let Some(scratchpad_l0) = scratchpad_flow::scratchpad_compaction_system_prompt(
+            &self.session.workspace,
+            self.scratchpad_run_id.as_deref(),
+            &self.config.scratchpad,
+        ) {
+            self.session.compaction_summary_prompt = merge_system_prompts(
+                self.session.compaction_summary_prompt.as_ref(),
+                Some(scratchpad_l0.clone()),
+            );
+            let merged =
+                merge_system_prompts(self.session.system_prompt.as_ref(), Some(scratchpad_l0));
+            self.session.last_system_prompt_hash = Some(system_prompt_hash(merged.as_ref()));
+            self.session.system_prompt = merged;
+        }
     }
 }
 

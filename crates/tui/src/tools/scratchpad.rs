@@ -275,7 +275,13 @@ impl ToolSpec for ScratchpadSetAreaTool {
             .and_then(|v| v.as_u64())
             .unwrap_or(1) as usize;
         let store = ScratchpadStore::open(context, &run_id)?;
-        let inventory = store.set_area_status(area_id, status, remark, require_min)?;
+        let scratchpad_cfg = context
+            .runtime
+            .scratchpad_config
+            .clone()
+            .unwrap_or_default();
+        let inventory =
+            store.set_area_status(area_id, status, remark, require_min, &scratchpad_cfg)?;
         persist_scratchpad_run(context, &run_id);
         let areas_done = inventory
             .areas

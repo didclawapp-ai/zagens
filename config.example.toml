@@ -566,11 +566,13 @@ default_text_model = "deepseek-ai/deepseek-v4-pro"
 # inject_summary_max_chars = 6000
 # inject_on_report_keywords = ["审查报告", "final report", "synthesize", "write the report"]
 # retention_days = 30
-# --- Phase C (planned; see docs/desktop/audit-scratchpad-design.md §6.12.7) ---
+# --- Phase C0/C1 (see docs/desktop/audit-scratchpad-design.md §6.12) ---
 # coverage_soft_ratio = 0.85
 # coverage_hard_ratio = 0.60
 # coverage_hard_block_enabled = true
-# coverage_count_deferred_as_accounted = true   # deferred only if meta quality gate passes (§6.12.4)
-# require_deferred_meta = true                  # set_area(deferred) requires kind=meta reason
+# coverage_count_deferred_as_accounted = true
+# require_deferred_meta = true
+# coverage_reviewed_warn_ratio = 0.70
+# --- Phase C2 (planned) ---
 # auditor_from_scratchpad = true
-# auditor_include_medium_min = 3              # 1-2 MEDIUM skip Auditor track A; parent must self-verify
+# auditor_include_medium_min = 3
