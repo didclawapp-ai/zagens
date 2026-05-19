@@ -107,7 +107,7 @@ impl ToolSpec for LoadSkillTool {
                 }
             } else {
                 format!(
-                    "skill `{name}` not found. Available: {}",
+                    "skill `{name}` not found. Available: {}. Use `load_skill` with the skill id — do not `read_file` paths under ~/.deepseek/skills (outside workspace).",
                     available.join(", ")
                 )
             };

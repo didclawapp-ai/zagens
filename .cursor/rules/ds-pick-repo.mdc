@@ -11,6 +11,7 @@ alwaysApply: true
 - **Archived TUI-first root README copies:** [docs/archive/tui-readme-era/ABOUT.md](docs/archive/tui-readme-era/ABOUT.md).
 - **Authoritative agent instructions:** [AGENTS.md](AGENTS.md) — commands, stable Rust, DeepSeek API quirks, GitHub `gh` usage.
 - **Versions:** DS Pick (`crates/desktop`) uses its **own** SemVer (e.g. **v0.2.1**), separate from the workspace `deepseek` line; see [CHANGELOG.md](CHANGELOG.md) header.
+- **Changelog:** Record **every notable change** (features, fixes, docs, DS Pick desktop, CLI/TUI, tooling) in [CHANGELOG.md](CHANGELOG.md)—typically under `[Unreleased]`, in the **same PR/commit** as the change when practical. Not required for trivial or non-user-facing edits (typos, comment-only, pure refactors with no behavior change). Full policy: [CHANGELOG.md](CHANGELOG.md) header.
 - **Security / structure / TS rules:** `.cursor/rules/security-trust.mdc`, `code-organization.mdc`; web UI typing in `desktop-web-ui.mdc`. **Portable copy:** [project_rules.md](project_rules.md).
 
 When summarizing the project for users or models, **lead with DS Pick + shared runtime**, not “TUI-only.”

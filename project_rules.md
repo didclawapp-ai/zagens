@@ -16,6 +16,7 @@ This document consolidates the same guidance as [`.cursor/rules/*.mdc`](.cursor/
 - **Archived TUI-first root README copies:** [`docs/archive/tui-readme-era/ABOUT.md`](docs/archive/tui-readme-era/ABOUT.md).
 - **Authoritative agent instructions:** [`AGENTS.md`](AGENTS.md).
 - **Versions:** DS Pick uses its **own** SemVer (e.g. **v0.2.1**), separate from the workspace `deepseek` line; see [`CHANGELOG.md`](CHANGELOG.md) header.
+- **Changelog:** Record **every notable change** (features, fixes, docs, DS Pick desktop, CLI/TUI, tooling) in [`CHANGELOG.md`](CHANGELOG.md)—typically under `[Unreleased]`, in the **same PR/commit** as the change when practical. Not required for trivial or non-user-facing edits (typos, comment-only, pure refactors with no behavior change). Full policy: [`CHANGELOG.md`](CHANGELOG.md) header.
 
 When summarizing the project, **lead with DS Pick + shared runtime**, not “TUI-only.”
 

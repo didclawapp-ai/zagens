@@ -1416,6 +1416,15 @@ impl Engine {
         // `/trust add` / `/trust remove` mutations without an explicit cache
         // refresh hook.
         let trusted = crate::workspace_trust::WorkspaceTrust::load_for(&self.session.workspace);
+        let mut trusted_paths = trusted.paths().to_vec();
+        for root in crate::skills::trusted_skill_roots(&self.session.workspace) {
+            if !trusted_paths
+                .iter()
+                .any(|existing| crate::tools::spec::path_has_prefix(existing, &root))
+            {
+                trusted_paths.push(root);
+            }
+        }
         let mut ctx = ToolContext::with_auto_approve(
             self.session.workspace.clone(),
             self.session.trust_mode,
@@ -1428,7 +1437,7 @@ impl Engine {
         .with_shell_manager(self.shell_manager.clone())
         .with_runtime_services(self.config.runtime_services.clone())
         .with_cancel_token(self.cancel_token.clone())
-        .with_trusted_external_paths(trusted.paths().to_vec());
+        .with_trusted_external_paths(trusted_paths);
 
         // Hand the user-memory path to tools so the model-callable
         // `remember` tool can append entries (#489). `None` when the

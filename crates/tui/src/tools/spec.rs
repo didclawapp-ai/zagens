@@ -336,12 +336,12 @@ impl ToolContext {
         let workspace_normalized = normalize_path(&workspace_canonical);
 
         // Check if the candidate is under the workspace (comparing canonical paths)
-        if !candidate_canonical.starts_with(&workspace_normalized) {
+        if !path_has_prefix(&candidate_canonical, &workspace_normalized) {
             // Also try with non-canonical workspace for cases where workspace itself
             // hasn't been canonicalized yet
             let workspace_plain = normalize_path(&self.workspace);
             let candidate_normalized = normalize_path(&candidate);
-            if !candidate_normalized.starts_with(&workspace_plain)
+            if !path_has_prefix(&candidate_normalized, &workspace_plain)
                 && !self.is_trusted_external_path(&candidate_canonical)
                 && !self.is_trusted_external_path(&candidate_normalized)
             {
@@ -361,7 +361,7 @@ impl ToolContext {
                 ))
             })?;
 
-            if !canonical.starts_with(&workspace_canonical)
+            if !path_has_prefix(&canonical, &workspace_canonical)
                 && !self.is_trusted_external_path(&canonical)
             {
                 return Err(ToolError::PathEscape { path: canonical });
@@ -408,8 +408,8 @@ impl ToolContext {
         // Validate it's under workspace, OR is under a user-trusted external
         // path (`/trust add <path>` from the slash command, persisted in
         // `~/.deepseek/workspace-trust.json`).
-        if !canonical.starts_with(&workspace_canonical)
-            && !canonical.starts_with(&workspace_normalized)
+        if !path_has_prefix(&canonical, &workspace_canonical)
+            && !path_has_prefix(&canonical, &workspace_normalized)
             && !self.is_trusted_external_path(&canonical)
         {
             return Err(ToolError::PathEscape { path: canonical });
@@ -423,7 +423,7 @@ impl ToolContext {
     fn is_trusted_external_path(&self, path: &Path) -> bool {
         self.trusted_external_paths
             .iter()
-            .any(|trusted| path.starts_with(trusted))
+            .any(|trusted| path_has_prefix(path, trusted))
     }
 
     /// Set the trust mode.
@@ -511,6 +511,27 @@ pub async fn lsp_diagnostics_for_paths(context: &ToolContext, paths: &[PathBuf])
     }
 
     render_blocks(&blocks)
+}
+
+/// Compare paths for prefix containment, normalizing Windows `\\?\` verbatim prefixes.
+#[must_use]
+pub fn path_has_prefix(path: &Path, prefix: &Path) -> bool {
+    strip_verbatim_prefix(path).starts_with(&strip_verbatim_prefix(prefix))
+}
+
+#[must_use]
+fn strip_verbatim_prefix(path: &Path) -> PathBuf {
+    let s = path.display().to_string();
+    #[cfg(windows)]
+    {
+        if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+            return PathBuf::from(format!(r"\\{rest}"));
+        }
+        if let Some(rest) = s.strip_prefix(r"\\?\") {
+            return PathBuf::from(rest);
+        }
+    }
+    path.to_path_buf()
 }
 
 fn normalize_path(path: &Path) -> PathBuf {
@@ -700,6 +721,26 @@ mod tests {
         // In trust mode, absolute paths should work
         let result = ctx.resolve_path("/tmp");
         assert!(result.is_ok());
+    }
+
+    /// Skill install dirs under `trusted_external_paths` resolve outside workspace.
+    #[test]
+    fn test_tool_context_trusted_skill_root_allows_skill_md() {
+        let workspace = tempdir().expect("workspace tempdir");
+        let skills_root = workspace.path().join("skills");
+        let skill_md = skills_root.join("demo-skill").join("SKILL.md");
+        std::fs::create_dir_all(skill_md.parent().unwrap()).unwrap();
+        std::fs::write(&skill_md, "---\nname: demo-skill\n---\n").unwrap();
+
+        let trusted_root = skills_root.canonicalize().unwrap();
+        let skill_canon = skill_md.canonicalize().unwrap();
+        let ctx = ToolContext::new(workspace.path().to_path_buf())
+            .with_trusted_external_paths(vec![trusted_root]);
+
+        let resolved = ctx
+            .resolve_path(skill_canon.to_str().unwrap())
+            .expect("skill path under trusted root should resolve");
+        assert!(resolved.ends_with("SKILL.md"));
     }
 
     /// Issue #29: paths under a user-trusted external directory resolve

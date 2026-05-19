@@ -1,7 +1,7 @@
 # DS Pick 工具系统原理
 
 > **文档路径:** `docs/tech/TOOLS_PRINCIPLES.md`（与 [API_DESIGN.md](API_DESIGN.md) 同属 `docs/tech/`）  
-> **DS Pick 壳版本:** 0.2.2 | **最后更新:** 2026-05-18 | **权威实现:** `crates/tui/src/tools/`、`registry.rs`
+> **DS Pick 壳版本:** 0.3.0 | **最后更新:** 2026-05-19 | **权威实现:** `crates/tui/src/tools/`、`registry.rs`
 
 ---
 

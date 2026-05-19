@@ -380,6 +380,18 @@ fn existing_skill_dirs(candidates: impl IntoIterator<Item = PathBuf>) -> Vec<Pat
     out
 }
 
+/// Canonical skill roots for [`ToolContext::trusted_external_paths`].
+///
+/// Lets `read_file` / `list_dir` open `SKILL.md` companions under
+/// `~/.deepseek/skills` (and other discovery dirs) after `load_skill`.
+#[must_use]
+pub fn trusted_skill_roots(workspace: &Path) -> Vec<PathBuf> {
+    skills_directories(workspace)
+        .into_iter()
+        .filter_map(|p| p.canonicalize().ok())
+        .collect()
+}
+
 /// Walk every candidate skills directory for a workspace and merge
 /// the discovered skills into a single registry. Name conflicts are
 /// resolved with first-match-wins precedence per
