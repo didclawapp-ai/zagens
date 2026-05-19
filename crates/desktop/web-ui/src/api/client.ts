@@ -472,6 +472,35 @@ export interface RuntimeThreadRecord {
   model?: string;
   trust_mode?: boolean;
   task_type?: string;
+  scratchpad_run_id?: string | null;
+}
+
+/** `GET /v1/threads/{id}/scratchpad/status` (audit progress, read-only). */
+export interface ScratchpadStatus {
+  run_id?: string;
+  path?: string;
+  areas_total?: number;
+  areas_done?: number;
+  areas_deferred?: number;
+  areas_in_progress?: number;
+  areas_pending?: number;
+  resume_area_id?: string | null;
+  notes_total?: number;
+  findings_verified?: number;
+  findings_open?: number;
+  notes_per_area?: Record<string, number>;
+}
+
+export async function fetchThreadScratchpadStatus(
+  threadId: string,
+): Promise<ScratchpadStatus | null> {
+  const raw = await fetchJson<ScratchpadStatus | null>(
+    `/v1/threads/${encodeURIComponent(threadId)}/scratchpad/status`,
+  );
+  if (raw == null || typeof raw !== 'object' || !('run_id' in raw)) {
+    return null;
+  }
+  return raw;
 }
 
 /** Turn row included in full GET /v1/threads/{id} (ThreadDetail). */

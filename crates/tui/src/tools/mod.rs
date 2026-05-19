@@ -28,6 +28,7 @@ pub mod registry;
 pub mod remember;
 pub mod revert_turn;
 pub mod review;
+pub mod scratchpad;
 pub mod rlm;
 pub mod schema_sanitize;
 pub mod search;

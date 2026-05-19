@@ -44,6 +44,8 @@ impl Engine {
         let mut stream_retry_attempts: u32 = 0;
 
         loop {
+            self.scratchpad_step.reset();
+
             if self.cancel_token.is_cancelled() {
                 let _ = self.tx_event.send(Event::status("Request cancelled")).await;
                 return (TurnOutcomeStatus::Interrupted, None);
@@ -817,7 +819,16 @@ impl Engine {
 
             // If no tool uses, check for inline REPL blocks (paper §2) or
             // finish the turn.
-            if tool_uses.is_empty() {
+            if tool_uses.is_empty() && !self.scratchpad_summary_injected_this_turn {
+                if let Some(summary_msg) = scratchpad_flow::maybe_summary_before_final_answer(
+                    &self.session.workspace,
+                    self.scratchpad_run_id.as_deref(),
+                    &self.config.scratchpad,
+                ) {
+                    self.add_session_message(summary_msg).await;
+                    self.scratchpad_summary_injected_this_turn = true;
+                }
+
                 if !pending_steers.is_empty() {
                     for steer in pending_steers.drain(..) {
                         self.session
@@ -1643,6 +1654,11 @@ impl Engine {
 
                 match outcome.result {
                     Ok(output) => {
+                        scratchpad_flow::record_tool_outcome(
+                            &mut self.scratchpad_step,
+                            &outcome.name,
+                            output.success,
+                        );
                         match loop_guard.record_outcome(&outcome.name, output.success) {
                             OutcomeDecision::Continue => {}
                             OutcomeDecision::Warn(message) => {
@@ -1802,6 +1818,15 @@ impl Engine {
             {
                 turn.next_step();
                 continue;
+            }
+
+            if let Some(reminder) = scratchpad_flow::build_readonly_reminder_message(
+                &self.session.workspace,
+                self.scratchpad_run_id.as_deref(),
+                &self.config.scratchpad,
+                &self.scratchpad_step,
+            ) {
+                self.add_session_message(reminder).await;
             }
 
             turn.next_step();

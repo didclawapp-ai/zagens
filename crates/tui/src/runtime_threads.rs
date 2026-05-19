@@ -115,6 +115,9 @@ pub struct ThreadRecord {
     pub task_type: String,
     #[serde(default)]
     pub coherence_state: CoherenceState,
+    /// Active full-repo audit scratchpad directory name (Phase B).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scratchpad_run_id: Option<String>,
 }
 
 fn default_thread_task_type() -> String {
@@ -687,6 +690,8 @@ pub struct UpdateThreadRequest {
     /// Unloads cached engine entry when changed (disallowed while a turn is in progress).
     #[serde(default)]
     pub workspace: Option<String>,
+    #[serde(default)]
+    pub scratchpad_run_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1011,7 +1016,34 @@ impl RuntimeThreadManager {
             checklist_cache: Arc::new(StdMutex::new(HashMap::new())),
         };
         manager.recover_interrupted_state()?;
+        let active_ids: Vec<String> = manager
+            .store
+            .list_threads()
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|t| t.scratchpad_run_id)
+            .collect();
+        crate::scratchpad::cleanup::cleanup_stale_scratchpads(
+            &manager.workspace,
+            &manager.config.scratchpad_config(),
+            &active_ids,
+        );
         Ok(manager)
+    }
+
+    /// Read-only audit scratchpad progress for a thread (B5).
+    pub fn get_thread_scratchpad_status(
+        &self,
+        thread_id: &str,
+    ) -> Result<Option<serde_json::Value>> {
+        let thread = self.load_thread_sync(thread_id)?;
+        let store = crate::scratchpad::try_open_store(
+            &thread.workspace,
+            thread.scratchpad_run_id.as_deref(),
+            Some(&thread.id),
+            thread.task_id.as_deref(),
+        );
+        Ok(store.and_then(|s| s.build_status().ok()))
     }
 
     /// Return the cached checklist snapshot for a thread (for DS Pick WebView panel).
@@ -1112,6 +1144,7 @@ impl RuntimeThreadManager {
             title: None,
             task_type: task_type.as_str().to_string(),
             coherence_state: CoherenceState::default(),
+            scratchpad_run_id: None,
         };
         {
             let store = self.store.clone();
@@ -1198,6 +1231,7 @@ impl RuntimeThreadManager {
             && req.title.is_none()
             && req.system_prompt.is_none()
             && req.workspace.is_none()
+            && req.scratchpad_run_id.is_none()
         {
             bail!("At least one thread field is required");
         }
@@ -1274,6 +1308,17 @@ impl RuntimeThreadManager {
             if thread.system_prompt != new_sys {
                 thread.system_prompt = new_sys.clone();
                 changes.insert("system_prompt".to_string(), json!(new_sys));
+            }
+        }
+        if let Some(scratchpad_run_id) = req.scratchpad_run_id {
+            let new_id = if scratchpad_run_id.trim().is_empty() {
+                None
+            } else {
+                Some(scratchpad_run_id)
+            };
+            if thread.scratchpad_run_id != new_id {
+                thread.scratchpad_run_id = new_id.clone();
+                changes.insert("scratchpad_run_id".to_string(), json!(new_id));
             }
         }
         if let Some(workspace_raw) = req.workspace.clone() {
@@ -2128,6 +2173,21 @@ impl RuntimeThreadManager {
             .lsp
             .clone()
             .map(crate::config::LspConfigToml::into_runtime);
+        let scratchpad_run_id_slot = std::sync::Arc::new(std::sync::Mutex::new(
+            thread.scratchpad_run_id.clone(),
+        ));
+        let store = self.store.clone();
+        let thread_id_persist = thread.id.clone();
+        let persist_scratchpad: std::sync::Arc<dyn Fn(String) + Send + Sync> =
+            std::sync::Arc::new(move |run_id: String| {
+                if let Ok(mut t) = store.load_thread(&thread_id_persist) {
+                    if t.scratchpad_run_id.as_deref() != Some(run_id.as_str()) {
+                        t.scratchpad_run_id = Some(run_id);
+                        t.updated_at = Utc::now();
+                        let _ = store.save_thread(&t);
+                    }
+                }
+            });
         let engine_cfg = EngineConfig {
             model: thread.model.clone(),
             workspace: thread.workspace.clone(),
@@ -2162,6 +2222,8 @@ impl RuntimeThreadManager {
                 active_thread_id: Some(thread.id.clone()),
                 shell_manager: None,
                 hook_executor: None,
+                scratchpad_run_id: scratchpad_run_id_slot,
+                persist_scratchpad_run_id: Some(persist_scratchpad),
             },
             subagent_model_overrides: self.config.subagent_model_overrides(),
             memory_enabled: self.config.memory_enabled(),
@@ -2176,6 +2238,7 @@ impl RuntimeThreadManager {
             task_type: crate::task_type::TaskType::parse_str(&thread.task_type)
                 .unwrap_or(crate::task_type::TaskType::Code),
             workshop: self.config.workshop.clone(),
+            scratchpad: self.config.scratchpad_config(),
         };
 
         let engine = spawn_engine(engine_cfg, &self.config);
@@ -3582,6 +3645,7 @@ mod tests {
             title: None,
             task_type: default_thread_task_type(),
             coherence_state: CoherenceState::default(),
+            scratchpad_run_id: None,
         }
     }
 
@@ -5097,6 +5161,7 @@ mod tests {
             title: None,
             task_type: default_thread_task_type(),
             coherence_state: CoherenceState::default(),
+            scratchpad_run_id: None,
         };
         manager.store.save_thread(&thread)?;
 

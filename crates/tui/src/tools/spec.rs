@@ -7,7 +7,7 @@
 //! - `ToolCapability`: Capabilities and requirements of tools
 
 use std::path::{Component, Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
 
 use async_trait::async_trait;
 use serde_json::Value;
@@ -30,7 +30,7 @@ pub use deepseek_tools::{
 /// contexts keep working. Tools that need durable task/automation state fail
 /// closed with a clear "not available" error when the relevant service is not
 /// attached.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct RuntimeToolServices {
     pub shell_manager: Option<SharedShellManager>,
     pub task_manager: Option<crate::task_manager::SharedTaskManager>,
@@ -42,6 +42,26 @@ pub struct RuntimeToolServices {
     /// tool-side hook events. `None` outside the live engine — test
     /// contexts that don't care about hooks get a no-op.
     pub hook_executor: Option<std::sync::Arc<crate::hooks::HookExecutor>>,
+    /// Active audit scratchpad `run_id` for the current thread (B2).
+    pub scratchpad_run_id: std::sync::Arc<StdMutex<Option<String>>>,
+    /// Persist `run_id` on the active runtime thread after first scratchpad write.
+    pub persist_scratchpad_run_id: Option<std::sync::Arc<dyn Fn(String) + Send + Sync>>,
+}
+
+impl Default for RuntimeToolServices {
+    fn default() -> Self {
+        Self {
+            shell_manager: None,
+            task_manager: None,
+            automations: None,
+            task_data_dir: None,
+            active_task_id: None,
+            active_thread_id: None,
+            hook_executor: None,
+            scratchpad_run_id: Arc::new(StdMutex::new(None)),
+            persist_scratchpad_run_id: None,
+        }
+    }
 }
 
 impl std::fmt::Debug for RuntimeToolServices {
@@ -54,6 +74,10 @@ impl std::fmt::Debug for RuntimeToolServices {
             .field("active_task_id", &self.active_task_id)
             .field("active_thread_id", &self.active_thread_id)
             .field("hook_executor", &self.hook_executor.is_some())
+            .field(
+                "scratchpad_run_id",
+                &self.scratchpad_run_id.lock().ok().and_then(|g| g.clone()),
+            )
             .finish()
     }
 }

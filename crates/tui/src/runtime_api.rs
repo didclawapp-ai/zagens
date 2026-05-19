@@ -635,6 +635,10 @@ pub fn build_router(state: RuntimeApiState) -> Router {
         .route("/v1/threads/summary", get(list_threads_summary))
         .route("/v1/threads/{id}", get(get_thread).patch(update_thread))
         .route("/v1/threads/{id}/checklist", get(get_thread_checklist))
+        .route(
+            "/v1/threads/{id}/scratchpad/status",
+            get(get_thread_scratchpad_status),
+        )
         .route("/v1/threads/{id}/resume", post(resume_thread))
         .route("/v1/threads/{id}/fork", post(fork_thread))
         .route("/v1/threads/{id}/turns", post(start_thread_turn))
@@ -2474,6 +2478,17 @@ async fn get_thread_checklist(
         }
         None => Ok(Json(Value::Null)),
     }
+}
+
+async fn get_thread_scratchpad_status(
+    State(state): State<RuntimeApiState>,
+    AxumPath(id): AxumPath<String>,
+) -> Result<Json<Value>, ApiError> {
+    let status = state
+        .runtime_threads
+        .get_thread_scratchpad_status(&id)
+        .map_err(map_thread_err)?;
+    Ok(Json(status.unwrap_or(Value::Null)))
 }
 
 async fn list_tasks(

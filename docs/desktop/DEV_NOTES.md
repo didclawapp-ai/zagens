@@ -147,7 +147,7 @@
 | 阶段 | 状态 | 落点 |
 |------|------|------|
 | **Phase A** | ✅ | `.deepseek/pick-rules.md` §7 · `base.md` · skill `audit-repo`；试跑见下 |
-| **Phase B** | 🔶 方案已定 | [audit-scratchpad-design.md §6.2–6.8](desktop/audit-scratchpad-design.md) — 工具/store/注入/桌面进度 |
+| **Phase B** | ✅ | [audit-scratchpad-design.md §6](desktop/audit-scratchpad-design.md) — 工具、注入、提醒、桌面进度、TTL |
 | **Phase C** | ⬜ 排队 | 覆盖率门禁、Auditor、blackboard |
 
 **试跑（2026-05-19）：** 单区 `skills` + 续审 + 多区 `tui/src`（14 area）**✅** → [audit-scratchpad-test.md](desktop/audit-scratchpad-test.md)（`2026-05-19-skills-review` / `2026-05-19-tui-src-review`）。

@@ -1,7 +1,7 @@
-# Audit Scratchpad — Phase A 试跑记录
+# Audit Scratchpad — 试跑记录（Phase A + B）
 
 > **设计：** [audit-scratchpad-design.md](audit-scratchpad-design.md)  
-> **环境：** DS Pick 桌面端（安装包已含 Phase A：`pick-rules` §7、`base.md`、`audit-repo` skill）  
+> **环境：** DS Pick 桌面端（Phase A：`pick-rules` §7、`base.md`、`audit-repo`；Phase B：`scratchpad_*` 工具 + `AuditScratchpadBar`）  
 > **日期：** 2026-05-19
 
 ---
@@ -13,8 +13,12 @@
 | 冒烟 — `crates/tui/src/skills` | ✅ 通过 | `2026-05-19-skills-review` |
 | 续审 — 同 scratchpad | ✅ 通过 | 同上 |
 | 多区 — `crates/tui/src/`（14 area，252 `.rs`） | ✅ 通过 | `2026-05-19-tui-src-review` |
+| **Phase B 冒烟** — `scratchpad_*` 工具 + 横条 | ✅ 通过 | `2026-05-19-phase-b-smoke` |
+| **Phase B 门禁** — `valid_area_ids` / `require_min_notes` | ✅ 通过 | 同上 |
+| **Phase B 续审** — `status` + `list_notes` | ✅ 通过 | 同上 |
+| **Phase B 合成** — 6 active findings + `supersedes` | ✅ 通过 | 同上 |
 
-**结论：** Phase A 在单区与多区场景下可用；长程「落盘纪律」已验证。**Phase B 实施方案**见 [audit-scratchpad-design.md §6](audit-scratchpad-design.md#6-实现路线分三期)（已按试跑数据更新）。
+**结论：** Phase A 在单区与多区场景下可用；长程「落盘纪律」已验证。Phase B（工具、门禁、续审、P2 合成、桌面横条）在 `2026-05-19-phase-b-smoke` 上验收通过；测试 5/6（多区压测、B4 只读提醒）未跑，可后续补。
 
 ---
 
@@ -208,17 +212,30 @@ notes 只读该 area_id 的行，不要读 notes 文件尾部。run_id 是：202
 
 ---
 
-## 5. Phase B 决策摘要（2026-05-19）
+## 5. Phase B 试跑（2026-05-19）
 
-**第一批实施（B1 PR）：** 见 [design §6.3–6.5](audit-scratchpad-design.md) — 含 `area_id` 存在性校验、`require_min_notes`、`supersedes` 传递闭包、Phase A JSONL 兼容读、并发锁。
+**run_id：** `2026-05-19-phase-b-smoke` · **范围：** `crates/tui/src/skills`（1 area + 门禁用 `area-gate-test`）
 
-**第二批：** 分层注入、提醒、桌面进度、scratchpad TTL（§6.10 B7）。
+| 测试 | 要点 | 结果 |
+|------|------|------|
+| 1 冒烟 | 四工具调用；横条 1/1；`note-008`/`009` supersede 行号 | ✅ |
+| 2 门禁 | 非法 `area_id` → `valid_area_ids`；0 notes 不能 `done` | ✅ |
+| 3 续审 | `scratchpad_status` + `list_notes(area-skills)`，未读 jsonl 全文 | ✅ |
+| 4 合成 | 报告 6 条 active finding；prompt 含 synthesize/报告 | ✅ |
+
+**未跑（可选）：** 测试 5 多区横条进度；测试 6 B4 `remind_after_readonly_tools`。
+
+---
+
+## 6. Phase B/C 决策摘要
+
+**Phase B（已实施）：** 见 [design §6](audit-scratchpad-design.md) — `scratchpad_*` 工具、B2 线程绑定、B3/B3b 注入与 handoff、B4 提醒、B5 API + 横条、B7 TTL；`supersedes` 传递闭包、每轮单次 `<scratchpad_summary>`。
 
 **延后 Phase C：** 覆盖率硬拦、blackboard 分区、Auditor 绑定。
 
 ---
 
-## 6. 复现用 Prompt 清单
+## 7. 复现用 Prompt 清单
 
 见 [audit-scratchpad-design.md §12](audit-scratchpad-design.md#12-附录phase-a-skill-片段可直接粘贴试跑)、§15（多区）。
 

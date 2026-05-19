@@ -828,6 +828,10 @@ pub struct Config {
     /// default threshold of 4 096 tokens applies and routing is active.
     #[serde(default)]
     pub workshop: Option<crate::tools::large_output_router::WorkshopConfig>,
+
+    /// Full-repo audit scratchpad tools and engine hooks (Phase B).
+    #[serde(default)]
+    pub scratchpad: Option<crate::scratchpad::ScratchpadConfigToml>,
 }
 
 /// `[runtime_api]` table — knobs for the local HTTP/SSE daemon.
@@ -1550,6 +1554,15 @@ impl Config {
     #[must_use]
     pub fn snapshots_config(&self) -> SnapshotsConfig {
         self.snapshots.clone().unwrap_or_default()
+    }
+
+    /// Audit scratchpad runtime settings (Phase B).
+    #[must_use]
+    pub fn scratchpad_config(&self) -> crate::scratchpad::ScratchpadConfig {
+        self.scratchpad
+            .clone()
+            .map(crate::scratchpad::ScratchpadConfigToml::into_runtime)
+            .unwrap_or_default()
     }
 
     /// Resolve enabled features from defaults and config entries.
@@ -2373,6 +2386,7 @@ fn merge_config(base: Config, override_cfg: Config) -> Config {
         strict_tool_mode: override_cfg.strict_tool_mode.or(base.strict_tool_mode),
         runtime_api: override_cfg.runtime_api.or(base.runtime_api),
         workshop: override_cfg.workshop.or(base.workshop),
+        scratchpad: override_cfg.scratchpad.or(base.scratchpad),
     }
 }
 

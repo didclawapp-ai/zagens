@@ -546,6 +546,19 @@ impl ToolRegistryBuilder {
         self.with_tool(Arc::new(ProjectMapTool))
     }
 
+    /// Include audit scratchpad tools (full-repo review external memory).
+    #[must_use]
+    pub fn with_scratchpad_tools(self) -> Self {
+        use super::scratchpad::{
+            ScratchpadAppendTool, ScratchpadListNotesTool, ScratchpadSetAreaTool,
+            ScratchpadStatusTool,
+        };
+        self.with_tool(Arc::new(ScratchpadStatusTool))
+            .with_tool(Arc::new(ScratchpadAppendTool))
+            .with_tool(Arc::new(ScratchpadListNotesTool))
+            .with_tool(Arc::new(ScratchpadSetAreaTool))
+    }
+
     /// Include cargo test runner tool.
     #[must_use]
     pub fn with_test_runner_tool(self) -> Self {

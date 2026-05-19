@@ -56,6 +56,7 @@ mod runtime_api;
 mod runtime_threads;
 mod sandbox;
 mod schema_migration;
+mod scratchpad;
 mod seam_manager;
 mod session_manager;
 mod session_store_sqlite;
@@ -4137,6 +4138,7 @@ async fn run_exec_agent(
         .to_string(),
         task_type: crate::task_type::TaskType::Code,
         workshop: config.workshop.clone(),
+        scratchpad: config.scratchpad_config(),
     };
 
     let engine_handle = spawn_engine(engine_config, config);

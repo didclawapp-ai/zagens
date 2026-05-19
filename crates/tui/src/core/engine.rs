@@ -155,6 +155,8 @@ pub struct EngineConfig {
     pub task_type: crate::task_type::TaskType,
     /// Workshop / large-tool-output routing (#548). `None` disables routing.
     pub workshop: Option<crate::tools::large_output_router::WorkshopConfig>,
+    /// Audit scratchpad engine hooks (Phase B).
+    pub scratchpad: crate::scratchpad::ScratchpadConfig,
 }
 
 impl Default for EngineConfig {
@@ -189,6 +191,7 @@ impl Default for EngineConfig {
             locale_tag: "en".to_string(),
             task_type: crate::task_type::TaskType::default(),
             workshop: None,
+            scratchpad: crate::scratchpad::ScratchpadConfig::default(),
         }
     }
 }
@@ -346,6 +349,12 @@ pub struct Engine {
     /// Diagnostics collected during the current step's tool calls. Drained
     /// and forwarded as a synthetic user message before the next API call.
     pending_lsp_blocks: Vec<crate::lsp::DiagnosticBlock>,
+    /// Per-step audit scratchpad nudge counters (B4).
+    scratchpad_step: scratchpad_flow::ScratchpadStepState,
+    /// Bound scratchpad run for this session/thread (B2).
+    scratchpad_run_id: Option<String>,
+    /// Avoid injecting `<scratchpad_summary>` twice in one turn (B3).
+    scratchpad_summary_injected_this_turn: bool,
 }
 
 // === Internal tool helpers ===
@@ -526,6 +535,13 @@ impl Engine {
             })
             .map(std::sync::Arc::from);
 
+        let scratchpad_run_id = config
+            .runtime_services
+            .scratchpad_run_id
+            .lock()
+            .ok()
+            .and_then(|g| g.clone());
+
         let mut engine = Engine {
             config,
             deepseek_client,
@@ -553,6 +569,9 @@ impl Engine {
             pending_lsp_blocks: Vec::new(),
             workshop_vars,
             sandbox_backend,
+            scratchpad_step: scratchpad_flow::ScratchpadStepState::default(),
+            scratchpad_run_id,
+            scratchpad_summary_injected_this_turn: false,
         };
         engine.rehydrate_latest_canonical_state();
 
@@ -859,6 +878,8 @@ impl Engine {
         let mut turn = TurnContext::new(self.config.max_steps);
         self.turn_counter = self.turn_counter.saturating_add(1);
         self.capacity_controller.mark_turn_start(self.turn_counter);
+        self.scratchpad_step.reset();
+        self.scratchpad_summary_injected_this_turn = false;
 
         // Snapshot the workspace BEFORE we touch a single tool. Run the git
         // work on the blocking pool so the async runtime stays responsive;
@@ -911,6 +932,9 @@ impl Engine {
             .observe_user_message(&content, &self.session.workspace);
         let force_update_plan_first = should_force_update_plan_first(mode, &content);
 
+        let inject_report_summary = self.config.scratchpad.enabled
+            && scratchpad_flow::user_prompt_triggers_report_summary(&content, &self.config.scratchpad);
+
         // Add user message to session
         let user_msg = Message {
             role: "user".to_string(),
@@ -920,6 +944,17 @@ impl Engine {
             }],
         };
         self.session.add_message(user_msg);
+
+        if inject_report_summary && !self.scratchpad_summary_injected_this_turn {
+            if let Some(summary_msg) = scratchpad_flow::build_report_summary_message(
+                &self.session.workspace,
+                self.scratchpad_run_id.as_deref(),
+                &self.config.scratchpad,
+            ) {
+                self.session.add_message(summary_msg);
+                self.scratchpad_summary_injected_this_turn = true;
+            }
+        }
 
         self.session.model = model;
         self.config.model.clone_from(&self.session.model);
@@ -1801,7 +1836,16 @@ impl Engine {
             Some(&self.subagent_manager),
         )
         .await;
-        let state_block = state.to_system_block();
+        let mut state_block = state.to_system_block();
+        if let Some(line) = scratchpad_flow::scratchpad_handoff_line(
+            &self.session.workspace,
+            self.scratchpad_run_id.as_deref(),
+        ) {
+            state_block = Some(match state_block {
+                Some(existing) => format!("{existing}\n\n{line}"),
+                None => line,
+            });
+        }
 
         // 4. Build the seed messages. The next cycle starts with the
         //    base system prompt (refreshed below) and these seeds.
@@ -2005,6 +2049,7 @@ mod streaming;
 mod tool_catalog;
 mod tool_execution;
 mod tool_setup;
+mod scratchpad_flow;
 mod turn_loop;
 
 use self::approval::{ApprovalDecision, ApprovalResult, UserInputDecision};

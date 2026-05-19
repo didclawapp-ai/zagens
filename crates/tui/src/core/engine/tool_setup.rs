@@ -62,6 +62,10 @@ impl Engine {
             builder = builder.with_remember_tool();
         }
 
+        if self.config.task_type != TaskType::Office && mode != AppMode::Plan {
+            builder = builder.with_scratchpad_tools();
+        }
+
         builder
     }
 }

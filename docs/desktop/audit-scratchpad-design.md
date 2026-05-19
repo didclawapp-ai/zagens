@@ -1,6 +1,6 @@
 # 审计工作记忆（Audit Scratchpad）方案草稿
 
-> **状态：** Phase A ✅ 已落地并试跑（见 [audit-scratchpad-test.md](audit-scratchpad-test.md)）；**Phase B 实施方案见 §6.2**；Phase C 排队  
+> **状态：** Phase A ✅ · **Phase B ✅**（见 [audit-scratchpad-test.md](audit-scratchpad-test.md)）；Phase C 排队  
 > **范围：** DS Pick / TUI 共用 runtime；面向**长程、全库级代码审查**与同类「多步探索 → 最终报告」任务。  
 > **相关：** [agent-reliability-craft-plan.md](../agent-reliability-craft-plan.md)、[auditor-subagent-design.md](auditor-subagent-design.md)、`crates/tui/src/tools/subagent/blackboard.rs`、`crates/tui/src/prompts/base.md` § Full-repository code review mode。
 
@@ -254,7 +254,7 @@ sidecar / 进程重启后，外存仍在 workspace；续审上下文 = **invento
 
 ---
 
-### Phase B — 实施方案（🔶 下一版，可落地）
+### Phase B — 实施方案（✅ 已落地）
 
 **依据：** [audit-scratchpad-test.md](audit-scratchpad-test.md) 多区试跑（`2026-05-19-tui-src-review`，14 area / 36 notes）。  
 **目标：** 把 Phase A 的「靠 prompt 自律」升级为 **runtime 保证 schema、可见进度、P2 可扩展、长会话不丢指针**。
@@ -288,13 +288,13 @@ sidecar / 进程重启后，外存仍在 workspace；续审上下文 = **invento
 
 | 里程碑 | 交付 | 预估 | 依赖 |
 |--------|------|------|------|
-| **B1** | `scratchpad_*` 四工具 + Store 核心校验 + 注册 Code 面 | 2–3d | — |
-| **B2** | run_id/thread 绑定 + 并发锁 + Phase A 兼容读 | 1d | B1 |
-| **B3** | Engine：分层摘要注入 + compact handoff 指针 | 1–2d | B2 |
-| **B4** | Engine：只读无写入轻提醒（可配置关闭） | 1d | B2 |
-| **B5** | 桌面审查进度面板 + thread 绑定 run_id | 2d | B2 |
-| **B6** | `audit-repo` skill / pick-rules 收紧 + 文档 | 0.5d | B1 |
-| **B7** | scratchpad 目录清理策略（文档 + 可选 TTL） | 0.5d | B2 |
+| **B1** | `scratchpad_*` 四工具 + Store 核心校验 + 注册 Code 面 | ✅ | — |
+| **B2** | run_id/thread 绑定 + 并发锁 + Phase A 兼容读 | ✅ | B1 |
+| **B3** | Engine：分层摘要注入 + compact handoff 指针 | ✅ | B2 |
+| **B4** | Engine：只读无写入轻提醒（可配置关闭） | ✅ | B2 |
+| **B5** | 桌面审查进度面板 + thread 绑定 run_id | ✅ | B2 |
+| **B6** | `audit-repo` skill / pick-rules 收紧 + 文档 | ✅ | B1 |
+| **B7** | scratchpad 目录清理策略（文档 + 可选 TTL） | ✅ | B2 |
 
 建议 **B1→B2→B3** 先合入一条 PR；**B4–B7** 可跟第二条 PR。
 

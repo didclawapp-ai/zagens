@@ -18,6 +18,18 @@ use crate::runtime_threads::{
 
 const CURRENT_META_VERSION: u32 = 1;
 
+fn ensure_threads_scratchpad_run_id_column(db: &Connection) -> anyhow::Result<()> {
+    let mut stmt = db.prepare("PRAGMA table_info(threads)")?;
+    let has_col = stmt
+        .query_map([], |row| row.get::<_, String>(1))?
+        .filter_map(|r| r.ok())
+        .any(|name| name == "scratchpad_run_id");
+    if !has_col {
+        db.execute("ALTER TABLE threads ADD COLUMN scratchpad_run_id TEXT", [])?;
+    }
+    Ok(())
+}
+
 fn ensure_threads_task_type_column(db: &Connection) -> anyhow::Result<()> {
     let mut stmt = db.prepare("PRAGMA table_info(threads)")?;
     let has_col = stmt
@@ -109,6 +121,7 @@ pub fn open_sqlite_thread_db(
     )
     .context("Failed to create runtime tables")?;
     ensure_threads_task_type_column(&db)?;
+    ensure_threads_scratchpad_run_id_column(&db)?;
 
     let needs_migration: bool = db
         .query_row(
@@ -343,6 +356,7 @@ fn thread_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ThreadRec
     let workspace: String = row.get(4)?;
     let coherence_json: String = row.get(15)?;
     let task_type: String = row.get(16).unwrap_or_else(|_| "code".to_string());
+    let scratchpad_run_id: Option<String> = row.get(17).ok();
     Ok(ThreadRecord {
         schema_version: 2,
         id: row.get(0)?,
@@ -362,6 +376,7 @@ fn thread_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ThreadRec
         title: row.get(14)?,
         task_type,
         coherence_state: serde_json::from_str(&coherence_json).unwrap_or_default(),
+        scratchpad_run_id,
     })
 }
 
@@ -371,8 +386,8 @@ pub fn save_thread_sqlite(db: &Connection, thread: &ThreadRecord) -> anyhow::Res
     let coherence_json = serde_json::to_string(&thread.coherence_state).unwrap_or_default();
     db.execute(
         "INSERT OR REPLACE INTO threads
-         (id, created_at, updated_at, model, workspace, mode, allow_shell, trust_mode, auto_approve, latest_turn_id, latest_response_bookmark, archived, system_prompt, task_id, title, coherence_state_json, task_type)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17)",
+         (id, created_at, updated_at, model, workspace, mode, allow_shell, trust_mode, auto_approve, latest_turn_id, latest_response_bookmark, archived, system_prompt, task_id, title, coherence_state_json, task_type, scratchpad_run_id)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18)",
         params![
             thread.id,
             thread.created_at.to_rfc3339(),
@@ -391,6 +406,7 @@ pub fn save_thread_sqlite(db: &Connection, thread: &ThreadRecord) -> anyhow::Res
             thread.title,
             coherence_json,
             thread.task_type,
+            thread.scratchpad_run_id,
         ],
     )?;
     Ok(())
@@ -398,7 +414,7 @@ pub fn save_thread_sqlite(db: &Connection, thread: &ThreadRecord) -> anyhow::Res
 
 pub fn load_thread_sqlite(db: &Connection, thread_id: &str) -> anyhow::Result<ThreadRecord> {
     db.query_row(
-        "SELECT id, created_at, updated_at, model, workspace, mode, allow_shell, trust_mode, auto_approve, latest_turn_id, latest_response_bookmark, archived, system_prompt, task_id, title, coherence_state_json, task_type FROM threads WHERE id = ?1",
+        "SELECT id, created_at, updated_at, model, workspace, mode, allow_shell, trust_mode, auto_approve, latest_turn_id, latest_response_bookmark, archived, system_prompt, task_id, title, coherence_state_json, task_type, scratchpad_run_id FROM threads WHERE id = ?1",
         params![thread_id],
         |row| thread_record_from_row(row),
     )
@@ -407,7 +423,7 @@ pub fn load_thread_sqlite(db: &Connection, thread_id: &str) -> anyhow::Result<Th
 
 pub fn list_threads_sqlite(db: &Connection) -> anyhow::Result<Vec<ThreadRecord>> {
     let mut stmt = db.prepare(
-        "SELECT id, created_at, updated_at, model, workspace, mode, allow_shell, trust_mode, auto_approve, latest_turn_id, latest_response_bookmark, archived, system_prompt, task_id, title, coherence_state_json, task_type FROM threads ORDER BY updated_at DESC",
+        "SELECT id, created_at, updated_at, model, workspace, mode, allow_shell, trust_mode, auto_approve, latest_turn_id, latest_response_bookmark, archived, system_prompt, task_id, title, coherence_state_json, task_type, scratchpad_run_id FROM threads ORDER BY updated_at DESC",
     )?;
     let threads = stmt
         .query_map([], thread_record_from_row)?

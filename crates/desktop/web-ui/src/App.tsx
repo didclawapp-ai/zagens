@@ -25,6 +25,7 @@ import {
 import { useT } from './i18n';
 import { normalizeDesktopStreamEvent, type NormalizedStreamEvent, type TurnUsage } from './api/streamNormalize';
 import ChatView from './components/ChatView';
+import AuditScratchpadBar from './components/AuditScratchpadBar';
 import Composer, { type ComposerOutboundMessage } from './components/Composer';
 import Sidebar from './components/Sidebar';
 import ApprovalDialog from './components/ApprovalDialog';
@@ -1492,6 +1493,7 @@ export default function App() {
             handleSend({ displayContent: content, apiPrompt: content })
           }
         />
+        <AuditScratchpadBar threadId={resumedThreadId} />
         <Composer
           onSend={handleSend}
           onCancel={handleCancelStream}

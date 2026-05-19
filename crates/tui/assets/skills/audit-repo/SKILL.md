@@ -28,7 +28,7 @@ Reasoning is ephemeral. Durable facts live only under:
 2. else `task_id` if using CRAFT `agent_spawn`
 3. else UTC folder name `YYYY-MM-DD-HHmmss`
 
-Phase B will assign paths via tools; until then you create the directory with `write_file`.
+**Phase B tools (required when available):** `scratchpad_status`, `scratchpad_append`, `scratchpad_list_notes`, `scratchpad_set_area`. Pass `run_id` or rely on `thread_id` / bound `scratchpad_run_id`. **Order:** append ≥1 note, then `scratchpad_set_area(done)` (runtime rejects `done` with zero notes). `write_file` is **fallback only**.
 
 ## Resume (if folder already exists)
 
@@ -73,7 +73,7 @@ For each inventory row (in order unless resuming):
 
 1. Set row `status` → `in_progress`.
 2. **Batch-read** files under `path` (parallel `read_file` / `grep_files` OK).
-3. When **check is complete** for that row (not after every single read), **first** append **≥1** line to `notes.jsonl` (`area_id` must match an `inventory.json` row), **then** set row `done` or `deferred`. Never `done` with zero notes for that area.
+3. When **check is complete** for that row (not after every single read), **first** `scratchpad_append` (≥1 line; `area_id` must match inventory), **then** `scratchpad_set_area` with `status=done` (runtime rejects `done` if the area has fewer than `require_min_notes`, default 1).
 
 **Soft rule:** Finish the current area before starting the next. No hard cross-area read-count limit in Phase A.
 

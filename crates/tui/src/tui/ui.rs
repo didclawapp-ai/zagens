@@ -385,6 +385,7 @@ pub async fn run_tui(config: &Config, options: TuiOptions) -> Result<()> {
         // #456: plumb the App's HookExecutor so `exec_shell` can surface
         // the configured `shell_env` hooks. Wrapped in Arc once and shared.
         hook_executor: Some(std::sync::Arc::new(app.hooks.clone())),
+        ..RuntimeToolServices::default()
     };
     refresh_active_task_panel(&mut app, &task_manager).await;
 
@@ -578,6 +579,7 @@ fn build_engine_config(app: &App, config: &Config) -> EngineConfig {
         locale_tag: app.ui_locale.tag().to_string(),
         task_type: crate::task_type::TaskType::Code,
         workshop: config.workshop.clone(),
+        scratchpad: config.scratchpad_config(),
     }
 }
 
