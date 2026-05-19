@@ -570,6 +570,7 @@ default_text_model = "deepseek-ai/deepseek-v4-pro"
 # coverage_soft_ratio = 0.85
 # coverage_hard_ratio = 0.60
 # coverage_hard_block_enabled = true
-# coverage_count_deferred_as_accounted = true
+# coverage_count_deferred_as_accounted = true   # deferred only if meta quality gate passes (§6.12.4)
+# require_deferred_meta = true                  # set_area(deferred) requires kind=meta reason
 # auditor_from_scratchpad = true
-# auditor_include_medium_min = 3
+# auditor_include_medium_min = 3              # 1-2 MEDIUM skip Auditor track A; parent must self-verify

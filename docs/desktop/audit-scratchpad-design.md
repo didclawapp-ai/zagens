@@ -395,7 +395,7 @@ crates/tui/src/
 
 - **Prompt（Phase A/B）：** 默认 **先 `scratchpad_append`（≥1 条）再 `scratchpad_set_area(done)`**
 - **Runtime（B1）：** 当 `status` 为 `done` 且 `require_min_notes` ≥ 1（默认 **1**）时，若该区在 `notes.jsonl` 中条目数 &lt; N → **reject**，提示先 append
-- `deferred` 须在随后 `scratchpad_append` 写 `kind=meta` 或 finding 说明原因（软校验 + 文档）
+- `deferred`：Phase B 为软校验 + 文档；**Phase C1** 硬化为 runtime reject（须 `kind=meta` 说明原因，§6.12.4）
 
 **Prompt 迁移：** `audit-repo` skill 改为优先调用上述工具；`write_file` 整文件写 scratchpad 降为 fallback。
 
@@ -525,8 +525,8 @@ Phase C 拟新增字段见 **§6.12.7**（实现前勿依赖）。
 |---|------|
 | 1 | **单一事实源** — `inventory.json` + `notes.jsonl` 为准；blackboard / compaction 只存指针与统计，不复制全文 finding |
 | 2 | **门禁分两层** — **area 完成率**（首版必做）；**file 级覆盖率**（`git ls-files` vs `areas[].path`，成本高，放 C4） |
-| 3 | **`deferred` 语义** — 计入 **已交代**（`accounted`），不计入 **已审**（`reviewed`）；报告 L0 必须列出 deferred 区及原因 |
-| 4 | **Auditor 吃结构化 note 列表** — 以 `note_id` + `file:line` 为键；父代理 prose 报告仅作说明，核查以 scratchpad 为准 |
+| 3 | **`deferred` 语义** — 仅当区内有 **defer 原因**（`kind=meta`，见 §6.12.4）才计入 `accounted`；不计入 `reviewed`；P2 L0 必须列出 deferred 区及原因摘录 |
+| 4 | **Auditor 双向核对** — 主输入为 scratchpad `note_id` 列表；另核查 prose 草稿中 HIGH/MEDIUM 是否均有对应 `note_id`（`UNVERIFIED_CLAIM`，§6.12.5） |
 | 5 | **子代理不写 scratchpad 文件** — explore 只写 blackboard（§10 #3）；C3 为 **镜像分区**，非双写 |
 | 6 | **可配置、可关** — 阈值与 `hard_block` 进 `[scratchpad]`，避免个人项目被硬拦死 |
 
@@ -539,7 +539,7 @@ C0 Compaction 指针  →  C1 覆盖率门禁  →  C2 Auditor 结构化  →  C
 
 | 子阶段 | 能力 | 主要改动位置 | 优先级 |
 |--------|------|----------------|--------|
-| **C0** | Compaction / capacity refresh **保留** scratchpad 路径 + L0 摘要 | `capacity_flow.rs`、`engine.rs`（衔接已有 `scratchpad_handoff_line` / B3b） | **高** |
+| **C0** | Compaction **pin** 路径 + **L0-only** 一行（非全文分层摘要） | `capacity_flow.rs`、`scratchpad/summary.rs`（`build_l0_status_line`） | **高** |
 | **C1** | P2 前 **覆盖率门禁**（软/硬） | `scratchpad_flow.rs`（`coverage_gate`）、`engine.rs`（报告关键词 + `maybe_summary_before_final_answer` 前） | **高** |
 | **C2** | **Auditor ← scratchpad** 结构化输入与 `note_id` 核查闭环 | spawn 路径、`AUDITOR_AGENT_PROMPT`、`summary.rs` 导出 finding 列表 | **高** |
 | **C3** | Blackboard 分区 **`scratchpad`**（统计镜像） | `blackboard.rs`；主代理在 status 变更或 P2 前写一次 | 中（常做 CRAFT+全库审查时） |
@@ -552,9 +552,15 @@ C0 Compaction 指针  →  C1 覆盖率门禁  →  C2 Auditor 结构化  →  C
 **行为：**
 
 - 当 `thread.scratchpad_run_id` 存在：将 `.deepseek/scratchpad/{run_id}/` 加入 compaction **pins** / `top_paths`（与现有 workspace 读路径安全一致）。
-- `merge_compaction_summary` 时若 store 可读：追加 **L0 一行**（复用 `build_layered_summary` 的 inventory 头），避免 compact 后只剩模糊 handoff。
+- `merge_compaction_summary` 时若 store 可读：追加 **L0-only** 一行 — **禁止**塞入 `build_layered_summary` 全文（L1/L2 可达数千字，会撑爆 compact 摘要）。
 
-**验收：** 人工触发 compact 后，下一轮 `scratchpad_status` 与续审 prompt 仍指向同一 `run_id`。
+**L0-only 格式（实现：`scratchpad::summary::build_l0_status_line`，与 P2 注入的 L0 同源、无 L1/L2）：**
+
+```text
+[scratchpad L0] run_id=2026-05-19-tui-src-review areas 12/14 done (86%), 2 deferred, resume_area_id=area-tools-io; verified_findings=28
+```
+
+**验收：** 人工触发 compact 后，下一轮 `scratchpad_status` 与续审 prompt 仍指向同一 `run_id`；compact 摘要中 **无** 逐条 finding 列表。
 
 #### 6.12.4 C1 — 覆盖率门禁
 
@@ -564,23 +570,51 @@ C0 Compaction 指针  →  C1 覆盖率门禁  →  C2 Auditor 结构化  →  C
 
 | 指标 | 公式 | 用途 |
 |------|------|------|
-| `accounted_ratio` | `(areas_done + areas_deferred) / areas_total` | 能否进入 P2（软/硬拦） |
-| `reviewed_ratio` | `areas_done / areas_total` | 报告「完整度」、桌面横条副标题（可选） |
+| `areas_accounted` | 满足 **区质量门**（下表）的 `done` + `deferred` 行数 | 分子；防止「全 deferred 无 note」冒充完成 |
+| `accounted_ratio` | `areas_accounted / areas_total` | 能否进入 P2（软/硬拦） |
+| `reviewed_ratio` | `areas_done` 且通过 **done 质量门** / `areas_total` | 报告「完整度」、桌面横条副标题（可选） |
 | `pending_areas` | `status ∈ {pending, in_progress}` 的 `areas[].id` | 注入续审列表 |
+
+**区质量门（C1，P2 准入用；与 B1 分工见下）：**
+
+| `inventory` 状态 | 计入 `accounted` 条件 |
+|------------------|------------------------|
+| `done` | 该区 ≥1 条 `kind ∈ {finding, cleared}`（任意 `status`） |
+| `deferred` | 该区 ≥1 条 `kind=meta`，且 `claim` 含明确 defer 原因（实现可要求 `status=verified`） |
+| `pending` / `in_progress` | 不计入 |
+
+**`scratchpad_set_area(deferred)`（C1 硬化 §6.5）：** 除 B1 `require_min_notes`（区 notes 总数 ≥1）外，**必须**已有或紧接 append 一条 `kind=meta` 说明 defer 原因；否则 **reject**（与 `done` 对称，禁止空 deferred）。
+
+**C1 质量门 vs B1 `require_min_notes`（职责边界）：**
+
+| 检查 | 时机 | 职责 |
+|------|------|------|
+| **C1 `area_quality_ok`** | `coverage_gate`（P2 / 注入摘要前） | **P2 准入**：done 须有 finding/cleared；deferred 须有 meta 原因 |
+| **B1 `require_min_notes`** | `scratchpad_set_area(done\|deferred)` | **区收口**：防止 0 条 note 就改状态；错误文案指向先 `scratchpad_append` |
+
+实现顺序建议：**先**在 `set_area` 路径满足 B1，**再**在 `coverage_gate` 用 C1 过滤；二者错误信息须区分（`require_min_notes` vs `area quality: deferred requires kind=meta`）。
 
 **默认阈值（可配置）：**
 
 | 条件 | 行为 |
 |------|------|
-| `accounted_ratio` &lt; **0.85** | **Soft：** 注入 user 消息，列出 `pending_areas`，要求续审或显式 `scratchpad_set_area(deferred)` + 原因 |
-| `accounted_ratio` &lt; **0.60** 且 `coverage_hard_block_enabled` | **Hard：** **不注入** `<scratchpad_summary>`；固定 system/user 文案说明缺口 |
-| `accounted_ratio` ≥ 0.85 且 `reviewed_ratio` &lt; **0.70** | **允许** P2，但 L0 强制 `deferred_areas: [...]` |
+| `accounted_ratio` &lt; **0.85** | **Soft：** 注入 **一条 user 消息**，包在 `<scratchpad_summary>` 内（与 B3 同风格），L0 后追加 WARNING（见下） |
+| `accounted_ratio` &lt; **0.60** 且 `coverage_hard_block_enabled` | **Hard：** **不注入** 完整 P2 分层摘要；仅允许 L0 + 缺口说明 |
+| `reviewed_ratio` &lt; **0.70** 且 `accounted_ratio` ≥ 0.85 | **允许** P2，但 L0 **必须**含 `deferred_areas: [{id, reason_excerpt}, …]` |
+
+**Soft warn 注入格式（复用 B3，非独立 system 块）：**
+
+```text
+<scratchpad_summary run_id="...">
+[L0] areas 3/10 accounted (30%), 7 pending; resume_area_id=area-tools-io; verified_findings=12
+WARNING: 7 areas pending — continue review or scratchpad_set_area(deferred) with kind=meta reason.
+pending_area_ids: ["area-a", "area-b", ...]
+</scratchpad_summary>
+```
 
 **挂钩点：** 与 B3 相同 — 用户消息命中 `inject_on_report_keywords` 时（`engine.rs`）；以及无工具终稿前（`maybe_summary_before_final_answer`）。
 
-**API 草案：** `scratchpad_flow::coverage_gate(store, config) -> Allow | Warn { pending, ratios } | Block { reason }`。
-
-**C1 可选质量门（低成本）：** 除现有 `require_min_notes` 外，标 `done` 的 area 至少 1 条 `kind ∈ {finding, cleared}`（`deferred` 区除外），防止「空 done」。
+**API 草案：** `scratchpad_flow::coverage_gate(store, config) -> Allow | Warn { pending, ratios, message } | Block { reason }`。
 
 **首版不做：** `git ls-files` 与 `areas[].path` 的 file 级 diff（→ C4）。
 
@@ -595,20 +629,26 @@ C0 Compaction 指针  →  C1 覆盖率门禁  →  C2 Auditor 结构化  →  C
    - 按 `base.md` 阈值：**HIGH/BLOCKER 强制**；MEDIUM 当条数 ≥ `auditor_include_medium_min`（默认 3）时强制；  
    - 固定表格：`note_id | severity | file:line[-line_end] | title | claim`（JSON 数组亦可）。
 
-2. **扩展 `AUDITOR_AGENT_PROMPT`**  
-   - 以 **`note_id`** 为主键逐条 `read_file`；FAIL 必须引用 `note_id`；  
-   - 父代理修正：**仅** `scratchpad_append` + `supersedes`，禁止改旧 JSONL 行；  
+2. **扩展 `AUDITOR_AGENT_PROMPT`** — **两条核查轨**  
+   - **轨 A（scratchpad 机械核对）：** 以 **`note_id`** 为主键逐条 `read_file` cited range；FAIL 必须引用 `note_id`；父代理修正仅 `scratchpad_append` + `supersedes`。  
+   - **轨 B（prose ↔ scratchpad 一致性）：** 父代理仍会写面向用户的 prose 报告。Assignment 同时附上 prose 草稿（或 HIGH/MEDIUM 摘录）。Auditor 检查：草稿中每条声称的 **HIGH/MEDIUM** 是否在 scratchpad verified 列表中有对应 `note_id`；若无 → `UNVERIFIED_CLAIM`（FAIL 项，不新增 finding）。  
    - Auditor **禁止**新增 finding（保持现有约束）。
 
-3. **可选 spawn 参数：** `scratchpad_run_id` 或 `audit_note_ids: ["note-008", …]`，runtime 自动拼 prompt。
+3. **MEDIUM 条数 &lt; `auditor_include_medium_min`（默认 3）时的 gap（须写进 prompt / `base.md`）：**  
+   - 这些 MEDIUM **不**进入 Auditor 轨 A；**不**违反现有「3+ MEDIUM 才强制 Auditor」规则。  
+   - 父代理在 P2 前须对每条 such MEDIUM 自行 `read_file`/`grep_files` 核实，或在 scratchpad 标 `status=verified` 后再提升 severity。C2 文档与 `base.md` 显式声明此缺口，避免误以为「进报告 = 已机械核查」。
 
-4. **与 `base.md` 对齐：** 「Auditor 输入 **必须** 来自 scratchpad verified 列表」；prose 报告为辅。
+4. **可选 spawn 参数：** `scratchpad_run_id` 或 `audit_note_ids: ["note-008", …]`，runtime 自动拼 prompt（轨 A 列表）；`report_draft` 字段供轨 B。
 
-**验收：** 故意错行号 → Auditor FAIL → supersede 修正 → PASS（smoke 中 note-002/008 流程产品化）。
+5. **与 `base.md` 对齐：** Auditor **主输入** = scratchpad verified 列表；prose = 轨 B 交叉验证，非唯一事实源。
+
+**验收：** 故意错行号 → 轨 A FAIL → supersede → PASS；prose 中捏造 finding → 轨 B `UNVERIFIED_CLAIM` FAIL。
 
 #### 6.12.6 C3 — Blackboard `scratchpad` 分区（镜像）
 
-**原则：** **Explore 仍只写 `explorer`**；主代理在 `scratchpad_status` 显著变更或 P2 前写一次 **只读镜像**（非 findings 全文）：
+**原则：** **Explore 仍只写 `explorer`**；主代理在固定时间点写一次 **只读镜像**（非 findings 全文）：
+
+**写入时机（写死）：** 父代理在本轮 **`scratchpad_status` 已返回** 且 **`accounted_ratio` 允许进入 P2** 之后、**`agent_spawn(type=auditor)` 之前**。保证 Auditor 可读 `high_note_ids` 与统计一致；Explore 子代理仍不写 scratchpad 文件。
 
 ```json
 "scratchpad": {
@@ -633,22 +673,28 @@ Phase B 已有字段见 §6.8。Phase C **拟新增**（实现时同步 `config.
 coverage_soft_ratio = 0.85
 coverage_hard_ratio = 0.60
 coverage_hard_block_enabled = true
-coverage_count_deferred_as_accounted = true
+coverage_count_deferred_as_accounted = true   # 仅当 deferred 区通过 meta 质量门才计入 accounted（§6.12.4）
+require_deferred_meta = true                  # set_area(deferred) 须 kind=meta 原因
 auditor_from_scratchpad = true
-auditor_include_medium_min = 3
+auditor_include_medium_min = 3                # 1–2 条 MEDIUM 不进 Auditor 轨 A；见 §6.12.5
 ```
+
+`coverage_count_deferred_as_accounted = true` **不再**表示「inventory 标 deferred 即算完成」——须同时满足 deferred **区质量门**，与 Issue「全 deferred 无 note」修复联动。
 
 #### 6.12.8 Phase C 验收标准
 
 | # | 标准 |
 |---|------|
 | C0-1 | Compact 后同 thread 仍可 `scratchpad_status`，`run_id` 不变 |
-| C0-2 | Compaction 摘要含 scratchpad L0 或 handoff 行 |
-| C1-1 | `accounted_ratio` &lt; 0.60 时不注入 `<scratchpad_summary>`（hard 开时） |
-| C1-2 | `accounted_ratio` &lt; 0.85 时注入 pending 列表（soft） |
-| C1-3 | 全 `deferred` 冒充完成时，L0 列出 deferred 区 |
-| C2-1 | Auditor prompt 含 `note_id` 列表；FAIL 引用 `note_id` |
+| C0-2 | Compaction 摘要仅含 **L0-only** 一行，无 L1/L2 finding 列表 |
+| C1-1 | `accounted_ratio` &lt; 0.60 时不注入完整 P2 分层摘要（hard 开时） |
+| C1-2 | `accounted_ratio` &lt; 0.85 时注入 `<scratchpad_summary>` + L0 + WARNING + `pending_area_ids` |
+| C1-3 | 存在 `deferred` 区时，P2 的 L0 含 `deferred_areas` 及每条 **meta 原因摘录** |
+| C1-4 | 无 `kind=meta` 的 `set_area(deferred)` **reject**；全区 deferred 且无合格 meta 时 `accounted_ratio` &lt; 0.60 |
+| C2-1 | 轨 A：Auditor prompt 含 `note_id` 列表；FAIL 引用 `note_id` |
 | C2-2 | 修正仅经 `supersedes` append，旧行不出现在 Auditor 二次输入 |
+| C2-3 | 轨 B：prose 中无对应 `note_id` 的 HIGH/MEDIUM → `UNVERIFIED_CLAIM` FAIL |
+| C2-4 | MEDIUM 仅 1–2 条时文档/prompt 声明父代理须自行核实（不进轨 A） |
 | C3-1 | `task_id` 存在时 blackboard 含 `scratchpad` 分区且与 `scratchpad_status` 一致 |
 | C3-2 | Explore 子代理不写 `notes.jsonl`（回归） |
 
@@ -672,7 +718,7 @@ auditor_include_medium_min = 3
 | **Reasoning UI** | 保留；用户可回看，但不作为报告源 |
 | **CRAFT blackboard** | 子代理间快照；Phase C3：`scratchpad` **镜像分区**（统计 + `high_note_ids`），非 findings 全文 |
 | **cycle_handoff / compact** | B3b handoff ✅；Phase C0：compaction **pin** 路径 + L0 摘要 |
-| **Auditor** | P3 消费者；Phase C2：输入 **必须** 来自 scratchpad verified `note_id` 列表 |
+| **Auditor** | P3：C2 轨 A = scratchpad `note_id` 列表；轨 B = prose 与 verified 列表一致性（`UNVERIFIED_CLAIM`） |
 | **topic-memory-graph** | **远期**跨会话话题图（独立库，未接入本仓库）；scratchpad 管**单次任务**事实。若将来并入，注入顺序与字数上限见 [agent-reliability-craft-plan.md §3.1](../agent-reliability-craft-plan.md) |
 
 ---
@@ -691,7 +737,7 @@ auditor_include_medium_min = 3
 | 指标 | 测量方式 |
 |------|----------|
 | 报告遗漏率 | 同一仓库，固定题库，专家标注「应有 finding」vs 报告 |
-| Inventory 完成率 | `reviewed_ratio`（`done/total`）与 `accounted_ratio`（`(done+deferred)/total`），见 §6.12.4 |
+| Inventory 完成率 | `reviewed_ratio` 与 **质量门后的** `accounted_ratio`（`areas_accounted/total`），见 §6.12.4 |
 | HIGH 可核对率 | Auditor PASS 比例 / 人工 spot-check `file:line` 存在 |
 | 用户主观 | 「是否明显更早放弃深度」Likert 1–5 |
 
@@ -802,6 +848,21 @@ auditor_include_medium_min = 3
 | 10 | §6.1 编号错乱 | ✅ 改为 §6.2，删除文末重复节 |
 
 **B1 必做项：** #1、#2、#3、#8（与 Store 同 PR）。
+
+### 13.5 第四轮 — Phase C 设计评审（DS Pick，2026-05-19）
+
+| # | 严重度 | 反馈 | 采纳 |
+|---|--------|------|------|
+| 1 | MEDIUM | `deferred` 无 notes 可冒充 100% accounted | ✅ §6.12.4 区质量门 + `set_area(deferred)` 须 `kind=meta`；`accounted_ratio` 用 `areas_accounted` |
+| 2 | MEDIUM | prose 与 scratchpad 脱节，Auditor 不看 prose | ✅ §6.12.5 轨 B `UNVERIFIED_CLAIM` |
+| 3 | LOW | C1 质量门 vs B1 `require_min_notes` 边界不清 | ✅ §6.12.4 职责表 + 错误信息区分 |
+| 4 | LOW | soft warn 注入格式未定义 | ✅ `<scratchpad_summary>` + L0 + WARNING（§6.12.4） |
+| 5 | LOW | `auditor_include_medium_min=3` 导致 ≤2 MEDIUM 未核查 | ✅ §6.12.5 gap 声明 + C2-4 验收 |
+| — | — | C0 handoff 勿用全文 `build_layered_summary` | ✅ §6.12.3 `build_l0_status_line` / L0-only |
+| — | — | C3 写入时机写死 | ✅ `scratchpad_status` 后、spawn Auditor 前 |
+| — | — | C1-3 与 accounted 口径统一 | ✅ C1-3 改为 deferred_areas + meta 摘录；新增 C1-4 |
+
+**实现优先：** Issue 1（deferred 门禁）、Issue 2（轨 B）；其余随 C0–C2 PR 文档/配置一并落地。
 
 ---
 
