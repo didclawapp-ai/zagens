@@ -129,10 +129,28 @@
 | [prompt-hallucination-patch.md](../prompt-hallucination-patch.md) | 幻觉防控 V4（✅） |
 | [agent-reliability-craft-plan.md](../agent-reliability-craft-plan.md) | CRAFT、子代理、并行策略 |
 | [tui/回归测试.md](../tui/回归测试.md) | 幻觉防控 R1–R8 题库（可复用于 Claude 对照） |
+| [audit-scratchpad-design.md](audit-scratchpad-design.md) | 审计工作记忆；**Phase A ✅**（pick-rules §7、base.md、`audit-repo` skill） |
+| [audit-scratchpad-test.md](audit-scratchpad-test.md) | Phase A 试跑记录（2026-05-19 冒烟 + 续审 ✅） |
 | [tui/UNDERLYING_ITERATION_REFERENCE.md](../tui/UNDERLYING_ITERATION_REFERENCE.md) | CRAFT → 记忆地图定序 |
 | [TOOLS_PRINCIPLES.md](../tech/TOOLS_PRINCIPLES.md) | 工具设计原则 |
 | [API_DESIGN.md](../tech/API_DESIGN.md) | HTTP API |
 | [TUI_DS_PICK_GAP.md](TUI_DS_PICK_GAP.md) | 桌面与 TUI 能力差距 |
+
+---
+
+## 2026-05-19 — 审计工作记忆（Audit Scratchpad）
+
+**问题：** 全库审查时长回合内，reasoning 有 UI 缓存，但不足以当「工作记忆」；易出现早先检查项遗漏、后半程提前收口。
+
+**方向：** 结构化外存（`inventory.json` + `notes.jsonl`），P0–P3 与 Auditor；与 CRAFT 黑板互补。
+
+| 阶段 | 状态 | 落点 |
+|------|------|------|
+| **Phase A** | ✅ | `.deepseek/pick-rules.md` §7 · `base.md` · skill `audit-repo`；试跑见下 |
+| **Phase B** | 🔶 方案已定 | [audit-scratchpad-design.md §6.2–6.8](desktop/audit-scratchpad-design.md) — 工具/store/注入/桌面进度 |
+| **Phase C** | ⬜ 排队 | 覆盖率门禁、Auditor、blackboard |
+
+**试跑（2026-05-19）：** 单区 `skills` + 续审 + 多区 `tui/src`（14 area）**✅** → [audit-scratchpad-test.md](desktop/audit-scratchpad-test.md)（`2026-05-19-skills-review` / `2026-05-19-tui-src-review`）。
 
 ---
 

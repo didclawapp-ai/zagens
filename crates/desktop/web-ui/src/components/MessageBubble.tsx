@@ -35,18 +35,12 @@ export function MessageBubble({
     !(message.tools && message.tools.length > 0);
   const showReasoningBlock = Boolean(message.thinking) || likelyInReasoningPhase;
 
-  // Streaming: keep reasoning visible. After the turn completes, fold it so the
-  // answer stays primary (similar to compact “thought” UI in other clients).
-  const [reasoningExpanded, setReasoningExpanded] = useState(
-    () => Boolean(message.isStreaming),
-  );
-  const [toolsExpanded, setToolsExpanded] = useState(() => Boolean(message.isStreaming));
+  // Collapsed by default; user expands when they want the transcript (streaming or done).
+  const [reasoningExpanded, setReasoningExpanded] = useState(false);
+  const [toolsExpanded, setToolsExpanded] = useState(false);
 
-  useEffect(() => {
-    const live = Boolean(message.isStreaming);
-    setReasoningExpanded(live);
-    setToolsExpanded(live);
-  }, [message.isStreaming]);
+  const runningToolCount =
+    message.tools?.filter((t) => t.status === 'running').length ?? 0;
 
   const reasoningScrollRef = useRef<HTMLDivElement>(null);
   /** While streaming, follow new tokens unless the user scrolled up to read earlier text. */
@@ -98,9 +92,15 @@ export function MessageBubble({
               </span>
               <span className="text-base leading-none">💭</span>
               <span>Reasoning</span>
-              {!reasoningExpanded && message.thinking?.trim() && (
+              {!reasoningExpanded && (
                 <span className="ml-auto truncate text-[11px] font-normal text-t-text-muted">
-                  已收起，点击展开
+                  {message.isStreaming && !message.thinking?.trim()
+                    ? '推理中…'
+                    : message.thinking?.trim()
+                      ? '已收起，点击展开'
+                      : likelyInReasoningPhase
+                        ? '推理中…'
+                        : '已收起，点击展开'}
                 </span>
               )}
             </button>
@@ -132,7 +132,9 @@ export function MessageBubble({
               <span className="text-t-text-muted font-normal">({message.tools.length})</span>
               {!toolsExpanded && (
                 <span className="ml-auto truncate text-[11px] font-normal text-t-text-muted">
-                  已收起，点击展开
+                  {runningToolCount > 0
+                    ? `${runningToolCount} 个进行中 · 点击展开`
+                    : '已收起，点击展开'}
                 </span>
               )}
             </button>

@@ -11,11 +11,11 @@ This document consolidates the same guidance as [`.cursor/rules/*.mdc`](.cursor/
 **Cursor:** `alwaysApply: true`
 
 - **Root story:** [`README.md`](README.md) leads with **DS Pick** (Tauri app in `crates/desktop/`). The same repo ships the **`deepseek` CLI**, terminal TUI, and shared agent/runtime crates.
-- **Desktop (DS Pick):** `crates/desktop/`, product notes in [`docs/desktop/README.md`](docs/desktop/README.md).
+- **Desktop (DS Pick):** `crates/desktop/`, product notes in [`docs/desktop/DEV_NOTES.md`](docs/desktop/DEV_NOTES.md).
 - **TUI / CLI lineage docs:** [`docs/tui/README.md`](docs/tui/README.md) — prompts analysis, dependency graph, handoffs, reviews.
 - **Archived TUI-first root README copies:** [`docs/archive/tui-readme-era/ABOUT.md`](docs/archive/tui-readme-era/ABOUT.md).
 - **Authoritative agent instructions:** [`AGENTS.md`](AGENTS.md).
-- **Versions:** DS Pick uses its **own** SemVer (e.g. **v0.2.1**), separate from the workspace `deepseek` line; see [`CHANGELOG.md`](CHANGELOG.md) header.
+- **Versions:** DS Pick uses its **own** SemVer (e.g. **v0.3.0**), separate from the workspace `deepseek` line; see [`CHANGELOG.md`](CHANGELOG.md) header.
 - **Changelog:** Record **every notable change** (features, fixes, docs, DS Pick desktop, CLI/TUI, tooling) in [`CHANGELOG.md`](CHANGELOG.md)—typically under `[Unreleased]`, in the **same PR/commit** as the change when practical. Not required for trivial or non-user-facing edits (typos, comment-only, pure refactors with no behavior change). Full policy: [`CHANGELOG.md`](CHANGELOG.md) header.
 
 When summarizing the project, **lead with DS Pick + shared runtime**, not “TUI-only.”
@@ -55,7 +55,7 @@ When unsure, **draft + list risk** for maintainer review instead of shipping qui
 - **Verify:** `cargo build`, `cargo test --workspace --all-features`, `cargo clippy --workspace --all-targets --all-features` before claiming the change compiles.
 - **Modules:** prefer **smaller sources** (~1000 lines soft cap); split rather than growing one file (see §3).
 - **CLI entry:** prefer documenting **`deepseek`** (dispatcher); not `deepseek-tui` alone for general flows.
-- **HTTP runtime:** [`docs/RUNTIME_API.md`](docs/RUNTIME_API.md) for `/v1/...` contracts used by DS Pick WebView.
+- **HTTP runtime:** [`docs/tech/API_DESIGN.md`](docs/tech/API_DESIGN.md) and `crates/tui/src/runtime_api.rs` for `/v1/...` contracts used by DS Pick WebView.
 
 ---
 
@@ -63,7 +63,7 @@ When unsure, **draft + list risk** for maintainer review instead of shipping qui
 
 **Cursor:** `globs: crates/desktop/web-ui/**`, `alwaysApply: false`
 
-- **Stack:** Vite 6, React 18, TypeScript, Tailwind; runtime via [`crates/desktop/web-ui/src/api/client.ts`](crates/desktop/web-ui/src/api/client.ts) ([`docs/RUNTIME_API.md`](docs/RUNTIME_API.md)).
+- **Stack:** Vite 6, React 18, TypeScript, Tailwind; runtime via [`crates/desktop/web-ui/src/api/client.ts`](crates/desktop/web-ui/src/api/client.ts) ([`docs/tech/API_DESIGN.md`](docs/tech/API_DESIGN.md)).
 - **Desktop bridge:** Tauri `invoke` — follow patterns in e.g. [`RightPanel.tsx`](crates/desktop/web-ui/src/components/RightPanel.tsx), [`ApiKeyForm.tsx`](crates/desktop/web-ui/src/components/ApiKeyForm.tsx).
 - **Build:** `npm run build`; bundle analysis: `npm run build:analyze` → `dist/bundle-stats.html`.
 - **TypeScript:** **`strict: true`** ([`tsconfig.json`](crates/desktop/web-ui/tsconfig.json)). Avoid **`any`**; use proper types, `unknown` + narrowing, or shared types under `src/types/`. Run **`npm run build`** (`tsc -b`) after substantive edits.
