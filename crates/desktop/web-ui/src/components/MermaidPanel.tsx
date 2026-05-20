@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useMemo, useCallback, useLayoutEffect } from 'react';
 import mermaid from 'mermaid';
+import { sanitizeHtmlForDisplay } from '../lib/sanitizeHtml';
 
 interface Message {
   id: string;
@@ -284,7 +285,7 @@ function DiagramViewport({
         style={{
           transform: `translate(${pan.x}px, ${pan.y}px)`,
         }}
-        dangerouslySetInnerHTML={{ __html: scaledSvg }}
+        dangerouslySetInnerHTML={{ __html: sanitizeHtmlForDisplay(scaledSvg) }}
       />
     </div>
   );

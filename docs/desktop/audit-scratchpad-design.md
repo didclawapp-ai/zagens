@@ -1,6 +1,6 @@
 # 审计工作记忆（Audit Scratchpad）方案草稿
 
-> **状态：** Phase A ✅ · **Phase B ✅** · **Phase C0–C3 ✅**（见 [audit-scratchpad-test.md](audit-scratchpad-test.md)）；**C4** 远期（§6.12.9）· **Phase D** 审计过程可视化 ⬜（§6.13，试跑 [§L8](audit-scratchpad-test.md#l8--phase-d-审计过程可视化规划)）  
+> **状态：** Phase A ✅ · **Phase B ✅** · **Phase C0–C3 ✅**（见 [audit-scratchpad-test.md](audit-scratchpad-test.md)）；**C4** 远期（§6.12.9）· **Phase D1/D2** ✅ · **U2/U3** ⬜（§6.13，试跑 [§L8](audit-scratchpad-test.md#l8--phase-d-审计过程可视化规划)）  
 > **范围：** DS Pick / TUI 共用 runtime；面向**长程、全库级代码审查**与同类「多步探索 → 最终报告」任务。  
 > **相关：** [HARNESS.md](HARNESS.md)（Harness 定位、JD 映射、与 DeepSeek 关系备忘）、[agent-reliability-craft-plan.md](../agent-reliability-craft-plan.md)、[auditor-subagent-design.md](auditor-subagent-design.md)、`crates/tui/src/tools/subagent/blackboard.rs`、`crates/tui/src/prompts/base.md` § Full-repository code review mode。
 
@@ -915,8 +915,9 @@ auditor_include_medium_min = 3                # 1–2 条 MEDIUM 不进 Auditor 
 | 组件 | 位置 | 能力 | 缺口 |
 |------|------|------|------|
 | **琥珀横条** | `AuditScratchpadBar.tsx` | `accounted/total`、done/in_progress/deferred、notes/verified、`resume_area_id` | 无 **逐 area 列表**；违约提示弱 |
-| **`GET …/scratchpad/status`** | `runtime_api` | 与磁盘计数一致；流式 3s / 空闲 12s 轮询 | sidecar 断连时 UI 空 |
-| **Checklist 侧栏** | `ChecklistPanel` | 与 `checklist_write` 同步 | 与 **inventory area** 常双轨，易脱节 |
+| **`GET …/scratchpad/status`** | `runtime_api` | 与磁盘计数一致；**C 通道** `panel.scratchpad` SSE 主推，B 轮询 60s 兜底 | 冷启动仍靠 GET |
+| **Checklist 侧栏** | `ChecklistPanel` | **`panel.checklist` SSE** + 慢速 B 兜底 | 与 **inventory area** 常双轨，易脱节 |
+| **上下文环** | `panel.context` SSE | 流式期间停 6s B 轮询 | — |
 | **子代理面板** | SSE `agent_*` | spawn/progress/complete | 主代理路径下 **常为空**（L7c） |
 | **聊天区** | 工具卡 / Reasoning | 细粒度事件 | 信息淹没，**非审计驾驶舱** |
 

@@ -279,15 +279,13 @@ impl McpServer {
                 message: "Missing tool name".to_string(),
             })?;
 
-        if self.require_approval
-            && !params
-                .get("approved")
-                .and_then(Value::as_bool)
-                .unwrap_or(false)
-        {
+        if self.require_approval && mcp_tool_requires_operator_approval(name) {
             return Err(RpcError {
                 code: -32001,
-                message: "Approval required. Resend with approved=true.".to_string(),
+                message: "This tool requires operator approval in the DeepSeek TUI. The MCP \
+                    client cannot self-approve (remove the tool from expose_tools, set \
+                    require_approval=false, or use read-only tools such as file_read/search)."
+                    .to_string(),
             });
         }
 
@@ -504,13 +502,16 @@ fn default_config_path() -> Option<PathBuf> {
 fn default_expose_tools() -> Vec<String> {
     vec![
         "file_read".to_string(),
-        "file_write".to_string(),
         "search".to_string(),
-        "apply_patch".to_string(),
-        "shell".to_string(),
-        "deepseek".to_string(),
-        "deepseek-reply".to_string(),
+        "file_search".to_string(),
     ]
+}
+
+fn mcp_tool_requires_operator_approval(public_name: &str) -> bool {
+    matches!(
+        public_name,
+        "shell" | "file_write" | "file_edit" | "apply_patch" | "deepseek" | "deepseek-reply"
+    )
 }
 
 fn build_exposed_tools(names: &[String]) -> Vec<ExposedTool> {
@@ -621,5 +622,25 @@ mod tests {
             Some("apply_patch")
         );
         assert_eq!(map.get("shell").map(String::as_str), Some("exec_shell"));
+    }
+
+    #[test]
+    fn default_expose_tools_are_read_only() {
+        let names = default_expose_tools();
+        assert_eq!(
+            names,
+            vec![
+                "file_read".to_string(),
+                "search".to_string(),
+                "file_search".to_string(),
+            ]
+        );
+        assert!(!names.iter().any(|n| n == "shell" || n == "file_write"));
+    }
+
+    #[test]
+    fn shell_requires_operator_approval_when_gated() {
+        assert!(mcp_tool_requires_operator_approval("shell"));
+        assert!(!mcp_tool_requires_operator_approval("file_read"));
     }
 }

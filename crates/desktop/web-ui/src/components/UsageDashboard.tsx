@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { fetchUsage, type RuntimeConnectionState } from '../api/client';
+import { isRuntimeApiAvailable } from '../lib/runtimeReachable';
 import type { UsageAggregation, UsageGroupBy } from '../types/usage';
 
 const GROUP_BY_LABELS: Record<UsageGroupBy, string> = {
@@ -20,7 +21,19 @@ function formatCostUsd(n: number): string {
   return `$${n.toFixed(2)}`;
 }
 
-export default function UsageDashboard({ runtimeConn }: { runtimeConn: RuntimeConnectionState }) {
+export default function UsageDashboard({
+  runtimeConn,
+  streaming = false,
+  runtimeSessionEstablished = false,
+}: {
+  runtimeConn: RuntimeConnectionState;
+  streaming?: boolean;
+  runtimeSessionEstablished?: boolean;
+}) {
+  const runtimeReady = isRuntimeApiAvailable(runtimeConn, {
+    streaming,
+    sessionEstablished: runtimeSessionEstablished,
+  });
   const [data, setData] = useState<UsageAggregation | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -40,12 +53,12 @@ export default function UsageDashboard({ runtimeConn }: { runtimeConn: RuntimeCo
   }, [groupBy]);
 
   useEffect(() => {
-    if (runtimeConn === 'connected') {
+    if (runtimeReady) {
       reload();
     }
-  }, [runtimeConn, reload]);
+  }, [runtimeReady, reload]);
 
-  if (runtimeConn !== 'connected') {
+  if (!runtimeReady) {
     return (
       <div className="p-4 text-xs text-t-text-muted text-center space-y-2">
         <p>等待运行时连接…</p>

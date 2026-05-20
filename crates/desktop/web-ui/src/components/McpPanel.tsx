@@ -10,6 +10,7 @@ import {
   invalidateRuntimeBootReadyCache,
   type RuntimeConnectionState,
 } from '../api/client';
+import { isRuntimeApiAvailable } from '../lib/runtimeReachable';
 import type { McpServerEntry, McpToolEntry, McpServerConfigPayload } from '../types/mcp';
 
 function emptyServerConfig(): McpServerConfigPayload {
@@ -41,7 +42,19 @@ function normalizeServerConfig(raw: Partial<McpServerConfigPayload>): McpServerC
   };
 }
 
-export default function McpPanel({ runtimeConn }: { runtimeConn: RuntimeConnectionState }) {
+export default function McpPanel({
+  runtimeConn,
+  streaming = false,
+  runtimeSessionEstablished = false,
+}: {
+  runtimeConn: RuntimeConnectionState;
+  streaming?: boolean;
+  runtimeSessionEstablished?: boolean;
+}) {
+  const runtimeReady = isRuntimeApiAvailable(runtimeConn, {
+    streaming,
+    sessionEstablished: runtimeSessionEstablished,
+  });
   const [servers, setServers] = useState<McpServerEntry[]>([]);
   const [allTools, setAllTools] = useState<McpToolEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -81,10 +94,10 @@ export default function McpPanel({ runtimeConn }: { runtimeConn: RuntimeConnecti
   }, []);
 
   useEffect(() => {
-    if (runtimeConn === 'connected') {
+    if (runtimeReady) {
       void reload();
     }
-  }, [runtimeConn, reload]);
+  }, [runtimeReady, reload]);
 
   const displayedTools =
     selectedServer === null ? [] : allTools.filter((t) => t.server === selectedServer);
@@ -136,7 +149,7 @@ export default function McpPanel({ runtimeConn }: { runtimeConn: RuntimeConnecti
     }
   };
 
-  if (runtimeConn !== 'connected') {
+  if (!runtimeReady) {
     return (
       <div className="p-4 text-xs text-t-text-muted text-center space-y-2">
         <p>等待运行时连接…</p>

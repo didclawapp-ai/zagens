@@ -729,7 +729,7 @@ pub struct PerModelContextConfig {
 }
 
 /// Resolved CLI configuration, including defaults and environment overrides.
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Clone, Default, Deserialize)]
 pub struct Config {
     pub provider: Option<String>,
     pub api_key: Option<String>,
@@ -1054,6 +1054,28 @@ struct RequirementsFile {
     allowed_approval_policies: Vec<String>,
     #[serde(default)]
     allowed_sandbox_modes: Vec<String>,
+}
+
+fn debug_redact_secret(value: &Option<String>) -> &'static str {
+    if value.as_ref().is_some_and(|s| !s.is_empty()) {
+        "<redacted>"
+    } else {
+        "None"
+    }
+}
+
+impl std::fmt::Debug for Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Config")
+            .field("provider", &self.provider)
+            .field("api_key", &debug_redact_secret(&self.api_key))
+            .field("sandbox_api_key", &debug_redact_secret(&self.sandbox_api_key))
+            .field("default_text_model", &self.default_text_model)
+            .field("allow_shell", &self.allow_shell)
+            .field("approval_policy", &self.approval_policy)
+            .field("sandbox_mode", &self.sandbox_mode)
+            .finish_non_exhaustive()
+    }
 }
 
 // === Config Loading ===

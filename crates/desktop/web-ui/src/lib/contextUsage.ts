@@ -132,19 +132,32 @@ export function contextUsagePercent(
   return Math.min(100, ((usedTokens + pendingTokens) / contextWindow) * 100);
 }
 
-/** Pick context used: runtime snapshot first, then transcript estimate. */
+/** Pick context used: runtime snapshot when populated, else transcript / turn fallback. */
 export function resolveContextUsedTokens(
   messages: MessageForContextEstimate[],
   threadDetail: ThreadDetailWithTurns | null | undefined,
   contextWindow: number,
   runtimeSnapshot?: ThreadContextSnapshot | null,
 ): number {
+  const fromMessages =
+    messages.length > 0
+      ? Math.min(estimateContextTokensFromMessages(messages), contextWindow)
+      : 0;
+
   if (runtimeSnapshot) {
-    return Math.min(runtimeSnapshot.estimated_input_tokens, contextWindow);
+    const fromRuntime = Math.min(runtimeSnapshot.estimated_input_tokens, contextWindow);
+    // After session switch the runtime may briefly return an empty engine/store
+    // snapshot while the UI transcript is already restored from cache.
+    if (fromRuntime > 0 || runtimeSnapshot.message_count > 0) {
+      return Math.max(fromRuntime, fromMessages);
+    }
+    if (fromMessages > 0) {
+      return fromMessages;
+    }
+    return fromRuntime;
   }
-  const fromMessages = estimateContextTokensFromMessages(messages);
-  if (messages.length > 0) {
-    return Math.min(fromMessages, contextWindow);
+  if (fromMessages > 0) {
+    return fromMessages;
   }
   if (threadDetail) {
     return Math.min(maxTurnInputTokensFallback(threadDetail), contextWindow);
@@ -157,8 +170,17 @@ export function resolveContextUsagePercent(
   contextWindow: number,
   runtimeSnapshot?: ThreadContextSnapshot | null,
 ): number {
-  if (runtimeSnapshot) {
-    return runtimeSnapshot.usage_percent;
+  const fromUsed = contextUsagePercent(usedTokens, 0, contextWindow);
+  if (!runtimeSnapshot) {
+    return fromUsed;
   }
-  return contextUsagePercent(usedTokens, 0, contextWindow);
+  const snapPct = runtimeSnapshot.usage_percent;
+  if (
+    snapPct > 0 &&
+    runtimeSnapshot.estimated_input_tokens > 0 &&
+    runtimeSnapshot.message_count > 0
+  ) {
+    return snapPct;
+  }
+  return fromUsed;
 }

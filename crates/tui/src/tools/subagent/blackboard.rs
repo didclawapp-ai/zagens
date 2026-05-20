@@ -18,13 +18,29 @@ fn workspace_root() -> Option<PathBuf> {
     std::env::current_dir().ok()
 }
 
-fn blackboard_path(task_id: &str) -> PathBuf {
-    let mut path = workspace_root()
-        .unwrap_or_else(|| PathBuf::from("."));
+fn validate_task_id(task_id: &str) -> Result<(), String> {
+    if task_id.is_empty() {
+        return Err("task_id 不能为空".to_string());
+    }
+    if task_id.contains("..") || task_id.contains('/') || task_id.contains('\\') {
+        return Err("task_id 含非法路径字符".to_string());
+    }
+    if !task_id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    {
+        return Err("task_id 仅允许字母、数字、_ 和 -".to_string());
+    }
+    Ok(())
+}
+
+fn blackboard_path(task_id: &str) -> Result<PathBuf, String> {
+    validate_task_id(task_id)?;
+    let mut path = workspace_root().unwrap_or_else(|| PathBuf::from("."));
     path.push(".deepseek");
     path.push("blackboards");
     path.push(format!("{task_id}.json"));
-    path
+    Ok(path)
 }
 
 fn ensure_dir(path: &PathBuf) {
@@ -43,7 +59,7 @@ pub fn read_blackboard_section(
     task_id: &str,
     agent_type: &SubAgentType,
 ) -> Option<String> {
-    let path = blackboard_path(task_id);
+    let path = blackboard_path(task_id).ok()?;
     let raw = std::fs::read_to_string(&path).ok()?;
     let board: Value = serde_json::from_str(&raw).ok()?;
 
@@ -100,7 +116,9 @@ pub fn write_blackboard_partition(
     agent_type: &SubAgentType,
     result: &SubAgentResult,
 ) {
-    let path = blackboard_path(task_id);
+    let Ok(path) = blackboard_path(task_id) else {
+        return;
+    };
     ensure_dir(&path);
 
     // Read existing board first — needed by Implementer for round tracking
@@ -359,7 +377,9 @@ pub fn write_scratchpad_mirror(
 }
 
 fn merge_board_partition(task_id: &str, partition_key: &str, partition_data: Value) {
-    let path = blackboard_path(task_id);
+    let Ok(path) = blackboard_path(task_id) else {
+        return;
+    };
     ensure_dir(&path);
     let existing_raw = std::fs::read_to_string(&path).unwrap_or_default();
     let mut board: Value = if existing_raw.trim().is_empty() {
@@ -415,10 +435,16 @@ mod tests {
 
     #[test]
     fn test_blackboard_path_contains_task_id() {
-        let path = blackboard_path("bugfix-001");
+        let path = blackboard_path("bugfix-001").expect("valid task id");
         let s = path.to_string_lossy();
         assert!(s.contains("bugfix-001"), "path should contain task id, got: {s}");
         assert!(s.ends_with(".json"), "path should end with .json, got: {s}");
+    }
+
+    #[test]
+    fn test_blackboard_path_rejects_traversal() {
+        assert!(blackboard_path("/tmp/evil").is_err());
+        assert!(blackboard_path("..\\escape").is_err());
     }
 
     #[test]
@@ -438,7 +464,7 @@ mod tests {
     #[test]
     fn test_write_and_read_explorer_findings() {
         let task_id = "test-001";
-        let _ = std::fs::remove_file(blackboard_path(task_id));
+        let _ = std::fs::remove_file(blackboard_path(task_id).expect("valid task id"));
 
         // Simulate Explorer completion with structured_verdict
         let verdict = StructuredVerdict {
@@ -493,13 +519,13 @@ mod tests {
         assert!(section.contains("session timeout"), "section: {section}");
 
         // Clean up
-        let _ = std::fs::remove_file(blackboard_path(task_id));
+        let _ = std::fs::remove_file(blackboard_path(task_id).expect("valid task id"));
     }
 
     #[test]
     fn test_write_and_read_roundtrip_multiple_roles() {
         let task_id = "test-002";
-        let _ = std::fs::remove_file(blackboard_path(task_id));
+        let _ = std::fs::remove_file(blackboard_path(task_id).expect("valid task id"));
 
         // Write explorer findings
         let explorer_result = SubAgentResult {
@@ -564,7 +590,7 @@ mod tests {
         assert!(section.contains("### Reviewer blockers"), "section: {section}");
         assert!(section.contains("missing null check"), "section: {section}");
 
-        let _ = std::fs::remove_file(blackboard_path(task_id));
+        let _ = std::fs::remove_file(blackboard_path(task_id).expect("valid task id"));
     }
 }
 

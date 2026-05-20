@@ -45,6 +45,7 @@ mod memory;
 mod models;
 mod network_policy;
 mod palette;
+mod path_guard;
 mod pricing;
 mod project_context;
 mod project_doc;

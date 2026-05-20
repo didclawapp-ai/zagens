@@ -378,15 +378,11 @@ pub struct Engine {
 impl Engine {
     fn reset_cancel_token(&mut self) {
         let token = CancellationToken::new();
-        self.cancel_token = token.clone();
         match self.shared_cancel_token.lock() {
-            Ok(mut shared) => {
-                *shared = token;
-            }
-            Err(poisoned) => {
-                *poisoned.into_inner() = token;
-            }
+            Ok(mut shared) => *shared = token.clone(),
+            Err(poisoned) => *poisoned.into_inner() = token.clone(),
         }
+        self.cancel_token = token;
     }
 
     fn env_only_api_key_recovery_hint(api_config: &Config) -> Option<String> {

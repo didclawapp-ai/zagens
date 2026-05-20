@@ -8,6 +8,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex as StdMutex};
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow, bail};
 use chrono::{DateTime, Utc};
@@ -988,7 +989,16 @@ pub struct RuntimeThreadManager {
     routing_rules: Arc<Mutex<Vec<RoutingRule>>>,
     routing_rules_path: PathBuf,
     checklist_cache: Arc<StdMutex<HashMap<String, String>>>,
+    scratchpad_status_cache: Arc<StdMutex<HashMap<String, ScratchpadStatusCacheEntry>>>,
 }
+
+#[derive(Clone)]
+struct ScratchpadStatusCacheEntry {
+    fetched_at: Instant,
+    status: Option<serde_json::Value>,
+}
+
+const SCRATCHPAD_STATUS_CACHE_TTL: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RuntimeApprovalDecision {
@@ -1020,6 +1030,7 @@ impl RuntimeThreadManager {
             routing_rules: Arc::new(Mutex::new(routing_rules)),
             routing_rules_path,
             checklist_cache: Arc::new(StdMutex::new(HashMap::new())),
+            scratchpad_status_cache: Arc::new(StdMutex::new(HashMap::new())),
         };
         manager.recover_interrupted_state()?;
         let active_ids: Vec<String> = manager
@@ -1042,6 +1053,13 @@ impl RuntimeThreadManager {
         &self,
         thread_id: &str,
     ) -> Result<Option<serde_json::Value>> {
+        if let Ok(cache) = self.scratchpad_status_cache.lock() {
+            if let Some(entry) = cache.get(thread_id) {
+                if entry.fetched_at.elapsed() < SCRATCHPAD_STATUS_CACHE_TTL {
+                    return Ok(entry.status.clone());
+                }
+            }
+        }
         let mut thread = self.load_thread_sync(thread_id)?;
         let run_id = thread
             .scratchpad_run_id
@@ -1061,7 +1079,25 @@ impl RuntimeThreadManager {
             Some(&thread.id),
             thread.task_id.as_deref(),
         );
-        Ok(store.and_then(|s| s.build_status().ok()))
+        let Some(mut status) = store.and_then(|s| s.build_status().ok()) else {
+            return Ok(None);
+        };
+        let checklist_json = self.get_thread_checklist(thread_id);
+        crate::scratchpad::ui_status::enrich_status_for_thread_ui(
+            &mut status,
+            checklist_json.as_deref(),
+        );
+        let out = Some(status);
+        if let Ok(mut cache) = self.scratchpad_status_cache.lock() {
+            cache.insert(
+                thread_id.to_string(),
+                ScratchpadStatusCacheEntry {
+                    fetched_at: Instant::now(),
+                    status: out.clone(),
+                },
+            );
+        }
+        Ok(out)
     }
 
     /// Return the cached checklist snapshot for a thread (for DS Pick WebView panel).
@@ -1093,6 +1129,82 @@ impl RuntimeThreadManager {
                 tracing::warn!(thread_id, "failed to persist checklist snapshot on thread");
             }
         }
+    }
+
+    /// DS Pick panel channel (C): push checklist snapshot on the live SSE stream (B-channel fallback).
+    async fn emit_panel_checklist(&self, thread_id: &str, turn_id: &str) -> Result<()> {
+        let Some(json_str) = self.get_thread_checklist(thread_id) else {
+            return Ok(());
+        };
+        let checklist = serde_json::from_str::<Value>(&json_str).unwrap_or_else(|_| {
+            json!({ "raw": json_str })
+        });
+        self.emit_event(
+            thread_id,
+            Some(turn_id),
+            None,
+            "panel.checklist",
+            json!({ "checklist": checklist }),
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// DS Pick panel channel (C): push audit scratchpad status on SSE.
+    async fn emit_panel_scratchpad(&self, thread_id: &str, turn_id: &str) -> Result<()> {
+        let status = self.get_thread_scratchpad_status(thread_id)?;
+        if let Some(scratchpad) = status {
+            self.emit_event(
+                thread_id,
+                Some(turn_id),
+                None,
+                "panel.scratchpad",
+                json!({ "scratchpad": scratchpad }),
+            )
+            .await?;
+        }
+        Ok(())
+    }
+
+    /// DS Pick panel channel (C): push context usage snapshot on SSE.
+    async fn emit_panel_context(&self, thread_id: &str, turn_id: &str) -> Result<()> {
+        match self.get_thread_context(thread_id).await {
+            Ok(context) => {
+                let snapshot = serde_json::to_value(&context)?;
+                self.emit_event(
+                    thread_id,
+                    Some(turn_id),
+                    None,
+                    "panel.context",
+                    json!({ "context": snapshot }),
+                )
+                .await?;
+            }
+            Err(err) => {
+                tracing::debug!(
+                    thread_id,
+                    %err,
+                    "panel.context skipped (context query failed)"
+                );
+            }
+        }
+        Ok(())
+    }
+
+    fn scratchpad_tool_needs_panel_push(name: &str) -> bool {
+        name.starts_with("scratchpad_")
+    }
+
+    fn checklist_tool_needs_panel_push(name: &str) -> bool {
+        matches!(
+            name,
+            "checklist_write"
+                | "checklist_add"
+                | "checklist_update"
+                | "todo_write"
+                | "todo_add"
+                | "todo_update"
+        )
     }
 
     /// Attach the durable task manager so model-visible task tools work inside
@@ -2580,6 +2692,12 @@ impl RuntimeThreadManager {
                         )
                         .await?;
                     }
+                    let mgr = self.clone();
+                    let tid = thread_id.clone();
+                    let tturn = turn_id.clone();
+                    tokio::spawn(async move {
+                        let _ = mgr.emit_panel_context(&tid, &tturn).await;
+                    });
                 }
                 EngineEvent::ToolCallStarted { id, name, input } => {
                     let item_id = format!("item_{}", &Uuid::new_v4().to_string()[..8]);
@@ -2690,11 +2808,29 @@ impl RuntimeThreadManager {
                                                         &thread_id,
                                                         &json_str,
                                                     );
+                                                    let _ = self
+                                                        .emit_panel_checklist(
+                                                            &thread_id,
+                                                            &turn_id,
+                                                        )
+                                                        .await;
                                                 }
                                             }
                                         }
                                     }
                                 }
+                            }
+                        }
+                        if Self::checklist_tool_needs_panel_push(name.as_str()) {
+                            let _ = self
+                                .emit_panel_checklist(&thread_id, &turn_id)
+                                .await;
+                        }
+                        if Self::scratchpad_tool_needs_panel_push(name.as_str()) {
+                            if result.as_ref().is_ok_and(|o| o.success) {
+                                let _ = self
+                                    .emit_panel_scratchpad(&thread_id, &turn_id)
+                                    .await;
                             }
                         }
                     }
@@ -3207,6 +3343,9 @@ impl RuntimeThreadManager {
                     if let Some(err) = error {
                         turn_error = Some(err);
                     }
+                    let _ = self.emit_panel_context(&thread_id, &turn_id).await;
+                    let _ = self.emit_panel_scratchpad(&thread_id, &turn_id).await;
+                    let _ = self.emit_panel_checklist(&thread_id, &turn_id).await;
                     break;
                 }
                 _ => {}

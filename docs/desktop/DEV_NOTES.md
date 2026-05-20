@@ -17,6 +17,14 @@
 
 ---
 
+## 2026-05-21 — 工作台「目录」Tab
+
+| 项 | 状态 | 说明 |
+|----|------|------|
+| [workspace-directory-plan.md](workspace-directory-plan.md) | ⬜ | 目录 Tab UI/功能分阶段方案；§0 总览表 + §10 任务清单供实施打勾 |
+
+---
+
 ## 2026-05-18 — Agent 方向与「主动性」北极星
 
 ### 产品北极星（入座 briefing）

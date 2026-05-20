@@ -6,6 +6,7 @@ pub mod config;
 pub mod coverage;
 mod schema;
 mod summary;
+pub mod ui_status;
 
 pub use schema::{
     AreaStatus, Inventory, NoteLine, is_high_severity, is_open_finding,
@@ -447,6 +448,48 @@ impl ScratchpadStore {
             .filter(|n| is_open_finding(n, &superseded))
             .count();
 
+        let mut findings_open_high = 0usize;
+        let mut findings_open_medium = 0usize;
+        let mut findings_open_low = 0usize;
+        let mut findings_verified_high = 0usize;
+        for note in &notes {
+            if !note.kind.eq_ignore_ascii_case("finding") || superseded.contains(&note.id) {
+                continue;
+            }
+            let high = is_high_severity(note.severity.as_deref());
+            let verified = is_verified_finding(note, &superseded);
+            let open = is_open_finding(note, &superseded);
+            if verified && high {
+                findings_verified_high += 1;
+            } else if open {
+                if high {
+                    findings_open_high += 1;
+                } else if note
+                    .severity
+                    .as_deref()
+                    .is_some_and(|s| s.eq_ignore_ascii_case("MEDIUM"))
+                {
+                    findings_open_medium += 1;
+                } else {
+                    findings_open_low += 1;
+                }
+            }
+        }
+
+        let areas: Vec<Value> = inventory
+            .areas
+            .iter()
+            .map(|area| {
+                let notes_count = notes_per_area.get(&area.id).copied().unwrap_or(0);
+                json!({
+                    "id": area.id,
+                    "path": area.path,
+                    "status": area.status.as_str(),
+                    "notes_count": notes_count,
+                })
+            })
+            .collect();
+
         Ok(json!({
             "run_id": self.run_id,
             "path": display_run_path(&self.run_id),
@@ -459,7 +502,12 @@ impl ScratchpadStore {
             "notes_total": notes.len(),
             "findings_verified": findings_verified,
             "findings_open": findings_open,
+            "findings_verified_high": findings_verified_high,
+            "findings_open_high": findings_open_high,
+            "findings_open_medium": findings_open_medium,
+            "findings_open_low": findings_open_low,
             "notes_per_area": notes_per_area,
+            "areas": areas,
         }))
     }
 }
@@ -606,5 +654,10 @@ mod tests {
         let status = store.build_status().expect("status");
         assert_eq!(status["notes_total"], 1);
         assert_eq!(status["findings_verified"], 1);
+        let areas = status["areas"].as_array().expect("areas array");
+        assert_eq!(areas.len(), 1);
+        assert_eq!(areas[0]["id"], "area-a");
+        assert_eq!(areas[0]["notes_count"], 1);
+        assert_eq!(areas[0]["status"], "pending");
     }
 }

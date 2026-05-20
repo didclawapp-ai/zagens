@@ -447,7 +447,13 @@ fn path_to_workspace_string(path: &Path) -> String {
         if idx > 0 {
             out.push('/');
         }
-        out.push_str(&comp.as_os_str().to_string_lossy());
+        let segment: String = comp
+            .as_os_str()
+            .to_string_lossy()
+            .chars()
+            .filter(|c| !c.is_control())
+            .collect();
+        out.push_str(&segment);
     }
     out
 }

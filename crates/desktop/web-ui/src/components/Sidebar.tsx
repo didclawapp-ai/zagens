@@ -2,6 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useT } from '../i18n';
 import type { RightPanelView } from './RightPanel';
 import type { RuntimeConnectionState } from '../api/client';
+import {
+  runtimeConnIndicatorClass,
+  runtimeConnStatusLabel,
+} from '../lib/runtimeReachable';
 import PanelEdgeSeam from './PanelEdgeSeam';
 
 interface SessionInfo {
@@ -19,6 +23,9 @@ interface Props {
   onDeleteSession?: (id: string) => void;
   desktopHost: boolean;
   runtimeConn: RuntimeConnectionState;
+  /** Active model turn — probes may show degraded while APIs still work. */
+  streaming?: boolean;
+  runtimeSessionEstablished?: boolean;
   apiKeyConfigured: boolean | null;
   activeInspector: RightPanelView;
   onInspectorChange: (view: RightPanelView) => void;
@@ -69,6 +76,8 @@ export default function Sidebar({
   onDeleteSession,
   desktopHost,
   runtimeConn,
+  streaming = false,
+  runtimeSessionEstablished = false,
   apiKeyConfigured,
   activeInspector,
   onInspectorChange,
@@ -257,14 +266,19 @@ export default function Sidebar({
           title="与本地 deepseek-tui 运行时 (127.0.0.1:7878) 的连接状态"
         >
           <span
-            className={`shrink-0 inline-block w-2 h-2 rounded-full ${
-              runtimeConn === 'connected' ? 'bg-emerald-500' : 'bg-red-500'
-            }`}
+            className={`shrink-0 inline-block w-2 h-2 rounded-full ${runtimeConnIndicatorClass(
+              runtimeConn,
+              { streaming, sessionEstablished: runtimeSessionEstablished },
+            )}`}
           />
           <span className="truncate">
-            {runtimeConn === 'connected'
-              ? t('common.connectionNormal')
-              : t('common.connectionDisconnected')}
+            {runtimeConnStatusLabel(runtimeConn, { streaming, sessionEstablished: runtimeSessionEstablished }, {
+              connected: t('common.connectionNormal'),
+              disconnected: t('common.connectionDisconnected'),
+              busy: t('common.connectionBusy'),
+              authMismatch: t('common.runtimeAuthMismatch'),
+              checking: t('common.runtimeChecking'),
+            })}
           </span>
         </div>
       </div>

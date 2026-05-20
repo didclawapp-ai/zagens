@@ -1462,6 +1462,7 @@ dependencies = [
  "deepseek-config",
  "deepseek-secrets",
  "dirs",
+ "futures-util",
  "ignore",
  "portable-pty",
  "reqwest",

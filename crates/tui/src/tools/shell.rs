@@ -33,6 +33,17 @@ use crate::sandbox::{
     SandboxType,
 };
 
+fn prepend_sandbox_enforcement_warning(exec_env: &ExecEnv, stderr: &mut String) {
+    if let Some(warning) = exec_env.sandbox_enforcement_warning() {
+        let prefix = format!("[sandbox] {warning}\n");
+        if stderr.is_empty() {
+            *stderr = prefix;
+        } else {
+            stderr.insert_str(0, &prefix);
+        }
+    }
+}
+
 /// Status of a shell process
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ShellStatus {
@@ -805,7 +816,8 @@ impl ShellManager {
             let stdout = stdout_thread.join().unwrap_or_default();
             let stderr = stderr_thread.join().unwrap_or_default();
             let stdout_str = String::from_utf8_lossy(&stdout).to_string();
-            let stderr_str = String::from_utf8_lossy(&stderr).to_string();
+            let mut stderr_str = String::from_utf8_lossy(&stderr).to_string();
+            prepend_sandbox_enforcement_warning(exec_env, &mut stderr_str);
             let exit_code = status.code().unwrap_or(-1);
 
             // Check if sandbox denied the operation

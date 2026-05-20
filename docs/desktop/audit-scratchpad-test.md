@@ -26,7 +26,8 @@
 | **L7 全仓** — `audit-001`（defer 回归） | ⚠️ 已修复待复测 | `2026-05-19-audit-001` |
 | **L7 全仓** — `full-audit`（新包 + 全仓 Prompt） | ⚠️ 报告可用，流程未闭环 | `2026-05-20-full-audit` |
 | **L7c 全仓** — `2026-05-20-audit`（宽 Prompt + scratchpad） | ✅ 流程闭环；⚠️ 主代理路径 | `2026-05-20-audit` |
-| **L8 Phase D** — 审计过程可视化 | ⬜ 规划 | 见 [§L8](#l8--phase-d-审计过程可视化规划) |
+| **L7d 全仓** — `2026-05-20-001`（子代理并行 + 14 HIGH） | ✅ 流程闭环；✅ 真子代理 | `2026-05-20-001` |
+| **L8 Phase D** — 审计过程可视化 | D1 ✅ / D2 ✅ / U2·U3 ⬜ | 见 [§L8](#l8--phase-d-审计过程可视化规划) |
 | **L9 地狱级四维** — 审查维度 Prompt | ⏸ 暂缓 | 见 [§L9](#l9--地狱级四维审计暂缓) |
 
 **结论：** Phase A 在单区与多区场景下可用；长程「落盘纪律」已验证。Phase B 在 `2026-05-19-phase-b-smoke` 上验收通过。**新包回归**：R1 ✅ · R2 ⚠️ · R3 ✅ · R4a ⚠️ · R4b ⏭ · **R5 ✅**（Auditor 预期 **FAIL** = 检测生效）；R6 可选见 §8.4。**L7 全仓**：`audit-001` defer 已修待复测；`full-audit` 见 [L7b](#l7b--全仓试跑-2026-05-20-full-audit2026-05-20)；**L7c** 见 [§L7c](#l7c--全仓试跑-2026-05-20-audit2026-05-20)。**下一步产品：** [Phase D 可视化](#l8--phase-d-审计过程可视化规划)（design [§6.13](audit-scratchpad-design.md#613-phase-d--审计过程可视化路线图-未实现)）。
@@ -756,13 +757,53 @@ workspace/.deepseek/scratchpad/2026-05-20-audit/  # 同上（若 cwd 为仓库�
 | scratchpad 纪律 | ✅ append + set_area + P2 报告 |
 | P1 子代理（skill / E5） | ⚠️ 口述曾计划 Explore，**实际主代理批读** |
 | 覆盖诚实度 | ✅ 报告写明 prompts/widgets 等**抽样** |
-| sidecar 保存设置重启 | ⚠️ 曾「未连接 + 仍显示生成中」；修复见 CHANGELOG（`sidecar://restarting`） |
+| sidecar 保存设置重启 | ✅ 源码 + **2026-05-20 `tauri build` dist** 含 `sidecar://restarting` / `runtimeSidecarRestart`；保存设置时应清「生成中」并 toast |
 
 ### 与 Phase D 的关系
 
 L7c 证明 **Harness 可托住长任务落盘**；仍缺 **过程可视化** 来暴露「子代理面板空 vs 叙事 spawn」「双轨 checklist」。验收见 [§L8](#l8--phase-d-审计过程可视化规划)。
 
 **费用粗算：** 用户对照约 **6–8 元/次** 全库审；本次 Δ 以官方控制台 **未命中 + 输出** 乘单价为准（命中缓存单价更低）。
+
+---
+
+## L7d — 全仓试跑 `2026-05-20-001`（2026-05-20）
+
+**Prompt（用户）：** 帮我对项目进行代码级审核，所有代码都要进行审核，并输出 md 格式的报告。
+
+**产物：**
+
+```text
+.deepseek/scratchpad/2026-05-20-001/
+├── inventory.json    # 29 areas，全部 done
+├── notes.jsonl       # 38 行（29 finding + cleared/meta）
+deliverables/code-audit-report-2026-05-20.md
+```
+
+（工作区根下路径；与 L7c 的 `workspace/.deepseek/...` 等价。）
+
+### 总评：✅ Harness 闭环 + 真子代理；⚠️ 8 条 MEDIUM 仍 `open`
+
+| 维度 | L7c `2026-05-20-audit` | L7d `2026-05-20-001` |
+|------|------------------------|----------------------|
+| inventory | 35/35 `done` | **29/29 `done`** |
+| 执行体 | 主代理批读 | **~18 Explore 子代理 + Auditor**（`subagents.v1.json` 有记录） |
+| HIGH | 0 | **14**（notes 全部 `verified`） |
+| 报告 | `REPORT.md` + 摘要 | **`deliverables/code-audit-report-2026-05-20.md`** |
+| Token（5/20，基线 38,955,035） | Δ ~+5.15M | **Δ ~+18.07M**（当日合计 **57,023,148**） |
+
+### 磁盘核实
+
+| 项 | 结果 |
+|----|------|
+| `inventory.json` | 29 area，**全部 `done`** |
+| `notes.jsonl` | 29 `finding`（14 HIGH / 13 MEDIUM / 2 LOW）；21 `verified`、8 `open` |
+| Auditor 元笔记 note-038 | 3/14 HIGH **行号漂移**，语义验证通过 |
+| P0 跟进（代码） | H05 导出路径校验 · H06 移除 `get_runtime_token`（Tauri HTTP/SSE 代理）· H02 Explore `explicit_tools` 与类型白名单求交 · H03 blackboard `task_id` 校验 |
+
+### 与 Phase D
+
+L7d 是 **D1/D2 可视化** 的理想复测场景：子代理轨应有行、findings 条带应与 `notes.jsonl` 一致；口述 spawn 不应再出现「面板空」。
 
 ---
 
@@ -795,7 +836,7 @@ D-a: D1.1 + D1.2 + D1.3  →  D-b: D2.1 + D2.2  →  D-c: U2 + U3 + D2.3
 
 在 L7c 同类全库 Prompt 上再跑一轮；**人为**在 area-3 只 `append` 不 `set_area`，确认 D1.2 红灯；修复后续审至 35/35。
 
-**状态：** ⬜ 未开工（文档-only 路线图，2026-05-20 写入）。
+**状态：** **D1 ✅** · **D2 ✅**（2026-05-20）：D2.1 双轨 + `contract_warnings`；D2.2 子代理计数/口述 spawn 警告；D2.3 findings 条带（severity）；**U2/U3 ⬜**（D-c）。
 
 ---
 

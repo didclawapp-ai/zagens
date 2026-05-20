@@ -912,6 +912,24 @@ fn build_allowed_tools_explicit_list_returned_as_some() {
 }
 
 #[test]
+fn build_allowed_tools_explore_explicit_cannot_add_write() {
+    let result = build_allowed_tools(
+        &SubAgentType::Explore,
+        Some(vec![
+            "write_file".to_string(),
+            "exec_shell".to_string(),
+            "read_file".to_string(),
+        ]),
+        true,
+    )
+    .unwrap()
+    .unwrap();
+    assert!(!result.iter().any(|t| t == "write_file"));
+    assert!(!result.iter().any(|t| t == "exec_shell"));
+    assert!(result.iter().any(|t| t == "read_file"));
+}
+
+#[test]
 fn build_allowed_tools_explicit_list_dedupes_and_trims() {
     let explicit = vec![
         "read_file".to_string(),

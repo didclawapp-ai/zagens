@@ -14,6 +14,7 @@ import type {
 } from '../types/automation';
 import type { RoutingRulesResponse, RoutingRule } from '../types/routing';
 import { normalizeWorkspaceForApi } from '../lib/defaultWorkspace';
+import { coalescePollFetch } from '../lib/pollFetch';
 
 export interface SseTurnEvent {
   event: string;
@@ -60,22 +61,48 @@ export interface SessionDetail {
 }
 
 let runtimeBase = 'http://127.0.0.1:7878';
-let runtimeToken = '';
+/** DS Pick shell: REST/SSE via Tauri; Bearer stays in Rust (H06). */
+let useTauriRuntimeProxy = false;
 
 /** Call before render when running inside Tauri; no-op in plain Vite dev. */
 export async function initRuntimeConfig(): Promise<void> {
   try {
     const { invoke } = await import('@tauri-apps/api/core');
-    const [port, token] = await Promise.all([
-      invoke<number>('get_runtime_port'),
-      invoke<string>('get_runtime_token'),
-    ]);
+    const port = await invoke<number>('get_runtime_port');
     runtimeBase = `http://127.0.0.1:${port}`;
-    runtimeToken = token;
-    // Token stays module-private (closure scope); never on window.
+    useTauriRuntimeProxy = true;
   } catch {
-    /* Not in Tauri webview — open API (no auth). */
+    useTauriRuntimeProxy = false;
   }
+}
+
+async function runtimeRequest(path: string, init: RequestInit = {}): Promise<Response> {
+  if (!useTauriRuntimeProxy) {
+    return fetch(`${runtimeBase}${path}`, {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(init.headers as Record<string, string> | undefined),
+      },
+    });
+  }
+  const { invoke } = await import('@tauri-apps/api/core');
+  let body: string | null = null;
+  if (init.body != null) {
+    body =
+      typeof init.body === 'string' ? init.body : await new Response(init.body).text();
+  }
+  const res = await invoke<{ status: number; body: string }>('runtime_http', {
+    request: {
+      method: (init.method ?? 'GET').toUpperCase(),
+      path,
+      body,
+    },
+  });
+  return new Response(res.body, {
+    status: res.status,
+    headers: { 'Content-Type': 'application/json' },
+  });
 }
 
 export function getRuntimeBase(): string {
@@ -86,6 +113,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Per-probe ceiling so a wedged socket does not stall the UI for the browser default. */
 const RUNTIME_PROBE_FETCH_TIMEOUT_MS = 2_500;
+/** Panel polls (context / checklist / scratchpad) — allow sidecar queue time during tool I/O. */
+const RUNTIME_POLL_FETCH_TIMEOUT_MS = 45_000;
 
 function runtimeProbeInit(): RequestInit {
   const init: RequestInit = { method: 'GET' };
@@ -95,29 +124,21 @@ function runtimeProbeInit(): RequestInit {
   return init;
 }
 
-function authHeaders(): Record<string, string> {
-  if (!runtimeToken) {
-    return { 'Content-Type': 'application/json' };
-  }
-  return {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${runtimeToken}`,
-  };
-}
-
 /** Single attempt: `/health` then (if authed desktop) `/v1/sessions` — sequential while the port is down avoids doubling refused connections in DevTools. */
 async function tryRuntimeFullyReady(): Promise<boolean> {
   try {
-    const h = await fetch(`${runtimeBase}/health`, runtimeProbeInit());
+    const h = useTauriRuntimeProxy
+      ? await runtimeRequest('/health', { method: 'GET', signal: runtimeProbeInit().signal })
+      : await fetch(`${runtimeBase}/health`, runtimeProbeInit());
     if (!h.ok) {
       return false;
     }
-    if (!runtimeToken.trim()) {
+    if (!useTauriRuntimeProxy) {
       return true;
     }
-    const s = await fetch(`${runtimeBase}/v1/sessions`, {
-      ...runtimeProbeInit(),
-      headers: authHeaders(),
+    const s = await runtimeRequest('/v1/sessions', {
+      method: 'GET',
+      signal: runtimeProbeInit().signal,
     });
     return s.ok;
   } catch {
@@ -226,9 +247,15 @@ export type RuntimeConnectionState =
   | 'offline'
   | 'auth_mismatch';
 
-/** Single probe for UI status indicator (lighter than full session list). */
-export async function probeRuntimeConnection(): Promise<Exclude<RuntimeConnectionState, 'checking'>> {
-  if (!runtimeToken.trim()) {
+/**
+ * Single probe for UI status indicator.
+ * `light: true` — only `/health` (use while a turn is streaming: sidecar may be busy and
+ * `/v1/sessions` can exceed the probe timeout without the runtime being dead).
+ */
+export async function probeRuntimeConnection(options?: {
+  light?: boolean;
+}): Promise<Exclude<RuntimeConnectionState, 'checking'>> {
+  if (!useTauriRuntimeProxy) {
     try {
       const r = await fetch(`${runtimeBase}/health`, runtimeProbeInit());
       return r.ok ? 'connected' : 'offline';
@@ -237,14 +264,15 @@ export async function probeRuntimeConnection(): Promise<Exclude<RuntimeConnectio
     }
   }
   try {
-    const h = await fetch(`${runtimeBase}/health`, runtimeProbeInit());
+    const probe = runtimeProbeInit();
+    const h = await runtimeRequest('/health', { method: 'GET', signal: probe.signal });
     if (!h.ok) {
       return 'offline';
     }
-    const ar = await fetch(`${runtimeBase}/v1/sessions`, {
-      ...runtimeProbeInit(),
-      headers: authHeaders(),
-    });
+    if (options?.light) {
+      return 'connected';
+    }
+    const ar = await runtimeRequest('/v1/sessions', { method: 'GET', signal: probe.signal });
     if (ar.status === 401) {
       return 'auth_mismatch';
     }
@@ -289,10 +317,13 @@ export async function postStreamTurn(
   onError: (err: Error) => void,
   options?: { signal?: AbortSignal },
 ): Promise<void> {
+  if (useTauriRuntimeProxy) {
+    return postStreamTurnViaTauri(req, onEvent, onDone, onError, options);
+  }
   try {
     const response = await fetch(`${runtimeBase}/v1/stream`, {
       method: 'POST',
-      headers: authHeaders(),
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req),
       signal: options?.signal,
     });
@@ -340,12 +371,82 @@ export async function postStreamTurn(
   }
 }
 
+async function postStreamTurnViaTauri(
+  req: StreamTurnRequest,
+  onEvent: (event: SseTurnEvent) => void,
+  onDone: () => void,
+  onError: (err: Error) => void,
+  options?: { signal?: AbortSignal },
+): Promise<void> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  const { listen } = await import('@tauri-apps/api/event');
+
+  let buffer = '';
+  const unsubs: Array<() => void> = [];
+  const abort = options?.signal;
+
+  const cleanup = () => {
+    for (const u of unsubs) {
+      u();
+    }
+  };
+
+  if (abort?.aborted) {
+    onDone();
+    return;
+  }
+
+  const onAbort = () => {
+    cleanup();
+    onDone();
+  };
+  abort?.addEventListener('abort', onAbort, { once: true });
+
+  try {
+    unsubs.push(
+      await listen<string>('runtime://stream-chunk', (ev) => {
+        buffer += ev.payload;
+        const { drained, rest } = drainSseBlocks(buffer);
+        buffer = rest;
+        for (const block of drained) {
+          onEvent(block);
+        }
+      }),
+    );
+    unsubs.push(
+      await listen('runtime://stream-done', () => {
+        cleanup();
+        abort?.removeEventListener('abort', onAbort);
+        const { drained: tail } = drainSseBlocks(buffer + '\n\n');
+        for (const block of tail) {
+          onEvent(block);
+        }
+        onDone();
+      }),
+    );
+    unsubs.push(
+      await listen<string>('runtime://stream-error', (ev) => {
+        cleanup();
+        abort?.removeEventListener('abort', onAbort);
+        onError(new Error(ev.payload));
+      }),
+    );
+
+    await invoke('runtime_post_stream', { body: JSON.stringify(req) });
+  } catch (err) {
+    cleanup();
+    abort?.removeEventListener('abort', onAbort);
+    if (isAbortError(err)) {
+      onDone();
+      return;
+    }
+    onError(err instanceof Error ? err : new Error(String(err)));
+  }
+}
+
 export async function fetchJson<T>(path: string): Promise<T> {
   const res = await fetchResponseWithBackoff(
-    () =>
-      fetch(`${runtimeBase}${path}`, {
-        headers: authHeaders(),
-      }),
+    () => runtimeRequest(path, { method: 'GET' }),
     `GET ${path}`,
   );
   if (!res.ok) {
@@ -357,12 +458,36 @@ export async function fetchJson<T>(path: string): Promise<T> {
   return res.json();
 }
 
+function runtimePollInit(): RequestInit {
+  const init: RequestInit = { method: 'GET' };
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+    init.signal = AbortSignal.timeout(RUNTIME_POLL_FETCH_TIMEOUT_MS);
+  }
+  return init;
+}
+
+/** GET used by poll timers — skips a new fetch while the same path is still in flight. */
+function fetchJsonPoll<T>(path: string): Promise<T> {
+  return coalescePollFetch(`GET:${path}`, async () => {
+    const res = await fetchResponseWithBackoff(
+      () => runtimeRequest(path, { method: 'GET', ...runtimePollInit() }),
+      `GET ${path}`,
+    );
+    if (!res.ok) {
+      const text = await res.text();
+      const err = new Error(`HTTP ${res.status}: ${text}`);
+      (err as Error & { status?: number }).status = res.status;
+      throw err;
+    }
+    return res.json() as Promise<T>;
+  });
+}
+
 export async function postJson<T>(path: string, body: unknown): Promise<T> {
   const res = await fetchResponseWithBackoff(
     () =>
-      fetch(`${runtimeBase}${path}`, {
+      runtimeRequest(path, {
         method: 'POST',
-        headers: authHeaders(),
         body: JSON.stringify(body ?? {}),
       }),
     `POST ${path}`,
@@ -379,9 +504,8 @@ export async function postJson<T>(path: string, body: unknown): Promise<T> {
 export async function patchJson<T>(path: string, body: unknown): Promise<T> {
   const res = await fetchResponseWithBackoff(
     () =>
-      fetch(`${runtimeBase}${path}`, {
+      runtimeRequest(path, {
         method: 'PATCH',
-        headers: authHeaders(),
         body: JSON.stringify(body ?? {}),
       }),
     `PATCH ${path}`,
@@ -398,9 +522,8 @@ export async function patchJson<T>(path: string, body: unknown): Promise<T> {
 export async function putJson<T>(path: string, body: unknown): Promise<T> {
   const res = await fetchResponseWithBackoff(
     () =>
-      fetch(`${runtimeBase}${path}`, {
+      runtimeRequest(path, {
         method: 'PUT',
-        headers: authHeaders(),
         body: JSON.stringify(body ?? {}),
       }),
     `PUT ${path}`,
@@ -416,11 +539,7 @@ export async function putJson<T>(path: string, body: unknown): Promise<T> {
 
 export async function deleteJson(path: string): Promise<void> {
   const res = await fetchResponseWithBackoff(
-    () =>
-      fetch(`${runtimeBase}${path}`, {
-        method: 'DELETE',
-        headers: authHeaders(),
-      }),
+    () => runtimeRequest(path, { method: 'DELETE' }),
     `DELETE ${path}`,
   );
   if (!res.ok) {
@@ -486,6 +605,14 @@ export interface RuntimeThreadRecord {
   scratchpad_run_id?: string | null;
 }
 
+/** One inventory row from `GET /v1/threads/{id}/scratchpad/status` (Phase D1). */
+export interface ScratchpadInventoryArea {
+  id: string;
+  path: string;
+  status: 'pending' | 'in_progress' | 'done' | 'deferred' | string;
+  notes_count?: number;
+}
+
 /** `GET /v1/threads/{id}/scratchpad/status` (audit progress, read-only). */
 export interface ScratchpadStatus {
   run_id?: string;
@@ -499,13 +626,22 @@ export interface ScratchpadStatus {
   notes_total?: number;
   findings_verified?: number;
   findings_open?: number;
+  findings_verified_high?: number;
+  findings_open_high?: number;
+  findings_open_medium?: number;
+  findings_open_low?: number;
   notes_per_area?: Record<string, number>;
+  areas?: ScratchpadInventoryArea[];
+  checklist_completed?: number;
+  checklist_total?: number;
+  contract_warnings?: string[];
+  subagents_running?: number;
 }
 
 export async function fetchThreadScratchpadStatus(
   threadId: string,
 ): Promise<ScratchpadStatus | null> {
-  const raw = await fetchJson<ScratchpadStatus | null>(
+  const raw = await fetchJsonPoll<ScratchpadStatus | null>(
     `/v1/threads/${encodeURIComponent(threadId)}/scratchpad/status`,
   );
   if (raw == null || typeof raw !== 'object' || !('run_id' in raw)) {
@@ -536,11 +672,11 @@ export async function getThreadDetail(threadId: string): Promise<ThreadDetailRes
 }
 
 export async function getThreadContext(threadId: string): Promise<ThreadContextSnapshot> {
-  return fetchJson(`/v1/threads/${encodeURIComponent(threadId)}/context`);
+  return fetchJsonPoll(`/v1/threads/${encodeURIComponent(threadId)}/context`);
 }
 
 export async function fetchThreadChecklist(threadId: string): Promise<any> {
-  return fetchJson(`/v1/threads/${encodeURIComponent(threadId)}/checklist`);
+  return fetchJsonPoll(`/v1/threads/${encodeURIComponent(threadId)}/checklist`);
 }
 
 /** Side-git snapshots for a runtime thread (`GET /v1/threads/{id}/snapshots`). */
@@ -754,9 +890,8 @@ export interface AddMcpServerRequest {
 export async function addMcpServer(req: AddMcpServerRequest): Promise<void> {
   const res = await fetchResponseWithBackoff(
     () =>
-      fetch(`${runtimeBase}/v1/apps/mcp/servers`, {
+      runtimeRequest('/v1/apps/mcp/servers', {
         method: 'POST',
-        headers: authHeaders(),
         body: JSON.stringify(req),
       }),
     'POST /v1/apps/mcp/servers',
@@ -786,9 +921,8 @@ export async function mergeMcpConfigJson(fragmentText: string): Promise<{ merged
 export async function deleteSession(sessionId: string): Promise<void> {
   const res = await fetchResponseWithBackoff(
     () =>
-      fetch(`${runtimeBase}/v1/sessions/${encodeURIComponent(sessionId)}`, {
+      runtimeRequest(`/v1/sessions/${encodeURIComponent(sessionId)}`, {
         method: 'DELETE',
-        headers: authHeaders(),
       }),
     `DELETE /v1/sessions/${sessionId}`,
   );
@@ -847,43 +981,50 @@ export async function replayThreadEvents(
     }
   }, 200);
   const maxGuard = window.setTimeout(() => controller.abort(), 120_000);
-  const url = `${runtimeBase}/v1/threads/${encodeURIComponent(threadId)}/events?since_seq=${sinceSeq}&replay_only=true`;
+  const path = `/v1/threads/${encodeURIComponent(threadId)}/events?since_seq=${sinceSeq}&replay_only=true`;
   try {
-    const res = await fetch(url, {
-      headers: authHeaders(),
-      signal: controller.signal,
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`HTTP ${res.status}: ${text}`);
-    }
-    const reader = res.body?.getReader();
-    if (!reader) {
-      throw new Error('No response body');
-    }
-    const decoder = new TextDecoder();
-    let buffer = '';
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-      buffer += decoder.decode(value, { stream: true });
-      const { drained, rest } = drainSseBlocks(buffer);
-      buffer = rest;
-      for (const ev of drained) {
-        let seq: number | undefined;
-        try {
-          const p = JSON.parse(ev.data);
-          if (typeof p.seq === 'number') {
-            seq = p.seq;
-          }
-        } catch {
-          /* ignore */
-        }
+    if (useTauriRuntimeProxy) {
+      await consumeThreadEventsSse(path, onEvent, () => {
         sawEvent = true;
         lastEventMs = Date.now();
-        onEvent({ ...ev, seq });
+      });
+    } else {
+      const res = await fetch(`${runtimeBase}${path}`, {
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`HTTP ${res.status}: ${text}`);
+      }
+      const reader = res.body?.getReader();
+      if (!reader) {
+        throw new Error('No response body');
+      }
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        const { drained, rest } = drainSseBlocks(buffer);
+        buffer = rest;
+        for (const ev of drained) {
+          let seq: number | undefined;
+          try {
+            const p = JSON.parse(ev.data);
+            if (typeof p.seq === 'number') {
+              seq = p.seq;
+            }
+          } catch {
+            /* ignore */
+          }
+          sawEvent = true;
+          lastEventMs = Date.now();
+          onEvent({ ...ev, seq });
+        }
       }
     }
   } catch (e) {
@@ -901,15 +1042,95 @@ export async function replayThreadEvents(
  * Subscribe to thread event stream (GET SSE). Updates `sinceSeq` from payload `seq` when present.
  * Stays open for live events until the connection closes or `signal` aborts.
  */
+async function consumeThreadEventsSse(
+  path: string,
+  onEvent: (ev: SseTurnEvent & { seq?: number }) => void,
+  onChunk?: () => void,
+): Promise<void> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  const { listen } = await import('@tauri-apps/api/event');
+  let buffer = '';
+  const unsubs: Array<() => void> = [];
+
+  const flushTail = () => {
+    const { drained: tail } = drainSseBlocks(buffer + '\n\n');
+    for (const block of tail) {
+      let seq: number | undefined;
+      try {
+        const p = JSON.parse(block.data);
+        if (typeof p.seq === 'number') {
+          seq = p.seq;
+        }
+      } catch {
+        /* ignore */
+      }
+      onEvent({ ...block, seq });
+    }
+  };
+
+  await new Promise<void>((resolve, reject) => {
+    const finish = () => {
+      for (const u of unsubs) {
+        u();
+      }
+    };
+
+    void (async () => {
+      try {
+        unsubs.push(
+          await listen<string>('runtime://events-chunk', (ev) => {
+            buffer += ev.payload;
+            const { drained, rest } = drainSseBlocks(buffer);
+            buffer = rest;
+            for (const block of drained) {
+              let seq: number | undefined;
+              try {
+                const p = JSON.parse(block.data);
+                if (typeof p.seq === 'number') {
+                  seq = p.seq;
+                }
+              } catch {
+                /* ignore */
+              }
+              onChunk?.();
+              onEvent({ ...block, seq });
+            }
+          }),
+        );
+        unsubs.push(
+          await listen('runtime://events-done', () => {
+            flushTail();
+            finish();
+            resolve();
+          }),
+        );
+        unsubs.push(
+          await listen<string>('runtime://events-error', (ev) => {
+            finish();
+            reject(new Error(ev.payload));
+          }),
+        );
+        await invoke('runtime_get_sse', { path });
+      } catch (err) {
+        finish();
+        reject(err instanceof Error ? err : new Error(String(err)));
+      }
+    })();
+  });
+}
+
 export async function getThreadEvents(
   threadId: string,
   sinceSeq: number,
   onEvent: (ev: SseTurnEvent & { seq?: number }) => void,
   options?: { signal?: AbortSignal },
 ): Promise<void> {
-  const url = `${runtimeBase}/v1/threads/${encodeURIComponent(threadId)}/events?since_seq=${sinceSeq}`;
-  const res = await fetch(url, {
-    headers: authHeaders(),
+  const path = `/v1/threads/${encodeURIComponent(threadId)}/events?since_seq=${sinceSeq}`;
+  if (useTauriRuntimeProxy) {
+    return consumeThreadEventsSse(path, onEvent);
+  }
+  const res = await fetch(`${runtimeBase}${path}`, {
+    headers: { 'Content-Type': 'application/json' },
     signal: options?.signal,
   });
   if (!res.ok) {

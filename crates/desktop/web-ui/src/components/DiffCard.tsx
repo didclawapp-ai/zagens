@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { html } from 'diff2html';
 import 'diff2html/bundles/css/diff2html.min.css';
 import { useT } from '../i18n';
+import { sanitizeHtmlForDisplay } from '../lib/sanitizeHtml';
 
 interface Props {
   diffText: string;
@@ -34,7 +35,7 @@ export default function DiffCard({
         renderNothingWhenEmpty: false,
       });
 
-      containerRef.current.innerHTML = `<div class="d2h-wrapper">${diffHtml}</div>`;
+      containerRef.current.innerHTML = `<div class="d2h-wrapper">${sanitizeHtmlForDisplay(diffHtml)}</div>`;
     } catch {
       if (containerRef.current) {
         containerRef.current.innerHTML = `<pre class="text-[11px] whitespace-pre-wrap text-t-text-secondary">${escapeHtml(diffText)}</pre>`;

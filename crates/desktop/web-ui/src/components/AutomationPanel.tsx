@@ -11,6 +11,7 @@ import {
 } from '../api/client';
 import type { TaskSummary, SkillEntry, CreateTaskRequest } from '../types/automation';
 import { useT } from '../i18n';
+import { isRuntimeApiAvailable } from '../lib/runtimeReachable';
 
 /** 定时自动化（GET /v1/automations）暂不展示 — 见 docs/desktop/TUI_DS_PICK_GAP.md */
 type TabId = 'tasks' | 'skills';
@@ -58,8 +59,20 @@ function canCancelTask(status: string): boolean {
   return status === 'queued' || status === 'running' || status === 'pending' || status === 'paused';
 }
 
-export default function AutomationPanel({ runtimeConn }: { runtimeConn: RuntimeConnectionState }) {
+export default function AutomationPanel({
+  runtimeConn,
+  streaming = false,
+  runtimeSessionEstablished = false,
+}: {
+  runtimeConn: RuntimeConnectionState;
+  streaming?: boolean;
+  runtimeSessionEstablished?: boolean;
+}) {
   const { t } = useT();
+  const runtimeReady = isRuntimeApiAvailable(runtimeConn, {
+    streaming,
+    sessionEstablished: runtimeSessionEstablished,
+  });
   const [tab, setTab] = useState<TabId>('tasks');
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
   const [skills, setSkills] = useState<SkillEntry[]>([]);
@@ -90,10 +103,10 @@ export default function AutomationPanel({ runtimeConn }: { runtimeConn: RuntimeC
   }, []);
 
   useEffect(() => {
-    if (runtimeConn === 'connected') {
+    if (runtimeReady) {
       reload();
     }
-  }, [runtimeConn, reload]);
+  }, [runtimeReady, reload]);
 
   const handleCreateTask = async (req: CreateTaskRequest) => {
     setCreating(true);
@@ -121,7 +134,7 @@ export default function AutomationPanel({ runtimeConn }: { runtimeConn: RuntimeC
     }
   };
 
-  if (runtimeConn !== 'connected') {
+  if (!runtimeReady) {
     return (
       <div className="p-4 text-xs text-t-text-muted text-center space-y-2">
         <p>{t('automation.waitingRuntime')}</p>

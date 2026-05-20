@@ -55,7 +55,8 @@ impl ToolSpec for RlmTool {
 
     fn description(&self) -> &'static str {
         "Specialty tool for processing long inputs that don't fit in your \
-         own context window. Loads the input into a sandboxed Python REPL \
+         own context window. Loads the input into a Python REPL (isolated \
+         `-I` mode, no OS-level sandbox — same privileges as the agent) \
          as `PROMPT`; a sub-agent writes Python that chunks the input and \
          calls in-REPL helpers (`llm_query`, `llm_query_batched`, \
          `rlm_query`, `rlm_query_batched`) to process it, then returns a \

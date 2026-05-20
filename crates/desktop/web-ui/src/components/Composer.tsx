@@ -25,6 +25,7 @@ import {
   OFFICE_COMPOSER_RUN_MODE_HINT,
 } from '../types/desktop';
 import { runModesForSession } from '../lib/taskTypeSession';
+import { clipboardHtmlToPlainText } from '../lib/sanitizeHtml';
 
 const MAX_FILE_BYTES = 128 * 1024; // 128 KB per file
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024; // align with describe_image / vision_transcribe_image
@@ -701,10 +702,7 @@ export default function Composer({
     if (html) {
       e.preventDefault();
 
-      // Strip HTML → plain text
-      const tmp = document.createElement('div');
-      tmp.innerHTML = html;
-      let pasted = tmp.textContent || tmp.innerText || '';
+      let pasted = clipboardHtmlToPlainText(html);
 
       // Guess if it looks like code (contains braces, indentation, semicolons, etc.)
       const looksLikeCode =

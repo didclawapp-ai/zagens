@@ -1,6 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
+mod export_path;
+mod runtime_proxy;
 mod sidecar;
 mod terminal;
 mod workspace_defaults;
@@ -112,8 +114,10 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            commands::get_runtime_token,
             commands::get_runtime_port,
+            runtime_proxy::runtime_http,
+            runtime_proxy::runtime_post_stream,
+            runtime_proxy::runtime_get_sse,
             commands::get_platform_info,
             commands::get_os_theme,
             commands::get_locale,

@@ -38,7 +38,10 @@ export type NormalizedStreamEvent =
   | { kind: 'agent_spawned'; agentId: string }
   | { kind: 'agent_progress'; agentId: string }
   | { kind: 'agent_completed'; agentId: string; result: string }
-  | { kind: 'agent_list'; agents: Array<{ id: string; status: string }> };
+  | { kind: 'agent_list'; agents: Array<{ id: string; status: string }> }
+  | { kind: 'panel_scratchpad'; scratchpad: unknown }
+  | { kind: 'panel_checklist'; checklist: unknown }
+  | { kind: 'panel_context'; context: unknown };
 
 export function normalizeDesktopStreamEvent(
   ev: { event: string; data: string },
@@ -139,6 +142,16 @@ export function normalizeDesktopStreamEvent(
         })),
       };
     }
+  }
+
+  if (sse === 'panel.scratchpad' && j.scratchpad != null) {
+    return { kind: 'panel_scratchpad', scratchpad: j.scratchpad };
+  }
+  if (sse === 'panel.checklist' && j.checklist != null) {
+    return { kind: 'panel_checklist', checklist: j.checklist };
+  }
+  if (sse === 'panel.context' && j.context != null) {
+    return { kind: 'panel_context', context: j.context };
   }
 
   // —— Raw runtime records from `GET /v1/threads/{id}/events` ——
@@ -252,6 +265,19 @@ export function normalizeDesktopStreamEvent(
         })),
       };
     }
+  }
+
+  if (recordEvent === 'panel.scratchpad' && inner) {
+    const scratchpad = (inner.scratchpad ?? inner) as unknown;
+    return { kind: 'panel_scratchpad', scratchpad };
+  }
+  if (recordEvent === 'panel.checklist' && inner) {
+    const checklist = (inner.checklist ?? inner) as unknown;
+    return { kind: 'panel_checklist', checklist };
+  }
+  if (recordEvent === 'panel.context' && inner) {
+    const context = (inner.context ?? inner) as unknown;
+    return { kind: 'panel_context', context };
   }
 
   // Detect tool calls that are agent_spawn and emit agent_spawned

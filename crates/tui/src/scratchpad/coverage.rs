@@ -135,8 +135,9 @@ fn deferred_reason_excerpt(area_id: &str, notes: &[NoteLine]) -> Option<String> 
         .find_map(|n| n.claim.as_ref().filter(|c| !c.trim().is_empty()))
         .map(|c| {
             let t = c.trim();
-            if t.len() > 120 {
-                format!("{}…", &t[..120])
+            if t.chars().count() > 120 {
+                let head: String = t.chars().take(120).collect();
+                format!("{head}…")
             } else {
                 t.to_string()
             }

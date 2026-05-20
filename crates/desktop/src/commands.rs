@@ -59,11 +59,6 @@ pub struct PlatformInfo {
 }
 
 #[tauri::command]
-pub async fn get_runtime_token(ctx: tauri::State<'_, AppContext>) -> Result<String, String> {
-    Ok(ctx.runtime_token.clone())
-}
-
-#[tauri::command]
 pub async fn get_runtime_port(ctx: tauri::State<'_, AppContext>) -> Result<u16, String> {
     Ok(ctx.runtime_port)
 }
@@ -926,7 +921,8 @@ pub async fn export_thread_json(
 
     let json = serde_json::to_string_pretty(&body).map_err(|e| format!("JSON 序列化失败: {e}"))?;
 
-    std::fs::write(&save_path, json).map_err(|e| format!("保存失败: {e}"))?;
+    let out_path = crate::export_path::validate_export_json_path(&save_path)?;
+    std::fs::write(&out_path, json).map_err(|e| format!("保存失败: {e}"))?;
 
     Ok(())
 }
@@ -1239,7 +1235,8 @@ pub async fn export_session_json(
 
     let json = serde_json::to_string_pretty(&body).map_err(|e| format!("JSON 序列化失败: {e}"))?;
 
-    std::fs::write(&save_path, json).map_err(|e| format!("保存失败: {e}"))?;
+    let out_path = crate::export_path::validate_export_json_path(&save_path)?;
+    std::fs::write(&out_path, json).map_err(|e| format!("保存失败: {e}"))?;
 
     Ok(())
 }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { fetchRoutingRules, setRoutingRules, type RuntimeConnectionState } from '../api/client';
 import { useT } from '../i18n';
+import { isRuntimeApiAvailable } from '../lib/runtimeReachable';
 import type { RoutingRule } from '../types/routing';
 import type { DesktopRouteIntentOption } from '../types/desktop';
 import {
@@ -14,11 +15,23 @@ const PRESET_MODELS = ['deepseek-v4-pro', 'deepseek-v4-flash'];
 
 interface Props {
   runtimeConn: RuntimeConnectionState;
+  streaming?: boolean;
+  runtimeSessionEstablished?: boolean;
   routeIntent: DesktopRouteIntentOption;
   onRouteIntentChange: (v: DesktopRouteIntentOption) => void;
 }
 
-export default function RoutingPanel({ runtimeConn, routeIntent, onRouteIntentChange }: Props) {
+export default function RoutingPanel({
+  runtimeConn,
+  streaming = false,
+  runtimeSessionEstablished = false,
+  routeIntent,
+  onRouteIntentChange,
+}: Props) {
+  const runtimeReady = isRuntimeApiAvailable(runtimeConn, {
+    streaming,
+    sessionEstablished: runtimeSessionEstablished,
+  });
   const { t } = useT();
   const [rules, setRules] = useState<RoutingRule[]>([]);
   const [loading, setLoading] = useState(true);
@@ -40,12 +53,12 @@ export default function RoutingPanel({ runtimeConn, routeIntent, onRouteIntentCh
   }, []);
 
   useEffect(() => {
-    if (runtimeConn === 'connected') {
+    if (runtimeReady) {
       reload();
     }
-  }, [runtimeConn, reload]);
+  }, [runtimeReady, reload]);
 
-  if (runtimeConn !== 'connected') {
+  if (!runtimeReady) {
     return (
       <div className="p-4 text-xs text-t-text-muted text-center space-y-2">
         <p>{t('routing.waitingRuntime')}</p>

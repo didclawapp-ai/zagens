@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  countActiveSubagents,
+  detectNarrativeSpawnWithoutAgents,
+} from './lib/auditSpawnDetect';
+import {
   postStreamTurn,
   getSessions,
   getSessionDetail,
@@ -81,6 +85,20 @@ import {
   resolveContextUsagePercent,
   type ThreadContextSnapshot,
 } from './lib/contextUsage';
+import {
+  RUNTIME_PROBE_INTERVAL_IDLE_MS,
+  RUNTIME_PROBE_INTERVAL_STREAMING_MS,
+  SESSION_CHECKPOINT_STREAMING_MS,
+  THREAD_CONTEXT_POLL_STREAMING_MS,
+} from './lib/runtimePoll';
+import { isRuntimeApiAvailable } from './lib/runtimeReachable';
+import {
+  dispatchPanelChecklist,
+  dispatchPanelContext,
+  dispatchPanelScratchpad,
+  normalizeChecklistPayload,
+} from './lib/panelChannel';
+import type { ScratchpadStatus } from './api/client';
 
 interface Message {
   id: string;
@@ -176,9 +194,6 @@ function loadTaskTypePreference(): DesktopTaskTypePreference {
     return 'auto';
   }
 }
-
-/** Periodically persist session file during streaming (loss reduction vs turn-only persist). */
-const SESSION_CHECKPOINT_MS = 18_000;
 
 function loadRouteIntentPreference(): DesktopRouteIntentOption {
   try {
@@ -278,16 +293,42 @@ export default function App() {
   /** Runtime-aligned context snapshot (TUI `estimate_input_tokens_conservative`). */
   const [threadContextSnapshot, setThreadContextSnapshot] =
     useState<ThreadContextSnapshot | null>(null);
+  const resumedThreadIdRef = useRef<string | null>(null);
+  const threadContextSnapshotRef = useRef<ThreadContextSnapshot | null>(null);
+  const threadContextCacheRef = useRef<Map<string, ThreadContextSnapshot>>(new Map());
 
-  const refreshThreadContext = useCallback(async (threadId: string) => {
-    try {
-      const snap = await getThreadContext(threadId);
-      setThreadContextSnapshot(snap);
-      setContextWindowTokens(snap.context_window_tokens);
-    } catch {
-      setThreadContextSnapshot(null);
+  const applyThreadContextSnapshot = useCallback((threadId: string, snap: ThreadContextSnapshot) => {
+    threadContextCacheRef.current.set(threadId, snap);
+    if (resumedThreadIdRef.current !== threadId) {
+      return;
     }
+    setThreadContextSnapshot(snap);
+    setContextWindowTokens(snap.context_window_tokens);
   }, []);
+
+  const restoreThreadContextFromCache = useCallback((threadId: string) => {
+    const cached = threadContextCacheRef.current.get(threadId);
+    if (!cached || resumedThreadIdRef.current !== threadId) {
+      return;
+    }
+    setThreadContextSnapshot(cached);
+    setContextWindowTokens(cached.context_window_tokens);
+  }, []);
+
+  const refreshThreadContext = useCallback(
+    async (threadId: string) => {
+      try {
+        const snap = await getThreadContext(threadId);
+        applyThreadContextSnapshot(threadId, snap);
+      } catch {
+        if (resumedThreadIdRef.current !== threadId) {
+          return;
+        }
+        restoreThreadContextFromCache(threadId);
+      }
+    },
+    [applyThreadContextSnapshot, restoreThreadContextFromCache],
+  );
 
   const contextUsedTokens = useMemo(
     () =>
@@ -308,6 +349,11 @@ export default function App() {
   const [desktopHost, setDesktopHost] = useState(false);
   const [desktopApiKeyConfigured, setDesktopApiKeyConfigured] = useState<boolean | null>(null);
   const [runtimeConn, setRuntimeConn] = useState<RuntimeConnectionState>('checking');
+  /** Once true, panel APIs stay enabled across probe `offline` blips (B-channel busy). */
+  const [runtimeSessionEstablished, setRuntimeSessionEstablished] = useState(false);
+  const runtimeSessionEstablishedRef = useRef(false);
+  const runtimeProbeFailStreakRef = useRef(0);
+  const PROBE_FAILS_BEFORE_OFFLINE = 3;
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(true);
   const toggleDevtools = useCallback(() => {
@@ -360,8 +406,25 @@ export default function App() {
   }, [activeSessionId]);
 
   useEffect(() => {
+    resumedThreadIdRef.current = resumedThreadId;
+  }, [resumedThreadId]);
+
+  useEffect(() => {
+    threadContextSnapshotRef.current = threadContextSnapshot;
+  }, [threadContextSnapshot]);
+
+  useEffect(() => {
     streamingRef.current = streaming;
   }, [streaming]);
+
+  useEffect(() => {
+    runtimeSessionEstablishedRef.current = runtimeSessionEstablished;
+  }, [runtimeSessionEstablished]);
+
+  const runtimeReachability = useMemo(
+    () => ({ streaming, sessionEstablished: runtimeSessionEstablished }),
+    [streaming, runtimeSessionEstablished],
+  );
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -460,13 +523,18 @@ export default function App() {
       setThreadContextSnapshot(null);
       return;
     }
-    void refreshThreadContext(resumedThreadId);
+    restoreThreadContextFromCache(resumedThreadId);
     if (!streaming) {
-      return;
+      void refreshThreadContext(resumedThreadId);
+      const id = window.setInterval(
+        () => void refreshThreadContext(resumedThreadId),
+        THREAD_CONTEXT_POLL_STREAMING_MS,
+      );
+      return () => window.clearInterval(id);
     }
-    const id = window.setInterval(() => void refreshThreadContext(resumedThreadId), 3000);
-    return () => window.clearInterval(id);
-  }, [resumedThreadId, streaming, refreshThreadContext]);
+    // C-channel: context updates ride `panel.context` on the live SSE stream.
+    return undefined;
+  }, [resumedThreadId, streaming, refreshThreadContext, restoreThreadContextFromCache]);
 
   useEffect(() => {
     try {
@@ -546,11 +614,28 @@ export default function App() {
 
   /** Re-sync sidebar runtime dot; if probe is OK, drop stale transport-level toasts. */
   const reconcileRuntimeAfterFetchFailure = useCallback(() => {
-    void probeRuntimeConnection().then((s) => {
-      setRuntimeConn(s);
+    void probeRuntimeConnection({ light: streamingRef.current }).then((s) => {
       if (s === 'connected') {
+        runtimeProbeFailStreakRef.current = 0;
+        setRuntimeSessionEstablished(true);
+        setRuntimeConn('connected');
         dismissRuntimeTransient();
+        return;
       }
+      if (s === 'auth_mismatch') {
+        runtimeProbeFailStreakRef.current = 0;
+        setRuntimeConn('auth_mismatch');
+        return;
+      }
+      if (runtimeSessionEstablishedRef.current || streamingRef.current) {
+        runtimeProbeFailStreakRef.current += 1;
+        if (runtimeProbeFailStreakRef.current >= PROBE_FAILS_BEFORE_OFFLINE) {
+          setRuntimeConn('offline');
+        }
+        return;
+      }
+      runtimeProbeFailStreakRef.current = 0;
+      setRuntimeConn('offline');
     });
   }, [dismissRuntimeTransient]);
 
@@ -558,6 +643,7 @@ export default function App() {
     try {
       const list = await getSessions();
       setSessions(list);
+      setRuntimeSessionEstablished(true);
       toast.dismissAll();
     } catch (e) {
       const err = e as Error & { status?: number };
@@ -592,7 +678,7 @@ export default function App() {
         }
       })();
     };
-    const id = window.setInterval(tick, SESSION_CHECKPOINT_MS);
+    const id = window.setInterval(tick, SESSION_CHECKPOINT_STREAMING_MS);
     return () => window.clearInterval(id);
   }, [streaming, resumedThreadId, refreshSessions]);
 
@@ -633,6 +719,10 @@ export default function App() {
       const runtimeUrl = getRuntimeBase();
       const ok = await waitForRuntimeReady({ timeoutMs: 60_000, intervalMs: 150 });
       const probed = await probeRuntimeConnection();
+      if (probed === 'connected') {
+        setRuntimeSessionEstablished(true);
+        runtimeProbeFailStreakRef.current = 0;
+      }
       setRuntimeConn(probed);
       if (!ok) {
         notifyRuntimeTransient(t('banner.runtimeUnreachableStartup', { url: runtimeUrl }));
@@ -658,6 +748,10 @@ export default function App() {
         const ok = await waitForRuntimeBootReady({ timeoutMs: 90_000, intervalMs: 150 });
         if (!cancelled) {
           const probed = await probeRuntimeConnection();
+          if (probed === 'connected') {
+            setRuntimeSessionEstablished(true);
+            runtimeProbeFailStreakRef.current = 0;
+          }
           setRuntimeConn(probed);
         }
         if (cancelled) {
@@ -748,24 +842,63 @@ export default function App() {
   }, [desktopHost, abortActiveStreamForSidecarRestart]);
 
   useEffect(() => {
+    if (!streaming) {
+      return;
+    }
     let cancelled = false;
-    const tick = async () => {
-      const s = await probeRuntimeConnection();
-      if (cancelled) {
+    void probeRuntimeConnection({ light: true }).then((s) => {
+      if (!cancelled && s === 'connected') {
+        runtimeProbeFailStreakRef.current = 0;
+        setRuntimeSessionEstablished(true);
+        setRuntimeConn('connected');
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [streaming]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const applyProbe = (s: Exclude<RuntimeConnectionState, 'checking'>) => {
+      if (s === 'connected') {
+        runtimeProbeFailStreakRef.current = 0;
+        setRuntimeSessionEstablished(true);
+        setRuntimeConn('connected');
+        dismissRuntimeTransient();
         return;
       }
-      setRuntimeConn(s);
-      if (s === 'connected') {
-        dismissRuntimeTransient();
+      if (s === 'auth_mismatch') {
+        runtimeProbeFailStreakRef.current = 0;
+        setRuntimeConn('auth_mismatch');
+        return;
+      }
+      if (runtimeSessionEstablishedRef.current || streamingRef.current) {
+        runtimeProbeFailStreakRef.current += 1;
+        if (runtimeProbeFailStreakRef.current >= PROBE_FAILS_BEFORE_OFFLINE) {
+          setRuntimeConn('offline');
+        }
+        return;
+      }
+      runtimeProbeFailStreakRef.current = 0;
+      setRuntimeConn('offline');
+    };
+    const tick = async () => {
+      const s = await probeRuntimeConnection({ light: streamingRef.current });
+      if (!cancelled) {
+        applyProbe(s);
       }
     };
     void tick();
-    const id = window.setInterval(() => void tick(), 8000);
+    const intervalMs = streaming
+      ? RUNTIME_PROBE_INTERVAL_STREAMING_MS
+      : RUNTIME_PROBE_INTERVAL_IDLE_MS;
+    const id = window.setInterval(() => void tick(), intervalMs);
     return () => {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [dismissRuntimeTransient]);
+  }, [dismissRuntimeTransient, streaming]);
 
   const handleSelectSession = useCallback(
     async (sessionId: string) => {
@@ -782,6 +915,11 @@ export default function App() {
           outgoingSessionId,
           messagesRef.current,
         );
+      }
+      const outgoingThreadId = resumedThreadIdRef.current;
+      const outgoingSnapshot = threadContextSnapshotRef.current;
+      if (outgoingThreadId && outgoingSnapshot) {
+        threadContextCacheRef.current.set(outgoingThreadId, outgoingSnapshot);
       }
 
       toast.dismissAll();
@@ -812,7 +950,10 @@ export default function App() {
         if (!cachedUi?.length) {
           setMessages(sessionFallback);
         }
+        resumedThreadIdRef.current = resumed.thread_id;
         setResumedThreadId(resumed.thread_id);
+        setRuntimeSessionEstablished(true);
+        restoreThreadContextFromCache(resumed.thread_id);
         try {
           const fromThread = await rebuildMessagesFromThreadEvents(resumed.thread_id, {
             signal: selectAbort.signal,
@@ -851,6 +992,9 @@ export default function App() {
           );
           setSelectedWorkspace(threadDetail.thread.workspace);
           setThreadTrustMode(Boolean(threadDetail.thread.trust_mode));
+          if (gen === selectSessionGenerationRef.current) {
+            void refreshThreadContext(resumed.thread_id);
+          }
         } catch (syncErr) {
           if (gen !== selectSessionGenerationRef.current) {
             return;
@@ -879,7 +1023,14 @@ export default function App() {
         reconcileRuntimeAfterFetchFailure();
       }
     },
-    [reconcileRuntimeAfterFetchFailure, notifyRuntimeTransient, t],
+    [
+      reconcileRuntimeAfterFetchFailure,
+      notifyRuntimeTransient,
+      refreshThreadContext,
+      restoreThreadContextFromCache,
+      selectedModel,
+      t,
+    ],
   );
 
   /** After the sidebar session list loads, re-open the last desktop session (if still present). */
@@ -1049,7 +1200,7 @@ export default function App() {
 
   const openWorkspaceFileForPreview = useCallback(
     async (relPath: string, title?: string) => {
-      if (runtimeConn !== 'connected') {
+      if (!isRuntimeApiAvailable(runtimeConn, runtimeReachability)) {
         throw new Error(t('banner.runtimeNotConnected'));
       }
       setActiveInspector('workspace');
@@ -1063,7 +1214,7 @@ export default function App() {
       });
       setPanelPreview(state);
     },
-    [runtimeConn, selectedWorkspace, resumedThreadId, desktopHost, t],
+    [runtimeConn, runtimeReachability, selectedWorkspace, resumedThreadId, desktopHost, t],
   );
 
   const handleChatOpenWorkspacePath = useCallback(
@@ -1177,6 +1328,7 @@ export default function App() {
       setMessages((prev) => [...prev, assistantMsg]);
 
       setStreaming(true);
+      setRuntimeSessionEstablished(true);
       setAgentStates([]);
       toast.dismissAll();
       toolProgressPendingRef.current = '';
@@ -1398,15 +1550,6 @@ export default function App() {
                   output: merged,
                   status: norm.success ? ('done' as const) : ('error' as const),
                 };
-                if (
-                  toolName === 'scratchpad_append' ||
-                  toolName === 'scratchpad_set_area' ||
-                  toolName === 'scratchpad_status'
-                ) {
-                  queueMicrotask(() => {
-                    window.dispatchEvent(new CustomEvent('deepseek-scratchpad-changed'));
-                  });
-                }
                 if (toolName === 'agent_spawn' || toolName === 'spawn_agent') {
                   const agentId = parseAgentIdFromSpawnOutput(merged);
                   if (agentId) {
@@ -1542,6 +1685,26 @@ export default function App() {
               }
               return Array.from(byId.values());
             });
+            break;
+          }
+          case 'panel_scratchpad': {
+            const raw = norm.scratchpad;
+            if (raw && typeof raw === 'object' && 'run_id' in (raw as Record<string, unknown>)) {
+              dispatchPanelScratchpad(raw as ScratchpadStatus);
+            }
+            break;
+          }
+          case 'panel_checklist': {
+            dispatchPanelChecklist(normalizeChecklistPayload(norm.checklist));
+            break;
+          }
+          case 'panel_context': {
+            const ctx = norm.context as ThreadContextSnapshot;
+            const tid = resumedThreadIdRef.current;
+            if (tid && ctx && typeof ctx.estimated_input_tokens === 'number') {
+              applyThreadContextSnapshot(tid, ctx);
+              dispatchPanelContext(ctx);
+            }
             break;
           }
           default:
@@ -1681,6 +1844,15 @@ export default function App() {
     }
   };
 
+  const subagentActiveCount = useMemo(
+    () => countActiveSubagents(agentStates),
+    [agentStates],
+  );
+  const narrativeSpawnSuspected = useMemo(
+    () => detectNarrativeSpawnWithoutAgents(messages, agentStates),
+    [messages, agentStates],
+  );
+
   return (
     <div className="flex flex-col h-screen w-screen bg-canvas">
       <TitleBar />
@@ -1701,6 +1873,8 @@ export default function App() {
         onDeleteSession={handleDeleteSession}
         desktopHost={desktopHost}
         runtimeConn={runtimeConn}
+        streaming={streaming}
+        runtimeSessionEstablished={runtimeSessionEstablished}
         apiKeyConfigured={desktopApiKeyConfigured}
         activeInspector={activeInspector}
         onInspectorChange={handleInspectorChange}
@@ -1733,7 +1907,13 @@ export default function App() {
             handleSend({ displayContent: content, apiPrompt: content })
           }
         />
-        <AuditScratchpadBar threadId={resumedThreadId} streaming={streaming} />
+        <AuditScratchpadBar
+          threadId={resumedThreadId}
+          streaming={streaming}
+          onOpenWorkspacePath={handleChatOpenWorkspacePath}
+          subagentActiveCount={subagentActiveCount}
+          narrativeSpawnSuspected={narrativeSpawnSuspected}
+        />
         <Composer
           onSend={handleSend}
           onCancel={handleCancelStream}
@@ -1780,6 +1960,7 @@ export default function App() {
           officeSession={officeSession}
           desktopHost={desktopHost}
           runtimeConn={runtimeConn}
+          runtimeSessionEstablished={runtimeSessionEstablished}
           apiKeyConfigured={desktopApiKeyConfigured}
           onSavedApiKey={() => {
             refreshApiKeyStatus();

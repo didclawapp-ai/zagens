@@ -448,14 +448,16 @@ impl SandboxManager {
         //
         // For now, we just mark that Landlock would be used
 
-        ExecEnv {
+        let mut exec = ExecEnv {
             command,
             cwd: spec.cwd.clone(),
             env,
             timeout: spec.timeout,
             sandbox_type: SandboxType::LinuxLandlock,
             policy: spec.sandbox_policy.clone(),
-        }
+        };
+        mark_sandbox_policy_unenforced(&mut exec);
+        exec
     }
 
     /// Prepare a Windows-sandboxed execution environment.
@@ -481,22 +483,35 @@ impl SandboxManager {
             );
         }
 
-        ExecEnv {
+        let mut exec = ExecEnv {
             command,
             cwd: spec.cwd.clone(),
             env,
             timeout: spec.timeout,
             sandbox_type: SandboxType::Windows,
             policy: spec.sandbox_policy.clone(),
+        };
+        mark_sandbox_policy_unenforced(&mut exec);
+        exec
+    }
+
+    pub(crate) fn noop_sandbox_warning(sandbox_type: SandboxType) -> Option<&'static str> {
+        match sandbox_type {
+            #[cfg(target_os = "linux")]
+            SandboxType::LinuxLandlock => Some(
+                "Linux Landlock sandbox is not enforced yet; command runs with full user privileges.",
+            ),
+            #[cfg(target_os = "windows")]
+            SandboxType::Windows => Some(
+                "Windows sandbox is not enforced yet; command runs with full user privileges.",
+            ),
+            _ => None,
         }
     }
 
     /// Check if a command failure was due to sandbox denial.
-    ///
-    /// This helps distinguish between legitimate command failures and
-    /// sandbox-blocked operations.
     pub fn was_denied(sandbox_type: SandboxType, exit_code: i32, stderr: &str) -> bool {
-        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+        #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
         let _ = (exit_code, stderr);
 
         match sandbox_type {
@@ -515,7 +530,7 @@ impl SandboxManager {
 
     /// Get a human-readable description of why a command was blocked.
     pub fn denial_message(sandbox_type: SandboxType, stderr: &str) -> String {
-        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+        #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
         let _ = stderr;
 
         match sandbox_type {
@@ -564,6 +579,20 @@ impl SandboxManager {
                 }
             }
         }
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+fn mark_sandbox_policy_unenforced(exec: &mut ExecEnv) {
+    exec.env
+        .insert("DEEPSEEK_SANDBOX_UNENFORCED".to_string(), "1".to_string());
+}
+
+impl ExecEnv {
+    /// Warning when the selected sandbox type does not yet isolate the process (H12).
+    #[must_use]
+    pub fn sandbox_enforcement_warning(&self) -> Option<&'static str> {
+        SandboxManager::noop_sandbox_warning(self.sandbox_type)
     }
 }
 

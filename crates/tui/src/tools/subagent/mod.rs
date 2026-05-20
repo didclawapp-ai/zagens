@@ -3936,7 +3936,22 @@ fn build_allowed_tools(
                 "Custom sub-agent requires a non-empty allowed_tools list"
             ));
         }
-        return Ok(Some(deduped));
+        let narrowed = match agent_type {
+            SubAgentType::Explore | SubAgentType::Review => {
+                let cap = read_only_tool_cap(agent_type);
+                deduped
+                    .into_iter()
+                    .filter(|t| cap.iter().any(|c| *c == t.as_str()))
+                    .collect::<Vec<_>>()
+            }
+            _ => deduped,
+        };
+        if matches!(agent_type, SubAgentType::Custom) && narrowed.is_empty() {
+            return Err(anyhow!(
+                "Custom sub-agent requires a non-empty allowed_tools list"
+            ));
+        }
+        return Ok(Some(narrowed));
     }
 
     if matches!(agent_type, SubAgentType::Custom) {
@@ -3949,15 +3964,29 @@ fn build_allowed_tools(
     // Explore and Review return explicit narrow lists — no write files,
     // no shell. Other types keep full inheritance.
     match agent_type {
-        SubAgentType::Explore => Ok(Some(vec![
-            "list_dir", "read_file", "grep_files", "glob_files", "file_search",
-            "web.run", "web_search", "note",
-        ].into_iter().map(String::from).collect())),
-        SubAgentType::Review => Ok(Some(vec![
-            "list_dir", "read_file", "grep_files", "glob_files", "file_search",
-            "exec_shell", "note",
-        ].into_iter().map(String::from).collect())),
+        SubAgentType::Explore | SubAgentType::Review => {
+            Ok(Some(
+                read_only_tool_cap(agent_type)
+                    .iter()
+                    .map(|s| (*s).to_string())
+                    .collect(),
+            ))
+        }
         _ => Ok(None),
+    }
+}
+
+fn read_only_tool_cap(agent_type: &SubAgentType) -> &'static [&'static str] {
+    match agent_type {
+        SubAgentType::Explore => &[
+            "list_dir", "read_file", "grep_files", "glob_files", "file_search", "web.run",
+            "web_search", "note",
+        ],
+        SubAgentType::Review => &[
+            "list_dir", "read_file", "grep_files", "glob_files", "file_search", "exec_shell",
+            "note",
+        ],
+        _ => &[],
     }
 }
 

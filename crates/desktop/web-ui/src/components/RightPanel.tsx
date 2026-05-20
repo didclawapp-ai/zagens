@@ -28,6 +28,7 @@ import {
   restoreThreadSnapshot,
 } from '../api/client';
 import { confirmDialog } from '../lib/confirmDialog';
+import { isRuntimeApiAvailable } from '../lib/runtimeReachable';
 import { toast } from '../lib/toast';
 import PanelEdgeSeam from './PanelEdgeSeam';
 import AboutPanel from './AboutPanel';
@@ -80,6 +81,7 @@ interface Props {
   view: RightPanelView;
   desktopHost: boolean;
   runtimeConn: RuntimeConnectionState;
+  runtimeSessionEstablished?: boolean;
   apiKeyConfigured: boolean | null;
   onSavedApiKey: () => void;
   theme: Theme;
@@ -172,6 +174,7 @@ export default function RightPanel({
   view,
   desktopHost,
   runtimeConn,
+  runtimeSessionEstablished = false,
   apiKeyConfigured,
   onSavedApiKey,
   theme,
@@ -235,7 +238,11 @@ export default function RightPanel({
   const [pickRulesErr, setPickRulesErr] = useState<string | null>(null);
   const [pickRulesOk, setPickRulesOk] = useState<string | null>(null);
 
-  const runtimeOk = runtimeConn === 'connected';
+  const runtimeReach = {
+    streaming: Boolean(streaming),
+    sessionEstablished: runtimeSessionEstablished,
+  };
+  const runtimeOk = isRuntimeApiAvailable(runtimeConn, runtimeReach);
 
 
   // ---- context menu ----------------------------------------------------------
@@ -638,8 +645,13 @@ export default function RightPanel({
         {view === 'workspace' && (
           <>
             {!runtimeOk && (
+              <p className="shrink-0 px-3 py-2 text-[11px] text-red-400/90 border-b border-divider bg-red-500/10">
+                本地运行时未连接；请重试连接后再浏览工作区。
+              </p>
+            )}
+            {runtimeOk && runtimeConn !== 'connected' && (
               <p className="shrink-0 px-3 py-2 text-[11px] text-amber-text/90 border-b border-divider bg-amber-bg/30">
-                本地运行时未连接；目录与快照 API 不可用。
+                运行时繁忙，状态刷新可能变慢；工作台与文件 API 仍可使用。
               </p>
             )}
             {preview ? (
@@ -1026,17 +1038,37 @@ export default function RightPanel({
           </div>
         )}
 
-        {view === 'mcp' && <McpPanel runtimeConn={runtimeConn} />}
+        {view === 'mcp' && (
+          <McpPanel
+            runtimeConn={runtimeConn}
+            streaming={streaming}
+            runtimeSessionEstablished={runtimeSessionEstablished}
+          />
+        )}
 
-        {view === 'usage' && <UsageDashboard runtimeConn={runtimeConn} />}
+        {view === 'usage' && (
+          <UsageDashboard
+            runtimeConn={runtimeConn}
+            streaming={streaming}
+            runtimeSessionEstablished={runtimeSessionEstablished}
+          />
+        )}
 
-        {view === 'tasks-skills' && <AutomationPanel runtimeConn={runtimeConn} />}
+        {view === 'tasks-skills' && (
+          <AutomationPanel
+            runtimeConn={runtimeConn}
+            streaming={streaming}
+            runtimeSessionEstablished={runtimeSessionEstablished}
+          />
+        )}
 
         {view === 'agents' && !officeSession && <AgentPanel agents={agentStates} />}
 
         {view === 'routing' && !officeSession && (
           <RoutingPanel
             runtimeConn={runtimeConn}
+            streaming={streaming}
+            runtimeSessionEstablished={runtimeSessionEstablished}
             routeIntent={routeIntent}
             onRouteIntentChange={onRouteIntentChange}
           />

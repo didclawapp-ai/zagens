@@ -1,7 +1,6 @@
 //! Session commands: save, load, compact, export
 
 use std::fmt::Write;
-use std::path::PathBuf;
 
 use crate::session_manager::create_saved_session_with_mode;
 use crate::tui::app::{App, AppAction};
@@ -12,11 +11,19 @@ use super::CommandResult;
 
 /// Save session to file
 pub fn save(app: &mut App, path: Option<&str>) -> CommandResult {
-    let save_path = if let Some(p) = path {
-        PathBuf::from(p)
-    } else {
-        let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
-        PathBuf::from(format!("session_{timestamp}.json"))
+    let save_path = match path {
+        Some(p) => match crate::path_guard::resolve_under_workspace(&app.workspace, p) {
+            Ok(path) => path,
+            Err(e) => return CommandResult::error(e),
+        },
+        None => {
+            let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
+            let name = format!("session_{timestamp}.json");
+            match crate::path_guard::resolve_under_workspace(&app.workspace, &name) {
+                Ok(path) => path,
+                Err(e) => return CommandResult::error(e),
+            }
+        }
     };
 
     let messages = app.api_messages.clone();
@@ -58,14 +65,12 @@ pub fn save(app: &mut App, path: Option<&str>) -> CommandResult {
 
 /// Load session from file
 pub fn load(app: &mut App, path: Option<&str>) -> CommandResult {
-    let load_path = if let Some(p) = path {
-        if p.contains('/') || p.contains('\\') {
-            PathBuf::from(p)
-        } else {
-            app.workspace.join(p)
-        }
-    } else {
+    let Some(p) = path else {
         return CommandResult::error("Usage: /load <path>");
+    };
+    let load_path = match crate::path_guard::resolve_under_workspace(&app.workspace, p) {
+        Ok(path) => path,
+        Err(e) => return CommandResult::error(e),
     };
 
     let content = match std::fs::read_to_string(&load_path) {
@@ -132,13 +137,20 @@ pub fn compact(_app: &mut App) -> CommandResult {
 
 /// Export conversation to markdown
 pub fn export(app: &mut App, path: Option<&str>) -> CommandResult {
-    let export_path = path.map_or_else(
-        || {
-            let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
-            PathBuf::from(format!("chat_export_{timestamp}.md"))
+    let export_path = match path {
+        Some(p) => match crate::path_guard::resolve_under_workspace(&app.workspace, p) {
+            Ok(path) => path,
+            Err(e) => return CommandResult::error(e),
         },
-        PathBuf::from,
-    );
+        None => {
+            let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
+            let name = format!("chat_export_{timestamp}.md");
+            match crate::path_guard::resolve_under_workspace(&app.workspace, &name) {
+                Ok(path) => path,
+                Err(e) => return CommandResult::error(e),
+            }
+        }
+    };
 
     let mut content = String::new();
     content.push_str("# Chat Export\n\n");

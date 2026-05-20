@@ -25,7 +25,8 @@ tokio = { workspace = true, features = ["process", "time", "sync"] }
 uuid.workspace = true
 # `devtools`: keeps WebView 开发者工具在 release 也可用，并注入 Ctrl+Shift+I 切换脚本（见 Tauri 文档）。
 tauri = { version = "2", features = ["devtools", "tray-icon", "image-ico"] }
-reqwest = { workspace = true, features = ["json", "rustls"] }
+reqwest = { workspace = true, features = ["json", "rustls", "stream"] }
+futures-util = "0.3"
 tauri-plugin-shell = "2"
 ignore = "0.4"
 tauri-plugin-dialog = "2"

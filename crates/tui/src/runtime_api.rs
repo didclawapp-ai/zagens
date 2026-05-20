@@ -2543,10 +2543,14 @@ async fn get_thread_checklist(
     State(state): State<RuntimeApiState>,
     AxumPath(id): AxumPath<String>,
 ) -> Result<Json<Value>, ApiError> {
-    match state.runtime_threads.get_thread_checklist(&id) {
-        Some(json_str) => {
-            let parsed: Value =
-                serde_json::from_str(&json_str).unwrap_or(Value::Null);
+    let threads = state.runtime_threads.clone();
+    let id = id.clone();
+    let json_str = tokio::task::spawn_blocking(move || threads.get_thread_checklist(&id))
+        .await
+        .map_err(|e| ApiError::internal(format!("checklist task panicked: {e}")))?;
+    match json_str {
+        Some(s) => {
+            let parsed: Value = serde_json::from_str(&s).unwrap_or(Value::Null);
             Ok(Json(parsed))
         }
         None => Ok(Json(Value::Null)),
@@ -2557,9 +2561,11 @@ async fn get_thread_scratchpad_status(
     State(state): State<RuntimeApiState>,
     AxumPath(id): AxumPath<String>,
 ) -> Result<Json<Value>, ApiError> {
-    let status = state
-        .runtime_threads
-        .get_thread_scratchpad_status(&id)
+    let threads = state.runtime_threads.clone();
+    let id = id.clone();
+    let status = tokio::task::spawn_blocking(move || threads.get_thread_scratchpad_status(&id))
+        .await
+        .map_err(|e| ApiError::internal(format!("scratchpad status task panicked: {e}")))?
         .map_err(map_thread_err)?;
     Ok(Json(status.unwrap_or(Value::Null)))
 }
@@ -3011,6 +3017,9 @@ fn map_compat_stream_event(event: &crate::runtime_threads::RuntimeEventRecord) -
                 "agent.list",
                 json!({ "agents": agents }),
             ))
+        }
+        "panel.checklist" | "panel.scratchpad" | "panel.context" => {
+            Some(sse_json_seq(event.seq, event.event.as_str(), payload.clone()))
         }
         _ => None,
     }

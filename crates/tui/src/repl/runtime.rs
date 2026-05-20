@@ -183,7 +183,8 @@ impl PythonRuntime {
             .map(|(bin, _, _)| bin)
             .unwrap_or_else(|| "python3".to_string());
         let mut cmd = Command::new(&python_bin);
-        cmd.arg("-u")
+        cmd.arg("-I")
+            .arg("-u")
             .arg("-c")
             .arg(&bootstrap)
             .stdin(Stdio::piped())

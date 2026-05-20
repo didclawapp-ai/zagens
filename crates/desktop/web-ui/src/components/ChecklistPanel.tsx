@@ -1,5 +1,11 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { fetchThreadChecklist } from '../api/client';
+import { CHECKLIST_POLL_IDLE_MS, CHECKLIST_POLL_STREAMING_MS } from '../lib/runtimePoll';
+import {
+  PANEL_CHECKLIST_EVENT,
+  normalizeChecklistPayload,
+  type ChecklistPanelPayload,
+} from '../lib/panelChannel';
 
 interface ChecklistItem {
   id: number;
@@ -48,13 +54,17 @@ export default function ChecklistPanel({ threadId, pollFast = false, onDetected 
         setError(null);
       }
     } catch (e) {
-      setChecklist(null);
       const status = (e as Error & { status?: number }).status;
       if (status === 404) {
+        setChecklist(null);
         setError(null);
-      } else {
-        setError(null);
+        return;
       }
+      // Keep last good snapshot while sidecar is busy (B-channel probe blip).
+      if (!pollFast) {
+        setChecklist(null);
+      }
+      setError(null);
     }
   }, [threadId]);
 
@@ -64,13 +74,30 @@ export default function ChecklistPanel({ threadId, pollFast = false, onDetected 
   }, [threadId]);
 
   useEffect(() => {
+    const onPanelPush = (ev: Event) => {
+      const normalized = normalizeChecklistPayload(
+        (ev as CustomEvent<ChecklistPanelPayload | unknown>).detail,
+      );
+      if (normalized) {
+        setChecklist(normalized);
+        setError(null);
+        if (autoSwitchThreadRef.current !== threadId) {
+          autoSwitchThreadRef.current = threadId;
+          onDetectedRef.current?.();
+        }
+      }
+    };
+    window.addEventListener(PANEL_CHECKLIST_EVENT, onPanelPush);
     void fetchChecklist();
-    const ms = pollFast ? 2000 : 5000;
+    const ms = pollFast ? CHECKLIST_POLL_STREAMING_MS : CHECKLIST_POLL_IDLE_MS;
     const interval = window.setInterval(() => {
       void fetchChecklist();
     }, ms);
-    return () => window.clearInterval(interval);
-  }, [fetchChecklist, pollFast]);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener(PANEL_CHECKLIST_EVENT, onPanelPush);
+    };
+  }, [fetchChecklist, pollFast, threadId]);
 
   if (error) {
     return <div className="p-4 text-sm text-t-text-muted">{error}</div>;
