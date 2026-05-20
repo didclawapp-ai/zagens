@@ -400,10 +400,16 @@ interface Props {
   onWorkspaceChange: (ws: string) => void | Promise<void>;
   /** Session is bound to a restored runtime thread; workspace commits via PATCH when changed */
   resumedThreadActive?: boolean;
-  /** Estimated context fill percentage (from transcript + system overhead). */
+  /** Estimated context fill percentage (runtime snapshot or transcript fallback). */
   contextUsagePct: number;
   contextUsedTokens: number;
   contextWindowTokens: number;
+  /** `engine` | `store` when runtime `/context` succeeded. */
+  contextSource?: string;
+  /** Active compaction threshold from runtime (tokens). */
+  compactionThresholdTokens?: number;
+  /** Last API round `input_tokens` from provider (when available). */
+  lastApiInputTokens?: number | null;
   /** Output tokens from the last completed turn (Claude-style hint). */
   lastTurnOutputTokens?: number | null;
   /** Office task session — hides Plan/Yolo and code-only chrome. */
@@ -435,6 +441,9 @@ export default function Composer({
   contextUsagePct,
   contextUsedTokens,
   contextWindowTokens,
+  contextSource,
+  compactionThresholdTokens,
+  lastApiInputTokens = null,
   lastTurnOutputTokens = null,
   officeSession = false,
 }: Props) {
@@ -902,6 +911,22 @@ export default function Composer({
   const showAutoApprove = officeSession || runMode === 'agent';
   const ctxPct = contextUsagePct ?? 0;
   const ctxFillClass = ctxPct >= 85 ? 'danger' : ctxPct >= 65 ? 'warn' : '';
+  const contextTooltipKey =
+    contextSource === 'engine' || contextSource === 'store'
+      ? 'composer.contextTooltipRuntime'
+      : 'composer.contextTooltip';
+  const contextTooltipExtra =
+    compactionThresholdTokens != null && compactionThresholdTokens > 0
+      ? t('composer.contextCompactHint', {
+          threshold: compactionThresholdTokens.toLocaleString(),
+        })
+      : '';
+  const lastApiTooltip =
+    lastApiInputTokens != null && lastApiInputTokens > 0
+      ? t('composer.lastApiInputTokensTitle', {
+          count: lastApiInputTokens.toLocaleString(),
+        })
+      : '';
   const modelPickerTitle = routingActive
     ? `${DESKTOP_MODEL_LABELS[model]} — ${t('composer.modelFallback')}`
     : DESKTOP_MODEL_LABELS[model];
@@ -1266,11 +1291,11 @@ export default function Composer({
             </div>
             <div
               className="flex shrink-0 items-center gap-1.5"
-              title={t('composer.contextTooltip', {
+              title={`${t(contextTooltipKey, {
                 pct: ctxPct.toFixed(1),
                 used: Math.round(contextUsedTokens).toLocaleString(),
                 max: contextWindowTokens.toLocaleString(),
-              })}
+              })}${lastApiTooltip ? `\n${lastApiTooltip}` : ''}${contextTooltipExtra ? `\n${contextTooltipExtra}` : ''}`}
             >
               <div className="composer-ctx-bar" aria-hidden>
                 <div
@@ -1281,6 +1306,16 @@ export default function Composer({
               <span className="text-[11px] tabular-nums text-t-text-muted">
                 ~{ctxPct.toFixed(1)}%
               </span>
+              {lastApiInputTokens != null && lastApiInputTokens > 0 ? (
+                <span
+                  className="text-[10px] tabular-nums text-t-text-muted/80"
+                  title={lastApiTooltip}
+                >
+                  {t('composer.lastApiInputTokens', {
+                    count: lastApiInputTokens.toLocaleString(),
+                  })}
+                </span>
+              ) : null}
               {lastTurnOutputTokens != null && lastTurnOutputTokens > 0 ? (
                 <span
                   className="text-[10px] tabular-nums text-t-text-muted/80"

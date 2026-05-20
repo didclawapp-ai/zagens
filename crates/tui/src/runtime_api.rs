@@ -657,6 +657,7 @@ pub fn build_router(state: RuntimeApiState) -> Router {
             "/v1/threads/{id}/scratchpad/status",
             get(get_thread_scratchpad_status),
         )
+        .route("/v1/threads/{id}/context", get(get_thread_context))
         .route("/v1/threads/{id}/resume", post(resume_thread))
         .route("/v1/threads/{id}/fork", post(fork_thread))
         .route("/v1/threads/{id}/turns", post(start_thread_turn))
@@ -880,6 +881,36 @@ async fn resume_session_thread(
         &workspace,
         None,
     );
+
+    // Reuse the persisted runtime thread when it still has events so DS Pick can
+    // replay tool cards and thinking after app restart (instead of seeding a blank thread).
+    if let Some(ref stored_tid) = session.metadata.runtime_thread_id {
+        let stored_tid = stored_tid.trim();
+        if !stored_tid.is_empty() {
+            if state.runtime_threads.load_thread_sync(stored_tid).is_ok() {
+                let has_events = state
+                    .runtime_threads
+                    .events_since(stored_tid, Some(0))
+                    .map(|events| !events.is_empty())
+                    .unwrap_or(false);
+                if has_events {
+                    eprintln!(
+                        "[resume-session] reusing runtime thread {stored_tid} (events present)"
+                    );
+                    return Ok((
+                        StatusCode::OK,
+                        Json(ResumeSessionResponse {
+                            thread_id: stored_tid.to_string(),
+                            session_id: id,
+                            message_count: session.messages.len(),
+                            state: "ready".to_string(),
+                        }),
+                    ));
+                }
+            }
+        }
+    }
+
     let thread = state
         .runtime_threads
         .create_thread(CreateThreadRequest {
@@ -901,6 +932,28 @@ async fn resume_session_thread(
     let msg_count = msgs.len();
     let tid = thread.id.clone();
     let tid_log = tid.clone();
+
+    // Link session file to this thread immediately so the next app restart can replay events.
+    {
+        let manager = state.shared_session_manager.clone();
+        let session_id = id.clone();
+        let link_tid = tid.clone();
+        let link_result = tokio::task::spawn_blocking(move || -> std::io::Result<()> {
+            let mut saved = manager.load_session(&session_id)?;
+            saved.metadata.runtime_thread_id = Some(link_tid);
+            manager.save_session(&saved).map(|_| ())
+        })
+        .await;
+        match link_result {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => {
+                eprintln!("[resume-session] link runtime_thread_id: {e}");
+            }
+            Err(e) => {
+                eprintln!("[resume-session] link runtime_thread_id task: {e}");
+            }
+        }
+    }
 
     state
         .resume_tracker
@@ -1048,6 +1101,7 @@ async fn persist_thread_session(
                 if let Some(title) = &thread.title {
                     session.metadata.title = title.clone();
                 }
+                session.metadata.runtime_thread_id = Some(thread_id.clone());
                 manager
                     .save_session(&session)
                     .map_err(|e| format!("save session: {e}"))?;
@@ -1064,6 +1118,7 @@ async fn persist_thread_session(
                 if let Some(title) = &thread.title {
                     session.metadata.title = title.clone();
                 }
+                session.metadata.runtime_thread_id = Some(thread_id.clone());
                 manager
                     .save_session(&session)
                     .map_err(|e| format!("save session: {e}"))?;
@@ -2509,6 +2564,18 @@ async fn get_thread_scratchpad_status(
     Ok(Json(status.unwrap_or(Value::Null)))
 }
 
+async fn get_thread_context(
+    State(state): State<RuntimeApiState>,
+    AxumPath(id): AxumPath<String>,
+) -> Result<Json<crate::context_snapshot::ThreadContextSnapshot>, ApiError> {
+    let snapshot = state
+        .runtime_threads
+        .get_thread_context(&id)
+        .await
+        .map_err(map_thread_err)?;
+    Ok(Json(snapshot))
+}
+
 async fn list_tasks(
     State(state): State<RuntimeApiState>,
     Query(query): Query<TasksQuery>,
@@ -2884,6 +2951,65 @@ fn map_compat_stream_event(event: &crate::runtime_threads::RuntimeEventRecord) -
                 event.seq,
                 "turn.completed",
                 json!({ "usage": usage }),
+            ))
+        }
+        "agent.spawned" => {
+            let agent_id = payload
+                .get("agent_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            if agent_id.is_empty() {
+                return None;
+            }
+            Some(sse_json_seq(
+                event.seq,
+                "agent.spawned",
+                json!({ "agent_id": agent_id }),
+            ))
+        }
+        "agent.progress" => {
+            let agent_id = payload
+                .get("agent_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            if agent_id.is_empty() {
+                return None;
+            }
+            let status = payload
+                .get("item")
+                .and_then(|item| item.get("detail").and_then(|v| v.as_str()))
+                .or_else(|| payload.get("status").and_then(|v| v.as_str()))
+                .unwrap_or_default();
+            Some(sse_json_seq(
+                event.seq,
+                "agent.progress",
+                json!({ "agent_id": agent_id, "status": status }),
+            ))
+        }
+        "agent.completed" => {
+            let agent_id = payload
+                .get("agent_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            if agent_id.is_empty() {
+                return None;
+            }
+            let result = payload
+                .get("item")
+                .and_then(|item| item.get("detail").and_then(|v| v.as_str()))
+                .unwrap_or_default();
+            Some(sse_json_seq(
+                event.seq,
+                "agent.completed",
+                json!({ "agent_id": agent_id, "result": result }),
+            ))
+        }
+        "agent.list" => {
+            let agents = payload.get("agents").cloned().unwrap_or(json!([]));
+            Some(sse_json_seq(
+                event.seq,
+                "agent.list",
+                json!({ "agents": agents }),
             ))
         }
         _ => None,
@@ -4064,6 +4190,7 @@ mod tests {
                                     output_tokens: 5,
                                     ..Usage::default()
                                 },
+                                last_request_input_tokens: None,
                                 status: TurnOutcomeStatus::Completed,
                                 error: None,
                             })
@@ -4077,6 +4204,7 @@ mod tests {
                                     output_tokens: 0,
                                     ..Usage::default()
                                 },
+                                last_request_input_tokens: None,
                                 status: TurnOutcomeStatus::Completed,
                                 error: None,
                             })
@@ -4261,6 +4389,7 @@ mod tests {
                         output_tokens: 3,
                         ..Usage::default()
                     },
+                    last_request_input_tokens: None,
                     status: TurnOutcomeStatus::Completed,
                     error: None,
                 })
@@ -4387,6 +4516,7 @@ mod tests {
                         output_tokens: 1,
                         ..Usage::default()
                     },
+                    last_request_input_tokens: None,
                     status: TurnOutcomeStatus::Completed,
                     error: None,
                 })
@@ -4634,6 +4764,7 @@ mod tests {
                         output_tokens: 2,
                         ..Usage::default()
                     },
+                    last_request_input_tokens: None,
                     status: TurnOutcomeStatus::Completed,
                     error: None,
                 })

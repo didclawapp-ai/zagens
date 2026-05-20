@@ -28,6 +28,8 @@ import {
   restoreThreadSnapshot,
 } from '../api/client';
 import { confirmDialog } from '../lib/confirmDialog';
+import { toast } from '../lib/toast';
+import PanelEdgeSeam from './PanelEdgeSeam';
 import AboutPanel from './AboutPanel';
 
 export type RightPanelView =
@@ -464,13 +466,14 @@ export default function RightPanel({
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('rebuild_symbol_index', { workspace: workspaceRoot });
+      toast.success(t('indexPanel.rebuildSuccess'));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setRebuildIndexError(msg);
     } finally {
       setRebuildingIndex(false);
     }
-  }, [desktopHost, workspaceRoot]);
+  }, [desktopHost, workspaceRoot, t]);
 
   const onEnableTrustClick = useCallback(async () => {
     try {
@@ -495,7 +498,8 @@ export default function RightPanel({
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('save_pick_rules', { workspaceRoot: root, content: pickRulesBody });
-      setPickRulesOk(t('workspaceRules.saved'));
+      toast.success(t('workspaceRules.saved'));
+      setPickRulesOk(null);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setPickRulesErr(t('workspaceRules.saveError', { message: msg }));
@@ -574,14 +578,13 @@ export default function RightPanel({
 
   return (
     <div className="flex h-full max-h-screen shrink-0" aria-label="侧栏面板">
-      <div
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="拖拽调整面板宽度"
-        tabIndex={0}
-        className={`chrome-seam-l w-1.5 shrink-0 cursor-col-resize touch-none select-none transition-colors bg-canvas ${
-          panelResizing ? 'bg-canvas-alt' : 'hover:bg-hover'
-        }`}
+      <PanelEdgeSeam
+        side="right"
+        seamClass="chrome-seam-l"
+        resizing={panelResizing}
+        ariaResize={t('rightPanel.resizeWidth')}
+        collapseTitle={onCollapse ? t('rightPanel.collapse') : undefined}
+        onCollapse={onCollapse}
         onPointerDown={onResizePointerDown}
         onPointerMove={onResizePointerMove}
         onPointerUp={endPanelResize}
@@ -609,18 +612,6 @@ export default function RightPanel({
       >
       <div className="flex shrink-0 items-center bg-canvas-alt/40 px-4 py-3">
         <h2 className="flex-1 text-sm font-semibold text-t-text">{panelTitles[view]}</h2>
-        {onCollapse && (
-          <button
-            type="button"
-            onClick={onCollapse}
-            className="ml-2 p-1 rounded text-t-text-muted hover:text-t-text hover:bg-hover transition-colors"
-            title="收起面板"
-          >
-            <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <path d="M11 4l-6 4 6 4" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
-        )}
         {view === 'workspace' && desktopHost && (
           <button
             type="button"
@@ -1082,6 +1073,7 @@ export default function RightPanel({
             platform={platform}
             theme={theme}
             onToggleTheme={onToggleTheme}
+            streaming={streaming}
           />
         )}
 

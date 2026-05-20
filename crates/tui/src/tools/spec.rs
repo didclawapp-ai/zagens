@@ -172,6 +172,10 @@ pub struct ToolContext {
 
     /// Incremental streaming for the active tool call (desktop SSE / TUI status).
     pub tool_progress: Option<Arc<dyn ToolProgressEmit>>,
+    /// Active audit scratchpad run (`thread.scratchpad_run_id`) for E5 tool policy.
+    pub audit_scratchpad_run_id: Option<String>,
+    /// Default `step_timeout_ms` for `agent_spawn` when omitted (from `[subagents] step_timeout_secs`).
+    pub subagent_default_step_timeout_ms: u64,
 }
 
 impl ToolContext {
@@ -203,6 +207,8 @@ impl ToolContext {
             large_output_router: None,
             workshop_vars: None,
             tool_progress: None,
+            audit_scratchpad_run_id: None,
+            subagent_default_step_timeout_ms: 120_000,
         }
     }
 
@@ -237,7 +243,16 @@ impl ToolContext {
             large_output_router: None,
             workshop_vars: None,
             tool_progress: None,
+            audit_scratchpad_run_id: None,
+            subagent_default_step_timeout_ms: 120_000,
         }
+    }
+
+    /// Default per-step sub-agent API timeout when `agent_spawn` omits `step_timeout_ms`.
+    #[must_use]
+    pub fn with_subagent_default_step_timeout_ms(mut self, ms: u64) -> Self {
+        self.subagent_default_step_timeout_ms = ms;
+        self
     }
 
     /// Create a `ToolContext` with auto-approve mode (YOLO).
@@ -271,7 +286,16 @@ impl ToolContext {
             large_output_router: None,
             workshop_vars: None,
             tool_progress: None,
+            audit_scratchpad_run_id: None,
+            subagent_default_step_timeout_ms: 120_000,
         }
+    }
+
+    /// Bind an audit scratchpad run for per-turn tool policy (E5 / eager `agent_spawn`).
+    #[must_use]
+    pub fn with_audit_scratchpad_run_id(mut self, run_id: Option<String>) -> Self {
+        self.audit_scratchpad_run_id = run_id;
+        self
     }
 
     /// Attach a per-domain network policy to this context (#135).

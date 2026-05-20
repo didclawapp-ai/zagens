@@ -148,6 +148,8 @@ max_subagents = 10 # optional (1-20)
 # Optional sub-agent tuning. max_concurrent overrides top-level max_subagents.
 # [subagents]
 # max_concurrent = 10
+# Per-step LLM API timeout (seconds). Default 120; clamped 10–600. DS Pick: 系统设置 → 安全。
+# step_timeout_secs = 300
 
 # Optional managed policy paths (defaults to /etc/deepseek/*.toml on unix):
 # managed_config_path = "/etc/deepseek/managed_config.toml"
@@ -294,9 +296,11 @@ exponential_base = 2.0
 # ─────────────────────────────────────────────────────────────────────────────────
 # Context Compaction
 # ─────────────────────────────────────────────────────────────────────────────────
-# Auto-compaction is a saved UI setting edited with `/config` (`auto_compact`).
-# There is no config-file `[compaction]` table yet; detailed thresholds are
-# chosen by the TUI from the active model/context budget.
+# Auto-compaction is edited in DS Pick system settings or TUI `/config auto_compact`.
+# Threshold defaults to 80% of the active model context window when unset.
+[compaction]
+# auto_compact = false
+# token_threshold = 800000
 
 # Append-only Flash seams are experimental and opt-in while the v0.7.5
 # context/cache audit validates prefix-cache behavior.

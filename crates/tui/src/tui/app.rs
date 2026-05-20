@@ -1126,7 +1126,11 @@ impl App {
         let api_key_env_only = crate::config::active_provider_uses_env_only_api_key(config);
         let was_onboarded = crate::tui::onboarding::is_onboarded();
         let settings = Settings::load().unwrap_or_else(|_| Settings::default());
-        let auto_compact = settings.auto_compact;
+        let auto_compact = config
+            .compaction
+            .as_ref()
+            .and_then(|c| c.auto_compact)
+            .unwrap_or(settings.auto_compact);
         let calm_mode = settings.calm_mode;
         let low_motion = settings.low_motion;
         let fancy_animations = settings.fancy_animations;
@@ -1161,8 +1165,16 @@ impl App {
         } else {
             model.as_str()
         };
-        let compact_threshold =
-            compaction_threshold_for_model_and_effort(threshold_model, config.reasoning_effort());
+        let compact_threshold = config
+            .compaction
+            .as_ref()
+            .and_then(|c| c.token_threshold)
+            .unwrap_or_else(|| {
+                compaction_threshold_for_model_and_effort(
+                    threshold_model,
+                    config.reasoning_effort(),
+                )
+            });
         let reasoning_effort = if auto_model {
             ReasoningEffort::Auto
         } else {

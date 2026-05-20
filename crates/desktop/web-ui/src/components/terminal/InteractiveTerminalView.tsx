@@ -45,7 +45,7 @@ export default function InteractiveTerminalView({
       cursorBlink: true,
       convertEol: true,
       fontSize: 12,
-      fontFamily: "'Cascadia Code', 'Consolas', 'Fira Code', monospace",
+      fontFamily: 'var(--font-mono)',
       theme: integratedTerminalTheme,
     });
     const fit = new FitAddon();

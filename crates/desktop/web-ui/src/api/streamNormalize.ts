@@ -1,5 +1,18 @@
 /** Normalizes compat (`POST /v1/stream`) and raw (`GET …/events`) SSE payloads for one UI pipeline. */
 
+function normalizeSubAgentStatus(status: unknown): string {
+  if (typeof status === 'string') {
+    return status;
+  }
+  if (status && typeof status === 'object') {
+    const keys = Object.keys(status as Record<string, unknown>);
+    if (keys.length === 1) {
+      return keys[0] ?? 'Running';
+    }
+  }
+  return 'Running';
+}
+
 /** Per-turn token usage from the runtime API `turn.completed` event. */
 export interface TurnUsage {
   input_tokens: number;
@@ -100,6 +113,34 @@ export function normalizeDesktopStreamEvent(
     return { kind: 'status', message: String(j.message ?? '') };
   }
 
+  // —— Compat SSE from `POST /v1/stream` (map_compat_stream_event) ——
+  if (sse === 'agent.spawned') {
+    const agentId = String(j.agent_id ?? '');
+    if (agentId) return { kind: 'agent_spawned', agentId };
+  }
+  if (sse === 'agent.progress') {
+    const agentId = String(j.agent_id ?? '');
+    if (agentId) return { kind: 'agent_progress', agentId };
+  }
+  if (sse === 'agent.completed') {
+    const agentId = String(j.agent_id ?? '');
+    if (agentId) {
+      return { kind: 'agent_completed', agentId, result: String(j.result ?? '') };
+    }
+  }
+  if (sse === 'agent.list') {
+    const raw = j.agents as Array<Record<string, unknown>> | undefined;
+    if (raw) {
+      return {
+        kind: 'agent_list',
+        agents: raw.map((a) => ({
+          id: String(a.agent_id ?? a.id ?? ''),
+          status: normalizeSubAgentStatus(a.status),
+        })),
+      };
+    }
+  }
+
   // —— Raw runtime records from `GET /v1/threads/{id}/events` ——
   const inner = j.payload as Record<string, unknown> | undefined;
   const recordEvent = (j.event as string | undefined) ?? sse;
@@ -122,10 +163,19 @@ export function normalizeDesktopStreamEvent(
     if (!tool) {
       return null;
     }
+    const toolName = String(tool.name ?? '');
+    const spawnNames = new Set(['agent_spawn', 'spawn_agent', 'delegate_to_agent']);
+    if (spawnNames.has(toolName)) {
+      const input = tool.input as Record<string, unknown> | undefined;
+      const agentId = String(
+        tool.id ?? input?.agent_id ?? input?.id ?? j.agent_id ?? '',
+      );
+      if (agentId) return { kind: 'agent_spawned', agentId };
+    }
     return {
       kind: 'tool_started',
       id: String(tool.id ?? ''),
-      name: String(tool.name ?? ''),
+      name: toolName,
       input: tool.input,
     };
   }
@@ -197,8 +247,8 @@ export function normalizeDesktopStreamEvent(
       return {
         kind: 'agent_list',
         agents: raw.map((a) => ({
-          id: String(a.id ?? a.agent_id ?? ''),
-          status: String(a.status ?? 'running'),
+          id: String(a.agent_id ?? a.id ?? ''),
+          status: normalizeSubAgentStatus(a.status),
         })),
       };
     }

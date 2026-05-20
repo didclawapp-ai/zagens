@@ -4,13 +4,15 @@
 //! allowing the UI to remain responsive while the engine processes requests.
 
 use crate::compaction::CompactionConfig;
+use crate::context_snapshot::ThreadContextSnapshot;
 use crate::models::{Message, SystemPrompt};
+use tokio::sync::oneshot;
 use crate::tui::app::AppMode;
 use crate::tui::approval::ApprovalMode;
 use std::path::PathBuf;
 
 /// Operations that can be submitted to the engine.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum Op {
     /// Send a message to the AI
     SendMessage {
@@ -92,6 +94,11 @@ pub enum Op {
     /// from the session, then re-send with the new content.
     #[allow(dead_code)]
     EditLastTurn { new_message: String },
+
+    /// Return a TUI-aligned context usage snapshot (DS Pick / runtime API).
+    QueryContext {
+        reply: oneshot::Sender<ThreadContextSnapshot>,
+    },
 
     /// Shutdown the engine
     Shutdown,

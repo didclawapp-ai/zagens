@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicepage/native/refs/heads/dev/packages/desktop-toolkit/tauri-schema.json",
   "productName": "DS Pick",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "identifier": "com.deepseek.desktop",
   "build": {
     "frontendDist": "./web-ui/dist",
@@ -32,7 +32,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost http://ipc.localhost:* http://127.0.0.1:* http://localhost:* http://tauri.localhost https://tauri.localhost http://tauri.localhost:* https://tauri.localhost:* ws://localhost:* wss://localhost:* ws://127.0.0.1:* wss://127.0.0.1:*; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data: blob:"
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost http://ipc.localhost:* http://127.0.0.1:* http://localhost:* http://tauri.localhost https://tauri.localhost http://tauri.localhost:* https://tauri.localhost:* ws://localhost:* wss://localhost:* ws://127.0.0.1:* wss://127.0.0.1:*; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data: blob:; font-src 'self' data: blob: http://localhost:* http://127.0.0.1:* https://tauri.localhost http://tauri.localhost"
     }
   },
   "bundle": {

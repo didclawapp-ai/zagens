@@ -1,7 +1,7 @@
 # DS Pick 工具系统原理
 
 > **文档路径:** `docs/tech/TOOLS_PRINCIPLES.md`（与 [API_DESIGN.md](API_DESIGN.md) 同属 `docs/tech/`）  
-> **DS Pick 壳版本:** 0.3.0 | **最后更新:** 2026-05-19 | **权威实现:** `crates/tui/src/tools/`、`registry.rs`
+> **DS Pick 壳版本:** 0.4.0 | **最后更新:** 2026-05-20 | **权威实现:** `crates/tui/src/tools/`、`registry.rs`
 
 ---
 
@@ -488,6 +488,19 @@ Replaced N occurrence(s) in path (line X, line Y) — file now Z lines
 - **文件租约** (`RESIDENT_LEASES`): 每个文件同一时间只能有一个 resident 子代理持有写租约
 - **取消传播**: 父级 `CancellationToken` 传递给所有子代理
 - **结构化裁决**: Reviewer 子代理返回 `structured_verdict { PASS, BLOCKER, MAJOR, FAIL }`，触发自动 fix-loop
+
+---
+
+### 3.7.1 Task 与 Sub-agent 的区别（勿混用）
+
+| | **Sub-agent** (`agent_*`) | **Task** (`task_*`) |
+|---|---------------------------|---------------------|
+| 关系 | 主代理**派出**的下级（`spawn_depth`、父取消级联、按 type 收窄工具） | **可恢复的后台作业**，与主会话线程**并列**（TaskManager worker 跑独立 turn） |
+| 典型用途 | 分区探索、审查、implementer/auditor 分工 | 长时工单、跨会话恢复、gate/PR 流程 |
+| 结果回主会话 | `agent_result` / `agent_wait`；可无 tool 时注入 `subagent.done` | 必须主动 **`task_read`**（无自动 sentinel） |
+| CRAFT `task_id` | `agent_spawn(..., task_id=…)` 写黑板 | 同名键；**不等于**必须用 `task_create` |
+
+全仓 audit 并行审区：用 **sub-agent**，不要用 `task_create` 冒充「子代理」。详见 [audit-scratchpad-design.md §7.1](../desktop/audit-scratchpad-design.md#71-tasktask_-与-sub-agentagent_两套对象不可混称)。
 
 ---
 

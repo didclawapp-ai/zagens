@@ -256,6 +256,9 @@ pub struct ConfigToml {
     /// Session 文件上限（MB，0 = 不限制）。
     #[serde(default)]
     pub session: Option<SessionToml>,
+    /// Automatic context compaction (`[compaction]`).
+    #[serde(default)]
+    pub compaction: Option<CompactionToml>,
     #[serde(flatten)]
     pub extras: BTreeMap<String, toml::Value>,
 }
@@ -378,12 +381,15 @@ pub struct FeaturesToml {
 }
 
 /// On-disk schema for the `[subagents]` table — mirrors TUI `SubagentsConfig`.
-/// v1 only exposes `max_concurrent` to the desktop settings panel;
+/// Desktop settings panel exposes `max_concurrent` and `step_timeout_secs`;
 /// model overrides are preserved via extras for TOML round-trip safety.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SubagentsConfigToml {
     #[serde(default)]
     pub max_concurrent: Option<usize>,
+    /// Per-step LLM API timeout for sub-agents (seconds). Default 120; clamped 10–600 at runtime.
+    #[serde(default)]
+    pub step_timeout_secs: Option<u64>,
     #[serde(flatten)]
     pub extras: BTreeMap<String, toml::Value>,
 }
@@ -404,6 +410,17 @@ pub struct NotificationsToml {
     pub threshold_secs: Option<u64>,
     #[serde(default)]
     pub include_summary: Option<bool>,
+}
+
+/// On-disk schema for the `[compaction]` table — shared by TUI and DS Pick.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct CompactionToml {
+    /// Enable automatic context compaction when estimated tokens exceed threshold.
+    #[serde(default)]
+    pub auto_compact: Option<bool>,
+    /// Token threshold for auto-compaction (defaults to 80% of model window).
+    #[serde(default)]
+    pub token_threshold: Option<usize>,
 }
 
 /// On-disk schema for the `[session]` table.
@@ -526,6 +543,9 @@ impl ConfigToml {
         }
         if project.session.is_some() {
             self.session = project.session;
+        }
+        if project.compaction.is_some() {
+            self.compaction = project.compaction;
         }
         for (k, v) in project.extras {
             self.extras.insert(k, v);
@@ -1526,6 +1546,36 @@ impl EnvRuntimeOverrides {
             ProviderKind::Ollama => self.ollama_base_url.clone(),
         }
     }
+}
+
+/// Legacy DeepSeek models without an explicit `*k` suffix (128K window).
+pub const LEGACY_DEEPSEEK_CONTEXT_WINDOW_TOKENS: u32 = 128_000;
+/// DeepSeek V4 family context window (1M tokens).
+pub const DEEPSEEK_V4_CONTEXT_WINDOW_TOKENS: u32 = 1_000_000;
+const COMPACTION_THRESHOLD_PERCENT: u32 = 80;
+
+/// Approximate context window for a model id (mirrors TUI `context_window_for_model`).
+#[must_use]
+pub fn context_window_tokens_for_model(model: &str) -> u32 {
+    let lower = model.to_lowercase();
+    if lower.contains("claude") {
+        return 200_000;
+    }
+    if lower.contains("deepseek") {
+        if lower.contains("v4") {
+            return DEEPSEEK_V4_CONTEXT_WINDOW_TOKENS;
+        }
+        return LEGACY_DEEPSEEK_CONTEXT_WINDOW_TOKENS;
+    }
+    DEEPSEEK_V4_CONTEXT_WINDOW_TOKENS
+}
+
+/// Default auto-compaction threshold: 80% of the model context window.
+#[must_use]
+pub fn compaction_threshold_tokens_for_model(model: &str) -> usize {
+    let window = u64::from(context_window_tokens_for_model(model));
+    usize::try_from((window * u64::from(COMPACTION_THRESHOLD_PERCENT)) / 100)
+        .unwrap_or(800_000)
 }
 
 #[cfg(test)]

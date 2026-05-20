@@ -43,7 +43,13 @@ impl ToolSpec for TaskCreateTool {
     }
 
     fn description(&self) -> &'static str {
-        "Create/enqueue a durable background task through TaskManager. Durable tasks are restart-aware executable work, distinct from sub-agents."
+        "Enqueue a durable background **Task** (TaskManager) — **not** a sub-agent. Tasks are \
+         **peer** work on their own thread/turn (often a full Agent loop); they are **not** \
+         parent/child dispatches. Returns immediately; this turn does **not** wait. You **must** \
+         `task_read` each completed Task before using its output (`task_list` is status-only). \
+         For parallel code review / exploration under your direction, use `agent_spawn` instead. \
+         **Blocked** while an audit scratchpad inventory is active (use `agent_spawn`). Normally \
+         requires user approval."
     }
 
     fn input_schema(&self) -> Value {
@@ -72,6 +78,12 @@ impl ToolSpec for TaskCreateTool {
     }
 
     async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
+        if let Some(msg) = crate::core::engine::scratchpad_flow::check_task_create_audit_gate(
+            &context.workspace,
+            context.audit_scratchpad_run_id.as_deref(),
+        ) {
+            return Err(ToolError::execution_failed(msg));
+        }
         let manager = context
             .runtime
             .task_manager
@@ -104,7 +116,9 @@ impl ToolSpec for TaskListTool {
     }
 
     fn description(&self) -> &'static str {
-        "List recent durable tasks with status, linked thread/turn ids, and concise summaries."
+        "List durable **Tasks** (`task_*` namespace), **not** sub-agents — use `agent_list` for \
+         `agent_spawn` children. Status-only; does not include findings or timeline detail. \
+         Call `task_read` on every completed Task you need before synthesizing."
     }
 
     fn input_schema(&self) -> Value {
@@ -148,7 +162,9 @@ impl ToolSpec for TaskReadTool {
     }
 
     fn description(&self) -> &'static str {
-        "Read durable task detail including timeline, checklist, gate evidence, artifacts, and PR attempts."
+        "Read one durable **Task** (timeline, checklist, artifacts). Required to integrate Task \
+         output into the parent session — `task_list` alone is insufficient. For sub-agents \
+         spawned via `agent_spawn`, use `agent_result` or the CRAFT blackboard, not `task_read`."
     }
 
     fn input_schema(&self) -> Value {

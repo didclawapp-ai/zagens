@@ -83,6 +83,12 @@ fn supervisor_log_path() -> Option<PathBuf> {
 
 static SUPERVISOR_LOG_MUTEX: Mutex<()> = Mutex::new(());
 
+/// Tell the WebView the sidecar is about to be killed (config save, health restart, etc.).
+fn emit_sidecar_restarting(app: &AppHandle, reason: &str) {
+    let payload = serde_json::json!({ "reason": reason });
+    let _ = app.emit("sidecar://restarting", &payload);
+}
+
 /// Append a timestamped line to `~/.deepseek/logs/supervisor.log` and mirror to stderr.
 fn supervisor_log(message: impl AsRef<str>) {
     let msg = message.as_ref().trim_end();
@@ -543,6 +549,7 @@ pub async fn start_and_monitor(
                 biased;
                 _ = shutdown.notified() => {
                     supervisor_log("event=shutdown action=killing_sidecar");
+                    emit_sidecar_restarting(app, "shutdown");
                     if let Some(mut ch) = child.take() {
                         ch.kill().await.ok();
                     }
@@ -556,6 +563,7 @@ pub async fn start_and_monitor(
                             _ = restart.notified() => {}
                         }
                     }
+                    emit_sidecar_restarting(app, "config_change");
                     if let Some(mut ch) = child.take() {
                         ch.kill().await.ok();
                     } else {
@@ -626,6 +634,7 @@ pub async fn start_and_monitor(
                                 supervisor_log(format!(
                                     "event=token_mismatch port={port} action=reclaim_and_restart"
                                 ));
+                                emit_sidecar_restarting(app, "token_mismatch");
                                 if let Some(mut ch) = child.take() {
                                     ch.kill().await.ok();
                                 } else {
@@ -678,6 +687,7 @@ pub async fn start_and_monitor(
                         supervisor_log(format!(
                             "event=restart reason={reason} connect_refused={connect_refused} busy_timeouts={busy_timeouts} port={port}"
                         ));
+                        emit_sidecar_restarting(app, reason);
                         if let Some(mut ch) = child.take() {
                             ch.kill().await.ok();
                         } else {

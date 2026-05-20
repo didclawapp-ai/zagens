@@ -64,6 +64,7 @@ impl ToolSpec for ScratchpadStatusTool {
     ) -> Result<ToolResult, ToolError> {
         let run_id = resolve_run_id(context, optional_str(&input, "run_id"))?;
         let store = ScratchpadStore::open(context, &run_id)?;
+        persist_scratchpad_run(context, &run_id);
         let status = store.build_status()?;
         Ok(ToolResult::success(
             serde_json::to_string_pretty(&status).unwrap_or_default(),
@@ -194,6 +195,7 @@ impl ToolSpec for ScratchpadListNotesTool {
         context: &ToolContext,
     ) -> Result<ToolResult, ToolError> {
         let run_id = resolve_run_id(context, optional_str(&input, "run_id"))?;
+        persist_scratchpad_run(context, &run_id);
         let area_id = required_str(&input, "area_id")?;
         let limit = input
             .get("limit")

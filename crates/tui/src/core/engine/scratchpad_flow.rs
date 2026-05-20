@@ -143,6 +143,84 @@ fn current_focus_area(store: &ScratchpadStore) -> Option<(String, String)> {
     None
 }
 
+/// Paths that look like formal audit/code-review deliverables under `deliverables/`.
+#[must_use]
+pub fn is_audit_deliverable_path(path: &str) -> bool {
+    let p = path.replace('\\', "/").to_lowercase();
+    if !p.contains("deliverables/") {
+        return false;
+    }
+    p.contains("audit")
+        || p.contains("code_review")
+        || p.contains("code-review")
+        || p.ends_with("_review.md")
+        || p.ends_with("/review.md")
+}
+
+/// E5 — block `task_create` while a full-repo audit inventory is active (use `agent_spawn` for P1).
+#[must_use]
+pub fn check_task_create_audit_gate(
+    workspace: &Path,
+    run_id: Option<&str>,
+) -> Option<String> {
+    let run_id = run_id?.trim();
+    if run_id.is_empty() {
+        return None;
+    }
+    let store = open_store(workspace, Some(run_id), None, None)?;
+    let inventory = store.read_inventory().ok()?;
+    if inventory.areas.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "task_create is blocked during active audit scratchpad run `{run_id}` ({} areas in \
+         inventory). For parallel per-area review use `agent_spawn` with `task_id` = that run id, \
+         then `agent_result` / `agent_list` to join. `task_read` is only for joining Tasks you \
+         already created — do not open new Tasks for area audits. See audit-repo skill P1.",
+        inventory.areas.len()
+    ))
+}
+
+/// Phase C1 / §14 E2 — refuse `write_file` to audit deliverables while scratchpad P2 gates fail.
+///
+/// Returns an error message when the write must be blocked; `None` when allowed or N/A.
+#[must_use]
+pub fn check_write_file_audit_report_gate(
+    workspace: &Path,
+    run_id: Option<&str>,
+    config: &ScratchpadConfig,
+    path_str: &str,
+) -> Option<String> {
+    if !config.enabled || !is_audit_deliverable_path(path_str) {
+        return None;
+    }
+    let store = open_store(workspace, run_id, None, None)?;
+    let inventory = store.read_inventory().ok()?;
+    let notes = store.read_notes().ok()?;
+    let run = store.run_id().to_string();
+    let stats = compute_coverage_stats(&inventory, &notes, config);
+    let resume = resume_area_id_from_inventory(&inventory);
+    let l0 = build_l0_status_line(&run, &stats, &resume);
+
+    if !inventory_complete(&store) {
+        return Some(format!(
+            "scratchpad audit report write blocked for `{path_str}`: inventory incomplete \
+             (every area must be `done` or `deferred` with meta). [{l0}] \
+             Use scratchpad_append then scratchpad_set_area before writing to deliverables/."
+        ));
+    }
+
+    if let CoverageGateOutcome::Block { reason, .. } =
+        coverage_gate(&inventory, &notes, config)
+    {
+        return Some(format!(
+            "scratchpad audit report write blocked for `{path_str}`: {reason} [{l0}]"
+        ));
+    }
+
+    None
+}
+
 fn inventory_complete(store: &ScratchpadStore) -> bool {
     let Ok(inventory) = store.read_inventory() else {
         return false;
@@ -283,7 +361,91 @@ mod tests {
     fn report_keyword_match() {
         let cfg = ScratchpadConfig::default();
         assert!(user_prompt_triggers_report_summary("请写报告 synthesize", &cfg));
+        assert!(user_prompt_triggers_report_summary(
+            "帮我对项目进行代码级审核，输出md格式的报告",
+            &cfg
+        ));
         assert!(!user_prompt_triggers_report_summary("fix typo", &cfg));
+    }
+
+    #[test]
+    fn audit_deliverable_path_detection() {
+        assert!(is_audit_deliverable_path(
+            "deliverables/DS_Pick_Audit_2026-05-20.md"
+        ));
+        assert!(is_audit_deliverable_path(
+            "deliverables/CODE_REVIEW_2026-05-19.md"
+        ));
+        assert!(!is_audit_deliverable_path("src/main.rs"));
+        assert!(!is_audit_deliverable_path("deliverables/notes.txt"));
+    }
+
+    #[test]
+    fn task_create_gate_blocks_when_inventory_present() {
+        use serde_json::json;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let ws = dir.path().join("ws");
+        std::fs::create_dir_all(&ws).expect("mkdir");
+        let run_id = "gate-task";
+        let base = ws.join(".deepseek/scratchpad").join(run_id);
+        std::fs::create_dir_all(&base).expect("mkdir run");
+        let inv = json!({
+            "run_id": run_id,
+            "areas": [{ "id": "area-a", "path": "src", "status": "pending" }]
+        });
+        std::fs::write(
+            base.join("inventory.json"),
+            serde_json::to_string_pretty(&inv).expect("json"),
+        )
+        .expect("write inv");
+
+        let blocked = check_task_create_audit_gate(&ws, Some(run_id));
+        assert!(blocked.is_some());
+        assert!(blocked.unwrap().contains("agent_spawn"));
+    }
+
+    #[test]
+    fn task_create_gate_allows_without_inventory() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let ws = dir.path().join("ws");
+        std::fs::create_dir_all(&ws).expect("mkdir");
+        assert!(check_task_create_audit_gate(&ws, Some("empty-run")).is_none());
+        assert!(check_task_create_audit_gate(&ws, None).is_none());
+    }
+
+    #[test]
+    fn write_file_gate_blocks_incomplete_inventory() {
+        use serde_json::json;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let ws = dir.path().join("ws");
+        std::fs::create_dir_all(&ws).expect("mkdir");
+        let run_id = "gate-write";
+        let base = ws.join(".deepseek/scratchpad").join(run_id);
+        std::fs::create_dir_all(&base).expect("mkdir run");
+        let inv = json!({
+            "run_id": run_id,
+            "areas": [
+                {"id": "a1", "path": "p", "status": "pending", "notes": ""}
+            ]
+        });
+        std::fs::write(
+            base.join("inventory.json"),
+            serde_json::to_string_pretty(&inv).unwrap(),
+        )
+        .expect("write inv");
+        std::fs::write(base.join("notes.jsonl"), "").expect("notes");
+
+        let cfg = ScratchpadConfig::default();
+        let msg = check_write_file_audit_report_gate(
+            &ws,
+            Some(run_id),
+            &cfg,
+            "deliverables/Audit.md",
+        )
+        .expect("blocked");
+        assert!(msg.contains("inventory incomplete"));
     }
 
     #[test]

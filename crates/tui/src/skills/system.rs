@@ -3,7 +3,7 @@
 use std::fs;
 use std::path::Path;
 
-const BUNDLED_SKILL_VERSION: &str = "3";
+const BUNDLED_SKILL_VERSION: &str = "4";
 const SKILL_CREATOR_BODY: &str = include_str!("../../assets/skills/skill-creator/SKILL.md");
 const AUDIT_REPO_BODY: &str = include_str!("../../assets/skills/audit-repo/SKILL.md");
 

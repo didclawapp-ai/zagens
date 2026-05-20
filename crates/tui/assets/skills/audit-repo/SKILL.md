@@ -28,14 +28,16 @@ Reasoning is ephemeral. Durable facts live only under:
 2. else `task_id` if using CRAFT `agent_spawn`
 3. else UTC folder name `YYYY-MM-DD-HHmmss`
 
-**Phase B tools (required when available):** `scratchpad_status`, `scratchpad_append`, `scratchpad_list_notes`, `scratchpad_set_area`. Pass `run_id` or rely on `thread_id` / bound `scratchpad_run_id`. **Order:** append ≥1 note, then `scratchpad_set_area(done)` (runtime rejects `done` with zero notes). `write_file` is **fallback only**.
+**Phase B tools (required):** `scratchpad_status`, `scratchpad_append`, `scratchpad_list_notes`, `scratchpad_set_area`. Pass `run_id` or rely on `thread_id` / bound `scratchpad_run_id`. **Order:** append ≥1 note, then `scratchpad_set_area(done)` (runtime rejects `done` with zero notes). `write_file` is **fallback only** when scratchpad tools truly fail.
+
+**Tool discovery:** In Agent mode these four tools are loaded eagerly. If they are missing from the initial tool list (e.g. Plan mode or an older build), call `tool_search_tool_regex` with query `scratchpad` (or `tool_search_tool_bm25` with “audit scratchpad”) **before** falling back to raw file writes.
 
 ## Resume (if folder already exists)
 
-1. `read_file` `inventory.json`.
+1. `scratchpad_status` (preferred) or `read_file` `inventory.json`.
 2. Continue the first `areas[]` with `status` `pending` or `in_progress` (set that row to `in_progress` if needed).
 3. Load notes for **that `area_id` only** (`grep_files` on `notes.jsonl` for `"area_id":"<id>"`, or read full file if small)—**not** the tail of the file.
-4. Append `kind=meta` with `resumed_at` and `resume_area_id`.
+4. `scratchpad_append` a `kind=meta` line with `resumed_at` and `resume_area_id` (or append via tool after step 3).
 5. Do **not** rebuild inventory unless the user asks to restart.
 
 ## P0 — Inventory (`inventory.json`)
@@ -76,6 +78,28 @@ For each inventory row (in order unless resuming):
 3. When **check is complete** for that row (not after every single read), **first** `scratchpad_append` (≥1 line; `area_id` must match inventory), **then** `scratchpad_set_area` with `status=done` (runtime rejects `done` if the area has fewer than `require_min_notes`, default 1).
 
 **Soft rule:** Finish the current area before starting the next. No hard cross-area read-count limit in Phase A.
+
+### P1 — Parallel areas (full-repo only)
+
+**Task (`task_*`) vs Sub-agent (`agent_*`) — do not conflate**
+
+| | **Task** `task_create` | **Sub-agent** `agent_spawn` |
+|---|------------------------|----------------------------|
+| Relationship | Durable **background work**; peer to the main session (own thread/turn) | **Dispatched by** the parent; parent/child hierarchy |
+| Join results | **`task_read`** each completed task | **`agent_result`** / read blackboard after `agent_list` shows terminal |
+| P1 parallel area audit | ❌ Do not use to mimic “spawn sub-agents” | ✅ Use `type=explorer` or `worker` |
+
+`task_id` on `agent_spawn` is a **work-package / blackboard key** (often `run_id`), not “you must call `task_create`”.
+
+When multiple inventory rows are examined in parallel:
+
+- **Use `agent_spawn`** with **`task_id` = `run_id`**. Children write **blackboard** only (`.deepseek/blackboards/{run_id}.json`), not scratchpad files.
+- **Step timeout:** For each spawn set **`step_timeout_ms`: 240000–360000** (or ensure `[subagents] step_timeout_secs` ≥ 300 in config / DS Pick settings). Omitting it uses the config default (often **120 s**), which is too short for multi-file reads — the child **`Failed`** with an API timeout is **not** “area done”; re-spawn with smaller scope or higher timeout before `scratchpad_set_area(done)`.
+- **Join before P2:** `agent_list` until no `Running`; each child → **`agent_result`** or blackboard → `scratchpad_append` → `scratchpad_set_area(done)`.
+- **Do not use `task_create`** for per-area audits — the engine **blocks** `task_create` while this scratchpad inventory is active (E5). Use **`agent_spawn`** only. For legacy Tasks you already opened, **`task_read` every completed task** before P2; do not call them “sub-agents”.
+- **HIGH/BLOCKER from children** are **advisory** until the parent `read_file`/`grep_files` and appends `status=verified`.
+
+If you already used `task_create`: **`task_read` all completed tasks** before P2; never claim they “did not run” without `task_read` evidence.
 
 ### `notes.jsonl` line schema
 

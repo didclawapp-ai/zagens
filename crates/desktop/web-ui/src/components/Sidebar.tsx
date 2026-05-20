@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useT } from '../i18n';
 import type { RightPanelView } from './RightPanel';
 import type { RuntimeConnectionState } from '../api/client';
+import PanelEdgeSeam from './PanelEdgeSeam';
 
 interface SessionInfo {
   id: string;
@@ -148,34 +149,20 @@ export default function Sidebar({
       style={{ width: collapsed ? 0 : sidebarWidth }}
       aria-label="会话与导航"
     >
-      <div className="shrink-0 bg-canvas-alt/40 px-3.5 py-3.5">
-        <div className="flex items-center gap-2">
-          <div className="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-2 rounded-lg bg-hover">
-            <img
-              src="/app-icon.png"
-              alt=""
-              className="size-[22px] shrink-0 rounded-md object-cover"
-              width={22}
-              height={22}
-            />
-            <span className="truncate text-sm font-semibold text-t-text">
-              DS<span className="opacity-70 font-medium"> Pick</span>
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={onToggleCollapse}
-            className="p-1 rounded text-t-text-muted hover:text-t-text hover:bg-hover transition-colors shrink-0"
-            title="收起侧边栏"
-          >
-            <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <path d="M11 4l-6 4 6 4" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
+      <div className="shrink-0 px-4 pt-5 pb-2">
+        <div className="mb-4 flex min-w-0 items-center gap-2.5 pl-0.5">
+          <img
+            src="/app-icon.png"
+            alt=""
+            className="size-6 shrink-0 rounded-md object-cover"
+            width={24}
+            height={24}
+          />
+          <span className="truncate text-base font-semibold text-accent">DS Pick</span>
         </div>
       </div>
 
-      <div className="flex flex-col gap-0.5 px-2 py-2">
+      <div className="flex flex-col gap-0.5 px-3 py-1">
         <button
           type="button"
           onClick={onNewSession}
@@ -284,14 +271,13 @@ export default function Sidebar({
 
     </aside>
     {!collapsed && (
-      <div
-        role="separator"
-        aria-orientation="vertical"
-        aria-label={t('sidebar.resizeWidth')}
-        tabIndex={0}
-        className={`chrome-seam-r w-1.5 shrink-0 cursor-col-resize touch-none select-none transition-colors bg-canvas ${
-          sidebarResizing ? 'bg-canvas-alt' : 'hover:bg-hover'
-        }`}
+      <PanelEdgeSeam
+        side="left"
+        seamClass="chrome-seam-r"
+        resizing={sidebarResizing}
+        ariaResize={t('sidebar.resizeWidth')}
+        collapseTitle={t('sidebar.collapse')}
+        onCollapse={onToggleCollapse}
         onPointerDown={onResizePointerDown}
         onPointerMove={onResizePointerMove}
         onPointerUp={endSidebarResize}

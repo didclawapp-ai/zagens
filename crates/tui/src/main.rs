@@ -20,6 +20,7 @@ mod client;
 mod command_safety;
 mod commands;
 mod compaction;
+mod context_snapshot;
 mod composer_history;
 mod composer_stash;
 mod config;
@@ -4115,6 +4116,7 @@ async fn run_exec_agent(
         ),
         max_steps: 100,
         max_subagents,
+        subagent_step_timeout: config.subagent_step_timeout(),
         features: config.features(),
         compaction,
         cycle: crate::cycle_manager::CycleConfig::default(),

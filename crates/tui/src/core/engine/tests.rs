@@ -348,6 +348,7 @@ fn model_tool_catalog_applies_native_and_mcp_deferral() {
         ],
         vec![api_tool("list_mcp_resources"), api_tool("mcp_server_write")],
         AppMode::Agent,
+        None,
     );
 
     let defer_loading = |name: &str| {
@@ -365,11 +366,37 @@ fn model_tool_catalog_applies_native_and_mcp_deferral() {
 }
 
 #[test]
+fn audit_scratchpad_catalog_defers_task_create_and_eagers_agent_spawn() {
+    let catalog = build_model_tool_catalog(
+        vec![
+            api_tool("task_create"),
+            api_tool("task_read"),
+            api_tool("agent_spawn"),
+            api_tool("read_file"),
+        ],
+        vec![],
+        AppMode::Agent,
+        Some("2026-05-20-audit"),
+    );
+    let defer_loading = |name: &str| {
+        catalog
+            .iter()
+            .find(|tool| tool.name == name)
+            .and_then(|tool| tool.defer_loading)
+    };
+    assert_eq!(defer_loading("task_create"), Some(true));
+    assert_eq!(defer_loading("task_read"), Some(false));
+    assert_eq!(defer_loading("agent_spawn"), Some(false));
+    assert_eq!(defer_loading("read_file"), Some(false));
+}
+
+#[test]
 fn model_tool_catalog_keeps_everything_loaded_in_yolo_mode() {
     let catalog = build_model_tool_catalog(
         vec![api_tool("project_map")],
         vec![api_tool("mcp_server_write")],
         AppMode::Yolo,
+        None,
     );
 
     assert!(catalog.iter().all(|tool| tool.defer_loading == Some(false)));
@@ -388,6 +415,7 @@ fn model_tool_catalog_sorts_each_partition_for_prefix_cache_stability() {
         ],
         vec![api_tool("mcp_zoo_b"), api_tool("mcp_aardvark_a")],
         AppMode::Yolo,
+        None,
     );
 
     let names: Vec<&str> = catalog.iter().map(|t| t.name.as_str()).collect();

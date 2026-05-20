@@ -465,6 +465,17 @@ export async function startThreadTurn(
   return postJson(`/v1/threads/${encodeURIComponent(threadId)}/turns`, body);
 }
 
+/** Stop an in-flight turn (`engine.cancel()` on the runtime). */
+export async function interruptThreadTurn(
+  threadId: string,
+  turnId: string,
+): Promise<TurnRecord> {
+  return postJson<TurnRecord>(
+    `/v1/threads/${encodeURIComponent(threadId)}/turns/${encodeURIComponent(turnId)}/interrupt`,
+    {},
+  );
+}
+
 /** Minimal thread fields used by desktop UI; backend returns full `ThreadRecord`. */
 export interface RuntimeThreadRecord {
   id: string;
@@ -522,6 +533,10 @@ export interface ThreadDetailResponse {
 
 export async function getThreadDetail(threadId: string): Promise<ThreadDetailResponse> {
   return fetchJson(`/v1/threads/${encodeURIComponent(threadId)}`);
+}
+
+export async function getThreadContext(threadId: string): Promise<ThreadContextSnapshot> {
+  return fetchJson(`/v1/threads/${encodeURIComponent(threadId)}/context`);
 }
 
 export async function fetchThreadChecklist(threadId: string): Promise<any> {
@@ -940,6 +955,8 @@ export interface SystemSettings {
   approval_policy: string;
   sandbox_mode: string;
   max_subagents: number;
+  /** Per-step sub-agent LLM API timeout (seconds), `[subagents] step_timeout_secs`. */
+  subagent_step_timeout_secs: number;
   web_search: boolean;
   subagents_enabled: boolean;
   exec_policy: boolean;
@@ -948,7 +965,13 @@ export interface SystemSettings {
   snapshots_enabled: boolean;
   notify_method: string;
   session_file_mb: number;
+  auto_compact: boolean;
+  compaction_threshold_tokens: number;
+  compaction_threshold_default: number;
 }
+
+export type { ThreadContextSnapshot } from '../lib/contextUsage';
+import type { ThreadContextSnapshot } from '../lib/contextUsage';
 
 export async function fetchSystemSettings(): Promise<SystemSettings> {
   const { invoke } = await import('@tauri-apps/api/core');

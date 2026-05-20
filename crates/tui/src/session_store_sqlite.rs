@@ -210,6 +210,7 @@ pub fn load_session_sqlite(db: &Connection, id: &str) -> anyhow::Result<SavedSes
             model,
             workspace: PathBuf::from(workspace),
             mode: if mode.is_empty() { None } else { Some(mode) },
+            runtime_thread_id: None,
         };
         let messages: Vec<crate::models::Message> =
             serde_json::from_str(&messages_json).unwrap_or_default();
@@ -269,6 +270,7 @@ pub fn list_sessions_sqlite(db: &Connection) -> anyhow::Result<Vec<SessionMetada
                 model,
                 workspace: PathBuf::from(workspace),
                 mode: if mode.is_empty() { None } else { Some(mode) },
+                runtime_thread_id: None,
             })
         })?
         .filter_map(|r| r.ok())
@@ -335,6 +337,7 @@ pub fn get_latest_session_for_workspace_sqlite(
             model,
             workspace: PathBuf::from(workspace),
             mode: if mode.is_empty() { None } else { Some(mode) },
+            runtime_thread_id: None,
         })
     });
 

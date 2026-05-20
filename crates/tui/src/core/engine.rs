@@ -25,6 +25,7 @@ use crate::client::DeepSeekClient;
 use crate::compaction::{
     CompactionConfig, compact_messages_safe, merge_system_prompts, should_compact,
 };
+use crate::context_snapshot::{build_thread_context_snapshot, ThreadContextSnapshot};
 use crate::config::{ApiProvider, Config, DEFAULT_MAX_SUBAGENTS, DEFAULT_TEXT_MODEL};
 use crate::cycle_manager::{
     CycleBriefing, CycleConfig, StructuredState, archive_cycle, build_seed_messages,
@@ -99,6 +100,8 @@ pub struct EngineConfig {
     pub max_steps: u32,
     /// Maximum number of concurrently active subagents.
     pub max_subagents: usize,
+    /// Per-step sub-agent LLM API timeout (from `[subagents] step_timeout_secs`).
+    pub subagent_step_timeout: std::time::Duration,
     /// Feature flags controlling tool availability.
     pub features: Features,
     /// Auto-compaction settings for long conversations.
@@ -172,6 +175,9 @@ impl Default for EngineConfig {
             instructions: Vec::new(),
             max_steps: 100,
             max_subagents: DEFAULT_MAX_SUBAGENTS,
+            subagent_step_timeout: std::time::Duration::from_secs(
+                crate::config::DEFAULT_SUBAGENT_STEP_TIMEOUT_SECS,
+            ),
             features: Features::with_defaults(),
             compaction: CompactionConfig::default(),
             cycle: CycleConfig::default(),
@@ -296,6 +302,16 @@ impl EngineHandle {
     pub async fn steer(&self, content: impl Into<String>) -> Result<()> {
         self.tx_steer.send(content.into()).await?;
         Ok(())
+    }
+
+    /// Query TUI-aligned context usage from the live engine session.
+    pub async fn query_context_snapshot(&self) -> Result<ThreadContextSnapshot> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.send(Op::QueryContext { reply: tx }).await?;
+        tokio::time::timeout(Duration::from_secs(5), rx)
+            .await
+            .map_err(|_| anyhow::anyhow!("context query timed out"))?
+            .map_err(|_| anyhow::anyhow!("engine dropped context query"))
     }
 }
 
@@ -669,6 +685,7 @@ impl Engine {
                         self.session.reasoning_effort_auto,
                     )
                     .with_max_spawn_depth(self.config.max_spawn_depth)
+                    .with_step_timeout(self.config.subagent_step_timeout)
                     .background_runtime();
                     let route = resolve_subagent_assignment_route(&runtime, None, &prompt).await;
                     runtime.model = route.model;
@@ -818,6 +835,19 @@ impl Engine {
                     )
                     .await;
                 }
+                Op::QueryContext { reply } => {
+                    let snapshot = build_thread_context_snapshot(
+                        &self.session.model,
+                        &self.session.messages,
+                        self.session.system_prompt.as_ref(),
+                        &self.config.compaction,
+                        Some(&self.session.workspace),
+                        self.session.last_api_input_tokens,
+                        None,
+                        "engine",
+                    );
+                    let _ = reply.send(snapshot);
+                }
                 Op::Shutdown => {
                     break;
                 }
@@ -920,6 +950,7 @@ impl Engine {
                 .tx_event
                 .send(Event::TurnComplete {
                     usage: turn.usage.clone(),
+                    last_request_input_tokens: self.session.last_api_input_tokens,
                     status: TurnOutcomeStatus::Failed,
                     error: Some(message),
                 })
@@ -1039,6 +1070,7 @@ impl Engine {
                             self.session.reasoning_effort_auto,
                         )
                         .with_max_spawn_depth(self.config.max_spawn_depth)
+                        .with_step_timeout(self.config.subagent_step_timeout)
                         .with_parent_completion_tx(self.tx_subagent_completion.clone());
                         if let Some((mailbox, cancel_token)) = mailbox_for_runtime.as_ref() {
                             rt = rt
@@ -1075,7 +1107,12 @@ impl Engine {
             Vec::new()
         };
         let tools = tool_registry.as_ref().map(|registry| {
-            build_model_tool_catalog(registry.to_api_tools_with_cache(true), mcp_tools, mode)
+            build_model_tool_catalog(
+                registry.to_api_tools_with_cache(true),
+                mcp_tools,
+                mode,
+                self.scratchpad_run_id.as_deref(),
+            )
         });
 
         // Main turn loop
@@ -1108,6 +1145,7 @@ impl Engine {
             .tx_event
             .send(Event::TurnComplete {
                 usage: turn.usage,
+                last_request_input_tokens: self.session.last_api_input_tokens,
                 status,
                 error,
             })
@@ -1145,6 +1183,7 @@ impl Engine {
                 .tx_event
                 .send(Event::TurnComplete {
                     usage: zero_usage,
+                    last_request_input_tokens: self.session.last_api_input_tokens,
                     status: TurnOutcomeStatus::Failed,
                     error: Some(message),
                 })
@@ -1222,6 +1261,7 @@ impl Engine {
             .tx_event
             .send(Event::TurnComplete {
                 usage: zero_usage,
+                last_request_input_tokens: self.session.last_api_input_tokens,
                 status: turn_status,
                 error: turn_error,
             })
@@ -1312,6 +1352,7 @@ impl Engine {
             .tx_event
             .send(Event::TurnComplete {
                 usage: result.usage,
+                last_request_input_tokens: self.session.last_api_input_tokens,
                 status: if has_error {
                     crate::core::events::TurnOutcomeStatus::Failed
                 } else {
@@ -1503,6 +1544,13 @@ impl Engine {
         if let Some(backend) = self.sandbox_backend.as_ref() {
             ctx = ctx.with_sandbox_backend(std::sync::Arc::clone(backend));
         }
+
+        if self.config.scratchpad.enabled {
+            ctx = ctx.with_audit_scratchpad_run_id(self.scratchpad_run_id.clone());
+        }
+        ctx = ctx.with_subagent_default_step_timeout_ms(
+            self.config.subagent_step_timeout.as_millis() as u64,
+        );
 
         match mode {
             // Plan mode is read-only investigation; the shell tool is not
@@ -2064,7 +2112,7 @@ mod streaming;
 mod tool_catalog;
 mod tool_execution;
 mod tool_setup;
-mod scratchpad_flow;
+pub mod scratchpad_flow;
 mod turn_loop;
 
 use self::approval::{ApprovalDecision, ApprovalResult, UserInputDecision};

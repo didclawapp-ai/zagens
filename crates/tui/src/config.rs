@@ -639,6 +639,20 @@ impl RetryPolicy {
     }
 }
 
+/// Context compaction settings (`[compaction]` in config.toml). DS Pick system
+/// settings and TUI `/config auto_compact` share this table when present.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct CompactionConfigToml {
+    /// When true, automatic compaction runs when estimated context exceeds
+    /// `token_threshold` (subject to the 500K auto floor in the engine).
+    #[serde(default)]
+    pub auto_compact: Option<bool>,
+    /// Token threshold for automatic compaction. Defaults to 80% of the
+    /// active model context window when unset.
+    #[serde(default)]
+    pub token_threshold: Option<usize>,
+}
+
 /// Context management configuration (append-only layered context with Flash seams).
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct ContextConfig {
@@ -690,7 +704,16 @@ pub struct SubagentsConfig {
     /// setting. Clamped to [1, MAX_SUBAGENTS].
     #[serde(default)]
     pub max_concurrent: Option<usize>,
+    /// Per-step LLM API timeout for sub-agents (seconds). Used when `agent_spawn`
+    /// omits `step_timeout_ms`. Default 120; runtime clamps to [10, 600].
+    #[serde(default)]
+    pub step_timeout_secs: Option<u64>,
 }
+
+/// Default sub-agent per-step API timeout (seconds).
+pub const DEFAULT_SUBAGENT_STEP_TIMEOUT_SECS: u64 = 120;
+pub const MIN_SUBAGENT_STEP_TIMEOUT_SECS: u64 = 10;
+pub const MAX_SUBAGENT_STEP_TIMEOUT_SECS: u64 = 600;
 
 /// Per-model context tuning.
 #[derive(Debug, Clone, Deserialize)]
@@ -832,6 +855,10 @@ pub struct Config {
     /// Full-repo audit scratchpad tools and engine hooks (Phase B).
     #[serde(default)]
     pub scratchpad: Option<crate::scratchpad::ScratchpadConfigToml>,
+
+    /// Automatic context compaction (`[compaction]` table).
+    #[serde(default)]
+    pub compaction: Option<CompactionConfigToml>,
 }
 
 /// `[runtime_api]` table — knobs for the local HTTP/SSE daemon.
@@ -1472,6 +1499,58 @@ impl Config {
         self.max_subagents
             .unwrap_or(DEFAULT_MAX_SUBAGENTS)
             .clamp(1, MAX_SUBAGENTS)
+    }
+
+    /// Resolved per-step sub-agent LLM API timeout (`[subagents] step_timeout_secs`).
+    #[must_use]
+    pub fn subagent_step_timeout(&self) -> std::time::Duration {
+        let secs = self
+            .subagents
+            .as_ref()
+            .and_then(|s| s.step_timeout_secs)
+            .unwrap_or(DEFAULT_SUBAGENT_STEP_TIMEOUT_SECS)
+            .clamp(
+                MIN_SUBAGENT_STEP_TIMEOUT_SECS,
+                MAX_SUBAGENT_STEP_TIMEOUT_SECS,
+            );
+        std::time::Duration::from_secs(secs)
+    }
+
+    /// Default `step_timeout_ms` for `agent_spawn` when the model omits the parameter.
+    #[must_use]
+    pub fn subagent_step_timeout_ms(&self) -> u64 {
+        self.subagent_step_timeout()
+            .as_millis()
+            .try_into()
+            .unwrap_or(u64::MAX)
+    }
+
+    /// Resolved compaction policy for the engine / runtime API (config.toml
+    /// `[compaction]` overrides `settings.toml` `auto_compact` when set).
+    #[must_use]
+    pub fn compaction_runtime_config(&self, model: &str) -> crate::compaction::CompactionConfig {
+        use crate::models::compaction_threshold_for_model_and_effort;
+        use crate::settings::Settings;
+
+        let settings = Settings::load().unwrap_or_default();
+        let auto_compact = self
+            .compaction
+            .as_ref()
+            .and_then(|c| c.auto_compact)
+            .unwrap_or(settings.auto_compact);
+        let token_threshold = self
+            .compaction
+            .as_ref()
+            .and_then(|c| c.token_threshold)
+            .unwrap_or_else(|| {
+                compaction_threshold_for_model_and_effort(model, self.reasoning_effort())
+            });
+        crate::compaction::CompactionConfig {
+            enabled: auto_compact,
+            token_threshold,
+            model: model.to_string(),
+            ..Default::default()
+        }
     }
 
     /// 读取 session 文件上限（MB）：`[session] max_file_mb` > 环境变量 > 默认 5。
@@ -2387,6 +2466,7 @@ fn merge_config(base: Config, override_cfg: Config) -> Config {
         runtime_api: override_cfg.runtime_api.or(base.runtime_api),
         workshop: override_cfg.workshop.or(base.workshop),
         scratchpad: override_cfg.scratchpad.or(base.scratchpad),
+        compaction: override_cfg.compaction.or(base.compaction),
     }
 }
 
@@ -3245,6 +3325,30 @@ mod tests {
     fn max_subagents_defaults_to_ten() {
         assert_eq!(Config::default().max_subagents(), DEFAULT_MAX_SUBAGENTS);
         assert_eq!(DEFAULT_MAX_SUBAGENTS, 10);
+    }
+
+    #[test]
+    fn subagent_step_timeout_reads_subagents_table() {
+        let config = Config {
+            subagents: Some(SubagentsConfig {
+                step_timeout_secs: Some(300),
+                ..SubagentsConfig::default()
+            }),
+            ..Config::default()
+        };
+        assert_eq!(config.subagent_step_timeout().as_secs(), 300);
+        assert_eq!(config.subagent_step_timeout_ms(), 300_000);
+        let clamped = Config {
+            subagents: Some(SubagentsConfig {
+                step_timeout_secs: Some(9999),
+                ..SubagentsConfig::default()
+            }),
+            ..Config::default()
+        };
+        assert_eq!(
+            clamped.subagent_step_timeout().as_secs(),
+            MAX_SUBAGENT_STEP_TIMEOUT_SECS
+        );
     }
 
     #[test]

@@ -57,6 +57,18 @@ fn ensure_threads_task_type_column(db: &Connection) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn ensure_turns_last_request_input_tokens_column(db: &Connection) -> anyhow::Result<()> {
+    let mut stmt = db.prepare("PRAGMA table_info(turns)")?;
+    let has_col = stmt
+        .query_map([], |row| row.get::<_, String>(1))?
+        .filter_map(|r| r.ok())
+        .any(|name| name == "last_request_input_tokens");
+    if !has_col {
+        db.execute("ALTER TABLE turns ADD COLUMN last_request_input_tokens INTEGER", [])?;
+    }
+    Ok(())
+}
+
 pub fn open_sqlite_thread_db(
     db_path: &std::path::Path,
     threads_dir: &std::path::Path,
@@ -135,6 +147,7 @@ pub fn open_sqlite_thread_db(
     ensure_threads_task_type_column(&db)?;
     ensure_threads_scratchpad_run_id_column(&db)?;
     ensure_threads_checklist_json_column(&db)?;
+    ensure_turns_last_request_input_tokens_column(&db)?;
 
     let needs_migration: bool = db
         .query_row(
@@ -462,8 +475,8 @@ pub fn save_turn_sqlite(db: &Connection, turn: &TurnRecord) -> anyhow::Result<()
     let item_ids_json = serde_json::to_string(&turn.item_ids).unwrap_or_default();
     db.execute(
         "INSERT OR REPLACE INTO turns
-         (id, thread_id, status, input_summary, created_at, started_at, ended_at, duration_ms, usage_json, error, item_ids_json, steer_count)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
+         (id, thread_id, status, input_summary, created_at, started_at, ended_at, duration_ms, usage_json, error, item_ids_json, steer_count, last_request_input_tokens)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",
         params![
             turn.id,
             turn.thread_id,
@@ -477,6 +490,7 @@ pub fn save_turn_sqlite(db: &Connection, turn: &TurnRecord) -> anyhow::Result<()
             turn.error,
             item_ids_json,
             turn.steer_count as i64,
+            turn.last_request_input_tokens.map(i64::from),
         ],
     )?;
     Ok(())
@@ -484,7 +498,7 @@ pub fn save_turn_sqlite(db: &Connection, turn: &TurnRecord) -> anyhow::Result<()
 
 pub fn load_turn_sqlite(db: &Connection, turn_id: &str) -> anyhow::Result<TurnRecord> {
     db.query_row(
-        "SELECT id, thread_id, status, input_summary, created_at, started_at, ended_at, duration_ms, usage_json, error, item_ids_json, steer_count FROM turns WHERE id = ?1",
+        "SELECT id, thread_id, status, input_summary, created_at, started_at, ended_at, duration_ms, usage_json, error, item_ids_json, steer_count, last_request_input_tokens FROM turns WHERE id = ?1",
         params![turn_id],
         |row| {
             let status_str: String = row.get(2)?;
@@ -501,6 +515,9 @@ pub fn load_turn_sqlite(db: &Connection, turn_id: &str) -> anyhow::Result<TurnRe
                 ended_at: row.get::<_, Option<String>>(6)?.map(parse_ts),
                 duration_ms: row.get::<_, Option<i64>>(7)?.map(|d| d as u64),
                 usage: usage_json.and_then(|s| serde_json::from_str(&s).ok()),
+                last_request_input_tokens: row
+                    .get::<_, Option<i64>>(12)?
+                    .map(|t| t as u32),
                 error: row.get(9)?,
                 item_ids: serde_json::from_str(&item_ids_json).unwrap_or_default(),
                 steer_count: row.get::<_, i64>(11)? as usize,
@@ -511,7 +528,7 @@ pub fn load_turn_sqlite(db: &Connection, turn_id: &str) -> anyhow::Result<TurnRe
 
 pub fn list_turns_for_thread_sqlite(db: &Connection, thread_id: &str) -> anyhow::Result<Vec<TurnRecord>> {
     let mut stmt = db.prepare(
-        "SELECT id, thread_id, status, input_summary, created_at, started_at, ended_at, duration_ms, usage_json, error, item_ids_json, steer_count FROM turns WHERE thread_id = ?1 ORDER BY created_at ASC",
+        "SELECT id, thread_id, status, input_summary, created_at, started_at, ended_at, duration_ms, usage_json, error, item_ids_json, steer_count, last_request_input_tokens FROM turns WHERE thread_id = ?1 ORDER BY created_at ASC",
     )?;
     let turns = stmt
         .query_map(params![thread_id], |row| {
@@ -529,6 +546,9 @@ pub fn list_turns_for_thread_sqlite(db: &Connection, thread_id: &str) -> anyhow:
                 ended_at: row.get::<_, Option<String>>(6)?.map(parse_ts),
                 duration_ms: row.get::<_, Option<i64>>(7)?.map(|d| d as u64),
                 usage: usage_json.and_then(|s| serde_json::from_str(&s).ok()),
+                last_request_input_tokens: row
+                    .get::<_, Option<i64>>(12)?
+                    .map(|t| t as u32),
                 error: row.get(9)?,
                 item_ids: serde_json::from_str(&item_ids_json).unwrap_or_default(),
                 steer_count: row.get::<_, i64>(11)? as usize,
@@ -541,7 +561,7 @@ pub fn list_turns_for_thread_sqlite(db: &Connection, thread_id: &str) -> anyhow:
 
 pub fn list_incomplete_turns_sqlite(db: &Connection) -> anyhow::Result<Vec<TurnRecord>> {
     let mut stmt = db.prepare(
-        "SELECT id, thread_id, status, input_summary, created_at, started_at, ended_at, duration_ms, usage_json, error, item_ids_json, steer_count FROM turns WHERE status IN ('Queued', 'InProgress')",
+        "SELECT id, thread_id, status, input_summary, created_at, started_at, ended_at, duration_ms, usage_json, error, item_ids_json, steer_count, last_request_input_tokens FROM turns WHERE status IN ('Queued', 'InProgress')",
     )?;
     let turns = stmt
         .query_map([], |row| {
@@ -559,6 +579,9 @@ pub fn list_incomplete_turns_sqlite(db: &Connection) -> anyhow::Result<Vec<TurnR
                 ended_at: row.get::<_, Option<String>>(6)?.map(parse_ts),
                 duration_ms: row.get::<_, Option<i64>>(7)?.map(|d| d as u64),
                 usage: usage_json.and_then(|s| serde_json::from_str(&s).ok()),
+                last_request_input_tokens: row
+                    .get::<_, Option<i64>>(12)?
+                    .map(|t| t as u32),
                 error: row.get(9)?,
                 item_ids: serde_json::from_str(&item_ids_json).unwrap_or_default(),
                 steer_count: row.get::<_, i64>(11)? as usize,

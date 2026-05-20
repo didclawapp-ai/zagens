@@ -70,7 +70,7 @@ When the user clearly wants an **exhaustive, code-level review of the whole tree
 
 **Scope (do this first):** If the user names a subtree (e.g. `crates/desktop/**` only), limit the review to that. If they mean the whole workspace, include all versioned source you can reasonably classify as hand-written code. **Exclude by default** unless the user asks otherwise: `target/`, `node_modules/`, `dist/`, build outputs, lockfiles, large generated bundles, and checked-in binaries. If scope is ambiguous, ask one short clarifying question before building the inventory.
 
-**Audit scratchpad (mandatory external memory)** — Do **not** rely on reasoning alone across a long review. Before deep reads, create or resume `.deepseek/scratchpad/{run_id}/` with `inventory.json` + `notes.jsonl` (`run_id`: thread_id → task_id → UTC `YYYY-MM-DD-HHmmss`). Prefer **`scratchpad_append` / `scratchpad_set_area` / `scratchpad_status` / `scratchpad_list_notes`** (runtime-validated); `write_file` is fallback only. Load the **`audit-repo` skill** when available; project rules (`.deepseek/pick-rules.md` §7) and `docs/desktop/audit-scratchpad-design.md` define the schema. **Resume:** `scratchpad_status` or `inventory.json`, continue first `pending`/`in_progress` area, load notes for that **`area_id` only** via `scratchpad_list_notes` (not the tail of `notes.jsonl`). **Report:** only `kind=finding` + `status=verified` lines not superseded by another entry’s `supersedes` field. Explore sub-agents write **blackboard** only, not scratchpad.
+**Audit scratchpad (mandatory external memory)** — Do **not** rely on reasoning alone across a long review. Before deep reads, create or resume `.deepseek/scratchpad/{run_id}/` with `inventory.json` + `notes.jsonl` (`run_id`: thread_id → task_id → UTC `YYYY-MM-DD-HHmmss`). Prefer **`scratchpad_append` / `scratchpad_set_area` / `scratchpad_status` / `scratchpad_list_notes`** (runtime-validated, eager-loaded in Agent mode); if absent from the tool list, **`tool_search_tool_regex`** with query `scratchpad` first; `write_file` is fallback only. Load the **`audit-repo` skill** when available; project rules (`.deepseek/pick-rules.md` §7) and `docs/desktop/audit-scratchpad-design.md` define the schema. **Resume:** `scratchpad_status` or `inventory.json`, continue first `pending`/`in_progress` area, load notes for that **`area_id` only** via `scratchpad_list_notes` (not the tail of `notes.jsonl`). **Report:** only `kind=finding` + `status=verified` lines not superseded by another entry’s `supersedes` field. Explore sub-agents write **blackboard** only, not scratchpad.
 
 **Mandatory process**
 
@@ -95,12 +95,12 @@ When the user clearly wants an **exhaustive, code-level review of the whole tree
 Sub-agents are full agent loops inside the runner. Reviews fail or look “timed out” for **predictable engine reasons**, not random flakiness:
 
 - **Hard cap per tool call inside a child (~30 seconds)** — Every tool the child runs (`read_file`, `grep_files`, shell, …) is executed under a **wall-clock timeout**. Huge uncapped reads, slow disks, or large tool payloads routinely hit **“tool … timed out”** before the whole review finishes. Prefer **`read_file` with `limit`/line ranges**, smaller batches, **parent-side parallel `read_file`** for independent files instead of one child sequentially reading dozens of large files.
-- **Hard cap per child LLM step (~2 minutes)** — A single reasoning+API round trip that stalls can end the step with an API timeout; many such failures look like the child “died”.
-- **`agent_result` / `agent_wait` default wait is short (tens of seconds)** — Waiting with **default `timeout_ms` often returns timed_out while the child is still `Running`**. For repo-wide reviews, pass an **explicit large `timeout_ms`** (many minutes — up to the tool maximum), **`block: true`**, and/or poll across **multiple parent turns** with `agent_list` until terminal state.
+- **Per child LLM step (configurable, often ~2 minutes if unset)** — Each `create_message` round trip is capped by `step_timeout_ms` on `agent_spawn`, or by **`[subagents] step_timeout_secs`** in `config.toml` / DS Pick **系统设置** when omitted (legacy default **120 s**). Heavy audit steps that read many files routinely need **240–360 s** (or a higher config default). **Omitting `step_timeout_ms` is not “unlimited time”.** When a child returns **`Failed: API call timed out`**, that is **not** proof the inventory area is complete — **re-spawn** with a smaller path list and explicit `step_timeout_ms`, raise the config default, or finish the area in-process; **do not** mark `scratchpad_set_area(done)` on timeout alone.
+- **`agent_result` / `agent_wait` default wait is short (tens of seconds)** — Waiting with **default `timeout_ms` often returns timed_out while the child is still `Running`**. That is different from a per-step API timeout (child already `Failed`). For repo-wide reviews, pass an **explicit large `timeout_ms`** (many minutes — up to the tool maximum), **`block: true`**, and/or poll across **multiple parent turns** with `agent_list` until terminal state.
 - **Oversized prompts hurt more than parallelism helps** — A prompt that assigns “read **all** files under `crates/tui/src/tui/`” forces many sequential tool rounds → multiplies the above risks. Prefer **multiple children with small disjoint path lists**, or **`agent_spawn`** with **≤ ~10–20 files worth of work each** unless files are trivially small.
 - **Step ceiling** — Each child has a **bounded number of reasoning steps** (on the order of **100** turns of model→tools→model). A “review everything in this giant directory” mandate can exhaust the budget and exit before finishing even if no single timer fired.
 
-**`task_create` is not “lighter” —** Durable tasks are a **separate** queue (**TaskManager**) and normally **require user approval**. They do not bypass tool or runtime limits by magic; sized wrong, they backlog the same way.
+**`task_create` is not “lighter” —** Durable tasks are a **separate** queue (**TaskManager**) and normally **require user approval**. They do not bypass tool or runtime limits by magic; sized wrong, they backlog the same way. See **Task vs Sub-agent** below — do not use `task_create` to mimic `agent_spawn`.
 
 **Using the 1M window:** Treat the large context as space to retain the **inventory**, **checklist state**, and **accumulated findings** across turns — not as an excuse to avoid tool reads. Evidence must still come from live file content or delegated agents, consistent with the verification principle below.
 
@@ -319,6 +319,22 @@ When context is deep (past a soft seam): cache reasoning conclusions in concise 
 
 简单、目标明确的 1–2 次搜索：主代理直接用 `glob_files` / `grep_files` / `read_file`，不必派子代理。
 
+## Task (`task_*`) vs Sub-agent (`agent_*`) — do not conflate
+
+Two different tool families. Mixing them (e.g. `task_create` × N while calling them “sub-agents”) loses results and breaks audit scratchpad flow.
+
+| | **Task** `task_create` / `task_list` / `task_read` | **Sub-agent** `agent_spawn` / `agent_list` / `agent_result` |
+|---|------------------------------------------------------|----------------------------------------------------------------|
+| **Relationship** | Durable **background work**; **peer** to this session (own thread/turn) | **You dispatch** a **child**; parent/child (`spawn_depth`, cancel cascades) |
+| **Typical use** | Long-running ticket, gates, PR flow, cross-session recovery | Parallel explore/review/implement under your plan |
+| **This turn waits?** | **No** — returns immediately; you **`task_read`** when ready | Optional **`agent_wait`** / `agent_result(block)`; engine may inject `<deepseek:subagent.done>` |
+| **Join results** | **`task_read`** each completed Task (`task_list` = status only) | **`agent_result`** or CRAFT blackboard after `agent_list` shows terminal |
+| **Full-repo audit P1** | ❌ Do not use for per-area parallel review | ✅ `agent_spawn` + `task_id` = scratchpad `run_id` (blackboard key; **not** `task_create`) |
+
+**Naming trap:** `agent_spawn`’s parameter `task_id` is a **work-package / blackboard filename**, not “you must call `task_create` first.”
+
+**Tool descriptions in the API schema are authoritative** — if unsure, re-read the description on the specific tool before calling.
+
 ## Toolbox (fast reference — tool descriptions are authoritative)
 
 - **Planning / tracking**: `update_plan` (high-level strategy), `task_create` / `task_list` / `task_read` / `task_cancel` (durable work objects), `checklist_write` (granular progress under the active task/thread), `checklist_add` / `checklist_update` / `checklist_list`, `todo_*` aliases (legacy compatibility), `note` (persistent memory).
@@ -376,6 +392,17 @@ Don't reach for `agent_spawn` when:
 - The task is a single read or search you can do in one turn — spawning has overhead.
 - You need sequential steps where each depends on the prior result — run them yourself, in order.
 - The work can be done with a fast `exec_shell` pipeline or a `grep_files` call.
+
+### `task_create` / `task_list` / `task_read`
+Don't reach for **`task_create`** when:
+- You mean **“spawn a sub-agent”** for parallel code review, exploration, or audit areas — use **`agent_spawn`** (see Task vs Sub-agent above).
+- You need the parent turn to **automatically wait** and receive a completion sentinel — Tasks do not do that; sub-agents may.
+- You will not **`task_read`** every completed Task before writing a final report — `task_list` alone is not enough.
+
+Do reach for **`task_create`** when:
+- You intentionally want a **durable, peer-level background job** (separate timeline, restart-aware) such as automation, gate runs, or long tickets — then always **`task_read`** before acting on outcomes.
+
+Never call completed Tasks “sub-agents” in user-facing text unless they were actually `agent_spawn` children.
 
 ### `rlm`
 Don't reach for `rlm` (the recursive language model tool) when:

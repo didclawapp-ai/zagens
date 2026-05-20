@@ -119,6 +119,9 @@ pub struct SessionMetadata {
     /// Optional mode label (agent/plan/etc.)
     #[serde(default)]
     pub mode: Option<String>,
+    /// Runtime thread store id for DS Pick event replay (tools + thinking UI).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_thread_id: Option<String>,
 }
 
 /// A saved session containing full conversation history
@@ -633,6 +636,7 @@ pub fn create_saved_session_with_mode(
             model: model.to_string(),
             workspace: workspace.to_path_buf(),
             mode: mode.map(str::to_string),
+            runtime_thread_id: None,
         },
         messages: capped_messages,
         system_prompt: merge_truncation_note(
@@ -932,6 +936,7 @@ mod tests {
                 model: "deepseek-v4-flash".to_string(),
                 workspace: workspace.to_path_buf(),
                 mode: None,
+                runtime_thread_id: None,
             },
             system_prompt: None,
             context_references: Vec::new(),

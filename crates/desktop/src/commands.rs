@@ -1,5 +1,6 @@
 use deepseek_config::{
-    ConfigStore, ConfigToml, DEFAULT_VISION_MODEL, vision_should_check_degenerate_ocr_template,
+    CompactionToml, ConfigStore, ConfigToml, DEFAULT_VISION_MODEL,
+    compaction_threshold_tokens_for_model, vision_should_check_degenerate_ocr_template,
     vision_user_prompt_for_model,
 };
 use ignore::WalkBuilder;
@@ -943,6 +944,8 @@ pub struct SystemSettings {
     pub approval_policy: String,
     pub sandbox_mode: String,
     pub max_subagents: usize,
+    /// Per-step sub-agent LLM API timeout (seconds), from `[subagents] step_timeout_secs`.
+    pub subagent_step_timeout_secs: u64,
     pub web_search: bool,
     pub subagents_enabled: bool,
     pub exec_policy: bool,
@@ -951,18 +954,26 @@ pub struct SystemSettings {
     pub snapshots_enabled: bool,
     pub notify_method: String,
     pub session_file_mb: u64,
+    /// Enable automatic context compaction (TUI `auto_compact` / engine policy).
+    pub auto_compact: bool,
+    /// Token threshold for auto-compaction (TUI `CompactionConfig.token_threshold`).
+    pub compaction_threshold_tokens: usize,
+    /// Model-derived default threshold (80% window) for UI hints — read-only on save.
+    pub compaction_threshold_default: usize,
 }
 
 #[tauri::command]
 pub fn get_system_settings() -> Result<SystemSettings, String> {
     let store = ConfigStore::load(None).map_err(|e| e.to_string())?;
     let cfg = &store.config;
+    let default_model = cfg
+        .default_text_model
+        .clone()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "deepseek-v4-pro".into());
+    let threshold_default = compaction_threshold_tokens_for_model(&default_model);
     Ok(SystemSettings {
-        default_model: cfg
-            .default_text_model
-            .clone()
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| "deepseek-v4-pro".into()),
+        default_model,
         reasoning_effort: cfg
             .reasoning_effort
             .clone()
@@ -992,6 +1003,12 @@ pub fn get_system_settings() -> Result<SystemSettings, String> {
             .or(cfg.max_subagents)
             .unwrap_or(10)
             .clamp(1, 20),
+        subagent_step_timeout_secs: cfg
+            .subagents
+            .as_ref()
+            .and_then(|s| s.step_timeout_secs)
+            .unwrap_or(120)
+            .clamp(10, 600),
         web_search: cfg
             .features
             .as_ref()
@@ -1021,6 +1038,17 @@ pub fn get_system_settings() -> Result<SystemSettings, String> {
             .filter(|m| !m.is_empty())
             .unwrap_or_else(|| "auto".into()),
         session_file_mb: cfg.session.as_ref().map(|s| s.max_file_mb).unwrap_or(5),
+        auto_compact: cfg
+            .compaction
+            .as_ref()
+            .and_then(|c| c.auto_compact)
+            .unwrap_or(false),
+        compaction_threshold_tokens: cfg
+            .compaction
+            .as_ref()
+            .and_then(|c| c.token_threshold)
+            .unwrap_or(threshold_default),
+        compaction_threshold_default: threshold_default,
     })
 }
 
@@ -1046,6 +1074,12 @@ pub fn save_system_settings(
     if let Some(ref mut s) = cfg.subagents {
         s.max_concurrent = None;
     }
+    let subagents = cfg.subagents.get_or_insert_with(Default::default);
+    subagents.step_timeout_secs = Some(
+        settings
+            .subagent_step_timeout_secs
+            .clamp(10, 600),
+    );
 
     // features：使用 get_or_insert_with 而非 take() ——
     // 避免丢弃 config.toml 中已有的其他 features 字段
@@ -1073,6 +1107,11 @@ pub fn save_system_settings(
     // session
     let session = cfg.session.get_or_insert_with(Default::default);
     session.max_file_mb = settings.session_file_mb;
+
+    // compaction — shared with TUI engine via config.toml `[compaction]`
+    let compaction = cfg.compaction.get_or_insert_with(CompactionToml::default);
+    compaction.auto_compact = Some(settings.auto_compact);
+    compaction.token_threshold = Some(settings.compaction_threshold_tokens);
 
     tracing::info!("save_system_settings: writing config");
 

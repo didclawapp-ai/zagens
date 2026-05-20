@@ -114,6 +114,40 @@ pub fn display_run_path(run_id: &str) -> String {
     format!(".deepseek/scratchpad/{run_id}")
 }
 
+/// When `thread.scratchpad_run_id` is unset, pick a run for read-only UI / status (B5).
+///
+/// Uses the scratchpad directory whose `inventory.json` was modified most recently.
+/// Callers may persist the returned id on the thread.
+#[must_use]
+pub fn discover_scratchpad_run_id_for_ui(workspace: &Path) -> Option<String> {
+    let base = workspace.join(".deepseek/scratchpad");
+    if !base.is_dir() {
+        return None;
+    }
+    let mut candidates: Vec<(std::time::SystemTime, String)> = Vec::new();
+    let entries = fs::read_dir(&base).ok()?;
+    for entry in entries.flatten() {
+        if !entry.file_type().ok()?.is_dir() {
+            continue;
+        }
+        let run_id = entry.file_name().to_string_lossy().into_owned();
+        if validate_run_id(&run_id).is_err() {
+            continue;
+        }
+        let inv = entry.path().join("inventory.json");
+        if !inv.is_file() {
+            continue;
+        }
+        let mtime = inv.metadata().ok()?.modified().ok()?;
+        candidates.push((mtime, run_id));
+    }
+    if candidates.is_empty() {
+        return None;
+    }
+    candidates.sort_by(|a, b| b.0.cmp(&a.0));
+    Some(candidates[0].1.clone())
+}
+
 /// On-disk audit scratchpad for one `run_id`.
 pub struct ScratchpadStore {
     run_id: String,
@@ -537,6 +571,28 @@ mod tests {
         store
             .set_area_status("area-a", AreaStatus::Deferred, None, 1, &cfg)
             .expect("deferred ok");
+    }
+
+    #[test]
+    fn discover_run_id_picks_newest_inventory() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let ws = dir.path();
+        let base = ws.join(".deepseek/scratchpad");
+        fs::create_dir_all(base.join("older-run")).expect("mkdir");
+        fs::write(
+            base.join("older-run/inventory.json"),
+            r#"{"run_id":"older-run","areas":[]}"#,
+        )
+        .expect("write");
+        std::thread::sleep(std::time::Duration::from_millis(60));
+        fs::create_dir_all(base.join("newer-run")).expect("mkdir");
+        fs::write(
+            base.join("newer-run/inventory.json"),
+            r#"{"run_id":"newer-run","areas":[]}"#,
+        )
+        .expect("write");
+        let picked = discover_scratchpad_run_id_for_ui(ws).expect("discover");
+        assert_eq!(picked, "newer-run");
     }
 
     #[test]

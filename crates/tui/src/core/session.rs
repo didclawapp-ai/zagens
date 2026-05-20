@@ -82,6 +82,20 @@ pub struct Session {
     /// Briefings produced at past cycle boundaries, in chronological order.
     /// Bounded growth: one entry per cycle, briefing capped at ~3,000 tokens.
     pub cycle_briefings: Vec<CycleBriefing>,
+
+    /// Provider-reported `usage.input_tokens` from the **most recent API round**
+    /// (overwrite per round — not summed across tool-call rounds). Authoritative
+    /// for “context size at last inference” per DeepSeek API docs.
+    pub last_api_input_tokens: Option<u32>,
+}
+
+impl Session {
+    /// Record per-round API usage. Turn totals still sum via `Turn::add_usage`.
+    pub fn record_api_round_usage(&mut self, usage: &Usage) {
+        if usage.input_tokens > 0 {
+            self.last_api_input_tokens = Some(usage.input_tokens);
+        }
+    }
 }
 
 /// Cumulative usage statistics for a session.
@@ -151,6 +165,7 @@ impl Session {
             cycle_count: 0,
             current_cycle_started: Utc::now(),
             cycle_briefings: Vec::new(),
+            last_api_input_tokens: None,
         }
     }
 

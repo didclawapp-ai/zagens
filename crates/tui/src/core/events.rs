@@ -89,6 +89,8 @@ pub enum Event {
     /// The turn is complete (no more tool calls)
     TurnComplete {
         usage: Usage,
+        /// Last API round `input_tokens` (not turn-summed). See `Session::last_api_input_tokens`.
+        last_request_input_tokens: Option<u32>,
         status: TurnOutcomeStatus,
         error: Option<String>,
     },

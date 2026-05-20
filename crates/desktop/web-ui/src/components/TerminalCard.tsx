@@ -76,7 +76,7 @@ function TerminalXtermView({ output }: { output: string }) {
       disableStdin: true,
       convertEol: true,
       fontSize: 11,
-      fontFamily: "'Cascadia Code', 'Consolas', 'Fira Code', monospace",
+      fontFamily: "var(--font-mono)",
       theme: xtermThemeForAppDarkMode(isDark),
       rows: 12,
     });

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type TransitionEvent } from 'react';
 import { ChatMarkdown } from './ChatMarkdown';
 import { ToolCard, type ToolCardModel } from './ToolCard';
 import TerminalCard from './TerminalCard';
@@ -16,12 +16,16 @@ interface Message {
 
 export function MessageBubble({
   message,
+  workspaceRoot,
+  desktopHost,
   onOpenWorkspacePath,
   onEditMessage,
   onRetryMessage,
   onOpenDiffInPanel,
 }: {
   message: Message;
+  workspaceRoot?: string;
+  desktopHost?: boolean;
   onOpenWorkspacePath: (relPath: string) => void | Promise<void>;
   onEditMessage?: (messageId: string, content: string) => void;
   onRetryMessage?: (content: string) => void;
@@ -43,17 +47,56 @@ export function MessageBubble({
     message.tools?.filter((t) => t.status === 'running').length ?? 0;
 
   const reasoningScrollRef = useRef<HTMLDivElement>(null);
+  const bodyScrollRef = useRef<HTMLDivElement>(null);
   /** While streaming, follow new tokens unless the user scrolled up to read earlier text. */
   const stickReasoningBottomRef = useRef(true);
+  const stickBodyBottomRef = useRef(true);
   const prevStreamingRef = useRef(false);
+  const bodyCapHeightRef = useRef(320);
+
+  const isAssistant = !isUser;
+  type BodyScrollMode = 'streaming' | 'expanding' | 'open';
+  const [bodyScrollMode, setBodyScrollMode] = useState<BodyScrollMode>(() =>
+    isAssistant && message.isStreaming ? 'streaming' : 'open',
+  );
+  const [bodyMaxPx, setBodyMaxPx] = useState<number | null>(null);
+
+  const bodyHasSectionAbove =
+    showReasoningBlock || Boolean(message.tools && message.tools.length > 0);
+
+  useEffect(() => {
+    if (!isAssistant) {
+      return;
+    }
+    setBodyScrollMode(message.isStreaming ? 'streaming' : 'open');
+    setBodyMaxPx(null);
+  }, [message.id, isAssistant]);
 
   useEffect(() => {
     const now = Boolean(message.isStreaming);
     if (now && !prevStreamingRef.current) {
       stickReasoningBottomRef.current = true;
+      stickBodyBottomRef.current = true;
+    }
+    if (isAssistant) {
+      if (now) {
+        setBodyScrollMode('streaming');
+        setBodyMaxPx(null);
+      } else if (prevStreamingRef.current) {
+        const reduceMotion =
+          typeof window !== 'undefined' &&
+          window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (reduceMotion) {
+          setBodyScrollMode('open');
+          setBodyMaxPx(null);
+        } else {
+          setBodyMaxPx(bodyCapHeightRef.current);
+          setBodyScrollMode('expanding');
+        }
+      }
     }
     prevStreamingRef.current = now;
-  }, [message.isStreaming]);
+  }, [message.isStreaming, isAssistant]);
 
   const onReasoningScroll = () => {
     const el = reasoningScrollRef.current;
@@ -63,12 +106,86 @@ export function MessageBubble({
       el.scrollHeight - el.scrollTop - el.clientHeight <= thresholdPx;
   };
 
+  const onBodyScroll = () => {
+    const el = bodyScrollRef.current;
+    if (!el || bodyScrollMode !== 'streaming') return;
+    const thresholdPx = 72;
+    stickBodyBottomRef.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight <= thresholdPx;
+  };
+
+  const chatLogScrollEl = (): HTMLDivElement | null =>
+    bodyScrollRef.current?.closest<HTMLDivElement>('[role="log"]') ?? null;
+
+  const outerChatSticksToBottom = (): boolean => {
+    const outer = chatLogScrollEl();
+    if (!outer) return true;
+    const thresholdPx = 120;
+    return outer.scrollHeight - outer.scrollTop - outer.clientHeight <= thresholdPx;
+  };
+
+  const onBodyTransitionEnd = (e: TransitionEvent<HTMLDivElement>) => {
+    if (e.propertyName !== 'max-height' || bodyScrollMode !== 'expanding') {
+      return;
+    }
+    setBodyScrollMode('open');
+    setBodyMaxPx(null);
+  };
+
   useLayoutEffect(() => {
     if (!reasoningExpanded || !showReasoningBlock) return;
     const el = reasoningScrollRef.current;
     if (!el || !stickReasoningBottomRef.current) return;
     el.scrollTop = el.scrollHeight;
   }, [message.thinking, message.isStreaming, reasoningExpanded, showReasoningBlock]);
+
+  useLayoutEffect(() => {
+    if (bodyScrollMode !== 'streaming') return;
+    const el = bodyScrollRef.current;
+    if (!el) return;
+    bodyCapHeightRef.current = el.clientHeight;
+    if (!stickBodyBottomRef.current && !outerChatSticksToBottom()) return;
+
+    const innerOverflows = el.scrollHeight > el.clientHeight + 2;
+    if (innerOverflows) {
+      el.scrollTop = el.scrollHeight;
+      return;
+    }
+    const outer = chatLogScrollEl();
+    if (outer && outerChatSticksToBottom()) {
+      outer.scrollTop = outer.scrollHeight;
+    } else if (stickBodyBottomRef.current) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [message.content, bodyScrollMode, message.tools]);
+
+  useLayoutEffect(() => {
+    if (bodyScrollMode !== 'expanding') return;
+    const el = bodyScrollRef.current;
+    if (!el) {
+      setBodyScrollMode('open');
+      setBodyMaxPx(null);
+      return;
+    }
+    const fullPx = el.scrollHeight;
+    const startPx = bodyMaxPx ?? el.clientHeight;
+    if (fullPx <= startPx + 6) {
+      setBodyScrollMode('open');
+      setBodyMaxPx(null);
+      return;
+    }
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(() => setBodyMaxPx(fullPx));
+    });
+    const fallback = window.setTimeout(() => {
+      setBodyScrollMode((m) => (m === 'expanding' ? 'open' : m));
+      setBodyMaxPx(null);
+    }, 700);
+    return () => {
+      cancelAnimationFrame(id);
+      window.clearTimeout(fallback);
+    };
+  }, [bodyScrollMode, message.content, bodyMaxPx]);
 
   return (
     <div className={`my-3 flex ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -184,20 +301,37 @@ export function MessageBubble({
             )}
           </div>
         )}
-        <div className="text-sm leading-relaxed break-words">
+        <div
+          ref={isAssistant ? bodyScrollRef : undefined}
+          onScroll={bodyScrollMode === 'streaming' ? onBodyScroll : undefined}
+          onTransitionEnd={onBodyTransitionEnd}
+          style={bodyMaxPx != null ? { maxHeight: bodyMaxPx } : undefined}
+          className={`text-sm leading-relaxed break-words ${isUser ? 'text-msg-user-text' : ''} ${
+            bodyScrollMode === 'streaming' ? 'message-body-scroll--streaming' : ''
+          } ${bodyScrollMode === 'expanding' ? 'message-body-scroll--expanding' : ''}${
+            bodyHasSectionAbove && bodyScrollMode !== 'open'
+              ? ' border-t border-card-border/60 pt-2'
+              : ''
+          }`}
+        >
           {message.content.trim() ? (
             <ChatMarkdown
               content={message.content}
               variant={message.role === 'user' ? 'user' : message.role === 'system' ? 'system' : 'assistant'}
               isStreaming={message.isStreaming}
+              workspaceRoot={workspaceRoot}
+              desktopHost={desktopHost}
               onOpenWorkspacePath={onOpenWorkspacePath}
             />
           ) : (
-            <span className={`whitespace-pre-wrap ${message.isStreaming ? 'streaming-cursor' : ''}`}>
-              {!message.isStreaming ? '...' : ''}
-            </span>
+            <span className="whitespace-pre-wrap">{!message.isStreaming ? '...' : ''}</span>
           )}
         </div>
+        {isAssistant && message.isStreaming && (
+          <div className="streaming-status-line" aria-live="polite">
+            生成中
+          </div>
+        )}
       </div>
     </div>
   );

@@ -23,8 +23,13 @@
 | **回归 R3** — 续审 `status` + `list_notes` | ✅ 通过 | `2026-05-19-phase-b-smoke` |
 | **回归 R4a** — C1 未审完 synthesize | ⚠️ 部分 | `2026-05-19-regression-coverage` |
 | **回归 R5** — C2 Auditor + C3 blackboard | ✅ 通过 | `2026-05-19-regression-new` · `regression-audit-001` |
+| **L7 全仓** — `audit-001`（defer 回归） | ⚠️ 已修复待复测 | `2026-05-19-audit-001` |
+| **L7 全仓** — `full-audit`（新包 + 全仓 Prompt） | ⚠️ 报告可用，流程未闭环 | `2026-05-20-full-audit` |
+| **L7c 全仓** — `2026-05-20-audit`（宽 Prompt + scratchpad） | ✅ 流程闭环；⚠️ 主代理路径 | `2026-05-20-audit` |
+| **L8 Phase D** — 审计过程可视化 | ⬜ 规划 | 见 [§L8](#l8--phase-d-审计过程可视化规划) |
+| **L9 地狱级四维** — 审查维度 Prompt | ⏸ 暂缓 | 见 [§L9](#l9--地狱级四维审计暂缓) |
 
-**结论：** Phase A 在单区与多区场景下可用；长程「落盘纪律」已验证。Phase B 在 `2026-05-19-phase-b-smoke` 上验收通过。**新包回归**：R1 ✅ · R2 ⚠️ · R3 ✅ · R4a ⚠️ · R4b ⏭ · **R5 ✅**（Auditor 预期 **FAIL** = 检测生效）；R6 可选见 §8.4。
+**结论：** Phase A 在单区与多区场景下可用；长程「落盘纪律」已验证。Phase B 在 `2026-05-19-phase-b-smoke` 上验收通过。**新包回归**：R1 ✅ · R2 ⚠️ · R3 ✅ · R4a ⚠️ · R4b ⏭ · **R5 ✅**（Auditor 预期 **FAIL** = 检测生效）；R6 可选见 §8.4。**L7 全仓**：`audit-001` defer 已修待复测；`full-audit` 见 [L7b](#l7b--全仓试跑-2026-05-20-full-audit2026-05-20)；**L7c** 见 [§L7c](#l7c--全仓试跑-2026-05-20-audit2026-05-20)。**下一步产品：** [Phase D 可视化](#l8--phase-d-审计过程可视化规划)（design [§6.13](audit-scratchpad-design.md#613-phase-d--审计过程可视化路线图-未实现)）。
 
 ---
 
@@ -608,6 +613,229 @@ agent_spawn(
 | O1–O3 | | 可选 | | |
 
 **发版建议：** R1–R4b 全 ✅ 可认为回归通过；R5 有 HIGH 时必测；R6/O* 按时间。
+
+---
+
+## L7 — 全仓试跑 `2026-05-19-audit-001`（2026-05-19）
+
+| 项 | 结果 |
+|----|------|
+| 外存 / 报告 | ✅ `inventory.json` + `notes.jsonl` + `deliverables/CODE_REVIEW_2026-05-19.md` |
+| 首屏无 `scratchpad_*` | ⚠️ **根因：** Agent 下工具 **defer**；模型未 `tool_search` → 手写文件 |
+| 横条 | ❌ 未绑 `scratchpad_run_id` |
+| inventory 纪律 | ⚠️ 曾 23×`pending` 与报告冲突；后手工改为 19 done + 4 deferred |
+| **代码修复（待复测）** | `scratchpad_*` 加入 eager 白名单；`scratchpad_status` 绑线程；`GET …/status` 发现最新 run；skill v4 + `tool_search` 指引 |
+
+**复测 Prompt（新会话，重编 sidecar 后）：**
+
+```text
+加载 audit-repo。run_id=2026-05-19-audit-001。
+1) 列出工具名里是否含 scratchpad_status（不要猜）。
+2) 调用 scratchpad_status(run_id=…) 并贴 JSON。
+3) 确认 DS Pick 琥珀横条是否出现。
+```
+
+---
+
+## L7b — 全仓试跑 `2026-05-20-full-audit`（2026-05-20）
+
+**Prompt（用户）：** 全库代码级审核，输出 MD 报告（与 L7 同类全仓任务）。
+
+**产物：**
+
+```text
+.deepseek/scratchpad/2026-05-20-full-audit/
+├── inventory.json    # 34 areas
+└── notes.jsonl       # 18 行（含 meta + finding）
+
+deliverables/DS_Pick_Audit_2026-05-20.md
+```
+
+### 总评：⚠️ 报告可用，流程未闭环
+
+| 维度 | vs `audit-001`（5/19） | 本次 |
+|------|------------------------|------|
+| P0 清单 / 侧栏 Checklist | 后期才有 | ✅ 34 area，P0/P1 结构化 |
+| 琥珀横条 | ❌ 未绑 run | ✅ 出现（`2026-05-20-full-audit`） |
+| `scratchpad_append` | 手写 JSON，无 id/ts | ✅ 18 条带 `id`/`ts` |
+| 并行执行体 | 口述「14 子代理」 | ⚠️ 实为 14×**Task**（`task_create`），非 `agent_spawn`；见 §7.1 |
+| `scratchpad_set_area` | 事后手改 inventory | ❌ **34×`pending`**，横条 accounted **0/34** |
+| P2 `verified` | 部分 verified | ❌ findings 均为 **`open`** |
+| 报告 | `CODE_REVIEW_2026-05-19.md` | ✅ `DS_Pick_Audit_2026-05-20.md` |
+
+### 磁盘核实（2026-05-20 复核）
+
+| 项 | 结果 |
+|----|------|
+| `inventory.json` | 34 area，**全部 `pending`**（无 `in_progress` / `done` / `deferred`） |
+| `notes.jsonl` | **18 行**；MEDIUM 在 notes 中 ≥6 条（CSP、main、shell、subagent、file、install 等） |
+| 报告汇总表 | **3 MEDIUM**（M1 CSP `unsafe-inline`、M2 `devtools: true`、M3 `main.rs` 体量） |
+| M1/M2 行号 | ✅ `tauri.conf.json:35` / `:31` 与仓库一致 |
+| M3 `main.rs` 行数 | ⚠️ 报告写 5,333；仓库约 **4,909**（仍远超 1k 软上限） |
+| 严重度 | 0 HIGH/BLOCKER（与 notes 一致） |
+| P3 自述验证 | ⚠️ notes 未标 `verified`，与 skill P2 不一致 |
+
+### 行为观察
+
+| 项 | 结果 |
+|----|------|
+| 先建 scratchpad + 34 area inventory | ✅ |
+| 主代理 `scratchpad_append` | ✅ |
+| 主代理 `scratchpad_set_area`（进度与清单对齐） | ❌ → 横条 **0/34**（修复后 UI 应显示 `notes 18` +「待 set_area」） |
+| 后台 Task 并行 | ✅ Task 多 completed；未 `task_read` → 未回写 scratchpad/inventory |
+| 直接读码 + 合成报告 | ✅ 报告可读 |
+| 「全库逐文件审完」宣称 | ❌ 未达标（inventory 未交代、无 verified 门禁） |
+
+### 与已交付修复的关系
+
+试跑时用户侧应已含：**eager `scratchpad_*`**、**`GET …/status` 发现 run**、横条 **accounted = done+in_progress+deferred**、**agent SSE → 子代理面板**。本次证明 **append + 横条发现** 有效；**set_area 纪律**与 **verified-only 报告** 仍依赖模型遵守 skill。
+
+### 根因（2026-05-20 复盘，详见 [design §2.1 人机契约](audit-scratchpad-design.md#21-人机契约契约现象) · [§7.1](audit-scratchpad-design.md#71-tasktask_-与-sub-agentagent_两套对象不可混称) · [§14](audit-scratchpad-design.md#14-全仓审计失败模式task-与-sub-agent-混用--未-joinl7b2026-05-20)）
+
+| # | 根因 | 要点 |
+|---|------|------|
+| A | **Task 与 Sub-agent 混用（主因）** | 14×**`task_create`**（后台 **Task**，与主 Agent **平级**）却被说成「子代理」；应使用 **`agent_spawn`**（**上下级**）做 P1 并行审区，见 §7.1 |
+| B | **Task 未 join** | 只 `task_list`，**零次 `task_read`**；Task 多数 **completed**（含 HIGH），对主会话仍等于未接入 |
+| C | **C1 门禁被绕过** | Prompt 可能未命中 report 关键词；inventory 全 pending；报告经 **`write_file`→deliverables** |
+| D | **目标错位** | 优先 MD 报告，非 inventory + `verified` |
+| E | **错误叙事** | 曾称「task 未跑」——**`task_read` 证伪**；是 **Task 跑完未读**，不是 Sub-agent 未启动 |
+
+模型自述（与证据一致）：只 polling `task_list`，未 `task_read`；**不是**「检查时机不对」，而是**没把 Task 当平级工单去收口**（且类别上误当成 sub-agent）。
+
+### 优化路线（摘要）
+
+| 档 | 内容 | 状态 |
+|----|------|------|
+| **1 Skill** | 禁止 P1 `task_create` 并行审区；spawn 后 `agent_list`→terminal→blackboard/`agent_result`→append+`set_area` | ✅ `audit-repo` § P1 parallel（待 L7 复测） |
+| **2 引擎** | 扩大 C1 关键词 / `write_file` deliverables 硬门 / completed-task 未读提醒 | ⬜ 见 design §14.3 E1–E5 |
+| **3 UI** | 横条 accounted=0 强提示；Task/子代理 Completed 未读 | ⬜ → **[Phase D §L8](#l8--phase-d-审计过程可视化规划)**（design §6.13） |
+
+**L7b 闭环复测标准：** design §14.5（inventory 交代、verified-only、子代理 HIGH 不丢、禁止无证据「未跑」声明）。
+
+---
+
+## L7c — 全仓试跑 `2026-05-20-audit`（2026-05-20）
+
+**Prompt（用户）：** 全库代码级审核，输出 MD 报告（与 L7/L7b 同类；未附加地狱级四维清单）。
+
+**产物：**
+
+```text
+.deepseek/scratchpad/2026-05-20-audit/
+├── inventory.json    # 35 areas，全部 done
+├── notes.jsonl       # 39 行（7 finding verified + 31 cleared + 1 meta）
+└── REPORT.md
+
+workspace/.deepseek/scratchpad/2026-05-20-audit/  # 同上（若 cwd 为仓库根）
+```
+
+### 总评：✅ 流程闭环；⚠️ 执行路径与 L7b 不同
+
+| 维度 | L7b `full-audit` | L7c `2026-05-20-audit` |
+|------|------------------|-------------------------|
+| inventory 收口 | 34×`pending`，accounted 0/34 | **35/35 `done`** |
+| `scratchpad_set_area` | ❌ | ✅ |
+| findings `verified` | ❌ 多为 `open` | ✅ 7 条 `finding` + `verified` |
+| 并行执行体 | 14×**Task** | **无子代理**；`notes.jsonl` 全 `source:main` |
+| 报告 | deliverables MD | `REPORT.md` + 聊天摘要；0 HIGH |
+| Token（同日账单 Δ，基线 32,815,894） | — | **+5,155,043** 合计（+116 万未命中缓存，+397 万命中缓存，+2.6 万输出） |
+
+### 磁盘核实
+
+| 项 | 结果 |
+|----|------|
+| `inventory.json` | 35 area，**全部 `done`** |
+| `notes.jsonl` | 39 行；7 `finding`/`verified`；31 `cleared`/`verified` |
+| 严重度 | 5 MEDIUM + 2 LOW（hooks 吞错误、CLI env API key、大文件体量、CORS 等） |
+| 子代理 / blackboard | **无** `.deepseek/blackboards/{run_id}`；无 `agent_*` 面板数据 |
+
+### 行为观察（模型侧 vs 产品侧）
+
+| 项 | 结果 |
+|----|------|
+| scratchpad 纪律 | ✅ append + set_area + P2 报告 |
+| P1 子代理（skill / E5） | ⚠️ 口述曾计划 Explore，**实际主代理批读** |
+| 覆盖诚实度 | ✅ 报告写明 prompts/widgets 等**抽样** |
+| sidecar 保存设置重启 | ⚠️ 曾「未连接 + 仍显示生成中」；修复见 CHANGELOG（`sidecar://restarting`） |
+
+### 与 Phase D 的关系
+
+L7c 证明 **Harness 可托住长任务落盘**；仍缺 **过程可视化** 来暴露「子代理面板空 vs 叙事 spawn」「双轨 checklist」。验收见 [§L8](#l8--phase-d-审计过程可视化规划)。
+
+**费用粗算：** 用户对照约 **6–8 元/次** 全库审；本次 Δ 以官方控制台 **未命中 + 输出** 乘单价为准（命中缓存单价更低）。
+
+---
+
+## L8 — Phase D：审计过程可视化（规划）
+
+> **设计全文：** [audit-scratchpad-design.md §6.13](audit-scratchpad-design.md#613-phase-d--审计过程可视化路线图-未实现)
+
+**目标：** 让用户对照 **磁盘 + runtime**，不只看聊天叙事；把 §2.1 **契约违约** 做成仪表盘（路考摄像头）。
+
+### 分档与验收（R-可视化）
+
+| 档 | ID | 交付 | 验收（复制用） |
+|----|-----|------|----------------|
+| **D1** | D1.1 | Inventory 面板（area 列表） | 与 `inventory.json` 35 行一致；status 色块 pending/in_progress/done/deferred |
+| **D1** | D1.2 | U1 违约高亮 | `notes≥1` 且 accounted=0 → 横条红色 + 固定文案 |
+| **D1** | D1.3 | scratchpad 工具后即时刷新 | `append`/`set_area` 后 3s 内横条更新（不必等 12s） |
+| **D2** | D2.1 | inventory vs checklist 双轨 | 两数不一致时黄标 + `contract_warnings` |
+| **D2** | D2.2 | 子代理轨 | spawn 后面板有行；全程 0 行且 transcript 含 spawn → 警告 |
+| **D2** | D2.3 | Findings 条带 | verified/open 计数与 `notes.jsonl` 一致 |
+| **D2** | U2 | Task / Sub-agent 分栏 + 未读徽章 | 与 §7.1 用语一致 |
+| **D2** | U3 | 审计模式 hard block（accounted≥85%） | 未达标时 deliverables `write_file` 被拦 + UI 说明 |
+
+### 建议实现顺序
+
+```text
+D-a: D1.1 + D1.2 + D1.3  →  D-b: D2.1 + D2.2  →  D-c: U2 + U3 + D2.3
+```
+
+### 复测 Prompt（D1 完成后）
+
+在 L7c 同类全库 Prompt 上再跑一轮；**人为**在 area-3 只 `append` 不 `set_area`，确认 D1.2 红灯；修复后续审至 35/35。
+
+**状态：** ⬜ 未开工（文档-only 路线图，2026-05-20 写入）。
+
+---
+
+## L9 — 地狱级四维审计（暂缓）
+
+用户提议在 Prompt 中强制四类检查：**功能与逻辑**、**设计与可维护性**、**安全防护**、**可靠性与异常处理**（含业务满足度、算法复杂度、DRY、依赖 CVE、事务/熔断等）。
+
+### 为何暂缓（相对 L8 优先）
+
+| 风险 | 说明 |
+|------|------|
+| Token / 时间 | 在 L7c 已 ~+515 万 token/日 量级上，再叠四维全深审，易 **1.5×–3×** 成本 |
+| 模型行为 | 易变成 **清单表演**（每 area 写 meta「已检查」无 `file:line`），而非真 finding |
+| 无验收 schema | UI（D3.1）无数据可画，除非先约定 `notes.jsonl` meta 字段 |
+| 与现有重叠 | 安全、异常、体量与当前 `audit-repo` / `base.md` 已部分覆盖 |
+
+### 若将来启动（前置条件）
+
+1. **Phase D1** 上线（违约可见）。  
+2. Prompt 约定：每 area 每维度 **最多 1 条** `verified` 或 `cleared`；无证据则 `kind=meta` + `未深入`；禁止无 `file:line` 的 HIGH。  
+3. **P0 深审 / P2 浅扫** 分 priority；**不做**全仓 `cargo audit` / `npm audit` 除非有工具输出文件可读。  
+4. 范围可先 **地狱深度仅 `crates/tui` + `crates/desktop`**，其余 crate 沿用 L7c 轻量 pass。
+
+### 示例 Prompt 片段（勿与 L8 同 PR）
+
+见 design 讨论纪要；完整模板待 L9 立项时再写入 §7 Prompt 清单。
+
+**状态：** ⏸ 暂缓（2026-05-20）。
+
+### 续审 Prompt（闭环 inventory，可选）
+
+```text
+run_id=2026-05-20-full-audit：
+1) scratchpad_status 贴 JSON；
+2) 对每个已有 notes 的 area 调用 scratchpad_set_area（done 或 deferred+meta）；
+3) 进报告的 finding 改为 status=verified（或 supersedes）；
+4) 不重写报告，只回报 inventory 完成率与 verified 条数。
+```
+
+**发版建议：** L7b 可作为「新包全仓 UX 冒烟」⚠️ 通过；在 inventory 全 pending 前提下**不能**视为 L7 流程回归 ✅。子代理面板、横条 `notes N` 需在重编 sidecar + web-ui 后由用户再确认一行。
 
 ---
 

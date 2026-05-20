@@ -1,6 +1,6 @@
 # DS Pick API 设计文档
 
-> **DS Pick 壳版本:** 0.3.0（`crates/desktop/Cargo.toml`）| **文档修订:** 2026-05-19 | **权威实现:** 本仓库 `commands.rs`、`runtime_api.rs` `build_router`、`web-ui/src/api/client.ts`
+> **DS Pick 壳版本:** 0.4.0（`crates/desktop/Cargo.toml`）| **文档修订:** 2026-05-20 | **权威实现:** 本仓库 `commands.rs`、`runtime_api.rs` `build_router`、`web-ui/src/api/client.ts`
 
 本文档描述 **DS Pick 桌面壳** 的双通道集成 API，不是独立 OpenAPI 规范。协议类型见 `crates/protocol/`；HTTP 路由以 `crates/tui/src/runtime_api.rs` 中 `build_router` 为准（sidecar 内 `deepseek-tui serve --http`）。历史 `RUNTIME_API.md` 已移除，勿引用旧路径。
 

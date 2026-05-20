@@ -555,6 +555,7 @@ fn build_engine_config(app: &App, config: &Config) -> EngineConfig {
         // human-noticeable; we trust the operator over a hard step cap.
         max_steps: u32::MAX,
         max_subagents: app.max_subagents,
+        subagent_step_timeout: config.subagent_step_timeout(),
         features: config.features(),
         compaction: app.compaction_config(),
         cycle: app.cycle_config(),
@@ -875,6 +876,7 @@ async fn run_event_loop(
                     }
                     EngineEvent::TurnComplete {
                         usage,
+                        last_request_input_tokens,
                         status,
                         error,
                     } => {
@@ -938,7 +940,8 @@ async fn run_event_loop(
                             .session
                             .total_conversation_tokens
                             .saturating_add(turn_tokens);
-                        app.session.last_prompt_tokens = Some(usage.input_tokens);
+                        app.session.last_prompt_tokens =
+                            last_request_input_tokens.or(Some(usage.input_tokens));
                         app.session.last_completion_tokens = Some(usage.output_tokens);
                         app.session.last_prompt_cache_hit_tokens = usage.prompt_cache_hit_tokens;
                         app.session.last_prompt_cache_miss_tokens = usage.prompt_cache_miss_tokens;

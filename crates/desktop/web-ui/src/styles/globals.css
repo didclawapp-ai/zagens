@@ -63,62 +63,62 @@
   --radius-md: 10px;
   --radius-sm: 8px;
   --radius-pill: 999px;
-  --font-ui: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'PingFang SC',
-    'Microsoft YaHei', sans-serif;
-  --font-mono: ui-monospace, 'Consolas', 'Cascadia Code', 'Source Code Pro', monospace;
+  --font-ui: 'Plus Jakarta Sans Variable', 'Plus Jakarta Sans', 'Noto Sans SC', ui-sans-serif,
+    system-ui, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', 'Consolas', monospace;
   /* Claude Code–style document body: system UI serif first (e.g. New York on Apple), then Charter / Georgia */
   --font-display: ui-serif, Charter, 'Bitstream Charter', 'Sitka Text', Georgia, 'Times New Roman',
     'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'STSong', 'SimSun', serif;
 }
 
 .dark {
-  /* Warm-tinted dark — pairs with light “milky white” without blue-gray cast */
-  --color-canvas: #0f0d0b;
-  --color-canvas-alt: #1a1614;
-  --color-card: #1c1917;
-  /* Softer hairlines — avoid “bright gray rails” on near-black canvas */
-  --color-card-border: rgba(255, 255, 255, 0.065);
-  /* Primary copy — softer than before; closer to comfortable “UI gray” in dim rooms */
-  --color-text: #c5ced9;
-  --color-text-secondary: #97a3af;
-  --color-text-muted: #6d7785;
-  --color-accent: #6366f1;
-  --color-accent-hover: #818cf8;
-  --color-accent-soft: rgba(99, 102, 241, 0.15);
+  /* 深色暖主题 · 护眼 — warm gray-black shell + amber accent (pairs with light 乳白) */
+  --color-canvas: #141210;
+  --color-canvas-alt: #1a1816;
+  --color-card: #1c1a18;
+  --color-card-border: #2a2724;
+  --color-text: #e4e0dc;
+  --color-text-secondary: #8a847d;
+  --color-text-muted: #6a645d;
+  --color-accent: #d97706;
+  --color-accent-hover: #b45309;
+  --color-accent-soft: rgba(217, 119, 6, 0.12);
   --color-accent-text: #ffffff;
-  --color-warning: #f59e0b;
-  --color-warning-bg: rgba(245, 158, 11, 0.15);
+  --color-accent-shadow: 0 2px 6px rgba(217, 119, 6, 0.2);
+  --color-warning: #fbbf24;
+  --color-warning-bg: rgba(251, 191, 36, 0.12);
   --color-warning-text: #fde68a;
   --color-error: #f87171;
-  --color-error-bg: rgba(248, 113, 113, 0.1);
-  --color-error-text: #fca5a5;
-  --color-success: #34d399;
-  --color-success-bg: rgba(52, 211, 153, 0.1);
-  --color-amber: #f59e0b;
-  --color-amber-bg: rgba(245, 158, 11, 0.12);
+  --color-error-bg: rgba(248, 113, 113, 0.12);
+  --color-error-text: #fecaca;
+  --color-success: #4ade80;
+  --color-success-bg: rgba(74, 222, 128, 0.1);
+  --color-amber: #d97706;
+  --color-amber-bg: rgba(217, 119, 6, 0.12);
   --color-amber-text: #fde68a;
-  --color-input-bg: #1f2937;
-  --color-input-border: rgba(255, 255, 255, 0.1);
-  --color-hover: #1f2937;
-  --color-hover-strong: #374151;
-  --color-divider: rgba(255, 255, 255, 0.04);
-  --color-chrome-seam: rgba(255, 255, 255, 0.055);
+  --color-input-bg: #211e1c;
+  --color-input-border: #2a2724;
+  --color-hover: rgba(255, 255, 255, 0.03);
+  --color-hover-strong: rgba(255, 255, 255, 0.06);
+  --color-divider: rgba(228, 224, 220, 0.05);
+  --color-chrome-seam: rgba(228, 224, 220, 0.08);
   --color-rail-edge: var(--color-chrome-seam);
-  --color-msg-assistant-bg: #1f1c1a;
-  --color-msg-assistant-border: rgba(255, 250, 245, 0.06);
-  --color-msg-user-bg: #292524;
-  --color-msg-user-border: rgba(255, 250, 245, 0.08);
-  --color-msg-user-text: #e7e5e4;
-  --color-toolbar-bg: rgba(17, 24, 39, 0.85);
-  --color-dot: rgba(148, 163, 184, 0.06);
-  --color-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --color-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3);
-  --color-overlay: rgba(0, 0, 0, 0.7);
+  --color-msg-assistant-bg: #211e1c;
+  --color-msg-assistant-border: rgba(228, 224, 220, 0.06);
+  --color-msg-user-bg: #322e2a;
+  --color-msg-user-border: rgba(228, 224, 220, 0.1);
+  --color-msg-user-text: #f2eeea;
+  --color-toolbar-bg: rgba(20, 18, 16, 0.85);
+  --color-dot: rgba(106, 100, 93, 0.2);
+  --color-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --color-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.6);
+  --color-shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.7);
+  --color-overlay: rgba(0, 0, 0, 0.72);
 }
 
 /* highlight.js/github is a light theme — in dark mode apply github-dark colour set */
 .dark .hljs {
-  color: #c9d1d9;
+  color: #e4e0dc;
   background: transparent;
 }
 .dark .hljs-doctag,
@@ -293,6 +293,12 @@ body {
   margin: 0;
   font-family: var(--font-ui);
   font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'kern' 1;
   color: var(--color-text);
   background-color: var(--color-canvas);
   overflow: hidden;
@@ -527,6 +533,19 @@ body {
     -webkit-font-smoothing: antialiased;
   }
 
+  /* User bubble: prose defaults are light-theme grays — force theme token (see ChatMarkdown). */
+  .chat-md-wrap.chat-md-wrap--user {
+    --tw-prose-body: var(--color-msg-user-text);
+    --tw-prose-headings: var(--color-msg-user-text);
+    --tw-prose-bold: var(--color-msg-user-text);
+    --tw-prose-code: var(--color-msg-user-text);
+    color: var(--color-msg-user-text);
+  }
+
+  .chat-md-wrap.chat-md-wrap--user :where(p, li, ol, ul, strong, h1, h2, h3, h4, td, th) {
+    color: var(--color-msg-user-text);
+  }
+
   /* Fenced code blocks in chat (copy button like Claude Code) */
   .chat-md-wrap .ds-code-block-shell {
     position: relative;
@@ -621,13 +640,13 @@ body {
     stroke-linejoin: round;
   }
 
-  /* Shown while assistant output is streaming (MessageBubble + ChatMarkdown). */
-  .streaming-cursor::after {
-    content: '生成中';
-    margin-inline-start: 0.35em;
-    font-size: 0.92em;
+  /* Fixed-height footer so the streaming label does not reflow message body. */
+  .streaming-status-line {
+    margin-top: 0.35rem;
+    min-height: 1.25rem;
+    font-size: 0.75rem;
     font-weight: 500;
-    white-space: nowrap;
+    line-height: 1.25rem;
     color: var(--color-accent);
     animation: streaming-generating-pulse 1.4s ease-in-out infinite;
   }
@@ -639,6 +658,27 @@ body {
     }
     50% {
       opacity: 0.45;
+    }
+  }
+
+  /* Assistant body: capped while streaming, ease-out expand when the turn completes. */
+  .message-body-scroll--streaming {
+    max-height: 48vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .message-body-scroll--expanding {
+    overflow: hidden;
+    transition:
+      max-height 0.52s cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 0.28s ease-out;
+    opacity: 1;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .message-body-scroll--expanding {
+      transition: none;
     }
   }
 

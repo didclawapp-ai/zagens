@@ -737,6 +737,7 @@ impl Engine {
 
             // Update turn usage
             turn.add_usage(&usage);
+            self.session.record_api_round_usage(&usage);
 
             // Build content blocks. If this assistant turn produced tool
             // calls, ensure a Thinking block is present even when the model

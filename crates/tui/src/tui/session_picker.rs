@@ -611,6 +611,7 @@ mod tests {
             model: "deepseek-v4-pro".to_string(),
             workspace: std::path::PathBuf::from("/tmp"),
             mode: Some("agent".to_string()),
+            runtime_thread_id: None,
         }
     }
 

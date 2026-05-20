@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import DOMPurify from 'dompurify';
 import 'highlight.js/styles/github.css';
+import WorkspaceLinkContextMenu, {
+  type WorkspaceLinkMenuState,
+} from './chat/WorkspaceLinkContextMenu';
 import { useT } from '../i18n';
 import { enhanceChatCodeBlocks } from '../lib/enhanceChatCodeBlocks';
 import { chatMarkdownIt } from '../lib/markdownChatCore';
@@ -10,6 +13,7 @@ import {
   isWorkspacePathlike,
 } from '../lib/workspacePathLike';
 import { normalizeWorkspaceRelPath } from '../lib/openWorkspaceFile';
+import { workspaceAbsolutePath } from '../lib/workspaceLinkMenu';
 
 function enhanceWorkspacePathTargets(html: string): string {
   if (typeof window === 'undefined' || !html) {
@@ -80,6 +84,8 @@ interface Props {
   content: string;
   variant: ChatMarkdownVariant;
   isStreaming?: boolean;
+  workspaceRoot?: string;
+  desktopHost?: boolean;
   onOpenWorkspacePath: (relPath: string) => void | Promise<void>;
 }
 
@@ -87,16 +93,23 @@ export function ChatMarkdown({
   content,
   variant,
   isStreaming,
+  workspaceRoot = '',
+  desktopHost = false,
   onOpenWorkspacePath,
 }: Props) {
   const { t } = useT();
   const containerRef = useRef<HTMLDivElement>(null);
   const [html, setHtml] = useState('');
+  const [wsMenu, setWsMenu] = useState<WorkspaceLinkMenuState | null>(null);
 
   const proseUser =
     variant === 'user'
-      ? `prose-a:text-accent prose-a:underline-offset-2 prose-a:decoration-2
-         prose-code:bg-canvas-alt prose-code:text-msg-user-text
+      ? `text-msg-user-text
+         prose-p:text-msg-user-text prose-li:text-msg-user-text prose-ol:text-msg-user-text prose-ul:text-msg-user-text
+         prose-strong:text-msg-user-text prose-headings:text-msg-user-text
+         prose-code:bg-canvas-alt prose-code:text-msg-user-text prose-td:text-msg-user-text prose-th:text-msg-user-text
+         prose-blockquote:text-t-text-secondary
+         prose-a:text-accent prose-a:underline-offset-2 prose-a:decoration-2
          [--tw-prose-body:var(--color-msg-user-text)][--tw-prose-headings:var(--color-msg-user-text)][--tw-prose-bold:var(--color-msg-user-text)]
          [--tw-prose-code:var(--color-msg-user-text)][--tw-prose-quotes:var(--color-text-secondary)]
          [--tw-prose-counters:var(--color-text-muted)][--tw-prose-bullets:var(--color-text-muted)]`
@@ -106,7 +119,7 @@ export function ChatMarkdown({
     () =>
       [
         'chat-md-wrap break-words',
-        variant === 'user' ? 'prose prose-sm max-w-none' : 'prose prose-base max-w-none',
+        variant === 'user' ? 'chat-md-wrap--user prose prose-sm max-w-none' : 'prose prose-base max-w-none',
         'font-display',
         'prose-headings:font-display prose-headings:font-semibold prose-headings:tracking-tight',
         variant === 'user' ? 'prose-headings:my-2' : 'prose-headings:my-3',
@@ -119,7 +132,7 @@ export function ChatMarkdown({
         'prose-li:my-0.5',
         'prose-strong:font-semibold',
         variant === 'user'
-          ? 'prose-headings:text-inherit prose-p:text-inherit prose-li:text-inherit prose-strong:text-inherit prose-code:text-inherit prose-th:text-inherit prose-td:text-inherit'
+          ? ''
           : [
               'dark:prose-invert',
               'prose-headings:text-t-text prose-p:text-t-text prose-li:text-t-text prose-ol:text-t-text prose-ul:text-t-text prose-strong:text-t-text',
@@ -136,13 +149,21 @@ export function ChatMarkdown({
           ? 'prose-a:text-accent prose-a:underline hover:prose-a:text-accent-hover'
           : 'prose-a:text-accent prose-a:no-underline hover:prose-a:underline',
         proseUser,
-        isStreaming ? 'streaming-cursor' : '',
         '[&_a.ds-chat-ws-link]:cursor-pointer [&_a.ds-chat-ws-link_code]:underline [&_a.ds-chat-ws-link_code]:decoration-dotted',
         variant === 'user'
-          ? '[&_a.ds-chat-ws-link_code]:text-inherit'
+          ? '[&_a.ds-chat-ws-link_code]:text-msg-user-text'
           : '[&_a.ds-chat-ws-link_code]:text-accent',
       ].join(' '),
-    [variant, isStreaming, proseUser],
+    [variant, proseUser],
+  );
+
+  const streamingPlainClassName = useMemo(
+    () =>
+      [
+        'chat-md-wrap break-words font-display text-sm leading-relaxed',
+        variant === 'user' ? 'text-msg-user-text' : 'text-t-text',
+      ].join(' '),
+    [variant],
   );
 
   useEffect(() => {
@@ -150,10 +171,13 @@ export function ChatMarkdown({
       setHtml('');
       return;
     }
+    if (isStreaming) {
+      return;
+    }
     const raw = chatMarkdownIt.render(content);
     const safe = sanitizeChatMarkdown(raw);
     setHtml(enhanceWorkspacePathTargets(safe));
-  }, [content]);
+  }, [content, isStreaming]);
 
   useEffect(() => {
     enhanceChatCodeBlocks(containerRef.current, {
@@ -164,11 +188,11 @@ export function ChatMarkdown({
 
   const onClickCapture = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
-      const t = e.target as HTMLElement | null;
-      if (!t) {
+      const target = e.target as HTMLElement | null;
+      if (!target) {
         return;
       }
-      const a = t.closest('a[data-ds-workspace-rel]') as HTMLAnchorElement | null;
+      const a = target.closest('a[data-ds-workspace-rel]') as HTMLAnchorElement | null;
       if (!a) {
         return;
       }
@@ -183,18 +207,73 @@ export function ChatMarkdown({
     [onOpenWorkspacePath],
   );
 
+  const onContextMenuCapture = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) {
+        return;
+      }
+      const a = target.closest('a[data-ds-workspace-rel]') as HTMLAnchorElement | null;
+      if (!a) {
+        return;
+      }
+      e.preventDefault();
+      const rel = a.getAttribute('data-ds-workspace-rel')?.trim();
+      if (!rel) {
+        return;
+      }
+      const fileName = rel.split('/').pop() ?? rel;
+      setWsMenu({
+        relPath: rel,
+        absPath: workspaceAbsolutePath(workspaceRoot, rel),
+        fileName,
+        x: e.clientX,
+        y: e.clientY,
+      });
+    },
+    [workspaceRoot],
+  );
+
+  const onOpenSystem = useCallback(async (absPath: string) => {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('open_with_system_app', { path: absPath });
+    } catch {
+      /* ignore — same as RightPanel file tree */
+    }
+  }, []);
+
   if (!content) {
     return null;
   }
 
+  if (isStreaming) {
+    return (
+      <div ref={containerRef} className={streamingPlainClassName}>
+        <div className="whitespace-pre-wrap break-words">{content}</div>
+      </div>
+    );
+  }
+
   return (
-    <div
-      ref={containerRef}
-      className={className}
-      onClickCapture={onClickCapture}
-      // eslint-disable-next-line react/no-danger
-      dangerouslySetInnerHTML={{ __html: html }}
-    />
+    <>
+      <div
+        ref={containerRef}
+        className={className}
+        onClickCapture={onClickCapture}
+        onContextMenuCapture={onContextMenuCapture}
+        // eslint-disable-next-line react/no-danger
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+      {wsMenu ? (
+        <WorkspaceLinkContextMenu
+          menu={wsMenu}
+          desktopHost={desktopHost}
+          onClose={() => setWsMenu(null)}
+          onOpenSystem={onOpenSystem}
+        />
+      ) : null}
+    </>
   );
 }
 

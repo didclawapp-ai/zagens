@@ -548,20 +548,57 @@ fn estimate_tokens_for_message(message: &Message, include_thinking: bool) -> usi
         .content
         .iter()
         .map(|c| match c {
-            ContentBlock::Text { text, .. } => text.len() / 4,
+            ContentBlock::Text { text, .. } => estimate_text_tokens_deepseek(text),
             // Historical reasoning blocks are UI/session metadata for DeepSeek.
             // Only current-turn tool-call reasoning is sent back to the API.
-            ContentBlock::Thinking { thinking } if include_thinking => thinking.len() / 4,
+            ContentBlock::Thinking { thinking } if include_thinking => {
+                estimate_text_tokens_deepseek(thinking)
+            }
             ContentBlock::Thinking { .. } => 0,
             ContentBlock::ToolUse { input, .. } => serde_json::to_string(input)
-                .map(|s| s.len() / 4)
+                .map(|s| estimate_text_tokens_deepseek(&s))
                 .unwrap_or(100),
-            ContentBlock::ToolResult { content, .. } => content.len() / 4,
+            ContentBlock::ToolResult { content, .. } => estimate_text_tokens_deepseek(content),
             ContentBlock::ServerToolUse { .. }
             | ContentBlock::ToolSearchToolResult { .. }
             | ContentBlock::CodeExecutionToolResult { .. } => 0,
         })
         .sum::<usize>()
+}
+
+/// DeepSeek API doc heuristic: ~0.3 token/ASCII char, ~0.6 token/CJK char.
+/// <https://api-docs.deepseek.com/zh-cn/quick_start/token_usage>
+#[must_use]
+pub fn estimate_text_tokens_deepseek(text: &str) -> usize {
+    let (cjk, other) = count_cjk_and_other_chars(text);
+    other
+        .saturating_mul(3)
+        .div_ceil(10)
+        .saturating_add(cjk.saturating_mul(6).div_ceil(10))
+}
+
+fn count_cjk_and_other_chars(text: &str) -> (usize, usize) {
+    let mut cjk = 0usize;
+    let mut other = 0usize;
+    for ch in text.chars() {
+        if is_cjk_char(ch) {
+            cjk += 1;
+        } else {
+            other += 1;
+        }
+    }
+    (cjk, other)
+}
+
+fn is_cjk_char(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{4e00}'..='\u{9fff}'
+            | '\u{3400}'..='\u{4dbf}'
+            | '\u{3000}'..='\u{303f}'
+            | '\u{ff00}'..='\u{ffef}'
+            | '\u{2e80}'..='\u{2fdf}'
+    )
 }
 
 pub fn estimate_tokens(messages: &[Message]) -> usize {
@@ -582,7 +619,8 @@ fn message_has_tool_use(message: &Message) -> bool {
 }
 
 fn estimate_text_tokens_conservative(text: &str) -> usize {
-    text.chars().count().div_ceil(3)
+    // Align with DeepSeek doc ratios, then round up one char-worth of budget.
+    estimate_text_tokens_deepseek(text).saturating_add(1)
 }
 
 fn estimate_system_tokens_conservative(system: Option<&SystemPrompt>) -> usize {

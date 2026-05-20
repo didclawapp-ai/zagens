@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 import { ChatErrorBoundary } from './ChatErrorBoundary';
 import { MessageBubble } from './MessageBubble';
 import type { ToolCardModel } from './ToolCard';
@@ -14,14 +14,28 @@ interface Message {
 
 interface Props {
   messages: Message[];
+  workspaceRoot?: string;
+  desktopHost?: boolean;
   onOpenWorkspacePath: (relPath: string) => void | Promise<void>;
   onEditMessage?: (messageId: string, content: string) => void;
   onRetryMessage?: (content: string) => void;
   onOpenDiffInPanel?: () => void;
 }
 
+/** Assistant body scroll cap handles follow-scroll while tokens arrive. */
+function delegatesStreamingBodyScroll(messages: Message[]): boolean {
+  const last = messages[messages.length - 1];
+  return (
+    last?.role === 'assistant' &&
+    Boolean(last.isStreaming) &&
+    Boolean(last.content?.trim())
+  );
+}
+
 export default function ChatView({
   messages,
+  workspaceRoot,
+  desktopHost,
   onOpenWorkspacePath,
   onEditMessage,
   onRetryMessage,
@@ -39,23 +53,13 @@ export default function ChatView({
       el.scrollHeight - el.scrollTop - el.clientHeight <= thresholdPx;
   };
 
+  const delegateBodyScroll = delegatesStreamingBodyScroll(messages);
+
   useLayoutEffect(() => {
     const el = scrollRef.current;
-    if (!el || !stickBottomRef.current) return;
+    if (!el || !stickBottomRef.current || delegateBodyScroll) return;
     el.scrollTop = el.scrollHeight;
-  }, [messages]);
-
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const streaming = messages.some((m) => m.isStreaming);
-    if (!streaming) return;
-    const id = window.setInterval(() => {
-      if (!stickBottomRef.current) return;
-      el.scrollTop = el.scrollHeight;
-    }, 200);
-    return () => window.clearInterval(id);
-  }, [messages]);
+  }, [messages, delegateBodyScroll]);
 
   return (
     <div
@@ -84,6 +88,8 @@ export default function ChatView({
           <ChatErrorBoundary key={msg.id}>
             <MessageBubble
               message={msg}
+              workspaceRoot={workspaceRoot}
+              desktopHost={desktopHost}
               onOpenWorkspacePath={onOpenWorkspacePath}
               onEditMessage={onEditMessage}
               onRetryMessage={onRetryMessage}

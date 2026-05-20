@@ -17,13 +17,13 @@ use tokio::sync::{Mutex, broadcast};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-use crate::compaction::CompactionConfig;
 use crate::config::{Config, DEFAULT_TEXT_MODEL, MAX_SUBAGENTS};
+use crate::context_snapshot::{ThreadContextSnapshot, build_thread_context_snapshot};
 use crate::core::coherence::CoherenceState;
 use crate::core::engine::{EngineConfig, EngineHandle, spawn_engine};
 use crate::core::events::{Event as EngineEvent, TurnOutcomeStatus};
 use crate::core::ops::Op;
-use crate::models::{ContentBlock, Message, SystemPrompt, Usage, compaction_threshold_for_model};
+use crate::models::{ContentBlock, Message, SystemPrompt, Usage};
 use crate::tools::plan::new_shared_plan_state;
 use crate::tools::subagent::SubAgentStatus;
 use crate::tools::todo::new_shared_todo_list;
@@ -144,6 +144,9 @@ pub struct TurnRecord {
     pub duration_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<Usage>,
+    /// Last API round `input_tokens` for this turn (not multi-round sum).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_request_input_tokens: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
     #[serde(default)]
@@ -1039,10 +1042,22 @@ impl RuntimeThreadManager {
         &self,
         thread_id: &str,
     ) -> Result<Option<serde_json::Value>> {
-        let thread = self.load_thread_sync(thread_id)?;
+        let mut thread = self.load_thread_sync(thread_id)?;
+        let run_id = thread
+            .scratchpad_run_id
+            .clone()
+            .or_else(|| crate::scratchpad::discover_scratchpad_run_id_for_ui(&thread.workspace));
+        let Some(run_id) = run_id else {
+            return Ok(None);
+        };
+        if thread.scratchpad_run_id.as_deref() != Some(run_id.as_str()) {
+            thread.scratchpad_run_id = Some(run_id.clone());
+            thread.updated_at = Utc::now();
+            let _ = self.store.save_thread(&thread);
+        }
         let store = crate::scratchpad::try_open_store(
             &thread.workspace,
-            thread.scratchpad_run_id.as_deref(),
+            Some(run_id.as_str()),
             Some(&thread.id),
             thread.task_id.as_deref(),
         );
@@ -1413,6 +1428,62 @@ impl RuntimeThreadManager {
         })
     }
 
+    /// TUI-aligned context usage + compaction policy for DS Pick.
+    pub async fn get_thread_context(&self, id: &str) -> Result<ThreadContextSnapshot> {
+        let thread = self.get_thread(id).await?;
+        let compaction = self.config.compaction_runtime_config(&thread.model);
+        let system = thread
+            .system_prompt
+            .as_ref()
+            .map(|s| SystemPrompt::Text(s.clone()));
+
+        let last_turn = self
+            .store
+            .list_turns_for_thread(id)
+            .ok()
+            .and_then(|turns| turns.last().cloned());
+        let last_api = last_turn
+            .as_ref()
+            .and_then(|t| t.last_request_input_tokens);
+        let last_reported = last_turn
+            .and_then(|t| t.usage)
+            .map(|u| u.input_tokens);
+
+        {
+            let active = self.active.lock().await;
+            if let Some(state) = active.engines.get(id) {
+                let engine = state.engine.clone();
+                drop(active);
+                if let Ok(mut snapshot) = engine.query_context_snapshot().await {
+                    if snapshot.last_reported_input_tokens.is_none() {
+                        snapshot.last_reported_input_tokens = last_reported;
+                    }
+                    return Ok(snapshot);
+                }
+            }
+        }
+
+        let store = self.store.clone();
+        let thread_id = id.to_string();
+        let messages = tokio::task::spawn_blocking(move || -> Result<Vec<Message>> {
+            let turns = store.list_turns_for_thread(&thread_id)?;
+            reconstruct_messages_for_store(&store, &turns)
+        })
+        .await
+        .map_err(|e| anyhow!("get_thread_context panicked: {e}"))??;
+
+        Ok(build_thread_context_snapshot(
+            &thread.model,
+            &messages,
+            system.as_ref(),
+            &compaction,
+            Some(&thread.workspace),
+            last_api,
+            last_reported,
+            "store",
+        ))
+    }
+
     pub async fn resume_thread(&self, id: &str) -> Result<ThreadRecord> {
         let thread = self.get_thread(id).await?;
         self.ensure_engine_loaded(&thread).await?;
@@ -1698,6 +1769,7 @@ impl RuntimeThreadManager {
                 ended_at: Some(now),
                 duration_ms: Some(0),
                 usage: None,
+                last_request_input_tokens: None,
                 error: None,
                 item_ids,
                 steer_count: 0,
@@ -1761,6 +1833,7 @@ impl RuntimeThreadManager {
             ended_at: None,
             duration_ms: None,
             usage: None,
+            last_request_input_tokens: None,
             error: None,
             item_ids: Vec::new(),
             steer_count: 0,
@@ -2076,6 +2149,7 @@ impl RuntimeThreadManager {
             ended_at: None,
             duration_ms: None,
             usage: None,
+            last_request_input_tokens: None,
             error: None,
             item_ids: Vec::new(),
             steer_count: 0,
@@ -2183,15 +2257,9 @@ impl RuntimeThreadManager {
             }
         }
 
-        // Compaction defaults to disabled in v0.6.6 — the cycle architecture
-        // (issue #124) handles long-context resets. Threads keep the
-        // legacy summarizer wired off unless an operator opts in via config.
-        let compaction = CompactionConfig {
-            enabled: false,
-            model: thread.model.clone(),
-            token_threshold: compaction_threshold_for_model(&thread.model),
-            ..Default::default()
-        };
+        // Compaction defaults from config.toml `[compaction]` (DS Pick system
+        // settings) with model-derived threshold fallback.
+        let compaction = self.config.compaction_runtime_config(&thread.model);
         let network_policy = self.config.network.clone().map(|toml_cfg| {
             crate::network_policy::NetworkPolicyDecider::with_default_audit(toml_cfg.into_runtime())
         });
@@ -2229,6 +2297,7 @@ impl RuntimeThreadManager {
             ),
             max_steps: 100,
             max_subagents: self.config.max_subagents().clamp(1, MAX_SUBAGENTS),
+            subagent_step_timeout: self.config.subagent_step_timeout(),
             features: self.config.features(),
             compaction,
             cycle: crate::cycle_manager::CycleConfig::default(),
@@ -2403,6 +2472,7 @@ impl RuntimeThreadManager {
         let mut tool_items: HashMap<String, String> = HashMap::new();
         let mut compaction_items: HashMap<String, String> = HashMap::new();
         let mut turn_usage: Option<Usage> = None;
+        let mut turn_last_request_input_tokens: Option<u32> = None;
         let mut turn_status = RuntimeTurnStatus::Completed;
         let mut turn_error: Option<String> = None;
 
@@ -3123,10 +3193,12 @@ impl RuntimeThreadManager {
                 }
                 EngineEvent::TurnComplete {
                     usage,
+                    last_request_input_tokens,
                     status,
                     error,
                 } => {
                     turn_usage = Some(usage);
+                    turn_last_request_input_tokens = last_request_input_tokens;
                     turn_status = match status {
                         TurnOutcomeStatus::Completed => RuntimeTurnStatus::Completed,
                         TurnOutcomeStatus::Interrupted => RuntimeTurnStatus::Interrupted,
@@ -3186,6 +3258,7 @@ impl RuntimeThreadManager {
         turn.ended_at = Some(ended_at);
         turn.duration_ms = turn.started_at.map(|start| duration_ms(start, ended_at));
         turn.usage = turn_usage;
+        turn.last_request_input_tokens = turn_last_request_input_tokens;
         turn.error = turn_error;
 
         let mut thread = self.get_thread(&thread_id).await?;
@@ -3691,6 +3764,7 @@ mod tests {
             ended_at: None,
             duration_ms: None,
             usage: None,
+            last_request_input_tokens: None,
             error: None,
             item_ids: Vec::new(),
             steer_count: 0,
@@ -4048,6 +4122,7 @@ mod tests {
                             output_tokens: 12,
                             ..Usage::default()
                         },
+                        last_request_input_tokens: None,
                         status: TurnOutcomeStatus::Completed,
                         error: None,
                     })
@@ -4350,6 +4425,7 @@ mod tests {
                             output_tokens: 5,
                             ..Usage::default()
                         },
+                        last_request_input_tokens: None,
                         status: TurnOutcomeStatus::Completed,
                         error: None,
                     })
@@ -4593,6 +4669,7 @@ mod tests {
                     output_tokens: 0,
                     ..Usage::default()
                 },
+                last_request_input_tokens: None,
                 status: TurnOutcomeStatus::Completed,
                 error: None,
             })
@@ -4679,6 +4756,7 @@ mod tests {
                     output_tokens: 0,
                     ..Usage::default()
                 },
+                last_request_input_tokens: None,
                 status: TurnOutcomeStatus::Completed,
                 error: None,
             })
@@ -4767,6 +4845,7 @@ mod tests {
                     output_tokens: 0,
                     ..Usage::default()
                 },
+                last_request_input_tokens: None,
                 status: TurnOutcomeStatus::Completed,
                 error: None,
             })
@@ -4851,6 +4930,7 @@ mod tests {
                     output_tokens: 0,
                     ..Usage::default()
                 },
+                last_request_input_tokens: None,
                 status: TurnOutcomeStatus::Completed,
                 error: None,
             })
@@ -4913,6 +4993,7 @@ mod tests {
                             output_tokens: 9,
                             ..Usage::default()
                         },
+                        last_request_input_tokens: None,
                         status: TurnOutcomeStatus::Completed,
                         error: None,
                     })
@@ -5025,6 +5106,7 @@ mod tests {
                                     output_tokens: 3,
                                     ..Usage::default()
                                 },
+                                last_request_input_tokens: None,
                                 status: TurnOutcomeStatus::Completed,
                                 error: None,
                             })
@@ -5055,6 +5137,7 @@ mod tests {
                                     output_tokens: 1,
                                     ..Usage::default()
                                 },
+                                last_request_input_tokens: None,
                                 status: TurnOutcomeStatus::Completed,
                                 error: None,
                             })
@@ -5249,6 +5332,7 @@ mod tests {
             ended_at: None,
             duration_ms: None,
             usage: None,
+            last_request_input_tokens: None,
             error: None,
             item_ids: vec![completed_item.id.clone(), in_progress_item.id.clone()],
             steer_count: 0,
@@ -5264,6 +5348,7 @@ mod tests {
             ended_at: None,
             duration_ms: None,
             usage: None,
+            last_request_input_tokens: None,
             error: None,
             item_ids: vec![queued_item.id.clone()],
             steer_count: 0,
@@ -5473,6 +5558,7 @@ mod tests {
                 ended_at: Some(created_at),
                 duration_ms: Some(0),
                 usage: None,
+                last_request_input_tokens: None,
                 error: None,
                 item_ids: vec![user_item_id, asst_item_id],
                 steer_count: 0,

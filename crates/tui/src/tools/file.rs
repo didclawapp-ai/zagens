@@ -930,6 +930,26 @@ impl ToolSpec for WriteFileTool {
         let path_str = required_str(&input, "path")?;
         let file_content = required_str(&input, "content")?;
 
+        let scratchpad_cfg = context
+            .runtime
+            .scratchpad_config
+            .clone()
+            .unwrap_or_default();
+        let bound_run = context
+            .runtime
+            .scratchpad_run_id
+            .lock()
+            .ok()
+            .and_then(|g| g.clone());
+        if let Some(block_msg) = crate::core::engine::scratchpad_flow::check_write_file_audit_report_gate(
+            &context.workspace,
+            bound_run.as_deref(),
+            &scratchpad_cfg,
+            path_str,
+        ) {
+            return Err(ToolError::execution_failed(block_msg));
+        }
+
         let file_path = context.resolve_path(path_str)?;
 
         // Snapshot the existing contents (if any) before we overwrite — used

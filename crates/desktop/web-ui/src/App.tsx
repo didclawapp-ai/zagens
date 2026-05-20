@@ -5,8 +5,10 @@ import {
   getSessionDetail,
   resumeSessionThread,
   getThreadDetail,
+  getThreadContext,
   patchThread,
   startThreadTurn,
+  interruptThreadTurn,
   getThreadEvents,
   postResolveApproval,
   deleteSession,
@@ -46,6 +48,7 @@ import {
   appendCappedToolOutput,
   capToolOutputForDisplay,
   mergeStreamingToolOutput,
+  parseAgentIdFromSpawnOutput,
   stringifyToolInput,
   toolOutputString,
 } from './lib/chat/toolOutput';
@@ -69,34 +72,15 @@ import {
   normalizeWorkspaceForApi,
 } from './lib/defaultWorkspace';
 import { confirmDialog } from './lib/confirmDialog';
+import { toast, RUNTIME_TRANSIENT_TAG } from './lib/toast';
 import { coerceRunModeForSession, isOfficeSession } from './lib/taskTypeSession';
 import {
-  contextUsagePercent,
   contextWindowTokensForModel,
   DEFAULT_CONTEXT_WINDOW_TOKENS,
   resolveContextUsedTokens,
+  resolveContextUsagePercent,
+  type ThreadContextSnapshot,
 } from './lib/contextUsage';
-
-/**
- * When `/health` + `/v1/sessions` probe is `connected`, these banners are usually stale:
- * the failure was a transient fetch or a race before the sidecar finished starting.
- * (We do not clear generic HTTP 4xx/5xx bodies — those may still be actionable.)
- */
-function shouldClearBannerWhenRuntimeConnected(banner: string): boolean {
-  if (/token|未授权|401|Bearer|运行时 token/i.test(banner)) {
-    return true;
-  }
-  if (/无法连接本地运行时|仍未连接本地运行时|still not connected|cannot reach local runtime/i.test(banner)) {
-    return true;
-  }
-  const transport = /failed to fetch|load failed|networkerror|network request failed|econnrefused|若刚重启应用|127\.0\.0\.1:\d+/i.test(
-    banner,
-  );
-  if (transport) {
-    return true;
-  }
-  return false;
-}
 
 interface Message {
   id: string;
@@ -265,8 +249,8 @@ export default function App() {
   const [streaming, setStreaming] = useState(false);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [activeInspector, setActiveInspector] = useState<RightPanelView>(() => loadStoredInspector());
-  const [banner, setBanner] = useState<string | null>(null);
   const [resumedThreadId, setResumedThreadId] = useState<string | null>(null);
+  const retryConnectRef = useRef<() => void>(() => {});
   const [threadTrustMode, setThreadTrustMode] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [autoApprove, setAutoApprove] = useState(true);
@@ -291,22 +275,41 @@ export default function App() {
   >(null);
   /** Last completed turn output tokens (Claude-style “↓ N tokens” hint). */
   const [lastTurnOutputTokens, setLastTurnOutputTokens] = useState<number | null>(null);
+  /** Runtime-aligned context snapshot (TUI `estimate_input_tokens_conservative`). */
+  const [threadContextSnapshot, setThreadContextSnapshot] =
+    useState<ThreadContextSnapshot | null>(null);
+
+  const refreshThreadContext = useCallback(async (threadId: string) => {
+    try {
+      const snap = await getThreadContext(threadId);
+      setThreadContextSnapshot(snap);
+      setContextWindowTokens(snap.context_window_tokens);
+    } catch {
+      setThreadContextSnapshot(null);
+    }
+  }, []);
 
   const contextUsedTokens = useMemo(
-    () => resolveContextUsedTokens(messages, threadDetailForContext, contextWindowTokens),
-    [messages, threadDetailForContext, contextWindowTokens],
+    () =>
+      resolveContextUsedTokens(
+        messages,
+        threadDetailForContext,
+        contextWindowTokens,
+        threadContextSnapshot,
+      ),
+    [messages, threadDetailForContext, contextWindowTokens, threadContextSnapshot],
   );
 
   const contextUsagePct = useMemo(
-    () => contextUsagePercent(contextUsedTokens, 0, contextWindowTokens),
-    [contextUsedTokens, contextWindowTokens],
+    () => resolveContextUsagePercent(contextUsedTokens, contextWindowTokens, threadContextSnapshot),
+    [contextUsedTokens, contextWindowTokens, threadContextSnapshot],
   );
 
   const [desktopHost, setDesktopHost] = useState(false);
   const [desktopApiKeyConfigured, setDesktopApiKeyConfigured] = useState<boolean | null>(null);
   const [runtimeConn, setRuntimeConn] = useState<RuntimeConnectionState>('checking');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
+  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(true);
   const toggleDevtools = useCallback(() => {
     if (!desktopHost) return;
     void import('@tauri-apps/api/core').then(({ invoke }) =>
@@ -333,6 +336,12 @@ export default function App() {
     threadId: '',
     turnId: '',
   });
+  /** Active chat stream: optimistic interrupt UI + shared finishOnce. */
+  const streamSessionRef = useRef<{
+    markInterrupted: () => void;
+    finishOnce: () => void;
+  } | null>(null);
+  const streamingRef = useRef(false);
   const activeSessionIdRef = useRef<string | null>(null);
   const lastPersistedTurnRef = useRef<string>('');
   const selectSessionGenerationRef = useRef(0);
@@ -349,6 +358,10 @@ export default function App() {
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
   }, [activeSessionId]);
+
+  useEffect(() => {
+    streamingRef.current = streaming;
+  }, [streaming]);
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -443,6 +456,19 @@ export default function App() {
   }, [resumedThreadId]);
 
   useEffect(() => {
+    if (!resumedThreadId) {
+      setThreadContextSnapshot(null);
+      return;
+    }
+    void refreshThreadContext(resumedThreadId);
+    if (!streaming) {
+      return;
+    }
+    const id = window.setInterval(() => void refreshThreadContext(resumedThreadId), 3000);
+    return () => window.clearInterval(id);
+  }, [resumedThreadId, streaming, refreshThreadContext]);
+
+  useEffect(() => {
     try {
       localStorage.setItem(ROUTE_INTENT_STORAGE_KEY, routeIntent);
     } catch {
@@ -470,31 +496,79 @@ export default function App() {
     });
   }, []);
 
-  /** Re-sync sidebar runtime dot; if probe is OK, drop stale transport-level error banners. */
+  const dismissRuntimeTransient = useCallback(() => {
+    toast.dismissByTag(RUNTIME_TRANSIENT_TAG);
+  }, []);
+
+  const notifyRuntimeTransient = useCallback(
+    (message: string) => {
+      toast.error(message, {
+        tag: RUNTIME_TRANSIENT_TAG,
+        duration: 0,
+        action: {
+          label: t('common.retryConnection'),
+          onClick: () => retryConnectRef.current(),
+        },
+      });
+    },
+    [t],
+  );
+
+  /** Sidecar restart (e.g. save system settings) kills in-flight SSE — clear stale「生成中」UI. */
+  const abortActiveStreamForSidecarRestart = useCallback(() => {
+    if (!streamingRef.current) return;
+    eventAbortRef.current?.abort();
+    const label = t('composer.runtimeSidecarRestart');
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (!m.isStreaming) return m;
+        const tools = (m.tools ?? []).map((tool) =>
+          tool.status === 'running' ? { ...tool, status: 'error' as const } : tool,
+        );
+        const trimmed = m.content.trim();
+        let content = m.content;
+        if (!trimmed) {
+          content = label;
+        } else if (!trimmed.includes(label)) {
+          content = `[${label}] ${m.content}`;
+        }
+        return { ...m, tools, content, isStreaming: false };
+      }),
+    );
+    const session = streamSessionRef.current;
+    if (session) {
+      session.finishOnce();
+    } else {
+      setStreaming(false);
+    }
+    notifyRuntimeTransient(t('banner.runtimeRestartDuringStream'));
+  }, [t, notifyRuntimeTransient]);
+
+  /** Re-sync sidebar runtime dot; if probe is OK, drop stale transport-level toasts. */
   const reconcileRuntimeAfterFetchFailure = useCallback(() => {
     void probeRuntimeConnection().then((s) => {
       setRuntimeConn(s);
       if (s === 'connected') {
-        setBanner((b) => (!b ? null : shouldClearBannerWhenRuntimeConnected(b) ? null : b));
+        dismissRuntimeTransient();
       }
     });
-  }, []);
+  }, [dismissRuntimeTransient]);
 
   const refreshSessions = useCallback(async () => {
     try {
       const list = await getSessions();
       setSessions(list);
-      setBanner(null);
+      toast.dismissAll();
     } catch (e) {
       const err = e as Error & { status?: number };
       if (err.status === 401) {
-        setBanner(t('banner.unauthorized'));
+        notifyRuntimeTransient(t('banner.unauthorized'));
       } else {
-        setBanner(t('banner.loadSessionsError', { message: err.message }));
+        notifyRuntimeTransient(t('banner.loadSessionsError', { message: err.message }));
       }
       reconcileRuntimeAfterFetchFailure();
     }
-  }, [reconcileRuntimeAfterFetchFailure]);
+  }, [reconcileRuntimeAfterFetchFailure, notifyRuntimeTransient, t]);
 
   /** Checkpoint session JSON during long streams / tab hide (best-effort). */
   useEffect(() => {
@@ -551,7 +625,7 @@ export default function App() {
   }, [streaming, resumedThreadId, refreshSessions]);
 
   const retryConnectAndSessions = useCallback(async () => {
-    setBanner(null);
+    toast.dismissAll();
     setRuntimeConn('checking');
     try {
       invalidateRuntimeBootReadyCache();
@@ -561,15 +635,21 @@ export default function App() {
       const probed = await probeRuntimeConnection();
       setRuntimeConn(probed);
       if (!ok) {
-        setBanner(t('banner.runtimeUnreachableStartup', { url: runtimeUrl }));
+        notifyRuntimeTransient(t('banner.runtimeUnreachableStartup', { url: runtimeUrl }));
         return;
       }
       await refreshSessions();
     } catch (e) {
-      setBanner(t('banner.retryFailed', { message: (e as Error).message }));
+      notifyRuntimeTransient(t('banner.retryFailed', { message: (e as Error).message }));
       setRuntimeConn('offline');
     }
-  }, [refreshSessions]);
+  }, [refreshSessions, notifyRuntimeTransient, t]);
+
+  useEffect(() => {
+    retryConnectRef.current = () => {
+      void retryConnectAndSessions();
+    };
+  }, [retryConnectAndSessions]);
 
   useEffect(() => {
     let cancelled = false;
@@ -584,13 +664,13 @@ export default function App() {
           return;
         }
         if (!ok) {
-          setBanner(t('banner.runtimeUnreachable', { url: getRuntimeBase() }));
+          notifyRuntimeTransient(t('banner.runtimeUnreachable', { url: getRuntimeBase() }));
           return;
         }
         await refreshSessions();
       } catch (e) {
         if (!cancelled) {
-          setBanner(t('banner.bootCheckFailed', { message: (e as Error).message }));
+          notifyRuntimeTransient(t('banner.bootCheckFailed', { message: (e as Error).message }));
           setRuntimeConn('offline');
         }
       }
@@ -598,7 +678,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [refreshSessions]);
+  }, [refreshSessions, notifyRuntimeTransient, t]);
 
   const refreshApiKeyStatus = useCallback(() => {
     void (async () => {
@@ -650,6 +730,24 @@ export default function App() {
   }, [desktopHost]);
 
   useEffect(() => {
+    if (!desktopHost) return;
+    let unlisten: (() => void) | undefined;
+    void import('@tauri-apps/api/event')
+      .then(({ listen }) =>
+        listen('sidecar://restarting', () => {
+          abortActiveStreamForSidecarRestart();
+        }),
+      )
+      .then((fn) => {
+        unlisten = fn;
+      })
+      .catch(() => {});
+    return () => {
+      unlisten?.();
+    };
+  }, [desktopHost, abortActiveStreamForSidecarRestart]);
+
+  useEffect(() => {
     let cancelled = false;
     const tick = async () => {
       const s = await probeRuntimeConnection();
@@ -658,12 +756,7 @@ export default function App() {
       }
       setRuntimeConn(s);
       if (s === 'connected') {
-        setBanner((b) => {
-          if (!b) {
-            return null;
-          }
-          return shouldClearBannerWhenRuntimeConnected(b) ? null : b;
-        });
+        dismissRuntimeTransient();
       }
     };
     void tick();
@@ -672,7 +765,7 @@ export default function App() {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, []);
+  }, [dismissRuntimeTransient]);
 
   const handleSelectSession = useCallback(
     async (sessionId: string) => {
@@ -691,7 +784,7 @@ export default function App() {
         );
       }
 
-      setBanner(null);
+      toast.dismissAll();
       setActiveSessionId(sessionId);
       setResumedThreadId(null);
       setThreadTrustMode(false);
@@ -701,6 +794,7 @@ export default function App() {
       const cachedUi = getCachedSessionUiMessages(sessionUiCacheRef.current, sessionId);
       if (cachedUi?.length) {
         setMessages(cachedUi as Message[]);
+        cacheSessionUiMessages(sessionUiCacheRef.current, sessionId, cachedUi);
       } else {
         setMessages([]);
       }
@@ -764,7 +858,7 @@ export default function App() {
           setThreadDetailForContext(null);
           setContextWindowTokens(contextWindowTokensForModel(selectedModel));
           const errMsg = syncErr instanceof Error ? syncErr.message : String(syncErr);
-          setBanner(t('banner.threadWorkspaceError', { errMsg }));
+          notifyRuntimeTransient(t('banner.threadWorkspaceError', { errMsg }));
           reconcileRuntimeAfterFetchFailure();
         }
         try {
@@ -778,14 +872,14 @@ export default function App() {
         }
         const err = e as Error & { status?: number };
         if (err.status === 401) {
-          setBanner(t('banner.unauthorized401'));
+          notifyRuntimeTransient(t('banner.unauthorized401'));
         } else {
-          setBanner(t('banner.loadSessionFailed', { message: err.message }));
+          toast.error(t('banner.loadSessionFailed', { message: err.message }));
         }
         reconcileRuntimeAfterFetchFailure();
       }
     },
-    [reconcileRuntimeAfterFetchFailure, t],
+    [reconcileRuntimeAfterFetchFailure, notifyRuntimeTransient, t],
   );
 
   /** After the sidebar session list loads, re-open the last desktop session (if still present). */
@@ -882,7 +976,7 @@ export default function App() {
   const handleDeleteSession = useCallback(
     async (sessionId: string) => {
       if (!(await confirmDialog(t('sidebar.deleteConfirm')))) return;
-      setBanner(null);
+      toast.dismissAll();
       try {
         await deleteSession(sessionId);
         if (activeSessionId === sessionId) {
@@ -891,16 +985,36 @@ export default function App() {
         await refreshSessions();
       } catch (e) {
         const err = e as Error & { status?: number };
-        setBanner(t('banner.deleteSessionFailed', { message: err.message }));
+        toast.error(t('banner.deleteSessionFailed', { message: err.message }));
       }
     },
     [activeSessionId, handleNewSession, refreshSessions, t],
   );
 
   const handleCancelStream = useCallback(() => {
+    const { threadId, turnId } = threadTurnRef.current;
+    if (threadId && turnId) {
+      void interruptThreadTurn(threadId, turnId).catch((e) => {
+        const err = e as Error & { status?: number };
+        if (err.status === 409) {
+          return;
+        }
+        toast.warning(t('composer.interruptFailed', { message: err.message || String(e) }));
+      });
+    }
+
+    const session = streamSessionRef.current;
+    if (session) {
+      session.markInterrupted();
+      session.finishOnce();
+    } else {
+      setStreaming(false);
+    }
+
+    setApproval(null);
     eventAbortRef.current?.abort();
     setLastTurnOutputTokens(null);
-  }, []);
+  }, [t]);
 
   const handleComposerWorkspaceChange = useCallback(
     async (next: string) => {
@@ -919,9 +1033,9 @@ export default function App() {
         const err = e as Error & { status?: number };
         let msg = err.message ?? String(e);
         if (/active turn|finish or interrupt/i.test(msg)) {
-          setBanner(t('banner.activeTurnBlocking'));
+          toast.warning(t('banner.activeTurnBlocking'));
         } else {
-          setBanner(t('banner.updateThreadWorkspace', { msg }));
+          toast.error(t('banner.updateThreadWorkspace', { msg }));
         }
         throw err;
       }
@@ -958,7 +1072,7 @@ export default function App() {
         await openWorkspaceFileForPreview(relPath);
       } catch (e) {
         const err = e instanceof Error ? e.message : String(e);
-        setBanner(t('banner.openFileFailed', { err }));
+        toast.error(t('banner.openFileFailed', { err }));
       }
     },
     [openWorkspaceFileForPreview, t],
@@ -976,7 +1090,7 @@ export default function App() {
 
   const handleExportSessionJson = useCallback(async () => {
     if (!activeSessionId) {
-      setBanner(t('banner.exportNoSession'));
+      toast.warning(t('banner.exportNoSession'));
       return;
     }
     const sid = activeSessionId;
@@ -1001,14 +1115,14 @@ export default function App() {
         a.click();
         URL.revokeObjectURL(url);
       } catch {
-        setBanner(t('banner.exportNoData'));
+        toast.error(t('banner.exportNoData'));
       }
     }
   }, [activeSessionId, t]);
 
   const handleExportThreadJson = useCallback(async () => {
     if (!resumedThreadId) {
-      setBanner(t('banner.exportThreadNoId'));
+      toast.warning(t('banner.exportThreadNoId'));
       return;
     }
     const tid = resumedThreadId;
@@ -1033,7 +1147,7 @@ export default function App() {
         a.click();
         URL.revokeObjectURL(url);
       } catch {
-        setBanner(t('banner.exportThreadNoData'));
+        toast.error(t('banner.exportThreadNoData'));
       }
     }
   }, [resumedThreadId, t]);
@@ -1063,7 +1177,8 @@ export default function App() {
       setMessages((prev) => [...prev, assistantMsg]);
 
       setStreaming(true);
-      setBanner(null);
+      setAgentStates([]);
+      toast.dismissAll();
       toolProgressPendingRef.current = '';
       if (toolProgressRafRef.current != null) {
         cancelAnimationFrame(toolProgressRafRef.current);
@@ -1114,9 +1229,29 @@ export default function App() {
       };
 
       let finished = false;
+      const interruptedLabel = t('composer.turnInterrupted');
+      const markInterrupted = () => {
+        setMessages((prev) =>
+          prev.map((m) => {
+            if (m.id !== assistantId) return m;
+            const tools = (m.tools ?? []).map((tool) =>
+              tool.status === 'running' ? { ...tool, status: 'error' as const } : tool,
+            );
+            const trimmed = m.content.trim();
+            let content = m.content;
+            if (!trimmed) {
+              content = interruptedLabel;
+            } else if (!trimmed.startsWith(`[${interruptedLabel}]`)) {
+              content = `[${interruptedLabel}] ${m.content}`;
+            }
+            return { ...m, tools, content, isStreaming: false };
+          }),
+        );
+      };
       const finishOnce = () => {
         if (finished) return;
         finished = true;
+        streamSessionRef.current = null;
         if (toolProgressRafRef.current != null) {
           cancelAnimationFrame(toolProgressRafRef.current);
           toolProgressRafRef.current = null;
@@ -1133,7 +1268,12 @@ export default function App() {
           }
           return next;
         });
+        const tid = threadTurnRef.current.threadId;
+        if (tid) {
+          void refreshThreadContext(tid);
+        }
       };
+      streamSessionRef.current = { markInterrupted, finishOnce };
 
       const notifyTurnCompleteIfAway = (desktop: boolean) => {
         if (!desktop || !document.hidden) return;
@@ -1171,7 +1311,7 @@ export default function App() {
             }
             await refreshSessions();
           } catch (e) {
-            setBanner(t('banner.persistSessionFailed', { message: (e as Error).message }));
+            toast.error(t('banner.persistSessionFailed', { message: (e as Error).message }));
           }
         })();
       };
@@ -1252,11 +1392,43 @@ export default function App() {
                 const merged = capToolOutputForDisplay(
                   mergeStreamingToolOutput(prevOut, finalOut || ''),
                 );
+                const toolName = t.name;
                 tools[idx] = {
                   ...t,
                   output: merged,
                   status: norm.success ? ('done' as const) : ('error' as const),
                 };
+                if (
+                  toolName === 'scratchpad_append' ||
+                  toolName === 'scratchpad_set_area' ||
+                  toolName === 'scratchpad_status'
+                ) {
+                  queueMicrotask(() => {
+                    window.dispatchEvent(new CustomEvent('deepseek-scratchpad-changed'));
+                  });
+                }
+                if (toolName === 'agent_spawn' || toolName === 'spawn_agent') {
+                  const agentId = parseAgentIdFromSpawnOutput(merged);
+                  if (agentId) {
+                    queueMicrotask(() => {
+                      setAgentStates((prev) => {
+                        if (prev.some((a) => a.agentId === agentId)) return prev;
+                        return [
+                          ...prev,
+                          {
+                            agentId,
+                            status: 'spawned',
+                            toolCalls: [],
+                            resultSummary: null,
+                            tokens: 0,
+                            spawnedAt: Date.now(),
+                            completedAt: null,
+                          },
+                        ];
+                      });
+                    });
+                  }
+                }
                 return { ...m, tools };
               }),
             );
@@ -1294,7 +1466,7 @@ export default function App() {
                   : m,
               ),
             );
-            setBanner(norm.message ? norm.message : t('banner.streamError'));
+            toast.error(norm.message ? norm.message : t('banner.streamError'));
             break;
           case 'agent_spawned':
             setAgentStates((prev) => {
@@ -1330,26 +1502,48 @@ export default function App() {
               ),
             );
             break;
-          case 'agent_list':
+          case 'agent_list': {
+            const mapSubAgentUiStatus = (
+              status: string,
+            ): AgentState['status'] => {
+              if (status === 'Completed') return 'completed';
+              if (status === 'Interrupted' || status === 'Failed' || status === 'Cancelled') {
+                return 'interrupted';
+              }
+              return 'running';
+            };
             setAgentStates((prev) => {
               const now = Date.now();
-              return norm.agents.map((a) => {
-                const existing = prev.find((e) => e.agentId === a.id);
-                if (existing) return existing;
-                return {
-                  agentId: a.id,
-                  status: a.status === 'Completed' ? 'completed' as const
-                    : a.status === 'Interrupted' ? 'interrupted' as const
-                    : 'running' as const,
-                  toolCalls: [],
-                  resultSummary: null,
-                  tokens: 0,
-                  spawnedAt: now,
-                  completedAt: a.status === 'Completed' ? now : null,
-                };
-              });
+              const byId = new Map(prev.map((a) => [a.agentId, a]));
+              for (const a of norm.agents) {
+                if (!a.id) continue;
+                const existing = byId.get(a.id);
+                const uiStatus = mapSubAgentUiStatus(a.status);
+                if (existing) {
+                  byId.set(a.id, {
+                    ...existing,
+                    status: uiStatus,
+                    completedAt:
+                      uiStatus === 'completed' || uiStatus === 'interrupted'
+                        ? existing.completedAt ?? now
+                        : existing.completedAt,
+                  });
+                } else {
+                  byId.set(a.id, {
+                    agentId: a.id,
+                    status: uiStatus === 'completed' ? 'completed' : 'spawned',
+                    toolCalls: [],
+                    resultSummary: null,
+                    tokens: 0,
+                    spawnedAt: now,
+                    completedAt: uiStatus === 'completed' ? now : null,
+                  });
+                }
+              }
+              return Array.from(byId.values());
             });
             break;
+          }
           default:
             break;
         }
@@ -1367,9 +1561,9 @@ export default function App() {
         const msg = err.message || String(err);
         const status = err.status;
         if (status === 401) {
-          setBanner(t('banner.unauthorizedBearer'));
+          notifyRuntimeTransient(t('banner.unauthorizedBearer'));
         } else if (/api\s*key|DEEPSEEK_API_KEY|401|unauthorized/i.test(msg)) {
-          setBanner(t('banner.missingApiKey'));
+          notifyRuntimeTransient(t('banner.missingApiKey'));
         }
         setMessages((prev) =>
           prev.map((m) =>
@@ -1457,6 +1651,9 @@ export default function App() {
       selectedWorkspace,
       taskTypePreference,
       refreshSessions,
+      refreshThreadContext,
+      notifyRuntimeTransient,
+      t,
     ],
   );
 
@@ -1464,7 +1661,7 @@ export default function App() {
     if (!approval) return;
     const { threadId, turnId } = threadTurnRef.current;
     if (!threadId || !turnId) {
-      setBanner(t('banner.approvalMissingThread'));
+      toast.warning(t('banner.approvalMissingThread'));
       setApproval(null);
       return;
     }
@@ -1474,9 +1671,9 @@ export default function App() {
     } catch (e) {
       const err = e as Error & { status?: number };
       if (err.status === 409) {
-        setBanner(t('banner.approvalExpired'));
+        toast.warning(t('banner.approvalExpired'));
       } else {
-        setBanner(t('banner.approvalSubmitFailed', { message: err.message }));
+        toast.error(t('banner.approvalSubmitFailed', { message: err.message }));
       }
     } finally {
       setApprovalBusy(false);
@@ -1517,43 +1714,26 @@ export default function App() {
           type="button"
           onClick={() => setSidebarCollapsed(false)}
           className="chrome-seam-r shrink-0 w-8 bg-canvas hover:bg-hover transition-colors flex items-center justify-center group"
-          title="展开侧边栏"
+          title={t('sidebar.expand')}
         >
-          <svg className="w-3.5 h-3.5 text-t-text-muted group-hover:text-t-text transition-colors" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path d="M5 4l6 4-6 4" strokeLinecap="round" strokeLinejoin="round"/>
+          <svg className="w-3.5 h-3.5 text-t-text-muted group-hover:text-t-text transition-colors" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+            <path d="M5 3.5v9" strokeLinecap="round" />
+            <path d="M8 8l3-3v6l-3-3z" strokeLinejoin="round" />
           </svg>
         </button>
       )}
       <div className="flex min-h-0 flex-1 flex-col min-w-0 bg-card">
-        {banner && (
-          <div className="shrink-0 border-b border-divider bg-amber-bg px-4 py-2 text-sm text-amber-text">
-            {banner}
-            <button type="button" className="ml-3 underline" onClick={() => setBanner(null)}>
-              {t('common.close')}
-            </button>
-            <button
-              type="button"
-              className="ml-3 underline"
-              onClick={() => void retryConnectAndSessions()}
-            >
-              {t('common.retryConnection')}
-            </button>
-          </div>
-        )}
-        {resumedThreadId && (
-          <p className="shrink-0 px-4 py-1 text-xs text-t-text-muted border-b border-divider">
-            {t('thread.resumed', { id: resumedThreadId.slice(0, 8) })}
-          </p>
-        )}
         <ChatView
           messages={messages}
+          workspaceRoot={selectedWorkspace}
+          desktopHost={desktopHost}
           onOpenWorkspacePath={handleChatOpenWorkspacePath}
           onOpenDiffInPanel={openDiffInPanel}
           onRetryMessage={(content) =>
             handleSend({ displayContent: content, apiPrompt: content })
           }
         />
-        <AuditScratchpadBar threadId={resumedThreadId} />
+        <AuditScratchpadBar threadId={resumedThreadId} streaming={streaming} />
         <Composer
           onSend={handleSend}
           onCancel={handleCancelStream}
@@ -1586,6 +1766,9 @@ export default function App() {
           contextUsagePct={contextUsagePct}
           contextUsedTokens={contextUsedTokens}
           contextWindowTokens={contextWindowTokens}
+          contextSource={threadContextSnapshot?.source}
+          compactionThresholdTokens={threadContextSnapshot?.compaction_threshold_tokens}
+          lastApiInputTokens={threadContextSnapshot?.last_api_input_tokens ?? null}
           lastTurnOutputTokens={lastTurnOutputTokens}
           officeSession={officeSession}
         />
@@ -1600,7 +1783,7 @@ export default function App() {
           apiKeyConfigured={desktopApiKeyConfigured}
           onSavedApiKey={() => {
             refreshApiKeyStatus();
-            setBanner(null);
+            toast.dismissAll();
           }}
           theme={theme}
           onToggleTheme={toggleTheme}
@@ -1613,10 +1796,10 @@ export default function App() {
             try {
               await patchThread(resumedThreadId, { trust_mode: true });
               setThreadTrustMode(true);
-              setBanner(null);
+              toast.dismissAll();
             } catch (e) {
               const err = e as Error & { status?: number };
-              setBanner(t('banner.trustModeFailed', { message: err.message }));
+              toast.error(t('banner.trustModeFailed', { message: err.message }));
             }
           }}
           preview={panelPreview}
@@ -1640,10 +1823,11 @@ export default function App() {
           type="button"
           onClick={() => setRightPanelCollapsed(false)}
           className="chrome-seam-l shrink-0 w-8 bg-canvas hover:bg-hover transition-colors flex items-center justify-center group"
-          title="展开面板"
+          title={t('rightPanel.expand')}
         >
-          <svg className="w-3.5 h-3.5 text-t-text-muted group-hover:text-t-text transition-colors" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path d="M5 4l6 4-6 4" strokeLinecap="round" strokeLinejoin="round"/>
+          <svg className="w-3.5 h-3.5 text-t-text-muted group-hover:text-t-text transition-colors" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+            <path d="M11 3.5v9" strokeLinecap="round" />
+            <path d="M8 8L5 5v6l3-3z" strokeLinejoin="round" />
           </svg>
         </button>
       )}
@@ -1672,7 +1856,7 @@ function TitleBar() {
   return (
     <div
       data-tauri-drag-region
-      className="flex items-center h-9 shrink-0 bg-canvas border-b border-divider select-none"
+      className="flex items-center h-9 shrink-0 bg-canvas select-none"
     >
       <div className="flex-1 min-w-8" data-tauri-drag-region />
       <button

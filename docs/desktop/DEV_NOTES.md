@@ -4,6 +4,17 @@
 
 **图例：** ✅ 已落地 · 🔶 部分 / 雏形 · ⬜ 规划中（未做或未产品化）
 
+**Harness 总览：** [HARNESS.md](HARNESS.md) — DeepSeek 社招 JD 映射、本仓库栈位、会话恢复案例、「与官方关系」备忘。
+
+---
+
+## 2026-05-20 — Harness 定位文档
+
+| 项 | 状态 | 说明 |
+|----|------|------|
+| [HARNESS.md](HARNESS.md) | ✅ | JD → DS Pick 模块表；三门工程；§7 战略备忘（非商业建议） |
+| 与 scratchpad 交叉链接 | ✅ | [audit-scratchpad-design.md](audit-scratchpad-design.md) §2 链到 HARNESS §1–2 |
+
 ---
 
 ## 2026-05-18 — Agent 方向与「主动性」北极星

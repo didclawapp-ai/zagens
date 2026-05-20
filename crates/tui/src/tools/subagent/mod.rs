@@ -65,6 +65,15 @@ const TOOL_TIMEOUT: Duration = Duration::from_secs(30);
 /// within this window or the step is treated as timed out. Prevents a single
 /// stuck API call from blocking the sub-agent indefinitely.
 const STEP_API_TIMEOUT: Duration = Duration::from_secs(120);
+
+fn step_api_timeout_error(secs: u64) -> anyhow::Error {
+    anyhow!(
+        "API call timed out after {secs}s (per-step cap). Child stopped — not proof the area is \
+         fully reviewed. Parent: re-spawn with a smaller scope and step_timeout_ms=240000–360000, \
+         raise [subagents] step_timeout_secs in config/settings, or continue with parallel \
+         read_file; do not mark scratchpad inventory done on timeout alone."
+    )
+}
 const RESULT_POLL_INTERVAL: Duration = Duration::from_millis(250);
 const DEFAULT_RESULT_TIMEOUT_MS: u64 = 30_000;
 const MIN_WAIT_TIMEOUT_MS: u64 = 10_000;
@@ -1604,11 +1613,16 @@ impl ToolSpec for AgentSpawnTool {
     }
 
     fn description(&self) -> &'static str {
-        "Spawn a background sub-agent for a focused task. Returns an agent_id immediately; \
-         follow with agent_result to retrieve the final result. Default cap of 10 concurrent \
-         sub-agents (configurable via `[subagents].max_concurrent`); each is a full sub-agent \
-         loop, so cancel or wait if you hit the cap. For parallel one-shot LLM queries, just \
-         emit multiple tool calls in one turn — the dispatcher runs them in parallel."
+        "Dispatch a **sub-agent** (child of the current agent): hierarchical, tools narrowed by \
+         `type`, parent may receive `<deepseek:subagent.done>`. Returns `agent_id` immediately; \
+         join with `agent_result` / `agent_wait` / `agent_list`. **Not** `task_create` — Tasks are \
+         peer background jobs (TaskManager) and require `task_read`. Optional `task_id` is only a \
+         CRAFT **work-package / blackboard key** (e.g. scratchpad `run_id`), not a TaskManager id. \
+         Cap: `[subagents].max_concurrent` (default 10). Omitting `step_timeout_ms` uses \
+         `[subagents] step_timeout_secs` from config (DS Pick system settings); for audit/review \
+         workloads prefer 240000–360000 ms or raise the config default — do not assume the child \
+         can run many minutes unless you set it. For parallel read-only tool calls in *this* turn, \
+         batch tools instead of spawning."
     }
 
     fn input_schema(&self) -> Value {
@@ -1673,7 +1687,7 @@ impl ToolSpec for AgentSpawnTool {
                 },
                 "task_id": {
                     "type": "string",
-                    "description": "Optional task id for CRAFT blackboard association. When set, the child reads/writes `.deepseek/blackboards/{task_id}.json` so subsequent agents in the same task see structured context from prior agents."
+                    "description": "Optional CRAFT work-package id (blackboard filename under `.deepseek/blackboards/{task_id}.json`). Same string may equal audit `run_id`. This is NOT `task_create` / TaskManager — do not call `task_create` just to set this field."
                 },
                 "scratchpad_run_id": {
                     "type": "string",
@@ -1681,7 +1695,7 @@ impl ToolSpec for AgentSpawnTool {
                 },
                 "step_timeout_ms": {
                     "type": "integer",
-                    "description": "Per-step API timeout in milliseconds (default: 120000, max: 600000). Increase for review/audit workloads where a single step may read many files.",
+                    "description": "Per-step LLM API timeout in ms. Omitted → [subagents] step_timeout_secs from config.toml / DS Pick settings (else 120000). Full-repo audit: use 240000–360000 unless config default is already high. On step timeout the child fails — parent must re-spawn or shrink scope, not treat as done.",
                     "minimum": 10000,
                     "maximum": 600000
                 }
@@ -1700,7 +1714,7 @@ impl ToolSpec for AgentSpawnTool {
         ApprovalRequirement::Required
     }
 
-    async fn execute(&self, input: Value, _context: &ToolContext) -> Result<ToolResult, ToolError> {
+    async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
         let spawn_request = parse_spawn_request(&input)?;
 
         // Depth cap: reject before locking the manager so we don't introduce
@@ -1752,8 +1766,9 @@ impl ToolSpec for AgentSpawnTool {
         if let Some(cwd) = validated_cwd {
             child_runtime.context.workspace = cwd;
         }
-        let step_timeout_ms = optional_u64(&input, "step_timeout_ms", 120_000)
-            .clamp(10_000, 600_000);
+        let default_step_ms = context.subagent_default_step_timeout_ms.clamp(10_000, 600_000);
+        let step_timeout_ms =
+            optional_u64(&input, "step_timeout_ms", default_step_ms).clamp(10_000, 600_000);
         child_runtime = child_runtime.with_step_timeout(Duration::from_millis(step_timeout_ms));
         let configured_model = match spawn_request.model.clone() {
             Some(model) => Some(model),
@@ -1934,8 +1949,9 @@ impl ToolSpec for AgentResultTool {
     }
 
     fn description(&self) -> &'static str {
-        "Get the latest status or final result for a sub-agent. Set `block: true` to wait until the \
-         agent reaches a terminal state (respects `timeout_ms`)."
+        "Get status or final output for a **sub-agent** (`agent_spawn` id). Use `block: true` and \
+         a large `timeout_ms` for long audits. For durable **Tasks** (`task_create`), use \
+         `task_read` instead — different object, different namespace."
     }
 
     fn input_schema(&self) -> Value {
@@ -2216,11 +2232,9 @@ impl ToolSpec for AgentListTool {
     }
 
     fn description(&self) -> &'static str {
-        "List sub-agents from the current session with their status, type, assignment, steps, \
-         and duration. Pass `include_archived=true` to also see agents that were spawned in a \
-         prior session (e.g. before the TUI restarted) and persisted on disk; those carry \
-         `from_prior_session: true` in the result. Default is the current-session view because \
-         prior-session agents almost never matter for the live turn."
+        "List **sub-agents** (`agent_spawn`), not durable Tasks — use `task_list` for TaskManager. \
+         Shows status, type, steps, duration. Poll until no `Running` before P2 synthesis when \
+         children did parallel audit work. `include_archived=true` includes prior-session agents."
     }
 
     fn input_schema(&self) -> Value {
@@ -3033,7 +3047,7 @@ async fn run_subagent(
                 });
             }
             api = tokio::time::timeout(runtime.step_timeout, runtime.client.create_message(request)) => {
-                api.map_err(|_| anyhow!("API call timed out after {}s", runtime.step_timeout.as_secs()))??
+                api.map_err(|_| step_api_timeout_error(runtime.step_timeout.as_secs()))??
             }
         };
 

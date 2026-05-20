@@ -68,7 +68,6 @@ pub(super) fn should_default_defer_tool(name: &str, mode: AppMode) -> bool {
             | "checklist_write"
             | "todo_write"
             | "write_office"
-            | "task_create"
             | "task_list"
             | "task_read"
             | "task_gate_run"
@@ -76,13 +75,47 @@ pub(super) fn should_default_defer_tool(name: &str, mode: AppMode) -> bool {
             | "task_shell_wait"
             | "github_issue_context"
             | "github_pr_context"
+            | "scratchpad_status"
+            | "scratchpad_append"
+            | "scratchpad_set_area"
+            | "scratchpad_list_notes"
             | REQUEST_USER_INPUT_NAME
     )
 }
 
-pub(super) fn apply_native_tool_deferral(catalog: &mut [Tool], mode: AppMode) {
+/// Sub-agent spawn/join tools kept eager during an active audit scratchpad (E5 complement).
+fn audit_scratchpad_eager_tool(name: &str) -> bool {
+    matches!(
+        name,
+        "agent_spawn"
+            | "spawn_agent"
+            | "delegate_to_agent"
+            | "agent_list"
+            | "agent_result"
+            | "agent_wait"
+    )
+}
+
+/// `task_create` must not stay eager while audit inventory is active — use `agent_spawn` for P1.
+fn audit_scratchpad_defer_task_create(name: &str, scratchpad_active: bool) -> bool {
+    scratchpad_active && name == "task_create"
+}
+
+pub(super) fn apply_native_tool_deferral(
+    catalog: &mut [Tool],
+    mode: AppMode,
+    scratchpad_run_id: Option<&str>,
+) {
+    let scratchpad_active = scratchpad_run_id.is_some_and(|id| !id.trim().is_empty());
     for tool in catalog {
-        tool.defer_loading = Some(should_default_defer_tool(&tool.name, mode));
+        let mut defer = should_default_defer_tool(&tool.name, mode);
+        if scratchpad_active && audit_scratchpad_eager_tool(&tool.name) {
+            defer = false;
+        }
+        if audit_scratchpad_defer_task_create(&tool.name, scratchpad_active) {
+            defer = true;
+        }
+        tool.defer_loading = Some(defer);
     }
 }
 
@@ -108,8 +141,9 @@ pub(super) fn build_model_tool_catalog(
     mut native_tools: Vec<Tool>,
     mut mcp_tools: Vec<Tool>,
     mode: AppMode,
+    scratchpad_run_id: Option<&str>,
 ) -> Vec<Tool> {
-    apply_native_tool_deferral(&mut native_tools, mode);
+    apply_native_tool_deferral(&mut native_tools, mode, scratchpad_run_id);
     apply_mcp_tool_deferral(&mut mcp_tools, mode);
     // Sort each partition by name for prefix-cache stability (#263). The
     // upstream `to_api_tools()` already sorts the registry's HashMap output;

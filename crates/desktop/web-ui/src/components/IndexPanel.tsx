@@ -6,6 +6,7 @@ import {
   type SymbolIndexInfo,
 } from '../api/client';
 import { confirmDialog } from '../lib/confirmDialog';
+import { toast } from '../lib/toast';
 
 interface Props {
   workspace: string;
@@ -64,7 +65,7 @@ export default function IndexPanel({ workspace, onRebuild, rebuilding, rebuildEr
       await deleteSymbolIndex(workspace);
       await load();
     } catch (e) {
-      alert(`${t('indexPanel.deleteFailed')}: ${e}`);
+      toast.error(`${t('indexPanel.deleteFailed')}: ${e}`);
     } finally {
       setDeleting(false);
     }

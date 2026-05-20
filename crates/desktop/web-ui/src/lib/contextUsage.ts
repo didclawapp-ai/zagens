@@ -25,6 +25,25 @@ export interface MessageForContextEstimate {
   tools?: { input?: string; output?: string }[];
 }
 
+/** Runtime-aligned context snapshot (`GET /v1/threads/{id}/context`). */
+export interface ThreadContextSnapshot {
+  estimated_input_tokens: number;
+  context_window_tokens: number;
+  usage_percent: number;
+  message_count: number;
+  compaction_enabled: boolean;
+  compaction_threshold_tokens: number;
+  compaction_floor_tokens: number;
+  should_compact: boolean;
+  /** Provider `usage.input_tokens` from the last API round (authoritative). */
+  last_api_input_tokens?: number | null;
+  /** Percent from `last_api_input_tokens` when present. */
+  last_api_usage_percent?: number | null;
+  /** Deprecated: last turn's summed `usage.input_tokens` (multi-round turns inflate). */
+  last_reported_input_tokens?: number | null;
+  source: string;
+}
+
 export function contextWindowTokensForModel(model: string | undefined): number {
   const lower = (model ?? '').toLowerCase();
   if (lower.includes('claude')) {
@@ -39,11 +58,11 @@ export function contextWindowTokensForModel(model: string | undefined): number {
   return DEFAULT_CONTEXT_WINDOW_TOKENS;
 }
 
-/** Rough token estimate: ~1 token per 4 ASCII chars, ~1 per 1.3 CJK chars (matches App heuristic). */
+/** DeepSeek doc heuristic: ~0.3 token/ASCII char, ~0.6 token/CJK char. */
 export function estimateTokensFromText(text: string): number {
   if (!text) return 0;
   let cjk = 0;
-  let ascii = 0;
+  let other = 0;
   for (const ch of text) {
     const code = ch.charCodeAt(0);
     if (
@@ -55,10 +74,10 @@ export function estimateTokensFromText(text: string): number {
     ) {
       cjk++;
     } else {
-      ascii++;
+      other++;
     }
   }
-  return Math.ceil(cjk / 1.3 + ascii / 4);
+  return Math.ceil((other * 3) / 10 + (cjk * 6) / 10);
 }
 
 /**
@@ -113,12 +132,16 @@ export function contextUsagePercent(
   return Math.min(100, ((usedTokens + pendingTokens) / contextWindow) * 100);
 }
 
-/** Pick context used: transcript estimate first; avoid summing persisted turn usage. */
+/** Pick context used: runtime snapshot first, then transcript estimate. */
 export function resolveContextUsedTokens(
   messages: MessageForContextEstimate[],
   threadDetail: ThreadDetailWithTurns | null | undefined,
   contextWindow: number,
+  runtimeSnapshot?: ThreadContextSnapshot | null,
 ): number {
+  if (runtimeSnapshot) {
+    return Math.min(runtimeSnapshot.estimated_input_tokens, contextWindow);
+  }
   const fromMessages = estimateContextTokensFromMessages(messages);
   if (messages.length > 0) {
     return Math.min(fromMessages, contextWindow);
@@ -127,4 +150,15 @@ export function resolveContextUsedTokens(
     return Math.min(maxTurnInputTokensFallback(threadDetail), contextWindow);
   }
   return Math.min(DEFAULT_SYSTEM_PROMPT_OVERHEAD, contextWindow);
+}
+
+export function resolveContextUsagePercent(
+  usedTokens: number,
+  contextWindow: number,
+  runtimeSnapshot?: ThreadContextSnapshot | null,
+): number {
+  if (runtimeSnapshot) {
+    return runtimeSnapshot.usage_percent;
+  }
+  return contextUsagePercent(usedTokens, 0, contextWindow);
 }

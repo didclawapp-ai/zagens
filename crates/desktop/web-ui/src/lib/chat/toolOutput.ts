@@ -45,6 +45,23 @@ export function toolOutputString(output: unknown): string {
   }
 }
 
+/** Parse `agent_id` from `agent_spawn` tool output (JSON or plain text). */
+export function parseAgentIdFromSpawnOutput(output: string): string | null {
+  const trimmed = output.trim();
+  if (!trimmed) return null;
+  try {
+    const j = JSON.parse(trimmed) as Record<string, unknown>;
+    const id = j.agent_id ?? j.id;
+    if (typeof id === 'string' && id.length > 0) {
+      return id;
+    }
+  } catch {
+    // not JSON
+  }
+  const m = trimmed.match(/agent_[a-zA-Z0-9_-]+/);
+  return m?.[0] ?? null;
+}
+
 export function stringifyToolInput(input: unknown): string {
   if (input == null || input === '') {
     return '';

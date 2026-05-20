@@ -3,6 +3,7 @@ import { useT, LOCALE_LABELS } from '../i18n';
 import type { Locale } from '../i18n';
 import type { RuntimeConnectionState } from '../api/client';
 import { fetchSystemSettings, saveSystemSettings, type SystemSettings } from '../api/client';
+import { confirmDialog } from '../lib/confirmDialog';
 
 type Theme = 'light' | 'dark';
 
@@ -13,6 +14,8 @@ interface Props {
   platform: string;
   theme: Theme;
   onToggleTheme: () => void;
+  /** When true, saving settings restarts the sidecar and interrupts the active stream. */
+  streaming?: boolean;
 }
 
 export default function SettingsPanel({
@@ -22,6 +25,7 @@ export default function SettingsPanel({
   platform,
   theme,
   onToggleTheme,
+  streaming = false,
 }: Props) {
   const { t, locale, setLocale } = useT();
 
@@ -48,13 +52,16 @@ export default function SettingsPanel({
 
   const handleSave = useCallback(async () => {
     if (!settings || !desktopHost) return;
+    if (streaming && !(await confirmDialog(t('settings.saveRestartsSidecar')))) {
+      return;
+    }
     setSaving(true);
     try {
       await saveSystemSettings(settings);
     } finally {
       setSaving(false);
     }
-  }, [settings, desktopHost]);
+  }, [settings, desktopHost, streaming, t]);
 
   const update = useCallback(<K extends keyof SystemSettings>(key: K, value: SystemSettings[K]) => {
     setSettings((prev) => (prev ? { ...prev, [key]: value } : prev));
@@ -208,6 +215,64 @@ export default function SettingsPanel({
                 />
                 <span className="text-xs text-t-text w-6 text-right">{settings.max_subagents}</span>
               </div>
+            </label>
+
+            <label className="block space-y-1">
+              <span className={labelCls}>{t('settings.subagentStepTimeout')}</span>
+              <p className={descCls}>{t('settings.subagentStepTimeoutDesc')}</p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  min={60}
+                  max={600}
+                  step={30}
+                  value={settings.subagent_step_timeout_secs}
+                  onChange={(e) =>
+                    update('subagent_step_timeout_secs', Number(e.target.value))
+                  }
+                  className="flex-1 accent-accent"
+                />
+                <span className="text-xs text-t-text w-10 text-right tabular-nums">
+                  {settings.subagent_step_timeout_secs}s
+                </span>
+              </div>
+            </label>
+          </section>
+
+          <section className="space-y-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-t-text-muted">{t('settings.contextSection')}</p>
+
+            <label className="flex items-center justify-between gap-2 py-1">
+              <div className="flex-1 min-w-0">
+                <span className={labelCls}>{t('settings.autoCompact')}</span>
+                <p className={descCls}>{t('settings.autoCompactDesc')}</p>
+              </div>
+              <input
+                type="checkbox"
+                className="shrink-0 w-4 h-4 accent-accent rounded"
+                checked={settings.auto_compact}
+                onChange={(e) => update('auto_compact', e.target.checked)}
+              />
+            </label>
+
+            <label className="block space-y-1">
+              <span className={labelCls}>{t('settings.compactionThreshold')}</span>
+              <p className={descCls}>
+                {t('settings.compactionThresholdDesc', {
+                  default: settings.compaction_threshold_default.toLocaleString(),
+                })}
+              </p>
+              <input
+                type="number"
+                min={50_000}
+                step={10_000}
+                className={selectCls}
+                value={settings.compaction_threshold_tokens}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  if (v >= 50_000) update('compaction_threshold_tokens', v);
+                }}
+              />
             </label>
           </section>
 
