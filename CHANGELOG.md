@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **DS Pick (desktop):** Thread SSE (`getThreadEvents` / session replay) no longer duplicates reasoning text — Tauri `runtime_get_sse` / `runtime_post_stream` emit to the current window only; SSE listeners honor `AbortSignal` and unlisten on abort; switching sessions aborts the outgoing thread’s in-flight events stream.
+
 ## [0.4.2] - 2026-05-21
 
 ### DS Pick (desktop)

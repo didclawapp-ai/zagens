@@ -82,10 +82,12 @@ pub async fn runtime_http(
 
 #[tauri::command]
 pub async fn runtime_post_stream(
+    window: tauri::WebviewWindow,
     app: AppHandle,
     body: String,
     ctx: tauri::State<'_, AppContext>,
 ) -> Result<(), String> {
+    let window_label = window.label().to_string();
     let url = format!("http://127.0.0.1:{}/v1/stream", ctx.runtime_port);
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(3600))
@@ -104,7 +106,11 @@ pub async fn runtime_post_stream(
     if !resp.status().is_success() {
         let status = resp.status().as_u16();
         let text = resp.text().await.unwrap_or_default();
-        let _ = app.emit("runtime://stream-error", format!("HTTP {status}: {text}"));
+        let _ = app.emit_to(
+            &window_label,
+            "runtime://stream-error",
+            format!("HTTP {status}: {text}"),
+        );
         return Err(format!("HTTP {status}: {text}"));
     }
 
@@ -113,28 +119,30 @@ pub async fn runtime_post_stream(
         match chunk {
             Ok(bytes) => {
                 let payload = String::from_utf8_lossy(&bytes).into_owned();
-                app.emit("runtime://stream-chunk", payload)
+                app.emit_to(&window_label, "runtime://stream-chunk", payload)
                     .map_err(|e| e.to_string())?;
             }
             Err(e) => {
                 let msg = format!("读取流失败: {e}");
-                let _ = app.emit("runtime://stream-error", msg.clone());
+                let _ = app.emit_to(&window_label, "runtime://stream-error", msg.clone());
                 return Err(msg);
             }
         }
     }
 
-    app.emit("runtime://stream-done", ())
+    app.emit_to(&window_label, "runtime://stream-done", ())
         .map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[tauri::command]
 pub async fn runtime_get_sse(
+    window: tauri::WebviewWindow,
     app: AppHandle,
     path: String,
     ctx: tauri::State<'_, AppContext>,
 ) -> Result<(), String> {
+    let window_label = window.label().to_string();
     validate_runtime_path(&path)?;
     let url = format!("http://127.0.0.1:{}{}", ctx.runtime_port, path.trim());
     let client = reqwest::Client::builder()
@@ -152,7 +160,11 @@ pub async fn runtime_get_sse(
     if !resp.status().is_success() {
         let status = resp.status().as_u16();
         let text = resp.text().await.unwrap_or_default();
-        let _ = app.emit("runtime://events-error", format!("HTTP {status}: {text}"));
+        let _ = app.emit_to(
+            &window_label,
+            "runtime://events-error",
+            format!("HTTP {status}: {text}"),
+        );
         return Err(format!("HTTP {status}: {text}"));
     }
 
@@ -161,18 +173,18 @@ pub async fn runtime_get_sse(
         match chunk {
             Ok(bytes) => {
                 let payload = String::from_utf8_lossy(&bytes).into_owned();
-                app.emit("runtime://events-chunk", payload)
+                app.emit_to(&window_label, "runtime://events-chunk", payload)
                     .map_err(|e| e.to_string())?;
             }
             Err(e) => {
                 let msg = format!("读取 SSE 失败: {e}");
-                let _ = app.emit("runtime://events-error", msg.clone());
+                let _ = app.emit_to(&window_label, "runtime://events-error", msg.clone());
                 return Err(msg);
             }
         }
     }
 
-    app.emit("runtime://events-done", ())
+    app.emit_to(&window_label, "runtime://events-done", ())
         .map_err(|e| e.to_string())?;
     Ok(())
 }

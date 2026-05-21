@@ -1032,6 +1032,16 @@ export default function App() {
       if (outgoingThreadId && outgoingSnapshot) {
         threadContextCacheRef.current.set(outgoingThreadId, outgoingSnapshot);
       }
+      if (outgoingThreadId) {
+        streamControllersRef.current.get(outgoingThreadId)?.abort();
+        streamControllersRef.current.delete(outgoingThreadId);
+        setStreamingThreadIds((prev) => {
+          const next = new Set(prev);
+          next.delete(outgoingThreadId);
+          return next;
+        });
+        setPendingComposerStream(false);
+      }
 
       toast.dismissAll();
       setActiveSessionId(sessionId);

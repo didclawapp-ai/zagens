@@ -996,9 +996,12 @@ export async function replayThreadEvents(
   const path = `/v1/threads/${encodeURIComponent(threadId)}/events?since_seq=${sinceSeq}&replay_only=true`;
   try {
     if (useTauriRuntimeProxy) {
-      await consumeThreadEventsSse(path, onEvent, () => {
-        sawEvent = true;
-        lastEventMs = Date.now();
+      await consumeThreadEventsSse(path, onEvent, {
+        signal: controller.signal,
+        onChunk: () => {
+          sawEvent = true;
+          lastEventMs = Date.now();
+        },
       });
     } else {
       const res = await fetch(`${runtimeBase}${path}`, {
@@ -1057,12 +1060,14 @@ export async function replayThreadEvents(
 async function consumeThreadEventsSse(
   path: string,
   onEvent: (ev: SseTurnEvent & { seq?: number }) => void,
-  onChunk?: () => void,
+  options?: { signal?: AbortSignal; onChunk?: () => void },
 ): Promise<void> {
   const { invoke } = await import('@tauri-apps/api/core');
   const { listen } = await import('@tauri-apps/api/event');
+  const abort = options?.signal;
   let buffer = '';
   const unsubs: Array<() => void> = [];
+  let settled = false;
 
   const flushTail = () => {
     const { drained: tail } = drainSseBlocks(buffer + '\n\n');
@@ -1080,17 +1085,31 @@ async function consumeThreadEventsSse(
     }
   };
 
+  if (abort?.aborted) {
+    return;
+  }
+
   await new Promise<void>((resolve, reject) => {
     const finish = () => {
+      if (settled) return;
+      settled = true;
       for (const u of unsubs) {
         u();
       }
+      abort?.removeEventListener('abort', onAbort);
     };
+
+    const onAbort = () => {
+      finish();
+      resolve();
+    };
+    abort?.addEventListener('abort', onAbort, { once: true });
 
     void (async () => {
       try {
         unsubs.push(
           await listen<string>('runtime://events-chunk', (ev) => {
+            if (abort?.aborted) return;
             buffer += ev.payload;
             const { drained, rest } = drainSseBlocks(buffer);
             buffer = rest;
@@ -1104,7 +1123,7 @@ async function consumeThreadEventsSse(
               } catch {
                 /* ignore */
               }
-              onChunk?.();
+              options?.onChunk?.();
               onEvent({ ...block, seq });
             }
           }),
@@ -1139,7 +1158,7 @@ export async function getThreadEvents(
 ): Promise<void> {
   const path = `/v1/threads/${encodeURIComponent(threadId)}/events?since_seq=${sinceSeq}`;
   if (useTauriRuntimeProxy) {
-    return consumeThreadEventsSse(path, onEvent);
+    return consumeThreadEventsSse(path, onEvent, { signal: options?.signal });
   }
   const res = await fetch(`${runtimeBase}${path}`, {
     headers: { 'Content-Type': 'application/json' },
