@@ -5,6 +5,7 @@ import {
 } from '../api/client';
 import { detectFileType, isBinaryFileType } from '../components/preview';
 import type { PreviewState } from '../components/preview/types';
+import { WorkspaceFileOpenError } from './workspaceFileOpenError';
 
 export function normalizeWorkspaceRelPath(raw: string): string {
   let s = raw.trim().replace(/\\/g, '/');
@@ -28,10 +29,10 @@ export async function loadWorkspaceFileIntoPreview(opts: {
 }): Promise<PreviewState> {
   const relPath = normalizeWorkspaceRelPath(opts.relPath);
   if (!relPath) {
-    throw new Error('文件相对路径无效');
+    throw new WorkspaceFileOpenError('invalidRel');
   }
   if (relPath.includes('..')) {
-    throw new Error('路径不能包含 ..');
+    throw new WorkspaceFileOpenError('pathTraversal');
   }
 
   const title = opts.title?.trim() || relPath.split('/').pop() || relPath;
@@ -72,12 +73,12 @@ export async function loadWorkspaceFileIntoPreview(opts: {
   }
 
   if (!root) {
-    throw new Error('请先设置 Composer 工作区路径');
+    throw new WorkspaceFileOpenError('needWorkspace');
   }
 
   if (isBinaryFileType(fileType)) {
     if (!opts.desktopHost) {
-      throw new Error('二进制预览需使用桌面应用，或先发消息创建会话后再试');
+      throw new WorkspaceFileOpenError('binaryNeedsDesktop');
     }
     const bin = await invoke<{
       mime_type: string;

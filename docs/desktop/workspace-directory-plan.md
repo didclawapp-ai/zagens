@@ -1,6 +1,6 @@
 # 工作台「目录」Tab — 方案与实施跟踪
 
-> **状态：** 草案（2026-05-21）  
+> **状态：** 实施中 — 阶段 A/B/C1 已落地（2026-05-21）  
 > **范围：** DS Pick 右侧面板 · 工作台 · **目录** 子 Tab（`RightPanel` `workspaceTab === 'files'`）  
 > **目标：** 提升 monorepo 工作区浏览效率，强化与预览 / 对话 / Diff / 审计场景的联动；不替代 Composer 的「选择工作区」职责。  
 > **相关：** [DEV_NOTES.md](DEV_NOTES.md)、[PREVIEW_ARCHITECTURE.md](PREVIEW_ARCHITECTURE.md)、[docs/tech/API_DESIGN.md](../tech/API_DESIGN.md) § workspace browse、[TUI_DS_PICK_GAP.md](TUI_DS_PICK_GAP.md)
@@ -13,14 +13,14 @@
 
 | 阶段 | 主题 | 状态 | 目标版本 / 备注 |
 |------|------|------|-----------------|
-| **A** | 基础体验（滚动、工具栏、路径区、i18n） | ⬜ | 建议首 PR |
-| **B** | 过滤与噪音控制（搜索、忽略目录） | ⬜ | 依赖 A 列表区稳定 |
-| **C** | 联动（预览高亮、对话定位、Diff 跳转） | ⬜ | 与 `App.tsx` / 预览状态耦合 |
-| **D** | 树形懒加载（可选） | ⬜ | API 可复用，前端增量 |
+| **A** | 基础体验（滚动、工具栏、路径区、i18n） | ✅ | `WorkspaceFilesPanel` + `FlatIcons` |
+| **B** | 过滤与噪音控制（搜索、忽略目录） | ✅ | denylist + 显示隐藏开关 |
+| **C** | 联动（预览高亮、对话定位、Diff 跳转） | 🔶 | C1 预览高亮 + `focusFilesRelPath`；C2/C3 ⬜ |
+| **D** | 树形懒加载（可选） | ✅ | `WorkspaceFileTree` + `useWorkspaceDirCache` |
 | **E** | Agent 增强（批量 @、审计筛选、敏感路径提示） | ⬜ | Office / scratchpad 场景 |
 | **F** | 后端增强（大目录上限、可选 git 状态） | ⬜ | `runtime_api.rs` |
 
-**最近更新：** _（实施时填写日期 + 简述）_
+**最近更新：** 2026-05-21 — 阶段 D：懒加载树形视图、列表/树切换、展开状态 session 持久化（按工作区+线程）。
 
 ---
 
@@ -50,7 +50,7 @@
 | 切换 Tab 聚焦目录 | ✅ | `focusFilesNonce` |
 | 线程 vs Composer 路径 | ✅ | `browseThreadWorkspace` / `browseComposerWorkspace` |
 | Office 默认 `deliverables` | ✅ | `officeSession` effect |
-| 文案 i18n | 🔶 | 目录 Tab 内大量硬编码中文 |
+| 文案 i18n | ✅ | `workspaceFiles.*`、`workbench.*`、`panels.*` |
 | 列表独立滚动 | 🔶 | 需确认 `overflow-y-auto` + `min-h-0` |
 | 刷新按钮 | 🔶 | `browseNonce` 已有，UI 未暴露 |
 | 搜索 / 树 / git 状态 | ⬜ | — |
@@ -102,7 +102,7 @@
 
 将目录 Tab 硬编码字符串迁入 `workspaceFiles.*`（`keys.ts` / `zh-Hans.ts` / `en.ts`），与 `workspaceRules`、`diff`、`terminal` 命名空间并列。
 
-**状态：** ⬜ A3
+**状态：** ✅ A3
 
 ---
 
@@ -229,9 +229,9 @@ node_modules, target, vendor, dist, build, .git,
 
 | 项 | 状态 |
 |----|------|
-| 抽出 `WorkspaceFileTree.tsx` | ⬜ D1 |
-| 展开/折叠状态 session 持久化（按工作区根 key） | ⬜ D2 |
-| 与扁平模式切换（设置或工具栏 toggle） | ⬜ D3 |
+| 抽出 `WorkspaceFileTree.tsx` | ✅ D1 |
+| 展开/折叠状态 session 持久化（按工作区根 key） | ✅ D2 |
+| 与扁平模式切换（设置或工具栏 toggle） | ✅ D3 |
 
 **不做的：** 一次 API 返回整棵树。
 
@@ -291,41 +291,41 @@ GET /v1/threads/{id}/workspace/browse?path={rel}
 
 ### 阶段 A — 基础体验
 
-- [ ] A1 路径区合并（Composer vs 解析路径）
-- [ ] A2 面包屑横向滚动与截断策略
-- [ ] A3 目录 Tab i18n（`workspaceFiles`）
-- [ ] A4 列表独立滚动
-- [ ] A5 文件/文件夹图标
+- [x] A1 路径区合并（Composer vs 解析路径）
+- [x] A2 面包屑横向滚动与截断策略
+- [x] A3 目录 Tab i18n（`workspaceFiles` + `workbench` + `panels`）
+- [x] A4 列表独立滚动
+- [x] A5 文件/文件夹图标（`FlatIcons` / `WorkspaceEntryIcon`）
 - [ ] A6 键盘导航（可选）
-- [ ] A7 上级按钮
-- [ ] A8 刷新按钮
-- [ ] A9 打开当前目录（资源管理器）
+- [x] A7 上级按钮
+- [x] A8 刷新按钮
+- [x] A9 打开当前目录（资源管理器）
 
 ### 阶段 B — 过滤与噪音
 
-- [ ] B1 当前层搜索框
-- [ ] B2 默认 denylist 隐藏
-- [ ] B3 「显示隐藏项」开关 + localStorage
+- [x] B1 当前层搜索框
+- [x] B2 默认 denylist 隐藏
+- [x] B3 「显示隐藏项」开关 + localStorage
 - [ ] B4 大列表虚拟滚动（>500 条时）
 
 ### 阶段 C — 联动
 
-- [ ] C1 预览文件高亮 + 自动展开父路径
+- [x] C1 预览文件高亮 + 自动展开父路径（`focusFilesRelPath`）
 - [ ] C2 对话内路径跳转目录 Tab
 - [ ] C3 Diff 列表 → 目录定位
 
 ### 阶段 D — 树形（可选）
 
-- [ ] D1 `WorkspaceFileTree` 懒加载
-- [ ] D2 展开状态持久化
-- [ ] D3 扁平 / 树形切换
+- [x] D1 `WorkspaceFileTree` 懒加载
+- [x] D2 展开状态持久化
+- [x] D3 扁平 / 树形切换
 
 ### 阶段 E — Agent / 审计
 
-- [ ] E1 行内「添加至对话」
+- [x] E1 行内「添加至对话」（hover `+`）
 - [ ] E2 多选批量路径
 - [ ] E3 Office 目录筛选预设
-- [ ] E4 敏感路径弱提示
+- [x] E4 敏感路径弱提示
 
 ### 阶段 F — 后端（可选）
 

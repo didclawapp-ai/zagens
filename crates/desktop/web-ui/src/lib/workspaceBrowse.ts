@@ -1,6 +1,9 @@
 /** Workspace directory browse helpers (DS Pick workbench → Files tab). */
 
 export const WORKSPACE_DIR_SHOW_HIDDEN_KEY = 'ds-pick-dir-show-hidden';
+export const WORKSPACE_DIR_VIEW_MODE_KEY = 'ds-pick-dir-view-mode';
+
+export type WorkspaceDirViewMode = 'flat' | 'tree';
 
 export type BrowseEntry = { name: string; kind: string; size?: number };
 
@@ -141,4 +144,67 @@ export function canOpenWithSystemApp(fileName: string): boolean {
 
 export function normalizePathsForCompare(p: string): string {
   return p.trim().replace(/\\/g, '/').replace(/^\/+/, '');
+}
+
+export function readWorkspaceDirViewMode(): WorkspaceDirViewMode {
+  try {
+    const v = localStorage.getItem(WORKSPACE_DIR_VIEW_MODE_KEY);
+    if (v === 'tree' || v === 'flat') return v;
+  } catch {
+    /* ignore */
+  }
+  return 'flat';
+}
+
+export function writeWorkspaceDirViewMode(mode: WorkspaceDirViewMode): void {
+  try {
+    localStorage.setItem(WORKSPACE_DIR_VIEW_MODE_KEY, mode);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** sessionStorage key for expanded tree paths (per workspace + thread). */
+export function expandedDirsStorageKey(
+  workspaceRoot: string,
+  resumedThreadId: string | null,
+): string {
+  const ws = workspaceRoot.trim() || '_none_';
+  const th = resumedThreadId?.trim() || '_composer_';
+  return `ds-pick-dir-expanded:${ws}::${th}`;
+}
+
+export function readExpandedDirs(key: string): Set<string> {
+  try {
+    const raw = sessionStorage.getItem(key);
+    if (!raw) return new Set();
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((x): x is string => typeof x === 'string'));
+  } catch {
+    return new Set();
+  }
+}
+
+export function writeExpandedDirs(key: string, expanded: Set<string>): void {
+  try {
+    sessionStorage.setItem(key, JSON.stringify([...expanded]));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Parent directory paths to expand so `rel` (file or folder) is visible in the tree. */
+export function ancestorDirPaths(rel: string): string[] {
+  const trimmed = normalizePathsForCompare(rel);
+  if (!trimmed) return [];
+  const parts = trimmed.split('/').filter(Boolean);
+  if (parts.length <= 1) return [];
+  const out: string[] = [];
+  let acc = '';
+  for (let i = 0; i < parts.length - 1; i++) {
+    acc = acc ? `${acc}/${parts[i]}` : parts[i];
+    out.push(acc);
+  }
+  return out;
 }

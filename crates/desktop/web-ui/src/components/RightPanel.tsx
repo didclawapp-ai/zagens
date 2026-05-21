@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { invoke as InvokeFn } from '@tauri-apps/api/core';
 import ApiKeyForm from './ApiKeyForm';
 import McpPanel from './McpPanel';
@@ -21,12 +21,9 @@ import type { PreviewState } from './preview/types';
 import type { RuntimeConnectionState } from '../api/client';
 import type { DesktopRouteIntentOption } from '../types/desktop';
 import { useT } from '../i18n';
-import {
-  browseThreadWorkspace,
-  browseComposerWorkspace,
-  getThreadSnapshots,
-  restoreThreadSnapshot,
-} from '../api/client';
+import type { TranslationKey } from '../i18n/keys';
+import { getThreadSnapshots, restoreThreadSnapshot } from '../api/client';
+import WorkspaceFilesPanel from './WorkspaceFilesPanel';
 import { confirmDialog } from '../lib/confirmDialog';
 import { isRuntimeApiAvailable } from '../lib/runtimeReachable';
 import { toast } from '../lib/toast';
@@ -100,6 +97,8 @@ interface Props {
   openWorkspaceFile: (relPath: string, title?: string) => Promise<void>;
   /** Bumped when parent wants the workspace panel to show the Files tab (e.g. chat link). */
   focusFilesNonce: number;
+  /** Optional path to reveal when `focusFilesNonce` bumps (parent dir opened). */
+  focusFilesRelPath?: string | null;
   /** Bumped when chat or auto-detect should show the Diff workspace tab. */
   focusDiffNonce: number;
   onRequestDiff?: () => void;
@@ -119,20 +118,20 @@ interface Props {
   officeSession?: boolean;
 }
 
-const panelTitles: Record<RightPanelView, string> = {
-  workspace: '工作台',
-  'api-key': 'API Key',
-  settings: '设置',
-  system: '系统设置',
-  mcp: 'MCP 服务器',
-  usage: '用量仪表盘',
-  'tasks-skills': '任务与技能',
-  agents: '子代理',
-  routing: '模型路由',
-  index: '索引',
-  checklist: 'Checklist',
-  mermaid: 'Mermaid 图表',
-  about: '关于',
+const PANEL_TITLE_KEYS: Record<RightPanelView, TranslationKey> = {
+  workspace: 'panels.workspace',
+  'api-key': 'panels.apiKey',
+  settings: 'panels.settings',
+  system: 'panels.system',
+  mcp: 'panels.mcp',
+  usage: 'panels.usage',
+  'tasks-skills': 'panels.tasksSkills',
+  agents: 'panels.agents',
+  routing: 'panels.routing',
+  index: 'panels.index',
+  checklist: 'panels.checklist',
+  mermaid: 'panels.mermaid',
+  about: 'panels.about',
 };
 
 function tabBtn(active: boolean) {
@@ -141,25 +140,6 @@ function tabBtn(active: boolean) {
       ? 'border-accent text-accent bg-hover/50'
       : 'border-transparent text-t-text-muted hover:text-t-text hover:bg-hover/80'
   }`;
-}
-
-function joinRel(parent: string, name: string): string {
-  const p = parent.trim();
-  if (!p) return name;
-  return `${p}/${name}`;
-}
-
-function pathBreadcrumbs(rel: string): { label: string; path: string }[] {
-  const trimmed = rel.trim();
-  const out: { label: string; path: string }[] = [{ label: '根目录', path: '' }];
-  if (!trimmed) return out;
-  const parts = trimmed.split('/').filter(Boolean);
-  let acc = '';
-  for (const part of parts) {
-    acc = acc ? `${acc}/${part}` : part;
-    out.push({ label: part, path: acc });
-  }
-  return out;
 }
 
 function formatSnapshotTime(ts: number): string {
@@ -188,6 +168,7 @@ export default function RightPanel({
   onClosePreview,
   openWorkspaceFile,
   focusFilesNonce,
+  focusFilesRelPath,
   focusDiffNonce,
   onRequestDiff,
   agentStates,
@@ -212,15 +193,6 @@ export default function RightPanel({
     return 'files';
   });
 
-  const [browseRelPath, setBrowseRelPath] = useState('');
-  const [browseNonce, setBrowseNonce] = useState(0);
-  const [browseWorkspace, setBrowseWorkspace] = useState<string | null>(null);
-  const [browseEntries, setBrowseEntries] = useState<
-    Array<{ name: string; kind: string; size?: number }>
-  >([]);
-  const [browseLoading, setBrowseLoading] = useState(false);
-  const [browseError, setBrowseError] = useState<string | null>(null);
-
   const [snapshots, setSnapshots] = useState<
     Array<{ n: number; id: string; label: string; timestamp: number }>
   >([]);
@@ -237,6 +209,7 @@ export default function RightPanel({
   const [pickRulesSaving, setPickRulesSaving] = useState(false);
   const [pickRulesErr, setPickRulesErr] = useState<string | null>(null);
   const [pickRulesOk, setPickRulesOk] = useState<string | null>(null);
+  const [filesRefreshNonce, setFilesRefreshNonce] = useState(0);
 
   const runtimeReach = {
     streaming: Boolean(streaming),
@@ -244,28 +217,6 @@ export default function RightPanel({
   };
   const runtimeOk = isRuntimeApiAvailable(runtimeConn, runtimeReach);
 
-
-  // ---- context menu ----------------------------------------------------------
-  interface CtxEntry { absPath: string; relPath: string; name: string; kind: 'file'|'directory'; x: number; y: number; }
-  const [ctxMenu, setCtxMenu] = useState<CtxEntry | null>(null);
-
-  const sysOpenExts = useMemo(()=>new Set(['pdf','png','jpg','jpeg','gif','svg','webp','bmp','ico','xlsx','xls','docx','doc','pptx','ppt','zip','rar','7z','tar','gz']),[]);
-
-  const absPath = useCallback((rel:string)=>{
-    const base=(browseWorkspace??workspaceRoot).replace(/[\\/]+$/,'');
-    const sep=base.includes('\\')?'\\':'/';
-    return `${base}${sep}${rel}`;
-  },[browseWorkspace,workspaceRoot]);
-
-  const ctxCopyAbs=useCallback(async()=>{if(!ctxMenu)return;try{await navigator.clipboard.writeText(ctxMenu.absPath);}catch{}setCtxMenu(null);},[ctxMenu]);
-  const ctxCopyRel=useCallback(async()=>{if(!ctxMenu)return;try{await navigator.clipboard.writeText(ctxMenu.relPath);}catch{}setCtxMenu(null);},[ctxMenu]);
-  const ctxOpenExplorer=useCallback(async()=>{if(!ctxMenu)return;const t=ctxMenu.kind==='directory'?ctxMenu.absPath:ctxMenu.absPath.replace(/[\\/][^\\/]+$/,'');try{const{invoke}=await import('@tauri-apps/api/core');await invoke('open_in_shell',{path:t});}catch{}setCtxMenu(null);},[ctxMenu]);
-  const ctxSystemOpen=useCallback(async()=>{if(!ctxMenu)return;try{const{invoke}=await import('@tauri-apps/api/core');await invoke('open_with_system_app',{path:ctxMenu.absPath});}catch{}setCtxMenu(null);},[ctxMenu]);
-  const ctxAddConv=useCallback(async()=>{if(!ctxMenu)return;try{await openWorkspaceFile(ctxMenu.relPath||ctxMenu.name,ctxMenu.name);}catch(e){const err=e as Error&{status?:number};setBrowseError(err.message??String(e));}setCtxMenu(null);},[ctxMenu,openWorkspaceFile]);
-
-  useEffect(()=>{if(!ctxMenu)return;const c=()=>setCtxMenu(null);window.addEventListener('click',c,{once:true});return()=>window.removeEventListener('click',c);},[ctxMenu]);
-
-  const canSysOpen=(name:string)=>sysOpenExts.has((name.split('.').pop()??'').toLowerCase());
 
   useEffect(() => {
     try {
@@ -276,10 +227,6 @@ export default function RightPanel({
   }, [workspaceTab]);
 
   useEffect(() => {
-    setBrowseRelPath('');
-    setBrowseNonce(0);
-    setBrowseError(null);
-    setBrowseEntries([]);
     setSnapshots([]);
     setSnapError(null);
     setRestoreMessage(null);
@@ -296,13 +243,6 @@ export default function RightPanel({
       setWorkspaceTab('files');
     }
   }, [officeSession, workspaceTab]);
-
-  useEffect(() => {
-    if (!officeSession) return;
-    if (view === 'workspace' && workspaceTab === 'files') {
-      setBrowseRelPath((prev) => (prev === '' ? 'deliverables' : prev));
-    }
-  }, [officeSession, view, workspaceTab, workspaceRoot]);
 
   useEffect(() => {
     if (view !== 'workspace' || workspaceTab !== 'rules' || !desktopHost) {
@@ -344,45 +284,6 @@ export default function RightPanel({
   }, [view, workspaceTab, desktopHost, workspaceRoot, t]);
 
   useEffect(() => {
-    if (view !== 'workspace' || workspaceTab !== 'files' || !runtimeOk) {
-      return;
-    }
-    const root = workspaceRoot.trim();
-    const hasThread = Boolean(resumedThreadId?.length);
-    if (!hasThread && root.length === 0) {
-      setBrowseLoading(false);
-      setBrowseEntries([]);
-      setBrowseWorkspace(null);
-      return;
-    }
-
-    let cancelled = false;
-    setBrowseLoading(true);
-    setBrowseError(null);
-    const req = hasThread
-      ? browseThreadWorkspace(resumedThreadId!, browseRelPath || undefined)
-      : browseComposerWorkspace(root, browseRelPath || undefined);
-    void req
-      .then((res) => {
-        if (cancelled) return;
-        setBrowseWorkspace(res.workspace);
-        setBrowseEntries(res.entries ?? []);
-      })
-      .catch((e) => {
-        if (cancelled) return;
-        const err = e as Error & { status?: number };
-        setBrowseError(err.message ?? String(e));
-        setBrowseEntries([]);
-      })
-      .finally(() => {
-        if (!cancelled) setBrowseLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [view, workspaceTab, resumedThreadId, workspaceRoot, browseRelPath, browseNonce, runtimeOk]);
-
-  useEffect(() => {
     if (view !== 'workspace' || workspaceTab !== 'restore' || !resumedThreadId || !runtimeOk) {
       return;
     }
@@ -408,8 +309,6 @@ export default function RightPanel({
     };
   }, [view, workspaceTab, resumedThreadId, runtimeOk]);
 
-  const crumbs = useMemo(() => pathBreadcrumbs(browseRelPath), [browseRelPath]);
-
   useEffect(() => {
     if (focusFilesNonce > 0) {
       setWorkspaceTab('files');
@@ -422,48 +321,37 @@ export default function RightPanel({
     }
   }, [focusDiffNonce]);
 
-  const canBrowseComposerFiles =
-    runtimeOk && (Boolean(resumedThreadId?.length) || workspaceRoot.trim().length > 0);
-
-  const onOpenFileFromTree = useCallback(
-    async (relPath: string, title: string) => {
-      if (!runtimeOk) {
-        return;
-      }
-      try {
-        await openWorkspaceFile(relPath, title);
-      } catch (e) {
-        const err = e as Error & { status?: number };
-        setBrowseError(err.message ?? String(e));
-      }
-    },
-    [runtimeOk, openWorkspaceFile],
-  );
-
   const onRestore = useCallback(
     async (n: number) => {
       if (!resumedThreadId || !runtimeOk) return;
-      if (!(await confirmDialog(`确定将工作区恢复到快照 #${n}？`))) return;
+      if (!(await confirmDialog(t('workbench.restoreConfirm', { n: String(n) })))) return;
       setRestoreBusy(n);
       setRestoreMessage(null);
       try {
         const r = await restoreThreadSnapshot(resumedThreadId, n);
-        setRestoreMessage(`已恢复：${r.label}（${r.id.slice(0, 8)}…）`);
+        setRestoreMessage(
+          t('workbench.restoreSuccess', {
+            label: r.label,
+            id: r.id.slice(0, 8),
+          }),
+        );
         const list = await getThreadSnapshots(resumedThreadId, { limit: 50 });
         setSnapshots(list.snapshots ?? []);
-        setBrowseNonce((n) => n + 1);
+        setFilesRefreshNonce((x) => x + 1);
       } catch (e) {
         const err = e as Error & { status?: number };
         if (err.status === 403) {
-          setRestoreMessage('需要在此线程上启用信任模式后才能恢复快照。');
+          setRestoreMessage(t('workbench.restoreTrustRequired'));
         } else {
-          setRestoreMessage(`恢复失败：${err.message ?? String(e)}`);
+          setRestoreMessage(
+            t('workbench.restoreFailed', { message: err.message ?? String(e) }),
+          );
         }
       } finally {
         setRestoreBusy(null);
       }
     },
-    [resumedThreadId, runtimeOk],
+    [resumedThreadId, runtimeOk, t],
   );
 
   const onRebuildIndex = useCallback(async () => {
@@ -584,7 +472,7 @@ export default function RightPanel({
   }, []);
 
   return (
-    <div className="flex h-full max-h-screen shrink-0" aria-label="侧栏面板">
+    <div className="flex h-full max-h-screen shrink-0" aria-label={t('workbench.panelAria')}>
       <PanelEdgeSeam
         side="right"
         seamClass="chrome-seam-l"
@@ -618,12 +506,12 @@ export default function RightPanel({
         style={{ width: panelWidth }}
       >
       <div className="flex shrink-0 items-center bg-canvas-alt/40 px-4 py-3">
-        <h2 className="flex-1 text-sm font-semibold text-t-text">{panelTitles[view]}</h2>
+        <h2 className="flex-1 text-sm font-semibold text-t-text">{t(PANEL_TITLE_KEYS[view])}</h2>
         {view === 'workspace' && desktopHost && (
           <button
             type="button"
             className="ml-auto px-2 py-1 text-[10px] text-t-text-muted hover:text-t-text hover:bg-hover rounded transition-colors"
-            title="在文件管理器中打开工作区"
+            title={t('workbench.openWorkspaceInShell')}
             onClick={async () => {
               try {
                 const { invoke } = await import('@tauri-apps/api/core');
@@ -636,7 +524,7 @@ export default function RightPanel({
             <svg viewBox="0 0 24 24" className="inline w-3.5 h-3.5 mr-1 stroke-current" style={{ fill: 'none', strokeWidth: 1.6 }}>
               <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
             </svg>
-            打开文件夹
+            {t('workbench.openFolder')}
           </button>
         )}
       </div>
@@ -646,12 +534,12 @@ export default function RightPanel({
           <>
             {!runtimeOk && (
               <p className="shrink-0 px-3 py-2 text-[11px] text-red-400/90 border-b border-divider bg-red-500/10">
-                本地运行时未连接；请重试连接后再浏览工作区。
+                {t('workbench.runtimeOffline')}
               </p>
             )}
             {runtimeOk && runtimeConn !== 'connected' && (
               <p className="shrink-0 px-3 py-2 text-[11px] text-amber-text/90 border-b border-divider bg-amber-bg/30">
-                运行时繁忙，状态刷新可能变慢；工作台与文件 API 仍可使用。
+                {t('workbench.runtimeBusy')}
               </p>
             )}
             {preview ? (
@@ -661,7 +549,7 @@ export default function RightPanel({
                   onOpenWorkspaceRelativePath={(rel) => {
                     void openWorkspaceFile(rel).catch((err) => {
                       const e = err as Error & { status?: number };
-                      setBrowseError(e.message ?? String(err));
+                      toast.error(e.message ?? String(err));
                     });
                   }}
                 />
@@ -671,7 +559,7 @@ export default function RightPanel({
                 <div
                   className="shrink-0 flex bg-canvas-alt/50"
                   role="tablist"
-                  aria-label="工作台分区"
+                  aria-label={t('workbench.tablistAria')}
                 >
                   {!officeSession && (
                     <button
@@ -681,7 +569,7 @@ export default function RightPanel({
                       className={tabBtn(workspaceTab === 'restore')}
                       onClick={() => setWorkspaceTab('restore')}
                     >
-                      恢复
+                      {t('workbench.tabRestore')}
                     </button>
                   )}
                   <button
@@ -691,7 +579,7 @@ export default function RightPanel({
                     className={tabBtn(workspaceTab === 'files')}
                     onClick={() => setWorkspaceTab('files')}
                   >
-                    目录
+                    {t('workspaceFiles.tab')}
                   </button>
                   {!officeSession && (
                     <button
@@ -729,26 +617,23 @@ export default function RightPanel({
                 </div>
 
                 <div
-                  className={`flex-1 min-h-0 ${workspaceTab === 'terminal' || workspaceTab === 'diff' ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'}`}
+                  className={`flex-1 min-h-0 ${workspaceTab === 'terminal' || workspaceTab === 'diff' || workspaceTab === 'files' ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'}`}
                   role="tabpanel"
                 >
                   {workspaceTab === 'restore' && (
                     <div className="p-4 space-y-3 text-xs text-t-text leading-relaxed">
-                      <p className="text-t-text-muted">
-                        与工作区 <strong className="text-t-text">side-git</strong> 快照同步，对应 TUI 的{' '}
-                        <code className="rounded bg-canvas-alt px-1">/restore N</code>（N 与下列序号一致）。
-                      </p>
+                      <p className="text-t-text-muted">{t('workbench.restoreSyncLine1')}</p>
+                      <p className="text-t-text-muted">{t('workbench.restoreSyncLine2')}</p>
                       {!resumedThreadId && (
-                        <p className="text-amber-text/90">选择会话并恢复线程后，可加载快照列表。</p>
+                        <p className="text-amber-text/90">{t('workbench.restoreNeedThread')}</p>
                       )}
                       {resumedThreadId && (
                         <p className="text-t-text-muted">
-                          当前线程：<code className="text-[11px] break-all">{resumedThreadId.slice(0, 14)}…</code>
+                          {t('workbench.currentThread', {
+                            id: `${resumedThreadId.slice(0, 14)}…`,
+                          })}
                           {!threadTrustMode && (
-                            <span className="block mt-1">
-                              恢复快照需要{' '}
-                              <strong className="text-t-text">信任模式</strong>（仅本地运行时）。
-                            </span>
+                            <span className="block mt-1">{t('workbench.restoreNeedsTrust')}</span>
                           )}
                         </p>
                       )}
@@ -759,10 +644,10 @@ export default function RightPanel({
                           disabled={!runtimeOk}
                           onClick={() => void onEnableTrustClick()}
                         >
-                          启用信任模式
+                          {t('workbench.enableTrust')}
                         </button>
                       )}
-                      {snapLoading && <p className="text-t-text-muted">加载快照…</p>}
+                      {snapLoading && <p className="text-t-text-muted">{t('workbench.loadingSnapshots')}</p>}
                       {snapError && (
                         <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-red-200/90">
                           {snapError}
@@ -774,7 +659,7 @@ export default function RightPanel({
                         </p>
                       )}
                       {resumedThreadId && !snapLoading && snapshots.length === 0 && !snapError && (
-                        <p className="text-t-text-muted">暂无快照记录。</p>
+                        <p className="text-t-text-muted">{t('workbench.noSnapshots')}</p>
                       )}
                       {snapshots.length > 0 && (
                         <ul className="space-y-2">
@@ -786,7 +671,7 @@ export default function RightPanel({
                               <div className="flex justify-between gap-2 items-start">
                                 <div className="min-w-0 flex-1">
                                   <div className="font-medium text-t-text truncate" title={s.label}>
-                                    #{s.n} · {s.label || '（无标题）'}
+                                    #{s.n} · {s.label || t('workbench.snapshotUntitled')}
                                   </div>
                                   <div className="text-[10px] text-t-text-muted mt-0.5">
                                     {formatSnapshotTime(s.timestamp)}
@@ -799,10 +684,12 @@ export default function RightPanel({
                                   type="button"
                                   className="shrink-0 rounded-md px-2 py-1 text-[11px] font-medium text-accent border border-divider hover:bg-hover disabled:opacity-40"
                                   disabled={!runtimeOk || restoreBusy !== null || !threadTrustMode}
-                                  title={!threadTrustMode ? '请先启用信任模式' : undefined}
+                                  title={
+                                    !threadTrustMode ? t('workbench.restoreTrustTitle') : undefined
+                                  }
                                   onClick={() => void onRestore(s.n)}
                                 >
-                                  {restoreBusy === s.n ? '…' : '恢复'}
+                                  {restoreBusy === s.n ? '…' : t('workbench.restoreBtn')}
                                 </button>
                               </div>
                             </li>
@@ -813,124 +700,19 @@ export default function RightPanel({
                   )}
 
                   {workspaceTab === 'files' && (
-                    <div className="flex flex-col min-h-0">
-                      <div className="shrink-0 border-b border-divider px-4 py-3 space-y-1">
-                        <p className="text-[11px] font-medium uppercase tracking-wide text-t-text-muted">
-                          Composer 工作区
-                        </p>
-                        <p
-                          className="text-xs font-mono text-t-text break-all leading-snug"
-                          title={workspaceRoot}
-                        >
-                          {workspaceRoot || '（未设置）'}
-                        </p>
-                        {browseWorkspace && (
-                          <p className="text-[10px] text-t-text-muted break-all" title={browseWorkspace}>
-                            解析路径：{browseWorkspace}
-                          </p>
-                        )}
-                      </div>
-                      <div className="px-3 py-2 border-b border-divider flex flex-wrap items-center gap-1 text-[11px]">
-                        {crumbs.map((c, i) => (
-                          <span key={c.path || 'root'} className="flex items-center gap-1 min-w-0">
-                            {i > 0 && <span className="text-t-text-muted">/</span>}
-                            <button
-                              type="button"
-                              className="truncate max-w-[7rem] text-accent hover:underline"
-                              title={c.path || '根目录'}
-                              onClick={() => setBrowseRelPath(c.path)}
-                            >
-                              {c.label}
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                      <div className="px-4 py-2 flex-1 min-h-0">
-                        {browseLoading && <p className="text-xs text-t-text-muted">读取目录…</p>}
-                        {browseError && (
-                          <p className="text-xs text-red-300/90 break-words mb-2">{browseError}</p>
-                        )}
-                        {!canBrowseComposerFiles && (
-                          <p className="text-xs text-amber-text/90">
-                            请先连接本地运行时，并设置 Composer 工作区路径；或选择会话并恢复线程后再浏览目录。
-                          </p>
-                        )}
-                        {canBrowseComposerFiles && !browseLoading && (
-                          <><ul className="space-y-0.5">
-                            {browseEntries.map((ent) => {
-                              const rel = joinRel(browseRelPath, ent.name);
-                              const isDir = ent.kind === 'directory';
-                              return (
-                                <li key={rel}>
-                                  {isDir ? (
-                                    <button
-                                      type="button"
-                                      className="w-full text-left rounded-md px-2 py-1.5 text-xs text-t-text hover:bg-hover flex items-center gap-2"
-                                      onClick={() => setBrowseRelPath(rel)}
-                                      onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ absPath: absPath(rel), relPath: rel, name: ent.name, kind: 'directory', x: Math.min(e.clientX, window.innerWidth - 180), y: e.clientY }); }}
-                                    >
-                                      <span className="text-t-text-muted">▸</span>
-                                      <span className="font-medium truncate">{ent.name}</span>
-                                    </button>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      className="w-full text-left rounded-md px-2 py-1.5 text-xs text-t-text hover:bg-hover flex items-center gap-2"
-                                      onClick={() => void onOpenFileFromTree(rel, ent.name)}
-                                      onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ absPath: absPath(rel), relPath: rel, name: ent.name, kind: 'file', x: Math.min(e.clientX, window.innerWidth - 180), y: e.clientY }); }}
-                                    >
-                                      <span className="text-t-text-muted">◇</span>
-                                      <span className="truncate">{ent.name}</span>
-                                      {ent.size != null && (
-                                        <span className="text-[10px] text-t-text-muted ml-auto shrink-0">
-                                          {ent.size > 1024
-                                            ? `${(ent.size / 1024).toFixed(1)} KB`
-                                            : `${ent.size} B`}
-                                        </span>
-                                      )}
-                                    </button>
-                                  )}
-                                </li>
-                              );
-                            })}
-                          </ul>
-                          {ctxMenu && (
-                            <div
-                              className="fixed z-50 min-w-[180px] rounded-lg border border-divider bg-canvas py-1 shadow-lg"
-                              style={{ left: `${ctxMenu.x}px`, top: `${ctxMenu.y}px` }}
-                            >
-                              <div className="px-3 py-1.5 text-[11px] font-medium text-t-text-muted truncate border-b border-divider" title={ctxMenu.name}>
-                                {ctxMenu.name}
-                              </div>
-                              <button className="w-full text-left px-3 py-1.5 text-xs text-t-text hover:bg-hover transition-colors" onClick={ctxCopyAbs}>
-                                复制路径
-                              </button>
-                              <button className="w-full text-left px-3 py-1.5 text-xs text-t-text hover:bg-hover transition-colors" onClick={ctxCopyRel}>
-                                复制相对路径
-                              </button>
-                              <button className="w-full text-left px-3 py-1.5 text-xs text-t-text hover:bg-hover transition-colors" onClick={ctxAddConv}>
-                                添加至对话
-                              </button>
-                              <div className="border-t border-divider my-0.5" />
-                              <button className="w-full text-left px-3 py-1.5 text-xs text-t-text hover:bg-hover transition-colors" onClick={ctxOpenExplorer}>
-                                在文件资源管理器打开
-                              </button>
-                              {ctxMenu.kind === 'file' && canSysOpen(ctxMenu.name) && (
-                                <button className="w-full text-left px-3 py-1.5 text-xs text-t-text hover:bg-hover transition-colors" onClick={ctxSystemOpen}>
-                                  用系统应用打开
-                                </button>
-                              )}
-                            </div>
-                          )}
-                        </>)}
-                        {canBrowseComposerFiles &&
-                          browseEntries.length === 0 &&
-                          !browseLoading &&
-                          !browseError && (
-                          <p className="text-[11px] text-t-text-muted mt-2">此目录为空。</p>
-                        )}
-                      </div>
-                    </div>
+                    <WorkspaceFilesPanel
+                      active={view === 'workspace'}
+                      workspaceRoot={workspaceRoot}
+                      resumedThreadId={resumedThreadId}
+                      runtimeOk={runtimeOk}
+                      desktopHost={desktopHost}
+                      officeSession={officeSession}
+                      preview={preview}
+                      openWorkspaceFile={openWorkspaceFile}
+                      focusFilesNonce={focusFilesNonce}
+                      focusFilesRelPath={focusFilesRelPath}
+                      externalRefreshNonce={filesRefreshNonce}
+                    />
                   )}
 
                   {workspaceTab === 'rules' && (
@@ -1023,11 +805,13 @@ export default function RightPanel({
           <div className="p-4 overflow-y-auto">
             {!desktopHost && (
               <p className="mb-3 text-xs text-amber-text/90 leading-relaxed">
-                当前未在 Tauri 桌面壳中运行，无法通过此处写入密钥；请在配置文件中手动设置或使用 CLI。
+                {t('workbench.apiKeyNotDesktop')}
               </p>
             )}
             {desktopHost && apiKeyConfigured === false && (
-              <p className="mb-3 text-xs text-amber-text/90 leading-relaxed">未检测到已保存的 DeepSeek API Key。</p>
+              <p className="mb-3 text-xs text-amber-text/90 leading-relaxed">
+                {t('workbench.apiKeyMissing')}
+              </p>
             )}
             {desktopHost && (
               <ApiKeyForm

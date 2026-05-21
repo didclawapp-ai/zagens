@@ -36,7 +36,8 @@ import Composer, { type ComposerOutboundMessage } from './components/Composer';
 import Sidebar from './components/Sidebar';
 import ApprovalDialog from './components/ApprovalDialog';
 import RightPanel, { type RightPanelView } from './components/RightPanel';
-import { loadWorkspaceFileIntoPreview } from './lib/openWorkspaceFile';
+import { loadWorkspaceFileIntoPreview, normalizeWorkspaceRelPath } from './lib/openWorkspaceFile';
+import { formatWorkspaceFileError } from './lib/workspaceFileOpenError';
 import type { PreviewState } from './components/preview/types';
 import type { AgentState } from './types/agent';
 import useKeyboardShortcuts from './hooks/useKeyboardShortcuts';
@@ -281,6 +282,9 @@ export default function App() {
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [panelPreview, setPanelPreview] = useState<PreviewState | null>(null);
   const [focusWorkspaceFilesNonce, setFocusWorkspaceFilesNonce] = useState(0);
+  const [focusWorkspaceFilesRelPath, setFocusWorkspaceFilesRelPath] = useState<string | null>(
+    null,
+  );
   const [focusWorkspaceDiffNonce, setFocusWorkspaceDiffNonce] = useState(0);
   const [agentStates, setAgentStates] = useState<AgentState[]>([]);
   const [contextWindowTokens, setContextWindowTokens] = useState(DEFAULT_CONTEXT_WINDOW_TOKENS);
@@ -1204,6 +1208,7 @@ export default function App() {
         throw new Error(t('banner.runtimeNotConnected'));
       }
       setActiveInspector('workspace');
+      setFocusWorkspaceFilesRelPath(normalizeWorkspaceRelPath(relPath));
       setFocusWorkspaceFilesNonce((n) => n + 1);
       const state = await loadWorkspaceFileIntoPreview({
         relPath,
@@ -1222,8 +1227,7 @@ export default function App() {
       try {
         await openWorkspaceFileForPreview(relPath);
       } catch (e) {
-        const err = e instanceof Error ? e.message : String(e);
-        toast.error(t('banner.openFileFailed', { err }));
+        toast.error(t('banner.openFileFailed', { err: formatWorkspaceFileError(e, t) }));
       }
     },
     [openWorkspaceFileForPreview, t],
@@ -1987,6 +1991,7 @@ export default function App() {
           onClosePreview={closePanelPreview}
           openWorkspaceFile={openWorkspaceFileForPreview}
           focusFilesNonce={focusWorkspaceFilesNonce}
+          focusFilesRelPath={focusWorkspaceFilesRelPath}
           focusDiffNonce={focusWorkspaceDiffNonce}
           agentStates={agentStates}
           onRequestChecklist={handleRequestChecklist}

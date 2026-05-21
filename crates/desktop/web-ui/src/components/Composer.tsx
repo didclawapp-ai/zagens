@@ -58,8 +58,8 @@ interface AttachedFile {
   imageDataUrl?: string;
 }
 
-function shortenPath(p: string): string {
-  if (p === '.' || p === './') return '当前目录';
+function shortenPath(p: string, currentDirLabel: string): string {
+  if (p === '.' || p === './') return currentDirLabel;
   const cleaned = p.replace(/\\/g, '/').replace(/\/+$/, '');
   const segments = cleaned.split('/');
   if (segments.length === 1) return segments[0];

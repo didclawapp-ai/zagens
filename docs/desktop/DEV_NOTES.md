@@ -21,7 +21,7 @@
 
 | 项 | 状态 | 说明 |
 |----|------|------|
-| [workspace-directory-plan.md](workspace-directory-plan.md) | ⬜ | 目录 Tab UI/功能分阶段方案；§0 总览表 + §10 任务清单供实施打勾 |
+| [workspace-directory-plan.md](workspace-directory-plan.md) | 🔶 | 目录 Tab：A/B/C1/D 已落地；§10 跟踪 C2/C3、B4 等 |
 
 ---
 
