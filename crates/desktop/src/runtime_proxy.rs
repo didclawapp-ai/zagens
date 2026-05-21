@@ -1,5 +1,8 @@
 //! Local runtime HTTP proxy (H06) — Bearer token stays in the Rust shell, not the WebView.
 
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 
 use futures_util::StreamExt;
@@ -8,6 +11,34 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
 use crate::commands::AppContext;
+
+/// Per-webview cancel flag for in-flight `runtime_get_sse` (abort does not stop reqwest otherwise).
+static SSE_CANCEL_FLAGS: LazyLock<Mutex<HashMap<String, Arc<AtomicBool>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn arm_sse_cancel(window_label: &str) -> Arc<AtomicBool> {
+    let flag = Arc::new(AtomicBool::new(false));
+    let mut guard = SSE_CANCEL_FLAGS.lock().expect("sse cancel map");
+    if let Some(prev) = guard.insert(window_label.to_string(), Arc::clone(&flag)) {
+        prev.store(true, Ordering::Relaxed);
+    }
+    flag
+}
+
+fn disarm_sse_cancel(window_label: &str) {
+    let mut guard = SSE_CANCEL_FLAGS.lock().expect("sse cancel map");
+    guard.remove(window_label);
+}
+
+#[tauri::command]
+pub async fn runtime_cancel_sse(window: tauri::WebviewWindow) -> Result<(), String> {
+    let label = window.label().to_string();
+    let guard = SSE_CANCEL_FLAGS.lock().map_err(|e| e.to_string())?;
+    if let Some(flag) = guard.get(&label) {
+        flag.store(true, Ordering::Relaxed);
+    }
+    Ok(())
+}
 
 #[derive(Debug, Deserialize)]
 pub struct RuntimeHttpRequest {
@@ -168,8 +199,15 @@ pub async fn runtime_get_sse(
         return Err(format!("HTTP {status}: {text}"));
     }
 
+    let cancel = arm_sse_cancel(&window_label);
     let mut stream = resp.bytes_stream();
-    while let Some(chunk) = stream.next().await {
+    loop {
+        if cancel.load(Ordering::Relaxed) {
+            break;
+        }
+        let Some(chunk) = stream.next().await else {
+            break;
+        };
         match chunk {
             Ok(bytes) => {
                 let payload = String::from_utf8_lossy(&bytes).into_owned();
@@ -179,12 +217,16 @@ pub async fn runtime_get_sse(
             Err(e) => {
                 let msg = format!("读取 SSE 失败: {e}");
                 let _ = app.emit_to(&window_label, "runtime://events-error", msg.clone());
+                disarm_sse_cancel(&window_label);
                 return Err(msg);
             }
         }
     }
 
-    app.emit_to(&window_label, "runtime://events-done", ())
-        .map_err(|e| e.to_string())?;
+    disarm_sse_cancel(&window_label);
+    if !cancel.load(Ordering::Relaxed) {
+        app.emit_to(&window_label, "runtime://events-done", ())
+            .map_err(|e| e.to_string())?;
+    }
     Ok(())
 }

@@ -16,7 +16,7 @@
 |------|------|------|-----------------|
 | **M0** | 方案评审、依赖与风险签字 | ✅ | 本文档 |
 | **M1** | 窗口生命周期 + 单实例 + 菜单/托盘 | ✅ | `window_registry.rs`、`tauri-plugin-single-instance` |
-| **M2** | 事件域隔离（终端、通知、可选 emit） | ✅ | `terminal.rs` `emit_to`、每窗 PTY 上限 4 |
+| **M2** | 事件域隔离（终端、runtime SSE、通知） | ✅ | `terminal.rs` + `runtime_proxy.rs` `emit_to`；Web UI `getCurrentWebviewWindow().listen`（Tauri2 #11379）；每窗 PTY 上限 4 |
 | **M3** | 前端：按窗口独立 UI 状态 + 按 thread 的 SSE | ✅ | `streamingThreadIds`、切 session 不 abort |
 | **M4** | 审批 / 后台 turn 路由到正确窗口 | ✅ | `register_window_thread` / `thread_owned_by_window` |
 | **M5** | 体验打磨（可选） | ⏸ 延后 | 标题/快捷键/每窗 workspace 已随 M1–M3 交付；几何记忆、资源管理器打开见 §7.5 |
@@ -344,8 +344,11 @@ Runtime 已有 `POST .../resolve-approval` 且 pending 带 `thread_id` / `turn_i
 - [x] `terminal-data` / `terminal-exit` → `emit_to`
 - [x] `spawn_terminal` 绑定 window label
 - [x] 关窗清理 PTY
+- [x] `runtime_post_stream` / `runtime_get_sse` → `emit_to`（`runtime_proxy.rs`）
+- [x] Web UI：`listenRuntimeSseEvent` → `getCurrentWebviewWindow().listen`（避免 Tauri2 全局 `listen` 收他窗流）
+- [x] `turn.completed` 时 `AbortController.abort()` 卸监听（`getThreadEvents` 长连接）
 
-**验收：** A 窗开终端，B 窗不收到输出 — **T4 ✅**
+**验收：** A 窗开终端，B 窗不收到输出 — **T4 ✅**；A 窗聊天流式，B 窗推理/正文不叠字 — **手测**
 
 ### M3 — 并行 Agent UI ✅
 

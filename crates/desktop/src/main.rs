@@ -184,6 +184,7 @@ fn main() {
             runtime_proxy::runtime_http,
             runtime_proxy::runtime_post_stream,
             runtime_proxy::runtime_get_sse,
+            runtime_proxy::runtime_cancel_sse,
             commands::get_platform_info,
             commands::get_os_theme,
             commands::get_locale,

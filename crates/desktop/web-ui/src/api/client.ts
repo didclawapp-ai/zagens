@@ -15,6 +15,8 @@ import type {
 import type { RoutingRulesResponse, RoutingRule } from '../types/routing';
 import { normalizeWorkspaceForApi } from '../lib/defaultWorkspace';
 import { coalescePollFetch } from '../lib/pollFetch';
+import { listenRuntimeSseEvent } from '../lib/runtimeSseListen';
+import { normalizeDesktopStreamEvent } from './streamNormalize';
 
 export interface SseTurnEvent {
   event: string;
@@ -381,7 +383,6 @@ async function postStreamTurnViaTauri(
   options?: { signal?: AbortSignal },
 ): Promise<void> {
   const { invoke } = await import('@tauri-apps/api/core');
-  const { listen } = await import('@tauri-apps/api/event');
 
   let buffer = '';
   const unsubs: Array<() => void> = [];
@@ -406,8 +407,8 @@ async function postStreamTurnViaTauri(
 
   try {
     unsubs.push(
-      await listen<string>('runtime://stream-chunk', (ev) => {
-        buffer += ev.payload;
+      await listenRuntimeSseEvent<string>('runtime://stream-chunk', (payload) => {
+        buffer += payload;
         const { drained, rest } = drainSseBlocks(buffer);
         buffer = rest;
         for (const block of drained) {
@@ -416,7 +417,7 @@ async function postStreamTurnViaTauri(
       }),
     );
     unsubs.push(
-      await listen('runtime://stream-done', () => {
+      await listenRuntimeSseEvent<unknown>('runtime://stream-done', () => {
         cleanup();
         abort?.removeEventListener('abort', onAbort);
         const { drained: tail } = drainSseBlocks(buffer + '\n\n');
@@ -427,10 +428,10 @@ async function postStreamTurnViaTauri(
       }),
     );
     unsubs.push(
-      await listen<string>('runtime://stream-error', (ev) => {
+      await listenRuntimeSseEvent<string>('runtime://stream-error', (payload) => {
         cleanup();
         abort?.removeEventListener('abort', onAbort);
-        onError(new Error(ev.payload));
+        onError(new Error(payload));
       }),
     );
 
@@ -967,9 +968,66 @@ export async function getSessionDetail(sessionId: string): Promise<SessionDetail
   return fetchJson(`/v1/sessions/${sessionId}`);
 }
 
+const THREAD_TURN_POLL_MS = 120;
+
+function sleepMs(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    const id = window.setTimeout(resolve, ms);
+    signal?.addEventListener(
+      'abort',
+      () => {
+        window.clearTimeout(id);
+        resolve();
+      },
+      { once: true },
+    );
+  });
+}
+
+/**
+ * Poll `replay_only` thread events until the turn completes. Avoids open-ended
+ * `GET …/events` SSE (multiple Tauri `runtime_get_sse` invokes can duplicate chunks).
+ */
+export async function pollThreadTurnEvents(
+  threadId: string,
+  sinceSeq: number,
+  onEvent: (ev: SseTurnEvent & { seq?: number }) => void,
+  options?: { signal?: AbortSignal; turnId?: string },
+): Promise<void> {
+  let cursor = sinceSeq;
+  const filter = options?.turnId ? { turnId: options.turnId } : undefined;
+  while (!options?.signal?.aborted) {
+    let maxSeq = cursor;
+    let turnDone = false;
+    await replayThreadEvents(
+      threadId,
+      cursor,
+      (ev) => {
+        if (ev.seq != null && ev.seq > maxSeq) {
+          maxSeq = ev.seq;
+        }
+        const norm = normalizeDesktopStreamEvent(ev, filter);
+        if (norm?.kind === 'turn_completed' || norm?.kind === 'done') {
+          turnDone = true;
+        }
+        onEvent(ev);
+      },
+      { signal: options?.signal },
+    );
+    cursor = maxSeq;
+    if (turnDone || options?.signal?.aborted) {
+      return;
+    }
+    await sleepMs(THREAD_TURN_POLL_MS, options?.signal);
+  }
+}
+
 /**
  * Replay persisted thread events only (closes after backlog). Use for session restore —
- * do not use open-ended `getThreadEvents` which follows the live subscription loop.
+ * do not use open-ended `getThreadEvents` for live turns (use `pollThreadTurnEvents`).
  */
 export async function replayThreadEvents(
   threadId: string,
@@ -1063,7 +1121,6 @@ async function consumeThreadEventsSse(
   options?: { signal?: AbortSignal; onChunk?: () => void },
 ): Promise<void> {
   const { invoke } = await import('@tauri-apps/api/core');
-  const { listen } = await import('@tauri-apps/api/event');
   const abort = options?.signal;
   let buffer = '';
   const unsubs: Array<() => void> = [];
@@ -1100,6 +1157,9 @@ async function consumeThreadEventsSse(
     };
 
     const onAbort = () => {
+      void invoke('runtime_cancel_sse').catch(() => {
+        /* sidecar may already be done */
+      });
       finish();
       resolve();
     };
@@ -1108,9 +1168,9 @@ async function consumeThreadEventsSse(
     void (async () => {
       try {
         unsubs.push(
-          await listen<string>('runtime://events-chunk', (ev) => {
+          await listenRuntimeSseEvent<string>('runtime://events-chunk', (payload) => {
             if (abort?.aborted) return;
-            buffer += ev.payload;
+            buffer += payload;
             const { drained, rest } = drainSseBlocks(buffer);
             buffer = rest;
             for (const block of drained) {
@@ -1129,16 +1189,16 @@ async function consumeThreadEventsSse(
           }),
         );
         unsubs.push(
-          await listen('runtime://events-done', () => {
+          await listenRuntimeSseEvent<unknown>('runtime://events-done', () => {
             flushTail();
             finish();
             resolve();
           }),
         );
         unsubs.push(
-          await listen<string>('runtime://events-error', (ev) => {
+          await listenRuntimeSseEvent<string>('runtime://events-error', (payload) => {
             finish();
-            reject(new Error(ev.payload));
+            reject(new Error(payload));
           }),
         );
         await invoke('runtime_get_sse', { path });

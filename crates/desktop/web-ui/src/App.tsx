@@ -24,7 +24,7 @@ import {
   patchThread,
   startThreadTurn,
   interruptThreadTurn,
-  getThreadEvents,
+  pollThreadTurnEvents,
   postResolveApproval,
   deleteSession,
   persistThreadSession,
@@ -1564,7 +1564,11 @@ export default function App() {
           toolProgressRafRef.current = null;
         }
         flushToolProgressToState();
+        if (!signal.aborted) {
+          controller.abort();
+        }
         const finishedThreadId = threadTurnRef.current.threadId;
+        streamControllersRef.current.delete('__pending__');
         if (finishedThreadId) {
           setStreamingThreadIds((prev) => {
             const next = new Set(prev);
@@ -1924,11 +1928,11 @@ export default function App() {
             turnId,
           };
 
-          await getThreadEvents(
+          await pollThreadTurnEvents(
             resumedThreadId,
             sinceSeq,
             (ev) => onSseEvent(ev, { turnId }),
-            { signal },
+            { signal, turnId },
           );
           finishOnce();
         } else {

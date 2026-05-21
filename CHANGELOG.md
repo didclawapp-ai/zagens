@@ -21,9 +21,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Docs:** [RUNTIME_EVOLUTION_ROADMAP.md](docs/tech/RUNTIME_EVOLUTION_ROADMAP.md) **v1.4** — 两轮审核吸收（§8b 已删、P2 命名统一、B-L1/B-L3、F1a/F1b、阶段 C 释义、§16 审核记录）；[UNDERLYING_ITERATION_REFERENCE.md](docs/tui/UNDERLYING_ITERATION_REFERENCE.md) §4 映射说明。
+
+## [0.4.3] - 2026-05-21
+
+### DS Pick (desktop)
+
+- **v0.4.3** — `deepseek-desktop`、`tauri.conf.json`、`web-ui/package.json` 与 About 面板对齐 **v0.4.3**。
+
 ### Fixed
 
-- **DS Pick (desktop):** Thread SSE (`getThreadEvents` / session replay) no longer duplicates reasoning text — Tauri `runtime_get_sse` / `runtime_post_stream` emit to the current window only; SSE listeners honor `AbortSignal` and unlisten on abort; switching sessions aborts the outgoing thread’s in-flight events stream.
+- **DS Pick (desktop):** Fix multi-window / continued-session chat stream duplication (`看到了看到了` / `TheThe user`) — runtime SSE proxy uses `emit_to` per window; Web UI binds SSE via `getCurrentWebviewWindow().listen`; resumed turns poll `replay_only` events instead of a long-lived `GET …/events` SSE (avoids stacked `runtime_get_sse` streams); `runtime_cancel_sse` stops in-flight proxy reads on abort; `finishOnce` aborts the turn `AbortSignal` after `turn.completed`.
 
 ## [0.4.2] - 2026-05-21
 
