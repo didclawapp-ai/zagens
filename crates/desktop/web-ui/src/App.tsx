@@ -48,6 +48,15 @@ import Sidebar from './components/Sidebar';
 import ApprovalDialog from './components/ApprovalDialog';
 import RightPanel, { type RightPanelView } from './components/RightPanel';
 import { loadWorkspaceFileIntoPreview, normalizeWorkspaceRelPath } from './lib/openWorkspaceFile';
+import {
+  createAgentWindow,
+  initWindowContext,
+  registerWindowThread,
+  threadOwnedByWindow,
+  updateWindowTitle,
+  getWindowLabel,
+  workspaceStorageKey,
+} from './lib/windowBridge';
 import { formatWorkspaceFileError } from './lib/workspaceFileOpenError';
 import type { PreviewState } from './components/preview/types';
 import type { AgentState } from './types/agent';
@@ -150,14 +159,14 @@ function loadRunModePreference(): DesktopRunModeId {
   }
 }
 
-function loadComposerPrefs(): {
+function loadComposerPrefs(windowLabel: string): {
   model: DesktopModelId;
   workspace: string;
 } {
   try {
     const wm = parseDesktopModelId(localStorage.getItem('deepseek-desktop-model'));
     const ws = normalizeWorkspaceForApi(
-      localStorage.getItem('deepseek-desktop-workspace')?.trim() ?? '',
+      localStorage.getItem(workspaceStorageKey(windowLabel))?.trim() ?? '',
     );
     const workspace =
       ws.length > 0 && !isUnsafeComposerWorkspace(ws) ? ws : '';
@@ -272,10 +281,13 @@ export default function App() {
   const { t } = useT();
   const [theme, setTheme] = useState<Theme>(loadTheme);
   const [platform, setPlatform] = useState('unknown');
-  const [selectedModel, setSelectedModel] = useState<DesktopModelId>(() => loadComposerPrefs().model);
-  const [selectedWorkspace, setSelectedWorkspace] = useState(() => loadComposerPrefs().workspace);
+  const [windowLabel, setWindowLabel] = useState('dev');
+  const [showAllSessions, setShowAllSessions] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<DesktopModelId>(() => loadComposerPrefs('main').model);
+  const [selectedWorkspace, setSelectedWorkspace] = useState(() => loadComposerPrefs('main').workspace);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [streaming, setStreaming] = useState(false);
+  const [streamingThreadIds, setStreamingThreadIds] = useState<Set<string>>(() => new Set());
+  const [pendingComposerStream, setPendingComposerStream] = useState(false);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [activeInspector, setActiveInspector] = useState<RightPanelView>(() => loadStoredInspector());
   const [resumedThreadId, setResumedThreadId] = useState<string | null>(null);
@@ -291,6 +303,23 @@ export default function App() {
     null,
   );
   const [routeIntent, setRouteIntent] = useState<DesktopRouteIntentOption>(() => loadRouteIntentPreference());
+
+  const streaming = useMemo(() => {
+    if (pendingComposerStream) return true;
+    const tid = resumedThreadId;
+    return Boolean(tid && streamingThreadIds.has(tid));
+  }, [pendingComposerStream, resumedThreadId, streamingThreadIds]);
+
+  const visibleSessions = useMemo(() => {
+    if (showAllSessions) return sessions;
+    const root = normalizeWorkspaceForApi(selectedWorkspace);
+    if (!root) return sessions;
+    return sessions.filter((s) => {
+      if (!s.workspace?.trim()) return true;
+      return normalizeWorkspaceForApi(s.workspace) === root;
+    });
+  }, [sessions, showAllSessions, selectedWorkspace]);
+
   const [approval, setApproval] = useState<ApprovalState | null>(null);
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [panelPreview, setPanelPreview] = useState<PreviewState | null>(null);
@@ -387,6 +416,18 @@ export default function App() {
 
   useKeyboardShortcuts([
     { key: 'k', ctrl: true, description: t('keyboard.newSession'), handler: () => handleNewSession() },
+    {
+      key: 'n',
+      ctrl: true,
+      shift: true,
+      global: true,
+      description: t('keyboard.newWindow'),
+      handler: () => {
+        void createAgentWindow(selectedWorkspace).catch((e) => {
+          toast.error((e as Error).message);
+        });
+      },
+    },
     { key: 'n', ctrl: true, description: t('keyboard.workspace'), handler: () => setActiveInspector('workspace') },
     { key: 'f12', global: true, description: t('keyboard.devtools'), handler: () => toggleDevtools() },
     {
@@ -399,7 +440,8 @@ export default function App() {
     },
   ]);
 
-  const eventAbortRef = useRef<AbortController | null>(null);
+  /** Per-thread stream abort; switching session does not abort background turns. */
+  const streamControllersRef = useRef<Map<string, AbortController>>(new Map());
   const threadTurnRef = useRef<{ threadId: string; turnId: string }>({
     threadId: '',
     turnId: '',
@@ -519,11 +561,27 @@ export default function App() {
     const ws = selectedWorkspace.trim();
     if (!ws) return;
     try {
-      localStorage.setItem('deepseek-desktop-workspace', ws);
+      localStorage.setItem(workspaceStorageKey(windowLabel), ws);
     } catch {
       /* ignore */
     }
-  }, [selectedWorkspace]);
+    void updateWindowTitle(ws);
+  }, [selectedWorkspace, windowLabel]);
+
+  useEffect(() => {
+    void (async () => {
+      const { label, primaryWorkspace } = await initWindowContext();
+      setWindowLabel(label);
+      if (primaryWorkspace.trim()) {
+        setSelectedWorkspace(primaryWorkspace);
+        return;
+      }
+      const prefs = loadComposerPrefs(label);
+      if (prefs.workspace) {
+        setSelectedWorkspace(prefs.workspace);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     void ensureDefaultComposerWorkspace(selectedWorkspace, setSelectedWorkspace);
@@ -634,7 +692,10 @@ export default function App() {
   /** Sidecar restart (e.g. save system settings) kills in-flight SSE — clear stale「生成中」UI. */
   const abortActiveStreamForSidecarRestart = useCallback(() => {
     if (!streamingRef.current) return;
-    eventAbortRef.current?.abort();
+    for (const c of streamControllersRef.current.values()) {
+      c.abort();
+    }
+    streamControllersRef.current.clear();
     const label = t('composer.runtimeSidecarRestart');
     setMessages((prev) =>
       prev.map((m) => {
@@ -656,7 +717,8 @@ export default function App() {
     if (session) {
       session.finishOnce();
     } else {
-      setStreaming(false);
+      setStreamingThreadIds(new Set());
+      setPendingComposerStream(false);
     }
     notifyRuntimeTransient(t('banner.runtimeRestartDuringStream'));
   }, [t, notifyRuntimeTransient]);
@@ -833,7 +895,8 @@ export default function App() {
         const info = await invoke<{ os: string; arch: string; version: string }>('get_platform_info');
         setPlatform(info.os);
         await ensureDefaultComposerWorkspace(
-          localStorage.getItem('deepseek-desktop-workspace')?.trim() ?? '',
+          localStorage.getItem(workspaceStorageKey(getWindowLabel()))?.trim() ??
+            selectedWorkspace,
           setSelectedWorkspace,
         );
       } catch {
@@ -952,7 +1015,6 @@ export default function App() {
   const handleSelectSession = useCallback(
     async (sessionId: string) => {
       const gen = ++selectSessionGenerationRef.current;
-      eventAbortRef.current?.abort();
       selectSessionAbortRef.current?.abort();
       const selectAbort = new AbortController();
       selectSessionAbortRef.current = selectAbort;
@@ -1041,6 +1103,7 @@ export default function App() {
           );
           setSelectedWorkspace(threadDetail.thread.workspace);
           setThreadTrustMode(Boolean(threadDetail.thread.trust_mode));
+          void registerWindowThread(resumed.thread_id);
           if (gen === selectSessionGenerationRef.current) {
             void refreshThreadContext(resumed.thread_id);
           }
@@ -1106,7 +1169,17 @@ export default function App() {
   }, [sessions, handleSelectSession]);
 
   const handleNewSession = useCallback(() => {
-    eventAbortRef.current?.abort();
+    const tid = resumedThreadIdRef.current;
+    if (tid) {
+      streamControllersRef.current.get(tid)?.abort();
+      streamControllersRef.current.delete(tid);
+      setStreamingThreadIds((prev) => {
+        const next = new Set(prev);
+        next.delete(tid);
+        return next;
+      });
+    }
+    setPendingComposerStream(false);
     selectSessionAbortRef.current?.abort();
     selectSessionGenerationRef.current += 1;
     setMessages([]);
@@ -1209,11 +1282,16 @@ export default function App() {
       session.markInterrupted();
       session.finishOnce();
     } else {
-      setStreaming(false);
+      setStreamingThreadIds(new Set());
+      setPendingComposerStream(false);
     }
 
     setApproval(null);
-    eventAbortRef.current?.abort();
+    const tid = threadTurnRef.current.threadId;
+    if (tid) {
+      streamControllersRef.current.get(tid)?.abort();
+      streamControllersRef.current.delete(tid);
+    }
     setLastTurnOutputTokens(null);
   }, [t]);
 
@@ -1371,9 +1449,12 @@ export default function App() {
     (outbound: ComposerOutboundMessage) => {
       if (!outbound.apiPrompt.trim() || streaming) return;
 
-      eventAbortRef.current?.abort();
-      eventAbortRef.current = new AbortController();
-      const signal = eventAbortRef.current.signal;
+      setPendingComposerStream(true);
+      const streamKey = resumedThreadIdRef.current ?? '__pending__';
+      streamControllersRef.current.get(streamKey)?.abort();
+      const controller = new AbortController();
+      streamControllersRef.current.set(streamKey, controller);
+      const signal = controller.signal;
 
       const userMsg: Message = {
         id: nextId(),
@@ -1391,7 +1472,6 @@ export default function App() {
       };
       setMessages((prev) => [...prev, assistantMsg]);
 
-      setStreaming(true);
       setRuntimeSessionEstablished(true);
       setAgentStates([]);
       pendingSpawnMetaRef.current.clear();
@@ -1474,7 +1554,16 @@ export default function App() {
           toolProgressRafRef.current = null;
         }
         flushToolProgressToState();
-        setStreaming(false);
+        const finishedThreadId = threadTurnRef.current.threadId;
+        if (finishedThreadId) {
+          setStreamingThreadIds((prev) => {
+            const next = new Set(prev);
+            next.delete(finishedThreadId);
+            return next;
+          });
+          streamControllersRef.current.delete(finishedThreadId);
+        }
+        setPendingComposerStream(false);
         setMessages((prev) => {
           const next = prev.map((m) =>
             m.id === assistantId ? { ...m, isStreaming: false } : m,
@@ -1542,6 +1631,14 @@ export default function App() {
             };
             if (norm.threadId) {
               setResumedThreadId(norm.threadId);
+              void registerWindowThread(norm.threadId);
+              setStreamingThreadIds((prev) => new Set(prev).add(norm.threadId));
+              setPendingComposerStream(false);
+              const pending = streamControllersRef.current.get('__pending__');
+              if (pending) {
+                streamControllersRef.current.delete('__pending__');
+                streamControllersRef.current.set(norm.threadId, pending);
+              }
             }
             break;
           case 'thinking_delta': {
@@ -1644,13 +1741,21 @@ export default function App() {
             }
             break;
           }
-          case 'approval_required':
-            setApproval({
-              toolCallId: norm.id,
-              toolName: norm.toolName,
-              description: norm.description,
-            });
+          case 'approval_required': {
+            const tid = threadTurnRef.current.threadId;
+            void (async () => {
+              const show =
+                !tid || !desktopHost || (await threadOwnedByWindow(tid));
+              if (show) {
+                setApproval({
+                  toolCallId: norm.id,
+                  toolName: norm.toolName,
+                  description: norm.description,
+                });
+              }
+            })();
             break;
+          }
           case 'turn_completed':
             finishOnce();
             maybePersistCompletedTurn();
@@ -1903,7 +2008,14 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen w-screen bg-canvas">
-      <TitleBar />
+      <TitleBar
+        desktopHost={desktopHost}
+        onNewWindow={() => {
+          void createAgentWindow(selectedWorkspace).catch((e) => {
+            toast.error((e as Error).message);
+          });
+        }}
+      />
       <div className="flex flex-1 min-h-0 bg-canvas">
       <ApprovalDialog
         open={approval != null}
@@ -1914,7 +2026,9 @@ export default function App() {
         onDeny={() => void handleApproveDecision('deny')}
       />
       <Sidebar
-        sessions={sessions}
+        sessions={visibleSessions}
+        showAllSessions={showAllSessions}
+        onToggleShowAllSessions={() => setShowAllSessions((v) => !v)}
         activeSessionId={activeSessionId}
         onNewSession={handleNewSession}
         onSelectSession={handleSelectSession}
@@ -2078,7 +2192,13 @@ export default function App() {
   );
 }
 
-function TitleBar() {
+function TitleBar({
+  desktopHost,
+  onNewWindow,
+}: {
+  desktopHost: boolean;
+  onNewWindow: () => void;
+}) {
   const { t } = useT();
   const handleMinimize = () => {
     void import('@tauri-apps/api/window').then(({ getCurrentWindow }) => getCurrentWindow().minimize());
@@ -2092,6 +2212,10 @@ function TitleBar() {
     });
   };
   const handleClose = () => {
+    if (desktopHost) {
+      void import('./lib/windowBridge').then(({ closeCurrentWindow }) => closeCurrentWindow());
+      return;
+    }
     void import('@tauri-apps/api/window').then(({ getCurrentWindow }) => getCurrentWindow().hide());
   };
 
@@ -2100,6 +2224,18 @@ function TitleBar() {
       data-tauri-drag-region
       className="flex items-center h-9 shrink-0 bg-canvas select-none"
     >
+      <div className="flex items-center gap-0.5 shrink-0 pl-2" data-tauri-drag-region="false">
+        {desktopHost && (
+          <button
+            type="button"
+            onClick={onNewWindow}
+            className="px-2 py-1 text-xs text-t-text-muted hover:text-t-text hover:bg-hover rounded transition-colors"
+            title={t('titlebar.newWindow')}
+          >
+            {t('titlebar.newWindow')}
+          </button>
+        )}
+      </div>
       <div className="flex-1 min-w-8" data-tauri-drag-region />
       <button
         type="button"

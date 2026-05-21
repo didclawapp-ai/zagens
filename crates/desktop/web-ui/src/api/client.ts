@@ -47,6 +47,8 @@ export interface SessionInfo {
   name: string;
   created_at?: number;
   updated_at?: number;
+  /** From runtime session metadata when available. */
+  workspace?: string;
 }
 
 export interface SessionDetailMessage {
@@ -940,9 +942,15 @@ export async function deleteSession(sessionId: string): Promise<void> {
 }
 
 export async function getSessions(): Promise<SessionInfo[]> {
-  const data = await fetchJson<{ sessions: Array<{ id: string; title: string }> }>('/v1/sessions');
+  const data = await fetchJson<{
+    sessions: Array<{ id: string; title: string; workspace?: string }>;
+  }>('/v1/sessions');
   const rows = data.sessions ?? [];
-  return rows.map((s) => ({ id: s.id, name: s.title }));
+  return rows.map((s) => ({
+    id: s.id,
+    name: s.title,
+    workspace: s.workspace?.trim() || undefined,
+  }));
 }
 
 /** Restore saved session into a runtime thread (Phase 2: seeds server-side history). */

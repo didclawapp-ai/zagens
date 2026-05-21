@@ -10,7 +10,9 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 use uuid::Uuid;
 
-const MAX_SESSIONS: usize = 6;
+/// Per-window PTY cap (see docs/desktop/multi-window-plan.md).
+const MAX_SESSIONS_PER_WINDOW: usize = 4;
+const MAX_SESSIONS_GLOBAL: usize = 16;
 
 pub struct TerminalManager {
     inner: Mutex<TerminalManagerInner>,
@@ -21,6 +23,7 @@ struct TerminalManagerInner {
 }
 
 struct LiveSession {
+    window_label: String,
     master: Arc<Mutex<Box<dyn MasterPty + Send>>>,
     writer: Arc<Mutex<Box<dyn Write + Send>>>,
     child: Arc<Mutex<Box<dyn portable_pty::Child + Send + Sync>>>,
@@ -34,6 +37,28 @@ impl Default for TerminalManager {
             }),
         }
     }
+}
+
+impl TerminalManager {
+    pub fn kill_all_for_window(&self, window_label: &str) {
+        let Ok(mut inner) = self.inner.lock() else {
+            return;
+        };
+        let ids: Vec<String> = inner
+            .sessions
+            .iter()
+            .filter(|(_, s)| s.window_label == window_label)
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in ids {
+            if let Some(session) = inner.sessions.remove(&id) {
+                if let Ok(mut child) = session.child.lock() {
+                    let _ = child.kill();
+                }
+            }
+        }
+    }
+
 }
 
 #[derive(Clone, Serialize)]
@@ -62,7 +87,6 @@ fn resolve_terminal_cwd(workspace: &str) -> Result<PathBuf, String> {
     let canon = path
         .canonicalize()
         .map_err(|e| format!("工作区路径无效: {e}"))?;
-    // PowerShell shows `FileSystem::\\?\F:\...` when cwd uses the Win32 verbatim prefix.
     Ok(PathBuf::from(
         crate::workspace_defaults::path_for_ui_display(canon),
     ))
@@ -125,7 +149,12 @@ fn pty_size(cols: u16, rows: u16) -> PtySize {
     }
 }
 
-fn spawn_reader_thread(app: AppHandle, id: String, mut reader: Box<dyn Read + Send>) {
+fn spawn_reader_thread(
+    app: AppHandle,
+    window_label: String,
+    id: String,
+    mut reader: Box<dyn Read + Send>,
+) {
     std::thread::spawn(move || {
         let mut buf = [0u8; 8192];
         loop {
@@ -133,7 +162,8 @@ fn spawn_reader_thread(app: AppHandle, id: String, mut reader: Box<dyn Read + Se
                 Ok(0) => break,
                 Ok(n) => {
                     let chunk = String::from_utf8_lossy(&buf[..n]).into_owned();
-                    let _ = app.emit(
+                    let _ = app.emit_to(
+                        &window_label,
                         "terminal-data",
                         TerminalDataPayload {
                             id: id.clone(),
@@ -149,12 +179,14 @@ fn spawn_reader_thread(app: AppHandle, id: String, mut reader: Box<dyn Read + Se
 
 #[tauri::command]
 pub fn spawn_terminal(
+    window: tauri::WebviewWindow,
     app: AppHandle,
     manager: State<'_, TerminalManager>,
     workspace: String,
     cols: u16,
     rows: u16,
 ) -> Result<String, String> {
+    let window_label = window.label().to_string();
     let cwd = resolve_terminal_cwd(&workspace)?;
     let id = Uuid::new_v4().to_string();
 
@@ -163,8 +195,18 @@ pub fn spawn_terminal(
         .lock()
         .map_err(|_| "终端管理器锁失败".to_string())?;
 
-    if inner.sessions.len() >= MAX_SESSIONS {
-        return Err(format!("最多同时打开 {MAX_SESSIONS} 个终端"));
+    if inner.sessions.len() >= MAX_SESSIONS_GLOBAL {
+        return Err(format!("最多同时打开 {MAX_SESSIONS_GLOBAL} 个终端"));
+    }
+    let per_window = inner
+        .sessions
+        .values()
+        .filter(|s| s.window_label == window_label)
+        .count();
+    if per_window >= MAX_SESSIONS_PER_WINDOW {
+        return Err(format!(
+            "本窗口最多同时打开 {MAX_SESSIONS_PER_WINDOW} 个终端"
+        ));
     }
 
     let pty_system = native_pty_system();
@@ -190,12 +232,18 @@ pub fn spawn_terminal(
     let master = Arc::new(Mutex::new(pair.master));
     let writer = Arc::new(Mutex::new(writer));
 
-    spawn_reader_thread(app.clone(), id.clone(), reader);
+    spawn_reader_thread(
+        app.clone(),
+        window_label.clone(),
+        id.clone(),
+        reader,
+    );
 
     let child = Arc::new(Mutex::new(child));
     let child_wait = Arc::clone(&child);
     let child_id = id.clone();
     let app_wait = app.clone();
+    let win_for_exit = window_label.clone();
     std::thread::spawn(move || {
         let code = match child_wait.lock() {
             Ok(mut c) => match c.wait() {
@@ -204,7 +252,8 @@ pub fn spawn_terminal(
             },
             Err(_) => -1,
         };
-        let _ = app_wait.emit(
+        let _ = app_wait.emit_to(
+            &win_for_exit,
             "terminal-exit",
             TerminalExitPayload {
                 id: child_id.clone(),
@@ -221,6 +270,7 @@ pub fn spawn_terminal(
     inner.sessions.insert(
         id.clone(),
         LiveSession {
+            window_label,
             master,
             writer,
             child,

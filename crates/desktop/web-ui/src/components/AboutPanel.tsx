@@ -1,6 +1,6 @@
 import { useT } from '../i18n';
 
-const APP_VERSION = '0.4.1';
+const APP_VERSION = '0.4.2';
 
 export default function AboutPanel() {
   const { t } = useT();

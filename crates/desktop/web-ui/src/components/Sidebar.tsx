@@ -19,6 +19,8 @@ interface SessionInfo {
 
 interface Props {
   sessions: SessionInfo[];
+  showAllSessions?: boolean;
+  onToggleShowAllSessions?: () => void;
   activeSessionId: string | null;
   onNewSession: () => void;
   onSelectSession?: (id: string) => void;
@@ -76,6 +78,8 @@ const navBtn = (active: boolean) =>
 
 export default function Sidebar({
   sessions,
+  showAllSessions = false,
+  onToggleShowAllSessions,
   activeSessionId,
   onNewSession,
   onSelectSession,
@@ -293,9 +297,22 @@ export default function Sidebar({
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto px-2 py-2">
-        <p className="px-2.5 py-2 text-[11px] font-semibold uppercase tracking-wider text-t-text-muted">
-          Sessions
-        </p>
+        <div className="flex items-center justify-between gap-1 px-2.5 py-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-t-text-muted">
+            Sessions
+          </p>
+          {onToggleShowAllSessions && (
+            <button
+              type="button"
+              onClick={onToggleShowAllSessions}
+              className="text-[10px] text-t-text-muted hover:text-accent transition-colors"
+              title={t('sidebar.showAllSessionsHint')}
+            >
+              {showAllSessions ? '✓ ' : ''}
+              {t('sidebar.showAllSessions')}
+            </button>
+          )}
+        </div>
         {sessions.length === 0 && (
           <p className="text-xs text-t-text-muted px-2.5 py-4 text-center">{t('common.noSessions')}</p>
         )}

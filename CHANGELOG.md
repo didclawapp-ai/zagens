@@ -21,6 +21,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-05-21
+
+### DS Pick (desktop)
+
+- **v0.4.2** — `deepseek-desktop`、`tauri.conf.json`、`web-ui/package.json` 与 About 面板对齐 **v0.4.2**。
+
+### Added
+
+- **DS Pick (desktop):** True multi-window (Cursor / VS Code model) — `WebviewWindow` per project, `tauri-plugin-single-instance`, tray/menu **新建窗口**, TitleBar + **Ctrl/Cmd+Shift+N**; per-window workspace `localStorage`, session list filter + **显示全部会话**; parallel turns per `thread_id` (switch session no longer aborts other streams); terminal `emit_to` per window; approval routed via `register_window_thread` / `thread_owned_by_window`.
+- **Docs:** [multi-window-plan.md](docs/desktop/multi-window-plan.md) — multi-window plan **closed** (M1–M4 shipped; M5 deferred to backlog §7.5).
+
 ## [0.4.1] - 2026-05-21
 
 ### DS Pick (desktop)

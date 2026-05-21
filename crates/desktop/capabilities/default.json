@@ -1,7 +1,8 @@
 {
   "identifier": "default",
-  "description": "默认权限集：核心功能 + 对话框 + 托盘",
-  "windows": ["main"],
+  "description": "默认权限集：核心功能 + 对话框 + 托盘 + 多窗口",
+  "local": true,
+  "windows": ["main", "pick-*"],
   "permissions": [
     "core:default",
     "core:window:allow-close",
@@ -12,6 +13,9 @@
     "core:window:allow-maximize",
     "core:window:allow-unmaximize",
     "core:window:allow-start-dragging",
+    "core:window:allow-create",
+    "core:window:allow-set-title",
+    "core:webview:allow-create-webview-window",
     "core:webview:allow-internal-toggle-devtools",
     "dialog:default",
     "dialog:allow-open",

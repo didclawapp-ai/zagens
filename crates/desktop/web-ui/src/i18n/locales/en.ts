@@ -8,6 +8,8 @@ const en: TranslationMap = {
     emptyPrompt: 'Start a conversation below',
   },
   sidebar: {
+    showAllSessions: 'Show all sessions',
+    showAllSessionsHint: 'Includes history from other workspaces',
     newSession: 'New Chat',
     workspace: 'Workspace',
     checklist: 'Checklist',
@@ -86,6 +88,7 @@ const en: TranslationMap = {
     minimize: 'Minimize',
     maximize: 'Maximize/Restore',
     close: 'Close',
+    newWindow: 'New window',
   },
   composer: {
     placeholder: 'How can I help? (paste screenshots supported)',
@@ -180,6 +183,7 @@ const en: TranslationMap = {
   },
   keyboard: {
     newSession: 'New Chat',
+    newWindow: 'New window',
     workspace: 'Workspace',
     devtools: 'Developer Tools',
   },

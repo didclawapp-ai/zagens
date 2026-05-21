@@ -6,6 +6,8 @@ const zhHans = {
     emptyPrompt: '在下方输入问题开始对话',
   },
   sidebar: {
+    showAllSessions: '显示全部会话',
+    showAllSessionsHint: '含其它工作区的历史会话',
     newSession: '新对话',
     workspace: '工作台',
     checklist: '清单',
@@ -83,6 +85,7 @@ const zhHans = {
     minimize: '最小化',
     maximize: '最大化/还原',
     close: '关闭',
+    newWindow: '新建窗口',
   },
   composer: {
     placeholder: '今天需要什么帮助？',
@@ -177,6 +180,7 @@ const zhHans = {
   },
   keyboard: {
     newSession: '新对话',
+    newWindow: '新建窗口',
     workspace: '工作台',
     devtools: '开发者工具',
   },

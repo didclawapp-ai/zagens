@@ -5,6 +5,7 @@ mod export_path;
 mod runtime_proxy;
 mod sidecar;
 mod terminal;
+mod window_registry;
 mod workspace_defaults;
 
 use std::sync::Arc;
@@ -15,21 +16,81 @@ use tauri::{
     Manager, WindowEvent,
 };
 use tokio::sync::Notify;
+use window_registry::WindowRegistry;
+
+fn focus_last_or_main(app: &tauri::AppHandle) {
+    let registry = app.state::<WindowRegistry>();
+    let label = registry.last_focused_label();
+    if window_registry::focus_window(app, &label).is_err() {
+        if let Some(w) = app.get_webview_window("main") {
+            let _ = w.show();
+            let _ = w.set_focus();
+        }
+    }
+}
+
+fn build_tray_menu(app: &tauri::AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, String> {
+    let show_item = MenuItemBuilder::with_id("show", "显示 DS Pick")
+        .build(app)
+        .map_err(|e| e.to_string())?;
+    let new_window_item = MenuItemBuilder::with_id("new_window", "新建窗口")
+        .build(app)
+        .map_err(|e| e.to_string())?;
+    let quit_item = MenuItemBuilder::with_id("quit", "退出")
+        .build(app)
+        .map_err(|e| e.to_string())?;
+    MenuBuilder::new(app)
+        .item(&show_item)
+        .item(&new_window_item)
+        .separator()
+        .item(&quit_item)
+        .build()
+        .map_err(|e| e.to_string())
+}
 
 fn main() {
     let shutdown = Arc::new(Notify::new());
 
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_process::init())
+        .manage(WindowRegistry::new());
+
+    builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+        let ws = window_registry::parse_workspace_from_args(&argv);
+        let _ = window_registry::open_or_focus_workspace(app, ws);
+    }));
+
+    builder
         .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                let _ = window.hide();
+            let app = window.app_handle();
+            let registry = app.state::<WindowRegistry>();
+            let terminal = app.state::<terminal::TerminalManager>();
+
+            match event {
+                WindowEvent::Focused(true) => {
+                    registry.set_last_focused(window.label());
+                }
+                WindowEvent::CloseRequested { api, .. } => {
+                    let label = window.label().to_string();
+                    if let Some(wv) = app.get_webview_window(&label) {
+                        window_registry::handle_close_requested(
+                            &wv,
+                            api,
+                            &registry,
+                            &terminal,
+                        );
+                    }
+                }
+                WindowEvent::Destroyed => {
+                    registry.unregister(window.label());
+                    terminal.kill_all_for_window(window.label());
+                }
+                _ => {}
             }
         })
         .setup(move |app| {
@@ -43,20 +104,22 @@ fn main() {
             });
             app.manage(terminal::TerminalManager::default());
 
-            // ── System tray ──
+            let registry = app.state::<WindowRegistry>();
+            let default_ws = workspace_defaults::default_composer_workspace()
+                .unwrap_or_else(|_| String::new());
+            let _ = registry.register("main", &default_ws);
+            registry.set_last_focused("main");
+            if let Some(main) = app.get_webview_window("main") {
+                let title = window_registry::window_title_for_workspace(&default_ws);
+                let _ = main.set_title(&title);
+            }
+
             let tray_image = app
                 .default_window_icon()
                 .cloned()
                 .expect("no default icon configured in tauri.conf.json bundle.icon");
 
-            let show_item = MenuItemBuilder::with_id("show", "显示 DS Pick").build(app)?;
-            let quit_item = MenuItemBuilder::with_id("quit", "退出").build(app)?;
-
-            let tray_menu = MenuBuilder::new(app)
-                .item(&show_item)
-                .separator()
-                .item(&quit_item)
-                .build()?;
+            let tray_menu = build_tray_menu(app.handle())?;
 
             let _tray = TrayIconBuilder::new()
                 .icon(tray_image)
@@ -69,31 +132,34 @@ fn main() {
                         ..
                     } = event
                     {
-                        if let Some(w) = tray.app_handle().get_webview_window("main") {
-                            let _ = w.show();
-                            let _ = w.set_focus();
-                        }
+                        focus_last_or_main(tray.app_handle());
                     }
                 })
-                .on_menu_event(|app: &tauri::AppHandle, event: tauri::menu::MenuEvent| match event.id().as_ref() {
-                    "show" => {
-                        if let Some(w) = app.get_webview_window("main") {
-                            let _ = w.show();
-                            let _ = w.set_focus();
+                .on_menu_event(|app: &tauri::AppHandle, event: tauri::menu::MenuEvent| {
+                    match event.id().as_ref() {
+                        "show" => focus_last_or_main(app),
+                        "new_window" => {
+                            let _ = window_registry::create_agent_window_impl(app, None);
                         }
-                    }
-                    "quit" => {
-                        if let Some(ctx) = app.try_state::<commands::AppContext>() {
-                            ctx.shutdown.notify_one();
+                        "quit" => {
+                            if let Some(ctx) = app.try_state::<commands::AppContext>() {
+                                ctx.shutdown.notify_one();
+                            }
+                            std::thread::sleep(std::time::Duration::from_millis(300));
+                            app.exit(0);
                         }
-                        std::thread::sleep(std::time::Duration::from_millis(300));
-                        app.exit(0);
+                        id if id.starts_with("focus:") => {
+                            let label = id.trim_start_matches("focus:");
+                            let _ = window_registry::focus_agent_window(
+                                app.clone(),
+                                label.to_string(),
+                            );
+                        }
+                        _ => {}
                     }
-                    _ => {}
                 })
                 .build(app)?;
 
-            // ── Sidecar ──
             let handle = app.handle().clone();
             let token_for_sidecar = token.clone();
             let shutdown_for_sidecar = shutdown.clone();
@@ -146,6 +212,14 @@ fn main() {
             terminal::write_terminal,
             terminal::resize_terminal,
             terminal::kill_terminal,
+            window_registry::get_window_label,
+            window_registry::get_window_workspace,
+            window_registry::create_agent_window,
+            window_registry::list_agent_windows,
+            window_registry::focus_agent_window,
+            window_registry::register_window_thread,
+            window_registry::thread_owned_by_window,
+            window_registry::close_current_window,
         ])
         .run(tauri::generate_context!())
         .expect("error while running DS Pick");

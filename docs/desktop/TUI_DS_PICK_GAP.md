@@ -24,6 +24,7 @@
 | 设置与文档 | `/config`，模型参数 | 健康检查，链接，打开用户数据目录；◐ **导出会话 JSON** 待实现 |
 | 离线 / 重连 | 崩溃检查点 + `--resume` | **✅ 运行时连接检测**（8s 间隔 probe），fetch 退避重试（指数退避 ×5），sidecar 自动重启（5s 心跳 ×3 失败），启动时 `waitForRuntimeReady`（90s 超时） |
 | 平台 | 终端界面 | 原生窗口，系统标题栏，通知（plugin 已注册）；◐ **系统托盘**（`Cargo.toml` 未启用 `tray-icon` feature） |
+| 多窗口 / 多项目 | TUI 单终端 | **✅ 真多窗口**（2026-05-21）：`WebviewWindow` + 单实例 + 每窗 workspace/会话过滤 + 并行 turn；见 [multi-window-plan.md](multi-window-plan.md) |
 
 ---
 

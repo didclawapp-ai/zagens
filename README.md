@@ -57,7 +57,7 @@
 
 ## DS Pick (Desktop UI)
 
-Features you interact with in the **v0.4.1** window (see [CHANGELOG.md](CHANGELOG.md)):
+Features you interact with in the **v0.4.2** window (see [CHANGELOG.md](CHANGELOG.md)):
 
 | Area | Shipped in DS Pick |
 |------|-------------------|
@@ -266,7 +266,7 @@ The sidecar (`deepseek-tui` binary, `serve --http` on loopback) exposes a local 
 - **[Tauri CLI 2](https://v2.tauri.app/start/prerequisites/)** — `cargo install tauri-cli --version "^2"` (once per machine)
 - Platform-specific Tauri [system dependencies](https://v2.tauri.app/start/prerequisites/)
 
-**Versions:** DS Pick desktop **v0.4.1** (`crates/desktop/`); workspace CLI/TUI crates **0.8.15** (root `Cargo.toml`).
+**Versions:** DS Pick desktop **v0.4.2** (`crates/desktop/`); workspace CLI/TUI crates **0.8.15** (root `Cargo.toml`).
 
 ## Quick Start
 
@@ -452,7 +452,7 @@ deepseek completion <shell>          # Generate shell completions
 - [配置](#配置)
 - [开源协议](#开源协议)
 
-> **非官方社区项目**，与 DeepSeek 公司无关。功能以本仓库 **v0.4.1** 为准；终端 TUI 仍是最完整交互面。桌面差距：[TUI_DS_PICK_GAP.md](docs/desktop/TUI_DS_PICK_GAP.md)。详细英文表见 [What Makes This Project Different](#what-makes-this-project-different)。
+> **非官方社区项目**，与 DeepSeek 公司无关。功能以本仓库 **v0.4.2** 为准；终端 TUI 仍是最完整交互面。桌面差距：[TUI_DS_PICK_GAP.md](docs/desktop/TUI_DS_PICK_GAP.md)。详细英文表见 [What Makes This Project Different](#what-makes-this-project-different)。
 
 ---
 
@@ -472,7 +472,7 @@ deepseek completion <shell>          # Generate shell completions
 
 ## DS Pick 桌面端
 
-**v0.4.1** 窗口内已具备：多会话聊天（流式/停止/思考/上下文条）、工作区预览与 **diff2html**、会话回放、子代理与清单侧栏、任务与技能（**定时自动化列表未展示**）、MCP/路由/用量/系统设置、托盘与通知、中/英 UI。
+**v0.4.2** 窗口内已具备：多会话聊天（流式/停止/思考/上下文条）、工作区预览与 **diff2html**、会话回放、子代理与清单侧栏、任务与技能（**定时自动化列表未展示**）、MCP/路由/用量/系统设置、托盘与通知、中/英 UI。
 
 尚未与 TUI 完全对齐的交互见 [TUI_DS_PICK_GAP.md](docs/desktop/TUI_DS_PICK_GAP.md)。
 
@@ -615,7 +615,7 @@ Sidecar（`deepseek-tui` 二进制，`serve --http`）在 loopback 暴露 HTTP/S
 - **[Tauri CLI 2](https://v2.tauri.app/start/prerequisites/)** — `cargo install tauri-cli --version "^2"`
 - 各平台 Tauri [系统依赖](https://v2.tauri.app/start/prerequisites/)
 
-**版本：** DS Pick 桌面 **v0.4.1**；workspace CLI/TUI **0.8.15**（根 `Cargo.toml`）。
+**版本：** DS Pick 桌面 **v0.4.2**；workspace CLI/TUI **0.8.15**（根 `Cargo.toml`）。
 
 ## 快速开始
 
