@@ -27,7 +27,7 @@
 | **L7 全仓** — `full-audit`（新包 + 全仓 Prompt） | ⚠️ 报告可用，流程未闭环 | `2026-05-20-full-audit` |
 | **L7c 全仓** — `2026-05-20-audit`（宽 Prompt + scratchpad） | ✅ 流程闭环；⚠️ 主代理路径 | `2026-05-20-audit` |
 | **L7d 全仓** — `2026-05-20-001`（子代理并行 + 14 HIGH） | ✅ 流程闭环；✅ 真子代理 | `2026-05-20-001` |
-| **L8 Phase D** — 审计过程可视化 | D1 ✅ / D2 ✅ / U2·U3 ⬜ | 见 [§L8](#l8--phase-d-审计过程可视化规划) |
+| **L8 Phase D** — 审计过程可视化 | D1 ✅ / D2 ✅ / U2 ✅ / U3 ⬜ | 见 [§L8](#l8--phase-d-审计过程可视化规划) |
 | **L9 地狱级四维** — 审查维度 Prompt | ⏸ 暂缓 | 见 [§L9](#l9--地狱级四维审计暂缓) |
 
 **结论：** Phase A 在单区与多区场景下可用；长程「落盘纪律」已验证。Phase B 在 `2026-05-19-phase-b-smoke` 上验收通过。**新包回归**：R1 ✅ · R2 ⚠️ · R3 ✅ · R4a ⚠️ · R4b ⏭ · **R5 ✅**（Auditor 预期 **FAIL** = 检测生效）；R6 可选见 §8.4。**L7 全仓**：`audit-001` defer 已修待复测；`full-audit` 见 [L7b](#l7b--全仓试跑-2026-05-20-full-audit2026-05-20)；**L7c** 见 [§L7c](#l7c--全仓试跑-2026-05-20-audit2026-05-20)。**下一步产品：** [Phase D 可视化](#l8--phase-d-审计过程可视化规划)（design [§6.13](audit-scratchpad-design.md#613-phase-d--审计过程可视化路线图-未实现)）。
@@ -823,7 +823,7 @@ L7d 是 **D1/D2 可视化** 的理想复测场景：子代理轨应有行、find
 | **D2** | D2.1 | inventory vs checklist 双轨 | 两数不一致时黄标 + `contract_warnings` |
 | **D2** | D2.2 | 子代理轨 | spawn 后面板有行；全程 0 行且 transcript 含 spawn → 警告 |
 | **D2** | D2.3 | Findings 条带 | verified/open 计数与 `notes.jsonl` 一致 |
-| **D2** | U2 | Task / Sub-agent 分栏 + 未读徽章 | 与 §7.1 用语一致 |
+| **D2** | U2 | Task / Sub-agent 分栏 + 未读徽章 | ✅ 与 §7.1 用语一致 |
 | **D2** | U3 | 审计模式 hard block（accounted≥85%） | 未达标时 deliverables `write_file` 被拦 + UI 说明 |
 
 ### 建议实现顺序
@@ -836,7 +836,7 @@ D-a: D1.1 + D1.2 + D1.3  →  D-b: D2.1 + D2.2  →  D-c: U2 + U3 + D2.3
 
 在 L7c 同类全库 Prompt 上再跑一轮；**人为**在 area-3 只 `append` 不 `set_area`，确认 D1.2 红灯；修复后续审至 35/35。
 
-**状态：** **D1 ✅** · **D2 ✅**（2026-05-20）：D2.1 双轨 + `contract_warnings`；D2.2 子代理计数/口述 spawn 警告；D2.3 findings 条带（severity）；**U2/U3 ⬜**（D-c）。
+**状态：** **D1 ✅** · **D2 ✅** · **U2 ✅**（2026-05-20）：D2.1 双轨 + `contract_warnings`；D2.2 子代理计数/口述 spawn 警告；D2.3 findings 条带（severity）；U2 侧栏 Task/子代理分栏 + Completed 未读徽章；**U3 ⬜**（D-c）。
 
 ---
 

@@ -15,6 +15,10 @@ import type {
   DesktopTaskTypeResolved,
 } from '../types/desktop';
 import {
+  appendWorkspaceMentionToText,
+  formatWorkspaceMention,
+} from '../lib/composerWorkspaceMention';
+import {
   composerRoutingStatusLabel,
   DESKTOP_MODEL_LABELS,
   DESKTOP_MODEL_SHORT_LABELS,
@@ -415,6 +419,8 @@ interface Props {
   lastTurnOutputTokens?: number | null;
   /** Office task session — hides Plan/Yolo and code-only chrome. */
   officeSession?: boolean;
+  /** Files panel「添加至对话」— bump `nonce` to append `@path` to the input. */
+  workspaceMention?: { relPath: string; isDirectory?: boolean; nonce: number };
 }
 
 export default function Composer({
@@ -447,6 +453,7 @@ export default function Composer({
   lastApiInputTokens = null,
   lastTurnOutputTokens = null,
   officeSession = false,
+  workspaceMention,
 }: Props) {
   const { t } = useT();
   const [text, setText] = useState('');
@@ -474,6 +481,23 @@ export default function Composer({
   const moreMenuRef = useRef<HTMLDivElement>(null);
   const workspaceTriggerWrapRef = useRef<HTMLDivElement>(null);
   const workspacePopoverPanelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!workspaceMention?.nonce || !workspaceMention.relPath.trim()) return;
+    const token = formatWorkspaceMention(
+      workspaceMention.relPath,
+      Boolean(workspaceMention.isDirectory),
+    );
+    if (!token) return;
+    setText((prev) => appendWorkspaceMentionToText(prev, token));
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      const len = el.value.length;
+      el.setSelectionRange(len, len);
+    });
+  }, [workspaceMention?.nonce, workspaceMention?.relPath, workspaceMention?.isDirectory]);
 
   useEffect(() => {
     if (textareaRef.current) {

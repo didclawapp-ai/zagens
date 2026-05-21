@@ -823,6 +823,10 @@ export async function cancelTask(taskId: string): Promise<TaskRecord> {
   return postJson<TaskRecord>(`/v1/tasks/${encodeURIComponent(taskId)}/cancel`, {});
 }
 
+export async function clearFinishedTasks(): Promise<{ removed: number }> {
+  return postJson<{ removed: number }>('/v1/tasks/clear', {});
+}
+
 export async function fetchAutomations(): Promise<AutomationRecord[]> {
   return fetchJson<AutomationRecord[]>('/v1/automations');
 }

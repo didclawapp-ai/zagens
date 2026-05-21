@@ -1,5 +1,9 @@
 export type TaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'canceled';
 
+export function isTerminalTaskStatus(status: TaskStatus): boolean {
+  return status === 'completed' || status === 'failed' || status === 'canceled';
+}
+
 /** Task record from GET /v1/tasks/:id (detail) */
 export interface TaskRecord {
   schema_version: number;

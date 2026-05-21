@@ -1,6 +1,6 @@
 # 工作台「目录」Tab — 方案与实施跟踪
 
-> **状态：** 实施中 — 阶段 A/B/C1 已落地（2026-05-21）  
+> **状态：** 实施中 — 阶段 A/B/D、C1/C2/C3、A6、E3（变更筛选）已落地（2026-05-21）  
 > **范围：** DS Pick 右侧面板 · 工作台 · **目录** 子 Tab（`RightPanel` `workspaceTab === 'files'`）  
 > **目标：** 提升 monorepo 工作区浏览效率，强化与预览 / 对话 / Diff / 审计场景的联动；不替代 Composer 的「选择工作区」职责。  
 > **相关：** [DEV_NOTES.md](DEV_NOTES.md)、[PREVIEW_ARCHITECTURE.md](PREVIEW_ARCHITECTURE.md)、[docs/tech/API_DESIGN.md](../tech/API_DESIGN.md) § workspace browse、[TUI_DS_PICK_GAP.md](TUI_DS_PICK_GAP.md)
@@ -14,13 +14,13 @@
 | 阶段 | 主题 | 状态 | 目标版本 / 备注 |
 |------|------|------|-----------------|
 | **A** | 基础体验（滚动、工具栏、路径区、i18n） | ✅ | `WorkspaceFilesPanel` + `FlatIcons` |
-| **B** | 过滤与噪音控制（搜索、忽略目录） | ✅ | denylist + 显示隐藏开关 |
-| **C** | 联动（预览高亮、对话定位、Diff 跳转） | 🔶 | C1 预览高亮 + `focusFilesRelPath`；C2/C3 ⬜ |
+| **B** | 过滤与噪音控制（搜索、忽略目录） | ✅ | 全工作区搜索 + denylist + 显示隐藏；B4 虚拟列表 |
+| **C** | 联动（预览高亮、对话定位、Diff 跳转） | ✅ | C1–C3：`focusFilesRelPath`、对话/ Diff「在目录中显示」 |
 | **D** | 树形懒加载（可选） | ✅ | `WorkspaceFileTree` + `useWorkspaceDirCache` |
-| **E** | Agent 增强（批量 @、审计筛选、敏感路径提示） | ⬜ | Office / scratchpad 场景 |
+| **E** | Agent 增强（批量 @、审计筛选、敏感路径提示） | 🔶 | E1/E4 ✅；E3 Office 预设 ✅；E2 ⬜ |
 | **F** | 后端增强（大目录上限、可选 git 状态） | ⬜ | `runtime_api.rs` |
 
-**最近更新：** 2026-05-21 — 阶段 D：懒加载树形视图、列表/树切换、展开状态 session 持久化（按工作区+线程）。
+**最近更新：** 2026-05-21 — C2/C3 对话与 Diff「在目录中显示」、定位滚入视口、A6 键盘、`/` 搜索、E3 Office 目录预设（含本轮变更）。
 
 ---
 
@@ -149,13 +149,13 @@
 
 ## 5. 功能：过滤与噪音
 
-### 5.1 当前层搜索（阶段 B）
+### 5.1 工作区文件搜索（阶段 B，原「当前层筛选」已升级）
 
-- 输入框过滤**当前已加载**的 `browseEntries`（客户端 `filter`，无需新 API）；
-- 快捷键 `/` 聚焦（桌面 WebView 内不与全局冲突即可）；
-- 无匹配时显示空态文案。
+- **同一输入框**：有内容时全工作区 BFS 搜索（`browse` API，跳过 denylist 目录）；无内容时正常浏览；
+- 防抖 320ms；最多 200 条结果 / 1200 目录扫描；`Esc` 清空；
+- 快捷键 `/` 聚焦搜索框。
 
-**状态：** ⬜ B1
+**状态：** ✅ B1（2026-05-21 升级）
 
 ### 5.2 默认折叠 / 隐藏目录
 
@@ -296,7 +296,7 @@ GET /v1/threads/{id}/workspace/browse?path={rel}
 - [x] A3 目录 Tab i18n（`workspaceFiles` + `workbench` + `panels`）
 - [x] A4 列表独立滚动
 - [x] A5 文件/文件夹图标（`FlatIcons` / `WorkspaceEntryIcon`）
-- [ ] A6 键盘导航（可选）
+- [x] A6 键盘导航（`/` 聚焦搜索、Backspace 上级）
 - [x] A7 上级按钮
 - [x] A8 刷新按钮
 - [x] A9 打开当前目录（资源管理器）
@@ -306,13 +306,13 @@ GET /v1/threads/{id}/workspace/browse?path={rel}
 - [x] B1 当前层搜索框
 - [x] B2 默认 denylist 隐藏
 - [x] B3 「显示隐藏项」开关 + localStorage
-- [ ] B4 大列表虚拟滚动（>500 条时）
+- [x] B4 大列表虚拟滚动（≥48 条时窗口化渲染）
 
 ### 阶段 C — 联动
 
 - [x] C1 预览文件高亮 + 自动展开父路径（`focusFilesRelPath`）
-- [ ] C2 对话内路径跳转目录 Tab
-- [ ] C3 Diff 列表 → 目录定位
+- [x] C2 对话内路径跳转目录 Tab（右键「在目录中显示」，左键仍打开预览）
+- [x] C3 Diff 列表 → 目录定位
 
 ### 阶段 D — 树形（可选）
 
@@ -324,7 +324,7 @@ GET /v1/threads/{id}/workspace/browse?path={rel}
 
 - [x] E1 行内「添加至对话」（hover `+`）
 - [ ] E2 多选批量路径
-- [ ] E3 Office 目录筛选预设
+- [x] E3 Office 目录筛选预设（全部 / deliverables / docs / 本轮变更）
 - [x] E4 敏感路径弱提示
 
 ### 阶段 F — 后端（可选）

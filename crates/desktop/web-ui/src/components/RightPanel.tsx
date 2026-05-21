@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { extractDiffRelPaths } from '../lib/diff/diffEntries';
 import type { invoke as InvokeFn } from '@tauri-apps/api/core';
 import ApiKeyForm from './ApiKeyForm';
 import McpPanel from './McpPanel';
@@ -29,6 +30,7 @@ import { isRuntimeApiAvailable } from '../lib/runtimeReachable';
 import { toast } from '../lib/toast';
 import PanelEdgeSeam from './PanelEdgeSeam';
 import AboutPanel from './AboutPanel';
+import AuditScratchpadPanel from './AuditScratchpadPanel';
 
 export type RightPanelView =
   | 'workspace'
@@ -37,11 +39,13 @@ export type RightPanelView =
   | 'system'
   | 'mcp'
   | 'usage'
-  | 'tasks-skills'
+  | 'tasks'
+  | 'skills'
   | 'agents'
   | 'routing'
   | 'index'
   | 'checklist'
+  | 'audit'
   | 'mermaid'
   | 'about';
 
@@ -95,6 +99,9 @@ interface Props {
   preview: PreviewState | null;
   onClosePreview: () => void;
   openWorkspaceFile: (relPath: string, title?: string) => Promise<void>;
+  /** Reveal path in Files tab without opening preview. */
+  revealWorkspaceFile?: (relPath: string) => void;
+  addWorkspaceFileToChat?: (relPath: string, isDirectory?: boolean) => void;
   /** Bumped when parent wants the workspace panel to show the Files tab (e.g. chat link). */
   focusFilesNonce: number;
   /** Optional path to reveal when `focusFilesNonce` bumps (parent dir opened). */
@@ -105,6 +112,10 @@ interface Props {
   agentStates: AgentState[];
   /** Called when ChecklistPanel detects first data — parent switches view. */
   onRequestChecklist?: () => void;
+  /** Called when AuditScratchpadPanel detects first run — parent may switch view. */
+  onRequestAudit?: () => void;
+  subagentActiveCount?: number;
+  narrativeSpawnSuspected?: boolean;
   /** Model turn in progress — checklist panel polls faster. */
   streaming?: boolean;
   /** Chat messages — used by MermaidPanel to extract mermaid code blocks. */
@@ -125,11 +136,13 @@ const PANEL_TITLE_KEYS: Record<RightPanelView, TranslationKey> = {
   system: 'panels.system',
   mcp: 'panels.mcp',
   usage: 'panels.usage',
-  'tasks-skills': 'panels.tasksSkills',
+  tasks: 'panels.tasks',
+  skills: 'panels.skills',
   agents: 'panels.agents',
   routing: 'panels.routing',
   index: 'panels.index',
   checklist: 'panels.checklist',
+  audit: 'panels.audit',
   mermaid: 'panels.mermaid',
   about: 'panels.about',
 };
@@ -167,12 +180,15 @@ export default function RightPanel({
   preview,
   onClosePreview,
   openWorkspaceFile,
+  revealWorkspaceFile,
+  addWorkspaceFileToChat,
   focusFilesNonce,
   focusFilesRelPath,
   focusDiffNonce,
   onRequestDiff,
   agentStates,
   onRequestChecklist,
+  onRequestAudit,
   streaming = false,
   messages,
   onRequestMermaid,
@@ -180,8 +196,14 @@ export default function RightPanel({
   routeIntent,
   onRouteIntentChange,
   officeSession = false,
+  subagentActiveCount = 0,
+  narrativeSpawnSuspected = false,
 }: Props) {
   const { t } = useT();
+  const officeChangePaths = useMemo(
+    () => (officeSession ? extractDiffRelPaths(messages) : []),
+    [officeSession, messages],
+  );
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTabId>(() => {
     try {
       const s = sessionStorage.getItem(WORKSPACE_TAB_KEY);
@@ -506,27 +528,7 @@ export default function RightPanel({
         style={{ width: panelWidth }}
       >
       <div className="flex shrink-0 items-center bg-canvas-alt/40 px-4 py-3">
-        <h2 className="flex-1 text-sm font-semibold text-t-text">{t(PANEL_TITLE_KEYS[view])}</h2>
-        {view === 'workspace' && desktopHost && (
-          <button
-            type="button"
-            className="ml-auto px-2 py-1 text-[10px] text-t-text-muted hover:text-t-text hover:bg-hover rounded transition-colors"
-            title={t('workbench.openWorkspaceInShell')}
-            onClick={async () => {
-              try {
-                const { invoke } = await import('@tauri-apps/api/core');
-                await invoke('open_in_shell', { path: workspaceRoot });
-              } catch {
-                /* ignore */
-              }
-            }}
-          >
-            <svg viewBox="0 0 24 24" className="inline w-3.5 h-3.5 mr-1 stroke-current" style={{ fill: 'none', strokeWidth: 1.6 }}>
-              <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
-            </svg>
-            {t('workbench.openFolder')}
-          </button>
-        )}
+        <h2 className="text-sm font-semibold text-t-text">{t(PANEL_TITLE_KEYS[view])}</h2>
       </div>
 
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden text-sm text-t-text">
@@ -707,8 +709,10 @@ export default function RightPanel({
                       runtimeOk={runtimeOk}
                       desktopHost={desktopHost}
                       officeSession={officeSession}
+                      officeChangePaths={officeChangePaths}
                       preview={preview}
                       openWorkspaceFile={openWorkspaceFile}
+                      onAddToChat={addWorkspaceFileToChat}
                       focusFilesNonce={focusFilesNonce}
                       focusFilesRelPath={focusFilesRelPath}
                       externalRefreshNonce={filesRefreshNonce}
@@ -784,6 +788,7 @@ export default function RightPanel({
                   {workspaceTab === 'diff' && (
                     <DiffPanel
                       messages={messages}
+                      onRevealInFiles={revealWorkspaceFile}
                       active={view === 'workspace' && workspaceTab === 'diff'}
                       onDetected={
                         view === 'workspace' && workspaceTab === 'diff'
@@ -838,8 +843,18 @@ export default function RightPanel({
           />
         )}
 
-        {view === 'tasks-skills' && (
+        {view === 'tasks' && (
           <AutomationPanel
+            variant="tasks"
+            runtimeConn={runtimeConn}
+            streaming={streaming}
+            runtimeSessionEstablished={runtimeSessionEstablished}
+          />
+        )}
+
+        {view === 'skills' && (
+          <AutomationPanel
+            variant="skills"
             runtimeConn={runtimeConn}
             streaming={streaming}
             runtimeSessionEstablished={runtimeSessionEstablished}
@@ -865,6 +880,19 @@ export default function RightPanel({
             threadId={resumedThreadId ?? ''}
             pollFast={streaming || view === 'checklist'}
             onDetected={onRequestChecklist}
+          />
+        </div>
+        )}
+
+        {!officeSession && (
+        <div style={{ display: view === 'audit' ? undefined : 'none' }}>
+          <AuditScratchpadPanel
+            threadId={resumedThreadId ?? ''}
+            pollFast={streaming || view === 'audit'}
+            onOpenWorkspacePath={openWorkspaceFile}
+            subagentActiveCount={subagentActiveCount}
+            narrativeSpawnSuspected={narrativeSpawnSuspected}
+            onDetected={onRequestAudit}
           />
         </div>
         )}

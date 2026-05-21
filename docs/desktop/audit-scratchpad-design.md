@@ -1,6 +1,6 @@
 # 审计工作记忆（Audit Scratchpad）方案草稿
 
-> **状态：** Phase A ✅ · **Phase B ✅** · **Phase C0–C3 ✅**（见 [audit-scratchpad-test.md](audit-scratchpad-test.md)）；**C4** 远期（§6.12.9）· **Phase D1/D2** ✅ · **U2/U3** ⬜（§6.13，试跑 [§L8](audit-scratchpad-test.md#l8--phase-d-审计过程可视化规划)）  
+> **状态：** Phase A ✅ · **Phase B ✅** · **Phase C0–C3 ✅**（见 [audit-scratchpad-test.md](audit-scratchpad-test.md)）；**C4** 远期（§6.12.9）· **Phase D1/D2/U2** ✅ · **U3** ⬜（§6.13，试跑 [§L8](audit-scratchpad-test.md#l8--phase-d-审计过程可视化规划)）  
 > **范围：** DS Pick / TUI 共用 runtime；面向**长程、全库级代码审查**与同类「多步探索 → 最终报告」任务。  
 > **相关：** [HARNESS.md](HARNESS.md)（Harness 定位、JD 映射、与 DeepSeek 关系备忘）、[agent-reliability-craft-plan.md](../agent-reliability-craft-plan.md)、[auditor-subagent-design.md](auditor-subagent-design.md)、`crates/tui/src/tools/subagent/blackboard.rs`、`crates/tui/src/prompts/base.md` § Full-repository code review mode。
 
@@ -940,7 +940,7 @@ B5（§6.7）首版只交付 **横条 + status API**；§6.13 是 B5 的 **二�
 | D2.1 | **双轨进度** | 横条或面板同时显示 **inventory accounted** vs **checklist 完成数**；不一致黄标 | 仅 checklist 完成、inventory 全 pending 时出现警告 |
 | D2.2 | **子代理轨** | 子代理列表关联 `task_id=run_id`；**0 行 agent 且 transcript 含 agent_spawn** →「口述 spawn / 未派出」 | 对照 L7c `source:main` |
 | D2.3 | **Findings 条带** | `verified` / `open` / `deferred` 按 severity 计数；只读过滤 `notes.jsonl` | 与 P2「仅 verified」规则一致 |
-| U2 | **Task vs Sub-agent 分栏** | Task 面板与子代理面板分离；各自 **Completed 未读** 徽章 | 对齐 §14、§7.1 |
+| U2 | **Task vs Sub-agent 分栏** | Task 面板与子代理面板分离；各自 **Completed 未读** 徽章 | ✅ 对齐 §14、§7.1 |
 | U3 | **审计模式开关** | thread 绑定 `scratchpad_run_id` 后，C1 **hard block** 直至 accounted ≥ 85%（可配置） | 未达标时 `write_file` deliverables 被拦且 UI 说明原因 |
 
 **档 D3 — 远期（有 schema 再做）**
@@ -1172,7 +1172,7 @@ B5（§6.7）首版只交付 **横条 + status API**；§6.13 是 B5 的 **二�
 | # | 措施 | Phase D ID |
 |---|------|------------|
 | U1 | 横条：`notes N` 且 accounted=0 时红色提示「未 set_area」 | D1.2 |
-| U2 | **分栏**：Sub-agent 面板（`agent_*`）与 Task 面板（`task_*`）；各自 **Completed 未读** 徽章 | U2 / D2 |
+| U2 | **分栏**：Sub-agent 面板（`agent_*`）与 Task 面板（`task_*`）；各自 **Completed 未读** 徽章 | ✅ U2 / D2 |
 | U3 | 审计模式开关：绑定 thread 后强制 C1 hard block 直至 accounted ≥ 85% | U3 |
 
 ### 14.4 与 §10 开放问题的关系

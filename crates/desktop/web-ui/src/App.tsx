@@ -3,6 +3,17 @@ import {
   countActiveSubagents,
   detectNarrativeSpawnWithoutAgents,
 } from './lib/auditSpawnDetect';
+import { useInspectorUnread } from './lib/useInspectorUnread';
+import {
+  isAgentSpawnToolName,
+  parseAgentSpawnInput,
+} from './lib/agentSpawnMeta';
+import {
+  metaFromListRow,
+  metaFromSpawn,
+  upsertAgentInList,
+} from './lib/agentStateUpsert';
+import type { AgentSpawnMeta } from './lib/agentSpawnMeta';
 import {
   postStreamTurn,
   getSessions,
@@ -31,7 +42,7 @@ import {
 import { useT } from './i18n';
 import { normalizeDesktopStreamEvent, type NormalizedStreamEvent, type TurnUsage } from './api/streamNormalize';
 import ChatView from './components/ChatView';
-import AuditScratchpadBar from './components/AuditScratchpadBar';
+import { useAuditNavActivity } from './lib/useAuditNavActivity';
 import Composer, { type ComposerOutboundMessage } from './components/Composer';
 import Sidebar from './components/Sidebar';
 import ApprovalDialog from './components/ApprovalDialog';
@@ -216,10 +227,10 @@ function loadStoredActiveSessionId(): string | null {
 function loadStoredInspector(): RightPanelView {
   try {
     let s = localStorage.getItem(ACTIVE_INSPECTOR_STORAGE_KEY);
-    if (s === 'automation') {
-      s = 'tasks-skills';
+    if (s === 'automation' || s === 'tasks-skills') {
+      s = 'tasks';
       try {
-        localStorage.setItem(ACTIVE_INSPECTOR_STORAGE_KEY, 'tasks-skills');
+        localStorage.setItem(ACTIVE_INSPECTOR_STORAGE_KEY, 'tasks');
       } catch {
         /* ignore */
       }
@@ -230,11 +241,13 @@ function loadStoredInspector(): RightPanelView {
       s === 'settings' ||
       s === 'mcp' ||
       s === 'usage' ||
-      s === 'tasks-skills' ||
+      s === 'tasks' ||
+      s === 'skills' ||
       s === 'agents' ||
       s === 'routing' ||
       s === 'index' ||
       s === 'checklist' ||
+      s === 'audit' ||
       s === 'mermaid' ||
       s === 'about'
     ) {
@@ -286,7 +299,12 @@ export default function App() {
     null,
   );
   const [focusWorkspaceDiffNonce, setFocusWorkspaceDiffNonce] = useState(0);
+  const [composerMentionNonce, setComposerMentionNonce] = useState(0);
+  const [composerMentionRel, setComposerMentionRel] = useState<string | null>(null);
+  const [composerMentionIsDir, setComposerMentionIsDir] = useState(false);
   const [agentStates, setAgentStates] = useState<AgentState[]>([]);
+  /** `agent_spawn` tool input keyed by tool-call id until output returns `agent_id`. */
+  const pendingSpawnMetaRef = useRef<Map<string, AgentSpawnMeta>>(new Map());
   const [contextWindowTokens, setContextWindowTokens] = useState(DEFAULT_CONTEXT_WINDOW_TOKENS);
   /** Thread detail for empty-transcript fallback only (not summed for context %). */
   const [threadDetailForContext, setThreadDetailForContext] = useState<
@@ -404,6 +422,7 @@ export default function App() {
   const messagesRef = useRef<Message[]>([]);
   /** User chose another inspector tab; do not yank them back to checklist on poll. */
   const suppressChecklistAutoSwitchRef = useRef(false);
+  const suppressAuditAutoSwitchRef = useRef(false);
 
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
@@ -436,7 +455,17 @@ export default function App() {
 
   useEffect(() => {
     suppressChecklistAutoSwitchRef.current = false;
+    suppressAuditAutoSwitchRef.current = false;
   }, [resumedThreadId]);
+
+  const { taskActivity, agentActivity, checklistActivity, acknowledgeInspectorView } =
+    useInspectorUnread({
+      agentStates,
+      resumedThreadId,
+      activeInspector,
+      runtimeSessionEstablished,
+      streaming,
+    });
 
   const handleInspectorChange = useCallback(
     (view: RightPanelView) => {
@@ -446,16 +475,32 @@ export default function App() {
       if (view === 'checklist') {
         suppressChecklistAutoSwitchRef.current = false;
       }
+      if (activeInspector === 'audit' && view !== 'audit') {
+        suppressAuditAutoSwitchRef.current = true;
+      }
+      if (view === 'audit') {
+        suppressAuditAutoSwitchRef.current = false;
+      }
+      acknowledgeInspectorView(view);
       setActiveInspector(view);
     },
-    [activeInspector],
+    [activeInspector, acknowledgeInspectorView],
   );
 
   const handleRequestChecklist = useCallback(() => {
     if (suppressChecklistAutoSwitchRef.current) {
       return;
     }
+    setRightPanelCollapsed(false);
     setActiveInspector('checklist');
+  }, []);
+
+  const handleRequestAudit = useCallback(() => {
+    if (suppressAuditAutoSwitchRef.current) {
+      return;
+    }
+    setRightPanelCollapsed(false);
+    setActiveInspector('audit');
   }, []);
 
   useEffect(() => {
@@ -1089,6 +1134,7 @@ export default function App() {
       activeInspector === 'agents' ||
       activeInspector === 'index' ||
       activeInspector === 'checklist' ||
+      activeInspector === 'audit' ||
       activeInspector === 'routing'
     ) {
       setActiveInspector('workspace');
@@ -1202,14 +1248,28 @@ export default function App() {
     setPanelPreview(null);
   }, []);
 
+  const addWorkspaceFileToChat = useCallback((relPath: string, isDirectory = false) => {
+    const rel = normalizeWorkspaceRelPath(relPath);
+    if (!rel) return;
+    setComposerMentionRel(rel);
+    setComposerMentionIsDir(isDirectory);
+    setComposerMentionNonce((n) => n + 1);
+  }, []);
+
+  const revealWorkspaceFileInDirectory = useCallback((relPath: string) => {
+    const rel = normalizeWorkspaceRelPath(relPath);
+    if (!rel) return;
+    setActiveInspector('workspace');
+    setFocusWorkspaceFilesRelPath(rel);
+    setFocusWorkspaceFilesNonce((n) => n + 1);
+  }, []);
+
   const openWorkspaceFileForPreview = useCallback(
     async (relPath: string, title?: string) => {
       if (!isRuntimeApiAvailable(runtimeConn, runtimeReachability)) {
         throw new Error(t('banner.runtimeNotConnected'));
       }
-      setActiveInspector('workspace');
-      setFocusWorkspaceFilesRelPath(normalizeWorkspaceRelPath(relPath));
-      setFocusWorkspaceFilesNonce((n) => n + 1);
+      revealWorkspaceFileInDirectory(relPath);
       const state = await loadWorkspaceFileIntoPreview({
         relPath,
         title,
@@ -1219,7 +1279,7 @@ export default function App() {
       });
       setPanelPreview(state);
     },
-    [runtimeConn, runtimeReachability, selectedWorkspace, resumedThreadId, desktopHost, t],
+    [runtimeConn, runtimeReachability, selectedWorkspace, resumedThreadId, desktopHost, t, revealWorkspaceFileInDirectory],
   );
 
   const handleChatOpenWorkspacePath = useCallback(
@@ -1334,6 +1394,7 @@ export default function App() {
       setStreaming(true);
       setRuntimeSessionEstablished(true);
       setAgentStates([]);
+      pendingSpawnMetaRef.current.clear();
       toast.dismissAll();
       toolProgressPendingRef.current = '';
       if (toolProgressRafRef.current != null) {
@@ -1503,6 +1564,12 @@ export default function App() {
           }
           case 'tool_started': {
             ctx.currentToolId.current = norm.id;
+            if (isAgentSpawnToolName(norm.name)) {
+              const meta = parseAgentSpawnInput(norm.input);
+              if (meta) {
+                pendingSpawnMetaRef.current.set(norm.id, meta);
+              }
+            }
             const inputStr = stringifyToolInput(norm.input);
             setMessages((prev) =>
               prev.map((m) => {
@@ -1554,25 +1621,18 @@ export default function App() {
                   output: merged,
                   status: norm.success ? ('done' as const) : ('error' as const),
                 };
-                if (toolName === 'agent_spawn' || toolName === 'spawn_agent') {
+                if (isAgentSpawnToolName(toolName)) {
                   const agentId = parseAgentIdFromSpawnOutput(merged);
+                  const spawnMeta = pendingSpawnMetaRef.current.get(norm.id);
+                  pendingSpawnMetaRef.current.delete(norm.id);
                   if (agentId) {
                     queueMicrotask(() => {
-                      setAgentStates((prev) => {
-                        if (prev.some((a) => a.agentId === agentId)) return prev;
-                        return [
-                          ...prev,
-                          {
-                            agentId,
-                            status: 'spawned',
-                            toolCalls: [],
-                            resultSummary: null,
-                            tokens: 0,
-                            spawnedAt: Date.now(),
-                            completedAt: null,
-                          },
-                        ];
-                      });
+                      setAgentStates((prev) =>
+                        upsertAgentInList(prev, agentId, {
+                          status: 'spawned',
+                          ...metaFromSpawn(spawnMeta),
+                        }),
+                      );
                     });
                   }
                 }
@@ -1616,37 +1676,28 @@ export default function App() {
             toast.error(norm.message ? norm.message : t('banner.streamError'));
             break;
           case 'agent_spawned':
-            setAgentStates((prev) => {
-              const exists = prev.some((a) => a.agentId === norm.agentId);
-              if (exists) return prev;
-              return [
-                ...prev,
-                {
-                  agentId: norm.agentId,
-                  status: 'spawned',
-                  toolCalls: [],
-                  resultSummary: null,
-                  tokens: 0,
-                  spawnedAt: Date.now(),
-                  completedAt: null,
-                },
-              ];
-            });
+            setAgentStates((prev) =>
+              upsertAgentInList(prev, norm.agentId, {
+                status: 'spawned',
+                ...(norm.prompt ? { objective: norm.prompt } : {}),
+              }),
+            );
             break;
           case 'agent_progress':
             setAgentStates((prev) =>
-              prev.map((a) =>
-                a.agentId === norm.agentId ? { ...a, status: 'running' as const } : a,
-              ),
+              upsertAgentInList(prev, norm.agentId, {
+                status: 'running',
+                ...(norm.status ? { progressStatus: norm.status } : {}),
+              }),
             );
             break;
           case 'agent_completed':
             setAgentStates((prev) =>
-              prev.map((a) =>
-                a.agentId === norm.agentId
-                  ? { ...a, status: 'completed' as const, resultSummary: norm.result, completedAt: Date.now() }
-                  : a,
-              ),
+              upsertAgentInList(prev, norm.agentId, {
+                status: 'completed',
+                resultSummary: norm.result,
+                completedAt: Date.now(),
+              }),
             );
             break;
           case 'agent_list': {
@@ -1661,33 +1712,18 @@ export default function App() {
             };
             setAgentStates((prev) => {
               const now = Date.now();
-              const byId = new Map(prev.map((a) => [a.agentId, a]));
-              for (const a of norm.agents) {
-                if (!a.id) continue;
-                const existing = byId.get(a.id);
-                const uiStatus = mapSubAgentUiStatus(a.status);
-                if (existing) {
-                  byId.set(a.id, {
-                    ...existing,
-                    status: uiStatus,
-                    completedAt:
-                      uiStatus === 'completed' || uiStatus === 'interrupted'
-                        ? existing.completedAt ?? now
-                        : existing.completedAt,
-                  });
-                } else {
-                  byId.set(a.id, {
-                    agentId: a.id,
-                    status: uiStatus === 'completed' ? 'completed' : 'spawned',
-                    toolCalls: [],
-                    resultSummary: null,
-                    tokens: 0,
-                    spawnedAt: now,
-                    completedAt: uiStatus === 'completed' ? now : null,
-                  });
-                }
+              let next = prev;
+              for (const row of norm.agents) {
+                if (!row.id) continue;
+                const uiStatus = mapSubAgentUiStatus(row.status);
+                next = upsertAgentInList(next, row.id, {
+                  status: uiStatus,
+                  ...metaFromListRow(row),
+                  completedAt:
+                    uiStatus === 'completed' || uiStatus === 'interrupted' ? now : null,
+                });
               }
-              return Array.from(byId.values());
+              return next;
             });
             break;
           }
@@ -1857,6 +1893,14 @@ export default function App() {
     [messages, agentStates],
   );
 
+  const auditActivity = useAuditNavActivity({
+    threadId: resumedThreadId,
+    activeInspector,
+    streaming,
+    runtimeSessionEstablished,
+    narrativeSpawnSuspected,
+  });
+
   return (
     <div className="flex flex-col h-screen w-screen bg-canvas">
       <TitleBar />
@@ -1885,6 +1929,10 @@ export default function App() {
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed((v) => !v)}
         officeSession={officeSession}
+        checklistActivity={checklistActivity}
+        auditActivity={auditActivity}
+        taskActivity={taskActivity}
+        agentActivity={agentActivity}
       />
       {/* left toggle strip — visible when sidebar collapsed */}
       {sidebarCollapsed && (
@@ -1906,17 +1954,11 @@ export default function App() {
           workspaceRoot={selectedWorkspace}
           desktopHost={desktopHost}
           onOpenWorkspacePath={handleChatOpenWorkspacePath}
+          onRevealWorkspacePath={revealWorkspaceFileInDirectory}
           onOpenDiffInPanel={openDiffInPanel}
           onRetryMessage={(content) =>
             handleSend({ displayContent: content, apiPrompt: content })
           }
-        />
-        <AuditScratchpadBar
-          threadId={resumedThreadId}
-          streaming={streaming}
-          onOpenWorkspacePath={handleChatOpenWorkspacePath}
-          subagentActiveCount={subagentActiveCount}
-          narrativeSpawnSuspected={narrativeSpawnSuspected}
         />
         <Composer
           onSend={handleSend}
@@ -1955,6 +1997,15 @@ export default function App() {
           lastApiInputTokens={threadContextSnapshot?.last_api_input_tokens ?? null}
           lastTurnOutputTokens={lastTurnOutputTokens}
           officeSession={officeSession}
+          workspaceMention={
+            composerMentionRel
+              ? {
+                  relPath: composerMentionRel,
+                  isDirectory: composerMentionIsDir,
+                  nonce: composerMentionNonce,
+                }
+              : undefined
+          }
         />
       </div>
       {/* right panel toggle strip */}
@@ -1990,11 +2041,16 @@ export default function App() {
           preview={panelPreview}
           onClosePreview={closePanelPreview}
           openWorkspaceFile={openWorkspaceFileForPreview}
+          revealWorkspaceFile={revealWorkspaceFileInDirectory}
+          addWorkspaceFileToChat={addWorkspaceFileToChat}
           focusFilesNonce={focusWorkspaceFilesNonce}
           focusFilesRelPath={focusWorkspaceFilesRelPath}
           focusDiffNonce={focusWorkspaceDiffNonce}
           agentStates={agentStates}
           onRequestChecklist={handleRequestChecklist}
+          onRequestAudit={handleRequestAudit}
+          subagentActiveCount={subagentActiveCount}
+          narrativeSpawnSuspected={narrativeSpawnSuspected}
           streaming={streaming}
           messages={messages}
           onRequestMermaid={() => setActiveInspector('mermaid')}

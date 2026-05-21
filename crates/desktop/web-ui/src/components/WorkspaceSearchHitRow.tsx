@@ -1,64 +1,57 @@
-import type { ReactNode } from 'react';
 import {
-  formatBrowseEntrySize,
   isSensitiveEntryName,
-  type BrowseEntry,
+  parentWorkspaceRel,
+  workspaceRelPathsEqual,
 } from '../lib/workspaceBrowse';
-import { IconAlert, IconPlus, WorkspaceEntryIcon } from './icons/FlatIcons';
+import type { WorkspaceSearchHit } from '../lib/workspaceFileSearch';
+import { WorkspaceEntryIcon, IconAlert } from './icons/FlatIcons';
 
-export function WorkspaceDirEntryRow({
-  ent,
-  rel,
-  depth,
+export function WorkspaceSearchHitRow({
+  hit,
   isPreviewed,
-  leading,
   onPrimaryClick,
   onContextMenu,
   onAddToChat,
   sensitiveHint,
   addToChatTitle,
 }: {
-  ent: BrowseEntry;
-  rel: string;
-  depth: number;
+  hit: WorkspaceSearchHit;
   isPreviewed: boolean;
-  /** Chevron or spacer before the file icon. */
-  leading: ReactNode;
   onPrimaryClick: () => void;
   onContextMenu: (e: { preventDefault: () => void; clientX: number; clientY: number }) => void;
   onAddToChat?: () => void;
   sensitiveHint: string;
   addToChatTitle: string;
 }) {
-  const isDir = ent.kind === 'directory';
-  const sensitive = isSensitiveEntryName(ent.name);
-  const pad = Math.min(depth, 12) * 12;
+  const isDir = hit.kind === 'directory';
+  const parent = parentWorkspaceRel(hit.rel);
+  const sensitive = isSensitiveEntryName(hit.name);
 
   return (
     <div
-      data-ws-reveal={rel.trim().replace(/\\/g, '/').replace(/^\/+/, '')}
+      data-ws-reveal={hit.rel}
       className={`group flex items-center rounded-md hover:bg-hover ${
         isPreviewed ? 'bg-accent-soft/60 ring-1 ring-accent/25' : ''
       }`}
-      style={{ paddingLeft: pad }}
     >
       <button
         type="button"
-        className="flex-1 min-w-0 text-left px-2 py-1.5 text-xs text-t-text flex items-center gap-2"
+        className="flex-1 min-w-0 text-left px-2 py-1.5 text-xs flex items-center gap-2"
         onClick={onPrimaryClick}
         onContextMenu={onContextMenu}
       >
-        {leading}
-        <WorkspaceEntryIcon name={ent.name} isDir={isDir} />
-        <span className={`truncate ${isDir ? 'font-medium' : ''}`}>{ent.name}</span>
+        <WorkspaceEntryIcon name={hit.name} isDir={isDir} />
+        <span className="min-w-0 flex-1">
+          <span className={`block truncate ${isDir ? 'font-medium text-t-text' : 'text-t-text'}`}>
+            {hit.name}
+          </span>
+          {parent ? (
+            <span className="block truncate text-[10px] text-t-text-muted font-mono">{parent}</span>
+          ) : null}
+        </span>
         {sensitive && (
           <span title={sensitiveHint} className="shrink-0 text-amber-500/90">
             <IconAlert className="size-3" />
-          </span>
-        )}
-        {!isDir && ent.size != null && (
-          <span className="text-[10px] text-t-text-muted ml-auto shrink-0 tabular-nums">
-            {formatBrowseEntrySize(ent.size)}
           </span>
         )}
       </button>
@@ -72,9 +65,20 @@ export function WorkspaceDirEntryRow({
             onAddToChat();
           }}
         >
-          <IconPlus className="size-3.5" />
+          <span className="text-sm leading-none font-medium">+</span>
         </button>
       )}
     </div>
+  );
+}
+
+export function isSearchHitPreviewed(
+  hit: WorkspaceSearchHit,
+  previewRel: string | null,
+): boolean {
+  return (
+    hit.kind === 'file' &&
+    previewRel != null &&
+    workspaceRelPathsEqual(hit.rel, previewRel)
   );
 }

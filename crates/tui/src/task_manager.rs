@@ -942,6 +942,37 @@ impl TaskManager {
             .ok_or_else(|| anyhow!("Task not found: {id}"))
     }
 
+    /// Remove completed, failed, and canceled tasks from memory and disk.
+    pub async fn clear_terminal_tasks(&self) -> Result<usize> {
+        let mut state = self.state.lock().await;
+        let ids: Vec<String> = state
+            .tasks
+            .values()
+            .filter(|t| {
+                matches!(
+                    t.status,
+                    TaskStatus::Completed | TaskStatus::Failed | TaskStatus::Canceled
+                )
+            })
+            .map(|t| t.id.clone())
+            .collect();
+        if ids.is_empty() {
+            return Ok(0);
+        }
+        for id in &ids {
+            state.tasks.remove(id);
+            state.queue.retain(|queued| queued != id);
+            state.running_cancel.remove(id);
+            let path = self.tasks_dir.join(format!("{id}.json"));
+            if path.is_file() {
+                fs::remove_file(&path)
+                    .with_context(|| format!("Failed to remove task file {}", path.display()))?;
+            }
+        }
+        self.persist_queue_locked(&state.queue)?;
+        Ok(ids.len())
+    }
+
     /// Return aggregate status counters.
     pub async fn counts(&self) -> TaskCounts {
         let state = self.state.lock().await;

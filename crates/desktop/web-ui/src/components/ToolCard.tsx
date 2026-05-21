@@ -1,3 +1,7 @@
+import CopyTextButton from './CopyTextButton';
+import { formatToolForCopy } from '../lib/formatToolCopy';
+import { useT } from '../i18n';
+
 export interface ToolCardModel {
   id: string;
   name: string;
@@ -6,7 +10,9 @@ export interface ToolCardModel {
   status: 'running' | 'done' | 'error';
 }
 
-export function ToolCard({ tool }: { tool: ToolCardModel }) {
+export function ToolCard({ tool, copyTitle }: { tool: ToolCardModel; copyTitle?: string }) {
+  const { t } = useT();
+  const copyLabel = copyTitle ?? t('chatMarkdown.copyTool');
   const statusColor =
     tool.status === 'running'
       ? 'text-amber border-amber/30'
@@ -26,7 +32,13 @@ export function ToolCard({ tool }: { tool: ToolCardModel }) {
       <div className="flex flex-wrap items-center gap-2 mb-1">
         <span className="font-semibold text-t-text">{tool.name}</span>
         <span className="text-t-text-muted font-mono text-[11px]">{tool.id.slice(0, 12)}</span>
-        <span className={`ml-auto px-1.5 py-0.5 rounded text-[11px] font-medium border ${statusColor} ${statusBg}`}>
+        <CopyTextButton
+          getText={() => formatToolForCopy(tool)}
+          title={copyLabel}
+          disabled={!tool.input?.trim() && !(tool.output != null && String(tool.output).trim() !== '')}
+          className="ml-auto"
+        />
+        <span className={`px-1.5 py-0.5 rounded text-[11px] font-medium border ${statusColor} ${statusBg}`}>
           {tool.status}
         </span>
       </div>

@@ -1,5 +1,7 @@
 /** Normalizes compat (`POST /v1/stream`) and raw (`GET …/events`) SSE payloads for one UI pipeline. */
 
+import { parseAgentListRow, type AgentListRowMeta } from '../lib/agentSpawnMeta';
+
 function normalizeSubAgentStatus(status: unknown): string {
   if (typeof status === 'string') {
     return status;
@@ -35,10 +37,10 @@ export type NormalizedStreamEvent =
   | { kind: 'done' }
   | { kind: 'error'; message: string }
   | { kind: 'status'; message: string }
-  | { kind: 'agent_spawned'; agentId: string }
-  | { kind: 'agent_progress'; agentId: string }
+  | { kind: 'agent_spawned'; agentId: string; prompt?: string }
+  | { kind: 'agent_progress'; agentId: string; status?: string }
   | { kind: 'agent_completed'; agentId: string; result: string }
-  | { kind: 'agent_list'; agents: Array<{ id: string; status: string }> }
+  | { kind: 'agent_list'; agents: AgentListRowMeta[] }
   | { kind: 'panel_scratchpad'; scratchpad: unknown }
   | { kind: 'panel_checklist'; checklist: unknown }
   | { kind: 'panel_context'; context: unknown };
@@ -119,11 +121,21 @@ export function normalizeDesktopStreamEvent(
   // —— Compat SSE from `POST /v1/stream` (map_compat_stream_event) ——
   if (sse === 'agent.spawned') {
     const agentId = String(j.agent_id ?? '');
-    if (agentId) return { kind: 'agent_spawned', agentId };
+    if (agentId) {
+      const prompt = spawnPromptFromPayload(j);
+      return { kind: 'agent_spawned', agentId, ...(prompt ? { prompt } : {}) };
+    }
   }
   if (sse === 'agent.progress') {
     const agentId = String(j.agent_id ?? '');
-    if (agentId) return { kind: 'agent_progress', agentId };
+    if (agentId) {
+      const status = String(j.status ?? '').trim();
+      return {
+        kind: 'agent_progress',
+        agentId,
+        ...(status ? { status } : {}),
+      };
+    }
   }
   if (sse === 'agent.completed') {
     const agentId = String(j.agent_id ?? '');
@@ -136,10 +148,7 @@ export function normalizeDesktopStreamEvent(
     if (raw) {
       return {
         kind: 'agent_list',
-        agents: raw.map((a) => ({
-          id: String(a.agent_id ?? a.id ?? ''),
-          status: normalizeSubAgentStatus(a.status),
-        })),
+        agents: raw.map((a) => parseAgentListRow(a)),
       };
     }
   }
@@ -177,14 +186,6 @@ export function normalizeDesktopStreamEvent(
       return null;
     }
     const toolName = String(tool.name ?? '');
-    const spawnNames = new Set(['agent_spawn', 'spawn_agent', 'delegate_to_agent']);
-    if (spawnNames.has(toolName)) {
-      const input = tool.input as Record<string, unknown> | undefined;
-      const agentId = String(
-        tool.id ?? input?.agent_id ?? input?.id ?? j.agent_id ?? '',
-      );
-      if (agentId) return { kind: 'agent_spawned', agentId };
-    }
     return {
       kind: 'tool_started',
       id: String(tool.id ?? ''),
@@ -239,12 +240,24 @@ export function normalizeDesktopStreamEvent(
 
   // —— agent.* events ———
   if (recordEvent === 'agent.spawned') {
-    const agentId = String((inner ?? j).agent_id ?? '');
-    if (agentId) return { kind: 'agent_spawned', agentId };
+    const payload = (inner ?? j) as Record<string, unknown>;
+    const agentId = String(payload.agent_id ?? '');
+    if (agentId) {
+      const prompt = spawnPromptFromPayload(payload);
+      return { kind: 'agent_spawned', agentId, ...(prompt ? { prompt } : {}) };
+    }
   }
   if (recordEvent === 'agent.progress') {
-    const agentId = String((inner ?? j).agent_id ?? '');
-    if (agentId) return { kind: 'agent_progress', agentId };
+    const payload = (inner ?? j) as Record<string, unknown>;
+    const agentId = String(payload.agent_id ?? '');
+    if (agentId) {
+      const status = String(payload.status ?? '').trim();
+      return {
+        kind: 'agent_progress',
+        agentId,
+        ...(status ? { status } : {}),
+      };
+    }
   }
   if (recordEvent === 'agent.completed') {
     const agentId = String((inner ?? j).agent_id ?? '');
@@ -259,10 +272,7 @@ export function normalizeDesktopStreamEvent(
     if (raw) {
       return {
         kind: 'agent_list',
-        agents: raw.map((a) => ({
-          id: String(a.agent_id ?? a.id ?? ''),
-          status: normalizeSubAgentStatus(a.status),
-        })),
+        agents: raw.map((a) => parseAgentListRow(a)),
       };
     }
   }
@@ -280,17 +290,23 @@ export function normalizeDesktopStreamEvent(
     return { kind: 'panel_context', context };
   }
 
-  // Detect tool calls that are agent_spawn and emit agent_spawned
-  if (recordEvent === 'item.started' && inner) {
-    const tool = inner.tool as Record<string, unknown> | undefined;
-    const toolName = String(tool?.name ?? '');
-    if (toolName === 'agent_spawn' || toolName === 'spawn_agent' || toolName === 'delegate_to_agent') {
-      const agentId = String(j.agent_id ?? tool?.id ?? '');
-      if (agentId) return { kind: 'agent_spawned', agentId };
+  return null;
+}
+
+function spawnPromptFromPayload(payload: Record<string, unknown>): string | undefined {
+  const direct = payload.prompt;
+  if (typeof direct === 'string' && direct.trim()) {
+    return direct.trim();
+  }
+  const item = payload.item as Record<string, unknown> | undefined;
+  const detail = item?.detail ?? item?.summary;
+  if (typeof detail === 'string') {
+    const m = detail.match(/spawned:\s*(.+)/i);
+    if (m?.[1]?.trim()) {
+      return m[1].trim();
     }
   }
-
-  return null;
+  return undefined;
 }
 
 /** Extract a TurnUsage from a raw JSON object, handling type coercion. */

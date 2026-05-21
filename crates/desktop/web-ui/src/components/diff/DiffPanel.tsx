@@ -6,6 +6,8 @@ import {
   extractDiffEntries,
   type DiffEntry,
 } from '../../lib/diff/diffEntries';
+import { normalizeWorkspaceRelPath } from '../../lib/openWorkspaceFile';
+import { IconFolder } from '../icons/FlatIcons';
 import type { ToolCardModel } from '../ToolCard';
 
 interface Message {
@@ -17,12 +19,14 @@ interface Props {
   messages: Message[];
   /** First diff in the turn — parent switches to workspace / Diff tab */
   onDetected?: () => void;
+  /** Reveal a workspace-relative path in the Files tab (no preview). */
+  onRevealInFiles?: (relPath: string) => void;
   active: boolean;
 }
 
 type OutputFormat = 'side-by-side' | 'line-by-line';
 
-export default function DiffPanel({ messages, onDetected, active }: Props) {
+export default function DiffPanel({ messages, onDetected, onRevealInFiles, active }: Props) {
   const { t } = useT();
   const firedRef = useRef(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -101,13 +105,14 @@ export default function DiffPanel({ messages, onDetected, active }: Props) {
         <ul className="p-1.5 space-y-0.5" role="listbox" aria-label={t('diff.listLabel')}>
           {entries.map((e) => {
             const isSel = e.id === selected?.id;
+            const rel = normalizeWorkspaceRelPath(e.fileName);
             return (
-              <li key={e.id}>
+              <li key={e.id} className="flex items-stretch gap-0.5">
                 <button
                   type="button"
                   role="option"
                   aria-selected={isSel}
-                  className={`w-full rounded-md px-2.5 py-1.5 text-left text-[11px] font-mono transition-colors ${
+                  className={`min-w-0 flex-1 rounded-md px-2.5 py-1.5 text-left text-[11px] font-mono transition-colors ${
                     isSel
                       ? 'bg-accent-soft text-accent'
                       : 'text-t-text-secondary hover:bg-hover'
@@ -117,22 +122,52 @@ export default function DiffPanel({ messages, onDetected, active }: Props) {
                   <span className="block truncate">{entryLabel(e)}</span>
                   <span className="block truncate text-[10px] opacity-70">{e.toolName}</span>
                 </button>
+                {onRevealInFiles && rel ? (
+                  <button
+                    type="button"
+                    className="shrink-0 rounded-md px-1.5 text-t-text-muted hover:text-accent hover:bg-hover transition-colors"
+                    title={t('diff.showInFiles')}
+                    onClick={(ev) => {
+                      ev.stopPropagation();
+                      onRevealInFiles(rel);
+                    }}
+                  >
+                    <IconFolder className="size-3.5" />
+                  </button>
+                ) : null}
               </li>
             );
           })}
         </ul>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-hidden p-2">
-        {selected ? (
-          <DiffCard
-            key={selected.id}
-            diffText={selected.diffText}
-            fileName={selected.fileName}
-            outputFormat={outputFormat}
-            variant="panel"
-          />
+      <div className="min-h-0 flex-1 overflow-hidden p-2 flex flex-col gap-2">
+        {selected && onRevealInFiles ? (
+          <div className="shrink-0 flex justify-end">
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 rounded-md border border-divider px-2 py-1 text-[10px] text-t-text-secondary hover:text-accent hover:bg-hover transition-colors"
+              onClick={() => {
+                const rel = normalizeWorkspaceRelPath(selected.fileName);
+                if (rel) onRevealInFiles(rel);
+              }}
+            >
+              <IconFolder className="size-3" />
+              {t('diff.showInFiles')}
+            </button>
+          </div>
         ) : null}
+        <div className="min-h-0 flex-1 overflow-hidden">
+          {selected ? (
+            <DiffCard
+              key={selected.id}
+              diffText={selected.diffText}
+              fileName={selected.fileName}
+              outputFormat={outputFormat}
+              variant="panel"
+            />
+          ) : null}
+        </div>
       </div>
     </div>
   );

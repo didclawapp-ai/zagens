@@ -693,6 +693,7 @@ pub fn build_router(state: RuntimeApiState) -> Router {
         )
         .route("/v1/threads/{id}/events", get(stream_thread_events))
         .route("/v1/tasks", get(list_tasks).post(create_task))
+        .route("/v1/tasks/clear", post(clear_tasks))
         .route("/v1/tasks/{id}", get(get_task))
         .route("/v1/tasks/{id}/cancel", post(cancel_task))
         .route("/v1/skills", get(list_skills).post(create_skill))
@@ -2615,6 +2616,20 @@ async fn cancel_task(
     Ok(Json(task))
 }
 
+#[derive(Serialize)]
+struct ClearTasksResponse {
+    removed: usize,
+}
+
+async fn clear_tasks(State(state): State<RuntimeApiState>) -> Result<Json<ClearTasksResponse>, ApiError> {
+    let removed = state
+        .task_manager
+        .clear_terminal_tasks()
+        .await
+        .map_err(map_task_err)?;
+    Ok(Json(ClearTasksResponse { removed }))
+}
+
 async fn stream_thread_events(
     State(state): State<RuntimeApiState>,
     AxumPath(id): AxumPath<String>,
@@ -2967,10 +2982,18 @@ fn map_compat_stream_event(event: &crate::runtime_threads::RuntimeEventRecord) -
             if agent_id.is_empty() {
                 return None;
             }
+            let prompt = payload
+                .get("prompt")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(str::to_string);
             Some(sse_json_seq(
                 event.seq,
                 "agent.spawned",
-                json!({ "agent_id": agent_id }),
+                json!({
+                    "agent_id": agent_id,
+                    "prompt": prompt,
+                }),
             ))
         }
         "agent.progress" => {
@@ -2982,9 +3005,13 @@ fn map_compat_stream_event(event: &crate::runtime_threads::RuntimeEventRecord) -
                 return None;
             }
             let status = payload
-                .get("item")
-                .and_then(|item| item.get("detail").and_then(|v| v.as_str()))
-                .or_else(|| payload.get("status").and_then(|v| v.as_str()))
+                .get("status")
+                .and_then(|v| v.as_str())
+                .or_else(|| {
+                    payload
+                        .get("item")
+                        .and_then(|item| item.get("detail").and_then(|v| v.as_str()))
+                })
                 .unwrap_or_default();
             Some(sse_json_seq(
                 event.seq,

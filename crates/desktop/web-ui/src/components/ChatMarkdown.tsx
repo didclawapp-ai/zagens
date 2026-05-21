@@ -87,6 +87,7 @@ interface Props {
   workspaceRoot?: string;
   desktopHost?: boolean;
   onOpenWorkspacePath: (relPath: string) => void | Promise<void>;
+  onRevealWorkspacePath?: (relPath: string) => void;
 }
 
 export function ChatMarkdown({
@@ -96,6 +97,7 @@ export function ChatMarkdown({
   workspaceRoot = '',
   desktopHost = false,
   onOpenWorkspacePath,
+  onRevealWorkspacePath,
 }: Props) {
   const { t } = useT();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -270,6 +272,8 @@ export function ChatMarkdown({
           menu={wsMenu}
           desktopHost={desktopHost}
           onClose={() => setWsMenu(null)}
+          onOpenPreview={(rel) => void onOpenWorkspacePath(rel)}
+          onRevealInFiles={(rel) => onRevealWorkspacePath?.(rel)}
           onOpenSystem={onOpenSystem}
         />
       ) : null}

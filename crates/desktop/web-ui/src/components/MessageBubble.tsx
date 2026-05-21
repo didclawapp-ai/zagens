@@ -4,6 +4,9 @@ import { ToolCard, type ToolCardModel } from './ToolCard';
 import TerminalCard from './TerminalCard';
 import DiffCard from './DiffCard';
 import { extractUnifiedDiff, parseFileNameFromToolInput } from '../lib/diff/diffEntries';
+import CopyTextButton from './CopyTextButton';
+import { formatToolsForCopy } from '../lib/formatToolCopy';
+import { useT } from '../i18n';
 
 interface Message {
   id: string;
@@ -19,6 +22,7 @@ export function MessageBubble({
   workspaceRoot,
   desktopHost,
   onOpenWorkspacePath,
+  onRevealWorkspacePath,
   onEditMessage,
   onRetryMessage,
   onOpenDiffInPanel,
@@ -27,11 +31,15 @@ export function MessageBubble({
   workspaceRoot?: string;
   desktopHost?: boolean;
   onOpenWorkspacePath: (relPath: string) => void | Promise<void>;
+  onRevealWorkspacePath?: (relPath: string) => void;
   onEditMessage?: (messageId: string, content: string) => void;
   onRetryMessage?: (content: string) => void;
   onOpenDiffInPanel?: () => void;
 }) {
+  const { t } = useT();
   const isUser = message.role === 'user';
+  const reasoningCopyText = message.thinking?.trim() ?? '';
+  const toolsCopyText = formatToolsForCopy(message.tools ?? []);
   const likelyInReasoningPhase =
     Boolean(message.isStreaming) &&
     !isUser &&
@@ -209,6 +217,12 @@ export function MessageBubble({
               </span>
               <span className="text-base leading-none">💭</span>
               <span>Reasoning</span>
+              <CopyTextButton
+                getText={() => reasoningCopyText}
+                title={t('chatMarkdown.copyReasoning')}
+                disabled={!reasoningCopyText}
+                className="ml-1"
+              />
               {!reasoningExpanded && (
                 <span className="ml-auto truncate text-[11px] font-normal text-t-text-muted">
                   {message.isStreaming && !message.thinking?.trim()
@@ -248,6 +262,12 @@ export function MessageBubble({
               <span className="min-w-0 truncate font-mono text-[11px] sm:text-xs sm:font-sans">
                 {toolsSummaryLabel}
               </span>
+              <CopyTextButton
+                getText={() => toolsCopyText}
+                title={t('chatMarkdown.copyTools')}
+                disabled={!toolsCopyText}
+                className="ml-1"
+              />
               {!toolsExpanded && (
                 <span className="ml-auto truncate text-[11px] font-normal text-t-text-muted">
                   {runningToolCount > 0
@@ -258,7 +278,7 @@ export function MessageBubble({
             </button>
             {toolsExpanded && (
               <div className="space-y-1.5 border-t border-divider px-2.5 pb-2.5 pt-2">
-                {message.tools.map((t) => renderToolCard(t, onOpenDiffInPanel))}
+                {message.tools.map((tool) => renderToolCard(tool, onOpenDiffInPanel))}
               </div>
             )}
           </div>
@@ -322,6 +342,7 @@ export function MessageBubble({
               workspaceRoot={workspaceRoot}
               desktopHost={desktopHost}
               onOpenWorkspacePath={onOpenWorkspacePath}
+              onRevealWorkspacePath={onRevealWorkspacePath}
             />
           ) : (
             <span className="whitespace-pre-wrap">{!message.isStreaming ? '...' : ''}</span>
@@ -340,7 +361,7 @@ export function MessageBubble({
 const ANSI_CSI = /\x1B\[/;
 
 /** Route tool cards to specialized renderers based on tool name. */
-function renderToolCard(tool: ToolCardModel, onOpenDiffInPanel?: () => void) {
+function renderToolCard(tool: ToolCardModel, onOpenDiffInPanel?: () => void, copyToolTitle?: string) {
   const outputHasAnsi = Boolean(tool.output && ANSI_CSI.test(tool.output));
 
   // Shell tools, or any tool whose output carries terminal SGR sequences (avoids “black slab” in <pre>)
@@ -382,7 +403,7 @@ function renderToolCard(tool: ToolCardModel, onOpenDiffInPanel?: () => void) {
   }
 
   // Default: plain ToolCard
-  return <ToolCard key={tool.id} tool={tool} />;
+  return <ToolCard key={tool.id} tool={tool} copyTitle={copyToolTitle} />;
 }
 
 function tryParseCommand(input: string): string | undefined {

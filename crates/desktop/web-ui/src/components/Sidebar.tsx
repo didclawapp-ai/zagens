@@ -7,6 +7,8 @@ import {
   runtimeConnStatusLabel,
 } from '../lib/runtimeReachable';
 import PanelEdgeSeam from './PanelEdgeSeam';
+import InspectorActivityDot from './InspectorActivityDot';
+import type { InspectorNavActivity } from '../lib/inspectorUnread';
 
 interface SessionInfo {
   id: string;
@@ -35,6 +37,10 @@ interface Props {
   onToggleCollapse: () => void;
   /** Office task sessions hide code-only inspector tabs. */
   officeSession?: boolean;
+  checklistActivity?: InspectorNavActivity;
+  auditActivity?: InspectorNavActivity;
+  taskActivity?: InspectorNavActivity;
+  agentActivity?: InspectorNavActivity;
 }
 
 const SIDEBAR_WIDTH_KEY = 'deepseek-desktop-sidebar-width';
@@ -84,6 +90,10 @@ export default function Sidebar({
   collapsed,
   onToggleCollapse,
   officeSession = false,
+  checklistActivity = { active: false, pulse: false },
+  auditActivity = { active: false, pulse: false },
+  taskActivity = { active: false, pulse: false },
+  agentActivity = { active: false, pulse: false },
 }: Props) {
   const { t } = useT();
   const [sidebarWidth, setSidebarWidth] = useState(readStoredSidebarWidth);
@@ -196,14 +206,82 @@ export default function Sidebar({
         {!officeSession && (
           <button
             type="button"
-            className={navBtn(activeInspector === 'checklist')}
+            className={`${navBtn(activeInspector === 'checklist')} flex items-center`}
             onClick={() => onInspectorChange('checklist')}
             aria-label={t('sidebar.checklist')}
           >
-            <svg viewBox="0 0 24 24" className="inline w-4 h-4 mr-2 stroke-current align-text-bottom" style={{ fill: 'none', strokeWidth: 1.6 }}>
+            <svg viewBox="0 0 24 24" className="inline w-4 h-4 mr-2 stroke-current align-text-bottom shrink-0" style={{ fill: 'none', strokeWidth: 1.6 }}>
               <path d="M9 6h11M9 12h11M9 18h11M5 6h.01M5 12h.01M5 18h.01" strokeLinecap="round" />
             </svg>
-            {t('sidebar.checklist')}
+            <span className="truncate">{t('sidebar.checklist')}</span>
+            <InspectorActivityDot activity={checklistActivity} />
+          </button>
+        )}
+        {!officeSession && (
+          <button
+            type="button"
+            className={`${navBtn(activeInspector === 'audit')} flex items-center`}
+            onClick={() => onInspectorChange('audit')}
+            aria-label={t('sidebar.audit')}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className="inline w-4 h-4 mr-2 stroke-current align-text-bottom shrink-0"
+              style={{ fill: 'none', strokeWidth: 1.6 }}
+            >
+              <path d="M4 6h16v12H4z M8 6V4h8v2 M9 10h6M9 14h4" strokeLinecap="round" />
+            </svg>
+            <span className="truncate">{t('sidebar.audit')}</span>
+            <InspectorActivityDot activity={auditActivity} />
+          </button>
+        )}
+        <button
+          type="button"
+          className={navBtn(activeInspector === 'usage')}
+          onClick={() => onInspectorChange('usage')}
+          aria-label={t('sidebar.usage')}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            className="inline w-4 h-4 mr-2 stroke-current align-text-bottom shrink-0"
+            style={{ fill: 'none', strokeWidth: 1.6 }}
+          >
+            <path d="M4 19h16M6 16l3-5 3 3 4-7 4 9" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          {t('sidebar.usage')}
+        </button>
+        <button
+          type="button"
+          className={`${navBtn(activeInspector === 'tasks')} flex items-center gap-0`}
+          onClick={() => onInspectorChange('tasks')}
+          aria-label={t('sidebar.tasks')}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            className="inline w-4 h-4 mr-2 stroke-current align-text-bottom shrink-0"
+            style={{ fill: 'none', strokeWidth: 1.6 }}
+          >
+            <path d="M9 6h11M9 12h11M9 18h7M5 6h.01M5 12h.01M5 18h.01" strokeLinecap="round" />
+          </svg>
+          <span className="truncate">{t('sidebar.tasks')}</span>
+          <InspectorActivityDot activity={taskActivity} />
+        </button>
+        {!officeSession && (
+          <button
+            type="button"
+            className={`${navBtn(activeInspector === 'agents')} flex items-center gap-0`}
+            onClick={() => onInspectorChange('agents')}
+            aria-label={t('sidebar.agents')}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className="inline w-4 h-4 mr-2 stroke-current align-text-bottom shrink-0"
+              style={{ fill: 'none', strokeWidth: 1.6 }}
+            >
+              <path d="M12 3a4 4 0 0 1 4 4v1h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2h2V7a4 4 0 0 1 4-4z" />
+            </svg>
+            <span className="truncate">{t('sidebar.agents')}</span>
+            <InspectorActivityDot activity={agentActivity} />
           </button>
         )}
         <SettingsAccordion
@@ -325,9 +403,7 @@ export default function Sidebar({
 type SettingsTab =
   | 'api-key'
   | 'mcp'
-  | 'usage'
-  | 'tasks-skills'
-  | 'agents'
+  | 'skills'
   | 'routing'
   | 'system'
   | 'index'
@@ -365,9 +441,7 @@ function SettingsAccordion({
   const subItems: { tab: SettingsTab; label: string; show: boolean }[] = [
     { tab: 'api-key', label: 'API Key', show: desktopHost },
     { tab: 'mcp', label: 'MCP 服务器', show: true },
-    { tab: 'usage', label: '用量仪表盘', show: true },
-    { tab: 'tasks-skills', label: '任务与技能', show: true },
-    { tab: 'agents', label: '子代理', show: !officeSession },
+    { tab: 'skills', label: t('sidebar.skills'), show: true },
     { tab: 'routing', label: '模型路由', show: !officeSession },
     { tab: 'index', label: '索引', show: !officeSession },
     { tab: 'system', label: '系统设置', show: true },

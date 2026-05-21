@@ -1,15 +1,24 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { browseComposerWorkspace, browseThreadWorkspace } from '../api/client';
 import { useT } from '../i18n';
 import type { PreviewState } from './preview/types';
 import { normalizeWorkspaceRelPath } from '../lib/openWorkspaceFile';
 import { formatWorkspaceFileError } from '../lib/workspaceFileOpenError';
+import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { useWorkspaceDirCache } from '../lib/useWorkspaceDirCache';
+import { useWorkspaceFileSearch } from '../lib/useWorkspaceFileSearch';
+import {
+  WORKSPACE_LIST_ROW_PX,
+  WORKSPACE_LIST_VIRTUAL_MIN,
+  WORKSPACE_SEARCH_MAX_RESULTS,
+  type WorkspaceSearchHit,
+} from '../lib/workspaceFileSearch';
 import {
   ancestorDirPaths,
   canOpenWithSystemApp,
   expandedDirsStorageKey,
   filterBrowseEntries,
+  filterEntriesForOfficeChanges,
   isDeniedDirName,
   joinWorkspaceRel,
   parentWorkspaceRel,
@@ -18,11 +27,13 @@ import {
   readShowHiddenDirs,
   readWorkspaceDirViewMode,
   resolveBrowseAbsPath,
+  scrollWorkspaceRelIntoView,
   workspaceRelPathsEqual,
   writeExpandedDirs,
   writeShowHiddenDirs,
   writeWorkspaceDirViewMode,
   type BrowseEntry,
+  type OfficeDirPreset,
   type WorkspaceDirViewMode,
 } from '../lib/workspaceBrowse';
 import {
@@ -40,7 +51,9 @@ import {
   IconTree,
 } from './icons/FlatIcons';
 import { WorkspaceDirEntryRow } from './WorkspaceDirEntryRow';
+import { isSearchHitPreviewed, WorkspaceSearchHitRow } from './WorkspaceSearchHitRow';
 import WorkspaceFileTree from './WorkspaceFileTree';
+import WorkspaceVirtualList from './WorkspaceVirtualList';
 
 interface CtxEntry {
   absPath: string;
@@ -59,8 +72,12 @@ export interface WorkspaceFilesPanelProps {
   runtimeOk: boolean;
   desktopHost: boolean;
   officeSession: boolean;
+  /** Session diff paths for Office「本轮变更」filter. */
+  officeChangePaths?: string[];
   preview: PreviewState | null;
   openWorkspaceFile: (relPath: string, title?: string) => Promise<void>;
+  /** Insert `@rel` into Composer (does not open preview). */
+  onAddToChat?: (relPath: string, isDirectory?: boolean) => void;
   focusFilesNonce: number;
   focusFilesRelPath?: string | null;
   /** Bumped by parent (e.g. after snapshot restore) to reload directory listing. */
@@ -77,8 +94,10 @@ export default function WorkspaceFilesPanel({
   runtimeOk,
   desktopHost,
   officeSession,
+  officeChangePaths = [],
   preview,
   openWorkspaceFile,
+  onAddToChat,
   focusFilesNonce,
   focusFilesRelPath,
   externalRefreshNonce = 0,
@@ -94,6 +113,20 @@ export default function WorkspaceFilesPanel({
   const [showHidden, setShowHidden] = useState(() => readShowHiddenDirs());
   const [viewMode, setViewMode] = useState<WorkspaceDirViewMode>(() => readWorkspaceDirViewMode());
   const [ctxMenu, setCtxMenu] = useState<CtxEntry | null>(null);
+  const [officePreset, setOfficePreset] = useState<OfficeDirPreset>(
+    officeSession ? 'deliverables' : 'all',
+  );
+  const listScrollRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const officeChangeSet = useMemo(() => {
+    const s = new Set<string>();
+    for (const p of officeChangePaths) {
+      const rel = normalizeWorkspaceRelPath(p);
+      if (rel) s.add(rel);
+    }
+    return s;
+  }, [officeChangePaths]);
 
   const expandStorageKey = useMemo(
     () => expandedDirsStorageKey(workspaceRoot, resumedThreadId),
@@ -103,18 +136,31 @@ export default function WorkspaceFilesPanel({
     readExpandedDirs(expandedDirsStorageKey(workspaceRoot, resumedThreadId)),
   );
 
+  const canBrowse =
+    runtimeOk && (Boolean(resumedThreadId?.length) || workspaceRoot.trim().length > 0);
+
+  const debouncedSearch = useDebouncedValue(searchQuery, 320);
+
+  const fileSearch = useWorkspaceFileSearch({
+    active,
+    canBrowse,
+    workspaceRoot,
+    resumedThreadId,
+    query: debouncedSearch,
+    showHidden,
+    refreshNonce: browseNonce + externalRefreshNonce,
+  });
+
+  const isSearchMode = fileSearch.isSearchMode;
+  const isTree = viewMode === 'tree' && !isSearchMode;
+
   const treeCache = useWorkspaceDirCache({
-    active: active && viewMode === 'tree',
+    active: active && isTree,
     workspaceRoot,
     resumedThreadId,
     runtimeOk,
     refreshNonce: browseNonce + externalRefreshNonce,
   });
-
-  const canBrowse =
-    runtimeOk && (Boolean(resumedThreadId?.length) || workspaceRoot.trim().length > 0);
-
-  const isTree = viewMode === 'tree';
   const resolvedWorkspace =
     (isTree ? treeCache.browseWorkspace : browseWorkspace) ?? workspaceRoot;
   const threadPathDiffers =
@@ -130,10 +176,20 @@ export default function WorkspaceFilesPanel({
     [browseRelPath, t],
   );
 
-  const visibleEntries = useMemo(
-    () => filterBrowseEntries(browseEntries, searchQuery, showHidden),
-    [browseEntries, searchQuery, showHidden],
-  );
+  const visibleEntries = useMemo(() => {
+    let v = filterBrowseEntries(browseEntries, '', showHidden);
+    if (officeSession && officePreset === 'changes' && officeChangeSet.size > 0) {
+      v = filterEntriesForOfficeChanges(v, browseRelPath, officeChangeSet);
+    }
+    return v;
+  }, [
+    browseEntries,
+    showHidden,
+    officeSession,
+    officePreset,
+    officeChangeSet,
+    browseRelPath,
+  ]);
 
   const hiddenFilteredCount = useMemo(() => {
     if (showHidden) return 0;
@@ -219,6 +275,7 @@ export default function WorkspaceFilesPanel({
 
   useEffect(() => {
     if (!officeSession || !active) return;
+    setOfficePreset('deliverables');
     setBrowseRelPath((prev) => (prev === '' ? 'deliverables' : prev));
   }, [officeSession, active, workspaceRoot]);
 
@@ -277,8 +334,79 @@ export default function WorkspaceFilesPanel({
     }
   }, [focusFilesNonce, focusFilesRelPath, isTree]);
 
+  useEffect(() => {
+    if (!active || !canBrowse) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const inField =
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable);
+      if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (inField) return;
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        return;
+      }
+      if (e.key === 'Backspace' && !isTree && !inField && !searchQuery.trim() && browseRelPath) {
+        e.preventDefault();
+        setBrowseRelPath(parentWorkspaceRel(browseRelPath));
+      }
+      if (
+        e.key === 'Backspace' &&
+        inField &&
+        target === searchInputRef.current &&
+        !searchQuery.trim() &&
+        !isTree &&
+        browseRelPath
+      ) {
+        e.preventDefault();
+        setBrowseRelPath(parentWorkspaceRel(browseRelPath));
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [active, canBrowse, isTree, searchQuery, browseRelPath]);
+
+  const applyOfficePreset = useCallback(
+    (preset: OfficeDirPreset) => {
+      setOfficePreset(preset);
+      if (preset === 'all') {
+        setBrowseRelPath('');
+      } else if (preset === 'deliverables') {
+        setBrowseRelPath('deliverables');
+      } else if (preset === 'docs') {
+        setBrowseRelPath('docs');
+      } else {
+        setBrowseRelPath('');
+      }
+    },
+    [],
+  );
+
   const listError = isTree ? treeCache.error : browseError;
   const listLoading = isTree ? treeCache.rootLoading : browseLoading;
+
+  useEffect(() => {
+    if (!active || focusFilesNonce <= 0 || listLoading) return;
+    const rel = focusFilesRelPath?.trim();
+    if (!rel) return;
+    const id = window.setTimeout(
+      () => scrollWorkspaceRelIntoView(listScrollRef.current, rel),
+      isTree ? 150 : 60,
+    );
+    return () => window.clearTimeout(id);
+  }, [
+    active,
+    focusFilesNonce,
+    focusFilesRelPath,
+    listLoading,
+    isTree,
+    expandedDirs,
+    visibleEntries.length,
+    treeCache.cache,
+  ]);
 
   const handleRefresh = useCallback(() => {
     setBrowseNonce((n) => n + 1);
@@ -356,15 +484,11 @@ export default function WorkspaceFilesPanel({
     setCtxMenu(null);
   }, [ctxMenu]);
 
-  const ctxAddConv = useCallback(async () => {
-    if (!ctxMenu) return;
-    try {
-      await openWorkspaceFile(ctxMenu.relPath || ctxMenu.name, ctxMenu.name);
-    } catch (e) {
-      setBrowseError(formatWorkspaceFileError(e, t));
-    }
+  const ctxAddConv = useCallback(() => {
+    if (!ctxMenu || !onAddToChat) return;
+    onAddToChat(ctxMenu.relPath, ctxMenu.kind === 'directory');
     setCtxMenu(null);
-  }, [ctxMenu, openWorkspaceFile, t]);
+  }, [ctxMenu, onAddToChat]);
 
   const openCurrentInShell = useCallback(async () => {
     if (!desktopHost) return;
@@ -395,7 +519,11 @@ export default function WorkspaceFilesPanel({
     });
   }, []);
 
-  const openCtx = (e: { preventDefault: () => void; clientX: number; clientY: number }, ent: BrowseEntry, rel: string) => {
+  const openCtx = (
+    e: { preventDefault: () => void; clientX: number; clientY: number },
+    ent: BrowseEntry,
+    rel: string,
+  ) => {
     e.preventDefault();
     setCtxMenu({
       absPath: absPath(rel),
@@ -406,6 +534,71 @@ export default function WorkspaceFilesPanel({
       y: e.clientY,
     });
   };
+
+  const openCtxHit = (
+    e: { preventDefault: () => void; clientX: number; clientY: number },
+    hit: WorkspaceSearchHit,
+  ) => {
+    openCtx(e, { name: hit.name, kind: hit.kind }, hit.rel);
+  };
+
+  const onSearchHitPrimary = useCallback(
+    (hit: WorkspaceSearchHit) => {
+      if (hit.kind === 'directory') {
+        setBrowseRelPath(hit.rel);
+        setSearchQuery('');
+        return;
+      }
+      void onOpenFile(hit.rel, hit.name);
+    },
+    [onOpenFile],
+  );
+
+  const renderFlatEntry = useCallback(
+    (ent: BrowseEntry, rel: string) => {
+      const isDir = ent.kind === 'directory';
+      const isPreviewed =
+        !isDir && previewRel != null && workspaceRelPathsEqual(rel, previewRel);
+      return (
+        <WorkspaceDirEntryRow
+          ent={ent}
+          rel={rel}
+          depth={0}
+          isPreviewed={isPreviewed}
+          leading={
+            isDir ? (
+              <IconChevronRight className="size-3 text-t-text-muted shrink-0" />
+            ) : (
+              <span className="size-3 shrink-0" />
+            )
+          }
+          sensitiveHint={t('workspaceFiles.sensitiveHint')}
+          addToChatTitle={t('workspaceFiles.addToChat')}
+          onPrimaryClick={() =>
+            isDir ? setBrowseRelPath(rel) : void onOpenFile(rel, ent.name)
+          }
+          onContextMenu={(e) => openCtx(e, ent, rel)}
+          onAddToChat={onAddToChat ? () => onAddToChat(rel, false) : undefined}
+        />
+      );
+    },
+    [previewRel, t, onOpenFile, onAddToChat],
+  );
+
+  const renderSearchHit = useCallback(
+    (hit: WorkspaceSearchHit) => (
+      <WorkspaceSearchHitRow
+        hit={hit}
+        isPreviewed={isSearchHitPreviewed(hit, previewRel)}
+        sensitiveHint={t('workspaceFiles.sensitiveHint')}
+        addToChatTitle={t('workspaceFiles.addToChat')}
+        onPrimaryClick={() => onSearchHitPrimary(hit)}
+        onContextMenu={(e) => openCtxHit(e, hit)}
+        onAddToChat={onAddToChat ? () => onAddToChat(hit.rel, false) : undefined}
+      />
+    ),
+    [previewRel, t, onSearchHitPrimary, onAddToChat],
+  );
 
   return (
     <div className="flex flex-col min-h-0 flex-1">
@@ -509,21 +702,54 @@ export default function WorkspaceFilesPanel({
         </button>
       </div>
 
+      {officeSession && !isSearchMode && (
+        <div className="shrink-0 flex flex-wrap gap-1 px-2 py-1.5 border-b border-divider">
+          {(['all', 'deliverables', 'docs', 'changes'] as const).map((preset) => (
+            <button
+              key={preset}
+              type="button"
+              disabled={preset === 'changes' && officeChangeSet.size === 0}
+              className={`rounded-md px-2 py-0.5 text-[10px] transition-colors ${
+                officePreset === preset
+                  ? 'bg-accent-soft text-accent font-medium'
+                  : 'text-t-text-muted hover:bg-hover hover:text-t-text'
+              } disabled:opacity-40`}
+              title={
+                preset === 'changes' && officeChangeSet.size === 0
+                  ? t('workspaceFiles.officeFilterChangesEmpty')
+                  : undefined
+              }
+              onClick={() => applyOfficePreset(preset)}
+            >
+              {t(`workspaceFiles.officeFilter.${preset}`)}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="shrink-0 px-2 py-1.5 border-b border-divider">
         <label className="flex items-center gap-2 rounded-md border border-divider bg-canvas-alt/40 px-2 py-1">
           <IconSearch className="size-3.5 text-t-text-muted shrink-0" />
           <input
+            ref={searchInputRef}
             type="search"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                setSearchQuery('');
+              }
+            }}
             placeholder={t('workspaceFiles.searchPlaceholder')}
             className="flex-1 min-w-0 bg-transparent text-xs text-t-text placeholder:text-t-text-muted outline-none"
             disabled={!canBrowse}
+            aria-label={t('workspaceFiles.searchAria')}
           />
         </label>
       </div>
 
-      {!isTree && (
+      {!isTree && !isSearchMode && (
         <div className="shrink-0 px-2 py-1.5 border-b border-divider overflow-x-auto">
           <nav
             className="flex items-center gap-0.5 text-[11px] min-w-max"
@@ -555,7 +781,7 @@ export default function WorkspaceFilesPanel({
         </div>
       )}
 
-      <div className="flex-1 min-h-0 overflow-y-auto px-2 py-2">
+      <div ref={listScrollRef} className="flex-1 min-h-0 overflow-y-auto px-2 py-2">
         {listLoading && (
           <p className="text-xs text-t-text-muted px-1">{t('workspaceFiles.loading')}</p>
         )}
@@ -565,9 +791,28 @@ export default function WorkspaceFilesPanel({
         {!canBrowse && (
           <p className="text-xs text-amber-text/90 px-1">{t('workspaceFiles.needRuntime')}</p>
         )}
-        {canBrowse && !listLoading && (
+        {canBrowse && fileSearch.searchError && (
+          <p className="text-xs text-red-300/90 break-words mb-2 px-1">{fileSearch.searchError}</p>
+        )}
+        {canBrowse && isSearchMode && (
+          <p className="text-[10px] text-t-text-muted px-1 mb-1.5">
+            {fileSearch.searching
+              ? t('workspaceFiles.searching', {
+                  dirs: String(fileSearch.progress?.scannedDirs ?? 0),
+                })
+              : t('workspaceFiles.searchResultCount', {
+                  count: String(fileSearch.hits.length),
+                })}
+            {fileSearch.truncated
+              ? ` · ${t('workspaceFiles.searchTruncated', {
+                  max: String(WORKSPACE_SEARCH_MAX_RESULTS),
+                })}`
+              : ''}
+          </p>
+        )}
+        {canBrowse && !listLoading && !isSearchMode && (
           <>
-            {hiddenFilteredCount > 0 && !searchQuery.trim() && (
+            {hiddenFilteredCount > 0 && (
               <p className="text-[10px] text-t-text-muted px-1 mb-1.5">
                 {t('workspaceFiles.hiddenFiltered', { count: String(hiddenFilteredCount) })}
               </p>
@@ -579,54 +824,68 @@ export default function WorkspaceFilesPanel({
                 expanded={expandedDirs}
                 onToggleExpanded={onToggleExpanded}
                 showHidden={showHidden}
-                searchQuery={searchQuery}
                 previewRel={previewRel}
+                officeChangePaths={
+                  officeSession && officePreset === 'changes' ? officeChangeSet : undefined
+                }
                 ensureLoaded={treeCache.ensureLoaded}
                 onOpenFile={(rel, title) => void onOpenFile(rel, title)}
+                onAddToChat={onAddToChat}
                 onOpenContextMenu={openCtx}
+              />
+            ) : visibleEntries.length >= WORKSPACE_LIST_VIRTUAL_MIN ? (
+              <WorkspaceVirtualList
+                scrollRef={listScrollRef}
+                count={visibleEntries.length}
+                rowHeight={WORKSPACE_LIST_ROW_PX}
+                renderRow={(index) => {
+                  const ent = visibleEntries[index]!;
+                  const rel = joinWorkspaceRel(browseRelPath, ent.name);
+                  return renderFlatEntry(ent, rel);
+                }}
               />
             ) : (
               <ul className="space-y-0.5">
                 {visibleEntries.map((ent) => {
                   const rel = joinWorkspaceRel(browseRelPath, ent.name);
-                  const isDir = ent.kind === 'directory';
-                  const isPreviewed =
-                    !isDir && previewRel != null && workspaceRelPathsEqual(rel, previewRel);
-                  return (
-                    <li key={rel}>
-                      <WorkspaceDirEntryRow
-                        ent={ent}
-                        rel={rel}
-                        depth={0}
-                        isPreviewed={isPreviewed}
-                        leading={
-                          isDir ? (
-                            <IconChevronRight className="size-3 text-t-text-muted shrink-0" />
-                          ) : (
-                            <span className="size-3 shrink-0" />
-                          )
-                        }
-                        sensitiveHint={t('workspaceFiles.sensitiveHint')}
-                        addToChatTitle={t('workspaceFiles.addToChat')}
-                        onPrimaryClick={() =>
-                          isDir ? setBrowseRelPath(rel) : void onOpenFile(rel, ent.name)
-                        }
-                        onContextMenu={(e) => openCtx(e, ent, rel)}
-                        onAddToChat={() => void onOpenFile(rel, ent.name)}
-                      />
-                    </li>
-                  );
+                  return <li key={rel}>{renderFlatEntry(ent, rel)}</li>;
                 })}
               </ul>
             )}
             {!isTree && visibleEntries.length === 0 && !listError && (
               <p className="text-[11px] text-t-text-muted mt-2 px-1">
-                {searchQuery.trim()
-                  ? t('workspaceFiles.noSearchMatch')
+                {officeSession && officePreset === 'changes' && officeChangeSet.size === 0
+                  ? t('workspaceFiles.officeFilterChangesEmpty')
                   : t('workspaceFiles.emptyDir')}
               </p>
             )}
           </>
+        )}
+        {canBrowse && isSearchMode && !fileSearch.searching && (
+          <>
+            {fileSearch.hits.length >= WORKSPACE_LIST_VIRTUAL_MIN ? (
+              <WorkspaceVirtualList
+                scrollRef={listScrollRef}
+                count={fileSearch.hits.length}
+                rowHeight={WORKSPACE_LIST_ROW_PX}
+                renderRow={(index) => renderSearchHit(fileSearch.hits[index]!)}
+              />
+            ) : (
+              <ul className="space-y-0.5">
+                {fileSearch.hits.map((hit) => (
+                  <li key={hit.rel}>{renderSearchHit(hit)}</li>
+                ))}
+              </ul>
+            )}
+            {fileSearch.hits.length === 0 && !fileSearch.searchError && (
+              <p className="text-[11px] text-t-text-muted mt-2 px-1">
+                {t('workspaceFiles.searchNoMatch')}
+              </p>
+            )}
+          </>
+        )}
+        {canBrowse && isSearchMode && fileSearch.searching && fileSearch.hits.length === 0 && (
+          <p className="text-xs text-t-text-muted px-1">{t('workspaceFiles.searching', { dirs: '0' })}</p>
         )}
       </div>
 
@@ -656,13 +915,15 @@ export default function WorkspaceFilesPanel({
           >
             {t('workspaceFiles.ctxCopyRel')}
           </button>
-          <button
-            type="button"
-            className="w-full text-left px-3 py-1.5 text-xs text-t-text hover:bg-hover"
-            onClick={ctxAddConv}
-          >
-            {t('workspaceFiles.addToChat')}
-          </button>
+          {onAddToChat ? (
+            <button
+              type="button"
+              className="w-full text-left px-3 py-1.5 text-xs text-t-text hover:bg-hover"
+              onClick={ctxAddConv}
+            >
+              {t('workspaceFiles.addToChat')}
+            </button>
+          ) : null}
           <div className="border-t border-divider my-0.5" />
           <button
             type="button"

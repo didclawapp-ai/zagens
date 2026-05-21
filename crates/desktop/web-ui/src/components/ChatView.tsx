@@ -17,6 +17,7 @@ interface Props {
   workspaceRoot?: string;
   desktopHost?: boolean;
   onOpenWorkspacePath: (relPath: string) => void | Promise<void>;
+  onRevealWorkspacePath?: (relPath: string) => void;
   onEditMessage?: (messageId: string, content: string) => void;
   onRetryMessage?: (content: string) => void;
   onOpenDiffInPanel?: () => void;
@@ -37,6 +38,7 @@ export default function ChatView({
   workspaceRoot,
   desktopHost,
   onOpenWorkspacePath,
+  onRevealWorkspacePath,
   onEditMessage,
   onRetryMessage,
   onOpenDiffInPanel,
@@ -91,6 +93,7 @@ export default function ChatView({
               workspaceRoot={workspaceRoot}
               desktopHost={desktopHost}
               onOpenWorkspacePath={onOpenWorkspacePath}
+              onRevealWorkspacePath={onRevealWorkspacePath}
               onEditMessage={onEditMessage}
               onRetryMessage={onRetryMessage}
               onOpenDiffInPanel={onOpenDiffInPanel}

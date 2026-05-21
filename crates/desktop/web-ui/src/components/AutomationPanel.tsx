@@ -7,11 +7,16 @@ import {
   importSkillLocal,
   installSkillRemote,
   cancelTask,
+  clearFinishedTasks,
   type RuntimeConnectionState,
 } from '../api/client';
 import type { TaskSummary, SkillEntry, CreateTaskRequest } from '../types/automation';
+import { isTerminalTaskStatus } from '../types/automation';
 import { useT } from '../i18n';
 import { isRuntimeApiAvailable } from '../lib/runtimeReachable';
+import { confirmDialog } from '../lib/confirmDialog';
+import { markTasksSeen } from '../lib/inspectorUnread';
+import { toast } from '../lib/toast';
 
 /** 定时自动化（GET /v1/automations）暂不展示 — 见 docs/desktop/TUI_DS_PICK_GAP.md */
 type TabId = 'tasks' | 'skills';
@@ -59,21 +64,28 @@ function canCancelTask(status: string): boolean {
   return status === 'queued' || status === 'running' || status === 'pending' || status === 'paused';
 }
 
+export type AutomationPanelVariant = 'tasks' | 'skills' | 'both';
+
 export default function AutomationPanel({
   runtimeConn,
   streaming = false,
   runtimeSessionEstablished = false,
+  variant = 'both',
 }: {
   runtimeConn: RuntimeConnectionState;
   streaming?: boolean;
   runtimeSessionEstablished?: boolean;
+  /** U2: split Task vs Skills into separate inspector views. */
+  variant?: AutomationPanelVariant;
 }) {
   const { t } = useT();
   const runtimeReady = isRuntimeApiAvailable(runtimeConn, {
     streaming,
     sessionEstablished: runtimeSessionEstablished,
   });
-  const [tab, setTab] = useState<TabId>('tasks');
+  const lockedTab: TabId = variant === 'skills' ? 'skills' : 'tasks';
+  const [tab, setTab] = useState<TabId>(lockedTab);
+  const showTabBar = variant === 'both';
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
   const [skills, setSkills] = useState<SkillEntry[]>([]);
   const [skillsDirectory, setSkillsDirectory] = useState<string>('');
@@ -85,22 +97,33 @@ export default function AutomationPanel({
   const [createError, setCreateError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [cancelingId, setCancelingId] = useState<string | null>(null);
+  const [clearingFinished, setClearingFinished] = useState(false);
 
   const reload = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [t, s] = await Promise.all([fetchTasks(), fetchSkills()]);
-      setTasks(t);
-      setSkills(s.skills);
-      setSkillsDirectory(typeof s.directory === 'string' ? s.directory : String(s.directory ?? ''));
-      setSkillWarnings(s.warnings ?? []);
+      if (variant === 'tasks') {
+        const t = await fetchTasks();
+        setTasks(t);
+      } else if (variant === 'skills') {
+        const s = await fetchSkills();
+        setSkills(s.skills);
+        setSkillsDirectory(typeof s.directory === 'string' ? s.directory : String(s.directory ?? ''));
+        setSkillWarnings(s.warnings ?? []);
+      } else {
+        const [t, s] = await Promise.all([fetchTasks(), fetchSkills()]);
+        setTasks(t);
+        setSkills(s.skills);
+        setSkillsDirectory(typeof s.directory === 'string' ? s.directory : String(s.directory ?? ''));
+        setSkillWarnings(s.warnings ?? []);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [variant]);
 
   useEffect(() => {
     if (runtimeReady) {
@@ -134,6 +157,37 @@ export default function AutomationPanel({
     }
   };
 
+  const terminalTaskCount = tasks.filter((t) => isTerminalTaskStatus(t.status)).length;
+
+  const handleClearFinishedTasks = async () => {
+    if (terminalTaskCount === 0) {
+      return;
+    }
+    const ok = await confirmDialog(
+      t('automation.clearFinishedConfirm', { count: String(terminalTaskCount) }),
+      t('automation.clearFinishedTitle'),
+    );
+    if (!ok) {
+      return;
+    }
+    setClearingFinished(true);
+    setError(null);
+    try {
+      const { removed } = await clearFinishedTasks();
+      markTasksSeen([]);
+      await reload();
+      if (removed > 0) {
+        toast.success(t('automation.clearFinishedDone', { count: String(removed) }));
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setClearingFinished(false);
+    }
+  };
+
   if (!runtimeReady) {
     return (
       <div className="p-4 text-xs text-t-text-muted text-center space-y-2">
@@ -143,11 +197,15 @@ export default function AutomationPanel({
     );
   }
 
-  if (loading && tasks.length === 0 && skills.length === 0) {
+  const emptyTasks = variant !== 'skills' && tasks.length === 0;
+  const emptySkills = variant !== 'tasks' && skills.length === 0;
+  const panelEmpty = emptyTasks && emptySkills;
+
+  if (loading && panelEmpty) {
     return <div className="p-4 text-xs text-t-text-muted text-center">{t('automation.loading')}</div>;
   }
 
-  if (error && tasks.length === 0 && skills.length === 0) {
+  if (error && panelEmpty) {
     return (
       <div className="p-4 space-y-2">
         <p className="text-xs text-t-error">{t('automation.loadFailed', { error })}</p>
@@ -158,30 +216,45 @@ export default function AutomationPanel({
     );
   }
 
+  const activeTab = showTabBar ? tab : lockedTab;
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-2 border-b border-divider shrink-0 flex-wrap">
-        <div className="flex items-center gap-1">
-          {(Object.keys(TAB_LABELS) as TabId[]).map((k) => (
-            <button key={k} type="button" onClick={() => setTab(k)} className={tabBtn(tab === k)}>
-              {TAB_LABELS[k]}
-            </button>
-          ))}
-        </div>
-        <div className="ml-auto flex items-center gap-2">
-          {tab === 'tasks' && (
-            <button
-              type="button"
-              onClick={() => {
-                setShowCreateTask((v) => !v);
-                setCreateError(null);
-              }}
-              className="px-2.5 py-1 text-[11px] font-medium rounded-md border border-card-border bg-canvas-alt hover:bg-hover text-t-text"
-            >
-              {showCreateTask ? '关闭' : '新建任务'}
-            </button>
+        {showTabBar && (
+          <div className="flex items-center gap-1">
+            {(Object.keys(TAB_LABELS) as TabId[]).map((k) => (
+              <button key={k} type="button" onClick={() => setTab(k)} className={tabBtn(tab === k)}>
+                {TAB_LABELS[k]}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className={`${showTabBar ? 'ml-auto' : ''} flex items-center gap-2`}>
+          {activeTab === 'tasks' && (
+            <>
+              <button
+                type="button"
+                onClick={() => void handleClearFinishedTasks()}
+                disabled={clearingFinished || terminalTaskCount === 0}
+                className="px-2.5 py-1 text-[11px] font-medium rounded-md border border-card-border bg-canvas-alt hover:bg-hover text-t-text disabled:opacity-50"
+                title={t('automation.clearFinishedHint')}
+              >
+                {clearingFinished ? t('automation.clearingFinished') : t('automation.clearFinished')}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCreateTask((v) => !v);
+                  setCreateError(null);
+                }}
+                className="px-2.5 py-1 text-[11px] font-medium rounded-md border border-card-border bg-canvas-alt hover:bg-hover text-t-text"
+              >
+                {showCreateTask ? t('automation.close') : t('automation.newTask')}
+              </button>
+            </>
           )}
-          {tab === 'skills' && (
+          {activeTab === 'skills' && (
             <>
               <button
                 type="button"
@@ -206,7 +279,7 @@ export default function AutomationPanel({
       </div>
 
       <div className="overflow-y-auto px-3 py-2 flex-1 min-h-0">
-        {tab === 'tasks' && (
+        {activeTab === 'tasks' && (
           <>
             {showCreateTask && (
               <CreateTaskForm onSubmit={handleCreateTask} submitting={creating} errorText={createError} />
@@ -214,7 +287,7 @@ export default function AutomationPanel({
             <TasksList tasks={tasks} onCancel={handleCancelTask} cancelingId={cancelingId} />
           </>
         )}
-        {tab === 'skills' && (
+        {activeTab === 'skills' && (
           <SkillsList
             skills={skills}
             skillsDirectory={skillsDirectory}

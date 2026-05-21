@@ -14,6 +14,8 @@ interface Props {
   menu: WorkspaceLinkMenuState;
   desktopHost: boolean;
   onClose: () => void;
+  onOpenPreview: (relPath: string) => void;
+  onRevealInFiles?: (relPath: string) => void;
   onOpenSystem: (absPath: string) => void;
 }
 
@@ -21,6 +23,8 @@ export default function WorkspaceLinkContextMenu({
   menu,
   desktopHost,
   onClose,
+  onOpenPreview,
+  onRevealInFiles,
   onOpenSystem,
 }: Props) {
   const { t } = useT();
@@ -61,6 +65,30 @@ export default function WorkspaceLinkContextMenu({
       >
         {menu.fileName}
       </div>
+      <button
+        type="button"
+        role="menuitem"
+        className={itemCls}
+        onClick={() => {
+          onOpenPreview(menu.relPath);
+          onClose();
+        }}
+      >
+        {t('chatMarkdown.openPreview')}
+      </button>
+      {onRevealInFiles ? (
+        <button
+          type="button"
+          role="menuitem"
+          className={itemCls}
+          onClick={() => {
+            onRevealInFiles(menu.relPath);
+            onClose();
+          }}
+        >
+          {t('chatMarkdown.showInFiles')}
+        </button>
+      ) : null}
       {canSystemOpen ? (
         <button
           type="button"

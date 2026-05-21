@@ -1,4 +1,5 @@
 import type { ToolCardModel } from '../../components/ToolCard';
+import { normalizeWorkspaceRelPath } from '../openWorkspaceFile';
 
 export const DIFF_TOOL_NAMES = new Set(['edit_file', 'apply_patch', 'write_file']);
 
@@ -81,4 +82,14 @@ export function extractDiffEntries(messages: MessageWithTools[]): DiffEntry[] {
     }
   }
   return entries;
+}
+
+/** Normalized workspace-relative paths from tool diffs in the session (Office「本轮变更」筛选). */
+export function extractDiffRelPaths(messages: MessageWithTools[]): string[] {
+  const paths = new Set<string>();
+  for (const e of extractDiffEntries(messages)) {
+    const rel = normalizeWorkspaceRelPath(e.fileName);
+    if (rel) paths.add(rel);
+  }
+  return [...paths];
 }

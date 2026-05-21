@@ -3080,7 +3080,7 @@ impl RuntimeThreadManager {
                         Some(&turn_id),
                         Some(&item.id),
                         "agent.spawned",
-                        json!({ "item": item, "agent_id": id }),
+                        json!({ "item": item, "agent_id": id, "prompt": prompt }),
                     )
                     .await?;
                 }
