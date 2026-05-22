@@ -32,7 +32,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Runtime (R-003 / A4.2–A4.3):** Extract `runtime_api/auth.rs` and `runtime_api/stream.rs` from monolith `mod.rs` (~4.9k lines remain in `mod.rs`; `threads.rs` still TODO per roadmap §7.4).
+- **Runtime (R-003 / A4.5):** Extract `health.rs`、`workspace.rs`、`usage.rs`（含 routing/symbol-index）；契约测迁至 `runtime_api/tests.rs`；`mod.rs` ~500 行（达 §12.6 <800 目标）。
+- **Runtime (R-003 / A4.5):** Extract `runtime_api/skills.rs`、`mcp.rs`、`automations.rs`。
+- **Runtime (R-003 / A4.5 部分):** Extract `runtime_api/sessions.rs`（会话 + resume-thread 播种）与 `runtime_api/tasks.rs`（后台任务队列）。
+- **Runtime (R-003 / A4.4):** Extract `runtime_api/threads.rs` — thread CRUD, turns, snapshots, workspace browse/read (~1k lines).
+- **CI (R-009):** Ubuntu job runs `sidecar_contract_full_lifecycle` explicitly (`cargo test -p deepseek-tui --lib`).
+- **Runtime (R-003 / A4.2–A4.3):** Extract `runtime_api/auth.rs` and `runtime_api/stream.rs` from monolith `mod.rs`.
 
 ### Fixed
 

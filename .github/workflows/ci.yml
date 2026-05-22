@@ -82,6 +82,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Run tests
         run: cargo test --workspace --all-features --locked
+      - name: Runtime sidecar contract (A+.4 / R-009)
+        if: matrix.os == 'ubuntu-latest'
+        run: cargo test -p deepseek-tui --lib sidecar_contract_full_lifecycle --all-features --locked
       - name: Lockfile drift guard
         run: git diff --exit-code -- Cargo.lock
       - name: Run Offline Eval Harness

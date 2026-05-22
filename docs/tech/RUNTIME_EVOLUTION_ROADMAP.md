@@ -164,7 +164,7 @@ deepseek app-server
 
 | 路径 | 约行数 | 路线图动作 | 实施状态 |
 |------|--------|------------|----------|
-| `crates/tui/src/runtime_api/mod.rs` | ~5043 | **A4** 拆分 | **部分** — `auth.rs`（~51）、`stream.rs`（~100）已拆；`router.rs` / `threads.rs` 等待办 |
+| `crates/tui/src/runtime_api/mod.rs` | ~505 | **A4** 拆分 | **✅ 达标** — 域模块 + `tests.rs`；主文件保留 `run_http_server`、`ApiError`、CORS、`ThreadEventsQuery` |
 | `crates/tui/src/runtime_threads/mod.rs` | ~5818 | **A4.6** | **未开始** |
 | `crates/tui/src/core/engine.rs` | ~2174 | **P2** 薄包装目标 <300 行 | **未达标** — Engine 仍在 tui |
 | `crates/core/src/lib.rs` | ~1710 | **P2** 并入 Engine | **部分** — 共享类型已入 core 子模块；`Runtime`/`Engine` 未迁 |
@@ -834,8 +834,8 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 | ID | 交付物 | 证据 |
 |----|--------|------|
 | R-001 | `RUNTIME_ARCHITECTURE.md` | 存在且引用 v2.0-final |
-| R-003（部分） | `runtime_api` → `mod` + `auth` + `stream` + `router.rs` | 目录 `crates/tui/src/runtime_api/` |
-| R-009（部分） | A+.4 sidecar 契约测 | `sidecar_contract_full_lifecycle` |
+| R-003（部分） | `runtime_api` → `mod` + `auth` + `stream` + `router` + `threads` + `sessions` + `tasks` | 目录 `crates/tui/src/runtime_api/` |
+| R-009（部分） | A+.4 sidecar 契约测 + CI 显式跑 | `sidecar_contract_full_lifecycle`、`.github/workflows/ci.yml` |
 | R-006（部分） | `deepseek-tui` lib target | `crates/tui/src/lib.rs` |
 | R-013 | P2 PR0 spike | `docs/tech/adr/P2_MIGRATION_SPIKE.md` |
 | R-015（部分） | 长跑脚本 + ADR 占位 | `scripts/runtime-longrun-baseline.ps1`、`adr/RUNTIME_BASELINE.md` |
@@ -845,7 +845,7 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 ### 17.3 阻塞与债务（收尾优先序）
 
 1. **编译/测试：** ✅ `cargo check --workspace` + `cargo test -p deepseek-tui --lib`（2026-05-22，2368 passed）。
-2. **A4 继续：** 完成 `router.rs`、`threads.rs` 等拆分，使 `runtime_api/mod.rs` <800 行（§12.6）。
+2. **A4：** `runtime_api/mod.rs` <800 行已达标（2026-05-22）；后续仅增量提取时随改动维护域模块边界。
 3. **A+ 契约：** 落地 R-009 sidecar 契约测 + `event_schema_version` 字段（§12.2 G2）。
 4. **P2 绞杀者：** 按 §11.2 PR2–PR5 迁 `turn_loop`/`Engine`；禁止在 `engine.rs` 上叠新 Agent 语义。
 5. **R-015 填数：** 跑 3 次脚本，写入 `RUNTIME_BASELINE.md` + CHANGELOG。
