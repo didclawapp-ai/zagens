@@ -21,10 +21,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-
-- **Runtime (R-003 / A4.6 阶段 1):** Extract `runtime_threads/persist.rs`（`RuntimeThreadStore` + 磁盘/事件/usage 聚合）与 `events.rs`（agent rebind hints）；`mod.rs` ~5.2k 行（`RuntimeThreadManager` 仍留主文件）。
-
 ### Fixed
 
 - **Tests:** `integration_mock_llm` re-exports `deepseek_core::LlmClient` so mock trait matches P2 `async_trait` surface.
@@ -36,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Runtime (R-003 / A4.6 阶段 1):** Extract `runtime_threads/persist.rs`（`RuntimeThreadStore` + 磁盘/事件/usage 聚合）与 `events.rs`（agent rebind hints）；`mod.rs` ~5.2k 行（`RuntimeThreadManager` 仍留主文件）。
 - **Runtime (R-003 / A4.5):** Extract `health.rs`、`workspace.rs`、`usage.rs`（含 routing/symbol-index）；契约测迁至 `runtime_api/tests.rs`；`mod.rs` ~500 行（达 §12.6 <800 目标）。
 - **Runtime (R-003 / A4.5):** Extract `runtime_api/skills.rs`、`mcp.rs`、`automations.rs`。
 - **Runtime (R-003 / A4.5 部分):** Extract `runtime_api/sessions.rs`（会话 + resume-thread 播种）与 `runtime_api/tasks.rs`（后台任务队列）。
