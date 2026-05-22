@@ -27,6 +27,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Docs:** `docs/tech/adr/P2_PR4_SESSION_HANDOFF.md` — 新窗口继续 P2 PR4 / A4.6 / R-015 的对接说明。
+- **Runtime (P2 PR4 局部):** `deepseek-core::engine::{dispatch,context}`（工具 JSON/上下文预算/plan 策略）；tui 薄 re-export；`RegistryToolDispatch` 接线 `execute_tool_with_lock`；`Engine`/`turn_loop` 仍留 tui。
+- **Runtime (A4.6):** `runtime_threads/engine_load.rs`（`ensure_engine_loaded`）；`routing.rs` 路由读写。
+- **Runtime (tests):** `runtime_api` 测试显式隔离 `data_dir`，不再受工作区 `DEEPSEEK_RUNTIME_DIR` 污染。
+- **Runtime (A4.6):** `runtime_threads/routing.rs` 自 `manager.rs` 拆出路由规则读写。
+- **Runtime (A4.6):** `runtime_threads/{active,monitor}.rs` 自 `manager.rs` 拆出（LRU/活跃 turn 状态 + `monitor_turn`）；`manager.rs` ~1.8k 行。
+- **Runtime (P2 PR3 局部):** `deepseek-core::engine::{StartTurnParams, TurnEnginePort}`；`RuntimeThreadManager::start_turn` 经 core 委托 `EngineHandle`（`turn_loop` 仍在 tui）。
 - **Docs:** [RUNTIME_EVOLUTION_ROADMAP.md](docs/tech/RUNTIME_EVOLUTION_ROADMAP.md) **v2.0-final** — 维护者签收 §4.2（D4–D7、D9）；§17 实施后审核（2026-05-22）；[adr/RUNTIME_BASELINE.md](docs/tech/adr/RUNTIME_BASELINE.md) R-015 占位（基准填数并行）。
 - **Runtime (P2 PR1 局部):** Shared types and `LlmClient` trait in `deepseek-core` (`chat`, `models`, `turn`, `compaction`, `capacity`, `workshop`, …) with `deepseek-tui` re-exports; `deepseek-tui` **lib** target (`crates/tui/src/lib.rs`).
 
@@ -34,7 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Runtime (R-003 / A4.6 阶段 3):** Extract `runtime_threads/tests.rs`；`mod.rs` ~275 行（契约测外置）。
 - **Runtime (P2 PR2 局部):** Move `Session`/`SessionUsage`、`working_set`、`project_context`、`ApprovalMode`、`CycleBriefing` into `deepseek-core` with tui re-exports; `turn_loop` still in `deepseek-tui::core::engine`.
-- **Runtime (R-015 部分):** Harden `runtime-longrun-baseline.ps1` (PS5.1, `-DryRun`, `DEEPSEEK_RUNTIME_DIR`); ADR records dry-run p99 **0.27 ms** @ `5d566a3` (RSS pending full run).
+- **Runtime (R-015):** `runtime-longrun-baseline.ps1` — release sidecar (fix debug stack overflow on Windows), load repo `.env`, poll turn `in_progress` between turns; ADR full-run RSS **26.6 MB** median @ `ab4c3c4` (`deepseek-v4-pro`, 50×3 turns); dry-run p99 **0.16 ms**.
 - **Runtime (R-003 / A4.6 阶段 2):** Extract `runtime_threads/manager.rs`（`RuntimeThreadManager`、LRU、routing、turn 生命周期）；`mod.rs` ~2.4k 行（契约测仍留主文件）；`manager.rs` ~2.9k 行待后续 `tests.rs` 外置。
 - **Runtime (R-003 / A4.6 阶段 1):** Extract `runtime_threads/persist.rs`（`RuntimeThreadStore` + 磁盘/事件/usage 聚合）与 `events.rs`（agent rebind hints）；`mod.rs` ~5.2k 行（`RuntimeThreadManager` 仍留主文件）。
 - **Runtime (R-003 / A4.5):** Extract `health.rs`、`workspace.rs`、`usage.rs`（含 routing/symbol-index）；契约测迁至 `runtime_api/tests.rs`；`mod.rs` ~500 行（达 §12.6 <800 目标）。

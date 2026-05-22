@@ -76,25 +76,128 @@ function Measure-DataDirWriteP99Ms {
     return [Math]::Round($sorted[[Math]::Max(0, $idx)], 2)
 }
 
-function Invoke-LargeToolOutputTurn {
+function Get-LatestTurnStatus {
     param([string]$Base, [string]$ThreadId)
+    $detail = Invoke-Rest -Uri "$Base/v1/threads/$ThreadId" -Method GET
+    if (-not $detail.turns -or $detail.turns.Count -eq 0) { return $null }
+    return [string]$detail.turns[-1].status
+}
+
+function Wait-ForTurnIdle {
+    param(
+        [string]$Base,
+        [string]$ThreadId,
+        [int]$TimeoutSec = 900
+    )
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    while ((Get-Date) -lt $deadline) {
+        $status = Get-LatestTurnStatus -Base $Base -ThreadId $ThreadId
+        if ($null -eq $status) {
+            Start-Sleep -Seconds 2
+            continue
+        }
+        if ($status -notin @("in_progress", "queued")) {
+            return $status
+        }
+        Start-Sleep -Seconds 3
+    }
+    throw "Turn did not finish within ${TimeoutSec}s on thread $ThreadId"
+}
+
+function Invoke-ThreadTurn {
+    param(
+        [string]$Base,
+        [string]$ThreadId,
+        [string]$Prompt,
+        [int]$TurnTimeoutSec = 900
+    )
+    $resp = Invoke-Rest -Uri "$Base/v1/threads/$ThreadId/turns" -Method Post -Body @{
+        prompt = $Prompt
+    } -TimeoutSec 60
+    $turnId = $null
+    if ($resp.turn) { $turnId = $resp.turn.id }
+    elseif ($resp.id) { $turnId = $resp.id }
+    try {
+        Wait-ForTurnIdle -Base $Base -ThreadId $ThreadId -TimeoutSec $TurnTimeoutSec | Out-Null
+    } catch {
+        if ($turnId) {
+            try {
+                Invoke-Rest -Uri "$Base/v1/threads/$ThreadId/turns/$turnId/interrupt" -Method Post | Out-Null
+                Wait-ForTurnIdle -Base $Base -ThreadId $ThreadId -TimeoutSec 120 | Out-Null
+            } catch {
+                Write-Warning "  interrupt after timeout failed: $_"
+            }
+        }
+        throw
+    }
+}
+
+function Invoke-LargeToolOutputTurn {
+    param([string]$Base, [string]$ThreadId, [int]$TurnTimeoutSec = 900)
     # Best-effort: ask for a large read; may fail without repo files — still exercises path.
     $prompt = @"
 Run a single tool that reads a file under the workspace and returns at least 500KB of text if possible.
 If no large file exists, list directory sizes and stop.
 "@
     try {
-        Invoke-Rest -Uri "$Base/v1/threads/$ThreadId/turns" -Method Post -Body @{ prompt = $prompt } -TimeoutSec 300
-        Start-Sleep -Seconds 15
+        Invoke-ThreadTurn -Base $Base -ThreadId $ThreadId -Prompt $prompt -TurnTimeoutSec $TurnTimeoutSec
     } catch {
         Write-Warning "  large-tool turn skipped or failed: $_"
     }
 }
 
+function Import-WorkspaceDotEnv {
+    param([string]$Root)
+    $dotenv = Join-Path $Root ".env"
+    if (-not (Test-Path $dotenv)) { return }
+    Get-Content $dotenv | ForEach-Object {
+        if ($_ -match '^\s*([^#][^=]+)=(.*)$') {
+            $name = $Matches[1].Trim()
+            $value = $Matches[2].Trim().Trim('"').Trim("'")
+            if ($name -and $value) {
+                $existing = [Environment]::GetEnvironmentVariable($name, 'Process')
+                if ([string]::IsNullOrEmpty($existing)) {
+                    [Environment]::SetEnvironmentVariable($name, $value, 'Process')
+                }
+            }
+        }
+    }
+}
+
+function Resolve-DeepSeekApiKeyFromConfig {
+    $configPath = Join-Path $env:USERPROFILE ".deepseek\config.toml"
+    if (-not (Test-Path $configPath)) { return $null }
+    $content = Get-Content -Path $configPath -Raw -ErrorAction SilentlyContinue
+    if (-not $content) { return $null }
+    $patterns = @(
+        '(?ms)\[providers\.deepseek\][^\[]*?^\s*api_key\s*=\s*"([^"]+)"',
+        '(?m)^\s*api_key\s*=\s*"([^"]+)"'
+    )
+    foreach ($pat in $patterns) {
+        if ($content -match $pat) {
+            $key = $Matches[1].Trim()
+            if ($key -and $key -ne "keyring" -and $key -notmatch '^\*+$') {
+                return $key
+            }
+        }
+    }
+    return $null
+}
+
 # --- main ---
 
+Import-WorkspaceDotEnv -Root $workspaceRoot
+
 if (-not $DryRun -and -not $env:DEEPSEEK_API_KEY) {
-    Write-Error "DEEPSEEK_API_KEY is not set.  Export it before running this script, or pass -DryRun for disk-only sampling."
+    $fromConfig = Resolve-DeepSeekApiKeyFromConfig
+    if ($fromConfig) {
+        $env:DEEPSEEK_API_KEY = $fromConfig
+        Write-Host "  Using api_key from ~/.deepseek/config.toml" -ForegroundColor DarkGray
+    }
+}
+
+if (-not $DryRun -and -not $env:DEEPSEEK_API_KEY) {
+    Write-Error "DEEPSEEK_API_KEY is not set (env or ~/.deepseek/config.toml). Export it before running, or pass -DryRun for disk-only sampling."
     exit 1
 }
 
@@ -127,11 +230,12 @@ if ($DryRun) {
     exit 0
 }
 
-$binary = Join-Path $workspaceRoot "target\debug\deepseek-tui.exe"
+# Release build: debug `deepseek-tui serve --http` can stack-overflow on Windows (2026-05-22).
+$binary = Join-Path $workspaceRoot "target\release\deepseek-tui.exe"
 if (-not (Test-Path $binary)) {
-    Write-Host "Building deepseek-tui..."
+    Write-Host "Building deepseek-tui (release)..."
     Push-Location $workspaceRoot
-    cargo build -p deepseek-tui
+    cargo build -p deepseek-tui --release
     Pop-Location
     if ($LASTEXITCODE -ne 0) { throw "Build failed" }
 }
@@ -175,20 +279,15 @@ for ($run = 1; $run -le $Runs; $run++) {
         $threadId = $thread.id
         Write-Host "  thread created: $threadId"
 
-        Invoke-Rest -Uri "$base/v1/threads/$threadId/turns" -Method Post -Body @{
-            prompt = "Reply with just the word OK."
-        } | Out-Null
-        Start-Sleep -Seconds 8
+        Invoke-ThreadTurn -Base $base -ThreadId $threadId -Prompt "Reply with just the word OK." -TurnTimeoutSec 300
         Write-Host "  warm-up done"
 
-        Invoke-LargeToolOutputTurn -Base $base -ThreadId $threadId
+        Invoke-LargeToolOutputTurn -Base $base -ThreadId $threadId -TurnTimeoutSec 900
 
         $rssPeak = 0.0
         for ($t = 1; $t -le $Turns; $t++) {
             try {
-                Invoke-Rest -Uri "$base/v1/threads/$threadId/turns" -Method Post -Body @{
-                    prompt = "Turn ${t}: reply with one short sentence."
-                } -TimeoutSec 180 | Out-Null
+                Invoke-ThreadTurn -Base $base -ThreadId $threadId -Prompt "Turn ${t}: reply with one short sentence." -TurnTimeoutSec 600
             } catch {
                 Write-Warning "  turn $t failed: $_"
             }
@@ -196,12 +295,8 @@ for ($run = 1; $run -le $Runs; $run++) {
                 $rss = (Get-Process -Id $proc.Id -ErrorAction SilentlyContinue).WorkingSet64 / 1MB
                 if ($rss -gt $rssPeak) { $rssPeak = $rss }
             } catch { }
-            if ($t % 10 -eq 0) { Write-Host "  turn $t / $Turns" }
+            if ($t % 10 -eq 0) { Write-Host "  turn $t / $Turns (RSS peak so far: $([math]::Round($rssPeak, 1)) MB)" }
         }
-
-        try {
-            Invoke-Rest -Uri "$base/v1/threads/$threadId/turns/latest/stop" -Method Post | Out-Null
-        } catch { }
 
         $p99 = Measure-DataDirWriteP99Ms -DataDir $dataDir
         Write-Host "  RSS peak: $([math]::Round($rssPeak, 1)) MB  p99 read proxy: $p99 ms"

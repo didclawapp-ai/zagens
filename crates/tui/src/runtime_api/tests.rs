@@ -121,10 +121,20 @@ async fn spawn_test_server_with_root_and_token(
         deepseek_v4_flash_prior: None,
         fallback_default_prior: None,
     });
+    let runtime_data_dir = root.join("runtime");
+    fs::create_dir_all(&runtime_data_dir)?;
+    // Ignore workspace `DEEPSEEK_RUNTIME_DIR` (R-015 baseline / local dev) so each
+    // test server gets an isolated store.
+    let manager_cfg = RuntimeThreadManagerConfig {
+        data_dir: runtime_data_dir.clone(),
+        task_data_dir: runtime_data_dir,
+        max_active_threads: 8,
+        http_approval_timeout_secs: 120,
+    };
     let runtime_threads: SharedRuntimeThreadManager = Arc::new(RuntimeThreadManager::open(
         config,
         PathBuf::from("."),
-        RuntimeThreadManagerConfig::from_task_data_dir(root.join("runtime")),
+        manager_cfg,
     )?);
     runtime_threads.attach_task_manager(manager.clone());
     let automations = Arc::new(Mutex::new(AutomationManager::open(

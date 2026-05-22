@@ -11,6 +11,7 @@ use std::{fs::OpenOptions, io::Write};
 use serde_json::Value;
 
 use crate::tools::spec::{ToolContext, ToolProgressEmit};
+use deepseek_core::engine::EngineToolDispatch;
 
 use super::*;
 
@@ -366,26 +367,37 @@ impl Engine {
                 )))
             }
         } else if let Some(registry) = registry {
-            let merged_ctx: Option<ToolContext> = match tool_progress_id.as_ref() {
-                Some(tid) => {
-                    let mut base = match &context_override {
-                        Some(co) => co.clone(),
-                        None => registry.context().clone(),
-                    };
-                    base.tool_progress =
-                        Some(ChannelToolProgress::new_arc(tx_event.clone(), tid.clone()));
-                    Some(base)
-                }
-                None => None,
-            };
+            let needs_context_path =
+                context_override.is_some() || tool_progress_id.is_some();
+            if needs_context_path {
+                let merged_ctx: Option<ToolContext> = match tool_progress_id.as_ref() {
+                    Some(tid) => {
+                        let mut base = match &context_override {
+                            Some(co) => co.clone(),
+                            None => registry.context().clone(),
+                        };
+                        base.tool_progress =
+                            Some(ChannelToolProgress::new_arc(tx_event.clone(), tid.clone()));
+                        Some(base)
+                    }
+                    None => None,
+                };
 
-            let exec_ctx_owned = match merged_ctx {
-                Some(ctx) => Some(ctx),
-                None => context_override,
-            };
-            registry
-                .execute_full_with_context(&tool_name, tool_input, exec_ctx_owned.as_ref())
-                .await
+                let exec_ctx_owned = match merged_ctx {
+                    Some(ctx) => Some(ctx),
+                    None => context_override,
+                };
+                registry
+                    .execute_full_with_context(&tool_name, tool_input, exec_ctx_owned.as_ref())
+                    .await
+            } else {
+                let call = tool_dispatch_port::value_to_tool_call(tool_name.clone(), tool_input);
+                let output = RegistryToolDispatch::new(registry)
+                    .dispatch_tool(call, true)
+                    .await
+                    .map_err(|err| tool_dispatch_port::function_call_to_tool_error(err, &tool_name))?;
+                tool_dispatch_port::tool_output_to_result(output)
+            }
         } else {
             Err(ToolError::not_available(format!(
                 "tool '{tool_name}' is not registered"

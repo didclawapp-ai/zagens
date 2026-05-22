@@ -5,8 +5,9 @@
 //! event handling, tool planning/execution, LSP post-edit hooks, capacity
 //! checkpoints, and loop termination.
 //!
-//! **P2:** Still in `deepseek-tui` until `Engine` moves to `deepseek-core` (PR3–PR4);
-//! session state already lives in `deepseek_core::session`.
+//! **P2:** Still in `deepseek-tui` until `Engine` moves to `deepseek-core` (PR4 thin
+//! wrapper); PR3 delegates turn start via `deepseek_core::engine::TurnEnginePort`.
+//! Session state already lives in `deepseek_core::session`.
 
 use super::*;
 

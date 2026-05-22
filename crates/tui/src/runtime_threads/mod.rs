@@ -42,9 +42,13 @@ pub(crate) const SUMMARY_LIMIT: usize = 280;
 const CURRENT_RUNTIME_SCHEMA_VERSION: u32 = 2;
 pub(crate) const RUNTIME_RESTART_REASON: &str = "Interrupted by process restart";
 
+mod active;
+mod engine_load;
 mod events;
 mod manager;
+mod monitor;
 mod persist;
+mod routing;
 mod types;
 
 pub use events::{collect_agent_rebind_hints, AgentRebindHint, AgentRebindStatus};
@@ -53,10 +57,13 @@ pub use persist::RuntimeThreadStore;
 pub use types::*;
 
 #[cfg(test)]
-pub(crate) use manager::{
-    enforce_lru_capacity, parse_mode, touch_lru, ActiveThreadState, ActiveThreads,
-    ActiveTurnState, RuntimeApprovalDecision,
+pub(crate) use active::{
+    enforce_lru_capacity, touch_lru, ActiveThreadState, ActiveThreads, ActiveTurnState,
+    RuntimeApprovalDecision,
 };
+pub(crate) use manager::tool_kind_for_name;
+#[cfg(test)]
+pub(crate) use manager::parse_mode;
 
 #[derive(Debug, Clone)]
 pub struct RuntimeThreadManagerConfig {

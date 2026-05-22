@@ -2121,6 +2121,7 @@ pub(crate) fn mock_engine_handle() -> MockEngineHandle {
 }
 
 mod approval;
+mod turn_port;
 mod capacity_flow;
 mod context;
 pub(crate) use context::compact_tool_result_for_context;
@@ -2137,8 +2138,11 @@ mod streaming;
 mod tool_catalog;
 mod tool_execution;
 mod tool_setup;
+mod tool_dispatch_port;
 pub mod scratchpad_flow;
 mod turn_loop;
+
+pub(crate) use tool_dispatch_port::{RegistryToolDispatch, TuiEngineToolDispatch};
 
 use self::approval::{ApprovalDecision, ApprovalResult, UserInputDecision};
 use self::dispatch::{
@@ -2148,12 +2152,12 @@ use self::dispatch::{
     parse_parallel_tool_calls, parse_tool_input, should_force_update_plan_first,
     should_parallelize_tool_batch, should_stop_after_plan_tool,
 };
-use self::loop_guard::{AttemptDecision, LoopGuard, OutcomeDecision};
+use deepseek_core::engine::loop_guard::{AttemptDecision, LoopGuard, OutcomeDecision};
 #[cfg(test)]
 use self::lsp_hooks::{edited_paths_for_tool, parse_patch_paths};
 #[cfg(test)]
-use self::streaming::TOOL_CALL_START_MARKERS;
-use self::streaming::{
+use deepseek_core::engine::streaming::TOOL_CALL_START_MARKERS;
+use deepseek_core::engine::streaming::{
     ContentBlockKind, FAKE_WRAPPER_NOTICE, MAX_STREAM_ERRORS_BEFORE_FAIL,
     MAX_TRANSPARENT_STREAM_RETRIES, STREAM_CHUNK_TIMEOUT_SECS, STREAM_MAX_CONTENT_BYTES,
     STREAM_MAX_DURATION_SECS, ToolUseState, contains_fake_tool_wrapper, filter_tool_call_delta,

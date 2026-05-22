@@ -1588,6 +1588,7 @@ dependencies = [
  "crossterm 0.28.1",
  "deepseek-config",
  "deepseek-core",
+ "deepseek-protocol",
  "deepseek-secrets",
  "deepseek-tools",
  "dirs",
