@@ -71,18 +71,7 @@ pub use deepseek_core::cycle::{
 /// configured token cap. Matches `compaction::estimate_tokens` (~4 chars/token).
 const APPROX_CHARS_PER_TOKEN: usize = 4;
 
-/// Snapshot of a model-curated briefing produced at cycle handoff.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CycleBriefing {
-    /// 1-based cycle number this briefing closes (i.e. the cycle being archived).
-    pub cycle: u32,
-    /// UTC timestamp when the briefing turn completed.
-    pub timestamp: DateTime<Utc>,
-    /// Extracted contents of the `<carry_forward>` block.
-    pub briefing_text: String,
-    /// Approximate token count of `briefing_text`.
-    pub token_estimate: usize,
-}
+pub use deepseek_core::cycle::CycleBriefing;
 
 /// Decide whether a cycle boundary should fire.
 ///

@@ -165,8 +165,10 @@ deepseek app-server
 | 路径 | 约行数 | 路线图动作 | 实施状态 |
 |------|--------|------------|----------|
 | `crates/tui/src/runtime_api/mod.rs` | ~505 | **A4** 拆分 | **✅ 达标** — 域模块 + `tests.rs`；主文件保留 `run_http_server`、`ApiError`、CORS、`ThreadEventsQuery` |
-| `crates/tui/src/runtime_threads/mod.rs` | ~2410 | **A4.6** | **部分** — `manager.rs`（~2860）、`persist.rs`（~620）、`events.rs`（~65）；`#[cfg(test)]` 仍占主文件 |
-| `crates/tui/src/runtime_threads/manager.rs` | ~2860 | **A4.6** | **待拆** — 超 code-org 软上限；后续 `tests.rs` 外置 + 按域再切 |
+| `crates/tui/src/runtime_threads/mod.rs` | ~275 | **A4.6** | **✅ 主文件达标** — 测试在 `tests.rs`（~2140）；`manager.rs` 待再切 |
+| `crates/tui/src/runtime_threads/manager.rs` | ~2860 | **A4.6** | **待拆** — 超 code-org 软上限；按域再切 |
+| `crates/core/src/session.rs` | ~183 | **P2 PR2** | **✅** — `Session`/`SessionUsage` + `working_set`/`project_context`/`ApprovalMode` |
+| `crates/tui/src/core/engine.rs` | ~2174 | **P2 PR2** | **部分** — `turn_loop` 仍在此；待 Engine→core（PR3–PR4） |
 | `crates/tui/src/core/engine.rs` | ~2174 | **P2** 薄包装目标 <300 行 | **未达标** — Engine 仍在 tui |
 | `crates/core/src/lib.rs` | ~1710 | **P2** 并入 Engine | **部分** — 共享类型已入 core 子模块；`Runtime`/`Engine` 未迁 |
 | `crates/tui/src/lib.rs` | 有 | **A5.1** | **✅** lib target 已存在 |
@@ -839,7 +841,8 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 | R-009（部分） | A+.4 sidecar 契约测 + CI 显式跑 | `sidecar_contract_full_lifecycle`、`.github/workflows/ci.yml` |
 | R-006（部分） | `deepseek-tui` lib target | `crates/tui/src/lib.rs` |
 | R-013 | P2 PR0 spike | `docs/tech/adr/P2_MIGRATION_SPIKE.md` |
-| R-015（部分） | 长跑脚本 + ADR 占位 | `scripts/runtime-longrun-baseline.ps1`、`adr/RUNTIME_BASELINE.md` |
+| R-015（部分） | 长跑脚本 + ADR dry-run p99 | `scripts/runtime-longrun-baseline.ps1`（`-DryRun`）、`adr/RUNTIME_BASELINE.md`（RSS 待全量） |
+| — | P2 PR2 局部 | `deepseek-core::{session,working_set,project_context,approval,cycle::CycleBriefing,engine}` + tui re-export |
 | — | P2 PR1 类型/`LlmClient` 入 core | `crates/core/src/{chat,models,turn,...}` + tui re-export |
 | — | DS Pick 生产路径 | Phase 1 harness、v0.4.3 流式去重、多窗口（CHANGELOG） |
 

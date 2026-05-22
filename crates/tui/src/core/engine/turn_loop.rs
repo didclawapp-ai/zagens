@@ -4,6 +4,9 @@
 //! existing per-turn orchestration intact: request construction, streaming
 //! event handling, tool planning/execution, LSP post-edit hooks, capacity
 //! checkpoints, and loop termination.
+//!
+//! **P2:** Still in `deepseek-tui` until `Engine` moves to `deepseek-core` (PR3–PR4);
+//! session state already lives in `deepseek_core::session`.
 
 use super::*;
 

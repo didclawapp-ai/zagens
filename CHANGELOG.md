@@ -32,6 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Runtime (R-003 / A4.6 阶段 3):** Extract `runtime_threads/tests.rs`；`mod.rs` ~275 行（契约测外置）。
+- **Runtime (P2 PR2 局部):** Move `Session`/`SessionUsage`、`working_set`、`project_context`、`ApprovalMode`、`CycleBriefing` into `deepseek-core` with tui re-exports; `turn_loop` still in `deepseek-tui::core::engine`.
+- **Runtime (R-015 部分):** Harden `runtime-longrun-baseline.ps1` (PS5.1, `-DryRun`, `DEEPSEEK_RUNTIME_DIR`); ADR records dry-run p99 **0.27 ms** @ `5d566a3` (RSS pending full run).
 - **Runtime (R-003 / A4.6 阶段 2):** Extract `runtime_threads/manager.rs`（`RuntimeThreadManager`、LRU、routing、turn 生命周期）；`mod.rs` ~2.4k 行（契约测仍留主文件）；`manager.rs` ~2.9k 行待后续 `tests.rs` 外置。
 - **Runtime (R-003 / A4.6 阶段 1):** Extract `runtime_threads/persist.rs`（`RuntimeThreadStore` + 磁盘/事件/usage 聚合）与 `events.rs`（agent rebind hints）；`mod.rs` ~5.2k 行（`RuntimeThreadManager` 仍留主文件）。
 - **Runtime (R-003 / A4.5):** Extract `health.rs`、`workspace.rs`、`usage.rs`（含 routing/symbol-index）；契约测迁至 `runtime_api/tests.rs`；`mod.rs` ~500 行（达 §12.6 <800 目标）。

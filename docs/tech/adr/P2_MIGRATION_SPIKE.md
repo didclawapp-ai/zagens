@@ -112,6 +112,8 @@ impl Runtime {
 
 - [ ] 维护者签收 §11.0 ADR（G3 门）
 - [x] PR1 **局部**：`deepseek-core` 子模块（`chat`/`models`/`turn`/`compaction`/`capacity`/`workshop` 等）+ tui re-export（2026-05-22；**非** §12.3 完成）
-- [ ] PR1 剩余：`Engine`/`turn_loop`/`session` 主逻辑迁入 core
+- [x] PR2 **局部（2026-05-22）：** `session`、`working_set`、`project_context`、`ApprovalMode`、`CycleBriefing` → `deepseek-core`；tui 薄 re-export；`core::engine` 仅导出 session 类型
+- [ ] PR2 剩余：`turn_loop` + `Engine` 迁入 core（须 `ToolRegistry` 边界 + PR3 委托）
+- [ ] PR1 剩余：`Engine`/`turn_loop` 主逻辑迁入 core
 - [ ] A5.5 回放 fixture 就位
 - [ ] A+.4 契约测就位

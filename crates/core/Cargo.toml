@@ -23,3 +23,11 @@ futures-util = { version = "0.3", features = ["std"] }
 serde.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
+ignore = "0.4"
+regex = "1.11"
+thiserror.workspace = true
+toml.workspace = true
+dirs.workspace = true
+
+[dev-dependencies]
+tempfile = "3.16"
