@@ -165,7 +165,8 @@ deepseek app-server
 | 路径 | 约行数 | 路线图动作 | 实施状态 |
 |------|--------|------------|----------|
 | `crates/tui/src/runtime_api/mod.rs` | ~505 | **A4** 拆分 | **✅ 达标** — 域模块 + `tests.rs`；主文件保留 `run_http_server`、`ApiError`、CORS、`ThreadEventsQuery` |
-| `crates/tui/src/runtime_threads/mod.rs` | ~5230 | **A4.6** | **部分** — `persist.rs`（~620）、`events.rs`（~65）；`manager` 仍在 `mod.rs` |
+| `crates/tui/src/runtime_threads/mod.rs` | ~2410 | **A4.6** | **部分** — `manager.rs`（~2860）、`persist.rs`（~620）、`events.rs`（~65）；`#[cfg(test)]` 仍占主文件 |
+| `crates/tui/src/runtime_threads/manager.rs` | ~2860 | **A4.6** | **待拆** — 超 code-org 软上限；后续 `tests.rs` 外置 + 按域再切 |
 | `crates/tui/src/core/engine.rs` | ~2174 | **P2** 薄包装目标 <300 行 | **未达标** — Engine 仍在 tui |
 | `crates/core/src/lib.rs` | ~1710 | **P2** 并入 Engine | **部分** — 共享类型已入 core 子模块；`Runtime`/`Engine` 未迁 |
 | `crates/tui/src/lib.rs` | 有 | **A5.1** | **✅** lib target 已存在 |
