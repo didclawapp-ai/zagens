@@ -45,7 +45,7 @@ pub(crate) trait RlmLlmClient: Send + Sync {
 
 impl<T> RlmLlmClient for T
 where
-    T: LlmClient + Send + Sync,
+    T: LlmClient + Send + Sync + ?Sized,
 {
     fn create_message_boxed(
         &self,
@@ -57,7 +57,7 @@ where
 
 /// State shared with the bridge across all RPC calls in one turn.
 pub struct RlmBridge {
-    client: Arc<dyn RlmLlmClient>,
+    client: Arc<dyn crate::llm_client::LlmClient>,
     child_model: String,
     /// Recursion budget remaining for `Rlm` / `RlmBatch` requests. When
     /// zero, those requests fall back to plain `Llm` completions.
@@ -67,7 +67,7 @@ pub struct RlmBridge {
 
 impl RlmBridge {
     pub(crate) fn new(
-        client: Arc<dyn RlmLlmClient>,
+        client: Arc<dyn crate::llm_client::LlmClient>,
         child_model: String,
         depth_remaining: u32,
     ) -> Self {
@@ -115,7 +115,7 @@ impl RlmBridge {
             top_p: Some(0.9_f32),
         };
 
-        let fut = self.client.create_message_boxed(request);
+        let fut = self.client.create_message(request);
         let response =
             match tokio::time::timeout(Duration::from_secs(CHILD_TIMEOUT_SECS), fut).await {
                 Ok(Ok(r)) => r,
@@ -195,7 +195,7 @@ impl RlmBridge {
         // Recursive call. The dyn-erasure on `run_rlm_turn_inner` breaks
         // the `bridge → turn → bridge` opaque-future cycle.
         let result = super::turn::run_rlm_turn_inner(
-            Arc::clone(&self.client),
+            self.client.clone(),
             child_model.clone(),
             prompt,
             None,
@@ -306,7 +306,7 @@ mod tests {
     }
 
     fn bridge_for(mock: Arc<MockLlmClient>, depth_remaining: u32) -> RlmBridge {
-        let client: Arc<dyn RlmLlmClient> = mock;
+        let client: Arc<dyn crate::llm_client::LlmClient> = mock;
         RlmBridge::new(client, "child-model".to_string(), depth_remaining)
     }
 

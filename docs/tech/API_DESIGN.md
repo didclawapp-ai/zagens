@@ -6,6 +6,8 @@
 
 **与 Agent 行为：** 同一 sidecar 载入的 runtime prompt 含 [幻觉防控子规则](prompt-hallucination-patch.md)（Capability / Architecture Claims）。回归显示 DS Pick 在「能力/架构类裸问」上幻觉率较未打 patch 的发行 TUI 明显下降；**本文档的 SSE 示意图与能力结论无关**，集成时以代码与 `streamNormalize.ts` 为准。
 
+> **唯一生产 HTTP 运行时：** DS Pick 与 `deepseek serve --http` 使用 `crates/tui/src/runtime_api.rs`（`/v1/*`），**不**使用 `crates/app-server`。架构与分阶段实施见 [RUNTIME_EVOLUTION_ROADMAP.md](./RUNTIME_EVOLUTION_ROADMAP.md)。
+
 ---
 
 ## 1. 架构概览
@@ -159,22 +161,50 @@ x-deepseek-runtime-token: <runtime_token>
 - **运行时就绪探测**: 启动时轮询 `GET /health`（token 就绪后再测 `GET /v1/sessions`），最长 90s
 - **有 body 的 POST/PATCH**: `Content-Type: application/json`；**例外：** `symbol-index/rebuild` 仅用 query（见 §3.3.11）
 
-### 3.2.1 SSE 事件（`event:` 字段）
+### 3.2.1 SSE 稳定事件子集 v1（`event:` 字段）
 
-`POST /v1/stream` 与 `GET /v1/threads/{id}/events` 均输出 SSE。WebView 在 `streamNormalize.ts` 归一化为 UI 事件。Wire 格式常见值（非穷举）：
+> **状态：正式发布 · `event_schema_version` = 2**
+>
+> `POST /v1/stream` 与 `GET /v1/threads/{id}/events` 均输出 SSE。
+> 每个 `RuntimeEventRecord` 携带 `schema_version: 2`；客户端 SHOULD 忽略
+> `schema_version` 大于已知最大值的记录。下表为 **穷举** 的稳定事件子集；
+> 实现见 `map_compat_stream_event()`（`crates/tui/src/runtime_api/stream.rs`）。
 
-| `event:` | 含义（摘要） |
-|----------|----------------|
-| `turn.started` | 新轮次开始（含 `thread_id` / `turn_id`） |
-| `thinking.delta` | 思考流片段 |
-| `message.delta` | 助手正文流片段 |
-| `tool.started` / `tool.progress` / `tool.completed` | 工具生命周期 |
-| `approval.required` | 需用户审批（见 `resolve-approval`） |
-| `turn.completed` | 轮次结束（可含 usage） |
-| `agent.*` | 子代理进度（spawned / progress / completed 等） |
-| `done` | 流结束 |
+| SSE `event:` | 来源 | 含义 |
+|-------------|------|------|
+| `turn.started` | `stream_turn`（首帧） | 新轮次开始，含 `thread_id` / `turn_id` / `model` / `mode` / `workspace` |
+| `thinking.delta` | `item.delta`（thinking） | 思考/推理增量，`data: { content }` |
+| `message.delta` | `item.delta`（agent） | 助手文本增量，`data: { content }` |
+| `tool.progress` | `item.delta`（tool） | 工具输出流，`data: { output }` |
+| `tool.started` | `item.started`（tool） | 工具调用开始，`data: { id, name, input }` |
+| `tool.completed` | `item.completed` / `item.failed` | 工具调用结束，`data: { id, success, output }` |
+| `status` | `item.completed`（status） | 状态/通知，`data: { message }` |
+| `error` | `item.completed`（error） | 错误消息，`data: { message }` |
+| `approval.required` | `approval.required` | 需用户审批工具执行，`data: { id, tool_name, description, … }` |
+| `sandbox.denied` | `sandbox.denied` | 沙箱策略拒绝 |
+| `turn.completed` | `turn.completed` | 轮次结束，`data: { usage, turn_summary? }` |
+| `agent.spawned` | `agent.spawned` | 子代理启动，`data: { agent_id, prompt? }` |
+| `agent.progress` | `agent.progress` | 子代理状态更新，`data: { agent_id, status }` |
+| `agent.completed` | `agent.completed` | 子代理完成，`data: { agent_id, result }` |
+| `agent.list` | `agent.list` | 子代理列表，`data: { agents }` |
+| `panel.checklist` | `panel.checklist` | Checklist 面板数据 |
+| `panel.scratchpad` | `panel.scratchpad` | Scratchpad 面板数据 |
+| `panel.context` | `panel.context` | Context 面板数据 |
+| `done` | `stream_turn`（末帧） | 流结束，无 data |
 
-勿将下文 §7 示意图中的 `thinking` / `tool_call` 当作真实 wire 事件名。
+**`turn_summary` 子对象**（仅 `turn.completed`，可选）：
+```json
+{
+  "step_count": 3,
+  "tool_names": ["read_file", "grep_files"],
+  "end_reason": null
+}
+```
+
+**客户端指引：**
+- 未知事件名 SHOULD 被忽略（向前兼容）。
+- `schema_version` 递增时，新字段为增量添加；客户端 MUST NOT 因为未知字段而失败。
+- WebView 在 `streamNormalize.ts` 归一化为 UI 事件。
 
 ---
 

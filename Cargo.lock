@@ -1439,6 +1439,7 @@ name = "deepseek-core"
 version = "0.8.15"
 dependencies = [
  "anyhow",
+ "async-trait",
  "chrono",
  "deepseek-agent",
  "deepseek-config",
@@ -1448,6 +1449,8 @@ dependencies = [
  "deepseek-protocol",
  "deepseek-state",
  "deepseek-tools",
+ "futures-util",
+ "serde",
  "serde_json",
  "uuid",
 ]
@@ -1578,6 +1581,7 @@ dependencies = [
  "colored",
  "crossterm 0.28.1",
  "deepseek-config",
+ "deepseek-core",
  "deepseek-secrets",
  "deepseek-tools",
  "dirs",

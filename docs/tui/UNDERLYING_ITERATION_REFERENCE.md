@@ -2,14 +2,14 @@
 
 > **用途：** 为后续自用迭代提供方向地图与取舍备忘，不参与对外版本叙事。  
 > **维护假定：** 本仓库中的 TUI 与共享 runtime 已与上游产生较大分歧，**不宜假设能无痛跟随外部升级**；演进以本仓库内增量迭代为主。  
-> **关联文档：** [架构总览](../ARCHITECTURE.md)、[Agent 可靠性 CRAFT 草案](../agent-reliability-craft-plan.md)、[配置说明](../CONFIGURATION.md)。
+> **关联文档：** [运行时演进实施路线图](../tech/RUNTIME_EVOLUTION_ROADMAP.md)（**v2.0-final**；门控 A→A+→**P2-debt**→F，比本文 §2.1 更严）、[adr/RUNTIME_BASELINE.md](../tech/adr/RUNTIME_BASELINE.md)、[API_DESIGN.md](../tech/API_DESIGN.md)、[Agent 可靠性 CRAFT 草案](../agent-reliability-craft-plan.md)、[配置说明](../CONFIGURATION.md)。
 
 ## 1. 文档怎么用
 
 - 将下列各节视为 **可选增量（increments）**，按团队优先级拆 issue / 里程碑，而非一次性项目。
 - 实施前在对应代码区（`crates/tui/src/core/`、`session_manager`、compaction、tools 等）做一次现状核对；本文件不追踪行级实现细节。
 - 与 CRAFT 草案重叠处（黑板、角色工具边界、Verifier 结构化输出）以 **可靠性** 为主线；其余以 **性能、可维护性、可观测性** 为主线。
-- 若当前目标是「尽快完善底层再上独有功能」，优先阅读 **[§2.1](#21-快车道先打底再独有功能)** 的打底完成线与阶段 A/B，再对照 [§4](#4-与阶段-ab-的对应关系) 映射到各技术小节。
+- 若当前目标是「尽快完善底层再上独有功能」，优先阅读 **[§2.1](#21-快车道先打底再独有功能)** 与 **[运行时演进路线图](../tech/RUNTIME_EVOLUTION_ROADMAP.md)** §1.6（**独有功能 / 桌面 GAP 高峰在 P2 后**），再对照 [§4](#4-与阶段-ab-的对应关系) 映射到各技术小节。
 
 ## 2. 维护背景（为何「自迭代」）
 
@@ -171,6 +171,8 @@ Agent 产品与模型能力迭代很快；**底层缺口会在独有功能上放
 ---
 
 ## 4. 与阶段 A/B 的对应关系
+
+> **与 [RUNTIME_EVOLUTION_ROADMAP.md](../tech/RUNTIME_EVOLUTION_ROADMAP.md) 映射：** 本文「阶段 A/B」≈ 路线图 **A+A+** / **B**；无单独「阶段 C」。原路线图 v1.0 的「阶段 C」（Engine→core）= 路线图 **§11 P2-debt**。桌面 GAP = 路线图 **§10 F**（P2 后解冻）。
 
 已定序的阶段 B 里程碑（**CRAFT → 记忆地图**）见 **[§2.2](#22-已定序的差异化里程碑当前)**。
 

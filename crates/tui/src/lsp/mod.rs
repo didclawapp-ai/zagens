@@ -48,45 +48,13 @@ pub use client::{LspTransport, StdioLspTransport};
 pub use diagnostics::{Diagnostic, DiagnosticBlock, Severity, render_blocks};
 pub use registry::Language;
 
-/// `[lsp]` config schema. Mirrors the TOML keys documented in
-/// `config.example.toml`. Unknown keys are ignored.
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
-#[serde(default)]
-pub struct LspConfig {
-    /// Master switch. When `false`, the manager skips every operation and
-    /// returns an empty diagnostics list.
-    pub enabled: bool,
-    /// Maximum time in milliseconds to wait for the LSP server to publish
-    /// diagnostics after a `didOpen`/`didChange`. Default 5000 ms.
-    pub poll_after_edit_ms: u64,
-    /// Maximum diagnostics to keep per file. Excess items are dropped after
-    /// sorting by severity. Default 20.
-    pub max_diagnostics_per_file: usize,
-    /// When `true`, warnings (severity 2) are kept in the output. When
-    /// `false` (default), only errors (severity 1) are surfaced.
-    pub include_warnings: bool,
-    /// Optional override for the `Language -> (cmd, args)` table. Keys use
-    /// [`Language::as_key`] (e.g. `"rust"`).
-    pub servers: HashMap<String, Vec<String>>,
-}
+// Re-exported from deepseek-core (P2 PR4).
+pub use deepseek_core::lsp::LspConfig;
 
-impl Default for LspConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            poll_after_edit_ms: 5_000,
-            max_diagnostics_per_file: 20,
-            include_warnings: false,
-            servers: HashMap::new(),
-        }
-    }
-}
-
-impl LspConfig {
-    /// Resolve `(command, args)` for `lang`. User-supplied overrides take
-    /// precedence over the built-in registry.
-    fn resolve_command(&self, lang: Language) -> Option<(String, Vec<String>)> {
-        if let Some(parts) = self.servers.get(lang.as_key())
+/// Resolve `(command, args)` for `lang`. User-supplied overrides take
+/// precedence over the built-in registry.
+fn resolve_lsp_command(config: &LspConfig, lang: Language) -> Option<(String, Vec<String>)> {
+        if let Some(parts) = config.servers.get(lang.as_key())
             && let Some((first, rest)) = parts.split_first()
         {
             return Some((first.clone(), rest.to_vec()));
@@ -97,7 +65,6 @@ impl LspConfig {
             args.iter().map(|a| (*a).to_string()).collect(),
         ))
     }
-}
 
 /// The LspManager holds a lazily populated map of `Language -> Transport`.
 /// One transport is reused across files of the same language for the
@@ -226,7 +193,7 @@ impl LspManager {
             return Some(t.clone());
         }
 
-        let (cmd, args) = self.config.resolve_command(lang)?;
+        let (cmd, args) = resolve_lsp_command(&self.config, lang)?;
         match StdioLspTransport::spawn(&cmd, &args, lang, self.workspace.clone()).await {
             Ok(transport) => {
                 let arc: Arc<dyn LspTransport> = Arc::new(transport);
@@ -521,7 +488,7 @@ pub(crate) mod tests {
             "rust".to_string(),
             vec!["custom-rls".to_string(), "--lsp".to_string()],
         );
-        let (cmd, args) = cfg.resolve_command(Language::Rust).unwrap();
+        let (cmd, args) = resolve_lsp_command(&cfg, Language::Rust).unwrap();
         assert_eq!(cmd, "custom-rls");
         assert_eq!(args, vec!["--lsp".to_string()]);
     }
@@ -529,7 +496,7 @@ pub(crate) mod tests {
     #[test]
     fn config_resolve_falls_back_to_registry() {
         let cfg = LspConfig::default();
-        let (cmd, _) = cfg.resolve_command(Language::Rust).unwrap();
+        let (cmd, _) = resolve_lsp_command(&cfg, Language::Rust).unwrap();
         assert_eq!(cmd, "rust-analyzer");
     }
 }

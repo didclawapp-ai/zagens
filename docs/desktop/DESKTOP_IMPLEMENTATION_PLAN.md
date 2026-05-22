@@ -4,6 +4,9 @@
 > **版本**：v3（文档链接 + Phase 2a 里程碑）  
 > **基础版本**：DeepSeek-TUI v0.8.15  
 > **日期**：2026-05-07  
+> **演进路线图（v2.0-final：阶段 0/A/A+/P2/F/B、验收、Issue 模板）：** [RUNTIME_EVOLUTION_ROADMAP.md](../tech/RUNTIME_EVOLUTION_ROADMAP.md)  
+> **已落地：** Phase 1 采用路线 B（`runtime_api` + `deepseek-tui` sidecar）。**勿**将新桌面功能接到 `app-server` / `core::Runtime` **当前占位**路径。  
+> **2026-05 结论：** Phase 1 **harness 验证目标已达成**；下一阶段为 **还 P2 技术债**（Engine → `deepseek-core`），**冻结桌面 GAP 扩张**，见 §2.1.1。
 
 ---
 
@@ -16,7 +19,7 @@
 - **双 UI 共存**：TUI（终端）和 Desktop（桌面）共享同一引擎，用户可以自由选择
 - **复用已有 API**：TUI 的 `runtime_api.rs` 已经提供了完整的 HTTP/SSE 流式 turn API（`/v1/stream`、`/v1/threads/*` 等），桌面端直接对接，不自造轮子
 - **Sidecar 模式**：Tauri 桌面壳启动一个 `deepseek-tui` 子进程，使用 **`serve --http`** 启动运行时 HTTP/SSE API（与仓库中 `deepseek serve --http` / `deepseek-tui serve --http` 一致），Web 前端通过 HTTP/SSE 与之通信
-- **引擎不改**：`deepseek-core` 等基础 crate 零改动；仅 `runtime_api` 侧可能需要少量适配
+- **Phase 1 引擎位置**：当时为快速验证，Engine 在 `crates/tui`；**P2 后**迁入 `deepseek-core`（§2.1.1），sidecar 与 `/v1/*` **不变**
 
 ### 1.2 关键现状（修正原 v1 错误）
 
@@ -81,11 +84,23 @@ Phase 2（中期架构升级）: 将 Engine turn 管道上移至 deepseek-core
   ├─ 代价: 打破 "core 零改动"（但长期最干净）
   └─ 时机: 桌面端 MVP 验证后 2-3 周
 
-Phase 3（远期可选）: 桌面端切到 app-server
-  ├─ 此时 app-server 已有完整 turn 管道
-  ├─ 桌面 sidecar 改为 app-server binary
-  └─ TUI 和 Desktop 真正共享同一 Runtime
+Phase 3（原稿 · 已修订）: ~~桌面 sidecar 改为 app-server binary~~
+  ├─ **不推荐** 在未完成 P2 前切换 sidecar（`app-server` 无 `/v1`、无鉴权、turn 未完成）
+  └─ **修订 P3（2026-05）:** sidecar **仍为** `deepseek-tui`；`runtime_api` 变为 `core::Runtime` 的 HTTP 适配层；
+      TUI ratatui 与 DS Pick 共用 **同一** `deepseek-core` Engine —— **壳运分离不变**
 ```
+
+#### 2.1.1 Phase 1 验证结论与当前阶段（2026-05）
+
+| 项 | 结论 |
+|----|------|
+| **当初为何选 B** | 用最小改动验证 `deepseek-tui` 是否具备 **harness 能力**（sidecar + HTTP/SSE + 真 turn + 多线程） |
+| **实践结果** | **通过** — `RuntimeThreadManager`、鉴权、审批 HTTP、多窗口并行 turn 等证明设计可承载桌面与 TUI |
+| **当前阶段** | Phase 1 **收官**；进入 **P2 还债期**，而非继续扩大桌面功能面 |
+| **桌面政策** | **功能冻结（Feature freeze）**：仅 bugfix、契约冒烟、与 P2 相关的适配；**不**新增 GAP（xterm/diff/大 API）直至 P2 完成线 |
+| **P2 定义** | 将 `Engine` / `turn_loop` 上移至 `deepseek-core`，`core::Runtime` 跑真实 turn（原「三级火箭」Phase 2） |
+| **P3 定义（修订）** | **不**换 sidecar 二进制；统一 L1 到 `core` 后，`runtime_api` + TUI 均调用同一 Runtime |
+| **Handoff Report（结项汇总）** | ⬜ **未实现**；有 compaction / 全量 replay，无用户可读的「结项报告」— 见 [DEV_NOTES.md §2026-05-21 Handoff](DEV_NOTES.md#2026-05-21--会话线程结项汇总报告handoff-report--规划中)；P2 前仅文档跟踪 |
 
 **本方案（Phase 1）采用路线 B（runtime_api）**——原因：
 
@@ -93,6 +108,8 @@ Phase 3（远期可选）: 桌面端切到 app-server
 2. **已有鉴权**：`runtime_token` 机制解决本地 API 安全问题
 3. **已有并发隔离**：每 thread 独立 Engine 实例，不共享锁
 4. **已有实例检测**：`RuntimeThreadManager` 管理活跃 Engine 的 lifecycle
+
+**Phase 1 之后（维护者决策 2026-05）：** 上述四条继续成立，但 **Engine 物理位置** 应从 `crates/tui` 迁到 `crates/core`（P2），以避免桌面与 TUI 能力继续堆在 `tui` 巨石上导致 **日后无法抽取**。实施顺序见 [RUNTIME_EVOLUTION_ROADMAP.md](../tech/RUNTIME_EVOLUTION_ROADMAP.md) 阶段 A → A+ → **P2** → F。
 
 ### 2.2 整体架构（修正后）
 
@@ -292,9 +309,11 @@ Web UI: 侧边栏显示会话列表
 
 ## 五、SSE 事件协议（与 EventFrame 对齐）
 
+> **排期 SSOT（2026-05）：** 对外稳定面以 [RUNTIME_EVOLUTION_ROADMAP.md](../tech/RUNTIME_EVOLUTION_ROADMAP.md) **A+** 为准 — `map_compat_stream_event` **compat 子集** + `event_schema_version`。[API_DESIGN.md](../tech/API_DESIGN.md) 为契约文档。统一序列化 `EventFrame` 列为 **P3′ / 可选**，**不** 阻塞 P2 或桌面 freeze 期契约工作。
+
 ### 5.1 事件类型映射
 
-`runtime_api` 当前使用 `RuntimeEventRecord`（含 `event: String` 字段，如 `"turn.started"`），`stream_turn` 通过 `map_compat_stream_event()` 做了一层映射。对于桌面端，SSE 事件应该**直接序列化 `EventFrame`**（见 [`crates/protocol/src/lib.rs`](../../crates/protocol/src/lib.rs) 中 `EventFrame` 定义），避免维护两套平行的事件名称。
+`runtime_api` 当前使用 `RuntimeEventRecord`（含 `event: String` 字段，如 `"turn.started"`），`stream_turn` 通过 `map_compat_stream_event()` 做了一层映射。长期可选目标：服务端**直接序列化 `EventFrame`**（见 [`crates/protocol/src/lib.rs`](../../crates/protocol/src/lib.rs)），以减少两套事件名；**当前产品路径**仍优先巩固 compat 映射 + TS 前端（`streamNormalize.ts`）。
 
 ```rust
 // EventFrame 枚举（protocol crate，已存在，不改）

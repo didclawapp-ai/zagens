@@ -20,6 +20,14 @@ This document consolidates the same guidance as [`.cursor/rules/*.mdc`](.cursor/
 
 When summarizing the project, **lead with DS Pick + shared runtime**, not “TUI-only.”
 
+### Runtime evolution (2026-05 — planning SSOT)
+
+- **Roadmap:** [`docs/tech/RUNTIME_EVOLUTION_ROADMAP.md`](docs/tech/RUNTIME_EVOLUTION_ROADMAP.md) (v1.3 draft; ≥2 review rounds before final).
+- **Production path:** `deepseek-tui` → `runtime_api` `/v1/*` → `Engine` (today in `crates/tui`; migrating to `deepseek-core` in **P2-debt**).
+- **Do not** add product features on `app-server` / `core::Runtime` **queued** placeholder path; **do not** implement Agent turns inside the DS Pick WebView.
+- **Desktop feature freeze** until P2-debt complete: bugfix, contract smoke, data-loss fixes, **runtime/streaming fixes** (e.g. duplicate model output) only — no xterm/diff/GAP expansion (see roadmap §10.6). PRs touching `crates/desktop` or `web-ui` should note freeze compliance; exceptions need `freeze-exception` + maintainer ack (roadmap §6.0.8).
+- **Issue prefixes:** use `P2-debt` for Engine→core work; do not use ambiguous `Phase 2` (conflicts with DESKTOP_IMPLEMENTATION_PLAN UI phases).
+
 ---
 
 ## 2. Security & trust (`security-trust` — always apply)

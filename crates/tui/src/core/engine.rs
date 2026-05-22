@@ -320,7 +320,7 @@ impl EngineHandle {
 /// The core engine that processes operations and emits events
 pub struct Engine {
     config: EngineConfig,
-    deepseek_client: Option<DeepSeekClient>,
+    deepseek_client: Option<Arc<dyn crate::llm_client::LlmClient>>,
     deepseek_client_error: Option<String>,
     api_key_env_only_recovery: Option<String>,
     session: Session,
@@ -436,7 +436,7 @@ impl Engine {
 
         // Create clients for both providers
         let (deepseek_client, deepseek_client_error) = match DeepSeekClient::new(api_config) {
-            Ok(client) => (Some(client), None),
+            Ok(client) => (Some(Arc::new(client) as Arc<dyn crate::llm_client::LlmClient>), None),
             Err(err) => (None, Some(err.to_string())),
         };
         let api_key_env_only_recovery = Self::env_only_api_key_recovery_hint(api_config);
@@ -948,7 +948,10 @@ impl Engine {
                     usage: turn.usage.clone(),
                     last_request_input_tokens: self.session.last_api_input_tokens,
                     status: TurnOutcomeStatus::Failed,
-                    error: Some(message),
+                    error: Some(message.clone()),
+                    step_count: 0,
+                    tool_names: vec![],
+                    end_reason: Some(message),
                 })
                 .await;
             return;
@@ -1137,6 +1140,20 @@ impl Engine {
 
         // Emit turn complete event — after all post-turn bookkeeping so
         // the terminal is immediately responsive when the UI receives it.
+        let end_reason: Option<String> = match status {
+            TurnOutcomeStatus::Completed => None,
+            TurnOutcomeStatus::Interrupted => Some("cancelled".to_string()),
+            TurnOutcomeStatus::Failed => {
+                Some(error.as_deref().unwrap_or("unknown error").to_string())
+            }
+        };
+        let mut tool_names: Vec<String> = turn
+            .tool_calls
+            .iter()
+            .map(|tc| tc.name.clone())
+            .collect();
+        tool_names.sort();
+        tool_names.dedup();
         let _ = self
             .tx_event
             .send(Event::TurnComplete {
@@ -1144,6 +1161,9 @@ impl Engine {
                 last_request_input_tokens: self.session.last_api_input_tokens,
                 status,
                 error,
+                step_count: turn.step,
+                tool_names,
+                end_reason,
             })
             .await;
 
@@ -1181,7 +1201,10 @@ impl Engine {
                     usage: zero_usage,
                     last_request_input_tokens: self.session.last_api_input_tokens,
                     status: TurnOutcomeStatus::Failed,
-                    error: Some(message),
+                    error: Some(message.clone()),
+                    step_count: 0,
+                    tool_names: vec![],
+                    end_reason: Some(message),
                 })
                 .await;
             return;
@@ -1201,7 +1224,7 @@ impl Engine {
         let mut turn_error = None;
 
         match compact_messages_safe(
-            &client,
+            client.as_ref(),
             &self.session.messages,
             &self.config.compaction,
             Some(&self.session.workspace),
@@ -1259,7 +1282,10 @@ impl Engine {
                 usage: zero_usage,
                 last_request_input_tokens: self.session.last_api_input_tokens,
                 status: turn_status,
-                error: turn_error,
+                error: turn_error.clone(),
+                step_count: 0,
+                tool_names: vec![],
+                end_reason: turn_error,
             })
             .await;
     }
@@ -1280,7 +1306,7 @@ impl Engine {
     ) {
         use crate::rlm::turn::run_rlm_turn;
 
-        let Some(ref client) = self.deepseek_client else {
+        let Some(client) = self.deepseek_client.clone() else {
             let err = self
                 .deepseek_client_error
                 .as_deref()
@@ -1301,7 +1327,7 @@ impl Engine {
             .await;
 
         let result = run_rlm_turn(
-            client,
+            client.clone(),
             model,
             content,
             child_model,
@@ -1354,7 +1380,10 @@ impl Engine {
                 } else {
                     crate::core::events::TurnOutcomeStatus::Completed
                 },
-                error: result.error,
+                error: result.error.clone(),
+                step_count: 0,
+                tool_names: vec![],
+                end_reason: result.error,
             })
             .await;
     }
@@ -1379,7 +1408,7 @@ impl Engine {
 
     async fn recover_context_overflow(
         &mut self,
-        client: &DeepSeekClient,
+        client: &(dyn crate::llm_client::LlmClient),
         reason: &str,
         requested_output_tokens: u32,
     ) -> bool {
@@ -1791,7 +1820,7 @@ impl Engine {
                         "Flash briefing failed, falling back to main model: {err}"
                     ));
                     match produce_briefing(
-                        &client,
+                        client.as_ref(),
                         &self.session.model,
                         &self.session.messages,
                         max_briefing_tokens,
@@ -1816,7 +1845,7 @@ impl Engine {
             }
         } else {
             match produce_briefing(
-                &client,
+                client.as_ref(),
                 &self.session.model,
                 &self.session.messages,
                 max_briefing_tokens,

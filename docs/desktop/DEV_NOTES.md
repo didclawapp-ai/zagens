@@ -8,6 +8,46 @@
 
 ---
 
+## 2026-05-21 — 会话/线程「结项汇总报告」（Handoff Report）— ⬜ 规划中
+
+**背景（产品类比）：** 人类项目结束会写**总结报告**；以后查问题先看报告，而不是从原始邮件/会议记录从头翻。IDE Agent（如 Cursor）在长对话里会对**旧轮次做摘要压缩**，相当于机器侧的「报告」。DS Pick **目前没有**与之对等、**用户可检索**的「结项汇总」机制。
+
+### 现状：有压缩，无「报告」
+
+| 能力 | 状态 | 说明 |
+|------|------|------|
+| **上下文压缩（compaction）** | ✅ | `compaction.rs`：token 超阈值时摘要旧消息、合并进 system prompt；`ThreadContextSnapshot` 供 UI 环 |
+| **工具结果截断 / 摘要行** | ✅ | `compact_tool_result_for_context` 等；保护单轮 context，**不是**跨会话 handoff |
+| **周期 `<carry_forward>`** | 🔶 | `cycle_manager`：轮次/周期内的 carry，服务于**同 thread 长跑**，≠ 用户打开的「上次干了啥」一页纸 |
+| **审计 scratchpad `REPORT.md`** | 🔶 | 仅 **audit-repo** 等技能场景；`.deepseek/scratchpad/<run>/REPORT.md`，非通用聊天结项 |
+| **会话 / 线程持久化** | ✅ | SQLite 消息体 + `GET …/events` 全量事件；恢复时 **replay**，不是先读摘要 |
+| **桌面 `persistThreadSession`** | ✅ | turn 完成或周期 checkpoint 落盘；**无**结构化「结论 / 未决 / 下次入口」字段 |
+| **通用 Handoff Report（结项汇总）** | ⬜ | **未做**：无 `thread.handoff.md`、无侧栏「上次摘要」、无新对话自动 `@` 上一份报告 |
+
+**缺口：** 用户关掉窗口或隔天继续时，只能依赖**完整历史 replay** 或自己翻聊天记录；模型侧 compaction 摘要**不产品化**（用户看不见、不能编辑、不能当下一任务的固定上下文）。长任务（多轮审计、大功能开发）与「主动性 / 入座 briefing」北极星（见 [§2026-05-18](#2026-05-18--agent-方向与主动性北极星)）都更需要**可验收的一页结项**，而不是更长的事件流。
+
+### 若迭代 — 草案方向（非承诺，待评审）
+
+1. **触发：** `turn.completed` / 用户点「生成本轮摘要」/ 上下文 > N% 时建议生成（可关）。
+2. **产物（示例路径）：** `~/.deepseek/handoffs/<thread_id>.md` 或 session 级 `handoff.json`（schema 待定），字段建议：目标、已完成、未决、关键路径/commit、**禁止编造**（仅锚工具输出 / scratchpad verified）。
+3. **消费：** 新 thread / resume session 时 UI 提供「先读 handoff」；Composer 可选注入 `<thread_handoff>`（字数上限）；与 `<user_memory>`、CRAFT 黑板、audit scratchpad **分工**（见 [audit-scratchpad-design.md §2.1](audit-scratchpad-design.md) 事实/推理分离）。
+4. **与 compaction 关系：** compaction 继续服务**模型 context**；handoff 服务**人与跨天接力**——可复用同一次 LLM 摘要调用，但存储与展示分离，避免「压缩了但用户找不到」。
+5. **桌面：** 侧栏或会话卡片显示「上次摘要 · 3 行」；设置里「结项时自动写报告」默认关。
+6. **Runtime API（候选）：** `POST /v1/threads/{id}/handoff` 生成、`GET` 读取；或 piggyback `persist-session` 扩展字段。
+
+| 优先级 | 项 | 备注 |
+|--------|-----|------|
+| P0 | 写清 schema + 与 scratchpad / CRAFT 边界 | 避免三套「总结」互相打架 |
+| P1 | 手动「生成结项摘要」+ 文件落盘 | 最小可用，无自动触发 |
+| P2 | resume / 新会话注入 + UI 预览 | 对齐 Cursor「先看摘要再干活」体验 |
+| P3 | 与入座 briefing、记忆图谱联动 | 依赖 [§2026-05-18](#2026-05-18--agent-方向与主动性北极星) 聚合层 |
+
+**参考（仓库内）：** [prompt-architecture.md](../prompt-architecture.md) compaction 流 · [RUNTIME_EVOLUTION_ROADMAP.md](../tech/RUNTIME_EVOLUTION_ROADMAP.md) 会话/容量章节 · 流式重复修复案例（过程在聊天里，**结论在 CHANGELOG `[0.4.3]` + commit**）即「应写进仓库的报告」范式。
+
+**决策备忘：** 短期 **不立项实现**；先在本节与 [DESKTOP_IMPLEMENTATION_PLAN.md](DESKTOP_IMPLEMENTATION_PLAN.md) 跟踪。若要做，优先 **P1 手动结项** 验证用户是否真的用，再考虑自动触发。
+
+---
+
 ## 2026-05-20 — Harness 定位文档
 
 | 项 | 状态 | 说明 |

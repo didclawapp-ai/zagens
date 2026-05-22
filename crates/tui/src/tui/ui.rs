@@ -559,7 +559,7 @@ fn build_engine_config(app: &App, config: &Config) -> EngineConfig {
         features: config.features(),
         compaction: app.compaction_config(),
         cycle: app.cycle_config(),
-        capacity: crate::core::capacity::CapacityControllerConfig::from_app_config(config),
+        capacity: crate::core::capacity::capacity_config_from_app(config),
         todos: app.todos.clone(),
         plan_state: app.plan_state.clone(),
         max_spawn_depth: crate::tools::subagent::DEFAULT_MAX_SPAWN_DEPTH,
@@ -879,6 +879,7 @@ async fn run_event_loop(
                         last_request_input_tokens,
                         status,
                         error,
+                        ..
                     } => {
                         // Finalize any in-flight tool group. Cancellation
                         // marks still-running entries as Failed so the user

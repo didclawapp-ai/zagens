@@ -6,6 +6,8 @@
 
 use std::fs;
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use thiserror::Error;
@@ -30,13 +32,13 @@ pub struct FimEditResult {
 
 /// Tool for performing Fill-in-the-Middle edits via the DeepSeek FIM API.
 pub struct FimEditTool {
-    pub client: Option<DeepSeekClient>,
+    pub client: Option<Arc<dyn crate::llm_client::LlmClient>>,
     pub model: String,
 }
 
 impl FimEditTool {
     #[must_use]
-    pub fn new(client: Option<DeepSeekClient>, model: String) -> Self {
+    pub fn new(client: Option<Arc<dyn crate::llm_client::LlmClient>>, model: String) -> Self {
         Self { client, model }
     }
 }

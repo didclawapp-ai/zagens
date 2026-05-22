@@ -333,7 +333,7 @@ DeepSeek-TUI/
 │   ├── hooks/            # Agent hooks system (lifecycle, webhook, JSONL sinks)
 │   ├── execpolicy/       # Execution policy engine (layered rulesets, bash arity)
 │   ├── secrets/          # Credential storage (keyring, encrypted config)
-│   ├── app-server/       # App-server transport (not the TUI /v1 HTTP router)
+│   ├── app-server/       # Experimental — not used by DS Pick (see deepseek app-server)
 │   └── tui-core/         # Shared TUI core types
 ├── npm/deepseek-tui/     # npm distribution package
 ├── docs/                 # Documentation
@@ -682,7 +682,7 @@ DeepSeek-TUI/
 │   ├── hooks/            # Agent 钩子系统（生命周期、Webhook、JSONL 接收器）
 │   ├── execpolicy/       # 执行策略引擎（分层规则集、bash 参数词典）
 │   ├── secrets/          # 凭据存储（keyring、加密配置）
-│   ├── app-server/       # App-server 传输层（非 TUI runtime_api 路由）
+│   ├── app-server/       # Experimental — not used by DS Pick（实验性，不用于 DS Pick）
 │   └── tui-core/         # 共享 TUI 核心类型
 ├── npm/deepseek-tui/     # npm 发布包
 ├── docs/                 # 文档

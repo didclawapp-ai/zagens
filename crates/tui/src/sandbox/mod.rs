@@ -172,7 +172,8 @@ impl CommandSpec {
             && self.args[0].eq_ignore_ascii_case("/C")
         {
             self.args[1].clone()
-        } else if self.program.eq_ignore_ascii_case("powershell")
+        } else if (self.program.eq_ignore_ascii_case("powershell")
+            || self.program.eq_ignore_ascii_case("pwsh"))
             && self.args.len() == 2
             && self.args[0].eq_ignore_ascii_case("-Command")
         {

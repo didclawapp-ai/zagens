@@ -35,44 +35,8 @@ pub mod mock;
 
 // === LlmClient Trait ===
 
-/// Type alias for boxed stream of SSE events
-pub type StreamEventBox =
-    Pin<Box<dyn futures_util::Stream<Item = Result<StreamEvent>> + Send + 'static>>;
-
-/// Unified interface for LLM providers.
-///
-/// This trait abstracts over different LLM APIs (DeepSeek, `OpenAI`, etc.)
-/// allowing the agent to work with any provider that implements this interface.
-///
-/// # Implementation Notes
-///
-/// - All methods are async and require `Send + Sync` for thread safety
-/// - The `create_message_stream` method returns a pinned boxed stream for SSE
-/// - Implementations should handle their own authentication and base URL configuration
-#[allow(async_fn_in_trait, dead_code)] // Trait methods are part of the LLM provider interface
-pub trait LlmClient: Send + Sync {
-    /// Returns the provider name (e.g., "openai", "deepseek")
-    fn provider_name(&self) -> &'static str;
-
-    /// Returns the model identifier being used
-    fn model(&self) -> &str;
-
-    /// Creates a non-streaming message completion
-    fn create_message(
-        &self,
-        request: MessageRequest,
-    ) -> impl Future<Output = Result<MessageResponse>> + Send;
-
-    /// Creates a streaming message completion
-    ///
-    /// Returns a stream of SSE events that should be consumed until completion.
-    async fn create_message_stream(&self, request: MessageRequest) -> Result<StreamEventBox>;
-
-    /// Optional health check to verify API connectivity
-    async fn health_check(&self) -> Result<bool> {
-        Ok(true)
-    }
-}
+/// Re-exported from `deepseek-core` (P2 PR3b).
+pub use deepseek_core::chat::{LlmClient, StreamEventBox};
 
 /// Trait for clients that support configurable retry behavior
 #[allow(dead_code)] // Part of LLM provider interface, will be used by additional providers

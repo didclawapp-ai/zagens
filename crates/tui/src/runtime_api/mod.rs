@@ -1,7 +1,7 @@
 //! Runtime HTTP/SSE API for local DeepSeek automation.
 
 use std::collections::{HashMap, HashSet};
-use std::convert::Infallible;
+
 use std::fs;
 use std::net::SocketAddr;
 use std::path::{Component, Path, PathBuf};
@@ -12,12 +12,12 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use sha2::{Digest, Sha256};
 
 use anyhow::{Context, Result, anyhow, bail};
-use async_stream::stream;
+
 use axum::body::Bytes;
-use axum::extract::{Path as AxumPath, Query, Request, State};
-use axum::http::{HeaderValue, Method, StatusCode, header};
-use axum::middleware::{self, Next};
-use axum::response::sse::{Event as SseEvent, KeepAlive, Sse};
+use axum::extract::{Path as AxumPath, Query, State};
+use axum::http::{HeaderValue, Method, StatusCode};
+use axum::middleware::{self};
+
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -57,6 +57,12 @@ use crate::snapshot::SnapshotRepo;
 use crate::task_manager::{
     NewTaskRequest, SharedTaskManager, TaskManager, TaskManagerConfig, TaskRecord, TaskSummary,
 };
+
+mod auth;
+mod router;
+mod stream;
+
+pub use router::build_router;
 
 #[derive(Clone)]
 pub struct RuntimeApiState {
@@ -634,153 +640,6 @@ pub async fn run_http_server(
     scheduler_cancel.cancel();
     scheduler_handle.abort();
     serve_result
-}
-
-pub fn build_router(state: RuntimeApiState) -> Router {
-    let api_routes = Router::new()
-        .route("/v1/sessions", get(list_sessions))
-        .route("/v1/sessions/{id}", get(get_session).delete(delete_session))
-        .route(
-            "/v1/sessions/{id}/resume-thread",
-            post(resume_session_thread),
-        )
-        .route("/v1/resume-tasks/{thread_id}", get(get_resume_task))
-        .route("/v1/workspace/status", get(workspace_status))
-        .route("/v1/workspace/browse", get(browse_workspace_by_root))
-        .route("/v1/workspace/file", get(read_workspace_file_by_root))
-        .route("/v1/stream", post(stream_turn))
-        .route("/v1/threads", get(list_threads).post(create_thread))
-        .route("/v1/threads/summary", get(list_threads_summary))
-        .route("/v1/threads/{id}", get(get_thread).patch(update_thread))
-        .route("/v1/threads/{id}/checklist", get(get_thread_checklist))
-        .route(
-            "/v1/threads/{id}/scratchpad/status",
-            get(get_thread_scratchpad_status),
-        )
-        .route("/v1/threads/{id}/context", get(get_thread_context))
-        .route("/v1/threads/{id}/resume", post(resume_thread))
-        .route("/v1/threads/{id}/fork", post(fork_thread))
-        .route("/v1/threads/{id}/turns", post(start_thread_turn))
-        .route(
-            "/v1/threads/{id}/turns/{turn_id}/steer",
-            post(steer_thread_turn),
-        )
-        .route(
-            "/v1/threads/{id}/turns/{turn_id}/resolve-approval",
-            post(resolve_approval),
-        )
-        .route(
-            "/v1/threads/{id}/turns/{turn_id}/interrupt",
-            post(interrupt_thread_turn),
-        )
-        .route("/v1/threads/{id}/compact", post(compact_thread))
-        .route(
-            "/v1/threads/{id}/persist-session",
-            post(persist_thread_session),
-        )
-        .route("/v1/threads/{id}/snapshots", get(list_thread_snapshots))
-        .route(
-            "/v1/threads/{id}/snapshots/restore",
-            post(restore_thread_snapshot),
-        )
-        .route(
-            "/v1/threads/{id}/workspace/browse",
-            get(browse_thread_workspace),
-        )
-        .route(
-            "/v1/threads/{id}/workspace/file",
-            get(read_thread_workspace_file),
-        )
-        .route("/v1/threads/{id}/events", get(stream_thread_events))
-        .route("/v1/tasks", get(list_tasks).post(create_task))
-        .route("/v1/tasks/clear", post(clear_tasks))
-        .route("/v1/tasks/{id}", get(get_task))
-        .route("/v1/tasks/{id}/cancel", post(cancel_task))
-        .route("/v1/skills", get(list_skills).post(create_skill))
-        .route("/v1/skills/import", post(import_skill_local))
-        .route("/v1/skills/install", post(install_skill_remote))
-        .route(
-            "/v1/apps/mcp/servers",
-            get(list_mcp_servers).post(add_mcp_server),
-        )
-        .route(
-            "/v1/apps/mcp/servers/{name}",
-            get(get_mcp_server)
-                .put(update_mcp_server)
-                .delete(delete_mcp_server),
-        )
-        .route("/v1/apps/mcp/config/merge", post(merge_mcp_config_json))
-        .route("/v1/apps/mcp/tools", get(list_mcp_tools))
-        .route(
-            "/v1/automations",
-            get(list_automations).post(create_automation),
-        )
-        .route(
-            "/v1/automations/{id}",
-            get(get_automation)
-                .patch(update_automation)
-                .delete(delete_automation),
-        )
-        .route("/v1/automations/{id}/run", post(run_automation))
-        .route("/v1/automations/{id}/pause", post(pause_automation))
-        .route("/v1/automations/{id}/resume", post(resume_automation))
-        .route("/v1/automations/{id}/runs", get(list_automation_runs))
-        .route("/v1/usage", get(get_usage))
-        .route(
-            "/v1/apps/routing/rules",
-            get(get_routing_rules).put(set_routing_rules),
-        )
-        .route(
-            "/v1/symbol-index/rebuild",
-            post(rebuild_symbol_index),
-        )
-        .route_layer(middleware::from_fn_with_state(
-            state.clone(),
-            require_runtime_token,
-        ));
-
-    Router::new()
-        .route("/health", get(health))
-        .route("/internal/probe", get(internal_probe))
-        .merge(api_routes)
-        .layer(cors_layer(&state.cors_origins))
-        .with_state(state)
-}
-
-async fn require_runtime_token(
-    State(state): State<RuntimeApiState>,
-    req: Request,
-    next: Next,
-) -> Response {
-    let Some(expected) = state.runtime_token.as_deref() else {
-        return next.run(req).await;
-    };
-    let authorized = req
-        .headers()
-        .get(header::AUTHORIZATION)
-        .and_then(|value| value.to_str().ok())
-        .and_then(|raw| raw.strip_prefix("Bearer "))
-        .is_some_and(|token| token == expected)
-        || req
-            .headers()
-            .get("x-deepseek-runtime-token")
-            .and_then(|value| value.to_str().ok())
-            .is_some_and(|token| token == expected);
-
-    if authorized {
-        next.run(req).await
-    } else {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({
-                "error": {
-                    "message": "runtime API bearer token required",
-                    "status": StatusCode::UNAUTHORIZED.as_u16(),
-                }
-            })),
-        )
-            .into_response()
-    }
 }
 
 async fn health() -> Json<HealthResponse> {
@@ -2630,444 +2489,6 @@ async fn clear_tasks(State(state): State<RuntimeApiState>) -> Result<Json<ClearT
     Ok(Json(ClearTasksResponse { removed }))
 }
 
-async fn stream_thread_events(
-    State(state): State<RuntimeApiState>,
-    AxumPath(id): AxumPath<String>,
-    Query(query): Query<ThreadEventsQuery>,
-) -> Result<Sse<impl futures_util::Stream<Item = Result<SseEvent, Infallible>>>, ApiError> {
-    let _ = state
-        .runtime_threads
-        .get_thread(&id)
-        .await
-        .map_err(map_thread_err)?;
-
-    let backlog = state
-        .runtime_threads
-        .events_since(&id, query.since_seq)
-        .map_err(|e| ApiError::internal(e.to_string()))?;
-    let mut last_seq = query.since_seq.unwrap_or(0);
-    if let Some(last) = backlog.last() {
-        last_seq = last.seq;
-    }
-
-    let replay_only = query.replay_only.unwrap_or(false);
-    let mut live = state.runtime_threads.subscribe_events();
-    let thread_id = id.clone();
-    let stream = stream! {
-        for event in backlog {
-            let seq = event.seq;
-            let event_name = event.event.clone();
-            let payload = runtime_event_payload(event);
-            yield Ok(sse_json_seq(seq, &event_name, payload));
-        }
-        if replay_only {
-            return;
-        }
-        loop {
-            let incoming = live.recv().await;
-            let Ok(event) = incoming else {
-                break;
-            };
-            if event.thread_id != thread_id {
-                continue;
-            }
-            if event.seq <= last_seq {
-                continue;
-            }
-            last_seq = event.seq;
-            let seq = event.seq;
-            let event_name = event.event.clone();
-            let payload = runtime_event_payload(event);
-            yield Ok(sse_json_seq(seq, &event_name, payload));
-        }
-    };
-
-    Ok(Sse::new(stream).keep_alive(
-        KeepAlive::new()
-            .interval(Duration::from_secs(15))
-            .text("keepalive"),
-    ))
-}
-
-async fn stream_turn(
-    State(state): State<RuntimeApiState>,
-    Json(req): Json<StreamTurnRequest>,
-) -> Result<Sse<impl futures_util::Stream<Item = Result<SseEvent, Infallible>>>, ApiError> {
-    if req.prompt.trim().is_empty() {
-        return Err(ApiError::bad_request("prompt is required"));
-    }
-
-    let model = req.model.clone().unwrap_or_else(|| {
-        state
-            .config
-            .default_text_model
-            .clone()
-            .unwrap_or_else(|| DEFAULT_TEXT_MODEL.to_string())
-    });
-    let workspace = req
-        .workspace
-        .clone()
-        .unwrap_or_else(|| state.workspace.clone());
-    let mode = req.mode.clone().unwrap_or_else(|| "agent".to_string());
-    let allow_shell = req.allow_shell.unwrap_or(state.config.allow_shell());
-    let trust_mode = req.trust_mode.unwrap_or(false);
-    let auto_approve = req.auto_approve.unwrap_or(false);
-    let prompt = req.prompt;
-    let task_type = crate::task_type::resolve_task_type(
-        req.task_type.as_deref(),
-        &workspace,
-        Some(prompt.as_str()),
-    );
-
-    let thread = state
-        .runtime_threads
-        .create_thread(CreateThreadRequest {
-            model: Some(model.clone()),
-            workspace: Some(workspace.clone()),
-            mode: Some(mode.clone()),
-            allow_shell: Some(allow_shell),
-            trust_mode: Some(trust_mode),
-            auto_approve: Some(auto_approve),
-            archived: true,
-            system_prompt: None,
-            task_id: None,
-            task_type: Some(task_type.as_str().to_string()),
-        })
-        .await
-        .map_err(|e| ApiError::internal(format!("Failed to create stream thread: {e}")))?;
-
-    let turn = state
-        .runtime_threads
-        .start_turn(
-            &thread.id,
-            StartTurnRequest {
-                prompt,
-                input_summary: None,
-                model: Some(model.clone()),
-                mode: Some(mode.clone()),
-                allow_shell: Some(allow_shell),
-                trust_mode: Some(trust_mode),
-                auto_approve: Some(auto_approve),
-                route_intent: req.route_intent.clone(),
-            },
-        )
-        .await
-        .map_err(|e| ApiError::internal(format!("Failed to start stream turn: {e}")))?;
-
-    let backlog = state
-        .runtime_threads
-        .events_since(&thread.id, None)
-        .map_err(|e| ApiError::internal(format!("Failed to load stream backlog: {e}")))?;
-    let mut live = state.runtime_threads.subscribe_events();
-    let thread_id = thread.id.clone();
-    let turn_id = turn.id.clone();
-
-    let stream = stream! {
-        yield Ok(sse_json("turn.started", json!({
-            "thread_id": thread.id,
-            "turn_id": turn.id,
-            "model": model,
-            "mode": mode,
-            "workspace": workspace,
-        })));
-
-        for event in backlog {
-            if event.thread_id != thread_id || event.turn_id.as_deref() != Some(&turn_id) {
-                continue;
-            }
-            if let Some(mapped) = map_compat_stream_event(&event) {
-                yield Ok(mapped);
-            }
-            if event.event == "turn.completed" {
-                yield Ok(sse_json("done", json!({})));
-                return;
-            }
-        }
-
-        loop {
-            let incoming = live.recv().await;
-            let Ok(event) = incoming else {
-                yield Ok(sse_json("error", json!({ "message": "event channel closed" })));
-                break;
-            };
-            if event.thread_id != thread_id || event.turn_id.as_deref() != Some(&turn_id) {
-                continue;
-            }
-            if let Some(mapped) = map_compat_stream_event(&event) {
-                yield Ok(mapped);
-            }
-            if event.event == "turn.completed" {
-                break;
-            }
-        }
-
-        yield Ok(sse_json("done", json!({})));
-    };
-
-    Ok(Sse::new(stream).keep_alive(
-        KeepAlive::new()
-            .interval(Duration::from_secs(15))
-            .text("keepalive"),
-    ))
-}
-
-fn runtime_event_payload(event: crate::runtime_threads::RuntimeEventRecord) -> serde_json::Value {
-    json!({
-        "seq": event.seq,
-        "timestamp": event.timestamp,
-        "thread_id": event.thread_id,
-        "turn_id": event.turn_id,
-        "item_id": event.item_id,
-        "event": event.event,
-        "payload": event.payload,
-    })
-}
-
-/// Map a raw runtime event to a compat SSE event name and payload.
-///
-/// # SSE event names (stable compat surface):
-///
-/// | SSE `event`      | Source                 | Description               |
-/// |------------------|------------------------|---------------------------|
-/// | `thinking.delta` | `item.delta` (thinking) | Reasoning / thinking increment |
-/// | `message.delta`  | `item.delta` (agent)   | Assistant text increment  |
-/// | `tool.progress`  | `item.delta` (tool)    | Tool output streaming     |
-/// | `tool.started`   | `item.started` (tool)  | Tool call began           |
-/// | `tool.completed` | `item.completed` (tool)| Tool call finished        |
-/// | `status`         | `item.completed`       | Status/notification       |
-/// | `error`          | `item.completed`       | Error message             |
-/// | `approval.required` | `approval.required` | Exec approval needed      |
-/// | `sandbox.denied` | `sandbox.denied`       | Sandbox policy denied     |
-/// | `turn.completed` | `turn.completed`       | Turn ended with usage     |
-///
-/// Additional events emitted outside this function by stream_turn:
-/// - `turn.started` — emitted as first frame
-/// - `done` — emitted as final frame to close SSE
-fn map_compat_stream_event(event: &crate::runtime_threads::RuntimeEventRecord) -> Option<SseEvent> {
-    let payload = &event.payload;
-    match event.event.as_str() {
-        "item.delta" => {
-            let kind = payload
-                .get("kind")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default();
-            if kind == "agent_message" {
-                let content = payload
-                    .get("delta")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default();
-                Some(sse_json_seq(
-                    event.seq,
-                    "message.delta",
-                    json!({ "content": content }),
-                ))
-            } else if kind == "thinking" {
-                let content = payload
-                    .get("delta")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default();
-                Some(sse_json_seq(
-                    event.seq,
-                    "thinking.delta",
-                    json!({ "content": content }),
-                ))
-            } else if kind == "tool_call" {
-                let output = payload
-                    .get("delta")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default();
-                Some(sse_json_seq(
-                    event.seq,
-                    "tool.progress",
-                    json!({ "output": output }),
-                ))
-            } else {
-                None
-            }
-        }
-        "item.started" => {
-            let tool = payload.get("tool")?;
-            let id = tool.get("id").cloned().unwrap_or(Value::Null);
-            let name = tool.get("name").cloned().unwrap_or(Value::Null);
-            let input = tool.get("input").cloned().unwrap_or(Value::Null);
-            Some(sse_json_seq(
-                event.seq,
-                "tool.started",
-                json!({
-                    "id": id,
-                    "name": name,
-                    "input": input,
-                }),
-            ))
-        }
-        "item.completed" | "item.failed" => {
-            let item = payload.get("item")?;
-            let kind = item
-                .get("kind")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default();
-            if kind == "tool_call" || kind == "file_change" || kind == "command_execution" {
-                let id = payload
-                    .get("tool")
-                    .and_then(|t| t.get("id"))
-                    .cloned()
-                    .unwrap_or_else(|| item.get("id").cloned().unwrap_or(Value::Null));
-                let success = event.event == "item.completed";
-                let output = item.get("detail").cloned().unwrap_or_else(|| {
-                    Value::String(
-                        item.get("summary")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or_default()
-                            .to_string(),
-                    )
-                });
-                Some(sse_json_seq(
-                    event.seq,
-                    "tool.completed",
-                    json!({
-                        "id": id,
-                        "success": success,
-                        "output": output,
-                    }),
-                ))
-            } else if kind == "status" {
-                let message = item
-                    .get("detail")
-                    .and_then(|v| v.as_str())
-                    .or_else(|| item.get("summary").and_then(|v| v.as_str()))
-                    .unwrap_or_default();
-                Some(sse_json_seq(
-                    event.seq,
-                    "status",
-                    json!({ "message": message }),
-                ))
-            } else if kind == "error" {
-                let message = item
-                    .get("detail")
-                    .and_then(|v| v.as_str())
-                    .or_else(|| item.get("summary").and_then(|v| v.as_str()))
-                    .unwrap_or_default();
-                Some(sse_json_seq(
-                    event.seq,
-                    "error",
-                    json!({ "message": message }),
-                ))
-            } else {
-                None
-            }
-        }
-        "approval.required" => Some(sse_json_seq(
-            event.seq,
-            "approval.required",
-            payload.clone(),
-        )),
-        "sandbox.denied" => Some(sse_json_seq(event.seq, "sandbox.denied", payload.clone())),
-        "turn.completed" => {
-            let usage = payload
-                .get("turn")
-                .and_then(|turn| turn.get("usage"))
-                .cloned()
-                .unwrap_or(json!(null));
-            Some(sse_json_seq(
-                event.seq,
-                "turn.completed",
-                json!({ "usage": usage }),
-            ))
-        }
-        "agent.spawned" => {
-            let agent_id = payload
-                .get("agent_id")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default();
-            if agent_id.is_empty() {
-                return None;
-            }
-            let prompt = payload
-                .get("prompt")
-                .and_then(|v| v.as_str())
-                .filter(|s| !s.is_empty())
-                .map(str::to_string);
-            Some(sse_json_seq(
-                event.seq,
-                "agent.spawned",
-                json!({
-                    "agent_id": agent_id,
-                    "prompt": prompt,
-                }),
-            ))
-        }
-        "agent.progress" => {
-            let agent_id = payload
-                .get("agent_id")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default();
-            if agent_id.is_empty() {
-                return None;
-            }
-            let status = payload
-                .get("status")
-                .and_then(|v| v.as_str())
-                .or_else(|| {
-                    payload
-                        .get("item")
-                        .and_then(|item| item.get("detail").and_then(|v| v.as_str()))
-                })
-                .unwrap_or_default();
-            Some(sse_json_seq(
-                event.seq,
-                "agent.progress",
-                json!({ "agent_id": agent_id, "status": status }),
-            ))
-        }
-        "agent.completed" => {
-            let agent_id = payload
-                .get("agent_id")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default();
-            if agent_id.is_empty() {
-                return None;
-            }
-            let result = payload
-                .get("item")
-                .and_then(|item| item.get("detail").and_then(|v| v.as_str()))
-                .unwrap_or_default();
-            Some(sse_json_seq(
-                event.seq,
-                "agent.completed",
-                json!({ "agent_id": agent_id, "result": result }),
-            ))
-        }
-        "agent.list" => {
-            let agents = payload.get("agents").cloned().unwrap_or(json!([]));
-            Some(sse_json_seq(
-                event.seq,
-                "agent.list",
-                json!({ "agents": agents }),
-            ))
-        }
-        "panel.checklist" | "panel.scratchpad" | "panel.context" => {
-            Some(sse_json_seq(event.seq, event.event.as_str(), payload.clone()))
-        }
-        _ => None,
-    }
-}
-
-fn sse_json(event: &str, payload: serde_json::Value) -> SseEvent {
-    let data = serde_json::to_string(&payload).unwrap_or_else(|_| "{}".to_string());
-    SseEvent::default().event(event).data(data)
-}
-
-/// SSE frame with `id:` set to the durable monotonic `seq` (matches JSON `payload.seq` where present).
-///
-/// Clients MAY use browser `Last-Event-ID` on reconnect; the authoritative cursor is still
-/// `since_seq` on `GET /v1/threads/{id}/events` (this handler does not read `Last-Event-ID` today).
-fn sse_json_seq(seq: u64, event: &str, payload: serde_json::Value) -> SseEvent {
-    let data = serde_json::to_string(&payload).unwrap_or_else(|_| "{}".to_string());
-    SseEvent::default()
-        .event(event)
-        .id(seq.to_string())
-        .data(data)
-}
 
 fn truncate_text(text: &str, max_chars: usize) -> String {
     let char_count = text.chars().count();
@@ -3574,12 +2995,15 @@ impl IntoResponse for ApiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::stream::map_compat_stream_event;
     use crate::core::events::{Event as EngineEvent, TurnOutcomeStatus};
     use crate::core::ops::Op;
     use crate::models::Usage;
     use crate::runtime_threads::RuntimeEventRecord;
     use anyhow::{Context, bail};
+    use axum::response::sse::Sse;
     use futures_util::StreamExt;
+    use std::convert::Infallible;
     use std::fs;
     use std::sync::Arc;
     use tokio::sync::{Mutex, mpsc};
@@ -4229,6 +3653,9 @@ mod tests {
                                 last_request_input_tokens: None,
                                 status: TurnOutcomeStatus::Completed,
                                 error: None,
+                                step_count: 0,
+                                tool_names: vec![],
+                                end_reason: None,
                             })
                             .await;
                     }
@@ -4243,6 +3670,9 @@ mod tests {
                                 last_request_input_tokens: None,
                                 status: TurnOutcomeStatus::Completed,
                                 error: None,
+                                step_count: 0,
+                                tool_names: vec![],
+                                end_reason: None,
                             })
                             .await;
                     }
@@ -4428,6 +3858,9 @@ mod tests {
                     last_request_input_tokens: None,
                     status: TurnOutcomeStatus::Completed,
                     error: None,
+                    step_count: 0,
+                    tool_names: vec![],
+                    end_reason: None,
                 })
                 .await;
         });
@@ -4555,6 +3988,9 @@ mod tests {
                     last_request_input_tokens: None,
                     status: TurnOutcomeStatus::Completed,
                     error: None,
+                    step_count: 0,
+                    tool_names: vec![],
+                    end_reason: None,
                 })
                 .await;
         });
@@ -4803,6 +4239,9 @@ mod tests {
                     last_request_input_tokens: None,
                     status: TurnOutcomeStatus::Completed,
                     error: None,
+                    step_count: 0,
+                    tool_names: vec![],
+                    end_reason: None,
                 })
                 .await;
         });
@@ -5385,6 +4824,110 @@ mod tests {
             .send()
             .await?;
         assert_eq!(inverted.status(), StatusCode::BAD_REQUEST);
+
+        handle.abort();
+        Ok(())
+    }
+
+    /// A+.7 — HTTP resolve-approval rejects invalid decision strings.
+    #[tokio::test]
+    async fn resolve_approval_rejects_invalid_decision() -> Result<()> {
+        let Some((addr, _runtime_threads, handle)) = spawn_test_server().await? else {
+            return Ok(());
+        };
+        let client = reqwest::Client::new();
+
+        // Bad decision string
+        let resp = client
+            .post(format!(
+                "http://{addr}/v1/threads/thr_any/turns/turn_any/resolve-approval"
+            ))
+            .json(&json!({
+                "tool_call_id": "t1",
+                "decision": "maybe",
+            }))
+            .send()
+            .await?;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+        handle.abort();
+        Ok(())
+    }
+
+    /// A+.4 Sidecar contract test: health → create thread → start turn →
+    /// SSE stream subset → stop.  This is the minimal smoke test that any
+    /// L3 shell (TUI / DS Pick) expects to pass.  The server is in-memory
+    /// (same `spawn_test_server` helper); the full `deepseek-tui serve
+    /// --http` binary-test variant lives under
+    /// `scripts/runtime-longrun-baseline.ps1`.
+    #[tokio::test]
+    async fn sidecar_contract_full_lifecycle() -> Result<()> {
+        let Some((addr, runtime_threads, handle)) = spawn_test_server().await? else {
+            return Ok(());
+        };
+        let client = reqwest::Client::new();
+        let base = format!("http://{addr}");
+
+        // 1. Health check
+        let health: serde_json::Value = client
+            .get(format!("{base}/health"))
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        assert_eq!(health["status"], "ok");
+
+        // 2. Create thread
+        let thread: serde_json::Value = client
+            .post(format!("{base}/v1/threads"))
+            .json(&json!({"model": "deepseek-chat"}))
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        let thread_id = thread["id"].as_str().context("missing thread id")?.to_string();
+
+        // 3. Start turn (simulated via mock engine events)
+        let turn: serde_json::Value = client
+            .post(format!("{base}/v1/threads/{thread_id}/turns"))
+            .json(&json!({
+                "prompt": "contract test turn",
+                "model": "deepseek-chat",
+            }))
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        let turn_id = turn["turn"]["id"]
+            .as_str()
+            .context("missing turn id")?
+            .to_string();
+
+        // 4. Subscribe to events (SSE) — verify we get at least
+        //    turn.started within the timeout.
+        let events_url = format!("{base}/v1/threads/{thread_id}/events?replay_only=1");
+        let events_resp = client.get(&events_url).send().await?.error_for_status()?;
+        let events_body = events_resp.text().await?;
+        assert!(
+            events_body.contains("event: turn.started")
+                || events_body.contains("event: turn.completed"),
+            "expected at least one SSE event in replay, got: {events_body:.200}"
+        );
+
+        // 5. Stop the turn
+        let stop_resp = client
+            .post(format!(
+                "{base}/v1/threads/{thread_id}/turns/{turn_id}/stop"
+            ))
+            .send()
+            .await?;
+        assert!(
+            stop_resp.status().is_success() || stop_resp.status() == StatusCode::NOT_FOUND,
+            "stop should succeed or 404 if already completed"
+        );
 
         handle.abort();
         Ok(())

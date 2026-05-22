@@ -75,7 +75,7 @@ JD 中反复出现、且与实现强相关的 Harness 模块：
 | Planning | audit scratchpad、`checklist_*`、`task_*` | 全库审计见 [audit-scratchpad-design.md](audit-scratchpad-design.md) |
 | Skills | `crates/tui/assets/skills/`、`load_skill` | 如 `audit-repo` |
 | MCP | 桌面 MCP 集成路径 | 与 TUI 共用配置面 |
-| Memory | scratchpad 文件、blackboard、`SessionManager`、thread 事件库 | reasoning ≠ 可靠工作记忆（设计 §1.2） |
+| Memory | scratchpad 文件、blackboard、`SessionManager`、thread 事件库 | reasoning ≠ 可靠工作记忆（设计 §1.2）；**通用结项 Handoff Report** ⬜ 见 [DEV_NOTES.md §Handoff](DEV_NOTES.md#2026-05-21--会话线程结项汇总报告handoff-report--规划中) |
 | Subagent | `agent_spawn` / `agent_result` / `agent_list` | 与 **Task**（`task_create`）区分见 design §7.1、§14 |
 | 指标 / 可验收 | scratchpad inventory、C1 覆盖率、横条 | 「Agent 是否真帮人」的工程代理指标 |
 | Phase D 可视化 | Inventory 面板、违约高亮、双轨进度（规划） | 见 [audit-scratchpad-design.md §6.13](audit-scratchpad-design.md#613-phase-d--审计过程可视化路线图-未实现)、[test §L8](audit-scratchpad-test.md#l8--phase-d-审计过程可视化规划) |

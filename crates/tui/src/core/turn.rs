@@ -13,6 +13,9 @@
 //! `/restore N` and the `revert_turn` tool both consume these
 //! snapshots.
 
+// TurnToolCall and TurnState are now in deepseek-core (P2 PR2).
+pub use deepseek_core::turn::{TurnState, TurnToolCall};
+
 use crate::models::Usage;
 use crate::snapshot::SnapshotRepo;
 use std::path::Path;
@@ -43,17 +46,6 @@ pub struct TurnContext {
 
     /// Usage for this turn
     pub usage: Usage,
-}
-
-/// Record of a tool call within a turn.
-#[derive(Debug, Clone)]
-pub struct TurnToolCall {
-    pub id: String,
-    pub name: String,
-    pub input: serde_json::Value,
-    pub result: Option<String>,
-    pub error: Option<String>,
-    pub duration: Option<Duration>,
 }
 
 impl TurnContext {
@@ -170,28 +162,4 @@ fn snapshot_with_label(workspace: &Path, label: &str) -> Option<String> {
     }
 }
 
-impl TurnToolCall {
-    /// Create a new tool call record
-    pub fn new(id: String, name: String, input: serde_json::Value) -> Self {
-        Self {
-            id,
-            name,
-            input,
-            result: None,
-            error: None,
-            duration: None,
-        }
-    }
-
-    /// Set the result
-    pub fn set_result(&mut self, result: String, duration: Duration) {
-        self.result = Some(result);
-        self.duration = Some(duration);
-    }
-
-    /// Set an error
-    pub fn set_error(&mut self, error: String, duration: Duration) {
-        self.error = Some(error);
-        self.duration = Some(duration);
-    }
-}
+// TurnToolCall impl is in deepseek-core (P2 PR2).

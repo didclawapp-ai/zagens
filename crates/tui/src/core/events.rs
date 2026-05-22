@@ -14,13 +14,8 @@ use crate::tools::spec::{ToolError, ToolResult};
 use crate::tools::subagent::SubAgentResult;
 use crate::tools::user_input::UserInputRequest;
 
-/// Final status for a turn.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TurnOutcomeStatus {
-    Completed,
-    Interrupted,
-    Failed,
-}
+/// Re-exported from `deepseek-core` (P2 PR1).
+pub use deepseek_core::turn::TurnOutcomeStatus;
 
 /// Events emitted by the engine to update the UI.
 #[derive(Debug, Clone)]
@@ -93,6 +88,12 @@ pub enum Event {
         last_request_input_tokens: Option<u32>,
         status: TurnOutcomeStatus,
         error: Option<String>,
+        /// Number of LLM API steps executed in this turn.
+        step_count: u32,
+        /// Unique tool names invoked during the turn.
+        tool_names: Vec<String>,
+        /// Human-readable end reason (e.g. "completed", "cancelled", "context overflow").
+        end_reason: Option<String>,
     },
 
     /// Context compaction started.

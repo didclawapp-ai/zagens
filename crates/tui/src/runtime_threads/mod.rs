@@ -42,171 +42,8 @@ const SUMMARY_LIMIT: usize = 280;
 const CURRENT_RUNTIME_SCHEMA_VERSION: u32 = 2;
 const RUNTIME_RESTART_REASON: &str = "Interrupted by process restart";
 
-const fn default_runtime_schema_version() -> u32 {
-    CURRENT_RUNTIME_SCHEMA_VERSION
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum RuntimeTurnStatus {
-    Queued,
-    InProgress,
-    Completed,
-    Failed,
-    Interrupted,
-    Canceled,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum TurnItemKind {
-    UserMessage,
-    AgentMessage,
-    ToolCall,
-    FileChange,
-    CommandExecution,
-    ContextCompaction,
-    Status,
-    Error,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum TurnItemLifecycleStatus {
-    Queued,
-    InProgress,
-    Completed,
-    Failed,
-    Interrupted,
-    Canceled,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ThreadRecord {
-    #[serde(default = "default_runtime_schema_version")]
-    pub schema_version: u32,
-    pub id: String,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-    pub model: String,
-    pub workspace: PathBuf,
-    pub mode: String,
-    pub allow_shell: bool,
-    pub trust_mode: bool,
-    pub auto_approve: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub latest_turn_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub latest_response_bookmark: Option<String>,
-    #[serde(default)]
-    pub archived: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub system_prompt: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub task_id: Option<String>,
-    /// User-set title for the thread. When `None`, consumers fall back to a
-    /// derived title (typically the latest turn's input summary). Added in
-    /// v0.8.10 (#562); old runtime records simply have no `title` and behave
-    /// as before. Schema version is not bumped because this field is purely
-    /// additive metadata — older readers ignore it without misinterpretation.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub title: Option<String>,
-    /// `office` | `code` — fixed for the thread lifetime.
-    #[serde(default = "default_thread_task_type")]
-    pub task_type: String,
-    #[serde(default)]
-    pub coherence_state: CoherenceState,
-    /// Active full-repo audit scratchpad directory name (Phase B).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub scratchpad_run_id: Option<String>,
-    /// Latest `checklist_write` snapshot for DS Pick WebView checklist panel.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub checklist_snapshot: Option<serde_json::Value>,
-}
-
-fn default_thread_task_type() -> String {
-    crate::task_type::TaskType::Code.as_str().to_string()
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TurnRecord {
-    #[serde(default = "default_runtime_schema_version")]
-    pub schema_version: u32,
-    pub id: String,
-    pub thread_id: String,
-    pub status: RuntimeTurnStatus,
-    pub input_summary: String,
-    pub created_at: DateTime<Utc>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub started_at: Option<DateTime<Utc>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ended_at: Option<DateTime<Utc>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub duration_ms: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub usage: Option<Usage>,
-    /// Last API round `input_tokens` for this turn (not multi-round sum).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub last_request_input_tokens: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-    #[serde(default)]
-    pub item_ids: Vec<String>,
-    #[serde(default)]
-    pub steer_count: usize,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TurnItemRecord {
-    #[serde(default = "default_runtime_schema_version")]
-    pub schema_version: u32,
-    pub id: String,
-    pub turn_id: String,
-    pub kind: TurnItemKind,
-    pub status: TurnItemLifecycleStatus,
-    pub summary: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub detail: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<Value>,
-    #[serde(default)]
-    pub artifact_refs: Vec<PathBuf>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub started_at: Option<DateTime<Utc>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ended_at: Option<DateTime<Utc>>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RuntimeEventRecord {
-    #[serde(default = "default_runtime_schema_version")]
-    pub schema_version: u32,
-    pub seq: u64,
-    pub timestamp: DateTime<Utc>,
-    pub thread_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub turn_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub item_id: Option<String>,
-    pub event: String,
-    pub payload: Value,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RuntimeStoreState {
-    #[serde(default = "default_runtime_schema_version")]
-    pub schema_version: u32,
-    pub next_seq: u64,
-}
-
-impl Default for RuntimeStoreState {
-    fn default() -> Self {
-        Self {
-            schema_version: CURRENT_RUNTIME_SCHEMA_VERSION,
-            next_seq: 1,
-        }
-    }
-}
+mod types;
+pub use types::*;
 
 #[derive(Debug, Clone)]
 pub struct RuntimeThreadStore {
@@ -220,7 +57,7 @@ pub struct RuntimeThreadStore {
 }
 
 impl RuntimeThreadStore {
-    pub fn open(root: PathBuf) -> Result<Self> {
+    fn prepare_dirs(root: &Path) -> Result<(PathBuf, PathBuf, PathBuf, PathBuf, PathBuf)> {
         let threads_dir = root.join("threads");
         let turns_dir = root.join("turns");
         let items_dir = root.join("items");
@@ -233,8 +70,43 @@ impl RuntimeThreadStore {
             .with_context(|| format!("Failed to create {}", items_dir.display()))?;
         fs::create_dir_all(&events_dir)
             .with_context(|| format!("Failed to create {}", events_dir.display()))?;
+        Ok((
+            threads_dir,
+            turns_dir,
+            items_dir,
+            events_dir,
+            root.join("state.json"),
+        ))
+    }
 
-        let state_path = root.join("state.json");
+    /// JSON-per-file store only (tests that write fixture JSON under `threads/`).
+    #[cfg(test)]
+    pub fn open_json_only(root: PathBuf) -> Result<Self> {
+        let (threads_dir, turns_dir, items_dir, events_dir, state_path) = Self::prepare_dirs(&root)?;
+        let state = if state_path.exists() {
+            let raw = fs::read_to_string(&state_path)
+                .with_context(|| format!("Failed to read {}", state_path.display()))?;
+            serde_json::from_str::<RuntimeStoreState>(&raw)
+                .with_context(|| format!("Failed to parse {}", state_path.display()))?
+        } else {
+            let default = RuntimeStoreState::default();
+            write_json_atomic(&state_path, &default)?;
+            default
+        };
+        Ok(Self {
+            threads_dir,
+            turns_dir,
+            items_dir,
+            events_dir,
+            state_path,
+            state: Arc::new(Mutex::new(state)),
+            db: None,
+        })
+    }
+
+    pub fn open(root: PathBuf) -> Result<Self> {
+        let (threads_dir, turns_dir, items_dir, events_dir, state_path) = Self::prepare_dirs(&root)?;
+
         // SQLite backend with auto-migration from existing JSON files.
         let db_path = root.join("runtime.db");
         let (state, db) = match crate::thread_store_sqlite::open_sqlite_thread_db(&db_path, &threads_dir) {
@@ -1014,6 +886,15 @@ impl RuntimeThreadManager {
         manager_cfg: RuntimeThreadManagerConfig,
     ) -> Result<Self> {
         let store = RuntimeThreadStore::open(manager_cfg.data_dir.clone())?;
+        Self::open_with_store(config, workspace, manager_cfg, store)
+    }
+
+    fn open_with_store(
+        config: Config,
+        workspace: PathBuf,
+        manager_cfg: RuntimeThreadManagerConfig,
+        store: RuntimeThreadStore,
+    ) -> Result<Self> {
         let (event_tx, _event_rx) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
         let routing_rules_path = manager_cfg.data_dir.join("routing_rules.json");
         let routing_rules = load_routing_rules(&routing_rules_path).unwrap_or_default();
@@ -2413,7 +2294,7 @@ impl RuntimeThreadManager {
             features: self.config.features(),
             compaction,
             cycle: crate::cycle_manager::CycleConfig::default(),
-            capacity: crate::core::capacity::CapacityControllerConfig::from_app_config(
+            capacity: crate::core::capacity::capacity_config_from_app(
                 &self.config,
             ),
             todos: new_shared_todo_list(),
@@ -2587,6 +2468,7 @@ impl RuntimeThreadManager {
         let mut turn_last_request_input_tokens: Option<u32> = None;
         let mut turn_status = RuntimeTurnStatus::Completed;
         let mut turn_error: Option<String> = None;
+        let mut turn_summary: Option<serde_json::Value> = None;
 
         loop {
             let event = {
@@ -3183,6 +3065,14 @@ impl RuntimeThreadManager {
                     description,
                     ..
                 } => {
+                    if self
+                        .active_turn_flags(&thread_id, &turn_id)
+                        .await
+                        .is_none()
+                    {
+                        let _ = engine.deny_tool_call(id).await;
+                        continue;
+                    }
                     let (auto_approve, trust_mode) = self
                         .active_turn_flags(&thread_id, &turn_id)
                         .await
@@ -3332,6 +3222,9 @@ impl RuntimeThreadManager {
                     last_request_input_tokens,
                     status,
                     error,
+                    step_count,
+                    tool_names,
+                    end_reason,
                 } => {
                     turn_usage = Some(usage);
                     turn_last_request_input_tokens = last_request_input_tokens;
@@ -3343,6 +3236,11 @@ impl RuntimeThreadManager {
                     if let Some(err) = error {
                         turn_error = Some(err);
                     }
+                    turn_summary = Some(json!({
+                        "step_count": step_count,
+                        "tool_names": tool_names,
+                        "end_reason": end_reason,
+                    }));
                     let _ = self.emit_panel_context(&thread_id, &turn_id).await;
                     let _ = self.emit_panel_scratchpad(&thread_id, &turn_id).await;
                     let _ = self.emit_panel_checklist(&thread_id, &turn_id).await;
@@ -3422,7 +3320,15 @@ impl RuntimeThreadManager {
             Some(&turn_id),
             None,
             "turn.completed",
-            json!({ "turn": turn.clone() }),
+            {
+                let mut payload = json!({ "turn": turn.clone() });
+                if let Some(ref summary) = turn_summary {
+                    if let Some(obj) = payload.as_object_mut() {
+                        obj.insert("turn_summary".to_string(), summary.clone());
+                    }
+                }
+                payload
+            },
         )
         .await?;
 
@@ -3847,6 +3753,9 @@ mod tests {
         std::env::temp_dir().join(format!("deepseek-runtime-threads-{}", Uuid::new_v4()))
     }
 
+    /// Mock engines do not answer `Op::QueryContext`; panel emit waits up to 5s.
+    const MOCK_ENGINE_TURN_TERMINAL_TIMEOUT: Duration = Duration::from_secs(8);
+
     fn test_manager_config(data_dir: PathBuf) -> RuntimeThreadManagerConfig {
         RuntimeThreadManagerConfig {
             task_data_dir: data_dir.clone(),
@@ -3856,12 +3765,14 @@ mod tests {
         }
     }
 
+    fn test_store(data_dir: &Path) -> Result<RuntimeThreadStore> {
+        RuntimeThreadStore::open_json_only(data_dir.to_path_buf())
+    }
+
     fn test_manager(data_dir: PathBuf) -> Result<RuntimeThreadManager> {
-        RuntimeThreadManager::open(
-            Config::default(),
-            PathBuf::from("."),
-            test_manager_config(data_dir),
-        )
+        let cfg = test_manager_config(data_dir.clone());
+        let store = test_store(&data_dir)?;
+        RuntimeThreadManager::open_with_store(Config::default(), PathBuf::from("."), cfg, store)
     }
 
     fn sample_thread(thread_id: &str) -> ThreadRecord {
@@ -3992,7 +3903,7 @@ mod tests {
     #[test]
     fn store_load_thread_rejects_newer_schema_version() {
         let dir = test_runtime_dir();
-        let store = RuntimeThreadStore::open(dir.clone()).expect("open store");
+        let store = test_store(&dir).expect("open store");
 
         // Construct a thread record persisted with a future schema version.
         let mut thread = sample_thread("thr_future");
@@ -4025,7 +3936,7 @@ mod tests {
     #[test]
     fn store_load_turn_rejects_newer_schema_version() {
         let dir = test_runtime_dir();
-        let store = RuntimeThreadStore::open(dir.clone()).expect("open store");
+        let store = test_store(&dir).expect("open store");
 
         let mut turn = sample_turn("thr_t", "trn_future", RuntimeTurnStatus::InProgress);
         turn.schema_version = CURRENT_RUNTIME_SCHEMA_VERSION + 1;
@@ -4049,7 +3960,7 @@ mod tests {
     #[test]
     fn store_load_item_rejects_newer_schema_version() {
         let dir = test_runtime_dir();
-        let store = RuntimeThreadStore::open(dir.clone()).expect("open store");
+        let store = test_store(&dir).expect("open store");
 
         let mut item = sample_item("trn_t", "itm_future", TurnItemLifecycleStatus::InProgress);
         item.schema_version = CURRENT_RUNTIME_SCHEMA_VERSION + 1;
@@ -4132,7 +4043,7 @@ mod tests {
     #[test]
     fn open_recovers_queued_and_in_progress_turns() -> Result<()> {
         let runtime_dir = test_runtime_dir();
-        let store = RuntimeThreadStore::open(runtime_dir.clone())?;
+        let store = test_store(&runtime_dir)?;
         let thread = sample_thread("thr_recover");
         store.save_thread(&thread)?;
 
@@ -4264,6 +4175,9 @@ mod tests {
                         last_request_input_tokens: None,
                         status: TurnOutcomeStatus::Completed,
                         error: None,
+                        step_count: 0,
+                        tool_names: vec![],
+                        end_reason: None,
                     })
                     .await;
             }
@@ -4567,6 +4481,9 @@ mod tests {
                         last_request_input_tokens: None,
                         status: TurnOutcomeStatus::Completed,
                         error: None,
+                        step_count: 0,
+                        tool_names: vec![],
+                        end_reason: None,
                     })
                     .await;
                 if turn_index >= 2 {
@@ -4811,10 +4728,14 @@ mod tests {
                 last_request_input_tokens: None,
                 status: TurnOutcomeStatus::Completed,
                 error: None,
+                step_count: 0,
+                tool_names: vec![],
+                end_reason: None,
             })
             .await?;
 
-        let terminal = wait_for_terminal_turn(&manager, &turn.id, Duration::from_secs(2)).await?;
+        let terminal =
+            wait_for_terminal_turn(&manager, &turn.id, MOCK_ENGINE_TURN_TERMINAL_TIMEOUT).await?;
         assert_eq!(terminal.status, RuntimeTurnStatus::Completed);
         Ok(())
     }
@@ -4876,12 +4797,13 @@ mod tests {
             "engine should not receive approve/deny until HTTP resolve"
         );
 
-        manager
-            .resolve_approval(&thread.id, &turn.id, "tool_http1", true)
-            .await?;
-
+        let (resolve_result, approval_event) = tokio::join!(
+            manager.resolve_approval(&thread.id, &turn.id, "tool_http1", true),
+            harness.recv_approval_event(),
+        );
+        resolve_result?;
         assert_eq!(
-            harness.recv_approval_event().await,
+            approval_event,
             Some(MockApprovalEvent::Approved {
                 id: "tool_http1".to_string(),
             })
@@ -4898,10 +4820,110 @@ mod tests {
                 last_request_input_tokens: None,
                 status: TurnOutcomeStatus::Completed,
                 error: None,
+                step_count: 0,
+                tool_names: vec![],
+                end_reason: None,
             })
             .await?;
 
-        let terminal = wait_for_terminal_turn(&manager, &turn.id, Duration::from_secs(2)).await?;
+        let terminal =
+            wait_for_terminal_turn(&manager, &turn.id, MOCK_ENGINE_TURN_TERMINAL_TIMEOUT).await?;
+        assert_eq!(terminal.status, RuntimeTurnStatus::Completed);
+        Ok(())
+    }
+
+    /// A+.7 — Deny path: pending approval → HTTP resolve with "deny" →
+    /// engine receives denial, turn fails.
+    #[tokio::test]
+    async fn resolve_approval_deny_sends_denial_to_engine() -> Result<()> {
+        let manager = test_manager(test_runtime_dir())?;
+        let thread = manager
+            .create_thread(CreateThreadRequest {
+                model: None,
+                workspace: None,
+                mode: None,
+                allow_shell: None,
+                trust_mode: None,
+                auto_approve: Some(false),
+                archived: false,
+                system_prompt: None,
+                task_id: None,
+                task_type: None,
+            })
+            .await?;
+
+        let mut harness = install_mock_engine(&manager, &thread.id).await;
+        let turn = manager
+            .start_turn(
+                &thread.id,
+                StartTurnRequest {
+                    prompt: "needs approval — will be denied".to_string(),
+                    input_summary: None,
+                    model: None,
+                    mode: None,
+                    allow_shell: None,
+                    trust_mode: None,
+                    auto_approve: Some(false),
+                    route_intent: None,
+                },
+            )
+            .await?;
+
+        assert!(matches!(
+            harness.rx_op.recv().await,
+            Some(Op::SendMessage { .. })
+        ));
+
+        harness
+            .tx_event
+            .send(EngineEvent::ApprovalRequired {
+                approval_key: "key_deny".to_string(),
+                id: "tool_deny_1".to_string(),
+                tool_name: "exec_command".to_string(),
+                description: "deny me".to_string(),
+            })
+            .await?;
+
+        // No early decision — must wait for HTTP resolve.
+        let no_early =
+            tokio::time::timeout(Duration::from_millis(80), harness.recv_approval_event()).await;
+        assert!(
+            no_early.is_err(),
+            "engine should not receive approve/deny until HTTP resolve"
+        );
+
+        // HTTP client resolves with "deny" (concurrent recv — approve channel is bounded).
+        let (resolve_result, approval_event) = tokio::join!(
+            manager.resolve_approval(&thread.id, &turn.id, "tool_deny_1", false),
+            harness.recv_approval_event(),
+        );
+        resolve_result?;
+        assert_eq!(
+            approval_event,
+            Some(MockApprovalEvent::Denied {
+                id: "tool_deny_1".to_string(),
+            })
+        );
+
+        harness
+            .tx_event
+            .send(EngineEvent::TurnComplete {
+                usage: Usage {
+                    input_tokens: 0,
+                    output_tokens: 0,
+                    ..Usage::default()
+                },
+                last_request_input_tokens: None,
+                status: TurnOutcomeStatus::Completed,
+                error: Some("tool denied by user".to_string()),
+                step_count: 0,
+                tool_names: vec!["exec_command".to_string()],
+                end_reason: Some("tool denied by user".to_string()),
+            })
+            .await?;
+
+        let terminal =
+            wait_for_terminal_turn(&manager, &turn.id, MOCK_ENGINE_TURN_TERMINAL_TIMEOUT).await?;
         assert_eq!(terminal.status, RuntimeTurnStatus::Completed);
         Ok(())
     }
@@ -4965,12 +4987,13 @@ mod tests {
             .expect_err("expected scope error");
         assert!(format!("{err:#}").contains("scope mismatch"), "got {err:#}");
 
-        manager
-            .resolve_approval(&thread.id, &turn.id, "tool_scope", true)
-            .await?;
-
+        let (resolve_result, approval_event) = tokio::join!(
+            manager.resolve_approval(&thread.id, &turn.id, "tool_scope", true),
+            harness.recv_approval_event(),
+        );
+        resolve_result?;
         assert_eq!(
-            harness.recv_approval_event().await,
+            approval_event,
             Some(MockApprovalEvent::Approved {
                 id: "tool_scope".to_string(),
             })
@@ -4987,10 +5010,14 @@ mod tests {
                 last_request_input_tokens: None,
                 status: TurnOutcomeStatus::Completed,
                 error: None,
+                step_count: 0,
+                tool_names: vec![],
+                end_reason: None,
             })
             .await?;
 
-        let _ = wait_for_terminal_turn(&manager, &turn.id, Duration::from_secs(2)).await?;
+        let _ =
+            wait_for_terminal_turn(&manager, &turn.id, MOCK_ENGINE_TURN_TERMINAL_TIMEOUT).await?;
         Ok(())
     }
 
@@ -5072,10 +5099,14 @@ mod tests {
                 last_request_input_tokens: None,
                 status: TurnOutcomeStatus::Completed,
                 error: None,
+                step_count: 0,
+                tool_names: vec![],
+                end_reason: None,
             })
             .await?;
 
-        let terminal = wait_for_terminal_turn(&manager, &turn.id, Duration::from_secs(2)).await?;
+        let terminal =
+            wait_for_terminal_turn(&manager, &turn.id, MOCK_ENGINE_TURN_TERMINAL_TIMEOUT).await?;
         assert_eq!(terminal.status, RuntimeTurnStatus::Completed);
         Ok(())
     }
@@ -5135,6 +5166,9 @@ mod tests {
                         last_request_input_tokens: None,
                         status: TurnOutcomeStatus::Completed,
                         error: None,
+                        step_count: 0,
+                        tool_names: vec![],
+                        end_reason: None,
                     })
                     .await;
             }
@@ -5248,6 +5282,9 @@ mod tests {
                                 last_request_input_tokens: None,
                                 status: TurnOutcomeStatus::Completed,
                                 error: None,
+                                step_count: 0,
+                                tool_names: vec![],
+                                end_reason: None,
                             })
                             .await;
                     }
@@ -5279,6 +5316,9 @@ mod tests {
                                 last_request_input_tokens: None,
                                 status: TurnOutcomeStatus::Completed,
                                 error: None,
+                                step_count: 0,
+                                tool_names: vec![],
+                                end_reason: None,
                             })
                             .await;
                     }

@@ -4121,7 +4121,7 @@ async fn run_exec_agent(
         features: config.features(),
         compaction,
         cycle: crate::cycle_manager::CycleConfig::default(),
-        capacity: crate::core::capacity::CapacityControllerConfig::from_app_config(config),
+        capacity: crate::core::capacity::capacity_config_from_app(config),
         todos: new_shared_todo_list(),
         plan_state: new_shared_plan_state(),
         max_spawn_depth: crate::tools::subagent::DEFAULT_MAX_SPAWN_DEPTH,

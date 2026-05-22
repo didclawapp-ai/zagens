@@ -3,6 +3,7 @@
 use std::fs;
 use std::path::Path;
 use std::process::Command;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -130,13 +131,13 @@ impl ReviewOutput {
 }
 
 pub struct ReviewTool {
-    client: Option<DeepSeekClient>,
+    client: Option<Arc<dyn crate::llm_client::LlmClient>>,
     model: String,
 }
 
 impl ReviewTool {
     #[must_use]
-    pub fn new(client: Option<DeepSeekClient>, model: String) -> Self {
+    pub fn new(client: Option<Arc<dyn crate::llm_client::LlmClient>>, model: String) -> Self {
         Self { client, model }
     }
 }

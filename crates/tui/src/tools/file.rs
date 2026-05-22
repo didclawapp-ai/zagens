@@ -2189,7 +2189,7 @@ mod tests {
 
         let metadata = result.metadata.expect("should have metadata");
         assert_eq!(metadata["lines_read"], 3);
-        assert_eq!(metadata["total_lines_known"], 5);
+        assert_eq!(metadata["total_lines"], 5);
         assert!(!metadata["truncated"].as_bool().unwrap());
     }
 
@@ -2220,7 +2220,7 @@ mod tests {
 
         let metadata = result.metadata.expect("should have metadata");
         assert_eq!(metadata["lines_read"], 10);
-        assert_eq!(metadata["total_lines_known"], 50);
+        assert_eq!(metadata["total_lines"], 50);
         assert!(metadata["truncated"].as_bool().unwrap());
     }
 
@@ -2264,6 +2264,6 @@ mod tests {
 
         let metadata = result.metadata.expect("should have metadata");
         assert_eq!(metadata["lines_read"], 0);
-        assert_eq!(metadata["total_lines_known"], 2);
+        assert_eq!(metadata["total_lines"], 2);
     }
 }

@@ -23,7 +23,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Docs:** [RUNTIME_EVOLUTION_ROADMAP.md](docs/tech/RUNTIME_EVOLUTION_ROADMAP.md) **v1.4** — 两轮审核吸收（§8b 已删、P2 命名统一、B-L1/B-L3、F1a/F1b、阶段 C 释义、§16 审核记录）；[UNDERLYING_ITERATION_REFERENCE.md](docs/tui/UNDERLYING_ITERATION_REFERENCE.md) §4 映射说明。
+- **Docs:** [RUNTIME_EVOLUTION_ROADMAP.md](docs/tech/RUNTIME_EVOLUTION_ROADMAP.md) **v2.0-final** — 维护者签收 §4.2（D4–D7、D9）；§17 实施后审核（2026-05-22）；[adr/RUNTIME_BASELINE.md](docs/tech/adr/RUNTIME_BASELINE.md) R-015 占位（基准填数并行）。
+- **Runtime (P2 PR1 局部):** Shared types and `LlmClient` trait in `deepseek-core` (`chat`, `models`, `turn`, `compaction`, `capacity`, `workshop`, …) with `deepseek-tui` re-exports; `deepseek-tui` **lib** target (`crates/tui/src/lib.rs`).
+
+### Changed
+
+- **Runtime (R-003 / A4.2–A4.3):** Extract `runtime_api/auth.rs` and `runtime_api/stream.rs` from monolith `mod.rs` (~4.9k lines remain in `mod.rs`; `threads.rs` still TODO per roadmap §7.4).
+
+### Fixed
+
+- **Runtime (RLM):** `RlmLlmClient` blanket impl uses `?Sized` so `Arc<dyn LlmClient>` compiles after `LlmClient` moved to `deepseek-core`.
+- **Tests:** `cargo test -p deepseek-tui --lib` green (2368 passed) — JSON-only fixtures for schema-rejection tests (SQLite migration), `read_file` metadata key `total_lines`, Windows `pwsh` shell/display_command, approval resolve `tokio::join!` + stale-turn immediate deny, mock-engine turn timeout 8s for `QueryContext` panel emit.
+- **Tests:** `subagent` stub runtime wraps client in `Arc` for P2 client type.
+
+### Changed
+
+- **Runtime (R-003 / A4.1):** Extract `runtime_api/router.rs` (`build_router`); handlers remain in `mod.rs` for now.
 
 ## [0.4.3] - 2026-05-21
 

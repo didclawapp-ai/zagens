@@ -115,7 +115,7 @@ pub struct SeamMetadata {
 /// The Flash seam manager — produces `<archived_context>` blocks.
 pub struct SeamManager {
     /// Flash client for summarization work.
-    flash_client: DeepSeekClient,
+    flash_client: Arc<dyn crate::llm_client::LlmClient>,
     /// Configuration.
     config: SeamConfig,
     /// Currently active seams in order (oldest first).
@@ -124,7 +124,7 @@ pub struct SeamManager {
 
 impl SeamManager {
     /// Create a new seam manager with a Flash client.
-    pub fn new(flash_client: DeepSeekClient, config: SeamConfig) -> Self {
+    pub fn new(flash_client: Arc<dyn crate::llm_client::LlmClient>, config: SeamConfig) -> Self {
         Self {
             flash_client,
             config,

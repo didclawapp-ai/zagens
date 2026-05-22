@@ -13,7 +13,7 @@ impl Engine {
     pub(super) async fn run_capacity_pre_request_checkpoint(
         &mut self,
         turn: &TurnContext,
-        client: Option<&DeepSeekClient>,
+        client: Option<&(dyn crate::llm_client::LlmClient)>,
         mode: AppMode,
     ) -> bool {
         let snapshot = self
@@ -385,7 +385,7 @@ impl Engine {
     pub(super) async fn apply_targeted_context_refresh(
         &mut self,
         turn: &TurnContext,
-        client: Option<&DeepSeekClient>,
+        client: Option<&(dyn crate::llm_client::LlmClient)>,
         mode: AppMode,
         snapshot: Option<&CapacitySnapshot>,
     ) -> bool {

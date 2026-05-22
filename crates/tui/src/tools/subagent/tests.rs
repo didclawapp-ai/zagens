@@ -1253,7 +1253,7 @@ fn stub_runtime() -> SubAgentRuntime {
     let workspace = std::env::temp_dir().join("deepseek-test-stub");
     let context = ToolContext::new(workspace.clone());
     SubAgentRuntime {
-        client: stub_client(),
+        client: Arc::new(stub_client()),
         model: "deepseek-v4-flash".to_string(),
         auto_model: false,
         reasoning_effort: None,

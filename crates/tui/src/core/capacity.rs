@@ -1,120 +1,65 @@
 //! Capacity-aware guardrail controller for context pressure management.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 
-/// Controller settings.
-#[derive(Debug, Clone, PartialEq)]
-pub struct CapacityControllerConfig {
-    pub enabled: bool,
-    pub low_risk_max: f64,
-    pub medium_risk_max: f64,
-    pub severe_min_slack: f64,
-    pub severe_violation_ratio: f64,
-    pub refresh_cooldown_turns: u64,
-    pub replan_cooldown_turns: u64,
-    pub max_replay_per_turn: usize,
-    pub min_turns_before_guardrail: u64,
-    pub profile_window: usize,
-    pub model_priors: HashMap<String, f64>,
-    pub fallback_default: f64,
-}
+// Re-exported from deepseek-core (P2 PR4).
+pub use deepseek_core::capacity::CapacityControllerConfig;
 
-impl Default for CapacityControllerConfig {
-    fn default() -> Self {
-        let mut model_priors = HashMap::new();
-        model_priors.insert("deepseek_v3_2_chat".to_string(), 3.9);
-        model_priors.insert("deepseek_v3_2_reasoner".to_string(), 4.1);
-        model_priors.insert("deepseek_v4_pro".to_string(), 3.5);
-        model_priors.insert("deepseek_v4_flash".to_string(), 4.2);
+/// Build effective capacity config from app config (free fn — struct lives in deepseek-core).
+#[must_use]
+pub fn capacity_config_from_app(config: &crate::config::Config) -> CapacityControllerConfig {
+    let mut out = CapacityControllerConfig::default();
+    let Some(capacity) = config.capacity.as_ref() else {
+        return out;
+    };
 
-        Self {
-            // OFF BY DEFAULT since v0.8.11. The capacity controller's
-            // interventions (TargetedContextRefresh, VerifyAndReplan)
-            // silently rewrite or clear the session message log, which
-            // surprises the user and destroys V4's prefix cache. v0.8.11
-            // committed to "trust the model with the full 1M-token
-            // context, only compact on explicit user `/compact`."
-            // Auto-managing the prefix on the user's behalf works against
-            // that posture. Power users who want the controller can opt
-            // in via `capacity.enabled = true` in
-            // `~/.deepseek/config.toml`.
-            enabled: false,
-            // Thresholds retained for the opt-in path; tuning notes live
-            // in git history (#63 follow-up).
-            low_risk_max: 0.50,
-            medium_risk_max: 0.62,
-            severe_min_slack: -0.25,
-            severe_violation_ratio: 0.40,
-            refresh_cooldown_turns: 6,
-            replan_cooldown_turns: 5,
-            max_replay_per_turn: 1,
-            min_turns_before_guardrail: 4,
-            profile_window: 8,
-            model_priors,
-            fallback_default: 3.8,
-        }
+    if let Some(v) = capacity.enabled {
+        out.enabled = v;
     }
-}
-
-impl CapacityControllerConfig {
-    /// Build effective capacity config from app config.
-    #[must_use]
-    pub fn from_app_config(config: &crate::config::Config) -> Self {
-        let mut out = Self::default();
-        let Some(capacity) = config.capacity.as_ref() else {
-            return out;
-        };
-
-        if let Some(v) = capacity.enabled {
-            out.enabled = v;
-        }
-        if let Some(v) = capacity.low_risk_max {
-            out.low_risk_max = v;
-        }
-        if let Some(v) = capacity.medium_risk_max {
-            out.medium_risk_max = v;
-        }
-        if let Some(v) = capacity.severe_min_slack {
-            out.severe_min_slack = v;
-        }
-        if let Some(v) = capacity.severe_violation_ratio {
-            out.severe_violation_ratio = v;
-        }
-        if let Some(v) = capacity.refresh_cooldown_turns {
-            out.refresh_cooldown_turns = v;
-        }
-        if let Some(v) = capacity.replan_cooldown_turns {
-            out.replan_cooldown_turns = v;
-        }
-        if let Some(v) = capacity.max_replay_per_turn {
-            out.max_replay_per_turn = v;
-        }
-        if let Some(v) = capacity.min_turns_before_guardrail {
-            out.min_turns_before_guardrail = v;
-        }
-        if let Some(v) = capacity.profile_window {
-            out.profile_window = v.max(2);
-        }
-
-        if let Some(v) = capacity.deepseek_v3_2_chat_prior {
-            out.model_priors.insert("deepseek_v3_2_chat".to_string(), v);
-        }
-        if let Some(v) = capacity.deepseek_v3_2_reasoner_prior {
-            out.model_priors
-                .insert("deepseek_v3_2_reasoner".to_string(), v);
-        }
-        if let Some(v) = capacity.deepseek_v4_pro_prior {
-            out.model_priors.insert("deepseek_v4_pro".to_string(), v);
-        }
-        if let Some(v) = capacity.deepseek_v4_flash_prior {
-            out.model_priors.insert("deepseek_v4_flash".to_string(), v);
-        }
-        if let Some(v) = capacity.fallback_default_prior {
-            out.fallback_default = v;
-        }
-
-        out
+    if let Some(v) = capacity.low_risk_max {
+        out.low_risk_max = v;
     }
+    if let Some(v) = capacity.medium_risk_max {
+        out.medium_risk_max = v;
+    }
+    if let Some(v) = capacity.severe_min_slack {
+        out.severe_min_slack = v;
+    }
+    if let Some(v) = capacity.severe_violation_ratio {
+        out.severe_violation_ratio = v;
+    }
+    if let Some(v) = capacity.refresh_cooldown_turns {
+        out.refresh_cooldown_turns = v;
+    }
+    if let Some(v) = capacity.replan_cooldown_turns {
+        out.replan_cooldown_turns = v;
+    }
+    if let Some(v) = capacity.max_replay_per_turn {
+        out.max_replay_per_turn = v;
+    }
+    if let Some(v) = capacity.min_turns_before_guardrail {
+        out.min_turns_before_guardrail = v;
+    }
+    if let Some(v) = capacity.profile_window {
+        out.profile_window = v.max(2);
+    }
+    if let Some(v) = capacity.deepseek_v3_2_chat_prior {
+        out.deepseek_v3_2_chat_prior = v;
+    }
+    if let Some(v) = capacity.deepseek_v3_2_reasoner_prior {
+        out.deepseek_v3_2_reasoner_prior = v;
+    }
+    if let Some(v) = capacity.deepseek_v4_pro_prior {
+        out.deepseek_v4_pro_prior = v;
+    }
+    if let Some(v) = capacity.deepseek_v4_flash_prior {
+        out.deepseek_v4_flash_prior = v;
+    }
+    if let Some(v) = capacity.fallback_default_prior {
+        out.fallback_default_prior = v;
+    }
+
+    out
 }
 
 /// Guardrail decision output.
@@ -457,11 +402,13 @@ impl CapacityController {
 
     fn model_prior(&self, model: &str) -> f64 {
         let normalized = normalize_model_prior_key(model);
-        self.config
-            .model_priors
-            .get(normalized)
-            .copied()
-            .unwrap_or(self.config.fallback_default)
+        match normalized {
+            "deepseek_v4_pro" => self.config.deepseek_v4_pro_prior,
+            "deepseek_v4_flash" => self.config.deepseek_v4_flash_prior,
+            "deepseek_v3_2_reasoner" => self.config.deepseek_v3_2_reasoner_prior,
+            "deepseek_v3_2_chat" => self.config.deepseek_v3_2_chat_prior,
+            _ => self.config.fallback_default_prior,
+        }
     }
 }
 
@@ -667,15 +614,15 @@ mod tests {
 
     #[test]
     fn app_config_without_capacity_uses_default_disabled() {
-        let cfg = CapacityControllerConfig::from_app_config(&crate::config::Config::default());
+        let cfg = capacity_config_from_app(&crate::config::Config::default());
         // v0.8.11: default is disabled. No capacity section in config
         // means the controller stays inert; users opt in deliberately.
         assert!(!cfg.enabled);
         assert_eq!(cfg.low_risk_max, 0.50);
         assert_eq!(cfg.refresh_cooldown_turns, 6);
         assert_eq!(cfg.min_turns_before_guardrail, 4);
-        assert_eq!(cfg.model_priors.get("deepseek_v4_pro"), Some(&3.5));
-        assert_eq!(cfg.model_priors.get("deepseek_v4_flash"), Some(&4.2));
+        assert_eq!(cfg.deepseek_v4_pro_prior, 3.5);
+        assert_eq!(cfg.deepseek_v4_flash_prior, 4.2);
     }
 
     #[test]
@@ -737,11 +684,8 @@ mod tests {
     #[test]
     fn v4_priors_loaded_into_default_config() {
         let cfg = CapacityControllerConfig::default();
-        assert_eq!(cfg.model_priors.get("deepseek_v4_pro").copied(), Some(3.5));
-        assert_eq!(
-            cfg.model_priors.get("deepseek_v4_flash").copied(),
-            Some(4.2)
-        );
+        assert_eq!(cfg.deepseek_v4_pro_prior, 3.5);
+        assert_eq!(cfg.deepseek_v4_flash_prior, 4.2);
     }
 
     #[test]

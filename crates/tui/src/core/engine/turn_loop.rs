@@ -120,7 +120,7 @@ impl Engine {
                     .await;
                 let auto_messages_before = self.session.messages.len();
                 match compact_messages_safe(
-                    &client,
+                    client.as_ref(),
                     &self.session.messages,
                     &self.config.compaction,
                     Some(&self.session.workspace),
@@ -178,7 +178,7 @@ impl Engine {
             }
 
             if self
-                .run_capacity_pre_request_checkpoint(turn, Some(&client), mode)
+                .run_capacity_pre_request_checkpoint(turn, Some(client.as_ref()), mode)
                 .await
             {
                 continue;
@@ -205,7 +205,7 @@ impl Engine {
 
                     if self
                         .recover_context_overflow(
-                            &client,
+                            client.as_ref(),
                             "preflight token budget",
                             TURN_MAX_OUTPUT_TOKENS,
                         )
@@ -284,7 +284,7 @@ impl Engine {
                         && context_recovery_attempts < MAX_CONTEXT_RECOVERY_ATTEMPTS
                         && self
                             .recover_context_overflow(
-                                &client,
+                                client.as_ref(),
                                 "provider context-length rejection",
                                 TURN_MAX_OUTPUT_TOKENS,
                             )

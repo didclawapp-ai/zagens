@@ -4,6 +4,18 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use deepseek_agent::ModelRegistry;
+pub mod capacity;
+pub mod chat;
+pub mod compaction;
+pub mod cycle;
+pub mod features;
+pub mod lsp;
+pub mod models;
+pub mod scratchpad;
+pub mod task_type;
+pub mod turn;
+pub mod workshop;
+
 use deepseek_config::{CliRuntimeOverrides, ConfigToml, ProviderKind};
 use deepseek_execpolicy::{
     AskForApproval, ExecApprovalRequirement, ExecPolicyContext, ExecPolicyDecision,

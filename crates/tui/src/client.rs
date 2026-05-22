@@ -698,6 +698,7 @@ fn retry_reason_label_and_human(err: &LlmError) -> (&'static str, String) {
     }
 }
 
+#[async_trait::async_trait]
 impl LlmClient for DeepSeekClient {
     fn provider_name(&self) -> &'static str {
         self.api_provider.as_str()

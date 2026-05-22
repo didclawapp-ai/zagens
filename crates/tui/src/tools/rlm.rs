@@ -13,6 +13,8 @@
 //! file, a long transcript, a multi-document corpus. For short prompts or
 //! parallel fanout, prefer `rlm_query`.
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
@@ -34,7 +36,7 @@ const MAX_INLINE_CONTENT_CHARS: usize = 200_000;
 
 pub struct RlmTool {
     /// Production HTTP client. `None` when no API key is configured.
-    client: Option<DeepSeekClient>,
+    client: Option<Arc<dyn crate::llm_client::LlmClient>>,
     /// Root model to drive the RLM loop. Set at registration time; matches
     /// whatever model the parent session is using.
     root_model: String,
@@ -42,7 +44,7 @@ pub struct RlmTool {
 
 impl RlmTool {
     #[must_use]
-    pub fn new(client: Option<DeepSeekClient>, root_model: String) -> Self {
+    pub fn new(client: Option<Arc<dyn crate::llm_client::LlmClient>>, root_model: String) -> Self {
         Self { client, root_model }
     }
 }
@@ -204,7 +206,7 @@ impl ToolSpec for RlmTool {
         // `task` rides along as `root_prompt` and is shown to the root
         // LLM each iteration so it never forgets the objective.
         let result = run_rlm_turn_with_root(
-            &client,
+            client.clone(),
             self.root_model.clone(),
             body,
             Some(task.to_string()),

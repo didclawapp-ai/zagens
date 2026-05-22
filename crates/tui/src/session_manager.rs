@@ -184,6 +184,16 @@ impl SessionManager {
         })
     }
 
+    /// JSON-per-file sessions only (unit tests that write fixture `.json` files).
+    #[cfg(test)]
+    pub fn new_json_only(sessions_dir: PathBuf) -> std::io::Result<Self> {
+        fs::create_dir_all(&sessions_dir)?;
+        Ok(Self {
+            sessions_dir,
+            db: None,
+        })
+    }
+
     /// Create a `SessionManager` using the default location (~/.deepseek/sessions)
     pub fn default_location() -> std::io::Result<Self> {
         Self::new(default_sessions_dir()?)
@@ -1254,7 +1264,7 @@ mod tests {
     #[test]
     fn test_session_context_references_round_trip() {
         let tmp = tempdir().expect("tempdir");
-        let manager = SessionManager::new(tmp.path().join("sessions")).expect("new");
+        let manager = SessionManager::new_json_only(tmp.path().join("sessions")).expect("new");
         let mut session = create_saved_session(
             &[make_test_message("user", "read @src/main.rs")],
             "deepseek-v4-pro",
@@ -1320,7 +1330,7 @@ mod tests {
     fn test_load_session_rejects_newer_schema() {
         let tmp = tempdir().expect("tempdir");
         let sessions_dir = tmp.path().join("sessions");
-        let manager = SessionManager::new(sessions_dir.clone()).expect("new");
+        let manager = SessionManager::new_json_only(sessions_dir.clone()).expect("new");
 
         let id = "future-session";
         let path = sessions_dir.join(format!("{id}.json"));

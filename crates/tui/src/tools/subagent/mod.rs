@@ -611,7 +611,7 @@ pub struct SubAgentCompletion {
 /// with the rest of the spawn tree on cancellation and depth cap.
 #[derive(Clone)]
 pub struct SubAgentRuntime {
-    pub client: DeepSeekClient,
+    pub client: Arc<dyn crate::llm_client::LlmClient>,
     pub model: String,
     pub auto_model: bool,
     pub reasoning_effort: Option<String>,
@@ -657,7 +657,7 @@ impl SubAgentRuntime {
     /// runtime via `Self::child_runtime` instead.
     #[must_use]
     pub fn new(
-        client: DeepSeekClient,
+        client: Arc<dyn crate::llm_client::LlmClient>,
         model: String,
         context: ToolContext,
         allow_shell: bool,

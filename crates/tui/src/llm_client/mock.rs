@@ -190,6 +190,7 @@ impl MockLlmClient {
     }
 }
 
+#[async_trait::async_trait]
 impl LlmClient for MockLlmClient {
     fn provider_name(&self) -> &'static str {
         self.provider_name
@@ -206,7 +207,6 @@ impl LlmClient for MockLlmClient {
             return Ok(canned);
         }
 
-        // Fallback: synthesize a MessageResponse from the next streaming turn.
         let Some(turn) = self.pop_turn() else {
             return Err(anyhow!(
                 "MockLlmClient: create_message called but no canned response queued (request #{})",

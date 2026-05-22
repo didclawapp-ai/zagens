@@ -17,68 +17,8 @@ use crate::models::{
     context_window_for_model,
 };
 
-/// Configuration for conversation compaction behavior.
-///
-/// v0.8.11 simplified this from the prior token-OR-message-count trigger
-/// to a token-only trigger gated by an absolute floor. The
-/// `message_threshold` field was removed: its only purpose was to fire
-/// compaction on long sessions of small messages, which is exactly the
-/// case where rewriting the V4 prefix cache is least valuable. Token
-/// budget is the right signal; message count was a 128K-era heuristic.
-#[derive(Debug, Clone, PartialEq)]
-pub struct CompactionConfig {
-    pub enabled: bool,
-    pub token_threshold: usize,
-    pub model: String,
-    pub cache_summary: bool,
-    /// Hard floor — `should_compact` returns `false` when total session
-    /// tokens fall below this number, regardless of `enabled` or
-    /// `token_threshold`. Defaults to [`MINIMUM_AUTO_COMPACTION_TOKENS`]
-    /// (500K) for v0.8.11+. Tests that want to exercise the threshold
-    /// logic at small fixture sizes can set this to `0` to disable the
-    /// floor.
-    pub auto_floor_tokens: usize,
-}
-
-impl Default for CompactionConfig {
-    fn default() -> Self {
-        Self {
-            // ON BY DEFAULT since v0.8.6 (#402 P0 survivability) — but the
-            // engine-level `auto_compact` setting was flipped OFF in v0.8.11
-            // (#665) so this default is mostly a fallback for code paths
-            // that build a `CompactionConfig` without going through
-            // `compaction_threshold_for_model_and_effort`. Real per-model
-            // values are still derived through that helper.
-            enabled: true,
-            // v0.8.11: 50K was a 128K-era leftover that biased every
-            // unconfigured caller toward "compact almost immediately on V4."
-            // Bumped to 800K (80% of V4's 1M window) so the dead-code
-            // default no longer lies. Real call sites override this via
-            // `compaction_threshold_for_model_and_effort`.
-            token_threshold: 800_000,
-            model: DEFAULT_TEXT_MODEL.to_string(),
-            cache_summary: true,
-            auto_floor_tokens: MINIMUM_AUTO_COMPACTION_TOKENS,
-        }
-    }
-}
-
-/// Hard floor for automatic compaction in v0.8.11+.
-///
-/// Below this token count, `should_compact` returns `false` regardless of
-/// `enabled` or `token_threshold`. The point of the floor is V4 prefix-cache
-/// economics: compaction rewrites the stable prefix, which destroys the KV
-/// cache. At low token counts the prefix cache is healthy and compaction's
-/// cost (full re-prefill at miss prices) dwarfs its benefit (a tiny budget
-/// reclaim). Above the floor compaction can still be net-positive — cache
-/// is already pressured, the prefix has drifted, and freeing budget matters.
-///
-/// Manual `/compact` slash command bypasses this floor with explicit user
-/// agency.
-///
-/// Constant rather than configurable for v0.8.11. If anyone needs to dial
-/// it (smaller models, opinionated workflows), we can add a setting later.
-pub const MINIMUM_AUTO_COMPACTION_TOKENS: usize = 500_000;
+// Re-exported from deepseek-core (P2 PR4).
+pub use deepseek_core::compaction::{CompactionConfig, MINIMUM_AUTO_COMPACTION_TOKENS};
 
 pub const KEEP_RECENT_MESSAGES: usize = 4;
 const RECENT_WORKING_SET_WINDOW: usize = 12;
@@ -903,7 +843,7 @@ fn is_transient_error(e: &anyhow::Error) -> bool {
 /// - Never corrupts the original messages (returns error instead)
 /// - Only retries on transient errors (network, rate limit, etc.)
 pub async fn compact_messages_safe(
-    client: &DeepSeekClient,
+    client: &(dyn crate::llm_client::LlmClient),
     messages: &[Message],
     config: &CompactionConfig,
     workspace: Option<&Path>,
@@ -1026,7 +966,7 @@ fn anchor_summary_section(workspace: Option<&Path>) -> String {
 }
 
 pub async fn compact_messages(
-    client: &DeepSeekClient,
+    client: &(dyn crate::llm_client::LlmClient),
     messages: &[Message],
     config: &CompactionConfig,
     workspace: Option<&Path>,
@@ -1103,7 +1043,7 @@ pub async fn compact_messages(
 }
 
 async fn create_summary(
-    client: &DeepSeekClient,
+    client: &(dyn crate::llm_client::LlmClient),
     messages: &[Message],
     model: &str,
 ) -> Result<String> {

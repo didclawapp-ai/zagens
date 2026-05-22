@@ -91,7 +91,7 @@ pub struct RlmTurnResult {
 /// Run a full RLM turn. `prompt` is loaded into the REPL as `context`; it
 /// never enters the root LLM's window.
 pub async fn run_rlm_turn(
-    client: &DeepSeekClient,
+    client: Arc<dyn crate::llm_client::LlmClient>,
     model: String,
     prompt: String,
     child_model: String,
@@ -99,7 +99,7 @@ pub async fn run_rlm_turn(
     max_depth: u32,
 ) -> RlmTurnResult {
     run_rlm_turn_inner(
-        Arc::new(client.clone()),
+        client.clone(),
         model,
         prompt,
         None,
@@ -113,7 +113,7 @@ pub async fn run_rlm_turn(
 /// Variant that also passes a small `root_prompt` (the user-facing task)
 /// shown to the root LLM each iteration so it remembers its objective.
 pub async fn run_rlm_turn_with_root(
-    client: &DeepSeekClient,
+    client: Arc<dyn crate::llm_client::LlmClient>,
     model: String,
     prompt: String,
     root_prompt: Option<String>,
@@ -122,7 +122,7 @@ pub async fn run_rlm_turn_with_root(
     max_depth: u32,
 ) -> RlmTurnResult {
     run_rlm_turn_inner(
-        Arc::new(client.clone()),
+        client.clone(),
         model,
         prompt,
         root_prompt,
@@ -137,7 +137,7 @@ pub async fn run_rlm_turn_with_root(
 /// a boxed future to break the recursive opaque-future-type cycle:
 /// `run_rlm_turn_inner` → `RlmBridge::dispatch` → `run_rlm_turn_inner`.
 pub(crate) fn run_rlm_turn_inner(
-    client: Arc<dyn RlmLlmClient>,
+    client: Arc<dyn crate::llm_client::LlmClient>,
     model: String,
     prompt: String,
     root_prompt: Option<String>,
@@ -161,7 +161,7 @@ pub(crate) fn run_rlm_turn_inner(
 // ---------------------------------------------------------------------------
 
 async fn run_rlm_turn_impl(
-    client: Arc<dyn RlmLlmClient>,
+    client: Arc<dyn crate::llm_client::LlmClient>,
     model: String,
     prompt: String,
     root_prompt: Option<String>,
@@ -212,7 +212,7 @@ async fn run_rlm_turn_impl(
     };
 
     // 3. Build the bridge that services llm_query / rlm_query RPCs.
-    let bridge = RlmBridge::new(Arc::clone(&client), child_model.clone(), max_depth);
+    let bridge = RlmBridge::new(client.clone(), child_model.clone(), max_depth);
     let usage_handle = bridge.usage_handle();
 
     let _ = tx_event
