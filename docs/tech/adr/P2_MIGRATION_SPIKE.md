@@ -128,6 +128,7 @@ impl Runtime {
 - [x] A5.5 **回放 fixture（2026-05-23）：** `runtime_turn_minimal.jsonl` + `runtime_turn_replay.jsonl`（15 步）+ `runtime_event_replay_fixture` 测；见 [G2_GATE_ACCEPTANCE.md](./G2_GATE_ACCEPTANCE.md)
 - [x] A+.4b **`event_schema_version` 代码（2026-05-23）：** `CURRENT_EVENT_SCHEMA_VERSION`、`/health`、SSE payload
 - [x] A+.7 **审批回归（2026-05-23）：** approve/deny/非法 decision + turn 终态（`runtime_threads/tests.rs`）
+- [x] PR5 **局部（2026-05-23）：** 双 thread 并行 turn 回归测；`handle_thread(Message)` 仍 queued
 - [x] A+.4 **已有：** `sidecar_contract_full_lifecycle`（`runtime_api/tests.rs`，CI）
 - [x] P2 PR4 **局部（2026-05-23）：** `TurnLoopToolExecutor` 使用 `TurnLoopToolRegistry` 关联类型；`Engine` + `McpPoolHandle` 实现
 
