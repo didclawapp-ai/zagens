@@ -127,6 +127,7 @@ interface Props {
   routeIntent: DesktopRouteIntentOption;
   onRouteIntentChange: (v: DesktopRouteIntentOption) => void;
   officeSession?: boolean;
+  onSystemSettingsSaved?: (settings: import('../api/client').SystemSettings) => void;
 }
 
 const PANEL_TITLE_KEYS: Record<RightPanelView, TranslationKey> = {
@@ -196,6 +197,7 @@ export default function RightPanel({
   routeIntent,
   onRouteIntentChange,
   officeSession = false,
+  onSystemSettingsSaved,
   subagentActiveCount = 0,
   narrativeSpawnSuspected = false,
 }: Props) {
@@ -918,6 +920,7 @@ export default function RightPanel({
             theme={theme}
             onToggleTheme={onToggleTheme}
             streaming={streaming}
+            onSettingsSaved={onSystemSettingsSaved}
           />
         )}
 

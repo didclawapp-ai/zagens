@@ -112,7 +112,7 @@ impl Runtime {
 
 > **新会话对接：** [P2_PR4_SESSION_HANDOFF.md](./P2_PR4_SESSION_HANDOFF.md)
 
-- [ ] 维护者签收 §11.0 ADR（G3 门）
+- [x] 维护者签收 §11.0 ADR（G3 门）— [P2_G3_ENGINE_L2_SIGNOFF.md](./P2_G3_ENGINE_L2_SIGNOFF.md)（2026-05-23，L2 终态）
 - [x] PR1 **局部**：`deepseek-core` 子模块（`chat`/`models`/`turn`/`compaction`/`capacity`/`workshop` 等）+ tui re-export（2026-05-22；**非** §12.3 完成）
 - [x] PR2 **局部（2026-05-22）：** `session`、`working_set`、`project_context`、`ApprovalMode`、`CycleBriefing` → `deepseek-core`；tui 薄 re-export；`core::engine` 仅导出 session 类型
 - [x] PR3 **局部（2026-05-22）：** `StartTurnParams` + `TurnEnginePort` in `deepseek-core`；`RuntimeThreadManager::start_turn` delegates via `EngineHandle::start_turn`（`turn_loop`/`Engine` 仍在 tui）

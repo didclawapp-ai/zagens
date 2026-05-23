@@ -149,6 +149,15 @@ impl RuntimeThreadManager {
         let allow_shell = req.allow_shell.unwrap_or(thread.allow_shell);
         let trust_mode = req.trust_mode.unwrap_or(thread.trust_mode);
         let auto_approve = req.auto_approve.unwrap_or(thread.auto_approve);
+        let approval_mode = if auto_approve {
+            crate::tui::approval::ApprovalMode::Auto
+        } else {
+            self.config
+                .approval_policy
+                .as_deref()
+                .and_then(crate::tui::approval::ApprovalMode::from_config_value)
+                .unwrap_or(crate::tui::approval::ApprovalMode::Suggest)
+        };
 
         let start_params = StartTurnParams {
             prompt,
@@ -160,11 +169,7 @@ impl RuntimeThreadManager {
             allow_shell,
             trust_mode,
             auto_approve,
-            approval_mode: if auto_approve {
-                crate::tui::approval::ApprovalMode::Auto
-            } else {
-                crate::tui::approval::ApprovalMode::Suggest
-            },
+            approval_mode,
         };
         engine
             .start_turn(start_params)

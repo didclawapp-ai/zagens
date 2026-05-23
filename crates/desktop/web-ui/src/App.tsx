@@ -33,11 +33,13 @@ import {
   invalidateRuntimeBootReadyCache,
   probeRuntimeConnection,
   initRuntimeConfig,
+  fetchSystemSettings,
   getRuntimeBase,
   fetchJson,
   type RuntimeConnectionState,
   type SessionInfo,
   type SseTurnEvent,
+  type SystemSettings,
 } from './api/client';
 import { useT } from './i18n';
 import { normalizeDesktopStreamEvent, type NormalizedStreamEvent, type TurnUsage } from './api/streamNormalize';
@@ -62,6 +64,7 @@ import type { PreviewState } from './components/preview/types';
 import type { AgentState } from './types/agent';
 import useKeyboardShortcuts from './hooks/useKeyboardShortcuts';
 import { streamFlagsForRunMode } from './lib/runtimeMode';
+import { autoApproveFromPolicy } from './lib/approvalPolicy';
 import { rebuildMessagesFromThreadEvents } from './lib/chat/rebuildMessagesFromThread';
 import {
   cacheSessionUiMessages,
@@ -294,8 +297,10 @@ export default function App() {
   const retryConnectRef = useRef<() => void>(() => {});
   const [threadTrustMode, setThreadTrustMode] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const [autoApprove, setAutoApprove] = useState(true);
+  const [autoApprove, setAutoApprove] = useState(false);
   const [runMode, setRunMode] = useState<DesktopRunModeId>(() => loadRunModePreference());
+  const approvalPolicyRef = useRef('on-request');
+  const runModeRef = useRef(runMode);
   const [taskTypePreference, setTaskTypePreference] = useState<DesktopTaskTypePreference>(
     () => loadTaskTypePreference(),
   );
@@ -905,6 +910,54 @@ export default function App() {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    runModeRef.current = runMode;
+  }, [runMode]);
+
+  const syncAutoApproveFromPolicy = useCallback((policy: string) => {
+    approvalPolicyRef.current = policy;
+    const mode = runModeRef.current;
+    if (mode === 'yolo') {
+      setAutoApprove(true);
+    } else if (mode === 'plan') {
+      setAutoApprove(false);
+    } else {
+      setAutoApprove(autoApproveFromPolicy(policy));
+    }
+  }, []);
+
+  const handleRunModeChange = useCallback((mode: DesktopRunModeId) => {
+    setRunMode(mode);
+    runModeRef.current = mode;
+    if (mode === 'yolo') {
+      setAutoApprove(true);
+    } else if (mode === 'plan') {
+      setAutoApprove(false);
+    } else {
+      setAutoApprove(autoApproveFromPolicy(approvalPolicyRef.current));
+    }
+  }, []);
+
+  const handleSystemSettingsSaved = useCallback(
+    (settings: SystemSettings) => {
+      syncAutoApproveFromPolicy(settings.approval_policy);
+    },
+    [syncAutoApproveFromPolicy],
+  );
+
+  useEffect(() => {
+    if (!desktopHost) return;
+    let cancelled = false;
+    fetchSystemSettings()
+      .then((s) => {
+        if (!cancelled) syncAutoApproveFromPolicy(s.approval_policy);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [desktopHost, syncAutoApproveFromPolicy]);
 
   useEffect(() => {
     refreshApiKeyStatus();
@@ -2095,7 +2148,7 @@ export default function App() {
           autoApprove={autoApprove}
           onAutoApproveChange={setAutoApprove}
           runMode={runMode}
-          onRunModeChange={setRunMode}
+          onRunModeChange={handleRunModeChange}
           taskTypePreference={taskTypePreference}
           lockedThreadTaskType={lockedThreadTaskType}
           onTaskTypePreferenceChange={handleTaskTypePreferenceChange}
@@ -2184,6 +2237,7 @@ export default function App() {
           onRequestMermaid={() => setActiveInspector('mermaid')}
           onRequestDiff={handleRequestDiffPanel}
           onCollapse={() => setRightPanelCollapsed(true)}
+          onSystemSettingsSaved={handleSystemSettingsSaved}
           routeIntent={routeIntent}
           onRouteIntentChange={setRouteIntent}
         />

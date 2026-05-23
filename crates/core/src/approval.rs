@@ -31,4 +31,31 @@ impl ApprovalMode {
             _ => None,
         }
     }
+
+    /// Whether HTTP/runtime should set `auto_approve: true` for a stored policy string.
+    #[must_use]
+    pub fn config_implies_auto_approve(value: &str) -> bool {
+        matches!(Self::from_config_value(value), Some(Self::Auto))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ApprovalMode;
+
+    #[test]
+    fn on_request_and_untrusted_are_suggest_not_auto() {
+        assert!(!ApprovalMode::config_implies_auto_approve("on-request"));
+        assert!(!ApprovalMode::config_implies_auto_approve("untrusted"));
+        assert_eq!(
+            ApprovalMode::from_config_value("on-request"),
+            Some(ApprovalMode::Suggest)
+        );
+    }
+
+    #[test]
+    fn only_auto_policy_implies_auto_approve() {
+        assert!(ApprovalMode::config_implies_auto_approve("auto"));
+        assert!(!ApprovalMode::config_implies_auto_approve("never"));
+    }
 }

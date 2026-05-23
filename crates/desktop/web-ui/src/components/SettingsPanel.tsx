@@ -16,6 +16,7 @@ interface Props {
   onToggleTheme: () => void;
   /** When true, saving settings restarts the sidecar and interrupts the active stream. */
   streaming?: boolean;
+  onSettingsSaved?: (settings: SystemSettings) => void;
 }
 
 export default function SettingsPanel({
@@ -26,6 +27,7 @@ export default function SettingsPanel({
   theme,
   onToggleTheme,
   streaming = false,
+  onSettingsSaved,
 }: Props) {
   const { t, locale, setLocale } = useT();
 
@@ -58,10 +60,11 @@ export default function SettingsPanel({
     setSaving(true);
     try {
       await saveSystemSettings(settings);
+      onSettingsSaved?.(settings);
     } finally {
       setSaving(false);
     }
-  }, [settings, desktopHost, streaming, t]);
+  }, [settings, desktopHost, streaming, t, onSettingsSaved]);
 
   const update = useCallback(<K extends keyof SystemSettings>(key: K, value: SystemSettings[K]) => {
     setSettings((prev) => (prev ? { ...prev, [key]: value } : prev));

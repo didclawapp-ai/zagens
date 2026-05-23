@@ -103,7 +103,7 @@ memory_path = "~/.deepseek/memory.md"
 # Security
 # ─────────────────────────────────────────────────────────────────────────────────
 allow_shell = false
-approval_policy = "on-request" # on-request | untrusted | never
+approval_policy = "on-request" # auto | on-request | untrusted | suggest | never
 sandbox_mode = "workspace-write" # read-only | workspace-write | danger-full-access | external-sandbox
 
 # ─────────────────────────────────────────────────────────────────────────────────

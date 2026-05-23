@@ -23,10 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Desktop (approval):** `approval_policy` from system settings now drives Composer `auto_approve` on load/save; sidecar `start_turn` reads `ApprovalMode` from config (`never` / `on-request` / `auto`) instead of hardcoding Suggest.
 - **Tests:** `integration_mock_llm` re-exports `deepseek_core::LlmClient` so mock trait matches P2 `async_trait` surface.
 
 ### Added
 
+- **Docs:** [P2_G3_ENGINE_L2_SIGNOFF.md](docs/tech/adr/P2_G3_ENGINE_L2_SIGNOFF.md) — G3 + §12.3 L2 终态签收。
 - **Docs:** G2/PR5 手测签收（2026-05-23）：§0.4 health、§1 单窗、§3 双窗并行、§5.1 Stop；审批 UI 暂缓（`approval_policy` ↔ `auto_approve` 接线债）。
 - **Runtime (PR5 局部):** 双 thread 并行 turn 回归测（`parallel_turns_on_two_threads_overlap_then_complete`、`sidecar_parallel_turns_on_two_threads`）；`app-server` `Message` 仍 queued 占位（注释 SSOT）。
 - **Runtime (G2 门控):** `CURRENT_EVENT_SCHEMA_VERSION`；`GET /health` 与 SSE payload 暴露 `event_schema_version`（A+.4b）。

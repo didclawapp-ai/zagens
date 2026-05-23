@@ -1,6 +1,7 @@
 //! Runtime thread manager contract tests (R-003 A4.6).
 
 use super::*;
+    use crate::config::Config;
     use crate::core::engine::{MockApprovalEvent, mock_engine_handle};
     use crate::core::events::{Event as EngineEvent, TurnOutcomeStatus};
     use crate::core::ops::Op;
@@ -33,6 +34,12 @@ use super::*;
         let cfg = test_manager_config(data_dir.clone());
         let store = test_store(&data_dir)?;
         RuntimeThreadManager::open_with_store(Config::default(), PathBuf::from("."), cfg, store)
+    }
+
+    fn test_manager_with_config(data_dir: PathBuf, config: Config) -> Result<RuntimeThreadManager> {
+        let cfg = test_manager_config(data_dir.clone());
+        let store = test_store(&data_dir)?;
+        RuntimeThreadManager::open_with_store(config, PathBuf::from("."), cfg, store)
     }
 
     fn sample_thread(thread_id: &str) -> ThreadRecord {
@@ -554,6 +561,63 @@ use super::*;
 
         match rx_op.recv().await {
             Some(Op::SendMessage { auto_approve, .. }) => assert!(auto_approve),
+            other => panic!("expected SendMessage op, got {other:?}"),
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn start_turn_reads_never_approval_mode_from_config() -> Result<()> {
+        use crate::tui::approval::ApprovalMode;
+
+        let dir = test_runtime_dir();
+        let mut config = Config::default();
+        config.approval_policy = Some("never".into());
+        let manager = test_manager_with_config(dir, config)?;
+        let thread = manager
+            .create_thread(CreateThreadRequest {
+                model: None,
+                workspace: None,
+                mode: None,
+                allow_shell: None,
+                trust_mode: None,
+                auto_approve: Some(false),
+                archived: false,
+                system_prompt: None,
+                task_id: None,
+                task_type: None,
+            })
+            .await?;
+
+        let harness = install_mock_engine(&manager, &thread.id).await;
+        let mut rx_op = harness.rx_op;
+
+        let _turn = manager
+            .start_turn(
+                &thread.id,
+                StartTurnRequest {
+                    prompt: "read-only policy".to_string(),
+                    input_summary: None,
+                    model: None,
+                    mode: None,
+                    allow_shell: None,
+                    trust_mode: None,
+                    auto_approve: Some(false),
+                    route_intent: None,
+                },
+            )
+            .await?;
+
+        match rx_op.recv().await {
+            Some(Op::SendMessage {
+                auto_approve,
+                approval_mode,
+                ..
+            }) => {
+                assert!(!auto_approve);
+                assert_eq!(approval_mode, ApprovalMode::Never);
+            }
             other => panic!("expected SendMessage op, got {other:?}"),
         }
 
