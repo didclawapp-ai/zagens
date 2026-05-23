@@ -164,6 +164,7 @@ mod tool_execution;
 mod tool_setup;
 mod tool_dispatch_port;
 pub mod scratchpad_flow;
+mod subagent_spawn;
 mod turn_loop;
 
 pub(crate) use tool_dispatch_port::{RegistryToolDispatch, TuiEngineToolDispatch};
@@ -176,9 +177,10 @@ use self::dispatch::{
     parse_parallel_tool_calls, parse_tool_input, should_force_update_plan_first,
     should_parallelize_tool_batch, should_stop_after_plan_tool,
 };
+use deepseek_core::engine::SubAgentSpawnError;
 use deepseek_core::engine::loop_guard::{AttemptDecision, LoopGuard, OutcomeDecision};
 #[cfg(test)]
-use self::lsp_hooks::{edited_paths_for_tool, parse_patch_paths};
+use deepseek_core::engine::{edited_paths_for_tool, parse_patch_paths};
 #[cfg(test)]
 use deepseek_core::engine::streaming::TOOL_CALL_START_MARKERS;
 use deepseek_core::engine::streaming::{

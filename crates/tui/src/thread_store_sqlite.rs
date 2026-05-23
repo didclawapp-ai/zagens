@@ -2,6 +2,13 @@
 /// SQLite-backed thread/turn/item store. Replaces the JSON-per-file pattern
 /// with WAL-mode SQLite for dramatically better I/O performance during seed
 /// operations (750+ atomic writes → single transaction).
+///
+/// ## Async / blocking policy (A1.3)
+///
+/// Runtime HTTP paths call these functions from `spawn_blocking` (event append,
+/// turn/item/thread saves). WAL + `synchronous=NORMAL` keeps fsync off the
+/// tokio worker; see [`docs/tech/adr/RUNTIME_BASELINE.md`](../../../docs/tech/adr/RUNTIME_BASELINE.md)
+/// § crash-safe checkpoint.
 
 use std::path::PathBuf;
 

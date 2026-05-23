@@ -56,11 +56,14 @@ mod thread_crud;
 mod monitor;
 mod persist;
 mod routing;
+mod thread_message_turn_port;
+mod turn_wait;
 mod types;
 
 pub use events::{collect_agent_rebind_hints, AgentRebindHint, AgentRebindStatus};
 pub use manager::{RuntimeThreadManager, SharedRuntimeThreadManager};
 pub use persist::RuntimeThreadStore;
+pub use thread_message_turn_port::RuntimeThreadMessageTurnPort;
 pub use types::*;
 
 #[cfg(test)]

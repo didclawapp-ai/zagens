@@ -2,6 +2,15 @@
 /// SQLite-backed session store. Provides the same semantics as the
 /// JSON-per-file SessionManager but with far better I/O performance:
 /// a single WAL sync per transaction instead of one fsync per file.
+///
+/// ## Async / blocking policy (A1.3)
+///
+/// - **TUI interactive path:** [`crate::tui::persistence_actor`] coalesces
+///   checkpoint/session snapshots off the event-loop worker (latest-wins).
+/// - **HTTP runtime path:** session persist runs inside `spawn_blocking`
+///   (see `runtime_api::threads`).
+/// - **Direct callers:** treat `save_session_sqlite` as blocking I/O; do not
+///   call from async contexts without `spawn_blocking`.
 use std::path::PathBuf;
 
 use anyhow::{Context, bail};

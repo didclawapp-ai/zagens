@@ -363,6 +363,29 @@ pub fn is_context_length_error_message(message: &str) -> bool {
         || lower.contains("context window")
 }
 
+/// Count how many oldest messages can be removed while keeping at least
+/// [`MIN_RECENT_MESSAGES_TO_KEEP`] and staying within `target_input_budget`.
+#[must_use]
+pub fn count_oldest_messages_to_drain(
+    messages: &[Message],
+    system_prompt: Option<&SystemPrompt>,
+    target_input_budget: usize,
+) -> usize {
+    let len = messages.len();
+    if len <= MIN_RECENT_MESSAGES_TO_KEEP {
+        return 0;
+    }
+    let max_drain = len - MIN_RECENT_MESSAGES_TO_KEEP;
+    for drain in 1..=max_drain {
+        if estimate_input_tokens_conservative(&messages[drain..], system_prompt)
+            <= target_input_budget
+        {
+            return drain;
+        }
+    }
+    max_drain
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -386,5 +409,28 @@ mod tests {
             "maximum context length exceeded"
         ));
         assert!(!is_context_length_error_message("connection reset"));
+    }
+
+    #[test]
+    fn count_oldest_messages_to_drain_batches_from_front() {
+        use crate::chat::{ContentBlock, Message};
+
+        let messages: Vec<Message> = (0..8)
+            .map(|i| Message {
+                role: "user".to_string(),
+                content: vec![ContentBlock::Text {
+                    text: "x".repeat(5000 + i),
+                    cache_control: None,
+                }],
+            })
+            .collect();
+        let budget = estimate_input_tokens_conservative(&messages[4..], None) + 1;
+        let drain = count_oldest_messages_to_drain(&messages, None, budget);
+        assert!(drain >= 1);
+        assert!(drain <= messages.len() - MIN_RECENT_MESSAGES_TO_KEEP);
+        assert!(
+            estimate_input_tokens_conservative(&messages[drain..], None) <= budget
+                || drain == messages.len() - MIN_RECENT_MESSAGES_TO_KEEP
+        );
     }
 }

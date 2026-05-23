@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Runtime (A3):** `classify_error_message` recognizes DeepSeek thinking/reasoning constraint strings as `InvalidInput` (distinct from network disconnect); golden suite centralized in `deepseek-core::error_taxonomy`.
 - **Desktop (approval):** `approval_policy` from system settings now drives Composer `auto_approve` on load/save; sidecar `start_turn` reads `ApprovalMode` from config (`never` / `on-request` / `auto`) instead of hardcoding Suggest.
+- **Desktop (F3):** Composer card markup — options/bridge/textarea/actions stay inside `.card` (removed premature close that left input chrome outside the card).
 - **Tests:** `integration_mock_llm` re-exports `deepseek_core::LlmClient` so mock trait matches P2 `async_trait` surface.
 
 ### Changed
@@ -32,10 +33,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Desktop (F1a):** `TerminalCard` appends `tool.progress` to xterm incrementally instead of full clear+rewrite each frame.
 - **Desktop (F1b):** `MessageBubble` shows `DiffCard` while diff tools are still running when unified diff appears in streamed output.
 - **Desktop (F3):** Escape stops active generation when focus is outside inputs.
+- **Desktop (F3):** Sidebar `role="navigation"`; Composer `#composer-input`, options/actions `role="toolbar"`, DOM tab order (input before options bar; CSS `order-*` keeps visual layout), skip link to composer; send `aria-keyshortcuts="Enter"`.
 
 ### Added
 
-- **Desktop (F3):** Skip-to-main link; `#main-content` landmark; aria on ToolCard/DiffCard/Composer; global `focus-visible` rings; expanded `prefers-reduced-motion` (sidebar/composer).
+- **Runtime (A1.5):** `count_oldest_messages_to_drain` — batch `Vec::drain` instead of repeated `remove(0)` during emergency trim.
+- **Runtime (A1-MVP.1):** `LargeOutputExternalRef` + `[workshop-ref: …]` header on routed large tool output.
+- **Runtime (A1-MVP.2):** compaction end-to-end test — working-set pinned messages survive LLM summary (`compact_messages_preserves_working_set_pinned_message`).
+- **Runtime (A1.3):** runtime thread event append + checklist/scratchpad metadata saves use `spawn_blocking`; crash-safe checkpoint table in `RUNTIME_BASELINE.md`.
+- **Runtime (P2):** `lsp_edit_paths` in `deepseek-core` — edit-tool path extraction for LSP hooks (tui re-uses core).
+- **Runtime (P2):** `SubAgentSpawnPort` in `deepseek-core::engine` — op-loop spawn surface; tui `subagent_spawn.rs` adapter.
+- **Runtime (PR5):** `RuntimeThreadMessageTurnPort` — sidecar `ThreadMessageTurnPort` adapter over `RuntimeThreadManager::start_turn` + regression test.
+- **Runtime (A3.4):** HTTP `ApiError` responses include `category` / `code` / `recoverable` / `severity` from `ErrorEnvelope`.
 - **Runtime (PR5):** `ThreadMessageTurnPort` — `handle_thread(Message)` delegates real turn when port is wired; app-server installs `AppServerLlmTurnPort` when `api_key` is configured (legacy `queued` fallback otherwise).
 - **Runtime (A1 / R-015):** Full baseline @ `10972e4` — median RSS **28.5 MB**, `-Gate` PASS; log `deliverables/runtime-baseline-full-run.log`.
 - **Runtime (A1 / R-015):** `runtime-longrun-baseline.ps1` — deterministic **1.1 MB** workspace fixture for large-tool turn; `-Gate` RSS regression vs ADR baseline (+10%); CI ubuntu dry-run step.

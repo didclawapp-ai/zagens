@@ -146,11 +146,12 @@ impl ToolRegistry {
                     estimated_tokens,
                     threshold,
                 } => {
-                    // Store the raw output in the workshop variable store.
-                    if let Some(vars_arc) = ctx.workshop_vars.as_ref() {
+                    let external_ref = if let Some(vars_arc) = ctx.workshop_vars.as_ref() {
                         let mut vars = vars_arc.lock().await;
-                        vars.store_raw(name, &result.content);
-                    }
+                        Some(vars.store_raw(name, &result.content))
+                    } else {
+                        None
+                    };
 
                     // Build a terse synthesis using the same model the registry
                     // was constructed for (workshop Flash model). For now we
@@ -171,6 +172,7 @@ impl ToolRegistry {
                         &synthesis,
                         estimated_tokens,
                         threshold,
+                        external_ref.as_ref(),
                     );
                     tracing::debug!(
                         tool = name,

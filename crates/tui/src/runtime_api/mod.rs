@@ -489,12 +489,28 @@ impl From<std::io::Error> for ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
+        use deepseek_core::error_taxonomy::ErrorEnvelope;
+
+        let recoverable = matches!(
+            self.status,
+            StatusCode::INTERNAL_SERVER_ERROR
+                | StatusCode::BAD_GATEWAY
+                | StatusCode::SERVICE_UNAVAILABLE
+                | StatusCode::GATEWAY_TIMEOUT
+                | StatusCode::REQUEST_TIMEOUT
+                | StatusCode::TOO_MANY_REQUESTS
+        );
+        let envelope = ErrorEnvelope::classify(&self.message, recoverable);
         (
             self.status,
             Json(json!({
                 "error": {
-                    "message": self.message,
+                    "message": envelope.message,
                     "status": self.status.as_u16(),
+                    "category": envelope.category.to_string(),
+                    "code": envelope.code,
+                    "recoverable": envelope.recoverable,
+                    "severity": envelope.severity.to_string(),
                 }
             })),
         )

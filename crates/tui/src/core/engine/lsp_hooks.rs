@@ -1,74 +1,13 @@
 //! Post-edit LSP diagnostics hooks for engine tool execution.
 //!
 //! The turn loop only needs to ask "did a successful edit produce diagnostics?"
-//! This module owns the tool-input path extraction and the synthetic diagnostic
-//! message injection so the top-level engine module stays focused on session
-//! orchestration.
+//! This module owns the synthetic diagnostic message injection so the top-level
+//! engine module stays focused on session orchestration. Path extraction lives
+//! in `deepseek-core::engine::lsp_edit_paths`.
 
-use std::path::PathBuf;
+use deepseek_core::engine::edited_paths_for_tool;
 
 use super::*;
-
-/// #136: derive the file path(s) edited by a tool call. Returns the empty
-/// vec for tools that don't modify files. We intentionally only handle the
-/// three known edit tools — adding more (e.g. specialized refactor tools)
-/// is a one-line change here.
-pub(super) fn edited_paths_for_tool(tool_name: &str, input: &serde_json::Value) -> Vec<PathBuf> {
-    match tool_name {
-        "edit_file" | "write_file" => {
-            if let Some(path) = input.get("path").and_then(|v| v.as_str()) {
-                vec![PathBuf::from(path)]
-            } else {
-                Vec::new()
-            }
-        }
-        "apply_patch" => {
-            // `apply_patch` accepts either a `path` override or a list of
-            // `files` (each `{path, content}`). We try both shapes.
-            let mut out = Vec::new();
-            if let Some(path) = input.get("path").and_then(|v| v.as_str()) {
-                out.push(PathBuf::from(path));
-            }
-            if let Some(files) = input.get("files").and_then(|v| v.as_array()) {
-                for entry in files {
-                    if let Some(path) = entry.get("path").and_then(|v| v.as_str()) {
-                        out.push(PathBuf::from(path));
-                    }
-                }
-            }
-            // Fallback: parse `---`/`+++` headers from a unified diff payload.
-            if out.is_empty()
-                && let Some(patch) = input.get("patch").and_then(|v| v.as_str())
-            {
-                out.extend(parse_patch_paths(patch));
-            }
-            out
-        }
-        _ => Vec::new(),
-    }
-}
-
-/// Lightweight parser for `+++ b/<path>` lines in a unified diff. Used as a
-/// fallback when `apply_patch` is invoked with raw `patch` text and no
-/// `path`/`files` override. We deliberately keep this dumb — the real
-/// `apply_patch` tool already validates the patch shape; we only need a
-/// best-effort hint for the LSP hook.
-pub(super) fn parse_patch_paths(patch: &str) -> Vec<PathBuf> {
-    let mut out = Vec::new();
-    for line in patch.lines() {
-        if let Some(rest) = line.strip_prefix("+++ ") {
-            let trimmed = rest.trim();
-            // Strip leading `b/` per git diff conventions.
-            let path = trimmed.strip_prefix("b/").unwrap_or(trimmed);
-            // Skip `/dev/null` (deletion).
-            if path == "/dev/null" {
-                continue;
-            }
-            out.push(PathBuf::from(path));
-        }
-    }
-    out
-}
 
 impl Engine {
     /// #136: post-edit hook. Inspects the tool name + input, derives the

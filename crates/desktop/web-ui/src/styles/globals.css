@@ -714,6 +714,10 @@ body {
     outline-offset: 2px;
   }
 
+  .skip-to-composer:focus {
+    top: 2.75rem;
+  }
+
   /* Consistent keyboard focus ring for primary controls (F3) */
   .nav-item:focus-visible,
   .composer-chip:focus-visible,

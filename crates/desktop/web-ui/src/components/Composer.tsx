@@ -957,8 +957,242 @@ export default function Composer({
     <>
       <div className="shrink-0 px-4 py-3">
         <div className="mx-auto max-w-3xl">
-          <div className="card overflow-visible">
-            <div className="flex min-h-10 flex-wrap items-center gap-2 bg-canvas-alt/35 px-3 py-2 text-xs">
+          <div className="card flex flex-col overflow-visible">
+            <div className="order-2 flex flex-col">
+          {bridgeError && (
+            <p className="px-3 pt-3 text-xs text-error-text leading-relaxed">{bridgeError}</p>
+          )}
+          {transcribing && (
+            <p className="px-3 pt-3 text-xs text-accent leading-relaxed">{t('composer.transcribing')}</p>
+          )}
+          {attachments.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 px-3 pt-3 pb-0">
+              {attachments.map((f, i) => (
+                <span
+                  key={`${f.name}-${i}`}
+                  className="inline-flex items-center gap-1 rounded-md border border-card-border bg-canvas-alt px-2 py-1 text-[11px] text-t-text-secondary"
+                  title={`${f.name} · ${formatSize(f.size)}${f.kind === 'image' ? ' · 发送前经视觉桥接' : ''}${!f.inlined && f.kind !== 'image' ? ' · 不按文本嵌入' : ''}${f.truncated ? ' · 已截断至 128 KB（发送模型时）' : ''}${f.omitReason ? `\n${f.omitReason}` : ''}`}
+                >
+                  {f.kind === 'image' && f.imageDataUrl ? (
+                    <img
+                      src={f.imageDataUrl}
+                      alt=""
+                      className="h-7 w-7 shrink-0 rounded border border-card-border object-cover"
+                    />
+                  ) : (
+                    <svg viewBox="0 0 24 24" className="size-3 stroke-current" style={{ fill: 'none', strokeWidth: 1.6 }}>
+                      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                      <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
+                    </svg>
+                  )}
+                  <span className="max-w-[200px] truncate">{f.name}</span>
+                  {f.kind === 'image' && !f.imageDataUrl && (
+                    <span className="text-[10px] text-amber-text" title={f.omitReason}>
+                      {t('composer.invalid')}
+                    </span>
+                  )}
+                  {f.kind !== 'image' && !f.inlined && (
+                    <span className="text-[10px] text-amber-text" title={f.omitReason}>
+                      {t('composer.onlyReference')}
+                    </span>
+                  )}
+                  {f.kind !== 'image' && f.inlined && f.truncated && <span className="text-amber-text">⧉</span>}
+                  <button
+                    type="button"
+                    onClick={() => removeAttachment(i)}
+                    className="ml-0.5 text-t-text-muted hover:text-t-error"
+                    title={t('composer.removeAttachment')}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          <textarea
+            id="composer-input"
+            ref={textareaRef}
+            value={text}
+            onChange={(e) => {
+              setBridgeError(null);
+              setText(e.target.value);
+            }}
+            onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
+            aria-label={t('composer.inputMessage')}
+            aria-keyshortcuts="Enter Send Shift+Enter Newline"
+            placeholder={t('composer.placeholder')}
+            disabled={disabled || transcribing}
+            rows={2}
+            className="w-full resize-none border-none bg-transparent px-4 py-3 text-sm text-t-text placeholder-t-text-muted focus:outline-none disabled:opacity-50"
+            style={{ minHeight: '56px', lineHeight: 1.5 }}
+          />
+          <div
+            className="flex items-center gap-1.5 bg-canvas-alt/30 px-2.5 py-2"
+            role="toolbar"
+            aria-label={t('a11y.composerActionsToolbar')}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={handleFilesSelected}
+              accept="image/*,text/*,application/json,application/xml,application/javascript,application/typescript,.rs,.py,.js,.ts,.tsx,.jsx,.css,.html,.json,.xml,.yaml,.yml,.toml,.md,.txt,.csv,.sh,.bash,.ps1,.sql,.env,.cfg,.ini,.conf,.log,.lock,.gradle,.proto,.graphql,.pdf"
+            />
+            <button
+              type="button"
+              className="composer-icon-btn"
+              title={t('composer.attach')}
+              disabled={disabled || transcribing || attachments.length >= MAX_ATTACHMENTS}
+              onClick={handleAttachClick}
+            >
+              <svg viewBox="0 0 24 24">
+                <path d="M12 5v14 M5 12h14" />
+              </svg>
+            </button>
+            <div className="relative z-40" ref={workspaceTriggerWrapRef}>
+              <button
+                type="button"
+                className="composer-icon-btn"
+                disabled={disabled}
+                onClick={() => setWorkspaceOpen((o) => !o)}
+                aria-expanded={workspaceOpen}
+                aria-haspopup="menu"
+                title={workspace}
+              >
+                <svg viewBox="0 0 24 24">
+                  <path d="M4 6h16v12H4z M8 6V4h8v2" />
+                </svg>
+              </button>
+            </div>
+            <div className="min-w-[0.5rem] flex-1" />
+            <div className="relative" ref={modelMenuRef}>
+              <button
+                type="button"
+                className={`composer-chip ${routingActive ? 'opacity-80' : ''}`}
+                disabled={disabled}
+                onClick={() => setModelOpen((o) => !o)}
+                aria-expanded={modelOpen}
+                aria-haspopup="listbox"
+                title={modelPickerTitle}
+              >
+                {DESKTOP_MODEL_SHORT_LABELS[model]}
+                <svg
+                  viewBox="0 0 24 24"
+                  style={{ width: 12, height: 12 }}
+                  className={modelOpen ? 'rotate-180' : ''}
+                >
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </button>
+              {modelOpen && (
+                <div
+                  className="absolute bottom-full left-0 z-[10040] mb-1 w-48 rounded-lg border border-card-border bg-card p-1.5 shadow-lg ring-1 ring-black/[0.06] dark:ring-white/[0.08]"
+                  role="listbox"
+                  aria-label={t('composer.selectModel')}
+                >
+                  {(Object.entries(DESKTOP_MODEL_LABELS) as [DesktopModelId, string][]).map(
+                    ([id, label]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        role="option"
+                        aria-selected={id === model}
+                        onClick={() => selectModel(id)}
+                        className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm transition-colors ${
+                          id === model
+                            ? 'bg-accent-soft text-accent font-medium'
+                            : 'text-t-text hover:bg-hover'
+                        }`}
+                      >
+                        <span>{label}</span>
+                        {id === model && (
+                          <svg
+                            viewBox="0 0 24 24"
+                            style={{
+                              width: 14,
+                              height: 14,
+                              stroke: 'currentColor',
+                              fill: 'none',
+                              strokeWidth: 2,
+                            }}
+                          >
+                            <path d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </button>
+                    ),
+                  )}
+                </div>
+              )}
+            </div>
+            <div
+              className="flex shrink-0 items-center gap-1.5"
+              title={`${t(contextTooltipKey, {
+                pct: ctxPct.toFixed(1),
+                used: Math.round(contextUsedTokens).toLocaleString(),
+                max: contextWindowTokens.toLocaleString(),
+              })}${lastApiTooltip ? `\n${lastApiTooltip}` : ''}${contextTooltipExtra ? `\n${contextTooltipExtra}` : ''}`}
+            >
+              <div className="composer-ctx-bar" aria-hidden>
+                <div
+                  className={`composer-ctx-fill ${ctxFillClass}`}
+                  style={{ width: `${Math.min(100, ctxPct)}%` }}
+                />
+              </div>
+              <span className="text-[11px] tabular-nums text-t-text-muted">
+                ~{ctxPct.toFixed(1)}%
+              </span>
+              {lastApiInputTokens != null && lastApiInputTokens > 0 ? (
+                <span
+                  className="text-[10px] tabular-nums text-t-text-muted/80"
+                  title={lastApiTooltip}
+                >
+                  {t('composer.lastApiInputTokens', {
+                    count: lastApiInputTokens.toLocaleString(),
+                  })}
+                </span>
+              ) : null}
+              {lastTurnOutputTokens != null && lastTurnOutputTokens > 0 ? (
+                <span
+                  className="text-[10px] tabular-nums text-t-text-muted/80"
+                  title={t('composer.lastTurnTokensTitle')}
+                >
+                  {t('composer.lastTurnTokens', { count: lastTurnOutputTokens.toLocaleString() })}
+                </span>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleSend()}
+              disabled={disabled || transcribing || (!text.trim() && attachments.length === 0)}
+              className="composer-send-pill"
+              title={transcribing ? t('composer.transcribing') : t('composer.send')}
+              aria-label={transcribing ? t('composer.transcribing') : t('composer.sendAria')}
+            >
+              {t('composer.send')}
+              <svg viewBox="0 0 24 24">
+                <path d="M12 19V5M12 5l-6 6M12 5l6 6" />
+              </svg>
+            </button>
+            {disabled && onCancel ? (
+              <button
+                type="button"
+                onClick={onCancel}
+                className="flex-shrink-0 rounded-lg bg-hover-strong px-4 py-2 text-sm font-medium text-t-text transition-colors hover:bg-hover"
+                aria-label={t('composer.stopAria')}
+              >
+                {t('composer.stop')}
+              </button>
+            ) : null}
+          </div>
+          </div>
+            <div
+              className="order-1 flex min-h-10 flex-wrap items-center gap-2 bg-canvas-alt/35 px-3 py-2 text-xs"
+              role="toolbar"
+              aria-label={t('a11y.composerOptionsToolbar')}
+            >
             {showAutoApprove ? (
               <label className="inline-flex cursor-pointer select-none items-center gap-2">
                 <input
@@ -1148,233 +1382,10 @@ export default function Composer({
                 </div>
               )}
             </div>
-          </div>
-          {bridgeError && (
-            <p className="px-3 pt-3 text-xs text-error-text leading-relaxed">{bridgeError}</p>
-          )}
-          {transcribing && (
-            <p className="px-3 pt-3 text-xs text-accent leading-relaxed">{t('composer.transcribing')}</p>
-          )}
-          {attachments.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 px-3 pt-3 pb-0">
-              {attachments.map((f, i) => (
-                <span
-                  key={`${f.name}-${i}`}
-                  className="inline-flex items-center gap-1 rounded-md border border-card-border bg-canvas-alt px-2 py-1 text-[11px] text-t-text-secondary"
-                  title={`${f.name} · ${formatSize(f.size)}${f.kind === 'image' ? ' · 发送前经视觉桥接' : ''}${!f.inlined && f.kind !== 'image' ? ' · 不按文本嵌入' : ''}${f.truncated ? ' · 已截断至 128 KB（发送模型时）' : ''}${f.omitReason ? `\n${f.omitReason}` : ''}`}
-                >
-                  {f.kind === 'image' && f.imageDataUrl ? (
-                    <img
-                      src={f.imageDataUrl}
-                      alt=""
-                      className="h-7 w-7 shrink-0 rounded border border-card-border object-cover"
-                    />
-                  ) : (
-                    <svg viewBox="0 0 24 24" className="size-3 stroke-current" style={{ fill: 'none', strokeWidth: 1.6 }}>
-                      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-                      <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
-                    </svg>
-                  )}
-                  <span className="max-w-[200px] truncate">{f.name}</span>
-                  {f.kind === 'image' && !f.imageDataUrl && (
-                    <span className="text-[10px] text-amber-text" title={f.omitReason}>
-                      {t('composer.invalid')}
-                    </span>
-                  )}
-                  {f.kind !== 'image' && !f.inlined && (
-                    <span className="text-[10px] text-amber-text" title={f.omitReason}>
-                      {t('composer.onlyReference')}
-                    </span>
-                  )}
-                  {f.kind !== 'image' && f.inlined && f.truncated && <span className="text-amber-text">⧉</span>}
-                  <button
-                    type="button"
-                    onClick={() => removeAttachment(i)}
-                    className="ml-0.5 text-t-text-muted hover:text-t-error"
-                    title={t('composer.removeAttachment')}
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
             </div>
-          )}
-          <textarea
-            ref={textareaRef}
-            value={text}
-            onChange={(e) => {
-              setBridgeError(null);
-              setText(e.target.value);
-            }}
-            onKeyDown={handleKeyDown}
-            onPaste={handlePaste}
-            aria-label={t('composer.inputMessage')}
-            aria-keyshortcuts="Enter Send Shift+Enter Newline"
-            placeholder={t('composer.placeholder')}
-            disabled={disabled || transcribing}
-            rows={2}
-            className="w-full resize-none border-none bg-transparent px-4 py-3 text-sm text-t-text placeholder-t-text-muted focus:outline-none disabled:opacity-50"
-            style={{ minHeight: '56px', lineHeight: 1.5 }}
-          />
-          <div className="flex items-center gap-1.5 bg-canvas-alt/30 px-2.5 py-2">
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              className="hidden"
-              onChange={handleFilesSelected}
-              accept="image/*,text/*,application/json,application/xml,application/javascript,application/typescript,.rs,.py,.js,.ts,.tsx,.jsx,.css,.html,.json,.xml,.yaml,.yml,.toml,.md,.txt,.csv,.sh,.bash,.ps1,.sql,.env,.cfg,.ini,.conf,.log,.lock,.gradle,.proto,.graphql,.pdf"
-            />
-            <button
-              type="button"
-              className="composer-icon-btn"
-              title={t('composer.attach')}
-              disabled={disabled || transcribing || attachments.length >= MAX_ATTACHMENTS}
-              onClick={handleAttachClick}
-            >
-              <svg viewBox="0 0 24 24">
-                <path d="M12 5v14 M5 12h14" />
-              </svg>
-            </button>
-            <div className="relative z-40" ref={workspaceTriggerWrapRef}>
-              <button
-                type="button"
-                className="composer-icon-btn"
-                disabled={disabled}
-                onClick={() => setWorkspaceOpen((o) => !o)}
-                aria-expanded={workspaceOpen}
-                aria-haspopup="menu"
-                title={workspace}
-              >
-                <svg viewBox="0 0 24 24">
-                  <path d="M4 6h16v12H4z M8 6V4h8v2" />
-                </svg>
-              </button>
-            </div>
-            <div className="min-w-[0.5rem] flex-1" />
-            <div className="relative" ref={modelMenuRef}>
-              <button
-                type="button"
-                className={`composer-chip ${routingActive ? 'opacity-80' : ''}`}
-                disabled={disabled}
-                onClick={() => setModelOpen((o) => !o)}
-                aria-expanded={modelOpen}
-                aria-haspopup="listbox"
-                title={modelPickerTitle}
-              >
-                {DESKTOP_MODEL_SHORT_LABELS[model]}
-                <svg
-                  viewBox="0 0 24 24"
-                  style={{ width: 12, height: 12 }}
-                  className={modelOpen ? 'rotate-180' : ''}
-                >
-                  <path d="M6 9l6 6 6-6" />
-                </svg>
-              </button>
-              {modelOpen && (
-                <div
-                  className="absolute bottom-full left-0 z-[10040] mb-1 w-48 rounded-lg border border-card-border bg-card p-1.5 shadow-lg ring-1 ring-black/[0.06] dark:ring-white/[0.08]"
-                  role="listbox"
-                  aria-label={t('composer.selectModel')}
-                >
-                  {(Object.entries(DESKTOP_MODEL_LABELS) as [DesktopModelId, string][]).map(
-                    ([id, label]) => (
-                      <button
-                        key={id}
-                        type="button"
-                        role="option"
-                        aria-selected={id === model}
-                        onClick={() => selectModel(id)}
-                        className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm transition-colors ${
-                          id === model
-                            ? 'bg-accent-soft text-accent font-medium'
-                            : 'text-t-text hover:bg-hover'
-                        }`}
-                      >
-                        <span>{label}</span>
-                        {id === model && (
-                          <svg
-                            viewBox="0 0 24 24"
-                            style={{
-                              width: 14,
-                              height: 14,
-                              stroke: 'currentColor',
-                              fill: 'none',
-                              strokeWidth: 2,
-                            }}
-                          >
-                            <path d="M5 13l4 4L19 7" />
-                          </svg>
-                        )}
-                      </button>
-                    ),
-                  )}
-                </div>
-              )}
-            </div>
-            <div
-              className="flex shrink-0 items-center gap-1.5"
-              title={`${t(contextTooltipKey, {
-                pct: ctxPct.toFixed(1),
-                used: Math.round(contextUsedTokens).toLocaleString(),
-                max: contextWindowTokens.toLocaleString(),
-              })}${lastApiTooltip ? `\n${lastApiTooltip}` : ''}${contextTooltipExtra ? `\n${contextTooltipExtra}` : ''}`}
-            >
-              <div className="composer-ctx-bar" aria-hidden>
-                <div
-                  className={`composer-ctx-fill ${ctxFillClass}`}
-                  style={{ width: `${Math.min(100, ctxPct)}%` }}
-                />
-              </div>
-              <span className="text-[11px] tabular-nums text-t-text-muted">
-                ~{ctxPct.toFixed(1)}%
-              </span>
-              {lastApiInputTokens != null && lastApiInputTokens > 0 ? (
-                <span
-                  className="text-[10px] tabular-nums text-t-text-muted/80"
-                  title={lastApiTooltip}
-                >
-                  {t('composer.lastApiInputTokens', {
-                    count: lastApiInputTokens.toLocaleString(),
-                  })}
-                </span>
-              ) : null}
-              {lastTurnOutputTokens != null && lastTurnOutputTokens > 0 ? (
-                <span
-                  className="text-[10px] tabular-nums text-t-text-muted/80"
-                  title={t('composer.lastTurnTokensTitle')}
-                >
-                  {t('composer.lastTurnTokens', { count: lastTurnOutputTokens.toLocaleString() })}
-                </span>
-              ) : null}
-            </div>
-            <button
-              type="button"
-              onClick={() => void handleSend()}
-              disabled={disabled || transcribing || (!text.trim() && attachments.length === 0)}
-              className="composer-send-pill"
-              title={transcribing ? t('composer.transcribing') : t('composer.send')}
-              aria-label={transcribing ? t('composer.transcribing') : t('composer.sendAria')}
-            >
-              {t('composer.send')}
-              <svg viewBox="0 0 24 24">
-                <path d="M12 19V5M12 5l-6 6M12 5l6 6" />
-              </svg>
-            </button>
-            {disabled && onCancel ? (
-              <button
-                type="button"
-                onClick={onCancel}
-                className="flex-shrink-0 rounded-lg bg-hover-strong px-4 py-2 text-sm font-medium text-t-text transition-colors hover:bg-hover"
-                aria-label={t('composer.stopAria')}
-              >
-                {t('composer.stop')}
-              </button>
-            ) : null}
           </div>
         </div>
       </div>
-    </div>
       {workspacePopover}
     </>
   );

@@ -9,9 +9,13 @@ const en: TranslationMap = {
   },
   a11y: {
     skipToMain: 'Skip to main content',
+    skipToComposer: 'Skip to message input',
     chatLog: 'Chat transcript',
     toolRegion: 'Tool {{name}}, status {{status}}',
     diffRegion: 'File diff {{fileName}}',
+    sidebarNav: 'Session and navigation',
+    composerOptionsToolbar: 'Composer options',
+    composerActionsToolbar: 'Composer actions',
   },
   sidebar: {
     showAllSessions: 'Show all sessions',

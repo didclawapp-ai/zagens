@@ -37,6 +37,15 @@
 | 无 API key（仅磁盘代理） | `.\scripts\runtime-longrun-baseline.ps1 -DryRun -Runs 3`（CI ubuntu job 亦跑此步） |
 | 环境变量 | `DEEPSEEK_RUNTIME_TOKEN`（脚本随机生成）、`DEEPSEEK_RUNTIME_DIR`（隔离 data dir）、`DEEPSEEK_MODEL`（可选） |
 
+## Crash-safe checkpoint（A1.3）
+
+| 路径 | 策略 |
+|------|------|
+| **TUI 交互** | `persistence_actor` — 专用 task + latest-wins 合并 checkpoint / session snapshot，避免阻塞 event loop |
+| **HTTP runtime 线程库** | `RuntimeThreadStore::append_event` / checklist / scratchpad 元数据 — **`spawn_blocking`** + SQLite WAL（`journal_mode=WAL`, `synchronous=NORMAL`） |
+| **HTTP session 落盘** | `runtime_api::threads` — `spawn_blocking` 包裹 `SessionManager::save_session` |
+| **原子性** | JSON 模式：`write_atomic` temp + rename；SQLite：单事务 commit |
+
 ## 历史修订
 
 | 日期 | Ref | RSS 峰值 | 落盘 p99 | 说明 |

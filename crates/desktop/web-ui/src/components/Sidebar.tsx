@@ -187,7 +187,7 @@ export default function Sidebar({
         </div>
       </div>
 
-      <div className="flex flex-col gap-0.5 px-3 py-1">
+      <div className="flex flex-col gap-0.5 px-3 py-1" role="navigation" aria-label={t('a11y.sidebarNav')}>
         <button
           type="button"
           onClick={onNewSession}

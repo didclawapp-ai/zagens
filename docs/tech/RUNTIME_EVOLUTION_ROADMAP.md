@@ -830,7 +830,7 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 | **A L1** | A1–A5、A4 模块化 | **🟡 部分** — A4 达标；**A3** golden 测已入 core；A1/A2/A5 未全量验收 |
 | **A+ L2** | 契约 v1、sidecar 契约测、审批回归 | **🟡 自动化 ✅** — G2 门控（2026-05-23）；审批 UI 手测可复测（接线已合） |
 | **P2** | Engine→core、engine.rs <300 行 | **🟡 L2 终态有条件达标** — G3 签收（2026-05-23）；`handle_thread(Message)` **委托 turn port**（app-server 单轮 LLM；无 port 仍 queued） |
-| **F / B** | P2 后解冻 | **🟡 F0–F2 已落地** — F3 a11y 部分；B 仍待 F 高峰后 |
+| **F / B** | P2 后解冻 | **🟡 F0–F2 已落地** — F3 a11y 大部分（Composer tab 顺序 + skip link；手测待签） |
 
 ### 17.2 已交付（可勾选 issue）
 

@@ -54,71 +54,28 @@ impl Engine {
                     .await;
             }
             Op::SpawnSubAgent { prompt } => {
-                let Some(client) = self.deepseek_client.clone() else {
-                    let message = self
-                        .deepseek_client_error
-                        .as_deref()
-                        .map(|err| format!("Failed to spawn sub-agent: {err}"))
-                        .unwrap_or_else(|| {
-                            "Failed to spawn sub-agent: API client not configured".to_string()
-                        });
-                    let _ = self
-                        .tx_event
-                        .send(Event::error(ErrorEnvelope::fatal(message)))
-                        .await;
-                    continue;
-                };
-
-                let mut runtime = SubAgentRuntime::new(
-                    client,
-                    self.session.model.clone(),
-                    // Sub-agents don't inherit YOLO mode - use Agent mode defaults
-                    self.build_tool_context(AppMode::Agent, self.session.auto_approve),
-                    self.session.allow_shell,
-                    Some(self.tx_event.clone()),
-                    Arc::clone(&self.subagent_manager),
-                )
-                .with_role_models(self.config.subagent_model_overrides.clone())
-                .with_auto_model(self.session.auto_model)
-                .with_reasoning_effort(
-                    self.session.reasoning_effort.clone(),
-                    self.session.reasoning_effort_auto,
-                )
-                .with_max_spawn_depth(self.config.max_spawn_depth)
-                .with_step_timeout(self.config.subagent_step_timeout)
-                .background_runtime();
-                let route = resolve_subagent_assignment_route(&runtime, None, &prompt).await;
-                runtime.model = route.model;
-                runtime.reasoning_effort = route.reasoning_effort;
-                runtime.reasoning_effort_auto = false;
-
-                let result = {
-                    let mut manager = self.subagent_manager.write().await;
-                    manager.spawn_background(
-                        Arc::clone(&self.subagent_manager),
-                        runtime,
-                        SubAgentType::General,
-                        prompt.clone(),
-                        None,
-                    )
-                };
-
-                match result {
-                    Ok(snapshot) => {
+                match self.spawn_general_subagent(&prompt).await {
+                    Ok(outcome) => {
                         let _ = self
                             .tx_event
                             .send(Event::status(format!(
                                 "Spawned sub-agent {}",
-                                snapshot.agent_id
+                                outcome.agent_id
                             )))
                             .await;
                     }
-                    Err(err) => {
+                    Err(SubAgentSpawnError::NoClient) => {
                         let _ = self
                             .tx_event
-                            .send(Event::error(ErrorEnvelope::fatal(format!(
-                                "Failed to spawn sub-agent: {err}"
-                            ))))
+                            .send(Event::error(ErrorEnvelope::fatal(
+                                "Failed to spawn sub-agent: API client not configured",
+                            )))
+                            .await;
+                    }
+                    Err(SubAgentSpawnError::SpawnFailed(message)) => {
+                        let _ = self
+                            .tx_event
+                            .send(Event::error(ErrorEnvelope::fatal(message)))
                             .await;
                     }
                 }

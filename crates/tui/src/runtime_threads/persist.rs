@@ -367,26 +367,6 @@ impl RuntimeThreadStore {
         let seq = state.next_seq;
         state.next_seq = state.next_seq.saturating_add(1);
 
-        if let Some(ref db) = self.db {
-            let record = RuntimeEventRecord {
-                schema_version: CURRENT_RUNTIME_SCHEMA_VERSION,
-                seq,
-                timestamp: Utc::now(),
-                thread_id: thread_id.to_string(),
-                turn_id: turn_id.map(ToString::to_string),
-                item_id: item_id.map(ToString::to_string),
-                event: event.into(),
-                payload,
-            };
-            crate::thread_store_sqlite::append_event_sqlite(&db.lock().unwrap(), &record, seq)
-                .map_err(|e| anyhow!("append_event sqlite: {e}"))?;
-            drop(state);
-            return Ok(record);
-        }
-
-        write_json_atomic(&self.state_path, &*state)?;
-        drop(state);
-
         let record = RuntimeEventRecord {
             schema_version: CURRENT_RUNTIME_SCHEMA_VERSION,
             seq,
@@ -398,18 +378,36 @@ impl RuntimeThreadStore {
             payload,
         };
 
-        let path = self.events_path(thread_id);
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&path)
-            .with_context(|| format!("Failed to open {}", path.display()))?;
-        let line = serde_json::to_string(&record)?;
-        writeln!(file, "{line}").with_context(|| format!("Failed to append {}", path.display()))?;
-        file.flush()
-            .with_context(|| format!("Failed to flush {}", path.display()))?;
-        file.sync_all()
-            .with_context(|| format!("Failed to fsync {}", path.display()))?;
+        if let Some(ref db) = self.db {
+            let db = Arc::clone(db);
+            let record_for_db = record.clone();
+            drop(state);
+            tokio::task::spawn_blocking(move || {
+                crate::thread_store_sqlite::append_event_sqlite(
+                    &db.lock().unwrap(),
+                    &record_for_db,
+                    seq,
+                )
+            })
+            .await
+            .map_err(|e| anyhow!("append_event join: {e}"))?
+            .map_err(|e| anyhow!("append_event sqlite: {e}"))?;
+            return Ok(record);
+        }
+
+        let state_path = self.state_path.clone();
+        let state_snapshot = state.clone();
+        let events_path = self.events_path(thread_id);
+        let record_for_disk = record.clone();
+        drop(state);
+
+        tokio::task::spawn_blocking(move || {
+            write_json_atomic(&state_path, &state_snapshot)?;
+            append_event_jsonl_blocking(&events_path, &record_for_disk)
+        })
+        .await
+        .map_err(|e| anyhow!("append_event join: {e}"))??;
+
         Ok(record)
     }
 
@@ -604,6 +602,21 @@ pub(super) fn reconstruct_messages_for_store(
         }
     }
     Ok(messages)
+}
+
+fn append_event_jsonl_blocking(path: &Path, record: &RuntimeEventRecord) -> Result<()> {
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .with_context(|| format!("Failed to open {}", path.display()))?;
+    let line = serde_json::to_string(record)?;
+    writeln!(file, "{line}").with_context(|| format!("Failed to append {}", path.display()))?;
+    file.flush()
+        .with_context(|| format!("Failed to flush {}", path.display()))?;
+    file.sync_all()
+        .with_context(|| format!("Failed to fsync {}", path.display()))?;
+    Ok(())
 }
 
 pub(super) fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<()> {

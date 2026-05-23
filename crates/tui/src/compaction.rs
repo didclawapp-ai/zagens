@@ -1858,6 +1858,87 @@ mod tests {
         assert!(!plan.summarize_indices.contains(&1));
     }
 
+    /// A1-MVP.2 — working-set pins survive LLM compaction (pin not summarized away).
+    #[tokio::test]
+    async fn compact_messages_preserves_working_set_pinned_message() {
+        use deepseek_core::working_set::WorkingSet;
+        use tempfile::tempdir;
+
+        use crate::llm_client::mock::MockLlmClient;
+        use crate::models::{MessageResponse, Usage};
+
+        const MARKER: &str = "A1_MVP2_WORKING_SET_PIN_SURVIVES";
+        let dir = tempdir().expect("tempdir");
+        let workspace = dir.path();
+        std::fs::create_dir_all(workspace.join("src/core")).expect("mkdir");
+
+        let mut messages = vec![
+            msg("user", "old noise to summarize"),
+            msg(
+                "assistant",
+                &format!("please patch src/core/engine.rs — {MARKER}"),
+            ),
+        ];
+        messages.extend((2..14).map(|i| msg("user", &format!("filler {i}"))));
+
+        let mut ws = WorkingSet::default();
+        ws.observe_user_message(
+            &format!("working on src/core/engine.rs — {MARKER}"),
+            workspace,
+        );
+        let pins = ws.pinned_message_indices(&messages, workspace);
+        let paths = ws.top_paths(24);
+        assert!(
+            !pins.is_empty(),
+            "working set should pin the path mention at index 1"
+        );
+
+        let mock = MockLlmClient::new(vec![]);
+        mock.push_message_response(MessageResponse {
+            id: "msg_summary".into(),
+            r#type: "message".into(),
+            role: "assistant".into(),
+            content: vec![ContentBlock::Text {
+                text: "condensed summary".into(),
+                cache_control: None,
+            }],
+            model: "mock".into(),
+            stop_reason: Some("end_turn".into()),
+            stop_sequence: None,
+            container: None,
+            usage: Usage::default(),
+        });
+
+        let config = CompactionConfig {
+            enabled: true,
+            token_threshold: 1,
+            ..Default::default()
+        };
+
+        let (pinned_messages, summary_prompt, removed) = compact_messages(
+            &mock,
+            &messages,
+            &config,
+            Some(workspace),
+            Some(&pins),
+            Some(&paths),
+        )
+        .await
+        .expect("compact_messages");
+
+        assert!(summary_prompt.is_some(), "expected LLM summary block");
+        assert!(!removed.is_empty(), "expected summarized messages");
+        let preserved = pinned_messages.iter().any(|message| {
+            message.content.iter().any(|block| {
+                matches!(block, ContentBlock::Text { text, .. } if text.contains(MARKER))
+            })
+        });
+        assert!(
+            preserved,
+            "working-set pinned message must survive compaction"
+        );
+    }
+
     #[test]
     fn plan_compaction_uses_external_working_set_paths() {
         let mut messages = vec![msg("user", "edit src/core/engine.rs now")];

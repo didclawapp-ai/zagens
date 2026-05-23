@@ -157,7 +157,16 @@ impl RuntimeThreadManager {
         if thread.scratchpad_run_id.as_deref() != Some(run_id.as_str()) {
             thread.scratchpad_run_id = Some(run_id.clone());
             thread.updated_at = Utc::now();
-            let _ = self.store.save_thread(&thread);
+            let store = self.store.clone();
+            let thread_to_save = thread.clone();
+            if let Ok(handle) = tokio::runtime::Handle::try_current() {
+                handle.spawn(async move {
+                    let _ = tokio::task::spawn_blocking(move || store.save_thread(&thread_to_save))
+                        .await;
+                });
+            } else {
+                let _ = self.store.save_thread(&thread);
+            }
         }
         let store = crate::scratchpad::try_open_store(
             &thread.workspace,
@@ -208,7 +217,23 @@ impl RuntimeThreadManager {
             cache.insert(thread_id.to_string(), checklist_json.to_string());
         }
         let snapshot: Option<serde_json::Value> = serde_json::from_str(checklist_json).ok();
-        if let Ok(mut thread) = self.store.load_thread(thread_id) {
+        let store = self.store.clone();
+        let thread_id_owned = thread_id.to_string();
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                let thread_id = thread_id_owned;
+                let _ = tokio::task::spawn_blocking(move || {
+                    if let Ok(mut thread) = store.load_thread(&thread_id) {
+                        thread.checklist_snapshot = snapshot;
+                        thread.updated_at = Utc::now();
+                        if store.save_thread(&thread).is_err() {
+                            tracing::warn!(%thread_id, "failed to persist checklist snapshot on thread");
+                        }
+                    }
+                })
+                .await;
+            });
+        } else if let Ok(mut thread) = self.store.load_thread(thread_id) {
             thread.checklist_snapshot = snapshot;
             thread.updated_at = Utc::now();
             if self.store.save_thread(&thread).is_err() {

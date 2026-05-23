@@ -11,12 +11,14 @@ pub mod approval;
 pub mod context;
 pub mod dispatch;
 pub mod loop_guard;
+pub mod lsp_edit_paths;
 pub mod tool_bridge;
 pub mod tool_catalog;
 pub mod tool_progress;
 pub mod turn_loop;
 pub mod start_turn;
 pub mod streaming;
+pub mod subagent_port;
 mod tool_dispatch;
 mod turn_port;
 
@@ -29,7 +31,7 @@ pub use context::{
     estimate_input_tokens_conservative, extract_compaction_summary_prompt,
     is_context_length_error_message, summarize_text, turn_response_headroom_tokens,
     COMPACTION_SUMMARY_MARKER, MAX_CONTEXT_RECOVERY_ATTEMPTS, MIN_RECENT_MESSAGES_TO_KEEP,
-    TURN_MAX_OUTPUT_TOKENS,
+    TURN_MAX_OUTPUT_TOKENS, count_oldest_messages_to_drain,
 };
 pub use dispatch::{
     caller_allowed_for_tool, caller_type_for_tool_use, final_tool_input, format_tool_error,
@@ -38,6 +40,7 @@ pub use dispatch::{
     should_parallelize_tool_batch, should_stop_after_plan_tool, ToolParallelPlanFlags,
 };
 pub use loop_guard::{AttemptDecision, LoopGuard, OutcomeDecision};
+pub use lsp_edit_paths::{edited_paths_for_tool, parse_patch_paths};
 pub use start_turn::StartTurnParams;
 pub use streaming::{
     contains_fake_tool_wrapper, filter_tool_call_delta, should_transparently_retry_stream,
@@ -67,5 +70,6 @@ pub use turn_loop::{
     TurnLoopToolPhaseOutcome, McpPoolPort, TurnLoopToolRegistry,
 };
 pub use turn_port::TurnEnginePort;
+pub use subagent_port::{SubAgentSpawnError, SubAgentSpawnOutcome, SubAgentSpawnPort};
 pub use crate::turn::{TurnContext, TurnLoopMode, TurnOutcomeStatus};
 pub use crate::session::{Session, SessionUsage};

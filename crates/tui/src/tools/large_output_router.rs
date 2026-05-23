@@ -13,6 +13,7 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::tools::spec::ToolResult;
 
@@ -28,6 +29,33 @@ const CHARS_PER_TOKEN_ESTIMATE: usize = 3;
 
 /// Workshop variable name where the raw tool output is stored.
 pub const WORKSHOP_LAST_TOOL_RESULT_VAR: &str = "last_tool_result";
+
+/// Stable external reference for routed large tool output (A1-MVP.1).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LargeOutputExternalRef {
+    pub ref_id: String,
+    pub tool_name: String,
+    pub char_count: usize,
+    pub storage_var: String,
+}
+
+impl LargeOutputExternalRef {
+    #[must_use]
+    pub fn new(tool_name: &str, char_count: usize) -> Self {
+        Self {
+            ref_id: format!("lout_{}", &Uuid::new_v4().to_string()[..8]),
+            tool_name: tool_name.to_string(),
+            char_count,
+            storage_var: WORKSHOP_LAST_TOOL_RESULT_VAR.to_string(),
+        }
+    }
+
+    /// Single-line JSON for message / JSONL embedding.
+    #[must_use]
+    pub fn to_json_line(&self) -> String {
+        serde_json::to_string(self).unwrap_or_else(|_| "{}".to_string())
+    }
+}
 
 // ── Token estimation ──────────────────────────────────────────────────────────
 
@@ -126,9 +154,13 @@ impl LargeOutputRouter {
         synthesis: &str,
         estimated_tokens: usize,
         threshold: usize,
+        external_ref: Option<&LargeOutputExternalRef>,
     ) -> String {
+        let ref_line = external_ref
+            .map(|r| format!("[workshop-ref: {}]\n", r.to_json_line()))
+            .unwrap_or_default();
         format!(
-            "[workshop-synthesis: tool={tool_name}, raw_tokens≈{estimated_tokens}, \
+            "{ref_line}[workshop-synthesis: tool={tool_name}, raw_tokens≈{estimated_tokens}, \
              threshold={threshold}, raw_stored_in={WORKSHOP_LAST_TOOL_RESULT_VAR}]\n\n{synthesis}"
         )
     }
@@ -149,13 +181,20 @@ pub struct WorkshopVariables {
     /// Name of the tool that produced `last_tool_result`.
     #[serde(default)]
     pub last_tool_name: String,
+
+    /// Structured ref for the most recent large output (session/JSONL embedding).
+    #[serde(default)]
+    pub last_output_ref: Option<LargeOutputExternalRef>,
 }
 
 impl WorkshopVariables {
     /// Store the raw output from a large-tool routing event.
-    pub fn store_raw(&mut self, tool_name: &str, raw: &str) {
+    pub fn store_raw(&mut self, tool_name: &str, raw: &str) -> LargeOutputExternalRef {
+        let external_ref = LargeOutputExternalRef::new(tool_name, raw.chars().count());
         self.last_tool_result = raw.to_string();
         self.last_tool_name = tool_name.to_string();
+        self.last_output_ref = Some(external_ref.clone());
+        external_ref
     }
 
     /// Retrieve and clear the stored raw output (consume semantics so the
@@ -170,6 +209,7 @@ impl WorkshopVariables {
         }
         let content = std::mem::take(&mut self.last_tool_result);
         let name = std::mem::take(&mut self.last_tool_name);
+        self.last_output_ref = None;
         Some((name, content))
     }
 }
@@ -290,17 +330,41 @@ mod tests {
         let taken = vars.take_raw().expect("should have content");
         assert_eq!(taken.0, "read_file");
         assert_eq!(taken.1, "raw content here");
+        assert!(vars.last_output_ref.is_none());
 
         // Second take is empty — consume semantics
         assert!(vars.take_raw().is_none());
     }
 
     #[test]
+    fn store_raw_records_external_ref() {
+        let mut vars = WorkshopVariables::default();
+        let big = "y".repeat(10_000);
+        let external_ref = vars.store_raw("grep_files", &big);
+        assert!(external_ref.ref_id.starts_with("lout_"));
+        assert_eq!(external_ref.tool_name, "grep_files");
+        assert_eq!(external_ref.char_count, 10_000);
+        assert_eq!(
+            vars.last_output_ref.as_ref().map(|r| r.ref_id.as_str()),
+            Some(external_ref.ref_id.as_str())
+        );
+    }
+
+    #[test]
     fn wrap_synthesis_includes_provenance_header() {
-        let wrapped = LargeOutputRouter::wrap_synthesis("web_search", "key facts here", 5000, 4096);
+        let external_ref = LargeOutputExternalRef::new("web_search", 5000);
+        let wrapped = LargeOutputRouter::wrap_synthesis(
+            "web_search",
+            "key facts here",
+            5000,
+            4096,
+            Some(&external_ref),
+        );
         assert!(wrapped.contains("workshop-synthesis"));
+        assert!(wrapped.contains("workshop-ref:"));
         assert!(wrapped.contains("web_search"));
         assert!(wrapped.contains("5000"));
         assert!(wrapped.contains("key facts here"));
+        assert!(wrapped.contains(&external_ref.ref_id));
     }
 }
