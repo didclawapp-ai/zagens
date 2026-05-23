@@ -69,7 +69,7 @@
 | `engine/dispatch.rs` | **`arg_repair`** 包装的 `parse_tool_input` / `final_tool_input`（勿绕过） |
 | `engine/tool_catalog.rs` | `AppMode` 适配 + `code_execution` L2（策略在 core `tool_catalog`） |
 | `engine/tool_dispatch_port.rs` | `RegistryToolDispatch` |
-| `engine/tool_execution.rs` | 终端 guard / MCP / `execute_tool_with_lock` |
+| `engine/tool_execution/` | exec / parallel / mcp / progress / terminal_guard / port（`McpPoolHandle`） |
 | `engine/capacity_flow/{checkpoints,observation,events,interventions,replay,persistence}.rs` | 最大 ~344 行 — checkpoint / 干预 / replay / 持久化 |
 
 **架构：**
@@ -102,11 +102,9 @@ deepseek-core::engine::handle_deepseek_turn<H: TurnLoopHost>
 
 ## 3. 仍未做（下一窗口优先级）
 
-1. **PR4 — `tool_execution` 端口化**（MCP/终端/LSP 仍 L2）
+1. **A5.5 扩展** — 10–20 步 turn 回放 fixture（当前最小 3 事件）
 
 2. **R-015 可选** — 1MB 工具 RSS；真实 store HTTP p99；回归门
-
-3. **门控** — A5.5 回放 fixture、A+.4 契约测（spike unchecked）
 
 ---
 

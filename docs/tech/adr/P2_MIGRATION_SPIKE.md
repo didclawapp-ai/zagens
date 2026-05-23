@@ -124,7 +124,10 @@ impl Runtime {
 - [x] A4.6 **局部：** `runtime_threads/{routing,engine_load,active,monitor}.rs` 自 `manager.rs` 拆出
 - [x] P2 PR4 **局部（2026-05-23）：** `deepseek-core::engine::tool_catalog`（策略 + tool search）；tui 保留 `code_execution` / `AppMode` 壳
 - [x] P2 PR4 **Desktop spike（2026-05-23）：** [P2_DESKTOP_TURNLOOP_SPIKE.md](./P2_DESKTOP_TURNLOOP_SPIKE.md) + `deepseek-desktop` 架构边界测
-- [ ] PR4 剩余：`tool_execution` 深迁 core（MCP/终端/LSP 仍 L2）
+- [x] P2 PR4 **局部（2026-05-23）：** `tool_execution/` 子模块 + `McpPoolPort`（`McpPoolHandle`）
+- [x] A5.5 **最小 fixture（2026-05-23）：** `tests/fixtures/runtime_turn_minimal.jsonl` + `runtime_event_replay_fixture` 测（完整 10–20 步仍开放）
+- [x] A+.4 **已有：** `sidecar_contract_full_lifecycle`（`runtime_api/tests.rs`，CI）
+- [x] P2 PR4 **局部（2026-05-23）：** `TurnLoopToolExecutor` 使用 `TurnLoopToolRegistry` 关联类型；`Engine` + `McpPoolHandle` 实现
 
 ### 4.1 `turn_loop` 迁入前置（2026-05-22 草图）
 
@@ -136,8 +139,8 @@ impl Runtime {
 | `tool_execution`（执行锁/MCP/终端 guard） | `compact_tool_result_for_context`、`RegistryToolDispatch`、`tool_bridge`、`tool_progress`、`await_tool_approval` |
 | `AppMode`、TUI `ToolRegistry` builder | `chat::{Message,Tool}`、`ToolResult` |
 
-**建议下一刀：** `tool_execution` 端口化或 A5.5 / A+.4 门控 fixture。
+**建议下一刀：** 扩展 A5.5 fixture（10–20 步）；或 R-015 长跑/回归门。
 - [ ] PR2 剩余：`Engine` 字段层（MCP/LSP/SubAgent）与 `capacity_flow` 端口化
 - [ ] PR1 剩余：`Engine`/`turn_loop` 主逻辑迁入 core
-- [ ] A5.5 回放 fixture 就位
-- [ ] A+.4 契约测就位
+- [ ] A5.5 回放 fixture 扩展（10–20 步）
+- [x] A+.4 契约测就位（`sidecar_contract_full_lifecycle`）

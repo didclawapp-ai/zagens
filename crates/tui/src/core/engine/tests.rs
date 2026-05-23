@@ -1925,3 +1925,15 @@ async fn post_edit_hook_skips_unknown_tool_names() {
     assert!(engine.pending_lsp_blocks.is_empty());
     assert_eq!(fake.call_count(), 0);
 }
+
+#[test]
+fn mcp_pool_handle_implements_core_mcp_port() {
+    fn assert_port<T: deepseek_core::engine::McpPoolPort + Send + Sync + 'static>() {}
+    assert_port::<super::tool_execution::McpPoolHandle>();
+}
+
+#[test]
+fn engine_implements_turn_loop_tool_executor() {
+    fn assert_executor<T: deepseek_core::engine::TurnLoopToolExecutor + Send + Sync>() {}
+    assert_executor::<super::Engine>();
+}

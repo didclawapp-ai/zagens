@@ -63,7 +63,8 @@ pub use tool_progress::{
 pub use turn_loop::{
     build_edit_file_approval_desc, handle_deepseek_turn, messages_with_turn_metadata,
     resolve_auto_effort, ToolExecOutcome, ToolExecutionPlan, TurnLoopConfigView, TurnLoopControl,
-    TurnLoopHost, TurnLoopStreamingPhaseOutcome, TurnLoopToolExec, TurnLoopToolPhaseOutcome,
+    TurnLoopHost, TurnLoopStreamingPhaseOutcome, TurnLoopToolExec, TurnLoopToolExecutor,
+    TurnLoopToolPhaseOutcome, McpPoolPort, TurnLoopToolRegistry,
 };
 pub use turn_port::TurnEnginePort;
 pub use crate::turn::{TurnContext, TurnLoopMode, TurnOutcomeStatus};

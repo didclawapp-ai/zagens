@@ -3,11 +3,13 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use deepseek_tools::{ToolError, ToolRegistry, ToolResult};
+use deepseek_tools::{ToolError, ToolResult};
 use serde_json::Value;
 use tokio::sync::{mpsc, RwLock};
 
 use crate::events::Event;
+
+use super::host::TurnLoopToolRegistry;
 
 /// Cloned handles passed into `async move` tool tasks.
 #[derive(Clone)]
@@ -16,9 +18,11 @@ pub struct TurnLoopToolExec {
     pub tx_event: mpsc::Sender<Event>,
 }
 
-/// Executes registry/MCP tools for the turn loop (implemented by TUI `Engine`).
+/// Executes registry/MCP tools for the turn loop (implemented by TUI `Engine` L2).
 #[async_trait]
 pub trait TurnLoopToolExecutor: Send + Sync {
+    type ToolRegistry: TurnLoopToolRegistry;
+
     #[allow(clippy::too_many_arguments)]
     async fn execute_with_lock(
         &self,
@@ -27,12 +31,10 @@ pub trait TurnLoopToolExecutor: Send + Sync {
         interactive: bool,
         tool_name: String,
         tool_input: Value,
-        registry: Option<&ToolRegistry>,
+        registry: Option<&Self::ToolRegistry>,
         mcp_pool: Option<Arc<tokio::sync::Mutex<dyn McpPoolPort + Send + Sync>>>,
-        context_override: Option<serde_json::Value>,
         tool_progress_id: Option<String>,
     ) -> Result<ToolResult, ToolError>;
-
 }
 
 /// Opaque MCP pool surface for the core turn loop.
