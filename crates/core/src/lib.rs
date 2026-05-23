@@ -907,6 +907,9 @@ impl Runtime {
                     data: json!({}),
                 })
             }
+            // PR5 note: production turns run via `deepseek-tui` HTTP (`RuntimeThreadManager`).
+            // app-server `Message` still records input and returns a queued placeholder until
+            // `handle_thread` is wired to a shared core turn executor (see RUNTIME_EVOLUTION_ROADMAP §11.2 PR5).
             ThreadRequest::Message { thread_id, input } => {
                 self.thread_manager.touch_message(&thread_id, &input)?;
                 let response_id = format!("{thread_id}:{}", input.len());

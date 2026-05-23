@@ -29,6 +29,16 @@ cargo test -p deepseek-tui --lib sidecar_contract_full_lifecycle --all-features 
 # CI 同款；含于 --lib 全量
 ```
 
+## PR5 后续（G2 之后）
+
+| 项 | 状态 |
+|----|------|
+| sidecar 双 thread 并行 turn 测 | ✅ `sidecar_parallel_turns_on_two_threads` |
+| `core::Runtime::handle_thread(Message)` 真 turn | ⏸ app-server 路径仍 `queued` |
+| DS Pick 多窗口手测 | ⏸ 维护者 ~15min |
+
+---
+
 ## 仍未满足（非本自动化范围）
 
 | 门 | 项 | 说明 |

@@ -1192,6 +1192,148 @@ use super::*;
         Ok(())
     }
 
+    /// PR5 — DS Pick multi-window: distinct threads may run overlapping turns.
+    #[tokio::test]
+    async fn parallel_turns_on_two_threads_overlap_then_complete() -> Result<()> {
+        let manager = test_manager(test_runtime_dir())?;
+        let thread_a = manager
+            .create_thread(CreateThreadRequest {
+                model: None,
+                workspace: None,
+                mode: None,
+                allow_shell: None,
+                trust_mode: None,
+                auto_approve: Some(true),
+                archived: false,
+                system_prompt: None,
+                task_id: None,
+                task_type: None,
+            })
+            .await?;
+        let thread_b = manager
+            .create_thread(CreateThreadRequest {
+                model: None,
+                workspace: None,
+                mode: None,
+                allow_shell: None,
+                trust_mode: None,
+                auto_approve: Some(true),
+                archived: false,
+                system_prompt: None,
+                task_id: None,
+                task_type: None,
+            })
+            .await?;
+
+        let harness_a = install_mock_engine(&manager, &thread_a.id).await;
+        let harness_b = install_mock_engine(&manager, &thread_b.id).await;
+
+        let (release_a, hold_a) = oneshot::channel::<()>();
+        let mut rx_a = harness_a.rx_op;
+        let tx_a = harness_a.tx_event;
+        let drive_a = tokio::spawn(async move {
+            if !matches!(rx_a.recv().await, Some(Op::SendMessage { .. })) {
+                return;
+            }
+            let _ = hold_a.await;
+            let _ = tx_a
+                .send(EngineEvent::TurnComplete {
+                    usage: Usage::default(),
+                    last_request_input_tokens: None,
+                    status: TurnOutcomeStatus::Completed,
+                    error: None,
+                    step_count: 0,
+                    tool_names: vec![],
+                    end_reason: None,
+                })
+                .await;
+        });
+
+        let turn_a = manager
+            .start_turn(
+                &thread_a.id,
+                StartTurnRequest {
+                    prompt: "thread A turn".to_string(),
+                    input_summary: None,
+                    model: None,
+                    mode: None,
+                    allow_shell: None,
+                    trust_mode: None,
+                    auto_approve: Some(true),
+                    route_intent: None,
+                },
+            )
+            .await?;
+
+        sleep(Duration::from_millis(40)).await;
+        assert!(
+            manager
+                .active_turn_flags(&thread_a.id, &turn_a.id)
+                .await
+                .is_some(),
+            "thread A turn should be active before starting thread B"
+        );
+
+        let mut rx_b = harness_b.rx_op;
+        let tx_b = harness_b.tx_event;
+        let drive_b = tokio::spawn(async move {
+            if !matches!(rx_b.recv().await, Some(Op::SendMessage { .. })) {
+                return;
+            }
+            let _ = tx_b
+                .send(EngineEvent::TurnComplete {
+                    usage: Usage::default(),
+                    last_request_input_tokens: None,
+                    status: TurnOutcomeStatus::Completed,
+                    error: None,
+                    step_count: 0,
+                    tool_names: vec![],
+                    end_reason: None,
+                })
+                .await;
+        });
+
+        let turn_b = manager
+            .start_turn(
+                &thread_b.id,
+                StartTurnRequest {
+                    prompt: "thread B turn".to_string(),
+                    input_summary: None,
+                    model: None,
+                    mode: None,
+                    allow_shell: None,
+                    trust_mode: None,
+                    auto_approve: Some(true),
+                    route_intent: None,
+                },
+            )
+            .await?;
+
+        assert!(
+            manager
+                .active_turn_flags(&thread_a.id, &turn_a.id)
+                .await
+                .is_some()
+                && manager
+                    .active_turn_flags(&thread_b.id, &turn_b.id)
+                    .await
+                    .is_some(),
+            "both threads should have active turns concurrently"
+        );
+
+        let _ = release_a.send(());
+        let terminal_a =
+            wait_for_terminal_turn(&manager, &turn_a.id, MOCK_ENGINE_TURN_TERMINAL_TIMEOUT).await?;
+        let terminal_b =
+            wait_for_terminal_turn(&manager, &turn_b.id, MOCK_ENGINE_TURN_TERMINAL_TIMEOUT).await?;
+        assert_eq!(terminal_a.status, RuntimeTurnStatus::Completed);
+        assert_eq!(terminal_b.status, RuntimeTurnStatus::Completed);
+
+        drive_a.await.ok();
+        drive_b.await.ok();
+        Ok(())
+    }
+
     #[tokio::test]
     async fn resolve_approval_rejects_wrong_turn_id() -> Result<()> {
         let manager = test_manager(test_runtime_dir())?;

@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Runtime (PR5 局部):** 双 thread 并行 turn 回归测（`parallel_turns_on_two_threads_overlap_then_complete`、`sidecar_parallel_turns_on_two_threads`）；`app-server` `Message` 仍 queued 占位（注释 SSOT）。
 - **Runtime (G2 门控):** `CURRENT_EVENT_SCHEMA_VERSION`；`GET /health` 与 SSE payload 暴露 `event_schema_version`（A+.4b）。
 - **Runtime (tests):** A5.5 完整回放 fixture `runtime_turn_replay.jsonl`（15 步：thinking/tool/approval/完成）。
 - **Docs:** `docs/tech/adr/G2_GATE_ACCEPTANCE.md` — G2 自动化验收记录与维护者待办。

@@ -20,7 +20,7 @@
 
 ### Git 锚点
 
-**HEAD：** `3264419` — `P2 PR4: migrate turn loop to core and split engine monolith (A4.6).`
+**HEAD：** `0d8523e` — `G2 gate: event_schema_version, A5.5 replay fixture, acceptance record.`
 - 上一刀：`a2a62d3` — engine policy modules → core
 
 ### R-015 基线
@@ -102,9 +102,16 @@ deepseek-core::engine::handle_deepseek_turn<H: TurnLoopHost>
 
 ## 3. 仍未做（下一窗口优先级）
 
-1. **A5.5 扩展** — 10–20 步 turn 回放 fixture（当前最小 3 事件）
+1. **PR5 剩余** — `core::Runtime::handle_thread(Message)` 委托真 turn（app-server）；DS Pick 多窗口手测
 
-2. **R-015 可选** — 1MB 工具 RSS；真实 store HTTP p99；回归门
+2. **§12.3** — `runtime_threads` 经 core 跑 turn；Engine 是否 L2 终态决议
+
+3. **R-015 可选** — 1MB 工具 RSS；真实 store HTTP p99；回归门
+
+### 已完成（2026-05-23 门控 + PR5 局部）
+
+- ✅ G2：`event_schema_version`、A5.5 15 步回放、A+.7、见 [G2_GATE_ACCEPTANCE.md](./G2_GATE_ACCEPTANCE.md)
+- ✅ PR5 局部：`parallel_turns_on_two_threads_*` + `sidecar_parallel_turns_on_two_threads`
 
 ---
 

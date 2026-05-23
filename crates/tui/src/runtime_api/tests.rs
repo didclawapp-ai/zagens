@@ -1876,6 +1876,112 @@ async fn resolve_approval_rejects_invalid_decision() -> Result<()> {
     Ok(())
 }
 
+/// PR5 — HTTP sidecar: two threads can run turns concurrently (multi-window).
+#[tokio::test]
+async fn sidecar_parallel_turns_on_two_threads() -> Result<()> {
+    let Some((addr, runtime_threads, handle)) = spawn_test_server().await? else {
+        return Ok(());
+    };
+    let client = reqwest::Client::new();
+    let base = format!("http://{addr}");
+
+    let thread_a: serde_json::Value = client
+        .post(format!("{base}/v1/threads"))
+        .json(&json!({"model": "deepseek-chat"}))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    let thread_b: serde_json::Value = client
+        .post(format!("{base}/v1/threads"))
+        .json(&json!({"model": "deepseek-chat"}))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    let thread_a_id = thread_a["id"].as_str().context("thread A id")?.to_string();
+    let thread_b_id = thread_b["id"].as_str().context("thread B id")?.to_string();
+
+    for thread_id in [&thread_a_id, &thread_b_id] {
+        let harness = crate::core::engine::mock_engine_handle();
+        runtime_threads
+            .install_test_engine(thread_id, harness.handle.clone())
+            .await?;
+        let mut rx_op = harness.rx_op;
+        let tx_event = harness.tx_event;
+        tokio::spawn(async move {
+            if !matches!(rx_op.recv().await, Some(Op::SendMessage { .. })) {
+                return;
+            }
+            let _ = tx_event
+                .send(EngineEvent::TurnComplete {
+                    usage: Usage::default(),
+                    last_request_input_tokens: None,
+                    status: TurnOutcomeStatus::Completed,
+                    error: None,
+                    step_count: 0,
+                    tool_names: vec![],
+                    end_reason: None,
+                })
+                .await;
+        });
+    }
+
+    let turn_a: serde_json::Value = client
+        .post(format!("{base}/v1/threads/{thread_a_id}/turns"))
+        .json(&json!({"prompt": "parallel A"}))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    let turn_b: serde_json::Value = client
+        .post(format!("{base}/v1/threads/{thread_b_id}/turns"))
+        .json(&json!({"prompt": "parallel B"}))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    let turn_a_id = turn_a["turn"]["id"]
+        .as_str()
+        .context("turn A id")?
+        .to_string();
+    let turn_b_id = turn_b["turn"]["id"]
+        .as_str()
+        .context("turn B id")?
+        .to_string();
+
+    let status_a = wait_for_terminal_turn_status(
+        &client,
+        addr,
+        &thread_a_id,
+        &turn_a_id,
+        Duration::from_secs(3),
+    )
+    .await?;
+    let status_b = wait_for_terminal_turn_status(
+        &client,
+        addr,
+        &thread_b_id,
+        &turn_b_id,
+        Duration::from_secs(3),
+    )
+    .await?;
+    assert_eq!(status_a, "completed");
+    assert_eq!(status_b, "completed");
+
+    let events_a = runtime_threads.events_since(&thread_a_id, None)?;
+    let events_b = runtime_threads.events_since(&thread_b_id, None)?;
+    assert!(events_a.iter().any(|ev| ev.event == "turn.completed"));
+    assert!(events_b.iter().any(|ev| ev.event == "turn.completed"));
+
+    handle.abort();
+    Ok(())
+}
+
 /// A+.4 Sidecar contract test: health → create thread → start turn →
 /// SSE stream subset → stop.  This is the minimal smoke test that any
 /// L3 shell (TUI / DS Pick) expects to pass.  The server is in-memory
