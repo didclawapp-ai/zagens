@@ -21,7 +21,7 @@ use uuid::Uuid;
 
 use crate::client::DeepSeekClient;
 use crate::config::MAX_SUBAGENTS;
-use crate::core::events::Event;
+use deepseek_core::events::Event;
 use crate::llm_client::LlmClient;
 use crate::models::{ContentBlock, Message, MessageRequest, SystemPrompt, Tool};
 use crate::tools::plan::{PlanState, SharedPlanState};
@@ -37,8 +37,12 @@ use self::blackboard::{read_blackboard_section, write_blackboard_partition};
 
 pub mod blackboard;
 pub mod mailbox;
+pub use deepseek_core::subagent::{
+    MailboxMessage, StructuredVerdict, SubAgentAssignment, SubAgentResult, SubAgentStatus,
+    SubAgentType, VerdictItem, VerdictLevel,
+};
 #[allow(unused_imports)]
-pub use mailbox::{Mailbox, MailboxEnvelope, MailboxMessage, MailboxReceiver};
+pub use mailbox::{Mailbox, MailboxEnvelope, MailboxReceiver};
 
 // === Constants ===
 
@@ -205,115 +209,32 @@ fn wrap_with_deprecation_notice(
     result
 }
 
-// === Types ===
+// === Types (serde shapes in `deepseek-core::subagent`) ===
 
-/// Assignment metadata for sub-agent orchestration.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SubAgentAssignment {
-    pub objective: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub role: Option<String>,
-}
-
-impl SubAgentAssignment {
-    fn new(objective: String, role: Option<String>) -> Self {
-        Self { objective, role }
+/// System prompt for a sub-agent type (prompts remain in `deepseek-tui`).
+#[must_use]
+pub fn subagent_system_prompt(agent_type: &SubAgentType) -> String {
+    match *agent_type {
+        SubAgentType::General => GENERAL_AGENT_PROMPT.to_string(),
+        SubAgentType::Explore => EXPLORE_AGENT_PROMPT.to_string(),
+        SubAgentType::Plan => PLAN_AGENT_PROMPT.to_string(),
+        SubAgentType::Review => REVIEW_AGENT_PROMPT.to_string(),
+        SubAgentType::Implementer => IMPLEMENTER_AGENT_PROMPT.to_string(),
+        SubAgentType::Verifier => VERIFIER_AGENT_PROMPT.to_string(),
+        SubAgentType::Custom => CUSTOM_AGENT_PROMPT.to_string(),
+        SubAgentType::Auditor => AUDITOR_AGENT_PROMPT.to_string(),
     }
 }
 
-/// Sub-agent execution types with specialized behavior and tool access.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum SubAgentType {
-    /// General purpose - full tool access for multi-step tasks.
-    #[default]
-    General,
-    /// Fast exploration - read-only tools for codebase search.
-    Explore,
-    /// Planning - analysis tools only for architectural planning.
-    Plan,
-    /// Code review - read + analysis tools.
-    Review,
-    /// Implementation — focused on writing / patching code to satisfy
-    /// a specific change. Distinct from `General` in that the prompt
-    /// posture pushes hard on landing the change cleanly with the
-    /// minimum surrounding edit (#404).
-    Implementer,
-    /// Verification — focused on running the test suite or other
-    /// validation gates and reporting pass/fail with evidence.
-    /// Distinct from `Review` in that Review reads code and grades it;
-    /// Verifier *runs* tests and reports the outcome (#404).
-    Verifier,
-    /// Custom tool access defined at spawn time.
-    Custom,
-    /// Auditing — read-only fact-checker that verifies every finding
-    /// in a parent-produced review report has a file_path, line_number,
-    /// and that the cited lines contain the symbols the finding names.
-    /// Mechanical only — no semantic judgment, no analysis, no suggestions.
-    Auditor,
-}
-
-impl SubAgentType {
-    /// Parse a sub-agent type from user input.
-    #[must_use]
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s.to_lowercase().as_str() {
-            "general" | "general-purpose" | "general_purpose" | "worker" | "default" => {
-                Some(Self::General)
-            }
-            "explore" | "exploration" | "explorer" => Some(Self::Explore),
-            "plan" | "planning" | "awaiter" => Some(Self::Plan),
-            "review" | "code-review" | "code_review" | "reviewer" => Some(Self::Review),
-            "implementer" | "implement" | "implementation" | "builder" => Some(Self::Implementer),
-            "verifier" | "verify" | "verification" | "validator" | "tester" => Some(Self::Verifier),
-            "custom" => Some(Self::Custom),
-            "auditor" | "audit" | "fact-checker" | "fact_checker" => Some(Self::Auditor),
-            _ => None,
-        }
-    }
-
-    #[must_use]
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::General => "general",
-            Self::Explore => "explore",
-            Self::Plan => "plan",
-            Self::Review => "review",
-            Self::Implementer => "implementer",
-            Self::Verifier => "verifier",
-            Self::Custom => "custom",
-            Self::Auditor => "auditor",
-        }
-    }
-
-    /// Get the system prompt for this agent type.
-    #[must_use]
-    pub fn system_prompt(&self) -> String {
-        match self {
-            Self::General => GENERAL_AGENT_PROMPT.to_string(),
-            Self::Explore => EXPLORE_AGENT_PROMPT.to_string(),
-            Self::Plan => PLAN_AGENT_PROMPT.to_string(),
-            Self::Review => REVIEW_AGENT_PROMPT.to_string(),
-            Self::Implementer => IMPLEMENTER_AGENT_PROMPT.to_string(),
-            Self::Verifier => VERIFIER_AGENT_PROMPT.to_string(),
-            Self::Custom => CUSTOM_AGENT_PROMPT.to_string(),
-            Self::Auditor => AUDITOR_AGENT_PROMPT.to_string(),
-        }
-    }
-
-    /// Get the default allowed tools for this agent type.
-    ///
-    /// **Deprecated since v0.6.6.** Default sub-agents now inherit the full
-    /// parent registry; the per-type allowlist is advisory only. Pass an explicit
-    /// `allowed_tools` array for narrow Custom roles instead.
-    #[must_use]
-    #[deprecated(
-        since = "0.6.6",
-        note = "Default sub-agents inherit the full parent registry; pass an explicit allowed_tools list only for narrow Custom roles."
-    )]
-    pub fn allowed_tools(&self) -> Vec<&'static str> {
-        match self {
-            Self::General => vec![
+/// Default allowed tools for a sub-agent type (deprecated advisory list).
+#[must_use]
+#[deprecated(
+    since = "0.6.6",
+    note = "Default sub-agents inherit the full parent registry; pass an explicit allowed_tools list only for narrow Custom roles."
+)]
+pub fn subagent_allowed_tools(agent_type: &SubAgentType) -> Vec<&'static str> {
+    match *agent_type {
+        SubAgentType::General => vec![
                 "list_dir",
                 "read_file",
                 "write_file",
@@ -339,7 +260,7 @@ impl SubAgentType {
                 "todo_list",
                 "update_plan",
             ],
-            Self::Explore => vec![
+        SubAgentType::Explore => vec![
                 "list_dir",
                 "read_file",
                 "grep_files",
@@ -353,7 +274,7 @@ impl SubAgentType {
                 "exec_wait",
                 "exec_interact",
             ],
-            Self::Plan => vec![
+        SubAgentType::Plan => vec![
                 "list_dir",
                 "read_file",
                 "grep_files",
@@ -371,8 +292,8 @@ impl SubAgentType {
                 "todo_update",
                 "todo_list",
             ],
-            Self::Review => vec!["list_dir", "read_file", "grep_files", "glob_files", "file_search", "note"],
-            Self::Implementer => vec![
+        SubAgentType::Review => vec!["list_dir", "read_file", "grep_files", "glob_files", "file_search", "note"],
+        SubAgentType::Implementer => vec![
                 "list_dir",
                 "read_file",
                 "write_file",
@@ -396,7 +317,7 @@ impl SubAgentType {
                 "todo_list",
                 "update_plan",
             ],
-            Self::Verifier => vec![
+        SubAgentType::Verifier => vec![
                 "list_dir",
                 "read_file",
                 "grep_files",
@@ -410,8 +331,8 @@ impl SubAgentType {
                 "diagnostics",
                 "note",
             ],
-            Self::Custom => vec![], // Must be provided by caller.
-            Self::Auditor => vec![
+        SubAgentType::Custom => vec![],
+        SubAgentType::Auditor => vec![
                 "list_dir",
                 "read_file",
                 "grep_files",
@@ -419,49 +340,7 @@ impl SubAgentType {
                 "file_search",
                 "note",
             ],
-        }
     }
-}
-
-/// Status of a sub-agent execution.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum SubAgentStatus {
-    Running,
-    Completed,
-    Interrupted(String),
-    Failed(String),
-    Cancelled,
-}
-
-/// Snapshot of sub-agent state for tool results.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SubAgentResult {
-    pub agent_id: String,
-    pub agent_type: SubAgentType,
-    pub assignment: SubAgentAssignment,
-    #[serde(default)]
-    pub model: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub nickname: Option<String>,
-    pub status: SubAgentStatus,
-    pub result: Option<String>,
-    pub steps_taken: u32,
-    pub duration_ms: u64,
-    /// `true` when this agent was loaded from a prior-session persisted
-    /// state file rather than spawned in the current session (#405).
-    /// Lets `agent_list` filter out historical noise by default while
-    /// keeping the records reachable via `include_archived=true`.
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub from_prior_session: bool,
-    /// Structured verdict parsed from the agent's final output
-    /// (`<!-- craft-verdict -->` fence). `None` when the agent did not
-    /// produce a structured verdict or parsing failed.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub structured_verdict: Option<StructuredVerdict>,
-}
-
-fn is_false(b: &bool) -> bool {
-    !*b
 }
 
 #[derive(Debug, Clone, Default)]
@@ -2714,7 +2593,7 @@ fn build_subagent_system_prompt(
     agent_type: &SubAgentType,
     assignment: &SubAgentAssignment,
 ) -> String {
-    let base = agent_type.system_prompt();
+    let base = subagent_system_prompt(agent_type);
     match assignment.role.as_deref() {
         Some(role) if !role.trim().is_empty() => {
             format!(
@@ -2915,7 +2794,7 @@ async fn run_subagent(
     }
     let tools = tool_registry.tools_for_model();
     if let Some(mb) = runtime.mailbox.as_ref() {
-        let _ = mb.send(MailboxMessage::started(&agent_id, agent_type.clone()));
+        let _ = mb.send(MailboxMessage::started(&agent_id, agent_type.as_str()));
     }
     emit_agent_progress(
         runtime.event_tx.as_ref(),
@@ -4358,47 +4237,6 @@ const AUDITOR_AGENT_PROMPT: &str = concat!(
 );
 
 // === Structured Verdict (CRAFT P0) ===
-
-/// Structured verdict produced by Review / Verifier sub-agents.
-/// Parsed from `<!-- craft-verdict -->` fence in the agent's final output.
-/// `None` when no fence is present or parsing fails — graceful degradation.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct StructuredVerdict {
-    pub verdict: VerdictLevel,
-    pub items: Vec<VerdictItem>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub summary: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum VerdictLevel {
-    #[serde(rename = "PASS")]
-    Pass,
-    #[serde(rename = "BLOCKER")]
-    Blocker,
-    #[serde(rename = "MAJOR")]
-    Major,
-    #[serde(rename = "FAIL")]
-    Fail,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct VerdictItem {
-    /// "BLOCKER" | "MAJOR" | "MINOR"
-    pub severity: String,
-    /// Repository-relative path (e.g. "crates/tui/src/auth/login.rs")
-    pub file: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub line: Option<u32>,
-    /// Human-readable description of what is wrong
-    pub description: String,
-    /// Rule id (e.g. "CROSS_PLATFORM", "TOKEN_INSECURE_RNG")
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub rule: Option<String>,
-    /// Suggested fix
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub suggestion: Option<String>,
-}
 
 /// Parse a `<!-- craft-verdict -->` JSON fence from the agent's final text output.
 ///

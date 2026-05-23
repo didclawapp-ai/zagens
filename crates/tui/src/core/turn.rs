@@ -13,112 +13,11 @@
 //! `/restore N` and the `revert_turn` tool both consume these
 //! snapshots.
 
-// TurnToolCall and TurnState are now in deepseek-core (P2 PR2).
-pub use deepseek_core::turn::{TurnState, TurnToolCall};
+pub use deepseek_core::turn::{TurnContext, TurnLoopMode, TurnOutcomeStatus, TurnState, TurnToolCall};
 
 use crate::models::Usage;
 use crate::snapshot::SnapshotRepo;
 use std::path::Path;
-use std::time::{Duration, Instant};
-
-/// Context for a single turn (user message + AI response).
-#[derive(Debug)]
-pub struct TurnContext {
-    /// Turn ID
-    pub id: String,
-
-    /// When the turn started
-    #[allow(dead_code)]
-    pub started_at: Instant,
-
-    /// Current step in the turn (tool call iteration)
-    pub step: u32,
-
-    /// Maximum steps allowed
-    pub max_steps: u32,
-
-    /// Tool calls made in this turn
-    pub tool_calls: Vec<TurnToolCall>,
-
-    /// Whether the turn has been cancelled
-    #[allow(dead_code)]
-    pub cancelled: bool,
-
-    /// Usage for this turn
-    pub usage: Usage,
-}
-
-impl TurnContext {
-    /// Create a new turn context
-    pub fn new(max_steps: u32) -> Self {
-        Self {
-            id: uuid::Uuid::new_v4().to_string(),
-            started_at: Instant::now(),
-            step: 0,
-            max_steps,
-            tool_calls: Vec::new(),
-            cancelled: false,
-            usage: Usage {
-                input_tokens: 0,
-                output_tokens: 0,
-                ..Usage::default()
-            },
-        }
-    }
-
-    /// Increment the step counter
-    pub fn next_step(&mut self) -> bool {
-        self.step += 1;
-        self.step <= self.max_steps
-    }
-
-    /// Check if the turn has reached max steps
-    pub fn at_max_steps(&self) -> bool {
-        self.step >= self.max_steps
-    }
-
-    /// Record a tool call
-    pub fn record_tool_call(&mut self, call: TurnToolCall) {
-        self.tool_calls.push(call);
-    }
-
-    /// Cancel the turn
-    #[allow(dead_code)]
-    pub fn cancel(&mut self) {
-        self.cancelled = true;
-    }
-
-    /// Get the elapsed time
-    #[allow(dead_code)]
-    pub fn elapsed(&self) -> Duration {
-        self.started_at.elapsed()
-    }
-
-    /// Add usage from an API response
-    pub fn add_usage(&mut self, usage: &Usage) {
-        self.usage.input_tokens += usage.input_tokens;
-        self.usage.output_tokens += usage.output_tokens;
-        self.usage.prompt_cache_hit_tokens = add_optional_usage(
-            self.usage.prompt_cache_hit_tokens,
-            usage.prompt_cache_hit_tokens,
-        );
-        self.usage.prompt_cache_miss_tokens = add_optional_usage(
-            self.usage.prompt_cache_miss_tokens,
-            usage.prompt_cache_miss_tokens,
-        );
-        self.usage.reasoning_tokens =
-            add_optional_usage(self.usage.reasoning_tokens, usage.reasoning_tokens);
-    }
-}
-
-fn add_optional_usage(total: Option<u32>, delta: Option<u32>) -> Option<u32> {
-    match (total, delta) {
-        (Some(total), Some(delta)) => Some(total.saturating_add(delta)),
-        (None, Some(delta)) => Some(delta),
-        (Some(total), None) => Some(total),
-        (None, None) => None,
-    }
-}
 
 /// Take a `pre-turn:<seq>` workspace snapshot.
 ///
@@ -161,5 +60,3 @@ fn snapshot_with_label(workspace: &Path, label: &str) -> Option<String> {
         }
     }
 }
-
-// TurnToolCall impl is in deepseek-core (P2 PR2).

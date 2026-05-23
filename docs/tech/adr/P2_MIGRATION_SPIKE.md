@@ -116,7 +116,7 @@ impl Runtime {
 - [x] PR1 **局部**：`deepseek-core` 子模块（`chat`/`models`/`turn`/`compaction`/`capacity`/`workshop` 等）+ tui re-export（2026-05-22；**非** §12.3 完成）
 - [x] PR2 **局部（2026-05-22）：** `session`、`working_set`、`project_context`、`ApprovalMode`、`CycleBriefing` → `deepseek-core`；tui 薄 re-export；`core::engine` 仅导出 session 类型
 - [x] PR3 **局部（2026-05-22）：** `StartTurnParams` + `TurnEnginePort` in `deepseek-core`；`RuntimeThreadManager::start_turn` delegates via `EngineHandle::start_turn`（`turn_loop`/`Engine` 仍在 tui）
-- [x] PR4 **局部（2026-05-22）：** `loop_guard` + `streaming` + `dispatch` + `context` → `deepseek-core::engine`；`RegistryToolDispatch` 接线 `execute_tool_with_lock`；tui 薄 re-export（`dispatch` 仍含 `ToolExecutionPlan` + `arg_repair`）；`Engine`/`turn_loop` 仍留 tui
+- [x] PR4 **局部（2026-05-22）：** `loop_guard` + `streaming` + `dispatch` + `context` + **`approval`** + **`tool_bridge`/`tool_progress`** → `deepseek-core::engine`；`RegistryToolDispatch` 接线 `execute_tool_with_lock`；tui 薄 re-export（`dispatch` 仍含 `ToolExecutionPlan` + `arg_repair`；`approval` 仍发 `UserInputRequired`；`tool_execution` 仍含终端 pause/MCP/并行）；`Engine`/`turn_loop` 仍留 tui
 - [x] A4.6 **局部：** `runtime_threads/{routing,engine_load,active,monitor}.rs` 自 `manager.rs` 拆出
 - [ ] PR4 剩余：`Engine` + `turn_loop` + 子模块迁入 core；`engine.rs` < 300 行
 
@@ -125,11 +125,11 @@ impl Runtime {
 | 仍留 tui 直至壳层就绪 | 已可在 core 复用 |
 |----------------------|------------------|
 | `Engine` 字段：`LlmClient`、`McpPool`、`LspManager`、`SubAgentRuntime`、事件通道 | `session`、`loop_guard`、`streaming`、`dispatch`、`context` |
-| `Op` / `Event` / `EngineConfig` 构建（`spawn_engine`） | `TurnEnginePort`、`StartTurnParams`、`EngineToolDispatch` |
-| `tool_catalog`、`tool_execution`、`approval`、`capacity_flow` | `compact_tool_result_for_context`、`RegistryToolDispatch` |
+| `EngineConfig` 构建（`spawn_engine`）、`turn_loop/run.rs` 主体（compaction/MCP/工具执行） | `Event`、`TurnEnginePort`、`TurnLoopHost`、`TurnContext`、`turn_loop::helpers` |
+| `tool_catalog`、`tool_execution`（执行锁/MCP/终端 guard）、`capacity_flow` | `compact_tool_result_for_context`、`RegistryToolDispatch`、`tool_bridge`、`tool_progress`、`await_tool_approval` |
 | `AppMode`、TUI `ToolRegistry` builder | `chat::{Message,Tool}`、`ToolResult` |
 
-**建议下一刀：** `approval.rs` + `tool_execution` 类型化端口，或 `turn_loop.rs` 文件迁 core 并 `impl Engine` 留 tui（最大单 PR）。
+**建议下一刀：** 扩展 `TurnLoopHost`（compaction、MCP pool、`execute_tool_with_lock`）后将 `turn_loop/run.rs` 迁 core。~~`Event`~~、~~helpers~~、~~`TurnLoopHost` 脚手架~~ 已就绪（2026-05-22）；`run.rs` 仍 L2。
 - [ ] PR2 剩余：`turn_loop` + `Engine` 迁入 core（须 `EngineToolDispatch` 接线）
 - [ ] PR1 剩余：`Engine`/`turn_loop` 主逻辑迁入 core
 - [ ] A5.5 回放 fixture 就位

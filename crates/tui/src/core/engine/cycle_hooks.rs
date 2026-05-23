@@ -1,0 +1,298 @@
+//! Cycle boundary, system prompt refresh, and compaction summary merge.
+
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+
+use crate::compaction::merge_system_prompts;
+use crate::cycle_manager::{
+    CycleBriefing, StructuredState, archive_cycle, build_seed_messages, estimate_briefing_tokens,
+    produce_briefing, should_advance_cycle,
+};
+use crate::core::events::Event;
+use crate::models::SystemPrompt;
+use crate::prompts;
+use crate::tui::app::AppMode;
+
+use super::context::turn_response_headroom_tokens;
+use super::scratchpad_flow;
+use super::Engine;
+
+impl Engine {
+    /// Advance checkpoint-restart cycle when input estimate crosses threshold (#124).
+    pub(super) async fn maybe_advance_cycle(&mut self, mode: AppMode) {
+        if !should_advance_cycle(
+            self.estimated_input_tokens() as u64,
+            turn_response_headroom_tokens(),
+            &self.session.model,
+            &self.config.cycle,
+            false,
+        ) {
+            return;
+        }
+
+        let Some(client) = self.deepseek_client.clone() else {
+            crate::logging::warn(
+                "Cycle boundary skipped: API client not configured for briefing turn",
+            );
+            return;
+        };
+
+        let from = self.session.cycle_count;
+        let to = from.saturating_add(1);
+        let archive_started = self.session.current_cycle_started;
+        let max_briefing_tokens = self.config.cycle.briefing_max_for(&self.session.model);
+
+        let _ = self
+            .tx_event
+            .send(Event::status(format!(
+                "鈫?context refreshing (cycle {from} 鈫?{to}, generating briefing鈥?"
+            )))
+            .await;
+
+        // 1. Generate the model-curated briefing. Prefer the Flash seam
+        //    manager (#159) for cost and speed; fall back to the main model
+        //    (legacy produce_briefing) when the seam manager isn't available.
+        let briefing_text = if let Some(ref seam_mgr) = self.seam_manager {
+            let seams = seam_mgr.collect_seam_texts(&self.session.messages).await;
+            let state_text = {
+                let s = StructuredState::capture(
+                    mode.label(),
+                    self.config.workspace.clone(),
+                    std::env::current_dir().ok(),
+                    &self.session.working_set,
+                    &self.config.todos,
+                    &self.config.plan_state,
+                    Some(&self.subagent_manager),
+                )
+                .await;
+                s.to_system_block()
+            };
+            match seam_mgr
+                .produce_flash_briefing(&seams, state_text.as_deref())
+                .await
+            {
+                Ok(text) => text,
+                Err(err) => {
+                    crate::logging::warn(format!(
+                        "Flash briefing failed, falling back to main model: {err}"
+                    ));
+                    match produce_briefing(
+                        client.as_ref(),
+                        &self.session.model,
+                        &self.session.messages,
+                        max_briefing_tokens,
+                    )
+                    .await
+                    {
+                        Ok(text) => text,
+                        Err(err2) => {
+                            crate::logging::warn(format!(
+                                "Cycle briefing turn failed; skipping cycle advance: {err2}"
+                            ));
+                            let _ = self
+                                .tx_event
+                                .send(Event::status(format!(
+                                    "鈫?cycle handoff failed (continuing in cycle {from}): {err2}"
+                                )))
+                                .await;
+                            return;
+                        }
+                    }
+                }
+            }
+        } else {
+            match produce_briefing(
+                client.as_ref(),
+                &self.session.model,
+                &self.session.messages,
+                max_briefing_tokens,
+            )
+            .await
+            {
+                Ok(text) => text,
+                Err(err) => {
+                    crate::logging::warn(format!(
+                        "Cycle briefing turn failed; skipping cycle advance: {err}"
+                    ));
+                    let _ = self
+                        .tx_event
+                        .send(Event::status(format!(
+                            "鈫?cycle handoff failed (continuing in cycle {from}): {err}"
+                        )))
+                        .await;
+                    return;
+                }
+            }
+        };
+
+        let briefing_tokens = estimate_briefing_tokens(&briefing_text);
+        let now = chrono::Utc::now();
+        let briefing = CycleBriefing {
+            cycle: to,
+            timestamp: now,
+            briefing_text: briefing_text.clone(),
+            token_estimate: briefing_tokens,
+        };
+
+        // 2. Archive the cycle to disk. If the archive write fails we still
+        //    proceed with the swap 鈥?the briefing alone preserves enough
+        //    state to continue, and the user can recover the lost archive
+        //    from their session log if needed.
+        match archive_cycle(
+            &self.session.id,
+            to,
+            &self.session.messages,
+            &self.session.model,
+            archive_started,
+        ) {
+            Ok(path) => {
+                crate::logging::info(format!("Cycle {to} archived to {}", path.display()));
+            }
+            Err(err) => {
+                crate::logging::warn(format!(
+                    "Failed to archive cycle {to}; continuing with swap: {err}"
+                ));
+            }
+        }
+
+        // 3. Capture structured state. Locks are held only for the snapshot.
+        let state = StructuredState::capture(
+            mode.label(),
+            self.config.workspace.clone(),
+            std::env::current_dir().ok(),
+            &self.session.working_set,
+            &self.config.todos,
+            &self.config.plan_state,
+            Some(&self.subagent_manager),
+        )
+        .await;
+        let mut state_block = state.to_system_block();
+        if let Some(line) = scratchpad_flow::scratchpad_handoff_line(
+            &self.session.workspace,
+            self.scratchpad_run_id.as_deref(),
+        ) {
+            state_block = Some(match state_block {
+                Some(existing) => format!("{existing}\n\n{line}"),
+                None => line,
+            });
+        }
+
+        // 4. Build the seed messages. The next cycle starts with the
+        //    base system prompt (refreshed below) and these seeds.
+        let seed_messages = build_seed_messages(
+            state_block.as_deref(),
+            Some(&briefing),
+            None, // pending_user_message 鈥?pulled from steer/queue elsewhere
+        );
+
+        // 5. Atomic swap.
+        self.session.messages = seed_messages;
+        self.session.cycle_count = to;
+        self.session.current_cycle_started = now;
+        self.session.cycle_briefings.push(briefing.clone());
+        // Reset seam tracking for the new cycle.
+        if let Some(ref seam_mgr) = self.seam_manager {
+            seam_mgr.reset().await;
+        }
+        // Drop any compaction summary 鈥?that path is incompatible with the
+        // fresh-context model and would Frankenstein-merge with the briefing.
+        self.session.compaction_summary_prompt = None;
+        self.refresh_system_prompt(mode);
+        self.emit_session_updated().await;
+
+        let _ = self
+            .tx_event
+            .send(Event::CycleAdvanced {
+                from,
+                to,
+                briefing: briefing.clone(),
+            })
+            .await;
+        let _ = self
+            .tx_event
+            .send(Event::status(format!(
+                "鈫?context refreshed (cycle {from} 鈫?{to}, briefing: {briefing_tokens} tokens carried)"
+            )))
+            .await;
+    }
+
+    /// Refresh the system prompt based on current mode and context.
+    pub(super) fn refresh_system_prompt(&mut self, mode: AppMode) {
+        let user_memory_block =
+            crate::memory::compose_block(self.config.memory_enabled, &self.config.memory_path);
+        let base = prompts::system_prompt_for_mode_with_context_skills_session_and_approval(
+            mode,
+            &self.config.workspace,
+            None,
+            Some(&self.config.skills_dir),
+            Some(&self.config.instructions),
+            prompts::PromptSessionContext {
+                user_memory_block: user_memory_block.as_deref(),
+                goal_objective: self.config.goal_objective.as_deref(),
+                locale_tag: &self.config.locale_tag,
+                task_type: self.config.task_type,
+            },
+            self.session.approval_mode,
+        );
+        let stable_prompt =
+            merge_system_prompts(Some(&base), self.session.compaction_summary_prompt.clone());
+        let stable_hash = system_prompt_hash(stable_prompt.as_ref());
+        if self.session.last_system_prompt_hash != Some(stable_hash) {
+            self.session.system_prompt = stable_prompt;
+            self.session.last_system_prompt_hash = Some(stable_hash);
+        }
+    }
+
+    pub(super) fn merge_compaction_summary(&mut self, summary_prompt: Option<SystemPrompt>) {
+        if let Some(prompt) = summary_prompt {
+            self.session.compaction_summary_prompt = merge_system_prompts(
+                self.session.compaction_summary_prompt.as_ref(),
+                Some(prompt.clone()),
+            );
+            let merged = merge_system_prompts(self.session.system_prompt.as_ref(), Some(prompt));
+            self.session.last_system_prompt_hash = Some(system_prompt_hash(merged.as_ref()));
+            self.session.system_prompt = merged;
+        }
+
+        // C0: keep scratchpad L0 pointer in compaction summary (not full P2 layered text).
+        if let Some(scratchpad_l0) = scratchpad_flow::scratchpad_compaction_system_prompt(
+            &self.session.workspace,
+            self.scratchpad_run_id.as_deref(),
+            &self.config.scratchpad,
+        ) {
+            self.session.compaction_summary_prompt = merge_system_prompts(
+                self.session.compaction_summary_prompt.as_ref(),
+                Some(scratchpad_l0.clone()),
+            );
+            let merged =
+                merge_system_prompts(self.session.system_prompt.as_ref(), Some(scratchpad_l0));
+            self.session.last_system_prompt_hash = Some(system_prompt_hash(merged.as_ref()));
+            self.session.system_prompt = merged;
+        }
+    }
+}
+
+pub(super) fn system_prompt_hash(prompt: Option<&SystemPrompt>) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    match prompt {
+        Some(SystemPrompt::Text(text)) => {
+            0u8.hash(&mut hasher);
+            text.hash(&mut hasher);
+        }
+        Some(SystemPrompt::Blocks(blocks)) => {
+            1u8.hash(&mut hasher);
+            for block in blocks {
+                block.block_type.hash(&mut hasher);
+                block.text.hash(&mut hasher);
+                if let Some(cache_control) = &block.cache_control {
+                    cache_control.cache_type.hash(&mut hasher);
+                }
+            }
+        }
+        None => {
+            2u8.hash(&mut hasher);
+        }
+    }
+    hasher.finish()
+}
+

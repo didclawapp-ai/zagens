@@ -6,12 +6,13 @@
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::{fs::OpenOptions, io::Write};
 
 use serde_json::Value;
 
 use crate::tools::spec::{ToolContext, ToolProgressEmit};
-use deepseek_core::engine::EngineToolDispatch;
+use deepseek_core::engine::{
+    tool_progress_opening_line, tool_progress_phase_line, EngineToolDispatch,
+};
 
 use super::*;
 
@@ -76,22 +77,7 @@ impl Drop for InteractiveTerminalGuard {
     }
 }
 
-pub(super) fn emit_tool_audit(event: serde_json::Value) {
-    let Some(path) = std::env::var_os("DEEPSEEK_TOOL_AUDIT_LOG") else {
-        return;
-    };
-    let line = match serde_json::to_string(&event) {
-        Ok(line) => line,
-        Err(_) => return,
-    };
-    let path = PathBuf::from(path);
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
-        let _ = writeln!(file, "{line}");
-    }
-}
+pub(crate) use deepseek_core::engine::emit_tool_audit;
 
 async fn emit_tool_progress(tx: &mpsc::Sender<Event>, tool_call_id: &str, message: &str) {
     let text = message.trim_end_matches('\n');
@@ -105,56 +91,6 @@ async fn emit_tool_progress(tx: &mpsc::Sender<Event>, tool_call_id: &str, messag
             output: line,
         })
         .await;
-}
-
-fn tool_progress_opening_line(tool_name: &str, input: &Value) -> String {
-    match tool_name {
-        "write_file" | "edit_file" | "read_file" => match input.get("path").and_then(Value::as_str)
-        {
-            Some(p) if !p.is_empty() => format!("{tool_name} → {p}"),
-            _ => format!("{tool_name} …"),
-        },
-        "apply_patch" => "apply_patch → unified diff".to_string(),
-        "write_office" => {
-            let fmt = input.get("format").and_then(Value::as_str).unwrap_or("");
-            match input.get("path").and_then(Value::as_str) {
-                Some(p) if !p.is_empty() && !fmt.is_empty() => {
-                    format!("write_office ({fmt}) → {p}")
-                }
-                Some(p) if !p.is_empty() => format!("write_office → {p}"),
-                _ => "write_office …".to_string(),
-            }
-        }
-        "exec_shell" => match input.get("command").and_then(Value::as_str) {
-            Some(cmd) if cmd.len() > 120 => format!("exec_shell: {}…", &cmd[..120]),
-            Some(cmd) if !cmd.is_empty() => format!("exec_shell: {cmd}"),
-            _ => "exec_shell …".to_string(),
-        },
-        "task_shell_start" => match input.get("command").and_then(Value::as_str) {
-            Some(cmd) if cmd.len() > 120 => format!("task_shell_start: {}…", &cmd[..120]),
-            Some(cmd) if !cmd.is_empty() => format!("task_shell_start: {cmd}"),
-            _ => "task_shell_start …".to_string(),
-        },
-        "task_shell_wait" => match input.get("task_id").and_then(Value::as_str) {
-            Some(id) if !id.is_empty() => format!("task_shell_wait → {id}"),
-            _ => "task_shell_wait …".to_string(),
-        },
-        other => format!("{other} …"),
-    }
-}
-
-fn tool_progress_phase_line(tool_name: &str) -> &'static str {
-    match tool_name {
-        "write_file" => "Writing file and building diff preview…",
-        "edit_file" => "Reading target file and applying replacement…",
-        "apply_patch" => "Applying patch hunks to workspace…",
-        "read_file" => "Reading from disk…",
-        "write_office" => "Generating Office document (may take a few seconds)…",
-        "exec_shell" => "Running shell command…",
-        "task_shell_start" => "Starting background shell task…",
-        "task_shell_wait" => "Collecting task output…",
-        _ => "Executing tool…",
-    }
 }
 
 /// Bridges shell stdout/stderr polling to `Event::ToolCallProgress`.
@@ -402,107 +338,6 @@ impl Engine {
             Err(ToolError::not_available(format!(
                 "tool '{tool_name}' is not registered"
             )))
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-    use std::sync::Mutex;
-
-    /// Tests in this module mutate `DEEPSEEK_TOOL_AUDIT_LOG` which is
-    /// process-global; serialise through this guard so the parallel
-    /// runner doesn't observe interleaved env mutations.
-    static AUDIT_TEST_GUARD: Mutex<()> = Mutex::new(());
-
-    fn audit_test_guard() -> std::sync::MutexGuard<'static, ()> {
-        AUDIT_TEST_GUARD.lock().unwrap_or_else(|e| e.into_inner())
-    }
-
-    #[test]
-    fn emit_tool_audit_writes_jsonl_line_when_env_var_set() {
-        let _g = audit_test_guard();
-        let tmp = tempfile::tempdir().expect("tempdir");
-        let path = tmp.path().join("audit.log");
-        // SAFETY: serialised by the guard above.
-        unsafe {
-            std::env::set_var("DEEPSEEK_TOOL_AUDIT_LOG", &path);
-        }
-
-        emit_tool_audit(json!({
-            "event": "tool.spillover",
-            "tool_id": "call-abc",
-            "tool_name": "exec_shell",
-            "path": "/tmp/foo.txt",
-        }));
-        emit_tool_audit(json!({
-            "event": "tool.result",
-            "tool_id": "call-xyz",
-            "success": true,
-        }));
-
-        let body = std::fs::read_to_string(&path).expect("audit log written");
-        let lines: Vec<&str> = body.lines().collect();
-        assert_eq!(lines.len(), 2, "two emits → two lines");
-
-        // Each line round-trips as JSON, has the expected event key.
-        let first: serde_json::Value = serde_json::from_str(lines[0]).expect("first line is JSON");
-        assert_eq!(
-            first.get("event").and_then(|v| v.as_str()),
-            Some("tool.spillover")
-        );
-        assert_eq!(
-            first.get("tool_id").and_then(|v| v.as_str()),
-            Some("call-abc")
-        );
-
-        let second: serde_json::Value =
-            serde_json::from_str(lines[1]).expect("second line is JSON");
-        assert_eq!(
-            second.get("event").and_then(|v| v.as_str()),
-            Some("tool.result")
-        );
-
-        // SAFETY: cleanup under the guard.
-        unsafe {
-            std::env::remove_var("DEEPSEEK_TOOL_AUDIT_LOG");
-        }
-    }
-
-    #[test]
-    fn emit_tool_audit_is_noop_when_env_var_unset() {
-        let _g = audit_test_guard();
-        // SAFETY: serialised by the guard above.
-        unsafe {
-            std::env::remove_var("DEEPSEEK_TOOL_AUDIT_LOG");
-        }
-        // Should not panic and should not create any file. We can't
-        // assert "no file written" without knowing where one might be
-        // written, but the contract is "do nothing", which we verify
-        // by ensuring the call returns without error.
-        emit_tool_audit(json!({"event": "noop", "x": 1}));
-        // Successful return is the assertion.
-    }
-
-    #[test]
-    fn emit_tool_audit_creates_parent_directory() {
-        let _g = audit_test_guard();
-        let tmp = tempfile::tempdir().expect("tempdir");
-        // Path with a parent that doesn't exist yet — the writer
-        // should create it.
-        let nested = tmp.path().join("nested").join("dir").join("audit.log");
-        // SAFETY: serialised by the guard above.
-        unsafe {
-            std::env::set_var("DEEPSEEK_TOOL_AUDIT_LOG", &nested);
-        }
-        emit_tool_audit(json!({"event": "test"}));
-        assert!(nested.exists(), "writer should mkdir -p the parent chain");
-
-        // SAFETY: cleanup under the guard.
-        unsafe {
-            std::env::remove_var("DEEPSEEK_TOOL_AUDIT_LOG");
         }
     }
 }

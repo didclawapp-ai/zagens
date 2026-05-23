@@ -3,7 +3,9 @@
 use async_trait::async_trait;
 use deepseek_core::engine::{StartTurnParams, TurnEnginePort};
 
-use super::{EngineHandle, Op};
+use crate::core::ops::Op;
+
+use super::EngineHandle;
 use crate::tui::app::AppMode;
 
 fn parse_mode(mode: &str) -> AppMode {

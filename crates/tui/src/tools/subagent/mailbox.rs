@@ -20,101 +20,7 @@ use tokio::sync::{Mutex, mpsc, watch};
 use tokio_util::sync::CancellationToken;
 
 use crate::models::Usage;
-
-use super::SubAgentType;
-
-/// Stable, structured progress envelope shared across the sub-agent surface.
-///
-/// Tracks the lifecycle of a single agent (identified by `agent_id`) end to
-/// end: spawn, per-step progress, tool execution, completion / failure /
-/// cancellation, and parent → child topology so consumers can render trees.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum MailboxMessage {
-    /// Agent has been started (background task is running).
-    Started {
-        agent_id: String,
-        agent_type: String,
-    },
-    /// Free-form human-readable progress (mirrors `Event::AgentProgress`).
-    Progress { agent_id: String, status: String },
-    /// A tool call inside the agent has started.
-    ToolCallStarted {
-        agent_id: String,
-        tool_name: String,
-        step: u32,
-    },
-    /// A tool call inside the agent has finished.
-    ToolCallCompleted {
-        agent_id: String,
-        tool_name: String,
-        step: u32,
-        ok: bool,
-    },
-    /// A child agent was spawned by this agent.
-    ChildSpawned { parent_id: String, child_id: String },
-    /// Agent completed successfully (carries the summary line shown in the
-    /// transcript; full result is still available via `agent_result`).
-    Completed { agent_id: String, summary: String },
-    /// Agent failed with the carried error message.
-    Failed { agent_id: String, error: String },
-    /// Cancellation propagated to this agent.
-    Cancelled { agent_id: String },
-    /// Incremental token usage from a sub-agent's API call.
-    /// Published after each turn so the parent's cost counter updates live.
-    TokenUsage {
-        agent_id: String,
-        /// Model that produced this usage, used for pricing.
-        model: String,
-        /// Provider usage payload, including cache-hit/cache-miss fields.
-        usage: Usage,
-    },
-}
-
-impl MailboxMessage {
-    /// `agent_id` of the message subject (for `ChildSpawned` this is the
-    /// child, since that's the new lifecycle being announced).
-    #[must_use]
-    pub fn agent_id(&self) -> &str {
-        match self {
-            Self::Started { agent_id, .. }
-            | Self::Progress { agent_id, .. }
-            | Self::ToolCallStarted { agent_id, .. }
-            | Self::ToolCallCompleted { agent_id, .. }
-            | Self::Completed { agent_id, .. }
-            | Self::Failed { agent_id, .. }
-            | Self::Cancelled { agent_id }
-            | Self::TokenUsage { agent_id, .. } => agent_id,
-            Self::ChildSpawned { child_id, .. } => child_id,
-        }
-    }
-
-    pub(crate) fn started(agent_id: impl Into<String>, agent_type: SubAgentType) -> Self {
-        Self::Started {
-            agent_id: agent_id.into(),
-            agent_type: agent_type.as_str().to_string(),
-        }
-    }
-
-    pub(crate) fn progress(agent_id: impl Into<String>, status: impl Into<String>) -> Self {
-        Self::Progress {
-            agent_id: agent_id.into(),
-            status: status.into(),
-        }
-    }
-
-    pub(crate) fn token_usage(
-        agent_id: impl Into<String>,
-        model: impl Into<String>,
-        usage: Usage,
-    ) -> Self {
-        Self::TokenUsage {
-            agent_id: agent_id.into(),
-            model: model.into(),
-            usage,
-        }
-    }
-}
+pub use deepseek_core::subagent::MailboxMessage;
 
 /// One delivery: a sequence number plus the message. The sequence is
 /// monotonic across the entire mailbox (not per-agent) so a single ordering
@@ -267,6 +173,7 @@ pub type SharedMailbox = Arc<Mutex<Option<MailboxReceiver>>>;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tools::subagent::SubAgentType;
     use tokio::time::Duration;
 
     fn open() -> (Mailbox, MailboxReceiver, CancellationToken) {
@@ -412,7 +319,7 @@ mod tests {
     #[tokio::test]
     async fn agent_id_is_extractable_from_every_variant() {
         let cases: Vec<(MailboxMessage, &str)> = vec![
-            (MailboxMessage::started("a1", SubAgentType::General), "a1"),
+            (MailboxMessage::started("a1", SubAgentType::General.as_str()), "a1"),
             (MailboxMessage::progress("a2", "x"), "a2"),
             (
                 MailboxMessage::ToolCallStarted {

@@ -23,6 +23,8 @@ pub const STREAM_MAX_CONTENT_BYTES: usize = 10 * 1024 * 1024;
 pub const STREAM_MAX_DURATION_SECS: u64 = 1800;
 pub const MAX_STREAM_ERRORS_BEFORE_FAIL: u32 = 5;
 pub const MAX_TRANSPARENT_STREAM_RETRIES: u32 = 2;
+/// Outer turn-step retries when a stream dies with no actionable content (#103).
+pub const MAX_STREAM_RETRIES: u32 = 3;
 
 pub fn should_transparently_retry_stream(
     any_content_received: bool,

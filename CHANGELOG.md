@@ -29,6 +29,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Docs:** `docs/tech/adr/P2_PR4_SESSION_HANDOFF.md` — 新窗口继续 P2 PR4 / A4.6 / R-015 的对接说明。
 - **Runtime (P2 PR4 局部):** `deepseek-core::engine::{dispatch,context}`（工具 JSON/上下文预算/plan 策略）；tui 薄 re-export；`RegistryToolDispatch` 接线 `execute_tool_with_lock`；`Engine`/`turn_loop` 仍留 tui。
+- **Runtime (P2 PR4 局部):** `deepseek-core::engine::approval`（`await_tool_approval` / `recv_user_input_for_tool`、泛型 `ApprovalDecision<P>`）；tui `approval.rs` 薄壳（`UserInputRequired` 事件仍 L2）；core 加 `tokio`/`tokio-util`。
+- **Runtime (P2 PR4 局部):** `deepseek-core::engine::{tool_bridge,tool_progress}`（`ToolCall`↔`ToolOutput` 转换、`emit_tool_audit`、进度文案）；tui `tool_dispatch_port` / `tool_execution` 薄壳（`RegistryToolDispatch`、`InteractiveTerminalGuard`、MCP/进度仍 L2）。
+- **Runtime (P2 PR4 局部):** `deepseek-core::{events,error_taxonomy,coherence,user_input,subagent}` + tui re-export（`Event`/`ErrorEnvelope`/`CoherenceState`/`UserInputRequest`/subagent 类型）；`envelope_from_llm_error` 保留 tui（`LlmError` 孤儿规则）。
+- **Runtime (P2 PR4 局部):** `TurnContext`/`TurnLoopMode`/`StreamError` 迁入 `deepseek-core`；`TurnLoopHost` + `tool_phase.rs` / `streaming_phase.rs`；**`deepseek-core::engine::handle_deepseek_turn`**（generic `TurnLoopHost`）。
+- **Runtime (A4.6 局部):** `engine.rs` 拆出 `types.rs`（`EngineConfig`）、`handle.rs`、`engine_new.rs`、`engine_helpers.rs`、`session_messages.rs`、`mock.rs`；`engine.rs` ~618 → **~201 行**（达 PR4 spike **< 300** 目标）。
+- **Runtime (A4.6 局部):** `engine.rs` 拆出 `op_loop.rs`、`cycle_hooks.rs`、`message_handlers.rs`（`handle_send_message` / 手动 compaction）；`engine.rs` ~2177 → ~1220 行。
+- **Runtime (A4.6 局部):** `runtime_threads/thread_crud.rs`（create/list/get/update/fork/resume/seed 等）；`manager.rs` ~1673 → ~1032 行。
 - **Runtime (A4.6):** `runtime_threads/engine_load.rs`（`ensure_engine_loaded`）；`routing.rs` 路由读写。
 - **Runtime (tests):** `runtime_api` 测试显式隔离 `data_dir`，不再受工作区 `DEEPSEEK_RUNTIME_DIR` 污染。
 - **Runtime (A4.6):** `runtime_threads/routing.rs` 自 `manager.rs` 拆出路由规则读写。

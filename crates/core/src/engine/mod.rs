@@ -7,14 +7,22 @@
 //! **PR3:** `StartTurnParams` + `TurnEnginePort` — `RuntimeThreadManager::start_turn`
 //! validates and delegates through core before sending `Op::SendMessage`.
 
+pub mod approval;
 pub mod context;
 pub mod dispatch;
 pub mod loop_guard;
+pub mod tool_bridge;
+pub mod tool_progress;
+pub mod turn_loop;
 pub mod start_turn;
 pub mod streaming;
 mod tool_dispatch;
 mod turn_port;
 
+pub use approval::{
+    await_tool_approval, recv_user_input_for_tool, ApprovalDecision, ApprovalResult,
+    UserInputDecision,
+};
 pub use context::{
     compact_tool_result_for_context, context_input_budget, effective_max_output_tokens,
     estimate_input_tokens_conservative, extract_compaction_summary_prompt,
@@ -36,6 +44,19 @@ pub use streaming::{
     MAX_TRANSPARENT_STREAM_RETRIES, STREAM_CHUNK_TIMEOUT_SECS, STREAM_MAX_CONTENT_BYTES,
     STREAM_MAX_DURATION_SECS, TOOL_CALL_END_MARKERS, TOOL_CALL_START_MARKERS,
 };
+pub use tool_bridge::{
+    function_call_to_tool_error, tool_call_input, tool_name_is_mutating, tool_output_to_result,
+    tool_result_to_output, value_to_tool_call,
+};
 pub use tool_dispatch::EngineToolDispatch;
+pub use tool_progress::{
+    emit_tool_audit, tool_progress_opening_line, tool_progress_phase_line,
+};
+pub use turn_loop::{
+    build_edit_file_approval_desc, handle_deepseek_turn, messages_with_turn_metadata,
+    resolve_auto_effort, ToolExecOutcome, ToolExecutionPlan, TurnLoopConfigView, TurnLoopControl,
+    TurnLoopHost, TurnLoopStreamingPhaseOutcome, TurnLoopToolExec, TurnLoopToolPhaseOutcome,
+};
 pub use turn_port::TurnEnginePort;
+pub use crate::turn::{TurnContext, TurnLoopMode, TurnOutcomeStatus};
 pub use crate::session::{Session, SessionUsage};

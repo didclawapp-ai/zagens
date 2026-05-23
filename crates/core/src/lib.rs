@@ -7,6 +7,9 @@ use deepseek_agent::ModelRegistry;
 pub mod approval;
 pub mod capacity;
 pub mod chat;
+pub mod coherence;
+pub mod error_taxonomy;
+pub mod events;
 pub mod compaction;
 pub mod cycle;
 pub mod engine;
@@ -17,8 +20,10 @@ pub mod working_set;
 pub mod lsp;
 pub mod models;
 pub mod scratchpad;
+pub mod subagent;
 pub mod task_type;
 pub mod turn;
+pub mod user_input;
 pub mod workshop;
 
 #[cfg(test)]

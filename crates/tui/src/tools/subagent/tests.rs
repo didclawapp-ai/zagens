@@ -113,9 +113,9 @@ fn test_implementer_and_verifier_have_distinct_prompts() {
     // The whole point of adding the types is that they carry distinct
     // posture. Defensive guard: catch the easy bug where copy-paste
     // leaves two new variants with the same prompt as `General`.
-    let implementer = SubAgentType::Implementer.system_prompt();
-    let verifier = SubAgentType::Verifier.system_prompt();
-    let general = SubAgentType::General.system_prompt();
+    let implementer = super::subagent_system_prompt(&SubAgentType::Implementer);
+    let verifier = super::subagent_system_prompt(&SubAgentType::Verifier);
+    let general = super::subagent_system_prompt(&SubAgentType::General);
     assert_ne!(
         implementer, general,
         "Implementer prompt must differ from General"
@@ -150,7 +150,7 @@ fn test_implementer_allowed_tools_include_writes() {
     // can write/edit/patch even if today's runtime grants full
     // inheritance.
     #[allow(deprecated)]
-    let tools = SubAgentType::Implementer.allowed_tools();
+    let tools = super::subagent_allowed_tools(&SubAgentType::Implementer);
     assert!(tools.contains(&"write_file"));
     assert!(tools.contains(&"edit_file"));
     assert!(tools.contains(&"apply_patch"));
@@ -162,7 +162,7 @@ fn test_verifier_allowed_tools_include_test_runner_but_no_writes() {
     // its advisory list. The runtime will still gate writes through
     // approval, but the advisory list signals intent.
     #[allow(deprecated)]
-    let tools = SubAgentType::Verifier.allowed_tools();
+    let tools = super::subagent_allowed_tools(&SubAgentType::Verifier);
     assert!(tools.contains(&"run_tests"));
     assert!(tools.contains(&"diagnostics"));
     assert!(!tools.contains(&"write_file"));

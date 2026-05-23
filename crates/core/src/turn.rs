@@ -46,10 +46,88 @@ impl TurnToolCall {
     }
 }
 
+/// Application mode slice used by the turn loop (mirrors TUI `AppMode`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TurnLoopMode {
+    Agent,
+    Yolo,
+    Plan,
+}
+
+impl TurnLoopMode {
+    #[must_use]
+    pub const fn is_plan(self) -> bool {
+        matches!(self, Self::Plan)
+    }
+}
+
+/// Context for a single turn (user message + AI response).
+#[derive(Debug)]
+pub struct TurnContext {
+    pub id: String,
+    pub step: u32,
+    pub max_steps: u32,
+    pub tool_calls: Vec<TurnToolCall>,
+    pub cancelled: bool,
+    pub usage: crate::models::Usage,
+}
+
+impl TurnContext {
+    #[must_use]
+    pub fn new(max_steps: u32) -> Self {
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            step: 0,
+            max_steps,
+            tool_calls: Vec::new(),
+            cancelled: false,
+            usage: crate::models::Usage::default(),
+        }
+    }
+
+    pub fn next_step(&mut self) -> bool {
+        self.step += 1;
+        self.step <= self.max_steps
+    }
+
+    #[must_use]
+    pub fn at_max_steps(&self) -> bool {
+        self.step >= self.max_steps
+    }
+
+    pub fn record_tool_call(&mut self, call: TurnToolCall) {
+        self.tool_calls.push(call);
+    }
+
+    pub fn cancel(&mut self) {
+        self.cancelled = true;
+    }
+
+    pub fn add_usage(&mut self, usage: &crate::models::Usage) {
+        self.usage.input_tokens += usage.input_tokens;
+        self.usage.output_tokens += usage.output_tokens;
+        self.usage.prompt_cache_hit_tokens =
+            add_optional_usage(self.usage.prompt_cache_hit_tokens, usage.prompt_cache_hit_tokens);
+        self.usage.prompt_cache_miss_tokens =
+            add_optional_usage(self.usage.prompt_cache_miss_tokens, usage.prompt_cache_miss_tokens);
+        self.usage.reasoning_tokens =
+            add_optional_usage(self.usage.reasoning_tokens, usage.reasoning_tokens);
+    }
+}
+
+fn add_optional_usage(total: Option<u32>, delta: Option<u32>) -> Option<u32> {
+    match (total, delta) {
+        (Some(total), Some(delta)) => Some(total.saturating_add(delta)),
+        (None, Some(delta)) => Some(delta),
+        (Some(total), None) => Some(total),
+        (None, None) => None,
+    }
+}
+
 /// Lightweight turn step counter and tool-call log (no LLM dependency).
 ///
-/// The full `TurnContext` in `deepseek-tui` wraps additional fields
-/// (usage, snapshots) that are TUI-specific.
+/// Prefer [`TurnContext`] for the live engine loop; this remains for callers
+/// that only need step/tool-call tracking without usage aggregation.
 #[derive(Debug)]
 pub struct TurnState {
     pub id: String,

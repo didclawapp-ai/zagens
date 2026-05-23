@@ -1457,6 +1457,8 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror 2.0.17",
+ "tokio",
+ "tokio-util",
  "toml 0.9.11+spec-1.1.0",
  "uuid",
 ]
@@ -7170,6 +7172,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-sink",
+ "futures-util",
  "pin-project-lite",
  "tokio",
 ]

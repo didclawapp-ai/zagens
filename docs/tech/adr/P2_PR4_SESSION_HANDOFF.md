@@ -43,16 +43,38 @@
 | `dispatch` | JSON 解析、并行/MCP/plan 策略、`ToolParallelPlanFlags` |
 | `context` | 上下文预算、`compact_tool_result_for_context`、`summarize_text` |
 | `tool_dispatch` | **`EngineToolDispatch`** trait |
+| `approval` | `await_tool_approval` / `recv_user_input_for_tool`；泛型 `ApprovalDecision<P>` |
+| `tool_bridge` / `tool_progress` | `value_to_tool_call`、`function_call_to_tool_error`、`emit_tool_audit`、进度文案 |
+| `turn_loop` | `messages_with_turn_metadata`、`resolve_auto_effort`、`build_edit_file_approval_desc`；`TurnLoopConfigView` 脚手架 |
 | `start_turn` / `turn_port` | PR3 |
 
 **TUI 薄壳 / 接线：**
 
 - `crates/tui/src/core/engine/{loop_guard,streaming,context}.rs` → `pub use deepseek_core::...`
+- `crates/tui/src/core/engine/approval.rs` — **~41 行**薄壳（`UserInputRequired` 事件 + `SandboxPolicy` 类型别名）
+- `tool_dispatch_port.rs` — 仅 `RegistryToolDispatch`；`tool_execution.rs` — 终端 guard / MCP / `execute_tool_with_lock`
+- `deepseek-core::engine::turn_loop::run` — **`handle_deepseek_turn<H: TurnLoopHost>`**（外层步进）
+- `turn_loop/{mod,host_impl,streaming_phase,tool_phase}.rs`（tui）— L2 phase 实现 + `impl TurnLoopHost for Engine`
 - `dispatch.rs` — 保留 **`ToolExecutionPlan`**、`ToolExecGuard`、**`arg_repair`** 包装的 `parse_tool_input` / `final_tool_input`
 - `tool_dispatch_port.rs` — **`RegistryToolDispatch`**：`execute_tool_with_lock` 在无 progress/context 时走 trait；否则 `execute_full_with_context`
 - `turn_port.rs` — `EngineHandle` impl `TurnEnginePort`
 
-**粗行数（2026-05-22）：** `engine.rs` ~2177，`turn_loop.rs` ~2008 — **仍未达标 <300**。
+**粗行数（2026-05-23）：** `engine.rs` **~201**（✅ **< 300**）；`types.rs` ~150、`handle.rs` ~130、`engine_new.rs` ~210、`engine_helpers.rs` ~35、`session_messages.rs` ~25；`message_handlers.rs` ~418，`op_loop.rs` ~268，`cycle_hooks.rs` ~298；`manager.rs` ~829，`thread_crud.rs` ~648、`turn_lifecycle.rs` ~212；core `turn_loop/run.rs` ~230。
+
+**粗行数（2026-05-22）：** `engine.rs` ~1220 — 见上续拆。
+
+**P2 PR4 步骤 1–2（本会话续）：**
+- ✅ `Event` / `ErrorEnvelope` / subagent 等 → `deepseek-core`（tui re-export）
+- ✅ `TurnContext` / `TurnLoopMode` / `StreamError` → core
+- ✅ `TurnLoopHost` + `host_impl.rs`：`run_auto_compaction`、`handle_no_tool_uses`、`maybe_inject_scratchpad_reminder`
+- ✅ `ToolExecOutcome` / `ToolExecutionPlan` → `deepseek-core::engine::turn_loop::exec`
+- ✅ 工具执行批 → `run_tool_execution_phase` + `tool_phase.rs`；`TurnLoopToolRegistry` / `TurnLoopMcpPool`
+- ✅ 流式段 → `run_streaming_phase` + `streaming_phase.rs`；`TurnLoopStreamingPhaseOutcome`；`MAX_STREAM_RETRIES` 在 core
+- ✅ `handle_deepseek_turn` → **`deepseek-core::engine::turn_loop::run`**
+- ✅ **A4.6 局部** — `engine.rs` 拆出 `types` / `handle` / `engine_new` / `engine_helpers` / `session_messages` / `mock`；**~201 行（PR4 <300 达标）**
+- ✅ **A4.6 局部** — `op_loop.rs` + `cycle_hooks.rs` 从 `engine.rs` 拆出
+- ⏳ 继续拆 `manager.rs`；Desktop `TurnLoopHost`
+- ✅ `cargo test -p deepseek-tui --lib` → **2336 passed**
 
 ### P2 PR2（早前）
 
@@ -66,7 +88,8 @@
 | `runtime_threads/monitor.rs` | `monitor_turn` |
 | `runtime_threads/routing.rs` | 路由规则读写 |
 | `runtime_threads/engine_load.rs` | **`ensure_engine_loaded`** |
-| `manager.rs` | ~1670 行（自 ~2860 拆出） |
+| `manager.rs` | ~1032 行（turn 生命周期仍在内） |
+| `thread_crud.rs` | thread CRUD / fork / resume / seed |
 
 `RuntimeThreadManager` 上 **`config` / `task_manager` / `automations`** 已 `pub(crate)` 供 `engine_load` 使用。
 
@@ -74,7 +97,7 @@
 
 - `tool_kind_for_name` 必须 **非** `#[cfg(test)]` re-export（否则 `monitor.rs` 编译失败）
 - `runtime_api/tests.rs`：`spawn_test_server` **显式** `RuntimeThreadManagerConfig.data_dir`，勿依赖工作区 `DEEPSEEK_RUNTIME_DIR`
-- 最近：**`cargo test -p deepseek-tui --lib` → 2342 passed**
+- 最近：**`cargo test -p deepseek-tui --lib` → 2336 passed**；`cargo test -p deepseek-core engine::tool_` → 5 passed；`engine::approval` → 2 passed
 
 ### 文档
 
@@ -86,9 +109,9 @@
 ## 3. 仍未做（下一窗口优先级）
 
 1. **PR4 剩余（主战场）**  
-   - 仍在 tui：`engine.rs`、`turn_loop.rs`、`tool_catalog`、`tool_execution`、`approval`、`capacity_flow`、`tool_setup`、`scratchpad_flow`、`lsp_hooks`  
-   - `deepseek-core/Cargo.toml` 迁入完整 Engine 时需 **`tokio`** 等依赖  
-   - 可选路径见 spike §4.1：**先 `approval` + 端口化 `tool_execution`**，或 **`turn_loop.rs` 整文件迁 core**（单 PR 最大）
+   - 仍在 tui：`engine.rs`、`turn_loop/run.rs`（主体）、`tool_catalog`、`tool_execution`（锁/MCP/终端/并行）、`capacity_flow`、…  
+   - ~~`turn_loop` helpers~~ 已迁 core；**阻塞：** `Event` / `EngineConfig` 仍在 tui → `TurnLoopHost` 或 Event 平移后再迁 `run.rs`
+   - 下一刀：**A4.6** 瘦 `engine.rs`；Desktop `TurnLoopHost` 适配；R-015 长跑门
 
 2. **A4.6 可选** — 继续拆 `manager.rs`（turn CRUD、`create_thread` 等）
 
@@ -107,10 +130,11 @@ docs/tech/adr/RUNTIME_BASELINE.md
 scripts/runtime-longrun-baseline.ps1
 
 crates/core/src/engine/          # 已迁入模块
-crates/core/Cargo.toml           # 尚无 tokio（PR4 剩余要加）
+crates/core/Cargo.toml           # 已有 tokio/tokio-util（approval）；完整 Engine 可能还需更多 feature
 
 crates/tui/src/core/engine.rs
-crates/tui/src/core/engine/turn_loop.rs
+crates/tui/src/core/engine/turn_loop/run.rs
+crates/core/src/engine/turn_loop/
 crates/tui/src/core/engine/tool_dispatch_port.rs
 crates/tui/src/runtime_threads/manager.rs
 crates/tui/src/runtime_threads/engine_load.rs

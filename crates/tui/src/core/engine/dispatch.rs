@@ -21,31 +21,7 @@ pub use deepseek_core::engine::dispatch::{
 
 // === Types (stay in tui until Engine moves to core) ===================
 
-#[allow(dead_code)]
-pub(super) struct ToolExecOutcome {
-    pub(super) index: usize,
-    pub(super) id: String,
-    pub(super) name: String,
-    pub(super) input: serde_json::Value,
-    pub(super) started_at: std::time::Instant,
-    pub(super) result: Result<ToolResult, ToolError>,
-}
-
-#[derive(Debug, Clone)]
-pub(super) struct ToolExecutionPlan {
-    pub(super) index: usize,
-    pub(super) id: String,
-    pub(super) name: String,
-    pub(super) input: serde_json::Value,
-    pub(super) caller: Option<ToolCaller>,
-    pub(super) interactive: bool,
-    pub(super) approval_required: bool,
-    pub(super) approval_description: String,
-    pub(super) supports_parallel: bool,
-    pub(super) read_only: bool,
-    pub(super) blocked_error: Option<ToolError>,
-    pub(super) guard_result: Option<ToolResult>,
-}
+pub use deepseek_core::engine::turn_loop::{ToolExecOutcome, ToolExecutionPlan};
 
 #[derive(Debug, serde::Serialize)]
 pub(super) struct ParallelToolResultEntry {
