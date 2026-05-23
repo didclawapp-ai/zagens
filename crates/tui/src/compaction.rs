@@ -81,6 +81,22 @@ pub struct CompactionPlan {
     pub summarize_indices: Vec<usize>,
 }
 
+impl CompactionPlan {
+    /// Hot-window / cold-zone view for this plan (A1.1).
+    #[must_use]
+    pub fn context_partition(
+        &self,
+        messages: &[Message],
+        keep_recent: usize,
+    ) -> deepseek_core::context_partition::SessionContextPartition {
+        deepseek_core::context_partition::classify_session_messages(
+            messages,
+            keep_recent,
+            &self.pinned_indices,
+        )
+    }
+}
+
 fn path_regex() -> &'static Regex {
     static PATH_RE: OnceLock<Regex> = OnceLock::new();
     PATH_RE.get_or_init(|| {
@@ -1858,6 +1874,28 @@ mod tests {
         assert!(!plan.summarize_indices.contains(&1));
     }
 
+    #[test]
+    fn plan_compaction_context_partition_hot_cold() {
+        use deepseek_core::context_partition::{MessageContextTier, message_has_external_ref};
+
+        let messages = vec![
+            msg("user", "summarize me"),
+            msg(
+                "tool",
+                "[workshop-ref: {\"ref_id\":\"lout_test\"}]\n[workshop-synthesis: tool=read_file]\n\nsummary only",
+            ),
+            msg("user", "recent tail"),
+        ];
+        let plan = plan_compaction(&messages, None, 1, None, None);
+        let partition = plan.context_partition(&messages, 1);
+
+        assert_eq!(partition.hot.message_indices, vec![2]);
+        assert_eq!(partition.tiers[2], MessageContextTier::Hot);
+        assert_eq!(partition.cold.external_ref_indices, vec![1]);
+        assert_eq!(partition.tiers[1], MessageContextTier::ColdExternalRef);
+        assert!(message_has_external_ref(&message_text(&messages[1])));
+    }
+
     /// A1-MVP.2 — working-set pins survive LLM compaction (pin not summarized away).
     #[tokio::test]
     async fn compact_messages_preserves_working_set_pinned_message() {
@@ -1996,6 +2034,12 @@ mod tests {
         assert!(
             pinned_still_present,
             "compacted session must retain pinned message text (A1.4 isomorphism)"
+        );
+        assert!(
+            crate::tui::history_isomorphism::history_user_assistant_matches_messages(
+                &result.messages
+            ),
+            "compacted messages must round-trip through TUI history rebuild (A1.4)"
         );
     }
 

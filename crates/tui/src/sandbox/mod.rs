@@ -300,6 +300,42 @@ pub fn is_sandbox_available() -> bool {
     get_platform_sandbox().is_some()
 }
 
+/// User-facing notice when `sandbox_mode` declares policy but OS isolation is degraded (A6.2).
+///
+/// macOS with Seatbelt is fully enforced; Linux/Windows (and macOS without `sandbox-exec`)
+/// run in degraded mode — shell stderr also gets [`ExecEnv::sandbox_enforcement_warning`].
+#[must_use]
+pub fn policy_degraded_mode_notice() -> Option<&'static str> {
+    #[cfg(target_os = "macos")]
+    {
+        if seatbelt::is_available() {
+            return None;
+        }
+        return Some(
+            "Degraded mode: sandbox-exec (Seatbelt) is unavailable; sandbox_mode declares policy only.",
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let _ = landlock::is_available();
+        return Some(
+            "Degraded mode: Landlock rules are not enforced yet; sandbox_mode declares policy only.",
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let _ = windows::is_available();
+        return Some(
+            "Degraded mode: Windows sandbox is not enforced yet; sandbox_mode declares policy only.",
+        );
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    Some("Degraded mode: OS sandbox is not supported on this platform.")
+}
+
 /// Manager for sandbox operations.
 ///
 /// The `SandboxManager` is responsible for:

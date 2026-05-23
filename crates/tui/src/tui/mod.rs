@@ -20,6 +20,7 @@ pub mod file_picker;
 pub mod file_tree;
 pub mod frame_rate_limiter;
 pub mod history;
+pub mod history_isomorphism;
 pub mod keybindings;
 pub mod live_transcript;
 pub mod markdown_render;

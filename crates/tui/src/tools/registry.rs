@@ -139,7 +139,10 @@ impl ToolRegistry {
         let raw_bypass = input.get("raw").and_then(|v| v.as_bool()).unwrap_or(false);
 
         if let Some(router) = ctx.large_output_router.as_ref() {
-            use crate::tools::large_output_router::{LargeOutputRouter, RouteDecision};
+            use crate::tools::large_output_router::{
+                LargeOutputRouter, RouteDecision, persist_large_output_blob,
+                should_persist_large_output_for_namespace,
+            };
             match router.route(name, &result, raw_bypass) {
                 RouteDecision::PassThrough => {}
                 RouteDecision::Synthesise {
@@ -152,6 +155,23 @@ impl ToolRegistry {
                     } else {
                         None
                     };
+
+                    if let Some(ref ext) = external_ref {
+                        if should_persist_large_output_for_namespace(&ctx.state_namespace) {
+                            if let Err(err) = persist_large_output_blob(
+                                &ctx.state_namespace,
+                                ext,
+                                &result.content,
+                            ) {
+                                tracing::warn!(
+                                    session_id = %ctx.state_namespace,
+                                    ref_id = %ext.ref_id,
+                                    error = %err,
+                                    "failed to persist large tool output blob"
+                                );
+                            }
+                        }
+                    }
 
                     // Build a terse synthesis using the same model the registry
                     // was constructed for (workshop Flash model). For now we

@@ -142,6 +142,7 @@ pub(crate) use mock::{MockApprovalEvent, MockEngineHandle, mock_engine_handle};
 mod turn_port;
 mod capacity_flow;
 mod context_recovery;
+mod context_trim;
 mod layered_context;
 mod tool_context;
 mod cycle_hooks;

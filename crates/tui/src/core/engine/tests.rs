@@ -1666,6 +1666,16 @@ fn stream_retry_respects_cancellation() {
 }
 
 #[test]
+fn stream_retry_invalid_input_is_not_retryable() {
+    use deepseek_core::error_taxonomy::is_stream_failure_retryable;
+
+    assert!(!is_stream_failure_retryable(
+        "Missing reasoning_content field on assistant message with tool_calls"
+    ));
+    assert!(is_stream_failure_retryable("connection reset while reading body"));
+}
+
+#[test]
 fn stream_retry_threshold_relaxed_to_five() {
     // Case 1+4 from issue #103: the consecutive-error threshold for marking
     // the turn failed was relaxed from 3 → 5 in v0.6.7 because the new
@@ -1998,6 +2008,355 @@ async fn engine_llm_client_override_runs_mock_turn() {
 
     assert!(saw_complete, "mock LLM turn should emit TurnComplete");
     assert_eq!(mock.call_count(), 1, "mock client should receive one stream call");
+}
+
+/// A5.3 — full engine + mock LLM: manual compaction uses non-streaming client path.
+#[tokio::test]
+async fn engine_mock_manual_compaction_completes_with_canned_summary() {
+    use std::time::Duration;
+
+    use std::sync::Arc;
+
+    use crate::llm_client::mock::MockLlmClient;
+    use crate::models::{ContentBlock, Message, MessageResponse};
+
+    let mock = Arc::new(MockLlmClient::new(vec![]));
+    mock.push_message_response(MessageResponse {
+        id: "compact_summary".to_string(),
+        r#type: "message".to_string(),
+        role: "assistant".to_string(),
+        content: vec![ContentBlock::Text {
+            text: "summary of older turns".to_string(),
+            cache_control: None,
+        }],
+        model: "deepseek-v4-pro".to_string(),
+        stop_reason: Some("end_turn".to_string()),
+        stop_sequence: None,
+        container: None,
+        usage: Usage::default(),
+    });
+
+    let mut config = EngineConfig {
+        llm_client_override: Some(mock.clone()),
+        trust_mode: true,
+        ..Default::default()
+    };
+    config.compaction.enabled = true;
+
+    let (mut engine, handle) = Engine::new(config, &Config::default());
+    for i in 0..8 {
+        engine.session.messages.push(Message {
+            role: if i % 2 == 0 {
+                "user".to_string()
+            } else {
+                "assistant".to_string()
+            },
+            content: vec![ContentBlock::Text {
+                text: format!("history line {i}"),
+                cache_control: None,
+            }],
+        });
+    }
+    let messages_before = engine.session.messages.len();
+    assert!(
+        messages_before > crate::compaction::KEEP_RECENT_MESSAGES,
+        "fixture must exceed keep-recent window"
+    );
+
+    tokio::spawn(async move {
+        engine.run().await;
+    });
+
+    handle
+        .send(Op::CompactContext)
+        .await
+        .expect("compact op");
+
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+    let mut saw_compaction_complete = false;
+    let mut saw_turn_complete = false;
+    while tokio::time::Instant::now() < deadline {
+        let mut rx = handle.rx_event.write().await;
+        let Ok(Some(event)) = tokio::time::timeout(Duration::from_secs(2), rx.recv()).await else {
+            continue;
+        };
+        match event {
+            Event::CompactionCompleted { .. } => saw_compaction_complete = true,
+            Event::TurnComplete { .. } => saw_turn_complete = true,
+            _ => {}
+        }
+        if saw_compaction_complete && saw_turn_complete {
+            break;
+        }
+    }
+
+    assert!(saw_compaction_complete, "manual compaction should complete");
+    assert!(saw_turn_complete, "compaction op should finish the turn");
+    assert!(
+        mock.call_count() >= 1,
+        "compaction should call mock create_message at least once"
+    );
+}
+
+/// A5.3 — full engine + mock LLM: parallel read-only tool batch completes a turn.
+#[tokio::test]
+async fn engine_mock_parallel_readonly_tools_complete_turn() {
+    use std::time::Duration;
+
+    use std::sync::Arc;
+
+    use crate::llm_client::mock::{MockLlmClient, canned};
+    use crate::tui::approval::ApprovalMode;
+    use tempfile::tempdir;
+
+    let workspace = tempdir().expect("temp workspace");
+    let path_json = serde_json::to_string(workspace.path()).expect("path json");
+
+    let turn_tools = vec![
+        canned::message_start("msg_tools"),
+        canned::tool_use_block_start(0, "call_a", "list_dir"),
+        canned::tool_input_delta(0, &format!(r#"{{"path":{path_json}}}"#)),
+        canned::block_stop(0),
+        canned::tool_use_block_start(1, "call_b", "list_dir"),
+        canned::tool_input_delta(1, &format!(r#"{{"path":{path_json}}}"#)),
+        canned::block_stop(1),
+        canned::message_delta("tool_use", None),
+        canned::message_stop(),
+    ];
+    let turn_done = canned::simple_text_turn("listed both");
+
+    let mock = Arc::new(
+        MockLlmClient::new(vec![turn_tools, turn_done]).with_model("deepseek-v4-pro"),
+    );
+    let config = EngineConfig {
+        llm_client_override: Some(mock.clone()),
+        workspace: workspace.path().to_path_buf(),
+        trust_mode: true,
+        ..Default::default()
+    };
+    let (engine, handle) = Engine::new(config, &Config::default());
+    tokio::spawn(async move {
+        engine.run().await;
+    });
+
+    handle
+        .send(Op::SendMessage {
+            content: "list workspace twice".into(),
+            mode: AppMode::Agent,
+            model: "deepseek-v4-pro".into(),
+            goal_objective: None,
+            reasoning_effort: Some("high".into()),
+            reasoning_effort_auto: false,
+            auto_model: false,
+            allow_shell: false,
+            trust_mode: true,
+            auto_approve: true,
+            approval_mode: ApprovalMode::Auto,
+        })
+        .await
+        .expect("send message");
+
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
+    let mut saw_complete = false;
+    while tokio::time::Instant::now() < deadline {
+        let mut rx = handle.rx_event.write().await;
+        let Ok(Some(event)) = tokio::time::timeout(Duration::from_secs(2), rx.recv()).await else {
+            continue;
+        };
+        if matches!(event, Event::TurnComplete { .. }) {
+            saw_complete = true;
+            break;
+        }
+    }
+
+    assert!(saw_complete, "parallel tool turn should emit TurnComplete");
+    assert!(
+        mock.call_count() >= 2,
+        "tool round + final assistant reply should consume at least two LLM calls"
+    );
+}
+
+/// A5.3 — full engine + mock LLM: `Op::SpawnSubAgent` spawns background worker using injected client.
+#[tokio::test]
+async fn engine_mock_spawn_subagent_lists_running_agent() {
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use crate::llm_client::mock::{MockLlmClient, canned};
+
+    let canned_turns: Vec<_> = (0..4)
+        .map(|_| canned::simple_text_turn("subagent step complete"))
+        .collect();
+    let mock = Arc::new(MockLlmClient::new(canned_turns).with_model("deepseek-v4-pro"));
+    let config = EngineConfig {
+        llm_client_override: Some(mock.clone()),
+        trust_mode: true,
+        max_subagents: 4,
+        ..Default::default()
+    };
+    let (engine, handle) = Engine::new(config, &Config::default());
+    tokio::spawn(async move {
+        engine.run().await;
+    });
+
+    handle
+        .send(Op::SpawnSubAgent {
+            prompt: "summarize README".into(),
+        })
+        .await
+        .expect("spawn subagent");
+
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+    let mut saw_spawn_status = false;
+    while tokio::time::Instant::now() < deadline && !saw_spawn_status {
+        let mut rx = handle.rx_event.write().await;
+        let Ok(Some(event)) = tokio::time::timeout(Duration::from_secs(2), rx.recv()).await else {
+            continue;
+        };
+        if let Event::Status { message } = event {
+            if message.contains("Spawned sub-agent") {
+                saw_spawn_status = true;
+            }
+        }
+    }
+    assert!(saw_spawn_status, "spawn op should emit status with agent id");
+
+    handle
+        .send(Op::ListSubAgents)
+        .await
+        .expect("list subagents");
+
+    let list_deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    let mut listed = false;
+    while tokio::time::Instant::now() < list_deadline {
+        let mut rx = handle.rx_event.write().await;
+        let Ok(Some(event)) = tokio::time::timeout(Duration::from_secs(2), rx.recv()).await else {
+            continue;
+        };
+        if let Event::AgentList { agents } = event {
+            assert!(!agents.is_empty(), "list should include spawned sub-agent");
+            listed = true;
+            break;
+        }
+    }
+    assert!(listed, "ListSubAgents should emit AgentList");
+
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert!(
+        mock.call_count() >= 1,
+        "background sub-agent should call injected mock LLM at least once"
+    );
+}
+
+/// A5.3 — capacity pre-request checkpoint + injected mock LLM on a full engine turn.
+#[tokio::test]
+async fn engine_mock_capacity_pre_request_observes_mock_and_emits_decision() {
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use crate::llm_client::mock::{MockLlmClient, canned};
+    use crate::tui::approval::ApprovalMode;
+
+    let capacity = CapacityControllerConfig {
+        enabled: true,
+        low_risk_max: 0.0,
+        medium_risk_max: 1.0,
+        min_turns_before_guardrail: 0,
+        refresh_cooldown_turns: 0,
+        ..Default::default()
+    };
+    let mock = Arc::new(MockLlmClient::new(vec![canned::simple_text_turn("ok")]));
+    let config = EngineConfig {
+        llm_client_override: Some(mock.clone()),
+        capacity: capacity.clone(),
+        trust_mode: true,
+        compaction: CompactionConfig {
+            enabled: false,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    let (mut engine, handle) = Engine::new(config, &Config::default());
+    engine.config.capacity = capacity.clone();
+    engine.capacity_controller = CapacityController::new(capacity);
+    engine.turn_counter = 5;
+    engine
+        .capacity_controller
+        .mark_turn_start(engine.turn_counter);
+    engine.session.model = "deepseek-v3.2-128k".to_string();
+    engine.config.model = "deepseek-v3.2-128k".to_string();
+
+    let long = "x".repeat(5_000);
+    for _ in 0..900 {
+        engine.session.messages.push(Message {
+            role: "user".to_string(),
+            content: vec![ContentBlock::Text {
+                text: long.clone(),
+                cache_control: None,
+            }],
+        });
+    }
+
+    tokio::spawn(async move {
+        engine.run().await;
+    });
+
+    handle
+        .send(Op::SendMessage {
+            content: "continue".into(),
+            mode: AppMode::Agent,
+            model: "deepseek-v3.2-128k".into(),
+            goal_objective: None,
+            reasoning_effort: Some("high".into()),
+            reasoning_effort_auto: false,
+            auto_model: false,
+            allow_shell: false,
+            trust_mode: true,
+            auto_approve: true,
+            approval_mode: ApprovalMode::Auto,
+        })
+        .await
+        .expect("send message");
+
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(25);
+    let mut saw_capacity_decision = false;
+    let mut saw_complete = false;
+    while tokio::time::Instant::now() < deadline {
+        let mut rx = handle.rx_event.write().await;
+        let Ok(Some(event)) = tokio::time::timeout(Duration::from_secs(2), rx.recv()).await else {
+            continue;
+        };
+        match event {
+            Event::CapacityDecision { action, .. } if action.contains("targeted_context_refresh") => {
+                saw_capacity_decision = true;
+            }
+            Event::TurnComplete { .. } => {
+                saw_complete = true;
+                break;
+            }
+            _ => {}
+        }
+    }
+
+    assert!(
+        saw_capacity_decision,
+        "enabled capacity controller should emit CapacityDecision on pre-request checkpoint"
+    );
+    assert!(saw_complete, "turn should complete after capacity gate + mock stream");
+    assert!(
+        mock.call_count() >= 1,
+        "mock LLM should be invoked after capacity pre-request gate"
+    );
+    let captured = mock.captured_requests();
+    assert!(
+        !captured.is_empty(),
+        "capacity gate observation seam: mock must capture outgoing MessageRequest"
+    );
+    assert!(
+        captured.last().is_some_and(|r| !r.messages.is_empty()),
+        "stream request should include session messages after refresh trim"
+    );
 }
 
 #[tokio::test]

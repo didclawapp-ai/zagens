@@ -23,10 +23,9 @@ Coverage today exercises the trait surface end-to-end:
 - sub-agent style independent parent/child mocks
 - capacity-gate observation of a captured request before stream drain
 
-Four full-engine tests (`engine_full_*`) are `#[ignore]`-marked. They unblock
-when `core::engine::Engine` is refactored to take `Arc<dyn LlmClient>` instead
-of a concrete `Option<DeepSeekClient>`. See the comment block at the bottom of
-`integration_mock_llm.rs` for the exact refactor surface.
+Full-engine mock LLM tests live in `crates/tui/src/core/engine/tests.rs`
+(`engine_llm_client_override_runs_mock_turn`, compaction, parallel read-only
+tools) via `EngineConfig::llm_client_override` (A5.2 / A5.3).
 
 ## `--record` mode for `deepseek eval`
 

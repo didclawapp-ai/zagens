@@ -496,7 +496,7 @@ export default function RightPanel({
   }, []);
 
   return (
-    <div className="flex h-full max-h-screen shrink-0" aria-label={t('workbench.panelAria')}>
+    <div className="flex h-full max-h-screen shrink-0">
       <PanelEdgeSeam
         side="right"
         seamClass="chrome-seam-l"
@@ -526,6 +526,8 @@ export default function RightPanel({
         }}
       />
       <aside
+        role="complementary"
+        aria-label={t('workbench.panelAria')}
         className="flex min-w-0 shrink-0 flex-col bg-canvas overflow-hidden"
         style={{ width: panelWidth }}
       >

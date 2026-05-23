@@ -3855,6 +3855,10 @@ async fn run_interactive(
     }
     let config = &merged_config;
 
+    if let Some(notice) = crate::sandbox::policy_degraded_mode_notice() {
+        tracing::warn!(target: "sandbox", "{notice}");
+    }
+
     if !cli.skip_onboarding {
         match crate::config::ensure_config_file_exists(cli.config.clone()) {
             Ok(Some(path)) => logging::info(format!(
@@ -4142,6 +4146,7 @@ async fn run_exec_agent(
         task_type: crate::task_type::TaskType::Code,
         workshop: config.workshop.clone(),
         scratchpad: config.scratchpad_config(),
+        llm_client_override: None,
     };
 
     let engine_handle = spawn_engine(engine_config, config);

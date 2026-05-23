@@ -11,6 +11,7 @@
 //! may pass `raw=true` to bypass routing entirely.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -29,6 +30,11 @@ const CHARS_PER_TOKEN_ESTIMATE: usize = 3;
 
 /// Workshop variable name where the raw tool output is stored.
 pub const WORKSHOP_LAST_TOOL_RESULT_VAR: &str = "last_tool_result";
+
+/// Env override for tests: root directory instead of `~/.deepseek/sessions/…`.
+const LARGE_OUTPUT_ROOT_ENV: &str = "DEEPSEEK_LARGE_OUTPUT_ROOT";
+
+const LARGE_OUTPUT_PERSIST_SCHEMA_VERSION: u32 = 1;
 
 /// Stable external reference for routed large tool output (A1-MVP.1).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -55,6 +61,76 @@ impl LargeOutputExternalRef {
     pub fn to_json_line(&self) -> String {
         serde_json::to_string(self).unwrap_or_else(|_| "{}".to_string())
     }
+}
+
+/// On-disk metadata for a routed large tool output (A1.2 session isomorphism).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LargeOutputPersistRecord {
+    pub schema_version: u32,
+    pub external_ref: LargeOutputExternalRef,
+    pub session_id: String,
+    pub raw_bytes: usize,
+}
+
+/// Whether `state_namespace` is a durable session id (not the generic workspace scope).
+#[must_use]
+pub fn should_persist_large_output_for_namespace(namespace: &str) -> bool {
+    let ns = namespace.trim();
+    !ns.is_empty() && ns != "workspace"
+}
+
+/// Directory for large-output blobs for a session (`<sessions>/<session_id>/large_outputs/`).
+///
+/// Default sessions root: `~/.deepseek/sessions`. Tests may set `DEEPSEEK_LARGE_OUTPUT_ROOT`
+/// to a temp directory (used as the sessions root, not the home dir).
+#[must_use]
+pub fn large_output_dir(session_id: &str) -> PathBuf {
+    let sessions_base = std::env::var_os(LARGE_OUTPUT_ROOT_ENV)
+        .map(PathBuf::from)
+        .or_else(|| dirs::home_dir().map(|h| h.join(".deepseek").join("sessions")))
+        .unwrap_or_else(|| PathBuf::from(".deepseek").join("sessions"));
+    sessions_base.join(session_id).join("large_outputs")
+}
+
+/// Write raw tool output + JSON metadata; returns the metadata path.
+pub fn persist_large_output_blob(
+    session_id: &str,
+    external_ref: &LargeOutputExternalRef,
+    raw: &str,
+) -> std::io::Result<PathBuf> {
+    let dir = large_output_dir(session_id);
+    std::fs::create_dir_all(&dir)?;
+    let raw_path = dir.join(format!("{}.txt", external_ref.ref_id));
+    std::fs::write(&raw_path, raw)?;
+    let record = LargeOutputPersistRecord {
+        schema_version: LARGE_OUTPUT_PERSIST_SCHEMA_VERSION,
+        external_ref: external_ref.clone(),
+        session_id: session_id.to_string(),
+        raw_bytes: raw.len(),
+    };
+    let meta_path = dir.join(format!("{}.json", external_ref.ref_id));
+    std::fs::write(&meta_path, serde_json::to_string(&record).unwrap())?;
+    Ok(meta_path)
+}
+
+/// Load persisted metadata for a workshop ref id.
+pub fn load_large_output_persist_record(
+    session_id: &str,
+    ref_id: &str,
+) -> std::io::Result<LargeOutputPersistRecord> {
+    let path = large_output_dir(session_id).join(format!("{ref_id}.json"));
+    let raw = std::fs::read_to_string(path)?;
+    serde_json::from_str(&raw).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+}
+
+/// Parse `[workshop-ref: {json}]` from a tool-result message body.
+#[must_use]
+pub fn parse_workshop_ref_from_message(message: &str) -> Option<LargeOutputExternalRef> {
+    message.lines().find_map(|line| {
+        let line = line.trim();
+        let json = line.strip_prefix("[workshop-ref: ")?.trim_end_matches(']');
+        serde_json::from_str(json).ok()
+    })
 }
 
 // ── Token estimation ──────────────────────────────────────────────────────────
@@ -366,5 +442,46 @@ mod tests {
         assert!(wrapped.contains("5000"));
         assert!(wrapped.contains("key facts here"));
         assert!(wrapped.contains(&external_ref.ref_id));
+    }
+
+    #[test]
+    fn should_persist_skips_workspace_namespace() {
+        assert!(!should_persist_large_output_for_namespace("workspace"));
+        assert!(!should_persist_large_output_for_namespace(""));
+        assert!(should_persist_large_output_for_namespace("sess_abc"));
+    }
+
+    #[test]
+    fn large_output_persist_round_trip() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        // SAFETY: single-threaded test; env cleared before return.
+        unsafe { std::env::set_var(LARGE_OUTPUT_ROOT_ENV, tmp.path()) };
+
+        let session_id = "sess_test_roundtrip";
+        let raw = "payload-".repeat(800);
+        let external_ref = LargeOutputExternalRef::new("read_file", raw.chars().count());
+        persist_large_output_blob(session_id, &external_ref, &raw).expect("persist");
+
+        let wrapped = LargeOutputRouter::wrap_synthesis(
+            "read_file",
+            "summary",
+            5000,
+            4096,
+            Some(&external_ref),
+        );
+        let parsed =
+            parse_workshop_ref_from_message(&wrapped).expect("workshop-ref line in synthesis");
+        assert_eq!(parsed.ref_id, external_ref.ref_id);
+
+        let record =
+            load_large_output_persist_record(session_id, &parsed.ref_id).expect("load meta");
+        assert_eq!(record.schema_version, LARGE_OUTPUT_PERSIST_SCHEMA_VERSION);
+        assert_eq!(record.session_id, session_id);
+        assert_eq!(record.raw_bytes, raw.len());
+
+        let raw_path = large_output_dir(session_id).join(format!("{}.txt", parsed.ref_id));
+        assert_eq!(std::fs::read_to_string(raw_path).expect("raw blob"), raw);
+
+        unsafe { std::env::remove_var(LARGE_OUTPUT_ROOT_ENV) };
     }
 }

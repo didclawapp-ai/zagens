@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Runtime (A3.3):** Stream transparent/outer retries consult `is_stream_failure_retryable` — `InvalidInput` / auth errors no longer burn retry budget; network/timeouts still retry.
 - **Runtime (A3):** `classify_error_message` recognizes DeepSeek thinking/reasoning constraint strings as `InvalidInput` (distinct from network disconnect); golden suite centralized in `deepseek-core::error_taxonomy`.
 - **Desktop (approval):** `approval_policy` from system settings now drives Composer `auto_approve` on load/save; sidecar `start_turn` reads `ApprovalMode` from config (`never` / `on-request` / `auto`) instead of hardcoding Suggest.
 - **Desktop (F3):** Composer card markup — options/bridge/textarea/actions stay inside `.card` (removed premature close that left input chrome outside the card).
@@ -30,6 +31,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Runtime (A1.6 / R-015):** Full baseline @ `8b1538a` — median RSS **29 MB** (3×50 + 1.1 MB fixture, `-Gate` PASS vs 28.5 MB); ADR + `deliverables/runtime-baseline-full-run.log` updated.
+- **Runtime (A1-full):** Emergency trim (`trim_oldest_messages_to_budget`) uses hot/cold partition — drops `ColdSummary` first, preserves hot / pinned / `[workshop-ref]` messages; `context_trim::trim_messages_partition_aware`.
+- **Desktop (A6.2):** Sandbox settings on non-macOS show explicit **degraded mode** copy (`settings.sandboxDegradedMode`).
+- **Runtime (A6.2):** TUI logs `policy_degraded_mode_notice()` once at interactive startup when OS sandbox is degraded.
 - **Desktop (F1a):** `TerminalCard` appends `tool.progress` to xterm incrementally instead of full clear+rewrite each frame.
 - **Desktop (F1b):** `MessageBubble` shows `DiffCard` while diff tools are still running when unified diff appears in streamed output.
 - **Desktop (F3):** Escape stops active generation when focus is outside inputs.
@@ -37,7 +42,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Runtime (A1.4):** `tui/history_isomorphism` — user/assistant transcript parity with `history_cells_from_message`; tests after compaction, trim, and JSONL reconstruct.
+- **Runtime (A1.1):** `deepseek_core::context_partition` — hot window / cold zone tiers (`Hot`, `Pinned`, `ColdSummary`, `ColdExternalRef`); `CompactionPlan::context_partition`.
+- **Runtime (A1.2):** Large tool output blobs persist under `~/.deepseek/sessions/<session_id>/large_outputs/` (`persist_large_output_blob`, workshop-ref round-trip test); registry hooks on routed synthesis when `state_namespace` is a session id.
+- **Docs (A6.1):** `docs/tech/SANDBOX_CAPABILITY_MATRIX.md` — macOS / Linux / Windows enforcement vs policy-declaration matrix.
 - **Runtime (A5.2):** `EngineConfig::llm_client_override` — inject `Arc<dyn LlmClient>` for mock-LLM engine tests (`engine_llm_client_override_runs_mock_turn`).
+- **Runtime (A5.3):** Full-engine mock integration tests — compaction, parallel read-only tools, subagent spawn/list, capacity pre-request + mock LLM (`engine_mock_capacity_pre_request_observes_mock_and_emits_decision`).
+- **Desktop (F3):** App shell Tab order — Composer before chat in DOM (flex `order` preserves layout); `main`/`aside` landmarks; `role="complementary"` on right panel.
+- **Desktop (A+.5):** `runtime_proxy` path allowlist regression tests (`/health`, `/v1/*`; reject traversal and non-v1 prefixes).
+- **Runtime (A1.2):** `large_output_tool_item_detail_matches_jsonl_and_persisted_blob` — turn item `detail`, JSONL `item.completed`, and `large_outputs/` blob agree on workshop-ref.
+- **Runtime (A1.4):** `reconstruct_messages_matches_jsonl_item_completed_details` — turn-item reconstruct vs JSONL `item.completed` user-visible text isomorphism.
 - **Runtime (A1.4):** `compact_messages_safe_preserves_pinned_text_in_result_messages` — compaction pin isomorphism regression.
 - **Runtime (P2):** `Op::ApproveToolCall` / `DenyToolCall` route through `tx_approval` (same channel as `EngineHandle`).
 - **Desktop (A+.3):** `KNOWN_DESKTOP_SSE_EVENTS` + `streamNormalize.selfcheck.ts` — unknown SSE events return `null`.

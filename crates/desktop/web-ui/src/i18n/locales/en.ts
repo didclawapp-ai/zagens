@@ -17,6 +17,7 @@ const en: TranslationMap = {
     sidebarNav: 'Session and navigation',
     composerOptionsToolbar: 'Composer options',
     composerActionsToolbar: 'Composer actions',
+    composerRegion: 'Message composer',
   },
   sidebar: {
     showAllSessions: 'Show all sessions',
@@ -471,6 +472,8 @@ const en: TranslationMap = {
     sandboxWorkspace: 'Workspace Write',
     sandboxFullAccess: 'Full Access',
     sandboxNotEnforced: 'Sandbox isolation is not yet enforced on this platform; this setting controls policy declaration only.',
+    sandboxDegradedMode:
+      'Degraded mode: OS sandbox isolation is not fully enforced on this platform. sandbox_mode declares policy only; shell runs with normal user privileges until platform backends ship.',
     approvalPolicy: 'Approval Policy',
     approvalOnRequest: 'On Request',
     approvalUntrusted: 'Untrusted Only',

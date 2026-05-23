@@ -1,6 +1,6 @@
 //! RLM turns and emergency context recovery / token budgeting.
 
-use deepseek_core::engine::context::count_oldest_messages_to_drain;
+use super::context_trim::trim_messages_partition_aware;
 
 use super::*;
 
@@ -112,15 +112,14 @@ impl Engine {
     }
 
     pub(super) fn trim_oldest_messages_to_budget(&mut self, target_input_budget: usize) -> usize {
-        let drain = count_oldest_messages_to_drain(
-            &self.session.messages,
+        trim_messages_partition_aware(
+            &mut self.session.messages,
             self.session.system_prompt.as_ref(),
             target_input_budget,
-        );
-        if drain > 0 {
-            self.session.messages.drain(0..drain);
-        }
-        drain
+            &self.session.workspace,
+            &self.session.working_set,
+            self.scratchpad_run_id.as_deref(),
+        )
     }
 
     pub(super) async fn recover_context_overflow(

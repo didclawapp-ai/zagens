@@ -15,7 +15,7 @@ use deepseek_core::engine::turn_loop::{
     messages_with_turn_metadata, resolve_auto_effort, TurnLoopControl, TurnLoopHost,
     TurnLoopStreamingPhaseOutcome,
 };
-use deepseek_core::error_taxonomy::{ErrorEnvelope, StreamError};
+use deepseek_core::error_taxonomy::{ErrorEnvelope, StreamError, is_stream_failure_retryable};
 use deepseek_core::turn::{TurnContext, TurnLoopMode, TurnOutcomeStatus};
 use futures_util::StreamExt;
 use serde_json::json;
@@ -254,7 +254,8 @@ loop {
                 any_content_received,
                 transparent_stream_retries,
                 engine.cancel_token.is_cancelled(),
-            ) {
+            ) && is_stream_failure_retryable(&message)
+            {
                 transparent_stream_retries =
                     transparent_stream_retries.saturating_add(1);
                 crate::logging::info(format!(
@@ -531,7 +532,11 @@ let stream_died_with_nothing = stream_errors > 0
     && current_thinking.trim().is_empty()
     && !pending_message_complete;
 if stream_died_with_nothing {
-    if *stream_retry_attempts < MAX_STREAM_RETRIES {
+    let outer_retry_ok = turn_error
+        .as_deref()
+        .map(is_stream_failure_retryable)
+        .unwrap_or(true);
+    if outer_retry_ok && *stream_retry_attempts < MAX_STREAM_RETRIES {
         *stream_retry_attempts = stream_retry_attempts.saturating_add(1);
         crate::logging::warn(format!(
             "Stream died with no content (attempt {}/{}); retrying request",

@@ -328,6 +328,25 @@ pub fn classify_error_message(message: &str) -> ErrorCategory {
     ErrorCategory::Internal
 }
 
+/// Whether a stream failure should consume transparent / outer retry budget (A3.3).
+///
+/// Business-invalid requests (thinking constraints, auth) must not be silently
+/// re-issued; transient network/proxy issues may be.
+#[must_use]
+pub fn is_stream_failure_retryable(message: &str) -> bool {
+    match classify_error_message(message) {
+        ErrorCategory::Network | ErrorCategory::Timeout | ErrorCategory::RateLimit => true,
+        ErrorCategory::InvalidInput
+        | ErrorCategory::Authentication
+        | ErrorCategory::Authorization
+        | ErrorCategory::Parse
+        | ErrorCategory::Tool
+        | ErrorCategory::State => false,
+        // Decode/proxy hiccups surface as internal; still worth retrying when no content landed.
+        ErrorCategory::Internal => true,
+    }
+}
+
 impl From<deepseek_tools::ToolError> for ErrorEnvelope {
     fn from(value: deepseek_tools::ToolError) -> Self {
         match value {
@@ -657,5 +676,15 @@ mod tests {
         }
         .into();
         assert_eq!(e.category, ErrorCategory::Authorization);
+    }
+
+    #[test]
+    fn stream_retry_policy_network_vs_invalid_input() {
+        assert!(is_stream_failure_retryable("connection reset by peer"));
+        assert!(is_stream_failure_retryable("502 Bad Gateway"));
+        assert!(!is_stream_failure_retryable(
+            "Missing reasoning_content on assistant tool message"
+        ));
+        assert!(!is_stream_failure_retryable("401 unauthorized"));
     }
 }

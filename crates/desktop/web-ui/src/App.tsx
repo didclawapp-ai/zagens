@@ -2151,17 +2151,12 @@ export default function App() {
         tabIndex={-1}
         className="flex min-h-0 flex-1 flex-col min-w-0 bg-card outline-none"
       >
-        <ChatView
-          messages={messages}
-          workspaceRoot={selectedWorkspace}
-          desktopHost={desktopHost}
-          onOpenWorkspacePath={handleChatOpenWorkspacePath}
-          onRevealWorkspacePath={revealWorkspaceFileInDirectory}
-          onOpenDiffInPanel={openDiffInPanel}
-          onRetryMessage={(content) =>
-            handleSend({ displayContent: content, apiPrompt: content })
-          }
-        />
+        {/* F3 — DOM order: composer before transcript so Tab reaches input after sidebar
+            without traversing every message control; flex `order` keeps chat-on-top layout. */}
+        <section
+          className="order-2 shrink-0"
+          aria-label={t('a11y.composerRegion')}
+        >
         <Composer
           onSend={handleSend}
           onCancel={handleCancelStream}
@@ -2209,6 +2204,23 @@ export default function App() {
               : undefined
           }
         />
+        </section>
+        <section
+          className="order-1 flex min-h-0 min-w-0 flex-1 flex-col"
+          aria-label={t('a11y.chatLog')}
+        >
+          <ChatView
+            messages={messages}
+            workspaceRoot={selectedWorkspace}
+            desktopHost={desktopHost}
+            onOpenWorkspacePath={handleChatOpenWorkspacePath}
+            onRevealWorkspacePath={revealWorkspaceFileInDirectory}
+            onOpenDiffInPanel={openDiffInPanel}
+            onRetryMessage={(content) =>
+              handleSend({ displayContent: content, apiPrompt: content })
+            }
+          />
+        </section>
       </main>
       {/* right panel toggle strip */}
       {!rightPanelCollapsed && (

@@ -15,6 +15,7 @@ const zhHans = {
     sidebarNav: '会话与导航',
     composerOptionsToolbar: '输入区选项',
     composerActionsToolbar: '输入区操作',
+    composerRegion: '消息输入区',
   },
   sidebar: {
     showAllSessions: '显示全部会话',
@@ -466,6 +467,8 @@ const zhHans = {
     sandboxWorkspace: '工作区可写',
     sandboxFullAccess: '完全访问',
     sandboxNotEnforced: '当前平台沙箱隔离尚未完全生效；此选项控制策略声明，实际执行依赖后续版本。',
+    sandboxDegradedMode:
+      '降级模式：当前平台尚未强制 OS 级沙箱隔离。sandbox_mode 仅作策略声明，命令仍以普通用户权限执行，完整隔离待后续版本提供。',
     approvalPolicy: '审批策略',
     approvalOnRequest: '按需审批',
     approvalUntrusted: '仅不受信任',

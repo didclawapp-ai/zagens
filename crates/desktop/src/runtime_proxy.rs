@@ -53,7 +53,7 @@ pub struct RuntimeHttpResponse {
     pub body: String,
 }
 
-fn validate_runtime_path(path: &str) -> Result<(), String> {
+pub(crate) fn validate_runtime_path(path: &str) -> Result<(), String> {
     let p = path.trim();
     if p.is_empty() || !p.starts_with('/') {
         return Err("path 必须以 / 开头".to_string());
@@ -229,4 +229,51 @@ pub async fn runtime_get_sse(
             .map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_runtime_path;
+
+    #[test]
+    fn allows_health_and_v1_prefix_paths() {
+        for path in [
+            "/health",
+            "/v1/sessions",
+            "/v1/threads/thr_1",
+            "/v1/threads/thr_1/turns",
+            "/v1/stream",
+            "/v1/usage",
+            "/v1/apps/mcp/servers",
+            "/v1/symbol-index/rebuild",
+        ] {
+            validate_runtime_path(path)
+                .unwrap_or_else(|e| panic!("expected allow {path:?}, got {e}"));
+        }
+    }
+
+    #[test]
+    fn rejects_non_v1_and_traversal_paths() {
+        let cases = [
+            ("", "empty"),
+            ("v1/sessions", "missing leading slash"),
+            ("/api/v1/sessions", "wrong prefix"),
+            ("/v2/sessions", "v2"),
+            ("/admin", "admin"),
+            ("/v1/../etc/passwd", "dot-dot"),
+            ("/v1/foo/../../../bar", "embedded dot-dot"),
+        ];
+        for (path, label) in cases {
+            assert!(
+                validate_runtime_path(path).is_err(),
+                "expected reject ({label}): {path:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn trims_whitespace_before_validation() {
+        validate_runtime_path("  /health  ").expect("trimmed /health");
+        assert!(validate_runtime_path("  /evil  ").is_err());
+    }
 }

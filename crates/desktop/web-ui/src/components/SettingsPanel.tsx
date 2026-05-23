@@ -188,7 +188,7 @@ export default function SettingsPanel({
                 <option value="full-access">{t('settings.sandboxFullAccess')}</option>
               </select>
               {platform !== 'darwin' && (
-                <p className="text-[11px] text-t-text-muted mt-0.5">{t('settings.sandboxNotEnforced')}</p>
+                <p className="text-[11px] text-t-text-muted mt-0.5">{t('settings.sandboxDegradedMode')}</p>
               )}
             </label>
 

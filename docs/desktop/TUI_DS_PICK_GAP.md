@@ -97,7 +97,7 @@
 
 1. ~~**Terminal 集成（xterm.js）**~~ — ✅ `TerminalCard` + 增量 `tool.progress`（F1a）。
 2. ~~**Diff 可视化（diff2html）**~~ — ✅ `DiffCard` + 右栏 Diff 面板（F1b）；运行中 diff 预览 2026-05-23。
-3. **快捷键 & 无障碍** — 🟡 Skip link、`#main-content`、工具/diff aria、focus-visible、reduced-motion；Tab 顺序仍待系统化。
+3. **快捷键 & 无障碍** — 🟡 Skip link、`#main-content`、工具/diff aria、focus-visible、reduced-motion；**Tab 顺序**已系统化（侧栏 → Composer → 对话 → 右栏，`App.tsx` flex `order` + landmarks）。
 4. ~~**资源管理器中打开工作区**~~ — ✅ `open_in_shell` Tauri command。
 5. ~~**导出会话 JSON**~~ — ✅ Composer 菜单 + `export_session_json` / `export_thread_json`。
 6. **内联编辑 / 智能粘贴** — 与后端「改历史消息」能力对齐后再做。

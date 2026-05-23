@@ -629,3 +629,250 @@ pub(super) fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<
         .with_context(|| format!("Failed to write {}", path.display()))
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::runtime_threads::types::{
+        RuntimeEventRecord, TurnItemKind, TurnItemLifecycleStatus, TurnItemRecord, TurnRecord,
+    };
+    use crate::runtime_threads::CURRENT_EVENT_SCHEMA_VERSION;
+    use crate::runtime_threads::RuntimeTurnStatus;
+    use chrono::Utc;
+    use serde_json::json;
+
+    fn temp_store() -> (tempfile::TempDir, RuntimeThreadStore) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = RuntimeThreadStore::open_json_only(dir.path().to_path_buf()).expect("open store");
+        (dir, store)
+    }
+
+    fn user_item(turn_id: &str, item_id: &str, text: &str) -> TurnItemRecord {
+        TurnItemRecord {
+            schema_version: CURRENT_EVENT_SCHEMA_VERSION,
+            id: item_id.to_string(),
+            turn_id: turn_id.to_string(),
+            kind: TurnItemKind::UserMessage,
+            status: TurnItemLifecycleStatus::Completed,
+            summary: text.to_string(),
+            detail: Some(text.to_string()),
+            metadata: None,
+            artifact_refs: Vec::new(),
+            started_at: Some(Utc::now()),
+            ended_at: Some(Utc::now()),
+        }
+    }
+
+    fn agent_item(turn_id: &str, item_id: &str, text: &str) -> TurnItemRecord {
+        TurnItemRecord {
+            schema_version: CURRENT_EVENT_SCHEMA_VERSION,
+            id: item_id.to_string(),
+            turn_id: turn_id.to_string(),
+            kind: TurnItemKind::AgentMessage,
+            status: TurnItemLifecycleStatus::Completed,
+            summary: text.to_string(),
+            detail: Some(text.to_string()),
+            metadata: None,
+            artifact_refs: Vec::new(),
+            started_at: Some(Utc::now()),
+            ended_at: Some(Utc::now()),
+        }
+    }
+
+    fn message_visible_text(message: &Message) -> String {
+        message
+            .content
+            .iter()
+            .filter_map(|block| match block {
+                ContentBlock::Text { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("")
+    }
+
+    fn jsonl_item_detail(event: &RuntimeEventRecord) -> Option<String> {
+        if event.event != "item.completed" {
+            return None;
+        }
+        let kind = event.payload.get("item")?.get("kind")?.as_str()?;
+        if kind != "user_message" && kind != "agent_message" {
+            return None;
+        }
+        event
+            .payload
+            .get("item")?
+            .get("detail")?
+            .as_str()
+            .map(str::to_string)
+    }
+
+    /// A1.4 — persisted turn items, JSONL `item.completed`, and `reconstruct_messages` agree.
+    #[tokio::test]
+    async fn reconstruct_messages_matches_jsonl_item_completed_details() {
+        let (_dir, store) = temp_store();
+        let thread_id = "thr_iso";
+        let turn_id = "turn_iso";
+
+        let user = user_item(turn_id, "item_user", "hello from user");
+        let agent = agent_item(turn_id, "item_agent", "hello from agent");
+        store.save_item(&user).expect("save user item");
+        store.save_item(&agent).expect("save agent item");
+
+        let turn = TurnRecord {
+            schema_version: CURRENT_EVENT_SCHEMA_VERSION,
+            id: turn_id.to_string(),
+            thread_id: thread_id.to_string(),
+            status: RuntimeTurnStatus::Completed,
+            input_summary: "hello from user".to_string(),
+            created_at: Utc::now(),
+            started_at: Some(Utc::now()),
+            ended_at: Some(Utc::now()),
+            duration_ms: Some(1),
+            usage: None,
+            last_request_input_tokens: None,
+            error: None,
+            item_ids: vec![user.id.clone(), agent.id.clone()],
+            steer_count: 0,
+        };
+        store.save_turn(&turn).expect("save turn");
+
+        for item in [&user, &agent] {
+            let kind = match item.kind {
+                TurnItemKind::UserMessage => "user_message",
+                TurnItemKind::AgentMessage => "agent_message",
+                _ => "status",
+            };
+            store
+                .append_event(
+                    thread_id,
+                    Some(turn_id),
+                    Some(item.id.as_str()),
+                    "item.completed",
+                    json!({
+                        "item": {
+                            "id": item.id,
+                            "kind": kind,
+                            "detail": item.detail,
+                        }
+                    }),
+                )
+                .await
+                .expect("append jsonl event");
+        }
+
+        let turns = store.list_turns_for_thread(thread_id).expect("list turns");
+        let reconstructed = reconstruct_messages_for_store(&store, &turns).expect("reconstruct");
+        let reconstructed_texts: Vec<String> = reconstructed.iter().map(message_visible_text).collect();
+
+        let events = store.events_since(thread_id, None).expect("read jsonl");
+        let jsonl_texts: Vec<String> = events.iter().filter_map(jsonl_item_detail).collect();
+
+        assert_eq!(
+            reconstructed_texts,
+            vec![
+                "hello from user".to_string(),
+                "hello from agent".to_string()
+            ]
+        );
+        assert_eq!(jsonl_texts, reconstructed_texts);
+        assert!(
+            crate::tui::history_isomorphism::history_user_assistant_matches_messages(
+                &reconstructed
+            ),
+            "reconstructed messages must round-trip through TUI history rebuild"
+        );
+    }
+
+    /// A1.2 — large-output synthesis in turn item `detail` matches JSONL and on-disk blob.
+    #[tokio::test]
+    async fn large_output_tool_item_detail_matches_jsonl_and_persisted_blob() {
+        use crate::tools::large_output_router::{
+            LargeOutputExternalRef, LargeOutputRouter, load_large_output_persist_record,
+            parse_workshop_ref_from_message, persist_large_output_blob,
+        };
+
+        let (_dir, store) = temp_store();
+        let thread_id = "thr_lout";
+        let turn_id = "turn_lout";
+        let session_id = "sess_lout_iso";
+
+        let raw = "line\n".repeat(1200);
+        let external_ref = LargeOutputExternalRef::new("read_file", raw.chars().count());
+        persist_large_output_blob(session_id, &external_ref, &raw).expect("persist blob");
+
+        let wrapped = LargeOutputRouter::wrap_synthesis(
+            "read_file",
+            "condensed preview",
+            5000,
+            4096,
+            Some(&external_ref),
+        );
+
+        let tool_item = TurnItemRecord {
+            schema_version: CURRENT_EVENT_SCHEMA_VERSION,
+            id: "item_tool".to_string(),
+            turn_id: turn_id.to_string(),
+            kind: TurnItemKind::ToolCall,
+            status: TurnItemLifecycleStatus::Completed,
+            summary: "read_file: condensed".to_string(),
+            detail: Some(wrapped.clone()),
+            metadata: None,
+            artifact_refs: Vec::new(),
+            started_at: Some(Utc::now()),
+            ended_at: Some(Utc::now()),
+        };
+        store.save_item(&tool_item).expect("save tool item");
+
+        let turn = TurnRecord {
+            schema_version: CURRENT_EVENT_SCHEMA_VERSION,
+            id: turn_id.to_string(),
+            thread_id: thread_id.to_string(),
+            status: RuntimeTurnStatus::Completed,
+            input_summary: "run read".to_string(),
+            created_at: Utc::now(),
+            started_at: Some(Utc::now()),
+            ended_at: Some(Utc::now()),
+            duration_ms: Some(1),
+            usage: None,
+            last_request_input_tokens: None,
+            error: None,
+            item_ids: vec![tool_item.id.clone()],
+            steer_count: 0,
+        };
+        store.save_turn(&turn).expect("save turn");
+
+        store
+            .append_event(
+                thread_id,
+                Some(turn_id),
+                Some(tool_item.id.as_str()),
+                "item.completed",
+                json!({ "item": tool_item }),
+            )
+            .await
+            .expect("append jsonl");
+
+        let events = store.events_since(thread_id, None).expect("events");
+        let jsonl_detail = events
+            .iter()
+            .find(|ev| ev.event == "item.completed")
+            .and_then(|ev| ev.payload.get("item"))
+            .and_then(|item| item.get("detail"))
+            .and_then(|d| d.as_str())
+            .expect("jsonl item detail");
+
+        assert_eq!(jsonl_detail, wrapped);
+
+        let loaded = store.load_item(&tool_item.id).expect("load item");
+        assert_eq!(loaded.detail.as_deref(), Some(wrapped.as_str()));
+
+        let parsed = parse_workshop_ref_from_message(jsonl_detail).expect("workshop-ref");
+        assert_eq!(parsed.ref_id, external_ref.ref_id);
+
+        let record =
+            load_large_output_persist_record(session_id, &parsed.ref_id).expect("persist record");
+        assert_eq!(record.external_ref.ref_id, external_ref.ref_id);
+        assert_eq!(record.raw_bytes, raw.len());
+    }
+}
+

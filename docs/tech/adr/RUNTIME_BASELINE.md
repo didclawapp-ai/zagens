@@ -16,7 +16,7 @@
 
 | 字段 | 值 |
 |------|-----|
-| Git ref | `10972e4`（全量 3×50 + 1.1 MB fixture；2026-05-23） |
+| Git ref | `8b1538a`（全量 3×50 + 1.1 MB fixture + A1 热/冷 trim；2026-05-23） |
 | 日期 | 2026-05-23 |
 | 平台 | Windows 10 x64（维护者机） |
 
@@ -24,7 +24,7 @@
 
 | 指标 | 中位数 | 单位 | 备注 |
 |------|--------|------|------|
-| 进程 RSS 峰值 | **28.5** | MB | 全量 HTTP @ `10972e4`，`deepseek-v4-pro`，50 turn×3 run 中位数；含 1.1 MB `read_file` fixture turn；A1 过渡门禁：不得劣化 **>10%**（对上一行基线） |
+| 进程 RSS 峰值 | **29** | MB | 全量 HTTP @ `8b1538a`，`deepseek-v4-pro`，50 turn×3 run 中位数；含 1.1 MB `read_file` fixture turn；`-Gate` PASS vs 28.5 MB @ `10972e4`（+10% 门限 31.4 MB）；log `deliverables/runtime-baseline-full-run.log` |
 | 落盘 p99 | **0.16** | ms | **dry-run** 磁盘读代理（20× synthetic JSON @ `ab4c3c4`）；全量 HTTP 隔离目录多为 SQLite → 读代理 **0**（见历史表） |
 
 ## 脚本与复现
@@ -33,8 +33,9 @@
 |----|-------------|
 | 基准脚本 | [`scripts/runtime-longrun-baseline.ps1`](../../../scripts/runtime-longrun-baseline.ps1) |
 | 全量（RSS + HTTP turns） | `$env:DEEPSEEK_API_KEY = '…'; .\scripts\runtime-longrun-baseline.ps1 -Runs 3`（或 `api_key` 写在 `~/.deepseek/config.toml` 时脚本自动读取） |
-| RSS 回归门（A1 过渡） | `.\scripts\runtime-longrun-baseline.ps1 -Runs 3 -Gate` — 中位数 RSS 不得高于 ADR 基线 **+10%**（默认读上表 **26.6 MB**；可用 `-BaselineRssMB` / `-MaxRegressionPct` 覆盖） |
+| RSS 回归门（A1 过渡） | `.\scripts\runtime-longrun-baseline.ps1 -Runs 3 -Gate` — 中位数 RSS 不得高于 ADR 基线 **+10%**（当前基线 **29 MB**；可用 `-BaselineRssMB` / `-MaxRegressionPct` 覆盖） |
 | 无 API key（仅磁盘代理） | `.\scripts\runtime-longrun-baseline.ps1 -DryRun -Runs 3`（CI ubuntu job 亦跑此步） |
+| A1-full 离线自检（热/冷 trim） | `cargo test -p deepseek-tui trim_preserves_workshop_ref --lib` |
 | 环境变量 | `DEEPSEEK_RUNTIME_TOKEN`（脚本随机生成）、`DEEPSEEK_RUNTIME_DIR`（隔离 data dir）、`DEEPSEEK_MODEL`（可选） |
 
 ## Crash-safe checkpoint（A1.3）
@@ -50,6 +51,7 @@
 
 | 日期 | Ref | RSS 峰值 | 落盘 p99 | 说明 |
 |------|-----|----------|----------|------|
+| 2026-05-23 | 8b1538a | **29** MB | 0 ms (HTTP) | 全量 3×50 + 1.1 MB fixture（A1 热/冷 trim 后）；`-Gate` PASS vs 28.5 MB @ `10972e4`；log `deliverables/runtime-baseline-full-run.log` |
 | 2026-05-23 | 10972e4 | **28.5** MB | 0 ms (HTTP) | 全量 3×50 + 1.1 MB fixture；`-Gate` PASS vs 26.6 MB @ ab4c3c4；log `deliverables/runtime-baseline-full-run.log` |
 | 2026-05-22 | ab4c3c4 | **26.6** MB | 0 ms (HTTP) / 0.16 ms (dry) | 全量 3×50 turn，`DEEPSEEK_RUNTIME_DIR` 隔离；模型 `deepseek-v4-pro`；脚本 release + turn 轮询等待 |
 | 2026-05-22 | ab4c3c4 | — | 0.16 ms | dry-run @ ab4c3c4（首版 dry 填数） |
