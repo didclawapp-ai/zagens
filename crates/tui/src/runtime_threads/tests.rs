@@ -191,6 +191,10 @@ use super::*;
         // Locks the bump in (issue #124). Bump deliberately when persisted
         // shape changes.
         assert_eq!(CURRENT_RUNTIME_SCHEMA_VERSION, 2);
+        assert_eq!(
+            super::CURRENT_EVENT_SCHEMA_VERSION,
+            CURRENT_RUNTIME_SCHEMA_VERSION
+        );
     }
 
     #[test]

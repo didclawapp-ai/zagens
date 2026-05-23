@@ -40,6 +40,10 @@ pub(crate) const SUMMARY_LIMIT: usize = 280;
 /// session written by v2 wouldn't know about the cycle archive directory and
 /// might misinterpret message counts; bumping is the safe choice.
 const CURRENT_RUNTIME_SCHEMA_VERSION: u32 = 2;
+
+/// Stable SSE / HTTP compat surface version (`API_DESIGN.md` §3.2.1).
+/// Persisted `RuntimeEventRecord.schema_version` uses the same numeric value.
+pub const CURRENT_EVENT_SCHEMA_VERSION: u32 = CURRENT_RUNTIME_SCHEMA_VERSION;
 pub(crate) const RUNTIME_RESTART_REASON: &str = "Interrupted by process restart";
 
 mod active;

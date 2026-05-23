@@ -282,6 +282,10 @@ async fn health_and_tasks_endpoints_work() -> Result<()> {
         .json()
         .await?;
     assert_eq!(health["status"], "ok");
+    assert_eq!(
+        health["event_schema_version"],
+        crate::runtime_threads::CURRENT_EVENT_SCHEMA_VERSION
+    );
 
     let created: serde_json::Value = client
         .post(format!("http://{addr}/v1/tasks"))
@@ -1895,6 +1899,10 @@ async fn sidecar_contract_full_lifecycle() -> Result<()> {
         .json()
         .await?;
     assert_eq!(health["status"], "ok");
+    assert_eq!(
+        health["event_schema_version"],
+        crate::runtime_threads::CURRENT_EVENT_SCHEMA_VERSION
+    );
 
     // 2. Create thread
     let thread: serde_json::Value = client

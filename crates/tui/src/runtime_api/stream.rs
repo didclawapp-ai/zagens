@@ -25,6 +25,7 @@ pub(super) fn runtime_event_payload(
     event: crate::runtime_threads::RuntimeEventRecord,
 ) -> serde_json::Value {
     json!({
+        "event_schema_version": event.schema_version,
         "seq": event.seq,
         "timestamp": event.timestamp,
         "thread_id": event.thread_id,
@@ -688,6 +689,17 @@ mod tests {
                 "missing event: {ev}"
             );
         }
+    }
+
+    #[test]
+    fn runtime_event_payload_includes_event_schema_version() {
+        let r = record("turn.started", json!({"turn": {"id": "t1"}}));
+        let payload = runtime_event_payload(r);
+        assert_eq!(
+            payload["event_schema_version"],
+            crate::runtime_threads::CURRENT_EVENT_SCHEMA_VERSION
+        );
+        assert_eq!(payload["event"], "turn.started");
     }
 
     // ── Boundary / negative cases ──────────────────────────────────────

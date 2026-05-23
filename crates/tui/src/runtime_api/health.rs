@@ -4,6 +4,8 @@ use axum::extract::State;
 use axum::Json;
 use serde::Serialize;
 
+use crate::runtime_threads::CURRENT_EVENT_SCHEMA_VERSION;
+
 use super::RuntimeApiState;
 
 #[derive(Debug, Serialize)]
@@ -11,6 +13,7 @@ pub(crate) struct HealthResponse {
     status: &'static str,
     service: &'static str,
     mode: &'static str,
+    event_schema_version: u32,
 }
 
 #[derive(Debug, Serialize)]
@@ -27,6 +30,7 @@ pub(crate) async fn health() -> Json<HealthResponse> {
         status: "ok",
         service: "deepseek-runtime-api",
         mode: "local",
+        event_schema_version: CURRENT_EVENT_SCHEMA_VERSION,
     })
 }
 

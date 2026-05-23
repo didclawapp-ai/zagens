@@ -222,7 +222,8 @@ x-deepseek-runtime-token: <runtime_token>
 {
   "status": "ok",
   "service": "deepseek-runtime-api",
-  "mode": "local"
+  "mode": "local",
+  "event_schema_version": 2
 }
 ```
 
