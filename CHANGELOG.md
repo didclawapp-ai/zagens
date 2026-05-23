@@ -27,9 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Docs:** G2/PR5 手测签收（2026-05-23）：§0.4 health、§1 单窗、§3 双窗并行、§5.1 Stop；审批 UI 暂缓（`approval_policy` ↔ `auto_approve` 接线债）。
 - **Runtime (PR5 局部):** 双 thread 并行 turn 回归测（`parallel_turns_on_two_threads_overlap_then_complete`、`sidecar_parallel_turns_on_two_threads`）；`app-server` `Message` 仍 queued 占位（注释 SSOT）。
 - **Runtime (G2 门控):** `CURRENT_EVENT_SCHEMA_VERSION`；`GET /health` 与 SSE payload 暴露 `event_schema_version`（A+.4b）。
 - **Runtime (tests):** A5.5 完整回放 fixture `runtime_turn_replay.jsonl`（15 步：thinking/tool/approval/完成）。
+- **Docs:** `docs/tech/adr/G2_PR5_MANUAL_SMOKE_CHECKLIST.md` — G2/PR5 桌面与多窗口手测勾选清单。
 - **Docs:** `docs/tech/adr/G2_GATE_ACCEPTANCE.md` — G2 自动化验收记录与维护者待办。
 - **Docs:** `docs/tech/adr/P2_PR4_SESSION_HANDOFF.md` — 新窗口继续 P2 PR4 / A4.6 / R-015 的对接说明。
 - **Runtime (P2 PR4 局部):** `deepseek-core::engine::{dispatch,context}`（工具 JSON/上下文预算/plan 策略）；tui 薄 re-export；`RegistryToolDispatch` 接线 `execute_tool_with_lock`；`Engine`/`turn_loop` 仍留 tui。
