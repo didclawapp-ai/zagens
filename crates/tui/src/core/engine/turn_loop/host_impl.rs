@@ -19,10 +19,11 @@ use deepseek_tools::{ToolError, ToolResult};
 use serde_json::Value;
 use tokio::sync::{mpsc, Mutex as AsyncMutex, RwLock};
 
-use super::super::tool_catalog::{
-    active_tools_for_step, ensure_advanced_tooling, execute_code_execution_tool,
-    execute_tool_search, initial_active_tools, maybe_activate_requested_deferred_tool,
+use deepseek_core::engine::tool_catalog::{
+    active_tools_for_step, ensure_advanced_tooling, execute_tool_search, initial_active_tools,
+    maybe_activate_requested_deferred_tool,
 };
+use super::super::tool_catalog::execute_code_execution_tool;
 use super::super::scratchpad_flow;
 use super::Engine;
 use crate::compaction::{compact_messages_safe, should_compact};

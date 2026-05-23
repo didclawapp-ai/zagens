@@ -12,6 +12,7 @@ pub mod context;
 pub mod dispatch;
 pub mod loop_guard;
 pub mod tool_bridge;
+pub mod tool_catalog;
 pub mod tool_progress;
 pub mod turn_loop;
 pub mod start_turn;
@@ -47,6 +48,13 @@ pub use streaming::{
 pub use tool_bridge::{
     function_call_to_tool_error, tool_call_input, tool_name_is_mutating, tool_output_to_result,
     tool_result_to_output, value_to_tool_call,
+};
+pub use tool_catalog::{
+    active_tools_for_step, apply_mcp_tool_deferral, apply_native_tool_deferral,
+    build_model_tool_catalog, ensure_advanced_tooling, execute_tool_search, initial_active_tools,
+    is_tool_search_tool, maybe_activate_requested_deferred_tool, missing_tool_error_message,
+    should_default_defer_tool, CODE_EXECUTION_TOOL_NAME, MULTI_TOOL_PARALLEL_NAME,
+    REQUEST_USER_INPUT_NAME, TOOL_SEARCH_BM25_NAME,
 };
 pub use tool_dispatch::EngineToolDispatch;
 pub use tool_progress::{

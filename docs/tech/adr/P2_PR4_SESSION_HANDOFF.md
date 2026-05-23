@@ -12,7 +12,7 @@
 在 **不新建 `runtime` crate** 的前提下，把 **Engine 可复用逻辑** 迁入 `deepseek-core`，TUI/Desktop 保留 **L2 壳**（`RuntimeThreadManager`、`runtime_api`、`ToolRegistry` 实现）。并行做 **A4.6** 拆分大文件，以及 **R-015** 长跑 RSS 基线。
 
 **PR4 spike 收官标准（engine 壳）：** `crates/tui/src/core/engine.rs` **< 300 行** — **✅ 已达标（~201 行 @ `3264419`）**。  
-**PR4 仍开放：** `tool_catalog`/`tool_execution` 等 L2 模块仍在 tui；Desktop 经 sidecar 已满足 `TurnLoopHost`（见 [P2_DESKTOP_TURNLOOP_SPIKE.md](./P2_DESKTOP_TURNLOOP_SPIKE.md)）。
+**PR4 仍开放：** `tool_execution` 等 L2 执行路径仍在 tui；Desktop 经 sidecar 已满足 `TurnLoopHost`（见 [P2_DESKTOP_TURNLOOP_SPIKE.md](./P2_DESKTOP_TURNLOOP_SPIKE.md)）。
 
 ---
 
@@ -67,6 +67,7 @@
 | `engine/turn_loop/{host_impl,streaming_phase,tool_phase}.rs` | **`impl TurnLoopHost for Engine`** + 两阶段 L2 |
 | `engine/turn_port.rs` | `EngineHandle: TurnEnginePort` |
 | `engine/dispatch.rs` | **`arg_repair`** 包装的 `parse_tool_input` / `final_tool_input`（勿绕过） |
+| `engine/tool_catalog.rs` | `AppMode` 适配 + `code_execution` L2（策略在 core `tool_catalog`） |
 | `engine/tool_dispatch_port.rs` | `RegistryToolDispatch` |
 | `engine/tool_execution.rs` | 终端 guard / MCP / `execute_tool_with_lock` |
 | `engine/capacity_flow/{checkpoints,observation,events,interventions,replay,persistence}.rs` | 最大 ~344 行 — checkpoint / 干预 / replay / 持久化 |
@@ -101,7 +102,7 @@ deepseek-core::engine::handle_deepseek_turn<H: TurnLoopHost>
 
 ## 3. 仍未做（下一窗口优先级）
 
-1. **PR4 深迁** — `tool_catalog` / `tool_execution`（MCP/终端/LSP 仍 L2 阻塞）
+1. **PR4 — `tool_execution` 端口化**（MCP/终端/LSP 仍 L2）
 
 2. **R-015 可选** — 1MB 工具 RSS；真实 store HTTP p99；回归门
 
@@ -182,17 +183,17 @@ cargo test -p deepseek-tui --lib
 - ✅ A4.6：`thread_crud` / `turn_lifecycle` / engine 子模块拆分
 - ✅ A4.6：`turn_control.rs`；`manager.rs` ~589 行
 - ✅ A4.6：`capacity_flow/{checkpoints,observation,events,interventions,replay,persistence}.rs`
-- ✅ P2 Desktop：`TurnLoopHost` 经 sidecar（[P2_DESKTOP_TURNLOOP_SPIKE.md](./P2_DESKTOP_TURNLOOP_SPIKE.md)）
-- ⏳ PR4 深迁 `tool_catalog` / `tool_execution`
+- ✅ `deepseek-core::engine::tool_catalog`；tui 保留 `code_execution` / `AppMode`
+- ⏳ `tool_execution` 深迁（MCP/终端仍 L2）
 
 **请先做：**
 ```powershell
 cd F:\DeepSeek-TUI-desktop
+cargo test -p deepseek-core tool_catalog::
 cargo test -p deepseek-tui --lib
-cargo test -p deepseek-desktop
 ```
-确认通过后下一刀：
-- **优先 A：** PR4 深迁 `tool_catalog` / `tool_execution`
+下一刀：
+- **优先 A：** `tool_execution` 端口化
 - **优先 B：** A5.5 / A+.4 门控 fixture
 
 **约束：** 最小 diff；`CHANGELOG.md` 记用户可见变更；用户未要求时不 commit；保留 canonicalize/路径安全；`final_tool_input` 保留 tui `arg_repair`。
