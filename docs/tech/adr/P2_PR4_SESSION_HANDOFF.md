@@ -1,6 +1,6 @@
-# P2 PR4 / R-015 / A4.6 — 新会话对接（2026-05-22）
+# P2 PR4 / R-015 / A4.6 — 新会话对接（2026-05-23）
 
-> **用途：** 在新 Cursor 窗口继续本方案时，把本文 + 下方「复制给 Agent 的提示」一并贴上。  
+> **用途：** 在新 Cursor 窗口继续本方案时，把本文 + 下方 **§7「复制给 Agent 的提示」** 一并贴上。  
 > **权威路线图：** [RUNTIME_EVOLUTION_ROADMAP.md](../RUNTIME_EVOLUTION_ROADMAP.md) §11–12、§17  
 > **迁移笔记：** [P2_MIGRATION_SPIKE.md](./P2_MIGRATION_SPIKE.md)  
 > **基线 ADR：** [RUNTIME_BASELINE.md](./RUNTIME_BASELINE.md)
@@ -9,115 +9,107 @@
 
 ## 1. 我们在做什么
 
-在 **不新建 `runtime` crate** 的前提下，把 **Engine 可复用逻辑** 迁入 `deepseek-core`，TUI/Desktop 保留 **L2 壳**（`RuntimeThreadManager`、`runtime_api`、`ToolRegistry` 实现）。并行做 **A4.6** 拆分 `manager.rs`，以及 **R-015** 长跑 RSS 基线。
+在 **不新建 `runtime` crate** 的前提下，把 **Engine 可复用逻辑** 迁入 `deepseek-core`，TUI/Desktop 保留 **L2 壳**（`RuntimeThreadManager`、`runtime_api`、`ToolRegistry` 实现）。并行做 **A4.6** 拆分大文件，以及 **R-015** 长跑 RSS 基线。
 
-**PR4 收官标准（spike）：** `crates/tui/src/core/engine.rs` **< 300 行**（仅 `spawn_engine` / `EngineHandle` / re-export）；`turn_loop` + `Engine` 主体在 core。
+**PR4 spike 收官标准（engine 壳）：** `crates/tui/src/core/engine.rs` **< 300 行** — **✅ 已达标（~201 行 @ `3264419`）**。  
+**PR4 仍开放：** `tool_catalog`/`tool_execution` 等 L2 模块仍在 tui；Desktop `TurnLoopHost` 未接。
 
 ---
 
 ## 2. 已完成（可直接当事实用）
 
+### Git 锚点
+
+**HEAD：** `3264419` — `P2 PR4: migrate turn loop to core and split engine monolith (A4.6).`
+- 上一刀：`a2a62d3` — engine policy modules → core
+
 ### R-015 基线
 
 | 项 | 状态 |
 |----|------|
-| `scripts/runtime-longrun-baseline.ps1` | 已加固：release 二进制、`.env`、`DEEPSEEK_RUNTIME_DIR` 隔离、turn **poll-until-idle** |
-| 首份 RSS | **中位 ~26.6 MB** @ `ab4c3c4` 附近、`deepseek-v4-pro`、3×50 turns — 见 `RUNTIME_BASELINE.md` |
-| 未闭环 | HTTP p99 在隔离 SQLite 下多为 0；≥1MB 工具 RSS 断言；与历史基线 >10% 回归门 |
+| `scripts/runtime-longrun-baseline.ps1` | release 二进制、`.env`、`DEEPSEEK_RUNTIME_DIR` 隔离、turn **poll-until-idle** |
+| 首份 RSS | **中位 ~26.6 MB** @ `ab4c3c4`、`deepseek-v4-pro`、3×50 turns — 见 `RUNTIME_BASELINE.md` |
+| 未闭环 | HTTP p99（隔离 SQLite 多为 0）；≥1MB 工具 RSS 断言；>10% 回归门 |
 
-**注意：** Windows 上 **debug** `deepseek-tui serve --http` 曾 stack overflow；基线用 **release**。
+**注意：** Windows **debug** `deepseek-tui serve --http` 曾 stack overflow；基线/长跑用 **release**。
 
 ### P2 PR3
 
 - `deepseek-core::engine::{StartTurnParams, TurnEnginePort}`
-- `RuntimeThreadManager::start_turn` → `EngineHandle::start_turn`（校验在 core）
+- `RuntimeThreadManager::start_turn` → `EngineHandle` via **`TurnEnginePort`**（`turn_lifecycle.rs` 须 `use TurnEnginePort`）
 
-### P2 PR4（局部，多轮会话）
+### P2 PR4 — core 已迁入
 
-**已在 `crates/core/src/engine/`：**
+**`crates/core/src/engine/`：**
 
 | 模块 | 说明 |
 |------|------|
-| `loop_guard` | 重复工具调用防护 + 单测 |
+| `loop_guard` | 重复工具调用防护 |
 | `streaming` | 流解析、`ToolUseState`、重试常量 |
-| `dispatch` | JSON 解析、并行/MCP/plan 策略、`ToolParallelPlanFlags` |
-| `context` | 上下文预算、`compact_tool_result_for_context`、`summarize_text` |
-| `tool_dispatch` | **`EngineToolDispatch`** trait |
-| `approval` | `await_tool_approval` / `recv_user_input_for_tool`；泛型 `ApprovalDecision<P>` |
-| `tool_bridge` / `tool_progress` | `value_to_tool_call`、`function_call_to_tool_error`、`emit_tool_audit`、进度文案 |
-| `turn_loop` | `messages_with_turn_metadata`、`resolve_auto_effort`、`build_edit_file_approval_desc`；`TurnLoopConfigView` 脚手架 |
-| `start_turn` / `turn_port` | PR3 |
+| `dispatch` | JSON 解析、并行/MCP/plan 策略 |
+| `context` | 上下文预算、`compact_tool_result_for_context` |
+| `approval` | `await_tool_approval` / `recv_user_input_for_tool` |
+| `tool_bridge` / `tool_progress` | 工具 I/O 转换、审计/进度文案 |
+| **`turn_loop/`** | **`handle_deepseek_turn<H: TurnLoopHost>`**（`run.rs` ~237 行）、`TurnLoopHost` trait、`exec`/`helpers`/`control` |
 
-**TUI 薄壳 / 接线：**
+**`crates/core/src/` 共享类型（tui re-export）：** `events`、`error_taxonomy`、`coherence`、`user_input`、`subagent`
 
-- `crates/tui/src/core/engine/{loop_guard,streaming,context}.rs` → `pub use deepseek_core::...`
-- `crates/tui/src/core/engine/approval.rs` — **~41 行**薄壳（`UserInputRequired` 事件 + `SandboxPolicy` 类型别名）
-- `tool_dispatch_port.rs` — 仅 `RegistryToolDispatch`；`tool_execution.rs` — 终端 guard / MCP / `execute_tool_with_lock`
-- `deepseek-core::engine::turn_loop::run` — **`handle_deepseek_turn<H: TurnLoopHost>`**（外层步进）
-- `turn_loop/{mod,host_impl,streaming_phase,tool_phase}.rs`（tui）— L2 phase 实现 + `impl TurnLoopHost for Engine`
-- `dispatch.rs` — 保留 **`ToolExecutionPlan`**、`ToolExecGuard`、**`arg_repair`** 包装的 `parse_tool_input` / `final_tool_input`
-- `tool_dispatch_port.rs` — **`RegistryToolDispatch`**：`execute_tool_with_lock` 在无 progress/context 时走 trait；否则 `execute_full_with_context`
-- `turn_port.rs` — `EngineHandle` impl `TurnEnginePort`
+### P2 PR4 — tui L2 壳 / 接线
 
-**粗行数（2026-05-23）：** `engine.rs` **~201**（✅ **< 300**）；`types.rs` ~150、`handle.rs` ~130、`engine_new.rs` ~210、`engine_helpers.rs` ~35、`session_messages.rs` ~25；`message_handlers.rs` ~418，`op_loop.rs` ~268，`cycle_hooks.rs` ~298；`manager.rs` ~829，`thread_crud.rs` ~648、`turn_lifecycle.rs` ~212；core `turn_loop/run.rs` ~230。
-
-**粗行数（2026-05-22）：** `engine.rs` ~1220 — 见上续拆。
-
-**P2 PR4 步骤 1–2（本会话续）：**
-- ✅ `Event` / `ErrorEnvelope` / subagent 等 → `deepseek-core`（tui re-export）
-- ✅ `TurnContext` / `TurnLoopMode` / `StreamError` → core
-- ✅ `TurnLoopHost` + `host_impl.rs`：`run_auto_compaction`、`handle_no_tool_uses`、`maybe_inject_scratchpad_reminder`
-- ✅ `ToolExecOutcome` / `ToolExecutionPlan` → `deepseek-core::engine::turn_loop::exec`
-- ✅ 工具执行批 → `run_tool_execution_phase` + `tool_phase.rs`；`TurnLoopToolRegistry` / `TurnLoopMcpPool`
-- ✅ 流式段 → `run_streaming_phase` + `streaming_phase.rs`；`TurnLoopStreamingPhaseOutcome`；`MAX_STREAM_RETRIES` 在 core
-- ✅ `handle_deepseek_turn` → **`deepseek-core::engine::turn_loop::run`**
-- ✅ **A4.6 局部** — `engine.rs` 拆出 `types` / `handle` / `engine_new` / `engine_helpers` / `session_messages` / `mock`；**~201 行（PR4 <300 达标）**
-- ✅ **A4.6 局部** — `op_loop.rs` + `cycle_hooks.rs` 从 `engine.rs` 拆出
-- ⏳ 继续拆 `manager.rs`；Desktop `TurnLoopHost`
-- ✅ `cargo test -p deepseek-tui --lib` → **2336 passed**
-
-### P2 PR2（早前）
-
-- `session`、`working_set`、`project_context`、`ApprovalMode` 等 → core；tui re-export
-
-### A4.6（局部）
-
-| 文件 | 内容 |
+| 路径 | 说明 |
 |------|------|
-| `runtime_threads/active.rs` | LRU、活跃 turn |
-| `runtime_threads/monitor.rs` | `monitor_turn` |
-| `runtime_threads/routing.rs` | 路由规则读写 |
-| `runtime_threads/engine_load.rs` | **`ensure_engine_loaded`** |
-| `manager.rs` | ~1032 行（turn 生命周期仍在内） |
-| `thread_crud.rs` | thread CRUD / fork / resume / seed |
+| `engine.rs` | **~201 行** — `Engine` struct、`spawn_engine`、子模块 import 层 |
+| `engine/types.rs` | `EngineConfig` |
+| `engine/handle.rs` | `EngineHandle` |
+| `engine/engine_new.rs` | `Engine::new` |
+| `engine/{engine_helpers,session_messages,mock}.rs` | 小 helper / 测试 double |
+| `engine/{op_loop,cycle_hooks,message_handlers,context_recovery,tool_context,layered_context}.rs` | Op 循环、周期、消息、RLM 等 |
+| `engine/turn_loop/{host_impl,streaming_phase,tool_phase}.rs` | **`impl TurnLoopHost for Engine`** + 两阶段 L2 |
+| `engine/turn_port.rs` | `EngineHandle: TurnEnginePort` |
+| `engine/dispatch.rs` | **`arg_repair`** 包装的 `parse_tool_input` / `final_tool_input`（勿绕过） |
+| `engine/tool_dispatch_port.rs` | `RegistryToolDispatch` |
+| `engine/tool_execution.rs` | 终端 guard / MCP / `execute_tool_with_lock` |
+| `engine/capacity_flow/{checkpoints,observation,events,interventions,replay,persistence}.rs` | 最大 ~344 行 — checkpoint / 干预 / replay / 持久化 |
 
-`RuntimeThreadManager` 上 **`config` / `task_manager` / `automations`** 已 `pub(crate)` 供 `engine_load` 使用。
+**架构：**
 
-### 测试 / 修复
+```
+deepseek-core::engine::handle_deepseek_turn<H: TurnLoopHost>
+  ├─ host.run_streaming_phase()  → tui streaming_phase.rs
+  └─ host.run_tool_execution_phase() → tui tool_phase.rs
+```
 
-- `tool_kind_for_name` 必须 **非** `#[cfg(test)]` re-export（否则 `monitor.rs` 编译失败）
-- `runtime_api/tests.rs`：`spawn_test_server` **显式** `RuntimeThreadManagerConfig.data_dir`，勿依赖工作区 `DEEPSEEK_RUNTIME_DIR`
-- 最近：**`cargo test -p deepseek-tui --lib` → 2336 passed**；`cargo test -p deepseek-core engine::tool_` → 5 passed；`engine::approval` → 2 passed
+### A4.6 — runtime_threads
 
-### 文档
+| 文件 | 行数（约） | 内容 |
+|------|-----------|------|
+| `manager.rs` | ~589 | scratchpad/checklist panels、approval、recovery helpers（turn control → `turn_control.rs`） |
+| `turn_control.rs` | ~254 | `interrupt_turn` / `steer_turn` / `compact_thread` |
+| `thread_crud.rs` | ~650 | create/list/get/update/fork/resume/seed |
+| `turn_lifecycle.rs` | ~215 | `start_turn` |
+| `active.rs` / `monitor.rs` / `routing.rs` / `engine_load.rs` | — | 已拆 |
 
-- `CHANGELOG.md` `[Unreleased]` 已有 PR4/A4.6/R-015 条目  
-- `P2_MIGRATION_SPIKE.md` §4、§4.1 已更新  
+`RuntimeThreadManager` 部分字段已 `pub(crate)` 供子模块访问（拆模块时按需放宽）。
+
+### 测试
+
+- **`cargo test -p deepseek-tui --lib` → 2336 passed**（@ `3264419`）
+- `runtime_api/tests.rs`：`spawn_test_server` 须显式 `data_dir`，勿依赖工作区 `DEEPSEEK_RUNTIME_DIR`
+- `tool_kind_for_name` 必须 **非** `#[cfg(test)]` re-export
 
 ---
 
 ## 3. 仍未做（下一窗口优先级）
 
-1. **PR4 剩余（主战场）**  
-   - 仍在 tui：`engine.rs`、`turn_loop/run.rs`（主体）、`tool_catalog`、`tool_execution`（锁/MCP/终端/并行）、`capacity_flow`、…  
-   - ~~`turn_loop` helpers~~ 已迁 core；**阻塞：** `Event` / `EngineConfig` 仍在 tui → `TurnLoopHost` 或 Event 平移后再迁 `run.rs`
-   - 下一刀：**A4.6** 瘦 `engine.rs`；Desktop `TurnLoopHost` 适配；R-015 长跑门
+1. **PR4 — Desktop `TurnLoopHost`**  
+   `crates/desktop/` 接 core turn loop，验证 Desktop 不依赖 tui `Engine` 单体
 
-2. **A4.6 可选** — 继续拆 `manager.rs`（turn CRUD、`create_thread` 等）
+2. **PR4 可选深迁**  
+   `tool_catalog` / `tool_execution` 能否进一步 core 化（MCP/终端/LSP 仍 L2 阻塞）
 
-3. **R-015 可选** — 1MB 工具输出断言；真实 store 路径上的 HTTP p99；`deepseek-chat` vs `v4-pro` 对比说明
+3. **R-015 可选** — 1MB 工具 RSS；真实 store HTTP p99；回归门
 
-4. **门控** — A5.5 回放 fixture、A+.4 契约测（spike 仍 unchecked）
+4. **门控** — A5.5 回放 fixture、A+.4 契约测（spike unchecked）
 
 ---
 
@@ -129,16 +121,14 @@ docs/tech/adr/P2_MIGRATION_SPIKE.md
 docs/tech/adr/RUNTIME_BASELINE.md
 scripts/runtime-longrun-baseline.ps1
 
-crates/core/src/engine/          # 已迁入模块
-crates/core/Cargo.toml           # 已有 tokio/tokio-util（approval）；完整 Engine 可能还需更多 feature
-
-crates/tui/src/core/engine.rs
-crates/tui/src/core/engine/turn_loop/run.rs
-crates/core/src/engine/turn_loop/
-crates/tui/src/core/engine/tool_dispatch_port.rs
+crates/core/src/engine/turn_loop/run.rs    # handle_deepseek_turn
+crates/tui/src/core/engine.rs              # ~201 行壳
+crates/tui/src/core/engine/turn_loop/      # L2 phases + host_impl
+crates/tui/src/core/engine/capacity_flow/   # checkpoints / interventions / replay
+crates/tui/src/runtime_threads/turn_control.rs
 crates/tui/src/runtime_threads/manager.rs
-crates/tui/src/runtime_threads/engine_load.rs
-crates/tui/src/runtime_api/tests.rs   # 隔离 data_dir 范例
+crates/tui/src/runtime_threads/turn_lifecycle.rs
+crates/tui/src/runtime_api/tests.rs
 ```
 
 **规则：** `.cursor/rules/ds-pick-repo.mdc`、`code-organization.mdc`；变更记 `CHANGELOG.md`；**不要**未询问就 `git commit`。
@@ -150,15 +140,10 @@ crates/tui/src/runtime_api/tests.rs   # 隔离 data_dir 范例
 ```powershell
 cd F:\DeepSeek-TUI-desktop
 
-# 编译
 cargo build -p deepseek-core -p deepseek-tui
 
-# 核心单测（快）
 cargo test -p deepseek-core engine::
 cargo test -p deepseek-tui --lib runtime_threads
-cargo test -p deepseek-tui --lib tool_dispatch_port
-
-# 全量 lib（~30s+）
 cargo test -p deepseek-tui --lib
 
 # 基线（需 .env API key；耗时长）
@@ -171,56 +156,73 @@ cargo test -p deepseek-tui --lib
 
 | 坑 | 处理 |
 |----|------|
-| 工作区设了 `DEEPSEEK_RUNTIME_DIR` | 污染 `runtime_api` 测试；测试必须显式 `data_dir` 或 unset |
-| `final_tool_input` | **必须**经 tui `dispatch`（含 `arg_repair`），勿直接用 core 版做流式工具参数 |
+| 工作区 `DEEPSEEK_RUNTIME_DIR` | 污染 runtime 测试；测试显式 `data_dir` |
+| `final_tool_input` | **必须**经 tui `dispatch`（`arg_repair`） |
 | `EngineToolDispatch` | MCP / LocalShell **不走** adapter；仍 `McpPool` |
-| debug `serve` stack overflow | 基线/长跑用 **release** |
-| `manager.rs` 拆模块 | 新 `impl RuntimeThreadManager` 若访问私有字段 → `pub(crate)` 字段或留在 `manager.rs` |
+| `EngineHandle::start_turn` | 经 **`TurnEnginePort`** trait，非 inherent method |
+| engine 子模块 `use super::*` | 父 `engine.rs` 须保留 import 层（勿删顶/底 `use`） |
+| 嵌套 `capacity_flow/*` 子模块 `pub(super)` | 仅暴露到 `capacity_flow` 父模块；跨 sibling 须 `pub(in crate::core::engine)` |
+| `Engine` 字段 privacy | 子模块是 engine 后代，private 字段可访问；跨 sibling 构造 `EngineHandle` 用 `pub(super)` 字段 |
+| debug `serve` stack overflow | 基线用 **release** |
+| 未跟踪会话 JSON | 勿提交 `deepseek-session-*.json`、`.env` |
 
 ---
 
 ## 7. 复制给新窗口 Agent 的提示（整段粘贴）
 
 ```markdown
-继续 DS Pick monorepo 的 **P2 PR4 + A4.6 + R-015** 方案实施。
+继续 DS Pick monorepo 的 **P2 PR4 + A4.6 + R-015** 方案。
 
 **必读：**
 - `docs/tech/adr/P2_PR4_SESSION_HANDOFF.md`（本对接）
 - `docs/tech/adr/P2_MIGRATION_SPIKE.md` §4、§4.1
 - `docs/tech/RUNTIME_EVOLUTION_ROADMAP.md` §11–12
-- `AGENTS.md` 构建/测试约定
+- `AGENTS.md`
 
-**背景：** PR4 局部已完成 — `deepseek-core::engine` 含 `loop_guard`、`streaming`、`dispatch`、`context`、`EngineToolDispatch`；tui 薄 re-export + `RegistryToolDispatch` 接线；`Engine`/`turn_loop` 仍在 tui（~2k 行 each）。A4.6 已拆 `active`/`monitor`/`routing`/`engine_load`。R-015 基线脚本与首份 RSS 见 `RUNTIME_BASELINE.md`。
+**当前状态（@ `3264419`）：**
+- ✅ `deepseek-core::engine::handle_deepseek_turn` + `TurnLoopHost`
+- ✅ tui `turn_loop/{host_impl,streaming_phase,tool_phase}` L2 接线
+- ✅ `engine.rs` **~201 行**（PR4 <300 达标）
+- ✅ A4.6：`thread_crud` / `turn_lifecycle` / engine 子模块拆分
+- ✅ A4.6：`turn_control.rs`；`manager.rs` ~589 行
+- ✅ A4.6：`capacity_flow/{checkpoints,observation,events,interventions,replay,persistence}.rs`
+- ⏳ Desktop `TurnLoopHost` 未接
 
-**请先做：** `cargo test -p deepseek-tui --lib` 确认绿，再按 spike §4.1 选一刀：
-- 优先 A：`approval.rs` 迁 core + 端口化；或
-- 优先 B：`turn_loop.rs` 迁 core（补 `core/Cargo.toml` tokio 等），`engine.rs` 削壳。
+**请先做：**
+```powershell
+cd F:\DeepSeek-TUI-desktop
+cargo test -p deepseek-tui --lib
+```
+确认 2336 passed 后再选一刀：
+- **优先 A：** Desktop `TurnLoopHost` spike
+- **优先 B：** PR4 深迁 `tool_catalog` / `tool_execution`
 
-**约束：** 最小 diff；`CHANGELOG.md` 记用户可见变更；不擅自 commit；保留 canonicalize/路径安全；`final_tool_input` 保留 tui `arg_repair` 路径。
+**约束：** 最小 diff；`CHANGELOG.md` 记用户可见变更；用户未要求时不 commit；保留 canonicalize/路径安全；`final_tool_input` 保留 tui `arg_repair`。
 
-完成后更新 `P2_MIGRATION_SPIKE.md` §4 勾选与 handoff 本文 §3。
+完成后更新本文 §2–§3 与 `P2_MIGRATION_SPIKE.md` §4 勾选。
 ```
 
 ---
 
 ## 8. Git / 工作区说明
 
-对接编写时仓库 **可能有未提交改动**（`crates/core/`、`runtime_threads/`、`web-ui/dist`、`CHANGELOG`、会话 JSON 等）。新窗口应先：
+@ `3264419` 主变更已提交。工作区可能仍有未跟踪本地文件：
 
-```powershell
-git status
-git diff --stat
+```
+_turn_body.txt
+deepseek-session-*.json
+deepseek-thread-*.json
 ```
 
-勿把 `deepseek-session-*.json`、`.env` 密钥、未请求的 `dist` 批量提交进 PR。`web-ui/dist` 是否纳入变更由维护者策略决定。
+**勿提交** 会话 JSON、`.env` 密钥。新窗口先 `git status` / `git log -1`。
 
 ---
 
 ## 9. 会话记录
 
-- Agent transcript（完整工具记录）：  
-  `C:\Users\Administrator\.cursor\projects\f-DeepSeek-TUI-desktop\agent-transcripts\74ca06b4-614c-419a-bbef-238d596319ec\74ca06b4-614c-419a-bbef-238d596319ec.jsonl`
+- 上一窗口 transcript：  
+  `C:\Users\Administrator\.cursor\projects\f-DeepSeek-TUI-desktop\agent-transcripts\a08af5fd-bbff-4d80-aa12-c2b606513b94\a08af5fd-bbff-4d80-aa12-c2b606513b94.jsonl`
 
 ---
 
-*维护：每完成 PR4/A4.6 一切片后更新 §2–§3 与 `P2_MIGRATION_SPIKE.md`，避免下一窗口重复劳动。*
+*维护：每完成 PR4/A4.6 切片后更新 §2–§3 与 `P2_MIGRATION_SPIKE.md`。*

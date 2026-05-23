@@ -47,6 +47,7 @@ mod engine_load;
 mod events;
 mod manager;
 mod turn_lifecycle;
+mod turn_control;
 mod thread_crud;
 mod monitor;
 mod persist;

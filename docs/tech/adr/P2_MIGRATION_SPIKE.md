@@ -116,21 +116,25 @@ impl Runtime {
 - [x] PR1 **局部**：`deepseek-core` 子模块（`chat`/`models`/`turn`/`compaction`/`capacity`/`workshop` 等）+ tui re-export（2026-05-22；**非** §12.3 完成）
 - [x] PR2 **局部（2026-05-22）：** `session`、`working_set`、`project_context`、`ApprovalMode`、`CycleBriefing` → `deepseek-core`；tui 薄 re-export；`core::engine` 仅导出 session 类型
 - [x] PR3 **局部（2026-05-22）：** `StartTurnParams` + `TurnEnginePort` in `deepseek-core`；`RuntimeThreadManager::start_turn` delegates via `EngineHandle::start_turn`（`turn_loop`/`Engine` 仍在 tui）
-- [x] PR4 **局部（2026-05-22）：** `loop_guard` + `streaming` + `dispatch` + `context` + **`approval`** + **`tool_bridge`/`tool_progress`** → `deepseek-core::engine`；`RegistryToolDispatch` 接线 `execute_tool_with_lock`；tui 薄 re-export（`dispatch` 仍含 `ToolExecutionPlan` + `arg_repair`；`approval` 仍发 `UserInputRequired`；`tool_execution` 仍含终端 pause/MCP/并行）；`Engine`/`turn_loop` 仍留 tui
+- [x] PR4 **局部（2026-05-23）：** `handle_deepseek_turn` + `TurnLoopHost` → `deepseek-core::engine::turn_loop`；tui `host_impl` / `streaming_phase` / `tool_phase` L2；`Event`/`error_taxonomy`/`coherence`/`subagent`/`user_input` → core
+- [x] PR4 **engine.rs < 300 行（2026-05-23）：** 拆 `types`/`handle`/`engine_new`/`engine_helpers`/`session_messages`/`mock` + 早前 `op_loop`/`cycle_hooks`/`message_handlers` 等；**~201 行 @ `3264419`**
+- [x] A4.6 **局部（2026-05-23）：** `engine/capacity_flow/{checkpoints,observation,events,interventions,replay,persistence}.rs`；monolith ~985 → 最大 ~344 行（`interventions.rs`）
+- [x] A4.6 **局部（2026-05-23）：** `runtime_threads/turn_control.rs`（interrupt/steer/compact）；`manager.rs` ~829 → ~589
+- [x] A4.6 **局部（2026-05-23）：** `runtime_threads/{thread_crud,turn_lifecycle}.rs`；`manager.rs` ~1673 → ~829
 - [x] A4.6 **局部：** `runtime_threads/{routing,engine_load,active,monitor}.rs` 自 `manager.rs` 拆出
-- [ ] PR4 剩余：`Engine` + `turn_loop` + 子模块迁入 core；`engine.rs` < 300 行
+- [ ] PR4 剩余：`Engine` 主体 / `capacity_flow` / `tool_catalog`/`tool_execution` 深迁 core；Desktop `TurnLoopHost`
 
 ### 4.1 `turn_loop` 迁入前置（2026-05-22 草图）
 
 | 仍留 tui 直至壳层就绪 | 已可在 core 复用 |
 |----------------------|------------------|
 | `Engine` 字段：`LlmClient`、`McpPool`、`LspManager`、`SubAgentRuntime`、事件通道 | `session`、`loop_guard`、`streaming`、`dispatch`、`context` |
-| `EngineConfig` 构建（`spawn_engine`）、`turn_loop/run.rs` 主体（compaction/MCP/工具执行） | `Event`、`TurnEnginePort`、`TurnLoopHost`、`TurnContext`、`turn_loop::helpers` |
+| `EngineConfig` 构建（`spawn_engine`）、`tool_catalog`/`tool_execution`（MCP/终端/LSP）、`capacity_flow` | `handle_deepseek_turn`、`TurnLoopHost`、`Event`、`TurnEnginePort`、`TurnContext`、`turn_loop::helpers`、`session`、`loop_guard`、`streaming`、`dispatch`、`context`、`approval`、`tool_bridge` |
 | `tool_catalog`、`tool_execution`（执行锁/MCP/终端 guard）、`capacity_flow` | `compact_tool_result_for_context`、`RegistryToolDispatch`、`tool_bridge`、`tool_progress`、`await_tool_approval` |
 | `AppMode`、TUI `ToolRegistry` builder | `chat::{Message,Tool}`、`ToolResult` |
 
-**建议下一刀：** 扩展 `TurnLoopHost`（compaction、MCP pool、`execute_tool_with_lock`）后将 `turn_loop/run.rs` 迁 core。~~`Event`~~、~~helpers~~、~~`TurnLoopHost` 脚手架~~ 已就绪（2026-05-22）；`run.rs` 仍 L2。
-- [ ] PR2 剩余：`turn_loop` + `Engine` 迁入 core（须 `EngineToolDispatch` 接线）
+**建议下一刀：** Desktop `TurnLoopHost` spike；或 PR4 深迁 `tool_catalog`/`tool_execution`。`capacity_flow` 与 `manager.rs` turn control 已拆完。
+- [ ] PR2 剩余：`Engine` 字段层（MCP/LSP/SubAgent）与 `capacity_flow` 端口化
 - [ ] PR1 剩余：`Engine`/`turn_loop` 主逻辑迁入 core
 - [ ] A5.5 回放 fixture 就位
 - [ ] A+.4 契约测就位
