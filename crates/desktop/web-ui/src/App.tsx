@@ -63,6 +63,7 @@ import { formatWorkspaceFileError } from './lib/workspaceFileOpenError';
 import type { PreviewState } from './components/preview/types';
 import type { AgentState } from './types/agent';
 import useKeyboardShortcuts from './hooks/useKeyboardShortcuts';
+import SkipToMainLink from './components/SkipToMainLink';
 import { streamFlagsForRunMode } from './lib/runtimeMode';
 import { autoApproveFromPolicy } from './lib/approvalPolicy';
 import { rebuildMessagesFromThreadEvents } from './lib/chat/rebuildMessagesFromThread';
@@ -1358,6 +1359,20 @@ export default function App() {
     setLastTurnOutputTokens(null);
   }, [t]);
 
+  /** F3 — Escape stops generation when focus is not in an input (matches TUI habit). */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.ctrlKey || e.metaKey || e.altKey) return;
+      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+      if (!streamingRef.current) return;
+      e.preventDefault();
+      handleCancelStream();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [handleCancelStream]);
+
   const handleComposerWorkspaceChange = useCallback(
     async (next: string) => {
       const trimmed = next.trim();
@@ -2075,6 +2090,7 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen w-screen bg-canvas">
+      <SkipToMainLink />
       <TitleBar
         desktopHost={desktopHost}
         onNewWindow={() => {
@@ -2122,6 +2138,7 @@ export default function App() {
           onClick={() => setSidebarCollapsed(false)}
           className="chrome-seam-r shrink-0 w-8 bg-canvas hover:bg-hover transition-colors flex items-center justify-center group"
           title={t('sidebar.expand')}
+          aria-label={t('sidebar.expand')}
         >
           <svg className="w-3.5 h-3.5 text-t-text-muted group-hover:text-t-text transition-colors" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
             <path d="M5 3.5v9" strokeLinecap="round" />
@@ -2129,7 +2146,11 @@ export default function App() {
           </svg>
         </button>
       )}
-      <div className="flex min-h-0 flex-1 flex-col min-w-0 bg-card">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="flex min-h-0 flex-1 flex-col min-w-0 bg-card outline-none"
+      >
         <ChatView
           messages={messages}
           workspaceRoot={selectedWorkspace}
@@ -2188,7 +2209,7 @@ export default function App() {
               : undefined
           }
         />
-      </div>
+      </main>
       {/* right panel toggle strip */}
       {!rightPanelCollapsed && (
         <RightPanel
@@ -2248,6 +2269,7 @@ export default function App() {
           onClick={() => setRightPanelCollapsed(false)}
           className="chrome-seam-l shrink-0 w-8 bg-canvas hover:bg-hover transition-colors flex items-center justify-center group"
           title={t('rightPanel.expand')}
+          aria-label={t('rightPanel.expand')}
         >
           <svg className="w-3.5 h-3.5 text-t-text-muted group-hover:text-t-text transition-colors" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
             <path d="M11 3.5v9" strokeLinecap="round" />

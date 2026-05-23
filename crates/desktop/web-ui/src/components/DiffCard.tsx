@@ -52,6 +52,8 @@ export default function DiffCard({
           ? 'flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-card-border'
           : 'my-2 overflow-hidden rounded-lg border border-card-border'
       }
+      role="region"
+      aria-label={t('a11y.diffRegion', { fileName: fileName ?? 'diff' })}
     >
       {fileName && (
         <div className="flex shrink-0 items-center gap-2 border-b border-divider bg-canvas-alt px-3 py-1.5">

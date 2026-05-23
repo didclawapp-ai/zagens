@@ -5,6 +5,12 @@ const zhHans = {
     subtitle: '你的 AI 编码助手',
     emptyPrompt: '在下方输入问题开始对话',
   },
+  a11y: {
+    skipToMain: '跳到主要内容',
+    chatLog: '对话记录',
+    toolRegion: '工具 {{name}}，状态 {{status}}',
+    diffRegion: '文件差异 {{fileName}}',
+  },
   sidebar: {
     showAllSessions: '显示全部会话',
     showAllSessionsHint: '含其它工作区的历史会话',
@@ -99,6 +105,8 @@ const zhHans = {
     lastTurnTokens: '↓ {{count}}',
     lastTurnTokensTitle: '上一轮完成的输出 token 数',
     stop: '停止',
+    stopAria: '停止生成（Escape）',
+    sendAria: '发送消息',
     turnInterrupted: '已中断',
     runtimeSidecarRestart: '运行时已重启，生成已停止',
     interruptFailed: '无法中断当前轮次：{{message}}',
@@ -183,6 +191,7 @@ const zhHans = {
     newWindow: '新建窗口',
     workspace: '工作台',
     devtools: '开发者工具',
+    stopGeneration: '停止生成（Escape）',
   },
   diff: {
     tab: 'Diff',

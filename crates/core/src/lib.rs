@@ -22,6 +22,7 @@ pub mod models;
 pub mod scratchpad;
 pub mod subagent;
 pub mod task_type;
+pub mod thread_message_turn;
 pub mod turn;
 pub mod user_input;
 pub mod workshop;
@@ -49,6 +50,10 @@ use deepseek_state::{
 };
 use deepseek_tools::{ToolCall, ToolRegistry};
 use serde_json::{Value, json};
+pub use thread_message_turn::{
+    ThreadMessageTurnPort, ThreadMessageTurnRequest, ThreadMessageTurnResult,
+    thread_message_turn_events,
+};
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
@@ -616,6 +621,16 @@ impl ThreadManager {
         Ok(())
     }
 
+    pub fn resolve_thread_cwd(&self, thread_id: &str, fallback: &Path) -> PathBuf {
+        if let Some(thread) = self.running_threads.get(thread_id) {
+            return thread.cwd.clone();
+        }
+        if let Ok(Some(metadata)) = self.store.get_thread(thread_id) {
+            return metadata.cwd;
+        }
+        fallback.to_path_buf()
+    }
+
     pub fn touch_message(&mut self, thread_id: &str, input: &str) -> Result<()> {
         let Some(mut metadata) = self.store.get_thread(thread_id)? else {
             return Ok(());
@@ -680,6 +695,7 @@ pub struct Runtime {
     pub exec_policy: ExecPolicyEngine,
     pub hooks: HookDispatcher,
     pub jobs: JobManager,
+    thread_message_turn: Option<Arc<dyn ThreadMessageTurnPort>>,
 }
 
 impl Runtime {
@@ -703,6 +719,162 @@ impl Runtime {
             exec_policy,
             hooks,
             jobs,
+            thread_message_turn: None,
+        }
+    }
+
+    /// Wire PR5 delegated turn execution for `ThreadRequest::Message`.
+    pub fn set_thread_message_turn_port(&mut self, port: Arc<dyn ThreadMessageTurnPort>) {
+        self.thread_message_turn = Some(port);
+    }
+
+    fn thread_cwd(&self, thread_id: &str) -> PathBuf {
+        let fallback = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        self.thread_manager.resolve_thread_cwd(thread_id, &fallback)
+    }
+
+    async fn handle_thread_message(
+        &mut self,
+        thread_id: String,
+        input: String,
+    ) -> Result<ThreadResponse> {
+        self.thread_manager.touch_message(&thread_id, &input)?;
+        let response_id = format!("{thread_id}:{}", Uuid::new_v4());
+
+        let Some(port) = self.thread_message_turn.as_ref() else {
+            self.hooks
+                .emit(HookEvent::ResponseStart {
+                    response_id: response_id.clone(),
+                })
+                .await;
+            self.hooks
+                .emit(HookEvent::ResponseEnd {
+                    response_id: response_id.clone(),
+                })
+                .await;
+            return Ok(ThreadResponse {
+                thread_id,
+                status: "accepted".to_string(),
+                thread: None,
+                threads: Vec::new(),
+                model: None,
+                model_provider: None,
+                cwd: None,
+                approval_policy: None,
+                sandbox: None,
+                events: vec![
+                    EventFrame::ResponseStart {
+                        response_id: response_id.clone(),
+                    },
+                    EventFrame::ResponseDelta {
+                        response_id: response_id.clone(),
+                        delta: "queued".to_string(),
+                    },
+                    EventFrame::ResponseEnd { response_id },
+                ],
+                data: json!({}),
+            });
+        };
+
+        let resolved = self
+            .config
+            .resolve_runtime_options(&CliRuntimeOverrides::default());
+        let model = self
+            .model_registry
+            .resolve(Some(&resolved.model), Some(resolved.provider))
+            .resolved
+            .id
+            .clone();
+
+        self.hooks
+            .emit(HookEvent::ResponseStart {
+                response_id: response_id.clone(),
+            })
+            .await;
+
+        let turn_result = port
+            .run_turn(ThreadMessageTurnRequest {
+                thread_id: thread_id.clone(),
+                input: input.clone(),
+                cwd: self.thread_cwd(&thread_id),
+                model,
+            })
+            .await;
+
+        match turn_result {
+            Ok(turn) => {
+                self.hooks
+                    .emit(HookEvent::ResponseDelta {
+                        response_id: response_id.clone(),
+                        delta: turn.assistant_text.clone(),
+                    })
+                    .await;
+                self.hooks
+                    .emit(HookEvent::ResponseEnd {
+                        response_id: response_id.clone(),
+                    })
+                    .await;
+
+                let _ = self.thread_manager.state_store().append_message(
+                    &thread_id,
+                    "assistant",
+                    &turn.assistant_text,
+                    None,
+                );
+                self.persist_latest_checkpoint(
+                    &thread_id,
+                    "thread_message_turn",
+                    json!({
+                        "response_id": response_id,
+                        "status": turn.status,
+                        "preview": truncate_preview(&turn.assistant_text),
+                    }),
+                )?;
+
+                let events = thread_message_turn_events(&response_id, &turn.assistant_text);
+                Ok(ThreadResponse {
+                    thread_id,
+                    status: turn.status,
+                    thread: None,
+                    threads: Vec::new(),
+                    model: None,
+                    model_provider: None,
+                    cwd: None,
+                    approval_policy: None,
+                    sandbox: None,
+                    events,
+                    data: json!({}),
+                })
+            }
+            Err(err) => {
+                let message = err.to_string();
+                self.hooks
+                    .emit(HookEvent::ResponseEnd {
+                        response_id: response_id.clone(),
+                    })
+                    .await;
+                Ok(ThreadResponse {
+                    thread_id,
+                    status: "failed".to_string(),
+                    thread: None,
+                    threads: Vec::new(),
+                    model: None,
+                    model_provider: None,
+                    cwd: None,
+                    approval_policy: None,
+                    sandbox: None,
+                    events: vec![
+                        EventFrame::ResponseStart {
+                            response_id: response_id.clone(),
+                        },
+                        EventFrame::Error {
+                            response_id,
+                            message,
+                        },
+                    ],
+                    data: json!({}),
+                })
+            }
         }
     }
 
@@ -907,45 +1079,8 @@ impl Runtime {
                     data: json!({}),
                 })
             }
-            // PR5 note: production turns run via `deepseek-tui` HTTP (`RuntimeThreadManager`).
-            // app-server `Message` still records input and returns a queued placeholder until
-            // `handle_thread` is wired to a shared core turn executor (see RUNTIME_EVOLUTION_ROADMAP §11.2 PR5).
             ThreadRequest::Message { thread_id, input } => {
-                self.thread_manager.touch_message(&thread_id, &input)?;
-                let response_id = format!("{thread_id}:{}", input.len());
-                self.hooks
-                    .emit(HookEvent::ResponseStart {
-                        response_id: response_id.clone(),
-                    })
-                    .await;
-                self.hooks
-                    .emit(HookEvent::ResponseEnd {
-                        response_id: response_id.clone(),
-                    })
-                    .await;
-
-                Ok(ThreadResponse {
-                    thread_id,
-                    status: "accepted".to_string(),
-                    thread: None,
-                    threads: Vec::new(),
-                    model: None,
-                    model_provider: None,
-                    cwd: None,
-                    approval_policy: None,
-                    sandbox: None,
-                    events: vec![
-                        EventFrame::ResponseStart {
-                            response_id: response_id.clone(),
-                        },
-                        EventFrame::ResponseDelta {
-                            response_id: response_id.clone(),
-                            delta: "queued".to_string(),
-                        },
-                        EventFrame::ResponseEnd { response_id },
-                    ],
-                    data: json!({}),
-                })
+                self.handle_thread_message(thread_id, input).await
             }
         }
     }
@@ -1722,5 +1857,99 @@ fn job_state_status_to_runtime(status: JobStateStatus) -> JobStatus {
         JobStateStatus::Completed => JobStatus::Completed,
         JobStateStatus::Failed => JobStatus::Failed,
         JobStateStatus::Cancelled => JobStatus::Cancelled,
+    }
+}
+
+#[cfg(test)]
+mod runtime_thread_message_tests {
+    use super::*;
+    use async_trait::async_trait;
+    use deepseek_config::ConfigToml;
+    use deepseek_protocol::ThreadRequest;
+    use tempfile::TempDir;
+
+    struct EchoTurnPort;
+
+    #[async_trait]
+    impl ThreadMessageTurnPort for EchoTurnPort {
+        async fn run_turn(
+            &self,
+            req: ThreadMessageTurnRequest,
+        ) -> anyhow::Result<ThreadMessageTurnResult> {
+            Ok(ThreadMessageTurnResult {
+                status: "completed".to_string(),
+                assistant_text: format!("echo: {}", req.input),
+            })
+        }
+    }
+
+    fn test_runtime() -> (TempDir, Runtime) {
+        let dir = TempDir::new().expect("tempdir");
+        let store = StateStore::open(Some(dir.path().join("state.db"))).expect("state store");
+        let runtime = Runtime::new(
+            ConfigToml::default(),
+            ModelRegistry::default(),
+            store,
+            Arc::new(ToolRegistry::default()),
+            Arc::new(McpManager::default()),
+            ExecPolicyEngine::new(Vec::new(), Vec::new()),
+            HookDispatcher::default(),
+        );
+        (dir, runtime)
+    }
+
+    #[tokio::test]
+    async fn handle_thread_message_without_port_returns_queued() {
+        let (_dir, mut runtime) = test_runtime();
+        let created = runtime
+            .handle_thread(ThreadRequest::Create {
+                metadata: json!({}),
+            })
+            .await
+            .expect("create thread");
+        let response = runtime
+            .handle_thread(ThreadRequest::Message {
+                thread_id: created.thread_id.clone(),
+                input: "hello".to_string(),
+            })
+            .await
+            .expect("message");
+        assert_eq!(response.status, "accepted");
+        assert!(response.events.iter().any(|ev| {
+            matches!(ev, EventFrame::ResponseDelta { delta, .. } if delta == "queued")
+        }));
+    }
+
+    #[tokio::test]
+    async fn handle_thread_message_with_port_runs_delegated_turn() {
+        let (_dir, mut runtime) = test_runtime();
+        runtime.set_thread_message_turn_port(Arc::new(EchoTurnPort));
+        let created = runtime
+            .handle_thread(ThreadRequest::Create {
+                metadata: json!({}),
+            })
+            .await
+            .expect("create thread");
+        let response = runtime
+            .handle_thread(ThreadRequest::Message {
+                thread_id: created.thread_id.clone(),
+                input: "ping".to_string(),
+            })
+            .await
+            .expect("message");
+        assert_eq!(response.status, "completed");
+        assert!(response.events.iter().any(|ev| {
+            matches!(ev, EventFrame::ResponseDelta { delta, .. } if delta == "echo: ping")
+        }));
+        let history = runtime
+            .thread_manager
+            .state_store()
+            .list_messages(&created.thread_id, Some(10))
+            .expect("history");
+        assert!(
+            history
+                .iter()
+                .any(|msg| msg.role == "assistant" && msg.content.contains("echo: ping"))
+        );
     }
 }

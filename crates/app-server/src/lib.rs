@@ -24,6 +24,8 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::{Mutex, RwLock};
 use tower_http::cors::CorsLayer;
 
+mod thread_turn;
+
 #[derive(Debug, Clone)]
 pub struct AppServerOptions {
     pub listen: SocketAddr,
@@ -279,7 +281,7 @@ fn build_state(config_path: Option<PathBuf>) -> Result<AppState> {
         .unwrap_or_else(|| PathBuf::from(".deepseek/events.jsonl"));
     hooks.add_sink(Arc::new(JsonlHookSink::new(hook_log_path)));
 
-    let runtime = Runtime::new(
+    let mut runtime = Runtime::new(
         config.clone(),
         registry.clone(),
         state_store,
@@ -288,10 +290,21 @@ fn build_state(config_path: Option<PathBuf>) -> Result<AppState> {
         ExecPolicyEngine::new(Vec::new(), Vec::new()),
         hooks,
     );
+    let has_api_key = config
+        .resolve_runtime_options(&CliRuntimeOverrides::default())
+        .api_key
+        .as_ref()
+        .is_some_and(|key| !key.trim().is_empty());
+    let config_arc = Arc::new(RwLock::new(config));
+    if has_api_key {
+        runtime.set_thread_message_turn_port(Arc::new(thread_turn::AppServerLlmTurnPort::new(
+            config_arc.clone(),
+        )));
+    }
 
     Ok(AppState {
         config_path,
-        config: Arc::new(RwLock::new(config)),
+        config: config_arc,
         runtime: Arc::new(Mutex::new(runtime)),
         registry,
     })

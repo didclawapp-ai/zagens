@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef } from 'react';
 import { ChatErrorBoundary } from './ChatErrorBoundary';
 import { MessageBubble } from './MessageBubble';
 import type { ToolCardModel } from './ToolCard';
+import { useT } from '../i18n';
 
 interface Message {
   id: string;
@@ -43,6 +44,7 @@ export default function ChatView({
   onRetryMessage,
   onOpenDiffInPanel,
 }: Props) {
+  const { t } = useT();
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const stickBottomRef = useRef(true);
@@ -69,8 +71,9 @@ export default function ChatView({
       onScroll={onScroll}
       className="flex min-h-[12rem] flex-1 flex-col overflow-y-auto bg-card px-4 py-4"
       role="log"
-      aria-label="对话记录"
+      aria-label={t('a11y.chatLog')}
       aria-live="polite"
+      aria-relevant="additions"
     >
       {/* Match Composer: mx-auto max-w-3xl so transcript edges align with the input card */}
       <div className="mx-auto w-full max-w-3xl">

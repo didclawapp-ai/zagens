@@ -9,6 +9,7 @@ import {
 import PanelEdgeSeam from './PanelEdgeSeam';
 import InspectorActivityDot from './InspectorActivityDot';
 import type { InspectorNavActivity } from '../lib/inspectorUnread';
+import { usePrefersReducedMotion } from '../lib/usePrefersReducedMotion';
 
 interface SessionInfo {
   id: string;
@@ -100,6 +101,7 @@ export default function Sidebar({
   agentActivity = { active: false, pulse: false },
 }: Props) {
   const { t } = useT();
+  const prefersReducedMotion = usePrefersReducedMotion();
   const [sidebarWidth, setSidebarWidth] = useState(readStoredSidebarWidth);
   const resizeDragRef = useRef<{ pointerId: number; startX: number; startW: number } | null>(null);
   const liveSidebarWidthRef = useRef(sidebarWidth);
@@ -167,7 +169,7 @@ export default function Sidebar({
     <>
     <aside
       className={`flex shrink-0 flex-col bg-canvas overflow-hidden ${
-        sidebarResizing ? '' : 'transition-[width] duration-150'
+        sidebarResizing || prefersReducedMotion ? '' : 'transition-[width] duration-150'
       }`}
       style={{ width: collapsed ? 0 : sidebarWidth }}
       aria-label="会话与导航"

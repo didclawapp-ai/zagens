@@ -680,6 +680,48 @@ body {
     .message-body-scroll--expanding {
       transition: none;
     }
+
+    .composer-send-pill:hover:not(:disabled) {
+      transform: none;
+    }
+
+    aside,
+    .chrome-seam-l,
+    .chrome-seam-r {
+      transition: none !important;
+    }
+  }
+
+  /* Skip link — visible on keyboard focus (F3) */
+  .skip-to-main {
+    position: absolute;
+    left: -9999px;
+    top: 0.5rem;
+    z-index: 10000;
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--radius-sm);
+    background: var(--color-accent);
+    color: var(--color-accent-text);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    text-decoration: none;
+    box-shadow: var(--color-accent-shadow);
+  }
+
+  .skip-to-main:focus {
+    left: 0.75rem;
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  /* Consistent keyboard focus ring for primary controls (F3) */
+  .nav-item:focus-visible,
+  .composer-chip:focus-visible,
+  .composer-icon-btn:focus-visible,
+  .composer-send-pill:focus-visible,
+  button:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
   }
 
   /* Integrated terminal (right panel, Code mode) */

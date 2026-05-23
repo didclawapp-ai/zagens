@@ -23,12 +23,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Runtime (A3):** `classify_error_message` recognizes DeepSeek thinking/reasoning constraint strings as `InvalidInput` (distinct from network disconnect); golden suite centralized in `deepseek-core::error_taxonomy`.
 - **Desktop (approval):** `approval_policy` from system settings now drives Composer `auto_approve` on load/save; sidecar `start_turn` reads `ApprovalMode` from config (`never` / `on-request` / `auto`) instead of hardcoding Suggest.
 - **Tests:** `integration_mock_llm` re-exports `deepseek_core::LlmClient` so mock trait matches P2 `async_trait` surface.
 
+### Changed
+
+- **Desktop (F1a):** `TerminalCard` appends `tool.progress` to xterm incrementally instead of full clear+rewrite each frame.
+- **Desktop (F1b):** `MessageBubble` shows `DiffCard` while diff tools are still running when unified diff appears in streamed output.
+- **Desktop (F3):** Escape stops active generation when focus is outside inputs.
+
 ### Added
 
-- **Docs:** [P2_G3_ENGINE_L2_SIGNOFF.md](docs/tech/adr/P2_G3_ENGINE_L2_SIGNOFF.md) — G3 + §12.3 L2 终态签收。
+- **Desktop (F3):** Skip-to-main link; `#main-content` landmark; aria on ToolCard/DiffCard/Composer; global `focus-visible` rings; expanded `prefers-reduced-motion` (sidebar/composer).
+- **Runtime (PR5):** `ThreadMessageTurnPort` — `handle_thread(Message)` delegates real turn when port is wired; app-server installs `AppServerLlmTurnPort` when `api_key` is configured (legacy `queued` fallback otherwise).
+- **Runtime (A1 / R-015):** Full baseline @ `10972e4` — median RSS **28.5 MB**, `-Gate` PASS; log `deliverables/runtime-baseline-full-run.log`.
+- **Runtime (A1 / R-015):** `runtime-longrun-baseline.ps1` — deterministic **1.1 MB** workspace fixture for large-tool turn; `-Gate` RSS regression vs ADR baseline (+10%); CI ubuntu dry-run step.
+- **Runtime (A1 / R-015):** `large_output_router` **1 MB+** boundary unit test (`synthesise_at_one_megabyte_boundary`).
 - **Docs:** G2/PR5 手测签收（2026-05-23）：§0.4 health、§1 单窗、§3 双窗并行、§5.1 Stop；审批 UI 暂缓（`approval_policy` ↔ `auto_approve` 接线债）。
 - **Runtime (PR5 局部):** 双 thread 并行 turn 回归测（`parallel_turns_on_two_threads_overlap_then_complete`、`sidecar_parallel_turns_on_two_threads`）；`app-server` `Message` 仍 queued 占位（注释 SSOT）。
 - **Runtime (G2 门控):** `CURRENT_EVENT_SCHEMA_VERSION`；`GET /health` 与 SSE payload 暴露 `event_schema_version`（A+.4b）。

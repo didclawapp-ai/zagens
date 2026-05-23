@@ -85,6 +85,10 @@ jobs:
       - name: Runtime sidecar contract (A+.4 / R-009)
         if: matrix.os == 'ubuntu-latest'
         run: cargo test -p deepseek-tui --lib sidecar_contract_full_lifecycle --all-features --locked
+      - name: R-015 baseline dry-run (A1.6 disk proxy)
+        if: matrix.os == 'ubuntu-latest'
+        shell: pwsh
+        run: ./scripts/runtime-longrun-baseline.ps1 -DryRun -Runs 3
       - name: Lockfile drift guard
         run: git diff --exit-code -- Cargo.lock
       - name: Run Offline Eval Harness

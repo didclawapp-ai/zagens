@@ -518,10 +518,10 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 | 波次 | 任务 | 说明 |
 |------|------|------|
 | **F0** | **验证** `RoutingPanel` → `start_turn` 全链路透传 | 可能已部分完成（见 `TUI_DS_PICK_GAP.md`）；以验收为主，非大开发 |
-| **F1a** | xterm.js Shell 实时输出 | 消费已有 `tool.progress` SSE |
-| **F1b** | diff2html（edit_file / apply_patch） | 纯前端 |
-| **F2** | 导出会话 JSON、资源管理器打开工作区 | Tauri + 可选新 `/v1`（须走 L2 评审） |
-| **F3** | 快捷键 / a11y | 壳层 |
+| **F1a** | xterm.js Shell 实时输出 | ✅ `TerminalCard` + 增量 `tool.progress` |
+| **F1b** | diff2html（edit_file / apply_patch） | ✅ `DiffCard`；运行中 diff 预览 |
+| **F2** | 导出会话 JSON、资源管理器打开工作区 | ✅ `export_*_json` + `open_in_shell` |
+| **F3** | 快捷键 / a11y | 🟡 Skip link、Escape 停生成、focus-visible、aria 区域标签、`prefers-reduced-motion` 扩展 |
 | **F4** | 内联编辑历史消息 | **依赖 L1** 提供「改历史」runtime API 后再做 |
 
 ### 10.4 壳层 **禁止**（与 P2 一致）
@@ -531,7 +531,7 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 
 ### 10.5 融合完成线
 
-- [ ] GAP 表 F0–F2 关闭或记入暂缓
+- [x] GAP 表 F0–F2 关闭或记入暂缓（F0 路由测、F1a/F1b/F2 已落地；F3 部分）
 - [ ] 同一 `deepseek-tui` 二进制：TUI 与 DS Pick 跑 **同一** 长跑/审批/停止语义（抽样验收）
 
 ### 10.6 桌面 GAP 冻结（还债窗口，D9）
@@ -827,10 +827,10 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 | 阶段 | 路线图要求 | 审核结论 |
 |------|------------|----------|
 | **0 治理** | 文档 SSOT、D4–D9、freeze 规则 | **✅ 文档侧基本完成**（§6.2 0.1–0.4、0.6；§4.2 签收） |
-| **A L1** | A1–A5、A4 模块化 | **🟡 部分** — A4.2–A4.3 已拆；A1/A2/A3/A5 多数项未按 §12.1 验收 |
-| **A+ L2** | 契约 v1、sidecar 契约测、审批回归 | **❌ 未验收** — 无独立 CI 契约测条目；`API_DESIGN` 子集待冻结 |
-| **P2** | Engine→core、engine.rs <300 行 | **❌ 未达标** — 见 §3.4；PR0 spike ✅ |
-| **F / B** | P2 后解冻 | **⏸ 正确冻结** — DS Pick v0.4.x 功能属维护性/已规划交付，非 F 高峰 |
+| **A L1** | A1–A5、A4 模块化 | **🟡 部分** — A4 达标；**A3** golden 测已入 core；A1/A2/A5 未全量验收 |
+| **A+ L2** | 契约 v1、sidecar 契约测、审批回归 | **🟡 自动化 ✅** — G2 门控（2026-05-23）；审批 UI 手测可复测（接线已合） |
+| **P2** | Engine→core、engine.rs <300 行 | **🟡 L2 终态有条件达标** — G3 签收（2026-05-23）；`handle_thread(Message)` **委托 turn port**（app-server 单轮 LLM；无 port 仍 queued） |
+| **F / B** | P2 后解冻 | **🟡 F0–F2 已落地** — F3 a11y 部分；B 仍待 F 高峰后 |
 
 ### 17.2 已交付（可勾选 issue）
 
@@ -841,7 +841,7 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 | R-009（部分） | A+.4 sidecar 契约测 + CI 显式跑 | `sidecar_contract_full_lifecycle`、`.github/workflows/ci.yml` |
 | R-006（部分） | `deepseek-tui` lib target | `crates/tui/src/lib.rs` |
 | R-013 | P2 PR0 spike | `docs/tech/adr/P2_MIGRATION_SPIKE.md` |
-| R-015（部分） | 长跑脚本 + ADR dry-run p99 | `scripts/runtime-longrun-baseline.ps1`（`-DryRun`）、`adr/RUNTIME_BASELINE.md`（RSS 待全量） |
+| R-015（部分） | 长跑脚本 + ADR dry-run p99 + `-Gate` + 1MB fixture | `scripts/runtime-longrun-baseline.ps1`（`-DryRun` / `-Gate`）、`adr/RUNTIME_BASELINE.md`（RSS @ `ab4c3c4`） |
 | — | P2 PR2 局部 | `deepseek-core::{session,working_set,project_context,approval,cycle::CycleBriefing,engine}` + tui re-export |
 | — | P2 PR1 类型/`LlmClient` 入 core | `crates/core/src/{chat,models,turn,...}` + tui re-export |
 | — | DS Pick 生产路径 | Phase 1 harness、v0.4.3 流式去重、多窗口（CHANGELOG） |
@@ -850,16 +850,16 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 
 1. **编译/测试：** ✅ `cargo check --workspace` + `cargo test -p deepseek-tui --lib`（2026-05-22，2368 passed）。
 2. **A4：** `runtime_api/mod.rs` <800 行已达标（2026-05-22）；后续仅增量提取时随改动维护域模块边界。
-3. **A+ 契约：** 落地 R-009 sidecar 契约测 + `event_schema_version` 字段（§12.2 G2）。
-4. **P2 绞杀者：** 按 §11.2 PR2–PR5 迁 `turn_loop`/`Engine`；禁止在 `engine.rs` 上叠新 Agent 语义。
-5. **R-015 填数：** 跑 3 次脚本，写入 `RUNTIME_BASELINE.md` + CHANGELOG。
-6. **文档：** `CHANGELOG [Unreleased]` 与 §3.4/§17 同步；`P2_MIGRATION_SPIKE.md` §4 勾选 PR1 局部完成。
+3. **A+ 契约：** ✅ G2 自动化（2026-05-23）；审批 UI 手测可复测。
+4. **P2 绞杀者：** L2 终态 G3 签收；`handle_thread(Message)` 已委托 `ThreadMessageTurnPort`（app-server 单轮 LLM；生产 HTTP 仍 `RuntimeThreadManager`）。
+5. **R-015 填数：** ✅ RSS 26.6 MB @ `ab4c3c4`；**`-Gate` 回归门 + 1.1 MB fixture** 已接线（全量重跑可选）。
+6. **F0 路由：** ✅ `start_turn_applies_route_intent_routing_rule_to_model`（`route_intent` → `routing_rules.json` → model）。
 
 ### 17.4 维护者签收待办
 
-- [ ] 确认 §17 审核结论并关闭「路线图已全面实施」误解（**实施中**，非 **已完成**）
-- [ ] §11.0 ADR **G3** 正式签收（spike 已完成，编码门仍须 §12.2）
-- [ ] 分配 R-003 续拆 / R-009 / R-012 下一 PR 负责人
+- [x] 维护者签收 §17 审核结论（**实施中**，非 **已完成**；G2/G3 2026-05-23 更新）
+- [x] §11.0 ADR **G3** 正式签收 — [P2_G3_ENGINE_L2_SIGNOFF.md](./adr/P2_G3_ENGINE_L2_SIGNOFF.md)
+- [ ] D10 解冻评审 → 启动阶段 F（xterm / diff / a11y）
 
 ---
 

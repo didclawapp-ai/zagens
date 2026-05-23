@@ -52,8 +52,8 @@
 - **键盘优先**导航（焦点环、侧边栏/编写器/历史的快捷键）。
 - **智能粘贴**代码块 / HTML → 纯文本规范化（对标 TUI 的粘贴行为）。
 - **无障碍** — 屏幕阅读器标签、减少动画、高对比度模式（Tauri + Web）。
-- **终端模拟器** — TUI 中 Shell 命令输出实时滚动显示；DS Pick 的 ToolCard 仅显示纯文本 output，无 xterm.js 集成。后端已通过 `tool.progress` SSE 事件推送实时输出流。
-- **Diff 可视化** — TUI 中 `edit_file`/`apply_patch` 结果以 diff 形式展示；DS Pick 无 diff2html 集成。
+- **终端模拟器** — ✅ `TerminalCard.tsx` + xterm.js；`tool.progress` SSE 增量写入终端（F1a，2026-05-23）。
+- **Diff 可视化** — ✅ `DiffCard.tsx` + diff2html；`edit_file`/`apply_patch`/`write_file` 在 turn 进行中也可预览 diff（F1b）。
 - **子代理状态面板** — 与「明显差距」中的子代理条目相同，归类于此阶段作为纯前端工作。
 - **资源管理器中打开** — TUI 支持在系统文件管理器中打开工作区路径；DS Pick 无对应 Tauri command。
 - **导出会话 JSON** — TUI 支持将会话导出为 JSON 文件；DS Pick 仅自动 persist，无用户可见的导出入口。
@@ -95,11 +95,11 @@
 
 文档原「10 项」中，多项已在 Web UI 落地；下列为**仍建议投入**或**需验证**的工作：
 
-1. **Terminal 集成（xterm.js）** — Shell 工具实时输出仍主要在 `ToolCard` 文本区。
-2. **Diff 可视化（diff2html）** — `edit_file` / `apply_patch` 结果。
-3. **快捷键 & 无障碍** — 已有少量快捷键（如 `useKeyboardShortcuts`）；需系统化 Tab 顺序、aria、`prefers-reduced-motion`。
-4. **资源管理器中打开工作区** — Tauri command 待补。
-5. **导出会话 JSON** — 用户可见导出入口。
+1. ~~**Terminal 集成（xterm.js）**~~ — ✅ `TerminalCard` + 增量 `tool.progress`（F1a）。
+2. ~~**Diff 可视化（diff2html）**~~ — ✅ `DiffCard` + 右栏 Diff 面板（F1b）；运行中 diff 预览 2026-05-23。
+3. **快捷键 & 无障碍** — 🟡 Skip link、`#main-content`、工具/diff aria、focus-visible、reduced-motion；Tab 顺序仍待系统化。
+4. ~~**资源管理器中打开工作区**~~ — ✅ `open_in_shell` Tauri command。
+5. ~~**导出会话 JSON**~~ — ✅ Composer 菜单 + `export_session_json` / `export_thread_json`。
 6. **内联编辑 / 智能粘贴** — 与后端「改历史消息」能力对齐后再做。
 7. **自动模型路由** — 核对 `RoutingPanel` 与 runtime `start_thread_turn` 是否完全一致。
 8. **定时自动化 UI** — 需要时再打开「自动化」标签（`fetchAutomations` 已存在于 `client.ts`）。
@@ -116,8 +116,8 @@
 | 2 | 用量仪表盘 | **✅** | `UsageDashboard.tsx`、`fetchUsage` |
 | 3 | 任务 / ~~自动化~~ / 技能 | **◐** | `AutomationPanel.tsx`：任务 + 技能；**定时自动化不展示** |
 | 4 | 子代理面板 | **◐** | `AgentPanel.tsx`、`agentStates`、`App.tsx` SSE |
-| 5 | Terminal（xterm） | **❌** | 未集成 |
-| 6 | Diff（diff2html） | **❌** | 未集成 |
+| 5 | Terminal（xterm） | **✅** | `TerminalCard.tsx`；F1a 增量 progress |
+| 6 | Diff（diff2html） | **✅** | `DiffCard.tsx` + `DiffPanel`；运行中预览 |
 | 7 | 快捷键 & a11y | **◐** | 部分快捷键；未全覆盖 |
 | 8 | 模型参数 + 资源管理器 + 导出 JSON | **◐** | `ModelParamsDialog` 已接；**8b/8c** 仍缺 |
 | 9 | 智能粘贴 & 内联编辑 | **❌** | 未做 |

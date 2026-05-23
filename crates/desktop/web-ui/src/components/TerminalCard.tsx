@@ -63,6 +63,7 @@ function TerminalXtermView({ output }: { output: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
+  const writtenLenRef = useRef(0);
   const outputRef = useRef(output);
   outputRef.current = output;
   const isDark = useDocumentDarkClass();
@@ -71,6 +72,7 @@ function TerminalXtermView({ output }: { output: string }) {
     const container = containerRef.current;
     if (!container) return;
 
+    writtenLenRef.current = 0;
     const term = new Terminal({
       cursorBlink: false,
       disableStdin: true,
@@ -94,7 +96,9 @@ function TerminalXtermView({ output }: { output: string }) {
         /* narrow flex layouts may throw until width stabilizes */
       }
       term.clear();
-      term.write(prepareTerminalOutput(outputRef.current, lightUi));
+      const prepared = prepareTerminalOutput(outputRef.current, lightUi);
+      term.write(prepared);
+      writtenLenRef.current = prepared.length;
     };
 
     repaint();
@@ -119,20 +123,26 @@ function TerminalXtermView({ output }: { output: string }) {
       term.dispose();
       termRef.current = null;
       fitRef.current = null;
+      writtenLenRef.current = 0;
     };
   }, [isDark]);
 
+  /** Append `tool.progress` chunks without clearing the terminal each frame (F1a). */
   useEffect(() => {
     const term = termRef.current;
-    const container = containerRef.current;
-    if (!term || !container || container.clientWidth < 2 || container.clientHeight < 2) return;
-    try {
-      fitRef.current?.fit();
-    } catch {
-      /* ignore */
+    if (!term) return;
+    const lightUi = !isDark;
+    const prepared = prepareTerminalOutput(output, lightUi);
+    if (prepared.length < writtenLenRef.current) {
+      term.clear();
+      term.write(prepared);
+      writtenLenRef.current = prepared.length;
+      return;
     }
-    term.clear();
-    term.write(prepareTerminalOutput(output, !isDark));
+    if (prepared.length > writtenLenRef.current) {
+      term.write(prepared.slice(writtenLenRef.current));
+      writtenLenRef.current = prepared.length;
+    }
   }, [output, isDark]);
 
   return (
@@ -159,7 +169,11 @@ export default function TerminalCard({ output, command, status = 'done' }: Props
   const showXterm = hasTerminalText(output);
 
   return (
-    <div className="rounded-lg border border-card-border overflow-hidden my-2">
+    <div
+      className="rounded-lg border border-card-border overflow-hidden my-2"
+      role="region"
+      aria-label={command ? `Shell: ${command}` : 'Shell output'}
+    >
       <div className="flex items-center gap-2 px-3 py-1.5 bg-canvas-alt border-b border-divider">
         <span className="w-2.5 h-2.5 rounded-full bg-t-error/70" />
         <span className="w-2.5 h-2.5 rounded-full bg-amber/70" />

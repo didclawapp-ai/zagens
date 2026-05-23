@@ -28,7 +28,11 @@ export function ToolCard({ tool, copyTitle }: { tool: ToolCardModel; copyTitle?:
         : 'bg-success-bg';
 
   return (
-    <div className="rounded-lg border border-card-border bg-canvas-alt p-2.5 text-xs">
+    <div
+      className="rounded-lg border border-card-border bg-canvas-alt p-2.5 text-xs"
+      role="region"
+      aria-label={t('a11y.toolRegion', { name: tool.name, status: tool.status })}
+    >
       <div className="flex flex-wrap items-center gap-2 mb-1">
         <span className="font-semibold text-t-text">{tool.name}</span>
         <span className="text-t-text-muted font-mono text-[11px]">{tool.id.slice(0, 12)}</span>

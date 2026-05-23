@@ -14,7 +14,10 @@ param(
     [int]$Turns = 50,
     [int]$Port = 0,  # 0 = random
     [string]$Model = "",
-    [switch]$DryRun
+    [switch]$DryRun,
+    [switch]$Gate,
+    [double]$BaselineRssMB = 0,
+    [double]$MaxRegressionPct = 10
 )
 
 $ErrorActionPreference = "Stop"
@@ -132,15 +135,57 @@ function Invoke-ThreadTurn {
     }
 }
 
+function Get-BaselineRssFromAdr {
+    param([string]$AdrPath)
+    if (-not (Test-Path $AdrPath)) { return 26.6 }
+    $content = Get-Content -Path $AdrPath -Raw -ErrorAction SilentlyContinue
+    if ($content -match '\|\s*进程 RSS 峰值\s*\|\s*\*\*([\d.]+)\*\*') {
+        return [double]$Matches[1]
+    }
+    return 26.6
+}
+
+function Initialize-LargeOutputFixture {
+  # Deterministic >=1 MB file for A1.6 large-tool exercise (R-015).
+  $ws = Join-Path $env:TEMP "deepseek-baseline-ws-$([guid]::NewGuid().ToString('N'))"
+  New-Item -ItemType Directory -Path $ws -Force | Out-Null
+  $fixtureName = "baseline_large_fixture.txt"
+  $fixturePath = Join-Path $ws $fixtureName
+  $targetBytes = 1.1 * 1MB
+  $chunk = 'x' * 65536
+  $stream = [System.IO.File]::Create($fixturePath)
+  try {
+    $written = 0
+    while ($written -lt $targetBytes) {
+      $take = [Math]::Min($chunk.Length, [int]($targetBytes - $written))
+      $bytes = [System.Text.Encoding]::ASCII.GetBytes($chunk.Substring(0, $take))
+      $stream.Write($bytes, 0, $bytes.Length)
+      $written += $bytes.Length
+    }
+  } finally {
+    $stream.Dispose()
+  }
+  return [PSCustomObject]@{
+    Workspace    = $ws
+    FixtureName  = $fixtureName
+    SizeBytes    = (Get-Item $fixturePath).Length
+  }
+}
+
 function Invoke-LargeToolOutputTurn {
-    param([string]$Base, [string]$ThreadId, [int]$TurnTimeoutSec = 900)
-    # Best-effort: ask for a large read; may fail without repo files — still exercises path.
+    param(
+        [string]$Base,
+        [string]$ThreadId,
+        [string]$FixtureName,
+        [int]$TurnTimeoutSec = 900
+    )
     $prompt = @"
-Run a single tool that reads a file under the workspace and returns at least 500KB of text if possible.
-If no large file exists, list directory sizes and stop.
+Use read_file to read the file "$FixtureName" in the workspace root.
+Reply with only the first 20 characters of the file content, nothing else.
 "@
     try {
         Invoke-ThreadTurn -Base $Base -ThreadId $ThreadId -Prompt $prompt -TurnTimeoutSec $TurnTimeoutSec
+        Write-Host "  large-tool fixture turn OK ($FixtureName)" -ForegroundColor DarkGreen
     } catch {
         Write-Warning "  large-tool turn skipped or failed: $_"
     }
@@ -258,6 +303,7 @@ for ($run = 1; $run -le $Runs; $run++) {
         -RedirectStandardOutput (Join-Path $env:TEMP "deepseek-baseline-stdout.log") `
         -RedirectStandardError (Join-Path $env:TEMP "deepseek-baseline-stderr.log")
 
+    $fixture = $null
     try {
         $base = "http://127.0.0.1:$port"
         $healthy = $false
@@ -272,9 +318,13 @@ for ($run = 1; $run -le $Runs; $run++) {
         if (-not $healthy) { throw "Sidecar did not start in time" }
         Write-Host "  health OK"
 
+        $fixture = Initialize-LargeOutputFixture
+        Write-Host "  fixture workspace: $($fixture.Workspace) ($($fixture.SizeBytes) bytes)"
+
         $thread = Invoke-Rest -Uri "$base/v1/threads" -Method Post -Body @{
-            model = $resolvedModel
-            mode  = "agent"
+            model     = $resolvedModel
+            mode      = "agent"
+            workspace = $fixture.Workspace
         }
         $threadId = $thread.id
         Write-Host "  thread created: $threadId"
@@ -282,7 +332,7 @@ for ($run = 1; $run -le $Runs; $run++) {
         Invoke-ThreadTurn -Base $base -ThreadId $threadId -Prompt "Reply with just the word OK." -TurnTimeoutSec 300
         Write-Host "  warm-up done"
 
-        Invoke-LargeToolOutputTurn -Base $base -ThreadId $threadId -TurnTimeoutSec 900
+        Invoke-LargeToolOutputTurn -Base $base -ThreadId $threadId -FixtureName $fixture.FixtureName -TurnTimeoutSec 900
 
         $rssPeak = 0.0
         for ($t = 1; $t -le $Turns; $t++) {
@@ -313,6 +363,9 @@ for ($run = 1; $run -le $Runs; $run++) {
         if (Test-Path $dataDir) {
             Remove-Item -Path $dataDir -Recurse -Force -ErrorAction SilentlyContinue
         }
+        if ($fixture -and (Test-Path $fixture.Workspace)) {
+            Remove-Item -Path $fixture.Workspace -Recurse -Force -ErrorAction SilentlyContinue
+        }
     }
 
     Start-Sleep -Seconds 2
@@ -331,6 +384,20 @@ Write-Host "  RSS peak: $([math]::Round($medRss, 1)) MB"
 Write-Host "  p99 disk read proxy: $([math]::Round($medP99, 2)) ms"
 Write-Host ""
 Write-Host "  Fill into docs/tech/adr/RUNTIME_BASELINE.md"
+
+if ($Gate -and -not $DryRun -and $medRss -gt 0) {
+    $adrPath = Join-Path $workspaceRoot "docs\tech\adr\RUNTIME_BASELINE.md"
+    $baselineRss = if ($BaselineRssMB -gt 0) { $BaselineRssMB } else { Get-BaselineRssFromAdr -AdrPath $adrPath }
+    $maxAllowed = $baselineRss * (1 + ($MaxRegressionPct / 100.0))
+    Write-Host ""
+    Write-Host "=== A1 regression gate (-Gate) ===" -ForegroundColor Cyan
+    Write-Host "  baseline RSS: $baselineRss MB  max allowed (+${MaxRegressionPct}%): $([math]::Round($maxAllowed, 1)) MB"
+    if ($medRss -gt $maxAllowed) {
+        Write-Error "RSS regression: median $([math]::Round($medRss, 1)) MB exceeds gate ($([math]::Round($maxAllowed, 1)) MB)"
+        exit 1
+    }
+    Write-Host "  PASS: median RSS within gate" -ForegroundColor Green
+}
 
 # Machine-readable summary for CI/log capture
 Write-Output "BASELINE_GIT_REF=$gitRef"

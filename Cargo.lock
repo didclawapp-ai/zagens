@@ -1405,6 +1405,7 @@ name = "deepseek-app-server"
 version = "0.8.15"
 dependencies = [
  "anyhow",
+ "async-trait",
  "axum",
  "clap",
  "deepseek-agent",
@@ -1416,6 +1417,7 @@ dependencies = [
  "deepseek-protocol",
  "deepseek-state",
  "deepseek-tools",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",

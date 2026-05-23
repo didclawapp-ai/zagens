@@ -390,7 +390,7 @@ function renderToolCard(tool: ToolCardModel, onOpenDiffInPanel?: () => void, cop
     const diffText = extractUnifiedDiff(tool.output ?? '');
     const fileName = parseFileNameFromToolInput(tool.input);
 
-    if (diffText && tool.status === 'done') {
+    if (diffText) {
       return (
         <DiffCard
           key={tool.id}

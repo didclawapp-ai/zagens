@@ -11,7 +11,7 @@
 | 1 | `event_schema_version` 代码字段 | ✅ | `CURRENT_EVENT_SCHEMA_VERSION`（`runtime_threads/mod.rs`）；`GET /health` 返回 `event_schema_version`；SSE `runtime_event_payload` 含同名字段 |
 | 2 | Sidecar 契约测 CI 绿 | ✅ | `sidecar_contract_full_lifecycle`（`runtime_api/tests.rs`）；`.github/workflows/ci.yml` |
 | 3 | 桌面全链路冒烟 | ✅ 人工 | §1 单窗对话 + SSE（2026-05-23 维护者手测） |
-| 4 | A+.7 审批回归 | ✅ 自动化 / ⏸ UI 手测 | 单测绿；**桌面弹窗手测暂缓**（`approval_policy` ↔ `auto_approve` 接线待修） |
+| 4 | A+.7 审批回归 | ✅ 自动化 + 接线 | 单测绿；`approval_policy` → Composer `autoApprove` + `turn_lifecycle` 读 config（`10972e4`）；§2 弹窗手测可复测 |
 | — | A5.5 回放 10–20 步 | ✅ | `tests/fixtures/runtime_turn_replay.jsonl`（15 事件）+ `runtime_turn_replay_fixture_covers_full_turn_lifecycle` |
 | — | A5.5 最小回放 | ✅ | `runtime_turn_minimal.jsonl` + `runtime_turn_minimal_fixture_*` |
 | — | 稳定 SSE 子集 v1 映射 | ✅ | `runtime_api/stream.rs` 单测（每文档化 `event:` 一条） |
@@ -34,7 +34,7 @@ cargo test -p deepseek-tui --lib sidecar_contract_full_lifecycle --all-features 
 | 项 | 状态 |
 |----|------|
 | sidecar 双 thread 并行 turn 测 | ✅ `sidecar_parallel_turns_on_two_threads` |
-| `core::Runtime::handle_thread(Message)` 真 turn | ⏸ app-server 路径仍 `queued` |
+| `core::Runtime::handle_thread(Message)` 真 turn | ✅ `ThreadMessageTurnPort` + app-server `AppServerLlmTurnPort`（单轮 chat；无 api_key 仍 queued） |
 | DS Pick 多窗口手测 | ✅ | §3 双窗并行 + 终端不串窗（2026-05-23） |
 | §0.4 `/health` | ✅ | `event_schema_version: 2` |
 | Stop 中途取消 | ✅ | §5.1 |
@@ -47,7 +47,7 @@ cargo test -p deepseek-tui --lib sidecar_contract_full_lifecycle --all-features 
 | §1 单窗全链路 | ✅ |
 | §3 PR5 双窗并行 turn + T4 终端 | ✅ |
 | §5.1 Stop | ✅ |
-| §2 A+.7 审批弹窗 | ⏸ 暂缓（Auto 路径已验证；非 Auto 待产品接线后复测） |
+| §2 A+.7 审批弹窗 | ⏸ 可复测（接线已合 `10972e4`；Composer 默认随 `on-request` 关自动批准） |
 
 ---
 
@@ -65,6 +65,6 @@ cargo test -p deepseek-tui --lib sidecar_contract_full_lifecycle --all-features 
 
 **手测清单（可打印/勾选）：** [G2_PR5_MANUAL_SMOKE_CHECKLIST.md](./G2_PR5_MANUAL_SMOKE_CHECKLIST.md)
 
-1. **§2 审批 UI** — `approval_policy` ↔ Composer `auto_approve` 接线后复测。  
-2. **G3** — §11.0 ADR 签收。  
-3. **§12.3 #1** — `Engine` L2 终态 vs 继续迁 core 决议。
+1. **§2 审批 UI** — 接线已合；维护者复测 §2.1–2.4 并勾选 [G2_PR5_MANUAL_SMOKE_CHECKLIST.md](./G2_PR5_MANUAL_SMOKE_CHECKLIST.md)。  
+2. ~~**G3** — §11.0 ADR 签收~~ ✅ [P2_G3_ENGINE_L2_SIGNOFF.md](./P2_G3_ENGINE_L2_SIGNOFF.md)（2026-05-23）。  
+3. ~~**§12.3 #1**~~ ✅ L2 终态签收（`engine.rs` ~201 行；turn_loop 在 core）。

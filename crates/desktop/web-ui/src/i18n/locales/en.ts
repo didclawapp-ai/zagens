@@ -7,6 +7,12 @@ const en: TranslationMap = {
     subtitle: 'Your AI coding assistant',
     emptyPrompt: 'Start a conversation below',
   },
+  a11y: {
+    skipToMain: 'Skip to main content',
+    chatLog: 'Chat transcript',
+    toolRegion: 'Tool {{name}}, status {{status}}',
+    diffRegion: 'File diff {{fileName}}',
+  },
   sidebar: {
     showAllSessions: 'Show all sessions',
     showAllSessionsHint: 'Includes history from other workspaces',
@@ -102,6 +108,8 @@ const en: TranslationMap = {
     lastTurnTokens: '↓ {{count}}',
     lastTurnTokensTitle: 'Output tokens from the last completed turn',
     stop: 'Stop',
+    stopAria: 'Stop generation (Escape)',
+    sendAria: 'Send message',
     turnInterrupted: 'Interrupted',
     runtimeSidecarRestart: 'Runtime restarted; generation stopped',
     interruptFailed: 'Could not interrupt the turn: {{message}}',
@@ -186,6 +194,7 @@ const en: TranslationMap = {
     newWindow: 'New window',
     workspace: 'Workspace',
     devtools: 'Developer Tools',
+    stopGeneration: 'Stop generation (Escape)',
   },
   diff: {
     tab: 'Diff',

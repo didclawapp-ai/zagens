@@ -1209,6 +1209,7 @@ export default function Composer({
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             aria-label={t('composer.inputMessage')}
+            aria-keyshortcuts="Enter Send Shift+Enter Newline"
             placeholder={t('composer.placeholder')}
             disabled={disabled || transcribing}
             rows={2}
@@ -1353,6 +1354,7 @@ export default function Composer({
               disabled={disabled || transcribing || (!text.trim() && attachments.length === 0)}
               className="composer-send-pill"
               title={transcribing ? t('composer.transcribing') : t('composer.send')}
+              aria-label={transcribing ? t('composer.transcribing') : t('composer.sendAria')}
             >
               {t('composer.send')}
               <svg viewBox="0 0 24 24">
@@ -1364,6 +1366,7 @@ export default function Composer({
                 type="button"
                 onClick={onCancel}
                 className="flex-shrink-0 rounded-lg bg-hover-strong px-4 py-2 text-sm font-medium text-t-text transition-colors hover:bg-hover"
+                aria-label={t('composer.stopAria')}
               >
                 {t('composer.stop')}
               </button>

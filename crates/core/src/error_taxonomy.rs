@@ -270,6 +270,10 @@ pub fn classify_error_message(message: &str) -> ErrorCategory {
         || lower.contains("prompt is too long")
         || (lower.contains("requested") && lower.contains("tokens") && lower.contains("maximum"))
         || lower.contains("context window")
+        || lower.contains("reasoning_content")
+        || lower.contains("reasoning_effort")
+        || lower.contains("thinking mode")
+        || lower.contains("thinking.type")
     {
         return ErrorCategory::InvalidInput;
     }
@@ -377,5 +381,281 @@ impl From<deepseek_tools::ToolError> for ErrorEnvelope {
                 message,
             ),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use deepseek_tools::ToolError;
+
+    // ── classify_error_message golden tests (A3 / R-007) ─────────────────
+
+    #[test]
+    fn context_length_exact() {
+        assert_eq!(
+            classify_error_message("maximum context length exceeded"),
+            ErrorCategory::InvalidInput
+        );
+    }
+
+    #[test]
+    fn context_length_underscore() {
+        assert_eq!(
+            classify_error_message("context_length_error: too many tokens"),
+            ErrorCategory::InvalidInput
+        );
+    }
+
+    #[test]
+    fn context_length_variants() {
+        assert_eq!(
+            classify_error_message("context length is 128000 but messages used 250000"),
+            ErrorCategory::InvalidInput
+        );
+        assert_eq!(
+            classify_error_message("prompt is too long for this model"),
+            ErrorCategory::InvalidInput
+        );
+    }
+
+    #[test]
+    fn rate_limit_variants() {
+        assert_eq!(
+            classify_error_message("too many requests, please try again later"),
+            ErrorCategory::RateLimit
+        );
+        assert_eq!(
+            classify_error_message("HTTP 429: you have been rate limited"),
+            ErrorCategory::RateLimit
+        );
+        assert_eq!(
+            classify_error_message("quota exceeded"),
+            ErrorCategory::RateLimit
+        );
+    }
+
+    #[test]
+    fn timeout_wins_over_auth_substring() {
+        assert_eq!(
+            classify_error_message("auth error: connection timed out"),
+            ErrorCategory::Timeout
+        );
+    }
+
+    #[test]
+    fn network_gateway_codes() {
+        assert_eq!(
+            classify_error_message("server returned 502 Bad Gateway"),
+            ErrorCategory::Network
+        );
+        assert_eq!(
+            classify_error_message("503 Service Unavailable"),
+            ErrorCategory::Network
+        );
+        assert_eq!(
+            classify_error_message("service temporarily unavailable"),
+            ErrorCategory::Network
+        );
+    }
+
+    #[test]
+    fn status_502_embedded_in_token_not_network() {
+        assert_eq!(
+            classify_error_message("error code ERR5021: bad input"),
+            ErrorCategory::Internal
+        );
+    }
+
+    #[test]
+    fn tool_not_found_is_state_not_tool() {
+        assert_eq!(
+            classify_error_message("tool execution failed: /bin/bash not found"),
+            ErrorCategory::State
+        );
+    }
+
+    #[test]
+    fn envelope_helpers() {
+        let t = ErrorEnvelope::transient("oops");
+        assert_eq!(t.category, ErrorCategory::Internal);
+        assert!(t.recoverable);
+        let f = ErrorEnvelope::fatal_auth("bad key");
+        assert_eq!(f.severity, ErrorSeverity::Critical);
+        assert!(!f.recoverable);
+    }
+
+    #[test]
+    fn display_labels() {
+        assert_eq!(ErrorCategory::RateLimit.to_string(), "rate_limit");
+        assert_eq!(ErrorSeverity::Critical.to_string(), "critical");
+        assert!(ErrorEnvelope::network("lost").to_string().contains("lost"));
+    }
+
+    #[test]
+    fn stream_overflow_envelope() {
+        let e = StreamError::Overflow {
+            limit_bytes: 1_000_000,
+        }
+        .into_envelope();
+        assert_eq!(e.category, ErrorCategory::Internal);
+        assert_eq!(e.severity, ErrorSeverity::Error);
+    }
+
+    #[test]
+    fn reasoning_content_constraint_is_invalid_input_not_network() {
+        assert_eq!(
+            classify_error_message(
+                "400 Bad Request: reasoning_content is required for tool calls in thinking mode"
+            ),
+            ErrorCategory::InvalidInput
+        );
+        assert_eq!(
+            classify_error_message("connection reset by peer"),
+            ErrorCategory::Network
+        );
+    }
+
+    #[test]
+    fn reasoning_effort_invalid() {
+        assert_eq!(
+            classify_error_message("invalid reasoning_effort: maxx"),
+            ErrorCategory::InvalidInput
+        );
+    }
+
+    #[test]
+    fn thinking_mode_constraint() {
+        assert_eq!(
+            classify_error_message("thinking mode does not support this parameter"),
+            ErrorCategory::InvalidInput
+        );
+    }
+
+    #[test]
+    fn rate_limit_exact() {
+        assert_eq!(
+            classify_error_message("rate limit exceeded"),
+            ErrorCategory::RateLimit
+        );
+    }
+
+    #[test]
+    fn timeout_before_network_status_codes() {
+        assert_eq!(
+            classify_error_message("504 Gateway Timeout"),
+            ErrorCategory::Timeout
+        );
+        assert_eq!(classify_error_message("502"), ErrorCategory::Network);
+    }
+
+    #[test]
+    fn network_disconnect() {
+        assert_eq!(
+            classify_error_message("connection reset by peer"),
+            ErrorCategory::Network
+        );
+    }
+
+    #[test]
+    fn auth_api_key() {
+        assert_eq!(
+            classify_error_message("invalid api key provided"),
+            ErrorCategory::Authentication
+        );
+    }
+
+    #[test]
+    fn authorization_denied() {
+        assert_eq!(
+            classify_error_message("access denied by policy"),
+            ErrorCategory::Authorization
+        );
+    }
+
+    #[test]
+    fn parse_malformed() {
+        assert_eq!(
+            classify_error_message("malformed response from server"),
+            ErrorCategory::Parse
+        );
+    }
+
+    #[test]
+    fn state_not_found() {
+        assert_eq!(
+            classify_error_message("thread not found"),
+            ErrorCategory::State
+        );
+    }
+
+    #[test]
+    fn tool_without_not_found_substring() {
+        assert_eq!(
+            classify_error_message("a tool returned an error code 1"),
+            ErrorCategory::Tool
+        );
+    }
+
+    #[test]
+    fn empty_and_whitespace_fallback_internal() {
+        assert_eq!(classify_error_message(""), ErrorCategory::Internal);
+        assert_eq!(classify_error_message("   "), ErrorCategory::Internal);
+    }
+
+    #[test]
+    fn internal_fallback() {
+        assert_eq!(
+            classify_error_message("something completely unexpected happened"),
+            ErrorCategory::Internal
+        );
+    }
+
+    #[test]
+    fn capitalization_irrelevant() {
+        assert_eq!(
+            classify_error_message("NETWORK ERROR: Connection REFUSED"),
+            ErrorCategory::Network
+        );
+    }
+
+    #[test]
+    fn classify_recoverable_internal_is_warning() {
+        let e = ErrorEnvelope::classify("unknown hiccup", true);
+        assert_eq!(e.category, ErrorCategory::Internal);
+        assert_eq!(e.severity, ErrorSeverity::Warning);
+        assert!(e.recoverable);
+    }
+
+    #[test]
+    fn classify_auth_is_critical() {
+        let e = ErrorEnvelope::classify("401 unauthorized", false);
+        assert_eq!(e.category, ErrorCategory::Authentication);
+        assert_eq!(e.severity, ErrorSeverity::Critical);
+    }
+
+    #[test]
+    fn stream_stall_is_recoverable_warning() {
+        let e = StreamError::Stall { timeout_secs: 60 }.into_envelope();
+        assert_eq!(e.category, ErrorCategory::Timeout);
+        assert_eq!(e.severity, ErrorSeverity::Warning);
+        assert!(e.recoverable);
+    }
+
+    #[test]
+    fn tool_timeout_is_recoverable_warning() {
+        let e: ErrorEnvelope = ToolError::Timeout { seconds: 30 }.into();
+        assert_eq!(e.category, ErrorCategory::Timeout);
+        assert_eq!(e.severity, ErrorSeverity::Warning);
+        assert!(e.recoverable);
+    }
+
+    #[test]
+    fn tool_path_escape_is_authorization() {
+        let e: ErrorEnvelope = ToolError::PathEscape {
+            path: std::path::PathBuf::from("/etc/passwd"),
+        }
+        .into();
+        assert_eq!(e.category, ErrorCategory::Authorization);
     }
 }

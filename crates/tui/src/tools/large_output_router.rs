@@ -254,6 +254,24 @@ mod tests {
     }
 
     #[test]
+    fn synthesise_at_one_megabyte_boundary() {
+        let router = LargeOutputRouter::default();
+        // R-015: exercise >=1 MB tool output path (~1.1 MB of ASCII).
+        let one_mb_plus = "z".repeat(1_100_000);
+        let result = make_result(&one_mb_plus);
+        match router.route("read_file", &result, false) {
+            RouteDecision::Synthesise {
+                estimated_tokens,
+                threshold,
+            } => {
+                assert!(estimated_tokens > threshold);
+                assert!(estimated_tokens >= 350_000, "1.1MB should estimate well above threshold");
+            }
+            RouteDecision::PassThrough => panic!("1.1 MB output must route to synthesis"),
+        }
+    }
+
+    #[test]
     fn estimate_tokens_conservative() {
         // 9 chars → ceil(9/3) = 3 tokens
         assert_eq!(estimate_tokens("123456789"), 3);

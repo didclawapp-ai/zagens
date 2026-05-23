@@ -624,6 +624,61 @@ use super::*;
         Ok(())
     }
 
+    /// F0 — `RoutingPanel` → `route_intent` → `routing_rules.json` → model override.
+    #[tokio::test]
+    async fn start_turn_applies_route_intent_routing_rule_to_model() -> Result<()> {
+        let manager = test_manager(test_runtime_dir())?;
+        manager
+            .set_routing_rules(vec![RoutingRule {
+                intent: "agent".to_string(),
+                model: "deepseek-v4-flash".to_string(),
+            }])
+            .await?;
+
+        let thread = manager
+            .create_thread(CreateThreadRequest {
+                model: None,
+                workspace: None,
+                mode: None,
+                allow_shell: None,
+                trust_mode: None,
+                auto_approve: None,
+                archived: false,
+                system_prompt: None,
+                task_id: None,
+                task_type: None,
+            })
+            .await?;
+
+        let harness = install_mock_engine(&manager, &thread.id).await;
+        let mut rx_op = harness.rx_op;
+
+        let _turn = manager
+            .start_turn(
+                &thread.id,
+                StartTurnRequest {
+                    prompt: "route me".to_string(),
+                    input_summary: None,
+                    model: None,
+                    mode: None,
+                    allow_shell: None,
+                    trust_mode: None,
+                    auto_approve: None,
+                    route_intent: Some("Agent".to_string()),
+                },
+            )
+            .await?;
+
+        match rx_op.recv().await {
+            Some(Op::SendMessage { model, .. }) => {
+                assert_eq!(model, "deepseek-v4-flash");
+            }
+            other => panic!("expected SendMessage op, got {other:?}"),
+        }
+
+        Ok(())
+    }
+
     #[tokio::test]
     async fn start_turn_can_override_thread_auto_approve_to_false() -> Result<()> {
         let manager = test_manager(test_runtime_dir())?;
@@ -882,6 +937,105 @@ use super::*;
             .count();
         assert_eq!(started, 2);
         assert_eq!(completed, 2);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn turn_completed_event_includes_turn_summary() -> Result<()> {
+        let manager = test_manager(test_runtime_dir())?;
+        let thread = manager
+            .create_thread(CreateThreadRequest {
+                model: None,
+                workspace: None,
+                mode: None,
+                allow_shell: None,
+                trust_mode: None,
+                auto_approve: None,
+                archived: false,
+                system_prompt: None,
+                task_id: None,
+                task_type: None,
+            })
+            .await?;
+
+        let harness = install_mock_engine(&manager, &thread.id).await;
+        let mut rx_op = harness.rx_op;
+        let tx_event = harness.tx_event;
+        tokio::spawn(async move {
+            if matches!(rx_op.recv().await, Some(Op::SendMessage { .. })) {
+                let _ = tx_event
+                    .send(EngineEvent::TurnStarted {
+                        turn_id: "engine_turn_summary".to_string(),
+                    })
+                    .await;
+                let _ = tx_event
+                    .send(EngineEvent::MessageStarted { index: 0 })
+                    .await;
+                let _ = tx_event
+                    .send(EngineEvent::MessageDelta {
+                        index: 0,
+                        content: "done".to_string(),
+                    })
+                    .await;
+                let _ = tx_event
+                    .send(EngineEvent::MessageComplete { index: 0 })
+                    .await;
+                let _ = tx_event
+                    .send(EngineEvent::TurnComplete {
+                        usage: Usage {
+                            input_tokens: 10,
+                            output_tokens: 5,
+                            ..Usage::default()
+                        },
+                        last_request_input_tokens: None,
+                        status: TurnOutcomeStatus::Completed,
+                        error: None,
+                        step_count: 2,
+                        tool_names: vec!["read_file".to_string()],
+                        end_reason: Some("completed".to_string()),
+                    })
+                    .await;
+            }
+        });
+
+        let turn = manager
+            .start_turn(
+                &thread.id,
+                StartTurnRequest {
+                    prompt: "summarise".to_string(),
+                    input_summary: None,
+                    model: None,
+                    mode: None,
+                    allow_shell: None,
+                    trust_mode: None,
+                    auto_approve: None,
+                    route_intent: None,
+                },
+            )
+            .await?;
+        wait_for_terminal_turn(&manager, &turn.id, MOCK_ENGINE_TURN_TERMINAL_TIMEOUT).await?;
+
+        let events = manager.events_since(&thread.id, None)?;
+        let completed = events
+            .iter()
+            .find(|ev| ev.event == "turn.completed")
+            .context("missing turn.completed event")?;
+        let summary = completed
+            .payload
+            .get("turn_summary")
+            .context("turn.completed missing turn_summary")?;
+        assert_eq!(summary.get("step_count").and_then(Value::as_u64), Some(2));
+        assert_eq!(
+            summary
+                .get("tool_names")
+                .and_then(Value::as_array)
+                .map(|names| names.len()),
+            Some(1)
+        );
+        assert_eq!(
+            summary.get("end_reason").and_then(Value::as_str),
+            Some("completed")
+        );
         Ok(())
     }
 

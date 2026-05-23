@@ -9,6 +9,7 @@ description = "Codex-style app-server transport for DeepSeek workspace architect
 
 [dependencies]
 anyhow.workspace = true
+async-trait.workspace = true
 axum.workspace = true
 clap.workspace = true
 deepseek-agent = { path = "../agent", version = "0.8.15" }
@@ -24,3 +25,4 @@ serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
 tower-http.workspace = true
+reqwest.workspace = true
