@@ -1,6 +1,8 @@
-//! Sub-agent spawn port for the engine op loop (P2 tool_execution portization).
+//! Sub-agent spawn/list port for the engine op loop (P2 tool_execution portization).
 
 use async_trait::async_trait;
+
+use crate::subagent::SubAgentResult;
 
 /// Outcome of spawning a background sub-agent from the engine op loop.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,6 +35,9 @@ pub trait SubAgentSpawnPort: Send + Sync {
         &self,
         prompt: &str,
     ) -> Result<SubAgentSpawnOutcome, SubAgentSpawnError>;
+
+    /// List all sub-agents held by the manager (includes prior-session entries).
+    async fn list_subagents(&self) -> Vec<SubAgentResult>;
 }
 
 #[cfg(test)]

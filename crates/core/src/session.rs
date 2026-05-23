@@ -3,8 +3,9 @@
 //! Tracks conversation history, token usage, and session metadata.
 
 use crate::approval::ApprovalMode;
+use crate::chat::{ContentBlock, Message, SystemPrompt};
 use crate::cycle::CycleBriefing;
-use crate::chat::{Message, SystemPrompt};
+use crate::engine::context::extract_compaction_summary_prompt;
 use crate::models::Usage;
 use crate::project_context::{ProjectContext, load_project_context_with_parents};
 use crate::working_set::WorkingSet;
@@ -179,5 +180,179 @@ impl Session {
     pub fn rebuild_working_set(&mut self) {
         self.working_set
             .rebuild_from_messages(&self.messages, &self.workspace);
+    }
+}
+
+/// Whether the user selected automatic model routing (`"auto"` label).
+#[must_use]
+pub fn is_auto_model_label(model: &str) -> bool {
+    model.trim().eq_ignore_ascii_case("auto")
+}
+
+/// Apply runtime model selection to session state and a mirrored config field.
+pub fn apply_model_selection(session: &mut Session, config_model: &mut String, model: String) {
+    session.auto_model = is_auto_model_label(&model);
+    session.model = model;
+    config_model.clone_from(&session.model);
+}
+
+/// Apply runtime thread sync payload (messages, prompts, model, workspace).
+pub fn apply_sync_session_payload(
+    session: &mut Session,
+    config_workspace: &mut PathBuf,
+    config_model: &mut String,
+    messages: Vec<Message>,
+    system_prompt: Option<SystemPrompt>,
+    model: String,
+    workspace: PathBuf,
+) {
+    session.messages = messages;
+    session.compaction_summary_prompt = extract_compaction_summary_prompt(system_prompt.clone());
+    session.system_prompt = system_prompt;
+    apply_model_selection(session, config_model, model);
+    session.workspace = workspace.clone();
+    *config_workspace = workspace.clone();
+    let ctx = load_project_context_with_parents(&workspace);
+    session.project_context = if ctx.has_instructions() {
+        Some(ctx)
+    } else {
+        None
+    };
+    session.rebuild_working_set();
+}
+
+/// Index of the last `user` role message in API-format history.
+#[must_use]
+pub fn index_of_last_user_message(messages: &[Message]) -> Option<usize> {
+    messages
+        .iter()
+        .enumerate()
+        .rev()
+        .find_map(|(idx, msg)| (msg.role == "user").then_some(idx))
+}
+
+/// Remove the last user message and everything after it (#383 `/edit`).
+#[must_use]
+pub fn truncate_before_last_user_message(messages: &mut Vec<Message>) -> bool {
+    index_of_last_user_message(messages).is_some_and(|idx| {
+        messages.truncate(idx);
+        true
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn is_auto_model_label_matches_auto_case_insensitive() {
+        assert!(is_auto_model_label("auto"));
+        assert!(is_auto_model_label(" Auto "));
+        assert!(!is_auto_model_label("deepseek-v4-pro"));
+    }
+
+    #[test]
+    fn apply_model_selection_updates_session_and_config() {
+        let mut session = Session::new(
+            "old".into(),
+            PathBuf::from("/tmp"),
+            false,
+            false,
+            PathBuf::from("/tmp/notes"),
+            PathBuf::from("/tmp/mcp"),
+        );
+        let mut config_model = "old".to_string();
+        apply_model_selection(&mut session, &mut config_model, "auto".into());
+        assert!(session.auto_model);
+        assert_eq!(session.model, "auto");
+        assert_eq!(config_model, "auto");
+
+        apply_model_selection(
+            &mut session,
+            &mut config_model,
+            "deepseek-v4-pro".into(),
+        );
+        assert!(!session.auto_model);
+        assert_eq!(session.model, "deepseek-v4-pro");
+        assert_eq!(config_model, "deepseek-v4-pro");
+    }
+
+    #[test]
+    fn apply_sync_session_payload_updates_messages_workspace_and_model() {
+        let tmpdir = tempfile::TempDir::new().unwrap();
+        let ws = tmpdir.path().to_path_buf();
+        let mut session = Session::new(
+            "old-model".into(),
+            ws.clone(),
+            false,
+            false,
+            PathBuf::from("/tmp/notes"),
+            PathBuf::from("/tmp/mcp"),
+        );
+        let mut config_workspace = PathBuf::from("/other");
+        let mut config_model = "old-model".to_string();
+        let messages = vec![Message {
+            role: "user".to_string(),
+            content: vec![ContentBlock::Text {
+                text: "hello".into(),
+                cache_control: None,
+            }],
+        }];
+        apply_sync_session_payload(
+            &mut session,
+            &mut config_workspace,
+            &mut config_model,
+            messages.clone(),
+            None,
+            "auto".into(),
+            ws.clone(),
+        );
+        assert_eq!(session.messages.len(), 1);
+        assert_eq!(session.messages[0].role, "user");
+        assert!(session.auto_model);
+        assert_eq!(session.workspace, ws);
+        assert_eq!(config_workspace, ws);
+        assert_eq!(config_model, "auto");
+    }
+
+    fn user_msg(text: &str) -> Message {
+        Message {
+            role: "user".to_string(),
+            content: vec![ContentBlock::Text {
+                text: text.into(),
+                cache_control: None,
+            }],
+        }
+    }
+
+    fn assistant_msg(text: &str) -> Message {
+        Message {
+            role: "assistant".to_string(),
+            content: vec![ContentBlock::Text {
+                text: text.into(),
+                cache_control: None,
+            }],
+        }
+    }
+
+    #[test]
+    fn truncate_before_last_user_message_removes_tail_exchange() {
+        let mut messages = vec![
+            user_msg("first"),
+            assistant_msg("reply"),
+            user_msg("second"),
+            assistant_msg("partial"),
+        ];
+        assert!(truncate_before_last_user_message(&mut messages));
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[1].role, "assistant");
+    }
+
+    #[test]
+    fn truncate_before_last_user_message_noop_without_user() {
+        let mut messages = vec![assistant_msg("only assistant")];
+        assert!(!truncate_before_last_user_message(&mut messages));
+        assert_eq!(messages.len(), 1);
     }
 }

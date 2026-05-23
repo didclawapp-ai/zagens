@@ -2,6 +2,7 @@
 
 use std::path::PathBuf;
 
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::chat::{Message, SystemPrompt};
@@ -188,6 +189,65 @@ pub enum Event {
     },
 }
 
+/// Structured turn outcome summary (A2.1 — step/tools/end reason for logs and runtime events).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TurnSummary {
+    pub step_count: u32,
+    pub tool_names: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end_reason: Option<String>,
+}
+
+impl TurnSummary {
+    #[must_use]
+    pub fn new(
+        step_count: u32,
+        tool_names: Vec<String>,
+        end_reason: Option<String>,
+    ) -> Self {
+        Self {
+            step_count,
+            tool_names,
+            end_reason,
+        }
+    }
+
+    #[must_use]
+    pub fn to_value(&self) -> Value {
+        serde_json::to_value(self).unwrap_or_else(|_| Value::Null)
+    }
+
+    /// Structured log line aligned with runtime `turn_summary` / `turn.completed`.
+    pub fn log_turn_complete(
+        &self,
+        turn_id: &str,
+        status: TurnOutcomeStatus,
+        thread_id: Option<&str>,
+    ) {
+        match thread_id {
+            Some(thread_id) => tracing::info!(
+                thread_id = %thread_id,
+                turn_id = %turn_id,
+                step_count = self.step_count,
+                tool_count = self.tool_names.len(),
+                tools = ?self.tool_names,
+                end_reason = self.end_reason.as_deref(),
+                ?status,
+                "turn complete"
+            ),
+            None => tracing::info!(
+                turn_id = %turn_id,
+                step_count = self.step_count,
+                tool_count = self.tool_names.len(),
+                tools = ?self.tool_names,
+                end_reason = self.end_reason.as_deref(),
+                ?status,
+                "turn complete"
+            ),
+        }
+    }
+}
+
 impl Event {
     #[must_use]
     pub fn error(envelope: ErrorEnvelope) -> Self {
@@ -203,5 +263,36 @@ impl Event {
         Event::Status {
             message: message.into(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn turn_summary_serializes_for_runtime_payload() {
+        let summary = TurnSummary::new(
+            2,
+            vec!["read_file".to_string()],
+            Some("completed".to_string()),
+        );
+        assert_eq!(
+            summary.to_value(),
+            json!({
+                "step_count": 2,
+                "tool_names": ["read_file"],
+                "end_reason": "completed",
+            })
+        );
+    }
+
+    #[test]
+    fn turn_summary_omits_null_end_reason() {
+        let summary = TurnSummary::new(0, vec![], None);
+        let value = summary.to_value();
+        assert_eq!(value.get("step_count").and_then(|v| v.as_u64()), Some(0));
+        assert!(value.get("end_reason").is_none());
     }
 }

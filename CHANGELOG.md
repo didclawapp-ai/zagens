@@ -37,6 +37,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Runtime (A1.5):** `count_oldest_messages_to_drain` unit test — returns zero when message count is at `MIN_RECENT_MESSAGES_TO_KEEP`.
+- **Runtime (P2):** `SubAgentSpawnPort::list_subagents` — op-loop `ListSubAgents` delegates through port; tui adapter runs manager cleanup + list.
+- **Runtime (A2):** `monitor_turn` logs `TurnSummary` on `TurnComplete` with `thread_id` + `turn_id`.
+- **Runtime (P2):** `op_handlers.rs` — cancel/approve/deny/list/change-mode/query-context ops; `op_loop` match thinned further.
+- **Runtime (P2):** `compaction_ops.rs` / `edit_turn_ops.rs` — manual compaction and `/edit` extracted from `message_handlers`; RLM/compaction delegate via `op_handlers`.
+- **Docs:** `A2_TURN_OBSERVABILITY_V1_DRAFT.md` — A2.3 internal + L2 `turn_summary` alignment draft.
+- **Runtime (A2):** `TurnSummary::log_turn_complete` — structured `tracing::info!` on engine turn end (aligned with `turn.completed` payload).
+- **Runtime (P2):** `handle_spawn_subagent_op`, `apply_set_model_op` / `apply_set_compaction_op` — op-loop delegates; sync status emit folded into `sync_session_from_op`.
+- **Runtime (A2 / A2.5):** `turn_streaming` / `turn_tools` `.instrument` spans on streaming + tool phases (`turn_id`/`step`); structured `tracing` events on turn loop + `monitor_turn`.
+- **Runtime (P2):** `Engine::engine_context_snapshot` — `Op::QueryContext` delegates through `session_ops.rs`.
+- **Runtime (P2):** `session::truncate_before_last_user_message` — `Op::EditLastTurn` via `message_handlers::handle_edit_last_turn`.
+- **Runtime (P2):** `deepseek-core::session::apply_sync_session_payload` — `Op::SyncSession` via `session_ops::sync_session_from_op`.
+- **Runtime (A2):** `deepseek-core::events::TurnSummary` — structured `turn_summary` on `turn.completed` (monitor uses core type, not ad-hoc JSON).
+- **Runtime (P2):** `deepseek-core::session::{is_auto_model_label, apply_model_selection}` — op-loop `SetModel` / `SyncSession` via `session_ops.rs`.
+- **Desktop (F3):** Skip links use `:focus-visible` focus ring (keyboard-only, aligned with primary controls).
+- **Docs:** `G2_PR5_MANUAL_SMOKE_CHECKLIST.md` §8 — F3 keyboard a11y smoke (Tab / skip link / Escape / focus ring).
 - **Runtime (A1.5):** `count_oldest_messages_to_drain` — batch `Vec::drain` instead of repeated `remove(0)` during emergency trim.
 - **Runtime (A1-MVP.1):** `LargeOutputExternalRef` + `[workshop-ref: …]` header on routed large tool output.
 - **Runtime (A1-MVP.2):** compaction end-to-end test — working-set pinned messages survive LLM summary (`compact_messages_preserves_working_set_pinned_message`).

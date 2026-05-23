@@ -44,7 +44,18 @@
 | A1.3 | event/checklist/scratchpad → `spawn_blocking` | `runtime_threads/persist.rs`, `session_store_sqlite.rs`, `thread_store_sqlite.rs` |
 | A3.4 | HTTP `ApiError` category/code/recoverable/severity | `crates/tui/src/runtime_api/mod.rs` |
 | P2 | `lsp_edit_paths` → core；tui `lsp_hooks` 薄壳 | `crates/core/src/engine/lsp_edit_paths.rs` |
-| P2 | `SubAgentSpawnPort` + tui `subagent_spawn.rs` | `crates/core/src/engine/subagent_port.rs` |
+| P2 | `SubAgentSpawnPort::list_subagents` + op-loop 委托 | `subagent_port.rs`, `subagent_spawn.rs`, `op_loop.rs` |
+| P2 | `session::{apply_model_selection,is_auto_model_label}` + `session_ops.rs` | `crates/core/src/session.rs`, `engine/session_ops.rs` |
+| P2 | `session::apply_sync_session_payload` + `sync_session_from_op` | `session.rs`, `session_ops.rs`, `op_loop.rs` |
+| A2 | `events::TurnSummary` — `turn.completed` payload SSOT | `crates/core/src/events.rs`, `runtime_threads/monitor.rs` |
+| A2.5 | `turn_streaming` / `turn_tools` `.instrument` spans + turn/monitor events | `turn_loop/run.rs`, `monitor.rs` |
+| P2 | `handle_spawn_subagent_op` + session op helpers with status emit | `subagent_spawn.rs`, `session_ops.rs`, `op_loop.rs` |
+| P2 | `op_handlers.rs` — cancel/approve/list/change-mode/query-context | `op_handlers.rs`, `op_loop.rs` |
+| A2 | `monitor_turn` `TurnSummary` log with `thread_id` | `monitor.rs`, `events.rs` |
+| P2 | `truncate_before_last_user_message` + `handle_edit_last_turn` | `session.rs`, `edit_turn_ops.rs` |
+| P2 | `compaction_ops.rs` — `Op::CompactContext`; RLM via `handle_rlm_op` | `compaction_ops.rs`, `op_handlers.rs` |
+| A2.3 | Turn observability v1 draft (L1 + L2) | `docs/tech/adr/A2_TURN_OBSERVABILITY_V1_DRAFT.md` |
+| F3 | Skip link `:focus-visible` | `globals.css` |
 | PR5 | `RuntimeThreadMessageTurnPort`（sidecar 真 turn） | `runtime_threads/thread_message_turn_port.rs`, `turn_wait.rs` |
 | F3 | Sidebar `role="navigation"` | `Sidebar.tsx` |
 | F3 | Composer `#composer-input`、toolbar roles、**DOM Tab 顺序**（input 在 options 前，CSS `order-*` 保视觉） | `Composer.tsx` |
@@ -66,8 +77,8 @@
 ## 5. 建议下一批（路线图优先序）
 
 1. **A1 收尾** — R-015 全量长跑（可选）、A1/A+ 正式签收项对照 §12.1–12.2  
-2. **P2 SubAgent list** — `op_loop` 里 list 子代理若仍直连 Engine，可 port 化（spawn 已 port）  
-3. **F3 手测** — Tab / skip link / Escape（§G2 清单非阻塞）  
+2. **P2 session ops** — `apply_model_selection` in core；`SetModel`/`SyncSession` 经 `session_ops.rs`  
+3. **F3 手测** — Tab / skip link / Escape（§G2 清单 §8）  
 4. **审批 UI** — `approval_policy` ↔ Composer 已接线；维护者可复测 G2 §2  
 
 **验证命令（新会话先跑）：**

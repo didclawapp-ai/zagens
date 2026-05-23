@@ -25,7 +25,6 @@ use crate::client::DeepSeekClient;
 use crate::compaction::{
     CompactionConfig, compact_messages_safe, merge_system_prompts, should_compact,
 };
-use crate::context_snapshot::{build_thread_context_snapshot, ThreadContextSnapshot};
 use crate::config::{ApiProvider, Config, DEFAULT_MAX_SUBAGENTS, DEFAULT_TEXT_MODEL};
 use crate::cycle_manager::{
     CycleBriefing, CycleConfig, StructuredState, archive_cycle, build_seed_messages,
@@ -146,7 +145,10 @@ mod layered_context;
 mod tool_context;
 mod cycle_hooks;
 mod message_handlers;
+mod edit_turn_ops;
+mod compaction_ops;
 mod op_loop;
+mod session_ops;
 mod context;
 pub(crate) use context::compact_tool_result_for_context;
 use context::{
@@ -165,6 +167,7 @@ mod tool_setup;
 mod tool_dispatch_port;
 pub mod scratchpad_flow;
 mod subagent_spawn;
+mod op_handlers;
 mod turn_loop;
 
 pub(crate) use tool_dispatch_port::{RegistryToolDispatch, TuiEngineToolDispatch};

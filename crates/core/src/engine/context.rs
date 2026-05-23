@@ -412,6 +412,22 @@ mod tests {
     }
 
     #[test]
+    fn count_oldest_messages_to_drain_returns_zero_at_min_keep() {
+        use crate::chat::{ContentBlock, Message};
+
+        let messages: Vec<Message> = (0..MIN_RECENT_MESSAGES_TO_KEEP)
+            .map(|i| Message {
+                role: "user".to_string(),
+                content: vec![ContentBlock::Text {
+                    text: format!("msg-{i}"),
+                    cache_control: None,
+                }],
+            })
+            .collect();
+        assert_eq!(count_oldest_messages_to_drain(&messages, None, 1), 0);
+    }
+
+    #[test]
     fn count_oldest_messages_to_drain_batches_from_front() {
         use crate::chat::{ContentBlock, Message};
 

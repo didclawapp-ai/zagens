@@ -1,13 +1,18 @@
 //! `SubAgentSpawnPort` implementation for the live TUI engine (P2).
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use deepseek_core::engine::{SubAgentSpawnError, SubAgentSpawnOutcome, SubAgentSpawnPort};
+use deepseek_core::subagent::SubAgentResult;
 
 use crate::tui::app::AppMode;
 
 use super::Engine;
+
+/// Drop completed sub-agents older than this before op-loop listing.
+const SUBAGENT_LIST_CLEANUP_MAX_AGE: Duration = Duration::from_secs(60 * 60);
 
 #[async_trait]
 impl SubAgentSpawnPort for Engine {
@@ -16,6 +21,10 @@ impl SubAgentSpawnPort for Engine {
         prompt: &str,
     ) -> Result<SubAgentSpawnOutcome, SubAgentSpawnError> {
         Engine::spawn_general_subagent(self, prompt).await
+    }
+
+    async fn list_subagents(&self) -> Vec<SubAgentResult> {
+        Engine::list_subagents(self).await
     }
 }
 
@@ -81,5 +90,42 @@ impl Engine {
         Ok(SubAgentSpawnOutcome {
             agent_id: snapshot.agent_id,
         })
+    }
+
+    pub(in crate::core::engine) async fn list_subagents(&self) -> Vec<SubAgentResult> {
+        let mut manager = self.subagent_manager.write().await;
+        manager.cleanup(SUBAGENT_LIST_CLEANUP_MAX_AGE);
+        manager.list()
+    }
+
+    pub(in crate::core::engine) async fn handle_spawn_subagent_op(&self, prompt: &str) {
+        use crate::core::events::Event;
+        use deepseek_core::error_taxonomy::ErrorEnvelope;
+
+        match self.spawn_general_subagent(prompt).await {
+            Ok(outcome) => {
+                let _ = self
+                    .tx_event
+                    .send(Event::status(format!(
+                        "Spawned sub-agent {}",
+                        outcome.agent_id
+                    )))
+                    .await;
+            }
+            Err(SubAgentSpawnError::NoClient) => {
+                let _ = self
+                    .tx_event
+                    .send(Event::error(ErrorEnvelope::fatal(
+                        "Failed to spawn sub-agent: API client not configured",
+                    )))
+                    .await;
+            }
+            Err(SubAgentSpawnError::SpawnFailed(message)) => {
+                let _ = self
+                    .tx_event
+                    .send(Event::error(ErrorEnvelope::fatal(message)))
+                    .await;
+            }
+        }
     }
 }

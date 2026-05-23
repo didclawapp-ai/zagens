@@ -708,13 +708,15 @@ body {
     box-shadow: var(--color-accent-shadow);
   }
 
-  .skip-to-main:focus {
+  .skip-to-main:focus,
+  .skip-to-main:focus-visible {
     left: 0.75rem;
     outline: 2px solid var(--color-accent);
     outline-offset: 2px;
   }
 
-  .skip-to-composer:focus {
+  .skip-to-composer:focus,
+  .skip-to-composer:focus-visible {
     top: 2.75rem;
   }
 

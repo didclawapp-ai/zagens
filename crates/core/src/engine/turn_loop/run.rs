@@ -2,6 +2,8 @@
 
 use std::collections::HashSet;
 
+use tracing::Instrument;
+
 use crate::chat::{ContentBlock, Message, Tool};
 use crate::engine::context::{
     context_input_budget, summarize_text, MAX_CONTEXT_RECOVERY_ATTEMPTS, TURN_MAX_OUTPUT_TOKENS,
@@ -22,6 +24,8 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
     mode: TurnLoopMode,
     force_update_plan_first: bool,
 ) -> (TurnOutcomeStatus, Option<String>) {
+    tracing::info!(turn_id = %turn.id, "turn loop start");
+
     let Some(client) = host.llm_client() else {
         return (
             TurnOutcomeStatus::Failed,
@@ -41,6 +45,8 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
     let mut stream_retry_attempts: u32 = 0;
 
     loop {
+        tracing::debug!(turn_id = %turn.id, step = turn.step, "turn step");
+
         host.reset_scratchpad_step();
 
         if host.cancel_token().is_cancelled() {
@@ -131,8 +137,13 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
         host.flush_pending_lsp_diagnostics().await;
         host.layered_context_checkpoint().await;
 
-        let stream_out = host
-            .run_streaming_phase(
+        let stream_span = tracing::info_span!(
+            "turn_streaming",
+            turn_id = %turn.id,
+            step = turn.step,
+        );
+        let stream_out = async {
+            host.run_streaming_phase(
                 turn,
                 client.as_ref(),
                 mode,
@@ -143,7 +154,10 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
                 &mut context_recovery_attempts,
                 &mut turn_error,
             )
-            .await;
+            .await
+        }
+        .instrument(stream_span)
+        .await;
 
         if let Some((status, err)) = stream_out.return_early {
             return (status, err);
@@ -158,8 +172,13 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
         let mut tool_uses = stream_out.tool_uses;
         let mut pending_steers = stream_out.pending_steers;
 
-        let phase = host
-            .run_tool_execution_phase(
+        let tools_span = tracing::info_span!(
+            "turn_tools",
+            turn_id = %turn.id,
+            step = turn.step,
+        );
+        let phase = async {
+            host.run_tool_execution_phase(
                 turn,
                 mode,
                 &mut tool_uses,
@@ -169,7 +188,10 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
                 consecutive_tool_error_steps,
                 tool_registry,
             )
-            .await;
+            .await
+        }
+        .instrument(tools_span)
+        .await;
 
         if phase.break_outer_loop {
             break;

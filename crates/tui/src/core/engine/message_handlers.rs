@@ -1,4 +1,6 @@
-//! User message and manual compaction handlers (`Op::SendMessage`, compaction ops).
+//! User message handler (`Op::SendMessage`).
+
+use crate::core::events::TurnSummary;
 
 use super::*;
 
@@ -279,6 +281,8 @@ impl Engine {
             .collect();
         tool_names.sort();
         tool_names.dedup();
+        let summary = TurnSummary::new(turn.step, tool_names.clone(), end_reason.clone());
+        summary.log_turn_complete(&turn.id, status, None);
         let _ = self
             .tx_event
             .send(Event::TurnComplete {
@@ -286,9 +290,9 @@ impl Engine {
                 last_request_input_tokens: self.session.last_api_input_tokens,
                 status,
                 error,
-                step_count: turn.step,
-                tool_names,
-                end_reason,
+                step_count: summary.step_count,
+                tool_names: summary.tool_names,
+                end_reason: summary.end_reason,
             })
             .await;
 
@@ -303,116 +307,6 @@ impl Engine {
                 post_turn_snapshot(&post_workspace, post_seq);
             });
         }
-    }
-
-    pub(super) async fn handle_manual_compaction(&mut self) {
-        let id = format!("compact_{}", &uuid::Uuid::new_v4().to_string()[..8]);
-        let zero_usage = Usage {
-            input_tokens: 0,
-            output_tokens: 0,
-            ..Usage::default()
-        };
-        let Some(client) = self.deepseek_client.clone() else {
-            let message = "Manual compaction unavailable: API client not configured".to_string();
-            self.emit_compaction_failed(id, false, message.clone())
-                .await;
-            let _ = self
-                .tx_event
-                .send(Event::error(ErrorEnvelope::fatal_auth(message.clone())))
-                .await;
-            let _ = self
-                .tx_event
-                .send(Event::TurnComplete {
-                    usage: zero_usage,
-                    last_request_input_tokens: self.session.last_api_input_tokens,
-                    status: TurnOutcomeStatus::Failed,
-                    error: Some(message.clone()),
-                    step_count: 0,
-                    tool_names: vec![],
-                    end_reason: Some(message),
-                })
-                .await;
-            return;
-        };
-
-        let start_message = "Manual context compaction started".to_string();
-        self.emit_compaction_started(id.clone(), false, start_message)
-            .await;
-
-        let compaction_pins = self
-            .session
-            .working_set
-            .pinned_message_indices(&self.session.messages, &self.session.workspace);
-        let compaction_paths = self.session.working_set.top_paths(24);
-        let messages_before = self.session.messages.len();
-        let mut turn_status = TurnOutcomeStatus::Completed;
-        let mut turn_error = None;
-
-        match compact_messages_safe(
-            client.as_ref(),
-            &self.session.messages,
-            &self.config.compaction,
-            Some(&self.session.workspace),
-            Some(&compaction_pins),
-            Some(&compaction_paths),
-        )
-        .await
-        {
-            Ok(result) => {
-                if !result.messages.is_empty() || self.session.messages.is_empty() {
-                    let messages_after = result.messages.len();
-                    self.session.messages = result.messages;
-                    self.merge_compaction_summary(result.summary_prompt);
-                    self.emit_session_updated().await;
-                    let removed = messages_before.saturating_sub(messages_after);
-                    let message = if result.retries_used > 0 {
-                        format!(
-                            "Compaction complete: {messages_before} → {messages_after} messages ({removed} removed, {} retries)",
-                            result.retries_used
-                        )
-                    } else {
-                        format!(
-                            "Compaction complete: {messages_before} → {messages_after} messages ({removed} removed)"
-                        )
-                    };
-                    self.emit_compaction_completed(
-                        id,
-                        false,
-                        message,
-                        Some(messages_before),
-                        Some(messages_after),
-                    )
-                    .await;
-                } else {
-                    let message = "Compaction skipped: produced empty result".to_string();
-                    self.emit_compaction_failed(id, false, message.clone())
-                        .await;
-                    turn_status = TurnOutcomeStatus::Failed;
-                    turn_error = Some(message);
-                }
-            }
-            Err(err) => {
-                let message = format!("Manual context compaction failed: {err}");
-                self.emit_compaction_failed(id, false, message.clone())
-                    .await;
-                let _ = self.tx_event.send(Event::status(message.clone())).await;
-                turn_status = TurnOutcomeStatus::Failed;
-                turn_error = Some(message);
-            }
-        }
-
-        let _ = self
-            .tx_event
-            .send(Event::TurnComplete {
-                usage: zero_usage,
-                last_request_input_tokens: self.session.last_api_input_tokens,
-                status: turn_status,
-                error: turn_error.clone(),
-                step_count: 0,
-                tool_names: vec![],
-                end_reason: turn_error,
-            })
-            .await;
     }
 }
 

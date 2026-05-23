@@ -162,6 +162,22 @@ curl -s http://127.0.0.1:7878/health
 
 ---
 
+## 8. F3 — 键盘 a11y（~5 min，非 G2 阻塞）
+
+**目标：** [RUNTIME_EVOLUTION_ROADMAP.md](../RUNTIME_EVOLUTION_ROADMAP.md) §10.3 F3 — Tab 顺序、skip link、Escape 停生成、focus-visible。
+
+| # | 步骤 | 期望 | 通过 |
+|---|------|------|------|
+| 8.1 | **Tab** 从页面顶部开始，前两个可聚焦项为 skip link（「跳到主内容」「跳到输入框」） | 顺序在侧栏/Composer 控件之前 | [ ] |
+| 8.2 | 激活 **「跳到输入框」** skip link | 焦点落到 Composer `#composer-input`；可立即输入 | [ ] |
+| 8.3 | Composer 内 **Tab**：textarea → actions toolbar（发送/停止）→ options toolbar（工作区/模型等） | DOM 顺序与视觉一致（options 在 textarea 下方但 Tab 在 actions 之后） | [ ] |
+| 8.4 | 长 turn 进行中，焦点在**非** input/textarea 处按 **Escape** | 生成停止；可再发消息 | [ ] |
+| 8.5 | 键盘 **Tab/Shift+Tab** 到侧栏、Composer 芯片、发送按钮 | 可见 **focus ring**（accent 色 outline），非仅鼠标点击态 | [ ] |
+
+> 自动化：`npm run build`（web-ui）；Rust 侧无 F3 单测。`prefers-reduced-motion` 可在 OS 设置开启后确认侧栏/Composer 动画减弱。
+
+---
+
 ## 7. 失败时快速采集
 
 ```powershell

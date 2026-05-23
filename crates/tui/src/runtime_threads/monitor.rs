@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::core::coherence::CoherenceState;
 use crate::core::engine::EngineHandle;
-use crate::core::events::{Event as EngineEvent, TurnOutcomeStatus};
+use crate::core::events::{Event as EngineEvent, TurnOutcomeStatus, TurnSummary};
 use crate::models::Usage;
 use crate::tools::subagent::SubAgentStatus;
 
@@ -28,6 +28,12 @@ impl RuntimeThreadManager {
         turn_id: String,
         engine: EngineHandle,
     ) -> Result<()> {
+        tracing::info!(
+            thread_id = %thread_id,
+            turn_id = %turn_id,
+            "monitor_turn start"
+        );
+
         let mut current_message_item: Option<(String, String)> = None;
         // Synthetic item id for thinking/reasoning deltas (not persisted as a TurnItem).
         let mut thinking_stream_item_id: Option<String> = None;
@@ -37,7 +43,7 @@ impl RuntimeThreadManager {
         let mut turn_last_request_input_tokens: Option<u32> = None;
         let mut turn_status = RuntimeTurnStatus::Completed;
         let mut turn_error: Option<String> = None;
-        let mut turn_summary: Option<serde_json::Value> = None;
+        let mut turn_summary: Option<TurnSummary> = None;
 
         loop {
             let event = {
@@ -805,11 +811,9 @@ impl RuntimeThreadManager {
                     if let Some(err) = error {
                         turn_error = Some(err);
                     }
-                    turn_summary = Some(json!({
-                        "step_count": step_count,
-                        "tool_names": tool_names,
-                        "end_reason": end_reason,
-                    }));
+                    let summary = TurnSummary::new(step_count, tool_names, end_reason);
+                    summary.log_turn_complete(&turn_id, status, Some(&thread_id));
+                    turn_summary = Some(summary);
                     let _ = self.emit_panel_context(&thread_id, &turn_id).await;
                     let _ = self.emit_panel_scratchpad(&thread_id, &turn_id).await;
                     let _ = self.emit_panel_checklist(&thread_id, &turn_id).await;
@@ -893,7 +897,7 @@ impl RuntimeThreadManager {
                 let mut payload = json!({ "turn": turn.clone() });
                 if let Some(ref summary) = turn_summary {
                     if let Some(obj) = payload.as_object_mut() {
-                        obj.insert("turn_summary".to_string(), summary.clone());
+                        obj.insert("turn_summary".to_string(), summary.to_value());
                     }
                 }
                 payload
