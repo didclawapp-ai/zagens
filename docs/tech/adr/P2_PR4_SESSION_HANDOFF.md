@@ -12,7 +12,7 @@
 在 **不新建 `runtime` crate** 的前提下，把 **Engine 可复用逻辑** 迁入 `deepseek-core`，TUI/Desktop 保留 **L2 壳**（`RuntimeThreadManager`、`runtime_api`、`ToolRegistry` 实现）。并行做 **A4.6** 拆分大文件，以及 **R-015** 长跑 RSS 基线。
 
 **PR4 spike 收官标准（engine 壳）：** `crates/tui/src/core/engine.rs` **< 300 行** — **✅ 已达标（~201 行 @ `3264419`）**。  
-**PR4 仍开放：** `tool_catalog`/`tool_execution` 等 L2 模块仍在 tui；Desktop `TurnLoopHost` 未接。
+**PR4 仍开放：** `tool_catalog`/`tool_execution` 等 L2 模块仍在 tui；Desktop 经 sidecar 已满足 `TurnLoopHost`（见 [P2_DESKTOP_TURNLOOP_SPIKE.md](./P2_DESKTOP_TURNLOOP_SPIKE.md)）。
 
 ---
 
@@ -101,23 +101,19 @@ deepseek-core::engine::handle_deepseek_turn<H: TurnLoopHost>
 
 ## 3. 仍未做（下一窗口优先级）
 
-1. **PR4 — Desktop `TurnLoopHost`**  
-   `crates/desktop/` 接 core turn loop，验证 Desktop 不依赖 tui `Engine` 单体
+1. **PR4 深迁** — `tool_catalog` / `tool_execution`（MCP/终端/LSP 仍 L2 阻塞）
 
-2. **PR4 可选深迁**  
-   `tool_catalog` / `tool_execution` 能否进一步 core 化（MCP/终端/LSP 仍 L2 阻塞）
+2. **R-015 可选** — 1MB 工具 RSS；真实 store HTTP p99；回归门
 
-3. **R-015 可选** — 1MB 工具 RSS；真实 store HTTP p99；回归门
-
-4. **门控** — A5.5 回放 fixture、A+.4 契约测（spike unchecked）
+3. **门控** — A5.5 回放 fixture、A+.4 契约测（spike unchecked）
 
 ---
 
 ## 4. 关键路径速查
 
 ```
+docs/tech/adr/P2_DESKTOP_TURNLOOP_SPIKE.md
 docs/tech/RUNTIME_EVOLUTION_ROADMAP.md
-docs/tech/adr/P2_MIGRATION_SPIKE.md
 docs/tech/adr/RUNTIME_BASELINE.md
 scripts/runtime-longrun-baseline.ps1
 
@@ -186,16 +182,18 @@ cargo test -p deepseek-tui --lib
 - ✅ A4.6：`thread_crud` / `turn_lifecycle` / engine 子模块拆分
 - ✅ A4.6：`turn_control.rs`；`manager.rs` ~589 行
 - ✅ A4.6：`capacity_flow/{checkpoints,observation,events,interventions,replay,persistence}.rs`
-- ⏳ Desktop `TurnLoopHost` 未接
+- ✅ P2 Desktop：`TurnLoopHost` 经 sidecar（[P2_DESKTOP_TURNLOOP_SPIKE.md](./P2_DESKTOP_TURNLOOP_SPIKE.md)）
+- ⏳ PR4 深迁 `tool_catalog` / `tool_execution`
 
 **请先做：**
 ```powershell
 cd F:\DeepSeek-TUI-desktop
 cargo test -p deepseek-tui --lib
+cargo test -p deepseek-desktop
 ```
-确认 2336 passed 后再选一刀：
-- **优先 A：** Desktop `TurnLoopHost` spike
-- **优先 B：** PR4 深迁 `tool_catalog` / `tool_execution`
+确认通过后下一刀：
+- **优先 A：** PR4 深迁 `tool_catalog` / `tool_execution`
+- **优先 B：** A5.5 / A+.4 门控 fixture
 
 **约束：** 最小 diff；`CHANGELOG.md` 记用户可见变更；用户未要求时不 commit；保留 canonicalize/路径安全；`final_tool_input` 保留 tui `arg_repair`。
 

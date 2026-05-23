@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Runtime (P2 PR4 局部):** `TurnContext`/`TurnLoopMode`/`StreamError` 迁入 `deepseek-core`；`TurnLoopHost` + `tool_phase.rs` / `streaming_phase.rs`；**`deepseek-core::engine::handle_deepseek_turn`**（generic `TurnLoopHost`）。
 - **Runtime (A4.6 局部):** `engine.rs` 拆出 `types.rs`（`EngineConfig`）、`handle.rs`、`engine_new.rs`、`engine_helpers.rs`、`session_messages.rs`、`mock.rs`；`engine.rs` ~618 → **~201 行**（达 PR4 spike **< 300** 目标）。
 - **Runtime (A4.6 局部):** `engine.rs` 拆出 `op_loop.rs`、`cycle_hooks.rs`、`message_handlers.rs`（`handle_send_message` / 手动 compaction）；`engine.rs` ~2177 → ~1220 行。
+- **Docs:** `docs/tech/adr/P2_DESKTOP_TURNLOOP_SPIKE.md` — DS Pick 经 sidecar HTTP 使用 `TurnLoopHost`（tui `host_impl`），desktop crate 不链接 `Engine`。
 - **Runtime (A4.6 局部):** `engine/capacity_flow/{checkpoints,observation,events,interventions,replay,persistence}.rs`；原 monolith ~985 行拆为 6 个子模块（最大 ~370 行）。
 - **Runtime (A4.6 局部):** `runtime_threads/turn_control.rs`（`interrupt_turn` / `steer_turn` / `compact_thread`）；`manager.rs` ~829 → ~589 行。
 - **Runtime (A4.6 局部):** `runtime_threads/thread_crud.rs`（create/list/get/update/fork/resume/seed 等）；`manager.rs` ~1673 → ~1032 行。

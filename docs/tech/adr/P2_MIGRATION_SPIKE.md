@@ -122,18 +122,19 @@ impl Runtime {
 - [x] A4.6 **局部（2026-05-23）：** `runtime_threads/turn_control.rs`（interrupt/steer/compact）；`manager.rs` ~829 → ~589
 - [x] A4.6 **局部（2026-05-23）：** `runtime_threads/{thread_crud,turn_lifecycle}.rs`；`manager.rs` ~1673 → ~829
 - [x] A4.6 **局部：** `runtime_threads/{routing,engine_load,active,monitor}.rs` 自 `manager.rs` 拆出
-- [ ] PR4 剩余：`Engine` 主体 / `capacity_flow` / `tool_catalog`/`tool_execution` 深迁 core；Desktop `TurnLoopHost`
+- [x] P2 PR4 **Desktop spike（2026-05-23）：** [P2_DESKTOP_TURNLOOP_SPIKE.md](./P2_DESKTOP_TURNLOOP_SPIKE.md) + `deepseek-desktop` 架构边界测
+- [ ] PR4 剩余：`tool_catalog`/`tool_execution` 深迁 core
 
 ### 4.1 `turn_loop` 迁入前置（2026-05-22 草图）
 
 | 仍留 tui 直至壳层就绪 | 已可在 core 复用 |
 |----------------------|------------------|
 | `Engine` 字段：`LlmClient`、`McpPool`、`LspManager`、`SubAgentRuntime`、事件通道 | `session`、`loop_guard`、`streaming`、`dispatch`、`context` |
-| `EngineConfig` 构建（`spawn_engine`）、`tool_catalog`/`tool_execution`（MCP/终端/LSP）、`capacity_flow` | `handle_deepseek_turn`、`TurnLoopHost`、`Event`、`TurnEnginePort`、`TurnContext`、`turn_loop::helpers`、`session`、`loop_guard`、`streaming`、`dispatch`、`context`、`approval`、`tool_bridge` |
-| `tool_catalog`、`tool_execution`（执行锁/MCP/终端 guard）、`capacity_flow` | `compact_tool_result_for_context`、`RegistryToolDispatch`、`tool_bridge`、`tool_progress`、`await_tool_approval` |
+| `EngineConfig` 构建（`spawn_engine`）、`tool_catalog`/`tool_execution`（MCP/终端/LSP） | `handle_deepseek_turn`、`TurnLoopHost`、`Event`、`TurnEnginePort`、`TurnContext`、`turn_loop::helpers`、`session`、`loop_guard`、`streaming`、`dispatch`、`context`、`approval`、`tool_bridge`、`capacity_flow`（已拆子模块） |
+| `tool_catalog`、`tool_execution`（执行锁/MCP/终端 guard） | `compact_tool_result_for_context`、`RegistryToolDispatch`、`tool_bridge`、`tool_progress`、`await_tool_approval` |
 | `AppMode`、TUI `ToolRegistry` builder | `chat::{Message,Tool}`、`ToolResult` |
 
-**建议下一刀：** Desktop `TurnLoopHost` spike；或 PR4 深迁 `tool_catalog`/`tool_execution`。`capacity_flow` 与 `manager.rs` turn control 已拆完。
+**建议下一刀：** PR4 深迁 `tool_catalog` / `tool_execution`；或 A5.5 / A+.4 门控 fixture。
 - [ ] PR2 剩余：`Engine` 字段层（MCP/LSP/SubAgent）与 `capacity_flow` 端口化
 - [ ] PR1 剩余：`Engine`/`turn_loop` 主逻辑迁入 core
 - [ ] A5.5 回放 fixture 就位
