@@ -94,6 +94,7 @@ pub struct Engine {
     shell_manager: SharedShellManager,
     mcp_pool: Option<Arc<AsyncMutex<McpPool>>>,
     rx_op: mpsc::Receiver<Op>,
+    tx_approval: mpsc::Sender<ApprovalDecision>,
     rx_approval: mpsc::Receiver<ApprovalDecision>,
     rx_user_input: mpsc::Receiver<UserInputDecision>,
     rx_steer: mpsc::Receiver<String>,

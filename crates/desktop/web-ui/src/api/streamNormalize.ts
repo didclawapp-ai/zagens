@@ -1,6 +1,33 @@
-/** Normalizes compat (`POST /v1/stream`) and raw (`GET …/events`) SSE payloads for one UI pipeline. */
+/** Normalizes compat (`POST /v1/stream`) and raw (`GET …/events`) SSE payloads for one UI pipeline.
+ *
+ * A+.3: Only v1 event names from API_DESIGN.md §3.2.1 are mapped; unknown `event:` names return
+ * `null` so callers can ignore them without failing the stream.
+ */
 
 import { parseAgentListRow, type AgentListRowMeta } from '../lib/agentSpawnMeta';
+
+/** Stable SSE subset (API_DESIGN.md §3.2.1). Used for tests and documentation. */
+export const KNOWN_DESKTOP_SSE_EVENTS = new Set([
+  'turn.started',
+  'thinking.delta',
+  'message.delta',
+  'tool.progress',
+  'tool.started',
+  'tool.completed',
+  'status',
+  'error',
+  'approval.required',
+  'sandbox.denied',
+  'turn.completed',
+  'agent.spawned',
+  'agent.progress',
+  'agent.completed',
+  'agent.list',
+  'panel.checklist',
+  'panel.scratchpad',
+  'panel.context',
+  'done',
+]);
 
 function normalizeSubAgentStatus(status: unknown): string {
   if (typeof status === 'string') {

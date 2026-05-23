@@ -61,10 +61,15 @@ impl Engine {
         let shared_cancel_token = Arc::new(StdMutex::new(cancel_token.clone()));
         let tool_exec_lock = Arc::new(RwLock::new(()));
 
-        let (deepseek_client, deepseek_client_error) = match DeepSeekClient::new(api_config) {
-            Ok(client) => (Some(Arc::new(client) as Arc<dyn crate::llm_client::LlmClient>), None),
-            Err(err) => (None, Some(err.to_string())),
-        };
+        let (deepseek_client, deepseek_client_error) =
+            if let Some(client) = config.llm_client_override.clone() {
+                (Some(client), None)
+            } else {
+                match DeepSeekClient::new(api_config) {
+                    Ok(client) => (Some(Arc::new(client) as Arc<dyn crate::llm_client::LlmClient>), None),
+                    Err(err) => (None, Some(err.to_string())),
+                }
+            };
         let api_key_env_only_recovery = env_only_api_key_recovery_hint(api_config);
 
         let mut session = Session::new(
@@ -177,6 +182,7 @@ impl Engine {
             shell_manager,
             mcp_pool: None,
             rx_op,
+            tx_approval: tx_approval.clone(),
             rx_approval,
             rx_user_input,
             rx_steer,

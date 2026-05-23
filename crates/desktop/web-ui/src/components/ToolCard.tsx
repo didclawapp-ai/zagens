@@ -32,27 +32,28 @@ export function ToolCard({ tool, copyTitle }: { tool: ToolCardModel; copyTitle?:
       className="rounded-lg border border-card-border bg-canvas-alt p-2.5 text-xs"
       role="region"
       aria-label={t('a11y.toolRegion', { name: tool.name, status: tool.status })}
+      aria-busy={tool.status === 'running'}
     >
-      <div className="flex flex-wrap items-center gap-2 mb-1">
+      <div className="mb-1 flex flex-wrap items-center gap-2">
         <span className="font-semibold text-t-text">{tool.name}</span>
-        <span className="text-t-text-muted font-mono text-[11px]">{tool.id.slice(0, 12)}</span>
+        <span className="font-mono text-[11px] text-t-text-muted">{tool.id.slice(0, 12)}</span>
         <CopyTextButton
           getText={() => formatToolForCopy(tool)}
           title={copyLabel}
           disabled={!tool.input?.trim() && !(tool.output != null && String(tool.output).trim() !== '')}
           className="ml-auto"
         />
-        <span className={`px-1.5 py-0.5 rounded text-[11px] font-medium border ${statusColor} ${statusBg}`}>
+        <span className={`rounded border px-1.5 py-0.5 text-[11px] font-medium ${statusColor} ${statusBg}`}>
           {tool.status}
         </span>
       </div>
       {tool.input ? (
-        <pre className="mt-1 max-h-28 overflow-auto text-t-text-secondary whitespace-pre-wrap break-words leading-relaxed">
+        <pre className="mt-1 max-h-28 overflow-auto whitespace-pre-wrap break-words leading-relaxed text-t-text-secondary">
           {tool.input}
         </pre>
       ) : null}
       {tool.output != null && tool.output !== '' ? (
-        <pre className="mt-1.5 max-h-36 overflow-y-auto text-t-text whitespace-pre-wrap break-words border-t border-divider pt-1.5 leading-relaxed">
+        <pre className="mt-1.5 max-h-36 overflow-y-auto whitespace-pre-wrap break-words border-t border-divider pt-1.5 leading-relaxed text-t-text">
           {tool.output}
         </pre>
       ) : null}

@@ -581,6 +581,7 @@ fn build_engine_config(app: &App, config: &Config) -> EngineConfig {
         task_type: crate::task_type::TaskType::Code,
         workshop: config.workshop.clone(),
         scratchpad: config.scratchpad_config(),
+        llm_client_override: None,
     }
 }
 

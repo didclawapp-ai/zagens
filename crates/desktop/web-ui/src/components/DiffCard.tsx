@@ -65,6 +65,7 @@ export default function DiffCard({
               type="button"
               className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-accent hover:bg-hover"
               onClick={onOpenInPanel}
+              aria-label={t('a11y.openDiffInPanel', { fileName: fileName ?? 'diff' })}
             >
               {t('diff.openInPanel')}
             </button>

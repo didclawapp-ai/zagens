@@ -11,6 +11,7 @@ const zhHans = {
     chatLog: '对话记录',
     toolRegion: '工具 {{name}}，状态 {{status}}',
     diffRegion: '文件差异 {{fileName}}',
+    openDiffInPanel: '在面板中打开 {{fileName}} 的差异',
     sidebarNav: '会话与导航',
     composerOptionsToolbar: '输入区选项',
     composerActionsToolbar: '输入区操作',

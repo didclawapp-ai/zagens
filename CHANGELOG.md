@@ -37,7 +37,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Runtime (A1.5):** `count_oldest_messages_to_drain` unit test — returns zero when message count is at `MIN_RECENT_MESSAGES_TO_KEEP`.
+- **Runtime (A5.2):** `EngineConfig::llm_client_override` — inject `Arc<dyn LlmClient>` for mock-LLM engine tests (`engine_llm_client_override_runs_mock_turn`).
+- **Runtime (A1.4):** `compact_messages_safe_preserves_pinned_text_in_result_messages` — compaction pin isomorphism regression.
+- **Runtime (P2):** `Op::ApproveToolCall` / `DenyToolCall` route through `tx_approval` (same channel as `EngineHandle`).
+- **Desktop (A+.3):** `KNOWN_DESKTOP_SSE_EVENTS` + `streamNormalize.selfcheck.ts` — unknown SSE events return `null`.
+- **Desktop (F3):** `ToolCard` `aria-busy`; `DiffCard` open-in-panel `aria-label`.
 - **Runtime (P2):** `SubAgentSpawnPort::list_subagents` — op-loop `ListSubAgents` delegates through port; tui adapter runs manager cleanup + list.
 - **Runtime (A2):** `monitor_turn` logs `TurnSummary` on `TurnComplete` with `thread_id` + `turn_id`.
 - **Runtime (P2):** `op_handlers.rs` — cancel/approve/deny/list/change-mode/query-context ops; `op_loop` match thinned further.

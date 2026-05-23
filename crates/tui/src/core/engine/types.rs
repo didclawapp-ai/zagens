@@ -14,7 +14,7 @@ use crate::tools::todo::{SharedTodoList, new_shared_todo_list};
 use crate::core::capacity::CapacityControllerConfig;
 
 /// Configuration for the engine
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct EngineConfig {
     /// Model identifier to use for responses.
     pub model: String,
@@ -99,6 +99,9 @@ pub struct EngineConfig {
     pub workshop: Option<crate::tools::large_output_router::WorkshopConfig>,
     /// Audit scratchpad engine hooks (Phase B).
     pub scratchpad: crate::scratchpad::ScratchpadConfig,
+    /// Test/dev override: skip `DeepSeekClient::new` and use this client instead.
+    #[doc(hidden)]
+    pub llm_client_override: Option<std::sync::Arc<dyn crate::llm_client::LlmClient>>,
 }
 
 impl Default for EngineConfig {
@@ -137,6 +140,7 @@ impl Default for EngineConfig {
             task_type: crate::task_type::TaskType::default(),
             workshop: None,
             scratchpad: crate::scratchpad::ScratchpadConfig::default(),
+            llm_client_override: None,
         }
     }
 }

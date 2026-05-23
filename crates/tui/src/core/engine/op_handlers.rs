@@ -5,6 +5,7 @@ use crate::core::events::Event;
 use crate::tui::app::AppMode;
 use tokio::sync::oneshot;
 
+use super::approval::ApprovalDecision;
 use super::Engine;
 
 impl Engine {
@@ -15,15 +16,19 @@ impl Engine {
 
     pub(in crate::core::engine) async fn handle_approve_tool_call_op(&self, id: &str) {
         let _ = self
-            .tx_event
-            .send(Event::status(format!("Approved tool call: {id}")))
+            .tx_approval
+            .send(ApprovalDecision::Approved {
+                id: id.to_string(),
+            })
             .await;
     }
 
     pub(in crate::core::engine) async fn handle_deny_tool_call_op(&self, id: &str) {
         let _ = self
-            .tx_event
-            .send(Event::status(format!("Denied tool call: {id}")))
+            .tx_approval
+            .send(ApprovalDecision::Denied {
+                id: id.to_string(),
+            })
             .await;
     }
 

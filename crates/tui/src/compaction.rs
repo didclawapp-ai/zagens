@@ -1939,6 +1939,66 @@ mod tests {
         );
     }
 
+    /// A1.4 — after compaction, pinned user-visible text remains in the session message list.
+    #[tokio::test]
+    async fn compact_messages_safe_preserves_pinned_text_in_result_messages() {
+        use crate::llm_client::mock::MockLlmClient;
+        use crate::models::{MessageResponse, Usage};
+
+        const PINNED: &str = "A1_4_PINNED_USER_VISIBLE";
+        let mut messages = vec![
+            msg("user", "old context to drop"),
+            msg("user", PINNED),
+            msg("assistant", "ack"),
+        ];
+        for i in 0..12 {
+            messages.push(msg("user", &format!("filler {i}")));
+        }
+
+        let mock = MockLlmClient::new(vec![]);
+        mock.push_message_response(MessageResponse {
+            id: "msg_summary".into(),
+            r#type: "message".into(),
+            role: "assistant".into(),
+            content: vec![ContentBlock::Text {
+                text: "summary only".into(),
+                cache_control: None,
+            }],
+            model: "mock".into(),
+            stop_reason: Some("end_turn".into()),
+            stop_sequence: None,
+            container: None,
+            usage: Usage::default(),
+        });
+
+        let config = CompactionConfig {
+            enabled: true,
+            token_threshold: 1,
+            ..Default::default()
+        };
+        let pins = vec![1usize];
+        let result = compact_messages_safe(
+            &mock,
+            &messages,
+            &config,
+            None,
+            Some(&pins),
+            None,
+        )
+        .await
+        .expect("compact_messages_safe");
+
+        let pinned_still_present = result.messages.iter().any(|message| {
+            message.content.iter().any(|block| {
+                matches!(block, ContentBlock::Text { text, .. } if text.contains(PINNED))
+            })
+        });
+        assert!(
+            pinned_still_present,
+            "compacted session must retain pinned message text (A1.4 isomorphism)"
+        );
+    }
+
     #[test]
     fn plan_compaction_uses_external_working_set_paths() {
         let mut messages = vec![msg("user", "edit src/core/engine.rs now")];

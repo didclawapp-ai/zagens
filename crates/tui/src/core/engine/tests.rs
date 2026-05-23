@@ -1937,3 +1937,90 @@ fn engine_implements_turn_loop_tool_executor() {
     fn assert_executor<T: deepseek_core::engine::TurnLoopToolExecutor + Send + Sync>() {}
     assert_executor::<super::Engine>();
 }
+
+#[tokio::test]
+async fn engine_llm_client_override_runs_mock_turn() {
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use crate::llm_client::mock::{MockLlmClient, canned};
+    use crate::models::Usage;
+    use crate::tui::approval::ApprovalMode;
+
+    let turn = vec![
+        canned::message_start("msg_1"),
+        canned::text_block_start(0),
+        canned::text_delta(0, "mock reply"),
+        canned::block_stop(0),
+        canned::message_delta("end_turn", Some(Usage::default())),
+        canned::message_stop(),
+    ];
+    let mock = Arc::new(MockLlmClient::new(vec![turn]).with_model("deepseek-v4-pro"));
+    let config = EngineConfig {
+        llm_client_override: Some(mock.clone()),
+        trust_mode: true,
+        ..Default::default()
+    };
+    let (engine, handle) = Engine::new(config, &Config::default());
+    tokio::spawn(async move {
+        engine.run().await;
+    });
+
+    handle
+        .send(Op::SendMessage {
+            content: "hello".into(),
+            mode: AppMode::Agent,
+            model: "deepseek-v4-pro".into(),
+            goal_objective: None,
+            reasoning_effort: Some("high".into()),
+            reasoning_effort_auto: false,
+            auto_model: false,
+            allow_shell: false,
+            trust_mode: true,
+            auto_approve: true,
+            approval_mode: ApprovalMode::Auto,
+        })
+        .await
+        .expect("send message");
+
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+    let mut saw_complete = false;
+    while tokio::time::Instant::now() < deadline {
+        let mut rx = handle.rx_event.write().await;
+        let Ok(Some(event)) = tokio::time::timeout(Duration::from_secs(2), rx.recv()).await else {
+            continue;
+        };
+        if matches!(event, Event::TurnComplete { .. }) {
+            saw_complete = true;
+            break;
+        }
+    }
+
+    assert!(saw_complete, "mock LLM turn should emit TurnComplete");
+    assert_eq!(mock.call_count(), 1, "mock client should receive one stream call");
+}
+
+#[tokio::test]
+async fn approve_tool_call_handle_reaches_approval_channel() {
+    use std::time::Duration;
+
+    let (mut engine, handle) = Engine::new(EngineConfig::default(), &Config::default());
+    let approval_task = tokio::spawn(async move {
+        engine
+            .await_tool_approval("tool-handle-approve")
+            .await
+            .expect("approval")
+    });
+
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    handle
+        .approve_tool_call("tool-handle-approve")
+        .await
+        .expect("approve");
+
+    let result = tokio::time::timeout(Duration::from_secs(2), approval_task)
+        .await
+        .expect("approval timeout")
+        .expect("approval task");
+    assert!(matches!(result, super::approval::ApprovalResult::Approved));
+}

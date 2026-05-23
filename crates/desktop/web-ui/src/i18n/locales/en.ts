@@ -13,6 +13,7 @@ const en: TranslationMap = {
     chatLog: 'Chat transcript',
     toolRegion: 'Tool {{name}}, status {{status}}',
     diffRegion: 'File diff {{fileName}}',
+    openDiffInPanel: 'Open diff for {{fileName}} in panel',
     sidebarNav: 'Session and navigation',
     composerOptionsToolbar: 'Composer options',
     composerActionsToolbar: 'Composer actions',
