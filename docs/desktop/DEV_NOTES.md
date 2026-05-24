@@ -8,6 +8,96 @@
 
 ---
 
+## 2026-05-24 — Harness 组件化：从硬编码到可组合 Agent 执行结构
+
+**背景：** 与 Agent（DS Pick desktop session）进行了一整天架构对话。核心产出：harness 的进化线、跨领域泛化、组件化作为硬编码膨胀的解决方案。
+
+### 关键结论
+
+#### 1. 演化线
+
+| 阶段 | 形态 | 本质 |
+|------|------|------|
+| Skill | SKILL.md prompt 注入 | 模型被「建议」怎么做 |
+| Harness | prompt + 代码强制执行结构 | 模型被「确保」怎么做 |
+| Harness 组件化 | 预置模块组合 + 参数化 | 用户可组合执行结构 |
+
+#### 2. 数学模型：余代数统一
+
+Agent+harness 架构统一于余代数 `X → F(X)`。LLM 是退化余代数 `X → O`（只有观测无状态转移），直线输出、不自主。主动性在 harness 的循环结构里（`handle_deepseek_turn` 的 `loop {}`），不在模型权重里。Harness 用非退化余代数围绕退化 LLM，构造非退化系统。
+
+- 审批 = 监督控制自动机
+- CRAFT = 拜占庭容错降级为不可靠节点检测
+- Scratchpad = 事件溯源 + Lamport 因果序
+- Compaction Pin = Bell-LaPadula 不可降级信息流
+- Execpolicy = 安全自动机 DFA + 属性文法
+- Sidecar = 能力安全模型（不可传递性）
+
+互模拟保证：模块替换前后可观测行为不变。换 LLM 不破坏安全性质。
+
+#### 3. Harness 的 7 个组件
+
+| 组件 | 当前硬编码位置 | 可配置维度 |
+|------|--------------|-----------|
+| 审批策略 | `approval.rs` | auto / on-request / untrusted / never |
+| 分发策略 | `dispatch.rs:should_parallelize_tool_batch` | naive / file-aware |
+| 执行策略 | `execpolicy/` | read-only / workspace-only / full |
+| 压缩策略 | `compaction` | trim-oldest / pin-protected / summary-first |
+| 子代理拓扑 | `subagent/mod.rs` + `host_impl.rs` | off / craft / pb-bootstrap / teaching |
+| LSP 集成 | `lsp_hooks.rs` | off / post-edit / full |
+| 容量控制 | `capacity.rs` | off / warn-only / enforce |
+
+#### 4. 组合规则
+
+组件间有顺序依赖（审批→分发→执行→子代理），不能自由排列。需定义：
+- **合法组合：** 依赖图约束
+- **推荐组合（预置）：** `safe-default` / `pb-bootstrap` / `code-review` / `teaching` / `yolo`
+- **废弃组合：** 语义矛盾组合产生警告（如 approval=never + dispatch=naive 合法但冗余）
+
+#### 5. 跨领域泛化
+
+同一套组件覆盖编程、教学、法律、医疗、金融审计。区别只在参数值和拓扑形状（CRAFT vs 交叉验证 vs 鉴别诊断 vs 并行审计）。Harness 是 **Agent 执行结构的可移植标准**，不仅服务于编程领域。
+
+#### 6. 业界对照（Claude Code 2026）
+
+Anthropic Managed Agents（2026.04 公测）使用完全相同的术语：session（只追加日志）、harness（调用模型+路由工具的循环）、sandbox（隔离执行环境）。
+
+- Anthropic：**云端托管** harness（纵向），用户上传 session 定义
+- DS Pick：**本地可配置** harness（横向），用户控制执行结构
+- Skills 在两边同时出现（Claude Code Skills 课程 + DS Pick SKILL.md），同一季度结晶
+
+#### 7. 实现路径（最小第一步）
+
+不改 trait 定义、不改 turn_loop 执行流。在已有硬编码分支上加一层**配置驱动路由**：
+
+1. `HarnessConfig` 结构体（`crates/config/src/lib.rs`）
+2. `start_turn` 加载配置 → 注入 `TurnContext`
+3. 各组件 match 分支读配置，替换硬编码常量
+4. DS Pick 设置面板 Harness 页（预置组合选择器 + 7 个组件下拉框）
+
+### 产品定位
+
+**预设组合是产品，配置面板是高级功能。** 90% 用户只碰预置，harness 配置暴露给 power user。与 Anthropic 的分叉：Anthropic 卖省心，DS Pick 卖控制权。
+
+### 与路线图关系
+
+- 组件化依赖 P2 L2 终态 trait 边界（已达标）
+- 不改变 A+ 契约（SSE 事件子集不变）
+- 设置面板 Harness 页可作为 F 阶段项目
+- CRAFT 从 prompt 约定升级为 SubAgentTopology 组件实现
+
+**非阻塞：** 不改变任何门控依赖，可独立推进。
+
+### 相关文档
+
+| 文档 | 关系 |
+|------|------|
+| [RUNTIME_EVOLUTION_ROADMAP.md](../tech/RUNTIME_EVOLUTION_ROADMAP.md) | P2 L2 终态、门控链 |
+| [agent-reliability-craft-plan.md](../agent-reliability-craft-plan.md) | CRAFT 作为 SubAgentTopology 实现 |
+| [HARNESS.md](HARNESS.md) | Harness 定位与栈位 |
+
+---
+
 ## 2026-05-21 — 会话/线程「结项汇总报告」（Handoff Report）— ⬜ 规划中
 
 **背景（产品类比）：** 人类项目结束会写**总结报告**；以后查问题先看报告，而不是从原始邮件/会议记录从头翻。IDE Agent（如 Cursor）在长对话里会对**旧轮次做摘要压缩**，相当于机器侧的「报告」。DS Pick **目前没有**与之对等、**用户可检索**的「结项汇总」机制。

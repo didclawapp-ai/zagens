@@ -156,19 +156,28 @@ impl ToolRegistry {
                         None
                     };
 
+                    let mut large_output_meta: Option<serde_json::Value> = None;
                     if let Some(ref ext) = external_ref {
                         if should_persist_large_output_for_namespace(&ctx.state_namespace) {
-                            if let Err(err) = persist_large_output_blob(
+                            match persist_large_output_blob(
                                 &ctx.state_namespace,
                                 ext,
                                 &result.content,
                             ) {
-                                tracing::warn!(
-                                    session_id = %ctx.state_namespace,
-                                    ref_id = %ext.ref_id,
-                                    error = %err,
-                                    "failed to persist large tool output blob"
-                                );
+                                Ok(meta_path) => {
+                                    large_output_meta = Some(serde_json::json!({
+                                        "ref_id": ext.ref_id,
+                                        "meta_path": meta_path.display().to_string(),
+                                    }));
+                                }
+                                Err(err) => {
+                                    tracing::warn!(
+                                        session_id = %ctx.state_namespace,
+                                        ref_id = %ext.ref_id,
+                                        error = %err,
+                                        "failed to persist large tool output blob"
+                                    );
+                                }
                             }
                         }
                     }
@@ -200,7 +209,13 @@ impl ToolRegistry {
                         threshold,
                         "large-output routed through workshop"
                     );
-                    return Ok(ToolResult::success(wrapped));
+                    let mut routed = ToolResult::success(wrapped);
+                    if let Some(lo) = large_output_meta {
+                        routed = routed.with_metadata(serde_json::json!({
+                            crate::tools::large_output_router::LARGE_OUTPUT_METADATA_KEY: lo,
+                        }));
+                    }
+                    return Ok(routed);
                 }
             }
         }

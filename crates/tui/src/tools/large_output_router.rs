@@ -11,7 +11,7 @@
 //! may pass `raw=true` to bypass routing entirely.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -121,6 +121,61 @@ pub fn load_large_output_persist_record(
     let path = large_output_dir(session_id).join(format!("{ref_id}.json"));
     let raw = std::fs::read_to_string(path)?;
     serde_json::from_str(&raw).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+}
+
+/// Metadata path for a persisted large-output ref (`<large_outputs>/<ref_id>.json`).
+#[must_use]
+pub fn large_output_meta_path(session_id: &str, ref_id: &str) -> PathBuf {
+    large_output_dir(session_id).join(format!("{ref_id}.json"))
+}
+
+/// `ToolResult.metadata["large_output"]` written when routing persists a blob (A1.2).
+pub const LARGE_OUTPUT_METADATA_KEY: &str = "large_output";
+
+/// Collect on-disk artifact paths for a routed tool result (monitor / JSONL isomorphism).
+#[must_use]
+pub fn artifact_refs_from_tool_output(
+    session_id: Option<&str>,
+    content: &str,
+    metadata: Option<&serde_json::Value>,
+) -> Vec<PathBuf> {
+    if let Some(meta) = metadata {
+        if let Some(lo) = meta.get(LARGE_OUTPUT_METADATA_KEY) {
+            if let Some(path) = lo.get("meta_path").and_then(|v| v.as_str()) {
+                let p = PathBuf::from(path);
+                if p.is_file() {
+                    return vec![p];
+                }
+            }
+            if let Some(ref_id) = lo.get("ref_id").and_then(|v| v.as_str()) {
+                if let Some(sid) = session_id {
+                    let p = large_output_meta_path(sid, ref_id);
+                    if p.is_file() {
+                        return vec![p];
+                    }
+                }
+            }
+        }
+    }
+    if let Some(sid) = session_id {
+        if let Some(ext) = parse_workshop_ref_from_message(content) {
+            let p = large_output_meta_path(sid, &ext.ref_id);
+            if p.is_file() {
+                return vec![p];
+            }
+        }
+    }
+    Vec::new()
+}
+
+/// Load raw tool output bytes via a persisted metadata path from [`artifact_refs_from_tool_output`].
+pub fn load_raw_from_artifact_meta_path(meta_path: &Path) -> std::io::Result<String> {
+    let raw = std::fs::read_to_string(meta_path)?;
+    let record: LargeOutputPersistRecord =
+        serde_json::from_str(&raw).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    let raw_path = large_output_dir(&record.session_id)
+        .join(format!("{}.txt", record.external_ref.ref_id));
+    std::fs::read_to_string(raw_path)
 }
 
 /// Parse `[workshop-ref: {json}]` from a tool-result message body.
@@ -481,6 +536,68 @@ mod tests {
 
         let raw_path = large_output_dir(session_id).join(format!("{}.txt", parsed.ref_id));
         assert_eq!(std::fs::read_to_string(raw_path).expect("raw blob"), raw);
+
+        unsafe { std::env::remove_var(LARGE_OUTPUT_ROOT_ENV) };
+    }
+
+    #[test]
+    fn artifact_refs_from_metadata_meta_path() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        unsafe { std::env::set_var(LARGE_OUTPUT_ROOT_ENV, tmp.path()) };
+
+        let session_id = "sess_meta_path";
+        let raw = "blob".repeat(500);
+        let external_ref = LargeOutputExternalRef::new("grep_files", raw.chars().count());
+        let meta_path =
+            persist_large_output_blob(session_id, &external_ref, &raw).expect("persist");
+
+        let wrapped = LargeOutputRouter::wrap_synthesis(
+            "grep_files",
+            "summary",
+            5000,
+            4096,
+            Some(&external_ref),
+        );
+        let metadata = serde_json::json!({
+            LARGE_OUTPUT_METADATA_KEY: {
+                "ref_id": external_ref.ref_id,
+                "meta_path": meta_path.display().to_string(),
+            }
+        });
+
+        let refs = artifact_refs_from_tool_output(None, &wrapped, Some(&metadata));
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0], meta_path);
+
+        let loaded = load_raw_from_artifact_meta_path(&refs[0]).expect("load raw via meta");
+        assert_eq!(loaded, raw);
+
+        unsafe { std::env::remove_var(LARGE_OUTPUT_ROOT_ENV) };
+    }
+
+    #[test]
+    fn artifact_refs_fallback_workshop_ref_with_session_id() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        unsafe { std::env::set_var(LARGE_OUTPUT_ROOT_ENV, tmp.path()) };
+
+        let session_id = "sess_workshop_fallback";
+        let raw = "z".repeat(2000);
+        let external_ref = LargeOutputExternalRef::new("read_file", raw.chars().count());
+        persist_large_output_blob(session_id, &external_ref, &raw).expect("persist");
+
+        let wrapped = LargeOutputRouter::wrap_synthesis(
+            "read_file",
+            "summary",
+            5000,
+            4096,
+            Some(&external_ref),
+        );
+        let refs = artifact_refs_from_tool_output(Some(session_id), &wrapped, None);
+        assert_eq!(refs.len(), 1);
+        assert_eq!(
+            load_raw_from_artifact_meta_path(&refs[0]).expect("load"),
+            raw
+        );
 
         unsafe { std::env::remove_var(LARGE_OUTPUT_ROOT_ENV) };
     }

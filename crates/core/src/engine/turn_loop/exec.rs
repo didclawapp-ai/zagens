@@ -17,6 +17,15 @@ pub struct ToolExecOutcome {
     pub result: Result<ToolResult, ToolError>,
 }
 
+/// Approval / parallelism metadata resolved during tool planning (L2 may consult registry).
+#[derive(Debug, Clone)]
+pub struct ToolPlanApprovalMeta {
+    pub approval_required: bool,
+    pub approval_description: String,
+    pub supports_parallel: bool,
+    pub read_only: bool,
+}
+
 #[derive(Debug, Clone)]
 pub struct ToolExecutionPlan {
     pub index: usize,

@@ -1,0 +1,248 @@
+//! Steer / sub-agent / inline REPL when the model returns no tool calls (P2 PR6c).
+
+use deepseek_core::chat::{ContentBlock, Message};
+use deepseek_core::engine::context::summarize_text;
+use deepseek_core::engine::turn_loop::control::TurnLoopControl;
+use deepseek_core::engine::TurnLoopHost;
+use deepseek_core::turn::{TurnContext, TurnOutcomeStatus};
+
+use super::super::Engine;
+use crate::core::events::Event;
+
+impl Engine {
+    pub(super) async fn handle_no_tool_uses_turn_loop(
+        &mut self,
+        turn: &mut TurnContext,
+        pending_steers: &mut Vec<String>,
+        current_text_visible: &str,
+        has_sendable_assistant_content: bool,
+    ) -> TurnLoopControl {
+        if self.maybe_inject_scratchpad_summary().await && !pending_steers.is_empty() {
+            for steer in pending_steers.drain(..) {
+                self.session
+                    .working_set
+                    .observe_user_message(&steer, &self.session.workspace);
+                Engine::add_session_message(
+                    self,
+                    Message {
+                        role: "user".to_string(),
+                        content: vec![ContentBlock::Text {
+                            text: steer,
+                            cache_control: None,
+                        }],
+                    },
+                )
+                .await;
+            }
+            turn.next_step();
+            return TurnLoopControl::Continue;
+        }
+
+        if !pending_steers.is_empty() {
+            for steer in pending_steers.drain(..) {
+                self.session
+                    .working_set
+                    .observe_user_message(&steer, &self.session.workspace);
+                Engine::add_session_message(
+                    self,
+                    Message {
+                        role: "user".to_string(),
+                        content: vec![ContentBlock::Text {
+                            text: steer,
+                            cache_control: None,
+                        }],
+                    },
+                )
+                .await;
+            }
+            turn.next_step();
+            return TurnLoopControl::Continue;
+        }
+
+        let mut completions: Vec<crate::tools::subagent::SubAgentCompletion> = Vec::new();
+        while let Ok(c) = self.rx_subagent_completion.try_recv() {
+            completions.push(c);
+        }
+        if completions.is_empty() {
+            let running = {
+                let mgr = self.subagent_manager.read().await;
+                mgr.running_count()
+            };
+            if running > 0 {
+                let _ = self
+                    .tx_event
+                    .send(Event::status(format!(
+                        "Waiting on {running} sub-agent(s) to complete..."
+                    )))
+                    .await;
+                tokio::select! {
+                    biased;
+                    () = self.cancel_token.cancelled() => {
+                        let _ = self
+                            .tx_event
+                            .send(Event::status(
+                                "Request cancelled while waiting for sub-agents",
+                            ))
+                            .await;
+                        return TurnLoopControl::Return(TurnOutcomeStatus::Interrupted, None);
+                    }
+                    Some(c) = self.rx_subagent_completion.recv() => {
+                        completions.push(c);
+                        while let Ok(extra) = self.rx_subagent_completion.try_recv() {
+                            completions.push(extra);
+                        }
+                    }
+                    Some(steer) = self.rx_steer.recv() => {
+                        let trimmed = steer.trim().to_string();
+                        if !trimmed.is_empty() {
+                            self.session
+                                .working_set
+                                .observe_user_message(&trimmed, &self.session.workspace);
+                            Engine::add_session_message(
+                                self,
+                                Message {
+                                    role: "user".to_string(),
+                                    content: vec![ContentBlock::Text {
+                                        text: trimmed.clone(),
+                                        cache_control: None,
+                                    }],
+                                },
+                            )
+                            .await;
+                            let _ = self.tx_event.send(Event::status(format!(
+                                "Steer input accepted: {}",
+                                summarize_text(&trimmed, 120)
+                            ))).await;
+                        }
+                        turn.next_step();
+                        return TurnLoopControl::Continue;
+                    }
+                }
+            }
+        }
+        if !completions.is_empty() {
+            let count = completions.len();
+            for c in completions {
+                self.session
+                    .working_set
+                    .observe_user_message(&c.payload, &self.session.workspace);
+                Engine::add_session_message(
+                    self,
+                    Message {
+                        role: "user".to_string(),
+                        content: vec![ContentBlock::Text {
+                            text: c.payload,
+                            cache_control: None,
+                        }],
+                    },
+                )
+                .await;
+            }
+            let _ = self
+                .tx_event
+                .send(Event::status(format!(
+                    "Resuming turn with {count} sub-agent completion(s)"
+                )))
+                .await;
+            turn.next_step();
+            return TurnLoopControl::Continue;
+        }
+
+        if has_sendable_assistant_content
+            && crate::repl::sandbox::has_repl_block(current_text_visible)
+        {
+            let repl_blocks = crate::repl::sandbox::extract_repl_blocks(current_text_visible);
+            let mut runtime = match crate::repl::runtime::PythonRuntime::new().await {
+                Ok(rt) => rt,
+                Err(e) => {
+                    let _ = self
+                        .tx_event
+                        .send(Event::status(format!("REPL init failed: {e}")))
+                        .await;
+                    return TurnLoopControl::Break;
+                }
+            };
+
+            let mut final_result: Option<String> = None;
+            for (i, block) in repl_blocks.iter().enumerate() {
+                let round_num = i + 1;
+                let _ = self
+                    .tx_event
+                    .send(Event::status(format!("REPL round {round_num}: executing...")))
+                    .await;
+
+                match runtime.execute(&block.code).await {
+                    Ok(round) => {
+                        if let Some(val) = &round.final_value {
+                            let _ = self
+                                .tx_event
+                                .send(Event::status(format!(
+                                    "REPL round {round_num}: FINAL result obtained"
+                                )))
+                                .await;
+                            final_result = Some(val.clone());
+                            break;
+                        }
+
+                        let feedback = if round.has_error {
+                            format!(
+                                "[REPL round {round_num} error]\nstdout:\n{}\nstderr:\n{}",
+                                round.stdout, round.stderr
+                            )
+                        } else {
+                            format!("[REPL round {round_num} output]\n{}", round.stdout)
+                        };
+                        Engine::add_session_message(
+                            self,
+                            Message {
+                                role: "user".to_string(),
+                                content: vec![ContentBlock::Text {
+                                    text: feedback,
+                                    cache_control: None,
+                                }],
+                            },
+                        )
+                        .await;
+                    }
+                    Err(e) => {
+                        let _ = self
+                            .tx_event
+                            .send(Event::status(format!("REPL round {round_num} failed: {e}")))
+                            .await;
+                        Engine::add_session_message(
+                            self,
+                            Message {
+                                role: "user".to_string(),
+                                content: vec![ContentBlock::Text {
+                                    text: format!("[REPL round {round_num} execution failed]\n{e}"),
+                                    cache_control: None,
+                                }],
+                            },
+                        )
+                        .await;
+                    }
+                }
+            }
+
+            if let Some(final_val) = final_result {
+                if let Some(last_msg) = self.session.messages.last_mut()
+                    && last_msg.role == "assistant"
+                {
+                    for block in &mut last_msg.content {
+                        if let ContentBlock::Text { text, .. } = block {
+                            *text = final_val;
+                            break;
+                        }
+                    }
+                }
+                Engine::emit_session_updated(self).await;
+                return TurnLoopControl::Break;
+            }
+
+            turn.next_step();
+            return TurnLoopControl::Continue;
+        }
+
+        TurnLoopControl::Break
+    }
+}

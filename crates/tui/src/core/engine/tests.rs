@@ -985,7 +985,7 @@ async fn pre_request_refresh_skips_compaction_below_normal_threshold() {
     let before_len = engine.session.messages.len();
     let turn = TurnContext::new(10);
     let applied = engine
-        .run_capacity_pre_request_checkpoint(&turn, None, AppMode::Agent)
+        .run_capacity_pre_request_checkpoint(&turn, None, deepseek_core::turn::TurnLoopMode::Agent)
         .await;
     let after = engine.estimated_input_tokens();
 
@@ -1031,7 +1031,7 @@ async fn pre_request_refresh_invoked_when_medium_risk() {
     let before = engine.estimated_input_tokens();
     let turn = TurnContext::new(10);
     let applied = engine
-        .run_capacity_pre_request_checkpoint(&turn, None, AppMode::Agent)
+        .run_capacity_pre_request_checkpoint(&turn, None, deepseek_core::turn::TurnLoopMode::Agent)
         .await;
     let after = engine.estimated_input_tokens();
 
@@ -1083,7 +1083,7 @@ async fn post_tool_replay_invoked_when_high_non_severe_risk() {
     let restarted = engine
         .run_capacity_post_tool_checkpoint(
             &turn,
-            AppMode::Agent,
+            deepseek_core::turn::TurnLoopMode::Agent,
             Some(&registry),
             Arc::new(RwLock::new(())),
             None,
@@ -1144,7 +1144,13 @@ async fn error_escalation_triggers_replan_when_severe_or_repeated_failures() {
     let before_len = engine.session.messages.len();
     let turn = TurnContext::new(10);
     let restarted = engine
-        .run_capacity_error_escalation_checkpoint(&turn, AppMode::Agent, 2, 2, &[])
+        .run_capacity_error_escalation_checkpoint(
+            &turn,
+            deepseek_core::turn::TurnLoopMode::Agent,
+            2,
+            2,
+            &[],
+        )
         .await;
 
     assert!(restarted);
@@ -1202,7 +1208,13 @@ async fn capacity_disabled_by_default_keeps_messages_intact() {
     let before_len = engine.session.messages.len();
     let turn = TurnContext::new(10);
     let restarted = engine
-        .run_capacity_error_escalation_checkpoint(&turn, AppMode::Agent, 2, 2, &[])
+        .run_capacity_error_escalation_checkpoint(
+            &turn,
+            deepseek_core::turn::TurnLoopMode::Agent,
+            2,
+            2,
+            &[],
+        )
         .await;
 
     // Capacity is disabled → no replan, no message clear.
@@ -1240,7 +1252,7 @@ async fn controller_disabled_keeps_behavior_unchanged() {
     let before_len = engine.session.messages.len();
     let turn = TurnContext::new(10);
     let applied = engine
-        .run_capacity_pre_request_checkpoint(&turn, None, AppMode::Agent)
+        .run_capacity_pre_request_checkpoint(&turn, None, deepseek_core::turn::TurnLoopMode::Agent)
         .await;
     let after = engine.estimated_input_tokens();
     let after_len = engine.session.messages.len();

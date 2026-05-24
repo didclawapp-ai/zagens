@@ -14,7 +14,7 @@ use super::handle::EngineHandle;
 pub(crate) struct MockEngineHandle {
     pub handle: EngineHandle,
     pub rx_op: mpsc::Receiver<Op>,
-    rx_approval: mpsc::Receiver<ApprovalDecision>,
+    pub(crate) rx_approval: mpsc::Receiver<ApprovalDecision>,
     pub rx_steer: mpsc::Receiver<String>,
     pub tx_event: mpsc::Sender<Event>,
     pub cancel_token: CancellationToken,

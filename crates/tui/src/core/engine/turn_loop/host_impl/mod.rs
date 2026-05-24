@@ -5,16 +5,21 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use deepseek_core::chat::{LlmClient, Message, Tool};
-use deepseek_core::engine::context::{estimate_input_tokens_conservative, summarize_text};
-use deepseek_core::chat::ContentBlock;
-use deepseek_core::engine::turn_loop::control::{
-    TurnLoopControl, TurnLoopStreamingPhaseOutcome, TurnLoopToolPhaseOutcome,
+use deepseek_core::engine::context::estimate_input_tokens_conservative;
+use deepseek_core::engine::turn_loop::control::TurnLoopControl;
+use deepseek_core::engine::turn_loop::exec::{
+    ToolExecOutcome, ToolExecutionPlan, ToolPlanApprovalMeta,
 };
-use deepseek_core::engine::turn_loop::{TurnLoopMcpPool, TurnLoopToolRegistry};
+use deepseek_core::engine::turn_loop::{
+    build_edit_file_approval_desc, TurnLoopMcpPool, TurnLoopToolRegistry,
+};
+use deepseek_core::engine::tool_catalog::{CODE_EXECUTION_TOOL_NAME, is_tool_search_tool};
+use deepseek_core::engine::dispatch::{
+    mcp_tool_approval_description, mcp_tool_is_parallel_safe, mcp_tool_is_read_only,
+};
 use deepseek_core::engine::TurnLoopHost;
-use deepseek_core::engine::loop_guard::LoopGuard;
 use deepseek_core::engine::streaming::ToolUseState;
-use deepseek_core::turn::{TurnContext, TurnLoopMode, TurnOutcomeStatus};
+use deepseek_core::turn::{TurnContext, TurnLoopMode};
 use deepseek_tools::{ToolError, ToolResult};
 use serde_json::Value;
 use tokio::sync::{mpsc, Mutex as AsyncMutex, RwLock};
@@ -31,10 +36,14 @@ use crate::core::events::Event;
 use crate::core::turn::pre_tool_snapshot;
 use crate::mcp::McpPool;
 use crate::tui::app::AppMode;
+use crate::tools::spec::ApprovalRequirement;
 use crate::tools::ToolRegistry;
 impl TurnLoopToolRegistry for ToolRegistry {}
 impl TurnLoopMcpPool for McpPool {}
 
+
+mod capacity;
+mod no_tool_uses;
 #[async_trait]
 impl TurnLoopHost for Engine {
     type ToolRegistry = ToolRegistry;
@@ -276,8 +285,7 @@ impl TurnLoopHost for Engine {
         client: Option<&dyn LlmClient>,
         mode: TurnLoopMode,
     ) -> bool {
-        Engine::run_capacity_pre_request_checkpoint(self, turn, client, turn_loop_to_app_mode(mode))
-            .await
+        self.turn_loop_capacity_pre_request(turn, client, mode).await
     }
 
     async fn run_capacity_error_escalation_checkpoint(
@@ -288,10 +296,9 @@ impl TurnLoopHost for Engine {
         consecutive_tool_error_steps: u32,
         error_categories: &[deepseek_core::error_taxonomy::ErrorCategory],
     ) -> bool {
-        Engine::run_capacity_error_escalation_checkpoint(
-            self,
+        self.turn_loop_capacity_error_escalation(
             turn,
-            turn_loop_to_app_mode(mode),
+            mode,
             step_error_count,
             consecutive_tool_error_steps,
             error_categories,
@@ -341,287 +348,145 @@ impl TurnLoopHost for Engine {
         current_text_visible: &str,
         has_sendable_assistant_content: bool,
     ) -> TurnLoopControl {
-        if self.maybe_inject_scratchpad_summary().await && !pending_steers.is_empty() {
-            for steer in pending_steers.drain(..) {
-                self.session
-                    .working_set
-                    .observe_user_message(&steer, &self.session.workspace);
-                Engine::add_session_message(
-                    self,
-                    Message {
-                        role: "user".to_string(),
-                        content: vec![ContentBlock::Text {
-                            text: steer,
-                            cache_control: None,
-                        }],
-                    },
-                )
-                .await;
-            }
-            turn.next_step();
-            return TurnLoopControl::Continue;
-        }
-
-        if !pending_steers.is_empty() {
-            for steer in pending_steers.drain(..) {
-                self.session
-                    .working_set
-                    .observe_user_message(&steer, &self.session.workspace);
-                Engine::add_session_message(
-                    self,
-                    Message {
-                        role: "user".to_string(),
-                        content: vec![ContentBlock::Text {
-                            text: steer,
-                            cache_control: None,
-                        }],
-                    },
-                )
-                .await;
-            }
-            turn.next_step();
-            return TurnLoopControl::Continue;
-        }
-
-        let mut completions: Vec<crate::tools::subagent::SubAgentCompletion> = Vec::new();
-        while let Ok(c) = self.rx_subagent_completion.try_recv() {
-            completions.push(c);
-        }
-        if completions.is_empty() {
-            let running = {
-                let mgr = self.subagent_manager.read().await;
-                mgr.running_count()
-            };
-            if running > 0 {
-                let _ = self
-                    .tx_event
-                    .send(Event::status(format!(
-                        "Waiting on {running} sub-agent(s) to complete..."
-                    )))
-                    .await;
-                tokio::select! {
-                    biased;
-                    () = self.cancel_token.cancelled() => {
-                        let _ = self
-                            .tx_event
-                            .send(Event::status(
-                                "Request cancelled while waiting for sub-agents",
-                            ))
-                            .await;
-                        return TurnLoopControl::Return(TurnOutcomeStatus::Interrupted, None);
-                    }
-                    Some(c) = self.rx_subagent_completion.recv() => {
-                        completions.push(c);
-                        while let Ok(extra) = self.rx_subagent_completion.try_recv() {
-                            completions.push(extra);
-                        }
-                    }
-                    Some(steer) = self.rx_steer.recv() => {
-                        let trimmed = steer.trim().to_string();
-                        if !trimmed.is_empty() {
-                            self.session
-                                .working_set
-                                .observe_user_message(&trimmed, &self.session.workspace);
-                            Engine::add_session_message(
-                                self,
-                                Message {
-                                    role: "user".to_string(),
-                                    content: vec![ContentBlock::Text {
-                                        text: trimmed.clone(),
-                                        cache_control: None,
-                                    }],
-                                },
-                            )
-                            .await;
-                            let _ = self.tx_event.send(Event::status(format!(
-                                "Steer input accepted: {}",
-                                summarize_text(&trimmed, 120)
-                            ))).await;
-                        }
-                        turn.next_step();
-                        return TurnLoopControl::Continue;
-                    }
-                }
-            }
-        }
-        if !completions.is_empty() {
-            let count = completions.len();
-            for c in completions {
-                self.session
-                    .working_set
-                    .observe_user_message(&c.payload, &self.session.workspace);
-                Engine::add_session_message(
-                    self,
-                    Message {
-                        role: "user".to_string(),
-                        content: vec![ContentBlock::Text {
-                            text: c.payload,
-                            cache_control: None,
-                        }],
-                    },
-                )
-                .await;
-            }
-            let _ = self
-                .tx_event
-                .send(Event::status(format!(
-                    "Resuming turn with {count} sub-agent completion(s)"
-                )))
-                .await;
-            turn.next_step();
-            return TurnLoopControl::Continue;
-        }
-
-        if has_sendable_assistant_content
-            && crate::repl::sandbox::has_repl_block(current_text_visible)
-        {
-            let repl_blocks = crate::repl::sandbox::extract_repl_blocks(current_text_visible);
-            let mut runtime = match crate::repl::runtime::PythonRuntime::new().await {
-                Ok(rt) => rt,
-                Err(e) => {
-                    let _ = self
-                        .tx_event
-                        .send(Event::status(format!("REPL init failed: {e}")))
-                        .await;
-                    return TurnLoopControl::Break;
-                }
-            };
-
-            let mut final_result: Option<String> = None;
-            for (i, block) in repl_blocks.iter().enumerate() {
-                let round_num = i + 1;
-                let _ = self
-                    .tx_event
-                    .send(Event::status(format!("REPL round {round_num}: executing...")))
-                    .await;
-
-                match runtime.execute(&block.code).await {
-                    Ok(round) => {
-                        if let Some(val) = &round.final_value {
-                            let _ = self
-                                .tx_event
-                                .send(Event::status(format!(
-                                    "REPL round {round_num}: FINAL result obtained"
-                                )))
-                                .await;
-                            final_result = Some(val.clone());
-                            break;
-                        }
-
-                        let feedback = if round.has_error {
-                            format!(
-                                "[REPL round {round_num} error]\nstdout:\n{}\nstderr:\n{}",
-                                round.stdout, round.stderr
-                            )
-                        } else {
-                            format!("[REPL round {round_num} output]\n{}", round.stdout)
-                        };
-                        Engine::add_session_message(
-                            self,
-                            Message {
-                                role: "user".to_string(),
-                                content: vec![ContentBlock::Text {
-                                    text: feedback,
-                                    cache_control: None,
-                                }],
-                            },
-                        )
-                        .await;
-                    }
-                    Err(e) => {
-                        let _ = self
-                            .tx_event
-                            .send(Event::status(format!("REPL round {round_num} failed: {e}")))
-                            .await;
-                        Engine::add_session_message(
-                            self,
-                            Message {
-                                role: "user".to_string(),
-                                content: vec![ContentBlock::Text {
-                                    text: format!("[REPL round {round_num} execution failed]\n{e}"),
-                                    cache_control: None,
-                                }],
-                            },
-                        )
-                        .await;
-                    }
-                }
-            }
-
-            if let Some(final_val) = final_result {
-                if let Some(last_msg) = self.session.messages.last_mut()
-                    && last_msg.role == "assistant"
-                {
-                    for block in &mut last_msg.content {
-                        if let ContentBlock::Text { text, .. } = block {
-                            *text = final_val;
-                            break;
-                        }
-                    }
-                }
-                Engine::emit_session_updated(self).await;
-                return TurnLoopControl::Break;
-            }
-
-            turn.next_step();
-            return TurnLoopControl::Continue;
-        }
-
-        TurnLoopControl::Break
+        self.handle_no_tool_uses_turn_loop(
+            turn,
+            pending_steers,
+            current_text_visible,
+            has_sendable_assistant_content,
+        )
+        .await
     }
 
     fn pre_tool_snapshot(&self, workspace: &std::path::Path, tool_id: &str) {
         pre_tool_snapshot(workspace, tool_id);
     }
 
-    async fn run_streaming_phase(
-        &mut self,
-        turn: &mut TurnContext,
-        client: &dyn LlmClient,
-        mode: TurnLoopMode,
-        tool_catalog: &[Tool],
-        active_tool_names: &HashSet<String>,
-        force_update_plan_first: bool,
-        stream_retry_attempts: &mut u32,
-        context_recovery_attempts: &mut u8,
-        turn_error: &mut Option<String>,
-    ) -> TurnLoopStreamingPhaseOutcome {
-        super::streaming_phase::run_streaming_phase(
-            self,
-            turn,
-            client,
-            mode,
-            tool_catalog,
-            active_tool_names,
-            force_update_plan_first,
-            stream_retry_attempts,
-            context_recovery_attempts,
-            turn_error,
+    fn effective_reasoning_effort_for_request(&mut self) -> Option<String> {
+        deepseek_core::engine::turn_loop::resolve_auto_effort(
+            self.session.reasoning_effort.as_deref(),
+            &self.session.messages,
+            |is_subagent, last_msg| {
+                crate::auto_reasoning::select(is_subagent, last_msg)
+                    .as_setting()
+                    .to_string()
+            },
         )
-        .await
     }
 
-    async fn run_tool_execution_phase(
+    fn parse_streaming_tool_input(&self, buffer: &str) -> Option<Value> {
+        super::super::dispatch::parse_tool_input(buffer)
+    }
+
+    fn final_streaming_tool_input(&self, state: &ToolUseState) -> Value {
+        super::super::dispatch::final_tool_input(state)
+    }
+
+    async fn ensure_mcp_pool_for_tools(
         &mut self,
-        turn: &mut TurnContext,
+        tool_uses: &[ToolUseState],
+    ) -> Option<Arc<AsyncMutex<McpPool>>> {
+        if !tool_uses.iter().any(|tool| McpPool::is_mcp_tool(&tool.name)) {
+            return None;
+        }
+        match self.ensure_mcp_pool().await {
+            Ok(pool) => Some(pool),
+            Err(err) => {
+                let _ = self
+                    .tx_event
+                    .send(Event::status(err.to_string()))
+                    .await;
+                None
+            }
+        }
+    }
+
+    fn resolve_hallucinated_tool_name(
+        &self,
+        name: &str,
+        catalog: &[Tool],
+        registry: Option<&Self::ToolRegistry>,
+    ) -> Option<String> {
+        let registry = registry?;
+        let canonical = registry.resolve(name)?;
+        if catalog.iter().any(|d| d.name == canonical) {
+            Some(canonical.to_string())
+        } else {
+            None
+        }
+    }
+
+    fn tool_plan_approval_meta(
+        &self,
+        tool_name: &str,
+        tool_input: &serde_json::Value,
+        registry: Option<&Self::ToolRegistry>,
+    ) -> ToolPlanApprovalMeta {
+        if McpPool::is_mcp_tool(tool_name) {
+            return ToolPlanApprovalMeta {
+                read_only: mcp_tool_is_read_only(tool_name),
+                supports_parallel: mcp_tool_is_parallel_safe(tool_name),
+                approval_required: !mcp_tool_is_read_only(tool_name),
+                approval_description: mcp_tool_approval_description(tool_name),
+            };
+        }
+        if let Some(registry) = registry
+            && let Some(spec) = registry.get(tool_name)
+        {
+            return ToolPlanApprovalMeta {
+                approval_required: spec.approval_requirement() != ApprovalRequirement::Auto,
+                approval_description: if tool_name == "edit_file" {
+                    build_edit_file_approval_desc(tool_input)
+                } else {
+                    spec.description().to_string()
+                },
+                supports_parallel: spec.supports_parallel(),
+                read_only: spec.is_read_only(),
+            };
+        }
+        if tool_name == CODE_EXECUTION_TOOL_NAME {
+            return ToolPlanApprovalMeta {
+                approval_required: true,
+                approval_description:
+                    "Run model-provided Python code in local execution sandbox".to_string(),
+                supports_parallel: false,
+                read_only: false,
+            };
+        }
+        if is_tool_search_tool(tool_name) {
+            return ToolPlanApprovalMeta {
+                approval_required: false,
+                approval_description: "Search tool catalog".to_string(),
+                supports_parallel: false,
+                read_only: true,
+            };
+        }
+        ToolPlanApprovalMeta {
+            approval_required: false,
+            approval_description: String::new(),
+            supports_parallel: false,
+            read_only: false,
+        }
+    }
+
+    async fn execute_tool_plans(
+        &mut self,
         mode: TurnLoopMode,
-        tool_uses: &mut [ToolUseState],
+        plans: Vec<ToolExecutionPlan>,
         tool_catalog: &[Tool],
         active_tool_names: &mut HashSet<String>,
-        loop_guard: &mut LoopGuard,
-        consecutive_tool_error_steps: u32,
         tool_registry: Option<&Self::ToolRegistry>,
-    ) -> TurnLoopToolPhaseOutcome {
-        super::tool_phase::run_tool_execution_phase(
+        mcp_pool: Option<Arc<AsyncMutex<McpPool>>>,
+        tool_exec_lock: Arc<RwLock<()>>,
+    ) -> Vec<ToolExecOutcome> {
+        super::tool_plans_exec::execute_tool_plans(
             self,
-            turn,
             mode,
-            tool_uses,
+            plans,
             tool_catalog,
             active_tool_names,
-            loop_guard,
-            consecutive_tool_error_steps,
             tool_registry,
+            mcp_pool,
+            tool_exec_lock,
         )
         .await
     }
@@ -636,10 +501,9 @@ impl TurnLoopHost for Engine {
         step_error_count: usize,
         consecutive_tool_error_steps: u32,
     ) -> bool {
-        Engine::run_capacity_post_tool_checkpoint(
-            self,
+        self.turn_loop_capacity_post_tool(
             turn,
-            turn_loop_to_app_mode(mode),
+            mode,
             tool_registry,
             tool_exec_lock,
             mcp_pool,
@@ -651,7 +515,7 @@ impl TurnLoopHost for Engine {
 }
 
 #[must_use]
-pub(super) fn app_mode_to_turn_loop(mode: AppMode) -> TurnLoopMode {
+pub(crate) fn app_mode_to_turn_loop(mode: AppMode) -> TurnLoopMode {
     match mode {
         AppMode::Agent => TurnLoopMode::Agent,
         AppMode::Yolo => TurnLoopMode::Yolo,
@@ -660,7 +524,7 @@ pub(super) fn app_mode_to_turn_loop(mode: AppMode) -> TurnLoopMode {
 }
 
 #[must_use]
-pub(super) fn turn_loop_to_app_mode(mode: TurnLoopMode) -> AppMode {
+pub(crate) fn turn_loop_to_app_mode(mode: TurnLoopMode) -> AppMode {
     match mode {
         TurnLoopMode::Agent => AppMode::Agent,
         TurnLoopMode::Yolo => AppMode::Yolo,

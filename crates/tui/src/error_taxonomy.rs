@@ -6,7 +6,9 @@ use crate::llm_client::LlmError;
 use deepseek_tools::ToolError;
 
 pub use deepseek_core::error_taxonomy::{
-    classify_error_message, ErrorCategory, ErrorEnvelope, ErrorSeverity, StreamError,
+    classify_error_message, is_category_network_retryable, is_stream_failure_retryable,
+    user_hint_for_category, ErrorCategory, ErrorEnvelope, ErrorRetryPolicy, ErrorSeverity,
+    StreamError,
 };
 
 #[must_use]

@@ -1851,6 +1851,38 @@ async fn usage_endpoint_returns_empty_aggregation_for_fresh_store() -> Result<()
     Ok(())
 }
 
+/// A3.4 — HTTP errors expose unified taxonomy fields (`category`, `class`, `hint`, `retryable`).
+#[tokio::test]
+async fn api_error_payload_includes_taxonomy_fields() -> Result<()> {
+    let Some((addr, _runtime_threads, handle)) = spawn_test_server().await? else {
+        return Ok(());
+    };
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!(
+            "http://{addr}/v1/threads/thr_any/turns/turn_any/resolve-approval"
+        ))
+        .json(&json!({
+            "tool_call_id": "t1",
+            "decision": "maybe",
+        }))
+        .send()
+        .await?;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = resp.json().await?;
+    let err = body
+        .get("error")
+        .context("missing error object")?;
+    assert!(err.get("message").and_then(|v| v.as_str()).is_some());
+    assert_eq!(err.get("category"), err.get("class"));
+    assert!(err.get("hint").and_then(|v| v.as_str()).is_some());
+    assert_eq!(err["retryable"], false);
+    assert_eq!(err["retry_policy"], "not_retryable");
+    assert!(err.get("severity").is_some());
+    handle.abort();
+    Ok(())
+}
+
 /// A+.7 — HTTP resolve-approval rejects invalid decision strings.
 #[tokio::test]
 async fn resolve_approval_rejects_invalid_decision() -> Result<()> {
@@ -1977,6 +2009,226 @@ async fn sidecar_parallel_turns_on_two_threads() -> Result<()> {
     let events_b = runtime_threads.events_since(&thread_b_id, None)?;
     assert!(events_a.iter().any(|ev| ev.event == "turn.completed"));
     assert!(events_b.iter().any(|ev| ev.event == "turn.completed"));
+
+    handle.abort();
+    Ok(())
+}
+
+async fn wait_for_approval_required_event(
+    runtime_threads: &crate::runtime_threads::RuntimeThreadManager,
+    thread_id: &str,
+    tool_call_id: &str,
+    timeout: std::time::Duration,
+) -> Result<()> {
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        let events = runtime_threads.events_since(thread_id, None)?;
+        if events.iter().any(|ev| {
+            ev.event == "approval.required"
+                && ev.payload.get("id").and_then(Value::as_str) == Some(tool_call_id)
+        }) {
+            return Ok(());
+        }
+        if tokio::time::Instant::now() >= deadline {
+            bail!(
+                "timed out waiting for approval.required tool={tool_call_id} thread={thread_id}"
+            );
+        }
+        sleep(std::time::Duration::from_millis(25)).await;
+    }
+}
+
+async fn install_parallel_approval_mock(
+    runtime_threads: &crate::runtime_threads::RuntimeThreadManager,
+    thread_id: &str,
+    tool_call_id: &'static str,
+) -> Result<tokio::sync::oneshot::Sender<()>> {
+    let harness = crate::core::engine::mock_engine_handle();
+    runtime_threads
+        .install_test_engine(thread_id, harness.handle.clone())
+        .await?;
+    let (release_tx, release_rx) = tokio::sync::oneshot::channel::<()>();
+    let mut rx_op = harness.rx_op;
+    let tx_event = harness.tx_event;
+    let mut rx_approval = harness.rx_approval;
+    tokio::spawn(async move {
+        while rx_approval.recv().await.is_some() {}
+    });
+    tokio::spawn(async move {
+        if !matches!(rx_op.recv().await, Some(Op::SendMessage { .. })) {
+            return;
+        }
+        let _ = tx_event
+            .send(EngineEvent::ApprovalRequired {
+                approval_key: format!("key_{tool_call_id}"),
+                id: tool_call_id.to_string(),
+                tool_name: "exec_command".to_string(),
+                description: "needs HTTP resolve".to_string(),
+            })
+            .await;
+        let _ = release_rx.await;
+        let _ = tx_event
+            .send(EngineEvent::TurnComplete {
+                usage: Usage::default(),
+                last_request_input_tokens: None,
+                status: TurnOutcomeStatus::Completed,
+                error: None,
+                step_count: 0,
+                tool_names: vec![],
+                end_reason: None,
+            })
+            .await;
+    });
+    Ok(release_tx)
+}
+
+/// A+.7 — HTTP sidecar: two concurrent pending approvals; resolve-approval is
+/// scoped per thread/turn; each turn continues only after its own resolve.
+#[tokio::test]
+async fn sidecar_parallel_pending_approvals_resolve_then_continue() -> Result<()> {
+    let Some((addr, runtime_threads, handle)) = spawn_test_server().await? else {
+        return Ok(());
+    };
+    let client = reqwest::Client::new();
+    let base = format!("http://{addr}");
+
+    let thread_a: serde_json::Value = client
+        .post(format!("{base}/v1/threads"))
+        .json(&json!({"model": "deepseek-chat", "auto_approve": false}))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    let thread_b: serde_json::Value = client
+        .post(format!("{base}/v1/threads"))
+        .json(&json!({"model": "deepseek-chat", "auto_approve": false}))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    let thread_a_id = thread_a["id"].as_str().context("thread A id")?.to_string();
+    let thread_b_id = thread_b["id"].as_str().context("thread B id")?.to_string();
+
+    let release_a = install_parallel_approval_mock(
+        &runtime_threads,
+        &thread_a_id,
+        "tool_http_parallel_a",
+    )
+    .await?;
+    let release_b = install_parallel_approval_mock(
+        &runtime_threads,
+        &thread_b_id,
+        "tool_http_parallel_b",
+    )
+    .await?;
+
+    let turn_a: serde_json::Value = client
+        .post(format!("{base}/v1/threads/{thread_a_id}/turns"))
+        .json(&json!({"prompt": "parallel approval A", "auto_approve": false}))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    let turn_b: serde_json::Value = client
+        .post(format!("{base}/v1/threads/{thread_b_id}/turns"))
+        .json(&json!({"prompt": "parallel approval B", "auto_approve": false}))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    let turn_a_id = turn_a["turn"]["id"]
+        .as_str()
+        .context("turn A id")?
+        .to_string();
+    let turn_b_id = turn_b["turn"]["id"]
+        .as_str()
+        .context("turn B id")?
+        .to_string();
+
+    wait_for_approval_required_event(
+        &runtime_threads,
+        &thread_a_id,
+        "tool_http_parallel_a",
+        std::time::Duration::from_secs(3),
+    )
+    .await?;
+    wait_for_approval_required_event(
+        &runtime_threads,
+        &thread_b_id,
+        "tool_http_parallel_b",
+        std::time::Duration::from_secs(3),
+    )
+    .await?;
+
+    let cross = client
+        .post(format!(
+            "{base}/v1/threads/{thread_b_id}/turns/{turn_b_id}/resolve-approval"
+        ))
+        .json(&json!({
+            "tool_call_id": "tool_http_parallel_a",
+            "decision": "approve",
+        }))
+        .send()
+        .await?;
+    assert_eq!(
+        cross.status(),
+        StatusCode::CONFLICT,
+        "resolving thread A's tool on thread B must fail scope check"
+    );
+
+    let approve_a = client
+        .post(format!(
+            "{base}/v1/threads/{thread_a_id}/turns/{turn_a_id}/resolve-approval"
+        ))
+        .json(&json!({
+            "tool_call_id": "tool_http_parallel_a",
+            "decision": "approve",
+        }))
+        .send()
+        .await?;
+    let approve_a_status = approve_a.status();
+    let approve_a_body = approve_a.text().await?;
+    assert!(
+        approve_a_status.is_success(),
+        "approve_a: {approve_a_status} {approve_a_body}"
+    );
+    let _ = release_a.send(());
+
+    let approve_b = client
+        .post(format!(
+            "{base}/v1/threads/{thread_b_id}/turns/{turn_b_id}/resolve-approval"
+        ))
+        .json(&json!({
+            "tool_call_id": "tool_http_parallel_b",
+            "decision": "approve",
+        }))
+        .send()
+        .await?;
+    assert!(approve_b.status().is_success());
+    let _ = release_b.send(());
+
+    let status_a = wait_for_terminal_turn_status(
+        &client,
+        addr,
+        &thread_a_id,
+        &turn_a_id,
+        std::time::Duration::from_secs(5),
+    )
+    .await?;
+    let status_b = wait_for_terminal_turn_status(
+        &client,
+        addr,
+        &thread_b_id,
+        &turn_b_id,
+        std::time::Duration::from_secs(5),
+    )
+    .await?;
+    assert_eq!(status_a, "completed");
+    assert_eq!(status_b, "completed");
 
     handle.abort();
     Ok(())

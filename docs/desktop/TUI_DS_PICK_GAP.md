@@ -118,7 +118,7 @@
 | 4 | 子代理面板 | **◐** | `AgentPanel.tsx`、`agentStates`、`App.tsx` SSE |
 | 5 | Terminal（xterm） | **✅** | `TerminalCard.tsx`；F1a 增量 progress |
 | 6 | Diff（diff2html） | **✅** | `DiffCard.tsx` + `DiffPanel`；运行中预览 |
-| 7 | 快捷键 & a11y | **◐** | 部分快捷键；未全覆盖 |
+| 7 | 快捷键 & a11y | **◐** | Skip link、roving tablist、reduced-motion；`ModelParamsDialog` dialog 语义（2026-05-24） |
 | 8 | 模型参数 + 资源管理器 + 导出 JSON | **◐** | `ModelParamsDialog` 已接；**8b/8c** 仍缺 |
 | 9 | 智能粘贴 & 内联编辑 | **❌** | 未做 |
 | 10 | 自动模型路由 | **◐** | `RoutingPanel.tsx`；引擎侧需核对 |

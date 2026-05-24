@@ -27,6 +27,16 @@ pub enum ErrorSeverity {
     Critical,
 }
 
+/// Stream/turn retry policy derived from [`ErrorCategory`] (A3.2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ErrorRetryPolicy {
+    /// Transient network, timeout, rate limit, or generic internal hiccup.
+    NetworkRetryable,
+    /// Business, auth, validation, or tool errors — do not burn retry budget.
+    NotRetryable,
+}
+
 /// Unified envelope used when crossing subsystem boundaries.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ErrorEnvelope {
@@ -35,6 +45,9 @@ pub struct ErrorEnvelope {
     pub recoverable: bool,
     pub code: String,
     pub message: String,
+    /// Actionable user hint (HTTP `error.hint`, TUI status line).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hint: Option<String>,
 }
 
 impl fmt::Display for ErrorCategory {
@@ -75,6 +88,55 @@ impl fmt::Display for ErrorEnvelope {
 
 impl std::error::Error for ErrorEnvelope {}
 
+impl ErrorCategory {
+    /// A3.2 — whether transparent/outer stream retries may retry this category.
+    #[must_use]
+    pub fn retry_policy(self) -> ErrorRetryPolicy {
+        if is_category_network_retryable(self) {
+            ErrorRetryPolicy::NetworkRetryable
+        } else {
+            ErrorRetryPolicy::NotRetryable
+        }
+    }
+}
+
+/// User-facing hint for an error category (A3.4 — distinct from raw `message`).
+#[must_use]
+pub fn user_hint_for_category(category: ErrorCategory) -> &'static str {
+    match category {
+        ErrorCategory::Network => {
+            "Check your network or proxy, then retry the message."
+        }
+        ErrorCategory::Timeout => {
+            "The request timed out; retry or reduce context with /compact."
+        }
+        ErrorCategory::RateLimit => {
+            "Wait briefly and retry, or switch to a lighter model."
+        }
+        ErrorCategory::InvalidInput => {
+            "Fix model/thinking settings or compact context — this request cannot be retried automatically."
+        }
+        ErrorCategory::Authentication => {
+            "Set a valid API key in DEEPSEEK_API_KEY or ~/.deepseek/config.toml."
+        }
+        ErrorCategory::Authorization => {
+            "This action is not allowed in the current trust or approval mode."
+        }
+        ErrorCategory::Parse => "The response could not be parsed; retry once or report if it persists.",
+        ErrorCategory::Tool => "Review the tool output in the transcript and adjust the request.",
+        ErrorCategory::State => "The thread or resource may have ended; refresh or start a new turn.",
+        ErrorCategory::Internal => "Retry the message; if it persists, check logs or restart the runtime.",
+    }
+}
+
+#[must_use]
+pub fn is_category_network_retryable(category: ErrorCategory) -> bool {
+    matches!(
+        category,
+        ErrorCategory::Network | ErrorCategory::Timeout | ErrorCategory::RateLimit
+    ) || category == ErrorCategory::Internal
+}
+
 impl ErrorEnvelope {
     #[must_use]
     pub fn new(
@@ -90,7 +152,34 @@ impl ErrorEnvelope {
             recoverable,
             code: code.into(),
             message: message.into(),
+            hint: Some(user_hint_for_category(category).to_string()),
         }
+    }
+
+    /// Whether stream/turn outer retries should consume budget for this envelope (A3.2).
+    #[must_use]
+    pub fn is_network_retryable(&self) -> bool {
+        is_category_network_retryable(self.category)
+    }
+
+    /// JSON body for HTTP `ApiError` and desktop clients (`error` object).
+    #[must_use]
+    pub fn to_wire_error_body(&self, http_status: u16) -> serde_json::Value {
+        let category = self.category.to_string();
+        serde_json::json!({
+            "error": {
+                "message": self.message,
+                "status": http_status,
+                "category": category,
+                "class": category,
+                "code": self.code,
+                "recoverable": self.recoverable,
+                "retryable": self.is_network_retryable(),
+                "retry_policy": self.category.retry_policy().as_str(),
+                "severity": self.severity.to_string(),
+                "hint": self.hint,
+            }
+        })
     }
 
     /// Recoverable internal error — stream stalls, transient retries, generic
@@ -256,6 +345,16 @@ impl ErrorEnvelope {
     }
 }
 
+impl ErrorRetryPolicy {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::NetworkRetryable => "network_retryable",
+            Self::NotRetryable => "not_retryable",
+        }
+    }
+}
+
 /// Classify an error message string into an ErrorCategory.
 ///
 /// Uses heuristic keyword matching on the lowercased message.
@@ -312,6 +411,13 @@ pub fn classify_error_message(message: &str) -> ErrorCategory {
     {
         return ErrorCategory::Network;
     }
+    if lower.contains("decision must")
+        || lower.contains("expected rfc 3339")
+        || lower.starts_with("invalid ")
+        || lower.contains("invalid request")
+    {
+        return ErrorCategory::InvalidInput;
+    }
     if lower.contains("parse") || lower.contains("syntax") || lower.contains("malformed") {
         return ErrorCategory::Parse;
     }
@@ -334,17 +440,7 @@ pub fn classify_error_message(message: &str) -> ErrorCategory {
 /// re-issued; transient network/proxy issues may be.
 #[must_use]
 pub fn is_stream_failure_retryable(message: &str) -> bool {
-    match classify_error_message(message) {
-        ErrorCategory::Network | ErrorCategory::Timeout | ErrorCategory::RateLimit => true,
-        ErrorCategory::InvalidInput
-        | ErrorCategory::Authentication
-        | ErrorCategory::Authorization
-        | ErrorCategory::Parse
-        | ErrorCategory::Tool
-        | ErrorCategory::State => false,
-        // Decode/proxy hiccups surface as internal; still worth retrying when no content landed.
-        ErrorCategory::Internal => true,
-    }
+    is_category_network_retryable(classify_error_message(message))
 }
 
 impl From<deepseek_tools::ToolError> for ErrorEnvelope {
@@ -686,5 +782,58 @@ mod tests {
             "Missing reasoning_content on assistant tool message"
         ));
         assert!(!is_stream_failure_retryable("401 unauthorized"));
+    }
+
+    #[test]
+    fn user_hints_differ_for_network_vs_invalid_input() {
+        let net = user_hint_for_category(ErrorCategory::Network);
+        let invalid = user_hint_for_category(ErrorCategory::InvalidInput);
+        assert_ne!(net, invalid);
+        assert!(net.contains("network") || net.contains("proxy"));
+        assert!(invalid.contains("compact") || invalid.contains("thinking"));
+    }
+
+    #[test]
+    fn wire_error_body_includes_hint_class_and_retry_policy() {
+        let e = ErrorEnvelope::classify("connection reset by peer", true);
+        let body = e.to_wire_error_body(503);
+        let err = body.get("error").expect("error object");
+        assert_eq!(err["category"], "network");
+        assert_eq!(err["class"], "network");
+        assert_eq!(err["retry_policy"], "network_retryable");
+        assert_eq!(err["retryable"], true);
+        assert!(err.get("hint").and_then(|h| h.as_str()).is_some());
+    }
+
+    #[test]
+    fn invalid_input_wire_body_not_retryable() {
+        let e = ErrorEnvelope::classify(
+            "reasoning_content is required for tool calls in thinking mode",
+            false,
+        );
+        let err = e.to_wire_error_body(400).get("error").cloned().unwrap();
+        assert_eq!(err["category"], "invalid_input");
+        assert_eq!(err["retry_policy"], "not_retryable");
+        assert_eq!(err["retryable"], false);
+    }
+
+    #[test]
+    fn api_validation_messages_are_invalid_input() {
+        assert_eq!(
+            classify_error_message("decision must be 'approve' or 'deny'"),
+            ErrorCategory::InvalidInput
+        );
+    }
+
+    #[test]
+    fn category_retry_policy_labels() {
+        assert_eq!(
+            ErrorCategory::Network.retry_policy(),
+            ErrorRetryPolicy::NetworkRetryable
+        );
+        assert_eq!(
+            ErrorCategory::InvalidInput.retry_policy(),
+            ErrorRetryPolicy::NotRetryable
+        );
     }
 }

@@ -491,7 +491,7 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         use deepseek_core::error_taxonomy::ErrorEnvelope;
 
-        let recoverable = matches!(
+        let status_recoverable = matches!(
             self.status,
             StatusCode::INTERNAL_SERVER_ERROR
                 | StatusCode::BAD_GATEWAY
@@ -500,21 +500,10 @@ impl IntoResponse for ApiError {
                 | StatusCode::REQUEST_TIMEOUT
                 | StatusCode::TOO_MANY_REQUESTS
         );
-        let envelope = ErrorEnvelope::classify(&self.message, recoverable);
-        (
-            self.status,
-            Json(json!({
-                "error": {
-                    "message": envelope.message,
-                    "status": self.status.as_u16(),
-                    "category": envelope.category.to_string(),
-                    "code": envelope.code,
-                    "recoverable": envelope.recoverable,
-                    "severity": envelope.severity.to_string(),
-                }
-            })),
-        )
-            .into_response()
+        let mut envelope = ErrorEnvelope::classify(&self.message, status_recoverable);
+        envelope.recoverable = envelope.recoverable || status_recoverable;
+        let body = envelope.to_wire_error_body(self.status.as_u16());
+        (self.status, Json(body)).into_response()
     }
 }
 

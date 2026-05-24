@@ -11,3 +11,18 @@ mod interventions;
 mod observation;
 mod persistence;
 mod replay;
+
+use deepseek_core::turn::TurnLoopMode;
+use crate::tui::app::AppMode;
+
+use super::Engine;
+
+/// Bridge `TurnLoopMode` (core turn loop) to TUI system-prompt refresh.
+pub(super) fn refresh_system_prompt_for_turn_mode(engine: &mut Engine, mode: TurnLoopMode) {
+    let app_mode = match mode {
+        TurnLoopMode::Agent => AppMode::Agent,
+        TurnLoopMode::Yolo => AppMode::Yolo,
+        TurnLoopMode::Plan => AppMode::Plan,
+    };
+    Engine::refresh_system_prompt(engine, app_mode);
+}

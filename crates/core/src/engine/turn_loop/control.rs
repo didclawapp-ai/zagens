@@ -15,7 +15,7 @@ pub enum TurnLoopControl {
     Return(TurnOutcomeStatus, Option<String>),
 }
 
-/// Result of [`super::host::TurnLoopHost::run_tool_execution_phase`].
+/// Result of [`super::tool_phase::run_tool_execution_phase`].
 #[derive(Debug, Default)]
 pub struct TurnLoopToolPhaseOutcome {
     pub step_error_count: usize,
@@ -26,7 +26,7 @@ pub struct TurnLoopToolPhaseOutcome {
     pub continue_outer_loop: bool,
 }
 
-/// Result of [`super::host::TurnLoopHost::run_streaming_phase`].
+/// Result of [`super::streaming_phase::run_streaming_phase`].
 #[derive(Debug, Default)]
 pub struct TurnLoopStreamingPhaseOutcome {
     /// Parsed tool calls from the model stream (empty → no tool phase this step).

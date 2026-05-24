@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **DS Pick (F3):** `ModelParamsDialog` — `role="dialog"`, `aria-modal`, labelled controls, Escape to close, focus on open.
+- **Runtime (A1.4):** `history_isomorphism` — thinking block round-trip + `history_transcript_core_matches_messages`; compaction/trim/persist paths use core check; partition trim regression tests.
+- **DS Pick (F3):** Right-panel workbench tabs + integrated terminal session tabs use roving `tabIndex` and Arrow/Home/End keyboard navigation (`lib/a11y/rovingTabList.ts`).
+- **Runtime (A3.2/A3.4):** `ErrorRetryPolicy` + `user_hint_for_category`; `ErrorEnvelope.hint` and unified HTTP `error` payload (`class`, `retryable`, `retry_policy`, `hint`); TUI status line appends hint; `api_error_payload_includes_taxonomy_fields` regression.
+- **Runtime (A+.7):** Register `pending_approvals` before emitting `approval.required` (fixes resolve-approval racing JSONL/SSE); multi-window regression tests `parallel_pending_approvals_resolve_scoped_to_thread_turn` + `sidecar_parallel_pending_approvals_resolve_then_continue`.
+- **Runtime (A1.2):** Large-output routing stamps `ToolResult.metadata.large_output` with persisted `meta_path`; `monitor_turn` copies into turn-item `artifact_refs` so JSONL/SQLite items round-trip to `large_outputs/` blobs.
 - **Runtime (A3.3):** Stream transparent/outer retries consult `is_stream_failure_retryable` — `InvalidInput` / auth errors no longer burn retry budget; network/timeouts still retry.
 - **Runtime (A3):** `classify_error_message` recognizes DeepSeek thinking/reasoning constraint strings as `InvalidInput` (distinct from network disconnect); golden suite centralized in `deepseek-core::error_taxonomy`.
 - **Desktop (approval):** `approval_policy` from system settings now drives Composer `auto_approve` on load/save; sidecar `start_turn` reads `ApprovalMode` from config (`never` / `on-request` / `auto`) instead of hardcoding Suggest.
@@ -31,6 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Governance (D10):** 维护者签收解除桌面 Feature freeze（Jason，2026-05-24）— [docs/tech/adr/P2_D10_UNFREEZE_RECORD.md](docs/tech/adr/P2_D10_UNFREEZE_RECORD.md) §4；路线图 §17.4 已勾选。
+- **Runtime (P2 PR6a–d):** Turn loop streaming + tool planning/outcomes + `tool_parser` in `deepseek-core`; TUI `tool_plans_exec` + split `host_impl/`; `capacity_policy` + `TurnLoopMode` capacity checkpoints; `execute_plan_on_engine` / `detached_execute_with_lock`. Plan: `docs/tech/adr/P2_PR6_TURN_LOOP_L2_MIGRATION_PLAN.md`（PR6 切片已全部落地；ADR/spike 已同步）。
 - **Runtime (A1.6 / R-015):** Full baseline @ `8b1538a` — median RSS **29 MB** (3×50 + 1.1 MB fixture, `-Gate` PASS vs 28.5 MB); ADR + `deliverables/runtime-baseline-full-run.log` updated.
 - **Runtime (A1-full):** Emergency trim (`trim_oldest_messages_to_budget`) uses hot/cold partition — drops `ColdSummary` first, preserves hot / pinned / `[workshop-ref]` messages; `context_trim::trim_messages_partition_aware`.
 - **Desktop (A6.2):** Sandbox settings on non-macOS show explicit **degraded mode** copy (`settings.sandboxDegradedMode`).
@@ -42,6 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Docs:** `docs/tech/adr/IMPLEMENTATION_SUMMARY_2026-05-24.md` — 路线图门控链与 A/A+/P2/F/D10 实施现状归档；路线图 §17 已链入。
 - **Runtime (A1.4):** `tui/history_isomorphism` — user/assistant transcript parity with `history_cells_from_message`; tests after compaction, trim, and JSONL reconstruct.
 - **Runtime (A1.1):** `deepseek_core::context_partition` — hot window / cold zone tiers (`Hot`, `Pinned`, `ColdSummary`, `ColdExternalRef`); `CompactionPlan::context_partition`.
 - **Runtime (A1.2):** Large tool output blobs persist under `~/.deepseek/sessions/<session_id>/large_outputs/` (`persist_large_output_blob`, workshop-ref round-trip test); registry hooks on routed synthesis when `state_namespace` is a session id.

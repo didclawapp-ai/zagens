@@ -2997,12 +2997,17 @@ pub(crate) fn apply_engine_error_to_app(
         );
         return;
     }
+    let status_line = if let Some(hint) = envelope.hint.as_deref().filter(|h| !h.is_empty()) {
+        format!("{message} — {hint}")
+    } else {
+        message.clone()
+    };
     if recoverable {
-        app.status_message = Some(format!("Connection interrupted: {message}"));
+        app.status_message = Some(format!("Connection interrupted: {status_line}"));
     } else {
         app.offline_mode = true;
         app.status_message = Some(format!(
-            "Engine error; queued messages stay pending: {message}"
+            "Engine error; queued messages stay pending: {status_line}"
         ));
     }
 }

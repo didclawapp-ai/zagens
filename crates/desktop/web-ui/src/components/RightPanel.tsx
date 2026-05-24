@@ -31,6 +31,7 @@ import { toast } from '../lib/toast';
 import PanelEdgeSeam from './PanelEdgeSeam';
 import AboutPanel from './AboutPanel';
 import AuditScratchpadPanel from './AuditScratchpadPanel';
+import { handleTabListKeyDown } from '../lib/a11y/rovingTabList';
 
 export type RightPanelView =
   | 'workspace'
@@ -485,6 +486,28 @@ export default function RightPanel({
     [panelWidth],
   );
 
+  const visibleWorkspaceTabs = useMemo((): WorkspaceTabId[] => {
+    const tabs: WorkspaceTabId[] = [];
+    if (!officeSession) {
+      tabs.push('restore');
+    }
+    tabs.push('files');
+    if (!officeSession) {
+      tabs.push('rules', 'terminal', 'diff');
+    }
+    return tabs;
+  }, [officeSession]);
+
+  const workbenchTabId = (tab: WorkspaceTabId) => `workbench-tab-${tab}`;
+  const workbenchTabPanelId = 'workbench-tabpanel';
+
+  const onWorkspaceTabListKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      handleTabListKeyDown(e, visibleWorkspaceTabs, workspaceTab, setWorkspaceTab, workbenchTabId);
+    },
+    [visibleWorkspaceTabs, workspaceTab],
+  );
+
   const onResizePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     const d = resizeDragRef.current;
     if (!d || e.pointerId !== d.pointerId) {
@@ -566,65 +589,44 @@ export default function RightPanel({
                   className="shrink-0 flex bg-canvas-alt/50"
                   role="tablist"
                   aria-label={t('workbench.tablistAria')}
+                  onKeyDown={onWorkspaceTabListKeyDown}
                 >
-                  {!officeSession && (
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={workspaceTab === 'restore'}
-                      className={tabBtn(workspaceTab === 'restore')}
-                      onClick={() => setWorkspaceTab('restore')}
-                    >
-                      {t('workbench.tabRestore')}
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={workspaceTab === 'files'}
-                    className={tabBtn(workspaceTab === 'files')}
-                    onClick={() => setWorkspaceTab('files')}
-                  >
-                    {t('workspaceFiles.tab')}
-                  </button>
-                  {!officeSession && (
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={workspaceTab === 'rules'}
-                      className={tabBtn(workspaceTab === 'rules')}
-                      onClick={() => setWorkspaceTab('rules')}
-                    >
-                      {t('workspaceRules.tab')}
-                    </button>
-                  )}
-                  {!officeSession && (
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={workspaceTab === 'terminal'}
-                      className={tabBtn(workspaceTab === 'terminal')}
-                      onClick={() => setWorkspaceTab('terminal')}
-                    >
-                      {t('terminal.tab')}
-                    </button>
-                  )}
-                  {!officeSession && (
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={workspaceTab === 'diff'}
-                      className={tabBtn(workspaceTab === 'diff')}
-                      onClick={() => setWorkspaceTab('diff')}
-                    >
-                      {t('diff.tab')}
-                    </button>
-                  )}
+                  {visibleWorkspaceTabs.map((tabId) => {
+                    const labelKey: TranslationKey =
+                      tabId === 'restore'
+                        ? 'workbench.tabRestore'
+                        : tabId === 'files'
+                          ? 'workspaceFiles.tab'
+                          : tabId === 'rules'
+                            ? 'workspaceRules.tab'
+                            : tabId === 'terminal'
+                              ? 'terminal.tab'
+                              : 'diff.tab';
+                    const selected = workspaceTab === tabId;
+                    return (
+                      <button
+                        key={tabId}
+                        id={workbenchTabId(tabId)}
+                        type="button"
+                        role="tab"
+                        aria-selected={selected}
+                        aria-controls={workbenchTabPanelId}
+                        tabIndex={selected ? 0 : -1}
+                        className={tabBtn(selected)}
+                        onClick={() => setWorkspaceTab(tabId)}
+                      >
+                        {t(labelKey)}
+                      </button>
+                    );
+                  })}
                 </div>
 
                 <div
+                  id={workbenchTabPanelId}
                   className={`flex-1 min-h-0 ${workspaceTab === 'terminal' || workspaceTab === 'diff' || workspaceTab === 'files' ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'}`}
                   role="tabpanel"
+                  aria-labelledby={workbenchTabId(workspaceTab)}
+                  tabIndex={0}
                 >
                   {workspaceTab === 'restore' && (
                     <div className="p-4 space-y-3 text-xs text-t-text leading-relaxed">

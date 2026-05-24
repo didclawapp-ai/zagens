@@ -64,7 +64,7 @@
 | `engine/engine_new.rs` | `Engine::new` |
 | `engine/{engine_helpers,session_messages,mock}.rs` | 小 helper / 测试 double |
 | `engine/{op_loop,cycle_hooks,message_handlers,context_recovery,tool_context,layered_context}.rs` | Op 循环、周期、消息、RLM 等 |
-| `engine/turn_loop/{host_impl,streaming_phase,tool_phase}.rs` | **`impl TurnLoopHost for Engine`** + 两阶段 L2 |
+| `engine/turn_loop/{host_impl,tool_plans_exec}.rs` | **`impl TurnLoopHost for Engine`**；执行经 `tool_execution/port.rs` |
 | `engine/turn_port.rs` | `EngineHandle: TurnEnginePort` |
 | `engine/dispatch.rs` | **`arg_repair`** 包装的 `parse_tool_input` / `final_tool_input`（勿绕过） |
 | `engine/tool_catalog.rs` | `AppMode` 适配 + `code_execution` L2（策略在 core `tool_catalog`） |
@@ -72,12 +72,13 @@
 | `engine/tool_execution/` | exec / parallel / mcp / progress / terminal_guard / port（`McpPoolHandle`） |
 | `engine/capacity_flow/{checkpoints,observation,events,interventions,replay,persistence}.rs` | 最大 ~344 行 — checkpoint / 干预 / replay / 持久化 |
 
-**架构：**
+**架构（PR6 后，见 [P2_PR6_TURN_LOOP_L2_MIGRATION_PLAN.md](./P2_PR6_TURN_LOOP_L2_MIGRATION_PLAN.md)）：**
 
 ```
 deepseek-core::engine::handle_deepseek_turn<H: TurnLoopHost>
-  ├─ host.run_streaming_phase()  → tui streaming_phase.rs
-  └─ host.run_tool_execution_phase() → tui tool_phase.rs
+  ├─ streaming_phase::run_streaming_phase(host, …)   ← core
+  └─ tool_phase::run_tool_execution_phase(host, …)   ← core
+        └─ host.execute_tool_plans → tui tool_plans_exec.rs + tool_execution/port.rs
 ```
 
 ### A4.6 — runtime_threads
@@ -102,11 +103,13 @@ deepseek-core::engine::handle_deepseek_turn<H: TurnLoopHost>
 
 ## 3. 仍未做（下一窗口优先级）
 
-1. **PR5 剩余** — `core::Runtime::handle_thread(Message)` 委托真 turn（app-server）；DS Pick 多窗口手测
+1. **D10 解冻评审** — §12.3 + G3 已签收；启动阶段 F（xterm/diff/a11y 高峰）须维护者评审
 
-2. **§12.3** — `runtime_threads` 经 core 跑 turn；Engine 是否 L2 终态决议
+2. **PR5 / app-server** — 生产仍 HTTP sidecar；`handle_thread(Message)` 已 `ThreadMessageTurnPort`（单轮 LLM 委托）
 
-3. **R-015 可选** — 1MB 工具 RSS；真实 store HTTP p99；回归门
+3. **R-015 可选** — 全量重跑 `-Gate`；真实 store HTTP p99
+
+4. **可选技术债** — `streaming_phase` 拆子模块；`capacity_flow` 全量端口；`tool_plans_exec` 进一步薄化
 
 ### 已完成（2026-05-23 门控 + PR5 局部）
 
@@ -183,7 +186,7 @@ cargo test -p deepseek-tui --lib
 
 **当前状态（@ `3264419`）：**
 - ✅ `deepseek-core::engine::handle_deepseek_turn` + `TurnLoopHost`
-- ✅ tui `turn_loop/{host_impl,streaming_phase,tool_phase}` L2 接线
+- ✅ P2 PR6：streaming/tool/capacity_policy 在 core；tui `host_impl/` + `tool_plans_exec`
 - ✅ `engine.rs` **~201 行**（PR4 <300 达标）
 - ✅ A4.6：`thread_crud` / `turn_lifecycle` / engine 子模块拆分
 - ✅ A4.6：`turn_control.rs`；`manager.rs` ~589 行

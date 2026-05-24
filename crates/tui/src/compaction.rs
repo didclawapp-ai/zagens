@@ -2036,7 +2036,7 @@ mod tests {
             "compacted session must retain pinned message text (A1.4 isomorphism)"
         );
         assert!(
-            crate::tui::history_isomorphism::history_user_assistant_matches_messages(
+            crate::tui::history_isomorphism::history_transcript_core_matches_messages(
                 &result.messages
             ),
             "compacted messages must round-trip through TUI history rebuild (A1.4)"

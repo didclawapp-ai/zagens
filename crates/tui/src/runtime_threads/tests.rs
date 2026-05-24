@@ -2,7 +2,9 @@
 
 use super::*;
     use crate::config::Config;
-    use crate::core::engine::{MockApprovalEvent, mock_engine_handle};
+    use crate::core::engine::{MockApprovalEvent, MockEngineHandle, mock_engine_handle};
+    type TestApprovalDecision =
+        deepseek_core::engine::approval::ApprovalDecision<crate::sandbox::SandboxPolicy>;
     use crate::core::events::{Event as EngineEvent, TurnOutcomeStatus};
     use crate::core::ops::Op;
     use std::time::{Duration, Instant};
@@ -108,10 +110,23 @@ use super::*;
         }
     }
 
+    async fn recv_mock_approval(
+        rx: &mut tokio::sync::mpsc::Receiver<TestApprovalDecision>,
+    ) -> Option<MockApprovalEvent> {
+        use deepseek_core::engine::approval::ApprovalDecision;
+        match rx.recv().await? {
+            ApprovalDecision::Approved { id } => Some(MockApprovalEvent::Approved { id }),
+            ApprovalDecision::Denied { id } => Some(MockApprovalEvent::Denied { id }),
+            ApprovalDecision::RetryWithPolicy { id, policy } => {
+                Some(MockApprovalEvent::RetryWithPolicy { id, policy })
+            }
+        }
+    }
+
     async fn install_mock_engine(
         manager: &RuntimeThreadManager,
         thread_id: &str,
-    ) -> crate::core::engine::MockEngineHandle {
+    ) -> MockEngineHandle {
         let harness = mock_engine_handle();
         let mut active = manager.active.lock().await;
         active.engines.insert(
@@ -1524,6 +1539,223 @@ use super::*;
         );
 
         let _ = release_a.send(());
+        let terminal_a =
+            wait_for_terminal_turn(&manager, &turn_a.id, MOCK_ENGINE_TURN_TERMINAL_TIMEOUT).await?;
+        let terminal_b =
+            wait_for_terminal_turn(&manager, &turn_b.id, MOCK_ENGINE_TURN_TERMINAL_TIMEOUT).await?;
+        assert_eq!(terminal_a.status, RuntimeTurnStatus::Completed);
+        assert_eq!(terminal_b.status, RuntimeTurnStatus::Completed);
+
+        drive_a.await.ok();
+        drive_b.await.ok();
+        Ok(())
+    }
+
+    /// A+.7 — Multi-window: two threads with overlapping pending approvals;
+    /// HTTP resolve is scoped to `(thread_id, turn_id)`; approving one does not unblock the other.
+    #[tokio::test]
+    async fn parallel_pending_approvals_resolve_scoped_to_thread_turn() -> Result<()> {
+        let manager = test_manager(test_runtime_dir())?;
+        let no_auto = |_thread_id: &str| CreateThreadRequest {
+            model: None,
+            workspace: None,
+            mode: None,
+            allow_shell: None,
+            trust_mode: None,
+            auto_approve: Some(false),
+            archived: false,
+            system_prompt: None,
+            task_id: None,
+            task_type: None,
+        };
+        let thread_a = manager.create_thread(no_auto("a")).await?;
+        let thread_b = manager.create_thread(no_auto("b")).await?;
+
+        let harness_a = install_mock_engine(&manager, &thread_a.id).await;
+        let harness_b = install_mock_engine(&manager, &thread_b.id).await;
+
+        let MockEngineHandle {
+            rx_op: mut rx_a,
+            rx_approval: mut rx_approval_a,
+            tx_event: tx_a,
+            ..
+        } = harness_a;
+        let MockEngineHandle {
+            rx_op: mut rx_b,
+            rx_approval: mut rx_approval_b,
+            tx_event: tx_b,
+            ..
+        } = harness_b;
+
+        let (release_a, wait_a) = oneshot::channel::<()>();
+        let (release_b, wait_b) = oneshot::channel::<()>();
+
+        let tx_a = tx_a.clone();
+        let drive_a = tokio::spawn(async move {
+            if !matches!(rx_a.recv().await, Some(Op::SendMessage { .. })) {
+                return;
+            }
+            let _ = tx_a
+                .send(EngineEvent::ApprovalRequired {
+                    approval_key: "key_a".to_string(),
+                    id: "tool_parallel_a".to_string(),
+                    tool_name: "exec_command".to_string(),
+                    description: "thread A tool".to_string(),
+                })
+                .await;
+            let _ = wait_a.await;
+            let _ = tx_a
+                .send(EngineEvent::TurnComplete {
+                    usage: Usage::default(),
+                    last_request_input_tokens: None,
+                    status: TurnOutcomeStatus::Completed,
+                    error: None,
+                    step_count: 0,
+                    tool_names: vec![],
+                    end_reason: None,
+                })
+                .await;
+        });
+
+        let turn_a = manager
+            .start_turn(
+                &thread_a.id,
+                StartTurnRequest {
+                    prompt: "thread A needs approval".to_string(),
+                    input_summary: None,
+                    model: None,
+                    mode: None,
+                    allow_shell: None,
+                    trust_mode: None,
+                    auto_approve: Some(false),
+                    route_intent: None,
+                },
+            )
+            .await?;
+
+        sleep(Duration::from_millis(40)).await;
+
+        let tx_b = tx_b.clone();
+        let drive_b = tokio::spawn(async move {
+            if !matches!(rx_b.recv().await, Some(Op::SendMessage { .. })) {
+                return;
+            }
+            let _ = tx_b
+                .send(EngineEvent::ApprovalRequired {
+                    approval_key: "key_b".to_string(),
+                    id: "tool_parallel_b".to_string(),
+                    tool_name: "exec_command".to_string(),
+                    description: "thread B tool".to_string(),
+                })
+                .await;
+            let _ = wait_b.await;
+            let _ = tx_b
+                .send(EngineEvent::TurnComplete {
+                    usage: Usage::default(),
+                    last_request_input_tokens: None,
+                    status: TurnOutcomeStatus::Completed,
+                    error: None,
+                    step_count: 0,
+                    tool_names: vec![],
+                    end_reason: None,
+                })
+                .await;
+        });
+
+        let turn_b = manager
+            .start_turn(
+                &thread_b.id,
+                StartTurnRequest {
+                    prompt: "thread B needs approval".to_string(),
+                    input_summary: None,
+                    model: None,
+                    mode: None,
+                    allow_shell: None,
+                    trust_mode: None,
+                    auto_approve: Some(false),
+                    route_intent: None,
+                },
+            )
+            .await?;
+
+        sleep(Duration::from_millis(150)).await;
+
+        assert!(
+            manager
+                .active_turn_flags(&thread_a.id, &turn_a.id)
+                .await
+                .is_some()
+                && manager
+                    .active_turn_flags(&thread_b.id, &turn_b.id)
+                    .await
+                    .is_some(),
+            "both turns should stay active while approvals are pending"
+        );
+
+        let events_a = manager.events_since(&thread_a.id, None)?;
+        let events_b = manager.events_since(&thread_b.id, None)?;
+        assert!(
+            events_a.iter().any(|ev| ev.event == "approval.required"
+                && ev.payload.get("id").and_then(|v| v.as_str()) == Some("tool_parallel_a")),
+            "thread A must emit approval.required"
+        );
+        assert!(
+            events_b.iter().any(|ev| ev.event == "approval.required"
+                && ev.payload.get("id").and_then(|v| v.as_str()) == Some("tool_parallel_b")),
+            "thread B must emit approval.required"
+        );
+
+        let cross = manager
+            .resolve_approval(&thread_b.id, &turn_b.id, "tool_parallel_a", true)
+            .await
+            .expect_err("tool_parallel_a belongs to thread A");
+        assert!(
+            format!("{cross:#}").contains("scope mismatch"),
+            "got {cross:#}"
+        );
+
+        let no_early_b =
+            tokio::time::timeout(Duration::from_millis(80), recv_mock_approval(&mut rx_approval_b))
+                .await;
+        assert!(
+            no_early_b.is_err(),
+            "thread B engine must not receive approval before its own resolve"
+        );
+
+        let (resolve_a, approval_a) = tokio::join!(
+            manager.resolve_approval(&thread_a.id, &turn_a.id, "tool_parallel_a", true),
+            recv_mock_approval(&mut rx_approval_a),
+        );
+        resolve_a?;
+        assert_eq!(
+            approval_a,
+            Some(MockApprovalEvent::Approved {
+                id: "tool_parallel_a".to_string(),
+            })
+        );
+        let _ = release_a.send(());
+
+        let no_early_b_after_a =
+            tokio::time::timeout(Duration::from_millis(80), recv_mock_approval(&mut rx_approval_b))
+                .await;
+        assert!(
+            no_early_b_after_a.is_err(),
+            "approving thread A must not approve thread B's tool"
+        );
+
+        let (resolve_b, approval_b) = tokio::join!(
+            manager.resolve_approval(&thread_b.id, &turn_b.id, "tool_parallel_b", true),
+            recv_mock_approval(&mut rx_approval_b),
+        );
+        resolve_b?;
+        assert_eq!(
+            approval_b,
+            Some(MockApprovalEvent::Approved {
+                id: "tool_parallel_b".to_string(),
+            })
+        );
+        let _ = release_b.send(());
+
         let terminal_a =
             wait_for_terminal_turn(&manager, &turn_a.id, MOCK_ENGINE_TURN_TERMINAL_TIMEOUT).await?;
         let terminal_b =

@@ -128,5 +128,43 @@ mod tests {
                 .any(|m| message_has_external_ref(&message_text(m))),
             "workshop-ref message must survive partition-aware trim"
         );
+        assert!(
+            crate::tui::history_isomorphism::history_transcript_core_matches_messages(&messages),
+            "trimmed messages must round-trip through TUI history rebuild (A1.4)"
+        );
+    }
+
+    #[test]
+    fn trim_preserves_thinking_transcript_isomorphism() {
+        use deepseek_core::chat::ContentBlock;
+
+        let dir = tempdir().expect("tempdir");
+        let workspace = dir.path();
+        let working_set = WorkingSet::default();
+        let mut messages: Vec<TuiMessage> = (0..6)
+            .map(|i| msg("user", &format!("filler-{i}-{}", "z".repeat(3000))))
+            .collect();
+        messages.push(TuiMessage {
+            role: "assistant".to_string(),
+            content: vec![ContentBlock::Thinking {
+                thinking: "pinned-reasoning".to_string(),
+            }],
+        });
+        messages.push(msg("assistant", "final-answer"));
+        messages.extend((0..2).map(|i| msg("user", &format!("recent-{i}"))));
+
+        let removed = trim_messages_partition_aware(
+            &mut messages,
+            None,
+            800,
+            workspace,
+            &working_set,
+            None,
+        );
+        assert!(removed > 0);
+        assert!(
+            crate::tui::history_isomorphism::history_transcript_core_matches_messages(&messages),
+            "thinking + user/assistant must stay isomorphic after trim"
+        );
     }
 }

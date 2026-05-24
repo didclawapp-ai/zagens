@@ -132,19 +132,20 @@ impl Runtime {
 - [x] **F0（2026-05-23）：** `start_turn_applies_route_intent_routing_rule_to_model` — `route_intent` 全链路透传
 - [x] A+.4 **已有：** `sidecar_contract_full_lifecycle`（`runtime_api/tests.rs`，CI）
 - [x] P2 PR4 **局部（2026-05-23）：** `TurnLoopToolExecutor` 使用 `TurnLoopToolRegistry` 关联类型；`Engine` + `McpPoolHandle` 实现
+- [x] **P2 PR6（2026-05-24）：** `tool_parser` + `streaming_phase` + `tool_phase` + `capacity_policy` → `deepseek-core`；tui `tool_plans_exec` + `host_impl/{mod,capacity,no_tool_uses}`；见 [P2_PR6_TURN_LOOP_L2_MIGRATION_PLAN.md](./P2_PR6_TURN_LOOP_L2_MIGRATION_PLAN.md)
 
-### 4.1 `turn_loop` 迁入前置（2026-05-22 草图）
+### 4.1 `turn_loop` L2 终态（PR6 后）
 
-| 仍留 tui 直至壳层就绪 | 已可在 core 复用 |
-|----------------------|------------------|
-| `Engine` 字段：`LlmClient`、`McpPool`、`LspManager`、`SubAgentRuntime`、事件通道 | `session`、`loop_guard`、`streaming`、`dispatch`、`context` |
-| `EngineConfig` 构建（`spawn_engine`）、`tool_catalog`/`tool_execution`（MCP/终端/LSP） | `handle_deepseek_turn`、`TurnLoopHost`、`Event`、`TurnEnginePort`、`TurnContext`、`turn_loop::helpers`、`session`、`loop_guard`、`streaming`、`dispatch`、`context`、`approval`、`tool_bridge`、`capacity_flow`（已拆子模块） |
-| `tool_catalog`（`code_execution` 子进程） | `deepseek-core::engine::tool_catalog`（deferral、tool search、missing-tool） |
-| `tool_execution`（执行锁/MCP/终端 guard） | `compact_tool_result_for_context`、`RegistryToolDispatch`、`tool_bridge`、`tool_progress`、`await_tool_approval` |
-| `AppMode`、TUI `ToolRegistry` builder | `chat::{Message,Tool}`、`ToolResult` |
+| 仍留 tui（L2 壳） | 已在 core |
+|------------------|-----------|
+| `Engine` 字段：`LlmClient`、`McpPool`、`LspManager`、`SubAgentRuntime`、事件通道 | `handle_deepseek_turn`、`streaming_phase`、`tool_phase`、`capacity_policy` |
+| `spawn_engine` / `EngineConfig`、`tool_plans_exec`（并行/顺序执行） | `tool_parser`、`TurnLoopHost` trait、`loop_guard`、`streaming`、`dispatch`、`context` |
+| `tool_execution`（MCP/终端/审批 `context_override`） | `tool_catalog` 策略、`approval`/`tool_bridge`/`compact_tool_result_for_context` |
+| `capacity_flow/` 检查点与干预（`TurnLoopMode` 接线） | `should_run_capacity_error_escalation` 纯策略 |
+| `AppMode`、TUI `ToolRegistry` builder | `chat::{Message,Tool}`、`ToolResult`、`TurnLoopMode` |
 
-**建议下一刀：** 扩展 A5.5 fixture（10–20 步）；或 R-015 长跑/回归门。
-- [ ] PR2 剩余：`Engine` 字段层（MCP/LSP/SubAgent）与 `capacity_flow` 端口化
-- [ ] PR1 剩余：`Engine`/`turn_loop` 主逻辑迁入 core
+**建议下一刀：** D10 解冻评审（§12.3 已 G3 签收）；或 A1/A3 路线图 ROI；可选拆 `streaming_phase` 子模块（~700 行）。
+- [ ] 远期：`Engine` struct 整包进 core（非 §12.3 阻塞）
+- [ ] `capacity_flow` 全量端口（PR6d 仅策略 + `TurnLoopMode` 接线）
 - [x] A5.5 回放 fixture 扩展（10–20 步）
 - [x] A+.4 契约测就位（`sidecar_contract_full_lifecycle`）

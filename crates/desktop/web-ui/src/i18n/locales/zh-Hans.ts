@@ -212,6 +212,7 @@ const zhHans = {
   },
   terminal: {
     tab: '终端',
+    sessionTablist: '终端会话',
     title: 'Terminal 1',
     menuTitle: 'Terminals',
     new: '新建终端',

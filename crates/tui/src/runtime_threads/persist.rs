@@ -776,7 +776,7 @@ mod tests {
         );
         assert_eq!(jsonl_texts, reconstructed_texts);
         assert!(
-            crate::tui::history_isomorphism::history_user_assistant_matches_messages(
+            crate::tui::history_isomorphism::history_transcript_core_matches_messages(
                 &reconstructed
             ),
             "reconstructed messages must round-trip through TUI history rebuild"
@@ -787,6 +787,7 @@ mod tests {
     #[tokio::test]
     async fn large_output_tool_item_detail_matches_jsonl_and_persisted_blob() {
         use crate::tools::large_output_router::{
+            artifact_refs_from_tool_output, large_output_dir, load_raw_from_artifact_meta_path,
             LargeOutputExternalRef, LargeOutputRouter, load_large_output_persist_record,
             parse_workshop_ref_from_message, persist_large_output_blob,
         };
@@ -808,6 +809,21 @@ mod tests {
             Some(&external_ref),
         );
 
+        let meta_path =
+            large_output_dir(session_id).join(format!("{}.json", external_ref.ref_id));
+        let tool_metadata = serde_json::json!({
+            crate::tools::large_output_router::LARGE_OUTPUT_METADATA_KEY: {
+                "ref_id": external_ref.ref_id,
+                "meta_path": meta_path.display().to_string(),
+            }
+        });
+        let artifact_refs = artifact_refs_from_tool_output(
+            Some(session_id),
+            &wrapped,
+            Some(&tool_metadata),
+        );
+        assert_eq!(artifact_refs.len(), 1, "monitor path must resolve meta ref");
+
         let tool_item = TurnItemRecord {
             schema_version: CURRENT_EVENT_SCHEMA_VERSION,
             id: "item_tool".to_string(),
@@ -816,8 +832,8 @@ mod tests {
             status: TurnItemLifecycleStatus::Completed,
             summary: "read_file: condensed".to_string(),
             detail: Some(wrapped.clone()),
-            metadata: None,
-            artifact_refs: Vec::new(),
+            metadata: Some(tool_metadata),
+            artifact_refs,
             started_at: Some(Utc::now()),
             ended_at: Some(Utc::now()),
         };
@@ -873,6 +889,13 @@ mod tests {
             load_large_output_persist_record(session_id, &parsed.ref_id).expect("persist record");
         assert_eq!(record.external_ref.ref_id, external_ref.ref_id);
         assert_eq!(record.raw_bytes, raw.len());
+
+        let loaded_item = store.load_item(&tool_item.id).expect("reload item");
+        assert_eq!(loaded_item.artifact_refs.len(), 1);
+        assert_eq!(
+            load_raw_from_artifact_meta_path(&loaded_item.artifact_refs[0]).expect("blob via ref"),
+            raw
+        );
     }
 }
 

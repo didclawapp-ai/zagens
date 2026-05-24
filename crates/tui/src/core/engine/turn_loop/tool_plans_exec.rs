@@ -1,218 +1,45 @@
-//! Tool execution phase for the turn loop (P2 PR4 — `TurnLoopHost::run_tool_execution_phase`).
+//! Parallel + sequential tool plan execution (P2 PR6b — TUI L2; called from `TurnLoopHost::execute_tool_plans`).
 
 use std::collections::HashSet;
+use std::sync::Arc;
 use std::time::Instant;
 
-use deepseek_core::engine::context::compact_tool_result_for_context;
-use deepseek_core::engine::dispatch::{
-    caller_type_for_tool_use, format_tool_error, mcp_tool_approval_description,
-    mcp_tool_is_parallel_safe, mcp_tool_is_read_only,
-};
+use deepseek_core::chat::Tool;
+use deepseek_core::engine::dispatch::caller_type_for_tool_use;
 use deepseek_core::engine::emit_tool_audit;
-use deepseek_core::engine::loop_guard::{AttemptDecision, LoopGuard, OutcomeDecision};
-use deepseek_core::engine::streaming::ToolUseState;
-use deepseek_core::chat::{ContentBlock, Message, Tool};
-use deepseek_core::engine::turn_loop::{
-    build_edit_file_approval_desc, ToolExecOutcome, ToolExecutionPlan, TurnLoopToolPhaseOutcome,
-};
-use deepseek_core::error_taxonomy::{ErrorCategory, ErrorEnvelope};
-use deepseek_core::turn::{TurnContext, TurnLoopMode, TurnToolCall};
+use deepseek_core::engine::turn_loop::{ToolExecOutcome, ToolExecutionPlan};
+use deepseek_core::turn::TurnLoopMode;
 use deepseek_tools::{ToolError, ToolResult};
 use futures_util::stream::FuturesUnordered;
 use futures_util::StreamExt;
 use serde_json::json;
+use tokio::sync::{Mutex as AsyncMutex, RwLock};
 
-use super::host_impl::turn_loop_to_app_mode;
-use super::super::dispatch::{
-    caller_allowed_for_tool, should_parallelize_tool_batch, should_stop_after_plan_tool,
-};
-use super::super::scratchpad_flow;
-use crate::core::events::Event;
 use super::super::approval::ApprovalResult;
-use crate::tools::spec::{ApprovalRequirement, ToolContext};
+use super::super::dispatch::should_parallelize_tool_batch;
 use super::super::tool_catalog::{
     execute_code_execution_tool, execute_tool_search, is_tool_search_tool,
-    maybe_activate_requested_deferred_tool, missing_tool_error_message,
     CODE_EXECUTION_TOOL_NAME, MULTI_TOOL_PARALLEL_NAME, REQUEST_USER_INPUT_NAME,
 };
+use super::super::tool_execution::{
+    apply_tool_spillover_audit, detached_execute_with_lock, execute_plan_on_engine,
+};
+use deepseek_core::engine::turn_loop::TurnLoopToolExec;
 use super::Engine;
+use crate::core::events::Event;
 use crate::mcp::McpPool;
 use crate::tools::user_input::UserInputRequest;
 
-pub(super) async fn run_tool_execution_phase(
+pub(super) async fn execute_tool_plans(
     engine: &mut Engine,
-    turn: &mut TurnContext,
-    mode: TurnLoopMode,
-    tool_uses: &mut [ToolUseState],
+    _mode: TurnLoopMode,
+    plans: Vec<ToolExecutionPlan>,
     tool_catalog: &[Tool],
     active_tool_names: &mut HashSet<String>,
-    loop_guard: &mut LoopGuard,
-    consecutive_tool_error_steps: u32,
     tool_registry: Option<&crate::tools::ToolRegistry>,
-) -> TurnLoopToolPhaseOutcome {
-    let tool_exec_lock = engine.tool_exec_lock.clone();
-            let mcp_pool = if tool_uses
-                .iter()
-                .any(|tool| McpPool::is_mcp_tool(&tool.name))
-            {
-                match engine.ensure_mcp_pool().await {
-                    Ok(pool) => Some(pool),
-                    Err(err) => {
-                        let _ = engine.tx_event.send(Event::status(err.to_string())).await;
-                        None
-                    }
-                }
-            } else {
-                None
-            };
-
-            let mut plans: Vec<ToolExecutionPlan> = Vec::with_capacity(tool_uses.len());
-            for (index, tool) in tool_uses.iter_mut().enumerate() {
-                let tool_id = tool.id.clone();
-                let mut tool_name = tool.name.clone();
-                let tool_input = tool.input.clone();
-                let tool_caller = tool.caller.clone();
-                crate::logging::info(format!(
-                    "Planning tool '{}' with input: {:?}",
-                    tool_name, tool_input
-                ));
-
-                let interactive = (tool_name == "exec_shell"
-                    && tool_input
-                        .get("interactive")
-                        .and_then(serde_json::Value::as_bool)
-                        == Some(true))
-                    || tool_name == REQUEST_USER_INPUT_NAME;
-
-                let mut approval_required = false;
-                let mut approval_description = "Tool execution requires approval".to_string();
-                let mut supports_parallel = false;
-                let mut read_only = false;
-                let mut blocked_error: Option<ToolError> = None;
-                let mut guard_result: Option<ToolResult> = None;
-                if maybe_activate_requested_deferred_tool(
-                    &tool_name,
-                    &tool_catalog,
-                    active_tool_names,
-                ) {
-                    let _ = engine
-                        .tx_event
-                        .send(Event::status(format!(
-                            "Auto-loaded deferred tool '{tool_name}' after model request."
-                        )))
-                        .await;
-                }
-                let mut tool_def = tool_catalog.iter().find(|def| def.name == tool_name);
-
-                // Resolve hallucinated tool names when the model emits a
-                // non-canonical variant (Read_file, readFile, read-file, etc.).
-                if tool_def.is_none()
-                    && let Some(registry) = tool_registry
-                    && let Some(canonical) = registry.resolve(&tool_name)
-                {
-                    crate::logging::info(format!(
-                        "Resolved hallucinated tool name '{}' -> '{}'",
-                        tool_name, canonical
-                    ));
-                    tool_def = tool_catalog.iter().find(|d| d.name == canonical);
-                    if tool_def.is_some() {
-                        tool_name = canonical.to_string();
-                        // Update the tool_uses entry so the result is
-                        // attributed to the canonical name.
-                        tool.name = tool_name.clone();
-                        // Re-run the deferred-activation check with the
-                        // canonical name.
-                        if maybe_activate_requested_deferred_tool(
-                            &tool_name,
-                            &tool_catalog,
-                            active_tool_names,
-                        ) {
-                            let _ = engine
-                                .tx_event
-                                .send(Event::status(format!(
-                                    "Auto-loaded deferred tool '{}' after resolving '{}'.",
-                                    tool_name, tool_name
-                                )))
-                                .await;
-                        }
-                    }
-                }
-
-                if !caller_allowed_for_tool(tool_caller.as_ref(), tool_def) {
-                    blocked_error = Some(ToolError::permission_denied(format!(
-                        "Tool '{tool_name}' does not allow caller '{}'",
-                        caller_type_for_tool_use(tool_caller.as_ref())
-                    )));
-                }
-
-                if blocked_error.is_none()
-                    && tool_def.is_none()
-                    && !McpPool::is_mcp_tool(&tool_name)
-                    && tool_name != CODE_EXECUTION_TOOL_NAME
-                    && !is_tool_search_tool(&tool_name)
-                {
-                    blocked_error = Some(ToolError::not_available(missing_tool_error_message(
-                        &tool_name,
-                        &tool_catalog,
-                    )));
-                }
-
-                if McpPool::is_mcp_tool(&tool_name) {
-                    read_only = mcp_tool_is_read_only(&tool_name);
-                    supports_parallel = mcp_tool_is_parallel_safe(&tool_name);
-                    approval_required = !read_only;
-                    approval_description = mcp_tool_approval_description(&tool_name);
-                } else if let Some(registry) = tool_registry
-                    && let Some(spec) = registry.get(&tool_name)
-                {
-                    approval_required = spec.approval_requirement() != ApprovalRequirement::Auto;
-                    approval_description = if tool_name == "edit_file" {
-                        build_edit_file_approval_desc(&tool_input)
-                    } else {
-                        spec.description().to_string()
-                    };
-                    supports_parallel = spec.supports_parallel();
-                    read_only = spec.is_read_only();
-                } else if tool_name == CODE_EXECUTION_TOOL_NAME {
-                    approval_required = true;
-                    approval_description =
-                        "Run model-provided Python code in local execution sandbox".to_string();
-                    supports_parallel = false;
-                    read_only = false;
-                } else if is_tool_search_tool(&tool_name) {
-                    approval_required = false;
-                    approval_description = "Search tool catalog".to_string();
-                    supports_parallel = false;
-                    read_only = true;
-                }
-
-                if blocked_error.is_none()
-                    && let AttemptDecision::Block(message) =
-                        loop_guard.record_attempt(&tool_name, &tool_input)
-                {
-                    crate::logging::warn(message.clone());
-                    guard_result = Some(
-                        ToolResult::success(message)
-                            .with_metadata(json!({"loop_guard": "identical_tool_call"})),
-                    );
-                }
-
-                plans.push(ToolExecutionPlan {
-                    index,
-                    id: tool_id,
-                    name: tool_name,
-                    input: tool_input,
-                    caller: tool_caller,
-                    interactive,
-                    approval_required,
-                    approval_description,
-                    supports_parallel,
-                    read_only,
-                    blocked_error,
-                    guard_result,
-                });
-            }
-
+    mcp_pool: Option<Arc<AsyncMutex<McpPool>>>,
+    tool_exec_lock: Arc<RwLock<()>>,
+) -> Vec<ToolExecOutcome> {
             let parallel_allowed = should_parallelize_tool_batch(&plans);
             if parallel_allowed && plans.len() > 1 {
                 let _ = engine
@@ -275,34 +102,24 @@ pub(super) async fn run_tool_execution_phase(
                     let started_at = Instant::now();
 
                     tool_tasks.push(async move {
-                        let mut result = Engine::execute_tool_with_lock(
+                        let exec = TurnLoopToolExec {
                             lock,
+                            tx_event: tx_event.clone(),
+                        };
+                        let mut result = detached_execute_with_lock(
+                            exec,
                             plan.supports_parallel,
                             plan.interactive,
-                            tx_event.clone(),
                             plan.name.clone(),
                             plan.input.clone(),
                             registry,
                             mcp_pool,
-                            None,
                             Some(plan.id.clone()),
                         )
                         .await;
 
-                        // #500: spill outsized output before fanout (mirror
-                        // of the sequential path below). Emit a
-                        // `tool.spillover` audit event so operators can
-                        // correlate large-output episodes with disk usage.
-                        if let Ok(tool_result) = result.as_mut()
-                            && let Some(path) =
-                                crate::tools::truncate::apply_spillover(tool_result, &plan.id)
-                        {
-                            emit_tool_audit(json!({
-                                "event": "tool.spillover",
-                                "tool_id": plan.id.clone(),
-                                "tool_name": plan.name.clone(),
-                                "path": path.display().to_string(),
-                            }));
+                        if let Ok(ref mut tool_result) = result {
+                            apply_tool_spillover_audit(tool_result, &plan.id, &plan.name);
                         }
 
                         let _ = tx_event
@@ -585,11 +402,14 @@ pub(super) async fn run_tool_execution_phase(
                     let mut result = if let Some(result_override) = result_override {
                         result_override
                     } else {
-                        Engine::execute_tool_with_lock(
-                            tool_exec_lock.clone(),
+                        let exec = TurnLoopToolExec {
+                            lock: tool_exec_lock.clone(),
+                            tx_event: engine.tx_event.clone(),
+                        };
+                        execute_plan_on_engine(
+                            exec,
                             plan.supports_parallel,
                             plan.interactive,
-                            engine.tx_event.clone(),
                             tool_name.clone(),
                             tool_input.clone(),
                             tool_registry,
@@ -607,16 +427,8 @@ pub(super) async fn run_tool_execution_phase(
                     // Emit a discrete `tool.spillover` audit event so
                     // operators can correlate large-output episodes with
                     // disk-usage growth in `~/.deepseek/tool_outputs/`.
-                    if let Ok(tool_result) = result.as_mut()
-                        && let Some(path) =
-                            crate::tools::truncate::apply_spillover(tool_result, &tool_id)
-                    {
-                        emit_tool_audit(json!({
-                            "event": "tool.spillover",
-                            "tool_id": tool_id.clone(),
-                            "tool_name": tool_name.clone(),
-                            "path": path.display().to_string(),
-                        }));
+                    if let Ok(ref mut tool_result) = result {
+                        apply_tool_spillover_audit(tool_result, &tool_id, &tool_name);
                     }
 
                     let _ = engine
@@ -638,154 +450,5 @@ pub(super) async fn run_tool_execution_phase(
                     });
                 }
             }
-
-            let mut step_error_count = 0usize;
-            // Categorized tool errors collected this step. Feeds the capacity
-            // controller's error-escalation checkpoint so it can distinguish
-            // (e.g.) a Tool failure that should escalate from a permission
-            // denial that should not.
-            let mut step_error_categories: Vec<ErrorCategory> = Vec::new();
-            let mut stop_after_plan_tool = false;
-            let mut loop_guard_halt: Option<String> = None;
-
-            for outcome in outcomes.into_iter().flatten() {
-                let duration = outcome.started_at.elapsed();
-                let tool_input = outcome.input.clone();
-                let tool_name_for_ws = outcome.name.clone();
-                let mut tool_call =
-                    TurnToolCall::new(outcome.id.clone(), outcome.name.clone(), outcome.input);
-                let should_stop_this_turn = should_stop_after_plan_tool(
-                    turn_loop_to_app_mode(mode),
-                    &outcome.name,
-                    &outcome.result,
-                );
-
-                match outcome.result {
-                    Ok(output) => {
-                        scratchpad_flow::record_tool_outcome(
-                            &mut engine.scratchpad_step,
-                            &outcome.name,
-                            output.success,
-                        );
-                        match loop_guard.record_outcome(&outcome.name, output.success) {
-                            OutcomeDecision::Continue => {}
-                            OutcomeDecision::Warn(message) => {
-                                crate::logging::warn(message.clone());
-                                let _ = engine.tx_event.send(Event::status(message)).await;
-                            }
-                            OutcomeDecision::Halt(message) => {
-                                loop_guard_halt.get_or_insert(message);
-                            }
-                        }
-                        emit_tool_audit(json!({
-                            "event": "tool.result",
-                            "tool_id": outcome.id.clone(),
-                            "tool_name": outcome.name.clone(),
-                            "success": output.success,
-                        }));
-                        let output_for_context = compact_tool_result_for_context(
-                            &engine.session.model,
-                            &outcome.name,
-                            &output,
-                        );
-                        let output_content = output.content;
-
-                        tool_call.set_result(output_content.clone(), duration);
-                        engine.session.working_set.observe_tool_call(
-                            &tool_name_for_ws,
-                            &tool_input,
-                            Some(&output_for_context),
-                            &engine.session.workspace,
-                        );
-
-                        // #136: post-edit LSP diagnostics hook. We only run
-                        // this on success — failed edits leave the file
-                        // untouched, so polling for diagnostics would just
-                        // surface stale state.
-                        if output.success {
-                            engine.run_post_edit_lsp_hook(&outcome.name, &tool_input)
-                                .await;
-                        }
-
-                        engine.add_session_message(Message {
-                            role: "user".to_string(),
-                            content: vec![ContentBlock::ToolResult {
-                                tool_use_id: outcome.id,
-                                content: output_for_context,
-                                is_error: None,
-                                content_blocks: None,
-                            }],
-                        })
-                        .await;
-                    }
-                    Err(e) => {
-                        match loop_guard.record_outcome(&outcome.name, false) {
-                            OutcomeDecision::Continue => {}
-                            OutcomeDecision::Warn(message) => {
-                                crate::logging::warn(message.clone());
-                                let _ = engine.tx_event.send(Event::status(message)).await;
-                            }
-                            OutcomeDecision::Halt(message) => {
-                                loop_guard_halt.get_or_insert(message);
-                            }
-                        }
-                        let envelope: ErrorEnvelope = e.clone().into();
-                        emit_tool_audit(json!({
-                            "event": "tool.result",
-                            "tool_id": outcome.id.clone(),
-                            "tool_name": outcome.name.clone(),
-                            "success": false,
-                            "error": e.to_string(),
-                            "category": envelope.category.to_string(),
-                            "severity": envelope.severity.to_string(),
-                        }));
-                        step_error_count += 1;
-                        step_error_categories.push(envelope.category);
-                        let error = format_tool_error(&e, &outcome.name);
-                        tool_call.set_error(error.clone(), duration);
-                        engine.session.working_set.observe_tool_call(
-                            &tool_name_for_ws,
-                            &tool_input,
-                            Some(&error),
-                            &engine.session.workspace,
-                        );
-                        engine.add_session_message(Message {
-                            role: "user".to_string(),
-                            content: vec![ContentBlock::ToolResult {
-                                tool_use_id: outcome.id,
-                                content: format!("Error: {error}"),
-                                is_error: Some(true),
-                                content_blocks: None,
-                            }],
-                        })
-                        .await;
-                    }
-                }
-
-                turn.record_tool_call(tool_call);
-                stop_after_plan_tool |= should_stop_this_turn;
-            }
-
-    let mut outcome = TurnLoopToolPhaseOutcome {
-        step_error_count,
-        step_error_categories,
-        break_outer_loop: stop_after_plan_tool || loop_guard_halt.is_some(),
-        continue_outer_loop: false,
-    };
-    if let Some(message) = loop_guard_halt {
-        crate::logging::warn(message.clone());
-        let _ = engine.tx_event.send(Event::status(message)).await;
-    }
-    outcome.continue_outer_loop = engine
-        .run_capacity_post_tool_checkpoint(
-            turn,
-            turn_loop_to_app_mode(mode),
-            tool_registry,
-            tool_exec_lock,
-            mcp_pool,
-            step_error_count,
-            consecutive_tool_error_steps,
-        )
-        .await;
-    outcome
+    outcomes.into_iter().flatten().collect()
 }

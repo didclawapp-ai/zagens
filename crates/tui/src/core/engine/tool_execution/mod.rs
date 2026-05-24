@@ -11,4 +11,7 @@ mod progress;
 mod terminal_guard;
 
 pub(crate) use deepseek_core::engine::emit_tool_audit;
-pub use port::McpPoolHandle;
+pub use port::{
+    apply_tool_spillover_audit, detached_execute_with_lock, execute_plan_on_engine,
+    mcp_pool_as_port, McpPoolHandle,
+};

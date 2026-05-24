@@ -2,7 +2,7 @@
 
 > **版本：** v2.0-final（2026-05-21）  
 > **状态：** **定稿 + 实施中** — §4.2 已签收；**§17** 为 DS Pick 实施后审核快照（2026-05-22）  
-> **门控：** **未** 达 §12.3 P2 完成线 → D10 桌面 Feature freeze **仍有效**  
+> **门控：** §12.3 P2 + G3 + PR6 已达标；**D10 已解除**（[adr/P2_D10_UNFREEZE_RECORD.md](./adr/P2_D10_UNFREEZE_RECORD.md) §4，Jason 2026-05-24）→ 阶段 F / GAP 可按 [TUI_DS_PICK_GAP.md](../desktop/TUI_DS_PICK_GAP.md) 推进  
 > **v1.6 要点：** 修正 §6.2 步骤 0.8 引用、§12.1 A5.1 门控表述、§1.4 定稿章节策略、`RUNTIME_BASELINE.md` 占位  
 > **受众：** 维护者、Agent、桌面/TUI 开发  
 > **产品节奏：** Phase 1 harness **已验收** → **A+A+ 打底** → **P2 还技术债**（Engine→core）→ **解冻桌面 GAP**；壳运 **始终分离**，**不**换 app-server sidecar。
@@ -27,7 +27,8 @@
 14. [Issue 拆分模板](#14-issue-拆分模板)
 15. [关联文档](#15-关联文档)
 16. [文档审核记录](#16-文档审核记录)
-17. [DS Pick 实施后审核（2026-05-22）](#17-ds-pick-实施后审核2026-05-22)
+17. [DS Pick 实施后审核（2026-05-22）](#17-ds-pick-实施后审核2026-05-22)  
+    · **实施总结（2026-05-24）：** [adr/IMPLEMENTATION_SUMMARY_2026-05-24.md](./adr/IMPLEMENTATION_SUMMARY_2026-05-24.md)
 
 > **执行顺序阅读指引（与章节编号无关）：** §7 A → §8 A+ → §11 P2 → §10 F → §9 B（见 §1.6）。正文 §9–§11 按 **文档结构** 编号（B→F→P2），**勿按 9→10→11 数字顺序执行**。`v2.0-final` 可选将正文重排为 §9 P2 → §10 F → §11 B（见 §1.4）。
 
@@ -168,8 +169,8 @@ deepseek app-server
 | `crates/tui/src/runtime_threads/mod.rs` | ~275 | **A4.6** | **✅ 主文件达标** — 测试在 `tests.rs`（~2140）；`manager.rs` 待再切 |
 | `crates/tui/src/runtime_threads/manager.rs` | ~2860 | **A4.6** | **待拆** — 超 code-org 软上限；按域再切 |
 | `crates/core/src/session.rs` | ~183 | **P2 PR2** | **✅** — `Session`/`SessionUsage` + `working_set`/`project_context`/`ApprovalMode` |
-| `crates/tui/src/core/engine.rs` | ~2174 | **P2 PR2** | **部分** — `turn_loop` 仍在此；待 Engine→core（PR3–PR4） |
-| `crates/tui/src/core/engine.rs` | ~2174 | **P2** 薄包装目标 <300 行 | **未达标** — Engine 仍在 tui |
+| `crates/tui/src/core/engine.rs` | ~192 | **P2 PR4/PR6** | **✅ 薄壳** — `turn_loop` 阶段在 core；`host_impl` + `tool_plans_exec` 在 tui |
+| `crates/core/src/engine/turn_loop/streaming_phase.rs` | ~700 | **P2 PR6** | **✅** — 可选拆 `stream_poll` 子模块 |
 | `crates/core/src/lib.rs` | ~1710 | **P2** 并入 Engine | **部分** — 共享类型已入 core 子模块；`Runtime`/`Engine` 未迁 |
 | `crates/tui/src/lib.rs` | 有 | **A5.1** | **✅** lib target 已存在 |
 
@@ -536,7 +537,7 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 
 ### 10.6 桌面 GAP 冻结（还债窗口，D9）
 
-**自 2026-05-21 起至 §12.3 P2 完成线达标：**
+**自 2026-05-21 起至 §12.3 P2 完成线达标（2026-05-24 代码侧已达标，见 D10 解冻记录）：**
 
 | 允许 | 禁止 |
 |------|------|
@@ -820,7 +821,8 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 
 ## 17. DS Pick 实施后审核（2026-05-22）
 
-> **结论：** 路线图 **战略与门控仍然有效**；代码处于 **阶段 0 收尾 + A 部分项 + P2 PR0/PR1 局部**，**尚未** 满足 §12.1 A 完成线、§12.2 A+、§12.3 P2。桌面 **D10 freeze 不得解除**。
+> **结论：** 路线图 **战略与门控仍然有效**；**§12.3 P2 + PR6** 已达标；**D10 已解除**（Jason 2026-05-24）。§12.1 A / §12.2 A+ 仍部分项；阶段 F / GAP 可推进。  
+> **归档总结：** [IMPLEMENTATION_SUMMARY_2026-05-24.md](./adr/IMPLEMENTATION_SUMMARY_2026-05-24.md)
 
 ### 17.1 里程碑对照
 
@@ -829,7 +831,7 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 | **0 治理** | 文档 SSOT、D4–D9、freeze 规则 | **✅ 文档侧基本完成**（§6.2 0.1–0.4、0.6；§4.2 签收） |
 | **A L1** | A1–A5、A4 模块化 | **🟡 部分** — A4 达标；**A3** golden 测已入 core；A1/A2/A5 未全量验收 |
 | **A+ L2** | 契约 v1、sidecar 契约测、审批回归 | **🟡 自动化 ✅** — G2 门控（2026-05-23）；审批 UI 手测可复测（接线已合） |
-| **P2** | Engine→core、engine.rs <300 行 | **🟡 L2 终态有条件达标** — G3 签收（2026-05-23）；`handle_thread(Message)` **委托 turn port**（app-server 单轮 LLM；无 port 仍 queued） |
+| **P2** | Engine→core、engine.rs <300 行 | **🟢 L2 终态 + PR6** — G3 签收（2026-05-23）；turn loop 阶段在 core（PR6 2026-05-24）；`engine.rs` ~192 行 |
 | **F / B** | P2 后解冻 | **🟡 F0–F2 已落地** — F3 a11y 大部分（Composer tab 顺序 + skip link；手测待签） |
 
 ### 17.2 已交付（可勾选 issue）
@@ -842,6 +844,7 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 | R-006（部分） | `deepseek-tui` lib target | `crates/tui/src/lib.rs` |
 | R-013 | P2 PR0 spike | `docs/tech/adr/P2_MIGRATION_SPIKE.md` |
 | R-015（部分） | 长跑脚本 + ADR dry-run p99 + `-Gate` + 1MB fixture | `scripts/runtime-longrun-baseline.ps1`（`-DryRun` / `-Gate`）、`adr/RUNTIME_BASELINE.md`（RSS @ `ab4c3c4`） |
+| — | P2 PR6 turn loop L2 | `streaming_phase` / `tool_phase` / `tool_parser` / `capacity_policy` → core；tui `tool_plans_exec` + `host_impl/` — [P2_PR6_TURN_LOOP_L2_MIGRATION_PLAN.md](./adr/P2_PR6_TURN_LOOP_L2_MIGRATION_PLAN.md) |
 | — | P2 PR2 局部 | `deepseek-core::{session,working_set,project_context,approval,cycle::CycleBriefing,engine}` + tui re-export |
 | — | P2 PR1 类型/`LlmClient` 入 core | `crates/core/src/{chat,models,turn,...}` + tui re-export |
 | — | DS Pick 生产路径 | Phase 1 harness、v0.4.3 流式去重、多窗口（CHANGELOG） |
@@ -859,7 +862,8 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 
 - [x] 维护者签收 §17 审核结论（**实施中**，非 **已完成**；G2/G3 2026-05-23 更新）
 - [x] §11.0 ADR **G3** 正式签收 — [P2_G3_ENGINE_L2_SIGNOFF.md](./adr/P2_G3_ENGINE_L2_SIGNOFF.md)
-- [ ] D10 解冻评审 → 启动阶段 F（xterm / diff / a11y）
+- [x] D10 解冻评审（实施记录）→ [P2_D10_UNFREEZE_RECORD.md](./adr/P2_D10_UNFREEZE_RECORD.md)；阶段 F F0–F2 已落地，F3 收尾中
+- [x] 维护者正式签收 D10 解除 freeze — [P2_D10_UNFREEZE_RECORD.md](./adr/P2_D10_UNFREEZE_RECORD.md) §4（Jason，2026-05-24）
 
 ---
 

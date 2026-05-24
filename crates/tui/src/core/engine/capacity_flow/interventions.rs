@@ -7,17 +7,18 @@ use tokio::sync::{Mutex as AsyncMutex, RwLock};
 use crate::compaction::{compact_messages_safe, should_compact};
 use crate::mcp::McpPool;
 use crate::models::{ContentBlock, Message};
-use crate::tui::app::AppMode;
+use deepseek_core::turn::TurnLoopMode;
 
 use super::super::tool_catalog::REQUEST_USER_INPUT_NAME;
 use super::super::*;
+use super::refresh_system_prompt_for_turn_mode;
 
 impl Engine {
     pub(in crate::core::engine) async fn apply_targeted_context_refresh(
         &mut self,
         turn: &TurnContext,
         client: Option<&(dyn crate::llm_client::LlmClient)>,
-        mode: AppMode,
+        mode: TurnLoopMode,
         snapshot: Option<&CapacitySnapshot>,
     ) -> bool {
         let before_tokens = self.estimated_input_tokens();
@@ -102,7 +103,7 @@ impl Engine {
             GuardrailAction::TargetedContextRefresh,
             None,
         )));
-        self.refresh_system_prompt(mode);
+        refresh_system_prompt_for_turn_mode(self, mode);
         self.emit_session_updated().await;
 
         let after_tokens = self.estimated_input_tokens();
@@ -124,7 +125,7 @@ impl Engine {
     pub(in crate::core::engine) async fn apply_verify_with_tool_replay(
         &mut self,
         turn: &TurnContext,
-        mode: AppMode,
+        mode: TurnLoopMode,
         snapshot: Option<&CapacitySnapshot>,
         tool_registry: Option<&crate::tools::ToolRegistry>,
         tool_exec_lock: Arc<RwLock<()>>,
@@ -255,7 +256,7 @@ impl Engine {
             GuardrailAction::VerifyWithToolReplay,
             Some(&verification_note),
         )));
-        self.refresh_system_prompt(mode);
+        refresh_system_prompt_for_turn_mode(self, mode);
         self.emit_session_updated().await;
 
         let after_tokens = self.estimated_input_tokens();
@@ -276,7 +277,7 @@ impl Engine {
     pub(in crate::core::engine) async fn apply_verify_and_replan(
         &mut self,
         turn: &TurnContext,
-        mode: AppMode,
+        mode: TurnLoopMode,
         snapshot: Option<&CapacitySnapshot>,
         reason: &str,
     ) -> bool {
@@ -341,7 +342,7 @@ impl Engine {
             GuardrailAction::VerifyAndReplan,
             Some("Replan now from canonical state. Keep steps minimal and verifiable."),
         )));
-        self.refresh_system_prompt(mode);
+        refresh_system_prompt_for_turn_mode(self, mode);
         self.emit_session_updated().await;
 
         let _ = self

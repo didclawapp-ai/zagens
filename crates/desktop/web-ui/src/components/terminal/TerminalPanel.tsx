@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useT } from '../../i18n';
+import { handleTabListKeyDown } from '../../lib/a11y/rovingTabList';
 import { killTerminal, spawnTerminal } from '../../lib/terminal/ptyApi';
 import InteractiveTerminalView from './InteractiveTerminalView';
 
@@ -42,6 +43,19 @@ export default function TerminalPanel({ workspaceRoot, desktopHost, active }: Pr
   workspaceRef.current = workspaceRoot;
 
   const activeSession = sessions.find((s) => s.id === activeId) ?? sessions[0] ?? null;
+  const sessionIds = useMemo(() => sessions.map((s) => s.id), [sessions]);
+  const terminalTabId = (sessionId: string) => `terminal-tab-${sessionId}`;
+  const terminalTabPanelId = 'terminal-tabpanel';
+
+  const onSessionTabListKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (!activeId) {
+        return;
+      }
+      handleTabListKeyDown(e, sessionIds, activeId, setActiveId, terminalTabId);
+    },
+    [sessionIds, activeId],
+  );
 
   const appendOutput = useCallback((sessionId: string, chunk: string) => {
     const prev = buffersRef.current.get(sessionId) ?? '';
@@ -137,7 +151,51 @@ export default function TerminalPanel({ workspaceRoot, desktopHost, active }: Pr
 
   return (
     <div className="terminal-panel flex min-h-0 flex-1 flex-col bg-[#121212] text-zinc-200">
-      <div className="terminal-panel-header flex shrink-0 items-center gap-1 border-b border-zinc-800 px-2 py-1.5">
+      <div className="terminal-panel-header flex shrink-0 flex-col gap-1 border-b border-zinc-800 px-2 py-1.5">
+        {sessions.length > 0 && (
+          <div
+            className="flex min-w-0 items-center gap-0.5 overflow-x-auto"
+            role="tablist"
+            aria-label={t('terminal.sessionTablist')}
+            onKeyDown={onSessionTabListKeyDown}
+          >
+            {sessions.map((s) => {
+              const selected = s.id === activeId;
+              return (
+                <button
+                  key={s.id}
+                  id={terminalTabId(s.id)}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  aria-controls={terminalTabPanelId}
+                  tabIndex={selected ? 0 : -1}
+                  className={`flex max-w-[9rem] shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs ${
+                    selected
+                      ? 'bg-zinc-800 text-zinc-100'
+                      : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'
+                  }`}
+                  onClick={() => setActiveId(s.id)}
+                >
+                  <span className="truncate">{s.title}</span>
+                  {sessions.length > 1 && (
+                    <button
+                      type="button"
+                      className="rounded px-0.5 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-200"
+                      aria-label={t('terminal.close')}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void closeSession(s.id);
+                      }}
+                    >
+                      ×
+                    </button>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
         <div ref={menuRef} className="relative flex min-w-0 flex-1 items-center gap-1">
           <button
             type="button"
@@ -238,7 +296,13 @@ export default function TerminalPanel({ workspaceRoot, desktopHost, active }: Pr
         </p>
       )}
 
-      <div className="relative min-h-0 flex-1">
+      <div
+        id={terminalTabPanelId}
+        className="relative min-h-0 flex-1"
+        role="tabpanel"
+        aria-labelledby={activeSession ? terminalTabId(activeSession.id) : undefined}
+        tabIndex={0}
+      >
         {sessions.length === 0 && spawning && (
           <p className="absolute inset-0 flex items-center justify-center text-xs text-zinc-500">
             {t('terminal.spawning')}

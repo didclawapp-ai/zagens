@@ -5,16 +5,18 @@ use std::sync::Arc;
 use tokio::sync::{Mutex as AsyncMutex, RwLock};
 
 use crate::mcp::McpPool;
-use crate::tui::app::AppMode;
+use deepseek_core::engine::turn_loop::should_run_capacity_error_escalation;
+use deepseek_core::turn::TurnLoopMode;
 
 use super::super::*;
+use super::refresh_system_prompt_for_turn_mode;
 
 impl Engine {
     pub(in crate::core::engine) async fn run_capacity_pre_request_checkpoint(
         &mut self,
         turn: &TurnContext,
         client: Option<&(dyn crate::llm_client::LlmClient)>,
-        mode: AppMode,
+        mode: TurnLoopMode,
     ) -> bool {
         let snapshot = self
             .capacity_controller
@@ -37,7 +39,7 @@ impl Engine {
     pub(in crate::core::engine) async fn run_capacity_post_tool_checkpoint(
         &mut self,
         turn: &TurnContext,
-        mode: AppMode,
+        mode: TurnLoopMode,
         tool_registry: Option<&crate::tools::ToolRegistry>,
         tool_exec_lock: Arc<RwLock<()>>,
         mcp_pool: Option<Arc<AsyncMutex<McpPool>>>,
@@ -78,31 +80,16 @@ impl Engine {
     pub(in crate::core::engine) async fn run_capacity_error_escalation_checkpoint(
         &mut self,
         turn: &TurnContext,
-        mode: AppMode,
+        mode: TurnLoopMode,
         step_error_count: usize,
         consecutive_tool_error_steps: u32,
         error_categories: &[ErrorCategory],
     ) -> bool {
-        if step_error_count == 0 && consecutive_tool_error_steps < 2 {
-            return false;
-        }
-
-        // Categorize this step's failures by typed `ErrorCategory` rather than
-        // substring-matching error strings. Context overflow always escalates;
-        // network / rate-limit / timeout are transient and skip escalation;
-        // anything else only escalates with consecutive consecutive failures.
-        let has_context_overflow = error_categories.contains(&ErrorCategory::InvalidInput);
-        let only_transient = !error_categories.is_empty()
-            && error_categories.iter().all(|c| {
-                matches!(
-                    c,
-                    ErrorCategory::Network | ErrorCategory::RateLimit | ErrorCategory::Timeout
-                )
-            });
-        if only_transient && !has_context_overflow {
-            return false;
-        }
-        if !has_context_overflow && consecutive_tool_error_steps < 2 {
+        if !should_run_capacity_error_escalation(
+            step_error_count,
+            consecutive_tool_error_steps,
+            error_categories,
+        ) {
             return false;
         }
 

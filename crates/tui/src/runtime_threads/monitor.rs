@@ -215,6 +215,12 @@ impl RuntimeThreadManager {
                                         );
                                         item.detail = Some(output.content.clone());
                                         item.metadata = output.metadata.clone();
+                                        item.artifact_refs =
+                                            crate::tools::large_output_router::artifact_refs_from_tool_output(
+                                                None,
+                                                &output.content,
+                                                output.metadata.as_ref(),
+                                            );
                                     }
                                     Err(err) => {
                                         item.status = TurnItemLifecycleStatus::Failed;
@@ -658,22 +664,8 @@ impl RuntimeThreadManager {
                         }
                         RuntimeApprovalDecision::DenyTool
                         | RuntimeApprovalDecision::RetryWithFullAccess => {
-                            self.emit_event(
-                                &thread_id,
-                                Some(&turn_id),
-                                None,
-                                "approval.required",
-                                json!({
-                                    "id": id,
-                                    "tool_name": tool_name,
-                                    "description": description,
-                                }),
-                            )
-                            .await?;
-
-                            // Register as pending — wait for HTTP approval
-                            // instead of immediate deny. A spawned timeout guard
-                            // will auto-deny after the configured interval.
+                            // Register pending before SSE/JSONL emit so HTTP
+                            // `resolve-approval` cannot race `approval.required`.
                             let timeout_secs = self.manager_cfg.http_approval_timeout_secs.max(1);
                             let deadline = tokio::time::Instant::now()
                                 + std::time::Duration::from_secs(timeout_secs);
@@ -689,6 +681,19 @@ impl RuntimeThreadManager {
                                     },
                                 );
                             }
+
+                            self.emit_event(
+                                &thread_id,
+                                Some(&turn_id),
+                                None,
+                                "approval.required",
+                                json!({
+                                    "id": id,
+                                    "tool_name": tool_name,
+                                    "description": description,
+                                }),
+                            )
+                            .await?;
 
                             let this = self.clone();
                             let engine_handle = engine.clone();

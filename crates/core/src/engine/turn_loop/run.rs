@@ -143,7 +143,8 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
             step = turn.step,
         );
         let stream_out = async {
-            host.run_streaming_phase(
+            super::streaming_phase::run_streaming_phase(
+                host,
                 turn,
                 client.as_ref(),
                 mode,
@@ -178,7 +179,8 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
             step = turn.step,
         );
         let phase = async {
-            host.run_tool_execution_phase(
+            super::tool_phase::run_tool_execution_phase(
+                host,
                 turn,
                 mode,
                 &mut tool_uses,

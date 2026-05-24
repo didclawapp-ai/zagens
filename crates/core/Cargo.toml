@@ -22,7 +22,7 @@ deepseek-tools = { path = "../tools", version = "0.8.15" }
 futures-util = { version = "0.3", features = ["std"] }
 serde.workspace = true
 serde_json.workspace = true
-tokio = { workspace = true, features = ["sync"] }
+tokio = { workspace = true, features = ["sync", "macros", "time", "rt"] }
 tokio-util = { version = "0.7.16", features = ["rt"] }
 uuid.workspace = true
 ignore = "0.4"

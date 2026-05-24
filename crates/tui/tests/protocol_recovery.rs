@@ -19,27 +19,26 @@
 
 use std::fs;
 
-#[path = "../src/core/tool_parser.rs"]
-#[allow(dead_code)]
-mod tool_parser;
+use deepseek_core::engine::tool_parser;
 
 // `engine.rs` was decomposed into submodules under `core/engine/`. The
 // protocol-scrubbing strings the tests below assert on are now spread
 // across `engine.rs` and several `engine/*.rs` files. We compile-time
 // include each so a contributor moving a marker into a sibling submodule
 // does not silently break these regression checks.
+/// Protocol-scrubbing markers live in `deepseek-core` since P2 PR6a; TUI re-exports streaming.
 const ENGINE_SOURCES: &[&str] = &[
-    include_str!("../src/core/engine.rs"),
+    include_str!("../../core/src/engine/streaming.rs"),
     include_str!("../src/core/engine/streaming.rs"),
-    include_str!("../src/core/engine/turn_loop.rs"),
     include_str!("../src/core/engine/dispatch.rs"),
     include_str!("../src/core/engine/tool_setup.rs"),
-    include_str!("../src/core/engine/tool_execution.rs"),
+    include_str!("../src/core/engine/tool_execution/mod.rs"),
+    include_str!("../src/core/engine/tool_execution/exec.rs"),
     include_str!("../src/core/engine/tool_catalog.rs"),
-    include_str!("../src/core/engine/context.rs"),
     include_str!("../src/core/engine/approval.rs"),
-    include_str!("../src/core/engine/capacity_flow.rs"),
+    include_str!("../src/core/engine/capacity_flow/mod.rs"),
     include_str!("../src/core/engine/lsp_hooks.rs"),
+    include_str!("../src/core/engine/turn_loop/tool_plans_exec.rs"),
 ];
 
 fn any_engine_source_contains(needle: &str) -> bool {
@@ -164,12 +163,12 @@ fn legacy_parser_has_marker_helper_for_legacy_shapes_only() {
 
 #[test]
 fn engine_source_file_still_exists_and_is_non_trivial() {
-    // Sanity check so the `include_str!` above is meaningful — if the engine
-    // module ever moves, this test must be updated alongside it.
-    let metadata = fs::metadata("src/core/engine.rs").expect("engine.rs must exist next to tests");
+    // P2 PR6: protocol markers may live in `deepseek-core` + decomposed `engine/*`.
+    let total: u64 = ENGINE_SOURCES.iter().map(|s| s.len() as u64).sum();
     assert!(
-        metadata.len() > 10_000,
-        "engine.rs is unexpectedly small ({} bytes); did the file move?",
-        metadata.len()
+        total > 10_000,
+        "engine protocol sources are unexpectedly small ({total} bytes); update ENGINE_SOURCES"
     );
+    let metadata = fs::metadata("src/core/engine.rs").expect("engine.rs must exist next to tests");
+    assert!(metadata.len() > 1_000, "engine.rs shell missing or empty");
 }

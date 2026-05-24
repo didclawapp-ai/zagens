@@ -1,8 +1,7 @@
 //! Turn loop (P2 PR4): [`handle_deepseek_turn`] in `deepseek-core`; L2 phases here.
 
 mod host_impl;
-mod streaming_phase;
-mod tool_phase;
+mod tool_plans_exec;
 
 use super::Engine;
 use host_impl::app_mode_to_turn_loop;

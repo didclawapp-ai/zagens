@@ -216,6 +216,7 @@ const en: TranslationMap = {
   },
   terminal: {
     tab: 'Terminal',
+    sessionTablist: 'Terminal sessions',
     title: 'Terminal 1',
     menuTitle: 'Terminals',
     new: 'New terminal',

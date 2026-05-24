@@ -7,6 +7,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use deepseek_tools::{ToolError, ToolResult};
 use serde_json::Value;
+
 use tokio::sync::{mpsc, Mutex as AsyncMutex, RwLock};
 use tokio_util::sync::CancellationToken;
 
@@ -18,7 +19,8 @@ use crate::scratchpad::ScratchpadConfig;
 use crate::session::Session;
 use crate::turn::{TurnContext, TurnLoopMode};
 
-use super::control::{TurnLoopControl, TurnLoopStreamingPhaseOutcome, TurnLoopToolPhaseOutcome};
+use super::control::{TurnLoopControl, TurnLoopToolPhaseOutcome};
+use super::exec::{ToolExecOutcome, ToolExecutionPlan, ToolPlanApprovalMeta};
 use crate::engine::loop_guard::LoopGuard;
 use crate::engine::streaming::ToolUseState;
 
@@ -156,30 +158,48 @@ pub trait TurnLoopHost: Send {
         consecutive_tool_error_steps: u32,
     ) -> bool;
 
-    async fn run_streaming_phase(
-        &mut self,
-        turn: &mut TurnContext,
-        client: &dyn LlmClient,
-        mode: TurnLoopMode,
-        tool_catalog: &[Tool],
-        active_tool_names: &HashSet<String>,
-        force_update_plan_first: bool,
-        stream_retry_attempts: &mut u32,
-        context_recovery_attempts: &mut u8,
-        turn_error: &mut Option<String>,
-    ) -> TurnLoopStreamingPhaseOutcome;
+    /// L2: resolve `auto` reasoning_effort (TUI: `auto_reasoning`; core default: session only).
+    fn effective_reasoning_effort_for_request(&mut self) -> Option<String>;
 
-    async fn run_tool_execution_phase(
+    /// L2: streaming SSE tool JSON parse (TUI: `arg_repair` ladder).
+    fn parse_streaming_tool_input(&self, buffer: &str) -> Option<Value>;
+
+    /// L2: finalized tool input after stream block stop.
+    fn final_streaming_tool_input(&self, state: &ToolUseState) -> Value;
+
+    /// L2: ensure MCP pool when the batch includes MCP tool names.
+    async fn ensure_mcp_pool_for_tools(
         &mut self,
-        turn: &mut TurnContext,
+        tool_uses: &[ToolUseState],
+    ) -> Option<Arc<AsyncMutex<Self::McpPool>>>;
+
+    /// L2: resolve a hallucinated tool name via registry alias table.
+    fn resolve_hallucinated_tool_name(
+        &self,
+        name: &str,
+        catalog: &[Tool],
+        registry: Option<&Self::ToolRegistry>,
+    ) -> Option<String>;
+
+    /// L2: approval / parallelism metadata for one planned tool.
+    fn tool_plan_approval_meta(
+        &self,
+        tool_name: &str,
+        tool_input: &Value,
+        registry: Option<&Self::ToolRegistry>,
+    ) -> ToolPlanApprovalMeta;
+
+    /// L2: run parallel/sequential execution for planned tools (TUI: `tool_plans_exec`).
+    async fn execute_tool_plans(
+        &mut self,
         mode: TurnLoopMode,
-        tool_uses: &mut [ToolUseState],
+        plans: Vec<ToolExecutionPlan>,
         tool_catalog: &[Tool],
         active_tool_names: &mut HashSet<String>,
-        loop_guard: &mut LoopGuard,
-        consecutive_tool_error_steps: u32,
         tool_registry: Option<&Self::ToolRegistry>,
-    ) -> TurnLoopToolPhaseOutcome;
+        mcp_pool: Option<Arc<AsyncMutex<Self::McpPool>>>,
+        tool_exec_lock: Arc<RwLock<()>>,
+    ) -> Vec<ToolExecOutcome>;
 
     async fn run_capacity_error_escalation_checkpoint(
         &mut self,
