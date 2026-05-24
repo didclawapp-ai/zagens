@@ -1,7 +1,7 @@
 # CRAFT 实施拆解：可落地的工作单元
 
 > **关联文档**：[agent-reliability-craft-plan.md](agent-reliability-craft-plan.md) §11「后续改进方向」。
-> **状态**：B-L1 P0/P1 **已落地 + 手测签收**（2026-05-24）；Issue 6–7 待办；Issue 8 fix-loop **✅ 手测通过**。
+> **状态**：B-L1 P0/P1 **已落地 + 手测签收**（2026-05-24）；Issue 6 **✅ 代码 2026-05-24**；Issue 7 待办；Issue 8 fix-loop **✅ 手测通过**。
 >
 > **⚠️ 前置阅读**：Issue 0 是基础设施修正，必须在 Issue 1–6 之前完成。
 
@@ -17,7 +17,7 @@
 | 3 | `structured_verdict` 注入 sentinel payload | P0 | ~12 行 Rust | 无 | ✅ |
 | 4 | `parse_structured_verdict` 追踪日志 | P1 | ~8 行 Rust | #3 | ✅ |
 | 5 | Task 状态卡片（DS Pick AgentPanel） | P1 | ~90 行 | #1 #2 | ✅ |
-| 6 | 指令文件自动发现（含 pick-rules 优先级） | P2 | ~20 行 Rust | #0 | ⏸ |
+| 6 | 指令文件自动发现（含 pick-rules 优先级） | P2 | ~20 行 Rust | #0 | ✅ 2026-05-24 |
 | 7 | A/B 验证 runbook | P1 | 文档 | 所有 P0 完成 | ⏸ |
 | 8 | P2 fix-loop 手工验证 | P1 | 手工测试 | #3 | ✅ 2026-05-24 |
 

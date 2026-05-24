@@ -468,6 +468,7 @@ impl TaskExecutor for EngineTaskExecutor {
                     trust_mode: Some(task.trust_mode),
                     auto_approve: Some(task.auto_approve),
                     route_intent: None,
+                    ..Default::default()
                 },
             )
             .await

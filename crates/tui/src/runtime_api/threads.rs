@@ -14,8 +14,9 @@ use serde_json::{json, Value};
 use crate::config::DEFAULT_TEXT_MODEL;
 use crate::models::SystemPrompt;
 use crate::runtime_threads::{
-    CompactThreadRequest, CreateThreadRequest, StartTurnRequest, SteerTurnRequest, ThreadDetail,
-    ThreadListFilter, ThreadRecord, TurnItemKind, TurnRecord, UpdateThreadRequest,
+    CompactThreadRequest, CreateThreadRequest, EditLastTurnRequest, ForkAtUserMessageRequest,
+    ForkAtUserMessageResponse, StartTurnRequest, SteerTurnRequest, ThreadDetail, ThreadListFilter,
+    ThreadRecord, TurnItemKind, TurnRecord, UpdateThreadRequest,
 };
 use crate::session_manager::{create_saved_session_with_mode, update_session, SavedSession};
 use crate::snapshot::SnapshotRepo;
@@ -918,6 +919,25 @@ pub(crate) async fn fork_thread(
     Ok((StatusCode::CREATED, Json(thread)))
 }
 
+pub(crate) async fn fork_thread_at_user_message(
+    State(state): State<RuntimeApiState>,
+    AxumPath(id): AxumPath<String>,
+    Json(req): Json<ForkAtUserMessageRequest>,
+) -> Result<(StatusCode, Json<ForkAtUserMessageResponse>), ApiError> {
+    let (thread, original_user_text) = state
+        .runtime_threads
+        .fork_at_user_message(&id, req.depth_from_tail)
+        .await
+        .map_err(map_thread_err)?;
+    Ok((
+        StatusCode::CREATED,
+        Json(ForkAtUserMessageResponse {
+            thread,
+            original_user_text,
+        }),
+    ))
+}
+
 pub(crate) async fn start_thread_turn(
     State(state): State<RuntimeApiState>,
     AxumPath(id): AxumPath<String>,
@@ -926,6 +946,27 @@ pub(crate) async fn start_thread_turn(
     let turn = state
         .runtime_threads
         .start_turn(&id, req)
+        .await
+        .map_err(map_thread_err)?;
+    let thread = state
+        .runtime_threads
+        .get_thread(&id)
+        .await
+        .map_err(map_thread_err)?;
+    Ok((
+        StatusCode::CREATED,
+        Json(StartTurnResponse { thread, turn }),
+    ))
+}
+
+pub(crate) async fn edit_last_thread_turn(
+    State(state): State<RuntimeApiState>,
+    AxumPath(id): AxumPath<String>,
+    Json(req): Json<EditLastTurnRequest>,
+) -> Result<(StatusCode, Json<StartTurnResponse>), ApiError> {
+    let turn = state
+        .runtime_threads
+        .edit_last_turn(&id, req)
         .await
         .map_err(map_thread_err)?;
     let thread = state

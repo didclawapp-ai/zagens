@@ -1471,21 +1471,51 @@ impl Config {
             .unwrap_or_else(|| PathBuf::from("./memory.md"))
     }
 
-    /// Resolve the configured `instructions = [...]` array (#454)
-    /// to absolute paths, in declared order. Empty when unset or
-    /// when every entry is empty after trimming. Each entry runs
-    /// through `expand_path` so `~` and env vars are honoured.
+    /// Resolve instruction file paths for a workspace.
+    ///
+    /// Priority:
+    /// 1. Explicit non-empty `instructions = [...]` → use as-is (expanded).
+    /// 2. Otherwise auto-discover `PROJECT_RULES.md` and `.cursor/rules/*.mdc`.
+    ///
+    /// `.deepseek/pick-rules.md` is handled separately by
+    /// [`crate::prompts::merge_instruction_paths_with_pick_rules`].
     #[must_use]
-    pub fn instructions_paths(&self) -> Vec<PathBuf> {
-        self.instructions
-            .as_deref()
-            .unwrap_or(&[])
-            .iter()
-            .map(String::as_str)
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(expand_path)
-            .collect()
+    pub fn instructions_paths(&self, workspace: &std::path::Path) -> Vec<PathBuf> {
+        if let Some(explicit) = self.instructions.as_deref() {
+            let non_empty: Vec<&str> = explicit
+                .iter()
+                .map(String::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .collect();
+            if !non_empty.is_empty() {
+                return non_empty.into_iter().map(expand_path).collect();
+            }
+        }
+
+        let mut paths: Vec<PathBuf> = Vec::new();
+
+        let candidate = workspace.join("PROJECT_RULES.md");
+        if candidate.is_file() {
+            tracing::info!("auto-discovered instruction: {}", candidate.display());
+            paths.push(candidate);
+        }
+
+        let cursor_rules = workspace.join(".cursor").join("rules");
+        if let Ok(entries) = std::fs::read_dir(&cursor_rules) {
+            let mut mdc_files: Vec<PathBuf> = entries
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| p.extension().is_some_and(|e| e == "mdc"))
+                .collect();
+            mdc_files.sort();
+            for p in mdc_files {
+                tracing::info!("auto-discovered instruction: {}", p.display());
+                paths.push(p);
+            }
+        }
+
+        paths
     }
 
     /// Whether the user-memory feature is enabled. The default is **off**
@@ -5117,5 +5147,58 @@ model = "deepseek-v4-pro"
         let json = serde_json::to_value(&cap).unwrap();
         let deserialized: ProviderCapability = serde_json::from_value(json).unwrap();
         assert_eq!(cap, deserialized);
+    }
+
+    #[test]
+    fn instructions_paths_auto_discovers_project_rules_and_cursor_mdc() {
+        use std::fs;
+        use tempfile::tempdir;
+
+        let tmp = tempdir().expect("tempdir");
+        let workspace = tmp.path();
+        fs::write(workspace.join("PROJECT_RULES.md"), "# rules").unwrap();
+        let rules_dir = workspace.join(".cursor").join("rules");
+        fs::create_dir_all(&rules_dir).unwrap();
+        fs::write(rules_dir.join("security.mdc"), "security").unwrap();
+        fs::write(rules_dir.join("alpha.mdc"), "alpha").unwrap();
+
+        let cfg = Config::default();
+        let paths = cfg.instructions_paths(workspace);
+        assert_eq!(paths.len(), 3);
+        assert_eq!(paths[0], workspace.join("PROJECT_RULES.md"));
+        assert_eq!(paths[1], rules_dir.join("alpha.mdc"));
+        assert_eq!(paths[2], rules_dir.join("security.mdc"));
+    }
+
+    #[test]
+    fn instructions_paths_explicit_list_skips_auto_discovery() {
+        use std::fs;
+        use tempfile::tempdir;
+
+        let tmp = tempdir().expect("tempdir");
+        let workspace = tmp.path();
+        fs::write(workspace.join("PROJECT_RULES.md"), "# rules").unwrap();
+
+        let mut cfg = Config::default();
+        cfg.instructions = Some(vec!["custom.md".to_string()]);
+        let paths = cfg.instructions_paths(workspace);
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("custom.md"));
+    }
+
+    #[test]
+    fn instructions_paths_empty_explicit_list_falls_back_to_auto_discovery() {
+        use std::fs;
+        use tempfile::tempdir;
+
+        let tmp = tempdir().expect("tempdir");
+        let workspace = tmp.path();
+        fs::write(workspace.join("PROJECT_RULES.md"), "# rules").unwrap();
+
+        let mut cfg = Config::default();
+        cfg.instructions = Some(vec!["".to_string(), "  ".to_string()]);
+        let paths = cfg.instructions_paths(workspace);
+        assert_eq!(paths.len(), 1);
+        assert_eq!(paths[0], workspace.join("PROJECT_RULES.md"));
     }
 }

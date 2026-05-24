@@ -424,6 +424,9 @@ pub(super) async fn stream_turn(
                 trust_mode: Some(trust_mode),
                 auto_approve: Some(auto_approve),
                 route_intent: req.route_intent.clone(),
+                temperature: req.temperature,
+                top_p: req.top_p,
+                max_tokens: req.max_tokens,
             },
         )
         .await

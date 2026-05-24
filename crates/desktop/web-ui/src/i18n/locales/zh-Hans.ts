@@ -553,6 +553,21 @@ const zhHans = {
     deleteFailed: '删除失败',
     openDir: '打开目录',
   },
+  chat: {
+    editTitle: '编辑上一条消息',
+    editSubmit: '保存并重新发送',
+    editNeedsThread: '请先恢复线程后再编辑消息。',
+    editLastOnly: '只能编辑最后一条用户消息。',
+    backtrackTitle: '从此处分支',
+    backtrackAction: '分支',
+    backtrackBody:
+      '将创建一条新线程副本，保留到此消息为止的对话；之后的轮次不会带入新分支（当前线程不变）。',
+    backtrackConfirm: '创建分支',
+    backtrackWorking: '正在分支…',
+    backtrackNeedsThread: '请先恢复线程后再创建分支。',
+    backtrackSuccess: '已创建新分支，可在输入框继续对话。',
+    backtrackFailed: '分支失败：{{message}}',
+  },
   chatMarkdown: {
     copyCode: '复制代码',
     copyReasoning: '复制思维链',

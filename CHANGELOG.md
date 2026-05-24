@@ -21,6 +21,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Tests (CRAFT/GAP):** Unit tests for `instructions_paths` auto-discovery, `resident_file` hard lock, and sub-agent LSP inheritance in `build_tool_context`; G2 §11 smoke runbook for integration sign-off.
+- **CRAFT:** Sub-agent `ToolContext` inherits parent `lsp_manager` when LSP enabled — `diagnostics` works in child turns.
+- **CRAFT (Issue 6):** `Config::instructions_paths(workspace)` auto-discovers `PROJECT_RULES.md` and `.cursor/rules/*.mdc` when `instructions = [...]` is unset or empty (pick-rules merge unchanged).
+- **CRAFT:** `resident_file` hard lock — conflicting lease rejects spawn instead of warning-only.
+- **Runtime (GAP):** `POST /v1/threads/{id}/fork-at-user-message` with `{ depth_from_tail }` exposes `fork_at_user_message` for backtrack-depth forking.
+- **DS Pick (GAP):** `agent_spawn` / `spawn_agent` tool cards show inline sub-agent status linked to AgentPanel SSE state.
+- **DS Pick (GAP):** User messages (non-last) offer **Branch** → `forkThreadAtUserMessage` + composer prefill from `original_user_text`.
+- **Runtime (A1.4):** `history_isomorphism` — live tool-detail outputs vs message tool-results parity helpers + tests.
+- **Desktop API:** `forkThreadAtUserMessage()` client helper.
+
 ### Fixed
 
 - **DS Pick (F3):** `ModelParamsDialog` — `role="dialog"`, `aria-modal`, labelled controls, Escape to close, focus on open; strings via `modelParams.*` i18n.
@@ -38,6 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Runtime (A1):** `set_routing_rules` persists via `spawn_blocking` (async HTTP path no longer blocks on JSON I/O).
 - **Governance (D10):** 维护者签收解除桌面 Feature freeze（Jason，2026-05-24）— [docs/tech/adr/P2_D10_UNFREEZE_RECORD.md](docs/tech/adr/P2_D10_UNFREEZE_RECORD.md) §4；路线图 §17.4 已勾选。
 - **Governance (F3):** G2 手测清单 §8（键盘 a11y 8.1–8.5）维护者签收 ✅（2026-05-24）— [G2_PR5_MANUAL_SMOKE_CHECKLIST.md](docs/tech/adr/G2_PR5_MANUAL_SMOKE_CHECKLIST.md) §6。
 - **Governance (§12.4 #2):** **已闭合**（2026-05-24）— Stop / 长跑双壳 / DS Pick 审批（G2 §2 + §9）；全量审核 [CODE_REVIEW_2026-05-24.md](deliverables/CODE_REVIEW_2026-05-24.md)。
@@ -53,6 +66,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Runtime (GAP 8a):** `StartTurnRequest` / `StartTurnParams` / session sampling fields (`temperature`, `top_p`, `max_output_tokens`); `streaming_phase` forwards them to the API request.
+- **Runtime (GAP F4):** `POST /v1/threads/{id}/edit-last-turn` — truncate last user turn on live engine session and start a new turn (TUI `/edit` parity).
+- **DS Pick (GAP 8a):** Composer gear opens `ModelParamsDialog`; params persist in localStorage and pass through `startThreadTurn` / `POST /v1/stream`.
+- **DS Pick (GAP F4):** Edit last user message from `MessageBubble` → dialog → `editLastThreadTurn` + SSE replay.
+- **Docs:** 路线图 §17.3 / `IMPLEMENTATION_SUMMARY` / `TUI_DS_PICK_GAP` 按 2026-05-24 代码审计更新（manager 已拆、F0–F3/路由/导出/托盘/智能粘贴已闭合）。
 - **Docs:** G2 §10 B-L1 CRAFT 手测签收（2026-05-24）— §12.5 #1 闭环、AgentPanel、`craft.*` SSE；[G2_PR5_MANUAL_SMOKE_CHECKLIST.md](docs/tech/adr/G2_PR5_MANUAL_SMOKE_CHECKLIST.md) §10。
 - **Runtime (B-L1 / CRAFT):** Blackboard APIs bind to thread **workspace** (not sidecar `cwd`); `GET /v1/blackboards` + `GET /v1/blackboards/{id}`; subagent done sentinel includes `structured_verdict` only when present; Verifier failures写入黑板；`<deepseek:craft.fix_loop>` 程序化修复提示；SSE `craft.verdict` / `craft.board_updated`。
 - **DS Pick (B-L3):** AgentPanel「CRAFT 任务」区域 — 轮询 `/v1/blackboards`，展示 explorer / 实现轮次 / reviewer 裁决 / verifier 摘要。

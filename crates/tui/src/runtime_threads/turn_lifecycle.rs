@@ -170,6 +170,9 @@ impl RuntimeThreadManager {
             trust_mode,
             auto_approve,
             approval_mode,
+            temperature: req.temperature,
+            top_p: req.top_p,
+            max_output_tokens: req.max_tokens,
         };
         engine
             .start_turn(start_params)
@@ -215,6 +218,53 @@ impl RuntimeThreadManager {
         Ok(turn)
     }
 
+    /// Edit the last user message: truncate session tail, then start a fresh turn (F4).
+    pub async fn edit_last_turn(
+        &self,
+        thread_id: &str,
+        req: EditLastTurnRequest,
+    ) -> Result<TurnRecord> {
+        let content = req.content.trim().to_string();
+        if content.is_empty() {
+            bail!("content is required");
+        }
 
+        {
+            let active = self.active.lock().await;
+            if let Some(active_thread) = active.engines.get(thread_id)
+                && active_thread.active_turn.is_some()
+            {
+                bail!("Thread already has an active turn");
+            }
+        }
+
+        let thread = self.get_thread(thread_id).await?;
+        let engine = self.ensure_engine_loaded(&thread).await?;
+        let truncated = engine
+            .truncate_before_last_user_message()
+            .await
+            .context("truncate before last user message")?;
+        if !truncated {
+            bail!("No user message to edit");
+        }
+
+        self.start_turn(
+            thread_id,
+            StartTurnRequest {
+                prompt: content,
+                input_summary: None,
+                model: req.model,
+                mode: req.mode,
+                allow_shell: req.allow_shell,
+                trust_mode: req.trust_mode,
+                auto_approve: req.auto_approve,
+                route_intent: req.route_intent,
+                temperature: req.temperature,
+                top_p: req.top_p,
+                max_tokens: req.max_tokens,
+            },
+        )
+        .await
+    }
 }
 

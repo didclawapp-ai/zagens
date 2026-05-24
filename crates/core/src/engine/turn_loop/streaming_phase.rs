@@ -59,7 +59,9 @@ let request = {
     MessageRequest {
         model: session.model.clone(),
         messages: messages_with_turn_metadata(session, &workspace),
-        max_tokens: effective_max_output_tokens(&session.model),
+        max_tokens: session
+            .max_output_tokens
+            .unwrap_or_else(|| effective_max_output_tokens(&session.model)),
         system: session.system_prompt.clone(),
         tools: active_tools.clone(),
         tool_choice: if active_tools.is_some() {
@@ -75,8 +77,8 @@ let request = {
         thinking: None,
         reasoning_effort: effective_reasoning_effort,
         stream: Some(true),
-        temperature: None,
-        top_p: None,
+        temperature: session.temperature,
+        top_p: session.top_p,
     }
 };
 

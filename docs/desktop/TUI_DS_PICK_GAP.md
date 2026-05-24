@@ -18,12 +18,12 @@
 | 消息类型 | 用户 / 助手 / 工具 / 元 | 按角色着色，工具调用以块展示，思考（流式），错误 |
 | 附件 | 图片路径 / 粘贴（平台相关） | 粘贴图片；选择文件（图片 + 其他）；大小限制；编写器中二进制文件预览 |
 | 工具交互 | 工具运行指示器，审批 | 工具运行徽章；审批门 + **✅ HTTP 交互式审批**（`POST /v1/threads/{id}/turns/{turn_id}/resolve-approval`，pending 队列，默认 120s 超时自动 deny） |
-| 工作区 | 根目录，`read_file`，搜索，`stat_path`，目录树，二进制文件可选 | 浏览/搜索/展开目录树；读取文本 + 仓库根目录下的可选二进制文件；`stat_path`；◐ **资源管理器中打开**待实现 |
-| 模型 | 模型列表，参数，API 地址 | 运行时下拉列表（V4 Pro / V4 Flash）；健康检查；◐ **模型参数对话框**（temperature / top_p 等）待实现 |
-| 会话控制 | 清除/回退至消息；检查点 | ◐ 工作区级快照恢复（`GET .../snapshots` + `POST .../restore`）；单条消息粒度「清除到此位置」待实现 |
-| 设置与文档 | `/config`，模型参数 | 健康检查，链接，打开用户数据目录；◐ **导出会话 JSON** 待实现 |
+| 工作区 | 根目录，`read_file`，搜索，`stat_path`，目录树，二进制文件可选 | 浏览/搜索/展开目录树；读取文本 + 仓库根目录下的可选二进制文件；`stat_path`；**✅ 资源管理器中打开**（`open_in_shell`） |
+| 模型 | 模型列表，参数，API 地址 | 运行时下拉列表（V4 Pro / V4 Flash）；健康检查；**✅ 模型参数**（Composer 齿轮 → `ModelParamsDialog` → runtime 透传） |
+| 会话控制 | 清除/回退至消息；检查点 | ◐ 工作区级快照恢复；**✅ 编辑上一条用户消息**（`POST .../edit-last-turn` + MessageBubble） |
+| 设置与文档 | `/config`，模型参数 | 健康检查，链接，打开用户数据目录；**✅ 导出会话 JSON** |
 | 离线 / 重连 | 崩溃检查点 + `--resume` | **✅ 运行时连接检测**（8s 间隔 probe），fetch 退避重试（指数退避 ×5），sidecar 自动重启（5s 心跳 ×3 失败），启动时 `waitForRuntimeReady`（90s 超时） |
-| 平台 | 终端界面 | 原生窗口，系统标题栏，通知（plugin 已注册）；◐ **系统托盘**（`Cargo.toml` 未启用 `tray-icon` feature） |
+| 平台 | 终端界面 | 原生窗口，系统标题栏，通知（turn 完成 tab 隐藏可推送）；**✅ 系统托盘**（`tray-icon` feature） |
 | 多窗口 / 多项目 | TUI 单终端 | **✅ 真多窗口**（2026-05-21）：`WebviewWindow` + 单实例 + 每窗 workspace/会话过滤 + 并行 turn；见 [multi-window-plan.md](multi-window-plan.md) |
 
 ---
@@ -36,7 +36,7 @@
 - **任务 / 技能** — ◐ 侧栏「任务与技能」：`AutomationPanel.tsx`（仅任务 + 技能）。**定时自动化列表不展示**（见上文产品说明）。
 - **MCP** — ✅ `McpPanel.tsx` + `fetchMcpServers` / `fetchMcpTools`；与 TUI 相比_enable/disable 等进阶操作以实际 API 为准。
 - **用量 / 费用** — ✅ `UsageDashboard.tsx` + `fetchUsage`（recharts）；细粒度与 TUI `/cost` 对标程度未逐项验证。
-- **自动模型路由** — ◐ `RoutingPanel.tsx` + `fetchRoutingRules` / `setRoutingRules`；是否已在 **runtime** 全链路生效需以 `runtime_api.rs` 与 `handleSend` 传参为准（前端已提供配置 UI）。
+- **自动模型路由** — **✅** `RoutingPanel` + `route_intent` 全链路透传（单测 `start_turn_applies_route_intent_routing_rule_to_model`）。
 - **TUI 斜杠命令的深度交互** — 丰富的 `/` 菜单、面板、快捷键、文档内联支持（与终端产品对标）。
 - **部分高级线程操作** — 例如仅导出线程、复制、合并、批量归档模式（TUI 或脚本已支持的）。
 
@@ -50,13 +50,14 @@
 
 - **内联编辑**已发送的用户消息（TUI 支持编辑会话中的前序消息）。
 - **键盘优先**导航（焦点环、侧边栏/编写器/历史的快捷键）。
-- **智能粘贴**代码块 / HTML → 纯文本规范化（对标 TUI 的粘贴行为）。
+- **智能粘贴** — **✅** `Composer.tsx` + `sanitizeHtml.ts`（HTML→纯文本、code fence）。
+- **内联编辑** — ◐ `MessageBubble` 编辑 UI 已有；待 `POST .../edit-last-turn` + `App.tsx` 接线。
 - **无障碍** — 屏幕阅读器标签、减少动画、高对比度模式（Tauri + Web）。
 - **终端模拟器** — ✅ `TerminalCard.tsx` + xterm.js；`tool.progress` SSE 增量写入终端（F1a，2026-05-23）。
 - **Diff 可视化** — ✅ `DiffCard.tsx` + diff2html；`edit_file`/`apply_patch`/`write_file` 在 turn 进行中也可预览 diff（F1b）。
 - **子代理状态面板** — 与「明显差距」中的子代理条目相同，归类于此阶段作为纯前端工作。
-- **资源管理器中打开** — TUI 支持在系统文件管理器中打开工作区路径；DS Pick 无对应 Tauri command。
-- **导出会话 JSON** — TUI 支持将会话导出为 JSON 文件；DS Pick 仅自动 persist，无用户可见的导出入口。
+- **资源管理器中打开** — **✅** `open_in_shell` Tauri command + `WorkspaceFilesPanel`。
+- **导出会话 JSON** — **✅** Composer 菜单 + `export_session_json` / `export_thread_json`。
 
 ---
 
@@ -115,13 +116,13 @@
 | 1 | MCP 管理面板 | **✅** | `McpPanel.tsx`、`client.ts` |
 | 2 | 用量仪表盘 | **✅** | `UsageDashboard.tsx`、`fetchUsage` |
 | 3 | 任务 / ~~自动化~~ / 技能 | **◐** | `AutomationPanel.tsx`：任务 + 技能；**定时自动化不展示** |
-| 4 | 子代理面板 | **◐** | `AgentPanel.tsx`、`agentStates`、`App.tsx` SSE |
+| 4 | 子代理面板 | **✅** | `AgentPanel.tsx` + `AgentSpawnInline` 工具卡联动 |
 | 5 | Terminal（xterm） | **✅** | `TerminalCard.tsx`；F1a 增量 progress |
 | 6 | Diff（diff2html） | **✅** | `DiffCard.tsx` + `DiffPanel`；运行中预览 |
 | 7 | 快捷键 & a11y | **✅** | Skip link、roving tablist、reduced-motion、`ModelParamsDialog` i18n + dialog 语义；**G2 §8 手测已签**（2026-05-24） |
-| 8 | 模型参数 + 资源管理器 + 导出 JSON | **◐** | `ModelParamsDialog` 已接；**8b/8c** 仍缺 |
-| 9 | 智能粘贴 & 内联编辑 | **❌** | 未做 |
-| 10 | 自动模型路由 | **◐** | `RoutingPanel.tsx`；引擎侧需核对 |
+| 8 | 模型参数 + 资源管理器 + 导出 JSON | **✅** | 8a/8b/8c 均已落地 |
+| 9 | 智能粘贴 & 内联编辑 & 回溯分支 | **✅** | 智能粘贴 **✅**；编辑上一条 **✅**；历史用户消息「分支」→ `fork-at-user-message` **✅** |
+| 10 | 自动模型路由 | **✅** | `RoutingPanel` + runtime 单测 |
 
 **侧边栏**：`Sidebar.tsx`「设置」折叠下：`API Key`、`MCP 服务器`、`用量仪表盘`、`任务与技能`、`子代理`、`模型路由`。演示布局见 `TUI_DS_PICK_GAP_DEMO.html`。
 

@@ -32,6 +32,9 @@ pub enum Op {
         trust_mode: bool,
         auto_approve: bool,
         approval_mode: ApprovalMode,
+        temperature: Option<f32>,
+        top_p: Option<f32>,
+        max_output_tokens: Option<u32>,
     },
 
     /// Cancel the current request
@@ -92,8 +95,12 @@ pub enum Op {
 
     /// Edit the last user message: remove the last user+assistant exchange
     /// from the session, then re-send with the new content.
-    #[allow(dead_code)]
     EditLastTurn { new_message: String },
+
+    /// Drop the last user message and everything after it (#383 `/edit`, F4 HTTP).
+    TruncateBeforeLastUserMessage {
+        reply: oneshot::Sender<bool>,
+    },
 
     /// Return a TUI-aligned context usage snapshot (DS Pick / runtime API).
     QueryContext {

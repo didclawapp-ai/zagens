@@ -404,6 +404,8 @@ interface Props {
   onExportThreadJson: () => void;
   model: DesktopModelId;
   onModelChange: (model: DesktopModelId) => void;
+  /** Opens ModelParamsDialog (temperature / top_p / max_tokens). */
+  onOpenModelParams?: () => void;
   workspace: string;
   onWorkspaceChange: (ws: string) => void | Promise<void>;
   /** Session is bound to a restored runtime thread; workspace commits via PATCH when changed */
@@ -424,6 +426,8 @@ interface Props {
   officeSession?: boolean;
   /** Files panel「添加至对话」— bump `nonce` to append `@path` to the input. */
   workspaceMention?: { relPath: string; isDirectory?: boolean; nonce: number };
+  /** Backtrack fork — replace composer text when `nonce` bumps. */
+  composerPrefill?: { text: string; nonce: number };
 }
 
 export default function Composer({
@@ -446,6 +450,7 @@ export default function Composer({
   onExportThreadJson,
   model,
   onModelChange,
+  onOpenModelParams,
   workspace,
   onWorkspaceChange,
   resumedThreadActive = false,
@@ -458,6 +463,7 @@ export default function Composer({
   lastTurnOutputTokens = null,
   officeSession = false,
   workspaceMention,
+  composerPrefill,
 }: Props) {
   const { t } = useT();
   const [text, setText] = useState('');
@@ -502,6 +508,18 @@ export default function Composer({
       el.setSelectionRange(len, len);
     });
   }, [workspaceMention?.nonce, workspaceMention?.relPath, workspaceMention?.isDirectory]);
+
+  useEffect(() => {
+    if (!composerPrefill?.nonce || !composerPrefill.text.trim()) return;
+    setText(composerPrefill.text);
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      const len = el.value.length;
+      el.setSelectionRange(len, len);
+    });
+  }, [composerPrefill?.nonce, composerPrefill?.text]);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -1132,6 +1150,23 @@ export default function Composer({
                 </div>
               )}
             </div>
+            {onOpenModelParams ? (
+              <button
+                type="button"
+                className="composer-chip shrink-0 px-2"
+                disabled={disabled}
+                onClick={onOpenModelParams}
+                title={t('sidebar.modelParams')}
+                aria-label={t('sidebar.modelParams')}
+              >
+                <svg viewBox="0 0 24 24" style={{ width: 14, height: 14 }} aria-hidden>
+                  <path
+                    fill="currentColor"
+                    d="M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8m8.94 5A8.994 8.994 0 0 0 13 20.94V22h-2v-1.06A8.994 8.994 0 0 0 3.06 13H2v-2h1.06A8.994 8.994 0 0 0 11 3.06V2h2v1.06A8.994 8.994 0 0 0 20.94 11H22v2h-1.06Z"
+                  />
+                </svg>
+              </button>
+            ) : null}
             <div
               className="flex shrink-0 items-center gap-1.5"
               title={`${t(contextTooltipKey, {

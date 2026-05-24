@@ -635,6 +635,37 @@ async fn thread_endpoints_expose_lifecycle_contract() -> Result<()> {
     let forked_id = forked["id"].as_str().context("missing forked id")?;
     assert_ne!(forked_id, thread_id);
 
+    let backtrack_err = client
+        .post(format!(
+            "http://{addr}/v1/threads/{thread_id}/fork-at-user-message"
+        ))
+        .json(&json!({ "depth_from_tail": 0 }))
+        .send()
+        .await?;
+    assert!(!backtrack_err.status().is_success());
+
+    seed_test_turns_with_user_messages(
+        &runtime_threads,
+        &thread_id,
+        &["first user turn", "second user turn"],
+    )?;
+
+    let backtrack: serde_json::Value = client
+        .post(format!(
+            "http://{addr}/v1/threads/{thread_id}/fork-at-user-message"
+        ))
+        .json(&json!({ "depth_from_tail": 1 }))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    let backtrack_thread_id = backtrack["thread"]["id"]
+        .as_str()
+        .context("missing backtrack fork id")?;
+    assert_ne!(backtrack_thread_id, thread_id);
+    assert_eq!(backtrack["original_user_text"], "first user turn");
+
     // Install a mock engine so the turn completes without calling the real API.
     // The mock handles both SendMessage and CompactContext ops so the
     // compact endpoint tested later also works.
@@ -2315,5 +2346,68 @@ async fn sidecar_contract_full_lifecycle() -> Result<()> {
     );
 
     handle.abort();
+    Ok(())
+}
+
+fn seed_test_turns_with_user_messages(
+    manager: &crate::runtime_threads::RuntimeThreadManager,
+    thread_id: &str,
+    user_texts: &[&str],
+) -> Result<()> {
+    use chrono::Utc;
+    use crate::runtime_threads::{
+        RuntimeTurnStatus, TurnItemKind, TurnItemLifecycleStatus, TurnItemRecord, TurnRecord,
+        CURRENT_EVENT_SCHEMA_VERSION,
+    };
+
+    let base = Utc::now();
+    for (offset, text) in user_texts.iter().enumerate() {
+        let created_at = base + chrono::Duration::milliseconds(offset as i64);
+        let turn_id = format!("turn_http_seed_{offset}");
+        let user_item_id = format!("item_user_{offset}");
+        let asst_item_id = format!("item_asst_{offset}");
+        manager.store.save_item(&TurnItemRecord {
+            schema_version: CURRENT_EVENT_SCHEMA_VERSION,
+            id: user_item_id.clone(),
+            turn_id: turn_id.clone(),
+            kind: TurnItemKind::UserMessage,
+            status: TurnItemLifecycleStatus::Completed,
+            summary: (*text).to_string(),
+            detail: Some((*text).to_string()),
+            metadata: None,
+            artifact_refs: Vec::new(),
+            started_at: Some(created_at),
+            ended_at: Some(created_at),
+        })?;
+        manager.store.save_item(&TurnItemRecord {
+            schema_version: CURRENT_EVENT_SCHEMA_VERSION,
+            id: asst_item_id.clone(),
+            turn_id: turn_id.clone(),
+            kind: TurnItemKind::AgentMessage,
+            status: TurnItemLifecycleStatus::Completed,
+            summary: format!("reply {offset}"),
+            detail: Some(format!("reply {offset}")),
+            metadata: None,
+            artifact_refs: Vec::new(),
+            started_at: Some(created_at),
+            ended_at: Some(created_at),
+        })?;
+        manager.store.save_turn(&TurnRecord {
+            schema_version: CURRENT_EVENT_SCHEMA_VERSION,
+            id: turn_id.clone(),
+            thread_id: thread_id.to_string(),
+            status: RuntimeTurnStatus::Completed,
+            input_summary: (*text).to_string(),
+            created_at,
+            started_at: Some(created_at),
+            ended_at: Some(created_at),
+            duration_ms: Some(0),
+            usage: None,
+            last_request_input_tokens: None,
+            error: None,
+            item_ids: vec![user_item_id, asst_item_id],
+            steer_count: 0,
+        })?;
+    }
     Ok(())
 }

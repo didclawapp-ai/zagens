@@ -35,6 +35,9 @@ export interface StreamTurnRequest {
   route_intent?: string;
   /** `auto` | `office` | `code` — resolved when the stream thread is created. */
   task_type?: string;
+  temperature?: number;
+  top_p?: number;
+  max_tokens?: number;
 }
 
 export interface RuntimeThreadSummary {
@@ -582,9 +585,41 @@ export async function startThreadTurn(
     auto_approve?: boolean;
     route_intent?: string;
     task_type?: string;
+    temperature?: number;
+    top_p?: number;
+    max_tokens?: number;
   },
 ): Promise<{ thread: unknown; turn: TurnRecord }> {
   return postJson(`/v1/threads/${encodeURIComponent(threadId)}/turns`, body);
+}
+
+/** Edit the last user message and start a new turn (F4 / TUI `/edit`). */
+export async function editLastThreadTurn(
+  threadId: string,
+  body: {
+    content: string;
+    model?: string;
+    mode?: string;
+    allow_shell?: boolean;
+    trust_mode?: boolean;
+    auto_approve?: boolean;
+    route_intent?: string;
+    temperature?: number;
+    top_p?: number;
+    max_tokens?: number;
+  },
+): Promise<{ thread: unknown; turn: TurnRecord }> {
+  return postJson(`/v1/threads/${encodeURIComponent(threadId)}/edit-last-turn`, body);
+}
+
+/** Fork a thread at the Nth user message from the tail (backtrack depth). */
+export async function forkThreadAtUserMessage(
+  threadId: string,
+  depthFromTail: number,
+): Promise<{ thread: RuntimeThreadRecord; original_user_text: string | null }> {
+  return postJson(`/v1/threads/${encodeURIComponent(threadId)}/fork-at-user-message`, {
+    depth_from_tail: depthFromTail,
+  });
 }
 
 /** Stop an in-flight turn (`engine.cancel()` on the runtime). */

@@ -2,6 +2,8 @@ import { useLayoutEffect, useRef } from 'react';
 import { ChatErrorBoundary } from './ChatErrorBoundary';
 import { MessageBubble } from './MessageBubble';
 import type { ToolCardModel } from './ToolCard';
+import type { AgentState } from '../types/agent';
+import { isLastUserMessage } from '../lib/chat/backtrackDepth';
 import { useT } from '../i18n';
 
 interface Message {
@@ -17,11 +19,13 @@ interface Props {
   messages: Message[];
   workspaceRoot?: string;
   desktopHost?: boolean;
+  agentStates?: AgentState[];
   onOpenWorkspacePath: (relPath: string) => void | Promise<void>;
   onRevealWorkspacePath?: (relPath: string) => void;
   onEditMessage?: (messageId: string, content: string) => void;
   onRetryMessage?: (content: string) => void;
   onOpenDiffInPanel?: () => void;
+  onBacktrackFromMessage?: (messageId: string, content: string) => void;
 }
 
 /** Assistant body scroll cap handles follow-scroll while tokens arrive. */
@@ -38,11 +42,13 @@ export default function ChatView({
   messages,
   workspaceRoot,
   desktopHost,
+  agentStates,
   onOpenWorkspacePath,
   onRevealWorkspacePath,
   onEditMessage,
   onRetryMessage,
   onOpenDiffInPanel,
+  onBacktrackFromMessage,
 }: Props) {
   const { t } = useT();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -95,11 +101,18 @@ export default function ChatView({
               message={msg}
               workspaceRoot={workspaceRoot}
               desktopHost={desktopHost}
+              agentStates={agentStates}
               onOpenWorkspacePath={onOpenWorkspacePath}
               onRevealWorkspacePath={onRevealWorkspacePath}
               onEditMessage={onEditMessage}
               onRetryMessage={onRetryMessage}
               onOpenDiffInPanel={onOpenDiffInPanel}
+              onBacktrackFromMessage={onBacktrackFromMessage}
+              backtrackEnabled={
+                msg.role === 'user' &&
+                Boolean(onBacktrackFromMessage) &&
+                !isLastUserMessage(messages, msg.id)
+              }
             />
           </ChatErrorBoundary>
         ))}

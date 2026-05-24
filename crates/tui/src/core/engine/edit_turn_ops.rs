@@ -18,6 +18,9 @@ impl Engine {
             self.session.trust_mode,
             self.session.auto_approve,
             self.session.approval_mode,
+            self.session.temperature,
+            self.session.top_p,
+            self.session.max_output_tokens,
         )
         .await;
     }

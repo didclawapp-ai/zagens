@@ -9,7 +9,8 @@ use super::stream;
 use super::{
     add_mcp_server, browse_thread_workspace, browse_workspace_by_root, cancel_task,
     clear_tasks, compact_thread, create_automation, create_skill, create_task, create_thread,
-    cors_layer, delete_automation, delete_mcp_server, delete_session, fork_thread,
+    cors_layer, delete_automation, delete_mcp_server, delete_session, edit_last_thread_turn,
+    fork_thread, fork_thread_at_user_message,
     get_automation, get_blackboard, get_mcp_server, get_resume_task, get_routing_rules,
     get_session, get_thread, get_thread_checklist, get_thread_context,
     get_thread_scratchpad_status, get_task, get_usage, health, import_skill_local,
@@ -47,6 +48,11 @@ pub fn build_router(state: RuntimeApiState) -> Router {
         .route("/v1/threads/{id}/context", get(get_thread_context))
         .route("/v1/threads/{id}/resume", post(resume_thread))
         .route("/v1/threads/{id}/fork", post(fork_thread))
+        .route(
+            "/v1/threads/{id}/fork-at-user-message",
+            post(fork_thread_at_user_message),
+        )
+        .route("/v1/threads/{id}/edit-last-turn", post(edit_last_thread_turn))
         .route("/v1/threads/{id}/turns", post(start_thread_turn))
         .route(
             "/v1/threads/{id}/turns/{turn_id}/steer",

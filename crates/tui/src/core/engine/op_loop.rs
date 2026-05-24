@@ -19,6 +19,9 @@ impl Engine {
                     trust_mode,
                     auto_approve,
                     approval_mode,
+                    temperature,
+                    top_p,
+                    max_output_tokens,
                 } => {
                     self.handle_send_message(
                         content,
@@ -32,6 +35,9 @@ impl Engine {
                         trust_mode,
                         auto_approve,
                         approval_mode,
+                        temperature,
+                        top_p,
+                        max_output_tokens,
                     )
                     .await;
                 }
@@ -63,6 +69,12 @@ impl Engine {
                         .await;
                 }
                 Op::EditLastTurn { new_message } => self.handle_edit_last_turn(new_message).await,
+                Op::TruncateBeforeLastUserMessage { reply } => {
+                    let truncated = deepseek_core::session::truncate_before_last_user_message(
+                        &mut self.session.messages,
+                    );
+                    let _ = reply.send(truncated);
+                }
                 Op::QueryContext { reply } => self.handle_query_context_op(reply),
                 Op::Shutdown => break,
             }

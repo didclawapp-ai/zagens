@@ -89,6 +89,12 @@ pub struct Session {
     /// (overwrite per round — not summed across tool-call rounds). Authoritative
     /// for “context size at last inference” per DeepSeek API docs.
     pub last_api_input_tokens: Option<u32>,
+
+    /// Per-session sampling overrides (optional). `None` → provider / model defaults.
+    pub temperature: Option<f32>,
+    pub top_p: Option<f32>,
+    /// Max output tokens for API requests; when unset, model-specific default applies.
+    pub max_output_tokens: Option<u32>,
 }
 
 impl Session {
@@ -168,6 +174,9 @@ impl Session {
             current_cycle_started: Utc::now(),
             cycle_briefings: Vec::new(),
             last_api_input_tokens: None,
+            temperature: None,
+            top_p: None,
+            max_output_tokens: None,
         }
     }
 

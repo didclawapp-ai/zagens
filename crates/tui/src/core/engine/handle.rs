@@ -125,4 +125,13 @@ impl EngineHandle {
             .map_err(|_| anyhow::anyhow!("context query timed out"))?
             .map_err(|_| anyhow::anyhow!("engine dropped context query"))
     }
+
+    /// Remove the last user message and everything after it (F4 / `#383`).
+    pub async fn truncate_before_last_user_message(&self) -> Result<bool> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.send(Op::TruncateBeforeLastUserMessage { reply: tx })
+            .await?;
+        rx.await
+            .map_err(|_| anyhow::anyhow!("engine dropped truncate-before-last-user reply"))
+    }
 }

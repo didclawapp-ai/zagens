@@ -465,6 +465,7 @@ use super::*;
                     trust_mode: None,
                     auto_approve: None,
                     route_intent: None,
+                    ..Default::default()
                 },
             )
             .await?;
@@ -554,6 +555,7 @@ use super::*;
                     trust_mode: None,
                     auto_approve: Some(true),
                     route_intent: None,
+                    ..Default::default()
                 },
             )
             .await?;
@@ -604,6 +606,7 @@ use super::*;
                     trust_mode: None,
                     auto_approve: Some(false),
                     route_intent: None,
+                    ..Default::default()
                 },
             )
             .await?;
@@ -664,6 +667,7 @@ use super::*;
                     trust_mode: None,
                     auto_approve: None,
                     route_intent: Some("Agent".to_string()),
+                    ..Default::default()
                 },
             )
             .await?;
@@ -711,6 +715,7 @@ use super::*;
                     trust_mode: None,
                     auto_approve: Some(false),
                     route_intent: None,
+                    ..Default::default()
                 },
             )
             .await?;
@@ -886,6 +891,7 @@ use super::*;
                     trust_mode: None,
                     auto_approve: None,
                     route_intent: None,
+                    ..Default::default()
                 },
             )
             .await?;
@@ -905,6 +911,7 @@ use super::*;
                     trust_mode: None,
                     auto_approve: None,
                     route_intent: None,
+                    ..Default::default()
                 },
             )
             .await?;
@@ -1009,6 +1016,7 @@ use super::*;
                     trust_mode: None,
                     auto_approve: None,
                     route_intent: None,
+                    ..Default::default()
                 },
             )
             .await?;
@@ -1094,6 +1102,7 @@ use super::*;
                     trust_mode: None,
                     auto_approve: None,
                     route_intent: None,
+                    ..Default::default()
                 },
             )
             .await?;
@@ -1164,6 +1173,7 @@ use super::*;
                     trust_mode: None,
                     auto_approve: Some(true),
                     route_intent: None,
+                    ..Default::default()
                 },
             )
             .await?;
@@ -1252,6 +1262,7 @@ use super::*;
                     trust_mode: None,
                     auto_approve: Some(false),
                     route_intent: None,
+                    ..Default::default()
                 },
             )
             .await?;
@@ -1346,6 +1357,7 @@ use super::*;
                     trust_mode: None,
                     auto_approve: Some(false),
                     route_intent: None,
+                    ..Default::default()
                 },
             )
             .await?;
@@ -1478,6 +1490,7 @@ use super::*;
                     trust_mode: None,
                     auto_approve: Some(true),
                     route_intent: None,
+                    ..Default::default()
                 },
             )
             .await?;
@@ -1522,6 +1535,7 @@ use super::*;
                     trust_mode: None,
                     auto_approve: Some(true),
                     route_intent: None,
+                    ..Default::default()
                 },
             )
             .await?;
@@ -1629,6 +1643,7 @@ use super::*;
                     trust_mode: None,
                     auto_approve: Some(false),
                     route_intent: None,
+                    ..Default::default()
                 },
             )
             .await?;
@@ -1674,6 +1689,7 @@ use super::*;
                     trust_mode: None,
                     auto_approve: Some(false),
                     route_intent: None,
+                    ..Default::default()
                 },
             )
             .await?;
@@ -1871,6 +1887,7 @@ use super::*;
                     trust_mode: None,
                     auto_approve: Some(false),
                     route_intent: None,
+                    ..Default::default()
                 },
             )
             .await?;
@@ -1964,6 +1981,7 @@ use super::*;
                     trust_mode: Some(true),
                     auto_approve: Some(true),
                     route_intent: None,
+                    ..Default::default()
                 },
             )
             .await?;
@@ -2098,6 +2116,7 @@ use super::*;
                     trust_mode: None,
                     auto_approve: None,
                     route_intent: None,
+                    ..Default::default()
                 },
             )
             .await?;
@@ -2254,6 +2273,7 @@ use super::*;
                     trust_mode: None,
                     auto_approve: None,
                     route_intent: None,
+                    ..Default::default()
                 },
             )
             .await?;

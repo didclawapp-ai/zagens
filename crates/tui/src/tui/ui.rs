@@ -543,7 +543,7 @@ fn build_engine_config(app: &App, config: &Config) -> EngineConfig {
         skills_dir: app.skills_dir.clone(),
         instructions: crate::prompts::merge_instruction_paths_with_pick_rules(
             &app.workspace,
-            config.instructions_paths(),
+            config.instructions_paths(&app.workspace),
         ),
         // Effectively unlimited. V4 has a 1M context window and the user
         // wants the model running until it's actually done. The previous cap
@@ -3586,6 +3586,9 @@ async fn dispatch_user_message(
             trust_mode: app.trust_mode,
             auto_approve: app.mode == AppMode::Yolo,
             approval_mode: app.approval_mode,
+            temperature: None,
+            top_p: None,
+            max_output_tokens: None,
         })
         .await
     {

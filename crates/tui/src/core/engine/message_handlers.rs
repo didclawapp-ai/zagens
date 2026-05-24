@@ -20,6 +20,9 @@ impl Engine {
         trust_mode: bool,
         auto_approve: bool,
         approval_mode: crate::tui::approval::ApprovalMode,
+        temperature: Option<f32>,
+        top_p: Option<f32>,
+        max_output_tokens: Option<u32>,
     ) {
         // Reset cancel token for fresh turn (in case previous was cancelled)
         self.reset_cancel_token();
@@ -129,6 +132,15 @@ impl Engine {
         } else {
             approval_mode
         };
+        if temperature.is_some() {
+            self.session.temperature = temperature;
+        }
+        if top_p.is_some() {
+            self.session.top_p = top_p;
+        }
+        if max_output_tokens.is_some() {
+            self.session.max_output_tokens = max_output_tokens;
+        }
 
         // Update system prompt to match current mode and include persisted compaction context.
         self.refresh_system_prompt(mode);

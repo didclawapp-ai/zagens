@@ -1643,3 +1643,36 @@ fn subagent_completion_payload_carries_existing_sentinel_format() {
         "sentinel JSON includes agent_id"
     );
 }
+
+#[test]
+fn resident_file_lease_rejects_second_claim() {
+    super::release_resident_leases_for("agent_a");
+    super::release_resident_leases_for("agent_b");
+    super::try_claim_resident_file_lease("src/foo.rs", "agent_a").expect("first claim");
+    let err = super::try_claim_resident_file_lease("src/foo.rs", "agent_b")
+        .expect_err("second claim on same path");
+    assert!(
+        err.contains("already held by agent agent_a"),
+        "unexpected error: {err}"
+    );
+    assert!(err.contains("spawn rejected"));
+    super::release_resident_file_lease("src/foo.rs");
+}
+
+#[test]
+fn resident_file_lease_released_on_spawn_failure_cleanup() {
+    super::try_claim_resident_file_lease("src/bar.rs", "pending").expect("pending claim");
+    super::release_resident_file_lease("src/bar.rs");
+    super::try_claim_resident_file_lease("src/bar.rs", "agent_c").expect("reclaim after cleanup");
+    super::release_resident_file_lease("src/bar.rs");
+}
+
+#[test]
+fn resident_file_release_by_agent_id_clears_all_paths() {
+    super::try_claim_resident_file_lease("a.rs", "agent_x").expect("claim a");
+    super::try_claim_resident_file_lease("b.rs", "agent_x").expect("claim b");
+    super::release_resident_leases_for("agent_x");
+    super::try_claim_resident_file_lease("a.rs", "agent_y").expect("a freed");
+    super::try_claim_resident_file_lease("b.rs", "agent_y").expect("b freed");
+    super::release_resident_leases_for("agent_y");
+}

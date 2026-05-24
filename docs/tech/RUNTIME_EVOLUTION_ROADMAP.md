@@ -167,7 +167,7 @@ deepseek app-server
 |------|--------|------------|----------|
 | `crates/tui/src/runtime_api/mod.rs` | ~505 | **A4** 拆分 | **✅ 达标** — 域模块 + `tests.rs`；主文件保留 `run_http_server`、`ApiError`、CORS、`ThreadEventsQuery` |
 | `crates/tui/src/runtime_threads/mod.rs` | ~275 | **A4.6** | **✅ 主文件达标** — 测试在 `tests.rs`（~2140）；`manager.rs` 待再切 |
-| `crates/tui/src/runtime_threads/manager.rs` | ~2860 | **A4.6** | **待拆** — 超 code-org 软上限；按域再切 |
+| `crates/tui/src/runtime_threads/manager.rs` | ~572 | **A4.6** | **✅ 已拆** — 逻辑在 `turn_lifecycle` / `persist` / `monitor` 等；主文件达标 |
 | `crates/core/src/session.rs` | ~183 | **P2 PR2** | **✅** — `Session`/`SessionUsage` + `working_set`/`project_context`/`ApprovalMode` |
 | `crates/tui/src/core/engine.rs` | ~192 | **P2 PR4/PR6** | **✅ 薄壳** — `turn_loop` 阶段在 core；`host_impl` + `tool_plans_exec` 在 tui |
 | `crates/core/src/engine/turn_loop/streaming_phase.rs` | ~700 | **P2 PR6** | **✅** — 可选拆 `stream_poll` 子模块 |
@@ -850,14 +850,28 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 | — | DS Pick 生产路径 | Phase 1 harness、v0.4.3 流式去重、多窗口（CHANGELOG） |
 | — | B-L1 CRAFT | 黑板 API、`craft.*` SSE、fix-loop 提示、AgentPanel — [craft-implementation-issues.md](../../craft-implementation-issues.md)；手测 [G2_PR5_MANUAL_SMOKE_CHECKLIST.md](./adr/G2_PR5_MANUAL_SMOKE_CHECKLIST.md) §10（2026-05-24） |
 
-### 17.3 阻塞与债务（收尾优先序）
+### 17.3 阻塞与债务（收尾优先序，2026-05-24 代码审计更新）
+
+**§12.5 未闭合 — 仍需写代码（不含文档/runbook/手测）：**
+
+| 优先 | 项 | 状态 |
+|------|-----|------|
+| P0 | **B2 记忆地图** B2.2–B2.5 | ❌ 未启动（设计见 `docs/topic-memory-rust-plan.md`） |
+| P0 | **GAP 8a 模型参数** 全栈 | **✅ 2026-05-24** — `StartTurnRequest` + `streaming_phase` + Composer 齿轮 + `ModelParamsDialog` |
+| P0 | **GAP F4 内联编辑** | **✅ 2026-05-24** — `POST .../edit-last-turn` + 桌面编辑上一条用户消息 |
+| P1 | CRAFT：子代理 LSP、resident_file 硬锁、Issue 6 指令发现、集成回合 | **✅ 代码 + 单测 2026-05-24** — LSP/硬锁/自动发现单测；集成手测 [G2 §11](./adr/G2_PR5_MANUAL_SMOKE_CHECKLIST.md) 待签 |
+| P1 | GAP：AgentPanel↔ToolCard 深度联动；backtrack depth HTTP | **✅ 2026-05-24** — `AgentSpawnInline`、fork-at-user-message HTTP + 桌面「分支」 |
+| P2 | A1 深化（spawn_blocking 审计、live ToolCell 同构）；B3 TUI 拆分 | **🟡 部分** — routing `spawn_blocking` + `history_isomorphism` tool 同构；B3 待做 |
+| backlog | StateStore/JSONL 统一、`Engine` 整 struct 入 core、`streaming_phase` 子模块 | ADR 远期 |
+
+**已完成（文档/GAP 表可能偏旧，以代码为准）：** A4.6 `manager.rs` 拆分；F0 路由全链；F1–F3；`open_in_shell` / `export_*` / 托盘；智能粘贴；A3 golden 测 36 个。
 
 1. **编译/测试：** ✅ `cargo check --workspace` + `cargo test -p deepseek-tui --lib`（2026-05-22，2368 passed）。
-2. **A4：** `runtime_api/mod.rs` <800 行已达标（2026-05-22）；后续仅增量提取时随改动维护域模块边界。
+2. **A4：** `runtime_api/mod.rs` <800 行已达标；`manager.rs` ~572 行已达标。
 3. **A+ 契约：** ✅ G2 自动化（2026-05-23）；审批 UI 手测可复测。
 4. **P2 绞杀者：** L2 终态 G3 签收；`handle_thread(Message)` 已委托 `ThreadMessageTurnPort`（app-server 单轮 LLM；生产 HTTP 仍 `RuntimeThreadManager`）。
-5. **R-015 填数：** ✅ RSS 26.6 MB @ `ab4c3c4`；**`-Gate` 回归门 + 1.1 MB fixture** 已接线（全量重跑可选）。
-6. **F0 路由：** ✅ `start_turn_applies_route_intent_routing_rule_to_model`（`route_intent` → `routing_rules.json` → model）。
+5. **R-015 填数：** ✅ RSS 基线 + `-Gate` 回归门；全量重跑可选。
+6. **F0 路由 / F1–F3：** ✅ 代码 + G2 手测签收（2026-05-24）。
 
 ### 17.4 维护者签收待办
 

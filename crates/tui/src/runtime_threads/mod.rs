@@ -193,6 +193,59 @@ pub struct StartTurnRequest {
     pub auto_approve: Option<bool>,
     #[serde(default)]
     pub route_intent: Option<String>,
+    #[serde(default)]
+    pub temperature: Option<f32>,
+    #[serde(default)]
+    pub top_p: Option<f32>,
+    #[serde(default)]
+    pub max_tokens: Option<u32>,
+}
+
+impl Default for StartTurnRequest {
+    fn default() -> Self {
+        Self {
+            prompt: String::new(),
+            input_summary: None,
+            model: None,
+            mode: None,
+            allow_shell: None,
+            trust_mode: None,
+            auto_approve: None,
+            route_intent: None,
+            temperature: None,
+            top_p: None,
+            max_tokens: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EditLastTurnRequest {
+    pub content: String,
+    pub model: Option<String>,
+    pub mode: Option<String>,
+    pub allow_shell: Option<bool>,
+    pub trust_mode: Option<bool>,
+    pub auto_approve: Option<bool>,
+    #[serde(default)]
+    pub route_intent: Option<String>,
+    #[serde(default)]
+    pub temperature: Option<f32>,
+    #[serde(default)]
+    pub top_p: Option<f32>,
+    #[serde(default)]
+    pub max_tokens: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ForkAtUserMessageRequest {
+    pub depth_from_tail: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ForkAtUserMessageResponse {
+    pub thread: ThreadRecord,
+    pub original_user_text: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

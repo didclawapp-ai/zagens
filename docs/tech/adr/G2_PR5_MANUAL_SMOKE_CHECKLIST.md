@@ -249,6 +249,33 @@ cd F:\DeepSeek-TUI-desktop
 
 ---
 
+## 11. CRAFT P1 深化 + GAP 分支（§17.3 增量，2026-05-24）
+
+**目标：** 验证 Phase 3 代码路径 — 子代理 LSP 继承、resident 硬锁、Issue 6 指令自动发现、backtrack fork、AgentPanel↔ToolCard。
+
+**自动化（CI / 本地）：**
+
+```powershell
+cd F:\DeepSeek-TUI-desktop
+cargo test -p deepseek-tui config::tests::instructions_paths --lib
+cargo test -p deepseek-tui tools::subagent::tests::resident_file --lib
+cargo test -p deepseek-tui core::engine::tests::build_tool_context_wires_lsp --lib
+cargo test -p deepseek-tui runtime_api::tests::thread_endpoints_expose_lifecycle_contract --lib
+```
+
+| # | 步骤 | 预期 | 结果 |
+|---|------|------|------|
+| 11.1 | 同上四条 `cargo test` | 全部 PASS | ☐ |
+| 11.2 | 工作区含 `PROJECT_RULES.md`，`config.toml` 无 `instructions`；`RUST_LOG=info cargo run -- serve --http` | 日志含 `auto-discovered instruction: .../PROJECT_RULES.md` | ☐ |
+| 11.3 | 主线程两次 `agent_spawn` 同一 `resident_file`（第二次在第一次 Running 时） | 第二次工具失败，消息含 `already held by agent` | ☐ |
+| 11.4 | LSP 启用 + 子代理 `edit_file` 引入类型错误 | 子代理 turn 收到 `<diagnostics>` 注入（或 `diagnostics` 工具可用） | ☐ |
+| 11.5 | DS Pick：非最后一条用户消息点 **分支/Branch** | 确认后 fork 新线程；Composer 预填原消息 | ☐ |
+| 11.6 | DS Pick：`agent_spawn` 工具卡下方 | 内联子代理状态条，与 AgentPanel SSE 一致 | ☐ |
+
+> **签收：** 维护者 ___ / 日期 ___。通过后 §17.3 P1 CRAFT/GAP 集成项可标 ✅。
+
+---
+
 ## 7. 失败时快速采集
 
 ```powershell

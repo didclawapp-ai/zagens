@@ -493,6 +493,39 @@ fn agent_mode_can_build_auto_approved_tool_context() {
 }
 
 #[test]
+fn build_tool_context_wires_lsp_manager_when_enabled() {
+    let lsp_config = crate::lsp::LspConfig {
+        enabled: true,
+        ..Default::default()
+    };
+    let engine_config = EngineConfig {
+        lsp_config: Some(lsp_config),
+        ..Default::default()
+    };
+    let (engine, _handle) = Engine::new(engine_config, &Config::default());
+    let ctx = engine.build_tool_context(AppMode::Agent, false);
+    assert!(
+        ctx.lsp_manager.is_some(),
+        "sub-agent ToolContext should inherit parent LSP manager"
+    );
+}
+
+#[test]
+fn build_tool_context_omits_lsp_manager_when_disabled() {
+    let lsp_config = crate::lsp::LspConfig {
+        enabled: false,
+        ..Default::default()
+    };
+    let engine_config = EngineConfig {
+        lsp_config: Some(lsp_config),
+        ..Default::default()
+    };
+    let (engine, _handle) = Engine::new(engine_config, &Config::default());
+    let ctx = engine.build_tool_context(AppMode::Agent, false);
+    assert!(ctx.lsp_manager.is_none());
+}
+
+#[test]
 fn agent_and_yolo_modes_elevate_shell_sandbox_to_allow_network() {
     // Regression for #273: the seatbelt-default policy denies all outbound
     // network (including DNS), which broke `curl`, `yt-dlp`, package managers,
@@ -2001,6 +2034,9 @@ async fn engine_llm_client_override_runs_mock_turn() {
             trust_mode: true,
             auto_approve: true,
             approval_mode: ApprovalMode::Auto,
+            temperature: None,
+            top_p: None,
+            max_output_tokens: None,
         })
         .await
         .expect("send message");
@@ -2164,6 +2200,9 @@ async fn engine_mock_parallel_readonly_tools_complete_turn() {
             trust_mode: true,
             auto_approve: true,
             approval_mode: ApprovalMode::Auto,
+            temperature: None,
+            top_p: None,
+            max_output_tokens: None,
         })
         .await
         .expect("send message");
@@ -2327,6 +2366,9 @@ async fn engine_mock_capacity_pre_request_observes_mock_and_emits_decision() {
             trust_mode: true,
             auto_approve: true,
             approval_mode: ApprovalMode::Auto,
+            temperature: None,
+            top_p: None,
+            max_output_tokens: None,
         })
         .await
         .expect("send message");

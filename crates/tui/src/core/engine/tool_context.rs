@@ -69,6 +69,12 @@ impl Engine {
             self.config.subagent_step_timeout.as_millis() as u64,
         );
 
+        // Sub-agents clone this ToolContext via `SubAgentRuntime::child_runtime`;
+        // wire LSP here so `diagnostics` and post-edit hooks work in child turns.
+        if self.lsp_manager.config().enabled {
+            ctx = ctx.with_lsp_manager(std::sync::Arc::clone(&self.lsp_manager));
+        }
+
         match mode {
             // Plan mode is read-only investigation; the shell tool is not
             // registered, so leaving the sandbox policy at the seatbelt-strict

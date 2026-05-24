@@ -28,6 +28,9 @@ impl TurnEnginePort for EngineHandle {
             trust_mode: params.trust_mode,
             auto_approve: params.auto_approve,
             approval_mode: params.approval_mode,
+            temperature: params.temperature,
+            top_p: params.top_p,
+            max_output_tokens: params.max_output_tokens,
         })
         .await
     }

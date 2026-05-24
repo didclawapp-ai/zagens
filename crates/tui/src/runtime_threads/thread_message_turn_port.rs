@@ -54,6 +54,7 @@ impl ThreadMessageTurnPort for RuntimeThreadMessageTurnPort {
                     trust_mode: None,
                     auto_approve: Some(true),
                     route_intent: None,
+                    ..Default::default()
                 },
             )
             .await

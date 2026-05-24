@@ -105,7 +105,11 @@ impl RuntimeThreadManager {
 
     pub async fn set_routing_rules(&self, rules: Vec<RoutingRule>) -> Result<()> {
         *self.routing_rules.lock().await = rules.clone();
-        save_routing_rules(&self.routing_rules_path, &rules)
+        let path = self.routing_rules_path.clone();
+        tokio::task::spawn_blocking(move || save_routing_rules(&path, &rules))
+            .await
+            .context("routing rules save join")??;
+        Ok(())
     }
 
     pub async fn get_thread(&self, id: &str) -> Result<ThreadRecord> {
@@ -437,7 +441,6 @@ impl RuntimeThreadManager {
     /// Errors:
     /// - `depth_from_tail` exceeds the number of user turns
     /// - source thread not found
-    #[allow(dead_code)] // exposed for the runtime/HTTP fork-on-backtrack path; the in-TUI Esc-Esc flow trims `App` state directly. Issue #133.
     pub async fn fork_at_user_message(
         &self,
         id: &str,

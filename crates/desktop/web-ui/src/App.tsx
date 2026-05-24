@@ -23,6 +23,8 @@ import {
   getThreadContext,
   patchThread,
   startThreadTurn,
+  editLastThreadTurn,
+  forkThreadAtUserMessage,
   interruptThreadTurn,
   pollThreadTurnEvents,
   postResolveApproval,
@@ -47,6 +49,12 @@ import { normalizeDesktopStreamEvent, type NormalizedStreamEvent, type TurnUsage
 import ChatView from './components/ChatView';
 import { useAuditNavActivity } from './lib/useAuditNavActivity';
 import Composer, { type ComposerOutboundMessage } from './components/Composer';
+import ModelParamsDialog, { type ModelParams } from './components/ModelParamsDialog';
+import {
+  loadModelParams,
+  modelSamplingForApi,
+  saveModelParams,
+} from './lib/modelParams';
 import Sidebar from './components/Sidebar';
 import ApprovalDialog from './components/ApprovalDialog';
 import RightPanel, { type RightPanelView } from './components/RightPanel';
@@ -68,6 +76,7 @@ import SkipToMainLink from './components/SkipToMainLink';
 import { streamFlagsForRunMode } from './lib/runtimeMode';
 import { autoApproveFromPolicy, composerAutoApproveToggleEnabled } from './lib/approvalPolicy';
 import { rebuildMessagesFromThreadEvents } from './lib/chat/rebuildMessagesFromThread';
+import { depthFromTailForUserMessage } from './lib/chat/backtrackDepth';
 import {
   cacheSessionUiMessages,
   getCachedSessionUiMessages,
@@ -339,6 +348,16 @@ export default function App() {
   const [composerMentionNonce, setComposerMentionNonce] = useState(0);
   const [composerMentionRel, setComposerMentionRel] = useState<string | null>(null);
   const [composerMentionIsDir, setComposerMentionIsDir] = useState(false);
+  const [modelParams, setModelParams] = useState<ModelParams>(() => loadModelParams());
+  const [modelParamsOpen, setModelParamsOpen] = useState(false);
+  const [editDraft, setEditDraft] = useState<{ messageId: string; content: string } | null>(null);
+  const [backtrackDraft, setBacktrackDraft] = useState<{
+    messageId: string;
+    content: string;
+    depthFromTail: number;
+  } | null>(null);
+  const [backtrackBusy, setBacktrackBusy] = useState(false);
+  const [composerPrefill, setComposerPrefill] = useState<{ text: string; nonce: number } | undefined>();
   const [agentStates, setAgentStates] = useState<AgentState[]>([]);
   /** `agent_spawn` tool input keyed by tool-call id until output returns `agent_id`. */
   const pendingSpawnMetaRef = useRef<Map<string, AgentSpawnMeta>>(new Map());
@@ -1534,7 +1553,10 @@ export default function App() {
   }, [resumedThreadId, t]);
 
   const handleSend = useCallback(
-    (outbound: ComposerOutboundMessage) => {
+    (
+      outbound: ComposerOutboundMessage,
+      sendOptions?: { editFromMessageId?: string },
+    ) => {
       if (!outbound.apiPrompt.trim() || streaming) return;
 
       setPendingComposerStream(true);
@@ -1549,7 +1571,17 @@ export default function App() {
         role: 'user',
         content: outbound.displayContent,
       };
-      setMessages((prev) => [...prev, userMsg]);
+      setMessages((prev) => {
+        const editId = sendOptions?.editFromMessageId;
+        const base =
+          editId != null
+            ? (() => {
+                const idx = prev.findIndex((m) => m.id === editId);
+                return idx >= 0 ? prev.slice(0, idx) : prev;
+              })()
+            : prev;
+        return [...base, userMsg];
+      });
 
       const assistantId = nextId();
       const assistantMsg: Message = {
@@ -1990,16 +2022,25 @@ export default function App() {
             return;
           }
           const sinceSeq = detail.latest_seq ?? 0;
-          const { turn } = await startThreadTurn(resumedThreadId, {
-            prompt: outbound.apiPrompt,
+          const turnBody = {
             model: selectedModel,
             mode: streamOpts.mode,
             allow_shell: streamOpts.allow_shell,
             trust_mode: streamOpts.trust_mode,
             auto_approve: streamOpts.auto_approve,
             ...(routeIntentApi != null ? { route_intent: routeIntentApi } : {}),
-            task_type: taskTypePreference,
-          });
+            ...modelSamplingForApi(modelParams),
+          };
+          const { turn } = sendOptions?.editFromMessageId
+            ? await editLastThreadTurn(resumedThreadId, {
+                content: outbound.apiPrompt,
+                ...turnBody,
+              })
+            : await startThreadTurn(resumedThreadId, {
+                prompt: outbound.apiPrompt,
+                task_type: taskTypePreference,
+                ...turnBody,
+              });
           if (signal.aborted) {
             finishOnce();
             return;
@@ -2029,6 +2070,7 @@ export default function App() {
               auto_approve: streamOpts.auto_approve,
               ...(routeIntentApi != null ? { route_intent: routeIntentApi } : {}),
               task_type: taskTypePreference,
+              ...modelSamplingForApi(modelParams),
             },
             (ev) => onSseEvent(ev),
             () => finishOnce(),
@@ -2054,12 +2096,110 @@ export default function App() {
       selectedModel,
       selectedWorkspace,
       taskTypePreference,
+      modelParams,
       refreshSessions,
       refreshThreadContext,
       notifyRuntimeTransient,
       t,
     ],
   );
+
+  const handleEditMessage = useCallback(
+    (messageId: string, content: string) => {
+      if (streaming || !resumedThreadId) {
+        toast.warning(t('chat.editNeedsThread'));
+        return;
+      }
+      const userMsgs = messages.filter((m) => m.role === 'user');
+      const lastUser = userMsgs[userMsgs.length - 1];
+      if (!lastUser || lastUser.id !== messageId) {
+        toast.warning(t('chat.editLastOnly'));
+        return;
+      }
+      setEditDraft({ messageId, content });
+    },
+    [streaming, resumedThreadId, messages, t],
+  );
+
+  const handleConfirmEdit = useCallback(() => {
+    if (!editDraft?.content.trim()) {
+      setEditDraft(null);
+      return;
+    }
+    const draft = editDraft;
+    setEditDraft(null);
+    handleSend(
+      { displayContent: draft.content.trim(), apiPrompt: draft.content.trim() },
+      { editFromMessageId: draft.messageId },
+    );
+  }, [editDraft, handleSend]);
+
+  const handleBacktrackFromMessage = useCallback(
+    (messageId: string, content: string) => {
+      if (streaming || !resumedThreadId) {
+        toast.warning(t('chat.backtrackNeedsThread'));
+        return;
+      }
+      const depth = depthFromTailForUserMessage(messages, messageId);
+      if (depth == null) {
+        return;
+      }
+      setBacktrackDraft({ messageId, content, depthFromTail: depth });
+    },
+    [streaming, resumedThreadId, messages, t],
+  );
+
+  const handleConfirmBacktrack = useCallback(async () => {
+    if (!backtrackDraft || !resumedThreadId || backtrackBusy) {
+      return;
+    }
+    const sourceThreadId = resumedThreadId;
+    const draft = backtrackDraft;
+    setBacktrackDraft(null);
+    setBacktrackBusy(true);
+    try {
+      const { thread, original_user_text } = await forkThreadAtUserMessage(
+        sourceThreadId,
+        draft.depthFromTail,
+      );
+      const newThreadId = thread.id;
+      streamControllersRef.current.get(sourceThreadId)?.abort();
+      streamControllersRef.current.delete(sourceThreadId);
+      setStreamingThreadIds(new Set());
+      setPendingComposerStream(false);
+      setAgentStates([]);
+      resumedThreadIdRef.current = newThreadId;
+      setResumedThreadId(newThreadId);
+      threadTurnRef.current = { threadId: newThreadId, turnId: '' };
+      lastPersistedTurnRef.current = '';
+
+      const rebuilt = (await rebuildMessagesFromThreadEvents(newThreadId)) as Message[];
+      setMessages(rebuilt);
+      if (activeSessionIdRef.current) {
+        cacheSessionUiMessages(sessionUiCacheRef.current, activeSessionIdRef.current, rebuilt);
+      }
+
+      const threadDetail = await getThreadDetail(newThreadId);
+      setThreadDetailForContext(threadDetail);
+      const turns = threadDetail.turns ?? [];
+      const lastTurn = turns.length > 0 ? turns[turns.length - 1] : undefined;
+      const lastOut = lastTurn?.usage?.output_tokens;
+      setLastTurnOutputTokens(
+        lastOut != null && Number.isFinite(lastOut) && lastOut > 0 ? lastOut : null,
+      );
+      void refreshThreadContext(newThreadId);
+
+      const prefill = original_user_text?.trim();
+      if (prefill) {
+        setComposerPrefill({ text: prefill, nonce: Date.now() });
+      }
+      toast.success(t('chat.backtrackSuccess'));
+    } catch (e) {
+      toast.error(t('chat.backtrackFailed', { message: (e as Error).message }));
+    } finally {
+      setBacktrackBusy(false);
+    }
+  }, [backtrackDraft, resumedThreadId, backtrackBusy, refreshThreadContext, t]);
 
   const handleApproveDecision = async (decision: 'approve' | 'deny') => {
     if (!approval) return;
@@ -2122,6 +2262,98 @@ export default function App() {
         onApprove={() => void handleApproveDecision('approve')}
         onDeny={() => void handleApproveDecision('deny')}
       />
+      <ModelParamsDialog
+        open={modelParamsOpen}
+        initial={modelParams}
+        onClose={() => setModelParamsOpen(false)}
+        onApply={(params) => {
+          setModelParams(params);
+          saveModelParams(params);
+          setModelParamsOpen(false);
+        }}
+      />
+      {editDraft ? (
+        <div
+          className="fixed inset-0 z-[10050] flex items-center justify-center bg-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setEditDraft(null);
+          }}
+        >
+          <div
+            className="w-full max-w-lg rounded-2xl border border-card-border bg-card p-5 shadow-lg"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="edit-message-title"
+          >
+            <h3 id="edit-message-title" className="mb-3 text-base font-semibold text-t-text">
+              {t('chat.editTitle')}
+            </h3>
+            <textarea
+              className="min-h-[120px] w-full resize-y rounded-lg border border-input-border bg-input-bg px-3 py-2 text-sm text-t-text outline-none focus:border-accent"
+              value={editDraft.content}
+              onChange={(e) => setEditDraft((d) => (d ? { ...d, content: e.target.value } : d))}
+              autoFocus
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-lg px-4 py-2 text-sm text-t-text-secondary hover:bg-hover"
+                onClick={() => setEditDraft(null)}
+              >
+                {t('modelParams.cancel')}
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-text hover:opacity-90"
+                onClick={handleConfirmEdit}
+              >
+                {t('chat.editSubmit')}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {backtrackDraft ? (
+        <div
+          className="fixed inset-0 z-[10050] flex items-center justify-center bg-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !backtrackBusy) setBacktrackDraft(null);
+          }}
+        >
+          <div
+            className="w-full max-w-lg rounded-2xl border border-card-border bg-card p-5 shadow-lg"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="backtrack-message-title"
+          >
+            <h3 id="backtrack-message-title" className="mb-2 text-base font-semibold text-t-text">
+              {t('chat.backtrackTitle')}
+            </h3>
+            <p className="mb-3 text-sm text-t-text-secondary">{t('chat.backtrackBody')}</p>
+            <div className="mb-4 rounded-lg border border-card-border bg-canvas-alt px-3 py-2 text-sm text-t-text-secondary line-clamp-4 whitespace-pre-wrap">
+              {backtrackDraft.content}
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-lg px-4 py-2 text-sm text-t-text-secondary hover:bg-hover disabled:opacity-50"
+                disabled={backtrackBusy}
+                onClick={() => setBacktrackDraft(null)}
+              >
+                {t('modelParams.cancel')}
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-text hover:opacity-90 disabled:opacity-50"
+                disabled={backtrackBusy}
+                onClick={() => void handleConfirmBacktrack()}
+              >
+                {backtrackBusy ? t('chat.backtrackWorking') : t('chat.backtrackConfirm')}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <Sidebar
         sessions={visibleSessions}
         showAllSessions={showAllSessions}
@@ -2198,6 +2430,7 @@ export default function App() {
           onExportThreadJson={() => void handleExportThreadJson()}
           model={selectedModel}
           onModelChange={setSelectedModel}
+          onOpenModelParams={() => setModelParamsOpen(true)}
           workspace={selectedWorkspace}
           onWorkspaceChange={handleComposerWorkspaceChange}
           resumedThreadActive={resumedThreadId != null && resumedThreadId.length > 0}
@@ -2218,6 +2451,7 @@ export default function App() {
                 }
               : undefined
           }
+          composerPrefill={composerPrefill}
         />
         </section>
         <section
@@ -2228,11 +2462,16 @@ export default function App() {
             messages={messages}
             workspaceRoot={selectedWorkspace}
             desktopHost={desktopHost}
+            agentStates={agentStates}
             onOpenWorkspacePath={handleChatOpenWorkspacePath}
             onRevealWorkspacePath={revealWorkspaceFileInDirectory}
             onOpenDiffInPanel={openDiffInPanel}
             onRetryMessage={(content) =>
               handleSend({ displayContent: content, apiPrompt: content })
+            }
+            onEditMessage={resumedThreadId ? handleEditMessage : undefined}
+            onBacktrackFromMessage={
+              resumedThreadId ? handleBacktrackFromMessage : undefined
             }
           />
         </section>

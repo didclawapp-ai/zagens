@@ -4117,7 +4117,7 @@ async fn run_exec_agent(
         skills_dir: config.skills_dir(),
         instructions: crate::prompts::merge_instruction_paths_with_pick_rules(
             &workspace,
-            config.instructions_paths(),
+            config.instructions_paths(&workspace),
         ),
         max_steps: 100,
         max_subagents,
@@ -4177,6 +4177,9 @@ async fn run_exec_agent(
                     .and_then(crate::tui::approval::ApprovalMode::from_config_value)
                     .unwrap_or_default()
             },
+            temperature: None,
+            top_p: None,
+            max_output_tokens: None,
         })
         .await?;
 

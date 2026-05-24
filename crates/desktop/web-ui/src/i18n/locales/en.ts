@@ -559,6 +559,21 @@ const en: TranslationMap = {
     deleteFailed: 'Deletion failed',
     openDir: 'Open Directory',
   },
+  chat: {
+    editTitle: 'Edit last message',
+    editSubmit: 'Save & resend',
+    editNeedsThread: 'Resume a thread before editing messages.',
+    editLastOnly: 'Only the last user message can be edited.',
+    backtrackTitle: 'Branch from here',
+    backtrackAction: 'Branch',
+    backtrackBody:
+      'Create a new thread copy up to this message. Later turns are dropped on the new branch (the current thread is unchanged).',
+    backtrackConfirm: 'Create branch',
+    backtrackWorking: 'Branching…',
+    backtrackNeedsThread: 'Resume a thread before branching.',
+    backtrackSuccess: 'New branch created — continue from the composer.',
+    backtrackFailed: 'Branch failed: {{message}}',
+  },
   chatMarkdown: {
     copyCode: 'Copy code',
     copyReasoning: 'Copy reasoning',

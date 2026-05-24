@@ -3,9 +3,13 @@ import { ChatMarkdown } from './ChatMarkdown';
 import { ToolCard, type ToolCardModel } from './ToolCard';
 import TerminalCard from './TerminalCard';
 import DiffCard from './DiffCard';
+import { AgentSpawnInline } from './AgentSpawnInline';
 import { extractUnifiedDiff, parseFileNameFromToolInput } from '../lib/diff/diffEntries';
 import CopyTextButton from './CopyTextButton';
 import { formatToolsForCopy } from '../lib/formatToolCopy';
+import { parseAgentIdFromSpawnOutput } from '../lib/chat/toolOutput';
+import { isAgentSpawnToolName } from '../lib/agentSpawnMeta';
+import type { AgentState } from '../types/agent';
 import { useT } from '../i18n';
 
 interface Message {
@@ -26,6 +30,9 @@ export function MessageBubble({
   onEditMessage,
   onRetryMessage,
   onOpenDiffInPanel,
+  agentStates,
+  onBacktrackFromMessage,
+  backtrackEnabled = false,
 }: {
   message: Message;
   workspaceRoot?: string;
@@ -35,6 +42,9 @@ export function MessageBubble({
   onEditMessage?: (messageId: string, content: string) => void;
   onRetryMessage?: (content: string) => void;
   onOpenDiffInPanel?: () => void;
+  agentStates?: AgentState[];
+  onBacktrackFromMessage?: (messageId: string, content: string) => void;
+  backtrackEnabled?: boolean;
 }) {
   const { t } = useT();
   const isUser = message.role === 'user';
@@ -278,7 +288,9 @@ export function MessageBubble({
             </button>
             {toolsExpanded && (
               <div className="space-y-1.5 border-t border-divider px-2.5 pb-2.5 pt-2">
-                {message.tools.map((tool) => renderToolCard(tool, onOpenDiffInPanel))}
+                {message.tools.map((tool) =>
+                  renderToolCard(tool, onOpenDiffInPanel, t('chatMarkdown.copyTool'), agentStates),
+                )}
               </div>
             )}
           </div>
@@ -314,9 +326,19 @@ export function MessageBubble({
                 type="button"
                 onClick={() => onEditMessage(message.id, message.content)}
                 className="text-[10px] text-t-text-muted hover:text-accent px-2 py-0.5 rounded"
-                title="编辑此消息"
+                title={t('chat.editTitle')}
               >
-                ✎ 编辑
+                ✎ {t('chat.editTitle')}
+              </button>
+            )}
+            {backtrackEnabled && onBacktrackFromMessage && (
+              <button
+                type="button"
+                onClick={() => onBacktrackFromMessage(message.id, message.content)}
+                className="text-[10px] text-t-text-muted hover:text-accent px-2 py-0.5 rounded"
+                title={t('chat.backtrackTitle')}
+              >
+                ↩ {t('chat.backtrackAction')}
               </button>
             )}
           </div>
@@ -361,7 +383,12 @@ export function MessageBubble({
 const ANSI_CSI = /\x1B\[/;
 
 /** Route tool cards to specialized renderers based on tool name. */
-function renderToolCard(tool: ToolCardModel, onOpenDiffInPanel?: () => void, copyToolTitle?: string) {
+function renderToolCard(
+  tool: ToolCardModel,
+  onOpenDiffInPanel?: () => void,
+  copyToolTitle?: string,
+  agentStates?: AgentState[],
+) {
   const outputHasAnsi = Boolean(tool.output && ANSI_CSI.test(tool.output));
 
   // Shell tools, or any tool whose output carries terminal SGR sequences (avoids “black slab” in <pre>)
@@ -400,6 +427,18 @@ function renderToolCard(tool: ToolCardModel, onOpenDiffInPanel?: () => void, cop
         />
       );
     }
+  }
+
+  if (isAgentSpawnToolName(tool.name)) {
+    const agentId = parseAgentIdFromSpawnOutput(tool.output ?? '');
+    const linkedAgent =
+      agentId != null ? agentStates?.find((a) => a.agentId === agentId) : undefined;
+    return (
+      <div key={tool.id}>
+        <ToolCard tool={tool} copyTitle={copyToolTitle} />
+        {linkedAgent ? <AgentSpawnInline agent={linkedAgent} /> : null}
+      </div>
+    );
   }
 
   // Default: plain ToolCard

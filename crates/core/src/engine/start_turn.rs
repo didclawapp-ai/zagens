@@ -20,6 +20,10 @@ pub struct StartTurnParams {
     pub trust_mode: bool,
     pub auto_approve: bool,
     pub approval_mode: ApprovalMode,
+    /// Optional sampling overrides applied to the session for this turn.
+    pub temperature: Option<f32>,
+    pub top_p: Option<f32>,
+    pub max_output_tokens: Option<u32>,
 }
 
 impl StartTurnParams {

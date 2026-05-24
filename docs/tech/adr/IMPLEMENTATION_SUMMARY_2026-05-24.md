@@ -61,7 +61,7 @@ flowchart LR
 | **A5** 可测 | `lib` target、mock LLM、回放 fixture 15 步 | **✅**（G2 硬门槛） |
 | **A6** 沙箱诚实 | 能力矩阵文档、非 macOS 降级文案 | **✅** |
 
-**债务：** `runtime_threads/manager.rs` 仍 ~2860 行（§3.4 待再切）；A1.3 落盘路径未全量审计；live `ToolCell` 与 `session.messages` 全同构未做。
+**债务：** A1.3 落盘路径未全量审计；live `ToolCell` 与 `session.messages` 全同构未做。（`manager.rs` 已拆至 ~572 行。）
 
 ### 3.3 阶段 A+ — 契约（L2）
 
@@ -132,14 +132,13 @@ GAP 表：MCP/用量/任务技能/子代理/路由多为 **◐**；定时自动�
 
 ---
 
-## 5. 建议后续优先序（与 §17.3 对齐）
+## 5. 建议后续优先序（与 §17.3 对齐，2026-05-24 代码审计）
 
-1. **B2 记忆地图** — §12.5 #2（B-L1 已签 2026-05-24）  
-2. **A1 深化** — `manager.rs` 再拆；落盘 `spawn_blocking` 审计；ToolCell 级同构（若产品需要）  
-3. **A4.6** — `runtime_threads/manager.rs` 体量（§3.4 仍标待拆）  
-4. **R-015** — 全量 `-Gate` 重跑（可选，基线已有 29 MB @ `8b1538a`）  
-5. **CRAFT 余项** — Issue 6 指令发现、Issue 7 A/B runbook（可选）  
-6. **远期** — `Engine` 整 struct 入 core；`StateStore` vs JSONL 统一；`streaming_phase` 拆子模块
+1. **B2 记忆地图** — §12.5 #2（greenfield，见 `docs/topic-memory-rust-plan.md`）  
+2. **CRAFT 集成手测** — 自动化单测已加（`instructions_paths` / resident 硬锁 / LSP）；手测清单 [G2 §11](./G2_PR5_MANUAL_SMOKE_CHECKLIST.md) 待签  
+3. **B3 TUI 拆分** — `main.rs` CLI 模块化（不阻塞门控）  
+4. **R-015** — 全量 `-Gate` 重跑（可选）  
+5. **远期** — `Engine` 整 struct 入 core；`StateStore` vs JSONL；`streaming_phase` 拆子模块；B3 `main.rs` CLI 拆分
 
 ---
 
@@ -149,6 +148,9 @@ GAP 表：MCP/用量/任务技能/子代理/路由多为 **◐**；定时自动�
 cd F:\DeepSeek-TUI-desktop
 cargo test -p deepseek-core --lib capacity_policy
 cargo test -p deepseek-tui --lib history_isomorphism
+cargo test -p deepseek-tui config::tests::instructions_paths --lib
+cargo test -p deepseek-tui tools::subagent::tests::resident_file --lib
+cargo test -p deepseek-tui core::engine::tests::build_tool_context_wires_lsp --lib
 cargo test -p deepseek-tui --lib capacity_escalation
 cargo test -p deepseek-tui --test protocol_recovery
 cargo test -p deepseek-tui --lib sidecar_contract_full_lifecycle

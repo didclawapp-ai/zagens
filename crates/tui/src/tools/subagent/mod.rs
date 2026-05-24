@@ -56,11 +56,35 @@ static RESIDENT_LEASES: std::sync::OnceLock<
 
 /// Release all resident file leases held by `agent_id`. Called when an
 /// agent transitions to a terminal state (completed, failed, cancelled).
-fn release_resident_leases_for(agent_id: &str) {
+pub(crate) fn release_resident_leases_for(agent_id: &str) {
     if let Some(lock) = RESIDENT_LEASES.get()
         && let Ok(mut guard) = lock.lock()
     {
         guard.retain(|_, owner| owner != agent_id);
+    }
+}
+
+/// Claim a resident-file lease. Returns `Err` when another agent already holds
+/// the path (hard lock — spawn is rejected).
+pub(crate) fn try_claim_resident_file_lease(file_path: &str, owner: &str) -> Result<(), String> {
+    let leases = RESIDENT_LEASES
+        .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    let mut guard = leases.lock().unwrap_or_else(|p| p.into_inner());
+    if let Some(existing) = guard.get(file_path) {
+        return Err(format!(
+            "resident_file '{file_path}' is already held by agent {existing}; spawn rejected"
+        ));
+    }
+    guard.insert(file_path.to_string(), owner.to_string());
+    Ok(())
+}
+
+/// Drop a resident-file lease for `file_path` (spawn failure cleanup).
+pub(crate) fn release_resident_file_lease(file_path: &str) {
+    if let Some(lock) = RESIDENT_LEASES.get()
+        && let Ok(mut guard) = lock.lock()
+    {
+        guard.remove(file_path);
     }
 }
 
@@ -1661,37 +1685,23 @@ impl ToolSpec for AgentSpawnTool {
 
         // Cache-aware resident mode (#529): prepend file contents to the prompt
         // so the child's prefix is byte-stable for DeepSeek prefix caching.
-        let (effective_prompt, resident_conflict) =
-            if let Some(ref file_path) = spawn_request.resident_file {
-                let abs_path = if std::path::Path::new(file_path).is_absolute() {
-                    std::path::PathBuf::from(file_path)
-                } else {
-                    self.runtime.context.workspace.join(file_path)
-                };
-                let file_contents = std::fs::read_to_string(&abs_path)
-                    .unwrap_or_else(|e| format!("<!-- resident_file read error: {e} -->"));
-                let prefixed = format!(
-                    "<!-- resident_file: {file_path} -->\n```\n{file_contents}\n```\n\n{}",
-                    spawn_request.prompt
-                );
-                // Check ownership (best-effort, non-blocking).
-                let conflict = {
-                    let leases = RESIDENT_LEASES
-                        .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
-                    let mut guard = leases.lock().unwrap_or_else(|p| p.into_inner());
-                    if let Some(owner) = guard.get(file_path) {
-                        Some(format!(
-                            "Warning: agent {owner} already holds a resident lease on {file_path}"
-                        ))
-                    } else {
-                        guard.insert(file_path.clone(), "pending".to_string());
-                        None
-                    }
-                };
-                (prefixed, conflict)
+        let effective_prompt = if let Some(ref file_path) = spawn_request.resident_file {
+            try_claim_resident_file_lease(file_path, "pending").map_err(ToolError::execution_failed)?;
+
+            let abs_path = if std::path::Path::new(file_path).is_absolute() {
+                std::path::PathBuf::from(file_path)
             } else {
-                (spawn_request.prompt, None)
+                self.runtime.context.workspace.join(file_path)
             };
+            let file_contents = std::fs::read_to_string(&abs_path)
+                .unwrap_or_else(|e| format!("<!-- resident_file read error: {e} -->"));
+            format!(
+                "<!-- resident_file: {file_path} -->\n```\n{file_contents}\n```\n\n{}",
+                spawn_request.prompt
+            )
+        } else {
+            spawn_request.prompt
+        };
 
         let mut effective_prompt = effective_prompt;
         if spawn_request.agent_type == SubAgentType::Auditor {
@@ -1747,7 +1757,7 @@ impl ToolSpec for AgentSpawnTool {
 
         let mut manager = self.manager.write().await;
 
-        let result = manager
+        let spawn_result = manager
             .spawn_background_with_assignment_options(
                 Arc::clone(&self.manager),
                 child_runtime,
@@ -1760,7 +1770,13 @@ impl ToolSpec for AgentSpawnTool {
                     nickname: None,
                     task_id: spawn_request.task_id.clone(),
                 },
-            )
+            );
+        if spawn_result.is_err()
+            && let Some(ref file_path) = spawn_request.resident_file
+        {
+            release_resident_file_lease(file_path);
+        }
+        let result = spawn_result
             .map_err(|e| ToolError::execution_failed(format!("Failed to spawn sub-agent: {e}")))?;
 
         // Replace the "pending" lease placeholder with the real agent id now that
@@ -1778,14 +1794,11 @@ impl ToolSpec for AgentSpawnTool {
         }
 
         let mut tool_result = if self.name == "spawn_agent" {
-            let mut payload = json!({
+            let payload = json!({
                 "agent_id": result.agent_id.clone(),
                 "nickname": result.nickname.clone(),
                 "model": result.model.clone()
             });
-            if let Some(ref warning) = resident_conflict {
-                payload["resident_conflict"] = json!(warning);
-            }
             ToolResult::json(&payload).map_err(|e| ToolError::execution_failed(e.to_string()))?
         } else {
             ToolResult::json(&result).map_err(|e| ToolError::execution_failed(e.to_string()))?

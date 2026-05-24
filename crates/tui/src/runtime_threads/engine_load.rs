@@ -62,7 +62,7 @@ impl RuntimeThreadManager {
             skills_dir: self.config.skills_dir(),
             instructions: crate::prompts::merge_instruction_paths_with_pick_rules(
                 &thread.workspace,
-                self.config.instructions_paths(),
+                self.config.instructions_paths(&thread.workspace),
             ),
             max_steps: 100,
             max_subagents: self.config.max_subagents().clamp(1, MAX_SUBAGENTS),
