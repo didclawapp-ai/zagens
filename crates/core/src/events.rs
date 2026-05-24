@@ -178,6 +178,21 @@ pub enum Event {
         model: String,
         workspace: PathBuf,
     },
+    /// CRAFT: structured verdict from a completing sub-agent (B-L1).
+    CraftVerdict {
+        agent_id: String,
+        agent_type: String,
+        task_id: Option<String>,
+        verdict: String,
+        summary: Option<String>,
+        items: Value,
+    },
+    /// CRAFT: blackboard partition updated under `.deepseek/blackboards/` (B-L1).
+    CraftBoardUpdated {
+        task_id: String,
+        partition: String,
+        agent_id: String,
+    },
     #[allow(dead_code)]
     ElevationRequired {
         tool_id: String,

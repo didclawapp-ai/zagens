@@ -17,5 +17,8 @@ export const SCRATCHPAD_STATUS_POLL_IDLE_MS = 12_000;
 export const CHECKLIST_POLL_STREAMING_MS = 60_000;
 export const CHECKLIST_POLL_IDLE_MS = 5_000;
 
+/** CRAFT blackboard task list in AgentPanel. */
+export const CRAFT_BLACKBOARD_POLL_MS = 5_000;
+
 /** Best-effort session JSON checkpoint during long streams (tab hide still persists immediately). */
 export const SESSION_CHECKPOINT_STREAMING_MS = 60_000;

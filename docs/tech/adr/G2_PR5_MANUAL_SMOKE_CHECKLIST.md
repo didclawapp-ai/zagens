@@ -80,28 +80,27 @@ curl -s http://127.0.0.1:7878/health
 > **注意：** `config.example.toml` 注释只写 `on-request \| untrusted \| never`，**未写** `auto` / `suggest`，但运行时接受。  
 > **`on-request` 与 `untrusted` 在代码里是同一档（Suggest）**，不是 Auto。
 
+**DS Pick 审批 UI（2026-05-24）：** 系统设置含 **按需审批 / 仅不受信任 / 从不 / 自动批准** 四档。非 `auto` 时 Composer 显示只读「审批：按需审批」等（无灰掉复选框）；`auto` 时显示可勾选的「自动批准工具调用」。
+
 **两套控制（桌面手测必看）：**
 
 | 层级 | 字段 | 作用 |
 |------|------|------|
-| 设置 → 审批策略 | `approval_policy` → `config.toml` | 主要驱动 **TUI** 与 **系统提示词**；桌面 **start turn 时未读取** |
-| Composer →「自动批准工具调用」 | HTTP `auto_approve` | 驱动 **runtime 是否立刻 approve**；默认 **勾选 = true** |
-| `turn_lifecycle`（sidecar） | `auto_approve: false` 时 | 固定 `ApprovalMode::Suggest`，**不**读 config 的 `never` |
+| 设置 → 审批策略 | `approval_policy` → `config.toml` | 系统提示词 + sidecar `turn_lifecycle` 在 `auto_approve: false` 时读 config |
+| Composer「自动批准工具调用」 | HTTP `auto_approve` | **仅**在设置选 **自动批准** 时出现；勾选则 runtime 立刻 approve |
 
-因此：设置选「仅不受信任」+ config 已保存，**若 Composer 仍勾选自动批准**，模型会看到 **Auto 提示词 + 运行时自动放行** —— 这是 **接线缺口**，不是手测操作错误。
-
-**手测 §2 有效操作：**
+**手测 §2 有效操作（按需审批）：**
 
 1. 运行模式 **Agent**（非 YOLO）
-2. **取消勾选** Composer「自动批准工具调用」
-3. （可选）设置改为「按需审批」并确认 `config.toml` 为 `on-request` —— 影响提示词语义，**不能代替** 第 2 步
+2. 系统设置 → **按需审批** → **保存**
+3. Composer 应显示 **「审批：按需审批」**（无复选框）
 
 | # | 步骤 | 期望 | 通过 |
 |---|------|------|------|
-| 2.1 | **Agent 模式** + **取消勾选** Composer「自动批准工具调用」（勿 YOLO） | 输入栏上方复选框为 **未勾选** | [ ] |
-| 2.2 | 发 prompt 触发**写/执行类工具**（如「用 write_file 在工作区创建 `_approval_test.txt`，内容 ok」） | 出现 **ApprovalDialog**（非静默直接执行） | [ ] |
-| 2.3 | 点 **批准** | 工具继续；turn 完成；文件或工具结果可见 | [ ] |
-| 2.4 | 再开一轮，同样触发审批，点 **拒绝** | turn 结束或明确报错；未批准时不执行 | [ ] |
+| 2.1 | **Agent** + 设置 **按需审批** 已保存 | Composer 显示「审批：按需审批」（无自动批准复选框） | [x] |
+| 2.2 | 发 prompt 触发**写/执行类工具**（如「用 write_file 在工作区创建 `_approval_test.txt`，内容 ok」） | 出现 **ApprovalDialog**（非静默直接执行） | [x] |
+| 2.3 | 点 **批准** | 工具继续；turn 完成；文件或工具结果可见 | [x] |
+| 2.4 | 再开一轮，同样触发审批，点 **拒绝** | turn 结束或明确报错；未批准时不执行 | [x] |
 
 > 若模型未调用工具：换更直接的 write/shell prompt。  
 > 测 `never` 策略：TUI/Plan 模式更可靠；桌面当前 **不会** 把 settings 的 `never` 接到 `auto_approve`。
@@ -145,15 +144,18 @@ curl -s http://127.0.0.1:7878/health
 | 项 | 结果 |
 |----|------|
 | 测试人 | 维护者 |
-| 日期 | 2026-05-23 |
+| 日期 | 2026-05-24 |
 | 构建 | `cargo tauri dev` |
-| Git | `e1c4841` 及之后 |
+| Git | `9ee2c34` 及之后 |
 | **§0.4 health / event_schema_version** | ✅ 通过 |
 | **G2 §12.2 #3 单窗全链路** | ✅ 通过（§1） |
-| **G2 A+.7 审批 UI** | ⏸ 可复测 | 接线已合（`10972e4`）；Composer 默认随 `on-request` 关自动批准 |
+| **G2 A+.7 审批 UI** | ✅ 通过（2026-05-24，§2 + §9.2.1） |
 | **PR5 双窗并行 turn（§3）** | ✅ 通过 |
 | **§5.1 Stop** | ✅ 通过 |
-| **备注** | 审批接线已合（2026-05-23）；§2 弹窗待复测签收 |
+| **F3 §8 键盘 a11y（8.1–8.5）** | ✅ 通过（2026-05-24） |
+| **§12.4 #2（Stop + 长跑 + 审批）** | ✅ 通过（2026-05-24，§9 全项） |
+| **B-L1 CRAFT（§10 全项）** | ✅ 通过（2026-05-24） |
+| **备注** | §12.4 #2 已闭合；审批 UX：设置四档 + Composer 只读/可勾；**B-L1 CRAFT 手测全量通过**（2026-05-24） |
 
 **通过后建议：**
 
@@ -168,13 +170,82 @@ curl -s http://127.0.0.1:7878/health
 
 | # | 步骤 | 期望 | 通过 |
 |---|------|------|------|
-| 8.1 | **Tab** 从页面顶部开始，前两个可聚焦项为 skip link（「跳到主内容」「跳到输入框」） | 顺序在侧栏/Composer 控件之前 | [ ] |
-| 8.2 | 激活 **「跳到输入框」** skip link | 焦点落到 Composer `#composer-input`；可立即输入 | [ ] |
-| 8.3 | Composer 内 **Tab**：textarea → actions toolbar（发送/停止）→ options toolbar（工作区/模型等） | DOM 顺序与视觉一致（options 在 textarea 下方但 Tab 在 actions 之后） | [ ] |
-| 8.4 | 长 turn 进行中，焦点在**非** input/textarea 处按 **Escape** | 生成停止；可再发消息 | [ ] |
-| 8.5 | 键盘 **Tab/Shift+Tab** 到侧栏、Composer 芯片、发送按钮 | 可见 **focus ring**（accent 色 outline），非仅鼠标点击态 | [ ] |
+| 8.1 | **Tab** 从页面顶部开始，前两个可聚焦项为 skip link（「跳到主要内容」「跳到输入框」） | 顺序在侧栏/Composer 控件之前 | [x] |
+| 8.2 | 激活 **「跳到输入框」** skip link | 焦点落到 Composer `#composer-input`；可立即输入 | [x] |
+| 8.3 | Composer 内 **Tab**：textarea → actions toolbar（发送/停止）→ options toolbar（工作区/模型等） | DOM 顺序与视觉一致（options 在 textarea 下方但 Tab 在 actions 之后） | [x] |
+| 8.4 | 长 turn 进行中，焦点在**非** input/textarea 处按 **Escape** | 生成停止；可再发消息 | [x] |
+| 8.5 | 键盘 **Tab/Shift+Tab** 到侧栏、Composer 芯片、发送按钮 | 可见 **focus ring**（accent 色 outline），非仅鼠标点击态 | [x] |
 
-> 自动化：`npm run build`（web-ui）；Rust 侧无 F3 单测。`prefers-reduced-motion` 可在 OS 设置开启后确认侧栏/Composer 动画减弱。
+> 自动化：`npm run build` + `npm run test:f3`（web-ui）；Rust 侧契约测含 interrupt。`prefers-reduced-motion` 可在 OS 设置开启后确认侧栏/Composer 动画减弱（可选）。
+
+---
+
+## 9. §12.4 #2 — TUI vs DS Pick 同 thread 行为抽样
+
+**目标：** [RUNTIME_EVOLUTION_ROADMAP.md](../RUNTIME_EVOLUTION_ROADMAP.md) §12.4 #2 — 同一 `deepseek-tui` runtime 上，终端 TUI 与桌面 DS Pick 对 **同一 thread** 的 stop / 审批 / 长跑语义一致（抽样，非全矩阵）。
+
+### 9.1 Stop / Interrupt — ✅ 已签（2026-05-24）
+
+| # | 步骤 | 期望 | 通过 |
+|---|------|------|------|
+| 9.1.1 | **DS Pick**：长 turn 中途点 **Stop** | `interrupted`；可再发消息 | [x] |
+| 9.1.2 | **DS Pick**：长 turn 中焦点在非输入区按 **Escape** | 同 §8.4；生成停止 | [x] |
+| 9.1.3 | **同一 thread** 在 **TUI** 中长 turn 按 **Esc** 停止 | 同样 `interrupted`；可继续对话 | [x] |
+| 9.1.4 | 自动化：`sidecar_contract_full_lifecycle` 使用 `POST .../interrupt` | CI 绿 | [x] |
+
+> Stop 维度 **§12.4 #2 已闭合**（2026-05-24）。
+
+### 9.2 审批 — ✅ 已签（2026-05-24）
+
+**桌面：** §2（按需审批 → ApprovalDialog → 批准 / 拒绝各一轮）。
+
+| # | 步骤 | 期望 | 通过 |
+|---|------|------|------|
+| 9.2.1 | **DS Pick** §2.2–2.4 批准 + 拒绝 | ApprovalDialog；行为符合 A+.7 | [x] |
+| 9.2.2 | **同一 thread** 在 **TUI** 关自动批准，同样 prompt（可选） | 挂起 → resolve 语义与桌面一致 | ⏸ 未测 | §12.4 抽样以 DS Pick 为准已闭合 |
+
+### 9.3 长跑 — ✅ 双壳已签（2026-05-24）
+
+**代表性抽样（DS Pick，2026-05-24）：** 对仓库发起 **全量审核** turn — `agent_spawn` 并行 Explore 子代理、审计 scratchpad（`.deepseek/scratchpad/2026-05-24-audit`）、checklist P0–P4、多轮 tool + 长上下文。比 R-015 脚本更贴近真实 **多 turn / 多工具 / 子代理** 生产负载；**auto_approve 开启** 属长跑场景（与 §9.2 审批手测分开）。
+
+| # | 步骤 | 期望 | 通过 |
+|---|------|------|------|
+| 9.3.1 | 多轮 turn + 重负载（本审核 **或** R-015 `-Gate`） | 无 sidecar 崩溃/卡死；RSS/落盘无异常劣化 | [x] |
+| 9.3.2 | **DS Pick** 上述全量审核 **跑完**（或主动 Stop 后 thread 仍可用） | scratchpad/checklist 有进展；可再发消息；连接正常 | [x] |
+| 9.3.3 | 抽样：**TUI** 同工作区类似多轮（不必复刻 29 区，数轮 tool 即可） | 与桌面侧无「一边崩一边正常」分裂 | [x] |
+
+**已签收抽样（2026-05-24）：**
+- **DS Pick：** 全量审核 — 30 区、8 Explore 子代理、scratchpad `.deepseek/scratchpad/2026-05-24-audit` → [deliverables/CODE_REVIEW_2026-05-24.md](../../../deliverables/CODE_REVIEW_2026-05-24.md)
+- **TUI：** 同工作区 `F:\DeepSeek-TUI-desktop` 多轮 tool（list_dir / read_file / glob 等）；turn 正常、无 sidecar 分裂
+
+**审核结束时勾选 9.3.1–9.3.2 条件：** P4 报告产出或 checklist 收尾；7878 仍健康；同 thread 能继续对话。若中途 Stop，须确认 §9.1 仍成立且 thread 可恢复。
+
+```powershell
+# 可选：R-015 数值门控（与审核抽样互补，release 推荐）
+cd F:\DeepSeek-TUI-desktop
+.\scripts\runtime-longrun-baseline.ps1 -Gate
+```
+
+---
+
+## 10. B-L1 / CRAFT 手测（§12.5 #1 抽样）
+
+**目标：** [RUNTIME_EVOLUTION_ROADMAP.md](../RUNTIME_EVOLUTION_ROADMAP.md) §9.1 B1 — 角色工具、黑板、fix-loop 提示、`craft.*` SSE、AgentPanel 对接；对应 [craft-implementation-issues.md](../../craft-implementation-issues.md) Issue 0–5。
+
+**前置：** `cargo tauri dev`；sidecar `7878` 健康；工作区含可写文件；模型可 spawn 子代理并调用工具。
+
+| # | 步骤 | 预期 | 结果 |
+|---|------|------|------|
+| 10.1 | `GET /v1/blackboards` | 200；列表含当前 workspace 下 task（或空数组） | ✅ |
+| 10.2 | 触发 CRAFT 任务后轮询 `GET /v1/blackboards/{id}` | JSON 含 findings / observed / blockers / verdict 字段 | ✅ |
+| 10.3 | explore 子代理尝试写盘工具 | 被拒绝或不可用（角色白名单） | ✅ |
+| 10.4 | reviewer 子代理尝试写盘工具 | 同上 | ✅ |
+| 10.5 | Verifier 输出 BLOCKER/FAIL | 黑板写入 blockers；主线程可见 `<deepseek:craft.fix_loop>` 提示 | ✅ |
+| 10.6 | SSE 订阅 | 收到 `craft.verdict` / `craft.board_updated`（或 compat 映射） | ✅ |
+| 10.7 | DS Pick **AgentPanel → CRAFT 任务** | 展示 task 列表/详情；SSE 或轮询刷新 | ✅ |
+| 10.8 | **一轮闭环**（explorer → 实现 → review → verify → fix 提示） | 黑板状态随轮次更新；fix-loop 可继续下一轮 | ✅ |
+
+> **签收：** 维护者 **2026-05-24** 全项通过。§12.5 **#1**（CRAFT + 黑板 + 一轮闭环）可标 ✅；**#2 记忆地图**、**#3 GAP 表** 仍属 B 阶段余项。
 
 ---
 

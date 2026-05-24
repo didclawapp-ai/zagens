@@ -36,6 +36,7 @@ use crate::utils::spawn_supervised;
 use self::blackboard::{read_blackboard_section, write_blackboard_partition};
 
 pub mod blackboard;
+pub mod craft;
 pub mod mailbox;
 pub use deepseek_core::subagent::{
     MailboxMessage, StructuredVerdict, SubAgentAssignment, SubAgentResult, SubAgentStatus,
@@ -2659,8 +2660,21 @@ async fn run_subagent_task(task: SubAgentTask) {
     }
 
     // CRAFT P1: write structured output to blackboard
+    let partition = craft::blackboard_partition_key(&agent_type_for_blackboard);
     if let (Some(tid), Ok(res)) = (task.task_id.as_deref(), &result) {
-        let _ = write_blackboard_partition(tid, &agent_type_for_blackboard, res);
+        write_blackboard_partition(
+            &task.runtime.context.workspace,
+            tid,
+            &agent_type_for_blackboard,
+            res,
+        );
+        craft::emit_craft_events(
+            &task.runtime.event_tx,
+            &task.agent_id,
+            res,
+            Some(tid),
+            partition,
+        );
     }
 
     // Emit BOTH a human-friendly summary (rendered in the parent's
@@ -2694,7 +2708,17 @@ async fn run_subagent_task(task: SubAgentTask) {
         let _ = mb.send(envelope);
     }
 
-    let payload = format!("{summary}\n{sentinel}");
+    let payload = match &result {
+        Ok(res) => {
+            let mut payload = format!("{summary}\n{sentinel}");
+            if let Some(hint) = craft::craft_fix_loop_hint(res, task.task_id.as_deref()) {
+                payload.push('\n');
+                payload.push_str(&hint);
+            }
+            payload
+        }
+        Err(_) => format!("{summary}\n{sentinel}"),
+    };
 
     // Wake the engine's parent turn loop if this is one of its direct
     // children (issue #756). Gating by `spawn_depth == 1` means the parent
@@ -2739,14 +2763,21 @@ pub(crate) fn emit_parent_completion(
 /// child completion and can decide whether to read the full result via
 /// `agent_result`.
 fn subagent_done_sentinel(agent_id: &str, res: &SubAgentResult) -> String {
-    let payload = json!({
-        "agent_id": agent_id,
-        "agent_type": res.agent_type.as_str(),
-        "status": subagent_status_name(&res.status),
-        "duration_ms": res.duration_ms,
-        "steps": res.steps_taken,
-        "summary": summarize_subagent_result(res),
-    });
+    let mut payload = serde_json::Map::new();
+    payload.insert("agent_id".into(), json!(agent_id));
+    payload.insert("agent_type".into(), json!(res.agent_type.as_str()));
+    payload.insert("status".into(), json!(subagent_status_name(&res.status)));
+    payload.insert("duration_ms".into(), json!(res.duration_ms));
+    payload.insert("steps".into(), json!(res.steps_taken));
+    payload.insert("summary".into(), json!(summarize_subagent_result(res)));
+
+    if let Some(ref v) = res.structured_verdict {
+        if let Ok(val) = serde_json::to_value(v) {
+            payload.insert("structured_verdict".into(), val);
+        }
+    }
+
+    let payload = serde_json::Value::Object(payload);
     format!("<deepseek:subagent.done>{payload}</deepseek:subagent.done>")
 }
 
@@ -2776,7 +2807,7 @@ async fn run_subagent(
     // CRAFT P1: read blackboard at spawn time (snapshot — no live reload)
     let blackboard_section = task_id
         .as_deref()
-        .and_then(|tid| read_blackboard_section(tid, &agent_type));
+        .and_then(|tid| read_blackboard_section(&runtime.context.workspace, tid, &agent_type));
 
     let system_prompt = build_subagent_system_prompt(&agent_type, &assignment);
     let tool_registry = SubAgentToolRegistry::new(
@@ -4246,7 +4277,12 @@ const AUDITOR_AGENT_PROMPT: &str = concat!(
 /// processing (graceful degradation).
 fn parse_structured_verdict(text: &str) -> Option<StructuredVerdict> {
     let marker = "<!-- craft-verdict -->";
-    let after_marker = text.find(marker).map(|idx| &text[idx + marker.len()..])?;
+    let Some(after_marker) = text.find(marker).map(|idx| &text[idx + marker.len()..]) else {
+        tracing::debug!(
+            "parse_structured_verdict: no fence marker found, falling back to natural-language"
+        );
+        return None;
+    };
 
     // Find the first '{' and matching '}'
     let brace_start = after_marker.find('{')?;
@@ -4270,7 +4306,20 @@ fn parse_structured_verdict(text: &str) -> Option<StructuredVerdict> {
     }
 
     let json_str = end.map(|e| &slice[..e])?;
-    serde_json::from_str::<StructuredVerdict>(json_str).ok()
+    match serde_json::from_str::<StructuredVerdict>(json_str) {
+        Ok(v) => {
+            tracing::info!(
+                "parse_structured_verdict: success (verdict={}, items={})",
+                craft::verdict_level_str(&v.verdict),
+                v.items.len(),
+            );
+            Some(v)
+        }
+        Err(e) => {
+            tracing::warn!("parse_structured_verdict: JSON parse failed: {e}");
+            None
+        }
+    }
 }
 
 // === Tests ===

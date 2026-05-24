@@ -1183,6 +1183,7 @@ async fn run_event_loop(
                         ));
                         let _ = engine_handle.send(Op::ListSubAgents).await;
                     }
+                    EngineEvent::CraftVerdict { .. } | EngineEvent::CraftBoardUpdated { .. } => {}
                     EngineEvent::AgentList { agents } => {
                         let mut sorted = agents.clone();
                         sort_subagents_in_place(&mut sorted);

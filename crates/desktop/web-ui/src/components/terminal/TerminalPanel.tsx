@@ -162,22 +162,27 @@ export default function TerminalPanel({ workspaceRoot, desktopHost, active }: Pr
             {sessions.map((s) => {
               const selected = s.id === activeId;
               return (
-                <button
+                <div
                   key={s.id}
                   id={terminalTabId(s.id)}
-                  type="button"
                   role="tab"
                   aria-selected={selected}
                   aria-controls={terminalTabPanelId}
                   tabIndex={selected ? 0 : -1}
-                  className={`flex max-w-[9rem] shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs ${
+                  className={`flex max-w-[9rem] shrink-0 items-center gap-0.5 rounded-md px-2 py-1 text-xs ${
                     selected
                       ? 'bg-zinc-800 text-zinc-100'
                       : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'
                   }`}
                   onClick={() => setActiveId(s.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setActiveId(s.id);
+                    }
+                  }}
                 >
-                  <span className="truncate">{s.title}</span>
+                  <span className="min-w-0 flex-1 truncate">{s.title}</span>
                   {sessions.length > 1 && (
                     <button
                       type="button"
@@ -191,7 +196,7 @@ export default function TerminalPanel({ workspaceRoot, desktopHost, active }: Pr
                       ×
                     </button>
                   )}
-                </button>
+                </div>
               );
             })}
           </div>

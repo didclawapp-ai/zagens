@@ -187,6 +187,8 @@ x-deepseek-runtime-token: <runtime_token>
 | `agent.progress` | `agent.progress` | 子代理状态更新，`data: { agent_id, status }` |
 | `agent.completed` | `agent.completed` | 子代理完成，`data: { agent_id, result }` |
 | `agent.list` | `agent.list` | 子代理列表，`data: { agents }` |
+| `craft.verdict` | `craft.verdict` | CRAFT 结构化裁决，`data: { agent_id, agent_type, task_id?, verdict, summary?, items }` |
+| `craft.board_updated` | `craft.board_updated` | CRAFT 黑板分区更新，`data: { task_id, partition, agent_id }` |
 | `panel.checklist` | `panel.checklist` | Checklist 面板数据 |
 | `panel.scratchpad` | `panel.scratchpad` | Scratchpad 面板数据 |
 | `panel.context` | `panel.context` | Context 面板数据 |

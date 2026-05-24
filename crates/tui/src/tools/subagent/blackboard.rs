@@ -14,11 +14,8 @@ use super::SubAgentType;
 
 // ── Path helpers ──────────────────────────────────────────────
 
-fn workspace_root() -> Option<PathBuf> {
-    std::env::current_dir().ok()
-}
-
-fn validate_task_id(task_id: &str) -> Result<(), String> {
+/// Validate a CRAFT blackboard task id (filename stem under `.deepseek/blackboards/`).
+pub fn validate_task_id(task_id: &str) -> Result<(), String> {
     if task_id.is_empty() {
         return Err("task_id 不能为空".to_string());
     }
@@ -34,9 +31,9 @@ fn validate_task_id(task_id: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn blackboard_path(task_id: &str) -> Result<PathBuf, String> {
+fn blackboard_path(workspace: &Path, task_id: &str) -> Result<PathBuf, String> {
     validate_task_id(task_id)?;
-    let mut path = workspace_root().unwrap_or_else(|| PathBuf::from("."));
+    let mut path = workspace.to_path_buf();
     path.push(".deepseek");
     path.push("blackboards");
     path.push(format!("{task_id}.json"));
@@ -56,10 +53,11 @@ fn ensure_dir(path: &PathBuf) {
 ///
 /// Returns `None` if the file doesn't exist or is unreadable.
 pub fn read_blackboard_section(
+    workspace: &Path,
     task_id: &str,
     agent_type: &SubAgentType,
 ) -> Option<String> {
-    let path = blackboard_path(task_id).ok()?;
+    let path = blackboard_path(workspace, task_id).ok()?;
     let raw = std::fs::read_to_string(&path).ok()?;
     let board: Value = serde_json::from_str(&raw).ok()?;
 
@@ -67,11 +65,14 @@ pub fn read_blackboard_section(
 
     match agent_type {
         SubAgentType::Implementer => {
-            // Implementer needs explorer findings + reviewer blockers
+            // Implementer needs explorer findings + reviewer blockers + verifier failures
             if let Some(s) = format_explorer_findings(&board) {
                 sections.push(s);
             }
             if let Some(s) = format_reviewer_blockers(&board) {
+                sections.push(s);
+            }
+            if let Some(s) = format_verifier_failures(&board) {
                 sections.push(s);
             }
         }
@@ -107,16 +108,40 @@ pub fn read_blackboard_section(
     }
 }
 
+/// Read the full blackboard as a raw `serde_json::Value`.
+/// Returns `None` when the file doesn't exist or is unparseable.
+pub fn read_blackboard_raw(workspace: &Path, task_id: &str) -> Option<Value> {
+    let path = blackboard_path(workspace, task_id).ok()?;
+    let raw = std::fs::read_to_string(&path).ok()?;
+    serde_json::from_str(&raw).ok()
+}
+
+/// List all task_ids that have a blackboard file under the given workspace.
+pub fn list_blackboard_tasks(workspace: &Path) -> Vec<String> {
+    let root = workspace.join(".deepseek").join("blackboards");
+    let dir = match std::fs::read_dir(&root) {
+        Ok(d) => d,
+        Err(_) => return Vec::new(),
+    };
+    dir.filter_map(|entry| {
+        let entry = entry.ok()?;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        name.strip_suffix(".json").map(String::from)
+    })
+    .collect()
+}
+
 /// Write one partition to the blackboard for the given agent type.
 ///
 /// Reads the existing board (or starts fresh), updates the matching
 /// partition key, and writes back atomically.
 pub fn write_blackboard_partition(
+    workspace: &Path,
     task_id: &str,
     agent_type: &SubAgentType,
     result: &SubAgentResult,
 ) {
-    let Ok(path) = blackboard_path(task_id) else {
+    let Ok(path) = blackboard_path(workspace, task_id) else {
         return;
     };
     ensure_dir(&path);
@@ -137,7 +162,7 @@ pub fn write_blackboard_partition(
         }
         SubAgentType::Implementer => {
             // CRAFT V2: append current round to rounds[] history
-            ("implementer", build_implementer_rounds(result, &existing_raw))
+            ("implementer", build_implementer_rounds(result, &existing_raw, workspace))
         }
         SubAgentType::Review => {
             ("reviewer", json!({
@@ -151,7 +176,10 @@ pub fn write_blackboard_partition(
         }
         SubAgentType::Verifier => {
             ("verifier", json!({
-                "failures": json!([]),
+                "verdict": result.structured_verdict.as_ref()
+                    .map(|v| serde_json::to_value(&v.verdict).unwrap_or(json!("PASS")))
+                    .unwrap_or(json!("PASS")),
+                "failures": build_verifier_failures(result),
                 "summary": extract_verifier_summary(result),
             }))
         }
@@ -222,6 +250,34 @@ fn format_reviewer_blockers(board: &Value) -> Option<String> {
         let line = b.get("line").and_then(|v| v.as_u64()).map(|l| format!(":{l}")).unwrap_or_default();
         let desc = b.get("description").and_then(|v| v.as_str()).unwrap_or("?");
         lines.push(format!("- [{id}] `{file}{line}` — {desc}"));
+    }
+    Some(lines.join("\n"))
+}
+
+fn format_verifier_failures(board: &Value) -> Option<String> {
+    let failures = board.get("verifier")?.get("failures")?.as_array()?;
+    if failures.is_empty() {
+        return None;
+    }
+    let mut lines = vec!["### Verifier failures".to_string()];
+    for f in failures {
+        let file = f.get("file").and_then(|v| v.as_str()).unwrap_or("?");
+        let line = f
+            .get("line")
+            .and_then(|v| v.as_u64())
+            .map(|l| format!(":{l}"))
+            .unwrap_or_default();
+        let observed = f
+            .get("observed")
+            .and_then(|v| v.as_str())
+            .unwrap_or("?");
+        let hypothesis = f
+            .get("hypothesis")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(|h| format!(" (hypothesis: {h})"))
+            .unwrap_or_default();
+        lines.push(format!("- `{file}{line}` — {observed}{hypothesis}"));
     }
     Some(lines.join("\n"))
 }
@@ -303,6 +359,29 @@ fn extract_impact_summary(result: &SubAgentResult) -> String {
         .to_string()
 }
 
+fn build_verifier_failures(result: &SubAgentResult) -> Value {
+    let Some(v) = &result.structured_verdict else {
+        return json!([]);
+    };
+    if !matches!(v.verdict, super::VerdictLevel::Fail | super::VerdictLevel::Blocker) {
+        return json!([]);
+    }
+    let failures: Vec<Value> = v
+        .items
+        .iter()
+        .map(|item| {
+            json!({
+                "observed": item.description,
+                "hypothesis": item.suggestion,
+                "file": item.file,
+                "line": item.line,
+                "rule": item.rule,
+            })
+        })
+        .collect();
+    json!(failures)
+}
+
 fn extract_verifier_summary(result: &SubAgentResult) -> String {
     result
         .structured_verdict
@@ -373,11 +452,11 @@ pub fn write_scratchpad_mirror(
         "findings_verified": stats.verified_findings,
         "high_note_ids": high_note_ids,
     });
-    merge_board_partition(task_id, "scratchpad", partition);
+    merge_board_partition(workspace, task_id, "scratchpad", partition);
 }
 
-fn merge_board_partition(task_id: &str, partition_key: &str, partition_data: Value) {
-    let Ok(path) = blackboard_path(task_id) else {
+fn merge_board_partition(workspace: &Path, task_id: &str, partition_key: &str, partition_data: Value) {
+    let Ok(path) = blackboard_path(workspace, task_id) else {
         return;
     };
     ensure_dir(&path);
@@ -432,25 +511,60 @@ fn format_scratchpad_mirror(board: &Value) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
+
+    fn test_workspace() -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "deepseek-blackboard-test-{}",
+            std::process::id()
+        ))
+    }
 
     #[test]
     fn test_blackboard_path_contains_task_id() {
-        let path = blackboard_path("bugfix-001").expect("valid task id");
+        let ws = test_workspace();
+        let path = blackboard_path(&ws, "bugfix-001").expect("valid task id");
         let s = path.to_string_lossy();
         assert!(s.contains("bugfix-001"), "path should contain task id, got: {s}");
         assert!(s.ends_with(".json"), "path should end with .json, got: {s}");
+        assert!(s.contains(&ws.to_string_lossy().to_string()), "path should be under workspace");
     }
 
     #[test]
     fn test_blackboard_path_rejects_traversal() {
-        assert!(blackboard_path("/tmp/evil").is_err());
-        assert!(blackboard_path("..\\escape").is_err());
+        let ws = test_workspace();
+        assert!(blackboard_path(&ws, "/tmp/evil").is_err());
+        assert!(blackboard_path(&ws, "..\\escape").is_err());
     }
 
     #[test]
     fn test_read_blackboard_returns_none_for_missing_file() {
-        let result = read_blackboard_section("nonexistent-task-99999", &SubAgentType::Implementer);
+        let ws = test_workspace();
+        let result = read_blackboard_section(&ws, "nonexistent-task-99999", &SubAgentType::Implementer);
         assert!(result.is_none(), "missing file should return None");
+    }
+
+    #[test]
+    fn test_list_and_read_blackboard_raw() {
+        let ws = test_workspace();
+        let task_id = "list-test-001";
+        let path = blackboard_path(&ws, task_id).expect("valid task id");
+        let _ = std::fs::remove_file(&path);
+        assert!(list_blackboard_tasks(&ws).is_empty());
+
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let board = json!({"schema_version": 1, "task_id": task_id});
+        std::fs::write(&path, serde_json::to_string_pretty(&board).unwrap()).unwrap();
+
+        let tasks = list_blackboard_tasks(&ws);
+        assert!(tasks.contains(&task_id.to_string()));
+
+        let raw = read_blackboard_raw(&ws, task_id).expect("should read board");
+        assert_eq!(raw["task_id"], task_id);
+
+        let _ = std::fs::remove_file(&path);
     }
 
     // ── CRAFT P1 integration tests ──────────────────────────
@@ -463,8 +577,9 @@ mod tests {
 
     #[test]
     fn test_write_and_read_explorer_findings() {
+        let ws = test_workspace();
         let task_id = "test-001";
-        let _ = std::fs::remove_file(blackboard_path(task_id).expect("valid task id"));
+        let _ = std::fs::remove_file(blackboard_path(&ws, task_id).expect("valid task id"));
 
         // Simulate Explorer completion with structured_verdict
         let verdict = StructuredVerdict {
@@ -505,10 +620,10 @@ mod tests {
         };
 
         // Write to blackboard
-        write_blackboard_partition(task_id, &SAT::Explore, &result);
+        write_blackboard_partition(&ws, task_id, &SAT::Explore, &result);
 
         // Read back as Implementer
-        let section = read_blackboard_section(task_id, &SAT::Implementer)
+        let section = read_blackboard_section(&ws, task_id, &SAT::Implementer)
             .expect("should read back explorer findings for implementer");
 
         assert!(section.contains("### Explorer findings"), "section: {section}");
@@ -519,13 +634,14 @@ mod tests {
         assert!(section.contains("session timeout"), "section: {section}");
 
         // Clean up
-        let _ = std::fs::remove_file(blackboard_path(task_id).expect("valid task id"));
+        let _ = std::fs::remove_file(blackboard_path(&ws, task_id).expect("valid task id"));
     }
 
     #[test]
     fn test_write_and_read_roundtrip_multiple_roles() {
+        let ws = test_workspace();
         let task_id = "test-002";
-        let _ = std::fs::remove_file(blackboard_path(task_id).expect("valid task id"));
+        let _ = std::fs::remove_file(blackboard_path(&ws, task_id).expect("valid task id"));
 
         // Write explorer findings
         let explorer_result = SubAgentResult {
@@ -552,7 +668,7 @@ mod tests {
                 summary: Some("one risk".into()),
             }),
         };
-        write_blackboard_partition(task_id, &SAT::Explore, &explorer_result);
+        write_blackboard_partition(&ws, task_id, &SAT::Explore, &explorer_result);
 
         // Write reviewer blockers
         let reviewer_result = SubAgentResult {
@@ -579,10 +695,10 @@ mod tests {
                 summary: Some("one blocker".into()),
             }),
         };
-        write_blackboard_partition(task_id, &SAT::Review, &reviewer_result);
+        write_blackboard_partition(&ws, task_id, &SAT::Review, &reviewer_result);
 
         // Read back as Implementer — should see BOTH
-        let section = read_blackboard_section(task_id, &SAT::Implementer)
+        let section = read_blackboard_section(&ws, task_id, &SAT::Implementer)
             .expect("should read both sections");
 
         assert!(section.contains("### Explorer findings"), "section: {section}");
@@ -590,7 +706,48 @@ mod tests {
         assert!(section.contains("### Reviewer blockers"), "section: {section}");
         assert!(section.contains("missing null check"), "section: {section}");
 
-        let _ = std::fs::remove_file(blackboard_path(task_id).expect("valid task id"));
+        let _ = std::fs::remove_file(blackboard_path(&ws, task_id).expect("valid task id"));
+    }
+
+    #[test]
+    fn test_verifier_failures_injected_for_implementer() {
+        let ws = test_workspace();
+        let task_id = "test-verifier-003";
+        let _ = std::fs::remove_file(blackboard_path(&ws, task_id).expect("valid task id"));
+
+        let verifier_result = SubAgentResult {
+            agent_id: "v1".into(),
+            agent_type: SAT::Verifier,
+            assignment: SubAgentAssignment::new("verify".into(), None),
+            model: "deepseek-v4-flash".into(),
+            nickname: None,
+            status: SubAgentStatus::Completed,
+            result: Some("tests failed".into()),
+            steps_taken: 1,
+            duration_ms: 100,
+            from_prior_session: false,
+            structured_verdict: Some(StructuredVerdict {
+                verdict: VerdictLevel::Fail,
+                items: vec![VerdictItem {
+                    severity: "FAIL".into(),
+                    file: "src/lib.rs".into(),
+                    line: Some(99),
+                    description: "assertion failed".into(),
+                    rule: None,
+                    suggestion: Some("fix test setup".into()),
+                }],
+                summary: Some("one failure".into()),
+            }),
+        };
+        write_blackboard_partition(&ws, task_id, &SAT::Verifier, &verifier_result);
+
+        let section = read_blackboard_section(&ws, task_id, &SAT::Implementer)
+            .expect("implementer should read verifier failures");
+        assert!(section.contains("### Verifier failures"), "{section}");
+        assert!(section.contains("assertion failed"), "{section}");
+        assert!(section.contains("fix test setup"), "{section}");
+
+        let _ = std::fs::remove_file(blackboard_path(&ws, task_id).expect("valid task id"));
     }
 }
 
@@ -639,7 +796,7 @@ fn extract_coverage_confidence(result: &SubAgentResult) -> Value {
     json!("unknown")
 }
 
-fn build_implementer_rounds(result: &SubAgentResult, existing_raw: &str) -> Value {
+fn build_implementer_rounds(result: &SubAgentResult, existing_raw: &str, workspace: &Path) -> Value {
     // Read existing rounds, append a new one
     let mut existing_rounds: Vec<Value> = if existing_raw.trim().is_empty() {
         Vec::new()
@@ -654,7 +811,7 @@ fn build_implementer_rounds(result: &SubAgentResult, existing_raw: &str) -> Valu
 
     let round_num = existing_rounds.len() + 1;
     let changes = extract_changes_from_result(result);
-    let symbol_changes = read_symbol_changes();
+    let symbol_changes = read_symbol_changes(workspace);
 
     let new_round = json!({
         "round": round_num,
@@ -666,9 +823,8 @@ fn build_implementer_rounds(result: &SubAgentResult, existing_raw: &str) -> Valu
     json!(existing_rounds)
 }
 
-fn read_symbol_changes() -> Value {
-    let ws = workspace_root().unwrap_or_else(|| PathBuf::from("."));
-    let path = ws.join(".deepseek").join(".symbols_changes.json");
+fn read_symbol_changes(workspace: &Path) -> Value {
+    let path = workspace.join(".deepseek").join(".symbols_changes.json");
     std::fs::read_to_string(&path)
         .ok()
         .and_then(|raw| serde_json::from_str(&raw).ok())

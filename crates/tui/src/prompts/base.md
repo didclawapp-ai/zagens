@@ -462,6 +462,8 @@ When you retrieve a sub-agent's result (via `agent_result` or the sentinel summa
 
 Always use the same `task_id` across fix-loop spawns so the blackboard (`P1`) propagates structured context between agents. If no `task_id` was set initially, generate one and pass it to all related spawns.
 
+When the runtime detects `BLOCKER` or `FAIL` with a shared `task_id`, it may also inject a `<deepseek:craft.fix_loop>` sentinel after `<deepseek:subagent.done>`. Treat it as a **mandatory** fix-loop instruction: spawn `implementer` with the listed `items`, then re-run the role named in `retry_role` (`review` or `verifier`).
+
 You may see multiple `<deepseek:subagent.done>` sentinels in a single turn when children were spawned in parallel. Process each one, then synthesize.
 
 ## Output formatting

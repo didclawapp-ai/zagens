@@ -8,7 +8,7 @@
 
 ## 1. 一句话结论
 
-**Phase 1 harness ✅ → A+ / P2（L2 终态）✅ → D10 解除 ✅（Jason 2026-05-24）→ 阶段 F / GAP 可推进。**
+**Phase 1 harness ✅ → A+ / P2 ✅ → D10 ✅ → 阶段 F §12.4 ✅ → B-L1 CRAFT ✅（2026-05-24 手测）→ 余项：B2 记忆地图 / GAP 表。**
 
 §12.1 **阶段 A 全量完成线** 仍为 **🟡 部分**（A1/A2/A5 有 MVP 与单测，未按 §12.1 五项全勾）；这不阻塞已签收的 P2、D10 与桌面扩容。
 
@@ -35,8 +35,8 @@ flowchart LR
 | **A+ §12.2** | 契约 v1、CI 契约测、审批回归 | **✅ 自动化**；手测可复测 | [G2_GATE_ACCEPTANCE.md](./G2_GATE_ACCEPTANCE.md) |
 | **P2 §12.3** | turn_loop 在 core；`engine.rs` <300；sidecar 不变 | **✅ L2 终态 + PR6** | [P2_G3_ENGINE_L2_SIGNOFF.md](./P2_G3_ENGINE_L2_SIGNOFF.md)；`engine.rs` ~192 行 |
 | **D10** | P2 后解除桌面 freeze | **✅ 已签收** | [P2_D10_UNFREEZE_RECORD.md](./P2_D10_UNFREEZE_RECORD.md) §4 |
-| **F §12.4** | F0–F2 + 行为抽样 | **🟡 F0–F2 ✅；F3 进行中；§12.4 #2 抽样待系统验收** | [TUI_DS_PICK_GAP.md](../../desktop/TUI_DS_PICK_GAP.md) |
-| **B §12.5** | CRAFT + 记忆地图 | **❌ 未启动** | P2 后可开 B-L1 |
+| **F §12.4** | F0–F2 + 行为抽样 | **✅ F0–F3 + §12.4 #2**（2026-05-24 手测签收） | [TUI_DS_PICK_GAP.md](../../desktop/TUI_DS_PICK_GAP.md) |
+| **B §12.5** | CRAFT + 记忆地图 + GAP 表 | **🟡 部分** — **#1 B-L1 ✅**（2026-05-24）；#2 记忆地图、#3 GAP 未启动 | [G2_PR5_MANUAL_SMOKE_CHECKLIST.md](./G2_PR5_MANUAL_SMOKE_CHECKLIST.md) §10 |
 
 ---
 
@@ -105,14 +105,19 @@ deepseek-tui: Engine struct、MCP/LSP/SubAgent、runtime_api、tools/*、Runtime
 | F1a Terminal | ✅ | xterm + 增量 progress |
 | F1b Diff | ✅ | diff2html + 运行中预览 |
 | F2 导出/资源管理器 | ✅ | `export_*_json`、`open_in_shell` |
-| F3 a11y | **🟡** | Skip link、landmarks、roving tablist、`ModelParamsDialog` dialog；手测清单部分待签 |
+| F3 a11y | **✅** | Skip link、landmarks、roving tablist、`ModelParamsDialog` dialog；**G2 §8 手测已签**（2026-05-24） |
 | F4 内联编辑 | **⏸** | 依赖 L1「改历史」API |
 
 GAP 表：MCP/用量/任务技能/子代理/路由多为 **◐**；定时自动化 UI **暂缓**。
 
 ### 3.6 阶段 B — 差异化
 
-**未启动。** CRAFT、记忆地图 UI 等在 F 高峰之后（§12.5）。
+| 子轨 | 状态 | 证据 |
+|------|------|------|
+| **B-L1** CRAFT runtime | **✅ 手测签收** | 黑板 API、角色白名单、fix-loop 提示、`craft.*` SSE — [craft-implementation-issues.md](../../craft-implementation-issues.md) Issue 0–5 |
+| **B-L3** AgentPanel CRAFT 卡片 | **✅** | `AgentPanel` + `/v1/blackboards`；G2 §10.7 |
+| **B2** 记忆地图 | **❌ 未启动** | §12.5 #2 |
+| **B3** TUI 体验 | **⏸** | 非阻塞 |
 
 ---
 
@@ -123,17 +128,17 @@ GAP 表：MCP/用量/任务技能/子代理/路由多为 **◐**；定时自动�
 | [P2_G3_ENGINE_L2_SIGNOFF.md](./P2_G3_ENGINE_L2_SIGNOFF.md) | P2 L2 终态 / §12.3 架构 | 2026-05-23 |
 | [G2_GATE_ACCEPTANCE.md](./G2_GATE_ACCEPTANCE.md) | A+ 自动化门控 | 2026-05-23 |
 | [P2_D10_UNFREEZE_RECORD.md](./P2_D10_UNFREEZE_RECORD.md) | D10 解除 freeze | Jason **2026-05-24** |
-| [G2_PR5_MANUAL_SMOKE_CHECKLIST.md](./G2_PR5_MANUAL_SMOKE_CHECKLIST.md) | 手测勾选 | 部分已勾 |
+| [G2_PR5_MANUAL_SMOKE_CHECKLIST.md](./G2_PR5_MANUAL_SMOKE_CHECKLIST.md) | 手测勾选（含 **§10 B-L1 CRAFT**） | F + B-L1 已签 **2026-05-24** |
 
 ---
 
 ## 5. 建议后续优先序（与 §17.3 对齐）
 
-1. **F3 收尾 + §12.4 #2** — 键盘/a11y 手测（[G2_PR5_MANUAL_SMOKE_CHECKLIST.md](./G2_PR5_MANUAL_SMOKE_CHECKLIST.md) §8）；TUI vs DS Pick stop/审批/长跑抽样  
+1. **B2 记忆地图** — §12.5 #2（B-L1 已签 2026-05-24）  
 2. **A1 深化** — `manager.rs` 再拆；落盘 `spawn_blocking` 审计；ToolCell 级同构（若产品需要）  
 3. **A4.6** — `runtime_threads/manager.rs` 体量（§3.4 仍标待拆）  
 4. **R-015** — 全量 `-Gate` 重跑（可选，基线已有 29 MB @ `8b1538a`）  
-5. **B-L1** — CRAFT runtime（P2/D10 后不阻塞）  
+5. **CRAFT 余项** — Issue 6 指令发现、Issue 7 A/B runbook（可选）  
 6. **远期** — `Engine` 整 struct 入 core；`StateStore` vs JSONL 统一；`streaming_phase` 拆子模块
 
 ---
@@ -147,6 +152,7 @@ cargo test -p deepseek-tui --lib history_isomorphism
 cargo test -p deepseek-tui --lib capacity_escalation
 cargo test -p deepseek-tui --test protocol_recovery
 cargo test -p deepseek-tui --lib sidecar_contract_full_lifecycle
+cd crates/desktop/web-ui && npm run test:f3 && npm run build
 ```
 
 ---

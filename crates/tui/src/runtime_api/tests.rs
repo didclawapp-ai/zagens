@@ -2235,7 +2235,7 @@ async fn sidecar_parallel_pending_approvals_resolve_then_continue() -> Result<()
 }
 
 /// A+.4 Sidecar contract test: health → create thread → start turn →
-/// SSE stream subset → stop.  This is the minimal smoke test that any
+/// SSE stream subset → interrupt.  This is the minimal smoke test that any
 /// L3 shell (TUI / DS Pick) expects to pass.  The server is in-memory
 /// (same `spawn_test_server` helper); the full `deepseek-tui serve
 /// --http` binary-test variant lives under
@@ -2301,16 +2301,17 @@ async fn sidecar_contract_full_lifecycle() -> Result<()> {
         "expected at least one SSE event in replay, got: {events_body:.200}"
     );
 
-    // 5. Stop the turn
-    let stop_resp = client
+    // 5. Interrupt the turn (DS Pick + TUI both use POST .../interrupt — §12.4 #2)
+    let interrupt_resp = client
         .post(format!(
-            "{base}/v1/threads/{thread_id}/turns/{turn_id}/stop"
+            "{base}/v1/threads/{thread_id}/turns/{turn_id}/interrupt"
         ))
         .send()
         .await?;
     assert!(
-        stop_resp.status().is_success() || stop_resp.status() == StatusCode::NOT_FOUND,
-        "stop should succeed or 404 if already completed"
+        interrupt_resp.status().is_success() || interrupt_resp.status() == StatusCode::CONFLICT,
+        "interrupt should succeed or 409 if already terminal; got {}",
+        interrupt_resp.status()
     );
 
     handle.abort();

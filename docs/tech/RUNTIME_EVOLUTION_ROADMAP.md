@@ -2,7 +2,7 @@
 
 > **版本：** v2.0-final（2026-05-21）  
 > **状态：** **定稿 + 实施中** — §4.2 已签收；**§17** 为 DS Pick 实施后审核快照（2026-05-22）  
-> **门控：** §12.3 P2 + G3 + PR6 已达标；**D10 已解除**（[adr/P2_D10_UNFREEZE_RECORD.md](./adr/P2_D10_UNFREEZE_RECORD.md) §4，Jason 2026-05-24）→ 阶段 F / GAP 可按 [TUI_DS_PICK_GAP.md](../desktop/TUI_DS_PICK_GAP.md) 推进  
+> **门控：** §12.3 P2 + G3 + PR6 已达标；**D10 已解除**；**§12.4 阶段 F 手测已签**（2026-05-24）  
 > **v1.6 要点：** 修正 §6.2 步骤 0.8 引用、§12.1 A5.1 门控表述、§1.4 定稿章节策略、`RUNTIME_BASELINE.md` 占位  
 > **受众：** 维护者、Agent、桌面/TUI 开发  
 > **产品节奏：** Phase 1 harness **已验收** → **A+A+ 打底** → **P2 还技术债**（Engine→core）→ **解冻桌面 GAP**；壳运 **始终分离**，**不**换 app-server sidecar。
@@ -466,8 +466,8 @@ gantt
 
 **验收：**
 
-- [ ] explore/review 角色无法调用写盘工具（自动化测试）
-- [ ] 一次失败验收能程序化触发修复轮
+- [x] explore/review 角色无法调用写盘工具（自动化测试）
+- [x] 一次失败验收能程序化触发修复轮（手测 2026-05-24，G2 §10）
 
 ---
 
@@ -522,7 +522,7 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 | **F1a** | xterm.js Shell 实时输出 | ✅ `TerminalCard` + 增量 `tool.progress` |
 | **F1b** | diff2html（edit_file / apply_patch） | ✅ `DiffCard`；运行中 diff 预览 |
 | **F2** | 导出会话 JSON、资源管理器打开工作区 | ✅ `export_*_json` + `open_in_shell` |
-| **F3** | 快捷键 / a11y | 🟡 Skip link、Escape 停生成、focus-visible、aria 区域标签、`prefers-reduced-motion` 扩展 |
+| **F3** | 快捷键 / a11y | ✅ Skip link、Escape 停生成、focus-visible、aria 区域标签、`prefers-reduced-motion`；**G2 §8 手测已签**（2026-05-24） |
 | **F4** | 内联编辑历史消息 | **依赖 L1** 提供「改历史」runtime API 后再做 |
 
 ### 10.4 壳层 **禁止**（与 P2 一致）
@@ -532,8 +532,8 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 
 ### 10.5 融合完成线
 
-- [x] GAP 表 F0–F2 关闭或记入暂缓（F0 路由测、F1a/F1b/F2 已落地；F3 部分）
-- [ ] 同一 `deepseek-tui` 二进制：TUI 与 DS Pick 跑 **同一** 长跑/审批/停止语义（抽样验收）
+- [x] GAP 表 F0–F3 关闭或记入暂缓（F3 §8 + **§12.4 #2** 手测签收 2026-05-24）
+- [x] 同一 `deepseek-tui` 二进制：TUI 与 DS Pick 跑 **同一** stop/审批/长跑语义（抽样）— [G2 §9](./adr/G2_PR5_MANUAL_SMOKE_CHECKLIST.md)、[CODE_REVIEW_2026-05-24.md](../../deliverables/CODE_REVIEW_2026-05-24.md)
 
 ### 10.6 桌面 GAP 冻结（还债窗口，D9）
 
@@ -832,7 +832,7 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 | **A L1** | A1–A5、A4 模块化 | **🟡 部分** — A4 达标；**A3** golden 测已入 core；A1/A2/A5 未全量验收 |
 | **A+ L2** | 契约 v1、sidecar 契约测、审批回归 | **🟡 自动化 ✅** — G2 门控（2026-05-23）；审批 UI 手测可复测（接线已合） |
 | **P2** | Engine→core、engine.rs <300 行 | **🟢 L2 终态 + PR6** — G3 签收（2026-05-23）；turn loop 阶段在 core（PR6 2026-05-24）；`engine.rs` ~192 行 |
-| **F / B** | P2 后解冻 | **🟡 F0–F2 已落地** — F3 a11y 大部分（Composer tab 顺序 + skip link；手测待签） |
+| **F / B** | P2 后解冻 | **✅ F0–F3 + §12.4 #2** — 手测签收 2026-05-24（G2 §8–§9）；**B-L1 CRAFT** ✅ 2026-05-24（G2 §10） |
 
 ### 17.2 已交付（可勾选 issue）
 
@@ -848,6 +848,7 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 | — | P2 PR2 局部 | `deepseek-core::{session,working_set,project_context,approval,cycle::CycleBriefing,engine}` + tui re-export |
 | — | P2 PR1 类型/`LlmClient` 入 core | `crates/core/src/{chat,models,turn,...}` + tui re-export |
 | — | DS Pick 生产路径 | Phase 1 harness、v0.4.3 流式去重、多窗口（CHANGELOG） |
+| — | B-L1 CRAFT | 黑板 API、`craft.*` SSE、fix-loop 提示、AgentPanel — [craft-implementation-issues.md](../../craft-implementation-issues.md)；手测 [G2_PR5_MANUAL_SMOKE_CHECKLIST.md](./adr/G2_PR5_MANUAL_SMOKE_CHECKLIST.md) §10（2026-05-24） |
 
 ### 17.3 阻塞与债务（收尾优先序）
 
@@ -862,7 +863,7 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 
 - [x] 维护者签收 §17 审核结论（**实施中**，非 **已完成**；G2/G3 2026-05-23 更新）
 - [x] §11.0 ADR **G3** 正式签收 — [P2_G3_ENGINE_L2_SIGNOFF.md](./adr/P2_G3_ENGINE_L2_SIGNOFF.md)
-- [x] D10 解冻评审（实施记录）→ [P2_D10_UNFREEZE_RECORD.md](./adr/P2_D10_UNFREEZE_RECORD.md)；阶段 F F0–F2 已落地，F3 收尾中
+- [x] D10 解冻评审（实施记录）→ [P2_D10_UNFREEZE_RECORD.md](./adr/P2_D10_UNFREEZE_RECORD.md)；阶段 F F0–F3 已落地，F3 §8 手测已签（2026-05-24）
 - [x] 维护者正式签收 D10 解除 freeze — [P2_D10_UNFREEZE_RECORD.md](./adr/P2_D10_UNFREEZE_RECORD.md) §4（Jason，2026-05-24）
 
 ---
@@ -879,4 +880,5 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 | 2026-05-21 | v1.5 | 第三轮审核：§3.4 体量快照；A1/A3/A5 与代码对齐；P2 core↔ThreadManager；§12.6+R-015 基准；A+.7 审批；freeze PR 规则；Issue 优先级 |
 | 2026-05-21 | v1.6 | 定稿前抛光：步骤 0.8 引用、§12.1 A5.1 门控、§1.4 章节重排策略、`adr/RUNTIME_BASELINE.md` 占位 |
 | 2026-05-21 | v2.0-final | 维护者签收 §4.2（D4–D7、D9）；路线图定稿，可按 §14.1 开工 |
+| 2026-05-24 | — | §9.1 B1 验收勾选；§17.1 B-L1 CRAFT 手测签收（G2 §10） |
 | 2026-05-22 | v2.0-final+audit | §17 DS Pick 实施后审核；§3.4 体量快照更新；D10 freeze 仍有效 |

@@ -997,6 +997,42 @@ fn build_subagent_system_prompt_skips_role_when_blank() {
 }
 
 #[test]
+fn subagent_done_sentinel_omits_structured_verdict_when_absent() {
+    let res = make_snapshot(SubAgentStatus::Completed);
+    let sentinel = subagent_done_sentinel("agent_xyz", &res);
+    let inner = sentinel
+        .trim_start_matches("<deepseek:subagent.done>")
+        .trim_end_matches("</deepseek:subagent.done>");
+    let parsed: serde_json::Value = serde_json::from_str(inner).expect("inner JSON parses");
+    assert!(parsed.get("structured_verdict").is_none());
+}
+
+#[test]
+fn subagent_done_sentinel_includes_structured_verdict_when_present() {
+    let mut res = make_snapshot(SubAgentStatus::Completed);
+    res.agent_type = SubAgentType::Review;
+    res.structured_verdict = Some(StructuredVerdict {
+        verdict: VerdictLevel::Blocker,
+        items: vec![VerdictItem {
+            severity: "BLOCKER".into(),
+            file: "src/main.rs".into(),
+            line: Some(1),
+            description: "bad".into(),
+            rule: None,
+            suggestion: None,
+        }],
+        summary: Some("one blocker".into()),
+    });
+    let sentinel = subagent_done_sentinel("agent_rev", &res);
+    let inner = sentinel
+        .trim_start_matches("<deepseek:subagent.done>")
+        .trim_end_matches("</deepseek:subagent.done>");
+    let parsed: serde_json::Value = serde_json::from_str(inner).expect("inner JSON parses");
+    assert_eq!(parsed["structured_verdict"]["verdict"], "BLOCKER");
+    assert_eq!(parsed["structured_verdict"]["items"][0]["file"], "src/main.rs");
+}
+
+#[test]
 fn subagent_done_sentinel_format_is_well_formed() {
     let res = make_snapshot(SubAgentStatus::Completed);
     let sentinel = subagent_done_sentinel("agent_xyz", &res);

@@ -202,6 +202,7 @@ export default function SettingsPanel({
                 <option value="on-request">{t('settings.approvalOnRequest')}</option>
                 <option value="untrusted">{t('settings.approvalUntrusted')}</option>
                 <option value="never">{t('settings.approvalNever')}</option>
+                <option value="auto">{t('settings.approvalAuto')}</option>
               </select>
             </label>
 

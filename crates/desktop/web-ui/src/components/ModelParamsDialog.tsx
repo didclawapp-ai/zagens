@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { useT } from '../i18n';
 
 interface Props {
   open: boolean;
@@ -14,6 +15,7 @@ export interface ModelParams {
 }
 
 export default function ModelParamsDialog({ open, onClose, onApply, initial }: Props) {
+  const { t } = useT();
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const [temperature, setTemperature] = useState(initial.temperature);
@@ -69,13 +71,13 @@ export default function ModelParamsDialog({ open, onClose, onApply, initial }: P
         onKeyDown={onKeyDown}
       >
         <h3 id={titleId} className="text-base font-semibold mb-5">
-          ⚙️ 模型参数
+          {t('modelParams.title')}
         </h3>
 
         <div className="space-y-4">
           <div>
             <label htmlFor="model-params-temperature" className="block text-xs text-t-text-secondary mb-1">
-              Temperature
+              {t('modelParams.temperature')}
             </label>
             <div className="flex items-center gap-3">
               <input
@@ -100,7 +102,7 @@ export default function ModelParamsDialog({ open, onClose, onApply, initial }: P
 
           <div>
             <label htmlFor="model-params-top-p" className="block text-xs text-t-text-secondary mb-1">
-              Top P
+              {t('modelParams.topP')}
             </label>
             <div className="flex items-center gap-3">
               <input
@@ -125,7 +127,7 @@ export default function ModelParamsDialog({ open, onClose, onApply, initial }: P
 
           <div>
             <label htmlFor="model-params-max-tokens" className="block text-xs text-t-text-secondary mb-1">
-              Max Tokens
+              {t('modelParams.maxTokens')}
             </label>
             <input
               id="model-params-max-tokens"
@@ -145,14 +147,14 @@ export default function ModelParamsDialog({ open, onClose, onApply, initial }: P
             onClick={onClose}
             className="px-4 py-2 rounded-lg text-sm text-t-text-secondary hover:bg-hover"
           >
-            取消
+            {t('modelParams.cancel')}
           </button>
           <button
             type="button"
             onClick={() => onApply({ temperature, topP, maxTokens })}
             className="px-4 py-2 rounded-lg text-sm font-medium bg-accent text-accent-text hover:opacity-90"
           >
-            应用
+            {t('modelParams.apply')}
           </button>
         </div>
       </div>

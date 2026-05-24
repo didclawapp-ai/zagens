@@ -42,6 +42,7 @@ import {
   type SystemSettings,
 } from './api/client';
 import { useT } from './i18n';
+import { notifyCraftBlackboardChanged } from './lib/craftBlackboard';
 import { normalizeDesktopStreamEvent, type NormalizedStreamEvent, type TurnUsage } from './api/streamNormalize';
 import ChatView from './components/ChatView';
 import { useAuditNavActivity } from './lib/useAuditNavActivity';
@@ -65,7 +66,7 @@ import type { AgentState } from './types/agent';
 import useKeyboardShortcuts from './hooks/useKeyboardShortcuts';
 import SkipToMainLink from './components/SkipToMainLink';
 import { streamFlagsForRunMode } from './lib/runtimeMode';
-import { autoApproveFromPolicy } from './lib/approvalPolicy';
+import { autoApproveFromPolicy, composerAutoApproveToggleEnabled } from './lib/approvalPolicy';
 import { rebuildMessagesFromThreadEvents } from './lib/chat/rebuildMessagesFromThread';
 import {
   cacheSessionUiMessages,
@@ -300,6 +301,7 @@ export default function App() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [autoApprove, setAutoApprove] = useState(false);
   const [runMode, setRunMode] = useState<DesktopRunModeId>(() => loadRunModePreference());
+  const [approvalPolicy, setApprovalPolicy] = useState('on-request');
   const approvalPolicyRef = useRef('on-request');
   const runModeRef = useRef(runMode);
   const [taskTypePreference, setTaskTypePreference] = useState<DesktopTaskTypePreference>(
@@ -918,6 +920,7 @@ export default function App() {
 
   const syncAutoApproveFromPolicy = useCallback((policy: string) => {
     approvalPolicyRef.current = policy;
+    setApprovalPolicy(policy);
     const mode = runModeRef.current;
     if (mode === 'yolo') {
       setAutoApprove(true);
@@ -926,6 +929,13 @@ export default function App() {
     } else {
       setAutoApprove(autoApproveFromPolicy(policy));
     }
+  }, []);
+
+  const handleAutoApproveChange = useCallback((value: boolean) => {
+    if (!composerAutoApproveToggleEnabled(approvalPolicyRef.current) && value) {
+      return;
+    }
+    setAutoApprove(value);
   }, []);
 
   const handleRunModeChange = useCallback((mode: DesktopRunModeId) => {
@@ -1934,6 +1944,10 @@ export default function App() {
             }
             break;
           }
+          case 'craft_verdict':
+          case 'craft_board_updated':
+            notifyCraftBlackboardChanged();
+            break;
           default:
             break;
         }
@@ -2162,7 +2176,8 @@ export default function App() {
           onCancel={handleCancelStream}
           disabled={streaming}
           autoApprove={autoApprove}
-          onAutoApproveChange={setAutoApprove}
+          approvalPolicy={approvalPolicy}
+          onAutoApproveChange={handleAutoApproveChange}
           runMode={runMode}
           onRunModeChange={handleRunModeChange}
           taskTypePreference={taskTypePreference}

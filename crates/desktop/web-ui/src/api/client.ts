@@ -1295,6 +1295,21 @@ export async function saveSystemSettings(settings: SystemSettings): Promise<void
   await invoke('save_system_settings', { settings });
 }
 
+// ========== CRAFT blackboards (B-L3) ==========
+
+export interface BlackboardListResponse {
+  tasks: string[];
+}
+
+export async function fetchBlackboardList(): Promise<string[]> {
+  const res = await fetchJsonPoll<BlackboardListResponse>('/v1/blackboards');
+  return Array.isArray(res.tasks) ? res.tasks : [];
+}
+
+export async function fetchBlackboardDetail(taskId: string): Promise<unknown> {
+  return fetchJsonPoll(`/v1/blackboards/${encodeURIComponent(taskId)}`);
+}
+
 // ========== Symbol Index Management ==========
 
 export interface SymbolIndexInfo {

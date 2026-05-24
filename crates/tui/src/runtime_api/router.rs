@@ -10,10 +10,11 @@ use super::{
     add_mcp_server, browse_thread_workspace, browse_workspace_by_root, cancel_task,
     clear_tasks, compact_thread, create_automation, create_skill, create_task, create_thread,
     cors_layer, delete_automation, delete_mcp_server, delete_session, fork_thread,
-    get_automation, get_mcp_server, get_resume_task, get_routing_rules, get_session,
-    get_thread, get_thread_checklist, get_thread_context, get_thread_scratchpad_status, get_task,
-    get_usage, health, import_skill_local, install_skill_remote, internal_probe, interrupt_thread_turn,
-    list_automations, list_automation_runs, list_mcp_servers, list_mcp_tools, list_sessions,
+    get_automation, get_blackboard, get_mcp_server, get_resume_task, get_routing_rules,
+    get_session, get_thread, get_thread_checklist, get_thread_context,
+    get_thread_scratchpad_status, get_task, get_usage, health, import_skill_local,
+    install_skill_remote, internal_probe, interrupt_thread_turn, list_automation_runs,
+    list_automations, list_blackboards, list_mcp_servers, list_mcp_tools, list_sessions,
     list_skills, list_tasks, list_thread_snapshots, list_threads, list_threads_summary,
     merge_mcp_config_json, pause_automation, persist_thread_session,
     read_thread_workspace_file, read_workspace_file_by_root, rebuild_symbol_index,
@@ -82,6 +83,8 @@ pub fn build_router(state: RuntimeApiState) -> Router {
         .route("/v1/tasks/clear", post(clear_tasks))
         .route("/v1/tasks/{id}", get(get_task))
         .route("/v1/tasks/{id}/cancel", post(cancel_task))
+        .route("/v1/blackboards", get(list_blackboards))
+        .route("/v1/blackboards/{id}", get(get_blackboard))
         .route("/v1/skills", get(list_skills).post(create_skill))
         .route("/v1/skills/import", post(import_skill_local))
         .route("/v1/skills/install", post(install_skill_remote))

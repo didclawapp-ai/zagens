@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **DS Pick (F3):** `ModelParamsDialog` — `role="dialog"`, `aria-modal`, labelled controls, Escape to close, focus on open.
+- **DS Pick (F3):** `ModelParamsDialog` — `role="dialog"`, `aria-modal`, labelled controls, Escape to close, focus on open; strings via `modelParams.*` i18n.
 - **Runtime (A1.4):** `history_isomorphism` — thinking block round-trip + `history_transcript_core_matches_messages`; compaction/trim/persist paths use core check; partition trim regression tests.
 - **DS Pick (F3):** Right-panel workbench tabs + integrated terminal session tabs use roving `tabIndex` and Arrow/Home/End keyboard navigation (`lib/a11y/rovingTabList.ts`).
 - **Runtime (A3.2/A3.4):** `ErrorRetryPolicy` + `user_hint_for_category`; `ErrorEnvelope.hint` and unified HTTP `error` payload (`class`, `retryable`, `retry_policy`, `hint`); TUI status line appends hint; `api_error_payload_includes_taxonomy_fields` regression.
@@ -31,13 +31,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Runtime (A1.2):** Large-output routing stamps `ToolResult.metadata.large_output` with persisted `meta_path`; `monitor_turn` copies into turn-item `artifact_refs` so JSONL/SQLite items round-trip to `large_outputs/` blobs.
 - **Runtime (A3.3):** Stream transparent/outer retries consult `is_stream_failure_retryable` — `InvalidInput` / auth errors no longer burn retry budget; network/timeouts still retry.
 - **Runtime (A3):** `classify_error_message` recognizes DeepSeek thinking/reasoning constraint strings as `InvalidInput` (distinct from network disconnect); golden suite centralized in `deepseek-core::error_taxonomy`.
-- **Desktop (approval):** `approval_policy` from system settings now drives Composer `auto_approve` on load/save; sidecar `start_turn` reads `ApprovalMode` from config (`never` / `on-request` / `auto`) instead of hardcoding Suggest.
+- **Desktop (approval):** 系统设置新增 **「自动批准」** 审批策略；非 auto 时 Composer 显示只读「审批：按需审批」等，不再展示无法勾选的复选框；`approval_policy=auto` 时显示可勾选的「自动批准工具调用」。
 - **Desktop (F3):** Composer card markup — options/bridge/textarea/actions stay inside `.card` (removed premature close that left input chrome outside the card).
-- **Tests:** `integration_mock_llm` re-exports `deepseek_core::LlmClient` so mock trait matches P2 `async_trait` surface.
+- **Runtime (A+.4):** `sidecar_contract_full_lifecycle` — interrupt endpoint aligned with DS Pick (`POST .../interrupt`, not legacy `/stop`).
+- **DS Pick (F3):** Terminal session tabs — close control no longer nested inside tab button (valid HTML + keyboard activation).
 
 ### Changed
 
 - **Governance (D10):** 维护者签收解除桌面 Feature freeze（Jason，2026-05-24）— [docs/tech/adr/P2_D10_UNFREEZE_RECORD.md](docs/tech/adr/P2_D10_UNFREEZE_RECORD.md) §4；路线图 §17.4 已勾选。
+- **Governance (F3):** G2 手测清单 §8（键盘 a11y 8.1–8.5）维护者签收 ✅（2026-05-24）— [G2_PR5_MANUAL_SMOKE_CHECKLIST.md](docs/tech/adr/G2_PR5_MANUAL_SMOKE_CHECKLIST.md) §6。
+- **Governance (§12.4 #2):** **已闭合**（2026-05-24）— Stop / 长跑双壳 / DS Pick 审批（G2 §2 + §9）；全量审核 [CODE_REVIEW_2026-05-24.md](deliverables/CODE_REVIEW_2026-05-24.md)。
 - **Runtime (P2 PR6a–d):** Turn loop streaming + tool planning/outcomes + `tool_parser` in `deepseek-core`; TUI `tool_plans_exec` + split `host_impl/`; `capacity_policy` + `TurnLoopMode` capacity checkpoints; `execute_plan_on_engine` / `detached_execute_with_lock`. Plan: `docs/tech/adr/P2_PR6_TURN_LOOP_L2_MIGRATION_PLAN.md`（PR6 切片已全部落地；ADR/spike 已同步）。
 - **Runtime (A1.6 / R-015):** Full baseline @ `8b1538a` — median RSS **29 MB** (3×50 + 1.1 MB fixture, `-Gate` PASS vs 28.5 MB); ADR + `deliverables/runtime-baseline-full-run.log` updated.
 - **Runtime (A1-full):** Emergency trim (`trim_oldest_messages_to_budget`) uses hot/cold partition — drops `ColdSummary` first, preserves hot / pinned / `[workshop-ref]` messages; `context_trim::trim_messages_partition_aware`.
@@ -50,6 +53,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Docs:** G2 §10 B-L1 CRAFT 手测签收（2026-05-24）— §12.5 #1 闭环、AgentPanel、`craft.*` SSE；[G2_PR5_MANUAL_SMOKE_CHECKLIST.md](docs/tech/adr/G2_PR5_MANUAL_SMOKE_CHECKLIST.md) §10。
+- **Runtime (B-L1 / CRAFT):** Blackboard APIs bind to thread **workspace** (not sidecar `cwd`); `GET /v1/blackboards` + `GET /v1/blackboards/{id}`; subagent done sentinel includes `structured_verdict` only when present; Verifier failures写入黑板；`<deepseek:craft.fix_loop>` 程序化修复提示；SSE `craft.verdict` / `craft.board_updated`。
+- **DS Pick (B-L3):** AgentPanel「CRAFT 任务」区域 — 轮询 `/v1/blackboards`，展示 explorer / 实现轮次 / reviewer 裁决 / verifier 摘要。
 - **Docs:** `docs/tech/adr/IMPLEMENTATION_SUMMARY_2026-05-24.md` — 路线图门控链与 A/A+/P2/F/D10 实施现状归档；路线图 §17 已链入。
 - **Runtime (A1.4):** `tui/history_isomorphism` — user/assistant transcript parity with `history_cells_from_message`; tests after compaction, trim, and JSONL reconstruct.
 - **Runtime (A1.1):** `deepseek_core::context_partition` — hot window / cold zone tiers (`Hot`, `Pinned`, `ColdSummary`, `ColdExternalRef`); `CompactionPlan::context_partition`.
@@ -64,7 +70,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Runtime (A1.4):** `compact_messages_safe_preserves_pinned_text_in_result_messages` — compaction pin isomorphism regression.
 - **Runtime (P2):** `Op::ApproveToolCall` / `DenyToolCall` route through `tx_approval` (same channel as `EngineHandle`).
 - **Desktop (A+.3):** `KNOWN_DESKTOP_SSE_EVENTS` + `streamNormalize.selfcheck.ts` — unknown SSE events return `null`.
-- **Desktop (F3):** `ToolCard` `aria-busy`; `DiffCard` open-in-panel `aria-label`.
+- **Desktop (F3):** `npm run test:f3` — roving tablist helper self-check (`rovingTabList.selfcheck.ts`).
 - **Runtime (P2):** `SubAgentSpawnPort::list_subagents` — op-loop `ListSubAgents` delegates through port; tui adapter runs manager cleanup + list.
 - **Runtime (A2):** `monitor_turn` logs `TurnSummary` on `TurnComplete` with `thread_id` + `turn_id`.
 - **Runtime (P2):** `op_handlers.rs` — cancel/approve/deny/list/change-mode/query-context ops; `op_loop` match thinned further.

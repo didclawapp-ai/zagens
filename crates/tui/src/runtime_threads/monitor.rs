@@ -600,6 +600,48 @@ impl RuntimeThreadManager {
                     )
                     .await?;
                 }
+                EngineEvent::CraftVerdict {
+                    agent_id,
+                    agent_type,
+                    task_id,
+                    verdict,
+                    summary,
+                    items,
+                } => {
+                    self.emit_event(
+                        &thread_id,
+                        Some(&turn_id),
+                        None,
+                        "craft.verdict",
+                        json!({
+                            "agent_id": agent_id,
+                            "agent_type": agent_type,
+                            "task_id": task_id,
+                            "verdict": verdict,
+                            "summary": summary,
+                            "items": items,
+                        }),
+                    )
+                    .await?;
+                }
+                EngineEvent::CraftBoardUpdated {
+                    task_id,
+                    partition,
+                    agent_id,
+                } => {
+                    self.emit_event(
+                        &thread_id,
+                        Some(&turn_id),
+                        None,
+                        "craft.board_updated",
+                        json!({
+                            "task_id": task_id,
+                            "partition": partition,
+                            "agent_id": agent_id,
+                        }),
+                    )
+                    .await?;
+                }
                 EngineEvent::AgentList { agents } => {
                     let running = agents
                         .iter()

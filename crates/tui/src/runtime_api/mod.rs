@@ -54,6 +54,7 @@ use crate::task_manager::{
 
 mod auth;
 mod automations;
+mod blackboards;
 mod health;
 mod mcp;
 mod router;
@@ -65,6 +66,7 @@ mod threads;
 mod usage;
 mod workspace;
 
+pub(crate) use blackboards::{get_blackboard, list_blackboards};
 pub(crate) use automations::{
     create_automation, delete_automation, get_automation, list_automation_runs, list_automations,
     pause_automation, resume_automation, run_automation, update_automation,

@@ -286,6 +286,16 @@ pub(super) fn map_compat_stream_event(
                 json!({ "agents": agents }),
             ))
         }
+        "craft.verdict" => Some(sse_json_seq(
+            event.seq,
+            "craft.verdict",
+            payload.clone(),
+        )),
+        "craft.board_updated" => Some(sse_json_seq(
+            event.seq,
+            "craft.board_updated",
+            payload.clone(),
+        )),
         "panel.checklist" | "panel.scratchpad" | "panel.context" => {
             Some(sse_json_seq(event.seq, event.event.as_str(), payload.clone()))
         }
@@ -667,6 +677,24 @@ mod tests {
         let sse = map_compat_stream_event(&r).expect("should map agent.completed");
         let text = render(sse).await;
         assert!(text.contains("event: agent.completed"));
+    }
+
+    async fn maps_craft_events() {
+        let r = record(
+            "craft.verdict",
+            json!({"agent_id": "a1", "verdict": "BLOCKER", "task_id": "t1"}),
+        );
+        let sse = map_compat_stream_event(&r).expect("should map craft.verdict");
+        let text = render(sse).await;
+        assert!(text.contains("event: craft.verdict"));
+
+        let r = record(
+            "craft.board_updated",
+            json!({"task_id": "t1", "partition": "reviewer"}),
+        );
+        let sse = map_compat_stream_event(&r).expect("should map craft.board_updated");
+        let text = render(sse).await;
+        assert!(text.contains("event: craft.board_updated"));
     }
 
     #[tokio::test]

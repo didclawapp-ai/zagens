@@ -23,6 +23,8 @@ export const KNOWN_DESKTOP_SSE_EVENTS = new Set([
   'agent.progress',
   'agent.completed',
   'agent.list',
+  'craft.verdict',
+  'craft.board_updated',
   'panel.checklist',
   'panel.scratchpad',
   'panel.context',
@@ -68,6 +70,8 @@ export type NormalizedStreamEvent =
   | { kind: 'agent_progress'; agentId: string; status?: string }
   | { kind: 'agent_completed'; agentId: string; result: string }
   | { kind: 'agent_list'; agents: AgentListRowMeta[] }
+  | { kind: 'craft_verdict'; agentId: string; agentType: string; taskId?: string; verdict: string }
+  | { kind: 'craft_board_updated'; taskId: string; partition: string; agentId: string }
   | { kind: 'panel_scratchpad'; scratchpad: unknown }
   | { kind: 'panel_checklist'; checklist: unknown }
   | { kind: 'panel_context'; context: unknown };
@@ -178,6 +182,27 @@ export function normalizeDesktopStreamEvent(
         agents: raw.map((a) => parseAgentListRow(a)),
       };
     }
+  }
+  if (sse === 'craft.verdict') {
+    const agentId = String(j.agent_id ?? '');
+    if (!agentId) return null;
+    return {
+      kind: 'craft_verdict',
+      agentId,
+      agentType: String(j.agent_type ?? ''),
+      taskId: j.task_id != null ? String(j.task_id) : undefined,
+      verdict: String(j.verdict ?? ''),
+    };
+  }
+  if (sse === 'craft.board_updated') {
+    const taskId = String(j.task_id ?? '');
+    if (!taskId) return null;
+    return {
+      kind: 'craft_board_updated',
+      taskId,
+      partition: String(j.partition ?? ''),
+      agentId: String(j.agent_id ?? ''),
+    };
   }
 
   if (sse === 'panel.scratchpad' && j.scratchpad != null) {
@@ -300,6 +325,31 @@ export function normalizeDesktopStreamEvent(
       return {
         kind: 'agent_list',
         agents: raw.map((a) => parseAgentListRow(a)),
+      };
+    }
+  }
+  if (recordEvent === 'craft.verdict') {
+    const payload = (inner ?? j) as Record<string, unknown>;
+    const agentId = String(payload.agent_id ?? '');
+    if (agentId) {
+      return {
+        kind: 'craft_verdict',
+        agentId,
+        agentType: String(payload.agent_type ?? ''),
+        taskId: payload.task_id != null ? String(payload.task_id) : undefined,
+        verdict: String(payload.verdict ?? ''),
+      };
+    }
+  }
+  if (recordEvent === 'craft.board_updated') {
+    const payload = (inner ?? j) as Record<string, unknown>;
+    const taskId = String(payload.task_id ?? '');
+    if (taskId) {
+      return {
+        kind: 'craft_board_updated',
+        taskId,
+        partition: String(payload.partition ?? ''),
+        agentId: String(payload.agent_id ?? ''),
       };
     }
   }

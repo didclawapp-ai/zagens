@@ -867,7 +867,14 @@ export default function RightPanel({
           />
         )}
 
-        {view === 'agents' && !officeSession && <AgentPanel agents={agentStates} />}
+        {view === 'agents' && !officeSession && (
+          <AgentPanel
+            agents={agentStates}
+            runtimeConn={runtimeConn}
+            streaming={streaming}
+            runtimeSessionEstablished={runtimeSessionEstablished}
+          />
+        )}
 
         {view === 'routing' && !officeSession && (
           <RoutingPanel

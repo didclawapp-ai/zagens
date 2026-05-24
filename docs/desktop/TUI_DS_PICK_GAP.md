@@ -97,7 +97,7 @@
 
 1. ~~**Terminal 集成（xterm.js）**~~ — ✅ `TerminalCard` + 增量 `tool.progress`（F1a）。
 2. ~~**Diff 可视化（diff2html）**~~ — ✅ `DiffCard` + 右栏 Diff 面板（F1b）；运行中 diff 预览 2026-05-23。
-3. **快捷键 & 无障碍** — 🟡 Skip link、`#main-content`、工具/diff aria、focus-visible、reduced-motion；**Tab 顺序**已系统化（侧栏 → Composer → 对话 → 右栏，`App.tsx` flex `order` + landmarks）。
+3. **快捷键 & 无障碍** — ✅ Skip link、`#main-content`、工具/diff aria、focus-visible、reduced-motion、Composer Tab 顺序、roving tablist；**G2 §8 手测已签**（2026-05-24）。
 4. ~~**资源管理器中打开工作区**~~ — ✅ `open_in_shell` Tauri command。
 5. ~~**导出会话 JSON**~~ — ✅ Composer 菜单 + `export_session_json` / `export_thread_json`。
 6. **内联编辑 / 智能粘贴** — 与后端「改历史消息」能力对齐后再做。
@@ -118,7 +118,7 @@
 | 4 | 子代理面板 | **◐** | `AgentPanel.tsx`、`agentStates`、`App.tsx` SSE |
 | 5 | Terminal（xterm） | **✅** | `TerminalCard.tsx`；F1a 增量 progress |
 | 6 | Diff（diff2html） | **✅** | `DiffCard.tsx` + `DiffPanel`；运行中预览 |
-| 7 | 快捷键 & a11y | **◐** | Skip link、roving tablist、reduced-motion；`ModelParamsDialog` dialog 语义（2026-05-24） |
+| 7 | 快捷键 & a11y | **✅** | Skip link、roving tablist、reduced-motion、`ModelParamsDialog` i18n + dialog 语义；**G2 §8 手测已签**（2026-05-24） |
 | 8 | 模型参数 + 资源管理器 + 导出 JSON | **◐** | `ModelParamsDialog` 已接；**8b/8c** 仍缺 |
 | 9 | 智能粘贴 & 内联编辑 | **❌** | 未做 |
 | 10 | 自动模型路由 | **◐** | `RoutingPanel.tsx`；引擎侧需核对 |

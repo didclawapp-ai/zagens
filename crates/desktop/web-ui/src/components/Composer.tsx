@@ -30,6 +30,7 @@ import {
 } from '../types/desktop';
 import { runModesForSession } from '../lib/taskTypeSession';
 import { clipboardHtmlToPlainText } from '../lib/sanitizeHtml';
+import { composerAutoApproveToggleEnabled, approvalPolicySettingsKey } from '../lib/approvalPolicy';
 
 const MAX_FILE_BYTES = 128 * 1024; // 128 KB per file
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024; // align with describe_image / vision_transcribe_image
@@ -386,6 +387,8 @@ interface Props {
   onCancel?: () => void;
   disabled: boolean;
   autoApprove: boolean;
+  /** From system settings — non-`auto` policies lock the Composer toggle off. */
+  approvalPolicy: string;
   onAutoApproveChange: (value: boolean) => void;
   runMode: DesktopRunModeId;
   onRunModeChange: (mode: DesktopRunModeId) => void;
@@ -428,6 +431,7 @@ export default function Composer({
   onCancel,
   disabled,
   autoApprove,
+  approvalPolicy,
   onAutoApproveChange,
   runMode,
   onRunModeChange,
@@ -931,6 +935,7 @@ export default function Composer({
   const availableRunModes = runModesForSession(officeSession);
   const runModePickerDisabled = availableRunModes.length <= 1;
   const showAutoApprove = officeSession || runMode === 'agent';
+  const autoApproveToggleEnabled = composerAutoApproveToggleEnabled(approvalPolicy);
   const ctxPct = contextUsagePct ?? 0;
   const ctxFillClass = ctxPct >= 85 ? 'danger' : ctxPct >= 65 ? 'warn' : '';
   const contextTooltipKey =
@@ -1194,17 +1199,30 @@ export default function Composer({
               aria-label={t('a11y.composerOptionsToolbar')}
             >
             {showAutoApprove ? (
-              <label className="inline-flex cursor-pointer select-none items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={autoApprove}
-                  onChange={(e) => onAutoApproveChange(e.target.checked)}
-                  disabled={disabled}
-                  className="rounded border-input-border bg-input-bg text-accent focus:ring-accent"
-                />
-                <span className="hidden sm:inline">{t('composer.autoApprove')}</span>
-                <span className="sm:hidden">{t('composer.autoApproveShort')}</span>
-              </label>
+              autoApproveToggleEnabled ? (
+                <label className="inline-flex cursor-pointer select-none items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={autoApprove}
+                    onChange={(e) => onAutoApproveChange(e.target.checked)}
+                    disabled={disabled}
+                    className="rounded border-input-border bg-input-bg text-accent focus:ring-accent"
+                  />
+                  <span className="hidden sm:inline">{t('composer.autoApprove')}</span>
+                  <span className="sm:hidden">{t('composer.autoApproveShort')}</span>
+                </label>
+              ) : (
+                <span
+                  className="max-w-[16rem] truncate leading-snug text-t-text-muted"
+                  title={t('composer.approvalFromSettingsHint')}
+                >
+                  {t('composer.approvalFromSettings', {
+                    policy: t(
+                      `settings.${approvalPolicySettingsKey(approvalPolicy)}` as 'settings.approvalOnRequest',
+                    ),
+                  })}
+                </span>
+              )
             ) : (
               <span className="max-w-[14rem] truncate leading-snug text-t-text-muted" title={runMode === 'plan' ? t('composer.planModeHint') : t('composer.yoloModeHint')}>
                 {runMode === 'plan'
