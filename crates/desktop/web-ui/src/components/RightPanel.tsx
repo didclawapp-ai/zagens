@@ -6,6 +6,7 @@ import McpPanel from './McpPanel';
 import UsageDashboard from './UsageDashboard';
 import AutomationPanel from './AutomationPanel';
 import AgentPanel from './AgentPanel';
+import TopicMemoryPanel from './TopicMemoryPanel';
 import RoutingPanel from './RoutingPanel';
 import ChecklistPanel from './ChecklistPanel';
 import MermaidPanel from './MermaidPanel';
@@ -43,6 +44,7 @@ export type RightPanelView =
   | 'tasks'
   | 'skills'
   | 'agents'
+  | 'topic-memory'
   | 'routing'
   | 'index'
   | 'checklist'
@@ -141,6 +143,7 @@ const PANEL_TITLE_KEYS: Record<RightPanelView, TranslationKey> = {
   tasks: 'panels.tasks',
   skills: 'panels.skills',
   agents: 'panels.agents',
+  'topic-memory': 'panels.topicMemory',
   routing: 'panels.routing',
   index: 'panels.index',
   checklist: 'panels.checklist',
@@ -870,6 +873,14 @@ export default function RightPanel({
         {view === 'agents' && !officeSession && (
           <AgentPanel
             agents={agentStates}
+            runtimeConn={runtimeConn}
+            streaming={streaming}
+            runtimeSessionEstablished={runtimeSessionEstablished}
+          />
+        )}
+
+        {view === 'topic-memory' && !officeSession && (
+          <TopicMemoryPanel
             runtimeConn={runtimeConn}
             streaming={streaming}
             runtimeSessionEstablished={runtimeSessionEstablished}

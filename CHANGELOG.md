@@ -23,7 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **B2 topic memory:** New `deepseek-topic-memory` crate; `[topic_memory]` config (opt-in); `<topic_memory>` system prompt injection every N turns; graph at `~/.deepseek/topic-memory.json`.
+- **B2.1:** Injection arbitration SSOT — [docs/tech/adr/B2_INJECTION_ARBITRATION.md](docs/tech/adr/B2_INJECTION_ARBITRATION.md) (tool results > CRAFT blackboard > topic_memory).
+- **B-L3:** DS Pick `TopicMemoryPanel` + `GET /v1/topic-memory` (graph + eval metrics); settings sidebar entry.
+- **B2.5:** `scripts/topic-memory-eval.ps1` — clarification-rate baseline compare + `-Gate`; `TopicMemoryEvalReport` / `compare_eval` in `deepseek-topic-memory`.
+- **B3.3:** SSE backpressure — `RecvError::Lagged` catch-up from store + `coalesce_delta_events` for `item.delta`.
+- **B3.1:** `main.rs` slimmed (~350 lines); CLI tests → `cli/tests.rs`; `cli/entry.rs` (`configure_windows_console_utf8`).
 - **B2.3:** k-hop subgraph retrieval (`retrieve_for_query`) seeds injection from the latest user turn instead of pasting the full hot graph.
 - **B2.5:** `topic-memory-metrics.json` sidecar (turn updates, inject count, repeat-topic / clarification heuristics).
 - **B2 (DS Pick):** Settings panel toggles `topic_memory_enabled` and inject interval; persisted to `[topic_memory]` in `config.toml`.

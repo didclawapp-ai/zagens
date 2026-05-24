@@ -13,7 +13,7 @@ use super::{
     fork_thread, fork_thread_at_user_message,
     get_automation, get_blackboard, get_mcp_server, get_resume_task, get_routing_rules,
     get_session, get_thread, get_thread_checklist, get_thread_context,
-    get_thread_scratchpad_status, get_task, get_usage, health, import_skill_local,
+    get_thread_scratchpad_status, get_topic_memory, get_task, get_usage, health, import_skill_local,
     install_skill_remote, internal_probe, interrupt_thread_turn, list_automation_runs,
     list_automations, list_blackboards, list_mcp_servers, list_mcp_tools, list_sessions,
     list_skills, list_tasks, list_thread_snapshots, list_threads, list_threads_summary,
@@ -91,6 +91,7 @@ pub fn build_router(state: RuntimeApiState) -> Router {
         .route("/v1/tasks/{id}/cancel", post(cancel_task))
         .route("/v1/blackboards", get(list_blackboards))
         .route("/v1/blackboards/{id}", get(get_blackboard))
+        .route("/v1/topic-memory", get(get_topic_memory))
         .route("/v1/skills", get(list_skills).post(create_skill))
         .route("/v1/skills/import", post(import_skill_local))
         .route("/v1/skills/install", post(install_skill_remote))

@@ -22,7 +22,8 @@ pub use graph::{
 };
 pub use inject::{inject_memory_section, MemorySectionMarkers, DEFAULT_MARKERS};
 pub use metrics::{
-    load_metrics, metrics_path_for_graph, record_inject, record_turn_update, save_metrics,
+    compare_eval, eval_report, load_metrics, metrics_path_for_graph, record_inject,
+    record_turn_update, save_metrics, TopicMemoryEvalComparison, TopicMemoryEvalReport,
     TopicMemoryMetrics,
 };
 pub use retrieve::{

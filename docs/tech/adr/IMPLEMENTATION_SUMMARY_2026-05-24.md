@@ -135,9 +135,9 @@ GAP 表：MCP/用量/任务技能/子代理/路由多为 **◐**；定时自动�
 ## 5. 建议后续优先序（与 §17.3 对齐，2026-05-24 代码审计）
 
 1. **B2 记忆地图** — §12.5 #2（greenfield，见 `docs/topic-memory-rust-plan.md`）  
-2. **CRAFT 集成手测** — 自动化单测已加（`instructions_paths` / resident 硬锁 / LSP）；手测清单 [G2 §11](./G2_PR5_MANUAL_SMOKE_CHECKLIST.md) 待签  
-3. **B3 TUI 拆分** — `main.rs` CLI 模块化（不阻塞门控）  
-4. **R-015** — 全量 `-Gate` 重跑（可选）  
+2. ~~**CRAFT 集成手测**~~ — **✅ 2026-05-24** [G2 §11](./G2_PR5_MANUAL_SMOKE_CHECKLIST.md) 签收（§10 B-L1 + §11 P1 深化）
+3. **B3 TUI 拆分** — `main.rs` CLI 模块化（不阻塞门控）
+4. **R-015** — 全量 `-Gate` 重跑（可选）
 5. **远期** — `Engine` 整 struct 入 core；`StateStore` vs JSONL；`streaming_phase` 拆子模块；B3 `main.rs` CLI 拆分
 
 ---

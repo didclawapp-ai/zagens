@@ -424,6 +424,7 @@ type SettingsTab =
   | 'mcp'
   | 'skills'
   | 'routing'
+  | 'topic-memory'
   | 'system'
   | 'index'
   | 'about';
@@ -462,6 +463,7 @@ function SettingsAccordion({
     { tab: 'mcp', label: 'MCP 服务器', show: true },
     { tab: 'skills', label: t('sidebar.skills'), show: true },
     { tab: 'routing', label: '模型路由', show: !officeSession },
+    { tab: 'topic-memory', label: t('sidebar.topicMemory'), show: !officeSession },
     { tab: 'index', label: '索引', show: !officeSession },
     { tab: 'system', label: '系统设置', show: true },
     { tab: 'about', label: t('sidebar.about'), show: true },

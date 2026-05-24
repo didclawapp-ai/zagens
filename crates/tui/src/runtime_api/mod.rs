@@ -62,11 +62,13 @@ mod sessions;
 mod skills;
 mod stream;
 mod tasks;
+mod topic_memory;
 mod threads;
 mod usage;
 mod workspace;
 
 pub(crate) use blackboards::{get_blackboard, list_blackboards};
+pub(crate) use topic_memory::get_topic_memory;
 pub(crate) use automations::{
     create_automation, delete_automation, get_automation, list_automation_runs, list_automations,
     pause_automation, resume_automation, run_automation, update_automation,

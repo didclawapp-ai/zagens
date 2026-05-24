@@ -332,7 +332,7 @@ pub(crate) fn default_checkpoints_dir() -> PathBuf {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CleanPlan {
-    targets: Vec<PathBuf>,
+    pub(crate) targets: Vec<PathBuf>,
 }
 
 pub(crate) fn collect_clean_targets(checkpoints_dir: &Path) -> CleanPlan {
@@ -1574,9 +1574,9 @@ pub(crate) fn provider_capability_report(config: &Config) -> serde_json::Value {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DoctorApiTarget {
-    provider: &'static str,
-    base_url: String,
-    model: String,
+    pub(crate) provider: &'static str,
+    pub(crate) base_url: String,
+    pub(crate) model: String,
 }
 
 pub(crate) fn doctor_api_target(config: &Config) -> DoctorApiTarget {
@@ -2121,11 +2121,11 @@ pub(crate) fn is_command_available(name: &str) -> bool {
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct GhPullRequest {
-    title: String,
-    body: String,
-    base: String,
-    head: String,
-    url: String,
+    pub(crate) title: String,
+    pub(crate) body: String,
+    pub(crate) base: String,
+    pub(crate) head: String,
+    pub(crate) url: String,
 }
 
 pub(crate) fn run_gh_pr_view(number: u32, repo: Option<&str>) -> Result<GhPullRequest> {

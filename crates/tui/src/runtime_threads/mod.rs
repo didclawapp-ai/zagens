@@ -49,6 +49,7 @@ pub(crate) const RUNTIME_RESTART_REASON: &str = "Interrupted by process restart"
 mod active;
 mod engine_load;
 mod events;
+pub(crate) mod event_coalesce;
 mod manager;
 mod turn_lifecycle;
 mod turn_control;

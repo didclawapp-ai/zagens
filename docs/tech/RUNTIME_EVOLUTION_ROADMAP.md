@@ -1,8 +1,8 @@
 # DeepSeek-TUI / DS Pick 运行时演进实施路线图
 
-> **版本：** v2.0-final（2026-05-21）  
-> **状态：** **定稿 + 实施中** — §4.2 已签收；**§17** 为 DS Pick 实施后审核快照（2026-05-22）  
-> **门控：** §12.3 P2 + G3 + PR6 已达标；**D10 已解除**；**§12.4 阶段 F 手测已签**（2026-05-24）  
+> **版本：** v2.0-final（2026-05-21）· **代码对齐：** 2026-05-24  
+> **状态：** **定稿 + 实施中** — §4.2 已签收；**§17** 为实施后审核快照（2026-05-22，**§17.5** 2026-05-24 代码对齐）  
+> **门控：** §12.3 P2 + G3 + PR6 ✅；**D10 已解除**；**§12.4 阶段 F** ✅；**§12.5** 🟡（B2 运行时进行中，B-L3 记忆地图 UI 未做）  
 > **v1.6 要点：** 修正 §6.2 步骤 0.8 引用、§12.1 A5.1 门控表述、§1.4 定稿章节策略、`RUNTIME_BASELINE.md` 占位  
 > **受众：** 维护者、Agent、桌面/TUI 开发  
 > **产品节奏：** Phase 1 harness **已验收** → **A+A+ 打底** → **P2 还技术债**（Engine→core）→ **解冻桌面 GAP**；壳运 **始终分离**，**不**换 app-server sidecar。
@@ -27,7 +27,7 @@
 14. [Issue 拆分模板](#14-issue-拆分模板)
 15. [关联文档](#15-关联文档)
 16. [文档审核记录](#16-文档审核记录)
-17. [DS Pick 实施后审核（2026-05-22）](#17-ds-pick-实施后审核2026-05-22)  
+17. [DS Pick 实施后审核（2026-05-22）](#17-ds-pick-实施后审核2026-05-22) · [§17.5 代码对齐（2026-05-24）](#175-代码对齐快照2026-05-24)  
     · **实施总结（2026-05-24）：** [adr/IMPLEMENTATION_SUMMARY_2026-05-24.md](./adr/IMPLEMENTATION_SUMMARY_2026-05-24.md)
 
 > **执行顺序阅读指引（与章节编号无关）：** §7 A → §8 A+ → §11 P2 → §10 F → §9 B（见 §1.6）。正文 §9–§11 按 **文档结构** 编号（B→F→P2），**勿按 9→10→11 数字顺序执行**。`v2.0-final` 可选将正文重排为 §9 P2 → §10 F → §11 B（见 §1.4）。
@@ -157,24 +157,27 @@ deepseek app-server
 | config | ✅ | ✅ | ✅ | |
 | secrets | ✅ | ✅ | ✅ | |
 | tools (+protocol 类型) | ✅ | ❌ | 经 app-server | **实现**在 `tui/src/tools`；**类型**在 `deepseek-tools` → `protocol`。P2 默认 **不迁** 工具实现，仅迁 Engine/session（§11.0 ADR） |
-| core | ❌ | ❌ | 仅 app-server | **非产品主链**；**P2 后** 为 L1 主库 |
+| core | ✅ | ❌ | app-server + **tui 生产链** | **P2 L2 终态：** `turn_loop`/`session`/类型在 core；`Engine` struct 仍留 tui（[BACKLOG_ENGINE_STRUCT_IN_CORE.md](./adr/BACKLOG_ENGINE_STRUCT_IN_CORE.md)） |
+| topic-memory | ✅ | ✅（设置透传） | ❌ | **B2** — `crates/topic-memory` + `tui/topic_memory.rs` 注入管线；**无** L3 图可视化 UI |
 | state | ❌ | ❌ | thread 元数据 | 与 runtime_threads 并行 |
-| tui-core | ❌ | ❌ | ❌ | 未接入 |
+| tui-core | ❌ | ❌ | ❌ | **legacy** — 仅 snapshot 测；B3.2 定案不接入（见 `crates/tui-core/README.md`） |
 
-### 3.4 代码体量快照（2026-05-22 审核更新）
+### 3.4 代码体量快照（2026-05-24 对齐）
 
 | 路径 | 约行数 | 路线图动作 | 实施状态 |
 |------|--------|------------|----------|
-| `crates/tui/src/runtime_api/mod.rs` | ~505 | **A4** 拆分 | **✅ 达标** — 域模块 + `tests.rs`；主文件保留 `run_http_server`、`ApiError`、CORS、`ThreadEventsQuery` |
-| `crates/tui/src/runtime_threads/mod.rs` | ~275 | **A4.6** | **✅ 主文件达标** — 测试在 `tests.rs`（~2140）；`manager.rs` 待再切 |
-| `crates/tui/src/runtime_threads/manager.rs` | ~572 | **A4.6** | **✅ 已拆** — 逻辑在 `turn_lifecycle` / `persist` / `monitor` 等；主文件达标 |
+| `crates/tui/src/runtime_api/mod.rs` | ~477 | **A4** 拆分 | **✅ 达标** — 域模块 + `tests.rs`；主文件保留 `run_http_server`、`ApiError`、CORS、`ThreadEventsQuery` |
+| `crates/tui/src/runtime_threads/mod.rs` | ~275 | **A4.6** | **✅ 主文件达标** — 测试在 `tests.rs`（~2140） |
+| `crates/tui/src/runtime_threads/manager.rs` | ~585 | **A4.6** | **✅ 已拆** — 逻辑在 `turn_lifecycle` / `persist` / `monitor` 等；主文件达标 |
 | `crates/core/src/session.rs` | ~183 | **P2 PR2** | **✅** — `Session`/`SessionUsage` + `working_set`/`project_context`/`ApprovalMode` |
 | `crates/tui/src/core/engine.rs` | ~192 | **P2 PR4/PR6** | **✅ 薄壳** — `turn_loop` 阶段在 core；`host_impl` + `tool_plans_exec` 在 tui |
 | `crates/core/src/engine/turn_loop/streaming_phase.rs` | ~700 | **P2 PR6** | **✅** — 可选拆 `stream_poll` 子模块 |
-| `crates/core/src/lib.rs` | ~1710 | **P2** 并入 Engine | **部分** — 共享类型已入 core 子模块；`Runtime`/`Engine` 未迁 |
+| `crates/core/src/lib.rs` | ~1838 | **P2** 并入 Engine | **L2 终态** — `turn_loop` 阶段 + 类型在 core；整包 `Engine` struct / `Runtime` 职责仍 split（backlog ADR） |
 | `crates/tui/src/lib.rs` | 有 | **A5.1** | **✅** lib target 已存在 |
+| `crates/tui/src/main.rs` | ~350 | **B3.1** CLI 拆分 | **✅** — 命令在 `cli/commands/legacy.rs`；测试在 `cli/tests.rs` |
+| `crates/topic-memory/src/lib.rs` | ~85+ | **B2** | **🟡 MVP** — 图引擎 + k-hop 注入 + metrics；4 单测；桌面设置开关已接 |
 
-**已有能力（避免重复立项）：** `tools/large_output_router.rs`（大 tool 输出外部化/路由）、`core/capacity*.rs`（容量估算）。A1/A5 以 **扩展、落盘一致性与测试** 为主，见 §7.1、§7.5。
+**已有能力（避免重复立项）：** `tools/large_output_router.rs`（大 tool 输出外部化/路由）、`core/capacity*.rs`（容量估算）、`history_isomorphism`（user/assistant/thinking 同构测）。A1 余项见 §17.5。
 
 ---
 
@@ -266,7 +269,7 @@ gantt
 | 0.5 | 维护者确认 **D4**（冻结 `app-server`；**不**再开「阶段 C」— 已并入 **P2**）并记入 §4.2 签收栏 | 决策 | Tech lead |
 | 0.6 | `project_rules.md` 增加可 grep 禁令：**禁止 app-server 扩展；禁止 WebView 内嵌 Engine** | 流程 | 工具链 ✅ |
 | 0.7 | 签收 **D4/D7/D9** 与 §1.6 门控链；发布桌面 **Feature freeze** 公告 | 决策 | Tech lead |
-| 0.8 | **PR 审查规则（freeze）：** 标签 `area:desktop` 的 PR 须说明是否符合 §10.6；超出 freeze 须标 `freeze-exception` + 维护者 ack | `CONTRIBUTING` 或 `project_rules.md` | Tech lead |
+| 0.8 | **PR 审查规则（freeze）：** 标签 `area:desktop` 的 PR 须说明是否符合 §10.6；超出 freeze 须标 `freeze-exception` + 维护者 ack | `CONTRIBUTING` 或 `project_rules.md` | **✅** `project_rules.md`（D10 解除后仍保留 ack 流程） |
 
 ### 6.3 验收
 
@@ -286,16 +289,16 @@ gantt
 
 **问题：** 长跑会话 `api_messages`、工具结果、JSONL/SQLite 全量序列化导致内存与主线程阻塞；compaction 与 TUI transcript 可能分叉。
 
-**现状：** 已有 `large_output_router`（Engine/工具链接线）、`capacity_memory` / `capacity.rs`；缺口在 **落盘同构、热/冷窗口、长跑基准**（§12.6、R-015）。
+**现状（2026-05-24 代码对齐）：** 已有 `context_partition` 热/冷、`large_output_router` + `artifact_refs`、`history_isomorphism` 单测、`trim_oldest_messages_to_budget`（`VecDeque` 式批量 drain，非 `remove(0)`）、R-015 RSS 基线 + `-Gate`；[A1_PERSIST_BLOCKING_AUDIT.md](./adr/A1_PERSIST_BLOCKING_AUDIT.md) 已签收。**缺口：** live `ToolCell` 与 `session.messages` 全同构；HTTP `events_since` 的 `spawn_blocking` 包装（backlog）。
 
-| 步骤 | 实施内容 | 主要文件 |
-|------|----------|----------|
-| A1.1 | 定义 **热窗口 / 冷区** 数据模型（近期消息 + pin vs 摘要/外部引用） | `core/session.rs`, `compaction.rs` |
-| A1.2 | 超大 tool output **外部化**：在 `large_output_router` 上补 **持久化 ref + 消息同构**（非从零造 blob 层） | `large_output_router.rs`, `runtime_threads.rs`, `tools/*` |
-| A1.3 | 落盘 **节流 + spawn_blocking**；crash-safe checkpoint 策略文档化 | `thread_store_sqlite.rs`, `session_store_sqlite.rs` |
-| A1.4 | compaction/trim 后 **同构校验**：`session.messages`、TUI history、thread JSONL 一致 | `compaction.rs`, `tui/history.rs`, `runtime_threads.rs` |
-| A1.5 | `trim_oldest_messages_to_budget`：`Vec::remove(0)` → `VecDeque` 或批量 `drain` | `core/engine.rs` |
-| A1.6 | 增加 **长跑基准脚本**（见 §12.7 量化指标） | `scripts/` 或 `crates/tui` 集成测 |
+| 步骤 | 实施内容 | 主要文件 | 状态 |
+|------|----------|----------|------|
+| A1.1 | 定义 **热窗口 / 冷区** 数据模型（近期消息 + pin vs 摘要/外部引用） | `core/session.rs`, `compaction.rs` | **🟡** `context_partition` MVP |
+| A1.2 | 超大 tool output **外部化**：持久化 ref + 消息同构 | `large_output_router.rs`, `runtime_threads.rs`, `tools/*` | **🟡** ref 已有；live 同构未全 |
+| A1.3 | 落盘 **节流 + spawn_blocking**；crash-safe checkpoint | `thread_store_sqlite.rs`, `session_store_sqlite.rs` | **🟡** persist 路径已审计；`events_since` backlog |
+| A1.4 | compaction/trim 后 **同构校验** | `compaction.rs`, `tui/history.rs`, `runtime_threads.rs` | **🟡** `history_isomorphism` 单测 + debug_assert |
+| A1.5 | `trim_oldest_messages_to_budget`：`VecDeque` 或批量 `drain` | `context_recovery.rs` | **✅** |
+| A1.6 | **长跑基准脚本** | `scripts/runtime-longrun-baseline.ps1` | **🟡** RSS + `-Gate`；全量 50 轮可选重跑 |
 
 **A1-MVP（可分阶段验收，避免 4–10 周全耗 A1）：**
 
@@ -316,13 +319,15 @@ gantt
 
 **问题：** 排障依赖零散 `status` 文案；后续桌面融合需要稳定事件模型（完整子集在 A+ 冻结）。
 
-| 步骤 | 实施内容 | 主要文件 |
-|------|----------|----------|
-| A2.1 | 扩展 `EngineEvent` / `RuntimeEventRecord`：`turn_summary`（step_count, tool_names, end_reason） | `core/events.rs`, `runtime_threads.rs` |
-| A2.2 | Turn 结束 emit 结构化事件；映射到 SSE compat 名 | `runtime_api.rs` `map_compat_stream_event` |
-| A2.3 | 内部文档草案：拟议 **稳定事件子集 v1**（A+ 正式写入 API_DESIGN） | 文档草稿 |
-| A2.4 | （移至 A+）桌面 `client.ts` 对齐子集 | 见 §8 |
-| A2.5 | 结构化 tracing span：`turn_id`, `thread_id`, `step` | `logging.rs`, `turn_loop.rs` |
+**现状（2026-05-24）：** `TurnSummary`、`turn.completed` SSE、`RuntimeEventRecord` + tracing span 已落地；§12.1 #2 **未**维护者正式签收。
+
+| 步骤 | 实施内容 | 主要文件 | 状态 |
+|------|----------|----------|------|
+| A2.1 | 扩展 `EngineEvent` / `RuntimeEventRecord`：`turn_summary` | `core/events.rs`, `runtime_threads.rs` | **✅** |
+| A2.2 | Turn 结束 emit 结构化事件；映射到 SSE compat 名 | `runtime_api/stream.rs` | **✅** |
+| A2.3 | 内部文档草案：稳定事件子集 v1 | [A2_TURN_OBSERVABILITY_V1_DRAFT.md](./adr/A2_TURN_OBSERVABILITY_V1_DRAFT.md) | **🟡** 草稿 |
+| A2.4 | （移至 A+）桌面 `client.ts` 对齐子集 | 见 §8 | **✅** |
+| A2.5 | 结构化 tracing span：`turn_id`, `thread_id`, `step` | `logging.rs`, `turn_loop.rs` | **✅** |
 
 **验收：**
 
@@ -332,14 +337,14 @@ gantt
 
 ### 7.3 A3 — 失败路径与重试分类
 
-**现状：** 已有 `ErrorCategory`、`ErrorEnvelope`（`error_taxonomy.rs`）；分散单测在 `engine/tests.rs` 等。本阶段 **扩展分类 + golden tests**，不另起 `ErrorClass` 命名。
+**现状：** 已有 `ErrorCategory`、`ErrorEnvelope`（`error_taxonomy.rs`）；**36** golden/边界单测在 `crates/core/src/error_taxonomy.rs`。
 
-| 步骤 | 实施内容 | 主要文件 |
-|------|----------|----------|
-| A3.1 | 为 `classify_error_message` 增加 **30+ golden/边界单测**（集中到 `error_taxonomy` 或 `tests/error_taxonomy.rs`） | `error_taxonomy.rs` |
-| A3.2 | 扩展 `ErrorCategory`（含 `NetworkRetryable` 等）并与 `ErrorEnvelope` 对齐；`turn_loop` 只读分类结果 | `error_taxonomy.rs` |
-| A3.3 | `turn_loop` 重试仅对可重试类；400/thinking 约束走修补或用户提示 | `core/engine/turn_loop.rs` |
-| A3.4 | TUI 与 HTTP 错误 payload 统一：`code`, `category`（或 `class` 别名）, `message`, `hint` | `runtime_api.rs`, `tui` 错误 UI |
+| 步骤 | 实施内容 | 主要文件 | 状态 |
+|------|----------|----------|------|
+| A3.1 | 30+ golden/边界单测 | `error_taxonomy.rs` | **✅** 36 tests |
+| A3.2 | 扩展 `ErrorCategory` 并与 `ErrorEnvelope` 对齐 | `error_taxonomy.rs` | **✅** |
+| A3.3 | `turn_loop` 重试仅对可重试类 | `core/engine/turn_loop.rs` | **✅** |
+| A3.4 | TUI 与 HTTP 错误 payload 统一 | `runtime_api`, `tui` 错误 UI | **🟡** 核心已统一；边缘 UI 可再抛光 |
 
 **验收：**
 
@@ -473,23 +478,26 @@ gantt
 
 ### 9.2 B2 — 话题记忆地图（Topic Memory Graph）
 
-| 步骤 | 实施内容 | 说明 |
+> **代码对齐（2026-05-24 实施）：** B2.1/B2.5/B-L3 ✅ — [B2_INJECTION_ARBITRATION.md](./adr/B2_INJECTION_ARBITRATION.md)、`TopicMemoryPanel`、`scripts/topic-memory-eval.ps1`。Runtime：`deepseek-topic-memory` + `tui/topic_memory.rs`。
+
+| 步骤 | 实施内容 | 状态 |
 |------|----------|------|
-| B2.1 | **注入仲裁规则** 文档化（工具结果 > 黑板 > 图摘要） | 先文档后代码 |
-| B2.2 | 选型：**桌面 Web** 维护图 + runtime 拉取 Markdown 块；或 Rust 对等实现 | 见 UNDERLYING §2.3 |
-| B2.3 | 按当前 turn **k-hop 子图** 检索注入，非每轮全图粘贴 | token 控制 |
-| B2.4 | 隐私：不写入密钥；图存储路径与 workspace 绑定 | |
-| B2.5 | 轻量指标：重复澄清轮次、长会话任务完成率 | 评测 |
+| B2.1 | **注入仲裁规则** 文档化（工具结果 > 黑板 > 图摘要） | **✅** [B2_INJECTION_ARBITRATION.md](./adr/B2_INJECTION_ARBITRATION.md) |
+| B2.2 | 选型：Rust 对等实现（已定案） | **✅** `crates/topic-memory/` |
+| B2.3 | 按当前 turn **k-hop 子图** 检索注入 | **✅** `retrieve_for_query` + `inject_interval` |
+| B2.4 | 隐私：图路径 `~/.deepseek/topic-memory/`；opt-in 默认关 | **✅** |
+| B2.5 | 轻量指标：`TopicMemoryMetrics` 落盘 + 重复澄清/完成率评测 | **✅** `eval_report` + `scripts/topic-memory-eval.ps1` |
+| B2.6 | **B-L3** DS Pick 记忆地图可视化面板 | **✅** `TopicMemoryPanel` + `GET /v1/topic-memory` |
 
 ---
 
 ### 9.3 B3 — TUI 体验（非阻塞）
 
-| 步骤 | 内容 |
-|------|------|
-| B3.1 | `main.rs` CLI 拆分到 `cli/` 子模块 |
-| B3.2 | `tui-core` 评估：**接入** 或 **删除** 避免死代码 |
-| B3.3 | 背压策略：broadcast 满时 delta 合并策略 |
+| 步骤 | 内容 | 状态 |
+|------|------|------|
+| B3.1 | `main.rs` CLI 拆分到 `cli/` 子模块 | **✅** — `main.rs` ~350 行；`cli/tests.rs` |
+| B3.2 | `tui-core` 评估：**接入** 或 **删除** | **✅ 定案 legacy** — 保留 snapshot 测，不接入生产链 |
+| B3.3 | 背压策略：broadcast 满时 delta 合并策略 | **✅** — `event_coalesce.rs` + SSE `Lagged` 回补 |
 
 ---
 
@@ -523,7 +531,7 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 | **F1b** | diff2html（edit_file / apply_patch） | ✅ `DiffCard`；运行中 diff 预览 |
 | **F2** | 导出会话 JSON、资源管理器打开工作区 | ✅ `export_*_json` + `open_in_shell` |
 | **F3** | 快捷键 / a11y | ✅ Skip link、Escape 停生成、focus-visible、aria 区域标签、`prefers-reduced-motion`；**G2 §8 手测已签**（2026-05-24） |
-| **F4** | 内联编辑历史消息 | **依赖 L1** 提供「改历史」runtime API 后再做 |
+| **F4** | 内联编辑历史消息 | **✅** `POST .../edit-last-turn` + `MessageBubble`（2026-05-24）；TUI 多消息回退仍强于桌面 |
 
 ### 10.4 壳层 **禁止**（与 P2 一致）
 
@@ -575,7 +583,7 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 | **双持久化** | — | — | **Backlog：** `StateStore`（CLI/app-server）vs `runtime_threads` JSONL 统一策略，**不在 P2 首 PR** |
 | **Crate 边界** | **定案：扩展 `deepseek-core`** | 不新建 `runtime` crate，除非 ADR 修订 | — |
 | **PR0 Spike (R-013)** | ✅ 已完成 (2026-05-22) | 见 [adr/P2_MIGRATION_SPIKE.md](adr/P2_MIGRATION_SPIKE.md) | trait 边界、EngineConfig 落点、ThreadManager→core 草图已确认可行 |
-| **PR1 类型平移（部分）** | 🟡 进行中 (2026-05-22) | `deepseek-core` 子模块 + tui re-export | `chat`/`models`/`turn`/`compaction`/`capacity`/`workshop` 等；**非** §12.3 完成 |
+| **PR1 类型平移** | ✅ (2026-05-23) | `deepseek-core` 子模块 + tui re-export | `chat`/`models`/`turn`/`compaction`/`capacity`/`workshop`/`LlmClient` 等；§12.3 以 PR6 + G3 为准 |
 
 **`core::Runtime::handle_thread`：** 迁移后作为与 `RuntimeThreadManager` **共享的 core 入口**（委托真实 turn），用于消除 `queued` 占位漂移；**禁止**为桌面再开一条独立 Message 管道（与 §13.2 一致）。
 
@@ -635,7 +643,9 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 
 ### 12.1 阶段 A「底层完成线」（仅 L1）
 
-未达标：**不得** 将 A+ 标为完成；**不得** 启动 P2 编码（设计/spike 除外）。
+> **2026-05-24：** **未全勾** — A4/A5/A6 ✅；A1/A2/A3 **有代码 + 单测**，缺维护者签收与 A1-full 长跑门禁。
+
+未达标：**不得** 将 A+ 标为完成；**不得** 启动 P2 编码（设计/spike 除外）。*注：P2/G3 已签收，本节为 L1 质量债归档，不阻塞后续门控。*
 
 | # | 标准 | 验证方式 |
 |---|------|----------|
@@ -681,11 +691,13 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 
 ### 12.5 阶段 B 完成线
 
-| # | 标准 |
-|---|------|
-| 1 | CRAFT 角色工具 + 黑板 + 一轮闭环验收 |
-| 2 | 记忆地图注入可开关、可评测 |
-| 3 | DS Pick GAP 表 P0–P2 项关闭或明确暂缓 |
+> **2026-05-24：** #1 CRAFT ✅；#2 记忆地图 **🟡**（runtime MVP，无 UI/仲裁/评测）；#3 GAP 表 **◐**（见 [TUI_DS_PICK_GAP.md](../desktop/TUI_DS_PICK_GAP.md)）。
+
+| # | 标准 | 状态 |
+|---|------|------|
+| 1 | CRAFT 角色工具 + 黑板 + 一轮闭环验收 | **✅** G2 §10（2026-05-24） |
+| 2 | 记忆地图注入可开关、可评测 | **🟡** 开关 + k-hop 注入 ✅；B2.1/B2.5/B-L3 ❌ |
+| 3 | DS Pick GAP 表 P0–P2 项关闭或明确暂缓 | **◐** 定时自动化 UI 暂缓；TUI 斜杠深度、子代理联动 polish 等 |
 
 ### 12.6 量化指标（写入 CI/脚本；首版基准见 R-015）
 
@@ -771,7 +783,7 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 |----|------|------|------|------|
 | R-001 | 文档：RUNTIME_ARCHITECTURE + 底层/壳分离共识 | 0 | — | ✅ |
 | R-002 | `project_rules.md`：禁止 app-server 扩展 + 禁止 WebView Engine | 0 | — | ✅ |
-| R-008 | 术语对照表 + 桌面 Feature freeze 公告 + [§6.2 步骤 0.8](#62-实施步骤) PR 规则 | 0 | — |
+| R-008 | 术语对照表 + 桌面 Feature freeze 公告 + [§6.2 步骤 0.8](#62-实施步骤) PR 规则 | 0 | — | **✅** §1.5 + `project_rules.md` + D10 解冻 ADR |
 | **R-003** | **A4.1–A4.3：** 拆分 runtime_api router + auth + stream | **A** | L1 | **优先** |
 | R-004 | A2.1–A2.2：turn_summary 事件（L1） | A | L1 |
 | R-005 | A1.5：消息历史 VecDeque / drain | A | L1 |
@@ -826,13 +838,14 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 
 ### 17.1 里程碑对照
 
-| 阶段 | 路线图要求 | 审核结论 |
-|------|------------|----------|
-| **0 治理** | 文档 SSOT、D4–D9、freeze 规则 | **✅ 文档侧基本完成**（§6.2 0.1–0.4、0.6；§4.2 签收） |
-| **A L1** | A1–A5、A4 模块化 | **🟡 部分** — A4 达标；**A3** golden 测已入 core；A1/A2/A5 未全量验收 |
-| **A+ L2** | 契约 v1、sidecar 契约测、审批回归 | **🟡 自动化 ✅** — G2 门控（2026-05-23）；审批 UI 手测可复测（接线已合） |
-| **P2** | Engine→core、engine.rs <300 行 | **🟢 L2 终态 + PR6** — G3 签收（2026-05-23）；turn loop 阶段在 core（PR6 2026-05-24）；`engine.rs` ~192 行 |
-| **F / B** | P2 后解冻 | **✅ F0–F3 + §12.4 #2** — 手测签收 2026-05-24（G2 §8–§9）；**B-L1 CRAFT** ✅ 2026-05-24（G2 §10） |
+| 阶段 | 路线图要求 | 审核结论（2026-05-24 对齐） |
+|------|------------|------------------------------|
+| **0 治理** | 文档 SSOT、D4–D9、freeze 规则 | **✅**（D10 已解除；0.8 → `project_rules.md`） |
+| **A L1** | A1–A5、A4 模块化 | **🟡 部分** — A4/A5/A6 ✅；A1 MVP+、A2/A3 有实现；§12.1 未全勾 |
+| **A+ L2** | 契约 v1、sidecar 契约测、审批回归 | **✅ 自动化**（G2 2026-05-23） |
+| **P2** | Engine→core、engine.rs <300 行 | **✅ L2 终态 + PR6** — `engine.rs` ~193 行；整 struct 留 tui（backlog） |
+| **F** | P2 后 GAP F0–F3 + 行为抽样 | **✅** F0–F4 代码 + §12.4 手测（2026-05-24） |
+| **B** | CRAFT + 记忆地图 + GAP | **🟡** B-L1 ✅；B2 runtime MVP；B-L3 / B2.1 / B2.5 未闭合 |
 
 ### 17.2 已交付（可勾选 issue）
 
@@ -850,28 +863,19 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 | — | DS Pick 生产路径 | Phase 1 harness、v0.4.3 流式去重、多窗口（CHANGELOG） |
 | — | B-L1 CRAFT | 黑板 API、`craft.*` SSE、fix-loop 提示、AgentPanel — [craft-implementation-issues.md](../../craft-implementation-issues.md)；手测 [G2_PR5_MANUAL_SMOKE_CHECKLIST.md](./adr/G2_PR5_MANUAL_SMOKE_CHECKLIST.md) §10（2026-05-24） |
 
-### 17.3 阻塞与债务（收尾优先序，2026-05-24 代码审计更新）
+### 17.3 阻塞与债务（2026-05-24 代码对齐）
 
-**§12.5 未闭合 — 仍需写代码（不含文档/runbook/手测）：**
+**§12.5 / 路线图余项 — 仍需写代码：**
 
 | 优先 | 项 | 状态 |
 |------|-----|------|
-| P0 | **B2 记忆地图** B2.2–B2.5 | **🟡 进行中** — `crates/topic-memory` + 配置/注入（设计见 `docs/topic-memory-rust-plan.md`） |
-| P0 | **GAP 8a 模型参数** 全栈 | **✅ 2026-05-24** — `StartTurnRequest` + `streaming_phase` + Composer 齿轮 + `ModelParamsDialog` |
-| P0 | **GAP F4 内联编辑** | **✅ 2026-05-24** — `POST .../edit-last-turn` + 桌面编辑上一条用户消息 |
-| P1 | CRAFT：子代理 LSP、resident_file 硬锁、Issue 6 指令发现、集成回合 | **✅ 代码 + 单测 2026-05-24** — LSP/硬锁/自动发现单测；集成手测 [G2 §11](./adr/G2_PR5_MANUAL_SMOKE_CHECKLIST.md) 待签 |
-| P1 | GAP：AgentPanel↔ToolCard 深度联动；backtrack depth HTTP | **✅ 2026-05-24** — `AgentSpawnInline`、fork-at-user-message HTTP + 桌面「分支」 |
-| P2 | A1 深化（spawn_blocking 审计、live ToolCell 同构）；B3 TUI 拆分 | **🟡 进行中** — `history_isomorphism` live 路径 + `persist` blocking 审计；`cli/` 拆分 |
-| backlog | StateStore/JSONL 统一、`Engine` 整 struct 入 core、`streaming_phase` 子模块 | ADR 远期 |
+| **P0** | **B2 记忆地图** B2.1 仲裁文档、B2.5 评测、**B-L3 图 UI** | **🟡** runtime MVP ✅（`topic-memory` + 注入）；文档/UI/评测 ❌ |
+| **P1** | **G2 §11** CRAFT P1 集成手测（LSP/resident/分支/AgentSpawnInline） | **✅ 2026-05-24** — [G2 §11](./adr/G2_PR5_MANUAL_SMOKE_CHECKLIST.md) 签收 |
+| **P1** | **A1 深化** live ToolCell 同构、`events_since` spawn_blocking | [A1_PERSIST_BLOCKING_AUDIT.md](./adr/A1_PERSIST_BLOCKING_AUDIT.md) follow-ups |
+| **P2** | **B3** `main.rs` CLI 收尾、broadcast 背压 | **🟡** / **❌** |
+| **backlog** | 整包 `Engine` → core；StateStore/JSONL 统一；`streaming_phase` 子模块；Landlock/Windows 沙箱 | 见 `docs/tech/adr/BACKLOG_*.md` |
 
-**已完成（文档/GAP 表可能偏旧，以代码为准）：** A4.6 `manager.rs` 拆分；F0 路由全链；F1–F3；`open_in_shell` / `export_*` / 托盘；智能粘贴；A3 golden 测 36 个。
-
-1. **编译/测试：** ✅ `cargo check --workspace` + `cargo test -p deepseek-tui --lib`（2026-05-22，2368 passed）。
-2. **A4：** `runtime_api/mod.rs` <800 行已达标；`manager.rs` ~572 行已达标。
-3. **A+ 契约：** ✅ G2 自动化（2026-05-23）；审批 UI 手测可复测。
-4. **P2 绞杀者：** L2 终态 G3 签收；`handle_thread(Message)` 已委托 `ThreadMessageTurnPort`（app-server 单轮 LLM；生产 HTTP 仍 `RuntimeThreadManager`）。
-5. **R-015 填数：** ✅ RSS 基线 + `-Gate` 回归门；全量重跑可选。
-6. **F0 路由 / F1–F3：** ✅ 代码 + G2 手测签收（2026-05-24）。
+**已完成（以代码为准，GAP 表可能偏旧）：** A4/A5/A6；P2 PR0–PR6 + G3；D10 解冻；F0–F4；B-L1 CRAFT + AgentPanel；GAP 8a 模型参数、分支 fork、AgentSpawnInline；A3 36 golden；R-015 RSS + `-Gate`。
 
 ### 17.4 维护者签收待办
 
@@ -879,6 +883,33 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 - [x] §11.0 ADR **G3** 正式签收 — [P2_G3_ENGINE_L2_SIGNOFF.md](./adr/P2_G3_ENGINE_L2_SIGNOFF.md)
 - [x] D10 解冻评审（实施记录）→ [P2_D10_UNFREEZE_RECORD.md](./adr/P2_D10_UNFREEZE_RECORD.md)；阶段 F F0–F3 已落地，F3 §8 手测已签（2026-05-24）
 - [x] 维护者正式签收 D10 解除 freeze — [P2_D10_UNFREEZE_RECORD.md](./adr/P2_D10_UNFREEZE_RECORD.md) §4（Jason，2026-05-24）
+
+### 17.5 代码对齐快照（2026-05-24）
+
+对照仓库源码的 **门控 vs 余项** 一览（详细命令见 [IMPLEMENTATION_SUMMARY_2026-05-24.md](./adr/IMPLEMENTATION_SUMMARY_2026-05-24.md) §6）。
+
+| 门控 / 阶段 | 代码事实 | 路线图状态 |
+|-------------|----------|------------|
+| Phase 1 harness | sidecar + `/v1/*` + 真 turn | **✅** |
+| A+ §12.2 | `sidecar_contract_full_lifecycle` in CI；`event_schema_version` | **✅** |
+| P2 §12.3 | `handle_deepseek_turn` + phases in core；`engine.rs` ~193 行 | **✅**（Engine struct 仍 tui） |
+| D10 / F §12.4 | F0–F4 落地；G2 §8–§9 手测 | **✅** |
+| B-L1 §12.5 #1 | 黑板、`craft.*`、角色白名单、fix-loop | **✅** |
+| A §12.1 全量 | A1 live 同构、A1.6 全量 gate、A2 签收 | **🟡 未闭合** |
+| B2 §12.5 #2 | `deepseek-topic-memory` + 注入 + 桌面开关 | **🟡 MVP** |
+| B3 | `cli/` 骨架；`tui-core` legacy | **🟡 / ✅ 定案** |
+| GAP 表 | 定时自动化 UI ⏸；TUI `/` 深度 ◐ | **◐ 产品债** |
+
+**仍未实施的代码工作（按优先序）：**
+
+1. **B2.1** — 多源注入仲裁 SSOT（工具结果 > CRAFT 黑板 > topic_memory）
+2. **B-L3** — DS Pick 记忆地图可视化（当前仅 `SettingsPanel` 开关）
+3. **B2.5** — 记忆地图评测脚本（metrics 已落盘，无自动化对比）
+4. ~~**G2 §11** — CRAFT P1 集成手测签收~~ **✅ 2026-05-24**
+5. **A1 follow-ups** — live ToolCell 同构；HTTP `events_since` → `spawn_blocking`
+6. **B3.1 / B3.3** — `main.rs` CLI 迁移收尾；broadcast 背压
+7. **Backlog ADR** — 整包 `Engine`→core；StateStore/JSONL 统一；可选 `streaming_phase` 拆子模块；A6.3 Landlock/Windows 沙箱实现
+8. **GAP（非门控）** — 定时自动化 UI；通知前端触发；TUI 斜杠命令对标；高级线程操作（仅导出线程、合并等）
 
 ---
 
@@ -894,5 +925,6 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 | 2026-05-21 | v1.5 | 第三轮审核：§3.4 体量快照；A1/A3/A5 与代码对齐；P2 core↔ThreadManager；§12.6+R-015 基准；A+.7 审批；freeze PR 规则；Issue 优先级 |
 | 2026-05-21 | v1.6 | 定稿前抛光：步骤 0.8 引用、§12.1 A5.1 门控、§1.4 章节重排策略、`adr/RUNTIME_BASELINE.md` 占位 |
 | 2026-05-21 | v2.0-final | 维护者签收 §4.2（D4–D7、D9）；路线图定稿，可按 §14.1 开工 |
+| 2026-05-24 | v2.0-final+align | §17.5 代码对齐；§3.3–3.4 / §7 / §9–11 / §12 状态刷新；F4/B2/B3 与代码一致 |
 | 2026-05-24 | — | §9.1 B1 验收勾选；§17.1 B-L1 CRAFT 手测签收（G2 §10） |
 | 2026-05-22 | v2.0-final+audit | §17 DS Pick 实施后审核；§3.4 体量快照更新；D10 freeze 仍有效 |

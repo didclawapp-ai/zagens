@@ -5,6 +5,11 @@
 
 pub mod args;
 pub mod commands;
+pub mod entry;
 
 pub use args::*;
 pub use commands::*;
+pub use entry::configure_windows_console_utf8;
+
+#[cfg(test)]
+mod tests;

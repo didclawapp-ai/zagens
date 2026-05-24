@@ -1347,6 +1347,44 @@ export async function fetchBlackboardDetail(taskId: string): Promise<unknown> {
   return fetchJsonPoll(`/v1/blackboards/${encodeURIComponent(taskId)}`);
 }
 
+// ========== Topic memory graph (B-L3) ==========
+
+export interface TopicMemoryGraphNode {
+  count: number;
+  strength: number;
+  depth?: number;
+  dormant?: boolean;
+}
+
+export interface TopicMemoryGraphEdge {
+  weight: number;
+}
+
+export interface TopicMemoryEvalMetrics {
+  turn_updates: number;
+  inject_count: number;
+  clarification_rounds: number;
+  repeat_topic_turns: number;
+  clarification_rate: number;
+  repeat_topic_rate: number;
+  injects_per_10_turns: number;
+  last_inject_at?: string | null;
+}
+
+export interface TopicMemorySnapshot {
+  enabled: boolean;
+  graph_path: string;
+  graph: {
+    nodes: Record<string, TopicMemoryGraphNode>;
+    edges: Record<string, TopicMemoryGraphEdge>;
+  };
+  metrics: TopicMemoryEvalMetrics;
+}
+
+export async function fetchTopicMemory(): Promise<TopicMemorySnapshot> {
+  return fetchJsonPoll<TopicMemorySnapshot>('/v1/topic-memory');
+}
+
 // ========== Symbol Index Management ==========
 
 export interface SymbolIndexInfo {

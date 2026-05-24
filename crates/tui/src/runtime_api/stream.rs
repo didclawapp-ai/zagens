@@ -13,6 +13,9 @@ use axum::response::sse::{Event as SseEvent, KeepAlive, Sse};
 use axum::Json;
 use futures_util::Stream;
 use serde_json::{Value, json};
+use tokio::sync::broadcast::error::RecvError;
+
+use crate::runtime_threads::event_coalesce::coalesce_delta_events;
 
 use super::{
     map_thread_err, ApiError, CreateThreadRequest, RuntimeApiState, StartTurnRequest,
@@ -329,8 +332,9 @@ pub(super) async fn stream_thread_events(
     let replay_only = query.replay_only.unwrap_or(false);
     let mut live = state.runtime_threads.subscribe_events();
     let thread_id = id.clone();
+    let runtime_threads = state.runtime_threads.clone();
     let stream = stream! {
-        for event in backlog {
+        for event in coalesce_delta_events(backlog) {
             let seq = event.seq;
             let event_name = event.event.clone();
             let payload = runtime_event_payload(event);
@@ -340,21 +344,42 @@ pub(super) async fn stream_thread_events(
             return;
         }
         loop {
-            let incoming = live.recv().await;
-            let Ok(event) = incoming else {
-                break;
-            };
-            if event.thread_id != thread_id {
-                continue;
+            match live.recv().await {
+                Ok(event) => {
+                    if event.thread_id != thread_id {
+                        continue;
+                    }
+                    if event.seq <= last_seq {
+                        continue;
+                    }
+                    last_seq = event.seq;
+                    let seq = event.seq;
+                    let event_name = event.event.clone();
+                    let payload = runtime_event_payload(event);
+                    yield Ok(sse_json_seq(seq, &event_name, payload));
+                }
+                Err(RecvError::Lagged(_)) => {
+                    // B3.3: consumer fell behind — catch up from store and merge deltas.
+                    let catchup = runtime_threads
+                        .events_since_async(&thread_id, Some(last_seq))
+                        .await
+                        .unwrap_or_default();
+                    for event in coalesce_delta_events(catchup) {
+                        if event.thread_id != thread_id {
+                            continue;
+                        }
+                        if event.seq <= last_seq {
+                            continue;
+                        }
+                        last_seq = event.seq;
+                        let seq = event.seq;
+                        let event_name = event.event.clone();
+                        let payload = runtime_event_payload(event);
+                        yield Ok(sse_json_seq(seq, &event_name, payload));
+                    }
+                }
+                Err(RecvError::Closed) => break,
             }
-            if event.seq <= last_seq {
-                continue;
-            }
-            last_seq = event.seq;
-            let seq = event.seq;
-            let event_name = event.event.clone();
-            let payload = runtime_event_payload(event);
-            yield Ok(sse_json_seq(seq, &event_name, payload));
         }
     };
 
@@ -441,6 +466,8 @@ pub(super) async fn stream_turn(
     let mut live = state.runtime_threads.subscribe_events();
     let thread_id = thread.id.clone();
     let turn_id = turn.id.clone();
+    let runtime_threads = state.runtime_threads.clone();
+    let mut last_seq = backlog.last().map(|e| e.seq).unwrap_or(0);
 
     let stream = stream! {
         yield Ok(sse_json("turn.started", json!({
@@ -451,10 +478,11 @@ pub(super) async fn stream_turn(
             "workspace": workspace,
         })));
 
-        for event in backlog {
+        for event in coalesce_delta_events(backlog) {
             if event.thread_id != thread_id || event.turn_id.as_deref() != Some(&turn_id) {
                 continue;
             }
+            last_seq = last_seq.max(event.seq);
             if let Some(mapped) = map_compat_stream_event(&event) {
                 yield Ok(mapped);
             }
@@ -465,19 +493,45 @@ pub(super) async fn stream_turn(
         }
 
         loop {
-            let incoming = live.recv().await;
-            let Ok(event) = incoming else {
-                yield Ok(sse_json("error", json!({ "message": "event channel closed" })));
-                break;
-            };
-            if event.thread_id != thread_id || event.turn_id.as_deref() != Some(&turn_id) {
-                continue;
-            }
-            if let Some(mapped) = map_compat_stream_event(&event) {
-                yield Ok(mapped);
-            }
-            if event.event == "turn.completed" {
-                break;
+            match live.recv().await {
+                Ok(event) => {
+                    if event.thread_id != thread_id || event.turn_id.as_deref() != Some(&turn_id) {
+                        continue;
+                    }
+                    last_seq = last_seq.max(event.seq);
+                    if let Some(mapped) = map_compat_stream_event(&event) {
+                        yield Ok(mapped);
+                    }
+                    if event.event == "turn.completed" {
+                        break;
+                    }
+                }
+                Err(RecvError::Lagged(_)) => {
+                    let catchup = runtime_threads
+                        .events_since_async(&thread_id, Some(last_seq))
+                        .await
+                        .unwrap_or_default();
+                    for event in coalesce_delta_events(catchup) {
+                        if event.thread_id != thread_id || event.turn_id.as_deref() != Some(&turn_id) {
+                            continue;
+                        }
+                        if event.seq <= last_seq {
+                            continue;
+                        }
+                        last_seq = event.seq;
+                        if let Some(mapped) = map_compat_stream_event(&event) {
+                            yield Ok(mapped);
+                        }
+                        if event.event == "turn.completed" {
+                            yield Ok(sse_json("done", json!({})));
+                            return;
+                        }
+                    }
+                }
+                Err(RecvError::Closed) => {
+                    yield Ok(sse_json("error", json!({ "message": "event channel closed" })));
+                    break;
+                }
             }
         }
 

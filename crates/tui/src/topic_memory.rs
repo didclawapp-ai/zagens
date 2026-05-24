@@ -175,9 +175,9 @@ impl TopicMemoryRuntime {
     }
 }
 
-/// B2.1 — injection arbitration note (tool results > blackboard > topic graph).
+/// B2.1 — injection arbitration SSOT: [B2_INJECTION_ARBITRATION.md](docs/tech/adr/B2_INJECTION_ARBITRATION.md)
 pub const INJECTION_ARBITRATION: &str =
-    "tool results and CRAFT blackboard sections take precedence over topic_memory when context is tight";
+    "tool results > CRAFT blackboard > topic_memory > user_memory > compaction summaries";
 
 /// Last user message text and following assistant text (for graph update).
 #[must_use]
