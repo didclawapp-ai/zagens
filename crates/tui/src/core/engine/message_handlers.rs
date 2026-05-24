@@ -271,6 +271,15 @@ impl Engine {
         // terminal is immediately responsive. No-op unless the estimated
         // input tokens have crossed the per-cycle threshold.
         if matches!(status, TurnOutcomeStatus::Completed) {
+            if let Some((user, assistant)) =
+                crate::topic_memory::last_exchange_from_messages(&self.session.messages)
+            {
+                self.topic_memory_runtime.on_turn_complete(
+                    &self.config.topic_memory,
+                    &user,
+                    &assistant,
+                );
+            }
             self.maybe_advance_cycle(mode).await;
         }
 

@@ -57,7 +57,7 @@ crates/
 | | `user_memory` | `topic_memory` |
 |---|---|---|
 | **写入者** | 用户手动或 `remember` tool | 引擎自动提取 |
-| **存储位置** | `~/.deepseek/memory.md` | `~/.deepseek/topic-memory.json` |
+| **存储位置** | `~/.deepseek/memory.md` | `~/.deepseek/topic-memory/graph.json` |
 | **内容** | 偏好、约定、声明 | 话题关联、情绪、认知轨迹 |
 | **生命周期** | 用户显式管理 | 自动衰减到 dormant |
 | **注入频率** | 每轮 | 每 N 轮（默认 5） |
@@ -454,14 +454,15 @@ impl TopicMemoryConfig {
     }
 
     /// Resolves the graph path, defaulting to
-    /// `~/.deepseek/topic-memory.json` when not set.
+    /// `~/.deepseek/topic-memory/graph.json` when not set.
     #[must_use]
     pub fn graph_path(&self) -> PathBuf {
         self.graph_path.clone().unwrap_or_else(|| {
             dirs::home_dir()
                 .unwrap_or_else(|| PathBuf::from("."))
                 .join(".deepseek")
-                .join("topic-memory.json")
+                .join("topic-memory")
+                .join("graph.json")
         })
     }
 }
@@ -486,14 +487,14 @@ pub topic_memory_inject_interval: u32,
 pub topic_memory_attribution: Option<String>,
 ```
 
-Default 值：`topic_memory_enabled: false`，`topic_memory_graph_path` 用 `dirs::home_dir().join(".deepseek/topic-memory.json")`。
+Default 值：`topic_memory_enabled: false`，`topic_memory_graph_path` 用 `dirs::home_dir().join(".deepseek/topic-memory/graph.json")`。
 
 **D. 用户 `config.toml` 示例：**
 
 ```toml
 [topic_memory]
 enabled = true
-graph_path = "~/.deepseek/topic-memory.json"
+graph_path = "~/.deepseek/topic-memory/graph.json"
 inject_interval = 5
 attribution = "DS Pick"
 ```

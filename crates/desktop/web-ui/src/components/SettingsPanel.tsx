@@ -286,6 +286,7 @@ export default function SettingsPanel({
             {[
               ['lsp_enabled', 'lspDiag', 'lspDiagDesc'] as const,
               ['memory_enabled', 'userMemory', 'userMemoryDesc'] as const,
+              ['topic_memory_enabled', 'topicMemory', 'topicMemoryDesc'] as const,
               ['snapshots_enabled', 'snapshots', 'snapshotsDesc'] as const,
             ].map(([key, i18nTitle, i18nDesc]) => (
               <label key={key} className="flex items-center justify-between gap-2 py-1">
@@ -301,6 +302,24 @@ export default function SettingsPanel({
                 />
               </label>
             ))}
+
+            {settings.topic_memory_enabled && (
+              <label className="block space-y-1">
+                <span className={labelCls}>{t('settings.topicMemoryInterval')}</span>
+                <p className={descCls}>{t('settings.topicMemoryIntervalDesc')}</p>
+                <input
+                  type="number"
+                  min={1}
+                  max={50}
+                  className={selectCls}
+                  value={settings.topic_memory_inject_interval}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    if (v >= 1) update('topic_memory_inject_interval', v);
+                  }}
+                />
+              </label>
+            )}
 
             <label className="block space-y-1">
               <span className={labelCls}>{t('settings.notifyMethod')}</span>

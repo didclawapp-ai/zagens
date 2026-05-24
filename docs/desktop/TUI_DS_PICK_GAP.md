@@ -48,10 +48,9 @@
 
 以下是较小差异，无需新的后端约定即可提升功能对标度：
 
-- **内联编辑**已发送的用户消息（TUI 支持编辑会话中的前序消息）。
-- **键盘优先**导航（焦点环、侧边栏/编写器/历史的快捷键）。
+- **键盘优先**导航（焦点环、侧边栏/编写器/历史的快捷键；F3 a11y 已签，全键盘对标 TUI 仍 ◐）。
 - **智能粘贴** — **✅** `Composer.tsx` + `sanitizeHtml.ts`（HTML→纯文本、code fence）。
-- **内联编辑** — ◐ `MessageBubble` 编辑 UI 已有；待 `POST .../edit-last-turn` + `App.tsx` 接线。
+- **内联编辑上一条用户消息** — **✅** `POST /v1/threads/{id}/edit-last-turn` + `MessageBubble` 编辑 UI（F4，2026-05-24）；TUI 多消息回退仍强于桌面。
 - **无障碍** — 屏幕阅读器标签、减少动画、高对比度模式（Tauri + Web）。
 - **终端模拟器** — ✅ `TerminalCard.tsx` + xterm.js；`tool.progress` SSE 增量写入终端（F1a，2026-05-23）。
 - **Diff 可视化** — ✅ `DiffCard.tsx` + diff2html；`edit_file`/`apply_patch`/`write_file` 在 turn 进行中也可预览 diff（F1b）。

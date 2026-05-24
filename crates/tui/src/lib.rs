@@ -58,7 +58,9 @@ mod thread_store_sqlite;
 mod settings;
 mod skills;
 mod task_type;
+mod topic_memory;
 mod snapshot;
+pub mod cli;
 mod symbol_index;
 mod task_manager;
 #[cfg(test)]

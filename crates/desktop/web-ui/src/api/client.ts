@@ -1308,6 +1308,8 @@ export interface SystemSettings {
   subagents_enabled: boolean;
   exec_policy: boolean;
   memory_enabled: boolean;
+  topic_memory_enabled: boolean;
+  topic_memory_inject_interval: number;
   lsp_enabled: boolean;
   snapshots_enabled: boolean;
   notify_method: string;

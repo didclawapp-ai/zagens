@@ -210,7 +210,8 @@ pub(crate) async fn resume_session_thread(
             if state.runtime_threads.load_thread_sync(stored_tid).is_ok() {
                 let has_events = state
                     .runtime_threads
-                    .events_since(stored_tid, Some(0))
+                    .events_since_async(stored_tid, Some(0))
+                    .await
                     .map(|events| !events.is_empty())
                     .unwrap_or(false);
                 if has_events {

@@ -106,7 +106,7 @@ deepseek-tui: Engine struct、MCP/LSP/SubAgent、runtime_api、tools/*、Runtime
 | F1b Diff | ✅ | diff2html + 运行中预览 |
 | F2 导出/资源管理器 | ✅ | `export_*_json`、`open_in_shell` |
 | F3 a11y | **✅** | Skip link、landmarks、roving tablist、`ModelParamsDialog` dialog；**G2 §8 手测已签**（2026-05-24） |
-| F4 内联编辑 | **⏸** | 依赖 L1「改历史」API |
+| F4 内联编辑 | **✅** | `POST .../edit-last-turn` + `MessageBubble`（2026-05-24） |
 
 GAP 表：MCP/用量/任务技能/子代理/路由多为 **◐**；定时自动化 UI **暂缓**。
 
@@ -116,8 +116,8 @@ GAP 表：MCP/用量/任务技能/子代理/路由多为 **◐**；定时自动�
 |------|------|------|
 | **B-L1** CRAFT runtime | **✅ 手测签收** | 黑板 API、角色白名单、fix-loop 提示、`craft.*` SSE — [craft-implementation-issues.md](../../craft-implementation-issues.md) Issue 0–5 |
 | **B-L3** AgentPanel CRAFT 卡片 | **✅** | `AgentPanel` + `/v1/blackboards`；G2 §10.7 |
-| **B2** 记忆地图 | **❌ 未启动** | §12.5 #2 |
-| **B3** TUI 体验 | **⏸** | 非阻塞 |
+| **B2** 记忆地图 | **🟡 进行中** | `deepseek-topic-memory` crate + 注入管线（§12.5 #2） |
+| **B3** TUI 体验 | **🟡 进行中** | `main.rs` → `cli/` 拆分；`tui-core` 标为 legacy |
 
 ---
 

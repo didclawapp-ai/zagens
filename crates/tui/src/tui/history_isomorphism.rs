@@ -178,6 +178,19 @@ pub fn tool_detail_outputs_by_id(
     out
 }
 
+/// Full live-session check: core transcript + tool-detail bodies (A1.4 live path).
+#[must_use]
+pub fn live_history_matches_messages(
+    messages: &[Message],
+    cells: &[HistoryCell],
+    details_by_cell: &HashMap<usize, ToolDetailRecord>,
+    active_details: &HashMap<String, ToolDetailRecord>,
+) -> bool {
+    history_transcript_core_matches_messages(messages)
+        && tool_use_count_matches_history_tools(messages, cells)
+        && live_tool_details_match_message_results(messages, details_by_cell, active_details)
+}
+
 /// Whether live tool-detail outputs match persisted tool-result bodies (A1.4 tool-cell path).
 #[must_use]
 pub fn live_tool_details_match_message_results(

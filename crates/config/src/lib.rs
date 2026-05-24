@@ -250,6 +250,9 @@ pub struct ConfigToml {
     /// 用户记忆。
     #[serde(default)]
     pub memory: Option<MemoryToml>,
+    /// 话题记忆图（B2 / topic-memory-graph）。
+    #[serde(default)]
+    pub topic_memory: Option<TopicMemoryToml>,
     /// 通知设置。
     #[serde(default)]
     pub notifications: Option<NotificationsToml>,
@@ -399,6 +402,23 @@ pub struct SubagentsConfigToml {
 pub struct MemoryToml {
     #[serde(default)]
     pub enabled: Option<bool>,
+}
+
+/// On-disk schema for the `[topic_memory]` table (B2).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TopicMemoryToml {
+    /// Opt-in: default false when unset.
+    #[serde(default)]
+    pub enabled: Option<bool>,
+    /// Graph JSON path (default `~/.deepseek/topic-memory/graph.json`).
+    #[serde(default)]
+    pub graph_path: Option<String>,
+    /// Inject every N completed turns (default 5).
+    #[serde(default)]
+    pub inject_interval: Option<u32>,
+    /// Optional attribution string in the generated section header.
+    #[serde(default)]
+    pub attribution: Option<String>,
 }
 
 /// On-disk schema for the `[notifications]` table.

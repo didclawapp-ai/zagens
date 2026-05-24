@@ -1,0 +1,44 @@
+//! Stop words for topic extraction (ported from topic-memory-graph).
+
+use std::collections::HashSet;
+
+use once_cell::sync::Lazy;
+
+pub static STOP_WORDS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
+    HashSet::from([
+        "the", "a", "an", "is", "are", "was", "were", "be", "been", "being", "have", "has",
+        "had", "do", "does", "did", "will", "would", "shall", "should", "may", "might", "must",
+        "can", "could", "i", "you", "he", "she", "it", "we", "they", "me", "him", "her", "us",
+        "them", "my", "your", "his", "its", "our", "their", "this", "that", "these", "those",
+        "what", "which", "who", "whom", "how", "when", "where", "why", "all", "any", "both",
+        "each", "more", "most", "other", "some", "such", "no", "nor", "not", "only", "own",
+        "same", "so", "than", "too", "very", "just", "but", "and", "or", "as", "at", "by",
+        "for", "in", "of", "on", "to", "up", "with", "from", "into", "about", "like", "also",
+        "then", "if", "because", "while", "although", "though", "since", "until", "unless",
+        "ok", "okay", "yes", "no", "hi", "hello", "thanks", "thank", "please", "sorry", "sure",
+        "new", "get", "set", "use", "make", "take", "give", "show", "find", "know", "see", "say",
+        "tell", "ask", "try", "run", "add", "put", "let", "got", "now", "one", "two", "way",
+        "day", "time", "thing", "things", "good", "bad", "big", "small", "need", "want", "look",
+        "work", "help", "here", "there", "come", "back", "out", "via", "per", "etc",
+        "的", "了", "在", "是", "我", "你", "他", "她", "它", "们", "这", "那", "有", "和", "就",
+        "不", "也", "都", "而", "及", "与", "着", "或", "于", "一个", "可以", "什么", "怎么", "如何",
+        "可能", "应该", "需要", "我们", "你们", "他们", "因为", "所以", "但是", "然后", "如果", "虽然",
+        "对于", "关于", "通过", "进行", "使用", "没有", "一些", "这些", "那些", "这个", "那个", "这里",
+        "那里", "现在", "时候", "好的", "谢谢", "请问", "您好", "对", "嗯", "吗", "呢", "啊", "哦",
+        "哈", "嗯嗯", "一下", "一点", "已经", "还是", "只是", "其实", "不是", "还有", "就是", "来说",
+        "来看", "哪些", "哪里", "哪个", "哪种", "多少", "几个", "几种", "怎样", "为何", "为什么",
+        "什么样", "有哪些", "有什么", "是什么", "怎么办", "如何做", "可以吗", "好吗", "行吗", "对吗",
+        "帮我", "帮你", "告诉", "知道", "觉得", "认为", "感觉", "看看", "说说", "想想", "试试", "做到",
+        "做好", "完成", "实现", "开始", "继续", "停止", "修改", "更新", "添加", "删除", "新", "旧",
+        "大", "小", "多", "少", "快", "慢", "好", "差", "高", "低", "上", "下", "左", "右",
+    ])
+});
+
+#[must_use]
+pub fn is_stop_word(word: &str) -> bool {
+    if STOP_WORDS.contains(word) {
+        return true;
+    }
+    let lower = word.to_ascii_lowercase();
+    STOP_WORDS.contains(lower.as_str())
+}

@@ -418,6 +418,19 @@ pub struct MemoryConfig {
     pub enabled: Option<bool>,
 }
 
+/// `[topic_memory]` — automatic topic graph injection (B2).
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct TopicMemoryConfig {
+    #[serde(default)]
+    pub enabled: Option<bool>,
+    #[serde(default)]
+    pub graph_path: Option<String>,
+    #[serde(default)]
+    pub inject_interval: Option<u32>,
+    #[serde(default)]
+    pub attribution: Option<String>,
+}
+
 /// Session file size limit (#402). Default 5 MB.
 /// 0 = no limit (maps to `u64::MAX` in bytes).
 #[derive(Debug, Clone, Deserialize)]
@@ -821,6 +834,10 @@ pub struct Config {
     /// `DEEPSEEK_MEMORY=on` is set.
     #[serde(default)]
     pub memory: Option<MemoryConfig>,
+
+    /// Topic memory graph (B2). Opt-in via `[topic_memory] enabled = true`.
+    #[serde(default)]
+    pub topic_memory: Option<TopicMemoryConfig>,
 
     /// Session file size limit (#402). Default 5 MB.
     /// 0 = no limit (maps to `u64::MAX` in bytes).
@@ -2486,6 +2503,7 @@ fn merge_config(base: Config, override_cfg: Config) -> Config {
         skills: override_cfg.skills.or(base.skills),
         snapshots: override_cfg.snapshots.or(base.snapshots),
         memory: override_cfg.memory.or(base.memory),
+        topic_memory: override_cfg.topic_memory.or(base.topic_memory),
         session: override_cfg.session.or(base.session),
         lsp: override_cfg.lsp.or(base.lsp),
         context: ContextConfig {

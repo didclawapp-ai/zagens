@@ -91,6 +91,7 @@ impl Engine {
                 Some(&config.instructions),
                 prompts::PromptSessionContext {
                     user_memory_block: user_memory_block.as_deref(),
+                    topic_memory_block: None,
                     goal_objective: config.goal_objective.as_deref(),
                     locale_tag: &config.locale_tag,
                     task_type: config.task_type,
@@ -203,6 +204,7 @@ impl Engine {
             scratchpad_step: scratchpad_flow::ScratchpadStepState::default(),
             scratchpad_run_id,
             scratchpad_summary_injected_this_turn: false,
+            topic_memory_runtime: crate::topic_memory::TopicMemoryRuntime::default(),
         };
         engine.rehydrate_latest_canonical_state();
 

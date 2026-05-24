@@ -23,6 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **B2 topic memory:** New `deepseek-topic-memory` crate; `[topic_memory]` config (opt-in); `<topic_memory>` system prompt injection every N turns; graph at `~/.deepseek/topic-memory.json`.
+- **B2.3:** k-hop subgraph retrieval (`retrieve_for_query`) seeds injection from the latest user turn instead of pasting the full hot graph.
+- **B2.5:** `topic-memory-metrics.json` sidecar (turn updates, inject count, repeat-topic / clarification heuristics).
+- **B2 (DS Pick):** Settings panel toggles `topic_memory_enabled` and inject interval; persisted to `[topic_memory]` in `config.toml`.
+- **B3 CLI:** `run_*` and helpers moved to `crates/tui/src/cli/commands/legacy.rs`; `main.rs` ~1.4k lines (was ~4.9k); `clap` in `cli/args.rs`.
+- **Runtime (A1.3):** `RuntimeThreadManager::events_since_async` — HTTP/SSE/task paths offload SQLite/JSONL reads via `spawn_blocking`.
+- **Docs:** Backlog ADRs (`BACKLOG_ENGINE_STRUCT_IN_CORE`, `BACKLOG_RUNTIME_UNIFICATION`, `BACKLOG_STATESTORE_JSONL`, `BACKLOG_LANDLOCK_ENFORCE`); `A1_PERSIST_BLOCKING_AUDIT.md`; `tui-core` legacy README.
+- **A1:** `live_history_matches_messages`; `apply_loaded_session` transcript `debug_assert`s; persist blocking policy doc.
 - **Tests (CRAFT/GAP):** Unit tests for `instructions_paths` auto-discovery, `resident_file` hard lock, and sub-agent LSP inheritance in `build_tool_context`; G2 §11 smoke runbook for integration sign-off.
 - **CRAFT:** Sub-agent `ToolContext` inherits parent `lsp_manager` when LSP enabled — `diagnostics` works in child turns.
 - **CRAFT (Issue 6):** `Config::instructions_paths(workspace)` auto-discovers `PROJECT_RULES.md` and `.cursor/rules/*.mdc` when `instructions = [...]` is unset or empty (pick-rules merge unchanged).
@@ -50,6 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **B2 topic memory:** Default graph path is `~/.deepseek/topic-memory/graph.json` (dedicated folder, not beside `config.toml`); metrics at `~/.deepseek/topic-memory/metrics.json`. Legacy `~/.deepseek/topic-memory.json` is moved on first use.
 - **Runtime (A1):** `set_routing_rules` persists via `spawn_blocking` (async HTTP path no longer blocks on JSON I/O).
 - **Governance (D10):** 维护者签收解除桌面 Feature freeze（Jason，2026-05-24）— [docs/tech/adr/P2_D10_UNFREEZE_RECORD.md](docs/tech/adr/P2_D10_UNFREEZE_RECORD.md) §4；路线图 §17.4 已勾选。
 - **Governance (F3):** G2 手测清单 §8（键盘 a11y 8.1–8.5）维护者签收 ✅（2026-05-24）— [G2_PR5_MANUAL_SMOKE_CHECKLIST.md](docs/tech/adr/G2_PR5_MANUAL_SMOKE_CHECKLIST.md) §6。

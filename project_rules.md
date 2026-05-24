@@ -22,10 +22,10 @@ When summarizing the project, **lead with DS Pick + shared runtime**, not “TUI
 
 ### Runtime evolution (2026-05 — planning SSOT)
 
-- **Roadmap:** [`docs/tech/RUNTIME_EVOLUTION_ROADMAP.md`](docs/tech/RUNTIME_EVOLUTION_ROADMAP.md) (v1.3 draft; ≥2 review rounds before final).
-- **Production path:** `deepseek-tui` → `runtime_api` `/v1/*` → `Engine` (today in `crates/tui`; migrating to `deepseek-core` in **P2-debt**).
+- **Roadmap:** [`docs/tech/RUNTIME_EVOLUTION_ROADMAP.md`](docs/tech/RUNTIME_EVOLUTION_ROADMAP.md) (**v2.0-final**; §17 实施快照).
+- **Production path:** `deepseek-tui` → `runtime_api` `/v1/*` → `Engine`（`turn_loop` 主体在 `deepseek-core`；`Engine` struct 仍在 `tui`）。
 - **Do not** add product features on `app-server` / `core::Runtime` **queued** placeholder path; **do not** implement Agent turns inside the DS Pick WebView.
-- **Desktop feature freeze** until P2-debt complete: bugfix, contract smoke, data-loss fixes, **runtime/streaming fixes** (e.g. duplicate model output) only — no xterm/diff/GAP expansion (see roadmap §10.6). PRs touching `crates/desktop` or `web-ui` should note freeze compliance; exceptions need `freeze-exception` + maintainer ack (roadmap §6.0.8).
+- **D10 桌面 freeze 已解除**（2026-05-24，[P2_D10_UNFREEZE_RECORD.md](docs/tech/adr/P2_D10_UNFREEZE_RECORD.md)）：新 GAP/契约扩展按路线图 §10；仍禁止 WebView 内嵌 Engine / 换 app-server sidecar。PR 触达 `crates/desktop` 或 `web-ui` 时说明是否符合 §10.6；超出范围可用 `freeze-exception` + 维护者 ack（路线图 §6.2 0.8）。
 - **Issue prefixes:** use `P2-debt` for Engine→core work; do not use ambiguous `Phase 2` (conflicts with DESKTOP_IMPLEMENTATION_PLAN UI phases).
 
 ---

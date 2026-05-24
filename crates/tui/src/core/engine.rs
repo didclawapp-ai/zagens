@@ -117,6 +117,7 @@ pub struct Engine {
     scratchpad_step: scratchpad_flow::ScratchpadStepState,
     scratchpad_run_id: Option<String>,
     scratchpad_summary_injected_this_turn: bool,
+    topic_memory_runtime: crate::topic_memory::TopicMemoryRuntime,
 }
 
 use self::approval::{ApprovalDecision, UserInputDecision};

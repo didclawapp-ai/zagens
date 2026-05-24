@@ -373,7 +373,7 @@ gantt
 
 ### 7.5 A5 — 可测试性与最小回放（**P2 编码硬门槛**）
 
-> **未开始：** 当前 `crates/tui` **无** `lib.rs`（仅 `[[bin]]`）。**开 P2 编码前** 须完成 A5.1 + A5.5（回放）+ A+.4（契约测）。
+> **已完成（G2）：** `crates/tui` 已有 **`lib.rs`** + A5.5 回放 fixture。**P2 编码** 门槛见 §12.2（A5.1 + A5.5 + A+.4 已签收）。
 
 | 步骤 | 实施内容 | 主要文件 |
 |------|----------|----------|
@@ -856,12 +856,12 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 
 | 优先 | 项 | 状态 |
 |------|-----|------|
-| P0 | **B2 记忆地图** B2.2–B2.5 | ❌ 未启动（设计见 `docs/topic-memory-rust-plan.md`） |
+| P0 | **B2 记忆地图** B2.2–B2.5 | **🟡 进行中** — `crates/topic-memory` + 配置/注入（设计见 `docs/topic-memory-rust-plan.md`） |
 | P0 | **GAP 8a 模型参数** 全栈 | **✅ 2026-05-24** — `StartTurnRequest` + `streaming_phase` + Composer 齿轮 + `ModelParamsDialog` |
 | P0 | **GAP F4 内联编辑** | **✅ 2026-05-24** — `POST .../edit-last-turn` + 桌面编辑上一条用户消息 |
 | P1 | CRAFT：子代理 LSP、resident_file 硬锁、Issue 6 指令发现、集成回合 | **✅ 代码 + 单测 2026-05-24** — LSP/硬锁/自动发现单测；集成手测 [G2 §11](./adr/G2_PR5_MANUAL_SMOKE_CHECKLIST.md) 待签 |
 | P1 | GAP：AgentPanel↔ToolCard 深度联动；backtrack depth HTTP | **✅ 2026-05-24** — `AgentSpawnInline`、fork-at-user-message HTTP + 桌面「分支」 |
-| P2 | A1 深化（spawn_blocking 审计、live ToolCell 同构）；B3 TUI 拆分 | **🟡 部分** — routing `spawn_blocking` + `history_isomorphism` tool 同构；B3 待做 |
+| P2 | A1 深化（spawn_blocking 审计、live ToolCell 同构）；B3 TUI 拆分 | **🟡 进行中** — `history_isomorphism` live 路径 + `persist` blocking 审计；`cli/` 拆分 |
 | backlog | StateStore/JSONL 统一、`Engine` 整 struct 入 core、`streaming_phase` 子模块 | ADR 远期 |
 
 **已完成（文档/GAP 表可能偏旧，以代码为准）：** A4.6 `manager.rs` 拆分；F0 路由全链；F1–F3；`open_in_shell` / `export_*` / 托盘；智能粘贴；A3 golden 测 36 个。

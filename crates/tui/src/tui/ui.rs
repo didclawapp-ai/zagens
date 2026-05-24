@@ -575,6 +575,7 @@ fn build_engine_config(app: &App, config: &Config) -> EngineConfig {
         subagent_model_overrides: config.subagent_model_overrides(),
         memory_enabled: config.memory_enabled(),
         memory_path: config.memory_path(),
+        topic_memory: crate::topic_memory::settings_from_config(config),
         strict_tool_mode: config.strict_tool_mode.unwrap_or(false),
         goal_objective: app.goal.goal_objective.clone(),
         locale_tag: app.ui_locale.tag().to_string(),
@@ -3491,6 +3492,7 @@ async fn dispatch_user_message(
             None,
             prompts::PromptSessionContext {
                 user_memory_block: None,
+                topic_memory_block: None,
                 goal_objective: app.goal.goal_objective.as_deref(),
                 locale_tag: app.ui_locale.tag(),
                 task_type: crate::task_type::TaskType::Code,
@@ -5761,6 +5763,7 @@ fn apply_loaded_session(app: &mut App, session: &SavedSession) {
 
     let messages = app.api_messages.clone();
     let mut message_to_cell = std::collections::HashMap::new();
+
     for (message_index, msg) in messages.iter().enumerate() {
         let mut cells = history_cells_from_message(msg);
         if msg.role == "user"
@@ -5786,6 +5789,19 @@ fn apply_loaded_session(app: &mut App, session: &SavedSession) {
         app.extend_history(cells);
     }
     app.sync_context_references_from_session(&session.context_references, &message_to_cell);
+    debug_assert!(
+        crate::tui::history_isomorphism::history_transcript_core_matches_messages(
+            &app.api_messages
+        ),
+        "loaded session transcript must match api_messages"
+    );
+    debug_assert!(
+        crate::tui::history_isomorphism::tool_use_count_matches_history_tools(
+            &app.api_messages,
+            &app.history
+        ),
+        "tool cell count must match persisted tool uses after load"
+    );
     app.mark_history_updated();
     app.viewport.transcript_selection.clear();
     app.model.clone_from(&session.metadata.model);

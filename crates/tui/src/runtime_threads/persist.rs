@@ -1,4 +1,12 @@
 //! Thread/turn/item disk store and usage aggregation (R-003 A4.6).
+//!
+//! ## Blocking I/O policy (A1.3 audit)
+//!
+//! All **SQLite** and heavy JSONL writes on the HTTP/runtime path MUST run inside
+//! `tokio::task::spawn_blocking` (see `append_event`, `thread_crud`, `monitor`).
+//! Synchronous helpers such as [`RuntimeThreadStore::events_since`] are for
+//! blocking contexts or tests only — do not call them from async handlers without
+//! offloading. See [A1_PERSIST_BLOCKING_AUDIT.md](../../../docs/tech/adr/A1_PERSIST_BLOCKING_AUDIT.md).
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::{self, File, OpenOptions};

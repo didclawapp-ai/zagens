@@ -1577,6 +1577,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "deepseek-topic-memory"
+version = "0.8.15"
+dependencies = [
+ "chrono",
+ "once_cell",
+ "regex",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "deepseek-tui"
 version = "0.8.15"
 dependencies = [
@@ -1596,6 +1608,7 @@ dependencies = [
  "deepseek-protocol",
  "deepseek-secrets",
  "deepseek-tools",
+ "deepseek-topic-memory",
  "dirs",
  "dotenvy",
  "encoding_rs",

@@ -362,7 +362,7 @@ impl RuntimeThreadManager {
         id: &str,
     ) -> Result<(ThreadRecord, Vec<AgentRebindHint>)> {
         let thread = self.resume_thread(id).await?;
-        let events = self.store.events_since(&thread.id, None)?;
+        let events = self.events_since_async(&thread.id, None).await?;
         let hints = collect_agent_rebind_hints(&events);
         Ok((thread, hints))
     }

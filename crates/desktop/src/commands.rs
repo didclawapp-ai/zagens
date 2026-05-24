@@ -946,6 +946,10 @@ pub struct SystemSettings {
     pub subagents_enabled: bool,
     pub exec_policy: bool,
     pub memory_enabled: bool,
+    /// Topic memory graph injection (`[topic_memory]`, B2).
+    pub topic_memory_enabled: bool,
+    /// Inject cognitive map every N completed turns (default 5).
+    pub topic_memory_inject_interval: u32,
     pub lsp_enabled: bool,
     pub snapshots_enabled: bool,
     pub notify_method: String,
@@ -1025,6 +1029,17 @@ pub fn get_system_settings() -> Result<SystemSettings, String> {
             .as_ref()
             .and_then(|m| m.enabled)
             .unwrap_or(false),
+        topic_memory_enabled: cfg
+            .topic_memory
+            .as_ref()
+            .and_then(|t| t.enabled)
+            .unwrap_or(false),
+        topic_memory_inject_interval: cfg
+            .topic_memory
+            .as_ref()
+            .and_then(|t| t.inject_interval)
+            .unwrap_or(5)
+            .max(1),
         lsp_enabled: cfg.lsp.as_ref().and_then(|l| l.enabled).unwrap_or(true),
         snapshots_enabled: cfg.snapshots.as_ref().map(|s| s.enabled).unwrap_or(true),
         notify_method: cfg
@@ -1087,6 +1102,11 @@ pub fn save_system_settings(
     // memory
     let memory = cfg.memory.get_or_insert_with(Default::default);
     memory.enabled = Some(settings.memory_enabled);
+
+    // topic memory (B2)
+    let topic_memory = cfg.topic_memory.get_or_insert_with(Default::default);
+    topic_memory.enabled = Some(settings.topic_memory_enabled);
+    topic_memory.inject_interval = Some(settings.topic_memory_inject_interval.max(1));
 
     // lsp
     let lsp = cfg.lsp.get_or_insert_with(Default::default);

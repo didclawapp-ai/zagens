@@ -372,12 +372,26 @@ impl RuntimeThreadManager {
         Ok(record)
     }
 
+    /// Synchronous read — tests and blocking contexts only.
     pub fn events_since(
         &self,
         thread_id: &str,
         since_seq: Option<u64>,
     ) -> Result<Vec<RuntimeEventRecord>> {
         self.store.events_since(thread_id, since_seq)
+    }
+
+    /// Offloads SQLite/JSONL reads from the async runtime (A1.3).
+    pub async fn events_since_async(
+        &self,
+        thread_id: &str,
+        since_seq: Option<u64>,
+    ) -> Result<Vec<RuntimeEventRecord>> {
+        let store = self.store.clone();
+        let thread_id = thread_id.to_string();
+        tokio::task::spawn_blocking(move || store.events_since(&thread_id, since_seq))
+            .await
+            .map_err(|e| anyhow!("events_since join: {e}"))?
     }
 
     pub(crate) fn resolve_thread_workspace_path(manager_workspace: &Path, raw: &str) -> Result<PathBuf> {

@@ -17,6 +17,8 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone, Copy)]
 pub struct PromptSessionContext<'a> {
     pub user_memory_block: Option<&'a str>,
+    /// Auto-extracted topic graph (`<topic_memory>`), B2.
+    pub topic_memory_block: Option<&'a str>,
     pub goal_objective: Option<&'a str>,
     /// Resolved BCP-47 locale tag for the `## Environment` block in
     /// the system prompt (e.g. `"en"`, `"zh-Hans"`, `"ja"`). The
@@ -32,6 +34,7 @@ impl<'a> Default for PromptSessionContext<'a> {
     fn default() -> Self {
         Self {
             user_memory_block: None,
+            topic_memory_block: None,
             goal_objective: None,
             locale_tag: "en",
             task_type: TaskType::Code,
@@ -456,6 +459,7 @@ pub fn system_prompt_for_mode_with_context_and_skills(
         instructions,
         PromptSessionContext {
             user_memory_block,
+            topic_memory_block: None,
             goal_objective: None,
             locale_tag: "en",
             task_type: TaskType::Code,
@@ -536,6 +540,13 @@ pub fn system_prompt_for_mode_with_context_skills_session_and_approval(
         && !memory_block.trim().is_empty()
     {
         full_prompt = format!("{full_prompt}\n\n{memory_block}");
+    }
+
+    // 2.5c. Topic memory graph (B2) — injected on cadence, not every turn.
+    if let Some(topic_block) = session_context.topic_memory_block
+        && !topic_block.trim().is_empty()
+    {
+        full_prompt = format!("{full_prompt}\n\n{topic_block}");
     }
 
     if let Some(goal_objective) = session_context.goal_objective
@@ -674,6 +685,7 @@ mod tests {
             None,
             PromptSessionContext {
                 user_memory_block: None,
+                topic_memory_block: None,
                 goal_objective: None,
                 locale_tag: "ja",
                 task_type: TaskType::Code,
@@ -822,6 +834,7 @@ mod tests {
             None,
             PromptSessionContext {
                 user_memory_block: None,
+                topic_memory_block: None,
                 goal_objective: Some("Fix transcript corruption"),
                 locale_tag: "en",
                 task_type: TaskType::Code,
@@ -850,6 +863,7 @@ mod tests {
             None,
             PromptSessionContext {
                 user_memory_block: None,
+                topic_memory_block: None,
                 goal_objective: Some("   "),
                 locale_tag: "en",
                 task_type: TaskType::Code,

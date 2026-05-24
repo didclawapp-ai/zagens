@@ -501,6 +501,11 @@ const en: TranslationMap = {
     lspDiagDesc: 'Inject editor LSP diagnostics for model context',
     userMemory: 'User Memory',
     userMemoryDesc: 'Load user memory file into system prompt',
+    topicMemory: 'Topic memory graph',
+    topicMemoryDesc:
+      'Auto-maintain a topic graph and inject a k-hop cognitive map into the system prompt every N turns',
+    topicMemoryInterval: 'Topic memory inject interval (turns)',
+    topicMemoryIntervalDesc: 'How many completed turns between cognitive map injections (default 5)',
     snapshots: 'Workspace Snapshots',
     snapshotsDesc: 'Create workspace Git snapshots before/after each turn',
     notifyMethod: 'Notification Method',
