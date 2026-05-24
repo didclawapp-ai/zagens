@@ -831,6 +831,7 @@ async fn run_event_loop(
                             }],
                         });
                         handle_tool_call_complete(app, &id, &name, &result);
+                        app.debug_assert_live_history_isomorphism();
 
                         // Immediately refresh the task panel sidebar when a
                         // tool that changes task state completes, so the
@@ -901,6 +902,7 @@ async fn run_event_loop(
                         } else {
                             app.flush_active_cell();
                         }
+                        app.debug_assert_live_history_isomorphism();
                         app.is_loading = false;
                         app.offline_mode = false;
                         app.streaming_state.reset();
@@ -5687,6 +5689,7 @@ fn apply_backtrack(app: &mut App, depth: usize) {
     app.scroll_to_bottom();
     app.mark_history_updated();
     app.needs_redraw = true;
+    app.debug_assert_live_history_isomorphism();
 }
 
 /// Persist the typed API key to `~/.deepseek/config.toml`, refresh the
@@ -5789,19 +5792,7 @@ fn apply_loaded_session(app: &mut App, session: &SavedSession) {
         app.extend_history(cells);
     }
     app.sync_context_references_from_session(&session.context_references, &message_to_cell);
-    debug_assert!(
-        crate::tui::history_isomorphism::history_transcript_core_matches_messages(
-            &app.api_messages
-        ),
-        "loaded session transcript must match api_messages"
-    );
-    debug_assert!(
-        crate::tui::history_isomorphism::tool_use_count_matches_history_tools(
-            &app.api_messages,
-            &app.history
-        ),
-        "tool cell count must match persisted tool uses after load"
-    );
+    app.debug_assert_live_history_isomorphism();
     app.mark_history_updated();
     app.viewport.transcript_selection.clear();
     app.model.clone_from(&session.metadata.model);

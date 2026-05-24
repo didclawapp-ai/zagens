@@ -44,7 +44,8 @@ When context is assembled or trimmed, **higher rows win** over lower rows. Lower
 | System prompt merge | `crates/tui/src/core/engine/cycle_hooks.rs` — `refresh_system_prompt` |
 | Blackboard read | `crates/tui/src/tools/subagent/blackboard.rs` — `read_blackboard_section` |
 | Sub-agent prompt | `crates/tui/src/tools/subagent/mod.rs` — `build_assignment_prompt` |
-| Capacity trim | `crates/core/src/engine/turn_loop/capacity_policy.rs` |
+| Capacity trim | `crates/tui/src/core/engine/capacity_flow/interventions.rs` — `refresh_system_prompt_for_turn_mode_under_capacity` |
+| Arbitration flags | `crates/tui/src/topic_memory.rs` — `PromptInjectionArbitration` |
 | Constant (short) | `topic_memory::INJECTION_ARBITRATION` |
 
 ## Operational notes

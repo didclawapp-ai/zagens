@@ -1947,6 +1947,19 @@ impl App {
         cell
     }
 
+    /// A1.4 — debug-only check that live TUI cells match persisted API messages.
+    pub fn debug_assert_live_history_isomorphism(&self) {
+        debug_assert!(
+            crate::tui::history_isomorphism::live_history_matches_messages(
+                &self.api_messages,
+                &self.history,
+                &self.tool_details_by_cell,
+                &self.active_tool_details,
+            ),
+            "live history transcript must match api_messages (A1.4)"
+        );
+    }
+
     /// Truncate `history` (and the parallel `history_revisions` + auxiliary
     /// per-cell maps) so that only cells with index `< new_len` remain.
     /// Used by Esc-Esc backtrack (#133) to roll the visible transcript

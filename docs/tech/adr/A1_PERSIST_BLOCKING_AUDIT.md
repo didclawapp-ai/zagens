@@ -15,5 +15,5 @@
 
 ## Follow-ups
 
-- HTTP handlers that need `events_since` should use `spawn_blocking` wrapper (backlog).
-- Live TUI tool isomorphism: `history_isomorphism::live_history_matches_messages` + `apply_loaded_session` `debug_assert`s.
+- HTTP handlers that need `events_since` should use `spawn_blocking` wrapper — **done** (`events_since_async`).
+- Live TUI tool isomorphism: `history_isomorphism::live_history_matches_messages` + `App::debug_assert_live_history_isomorphism` at turn end / tool complete / session load / backtrack.

@@ -218,14 +218,33 @@ impl Engine {
 
     /// Refresh the system prompt based on current mode and context.
     pub(super) fn refresh_system_prompt(&mut self, mode: AppMode) {
-        let user_memory_block =
-            crate::memory::compose_block(self.config.memory_enabled, &self.config.memory_path);
+        self.refresh_system_prompt_with_arbitration(
+            mode,
+            crate::topic_memory::PromptInjectionArbitration::none(),
+        );
+    }
+
+    /// Refresh the system prompt, optionally omitting lower-priority injections (B2.1).
+    pub(super) fn refresh_system_prompt_with_arbitration(
+        &mut self,
+        mode: AppMode,
+        arbitration: crate::topic_memory::PromptInjectionArbitration,
+    ) {
+        let user_memory_block = if arbitration.omit_user_memory {
+            None
+        } else {
+            crate::memory::compose_block(self.config.memory_enabled, &self.config.memory_path)
+        };
         let query_hint =
             crate::topic_memory::last_user_query_from_messages(&self.session.messages);
-        let topic_memory_block = self.topic_memory_runtime.compose_block(
-            &self.config.topic_memory,
-            query_hint.as_deref(),
-        );
+        let topic_memory_block = if arbitration.omit_topic_memory {
+            None
+        } else {
+            self.topic_memory_runtime.compose_block(
+                &self.config.topic_memory,
+                query_hint.as_deref(),
+            )
+        };
         let base = prompts::system_prompt_for_mode_with_context_skills_session_and_approval(
             mode,
             &self.config.workspace,

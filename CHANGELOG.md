@@ -37,7 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **B3 CLI:** `run_*` and helpers moved to `crates/tui/src/cli/commands/legacy.rs`; `main.rs` ~1.4k lines (was ~4.9k); `clap` in `cli/args.rs`.
 - **Runtime (A1.3):** `RuntimeThreadManager::events_since_async` — HTTP/SSE/task paths offload SQLite/JSONL reads via `spawn_blocking`.
 - **Docs:** Backlog ADRs (`BACKLOG_ENGINE_STRUCT_IN_CORE`, `BACKLOG_RUNTIME_UNIFICATION`, `BACKLOG_STATESTORE_JSONL`, `BACKLOG_LANDLOCK_ENFORCE`); `A1_PERSIST_BLOCKING_AUDIT.md`; `tui-core` legacy README.
-- **A1:** `live_history_matches_messages`; `apply_loaded_session` transcript `debug_assert`s; persist blocking policy doc.
+- **A1:** `App::debug_assert_live_history_isomorphism` wired at turn complete, tool complete, session load, and backtrack (full `live_history_matches_messages` path).
+- **B2.1:** Capacity guardrail refresh omits `<topic_memory>` via `PromptInjectionArbitration::capacity_pressure()`; regression test in `core/engine/tests.rs`.
 - **Tests (CRAFT/GAP):** Unit tests for `instructions_paths` auto-discovery, `resident_file` hard lock, and sub-agent LSP inheritance in `build_tool_context`; G2 §11 smoke runbook for integration sign-off.
 - **CRAFT:** Sub-agent `ToolContext` inherits parent `lsp_manager` when LSP enabled — `diagnostics` works in child turns.
 - **CRAFT (Issue 6):** `Config::instructions_paths(workspace)` auto-discovers `PROJECT_RULES.md` and `.cursor/rules/*.mdc` when `instructions = [...]` is unset or empty (pick-rules merge unchanged).

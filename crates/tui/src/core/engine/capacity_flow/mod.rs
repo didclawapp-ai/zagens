@@ -17,12 +17,31 @@ use crate::tui::app::AppMode;
 
 use super::Engine;
 
-/// Bridge `TurnLoopMode` (core turn loop) to TUI system-prompt refresh.
-pub(super) fn refresh_system_prompt_for_turn_mode(engine: &mut Engine, mode: TurnLoopMode) {
-    let app_mode = match mode {
+use crate::topic_memory::PromptInjectionArbitration;
+
+fn turn_loop_mode_to_app_mode(mode: TurnLoopMode) -> AppMode {
+    match mode {
         TurnLoopMode::Agent => AppMode::Agent,
         TurnLoopMode::Yolo => AppMode::Yolo,
         TurnLoopMode::Plan => AppMode::Plan,
-    };
-    Engine::refresh_system_prompt(engine, app_mode);
+    }
+}
+
+/// Bridge `TurnLoopMode` (core turn loop) to TUI system-prompt refresh.
+pub(super) fn refresh_system_prompt_for_turn_mode(engine: &mut Engine, mode: TurnLoopMode) {
+    engine.refresh_system_prompt_with_arbitration(
+        turn_loop_mode_to_app_mode(mode),
+        PromptInjectionArbitration::none(),
+    );
+}
+
+/// After capacity trim/refresh: drop topic memory before auxiliary blocks (B2.1).
+pub(super) fn refresh_system_prompt_for_turn_mode_under_capacity(
+    engine: &mut Engine,
+    mode: TurnLoopMode,
+) {
+    engine.refresh_system_prompt_with_arbitration(
+        turn_loop_mode_to_app_mode(mode),
+        PromptInjectionArbitration::capacity_pressure(),
+    );
 }

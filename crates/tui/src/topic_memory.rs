@@ -179,6 +179,37 @@ impl TopicMemoryRuntime {
 pub const INJECTION_ARBITRATION: &str =
     "tool results > CRAFT blackboard > topic_memory > user_memory > compaction summaries";
 
+/// Which optional prompt injections to omit when assembling the system prompt.
+///
+/// Under capacity pressure, lower-priority blocks are dropped first (see
+/// [`INJECTION_ARBITRATION`]).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PromptInjectionArbitration {
+    /// Omit `<topic_memory>` (priority 3).
+    pub omit_topic_memory: bool,
+    /// Omit `<user_memory>` (priority 4).
+    pub omit_user_memory: bool,
+}
+
+impl PromptInjectionArbitration {
+    #[must_use]
+    pub const fn none() -> Self {
+        Self {
+            omit_topic_memory: false,
+            omit_user_memory: false,
+        }
+    }
+
+    /// B2.1 — capacity trim / refresh: drop topic memory before user memory or compaction tail.
+    #[must_use]
+    pub const fn capacity_pressure() -> Self {
+        Self {
+            omit_topic_memory: true,
+            omit_user_memory: false,
+        }
+    }
+}
+
 /// Last user message text and following assistant text (for graph update).
 #[must_use]
 pub fn last_exchange_from_messages(
@@ -263,5 +294,14 @@ mod tests {
         let block = rt.compose_block(&settings, Some("Rust 性能优化"));
         assert!(block.is_some());
         assert!(block.unwrap().contains("topic_memory"));
+    }
+
+    #[test]
+    fn prompt_injection_arbitration_capacity_drops_topic_memory_only() {
+        let normal = PromptInjectionArbitration::none();
+        let pressure = PromptInjectionArbitration::capacity_pressure();
+        assert!(!normal.omit_topic_memory);
+        assert!(pressure.omit_topic_memory);
+        assert!(!pressure.omit_user_memory);
     }
 }

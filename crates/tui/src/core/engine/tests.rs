@@ -948,6 +948,62 @@ fn refresh_system_prompt_is_noop_when_unchanged() {
     assert_eq!(engine.session.system_prompt, first_prompt);
 }
 
+fn system_prompt_body(engine: &Engine) -> String {
+    match &engine.session.system_prompt {
+        Some(SystemPrompt::Text(text)) => text.clone(),
+        Some(SystemPrompt::Blocks(blocks)) => blocks
+            .iter()
+            .map(|block| block.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n"),
+        None => String::new(),
+    }
+}
+
+#[test]
+fn refresh_system_prompt_under_capacity_omits_topic_memory_block() {
+    let dir = tempdir().expect("tempdir");
+    let graph_path = dir.path().join("graph.json");
+    let settings = crate::topic_memory::TopicMemorySettings {
+        enabled: true,
+        graph_path: graph_path.clone(),
+        inject_interval: 1,
+        retrieve_k_hops: 2,
+        attribution: None,
+    };
+    let mut rt = crate::topic_memory::TopicMemoryRuntime::default();
+    rt.on_turn_complete(&settings, "讨论 Rust 性能", "可以用 profiling");
+    rt.runs_since_last_inject = settings.inject_interval;
+
+    let config = EngineConfig {
+        workspace: dir.path().to_path_buf(),
+        topic_memory: settings,
+        ..Default::default()
+    };
+    let (mut engine, _handle) = Engine::new(config, &Config::default());
+    engine.topic_memory_runtime = rt;
+
+    engine.refresh_system_prompt_with_arbitration(
+        AppMode::Agent,
+        crate::topic_memory::PromptInjectionArbitration::none(),
+    );
+    let normal = system_prompt_body(&engine);
+    assert!(
+        normal.contains("<topic_memory"),
+        "expected topic memory when arbitration is default"
+    );
+
+    engine.refresh_system_prompt_with_arbitration(
+        AppMode::Agent,
+        crate::topic_memory::PromptInjectionArbitration::capacity_pressure(),
+    );
+    let under_pressure = system_prompt_body(&engine);
+    assert!(
+        !under_pressure.contains("<topic_memory"),
+        "capacity pressure must omit topic memory first (B2.1)"
+    );
+}
+
 #[test]
 fn compaction_summary_stays_in_stable_system_prompt() {
     let tmp = tempdir().expect("tempdir");

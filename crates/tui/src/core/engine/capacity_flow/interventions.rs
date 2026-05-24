@@ -11,7 +11,7 @@ use deepseek_core::turn::TurnLoopMode;
 
 use super::super::tool_catalog::REQUEST_USER_INPUT_NAME;
 use super::super::*;
-use super::refresh_system_prompt_for_turn_mode;
+use super::refresh_system_prompt_for_turn_mode_under_capacity;
 
 impl Engine {
     pub(in crate::core::engine) async fn apply_targeted_context_refresh(
@@ -103,7 +103,7 @@ impl Engine {
             GuardrailAction::TargetedContextRefresh,
             None,
         )));
-        refresh_system_prompt_for_turn_mode(self, mode);
+        refresh_system_prompt_for_turn_mode_under_capacity(self, mode);
         self.emit_session_updated().await;
 
         let after_tokens = self.estimated_input_tokens();
@@ -256,7 +256,7 @@ impl Engine {
             GuardrailAction::VerifyWithToolReplay,
             Some(&verification_note),
         )));
-        refresh_system_prompt_for_turn_mode(self, mode);
+        refresh_system_prompt_for_turn_mode_under_capacity(self, mode);
         self.emit_session_updated().await;
 
         let after_tokens = self.estimated_input_tokens();
@@ -342,7 +342,7 @@ impl Engine {
             GuardrailAction::VerifyAndReplan,
             Some("Replan now from canonical state. Keep steps minimal and verifiable."),
         )));
-        refresh_system_prompt_for_turn_mode(self, mode);
+        refresh_system_prompt_for_turn_mode_under_capacity(self, mode);
         self.emit_session_updated().await;
 
         let _ = self
