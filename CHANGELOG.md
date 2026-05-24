@@ -1,17 +1,16 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+All notable changes to **DS Pick** and its embedded runtime will be documented in this file.
 
-**Update policy:** Record **every notable change** (features, fixes, docs, DS
-Pick desktop, CLI/TUI, tooling) in this file—typically under `[Unreleased]`,
-in the **same PR/commit** as the change when practical. Cursor agents: see
-`.cursor/rules/ds-pick-repo.mdc` § Changelog.
+**Update policy:** Record **every notable change** (features, fixes, docs, DS Pick desktop, runtime, tooling) in this file—typically under `[Unreleased]`, in the **same PR/commit** as the change when practical. Cursor agents: see `.cursor/rules/ds-pick-repo.mdc` § Changelog.
+
+**Licensing:** DS Pick (desktop app in `crates/desktop/`) is **proprietary** — see [LICENSE](LICENSE). Third-party runtime MIT license: [third-party/deepseek-tui/LICENSE](third-party/deepseek-tui/LICENSE) and [NOTICE.md](NOTICE.md).
 
 **DS Pick** (desktop app in `crates/desktop/`) has its **own** version line:
-**MAJOR.MINOR.PATCH** in **SemVer** (e.g. **v0.3.0**). Display form **vX.Y.Z**;
+**MAJOR.MINOR.PATCH** in **SemVer** (e.g. **v0.4.3**). Display form **vX.Y.Z**;
 each numeric segment is one or more digits (e.g. `0.2.1`, `0.10.3`). This line
-**does not** follow the root workspace version used by `deepseek` / `deepseek-tui`
-crates (see root `Cargo.toml` `[workspace.package] version`).
+**does not** follow the embedded runtime workspace version in root `Cargo.toml`
+`[workspace.package] version`.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -20,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > Prefer updating `[Unreleased]` incrementally going forward.
 
 ## [Unreleased]
+
+### Changed
+
+- **Project identity:** DS Pick is **proprietary** ([LICENSE](LICENSE)); third-party runtime MIT license at [third-party/deepseek-tui/LICENSE](third-party/deepseek-tui/LICENSE) (not at repo root). See [NOTICE.md](NOTICE.md). Removed upstream npm/website, CLI Docker artifacts, CLI binary Release (`auto-tag.yml`, npm/crates release scripts), and `ci.yml` npm-wrapper job. **Release:** `.github/workflows/release.yml` builds **DS Pick Windows installers** on `ds-pick-v*` tags only (macOS/Linux later). **Config samples:** [`.env.example`](.env.example) and [`config.example.toml`](config.example.toml) reframed for DS Pick desktop + embedded sidecar (not upstream TUI/CLI).
 
 ### Added
 

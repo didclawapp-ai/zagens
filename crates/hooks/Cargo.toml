@@ -3,7 +3,6 @@ name = "deepseek-hooks"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-repository.workspace = true
 rust-version.workspace = true
 description = "Hook dispatch and notifications parity for DeepSeek workspace architecture"
 

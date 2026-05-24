@@ -1,20 +1,20 @@
 # ╔══════════════════════════════════════════════════════════════════════════════╗
-# ║                         DeepSeek TUI Configuration                            ║
+# ║                    DS Pick — Agent Runtime Configuration                      ║
 # ║                                                                              ║
-# ║  Unofficial CLI for DeepSeek Platform - Not affiliated with DeepSeek Inc.     ║
+# ║  Example for ~/.deepseek/config.toml (edited in DS Pick → Settings).           ║
+# ║  Not affiliated with or endorsed by DeepSeek Inc.                             ║
 # ╚══════════════════════════════════════════════════════════════════════════════╝
 
-# See `docs/CONFIGURATION.md` for how config is loaded (profiles, env overrides, etc.).
+# Loaded by the embedded runtime sidecar. See README.md § Configuration.
 
 # ─────────────────────────────────────────────────────────────────────────────────
 # Active provider + DeepSeek defaults
 # ─────────────────────────────────────────────────────────────────────────────────
 # Choose which provider to use by default. Per-provider credentials live in the
 # `[providers.*]` sections near the bottom of
-# this file — keeping both stored at once means `/provider deepseek` and
-# `/provider nvidia-nim` (or `--provider fireworks`, `/provider sglang`, `/provider vllm`, `/provider ollama`) toggle without having to
-# re-enter keys. Top-level `api_key` / `base_url` are still read as DeepSeek
-# defaults when `[providers.deepseek]` is absent (backward compatibility).
+# this file — switching providers in DS Pick Settings (or `provider = "..."` here)
+# does not require re-entering keys. Top-level `api_key` / `base_url` are still
+# read as DeepSeek defaults when `[providers.deepseek]` is absent.
 provider = "deepseek" # deepseek | nvidia-nim | openrouter | novita | fireworks | sglang | vllm | ollama
 api_key = "YOUR_DEEPSEEK_API_KEY" # must be non-empty
 base_url = "https://api.deepseek.com/beta"
@@ -46,8 +46,8 @@ default_text_model = "deepseek-v4-pro"
 # "high"   — reasoning_effort = high (DeepSeek default)
 # "max"    — reasoning_effort = max (deepest reasoning)
 #
-# Shift+Tab in the TUI cycles between off / high / max. The header shows the
-# current tier as a ⚡ chip.
+# In DS Pick, change thinking tier in Settings or via config. Legacy terminal
+# builds may still expose Shift+Tab cycling; the header chip shows the active tier.
 reasoning_effort = "max"
 
 # ─────────────────────────────────────────────────────────────────────────────────
@@ -86,11 +86,10 @@ memory_path = "~/.deepseek/memory.md"
 # (`instructions = []`) clears the user list for the current repo.
 
 # ─────────────────────────────────────────────────────────────────────────────────
-# User memory (#489) — opt-in. When enabled, the TUI reads memory_path on
+# User memory (#489) — opt-in. When enabled, the runtime reads memory_path on
 # startup and injects its contents into the system prompt as a
-# <user_memory> block, intercepts `# foo` typed in the composer to append
-# the line as a timestamped bullet, and registers a `remember` tool the
-# model can call to add durable notes itself.
+# <user_memory> block. DS Pick composer `# note` lines and the `remember` tool
+# can append durable notes when the feature is enabled.
 # ─────────────────────────────────────────────────────────────────────────────────
 [memory]
 # enabled = true            # turn the feature on (default: false)
@@ -158,9 +157,8 @@ max_subagents = 10 # optional (1-20)
 # ─────────────────────────────────────────────────────────────────────────────────
 # Per-provider credentials (peer providers — NIM is first-class, not a flag)
 # ─────────────────────────────────────────────────────────────────────────────────
-# Providers can be stored at once; `provider = "..."` (top of file) or
-# `/provider deepseek` / `/provider nvidia-nim` / `/provider fireworks` switches between them without
-# having to re-enter keys. Env vars override anything set here:
+# Providers can be stored at once; `provider = "..."` (top of file) or DS Pick
+# Settings switches between them without re-entering keys. Env vars override:
 #   DeepSeek: DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL
 #   NIM:      NVIDIA_API_KEY (or NVIDIA_NIM_API_KEY), NIM_BASE_URL
 #             (or NVIDIA_NIM_BASE_URL / NVIDIA_BASE_URL), NVIDIA_NIM_MODEL
@@ -209,7 +207,7 @@ max_subagents = 10 # optional (1-20)
 # ─────────────────────────────────────────────────────────────────────────────────
 # Network Policy (#135)
 # ─────────────────────────────────────────────────────────────────────────────────
-# Per-domain allow/deny rules for outbound network calls made by the TUI's
+# Per-domain allow/deny rules for outbound network calls made by runtime
 # tools (`fetch_url`, `web_search`) and the MCP HTTP transport. Stdio MCP
 # servers and direct LLM API calls are unaffected.
 #
@@ -246,11 +244,12 @@ max_subagents = 10 # optional (1-20)
 # be asked once and can persist) before running it.
 #
 # [skills]
-# registry_url = "https://raw.githubusercontent.com/Hmbown/deepseek-skills/main/index.json"
+# registry_url = "https://example.com/skills/index.json"
 # max_install_size_bytes = 5_242_880
 
 # ─────────────────────────────────────────────────────────────────────────────────
-# TUI
+# Terminal UI chrome ([tui] — used when running the sidecar in terminal mode;
+# DS Pick desktop ignores most of this except locale-related runtime behavior)
 # ─────────────────────────────────────────────────────────────────────────────────
 [tui]
 alternate_screen = "auto"   # auto | always | never
@@ -264,8 +263,8 @@ osc8_links = true            # emit OSC 8 escapes around URLs (Cmd+click in iTer
 # locale = "auto"           # UI chrome language: auto | en | ja | zh-Hans | pt-BR
 #                           # "auto" reads LC_ALL → LC_MESSAGES → LANG; falls back to English.
 #                           # Override: `locale = "zh-Hans"` for Simplified Chinese regardless of OS locale.
-#                           # Also settable at runtime: /config locale zh-Hans
-#                           # Note: this only affects TUI labels/chrome — it does NOT change model output language.
+#                           # Also settable in config: locale = "zh-Hans"
+#                           # Affects terminal-mode chrome only — not model output language.
 #
 # Ordered footer chips (or use /statusline at runtime).
 # Default: mode, model, cost, status, coherence, agents, reasoning_replay, cache, context_percent
@@ -296,7 +295,7 @@ exponential_base = 2.0
 # ─────────────────────────────────────────────────────────────────────────────────
 # Context Compaction
 # ─────────────────────────────────────────────────────────────────────────────────
-# Auto-compaction is edited in DS Pick system settings or TUI `/config auto_compact`.
+# Auto-compaction is edited in DS Pick → Settings (or `[compaction]` here).
 # Threshold defaults to 80% of the active model context window when unset.
 [compaction]
 # auto_compact = false
@@ -360,7 +359,7 @@ fallback_default_prior = 3.8
 # ─────────────────────────────────────────────────────────────────────────────────
 # Profile Example (for multiple environments)
 # ─────────────────────────────────────────────────────────────────────────────────
-# Select a profile with `deepseek --profile <name>` or `DEEPSEEK_PROFILE=<name>`.
+# Select a profile with `DEEPSEEK_PROFILE=<name>` or `[profiles.*]` + `provider`.
 [profiles.work]
 api_key = "WORK_DEEPSEEK_API_KEY"
 base_url = "https://api.deepseek.com/beta"
@@ -378,10 +377,9 @@ default_text_model = "deepseek-ai/deepseek-v4-pro"
 # ─────────────────────────────────────────────────────────────────────────────────
 # Desktop Notifications (OSC 9 / BEL on long agent-turn completion)
 # ─────────────────────────────────────────────────────────────────────────────────
-# Emits an escape sequence to the terminal when a turn **completes successfully**
-# and took longer than `threshold_secs`. Failed or cancelled turns are
-# intentionally silent. Useful when you tab away from the TUI and want an alert
-# for "your task is ready".
+# Emits a notification when a turn **completes successfully** and took longer
+# than `threshold_secs`. DS Pick uses native OS notifications when minimized;
+# this section applies to terminal-mode sidecar runs.
 #
 # method        = "auto"   # auto | osc9 | bel | off
 #                 auto: OSC 9 for iTerm.app / Ghostty / WezTerm.
@@ -403,7 +401,7 @@ default_text_model = "deepseek-ai/deepseek-v4-pro"
 # ─────────────────────────────────────────────────────────────────────────────────
 # Workspace Snapshots (#137)
 # ─────────────────────────────────────────────────────────────────────────────────
-# Each turn the TUI takes a `pre-turn:<seq>` and `post-turn:<seq>` snapshot of
+# Each turn the runtime takes a `pre-turn:<seq>` and `post-turn:<seq>` snapshot of
 # your workspace into a side-git repo at:
 #
 #     ~/.deepseek/snapshots/<project_hash>/<worktree_hash>/.git
@@ -474,7 +472,7 @@ default_text_model = "deepseek-ai/deepseek-v4-pro"
 #
 # [[hooks.hooks]]
 # event = "session_start"
-# command = "echo 'DeepSeek TUI session started'"
+# command = "echo 'DS Pick runtime session started'"
 #
 # # Inject ephemeral creds into every shell call. Output one
 # # KEY=VALUE per line on stdout (export prefix optional).
@@ -486,12 +484,10 @@ default_text_model = "deepseek-ai/deepseek-v4-pro"
 # # condition = { type = "tool_category", category = "shell" }
 
 # ─────────────────────────────────────────────────────────────────────────────────
-# Runtime API (`deepseek serve --http`) (#561)
+# Runtime API (embedded sidecar HTTP/SSE — DS Pick desktop)
 # ─────────────────────────────────────────────────────────────────────────────────
-# Tuning knobs for the local HTTP/SSE daemon. The server binds to 127.0.0.1
-# by default and is intended for local UIs (whalescale-desktop, dashboards,
-# automation scripts). Today this section only controls the CORS allow-list;
-# host/port/workers stay on `--host`, `--port`, and `--workers` flags.
+# Tuning knobs for the local HTTP/SSE daemon bound to 127.0.0.1. DS Pick WebView
+# talks to this API; host/port/workers stay on sidecar flags / env when applicable.
 #
 # Built-in defaults always include:
 #   http://localhost:3000   http://127.0.0.1:3000

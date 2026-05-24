@@ -10,15 +10,12 @@ This document consolidates the same guidance as [`.cursor/rules/*.mdc`](.cursor/
 
 **Cursor:** `alwaysApply: true`
 
-- **Root story:** [`README.md`](README.md) leads with **DS Pick** (Tauri app in `crates/desktop/`). The same repo ships the **`deepseek` CLI**, terminal TUI, and shared agent/runtime crates.
+- **Root story:** [`README.md`](README.md) leads with **DS Pick** (proprietary desktop app). Third-party runtime MIT license at [`third-party/deepseek-tui/LICENSE`](third-party/deepseek-tui/LICENSE) — **not** at repo root. See [`NOTICE.md`](NOTICE.md).
 - **Desktop (DS Pick):** `crates/desktop/`, product notes in [`docs/desktop/DEV_NOTES.md`](docs/desktop/DEV_NOTES.md).
-- **TUI / CLI lineage docs:** [`docs/tui/README.md`](docs/tui/README.md) — prompts analysis, dependency graph, handoffs, reviews.
-- **Archived TUI-first root README copies:** [`docs/archive/tui-readme-era/ABOUT.md`](docs/archive/tui-readme-era/ABOUT.md).
-- **Authoritative agent instructions:** [`AGENTS.md`](AGENTS.md).
-- **Versions:** DS Pick uses its **own** SemVer (e.g. **v0.4.0**), separate from the workspace `deepseek` line; see [`CHANGELOG.md`](CHANGELOG.md) header.
-- **Changelog:** Record **every notable change** (features, fixes, docs, DS Pick desktop, CLI/TUI, tooling) in [`CHANGELOG.md`](CHANGELOG.md)—typically under `[Unreleased]`, in the **same PR/commit** as the change when practical. Not required for trivial or non-user-facing edits (typos, comment-only, pure refactors with no behavior change). Full policy: [`CHANGELOG.md`](CHANGELOG.md) header.
+- **Versions:** DS Pick uses its **own** SemVer (e.g. **v0.4.x**), separate from the embedded runtime workspace line; see [`CHANGELOG.md`](CHANGELOG.md) header.
+- **Changelog:** Record **every notable change** (features, fixes, docs, DS Pick desktop, runtime, tooling) in [`CHANGELOG.md`](CHANGELOG.md)—typically under `[Unreleased]`, in the **same PR/commit** as the change when practical.
 
-When summarizing the project, **lead with DS Pick + shared runtime**, not “TUI-only.”
+When summarizing the project, **lead with DS Pick** (proprietary desktop product), not upstream deepseek-tui / CodeWhale open-source branding.
 
 ### Runtime evolution (2026-05 — planning SSOT)
 

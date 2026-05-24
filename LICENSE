@@ -1,21 +1,22 @@
-MIT License
+DS Pick Desktop Application — Proprietary License
 
-Copyright (c) 2024-2025 DeepSeek CLI Contributors
+Copyright (c) 2024-2026 DS Pick Contributors. All Rights Reserved.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+DS Pick is a proprietary desktop product. This repository, the DS Pick application
+(including the Tauri shell, WebView UI, branding, and distribution artifacts), and
+all DS Pick–authored code are proprietary software.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+Unless you have a separate written agreement with the copyright holder, you may
+not copy, modify, merge, publish, distribute, sublicense, sell, or otherwise
+exploit any part of DS Pick.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+Internal development builds and evaluation use only, as authorized by the
+copyright holder.
+
+Third-party components
+----------------------
+DS Pick embeds third-party software (including an MIT-licensed agent runtime).
+Those components are **not** covered by this license. See [NOTICE.md](NOTICE.md).
+
+Using DeepSeek or other AI provider APIs through DS Pick does not imply
+affiliation with or endorsement by DeepSeek Inc. or any model provider.

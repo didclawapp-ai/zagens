@@ -3,10 +3,10 @@ name = "deepseek-desktop"
 # DS Pick is versioned independently of the workspace (CLI/TUI) line — see CHANGELOG.md.
 version = "0.4.3"
 edition.workspace = true
-license.workspace = true
-repository.workspace = true
+description = "DS Pick — Tauri desktop shell with embedded agent runtime sidecar"
+license = "LicenseRef-Proprietary-DSPick"
+license-file = "../../LICENSE"
 rust-version.workspace = true
-description = "DS Pick — Tauri GUI shell for DeepSeek TUI (deepseek CLI)"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

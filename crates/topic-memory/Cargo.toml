@@ -3,7 +3,6 @@ name = "deepseek-topic-memory"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-repository.workspace = true
 rust-version.workspace = true
 description = "Topic memory graph (pheromone-style) for conversation context injection"
 

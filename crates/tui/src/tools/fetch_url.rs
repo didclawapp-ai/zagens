@@ -23,8 +23,7 @@ const HARD_MAX_BYTES: u64 = 10 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS: u64 = 15_000;
 const HARD_MAX_TIMEOUT_MS: u64 = 60_000;
 const MAX_REDIRECTS: usize = 5;
-const USER_AGENT: &str =
-    "Mozilla/5.0 (compatible; deepseek-tui/0.5; +https://github.com/Hmbown/DeepSeek-TUI)";
+const USER_AGENT: &str = "Mozilla/5.0 (compatible; ds-pick-runtime/0.8)";
 
 static SCRIPT_RE: OnceLock<Regex> = OnceLock::new();
 static STYLE_RE: OnceLock<Regex> = OnceLock::new();

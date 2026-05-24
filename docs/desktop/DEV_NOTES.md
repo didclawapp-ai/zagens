@@ -96,6 +96,20 @@ Anthropic Managed Agents（2026.04 公测）使用完全相同的术语：sessio
 | [agent-reliability-craft-plan.md](../agent-reliability-craft-plan.md) | CRAFT 作为 SubAgentTopology 实现 |
 | [HARNESS.md](HARNESS.md) | Harness 定位与栈位 |
 
+### 命名决定
+
+**AgentPick。** 经讨论，DS Pick → Pickcode / CodePick → AgentPick。
+
+| 候选 | 绑定 | 三年后进非编程领域 |
+|------|------|-------------------|
+| DS Pick | DeepSeek 生态 | 可接受，但需解释 |
+| Pickcode / CodePick | 编程领域 | 包袱 |
+| **AgentPick** | Agent 范式 | 无包袱 |
+
+Agent 已是 2026 年大众认知词（AI Agent / 智能体）。用户看到 **AgentPick** 立刻知道：跟 AI Agent 有关，且核心动作是 **Pick**（选模型、选 skill、选 harness 模式、按需组合）。DS Pick 的「Pick」含义模糊——没有上下文时不知道 Pick 在挑什么。AgentPick 自解释，不需要额外说明。
+
+内部架构层叫**导引层**。中文不面向用户。
+
 ---
 
 ## 2026-05-21 — 会话/线程「结项汇总报告」（Handoff Report）— ⬜ 规划中
