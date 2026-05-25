@@ -11,7 +11,9 @@ pub mod capacity_policy;
 pub mod tool_phase;
 
 pub use control::{TurnLoopControl, TurnLoopStreamingPhaseOutcome, TurnLoopToolPhaseOutcome};
-pub use host::{TurnLoopMcpPool, TurnLoopToolRegistry};
+pub use host::TurnLoopToolRegistry;
+#[allow(deprecated)]
+pub use host::TurnLoopMcpPool;
 pub use exec::{ToolExecOutcome, ToolExecutionPlan, ToolPlanApprovalMeta};
 pub use tool_exec::{McpPoolPort, TurnLoopToolExec, TurnLoopToolExecutor};
 pub use helpers::{

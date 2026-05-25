@@ -44,9 +44,10 @@ pub use handle::EngineHandle;
 pub use op::Op;
 pub use dispatch::{
     caller_allowed_for_tool, caller_type_for_tool_use, final_tool_input, format_tool_error,
-    mcp_tool_approval_description, mcp_tool_is_parallel_safe, mcp_tool_is_read_only,
-    parse_parallel_tool_calls, parse_tool_input_json, should_force_update_plan_first,
-    should_parallelize_tool_batch, should_stop_after_plan_tool, ToolParallelPlanFlags,
+    is_mcp_tool_name, mcp_tool_approval_description, mcp_tool_is_parallel_safe,
+    mcp_tool_is_read_only, parse_parallel_tool_calls, parse_tool_input_json,
+    should_force_update_plan_first, should_parallelize_tool_batch, should_stop_after_plan_tool,
+    ToolParallelPlanFlags,
 };
 pub use loop_guard::{AttemptDecision, LoopGuard, OutcomeDecision};
 pub use lsp_edit_paths::{edited_paths_for_tool, parse_patch_paths};
@@ -83,6 +84,6 @@ pub use turn_port::TurnEnginePort;
 pub use subagent_port::{SubAgentSpawnError, SubAgentSpawnOutcome};
 #[allow(deprecated)]
 pub use subagent_port::SubAgentSpawnPort;
-pub use hosts::{LspHost, SandboxHost, ShellHost, SubAgentHost};
+pub use hosts::{LspHost, McpHost, SandboxHost, ShellHost, SubAgentHost};
 pub use crate::turn::{TurnContext, TurnLoopMode, TurnOutcomeStatus};
 pub use crate::session::{Session, SessionUsage};

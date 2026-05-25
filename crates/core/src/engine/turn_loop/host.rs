@@ -37,13 +37,28 @@ pub struct TurnLoopConfigView<'a> {
 /// Opaque tool-registry type (TUI: `crate::tools::ToolRegistry`).
 pub trait TurnLoopToolRegistry: Send + Sync {}
 
-/// Opaque MCP pool type (TUI: `crate::mcp::McpPool`).
+/// Deprecated alias for [`McpHost`](crate::engine::hosts::McpHost).
+///
+/// M4 (Engine-struct strangler) renamed this empty marker into the
+/// named [`McpHost`] trait with default-impl predicate / metadata
+/// methods. The blanket impl below keeps existing `impl
+/// TurnLoopMcpPool for McpPool` consumers compiling for one release;
+/// new code should impl `McpHost` directly. The alias and blanket
+/// impl will be removed in the next release.
+#[deprecated(
+    since = "0.8.16",
+    note = "use `deepseek_core::engine::hosts::McpHost` instead; \
+            this alias will be removed in the next release"
+)]
 pub trait TurnLoopMcpPool: Send + Sync {}
+
+#[allow(deprecated)]
+impl<T: crate::engine::hosts::McpHost + ?Sized> TurnLoopMcpPool for T {}
 
 #[async_trait]
 pub trait TurnLoopHost: Send {
     type ToolRegistry: TurnLoopToolRegistry;
-    type McpPool: TurnLoopMcpPool;
+    type McpPool: crate::engine::hosts::McpHost;
 
     // ── Session / config accessors (disjoint borrows) ─────────────────
 

@@ -209,6 +209,25 @@ pub fn should_force_update_plan_first(is_plan_mode: bool, content: &str) -> bool
     !asks_for_repo_exploration
 }
 
+/// Whether `name` is dispatched through the MCP pool (vs. the native
+/// `ToolRegistry`). Mirrors the body of
+/// `tui::mcp::McpPool::is_mcp_tool` so the core turn loop and
+/// [`McpHost`](crate::engine::hosts::McpHost) implementations can
+/// answer the same question without depending on the tui crate.
+///
+/// **Drift guard**: the
+/// `is_mcp_tool_name_matches_tui_mcp_pool` test in `tui::mcp` asserts
+/// this function and `McpPool::is_mcp_tool` produce identical output
+/// on a curated name set.
+#[must_use]
+pub fn is_mcp_tool_name(name: &str) -> bool {
+    name.starts_with("mcp_")
+        || matches!(
+            name,
+            "list_mcp_resources" | "list_mcp_resource_templates" | "read_mcp_resource"
+        )
+}
+
 #[must_use]
 pub fn mcp_tool_is_parallel_safe(name: &str) -> bool {
     matches!(
@@ -327,6 +346,18 @@ mod tests {
             "update_plan",
             &Ok(ToolResult::success("ok"))
         ));
+    }
+
+    #[test]
+    fn is_mcp_tool_name_covers_prefix_and_resource_helpers() {
+        assert!(is_mcp_tool_name("mcp_filesystem_read"));
+        assert!(is_mcp_tool_name("mcp_git_status"));
+        assert!(is_mcp_tool_name("list_mcp_resources"));
+        assert!(is_mcp_tool_name("list_mcp_resource_templates"));
+        assert!(is_mcp_tool_name("read_mcp_resource"));
+        assert!(!is_mcp_tool_name("read_file"));
+        assert!(!is_mcp_tool_name("exec_shell"));
+        assert!(!is_mcp_tool_name(""));
     }
 
     #[test]

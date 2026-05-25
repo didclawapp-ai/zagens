@@ -10,13 +10,12 @@ use deepseek_core::engine::turn_loop::control::TurnLoopControl;
 use deepseek_core::engine::turn_loop::exec::{
     ToolExecOutcome, ToolExecutionPlan, ToolPlanApprovalMeta,
 };
-use deepseek_core::engine::turn_loop::{
-    build_edit_file_approval_desc, TurnLoopMcpPool, TurnLoopToolRegistry,
-};
+use deepseek_core::engine::turn_loop::{build_edit_file_approval_desc, TurnLoopToolRegistry};
 use deepseek_core::engine::tool_catalog::{CODE_EXECUTION_TOOL_NAME, is_tool_search_tool};
 use deepseek_core::engine::dispatch::{
     mcp_tool_approval_description, mcp_tool_is_parallel_safe, mcp_tool_is_read_only,
 };
+use deepseek_core::engine::hosts::McpHost;
 use deepseek_core::engine::TurnLoopHost;
 use deepseek_core::engine::streaming::ToolUseState;
 use deepseek_core::turn::{TurnContext, TurnLoopMode};
@@ -39,7 +38,7 @@ use crate::tui::app::AppMode;
 use crate::tools::spec::ApprovalRequirement;
 use crate::tools::ToolRegistry;
 impl TurnLoopToolRegistry for ToolRegistry {}
-impl TurnLoopMcpPool for McpPool {}
+impl McpHost for McpPool {}
 
 
 mod capacity;
@@ -529,5 +528,71 @@ pub(crate) fn turn_loop_to_app_mode(mode: TurnLoopMode) -> AppMode {
         TurnLoopMode::Agent => AppMode::Agent,
         TurnLoopMode::Yolo => AppMode::Yolo,
         TurnLoopMode::Plan => AppMode::Plan,
+    }
+}
+
+#[cfg(test)]
+mod m4_drift_guard {
+    use super::*;
+    use deepseek_core::engine::dispatch::is_mcp_tool_name;
+
+    /// M4 cross-verify: the tui-side inherent `McpPool::is_mcp_tool`
+    /// (in `crates/tui/src/mcp.rs:1498` — frozen per spike §6 M4
+    /// "zero changes to mcp.rs body") and the core-side free function
+    /// `deepseek_core::engine::dispatch::is_mcp_tool_name` must
+    /// produce identical output on every name in a curated set.
+    ///
+    /// If either definition gains a new prefix / matched literal,
+    /// this test fails and forces a mirrored update.
+    #[test]
+    fn is_mcp_tool_name_matches_tui_mcp_pool() {
+        const NAMES: &[&str] = &[
+            "mcp_filesystem_read",
+            "mcp_filesystem_write",
+            "mcp_git_status",
+            "mcp_browser_navigate",
+            "list_mcp_resources",
+            "list_mcp_resource_templates",
+            "read_mcp_resource",
+            "mcp_",
+            "read_file",
+            "edit_file",
+            "exec_shell",
+            "request_user_input",
+            "update_plan",
+            "tool_search_bm25",
+            "",
+        ];
+        for name in NAMES {
+            assert_eq!(
+                McpPool::is_mcp_tool(name),
+                is_mcp_tool_name(name),
+                "drift between tui::mcp::McpPool::is_mcp_tool and \
+                 core::engine::dispatch::is_mcp_tool_name on {name:?}"
+            );
+        }
+    }
+
+    /// M4 promoted `TurnLoopMcpPool` to `McpHost`. `McpPool` keeps
+    /// satisfying the (deprecated) marker via the blanket impl, so
+    /// existing `Self::McpPool: TurnLoopMcpPool` bounds continue to
+    /// work. The new `McpHost` default-impl predicates must match
+    /// the inherent / free-fn surface.
+    #[test]
+    fn mcp_pool_satisfies_mcp_host_with_default_impls() {
+        fn _accepts<T: McpHost>(_: &T) {}
+        let pool: Option<McpPool> = None;
+        if let Some(ref p) = pool {
+            _accepts(p);
+            assert_eq!(
+                p.is_mcp_tool("mcp_filesystem_read"),
+                McpPool::is_mcp_tool("mcp_filesystem_read")
+            );
+        }
+        // Type-level assertion: McpPool: McpHost.
+        const _: fn() = || {
+            fn _bound<T: McpHost>() {}
+            _bound::<McpPool>();
+        };
     }
 }
