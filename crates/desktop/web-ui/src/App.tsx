@@ -219,6 +219,7 @@ function loadTheme(): Theme {
 
 const ACTIVE_SESSION_STORAGE_KEY = 'deepseek-desktop-active-session-id';
 const ACTIVE_INSPECTOR_STORAGE_KEY = 'deepseek-desktop-active-inspector';
+const RIGHT_PANEL_COLLAPSED_STORAGE_KEY = 'deepseek-desktop-right-panel-collapsed';
 const ROUTE_INTENT_STORAGE_KEY = 'deepseek-desktop-route-intent';
 const TASK_TYPE_STORAGE_KEY = 'deepseek-desktop-task-type';
 
@@ -280,6 +281,19 @@ function loadStoredInspector(): RightPanelView {
     /* ignore */
   }
   return 'workspace';
+}
+
+/** First launch (no key): collapsed; later launches restore last collapsed/expanded state. */
+function loadStoredRightPanelCollapsed(): boolean {
+  try {
+    const s = localStorage.getItem(RIGHT_PANEL_COLLAPSED_STORAGE_KEY);
+    if (s === null) return true;
+    if (s === 'false' || s === '0') return false;
+    if (s === 'true' || s === '1') return true;
+  } catch {
+    /* ignore */
+  }
+  return true;
 }
 
 function applyTheme(theme: Theme) {
@@ -433,7 +447,9 @@ export default function App() {
   const runtimeProbeFailStreakRef = useRef(0);
   const PROBE_FAILS_BEFORE_OFFLINE = 3;
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(true);
+  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(() =>
+    loadStoredRightPanelCollapsed(),
+  );
   const toggleDevtools = useCallback(() => {
     if (!desktopHost) return;
     void import('@tauri-apps/api/core').then(({ invoke }) =>
@@ -552,6 +568,7 @@ export default function App() {
       }
       acknowledgeInspectorView(view);
       setActiveInspector(view);
+      setRightPanelCollapsed(false);
     },
     [activeInspector, acknowledgeInspectorView],
   );
@@ -685,6 +702,17 @@ export default function App() {
       /* ignore */
     }
   }, [activeInspector]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        RIGHT_PANEL_COLLAPSED_STORAGE_KEY,
+        rightPanelCollapsed ? 'true' : 'false',
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [rightPanelCollapsed]);
 
   const toggleTheme = useCallback(() => {
     setTheme((prev) => {

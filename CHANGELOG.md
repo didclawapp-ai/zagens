@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Zagens desktop:** Right panel collapse state persists across restarts (`deepseek-desktop-right-panel-collapsed`); first launch stays collapsed; sidebar inspector tabs expand the panel on click.
+
 ### Changed
 
 - **Branding:** Product renamed from **DS Pick** to **Zagens** (tagline: *Desktop agent harness* / 桌面 Agent 控制台). User-visible strings, README, LICENSE, NOTICE, Tauri `productName` / `identifier` (`com.zagens.desktop`), default workspace `<Documents>/Zagens` with legacy `<Documents>/DS Pick` fallback; localStorage keys migrated (`zagens-locale`, `zagens:*` prefs). CI release tags: `zagens-v*` (preferred) and legacy `ds-pick-v*`.
