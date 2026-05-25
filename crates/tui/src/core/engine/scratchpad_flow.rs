@@ -10,18 +10,14 @@ use crate::scratchpad::{
     resume_area_id_from_inventory,
 };
 
-/// Per-step scratchpad nudge state (reset each engine step).
-#[derive(Debug, Default)]
-pub struct ScratchpadStepState {
-    pub readonly_tool_successes: usize,
-    pub scratchpad_writes_this_step: usize,
-}
-
-impl ScratchpadStepState {
-    pub fn reset(&mut self) {
-        *self = Self::default();
-    }
-}
+// M5: `ScratchpadStepState` moved to
+// `deepseek_core::engine::scratchpad_state` (spike §3 row #28 + R12 —
+// the small state struct migrated; the heavy flow helpers in this
+// 484-LOC file stay tui-side). The re-export shim below keeps every
+// `use crate::core::engine::scratchpad_flow::ScratchpadStepState`
+// caller compiling unchanged (engine state, host_impl turn-loop
+// bookkeeping, message_handlers reset, tests).
+pub use deepseek_core::engine::ScratchpadStepState;
 
 const READONLY_TOOLS: &[&str] = &[
     "read_file",

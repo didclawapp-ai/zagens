@@ -602,3 +602,23 @@ mod tests {
         unsafe { std::env::remove_var(LARGE_OUTPUT_ROOT_ENV) };
     }
 }
+
+// ── M5 Engine-boundary trait impl ─────────────────────────────────────
+//
+// `WorkshopHost` is an **empty marker** trait — the live `Engine`
+// never invokes a method on `workshop_vars` (the single call site at
+// `tool_context.rs:51` only clones the `Arc` into `ToolContext`).
+// The newtype below wraps the optional shared-pointer so M7 can swap
+// `workshop_vars: Option<Arc<Mutex<WorkshopVariables>>>` to
+// `Box<dyn WorkshopHost>` without inventing a surface. Mirrors M3's
+// `TuiShellHost(SharedShellManager)` newtype pattern.
+
+use std::sync::Arc;
+use tokio::sync::Mutex;
+
+/// Newtype wrapping the optional shared workshop variable store for
+/// the [`deepseek_core::engine::hosts::WorkshopHost`] marker trait.
+/// `None` when no `[workshop]` table is configured.
+pub struct TuiWorkshopHost(pub Option<Arc<Mutex<WorkshopVariables>>>);
+
+impl deepseek_core::engine::hosts::WorkshopHost for TuiWorkshopHost {}

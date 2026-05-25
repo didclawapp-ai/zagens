@@ -17,6 +17,7 @@ pub mod hosts;
 pub mod op;
 pub mod loop_guard;
 pub mod lsp_edit_paths;
+pub mod scratchpad_state;
 pub mod tool_bridge;
 pub mod tool_catalog;
 pub mod tool_progress;
@@ -84,6 +85,10 @@ pub use turn_port::TurnEnginePort;
 pub use subagent_port::{SubAgentSpawnError, SubAgentSpawnOutcome};
 #[allow(deprecated)]
 pub use subagent_port::SubAgentSpawnPort;
-pub use hosts::{LspHost, McpHost, SandboxHost, ShellHost, SubAgentHost};
+pub use hosts::{
+    LspHost, McpHost, SandboxHost, SeamError, SeamHost, ShellHost, SubAgentHost, TopicMemoryHost,
+    WorkshopHost,
+};
+pub use scratchpad_state::ScratchpadStepState;
 pub use crate::turn::{TurnContext, TurnLoopMode, TurnOutcomeStatus};
 pub use crate::session::{Session, SessionUsage};

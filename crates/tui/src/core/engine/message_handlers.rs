@@ -274,8 +274,12 @@ impl Engine {
             if let Some((user, assistant)) =
                 crate::topic_memory::last_exchange_from_messages(&self.session.messages)
             {
-                self.topic_memory_runtime.on_turn_complete(
-                    &self.config.topic_memory,
+                // M5: dispatch through TopicMemoryHost — settings owned
+                // by the runtime (set at Engine::new from
+                // config.topic_memory).
+                use deepseek_core::engine::hosts::TopicMemoryHost;
+                TopicMemoryHost::on_turn_complete(
+                    &mut self.topic_memory_runtime,
                     &user,
                     &assistant,
                 );

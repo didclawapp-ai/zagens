@@ -173,6 +173,11 @@ impl Engine {
             .ok()
             .and_then(|g| g.clone());
 
+        // M5: clone TopicMemorySettings before `config` is moved into
+        // the struct so `TopicMemoryRuntime::new(...)` can own its own
+        // copy (the trait surface owns settings, not the call site).
+        let topic_memory_settings = config.topic_memory.clone();
+
         let mut engine = Engine {
             config,
             deepseek_client,
@@ -204,7 +209,9 @@ impl Engine {
             scratchpad_step: scratchpad_flow::ScratchpadStepState::default(),
             scratchpad_run_id,
             scratchpad_summary_injected_this_turn: false,
-            topic_memory_runtime: crate::topic_memory::TopicMemoryRuntime::default(),
+            topic_memory_runtime: crate::topic_memory::TopicMemoryRuntime::new(
+                topic_memory_settings,
+            ),
         };
         engine.rehydrate_latest_canonical_state();
 

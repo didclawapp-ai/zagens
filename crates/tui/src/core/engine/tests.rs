@@ -971,7 +971,7 @@ fn refresh_system_prompt_under_capacity_omits_topic_memory_block() {
         retrieve_k_hops: 2,
         attribution: None,
     };
-    let mut rt = crate::topic_memory::TopicMemoryRuntime::default();
+    let mut rt = crate::topic_memory::TopicMemoryRuntime::new(settings.clone());
     rt.on_turn_complete(&settings, "讨论 Rust 性能", "可以用 profiling");
     rt.runs_since_last_inject = settings.inject_interval;
 

@@ -95,9 +95,37 @@ pub fn settings_from_config(cfg: &crate::config::Config) -> TopicMemorySettings 
 }
 
 /// In-memory turn counter for inject cadence (per engine instance).
+///
+/// M5 (Engine-struct strangler): runtime now owns its
+/// [`TopicMemorySettings`] so the
+/// [`deepseek_core::engine::hosts::TopicMemoryHost`] trait can keep
+/// settings out of the method signatures (spike R9 — avoid pulling
+/// tui types or `deepseek-topic-memory` into core trait surface).
+/// Settings are clone-owned at engine init; no hot-reload path
+/// exists today.
 #[derive(Debug, Default)]
 pub struct TopicMemoryRuntime {
     pub runs_since_last_inject: u32,
+    /// Settings used by `compose_block` / `on_turn_complete`. M5
+    /// added; pre-M5 callers used to pass `&TopicMemorySettings`
+    /// as a method parameter. `Default` is the disabled-memory
+    /// state (`TopicMemorySettings::default().enabled == false`).
+    pub settings: TopicMemorySettings,
+}
+
+impl TopicMemoryRuntime {
+    /// Construct a runtime that owns the given settings. Engine
+    /// initialization clones from `EngineConfig.topic_memory` and
+    /// hands the owned value here so the
+    /// [`TopicMemoryHost`](deepseek_core::engine::hosts::TopicMemoryHost)
+    /// trait methods can read it via `&self`.
+    #[must_use]
+    pub fn new(settings: TopicMemorySettings) -> Self {
+        Self {
+            runs_since_last_inject: 0,
+            settings,
+        }
+    }
 }
 
 fn load_or_init_metrics(settings: &TopicMemorySettings) -> TopicMemoryMetrics {
@@ -172,6 +200,29 @@ impl TopicMemoryRuntime {
         persist_metrics(settings, &metrics);
 
         as_system_block(&section, &settings.graph_path)
+    }
+}
+
+// ── M5 Engine-boundary trait impl ─────────────────────────────────────
+//
+// Bridges `TopicMemoryRuntime` (tui) onto the core
+// `deepseek_core::engine::hosts::TopicMemoryHost` trait. Both methods
+// delegate to the inherent methods above with `&self.settings` —
+// the trait surface is settings-free (spike R9 mitigation).
+
+impl deepseek_core::engine::hosts::TopicMemoryHost for TopicMemoryRuntime {
+    fn compose_block(&mut self, query_hint: Option<&str>) -> Option<String> {
+        // Local clone of `settings` to side-step the `&mut self` +
+        // `&self.settings` simultaneous borrow that compose_block's
+        // legacy signature requires. `TopicMemorySettings` is cheap
+        // to clone (PathBuf + small primitives + Option<String>).
+        let settings = self.settings.clone();
+        TopicMemoryRuntime::compose_block(self, &settings, query_hint)
+    }
+
+    fn on_turn_complete(&mut self, user: &str, assistant: &str) {
+        let settings = self.settings.clone();
+        TopicMemoryRuntime::on_turn_complete(self, &settings, user, assistant);
     }
 }
 

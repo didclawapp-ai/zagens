@@ -52,8 +52,12 @@ impl Engine {
         // 1. Generate the model-curated briefing. Prefer the Flash seam
         //    manager (#159) for cost and speed; fall back to the main model
         //    (legacy produce_briefing) when the seam manager isn't available.
+        //
+        // M5: calls go through the `SeamHost` trait — same call shape,
+        // explicit UFCS to keep the trait import obvious at the seam.
         let briefing_text = if let Some(ref seam_mgr) = self.seam_manager {
-            let seams = seam_mgr.collect_seam_texts(&self.session.messages).await;
+            use deepseek_core::engine::hosts::SeamHost;
+            let seams = SeamHost::collect_seam_texts(seam_mgr, &self.session.messages).await;
             let state_text = {
                 let s = StructuredState::capture(
                     mode.label(),
@@ -67,10 +71,7 @@ impl Engine {
                 .await;
                 s.to_system_block()
             };
-            match seam_mgr
-                .produce_flash_briefing(&seams, state_text.as_deref())
-                .await
-            {
+            match SeamHost::produce_flash_briefing(seam_mgr, &seams, state_text.as_deref()).await {
                 Ok(text) => text,
                 Err(err) => {
                     crate::logging::warn(format!(
@@ -190,9 +191,10 @@ impl Engine {
         self.session.cycle_count = to;
         self.session.current_cycle_started = now;
         self.session.cycle_briefings.push(briefing.clone());
-        // Reset seam tracking for the new cycle.
+        // Reset seam tracking for the new cycle. M5: trait dispatch.
         if let Some(ref seam_mgr) = self.seam_manager {
-            seam_mgr.reset().await;
+            use deepseek_core::engine::hosts::SeamHost;
+            SeamHost::reset(seam_mgr).await;
         }
         // Drop any compaction summary 鈥?that path is incompatible with the
         // fresh-context model and would Frankenstein-merge with the briefing.
@@ -240,10 +242,10 @@ impl Engine {
         let topic_memory_block = if arbitration.omit_topic_memory {
             None
         } else {
-            self.topic_memory_runtime.compose_block(
-                &self.config.topic_memory,
-                query_hint.as_deref(),
-            )
+            // M5: dispatch through TopicMemoryHost — runtime owns its
+            // settings (set at Engine::new from config.topic_memory).
+            use deepseek_core::engine::hosts::TopicMemoryHost;
+            TopicMemoryHost::compose_block(&mut self.topic_memory_runtime, query_hint.as_deref())
         };
         let base = prompts::system_prompt_for_mode_with_context_skills_session_and_approval(
             mode,
