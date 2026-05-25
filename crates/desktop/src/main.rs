@@ -96,8 +96,12 @@ fn main() {
         .setup(move |app| {
             let token = uuid::Uuid::new_v4().to_string();
             let sidecar_restart = Arc::new(Notify::new());
+            // Watch channel publishes the runtime port. Initial value `0` means "not ready yet";
+            // the sidecar supervisor writes the real bound port after parsing `DS_PICK_READY`.
+            // IPC handlers either `await` (get_runtime_port) or fast-fail (require_port).
+            let (runtime_port_tx, runtime_port_rx) = tokio::sync::watch::channel::<u16>(0);
             app.manage(commands::AppContext {
-                runtime_port: 7878,
+                runtime_port: runtime_port_rx,
                 runtime_token: token.clone(),
                 sidecar_restart: sidecar_restart.clone(),
                 shutdown: shutdown.clone(),
@@ -163,10 +167,16 @@ fn main() {
             let handle = app.handle().clone();
             let token_for_sidecar = token.clone();
             let shutdown_for_sidecar = shutdown.clone();
+            // `7878` is the **initial suggested** port (back-compat for single-instance setups
+            // + easier external debugging via `curl localhost:7878`). If a stale sidecar holds
+            // it, the supervisor's `wait_loopback_listen_port_free` reclaims; if the listener
+            // ultimately binds elsewhere it'll be reported via `DS_PICK_READY → port_tx` and
+            // every IPC handler picks up the real port through `AppContext::runtime_port`.
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = sidecar::start_and_monitor(
                     &handle,
                     7878,
+                    runtime_port_tx,
                     &token_for_sidecar,
                     sidecar_restart,
                     shutdown_for_sidecar,

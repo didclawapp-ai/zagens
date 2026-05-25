@@ -74,7 +74,7 @@ pub async fn runtime_http(
 ) -> Result<RuntimeHttpResponse, String> {
     validate_runtime_path(&request.path)?;
     let method = request.method.trim().to_uppercase();
-    let url = format!("http://127.0.0.1:{}{}", ctx.runtime_port, request.path.trim());
+    let url = format!("http://127.0.0.1:{}{}", ctx.require_port()?, request.path.trim());
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(120))
@@ -119,7 +119,7 @@ pub async fn runtime_post_stream(
     ctx: tauri::State<'_, AppContext>,
 ) -> Result<(), String> {
     let window_label = window.label().to_string();
-    let url = format!("http://127.0.0.1:{}/v1/stream", ctx.runtime_port);
+    let url = format!("http://127.0.0.1:{}/v1/stream", ctx.require_port()?);
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(3600))
         .build()
@@ -175,7 +175,7 @@ pub async fn runtime_get_sse(
 ) -> Result<(), String> {
     let window_label = window.label().to_string();
     validate_runtime_path(&path)?;
-    let url = format!("http://127.0.0.1:{}{}", ctx.runtime_port, path.trim());
+    let url = format!("http://127.0.0.1:{}{}", ctx.require_port()?, path.trim());
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(3600))
         .build()

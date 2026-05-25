@@ -43,12 +43,36 @@ fn merge_deepseek_api_key(config: &mut ConfigToml, key: &str) {
 #[derive(Clone)]
 #[allow(dead_code)]
 pub struct AppContext {
-    pub runtime_port: u16,
+    /// Dynamic runtime port channel. Initial value is `0` until the sidecar prints
+    /// `DS_PICK_READY {port: N}` to stdout (parsed by [`crate::sidecar::spawn_stdout_forwarder`]),
+    /// after which the supervisor publishes the real bound port through this watch channel.
+    /// Use [`AppContext::require_port`] from IPC handlers; use `runtime_port.changed().await`
+    /// to wait for the first publish (see [`get_runtime_port`]).
+    pub runtime_port: tokio::sync::watch::Receiver<u16>,
     pub runtime_token: String,
     /// Wake the sidecar supervisor to restart `deepseek-tui`'s HTTP server (reload `config.toml`).
     pub sidecar_restart: Arc<Notify>,
     /// Signal the sidecar supervisor to shut down (kill the child process and exit).
     pub shutdown: Arc<Notify>,
+}
+
+impl AppContext {
+    /// Current published runtime port (`0` before sidecar `DS_PICK_READY`).
+    pub fn current_port(&self) -> u16 {
+        *self.runtime_port.borrow()
+    }
+
+    /// Returns the current port or a user-facing error if the sidecar is not yet ready.
+    /// IPC handlers should `?`-propagate this; web-ui should call `get_runtime_port` first
+    /// (which awaits the first publish) before invoking other runtime-touching commands.
+    pub fn require_port(&self) -> Result<u16, String> {
+        let p = self.current_port();
+        if p == 0 {
+            Err("runtime sidecar 尚未就绪（端口未发布）".to_string())
+        } else {
+            Ok(p)
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -60,7 +84,19 @@ pub struct PlatformInfo {
 
 #[tauri::command]
 pub async fn get_runtime_port(ctx: tauri::State<'_, AppContext>) -> Result<u16, String> {
-    Ok(ctx.runtime_port)
+    // Block the IPC call (not the runtime) until the supervisor publishes the real port.
+    // The web-ui calls this once in `initRuntimeConfig`; spinning here keeps the JS side
+    // simple (no retry loop) and naturally serializes the rest of `client.ts` behind a ready sidecar.
+    let mut rx = ctx.runtime_port.clone();
+    loop {
+        let port = *rx.borrow();
+        if port != 0 {
+            return Ok(port);
+        }
+        rx.changed()
+            .await
+            .map_err(|e| format!("runtime port watch channel closed: {e}"))?;
+    }
 }
 
 #[tauri::command]
@@ -719,7 +755,7 @@ pub async fn read_thread_workspace_binary(
     ctx: tauri::State<'_, AppContext>,
 ) -> Result<BinaryFileResponse, String> {
     let root =
-        fetch_thread_workspace_root(ctx.runtime_port, &ctx.runtime_token, &thread_id).await?;
+        fetch_thread_workspace_root(ctx.require_port()?, &ctx.runtime_token, &thread_id).await?;
     let path = resolve_under_workspace(&root, &relative_path)?;
     read_binary_file_at(&path)
 }
@@ -891,7 +927,7 @@ pub async fn export_thread_json(
     if enc.is_empty() {
         return Err("thread_id 无效".to_string());
     }
-    let url = format!("http://127.0.0.1:{}/v1/threads/{}", ctx.runtime_port, enc);
+    let url = format!("http://127.0.0.1:{}/v1/threads/{}", ctx.require_port()?, enc);
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
         .build()
@@ -1225,7 +1261,7 @@ pub async fn export_session_json(
     if enc.is_empty() {
         return Err("session_id 无效".to_string());
     }
-    let url = format!("http://127.0.0.1:{}/v1/sessions/{}", ctx.runtime_port, enc);
+    let url = format!("http://127.0.0.1:{}/v1/sessions/{}", ctx.require_port()?, enc);
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
         .build()
@@ -1271,7 +1307,7 @@ pub async fn rebuild_symbol_index(
     ctx: tauri::State<'_, AppContext>,
     workspace: String,
 ) -> Result<(), String> {
-    let runtime_port = ctx.runtime_port;
+    let runtime_port = ctx.require_port()?;
     let token = &ctx.runtime_token;
     let client = reqwest::Client::new();
     let url = format!(

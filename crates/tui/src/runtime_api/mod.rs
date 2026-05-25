@@ -284,7 +284,6 @@ pub async fn run_http_server(
     );
 
     let token_fp = token_fingerprint.as_ref().clone();
-    let port = options.port;
     let state = RuntimeApiState {
         config: config.clone(),
         workspace,
@@ -307,12 +306,18 @@ pub async fn run_http_server(
     let listener = TcpListener::bind(addr)
         .await
         .with_context(|| format!("Failed to bind {addr}"))?;
+    // Report the actual bound port so callers that pass `--port 0` (or hit ephemeral fallback)
+    // can discover the real listener; `options.port` may differ from `local_addr().port()`.
+    let bound_addr = listener
+        .local_addr()
+        .with_context(|| "Failed to read bound local_addr from TcpListener")?;
+    let bound_port = bound_addr.port();
 
     eprintln!(
-        "[deepseek-runtime] bound {addr}, serving (+{:?}) — output also on stderr (see sidecar.log if launched from Zagens)",
+        "[deepseek-runtime] bound {bound_addr}, serving (+{:?}) — output also on stderr (see sidecar.log if launched from Zagens)",
         t0.elapsed()
     );
-    eprintln!("Runtime API listening on http://{addr}");
+    eprintln!("Runtime API listening on http://{bound_addr}");
     eprintln!("Security: this server is local-first. Do not expose it to untrusted networks.");
     if auth_enabled {
         eprintln!("Runtime API auth: bearer token required for /v1/* routes.");
@@ -320,8 +325,10 @@ pub async fn run_http_server(
 
     // Signal READY to the supervisor via stdout (line protocol).
     // Zagens's supervisor waits for this line before considering the sidecar healthy.
+    // `port` MUST be the actually bound port (not the requested one) so the desktop
+    // shell can discover ephemeral ports from `--port 0`.
     let ready_line = serde_json::json!({
-        "port": port,
+        "port": bound_port,
         "pid": std::process::id(),
         "token_fp": token_fp,
         "version": env!("CARGO_PKG_VERSION"),
@@ -365,7 +372,7 @@ pub async fn run_http_server(
     });
 
     eprintln!(
-        "[deepseek-runtime] axum::serve started, listening on {addr}"
+        "[deepseek-runtime] axum::serve started, listening on {bound_addr}"
     );
     let serve_result = axum::serve(listener, app)
         .await

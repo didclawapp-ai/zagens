@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
-use tokio::sync::{Notify, mpsc, oneshot};
+use tokio::sync::{Notify, mpsc, oneshot, watch};
 use tokio::time::sleep;
 
 const HEALTH_CHECK_INTERVAL_SECS: u64 = 5;
@@ -305,15 +305,23 @@ enum PongEvent {
     Drain { state: String },
 }
 
+/// Carries the parsed `DS_PICK_READY` payload to the supervisor.
+/// `port` is the **actually bound** port reported by the sidecar (may differ from
+/// the requested port when sidecar binds to `0` for ephemeral allocation).
+#[derive(Debug, Clone)]
+pub(crate) struct ReadySignal {
+    pub port: u16,
+}
+
 /// Forwards sidecar stdout lines to sidecar.log and watches for protocol lines.
-/// Returns (ready_rx, pong_rx) — ready fires once on DS_PICK_READY,
-/// pong_rx receives PongEvent for each DS_PICK_PONG / DS_PICK_DRAIN line.
-/// When the READY signal is received, emits `sidecar://ready` to the WebView.
+/// Returns (ready_rx, pong_rx) — ready fires once on DS_PICK_READY (carrying the
+/// real bound port), pong_rx receives PongEvent for each DS_PICK_PONG / DS_PICK_DRAIN line.
+/// When the READY signal is received, also emits `sidecar://ready` to the WebView.
 fn spawn_stdout_forwarder(
     stdout: tokio::process::ChildStdout,
     app: AppHandle,
-) -> (oneshot::Receiver<()>, mpsc::UnboundedReceiver<PongEvent>) {
-    let (ready_tx, ready_rx) = oneshot::channel();
+) -> (oneshot::Receiver<ReadySignal>, mpsc::UnboundedReceiver<PongEvent>) {
+    let (ready_tx, ready_rx) = oneshot::channel::<ReadySignal>();
     let (pong_tx, pong_rx) = mpsc::unbounded_channel();
     tokio::spawn(async move {
         let mut reader = BufReader::new(stdout).lines();
@@ -334,8 +342,13 @@ fn spawn_stdout_forwarder(
                     let payload: serde_json::Value = line["DS_PICK_READY ".len()..]
                         .parse()
                         .unwrap_or_default();
+                    let real_port = payload
+                        .get("port")
+                        .and_then(serde_json::Value::as_u64)
+                        .and_then(|p| u16::try_from(p).ok())
+                        .unwrap_or(0);
                     let _ = app.emit("sidecar://ready", &payload);
-                    let _ = tx.send(());
+                    let _ = tx.send(ReadySignal { port: real_port });
                 }
             } else if line.starts_with("DS_PICK_PONG ") {
                 let payload = &line["DS_PICK_PONG ".len()..];
@@ -440,15 +453,21 @@ async fn wait_loopback_listen_port_free(port: u16, label: &'static str) {
 
 pub async fn start_and_monitor(
     app: &AppHandle,
-    port: u16,
+    initial_port: u16,
+    port_tx: watch::Sender<u16>,
     token: &str,
     restart: Arc<Notify>,
     shutdown: Arc<Notify>,
 ) -> Result<()> {
+    // `port` may be re-published after each spawn cycle when the sidecar reports the
+    // actually bound port via `DS_PICK_READY` (matters when initial_port == 0 or the
+    // sidecar falls back to an ephemeral allocation). All probe/restart paths below
+    // already read the local `port` variable, so updating it propagates everywhere.
+    let mut port = initial_port;
     let deepseek_bin = find_deepseek_binary(app);
     let token_fp = compute_token_fingerprint(token);
     supervisor_log(format!(
-        "event=supervisor_start port={port} sidecar={deepseek_bin} token_fp={token_fp}"
+        "event=supervisor_start initial_port={initial_port} sidecar={deepseek_bin} token_fp={token_fp}"
     ));
     let mut crash_times: VecDeque<Instant> = VecDeque::new();
 
@@ -460,6 +479,9 @@ pub async fn start_and_monitor(
         let outcome = probe_sidecar(port, &token_fp).await;
 
         if outcome != ProbeOutcome::Ok {
+            // Reset published port → IPC handlers will await the new READY before issuing
+            // requests; without this `get_runtime_port` could return the stale port mid-restart.
+            let _ = port_tx.send(0);
             match outcome {
                 ProbeOutcome::TokenMismatch => {
                     supervisor_log(format!(
@@ -496,13 +518,31 @@ pub async fn start_and_monitor(
                 None
             };
 
-            if ready_signal.is_some() {
+            if let Some(sig) = ready_signal {
+                // Adopt the sidecar's actually bound port (may differ from initial_port
+                // when binding to 0 / ephemeral). Propagate it to every IPC handler via
+                // the watch channel so `runtime_proxy` / `commands::*` use the real URL.
+                if sig.port != 0 && sig.port != port {
+                    supervisor_log(format!(
+                        "event=port_adopted requested={port} actual={} source=DS_PICK_READY",
+                        sig.port
+                    ));
+                    port = sig.port;
+                }
+                if sig.port != 0 {
+                    let _ = port_tx.send(sig.port);
+                } else {
+                    // Defensive: legacy sidecar may not report port; fall back to requested.
+                    let _ = port_tx.send(port);
+                }
                 supervisor_log(format!(
                     "event=sidecar_ready signal=stdout startup_ms={} port={port}",
                     startup_t0.elapsed().as_millis()
                 ));
             } else {
-                // Fallback: HTTP probe loop
+                // Fallback: HTTP probe loop (legacy sidecar that doesn't print DS_PICK_READY,
+                // or stdout forwarder wasn't attached). The requested `port` is the only
+                // address we can probe in this fallback — `--port 0` won't work here.
                 for i in 0..MAX_STARTUP_RETRIES {
                     let delay_ms = if i == 0 {
                         STARTUP_FIRST_DELAY_MS
@@ -512,6 +552,7 @@ pub async fn start_and_monitor(
                     sleep(Duration::from_millis(delay_ms)).await;
                     let outcome = probe_sidecar(port, &token_fp).await;
                     if outcome == ProbeOutcome::Ok {
+                        let _ = port_tx.send(port);
                         supervisor_log(format!(
                             "event=sidecar_ready signal=http startup_ms={} port={port}",
                             startup_t0.elapsed().as_millis()
