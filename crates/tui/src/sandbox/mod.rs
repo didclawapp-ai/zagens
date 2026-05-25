@@ -40,9 +40,39 @@ pub mod windows;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
 pub use policy::SandboxPolicy;
+
+use self::backend::SandboxBackend;
+
+/// Engine boundary newtype wrapping the optional external sandbox backend.
+///
+/// Introduced by M3 (Engine-struct strangler step). The future core-side
+/// Engine struct (M7) will hold `Box<dyn SandboxHost>` instead of the
+/// current `Option<Arc<dyn SandboxBackend>>` slot; this wrapper carries
+/// the same value behind that trait surface so the M7 swap is mechanical.
+///
+/// `None` is the default and means "use local execution". `Some(backend)`
+/// routes shell commands through the remote backend (e.g. OpenSandbox).
+#[derive(Clone, Default)]
+pub struct TuiSandboxHost(pub Option<Arc<dyn SandboxBackend>>);
+
+impl TuiSandboxHost {
+    /// Construct from the `Option<Arc<dyn SandboxBackend>>` that
+    /// `crate::sandbox::backend::create_backend(&Config)` produces.
+    #[must_use]
+    pub fn new(backend: Option<Arc<dyn SandboxBackend>>) -> Self {
+        Self(backend)
+    }
+}
+
+impl deepseek_core::engine::hosts::SandboxHost for TuiSandboxHost {
+    fn backend(&self) -> Option<&Arc<dyn SandboxBackend>> {
+        self.0.as_ref()
+    }
+}
 
 /// Specification for a command to be executed, potentially within a sandbox.
 ///

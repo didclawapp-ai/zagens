@@ -4,8 +4,14 @@
 //! This module owns the synthetic diagnostic message injection so the top-level
 //! engine module stays focused on session orchestration. Path extraction lives
 //! in `deepseek-core::engine::lsp_edit_paths`.
+//!
+//! M3 routes the two call sites through the
+//! [`LspHost`](deepseek_core::engine::hosts::LspHost) trait so the future
+//! core-side Engine struct can hold `Arc<dyn LspHost>` instead of
+//! `Arc<LspManager>`.
 
 use deepseek_core::engine::edited_paths_for_tool;
+use deepseek_core::engine::hosts::LspHost;
 
 use super::*;
 
@@ -21,7 +27,8 @@ impl Engine {
         tool_name: &str,
         tool_input: &serde_json::Value,
     ) {
-        if !self.lsp_manager.config().enabled {
+        let host: &dyn LspHost = self.lsp_manager.as_ref();
+        if !host.enabled() {
             return;
         }
         let paths = edited_paths_for_tool(tool_name, tool_input);
@@ -35,7 +42,7 @@ impl Engine {
             // log output stays correlated even though we do not currently
             // batch by sequence.
             let seq = self.turn_counter;
-            if let Some(block) = self.lsp_manager.diagnostics_for(&absolute, seq).await {
+            if let Some(block) = host.diagnostics_for(&absolute, seq).await {
                 self.pending_lsp_blocks.push(block);
             }
         }

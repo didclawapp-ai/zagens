@@ -261,6 +261,25 @@ impl LspManager {
     }
 }
 
+/// M3: engine boundary impl. `Engine::run_post_edit_lsp_hook` and
+/// `build_tool_context` consume the manager via this trait so the future
+/// core-side Engine struct can hold `Arc<dyn LspHost>` instead of
+/// `Arc<LspManager>`.
+#[async_trait::async_trait]
+impl deepseek_core::engine::hosts::LspHost for LspManager {
+    fn enabled(&self) -> bool {
+        self.config.enabled
+    }
+
+    async fn diagnostics_for(
+        &self,
+        file: &Path,
+        edit_seq: u64,
+    ) -> Option<DiagnosticBlock> {
+        LspManager::diagnostics_for(self, file, edit_seq).await
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;

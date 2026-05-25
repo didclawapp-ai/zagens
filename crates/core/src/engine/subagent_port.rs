@@ -1,4 +1,12 @@
-//! Sub-agent spawn/list port for the engine op loop (P2 tool_execution portization).
+//! Sub-agent spawn outcome / error types (P2 tool_execution portization).
+//!
+//! M3 (Engine-struct strangler) replaced the original `SubAgentSpawnPort`
+//! trait with [`SubAgentHost`](crate::engine::hosts::SubAgentHost), which
+//! covers the same spawn / list surface plus `running_count` and uses the
+//! clearer `list_with_cleanup` method name. The old `SubAgentSpawnPort`
+//! trait is preserved as a deprecated re-export shim
+//! (`pub trait SubAgentSpawnPort = SubAgentHost;`-flavored, via blanket
+//! impl) for one release so existing imports keep building.
 
 use async_trait::async_trait;
 
@@ -28,7 +36,19 @@ impl std::fmt::Display for SubAgentSpawnError {
 
 impl std::error::Error for SubAgentSpawnError {}
 
-/// Background sub-agent spawn/list surface (L2: `deepseek-tui` implements).
+/// Deprecated alias for [`SubAgentHost`](crate::engine::hosts::SubAgentHost).
+///
+/// Kept for one release after the M3 rename
+/// (`SubAgentSpawnPort` → `SubAgentHost`). The new trait keeps the
+/// `spawn_general_subagent` / `list_subagents` methods so existing impls
+/// (e.g. `impl SubAgentSpawnPort for Engine` in tui) continue to compile
+/// without behavior change; new code should impl `SubAgentHost` directly
+/// and use `spawn_general` / `list_with_cleanup` / `running_count`.
+#[deprecated(
+    since = "0.8.16",
+    note = "use `deepseek_core::engine::hosts::SubAgentHost` instead; \
+            this alias will be removed in the next release"
+)]
 #[async_trait]
 pub trait SubAgentSpawnPort: Send + Sync {
     async fn spawn_general_subagent(

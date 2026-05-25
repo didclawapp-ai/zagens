@@ -1,69 +1,21 @@
-//! Pluggable sandbox backend abstraction.
+//! Tui-side re-export shim + factory for the external sandbox backend.
 //!
-//! External sandbox backends route shell command execution to a remote service
-//! (e.g. Alibaba OpenSandbox) instead of spawning a local process. This is
-//! complementary to the OS-level sandbox module (Seatbelt / Landlock / Windows)
-//! — the external backend *replaces* local execution entirely when configured.
-
-use std::collections::HashMap;
+//! The trait + output types live in
+//! [`deepseek_core::sandbox`](deepseek_core::sandbox) (moved by M3 — see
+//! [`PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE`](../../../../../docs/tech/adr/PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md)
+//! §3 row #26 / §6 M3 row). The factory `create_backend(&Config)` stays
+//! tui-side because it consumes the tui-owned `Config` struct and
+//! constructs the tui-owned `OpenSandboxBackend`.
+//!
+//! External sandbox backends route shell command execution to a remote
+//! service (e.g. Alibaba OpenSandbox) instead of spawning a local process.
+//! This is complementary to the OS-level sandbox modules in this crate
+//! (Seatbelt / Landlock / Windows) — the external backend *replaces*
+//! local execution entirely when configured.
 
 use anyhow::Result;
-use async_trait::async_trait;
 
-/// Output from a sandbox backend execution.
-#[derive(Debug, Clone)]
-pub struct SandboxOutput {
-    /// Standard output from the command.
-    pub stdout: String,
-    /// Standard error from the command.
-    pub stderr: String,
-    /// Exit code (0 for success).
-    pub exit_code: i32,
-}
-
-/// The kind of external sandbox backend.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SandboxKind {
-    /// No external sandbox — execute commands locally.
-    None,
-    /// Alibaba OpenSandbox remote execution.
-    OpenSandbox,
-}
-
-impl SandboxKind {
-    /// Parse a sandbox backend name from config (case-insensitive).
-    #[must_use]
-    pub fn parse(value: &str) -> Option<Self> {
-        match value.trim().to_ascii_lowercase().as_str() {
-            "none" | "" => Some(Self::None),
-            "opensandbox" | "open-sandbox" | "open_sandbox" => Some(Self::OpenSandbox),
-            _ => None,
-        }
-    }
-
-    /// Human-readable label.
-    #[must_use]
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::None => "none",
-            Self::OpenSandbox => "opensandbox",
-        }
-    }
-}
-
-/// Abstract interface for an external sandbox backend.
-///
-/// Implementations send commands to a remote execution environment and return
-/// structured output. The trait is `Send + Sync` so it can be stored in an
-/// `Arc` and shared across async tasks.
-#[async_trait]
-pub trait SandboxBackend: Send + Sync {
-    /// Execute a shell command and return its output.
-    ///
-    /// `cmd` is the full shell command string (e.g. `"ls -la"`).
-    /// `env` contains additional environment variables to set.
-    async fn exec(&self, cmd: &str, env: &HashMap<String, String>) -> Result<SandboxOutput>;
-}
+pub use deepseek_core::sandbox::{SandboxBackend, SandboxKind, SandboxOutput};
 
 use crate::config::Config;
 
@@ -71,8 +23,8 @@ use crate::config::Config;
 ///
 /// Returns `None` when no external sandbox backend is configured (i.e. the
 /// `sandbox_backend` key is absent, empty, or `"none"`). When `"opensandbox"`
-/// is set, constructs an [`OpenSandboxBackend`] using `sandbox_url` and
-/// `sandbox_api_key`.
+/// is set, constructs an [`OpenSandboxBackend`](super::opensandbox::OpenSandboxBackend)
+/// using `sandbox_url` and `sandbox_api_key`.
 pub fn create_backend(config: &Config) -> Result<Option<Box<dyn SandboxBackend>>> {
     let kind = config
         .sandbox_backend

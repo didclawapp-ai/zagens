@@ -64,10 +64,10 @@ impl Engine {
             completions.push(c);
         }
         if completions.is_empty() {
-            let running = {
-                let mgr = self.subagent_manager.read().await;
-                mgr.running_count()
-            };
+            // M3: route through `SubAgentHost::running_count` so the future
+            // core-side Engine can swap `subagent_manager` to a trait object.
+            use deepseek_core::engine::hosts::SubAgentHost;
+            let running = <Engine as SubAgentHost>::running_count(self).await;
             if running > 0 {
                 let _ = self
                     .tx_event

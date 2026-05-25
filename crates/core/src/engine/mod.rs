@@ -13,6 +13,7 @@ pub mod context;
 pub mod context_snapshot;
 pub mod dispatch;
 pub mod handle;
+pub mod hosts;
 pub mod op;
 pub mod loop_guard;
 pub mod lsp_edit_paths;
@@ -79,6 +80,9 @@ pub use turn_loop::{
     TurnLoopToolPhaseOutcome, McpPoolPort, TurnLoopToolRegistry,
 };
 pub use turn_port::TurnEnginePort;
-pub use subagent_port::{SubAgentSpawnError, SubAgentSpawnOutcome, SubAgentSpawnPort};
+pub use subagent_port::{SubAgentSpawnError, SubAgentSpawnOutcome};
+#[allow(deprecated)]
+pub use subagent_port::SubAgentSpawnPort;
+pub use hosts::{LspHost, SandboxHost, ShellHost, SubAgentHost};
 pub use crate::turn::{TurnContext, TurnLoopMode, TurnOutcomeStatus};
 pub use crate::session::{Session, SessionUsage};

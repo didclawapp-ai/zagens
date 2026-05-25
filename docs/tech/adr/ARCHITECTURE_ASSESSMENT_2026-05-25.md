@@ -31,12 +31,12 @@
 
 ## 1. 定型判定（满足后即可解冻功能迭代）
 
-以下 10 条全部勾选 = 架构定型，可大胆做功能。**当前进度：4/10**（2026-05-25 D3 闭合 + D2 完全闭合 + M1/M2 落地，但 Engine struct 主体尚未 in core，第 4 项仍 `[ ]`）。
+以下 10 条全部勾选 = 架构定型，可大胆做功能。**当前进度：4/10**（2026-05-25 D3 闭合 + D2 完全闭合 + M1/M2/M3 落地，但 Engine struct 主体（35 字段 + op_loop + engine_new）尚未 in core，第 4 项仍 `[ ]`）。
 
 - [x] **L1 turn loop 在 core**（P2 PR6 / G3 已闭合，见 [P2_G3_ENGINE_L2_SIGNOFF.md](./P2_G3_ENGINE_L2_SIGNOFF.md)）
 - [x] **L2 契约稳定**（`/v1/*` 路由 + `event_schema_version: 2`，[`runtime_api/router.rs`](../../../crates/tui/src/runtime_api/router.rs)）
 - [x] **桌面 ↔ sidecar 双通道安全模型**（Bearer 不出 WebView + path 白名单，[H06 完成](./IMPLEMENTATION_SUMMARY_2026-05-24.md)）
-- [ ] **Engine struct 在 core**（M-series 进行中：M1 + M2 已落地 — M1: `Op` / `EngineHandle` / `ThreadContextSnapshot` 入核 + `impl TurnEnginePort for EngineHandle<P,R>` core 侧实现；M2: lean `core::engine::config::EngineConfig` (25 字段) + tui `EngineConfigExt` (8 字段) 类型桩立起，facade `lean()` / `ext()` / `into_parts()` 访问器到位 — `Engine::new(slim, ext)` 签名切换留待 M7；M3→M8 待启动，见 [`PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md`](./PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md) §6）
+- [ ] **Engine struct 在 core**（M-series 进行中：M1 + M2 + M3 已落地 — M1: `Op` / `EngineHandle` / `ThreadContextSnapshot` 入核 + `impl TurnEnginePort for EngineHandle<P,R>` core 侧实现；M2: lean `core::engine::config::EngineConfig` (25 字段) + tui `EngineConfigExt` (8 字段) 类型桩立起，facade `lean()` / `ext()` / `into_parts()` 访问器到位 — `Engine::new(slim, ext)` 签名切换留待 M7；**M3**: `deepseek_core::engine::hosts::{LspHost, SubAgentHost, ShellHost, SandboxHost}` 四个边界 trait 立起（call-graph driven，2 + 3 + 0 + 1 个方法），`DiagnosticBlock` / `SandboxBackend` trait 入核，tui 侧 `LspManager` / `Engine` / `TuiSandboxHost` / `TuiShellHost` 上 `impl` 接线 — `SubAgentSpawnPort` 重命名为 `SubAgentHost`（保留 1-cycle deprecated alias）；M4→M8 待启动，见 [`PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md`](./PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md) §6）
 - [ ] **sidecar 二进制不再链接 ratatui / CLI**（M-series 完成的副产品；可选独立成 `crates/runtime-server`）
 - [ ] **持久化单库**（Sessions + Runtime threads → 单 SQLite + 视图，[`BACKLOG_RUNTIME_UNIFICATION.md`](./BACKLOG_RUNTIME_UNIFICATION.md)）
 - [ ] **`deepseek-state` / `app-server` 实验路径决策**（晋升或下线，二选一）
@@ -133,6 +133,7 @@
 - `mcp.rs` 2.2k 行、`tools/*` 28k、`lsp/*` 1.3k、`sandbox/*` 2k 行全部和 Engine 同 crate；
 - 想做"sidecar 不带 ratatui"必须先把这些 trait 化；
 - `SandboxBackend` 已经是 `dyn trait` ✅；其余（MCP / LSP / Subagent / Shell / Seam / Cycle）需要补 trait 边界——这是 M-series 的核心工作量。
+- **2026-05-25 M3 进度：** LSP / SubAgent / Shell / Sandbox 四组边界 trait 已在 `deepseek_core::engine::hosts` 立起（call-graph driven，对应 spike §5 R1）；`SandboxBackend` trait 与 `DiagnosticBlock` 数据类型搬入 core；tui 侧通过 inline `impl` + `TuiSandboxHost` / `TuiShellHost` newtype 接线。剩余 MCP / Seam / Cycle / Workshop / TopicMemory 等子系统的 trait 化拆到 M4 / M5。
 
 ### 3.5【中】`commands.rs` (desktop) 49k 单文件
 
@@ -196,7 +197,7 @@ WebView → invoke runtime_get_sse → reqwest stream
 | **D2** | 端口动态化：桌面消费 `DS_PICK_READY {port}`，去掉 7878 写死 | ≤2 天 | ✅ **完成 2026-05-25**（含 `--port 0` ephemeral 守卫移除 follow-up） |
 | **D3** | 删 `crates/tui-core` legacy | ≤0.5 天 | ✅ **完成 2026-05-25** |
 | **D4** | 决策 `crates/app-server + deepseek-state`：晋升或 `#[deprecated]` | 决策 0.5 天 + 执行 1-2 天 | — |
-| **D5** | **Engine struct → core（M-series M1→M8）** | 4-6 周 / 1 人 | 🟡 **进行中**：[`PR_M0_*`](./PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md) — **M1 ✅ 2026-05-25**（`Op`/`EngineHandle`/`ThreadContextSnapshot` 入核 + `impl TurnEnginePort` core 端泛型化，net +99 LOC、§7.4 8/8 测试 + sidecar contract 全绿）+ **M2 ✅ 2026-05-25**（lean `core::engine::config::EngineConfig` 25 字段 + tui `EngineConfigExt` 8 字段类型桩；tui `EngineConfig` 保留 facade 平铺、caller 零修改；新增 `lean()`/`ext()`/`into_parts()`/`from_parts()` 访问器 + 2 round-trip 单测，net +378 LOC，36 core error_taxonomy + `engine_llm_client_override_runs_mock_turn` + sidecar contract + web-ui f3 全绿；`Engine::new(slim, ext)` 双参签名留到 M7）；M3–M8 排队中 |
+| **D5** | **Engine struct → core（M-series M1→M8）** | 4-6 周 / 1 人 | 🟡 **进行中**：[`PR_M0_*`](./PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md) — **M1 ✅ 2026-05-25**（`Op`/`EngineHandle`/`ThreadContextSnapshot` 入核 + `impl TurnEnginePort` core 端泛型化，net +99 LOC、§7.4 8/8 测试 + sidecar contract 全绿）+ **M2 ✅ 2026-05-25**（lean `core::engine::config::EngineConfig` 25 字段 + tui `EngineConfigExt` 8 字段类型桩；tui `EngineConfig` 保留 facade 平铺、caller 零修改；新增 `lean()`/`ext()`/`into_parts()`/`from_parts()` 访问器 + 2 round-trip 单测，net +378 LOC，36 core error_taxonomy + `engine_llm_client_override_runs_mock_turn` + sidecar contract + web-ui f3 全绿；`Engine::new(slim, ext)` 双参签名留到 M7）+ **M3 ✅ 2026-05-25**（`deepseek_core::engine::hosts::{LspHost, SubAgentHost, ShellHost, SandboxHost}` 四个边界 trait 立起 — call-graph driven，2+3+0+1 个方法；`DiagnosticBlock` + `SandboxBackend` trait 入核；tui inline `impl` + `TuiSandboxHost`/`TuiShellHost` newtype 接线；`SubAgentSpawnPort` 重命名 + 1-cycle deprecated alias；net ~+320 LOC，`core --lib lsp/sandbox` 11+2 + `tui --lib tools::subagent` 108/108 + 全 §6 回归块 + sidecar contract 全绿）；M4–M8 排队中 |
 
 ### P1 · 3-6 个月（解锁未来）
 
@@ -264,7 +265,7 @@ WebView → invoke runtime_get_sse → reqwest stream
 
 ## 8. 重新评估时点
 
-- **M-series M3 合并后**：重新评估 §1 第 4-5 项是否可勾；
+- **M-series M3 合并后**（✅ 2026-05-25）：评估 §1 第 4-5 项是否可勾 — **结论：仍 `[ ]`**。M3 立起的是边界 trait（call-graph driven，方法表小），Engine struct 35 字段 / op_loop / engine_new 主体仍在 tui。第 4 项的勾选条件是 spike §6 M7 (Engine struct + engine_new + op_handlers 进 core，`crates/tui/src/core/engine.rs` ≤ 80 LOC) 闭合；M3 是必要前置（trait surface 就绪），不是 sufficient 条件。第 5 项（sidecar 不再链 ratatui）依赖 M7+M8 完成后才能拆 `crates/runtime-server`，同样未勾。
 - **M-series M8 合并后**：本文档升级为 **`ARCHITECTURE_ASSESSMENT_<date>.md` 第二版**，重新跑 §1 checklist；
 - **§1 ≥ 8/10 勾选时**：解除 §7.1 全部红线；
 - **§1 = 10/10 时**：架构定型，本文档归档为历史快照。

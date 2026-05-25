@@ -20,6 +20,7 @@ pub mod session;
 pub mod working_set;
 pub mod lsp;
 pub mod models;
+pub mod sandbox;
 pub mod scratchpad;
 pub mod subagent;
 pub mod task_type;

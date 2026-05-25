@@ -1,4 +1,13 @@
 //! LSP configuration — shared between core and TUI.
+//!
+//! M3 also moved the diagnostic rendering data types into [`diagnostics`]
+//! so the future core-side Engine struct can hold
+//! `Vec<DiagnosticBlock>` and call `LspHost::diagnostics_for` without a
+//! tui dependency. The tui crate re-exports both from `tui::lsp`.
+
+pub mod diagnostics;
+
+pub use diagnostics::{Diagnostic, DiagnosticBlock, Severity, render_blocks};
 
 use std::collections::HashMap;
 
