@@ -5,7 +5,8 @@
 > **门控：** §12.2 A+ · §12.3 P2 + G3 + PR6 · §12.4 F · §12.5 #1/#2 · **§12.1 #1 A1 live `ToolCell` 同构** **✅**；§12.5 #3 GAP **◐**（产品 polish，非门控）  
 > **v1.6 要点：** 修正 §6.2 步骤 0.8 引用、§12.1 A5.1 门控表述、§1.4 定稿章节策略、`RUNTIME_BASELINE.md` 占位  
 > **受众：** 维护者、Agent、桌面/TUI 开发  
-> **产品节奏：** Phase 1 harness **已验收** → **A+A+ 打底** → **P2 还技术债**（Engine→core）→ **解冻桌面 GAP**；壳运 **始终分离**，**不**换 app-server sidecar。
+> **产品节奏：** Phase 1 harness **已验收** → **A+A+ 打底** → **P2 还技术债**（Engine→core）→ **解冻桌面 GAP**；壳运 **始终分离**，**不**换 app-server sidecar。  
+> **当前架构评估与"功能冻结期"判定：** [`adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md`](./adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md)（§1 定型 checklist 3/10；建议进入 **M-series + 持久化整合** 收尾窗口期，避免新增大型功能）。
 
 ---
 
