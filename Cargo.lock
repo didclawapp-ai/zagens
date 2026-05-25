@@ -1684,10 +1684,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "deepseek-tui-core"
-version = "0.8.15"
-
-[[package]]
 name = "deflate64"
 version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"

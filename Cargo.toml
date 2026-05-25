@@ -13,7 +13,6 @@ members = [
     "crates/state",
     "crates/tools",
     "crates/tui",
-    "crates/tui-core",
     "crates/topic-memory",
     "crates/desktop",
 ]
