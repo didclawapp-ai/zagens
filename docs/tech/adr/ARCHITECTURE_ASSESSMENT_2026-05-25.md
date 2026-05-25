@@ -117,17 +117,16 @@
 
 **已记账：** [`BACKLOG_RUNTIME_UNIFICATION.md`](./BACKLOG_RUNTIME_UNIFICATION.md) + [`BACKLOG_STATESTORE_JSONL.md`](./BACKLOG_STATESTORE_JSONL.md)。
 
-### 3.3【中】~~端口 7878 写死~~ ✅ **2026-05-25 完成（基础设施部分）**
+### 3.3【中】~~端口 7878 写死~~ ✅ **2026-05-25 完成**
 
 桌面端口管理已从 `u16` 升级为 `tokio::sync::watch::channel::<u16>`：
 
-- **Sidecar**（[`runtime_api/mod.rs`](../../../crates/tui/src/runtime_api/runtime_api/mod.rs)）：`DS_PICK_READY.port` 现在报告 `listener.local_addr().port()`——**实际绑定**端口而非请求端口；
+- **Sidecar**（[`runtime_api/mod.rs`](../../../crates/tui/src/runtime_api/mod.rs)）：`DS_PICK_READY.port` 现在报告 `listener.local_addr().port()`——**实际绑定**端口而非请求端口；
 - **Desktop 壳**：`AppContext::runtime_port` 改为 `watch::Receiver<u16>`，supervisor 持 `Sender`；所有 IPC handler（`runtime_proxy::{http,post_stream,get_sse}` + `commands::{export_thread_json, export_session_json, rebuild_symbol_index, read_thread_workspace_binary}`）通过 `AppContext::require_port()` 读真实端口；
 - **`get_runtime_port`**：改为 `rx.changed().await` 等待第一次发布——web-ui `initRuntimeConfig` 调用时自然阻塞到 sidecar 就绪；
 - **重启路径**：spawn 新 sidecar 前 `port_tx.send(0)`，IPC handler 期间 fast-fail 或 await 新发布，杜绝拿到 stale 端口；
+- **`--port 0` ephemeral 绑定**（2026-05-25 follow-up）：移除了 `runtime_api/mod.rs` 中 `if options.port == 0 { bail!(...) }` 守卫——用户/上游脚本可显式传 `--port 0` 让 OS 自动选端口，bound 端口仍通过 `DS_PICK_READY` 回报；`bail!` 从 `anyhow` import 中清理。 sidecar contract regression 复跑 ✅。
 - **回归测试**：`sidecar_contract_full_lifecycle` ✅；`runtime_proxy::tests` ✅；`desktop::architecture_boundary` ✅。
-
-**遗留（独立 PR 即可完成）：** 默认初始端口仍传 `7878`（向后兼容 / 易于 `curl localhost:7878` 调试）；让 sidecar 接受 `--port 0` 仅需移除 [`runtime_api/mod.rs` 中 `if options.port == 0 { bail!(...) }`](../../../crates/tui/src/runtime_api/mod.rs) 一行。基础设施已就绪。
 
 ### 3.4【中】Engine struct 与工具实现耦合在 tui
 
@@ -194,7 +193,7 @@ WebView → invoke runtime_get_sse → reqwest stream
 | ID | 内容 | 工作量 | 已记账 |
 |----|------|--------|--------|
 | **D1** | 巨型文件拆分（`config.rs` / `compaction.rs` / `mcp.rs` / `commands.rs` / `localization.rs`），按 [code-organization](../../../.cursor/rules/code-organization.mdc) 软上限 1000 行 | 每个文件 1 PR × 5-7 个 | — |
-| **D2** | 端口动态化：桌面消费 `DS_PICK_READY {port}`，去掉 7878 写死 | ≤2 天 | ✅ **基础设施完成 2026-05-25**（剩 sidecar `--port 0` 一行） |
+| **D2** | 端口动态化：桌面消费 `DS_PICK_READY {port}`，去掉 7878 写死 | ≤2 天 | ✅ **完成 2026-05-25**（含 `--port 0` ephemeral 守卫移除 follow-up） |
 | **D3** | 删 `crates/tui-core` legacy | ≤0.5 天 | ✅ **完成 2026-05-25** |
 | **D4** | 决策 `crates/app-server + deepseek-state`：晋升或 `#[deprecated]` | 决策 0.5 天 + 执行 1-2 天 | — |
 | **D5** | **Engine struct → core（M-series M1→M8）** | 4-6 周 / 1 人 | 🟡 **进行中**：[`PR_M0_*`](./PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md) — M1（`Op`/`EngineHandle`/`ThreadContextSnapshot` 入核 + `impl TurnEnginePort` core 端泛型化）**已落地 2026-05-25**，net +99 LOC、§7.4 8/8 测试 + sidecar contract 全绿；M2–M8 排队中 |

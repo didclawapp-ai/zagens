@@ -11,7 +11,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use sha2::{Digest, Sha256};
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow};
 
 use axum::body::Bytes;
 use axum::extract::{Path as AxumPath, Query, State};
@@ -206,15 +206,18 @@ struct ThreadEventsQuery {
 }
 
 /// Start the runtime API server.
+///
+/// `options.port == 0` is now accepted and means "let the OS pick an ephemeral
+/// port". The actually bound port is reported back to the supervisor via the
+/// `DS_PICK_READY` line (`port: <bound>`) and through the `local_addr().port()`
+/// log line below; Zagens desktop consumes it via `tokio::sync::watch::<u16>`
+/// (see `crates/desktop/src/sidecar.rs` D2 work). The guard that previously
+/// rejected port 0 was removed in this commit (D2 follow-up).
 pub async fn run_http_server(
     config: Config,
     workspace: PathBuf,
     options: RuntimeApiOptions,
 ) -> Result<()> {
-    if options.port == 0 {
-        bail!("Port must be > 0");
-    }
-
     let t0 = std::time::Instant::now();
     eprintln!("[deepseek-runtime] starting HTTP API (task manager, threads, scheduler)…");
 
