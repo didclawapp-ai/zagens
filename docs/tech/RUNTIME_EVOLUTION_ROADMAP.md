@@ -2,7 +2,7 @@
 
 > **版本：** v2.0-final（2026-05-21）· **代码对齐：** 2026-05-25  
 > **状态：** **定稿 + 门控已闭合** — §4.2 已签收；**§17** 实施后审核（**§17.5** 2026-05-25 二次对齐）  
-> **门控：** §12.2 A+ · §12.3 P2 + G3 + PR6 · §12.4 F · §12.5 #1/#2 **✅**；**§12.1 A 全量** 🟡（质量债，不阻塞）；§12.5 #3 GAP **◐**  
+> **门控：** §12.2 A+ · §12.3 P2 + G3 + PR6 · §12.4 F · §12.5 #1/#2 · **§12.1 #1 A1 live `ToolCell` 同构** **✅**；§12.5 #3 GAP **◐**（产品 polish，非门控）  
 > **v1.6 要点：** 修正 §6.2 步骤 0.8 引用、§12.1 A5.1 门控表述、§1.4 定稿章节策略、`RUNTIME_BASELINE.md` 占位  
 > **受众：** 维护者、Agent、桌面/TUI 开发  
 > **产品节奏：** Phase 1 harness **已验收** → **A+A+ 打底** → **P2 还技术债**（Engine→core）→ **解冻桌面 GAP**；壳运 **始终分离**，**不**换 app-server sidecar。
@@ -128,19 +128,22 @@ Phase 1 ✅ harness
 
 ```
 用户
-  ├─ Zagens WebView ──► Tauri (config/secrets/proxy) ──► deepseek-tui serve --http
-  ├─ 终端 TUI ─────────► deepseek-tui (ratatui)
+  ├─ Zagens WebView ──► Tauri (IPC + runtime_proxy) ──► deepseek-tui serve --http
+  ├─ 终端 TUI ─────────► deepseek-tui (ratatui — maintenance/freeze)
   └─ deepseek run/exec/serve/... ──► delegate_to_tui ──► deepseek-tui
 
 deepseek-tui
-  ├─ runtime_api.rs      HTTP /v1/* + SSE
-  ├─ runtime_threads.rs  线程/回合/广播/持久化
-  ├─ core/engine.rs      Agent turn（真 LLM + 工具）
-  ├─ client/chat.rs      SSE 解析
+  ├─ runtime_api/        HTTP /v1/* + SSE（router.rs）
+  ├─ runtime_threads/    线程/回合/广播/持久化
+  ├─ core/engine/        Engine struct + EngineHandle（薄壳 ~209 行）
+  ├─ deepseek-core       turn_loop / Session / TurnEnginePort（P2 已迁入）
+  ├─ client/             LLM SSE 解析
   ├─ tui/src/tools/*     工具实现主体
   ├─ mcp.rs              MCP 池（实现层）
   └─ deepseek-tools      workspace 类型/trait（见 §3.3）
 ```
+
+> **架构附图：** [RUNTIME_ARCHITECTURE.md](./RUNTIME_ARCHITECTURE.md)（2026-05-25 与代码对齐）
 
 ### 3.2 实验路径（仅 `deepseek app-server`）
 
@@ -289,7 +292,7 @@ gantt
 
 **问题：** 长跑会话 `api_messages`、工具结果、JSONL/SQLite 全量序列化导致内存与主线程阻塞；compaction 与 TUI transcript 可能分叉。
 
-**现状（2026-05-25 代码对齐）：** 已有 `context_partition` 热/冷、`large_output_router` + `artifact_refs`、`history_isomorphism` 单测、`trim_oldest_messages_to_budget`（`VecDeque` 式批量 drain，非 `remove(0)`）、R-015 RSS 基线 + `-Gate`；[A1_PERSIST_BLOCKING_AUDIT.md](./adr/A1_PERSIST_BLOCKING_AUDIT.md) 已签收；HTTP **`events_since_async`**（`spawn_blocking`）已用于 `runtime_api/stream.rs` / `sessions.rs`。**缺口：** live `ToolCell` 与 `session.messages` 全同构（TUI `debug_assert_live_history_isomorphism` 为开发期守卫，非生产硬保证）。
+**现状（2026-05-25 代码对齐）：** 已有 `context_partition` 热/冷、`large_output_router` + `artifact_refs`、`history_isomorphism` 单测、`trim_oldest_messages_to_budget`（`VecDeque` 式批量 drain，非 `remove(0)`）、R-015 RSS 基线 + `-Gate`；[A1_PERSIST_BLOCKING_AUDIT.md](./adr/A1_PERSIST_BLOCKING_AUDIT.md) 已签收；HTTP **`events_since_async`**（`spawn_blocking`）已用于 `runtime_api/stream.rs` / `sessions.rs`。**A1 follow-up（2026-05-25 闭合）：** live `ToolCell` 与 `session.messages` 同构升级为 **生产级** — `App::check_live_history_isomorphism(site)` 在 release 也走 `tracing::warn!` + `history_isomorphism::drift_count` 计数；debug 保留 `debug_assert!`（详见 [A1_PERSIST_BLOCKING_AUDIT.md](./adr/A1_PERSIST_BLOCKING_AUDIT.md) §Status）。
 
 | 步骤 | 实施内容 | 主要文件 | 状态 |
 |------|----------|----------|------|
@@ -311,7 +314,7 @@ gantt
 **验收：**
 
 - [x] A1-MVP 或 A1-full 至少达成其一后，A 项 #1 可标部分通过（**A1-MVP+** 已达成：ref 路由 + pin 测 + R-015 RSS）
-- [x] compaction 后无「UI 有、引擎无」类 silent bug（`history_isomorphism` + live debug_assert）
+- [x] compaction 后无「UI 有、引擎无」类 silent bug（`history_isomorphism` + live `check_live_history_isomorphism` — 2026-05-25 升级为生产级 warn + drift counter）
 
 ---
 
@@ -643,13 +646,13 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 
 ### 12.1 阶段 A「底层完成线」（仅 L1）
 
-> **2026-05-25 对齐：** **#2/#3 ✅** [A2_A3_SIGNOFF.md](./adr/A2_A3_SIGNOFF.md)；**#1 A1-MVP+**、**#4 ✅**；**#5** 非 A 硬项（P2 硬门槛见 §12.2）。余项：#1 live ToolCell 同构（可选 A1-full 签收）。
+> **2026-05-25 对齐：** **#1/#2/#3/#4/#5 ✅** — A1 live `ToolCell` 同构（#1）随 follow-up 升级为生产级（`check_live_history_isomorphism` + `drift_count`），A2/A3 已签收 [A2_A3_SIGNOFF.md](./adr/A2_A3_SIGNOFF.md)。
 
-未达标（历史门控）：**不得** 将 A+ 标为完成；**不得** 启动 P2 编码。*注：A+/P2/G3/D10/F 已签收；本节为 **L1 质量债归档**，不阻塞后续门控。*
+历史门控（保留作上下文）：未达标时不得将 A+ 标为完成、不得启动 P2 编码。**当前 §12.1 全部 5 项 ✅**；后续门控（A+/P2/G3/D10/F/B §12.5 #1/#2）均已闭合。
 
 | # | 标准 | 验证方式 | 状态 |
 |---|------|----------|------|
-| 1 | 长跑内存/阻塞可接受（或 A1-MVP 通过） | §12.6 / A1.6 | **🟡** A1-MVP+（R-015 RSS + `-Gate`）；A1-full 签收可选 |
+| 1 | 长跑内存/阻塞可接受 + live transcript 同构 | §12.6 / A1.6 + `App::check_live_history_isomorphism` | **✅** A1-MVP+（R-015 RSS + `-Gate`）+ A1 follow-up 生产级 drift counter（[A1_PERSIST_BLOCKING_AUDIT.md](./adr/A1_PERSIST_BLOCKING_AUDIT.md) §Status，2026-05-25） |
 | 2 | Turn 结构化可观测（**内部** EngineEvent / 日志） | A2 抽查 | **✅** [A2_A3_SIGNOFF.md](./adr/A2_A3_SIGNOFF.md) 2026-05-25 |
 | 3 | 错误分类用户可见差异 | A3 单测 | **✅** 同上；A3.4 边缘 UI → backlog |
 | 4 | `runtime_api` 模块化 + 测试网 | CI；子模块 < 1000 行 | **✅** |
@@ -808,7 +811,8 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 |------|------|
 | [UNDERLYING_ITERATION_REFERENCE.md](../tui/UNDERLYING_ITERATION_REFERENCE.md) | 阶段 A/B 技术方向明细 |
 | [DESKTOP_IMPLEMENTATION_PLAN.md](../desktop/DESKTOP_IMPLEMENTATION_PLAN.md) | 桌面 Phase 1 选型（路线 B） |
-| [API_DESIGN.md](./API_DESIGN.md) | HTTP/SSE 契约 SSOT |
+| [RUNTIME_ARCHITECTURE.md](./RUNTIME_ARCHITECTURE.md) | 三层模型、crate 依赖、双持久化/双通道附图 |
+| [API_DESIGN.md](./API_DESIGN.md) | HTTP/SSE + Tauri IPC 契约 SSOT |
 | [adr/RUNTIME_BASELINE.md](./adr/RUNTIME_BASELINE.md) | A1.6 长跑基准数值（R-015 填入） |
 | [TUI_DS_PICK_GAP.md](../desktop/TUI_DS_PICK_GAP.md) | 桌面差距排期 |
 | [agent-reliability-craft-plan.md](../agent-reliability-craft-plan.md) | B1 CRAFT |
@@ -833,7 +837,7 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 
 ## 17. Zagens 实施后审核（2026-05-22）
 
-> **结论（2026-05-25）：** **门控链已闭合**（Phase 1 → A+ → P2 → D10 → F → B §12.5 #1/#2）。**§12.1 #2/#3** 已签收 [A2_A3_SIGNOFF.md](./adr/A2_A3_SIGNOFF.md)；**§12.1 全量** 余项：#1 live ToolCell 同构。**§12.5 #3** 与 GAP 表为产品 polish。  
+> **结论（2026-05-25）：** **门控链已闭合**（Phase 1 → A+ → P2 → D10 → F → B §12.5 #1/#2）。**§12.1 全 5 项 ✅** — A2/A3 签收 [A2_A3_SIGNOFF.md](./adr/A2_A3_SIGNOFF.md)、A1 live ToolCell 同构生产级化（2026-05-25 follow-up）。**§12.5 #3** 与 GAP 表为产品 polish。  
 > **归档总结：** [IMPLEMENTATION_SUMMARY_2026-05-24.md](./adr/IMPLEMENTATION_SUMMARY_2026-05-24.md)（§2–§5 随本文同步）
 
 ### 17.1 里程碑对照
@@ -841,7 +845,7 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 | 阶段 | 路线图要求 | 审核结论（2026-05-24 对齐） |
 |------|------------|------------------------------|
 | **0 治理** | 文档 SSOT、D4–D9、freeze 规则 | **✅**（D10 已解除；0.8 → `project_rules.md`） |
-| **A L1** | A1–A5、A4 模块化 | **🟡 部分** — #2/#3 ✅；A4/A5/A6 ✅；A1 MVP+；#1 live 同构余项 |
+| **A L1** | A1–A5、A4 模块化 | **✅** — #1/#2/#3 ✅（A1 live 同构生产级化 2026-05-25）；A4/A5/A6 ✅ |
 | **A+ L2** | 契约 v1、sidecar 契约测、审批回归 | **✅ 自动化**（G2 2026-05-23） |
 | **P2** | Engine→core、engine.rs <300 行 | **✅ L2 终态 + PR6** — `engine.rs` ~193 行；整 struct 留 tui（backlog） |
 | **F** | P2 后 GAP F0–F3 + 行为抽样 | **✅** F0–F4 代码 + §12.4 手测（2026-05-24） |
@@ -871,7 +875,7 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 
 | 优先 | 项 | 状态 |
 |------|-----|------|
-| **P1** | **A1** live `ToolCell` 与 `session.messages` 全同构 | [A1_PERSIST_BLOCKING_AUDIT.md](./adr/A1_PERSIST_BLOCKING_AUDIT.md) follow-up |
+| **P1** | **A1** live `ToolCell` 与 `session.messages` 全同构 | **✅ 闭合（2026-05-25）** — `App::check_live_history_isomorphism` + `history_isomorphism::record_drift` / `drift_count`；[A1_PERSIST_BLOCKING_AUDIT.md](./adr/A1_PERSIST_BLOCKING_AUDIT.md) §Status |
 | **P2** | **B3** `main.rs` 进一步瘦身（`cli/` 已拆；`main.rs` ~350 行仍含大量 `mod` 声明） | **🟡** 可选 polish |
 | **P2** | **GAP 表** 定时自动化 UI、TUI `/` 深度、通知触发等 | **◐** 见 [TUI_DS_PICK_GAP.md](../desktop/TUI_DS_PICK_GAP.md) |
 | **backlog** | 整包 `Engine` → core；StateStore/JSONL 统一；`streaming_phase` 子模块；A6.3 Landlock/Windows 沙箱 | 见 `docs/tech/adr/BACKLOG_*.md` |
@@ -899,18 +903,17 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 | B-L1 §12.5 #1 | 黑板、`craft.*`、角色白名单、fix-loop | **✅** |
 | B2 §12.5 #2 | `topic-memory` + 注入 + `TopicMemoryPanel` + B2.1/B2.5 | **✅ MVP** |
 | A §12.1 #2/#3 | A2 可观测 + A3 错误分类 | **✅** [A2_A3_SIGNOFF.md](./adr/A2_A3_SIGNOFF.md) |
-| A §12.1 全量 | #1 live ToolCell 同构 | **🟡**（不阻塞门控） |
+| A §12.1 全量 | #1 live ToolCell 同构 — `check_live_history_isomorphism` 升级生产级 | **✅**（2026-05-25 闭合） |
 | B3 | `cli/` + `event_coalesce`；`tui-core` legacy 定案 | **✅** / **🟡** 可选 `main.rs` 再瘦身 |
 | GAP 表 §12.5 #3 | 定时自动化 UI ⏸；TUI `/` 深度 ◐ | **◐ 产品债** |
 
 **仍未实施或待签收（按优先序）：**
 
-1. **A1 follow-up** — live `ToolCell` 与 `session.messages` 生产级全同构
-2. **B3 可选** — `main.rs` 进一步瘦身（`cli/commands/legacy.rs` 已承载命令体）
-3. **Backlog ADR** — 整包 `Engine`→core；StateStore/JSONL 统一；可选 `streaming_phase` 拆子模块；A6.3 Landlock/Windows 沙箱实现
-4. **GAP（非门控）** — 定时自动化 UI；通知前端触发；TUI 斜杠命令对标；高级线程操作
+1. **B3 可选** — `main.rs` 进一步瘦身（`cli/commands/legacy.rs` 已承载命令体）
+2. **Backlog ADR** — 整包 `Engine`→core；StateStore/JSONL 统一；可选 `streaming_phase` 拆子模块；A6.3 Landlock/Windows 沙箱实现
+3. **GAP（非门控）** — 定时自动化 UI；通知前端触发；TUI 斜杠命令对标；高级线程操作
 
-**已闭合（勿重复立项）：** **A2/A3** [A2_A3_SIGNOFF.md](./adr/A2_A3_SIGNOFF.md)；B2.1/B-L3/B2.5；A1.3 `events_since_async`；B3.3；G2 §11。
+**已闭合（勿重复立项）：** **A2/A3** [A2_A3_SIGNOFF.md](./adr/A2_A3_SIGNOFF.md)；**A1 follow-up（live `ToolCell` 同构生产级，2026-05-25）** [A1_PERSIST_BLOCKING_AUDIT.md](./adr/A1_PERSIST_BLOCKING_AUDIT.md) §Status；B2.1/B-L3/B2.5；A1.3 `events_since_async`；B3.3；G2 §11。
 
 ---
 

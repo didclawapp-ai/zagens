@@ -120,7 +120,7 @@ L1  deepseek-tui sidecar + deepseek-core（Engine / turn_loop / tools）
 
 - 记忆地图 L3 可视化（B2）
 - Managed Agents 类云端 harness 是否侵蚀本地市场
-- AgentPick 对外命名（见 [§Harness 组件化 · 命名决定](#2026-05-24--harness-组件化从硬编码到可组合-agent-执行结构)）——与 desktop-only 可并行决策
+- Zagens 对外命名（见 [§Harness 组件化 · 命名决定](#2026-05-24--harness-组件化从硬编码到可组合-agent-执行结构)）——最终确定为 Zagens（拉丁文 agens = 行动者）
 
 ### 7. 建议演进顺序（战略层，覆盖原 §2026-05-18 部分排期）
 
@@ -236,15 +236,28 @@ Anthropic Managed Agents（2026.04 公测）使用完全相同的术语：sessio
 
 ### 命名决定
 
-**AgentPick。** 经讨论，Zagens → Pickcode / CodePick → AgentPick。
+**Zagens。** 经讨论，DS Pick → Pickcode / CodePick → AgentPick → Zagens。
 
-| 候选 | 绑定 | 三年后进非编程领域 |
-|------|------|-------------------|
-| Zagens | DeepSeek 生态 | 可接受，但需解释 |
-| Pickcode / CodePick | 编程领域 | 包袱 |
-| **AgentPick** | Agent 范式 | 无包袱 |
+| 候选 | 绑定 | 问题 |
+|------|------|------|
+| DS Pick | DeepSeek 生态 | 用户不知道 Pick 什么 |
+| Pickcode / CodePick | 编程领域 | 跨领域是包袱 |
+| AgentPick | Agent 范式 | .com 被域名投资者占据；agent 前缀已泛滥 |
+| **Zagens** | 不绑任何东西 | 自创词，空白画布 |
 
-Agent 已是 2026 年大众认知词（AI Agent / 智能体）。用户看到 **AgentPick** 立刻知道：跟 AI Agent 有关，且核心动作是 **Pick**（选模型、选 skill、选 harness 模式、按需组合）。Zagens 的「Pick」含义模糊——没有上下文时不知道 Pick 在挑什么。AgentPick 自解释，不需要额外说明。
+**词源：** `agens` 是拉丁文 — `agere`（做、行动、驱动）的现在分词，意为「正在行动者」「驱动力」。Z + agens = 与众不同的驱动力。
+
+和驾驭器的对应：
+
+| 拉丁文 agens | 驾驭器的职责 |
+|-------------|------------|
+| 正在行动的那个 | turn_loop — 不是一次性的，是持续的 |
+| 驱动者 | 不是模型在驱动过程，是驾驭器在驱动模型 |
+| 行动的主体 | 主动性不在 LLM，在驾驭器 |
+
+Z（科技品牌经典前缀，Zoom / Zendesk / 最后一个字母 = 与众不同）+ agens（拉丁文行动者）= 独立词源，不依附于 agent 的行业疲劳，不绑定任何现有词汇的语义包。
+
+Zagens 已作为桌面产品名存在于代码仓库中（README、project_rules）。现在提升为项目级名称。
 
 内部架构层叫**导引层**。中文不面向用户。
 

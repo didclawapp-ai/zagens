@@ -20,6 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Runtime (A1 follow-up / §12.1 #1):** `App::check_live_history_isomorphism(site)` replaces the debug-only `debug_assert_live_history_isomorphism`; production builds also surface drift via `tracing::warn!(target = "tui::history_isomorphism")` + `history_isomorphism::drift_count()` (process-wide `AtomicU64`). Four call sites (`tool_complete` / `turn_complete` / `session_load` / `backtrack`) pass a static `site` label for triage. Regression tests `record_drift_increments_global_counter`, `reset_drift_count_for_test_zeroes_counter`, `drift_is_detected_when_tool_output_diverges` (serialized via per-module mutex). Roadmap §12.1 全 5 项闭合 — see [A1_PERSIST_BLOCKING_AUDIT.md](docs/tech/adr/A1_PERSIST_BLOCKING_AUDIT.md) §Status.
+- **Docs:** Roadmap §17.5 / §12.1 #1 / §17.1 / §7.1 + [IMPLEMENTATION_SUMMARY_2026-05-24.md](docs/tech/adr/IMPLEMENTATION_SUMMARY_2026-05-24.md) sync for A1 live ToolCell isomorphism closure (2026-05-25).
+
 ### Fixed
 
 - **Zagens desktop:** Right panel collapse state persists across restarts (`deepseek-desktop-right-panel-collapsed`); first launch stays collapsed; sidebar inspector tabs expand the panel on click.
@@ -29,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Branding:** Product renamed from **DS Pick** to **Zagens** (tagline: *Desktop agent harness* / 桌面 Agent 控制台). User-visible strings, README, LICENSE, NOTICE, Tauri `productName` / `identifier` (`com.zagens.desktop`), default workspace `<Documents>/Zagens` with legacy `<Documents>/DS Pick` fallback; localStorage keys migrated (`zagens-locale`, `zagens:*` prefs). CI release tags: `zagens-v*` (preferred) and legacy `ds-pick-v*`.
 - **Docs:** [A2_A3_SIGNOFF.md](docs/tech/adr/A2_A3_SIGNOFF.md) — §12.1 #2（Turn 可观测）与 #3（错误分类）维护者签收（2026-05-25）；路线图 §7.2/§7.3/§12.1 勾选同步。
 - **Docs:** [RUNTIME_EVOLUTION_ROADMAP.md](docs/tech/RUNTIME_EVOLUTION_ROADMAP.md) §12.1/§12.5/§17 与代码二次对齐（2026-05-25）— B2/B-L3、`events_since_async`、门控闭合表述；[IMPLEMENTATION_SUMMARY](docs/tech/adr/IMPLEMENTATION_SUMMARY_2026-05-24.md) 同步；[TUI_DS_PICK_GAP.md](docs/desktop/TUI_DS_PICK_GAP.md) 审核表（托盘/导出/记忆地图 UI）。
+- **Docs:** [RUNTIME_ARCHITECTURE.md](docs/tech/RUNTIME_ARCHITECTURE.md) 与代码对齐（2026-05-25）— P2 core/tui 拆分、crate 依赖图、`runtime_api/`/`runtime_threads/` 模块路径、双持久化/双通道、Zagens sidecar 监督、D12 Desktop-only。
+- **Docs:** [API_DESIGN.md](docs/tech/API_DESIGN.md)、[RUNTIME_EVOLUTION_ROADMAP.md](docs/tech/RUNTIME_EVOLUTION_ROADMAP.md) §3 交叉对齐（2026-05-25）— H06 代理认证、IPC ~41 条、模块路径、三文档互链。
 - **Project identity:** Zagens is **proprietary** ([LICENSE](LICENSE)); third-party runtime MIT license at [third-party/deepseek-tui/LICENSE](third-party/deepseek-tui/LICENSE) (not at repo root). See [NOTICE.md](NOTICE.md). Removed upstream npm/website, CLI Docker artifacts, CLI binary Release (`auto-tag.yml`, npm/crates release scripts), and `ci.yml` npm-wrapper job. **Release:** `.github/workflows/release.yml` builds **Zagens Windows installers** on `ds-pick-v*` tags only (macOS/Linux later). **Config samples:** [`.env.example`](.env.example) and [`config.example.toml`](config.example.toml) reframed for Zagens desktop + embedded sidecar (not upstream TUI/CLI).
 
 ### Added
@@ -45,7 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **B3 CLI:** `run_*` and helpers moved to `crates/tui/src/cli/commands/legacy.rs`; `main.rs` ~1.4k lines (was ~4.9k); `clap` in `cli/args.rs`.
 - **Runtime (A1.3):** `RuntimeThreadManager::events_since_async` — HTTP/SSE/task paths offload SQLite/JSONL reads via `spawn_blocking`.
 - **Docs:** Backlog ADRs (`BACKLOG_ENGINE_STRUCT_IN_CORE`, `BACKLOG_RUNTIME_UNIFICATION`, `BACKLOG_STATESTORE_JSONL`, `BACKLOG_LANDLOCK_ENFORCE`); `A1_PERSIST_BLOCKING_AUDIT.md`; `tui-core` legacy README.
-- **A1:** `App::debug_assert_live_history_isomorphism` wired at turn complete, tool complete, session load, and backtrack (full `live_history_matches_messages` path).
+- **A1:** Live history isomorphism wired at turn complete, tool complete, session load, and backtrack (full `live_history_matches_messages` path). Superseded 2026-05-25 by `App::check_live_history_isomorphism` (production-grade, see §Added above).
 - **B2.1:** Capacity guardrail refresh omits `<topic_memory>` via `PromptInjectionArbitration::capacity_pressure()`; regression test in `core/engine/tests.rs`.
 - **Tests (CRAFT/GAP):** Unit tests for `instructions_paths` auto-discovery, `resident_file` hard lock, and sub-agent LSP inheritance in `build_tool_context`; G2 §11 smoke runbook for integration sign-off.
 - **CRAFT:** Sub-agent `ToolContext` inherits parent `lsp_manager` when LSP enabled — `diagnostics` works in child turns.

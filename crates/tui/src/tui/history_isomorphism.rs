@@ -3,12 +3,60 @@
 //! `apply_loaded_session` rebuilds `App.history` via [`history_cells_from_message`].
 //! These helpers assert that user/assistant (and tool-result bodies) stay aligned
 //! after compaction, trim, and JSONL reconstruct paths.
+//!
+//! ## Live drift surfacing (A1 follow-up, 2026-05-25)
+//!
+//! [`record_drift`] is the production-grade replacement for the prior
+//! debug-only assert: in **any** build it emits a structured `tracing::warn!`
+//! and bumps a process-wide [`drift_count`] counter so divergence between
+//! `App.history` (rendered transcript) and `App.api_messages` (model-facing
+//! history) becomes observable on user installs, not just in CI. The
+//! `debug_assert!` path is preserved for tests so regressions still trip
+//! loudly during development.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::models::{ContentBlock, Message};
 use crate::tui::app::ToolDetailRecord;
 use crate::tui::history::{history_cells_from_message, HistoryCell, ToolCell};
+
+/// Process-wide count of live-history isomorphism drift events surfaced by
+/// [`record_drift`]. Exposed via [`drift_count`] for tests + future metrics
+/// surfacing (A1 follow-up; see [A1_PERSIST_BLOCKING_AUDIT](../../../docs/tech/adr/A1_PERSIST_BLOCKING_AUDIT.md)).
+static LIVE_ISOMORPHISM_DRIFT_COUNT: AtomicU64 = AtomicU64::new(0);
+
+/// Record a single live-history drift event: bumps [`drift_count`] and emits
+/// a structured `tracing::warn!` on target `tui::history_isomorphism`.
+///
+/// Callers should pass the live message + cell counts so the log carries
+/// enough context to triage which path drifted (turn complete / tool complete
+/// / session load / backtrack). `site` is a short static label identifying
+/// the call site.
+pub fn record_drift(site: &'static str, api_messages: usize, history_cells: usize) {
+    LIVE_ISOMORPHISM_DRIFT_COUNT.fetch_add(1, Ordering::Relaxed);
+    tracing::warn!(
+        target: "tui::history_isomorphism",
+        site,
+        api_messages,
+        history_cells,
+        "live history transcript drifted from api_messages (A1.4)"
+    );
+}
+
+/// Current process-wide count of live-history drift events recorded via
+/// [`record_drift`]. Used by tests and (future) telemetry surfacing.
+#[must_use]
+pub fn drift_count() -> u64 {
+    LIVE_ISOMORPHISM_DRIFT_COUNT.load(Ordering::Relaxed)
+}
+
+/// Reset the live-history drift counter. Test-only — production callers must
+/// not rely on the counter being monotonic across `reset` calls.
+#[doc(hidden)]
+pub fn reset_drift_count_for_test() {
+    LIVE_ISOMORPHISM_DRIFT_COUNT.store(0, Ordering::Relaxed);
+}
 
 /// Rebuild renderable history cells from persisted/API messages (session load path).
 #[must_use]
@@ -373,5 +421,92 @@ mod tests {
             },
         ))];
         assert!(tool_use_count_matches_history_tools(&messages, &cells));
+    }
+
+    /// Serialize tests that mutate the process-wide drift counter so the
+    /// default parallel test runner can't race the increment / reset
+    /// assertions against each other.
+    fn drift_counter_lock() -> std::sync::MutexGuard<'static, ()> {
+        use std::sync::{Mutex, OnceLock};
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+    }
+
+    /// A1 follow-up — [`record_drift`] increments the global counter so live
+    /// installs can surface transcript / api_messages divergence via logs +
+    /// metrics, replacing the old debug-only assert.
+    #[test]
+    fn record_drift_increments_global_counter() {
+        let _guard = drift_counter_lock();
+        let before = drift_count();
+        record_drift("unit_test", 7, 9);
+        record_drift("unit_test", 0, 0);
+        let after = drift_count();
+        assert!(
+            after >= before + 2,
+            "drift_count must monotonically advance by at least 2 (before={before}, after={after})"
+        );
+    }
+
+    /// A1 follow-up — [`reset_drift_count_for_test`] is the only path that
+    /// rolls the counter backwards; production code must not call it.
+    #[test]
+    fn reset_drift_count_for_test_zeroes_counter() {
+        let _guard = drift_counter_lock();
+        record_drift("seed_for_reset_test", 1, 2);
+        assert!(drift_count() > 0);
+        reset_drift_count_for_test();
+        assert_eq!(drift_count(), 0);
+    }
+
+    /// A1 follow-up — the production check builds on
+    /// [`live_history_matches_messages`]; reproduce a drift scenario (tool
+    /// output mismatch) and confirm `record_drift` would fire from the
+    /// `App::check_live_history_isomorphism` shape.
+    #[test]
+    fn drift_is_detected_when_tool_output_diverges() {
+        use crate::tui::app::ToolDetailRecord;
+        use serde_json::json;
+
+        let messages = vec![
+            Message {
+                role: "assistant".to_string(),
+                content: vec![ContentBlock::ToolUse {
+                    id: "toolu_abc".to_string(),
+                    name: "read_file".to_string(),
+                    input: json!({"path": "foo.rs"}),
+                    caller: None,
+                }],
+            },
+            Message {
+                role: "tool".to_string(),
+                content: vec![ContentBlock::ToolResult {
+                    tool_use_id: "toolu_abc".to_string(),
+                    content: "persisted output".to_string(),
+                    is_error: None,
+                    content_blocks: None,
+                }],
+            },
+        ];
+        let mut details_by_cell = HashMap::new();
+        details_by_cell.insert(
+            0,
+            ToolDetailRecord {
+                tool_id: "toolu_abc".to_string(),
+                tool_name: "read_file".to_string(),
+                input: json!({"path": "foo.rs"}),
+                output: Some("DRIFTED live output".to_string()),
+            },
+        );
+        assert!(
+            !live_tool_details_match_message_results(
+                &messages,
+                &details_by_cell,
+                &HashMap::new(),
+            ),
+            "diverged live tool output must be flagged so check_live_history_isomorphism can record_drift"
+        );
     }
 }

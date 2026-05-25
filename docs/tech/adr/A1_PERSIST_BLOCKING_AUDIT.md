@@ -16,4 +16,26 @@
 ## Follow-ups
 
 - HTTP handlers that need `events_since` should use `spawn_blocking` wrapper — **done** (`events_since_async`).
-- Live TUI tool isomorphism: `history_isomorphism::live_history_matches_messages` + `App::debug_assert_live_history_isomorphism` at turn end / tool complete / session load / backtrack.
+- Live TUI tool isomorphism: `history_isomorphism::live_history_matches_messages` + `App::check_live_history_isomorphism` at turn end / tool complete / session load / backtrack.
+
+## Status (2026-05-25 — A1 follow-up closed)
+
+Live `ToolCell` vs `session.messages` isomorphism is now a **production-grade**
+check, not a debug-only assert (roadmap §17.5 余项 #1):
+
+| Build profile | Behavior on drift |
+|---------------|------------------|
+| **release** (user installs) | `tracing::warn!(target = "tui::history_isomorphism")` with `site` / `api_messages` / `history_cells` + bump `history_isomorphism::drift_count()` |
+| **debug / tests** | Same warn + counter bump, **plus** `debug_assert!` so CI fails loudly |
+
+**Surface:** `crates/tui/src/tui/history_isomorphism.rs::record_drift` /
+`drift_count` (process-wide `AtomicU64`), called via
+`App::check_live_history_isomorphism(site)` from the four live paths in
+`crates/tui/src/tui/ui.rs` — `tool_complete`, `turn_complete`,
+`session_load`, `backtrack`.
+
+**Tests:** `record_drift_increments_global_counter`,
+`reset_drift_count_for_test_zeroes_counter`,
+`drift_is_detected_when_tool_output_diverges`
+(`crates/tui/src/tui/history_isomorphism.rs` `#[cfg(test)]`); 90/90 history
+tests pass (2026-05-25).

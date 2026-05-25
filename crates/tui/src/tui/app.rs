@@ -1947,17 +1947,41 @@ impl App {
         cell
     }
 
-    /// A1.4 — debug-only check that live TUI cells match persisted API messages.
-    pub fn debug_assert_live_history_isomorphism(&self) {
-        debug_assert!(
-            crate::tui::history_isomorphism::live_history_matches_messages(
-                &self.api_messages,
-                &self.history,
-                &self.tool_details_by_cell,
-                &self.active_tool_details,
-            ),
-            "live history transcript must match api_messages (A1.4)"
+    /// A1.4 / A1 follow-up (2026-05-25) — production-grade live transcript /
+    /// tool-cell isomorphism check.
+    ///
+    /// Validates that the rendered `App.history` (with live tool detail
+    /// outputs) round-trips to `App.api_messages`. On divergence:
+    ///
+    /// - **Always:** records a structured `tracing::warn!` and bumps
+    ///   [`crate::tui::history_isomorphism::drift_count`] so user installs
+    ///   surface drift via logs / metrics.
+    /// - **Debug builds + tests:** also trips `debug_assert!` so regressions
+    ///   fail loudly in CI.
+    /// - **Release builds:** continues without panicking; the UI keeps
+    ///   running on best-effort state until the next snapshot reconciles.
+    ///
+    /// `site` is a short static label identifying the call path
+    /// (e.g. `"turn_complete"`, `"tool_complete"`, `"session_load"`,
+    /// `"backtrack"`). It is passed through to `tracing` for triage.
+    pub fn check_live_history_isomorphism(&self, site: &'static str) {
+        let ok = crate::tui::history_isomorphism::live_history_matches_messages(
+            &self.api_messages,
+            &self.history,
+            &self.tool_details_by_cell,
+            &self.active_tool_details,
         );
+        if !ok {
+            crate::tui::history_isomorphism::record_drift(
+                site,
+                self.api_messages.len(),
+                self.history.len(),
+            );
+            debug_assert!(
+                ok,
+                "live history transcript must match api_messages (A1.4) — site={site}"
+            );
+        }
     }
 
     /// Truncate `history` (and the parallel `history_revisions` + auxiliary

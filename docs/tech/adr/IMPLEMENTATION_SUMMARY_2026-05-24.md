@@ -8,11 +8,11 @@
 
 ## 1. 一句话结论
 
-**Phase 1 harness ✅ → A+ / P2 ✅ → D10 ✅ → 阶段 F §12.4 ✅ → B-L1 CRAFT ✅ → B2 记忆地图 MVP ✅（2026-05-25 文档对齐）。**
+**Phase 1 harness ✅ → A+ / P2 ✅ → D10 ✅ → 阶段 F §12.4 ✅ → B-L1 CRAFT ✅ → B2 记忆地图 MVP ✅ → §12.1 全 5 项 ✅（2026-05-25 A1 live ToolCell 同构生产级化 closed）。**
 
-**门控链已闭合。** 余项：**§12.1 A 全量**（维护者签收 #2/#3、live ToolCell 同构）、**§12.5 #3 GAP 表**（产品 polish）、**Backlog ADR**（Engine 整包入 core 等）。
+**门控链已闭合，§12.1 L1 全量亦完成。** 余项仅：**§12.5 #3 GAP 表**（产品 polish，非门控）、**Backlog ADR**（Engine 整包入 core 等，设计上延后）。
 
-§12.1 **#2/#3** 已签收 [A2_A3_SIGNOFF.md](./A2_A3_SIGNOFF.md)（2026-05-25）。**全量完成线** 仍为 **🟡**（#1 live ToolCell 同构；不阻塞门控）。
+§12.1 **#1** A1 live ToolCell 同构 — `App::check_live_history_isomorphism` 在 release 也走 `tracing::warn!` + `drift_count`（[A1_PERSIST_BLOCKING_AUDIT.md](./A1_PERSIST_BLOCKING_AUDIT.md) §Status）。§12.1 **#2/#3** [A2_A3_SIGNOFF.md](./A2_A3_SIGNOFF.md)。
 
 **硬约束未变：** Zagens = Tauri 壳 + `deepseek-tui` sidecar；Agent turn **不**进 WebView；**不**换 app-server 生产 binary。
 
@@ -33,7 +33,7 @@ flowchart LR
 | 门控 | 路线图要求 | **实际状态** | 关键证据 |
 |------|------------|--------------|----------|
 | Phase 1 | Zagens harness | **✅** | CHANGELOG Phase 1、多窗口计划 |
-| **A §12.1** | L1 五项（长跑、可观测、错误、A4、A5） | **🟡 部分** | #2/#3 ✅ [A2_A3_SIGNOFF.md](./A2_A3_SIGNOFF.md)；#1/#4 ✅；**不阻塞**门控 |
+| **A §12.1** | L1 五项（长跑、可观测、错误、A4、A5） | **✅** | #1 A1 live 同构生产级（2026-05-25 follow-up）；#2/#3 ✅ [A2_A3_SIGNOFF.md](./A2_A3_SIGNOFF.md)；#4/#5 ✅ |
 | **A+ §12.2** | 契约 v1、CI 契约测、审批回归 | **✅** | [G2_GATE_ACCEPTANCE.md](./G2_GATE_ACCEPTANCE.md) |
 | **P2 §12.3** | turn_loop 在 core；`engine.rs` <300；sidecar 不变 | **✅ L2 终态 + PR6** | [P2_G3_ENGINE_L2_SIGNOFF.md](./P2_G3_ENGINE_L2_SIGNOFF.md)；`engine.rs` ~193 行 |
 | **D10** | P2 后解除桌面 freeze | **✅ 已签收** | [P2_D10_UNFREEZE_RECORD.md](./P2_D10_UNFREEZE_RECORD.md) §4 |
@@ -56,14 +56,14 @@ flowchart LR
 
 | 子项 | 交付要点 | 状态 |
 |------|----------|------|
-| **A1** 容量/会话 | `context_partition` 热/冷；`large_output_router` + `artifact_refs`；`history_isomorphism`；R-015 RSS ~29 MB + `-Gate`；`events_since_async` | **🟡 MVP+**，§12.1 全勾待签收 |
+| **A1** 容量/会话 | `context_partition` 热/冷；`large_output_router` + `artifact_refs`；`history_isomorphism` + live `check_live_history_isomorphism`（2026-05-25 生产级 `drift_count`）；R-015 RSS ~29 MB + `-Gate`；`events_since_async` | **✅** |
 | **A2** 可观测 | `TurnSummary`、`turn.completed`、tracing span | **✅** §12.1 #2 — [A2_A3_SIGNOFF.md](./A2_A3_SIGNOFF.md) |
 | **A3** 错误 | `error_taxonomy`、HTTP wire envelope、36 golden | **✅** §12.1 #3 — 同上；A3.4 边缘 UI → backlog |
 | **A4** 模块化 | `runtime_api` 根 `mod.rs` ~100 行 | **✅** |
 | **A5** 可测 | `lib` target、mock LLM、回放 fixture 15 步 | **✅**（G2 硬门槛） |
 | **A6** 沙箱诚实 | 能力矩阵文档、非 macOS 降级文案 | **✅** |
 
-**债务：** live `ToolCell` 与 `session.messages` 生产级全同构（[A1_PERSIST_BLOCKING_AUDIT.md](./A1_PERSIST_BLOCKING_AUDIT.md) follow-up）。
+**债务：** ~~live `ToolCell` 与 `session.messages` 生产级全同构~~ — **2026-05-25 闭合**（[A1_PERSIST_BLOCKING_AUDIT.md](./A1_PERSIST_BLOCKING_AUDIT.md) §Status）。
 
 ### 3.3 阶段 A+ — 契约（L2）
 
@@ -116,17 +116,17 @@ flowchart LR
 | [G2_PR5_MANUAL_SMOKE_CHECKLIST.md](./G2_PR5_MANUAL_SMOKE_CHECKLIST.md) | F + B-L1 + G2 §11 | **2026-05-24** |
 | [B2_INJECTION_ARBITRATION.md](./B2_INJECTION_ARBITRATION.md) | B2.1 注入仲裁 SSOT | **2026-05-24** |
 | [A2_A3_SIGNOFF.md](./A2_A3_SIGNOFF.md) | §12.1 #2/#3 A2 可观测 + A3 错误分类 | **2026-05-25** |
+| [A1_PERSIST_BLOCKING_AUDIT.md](./A1_PERSIST_BLOCKING_AUDIT.md) §Status | §12.1 #1 A1 live ToolCell 同构生产级化 closed | **2026-05-25** |
 
 ---
 
-## 5. 建议后续优先序（2026-05-25）
+## 5. 建议后续优先序（2026-05-25 更新）
 
-1. **A1** — live ToolCell 与 `session.messages` 全同构  
-2. **GAP 表** — 定时自动化 UI、TUI 斜杠深度、通知触发（非门控）  
-3. **R-015** — 全量 `-Gate` 重跑（可选）  
-4. **Backlog** — `Engine` 整 struct 入 core；`StateStore` vs JSONL；A6.3 沙箱实现  
+1. **GAP 表** — 定时自动化 UI、TUI 斜杠深度、通知触发（非门控）  
+2. **R-015** — 全量 `-Gate` 重跑（可选）  
+3. **Backlog** — `Engine` 整 struct 入 core；`StateStore` vs JSONL；A6.3 沙箱实现；`streaming_phase.rs` 可选拆子模块  
 
-**勿重复立项：** B2.1、B-L3 UI、B2.5 评测脚本、`events_since_async`、B3.3 背压 — 均已落地（见 CHANGELOG `[Unreleased]`）。
+**勿重复立项：** A1 live ToolCell 同构（2026-05-25 闭合）、B2.1、B-L3 UI、B2.5 评测脚本、`events_since_async`、B3.3 背压 — 均已落地（见 CHANGELOG `[Unreleased]`）。
 
 ---
 

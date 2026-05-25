@@ -1,12 +1,12 @@
 # Zagens API 设计文档
 
-> **Zagens 壳版本:** 0.4.0（`crates/desktop/Cargo.toml`）| **文档修订:** 2026-05-20 | **权威实现:** 本仓库 `commands.rs`、`runtime_api.rs` `build_router`、`web-ui/src/api/client.ts`
+> **Zagens 壳版本:** 0.4.3（`crates/desktop/Cargo.toml`）| **文档修订:** 2026-05-25 | **权威实现:** `commands.rs`、`runtime_proxy.rs`、`runtime_api/router.rs` `build_router`、`web-ui/src/api/client.ts`
 
-本文档描述 **Zagens 桌面壳** 的双通道集成 API，不是独立 OpenAPI 规范。协议类型见 `crates/protocol/`；HTTP 路由以 `crates/tui/src/runtime_api.rs` 中 `build_router` 为准（sidecar 内 `deepseek-tui serve --http`）。历史 `RUNTIME_API.md` 已移除，勿引用旧路径。
+本文档描述 **Zagens 桌面壳** 的双通道集成 API，不是独立 OpenAPI 规范。协议类型见 `crates/protocol/`；HTTP 路由以 `crates/tui/src/runtime_api/router.rs` 中 `build_router` 为准（sidecar 内 `deepseek-tui serve --http`）。历史 `RUNTIME_API.md` 已移除，勿引用旧路径。运行时架构附图见 [RUNTIME_ARCHITECTURE.md](./RUNTIME_ARCHITECTURE.md)。
 
 **与 Agent 行为：** 同一 sidecar 载入的 runtime prompt 含 [幻觉防控子规则](prompt-hallucination-patch.md)（Capability / Architecture Claims）。回归显示 Zagens 在「能力/架构类裸问」上幻觉率较未打 patch 的发行 TUI 明显下降；**本文档的 SSE 示意图与能力结论无关**，集成时以代码与 `streamNormalize.ts` 为准。
 
-> **唯一生产 HTTP 运行时：** Zagens 与 `deepseek serve --http` 使用 `crates/tui/src/runtime_api.rs`（`/v1/*`），**不**使用 `crates/app-server`。架构与分阶段实施见 [RUNTIME_EVOLUTION_ROADMAP.md](./RUNTIME_EVOLUTION_ROADMAP.md)。
+> **唯一生产 HTTP 运行时：** Zagens 与 `deepseek serve --http` 使用 `crates/tui/src/runtime_api/`（`/v1/*`），**不**使用 `crates/app-server`。架构与分阶段实施见 [RUNTIME_EVOLUTION_ROADMAP.md](./RUNTIME_EVOLUTION_ROADMAP.md) §3。
 
 ---
 
@@ -22,12 +22,12 @@ Zagens 采用 **双通道 API** 架构：WebView 前端与 Rust 后端之间通�
 │  │   WebView (React)   │    │    Rust Shell          │     │
 │  │                     │    │                        │     │
 │  │  Channel A:         │    │  commands.rs           │     │
-│  │  Tauri invoke() ────┼───►│  sidecar.rs            │     │
-│  │  (原生桥接, 25 命令) │    │  main.rs               │     │
-│  │                     │    │                        │     │
+│  │  Tauri invoke() ────┼───►│  runtime_proxy.rs      │     │
+│  │  (原生桥接, ~41 命令)│    │  sidecar.rs            │     │
+│  │                     │    │  main.rs               │     │
 │  │  Channel B:         │    │  ┌──────────────────┐  │     │
-│  │  HTTP fetch() ──────┼────┼─►│  Sidecar Process │  │     │
-│  │  (127.0.0.1:port)   │    │  │  deepseek-tui    │  │     │
+│  │  经 proxy 或 dev    │    │  │  Sidecar Process │  │     │
+│  │  fetch (127.0.0.1)  │───►│  │  deepseek-tui    │  │     │
 │  │  56 条 HTTP 路由*   │    │  │  (HTTP + SSE)    │  │     │
 │  └─────────────────────┘    │  └──────────────────┘  │     │
 │                             └────────────────────────┘     │
@@ -36,12 +36,12 @@ Zagens 采用 **双通道 API** 架构：WebView 前端与 Rust 后端之间通�
 
 | 通道 | 载体 | 用途 |
 |------|------|------|
-| **A — Tauri IPC** | `invoke()` → Rust `#[tauri::command]` | 系统级操作：密钥管理、文件对话框、二进制文件 I/O、工作区导出、符号索引管理 |
-| **B — Runtime HTTP** | `fetch()` → `http://127.0.0.1:{port}`（默认 7878，`get_runtime_port`） | Agent 运行时：对话线程、会话、流式响应、MCP 管理、任务自动化、用量统计 |
+| **A — Tauri IPC** | `invoke()` → Rust `#[tauri::command]` | 系统级操作：密钥、设置、二进制 I/O、**runtime HTTP/SSE 代理（H06）**、终端、多窗口 |
+| **B — Runtime HTTP** | Tauri 下经 `runtime_proxy` 转发；Vite dev 直连 `http://127.0.0.1:{port}` | Agent 运行时：对话线程、会话、流式响应、MCP、任务、用量 |
 
 \* §8「Channel B」表按 **方法 + 路径** 逐条计数共 56 行；与「资源组」数量不同。
 
-**与 CLI / `app-server`：** Zagens **不** 启动 `crates/app-server`；桌面仅 spawn 捆绑的 `deepseek-tui` sidecar，HTTP 面即 `runtime_api.rs`。`app-server` 供其他入口（若有）参考，非 Zagens 数据路径。
+**与 CLI / `app-server`：** Zagens **不** 启动 `crates/app-server`；桌面仅 spawn 捆绑的 `deepseek-tui` sidecar，HTTP 面即 `runtime_api/`。`app-server` 供其他入口（若有）参考，非 Zagens 数据路径。
 
 ---
 
@@ -55,11 +55,16 @@ Zagens 采用 **双通道 API** 架构：WebView 前端与 Rust 后端之间通�
 | 命令 | 参数 | 返回 | 说明 |
 |------|------|------|------|
 | `get_runtime_port` | — | `u16` | 获取 sidecar 监听端口（默认 7878） |
-| `get_runtime_token` | — | `String` | 获取 Bearer token，WebView 用此 token 访问 Runtime HTTP API |
+| `runtime_http` | `request: { method, path, body? }` | `{ status, body }` | **H06 代理：** REST `/v1/*`；Rust 侧注入 Bearer |
+| `runtime_post_stream` | `body: String` | `()` + SSE 事件 | **H06 代理：** `POST /v1/stream`；事件经 Tauri 推回 WebView |
+| `runtime_get_sse` | `path: String` | `()` + SSE 事件 | **H06 代理：** `GET …/events` 等 SSE |
+| `runtime_cancel_sse` | — | `()` | 取消进行中的 `runtime_get_sse` |
 | `get_platform_info` | — | `PlatformInfo` | `{ os, arch, version }` — 其中 `version` 为 **Zagens 壳** SemVer（`CARGO_PKG_VERSION`），非操作系统版本 |
 | `get_os_theme` | — | `String` | **占位：** 当前固定 `"dark"`，未读系统主题 API |
 | `get_locale` | — | `String` | **占位：** 当前固定 `"zh-CN"`，未读系统 locale |
 | `restart_sidecar` | — | `()` | 触发 sidecar 进程重启（重载 config.toml） |
+
+> **`get_runtime_token` 已移除（2026-05-20 安全跟进 H06）：** Bearer 不再进入 WebView；Tauri 正式路径一律经 `runtime_proxy`。完整 IPC 列表以 `crates/desktop/src/main.rs` `generate_handler!` 为准（2026-05-25 约 **41** 条，含终端与多窗口命令）。
 
 ### 2.2 API 密钥管理
 
@@ -127,7 +132,7 @@ snapshots_enabled: bool     notify_method: string           session_file_mb: num
 
 **服务端**: sidecar 执行 `deepseek serve --http --host 127.0.0.1 --port {port}`（见 `sidecar.rs`）
 **监听地址**: `http://127.0.0.1:{port}`（默认 **7878**，以 `get_runtime_port` 为准）
-**Sidecar 环境**: `DEEPSEEK_RUNTIME_TOKEN`、`DEEPSEEK_CLIENT_SURFACE=ds-pick`、可选 `DEEPSEEK_API_KEY`（密钥链）
+**Sidecar 环境**: `DEEPSEEK_RUNTIME_TOKEN`、`DEEPSEEK_CLIENT_SURFACE=zagens`、可选 `DEEPSEEK_API_KEY`（密钥链）
 **CORS**: sidecar 允许 `http(s)://tauri.localhost`（供 WebView 跨域访问）
 **序列化**: JSON (请求/响应体)
 **流式协议**: SSE (Server-Sent Events) — 用于 `/v1/stream` 和 `/v1/threads/{id}/events`
@@ -146,7 +151,9 @@ Authorization: Bearer <runtime_token>
 x-deepseek-runtime-token: <runtime_token>
 ```
 
-`runtime_token` 由 Tauri `main.rs` 生成 UUID v4，经 `get_runtime_token` IPC 交给 WebView；sidecar 通过 `DEEPSEEK_RUNTIME_TOKEN` 环境变量持有同一值。Token 仅存于 `client.ts` 模块闭包，不写入 `localStorage` / `window`。
+`runtime_token` 由 Tauri `main.rs` 生成 UUID v4，经环境变量 `DEEPSEEK_RUNTIME_TOKEN` 传给 sidecar。**WebView 不持有 token** — Tauri 正式路径经 `runtime_proxy.rs` 在 Rust 侧注入 `Authorization: Bearer …`（H06）。`client.ts` 在 `initRuntimeConfig()` 后设 `useTauriRuntimeProxy = true`，REST 走 `runtime_http`，流式走 `runtime_post_stream` / `runtime_get_sse`。
+
+Vite 纯前端 dev（非 Tauri）可直连 sidecar，此时无 Bearer（仅当 sidecar 未配置 token 时可用）。
 
 若 **未** 配置 `runtime_token`（部分测试/开发路径），中间件放行全部 `/v1/*` — 桌面正式路径始终带 token。
 
@@ -484,38 +491,37 @@ x-deepseek-runtime-token: <runtime_token>
 
 ---
 
-## 4. 认证流程
+## 4. 认证流程（H06）
 
 ```
 ┌──────────┐          ┌──────────┐          ┌──────────────┐
 │  Tauri   │          │  WebView │          │   Sidecar    │
-│  main.rs │          │   JS     │          │  (deepseek)  │
+│  main.rs │          │   JS     │          │ deepseek-tui │
 └────┬─────┘          └────┬─────┘          └──────┬───────┘
      │                     │                       │
      │ ① uuid v4 token     │                       │
-     │─────────────────────│                       │
+     │  (AppState)         │                       │
      │ ② spawn sidecar     │                       │
-     │  with DEEPSEEK_     │                       │
-     │  RUNTIME_TOKEN       │                       │
+     │  DEEPSEEK_RUNTIME_  │                       │
+     │  TOKEN=zagens       │                       │
      │────────────────────────────────────────────►│
      │                     │                       │
-     │                     │ ③ invoke get_token    │
+     │                     │ ③ invoke runtime_http │
+     │                     │   / runtime_post_     │
+     │                     │   stream / runtime_   │
+     │                     │   get_sse             │
      │                     │──────────────────────►│
-     │                     │        ◄──────────────│
-     │                     │                       │
-     │                     │ ④ fetch /v1/sessions  │
-     │                     │   Authorization:       │
-     │                     │   Bearer <token>      │
-     │                     │──────────────────────►│
-     │                     │      200 OK ◄─────────│
+     │  Rust 注入 Bearer   │                       │
+     │────────────────────────────────────────────►│
+     │                     │      200 / SSE ◄──────│
 ```
 
-1. Tauri `main.rs` 生成 `uuid v4` token
-2. Sidecar 通过环境变量 `DEEPSEEK_RUNTIME_TOKEN` 启动
-3. WebView 通过 `get_runtime_token` IPC 命令获取 token
-4. 所有 Runtime API 请求携带 `Authorization: Bearer <token>`
+1. Tauri `main.rs` 生成 `uuid v4` token，存入 `AppState`
+2. Sidecar 通过 `DEEPSEEK_RUNTIME_TOKEN` 环境变量启动
+3. WebView 调用 `runtime_http` / `runtime_post_stream` / `runtime_get_sse`（**不**获取 token）
+4. `runtime_proxy.rs` 在 Rust 侧为每个请求注入 `Authorization: Bearer <token>`
 
-**Token 安全**: 仅存储在 JS 闭包作用域中（`client.ts` 模块级变量），不写入 `localStorage`、`window` 全局或任何持久化存储。
+**Token 安全:** Bearer **不**进入 WebView、**不**写入 `localStorage` / `window`；见 CHANGELOG 2026-05-20 H06 跟进。
 
 ---
 
@@ -618,33 +624,41 @@ WebView                          Sidecar
 
 ### Channel A: Tauri IPC
 
+> 完整列表以 `crates/desktop/src/main.rs` `generate_handler!` 为准（2026-05-25 约 **41** 条）。下表为常用子集；**不含**已移除的 `get_runtime_token`。
+
 | # | 命令名 | 功能分类 |
 |---|--------|----------|
-| 1 | `get_runtime_token` | 运行时连接 |
-| 2 | `get_runtime_port` | 运行时连接 |
-| 3 | `get_platform_info` | 运行时连接 |
-| 4 | `get_os_theme` | 运行时连接 |
-| 5 | `get_locale` | 运行时连接 |
-| 6 | `restart_sidecar` | 运行时连接 |
-| 7 | `get_api_key_status` | 密钥管理 |
-| 8 | `save_deepseek_api_key` | 密钥管理 |
-| 9 | `get_vision_bridge_status` | 密钥管理 |
-| 10 | `save_vision_bridge` | 密钥管理 |
-| 11 | `clear_vision_bridge` | 密钥管理 |
-| 12 | `vision_transcribe_image` | 密钥管理 |
-| 13 | `read_thread_workspace_binary` | 文件操作 |
-| 14 | `read_workspace_binary_at_root` | 文件操作 |
-| 15 | `open_in_shell` | 文件操作 |
-| 16 | `open_with_system_app` | 文件操作 |
-| 17 | `export_thread_json` | 文件操作 |
-| 18 | `export_session_json` | 文件操作 |
-| 19 | `get_system_settings` | 系统设置 |
-| 20 | `save_system_settings` | 系统设置 |
-| 21 | `read_pick_rules` | 项目规则 |
-| 22 | `save_pick_rules` | 项目规则 |
-| 23 | `rebuild_symbol_index` | 符号索引 |
-| 24 | `get_symbol_index_info` | 符号索引 |
-| 25 | `delete_symbol_index` | 符号索引 |
+| 1 | `get_runtime_port` | 运行时连接 |
+| 2 | `runtime_http` | Runtime 代理（REST） |
+| 3 | `runtime_post_stream` | Runtime 代理（POST SSE） |
+| 4 | `runtime_get_sse` | Runtime 代理（GET SSE） |
+| 5 | `runtime_cancel_sse` | Runtime 代理 |
+| 6 | `get_platform_info` | 运行时连接 |
+| 7 | `get_os_theme` | 运行时连接 |
+| 8 | `get_locale` | 运行时连接 |
+| 9 | `restart_sidecar` | 运行时连接 |
+| 10 | `get_api_key_status` | 密钥管理 |
+| 11 | `save_deepseek_api_key` | 密钥管理 |
+| 12 | `get_vision_bridge_status` | 密钥管理 |
+| 13 | `save_vision_bridge` | 密钥管理 |
+| 14 | `clear_vision_bridge` | 密钥管理 |
+| 15 | `vision_transcribe_image` | 密钥管理 |
+| 16 | `read_thread_workspace_binary` | 文件操作 |
+| 17 | `read_workspace_binary_at_root` | 文件操作 |
+| 18 | `open_in_shell` | 文件操作 |
+| 19 | `open_with_system_app` | 文件操作 |
+| 20 | `export_thread_json` | 文件操作 |
+| 21 | `export_session_json` | 文件操作 |
+| 22 | `get_system_settings` | 系统设置 |
+| 23 | `save_system_settings` | 系统设置 |
+| 24 | `default_composer_workspace` | 系统设置 |
+| 25 | `read_pick_rules` | 项目规则 |
+| 26 | `save_pick_rules` | 项目规则 |
+| 27 | `rebuild_symbol_index` | 符号索引 |
+| 28 | `get_symbol_index_info` | 符号索引 |
+| 29 | `delete_symbol_index` | 符号索引 |
+| 30–33 | `spawn_terminal` / `write_terminal` / `resize_terminal` / `kill_terminal` | 嵌入式终端 |
+| 34–41 | `get_window_label` … `close_current_window` | 多窗口 / Agent 窗 |
 
 ### Channel B: Runtime HTTP
 
@@ -713,12 +727,13 @@ WebView                          Sidecar
 
 | 组件 | 文件 | 说明 |
 |------|------|------|
-| Tauri 命令注册 | `crates/desktop/src/main.rs` | `generate_handler!` — **25** 个 IPC 命令 |
+| Tauri 命令注册 | `crates/desktop/src/main.rs` | `generate_handler!` — 约 **41** 个 IPC 命令 |
 | Tauri 命令实现 | `crates/desktop/src/commands.rs` | 密钥、设置、二进制预览、符号索引 IPC |
+| Runtime HTTP 代理 | `crates/desktop/src/runtime_proxy.rs` | H06 — Bearer 注入、SSE 转发 |
 | Sidecar 进程管理 | `crates/desktop/src/sidecar.rs` | spawn、`serve --http`、健康检查、重启 |
-| WebView HTTP 客户端 | `crates/desktop/web-ui/src/api/client.ts` | Bearer、重试、就绪探测 |
+| WebView HTTP 客户端 | `crates/desktop/web-ui/src/api/client.ts` | `initRuntimeConfig`、proxy 分支、就绪探测 |
 | SSE 归一化 | `crates/desktop/web-ui/src/api/streamNormalize.ts` | wire `event` → UI 事件 |
-| Runtime HTTP 路由 | `crates/tui/src/runtime_api.rs` | `build_router` ≈ L586–687 |
+| Runtime HTTP 路由 | `crates/tui/src/runtime_api/router.rs` | `build_router` |
 | 协议类型 | `crates/protocol/src/` | 共享 DTO（若有） |
 | Agent prompt（sidecar） | `crates/tui/src/prompts/base.md` 等 | 含幻觉防控子规则；见 [prompt-hallucination-patch.md](prompt-hallucination-patch.md) |
 
@@ -730,6 +745,8 @@ WebView                          Sidecar
 
 | 文档 | 内容 |
 |------|------|
+| [RUNTIME_ARCHITECTURE.md](./RUNTIME_ARCHITECTURE.md) | 三层模型、crate 依赖、双持久化附图 |
+| [RUNTIME_EVOLUTION_ROADMAP.md](./RUNTIME_EVOLUTION_ROADMAP.md) | 演进路线图 SSOT §3 现状快照 |
 | [prompt-hallucination-patch.md](prompt-hallucination-patch.md) | V4 能力/架构断言防控、Zagens vs 官方 TUI 0.8.39 回归 |
 | [tui/回归测试.md](tui/回归测试.md) | 幻觉防控与并行调度回归用例 |
 | [agent-reliability-craft-plan.md](agent-reliability-craft-plan.md) | CRAFT、子代理写路径 §3.2 |
@@ -740,5 +757,6 @@ WebView                          Sidecar
 
 | 日期 | 说明 |
 |------|------|
+| 2026-05-25 | 对齐代码：Zagens 0.4.3、`runtime_api/router.rs`、H06 代理认证（移除 `get_runtime_token`）、IPC ~41 条、`DEEPSEEK_CLIENT_SURFACE=zagens` |
 | 2026-05-18 | 对照代码修正：health/probe、BinaryFileResponse、SSE 事件名、symbol-index query、认证 header、25 IPC / 56 HTTP、app-server 边界 |
 | 2026-05-18 | 初版（Zagens API 双通道） |

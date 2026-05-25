@@ -831,7 +831,7 @@ async fn run_event_loop(
                             }],
                         });
                         handle_tool_call_complete(app, &id, &name, &result);
-                        app.debug_assert_live_history_isomorphism();
+                        app.check_live_history_isomorphism("tool_complete");
 
                         // Immediately refresh the task panel sidebar when a
                         // tool that changes task state completes, so the
@@ -902,7 +902,7 @@ async fn run_event_loop(
                         } else {
                             app.flush_active_cell();
                         }
-                        app.debug_assert_live_history_isomorphism();
+                        app.check_live_history_isomorphism("turn_complete");
                         app.is_loading = false;
                         app.offline_mode = false;
                         app.streaming_state.reset();
@@ -5689,7 +5689,7 @@ fn apply_backtrack(app: &mut App, depth: usize) {
     app.scroll_to_bottom();
     app.mark_history_updated();
     app.needs_redraw = true;
-    app.debug_assert_live_history_isomorphism();
+    app.check_live_history_isomorphism("backtrack");
 }
 
 /// Persist the typed API key to `~/.deepseek/config.toml`, refresh the
@@ -5792,7 +5792,7 @@ fn apply_loaded_session(app: &mut App, session: &SavedSession) {
         app.extend_history(cells);
     }
     app.sync_context_references_from_session(&session.context_references, &message_to_cell);
-    app.debug_assert_live_history_isomorphism();
+    app.check_live_history_isomorphism("session_load");
     app.mark_history_updated();
     app.viewport.transcript_selection.clear();
     app.model.clone_from(&session.metadata.model);
