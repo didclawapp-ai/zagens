@@ -8,6 +8,7 @@
 //! validates and delegates through core before sending `Op::SendMessage`.
 
 pub mod approval;
+pub mod config;
 pub mod context;
 pub mod context_snapshot;
 pub mod dispatch;

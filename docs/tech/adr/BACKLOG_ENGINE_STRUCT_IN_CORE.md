@@ -1,6 +1,6 @@
 # Backlog ADR — Move `Engine` struct into `deepseek-core`
 
-**Status:** **In progress (M1 landed, 2026-05-25)** → see [PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md](./PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md)  
+**Status:** **In progress (M1 + M2 landed, 2026-05-25)** → see [PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md](./PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md)  
 **Related:** [P2_G3_ENGINE_L2_SIGNOFF.md](./P2_G3_ENGINE_L2_SIGNOFF.md), [PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md](./PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md)
 
 ## Context
@@ -19,7 +19,7 @@ Defer whole-struct migration until tool/MCP boundaries are trait-stable. Prefer 
 |----|-------|--------|---------|-------|
 | **M0** | Spike (this doc + parent) | ✅ landed 2026-05-25 | 0 | Maintainer-approved structure. |
 | **M1** | `Op` + `EngineHandle` + `ThreadContextSnapshot` to core | ✅ landed 2026-05-25 | +99 net | `coherence.rs` reducer pushed to M6 (depends on `core::capacity` types that are tui-only until M6). `impl TurnEnginePort` moved core-side (orphan rule). `TurnLoopMode::from_setting` added. tui shims: `core/ops.rs`, `core/engine/handle.rs`, `context_snapshot.rs`. All §7.4 regression tests + `sidecar_contract_full_lifecycle` + web-ui `test:f3` + `npm run build` green. |
-| **M2** | `EngineConfig` split | ⏳ queued | ≤700 cap | Will split lean core `EngineConfig` from tui `EngineConfigExt`. |
+| **M2** | `EngineConfig` split (type pillars) | ✅ landed 2026-05-25 | +378 net | core lean `EngineConfig` (25 fields) + tui `EngineConfigExt` (8 fields) established. tui `EngineConfig` keeps flat 30-field layout as a facade — callers untouched. Accessors `lean()` / `ext()` / `into_parts()` / `from_parts()` carve the projection. 2 round-trip unit tests + spike §6 M2 regression suite (`engine_llm_client_override_runs_mock_turn` + 36 core error_taxonomy + `sidecar_contract_full_lifecycle` + `npm run test:f3`) green. `Engine::new(slim, ext)` two-arg switch deferred to M7 (avoids rewriting ≈30 literal construction sites mid-strangler). |
 | **M3** | Subsystem traits (Lsp/SubAgent/Shell/Sandbox) | ⏳ queued | ≤700 cap | |
 | **M4** | `McpHost` trait | ⏳ queued | ≤500 cap | |
 | **M5** | Seam / Cycle / Workshop / TopicMemory hosts + scratchpad state | ⏳ queued | ≤700 cap | |
