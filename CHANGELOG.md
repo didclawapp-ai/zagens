@@ -22,10 +22,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Docs:** [A2_A3_SIGNOFF.md](docs/tech/adr/A2_A3_SIGNOFF.md) — §12.1 #2（Turn 可观测）与 #3（错误分类）维护者签收（2026-05-25）；路线图 §7.2/§7.3/§12.1 勾选同步。
+- **Docs:** [RUNTIME_EVOLUTION_ROADMAP.md](docs/tech/RUNTIME_EVOLUTION_ROADMAP.md) §12.1/§12.5/§17 与代码二次对齐（2026-05-25）— B2/B-L3、`events_since_async`、门控闭合表述；[IMPLEMENTATION_SUMMARY](docs/tech/adr/IMPLEMENTATION_SUMMARY_2026-05-24.md) 同步；[TUI_DS_PICK_GAP.md](docs/desktop/TUI_DS_PICK_GAP.md) 审核表（托盘/导出/记忆地图 UI）。
 - **Project identity:** DS Pick is **proprietary** ([LICENSE](LICENSE)); third-party runtime MIT license at [third-party/deepseek-tui/LICENSE](third-party/deepseek-tui/LICENSE) (not at repo root). See [NOTICE.md](NOTICE.md). Removed upstream npm/website, CLI Docker artifacts, CLI binary Release (`auto-tag.yml`, npm/crates release scripts), and `ci.yml` npm-wrapper job. **Release:** `.github/workflows/release.yml` builds **DS Pick Windows installers** on `ds-pick-v*` tags only (macOS/Linux later). **Config samples:** [`.env.example`](.env.example) and [`config.example.toml`](config.example.toml) reframed for DS Pick desktop + embedded sidecar (not upstream TUI/CLI).
 
 ### Added
 
+- **Docs:** [docs/desktop/DEV_NOTES.md](docs/desktop/DEV_NOTES.md) §2026-05-24 — product strategy memo (desktop-only shell, TUI/CLI demotion, long-horizon CRAFT ~35 min, industry alignment, D12–D14 candidates, L3 backlog).
 - **B2.1:** Injection arbitration SSOT — [docs/tech/adr/B2_INJECTION_ARBITRATION.md](docs/tech/adr/B2_INJECTION_ARBITRATION.md) (tool results > CRAFT blackboard > topic_memory).
 - **B-L3:** DS Pick `TopicMemoryPanel` + `GET /v1/topic-memory` (graph + eval metrics); settings sidebar entry.
 - **B2.5:** `scripts/topic-memory-eval.ps1` — clarification-rate baseline compare + `-Gate`; `TopicMemoryEvalReport` / `compare_eval` in `deepseek-topic-memory`.

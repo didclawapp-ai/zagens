@@ -57,7 +57,7 @@ cargo test -p deepseek-tui --lib sidecar_contract_full_lifecycle --all-features 
 | 门 | 项 | 说明 |
 |----|-----|------|
 | **G3** | §11.0 ADR 维护者签收 | 需维护者书面确认 |
-| **G1** | §12.1 A 完成线 | 长跑/R-015 基线、A1–A3 全量等 |
+| **G1** | §12.1 A 完成线 | #2/#3 ✅ [A2_A3_SIGNOFF.md](./A2_A3_SIGNOFF.md)；#1 live 同构等余项 |
 | **§12.3** | P2 完成线 | `Engine` 仍在 tui；多窗口抽样 |
 | **§12.2 #3** | DS Pick 全链路 | ✅ 单窗（§1）；审批 UI 暂缓 |
 | **§12.3 #2** | 多窗口抽样 | ✅ §3 手测（2026-05-23） |

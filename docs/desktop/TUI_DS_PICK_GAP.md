@@ -75,7 +75,7 @@
 
 ---
 
-## 审核说明（2026-05-10 代码交叉验证；2026-05-11 补充 Web UI）
+## 审核说明（2026-05-10 代码交叉验证；2026-05-25 与路线图对齐）
 
 | 声明 | 验证源 | 结论 |
 |------|--------|------|
@@ -86,8 +86,9 @@
 | DS Pick：MCP / 用量 / 任务技能 / 子代理 / 路由 / 模型参数 UI | `McpPanel`、`UsageDashboard`、`AutomationPanel`、`AgentPanel`、`RoutingPanel`、`ModelParamsDialog` | ◐–✅ 见上文「实施步骤」总表 |
 | 定时自动化 UI | 产品不展示；`fetchAutomations` 仍保留 | ⏸ 暂缓 |
 | 通知 plugin | `main.rs`；无前端触发 | ◐ |
-| 托盘 | `Cargo.toml` 无 `tray-icon` | ❌ |
-| 资源管理器中打开 / 导出会话 JSON | `commands.rs`、菜单 | ❌ |
+| 系统托盘 | `crates/desktop/Cargo.toml` `tray-icon`；`main.rs` `on_tray_icon_event` | ✅ |
+| 资源管理器中打开 / 导出会话 JSON | `open_in_shell`、`export_*_json` | ✅ |
+| 话题记忆地图 UI | `TopicMemoryPanel.tsx`、`GET /v1/topic-memory` | ✅（B-L3，2026-05-24） |
 
 ---
 

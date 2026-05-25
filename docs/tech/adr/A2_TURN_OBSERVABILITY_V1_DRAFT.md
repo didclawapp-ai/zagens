@@ -31,7 +31,7 @@
 
 - [x] 回归测 `turn_completed_event_includes_turn_summary`（runtime JSONL）
 - [x] `map_compat_stream_event` 测 `turn.completed` + `turn_summary`（`runtime_api/stream.rs`）
-- [ ] 维护者：启用 `RUST_LOG=info` 跑单轮 turn，日志含 `turn complete` + `step_count` / `tools`
+- [x] 维护者：启用 `RUST_LOG=info` 跑单轮 turn，日志含 `turn complete` + `step_count` / `tools` — [A2_A3_SIGNOFF.md](./A2_A3_SIGNOFF.md) 2026-05-25
 
 ## 5. 非目标（本草案）
 

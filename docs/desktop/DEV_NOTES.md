@@ -8,6 +8,144 @@
 
 ---
 
+## 2026-05-24 — 产品战略方向备忘（架构对话整理）
+
+**背景：** 维护者与 Agent 就 DS Pick 长期方向进行战略对话——担心 Agent 领域认识尚浅、业界许多能力仍在摸索，**开发方向是否走偏**。本文档整理对话结论，供后续评审与路线图引用；**非立即执行的工程承诺**。
+
+**一句话结论：** 方向判断 **大体正确**——DS Pick 应押 **Desktop 壳 + 本地 sidecar Harness + 长程任务（CRAFT）**；TUI/CLI **退出用户产品面**，保留为 dev/headless 工具；sidecar 三层架构 **不必推翻**。
+
+### 1. 核心战略判断（签收备忘）
+
+| 判断 | 结论 | 置信度 | 说明 |
+|------|------|--------|------|
+| Harness 终态需要富交互壳 | **成立** | 高 | 审批、CRAFT 黑板、diff、Harness 预置、记忆图——终端 ratatui 难以产品化 |
+| **Desktop-only 作为用户产品** | **成立** | 高 | 与 Cursor / Claude Desktop / Windsurf 主战场一致；资源应停止 TUI parity |
+| TUI/CLI 完全消失 | **不成立** | 中 | 业界 CLI 仍存（Claude Code CLI）；本仓库缩为 **`serve --http` / debug / CI**，非第二产品 |
+| sidecar 壳运分离 | **继续** | 高 | Agent turn 只在 sidecar；Desktop 是 L3，不是引擎 |
+| 本地可配置 Harness vs 云端托管 | **差异化成立** | 中-高 | Anthropic Managed Agents = 云端 harness；DS Pick = 本地控制权（见 [§Harness 组件化](#2026-05-24--harness-组件化从硬编码到可组合-agent-执行结构)） |
+| 长程任务可达 | **已有实证** | 高 | **CRAFT 手测 ~35 分钟**（2026-05-24）；B-L1 runtime + AgentPanel 已签收 |
+
+**产品表述（对内）：** DS Pick = **本地长程 Agent Harness 的 Desktop 控制台**——不是「聊天窗口」，而是能跑多角色 CRAFT、目标数小时、可跨天接力的任务运行时。
+
+### 2. 架构评估摘要
+
+当前 **L1/L2/L3** 分层（见 [RUNTIME_EVOLUTION_ROADMAP.md §2](../tech/RUNTIME_EVOLUTION_ROADMAP.md)）经对话复核 **仍然正确**：
+
+```
+L3  DS Pick（Tauri + React）— 唯一用户产品壳（战略调整）
+L2  HTTP/SSE + Tauri IPC + runtime_proxy（Bearer 不出 WebView）
+L1  deepseek-tui sidecar + deepseek-core（Engine / turn_loop / tools）
+```
+
+**不必做：** 合并 sidecar 进 Tauri、换 app-server 为生产 binary、在 WebView 内跑 Engine。
+
+**值得加强：** P2 收尾（Engine struct 边界）、Harness 预置 MVP、长任务 Desktop UX、Handoff Report。
+
+### 3. 业界对照（2025–2026，非对标）
+
+业界在 Agent 形态上 **并未收敛**，但有几条可观察趋势——用于 **校准方向**，不是复制竞品：
+
+| 趋势 | 代表 | 对 DS Pick 的含义 |
+|------|------|-------------------|
+| CLI → Desktop 编排 | Anthropic：Claude Code 从 CLI 走向 Desktop 管多 agent | 长任务 / 多 agent **可视化编排** 在 Desktop，不在 TUI |
+| IDE/Desktop 主战场 | Cursor、Windsurf、Claude Desktop Code tab | 日常 + agent 可视化 = IDE/Desktop；与「desktop-only 产品」同向 |
+| CLI 仍占生态位 | Claude Code CLI、Codex CLI、headless SDK | **power user / CI / 自动化**；DS Pick 不必抢，保留 dev 入口即可 |
+| 云端 Managed Harness | Anthropic Managed Agents（2026.04 beta） | 卖「省心」；DS Pick 卖 **本地控制权 + 可组合 Harness** |
+| Harness 术语结晶 | session / harness / sandbox 全行业共用 | 本仓库 Harness 组件化路线与业界词汇对齐 |
+
+**重要 nuance：** CLI 常被说「适合深度推理」——**不是因为终端更聪明**，而是 historically 绑定了 lean harness、少 UI 打断、长 autonomous run。**同一 sidecar + 同一模型在 Desktop 推理深度可等价**；Desktop 还多 steer、diff、AgentPanel。DS Pick 应用 **trust 预置 + 批量审批** 在长任务上复现 CLI 的「少打断」，而非保留 ratatui 产品。
+
+**仍不确定（业界也在摸索）：** 最优 Harness 工具集大小、多 agent 并行写冲突策略、跨天记忆 vs compaction 分工、Managed vs Local 长期份额——**保持 sidecar 可配、Desktop 可观测**，便于随业界迭代调参，而非押死单一路径。
+
+### 4. TUI / CLI 终态（分层处理）
+
+| 层级 | 终态 | 动作 |
+|------|------|------|
+| **用户产品 L3** | 仅 DS Pick Desktop | 新 Harness 能力 **desktop-only**；停止 [TUI_DS_PICK_GAP.md](TUI_DS_PICK_GAP.md) parity 投入 |
+| **Runtime sidecar** | 保留 `deepseek-tui serve --http` | `runtime_api` + `runtime_threads` + Engine；**ratatui 交互 UI 进入 freeze** |
+| **CLI** | dev / CI / headless | `serve`、`debug`、契约测、脚本；用户无需知道 CLI 存在 |
+| **crate 命名** | 长期可选 | `deepseek-tui` → `deepseek-runtime` / `deepseek-sidecar`（降低「终端产品」误解） |
+
+**待写入路线图（候选 ADR，未签收）：**
+
+| 决策 | 内容 |
+|------|------|
+| **D12 Desktop-only 产品** | DS Pick 为唯一用户产品壳；TUI 终端 UI maintenance/freeze |
+| **D13 Sidecar 语义** | `deepseek-tui` 产品含义 = HTTP runtime sidecar；ratatui = legacy adapter |
+| **D14 CLI 定位** | CLI 缩为 dev/CI 工具，非用户入口 |
+
+### 5. 长程任务：35 分钟 CRAFT 与下一关
+
+**实测：** CRAFT 已在 DS Pick 上连续运行 **约 35 分钟**（2026-05-24），与 B-L1 手测签收一致。说明 **L1 墙钟 + L2 多角色交接** 已过关。
+
+长程任务分三层（验收用，避免只盯墙钟）：
+
+| 层 | 含义 | 状态 |
+|----|------|------|
+| **L1 墙钟** | 单次 session 连续跑多久不崩 | **✅ ~35 min 实证** |
+| **L2 认知** | CRAFT 黑板、fix-loop、子代理闭环 | **✅ B-L1 已签收** |
+| **L3 产品** | 用户能盯、steer、恢复、跨天续 | **🟡 主缺口** |
+
+**L3 优先 backlog（与 [§Handoff](#2026-05-21--会话线程结项汇总报告handoff-report--规划中)、[§主动性北极星](#2026-05-18--agent-方向与主动性北极星) 对齐）：**
+
+| 优先级 | 项 | 说明 |
+|--------|-----|------|
+| **P0** | Sidecar 长跑友好化 | busy-timeout 宽容、SSE 断线重连；见 [SIDECAR_SUPERVISOR_HARDENING_PLAN.md](SIDECAR_SUPERVISOR_HARDENING_PLAN.md) |
+| **P1** | Harness 预置「长任务」 | 如 `craft-audit`：trust + `step_timeout` 360s + 显式长 `agent_wait`；避免模型踩默认短 timeout |
+| **P1** | AgentPanel 长任务 UX | 运行时长、blocked 原因、子代理树；最小化后分级通知 |
+| **P2** | Handoff Report MVP | 手动「生成本轮摘要」→ `~/.deepseek/handoffs/`；compaction 服务模型，handoff 服务人与跨天 |
+| **P2** | 35 min 基准化 | 纳入 `runtime-longrun-baseline` / 回归门，从「一次手测」变产品指标 |
+| **P3** | Resume 性能 | 超长 thread 冷启动（350+ 消息 fsync 问题） |
+
+**与 §2026-05-18「长程任务」轴线的关系：** 该节表中「行业级长程产品化 ⬜」仍成立；**35 min CRAFT** 将「持久线程 + CRAFT + 桌面 persist」从 🔶 推向 **可演示、可回归** 的产品能力，下一步是 **L3 产品化 + Handoff**，而非回到 TUI。
+
+### 6. 方向「对」与「仍须小心」的清单
+
+**继续投入（方向正确）：**
+
+- Desktop 壳 + sidecar runtime（不改）
+- CRAFT / 子代理拓扑 / 黑板（长任务核心）
+- Harness 组件化 + 预置组合（产品化控制权）
+- execpolicy、审批 UI、工作区预览、embedded PTY
+- Handoff Report、入座 briefing（长任务 + 主动性）
+
+**停止或降优先级：**
+
+- TUI ↔ Desktop 功能 parity 追平
+- 把 ratatui 当第二产品壳迭代
+- 与 Claude Code CLI 抢 terminal power user 市场（除非明确扩品类）
+- 换 app-server 或合并 Engine 进 WebView
+
+**保持观望、小步验证：**
+
+- 记忆地图 L3 可视化（B2）
+- Managed Agents 类云端 harness 是否侵蚀本地市场
+- AgentPick 对外命名（见 [§Harness 组件化 · 命名决定](#2026-05-24--harness-组件化从硬编码到可组合-agent-执行结构)）——与 desktop-only 可并行决策
+
+### 7. 建议演进顺序（战略层，覆盖原 §2026-05-18 部分排期）
+
+在 P2 ✅、D10 解冻、B-L1 CRAFT ✅ 前提下：
+
+1. **签收 D12–D14**（或等价表述写入 [RUNTIME_EVOLUTION_ROADMAP.md §4](../tech/RUNTIME_EVOLUTION_ROADMAP.md)）— 冻结 TUI 产品化
+2. **P0 sidecar 长跑** + **P1 长任务 Harness 预置** — 保住 35 min+ 稳定性
+3. **AgentPanel / 长任务 UX** — Desktop-only 差异化
+4. **Handoff P1 手动结项** — 跨天长程
+5. **Harness 设置页预置组合** — 组件化第一步（见 Harness §7）
+6. TUI ratatui **freeze**；CLI 缩面 — 无用户可见时间表
+
+### 相关文档
+
+| 文档 | 关系 |
+|------|------|
+| [RUNTIME_EVOLUTION_ROADMAP.md](../tech/RUNTIME_EVOLUTION_ROADMAP.md) | L1/L2/L3、门控链；待补 D12–D14 |
+| [IMPLEMENTATION_SUMMARY_2026-05-24.md](../tech/adr/IMPLEMENTATION_SUMMARY_2026-05-24.md) | B-L1 CRAFT 签收、P2 状态 |
+| [agent-reliability-craft-plan.md](../agent-reliability-craft-plan.md) | CRAFT 运行时与调度事实 |
+| [API_DESIGN.md](../tech/API_DESIGN.md) | 双通道 API、sidecar 契约 |
+| [SIDECAR_SUPERVISOR_HARDENING_PLAN.md](SIDECAR_SUPERVISOR_HARDENING_PLAN.md) | 长跑 sidecar 稳定性 |
+| [TUI_DS_PICK_GAP.md](TUI_DS_PICK_GAP.md) | **停止 parity 追平**后改为 desktop-only backlog 参考 |
+
+---
+
 ## 2026-05-24 — Harness 组件化：从硬编码到可组合 Agent 执行结构
 
 **背景：** 与 Agent（DS Pick desktop session）进行了一整天架构对话。核心产出：harness 的进化线、跨领域泛化、组件化作为硬编码膨胀的解决方案。
@@ -405,4 +543,4 @@ model = "anthropic/claude-sonnet-4"   # 以 OpenRouter 模型列表为准
 
 ---
 
-*（有新条目时按日期追加在本文件顶部，或独立 dated 节；2026-05-18 含「主动性北极星」与「Claude 对照实验」两节。）*
+*（有新条目时按日期追加在本文件顶部，或独立 dated 节。2026-05-24 含「产品战略方向备忘」与「Harness 组件化」；2026-05-18 含「主动性北极星」与「Claude 对照实验」。）*
