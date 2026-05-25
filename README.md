@@ -1,25 +1,25 @@
 <p align="center">
-  <img src="assets/screenshot.png" alt="DS Pick Screenshot" width="800" />
+  <img src="assets/screenshot.png" alt="Zagens Screenshot" width="800" />
 </p>
 
-# DS Pick
+# Zagens
 
 [English](#english) | [中文](#中文)
 
 ---
 
-<h1 id="english">DS Pick — Desktop AI Coding Assistant</h1>
+<h1 id="english">Zagens — Desktop agent harness</h1>
 
-**DS Pick** is a proprietary desktop AI coding assistant — a **new product**, not a redistribution of upstream terminal tools. Built with [Tauri 2](https://tauri.app/), it connects to [DeepSeek](https://deepseek.com/) and other OpenAI-compatible providers through an embedded agent sidecar: system tray, turn notifications, workspace previews, session replay, and an embedded terminal in Code workspaces.
+**Zagens** is a proprietary **desktop agent harness** for code and office workspaces — a **new product**, not a redistribution of upstream terminal tools. Built with [Tauri 2](https://tauri.app/), it connects to [DeepSeek](https://deepseek.com/) and other OpenAI-compatible providers through an embedded agent sidecar: system tray, turn notifications, workspace previews, session replay, and an embedded terminal in Code workspaces.
 
-> **Licensing:** DS Pick is proprietary — [LICENSE](LICENSE). The embedded runtime uses MIT-licensed **third-party** code; attribution and license text live under [third-party/deepseek-tui/](third-party/deepseek-tui/) — see [NOTICE.md](NOTICE.md).
+> **Licensing:** Zagens is proprietary — [LICENSE](LICENSE). The embedded runtime uses MIT-licensed **third-party** code; attribution and license text live under [third-party/deepseek-tui/](third-party/deepseek-tui/) — see [NOTICE.md](NOTICE.md).
 
 ---
 
 ## Table of Contents
 
 - [What Makes This Project Different](#what-makes-this-project-different)
-- [DS Pick (Desktop UI)](#ds-pick-desktop-ui)
+- [Zagens (Desktop UI)](#zagens-desktop-ui)
 - [Agent Runtime (Sidecar)](#agent-runtime-sidecar)
 - [Tools (Runtime)](#tools-runtime)
 - [AI Providers & Models](#ai-providers--models)
@@ -33,7 +33,7 @@
 - [Configuration](#configuration)
 - [License](#license)
 
-> **Not affiliated with DeepSeek Inc.** Capabilities below reflect **DS Pick v0.4.3**. Desktop parity notes vs terminal-style workflows: [docs/desktop/TUI_DS_PICK_GAP.md](docs/desktop/TUI_DS_PICK_GAP.md). Harness memo: [docs/desktop/HARNESS.md](docs/desktop/HARNESS.md).
+> **Not affiliated with DeepSeek Inc.** Capabilities below reflect **Zagens v0.4.3**. Desktop parity notes vs terminal-style workflows: [docs/desktop/TUI_DS_PICK_GAP.md](docs/desktop/TUI_DS_PICK_GAP.md). Harness memo: [docs/desktop/HARNESS.md](docs/desktop/HARNESS.md).
 
 ---
 
@@ -41,7 +41,7 @@
 
 | Theme | What you get |
 |-------|----------------|
-| **Desktop + sidecar** | DS Pick UI talks to a local **runtime sidecar** over HTTP/SSE. Shared `~/.deepseek/config.toml`, sessions, and tools. |
+| **Desktop + sidecar** | Zagens UI talks to a local **runtime sidecar** over HTTP/SSE. Shared `~/.deepseek/config.toml`, sessions, and tools. |
 | **Code vs Office modes** | **Code** and **Office** task types use different tool surfaces and prompts; switching modes starts a **new session** so model KV stays stable ([task-type architecture](docs/task-type-prompt-architecture.md)). |
 | **CRAFT multi-agent** | Sub-agents with role-specific tool sets, structured fix-loop verdicts (PASS / BLOCKER / MAJOR / FAIL), and a **P1 blackboard** for handoffs ([CRAFT notes](docs/craft-v2-improvements.md)). |
 | **Symbol index + bridges** | Lazy per-workspace index (`.deepseek/symbols.json`) for Rust / TS / Go / Python / C++ with call hints and **Tauri command bridges**; desktop Index panel + rebuild API. |
@@ -52,11 +52,11 @@
 
 ---
 
-## DS Pick (Desktop UI)
+## Zagens (Desktop UI)
 
 Features you interact with in the **v0.4.3** window (see [CHANGELOG.md](CHANGELOG.md)):
 
-| Area | Shipped in DS Pick |
+| Area | Shipped in Zagens |
 |------|-------------------|
 | **Chat** | Multi-session sidebar, streaming + stop, thinking stream, context-usage bar, session/thread JSON export (Composer menu) |
 | **Workspace panel** | File tree, previews (Markdown, code, images, CSV, Office text, Mermaid, hex for binary), **diff2html**, snapshot restore, **xterm.js PTY** (Code mode) |
@@ -72,7 +72,7 @@ Features you interact with in the **v0.4.3** window (see [CHANGELOG.md](CHANGELO
 
 ## Agent Runtime (Sidecar)
 
-Available through the embedded sidecar process that powers DS Pick chat, tools, and settings:
+Available through the embedded sidecar process that powers Zagens chat, tools, and settings:
 
 - **Sessions & threads** — SQLite-backed persistence, resume/fork, workspace snapshots (side-git under `~/.deepseek/snapshots/`)
 - **MCP** — stdio servers, per-tool enable/disable, allow/deny filters
@@ -187,7 +187,7 @@ Configured in `~/.deepseek/config.toml` ([config.example.toml](config.example.to
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                     DS Pick (Tauri 2)                         │
+│                     Zagens (Tauri 2)                         │
 │  ┌─────────────────┐  ┌───────────────────────────────────┐  │
 │  │   WebView UI    │  │         Rust Shell                │  │
 │  │   React / TS    │◄─┤  commands, sidecar supervisor,    │  │
@@ -263,7 +263,7 @@ The sidecar binary (`serve --http` on loopback) exposes a local HTTP/SSE API. Au
 - **[Tauri CLI 2](https://v2.tauri.app/start/prerequisites/)** — `cargo install tauri-cli --version "^2"` (once per machine)
 - Platform-specific Tauri [system dependencies](https://v2.tauri.app/start/prerequisites/)
 
-**Versions:** DS Pick desktop **v0.4.3** (`crates/desktop/`); embedded runtime crates **0.8.15** (root `Cargo.toml`).
+**Versions:** Zagens desktop **v0.4.3** (`crates/desktop/`); embedded runtime crates **0.8.15** (root `Cargo.toml`).
 
 ## Quick Start
 
@@ -282,7 +282,7 @@ npm install
 cd ..
 cargo tauri dev
 
-# Configure API key in DS Pick Settings, or in ~/.deepseek/config.toml
+# Configure API key in Zagens Settings, or in ~/.deepseek/config.toml
 ```
 
 Release / installer build (Windows): from `crates/desktop`, run `npm run bundle:prepare` then `cargo tauri build`. CI release: push tag `ds-pick-vX.Y.Z` (see `.github/workflows/release.yml`).
@@ -296,7 +296,7 @@ Release / installer build (Windows): from `crates/desktop`, run `npm run bundle:
 | `cargo clippy --workspace --all-targets --all-features` | Lint all Rust code |
 | `cd crates/desktop/web-ui && npm run build` | Build the web UI (TypeScript + Vite) |
 | `cd crates/desktop/web-ui && npm run dev` | Start Vite dev server (port 1420) |
-| `cd crates/desktop && cargo tauri dev` | Launch DS Pick in development mode |
+| `cd crates/desktop && cargo tauri dev` | Launch Zagens in development mode |
 | `cd crates/desktop && npm run bundle:prepare` | Production web-ui + release sidecar + bundled Python |
 
 ## Project Structure
@@ -304,7 +304,7 @@ Release / installer build (Windows): from `crates/desktop`, run `npm run bundle:
 ```
 DS-Pick/
 ├── crates/
-│   ├── desktop/          # DS Pick Tauri app
+│   ├── desktop/          # Zagens Tauri app
 │   │   ├── web-ui/       # React/TypeScript frontend
 │   │   │   ├── src/
 │   │   │   │   ├── api/        # Runtime API client (SSE, REST)
@@ -327,7 +327,7 @@ DS-Pick/
 │   ├── hooks/            # Agent hooks system (lifecycle, webhook, JSONL sinks)
 │   ├── execpolicy/       # Execution policy engine (layered rulesets, bash arity)
 │   ├── secrets/          # Credential storage (keyring, encrypted config)
-│   ├── app-server/       # Experimental — not used by DS Pick
+│   ├── app-server/       # Experimental — not used by Zagens
 │   └── tui-core/         # Shared runtime core types
 ├── third-party/          # Third-party license texts (runtime MIT attribution)
 │   └── deepseek-tui/     # Embedded runtime lineage — LICENSE (MIT)
@@ -336,14 +336,14 @@ DS-Pick/
 ├── scripts/              # Build & release scripts
 ├── vendor/               # Vendored dependencies
 ├── config.example.toml   # Annotated configuration reference
-├── LICENSE               # DS Pick proprietary license
+├── LICENSE               # Zagens proprietary license
 ├── NOTICE.md             # Third-party attributions
 └── Cargo.toml            # Workspace manifest
 ```
 
 ## Configuration
 
-Set your DeepSeek API key before first use in **DS Pick → Settings**, or in `~/.deepseek/config.toml` (see [config.example.toml](config.example.toml)).
+Set your DeepSeek API key before first use in **Zagens → Settings**, or in `~/.deepseek/config.toml` (see [config.example.toml](config.example.toml)).
 
 **Key configuration sections:**
 
@@ -372,32 +372,32 @@ Set your DeepSeek API key before first use in **DS Pick → Settings**, or in `~
 | `[subagents]` | Max concurrent sub-agents |
 | `[features]` | Feature flags (shell_tool, subagents, web_search, apply_patch, mcp, exec_policy) |
 
-DS Pick connects to the runtime automatically; the runtime token is generated at startup and injected securely through the Tauri sidecar environment — it never touches the WebView `window` object.
+Zagens connects to the runtime automatically; the runtime token is generated at startup and injected securely through the Tauri sidecar environment — it never touches the WebView `window` object.
 
 ---
 
 ## License
 
-**DS Pick is proprietary software.** See [LICENSE](LICENSE).
+**Zagens is proprietary software.** See [LICENSE](LICENSE).
 
-Embedded agent runtime is **third-party MIT code** — [third-party/deepseek-tui/LICENSE](third-party/deepseek-tui/LICENSE) and [NOTICE.md](NOTICE.md). **DS Pick** is proprietary — [LICENSE](LICENSE).
+Embedded agent runtime is **third-party MIT code** — [third-party/deepseek-tui/LICENSE](third-party/deepseek-tui/LICENSE) and [NOTICE.md](NOTICE.md). **Zagens** is proprietary — [LICENSE](LICENSE).
 
 > **Disclaimer:** Not affiliated with or endorsed by DeepSeek Inc.
 
 ---
 
-<h1 id="中文">DS Pick — 桌面端 AI 编程助手</h1>
+<h1 id="中文">Zagens — 桌面 Agent 控制台</h1>
 
-**DS Pick** 是专有桌面 AI 编程助手——**全新产品**，并非上游终端工具的分发版。基于 [Tauri 2](https://tauri.app/)，通过嵌入式 agent sidecar 连接 [DeepSeek](https://deepseek.com/) 及其他 OpenAI 兼容提供商：系统托盘、通知、工作区预览、会话回放、Code 工作区嵌入式终端。
+**Zagens** 是面向代码与办公工作区的专有**桌面 Agent 控制台**——**全新产品**，并非上游终端工具的分发版。基于 [Tauri 2](https://tauri.app/)，通过嵌入式 agent sidecar 连接 [DeepSeek](https://deepseek.com/) 及其他 OpenAI 兼容提供商：系统托盘、通知、工作区预览、会话回放、Code 工作区嵌入式终端。
 
-> **许可：** DS Pick 为专有软件 — [LICENSE](LICENSE)。嵌入式 runtime 使用 MIT **第三方**代码；归属与许可证见 [third-party/deepseek-tui/](third-party/deepseek-tui/) 与 [NOTICE.md](NOTICE.md)。
+> **许可：** Zagens 为专有软件 — [LICENSE](LICENSE)。嵌入式 runtime 使用 MIT **第三方**代码；归属与许可证见 [third-party/deepseek-tui/](third-party/deepseek-tui/) 与 [NOTICE.md](NOTICE.md)。
 
 ---
 
 ## 目录
 
 - [项目特色](#项目特色)
-- [DS Pick 桌面端](#ds-pick-桌面端)
+- [Zagens 桌面端](#zagens-桌面端)
 - [Agent Runtime（Sidecar）](#共享运行环境)
 - [安全与沙箱](#安全与沙箱)
 - [技术栈](#技术栈)
@@ -409,7 +409,7 @@ Embedded agent runtime is **third-party MIT code** — [third-party/deepseek-tui
 - [配置](#配置)
 - [许可与第三方声明](#许可与第三方声明)
 
-> **与 DeepSeek 公司无关联。** 功能以 **DS Pick v0.4.3** 为准。桌面与终端式工作流差距：[TUI_DS_PICK_GAP.md](docs/desktop/TUI_DS_PICK_GAP.md)。英文详情见 [What Makes This Project Different](#what-makes-this-project-different)。
+> **与 DeepSeek 公司无关联。** 功能以 **Zagens v0.4.3** 为准。桌面与终端式工作流差距：[TUI_DS_PICK_GAP.md](docs/desktop/TUI_DS_PICK_GAP.md)。英文详情见 [What Makes This Project Different](#what-makes-this-project-different)。
 
 ---
 
@@ -417,7 +417,7 @@ Embedded agent runtime is **third-party MIT code** — [third-party/deepseek-tui
 
 | 方向 | 说明 |
 |------|------|
-| **桌面 + Sidecar** | DS Pick UI 通过本地 **runtime sidecar**（HTTP/SSE）通信；共用 `~/.deepseek/config.toml`、会话与工具。 |
+| **桌面 + Sidecar** | Zagens UI 通过本地 **runtime sidecar**（HTTP/SSE）通信；共用 `~/.deepseek/config.toml`、会话与工具。 |
 | **Code / Office 分场景** | 不同工具面与提示词；切换任务类型会**新开会话**以保持 KV 稳定。 |
 | **CRAFT 多代理** | 角色化子代理、结构化 fix-loop 裁决、P1 黑板交接。 |
 | **符号索引** | 懒加载 `.deepseek/symbols.json`，含 Tauri 命令桥接；桌面索引面板。 |
@@ -427,7 +427,7 @@ Embedded agent runtime is **third-party MIT code** — [third-party/deepseek-tui
 
 ---
 
-## DS Pick 桌面端
+## Zagens 桌面端
 
 **v0.4.3** 窗口内已具备：多会话聊天（流式/停止/思考/上下文条）、工作区预览与 **diff2html**、会话回放、子代理与清单侧栏、任务与技能（**定时自动化列表未展示**）、MCP/路由/用量/系统设置、托盘与通知、中/英 UI。
 
@@ -503,7 +503,7 @@ Embedded agent runtime is **third-party MIT code** — [third-party/deepseek-tui
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                     DS Pick (Tauri 2)                         │
+│                     Zagens (Tauri 2)                         │
 │  ┌─────────────────┐  ┌───────────────────────────────────┐  │
 │  │   WebView UI    │  │         Rust 外壳                 │  │
 │  │   React / TS    │◄─┤  commands、sidecar 监督器、       │  │
@@ -572,7 +572,7 @@ Sidecar（`deepseek-tui` 二进制，`serve --http`）在 loopback 暴露 HTTP/S
 - **[Tauri CLI 2](https://v2.tauri.app/start/prerequisites/)** — `cargo install tauri-cli --version "^2"`
 - 各平台 Tauri [系统依赖](https://v2.tauri.app/start/prerequisites/)
 
-**版本：** DS Pick 桌面 **v0.4.3**；嵌入式 runtime **0.8.15**（根 `Cargo.toml`）。
+**版本：** Zagens 桌面 **v0.4.3**；嵌入式 runtime **0.8.15**（根 `Cargo.toml`）。
 
 ## 快速开始
 
@@ -591,7 +591,7 @@ npm install
 cd ..
 cargo tauri dev
 
-# API Key：在 DS Pick 设置中配置，或写入 ~/.deepseek/config.toml
+# API Key：在 Zagens 设置中配置，或写入 ~/.deepseek/config.toml
 ```
 
 发布安装包（Windows）：在 `crates/desktop` 执行 `npm run bundle:prepare`，再 `cargo tauri build`。CI 发布：推送标签 `ds-pick-vX.Y.Z`（见 `.github/workflows/release.yml`）。
@@ -605,7 +605,7 @@ cargo tauri dev
 | `cargo clippy --workspace --all-targets --all-features` | 检查所有 Rust 代码 |
 | `cd crates/desktop/web-ui && npm run build` | 构建 Web UI（TypeScript + Vite） |
 | `cd crates/desktop/web-ui && npm run dev` | 启动 Vite 开发服务器（端口 1420） |
-| `cd crates/desktop && cargo tauri dev` | 以开发模式启动 DS Pick |
+| `cd crates/desktop && cargo tauri dev` | 以开发模式启动 Zagens |
 | `cd crates/desktop && npm run bundle:prepare` | 生产 web-ui + release sidecar + 捆绑 Python |
 
 ## 项目结构
@@ -613,7 +613,7 @@ cargo tauri dev
 ```
 DS-Pick/
 ├── crates/
-│   ├── desktop/          # DS Pick Tauri 应用
+│   ├── desktop/          # Zagens Tauri 应用
 │   │   ├── web-ui/       # React/TypeScript 前端
 │   │   │   └── ...
 │   │   └── src/          # Rust 外壳（commands、sidecar 监督器、系统托盘）
@@ -632,14 +632,14 @@ DS-Pick/
 ├── third-party/          # 第三方许可证（runtime MIT 归属）
 │   └── deepseek-tui/     # 嵌入式 runtime lineage — LICENSE (MIT)
 ├── docs/                 # 文档
-├── LICENSE               # DS Pick 专有许可证
+├── LICENSE               # Zagens 专有许可证
 ├── NOTICE.md             # 第三方声明
 └── Cargo.toml
 ```
 
 ## 配置
 
-首次使用前在 **DS Pick → 设置** 中配置 DeepSeek API Key，或写入 `~/.deepseek/config.toml`（参见 [config.example.toml](config.example.toml)）。
+首次使用前在 **Zagens → 设置** 中配置 DeepSeek API Key，或写入 `~/.deepseek/config.toml`（参见 [config.example.toml](config.example.toml)）。
 
 **主要配置段：**
 
@@ -668,14 +668,14 @@ DS-Pick/
 | `[subagents]` | 最大并发子代理数 |
 | `[features]` | 功能开关（shell_tool、subagents、web_search、apply_patch、mcp、exec_policy） |
 
-DS Pick 自动连接到运行环境；运行环境 Token 在启动时生成，通过 Tauri Sidecar 环境变量安全注入——绝不会暴露到 WebView 的 `window` 对象。
+Zagens 自动连接到运行环境；运行环境 Token 在启动时生成，通过 Tauri Sidecar 环境变量安全注入——绝不会暴露到 WebView 的 `window` 对象。
 
 ---
 
 ## 许可与第三方声明
 
-**DS Pick 为专有软件。** 见 [LICENSE](LICENSE)。
+**Zagens 为专有软件。** 见 [LICENSE](LICENSE)。
 
-嵌入式 agent runtime 为 **第三方 MIT 代码** — [third-party/deepseek-tui/LICENSE](third-party/deepseek-tui/LICENSE) 与 [NOTICE.md](NOTICE.md)。**DS Pick** 为专有软件 — [LICENSE](LICENSE)。
+嵌入式 agent runtime 为 **第三方 MIT 代码** — [third-party/deepseek-tui/LICENSE](third-party/deepseek-tui/LICENSE) 与 [NOTICE.md](NOTICE.md)。**Zagens** 为专有软件 — [LICENSE](LICENSE)。
 
 > **声明：** 与 DeepSeek Inc. 无关联，亦未获其认可。

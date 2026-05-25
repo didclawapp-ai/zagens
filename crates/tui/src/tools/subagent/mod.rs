@@ -1523,7 +1523,7 @@ impl ToolSpec for AgentSpawnTool {
          peer background jobs (TaskManager) and require `task_read`. Optional `task_id` is only a \
          CRAFT **work-package / blackboard key** (e.g. scratchpad `run_id`), not a TaskManager id. \
          Cap: `[subagents].max_concurrent` (default 10). Omitting `step_timeout_ms` uses \
-         `[subagents] step_timeout_secs` from config (DS Pick system settings); for audit/review \
+         `[subagents] step_timeout_secs` from config (Zagens system settings); for audit/review \
          workloads prefer 240000–360000 ms or raise the config default — do not assume the child \
          can run many minutes unless you set it. For parallel read-only tool calls in *this* turn, \
          batch tools instead of spawning."
@@ -1599,7 +1599,7 @@ impl ToolSpec for AgentSpawnTool {
                 },
                 "step_timeout_ms": {
                     "type": "integer",
-                    "description": "Per-step LLM API timeout in ms. Omitted → [subagents] step_timeout_secs from config.toml / DS Pick settings (else 120000). Full-repo audit: use 240000–360000 unless config default is already high. On step timeout the child fails — parent must re-spawn or shrink scope, not treat as done.",
+                    "description": "Per-step LLM API timeout in ms. Omitted → [subagents] step_timeout_secs from config.toml / Zagens settings (else 120000). Full-repo audit: use 240000–360000 unless config default is already high. On step timeout the child fails — parent must re-spawn or shrink scope, not treat as done.",
                     "minimum": 10000,
                     "maximum": 600000
                 }

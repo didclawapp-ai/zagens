@@ -1,12 +1,13 @@
-name: DS Pick Release
+name: Zagens Release
 
 # Desktop installer releases only (Windows for now; macOS/Linux can be added later).
-# Push tag:  git tag ds-pick-v0.4.3 && git push origin ds-pick-v0.4.3
-# Manual:    Actions → DS Pick Release → Run workflow
+# Push tag:  git tag zagens-v0.4.3 && git push origin zagens-v0.4.3
+# Legacy:   ds-pick-v* tags still trigger this workflow
+# Manual:    Actions → Zagens Release → Run workflow
 
 on:
   push:
-    tags: ['ds-pick-v*']
+    tags: ['zagens-v*', 'ds-pick-v*']
   workflow_dispatch:
 
 env:
@@ -36,7 +37,7 @@ jobs:
         working-directory: crates/desktop/web-ui
         run: npm ci
 
-      - name: Build DS Pick (Windows)
+      - name: Build Zagens (Windows)
         working-directory: crates/desktop
         run: cargo tauri build
 
@@ -66,7 +67,7 @@ jobs:
           generate_release_notes: true
           files: release-artifacts/*
           body: |
-            ## DS Pick desktop (Windows)
+            ## Zagens desktop (Windows)
 
             Installers attached to this release. macOS and Linux packages may be added in a future release.
 

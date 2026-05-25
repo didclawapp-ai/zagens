@@ -1,8 +1,8 @@
-# DS Pick 真多窗口方案
+# Zagens 真多窗口方案
 
 > **状态：** **已结案**（2026-05-21）— M1–M4 + M6 已交付；核心手测 T1–T2、T4 通过。**M5 整阶段延后**，有需求再开迭代。  
 > **产品基准：** **Cursor / VS Code 多窗口模型**（市场验证的 IDE 习惯；实现与验收以 §1.4 对照表为准）  
-> **范围：** DS Pick 桌面壳（`crates/desktop/` + `web-ui/`）— **同一 OS 进程内** 多个原生窗口  
+> **范围：** Zagens 桌面壳（`crates/desktop/` + `web-ui/`）— **同一 OS 进程内** 多个原生窗口  
 > **非目标：** 多进程多实例抢 `127.0.0.1:7878`（明确不做为默认路径）  
 > **相关：** [DESKTOP_IMPLEMENTATION_PLAN.md](DESKTOP_IMPLEMENTATION_PLAN.md)、[DEV_NOTES.md](DEV_NOTES.md)、[TUI_DS_PICK_GAP.md](TUI_DS_PICK_GAP.md)、[SIDECAR_SUPERVISOR_HARDENING_PLAN.md](SIDECAR_SUPERVISOR_HARDENING_PLAN.md)、[docs/tech/API_DESIGN.md](../tech/API_DESIGN.md)
 
@@ -50,9 +50,9 @@
 
 ### 1.4 Cursor / VS Code 对齐清单（验收尺子）
 
-以下行为是用户从 **Cursor（VS Code 系）** 带来的默认预期；DS Pick 按表实现，**M6 手测逐项打勾**。
+以下行为是用户从 **Cursor（VS Code 系）** 带来的默认预期；Zagens 按表实现，**M6 手测逐项打勾**。
 
-| # | 用户预期（市场习惯） | DS Pick 落点 | 阶段 |
+| # | 用户预期（市场习惯） | Zagens 落点 | 阶段 |
 |---|----------------------|--------------|------|
 | C1 | **File → New Window** 再开一个完整界面 | 菜单 / TitleBar → `create_agent_window` | M1 |
 | C2 | 快捷键 **Ctrl+Shift+N**（Win/Linux）/ **Cmd+Shift+N**（macOS） | 全局快捷键注册 | M5 |
@@ -62,15 +62,15 @@
 | C6 | 再点桌面图标 / 从资源管理器「打开」**不启动第二个进程** | `tauri-plugin-single-instance` → 新窗或聚焦 | M1 |
 | C7 | A 项目 Agent 在跑时，B 窗口可正常聊天 / 看文件 | 按 `thread_id` 并行 SSE，切 session 不 abort 他 thread | M3 |
 | C8 | 终端、通知、审批 **不串到别的窗口** | `emit_to` + `thread_owner` | M2、M4 |
-| C9 | 窗口标题能区分项目（文件夹名） | `set_title("{folder} — DS Pick")` | M5 |
+| C9 | 窗口标题能区分项目（文件夹名） | `set_title("{folder} — Zagens")` | M5 |
 | C10 | 共享用户级配置（API Key、主题） | 单进程 `~/.deepseek/config.toml` + keyring | 已有 |
 
 **有意与 Cursor 当前差异（可选，评审可改）：**
 
-| 点 | Cursor 现状（社区反馈） | DS Pick 建议 |
+| 点 | Cursor 现状（社区反馈） | Zagens 建议 |
 |----|-------------------------|--------------|
 | 同一文件夹开第二窗 | 部分版本会 **聚焦回已有窗** | **允许**同 workspace 两窗（对标 VS Code）；侧栏用 session 区分即可 |
-| Agent 专用浮窗 | Cursor 曾试验 Agent Window，未作为长期主路径 | 不做独立 Agent 浮窗；**每窗 = 完整 DS Pick**（聊天 + 工作台） |
+| Agent 专用浮窗 | Cursor 曾试验 Agent Window，未作为长期主路径 | 不做独立 Agent 浮窗；**每窗 = 完整 Zagens**（聊天 + 工作台） |
 | 单屏多 Agent Tab | Cursor 强调同窗 **Ctrl+T** 多 Agent 标签 | 保留；与多窗口 **并存**（窗 = 项目边界，Tab = 同项目多会话） |
 
 **原则：** 不发明新的「多项目」交互；用户 muscle memory 从 Cursor/VS Code 直接迁移。
@@ -132,7 +132,7 @@
 |------|------|
 | 首窗 | 保留 `main`（兼容现有 capabilities、文档、测试） |
 | 后续窗 | `pick-{uuid}` 或 `pick-{n}`（实现时二选一；**禁止**用户可见 label 作为业务键以外的持久化主键） |
-| 人类可读标题 | `set_title`：`{workspace 末段} — DS Pick` 或 session 名 |
+| 人类可读标题 | `set_title`：`{workspace 末段} — Zagens` 或 session 名 |
 
 **上限：** 建议 **8** 个 Agent 窗口（与 `TerminalManager` 每窗 PTY 上限联动，见 §6.2）。
 
@@ -195,7 +195,7 @@ struct WindowRegistry {
 | 项 | 现状 | 目标 |
 |----|------|------|
 | 左键托盘 | 显示 `main` | 显示 **最近聚焦** 的窗口 |
-| 菜单「显示 DS Pick」 | 同上 | 同上；无窗时创建 `main` |
+| 菜单「显示 Zagens」 | 同上 | 同上；无窗时创建 `main` |
 | 新增 | — | **「新建窗口」**、**「窗口列表」** 子菜单（≤8 项） |
 | 退出 | 杀 sidecar + `exit(0)` | 不变；关所有窗后仍可从托盘退出 |
 
@@ -372,11 +372,11 @@ Runtime 已有 `POST .../resolve-approval` 且 pending 带 `thread_id` / `turn_i
 
 | 条目 | 状态 | 说明 |
 |------|------|------|
-| 窗口标题（`{folder} — DS Pick`） | ✅ 已交付 | `updateWindowTitle` / 新建窗 `set_title` |
+| 窗口标题（`{folder} — Zagens`） | ✅ 已交付 | `updateWindowTitle` / 新建窗 `set_title` |
 | Ctrl/Cmd+Shift+N、TitleBar 新建窗 | ✅ 已交付 | `App.tsx` / `windowBridge.ts` |
 | 每窗 workspace 绑定 + 侧栏过滤 | ✅ 已交付 | M3 |
 | 窗口位置/尺寸持久化 | ⏸ backlog | 建议 `tauri-plugin-window-state`；双屏用户再开 issue |
-| 资源管理器「用 DS Pick 打开」 | ⏸ backlog | 安装包/文件关联 + `single-instance` 传路径 |
+| 资源管理器「用 Zagens 打开」 | ⏸ backlog | 安装包/文件关联 + `single-instance` 传路径 |
 | 托盘动态「窗口列表」子菜单 | ⏸ backlog | 当前托盘仅「新建窗口」 |
 
 **何时再做 M5：** 有明确用户反馈（重启后窗口乱、要从文件夹一键开第二项目）再开一小迭代即可。

@@ -1,8 +1,8 @@
-/** 简体中文翻译表 — DS Pick 桌面端 source of truth */
+/** 简体中文翻译表 — Zagens 桌面端 source of truth */
 const zhHans = {
   app: {
-    title: 'DS Pick',
-    subtitle: '你的 AI 编码助手',
+    title: 'Zagens',
+    subtitle: '桌面 Agent 控制台',
     emptyPrompt: '在下方输入问题开始对话',
   },
   a11y: {
@@ -92,7 +92,8 @@ const zhHans = {
     apiKeyMissing: '未检测到已保存的 DeepSeek API Key。',
   },
   about: {
-    description: 'DS Pick 是基于 DeepSeek TUI 运行时的桌面编码助手。',
+    description:
+      'Zagens 是面向代码与办公工作区的桌面 Agent 控制台，由本地 runtime sidecar 驱动。',
     runtimeLine: '运行时通过本地 deepseek CLI 侧车（127.0.0.1:7878）连接。',
   },
   titlebar: {
@@ -122,7 +123,7 @@ const zhHans = {
     chooseWorkspace: '选择工作区目录',
     browseFolder: '浏览文件夹…',
     selectingFolder: '正在打开文件夹对话框…',
-    pickError: '无法唤起系统文件夹对话框（常见于浏览器或未集成 Tauri）。请直接使用下方输入路径，或在 DS Pick 桌面版中重试。',
+    pickError: '无法唤起系统文件夹对话框（常见于浏览器或未集成 Tauri）。请直接使用下方输入路径，或在 Zagens 桌面版中重试。',
     manualPath: '或手动输入路径',
     currentDirectory: '当前目录',
     confirm: '确定',
@@ -224,7 +225,7 @@ const zhHans = {
     renamePrompt: '终端名称',
     close: '关闭终端',
     spawning: '正在启动 Shell…',
-    desktopOnly: '集成终端仅在 DS Pick 桌面版（Tauri）中可用。',
+    desktopOnly: '集成终端仅在 Zagens 桌面版（Tauri）中可用。',
     maxSessions: '最多同时打开 {{max}} 个终端',
   },
   workspaceFiles: {
@@ -280,7 +281,7 @@ const zhHans = {
     pathValue: '.deepseek/pick-rules.md',
     hint:
       '内容会绑定当前 Composer 工作区。保存后，**新创建的运行时线程**会在系统提示词中**优先**注入该文件（类似 Cursor 的项目规则）。已在运行中的线程沿用其启动时的提示；要应用新规则请**新建对话**。',
-    desktopOnly: '项目规则编辑仅在 DS Pick 桌面版（Tauri）中可用。',
+    desktopOnly: '项目规则编辑仅在 Zagens 桌面版（Tauri）中可用。',
     needWorkspace: '请先在底部 Composer 中设置工作区目录。',
     loadError: '加载失败：{{message}}',
     save: '保存',
@@ -384,7 +385,7 @@ const zhHans = {
     skillFooterDesc: '可用「新建技能」或 POST /v1/skills 写入模板；社区包仍在终端 TUI 使用 /skill install …。若新建位置与上方面板目录不一致，刷新后可能不会出现在列表中（与工作区优先级有关）。',
     reloadList: '重新加载列表',
     selectSkillRoot: '选择技能根目录（须为已存在的全局或工作区技能目录）',
-    dialogNotAvailable: '无法打开系统文件夹对话框。请在 DS Pick 桌面版重试，或手动填入「自定义根目录」绝对路径。',
+    dialogNotAvailable: '无法打开系统文件夹对话框。请在 Zagens 桌面版重试，或手动填入「自定义根目录」绝对路径。',
     skillDirRequired: '请填写技能目录名',
     skillModeCreate: '新建',
     skillModeImport: '导入',
@@ -540,7 +541,7 @@ const zhHans = {
     saveHint: '保存后将自动重启本地 TUI 运行时以应用更改。',
     saveRestartsSidecar:
       '保存将重启本地运行时，当前进行中的生成会中断。全量审核进行中建议先停止生成或审完再保存。继续保存？',
-    notAvailable: '系统设置仅在 Tauri 桌面端可用。请在 DS Pick 应用中打开此面板。',
+    notAvailable: '系统设置仅在 Tauri 桌面端可用。请在 Zagens 应用中打开此面板。',
     diagInfo: '诊断信息',
     apiKey: 'API Key',
     loadingSettings: '加载设置中…',

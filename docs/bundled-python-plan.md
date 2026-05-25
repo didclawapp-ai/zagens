@@ -1,6 +1,6 @@
 # 零依赖 Python 运行时打包方案
 
-> 目标：用户安装 DS Pick / `deepseek` 后，`write_office` 和 PPTX 引擎立即可用，无需安装 Python 或任何 pip 包。
+> 目标：用户安装 Zagens / `deepseek` 后，`write_office` 和 PPTX 引擎立即可用，无需安装 Python 或任何 pip 包。
 
 ---
 
@@ -183,7 +183,7 @@ print("OK")
 安装后的目录结构：
 
 ```
-DS Pick.app/Contents/Resources/  (macOS)
+Zagens.app/Contents/Resources/  (macOS)
   ├── python/
   │   ├── python3              ← PBS 解释器
   │   ├── lib/
@@ -210,7 +210,7 @@ PBS 下载由 `prepare-bundle.mjs` → `prepare-python.mjs` 完成，`build.rs` 
 ```rust
 /// Try to locate a bundled Python runtime shipped alongside the binary.
 ///
-/// DS Pick (Tauri):
+/// Zagens (Tauri):
 ///   <app_dir>/Resources/python/python3  (macOS/Linux)
 ///   <app_dir>/python/python.exe         (Windows)
 ///
@@ -346,7 +346,7 @@ main().catch(e => { console.error(e); process.exit(1); });
 
 > 实际体积：numpy 的 `.libs/` 目录含大量 `.dll`/`.dylib`（OpenBLAS 等），matplotlib 自带字体缓存，合计提取后可能接近 200 MB。压缩后约 55-60 MB。
 
-对 DS Pick 安装包（当前约 50 MB），增量约 **55 MB**，总包体 ~105 MB——对桌面应用可接受。发布 notes 中需标注体积变化。
+对 Zagens 安装包（当前约 50 MB），增量约 **55 MB**，总包体 ~105 MB——对桌面应用可接受。发布 notes 中需标注体积变化。
 
 ---
 

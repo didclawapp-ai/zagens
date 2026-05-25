@@ -1,4 +1,4 @@
-# DS Pick 开发笔记
+# Zagens 开发笔记
 
 零散想法、后续方向与非正式排期；需要落地时再拆 issue / 写入 IMPLEMENTATION_STEPS。
 
@@ -10,9 +10,9 @@
 
 ## 2026-05-24 — 产品战略方向备忘（架构对话整理）
 
-**背景：** 维护者与 Agent 就 DS Pick 长期方向进行战略对话——担心 Agent 领域认识尚浅、业界许多能力仍在摸索，**开发方向是否走偏**。本文档整理对话结论，供后续评审与路线图引用；**非立即执行的工程承诺**。
+**背景：** 维护者与 Agent 就 Zagens 长期方向进行战略对话——担心 Agent 领域认识尚浅、业界许多能力仍在摸索，**开发方向是否走偏**。本文档整理对话结论，供后续评审与路线图引用；**非立即执行的工程承诺**。
 
-**一句话结论：** 方向判断 **大体正确**——DS Pick 应押 **Desktop 壳 + 本地 sidecar Harness + 长程任务（CRAFT）**；TUI/CLI **退出用户产品面**，保留为 dev/headless 工具；sidecar 三层架构 **不必推翻**。
+**一句话结论：** 方向判断 **大体正确**——Zagens 应押 **Desktop 壳 + 本地 sidecar Harness + 长程任务（CRAFT）**；TUI/CLI **退出用户产品面**，保留为 dev/headless 工具；sidecar 三层架构 **不必推翻**。
 
 ### 1. 核心战略判断（签收备忘）
 
@@ -22,17 +22,17 @@
 | **Desktop-only 作为用户产品** | **成立** | 高 | 与 Cursor / Claude Desktop / Windsurf 主战场一致；资源应停止 TUI parity |
 | TUI/CLI 完全消失 | **不成立** | 中 | 业界 CLI 仍存（Claude Code CLI）；本仓库缩为 **`serve --http` / debug / CI**，非第二产品 |
 | sidecar 壳运分离 | **继续** | 高 | Agent turn 只在 sidecar；Desktop 是 L3，不是引擎 |
-| 本地可配置 Harness vs 云端托管 | **差异化成立** | 中-高 | Anthropic Managed Agents = 云端 harness；DS Pick = 本地控制权（见 [§Harness 组件化](#2026-05-24--harness-组件化从硬编码到可组合-agent-执行结构)） |
+| 本地可配置 Harness vs 云端托管 | **差异化成立** | 中-高 | Anthropic Managed Agents = 云端 harness；Zagens = 本地控制权（见 [§Harness 组件化](#2026-05-24--harness-组件化从硬编码到可组合-agent-执行结构)） |
 | 长程任务可达 | **已有实证** | 高 | **CRAFT 手测 ~35 分钟**（2026-05-24）；B-L1 runtime + AgentPanel 已签收 |
 
-**产品表述（对内）：** DS Pick = **本地长程 Agent Harness 的 Desktop 控制台**——不是「聊天窗口」，而是能跑多角色 CRAFT、目标数小时、可跨天接力的任务运行时。
+**产品表述（对内）：** Zagens = **本地长程 Agent Harness 的 Desktop 控制台**——不是「聊天窗口」，而是能跑多角色 CRAFT、目标数小时、可跨天接力的任务运行时。
 
 ### 2. 架构评估摘要
 
 当前 **L1/L2/L3** 分层（见 [RUNTIME_EVOLUTION_ROADMAP.md §2](../tech/RUNTIME_EVOLUTION_ROADMAP.md)）经对话复核 **仍然正确**：
 
 ```
-L3  DS Pick（Tauri + React）— 唯一用户产品壳（战略调整）
+L3  Zagens（Tauri + React）— 唯一用户产品壳（战略调整）
 L2  HTTP/SSE + Tauri IPC + runtime_proxy（Bearer 不出 WebView）
 L1  deepseek-tui sidecar + deepseek-core（Engine / turn_loop / tools）
 ```
@@ -45,15 +45,15 @@ L1  deepseek-tui sidecar + deepseek-core（Engine / turn_loop / tools）
 
 业界在 Agent 形态上 **并未收敛**，但有几条可观察趋势——用于 **校准方向**，不是复制竞品：
 
-| 趋势 | 代表 | 对 DS Pick 的含义 |
+| 趋势 | 代表 | 对 Zagens 的含义 |
 |------|------|-------------------|
 | CLI → Desktop 编排 | Anthropic：Claude Code 从 CLI 走向 Desktop 管多 agent | 长任务 / 多 agent **可视化编排** 在 Desktop，不在 TUI |
 | IDE/Desktop 主战场 | Cursor、Windsurf、Claude Desktop Code tab | 日常 + agent 可视化 = IDE/Desktop；与「desktop-only 产品」同向 |
-| CLI 仍占生态位 | Claude Code CLI、Codex CLI、headless SDK | **power user / CI / 自动化**；DS Pick 不必抢，保留 dev 入口即可 |
-| 云端 Managed Harness | Anthropic Managed Agents（2026.04 beta） | 卖「省心」；DS Pick 卖 **本地控制权 + 可组合 Harness** |
+| CLI 仍占生态位 | Claude Code CLI、Codex CLI、headless SDK | **power user / CI / 自动化**；Zagens 不必抢，保留 dev 入口即可 |
+| 云端 Managed Harness | Anthropic Managed Agents（2026.04 beta） | 卖「省心」；Zagens 卖 **本地控制权 + 可组合 Harness** |
 | Harness 术语结晶 | session / harness / sandbox 全行业共用 | 本仓库 Harness 组件化路线与业界词汇对齐 |
 
-**重要 nuance：** CLI 常被说「适合深度推理」——**不是因为终端更聪明**，而是 historically 绑定了 lean harness、少 UI 打断、长 autonomous run。**同一 sidecar + 同一模型在 Desktop 推理深度可等价**；Desktop 还多 steer、diff、AgentPanel。DS Pick 应用 **trust 预置 + 批量审批** 在长任务上复现 CLI 的「少打断」，而非保留 ratatui 产品。
+**重要 nuance：** CLI 常被说「适合深度推理」——**不是因为终端更聪明**，而是 historically 绑定了 lean harness、少 UI 打断、长 autonomous run。**同一 sidecar + 同一模型在 Desktop 推理深度可等价**；Desktop 还多 steer、diff、AgentPanel。Zagens 应用 **trust 预置 + 批量审批** 在长任务上复现 CLI 的「少打断」，而非保留 ratatui 产品。
 
 **仍不确定（业界也在摸索）：** 最优 Harness 工具集大小、多 agent 并行写冲突策略、跨天记忆 vs compaction 分工、Managed vs Local 长期份额——**保持 sidecar 可配、Desktop 可观测**，便于随业界迭代调参，而非押死单一路径。
 
@@ -61,7 +61,7 @@ L1  deepseek-tui sidecar + deepseek-core（Engine / turn_loop / tools）
 
 | 层级 | 终态 | 动作 |
 |------|------|------|
-| **用户产品 L3** | 仅 DS Pick Desktop | 新 Harness 能力 **desktop-only**；停止 [TUI_DS_PICK_GAP.md](TUI_DS_PICK_GAP.md) parity 投入 |
+| **用户产品 L3** | 仅 Zagens Desktop | 新 Harness 能力 **desktop-only**；停止 [TUI_DS_PICK_GAP.md](TUI_DS_PICK_GAP.md) parity 投入 |
 | **Runtime sidecar** | 保留 `deepseek-tui serve --http` | `runtime_api` + `runtime_threads` + Engine；**ratatui 交互 UI 进入 freeze** |
 | **CLI** | dev / CI / headless | `serve`、`debug`、契约测、脚本；用户无需知道 CLI 存在 |
 | **crate 命名** | 长期可选 | `deepseek-tui` → `deepseek-runtime` / `deepseek-sidecar`（降低「终端产品」误解） |
@@ -70,13 +70,13 @@ L1  deepseek-tui sidecar + deepseek-core（Engine / turn_loop / tools）
 
 | 决策 | 内容 |
 |------|------|
-| **D12 Desktop-only 产品** | DS Pick 为唯一用户产品壳；TUI 终端 UI maintenance/freeze |
+| **D12 Desktop-only 产品** | Zagens 为唯一用户产品壳；TUI 终端 UI maintenance/freeze |
 | **D13 Sidecar 语义** | `deepseek-tui` 产品含义 = HTTP runtime sidecar；ratatui = legacy adapter |
 | **D14 CLI 定位** | CLI 缩为 dev/CI 工具，非用户入口 |
 
 ### 5. 长程任务：35 分钟 CRAFT 与下一关
 
-**实测：** CRAFT 已在 DS Pick 上连续运行 **约 35 分钟**（2026-05-24），与 B-L1 手测签收一致。说明 **L1 墙钟 + L2 多角色交接** 已过关。
+**实测：** CRAFT 已在 Zagens 上连续运行 **约 35 分钟**（2026-05-24），与 B-L1 手测签收一致。说明 **L1 墙钟 + L2 多角色交接** 已过关。
 
 长程任务分三层（验收用，避免只盯墙钟）：
 
@@ -148,7 +148,7 @@ L1  deepseek-tui sidecar + deepseek-core（Engine / turn_loop / tools）
 
 ## 2026-05-24 — Harness 组件化：从硬编码到可组合 Agent 执行结构
 
-**背景：** 与 Agent（DS Pick desktop session）进行了一整天架构对话。核心产出：harness 的进化线、跨领域泛化、组件化作为硬编码膨胀的解决方案。
+**背景：** 与 Agent（Zagens desktop session）进行了一整天架构对话。核心产出：harness 的进化线、跨领域泛化、组件化作为硬编码膨胀的解决方案。
 
 ### 关键结论
 
@@ -201,8 +201,8 @@ Agent+harness 架构统一于余代数 `X → F(X)`。LLM 是退化余代数 `X 
 Anthropic Managed Agents（2026.04 公测）使用完全相同的术语：session（只追加日志）、harness（调用模型+路由工具的循环）、sandbox（隔离执行环境）。
 
 - Anthropic：**云端托管** harness（纵向），用户上传 session 定义
-- DS Pick：**本地可配置** harness（横向），用户控制执行结构
-- Skills 在两边同时出现（Claude Code Skills 课程 + DS Pick SKILL.md），同一季度结晶
+- Zagens：**本地可配置** harness（横向），用户控制执行结构
+- Skills 在两边同时出现（Claude Code Skills 课程 + Zagens SKILL.md），同一季度结晶
 
 #### 7. 实现路径（最小第一步）
 
@@ -211,11 +211,11 @@ Anthropic Managed Agents（2026.04 公测）使用完全相同的术语：sessio
 1. `HarnessConfig` 结构体（`crates/config/src/lib.rs`）
 2. `start_turn` 加载配置 → 注入 `TurnContext`
 3. 各组件 match 分支读配置，替换硬编码常量
-4. DS Pick 设置面板 Harness 页（预置组合选择器 + 7 个组件下拉框）
+4. Zagens 设置面板 Harness 页（预置组合选择器 + 7 个组件下拉框）
 
 ### 产品定位
 
-**预设组合是产品，配置面板是高级功能。** 90% 用户只碰预置，harness 配置暴露给 power user。与 Anthropic 的分叉：Anthropic 卖省心，DS Pick 卖控制权。
+**预设组合是产品，配置面板是高级功能。** 90% 用户只碰预置，harness 配置暴露给 power user。与 Anthropic 的分叉：Anthropic 卖省心，Zagens 卖控制权。
 
 ### 与路线图关系
 
@@ -236,15 +236,15 @@ Anthropic Managed Agents（2026.04 公测）使用完全相同的术语：sessio
 
 ### 命名决定
 
-**AgentPick。** 经讨论，DS Pick → Pickcode / CodePick → AgentPick。
+**AgentPick。** 经讨论，Zagens → Pickcode / CodePick → AgentPick。
 
 | 候选 | 绑定 | 三年后进非编程领域 |
 |------|------|-------------------|
-| DS Pick | DeepSeek 生态 | 可接受，但需解释 |
+| Zagens | DeepSeek 生态 | 可接受，但需解释 |
 | Pickcode / CodePick | 编程领域 | 包袱 |
 | **AgentPick** | Agent 范式 | 无包袱 |
 
-Agent 已是 2026 年大众认知词（AI Agent / 智能体）。用户看到 **AgentPick** 立刻知道：跟 AI Agent 有关，且核心动作是 **Pick**（选模型、选 skill、选 harness 模式、按需组合）。DS Pick 的「Pick」含义模糊——没有上下文时不知道 Pick 在挑什么。AgentPick 自解释，不需要额外说明。
+Agent 已是 2026 年大众认知词（AI Agent / 智能体）。用户看到 **AgentPick** 立刻知道：跟 AI Agent 有关，且核心动作是 **Pick**（选模型、选 skill、选 harness 模式、按需组合）。Zagens 的「Pick」含义模糊——没有上下文时不知道 Pick 在挑什么。AgentPick 自解释，不需要额外说明。
 
 内部架构层叫**导引层**。中文不面向用户。
 
@@ -252,7 +252,7 @@ Agent 已是 2026 年大众认知词（AI Agent / 智能体）。用户看到 **
 
 ## 2026-05-21 — 会话/线程「结项汇总报告」（Handoff Report）— ⬜ 规划中
 
-**背景（产品类比）：** 人类项目结束会写**总结报告**；以后查问题先看报告，而不是从原始邮件/会议记录从头翻。IDE Agent（如 Cursor）在长对话里会对**旧轮次做摘要压缩**，相当于机器侧的「报告」。DS Pick **目前没有**与之对等、**用户可检索**的「结项汇总」机制。
+**背景（产品类比）：** 人类项目结束会写**总结报告**；以后查问题先看报告，而不是从原始邮件/会议记录从头翻。IDE Agent（如 Cursor）在长对话里会对**旧轮次做摘要压缩**，相当于机器侧的「报告」。Zagens **目前没有**与之对等、**用户可检索**的「结项汇总」机制。
 
 ### 现状：有压缩，无「报告」
 
@@ -294,7 +294,7 @@ Agent 已是 2026 年大众认知词（AI Agent / 智能体）。用户看到 **
 
 | 项 | 状态 | 说明 |
 |----|------|------|
-| [HARNESS.md](HARNESS.md) | ✅ | JD → DS Pick 模块表；三门工程；§7 战略备忘（非商业建议） |
+| [HARNESS.md](HARNESS.md) | ✅ | JD → Zagens 模块表；三门工程；§7 战略备忘（非商业建议） |
 | 与 scratchpad 交叉链接 | ✅ | [audit-scratchpad-design.md](audit-scratchpad-design.md) §2 链到 HARNESS §1–2 |
 
 ---
@@ -463,13 +463,13 @@ Agent 已是 2026 年大众认知词（AI Agent / 智能体）。用户看到 **
 
 ---
 
-## 2026-05-18 — Claude 对照实验（DS Pick runtime × 外来模型）
+## 2026-05-18 — Claude 对照实验（Zagens runtime × 外来模型）
 
-**目的：** 在 **同一套 DS Pick 运行时**（`dispatch.rs`、子代理环、幻觉 patch、TaskType）下挂 Claude 等模型，观察行为差异——**不是**复刻 Claude Code 产品，也不与 Anthropic 整链产品对标。
+**目的：** 在 **同一套 Zagens 运行时**（`dispatch.rs`、子代理环、幻觉 patch、TaskType）下挂 Claude 等模型，观察行为差异——**不是**复刻 Claude Code 产品，也不与 Anthropic 整链产品对标。
 
 ### 和 Claude Code 的本质差异
 
-| 维度 | Claude Code（+ Claude 模型） | DS Pick（+ 任意兼容 API 模型） |
+| 维度 | Claude Code（+ Claude 模型） | Zagens（+ 任意兼容 API 模型） |
 |------|------------------------------|--------------------------------|
 | 链条 | 客户端、系统提示、工具 schema、调度、模型对齐 **共设计** | 自研 runtime + prompt；**模型可换、宪法不变** |
 | 并行叙事 | 宽泛规则：「无依赖则并行」，易让模型推断 Edit 可并行 | **`should_parallelize_tool_batch`**：整批须 `read_only && supports_parallel` |
@@ -478,16 +478,16 @@ Agent 已是 2026 年大众认知词（AI Agent / 智能体）。用户看到 **
 
 **代码事实（与模型无关，换 Claude 也不变）：**
 
-| 问题 | DS Pick 结论 | 落点 |
+| 问题 | Zagens 结论 | 落点 |
 |------|--------------|------|
 | 主 agent 同轮并行 `edit_file`？ | **否** | `dispatch.rs` → `should_parallelize_tool_batch`；写工具非 `read_only` |
 | 主 agent 同轮并行多文件 `read_file`？ | **是**（批内全只读时） | `turn_loop.rs` → `FuturesUnordered` |
 | 子代理同 step 多 `read_file` 并行？ | **否** | `subagent/mod.rs` 串行 `for` + `await`，**不经过** `should_parallelize_tool_batch` |
 | 子代理并行写？ | explore/review 裁剪；implementer 可写但串行 | `build_allowed_tools` + 同上循环 |
 
-实测记录：在 Claude Code 里用 DeepSeek V4 问并行问题，模型曾按 CC **通用并行规则** 推论；读 DS Pick 源码后与上表一致。见 [回归测试 R1、R6](../tui/回归测试.md)。
+实测记录：在 Claude Code 里用 DeepSeek V4 问并行问题，模型曾按 CC **通用并行规则** 推论；读 Zagens 源码后与上表一致。见 [回归测试 R1、R6](../tui/回归测试.md)。
 
-### 在 DS Pick 里接 Claude（当前可行路径）
+### 在 Zagens 里接 Claude（当前可行路径）
 
 | 项 | 状态 | 说明 |
 |----|------|------|
@@ -507,7 +507,7 @@ base_url = "https://openrouter.ai/api/v1"
 model = "anthropic/claude-sonnet-4"   # 以 OpenRouter 模型列表为准
 ```
 
-1. 保存配置，启动 TUI 或 DS Pick（sidecar 读同一 config）。
+1. 保存配置，启动 TUI 或 Zagens（sidecar 读同一 config）。
 2. TUI：`/provider openrouter`（或依赖上方 `provider =` 默认）。
 3. **新开 session / thread**，TaskType 选 **Code**（与日常开发对照一致）。
 4. 用 [回归测试](../tui/回归测试.md) **R1、R6** 等提问，要求 **引用 `dispatch.rs` / `subagent/mod.rs` 行号** 再结论。
@@ -515,7 +515,7 @@ model = "anthropic/claude-sonnet-4"   # 以 OpenRouter 模型列表为准
 
 **测什么 / 不测什么：**
 
-- **测：** 在 DS Pick prompt + 调度下，Claude 是否更少架构幻觉、工具链是否可靠、与 V4 的主观差异。
+- **测：** 在 Zagens prompt + 调度下，Claude 是否更少架构幻觉、工具链是否可靠、与 V4 的主观差异。
 - **不测：** Claude Code 客户端体验；Anthropic 原生 extended thinking / prompt cache；「Claude Code 里换模型」的等价体验。
 
 ### 后续（可选）
@@ -536,7 +536,7 @@ model = "anthropic/claude-sonnet-4"   # 以 OpenRouter 模型列表为准
 |------|------|------|
 | 会话列表与消息体（SQLite WAL） | ✅ | `session_store_sqlite.rs` + `session_manager.rs`（`open_sqlite_session_db`，空库时从旧 JSON 迁移） |
 | Runtime threads / turns / items / events | ✅ | `thread_store_sqlite.rs` + `runtime_threads.rs`（`open_sqlite_thread_db`；含未完成 turn 查询等） |
-| **桌面 DS Pick 对接** | ✅ | Web UI `persistThreadSession` → `POST /v1/threads/{id}/persist-session`（`runtime_api.rs` → `SessionManager::save_session` 写 SQLite）；流式生成中每 **18s** 周期 checkpoint（`App.tsx` `SESSION_CHECKPOINT_MS`）；`turn.completed` 等节点同样 persist；侧栏会话列表走 runtime 读 SQLite |
+| **桌面 Zagens 对接** | ✅ | Web UI `persistThreadSession` → `POST /v1/threads/{id}/persist-session`（`runtime_api.rs` → `SessionManager::save_session` 写 SQLite）；流式生成中每 **18s** 周期 checkpoint（`App.tsx` `SESSION_CHECKPOINT_MS`）；`turn.completed` 等节点同样 persist；侧栏会话列表走 runtime 读 SQLite |
 | 原「流式 checkpoint / JSONL 回填 UI」专项 | ✅ | Runtime SQLite + 桌面周期 persist 覆盖，不再单列后续块 |
 
 **备注：** 旧 JSON 文件仍可作为迁移来源；新安装默认走 SQLite。桌面与 sidecar 共用同一 runtime 会话库，崩溃/重载后重连即可从库内恢复。若仍有边角（仅 UI 内存态未刷新的极端场景），按具体复现再开 issue。

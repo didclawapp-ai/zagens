@@ -1,12 +1,12 @@
 # Third-Party Notices
 
-**DS Pick** is a proprietary desktop product — see [LICENSE](../LICENSE) at the repository root.
+**Zagens** is a proprietary desktop product — see [LICENSE](../LICENSE) at the repository root.
 
-This file records **third-party** components embedded in DS Pick. They are not part of the DS Pick product license.
+This file records **third-party** components embedded in Zagens. They are not part of the Zagens product license.
 
 ## Agent runtime (deepseek-tui lineage, MIT)
 
-DS Pick embeds an agent runtime sidecar whose source lineage is MIT-licensed third-party code. The runtime is built from the Rust crates under `crates/` (agent, config, core, tui, tools, etc.).
+Zagens embeds an agent runtime sidecar whose source lineage is MIT-licensed third-party code. The runtime is built from the Rust crates under `crates/` (agent, config, core, tui, tools, etc.).
 
 | Field | Value |
 |-------|-------|

@@ -14,9 +14,14 @@ export function interpolate(template: string, params?: Record<string, string>): 
  * Detect the initial locale:
  *   localStorage > navigator.language > default (zh-Hans)
  */
+const LOCALE_STORAGE_KEY = 'zagens-locale';
+const LEGACY_LOCALE_STORAGE_KEY = 'ds-pick-locale';
+
 export function detectLocale(defaultLocale: Locale = 'zh-Hans'): Locale {
   try {
-    const stored = localStorage.getItem('ds-pick-locale');
+    const stored =
+      localStorage.getItem(LOCALE_STORAGE_KEY) ??
+      localStorage.getItem(LEGACY_LOCALE_STORAGE_KEY);
     if (stored === 'zh-Hans' || stored === 'en') return stored;
   } catch {
     // localStorage unavailable (e.g. SSR / privacy mode) — ignore
@@ -38,7 +43,7 @@ export function detectLocale(defaultLocale: Locale = 'zh-Hans'): Locale {
  */
 export function persistLocale(locale: Locale): void {
   try {
-    localStorage.setItem('ds-pick-locale', locale);
+    localStorage.setItem(LOCALE_STORAGE_KEY, locale);
   } catch {
     // ignore
   }

@@ -1,4 +1,4 @@
-//! DS Pick UI enrichments for `GET /v1/threads/{id}/scratchpad/status` (Phase D2).
+//! Zagens UI enrichments for `GET /v1/threads/{id}/scratchpad/status` (Phase D2).
 
 use serde_json::{Value, json};
 

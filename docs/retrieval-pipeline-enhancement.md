@@ -274,7 +274,7 @@ let _ = std::fs::write(&index_path, serde_json::to_string_pretty(&index).unwrap_
 
 ### 3.5 工作区感知
 
-与 Issue 0 同理——`build_index(workspace)` 用显式 workspace 路径，不依赖 `current_dir()`。DS Pick 多工作区场景下，每个 Composer 工作区有独立的 `symbols.json`。切换工作区时重建索引（或 Tauri 命令传入 `workspaceRoot`）。
+与 Issue 0 同理——`build_index(workspace)` 用显式 workspace 路径，不依赖 `current_dir()`。Zagens 多工作区场景下，每个 Composer 工作区有独立的 `symbols.json`。切换工作区时重建索引（或 Tauri 命令传入 `workspaceRoot`）。
 
 ### 3.6 改动量
 

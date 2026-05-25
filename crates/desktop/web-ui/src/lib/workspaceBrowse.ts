@@ -1,7 +1,22 @@
-/** Workspace directory browse helpers (DS Pick workbench → Files tab). */
+/** Workspace directory browse helpers (Zagens workbench → Files tab). */
 
-export const WORKSPACE_DIR_SHOW_HIDDEN_KEY = 'ds-pick-dir-show-hidden';
-export const WORKSPACE_DIR_VIEW_MODE_KEY = 'ds-pick-dir-view-mode';
+export const WORKSPACE_DIR_SHOW_HIDDEN_KEY = 'zagens-dir-show-hidden';
+export const WORKSPACE_DIR_VIEW_MODE_KEY = 'zagens-dir-view-mode';
+const LEGACY_WORKSPACE_DIR_SHOW_HIDDEN_KEY = 'ds-pick-dir-show-hidden';
+const LEGACY_WORKSPACE_DIR_VIEW_MODE_KEY = 'ds-pick-dir-view-mode';
+
+function migrateDirPref(primary: string, legacy: string): void {
+  try {
+    if (localStorage.getItem(primary) != null) return;
+    const old = localStorage.getItem(legacy);
+    if (old != null) localStorage.setItem(primary, old);
+  } catch {
+    /* ignore */
+  }
+}
+
+migrateDirPref(WORKSPACE_DIR_SHOW_HIDDEN_KEY, LEGACY_WORKSPACE_DIR_SHOW_HIDDEN_KEY);
+migrateDirPref(WORKSPACE_DIR_VIEW_MODE_KEY, LEGACY_WORKSPACE_DIR_VIEW_MODE_KEY);
 
 export type WorkspaceDirViewMode = 'flat' | 'tree';
 
@@ -171,7 +186,7 @@ export function expandedDirsStorageKey(
 ): string {
   const ws = workspaceRoot.trim() || '_none_';
   const th = resumedThreadId?.trim() || '_composer_';
-  return `ds-pick-dir-expanded:${ws}::${th}`;
+  return `zagens-dir-expanded:${ws}::${th}`;
 }
 
 export function readExpandedDirs(key: string): Set<string> {

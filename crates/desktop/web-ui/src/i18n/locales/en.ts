@@ -3,8 +3,8 @@ import type { TranslationMap } from '../keys';
 /** English translation table — must fully satisfy TranslationMap */
 const en: TranslationMap = {
   app: {
-    title: 'DS Pick',
-    subtitle: 'Your AI coding assistant',
+    title: 'Zagens',
+    subtitle: 'Desktop agent harness',
     emptyPrompt: 'Start a conversation below',
   },
   a11y: {
@@ -95,7 +95,8 @@ const en: TranslationMap = {
     apiKeyMissing: 'No saved DeepSeek API Key detected.',
   },
   about: {
-    description: 'DS Pick is a desktop coding assistant powered by the DeepSeek TUI runtime.',
+    description:
+      'Zagens is a desktop agent harness for code and office workspaces, powered by a local runtime sidecar.',
     runtimeLine: 'The runtime connects via the local deepseek CLI sidecar (127.0.0.1:7878).',
   },
   titlebar: {
@@ -125,7 +126,7 @@ const en: TranslationMap = {
     chooseWorkspace: 'Choose workspace directory',
     browseFolder: 'Browse folder…',
     selectingFolder: 'Opening folder dialog…',
-    pickError: 'Unable to open folder dialog (common in browsers or non-Tauri builds). Enter a path below or retry in DS Pick desktop.',
+    pickError: 'Unable to open folder dialog (common in browsers or non-Tauri builds). Enter a path below or retry in Zagens desktop.',
     manualPath: 'Or enter path manually',
     currentDirectory: 'Current directory',
     confirm: 'Confirm',
@@ -229,7 +230,7 @@ const en: TranslationMap = {
     renamePrompt: 'Terminal name',
     close: 'Close terminal',
     spawning: 'Starting shell…',
-    desktopOnly: 'Integrated terminal is only available in the DS Pick desktop app (Tauri).',
+    desktopOnly: 'Integrated terminal is only available in the Zagens desktop app (Tauri).',
     maxSessions: 'At most {{max}} terminals at once',
   },
   workspaceFiles: {
@@ -285,7 +286,7 @@ const en: TranslationMap = {
     pathValue: '.deepseek/pick-rules.md',
     hint:
       'Bound to the current Composer workspace. After saving, **newly created runtime threads** inject this file **first** in the system prompt (similar to Cursor project rules). Threads already running keep the prompt from when their engine started — **start a new chat** to pick up edits.',
-    desktopOnly: 'Editing project rules is only available in the DS Pick desktop app (Tauri).',
+    desktopOnly: 'Editing project rules is only available in the Zagens desktop app (Tauri).',
     needWorkspace: 'Set a workspace directory in the composer first.',
     loadError: 'Load failed: {{message}}',
     save: 'Save',
@@ -390,7 +391,7 @@ const en: TranslationMap = {
     skillFooterDesc: 'Use "New Skill" or POST /v1/skills to write a template; community packs are still installed via /skill install … in the terminal TUI. If the new location differs from the panel directory above, the skill may not appear after refresh (workspace priority rules apply).',
     reloadList: 'Reload list',
     selectSkillRoot: 'Select skill root directory (must be an existing global or workspace skill dir)',
-    dialogNotAvailable: 'Cannot open system folder dialog. Retry in DS Pick desktop, or enter an absolute path under "Custom root".',
+    dialogNotAvailable: 'Cannot open system folder dialog. Retry in Zagens desktop, or enter an absolute path under "Custom root".',
     skillDirRequired: 'Skill directory name is required',
     skillModeCreate: 'Create',
     skillModeImport: 'Import',
@@ -547,7 +548,7 @@ const en: TranslationMap = {
     saveHint: 'The local TUI runtime will restart to apply changes.',
     saveRestartsSidecar:
       'Saving restarts the local runtime and interrupts the current generation. During a full-repo audit, stop generation or finish first. Save anyway?',
-    notAvailable: 'System settings are only available in the Tauri desktop app. Please open this panel in DS Pick.',
+    notAvailable: 'System settings are only available in the Tauri desktop app. Please open this panel in Zagens.',
     diagInfo: 'Diagnostics',
     apiKey: 'API Key',
     loadingSettings: 'Loading settings…',

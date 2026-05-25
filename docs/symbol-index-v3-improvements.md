@@ -206,11 +206,11 @@ When symbol_index_hits gives you file:line of a definition:
 
 ---
 
-### V3-5：多工作区索引（DS Pick 集成）
+### V3-5：多工作区索引（Zagens 集成）
 
 #### 问题
 
-DS Pick 的每个 Composer / 恢复线程可以打开不同的工作区路径。但当前索引在 `serve --http` 启动时构建一次，基于 sidecar 进程的 `current_dir`。切换工作区后索引仍然是旧的。
+Zagens 的每个 Composer / 恢复线程可以打开不同的工作区路径。但当前索引在 `serve --http` 启动时构建一次，基于 sidecar 进程的 `current_dir`。切换工作区后索引仍然是旧的。
 
 #### 方案
 
@@ -220,7 +220,7 @@ DS Pick 的每个 Composer / 恢复线程可以打开不同的工作区路径。
 
 `build_index(workspace: &Path)` 和 `lookup_symbol_hits(workspace: &Path, ...)` 已支持传入工作区路径。
 
-**Step 2：DS Pick 前端在切换工作区时触发重建**
+**Step 2：Zagens 前端在切换工作区时触发重建**
 
 当用户切换 Composer / 打开新项目时，Tauri 后端调用 `rebuild_symbol_index` 命令（后台线程，不阻塞 UI）：
 
@@ -261,7 +261,7 @@ fn rebuild_symbol_index(state: tauri::State<AppState>, workspace: String) -> Res
 |:--:|-----|--------|------|
 | **D** | V3-1（行号局限）+ V3-3（read_file 引导）+ V3-4（人类可读前缀） | ~25 行 | 消除模型盲用/盲信索引的两个高频问题 |
 | **E** | V3-2（BM25-索引融合） | ~25 行 | 搜索结果质量进一步提升 |
-| **F** | V3-5（多工作区索引） | ~16 行 | DS Pick 切换项目时索引不失效 |
+| **F** | V3-5（多工作区索引） | ~16 行 | Zagens 切换项目时索引不失效 |
 | **后置** | V3-6 并行解析（C2 遗留） | ~30 行 + rayon dep | 大型仓库启动加速 |
 
 ---

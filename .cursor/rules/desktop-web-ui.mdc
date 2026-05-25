@@ -1,10 +1,10 @@
 ---
-description: DS Pick Vite + React UI under crates/desktop/web-ui
+description: Zagens Vite + React UI under crates/desktop/web-ui
 globs: crates/desktop/web-ui/**
 alwaysApply: false
 ---
 
-# DS Pick web UI
+# Zagens web UI
 
 - **Stack:** Vite 6, React 18, TypeScript, Tailwind; runtime via [crates/desktop/web-ui/src/api/client.ts](crates/desktop/web-ui/src/api/client.ts) (same [API_DESIGN.md](docs/tech/API_DESIGN.md) / `runtime_api.rs` as sidecar).
 - **Desktop bridge:** Tauri `invoke` where already used ([RightPanel](crates/desktop/web-ui/src/components/RightPanel.tsx), [ApiKeyForm](crates/desktop/web-ui/src/components/ApiKeyForm.tsx), etc.); follow existing patterns.

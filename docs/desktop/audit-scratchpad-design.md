@@ -1,7 +1,7 @@
 # 审计工作记忆（Audit Scratchpad）方案草稿
 
 > **状态：** Phase A ✅ · **Phase B ✅** · **Phase C0–C3 ✅**（见 [audit-scratchpad-test.md](audit-scratchpad-test.md)）；**C4** 远期（§6.12.9）· **Phase D1/D2/U2** ✅ · **U3** ⬜（§6.13，试跑 [§L8](audit-scratchpad-test.md#l8--phase-d-审计过程可视化规划)）  
-> **范围：** DS Pick / TUI 共用 runtime；面向**长程、全库级代码审查**与同类「多步探索 → 最终报告」任务。  
+> **范围：** Zagens / TUI 共用 runtime；面向**长程、全库级代码审查**与同类「多步探索 → 最终报告」任务。  
 > **相关：** [HARNESS.md](HARNESS.md)（Harness 定位、JD 映射、与 DeepSeek 关系备忘）、[agent-reliability-craft-plan.md](../agent-reliability-craft-plan.md)、[auditor-subagent-design.md](auditor-subagent-design.md)、`crates/tui/src/tools/subagent/blackboard.rs`、`crates/tui/src/prompts/base.md` § Full-repository code review mode。
 
 ---
@@ -36,7 +36,7 @@
 
 ## 2. 设计原则
 
-**产品本质（讨论锚点，2026-05-20）：** 制定一套**可执行、可验收**的规则，提供与之匹配的**工具**（挡位与仪表），让模型这一**超强大脑**通过教材（`base.md` 等）、实操与路考（scratchpad、门禁、未来 optional 教学）**学会按规则做事**——而不是假设「聪明即可无师自通」。规则单独存在不够；工具单独存在也不够；三者加**学习与违约可见**才构成 DS Pick 对人的价值。对外部表述见 **Model + Harness = Agent**：[HARNESS.md §1–§2](HARNESS.md#1-外部信号他们在招什么)。
+**产品本质（讨论锚点，2026-05-20）：** 制定一套**可执行、可验收**的规则，提供与之匹配的**工具**（挡位与仪表），让模型这一**超强大脑**通过教材（`base.md` 等）、实操与路考（scratchpad、门禁、未来 optional 教学）**学会按规则做事**——而不是假设「聪明即可无师自通」。规则单独存在不够；工具单独存在也不够；三者加**学习与违约可见**才构成 Zagens 对人的价值。对外部表述见 **Model + Harness = Agent**：[HARNESS.md §1–§2](HARNESS.md#1-外部信号他们在招什么)。
 
 **Agent 设计哲学依据（维护者）：** **实事求是，实践出真知。**
 
@@ -56,14 +56,14 @@
 
 ### 2.1 人机契约（「契约」现象）
 
-> **维护者备忘（2026-05-20）：** 来自产品试跑后的反思——模型像**大脑**，DS Pick 像**车/工具软件**；用得顺手之前，需要**学习规则 + 反复实操**；三者（用户、产品、模型）之间的对齐，可归纳为 **契约**，而非单靠「更聪明」。
+> **维护者备忘（2026-05-20）：** 来自产品试跑后的反思——模型像**大脑**，Zagens 像**车/工具软件**；用得顺手之前，需要**学习规则 + 反复实操**；三者（用户、产品、模型）之间的对齐，可归纳为 **契约**，而非单靠「更聪明」。
 
 #### 比喻
 
 | 角色 | 比拟 | 在本方案里 |
 |------|------|------------|
 | 模型 | 驾驶员的大脑 | 推理、规划、自然语言叙事 |
-| DS Pick / runtime | 车辆与交规 | 工具语义、引擎等待/门禁、scratchpad 文件 |
+| Zagens / runtime | 车辆与交规 | 工具语义、引擎等待/门禁、scratchpad 文件 |
 | 用户 | 乘客 / 车主 | 目标（「全库审完」「出报告」）、验收标准 |
 
 大脑可以在对话里**叙述**「我会并行派 14 个子代理审完」；只有车上有**真实挡位**（`task_create` vs `agent_spawn`）、**仪表盘**（`inventory` / 横条）、**路检**（C1、`verified`）时，叙事才与行驶一致。说明书若只写「踩油门」而不写手动挡/自动挡，驾驶员就会踩错踏板——车仍会动，但未必到达约定目的地。
@@ -80,7 +80,7 @@
 
 #### 学车阶段（与产品能力映射）
 
-| 阶段 | 驾驶员 | DS Pick / 审计 scratchpad |
+| 阶段 | 驾驶员 | Zagens / 审计 scratchpad |
 |------|--------|---------------------------|
 | 交规与车型 | 学挡位、仪表含义 | §7.1 Task vs Sub-agent；`audit-repo`；工具 schema |
 | 教练带练 | 副驾纠错 | Checklist、琥珀横条、`scratchpad_*` 提醒（B4） |
@@ -109,7 +109,7 @@
 
 > **状态：** 设计共识（与 §2.1 契约一致）。**不**改变 scratchpad Phase A–C 的已交付范围。
 
-Code 会话进入 DS Pick 后，对产品的**叙述性认知**主要来自系统 prompt 栈；其中 **`prompts/base.md` 是核心一层**（另有 mode / approval / `tasks/code.md`、项目 `AGENTS.md`、`pick-rules`、skills 目录摘要等，见 [prompt-architecture.md](../prompt-architecture.md)）。
+Code 会话进入 Zagens 后，对产品的**叙述性认知**主要来自系统 prompt 栈；其中 **`prompts/base.md` 是核心一层**（另有 mode / approval / `tasks/code.md`、项目 `AGENTS.md`、`pick-rules`、skills 目录摘要等，见 [prompt-architecture.md](../prompt-architecture.md)）。
 
 若用户问「你具备哪些能力」，模型通常依据 **`base.md` 的 Toolbox、When NOT to use、Task vs Sub-agent** 等回答；但 **`base.md` 写明：tool descriptions are authoritative**——实际能调用什么，以当前 turn 的 **API `tools[]` schema** 为准（含 defer + `tool_search`）。
 
@@ -129,7 +129,7 @@ Code 会话进入 DS Pick 后，对产品的**叙述性认知**主要来自系�
 
 **说法成立：** 规则像**法律**——制定出来不会自动被遵守；主体需要**学习 + 实操 + 考核**，才知道如何运用。仅有 `base.md` / pick-rules 而无学习路径，相当于「法条公示」但从未驾校练习，上路仍可能违章（L7b：法条写了 `verified`，实际交卷是 `open` + 抢跑 `deliverables`）。
 
-| 法律体系要素 | DS Pick 对应 |
+| 法律体系要素 | Zagens 对应 |
 |--------------|--------------|
 | 法条公示 | `base.md`、`pick-rules`、工具 schema、skill |
 | 驾校 / 科目一 | 未来 **教学模块**（§2.4）；当前为试跑 + 文档 |
@@ -145,7 +145,7 @@ Code 会话进入 DS Pick 后，对产品的**叙述性认知**主要来自系�
 
 #### 动机
 
-- 模型首次使用 DS Pick 时，不应假设已理解 Task / Sub-agent、scratchpad join 等契约。  
+- 模型首次使用 Zagens 时，不应假设已理解 Task / Sub-agent、scratchpad join 等契约。  
 - 与用户设想一致：**发证**后再「日常上路」；未通过则短 L0 提醒 + 限制高危动作（如写 audit 报告）。
 
 #### 四个待决问题（记录现状）
@@ -179,7 +179,7 @@ Code 会话进入 DS Pick 后，对产品的**叙述性认知**主要来自系�
 |------|------|------|
 | **短期** | 加厚 `base.md` **契约与路由**（非全文搬运 design）；工具 `description` 区分 Task / Sub-agent；`audit-repo` skill P1 parallel；§14 **E1**（`inject_on_report_keywords` 扩展）、**E2**（`write_file`→`deliverables/*audit*` 硬门，`scratchpad_flow`）；**L7 复测**（需重编 sidecar） | **E1/E2 ✅ 代码已落地**；L7 待复测 |
 | **中期** | `onboarding` skill + `onboarding.json` + 2–3 节机械考试（Task/Sub-agent、scratchpad）；未通过 L0 注入 | 构想，见 §2.4 |
-| **长期** | DS Pick UI「驾校」：进度、重考、与琥珀横条同级的「未发证」提示 | 构想 |
+| **长期** | Zagens UI「驾校」：进度、重考、与琥珀横条同级的「未发证」提示 | 构想 |
 
 **防跑偏：** 讨论教学、法律类比、base 写全时，**默认不推迟** scratchpad 短期项（§14.3、试跑闭环）。新功能单独开里程碑。
 
@@ -194,7 +194,7 @@ Code 会话进入 DS Pick 后，对产品的**叙述性认知**主要来自系�
 
 #### 学科视角 → 本仓库中的落点（映射表）
 
-| 视角（隐喻角色） | 典型问题 | DS Pick / scratchpad 中的对应（示例） |
+| 视角（隐喻角色） | 典型问题 | Zagens / scratchpad 中的对应（示例） |
 |------------------|----------|----------------------------------------|
 | **工程** | 组件边界、可靠性、可测试 | `task_*` vs `agent_*`、scratchpad store、C1/E2 硬门、sidecar |
 | **法学 / 规制** | 规则是什么、违规则何 | `verified`-only 报告、`inventory` 交代、E2 拒写 deliverables |
@@ -628,7 +628,7 @@ omitted_high_ids: []
 
 ---
 
-### 6.7 桌面（DS Pick）
+### 6.7 桌面（Zagens）
 
 **B5 — 审查进度（只读）**
 
@@ -1165,7 +1165,7 @@ B5（§6.7）首版只交付 **横条 + status API**；§6.13 是 B5 的 **二�
 | E4 | **未读 completed Task 提醒** | `task_list`：`completed_unread_count`；与 **sub-agent** 的 `agent_list` 未完成提醒**分开展示** |
 | E5 | **全仓 audit defer `task_create`** | ✅ `tool_catalog` defer + `check_task_create_audit_gate`；eager `agent_spawn` / `spawn_agent` / `agent_list` / `agent_result` / `agent_wait` when `scratchpad_run_id` set |
 
-#### 档 3 — DS Pick / 产品（Phase D，⬜）
+#### 档 3 — Zagens / 产品（Phase D，⬜）
 
 → **完整路线图：** [§6.13 Phase D — 审计过程可视化](#613-phase-d--审计过程可视化路线图-未实现) · 试跑验收 [§L8](audit-scratchpad-test.md#l8--phase-d-审计过程可视化规划)。
 
@@ -1253,7 +1253,7 @@ B5（§6.7）首版只交付 **横条 + status API**；§6.13 是 B5 的 **二�
 | 36 行 P2 未爆 | 分层注入仍 **同批做**（全库尺度） |
 | 100% done | 覆盖率门禁 → **Phase C** |
 
-### 13.4 第三轮 — Phase B 设计评审（DS Pick，2026-05-19）
+### 13.4 第三轮 — Phase B 设计评审（Zagens，2026-05-19）
 
 | # | 反馈 | 采纳 |
 |---|------|------|
@@ -1270,7 +1270,7 @@ B5（§6.7）首版只交付 **横条 + status API**；§6.13 是 B5 的 **二�
 
 **B1 必做项：** #1、#2、#3、#8（与 Store 同 PR）。
 
-### 13.5 第四轮 — Phase C 设计评审（DS Pick，2026-05-19）
+### 13.5 第四轮 — Phase C 设计评审（Zagens，2026-05-19）
 
 | # | 严重度 | 反馈 | 采纳 |
 |---|--------|------|------|

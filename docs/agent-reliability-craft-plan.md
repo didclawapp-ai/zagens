@@ -1,7 +1,7 @@
 # Agent 可靠性演进：CRAFT 向初步方案
 
 > **状态：** 草案（根据产品讨论整理，便于后续迭代为实施清单）。  
-> **范围：** DeepSeek-TUI / DS Pick 共用 runtime；不替代现有 [子智能体文档](SUBAGENTS.md)，在其上增量演进。
+> **范围：** DeepSeek-TUI / Zagens 共用 runtime；不替代现有 [子智能体文档](SUBAGENTS.md)，在其上增量演进。
 
 ## 1. 目标与非目标
 
@@ -27,9 +27,9 @@ DeepSeek V4 等模型的长上下文缓解「装不下」，但不自动保证�
 
 工程对策不靠「再加一句别胡编」，而靠：**工具接地、门禁验收、结构化共享状态、角色边界**。
 
-## 3. 与 DS Pick / 当前架构的关系
+## 3. 与 Zagens / 当前架构的关系
 
-- **桌面（DS Pick）**：Web UI → HTTP/SSE → 与 CLI 同源 `serve --http` runtime（见 [docs/desktop/README.md](desktop/README.md)）。  
+- **桌面（Zagens）**：Web UI → HTTP/SSE → 与 CLI 同源 `serve --http` runtime（见 [docs/desktop/README.md](desktop/README.md)）。  
 - **主 agent + 子 agent**：[`agent_spawn` 等编排](SUBAGENTS.md)，已有 `explore` / `implementer` / `review` / `verifier` / `custom` 等 **角色语调（role taxonomy）**。  
 - **CRAFT 式演进**：在上述 **同一套派发能力**上，增加 **结构化黑板、程序化闭环、硬性工具裁剪、可执行规范**，而非推翻重做。
 
@@ -41,7 +41,7 @@ CRAFT 解决的是 **单次任务可追溯与多角色交接**（黑板、门禁
 
 ### 3.2 并行工具调度与子代理写路径（现状核对）
 
-> **核对日期：** 2026-05-17。对照 DS Pick / 主 agent 在会话中的自述与当前 `crates/tui` runtime 实现。用于纠正 prompt 中的过时说法，并指导 §11 / P4 的优先级。
+> **核对日期：** 2026-05-17。对照 Zagens / 主 agent 在会话中的自述与当前 `crates/tui` runtime 实现。用于纠正 prompt 中的过时说法，并指导 §11 / P4 的优先级。
 
 #### 3.2.1 结论摘要
 
@@ -673,9 +673,9 @@ P2 依赖 P0（`structured_verdict` 字段出现在 `agent_result` JSON 载荷�
 
 独立于 CRAFT：**细化工程提示词** 要求助手按「变更文件 → 条目化意图与关键点」输出（你已验证的规范摘要），便于人工快速对照 diff，降低「读着像对」没被审查的风险。
 
-建议在产品侧可选提供 **「变更摘要」模板**（不强制改写模型），例如在 DS Pick / 会话约定中固定小节标题。
+建议在产品侧可选提供 **「变更摘要」模板**（不强制改写模型），例如在 Zagens / 会话约定中固定小节标题。
 
-## 8. DS Pick / 运行时注意事项
+## 8. Zagens / 运行时注意事项
 
 - 桌面端不改变「单引擎真理」：**编排增强应优先落在 `serve --http` 与 thread/engine 一层**，前端消费事件与黑板路径即可对齐 TUI。  
 - 与安全规则一致：**路径规范化、密钥不入黑板明文**、沿用现有 workspace / trust / approval。
@@ -743,8 +743,8 @@ P2 依赖 P0（`structured_verdict` 字段出现在 `agent_result` JSON 载荷�
 
 ### 11.2 工作区约束与用户体验
 
-6. **工作区规则产品化** — 在既有 `instructions = [...]`（见 `config.example.toml`）之上，可增加 **约定文件自动装载**（如 `PROJECT_RULES.md`）、DS Pick **只读展示已加载规则**。`.cursor/rules` 不会自动进 runtime，需显式映入 `instructions`。
-7. **DS Pick** — Web UI **i18n**、**更新/升级**（从「关于 + 跳转 Release」到 Tauri updater）、对 **黑板 / task** 状态的轻量可视（仍遵守 §8：编排优先落在 `serve --http` 层）。
+6. **工作区规则产品化** — 在既有 `instructions = [...]`（见 `config.example.toml`）之上，可增加 **约定文件自动装载**（如 `PROJECT_RULES.md`）、Zagens **只读展示已加载规则**。`.cursor/rules` 不会自动进 runtime，需显式映入 `instructions`。
+7. **Zagens** — Web UI **i18n**、**更新/升级**（从「关于 + 跳转 Release」到 Tauri updater）、对 **黑板 / task** 状态的轻量可视（仍遵守 §8：编排优先落在 `serve --http` 层）。
 
 ### 11.3 文档、安全与近期动作
 

@@ -1,6 +1,6 @@
 # TaskType 任务类型分层方案（办公 / 代码 二类 MVP）
 
-**状态**: **MVP 已落地**（`crates/tui/src/task_type.rs`、prompt overlay、Office 工具裁剪、DS Pick Composer 切换）  
+**状态**: **MVP 已落地**（`crates/tui/src/task_type.rs`、prompt overlay、Office 工具裁剪、Zagens Composer 切换）  
 **日期**: 2026-05-17（初稿，四类）· **2026-05-18**（收敛为二类，对齐当前工具与 prompt）  
 **基于**: [prompt-architecture.md](prompt-architecture.md)  
 **相关**: [prompt-hallucination-patch.md](prompt-hallucination-patch.md)、[TOOLS_PRINCIPLES.md](tech/TOOLS_PRINCIPLES.md)、`crates/tui/src/prompts/base.md`（检索三件套）
@@ -403,7 +403,7 @@ office_output_dir = "deliverables"   # 相对 workspace
 
 1. **`prompts/tasks/office.md`**：`write_office` 未给 `path` 时 → `deliverables/...`  
 2. **`write_office` 工具**（可选）：`path` 缺省时拼 `office_output_dir` + 由 title  slug 的文件名（实现阶段再定）  
-3. **DS Pick 右栏「文件」**：Office session 打开工作台时 **默认列出 `deliverables/`**（无则提示「首次生成后会出现在此」）
+3. **Zagens 右栏「文件」**：Office session 打开工作台时 **默认列出 `deliverables/`**（无则提示「首次生成后会出现在此」）
 
 ### 13.4 非代码工作区
 

@@ -4,7 +4,7 @@
 #
 # Checks performed:
 #   1. No `crates/*/Cargo.toml` carries a literal `version = "x.y.z"`; every
-#      crate must inherit `version.workspace = true` (except DS Pick desktop).
+#      crate must inherit `version.workspace = true` (except Zagens desktop).
 #   2. Internal `deepseek-*` path dependency pins match the workspace version.
 #   3. `Cargo.lock` is in sync with the manifests (`cargo metadata --locked`
 #      fails if not).

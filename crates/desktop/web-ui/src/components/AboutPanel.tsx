@@ -16,8 +16,10 @@ export default function AboutPanel() {
           height={48}
         />
         <div>
-          <h3 className="text-base font-semibold text-t-text">DS Pick</h3>
-          <p className="text-xs text-t-text-muted">v{APP_VERSION}</p>
+          <h3 className="text-base font-semibold text-t-text">{t('app.title')}</h3>
+          <p className="text-xs text-t-text-muted">
+            {t('app.subtitle')} · v{APP_VERSION}
+          </p>
         </div>
       </div>
       <p className="text-sm leading-relaxed text-t-text-secondary">{t('about.description')}</p>

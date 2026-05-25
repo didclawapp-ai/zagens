@@ -309,7 +309,7 @@ pub async fn run_http_server(
         .with_context(|| format!("Failed to bind {addr}"))?;
 
     eprintln!(
-        "[deepseek-runtime] bound {addr}, serving (+{:?}) — output also on stderr (see sidecar.log if launched from DS Pick)",
+        "[deepseek-runtime] bound {addr}, serving (+{:?}) — output also on stderr (see sidecar.log if launched from Zagens)",
         t0.elapsed()
     );
     eprintln!("Runtime API listening on http://{addr}");
@@ -319,7 +319,7 @@ pub async fn run_http_server(
     }
 
     // Signal READY to the supervisor via stdout (line protocol).
-    // DS Pick's supervisor waits for this line before considering the sidecar healthy.
+    // Zagens's supervisor waits for this line before considering the sidecar healthy.
     let ready_line = serde_json::json!({
         "port": port,
         "pid": std::process::id(),

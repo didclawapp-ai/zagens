@@ -11,7 +11,7 @@
 
 ## Decision (draft)
 
-Do **not** route DS Pick HTTP through `core::Runtime` until `RuntimeThreadManager` delegates turn lifecycle into core without duplicating JSONL broadcast semantics.
+Do **not** route Zagens HTTP through `core::Runtime` until `RuntimeThreadManager` delegates turn lifecycle into core without duplicating JSONL broadcast semantics.
 
 ## Acceptance
 

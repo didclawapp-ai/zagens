@@ -165,7 +165,7 @@ impl ToolSpec for DescribeImageTool {
                 .with_metadata(meta))
             }
             Err(msg) => Ok(ToolResult::error(format!(
-                "视觉模型调用失败: {msg}\n\n请在 DS Pick 设置 → API Key 中配置视觉桥接密钥，或设置环境变量 VISION_API_KEY / SILICONFLOW_API_KEY，或在 config.toml 的 [vision] 表中填写 api_key。"
+                "视觉模型调用失败: {msg}\n\n请在 Zagens 设置 → API Key 中配置视觉桥接密钥，或设置环境变量 VISION_API_KEY / SILICONFLOW_API_KEY，或在 config.toml 的 [vision] 表中填写 api_key。"
             ))),
         }
     }

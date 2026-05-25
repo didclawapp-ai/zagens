@@ -183,7 +183,10 @@ export default function Sidebar({
             width={24}
             height={24}
           />
-          <span className="truncate text-base font-semibold text-accent">DS Pick</span>
+          <div className="min-w-0">
+            <span className="block truncate text-base font-semibold text-accent">{t('app.title')}</span>
+            <span className="block truncate text-[10px] leading-tight text-t-text-muted">{t('app.subtitle')}</span>
+          </div>
         </div>
       </div>
 

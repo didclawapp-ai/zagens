@@ -72,7 +72,7 @@ fn sidecar_stderr_log_path() -> Option<PathBuf> {
     Some(log_dir.join("sidecar.log"))
 }
 
-/// DS Pick parent process (Tauri) supervisor events — same folder as `sidecar.log`, so GUI users
+/// Zagens parent process (Tauri) supervisor events — same folder as `sidecar.log`, so GUI users
 /// without a console still get restart / health-check reasons on disk.
 fn supervisor_log_path() -> Option<PathBuf> {
     let home = sidecar_spawn_cwd()?;
@@ -160,7 +160,7 @@ fn spawn_sidecar(app: &AppHandle, deepseek_bin: &str, port: u16, token: &str) ->
     let port_s = port.to_string();
     let mut std_cmd = std::process::Command::new(deepseek_bin);
     std_cmd.env("DEEPSEEK_RUNTIME_TOKEN", token);
-    std_cmd.env("DEEPSEEK_CLIENT_SURFACE", "ds-pick");
+    std_cmd.env("DEEPSEEK_CLIENT_SURFACE", "zagens");
     if let Some(py) = bundled_python_executable(app) {
         std_cmd.env("DEEPSEEK_BUNDLED_PYTHON", py);
     }

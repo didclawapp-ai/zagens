@@ -14,4 +14,4 @@ Defer whole-struct migration until tool/MCP boundaries are trait-stable. Prefer 
 ## Acceptance (when undertaken)
 
 - `crates/tui/src/core/engine.rs` is re-export/wiring only.
-- DS Pick sidecar behavior unchanged (contract tests green).
+- Zagens sidecar behavior unchanged (contract tests green).

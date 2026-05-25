@@ -1145,7 +1145,7 @@ pub fn restart_sidecar(ctx: tauri::State<'_, AppContext>) -> Result<(), String> 
 }
 
 // ---------------------------------------------------------------------------
-// Composer workspace defaults (`<Documents>/DS Pick`)
+// Composer workspace defaults (`<Documents>/Zagens`, legacy `Zagens`)
 // ---------------------------------------------------------------------------
 
 /// Returns the default Composer workspace directory, creating it if needed.
@@ -1155,7 +1155,7 @@ pub fn default_composer_workspace() -> Result<String, String> {
 }
 
 // ---------------------------------------------------------------------------
-// pick-rules — `.deepseek/pick-rules.md` per workspace (DS Pick project rules)
+// pick-rules — `.deepseek/pick-rules.md` per workspace (Zagens project rules)
 // ---------------------------------------------------------------------------
 
 /// Matches `crates/tui/src/prompts.rs` `INSTRUCTIONS_FILE_MAX_BYTES`.
@@ -1180,7 +1180,7 @@ fn pick_rules_path_under_workspace(base: &Path) -> PathBuf {
     base.join(".deepseek").join("pick-rules.md")
 }
 
-/// Read DS Pick project rules for a workspace. Returns empty string if the file is missing.
+/// Read Zagens project rules for a workspace. Returns empty string if the file is missing.
 #[tauri::command]
 pub fn read_pick_rules(workspace_root: String) -> Result<String, String> {
     let base = workspace_root_canonical(&workspace_root)?;
@@ -1191,7 +1191,7 @@ pub fn read_pick_rules(workspace_root: String) -> Result<String, String> {
     std::fs::read_to_string(&path).map_err(|e| format!("读取项目规则失败: {e}"))
 }
 
-/// Write DS Pick project rules. Creates `.deepseek/` when needed.
+/// Write Zagens project rules. Creates `.deepseek/` when needed.
 #[tauri::command]
 pub fn save_pick_rules(workspace_root: String, content: String) -> Result<(), String> {
     let base = workspace_root_canonical(&workspace_root)?;

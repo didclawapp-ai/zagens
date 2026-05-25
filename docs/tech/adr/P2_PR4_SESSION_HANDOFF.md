@@ -136,7 +136,7 @@ crates/tui/src/runtime_threads/turn_lifecycle.rs
 crates/tui/src/runtime_api/tests.rs
 ```
 
-**规则：** `.cursor/rules/ds-pick-repo.mdc`、`code-organization.mdc`；变更记 `CHANGELOG.md`；**不要**未询问就 `git commit`。
+**规则：** `.cursor/rules/zagens-repo.mdc`、`code-organization.mdc`；变更记 `CHANGELOG.md`；**不要**未询问就 `git commit`。
 
 ---
 
@@ -176,7 +176,7 @@ cargo test -p deepseek-tui --lib
 ## 7. 复制给新窗口 Agent 的提示（整段粘贴）
 
 ```markdown
-继续 DS Pick monorepo 的 **P2 PR4 + A4.6 + R-015** 方案。
+继续 Zagens monorepo 的 **P2 PR4 + A4.6 + R-015** 方案。
 
 **必读：**
 - `docs/tech/adr/P2_PR4_SESSION_HANDOFF.md`（本对接）

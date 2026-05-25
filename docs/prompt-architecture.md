@@ -1,6 +1,6 @@
 # Prompt System Architecture
 
-本文档用 Mermaid 图描述 DS Pick / DeepSeek TUI 的 prompt 系统完整架构。所有函数名、文件路径、模块名均与源码严格对应。
+本文档用 Mermaid 图描述 Zagens / DeepSeek TUI 的 prompt 系统完整架构。所有函数名、文件路径、模块名均与源码严格对应。
 
 ---
 
@@ -246,11 +246,11 @@ flowchart LR
 
 ---
 
-## 7. DS Pick (Desktop) 身份切换
+## 7. Zagens (Desktop) 身份切换
 
 ```mermaid
 flowchart TD
-    subgraph DESKTOP["DS Pick Tauri App"]
+    subgraph DESKTOP["Zagens Tauri App"]
         SIDECAR["spawn_sidecar()<br/>desktop/src/sidecar.rs:123"]
         ENV["env: DEEPSEEK_CLIENT_SURFACE=ds-pick"]
         SERVE["deepseek serve<br/>启动 HTTP server"]
@@ -259,9 +259,9 @@ flowchart TD
     subgraph TUI["TUI Runtime (被 sidecar 启动)"]
         DETECT["client_identity_line_from_env()<br/>prompts.rs:83"]
         SWITCH{"DEEPSEEK_CLIENT_SURFACE<br/>== ds-pick ?"}
-        ID_PICK["CLIENT_IDENTITY_DS_PICK:<br/>'You are assisting inside DS Pick...'"]
+        ID_PICK["CLIENT_IDENTITY_DS_PICK:<br/>'You are assisting inside Zagens...'"]
         ID_TUI["CLIENT_IDENTITY_TERMINAL:<br/>'You are DeepSeek TUI...'"]
-        ENV_BLOCK["render_environment_block()<br/>+ ui_shell: DS Pick (desktop)"]
+        ENV_BLOCK["render_environment_block()<br/>+ ui_shell: Zagens (desktop)"]
     end
 
     subgraph WEB["Desktop Web UI"]
@@ -351,6 +351,6 @@ flowchart LR
 3. **Hash 去重** — `system_prompt_hash()` 避免相同 prompt 重复设置（减少不必要的 `SessionUpdated` 事件）
 4. **Compile-time 嵌入** — base / personality / mode / approval / compact 在编译时 `include_str!`，启动零 IO
 5. **配置驱动的分层注入** — Project context、instructions、user memory、skills 各自独立模块，通过 `PromptSessionContext` 传入
-6. **Client identity env-driven** — `DEEPSEEK_CLIENT_SURFACE` 控制 TUI vs DS Pick 身份切换，无需重新编译
+6. **Client identity env-driven** — `DEEPSEEK_CLIENT_SURFACE` 控制 TUI vs Zagens 身份切换，无需重新编译
 7. **Sub-agent 独立 session** — 子 agent 获得全新 Engine session，带独立 system prompt 和工具集，通过 `<deepseek:subagent.done>` sentinel 报告结果
 8. **RLM 完全独立** — RLM 有自己的 prompt (REPL 模式)，不使用父级 system prompt

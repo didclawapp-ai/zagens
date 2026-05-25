@@ -12,7 +12,7 @@ use tauri::{
 use uuid::Uuid;
 
 pub const MAX_AGENT_WINDOWS: usize = 8;
-const PRODUCT_TITLE: &str = "DS Pick";
+const PRODUCT_TITLE: &str = "Zagens";
 
 pub struct WindowRegistry {
     inner: Mutex<RegistryInner>,

@@ -1,7 +1,7 @@
-# DS Pick 系统设置面板 — 实施计划（修订版）
+# Zagens 系统设置面板 — 实施计划（修订版）
 
 > **状态：** 草案（经代码评审修正）  
-> **范围：** DS Pick 桌面端（`crates/desktop/`），Web UI + Tauri 后端  
+> **范围：** Zagens 桌面端（`crates/desktop/`），Web UI + Tauri 后端  
 > **目标：** 在右侧面板中增加完整的系统设置视图，将侧边栏底部的主题和语言选择器移入设置面板
 
 ---
@@ -477,7 +477,7 @@ export async function saveSystemSettings(settings: SystemSettings): Promise<void
 - 删除 `<button onClick={onToggleTheme}>` 主题切换按钮
 - 删除 `<select value={locale}>` 语言选择器
 - Props 接口删除 `theme: Theme; onToggleTheme: () => void`
-- 保留版本号 `DS Pick v0.2.2` 和运行时状态指示器
+- 保留版本号 `Zagens v0.2.2` 和运行时状态指示器
 
 **Step 4 — `Sidebar.tsx` SettingsAccordion 新增 `system` 子项**
 

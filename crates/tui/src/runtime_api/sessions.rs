@@ -202,7 +202,7 @@ pub(crate) async fn resume_session_thread(
         None,
     );
 
-    // Reuse the persisted runtime thread when it still has events so DS Pick can
+    // Reuse the persisted runtime thread when it still has events so Zagens can
     // replay tool cards and thinking after app restart (instead of seeding a blank thread).
     if let Some(ref stored_tid) = session.metadata.runtime_thread_id {
         let stored_tid = stored_tid.trim();

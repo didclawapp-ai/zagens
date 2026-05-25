@@ -18,7 +18,7 @@ export function isUnsafeComposerWorkspace(ws: string): boolean {
   return false;
 }
 
-/** `<Documents>/DS Pick` from the desktop host; falls back if not in Tauri. */
+/** `<Documents>/Zagens` from the desktop host; falls back if not in Tauri. */
 export async function fetchDefaultComposerWorkspace(): Promise<string> {
   try {
     const { invoke } = await import('@tauri-apps/api/core');
@@ -32,7 +32,7 @@ export async function fetchDefaultComposerWorkspace(): Promise<string> {
   return '.';
 }
 
-/** Office mode default: `<Documents>/DS Pick` (creates `deliverables/` on the host). */
+/** Office mode default: `<Documents>/Zagens` (creates `deliverables/` on the host). */
 export async function applyOfficeDefaultWorkspace(
   setWorkspace: (path: string) => void,
 ): Promise<void> {

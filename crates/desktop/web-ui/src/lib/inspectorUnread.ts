@@ -9,18 +9,40 @@ export type InspectorNavActivity = {
   pulse: boolean;
 };
 
-const SEEN_TASKS_KEY = 'ds-pick:seen-task-ids';
+const SEEN_TASKS_KEY = 'zagens:seen-task-ids';
+const LEGACY_SEEN_TASKS_KEY = 'ds-pick:seen-task-ids';
 
 const TASK_ACTIVE_STATUSES = new Set(['queued', 'pending', 'running', 'paused']);
 
 function seenAgentsKey(threadId: string | null): string {
   const id = threadId?.trim();
+  return id ? `zagens:seen-agent-ids:${id}` : 'zagens:seen-agent-ids:';
+}
+
+function legacySeenAgentsKey(threadId: string | null): string {
+  const id = threadId?.trim();
   return id ? `ds-pick:seen-agent-ids:${id}` : 'ds-pick:seen-agent-ids:';
 }
 
-export function loadSeenIds(storageKey: string): Set<string> {
+function readJsonSetStorage(primary: string, legacy?: string): string | null {
   try {
-    const raw = localStorage.getItem(storageKey);
+    const raw = localStorage.getItem(primary);
+    if (raw != null) return raw;
+    if (!legacy) return null;
+    const old = localStorage.getItem(legacy);
+    if (old != null) {
+      localStorage.setItem(primary, old);
+      return old;
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+export function loadSeenIds(storageKey: string, legacyKey?: string): Set<string> {
+  try {
+    const raw = readJsonSetStorage(storageKey, legacyKey);
     if (!raw) {
       return new Set();
     }
@@ -52,7 +74,7 @@ export function countUnreadCompletedTasks(tasks: TaskSummary[], seen: Set<string
 
 export function markAgentsSeen(agents: AgentState[], threadId: string | null): void {
   const key = seenAgentsKey(threadId);
-  const seen = loadSeenIds(key);
+  const seen = loadSeenIds(key, legacySeenAgentsKey(threadId));
   for (const a of agents) {
     if (a.status === 'completed') {
       seen.add(a.agentId);
@@ -62,7 +84,7 @@ export function markAgentsSeen(agents: AgentState[], threadId: string | null): v
 }
 
 export function markTasksSeen(tasks: TaskSummary[]): void {
-  const seen = loadSeenIds(SEEN_TASKS_KEY);
+  const seen = loadSeenIds(SEEN_TASKS_KEY, LEGACY_SEEN_TASKS_KEY);
   for (const t of tasks) {
     if (t.status === 'completed') {
       seen.add(t.id);
@@ -72,14 +94,22 @@ export function markTasksSeen(tasks: TaskSummary[]): void {
 }
 
 export function agentUnreadCount(agents: AgentState[], threadId: string | null): number {
-  return countUnreadCompletedAgents(agents, loadSeenIds(seenAgentsKey(threadId)));
+  return countUnreadCompletedAgents(
+    agents,
+    loadSeenIds(seenAgentsKey(threadId), legacySeenAgentsKey(threadId)),
+  );
 }
 
 export function taskUnreadCount(tasks: TaskSummary[]): number {
-  return countUnreadCompletedTasks(tasks, loadSeenIds(SEEN_TASKS_KEY));
+  return countUnreadCompletedTasks(tasks, loadSeenIds(SEEN_TASKS_KEY, LEGACY_SEEN_TASKS_KEY));
 }
 
 function seenChecklistKey(threadId: string | null): string {
+  const id = threadId?.trim();
+  return id ? `zagens:seen-checklist:${id}` : 'zagens:seen-checklist:';
+}
+
+function legacySeenChecklistKey(threadId: string | null): string {
   const id = threadId?.trim();
   return id ? `ds-pick:seen-checklist:${id}` : 'ds-pick:seen-checklist:';
 }
@@ -91,10 +121,18 @@ export function checklistFingerprint(data: ChecklistPanelPayload): string {
 
 export function loadSeenChecklistFingerprint(threadId: string | null): string | null {
   try {
-    return localStorage.getItem(seenChecklistKey(threadId));
+    const key = seenChecklistKey(threadId);
+    const raw = localStorage.getItem(key);
+    if (raw != null) return raw;
+    const legacy = localStorage.getItem(legacySeenChecklistKey(threadId));
+    if (legacy != null) {
+      localStorage.setItem(key, legacy);
+      return legacy;
+    }
   } catch {
     return null;
   }
+  return null;
 }
 
 export function markChecklistSeen(data: ChecklistPanelPayload | null, threadId: string | null): void {

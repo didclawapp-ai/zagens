@@ -1,4 +1,4 @@
-# G2 / PR5 手测清单（DS Pick + Sidecar）
+# G2 / PR5 手测清单（Zagens + Sidecar）
 
 > **用途：** 补全 [G2_GATE_ACCEPTANCE.md](./G2_GATE_ACCEPTANCE.md) 中「桌面全链路 / 多窗口 / 审批」人工项。  
 > **预计：** 核心路径 **15–20 分钟**；全表 **~35 分钟**。  
@@ -25,7 +25,7 @@ cd F:\DeepSeek-TUI-desktop\crates\desktop
 # 首次：安装 Tauri CLI 2（每台机器一次）
 # cargo install tauri-cli --version "^2"
 
-# 启动 DS Pick（会拉起 sidecar + WebView）
+# 启动 Zagens（会拉起 sidecar + WebView）
 cargo tauri dev
 
 # 勿用 npm run tauri dev — crates/desktop/package.json 无该 script
@@ -54,7 +54,7 @@ curl -s http://127.0.0.1:7878/health
 
 | # | 步骤 | 期望 | 通过 |
 |---|------|------|------|
-| 1.1 | 打开 DS Pick，选/新建一个**工作区文件夹** | 侧栏、标题栏正常，无「runtime 不可用」常驻红条 | [ 通过] |
+| 1.1 | 打开 Zagens，选/新建一个**工作区文件夹** | 侧栏、标题栏正常，无「runtime 不可用」常驻红条 | [ 通过] |
 | 1.2 | 新建会话（或选空会话），**Agent 模式**，发一句简单 prompt（如「用一句话介绍当前目录」） | 出现流式正文；最终 turn 结束（可继续输入） | [ 通过] |
 | 1.3 | 刷新页面或关掉再开**同一窗**（不杀进程），恢复同一会话 | 历史仍在；可再发一条消息 | [通过 ] |
 | 1.4 | 开发者工具 Network（可选）：`/v1/threads/.../events` 或 stream 为 **SSE**，能看到 `turn.started` / `message.delta` 或 `turn.completed` 类事件 | 与 [API_DESIGN.md](../API_DESIGN.md) §3.2.1 一致 | [ 通过] |
@@ -80,7 +80,7 @@ curl -s http://127.0.0.1:7878/health
 > **注意：** `config.example.toml` 注释只写 `on-request \| untrusted \| never`，**未写** `auto` / `suggest`，但运行时接受。  
 > **`on-request` 与 `untrusted` 在代码里是同一档（Suggest）**，不是 Auto。
 
-**DS Pick 审批 UI（2026-05-24）：** 系统设置含 **按需审批 / 仅不受信任 / 从不 / 自动批准** 四档。非 `auto` 时 Composer 显示只读「审批：按需审批」等（无灰掉复选框）；`auto` 时显示可勾选的「自动批准工具调用」。
+**Zagens 审批 UI（2026-05-24）：** 系统设置含 **按需审批 / 仅不受信任 / 从不 / 自动批准** 四档。非 `auto` 时 Composer 显示只读「审批：按需审批」等（无灰掉复选框）；`auto` 时显示可勾选的「自动批准工具调用」。
 
 **两套控制（桌面手测必看）：**
 
@@ -159,7 +159,7 @@ curl -s http://127.0.0.1:7878/health
 
 **通过后建议：**
 
-1. 在 [G2_GATE_ACCEPTANCE.md](./G2_GATE_ACCEPTANCE.md) 将「桌面全链路冒烟」「DS Pick 多窗口手测」改为 ✅，并贴上表 §6 一行摘要。  
+1. 在 [G2_GATE_ACCEPTANCE.md](./G2_GATE_ACCEPTANCE.md) 将「桌面全链路冒烟」「Zagens 多窗口手测」改为 ✅，并贴上表 §6 一行摘要。  
 2. 维护者单独处理 **G3**（§11.0 ADR 签收）与 **§12.3 #1**（`Engine` 留 tui vs 继续迁 core）— 与手测独立。
 
 ---
@@ -180,16 +180,16 @@ curl -s http://127.0.0.1:7878/health
 
 ---
 
-## 9. §12.4 #2 — TUI vs DS Pick 同 thread 行为抽样
+## 9. §12.4 #2 — TUI vs Zagens 同 thread 行为抽样
 
-**目标：** [RUNTIME_EVOLUTION_ROADMAP.md](../RUNTIME_EVOLUTION_ROADMAP.md) §12.4 #2 — 同一 `deepseek-tui` runtime 上，终端 TUI 与桌面 DS Pick 对 **同一 thread** 的 stop / 审批 / 长跑语义一致（抽样，非全矩阵）。
+**目标：** [RUNTIME_EVOLUTION_ROADMAP.md](../RUNTIME_EVOLUTION_ROADMAP.md) §12.4 #2 — 同一 `deepseek-tui` runtime 上，终端 TUI 与桌面 Zagens 对 **同一 thread** 的 stop / 审批 / 长跑语义一致（抽样，非全矩阵）。
 
 ### 9.1 Stop / Interrupt — ✅ 已签（2026-05-24）
 
 | # | 步骤 | 期望 | 通过 |
 |---|------|------|------|
-| 9.1.1 | **DS Pick**：长 turn 中途点 **Stop** | `interrupted`；可再发消息 | [x] |
-| 9.1.2 | **DS Pick**：长 turn 中焦点在非输入区按 **Escape** | 同 §8.4；生成停止 | [x] |
+| 9.1.1 | **Zagens**：长 turn 中途点 **Stop** | `interrupted`；可再发消息 | [x] |
+| 9.1.2 | **Zagens**：长 turn 中焦点在非输入区按 **Escape** | 同 §8.4；生成停止 | [x] |
 | 9.1.3 | **同一 thread** 在 **TUI** 中长 turn 按 **Esc** 停止 | 同样 `interrupted`；可继续对话 | [x] |
 | 9.1.4 | 自动化：`sidecar_contract_full_lifecycle` 使用 `POST .../interrupt` | CI 绿 | [x] |
 
@@ -201,21 +201,21 @@ curl -s http://127.0.0.1:7878/health
 
 | # | 步骤 | 期望 | 通过 |
 |---|------|------|------|
-| 9.2.1 | **DS Pick** §2.2–2.4 批准 + 拒绝 | ApprovalDialog；行为符合 A+.7 | [x] |
-| 9.2.2 | **同一 thread** 在 **TUI** 关自动批准，同样 prompt（可选） | 挂起 → resolve 语义与桌面一致 | ⏸ 未测 | §12.4 抽样以 DS Pick 为准已闭合 |
+| 9.2.1 | **Zagens** §2.2–2.4 批准 + 拒绝 | ApprovalDialog；行为符合 A+.7 | [x] |
+| 9.2.2 | **同一 thread** 在 **TUI** 关自动批准，同样 prompt（可选） | 挂起 → resolve 语义与桌面一致 | ⏸ 未测 | §12.4 抽样以 Zagens 为准已闭合 |
 
 ### 9.3 长跑 — ✅ 双壳已签（2026-05-24）
 
-**代表性抽样（DS Pick，2026-05-24）：** 对仓库发起 **全量审核** turn — `agent_spawn` 并行 Explore 子代理、审计 scratchpad（`.deepseek/scratchpad/2026-05-24-audit`）、checklist P0–P4、多轮 tool + 长上下文。比 R-015 脚本更贴近真实 **多 turn / 多工具 / 子代理** 生产负载；**auto_approve 开启** 属长跑场景（与 §9.2 审批手测分开）。
+**代表性抽样（Zagens，2026-05-24）：** 对仓库发起 **全量审核** turn — `agent_spawn` 并行 Explore 子代理、审计 scratchpad（`.deepseek/scratchpad/2026-05-24-audit`）、checklist P0–P4、多轮 tool + 长上下文。比 R-015 脚本更贴近真实 **多 turn / 多工具 / 子代理** 生产负载；**auto_approve 开启** 属长跑场景（与 §9.2 审批手测分开）。
 
 | # | 步骤 | 期望 | 通过 |
 |---|------|------|------|
 | 9.3.1 | 多轮 turn + 重负载（本审核 **或** R-015 `-Gate`） | 无 sidecar 崩溃/卡死；RSS/落盘无异常劣化 | [x] |
-| 9.3.2 | **DS Pick** 上述全量审核 **跑完**（或主动 Stop 后 thread 仍可用） | scratchpad/checklist 有进展；可再发消息；连接正常 | [x] |
+| 9.3.2 | **Zagens** 上述全量审核 **跑完**（或主动 Stop 后 thread 仍可用） | scratchpad/checklist 有进展；可再发消息；连接正常 | [x] |
 | 9.3.3 | 抽样：**TUI** 同工作区类似多轮（不必复刻 29 区，数轮 tool 即可） | 与桌面侧无「一边崩一边正常」分裂 | [x] |
 
 **已签收抽样（2026-05-24）：**
-- **DS Pick：** 全量审核 — 30 区、8 Explore 子代理、scratchpad `.deepseek/scratchpad/2026-05-24-audit` → [deliverables/CODE_REVIEW_2026-05-24.md](../../../deliverables/CODE_REVIEW_2026-05-24.md)
+- **Zagens：** 全量审核 — 30 区、8 Explore 子代理、scratchpad `.deepseek/scratchpad/2026-05-24-audit` → [deliverables/CODE_REVIEW_2026-05-24.md](../../../deliverables/CODE_REVIEW_2026-05-24.md)
 - **TUI：** 同工作区 `F:\DeepSeek-TUI-desktop` 多轮 tool（list_dir / read_file / glob 等）；turn 正常、无 sidecar 分裂
 
 **审核结束时勾选 9.3.1–9.3.2 条件：** P4 报告产出或 checklist 收尾；7878 仍健康；同 thread 能继续对话。若中途 Stop，须确认 §9.1 仍成立且 thread 可恢复。
@@ -242,7 +242,7 @@ cd F:\DeepSeek-TUI-desktop
 | 10.4 | reviewer 子代理尝试写盘工具 | 同上 | ✅ |
 | 10.5 | Verifier 输出 BLOCKER/FAIL | 黑板写入 blockers；主线程可见 `<deepseek:craft.fix_loop>` 提示 | ✅ |
 | 10.6 | SSE 订阅 | 收到 `craft.verdict` / `craft.board_updated`（或 compat 映射） | ✅ |
-| 10.7 | DS Pick **AgentPanel → CRAFT 任务** | 展示 task 列表/详情；SSE 或轮询刷新 | ✅ |
+| 10.7 | Zagens **AgentPanel → CRAFT 任务** | 展示 task 列表/详情；SSE 或轮询刷新 | ✅ |
 | 10.8 | **一轮闭环**（explorer → 实现 → review → verify → fix 提示） | 黑板状态随轮次更新；fix-loop 可继续下一轮 | ✅ |
 
 > **签收：** 维护者 **2026-05-24** 全项通过。§12.5 **#1**（CRAFT + 黑板 + 一轮闭环）可标 ✅；**#2 记忆地图**、**#3 GAP 表** 仍属 B 阶段余项。
@@ -269,8 +269,8 @@ cargo test -p deepseek-tui runtime_api::tests::thread_endpoints_expose_lifecycle
 | 11.2 | 工作区含 `PROJECT_RULES.md`，`config.toml` 无 `instructions`；`RUST_LOG=info cargo run -- serve --http` | 日志含 `auto-discovered instruction: .../PROJECT_RULES.md` | ✅ |
 | 11.3 | 主线程两次 `agent_spawn` 同一 `resident_file`（第二次在第一次 Running 时） | 第二次工具失败，消息含 `already held by agent` | ✅ |
 | 11.4 | LSP 启用 + 子代理 `edit_file` 引入类型错误 | 子代理 turn 收到 `<diagnostics>` 注入（或 `diagnostics` 工具可用） | ✅ |
-| 11.5 | DS Pick：非最后一条用户消息点 **分支/Branch** | 确认后 fork 新线程；Composer 预填原消息 | ✅ |
-| 11.6 | DS Pick：`agent_spawn` 工具卡下方 | 内联子代理状态条，与 AgentPanel SSE 一致 | ✅ |
+| 11.5 | Zagens：非最后一条用户消息点 **分支/Branch** | 确认后 fork 新线程；Composer 预填原消息 | ✅ |
+| 11.6 | Zagens：`agent_spawn` 工具卡下方 | 内联子代理状态条，与 AgentPanel SSE 一致 | ✅ |
 
 > **签收：** 维护者 **2026-05-24** 全项通过。§17.3 P1 CRAFT/GAP 集成项 ✅。
 

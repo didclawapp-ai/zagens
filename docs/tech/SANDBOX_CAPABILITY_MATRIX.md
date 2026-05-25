@@ -1,6 +1,6 @@
 # Sandbox capability matrix (A6.1)
 
-**Status:** Living doc aligned with `crates/tui/src/sandbox/` and DS Pick settings (`sandbox_mode`).
+**Status:** Living doc aligned with `crates/tui/src/sandbox/` and Zagens settings (`sandbox_mode`).
 
 ## Summary
 
@@ -32,8 +32,8 @@
 | Surface | Behavior |
 |---------|----------|
 | **TUI** | `policy_degraded_mode_notice()` logged once at interactive startup (`target: sandbox`). |
-| **DS Pick** | Settings → Sandbox mode shows `settings.sandboxDegradedMode` when `platform !== 'darwin'`. |
-| **macOS DS Pick** | No banner (Seatbelt expected); TUI still fully enforced on macOS CLI. |
+| **Zagens** | Settings → Sandbox mode shows `settings.sandboxDegradedMode` when `platform !== 'darwin'`. |
+| **macOS Zagens** | No banner (Seatbelt expected); TUI still fully enforced on macOS CLI. |
 
 ## Backlog (A6.3)
 

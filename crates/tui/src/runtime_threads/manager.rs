@@ -195,7 +195,7 @@ impl RuntimeThreadManager {
         Ok(out)
     }
 
-    /// Return the cached checklist snapshot for a thread (for DS Pick WebView panel).
+    /// Return the cached checklist snapshot for a thread (for Zagens WebView panel).
     pub fn get_thread_checklist(&self, thread_id: &str) -> Option<String> {
         if let Ok(cache) = self.checklist_cache.lock() {
             if let Some(json) = cache.get(thread_id) {
@@ -242,7 +242,7 @@ impl RuntimeThreadManager {
         }
     }
 
-    /// DS Pick panel channel (C): push checklist snapshot on the live SSE stream (B-channel fallback).
+    /// Zagens panel channel (C): push checklist snapshot on the live SSE stream (B-channel fallback).
     pub(crate) async fn emit_panel_checklist(&self, thread_id: &str, turn_id: &str) -> Result<()> {
         let Some(json_str) = self.get_thread_checklist(thread_id) else {
             return Ok(());
@@ -261,7 +261,7 @@ impl RuntimeThreadManager {
         Ok(())
     }
 
-    /// DS Pick panel channel (C): push audit scratchpad status on SSE.
+    /// Zagens panel channel (C): push audit scratchpad status on SSE.
     pub(crate) async fn emit_panel_scratchpad(&self, thread_id: &str, turn_id: &str) -> Result<()> {
         let status = self.get_thread_scratchpad_status(thread_id)?;
         if let Some(scratchpad) = status {
@@ -277,7 +277,7 @@ impl RuntimeThreadManager {
         Ok(())
     }
 
-    /// DS Pick panel channel (C): push context usage snapshot on SSE.
+    /// Zagens panel channel (C): push context usage snapshot on SSE.
     pub(crate) async fn emit_panel_context(&self, thread_id: &str, turn_id: &str) -> Result<()> {
         match self.get_thread_context(thread_id).await {
             Ok(context) => {

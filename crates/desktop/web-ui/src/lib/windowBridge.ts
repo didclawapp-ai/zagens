@@ -71,8 +71,8 @@ export async function updateWindowTitle(workspace: string): Promise<void> {
   try {
     const { getCurrentWindow } = await import('@tauri-apps/api/window');
     const name =
-      workspace.trim().split(/[/\\]/).filter(Boolean).pop() || 'DS Pick';
-    await getCurrentWindow().setTitle(`${name} — DS Pick`);
+      workspace.trim().split(/[/\\]/).filter(Boolean).pop() || 'Zagens';
+    await getCurrentWindow().setTitle(`${name} — Zagens`);
   } catch {
     /* ignore */
   }

@@ -1,7 +1,7 @@
 # Audit Scratchpad — 试跑记录（Phase A–C）
 
 > **设计：** [audit-scratchpad-design.md](audit-scratchpad-design.md)  
-> **环境：** DS Pick 新包（含 Phase A/B/C：工具、横条、覆盖率门禁、Auditor←scratchpad、blackboard 镜像）  
+> **环境：** Zagens 新包（含 Phase A/B/C：工具、横条、覆盖率门禁、Auditor←scratchpad、blackboard 镜像）  
 > **日期：** 2026-05-19 · **新包回归：** 见 [§8](#8-新包回归测试方案phase-abc)  
 > **维护：** 每完成一步回归，在 [§8.4](#84-回归总评填写) 填结论，并在对应 **R* 记录** 小节补要点（你发结果 → 更新文档）。
 
@@ -291,7 +291,7 @@ notes 只读该 area_id 的行，不要读 notes 文件尾部。run_id 是：202
 
 ## 8. 新包回归测试方案（Phase A–C）
 
-> **目的：** 新安装的 DS Pick + sidecar 一次性验证 A/B/C；区分 **新会话**（干净线程）与 **原会话**（续审 / 历史线程）。  
+> **目的：** 新安装的 Zagens + sidecar 一次性验证 A/B/C；区分 **新会话**（干净线程）与 **原会话**（续审 / 历史线程）。  
 > **建议耗时：** 必测约 45–60 分钟；含 C0 compact、多区压测可再加 30–60 分钟。  
 > **记录：** 每步在下方「回归总评」表填 ✅/❌/⏭ 与备注。
 
@@ -299,7 +299,7 @@ notes 只读该 area_id 的行，不要读 notes 文件尾部。run_id 是：202
 
 | # | 检查项 | 命令 / 操作 | 期望 |
 |---|--------|-------------|------|
-| P0 | 完全退出并重启 DS Pick | 任务管理器无旧 `deepseek-tui` / DS Pick | 新 sidecar 已加载 |
+| P0 | 完全退出并重启 Zagens | 任务管理器无旧 `deepseek-tui` / Zagens | 新 sidecar 已加载 |
 | P1 | 工作区 | 打开 `F:\DeepSeek-TUI-desktop`（仓库根） | 路径正确 |
 | P2 | 技能版本 | 见 §0 `Get-Content …system-installed-version` | ≥ 3 |
 | P3 | 磁盘上旧 scratchpad（可选） | `Test-Path .deepseek\scratchpad\2026-05-19-phase-b-smoke` | 有则用于 **原会话** 续审 |
@@ -314,7 +314,7 @@ Get-ChildItem .deepseek\scratchpad -Directory | Select-Object Name
 
 ### 8.1 新会话 vs 原会话（怎么选）
 
-| 类型 | 含义 | 在 DS Pick 里怎么做 | 验证什么 |
+| 类型 | 含义 | 在 Zagens 里怎么做 | 验证什么 |
 |------|------|---------------------|----------|
 | **新会话** | 全新线程，无历史消息 | 侧边栏 **新建对话**（或 Ctrl+N） | 工具注册、横条绑定、C1 门禁、首次 `scratchpad_run_id` 写入 |
 | **原会话** | 已有线程 + 磁盘上已有 scratchpad | **打开旧对话**（试跑时的线程），或新建后手动指定同一 `run_id` | 续审、`scratchpad_status` 与磁盘一致、不丢 run、C0 compact 后还能续 |
@@ -502,7 +502,7 @@ inventory 设 3 个 area，只完成第 1 个 area 就停止。
 
 | 通过标准 | 判定 | 说明 |
 |----------|------|------|
-| `<scratchpad_summary>` 含 WARNING/BLOCKED | ⚠️ 未确认 | 用户粘贴**未含**该标签；按默认 config（`accounted_ratio` 33% &lt; hard 60%）引擎应走 **BLOCKED** 分支（见 `coverage_gate` / `build_report_summary_message`）— 建议在 DS Pick 该轮消息流中搜 `scratchpad_summary` 或 `BLOCKED:` |
+| `<scratchpad_summary>` 含 WARNING/BLOCKED | ⚠️ 未确认 | 用户粘贴**未含**该标签；按默认 config（`accounted_ratio` 33% &lt; hard 60%）引擎应走 **BLOCKED** 分支（见 `coverage_gate` / `build_report_summary_message`）— 建议在 Zagens 该轮消息流中搜 `scratchpad_summary` 或 `BLOCKED:` |
 | 不应注入完整 L1 逐条列表 | ⚠️ 待对照 | 若仍为 Allow 路径则异常；若已 BLOCKED 但模型仍手写 6 条表，属模型未守门禁语义 |
 
 **备注：** 本 run 顺带满足 R2 补测场景（3 area、第 1 区 done 后另两区 0 notes）— 未单独跑 `require_min_notes` / 干净区 C1 4b。
@@ -633,7 +633,7 @@ agent_spawn(
 加载 audit-repo。run_id=2026-05-19-audit-001。
 1) 列出工具名里是否含 scratchpad_status（不要猜）。
 2) 调用 scratchpad_status(run_id=…) 并贴 JSON。
-3) 确认 DS Pick 琥珀横条是否出现。
+3) 确认 Zagens 琥珀横条是否出现。
 ```
 
 ---

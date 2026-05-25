@@ -385,7 +385,7 @@ impl ToolSpec for WriteOfficeTool {
 
 ## 4. 双模式适配验证
 
-DS Pick 桌面模式和 TUI 直连模式共享同一执行路径：
+Zagens 桌面模式和 TUI 直连模式共享同一执行路径：
 
 ```
 模型 → tool call → deepseek-tui serve (同一进程)
@@ -474,7 +474,7 @@ tauri.conf.json 新增:
   crates/desktop/                               无需改动 (sidecar 是 deepseek-tui serve 本身)
 
 实施后需记录:
-  root/CHANGELOG.md                             新增 DS Pick 行记录：read_file 扩展 xlsx/pptx 支持 + 新增 write_office 工具
+  root/CHANGELOG.md                             新增 Zagens 行记录：read_file 扩展 xlsx/pptx 支持 + 新增 write_office 工具
 ```
 
 ---

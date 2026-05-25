@@ -1,6 +1,6 @@
-# DS Pick 桌面端 — 文档预览架构
+# Zagens 桌面端 — 文档预览架构
 
-> **状态（2026-05）**：Phase 1 已在 DS Pick（`crates/desktop` + `web-ui`）落地。本文档作为 **架构说明 + 约束索引 + 后续 Phase 2 备忘**。
+> **状态（2026-05）**：Phase 1 已在 Zagens（`crates/desktop` + `web-ui`）落地。本文档作为 **架构说明 + 约束索引 + 后续 Phase 2 备忘**。
 
 ## 实施结果概览
 

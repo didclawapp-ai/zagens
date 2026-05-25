@@ -14,7 +14,7 @@
 
 §12.1 **#2/#3** 已签收 [A2_A3_SIGNOFF.md](./A2_A3_SIGNOFF.md)（2026-05-25）。**全量完成线** 仍为 **🟡**（#1 live ToolCell 同构；不阻塞门控）。
 
-**硬约束未变：** DS Pick = Tauri 壳 + `deepseek-tui` sidecar；Agent turn **不**进 WebView；**不**换 app-server 生产 binary。
+**硬约束未变：** Zagens = Tauri 壳 + `deepseek-tui` sidecar；Agent turn **不**进 WebView；**不**换 app-server 生产 binary。
 
 ---
 
@@ -32,7 +32,7 @@ flowchart LR
 
 | 门控 | 路线图要求 | **实际状态** | 关键证据 |
 |------|------------|--------------|----------|
-| Phase 1 | DS Pick harness | **✅** | CHANGELOG Phase 1、多窗口计划 |
+| Phase 1 | Zagens harness | **✅** | CHANGELOG Phase 1、多窗口计划 |
 | **A §12.1** | L1 五项（长跑、可观测、错误、A4、A5） | **🟡 部分** | #2/#3 ✅ [A2_A3_SIGNOFF.md](./A2_A3_SIGNOFF.md)；#1/#4 ✅；**不阻塞**门控 |
 | **A+ §12.2** | 契约 v1、CI 契约测、审批回归 | **✅** | [G2_GATE_ACCEPTANCE.md](./G2_GATE_ACCEPTANCE.md) |
 | **P2 §12.3** | turn_loop 在 core；`engine.rs` <300；sidecar 不变 | **✅ L2 终态 + PR6** | [P2_G3_ENGINE_L2_SIGNOFF.md](./P2_G3_ENGINE_L2_SIGNOFF.md)；`engine.rs` ~193 行 |

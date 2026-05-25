@@ -119,7 +119,7 @@ pub struct SessionMetadata {
     /// Optional mode label (agent/plan/etc.)
     #[serde(default)]
     pub mode: Option<String>,
-    /// Runtime thread store id for DS Pick event replay (tools + thinking UI).
+    /// Runtime thread store id for Zagens event replay (tools + thinking UI).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub runtime_thread_id: Option<String>,
 }

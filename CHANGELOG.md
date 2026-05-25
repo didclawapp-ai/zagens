@@ -1,12 +1,12 @@
 # Changelog
 
-All notable changes to **DS Pick** and its embedded runtime will be documented in this file.
+All notable changes to **Zagens** and its embedded runtime will be documented in this file.
 
-**Update policy:** Record **every notable change** (features, fixes, docs, DS Pick desktop, runtime, tooling) in this file—typically under `[Unreleased]`, in the **same PR/commit** as the change when practical. Cursor agents: see `.cursor/rules/ds-pick-repo.mdc` § Changelog.
+**Update policy:** Record **every notable change** (features, fixes, docs, Zagens desktop, runtime, tooling) in this file—typically under `[Unreleased]`, in the **same PR/commit** as the change when practical. Cursor agents: see `.cursor/rules/zagens-repo.mdc` § Changelog.
 
-**Licensing:** DS Pick (desktop app in `crates/desktop/`) is **proprietary** — see [LICENSE](LICENSE). Third-party runtime MIT license: [third-party/deepseek-tui/LICENSE](third-party/deepseek-tui/LICENSE) and [NOTICE.md](NOTICE.md).
+**Licensing:** Zagens (desktop app in `crates/desktop/`) is **proprietary** — see [LICENSE](LICENSE). Third-party runtime MIT license: [third-party/deepseek-tui/LICENSE](third-party/deepseek-tui/LICENSE) and [NOTICE.md](NOTICE.md).
 
-**DS Pick** (desktop app in `crates/desktop/`) has its **own** version line:
+**Zagens** (desktop app in `crates/desktop/`) has its **own** version line:
 **MAJOR.MINOR.PATCH** in **SemVer** (e.g. **v0.4.3**). Display form **vX.Y.Z**;
 each numeric segment is one or more digits (e.g. `0.2.1`, `0.10.3`). This line
 **does not** follow the embedded runtime workspace version in root `Cargo.toml`
@@ -22,21 +22,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Branding:** Product renamed from **DS Pick** to **Zagens** (tagline: *Desktop agent harness* / 桌面 Agent 控制台). User-visible strings, README, LICENSE, NOTICE, Tauri `productName` / `identifier` (`com.zagens.desktop`), default workspace `<Documents>/Zagens` with legacy `<Documents>/DS Pick` fallback; localStorage keys migrated (`zagens-locale`, `zagens:*` prefs). CI release tags: `zagens-v*` (preferred) and legacy `ds-pick-v*`.
 - **Docs:** [A2_A3_SIGNOFF.md](docs/tech/adr/A2_A3_SIGNOFF.md) — §12.1 #2（Turn 可观测）与 #3（错误分类）维护者签收（2026-05-25）；路线图 §7.2/§7.3/§12.1 勾选同步。
 - **Docs:** [RUNTIME_EVOLUTION_ROADMAP.md](docs/tech/RUNTIME_EVOLUTION_ROADMAP.md) §12.1/§12.5/§17 与代码二次对齐（2026-05-25）— B2/B-L3、`events_since_async`、门控闭合表述；[IMPLEMENTATION_SUMMARY](docs/tech/adr/IMPLEMENTATION_SUMMARY_2026-05-24.md) 同步；[TUI_DS_PICK_GAP.md](docs/desktop/TUI_DS_PICK_GAP.md) 审核表（托盘/导出/记忆地图 UI）。
-- **Project identity:** DS Pick is **proprietary** ([LICENSE](LICENSE)); third-party runtime MIT license at [third-party/deepseek-tui/LICENSE](third-party/deepseek-tui/LICENSE) (not at repo root). See [NOTICE.md](NOTICE.md). Removed upstream npm/website, CLI Docker artifacts, CLI binary Release (`auto-tag.yml`, npm/crates release scripts), and `ci.yml` npm-wrapper job. **Release:** `.github/workflows/release.yml` builds **DS Pick Windows installers** on `ds-pick-v*` tags only (macOS/Linux later). **Config samples:** [`.env.example`](.env.example) and [`config.example.toml`](config.example.toml) reframed for DS Pick desktop + embedded sidecar (not upstream TUI/CLI).
+- **Project identity:** Zagens is **proprietary** ([LICENSE](LICENSE)); third-party runtime MIT license at [third-party/deepseek-tui/LICENSE](third-party/deepseek-tui/LICENSE) (not at repo root). See [NOTICE.md](NOTICE.md). Removed upstream npm/website, CLI Docker artifacts, CLI binary Release (`auto-tag.yml`, npm/crates release scripts), and `ci.yml` npm-wrapper job. **Release:** `.github/workflows/release.yml` builds **Zagens Windows installers** on `ds-pick-v*` tags only (macOS/Linux later). **Config samples:** [`.env.example`](.env.example) and [`config.example.toml`](config.example.toml) reframed for Zagens desktop + embedded sidecar (not upstream TUI/CLI).
 
 ### Added
 
 - **Docs:** [docs/desktop/DEV_NOTES.md](docs/desktop/DEV_NOTES.md) §2026-05-24 — product strategy memo (desktop-only shell, TUI/CLI demotion, long-horizon CRAFT ~35 min, industry alignment, D12–D14 candidates, L3 backlog).
 - **B2.1:** Injection arbitration SSOT — [docs/tech/adr/B2_INJECTION_ARBITRATION.md](docs/tech/adr/B2_INJECTION_ARBITRATION.md) (tool results > CRAFT blackboard > topic_memory).
-- **B-L3:** DS Pick `TopicMemoryPanel` + `GET /v1/topic-memory` (graph + eval metrics); settings sidebar entry.
+- **B-L3:** Zagens `TopicMemoryPanel` + `GET /v1/topic-memory` (graph + eval metrics); settings sidebar entry.
 - **B2.5:** `scripts/topic-memory-eval.ps1` — clarification-rate baseline compare + `-Gate`; `TopicMemoryEvalReport` / `compare_eval` in `deepseek-topic-memory`.
 - **B3.3:** SSE backpressure — `RecvError::Lagged` catch-up from store + `coalesce_delta_events` for `item.delta`.
 - **B3.1:** `main.rs` slimmed (~350 lines); CLI tests → `cli/tests.rs`; `cli/entry.rs` (`configure_windows_console_utf8`).
 - **B2.3:** k-hop subgraph retrieval (`retrieve_for_query`) seeds injection from the latest user turn instead of pasting the full hot graph.
 - **B2.5:** `topic-memory-metrics.json` sidecar (turn updates, inject count, repeat-topic / clarification heuristics).
-- **B2 (DS Pick):** Settings panel toggles `topic_memory_enabled` and inject interval; persisted to `[topic_memory]` in `config.toml`.
+- **B2 (Zagens):** Settings panel toggles `topic_memory_enabled` and inject interval; persisted to `[topic_memory]` in `config.toml`.
 - **B3 CLI:** `run_*` and helpers moved to `crates/tui/src/cli/commands/legacy.rs`; `main.rs` ~1.4k lines (was ~4.9k); `clap` in `cli/args.rs`.
 - **Runtime (A1.3):** `RuntimeThreadManager::events_since_async` — HTTP/SSE/task paths offload SQLite/JSONL reads via `spawn_blocking`.
 - **Docs:** Backlog ADRs (`BACKLOG_ENGINE_STRUCT_IN_CORE`, `BACKLOG_RUNTIME_UNIFICATION`, `BACKLOG_STATESTORE_JSONL`, `BACKLOG_LANDLOCK_ENFORCE`); `A1_PERSIST_BLOCKING_AUDIT.md`; `tui-core` legacy README.
@@ -47,16 +48,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CRAFT (Issue 6):** `Config::instructions_paths(workspace)` auto-discovers `PROJECT_RULES.md` and `.cursor/rules/*.mdc` when `instructions = [...]` is unset or empty (pick-rules merge unchanged).
 - **CRAFT:** `resident_file` hard lock — conflicting lease rejects spawn instead of warning-only.
 - **Runtime (GAP):** `POST /v1/threads/{id}/fork-at-user-message` with `{ depth_from_tail }` exposes `fork_at_user_message` for backtrack-depth forking.
-- **DS Pick (GAP):** `agent_spawn` / `spawn_agent` tool cards show inline sub-agent status linked to AgentPanel SSE state.
-- **DS Pick (GAP):** User messages (non-last) offer **Branch** → `forkThreadAtUserMessage` + composer prefill from `original_user_text`.
+- **Zagens (GAP):** `agent_spawn` / `spawn_agent` tool cards show inline sub-agent status linked to AgentPanel SSE state.
+- **Zagens (GAP):** User messages (non-last) offer **Branch** → `forkThreadAtUserMessage` + composer prefill from `original_user_text`.
 - **Runtime (A1.4):** `history_isomorphism` — live tool-detail outputs vs message tool-results parity helpers + tests.
 - **Desktop API:** `forkThreadAtUserMessage()` client helper.
 
 ### Fixed
 
-- **DS Pick (F3):** `ModelParamsDialog` — `role="dialog"`, `aria-modal`, labelled controls, Escape to close, focus on open; strings via `modelParams.*` i18n.
+- **Zagens (F3):** `ModelParamsDialog` — `role="dialog"`, `aria-modal`, labelled controls, Escape to close, focus on open; strings via `modelParams.*` i18n.
 - **Runtime (A1.4):** `history_isomorphism` — thinking block round-trip + `history_transcript_core_matches_messages`; compaction/trim/persist paths use core check; partition trim regression tests.
-- **DS Pick (F3):** Right-panel workbench tabs + integrated terminal session tabs use roving `tabIndex` and Arrow/Home/End keyboard navigation (`lib/a11y/rovingTabList.ts`).
+- **Zagens (F3):** Right-panel workbench tabs + integrated terminal session tabs use roving `tabIndex` and Arrow/Home/End keyboard navigation (`lib/a11y/rovingTabList.ts`).
 - **Runtime (A3.2/A3.4):** `ErrorRetryPolicy` + `user_hint_for_category`; `ErrorEnvelope.hint` and unified HTTP `error` payload (`class`, `retryable`, `retry_policy`, `hint`); TUI status line appends hint; `api_error_payload_includes_taxonomy_fields` regression.
 - **Runtime (A+.7):** Register `pending_approvals` before emitting `approval.required` (fixes resolve-approval racing JSONL/SSE); multi-window regression tests `parallel_pending_approvals_resolve_scoped_to_thread_turn` + `sidecar_parallel_pending_approvals_resolve_then_continue`.
 - **Runtime (A1.2):** Large-output routing stamps `ToolResult.metadata.large_output` with persisted `meta_path`; `monitor_turn` copies into turn-item `artifact_refs` so JSONL/SQLite items round-trip to `large_outputs/` blobs.
@@ -64,8 +65,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Runtime (A3):** `classify_error_message` recognizes DeepSeek thinking/reasoning constraint strings as `InvalidInput` (distinct from network disconnect); golden suite centralized in `deepseek-core::error_taxonomy`.
 - **Desktop (approval):** 系统设置新增 **「自动批准」** 审批策略；非 auto 时 Composer 显示只读「审批：按需审批」等，不再展示无法勾选的复选框；`approval_policy=auto` 时显示可勾选的「自动批准工具调用」。
 - **Desktop (F3):** Composer card markup — options/bridge/textarea/actions stay inside `.card` (removed premature close that left input chrome outside the card).
-- **Runtime (A+.4):** `sidecar_contract_full_lifecycle` — interrupt endpoint aligned with DS Pick (`POST .../interrupt`, not legacy `/stop`).
-- **DS Pick (F3):** Terminal session tabs — close control no longer nested inside tab button (valid HTML + keyboard activation).
+- **Runtime (A+.4):** `sidecar_contract_full_lifecycle` — interrupt endpoint aligned with Zagens (`POST .../interrupt`, not legacy `/stop`).
+- **Zagens (F3):** Terminal session tabs — close control no longer nested inside tab button (valid HTML + keyboard activation).
 
 ### Changed
 
@@ -73,7 +74,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Runtime (A1):** `set_routing_rules` persists via `spawn_blocking` (async HTTP path no longer blocks on JSON I/O).
 - **Governance (D10):** 维护者签收解除桌面 Feature freeze（Jason，2026-05-24）— [docs/tech/adr/P2_D10_UNFREEZE_RECORD.md](docs/tech/adr/P2_D10_UNFREEZE_RECORD.md) §4；路线图 §17.4 已勾选。
 - **Governance (F3):** G2 手测清单 §8（键盘 a11y 8.1–8.5）维护者签收 ✅（2026-05-24）— [G2_PR5_MANUAL_SMOKE_CHECKLIST.md](docs/tech/adr/G2_PR5_MANUAL_SMOKE_CHECKLIST.md) §6。
-- **Governance (§12.4 #2):** **已闭合**（2026-05-24）— Stop / 长跑双壳 / DS Pick 审批（G2 §2 + §9）；全量审核 [CODE_REVIEW_2026-05-24.md](deliverables/CODE_REVIEW_2026-05-24.md)。
+- **Governance (§12.4 #2):** **已闭合**（2026-05-24）— Stop / 长跑双壳 / Zagens 审批（G2 §2 + §9）；全量审核 [CODE_REVIEW_2026-05-24.md](deliverables/CODE_REVIEW_2026-05-24.md)。
 - **Runtime (P2 PR6a–d):** Turn loop streaming + tool planning/outcomes + `tool_parser` in `deepseek-core`; TUI `tool_plans_exec` + split `host_impl/`; `capacity_policy` + `TurnLoopMode` capacity checkpoints; `execute_plan_on_engine` / `detached_execute_with_lock`. Plan: `docs/tech/adr/P2_PR6_TURN_LOOP_L2_MIGRATION_PLAN.md`（PR6 切片已全部落地；ADR/spike 已同步）。
 - **Runtime (A1.6 / R-015):** Full baseline @ `8b1538a` — median RSS **29 MB** (3×50 + 1.1 MB fixture, `-Gate` PASS vs 28.5 MB); ADR + `deliverables/runtime-baseline-full-run.log` updated.
 - **Runtime (A1-full):** Emergency trim (`trim_oldest_messages_to_budget`) uses hot/cold partition — drops `ColdSummary` first, preserves hot / pinned / `[workshop-ref]` messages; `context_trim::trim_messages_partition_aware`.
@@ -88,12 +89,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Runtime (GAP 8a):** `StartTurnRequest` / `StartTurnParams` / session sampling fields (`temperature`, `top_p`, `max_output_tokens`); `streaming_phase` forwards them to the API request.
 - **Runtime (GAP F4):** `POST /v1/threads/{id}/edit-last-turn` — truncate last user turn on live engine session and start a new turn (TUI `/edit` parity).
-- **DS Pick (GAP 8a):** Composer gear opens `ModelParamsDialog`; params persist in localStorage and pass through `startThreadTurn` / `POST /v1/stream`.
-- **DS Pick (GAP F4):** Edit last user message from `MessageBubble` → dialog → `editLastThreadTurn` + SSE replay.
+- **Zagens (GAP 8a):** Composer gear opens `ModelParamsDialog`; params persist in localStorage and pass through `startThreadTurn` / `POST /v1/stream`.
+- **Zagens (GAP F4):** Edit last user message from `MessageBubble` → dialog → `editLastThreadTurn` + SSE replay.
 - **Docs:** 路线图 §17.3 / `IMPLEMENTATION_SUMMARY` / `TUI_DS_PICK_GAP` 按 2026-05-24 代码审计更新（manager 已拆、F0–F3/路由/导出/托盘/智能粘贴已闭合）。
 - **Docs:** G2 §10 B-L1 CRAFT 手测签收（2026-05-24）— §12.5 #1 闭环、AgentPanel、`craft.*` SSE；[G2_PR5_MANUAL_SMOKE_CHECKLIST.md](docs/tech/adr/G2_PR5_MANUAL_SMOKE_CHECKLIST.md) §10。
 - **Runtime (B-L1 / CRAFT):** Blackboard APIs bind to thread **workspace** (not sidecar `cwd`); `GET /v1/blackboards` + `GET /v1/blackboards/{id}`; subagent done sentinel includes `structured_verdict` only when present; Verifier failures写入黑板；`<deepseek:craft.fix_loop>` 程序化修复提示；SSE `craft.verdict` / `craft.board_updated`。
-- **DS Pick (B-L3):** AgentPanel「CRAFT 任务」区域 — 轮询 `/v1/blackboards`，展示 explorer / 实现轮次 / reviewer 裁决 / verifier 摘要。
+- **Zagens (B-L3):** AgentPanel「CRAFT 任务」区域 — 轮询 `/v1/blackboards`，展示 explorer / 实现轮次 / reviewer 裁决 / verifier 摘要。
 - **Docs:** `docs/tech/adr/IMPLEMENTATION_SUMMARY_2026-05-24.md` — 路线图门控链与 A/A+/P2/F/D10 实施现状归档；路线图 §17 已链入。
 - **Runtime (A1.4):** `tui/history_isomorphism` — user/assistant transcript parity with `history_cells_from_message`; tests after compaction, trim, and JSONL reconstruct.
 - **Runtime (A1.1):** `deepseek_core::context_partition` — hot window / cold zone tiers (`Hot`, `Pinned`, `ColdSummary`, `ColdExternalRef`); `CompactionPlan::context_partition`.
@@ -153,7 +154,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Runtime (P2 PR4 局部):** `TurnLoopToolExecutor` + `TurnLoopToolRegistry` 关联类型；`Engine` / `McpPoolHandle` 端口实现。
 - **Runtime (tests):** A5.5 最小回放 fixture `tests/fixtures/runtime_turn_minimal.jsonl` + 顺序/seq 断言。
 - **Runtime (P2 PR4 局部):** `deepseek-core::engine::tool_catalog`（deferral、tool search、missing-tool 文案）；tui 薄壳保留 `AppMode` 适配与 `code_execution` 子进程。
-- **Docs:** `docs/tech/adr/P2_DESKTOP_TURNLOOP_SPIKE.md` — DS Pick 经 sidecar HTTP 使用 `TurnLoopHost`（tui `host_impl`），desktop crate 不链接 `Engine`。
+- **Docs:** `docs/tech/adr/P2_DESKTOP_TURNLOOP_SPIKE.md` — Zagens 经 sidecar HTTP 使用 `TurnLoopHost`（tui `host_impl`），desktop crate 不链接 `Engine`。
 - **Runtime (A4.6 局部):** `engine/capacity_flow/{checkpoints,observation,events,interventions,replay,persistence}.rs`；原 monolith ~985 行拆为 6 个子模块（最大 ~370 行）。
 - **Runtime (A4.6 局部):** `runtime_threads/turn_control.rs`（`interrupt_turn` / `steer_turn` / `compact_thread`）；`manager.rs` ~829 → ~589 行。
 - **Runtime (A4.6 局部):** `runtime_threads/thread_crud.rs`（create/list/get/update/fork/resume/seed 等）；`manager.rs` ~1673 → ~1032 行。
@@ -191,80 +192,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.3] - 2026-05-21
 
-### DS Pick (desktop)
+### Zagens (desktop)
 
 - **v0.4.3** — `deepseek-desktop`、`tauri.conf.json`、`web-ui/package.json` 与 About 面板对齐 **v0.4.3**。
 
 ### Fixed
 
-- **DS Pick (desktop):** Fix multi-window / continued-session chat stream duplication (`看到了看到了` / `TheThe user`) — runtime SSE proxy uses `emit_to` per window; Web UI binds SSE via `getCurrentWebviewWindow().listen`; resumed turns poll `replay_only` events instead of a long-lived `GET …/events` SSE (avoids stacked `runtime_get_sse` streams); `runtime_cancel_sse` stops in-flight proxy reads on abort; `finishOnce` aborts the turn `AbortSignal` after `turn.completed`.
+- **Zagens (desktop):** Fix multi-window / continued-session chat stream duplication (`看到了看到了` / `TheThe user`) — runtime SSE proxy uses `emit_to` per window; Web UI binds SSE via `getCurrentWebviewWindow().listen`; resumed turns poll `replay_only` events instead of a long-lived `GET …/events` SSE (avoids stacked `runtime_get_sse` streams); `runtime_cancel_sse` stops in-flight proxy reads on abort; `finishOnce` aborts the turn `AbortSignal` after `turn.completed`.
 
 ## [0.4.2] - 2026-05-21
 
-### DS Pick (desktop)
+### Zagens (desktop)
 
 - **v0.4.2** — `deepseek-desktop`、`tauri.conf.json`、`web-ui/package.json` 与 About 面板对齐 **v0.4.2**。
 
 ### Added
 
-- **DS Pick (desktop):** True multi-window (Cursor / VS Code model) — `WebviewWindow` per project, `tauri-plugin-single-instance`, tray/menu **新建窗口**, TitleBar + **Ctrl/Cmd+Shift+N**; per-window workspace `localStorage`, session list filter + **显示全部会话**; parallel turns per `thread_id` (switch session no longer aborts other streams); terminal `emit_to` per window; approval routed via `register_window_thread` / `thread_owned_by_window`.
+- **Zagens (desktop):** True multi-window (Cursor / VS Code model) — `WebviewWindow` per project, `tauri-plugin-single-instance`, tray/menu **新建窗口**, TitleBar + **Ctrl/Cmd+Shift+N**; per-window workspace `localStorage`, session list filter + **显示全部会话**; parallel turns per `thread_id` (switch session no longer aborts other streams); terminal `emit_to` per window; approval routed via `register_window_thread` / `thread_owned_by_window`.
 - **Docs:** [multi-window-plan.md](docs/desktop/multi-window-plan.md) — multi-window plan **closed** (M1–M4 shipped; M5 deferred to backlog §7.5).
 
 ## [0.4.1] - 2026-05-21
 
-### DS Pick (desktop)
+### Zagens (desktop)
 
 - **v0.4.1** — `deepseek-desktop`、`tauri.conf.json`、`web-ui/package.json` 与 About 面板对齐 **v0.4.1**。
 
 ### Added
 
 - **Docs:** [workspace-directory-plan.md](docs/desktop/workspace-directory-plan.md) — workbench Directory tab phased UI/feature plan with implementation checklist (§0, §10).
-- **DS Pick (web UI):** Workbench Directory tab — flat stroke icons, toolbar (up/refresh/open folder), search filter, hidden-folder toggle (`target`, `node_modules`, etc.), merged workspace path row, scrollable list, preview highlight, `WorkspaceFilesPanel` + i18n `workspaceFiles.*`.
-- **DS Pick (web UI):** Workbench Directory **tree view** (phase D) — lazy-loaded `WorkspaceFileTree`, per-workspace expanded-state in `sessionStorage`, list/tree toggle with flat stroke icons.
-- **DS Pick (web UI):** i18n for workbench panel — `panels.*`, `workbench.*`, `workspaceFiles.tab` / `workspaceFiles.errors.*`; `RightPanel` and workspace file open errors use `useT`.
-- **DS Pick (web UI):** Tasks panel — **Clear finished** removes completed / failed / canceled records via runtime `POST /v1/tasks/clear` (queued and running tasks kept); confirmation dialog + toast.
-- **DS Pick (web UI):** Workbench Files tab — workspace-wide file search (same input box, BFS via browse API; skips denylisted dirs), virtual list for large flat/search result sets (B4); chat/Diff「在目录中显示」, scroll-to-reveal, keyboard shortcuts, Office directory presets.
-- **DS Pick (Phase D1):** Audit scratchpad — expandable inventory list from `scratchpad/status` `areas[]`, U1 contract violation highlight (notes without accounted areas), i18n strings; path click opens workspace preview.
-- **DS Pick (web UI):** Audit scratchpad colors aligned with app theme (`bg-card`, `text-t-text`, accent/error tokens) — readable in light mode; inventory status chips match ToolCard-style badges.
-- **DS Pick (Phase D2):** Scratchpad status API — `checklist_completed/total`, `contract_warnings`, findings severity tallies; audit panel dual-track (inventory vs checklist), findings strip, sub-agent active count + narrative-spawn warning; checklist tool events refresh panel.
-- **DS Pick (Phase D U2):** Sidebar separates **Tasks** (`GET /v1/tasks`) and **Sub-agents** (`agent_*` SSE) into top-level inspector entries; **Skills** stays under Settings. Checklist / Tasks / Sub-agents show a **small activity dot** when there is in-flight work or unseen updates (pulse while running); opening the panel clears the indicator.
-- **DS Pick (web UI):** **Usage** dashboard moved to the same sidebar tier as Checklist / Tasks / Sub-agents (display panels); Settings keeps API Key, MCP, Skills, routing, index, and system config only.
-- **DS Pick (web UI):** Audit scratchpad moved from the chat composer strip to a sidebar **审计** entry and right **Audit scratchpad** panel (same behavior as Checklist); sidebar activity dot when a run is active.
-- **DS Pick (web UI):** Chat **Reasoning** and **tools** sections get clipboard copy (section header + per-tool card); uses shared `copyPlainText` helper.
-- **DS Pick (web UI):** Sub-agent panel shows spawn **objective**, type/role, work-package id, and progress line; runtime `agent.spawned` SSE includes `prompt`; bogus `call_*` tool-call ids are no longer listed as agents.
-- **DS Pick (panel channel C):** Runtime emits `panel.scratchpad` / `panel.checklist` / `panel.context` on the live SSE stream; Web UI applies them directly and uses slow B-channel polls only as fallback while streaming.
+- **Zagens (web UI):** Workbench Directory tab — flat stroke icons, toolbar (up/refresh/open folder), search filter, hidden-folder toggle (`target`, `node_modules`, etc.), merged workspace path row, scrollable list, preview highlight, `WorkspaceFilesPanel` + i18n `workspaceFiles.*`.
+- **Zagens (web UI):** Workbench Directory **tree view** (phase D) — lazy-loaded `WorkspaceFileTree`, per-workspace expanded-state in `sessionStorage`, list/tree toggle with flat stroke icons.
+- **Zagens (web UI):** i18n for workbench panel — `panels.*`, `workbench.*`, `workspaceFiles.tab` / `workspaceFiles.errors.*`; `RightPanel` and workspace file open errors use `useT`.
+- **Zagens (web UI):** Tasks panel — **Clear finished** removes completed / failed / canceled records via runtime `POST /v1/tasks/clear` (queued and running tasks kept); confirmation dialog + toast.
+- **Zagens (web UI):** Workbench Files tab — workspace-wide file search (same input box, BFS via browse API; skips denylisted dirs), virtual list for large flat/search result sets (B4); chat/Diff「在目录中显示」, scroll-to-reveal, keyboard shortcuts, Office directory presets.
+- **Zagens (Phase D1):** Audit scratchpad — expandable inventory list from `scratchpad/status` `areas[]`, U1 contract violation highlight (notes without accounted areas), i18n strings; path click opens workspace preview.
+- **Zagens (web UI):** Audit scratchpad colors aligned with app theme (`bg-card`, `text-t-text`, accent/error tokens) — readable in light mode; inventory status chips match ToolCard-style badges.
+- **Zagens (Phase D2):** Scratchpad status API — `checklist_completed/total`, `contract_warnings`, findings severity tallies; audit panel dual-track (inventory vs checklist), findings strip, sub-agent active count + narrative-spawn warning; checklist tool events refresh panel.
+- **Zagens (Phase D U2):** Sidebar separates **Tasks** (`GET /v1/tasks`) and **Sub-agents** (`agent_*` SSE) into top-level inspector entries; **Skills** stays under Settings. Checklist / Tasks / Sub-agents show a **small activity dot** when there is in-flight work or unseen updates (pulse while running); opening the panel clears the indicator.
+- **Zagens (web UI):** **Usage** dashboard moved to the same sidebar tier as Checklist / Tasks / Sub-agents (display panels); Settings keeps API Key, MCP, Skills, routing, index, and system config only.
+- **Zagens (web UI):** Audit scratchpad moved from the chat composer strip to a sidebar **审计** entry and right **Audit scratchpad** panel (same behavior as Checklist); sidebar activity dot when a run is active.
+- **Zagens (web UI):** Chat **Reasoning** and **tools** sections get clipboard copy (section header + per-tool card); uses shared `copyPlainText` helper.
+- **Zagens (web UI):** Sub-agent panel shows spawn **objective**, type/role, work-package id, and progress line; runtime `agent.spawned` SSE includes `prompt`; bogus `call_*` tool-call ids are no longer listed as agents.
+- **Zagens (panel channel C):** Runtime emits `panel.scratchpad` / `panel.checklist` / `panel.context` on the live SSE stream; Web UI applies them directly and uses slow B-channel polls only as fallback while streaming.
 
 ### Changed
 
-- **DS Pick (web UI):** Audit scratchpad panel — uniform card border on all sides (removed thick left accent stripe); attention state uses a subtle amber border tint instead.
-- **DS Pick (web UI):** Remove redundant「打开文件夹」button from workbench panel header; use「在文件管理器中打开」in the Files tab toolbar instead.
+- **Zagens (web UI):** Audit scratchpad panel — uniform card border on all sides (removed thick left accent stripe); attention state uses a subtle amber border tint instead.
+- **Zagens (web UI):** Remove redundant「打开文件夹」button from workbench panel header; use「在文件管理器中打开」in the Files tab toolbar instead.
 
 ### Fixed
 
-- **DS Pick (web UI):** Workbench Files「添加至对话」/「Add to chat」 now inserts an `@` workspace path into Composer instead of opening the preview panel.
+- **Zagens (web UI):** Workbench Files「添加至对话」/「Add to chat」 now inserts an `@` workspace path into Composer instead of opening the preview panel.
 - **TUI / runtime (security, L7d P1/P2):** Session `/load` `/save` `/export` paths resolved under workspace (`path_guard`); MCP no longer trusts client `approved` for shell/write tools when `require_approval` is on; default MCP expose list is read-only (`file_read`, `search`, `file_search`); cancel token reset order fixed (H01); `Config` Debug redacts API keys; file-picker labels strip control chars; scratchpad coverage preview uses char-safe truncation; Linux/Windows sandbox types surface an explicit unenforced warning on `exec_shell` (H12); Python REPL spawns with `-I` and docs state no OS isolation (H13).
-- **DS Pick (security, L7d follow-up):** P0 from `2026-05-20-001` audit — `export_*_json` validates `.json` path (no `..`/system dirs); runtime Bearer no longer exposed via `get_runtime_token` (Tauri `runtime_http` / `runtime_post_stream` / `runtime_get_sse`); Explore sub-agent `explicit_tools` intersected with read-only cap; blackboard `task_id` restricted to safe charset.
-- **DS Pick (web UI):** Mermaid SVG, diff2html output, and clipboard HTML paste sanitized with DOMPurify before `innerHTML`.
-- **DS Pick (web UI):** Long-audit HTTP poll storm — coalesced in-flight GETs for context/checklist/scratchpad status; longer staggered intervals while streaming; session checkpoint 60s (turn-complete + tab-hide still persist); runtime probe 18s during stream with immediate light `/health` on stream start.
-- **DS Pick (runtime):** `scratchpad/status` and `checklist` handlers run on the blocking pool (2s status cache) so `/health` and SSE stay responsive under audit load.
-- **DS Pick (web UI):** Sidebar「未连接」during long audits while generation still runs — periodic probe no longer requires `/v1/sessions` (2.5s timeout) while streaming; uses `/health` only so busy sidecar is not misread as offline.
-- **DS Pick (web UI):** Right panel (workspace browse, MCP, tasks/skills, routing, usage) no longer hard-blocks on probe `offline` during streaming; session-list refresh failures use light probe; sidebar shows amber「繁忙（生成中）」when degraded.
-- **DS Pick (web UI):** `runtimeSessionEstablished` keeps checklist, workspace, audit bar, and MCP panels on API paths after connect/resume — probe blips no longer gate panel fetches; probe requires 3 consecutive failures before `offline`; poll GETs use 45s timeout and retain last checklist/scratchpad snapshot on busy errors.
+- **Zagens (security, L7d follow-up):** P0 from `2026-05-20-001` audit — `export_*_json` validates `.json` path (no `..`/system dirs); runtime Bearer no longer exposed via `get_runtime_token` (Tauri `runtime_http` / `runtime_post_stream` / `runtime_get_sse`); Explore sub-agent `explicit_tools` intersected with read-only cap; blackboard `task_id` restricted to safe charset.
+- **Zagens (web UI):** Mermaid SVG, diff2html output, and clipboard HTML paste sanitized with DOMPurify before `innerHTML`.
+- **Zagens (web UI):** Long-audit HTTP poll storm — coalesced in-flight GETs for context/checklist/scratchpad status; longer staggered intervals while streaming; session checkpoint 60s (turn-complete + tab-hide still persist); runtime probe 18s during stream with immediate light `/health` on stream start.
+- **Zagens (runtime):** `scratchpad/status` and `checklist` handlers run on the blocking pool (2s status cache) so `/health` and SSE stay responsive under audit load.
+- **Zagens (web UI):** Sidebar「未连接」during long audits while generation still runs — periodic probe no longer requires `/v1/sessions` (2.5s timeout) while streaming; uses `/health` only so busy sidecar is not misread as offline.
+- **Zagens (web UI):** Right panel (workspace browse, MCP, tasks/skills, routing, usage) no longer hard-blocks on probe `offline` during streaming; session-list refresh failures use light probe; sidebar shows amber「繁忙（生成中）」when degraded.
+- **Zagens (web UI):** `runtimeSessionEstablished` keeps checklist, workspace, audit bar, and MCP panels on API paths after connect/resume — probe blips no longer gate panel fetches; probe requires 3 consecutive failures before `offline`; poll GETs use 45s timeout and retain last checklist/scratchpad snapshot on busy errors.
 
 ## [0.4.0] - 2026-05-20
 
-### DS Pick (desktop)
+### Zagens (desktop)
 
 - **v0.4.0** — `deepseek-desktop`、`tauri.conf.json`、`web-ui/package.json` 与 About 面板对齐 **v0.4.0**。
 
 ### Added
 
-- **DS Pick (web UI):** Runtime-aligned context usage via `GET /v1/threads/{id}/context` (TUI `estimate_input_tokens_conservative` + compaction policy); Composer shows runtime estimate when sidecar is connected.
-- **DS Pick (web UI):** Fix context usage indicator resetting to 0% after switching sessions and back (per-thread snapshot cache, stale refresh guard, transcript fallback when runtime snapshot is empty).
-- **DS Pick (web UI):** Dual-track context display — progress ring uses conservative estimate; Composer also shows last API `input_tokens` from the provider when available.
+- **Zagens (web UI):** Runtime-aligned context usage via `GET /v1/threads/{id}/context` (TUI `estimate_input_tokens_conservative` + compaction policy); Composer shows runtime estimate when sidecar is connected.
+- **Zagens (web UI):** Fix context usage indicator resetting to 0% after switching sessions and back (per-thread snapshot cache, stale refresh guard, transcript fallback when runtime snapshot is empty).
+- **Zagens (web UI):** Dual-track context display — progress ring uses conservative estimate; Composer also shows last API `input_tokens` from the provider when available.
 - **TUI / runtime:** Engine records per-round API `input_tokens` (`last_api_input_tokens`); context snapshot exposes `last_api_usage_percent`; token estimate uses DeepSeek doc ratios (CJK ~0.6, ASCII ~0.3 per char).
-- **DS Pick (system settings):** `[compaction]` — `auto_compact` toggle and `token_threshold` (synced to `config.toml`, shared with TUI engine compaction).
-- **Audit scratchpad (Phase B):** Runtime tools `scratchpad_*`; `ScratchpadStore` + layered P2 summary injection, readonly nudge (B4), cycle handoff pointer (B3b), `ThreadRecord.scratchpad_run_id` (B2), TTL cleanup (B7), `GET /v1/threads/{id}/scratchpad/status`, DS Pick `AuditScratchpadBar` (B5). Config: `[scratchpad]` in `config.toml`.
+- **Zagens (system settings):** `[compaction]` — `auto_compact` toggle and `token_threshold` (synced to `config.toml`, shared with TUI engine compaction).
+- **Audit scratchpad (Phase B):** Runtime tools `scratchpad_*`; `ScratchpadStore` + layered P2 summary injection, readonly nudge (B4), cycle handoff pointer (B3b), `ThreadRecord.scratchpad_run_id` (B2), TTL cleanup (B7), `GET /v1/threads/{id}/scratchpad/status`, Zagens `AuditScratchpadBar` (B5). Config: `[scratchpad]` in `config.toml`.
 - **Audit scratchpad (B7 hardening):** `supersedes` transitive closure; `scratchpad_append` schema tightened; per-turn single `<scratchpad_summary>`; `git_blame` counts toward readonly nudge.
 - **Audit scratchpad (Phase A):** Full-repo review external memory — `pick-rules.md` §7, `base.md`, bundled **`audit-repo`** skill. Design: [audit-scratchpad-design.md](docs/desktop/audit-scratchpad-design.md).
 - **Docs:** [audit-scratchpad-test.md](docs/desktop/audit-scratchpad-test.md) — Phase A smoke, resume, and **14-area** `crates/tui/src/` run (`2026-05-19-tui-src-review`).
@@ -276,39 +277,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Skills:** `audit-repo` — append-before-`done` ordering; bundled skills marker **v4** (`tool_search` before `write_file`; resume via `scratchpad_status`).
 - **Docs:** [audit-scratchpad-design.md](docs/desktop/audit-scratchpad-design.md) §2 — product essence, philosophy (**实事求是，实践出真知**), §2.1–§2.6 (contract, onboarding brainstorm, multidisciplinary memo, short-term roadmap).
 - **Docs:** [audit-scratchpad-test.md](docs/desktop/audit-scratchpad-test.md) §L7b — root-cause table and link to §14.
-- **Docs:** [HARNESS.md](docs/desktop/HARNESS.md) — Agent Harness 定位（社招 JD 映射、DS Pick 栈位、会话恢复案例、与 DeepSeek 关系备忘 §7）。
+- **Docs:** [HARNESS.md](docs/desktop/HARNESS.md) — Agent Harness 定位（社招 JD 映射、Zagens 栈位、会话恢复案例、与 DeepSeek 关系备忘 §7）。
 - **Docs:** [audit-scratchpad-design.md §6.13](docs/desktop/audit-scratchpad-design.md) — Phase D 审计过程可视化路线图（D1–D3、产品/模型边界）；[audit-scratchpad-test.md §L7c/L8/L9](docs/desktop/audit-scratchpad-test.md) — `2026-05-20-audit` 试跑记录、可视化验收、地狱级四维暂缓。
 
 ### Fixed
 
-- **DS Pick (web UI):** Saving system settings restarts the sidecar — UI no longer stays on「生成中」while the sidebar shows「未连接」; `sidecar://restarting` clears the stream; confirm dialog when saving during an active turn.
-- **DS Pick (web UI):** Stop assistant reply body **jitter while streaming** — plain pre-wrap during tokens (Markdown after turn completes), single scroll owner (no outer 200ms poll vs inner 48vh cap), fixed-height「生成中」footer.
-- **DS Pick (desktop):** Content-Security-Policy — add `font-src` (`'self'`, `data:`, dev localhost / `tauri.localhost`) so bundled UI fonts are not blocked (console CSP violation on `data:font/woff2`).
+- **Zagens (web UI):** Saving system settings restarts the sidecar — UI no longer stays on「生成中」while the sidebar shows「未连接」; `sidecar://restarting` clears the stream; confirm dialog when saving during an active turn.
+- **Zagens (web UI):** Stop assistant reply body **jitter while streaming** — plain pre-wrap during tokens (Markdown after turn completes), single scroll owner (no outer 200ms poll vs inner 48vh cap), fixed-height「生成中」footer.
+- **Zagens (desktop):** Content-Security-Policy — add `font-src` (`'self'`, `data:`, dev localhost / `tauri.localhost`) so bundled UI fonts are not blocked (console CSP violation on `data:font/woff2`).
 
 ### Changed
 
-- **DS Pick (web UI):** Audit scratchpad bar — dismiss control (×, top-right); hidden for the same thread/run until a new scratchpad run (sessionStorage).
-- **DS Pick (web UI):** Audit scratchpad bar — neutral `canvas-alt` shell (aligned with tool cards); contract reminders use amber pill + left rail instead of full error red styling.
-- **DS Pick (web UI):** Context ring prefers runtime snapshot over client transcript estimate; polls during streaming.
+- **Zagens (web UI):** Audit scratchpad bar — dismiss control (×, top-right); hidden for the same thread/run until a new scratchpad run (sessionStorage).
+- **Zagens (web UI):** Audit scratchpad bar — neutral `canvas-alt` shell (aligned with tool cards); contract reminders use amber pill + left rail instead of full error red styling.
+- **Zagens (web UI):** Context ring prefers runtime snapshot over client transcript estimate; polls during streaming.
 - **Audit scratchpad (L7b short-term):** Expand `[scratchpad] inject_on_report_keywords` (E1); block `write_file` to `deliverables/` audit/CODE_REVIEW paths when bound scratchpad inventory incomplete or C1 hard gate fails (E2, `scratchpad_flow::check_write_file_audit_report_gate`); **E5** — during bound audit scratchpad defer/block `task_create` and eager-load `agent_spawn` (+ join tools) so P1 parallel review uses sub-agents not TaskManager.
-- **DS Pick / config:** `[subagents] step_timeout_secs` — configurable default per-step sub-agent LLM API timeout (10–600 s); system settings slider; `agent_spawn` uses it when `step_timeout_ms` is omitted (replaces hard-coded 120 s default).
+- **Zagens / config:** `[subagents] step_timeout_secs` — configurable default per-step sub-agent LLM API timeout (10–600 s); system settings slider; `agent_spawn` uses it when `step_timeout_ms` is omitted (replaces hard-coded 120 s default).
 - **Sub-agents / prompts:** Step API timeout errors and `base.md` / `audit-repo` spell out that omitted `step_timeout_ms` is not unlimited time; parents must re-spawn or shrink scope on timeout — not mark audit areas done.
 - **Prompts / tools:** Clarify **Task** (`task_*`, peer durable work) vs **Sub-agent** (`agent_*`, parent-dispatched) in `base.md`, `tasks.rs` tool descriptions, and `agent_spawn` / `agent_result` / `agent_list` descriptions; `task_id` spawn param documented as blackboard key only.
-- **DS Pick (web UI):** Custom context menu on chat workspace file links — open with system app, copy absolute path, copy relative path; suppresses the native WebView link menu (e.g. non-functional “open in new window” on `href="#"`).
-- **DS Pick (web UI):** Right workbench panel **collapsed by default** on launch (left sidebar stays open); use the edge strip to expand.
-- **DS Pick (web UI):** Composer **Stop** calls `POST …/turns/{turn_id}/interrupt` (runtime `engine.cancel()`), not only aborting the SSE client—matches TUI Ctrl+C / Esc interrupt semantics.
-- **Audit scratchpad (discoverability):** `scratchpad_*` tools eager-loaded in Agent (not deferred); `scratchpad_status` / `scratchpad_list_notes` bind `thread.scratchpad_run_id`; `GET …/scratchpad/status` auto-discovers latest `inventory.json` when unbound (DS Pick bar). `audit-repo` skill + `base.md` / pick-rules §7: `tool_search` before `write_file` fallback.
-- **DS Pick (web UI):** Audit bar shows **accounted** progress (done + in_progress + deferred), faster poll while streaming, refresh on scratchpad tool completion. **Sub-agent panel:** forward `agent.spawned` / `agent.progress` / `agent.completed` / `agent.list` on compat SSE (`POST /v1/stream`).
-- **DS Pick (web UI):** Dark theme — user message text uses dedicated high-contrast `--color-msg-user-text` (fixes faint prose grays in user bubbles).
-- **DS Pick (web UI):** While an assistant reply is **streaming**, the main body uses the same **48vh scroll cap** as Reasoning so CoT stays on screen; after the turn completes, the body **ease-out expands** to full height (respects `prefers-reduced-motion`).
-- **DS Pick (web UI):** Sidebar / right-panel **collapse** controls move to the resize gutter—hidden until hover on the `col-resize` seam; panel-indent icon replaces header chevrons.
-- **DS Pick (web UI):** Global **toast** notifications (no new npm deps) replace the chat-column amber **banner**; stack centered above the composer with success / error / warning / info variants; runtime reachability errors include **Retry connection** and auto-dismiss when the sidecar probe is healthy.
-- **DS Pick (web UI):** Assistant **Reasoning** and **工具调用** blocks default to **collapsed**; click header to expand (streaming shows “推理中…” / “N 个进行中” hints while folded).
+- **Zagens (web UI):** Custom context menu on chat workspace file links — open with system app, copy absolute path, copy relative path; suppresses the native WebView link menu (e.g. non-functional “open in new window” on `href="#"`).
+- **Zagens (web UI):** Right workbench panel **collapsed by default** on launch (left sidebar stays open); use the edge strip to expand.
+- **Zagens (web UI):** Composer **Stop** calls `POST …/turns/{turn_id}/interrupt` (runtime `engine.cancel()`), not only aborting the SSE client—matches TUI Ctrl+C / Esc interrupt semantics.
+- **Audit scratchpad (discoverability):** `scratchpad_*` tools eager-loaded in Agent (not deferred); `scratchpad_status` / `scratchpad_list_notes` bind `thread.scratchpad_run_id`; `GET …/scratchpad/status` auto-discovers latest `inventory.json` when unbound (Zagens bar). `audit-repo` skill + `base.md` / pick-rules §7: `tool_search` before `write_file` fallback.
+- **Zagens (web UI):** Audit bar shows **accounted** progress (done + in_progress + deferred), faster poll while streaming, refresh on scratchpad tool completion. **Sub-agent panel:** forward `agent.spawned` / `agent.progress` / `agent.completed` / `agent.list` on compat SSE (`POST /v1/stream`).
+- **Zagens (web UI):** Dark theme — user message text uses dedicated high-contrast `--color-msg-user-text` (fixes faint prose grays in user bubbles).
+- **Zagens (web UI):** While an assistant reply is **streaming**, the main body uses the same **48vh scroll cap** as Reasoning so CoT stays on screen; after the turn completes, the body **ease-out expands** to full height (respects `prefers-reduced-motion`).
+- **Zagens (web UI):** Sidebar / right-panel **collapse** controls move to the resize gutter—hidden until hover on the `col-resize` seam; panel-indent icon replaces header chevrons.
+- **Zagens (web UI):** Global **toast** notifications (no new npm deps) replace the chat-column amber **banner**; stack centered above the composer with success / error / warning / info variants; runtime reachability errors include **Retry connection** and auto-dismiss when the sidecar probe is healthy.
+- **Zagens (web UI):** Assistant **Reasoning** and **工具调用** blocks default to **collapsed**; click header to expand (streaming shows “推理中…” / “N 个进行中” hints while folded).
 - **Docs:** [README.md](README.md) — lead with verified differentiators; split desktop vs shared runtime; trim misleading feature tables; fix dev commands (`cargo tauri dev`); align doc links (`API_DESIGN.md`, `DEV_NOTES.md`). Cursor/portable rules updated for dead links.
 
 ## [0.3.0] - 2026-05-19
 
-### DS Pick (desktop)
+### Zagens (desktop)
 
 - **v0.3.0** — `deepseek-desktop`、`tauri.conf.json`、`web-ui/package.json` 与侧栏标签对齐 **v0.3.0**。
 - **会话回放与 diff** — 会话回放、diff 面板、上下文用量展示；Code 工作区 **交互式 PTY 终端**；切换会话时恢复上下文用量；聊天代码块复制。
@@ -331,21 +332,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **DS Pick** — Light theme “极淡乳白” palette (warm stone canvas/card, softer dividers, blue accent retained); center chat column uses `card` surface.
-- **DS Pick** — Dark theme “深色暖 · 护眼” palette (warm gray-black shell, amber accent, softer status colors).
-- **DS Pick** — Sidebar brand row: flat logo + accent “DS Pick” (no gray pill), aligned with reference mockups.
-- **DS Pick** — Bundled UI fonts: Plus Jakarta Sans Variable (Latin) + Noto Sans SC (CJK); JetBrains Mono for terminal/code; replaces system Segoe/Roboto stack.
-- **DS Pick** — Sidebar: app icon in brand row; title bar brand text removed; connection status at bottom (“连接正常” / “未连接”); version blurb moved to **关于** panel under Settings.
+- **Zagens** — Light theme “极淡乳白” palette (warm stone canvas/card, softer dividers, blue accent retained); center chat column uses `card` surface.
+- **Zagens** — Dark theme “深色暖 · 护眼” palette (warm gray-black shell, amber accent, softer status colors).
+- **Zagens** — Sidebar brand row: flat logo + accent “Zagens” (no gray pill), aligned with reference mockups.
+- **Zagens** — Bundled UI fonts: Plus Jakarta Sans Variable (Latin) + Noto Sans SC (CJK); JetBrains Mono for terminal/code; replaces system Segoe/Roboto stack.
+- **Zagens** — Sidebar: app icon in brand row; title bar brand text removed; connection status at bottom (“连接正常” / “未连接”); version blurb moved to **关于** panel under Settings.
 - **Runtime** — 消除 tokio worker 中的阻塞 I/O；诊断与相关文档更新。
 
 ### Fixed
 
-- **DS Pick** — After app restart, **Reasoning** and **tool** cards restore correctly: `resume-thread` reuses persisted `runtime_thread_id` for event replay (instead of seeding a blank thread); `persist-session` stores that id; web UI mirrors UI snapshots to `localStorage` as fallback.
-- **DS Pick** — Session restore `GET …/events?replay_only=1` no longer returns HTTP 400 (accept `1`/`0` query booleans; client uses `replay_only=true`).
-- **DS Pick** — Switching sessions keeps in-memory UI snapshots (tools + thinking); thread event replay still refreshes from runtime when available.
-- **DS Pick** — Checklist panel: sidebar **清单** entry, persist `checklist_write` on thread record (survives sidecar restart), faster poll while streaming; auto-switch no longer blocks manual **工作台** tab during streaming.
-- **DS Pick** — Left sidebar width is draggable on the column edge (persisted; 180px–45% viewport); fixes broken resize handle that was absolutely positioned without a containing block.
-- **DS Pick** — Unified divider tokens (`chrome-seam` vs `divider` vs `card-border`); column resize gutters use inset seams only; shell panels use tint bands instead of stacked border lines.
+- **Zagens** — After app restart, **Reasoning** and **tool** cards restore correctly: `resume-thread` reuses persisted `runtime_thread_id` for event replay (instead of seeding a blank thread); `persist-session` stores that id; web UI mirrors UI snapshots to `localStorage` as fallback.
+- **Zagens** — Session restore `GET …/events?replay_only=1` no longer returns HTTP 400 (accept `1`/`0` query booleans; client uses `replay_only=true`).
+- **Zagens** — Switching sessions keeps in-memory UI snapshots (tools + thinking); thread event replay still refreshes from runtime when available.
+- **Zagens** — Checklist panel: sidebar **清单** entry, persist `checklist_write` on thread record (survives sidecar restart), faster poll while streaming; auto-switch no longer blocks manual **工作台** tab during streaming.
+- **Zagens** — Left sidebar width is draggable on the column edge (persisted; 180px–45% viewport); fixes broken resize handle that was absolutely positioned without a containing block.
+- **Zagens** — Unified divider tokens (`chrome-seam` vs `divider` vs `card-border`); column resize gutters use inset seams only; shell panels use tint bands instead of stacked border lines.
 - **Desktop** — Unicode 工作区路径下的可点击聊天链接。
 - **xlsx** — 生成路径六项生产级修复。
 
@@ -359,14 +360,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Process
 
-- **Changelog 维护** — 写入 `.cursor/rules/ds-pick-repo.mdc` 与 `project_rules.md`（notable 变更需同步本文件）。
+- **Changelog 维护** — 写入 `.cursor/rules/zagens-repo.mdc` 与 `project_rules.md`（notable 变更需同步本文件）。
 - **Portable rules** — `project_rules.md` 聚合 `.cursor/rules/*.mdc`（原 `CURSOR_RULES.md` 更名）。
 
 ---
 
 ## [0.2.2] - 2026-05-11
 
-### DS Pick (desktop)
+### Zagens (desktop)
 
 - **v0.2.2** — `deepseek-desktop`、Tauri `version`、`web-ui/package.json` 与侧栏标签对齐 **v0.2.2**；打包脚本与 bundled Python 准备（`prepare-python.mjs`、`docs/bundled-python-plan.md`）。
 - **任务与技能** — 侧栏「任务与技能」；`POST /v1/skills` 创建 `SKILL.md` 模板；全局/工作区技能根与桌面文件夹选择器；定时自动化列表 UI 暂缓展示（`fetchAutomations` 保留）。
@@ -386,24 +387,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.2.1] - 2026-05-10
 
-### DS Pick (desktop)
+### Zagens (desktop)
 
-- **v0.2.1** — 独立桌面 SemVer；侧栏 **DS Pick v0.2.1**（workspace crate 依赖仍为共享线，如 `0.8.15`）。
+- **v0.2.1** — 独立桌面 SemVer；侧栏 **Zagens v0.2.1**（workspace crate 依赖仍为共享线，如 `0.8.15`）。
 - **三栏 shell 增强** — 统一聊天壳、右侧面板（runtime API 对接）、devtools 开关、窗口权限与标题栏。
 - **Markdown** — 聊天区 Markdown 渲染；`` `path/to/file` `` 与相对 `[](…)` 链接在工作台打开预览；预览区内相对链接 **应用内** 打开（外链新窗口，`#` 锚点滚动）。
-- **启动** — DS Pick 与 sidecar 就绪速度优化。
+- **启动** — Zagens 与 sidecar 就绪速度优化。
 
 ### Docs
 
-- `docs/desktop/DEV_NOTES.md`；[TUI vs DS Pick 差距表](docs/desktop/TUI_DS_PICK_GAP.md) 初版。
+- `docs/desktop/DEV_NOTES.md`；[TUI vs Zagens 差距表](docs/desktop/TUI_DS_PICK_GAP.md) 初版。
 
 ---
 
 ## [0.2.0] - 2026-05-09
 
-### DS Pick (desktop)
+### Zagens (desktop)
 
-- **v0.2.0** — DS Pick 产品化里程碑：文档布局、Cursor 规则、桌面与 runtime 一批修复。
+- **v0.2.0** — Zagens 产品化里程碑：文档布局、Cursor 规则、桌面与 runtime 一批修复。
 - **Tauri 壳** — Sidecar 生命周期、三栏布局、会话文件同步、工作区与附件、运行模式。
 - **工作台** — 文件预览模块（文本/图片/二进制）、安全 `read_workspace_binary`；`web_search` Bing 回退。
 - **主题** — 明/暗样式与 Markdown 预览 demo 打磨。
@@ -420,7 +421,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Docs
 
-- README DS Pick 章节与仓库布局表；桌面文档迁入 `docs/desktop/`。
+- README Zagens 章节与仓库布局表；桌面文档迁入 `docs/desktop/`。
 
 ---
 
@@ -428,7 +429,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Initial fork** — DeepSeek TUI desktop 工作区：共享 `deepseek` CLI/TUI/runtime crates 与 **DS Pick**（`crates/desktop/`）骨架。
+- **Initial fork** — DeepSeek TUI desktop 工作区：共享 `deepseek` CLI/TUI/runtime crates 与 **Zagens**（`crates/desktop/`）骨架。
 - **Runtime API** — `/v1/...` 契约与 [docs/RUNTIME_API.md](docs/RUNTIME_API.md) 实施文档（Phase 1）。
 
 ### Changed

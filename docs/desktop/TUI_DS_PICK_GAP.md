@@ -1,6 +1,6 @@
-# TUI vs DS Pick：功能对标差距
+# TUI vs Zagens：功能对标差距
 
-本文档将 **DeepSeek TUI / `deepseek` CLI** 的能力（成熟、长期演进的产品）与 **DS Pick**（基于 Tauri 的桌面壳 + 运行在 RuntimeApi 上的 Web UI）进行对照。这是一份**规划性的盘点清单**，并非承诺实现每一项。
+本文档将 **DeepSeek TUI / `deepseek` CLI** 的能力（成熟、长期演进的产品）与 **Zagens**（基于 Tauri 的桌面壳 + 运行在 RuntimeApi 上的 Web UI）进行对照。这是一份**规划性的盘点清单**，并非承诺实现每一项。
 
 **参考：** [RUNTIME_API.md](../RUNTIME_API.md)、[ARCHITECTURE.md](../ARCHITECTURE.md)、[DESKTOP_IMPLEMENTATION_PLAN.md](./DESKTOP_IMPLEMENTATION_PLAN.md)。
 
@@ -10,7 +10,7 @@
 
 ## 已对齐（高层级）
 
-| 领域 | TUI / runtime | DS Pick |
+| 领域 | TUI / runtime | Zagens |
 |------|----------------|---------|
 | 会话与线程 | 多线程会话模型；切换 | 会话列表，新建，固定/重命名/归档，线程切换，删除（HTTP + 事件） |
 | 对话流程 | 编写、流式输出、停止 | 编写器，停止，乐观草稿 + 回滚 |
@@ -30,7 +30,7 @@
 
 ## 明显差距（产品 / 编排）
 
-以下功能在 TUI 中更完整，DS Pick **仍有差距**或仅为初级接入（2026-05-11 审核）。
+以下功能在 TUI 中更完整，Zagens **仍有差距**或仅为初级接入（2026-05-11 审核）。
 
 - **子代理** — ◐ 已有 `AgentPanel` + `agentStates` SSE 聚合（`App.tsx`）；工具卡片内与子代理的**深度联动**、badge 等仍弱于 TUI。
 - **任务 / 技能** — ◐ 侧栏「任务与技能」：`AutomationPanel.tsx`（仅任务 + 技能）。**定时自动化列表不展示**（见上文产品说明）。
@@ -40,7 +40,7 @@
 - **TUI 斜杠命令的深度交互** — 丰富的 `/` 菜单、面板、快捷键、文档内联支持（与终端产品对标）。
 - **部分高级线程操作** — 例如仅导出线程、复制、合并、批量归档模式（TUI 或脚本已支持的）。
 
-*注：* MCP、用量、任务列表、技能列表等已在 DS Pick 侧栏「设置」子菜单中接入。**定时自动化**（`GET /v1/automations`，cron 类）按产品决策**暂不展示**：后端与 `client.fetchAutomations()` 仍保留，面板仅含「任务」「技能」两标签（右栏 `view` 仍为 `automation`，标题为「任务与技能」）。
+*注：* MCP、用量、任务列表、技能列表等已在 Zagens 侧栏「设置」子菜单中接入。**定时自动化**（`GET /v1/automations`，cron 类）按产品决策**暂不展示**：后端与 `client.fetchAutomations()` 仍保留，面板仅含「任务」「技能」两标签（右栏 `view` 仍为 `automation`，标题为「任务与技能」）。
 
 ---
 
@@ -83,7 +83,7 @@
 | SSE 断线重连 | `client.ts` `waitForRuntimeReady`，`App.tsx` probe | ✅ |
 | Sidecar 重启 | `sidecar.rs` supervisor loop | ✅ |
 | MCP / Usage 端点 | `runtime_api.rs` | ✅ |
-| DS Pick：MCP / 用量 / 任务技能 / 子代理 / 路由 / 模型参数 UI | `McpPanel`、`UsageDashboard`、`AutomationPanel`、`AgentPanel`、`RoutingPanel`、`ModelParamsDialog` | ◐–✅ 见上文「实施步骤」总表 |
+| Zagens：MCP / 用量 / 任务技能 / 子代理 / 路由 / 模型参数 UI | `McpPanel`、`UsageDashboard`、`AutomationPanel`、`AgentPanel`、`RoutingPanel`、`ModelParamsDialog` | ◐–✅ 见上文「实施步骤」总表 |
 | 定时自动化 UI | 产品不展示；`fetchAutomations` 仍保留 | ⏸ 暂缓 |
 | 通知 plugin | `main.rs`；无前端触发 | ◐ |
 | 系统托盘 | `crates/desktop/Cargo.toml` `tray-icon`；`main.rs` `on_tray_icon_event` | ✅ |
@@ -313,7 +313,7 @@
 ### 全局优先级与依赖图（更新）
 
 ```
-已完成 / 部分完成（DS Pick）
+已完成 / 部分完成（Zagens）
   ├─ 1. MCP 管理面板 ✅
   ├─ 2. 用量仪表盘 ✅
   ├─ 3. 任务 + 技能 ◐（自动化 UI 关闭）
@@ -334,7 +334,7 @@
 
 ## 如何使用本文档
 
-- **产品：** 按「明显差距」和「UI 打磨」对表格行进行排期优先级排序；**自动化**定时任务默认不进入 DS Pick UI。
+- **产品：** 按「明显差距」和「UI 打磨」对表格行进行排期优先级排序；**自动化**定时任务默认不进入 Zagens UI。
 - **工程：** 针对每个差距，先对照 **RUNTIME_API**（已有的 vs 需要的新端点）进行追溯，再构建仅 UI 层面的方案。
 
 *最后更新：2026-05-11（实施审核收尾 + 自动化不展示）*

@@ -7,7 +7,7 @@
 
 PR4 将 `handle_deepseek_turn<H: TurnLoopHost>` 迁入 `deepseek-core`，TUI 通过 `engine/turn_loop/host_impl.rs` 实现 `TurnLoopHost`。
 
-**DS Pick（`deepseek-desktop`）是否需要在 crate 内再实现一份 `TurnLoopHost`？**
+**Zagens（`deepseek-desktop`）是否需要在 crate 内再实现一份 `TurnLoopHost`？**
 
 ## 2. 结论（可签收）
 
@@ -19,7 +19,7 @@ PR4 将 `handle_deepseek_turn<H: TurnLoopHost>` 迁入 `deepseek-core`，TUI 通
 | 未来嵌入式 runtime（无 sidecar） | 需新 host 实现或共享 L2 crate；**不在 P2 PR4 范围** |
 
 ```
-DS Pick WebView
+Zagens WebView
   → Tauri (runtime_proxy, secrets, workspace)
     → HTTP/SSE 127.0.0.1  (deepseek-tui serve)
       → RuntimeThreadManager::start_turn

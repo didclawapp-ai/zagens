@@ -52,7 +52,7 @@ When context is assembled or trimmed, **higher rows win** over lower rows. Lower
 
 - **Do not** paste the full topic graph every turn (B2.3 k-hop only).
 - **Do not** inject topic memory into sub-agent prompts unless explicitly added later via ADR.
-- DS Pick **TopicMemoryPanel** is read-only visualization; toggles live in system settings.
+- Zagens **TopicMemoryPanel** is read-only visualization; toggles live in system settings.
 - Metrics for B2.5 (`metrics.json`) track `clarification_rounds` / `repeat_topic_turns` — see `scripts/topic-memory-eval.ps1`.
 
 ## Change control

@@ -99,12 +99,12 @@ fn python_bin_name() -> &'static str {
     }
 }
 
-/// Env var set by DS Pick when spawning the runtime sidecar (absolute path to bundled `python`).
+/// Env var set by Zagens when spawning the runtime sidecar (absolute path to bundled `python`).
 pub const ENV_BUNDLED_PYTHON: &str = "DEEPSEEK_BUNDLED_PYTHON";
 
 /// Try to locate a bundled PBS Python runtime shipped alongside the binary.
 ///
-/// **DS Pick (Tauri):**
+/// **Zagens (Tauri):**
 ///   `DEEPSEEK_BUNDLED_PYTHON` (set by desktop shell)
 ///   `<app_dir>/Resources/python/python3.12`  (macOS)
 ///   `<app_dir>/python/python.exe`            (Windows/Linux)
@@ -172,13 +172,13 @@ fn verify_bundled_office_imports(python: &Path) -> Result<(), String> {
     let stderr = String::from_utf8_lossy(&output.stderr);
     Err(format!(
         "安装包内捆绑 Python 缺少办公依赖（docx/pptx/reportlab 等）。\
-         请重新安装 DS Pick 或联系支持。详情: {stderr}"
+         请重新安装 Zagens 或联系支持。详情: {stderr}"
     ))
 }
 
 /// Python executable used by `write_office` for DOCX/PPTX/PDF generation.
 ///
-/// **Bundled interpreter first** ([`find_bundled_python`]): DS Pick / portable
+/// **Bundled interpreter first** ([`find_bundled_python`]): Zagens / portable
 /// builds ship PBS + wheels from `prepare-python.mjs`; no `pip` and no network.
 ///
 /// Otherwise falls back to [`ensure_office_venv`] (PATH Python + first-time

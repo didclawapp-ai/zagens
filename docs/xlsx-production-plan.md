@@ -130,7 +130,7 @@ fn generate_xlsx(input: &Value, path: &PathBuf) -> Result<String, String> {
 
   // ── 文档级 ──
   "title": "2024 年度销售报告",
-  "author": "DS Pick",
+  "author": "Zagens",
   "language": "zh-CN",
 
   // ── 全局样式（可选，有智能默认值）──

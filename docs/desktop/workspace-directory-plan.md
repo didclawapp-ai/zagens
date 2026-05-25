@@ -1,7 +1,7 @@
 # 工作台「目录」Tab — 方案与实施跟踪
 
 > **状态：** 实施中 — 阶段 A/B/D、C1/C2/C3、A6、E3（变更筛选）已落地（2026-05-21）  
-> **范围：** DS Pick 右侧面板 · 工作台 · **目录** 子 Tab（`RightPanel` `workspaceTab === 'files'`）  
+> **范围：** Zagens 右侧面板 · 工作台 · **目录** 子 Tab（`RightPanel` `workspaceTab === 'files'`）  
 > **目标：** 提升 monorepo 工作区浏览效率，强化与预览 / 对话 / Diff / 审计场景的联动；不替代 Composer 的「选择工作区」职责。  
 > **相关：** [DEV_NOTES.md](DEV_NOTES.md)、[PREVIEW_ARCHITECTURE.md](PREVIEW_ARCHITECTURE.md)、[docs/tech/API_DESIGN.md](../tech/API_DESIGN.md) § workspace browse、[TUI_DS_PICK_GAP.md](TUI_DS_PICK_GAP.md)
 
@@ -374,7 +374,7 @@ GET /v1/threads/{id}/workspace/browse?path={rel}
 
 ## 附录 A — 与 Cursor / VS Code 差异（产品定位）
 
-| 能力 | VS Code 资源管理器 | DS Pick 目录 Tab（目标） |
+| 能力 | VS Code 资源管理器 | Zagens 目录 Tab（目标） |
 |------|-------------------|-------------------------|
 | 改工作区根 | 文件 → 打开文件夹 | **Composer** |
 | 编辑文件 | 内置编辑器 | **预览面板** + Agent 工具 |

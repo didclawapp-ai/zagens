@@ -1,7 +1,7 @@
 # Prompt 增强 Patch — V4 幻觉防控
 
 **日期**: 2026-05-18  
-**背景**: DeepSeek V4幻觉率评测数据（V4-Pro 94%，V4-Flash 96%）+ DS Pick实际踩坑记录  
+**背景**: DeepSeek V4幻觉率评测数据（V4-Pro 94%，V4-Flash 96%）+ Zagens实际踩坑记录  
 **根因**: V4被训练成"不确定时倾向于大胆输出"，在能力声明、架构描述、自我行为复述三类场景下尤为突出  
 **目标**: 把"查询在回答之前"从软性原则变成有具体触发条件的硬性规则  
 **改动文件**: `crates/tui/src/prompts/base.md` + `crates/tui/src/prompts/subagent_output_format.md`  
@@ -52,7 +52,7 @@
 
 ### Architecture Claims Rule（架构描述规则）
 
-**触发条件**：描述 DS Pick 任何内部机制的工作方式——引擎策略、工具调度、子代理能力、LSP Hook、配置行为。
+**触发条件**：描述 Zagens 任何内部机制的工作方式——引擎策略、工具调度、子代理能力、LSP Hook、配置行为。
 
 **核心原则**：把训练知识视为假设，不视为事实。
 
@@ -172,7 +172,7 @@
 | 项 | 说明 |
 |----|------|
 | **工作区** | 本仓库 `DeepSeek-TUI-desktop` |
-| **产品** | DS Pick（`deepseek-tui` sidecar + 桌面壳） |
+| **产品** | Zagens（`deepseek-tui` sidecar + 桌面壳） |
 | **模式** | Agent |
 | **统一问题** | `当前 runtime 下，主 agent 能否在同一 turn 里并行执行多个 edit_file？` |
 | **代码事实（基准）** | **不能**。`crates/tui/src/core/engine/dispatch.rs` 中 `should_parallelize_tool_batch`（约 268–273 行）要求整批 `read_only && supports_parallel && !approval_required && !interactive`；`EditFileTool` 为写工具、默认 `supports_parallel == false`、`approval_requirement == Suggest`。详见 [agent-reliability-craft-plan.md §3.2](agent-reliability-craft-plan.md#32-并行工具调度与子代理写路径现状核对)。 |
@@ -194,7 +194,7 @@
 - 「调度器会并发执行」多个 `edit_file`
 - 「不同文件即可并行；同一文件会竞态」
 - 可与 `apply_patch` 混在同批并行（只要文件不重叠）
-- 编造「dispatcher 默认足够 10–20 个并行工具调用」「DS Pick / TUI 无额外串行化限制」
+- 编造「dispatcher 默认足够 10–20 个并行工具调用」「Zagens / TUI 无额外串行化限制」
 
 **判定：** 与代码不符（调度器 **不** 按「是否同一文件」放行写工具并行）。属 **Capability Claims / Architecture Claims** 目标幻觉。
 

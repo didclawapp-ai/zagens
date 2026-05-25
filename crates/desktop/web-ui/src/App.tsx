@@ -193,7 +193,7 @@ function loadComposerPrefs(windowLabel: string): {
   }
 }
 
-/** First-run or legacy `.` / System32 paths → `<Documents>/DS Pick`. */
+/** First-run or legacy `.` / System32 paths → `<Documents>/Zagens` (or legacy Zagens folder). */
 async function ensureDefaultComposerWorkspace(
   current: string,
   setWorkspace: (path: string) => void,
@@ -1307,7 +1307,7 @@ export default function App() {
     }
   }, [officeSession, activeInspector]);
 
-  /** Office composer uses Documents/DS Pick when not bound to a resumed thread workspace. */
+  /** Office composer uses Documents/Zagens when not bound to a resumed thread workspace. */
   useEffect(() => {
     if (!officeSession || resumedThreadId) return;
     if (taskTypePreference !== 'office' && lockedThreadTaskType !== 'office') return;
@@ -1716,7 +1716,7 @@ export default function App() {
               granted = perm === 'granted';
             }
             if (granted) {
-              mod.sendNotification({ title: 'DS Pick', body: '模型已完成回答' });
+              mod.sendNotification({ title: 'Zagens', body: '模型已完成回答' });
             }
           } catch {
             /* browser mode — not supported */

@@ -652,7 +652,7 @@ impl RetryPolicy {
     }
 }
 
-/// Context compaction settings (`[compaction]` in config.toml). DS Pick system
+/// Context compaction settings (`[compaction]` in config.toml). Zagens system
 /// settings and TUI `/config auto_compact` share this table when present.
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct CompactionConfigToml {

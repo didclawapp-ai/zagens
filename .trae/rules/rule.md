@@ -10,18 +10,18 @@ This document consolidates the same guidance as [`.cursor/rules/*.mdc`](.cursor/
 
 ---
 
-## 1. DS Pick monorepo (`ds-pick-repo` — always apply in Cursor)
+## 1. Zagens monorepo (`zagens-repo` — always apply in Cursor)
 
 **Cursor:** `alwaysApply: true`
 
-- **Root story:** [`README.md`](README.md) leads with **DS Pick** (Tauri app in `crates/desktop/`). The same repo ships the **`deepseek` CLI**, terminal TUI, and shared agent/runtime crates.
-- **Desktop (DS Pick):** `crates/desktop/`, product notes in [`docs/desktop/README.md`](docs/desktop/README.md).
+- **Root story:** [`README.md`](README.md) leads with **Zagens** (Tauri app in `crates/desktop/`). The same repo ships the **`deepseek` CLI**, terminal TUI, and shared agent/runtime crates.
+- **Desktop (Zagens):** `crates/desktop/`, product notes in [`docs/desktop/README.md`](docs/desktop/README.md).
 - **TUI / CLI lineage docs:** [`docs/tui/README.md`](docs/tui/README.md) — prompts analysis, dependency graph, handoffs, reviews.
 - **Archived TUI-first root README copies:** [`docs/archive/tui-readme-era/ABOUT.md`](docs/archive/tui-readme-era/ABOUT.md).
 - **Authoritative agent instructions:** [`AGENTS.md`](AGENTS.md).
-- **Versions:** DS Pick uses its **own** SemVer (e.g. **v0.2.1**), separate from the workspace `deepseek` line; see [`CHANGELOG.md`](CHANGELOG.md) header.
+- **Versions:** Zagens uses its **own** SemVer (e.g. **v0.2.1**), separate from the workspace `deepseek` line; see [`CHANGELOG.md`](CHANGELOG.md) header.
 
-When summarizing the project, **lead with DS Pick + shared runtime**, not “TUI-only.”
+When summarizing the project, **lead with Zagens + shared runtime**, not “TUI-only.”
 
 ---
 
@@ -58,11 +58,11 @@ When unsure, **draft + list risk** for maintainer review instead of shipping qui
 - **Verify:** `cargo build`, `cargo test --workspace --all-features`, `cargo clippy --workspace --all-targets --all-features` before claiming the change compiles.
 - **Modules:** prefer **smaller sources** (~1000 lines soft cap); split rather than growing one file (see §3).
 - **CLI entry:** prefer documenting **`deepseek`** (dispatcher); not `deepseek-tui` alone for general flows.
-- **HTTP runtime:** [`docs/RUNTIME_API.md`](docs/RUNTIME_API.md) for `/v1/...` contracts used by DS Pick WebView.
+- **HTTP runtime:** [`docs/RUNTIME_API.md`](docs/RUNTIME_API.md) for `/v1/...` contracts used by Zagens WebView.
 
 ---
 
-## 5. DS Pick web UI (`desktop-web-ui` — Cursor: `crates/desktop/web-ui/**`)
+## 5. Zagens web UI (`desktop-web-ui` — Cursor: `crates/desktop/web-ui/**`)
 
 **Cursor:** `globs: crates/desktop/web-ui/**`, `alwaysApply: false`
 
@@ -80,7 +80,7 @@ When unsure, **draft + list risk** for maintainer review instead of shipping qui
 
 | `.mdc` file | Role |
 |-------------|------|
-| [`ds-pick-repo.mdc`](.cursor/rules/ds-pick-repo.mdc) | Product / doc map |
+| [`zagens-repo.mdc`](.cursor/rules/zagens-repo.mdc) | Product / doc map |
 | [`security-trust.mdc`](.cursor/rules/security-trust.mdc) | Security & trust |
 | [`code-organization.mdc`](.cursor/rules/code-organization.mdc) | Size & layout |
 | [`rust-workspace.mdc`](.cursor/rules/rust-workspace.mdc) | Rust |

@@ -432,7 +432,7 @@ pub struct NotificationsToml {
     pub include_summary: Option<bool>,
 }
 
-/// On-disk schema for the `[compaction]` table — shared by TUI and DS Pick.
+/// On-disk schema for the `[compaction]` table — shared by TUI and Zagens.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CompactionToml {
     /// Enable automatic context compaction when estimated tokens exceed threshold.

@@ -1,7 +1,7 @@
 /** Native confirm in Tauri (ACL-safe) or browser fallback. */
 export async function confirmDialog(
   message: string,
-  title = 'DS Pick',
+  title = 'Zagens',
 ): Promise<boolean> {
   try {
     const { ask } = await import('@tauri-apps/plugin-dialog');

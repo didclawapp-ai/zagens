@@ -1,4 +1,4 @@
-# Harness 定位与 DS Pick 映射
+# Harness 定位与 Zagens 映射
 
 > **状态：** 设计备忘（2026-05-20）  
 > **来源：** DeepSeek 社招「Agent Harness」产品经理 / 研发工程师 JD（2026-05-15、2026-05-18，公开信息）；与本仓库试跑、会话恢复修复、audit scratchpad 讨论对齐。  
@@ -45,7 +45,7 @@ JD 中反复出现、且与实现强相关的 Harness 模块：
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  DS Pick (Tauri + web-ui)          ← 桌面壳、Composer、│
+│  Zagens (Tauri + web-ui)          ← 桌面壳、Composer、│
 │  思维链/工具卡片、scratchpad 横条、子代理面板            │
 ├─────────────────────────────────────────────────────────┤
 │  runtime_api (HTTP/SSE)            ← Agent Loop 对外面 │
@@ -61,13 +61,13 @@ JD 中反复出现、且与实现强相关的 Harness 模块：
                     DeepSeek Model
 ```
 
-**结论：** 本 monorepo 的主体不是「再训一个模型」，而是 **Harness 参考实现 + 桌面产品（DS Pick）**。与 JD 中「桌面端 Agent 全链路研发」高度同构。
+**结论：** 本 monorepo 的主体不是「再训一个模型」，而是 **Harness 参考实现 + 桌面产品（Zagens）**。与 JD 中「桌面端 Agent 全链路研发」高度同构。
 
 ---
 
 ## 3. JD 关键词 → 代码与文档索引
 
-| JD 关键词 | DS Pick / runtime 落点 | 说明 |
+| JD 关键词 | Zagens / runtime 落点 | 说明 |
 |-----------|------------------------|------|
 | Agent Loop | `POST /v1/stream`、`stream_turn`、`monitor_turn` | 单轮从 `turn.started` 到 `turn.completed` |
 | Tool Use | `crates/tui/src/tools/*`、Web **工具调用** 卡片 | `item.started` / `item.completed`（`tool_call`） |
@@ -85,7 +85,7 @@ JD 中反复出现、且与实现强相关的 Harness 模块：
 
 ## 4. 案例：重启后会话「只剩终稿」
 
-**现象：** 同一会话在运行中可见 **Reasoning** + **write_office** 等工具块；关闭 DS Pick 再打开后只剩 assistant 正文（如 PPT 摘要表）。
+**现象：** 同一会话在运行中可见 **Reasoning** + **write_office** 等工具块；关闭 Zagens 再打开后只剩 assistant 正文（如 PPT 摘要表）。
 
 **Harness 根因（非模型问题）：**
 
@@ -125,7 +125,7 @@ L7b 反例（Task 与 Sub-agent 混用、未 join）属于 **Harness 语义不�
 
 | JD / 行业方向 | 本仓库状态 | 参考 |
 |---------------|------------|------|
-| 桌面 Agent 全链路 | DS Pick v0.3.x；TUI 仍更完整 | [TUI_DS_PICK_GAP.md](TUI_DS_PICK_GAP.md) |
+| 桌面 Agent 全链路 | Zagens v0.3.x；TUI 仍更完整 | [TUI_DS_PICK_GAP.md](TUI_DS_PICK_GAP.md) |
 | 长程任务 + 可恢复 | thread + session SQLite + scratchpad | [audit-scratchpad-design.md](audit-scratchpad-design.md)、[DEV_NOTES.md](DEV_NOTES.md) |
 | Sub-agent 产品化 | `agent_*` + 面板；与 Task 边界在收紧 | design §14、[TOOLS_PRINCIPLES.md](../tech/TOOLS_PRINCIPLES.md) §3.7.1 |
 | Harness 指标 | inventory / verified / 横条（审计场景） | [audit-scratchpad-test.md](audit-scratchpad-test.md) |
@@ -141,7 +141,7 @@ L7b 反例（Task 与 Sub-agent 混用、未 join）属于 **Harness 语义不�
 
 | 维度 | 说明 |
 |------|------|
-| 方向 | JD 明确招 **桌面端 Agent Harness**；本仓库 **已是** Harness 形态（runtime + DS Pick + TUI/CLI） |
+| 方向 | JD 明确招 **桌面端 Agent Harness**；本仓库 **已是** Harness 形态（runtime + Zagens + TUI/CLI） |
 | 资产 | 可复用：thread 事件模型、工具栈、scratchpad/子代理设计、桌面壳、试跑方法论 |
 | 差距 | 官方品牌、模型侧深度适配、规模测试、合规与发布渠道；社区 fork 通常不自带这些 |
 

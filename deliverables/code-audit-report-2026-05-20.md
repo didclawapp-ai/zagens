@@ -1,7 +1,7 @@
 # DeepSeek-TUI-desktop 全量代码审计报告
 
 > **审计日期**：2026-05-20  
-> **版本**：workspace 0.8.15 / DS Pick desktop  
+> **版本**：workspace 0.8.15 / Zagens desktop  
 > **范围**：全部 290+ Rust 文件（~180K 行）+ 79 TypeScript/TSX 文件（~20K 行）+ 配置/build 文件  
 > **方法**：29 个审计域，18 个并行 Explore 子代理 + 手动审查  
 > **覆盖**：29/29 域完成，0 域延期  

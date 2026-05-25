@@ -1,4 +1,4 @@
-# DeepSeek-TUI / DS Pick 运行时演进实施路线图
+# DeepSeek-TUI / Zagens 运行时演进实施路线图
 
 > **版本：** v2.0-final（2026-05-21）· **代码对齐：** 2026-05-25  
 > **状态：** **定稿 + 门控已闭合** — §4.2 已签收；**§17** 实施后审核（**§17.5** 2026-05-25 二次对齐）  
@@ -27,7 +27,7 @@
 14. [Issue 拆分模板](#14-issue-拆分模板)
 15. [关联文档](#15-关联文档)
 16. [文档审核记录](#16-文档审核记录)
-17. [DS Pick 实施后审核（2026-05-22）](#17-ds-pick-实施后审核2026-05-22) · [§17.5 代码对齐（2026-05-24）](#175-代码对齐快照2026-05-24)  
+17. [Zagens 实施后审核（2026-05-22）](#17-ds-pick-实施后审核2026-05-22) · [§17.5 代码对齐（2026-05-24）](#175-代码对齐快照2026-05-24)  
     · **实施总结（2026-05-24）：** [adr/IMPLEMENTATION_SUMMARY_2026-05-24.md](./adr/IMPLEMENTATION_SUMMARY_2026-05-24.md)
 
 > **执行顺序阅读指引（与章节编号无关）：** §7 A → §8 A+ → §11 P2 → §10 F → §9 B（见 §1.6）。正文 §9–§11 按 **文档结构** 编号（B→F→P2），**勿按 9→10→11 数字顺序执行**。`v2.0-final` 可选将正文重排为 §9 P2 → §10 F → §11 B（见 §1.4）。
@@ -41,7 +41,7 @@
 在 **不推翻现有 sidecar 架构** 的前提下：
 
 1. **先把底层打牢固**（Engine、会话、容量、可观测、错误、测试）——这是全产品的地基。  
-2. **再通过稳定契约与桌面对齐**（HTTP/SSE + 少量 Tauri IPC），实现 TUI 与 DS Pick **同一底层、两种壳**。  
+2. **再通过稳定契约与桌面对齐**（HTTP/SSE + 少量 Tauri IPC），实现 TUI 与 Zagens **同一底层、两种壳**。  
 3. **长期保持分离：** 桌面壳（`crates/desktop`）与运行时（`deepseek-tui`）**进程与职责分离**；融合 = 消费契约，≠ 把 Engine 搬进 WebView 或 Tauri。  
 4. **冻结** `app-server` 实验栈，避免在「未完成的第二运行时」上叠桌面或差异化功能。
 
@@ -50,7 +50,7 @@
 | # | 原则 |
 |---|------|
 | P1 | **底层优先：** 阶段 A 完成线未达标前，桌面只做 **维护/契约消费/冒烟**，不抢跑大型 UI 特性或新 runtime 语义 |
-| P2 | **壳运分离：** DS Pick = Tauri 壳 + `deepseek-tui` sidecar；Agent turn **只在** sidecar 内执行 |
+| P2 | **壳运分离：** Zagens = Tauri 壳 + `deepseek-tui` sidecar；Agent turn **只在** sidecar 内执行 |
 | P3 | **单事实源：** A 阶段新能力进 `tui` 生产链；**P2 后** 新 Agent 逻辑进 `deepseek-core`，`tui` 仅 HTTP/TUI 适配 |
 | P4 | **契约融合：** 桌面与底层通过 **版本化 API/事件子集** 融合，而非代码库合并 |
 | P5 | **增量拆分：** 巨石模块按域拆分；每步 `cargo test`，底层变更后跑 **sidecar 契约测** |
@@ -103,7 +103,7 @@ Phase 1 ✅ harness
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  L3 壳（Presentation Shell）                                 │
-│  ├─ DS Pick: Tauri + React（工作区、布局、原生对话框）          │
+│  ├─ Zagens: Tauri + React（工作区、布局、原生对话框）          │
 │  └─ TUI: ratatui（终端交互）                                  │
 │       只通过 L2 与底层对话；壳内无 LLM turn                    │
 ├─────────────────────────────────────────────────────────────┤
@@ -124,11 +124,11 @@ Phase 1 ✅ harness
 
 ## 3. 现状快照
 
-### 3.1 生产路径（TUI + DS Pick + 绝大多数 CLI）
+### 3.1 生产路径（TUI + Zagens + 绝大多数 CLI）
 
 ```
 用户
-  ├─ DS Pick WebView ──► Tauri (config/secrets/proxy) ──► deepseek-tui serve --http
+  ├─ Zagens WebView ──► Tauri (config/secrets/proxy) ──► deepseek-tui serve --http
   ├─ 终端 TUI ─────────► deepseek-tui (ratatui)
   └─ deepseek run/exec/serve/... ──► delegate_to_tui ──► deepseek-tui
 
@@ -187,12 +187,12 @@ deepseek app-server
 
 | 决策 | 内容 |
 |------|------|
-| **D1** | DS Pick **Phase 1 = 路线 B**：sidecar 为 `deepseek-tui`，HTTP 面为 `runtime_api`，**不** 使用 `app-server` |
+| **D1** | Zagens **Phase 1 = 路线 B**：sidecar 为 `deepseek-tui`，HTTP 面为 `runtime_api`，**不** 使用 `app-server` |
 | **D2** | 桌面鉴权使用 `runtime_token`；**不** 使用 `app-server` 的全开放 CORS |
 | **D3** | 差异化顺序：**CRAFT → 话题记忆地图**（见 UNDERLYING_ITERATION_REFERENCE §2.2） |
 | **D8 Phase 1 收官** | **Harness 验证已通过**（2026-05） | 路线 B 证明 `deepseek-tui` 可承载桌面；不再为「能否做桌面」扩功能 |
 | **D9 P2 技术债** | **A+A+ 后必做**（非可选 C） | Engine 上移 `deepseek-core`（DESKTOP_IMPLEMENTATION_PLAN Phase 2） |
-| **D10 桌面功能冻结** | **P2 完成前** | 不扩大 DS Pick GAP；避免壳层特性固化后无法迁底层 |
+| **D10 桌面功能冻结** | **P2 完成前** | 不扩大 Zagens GAP；避免壳层特性固化后无法迁底层 |
 | **D11 P3 修订** | **不换 app-server sidecar** | P3 = `runtime_api` 适配 `core::Runtime`；sidecar 仍为 `deepseek-tui` |
 
 ### 4.2 本路线图新增（维护者签收栏）
@@ -211,7 +211,7 @@ deepseek app-server
 |----------|--------|
 | `deepseek-tui` 能否作桌面 harness？ | **能** — sidecar + `/v1/*` + 真 turn |
 | 设计是否值得长期投入？ | **是** — 宜沉入 `core`，不宜再堆桌面专有 runtime 语义 |
-| Phase 1 之后最忌什么？ | **继续扩 DS Pick GAP**，导致 P2 迁移面不可逆增大 |
+| Phase 1 之后最忌什么？ | **继续扩 Zagens GAP**，导致 P2 迁移面不可逆增大 |
 
 ---
 
@@ -242,7 +242,7 @@ gantt
 | **A** 底层夯实 | **L1** | 4–10 周 | 会话/容量/可观测/错误/模块/测试 — **主投入** |
 | **A+** 融合就绪 | **L2** | A 中后期 3–5 周 | HTTP 事件子集、sidecar 契约测 |
 | **P2** 还技术债 | **L1→core** | A+ 后 6–10 周 | Engine/`turn_loop` 迁入 `deepseek-core`；`runtime_threads` 调 core |
-| **F** 桌面融合 | **L3** | **P2 后** 4–8 周 | DS Pick GAP（xterm、diff…）— **冻结至 P2 完成** |
+| **F** 桌面融合 | **L3** | **P2 后** 4–8 周 | Zagens GAP（xterm、diff…）— **冻结至 P2 完成** |
 | **B** 差异化（L1 部） | L1/L2 | **P2 后、F 前** | CRAFT 黑板/工具（runtime） |
 | **B** 差异化（L3 部） | L3 | **F 后** | 记忆地图 UI、AgentPanel 等 |
 
@@ -265,7 +265,7 @@ gantt
 | 0.1 | 架构总览附图 | [RUNTIME_ARCHITECTURE.md](./RUNTIME_ARCHITECTURE.md) | 文档 ✅ |
 | 0.2 | 更新 `docs/tech/API_DESIGN.md` 文首：**唯一生产 HTTP = runtime_api** | 醒目 callout | 文档 ✅ |
 | 0.3 | 更新 `docs/desktop/DESKTOP_IMPLEMENTATION_PLAN.md` §2.1 顶部：**Phase 1 已落地，勿新建 app-server 依赖** | 防回归 | 文档 ✅ |
-| 0.4 | 更新 `README.md` 中 `app-server` 描述为 **Experimental — not used by DS Pick** | 对外一致 | 文档 ✅ |
+| 0.4 | 更新 `README.md` 中 `app-server` 描述为 **Experimental — not used by Zagens** | 对外一致 | 文档 ✅ |
 | 0.5 | 维护者确认 **D4**（冻结 `app-server`；**不**再开「阶段 C」— 已并入 **P2**）并记入 §4.2 签收栏 | 决策 | Tech lead |
 | 0.6 | `project_rules.md` 增加可 grep 禁令：**禁止 app-server 扩展；禁止 WebView 内嵌 Engine** | 流程 | 工具链 ✅ |
 | 0.7 | 签收 **D4/D7/D9** 与 §1.6 门控链；发布桌面 **Feature freeze** 公告 | 决策 | Tech lead |
@@ -274,7 +274,7 @@ gantt
 ### 6.3 验收
 
 - [ ] 新成员能回答：底层在哪？融合面是哪一层？桌面为何不合并进 tui？
-- [ ] 无开放 PR 把 DS Pick 功能接到 `app-server` 或在 WebView 实现 turn
+- [ ] 无开放 PR 把 Zagens 功能接到 `app-server` 或在 WebView 实现 turn
 - [x] 运行时/桌面 **维护性** 修复可合并（例：模型输出重复、SSE 去重）— 不视为 GAP 扩张，见 §10.6
 
 ---
@@ -355,7 +355,7 @@ gantt
 
 ### 7.4 A4 — `runtime_api` / `runtime_threads` 模块化
 
-**目标：** 单文件 ~5k 行 → 按域拆分，降低 DS Pick 新端点冲突。  
+**目标：** 单文件 ~5k 行 → 按域拆分，降低 Zagens 新端点冲突。  
 **优先级：** 建议 **先于** A1.5、大块 A2 修改同一文件（见 §3.4）；Issue 顺序见 §14.1（R-003 提前）。
 
 | 步骤 | 建议模块布局 | 原文件 |
@@ -372,7 +372,7 @@ gantt
 **验收：**
 
 - [x] `runtime_api` 根 `mod.rs` < 800 行；**每个**子模块 < 1000 行（code-organization 软上限）
-- [x] 全量测试通过；DS Pick 冒烟（建 thread、发消息、停）— 契约测 `sidecar_contract_full_lifecycle`（CI）
+- [x] 全量测试通过；Zagens 冒烟（建 thread、发消息、停）— 契约测 `sidecar_contract_full_lifecycle`（CI）
 
 ---
 
@@ -401,7 +401,7 @@ gantt
 | 步骤 | 实施内容 |
 |------|----------|
 | A6.1 | 文档：沙箱能力矩阵（macOS / Linux / Windows） |
-| A6.2 | TUI + DS Pick 设置页：非 macOS 显示「降级模式」 |
+| A6.2 | TUI + Zagens 设置页：非 macOS 显示「降级模式」 |
 | A6.3 | （可选 backlog）Linux Landlock / Windows 限制实现立项 |
 
 **阶段 A / P2 期间桌面仅允许（D10 Feature freeze）：**
@@ -420,7 +420,7 @@ gantt
 
 ### 8.1 目标
 
-让 DS Pick 与任意 L3 壳 **只依赖文档化契约** 即可安全迭代 UI，而不触 Engine  internals。
+让 Zagens 与任意 L3 壳 **只依赖文档化契约** 即可安全迭代 UI，而不触 Engine  internals。
 
 ### 8.2 实施步骤
 
@@ -428,14 +428,14 @@ gantt
 |------|------|------|
 | A+.1 | `API_DESIGN.md` 正式发布 **稳定事件子集 v1** + `event_schema_version` | 契约 SSOT |
 | A+.2 | `map_compat_stream_event` 与 v1 子集 **100% 对齐** 并加契约单测 | `runtime_api.rs` |
-| A+.3 | DS Pick `client.ts` / `streamNormalize.ts` **仅解析 v1**；未知事件忽略 | `web-ui` |
+| A+.3 | Zagens `client.ts` / `streamNormalize.ts` **仅解析 v1**；未知事件忽略 | `web-ui` |
 | A+.4 | **Sidecar 契约测**（CI 可选）：随机端口、`DEEPSEEK_RUNTIME_TOKEN` 注入、固定 3 步 `health → create thread → stream → stop`、超时与进程清理 | `scripts/` 或 `crates/tui/tests/` |
 | A+.4b | `RuntimeEventRecord` 与 `event_schema_version` **代码落地**（非仅文档） | `runtime_threads.rs`, `API_DESIGN.md` |
 | A+.5 | `runtime_proxy` 路径覆盖 `/v1/*` 与 `/health` 回归 | `desktop` |
 | A+.6 | 变更流程：**破坏性事件** 必须 bump schema version + CHANGELOG | 流程 |
 | A+.7 | **审批契约回归：** `approval.required` SSE + `POST .../resolve-approval` 与桌面多窗口路由；单测覆盖「挂起→resolve→继续 turn」（非同步 auto-approve 误杀） | `runtime_api.rs`, `runtime_threads.rs`, `multi-window-plan` |
 
-> **说明：** HTTP 审批端点已存在（`resolve-approval`）；A+.7 重点是 **语义一致** 与 DS Pick 多窗，而非新造 API。对外事件仍以 **compat 子集 + schema version** 为准（D6）。
+> **说明：** HTTP 审批端点已存在（`resolve-approval`）；A+.7 重点是 **语义一致** 与 Zagens 多窗，而非新造 API。对外事件仍以 **compat 子集 + schema version** 为准（D6）。
 
 ### 8.3 验收（§12.2 — 启动 P2 编码的门槛）
 
@@ -452,7 +452,7 @@ gantt
 |------|----------|------|
 | **B-L1** | **§12.3 P2 完成后**（不必等 F） | CRAFT：角色工具、黑板、turn_loop 闭环（`core` / `tools`） |
 | **B-L2** | B-L1 中、随契约 bump | `craft.*` 事件进 API_DESIGN |
-| **B-L3** | **§12.4 F 完成后** | DS Pick `AgentPanel`、记忆地图 UI 等 **L3** |
+| **B-L3** | **§12.4 F 完成后** | Zagens `AgentPanel`、记忆地图 UI 等 **L3** |
 
 **顺序：** B-L1 runtime → B-L2 契约 →（并行 F 桌面 GAP）→ B-L3 壳 UI。
 
@@ -467,7 +467,7 @@ gantt
 | B1.3 | `agent_spawn` 注入黑板快照 | `tools/subagent/mod.rs` |
 | B1.4 | Verifier 结构化输出 → Implementer 闭环 | `turn_loop.rs`, prompts |
 | B1.5 | HTTP 事件暴露 `craft.*` 子集（**bump 契约 v1.1**） | `runtime_api`, `API_DESIGN.md` |
-| B1.6 | （**B-L3**，F 后）DS Pick `AgentPanel` 对接 `craft.*` — **B1.5 合并后** | `web-ui` |
+| B1.6 | （**B-L3**，F 后）Zagens `AgentPanel` 对接 `craft.*` — **B1.5 合并后** | `web-ui` |
 
 **验收：**
 
@@ -487,7 +487,7 @@ gantt
 | B2.3 | 按当前 turn **k-hop 子图** 检索注入 | **✅** `retrieve_for_query` + `inject_interval` |
 | B2.4 | 隐私：图路径 `~/.deepseek/topic-memory/`；opt-in 默认关 | **✅** |
 | B2.5 | 轻量指标：`TopicMemoryMetrics` 落盘 + 重复澄清/完成率评测 | **✅** `eval_report` + `scripts/topic-memory-eval.ps1` |
-| B2.6 | **B-L3** DS Pick 记忆地图可视化面板 | **✅** `TopicMemoryPanel` + `GET /v1/topic-memory` |
+| B2.6 | **B-L3** Zagens 记忆地图可视化面板 | **✅** `TopicMemoryPanel` + `GET /v1/topic-memory` |
 
 ---
 
@@ -503,7 +503,7 @@ gantt
 
 ## 10. 阶段 F — 桌面融合（**P2 完成后解冻**，D10）
 
-**层级：L3。** 在 **A+A+ + P2** 完成后，才恢复 DS Pick GAP 扩张；此前仅维护 + 冒烟（§10.6）。
+**层级：L3。** 在 **A+A+ + P2** 完成后，才恢复 Zagens GAP 扩张；此前仅维护 + 冒烟（§10.6）。
 
 ### 10.1 与「并行轨道」的差异（v1.1 调整）
 
@@ -541,7 +541,7 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 ### 10.5 融合完成线
 
 - [x] GAP 表 F0–F3 关闭或记入暂缓（F3 §8 + **§12.4 #2** 手测签收 2026-05-24）
-- [x] 同一 `deepseek-tui` 二进制：TUI 与 DS Pick 跑 **同一** stop/审批/长跑语义（抽样）— [G2 §9](./adr/G2_PR5_MANUAL_SMOKE_CHECKLIST.md)、[CODE_REVIEW_2026-05-24.md](../../deliverables/CODE_REVIEW_2026-05-24.md)
+- [x] 同一 `deepseek-tui` 二进制：TUI 与 Zagens 跑 **同一** stop/审批/长跑语义（抽样）— [G2 §9](./adr/G2_PR5_MANUAL_SMOKE_CHECKLIST.md)、[CODE_REVIEW_2026-05-24.md](../../deliverables/CODE_REVIEW_2026-05-24.md)
 
 ### 10.6 桌面 GAP 冻结（还债窗口，D9）
 
@@ -687,7 +687,7 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 | # | 标准 |
 |---|------|
 | 1 | TUI_DS_PICK_GAP 的 F0–F2 完成或明确暂缓 |
-| 2 | TUI 与 DS Pick 对同一 thread 的 stop/审批/长跑行为一致（抽样） |
+| 2 | TUI 与 Zagens 对同一 thread 的 stop/审批/长跑行为一致（抽样） |
 
 ### 12.5 阶段 B 完成线
 
@@ -697,7 +697,7 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 |---|------|------|
 | 1 | CRAFT 角色工具 + 黑板 + 一轮闭环验收 | **✅** G2 §10（2026-05-24） |
 | 2 | 记忆地图注入可开关、可评测 | **✅ MVP** — k-hop 注入 + 设置开关；[B2_INJECTION_ARBITRATION.md](./adr/B2_INJECTION_ARBITRATION.md)；`topic-memory-eval.ps1`；`TopicMemoryPanel` + `/v1/topic-memory` |
-| 3 | DS Pick GAP 表 P0–P2 项关闭或明确暂缓 | **◐** 定时自动化 UI 暂缓；TUI 斜杠深度、子代理联动 polish 等 |
+| 3 | Zagens GAP 表 P0–P2 项关闭或明确暂缓 | **◐** 定时自动化 UI 暂缓；TUI 斜杠深度、子代理联动 polish 等 |
 
 ### 12.6 量化指标（写入 CI/脚本；首版基准见 R-015）
 
@@ -713,7 +713,7 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 | 类型 | 建议 |
 |------|------|
 | workspace `deepseek-tui` | 随 A 项合并发 patch |
-| DS Pick SemVer | 独立版本；A2/B1 可视用户面发 minor |
+| Zagens SemVer | 独立版本；A2/B1 可视用户面发 minor |
 | Breaking HTTP 事件 | 仅 bump `event_schema_version`，旧客户端忽略未知字段 |
 
 ---
@@ -742,7 +742,7 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 ### 13.2 明确不做（当前周期）
 
 - 为桌面 **单独** 维护第二套 turn 管道（`handle_thread` 仅作 core 共享入口，见 §11.0）
-- DS Pick 双 sidecar；WebView 内嵌 Engine
+- Zagens 双 sidecar；WebView 内嵌 Engine
 - **P2 完成前** 冲刺 xterm/diff/新面板/CRAFT 桌面大屏
 - 无测试的一刀切重写 `ui.rs` / `main.rs`
 - 未定义仲裁前全量注入记忆地图
@@ -770,7 +770,7 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 ## 验收标准
 - [ ] cargo test -p deepseek-tui
 - [ ] （若 HTTP）docs/tech/API_DESIGN.md 已更新
-- [ ] （若桌面）DS Pick 冒烟：建会话 / 发消息 / SSE
+- [ ] （若桌面）Zagens 冒烟：建会话 / 发消息 / SSE
 
 ## 依赖
 - 阻塞：#xxx
@@ -822,7 +822,7 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 | 轮次 | 日期 | 结论 | 处理 |
 |------|------|------|------|
 | **一** | 2026-05-21 | 战略正确；§8b 重复、门控矛盾、缺 P2 切片 | → **v1.3** |
-| **二** | 2026-05-21（DS Pick） | C1/C2 **已在 v1.3 修复**（无 §8b）；M1 P2′、M2 AGENTS、M3 阶段 C、L1 F1、L3 B 时序 | → **v1.4** |
+| **二** | 2026-05-21（Zagens） | C1/C2 **已在 v1.3 修复**（无 §8b）；M1 P2′、M2 AGENTS、M3 阶段 C、L1 F1、L3 B 时序 | → **v1.4** |
 | **三** | 2026-05-21 | 代码快照 §3.4；A1/A3/A5 对齐现状；§11.0 职责图+PR0；§12.6 基准流程；freeze 与维护性修复；R-003/014/015；§6.2 步骤 0.8 | → **v1.5** |
 | **四** | 2026-05-21 | 定稿前抛光：§6.2.0.8 引用统一、§12.1 #5 与 G2 门控一致、§1.4 v2.0 重排策略、`RUNTIME_BASELINE.md` 占位 | → **v1.6** |
 | **五** | 2026-05-22（实施后） | 代码≠路线图完成：A4/P2 局部；D10 仍有效；修正 CHANGELOG「含 router.rs」表述 | → **§17** |
@@ -831,7 +831,7 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 
 ---
 
-## 17. DS Pick 实施后审核（2026-05-22）
+## 17. Zagens 实施后审核（2026-05-22）
 
 > **结论（2026-05-25）：** **门控链已闭合**（Phase 1 → A+ → P2 → D10 → F → B §12.5 #1/#2）。**§12.1 #2/#3** 已签收 [A2_A3_SIGNOFF.md](./adr/A2_A3_SIGNOFF.md)；**§12.1 全量** 余项：#1 live ToolCell 同构。**§12.5 #3** 与 GAP 表为产品 polish。  
 > **归档总结：** [IMPLEMENTATION_SUMMARY_2026-05-24.md](./adr/IMPLEMENTATION_SUMMARY_2026-05-24.md)（§2–§5 随本文同步）
@@ -860,7 +860,7 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 | — | P2 PR6 turn loop L2 | `streaming_phase` / `tool_phase` / `tool_parser` / `capacity_policy` → core；tui `tool_plans_exec` + `host_impl/` — [P2_PR6_TURN_LOOP_L2_MIGRATION_PLAN.md](./adr/P2_PR6_TURN_LOOP_L2_MIGRATION_PLAN.md) |
 | — | P2 PR2 局部 | `deepseek-core::{session,working_set,project_context,approval,cycle::CycleBriefing,engine}` + tui re-export |
 | — | P2 PR1 类型/`LlmClient` 入 core | `crates/core/src/{chat,models,turn,...}` + tui re-export |
-| — | DS Pick 生产路径 | Phase 1 harness、v0.4.3 流式去重、多窗口（CHANGELOG） |
+| — | Zagens 生产路径 | Phase 1 harness、v0.4.3 流式去重、多窗口（CHANGELOG） |
 | — | B-L1 CRAFT | 黑板 API、`craft.*` SSE、fix-loop 提示、AgentPanel — [craft-implementation-issues.md](../../craft-implementation-issues.md)；手测 [G2_PR5_MANUAL_SMOKE_CHECKLIST.md](./adr/G2_PR5_MANUAL_SMOKE_CHECKLIST.md) §10（2026-05-24） |
 | — | B2 记忆地图 MVP | [B2_INJECTION_ARBITRATION.md](./adr/B2_INJECTION_ARBITRATION.md)；`TopicMemoryPanel`；`scripts/topic-memory-eval.ps1`；`GET /v1/topic-memory` |
 | R-004 / R-007 | A2 turn_summary + A3 error_taxonomy | [A2_A3_SIGNOFF.md](./adr/A2_A3_SIGNOFF.md) §12.1 #2/#3（2026-05-25） |
@@ -922,12 +922,12 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 | 2026-05-21 | v1.1 | 底层优先 + L1/L2/L3 分离；新增 A+ 契约层、阶段 F 桌面融合（后置） |
 | 2026-05-21 | v1.2 | Phase 1 harness 验收；P2 提升为主债；桌面 GAP 冻结 |
 | 2026-05-21 | v1.3 | 第一轮审核修订：删 §8b、门控 A→A+→P2→F、§12 去重、P2 ADR/绞杀者表 |
-| 2026-05-21 | v1.4 | 第二轮（DS Pick）审核：确认 §8b 已删；统一 **P2** 命名；0.5/ D5 阶段 C 释义；B 分 B-L1/B-L3；F1a/F1b；执行顺序指引 |
+| 2026-05-21 | v1.4 | 第二轮（Zagens）审核：确认 §8b 已删；统一 **P2** 命名；0.5/ D5 阶段 C 释义；B 分 B-L1/B-L3；F1a/F1b；执行顺序指引 |
 | 2026-05-21 | v1.5 | 第三轮审核：§3.4 体量快照；A1/A3/A5 与代码对齐；P2 core↔ThreadManager；§12.6+R-015 基准；A+.7 审批；freeze PR 规则；Issue 优先级 |
 | 2026-05-21 | v1.6 | 定稿前抛光：步骤 0.8 引用、§12.1 A5.1 门控、§1.4 章节重排策略、`adr/RUNTIME_BASELINE.md` 占位 |
 | 2026-05-21 | v2.0-final | 维护者签收 §4.2（D4–D7、D9）；路线图定稿，可按 §14.1 开工 |
 | 2026-05-24 | v2.0-final+align | §17.5 代码对齐；§3.3–3.4 / §7 / §9–11 / §12 状态刷新；F4/B2/B3 与代码一致 |
 | 2026-05-24 | — | §9.1 B1 验收勾选；§17.1 B-L1 CRAFT 手测签收（G2 §10） |
-| 2026-05-22 | v2.0-final+audit | §17 DS Pick 实施后审核；§3.4 体量快照更新；D10 freeze 仍有效 |
+| 2026-05-22 | v2.0-final+audit | §17 Zagens 实施后审核；§3.4 体量快照更新；D10 freeze 仍有效 |
 | 2026-05-25 | v2.0-final+align2 | §12.1/§12.5/§17 与代码二次对齐；B2/B-L3/A1.3/events_since 状态统一；文首门控表述更新 |
 | 2026-05-25 | — | [A2_A3_SIGNOFF.md](./adr/A2_A3_SIGNOFF.md) §12.1 #2/#3 维护者签收 |

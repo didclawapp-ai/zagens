@@ -1,10 +1,10 @@
-# DS Pick ↔ deepseek-tui sidecar 连接稳定性治理方案
+# Zagens ↔ deepseek-tui sidecar 连接稳定性治理方案
 
 > 状态：已实施 v1（详见第 13 节「实施回顾」）
 > 作者：（待补）
 > 创建日期：2026-05-15
 > 实施完成日期：2026-05-15
-> 关联问题：DS Pick 启动后 WebView 周期性出现
+> 关联问题：Zagens 启动后 WebView 周期性出现
 > `127.0.0.1:7878/health  net::ERR_CONNECTION_REFUSED`，
 > `~/.deepseek/logs/supervisor.log` 中频繁出现
 > `sidecar unresponsive (health timeout, 6 failures, ...); restarting`。
@@ -84,7 +84,7 @@ DevTools 报错里的 `thr_abb12e06` 正是 supervisor 21:31 那次重启刚 see
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│  DS Pick (Tauri 主进程)                                              │
+│  Zagens (Tauri 主进程)                                              │
 │                                                                     │
 │  ┌──────────────┐                  ┌────────────────────────────┐   │
 │  │ WebView (UI) │ ──HTTP /v1/*────►│                            │   │
@@ -590,7 +590,7 @@ tokio::spawn(async move {
 
 1. 本地终端：`cargo fmt --all`、`cargo test --workspace --all-features --no-fail-fast`、`cargo build --release -p deepseek-desktop`（验证 winres / rc.exe 路径）。
 2. 按第 9 节验收指标做端到端冒烟：
-   - 连续开关 DS Pick × 5，DevTools 全程无 `ERR_CONNECTION_REFUSED`。
+   - 连续开关 Zagens × 5，DevTools 全程无 `ERR_CONNECTION_REFUSED`。
    - sidecar 内部插 20 s 阻塞 `/v1/sessions`，supervisor 不重启。
    - 恢复 500+ 消息会话，HTTP 立即 202，`/v1/tasks/{id}` 进度收敛至 `ready`。
    - `taskkill /F /IM deepseek-tui.exe`，supervisor < 1 s 重启。

@@ -48,7 +48,7 @@ impl<'a> Default for PromptSessionContext<'a> {
 /// doesn't have to re-discover open blockers from scratch.
 pub const HANDOFF_RELATIVE_PATH: &str = ".deepseek/handoff.md";
 
-/// Workspace-local rules edited in **DS Pick** (and readable by any runtime using
+/// Workspace-local rules edited in **Zagens** (and readable by any runtime using
 /// the same workspace). Loaded as the first `instructions` document when the
 /// file exists and has non-whitespace content — no `config.toml` entry required.
 pub const PICK_RULES_RELATIVE_PATH: &str = ".deepseek/pick-rules.md";
@@ -60,17 +60,17 @@ pub const PICK_RULES_RELATIVE_PATH: &str = ".deepseek/pick-rules.md";
 /// marker rather than skipped entirely so the model still sees the head.
 const INSTRUCTIONS_FILE_MAX_BYTES: usize = 100 * 1024;
 
-/// Env value used when DS Pick spawns `deepseek serve` over HTTP.
+/// Env value used when Zagens spawns `deepseek serve` over HTTP.
 /// See `crates/desktop/src/sidecar.rs`.
 pub(crate) const CLIENT_SURFACE_DS_PICK: &str = "ds-pick";
 
 const CLIENT_IDENTITY_TERMINAL: &str = "You are DeepSeek TUI. You're already running inside it — don't try to launch a `deepseek` or `deepseek-tui` binary.";
 
-const CLIENT_IDENTITY_DS_PICK: &str = "You are assisting inside **DS Pick**, the DeepSeek desktop app (Tauri shell with an embedded chat UI). This session is hosted by DS Pick, which connects to the local `deepseek serve` runtime on the loopback interface. When the user asks what software this conversation uses, answer **DS Pick** — not \"DeepSeek TUI\" (that name refers to the terminal UI). Don't try to spawn another `deepseek` / `deepseek-tui` process unless the user explicitly asks.";
+const CLIENT_IDENTITY_DS_PICK: &str = "You are assisting inside **Zagens**, the DeepSeek desktop app (Tauri shell with an embedded chat UI). This session is hosted by Zagens, which connects to the local `deepseek serve` runtime on the loopback interface. When the user asks what software this conversation uses, answer **Zagens** — not \"DeepSeek TUI\" (that name refers to the terminal UI). Don't try to spawn another `deepseek` / `deepseek-tui` process unless the user explicitly asks.";
 
 fn resolved_ui_shell_label(client_surface: Option<&str>) -> Option<&'static str> {
     match client_surface.map(str::trim).filter(|s| !s.is_empty()) {
-        Some(s) if s.eq_ignore_ascii_case(CLIENT_SURFACE_DS_PICK) => Some("DS Pick (desktop)"),
+        Some(s) if s.eq_ignore_ascii_case(CLIENT_SURFACE_DS_PICK) => Some("Zagens (desktop)"),
         _ => None,
     }
 }
@@ -663,15 +663,15 @@ mod tests {
     fn render_environment_block_includes_ui_shell_for_ds_pick_surface() {
         let tmp = tempdir().expect("tempdir");
         let block = render_environment_block_inner(tmp.path(), "en", Some("ds-pick"));
-        assert!(block.contains("- ui_shell: DS Pick (desktop)"));
+        assert!(block.contains("- ui_shell: Zagens (desktop)"));
         assert!(block.contains("- lang: en"));
     }
 
     #[test]
     fn client_identity_reflects_client_surface_hint() {
         assert!(super::client_identity_line(None).contains("DeepSeek TUI"));
-        assert!(super::client_identity_line(Some("ds-pick")).contains("DS Pick"));
-        assert!(super::client_identity_line(Some("DS-PICK")).contains("DS Pick"));
+        assert!(super::client_identity_line(Some("ds-pick")).contains("Zagens"));
+        assert!(super::client_identity_line(Some("DS-PICK")).contains("Zagens"));
     }
 
     #[test]

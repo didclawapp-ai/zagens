@@ -1421,7 +1421,7 @@ use super::*;
         Ok(())
     }
 
-    /// PR5 — DS Pick multi-window: distinct threads may run overlapping turns.
+    /// PR5 — Zagens multi-window: distinct threads may run overlapping turns.
     #[tokio::test]
     async fn parallel_turns_on_two_threads_overlap_then_complete() -> Result<()> {
         let manager = test_manager(test_runtime_dir())?;

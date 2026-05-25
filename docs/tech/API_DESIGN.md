@@ -1,22 +1,22 @@
-# DS Pick API 设计文档
+# Zagens API 设计文档
 
-> **DS Pick 壳版本:** 0.4.0（`crates/desktop/Cargo.toml`）| **文档修订:** 2026-05-20 | **权威实现:** 本仓库 `commands.rs`、`runtime_api.rs` `build_router`、`web-ui/src/api/client.ts`
+> **Zagens 壳版本:** 0.4.0（`crates/desktop/Cargo.toml`）| **文档修订:** 2026-05-20 | **权威实现:** 本仓库 `commands.rs`、`runtime_api.rs` `build_router`、`web-ui/src/api/client.ts`
 
-本文档描述 **DS Pick 桌面壳** 的双通道集成 API，不是独立 OpenAPI 规范。协议类型见 `crates/protocol/`；HTTP 路由以 `crates/tui/src/runtime_api.rs` 中 `build_router` 为准（sidecar 内 `deepseek-tui serve --http`）。历史 `RUNTIME_API.md` 已移除，勿引用旧路径。
+本文档描述 **Zagens 桌面壳** 的双通道集成 API，不是独立 OpenAPI 规范。协议类型见 `crates/protocol/`；HTTP 路由以 `crates/tui/src/runtime_api.rs` 中 `build_router` 为准（sidecar 内 `deepseek-tui serve --http`）。历史 `RUNTIME_API.md` 已移除，勿引用旧路径。
 
-**与 Agent 行为：** 同一 sidecar 载入的 runtime prompt 含 [幻觉防控子规则](prompt-hallucination-patch.md)（Capability / Architecture Claims）。回归显示 DS Pick 在「能力/架构类裸问」上幻觉率较未打 patch 的发行 TUI 明显下降；**本文档的 SSE 示意图与能力结论无关**，集成时以代码与 `streamNormalize.ts` 为准。
+**与 Agent 行为：** 同一 sidecar 载入的 runtime prompt 含 [幻觉防控子规则](prompt-hallucination-patch.md)（Capability / Architecture Claims）。回归显示 Zagens 在「能力/架构类裸问」上幻觉率较未打 patch 的发行 TUI 明显下降；**本文档的 SSE 示意图与能力结论无关**，集成时以代码与 `streamNormalize.ts` 为准。
 
-> **唯一生产 HTTP 运行时：** DS Pick 与 `deepseek serve --http` 使用 `crates/tui/src/runtime_api.rs`（`/v1/*`），**不**使用 `crates/app-server`。架构与分阶段实施见 [RUNTIME_EVOLUTION_ROADMAP.md](./RUNTIME_EVOLUTION_ROADMAP.md)。
+> **唯一生产 HTTP 运行时：** Zagens 与 `deepseek serve --http` 使用 `crates/tui/src/runtime_api.rs`（`/v1/*`），**不**使用 `crates/app-server`。架构与分阶段实施见 [RUNTIME_EVOLUTION_ROADMAP.md](./RUNTIME_EVOLUTION_ROADMAP.md)。
 
 ---
 
 ## 1. 架构概览
 
-DS Pick 采用 **双通道 API** 架构：WebView 前端与 Rust 后端之间通过两条路径通信。
+Zagens 采用 **双通道 API** 架构：WebView 前端与 Rust 后端之间通过两条路径通信。
 
 ```
 ┌────────────────────────────────────────────────────────────┐
-│                    DS Pick (Tauri App)                      │
+│                    Zagens (Tauri App)                      │
 │                                                            │
 │  ┌─────────────────────┐    ┌────────────────────────┐     │
 │  │   WebView (React)   │    │    Rust Shell          │     │
@@ -41,7 +41,7 @@ DS Pick 采用 **双通道 API** 架构：WebView 前端与 Rust 后端之间通
 
 \* §8「Channel B」表按 **方法 + 路径** 逐条计数共 56 行；与「资源组」数量不同。
 
-**与 CLI / `app-server`：** DS Pick **不** 启动 `crates/app-server`；桌面仅 spawn 捆绑的 `deepseek-tui` sidecar，HTTP 面即 `runtime_api.rs`。`app-server` 供其他入口（若有）参考，非 DS Pick 数据路径。
+**与 CLI / `app-server`：** Zagens **不** 启动 `crates/app-server`；桌面仅 spawn 捆绑的 `deepseek-tui` sidecar，HTTP 面即 `runtime_api.rs`。`app-server` 供其他入口（若有）参考，非 Zagens 数据路径。
 
 ---
 
@@ -56,7 +56,7 @@ DS Pick 采用 **双通道 API** 架构：WebView 前端与 Rust 后端之间通
 |------|------|------|------|
 | `get_runtime_port` | — | `u16` | 获取 sidecar 监听端口（默认 7878） |
 | `get_runtime_token` | — | `String` | 获取 Bearer token，WebView 用此 token 访问 Runtime HTTP API |
-| `get_platform_info` | — | `PlatformInfo` | `{ os, arch, version }` — 其中 `version` 为 **DS Pick 壳** SemVer（`CARGO_PKG_VERSION`），非操作系统版本 |
+| `get_platform_info` | — | `PlatformInfo` | `{ os, arch, version }` — 其中 `version` 为 **Zagens 壳** SemVer（`CARGO_PKG_VERSION`），非操作系统版本 |
 | `get_os_theme` | — | `String` | **占位：** 当前固定 `"dark"`，未读系统主题 API |
 | `get_locale` | — | `String` | **占位：** 当前固定 `"zh-CN"`，未读系统 locale |
 | `restart_sidecar` | — | `()` | 触发 sidecar 进程重启（重载 config.toml） |
@@ -243,7 +243,7 @@ x-deepseek-runtime-token: <runtime_token>
 }
 ```
 
-（`version` 为 **deepseek-tui / runtime crate** 版本，非 DS Pick 壳版本。）
+（`version` 为 **deepseek-tui / runtime crate** 版本，非 Zagens 壳版本。）
 
 #### 3.3.2 流式对话
 
@@ -722,7 +722,7 @@ WebView                          Sidecar
 | 协议类型 | `crates/protocol/src/` | 共享 DTO（若有） |
 | Agent prompt（sidecar） | `crates/tui/src/prompts/base.md` 等 | 含幻觉防控子规则；见 [prompt-hallucination-patch.md](prompt-hallucination-patch.md) |
 
-> `crates/app-server/` 为 monorepo 内其他入口所用，**DS Pick 桌面路径不经过此 crate**。行数为撰写时约数，以仓库为准。
+> `crates/app-server/` 为 monorepo 内其他入口所用，**Zagens 桌面路径不经过此 crate**。行数为撰写时约数，以仓库为准。
 
 ---
 
@@ -730,7 +730,7 @@ WebView                          Sidecar
 
 | 文档 | 内容 |
 |------|------|
-| [prompt-hallucination-patch.md](prompt-hallucination-patch.md) | V4 能力/架构断言防控、DS Pick vs 官方 TUI 0.8.39 回归 |
+| [prompt-hallucination-patch.md](prompt-hallucination-patch.md) | V4 能力/架构断言防控、Zagens vs 官方 TUI 0.8.39 回归 |
 | [tui/回归测试.md](tui/回归测试.md) | 幻觉防控与并行调度回归用例 |
 | [agent-reliability-craft-plan.md](agent-reliability-craft-plan.md) | CRAFT、子代理写路径 §3.2 |
 
@@ -741,4 +741,4 @@ WebView                          Sidecar
 | 日期 | 说明 |
 |------|------|
 | 2026-05-18 | 对照代码修正：health/probe、BinaryFileResponse、SSE 事件名、symbol-index query、认证 header、25 IPC / 56 HTTP、app-server 边界 |
-| 2026-05-18 | 初版（DS Pick API 双通道） |
+| 2026-05-18 | 初版（Zagens API 双通道） |

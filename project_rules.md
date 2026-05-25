@@ -6,22 +6,22 @@ This document consolidates the same guidance as [`.cursor/rules/*.mdc`](.cursor/
 
 ---
 
-## 1. DS Pick monorepo (`ds-pick-repo` — always apply in Cursor)
+## 1. Zagens monorepo (`zagens-repo` — always apply in Cursor)
 
 **Cursor:** `alwaysApply: true`
 
-- **Root story:** [`README.md`](README.md) leads with **DS Pick** (proprietary desktop app). Third-party runtime MIT license at [`third-party/deepseek-tui/LICENSE`](third-party/deepseek-tui/LICENSE) — **not** at repo root. See [`NOTICE.md`](NOTICE.md).
-- **Desktop (DS Pick):** `crates/desktop/`, product notes in [`docs/desktop/DEV_NOTES.md`](docs/desktop/DEV_NOTES.md).
-- **Versions:** DS Pick uses its **own** SemVer (e.g. **v0.4.x**), separate from the embedded runtime workspace line; see [`CHANGELOG.md`](CHANGELOG.md) header.
-- **Changelog:** Record **every notable change** (features, fixes, docs, DS Pick desktop, runtime, tooling) in [`CHANGELOG.md`](CHANGELOG.md)—typically under `[Unreleased]`, in the **same PR/commit** as the change when practical.
+- **Root story:** [`README.md`](README.md) leads with **Zagens** (proprietary desktop app; tagline: *Desktop agent harness*). Third-party runtime MIT license at [`third-party/deepseek-tui/LICENSE`](third-party/deepseek-tui/LICENSE) — **not** at repo root. See [`NOTICE.md`](NOTICE.md).
+- **Desktop (Zagens):** `crates/desktop/`, product notes in [`docs/desktop/DEV_NOTES.md`](docs/desktop/DEV_NOTES.md).
+- **Versions:** Zagens uses its **own** SemVer (e.g. **v0.4.x**), separate from the embedded runtime workspace line; see [`CHANGELOG.md`](CHANGELOG.md) header.
+- **Changelog:** Record **every notable change** (features, fixes, docs, Zagens desktop, runtime, tooling) in [`CHANGELOG.md`](CHANGELOG.md)—typically under `[Unreleased]`, in the **same PR/commit** as the change when practical.
 
-When summarizing the project, **lead with DS Pick** (proprietary desktop product), not upstream deepseek-tui / CodeWhale open-source branding.
+When summarizing the project, **lead with Zagens** (proprietary desktop product), not upstream deepseek-tui / CodeWhale open-source branding.
 
 ### Runtime evolution (2026-05 — planning SSOT)
 
 - **Roadmap:** [`docs/tech/RUNTIME_EVOLUTION_ROADMAP.md`](docs/tech/RUNTIME_EVOLUTION_ROADMAP.md) (**v2.0-final**; §17 实施快照).
 - **Production path:** `deepseek-tui` → `runtime_api` `/v1/*` → `Engine`（`turn_loop` 主体在 `deepseek-core`；`Engine` struct 仍在 `tui`）。
-- **Do not** add product features on `app-server` / `core::Runtime` **queued** placeholder path; **do not** implement Agent turns inside the DS Pick WebView.
+- **Do not** add product features on `app-server` / `core::Runtime` **queued** placeholder path; **do not** implement Agent turns inside the Zagens WebView.
 - **D10 桌面 freeze 已解除**（2026-05-24，[P2_D10_UNFREEZE_RECORD.md](docs/tech/adr/P2_D10_UNFREEZE_RECORD.md)）：新 GAP/契约扩展按路线图 §10；仍禁止 WebView 内嵌 Engine / 换 app-server sidecar。PR 触达 `crates/desktop` 或 `web-ui` 时说明是否符合 §10.6；超出范围可用 `freeze-exception` + 维护者 ack（路线图 §6.2 0.8）。
 - **Issue prefixes:** use `P2-debt` for Engine→core work; do not use ambiguous `Phase 2` (conflicts with DESKTOP_IMPLEMENTATION_PLAN UI phases).
 
@@ -60,11 +60,11 @@ When unsure, **draft + list risk** for maintainer review instead of shipping qui
 - **Verify:** `cargo build`, `cargo test --workspace --all-features`, `cargo clippy --workspace --all-targets --all-features` before claiming the change compiles.
 - **Modules:** prefer **smaller sources** (~1000 lines soft cap); split rather than growing one file (see §3).
 - **CLI entry:** prefer documenting **`deepseek`** (dispatcher); not `deepseek-tui` alone for general flows.
-- **HTTP runtime:** [`docs/tech/API_DESIGN.md`](docs/tech/API_DESIGN.md) and `crates/tui/src/runtime_api.rs` for `/v1/...` contracts used by DS Pick WebView.
+- **HTTP runtime:** [`docs/tech/API_DESIGN.md`](docs/tech/API_DESIGN.md) and `crates/tui/src/runtime_api.rs` for `/v1/...` contracts used by Zagens WebView.
 
 ---
 
-## 5. DS Pick web UI (`desktop-web-ui` — Cursor: `crates/desktop/web-ui/**`)
+## 5. Zagens web UI (`desktop-web-ui` — Cursor: `crates/desktop/web-ui/**`)
 
 **Cursor:** `globs: crates/desktop/web-ui/**`, `alwaysApply: false`
 
@@ -82,7 +82,7 @@ When unsure, **draft + list risk** for maintainer review instead of shipping qui
 
 | `.mdc` file | Role |
 |-------------|------|
-| [`ds-pick-repo.mdc`](.cursor/rules/ds-pick-repo.mdc) | Product / doc map |
+| [`zagens-repo.mdc`](.cursor/rules/zagens-repo.mdc) | Product / doc map |
 | [`security-trust.mdc`](.cursor/rules/security-trust.mdc) | Security & trust |
 | [`code-organization.mdc`](.cursor/rules/code-organization.mdc) | Size & layout |
 | [`rust-workspace.mdc`](.cursor/rules/rust-workspace.mdc) | Rust |

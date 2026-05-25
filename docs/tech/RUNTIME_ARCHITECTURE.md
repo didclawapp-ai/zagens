@@ -20,7 +20,7 @@
 flowchart TB
   subgraph users [用户入口]
     U1[终端用户]
-    U2[DS Pick 用户]
+    U2[Zagens 用户]
     U3[脚本 / CI]
   end
 
@@ -31,7 +31,7 @@ flowchart TB
     CLI_DELEGATE["delegate_to_tui"]
   end
 
-  subgraph desktop_pkg ["crates/desktop — DS Pick"]
+  subgraph desktop_pkg ["crates/desktop — Zagens"]
     TAURI[Tauri Shell]
     WEB[React web-ui]
     PROXY[runtime_proxy]

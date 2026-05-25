@@ -1,4 +1,4 @@
-/** Type system for DS Pick i18n — derived from the zh-Hans translation source of truth. */
+/** Type system for Zagens i18n — derived from the zh-Hans translation source of truth. */
 
 import type zhHans from './locales/zh-Hans';
 

@@ -4,7 +4,7 @@
 
 ### 1.1 M4 回顾
 
-在 DS Pick 全仓库审查中，父代理将 `export_thread_json` 标记为 MEDIUM：“`save_path` 参数未经过路径安全验证”。实际调用方 `App.tsx:803` 使用 OS 原生文件保存对话框 — `save_path` 来自用户显式选择，不需要路径检查。M4 是误报。
+在 Zagens 全仓库审查中，父代理将 `export_thread_json` 标记为 MEDIUM：“`save_path` 参数未经过路径安全验证”。实际调用方 `App.tsx:803` 使用 OS 原生文件保存对话框 — `save_path` 来自用户显式选择，不需要路径检查。M4 是误报。
 
 ### 1.2 M4 的精确根因（基于操作记录）
 
@@ -37,7 +37,7 @@
 
 ```
 prompts.rs::build_system_prompt()
-  ├── client_identity (DS Pick vs Terminal)
+  ├── client_identity (Zagens vs Terminal)
   ├── base.md (337 行; 核心行为规则)
   │     ├── Language / Preamble / Decomposition
   │     ├── Full-repository code review mode (6 步)

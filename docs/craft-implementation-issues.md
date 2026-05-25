@@ -16,7 +16,7 @@
 | 2 | `GET /v1/blackboards` — 列出所有 task | P0 | ~25 行 Rust | #0 | ✅ |
 | 3 | `structured_verdict` 注入 sentinel payload | P0 | ~12 行 Rust | 无 | ✅ |
 | 4 | `parse_structured_verdict` 追踪日志 | P1 | ~8 行 Rust | #3 | ✅ |
-| 5 | Task 状态卡片（DS Pick AgentPanel） | P1 | ~90 行 | #1 #2 | ✅ |
+| 5 | Task 状态卡片（Zagens AgentPanel） | P1 | ~90 行 | #1 #2 | ✅ |
 | 6 | 指令文件自动发现（含 pick-rules 优先级） | P2 | ~20 行 Rust | #0 | ✅ 2026-05-24 |
 | 7 | A/B 验证 runbook | P1 | 文档 | 所有 P0 完成 | ⏸ |
 | 8 | P2 fix-loop 手工验证 | P1 | 手工测试 | #3 | ✅ 2026-05-24 |
@@ -37,7 +37,7 @@ fn workspace_root() -> Option<PathBuf> {
 }
 ```
 
-`write_blackboard_partition` 在 `run_subagent_task` 宿主任务中调用。DS Pick sidecar 的 spawn cwd 指向用户主目录时，黑板会落到 `~/`.deepseek/blackboards/`，而非 Composer / 线程工作区。`list_blackboard_tasks` 和 `read_blackboard_section`（子 Agent spawn 时调用）同样受影响。
+`write_blackboard_partition` 在 `run_subagent_task` 宿主任务中调用。Zagens sidecar 的 spawn cwd 指向用户主目录时，黑板会落到 `~/`.deepseek/blackboards/`，而非 Composer / 线程工作区。`list_blackboard_tasks` 和 `read_blackboard_section`（子 Agent spawn 时调用）同样受影响。
 
 **修正方向**：所有 blackboard 公开 API 以显式 `workspace: &Path` 参数替代隐式 `current_dir()`。`RuntimeApiState.workspace`（line 56）和 `task.runtime.context.workspace`（line 2650）已有工作区路径可用。
 
@@ -122,7 +122,7 @@ fn workspace_root() -> Option<PathBuf> {
 ### 验收标准
 
 ```bash
-# 启动 DS Pick，Composer 工作区设为 /projects/my-app
+# 启动 Zagens，Composer 工作区设为 /projects/my-app
 # 运行一次 CRAFT 流程后：
 ls /projects/my-app/.deepseek/blackboards/
 # → task-xxx.json（而不是 ~/）.deepseek/blackboards/
@@ -270,7 +270,7 @@ async fn list_blackboards(
 
 ### 问题
 
-当前 `subagent_done_sentinel`（`mod.rs:2755`）的 JSON payload 不含 `structured_verdict`。DS Pick 前端和主 Agent 需要额外调 `agent_result` 才能知道裁决。
+当前 `subagent_done_sentinel`（`mod.rs:2755`）的 JSON payload 不含 `structured_verdict`。Zagens 前端和主 Agent 需要额外调 `agent_result` 才能知道裁决。
 
 原草案假定 `json!` 对 `Option::None` 自动省略键——**不是事实**。`serde_json::json!` 对 `None` 生成 `"structured_verdict": null`。若要"无则不出现"，必须手动组装 `serde_json::Value`。
 
@@ -374,13 +374,13 @@ fn parse_structured_verdict(text: &str) -> Option<StructuredVerdict> {
 
 ---
 
-## Issue 5：Task 状态卡片（DS Pick AgentPanel 底部）
+## Issue 5：Task 状态卡片（Zagens AgentPanel 底部）
 
 **优先级**: P1 · **改动量**: ~90 行 · **依赖**: #1 #2
 
 ### 验收标准
 
-DS Pick 右侧栏 AgentPanel 底部出现 "CRAFT Tasks" 区域，列出当前 workspace 下所有 blackboard task。每 5 秒自动刷新。
+Zagens 右侧栏 AgentPanel 底部出现 "CRAFT Tasks" 区域，列出当前 workspace 下所有 blackboard task。每 5 秒自动刷新。
 
 ### 前置：字段对齐
 
@@ -548,7 +548,7 @@ useEffect(() => {
 2. instructions 未设置或空数组   → 自动发现 PROJECT_RULES.md + .cursor/rules/*.mdc（加 pick-rules 前缀）
 ```
 
-`pick-rules.md` 在任何情况下都加载（只要文件存在）——它是 DS Pick 工作区规则编辑器的产物。本 Issue 只影响 config 路径的 fallback 逻辑。
+`pick-rules.md` 在任何情况下都加载（只要文件存在）——它是 Zagens 工作区规则编辑器的产物。本 Issue 只影响 config 路径的 fallback 逻辑。
 
 ### 验收标准
 

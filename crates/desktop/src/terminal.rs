@@ -1,4 +1,4 @@
-//! Interactive PTY terminals for the DS Pick web UI (workspace-scoped shell).
+//! Interactive PTY terminals for the Zagens web UI (workspace-scoped shell).
 
 use std::collections::HashMap;
 use std::io::{Read, Write};

@@ -95,7 +95,7 @@ When the user clearly wants an **exhaustive, code-level review of the whole tree
 Sub-agents are full agent loops inside the runner. Reviews fail or look “timed out” for **predictable engine reasons**, not random flakiness:
 
 - **Hard cap per tool call inside a child (~30 seconds)** — Every tool the child runs (`read_file`, `grep_files`, shell, …) is executed under a **wall-clock timeout**. Huge uncapped reads, slow disks, or large tool payloads routinely hit **“tool … timed out”** before the whole review finishes. Prefer **`read_file` with `limit`/line ranges**, smaller batches, **parent-side parallel `read_file`** for independent files instead of one child sequentially reading dozens of large files.
-- **Per child LLM step (configurable, often ~2 minutes if unset)** — Each `create_message` round trip is capped by `step_timeout_ms` on `agent_spawn`, or by **`[subagents] step_timeout_secs`** in `config.toml` / DS Pick **系统设置** when omitted (legacy default **120 s**). Heavy audit steps that read many files routinely need **240–360 s** (or a higher config default). **Omitting `step_timeout_ms` is not “unlimited time”.** When a child returns **`Failed: API call timed out`**, that is **not** proof the inventory area is complete — **re-spawn** with a smaller path list and explicit `step_timeout_ms`, raise the config default, or finish the area in-process; **do not** mark `scratchpad_set_area(done)` on timeout alone.
+- **Per child LLM step (configurable, often ~2 minutes if unset)** — Each `create_message` round trip is capped by `step_timeout_ms` on `agent_spawn`, or by **`[subagents] step_timeout_secs`** in `config.toml` / Zagens **系统设置** when omitted (legacy default **120 s**). Heavy audit steps that read many files routinely need **240–360 s** (or a higher config default). **Omitting `step_timeout_ms` is not “unlimited time”.** When a child returns **`Failed: API call timed out`**, that is **not** proof the inventory area is complete — **re-spawn** with a smaller path list and explicit `step_timeout_ms`, raise the config default, or finish the area in-process; **do not** mark `scratchpad_set_area(done)` on timeout alone.
 - **`agent_result` / `agent_wait` default wait is short (tens of seconds)** — Waiting with **default `timeout_ms` often returns timed_out while the child is still `Running`**. That is different from a per-step API timeout (child already `Failed`). For repo-wide reviews, pass an **explicit large `timeout_ms`** (many minutes — up to the tool maximum), **`block: true`**, and/or poll across **multiple parent turns** with `agent_list` until terminal state.
 - **Oversized prompts hurt more than parallelism helps** — A prompt that assigns “read **all** files under `crates/tui/src/tui/`” forces many sequential tool rounds → multiplies the above risks. Prefer **multiple children with small disjoint path lists**, or **`agent_spawn`** with **≤ ~10–20 files worth of work each** unless files are trivially small.
 - **Step ceiling** — Each child has a **bounded number of reasoning steps** (on the order of **100** turns of model→tools→model). A “review everything in this giant directory” mandate can exhaust the budget and exit before finishing even if no single timer fired.
@@ -170,7 +170,7 @@ High-stakes conclusions that will appear in the user's final answer still follow
 
 #### Architecture Claims Rule
 
-**Triggers:** Describing how **DS Pick / this runtime** works internally — engine dispatch, sub-agent capabilities, LSP hooks, config, file locking, concurrency limits.
+**Triggers:** Describing how **Zagens / this runtime** works internally — engine dispatch, sub-agent capabilities, LSP hooks, config, file locking, concurrency limits.
 
 **Principle:** Training knowledge is a **hypothesis**, not a fact, until tool output confirms it.
 
@@ -357,7 +357,7 @@ When this turn **created or materially modified** workspace files (e.g. via `wri
 1. Add a small heading in the user's language (examples: **Modified files**, **变更的文件**, **输出文件**, **Generated outputs**).
 2. List **each distinct path** you touched on disk. Prefer **Markdown links** using **workspace-relative POSIX paths** with **no** `file://` / `vscode://` and **no** leading `./`:
    - Example: `[crates/desktop/web-ui/src/App.tsx](crates/desktop/web-ui/src/App.tsx)`
-   - Same text for label and URL is fine; keeps paths grep-friendly and turns into clickable opens in DS Pick (and similar clients).
+   - Same text for label and URL is fine; keeps paths grep-friendly and turns into clickable opens in Zagens (and similar clients).
 3. Inline code with backticks is also turned into opens when the token looks like a path (e.g. `` `pptx_engine/charts.py` ``), but **prefer the explicit link form** above for clarity when you are deliberately pointing at deliverables.
 4. Skip this recap when the turn was **read-only** (searches, reasoning, failed writes before any file existed).
 

@@ -1,13 +1,13 @@
-# DS Pick 工具系统原理
+# Zagens 工具系统原理
 
 > **文档路径:** `docs/tech/TOOLS_PRINCIPLES.md`（与 [API_DESIGN.md](API_DESIGN.md) 同属 `docs/tech/`）  
-> **DS Pick 壳版本:** 0.4.0 | **最后更新:** 2026-05-20 | **权威实现:** `crates/tui/src/tools/`、`registry.rs`
+> **Zagens 壳版本:** 0.4.0 | **最后更新:** 2026-05-20 | **权威实现:** `crates/tui/src/tools/`、`registry.rs`
 
 ---
 
 ## 1. 架构总览
 
-DS Pick 的工具系统采用 **统一抽象 + 分层注册** 的架构。所有工具实现同一个 `ToolSpec` trait，统一注册到 `ToolRegistry` 中，由引擎在 Agent 循环中调度执行。
+Zagens 的工具系统采用 **统一抽象 + 分层注册** 的架构。所有工具实现同一个 `ToolSpec` trait，统一注册到 `ToolRegistry` 中，由引擎在 Agent 循环中调度执行。
 
 ```
 ┌─────────────────────────────────────────────────────────┐

@@ -211,7 +211,7 @@
 
 /*
  * diff2html ships light defaults + prefers-color-scheme dark.
- * DS Pick uses class-based `.dark` — override d2h CSS variables on the wrapper.
+ * Zagens uses class-based `.dark` — override d2h CSS variables on the wrapper.
  */
 .d2h-wrapper {
   font-size: 11px;

@@ -2267,7 +2267,7 @@ async fn sidecar_parallel_pending_approvals_resolve_then_continue() -> Result<()
 
 /// A+.4 Sidecar contract test: health → create thread → start turn →
 /// SSE stream subset → interrupt.  This is the minimal smoke test that any
-/// L3 shell (TUI / DS Pick) expects to pass.  The server is in-memory
+/// L3 shell (TUI / Zagens) expects to pass.  The server is in-memory
 /// (same `spawn_test_server` helper); the full `deepseek-tui serve
 /// --http` binary-test variant lives under
 /// `scripts/runtime-longrun-baseline.ps1`.
@@ -2332,7 +2332,7 @@ async fn sidecar_contract_full_lifecycle() -> Result<()> {
         "expected at least one SSE event in replay, got: {events_body:.200}"
     );
 
-    // 5. Interrupt the turn (DS Pick + TUI both use POST .../interrupt — §12.4 #2)
+    // 5. Interrupt the turn (Zagens + TUI both use POST .../interrupt — §12.4 #2)
     let interrupt_resp = client
         .post(format!(
             "{base}/v1/threads/{thread_id}/turns/{turn_id}/interrupt"

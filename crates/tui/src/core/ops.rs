@@ -102,7 +102,7 @@ pub enum Op {
         reply: oneshot::Sender<bool>,
     },
 
-    /// Return a TUI-aligned context usage snapshot (DS Pick / runtime API).
+    /// Return a TUI-aligned context usage snapshot (Zagens / runtime API).
     QueryContext {
         reply: oneshot::Sender<ThreadContextSnapshot>,
     },

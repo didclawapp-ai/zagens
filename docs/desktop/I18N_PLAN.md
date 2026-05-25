@@ -1,4 +1,4 @@
-# DS Pick 多语言方案
+# Zagens 多语言方案
 
 > 状态：草案  
 > 日期：2026-05-14  
@@ -9,7 +9,7 @@
 
 ## 1. 目标
 
-为 DS Pick 桌面端增加中英文切换能力，后续可扩展其他语言。
+为 Zagens 桌面端增加中英文切换能力，后续可扩展其他语言。
 
 - **Phase 1**（本期）：简体中文（zh-Hans）+ 英语（en）
 - **Phase 2**（后续）：日语、韩语等按需添加
@@ -48,7 +48,7 @@
 
 ### 2.3 约束条件
 
-- **零外部依赖**：不引入 react-i18next / i18next 等第三方库。DS Pick 是 Tauri 桌面应用，不需要 Web 生态的重量级 i18n 框架
+- **零外部依赖**：不引入 react-i18next / i18next 等第三方库。Zagens 是 Tauri 桌面应用，不需要 Web 生态的重量级 i18n 框架
 - **构建时不变**：翻译表在 Vite 构建时静态解析，无运行时网络请求
 - **不影响包体积**：方案应支持按需加载语言包
 - **TypeScript 类型安全**：翻译 key 应有类型提示，避免拼写错误
@@ -124,7 +124,7 @@ t('agentCount', { count: 5 })
 // locales/zh-Hans.ts
 const zhHans = {
   app: {
-    title: 'DS Pick',
+    title: 'Zagens',
     subtitle: '你的 AI 编码助手',
   },
   sidebar: {
@@ -166,7 +166,7 @@ import type { TranslationMap } from '../keys';
 
 const en: TranslationMap = {
   app: {
-    title: 'DS Pick',
+    title: 'Zagens',
     subtitle: 'Your AI coding assistant',
   },
   sidebar: {
@@ -326,7 +326,7 @@ setBanner(t('banner.runtimeUnreachable', { url: getRuntimeBase() }));
 | 构建集成 | 需 `i18next-parser` 等提取工具 | Vite 原生静态 import |
 | 依赖链 | i18next → 5 个子包 | 零依赖 |
 
-DS Pick 的翻译需求是 **静态 UI 文本 + 简单插值**，不需要复数规则、日期格式化、ICU MessageFormat 等复杂特性。
+Zagens 的翻译需求是 **静态 UI 文本 + 简单插值**，不需要复数规则、日期格式化、ICU MessageFormat 等复杂特性。
 
 ### 5.2 为什么从中文翻译表推导类型
 

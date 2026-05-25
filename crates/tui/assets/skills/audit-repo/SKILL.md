@@ -94,7 +94,7 @@ For each inventory row (in order unless resuming):
 When multiple inventory rows are examined in parallel:
 
 - **Use `agent_spawn`** with **`task_id` = `run_id`**. Children write **blackboard** only (`.deepseek/blackboards/{run_id}.json`), not scratchpad files.
-- **Step timeout:** For each spawn set **`step_timeout_ms`: 240000–360000** (or ensure `[subagents] step_timeout_secs` ≥ 300 in config / DS Pick settings). Omitting it uses the config default (often **120 s**), which is too short for multi-file reads — the child **`Failed`** with an API timeout is **not** “area done”; re-spawn with smaller scope or higher timeout before `scratchpad_set_area(done)`.
+- **Step timeout:** For each spawn set **`step_timeout_ms`: 240000–360000** (or ensure `[subagents] step_timeout_secs` ≥ 300 in config / Zagens settings). Omitting it uses the config default (often **120 s**), which is too short for multi-file reads — the child **`Failed`** with an API timeout is **not** “area done”; re-spawn with smaller scope or higher timeout before `scratchpad_set_area(done)`.
 - **Join before P2:** `agent_list` until no `Running`; each child → **`agent_result`** or blackboard → `scratchpad_append` → `scratchpad_set_area(done)`.
 - **Do not use `task_create`** for per-area audits — the engine **blocks** `task_create` while this scratchpad inventory is active (E5). Use **`agent_spawn`** only. For legacy Tasks you already opened, **`task_read` every completed task** before P2; do not call them “sub-agents”.
 - **HIGH/BLOCKER from children** are **advisory** until the parent `read_file`/`grep_files` and appends `status=verified`.

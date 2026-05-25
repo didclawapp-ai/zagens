@@ -68,7 +68,7 @@ export interface SessionDetail {
 }
 
 let runtimeBase = 'http://127.0.0.1:7878';
-/** DS Pick shell: REST/SSE via Tauri; Bearer stays in Rust (H06). */
+/** Zagens shell: REST/SSE via Tauri; Bearer stays in Rust (H06). */
 let useTauriRuntimeProxy = false;
 
 /** Call before render when running inside Tauri; no-op in plain Vite dev. */
@@ -206,7 +206,7 @@ async function fetchResponseWithBackoff(
       await sleep(RUNTIME_FETCH_BASE_DELAY_MS * 2 ** attempt);
     }
   }
-  console.warn(`[ds-pick] ${context}: fetch failed after ${RUNTIME_FETCH_ATTEMPTS} attempts`, last);
+  console.warn(`[zagens] ${context}: fetch failed after ${RUNTIME_FETCH_ATTEMPTS} attempts`, last);
   throw enrichRuntimeNetworkError(last);
 }
 

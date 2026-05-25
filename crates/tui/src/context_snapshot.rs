@@ -1,4 +1,4 @@
-//! Runtime context usage snapshots (TUI-aligned estimates for DS Pick / HTTP API).
+//! Runtime context usage snapshots (TUI-aligned estimates for Zagens / HTTP API).
 
 use std::path::Path;
 

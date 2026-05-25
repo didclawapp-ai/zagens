@@ -14,4 +14,4 @@ Implement via **helper binary** (Landlock ruleset → exec child) and Windows Jo
 ## Acceptance
 
 - `exec_shell` in `workspace-write` policy cannot read `$HOME` outside workspace on Linux 5.13+.
-- DS Pick settings copy matches actual enforcement (no “degraded” when enforced).
+- Zagens settings copy matches actual enforcement (no “degraded” when enforced).

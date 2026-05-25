@@ -1,6 +1,6 @@
 # 全库代码安全审核报告
 
-**项目**: DS Pick (DeepSeek TUI Desktop)  
+**项目**: Zagens (DeepSeek TUI Desktop)  
 **审核日期**: 2026-05-24  
 **审核范围**: 全仓库（30 个区域，约 520 个源文件）  
 **审核方法**: 8 个并行 Explore 子代理 + 主代理交叉验证  

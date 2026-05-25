@@ -87,7 +87,7 @@ Phase 2（中期架构升级）: 将 Engine turn 管道上移至 deepseek-core
 Phase 3（原稿 · 已修订）: ~~桌面 sidecar 改为 app-server binary~~
   ├─ **不推荐** 在未完成 P2 前切换 sidecar（`app-server` 无 `/v1`、无鉴权、turn 未完成）
   └─ **修订 P3（2026-05）:** sidecar **仍为** `deepseek-tui`；`runtime_api` 变为 `core::Runtime` 的 HTTP 适配层；
-      TUI ratatui 与 DS Pick 共用 **同一** `deepseek-core` Engine —— **壳运分离不变**
+      TUI ratatui 与 Zagens 共用 **同一** `deepseek-core` Engine —— **壳运分离不变**
 ```
 
 #### 2.1.1 Phase 1 验证结论与当前阶段（2026-05）

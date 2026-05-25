@@ -30,7 +30,7 @@ fn focus_last_or_main(app: &tauri::AppHandle) {
 }
 
 fn build_tray_menu(app: &tauri::AppHandle) -> Result<tauri::menu::Menu<tauri::Wry>, String> {
-    let show_item = MenuItemBuilder::with_id("show", "显示 DS Pick")
+    let show_item = MenuItemBuilder::with_id("show", "显示 Zagens")
         .build(app)
         .map_err(|e| e.to_string())?;
     let new_window_item = MenuItemBuilder::with_id("new_window", "新建窗口")
@@ -123,7 +123,7 @@ fn main() {
 
             let _tray = TrayIconBuilder::new()
                 .icon(tray_image)
-                .tooltip("DS Pick")
+                .tooltip("Zagens")
                 .menu(&tray_menu)
                 .on_tray_icon_event(|tray: &tauri::tray::TrayIcon, event| {
                     if let TrayIconEvent::Click {
@@ -223,5 +223,5 @@ fn main() {
             window_registry::close_current_window,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running DS Pick");
+        .expect("error while running Zagens");
 }

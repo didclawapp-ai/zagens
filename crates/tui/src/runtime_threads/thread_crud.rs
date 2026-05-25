@@ -288,7 +288,7 @@ impl RuntimeThreadManager {
         })
     }
 
-    /// TUI-aligned context usage + compaction policy for DS Pick.
+    /// TUI-aligned context usage + compaction policy for Zagens.
     pub async fn get_thread_context(&self, id: &str) -> Result<ThreadContextSnapshot> {
         let thread = self.get_thread(id).await?;
         let compaction = self.config.compaction_runtime_config(&thread.model);

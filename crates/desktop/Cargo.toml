@@ -1,10 +1,10 @@
 [package]
 name = "deepseek-desktop"
-# DS Pick is versioned independently of the workspace (CLI/TUI) line — see CHANGELOG.md.
+# Zagens is versioned independently of the workspace (CLI/TUI) line — see CHANGELOG.md.
 version = "0.4.3"
 edition.workspace = true
-description = "DS Pick — Tauri desktop shell with embedded agent runtime sidecar"
-license = "LicenseRef-Proprietary-DSPick"
+description = "Zagens — Desktop agent harness (Tauri shell + embedded runtime sidecar)"
+license = "LicenseRef-Proprietary-Zagens"
 license-file = "../../LICENSE"
 rust-version.workspace = true
 

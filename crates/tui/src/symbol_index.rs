@@ -484,7 +484,7 @@ pub fn index_status(workspace: &Path) -> IndexStatus {
 ///
 /// Called from two places:
 /// - `grep_files` tool (on-demand, before the first symbol lookup)
-/// - `update_thread` (when workspace is changed by DS Pick or other clients)
+/// - `update_thread` (when workspace is changed by Zagens or other clients)
 pub fn ensure_symbol_index(workspace: &Path) {
     use std::collections::HashSet;
     use std::sync::{LazyLock, Mutex};

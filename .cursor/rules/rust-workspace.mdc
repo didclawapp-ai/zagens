@@ -10,4 +10,4 @@ alwaysApply: false
 - **Verify:** `cargo build`, `cargo test --workspace --all-features`, `cargo clippy --workspace --all-targets --all-features` before claiming the change compiles.
 - **Modules:** Prefer **smaller sources** (~**1000** lines soft cap); split rather than growing one file. See **code-organization** rule for extraction policy on legacy large files.
 - **CLI entry:** prefer documenting **`deepseek`** (dispatcher); not `deepseek-tui` alone for general flows.
-- **HTTP runtime:** [docs/tech/API_DESIGN.md](docs/tech/API_DESIGN.md) and `crates/tui/src/runtime_api.rs` for `/v1/...` contracts used by DS Pick WebView.
+- **HTTP runtime:** [docs/tech/API_DESIGN.md](docs/tech/API_DESIGN.md) and `crates/tui/src/runtime_api.rs` for `/v1/...` contracts used by Zagens WebView.

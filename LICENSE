@@ -1,22 +1,21 @@
-DS Pick Desktop Application — Proprietary License
+Zagens Desktop Application — Proprietary License
 
-Copyright (c) 2024-2026 DS Pick Contributors. All Rights Reserved.
+Copyright (c) 2024-2026 Zagens Contributors. All Rights Reserved.
 
-DS Pick is a proprietary desktop product. This repository, the DS Pick application
+Zagens is a proprietary desktop product. This repository, the Zagens application
 (including the Tauri shell, WebView UI, branding, and distribution artifacts), and
-all DS Pick–authored code are proprietary software.
+all Zagens-authored code are proprietary software.
 
 Unless you have a separate written agreement with the copyright holder, you may
 not copy, modify, merge, publish, distribute, sublicense, sell, or otherwise
-exploit any part of DS Pick.
+exploit any part of Zagens.
 
 Internal development builds and evaluation use only, as authorized by the
 copyright holder.
 
-Third-party components
-----------------------
-DS Pick embeds third-party software (including an MIT-licensed agent runtime).
-Those components are **not** covered by this license. See [NOTICE.md](NOTICE.md).
+---
 
-Using DeepSeek or other AI provider APIs through DS Pick does not imply
-affiliation with or endorsement by DeepSeek Inc. or any model provider.
+## Third-party runtime
+
+The embedded agent runtime sidecar includes MIT-licensed third-party code.
+See [NOTICE.md](NOTICE.md) and [third-party/deepseek-tui/LICENSE](third-party/deepseek-tui/LICENSE).

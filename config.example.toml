@@ -1,7 +1,7 @@
 # ╔══════════════════════════════════════════════════════════════════════════════╗
-# ║                    DS Pick — Agent Runtime Configuration                      ║
+# ║                    Zagens — Agent Runtime Configuration                      ║
 # ║                                                                              ║
-# ║  Example for ~/.deepseek/config.toml (edited in DS Pick → Settings).           ║
+# ║  Example for ~/.deepseek/config.toml (edited in Zagens → Settings).           ║
 # ║  Not affiliated with or endorsed by DeepSeek Inc.                             ║
 # ╚══════════════════════════════════════════════════════════════════════════════╝
 
@@ -12,7 +12,7 @@
 # ─────────────────────────────────────────────────────────────────────────────────
 # Choose which provider to use by default. Per-provider credentials live in the
 # `[providers.*]` sections near the bottom of
-# this file — switching providers in DS Pick Settings (or `provider = "..."` here)
+# this file — switching providers in Zagens Settings (or `provider = "..."` here)
 # does not require re-entering keys. Top-level `api_key` / `base_url` are still
 # read as DeepSeek defaults when `[providers.deepseek]` is absent.
 provider = "deepseek" # deepseek | nvidia-nim | openrouter | novita | fireworks | sglang | vllm | ollama
@@ -46,7 +46,7 @@ default_text_model = "deepseek-v4-pro"
 # "high"   — reasoning_effort = high (DeepSeek default)
 # "max"    — reasoning_effort = max (deepest reasoning)
 #
-# In DS Pick, change thinking tier in Settings or via config. Legacy terminal
+# In Zagens, change thinking tier in Settings or via config. Legacy terminal
 # builds may still expose Shift+Tab cycling; the header chip shows the active tier.
 reasoning_effort = "max"
 
@@ -76,7 +76,7 @@ memory_path = "~/.deepseek/memory.md"
 # Example: short repo-local addendum on top of built-in prompts (keep lean for KV cache hits):
 #   instructions = [ ".deepseek/grounding-rules.md" ]
 #
-# DS Pick desktop: the app can also maintain `.deepseek/pick-rules.md` per workspace
+# Zagens desktop: the app can also maintain `.deepseek/pick-rules.md` per workspace
 # from 工作台 → 「项目规则」; the runtime prepends that file to the effective
 # `instructions` list for new engines (no `instructions = [...]` entry required).
 #
@@ -88,7 +88,7 @@ memory_path = "~/.deepseek/memory.md"
 # ─────────────────────────────────────────────────────────────────────────────────
 # User memory (#489) — opt-in. When enabled, the runtime reads memory_path on
 # startup and injects its contents into the system prompt as a
-# <user_memory> block. DS Pick composer `# note` lines and the `remember` tool
+# <user_memory> block. Zagens composer `# note` lines and the `remember` tool
 # can append durable notes when the feature is enabled.
 # ─────────────────────────────────────────────────────────────────────────────────
 [memory]
@@ -147,7 +147,7 @@ max_subagents = 10 # optional (1-20)
 # Optional sub-agent tuning. max_concurrent overrides top-level max_subagents.
 # [subagents]
 # max_concurrent = 10
-# Per-step LLM API timeout (seconds). Default 120; clamped 10–600. DS Pick: 系统设置 → 安全。
+# Per-step LLM API timeout (seconds). Default 120; clamped 10–600. Zagens: 系统设置 → 安全。
 # step_timeout_secs = 300
 
 # Optional managed policy paths (defaults to /etc/deepseek/*.toml on unix):
@@ -157,7 +157,7 @@ max_subagents = 10 # optional (1-20)
 # ─────────────────────────────────────────────────────────────────────────────────
 # Per-provider credentials (peer providers — NIM is first-class, not a flag)
 # ─────────────────────────────────────────────────────────────────────────────────
-# Providers can be stored at once; `provider = "..."` (top of file) or DS Pick
+# Providers can be stored at once; `provider = "..."` (top of file) or Zagens
 # Settings switches between them without re-entering keys. Env vars override:
 #   DeepSeek: DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL
 #   NIM:      NVIDIA_API_KEY (or NVIDIA_NIM_API_KEY), NIM_BASE_URL
@@ -249,7 +249,7 @@ max_subagents = 10 # optional (1-20)
 
 # ─────────────────────────────────────────────────────────────────────────────────
 # Terminal UI chrome ([tui] — used when running the sidecar in terminal mode;
-# DS Pick desktop ignores most of this except locale-related runtime behavior)
+# Zagens desktop ignores most of this except locale-related runtime behavior)
 # ─────────────────────────────────────────────────────────────────────────────────
 [tui]
 alternate_screen = "auto"   # auto | always | never
@@ -295,7 +295,7 @@ exponential_base = 2.0
 # ─────────────────────────────────────────────────────────────────────────────────
 # Context Compaction
 # ─────────────────────────────────────────────────────────────────────────────────
-# Auto-compaction is edited in DS Pick → Settings (or `[compaction]` here).
+# Auto-compaction is edited in Zagens → Settings (or `[compaction]` here).
 # Threshold defaults to 80% of the active model context window when unset.
 [compaction]
 # auto_compact = false
@@ -378,7 +378,7 @@ default_text_model = "deepseek-ai/deepseek-v4-pro"
 # Desktop Notifications (OSC 9 / BEL on long agent-turn completion)
 # ─────────────────────────────────────────────────────────────────────────────────
 # Emits a notification when a turn **completes successfully** and took longer
-# than `threshold_secs`. DS Pick uses native OS notifications when minimized;
+# than `threshold_secs`. Zagens uses native OS notifications when minimized;
 # this section applies to terminal-mode sidecar runs.
 #
 # method        = "auto"   # auto | osc9 | bel | off
@@ -472,7 +472,7 @@ default_text_model = "deepseek-ai/deepseek-v4-pro"
 #
 # [[hooks.hooks]]
 # event = "session_start"
-# command = "echo 'DS Pick runtime session started'"
+# command = "echo 'Zagens runtime session started'"
 #
 # # Inject ephemeral creds into every shell call. Output one
 # # KEY=VALUE per line on stdout (export prefix optional).
@@ -484,9 +484,9 @@ default_text_model = "deepseek-ai/deepseek-v4-pro"
 # # condition = { type = "tool_category", category = "shell" }
 
 # ─────────────────────────────────────────────────────────────────────────────────
-# Runtime API (embedded sidecar HTTP/SSE — DS Pick desktop)
+# Runtime API (embedded sidecar HTTP/SSE — Zagens desktop)
 # ─────────────────────────────────────────────────────────────────────────────────
-# Tuning knobs for the local HTTP/SSE daemon bound to 127.0.0.1. DS Pick WebView
+# Tuning knobs for the local HTTP/SSE daemon bound to 127.0.0.1. Zagens WebView
 # talks to this API; host/port/workers stay on sidecar flags / env when applicable.
 #
 # Built-in defaults always include:

@@ -18,7 +18,7 @@ export class ChatErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
-    console.error('[ds-pick] chat render error', error, info.componentStack);
+    console.error('[zagens] chat render error', error, info.componentStack);
   }
 
   render(): ReactNode {

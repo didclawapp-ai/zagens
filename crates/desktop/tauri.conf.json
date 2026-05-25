@@ -1,8 +1,8 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicepage/native/refs/heads/dev/packages/desktop-toolkit/tauri-schema.json",
-  "productName": "DS Pick",
+  "productName": "Zagens",
   "version": "0.4.3",
-  "identifier": "com.dspick.desktop",
+  "identifier": "com.zagens.desktop",
   "build": {
     "frontendDist": "./web-ui/dist",
     "devUrl": "http://localhost:1420",
@@ -19,7 +19,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "DS Pick",
+        "title": "Zagens",
         "width": 1200,
         "height": 800,
         "minWidth": 800,

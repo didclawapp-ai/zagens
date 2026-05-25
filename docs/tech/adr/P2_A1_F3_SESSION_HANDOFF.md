@@ -16,9 +16,9 @@
 - **F3** — 桌面 a11y（D10 freeze 内允许）
 - **PR5** — 生产 sidecar 路径（`RuntimeThreadManager`），**不是** app-server
 
-**硬约束（D4）：** **冻结 `app-server`** — 不扩展 turn/API、不做 hybrid 接线、不让 DS Pick 依赖 app-server。
+**硬约束（D4）：** **冻结 `app-server`** — 不扩展 turn/API、不做 hybrid 接线、不让 Zagens 依赖 app-server。
 
-**生产路径（不变）：** DS Pick → `deepseek-tui serve --http` → `runtime_api` → `RuntimeThreadManager` → Engine。
+**生产路径（不变）：** Zagens → `deepseek-tui serve --http` → `runtime_api` → `RuntimeThreadManager` → Engine。
 
 ---
 
@@ -68,7 +68,7 @@
 | 项 | 原因 |
 |----|------|
 | app-server hybrid（`RuntimeThreadMessageTurnPort` 接到 app-server） | **D4 冻结** |
-| DS Pick 改走 app-server HTTP | D1/D11 |
+| Zagens 改走 app-server HTTP | D1/D11 |
 | 统一 `StateStore` vs JSONL 持久化 | P2 backlog |
 | D10 解冻后的大 GAP（xterm/diff 扩展） | 待维护者 §17.4 评审 |
 
