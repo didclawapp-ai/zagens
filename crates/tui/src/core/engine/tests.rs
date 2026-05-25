@@ -2080,7 +2080,7 @@ async fn engine_llm_client_override_runs_mock_turn() {
     handle
         .send(Op::SendMessage {
             content: "hello".into(),
-            mode: AppMode::Agent,
+            mode: deepseek_core::turn::TurnLoopMode::Agent,
             model: "deepseek-v4-pro".into(),
             goal_objective: None,
             reasoning_effort: Some("high".into()),
@@ -2246,7 +2246,7 @@ async fn engine_mock_parallel_readonly_tools_complete_turn() {
     handle
         .send(Op::SendMessage {
             content: "list workspace twice".into(),
-            mode: AppMode::Agent,
+            mode: deepseek_core::turn::TurnLoopMode::Agent,
             model: "deepseek-v4-pro".into(),
             goal_objective: None,
             reasoning_effort: Some("high".into()),
@@ -2412,7 +2412,7 @@ async fn engine_mock_capacity_pre_request_observes_mock_and_emits_decision() {
     handle
         .send(Op::SendMessage {
             content: "continue".into(),
-            mode: AppMode::Agent,
+            mode: deepseek_core::turn::TurnLoopMode::Agent,
             model: "deepseek-v3.2-128k".into(),
             goal_objective: None,
             reasoning_effort: Some("high".into()),

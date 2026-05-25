@@ -9,7 +9,10 @@
 
 pub mod approval;
 pub mod context;
+pub mod context_snapshot;
 pub mod dispatch;
+pub mod handle;
+pub mod op;
 pub mod loop_guard;
 pub mod lsp_edit_paths;
 pub mod tool_bridge;
@@ -34,6 +37,9 @@ pub use context::{
     COMPACTION_SUMMARY_MARKER, MAX_CONTEXT_RECOVERY_ATTEMPTS, MIN_RECENT_MESSAGES_TO_KEEP,
     TURN_MAX_OUTPUT_TOKENS, count_oldest_messages_to_drain,
 };
+pub use context_snapshot::ThreadContextSnapshot;
+pub use handle::EngineHandle;
+pub use op::Op;
 pub use dispatch::{
     caller_allowed_for_tool, caller_type_for_tool_use, final_tool_input, format_tool_error,
     mcp_tool_approval_description, mcp_tool_is_parallel_safe, mcp_tool_is_read_only,

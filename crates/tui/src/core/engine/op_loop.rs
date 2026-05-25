@@ -1,6 +1,7 @@
 //! Engine background task: [`Op`] dispatch loop.
 
 use super::*;
+use super::turn_loop::host_impl::turn_loop_to_app_mode;
 
 impl Engine {
     /// Run the engine event loop
@@ -25,7 +26,7 @@ impl Engine {
                 } => {
                     self.handle_send_message(
                         content,
-                        mode,
+                        turn_loop_to_app_mode(mode),
                         model,
                         goal_objective,
                         reasoning_effort,
@@ -46,7 +47,9 @@ impl Engine {
                 Op::DenyToolCall { id } => self.handle_deny_tool_call_op(&id).await,
                 Op::SpawnSubAgent { prompt } => self.handle_spawn_subagent_op(&prompt).await,
                 Op::ListSubAgents => self.handle_list_subagents_op().await,
-                Op::ChangeMode { mode } => self.handle_change_mode_op(mode).await,
+                Op::ChangeMode { mode } => {
+                    self.handle_change_mode_op(turn_loop_to_app_mode(mode)).await
+                }
                 Op::SetModel { model } => self.apply_set_model_op(model).await,
                 Op::SetCompaction { config } => self.apply_set_compaction_op(config).await,
                 Op::SyncSession {

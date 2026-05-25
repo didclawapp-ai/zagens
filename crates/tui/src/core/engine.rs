@@ -140,7 +140,6 @@ pub fn spawn_engine(config: EngineConfig, api_config: &Config) -> EngineHandle {
 #[cfg(test)]
 pub(crate) use mock::{MockApprovalEvent, MockEngineHandle, mock_engine_handle};
 
-mod turn_port;
 mod capacity_flow;
 mod context_recovery;
 mod context_trim;
@@ -171,7 +170,7 @@ mod tool_dispatch_port;
 pub mod scratchpad_flow;
 mod subagent_spawn;
 mod op_handlers;
-mod turn_loop;
+pub(crate) mod turn_loop;
 
 pub(crate) use tool_dispatch_port::{RegistryToolDispatch, TuiEngineToolDispatch};
 

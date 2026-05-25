@@ -31,12 +31,12 @@
 
 ## 1. 定型判定（满足后即可解冻功能迭代）
 
-以下 10 条全部勾选 = 架构定型，可大胆做功能。**当前进度：4/10**（2026-05-25 D3 已闭合）。
+以下 10 条全部勾选 = 架构定型，可大胆做功能。**当前进度：4/10**（2026-05-25 D3 闭合 + M1 落地，但 Engine struct 主体尚未 in core，第 4 项仍 `[ ]`）。
 
 - [x] **L1 turn loop 在 core**（P2 PR6 / G3 已闭合，见 [P2_G3_ENGINE_L2_SIGNOFF.md](./P2_G3_ENGINE_L2_SIGNOFF.md)）
 - [x] **L2 契约稳定**（`/v1/*` 路由 + `event_schema_version: 2`，[`runtime_api/router.rs`](../../../crates/tui/src/runtime_api/router.rs)）
 - [x] **桌面 ↔ sidecar 双通道安全模型**（Bearer 不出 WebView + path 白名单，[H06 完成](./IMPLEMENTATION_SUMMARY_2026-05-24.md)）
-- [ ] **Engine struct 在 core**（M-series M1→M8，[`PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md`](./PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md)）
+- [ ] **Engine struct 在 core**（M-series 进行中：M1 已落地 — `Op` / `EngineHandle` / `ThreadContextSnapshot` 入核 + `impl TurnEnginePort for EngineHandle<P,R>` core 侧实现；M2→M8 待启动，见 [`PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md`](./PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md) §6）
 - [ ] **sidecar 二进制不再链接 ratatui / CLI**（M-series 完成的副产品；可选独立成 `crates/runtime-server`）
 - [ ] **持久化单库**（Sessions + Runtime threads → 单 SQLite + 视图，[`BACKLOG_RUNTIME_UNIFICATION.md`](./BACKLOG_RUNTIME_UNIFICATION.md)）
 - [ ] **`deepseek-state` / `app-server` 实验路径决策**（晋升或下线，二选一）
@@ -197,7 +197,7 @@ WebView → invoke runtime_get_sse → reqwest stream
 | **D2** | 端口动态化：桌面消费 `DS_PICK_READY {port}`，去掉 7878 写死 | ≤2 天 | ✅ **基础设施完成 2026-05-25**（剩 sidecar `--port 0` 一行） |
 | **D3** | 删 `crates/tui-core` legacy | ≤0.5 天 | ✅ **完成 2026-05-25** |
 | **D4** | 决策 `crates/app-server + deepseek-state`：晋升或 `#[deprecated]` | 决策 0.5 天 + 执行 1-2 天 | — |
-| **D5** | **Engine struct → core（M-series M1→M8）** | 4-6 周 / 1 人 | ✅ [`PR_M0_*`](./PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md) |
+| **D5** | **Engine struct → core（M-series M1→M8）** | 4-6 周 / 1 人 | 🟡 **进行中**：[`PR_M0_*`](./PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md) — M1（`Op`/`EngineHandle`/`ThreadContextSnapshot` 入核 + `impl TurnEnginePort` core 端泛型化）**已落地 2026-05-25**，net +99 LOC、§7.4 8/8 测试 + sidecar contract 全绿；M2–M8 排队中 |
 
 ### P1 · 3-6 个月（解锁未来）
 

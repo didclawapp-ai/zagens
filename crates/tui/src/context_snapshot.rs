@@ -1,8 +1,11 @@
 //! Runtime context usage snapshots (TUI-aligned estimates for Zagens / HTTP API).
+//!
+//! The wire-shape `ThreadContextSnapshot` lives in
+//! [`deepseek_core::engine::context_snapshot`] since M1; this module keeps
+//! the tui-side `build_*` helper because it depends on the tui-only
+//! [`crate::compaction::should_compact`] working-set logic.
 
 use std::path::Path;
-
-use serde::{Deserialize, Serialize};
 
 use crate::compaction::{
     CompactionConfig, estimate_input_tokens_conservative, should_compact,
@@ -11,28 +14,7 @@ use crate::models::{
     Message, SystemPrompt, LEGACY_DEEPSEEK_CONTEXT_WINDOW_TOKENS, context_window_for_model,
 };
 
-/// Context fill + compaction policy snapshot for a thread.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct ThreadContextSnapshot {
-    /// Conservative estimate (`estimate_input_tokens_conservative`) for compaction / overflow.
-    pub estimated_input_tokens: usize,
-    pub context_window_tokens: u32,
-    /// Percent from conservative estimate (primary UI ring).
-    pub usage_percent: f64,
-    pub message_count: usize,
-    pub compaction_enabled: bool,
-    pub compaction_threshold_tokens: usize,
-    pub compaction_floor_tokens: usize,
-    pub should_compact: bool,
-    /// Provider `usage.input_tokens` from the last API round (authoritative per DeepSeek docs).
-    pub last_api_input_tokens: Option<u32>,
-    /// Percent from `last_api_input_tokens` when present.
-    pub last_api_usage_percent: Option<f64>,
-    /// Deprecated: last turn's **summed** `usage.input_tokens` (multi-round turns inflate).
-    pub last_reported_input_tokens: Option<u32>,
-    /// `engine` when read from a loaded engine; `store` when reconstructed from persisted turns.
-    pub source: String,
-}
+pub use deepseek_core::engine::context_snapshot::ThreadContextSnapshot;
 
 fn usage_percent_for(used: u32, window: u32) -> f64 {
     if window == 0 {

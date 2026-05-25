@@ -3580,7 +3580,7 @@ async fn dispatch_user_message(
     if let Err(err) = engine_handle
         .send(Op::SendMessage {
             content,
-            mode: app.mode,
+            mode: crate::core::engine::turn_loop::host_impl::app_mode_to_turn_loop(app.mode),
             model: effective_model,
             goal_objective: app.goal.goal_objective.clone(),
             reasoning_effort: effective_reasoning_effort,

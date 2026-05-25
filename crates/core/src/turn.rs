@@ -59,6 +59,19 @@ impl TurnLoopMode {
     pub const fn is_plan(self) -> bool {
         matches!(self, Self::Plan)
     }
+
+    /// Parse a runtime mode string (`"agent"` / `"yolo"` / `"plan"`).
+    /// Mirrors `tui::AppMode::from_setting` so HTTP/runtime callers can
+    /// stay shell-agnostic. Unknown values fall back to `Agent` to match
+    /// the tui-side contract.
+    #[must_use]
+    pub fn from_setting(value: &str) -> Self {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "plan" => Self::Plan,
+            "yolo" => Self::Yolo,
+            _ => Self::Agent,
+        }
+    }
 }
 
 /// Context for a single turn (user message + AI response).

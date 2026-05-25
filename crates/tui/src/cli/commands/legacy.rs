@@ -3356,7 +3356,7 @@ pub(crate) async fn run_exec_agent(
     engine_handle
         .send(Op::SendMessage {
             content: prompt.to_string(),
-            mode,
+            mode: crate::core::engine::turn_loop::host_impl::app_mode_to_turn_loop(mode),
             model: effective_model.clone(),
             goal_objective: None,
             reasoning_effort: effective_reasoning_effort,

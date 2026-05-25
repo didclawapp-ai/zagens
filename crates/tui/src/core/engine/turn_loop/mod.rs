@@ -1,6 +1,6 @@
 //! Turn loop (P2 PR4): [`handle_deepseek_turn`] in `deepseek-core`; L2 phases here.
 
-mod host_impl;
+pub(crate) mod host_impl;
 mod tool_plans_exec;
 
 use super::Engine;
