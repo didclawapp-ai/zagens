@@ -1,0 +1,28 @@
+//! Async MCP (Model Context Protocol) implementation.
+
+mod config;
+mod config_io;
+mod connection;
+mod diagnostics;
+mod format;
+mod pool;
+mod transport;
+mod types;
+
+pub use config::{McpConfig, McpServerConfig, McpTimeouts};
+pub use config_io::{
+    add_server_config, discover_manager_snapshot, get_server_entry, init_config, load_config,
+    manager_snapshot_from_config, merge_mcp_json_fragment, remove_server_config,
+    remove_server_from_config, replace_server_in_config, save_config, set_server_enabled,
+    McpDiscoveredItem, McpManagerSnapshot, McpServerSnapshot, McpWriteStatus,
+};
+pub use connection::McpConnection;
+pub use format::format_tool_result;
+pub use pool::McpPool;
+pub use transport::McpTransport;
+pub use types::{
+    ConnectionState, McpPrompt, McpPromptArgument, McpResource, McpResourceTemplate, McpTool,
+};
+
+#[cfg(test)]
+include!("tests.inc.rs");
