@@ -62,11 +62,12 @@ use crate::models::{
     StreamEvent, SystemPrompt, Tool, ToolCaller, Usage,
 };
 
-use super::{
-    DeepSeekClient, ERROR_BODY_MAX_BYTES, SSE_BACKPRESSURE_HIGH_WATERMARK,
-    SSE_BACKPRESSURE_SLEEP_MS, SSE_MAX_LINES_PER_CHUNK, acquire_stream_buffer, api_url,
-    apply_reasoning_effort, bounded_error_text, from_api_tool_name, parse_usage,
-    release_stream_buffer, system_to_instructions, to_api_tool_name,
+use super::api_parse::{apply_reasoning_effort, parse_usage, system_to_instructions};
+use super::http::{ERROR_BODY_MAX_BYTES, api_url, bounded_error_text};
+use super::tool_names::{from_api_tool_name, to_api_tool_name};
+use super::types::{
+    DeepSeekClient, SSE_BACKPRESSURE_HIGH_WATERMARK, SSE_BACKPRESSURE_SLEEP_MS,
+    SSE_MAX_LINES_PER_CHUNK, acquire_stream_buffer, release_stream_buffer,
 };
 
 impl DeepSeekClient {
