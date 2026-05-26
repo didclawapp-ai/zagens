@@ -6,9 +6,9 @@
 > **OpenAPI / TS 类型：** [openapi/zagens-runtime-v1.openapi.json](./openapi/zagens-runtime-v1.openapi.json) · [adr/D8_OPENAPI_TS_GENERATION.md](./adr/D8_OPENAPI_TS_GENERATION.md)  
 > **实施后快照：** [adr/IMPLEMENTATION_SUMMARY_2026-05-24.md](./adr/IMPLEMENTATION_SUMMARY_2026-05-24.md)  
 > **D6 Phase B：** [adr/D6_PHASE_B_CLI_SUNSET.md](./adr/D6_PHASE_B_CLI_SUNSET.md) — runtime 单 crate（`deepseek-runtime-server` / lib `deepseek_runtime`）；CLI + ratatui TUI 已移除（2026-05-26）  
-> **最后更新：** 2026-05-26（D6 Phase B：单 runtime crate；`deepseek-runtime` sidecar — 与代码复核对齐）
+> **最后更新：** 2026-05-26（D6 Phase B **已落地**：`crates/runtime-server` 单 crate；CLI + ratatui TUI 已删除）
 
-> **如何读这份文档：** §1 是**顶层系统总览**（一张图把外部世界 → 桌面壳 → sidecar → LLM 一次看完）；§2 是**Sidecar 内部数据流**（HTTP → Manager → Engine → turn_loop）；§5 是**L2 双通道**（Tauri IPC vs Runtime HTTP/SSE）；§8 是**典型发消息时序图**。其余小节为旁注（crate 依赖、持久化、监督、CLI、模块索引）。所有图节点上的源文件路径均可直接对照代码核验。
+> **如何读这份文档：** §1 是**顶层系统总览**（一张图把外部世界 → 桌面壳 → sidecar → LLM 一次看完）；§2 是**Sidecar 内部数据流**（HTTP → Manager → Engine → turn_loop）；§5 是**L2 双通道**（Tauri IPC vs Runtime HTTP/SSE）；§8 是**典型发消息时序图**。其余小节为旁注（crate 依赖、持久化、监督、模块索引）。所有图节点上的源文件路径均可直接对照代码核验。
 
 ---
 
@@ -31,8 +31,7 @@
 flowchart TB
     subgraph users["用户入口"]
         U1["Zagens 桌面用户"]
-        U2["终端 / 开发者"]
-        U3["脚本 / CI / Headless"]
+        U3["脚本 / CI / Headless<br/>(HTTP + Bearer)"]
     end
 
     subgraph desktop_pkg["crates/desktop  (Zagens v0.4.3, Tauri 2)"]
@@ -52,11 +51,11 @@ flowchart TB
         AUTH["auth.rs<br/>require_runtime_token (Bearer)"]
         STREAM["stream.rs (SSE)"]
         MGR["runtime_threads/manager.rs<br/>RuntimeThreadManager"]
-        ENG_C["core/engine/runtime.rs<br/>Engine struct + op_loop<br/>EngineHandle · Op 通道"]
-        ENG_SHIM["tui/core/engine.rs<br/>~130 LOC shim<br/>platform_dispatch · build_engine"]
+        ENG_SHIM["core/engine.rs<br/>~130 LOC shim<br/>platform_dispatch · build_engine"]
+        ENG_C["deepseek-core/engine<br/>Engine struct + op_loop<br/>EngineHandle · Op 通道"]
         TURN["core/engine/turn_loop<br/>handle_deepseek_turn · TurnEnginePort"]
-        LLM_C["client.rs · llm_client/<br/>HTTP/SSE → LLM"]
-        MCP_POOL["mcp.rs · McpPool"]
+        LLM_C["client/ · llm_client/<br/>HTTP/SSE → LLM"]
+        MCP_POOL["mcp/ · McpPool"]
         TOOLS_R["tools/* · shell · subagent<br/>todo · plan · lsp"]
         TASKS["task_manager.rs<br/>automation_manager.rs"]
         PERSIST["runtime_threads/persist.rs<br/>session_manager.rs<br/>thread_store_sqlite.rs"]
@@ -74,11 +73,8 @@ flowchart TB
         KEYS[("OS Keyring<br/>(deepseek-secrets)")]
     end
 
-    subgraph cli_pkg["crates/cli — deepseek (开发/CI 入口)"]
-        CLI["lib.rs · 命令分发<br/>delegate_to_tui · config · auth<br/>thread · model · sandbox · app-server"]
-    end
-
     U1 --> WEB
+    U3 -- "curl / SDK" --> HTTP
     WEB -- "invoke" --> CMDS
     WEB -- "invoke runtime_*" --> PROXY
     CMDS -. "管理 token/port" .- PROXY
@@ -87,19 +83,14 @@ flowchart TB
     BIN -. "嵌入打包" .- SUP
     PROXY -- "Bearer Token + HTTP/SSE" --> HTTP
 
-    U2 --> CLI
-    U3 --> CLI
-    CLI -- "delegate (子进程)" --> MAIN
-    CLI -. "dev: deepseek-tui serve --http" .- MAIN
-
     MAIN --> HTTP
     HTTP --> ROUTER
     ROUTER --> AUTH
     ROUTER --> STREAM
     ROUTER --> MGR
-    MGR --> ENG_C
-    ENG_C --> ENG_SHIM
-    ENG_SHIM --> TURN
+    MGR --> ENG_SHIM
+    ENG_SHIM --> ENG_C
+    ENG_C --> TURN
     TURN --> LLM_C
     ENG_SHIM --> MCP_POOL
     ENG_SHIM --> TOOLS_R
@@ -131,25 +122,25 @@ flowchart TB
 |------|------|------|
 | 端口动态化 + Bearer Token UUID | [`crates/desktop/src/main.rs`](../../crates/desktop/src/main.rs) | `tokio::sync::watch::channel::<u16>` 初始 0；supervisor 解析 `DS_PICK_READY.port` 后发布；初始建议端口 7878；`uuid::Uuid::new_v4()` 每次启动新 token，仅注入 sidecar 子进程环境 |
 | Sidecar 二进制嵌入 | [`crates/desktop/build.rs`](../../crates/desktop/build.rs) | 构建期复制为 `binaries/deepseek-runtime-<triple>(.exe)`，作为 Tauri `externalBin` |
-| Sidecar 入口 | [`crates/runtime-server/src/main.rs`](../../crates/runtime-server/src/main.rs) → [`runtime_serve.rs`](../../crates/tui/src/runtime_serve.rs) | `deepseek-runtime --host … --port …`（无 `serve` 子命令）；dev fallback：`deepseek-tui serve --http` |
+| Sidecar 入口 | [`crates/runtime-server/src/main.rs`](../../crates/runtime-server/src/main.rs) → [`runtime_serve.rs`](../../crates/runtime-server/src/runtime_serve.rs) | `deepseek-runtime --host … --port …`（无 `serve` 子命令） |
 | Tauri IPC handlers | [`crates/desktop/src/commands.rs`](../../crates/desktop/src/commands.rs) | 密钥/设置/平台/符号索引/导出 等 30+ 命令 |
 | HTTP 代理（Bearer 注入） | [`crates/desktop/src/runtime_proxy.rs`](../../crates/desktop/src/runtime_proxy.rs) | `runtime_http` / `runtime_post_stream` / `runtime_get_sse` + path 白名单 |
-| Sidecar 监督 | [`crates/desktop/src/sidecar.rs`](../../crates/desktop/src/sidecar.rs) | spawn/重启/退避/`DS_PICK_READY` 行协议；优先 `deepseek-runtime`，legacy `deepseek-tui` argv 兼容 |
-| HTTP 入口（库） | [`crates/tui/src/runtime_api/mod.rs`](../../crates/tui/src/runtime_api/mod.rs) | `run_http_server` — 由 `runtime-server` 与 `deepseek-tui serve --http` 共用 |
-| 路由表 | [`crates/tui/src/runtime_api/router.rs`](../../crates/tui/src/runtime_api/router.rs) | 全部 `/v1/*` 路由集中注册；`/health` `/internal/probe` 不走鉴权 |
-| 线程管理 | [`crates/tui/src/runtime_threads/manager.rs`](../../crates/tui/src/runtime_threads/manager.rs) | `RuntimeThreadManager` + LRU 活跃线程 + 事件 broadcast |
+| Sidecar 监督 | [`crates/desktop/src/sidecar.rs`](../../crates/desktop/src/sidecar.rs) | spawn/重启/退避/`DS_PICK_READY` 行协议；生产 **`deepseek-runtime`**；可选识别磁盘上遗留 `deepseek-tui` 二进制 |
+| HTTP 入口（库） | [`crates/runtime-server/src/runtime_api/mod.rs`](../../crates/runtime-server/src/runtime_api/mod.rs) | `run_http_server` — `deepseek_runtime` lib |
+| 路由表 | [`crates/runtime-server/src/runtime_api/router.rs`](../../crates/runtime-server/src/runtime_api/router.rs) | 全部 `/v1/*` 路由集中注册；`/health` `/internal/probe` 不走鉴权 |
+| 线程管理 | [`crates/runtime-server/src/runtime_threads/manager.rs`](../../crates/runtime-server/src/runtime_threads/manager.rs) | `RuntimeThreadManager` + LRU 活跃线程 + 事件 broadcast |
 | Engine struct + op loop | [`crates/core/src/engine/runtime.rs`](../../crates/core/src/engine/runtime.rs) + [`op_loop.rs`](../../crates/core/src/engine/op_loop.rs) | M7/M8：`Engine::with_hosts` / `Engine::run()` 在 core |
-| tui Engine shim | [`crates/tui/src/core/engine.rs`](../../crates/tui/src/core/engine.rs) | ~130 LOC newtype + `build_engine` + `platform_dispatch` |
+| runtime Engine shim | [`crates/runtime-server/src/core/engine.rs`](../../crates/runtime-server/src/core/engine.rs) | ~130 LOC newtype + `build_engine` + `platform_dispatch` |
 | turn_loop | [`crates/core/src/engine/turn_loop/mod.rs`](../../crates/core/src/engine/turn_loop/mod.rs) | `handle_deepseek_turn` / `TurnEnginePort` / `Session` |
 | Web 客户端 | [`crates/desktop/web-ui/src/api/client.ts`](../../crates/desktop/web-ui/src/api/client.ts) | `useTauriRuntimeProxy`；D10 `filterThreadStreamEvents`；D9 `turnControl.ts` |
 
-**版本线：** runtime/CLI workspace **0.8.15**（Rust 1.88+）；Zagens desktop **0.4.3**（独立 SemVer）。  
-**CLI 不内嵌 L1：** `deepseek` 通过 `delegate_to_tui` 子进程转调 `deepseek-tui`（TUI/headless 命令）；HTTP sidecar 生产路径为 **`deepseek-runtime`**（[`crates/cli/src/lib.rs`](../../crates/cli/src/lib.rs) · [`crates/runtime-server`](../../crates/runtime-server/)）。  
+**版本线：** runtime workspace **0.8.15**（Rust 1.88+）；Zagens desktop **0.4.3**（独立 SemVer）。  
+**~~CLI / TUI~~ 已删除（D6 Phase B）：** ~~`crates/cli`~~、~~`crates/tui`~~、~~ratatui TUI~~；headless / CI 直接对 **`deepseek-runtime`** 发 HTTP。  
 **~~实验路径~~ 已删除（D7 C5）：** ~~`deepseek app-server`~~ / ~~`crates/app-server`~~ — 见 [`adr/D4_APPSERVER_DEPRECATED.md`](./adr/D4_APPSERVER_DEPRECATED.md)。
 
 ---
 
-## 2. Sidecar 内部数据流（deepseek-runtime / deepseek-tui lib）
+## 2. Sidecar 内部数据流（`deepseek-runtime` / `deepseek_runtime` lib）
 
 ```mermaid
 flowchart LR
@@ -168,8 +159,8 @@ flowchart LR
 
     PORT["deepseek_core::engine<br/>TurnEnginePort + StartTurnParams"]
     ENG["core/engine/runtime.rs<br/>Engine + op_loop · EngineHandle"]
-    ENG_SHIM["tui/core/engine.rs<br/>platform_dispatch · build_engine"]
-    OP_EXT["EnginePlatformExt<br/>(tui platform_dispatch)"]
+    ENG_SHIM["runtime-server/core/engine.rs<br/>platform_dispatch · build_engine"]
+    OP_EXT["EnginePlatformExt<br/>(platform_dispatch)"]
     TURN["core/engine/turn_loop<br/>handle_deepseek_turn"]
     LLM_C["client.rs (DeepSeekClient)<br/>llm_client/ SSE"]
     TOOL_REG["tools/* + tool_registry<br/>shell · plan · todo · subagent<br/>lsp · sandbox · skills"]
@@ -203,18 +194,18 @@ flowchart LR
     PERSIST_M -. "thread_store_sqlite.rs<br/>~/.deepseek/tasks/runtime/" .- MGR
 ```
 
-**路径要点：** HTTP 请求 → `RuntimeThreadManager::start_turn` 经 `TurnEnginePort`（core）校验 → 向 `EngineHandle` 发 `Op::SendMessage`（同进程 mpsc）→ `Engine::run()`（core `op_loop`）经 `EnginePlatformExt` 分发平台 op → tui `platform_dispatch` 接线 → `handle_deepseek_turn`（core）→ 事件经 `broadcast` 既回流 SSE 又由 `monitor.rs` 持久化。**ratatui** 路径同样持 `EngineHandle`（`spawn_engine`），不走 HTTP；现处 freeze（用户产品已切到 Zagens）。
+**路径要点：** HTTP 请求 → `RuntimeThreadManager::start_turn` 经 `TurnEnginePort`（core）校验 → 向 `EngineHandle` 发 `Op::SendMessage`（同进程 mpsc）→ `Engine::run()`（core `op_loop`）经 `EnginePlatformExt` 分发平台 op → runtime `platform_dispatch` 接线 → `handle_deepseek_turn`（core）→ 事件经 `broadcast` 既回流 SSE 又由 `monitor.rs` 持久化。
 
-**定型后拆分现状（2026-05-26）：**
+**定型后拆分现状（2026-05-26，D6 Phase B ✅）：**
 
 | 组件 | 落点 | 说明 |
 |------|------|------|
 | `Engine` struct、`Engine::run()` op loop、`EngineHandle`、`Op` 通道 | [`crates/core/src/engine/`](../../crates/core/src/engine/) | M-series M7/M8 ✅ |
 | `handle_deepseek_turn`、Session 类型、`TurnEnginePort` | [`crates/core/src/engine/turn_loop/`](../../crates/core/src/engine/turn_loop/) | core 库层 |
-| tui newtype shim + `build_engine` + `platform_dispatch` | [`crates/tui/src/core/engine.rs`](../../crates/tui/src/core/engine.rs) + 子模块 | ~130 LOC 入口 + engine-flow 编排（`message_handlers`、`capacity_flow` 等） |
-| 生产 sidecar binary | [`crates/runtime-server/`](../../crates/runtime-server/) | `deepseek-runtime` — **不**链 ratatui（D6 ✅） |
-| HTTP 线程/回合生命周期 | [`crates/tui/src/runtime_threads/`](../../crates/tui/src/runtime_threads/) | 源码仍在 tui lib；D6 phase B 可选迁入 runtime-server |
-| HTTP 路由 | [`crates/tui/src/runtime_api/`](../../crates/tui/src/runtime_api/) | `router.rs` 注册全部 `/v1/*`；OpenAPI 导出见 D8 |
+| runtime newtype shim + `build_engine` + `platform_dispatch` | [`crates/runtime-server/src/core/engine.rs`](../../crates/runtime-server/src/core/engine.rs) + 子模块 | ~130 LOC 入口 + engine-flow 编排 |
+| 生产 sidecar binary + lib | [`crates/runtime-server/`](../../crates/runtime-server/) | **`deepseek-runtime`** bin + **`deepseek_runtime`** lib — **无** ratatui |
+| HTTP 线程/回合生命周期 | [`crates/runtime-server/src/runtime_threads/`](../../crates/runtime-server/src/runtime_threads/) | D6 Phase B 已迁入 runtime-server |
+| HTTP 路由 | [`crates/runtime-server/src/runtime_api/`](../../crates/runtime-server/src/runtime_api/) | `router.rs` 注册全部 `/v1/*`；OpenAPI 导出见 D8 |
 
 ---
 
@@ -223,9 +214,7 @@ flowchart LR
 ```mermaid
 flowchart BT
     DESK["deepseek-desktop<br/>(crates/desktop)"]
-    RT_SRV["deepseek-runtime-server<br/>(crates/runtime-server)"]
-    TUI["deepseek-tui<br/>(crates/tui, bin + lib)"]
-    CLI["deepseek-tui-cli<br/>bin: deepseek<br/>(crates/cli)"]
+    RT["deepseek-runtime-server<br/>(crates/runtime-server)<br/>lib: deepseek_runtime<br/>bin: deepseek-runtime"]
     CORE["deepseek-core<br/>(crates/core)"]
     TM["deepseek-topic-memory"]
     PROTO["deepseek-protocol"]
@@ -236,18 +225,17 @@ flowchart BT
     EXEC["deepseek-execpolicy"]
     HOOKS["deepseek-hooks"]
     MCP["deepseek-mcp"]
-    STATE["deepseek-state (CLI legacy)"]
+    STATE["deepseek-state<br/>(core 编译依赖；非 sidecar SSOT)"]
 
     DESK --> CFG
     DESK --> SEC
 
-    RT_SRV --> TUI
-    TUI --> CORE
-    TUI --> CFG
-    TUI --> SEC
-    TUI --> PROTO
-    TUI --> TOOLS
-    TUI --> TM
+    RT --> CORE
+    RT --> CFG
+    RT --> SEC
+    RT --> PROTO
+    RT --> TOOLS
+    RT --> TM
 
     CORE --> AGENT
     CORE --> CFG
@@ -258,33 +246,28 @@ flowchart BT
     CORE --> STATE
     CORE --> TOOLS
 
-    CLI --> AGENT
-    CLI --> CFG
-    CLI --> EXEC
-    CLI --> MCP
-    CLI --> SEC
-    CLI --> STATE
-
     classDef product fill:#1e3a5f,stroke:#60a5fa,color:#fff
-    class DESK,RT_SRV,TUI,CLI product
+    class DESK,RT product
 ```
 
 | Crate | 路径 | 角色 |
 |-------|------|------|
 | **deepseek-desktop** | `crates/desktop/` | Zagens Tauri 壳；**只**依赖 `config` + `secrets` + Tauri/reqwest/portable-pty |
-| **deepseek-runtime-server** | `crates/runtime-server/` | 生产 sidecar **lib + bin**：`deepseek_runtime` + **`deepseek-runtime`**；含 `runtime_api` / `runtime_threads` / Engine shim |
+| **deepseek-runtime-server** | `crates/runtime-server/` | 生产 sidecar **lib + bin**：`deepseek_runtime` + **`deepseek-runtime`**；含 `runtime_api` / `runtime_threads` / tools / Engine shim |
 | **deepseek-core** | `crates/core/` | `Engine` + `op_loop` + `turn_loop` / Session / `TurnEnginePort` / 工具目录 |
 | ~~**deepseek-app-server**~~ | — | **已删除**（D7 C5）；见 [D4_APPSERVER_DEPRECATED.md](./adr/D4_APPSERVER_DEPRECATED.md) |
-| **deepseek-state** | `crates/state/` | CLI legacy 线程元数据 SQLite（**非** sidecar SSOT；`thread list --source state`） |
+| ~~**deepseek-tui** / ~~**deepseek CLI**~~ | — | **已删除**（D6 Phase B）；见 [D6_PHASE_B_CLI_SUNSET.md](./adr/D6_PHASE_B_CLI_SUNSET.md) |
+| **deepseek-state** | `crates/state/` | `StateStore` 等类型；**`deepseek-core` 仍编译依赖**；**非** sidecar HTTP SSOT（生产用 `sessions.db` + `runtime.db`） |
 | **deepseek-topic-memory** | `crates/topic-memory/` | B2 话题记忆 + `/v1/topic-memory` |
 
 **关键事实（与各 `Cargo.toml` 一一核对）：**
 
-- `deepseek-desktop` **只**依赖 `deepseek-config` + `deepseek-secrets`（加上 Tauri/reqwest/portable-pty/sha2/dirs），**不**直接依赖 `core` 或 `tui` —— 所有 Agent 能力通过嵌入式 **`deepseek-runtime`** 子进程 + HTTP/IPC 获得。
+- `deepseek-desktop` **只**依赖 `deepseek-config` + `deepseek-secrets`（加上 Tauri/reqwest/portable-pty/sha2/dirs），**不**直接依赖 `core` 或 runtime lib —— 所有 Agent 能力通过嵌入式 **`deepseek-runtime`** 子进程 + HTTP/IPC 获得。
 - `deepseek-runtime-server` 单 crate：**无** ratatui/crossterm（D6 Phase B ✅；`cargo tree -p deepseek-runtime-server -i ratatui` → 无匹配）。
-- `deepseek_runtime` lib 依赖 `deepseek-core`；`Engine` struct + `Engine::run()` 在 core，runtime 保留 ~130 LOC shim + 工具/MCP/LSP 宿主实现。
+- `deepseek_runtime` lib 直接依赖 `deepseek-core`；`Engine` struct + `Engine::run()` 在 core，runtime 保留 ~130 LOC shim + 工具/MCP/LSP 宿主实现。
 - ~~`deepseek-tui-core` legacy crate~~ **已于 2026-05-25 删除**。
 - ~~`deepseek-app-server`~~ **已于 2026-05-26 删除**（D7 C5）。
+- ~~`crates/cli` / `crates/tui`~~ **已于 2026-05-26 删除**（D6 Phase B）。
 
 ---
 
@@ -294,13 +277,11 @@ flowchart BT
 
 | 轨 | 语义 | 代码 | 默认目录 |
 |----|------|------|----------|
-| **Sessions** | 桌面侧栏会话、消息快照、`runtime_thread_id` | [`session_manager.rs`](../../crates/tui/src/session_manager.rs) + [`session_store_sqlite.rs`](../../crates/tui/src/session_store_sqlite.rs) | `~/.deepseek/sessions/` |
-| **Runtime threads** | HTTP `/v1/threads/*`、回合、事件、SSE | [`runtime_threads/persist.rs`](../../crates/tui/src/runtime_threads/persist.rs) + [`thread_store_sqlite.rs`](../../crates/tui/src/thread_store_sqlite.rs) | `~/.deepseek/tasks/runtime/`（`DEEPSEEK_RUNTIME_DIR` / `DEEPSEEK_TASKS_DIR`） |
-| **CLI legacy** | `deepseek thread list --source state` 等 | [`deepseek-state`](../../crates/state/) | `~/.deepseek/state.db`（**非** sidecar SSOT；生产 list 默认 `runtime.db`） |
+| **Sessions** | 桌面侧栏会话、消息快照、`runtime_thread_id` | [`session_manager.rs`](../../crates/runtime-server/src/session_manager.rs) + [`session_store_sqlite.rs`](../../crates/runtime-server/src/session_store_sqlite.rs) | `~/.deepseek/sessions/` |
+| **Runtime threads** | HTTP `/v1/threads/*`、回合、事件、SSE | [`runtime_threads/persist.rs`](../../crates/runtime-server/src/runtime_threads/persist.rs) + [`thread_store_sqlite.rs`](../../crates/runtime-server/src/thread_store_sqlite.rs) | `~/.deepseek/tasks/runtime/`（`DEEPSEEK_RUNTIME_DIR` / `DEEPSEEK_TASKS_DIR`） |
+| **StateStore legacy** | `deepseek-core` 内 `ThreadManager` 等历史类型；**非** sidecar HTTP 路径 | [`deepseek-state`](../../crates/state/) | `~/.deepseek/state.db`（旧 CLI 时代；**非** 生产 SSOT） |
 
 **Runtime 数据布局**（schema v2）：`threads/`、`turns/`、`items/`、`events/` + `runtime.db` SQLite；路由规则 `routing_rules.json`。
-
-**TUI 异步落盘：** [`tui/persistence_actor.rs`](../../crates/tui/src/tui/persistence_actor.rs)；阻塞 I/O 策略见 [`A1_PERSIST_BLOCKING_AUDIT.md`](./adr/A1_PERSIST_BLOCKING_AUDIT.md)。
 
 ---
 
@@ -322,7 +303,7 @@ flowchart LR
         KR["deepseek-secrets<br/>OS Keyring"]
     end
 
-    subgraph child["子进程 deepseek-runtime (legacy: deepseek-tui serve --http)"]
+    subgraph child["子进程 deepseek-runtime"]
         HEALTH["GET /health"]
         V1["/v1/* (Bearer 必需)"]
         SSE["SSE 端点<br/>POST /v1/stream<br/>GET /v1/threads/{id}/events"]
@@ -360,7 +341,7 @@ flowchart LR
 - 配置改动 ⇒ 重启 sidecar：`AppContext::sidecar_restart: Arc<Notify>`，写入密钥/设置后 `notify_one()`，由 `sidecar::start_and_monitor` 监听并按 `RESTART_DEBOUNCE_MS` 去抖。
 - 握手协议：sidecar 启动后向 stdout 输出 `DS_PICK_READY {...}`（含 `port`、`pid`、`token_fp`、`version`），supervisor 据此判定就绪；运行期通过 stdin `op: ping | drain` 做心跳/优雅退出。
 
-**TUI 同进程路径（非 HTTP）：** `spawn_engine` → `EngineHandle` → `Op`，直接走 mpsc，不经 HTTP（除非 `--http` sidecar 模式）。
+Sidecar 内 **`Op::SendMessage` 是同进程 mpsc**（不经 HTTP）；见 §8 时序图。
 
 ---
 
@@ -371,7 +352,6 @@ flowchart LR
 ```text
 deepseek-runtime --host 127.0.0.1 --port {port}
   --cors-origin http(s)://tauri.localhost
-  (legacy dev fallback: deepseek-tui serve --http --host … --port …)
 环境变量:
   DEEPSEEK_RUNTIME_TOKEN=<UUID from main.rs>
   DEEPSEEK_CLIENT_SURFACE=zagens
@@ -379,18 +359,15 @@ deepseek-runtime --host 127.0.0.1 --port {port}
   DEEPSEEK_BUNDLED_PYTHON=<Office 工具，可选>
 ```
 
+**遗留二进制（可选）：** 若 PATH 上仍存在旧 `deepseek-tui`，`sidecar.rs` 可识别并改用 `serve --http` argv；Zagens 打包 **仅** 嵌入 `deepseek-runtime-*`。
+
 监督能力：`/health` 探测、崩溃退避、rapid restart 限制、日志 `~/.deepseek/logs/sidecar.log` + `supervisor.log`。
 
 ---
 
-## 7. CLI 子命令路由
+## 7. ~~CLI 子命令路由~~（已删除，D6 Phase B）
 
-| 类型 | 示例命令 | 路径 |
-|------|----------|------|
-| 转调 tui | `run`, `exec`, `serve`, `resume`, `sessions`, … | `delegate_to_tui` 子进程 → **deepseek-tui**（TUI/headless） |
-| HTTP sidecar | `deepseek-runtime`（Zagens 嵌入）或 `deepseek serve --http` | `runtime-server` binary 或 tui `serve --http` → 同一 `runtime_api` |
-| CLI 内建 | `config`, `thread list`, `model`, `sandbox`, `auth` | workspace 库（含 `deepseek-state` legacy） |
-| ~~实验~~ | ~~`app-server`~~ | **已删除**（D7 C5） |
+~~`crates/cli`（`deepseek` 分发器）与 ratatui TUI~~ 已于 2026-05-26 移除。Headless / CI / 开发者请直接对 **`deepseek-runtime`** 使用 HTTP `/v1/*` + Bearer，或经 Zagens Desktop 的 Tauri proxy。详见 [D6_PHASE_B_CLI_SUNSET.md](./adr/D6_PHASE_B_CLI_SUNSET.md)。
 
 ---
 
@@ -407,7 +384,7 @@ sequenceDiagram
     participant Mgr as RuntimeThreadManager
     participant Port as TurnEnginePort (core)
     participant Eng as Engine (core)
-    participant Plat as platform_dispatch (tui)
+    participant Plat as platform_dispatch (runtime)
     participant Turn as handle_deepseek_turn (core)
     participant LLM as DeepSeek API
     participant Pers as persist.rs + SQLite
@@ -456,20 +433,18 @@ sequenceDiagram
 | 多窗口注册 | [`crates/desktop/src/window_registry.rs`](../../crates/desktop/src/window_registry.rs) |
 | 终端 PTY | [`crates/desktop/src/terminal.rs`](../../crates/desktop/src/terminal.rs) |
 | Sidecar 二进制嵌入 | [`crates/desktop/build.rs`](../../crates/desktop/build.rs) |
-| Sidecar 入口 / `deepseek-runtime` | [`crates/runtime-server/src/main.rs`](../../crates/runtime-server/src/main.rs) · [`runtime_serve.rs`](../../crates/tui/src/runtime_serve.rs) |
-| Sidecar dev fallback | [`crates/tui/src/main.rs`](../../crates/tui/src/main.rs) · `Commands::Serve {--http}` |
-| HTTP 路由表 + Bearer 中间件 | [`crates/tui/src/runtime_api/router.rs`](../../crates/tui/src/runtime_api/router.rs) + [`auth.rs`](../../crates/tui/src/runtime_api/auth.rs) |
-| SSE handlers | [`crates/tui/src/runtime_api/stream.rs`](../../crates/tui/src/runtime_api/stream.rs) |
-| HTTP server 装配 | [`crates/tui/src/runtime_api/mod.rs`](../../crates/tui/src/runtime_api/mod.rs)（`run_http_server`） |
-| 线程管理 / LRU / broadcast | [`crates/tui/src/runtime_threads/manager.rs`](../../crates/tui/src/runtime_threads/manager.rs) |
-| 持久化（事件/线程） | [`crates/tui/src/runtime_threads/persist.rs`](../../crates/tui/src/runtime_threads/persist.rs) + [`monitor.rs`](../../crates/tui/src/runtime_threads/monitor.rs) |
+| Sidecar 入口 / `deepseek-runtime` | [`crates/runtime-server/src/main.rs`](../../crates/runtime-server/src/main.rs) · [`runtime_serve.rs`](../../crates/runtime-server/src/runtime_serve.rs) |
+| HTTP 路由表 + Bearer 中间件 | [`crates/runtime-server/src/runtime_api/router.rs`](../../crates/runtime-server/src/runtime_api/router.rs) + [`auth.rs`](../../crates/runtime-server/src/runtime_api/auth.rs) |
+| SSE handlers | [`crates/runtime-server/src/runtime_api/stream.rs`](../../crates/runtime-server/src/runtime_api/stream.rs) |
+| HTTP server 装配 | [`crates/runtime-server/src/runtime_api/mod.rs`](../../crates/runtime-server/src/runtime_api/mod.rs)（`run_http_server`） |
+| 线程管理 / LRU / broadcast | [`crates/runtime-server/src/runtime_threads/manager.rs`](../../crates/runtime-server/src/runtime_threads/manager.rs) |
+| 持久化（事件/线程） | [`crates/runtime-server/src/runtime_threads/persist.rs`](../../crates/runtime-server/src/runtime_threads/persist.rs) + [`monitor.rs`](../../crates/runtime-server/src/runtime_threads/monitor.rs) |
 | Engine struct + op loop (core) | [`crates/core/src/engine/runtime.rs`](../../crates/core/src/engine/runtime.rs) · [`op_loop.rs`](../../crates/core/src/engine/op_loop.rs) |
-| tui Engine shim + platform dispatch | [`crates/tui/src/core/engine.rs`](../../crates/tui/src/core/engine.rs) · [`platform_dispatch.rs`](../../crates/tui/src/core/engine/platform_dispatch.rs) |
+| runtime Engine shim + platform dispatch | [`crates/runtime-server/src/core/engine.rs`](../../crates/runtime-server/src/core/engine.rs) · [`platform_dispatch.rs`](../../crates/runtime-server/src/core/engine/platform_dispatch.rs) |
 | Turn loop / Port / Session (core) | [`crates/core/src/engine/`](../../crates/core/src/engine/) |
 | Web 客户端 | [`crates/desktop/web-ui/src/api/client.ts`](../../crates/desktop/web-ui/src/api/client.ts) · [`turnControl.ts`](../../crates/desktop/web-ui/src/api/turnControl.ts) |
-| CLI 转调 | [`crates/cli/src/lib.rs`](../../crates/cli/src/lib.rs)（`delegate_to_tui`） |
-| OpenAPI / TS 类型 | [`docs/tech/openapi/zagens-runtime-v1.openapi.json`](./openapi/zagens-runtime-v1.openapi.json) · `export-runtime-openapi` bin |
-| Sidecar 契约测（lib / in-proc） | [`crates/tui/src/runtime_api/tests.rs`](../../crates/tui/src/runtime_api/tests.rs) · `sidecar_contract_full_lifecycle` |
+| OpenAPI / TS 类型 | [`docs/tech/openapi/zagens-runtime-v1.openapi.json`](./openapi/zagens-runtime-v1.openapi.json) · `export-runtime-openapi` bin（`crates/runtime-server`） |
+| Sidecar 契约测（lib / in-proc） | [`crates/runtime-server/src/runtime_api/tests.rs`](../../crates/runtime-server/src/runtime_api/tests.rs) · `sidecar_contract_full_lifecycle` |
 | Sidecar 契约测（binary / D6 A+） | [`crates/runtime-server/tests/sidecar_binary_contract.rs`](../../crates/runtime-server/tests/sidecar_binary_contract.rs) · CI ubuntu |
 
 ---
@@ -478,12 +453,10 @@ sequenceDiagram
 
 自 **2026-05-24** 战略签收（[DEV_NOTES.md](../desktop/DEV_NOTES.md)）：
 
-- **D12 Desktop-only：** Zagens 为唯一用户产品壳；ratatui TUI 进入 **freeze**（维护/回归，不做 parity 新特性）。
-- **Sidecar 执行面：** 生产 binary 为 **`deepseek-runtime`**（`runtime_api` + `runtime_threads` 源码仍在 `deepseek-tui` lib）；dev fallback 保留 `deepseek-tui serve --http`。
-- **D6 闭合（2026-05-26）：** Phase A（不链 ratatui）+ Phase A+（真实 binary 契约测 + CI）— [D6_IMPLEMENTATION_PLAN §3](./adr/D6_IMPLEMENTATION_PLAN.md)。
-- **架构定型（2026-05-26）：** [ARCHITECTURE_ASSESSMENT §1 = 10/10](./adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md) — M-series（Engine 入核）、D6（sidecar 去 ratatui）、D7（持久化叙事）、D8（OpenAPI）、D1（巨型文件策略）均已闭合；**可正常推进产品功能**，仍须遵守 Assessment §7.1 红线（`/v1/*` 须 OpenAPI、`desktop` 不链 `core`/`tui` 等）。
+- **D12 Desktop-only：** Zagens 为唯一用户产品壳；~~ratatui TUI~~ **已删除**（D6 Phase B，2026-05-26）。
+- **Sidecar 执行面：** 生产 binary 为 **`deepseek-runtime`**；`runtime_api` + `runtime_threads` + tools 均在 **`crates/runtime-server`**（lib `deepseek_runtime`）。
+- **D6 闭合（2026-05-26）：** Phase A（不链 ratatui）+ Phase A+（binary 契约测）+ **Phase B**（单 crate 合并、删 CLI/TUI）— [D6_PHASE_B_CLI_SUNSET.md](./adr/D6_PHASE_B_CLI_SUNSET.md) · [D6_IMPLEMENTATION_PLAN §4](./adr/D6_IMPLEMENTATION_PLAN.md)。
+- **架构定型（2026-05-26）：** [ARCHITECTURE_ASSESSMENT §1 = 10/10](./adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md) — M-series、D6–D8、D7、D1 均已闭合；**可正常推进产品功能**，仍须遵守 Assessment §7.1 红线（`/v1/*` 须 OpenAPI、`desktop` 不链 `core`/runtime lib 等）。
 - **D10 已解除（2026-05-24）：** P2 后桌面 GAP 解冻；见 [P2_D10_UNFREEZE_RECORD.md](./adr/P2_D10_UNFREEZE_RECORD.md)。
 
-CLI 保留为 **dev / headless / CI** 入口，与 Zagens 共享同一 HTTP `/v1/*` 契约。
-
-**剩余非阻塞债（定型后）：** `runtime_api` / `runtime_threads` 源码物理迁入 `runtime-server` lib（**D6 Phase B**，需先 `agent-host` 中间 crate — [D6_PHASE_B_SPIKE.md](./adr/D6_PHASE_B_SPIKE.md)）；`deepseek-state` CLI legacy；P2（D11–D14）。
+**剩余非阻塞债（定型后）：** `deepseek-core` 对 `deepseek-state` 的编译期依赖清理；§6 冷启动 profiling；P2（D11–D14）。

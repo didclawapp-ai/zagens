@@ -18,7 +18,7 @@
 | 新增大型功能（新面板、新工具链路、新协议） | **可推进**（遵守 §7.1：新 `/v1/*` 须 OpenAPI + owner） |
 | 现有功能 bug 修 / 性能 / a11y / 文案 | **正常推进** |
 | 桌面 UI/UX 小迭代（不引入新运行时概念） | **正常推进** |
-| 任何「往 `crates/tui` 加新文件」的改动 | **需 owner 评审**（tui 仍承载 tools / HTTP / ratatui） |
+| 任何「往 `crates/runtime-server` 加新顶层文件」的改动 | **需 owner 评审**（runtime lib 承载 tools / HTTP / engine shim） |
 | M-series D5（`Engine` struct → core） | **✅ 完成 2026-05-26**（M1–M8） |
 | D1 巨型文件 | **✅ 闭合 2026-05-26** — runtime 四模块已拆；`desktop/commands.rs` 等见 §5.1「不拆分」 |
 | 下一优先 | **P2**（§5.1 阶段 F：D11–D14）或产品功能迭代 |
@@ -33,15 +33,15 @@
 以下 10 条全部勾选 = 架构定型，可大胆做功能。**当前进度：10/10**（2026-05-26 **D1 闭合** — 见 §5.1；[`D8_OPENAPI_TS_GENERATION.md`](./D8_OPENAPI_TS_GENERATION.md) · [`D7_PERSISTENCE_UNIFICATION.md`](./D7_PERSISTENCE_UNIFICATION.md)）。
 
 - [x] **L1 turn loop 在 core**（P2 PR6 / G3 已闭合，见 [P2_G3_ENGINE_L2_SIGNOFF.md](./P2_G3_ENGINE_L2_SIGNOFF.md)）
-- [x] **L2 契约稳定**（`/v1/*` 路由 + `event_schema_version: 2`，[`runtime_api/router.rs`](../../../crates/tui/src/runtime_api/router.rs)）
+- [x] **L2 契约稳定**（`/v1/*` 路由 + `event_schema_version: 2`，[`runtime_api/router.rs`](../../../crates/runtime-server/src/runtime_api/router.rs)）
 - [x] **桌面 ↔ sidecar 双通道安全模型**（Bearer 不出 WebView + path 白名单，[H06 完成](./IMPLEMENTATION_SUMMARY_2026-05-24.md)）
-- [x] **Engine struct 在 core**（**✅ M-series M1–M8 闭合 2026-05-26** — 前置 M1–M6 见 CHANGELOG；**M7**：`deepseek_core::engine::{runtime, host_bundle, runtime_new}` — 35 字段 + 7 channel + `Engine::with_hosts`；host 字段为 trait object（`Arc<dyn LspHost>`、`Option<Box<dyn SeamHost>>` 等）；tui `build_engine` 接线 + `#[repr(transparent)]` newtype wrapper（orphan rule：`impl TurnLoopHost` / 各 inherent impl 仍合法）；`engine_new.rs` 删除。**M8**：`deepseek_core::engine::op_loop` — `Engine::run()` + core 侧 cancel/approve/deny/truncate；平台 op 经 `EnginePlatformExt`（tui `EngineRuntimeExt` + `platform_dispatch.rs`）；tui `op_loop.rs` / `op_handlers.rs` 删除。Shim：`crates/tui/src/core/engine.rs` ~130 LOC（含模块树；spike ≤80 LOC 目标以 `prelude_uses.rs` include 部分满足 spirit）。§6 回归 + 原 2 个 pre-existing engine 集成测 green。详见 [`BACKLOG_ENGINE_STRUCT_IN_CORE.md`](./BACKLOG_ENGINE_STRUCT_IN_CORE.md) Closed 表。）
-- [x] **sidecar 二进制不再链接 ratatui / CLI**（**✅ D6 2026-05-26** — `deepseek-runtime` via [`D6_RUNTIME_SERVER.md`](./D6_RUNTIME_SERVER.md); Zagens bundles `deepseek-runtime-*`; `deepseek-tui serve --http` 保留作 dev/CLI fallback）
+- [x] **Engine struct 在 core**（**✅ M-series M1–M8 闭合 2026-05-26** — M7/M8：`deepseek_core::engine` + `EnginePlatformExt`；runtime lib shim：[`crates/runtime-server/src/core/engine.rs`](../../../crates/runtime-server/src/core/engine.rs) ~130 LOC。详见 [`BACKLOG_ENGINE_STRUCT_IN_CORE.md`](./BACKLOG_ENGINE_STRUCT_IN_CORE.md) Closed 表。）
+- [x] **sidecar 二进制不再链接 ratatui / CLI**（**✅ D6 Phase B 2026-05-26** — `deepseek-runtime` 单 crate；Zagens bundles `deepseek-runtime-*`；~~`deepseek-tui`~~ 已删除 — [`D6_PHASE_B_CLI_SUNSET.md`](./D6_PHASE_B_CLI_SUNSET.md)）
 - [x] **持久化单库**（**✅ D7 2026-05-26** — Sessions + Runtime threads 双 SQLite + `runtime_thread_id` 链接；叙事 SSOT [`PERSISTENCE.md`](../PERSISTENCE.md)；非物理单文件）
 - [x] **`app-server` 实验路径决策**（**✅ 2026-05-26 deprecated** — [`D4_APPSERVER_DEPRECATED.md`](./D4_APPSERVER_DEPRECATED.md)；`deepseek-state` crate 保留至 D7，非整体废弃）
 - [x] **`crates/tui-core` legacy 删除**（**2026-05-25 完成**，`cargo check --workspace --all-targets` 全绿）
 - [x] **HTTP 契约 OpenAPI 自动生成 + TS 类型自动产出**（**✅ D8 2026-05-26** — [`zagens-runtime-v1.openapi.json`](../openapi/zagens-runtime-v1.openapi.json) + `export-runtime-openapi` + `web-ui` `generate:api-types`；[`D8_OPENAPI_TS_GENERATION.md`](./D8_OPENAPI_TS_GENERATION.md)）
-- [x] **D1 巨型文件策略闭合（2026-05-26）** — runtime：`config/`、`compaction/`、`mcp/`、`client/` 已模块化（实现 ≤~650 行）；**不拆：** `desktop/commands.rs`（~1.5k，Tauri IPC 集中、避免碎片化）、`crates/tui` 非桌面 >1k 行单体（§5.1 表）；后续按需再拆
+- [x] **D1 巨型文件策略闭合（2026-05-26）** — runtime：`config/`、`compaction/`、`mcp/`、`client/` 已模块化；**不拆：** `desktop/commands.rs`（~1.5k）；`runtime-server` 内 >1k 行单体按需再拆
 
 ---
 
@@ -49,8 +49,8 @@
 
 ### 2.1 进程边界划得很硬
 
-- [`crates/desktop`](../../../crates/desktop/) **只依赖 `config + secrets`**，不依赖 `core / tui`。
-  - 桌面壳 OTA 升级 sidecar 二进制时不需要重链整个 tui；
+- [`crates/desktop`](../../../crates/desktop/) **只依赖 `config + secrets`**，不依赖 `core` 或 `deepseek_runtime` lib。
+  - 桌面壳 OTA 升级 sidecar 二进制时不需要重链整个 runtime lib；
   - sidecar crash 不会拖死 Tauri 主进程；
   - Zagens v0.4.x 与 workspace v0.8.15 两条独立 SemVer 已经在 [CHANGELOG.md](../../../CHANGELOG.md) 体现。
 - [`crates/desktop/build.rs`](../../../crates/desktop/build.rs) 自动从 `target/` 复制 sidecar 二进制到 `binaries/`，解决跨工程构建顺序——简单但极其有效。
@@ -58,13 +58,13 @@
 ### 2.2 双通道 + Bearer 注入是 Tauri 桌面安全的优等解
 
 - token 仅在 Rust 进程注入（[`runtime_proxy.rs`](../../../crates/desktop/src/runtime_proxy.rs)），WebView 拿不到，DevTools 也拿不到；
-- 路径白名单 `validate_runtime_path` 拒绝 `..` / 非 `/v1` 前缀，配合 sidecar 端 [`auth::require_runtime_token`](../../../crates/tui/src/runtime_api/auth.rs) 中间件——**双重防御**；
+- 路径白名单 `validate_runtime_path` 拒绝 `..` / 非 `/v1` 前缀，配合 sidecar 端 [`auth::require_runtime_token`](../../../crates/runtime-server/src/runtime_api/auth.rs) 中间件——**双重防御**；
 - CORS 白名单含 `http(s)://tauri.localhost`，对齐 Tauri 2 WebView2 实际 origin（注释里有写历史伤痕）。
 
 ### 2.3 `TurnEnginePort` 切口干净
 
-- [`RuntimeThreadManager::start_turn`](../../../crates/tui/src/runtime_threads/manager.rs) 通过 `StartTurnParams` 显式校验后才发 `Op::SendMessage`；
-- **核心校验在 core，副作用在 tui**——这是 M-series 重构的唯一支点，价值很高。
+- [`RuntimeThreadManager::start_turn`](../../../crates/runtime-server/src/runtime_threads/manager.rs) 通过 `StartTurnParams` 显式校验后才发 `Op::SendMessage`；
+- **核心校验在 core，平台副作用在 runtime lib**——这是 M-series 重构的唯一支点，价值很高。
 
 ### 2.4 事件 broadcast 设计成熟
 
@@ -76,33 +76,27 @@
 
 `DS_PICK_READY {port, pid, token_fp, version}` 行协议握手 + stdin `op: ping/drain` 心跳 + 退避（`MAX_RAPID_RESTARTS=3 / RAPID_RESTART_WINDOW_SECS=60`）+ Windows `EADDRINUSE` 端口让出循环（`PORT_FREE_POLL_MS`）——这些细节都来自真实事故复盘，**应当作为内部 SDK 模板沉淀**。
 
-### 2.6 CLI / 桌面 / TUI 共享同一 sidecar 语义
+### 2.6 Desktop 与 Headless 共享同一 sidecar 语义
 
-`deepseek` 命令通过 `delegate_to_tui` 转调同一 `deepseek-tui` 二进制（CLI 内置命令仅做 config/auth/sandbox），**避免 CLI/Desktop 行为漂移**——这是很多 Agent 工具栈最终崩盘的来源。
+Zagens 与 headless 脚本均消费 **`deepseek-runtime`** 同一 HTTP 契约（`/v1/*` + Bearer + `DS_PICK_READY`）——**避免 Desktop/CI 行为漂移**。~~`deepseek` CLI / `delegate_to_tui`~~ 已于 D6 Phase B 删除。
 
 ---
 
 ## 3. 问题与债务（按严重度排序）
 
-### 3.1【高】`crates/tui` 是事实上的胖 crate（最大债）
+### 3.1【高】~~`crates/tui` 胖 crate~~ → **`crates/runtime-server` 单 crate** ✅ **2026-05-26（D6 Phase B）**
 
-`tui` 顶层 80 个文件，里面同时塞了：
+原 `tui` 同时承载 ratatui UI、HTTP、tools、engine shim。Phase B 后：
 
-| 类别 | 代表文件 | 量级 |
+| 类别 | 落点 | 状态 |
 |---|---|---|
-| Engine 运行时 | `core/engine/{runtime,op_loop,...}` + tui `core/engine.rs` shim (~130 LOC) + `core/engine/` 子模块 | core struct + tui ~4.8k |
-| HTTP 服务端 | `runtime_api/*` (16 个文件) | ~200k |
-| 线程管理 | `runtime_threads/*` (16 个文件) | ~280k |
-| ratatui UI（**已 freeze**） | `tui/*`（含 `tui/ui.rs` ~7.8k 行） | 大量；**D1 不拆分**（仅 CLI 全屏 TUI，与 Zagens 桌面无关） |
-| 工具实现 | `tools/*` | ~28k LOC / ~55 files |
-| 巨型单文件 | `config` / `compaction` / `mcp` / `client` **已拆** ✅；`desktop/commands.rs` · `localization.rs` · `tools/*` 等 | **D1 不拆分**（§5.1）；~1k–1.5k 可接受，避免小文件过多 |
+| HTTP 服务端 | `runtime-server/src/runtime_api/*` | ✅ 已迁入 |
+| 线程管理 | `runtime-server/src/runtime_threads/*` | ✅ 已迁入 |
+| Engine shim + tools | `runtime-server/src/core/engine/`、`tools/*` | ✅ 已迁入 |
+| ratatui TUI | ~~`tui/*`~~ | ✅ **已删除** |
+| CLI 分发器 | ~~`crates/cli`~~ | ✅ **已删除** |
 
-**症结：**
-- sidecar 二进制 = ratatui + 工具 + 服务端的合体 → 体积虚胖、冷启动慢、攻击面变宽（**D6 未做**）；
-- "新功能往哪放"在 tui crate 内部仍然不可判断（tools / HTTP / ratatui 仍同 crate）；
-- **Engine struct + op loop 已在 core** ✅（M7/M8 2026-05-26）；剩余债是 **sidecar 去 ratatui** 与 **capacity_flow 等 engine-flow 仍留 tui**。
-
-**已记账：** [`BACKLOG_ENGINE_STRUCT_IN_CORE.md`](./BACKLOG_ENGINE_STRUCT_IN_CORE.md) **Closed 2026-05-26** · [`PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md`](./PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md)（M1→M8 已执行完毕）。
+**剩余债（非 blocking）：** sidecar 冷启动 profiling；`capacity_flow` 等 engine-flow 编排仍留 runtime lib（非 core）；`deepseek-state` 仍供 `deepseek-core` 编译依赖。
 
 ### 3.2【高】持久化三套并存
 
@@ -120,7 +114,7 @@
 
 桌面端口管理已从 `u16` 升级为 `tokio::sync::watch::channel::<u16>`：
 
-- **Sidecar**（[`runtime_api/mod.rs`](../../../crates/tui/src/runtime_api/mod.rs)）：`DS_PICK_READY.port` 现在报告 `listener.local_addr().port()`——**实际绑定**端口而非请求端口；
+- **Sidecar**（[`runtime_api/mod.rs`](../../../crates/runtime-server/src/runtime_api/mod.rs)）：`DS_PICK_READY.port` 现在报告 `listener.local_addr().port()`——**实际绑定**端口而非请求端口；
 - **Desktop 壳**：`AppContext::runtime_port` 改为 `watch::Receiver<u16>`，supervisor 持 `Sender`；所有 IPC handler（`runtime_proxy::{http,post_stream,get_sse}` + `commands::{export_thread_json, export_session_json, rebuild_symbol_index, read_thread_workspace_binary}`）通过 `AppContext::require_port()` 读真实端口；
 - **`get_runtime_port`**：改为 `rx.changed().await` 等待第一次发布——web-ui `initRuntimeConfig` 调用时自然阻塞到 sidecar 就绪；
 - **重启路径**：spawn 新 sidecar 前 `port_tx.send(0)`，IPC handler 期间 fast-fail 或 await 新发布，杜绝拿到 stale 端口；
@@ -335,9 +329,9 @@ D5（M-series）✅ 已闭合。下一刀直接解锁 §1 第 5 项，并让 sid
 
 ### 7.1 PR 准入红线
 
-- ⛔ **禁止**在 `crates/tui` 新建顶层文件（子模块拆分除外）
+- ⛔ **禁止**在 `crates/runtime-server` 新建顶层文件（子模块拆分除外）
 - ⛔ **禁止**新增 `/v1/*` 端点，除非配套补 OpenAPI schema 草案
-- ⛔ **禁止**让 `desktop` crate 直接 `use deepseek_core` 或 `deepseek_tui`——它只能消费 HTTP + IPC
+- ⛔ **禁止**让 `desktop` crate 直接 `use deepseek_core` 或 `deepseek_runtime`——它只能消费 HTTP + IPC
 - ⛔ **禁止**给 `deepseek_core::engine::Engine` 加新字段（M-series 35 字段表已封口；变更需 spike + owner）
 - ⚠ **谨慎**：往 **`desktop/commands.rs`** 或 §5.1「D1 不拆分」表内文件 **大量** 加代码时，评估是否触及再拆（非 D1 硬性门槛）；新 `/v1/*` 与 `Engine` 字段仍须 owner
 
@@ -348,7 +342,7 @@ D5（M-series）✅ 已闭合。下一刀直接解锁 §1 第 5 项，并让 sid
 - ✅ 测试补充（`runtime_api/tests.rs`、`runtime_threads/tests.rs`、`core/engine/tests.rs`）
 - ✅ 文档：本文件、`RUNTIME_EVOLUTION_ROADMAP.md`、`API_DESIGN.md`、ADR
 - ✅ M-series PR（M1→M8）— **✅ 已闭合 2026-05-26**
-- ✅ D6 `runtime-server` spike / 实现 PR（当前最高优先级结构债）
+- ✅ D6 `runtime-server` — **✅ Phase B 已闭合 2026-05-26**（见 [`D6_PHASE_B_CLI_SUNSET.md`](./D6_PHASE_B_CLI_SUNSET.md)）
 
 ### 7.3 评审升级路径
 
@@ -375,6 +369,7 @@ D5（M-series）✅ 已闭合。下一刀直接解锁 §1 第 5 项，并让 sid
 - **D7 落地（2026-05-26）**：阶段 C 闭合 — C1–C6；§1 #6 → **8/10**。
 - **M-series M8 合并后**（✅ **2026-05-26**）：§1 第 4 项 **勾选** — core 侧 `Engine` struct、`Engine::with_hosts`、`Engine::run()` op loop + `EnginePlatformExt` 平台分发；tui 侧 newtype shim ~130 LOC。§1 第 5 项**仍 `[ ]`**（sidecar 仍链 ratatui → **D6**）。进度 **5/10**。2 个 pre-existing engine 集成测修复；[`BACKLOG_ENGINE_STRUCT_IN_CORE.md`](./BACKLOG_ENGINE_STRUCT_IN_CORE.md) Closed；`HANDOFF_M7_M8.md` 已删。
 - **M-series M8 合并后（归档说明）**：当 D6 + §1 ≥ 8/10 时，可将本文档归档并另起 `ARCHITECTURE_ASSESSMENT_<date>.md` v2 全量重写；当前在 **同文件内追加 2026-05-26 复评** 以保持链接稳定。
+- **D6 Phase B 落地（2026-05-26）：** `crates/runtime-server` 单 crate；删 `crates/cli`、`crates/tui`、ratatui；§1 #5 最终勾选；见 [`D6_PHASE_B_CLI_SUNSET.md`](./D6_PHASE_B_CLI_SUNSET.md) · commit `613a6e3`。
 - **§1 = 10/10（2026-05-26）**：架构定型；§7.1 结构性红线仍有效（`/v1/*`、Engine 字段、`desktop` 边界等），巨型文件拆分为**按需**而非 KPI。
 - **归档时机**：P2 阶段性复盘或下一 major 架构变更时，可将本文档另存为历史快照。
 

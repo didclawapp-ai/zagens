@@ -70,10 +70,10 @@ JD 中反复出现、且与实现强相关的 Harness 模块：
 | JD 关键词 | Zagens / runtime 落点 | 说明 |
 |-----------|------------------------|------|
 | Agent Loop | `POST /v1/stream`、`stream_turn`、`monitor_turn` | 单轮从 `turn.started` 到 `turn.completed` |
-| Tool Use | `crates/tui/src/tools/*`、Web **工具调用** 卡片 | `item.started` / `item.completed`（`tool_call`） |
+| Tool Use | `crates/runtime-server/src/tools/*`、Web **工具调用** 卡片 | `item.started` / `item.completed`（`tool_call`） |
 | Reasoning | `item.delta`（`kind: thinking`）、Reasoning UI 块 | 无 `item.completed` 收口；靠事件流累积 |
 | Planning | audit scratchpad、`checklist_*`、`task_*` | 全库审计见 [audit-scratchpad-design.md](audit-scratchpad-design.md) |
-| Skills | `crates/tui/assets/skills/`、`load_skill` | 如 `audit-repo` |
+| Skills | `crates/runtime-server/assets/skills/`、`load_skill` | 如 `audit-repo` |
 | MCP | 桌面 MCP 集成路径 | 与 TUI 共用配置面 |
 | Memory | scratchpad 文件、blackboard、`SessionManager`、thread 事件库 | reasoning ≠ 可靠工作记忆（设计 §1.2）；**通用结项 Handoff Report** ⬜ 见 [DEV_NOTES.md §Handoff](DEV_NOTES.md#2026-05-21--会话线程结项汇总报告handoff-report--规划中) |
 | Subagent | `agent_spawn` / `agent_result` / `agent_list` | 与 **Task**（`task_create`）区分见 design §7.1、§14 |

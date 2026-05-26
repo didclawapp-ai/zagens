@@ -1,12 +1,12 @@
 # DeepSeek-TUI / Zagens 运行时演进实施路线图
 
-> **版本：** v2.0-final（2026-05-21）· **代码对齐：** 2026-05-25  
+> **版本：** v2.0-final（2026-05-21）· **代码对齐：** 2026-05-26（**D6 Phase B** — `deepseek-runtime` 单 crate；CLI + ratatui TUI 已删除）  
 > **状态：** **定稿 + 门控已闭合** — §4.2 已签收；**§17** 实施后审核（**§17.5** 2026-05-25 二次对齐）  
 > **门控：** §12.2 A+ · §12.3 P2 + G3 + PR6 · §12.4 F · §12.5 #1/#2 · **§12.1 #1 A1 live `ToolCell` 同构** **✅**；§12.5 #3 GAP **◐**（产品 polish，非门控）  
 > **v1.6 要点：** 修正 §6.2 步骤 0.8 引用、§12.1 A5.1 门控表述、§1.4 定稿章节策略、`RUNTIME_BASELINE.md` 占位  
-> **受众：** 维护者、Agent、桌面/TUI 开发  
-> **产品节奏：** Phase 1 harness **已验收** → **A+A+ 打底** → **P2 还技术债**（Engine→core）→ **解冻桌面 GAP**；壳运 **始终分离**，**不**换 app-server sidecar。  
-> **当前架构评估与"功能冻结期"判定：** [`adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md`](./adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md)（§1 定型 checklist **8/10**；D7 ✅ 持久化；**§5.1** 下一主线 **D8**；M-series ✅）
+> **受众：** 维护者、Agent、桌面开发  
+> **产品节奏：** Phase 1 harness **已验收** → **A+A+ 打底** → **P2 还技术债**（Engine→core）→ **解冻桌面 GAP**；壳运 **始终分离**。  
+> **当前架构评估：** [`adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md`](./adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md)（§1 **10/10 定型**；D6 Phase B ✅；M-series ✅）
 
 ---
 
@@ -125,26 +125,36 @@ Phase 1 ✅ harness
 
 ## 3. 现状快照
 
-### 3.1 生产路径（TUI + Zagens + 绝大多数 CLI）
+> **2026-05-26 更新（D6 Phase B）：** 生产 sidecar 为 **`deepseek-runtime`**（`crates/runtime-server`）；~~`crates/cli`~~、~~`crates/tui`~~、~~ratatui TUI~~ **已删除**。下文 §3.1–§3.4 中仍写 `deepseek-tui` / `crates/tui` 的表格与路径为 **2026-05-25 历史快照**，以本节 §3.1 为准。
+
+### 3.1 生产路径（Zagens + Headless HTTP）
 
 ```
 用户
-  ├─ Zagens WebView ──► Tauri (IPC + runtime_proxy) ──► deepseek-tui serve --http
-  ├─ 终端 TUI ─────────► deepseek-tui (ratatui — maintenance/freeze)
-  └─ deepseek run/exec/serve/... ──► delegate_to_tui ──► deepseek-tui
+  ├─ Zagens WebView ──► Tauri (IPC + runtime_proxy) ──► deepseek-runtime (sidecar)
+  └─ 脚本 / CI / Headless ──► HTTP + Bearer ──► deepseek-runtime
 
-deepseek-tui
+deepseek-runtime  (crates/runtime-server — lib: deepseek_runtime)
   ├─ runtime_api/        HTTP /v1/* + SSE（router.rs）
   ├─ runtime_threads/    线程/回合/广播/持久化
-  ├─ core/engine/        Engine struct + EngineHandle（薄壳 ~209 行）
-  ├─ deepseek-core       turn_loop / Session / TurnEnginePort（P2 已迁入）
+  ├─ core/engine/        ~130 LOC shim + platform_dispatch
+  ├─ deepseek-core       Engine struct + op_loop + turn_loop
   ├─ client/             LLM SSE 解析
-  ├─ tui/src/tools/*     工具实现主体
-  ├─ mcp.rs              MCP 池（实现层）
-  └─ deepseek-tools      workspace 类型/trait（见 §3.3）
+  ├─ tools/*             工具实现主体
+  ├─ mcp/                MCP 池
+  └─ deepseek-tools      workspace 类型/trait
 ```
 
-> **架构附图：** [RUNTIME_ARCHITECTURE.md](./RUNTIME_ARCHITECTURE.md)（2026-05-25 与代码对齐）
+> **架构附图：** [RUNTIME_ARCHITECTURE.md](./RUNTIME_ARCHITECTURE.md) · **Phase B ADR：** [D6_PHASE_B_CLI_SUNSET.md](./adr/D6_PHASE_B_CLI_SUNSET.md)
+
+### 3.1a 历史生产路径（2026-05-25 前，已废止）
+
+```
+用户
+  ├─ Zagens WebView ──► … ──► deepseek-tui serve --http
+  ├─ 终端 TUI ─────────► deepseek-tui (ratatui)
+  └─ deepseek CLI ─────► delegate_to_tui ──► deepseek-tui
+```
 
 ### 3.2 实验路径（仅 `deepseek app-server`）
 

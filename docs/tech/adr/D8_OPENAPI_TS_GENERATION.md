@@ -8,15 +8,15 @@
 
 ## 目标
 
-消除 `web-ui` 手写 HTTP interface 与 `crates/tui/src/runtime_api/router.rs` 的飘移；新增端点必须先更新 OpenAPI 再生成 TS。
+消除 `web-ui` 手写 HTTP interface 与 `crates/runtime-server/src/runtime_api/router.rs` 的飘移；新增端点必须先更新 OpenAPI 再生成 TS。
 
 ## 产物
 
 | 路径 | 说明 |
 |------|------|
 | [`docs/tech/openapi/zagens-runtime-v1.openapi.json`](../openapi/zagens-runtime-v1.openapi.json) | 检入的 OpenAPI 3.1 契约（paths + components） |
-| `crates/tui/src/runtime_api/openapi/` | Rust 导出：`schemars` → components，`paths.rs` 对齐 router |
-| `crates/tui` binary `export-runtime-openapi` | feature `openapi-export` |
+| `crates/runtime-server/src/runtime_api/openapi/` | Rust 导出：`schemars` → components，`paths.rs` 对齐 router |
+| `crates/runtime-server` binary `export-runtime-openapi` | feature `openapi-export` |
 | `crates/desktop/web-ui/src/api/generated/runtime-api.ts` | `openapi-typescript` 生成 |
 | `crates/desktop/web-ui/src/api/runtimeTypes.ts` | 稳定 re-export 层 |
 

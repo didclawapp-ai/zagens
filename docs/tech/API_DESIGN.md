@@ -1,14 +1,14 @@
 # Zagens API 设计文档
 
-> **Zagens 壳版本:** 0.4.3（`crates/desktop/Cargo.toml`）| **文档修订:** 2026-05-25 | **权威实现:** `commands.rs`、`runtime_proxy.rs`、`runtime_api/router.rs` `build_router`、`web-ui/src/api/client.ts`
+> **Zagens 壳版本:** 0.4.3（`crates/desktop/Cargo.toml`）| **文档修订:** 2026-05-26 | **权威实现:** `commands.rs`、`runtime_proxy.rs`、`runtime_api/router.rs` `build_router`、`web-ui/src/api/client.ts`
 
-本文档描述 **Zagens 桌面壳** 的双通道集成 API。协议类型见 `crates/protocol/`；HTTP 路由 SSOT 为 `crates/tui/src/runtime_api/router.rs`（sidecar：`deepseek-runtime` / `deepseek-tui serve --http`）。
+本文档描述 **Zagens 桌面壳** 的双通道集成 API。协议类型见 `crates/protocol/`；HTTP 路由 SSOT 为 `crates/runtime-server/src/runtime_api/router.rs`（sidecar：**`deepseek-runtime`**）。
 
 **OpenAPI 3.1（D8）：** 检入契约 [`openapi/zagens-runtime-v1.openapi.json`](./openapi/zagens-runtime-v1.openapi.json)；由 `export-runtime-openapi` 从 Rust `schemars` + 路径表导出；`web-ui` TS 经 `openapi-typescript` 生成（见 [`adr/D8_OPENAPI_TS_GENERATION.md`](./adr/D8_OPENAPI_TS_GENERATION.md)）。历史 `RUNTIME_API.md` 已移除。运行时架构附图见 [RUNTIME_ARCHITECTURE.md](./RUNTIME_ARCHITECTURE.md)。
 
 **与 Agent 行为：** 同一 sidecar 载入的 runtime prompt 含 [幻觉防控子规则](prompt-hallucination-patch.md)（Capability / Architecture Claims）。回归显示 Zagens 在「能力/架构类裸问」上幻觉率较未打 patch 的发行 TUI 明显下降；**本文档的 SSE 示意图与能力结论无关**，集成时以代码与 `streamNormalize.ts` 为准。
 
-> **唯一生产 HTTP 运行时：** Zagens 与 `deepseek serve --http` / `deepseek-runtime` 使用 `crates/tui/src/runtime_api/`（`/v1/*`）。`crates/app-server` **已于 D7 删除**（原实验路径，见 [`adr/D4_APPSERVER_DEPRECATED.md`](./adr/D4_APPSERVER_DEPRECATED.md)）。
+> **唯一生产 HTTP 运行时：** Zagens 与 headless 脚本使用 `crates/runtime-server/src/runtime_api/`（`/v1/*`），binary 为 **`deepseek-runtime`**。~~`crates/app-server`~~ **已于 D7 删除**；~~`deepseek-tui` / `deepseek serve`~~ **已于 D6 Phase B 删除**（见 [`adr/D4_APPSERVER_DEPRECATED.md`](./adr/D4_APPSERVER_DEPRECATED.md) · [`adr/D6_PHASE_B_CLI_SUNSET.md`](./adr/D6_PHASE_B_CLI_SUNSET.md)）。
 
 ---
 
@@ -757,12 +757,12 @@ WebView                          Sidecar
 | Tauri 命令注册 | `crates/desktop/src/main.rs` | `generate_handler!` — 约 **41** 个 IPC 命令 |
 | Tauri 命令实现 | `crates/desktop/src/commands.rs` | 密钥、设置、二进制预览、符号索引 IPC |
 | Runtime HTTP 代理 | `crates/desktop/src/runtime_proxy.rs` | H06 — Bearer 注入、SSE 转发 |
-| Sidecar 进程管理 | `crates/desktop/src/sidecar.rs` | spawn、`serve --http`、健康检查、重启 |
+| Sidecar 进程管理 | `crates/desktop/src/sidecar.rs` | spawn、`deepseek-runtime`、健康检查、重启 |
 | WebView HTTP 客户端 | `crates/desktop/web-ui/src/api/client.ts` | `initRuntimeConfig`、proxy 分支、就绪探测 |
 | SSE 归一化 | `crates/desktop/web-ui/src/api/streamNormalize.ts` | wire `event` → UI 事件 |
-| Runtime HTTP 路由 | `crates/tui/src/runtime_api/router.rs` | `build_router` |
+| Runtime HTTP 路由 | `crates/runtime-server/src/runtime_api/router.rs` | `build_router` |
 | 协议类型 | `crates/protocol/src/` | 共享 DTO（若有） |
-| Agent prompt（sidecar） | `crates/tui/src/prompts/base.md` 等 | 含幻觉防控子规则；见 [prompt-hallucination-patch.md](prompt-hallucination-patch.md) |
+| Agent prompt（sidecar） | `crates/runtime-server/src/prompts/base.md` 等 | 含幻觉防控子规则；见 [prompt-hallucination-patch.md](prompt-hallucination-patch.md) |
 
 > `crates/app-server/` 为 monorepo 内其他入口所用，**Zagens 桌面路径不经过此 crate**。行数为撰写时约数，以仓库为准。
 
@@ -784,6 +784,7 @@ WebView                          Sidecar
 
 | 日期 | 说明 |
 |------|------|
+| 2026-05-26 | D6 Phase B：sidecar 路径改为 `crates/runtime-server`；移除 `deepseek-tui` / CLI 生产叙事 |
 | 2026-05-25 | 对齐代码：Zagens 0.4.3、`runtime_api/router.rs`、H06 代理认证（移除 `get_runtime_token`）、IPC ~41 条、`DEEPSEEK_CLIENT_SURFACE=zagens` |
 | 2026-05-18 | 对照代码修正：health/probe、BinaryFileResponse、SSE 事件名、symbol-index query、认证 header、25 IPC / 56 HTTP、app-server 边界 |
 | 2026-05-18 | 初版（Zagens API 双通道） |

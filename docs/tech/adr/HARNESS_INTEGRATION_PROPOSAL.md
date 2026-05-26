@@ -215,17 +215,17 @@
 
 | 关注点 | 文件 |
 |--------|------|
-| audit scratchpad SSOT | [`crates/tui/src/scratchpad/{mod,schema,coverage,summary,auditor}.rs`](../../../crates/tui/src/scratchpad/) |
-| CRAFT blackboard | [`crates/tui/src/tools/subagent/blackboard.rs`](../../../crates/tui/src/tools/subagent/blackboard.rs) · [`crates/tui/src/runtime_api/blackboards.rs`](../../../crates/tui/src/runtime_api/blackboards.rs) |
-| plan / todo / tasks 工具 | [`crates/tui/src/tools/{plan,todo,tasks}.rs`](../../../crates/tui/src/tools/) |
-| task manager（后台 job 队列） | [`crates/tui/src/task_manager.rs`](../../../crates/tui/src/task_manager.rs) |
-| cycle / context refresh | [`crates/tui/src/cycle_manager.rs`](../../../crates/tui/src/cycle_manager.rs) · [`crates/tui/src/core/engine/cycle_hooks.rs`](../../../crates/tui/src/core/engine/cycle_hooks.rs) |
-| Context Reset（compaction + seam） | [`crates/tui/src/compaction.rs`](../../../crates/tui/src/compaction.rs) · [`crates/tui/src/seam_manager.rs`](../../../crates/tui/src/seam_manager.rs) · [`crates/core/src/engine/hosts/seam.rs`](../../../crates/core/src/engine/hosts/seam.rs) |
-| 决策审批栈 | [`crates/core/src/engine/{approval,op_loop}.rs`](../../../crates/core/src/engine/) · [`crates/tui/src/tui/approval.rs`](../../../crates/tui/src/tui/approval.rs) · [`crates/execpolicy/src/lib.rs`](../../../crates/execpolicy/src/lib.rs) · [`crates/tui/src/command_safety.rs`](../../../crates/tui/src/command_safety.rs) |
-| audit log | [`crates/tui/src/audit.rs`](../../../crates/tui/src/audit.rs) |
-| 行为干预 | [`crates/tui/src/core/engine/capacity_flow/{checkpoints,interventions}.rs`](../../../crates/tui/src/core/engine/capacity_flow/) · [`crates/core/src/engine/scratchpad_state.rs`](../../../crates/core/src/engine/scratchpad_state.rs) |
-| 笔记 / 记忆 | [`crates/topic-memory/`](../../../crates/topic-memory/) · [`crates/tui/src/topic_memory.rs`](../../../crates/tui/src/topic_memory.rs) · [`crates/tui/src/skills/`](../../../crates/tui/src/skills/) · [`crates/tui/src/tools/remember.rs`](../../../crates/tui/src/tools/remember.rs) |
-| Capability / Policy | [`crates/execpolicy/`](../../../crates/execpolicy/) · [`crates/tui/src/sandbox/`](../../../crates/tui/src/sandbox/) · [`crates/tui/src/network_policy.rs`](../../../crates/tui/src/network_policy.rs) · [`crates/hooks/`](../../../crates/hooks/) |
+| audit scratchpad SSOT | [`crates/runtime-server/src/scratchpad/{mod,schema,coverage,summary,auditor}.rs`](../../../crates/runtime-server/src/scratchpad/) |
+| CRAFT blackboard | [`crates/runtime-server/src/tools/subagent/blackboard.rs`](../../../crates/runtime-server/src/tools/subagent/blackboard.rs) · [`crates/runtime-server/src/runtime_api/blackboards.rs`](../../../crates/runtime-server/src/runtime_api/blackboards.rs) |
+| plan / todo / tasks 工具 | [`crates/runtime-server/src/tools/{plan,todo,tasks}.rs`](../../../crates/runtime-server/src/tools/) |
+| task manager（后台 job 队列） | [`crates/runtime-server/src/task_manager.rs`](../../../crates/runtime-server/src/task_manager.rs) |
+| cycle / context refresh | [`crates/runtime-server/src/cycle_manager.rs`](../../../crates/runtime-server/src/cycle_manager.rs) · [`crates/runtime-server/src/core/engine/cycle_hooks.rs`](../../../crates/runtime-server/src/core/engine/cycle_hooks.rs) |
+| Context Reset（compaction + seam） | [`crates/runtime-server/src/compaction.rs`](../../../crates/runtime-server/src/compaction.rs) · [`crates/runtime-server/src/seam_manager.rs`](../../../crates/runtime-server/src/seam_manager.rs) · [`crates/core/src/engine/hosts/seam.rs`](../../../crates/core/src/engine/hosts/seam.rs) |
+| 决策审批栈 | [`crates/core/src/engine/{approval,op_loop}.rs`](../../../crates/core/src/engine/) · [`crates/runtime-server/src/core/engine/approval.rs`](../../../crates/runtime-server/src/core/engine/approval.rs) · [`crates/execpolicy/src/lib.rs`](../../../crates/execpolicy/src/lib.rs) · [`crates/runtime-server/src/command_safety.rs`](../../../crates/runtime-server/src/command_safety.rs) |
+| audit log | [`crates/runtime-server/src/audit.rs`](../../../crates/runtime-server/src/audit.rs) |
+| 行为干预 | [`crates/runtime-server/src/core/engine/capacity_flow/{checkpoints,interventions}.rs`](../../../crates/runtime-server/src/core/engine/capacity_flow/) · [`crates/core/src/engine/scratchpad_state.rs`](../../../crates/core/src/engine/scratchpad_state.rs) |
+| 笔记 / 记忆 | [`crates/topic-memory/`](../../../crates/topic-memory/) · [`crates/runtime-server/src/topic_memory.rs`](../../../crates/runtime-server/src/topic_memory.rs) · [`crates/runtime-server/src/skills/`](../../../crates/runtime-server/src/skills/) · [`crates/runtime-server/src/tools/remember.rs`](../../../crates/runtime-server/src/tools/remember.rs) |
+| Capability / Policy | [`crates/execpolicy/`](../../../crates/execpolicy/) · [`crates/runtime-server/src/sandbox/`](../../../crates/runtime-server/src/sandbox/) · [`crates/runtime-server/src/network_policy.rs`](../../../crates/runtime-server/src/network_policy.rs) · [`crates/hooks/`](../../../crates/hooks/) |
 | UI 面板 | [`crates/desktop/web-ui/src/components/AuditScratchpadPanel.tsx`](../../../crates/desktop/web-ui/src/components/AuditScratchpadPanel.tsx) · `TopicMemoryPanel.tsx` · [`crates/desktop/web-ui/src/lib/craftBlackboard.ts`](../../../crates/desktop/web-ui/src/lib/craftBlackboard.ts) |
 
 ---

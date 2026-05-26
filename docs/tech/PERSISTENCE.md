@@ -2,7 +2,7 @@
 
 **Status:** Landed 2026-05-26 · [D7_PERSISTENCE_UNIFICATION.md](./adr/D7_PERSISTENCE_UNIFICATION.md)
 
-Zagens 与 `deepseek-tui serve --http` 的生产数据路径。**非**物理单库：Sessions 与 Runtime threads 各用 SQLite（或 JSON 回退），由 **`runtime_thread_id`** 链接。
+Zagens 与 **`deepseek-runtime`** sidecar 的生产数据路径。**非**物理单库：Sessions 与 Runtime threads 各用 SQLite（或 JSON 回退），由 **`runtime_thread_id`** 链接。
 
 ## 目录与文件
 

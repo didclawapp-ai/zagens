@@ -12,7 +12,7 @@
 
 **背景：** 维护者与 Agent 就 Zagens 长期方向进行战略对话——担心 Agent 领域认识尚浅、业界许多能力仍在摸索，**开发方向是否走偏**。本文档整理对话结论，供后续评审与路线图引用；**非立即执行的工程承诺**。
 
-**一句话结论：** 方向判断 **大体正确**——Zagens 应押 **Desktop 壳 + 本地 sidecar Harness + 长程任务（CRAFT）**；TUI/CLI **退出用户产品面**，保留为 dev/headless 工具；sidecar 三层架构 **不必推翻**。
+**一句话结论：** 方向判断 **大体正确**——Zagens 应押 **Desktop 壳 + 本地 sidecar Harness + 长程任务（CRAFT）**；TUI/CLI **已退出**（D6 Phase B 2026-05-26）；sidecar 三层架构 **不必推翻**。
 
 ### 1. 核心战略判断（签收备忘）
 
@@ -20,7 +20,7 @@
 |------|------|--------|------|
 | Harness 终态需要富交互壳 | **成立** | 高 | 审批、CRAFT 黑板、diff、Harness 预置、记忆图——终端 ratatui 难以产品化 |
 | **Desktop-only 作为用户产品** | **成立** | 高 | 与 Cursor / Claude Desktop / Windsurf 主战场一致；资源应停止 TUI parity |
-| TUI/CLI 完全消失 | **不成立** | 中 | 业界 CLI 仍存（Claude Code CLI）；本仓库缩为 **`serve --http` / debug / CI**，非第二产品 |
+| TUI/CLI 完全消失 | **已发生（D6 Phase B）** | 高 | 2026-05-26 删除 `crates/cli`、`crates/tui`；headless 直接用 **`deepseek-runtime`** HTTP |
 | sidecar 壳运分离 | **继续** | 高 | Agent turn 只在 sidecar；Desktop 是 L3，不是引擎 |
 | 本地可配置 Harness vs 云端托管 | **差异化成立** | 中-高 | Anthropic Managed Agents = 云端 harness；Zagens = 本地控制权（见 [§Harness 组件化](#2026-05-24--harness-组件化从硬编码到可组合-agent-执行结构)） |
 | 长程任务可达 | **已有实证** | 高 | **CRAFT 手测 ~35 分钟**（2026-05-24）；B-L1 runtime + AgentPanel 已签收 |
@@ -32,9 +32,9 @@
 当前 **L1/L2/L3** 分层（见 [RUNTIME_EVOLUTION_ROADMAP.md §2](../tech/RUNTIME_EVOLUTION_ROADMAP.md)）经对话复核 **仍然正确**：
 
 ```
-L3  Zagens（Tauri + React）— 唯一用户产品壳（战略调整）
+L3  Zagens（Tauri + React）— 唯一用户产品壳
 L2  HTTP/SSE + Tauri IPC + runtime_proxy（Bearer 不出 WebView）
-L1  deepseek-tui sidecar + deepseek-core（Engine / turn_loop / tools）
+L1  deepseek-runtime sidecar + deepseek-core（Engine / turn_loop / tools）
 ```
 
 **不必做：** 合并 sidecar 进 Tauri、换 app-server 为生产 binary、在 WebView 内跑 Engine。
@@ -57,22 +57,22 @@ L1  deepseek-tui sidecar + deepseek-core（Engine / turn_loop / tools）
 
 **仍不确定（业界也在摸索）：** 最优 Harness 工具集大小、多 agent 并行写冲突策略、跨天记忆 vs compaction 分工、Managed vs Local 长期份额——**保持 sidecar 可配、Desktop 可观测**，便于随业界迭代调参，而非押死单一路径。
 
-### 4. TUI / CLI 终态（分层处理）
+### 4. TUI / CLI 终态（D6 Phase B ✅ 2026-05-26）
 
-| 层级 | 终态 | 动作 |
+| 层级 | 终态 | 状态 |
 |------|------|------|
-| **用户产品 L3** | 仅 Zagens Desktop | 新 Harness 能力 **desktop-only**；停止 [TUI_DS_PICK_GAP.md](TUI_DS_PICK_GAP.md) parity 投入 |
-| **Runtime sidecar** | 保留 `deepseek-tui serve --http` | `runtime_api` + `runtime_threads` + Engine；**ratatui 交互 UI 进入 freeze** |
-| **CLI** | dev / CI / headless | `serve`、`debug`、契约测、脚本；用户无需知道 CLI 存在 |
-| **crate 命名** | 长期可选 | `deepseek-tui` → `deepseek-runtime` / `deepseek-sidecar`（降低「终端产品」误解） |
+| **用户产品 L3** | 仅 Zagens Desktop | ✅ |
+| **Runtime sidecar** | **`deepseek-runtime`**（`crates/runtime-server`） | ✅ 生产 binary |
+| **CLI / ratatui TUI** | 已删除 | ✅ `crates/cli`、`crates/tui` 不存在 |
+| **Headless / CI** | `deepseek-runtime` + HTTP Bearer | ✅ 唯一 dev 入口 |
 
-**待写入路线图（候选 ADR，未签收）：**
+**已签收 ADR：**
 
-| 决策 | 内容 |
-|------|------|
-| **D12 Desktop-only 产品** | Zagens 为唯一用户产品壳；TUI 终端 UI maintenance/freeze |
-| **D13 Sidecar 语义** | `deepseek-tui` 产品含义 = HTTP runtime sidecar；ratatui = legacy adapter |
-| **D14 CLI 定位** | CLI 缩为 dev/CI 工具，非用户入口 |
+| 决策 | 内容 | 状态 |
+|------|------|------|
+| **D12 Desktop-only 产品** | Zagens 为唯一用户产品壳 | ✅ |
+| **D13 Sidecar 语义** | sidecar = **`deepseek-runtime`** HTTP runtime | ✅ Phase B |
+| **D14 CLI 定位** | ~~CLI dev 工具~~ → **已移除** | ✅ Phase B |
 
 ### 5. 长程任务：35 分钟 CRAFT 与下一关
 

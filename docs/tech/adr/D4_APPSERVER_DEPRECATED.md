@@ -10,8 +10,8 @@
 
 | 路径 | 用途 |
 |------|------|
-| **生产** | `deepseek-tui serve --http` → `runtime_api` (`/v1/*`) → `Engine` |
-| **实验** | `deepseek app-server` → `crates/app-server` → `core::Runtime` + `deepseek-state` SQLite |
+| **生产** | **`deepseek-runtime`** → `runtime_api` (`/v1/*`) → `Engine` |
+| **实验（已删）** | ~~`deepseek app-server`~~ → ~~`crates/app-server`~~ → ~~`deepseek-state`~~ |
 
 Zagens / 桌面 **仅**使用生产路径。实验路径与 sidecar 持久化、鉴权、SSE 契约 **不互通**，造成认知与维护成本（Assessment §3.9）。
 
@@ -25,10 +25,11 @@ M-series（D5）已闭合；下一结构优先项为 **D6 `runtime-server`**（�
 - **本阶段不删代码** — ~~crate、CLI 入口、依赖保留~~ **已删除（D7 C5）**。
 - **`deepseek-state`（`crates/state`）暂不整体废弃** — CLI `thread` 等仍可能读写 `StateStore`；D7 持久化统一时再迁移或收缩 scope。
 
-## 生产路径（不变）
+## 生产路径
 
-- Zagens / 桌面：`deepseek-tui` sidecar + `runtime_api`
-- 长期演进：D6 `crates/runtime-server`（sidecar 去 ratatui，**同一** `/v1/*` 契约）
+- Zagens / 桌面：**`deepseek-runtime`** sidecar + `runtime_api`（`crates/runtime-server`）
+- Headless / CI：同一 binary，HTTP + Bearer
+- ~~`deepseek-tui`~~、~~`deepseek` CLI~~：**已于 D6 Phase B 删除**（见 [D6_PHASE_B_CLI_SUNSET.md](./D6_PHASE_B_CLI_SUNSET.md)）
 
 ## 执行（2026-05-26）
 
@@ -49,4 +50,4 @@ M-series（D5）已闭合；下一结构优先项为 **D6 `runtime-server`**（�
 
 - [x] 书面决策（本文件）
 - [x] Assessment §1 #6 可勾选
-- [ ] 代码物理删除（刻意 defer）
+- [x] 代码物理删除（D7 C5，2026-05-26）

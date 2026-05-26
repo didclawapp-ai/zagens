@@ -102,7 +102,7 @@ The runtime exposes a **broad tool registry** (not every tool has a dedicated de
 | **Memory** | `remember`, `note`, opt-in `<user_memory>` |
 | **Execution** | `code_execution`, `rlm` (long-context REPL helper) |
 
-Implementation: `crates/tui/src/tools/`. HTTP routes: [`docs/tech/API_DESIGN.md`](docs/tech/API_DESIGN.md). Annotated config: [config.example.toml](config.example.toml).
+Implementation: `crates/runtime-server/src/tools/`. HTTP routes: [`docs/tech/API_DESIGN.md`](docs/tech/API_DESIGN.md). Annotated config: [config.example.toml](config.example.toml).
 
 ---
 
@@ -220,7 +220,7 @@ Configured in `~/.deepseek/config.toml` ([config.example.toml](config.example.to
 
 ### Runtime API (Phase 2+)
 
-The sidecar binary (`serve --http` on loopback) exposes a local HTTP/SSE API. Authoritative route list: [`docs/tech/API_DESIGN.md`](docs/tech/API_DESIGN.md) and `crates/tui/src/runtime_api.rs` (`build_router`). Example endpoints on `127.0.0.1`:
+The sidecar binary **`deepseek-runtime`** (loopback HTTP/SSE) exposes a local API. Authoritative route list: [`docs/tech/API_DESIGN.md`](docs/tech/API_DESIGN.md) and `crates/runtime-server/src/runtime_api/router.rs` (`build_router`). Example endpoints on `127.0.0.1`:
 
 | Endpoint | Purpose |
 |----------|---------|
@@ -272,7 +272,7 @@ The sidecar binary (`serve --http` on loopback) exposes a local HTTP/SSE API. Au
 cd DeepSeek-TUI-desktop
 
 # Sidecar binary (build.rs copies debug/release into crates/desktop/binaries/)
-cargo build -p deepseek-tui
+cargo build -p deepseek-runtime-server
 
 # Web UI deps
 cd crates/desktop/web-ui
@@ -439,7 +439,7 @@ Embedded agent runtime is **third-party MIT code** — [third-party/deepseek-tui
 
 嵌入式 sidecar 提供：SQLite 会话与线程、MCP、技能目录与安装、Hooks、多提供商与 `routing_rules.json`、用量汇总、可选视觉 `describe_image`、工作区快照、分层系统提示（`pick-rules.md`、`AGENTS.md`）。
 
-工具实现：`crates/tui/src/tools/`；HTTP 契约：[`docs/tech/API_DESIGN.md`](docs/tech/API_DESIGN.md)。模型与提供商见英文 [AI Providers](#ai-providers--models)。
+工具实现：`crates/runtime-server/src/tools/`；HTTP 契约：[`docs/tech/API_DESIGN.md`](docs/tech/API_DESIGN.md)。模型与提供商见英文 [AI Providers](#ai-providers--models)。
 
 ---
 
@@ -490,7 +490,7 @@ Embedded agent runtime is **third-party MIT code** — [third-party/deepseek-tui
 |------|------|
 | **桌面外壳** | Rust + [Tauri 2](https://tauri.app/) |
 | **前端** | React 18 + TypeScript（`strict: true`）+ Tailwind CSS + Vite 6 |
-| **运行环境** | Rust 异步（Tokio），以 Sidecar 方式托管完整 `deepseek-tui` 引擎 |
+| **运行环境** | Rust 异步（Tokio），Sidecar 托管 **`deepseek-runtime`**（`crates/runtime-server`） |
 | **状态存储** | 基于 `deepseek-state` crate 的 SQLite |
 | **Markdown/聊天** | markdown-it、highlight.js、Mermaid 图表、diff2html |
 | **终端** | xterm.js 用于交互式 PTY 和 Shell 输出渲染 |
@@ -536,7 +536,7 @@ Embedded agent runtime is **third-party MIT code** — [third-party/deepseek-tui
 
 ### Runtime API（Phase 2+）
 
-Sidecar（`deepseek-tui` 二进制，`serve --http`）在 loopback 暴露 HTTP/SSE。完整路由见 [`docs/tech/API_DESIGN.md`](docs/tech/API_DESIGN.md) 与 `crates/tui/src/runtime_api.rs`。示例端点（`127.0.0.1`）：
+Sidecar（**`deepseek-runtime`** 二进制）在 loopback 暴露 HTTP/SSE。完整路由见 [`docs/tech/API_DESIGN.md`](docs/tech/API_DESIGN.md) 与 `crates/runtime-server/src/runtime_api/router.rs`。示例端点（`127.0.0.1`）：
 
 | 端点 | 用途 |
 |------|------|
@@ -581,7 +581,7 @@ Sidecar（`deepseek-tui` 二进制，`serve --http`）在 loopback 暴露 HTTP/S
 cd DeepSeek-TUI-desktop
 
 # Sidecar（build.rs 会从 target/ 复制到 crates/desktop/binaries/）
-cargo build -p deepseek-tui
+cargo build -p deepseek-runtime-server
 
 # Web UI 依赖
 cd crates/desktop/web-ui

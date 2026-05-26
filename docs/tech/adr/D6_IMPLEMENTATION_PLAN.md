@@ -1,7 +1,7 @@
 # D6 详细实施方案 — `deepseek-runtime` sidecar
 
 > **类型：** 实施计划（配套决策 ADR：[D6_RUNTIME_SERVER.md](./D6_RUNTIME_SERVER.md)）  
-> **状态：** Phase A ✅ 已落地（2026-05-26）· Phase A+ / B 待办  
+> **状态：** Phase A ✅ · Phase A+ ✅ · **Phase B ✅**（2026-05-26，[D6_PHASE_B_CLI_SUNSET.md](./D6_PHASE_B_CLI_SUNSET.md)）  
 > **前置：** D5 M-series（Engine + op loop 在 `deepseek-core`）  
 > **SSOT 架构图：** [RUNTIME_ARCHITECTURE.md](../RUNTIME_ARCHITECTURE.md)
 
@@ -22,22 +22,22 @@ Zagens 桌面嵌入的 sidecar 若使用 `deepseek-tui serve --http`，会**静�
 | 做 | 不做 |
 |----|------|
 | 新建 **`deepseek-runtime`** 瘦二进制（无 ratatui） | 重写 `/v1/*` HTTP 契约 |
-| 用 **`tui-ui` feature** 门控 TUI 栈 | 删除 `deepseek-tui serve --http`（dev fallback 保留） |
-| Zagens `externalBin` 切到 `deepseek-runtime-*` | Phase A 内物理搬迁 `runtime_api/*`（属 Phase B） |
-| 复用 `runtime_api` + `runtime_threads` 同一实现 | 让 `desktop` crate 直接 `use deepseek_tui` |
+| Zagens `externalBin` 切到 `deepseek-runtime-*` | 让 `desktop` crate 直接链 runtime lib |
+| **Phase B：** 合并为 **`crates/runtime-server`** 单 crate（lib `deepseek_runtime`） | 在本阶段做 P2 multi-sidecar |
+| 删除 `crates/cli`、`crates/tui`、ratatui TUI 树 | 物理删除 `deepseek-state`（core 仍有引用时保留） |
 
-### 0.3 成功标准（Phase A — 已达成）
+### 0.3 成功标准（Phase A — 已达成；Phase B 后见 §4.4）
 
 ```bash
 cargo check -p deepseek-runtime-server
 cargo tree -p deepseek-runtime-server -i ratatui   # → no match
-cargo check -p deepseek-tui --bin deepseek-tui     # 全量 TUI 仍绿
-cargo test -p deepseek-tui --lib sidecar_contract_full_lifecycle
+cargo test -p deepseek-runtime-server --lib sidecar_contract_full_lifecycle
+RUSTFLAGS=-Dwarnings cargo check --workspace
 ```
 
 ---
 
-## 1. 目标架构（实施后）
+## 1. 目标架构（Phase B 落地后）
 
 ```text
 ┌─────────────────────────────────────────────────────────────┐
@@ -48,27 +48,28 @@ cargo test -p deepseek-tui --lib sidecar_contract_full_lifecycle
                            │ HTTP/SSE + Bearer
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  deepseek-runtime  (crates/runtime-server, ~10 LOC main)     │
-│  deepseek_tui::runtime_serve::run_from_args                  │
+│  deepseek-runtime  (crates/runtime-server bin)               │
+│  deepseek_runtime::runtime_serve::run_from_args              │
 └──────────────────────────┬──────────────────────────────────┘
-                           │ deepseek-tui lib, default-features=false
+                           │ same crate
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  deepseek-tui lib (无 tui-ui)                                │
-│  runtime_api/ · runtime_threads/ · tools/ · core/engine shim │
+│  deepseek_runtime lib (crates/runtime-server)                │
+│  runtime_api/ · runtime_threads/ · tools/ · core/engine shim   │
 └──────────────────────────┬──────────────────────────────────┘
                            │
                            ▼
                     deepseek-core (Engine, turn_loop)
 ```
 
-**dev fallback：** `sidecar.rs` 检测到二进制名含 `deepseek-tui` 时，argv 仍用 `serve --http --host … --port …`。
+**已删除：** `crates/cli`、`crates/tui`、ratatui 全屏 TUI。  
+**可选遗留：** 若开发机 PATH 上仍有旧 `deepseek-tui` 二进制，`sidecar.rs` 可识别并改用 `serve --http` argv（Zagens 打包不包含）。
 
 ---
 
-## 2. Phase A — 二进制拆分（✅ 已完成）
+## 2. Phase A — 二进制拆分（✅ 已完成 · **历史回顾**）
 
-> 下列步骤为**回顾性清单**，便于复现或 code review；commit 参考 `SESSION_HANDOFF_2026-05-26.md`（`a1aacbe`）。
+> **注意：** Phase A 实施时 sidecar 仍通过 `deepseek_tui::runtime_serve` 调用 HTTP（源码在 `crates/tui`）。**Phase B 已合并为单 crate 并删除 `crates/tui`** — 以下步骤仅供考古 / code review。
 
 ### PR-A1 · Spike + crate 骨架（~0.5 天）
 
@@ -171,63 +172,64 @@ deepseek-tui serve --http --host 127.0.0.1 --port 7878 --cors-origin …
 
 ---
 
-## 4. Phase B — 源码物理迁入 `runtime-server` lib（可选 · 见 spike）
+## 4. Phase B — Runtime 单 crate + CLI/TUI 退场（✅ 2026-05-26）
 
-**阻塞分析：** [D6_PHASE_B_SPIKE.md](./D6_PHASE_B_SPIKE.md) — 不能只搬 `runtime_api/` 两目录；需 **B0 `agent-host` 中间 crate** 打破循环依赖。
+**决策 ADR：** [D6_PHASE_B_CLI_SUNSET.md](./D6_PHASE_B_CLI_SUNSET.md)（方案 B：直接合并，非 `agent-host` 分叉）。
 
-**不阻塞：** 架构定型 §1 #5；可在 P2 功能迭代间隙做。
-
-### 4.1 目标 crate 形态
+### 4.1 落地形态
 
 ```text
 crates/runtime-server/
-  Cargo.toml          # lib + bin
+  Cargo.toml          # package: deepseek-runtime-server
+  [lib] name = deepseek_runtime
+  [[bin]] name = deepseek-runtime
   src/
-    lib.rs            # pub mod runtime_api; pub mod runtime_threads; pub mod runtime_serve;
-    main.rs           # 薄入口
-    runtime_api/      # 从 tui 迁入
-    runtime_threads/  # 从 tui 迁入
+    lib.rs            # deepseek_runtime
+    main.rs
+    runtime_api/      # 自原 tui 迁入
+    runtime_threads/
     runtime_serve.rs
+    core/engine/      # ~130 LOC shim
+    tools/ …
 ```
 
-`deepseek-tui` 保留：
+**已删除：** `crates/cli/`、`crates/tui/`（含 ratatui TUI 树）。
 
-- `mod tui`（freeze）  
-- `tools/`、`core/engine` shim、`commands`（CLI）  
-- 对 `deepseek-runtime-server` 的 **可选** 重导出（过渡期）
+### 4.2 PR 链（回顾）
 
-### 4.2 推荐 PR 链（~2–3 周，1 人）
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| B0 | ADR；删 CLI；`transcript_isomorphism` | ✅ |
+| B1 | 删 TUI/commands；ratatui 依赖；OpenAPI bin 迁 runtime-server | ✅ |
+| B2 | `tui/src/*` → `runtime-server/src/`；删 `crates/tui` | ✅ |
+| B3 | CI/文档/验收；`-Dwarnings`；`deepseek-state` 按条件保留 | ✅ |
 
-| 顺序 | PR | 内容 | 风险 |
-|------|-----|------|------|
-| B1 | Spike | `runtime-server` 增 `[lib]`；`tui` 改为 `pub use deepseek_runtime_server::runtime_api` 重导出 | 低 |
-| B2 | 迁 `runtime_api` | 移动目录 + 修正 `use` 路径；OpenAPI export bin 改指向新 crate | 中 |
-| B3 | 迁 `runtime_threads` | 与 B2 同 PR 或紧接；持久化 monitor 测全绿 | 中 |
-| B4 | 迁 `runtime_serve` | CLI 入口留在 runtime-server；tui `serve --http` 调用 `deepseek_runtime_server::runtime_serve` | 低 |
-| B5 | 清理 | 删 tui 侧空壳；`deepseek-tui` 依赖 `deepseek-runtime-server` lib（仅 dev serve 需要） | 中 |
-
-### 4.3 依赖边界规则（Phase B）
+### 4.3 依赖边界（Phase B 后）
 
 | Crate | 可依赖 |
 |-------|--------|
 | `runtime-server` lib | `core`, `config`, `protocol`, `tools`, `topic-memory`, …（**无** ratatui） |
-| `deepseek-tui` bin（TUI） | `runtime-server` lib + `tui-ui` + 全工具栈 |
-| `deepseek-desktop` | **仍只** config + secrets；**不**链 runtime-server lib |
+| `deepseek-desktop` | **仍只** config + secrets；**不**链 runtime lib |
+| `deepseek-state` | 保留于 workspace；**仅** `deepseek-core` 编译依赖；**非** sidecar SSOT |
 
 ### 4.4 Phase B 验收
 
 ```bash
-cargo check -p deepseek-runtime-server
-cargo test -p deepseek-runtime-server
-cargo test -p deepseek-tui --lib sidecar_contract_full_lifecycle
+cargo check --workspace
+RUSTFLAGS=-Dwarnings cargo check --workspace
+cargo test -p deepseek-runtime-server --lib sidecar_contract_full_lifecycle
 cargo test -p deepseek-runtime-server --test sidecar_binary_contract
-npm run test:f3   # web-ui 冒烟
+cargo tree -p deepseek-runtime-server -i ratatui    # 无匹配
+test ! -d crates/cli && test ! -d crates/tui
 ```
 
-- [ ] `runtime_api` / `runtime_threads` 物理路径在 `crates/runtime-server/src/`  
-- [ ] `deepseek-tui` 不再 `pub mod runtime_api`（仅 re-export 或删除）  
-- [ ] OpenAPI `export-runtime-openapi` 从新 crate 导出  
-- [ ] 文档 [RUNTIME_ARCHITECTURE.md](../RUNTIME_ARCHITECTURE.md) §2/§3 更新  
+- [x] `runtime_api` / `runtime_threads` 物理路径在 `crates/runtime-server/src/`  
+- [x] workspace 无 `crates/cli`、`crates/tui`  
+- [x] OpenAPI `export-runtime-openapi` 在 `crates/runtime-server`  
+- [x] [RUNTIME_ARCHITECTURE.md](../RUNTIME_ARCHITECTURE.md) 更新为单 lib 叙事  
+- [x] `deepseek-state`：**未删**（`deepseek-core` 仍有引用 — ADR B3.1 条件不满足）
+
+**实现 commit：** `613a6e3` — *D6 Phase B: merge runtime into single crate and drop CLI/TUI.*
 
 ---
 
@@ -249,8 +251,8 @@ npm run test:f3   # web-ui 冒烟
 | 阶段 | 工作量 | 状态 |
 |------|--------|------|
 | **Phase A**（A1–A5） | 2–3 周（含 M-series 前置） | ✅ 2026-05-26 |
-| **Phase A+**（binary CI） | 1–2 天 | 待办 |
-| **Phase B**（物理迁移） | 2–3 周 | 可选 / P2 间隙 |
+| **Phase A+**（binary CI） | 1–2 天 | ✅ 2026-05-26 |
+| **Phase B**（单 crate + 删 CLI/TUI） | 2–3 周 | ✅ 2026-05-26 |
 
 Assessment [§5.1](./ARCHITECTURE_ASSESSMENT_2026-05-25.md) 将 D6 定为阶段 A 主线；D6 完成后才推进 D7/D8，避免在「tui 巨壳」内同时改持久化与 OpenAPI。
 
@@ -261,13 +263,13 @@ Assessment [§5.1](./ARCHITECTURE_ASSESSMENT_2026-05-25.md) 将 D6 定为阶段 
 | 关注点 | 路径 |
 |--------|------|
 | runtime-server binary | `crates/runtime-server/src/main.rs` |
-| Sidecar CLI / 入口 | `crates/tui/src/runtime_serve.rs` |
-| HTTP server 装配 | `crates/tui/src/runtime_api/mod.rs` |
-| Feature 门控 | `crates/tui/Cargo.toml` · `crates/tui/src/lib.rs` |
-| TUI-free 共享类型 | `crates/tui/src/agent_surface.rs` · `auto_route.rs` · `context_reference.rs` |
+| Sidecar CLI / 入口 | `crates/runtime-server/src/runtime_serve.rs` |
+| HTTP server 装配 | `crates/runtime-server/src/runtime_api/mod.rs` |
+| TUI-free 共享类型 | `crates/runtime-server/src/agent_surface.rs` · `auto_route.rs` · `context_reference.rs` |
 | Desktop 监督 | `crates/desktop/src/sidecar.rs` |
 | 打包 | `crates/desktop/build.rs` · `scripts/prepare-bundle.mjs` |
-| 契约测（lib） | `crates/tui/src/runtime_api/tests.rs` · `sidecar_contract_full_lifecycle` |
+| 契约测（lib） | `crates/runtime-server/src/runtime_api/tests.rs` · `sidecar_contract_full_lifecycle` |
+| 契约测（binary） | `crates/runtime-server/tests/sidecar_binary_contract.rs` |
 | CI | `.github/workflows/ci.yml` |
 
 ---
@@ -278,5 +280,5 @@ Assessment [§5.1](./ARCHITECTURE_ASSESSMENT_2026-05-25.md) 将 D6 定为阶段 
 |-----|------|
 | **D5 M-series** | D6 **前置 blocker** — Engine 在 core 后才值得拆 binary |
 | **D7 持久化** | 建议在 D6 Phase A 后做 — runtime 边界已清 |
-| **D8 OpenAPI** | 导出 bin 暂在 tui；Phase B 后迁到 runtime-server |
+| **D8 OpenAPI** | 导出 bin 在 `crates/runtime-server`（Phase B ✅） |
 | **D11+ P2** | metrics / 多 sidecar 依赖 D6 叙事稳定 |

@@ -1,6 +1,6 @@
 # D6 Phase B — 方案 B：Runtime 单 crate + CLI/TUI 退场
 
-> **Status:** Accepted（2026-05-26）  
+> **Status:** Landed（2026-05-26）  
 > **Supersedes:** [D6_PHASE_B_SPIKE.md](./D6_PHASE_B_SPIKE.md) 中的 `agent-host` 分叉路径（改为单 crate 合并）  
 > **Related:** [D6_IMPLEMENTATION_PLAN.md](./D6_IMPLEMENTATION_PLAN.md) · [D6_RUNTIME_SERVER.md](./D6_RUNTIME_SERVER.md) · [RUNTIME_ARCHITECTURE.md](../RUNTIME_ARCHITECTURE.md) · [DEV_NOTES.md](../../desktop/DEV_NOTES.md)
 
@@ -45,7 +45,7 @@ crates/config, tools, mcp, …    # 不变
 删除:
   crates/cli/
   crates/tui/
-  crates/state/                 # 若无剩余引用
+  # crates/state/ — deepseek-core 仍有引用，按 B3.1 保留
 ```
 
 **依赖方向（无环）：**
@@ -88,13 +88,13 @@ runtime-server (bin) → runtime-server (lib)
 | B2.4 | 删除 `crates/tui/` ✅ |
 | B2.5 | CI/脚本 `-p deepseek-runtime-server`；`deepseek_tui` → `deepseek_runtime`（代码路径） ✅ |
 
-### B3 — 清理与验收
+### B3 — 清理与验收 ✅
 
 | 步骤 | 动作 |
 |------|------|
-| B3.1 | 删 `deepseek-state`（若零引用） |
-| B3.2 | 更新 CI、`sidecar.rs` legacy 路径、OpenAPI 脚本、文档 |
-| B3.3 | 验收命令（§5） |
+| B3.1 | 删 `deepseek-state`（若零引用）→ **保留**：`deepseek-core` 仍编译依赖；**非** sidecar SSOT ✅ |
+| B3.2 | 更新 CI、OpenAPI 脚本、文档；`sidecar.rs` 可选识别磁盘遗留 `deepseek-tui` ✅ |
+| B3.3 | 验收命令（§5）；`RUSTFLAGS=-Dwarnings` 构建；Zagens 冒烟 ✅ |
 
 **人力：** 约 **2–3 周**（1 人）；每 PR 保持 `cargo test -p deepseek-runtime-server` 可回归。
 
@@ -120,9 +120,9 @@ cargo tree -p deepseek-runtime-server -i crossterm  # 无匹配
 ! test -d crates/tui
 ```
 
-- [ ] workspace 无 `crates/cli`、`crates/tui`  
-- [ ] `RUNTIME_ARCHITECTURE.md` 仅描述 `deepseek-runtime` 单 lib  
-- [ ] Zagens `npm run bundle:prepare` + 冒烟通过  
+- [x] workspace 无 `crates/cli`、`crates/tui`  
+- [x] `RUNTIME_ARCHITECTURE.md` 仅描述 `deepseek-runtime` 单 lib  
+- [x] Zagens `npm run bundle:prepare` + 冒烟通过  
 
 ---
 

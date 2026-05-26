@@ -1,6 +1,6 @@
 # D6 Phase B Spike — `runtime_api` 物理迁移阻塞分析
 
-> **Status:** Spike（2026-05-26）  
+> **Status:** **Superseded** — 2026-05-26 采用 [D6_PHASE_B_CLI_SUNSET.md](./D6_PHASE_B_CLI_SUNSET.md) **方案 B**（单 crate 合并，非 `agent-host` 分叉）；Phase B **已落地**。本文保留 spike 结论作历史参照。  
 > **Related:** [D6_IMPLEMENTATION_PLAN.md](./D6_IMPLEMENTATION_PLAN.md) §4 · [D6_RUNTIME_SERVER.md](./D6_RUNTIME_SERVER.md)
 
 ## 结论
