@@ -1521,6 +1521,107 @@ async fn session_resume_thread_creates_thread_from_saved_session() -> Result<()>
     Ok(())
 }
 
+/// D7 C3 — SQLite session must round-trip `runtime_thread_id` and resume reuses the linked thread.
+#[tokio::test]
+async fn session_resume_reuses_runtime_thread_when_sqlite_has_link() -> Result<()> {
+    use crate::models::{ContentBlock, Message};
+    use crate::session_manager::SessionManager;
+
+    let root = std::env::temp_dir().join(format!(
+        "deepseek-session-sqlite-link-{}",
+        Uuid::new_v4()
+    ));
+    let sessions_dir = root.join("sessions");
+    fs::create_dir_all(&sessions_dir)?;
+
+    let Some((addr, runtime_threads, handle)) =
+        spawn_test_server_with_root(root.clone(), sessions_dir.clone()).await?
+    else {
+        return Ok(());
+    };
+
+    assert!(
+        sessions_dir.join("sessions.db").exists(),
+        "SessionManager should open SQLite at sessions.db"
+    );
+
+    let client = reqwest::Client::new();
+    let created: serde_json::Value = client
+        .post(format!("http://{addr}/v1/threads"))
+        .json(&json!({ "model": "deepseek-v4-pro" }))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    let thread_id = created["id"]
+        .as_str()
+        .context("missing thread id")?
+        .to_string();
+
+    let messages = vec![
+        Message {
+            role: "user".to_string(),
+            content: vec![ContentBlock::Text {
+                text: "Hello from persisted session".to_string(),
+                cache_control: None,
+            }],
+        },
+        Message {
+            role: "assistant".to_string(),
+            content: vec![ContentBlock::Text {
+                text: "Hi there".to_string(),
+                cache_control: None,
+            }],
+        },
+    ];
+    runtime_threads
+        .seed_thread_from_messages(&thread_id, &messages)
+        .await?;
+
+    let persist: serde_json::Value = client
+        .post(format!(
+            "http://{addr}/v1/threads/{thread_id}/persist-session"
+        ))
+        .json(&json!({}))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    let session_id = persist["session_id"]
+        .as_str()
+        .context("missing session_id from persist-session")?;
+
+    let sm = SessionManager::new(sessions_dir.clone())?;
+    let loaded = sm.load_session(session_id)?;
+    assert_eq!(
+        loaded.metadata.runtime_thread_id.as_deref(),
+        Some(thread_id.as_str()),
+        "C1: runtime_thread_id must survive SQLite save/load"
+    );
+
+    let resume_resp = client
+        .post(format!(
+            "http://{addr}/v1/sessions/{session_id}/resume-thread"
+        ))
+        .json(&json!({ "model": "deepseek-v4-pro" }))
+        .send()
+        .await?;
+    assert_eq!(
+        resume_resp.status(),
+        StatusCode::OK,
+        "linked thread with events should resume synchronously (ready), not 202 seeding"
+    );
+    let resumed: serde_json::Value = resume_resp.json().await?;
+    assert_eq!(resumed["state"], "ready");
+    assert_eq!(resumed["thread_id"], thread_id);
+    assert_eq!(resumed["session_id"], session_id);
+
+    handle.abort();
+    Ok(())
+}
+
 #[tokio::test]
 async fn session_delete_returns_404_for_missing_id() -> Result<()> {
     let Some((addr, _runtime_threads, handle)) = spawn_test_server().await? else {

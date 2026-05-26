@@ -47,8 +47,8 @@ CLI thread *                → StateStore      → ~/.deepseek/state.db  (paral
 
 ## Acceptance（阶段 C 整体）
 
-- [ ] C1：`runtime_thread_id` round-trip SQLite
-- [ ] C3：sidecar contract / sessions 集成测覆盖 resume 链接
+- [x] C1：`runtime_thread_id` round-trip SQLite
+- [x] C3：sidecar `session_resume_reuses_runtime_thread_when_sqlite_has_link` 集成测
 - [ ] C4–C5：CLI 不依赖第二套 thread SSOT 写路径
 - [ ] C6：架构 owner 签收 §1 #6
 
