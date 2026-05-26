@@ -1,3 +1,9 @@
+//! SQLite-backed thread/session metadata (CLI and legacy app-server paths).
+//!
+//! **Not** the production sidecar persistence layer (`runtime_threads` JSONL).
+//! `app-server` is deprecated (2026-05-26); this crate remains for CLI `thread`
+//! until D7 unification — see `docs/tech/adr/D4_APPSERVER_DEPRECATED.md`.
+
 use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};

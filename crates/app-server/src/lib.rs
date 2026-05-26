@@ -1,3 +1,9 @@
+//! Experimental Codex-style app-server transport.
+//!
+//! **Deprecated (2026-05-26):** not used by Zagens or production sidecar.
+//! Use `deepseek-tui serve --http` (`runtime_api` / `/v1/*`) instead.
+//! Crate removal is deferred; see `docs/tech/adr/D4_APPSERVER_DEPRECATED.md`.
+
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -93,6 +99,10 @@ struct ThreadMessageParams {
     input: String,
 }
 
+#[deprecated(
+    since = "0.8.16",
+    note = "app-server is deprecated; use deepseek-tui serve --http (see docs/tech/adr/D4_APPSERVER_DEPRECATED.md)"
+)]
 pub async fn run(options: AppServerOptions) -> Result<()> {
     let state = build_state(options.config_path.clone())?;
 
@@ -112,6 +122,10 @@ pub async fn run(options: AppServerOptions) -> Result<()> {
     Ok(())
 }
 
+#[deprecated(
+    since = "0.8.16",
+    note = "app-server is deprecated; use deepseek-tui serve --http (see docs/tech/adr/D4_APPSERVER_DEPRECATED.md)"
+)]
 pub async fn run_stdio(config_path: Option<PathBuf>) -> Result<()> {
     let state = build_state(config_path)?;
     let stdin = tokio::io::stdin();

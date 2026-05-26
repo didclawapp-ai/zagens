@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "Codex-style app-server transport for DeepSeek workspace architecture"
+description = "DEPRECATED experimental app-server (use deepseek-tui serve --http); removal deferred"
 
 [dependencies]
 anyhow.workspace = true

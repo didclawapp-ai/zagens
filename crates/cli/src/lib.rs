@@ -10,6 +10,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use clap::{Args, CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::{Shell, generate};
 use deepseek_agent::ModelRegistry;
+#[allow(deprecated, reason = "app-server deprecated; CLI shim until crate removal (D4)")]
 use deepseek_app_server::{
     AppServerOptions, run as run_app_server, run_stdio as run_app_server_stdio,
 };
@@ -155,7 +156,10 @@ enum Commands {
     Thread(ThreadArgs),
     /// Evaluate sandbox/approval policy decisions.
     Sandbox(SandboxArgs),
-    /// Run the app-server transport.
+    /// [DEPRECATED] Experimental app-server HTTP/stdio transport.
+    ///
+    /// Production HTTP uses `deepseek-tui serve --http` (runtime_api /v1/*).
+    /// See docs/tech/adr/D4_APPSERVER_DEPRECATED.md.
     AppServer(AppServerArgs),
     /// Generate shell completions.
     #[command(after_help = r#"Examples:
@@ -1138,6 +1142,7 @@ fn run_sandbox_command(command: SandboxCommand) -> Result<()> {
     }
 }
 
+#[allow(deprecated, reason = "app-server deprecated but CLI entry retained until crate removal (D4)")]
 fn run_app_server_command(args: AppServerArgs) -> Result<()> {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()

@@ -138,7 +138,7 @@ flowchart TB
 
 **版本线：** runtime/CLI workspace **0.8.15**（Rust 1.88+）；Zagens desktop **0.4.3**（独立 SemVer）。
 **CLI 不内嵌 L1：** `deepseek` 通过 `delegate_to_tui` 转调同一 `deepseek-tui` 二进制（[`crates/cli/src/lib.rs`](../../crates/cli/src/lib.rs)）。
-**实验路径（不在图内）：** `deepseek app-server` 子命令 → `crates/app-server` + `core::Runtime` + `deepseek-state` SQLite；与生产 sidecar **不**互通，仅 dev/headless。
+**实验路径（不在图内，⚠ deprecated 2026-05-26）：** `deepseek app-server` → `crates/app-server` + `core::Runtime` + `deepseek-state` SQLite；与生产 sidecar **不**互通。见 [`adr/D4_APPSERVER_DEPRECATED.md`](./adr/D4_APPSERVER_DEPRECATED.md)。
 
 ---
 
