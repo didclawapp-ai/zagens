@@ -1,4 +1,8 @@
 //! TUI event loop and rendering logic for `DeepSeek` CLI.
+//!
+//! **D1 / 架构定型：** 本文件刻意保持单体（~7.8k 行）。仅 CLI 全屏 TUI（`tui-ui`）使用；
+//! Zagens 桌面与 `deepseek-runtime` 不依赖此模块。见
+//! [`ARCHITECTURE_ASSESSMENT_2026-05-25.md`](../../../../docs/tech/adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md) §5.1「D1 明确不拆分」。
 
 use std::collections::HashSet;
 use std::io::{self, Stdout};

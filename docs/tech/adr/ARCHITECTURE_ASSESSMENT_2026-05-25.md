@@ -98,7 +98,7 @@
 | Engine 运行时 | `core/engine/{runtime,op_loop,...}` + tui `core/engine.rs` shim (~130 LOC) + `core/engine/` 子模块 | core struct + tui ~4.8k |
 | HTTP 服务端 | `runtime_api/*` (16 个文件) | ~200k |
 | 线程管理 | `runtime_threads/*` (16 个文件) | ~280k |
-| ratatui UI（**已 freeze**） | `tui/*` | 大量 |
+| ratatui UI（**已 freeze**） | `tui/*`（含 `tui/ui.rs` ~7.8k 行） | 大量；**D1 不拆分**（仅 CLI 全屏 TUI，与 Zagens 桌面无关） |
 | 工具实现 | `tools/*` | ~28k LOC / ~55 files |
 | 巨型单文件 | `config.rs` **195k** · `compaction.rs` **97k** · `mcp.rs` **76k** · `client.rs` **71k** · `task_manager.rs` **67k** · `localization.rs` **94k** · `prompts.rs` **51k** | 远超软上限 1000 行 |
 
@@ -278,6 +278,12 @@ WebView → invoke runtime_get_sse → reqwest stream
 5. `crates/tui/src/client.rs`（~1900 行；若 D6 已部分拆分则跳过已拆模块）
 6. `crates/desktop/src/commands.rs`（~1300 行）
 
+**D1 明确不拆分（维护者 2026-05-26）：**
+
+| 文件 | 理由 |
+|------|------|
+| `crates/tui/src/tui/ui.rs`（~7859 行） | 仅 `deepseek-tui` + `tui-ui` 的 ratatui 全屏前端；`run_tui` 由 CLI `run_interactive` 启动；Zagens 桌面走 Web UI，runtime-server / `deepseek-runtime` 不链 `tui-ui`。拆它不进 §1 #10，也不改善定型主线。 |
+
 #### P2 内部顺序（阶段 F，§1 = 10/10 后）
 
 | 顺序 | ID | 理由 |
@@ -365,6 +371,7 @@ D5（M-series）✅ 已闭合。下一刀直接解锁 §1 第 5 项，并让 sid
 - **§5.1 实施顺序签收（2026-05-26）**：维护者签收 D6→D9/D10→D7→D8→D1→P2 主线；§0 冻结窗口估算更新为 10–14 周；P2 内部 D11→D14→D13→D12。
 - **D9 + D10 落地（2026-05-26）**：阶段 B 插空完成 — 见 [`D9_D10_DESKTOP_UX.md`](./D9_D10_DESKTOP_UX.md)；下一主线 **D7**；§1 仍 7/10。
 - **D8 落地（2026-05-26）**：OpenAPI + TS 生成 — [`D8_OPENAPI_TS_GENERATION.md`](./D8_OPENAPI_TS_GENERATION.md)；§1 #9 → **9/10**；下一主线 **D1**。
+- **D1 范围（2026-05-26）**：`tui/ui.rs` **不拆分** — 见 §3.1 ratatui 行与 §5.1「D1 明确不拆分」表（TUI-only，与桌面端无关）。
 - **D7 落地（2026-05-26）**：阶段 C 闭合 — C1–C6；§1 #6 → **8/10**。
 - **M-series M8 合并后**（✅ **2026-05-26**）：§1 第 4 项 **勾选** — core 侧 `Engine` struct、`Engine::with_hosts`、`Engine::run()` op loop + `EnginePlatformExt` 平台分发；tui 侧 newtype shim ~130 LOC。§1 第 5 项**仍 `[ ]`**（sidecar 仍链 ratatui → **D6**）。进度 **5/10**。2 个 pre-existing engine 集成测修复；[`BACKLOG_ENGINE_STRUCT_IN_CORE.md`](./BACKLOG_ENGINE_STRUCT_IN_CORE.md) Closed；`HANDOFF_M7_M8.md` 已删。
 - **M-series M8 合并后（归档说明）**：当 D6 + §1 ≥ 8/10 时，可将本文档归档并另起 `ARCHITECTURE_ASSESSMENT_<date>.md` v2 全量重写；当前在 **同文件内追加 2026-05-26 复评** 以保持链接稳定。
