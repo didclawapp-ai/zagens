@@ -62,7 +62,10 @@ fn main() {
 
     builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
         let ws = window_registry::parse_workspace_from_args(&argv);
-        let _ = window_registry::open_or_focus_workspace(app, ws);
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            let _ = window_registry::open_or_focus_workspace(&app, ws).await;
+        });
     }));
 
     builder
@@ -143,7 +146,10 @@ fn main() {
                     match event.id().as_ref() {
                         "show" => focus_last_or_main(app),
                         "new_window" => {
-                            let _ = window_registry::create_agent_window_impl(app, None);
+                            let app = app.clone();
+                            tauri::async_runtime::spawn(async move {
+                                let _ = window_registry::create_agent_window_impl(&app, None).await;
+                            });
                         }
                         "quit" => {
                             if let Some(ctx) = app.try_state::<commands::AppContext>() {

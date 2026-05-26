@@ -6,7 +6,7 @@ use std::sync::Mutex;
 
 use serde::Serialize;
 use tauri::{
-    AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder,
+    AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder,
 };
 use uuid::Uuid;
 
@@ -209,9 +209,20 @@ pub fn build_agent_window(
         .min_inner_size(800.0, 600.0)
         .decorations(false)
         .center()
-        .visible(true)
+        .visible(false)
         .build()
         .map_err(|e| format!("创建窗口失败: {e}"))
+}
+
+/// Sidecar emits `sidecar://ready` once at boot; late-opened windows never see it unless we re-emit.
+fn notify_sidecar_ready_to_window(app: &AppHandle, label: &str) {
+    if let Some(ctx) = app.try_state::<crate::commands::AppContext>() {
+        let port = ctx.current_port();
+        if port != 0 {
+            let payload = serde_json::json!({ "port": port });
+            let _ = app.emit_to(label, "sidecar://ready", payload);
+        }
+    }
 }
 
 pub fn focus_window(app: &AppHandle, label: &str) -> Result<(), String> {
@@ -224,7 +235,10 @@ pub fn focus_window(app: &AppHandle, label: &str) -> Result<(), String> {
 }
 
 /// Second instance or tray: open/focus a window for `workspace` (optional).
-pub fn open_or_focus_workspace(app: &AppHandle, workspace: Option<String>) -> Result<String, String> {
+pub async fn open_or_focus_workspace(
+    app: &AppHandle,
+    workspace: Option<String>,
+) -> Result<String, String> {
     let registry = app.state::<WindowRegistry>();
     let ws = match workspace {
         Some(s) if !s.trim().is_empty() => normalize_workspace_field(s)?,
@@ -242,7 +256,7 @@ pub fn open_or_focus_workspace(app: &AppHandle, workspace: Option<String>) -> Re
         registry.set_last_focused(&label);
         return Ok(label);
     }
-    create_agent_window_impl(app, Some(ws))
+    create_agent_window_impl(app, Some(ws)).await
 }
 
 fn paths_equal(a: &str, b: &str) -> bool {
@@ -255,7 +269,7 @@ fn paths_equal(a: &str, b: &str) -> bool {
         .unwrap_or_else(|| a.trim().eq_ignore_ascii_case(b.trim()))
 }
 
-pub fn create_agent_window_impl(
+pub async fn create_agent_window_impl(
     app: &AppHandle,
     workspace: Option<String>,
 ) -> Result<String, String> {
@@ -280,6 +294,7 @@ pub fn create_agent_window_impl(
     let window = build_agent_window(app, &label, &ws)?;
     registry.register(&label, &ws)?;
     registry.set_last_focused(&label);
+    notify_sidecar_ready_to_window(app, &label);
     let _ = window.set_focus();
     Ok(label)
 }
@@ -301,11 +316,11 @@ pub fn get_window_workspace(
 }
 
 #[tauri::command]
-pub fn create_agent_window(
+pub async fn create_agent_window(
     app: AppHandle,
     workspace: Option<String>,
 ) -> Result<String, String> {
-    create_agent_window_impl(&app, workspace)
+    create_agent_window_impl(&app, workspace).await
 }
 
 #[tauri::command]

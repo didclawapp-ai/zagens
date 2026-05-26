@@ -33,7 +33,7 @@
 - [Configuration](#configuration)
 - [License](#license)
 
-> **Not affiliated with DeepSeek Inc.** Capabilities below reflect **Zagens v0.4.3**. Desktop parity notes vs terminal-style workflows: [docs/desktop/TUI_DS_PICK_GAP.md](docs/desktop/TUI_DS_PICK_GAP.md). Harness memo: [docs/desktop/HARNESS.md](docs/desktop/HARNESS.md).
+> **Not affiliated with DeepSeek Inc.** Capabilities below reflect **Zagens v0.5.0**. Desktop parity notes vs terminal-style workflows: [docs/desktop/TUI_DS_PICK_GAP.md](docs/desktop/TUI_DS_PICK_GAP.md). Harness memo: [docs/desktop/HARNESS.md](docs/desktop/HARNESS.md).
 
 ---
 
@@ -54,7 +54,7 @@
 
 ## Zagens (Desktop UI)
 
-Features you interact with in the **v0.4.3** window (see [CHANGELOG.md](CHANGELOG.md)):
+Features you interact with in the **v0.5.0** window (see [CHANGELOG.md](CHANGELOG.md)):
 
 | Area | Shipped in Zagens |
 |------|-------------------|
@@ -263,7 +263,7 @@ The sidecar binary **`deepseek-runtime`** (loopback HTTP/SSE) exposes a local AP
 - **[Tauri CLI 2](https://v2.tauri.app/start/prerequisites/)** — `cargo install tauri-cli --version "^2"` (once per machine)
 - Platform-specific Tauri [system dependencies](https://v2.tauri.app/start/prerequisites/)
 
-**Versions:** Zagens desktop **v0.4.3** (`crates/desktop/`); embedded runtime crates **0.8.15** (root `Cargo.toml`).
+**Versions:** Zagens desktop **v0.5.0** (`crates/desktop/`); embedded runtime crates **0.8.15** (root `Cargo.toml`).
 
 ## Quick Start
 
@@ -409,7 +409,7 @@ Embedded agent runtime is **third-party MIT code** — [third-party/deepseek-tui
 - [配置](#配置)
 - [许可与第三方声明](#许可与第三方声明)
 
-> **与 DeepSeek 公司无关联。** 功能以 **Zagens v0.4.3** 为准。桌面与终端式工作流差距：[TUI_DS_PICK_GAP.md](docs/desktop/TUI_DS_PICK_GAP.md)。英文详情见 [What Makes This Project Different](#what-makes-this-project-different)。
+> **与 DeepSeek 公司无关联。** 功能以 **Zagens v0.5.0** 为准。桌面与终端式工作流差距：[TUI_DS_PICK_GAP.md](docs/desktop/TUI_DS_PICK_GAP.md)。英文详情见 [What Makes This Project Different](#what-makes-this-project-different)。
 
 ---
 
@@ -429,7 +429,7 @@ Embedded agent runtime is **third-party MIT code** — [third-party/deepseek-tui
 
 ## Zagens 桌面端
 
-**v0.4.3** 窗口内已具备：多会话聊天（流式/停止/思考/上下文条）、工作区预览与 **diff2html**、会话回放、子代理与清单侧栏、任务与技能（**定时自动化列表未展示**）、MCP/路由/用量/系统设置、托盘与通知、中/英 UI。
+**v0.5.0** 窗口内已具备：多会话聊天（流式/停止/思考/上下文条）、工作区预览与 **diff2html**、会话回放、子代理与清单侧栏、任务与技能（**定时自动化列表未展示**）、MCP/路由/用量/系统设置、托盘与通知、中/英 UI。
 
 尚未完全对齐的交互见 [TUI_DS_PICK_GAP.md](docs/desktop/TUI_DS_PICK_GAP.md)。
 
@@ -572,7 +572,7 @@ Sidecar（**`deepseek-runtime`** 二进制）在 loopback 暴露 HTTP/SSE。完�
 - **[Tauri CLI 2](https://v2.tauri.app/start/prerequisites/)** — `cargo install tauri-cli --version "^2"`
 - 各平台 Tauri [系统依赖](https://v2.tauri.app/start/prerequisites/)
 
-**版本：** Zagens 桌面 **v0.4.3**；嵌入式 runtime **0.8.15**（根 `Cargo.toml`）。
+**版本：** Zagens 桌面 **v0.5.0**；嵌入式 runtime **0.8.15**（根 `Cargo.toml`）。
 
 ## 快速开始
 

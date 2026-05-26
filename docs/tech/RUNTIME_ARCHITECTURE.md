@@ -34,7 +34,7 @@ flowchart TB
         U3["脚本 / CI / Headless<br/>(HTTP + Bearer)"]
     end
 
-    subgraph desktop_pkg["crates/desktop  (Zagens v0.4.3, Tauri 2)"]
+    subgraph desktop_pkg["crates/desktop  (Zagens v0.5.0, Tauri 2)"]
         WEB["web-ui (React + Vite)<br/>App.tsx · Composer · RightPanel<br/>api/client.ts"]
         TAURI["Tauri Shell<br/>main.rs · WindowRegistry · 托盘"]
         CMDS["commands.rs<br/>get_runtime_port · API Key · Vision<br/>系统设置 · 符号索引 · 终端 PTY"]
@@ -134,7 +134,7 @@ flowchart TB
 | turn_loop | [`crates/core/src/engine/turn_loop/mod.rs`](../../crates/core/src/engine/turn_loop/mod.rs) | `handle_deepseek_turn` / `TurnEnginePort` / `Session` |
 | Web 客户端 | [`crates/desktop/web-ui/src/api/client.ts`](../../crates/desktop/web-ui/src/api/client.ts) | `useTauriRuntimeProxy`；D10 `filterThreadStreamEvents`；D9 `turnControl.ts` |
 
-**版本线：** runtime workspace **0.8.15**（Rust 1.88+）；Zagens desktop **0.4.3**（独立 SemVer）。  
+**版本线：** runtime workspace **0.8.15**（Rust 1.88+）；Zagens desktop **0.5.0**（独立 SemVer）。  
 **~~CLI / TUI~~ 已删除（D6 Phase B）：** ~~`crates/cli`~~、~~`crates/tui`~~、~~ratatui TUI~~；headless / CI 直接对 **`deepseek-runtime`** 发 HTTP。  
 **~~实验路径~~ 已删除（D7 C5）：** ~~`deepseek app-server`~~ / ~~`crates/app-server`~~ — 见 [`adr/D4_APPSERVER_DEPRECATED.md`](./adr/D4_APPSERVER_DEPRECATED.md)。
 

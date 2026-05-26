@@ -7,7 +7,7 @@ All notable changes to **Zagens** and its embedded runtime will be documented in
 **Licensing:** Zagens (desktop app in `crates/desktop/`) is **proprietary** — see [LICENSE](LICENSE). Third-party runtime MIT license: [third-party/deepseek-tui/LICENSE](third-party/deepseek-tui/LICENSE) and [NOTICE.md](NOTICE.md).
 
 **Zagens** (desktop app in `crates/desktop/`) has its **own** version line:
-**MAJOR.MINOR.PATCH** in **SemVer** (e.g. **v0.4.3**). Display form **vX.Y.Z**;
+**MAJOR.MINOR.PATCH** in **SemVer** (e.g. **v0.5.0**). Display form **vX.Y.Z**;
 each numeric segment is one or more digits (e.g. `0.2.1`, `0.10.3`). This line
 **does not** follow the embedded runtime workspace version in root `Cargo.toml`
 `[workspace.package] version`.
@@ -20,8 +20,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-05-26
+
+### Zagens (desktop)
+
+- **v0.5.0** — 架构升级里程碑：`deepseek-desktop`、`tauri.conf.json`、`web-ui/package.json` 与 About 面板对齐 **v0.5.0**。主线：D6 Phase B（`deepseek-runtime` 单 crate、移除 CLI/TUI）、M7/M8（Engine 入 core）、D1/D4/D7/D8/D9/D10 与 Assessment **10/10** 定型；含多窗口空白修复与会话侧栏就绪重载。
+
 ### Fixed
 
+- **Zagens desktop / 多窗口：** 修复第二个（及后续）窗口空白——Windows 上在同步托盘/命令里创建 `WebviewWindow` 会触发 WebView2 死锁；`create_agent_window` 改为 `async`，托盘与单实例路径改 `spawn`；新建窗与主窗一致先 `visible(false)`，sidecar 已就绪时 `emit_to` 补发 `sidecar://ready`，前端启动门增加就绪探测。
 - **Zagens desktop / 侧栏会话列表：** sidecar 就绪前 `GET /v1/sessions` 失败后于 `sidecar://ready` 自动重载；回合结束时在 `finishOnce` 兜底 `persist-session`（修复 SSE 事件异步过滤导致未写入）；工作区路径比较改为大小写/分隔符无关，避免会话被误过滤。
 
 ### Changed

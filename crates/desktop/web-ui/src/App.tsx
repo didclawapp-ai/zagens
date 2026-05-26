@@ -1024,26 +1024,45 @@ export default function App() {
     refreshApiKeyStatus();
   }, [refreshApiKeyStatus]);
 
-  // ── Startup gate: window starts invisible; sidecar::ready event shows it ──
+  // ── Startup gate: windows start invisible; show when sidecar is ready ──
   useEffect(() => {
     if (!desktopHost) return;
+    let cancelled = false;
     let timedOut = false;
     let unlistenReady: (() => void) | undefined;
+
+    const showWindow = () => {
+      void import('@tauri-apps/api/window')
+        .then(({ getCurrentWindow }) => getCurrentWindow().show())
+        .catch(() => {});
+    };
+
+    const onReady = () => {
+      if (cancelled) return;
+      void refreshSessions();
+      showWindow();
+    };
+
     const fallback = setTimeout(() => {
       timedOut = true;
-      void import('@tauri-apps/api/window')
-         .then(({ getCurrentWindow }) => getCurrentWindow().show())
-         .catch(() => {});
-     }, 5000); // safety net: show anyway after 5s
-     void import('@tauri-apps/api/event')
-       .then(({ listen }) =>
-         listen<Record<string, unknown>>('sidecar://ready', () => {
-           clearTimeout(fallback);
-           void refreshSessions();
-           if (!timedOut) {
-             void import('@tauri-apps/api/window')
-               .then(({ getCurrentWindow }) => getCurrentWindow().show())
-               .catch(() => {});
+      showWindow();
+    }, 5000);
+
+    // Second+ windows open after boot never receive the global `sidecar://ready` broadcast.
+    void waitForRuntimeBootReady({ timeoutMs: 2_000, intervalMs: 100 }).then((ready) => {
+      if (cancelled || !ready) return;
+      clearTimeout(fallback);
+      if (!timedOut) {
+        onReady();
+      }
+    });
+
+    void import('@tauri-apps/api/event')
+      .then(({ listen }) =>
+        listen<Record<string, unknown>>('sidecar://ready', () => {
+          clearTimeout(fallback);
+          if (!timedOut) {
+            onReady();
           }
         }),
       )
@@ -1052,6 +1071,7 @@ export default function App() {
       })
       .catch(() => {});
     return () => {
+      cancelled = true;
       clearTimeout(fallback);
       unlistenReady?.();
     };

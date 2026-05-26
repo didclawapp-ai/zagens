@@ -1,6 +1,6 @@
 # Zagens API 设计文档
 
-> **Zagens 壳版本:** 0.4.3（`crates/desktop/Cargo.toml`）| **文档修订:** 2026-05-26 | **权威实现:** `commands.rs`、`runtime_proxy.rs`、`runtime_api/router.rs` `build_router`、`web-ui/src/api/client.ts`
+> **Zagens 壳版本:** 0.5.0（`crates/desktop/Cargo.toml`）| **文档修订:** 2026-05-26 | **权威实现:** `commands.rs`、`runtime_proxy.rs`、`runtime_api/router.rs` `build_router`、`web-ui/src/api/client.ts`
 
 本文档描述 **Zagens 桌面壳** 的双通道集成 API。协议类型见 `crates/protocol/`；HTTP 路由 SSOT 为 `crates/runtime-server/src/runtime_api/router.rs`（sidecar：**`deepseek-runtime`**）。
 
