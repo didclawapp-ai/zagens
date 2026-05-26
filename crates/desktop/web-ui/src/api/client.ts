@@ -177,7 +177,9 @@ export function isTransientRuntimeFetchError(err: unknown): boolean {
     msg.includes('failed to fetch') ||
     msg.includes('networkerror') ||
     msg.includes('load failed') ||
-    msg.includes('network request failed')
+    msg.includes('network request failed') ||
+    msg.includes('端口未发布') ||
+    msg.includes('尚未就绪')
   );
 }
 
@@ -207,7 +209,12 @@ async function fetchResponseWithBackoff(
       await sleep(RUNTIME_FETCH_BASE_DELAY_MS * 2 ** attempt);
     }
   }
-  console.warn(`[zagens] ${context}: fetch failed after ${RUNTIME_FETCH_ATTEMPTS} attempts`, last);
+  const lastMsg = last instanceof Error ? last.message : String(last);
+  const sidecarBoot =
+    lastMsg.includes('端口未发布') || lastMsg.includes('尚未就绪');
+  if (!sidecarBoot) {
+    console.warn(`[zagens] ${context}: fetch failed after ${RUNTIME_FETCH_ATTEMPTS} attempts`, last);
+  }
   throw enrichRuntimeNetworkError(last);
 }
 
@@ -655,7 +662,8 @@ export function filterThreadStreamEvents(
     return onEvent;
   }
   return (ev) => {
-    if (!peekWindowOwnsThread(tid)) {
+    if (peekWindowOwnsThread(tid)) {
+      onEvent(ev);
       return;
     }
     void windowOwnsThreadForStream(tid).then((owns) => {
@@ -1010,15 +1018,23 @@ export async function deleteSession(sessionId: string): Promise<void> {
   throw err;
 }
 
+function sessionWorkspaceField(raw: unknown): string | undefined {
+  if (typeof raw === 'string') {
+    const t = raw.trim();
+    return t.length > 0 ? t : undefined;
+  }
+  return undefined;
+}
+
 export async function getSessions(): Promise<SessionInfo[]> {
   const data = await fetchJson<{
-    sessions: Array<{ id: string; title: string; workspace?: string }>;
+    sessions: Array<{ id: string; title: string; workspace?: unknown }>;
   }>('/v1/sessions');
   const rows = data.sessions ?? [];
   return rows.map((s) => ({
     id: s.id,
     name: s.title,
-    workspace: s.workspace?.trim() || undefined,
+    workspace: sessionWorkspaceField(s.workspace),
   }));
 }
 

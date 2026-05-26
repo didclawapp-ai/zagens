@@ -9,6 +9,16 @@ export function normalizeWorkspaceForApi(ws: string): string {
   return t;
 }
 
+/** Compare workspace roots for sidebar filtering (case/separator tolerant on Windows). */
+export function workspacesMatch(a: string, b: string): boolean {
+  const left = normalizeWorkspaceForApi(a).replace(/\\/g, '/').replace(/\/+$/, '');
+  const right = normalizeWorkspaceForApi(b).replace(/\\/g, '/').replace(/\/+$/, '');
+  if (!left || !right) {
+    return left === right;
+  }
+  return left.toLowerCase() === right.toLowerCase();
+}
+
 /** True when stored workspace should be replaced (e.g. `.` → process cwd / System32). */
 export function isUnsafeComposerWorkspace(ws: string): boolean {
   const t = ws.trim().replace(/\\/g, '/').toLowerCase();

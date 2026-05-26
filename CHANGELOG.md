@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Zagens desktop / 侧栏会话列表：** sidecar 就绪前 `GET /v1/sessions` 失败后于 `sidecar://ready` 自动重载；回合结束时在 `finishOnce` 兜底 `persist-session`（修复 SSE 事件异步过滤导致未写入）；工作区路径比较改为大小写/分隔符无关，避免会话被误过滤。
+
 ### Changed
 
 - **Architecture / D6 Phase B 文档同步（2026-05-26）：** [`RUNTIME_ARCHITECTURE.md`](docs/tech/RUNTIME_ARCHITECTURE.md)、[`D6_IMPLEMENTATION_PLAN.md`](docs/tech/adr/D6_IMPLEMENTATION_PLAN.md)、[`D6_RUNTIME_SERVER.md`](docs/tech/adr/D6_RUNTIME_SERVER.md)、[`API_DESIGN.md`](docs/tech/API_DESIGN.md)、[`ARCHITECTURE_ASSESSMENT_2026-05-25.md`](docs/tech/adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md)、[`DEV_NOTES.md`](docs/desktop/DEV_NOTES.md)、[`README.md`](README.md) 同步 Phase B 落地态（`deepseek-runtime` 单 crate；路径 `crates/runtime-server`）。

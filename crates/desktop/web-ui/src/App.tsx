@@ -111,6 +111,7 @@ import {
   fetchDefaultComposerWorkspace,
   isUnsafeComposerWorkspace,
   normalizeWorkspaceForApi,
+  workspacesMatch,
 } from './lib/defaultWorkspace';
 import { confirmDialog } from './lib/confirmDialog';
 import { toast, RUNTIME_TRANSIENT_TAG } from './lib/toast';
@@ -349,7 +350,7 @@ export default function App() {
     if (!root) return sessions;
     return sessions.filter((s) => {
       if (!s.workspace?.trim()) return true;
-      return normalizeWorkspaceForApi(s.workspace) === root;
+      return workspacesMatch(s.workspace, root);
     });
   }, [sessions, showAllSessions, selectedWorkspace]);
 
@@ -1027,6 +1028,7 @@ export default function App() {
   useEffect(() => {
     if (!desktopHost) return;
     let timedOut = false;
+    let unlistenReady: (() => void) | undefined;
     const fallback = setTimeout(() => {
       timedOut = true;
       void import('@tauri-apps/api/window')
@@ -1037,6 +1039,7 @@ export default function App() {
        .then(({ listen }) =>
          listen<Record<string, unknown>>('sidecar://ready', () => {
            clearTimeout(fallback);
+           void refreshSessions();
            if (!timedOut) {
              void import('@tauri-apps/api/window')
                .then(({ getCurrentWindow }) => getCurrentWindow().show())
@@ -1044,9 +1047,15 @@ export default function App() {
           }
         }),
       )
+      .then((fn) => {
+        unlistenReady = fn;
+      })
       .catch(() => {});
-    return () => clearTimeout(fallback);
-  }, [desktopHost]);
+    return () => {
+      clearTimeout(fallback);
+      unlistenReady?.();
+    };
+  }, [desktopHost, refreshSessions]);
 
   useEffect(() => {
     if (!desktopHost) return;
@@ -1693,6 +1702,28 @@ export default function App() {
           }),
         );
       };
+      const maybePersistCompletedTurn = () => {
+        const { threadId, turnId } = threadTurnRef.current;
+        if (!threadId || !turnId || turnId === lastPersistedTurnRef.current) {
+          return;
+        }
+        lastPersistedTurnRef.current = turnId;
+        void (async () => {
+          try {
+            const res = await persistThreadSession(threadId, activeSessionIdRef.current);
+            setActiveSessionId(res.session_id);
+            try {
+              localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, res.session_id);
+            } catch {
+              /* ignore */
+            }
+            await refreshSessions();
+          } catch (e) {
+            toast.error(t('banner.persistSessionFailed', { message: (e as Error).message }));
+          }
+        })();
+      };
+
       const finishOnce = () => {
         if (finished) return;
         finished = true;
@@ -1730,6 +1761,7 @@ export default function App() {
         if (tid) {
           void refreshThreadContext(tid);
         }
+        maybePersistCompletedTurn();
       };
       streamSessionRef.current = { markInterrupted, finishOnce };
 
@@ -1748,28 +1780,6 @@ export default function App() {
             }
           } catch {
             /* browser mode — not supported */
-          }
-        })();
-      };
-
-      const maybePersistCompletedTurn = () => {
-        const { threadId, turnId } = threadTurnRef.current;
-        if (!threadId || !turnId || turnId === lastPersistedTurnRef.current) {
-          return;
-        }
-        lastPersistedTurnRef.current = turnId;
-        void (async () => {
-          try {
-            const res = await persistThreadSession(threadId, activeSessionIdRef.current);
-            setActiveSessionId(res.session_id);
-            try {
-              localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, res.session_id);
-            } catch {
-              /* ignore */
-            }
-            await refreshSessions();
-          } catch (e) {
-            toast.error(t('banner.persistSessionFailed', { message: (e as Error).message }));
           }
         })();
       };
@@ -1910,7 +1920,6 @@ export default function App() {
           }
           case 'turn_completed':
             finishOnce();
-            maybePersistCompletedTurn();
             notifyTurnCompleteIfAway(desktopHost);
             if (norm.usage?.output_tokens != null && norm.usage.output_tokens > 0) {
               setLastTurnOutputTokens(norm.usage.output_tokens);
@@ -1918,7 +1927,6 @@ export default function App() {
             break;
           case 'done':
             finishOnce();
-            maybePersistCompletedTurn();
             notifyTurnCompleteIfAway(desktopHost);
             break;
           case 'error':
