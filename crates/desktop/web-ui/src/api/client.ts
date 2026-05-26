@@ -1387,13 +1387,25 @@ export interface BlackboardListResponse {
   tasks: string[];
 }
 
-export async function fetchBlackboardList(): Promise<string[]> {
-  const res = await fetchJsonPoll<BlackboardListResponse>('/v1/blackboards');
+function blackboardWorkspaceQuery(workspace?: string): string {
+  const ws = normalizeWorkspaceForApi(workspace?.trim() ?? '');
+  return ws.length > 0 ? `?workspace=${encodeURIComponent(ws)}` : '';
+}
+
+export async function fetchBlackboardList(workspace?: string): Promise<string[]> {
+  const res = await fetchJsonPoll<BlackboardListResponse>(
+    `/v1/blackboards${blackboardWorkspaceQuery(workspace)}`,
+  );
   return Array.isArray(res.tasks) ? res.tasks : [];
 }
 
-export async function fetchBlackboardDetail(taskId: string): Promise<unknown> {
-  return fetchJsonPoll(`/v1/blackboards/${encodeURIComponent(taskId)}`);
+export async function fetchBlackboardDetail(
+  taskId: string,
+  workspace?: string,
+): Promise<unknown> {
+  return fetchJsonPoll(
+    `/v1/blackboards/${encodeURIComponent(taskId)}${blackboardWorkspaceQuery(workspace)}`,
+  );
 }
 
 // ========== Topic memory graph (B-L3) ==========

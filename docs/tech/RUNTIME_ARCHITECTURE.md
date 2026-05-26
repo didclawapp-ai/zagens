@@ -225,7 +225,6 @@ flowchart BT
     EXEC["deepseek-execpolicy"]
     HOOKS["deepseek-hooks"]
     MCP["deepseek-mcp"]
-    STATE["deepseek-state<br/>(core 编译依赖；非 sidecar SSOT)"]
 
     DESK --> CFG
     DESK --> SEC
@@ -243,7 +242,6 @@ flowchart BT
     CORE --> HOOKS
     CORE --> MCP
     CORE --> PROTO
-    CORE --> STATE
     CORE --> TOOLS
 
     classDef product fill:#1e3a5f,stroke:#60a5fa,color:#fff
@@ -257,7 +255,7 @@ flowchart BT
 | **deepseek-core** | `crates/core/` | `Engine` + `op_loop` + `turn_loop` / Session / `TurnEnginePort` / 工具目录 |
 | ~~**deepseek-app-server**~~ | — | **已删除**（D7 C5）；见 [D4_APPSERVER_DEPRECATED.md](./adr/D4_APPSERVER_DEPRECATED.md) |
 | ~~**deepseek-tui** / ~~**deepseek CLI**~~ | — | **已删除**（D6 Phase B）；见 [D6_PHASE_B_CLI_SUNSET.md](./adr/D6_PHASE_B_CLI_SUNSET.md) |
-| **deepseek-state** | `crates/state/` | `StateStore` 等类型；**`deepseek-core` 仍编译依赖**；**非** sidecar HTTP SSOT（生产用 `sessions.db` + `runtime.db`） |
+| ~~**deepseek-state**~~ | — | **已删除**（D15）；见 [D15_FINAL_ARCHITECTURE_CONVERGENCE.md](./adr/D15_FINAL_ARCHITECTURE_CONVERGENCE.md) |
 | **deepseek-topic-memory** | `crates/topic-memory/` | B2 话题记忆 + `/v1/topic-memory` |
 
 **关键事实（与各 `Cargo.toml` 一一核对）：**
@@ -279,7 +277,6 @@ flowchart BT
 |----|------|------|----------|
 | **Sessions** | 桌面侧栏会话、消息快照、`runtime_thread_id` | [`session_manager.rs`](../../crates/runtime-server/src/session_manager.rs) + [`session_store_sqlite.rs`](../../crates/runtime-server/src/session_store_sqlite.rs) | `~/.deepseek/sessions/` |
 | **Runtime threads** | HTTP `/v1/threads/*`、回合、事件、SSE | [`runtime_threads/persist.rs`](../../crates/runtime-server/src/runtime_threads/persist.rs) + [`thread_store_sqlite.rs`](../../crates/runtime-server/src/thread_store_sqlite.rs) | `~/.deepseek/tasks/runtime/`（`DEEPSEEK_RUNTIME_DIR` / `DEEPSEEK_TASKS_DIR`） |
-| **StateStore legacy** | `deepseek-core` 内 `ThreadManager` 等历史类型；**非** sidecar HTTP 路径 | [`deepseek-state`](../../crates/state/) | `~/.deepseek/state.db`（旧 CLI 时代；**非** 生产 SSOT） |
 
 **Runtime 数据布局**（schema v2）：`threads/`、`turns/`、`items/`、`events/` + `runtime.db` SQLite；路由规则 `routing_rules.json`。
 
@@ -459,4 +456,6 @@ sequenceDiagram
 - **架构定型（2026-05-26）：** [ARCHITECTURE_ASSESSMENT §1 = 10/10](./adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md) — M-series、D6–D8、D7、D1 均已闭合；**可正常推进产品功能**，仍须遵守 Assessment §7.1 红线（`/v1/*` 须 OpenAPI、`desktop` 不链 `core`/runtime lib 等）。
 - **D10 已解除（2026-05-24）：** P2 后桌面 GAP 解冻；见 [P2_D10_UNFREEZE_RECORD.md](./adr/P2_D10_UNFREEZE_RECORD.md)。
 
-**剩余非阻塞债（定型后）：** `deepseek-core` 对 `deepseek-state` 的编译期依赖清理；§6 冷启动 profiling；P2（D11–D14）。
+- **D15 架构收官（2026-05-26）：** 删除 `deepseek-state` 与 `core::Runtime`；Sidecar 仅 `deepseek-runtime` — [D15_FINAL_ARCHITECTURE_CONVERGENCE.md](./adr/D15_FINAL_ARCHITECTURE_CONVERGENCE.md)。
+
+**剩余非阻塞债（定型后）：** §6 冷启动 profiling；P2 增强（D11–D14 metrics / MCP 池 / Capability Manifest 等）。

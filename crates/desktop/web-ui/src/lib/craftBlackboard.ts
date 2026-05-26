@@ -65,15 +65,17 @@ export function summarizeBlackboard(
   };
 }
 
-export async function fetchCraftBlackboardTasks(): Promise<CraftBlackboardTaskSummary[]> {
-  const ids = await fetchBlackboardList();
+export async function fetchCraftBlackboardTasks(
+  workspace?: string,
+): Promise<CraftBlackboardTaskSummary[]> {
+  const ids = await fetchBlackboardList(workspace);
   if (ids.length === 0) {
     return [];
   }
   const summaries = await Promise.all(
     ids.map(async (taskId) => {
       try {
-        const board = await fetchBlackboardDetail(taskId);
+        const board = await fetchBlackboardDetail(taskId, workspace);
         return summarizeBlackboard(taskId, board);
       } catch {
         return {

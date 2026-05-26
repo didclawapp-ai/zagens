@@ -1,4 +1,4 @@
-//! Turn loop (P2 PR4): [`handle_deepseek_turn`] in `deepseek-core`; L2 phases here.
+//! Turn loop (P2 PR4): [`handle_deepseek_turn`] in `deepseek-core`; sidecar L2 phases here.
 
 pub(crate) mod host_impl;
 mod tool_plans_exec;

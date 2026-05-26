@@ -10,13 +10,9 @@ description = "Core runtime boundaries for DeepSeek workspace architecture"
 anyhow.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
-deepseek-agent = { path = "../agent", version = "0.8.15" }
 deepseek-config = { path = "../config", version = "0.8.15" }
 deepseek-execpolicy = { path = "../execpolicy", version = "0.8.15" }
-deepseek-hooks = { path = "../hooks", version = "0.8.15" }
-deepseek-mcp = { path = "../mcp", version = "0.8.15" }
 deepseek-protocol = { path = "../protocol", version = "0.8.15" }
-deepseek-state = { path = "../state", version = "0.8.15" }
 deepseek-tools = { path = "../tools", version = "0.8.15" }
 futures-util = { version = "0.3", features = ["std"] }
 serde.workspace = true

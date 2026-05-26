@@ -9,7 +9,6 @@ members = [
     "crates/protocol",
     "crates/runtime-server",
     "crates/secrets",
-    "crates/state",
     "crates/tools",
     "crates/topic-memory",
     "crates/desktop",

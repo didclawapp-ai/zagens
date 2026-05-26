@@ -13,6 +13,8 @@ import { agentTypeLabel, isLikelySubAgentId, truncateObjective } from '../lib/ag
 
 interface Props {
   agents: AgentState[];
+  /** Composer / thread workspace — CRAFT blackboards live under `{workspace}/.deepseek/blackboards/`. */
+  workspaceRoot: string;
   runtimeConn: RuntimeConnectionState;
   streaming?: boolean;
   runtimeSessionEstablished?: boolean;
@@ -20,6 +22,7 @@ interface Props {
 
 export default function AgentPanel({
   agents,
+  workspaceRoot,
   runtimeConn,
   streaming = false,
   runtimeSessionEstablished = false,
@@ -45,13 +48,18 @@ export default function AgentPanel({
       setCraftTasks([]);
       return;
     }
+    const ws = workspaceRoot.trim();
+    if (!ws) {
+      setCraftTasks([]);
+      return;
+    }
     try {
-      const tasks = await fetchCraftBlackboardTasks();
+      const tasks = await fetchCraftBlackboardTasks(ws);
       setCraftTasks(tasks);
     } catch {
       // Keep last good snapshot on transient errors.
     }
-  }, [runtimeReady]);
+  }, [runtimeReady, workspaceRoot]);
 
   useEffect(() => {
     void refreshCraftTasks();

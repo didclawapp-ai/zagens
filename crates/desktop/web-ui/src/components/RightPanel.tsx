@@ -873,6 +873,7 @@ export default function RightPanel({
         {view === 'agents' && !officeSession && (
           <AgentPanel
             agents={agentStates}
+            workspaceRoot={workspaceRoot}
             runtimeConn={runtimeConn}
             streaming={streaming}
             runtimeSessionEstablished={runtimeSessionEstablished}

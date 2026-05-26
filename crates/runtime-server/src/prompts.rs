@@ -60,17 +60,23 @@ pub const PICK_RULES_RELATIVE_PATH: &str = ".deepseek/pick-rules.md";
 /// marker rather than skipped entirely so the model still sees the head.
 const INSTRUCTIONS_FILE_MAX_BYTES: usize = 100 * 1024;
 
-/// Env value used when Zagens spawns `deepseek serve` over HTTP.
-/// See `crates/desktop/src/sidecar.rs`.
+/// Env values used when Zagens spawns `deepseek serve` over HTTP.
+/// See `crates/desktop/src/sidecar.rs` (`zagens`) and legacy docs (`ds-pick`).
+pub(crate) const CLIENT_SURFACE_ZAGENS: &str = "zagens";
 pub(crate) const CLIENT_SURFACE_DS_PICK: &str = "ds-pick";
 
 const CLIENT_IDENTITY_TERMINAL: &str = "You are DeepSeek TUI. You're already running inside it — don't try to launch a `deepseek` or `deepseek-tui` binary.";
 
 const CLIENT_IDENTITY_DS_PICK: &str = "You are assisting inside **Zagens**, the DeepSeek desktop app (Tauri shell with an embedded chat UI). This session is hosted by Zagens, which connects to the local `deepseek serve` runtime on the loopback interface. When the user asks what software this conversation uses, answer **Zagens** — not \"DeepSeek TUI\" (that name refers to the terminal UI). Don't try to spawn another `deepseek` / `deepseek-tui` process unless the user explicitly asks.";
 
+fn is_zagens_client_surface(client_surface: &str) -> bool {
+    client_surface.eq_ignore_ascii_case(CLIENT_SURFACE_ZAGENS)
+        || client_surface.eq_ignore_ascii_case(CLIENT_SURFACE_DS_PICK)
+}
+
 fn resolved_ui_shell_label(client_surface: Option<&str>) -> Option<&'static str> {
     match client_surface.map(str::trim).filter(|s| !s.is_empty()) {
-        Some(s) if s.eq_ignore_ascii_case(CLIENT_SURFACE_DS_PICK) => Some("Zagens (desktop)"),
+        Some(s) if is_zagens_client_surface(s) => Some("Zagens (desktop)"),
         _ => None,
     }
 }
@@ -672,6 +678,15 @@ mod tests {
         assert!(super::client_identity_line(None).contains("DeepSeek TUI"));
         assert!(super::client_identity_line(Some("ds-pick")).contains("Zagens"));
         assert!(super::client_identity_line(Some("DS-PICK")).contains("Zagens"));
+        assert!(super::client_identity_line(Some("zagens")).contains("Zagens"));
+        assert!(super::client_identity_line(Some("ZAGENS")).contains("Zagens"));
+    }
+
+    #[test]
+    fn render_environment_block_includes_ui_shell_for_zagens_surface() {
+        let tmp = tempdir().expect("tempdir");
+        let block = render_environment_block_inner(tmp.path(), "en", Some("zagens"));
+        assert!(block.contains("- ui_shell: Zagens (desktop)"));
     }
 
     #[test]

@@ -20,6 +20,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Architecture
+
+- **D15 (Landed):** Final architecture convergence — removed `deepseek-state` crate and legacy `core::Runtime` / `ThreadMessageTurnPort`; Zagens Desktop is the sole user entry; sidecar spawn unified to `deepseek-runtime` only. Session remains a projection of `RuntimeThreadStore` (D7 `runtime_thread_id` link). See [`docs/tech/adr/D15_FINAL_ARCHITECTURE_CONVERGENCE.md`](docs/tech/adr/D15_FINAL_ARCHITECTURE_CONVERGENCE.md).
+
+### Changed
+
+- **Docs：** [`docs/prompt-architecture.md`](docs/prompt-architecture.md) 对齐 D6（`crates/runtime-server` 路径、`task overlay`、Engine 模块拆分、`DEEPSEEK_CLIENT_SURFACE=zagens`）。
+
+### Fixed
+
+- **Runtime / prompts：** `DEEPSEEK_CLIENT_SURFACE=zagens`（sidecar 实际值）现与遗留 `ds-pick` 一并识别，恢复 Zagens 客户端身份与 `## Environment` 的 `ui_shell: Zagens (desktop)`；此前仅匹配 `ds-pick` 时桌面会话误用 “DeepSeek TUI” 身份文案。
+- **Zagens desktop / CRAFT：** `GET /v1/blackboards` 支持 `?workspace=`（与 `/v1/workspace/browse` 一致）；AgentPanel 按当前 Composer 工作区拉取黑板，修复 D6 后 sidecar 默认 cwd（用户目录）与子 Agent 写入项目 `.deepseek/blackboards/` 不一致导致 CRAFT 任务列表为空。
+- **Runtime：** 移除已删除 `eval.rs` 的孤儿集成测 `eval_harness.rs`（D6 迁移遗留，阻塞 `cargo test -p deepseek-runtime-server`）。
+
 ## [0.5.0] - 2026-05-26
 
 ### Zagens (desktop)

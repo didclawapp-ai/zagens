@@ -1324,13 +1324,9 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
- "deepseek-agent",
  "deepseek-config",
  "deepseek-execpolicy",
- "deepseek-hooks",
- "deepseek-mcp",
  "deepseek-protocol",
- "deepseek-state",
  "deepseek-tools",
  "dirs",
  "futures-util",
@@ -1350,7 +1346,7 @@ dependencies = [
 
 [[package]]
 name = "deepseek-desktop"
-version = "0.4.3"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -1499,18 +1495,6 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.17",
  "tracing",
-]
-
-[[package]]
-name = "deepseek-state"
-version = "0.8.15"
-dependencies = [
- "anyhow",
- "chrono",
- "dirs",
- "rusqlite",
- "serde",
- "serde_json",
 ]
 
 [[package]]

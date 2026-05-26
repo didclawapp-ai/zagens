@@ -156,25 +156,13 @@ fn bundled_python_executable(app: &AppHandle) -> Option<PathBuf> {
     None
 }
 
-fn runtime_sidecar_cli_args(deepseek_bin: &str, port: &str) -> Vec<String> {
-    let legacy_tui = deepseek_bin.contains("deepseek-tui");
-    let mut args = if legacy_tui {
-        vec![
-            "serve".into(),
-            "--http".into(),
-            "--host".into(),
-            "127.0.0.1".into(),
-            "--port".into(),
-            port.into(),
-        ]
-    } else {
-        vec![
-            "--host".into(),
-            "127.0.0.1".into(),
-            "--port".into(),
-            port.into(),
-        ]
-    };
+fn runtime_sidecar_cli_args(port: &str) -> Vec<String> {
+    let mut args = vec![
+        "--host".into(),
+        "127.0.0.1".into(),
+        "--port".into(),
+        port.into(),
+    ];
     args.push("--cors-origin".into());
     args.push("http://tauri.localhost".into());
     args.push("--cors-origin".into());
@@ -192,14 +180,13 @@ fn spawn_sidecar(app: &AppHandle, deepseek_bin: &str, port: u16, token: &str) ->
     }
 
     // Pull the DeepSeek API key from OS keyring so it never sits in config.toml
-    // or any other file plaintext. The sidecar TUI picks it up via its existing
-    // env-var resolution path (DEEPSEEK_API_KEY).
+    // or any other file plaintext. The sidecar picks it up via DEEPSEEK_API_KEY.
     let secrets = deepseek_secrets::Secrets::auto_detect();
     if let Some(api_key) = secrets.resolve("deepseek") {
         std_cmd.env("DEEPSEEK_API_KEY", api_key);
     }
     std_cmd
-        .args(runtime_sidecar_cli_args(deepseek_bin, port_s.as_str()))
+        .args(runtime_sidecar_cli_args(port_s.as_str()))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped());
     if let Some(log_path) = sidecar_stderr_log_path() {
@@ -389,7 +376,7 @@ fn spawn_stdout_forwarder(
 }
 
 /// Best-effort: stop processes listening on loopback `port` so we can bind a new sidecar.
-/// Used when an old `deepseek-tui serve` is still bound after the desktop app restarted
+/// Used when an old sidecar is still bound after the desktop app restarted
 /// (new random auth token → `/health` OK but `/v1/*` returns 401).
 fn kill_processes_listening_on_local_port(port: u16) -> Result<()> {
     #[cfg(windows)]
@@ -788,8 +775,9 @@ fn scan_sidecar_dir(dir: &Path) -> Option<PathBuf> {
         .map(|e| e.path())
         .filter(|p| {
             p.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
-                (n.starts_with("deepseek-runtime") && n != "deepseek-runtime" && n != "deepseek-runtime.exe")
-                    || (n.starts_with("deepseek-tui") && n != "deepseek-tui" && n != "deepseek-tui.exe")
+                n.starts_with("deepseek-runtime")
+                    && n != "deepseek-runtime"
+                    && n != "deepseek-runtime.exe"
             })
         })
         .collect();
@@ -823,7 +811,7 @@ fn find_deepseek_binary(app: &AppHandle) -> String {
         return p.to_string_lossy().into_owned();
     }
 
-    let candidates = ["deepseek-runtime", "deepseek-tui", "deepseek"];
+    let candidates = ["deepseek-runtime"];
     for name in &candidates {
         if std::process::Command::new(name)
             .arg("--version")

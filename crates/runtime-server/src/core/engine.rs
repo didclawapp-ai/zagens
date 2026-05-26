@@ -1,7 +1,7 @@
-//! Tui-side Engine wiring (M7 strangler shim).
+//! Runtime adapter Engine wiring (M7 strangler shim).
 //!
 //! The struct, channels, and `Engine::with_hosts` live in `deepseek-core`;
-//! this module re-exports them and provides the tui builder.
+//! this module provides the sidecar builder and host injection.
 
 #![allow(unused_imports, reason = "prelude_uses imports consumed by engine submodules via `super::*`")]
 
@@ -62,7 +62,7 @@ pub struct Engine(
     >,
 );
 
-/// Reborrow the tui wrapper over a core engine reference (M8 op dispatch).
+/// Reborrow the runtime adapter over a core engine reference (M8 op dispatch).
 pub(in crate::core::engine) fn engine_from_core(
     core: &mut deepseek_core::engine::Engine<
         crate::sandbox::SandboxPolicy,

@@ -1,8 +1,7 @@
-//! Engine boundary (P2 PR2–PR3).
+//! Session and turn loop boundaries (P2 PR2–PR4).
 //!
 //! `Session` and related state live here. The live `Engine` / `turn_loop`
-//! implementation remains in `deepseek-tui::core::engine` until PR4 thins the
-//! shell wrapper (see `docs/tech/adr/P2_MIGRATION_SPIKE.md`).
+//! implementation is in `deepseek-core`; the sidecar provides host adapters.
 //!
 //! **PR3:** `StartTurnParams` + `TurnEnginePort` — `RuntimeThreadManager::start_turn`
 //! validates and delegates through core before sending `Op::SendMessage`.

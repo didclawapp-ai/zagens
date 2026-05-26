@@ -236,7 +236,7 @@ fn wrap_with_deprecation_notice(
 
 // === Types (serde shapes in `deepseek-core::subagent`) ===
 
-/// System prompt for a sub-agent type (prompts remain in `deepseek-tui`).
+/// System prompt for a sub-agent type (`runtime-server` / `prompts/`).
 #[must_use]
 pub fn subagent_system_prompt(agent_type: &SubAgentType) -> String {
     match *agent_type {

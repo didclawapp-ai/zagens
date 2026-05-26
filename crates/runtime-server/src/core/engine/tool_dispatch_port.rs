@@ -1,4 +1,4 @@
-//! Bridges the TUI `ToolRegistry` to `deepseek-core::engine::EngineToolDispatch` (P2 PR4).
+//! Bridges the sidecar `ToolRegistry` to `deepseek-core::engine::EngineToolDispatch` (P2 PR4).
 
 use std::sync::Arc;
 

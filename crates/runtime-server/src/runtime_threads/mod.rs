@@ -47,7 +47,6 @@ mod thread_crud;
 mod monitor;
 mod persist;
 mod routing;
-mod thread_message_turn_port;
 mod turn_wait;
 mod types;
 
@@ -59,8 +58,6 @@ pub use types::*;
 pub(crate) use events::AgentRebindStatus;
 #[cfg(test)]
 pub(crate) use persist::RuntimeThreadStore;
-#[cfg(test)]
-pub(crate) use thread_message_turn_port::RuntimeThreadMessageTurnPort;
 
 #[cfg(test)]
 pub(crate) use active::{

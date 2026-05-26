@@ -1,6 +1,10 @@
 # Prompt System Architecture
 
-本文档用 Mermaid 图描述 Zagens / DeepSeek TUI 的 prompt 系统完整架构。所有函数名、文件路径、模块名均与源码严格对应。
+本文档用 Mermaid 图描述 **Zagens 桌面端**（经 sidecar 启动的 `deepseek-runtime-server`）的 prompt 系统完整架构。函数名、模块名与源码对应；**行号仅作近似锚点**，以符号搜索为准。
+
+**源码根（D6 Phase B 之后）：** `crates/runtime-server/src/` — 主入口 `prompts.rs`、分层 Markdown 在 `prompts/`、子 Agent 在 `tools/subagent/mod.rs`。历史路径 `crates/tui/src/prompts/` 已移除。
+
+**最后对齐：** 2026-05-26（`DEEPSEEK_CLIENT_SURFACE=zagens` + 遗留 `ds-pick`）。
 
 ---
 
@@ -10,7 +14,8 @@
 flowchart TD
     subgraph COMPILE["compile-time 嵌入 (include_str!)"]
         direction LR
-        F1["prompts/base.md<br/>核心契约 · 工具规则"]
+        F0a["prompts/base.md · base-office.md<br/>Code / Office 核心契约"]
+        F0b["prompts/tasks/code.md · office.md<br/>task overlay"]
         F2["prompts/personalities/calm.md<br/>voice overlay"]
         F3["prompts/modes/agent.md<br/>mode delta"]
         F4["prompts/approvals/suggest.md<br/>approval policy"]
@@ -23,8 +28,8 @@ flowchart TD
 
     subgraph ASSEMBLY["prompts.rs"]
         direction TB
-        A0["compose_base_prompt_layer()<br/>client_identity_line + base.md"]
-        A1["compose_prompt_with_approval()<br/>base + personality + mode + approval"]
+        A0["compose_base_prompt_layer_for_task()<br/>client_identity + base.md | base-office.md"]
+        A1["compose_prompt_with_approval()<br/>base + personality + mode + task + approval"]
         A2["compose_mode_prompt_with_approval()<br/>Calm personality wrapper"]
     end
 
@@ -34,17 +39,19 @@ flowchart TD
         B2["render_environment_block()<br/>lang / ui_shell / platform / shell / pwd"]
         B3["merge_instruction_paths_with_pick_rules()<br/>.deepseek/pick-rules.md + config.toml"]
         B4["render_instructions_block()<br/>&lt;instructions&gt; blocks"]
-        B5["compose_block() → memory.rs<br/>&lt;user_memory&gt; block"]
+        B5["memory::compose_block()<br/>&lt;user_memory&gt; block"]
+        B5b["topic_memory::compose_block()<br/>B2 topic graph (cadence)"]
         B6["render_available_skills_context_for_workspace()<br/>skills catalog"]
         B7["Context Management<br/>inline const (Agent/YOLO only)"]
         B8["COMPACT_TEMPLATE<br/>compile-time"]
         B9["load_handoff_block()<br/>.deepseek/handoff.md"]
     end
 
-    ENTRY["system_prompt_for_mode_with_context_skills_session_and_approval()<br/>prompts.rs:445"]
+    ENTRY["system_prompt_for_mode_with_context_skills_session_and_approval()<br/>prompts.rs"]
     FINAL["SystemPrompt::Text(full_prompt)"]
 
-    F1 --> A0
+    F0a --> A0
+    F0b --> A1
     A0 --> A1
     F2 --> A1
     F3 --> A1
@@ -61,6 +68,7 @@ flowchart TD
     B3 --> B4
     B4 --> ENTRY
     B5 --> ENTRY
+    B5b --> ENTRY
     B6 --> ENTRY
     B7 --> ENTRY
     B8 --> ENTRY
@@ -78,7 +86,7 @@ flowchart TD
 
 ```
 ┌── compile-time constants ──────────────────────────────────────┐  ← cache hit
-│  client_identity  →  base.md  →  personality  →  mode  →  approval  │
+│  client_identity  →  base.md  →  personality  →  mode  →  task  →  approval  │
 ├── workspace-static ────────────────────────────────────────────┤  ← cache hit
 │  project_context  →  environment  →  instructions  →  memory   │
 │  →  session_goal  →  skills  →  context_mgmt  →  compact_tmpl │
@@ -95,22 +103,22 @@ flowchart TD
 ```mermaid
 flowchart TD
     subgraph INIT["启动"]
-        E1["Engine::new()<br/>engine.rs:402"]
-        E2["refresh_system_prompt(mode)<br/>engine.rs:1827"]
-        E3["merge_system_prompts()<br/>compaction.rs:1413"]
-        E4["system_prompt_hash()<br/>hash 去重检测"]
+        E1["Engine::new()<br/>core/engine/build.rs"]
+        E2["refresh_system_prompt()<br/>core/engine/cycle_hooks.rs"]
+        E3["merge_system_prompts()<br/>compaction/prompt.rs"]
+        E4["system_prompt_hash()<br/>cycle_hooks · hash 去重"]
     end
 
-    subgraph TURN["Turn Loop (turn_loop.rs)"]
+    subgraph TURN["Turn Loop"]
         T0["每轮开始"]
-        T1["refresh_system_prompt(mode)<br/>turn_loop.rs:78"]
+        T1["refresh_system_prompt()<br/>turn_loop/host_impl · capacity_flow"]
         T2{"compaction.enabled<br/>&& should_compact()?"}
-        T3["compact_messages_safe()<br/>点击压缩旧消息"]
+        T3["compact_messages_safe()<br/>compaction/ · 点击压缩旧消息"]
         T4["merge_compaction_summary()<br/>summary 合并入 system prompt"]
-        T5["messages_with_turn_metadata()<br/>turn_loop.rs:1819"]
+        T5["messages_with_turn_metadata()<br/>core/engine/turn_loop/mod.rs"]
         T6["<turn_meta> 注入最新 user msg<br/>working set + today date"]
         T7["MessageRequest 组装<br/>model + messages + system + tools"]
-        T8["build_chat_messages_for_request()<br/>client/chat.rs:403"]
+        T8["build_chat_messages_for_request()<br/>client/chat.rs"]
         T9["build_chat_messages_with_reasoning()<br/>system → role: system JSON"]
         T10["POST /v1/chat/completions<br/>DeepSeek API"]
         T11["parse SSE stream → ContentBlock"]
@@ -146,12 +154,12 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    TRIGGER["estimated tokens > 80% of context window<br/>compaction.rs:613"]
+    TRIGGER["estimated tokens > threshold<br/>compaction/tokens.rs · should_compact()"]
     CHECK{"compaction.enabled?"}
-    COMPACT["compact_messages_safe()<br/>compaction.rs:867"]
+    COMPACT["compact_messages_safe()<br/>compaction/"]
     SUMMARIZE["LLM 总结旧消息<br/>CompactionResult { messages, summary_prompt }"]
-    MERGE_SESSION["Engine::merge_compaction_summary()<br/>engine.rs:1853"]
-    MERGE_FN["merge_system_prompts()<br/>original + summary → SystemPrompt::Blocks"]
+    MERGE_SESSION["Engine::merge_compaction_summary()<br/>core/engine/compaction_ops · capacity_flow"]
+    MERGE_FN["merge_system_prompts()<br/>compaction/prompt.rs → SystemPrompt::Blocks"]
     UPDATE_HASH["system_prompt_hash() → 更新 session"]
     WRITE_HANDOFF["写入 .deepseek/handoff.md<br/>compact.md 格式"]
     FMT["Goal / Constraints / Progress<br/>Key Decisions / Next step"]
@@ -180,7 +188,7 @@ flowchart TD
     PARENT["父 Agent 调用 agent_spawn()"]
     SPAWN["AgentSpawnTool::execute()<br/>subagent/mod.rs"]
 
-    subgraph TYPES["SubAgentType::system_prompt()<br/>subagent/mod.rs:282"]
+    subgraph TYPES["subagent_system_prompt()<br/>tools/subagent/mod.rs"]
         direction LR
         G["General → GENERAL_AGENT_PROMPT"]
         X["Explore → EXPLORE_AGENT_PROMPT"]
@@ -192,15 +200,17 @@ flowchart TD
         C["Custom → CUSTOM_AGENT_PROMPT"]
     end
 
-    ROLE["build_subagent_system_prompt()<br/>subagent/mod.rs:2648<br/>+ role: 'You are operating in the role of `...`'"]
-    ASSIGN["build_assignment_prompt()<br/>prompt + assignment context<br/>+ blackboard section (CRAFT P1)"]
-    ENGINE["run_subagent()<br/>subagent/mod.rs:2837<br/>创建 child Engine, 独立 session"]
+    ROLE["build_subagent_system_prompt()<br/>+ role overlay when set"]
+    ASSIGN["build_assignment_prompt()<br/>objective + blackboard (CRAFT P1)"]
+    ENGINE["run_subagent()<br/>child Engine, 独立 session"]
+    RULES["prompts/audit_rules/*.md<br/>Auditor 语言规则（未 include；靠 read_file 或内联摘要）"]
     LOOP["for _step in 0..max_steps:<br/>stream → tool calls → results"]
     DONE["<deepseek:subagent.done> sentinel<br/>→ parent 的 message stream"]
 
     PARENT --> SPAWN
     SPAWN --> TYPES
     TYPES --> ROLE
+    A -.-> RULES
     ROLE --> ASSIGN
     ASSIGN --> ENGINE
     ENGINE --> LOOP
@@ -220,7 +230,7 @@ flowchart TD
 | **Review** | `REVIEW_AGENT_PROMPT` | 代码审查: read + analysis |
 | **Implementer** | `IMPLEMENTER_AGENT_PROMPT` | 写代码: write_file, edit_file, apply_patch, + CRAFT git stash |
 | **Verifier** | `VERIFIER_AGENT_PROMPT` | 运行测试: exec_shell, task_gate_run |
-| **Auditor** | `AUDITOR_AGENT_PROMPT` | 机械事实核查: read_file, grep_files only |
+| **Auditor** | `AUDITOR_AGENT_PROMPT` | 机械事实核查（默认继承全工具面；规则见 `prompts/audit_rules/`） |
 | **Custom** | `CUSTOM_AGENT_PROMPT` | spawn 时指定 |
 
 ---
@@ -251,21 +261,21 @@ flowchart LR
 ```mermaid
 flowchart TD
     subgraph DESKTOP["Zagens Tauri App"]
-        SIDECAR["spawn_sidecar()<br/>desktop/src/sidecar.rs:123"]
-        ENV["env: DEEPSEEK_CLIENT_SURFACE=ds-pick"]
-        SERVE["deepseek serve<br/>启动 HTTP server"]
+        SIDECAR["spawn_sidecar()<br/>crates/desktop/src/sidecar.rs"]
+        ENV["env: DEEPSEEK_CLIENT_SURFACE=zagens"]
+        SERVE["deepseek-runtime-server<br/>HTTP sidecar"]
     end
 
-    subgraph TUI["TUI Runtime (被 sidecar 启动)"]
-        DETECT["client_identity_line_from_env()<br/>prompts.rs:83"]
-        SWITCH{"DEEPSEEK_CLIENT_SURFACE<br/>== ds-pick ?"}
-        ID_PICK["CLIENT_IDENTITY_DS_PICK:<br/>'You are assisting inside Zagens...'"]
-        ID_TUI["CLIENT_IDENTITY_TERMINAL:<br/>'You are DeepSeek TUI...'"]
+    subgraph RUNTIME["Runtime (deepseek-runtime-server)"]
+        DETECT["client_identity_line_from_env()<br/>prompts.rs"]
+        SWITCH{"surface == zagens<br/>or ds-pick (legacy)?"}
+        ID_ZAGENS["CLIENT_IDENTITY_DS_PICK 文案<br/>'assisting inside Zagens...'"]
+        ID_TUI["CLIENT_IDENTITY_TERMINAL<br/>'You are DeepSeek TUI...'"]
         ENV_BLOCK["render_environment_block()<br/>+ ui_shell: Zagens (desktop)"]
     end
 
     subgraph WEB["Desktop Web UI"]
-        PANEL["SystemSettings Panel<br/>desktop/src/commands.rs:864"]
+        PANEL["get_system_settings / save_system_settings<br/>commands.rs"]
         SYNC["双轨写入 config.toml<br/>model / effort / policy / memory / lsp ..."]
     end
 
@@ -273,16 +283,16 @@ flowchart TD
     ENV --> SERVE
     SERVE --> DETECT
     DETECT --> SWITCH
-    SWITCH -->|yes| ID_PICK
+    SWITCH -->|yes| ID_ZAGENS
     SWITCH -->|no| ID_TUI
-    ID_PICK --> ENV_BLOCK
+    ID_ZAGENS --> ENV_BLOCK
     ID_TUI --> ENV_BLOCK
 
     PANEL --> SYNC
     SYNC -.-> SIDECAR
 
     style DESKTOP fill:#114d1a,stroke:#0a3a10,color:#e0e0e0
-    style TUI fill:#0f3460,stroke:#1a1a2e,color:#e0e0e0
+    style RUNTIME fill:#0f3460,stroke:#1a1a2e,color:#e0e0e0
     style WEB fill:#7c3a00,stroke:#5c2a00,color:#ffe0b0
 ```
 
@@ -292,25 +302,28 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    subgraph PROMPT["prompt 组装"]
-        P1["prompts.rs<br/>主入口 · 分层 compose"]
-        P2["prompts/base.md<br/>核心系统 prompt"]
-        P3["prompts/personalities/<br/>calm / playful"]
-        P4["prompts/modes/<br/>agent / plan / yolo"]
-        P5["prompts/approvals/<br/>auto / suggest / never"]
-        P6["prompts/compact.md<br/>handoff 模板"]
+    subgraph PROMPT["crates/runtime-server · prompt 组装"]
+        P1["src/prompts.rs<br/>主入口 · 分层 compose"]
+        P2["src/prompts/base.md · base-office.md"]
+        P2b["src/prompts/tasks/<br/>code · office overlay"]
+        P3["src/prompts/personalities/<br/>calm / playful"]
+        P4["src/prompts/modes/<br/>agent / plan / yolo"]
+        P5["src/prompts/approvals/<br/>auto / suggest / never"]
+        P6["src/prompts/compact.md<br/>handoff 模板"]
+        P7["src/prompts/audit_rules/<br/>Auditor 语言规则（源文件）"]
     end
 
     subgraph CTX["上下文注入"]
         C1["project_context.rs<br/>AGENTS.md 加载"]
         C2["memory.rs<br/>user_memory block"]
         C3["skills/mod.rs<br/>skills catalogue"]
+        C4b["topic_memory.rs<br/>topic graph block"]
     end
 
-    subgraph ENGINE["Engine"]
-        E1["engine.rs<br/>refresh / merge / hash"]
-        E2["turn_loop.rs<br/>turn_meta 注入 · API 请求"]
-        E3["compaction.rs<br/>compact / merge / should"]
+    subgraph ENGINE["core/engine/"]
+        E1["build.rs · cycle_hooks.rs<br/>refresh / merge / hash"]
+        E2["turn_loop/<br/>turn_meta · API 请求"]
+        E3["compaction/ + compaction_ops<br/>compact / merge / should"]
     end
 
     subgraph API["API 序列化"]
@@ -319,13 +332,13 @@ flowchart LR
     end
 
     subgraph CHILD["子 Agent"]
-        C4["subagent/mod.rs<br/>8 种 agent type prompts"]
+        C4["tools/subagent/mod.rs<br/>8 种 type + subagent_output_format.md"]
         C5["rlm/prompt.rs<br/>RLM 独立 prompt"]
     end
 
-    subgraph DESK["Desktop"]
-        D1["desktop/src/sidecar.rs<br/>DEEPSEEK_CLIENT_SURFACE"]
-        D2["desktop/src/commands.rs<br/>SystemSettings 双轨"]
+    subgraph DESK["crates/desktop"]
+        D1["src/sidecar.rs<br/>DEEPSEEK_CLIENT_SURFACE=zagens"]
+        D2["src/commands.rs<br/>SystemSettings 双轨"]
     end
 
     PROMPT --> CTX
@@ -351,6 +364,6 @@ flowchart LR
 3. **Hash 去重** — `system_prompt_hash()` 避免相同 prompt 重复设置（减少不必要的 `SessionUpdated` 事件）
 4. **Compile-time 嵌入** — base / personality / mode / approval / compact 在编译时 `include_str!`，启动零 IO
 5. **配置驱动的分层注入** — Project context、instructions、user memory、skills 各自独立模块，通过 `PromptSessionContext` 传入
-6. **Client identity env-driven** — `DEEPSEEK_CLIENT_SURFACE` 控制 TUI vs Zagens 身份切换，无需重新编译
+6. **Client identity env-driven** — `DEEPSEEK_CLIENT_SURFACE`（Zagens：`zagens`；遗留别名 `ds-pick`）控制终端 vs 桌面身份与 `ui_shell`，无需重新编译
 7. **Sub-agent 独立 session** — 子 agent 获得全新 Engine session，带独立 system prompt 和工具集，通过 `<deepseek:subagent.done>` sentinel 报告结果
 8. **RLM 完全独立** — RLM 有自己的 prompt (REPL 模式)，不使用父级 system prompt
