@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Architecture / D9 + D10 (2026-05-26):** [`D9_D10_DESKTOP_UX.md`](docs/tech/adr/D9_D10_DESKTOP_UX.md) — `turnControl.ts` 两层 Stop 契约；`filterThreadStreamEvents` + `windowOwnsThreadForStream` 消除多窗口幽灵 SSE；API_DESIGN §2.1.1–2.1.2。§1 仍 **7/10**（体验债）。
 - **Architecture / D6 (2026-05-26):** [`D6_RUNTIME_SERVER.md`](docs/tech/adr/D6_RUNTIME_SERVER.md) — 新增 `crates/runtime-server` + 二进制 **`deepseek-runtime`**（不链 ratatui）；`deepseek-tui` 特性 **`tui-ui`** 门控 TUI 栈；共享模块 `agent_surface` / `auto_route` / `context_reference` / `runtime_serve`；Zagens `externalBin` → `deepseek-runtime-*`；Assessment §1 #5 勾选（**7/10**）。
 - **Architecture / D4 (2026-05-26):** [`app-server` 实验栈标记 deprecated](docs/tech/adr/D4_APPSERVER_DEPRECATED.md) — 决策 ADR、Assessment §1 #7 勾选；`deepseek app-server` CLI help、`deepseek-app-server` crate 文档 + `#[deprecated]` on `run`/`run_stdio`；**crate 代码移除 defer**。
 - **Docs / architecture assessment (2026-05-26):** [`ARCHITECTURE_ASSESSMENT_2026-05-25.md`](docs/tech/adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md) M7/M8 复评 + D4 — 进度 **6/10**；D5 ✅；下一优先 D6 `runtime-server`。

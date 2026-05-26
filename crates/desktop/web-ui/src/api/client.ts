@@ -17,6 +17,10 @@ import { normalizeWorkspaceForApi } from '../lib/defaultWorkspace';
 import { coalescePollFetch } from '../lib/pollFetch';
 import { listenRuntimeSseEvent } from '../lib/runtimeSseListen';
 import { normalizeDesktopStreamEvent } from './streamNormalize';
+import {
+  peekWindowOwnsThread,
+  windowOwnsThreadForStream,
+} from '../lib/windowBridge';
 
 export interface SseTurnEvent {
   event: string;
@@ -622,7 +626,7 @@ export async function forkThreadAtUserMessage(
   });
 }
 
-/** Stop an in-flight turn (`engine.cancel()` on the runtime). */
+/** Stop an in-flight turn (`engine.cancel()` on the runtime). Prefer `stopThreadTurn` from `./turnControl` in UI. */
 export async function interruptThreadTurn(
   threadId: string,
   turnId: string,
@@ -631,6 +635,41 @@ export async function interruptThreadTurn(
     `/v1/threads/${encodeURIComponent(threadId)}/turns/${encodeURIComponent(turnId)}/interrupt`,
     {},
   );
+}
+
+/**
+ * D10 — wrap SSE handler so non-owner windows ignore events (multi-window ghost render fix).
+ */
+export function threadIdFromSseEvent(ev: SseTurnEvent): string {
+  try {
+    const j = JSON.parse(ev.data) as Record<string, unknown>;
+    return j.thread_id != null ? String(j.thread_id).trim() : '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * D10 — wrap SSE handler so non-owner windows ignore events (multi-window ghost render fix).
+ */
+export function filterThreadStreamEvents(
+  threadId: string,
+  onEvent: (ev: SseTurnEvent & { seq?: number }) => void,
+): (ev: SseTurnEvent & { seq?: number }) => void {
+  const tid = threadId.trim();
+  if (!tid) {
+    return onEvent;
+  }
+  return (ev) => {
+    if (!peekWindowOwnsThread(tid)) {
+      return;
+    }
+    void windowOwnsThreadForStream(tid).then((owns) => {
+      if (owns) {
+        onEvent(ev);
+      }
+    });
+  };
 }
 
 /** Minimal thread fields used by desktop UI; backend returns full `ThreadRecord`. */

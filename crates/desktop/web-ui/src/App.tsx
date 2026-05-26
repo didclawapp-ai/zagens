@@ -25,7 +25,6 @@ import {
   startThreadTurn,
   editLastThreadTurn,
   forkThreadAtUserMessage,
-  interruptThreadTurn,
   pollThreadTurnEvents,
   postResolveApproval,
   deleteSession,
@@ -38,11 +37,14 @@ import {
   fetchSystemSettings,
   getRuntimeBase,
   fetchJson,
+  filterThreadStreamEvents,
+  threadIdFromSseEvent,
   type RuntimeConnectionState,
   type SessionInfo,
   type SseTurnEvent,
   type SystemSettings,
 } from './api/client';
+import { stopThreadTurn } from './api/turnControl';
 import { useT } from './i18n';
 import { notifyCraftBlackboardChanged } from './lib/craftBlackboard';
 import { normalizeDesktopStreamEvent, type NormalizedStreamEvent, type TurnUsage } from './api/streamNormalize';
@@ -1388,15 +1390,18 @@ export default function App() {
 
   const handleCancelStream = useCallback(() => {
     const { threadId, turnId } = threadTurnRef.current;
-    if (threadId && turnId) {
-      void interruptThreadTurn(threadId, turnId).catch((e) => {
-        const err = e as Error & { status?: number };
-        if (err.status === 409) {
-          return;
-        }
-        toast.warning(t('composer.interruptFailed', { message: err.message || String(e) }));
-      });
-    }
+    const streamControl =
+      (threadId ? streamControllersRef.current.get(threadId) : undefined) ??
+      streamControllersRef.current.get('__pending__') ??
+      undefined;
+
+    void stopThreadTurn({ threadId, turnId, streamControl }).catch((e) => {
+      const err = e as Error & { status?: number };
+      if (err.status === 409) {
+        return;
+      }
+      toast.warning(t('composer.interruptFailed', { message: err.message || String(e) }));
+    });
 
     const session = streamSessionRef.current;
     if (session) {
@@ -1408,11 +1413,6 @@ export default function App() {
     }
 
     setApproval(null);
-    const tid = threadTurnRef.current.threadId;
-    if (tid) {
-      streamControllersRef.current.get(tid)?.abort();
-      streamControllersRef.current.delete(tid);
-    }
     setLastTurnOutputTokens(null);
   }, [t]);
 
@@ -2013,12 +2013,28 @@ export default function App() {
         }
       };
 
-      const onSseEvent = (ev: SseTurnEvent, filter?: { turnId: string }) => {
+      const deliverSseEvent = (ev: SseTurnEvent, filter?: { turnId: string }) => {
         if (signal.aborted) return;
         const norm = normalizeDesktopStreamEvent(ev, filter);
         if (norm) {
           applyNorm(norm);
         }
+      };
+
+      const onSseEvent = (ev: SseTurnEvent, filter?: { turnId: string }) => {
+        if (!desktopHost) {
+          deliverSseEvent(ev, filter);
+          return;
+        }
+        const tid =
+          resumedThreadId ||
+          threadTurnRef.current.threadId ||
+          threadIdFromSseEvent(ev);
+        if (!tid) {
+          deliverSseEvent(ev, filter);
+          return;
+        }
+        filterThreadStreamEvents(tid, () => deliverSseEvent(ev, filter))(ev);
       };
 
       const handleHttpError = (err: Error & { status?: number }) => {
@@ -2128,6 +2144,7 @@ export default function App() {
       refreshSessions,
       refreshThreadContext,
       notifyRuntimeTransient,
+      desktopHost,
       t,
     ],
   );

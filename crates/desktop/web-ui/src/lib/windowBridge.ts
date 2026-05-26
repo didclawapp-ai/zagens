@@ -43,19 +43,56 @@ export async function registerWindowThread(threadId: string): Promise<void> {
   try {
     const { invoke } = await import('@tauri-apps/api/core');
     await invoke('register_window_thread', { threadId: threadId.trim() });
+    markThreadRegisteredLocally(threadId);
   } catch {
     /* Vite dev */
   }
 }
 
-export async function threadOwnedByWindow(threadId: string): Promise<boolean> {
-  if (!threadId.trim()) return true;
+const ownershipChecks = new Map<string, { owns: boolean; at: number }>();
+const OWNERSHIP_TTL_MS = 250;
+
+/** Optimistic sync peek — false only after a recent IPC miss. */
+export function peekWindowOwnsThread(threadId: string): boolean {
+  const tid = threadId.trim();
+  if (!tid) return true;
+  const hit = ownershipChecks.get(tid);
+  if (!hit) return true;
+  if (Date.now() - hit.at > OWNERSHIP_TTL_MS * 4) return true;
+  return hit.owns;
+}
+
+export function markThreadRegisteredLocally(threadId: string): void {
+  const tid = threadId.trim();
+  if (!tid) return;
+  ownershipChecks.set(tid, { owns: true, at: Date.now() });
+}
+
+export function invalidateThreadOwnership(threadId: string): void {
+  ownershipChecks.delete(threadId.trim());
+}
+
+/** D10 — whether this webview may apply live SSE for `threadId` (IPC + short TTL cache). */
+export async function windowOwnsThreadForStream(threadId: string): Promise<boolean> {
+  const tid = threadId.trim();
+  if (!tid) return true;
+  const hit = ownershipChecks.get(tid);
+  const now = Date.now();
+  if (hit && now - hit.at < OWNERSHIP_TTL_MS) {
+    return hit.owns;
+  }
   try {
     const { invoke } = await import('@tauri-apps/api/core');
-    return invoke<boolean>('thread_owned_by_window', { threadId: threadId.trim() });
+    const owns = await invoke<boolean>('thread_owned_by_window', { threadId: tid });
+    ownershipChecks.set(tid, { owns, at: now });
+    return owns;
   } catch {
     return true;
   }
+}
+
+export async function threadOwnedByWindow(threadId: string): Promise<boolean> {
+  return windowOwnsThreadForStream(threadId);
 }
 
 export async function closeCurrentWindow(): Promise<void> {

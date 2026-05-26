@@ -64,6 +64,31 @@ Zagens 采用 **双通道 API** 架构：WebView 前端与 Rust 后端之间通�
 | `get_locale` | — | `String` | **占位：** 当前固定 `"zh-CN"`，未读系统 locale |
 | `restart_sidecar` | — | `()` | 触发 sidecar 进程重启（重载 config.toml） |
 
+#### 2.1.1 取消 / 打断两层契约（D9）
+
+桌面 **Stop** / Escape 必须同时执行两层；只断流不会停止 runtime turn loop。
+
+| 层 | 机制 | 作用 | 不做的后果 |
+|----|------|------|------------|
+| **Layer 1** | `AbortSignal` + IPC `runtime_cancel_sse` | 断开 WebView ↔ sidecar 的 SSE / poll 管道 | turn 仍在跑；LLM / 工具继续 |
+| **Layer 2** | HTTP `POST /v1/threads/{id}/turns/{turn_id}/interrupt` | runtime `Op::Interrupt` → `CancellationToken` | 本地 UI 仍显示 streaming |
+
+**Web UI SSOT：** `crates/desktop/web-ui/src/api/turnControl.ts`
+
+- `disconnectThreadEventStream(signal?)` — Layer 1 only（导航离开、sidecar 重启等）
+- `stopThreadTurn({ threadId, turnId, streamControl? })` — **用户 Stop**：Layer 2 再 Layer 1（409 已结束则忽略）
+
+运行时叙事与 broadcast 细节见 [RUNTIME_ARCHITECTURE.md](./RUNTIME_ARCHITECTURE.md) §8。
+
+#### 2.1.2 多窗口 thread 归属（D10）
+
+| IPC | 说明 |
+|-----|------|
+| `register_window_thread { threadId }` | 当前 WebView 声明对该 thread 的 UI 所有权 |
+| `thread_owned_by_window { threadId }` | 查询本窗口是否仍为 owner |
+
+**SSE 过滤：** 非 owner 窗口须忽略 live `GET …/events` / `runtime_get_sse` 增量（`filterThreadStreamEvents` + `windowOwnsThreadForStream` TTL 缓存）。`approval.required` 等同理。历史 replay（加载会话）不受此限。
+
 > **`get_runtime_token` 已移除（2026-05-20 安全跟进 H06）：** Bearer 不再进入 WebView；Tauri 正式路径一律经 `runtime_proxy`。完整 IPC 列表以 `crates/desktop/src/main.rs` `generate_handler!` 为准（2026-05-25 约 **41** 条，含终端与多窗口命令）。
 
 ### 2.2 API 密钥管理

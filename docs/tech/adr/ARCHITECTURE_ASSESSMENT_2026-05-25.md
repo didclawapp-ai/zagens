@@ -20,7 +20,7 @@
 | 桌面 UI/UX 小迭代（不引入新运行时概念） | **正常推进** |
 | 任何「往 `crates/tui` 加新文件」的改动 | **需 owner 评审**（tui 仍承载 tools / HTTP / ratatui） |
 | M-series D5（`Engine` struct → core） | **✅ 完成 2026-05-26**（M1–M8） |
-| 下一优先：**D9/D10** 插空，或 **D7** 持久化统一 | **D6 ✅ 2026-05-26** — 见 [`D6_RUNTIME_SERVER.md`](./D6_RUNTIME_SERVER.md) |
+| 下一优先：**D7** 持久化统一 | **D9/D10 ✅ 2026-05-26** — 见 [`D9_D10_DESKTOP_UX.md`](./D9_D10_DESKTOP_UX.md) |
 | 剩余定型项完整排期 | **§5.1**（主线 D6→D7→D8→D1；插空 D9/D10；P2 延后） |
 | 端口动态化、删 legacy crate | **D2/D3 ✅**；`commands.rs` 等巨型文件见 **D1**（§5.1 阶段 E） |
 
@@ -225,8 +225,8 @@ WebView → invoke runtime_get_sse → reqwest stream
 | **D6** | 抽 `crates/runtime-server`（sidecar 不再链 ratatui / CLI） | 2-3 周（D5 完成后） | **可启动** — D5 ✅ |
 | **D7** | 持久化整合 Sessions ⊕ Runtime threads → 单 SQLite + 视图 | 4-6 周 | ✅ [`BACKLOG_RUNTIME_UNIFICATION.md`](./BACKLOG_RUNTIME_UNIFICATION.md) · [`BACKLOG_STATESTORE_JSONL.md`](./BACKLOG_STATESTORE_JSONL.md) |
 | **D8** | OpenAPI schema 导出 + `web-ui` ts 类型自动生成 | 1-2 周 | — |
-| **D9** | 取消/打断两层契约文档化 + `api/client.ts` 统一封装 | 3-5 天 | — |
-| **D10** | 跨窗口事件按 thread owner 过滤（消除"幽灵渲染"） | 1 周 | — |
+| **D9** | 取消/打断两层契约文档化 + `api/client.ts` 统一封装 | 3-5 天 | ✅ **2026-05-26** — [`D9_D10_DESKTOP_UX.md`](./D9_D10_DESKTOP_UX.md) · `turnControl.ts` · API_DESIGN §2.1.1 |
+| **D10** | 跨窗口事件按 thread owner 过滤（消除"幽灵渲染"） | 1 周 | ✅ **2026-05-26** — 同上 · `filterThreadStreamEvents` · API_DESIGN §2.1.2 |
 
 ### P2 · 6-12 个月（产品形态升级）
 
@@ -363,6 +363,7 @@ D5（M-series）✅ 已闭合。下一刀直接解锁 §1 第 5 项，并让 sid
 - **M-series M5 合并后**（✅ 2026-05-25）：M5 立起 `SeamHost`（M-series 至今最宽 trait，10 方法覆盖整条 layered-context Flash pipeline #159 — `crates/tui/src/seam_manager.rs` 712 LOC 子系统补齐边界）+ `WorkshopHost`（空 marker，`large_output_router.rs` 604 LOC 体不动）+ `TopicMemoryHost`（2 方法，`topic_memory.rs` 307 LOC 子系统补齐边界，settings 移入实现避免 R9 spike crate dep）+ `ScratchpadStepState` 类型搬核（`scratchpad_flow.rs` 484 LOC UI/审计/覆盖 helpers 保留 tui 侧 per R12，用 re-export shim）。至此 §3.4 列出的全部 tui-only 子系统 host trait 全部立起（LSP / SubAgent / Shell / Sandbox / MCP / Seam / Workshop / TopicMemory — 8 个）。剩余 M-series 工作量：CapacityController + coherence reducer 入核（M6），`Engine` struct + `engine_new` + `op_handlers` 入核（M7），`op_loop` 入核 + final cleanup（M8）。§1 第 4-5 项**仍 `[ ]`** — M5 只是 trait surface + 字段语义清理，Engine struct 整体 35 字段 / engine_new / op_loop 主体仍在 tui，等 M7+M8 完成后才能勾。
 - **D4 决策（2026-05-26）**：app-server **deprecated** — §1 #7 勾选；进度 6/10；crate/CLI 保留，见 [`D4_APPSERVER_DEPRECATED.md`](./D4_APPSERVER_DEPRECATED.md)。
 - **§5.1 实施顺序签收（2026-05-26）**：维护者签收 D6→D9/D10→D7→D8→D1→P2 主线；§0 冻结窗口估算更新为 10–14 周；P2 内部 D11→D14→D13→D12。
+- **D9 + D10 落地（2026-05-26）**：阶段 B 插空完成 — 见 [`D9_D10_DESKTOP_UX.md`](./D9_D10_DESKTOP_UX.md)；下一主线 **D7**；§1 仍 7/10。
 - **M-series M8 合并后**（✅ **2026-05-26**）：§1 第 4 项 **勾选** — core 侧 `Engine` struct、`Engine::with_hosts`、`Engine::run()` op loop + `EnginePlatformExt` 平台分发；tui 侧 newtype shim ~130 LOC。§1 第 5 项**仍 `[ ]`**（sidecar 仍链 ratatui → **D6**）。进度 **5/10**。2 个 pre-existing engine 集成测修复；[`BACKLOG_ENGINE_STRUCT_IN_CORE.md`](./BACKLOG_ENGINE_STRUCT_IN_CORE.md) Closed；`HANDOFF_M7_M8.md` 已删。
 - **M-series M8 合并后（归档说明）**：当 D6 + §1 ≥ 8/10 时，可将本文档归档并另起 `ARCHITECTURE_ASSESSMENT_<date>.md` v2 全量重写；当前在 **同文件内追加 2026-05-26 复评** 以保持链接稳定。
 - **§1 ≥ 8/10 勾选时**：解除 §7.1 全部红线；
