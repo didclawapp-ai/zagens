@@ -812,7 +812,13 @@ mod setup_helper_tests {
 
         let sources = [
             include_str!("../config/mod.rs"),
-            include_str!("../config/load.rs"),
+            include_str!("../config/load/mod.rs"),
+            include_str!("../config/load/impl_config.rs"),
+            include_str!("../config/load/paths.rs"),
+            include_str!("../config/load/env_overrides.rs"),
+            include_str!("../config/load/model.rs"),
+            include_str!("../config/load/merge.rs"),
+            include_str!("../config/load/credentials.rs"),
             include_str!("../config/types.rs"),
             include_str!("../config/providers.rs"),
             include_str!("../logging.rs"),
