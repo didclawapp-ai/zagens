@@ -38,6 +38,7 @@ mod execpolicy;
 mod features;
 mod handoff;
 mod hooks;
+mod json_schema_util;
 mod llm_client;
 mod localization;
 mod logging;

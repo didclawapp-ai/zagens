@@ -811,7 +811,10 @@ mod setup_helper_tests {
         }
 
         let sources = [
-            include_str!("../config.rs"),
+            include_str!("../config/mod.rs"),
+            include_str!("../config/load.rs"),
+            include_str!("../config/types.rs"),
+            include_str!("../config/providers.rs"),
             include_str!("../logging.rs"),
             include_str!("../tools/describe_image.rs"),
             include_str!("../../../config/src/lib.rs"),
