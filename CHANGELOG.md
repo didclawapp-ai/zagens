@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Architecture
 
 - **D15 (Landed):** Final architecture convergence — removed `deepseek-state` crate and legacy `core::Runtime` / `ThreadMessageTurnPort`; Zagens Desktop is the sole user entry; sidecar spawn unified to `deepseek-runtime` only. Session remains a projection of `RuntimeThreadStore` (D7 `runtime_thread_id` link). See [`docs/tech/adr/D15_FINAL_ARCHITECTURE_CONVERGENCE.md`](docs/tech/adr/D15_FINAL_ARCHITECTURE_CONVERGENCE.md).
+- **Docs (D16):** Phase E maintainability split plans — [`docs/tech/adr/D16_PHASE_E_MAINTAINABILITY.md`](docs/tech/adr/D16_PHASE_E_MAINTAINABILITY.md) (`runtime-server` crate、SubAgent、`App.tsx` hooks；不阻塞发布).
+- **D16 E2 (Landed):** Split `tools/subagent/mod.rs` (~4340 行) into focused modules — `mod.rs` ~82 行、`manager.rs` / `executor.rs` / `tools/*` / `parse.rs` / `router.rs` / `prompts.rs` 等；108 个 subagent 单元测试全绿。
 
 ### Changed
 

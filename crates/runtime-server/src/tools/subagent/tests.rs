@@ -2,6 +2,19 @@ use super::*;
 use crate::client::DeepSeekClient;
 use tempfile::tempdir;
 
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::time::Duration;
+
+use serde_json::{json, Value};
+use tokio::sync::{Mutex, RwLock, mpsc};
+
+use crate::tools::plan::{new_shared_plan_state, PlanState, SharedPlanState};
+use crate::tools::spec::{ToolContext, ToolSpec};
+use crate::tools::todo::{new_shared_todo_list, SharedTodoList, TodoList};
+use tokio_util::sync::CancellationToken;
+
 fn make_assignment() -> SubAgentAssignment {
     SubAgentAssignment::new("prompt".to_string(), Some("worker".to_string()))
 }

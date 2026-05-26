@@ -457,5 +457,6 @@ sequenceDiagram
 - **D10 已解除（2026-05-24）：** P2 后桌面 GAP 解冻；见 [P2_D10_UNFREEZE_RECORD.md](./adr/P2_D10_UNFREEZE_RECORD.md)。
 
 - **D15 架构收官（2026-05-26）：** 删除 `deepseek-state` 与 `core::Runtime`；Sidecar 仅 `deepseek-runtime` — [D15_FINAL_ARCHITECTURE_CONVERGENCE.md](./adr/D15_FINAL_ARCHITECTURE_CONVERGENCE.md)。
+- **D16 维护性拆分（可选）：** SubAgent / App.tsx / runtime-server crate 拆分方案 — [D16_PHASE_E_MAINTAINABILITY.md](./adr/D16_PHASE_E_MAINTAINABILITY.md)。
 
-**剩余非阻塞债（定型后）：** §6 冷启动 profiling；P2 增强（D11–D14 metrics / MCP 池 / Capability Manifest 等）。
+**剩余非阻塞债（定型后）：** §6 冷启动 profiling；D16 Phase E（维护性）；P2 增强（D11–D14 metrics / MCP 池 / Capability Manifest 等）。

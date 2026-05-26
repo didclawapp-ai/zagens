@@ -237,14 +237,15 @@ D7 已落地 `runtime_thread_id` 链接；本阶段 **确认叙事与写路径�
 
 ### Phase E — 维护性（可选，v0.6+，3–5 PR）
 
-**不阻塞 D15 DoD。** 架构统一宣布后可并行产品功能。
+**不阻塞 D15 DoD。** 架构统一宣布后可并行产品功能。  
+**详细拆分方案：** [D16_PHASE_E_MAINTAINABILITY.md](./D16_PHASE_E_MAINTAINABILITY.md)
 
 | PR | 内容 | 优先级 |
 |----|------|--------|
+| E2 | `tools/subagent/mod.rs` 拆模块（mailbox/craft/spawn/wait…） | **高**（建议首选） |
+| E3 | `web-ui/App.tsx` 抽 `useRuntimeConnection` + `useTurnSession` 等 hooks | 中 |
 | E1 | 拆 `runtime-server` → `runtime-api` + `runtime-orchestrator` + `runtime-adapters` | 中 |
-| E2 | `tools/subagent/mod.rs` 拆模块（mailbox/craft/spawn 已有子文件，主文件 <800 行） | 中 |
-| E3 | `web-ui/App.tsx` 抽 `useRuntimeConnection` + `useTurnSession` | 低 |
-| E4 | 单一 ToolRegistry 审计（确认 `deepseek-tools` 仅协议层，dispatch 唯一） | 低 |
+| E4 | `api/client.ts` 按 domain 拆分 | 低 |
 | E5 | OpenAPI contract test in CI（export diff + smoke HTTP） | 高（建议尽早） |
 
 ---
