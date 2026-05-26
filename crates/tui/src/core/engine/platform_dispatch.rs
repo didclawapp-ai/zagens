@@ -7,7 +7,7 @@ use deepseek_core::engine::Engine as CoreEngine;
 
 use crate::context_snapshot::ThreadContextSnapshot;
 use crate::core::events::Event;
-use crate::tui::app::AppMode;
+use crate::agent_surface::AppMode;
 use tokio::sync::oneshot;
 
 use super::Engine;

@@ -17,7 +17,7 @@ impl Engine {
         turn: &mut deepseek_core::turn::TurnContext,
         tool_registry: Option<&crate::tools::ToolRegistry>,
         tools: Option<Vec<crate::models::Tool>>,
-        mode: crate::tui::app::AppMode,
+        mode: crate::agent_surface::AppMode,
         force_update_plan_first: bool,
     ) -> (
         deepseek_core::turn::TurnOutcomeStatus,

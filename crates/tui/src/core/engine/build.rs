@@ -13,7 +13,7 @@ use crate::seam_manager::{SeamConfig, SeamManager};
 use crate::tools::large_output_router::TuiWorkshopHost;
 use crate::tools::shell::{new_shared_shell_manager, TuiShellHost};
 use crate::tools::subagent::{new_shared_subagent_manager, SubAgentCompletion};
-use crate::tui::app::AppMode;
+use crate::agent_surface::AppMode;
 
 use super::handle::EngineHandle;
 use super::runtime_ext::EngineRuntimeExt;

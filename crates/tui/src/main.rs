@@ -13,8 +13,10 @@ use tempfile::NamedTempFile;
 use wait_timeout::ChildExt;
 
 mod acp_server;
+mod agent_surface;
 mod audit;
 mod auto_reasoning;
+mod auto_route;
 mod automation_manager;
 mod client;
 mod command_safety;
@@ -24,6 +26,7 @@ mod context_snapshot;
 mod composer_history;
 mod composer_stash;
 mod config;
+mod context_reference;
 mod config_ui;
 mod core;
 mod cost_status;

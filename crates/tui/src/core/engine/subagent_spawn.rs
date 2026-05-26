@@ -17,7 +17,7 @@ use deepseek_core::engine::hosts::SubAgentHost;
 use deepseek_core::engine::{SubAgentSpawnError, SubAgentSpawnOutcome};
 use deepseek_core::subagent::SubAgentResult;
 
-use crate::tui::app::AppMode;
+use crate::agent_surface::AppMode;
 
 use super::Engine;
 

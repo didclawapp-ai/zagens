@@ -47,7 +47,7 @@ use crate::tools::subagent::resolve_subagent_assignment_route;
 pub use crate::tools::todo::{new_shared_todo_list, SharedTodoList};
 pub use crate::tools::user_input::{UserInputRequest, UserInputResponse};
 pub use crate::tools::{ToolContext, ToolRegistryBuilder};
-pub use crate::tui::app::AppMode;
+pub use crate::agent_surface::AppMode;
 
 pub use crate::core::capacity::{
     CapacityController, CapacityControllerConfig, CapacityDecision, CapacityObservationInput,

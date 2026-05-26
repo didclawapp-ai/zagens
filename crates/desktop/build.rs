@@ -1,6 +1,6 @@
-//! Ensures `binaries/deepseek-tui-<target>` exists before `tauri-build` validates `externalBin`.
+//! Ensures `binaries/deepseek-runtime-<target>` exists before `tauri-build` validates `externalBin`.
 //! Developers: run `npm run bundle:prepare` in this folder for a release sidecar, or build
-//! `deepseek-tui` once (`cargo build -p deepseek-tui`) so we can copy from `../../target`.
+//! `deepseek-runtime` once (`cargo build -p deepseek-runtime-server`) so we can copy from `../../target`.
 
 use std::fs;
 use std::path::PathBuf;
@@ -25,7 +25,7 @@ fn ensure_sidecar_binaries() -> Result<(), String> {
     let ext = "";
 
     let dest_dir = manifest_dir.join("binaries");
-    let dest_name = format!("deepseek-tui-{triple}{ext}");
+    let dest_name = format!("deepseek-runtime-{triple}{ext}");
     let dest = dest_dir.join(&dest_name);
 
     if dest.exists() {
@@ -34,7 +34,7 @@ fn ensure_sidecar_binaries() -> Result<(), String> {
 
     fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
 
-    let bin = format!("deepseek-tui{ext}");
+    let bin = format!("deepseek-runtime{ext}");
     let candidates = [
         manifest_dir.join("../../target").join(&profile).join(&bin),
         manifest_dir.join("../../target/release").join(&bin),
@@ -56,7 +56,7 @@ fn ensure_sidecar_binaries() -> Result<(), String> {
 
     Err(format!(
         "missing Tauri sidecar binary at {}\n\
-         Fix: run `npm run bundle:prepare` in crates/desktop, or `cargo build -p deepseek-tui` then rebuild desktop.",
+         Fix: run `npm run bundle:prepare` in crates/desktop, or `cargo build -p deepseek-runtime-server` then rebuild desktop.",
         dest.display()
     ))
 }

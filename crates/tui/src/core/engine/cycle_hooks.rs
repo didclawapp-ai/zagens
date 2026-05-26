@@ -11,7 +11,7 @@ use crate::cycle_manager::{
 use crate::core::events::Event;
 use crate::models::SystemPrompt;
 use crate::prompts;
-use crate::tui::app::AppMode;
+use crate::agent_surface::AppMode;
 
 use super::context::turn_response_headroom_tokens;
 use super::scratchpad_flow;

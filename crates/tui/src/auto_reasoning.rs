@@ -4,7 +4,7 @@
 //! [`select`] before each turn-level request to pick the actual tier
 //! based on the current message.
 
-use crate::tui::app::ReasoningEffort;
+use crate::agent_surface::ReasoningEffort;
 
 /// Choose a concrete `ReasoningEffort` tier for the next API request.
 ///

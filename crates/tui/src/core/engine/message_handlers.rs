@@ -19,7 +19,7 @@ impl Engine {
         allow_shell: bool,
         trust_mode: bool,
         auto_approve: bool,
-        approval_mode: crate::tui::approval::ApprovalMode,
+        approval_mode: deepseek_core::approval::ApprovalMode,
         temperature: Option<f32>,
         top_p: Option<f32>,
         max_output_tokens: Option<u32>,
@@ -132,7 +132,7 @@ impl Engine {
         self.config.trust_mode = trust_mode;
         self.session.auto_approve = auto_approve;
         self.session.approval_mode = if auto_approve {
-            crate::tui::approval::ApprovalMode::Auto
+            deepseek_core::approval::ApprovalMode::Auto
         } else {
             approval_mode
         };

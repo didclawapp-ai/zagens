@@ -22,8 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Architecture / D4 (2026-05-26):** [`app-server` 实验栈标记 deprecated](docs/tech/adr/D4_APPSERVER_DEPRECATED.md) — 决策 ADR、Assessment §1 #6 勾选（6/10）；`deepseek app-server` CLI help、`deepseek-app-server` crate 文档 + `#[deprecated]` on `run`/`run_stdio`；**crate 代码移除 defer**。
+- **Architecture / D6 (2026-05-26):** [`D6_RUNTIME_SERVER.md`](docs/tech/adr/D6_RUNTIME_SERVER.md) — 新增 `crates/runtime-server` + 二进制 **`deepseek-runtime`**（不链 ratatui）；`deepseek-tui` 特性 **`tui-ui`** 门控 TUI 栈；共享模块 `agent_surface` / `auto_route` / `context_reference` / `runtime_serve`；Zagens `externalBin` → `deepseek-runtime-*`；Assessment §1 #5 勾选（**7/10**）。
+- **Architecture / D4 (2026-05-26):** [`app-server` 实验栈标记 deprecated](docs/tech/adr/D4_APPSERVER_DEPRECATED.md) — 决策 ADR、Assessment §1 #7 勾选；`deepseek app-server` CLI help、`deepseek-app-server` crate 文档 + `#[deprecated]` on `run`/`run_stdio`；**crate 代码移除 defer**。
 - **Docs / architecture assessment (2026-05-26):** [`ARCHITECTURE_ASSESSMENT_2026-05-25.md`](docs/tech/adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md) M7/M8 复评 + D4 — 进度 **6/10**；D5 ✅；下一优先 D6 `runtime-server`。
+- **Docs / architecture assessment (2026-05-26):** [`ARCHITECTURE_ASSESSMENT_2026-05-25.md`](docs/tech/adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md) 新增 **§5.1 推荐实施顺序**（维护者签收）— 主线 D6→D9/D10→D7→D8→D1→P2；§0 摘要与冻结窗口估算同步；§5 表注明「已记账 ≠ 已落地」。[`RUNTIME_EVOLUTION_ROADMAP.md`](docs/tech/RUNTIME_EVOLUTION_ROADMAP.md) 头部交叉引用同步（6/10 + §5.1）。
 
 - **Runtime / M-series M8 (PR_M0 §6 M8):** Final strangler step — core **`Engine::run()`** op loop lands in `deepseek-core::engine::op_loop` (cancel / approve / deny / truncate handled core-side; platform ops via `EnginePlatformExt`). Tui `EngineRuntimeExt` implements dispatch in `platform_dispatch.rs`; `op_loop.rs` + `op_handlers.rs` deleted from tui. **`Engine::ext`** is now `Box<dyn EnginePlatformExt<P,R>>` (was `Box<dyn Any>`). Pre-existing engine integration tests **`refresh_system_prompt_under_capacity_omits_topic_memory_block`** (3× `on_turn_complete` fixture) and **`engine_mock_capacity_pre_request_observes_mock_and_emits_decision`** green after partition-trim bulk fast-path. Closes [BACKLOG_ENGINE_STRUCT_IN_CORE.md](docs/tech/adr/BACKLOG_ENGINE_STRUCT_IN_CORE.md); deletes [HANDOFF_M7_M8.md](docs/tech/adr/HANDOFF_M7_M8.md).
 

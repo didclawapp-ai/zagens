@@ -23,7 +23,7 @@ use crate::core::events::{Event as EngineEvent, TurnOutcomeStatus};
 use crate::core::ops::Op;
 use crate::models::{ContentBlock, Message, SystemPrompt, Usage};
 use crate::tools::subagent::SubAgentStatus;
-use crate::tui::app::AppMode;
+use crate::agent_surface::AppMode;
 
 use super::active::{
     enforce_lru_capacity, touch_lru, ActiveThreadState, ActiveThreads, ActiveTurnState,

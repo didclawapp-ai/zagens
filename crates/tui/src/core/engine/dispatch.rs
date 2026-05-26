@@ -8,7 +8,7 @@ use serde_json::Value;
 
 use crate::models::{Tool, ToolCaller};
 use crate::tools::spec::{ToolError, ToolResult};
-use crate::tui::app::AppMode;
+use crate::agent_surface::AppMode;
 
 use deepseek_core::engine::dispatch::{self, ToolParallelPlanFlags};
 use deepseek_core::engine::streaming::ToolUseState;

@@ -1,0 +1,19 @@
+[package]
+name = "deepseek-runtime-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "HTTP/SSE runtime sidecar for Zagens (no ratatui / full CLI)"
+default-run = "deepseek-runtime"
+
+[[bin]]
+name = "deepseek-runtime"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+deepseek-tui = { path = "../tui", default-features = false, features = ["json", "toml"] }
+dotenvy = "0.15.7"
+tokio.workspace = true

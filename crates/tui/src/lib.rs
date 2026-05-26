@@ -5,21 +5,27 @@
 
 // acp_server is a bin-only module (depends on main.rs-local items).
 // mod acp_server;
+mod agent_surface;
 mod audit;
 mod auto_reasoning;
+mod auto_route;
 mod automation_manager;
 mod client;
 mod command_safety;
+#[cfg(feature = "tui-ui")]
 mod commands;
 mod compaction;
 mod context_snapshot;
 mod composer_history;
 mod composer_stash;
 mod config;
+mod context_reference;
+#[cfg(feature = "tui-ui")]
 mod config_ui;
 mod core;
 mod cost_status;
 mod cycle_manager;
+#[cfg(feature = "tui-ui")]
 mod deepseek_theme;
 mod error_taxonomy;
 mod eval;
@@ -36,6 +42,7 @@ mod mcp_server;
 mod memory;
 mod models;
 mod network_policy;
+#[cfg(feature = "tui-ui")]
 mod palette;
 mod path_guard;
 mod pricing;
@@ -47,6 +54,7 @@ pub mod repl;
 mod retry_status;
 pub mod rlm;
 mod runtime_api;
+pub mod runtime_serve;
 mod runtime_threads;
 mod sandbox;
 mod schema_migration;
@@ -66,6 +74,7 @@ mod task_manager;
 #[cfg(test)]
 mod test_support;
 mod tools;
+#[cfg(feature = "tui-ui")]
 mod tui;
 mod utils;
 mod working_set;

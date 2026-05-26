@@ -34,7 +34,7 @@ use crate::compaction::{compact_messages_safe, should_compact};
 use crate::core::events::Event;
 use crate::core::turn::pre_tool_snapshot;
 use crate::mcp::McpPool;
-use crate::tui::app::AppMode;
+use crate::agent_surface::AppMode;
 use crate::tools::spec::ApprovalRequirement;
 use crate::tools::ToolRegistry;
 impl TurnLoopToolRegistry for ToolRegistry {}

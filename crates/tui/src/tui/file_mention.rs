@@ -27,6 +27,9 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+pub use crate::context_reference::{
+    ContextReference, ContextReferenceKind, ContextReferenceSource,
+};
 use crate::tui::app::{App, MentionCompletionCache};
 use crate::working_set::Workspace;
 
@@ -56,43 +59,7 @@ pub struct FileMentionPreview {
 
 /// Durable, compact metadata for a user-visible context reference.
 ///
-/// The transcript keeps the user's compact text (`@path` or `[Attached ...]`)
-/// readable. This record preserves the exact target and inclusion state for
-/// the context inspector and for session resume without leaking raw metadata
-/// into the visible history cell.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ContextReference {
-    pub kind: ContextReferenceKind,
-    pub source: ContextReferenceSource,
-    /// Short badge for terminal display, e.g. `file`, `dir`, `image`.
-    pub badge: String,
-    /// Compact display label from the transcript, without the leading `@`.
-    pub label: String,
-    /// Resolved target path or URI-equivalent string.
-    pub target: String,
-    pub included: bool,
-    pub expanded: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub detail: Option<String>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ContextReferenceKind {
-    File,
-    Directory,
-    Missing,
-    Unsupported,
-    MediaMention,
-    MediaAttachment,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ContextReferenceSource {
-    AtMention,
-    Attachment,
-}
+/// Defined in [`crate::context_reference`] for HTTP runtime reuse (D6).
 
 // ---------------------------------------------------------------------------
 //  Tab-completion

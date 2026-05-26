@@ -1539,6 +1539,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "deepseek-runtime-server"
+version = "0.8.15"
+dependencies = [
+ "anyhow",
+ "clap",
+ "deepseek-tui",
+ "dotenvy",
+ "tokio",
+]
+
+[[package]]
 name = "deepseek-secrets"
 version = "0.8.15"
 dependencies = [

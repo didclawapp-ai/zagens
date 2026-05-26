@@ -8,8 +8,10 @@ description = "Terminal UI for DeepSeek"
 default-run = "deepseek-tui"
 
 [features]
-default = ["tui", "json", "toml"]
-tui = ["dep:schemaui", "schemaui/tui", "json", "toml"]
+default = ["tui-ui", "tui", "json", "toml"]
+# Ratatui / terminal UI stack — off for `deepseek-runtime` sidecar (D6).
+tui-ui = ["dep:ratatui", "dep:crossterm", "dep:arboard"]
+tui = ["tui-ui", "dep:schemaui", "schemaui/tui", "json", "toml"]
 web = ["dep:schemaui", "schemaui/web", "json", "toml"]
 json = ["schemaui/json"]
 toml = ["schemaui/toml"]
@@ -24,7 +26,7 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
-arboard = "3.4"
+arboard = { version = "3.4", optional = true }
 deepseek-config = { path = "../config", version = "0.8.15" }
 deepseek-core = { path = "../core", version = "0.8.15" }
 deepseek-topic-memory = { path = "../topic-memory", version = "0.8.15" }
@@ -39,12 +41,12 @@ axum.workspace = true
 clap.workspace = true
 clap_complete.workspace = true
 colored = "3.0.0"
-crossterm = "0.28"
+crossterm = { version = "0.28", optional = true }
 dotenvy = "0.15.7"
 dirs.workspace = true
 fd-lock = "4.0.4"
 futures-util = "0.3.31"
-ratatui = "0.29"
+ratatui = { version = "0.29", optional = true }
 regex = "1.11"
 reqwest = { workspace = true, features = ["blocking", "stream", "multipart", "http2"] }
 similar = "2"

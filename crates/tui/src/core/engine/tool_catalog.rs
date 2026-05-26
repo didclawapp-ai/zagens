@@ -8,7 +8,7 @@ use serde_json::Value;
 
 use crate::models::Tool;
 use crate::tools::spec::{ToolError, ToolResult};
-use crate::tui::app::AppMode;
+use crate::agent_surface::AppMode;
 
 pub use deepseek_core::engine::tool_catalog::{
     active_tools_for_step, apply_mcp_tool_deferral, apply_native_tool_deferral,

@@ -13,7 +13,7 @@ mod persistence;
 mod replay;
 
 use deepseek_core::turn::TurnLoopMode;
-use crate::tui::app::AppMode;
+use crate::agent_surface::AppMode;
 
 use super::Engine;
 

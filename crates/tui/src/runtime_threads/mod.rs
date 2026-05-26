@@ -28,7 +28,7 @@ use crate::models::{ContentBlock, Message, SystemPrompt, Usage};
 use crate::tools::plan::new_shared_plan_state;
 use crate::tools::subagent::SubAgentStatus;
 use crate::tools::todo::new_shared_todo_list;
-use crate::tui::app::AppMode;
+use crate::agent_surface::AppMode;
 
 pub(crate) const EVENT_CHANNEL_CAPACITY: usize = 4096;
 const MAX_ACTIVE_THREADS_DEFAULT: usize = 8;

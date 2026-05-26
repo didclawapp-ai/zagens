@@ -635,10 +635,10 @@ pub fn persist_root_string_key(key: &str, value: &str) -> anyhow::Result<std::pa
 
 /// Auto-select a model based on request complexity.
 pub fn auto_model_heuristic(input: &str, current_model: &str) -> String {
-    config::auto_model_heuristic(input, current_model)
+    crate::auto_route::auto_model_heuristic(input, current_model)
 }
 
-pub use config::{
+pub use crate::auto_route::{
     AutoRouteRecommendation, AutoRouteSelection, normalize_auto_route_effort,
     parse_auto_route_recommendation, resolve_auto_route_with_flash,
 };

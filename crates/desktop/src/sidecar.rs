@@ -156,6 +156,32 @@ fn bundled_python_executable(app: &AppHandle) -> Option<PathBuf> {
     None
 }
 
+fn runtime_sidecar_cli_args(deepseek_bin: &str, port: &str) -> Vec<String> {
+    let legacy_tui = deepseek_bin.contains("deepseek-tui");
+    let mut args = if legacy_tui {
+        vec![
+            "serve".into(),
+            "--http".into(),
+            "--host".into(),
+            "127.0.0.1".into(),
+            "--port".into(),
+            port.into(),
+        ]
+    } else {
+        vec![
+            "--host".into(),
+            "127.0.0.1".into(),
+            "--port".into(),
+            port.into(),
+        ]
+    };
+    args.push("--cors-origin".into());
+    args.push("http://tauri.localhost".into());
+    args.push("--cors-origin".into());
+    args.push("https://tauri.localhost".into());
+    args
+}
+
 fn spawn_sidecar(app: &AppHandle, deepseek_bin: &str, port: u16, token: &str) -> Result<Command> {
     let port_s = port.to_string();
     let mut std_cmd = std::process::Command::new(deepseek_bin);
@@ -173,18 +199,7 @@ fn spawn_sidecar(app: &AppHandle, deepseek_bin: &str, port: u16, token: &str) ->
         std_cmd.env("DEEPSEEK_API_KEY", api_key);
     }
     std_cmd
-        .args([
-            "serve",
-            "--http",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            port_s.as_str(),
-            "--cors-origin",
-            "http://tauri.localhost",
-            "--cors-origin",
-            "https://tauri.localhost",
-        ])
+        .args(runtime_sidecar_cli_args(deepseek_bin, port_s.as_str()))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped());
     if let Some(log_path) = sidecar_stderr_log_path() {
@@ -765,7 +780,7 @@ pub async fn start_and_monitor(
     }
 }
 
-/// Tauri bundles `externalBin` next to the main executable as `deepseek-tui-<target>(.exe)`.
+/// Tauri bundles `externalBin` next to the main executable as `deepseek-runtime-<target>(.exe)`.
 fn scan_sidecar_dir(dir: &Path) -> Option<PathBuf> {
     let read = std::fs::read_dir(dir).ok()?;
     let mut matches: Vec<PathBuf> = read
@@ -773,11 +788,17 @@ fn scan_sidecar_dir(dir: &Path) -> Option<PathBuf> {
         .map(|e| e.path())
         .filter(|p| {
             p.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
-                n.starts_with("deepseek-tui") && n != "deepseek-tui" && n != "deepseek-tui.exe"
+                (n.starts_with("deepseek-runtime") && n != "deepseek-runtime" && n != "deepseek-runtime.exe")
+                    || (n.starts_with("deepseek-tui") && n != "deepseek-tui" && n != "deepseek-tui.exe")
             })
         })
         .collect();
-    matches.sort();
+    matches.sort_by_key(|p| {
+        p.file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| !n.starts_with("deepseek-runtime"))
+            .unwrap_or(true)
+    });
     matches.into_iter().next()
 }
 
@@ -802,7 +823,7 @@ fn find_deepseek_binary(app: &AppHandle) -> String {
         return p.to_string_lossy().into_owned();
     }
 
-    let candidates = ["deepseek-tui", "deepseek"];
+    let candidates = ["deepseek-runtime", "deepseek-tui", "deepseek"];
     for name in &candidates {
         if std::process::Command::new(name)
             .arg("--version")

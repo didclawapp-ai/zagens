@@ -129,7 +129,7 @@ impl RuntimeThreadManager {
         let requested_model = req.model.unwrap_or_else(|| thread.model.clone());
         let auto_model = requested_model.trim().eq_ignore_ascii_case("auto");
         let (model, reasoning_effort) = if auto_model {
-            let selection = crate::commands::resolve_auto_route_with_flash(
+            let selection = crate::auto_route::resolve_auto_route_with_flash(
                 &self.config,
                 &prompt,
                 "",
@@ -150,13 +150,13 @@ impl RuntimeThreadManager {
         let trust_mode = req.trust_mode.unwrap_or(thread.trust_mode);
         let auto_approve = req.auto_approve.unwrap_or(thread.auto_approve);
         let approval_mode = if auto_approve {
-            crate::tui::approval::ApprovalMode::Auto
+            deepseek_core::approval::ApprovalMode::Auto
         } else {
             self.config
                 .approval_policy
                 .as_deref()
-                .and_then(crate::tui::approval::ApprovalMode::from_config_value)
-                .unwrap_or(crate::tui::approval::ApprovalMode::Suggest)
+                .and_then(deepseek_core::approval::ApprovalMode::from_config_value)
+                .unwrap_or(deepseek_core::approval::ApprovalMode::Suggest)
         };
 
         let start_params = StartTurnParams {
