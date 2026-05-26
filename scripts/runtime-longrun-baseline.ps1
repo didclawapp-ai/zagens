@@ -275,12 +275,12 @@ if ($DryRun) {
     exit 0
 }
 
-# Release build: debug `deepseek-tui serve --http` can stack-overflow on Windows (2026-05-22).
-$binary = Join-Path $workspaceRoot "target\release\deepseek-tui.exe"
+# Release build: debug `deepseek-runtime` can stack-overflow on Windows (2026-05-22).
+$binary = Join-Path $workspaceRoot "target\release\deepseek-runtime.exe"
 if (-not (Test-Path $binary)) {
-    Write-Host "Building deepseek-tui (release)..."
+    Write-Host "Building deepseek-runtime (release)..."
     Push-Location $workspaceRoot
-    cargo build -p deepseek-tui --release
+    cargo build -p deepseek-runtime-server --release
     Pop-Location
     if ($LASTEXITCODE -ne 0) { throw "Build failed" }
 }

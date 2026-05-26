@@ -1,0 +1,207 @@
+//! Tui-side engine builder — wires concrete subsystems into core `Engine::with_hosts`.
+
+use std::sync::Arc;
+
+use deepseek_core::engine::EngineHostBundle;
+use tokio::sync::{Mutex as AsyncMutex, mpsc};
+
+use crate::client::DeepSeekClient;
+use crate::config::{ApiProvider, Config};
+use crate::prompts;
+use crate::sandbox::TuiSandboxHost;
+use crate::seam_manager::{SeamConfig, SeamManager};
+use crate::tools::large_output_router::TuiWorkshopHost;
+use crate::tools::shell::{new_shared_shell_manager, TuiShellHost};
+use crate::tools::subagent::new_shared_subagent_manager;
+use crate::agent_surface::AppMode;
+
+use super::handle::EngineHandle;
+use super::runtime_ext::EngineRuntimeExt;
+use super::types::EngineConfig;
+use crate::core::capacity::CapacityController;
+use crate::core::session::Session;
+use super::cycle_hooks;
+use super::Engine;
+
+fn env_only_api_key_recovery_hint(api_config: &Config) -> Option<String> {
+    if !crate::config::active_provider_uses_env_only_api_key(api_config) {
+        return None;
+    }
+
+    let provider = api_config.api_provider();
+    let env_var = match provider {
+        ApiProvider::Deepseek | ApiProvider::DeepseekCN => "DEEPSEEK_API_KEY",
+        ApiProvider::NvidiaNim => "NVIDIA_API_KEY/NVIDIA_NIM_API_KEY",
+        ApiProvider::Openrouter => "OPENROUTER_API_KEY",
+        ApiProvider::Novita => "NOVITA_API_KEY",
+        ApiProvider::Fireworks => "FIREWORKS_API_KEY",
+        ApiProvider::Sglang => "SGLANG_API_KEY",
+        ApiProvider::Vllm => "VLLM_API_KEY",
+        ApiProvider::Ollama => "OLLAMA_API_KEY",
+    };
+
+    Some(format!(
+        "The rejected key came from {env_var}; no saved config key is present.\n\
+         Run `deepseek auth set --provider {provider}` to save a valid key in ~/.deepseek/config.toml, \
+         or remove the stale export and open a fresh shell.",
+        provider = provider.as_str()
+    ))
+}
+
+/// Build a core [`Engine`] plus handle from tui configuration.
+pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, EngineHandle) {
+    let config_ext = config.ext();
+    let lean = config.lean();
+
+    let (deepseek_client, deepseek_client_error) =
+        if let Some(client) = config_ext.llm_client_override.clone() {
+            (Some(client), None)
+        } else {
+            match DeepSeekClient::new(api_config) {
+                Ok(client) => (
+                    Some(Arc::new(client) as Arc<dyn crate::llm_client::LlmClient>),
+                    None,
+                ),
+                Err(err) => (None, Some(err.to_string())),
+            }
+        };
+    let api_key_env_only_recovery = env_only_api_key_recovery_hint(api_config);
+
+    let mut session = Session::new(
+        lean.model.clone(),
+        lean.workspace.clone(),
+        lean.allow_shell,
+        lean.trust_mode,
+        lean.notes_path.clone(),
+        lean.mcp_config_path.clone(),
+    );
+    let user_memory_block =
+        crate::memory::compose_block(lean.memory_enabled, &lean.memory_path);
+    let system_prompt = prompts::system_prompt_for_mode_with_context_skills_session_and_approval(
+        AppMode::Agent,
+        &lean.workspace,
+        None,
+        Some(&lean.skills_dir),
+        Some(&lean.instructions),
+        prompts::PromptSessionContext {
+            user_memory_block: user_memory_block.as_deref(),
+            topic_memory_block: None,
+            goal_objective: lean.goal_objective.as_deref(),
+            locale_tag: &lean.locale_tag,
+            task_type: lean.task_type,
+        },
+        session.approval_mode,
+    );
+    let stable_prompt = Some(system_prompt);
+    session.last_system_prompt_hash =
+        Some(cycle_hooks::system_prompt_hash(stable_prompt.as_ref()));
+    session.system_prompt = stable_prompt;
+
+    let subagent_manager =
+        new_shared_subagent_manager(lean.workspace.clone(), lean.max_subagents);
+    let shell_manager = config_ext
+        .runtime_services
+        .shell_manager
+        .clone()
+        .unwrap_or_else(|| new_shared_shell_manager(lean.workspace.clone()));
+    let capacity_controller = CapacityController::new(lean.capacity.clone());
+
+    let seam_manager = deepseek_client.as_ref().map(|main_client| {
+        let seam_config = SeamConfig {
+            enabled: api_config.context.enabled.unwrap_or(false),
+            verbatim_window_turns: api_config
+                .context
+                .verbatim_window_turns
+                .unwrap_or(crate::seam_manager::VERBATIM_WINDOW_TURNS),
+            l1_threshold: api_config
+                .context
+                .l1_threshold
+                .unwrap_or(crate::seam_manager::DEFAULT_L1_THRESHOLD),
+            l2_threshold: api_config
+                .context
+                .l2_threshold
+                .unwrap_or(crate::seam_manager::DEFAULT_L2_THRESHOLD),
+            l3_threshold: api_config
+                .context
+                .l3_threshold
+                .unwrap_or(crate::seam_manager::DEFAULT_L3_THRESHOLD),
+            cycle_threshold: api_config
+                .context
+                .cycle_threshold
+                .unwrap_or(crate::seam_manager::DEFAULT_CYCLE_THRESHOLD),
+            seam_model: api_config
+                .context
+                .seam_model
+                .clone()
+                .unwrap_or_else(|| crate::seam_manager::DEFAULT_SEAM_MODEL.to_string()),
+        };
+        SeamManager::new(main_client.clone(), seam_config)
+    });
+
+    let lsp_manager = Arc::new(match config_ext.lsp_config.clone() {
+        Some(cfg) => crate::lsp::LspManager::new(cfg, lean.workspace.clone()),
+        None => crate::lsp::LspManager::disabled(),
+    });
+
+    let workshop_vars = if config_ext.workshop.is_some() {
+        Some(Arc::new(AsyncMutex::new(
+            crate::tools::large_output_router::WorkshopVariables::default(),
+        )))
+    } else {
+        None
+    };
+
+    let sandbox_backend = crate::sandbox::backend::create_backend(api_config)
+        .unwrap_or_else(|e| {
+            tracing::warn!("Failed to create sandbox backend: {e}");
+            None
+        })
+        .map(Arc::from);
+
+    let scratchpad_run_id = config_ext
+        .runtime_services
+        .scratchpad_run_id
+        .lock()
+        .ok()
+        .and_then(|g| g.clone());
+
+    let topic_memory_settings = config_ext.topic_memory.clone();
+    let topic_memory_runtime =
+        crate::topic_memory::TopicMemoryRuntime::new(topic_memory_settings);
+
+    let (tx_subagent_completion, rx_subagent_completion) = mpsc::unbounded_channel();
+    let rx_subagent_completion = Arc::new(AsyncMutex::new(rx_subagent_completion));
+
+    let runtime_ext = EngineRuntimeExt {
+        config_ext,
+        lsp_manager: Arc::clone(&lsp_manager),
+        shell_manager: shell_manager.clone(),
+        workshop_vars: workshop_vars.clone(),
+        subagent_manager: subagent_manager.clone(),
+        mcp_pool: None,
+        tx_subagent_completion,
+        rx_subagent_completion: rx_subagent_completion.clone(),
+    };
+
+    let hosts = EngineHostBundle {
+        lsp: lsp_manager.clone() as Arc<dyn deepseek_core::engine::LspHost>,
+        shell: Box::new(TuiShellHost::new(shell_manager)),
+        sandbox: Box::new(TuiSandboxHost::new(sandbox_backend)),
+        seam: seam_manager.map(|mgr| Box::new(mgr) as Box<dyn deepseek_core::engine::SeamHost>),
+        workshop: workshop_vars.map(|vars| {
+            Box::new(TuiWorkshopHost(Some(vars))) as Box<dyn deepseek_core::engine::WorkshopHost>
+        }),
+        topic_memory: Box::new(topic_memory_runtime),
+        capacity_controller,
+        deepseek_client,
+        deepseek_client_error,
+        api_key_env_only_recovery,
+        ext: Box::new(runtime_ext),
+        scratchpad_run_id,
+    };
+
+    let (mut engine, handle) = Engine::with_hosts(lean, session, hosts);
+    engine.rehydrate_latest_canonical_state();
+
+    (engine, handle)
+}

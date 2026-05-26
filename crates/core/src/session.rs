@@ -3,7 +3,7 @@
 //! Tracks conversation history, token usage, and session metadata.
 
 use crate::approval::ApprovalMode;
-use crate::chat::{ContentBlock, Message, SystemPrompt};
+use crate::chat::{Message, SystemPrompt};
 use crate::cycle::CycleBriefing;
 use crate::engine::context::extract_compaction_summary_prompt;
 use crate::models::Usage;
@@ -252,6 +252,7 @@ pub fn truncate_before_last_user_message(messages: &mut Vec<Message>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::chat::ContentBlock;
     use std::path::PathBuf;
 
     #[test]

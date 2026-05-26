@@ -6,5 +6,5 @@
 async fn main() {
     dotenvy::dotenv().ok();
     let args = std::env::args();
-    deepseek_tui::runtime_serve::run_from_args(args).await;
+    deepseek_runtime::runtime_serve::run_from_args(args).await;
 }

@@ -19,8 +19,8 @@ fn desktop_cargo_toml_has_no_tui_runtime_library_dependency() {
             line_no + 1
         );
         assert!(
-            !trimmed.contains("../tui"),
-            "line {}: desktop must not path-depend on crates/tui",
+            !trimmed.contains("../runtime-server"),
+            "line {}: desktop must not path-depend on crates/runtime-server (use sidecar binary)",
             line_no + 1
         );
     }

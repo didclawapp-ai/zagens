@@ -1,7 +1,7 @@
 //! SQLite-backed thread/session metadata for **legacy CLI** paths only.
 //!
 //! **Not** the production sidecar SSOT (`runtime_threads` / `runtime.db`).
-//! Zagens and `deepseek-tui serve --http` use SessionManager + RuntimeThreadStore.
+//! Zagens and `deepseek-runtime` use SessionManager + RuntimeThreadStore.
 //! See `docs/tech/PERSISTENCE.md` and `docs/tech/adr/D7_PERSISTENCE_UNIFICATION.md`.
 
 use std::collections::HashMap;

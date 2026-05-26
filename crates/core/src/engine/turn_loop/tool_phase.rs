@@ -1,10 +1,8 @@
 //! Tool planning + outcome aggregation for one turn step (P2 PR6b — `deepseek-core`).
 
 use std::collections::HashSet;
-use std::sync::Arc;
 use deepseek_tools::{ToolError, ToolResult};
 use serde_json::json;
-use tokio::sync::{Mutex as AsyncMutex, RwLock};
 
 use crate::chat::{ContentBlock, Message, Tool};
 use crate::engine::context::compact_tool_result_for_context;
@@ -19,7 +17,7 @@ use crate::engine::tool_catalog::{
     CODE_EXECUTION_TOOL_NAME, is_tool_search_tool, missing_tool_error_message,
     REQUEST_USER_INPUT_NAME,
 };
-use crate::engine::turn_loop::exec::{ToolExecOutcome, ToolExecutionPlan};
+use crate::engine::turn_loop::exec::ToolExecutionPlan;
 use crate::engine::turn_loop::host::TurnLoopHost;
 use crate::engine::turn_loop::control::TurnLoopToolPhaseOutcome;
 use crate::error_taxonomy::ErrorEnvelope;

@@ -3,7 +3,6 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 use tauri::{
@@ -28,7 +27,6 @@ struct RegistryInner {
 struct WindowRecord {
     label: String,
     primary_workspace: String,
-    created_at_ms: u64,
     focused_thread_id: Option<String>,
 }
 
@@ -70,7 +68,6 @@ impl WindowRegistry {
             WindowRecord {
                 label,
                 primary_workspace,
-                created_at_ms: now_ms(),
                 focused_thread_id: None,
             },
         );
@@ -155,13 +152,6 @@ impl WindowRegistry {
         out.sort_by(|a, b| a.label.cmp(&b.label));
         Ok(out)
     }
-}
-
-fn now_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0)
 }
 
 fn normalize_workspace_field(raw: String) -> Result<String, String> {

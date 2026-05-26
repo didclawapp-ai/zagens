@@ -19,9 +19,8 @@ use crate::scratchpad::ScratchpadConfig;
 use crate::session::Session;
 use crate::turn::{TurnContext, TurnLoopMode};
 
-use super::control::{TurnLoopControl, TurnLoopToolPhaseOutcome};
+use super::control::TurnLoopControl;
 use super::exec::{ToolExecOutcome, ToolExecutionPlan, ToolPlanApprovalMeta};
-use crate::engine::loop_guard::LoopGuard;
 use crate::engine::streaming::ToolUseState;
 
 /// Config slices the turn loop reads each step (avoids pulling full `EngineConfig` into core yet).

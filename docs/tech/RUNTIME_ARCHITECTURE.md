@@ -5,8 +5,8 @@
 > **架构评估 / 定型判定：** [adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md](./adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md)（**§1 = 10/10 架构定型**，2026-05-26 — M-series + D6–D8 + D1 闭合）  
 > **OpenAPI / TS 类型：** [openapi/zagens-runtime-v1.openapi.json](./openapi/zagens-runtime-v1.openapi.json) · [adr/D8_OPENAPI_TS_GENERATION.md](./adr/D8_OPENAPI_TS_GENERATION.md)  
 > **实施后快照：** [adr/IMPLEMENTATION_SUMMARY_2026-05-24.md](./adr/IMPLEMENTATION_SUMMARY_2026-05-24.md)  
-> **D6 sidecar：** [adr/D6_RUNTIME_SERVER.md](./adr/D6_RUNTIME_SERVER.md) · [D6_IMPLEMENTATION_PLAN.md](./adr/D6_IMPLEMENTATION_PLAN.md)（Phase A/A+ ✅）· Phase B spike：[D6_PHASE_B_SPIKE.md](./adr/D6_PHASE_B_SPIKE.md)  
-> **最后更新：** 2026-05-26（D6 Phase A+ binary 契约测、M-series Engine 入核、`deepseek-runtime` sidecar — 与代码复核对齐）
+> **D6 Phase B：** [adr/D6_PHASE_B_CLI_SUNSET.md](./adr/D6_PHASE_B_CLI_SUNSET.md) — runtime 单 crate（`deepseek-runtime-server` / lib `deepseek_runtime`）；CLI + ratatui TUI 已移除（2026-05-26）  
+> **最后更新：** 2026-05-26（D6 Phase B：单 runtime crate；`deepseek-runtime` sidecar — 与代码复核对齐）
 
 > **如何读这份文档：** §1 是**顶层系统总览**（一张图把外部世界 → 桌面壳 → sidecar → LLM 一次看完）；§2 是**Sidecar 内部数据流**（HTTP → Manager → Engine → turn_loop）；§5 是**L2 双通道**（Tauri IPC vs Runtime HTTP/SSE）；§8 是**典型发消息时序图**。其余小节为旁注（crate 依赖、持久化、监督、CLI、模块索引）。所有图节点上的源文件路径均可直接对照代码核验。
 
@@ -16,12 +16,12 @@
 
 | 层 | 仓库落点 | 职责 |
 |----|----------|------|
-| **L1 底层** | `deepseek-core`（`Engine` struct、`op_loop`、`turn_loop`、Session、`TurnEnginePort`）+ `deepseek-tui` lib（工具/MCP/LSP 宿主、`platform_dispatch` shim；`runtime_api` / `runtime_threads` 源码仍在此 crate） | Agent turn 逻辑在 core；tui 提供平台侧接线与 HTTP 服务实现 |
-| **L1 生产 binary** | **`deepseek-runtime`**（`crates/runtime-server`）— 链接 `deepseek-tui` **无** `tui-ui` / ratatui | Zagens 嵌入 sidecar；见 [D6_RUNTIME_SERVER.md](./adr/D6_RUNTIME_SERVER.md) |
-| **L2 契约** | `runtime_api/`、`runtime_proxy`、Tauri IPC（`commands.rs`）、OpenAPI | 桌面/TUI **融合面**；Bearer 不出 WebView |
-| **L3 壳** | **Zagens** `crates/desktop`（唯一用户产品）；`crates/tui/src/tui/` ratatui（**maintenance/freeze**）；CLI `deepseek`（dev/headless） | 只消费 L2，**不**内嵌 L1 |
+| **L1 底层** | `deepseek-core`（`Engine` struct、`op_loop`、`turn_loop`、Session、`TurnEnginePort`）+ **`deepseek_runtime` lib**（`crates/runtime-server`：工具/MCP/LSP 宿主、`platform_dispatch` shim、`runtime_api` / `runtime_threads`） | Agent turn 逻辑在 core；runtime lib 提供平台侧接线与 HTTP 服务实现 |
+| **L1 生产 binary** | **`deepseek-runtime`**（`crates/runtime-server` bin）— **无** ratatui / CLI | Zagens 嵌入 sidecar；见 [D6_RUNTIME_SERVER.md](./adr/D6_RUNTIME_SERVER.md) · [D6_PHASE_B_CLI_SUNSET.md](./adr/D6_PHASE_B_CLI_SUNSET.md) |
+| **L2 契约** | `runtime_api/`、`runtime_proxy`、Tauri IPC（`commands.rs`）、OpenAPI | 桌面 **融合面**；Bearer 不出 WebView |
+| **L3 壳** | **Zagens** `crates/desktop`（唯一用户产品） | 只消费 L2，**不**内嵌 L1 |
 
-**硬约束：** Agent turn 只在 sidecar 内执行；**生产 binary 为 `deepseek-runtime`**（Zagens `externalBin`）；dev/CLI 可 fallback `deepseek-tui serve --http`。~~`app-server`~~ 已于 D7 C5 **删除**（见 [D4_APPSERVER_DEPRECATED.md](./adr/D4_APPSERVER_DEPRECATED.md)）。
+**硬约束：** Agent turn 只在 sidecar 内执行；**生产 binary 为 `deepseek-runtime`**（Zagens `externalBin`）。~~`app-server`~~ 已于 D7 C5 **删除**；~~`crates/cli`~~、~~ratatui TUI~~ 已于 D6 Phase B **删除**（见 [D4_APPSERVER_DEPRECATED.md](./adr/D4_APPSERVER_DEPRECATED.md) · [D6_PHASE_B_CLI_SUNSET.md](./adr/D6_PHASE_B_CLI_SUNSET.md)）。
 
 ---
 
@@ -272,9 +272,7 @@ flowchart BT
 | Crate | 路径 | 角色 |
 |-------|------|------|
 | **deepseek-desktop** | `crates/desktop/` | Zagens Tauri 壳；**只**依赖 `config` + `secrets` + Tauri/reqwest/portable-pty |
-| **deepseek-runtime-server** | `crates/runtime-server/` | 生产 sidecar binary **`deepseek-runtime`**；依赖 `deepseek-tui` lib（`default-features = false`，**无** ratatui） |
-| **deepseek-tui** | `crates/tui/` | HTTP/SSE 实现（`runtime_api` / `runtime_threads`）+ ratatui TUI（freeze，`tui-ui` feature）；依赖 `core` |
-| **deepseek-tui-cli** | `crates/cli/` | `deepseek` 二进制；dev/headless 入口；`delegate_to_tui` 子进程转调 |
+| **deepseek-runtime-server** | `crates/runtime-server/` | 生产 sidecar **lib + bin**：`deepseek_runtime` + **`deepseek-runtime`**；含 `runtime_api` / `runtime_threads` / Engine shim |
 | **deepseek-core** | `crates/core/` | `Engine` + `op_loop` + `turn_loop` / Session / `TurnEnginePort` / 工具目录 |
 | ~~**deepseek-app-server**~~ | — | **已删除**（D7 C5）；见 [D4_APPSERVER_DEPRECATED.md](./adr/D4_APPSERVER_DEPRECATED.md) |
 | **deepseek-state** | `crates/state/` | CLI legacy 线程元数据 SQLite（**非** sidecar SSOT；`thread list --source state`） |
@@ -283,8 +281,8 @@ flowchart BT
 **关键事实（与各 `Cargo.toml` 一一核对）：**
 
 - `deepseek-desktop` **只**依赖 `deepseek-config` + `deepseek-secrets`（加上 Tauri/reqwest/portable-pty/sha2/dirs），**不**直接依赖 `core` 或 `tui` —— 所有 Agent 能力通过嵌入式 **`deepseek-runtime`** 子进程 + HTTP/IPC 获得。
-- `deepseek-runtime-server` 链接 `deepseek-tui` **无** `tui-ui` —— sidecar 二进制不含 ratatui/crossterm（D6 ✅；`cargo tree -p deepseek-runtime-server -i ratatui` → 无匹配）。
-- `deepseek-tui` 依赖 `deepseek-core`；`Engine` struct + `Engine::run()` 在 core，tui 保留 ~130 LOC shim + 工具/MCP/LSP 宿主实现。
+- `deepseek-runtime-server` 单 crate：**无** ratatui/crossterm（D6 Phase B ✅；`cargo tree -p deepseek-runtime-server -i ratatui` → 无匹配）。
+- `deepseek_runtime` lib 依赖 `deepseek-core`；`Engine` struct + `Engine::run()` 在 core，runtime 保留 ~130 LOC shim + 工具/MCP/LSP 宿主实现。
 - ~~`deepseek-tui-core` legacy crate~~ **已于 2026-05-25 删除**。
 - ~~`deepseek-app-server`~~ **已于 2026-05-26 删除**（D7 C5）。
 

@@ -1,7 +1,5 @@
 //! Outer turn-step loop for agent turns (P2 PR4 — generic over [`TurnLoopHost`]).
 
-use std::collections::HashSet;
-
 use tracing::Instrument;
 
 use crate::chat::{ContentBlock, Message, Tool};

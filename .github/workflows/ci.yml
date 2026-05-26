@@ -80,7 +80,7 @@ jobs:
         run: cargo test --workspace --all-features --locked
       - name: Runtime sidecar contract (A+.4 / R-009)
         if: matrix.os == 'ubuntu-latest'
-        run: cargo test -p deepseek-tui --lib sidecar_contract_full_lifecycle --all-features --locked
+        run: cargo test -p deepseek-runtime-server --lib sidecar_contract_full_lifecycle --locked
       - name: Runtime sidecar binary contract (D6 Phase A+)
         if: matrix.os == 'ubuntu-latest'
         run: cargo test -p deepseek-runtime-server --test sidecar_binary_contract --locked
@@ -93,10 +93,8 @@ jobs:
       - name: OpenAPI spec drift (D8)
         if: matrix.os == 'ubuntu-latest'
         run: |
-          cargo run -p deepseek-tui --no-default-features --features openapi-export,json,toml --locked --bin export-runtime-openapi
+          cargo run -p deepseek-runtime-server --locked --bin export-runtime-openapi
           git diff --exit-code -- docs/tech/openapi/zagens-runtime-v1.openapi.json
-      - name: Run Offline Eval Harness
-        run: cargo run -p deepseek-tui --all-features -- eval
 
   # Check documentation builds without warnings
   docs:
