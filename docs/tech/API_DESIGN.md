@@ -2,7 +2,9 @@
 
 > **Zagens 壳版本:** 0.4.3（`crates/desktop/Cargo.toml`）| **文档修订:** 2026-05-25 | **权威实现:** `commands.rs`、`runtime_proxy.rs`、`runtime_api/router.rs` `build_router`、`web-ui/src/api/client.ts`
 
-本文档描述 **Zagens 桌面壳** 的双通道集成 API，不是独立 OpenAPI 规范。协议类型见 `crates/protocol/`；HTTP 路由以 `crates/tui/src/runtime_api/router.rs` 中 `build_router` 为准（sidecar 内 `deepseek-tui serve --http`）。历史 `RUNTIME_API.md` 已移除，勿引用旧路径。运行时架构附图见 [RUNTIME_ARCHITECTURE.md](./RUNTIME_ARCHITECTURE.md)。
+本文档描述 **Zagens 桌面壳** 的双通道集成 API。协议类型见 `crates/protocol/`；HTTP 路由 SSOT 为 `crates/tui/src/runtime_api/router.rs`（sidecar：`deepseek-runtime` / `deepseek-tui serve --http`）。
+
+**OpenAPI 3.1（D8）：** 检入契约 [`openapi/zagens-runtime-v1.openapi.json`](./openapi/zagens-runtime-v1.openapi.json)；由 `export-runtime-openapi` 从 Rust `schemars` + 路径表导出；`web-ui` TS 经 `openapi-typescript` 生成（见 [`adr/D8_OPENAPI_TS_GENERATION.md`](./adr/D8_OPENAPI_TS_GENERATION.md)）。历史 `RUNTIME_API.md` 已移除。运行时架构附图见 [RUNTIME_ARCHITECTURE.md](./RUNTIME_ARCHITECTURE.md)。
 
 **与 Agent 行为：** 同一 sidecar 载入的 runtime prompt 含 [幻觉防控子规则](prompt-hallucination-patch.md)（Capability / Architecture Claims）。回归显示 Zagens 在「能力/架构类裸问」上幻觉率较未打 patch 的发行 TUI 明显下降；**本文档的 SSE 示意图与能力结论无关**，集成时以代码与 `streamNormalize.ts` 为准。
 

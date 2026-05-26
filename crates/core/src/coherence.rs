@@ -10,12 +10,13 @@
 //! the state enum here, sharing local `super::capacity::{...}`
 //! references instead of crossing a crate boundary.
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::capacity::{GuardrailAction, RiskBand};
 
 /// User-facing coherence ladder for session health.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum CoherenceState {
     #[default]

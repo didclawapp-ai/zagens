@@ -15,6 +15,7 @@ use std::time::Duration as StdDuration;
 use anyhow::{Context, Result, anyhow, bail};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::sync::{Mutex, Notify, mpsc};
@@ -40,7 +41,7 @@ const fn default_task_schema_version() -> u32 {
 }
 
 /// Durable task status.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum TaskStatus {
     Queued,
@@ -178,13 +179,14 @@ pub struct TaskGithubEvent {
 }
 
 /// Durable task record.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct TaskRecord {
     #[serde(default = "default_task_schema_version")]
     pub schema_version: u32,
     pub id: String,
     pub prompt: String,
     pub model: String,
+    #[schemars(schema_with = "crate::json_schema_util::path_as_string")]
     pub workspace: PathBuf,
     pub mode: String,
     pub allow_shell: bool,
@@ -209,21 +211,28 @@ pub struct TaskRecord {
     #[serde(default)]
     pub runtime_event_count: usize,
     #[serde(default)]
+    #[schemars(skip)]
     pub checklist: TaskChecklistState,
     #[serde(default)]
+    #[schemars(skip)]
     pub gates: Vec<TaskGateRecord>,
     #[serde(default)]
+    #[schemars(skip)]
     pub attempts: Vec<TaskAttemptRecord>,
     #[serde(default)]
+    #[schemars(skip)]
     pub artifacts: Vec<TaskArtifactRef>,
     #[serde(default)]
+    #[schemars(skip)]
     pub github_events: Vec<TaskGithubEvent>,
+    #[schemars(skip)]
     pub tool_calls: Vec<TaskToolCallSummary>,
+    #[schemars(skip)]
     pub timeline: Vec<TaskTimelineEntry>,
 }
 
 /// Lightweight task view.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct TaskSummary {
     pub id: String,
     pub status: TaskStatus,
@@ -262,7 +271,7 @@ impl From<&TaskRecord> for TaskSummary {
 }
 
 /// Count totals by status for task dashboards.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, JsonSchema)]
 pub struct TaskCounts {
     pub queued: usize,
     pub running: usize,

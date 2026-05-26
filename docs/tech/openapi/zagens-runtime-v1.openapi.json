@@ -1,0 +1,2916 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Zagens Runtime HTTP API",
+    "version": "1.0.0",
+    "description": "Local sidecar (`deepseek-runtime`) HTTP/SSE surface consumed by Zagens desktop web-ui. SSOT routes: `crates/tui/src/runtime_api/router.rs`."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:7878"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Runtime token from Zagens shell (`DEEPSEEK_RUNTIME_TOKEN` / Tauri proxy)."
+      }
+    },
+    "schemas": {
+      "CoherenceState": {
+        "description": "User-facing coherence ladder for session health.",
+        "type": "string",
+        "enum": [
+          "healthy",
+          "getting_crowded",
+          "refreshing_context",
+          "verifying_recent_work",
+          "resetting_plan"
+        ]
+      },
+      "RuntimeTurnStatus": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "in_progress",
+          "completed",
+          "failed",
+          "interrupted",
+          "canceled"
+        ]
+      },
+      "TurnItemKind": {
+        "type": "string",
+        "enum": [
+          "user_message",
+          "agent_message",
+          "tool_call",
+          "file_change",
+          "command_execution",
+          "context_compaction",
+          "status",
+          "error"
+        ]
+      },
+      "TurnItemLifecycleStatus": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "in_progress",
+          "completed",
+          "failed",
+          "interrupted",
+          "canceled"
+        ]
+      },
+      "ServerToolUsage": {
+        "description": "Server-side tool usage counters.",
+        "type": "object",
+        "properties": {
+          "code_execution_requests": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
+          },
+          "tool_search_requests": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
+          }
+        }
+      },
+      "Usage": {
+        "description": "Token usage metadata for a response.",
+        "type": "object",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "output_tokens": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "prompt_cache_hit_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
+          },
+          "prompt_cache_miss_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
+          },
+          "reasoning_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
+          },
+          "reasoning_replay_tokens": {
+            "description": "Approximate input tokens spent re-sending prior `reasoning_content`\nacross user-message boundaries (V4 §5.1.1 \"Interleaved Thinking\").",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
+          },
+          "server_tool_use": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ServerToolUsage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "input_tokens",
+          "output_tokens"
+        ]
+      },
+      "SessionMetadata": {
+        "description": "Session metadata stored with each saved session",
+        "type": "object",
+        "properties": {
+          "id": {
+            "description": "Unique session identifier",
+            "type": "string"
+          },
+          "title": {
+            "description": "Human-readable title (derived from first message)",
+            "type": "string"
+          },
+          "created_at": {
+            "description": "When the session was created",
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "description": "When the session was last updated",
+            "type": "string",
+            "format": "date-time"
+          },
+          "message_count": {
+            "description": "Number of messages in the session",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "total_tokens": {
+            "description": "Total tokens used",
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "model": {
+            "description": "Model used for the session",
+            "type": "string"
+          },
+          "workspace": {
+            "description": "Workspace directory",
+            "type": "string"
+          },
+          "mode": {
+            "description": "Optional mode label (agent/plan/etc.)",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "runtime_thread_id": {
+            "description": "Runtime thread store id for Zagens event replay (tools + thinking UI).",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "created_at",
+          "updated_at",
+          "message_count",
+          "total_tokens",
+          "model",
+          "workspace"
+        ]
+      },
+      "SessionsListResponse": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "SessionsListResponse",
+        "type": "object",
+        "properties": {
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SessionMetadata"
+            }
+          }
+        },
+        "required": [
+          "sessions"
+        ]
+      },
+      "SessionDetailResponse": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "SessionDetailResponse",
+        "type": "object",
+        "properties": {
+          "metadata": {
+            "$ref": "#/components/schemas/SessionMetadata"
+          },
+          "messages": {
+            "type": "array",
+            "items": true
+          },
+          "system_prompt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "metadata",
+          "messages"
+        ]
+      },
+      "ResumeSessionResponse": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "ResumeSessionResponse",
+        "type": "object",
+        "properties": {
+          "thread_id": {
+            "type": "string"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "message_count": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "thread_id",
+          "session_id",
+          "message_count",
+          "state"
+        ]
+      },
+      "ThreadRecord": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0,
+            "default": 2
+          },
+          "id": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "model": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "allow_shell": {
+            "type": "boolean"
+          },
+          "trust_mode": {
+            "type": "boolean"
+          },
+          "auto_approve": {
+            "type": "boolean"
+          },
+          "latest_turn_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latest_response_bookmark": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "archived": {
+            "type": "boolean",
+            "default": false
+          },
+          "system_prompt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "task_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "task_type": {
+            "type": "string",
+            "default": "code"
+          },
+          "coherence_state": {
+            "$ref": "#/components/schemas/CoherenceState",
+            "default": "healthy"
+          },
+          "scratchpad_run_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "checklist_snapshot": true
+        },
+        "required": [
+          "id",
+          "created_at",
+          "updated_at",
+          "model",
+          "workspace",
+          "mode",
+          "allow_shell",
+          "trust_mode",
+          "auto_approve"
+        ]
+      },
+      "TurnItemRecord": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0,
+            "default": 2
+          },
+          "id": {
+            "type": "string"
+          },
+          "turn_id": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/TurnItemKind"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TurnItemLifecycleStatus"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "metadata": true,
+          "artifact_refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": []
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "ended_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "turn_id",
+          "kind",
+          "status",
+          "summary"
+        ]
+      },
+      "TurnRecord": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0,
+            "default": 2
+          },
+          "id": {
+            "type": "string"
+          },
+          "thread_id": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RuntimeTurnStatus"
+          },
+          "input_summary": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "ended_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "duration_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
+          },
+          "usage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Usage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "last_request_input_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "item_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": []
+          },
+          "steer_count": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0,
+            "default": 0
+          }
+        },
+        "required": [
+          "id",
+          "thread_id",
+          "status",
+          "input_summary",
+          "created_at"
+        ]
+      },
+      "ThreadDetail": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "ThreadDetail",
+        "type": "object",
+        "properties": {
+          "thread": {
+            "$ref": "#/components/schemas/ThreadRecord"
+          },
+          "turns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TurnRecord"
+            }
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TurnItemRecord"
+            }
+          },
+          "latest_seq": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "thread",
+          "turns",
+          "items",
+          "latest_seq"
+        ]
+      },
+      "ThreadSummary": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "ThreadSummary",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "preview": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "archived": {
+            "type": "boolean"
+          },
+          "updated_at": {
+            "type": "string"
+          },
+          "latest_turn_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latest_turn_status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "preview",
+          "model",
+          "mode",
+          "archived",
+          "updated_at"
+        ]
+      },
+      "CreateThreadRequest": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "CreateThreadRequest",
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "workspace": {
+            "type": "string"
+          },
+          "mode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "allow_shell": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "trust_mode": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "auto_approve": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "archived": {
+            "type": "boolean",
+            "default": false
+          },
+          "system_prompt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "task_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "task_type": {
+            "description": "`auto` | `office` | `code` — resolved to `office`/`code` on create.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "workspace"
+        ]
+      },
+      "UpdateThreadRequest": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "UpdateThreadRequest",
+        "description": "Mutable fields accepted by `PATCH /v1/threads/{id}`.\n\nEach field is optional — missing means \"no change\". Extended in v0.8.10\n(#562, whalescale#256) so the UI can flip persistent thread state without\nhaving to recreate a thread or pass per-turn overrides on every send.",
+        "type": "object",
+        "properties": {
+          "archived": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "allow_shell": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "trust_mode": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "auto_approve": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "system_prompt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "workspace": {
+            "description": "When set, rebind tool workspace for this thread. Path must exist and be a\ndirectory. Relative paths resolve against the runtime API default workspace.\nUnloads cached engine entry when changed (disallowed while a turn is in progress).",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "scratchpad_run_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        }
+      },
+      "StartTurnRequest": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "StartTurnRequest",
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "string"
+          },
+          "input_summary": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "allow_shell": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "trust_mode": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "auto_approve": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "route_intent": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "temperature": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float",
+            "default": null
+          },
+          "top_p": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float",
+            "default": null
+          },
+          "max_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0,
+            "default": null
+          }
+        },
+        "required": [
+          "prompt"
+        ]
+      },
+      "SteerTurnRequest": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "SteerTurnRequest",
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "prompt"
+        ]
+      },
+      "StartTurnResponse": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "StartTurnResponse",
+        "type": "object",
+        "properties": {
+          "thread": {
+            "$ref": "#/components/schemas/ThreadRecord"
+          },
+          "turn": {
+            "$ref": "#/components/schemas/TurnRecord"
+          }
+        },
+        "required": [
+          "thread",
+          "turn"
+        ]
+      },
+      "StreamTurnRequest": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "StreamTurnRequest",
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "string"
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "workspace": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "allow_shell": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "trust_mode": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "auto_approve": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "route_intent": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "task_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "temperature": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "top_p": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "max_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "prompt"
+        ]
+      },
+      "TaskStatus": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "TaskStatus",
+        "description": "Durable task status.",
+        "type": "string",
+        "enum": [
+          "queued",
+          "running",
+          "completed",
+          "failed",
+          "canceled"
+        ]
+      },
+      "TaskRecord": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "TaskRecord",
+        "description": "Durable task record.",
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0,
+            "default": 2
+          },
+          "id": {
+            "type": "string"
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "allow_shell": {
+            "type": "boolean"
+          },
+          "trust_mode": {
+            "type": "boolean"
+          },
+          "auto_approve": {
+            "type": "boolean",
+            "default": true
+          },
+          "status": {
+            "$ref": "#/components/schemas/TaskStatus"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "ended_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "duration_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
+          },
+          "result_summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "result_detail_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "thread_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "turn_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "runtime_event_count": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0,
+            "default": 0
+          }
+        },
+        "required": [
+          "id",
+          "prompt",
+          "model",
+          "workspace",
+          "mode",
+          "allow_shell",
+          "trust_mode",
+          "status",
+          "created_at"
+        ]
+      },
+      "TaskSummary": {
+        "description": "Lightweight task view.",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TaskStatus"
+          },
+          "prompt_summary": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "ended_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "duration_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "thread_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "turn_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "prompt_summary",
+          "model",
+          "mode",
+          "created_at"
+        ]
+      },
+      "TaskCounts": {
+        "description": "Count totals by status for task dashboards.",
+        "type": "object",
+        "properties": {
+          "queued": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "running": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "completed": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "failed": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "canceled": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "queued",
+          "running",
+          "completed",
+          "failed",
+          "canceled"
+        ]
+      },
+      "TasksResponse": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "TasksResponse",
+        "type": "object",
+        "properties": {
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskSummary"
+            }
+          },
+          "counts": {
+            "$ref": "#/components/schemas/TaskCounts"
+          }
+        },
+        "required": [
+          "tasks",
+          "counts"
+        ]
+      },
+      "RoutingRule": {
+        "type": "object",
+        "properties": {
+          "intent": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "intent",
+          "model"
+        ]
+      },
+      "RoutingRulesDoc": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "RoutingRulesDoc",
+        "type": "object",
+        "properties": {
+          "rules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoutingRule"
+            }
+          }
+        },
+        "required": [
+          "rules"
+        ]
+      },
+      "UsageTotals": {
+        "type": "object",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "output_tokens": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "cached_tokens": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "reasoning_tokens": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "cost_usd": {
+            "type": "number",
+            "format": "double"
+          },
+          "turns": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "input_tokens",
+          "output_tokens",
+          "cached_tokens",
+          "reasoning_tokens",
+          "cost_usd",
+          "turns"
+        ]
+      },
+      "UsageBucket": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "input_tokens": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "output_tokens": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "cached_tokens": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "reasoning_tokens": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "cost_usd": {
+            "type": "number",
+            "format": "double"
+          },
+          "turns": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "key",
+          "input_tokens",
+          "output_tokens",
+          "cached_tokens",
+          "reasoning_tokens",
+          "cost_usd",
+          "turns"
+        ]
+      },
+      "UsageAggregation": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "UsageAggregation",
+        "type": "object",
+        "properties": {
+          "since": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "until": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "group_by": {
+            "type": "string"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/UsageTotals"
+          },
+          "buckets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UsageBucket"
+            }
+          }
+        },
+        "required": [
+          "group_by",
+          "totals",
+          "buckets"
+        ]
+      },
+      "ErrorBody": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "ErrorBody",
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ]
+      }
+    }
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "health",
+        "summary": "Liveness probe",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/probe": {
+      "get": {
+        "operationId": "internalProbe",
+        "summary": "Internal readiness probe",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions": {
+      "get": {
+        "operationId": "listSessions",
+        "summary": "List saved sessions",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionsListResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/sessions/{id}": {
+      "get": {
+        "operationId": "getSession",
+        "summary": "Load session detail",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionDetailResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "deleteSession",
+        "summary": "Delete saved session",
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/sessions/{id}/resume-thread": {
+      "post": {
+        "operationId": "resumeSessionThread",
+        "summary": "Resume session into runtime thread",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResumeSessionResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/resume-tasks/{thread_id}": {
+      "get": {
+        "operationId": "getResumeTask",
+        "summary": "Resume seeding status",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResumeSessionResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/workspace/status": {
+      "get": {
+        "operationId": "workspaceStatus",
+        "summary": "Workspace status",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/workspace/browse": {
+      "get": {
+        "operationId": "browseWorkspace",
+        "summary": "Browse workspace",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/workspace/file": {
+      "get": {
+        "operationId": "readWorkspaceFile",
+        "summary": "Read workspace file",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/stream": {
+      "post": {
+        "operationId": "streamTurn",
+        "summary": "Create thread and stream turn (SSE)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StreamTurnRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Server-Sent Events stream",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/threads": {
+      "get": {
+        "operationId": "listThreads",
+        "summary": "List threads",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadRecord"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "createThread",
+        "summary": "Create thread",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateThreadRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadRecord"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/threads/summary": {
+      "get": {
+        "operationId": "listThreadsSummary",
+        "summary": "Thread summaries",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadSummary"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/threads/{id}": {
+      "get": {
+        "operationId": "getThread",
+        "summary": "Thread detail",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadDetail"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "updateThread",
+        "summary": "Patch thread",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateThreadRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadRecord"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/threads/{id}/checklist": {
+      "get": {
+        "operationId": "getThreadChecklist",
+        "summary": "Thread checklist",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/threads/{id}/scratchpad/status": {
+      "get": {
+        "operationId": "getThreadScratchpadStatus",
+        "summary": "Scratchpad status",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/threads/{id}/context": {
+      "get": {
+        "operationId": "getThreadContext",
+        "summary": "Thread context",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/threads/{id}/resume": {
+      "post": {
+        "operationId": "resumeThread",
+        "summary": "Resume thread",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadRecord"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/threads/{id}/fork": {
+      "post": {
+        "operationId": "forkThread",
+        "summary": "Fork thread",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadRecord"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/threads/{id}/fork-at-user-message": {
+      "post": {
+        "operationId": "forkThreadAtUserMessage",
+        "summary": "Fork at user message",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadRecord"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/threads/{id}/edit-last-turn": {
+      "post": {
+        "operationId": "editLastThreadTurn",
+        "summary": "Edit last turn",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartTurnResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/threads/{id}/turns": {
+      "post": {
+        "operationId": "startThreadTurn",
+        "summary": "Start turn",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartTurnRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartTurnResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/threads/{id}/turns/{turn_id}/steer": {
+      "post": {
+        "operationId": "steerThreadTurn",
+        "summary": "Steer in-flight turn",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SteerTurnRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TurnRecord"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/threads/{id}/turns/{turn_id}/resolve-approval": {
+      "post": {
+        "operationId": "resolveApproval",
+        "summary": "Resolve exec approval",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/threads/{id}/turns/{turn_id}/interrupt": {
+      "post": {
+        "operationId": "interruptThreadTurn",
+        "summary": "Interrupt turn",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TurnRecord"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/threads/{id}/compact": {
+      "post": {
+        "operationId": "compactThread",
+        "summary": "Compact thread context",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/threads/{id}/persist-session": {
+      "post": {
+        "operationId": "persistThreadSession",
+        "summary": "Persist thread to session file",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/threads/{id}/snapshots": {
+      "get": {
+        "operationId": "listThreadSnapshots",
+        "summary": "List snapshots",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/threads/{id}/snapshots/restore": {
+      "post": {
+        "operationId": "restoreThreadSnapshot",
+        "summary": "Restore snapshot",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadDetail"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/threads/{id}/workspace/browse": {
+      "get": {
+        "operationId": "browseThreadWorkspace",
+        "summary": "Browse thread workspace",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/threads/{id}/workspace/file": {
+      "get": {
+        "operationId": "readThreadWorkspaceFile",
+        "summary": "Read thread workspace file",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/threads/{id}/events": {
+      "get": {
+        "operationId": "streamThreadEvents",
+        "summary": "Thread events SSE",
+        "responses": {
+          "200": {
+            "description": "Server-Sent Events stream",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/tasks": {
+      "get": {
+        "operationId": "listTasks",
+        "summary": "List tasks",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TasksResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "createTask",
+        "summary": "Create task",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskRecord"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/tasks/clear": {
+      "post": {
+        "operationId": "clearTasks",
+        "summary": "Clear tasks",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/tasks/{id}": {
+      "get": {
+        "operationId": "getTask",
+        "summary": "Get task",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskRecord"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/tasks/{id}/cancel": {
+      "post": {
+        "operationId": "cancelTask",
+        "summary": "Cancel task",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskRecord"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/blackboards": {
+      "get": {
+        "operationId": "listBlackboards",
+        "summary": "List blackboards",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/blackboards/{id}": {
+      "get": {
+        "operationId": "getBlackboard",
+        "summary": "Get blackboard",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/topic-memory": {
+      "get": {
+        "operationId": "getTopicMemory",
+        "summary": "Topic memory graph",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/skills": {
+      "get": {
+        "operationId": "listSkills",
+        "summary": "List skills",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "createSkill",
+        "summary": "Create skill",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/skills/import": {
+      "post": {
+        "operationId": "importSkillLocal",
+        "summary": "Import local skill",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/skills/install": {
+      "post": {
+        "operationId": "installSkillRemote",
+        "summary": "Install remote skill",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/apps/mcp/servers": {
+      "get": {
+        "operationId": "listMcpServers",
+        "summary": "List MCP servers",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "addMcpServer",
+        "summary": "Add MCP server",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/apps/mcp/servers/{name}": {
+      "get": {
+        "operationId": "getMcpServer",
+        "summary": "Get MCP server",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "updateMcpServer",
+        "summary": "Update MCP server",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "deleteMcpServer",
+        "summary": "Delete MCP server",
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/apps/mcp/config/merge": {
+      "post": {
+        "operationId": "mergeMcpConfig",
+        "summary": "Merge MCP config JSON",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/apps/mcp/tools": {
+      "get": {
+        "operationId": "listMcpTools",
+        "summary": "List MCP tools",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/automations": {
+      "get": {
+        "operationId": "listAutomations",
+        "summary": "List automations",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "createAutomation",
+        "summary": "Create automation",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/automations/{id}": {
+      "get": {
+        "operationId": "getAutomation",
+        "summary": "Get automation",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "updateAutomation",
+        "summary": "Update automation",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "deleteAutomation",
+        "summary": "Delete automation",
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/automations/{id}/run": {
+      "post": {
+        "operationId": "runAutomation",
+        "summary": "Run automation",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/automations/{id}/pause": {
+      "post": {
+        "operationId": "pauseAutomation",
+        "summary": "Pause automation",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/automations/{id}/resume": {
+      "post": {
+        "operationId": "resumeAutomation",
+        "summary": "Resume automation",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/automations/{id}/runs": {
+      "get": {
+        "operationId": "listAutomationRuns",
+        "summary": "List automation runs",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/usage": {
+      "get": {
+        "operationId": "getUsage",
+        "summary": "Usage aggregation",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageAggregation"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/apps/routing/rules": {
+      "get": {
+        "operationId": "getRoutingRules",
+        "summary": "Get routing rules",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoutingRulesDoc"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "setRoutingRules",
+        "summary": "Set routing rules",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoutingRulesDoc"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoutingRulesDoc"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/symbol-index/rebuild": {
+      "post": {
+        "operationId": "rebuildSymbolIndex",
+        "summary": "Rebuild symbol index",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    }
+  }
+}

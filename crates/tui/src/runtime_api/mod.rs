@@ -52,6 +52,8 @@ use crate::task_manager::{
     NewTaskRequest, SharedTaskManager, TaskManager, TaskManagerConfig, TaskRecord, TaskSummary,
 };
 
+pub mod openapi;
+
 mod auth;
 mod automations;
 mod blackboards;

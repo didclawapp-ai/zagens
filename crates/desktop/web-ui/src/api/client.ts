@@ -1,3 +1,8 @@
+import type {
+  StreamTurnRequest,
+  StartTurnRequest,
+  TurnRecord as WireTurnRecord,
+} from './runtimeTypes';
 import type { McpServersResponse, McpToolsResponse, McpServerConfigPayload } from '../types/mcp';
 import type { UsageAggregation, UsageParams } from '../types/usage';
 import type {
@@ -27,22 +32,14 @@ export interface SseTurnEvent {
   data: string;
 }
 
-export interface StreamTurnRequest {
-  prompt: string;
+/** D8 — OpenAPI-generated wire type; `workspace` is optional on the server. */
+export type { StreamTurnRequest, StartTurnRequest } from './runtimeTypes';
+
+/** Desktop stream helper: workspace/mode required at call site. */
+export type StreamTurnBody = StreamTurnRequest & {
   workspace: string;
   mode: string;
-  model?: string;
-  auto_approve?: boolean;
-  trust_mode?: boolean;
-  allow_shell?: boolean;
-  /** When set, runtime matches `routing_rules.json` intent → model (see RoutingPanel). */
-  route_intent?: string;
-  /** `auto` | `office` | `code` — resolved when the stream thread is created. */
-  task_type?: string;
-  temperature?: number;
-  top_p?: number;
-  max_tokens?: number;
-}
+};
 
 export interface RuntimeThreadSummary {
   id: string;
@@ -322,7 +319,7 @@ function drainSseBlocks(buffer: string): { drained: SseTurnEvent[]; rest: string
 }
 
 export async function postStreamTurn(
-  req: StreamTurnRequest,
+  req: StreamTurnBody,
   onEvent: (event: SseTurnEvent) => void,
   onDone: () => void,
   onError: (err: Error) => void,
@@ -383,7 +380,7 @@ export async function postStreamTurn(
 }
 
 async function postStreamTurnViaTauri(
-  req: StreamTurnRequest,
+  req: StreamTurnBody,
   onEvent: (event: SseTurnEvent) => void,
   onDone: () => void,
   onError: (err: Error) => void,
@@ -572,11 +569,8 @@ export async function postResolveApproval(
   );
 }
 
-export interface TurnRecord {
-  id: string;
-  thread_id: string;
-  status: string;
-}
+/** D8 — full turn row from OpenAPI (`TurnRecord` schema). */
+export type TurnRecord = WireTurnRecord;
 
 export async function startThreadTurn(
   threadId: string,

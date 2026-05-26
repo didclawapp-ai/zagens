@@ -1,7 +1,6 @@
 # D7 交接 — 已闭合（2026-05-26）
 
-**Status:** Closed — D7 C1–C6 landed; §1 **8/10**.  
-**SSOT：** [D7_PERSISTENCE_UNIFICATION.md](./D7_PERSISTENCE_UNIFICATION.md) · [PERSISTENCE.md](../PERSISTENCE.md)
+**Status:** Closed — 见 [`SESSION_HANDOFF_2026-05-26.md`](./SESSION_HANDOFF_2026-05-26.md)（新窗口入口）
 
 ## 下一主线
 

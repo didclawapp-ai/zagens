@@ -10,6 +10,7 @@ use crate::models::{ContentBlock, Message, SystemPrompt};
 use crate::context_reference::ContextReference;
 use crate::utils::write_atomic;
 use chrono::{DateTime, Utc};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -98,7 +99,7 @@ pub struct SessionContextReference {
 }
 
 /// Session metadata stored with each saved session
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SessionMetadata {
     /// Unique session identifier
     pub id: String,
@@ -115,6 +116,7 @@ pub struct SessionMetadata {
     /// Model used for the session
     pub model: String,
     /// Workspace directory
+    #[schemars(schema_with = "crate::json_schema_util::path_as_string")]
     pub workspace: PathBuf,
     /// Optional mode label (agent/plan/etc.)
     #[serde(default)]

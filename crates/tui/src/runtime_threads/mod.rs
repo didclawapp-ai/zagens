@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow, bail};
 use chrono::{DateTime, Utc};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::sync::{Mutex, broadcast};
@@ -128,9 +129,10 @@ pub enum ThreadListFilter {
     ArchivedOnly,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, JsonSchema)]
 pub struct CreateThreadRequest {
     pub model: Option<String>,
+    #[schemars(schema_with = "crate::json_schema_util::path_as_string")]
     pub workspace: Option<PathBuf>,
     pub mode: Option<String>,
     pub allow_shell: Option<bool>,
@@ -152,7 +154,7 @@ pub struct CreateThreadRequest {
 /// Each field is optional — missing means "no change". Extended in v0.8.10
 /// (#562, whalescale#256) so the UI can flip persistent thread state without
 /// having to recreate a thread or pass per-turn overrides on every send.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, JsonSchema)]
 pub struct UpdateThreadRequest {
     pub archived: Option<bool>,
     pub allow_shell: Option<bool>,
@@ -171,18 +173,18 @@ pub struct UpdateThreadRequest {
     pub scratchpad_run_id: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct RoutingRule {
     pub intent: String,
     pub model: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct RoutingRulesDoc {
     pub rules: Vec<RoutingRule>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct StartTurnRequest {
     pub prompt: String,
     #[serde(default)]
@@ -220,7 +222,7 @@ impl Default for StartTurnRequest {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct EditLastTurnRequest {
     pub content: String,
     pub model: Option<String>,
@@ -238,29 +240,29 @@ pub struct EditLastTurnRequest {
     pub max_tokens: Option<u32>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ForkAtUserMessageRequest {
     pub depth_from_tail: usize,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ForkAtUserMessageResponse {
     pub thread: ThreadRecord,
     pub original_user_text: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SteerTurnRequest {
     pub prompt: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, JsonSchema)]
 pub struct CompactThreadRequest {
     #[serde(default)]
     pub reason: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ThreadDetail {
     pub thread: ThreadRecord,
     pub turns: Vec<TurnRecord>,
@@ -277,7 +279,7 @@ pub enum UsageGroupBy {
     Thread,
 }
 
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct UsageTotals {
     pub input_tokens: u64,
     pub output_tokens: u64,
@@ -287,7 +289,7 @@ pub struct UsageTotals {
     pub turns: u64,
 }
 
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct UsageBucket {
     pub key: String,
     pub input_tokens: u64,
@@ -298,7 +300,7 @@ pub struct UsageBucket {
     pub turns: u64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct UsageAggregation {
     pub since: Option<DateTime<Utc>>,
     pub until: Option<DateTime<Utc>>,

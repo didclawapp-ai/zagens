@@ -9,6 +9,8 @@ default-run = "deepseek-tui"
 
 [features]
 default = ["tui-ui", "tui", "json", "toml"]
+# Export `docs/tech/openapi/zagens-runtime-v1.openapi.json` (D8); no ratatui required.
+openapi-export = []
 # Ratatui / terminal UI stack — off for `deepseek-runtime` sidecar (D6).
 tui-ui = ["dep:ratatui", "dep:crossterm", "dep:arboard"]
 tui = ["tui-ui", "dep:schemaui", "schemaui/tui", "json", "toml"]
@@ -23,6 +25,11 @@ path = "src/lib.rs"
 [[bin]]
 name = "deepseek-tui"
 path = "src/main.rs"
+
+[[bin]]
+name = "export-runtime-openapi"
+path = "src/bin/export_runtime_openapi.rs"
+required-features = ["openapi-export"]
 
 [dependencies]
 anyhow.workspace = true
@@ -55,7 +62,7 @@ serde.workspace = true
 serde_json = { workspace = true, features = ["preserve_order"] }
 syn = { version = "2", features = ["full", "parsing", "extra-traits"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
-schemars = { version = "1.2.1", features = ["derive", "preserve_order"] }
+schemars = { version = "1.2.1", features = ["derive", "preserve_order", "chrono04"] }
 shellexpand = "3"
 toml.workspace = true
 tokio.workspace = true

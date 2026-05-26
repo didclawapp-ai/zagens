@@ -87,6 +87,11 @@ jobs:
         run: ./scripts/runtime-longrun-baseline.ps1 -DryRun -Runs 3
       - name: Lockfile drift guard
         run: git diff --exit-code -- Cargo.lock
+      - name: OpenAPI spec drift (D8)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          cargo run -p deepseek-tui --no-default-features --features openapi-export,json,toml --locked --bin export-runtime-openapi
+          git diff --exit-code -- docs/tech/openapi/zagens-runtime-v1.openapi.json
       - name: Run Offline Eval Harness
         run: cargo run -p deepseek-tui --all-features -- eval
 

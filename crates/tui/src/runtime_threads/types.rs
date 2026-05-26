@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -19,7 +20,7 @@ pub(super) fn default_thread_task_type() -> String {
     crate::task_type::TaskType::Code.as_str().to_string()
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum RuntimeTurnStatus {
     Queued,
@@ -30,7 +31,7 @@ pub enum RuntimeTurnStatus {
     Canceled,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum TurnItemKind {
     UserMessage,
@@ -43,7 +44,7 @@ pub enum TurnItemKind {
     Error,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum TurnItemLifecycleStatus {
     Queued,
@@ -54,7 +55,7 @@ pub enum TurnItemLifecycleStatus {
     Canceled,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ThreadRecord {
     #[serde(default = "default_runtime_schema_version")]
     pub schema_version: u32,
@@ -62,6 +63,7 @@ pub struct ThreadRecord {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub model: String,
+    #[schemars(schema_with = "crate::json_schema_util::path_as_string")]
     pub workspace: PathBuf,
     pub mode: String,
     pub allow_shell: bool,
@@ -89,7 +91,7 @@ pub struct ThreadRecord {
     pub checklist_snapshot: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct TurnRecord {
     #[serde(default = "default_runtime_schema_version")]
     pub schema_version: u32,
@@ -116,7 +118,7 @@ pub struct TurnRecord {
     pub steer_count: usize,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct TurnItemRecord {
     #[serde(default = "default_runtime_schema_version")]
     pub schema_version: u32,
@@ -130,6 +132,7 @@ pub struct TurnItemRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<Value>,
     #[serde(default)]
+    #[schemars(schema_with = "crate::json_schema_util::path_vec_as_strings")]
     pub artifact_refs: Vec<PathBuf>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub started_at: Option<DateTime<Utc>>,
