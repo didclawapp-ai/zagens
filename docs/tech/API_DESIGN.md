@@ -6,7 +6,7 @@
 
 **与 Agent 行为：** 同一 sidecar 载入的 runtime prompt 含 [幻觉防控子规则](prompt-hallucination-patch.md)（Capability / Architecture Claims）。回归显示 Zagens 在「能力/架构类裸问」上幻觉率较未打 patch 的发行 TUI 明显下降；**本文档的 SSE 示意图与能力结论无关**，集成时以代码与 `streamNormalize.ts` 为准。
 
-> **唯一生产 HTTP 运行时：** Zagens 与 `deepseek serve --http` 使用 `crates/tui/src/runtime_api/`（`/v1/*`），**不**使用 `crates/app-server`。架构与分阶段实施见 [RUNTIME_EVOLUTION_ROADMAP.md](./RUNTIME_EVOLUTION_ROADMAP.md) §3。
+> **唯一生产 HTTP 运行时：** Zagens 与 `deepseek serve --http` / `deepseek-runtime` 使用 `crates/tui/src/runtime_api/`（`/v1/*`）。`crates/app-server` **已于 D7 删除**（原实验路径，见 [`adr/D4_APPSERVER_DEPRECATED.md`](./adr/D4_APPSERVER_DEPRECATED.md)）。
 
 ---
 

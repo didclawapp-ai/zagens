@@ -1401,30 +1401,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "deepseek-app-server"
-version = "0.8.15"
-dependencies = [
- "anyhow",
- "async-trait",
- "axum",
- "clap",
- "deepseek-agent",
- "deepseek-config",
- "deepseek-core",
- "deepseek-execpolicy",
- "deepseek-hooks",
- "deepseek-mcp",
- "deepseek-protocol",
- "deepseek-state",
- "deepseek-tools",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "tower-http",
-]
-
-[[package]]
 name = "deepseek-config"
 version = "0.8.15"
 dependencies = [
@@ -1679,13 +1655,13 @@ dependencies = [
  "clap",
  "clap_complete",
  "deepseek-agent",
- "deepseek-app-server",
  "deepseek-config",
  "deepseek-execpolicy",
  "deepseek-mcp",
  "deepseek-secrets",
  "deepseek-state",
  "dirs",
+ "rusqlite",
  "serde",
  "serde_json",
  "sha2 0.10.9",

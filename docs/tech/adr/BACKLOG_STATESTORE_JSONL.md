@@ -1,19 +1,13 @@
 # Backlog ADR — `StateStore` vs `runtime_threads` JSONL
 
-**Status:** Proposed (P2 backlog)  
-**Related:** [RUNTIME_EVOLUTION_ROADMAP.md](../RUNTIME_EVOLUTION_ROADMAP.md) §11.0
+**Status:** Superseded by [D7_PERSISTENCE_UNIFICATION.md](./D7_PERSISTENCE_UNIFICATION.md) (2026-05-26)  
+**Related:** [PERSISTENCE.md](../PERSISTENCE.md)
 
 ## Context
 
-- CLI / `app-server`: `deepseek-state` (`StateStore`).
-- Sidecar HTTP: `RuntimeThreadStore` JSONL/SQLite under runtime data dir.
+- Sidecar HTTP: `RuntimeThreadStore` (`runtime.db`).
+- CLI legacy: `deepseek-state` (`StateStore`); `deepseek thread list --source state`.
 
-## Decision (draft)
+## Decision (landed)
 
-No unified persistence in P2 follow-ups without a migration ADR and dual-write period.
-
-## Options (for future spike)
-
-1. JSONL as SSOT; StateStore as index.
-2. SQLite runtime store absorbs thread list metadata only.
-3. Deprecate StateStore for sidecar-only deployments.
+No unified physical DB. Cross-store link is **`runtime_thread_id`** on SavedSession. CLI defaults to read-only runtime listing (D7 C4). StateStore remains for legacy CLI metadata writes only.

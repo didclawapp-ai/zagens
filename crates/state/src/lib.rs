@@ -1,8 +1,8 @@
-//! SQLite-backed thread/session metadata (CLI and legacy app-server paths).
+//! SQLite-backed thread/session metadata for **legacy CLI** paths only.
 //!
-//! **Not** the production sidecar persistence layer (`runtime_threads` JSONL).
-//! `app-server` is deprecated (2026-05-26); this crate remains for CLI `thread`
-//! until D7 unification — see `docs/tech/adr/D4_APPSERVER_DEPRECATED.md`.
+//! **Not** the production sidecar SSOT (`runtime_threads` / `runtime.db`).
+//! Zagens and `deepseek-tui serve --http` use SessionManager + RuntimeThreadStore.
+//! See `docs/tech/PERSISTENCE.md` and `docs/tech/adr/D7_PERSISTENCE_UNIFICATION.md`.
 
 use std::collections::HashMap;
 use std::fs::{self, OpenOptions};

@@ -20,7 +20,7 @@
 | 桌面 UI/UX 小迭代（不引入新运行时概念） | **正常推进** |
 | 任何「往 `crates/tui` 加新文件」的改动 | **需 owner 评审**（tui 仍承载 tools / HTTP / ratatui） |
 | M-series D5（`Engine` struct → core） | **✅ 完成 2026-05-26**（M1–M8） |
-| 下一优先：**D7** 持久化统一 | **D9/D10 ✅ 2026-05-26** — 见 [`D9_D10_DESKTOP_UX.md`](./D9_D10_DESKTOP_UX.md) |
+| 下一优先：**D8** OpenAPI + TS 生成 | **D7 ✅ 2026-05-26** — [`D7_PERSISTENCE_UNIFICATION.md`](./D7_PERSISTENCE_UNIFICATION.md) |
 | 剩余定型项完整排期 | **§5.1**（主线 D6→D7→D8→D1；插空 D9/D10；P2 延后） |
 | 端口动态化、删 legacy crate | **D2/D3 ✅**；`commands.rs` 等巨型文件见 **D1**（§5.1 阶段 E） |
 
@@ -35,14 +35,14 @@
 
 ## 1. 定型判定（满足后即可解冻功能迭代）
 
-以下 10 条全部勾选 = 架构定型，可大胆做功能。**当前进度：7/10**（2026-05-26 D6：`deepseek-runtime` sidecar，见 [`D6_RUNTIME_SERVER.md`](./D6_RUNTIME_SERVER.md)）。
+以下 10 条全部勾选 = 架构定型，可大胆做功能。**当前进度：8/10**（2026-05-26 D7：持久化双库 + `runtime_thread_id`，见 [`D7_PERSISTENCE_UNIFICATION.md`](./D7_PERSISTENCE_UNIFICATION.md) · [`PERSISTENCE.md`](../PERSISTENCE.md)）。
 
 - [x] **L1 turn loop 在 core**（P2 PR6 / G3 已闭合，见 [P2_G3_ENGINE_L2_SIGNOFF.md](./P2_G3_ENGINE_L2_SIGNOFF.md)）
 - [x] **L2 契约稳定**（`/v1/*` 路由 + `event_schema_version: 2`，[`runtime_api/router.rs`](../../../crates/tui/src/runtime_api/router.rs)）
 - [x] **桌面 ↔ sidecar 双通道安全模型**（Bearer 不出 WebView + path 白名单，[H06 完成](./IMPLEMENTATION_SUMMARY_2026-05-24.md)）
 - [x] **Engine struct 在 core**（**✅ M-series M1–M8 闭合 2026-05-26** — 前置 M1–M6 见 CHANGELOG；**M7**：`deepseek_core::engine::{runtime, host_bundle, runtime_new}` — 35 字段 + 7 channel + `Engine::with_hosts`；host 字段为 trait object（`Arc<dyn LspHost>`、`Option<Box<dyn SeamHost>>` 等）；tui `build_engine` 接线 + `#[repr(transparent)]` newtype wrapper（orphan rule：`impl TurnLoopHost` / 各 inherent impl 仍合法）；`engine_new.rs` 删除。**M8**：`deepseek_core::engine::op_loop` — `Engine::run()` + core 侧 cancel/approve/deny/truncate；平台 op 经 `EnginePlatformExt`（tui `EngineRuntimeExt` + `platform_dispatch.rs`）；tui `op_loop.rs` / `op_handlers.rs` 删除。Shim：`crates/tui/src/core/engine.rs` ~130 LOC（含模块树；spike ≤80 LOC 目标以 `prelude_uses.rs` include 部分满足 spirit）。§6 回归 + 原 2 个 pre-existing engine 集成测 green。详见 [`BACKLOG_ENGINE_STRUCT_IN_CORE.md`](./BACKLOG_ENGINE_STRUCT_IN_CORE.md) Closed 表。）
 - [x] **sidecar 二进制不再链接 ratatui / CLI**（**✅ D6 2026-05-26** — `deepseek-runtime` via [`D6_RUNTIME_SERVER.md`](./D6_RUNTIME_SERVER.md); Zagens bundles `deepseek-runtime-*`; `deepseek-tui serve --http` 保留作 dev/CLI fallback）
-- [ ] **持久化单库**（Sessions + Runtime threads → 单 SQLite + 视图，[`BACKLOG_RUNTIME_UNIFICATION.md`](./BACKLOG_RUNTIME_UNIFICATION.md)）
+- [x] **持久化单库**（**✅ D7 2026-05-26** — Sessions + Runtime threads 双 SQLite + `runtime_thread_id` 链接；叙事 SSOT [`PERSISTENCE.md`](../PERSISTENCE.md)；非物理单文件）
 - [x] **`app-server` 实验路径决策**（**✅ 2026-05-26 deprecated** — [`D4_APPSERVER_DEPRECATED.md`](./D4_APPSERVER_DEPRECATED.md)；`deepseek-state` crate 保留至 D7，非整体废弃）
 - [x] **`crates/tui-core` legacy 删除**（**2026-05-25 完成**，`cargo check --workspace --all-targets` 全绿）
 - [ ] **HTTP 契约 OpenAPI 自动生成 + TS 类型自动产出**（消除手写 30+ interface 的飘移源）
@@ -223,7 +223,7 @@ WebView → invoke runtime_get_sse → reqwest stream
 | ID | 内容 | 工作量 | 已记账 |
 |----|------|--------|--------|
 | **D6** | 抽 `crates/runtime-server`（sidecar 不再链 ratatui / CLI） | 2-3 周（D5 完成后） | **可启动** — D5 ✅ |
-| **D7** | 持久化整合 Sessions ⊕ Runtime threads → 单 SQLite + 视图 | 4-6 周 | **进行中 2026-05-26** — [`D7_PERSISTENCE_UNIFICATION.md`](./D7_PERSISTENCE_UNIFICATION.md) · C1 ✅ |
+| **D7** | 持久化整合 Sessions ⊕ Runtime threads → 单 SQLite + 视图 | 4-6 周 | ✅ **2026-05-26** — [`D7_PERSISTENCE_UNIFICATION.md`](./D7_PERSISTENCE_UNIFICATION.md) · [`PERSISTENCE.md`](../PERSISTENCE.md) |
 | **D8** | OpenAPI schema 导出 + `web-ui` ts 类型自动生成 | 1-2 周 | — |
 | **D9** | 取消/打断两层契约文档化 + `api/client.ts` 统一封装 | 3-5 天 | ✅ **2026-05-26** — [`D9_D10_DESKTOP_UX.md`](./D9_D10_DESKTOP_UX.md) · `turnControl.ts` · API_DESIGN §2.1.1 |
 | **D10** | 跨窗口事件按 thread owner 过滤（消除"幽灵渲染"） | 1 周 | ✅ **2026-05-26** — 同上 · `filterThreadStreamEvents` · API_DESIGN §2.1.2 |
@@ -364,7 +364,7 @@ D5（M-series）✅ 已闭合。下一刀直接解锁 §1 第 5 项，并让 sid
 - **D4 决策（2026-05-26）**：app-server **deprecated** — §1 #7 勾选；进度 6/10；crate/CLI 保留，见 [`D4_APPSERVER_DEPRECATED.md`](./D4_APPSERVER_DEPRECATED.md)。
 - **§5.1 实施顺序签收（2026-05-26）**：维护者签收 D6→D9/D10→D7→D8→D1→P2 主线；§0 冻结窗口估算更新为 10–14 周；P2 内部 D11→D14→D13→D12。
 - **D9 + D10 落地（2026-05-26）**：阶段 B 插空完成 — 见 [`D9_D10_DESKTOP_UX.md`](./D9_D10_DESKTOP_UX.md)；下一主线 **D7**；§1 仍 7/10。
-- **D7 Phase C 启动（2026-05-26）**：[`D7_PERSISTENCE_UNIFICATION.md`](./D7_PERSISTENCE_UNIFICATION.md) spike + PR 链；C1 `runtime_thread_id` SQLite 修复已合并。
+- **D7 落地（2026-05-26）**：阶段 C 闭合 — C1–C6；§1 #6 → **8/10**；下一主线 **D8**。
 - **M-series M8 合并后**（✅ **2026-05-26**）：§1 第 4 项 **勾选** — core 侧 `Engine` struct、`Engine::with_hosts`、`Engine::run()` op loop + `EnginePlatformExt` 平台分发；tui 侧 newtype shim ~130 LOC。§1 第 5 项**仍 `[ ]`**（sidecar 仍链 ratatui → **D6**）。进度 **5/10**。2 个 pre-existing engine 集成测修复；[`BACKLOG_ENGINE_STRUCT_IN_CORE.md`](./BACKLOG_ENGINE_STRUCT_IN_CORE.md) Closed；`HANDOFF_M7_M8.md` 已删。
 - **M-series M8 合并后（归档说明）**：当 D6 + §1 ≥ 8/10 时，可将本文档归档并另起 `ARCHITECTURE_ASSESSMENT_<date>.md` v2 全量重写；当前在 **同文件内追加 2026-05-26 复评** 以保持链接稳定。
 - **§1 ≥ 8/10 勾选时**：解除 §7.1 全部红线；

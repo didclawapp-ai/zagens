@@ -1,8 +1,8 @@
 mod metrics;
+mod runtime_thread_cli;
 mod update;
 
 use std::io::{self, Read, Write};
-use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -10,10 +10,6 @@ use anyhow::{Context, Result, anyhow, bail};
 use clap::{Args, CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::{Shell, generate};
 use deepseek_agent::ModelRegistry;
-#[allow(deprecated, reason = "app-server deprecated; CLI shim until crate removal (D4)")]
-use deepseek_app_server::{
-    AppServerOptions, run as run_app_server, run_stdio as run_app_server_stdio,
-};
 use deepseek_config::{
     CliRuntimeOverrides, ConfigStore, ProviderKind, ResolvedRuntimeOptions, RuntimeApiKeySource,
 };
@@ -153,14 +149,11 @@ enum Commands {
     /// Resolve or list available models across providers.
     Model(ModelArgs),
     /// Manage thread/session metadata and resume/fork flows.
+    ///
+    /// `thread list` defaults to production runtime (`runtime.db`). Use `--source state` for legacy CLI metadata.
     Thread(ThreadArgs),
     /// Evaluate sandbox/approval policy decisions.
     Sandbox(SandboxArgs),
-    /// [DEPRECATED] Experimental app-server HTTP/stdio transport.
-    ///
-    /// Production HTTP uses `deepseek-tui serve --http` (runtime_api /v1/*).
-    /// See docs/tech/adr/D4_APPSERVER_DEPRECATED.md.
-    AppServer(AppServerArgs),
     /// Generate shell completions.
     #[command(after_help = r#"Examples:
   Bash (current shell only):
@@ -325,9 +318,20 @@ struct ThreadArgs {
     command: ThreadCommand,
 }
 
+#[derive(Debug, Clone, Copy, ValueEnum, Default)]
+enum ThreadListSourceArg {
+    /// Production sidecar store (`runtime.db`).
+    #[default]
+    Runtime,
+    /// Legacy CLI metadata (`~/.deepseek/state.db`).
+    State,
+}
+
 #[derive(Debug, Subcommand)]
 enum ThreadCommand {
     List {
+        #[arg(long, value_enum, default_value_t = ThreadListSourceArg::Runtime)]
+        source: ThreadListSourceArg,
         #[arg(long, default_value_t = false)]
         all: bool,
         #[arg(long)]
@@ -386,18 +390,6 @@ impl From<ApprovalModeArg> for AskForApproval {
             ApprovalModeArg::Never => AskForApproval::Never,
         }
     }
-}
-
-#[derive(Debug, Args)]
-struct AppServerArgs {
-    #[arg(long, default_value = "127.0.0.1")]
-    host: String,
-    #[arg(long, default_value_t = 8787)]
-    port: u16,
-    #[arg(long)]
-    config: Option<PathBuf>,
-    #[arg(long, default_value_t = false)]
-    stdio: bool,
 }
 
 const MCP_SERVER_DEFINITIONS_KEY: &str = "mcp.server_definitions";
@@ -513,7 +505,6 @@ fn run() -> Result<()> {
         Some(Commands::Model(args)) => run_model_command(args.command),
         Some(Commands::Thread(args)) => run_thread_command(args.command),
         Some(Commands::Sandbox(args)) => run_sandbox_command(args.command),
-        Some(Commands::AppServer(args)) => run_app_server_command(args),
         Some(Commands::Completion { shell }) => {
             let mut cmd = Cli::command();
             generate(shell, &mut cmd, "deepseek", &mut io::stdout());
@@ -1068,28 +1059,36 @@ fn run_model_command(command: ModelCommand) -> Result<()> {
 }
 
 fn run_thread_command(command: ThreadCommand) -> Result<()> {
-    let state = StateStore::open(None)?;
     match command {
-        ThreadCommand::List { all, limit } => {
-            let threads = state.list_threads(ThreadListFilters {
-                include_archived: all,
-                limit,
-            })?;
-            for thread in threads {
-                println!(
-                    "{} | {} | {} | {}",
-                    thread.id,
-                    thread
-                        .name
-                        .clone()
-                        .unwrap_or_else(|| "(unnamed)".to_string()),
-                    thread.model_provider,
-                    thread.cwd.display()
-                );
+        ThreadCommand::List {
+            source,
+            all,
+            limit,
+        } => match source {
+            ThreadListSourceArg::Runtime => runtime_thread_cli::print_runtime_threads(all, limit),
+            ThreadListSourceArg::State => {
+                let state = StateStore::open(None)?;
+                let threads = state.list_threads(ThreadListFilters {
+                    include_archived: all,
+                    limit,
+                })?;
+                for thread in threads {
+                    println!(
+                        "{} | {} | {} | {}",
+                        thread.id,
+                        thread
+                            .name
+                            .clone()
+                            .unwrap_or_else(|| "(unnamed)".to_string()),
+                        thread.model_provider,
+                        thread.cwd.display()
+                    );
+                }
+                Ok(())
             }
-            Ok(())
-        }
+        },
         ThreadCommand::Read { thread_id } => {
+            let state = StateStore::open(None)?;
             let thread = state.get_thread(&thread_id)?;
             println!("{}", serde_json::to_string_pretty(&thread)?);
             Ok(())
@@ -1103,16 +1102,19 @@ fn run_thread_command(command: ThreadCommand) -> Result<()> {
             delegate_simple_tui(args)
         }
         ThreadCommand::Archive { thread_id } => {
+            let state = StateStore::open(None)?;
             state.mark_archived(&thread_id)?;
             println!("archived {thread_id}");
             Ok(())
         }
         ThreadCommand::Unarchive { thread_id } => {
+            let state = StateStore::open(None)?;
             state.mark_unarchived(&thread_id)?;
             println!("unarchived {thread_id}");
             Ok(())
         }
         ThreadCommand::SetName { thread_id, name } => {
+            let state = StateStore::open(None)?;
             let mut thread = state
                 .get_thread(&thread_id)?
                 .with_context(|| format!("thread not found: {thread_id}"))?;
@@ -1140,29 +1142,6 @@ fn run_sandbox_command(command: SandboxCommand) -> Result<()> {
             Ok(())
         }
     }
-}
-
-#[allow(deprecated, reason = "app-server deprecated but CLI entry retained until crate removal (D4)")]
-fn run_app_server_command(args: AppServerArgs) -> Result<()> {
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-        .context("failed to create tokio runtime")?;
-    if args.stdio {
-        return runtime.block_on(run_app_server_stdio(args.config));
-    }
-    let listen: SocketAddr = format!("{}:{}", args.host, args.port)
-        .parse()
-        .with_context(|| {
-            format!(
-                "invalid app-server listen address {}:{}",
-                args.host, args.port
-            )
-        })?;
-    runtime.block_on(run_app_server(AppServerOptions {
-        listen,
-        config_path: args.config,
-    }))
 }
 
 fn run_mcp_server_command(store: &mut ConfigStore) -> Result<()> {
@@ -1641,8 +1620,20 @@ mod tests {
             cli.command,
             Some(Commands::Thread(ThreadArgs {
                 command: ThreadCommand::List {
+                    source: ThreadListSourceArg::Runtime,
                     all: true,
                     limit: Some(50)
+                }
+            }))
+        ));
+
+        let cli = parse_ok(&["deepseek", "thread", "list", "--source", "state"]);
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Thread(ThreadArgs {
+                command: ThreadCommand::List {
+                    source: ThreadListSourceArg::State,
+                    ..
                 }
             }))
         ));
@@ -1700,7 +1691,7 @@ mod tests {
     }
 
     #[test]
-    fn parses_sandbox_app_server_and_completion_matrix() {
+    fn parses_sandbox_and_completion_matrix() {
         let cli = parse_ok(&[
             "deepseek",
             "sandbox",
@@ -1717,30 +1708,6 @@ mod tests {
                     ask: ApprovalModeArg::OnFailure
                 }
             })) if command == "echo hello"
-        ));
-
-        let cli = parse_ok(&[
-            "deepseek",
-            "app-server",
-            "--host",
-            "0.0.0.0",
-            "--port",
-            "9999",
-        ]);
-        assert!(matches!(
-            cli.command,
-            Some(Commands::AppServer(AppServerArgs {
-                ref host,
-                port: 9999,
-                stdio: false,
-                ..
-            })) if host == "0.0.0.0"
-        ));
-
-        let cli = parse_ok(&["deepseek", "app-server", "--stdio"]);
-        assert!(matches!(
-            cli.command,
-            Some(Commands::AppServer(AppServerArgs { stdio: true, .. }))
         ));
 
         let cli = parse_ok(&["deepseek", "completion", "bash"]);
@@ -2342,7 +2309,6 @@ mod tests {
             "model",
             "thread",
             "sandbox",
-            "app-server",
             "completion",
             "metrics",
             "--provider",
@@ -2378,6 +2344,7 @@ mod tests {
                 "thread",
                 vec![
                     "list",
+                    "--source",
                     "read",
                     "resume",
                     "fork",
@@ -2387,10 +2354,6 @@ mod tests {
                 ],
             ),
             ("sandbox", vec!["check"]),
-            (
-                "app-server",
-                vec!["--host", "--port", "--config", "--stdio"],
-            ),
             (
                 "completion",
                 vec![

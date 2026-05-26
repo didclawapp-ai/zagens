@@ -1,6 +1,6 @@
 # D4 决策 — `app-server` 实验栈标记废弃
 
-**Status:** Accepted (2026-05-26)  
+**Status:** Removed (2026-05-26, D7 C5) — was deprecated 2026-05-26  
 **Supersedes:** 路线图 §4.2「D4 冻结 app-server」（2026-05-21）— 冻结升级为 **deprecated**  
 **Related:** [ARCHITECTURE_ASSESSMENT_2026-05-25.md](./ARCHITECTURE_ASSESSMENT_2026-05-25.md) §1 #6 · [RUNTIME_ARCHITECTURE.md](../RUNTIME_ARCHITECTURE.md) · [RUNTIME_EVOLUTION_ROADMAP.md](../RUNTIME_EVOLUTION_ROADMAP.md)
 
@@ -22,7 +22,7 @@ M-series（D5）已闭合；下一结构优先项为 **D6 `runtime-server`**（�
 **`crates/app-server` 及 `deepseek app-server` CLI 子命令标记为 deprecated。**
 
 - **不晋升**为第二套正式 HTTP 运行时。
-- **本阶段不删代码** — crate、CLI 入口、依赖保留；后续单独 PR 移除。
+- **本阶段不删代码** — ~~crate、CLI 入口、依赖保留~~ **已删除（D7 C5）**。
 - **`deepseek-state`（`crates/state`）暂不整体废弃** — CLI `thread` 等仍可能读写 `StateStore`；D7 持久化统一时再迁移或收缩 scope。
 
 ## 生产路径（不变）
@@ -39,11 +39,11 @@ M-series（D5）已闭合；下一结构优先项为 **D6 `runtime-server`**（�
 | Crate | `deepseek-app-server` crate / `run` / `run_stdio` 文档 + `#[deprecated]` |
 | 禁止 | 不新增 app-server 端点、不扩展 turn/API、不让 desktop 依赖 |
 
-## 后续移除（未排期）
+## 后续移除（D7 C5 ✅）
 
-1. 确认无外部脚本依赖 `deepseek app-server`
-2. 删除 `crates/app-server`、CLI 子命令、workspace 依赖
-3. 评估 `StateStore` 仅 app-server 专用的 API 是否一并删除（与 D7 协调）
+1. ~~确认无外部脚本依赖 `deepseek app-server`~~
+2. ~~删除 `crates/app-server`、CLI 子命令、workspace 依赖~~ — **done 2026-05-26**
+3. `StateStore` 收缩为 CLI legacy（`thread list --source state`）；生产 list 默认 `runtime.db`
 
 ## 验收
 

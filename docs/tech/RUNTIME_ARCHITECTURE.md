@@ -278,15 +278,17 @@ flowchart BT
 
 ---
 
-## 4. 双持久化模型
+## 4. 持久化（D7）
 
-生产 sidecar 内并存两套语义，**勿混用**：
+生产 sidecar 内 **Sessions** 与 **Runtime threads** 双库，由 `runtime_thread_id` 链接；完整路径、环境变量与 HTTP 读写表见 **[PERSISTENCE.md](./PERSISTENCE.md)**（D7 SSOT）。
 
 | 轨 | 语义 | 代码 | 默认目录 |
 |----|------|------|----------|
-| **Sessions** | TUI/桌面"会话"列表、标题、恢复点 | [`session_manager.rs`](../../crates/tui/src/session_manager.rs) + [`session_store_sqlite.rs`](../../crates/tui/src/session_store_sqlite.rs) | `~/.deepseek/sessions/` |
-| **Runtime threads** | HTTP `/v1/threads/*`、回合、事件、SSE | [`runtime_threads/persist.rs`](../../crates/tui/src/runtime_threads/persist.rs) + [`thread_store_sqlite.rs`](../../crates/tui/src/thread_store_sqlite.rs) | `~/.deepseek/tasks/runtime/`（`DEEPSEEK_RUNTIME_DIR` 可覆盖） |
-| **实验轨（并行）** | CLI `thread list` / `app-server` 元数据 | [`deepseek-state`](../../crates/state/) 的 `StateStore` | 与生产 sidecar **不**互通 |
+| **Sessions** | 桌面侧栏会话、消息快照、`runtime_thread_id` | [`session_manager.rs`](../../crates/tui/src/session_manager.rs) + [`session_store_sqlite.rs`](../../crates/tui/src/session_store_sqlite.rs) | `~/.deepseek/sessions/` |
+| **Runtime threads** | HTTP `/v1/threads/*`、回合、事件、SSE | [`runtime_threads/persist.rs`](../../crates/tui/src/runtime_threads/persist.rs) + [`thread_store_sqlite.rs`](../../crates/tui/src/thread_store_sqlite.rs) | `~/.deepseek/tasks/runtime/`（`DEEPSEEK_RUNTIME_DIR` / `DEEPSEEK_TASKS_DIR`） |
+| **CLI legacy** | `deepseek thread list --source state` 等 | [`deepseek-state`](../../crates/state/) | `~/.deepseek/state.db`（**非** sidecar SSOT） |
+
+**Runtime 数据布局**（schema v2）：`threads/`、`turns/`、`items/`、`events/` + SQLite；路由规则 `routing_rules.json`。
 
 **Runtime 数据布局**（schema v2）：`threads/`、`turns/`、`items/`、`events/` + SQLite；路由规则 `routing_rules.json`。
 

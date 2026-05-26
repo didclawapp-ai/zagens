@@ -1,19 +1,16 @@
 # Backlog ADR — Unify production HTTP with `core::Runtime`
 
-**Status:** Proposed  
+**Status:** Superseded by [D7_PERSISTENCE_UNIFICATION.md](./D7_PERSISTENCE_UNIFICATION.md) (2026-05-26)  
 **Related:** §11.0 `handle_thread` / `ThreadMessageTurnPort`
 
 ## Context
 
-- Production: `RuntimeThreadManager` + `deepseek-tui` HTTP.
-- `core::Runtime::handle_thread` without `ThreadMessageTurnPort` returns `"queued"`.
-- `app-server` uses `ThreadMessageTurnPort` with a simplified LLM path.
+- Production: `RuntimeThreadManager` + sidecar HTTP (`runtime_api`).
+- `core::Runtime::handle_thread` without `ThreadMessageTurnPort` returns `"queued"` (CLI/core experiments only).
+- Former `app-server` path **removed** in D7.
 
-## Decision (draft)
+## Decision (landed)
 
-Do **not** route Zagens HTTP through `core::Runtime` until `RuntimeThreadManager` delegates turn lifecycle into core without duplicating JSONL broadcast semantics.
+Production Zagens/TUI HTTP **does not** route through `core::Runtime` as the persistence SSOT. Sessions + Runtime threads are documented in [PERSISTENCE.md](../PERSISTENCE.md); linked by `runtime_thread_id`.
 
-## Acceptance
-
-- Single turn entry for HTTP + app-server experiments.
-- No second message pipeline for desktop.
+Unifying `core::Runtime` turn entry with HTTP remains a **future** spike if needed — not blocking §1 #6.
