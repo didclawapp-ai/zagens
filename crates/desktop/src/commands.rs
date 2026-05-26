@@ -1,3 +1,9 @@
+//! Zagens desktop Tauri IPC commands (`#[tauri::command]`).
+//!
+//! **D1 / 架构定型：** 本文件保持单体（~1.5k 行）。命令集中便于检索；避免拆成过多小模块。
+//! 后续按域（auth / vision / settings / terminal 等）**按需**再拆。见
+//! [`ARCHITECTURE_ASSESSMENT_2026-05-25.md`](../../../docs/tech/adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md) §5.1「D1 — 已闭合」。
+
 use deepseek_config::{
     CompactionToml, ConfigStore, ConfigToml, DEFAULT_VISION_MODEL,
     compaction_threshold_tokens_for_model, vision_should_check_degenerate_ocr_template,

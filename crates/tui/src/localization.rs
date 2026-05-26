@@ -2,6 +2,10 @@
 //!
 //! This intentionally covers UI chrome only. It does not change model prompts,
 //! model output language, provider behavior, or media payload semantics.
+//!
+//! **D1 / 架构定型：** 本文件保持单体（~1.9k 行）。仅 TUI/CLI 使用；Zagens 桌面 i18n 在
+//! `crates/desktop/web-ui/`。见
+//! [`ARCHITECTURE_ASSESSMENT_2026-05-25.md`](../../../docs/tech/adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md) §5.1「D1 明确不拆分」。
 
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 

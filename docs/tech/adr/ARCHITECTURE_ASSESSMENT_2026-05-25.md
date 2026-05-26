@@ -2,7 +2,7 @@
 
 > **类型：** 架构评估 / 决策依据（非功能 ADR）
 > **作者职责：** 维护者 / 架构 owner
-> **M7/M8 复评：** **2026-05-26** — M-series **M1–M8 全部落地**（[`BACKLOG_ENGINE_STRUCT_IN_CORE.md`](./BACKLOG_ENGINE_STRUCT_IN_CORE.md) **Closed**）；§1 第 4 项勾选；**D4 决策** [`D4_APPSERVER_DEPRECATED.md`](./D4_APPSERVER_DEPRECATED.md) — app-server **deprecated**（代码移除 defer）；**D6 2026-05-26** [`D6_RUNTIME_SERVER.md`](./D6_RUNTIME_SERVER.md) — `deepseek-runtime` sidecar；进度 **7/10**。
+> **M7/M8 复评：** **2026-05-26** — M-series **M1–M8 全部落地**（[`BACKLOG_ENGINE_STRUCT_IN_CORE.md`](./BACKLOG_ENGINE_STRUCT_IN_CORE.md) **Closed**）；**D6–D8、D7、D1 闭合**；进度 **10/10**（架构定型）。
 > **实施顺序签收：** **2026-05-26** — 维护者签收 **§5.1 推荐实施顺序**（D6 → D9/D10 → D7 → D8 → D1 → P2）；§5 表「已记账」= backlog ADR 存在，**≠ 已落地**。
 > **配套 SSOT：** [RUNTIME_ARCHITECTURE.md](../RUNTIME_ARCHITECTURE.md)（系统架构图）· [RUNTIME_EVOLUTION_ROADMAP.md](../RUNTIME_EVOLUTION_ROADMAP.md)（演进排期）· [API_DESIGN.md](../API_DESIGN.md)
 > **相关 backlog ADR：** [PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md](./PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md) · ~~[BACKLOG_ENGINE_STRUCT_IN_CORE.md](./BACKLOG_ENGINE_STRUCT_IN_CORE.md)~~ **Closed 2026-05-26** · [D4_APPSERVER_DEPRECATED.md](./D4_APPSERVER_DEPRECATED.md) · [BACKLOG_RUNTIME_UNIFICATION.md](./BACKLOG_RUNTIME_UNIFICATION.md) · [BACKLOG_STATESTORE_JSONL.md](./BACKLOG_STATESTORE_JSONL.md) · [BACKLOG_LANDLOCK_ENFORCE.md](./BACKLOG_LANDLOCK_ENFORCE.md) · [A1_PERSIST_BLOCKING_AUDIT.md](./A1_PERSIST_BLOCKING_AUDIT.md)
@@ -11,31 +11,26 @@
 
 ## 0. 摘要与决策建议（最重要的一段）
 
-**结论：M-series（D5）已闭合，架构仍处「结构收尾」窗口期——Engine 已在 core，但 sidecar 仍链 ratatui、持久化仍三套。**
+**结论：§1 = 10/10，架构定型（2026-05-26）** — M-series、D6–D8、D7、D1 均已闭合；Engine 在 core，`deepseek-runtime` sidecar 已剥离 ratatui。
 
 | 决策 | 推荐 |
 |------|------|
-| 新增大型功能（新面板、新工具链路、新协议） | **仍暂缓**（§1 仅 6/10） |
+| 新增大型功能（新面板、新工具链路、新协议） | **可推进**（遵守 §7.1：新 `/v1/*` 须 OpenAPI + owner） |
 | 现有功能 bug 修 / 性能 / a11y / 文案 | **正常推进** |
 | 桌面 UI/UX 小迭代（不引入新运行时概念） | **正常推进** |
 | 任何「往 `crates/tui` 加新文件」的改动 | **需 owner 评审**（tui 仍承载 tools / HTTP / ratatui） |
 | M-series D5（`Engine` struct → core） | **✅ 完成 2026-05-26**（M1–M8） |
-| 下一优先：**D1** 巨型文件收尾 | **D8 ✅ 2026-05-26** — [`D8_OPENAPI_TS_GENERATION.md`](./D8_OPENAPI_TS_GENERATION.md) |
-| 剩余定型项完整排期 | **§5.1**（主线 D6→D7→D8→D1；插空 D9/D10；P2 延后） |
-| 端口动态化、删 legacy crate | **D2/D3 ✅**；`commands.rs` 等巨型文件见 **D1**（§5.1 阶段 E） |
+| D1 巨型文件 | **✅ 闭合 2026-05-26** — runtime 四模块已拆；`desktop/commands.rs` 等见 §5.1「不拆分」 |
+| 下一优先 | **P2**（§5.1 阶段 F：D11–D14）或产品功能迭代 |
+| 端口动态化、删 legacy crate | **D2/D3 ✅** |
 
-**为什么暂缓功能迭代：**
-- 当前 `crates/tui` 承担了"运行时 + HTTP 服务端 + ratatui freeze + 工具实现"四种角色，每多写一行就让 M-series 重构更难；
-- 持久化三套（Sessions / Runtime threads / `deepseek-state`）尚未合并，新功能落到哪一套都会成为后续债；
-- HTTP 契约没有版本化策略，新端点一旦发出去就要长期兼容。
-
-**冻结窗口预计长度：** M-series ✅ 已闭合；按 §5.1 主线（D6→D7→D8→D1 收尾）≈ **10-14 周 / 1 人**（含 D9/D10 插空）；§1 未勾项为 **#10**（巨型文件）。期间产品壳层 UX 迭代不受影响（desktop crate 不变）。
+**定型后仍须遵守：** §7.1 红线（`/v1/*`、Engine 字段、`desktop` 不链 `deepseek_tui` 等）；巨型文件 ~1k 行为指南，**非**硬性拆文件 KPI（§5.1 D1 表）。
 
 ---
 
 ## 1. 定型判定（满足后即可解冻功能迭代）
 
-以下 10 条全部勾选 = 架构定型，可大胆做功能。**当前进度：9/10**（2026-05-26 D8：OpenAPI + TS 生成，见 [`D8_OPENAPI_TS_GENERATION.md`](./D8_OPENAPI_TS_GENERATION.md)；D7 持久化见 [`D7_PERSISTENCE_UNIFICATION.md`](./D7_PERSISTENCE_UNIFICATION.md)）。
+以下 10 条全部勾选 = 架构定型，可大胆做功能。**当前进度：10/10**（2026-05-26 **D1 闭合** — 见 §5.1；[`D8_OPENAPI_TS_GENERATION.md`](./D8_OPENAPI_TS_GENERATION.md) · [`D7_PERSISTENCE_UNIFICATION.md`](./D7_PERSISTENCE_UNIFICATION.md)）。
 
 - [x] **L1 turn loop 在 core**（P2 PR6 / G3 已闭合，见 [P2_G3_ENGINE_L2_SIGNOFF.md](./P2_G3_ENGINE_L2_SIGNOFF.md)）
 - [x] **L2 契约稳定**（`/v1/*` 路由 + `event_schema_version: 2`，[`runtime_api/router.rs`](../../../crates/tui/src/runtime_api/router.rs)）
@@ -46,7 +41,7 @@
 - [x] **`app-server` 实验路径决策**（**✅ 2026-05-26 deprecated** — [`D4_APPSERVER_DEPRECATED.md`](./D4_APPSERVER_DEPRECATED.md)；`deepseek-state` crate 保留至 D7，非整体废弃）
 - [x] **`crates/tui-core` legacy 删除**（**2026-05-25 完成**，`cargo check --workspace --all-targets` 全绿）
 - [x] **HTTP 契约 OpenAPI 自动生成 + TS 类型自动产出**（**✅ D8 2026-05-26** — [`zagens-runtime-v1.openapi.json`](../openapi/zagens-runtime-v1.openapi.json) + `export-runtime-openapi` + `web-ui` `generate:api-types`；[`D8_OPENAPI_TS_GENERATION.md`](./D8_OPENAPI_TS_GENERATION.md)）
-- [ ] **关键巨型文件拆到软上限 1000 行内**（`config.rs` 3.5k+ 行、`compaction.rs`、`mcp.rs`、`client.rs`、`commands.rs(desktop)`、`localization.rs`）
+- [x] **D1 巨型文件策略闭合（2026-05-26）** — runtime：`config/`、`compaction/`、`mcp/`、`client/` 已模块化（实现 ≤~650 行）；**不拆：** `desktop/commands.rs`（~1.5k，Tauri IPC 集中、避免碎片化）、`crates/tui` 非桌面 >1k 行单体（§5.1 表）；后续按需再拆
 
 ---
 
@@ -100,7 +95,7 @@
 | 线程管理 | `runtime_threads/*` (16 个文件) | ~280k |
 | ratatui UI（**已 freeze**） | `tui/*`（含 `tui/ui.rs` ~7.8k 行） | 大量；**D1 不拆分**（仅 CLI 全屏 TUI，与 Zagens 桌面无关） |
 | 工具实现 | `tools/*` | ~28k LOC / ~55 files |
-| 巨型单文件 | `config.rs` **195k** · `compaction.rs` **97k** · `mcp.rs` **76k** · `client.rs` **71k** · `task_manager.rs` **67k** · `localization.rs` **94k** · `prompts.rs` **51k** | 远超软上限 1000 行 |
+| 巨型单文件 | `config` / `compaction` / `mcp` / `client` **已拆** ✅；`desktop/commands.rs` · `localization.rs` · `tools/*` 等 | **D1 不拆分**（§5.1）；~1k–1.5k 可接受，避免小文件过多 |
 
 **症结：**
 - sidecar 二进制 = ratatui + 工具 + 服务端的合体 → 体积虚胖、冷启动慢、攻击面变宽（**D6 未做**）；
@@ -154,9 +149,9 @@
   - **仍留 tui（非 blocking）：** `capacity_flow/*`、`turn_loop/host_impl/*`、`message_handlers` 等 engine-flow 编排；spike 未要求 M8 全量迁入 core。
   - **下一刀：** D6 `crates/runtime-server` — sidecar 二进制不再链接 ratatui（§1 第 5 项）。
 
-### 3.5【中】`commands.rs` (desktop) 49k 单文件
+### 3.5【中】`commands.rs` (desktop) ~1.5k 单文件
 
-至少 7 类混在一起：API key / Vision 桥 / 系统设置 / 符号索引 / 终端 PTY / 窗口管理 / 文件二进制读取。应当拆 `commands/{auth,vision,settings,symbol_index,terminal,workspace}.rs`。
+至少 7 类混在一起：API key / Vision 桥 / 系统设置 / 符号索引 / 终端 PTY / 窗口管理 / 文件二进制读取。理想形态可拆 `commands/{auth,vision,settings,symbol_index,terminal,workspace}.rs`。**2026-05-26 维护者决定：D1 不拆**（~1.5k 尚可维护；IPC 命令集中便于检索；避免碎片化；后续大改时再拆）。
 
 ### 3.6【中】多窗口 ↔ 单 sidecar 的事件归属
 
@@ -212,7 +207,7 @@ WebView → invoke runtime_get_sse → reqwest stream
 
 | ID | 内容 | 工作量 | 已记账 |
 |----|------|--------|--------|
-| **D1** | 巨型文件拆分（`config.rs` / `compaction.rs` / `mcp.rs` / `commands.rs` / `localization.rs`），按 [code-organization](../../../.cursor/rules/code-organization.mdc) 软上限 1000 行 | 每个文件 1 PR × 5-7 个 | — |
+| **D1** | 巨型文件：**runtime 四模块已拆**；**其余不拆**（§5.1，含 `desktop/commands.rs`） | runtime 4 PR ✅；策略闭合 ✅ | — |
 | **D2** | 端口动态化：桌面消费 `DS_PICK_READY {port}`，去掉 7878 写死 | ≤2 天 | ✅ **完成 2026-05-25**（含 `--port 0` ephemeral 守卫移除 follow-up） |
 | **D3** | 删 `crates/tui-core` legacy | ≤0.5 天 | ✅ **完成 2026-05-25** |
 | **D4** | 决策 `crates/app-server`：晋升或 deprecated | 决策 0.5 天 | ✅ **deprecated 2026-05-26** — [`D4_APPSERVER_DEPRECATED.md`](./D4_APPSERVER_DEPRECATED.md)；代码移除 defer |
@@ -267,22 +262,26 @@ WebView → invoke runtime_get_sse → reqwest stream
 
 **阶段 C 同期辅线（D1）：** 动到 `compaction.rs` / persistence monitor 时再拆。
 
-#### D1 收尾顺序（阶段 E）
+#### D1 — **已闭合**（阶段 E，2026-05-26）
 
-按单文件 ≈ 1 PR、软上限 1000 行（[code-organization](../../../.cursor/rules/code-organization.mdc)）：
+**原则：** 软上限 ~1000 行为**指南**而非硬性拆文件 KPI；已拆的 runtime 四模块保留；其余 >1k 行 **维护者决定不拆**，避免小文件碎片化；**后续大改/触及时再拆**。
 
-1. `crates/tui/src/config.rs`（~4800 行，最大，可多 PR）
-2. `crates/tui/src/compaction.rs`（~2500 行）
-3. `crates/tui/src/mcp.rs`（~2000 行）
-4. `crates/tui/src/localization.rs`（~1900 行）
-5. `crates/tui/src/client.rs`（~1900 行；若 D6 已部分拆分则跳过已拆模块）
-6. `crates/desktop/src/commands.rs`（~1300 行）
+**已模块化（runtime，2026-05-26）：** `config/` · `compaction/` · `mcp/` · `client/`（实现 ≤~650 行；测试卷 `tests.inc.rs` 可 >1k）。
 
-**D1 明确不拆分（维护者 2026-05-26）：**
+**明确不拆分（维护者 2026-05-26）：**
 
-| 文件 | 理由 |
-|------|------|
-| `crates/tui/src/tui/ui.rs`（~7859 行） | 仅 `deepseek-tui` + `tui-ui` 的 ratatui 全屏前端；`run_tui` 由 CLI `run_interactive` 启动；Zagens 桌面走 Web UI，runtime-server / `deepseek-runtime` 不链 `tui-ui`。拆它不进 §1 #10，也不改善定型主线。 |
+> 判定：非 D1 收益路径 · ~1k–1.5k 仍可维护 · 避免 IPC/工具链碎片化。`crates/tui` 非桌面路径与 `desktop` 分表列出。
+
+| 类别 | 代表路径（~行） | 理由 |
+|------|-----------------|------|
+| **Zagens 桌面 IPC** | `desktop/src/commands.rs` ~1.5k | Tauri `#[tauri::command]` 集中；~1.5k 尚可；后续按域拆 `commands/{auth,vision,…}` **按需** |
+| **ratatui TUI（freeze）** | `tui/ui.rs` ~7.4k · `tui/app.rs` ~4.4k · `tui/history.rs` ~4.1k · `tui/widgets/mod.rs` ~2.6k · 等 | 仅 `tui-ui`；与桌面 Web UI 无关 |
+| **CLI** | `cli/commands/legacy.rs` ~3.3k | CLI 入口 |
+| **TUI 文案** | `localization.rs` ~1.9k | 仅 TUI chrome；桌面 i18n 在 `web-ui/` |
+| **工具 / 引擎** | `tools/subagent/mod.rs` ~4.0k · `tools/shell.rs` ~2.4k · `task_manager.rs` ~1.8k · 等 | sidecar 内实现 |
+| **LLM 客户端** | `client/chat.rs` ~1.5k | `client/` 已拆；`chat.rs` 单体保留 |
+| **HTTP 服务端** | `runtime_api/*`（已子模块化） | 触及子文件时再拆 |
+| **测试卷** | `*/tests.rs` · `tests.inc.rs` | 测试可 >1k |
 
 #### P2 内部顺序（阶段 F，§1 = 10/10 后）
 
@@ -340,7 +339,7 @@ D5（M-series）✅ 已闭合。下一刀直接解锁 §1 第 5 项，并让 sid
 - ⛔ **禁止**新增 `/v1/*` 端点，除非配套补 OpenAPI schema 草案
 - ⛔ **禁止**让 `desktop` crate 直接 `use deepseek_core` 或 `deepseek_tui`——它只能消费 HTTP + IPC
 - ⛔ **禁止**给 `deepseek_core::engine::Engine` 加新字段（M-series 35 字段表已封口；变更需 spike + owner）
-- ⚠ **谨慎**：往 `commands.rs`、`config.rs`、`compaction.rs` 等巨型文件加代码——必须同 PR 把该文件继续拆小
+- ⚠ **谨慎**：往 **`desktop/commands.rs`** 或 §5.1「D1 不拆分」表内文件 **大量** 加代码时，评估是否触及再拆（非 D1 硬性门槛）；新 `/v1/*` 与 `Engine` 字段仍须 owner
 
 ### 7.2 允许且鼓励
 
@@ -371,12 +370,13 @@ D5（M-series）✅ 已闭合。下一刀直接解锁 §1 第 5 项，并让 sid
 - **§5.1 实施顺序签收（2026-05-26）**：维护者签收 D6→D9/D10→D7→D8→D1→P2 主线；§0 冻结窗口估算更新为 10–14 周；P2 内部 D11→D14→D13→D12。
 - **D9 + D10 落地（2026-05-26）**：阶段 B 插空完成 — 见 [`D9_D10_DESKTOP_UX.md`](./D9_D10_DESKTOP_UX.md)；下一主线 **D7**；§1 仍 7/10。
 - **D8 落地（2026-05-26）**：OpenAPI + TS 生成 — [`D8_OPENAPI_TS_GENERATION.md`](./D8_OPENAPI_TS_GENERATION.md)；§1 #9 → **9/10**；下一主线 **D1**。
-- **D1 范围（2026-05-26）**：`tui/ui.rs` **不拆分** — 见 §3.1 ratatui 行与 §5.1「D1 明确不拆分」表（TUI-only，与桌面端无关）。
+- **D1 范围（2026-05-26）**：`crates/tui` 非桌面 >1k 行单体 **不拆分** — §5.1 表。
+- **D1 闭合（2026-05-26）**：**`desktop/commands.rs` 不拆分**（~1.5k 可接受，避免碎片化）；§1 **10/10** 架构定型。
 - **D7 落地（2026-05-26）**：阶段 C 闭合 — C1–C6；§1 #6 → **8/10**。
 - **M-series M8 合并后**（✅ **2026-05-26**）：§1 第 4 项 **勾选** — core 侧 `Engine` struct、`Engine::with_hosts`、`Engine::run()` op loop + `EnginePlatformExt` 平台分发；tui 侧 newtype shim ~130 LOC。§1 第 5 项**仍 `[ ]`**（sidecar 仍链 ratatui → **D6**）。进度 **5/10**。2 个 pre-existing engine 集成测修复；[`BACKLOG_ENGINE_STRUCT_IN_CORE.md`](./BACKLOG_ENGINE_STRUCT_IN_CORE.md) Closed；`HANDOFF_M7_M8.md` 已删。
 - **M-series M8 合并后（归档说明）**：当 D6 + §1 ≥ 8/10 时，可将本文档归档并另起 `ARCHITECTURE_ASSESSMENT_<date>.md` v2 全量重写；当前在 **同文件内追加 2026-05-26 复评** 以保持链接稳定。
-- **§1 ≥ 8/10 勾选时**：解除 §7.1 全部红线；
-- **§1 = 10/10 时**：架构定型，本文档归档为历史快照。
+- **§1 = 10/10（2026-05-26）**：架构定型；§7.1 结构性红线仍有效（`/v1/*`、Engine 字段、`desktop` 边界等），巨型文件拆分为**按需**而非 KPI。
+- **归档时机**：P2 阶段性复盘或下一 major 架构变更时，可将本文档另存为历史快照。
 
 ---
 

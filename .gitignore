@@ -84,3 +84,6 @@ apps/
 scripts/fix_composer_tab_order.py
 deepseek-session-ec1f5621.json
 deepseek-thread-thr_86a1.json
+
+#dcs memory
+.docs/topic-memory-graph-main/
