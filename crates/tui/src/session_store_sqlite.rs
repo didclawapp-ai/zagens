@@ -23,6 +23,30 @@ use crate::session_manager::{
 
 const CURRENT_META_VERSION: u32 = 1;
 
+fn ensure_sessions_runtime_thread_id_column(db: &Connection) -> anyhow::Result<()> {
+    let mut stmt = db.prepare("PRAGMA table_info(sessions)")?;
+    let has_col = stmt
+        .query_map([], |row| row.get::<_, String>(1))?
+        .filter_map(|r| r.ok())
+        .any(|name| name == "runtime_thread_id");
+    if !has_col {
+        db.execute("ALTER TABLE sessions ADD COLUMN runtime_thread_id TEXT", [])?;
+    }
+    Ok(())
+}
+
+fn runtime_thread_id_sql(id: &Option<String>) -> &str {
+    id.as_deref().unwrap_or("")
+}
+
+fn runtime_thread_id_from_sql(raw: &str) -> Option<String> {
+    if raw.is_empty() {
+        None
+    } else {
+        Some(raw.to_string())
+    }
+}
+
 /// Opens (or creates) the SQLite DB at `db_path`.
 /// If JSON files exist in `sessions_dir` and the DB is empty, auto-migrates.
 pub fn open_sqlite_session_db(
@@ -51,12 +75,15 @@ pub fn open_sqlite_session_db(
             mode TEXT,
             system_prompt TEXT,
             messages_json TEXT NOT NULL DEFAULT '[]',
-            context_refs_json TEXT NOT NULL DEFAULT '[]'
+            context_refs_json TEXT NOT NULL DEFAULT '[]',
+            runtime_thread_id TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_sessions_updated ON sessions(updated_at);
         CREATE INDEX IF NOT EXISTS idx_sessions_workspace ON sessions(workspace);",
     )
     .context("Failed to create session tables")?;
+
+    ensure_sessions_runtime_thread_id_column(&db)?;
 
     // Check if migration is needed
     let needs_migration: bool = db
@@ -110,11 +137,12 @@ fn migrate_json_sessions(db: &Connection, sessions_dir: &std::path::Path) -> any
         let mode = session.metadata.mode.as_deref().unwrap_or("");
         let workspace = session.metadata.workspace.display().to_string();
         let system_prompt = session.system_prompt.as_deref().unwrap_or("");
+        let runtime_thread_id = runtime_thread_id_sql(&session.metadata.runtime_thread_id);
 
         tx.execute(
             "INSERT OR REPLACE INTO sessions
-             (id, title, created_at, updated_at, message_count, total_tokens, model, workspace, mode, system_prompt, messages_json, context_refs_json)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
+             (id, title, created_at, updated_at, message_count, total_tokens, model, workspace, mode, system_prompt, messages_json, context_refs_json, runtime_thread_id)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",
             params![
                 session.metadata.id,
                 session.metadata.title,
@@ -128,6 +156,7 @@ fn migrate_json_sessions(db: &Connection, sessions_dir: &std::path::Path) -> any
                 system_prompt,
                 messages_json,
                 context_refs_json,
+                runtime_thread_id,
             ],
         )?;
     }
@@ -150,11 +179,12 @@ pub fn save_session_sqlite(db: &Connection, session: &SavedSession) -> anyhow::R
     let mode = session.metadata.mode.as_deref().unwrap_or("");
     let workspace = session.metadata.workspace.display().to_string();
     let system_prompt = session.system_prompt.as_deref().unwrap_or("");
+    let runtime_thread_id = runtime_thread_id_sql(&session.metadata.runtime_thread_id);
 
     db.execute(
         "INSERT OR REPLACE INTO sessions
-         (id, title, created_at, updated_at, message_count, total_tokens, model, workspace, mode, system_prompt, messages_json, context_refs_json)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
+         (id, title, created_at, updated_at, message_count, total_tokens, model, workspace, mode, system_prompt, messages_json, context_refs_json, runtime_thread_id)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",
         params![
             session.metadata.id,
             session.metadata.title,
@@ -168,6 +198,7 @@ pub fn save_session_sqlite(db: &Connection, session: &SavedSession) -> anyhow::R
             system_prompt,
             messages_json,
             context_refs_json,
+            runtime_thread_id,
         ],
     ).context("save_session_sqlite")?;
 
@@ -187,7 +218,7 @@ pub fn load_session_sqlite(db: &Connection, id: &str) -> anyhow::Result<SavedSes
     }
 
     let mut stmt = db.prepare(
-        "SELECT id, title, created_at, updated_at, message_count, total_tokens, model, workspace, mode, system_prompt, messages_json, context_refs_json
+        "SELECT id, title, created_at, updated_at, message_count, total_tokens, model, workspace, mode, system_prompt, messages_json, context_refs_json, runtime_thread_id
          FROM sessions WHERE id = ?1",
     )?;
 
@@ -204,6 +235,7 @@ pub fn load_session_sqlite(db: &Connection, id: &str) -> anyhow::Result<SavedSes
         let system_prompt: String = row.get(9)?;
         let messages_json: String = row.get(10)?;
         let context_refs_json: String = row.get(11)?;
+        let runtime_thread_id_raw: String = row.get(12)?;
 
         let metadata = SessionMetadata {
             id,
@@ -219,7 +251,7 @@ pub fn load_session_sqlite(db: &Connection, id: &str) -> anyhow::Result<SavedSes
             model,
             workspace: PathBuf::from(workspace),
             mode: if mode.is_empty() { None } else { Some(mode) },
-            runtime_thread_id: None,
+            runtime_thread_id: runtime_thread_id_from_sql(&runtime_thread_id_raw),
         };
         let messages: Vec<crate::models::Message> =
             serde_json::from_str(&messages_json).unwrap_or_default();
@@ -249,7 +281,7 @@ pub fn load_session_sqlite(db: &Connection, id: &str) -> anyhow::Result<SavedSes
 
 pub fn list_sessions_sqlite(db: &Connection) -> anyhow::Result<Vec<SessionMetadata>> {
     let mut stmt = db.prepare(
-        "SELECT id, title, created_at, updated_at, message_count, total_tokens, model, workspace, mode
+        "SELECT id, title, created_at, updated_at, message_count, total_tokens, model, workspace, mode, runtime_thread_id
          FROM sessions ORDER BY updated_at DESC",
     )?;
 
@@ -264,6 +296,7 @@ pub fn list_sessions_sqlite(db: &Connection) -> anyhow::Result<Vec<SessionMetada
             let model: String = row.get(6)?;
             let workspace: String = row.get(7)?;
             let mode: String = row.get(8)?;
+            let runtime_thread_id_raw: String = row.get(9)?;
 
             Ok(SessionMetadata {
                 id,
@@ -279,7 +312,7 @@ pub fn list_sessions_sqlite(db: &Connection) -> anyhow::Result<Vec<SessionMetada
                 model,
                 workspace: PathBuf::from(workspace),
                 mode: if mode.is_empty() { None } else { Some(mode) },
-                runtime_thread_id: None,
+                runtime_thread_id: runtime_thread_id_from_sql(&runtime_thread_id_raw),
             })
         })?
         .filter_map(|r| r.ok())
@@ -316,7 +349,7 @@ pub fn get_latest_session_for_workspace_sqlite(
     let workspace_str = workspace.display().to_string();
     // Match by path prefix equality (same as JSON version's workspace_scope_matches)
     let mut stmt = db.prepare(
-        "SELECT id, title, created_at, updated_at, message_count, total_tokens, model, workspace, mode
+        "SELECT id, title, created_at, updated_at, message_count, total_tokens, model, workspace, mode, runtime_thread_id
          FROM sessions WHERE workspace = ?1
          ORDER BY updated_at DESC LIMIT 1",
     )?;
@@ -331,6 +364,7 @@ pub fn get_latest_session_for_workspace_sqlite(
         let model: String = row.get(6)?;
         let workspace: String = row.get(7)?;
         let mode: String = row.get(8)?;
+        let runtime_thread_id_raw: String = row.get(9)?;
 
         Ok(SessionMetadata {
             id,
@@ -346,7 +380,7 @@ pub fn get_latest_session_for_workspace_sqlite(
             model,
             workspace: PathBuf::from(workspace),
             mode: if mode.is_empty() { None } else { Some(mode) },
-            runtime_thread_id: None,
+            runtime_thread_id: runtime_thread_id_from_sql(&runtime_thread_id_raw),
         })
     });
 
@@ -366,4 +400,82 @@ fn cleanup_old_sqlite(db: &Connection, max_sessions: usize) -> anyhow::Result<()
         params![max_sessions as i64],
     )?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+    use tempfile::tempdir;
+
+    #[test]
+    fn sqlite_session_runtime_thread_id_round_trip() {
+        let dir = tempdir().unwrap();
+        let sessions_dir = dir.path().join("sessions");
+        std::fs::create_dir_all(&sessions_dir).unwrap();
+        let db_path = sessions_dir.join("sessions.db");
+        let db = open_sqlite_session_db(&db_path, &sessions_dir).unwrap();
+
+        let now = Utc::now();
+        let session = SavedSession {
+            schema_version: 1,
+            metadata: SessionMetadata {
+                id: "sess-1".to_string(),
+                title: "test".to_string(),
+                created_at: now,
+                updated_at: now,
+                message_count: 0,
+                total_tokens: 0,
+                model: "m".to_string(),
+                workspace: PathBuf::from("."),
+                mode: None,
+                runtime_thread_id: Some("thr_abc".to_string()),
+            },
+            messages: vec![],
+            system_prompt: None,
+            context_references: vec![],
+        };
+
+        save_session_sqlite(&db, &session).unwrap();
+        let loaded = load_session_sqlite(&db, "sess-1").unwrap();
+        assert_eq!(
+            loaded.metadata.runtime_thread_id.as_deref(),
+            Some("thr_abc")
+        );
+
+        let listed = list_sessions_sqlite(&db).unwrap();
+        assert_eq!(
+            listed[0].runtime_thread_id.as_deref(),
+            Some("thr_abc")
+        );
+    }
+
+    #[test]
+    fn sqlite_alter_adds_runtime_thread_id_column() {
+        let dir = tempdir().unwrap();
+        let db_path = dir.path().join("legacy.db");
+        {
+            let db = Connection::open(&db_path).unwrap();
+            db.execute_batch(
+                "CREATE TABLE sessions (
+                    id TEXT PRIMARY KEY,
+                    title TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    message_count INTEGER NOT NULL DEFAULT 0,
+                    total_tokens INTEGER NOT NULL DEFAULT 0,
+                    model TEXT NOT NULL DEFAULT '',
+                    workspace TEXT NOT NULL DEFAULT '.',
+                    mode TEXT,
+                    system_prompt TEXT,
+                    messages_json TEXT NOT NULL DEFAULT '[]',
+                    context_refs_json TEXT NOT NULL DEFAULT '[]'
+                );",
+            )
+            .unwrap();
+        }
+        let db = Connection::open(&db_path).unwrap();
+        ensure_sessions_runtime_thread_id_column(&db).unwrap();
+        ensure_sessions_runtime_thread_id_column(&db).unwrap();
+    }
 }

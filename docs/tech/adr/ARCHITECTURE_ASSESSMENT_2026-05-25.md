@@ -223,7 +223,7 @@ WebView → invoke runtime_get_sse → reqwest stream
 | ID | 内容 | 工作量 | 已记账 |
 |----|------|--------|--------|
 | **D6** | 抽 `crates/runtime-server`（sidecar 不再链 ratatui / CLI） | 2-3 周（D5 完成后） | **可启动** — D5 ✅ |
-| **D7** | 持久化整合 Sessions ⊕ Runtime threads → 单 SQLite + 视图 | 4-6 周 | ✅ [`BACKLOG_RUNTIME_UNIFICATION.md`](./BACKLOG_RUNTIME_UNIFICATION.md) · [`BACKLOG_STATESTORE_JSONL.md`](./BACKLOG_STATESTORE_JSONL.md) |
+| **D7** | 持久化整合 Sessions ⊕ Runtime threads → 单 SQLite + 视图 | 4-6 周 | **进行中 2026-05-26** — [`D7_PERSISTENCE_UNIFICATION.md`](./D7_PERSISTENCE_UNIFICATION.md) · C1 ✅ |
 | **D8** | OpenAPI schema 导出 + `web-ui` ts 类型自动生成 | 1-2 周 | — |
 | **D9** | 取消/打断两层契约文档化 + `api/client.ts` 统一封装 | 3-5 天 | ✅ **2026-05-26** — [`D9_D10_DESKTOP_UX.md`](./D9_D10_DESKTOP_UX.md) · `turnControl.ts` · API_DESIGN §2.1.1 |
 | **D10** | 跨窗口事件按 thread owner 过滤（消除"幽灵渲染"） | 1 周 | ✅ **2026-05-26** — 同上 · `filterThreadStreamEvents` · API_DESIGN §2.1.2 |
@@ -364,6 +364,7 @@ D5（M-series）✅ 已闭合。下一刀直接解锁 §1 第 5 项，并让 sid
 - **D4 决策（2026-05-26）**：app-server **deprecated** — §1 #7 勾选；进度 6/10；crate/CLI 保留，见 [`D4_APPSERVER_DEPRECATED.md`](./D4_APPSERVER_DEPRECATED.md)。
 - **§5.1 实施顺序签收（2026-05-26）**：维护者签收 D6→D9/D10→D7→D8→D1→P2 主线；§0 冻结窗口估算更新为 10–14 周；P2 内部 D11→D14→D13→D12。
 - **D9 + D10 落地（2026-05-26）**：阶段 B 插空完成 — 见 [`D9_D10_DESKTOP_UX.md`](./D9_D10_DESKTOP_UX.md)；下一主线 **D7**；§1 仍 7/10。
+- **D7 Phase C 启动（2026-05-26）**：[`D7_PERSISTENCE_UNIFICATION.md`](./D7_PERSISTENCE_UNIFICATION.md) spike + PR 链；C1 `runtime_thread_id` SQLite 修复已合并。
 - **M-series M8 合并后**（✅ **2026-05-26**）：§1 第 4 项 **勾选** — core 侧 `Engine` struct、`Engine::with_hosts`、`Engine::run()` op loop + `EnginePlatformExt` 平台分发；tui 侧 newtype shim ~130 LOC。§1 第 5 项**仍 `[ ]`**（sidecar 仍链 ratatui → **D6**）。进度 **5/10**。2 个 pre-existing engine 集成测修复；[`BACKLOG_ENGINE_STRUCT_IN_CORE.md`](./BACKLOG_ENGINE_STRUCT_IN_CORE.md) Closed；`HANDOFF_M7_M8.md` 已删。
 - **M-series M8 合并后（归档说明）**：当 D6 + §1 ≥ 8/10 时，可将本文档归档并另起 `ARCHITECTURE_ASSESSMENT_<date>.md` v2 全量重写；当前在 **同文件内追加 2026-05-26 复评** 以保持链接稳定。
 - **§1 ≥ 8/10 勾选时**：解除 §7.1 全部红线；
