@@ -1,7 +1,7 @@
 # D6 — `deepseek-runtime` sidecar (runtime-server crate)
 
 **Status:** Landed (phase A — 2026-05-26)  
-**Related:** [ARCHITECTURE_ASSESSMENT_2026-05-25.md](./ARCHITECTURE_ASSESSMENT_2026-05-25.md) §1 #5 · §5.1 阶段 A
+**Related:** [ARCHITECTURE_ASSESSMENT_2026-05-25.md](./ARCHITECTURE_ASSESSMENT_2026-05-25.md) §1 #5 · §5.1 阶段 A · **[详细实施方案](./D6_IMPLEMENTATION_PLAN.md)**
 
 ## Context
 
@@ -23,7 +23,7 @@ M-series (D5) moved `Engine` + op loop into `deepseek-core`, removing the struct
 - [x] `cargo check -p deepseek-runtime-server` green; `cargo tree -p deepseek-runtime-server -i ratatui` → **no match**
 - [x] `cargo check -p deepseek-tui --bin deepseek-tui` green (full TUI + CLI unchanged)
 - [x] Desktop `build.rs` / `prepare-bundle.mjs` / `sidecar.rs` prefer `deepseek-runtime`
-- [ ] `runtime_api/tests.rs` sidecar contract run against **`deepseek-runtime`** binary (follow-up CI wiring)
+- [x] `runtime_api/tests.rs` sidecar contract run against **`deepseek-runtime`** binary — [`sidecar_binary_contract.rs`](../../../crates/runtime-server/tests/sidecar_binary_contract.rs) + CI (Phase A+)
 - [ ] Physical move of `runtime_api/*` + `runtime_threads/*` into `runtime-server` **library** (phase B — optional; not blocking §1 #5)
 
 ## Non-goals (defer)

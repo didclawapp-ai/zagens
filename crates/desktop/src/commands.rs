@@ -56,7 +56,7 @@ pub struct AppContext {
     /// to wait for the first publish (see [`get_runtime_port`]).
     pub runtime_port: tokio::sync::watch::Receiver<u16>,
     pub runtime_token: String,
-    /// Wake the sidecar supervisor to restart `deepseek-tui`'s HTTP server (reload `config.toml`).
+    /// Wake the sidecar supervisor to restart `deepseek-runtime`'s HTTP server (reload `config.toml`).
     pub sidecar_restart: Arc<Notify>,
     /// Signal the sidecar supervisor to shut down (kill the child process and exit).
     pub shutdown: Arc<Notify>,

@@ -1,4 +1,4 @@
-//! Zagens must not link the TUI `Engine` crate; turns run in the `deepseek-tui` sidecar (P2 spike).
+//! Zagens must not link the TUI `Engine` crate; turns run in the `deepseek-runtime` sidecar (P2 spike).
 
 use std::path::Path;
 

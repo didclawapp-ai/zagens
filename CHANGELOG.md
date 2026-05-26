@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Architecture / D6 Phase A+ (2026-05-26):** `deepseek-runtime` binary sidecar contract test — [`sidecar_binary_contract.rs`](crates/runtime-server/tests/sidecar_binary_contract.rs)（spawn 真实 binary + `DS_PICK_READY` + health/thread/SSE/interrupt）；CI ubuntu job 新增 `cargo test -p deepseek-runtime-server --test sidecar_binary_contract`；D6 ADR acceptance 第 4 项 ✅。
+- **Docs / D6 implementation plan (2026-05-26):** [`D6_IMPLEMENTATION_PLAN.md`](docs/tech/adr/D6_IMPLEMENTATION_PLAN.md) — Phase A 回顾清单、Phase A+ binary CI 契约测、Phase B `runtime_api`/`runtime_threads` 物理迁移 PR 链；配套 [`D6_RUNTIME_SERVER.md`](docs/tech/adr/D6_RUNTIME_SERVER.md)。
+- **Docs / RUNTIME_ARCHITECTURE (2026-05-26):** [`RUNTIME_ARCHITECTURE.md`](docs/tech/RUNTIME_ARCHITECTURE.md) 与代码复核对齐 — 生产 sidecar 改为 **`deepseek-runtime`**（D6）；`Engine` + `op_loop` 落点改为 **core**（M-series）；移除已删 `app-server`；§1/§2/§3 依赖图与 §10 架构定型 **10/10** 叙事同步 Assessment。
 - **Architecture / D1 (2026-05-26):** `config.rs` → `config/{mod,providers,types,load/}`；`load/` 再拆为 `impl_config`、`paths`、`env_overrides`、`model`、`merge`、`credentials`（实现均 ≤644 行；`tests.inc.rs` ~1.8k 经 `load/mod.rs` include）。脚本 [`split-config-load-rs.py`](scripts/split-config-load-rs.py) 按函数边界切片；`config::load::` **78** 项测试通过。
 - **Architecture / D1 (2026-05-26):** `compaction.rs`（~2.7k 行）→ `compaction/{plan,tokens,prune,execute,prompt}.rs` + `tests.inc.rs`（实现 ≤589 行；[`split-compaction-rs.py`](scripts/split-compaction-rs.py)）；`compaction::` **54** 项测试通过。
 - **Architecture / D1 (2026-05-26):** `client.rs`（~2.1k 行）→ `client/{tool_names,types,http,client_impl,llm,api_parse,fim}.rs` + 既有 `chat.rs`（[`split-client-rs.py`](scripts/split-client-rs.py)）；`client::` **88** 项测试通过。

@@ -363,7 +363,7 @@ export default function Sidebar({
         )}
         <div
           className="flex items-center gap-2 px-1 py-1 text-xs text-t-text-muted"
-          title="与本地 deepseek-tui 运行时 (127.0.0.1:7878) 的连接状态"
+          title="与本地 deepseek-runtime 运行时 (127.0.0.1) 的连接状态"
         >
           <span
             className={`shrink-0 inline-block w-2 h-2 rounded-full ${runtimeConnIndicatorClass(
