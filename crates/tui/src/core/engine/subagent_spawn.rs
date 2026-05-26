@@ -38,7 +38,7 @@ impl SubAgentHost for Engine {
     }
 
     async fn running_count(&self) -> usize {
-        let mgr = self.subagent_manager.read().await;
+        let mgr = self.runtime_ext().subagent_manager.read().await;
         mgr.running_count()
     }
 }
@@ -73,7 +73,7 @@ impl Engine {
             self.build_tool_context(AppMode::Agent, self.session.auto_approve),
             self.session.allow_shell,
             Some(self.tx_event.clone()),
-            Arc::clone(&self.subagent_manager),
+            Arc::clone(&self.runtime_ext().subagent_manager),
         )
         .with_role_models(self.config.subagent_model_overrides.clone())
         .with_auto_model(self.session.auto_model)
@@ -90,10 +90,10 @@ impl Engine {
         runtime.reasoning_effort_auto = false;
 
         let snapshot = {
-            let mut manager = self.subagent_manager.write().await;
+            let mut manager = self.runtime_ext().subagent_manager.write().await;
             manager
                 .spawn_background(
-                    Arc::clone(&self.subagent_manager),
+                    Arc::clone(&self.runtime_ext().subagent_manager),
                     runtime,
                     SubAgentType::General,
                     prompt.to_string(),
@@ -108,7 +108,7 @@ impl Engine {
     }
 
     pub(in crate::core::engine) async fn list_subagents(&self) -> Vec<SubAgentResult> {
-        let mut manager = self.subagent_manager.write().await;
+        let mut manager = self.runtime_ext().subagent_manager.write().await;
         manager.cleanup(SUBAGENT_LIST_CLEANUP_MAX_AGE);
         manager.list()
     }

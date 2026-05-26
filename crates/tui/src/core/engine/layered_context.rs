@@ -14,16 +14,16 @@ impl Engine {
     /// `seam_manager` field type stays `Option<SeamManager>` until M7
     /// swaps it to `Option<Box<dyn SeamHost>>`).
     pub(super) async fn layered_context_checkpoint(&mut self) {
-        let Some(ref seam_mgr) = self.seam_manager else {
+        let Some(ref seam_mgr) = self.seam else {
             return;
         };
-        if !SeamHost::config_enabled(seam_mgr) {
+        if !SeamHost::config_enabled(seam_mgr.as_ref()) {
             return;
         }
 
-        let highest = SeamHost::highest_level(seam_mgr).await;
+        let highest = SeamHost::highest_level(seam_mgr.as_ref()).await;
         let Some(level) =
-            SeamHost::seam_level_for(seam_mgr, self.estimated_input_tokens(), highest)
+            SeamHost::seam_level_for(seam_mgr.as_ref(), self.estimated_input_tokens(), highest)
         else {
             return;
         };
@@ -32,7 +32,7 @@ impl Engine {
         // verbatim window. The verbatim window (last ~16 turns) stays
         // untouched so the model always has ground-truth recent context.
         let msg_count = self.session.messages.len();
-        let verbatim_start = SeamHost::verbatim_window_start(seam_mgr, msg_count);
+        let verbatim_start = SeamHost::verbatim_window_start(seam_mgr.as_ref(), msg_count);
         if verbatim_start == 0 {
             return; // Not enough messages to summarize.
         }
@@ -51,10 +51,10 @@ impl Engine {
             .await;
 
         // If we have existing seams, recompact; otherwise produce fresh.
-        let existing_seams = SeamHost::collect_seam_texts(seam_mgr, &self.session.messages).await;
+        let existing_seams = SeamHost::collect_seam_texts(seam_mgr.as_ref(), &self.session.messages).await;
         let seam_text = if existing_seams.is_empty() {
             match SeamHost::produce_soft_seam(
-                seam_mgr,
+                seam_mgr.as_ref(),
                 &self.session.messages,
                 level,
                 0,
@@ -75,7 +75,7 @@ impl Engine {
                 .filter_map(|i| self.session.messages.get(i))
                 .collect();
             match SeamHost::recompact(
-                seam_mgr,
+                seam_mgr.as_ref(),
                 &existing_seams,
                 &recent,
                 level,
@@ -97,7 +97,7 @@ impl Engine {
         }
 
         // Capture seam count before the mutable borrow below.
-        let seam_count = SeamHost::seam_count(seam_mgr).await;
+        let seam_count = SeamHost::seam_count(seam_mgr.as_ref()).await;
 
         // Append the seam as an assistant message. This is an append-only
         // operation — no messages are deleted. The prefix cache stays hot.

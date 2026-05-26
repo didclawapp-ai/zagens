@@ -18,12 +18,15 @@ impl Engine {
         client: Option<&(dyn crate::llm_client::LlmClient)>,
         mode: TurnLoopMode,
     ) -> bool {
+        let observation = self.capacity_observation(turn);
         let snapshot = self
+            .0
             .capacity_controller
-            .observe_pre_turn(self.capacity_observation(turn));
+            .observe_pre_turn(observation);
         let decision = self
+            .0
             .capacity_controller
-            .decide(self.turn_counter, snapshot.as_ref());
+            .decide(self.0.turn_counter, snapshot.as_ref());
         self.emit_capacity_decision(turn, snapshot.as_ref(), &decision)
             .await;
 
@@ -46,12 +49,15 @@ impl Engine {
         _step_error_count: usize,
         _consecutive_tool_error_steps: u32,
     ) -> bool {
+        let observation = self.capacity_observation(turn);
         let snapshot = self
+            .0
             .capacity_controller
-            .observe_post_tool(self.capacity_observation(turn));
+            .observe_post_tool(observation);
         let decision = self
+            .0
             .capacity_controller
-            .decide(self.turn_counter, snapshot.as_ref());
+            .decide(self.0.turn_counter, snapshot.as_ref());
         self.emit_capacity_decision(turn, snapshot.as_ref(), &decision)
             .await;
 
@@ -94,12 +100,15 @@ impl Engine {
         }
 
         let snapshot = self
+            .0
             .capacity_controller
             .last_snapshot()
             .cloned()
             .or_else(|| {
-                self.capacity_controller
-                    .observe_pre_turn(self.capacity_observation(turn))
+                let observation = self.capacity_observation(turn);
+                self.0
+                    .capacity_controller
+                    .observe_pre_turn(observation)
             });
         let Some(snapshot) = snapshot else {
             return false;
@@ -113,8 +122,9 @@ impl Engine {
         }
 
         let decision = self
+            .0
             .capacity_controller
-            .decide(self.turn_counter, Some(&forced));
+            .decide(self.0.turn_counter, Some(&forced));
         self.emit_capacity_decision(turn, Some(&forced), &decision)
             .await;
 

@@ -9,12 +9,17 @@
 
 pub mod approval;
 pub mod config;
+pub mod host_bundle;
 pub mod context;
 pub mod context_snapshot;
 pub mod dispatch;
 pub mod handle;
 pub mod hosts;
 pub mod op;
+pub mod runtime;
+pub mod runtime_new;
+pub mod op_loop;
+pub mod platform_ext;
 pub mod loop_guard;
 pub mod lsp_edit_paths;
 pub mod scratchpad_state;
@@ -85,10 +90,12 @@ pub use turn_port::TurnEnginePort;
 pub use subagent_port::{SubAgentSpawnError, SubAgentSpawnOutcome};
 #[allow(deprecated)]
 pub use subagent_port::SubAgentSpawnPort;
+pub use host_bundle::EngineHostBundle;
 pub use hosts::{
     LspHost, McpHost, SandboxHost, SeamError, SeamHost, ShellHost, SubAgentHost, TopicMemoryHost,
     WorkshopHost,
 };
+pub use runtime::Engine;
 pub use scratchpad_state::ScratchpadStepState;
 pub use crate::turn::{TurnContext, TurnLoopMode, TurnOutcomeStatus};
 pub use crate::session::{Session, SessionUsage};

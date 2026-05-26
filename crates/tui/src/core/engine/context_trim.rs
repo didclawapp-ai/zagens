@@ -46,6 +46,15 @@ pub fn trim_messages_partition_aware(
 ) -> usize {
     let before = messages.len();
 
+    // Fast path when far over budget: bulk-drain avoids O(n²) single-message
+    // removal with full partition recompute on each step (capacity guardrail tests).
+    if estimate_input_tokens_conservative(messages, system_prompt) > target_input_budget {
+        let drain = count_oldest_messages_to_drain(messages, system_prompt, target_input_budget);
+        if drain > 0 {
+            messages.drain(0..drain);
+        }
+    }
+
     while estimate_input_tokens_conservative(messages, system_prompt) > target_input_budget
         && messages.len() > MIN_RECENT_MESSAGES_TO_KEEP
     {

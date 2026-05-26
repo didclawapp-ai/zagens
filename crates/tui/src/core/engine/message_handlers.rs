@@ -32,8 +32,10 @@ impl Engine {
 
         // Create turn context first so start event includes a stable turn id.
         let mut turn = TurnContext::new(self.config.max_steps);
-        self.turn_counter = self.turn_counter.saturating_add(1);
-        self.capacity_controller.mark_turn_start(self.turn_counter);
+        self.0.turn_counter = self.0.turn_counter.saturating_add(1);
+        self.0
+            .capacity_controller
+            .mark_turn_start(self.0.turn_counter);
         self.scratchpad_step.reset();
         self.scratchpad_summary_injected_this_turn = false;
 
@@ -87,9 +89,11 @@ impl Engine {
             return;
         }
 
-        self.session
+        let workspace = self.0.session.workspace.clone();
+        self.0
+            .session
             .working_set
-            .observe_user_message(&content, &self.session.workspace);
+            .observe_user_message(&content, &workspace);
         let force_update_plan_first = should_force_update_plan_first(mode, &content);
 
         let inject_report_summary = self.config.scratchpad.enabled
@@ -116,9 +120,9 @@ impl Engine {
             }
         }
 
-        self.session.model = model;
-        self.config.model.clone_from(&self.session.model);
-        self.config.goal_objective = goal_objective;
+        self.0.session.model = model;
+        self.0.config.model.clone_from(&self.0.session.model);
+        self.0.config.goal_objective = goal_objective;
         self.session.reasoning_effort = reasoning_effort;
         self.session.reasoning_effort_auto = reasoning_effort_auto;
         self.session.auto_model = auto_model;
@@ -147,8 +151,8 @@ impl Engine {
         self.emit_session_updated().await;
 
         // Build tool registry and tool list for the current mode
-        let todo_list = self.config.todos.clone();
-        let plan_state = self.config.plan_state.clone();
+        let todo_list = self.config_ext().todos.clone();
+        let plan_state = self.config_ext().plan_state.clone();
 
         let tool_context = self.build_tool_context(mode, auto_approve);
         let builder = self.build_turn_tool_registry_builder(mode, todo_list, plan_state);
@@ -199,7 +203,7 @@ impl Engine {
                             tool_context.clone(),
                             self.session.allow_shell,
                             Some(self.tx_event.clone()),
-                            Arc::clone(&self.subagent_manager),
+                            Arc::clone(&self.runtime_ext().subagent_manager),
                         )
                         .with_role_models(self.config.subagent_model_overrides.clone())
                         .with_auto_model(self.session.auto_model)
@@ -209,7 +213,7 @@ impl Engine {
                         )
                         .with_max_spawn_depth(self.config.max_spawn_depth)
                         .with_step_timeout(self.config.subagent_step_timeout)
-                        .with_parent_completion_tx(self.tx_subagent_completion.clone());
+                        .with_parent_completion_tx(self.runtime_ext().tx_subagent_completion.clone());
                         if let Some((mailbox, cancel_token)) = mailbox_for_runtime.as_ref() {
                             rt = rt
                                 .with_mailbox(mailbox.clone())
@@ -224,7 +228,7 @@ impl Engine {
                     if let Some(runtime) = runtime {
                         Some(
                             builder
-                                .with_subagent_tools(self.subagent_manager.clone(), runtime)
+                                .with_subagent_tools(self.runtime_ext().subagent_manager.clone(), runtime)
                                 .build(tool_context),
                         )
                     } else {
@@ -279,7 +283,7 @@ impl Engine {
                 // config.topic_memory).
                 use deepseek_core::engine::hosts::TopicMemoryHost;
                 TopicMemoryHost::on_turn_complete(
-                    &mut self.topic_memory_runtime,
+                    &mut *self.topic_memory,
                     &user,
                     &assistant,
                 );

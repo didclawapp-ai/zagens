@@ -113,12 +113,12 @@ impl Engine {
 
     pub(super) fn trim_oldest_messages_to_budget(&mut self, target_input_budget: usize) -> usize {
         trim_messages_partition_aware(
-            &mut self.session.messages,
-            self.session.system_prompt.as_ref(),
+            &mut self.0.session.messages,
+            self.0.session.system_prompt.as_ref(),
             target_input_budget,
-            &self.session.workspace,
-            &self.session.working_set,
-            self.scratchpad_run_id.as_deref(),
+            &self.0.session.workspace,
+            &self.0.session.working_set,
+            self.0.scratchpad_run_id.as_deref(),
         )
     }
 

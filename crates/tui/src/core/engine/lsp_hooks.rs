@@ -27,7 +27,7 @@ impl Engine {
         tool_name: &str,
         tool_input: &serde_json::Value,
     ) {
-        let host: &dyn LspHost = self.lsp_manager.as_ref();
+        let host: &dyn LspHost = self.lsp.as_ref();
         if !host.enabled() {
             return;
         }
@@ -38,12 +38,13 @@ impl Engine {
             } else {
                 self.session.workspace.join(&path)
             };
-            // Use a short edit-sequence based on the existing turn counter so
-            // log output stays correlated even though we do not currently
-            // batch by sequence.
             let seq = self.turn_counter;
-            if let Some(block) = host.diagnostics_for(&absolute, seq).await {
-                self.pending_lsp_blocks.push(block);
+            let block = {
+                let host: &dyn LspHost = self.0.lsp.as_ref();
+                host.diagnostics_for(&absolute, seq).await
+            };
+            if let Some(block) = block {
+                self.0.pending_lsp_blocks.push(block);
             }
         }
     }

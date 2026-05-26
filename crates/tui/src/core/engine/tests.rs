@@ -168,7 +168,7 @@ fn engine_initial_prompt_includes_configured_goal() {
         ..Default::default()
     };
     let (engine, _handle) = Engine::new(config, &Config::default());
-    let prompt = match engine.session.system_prompt {
+    let prompt = match engine.session.system_prompt.clone() {
         Some(SystemPrompt::Text(text)) => text,
         Some(SystemPrompt::Blocks(blocks)) => blocks
             .into_iter()
@@ -466,8 +466,8 @@ fn turn_tool_registry_builder_keeps_plan_mode_read_only_for_files() {
     let registry = engine
         .build_turn_tool_registry_builder(
             AppMode::Plan,
-            engine.config.todos.clone(),
-            engine.config.plan_state.clone(),
+            engine.config_ext().todos.clone(),
+            engine.config_ext().plan_state.clone(),
         )
         .build(engine.build_tool_context(AppMode::Plan, false));
 
@@ -972,7 +972,9 @@ fn refresh_system_prompt_under_capacity_omits_topic_memory_block() {
         attribution: None,
     };
     let mut rt = crate::topic_memory::TopicMemoryRuntime::new(settings.clone());
-    rt.on_turn_complete(&settings, "讨论 Rust 性能", "可以用 profiling");
+    for _ in 0..3 {
+        rt.on_turn_complete(&settings, "讨论 Rust 性能", "可以用 profiling");
+    }
     rt.runs_since_last_inject = settings.inject_interval;
 
     let config = EngineConfig {
@@ -981,7 +983,7 @@ fn refresh_system_prompt_under_capacity_omits_topic_memory_block() {
         ..Default::default()
     };
     let (mut engine, _handle) = Engine::new(config, &Config::default());
-    engine.topic_memory_runtime = rt;
+    engine.0.topic_memory = Box::new(rt);
 
     engine.refresh_system_prompt_with_arbitration(
         AppMode::Agent,
@@ -1052,11 +1054,12 @@ async fn pre_request_refresh_skips_compaction_below_normal_threshold() {
 
     let mut engine = build_engine_with_capacity(capacity.clone());
     engine.config.capacity = capacity.clone();
-    engine.capacity_controller = CapacityController::new(capacity);
-    engine.turn_counter = 5;
+    engine.0.capacity_controller = CapacityController::new(capacity);
+    engine.0.turn_counter = 5;
     engine
+        .0
         .capacity_controller
-        .mark_turn_start(engine.turn_counter);
+        .mark_turn_start(engine.0.turn_counter);
     engine.session.model = "deepseek-v4-pro".to_string();
     engine.config.model = "deepseek-v4-pro".to_string();
 
@@ -1095,11 +1098,12 @@ async fn pre_request_refresh_invoked_when_medium_risk() {
 
     let mut engine = build_engine_with_capacity(capacity.clone());
     engine.config.capacity = capacity.clone();
-    engine.capacity_controller = CapacityController::new(capacity);
-    engine.turn_counter = 5;
+    engine.0.capacity_controller = CapacityController::new(capacity);
+    engine.0.turn_counter = 5;
     engine
+        .0
         .capacity_controller
-        .mark_turn_start(engine.turn_counter);
+        .mark_turn_start(engine.0.turn_counter);
 
     // Pin the model to an explicit 128k-context variant so the pressure ratio stays
     // stable regardless of changes to the workspace-wide default model.
@@ -1147,11 +1151,12 @@ async fn post_tool_replay_invoked_when_high_non_severe_risk() {
     engine.session.workspace = tmp.path().to_path_buf();
     engine.config.workspace = tmp.path().to_path_buf();
     engine.config.capacity = capacity.clone();
-    engine.capacity_controller = CapacityController::new(capacity);
-    engine.turn_counter = 4;
+    engine.0.capacity_controller = CapacityController::new(capacity);
+    engine.0.turn_counter = 4;
     engine
+        .0
         .capacity_controller
-        .mark_turn_start(engine.turn_counter);
+        .mark_turn_start(engine.0.turn_counter);
 
     let mut turn = TurnContext::new(10);
     let mut tool_call = TurnToolCall::new(
@@ -1207,11 +1212,12 @@ async fn error_escalation_triggers_replan_when_severe_or_repeated_failures() {
 
     let mut engine = build_engine_with_capacity(capacity.clone());
     engine.config.capacity = capacity.clone();
-    engine.capacity_controller = CapacityController::new(capacity);
-    engine.turn_counter = 6;
+    engine.0.capacity_controller = CapacityController::new(capacity);
+    engine.0.turn_counter = 6;
     engine
+        .0
         .capacity_controller
-        .mark_turn_start(engine.turn_counter);
+        .mark_turn_start(engine.0.turn_counter);
 
     for i in 0..10 {
         engine.session.messages.push(Message {
@@ -1272,10 +1278,11 @@ async fn capacity_disabled_by_default_keeps_messages_intact() {
         !engine.config.capacity.enabled,
         "capacity controller must be off by default in v0.8.11+"
     );
-    engine.turn_counter = 6;
+    engine.0.turn_counter = 6;
     engine
+        .0
         .capacity_controller
-        .mark_turn_start(engine.turn_counter);
+        .mark_turn_start(engine.0.turn_counter);
 
     for i in 0..10 {
         engine.session.messages.push(Message {
@@ -1320,11 +1327,12 @@ async fn controller_disabled_keeps_behavior_unchanged() {
 
     let mut engine = build_engine_with_capacity(capacity.clone());
     engine.config.capacity = capacity.clone();
-    engine.capacity_controller = CapacityController::new(capacity);
-    engine.turn_counter = 3;
+    engine.0.capacity_controller = CapacityController::new(capacity);
+    engine.0.turn_counter = 3;
     engine
+        .0
         .capacity_controller
-        .mark_turn_start(engine.turn_counter);
+        .mark_turn_start(engine.0.turn_counter);
 
     let long = "y".repeat(5_000);
     for _ in 0..120 {
@@ -1956,6 +1964,7 @@ async fn post_edit_hook_injects_diagnostics_message_before_next_request() {
         message: "expected i32, found &str".to_string(),
     }]));
     engine
+        .runtime_ext()
         .lsp_manager
         .install_test_transport(Language::Rust, fake)
         .await;
@@ -2027,6 +2036,7 @@ async fn post_edit_hook_skips_unknown_tool_names() {
         message: "should not be reported".to_string(),
     }]));
     engine
+        .runtime_ext()
         .lsp_manager
         .install_test_transport(Language::Rust, fake.clone())
         .await;
@@ -2386,11 +2396,12 @@ async fn engine_mock_capacity_pre_request_observes_mock_and_emits_decision() {
 
     let (mut engine, handle) = Engine::new(config, &Config::default());
     engine.config.capacity = capacity.clone();
-    engine.capacity_controller = CapacityController::new(capacity);
-    engine.turn_counter = 5;
+    engine.0.capacity_controller = CapacityController::new(capacity);
+    engine.0.turn_counter = 5;
     engine
+        .0
         .capacity_controller
-        .mark_turn_start(engine.turn_counter);
+        .mark_turn_start(engine.0.turn_counter);
     engine.session.model = "deepseek-v3.2-128k".to_string();
     engine.config.model = "deepseek-v3.2-128k".to_string();
 

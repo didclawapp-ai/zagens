@@ -55,23 +55,23 @@ impl Engine {
         //
         // M5: calls go through the `SeamHost` trait — same call shape,
         // explicit UFCS to keep the trait import obvious at the seam.
-        let briefing_text = if let Some(ref seam_mgr) = self.seam_manager {
+        let briefing_text = if let Some(ref seam_mgr) = self.seam {
             use deepseek_core::engine::hosts::SeamHost;
-            let seams = SeamHost::collect_seam_texts(seam_mgr, &self.session.messages).await;
+            let seams = SeamHost::collect_seam_texts(seam_mgr.as_ref(), &self.session.messages).await;
             let state_text = {
                 let s = StructuredState::capture(
                     mode.label(),
                     self.config.workspace.clone(),
                     std::env::current_dir().ok(),
                     &self.session.working_set,
-                    &self.config.todos,
-                    &self.config.plan_state,
-                    Some(&self.subagent_manager),
+                    &self.config_ext().todos,
+                    &self.config_ext().plan_state,
+                    Some(&self.runtime_ext().subagent_manager),
                 )
                 .await;
                 s.to_system_block()
             };
-            match SeamHost::produce_flash_briefing(seam_mgr, &seams, state_text.as_deref()).await {
+            match SeamHost::produce_flash_briefing(seam_mgr.as_ref(), &seams, state_text.as_deref()).await {
                 Ok(text) => text,
                 Err(err) => {
                     crate::logging::warn(format!(
@@ -162,9 +162,9 @@ impl Engine {
             self.config.workspace.clone(),
             std::env::current_dir().ok(),
             &self.session.working_set,
-            &self.config.todos,
-            &self.config.plan_state,
-            Some(&self.subagent_manager),
+            &self.config_ext().todos,
+            &self.config_ext().plan_state,
+            Some(&self.runtime_ext().subagent_manager),
         )
         .await;
         let mut state_block = state.to_system_block();
@@ -192,9 +192,9 @@ impl Engine {
         self.session.current_cycle_started = now;
         self.session.cycle_briefings.push(briefing.clone());
         // Reset seam tracking for the new cycle. M5: trait dispatch.
-        if let Some(ref seam_mgr) = self.seam_manager {
+        if let Some(ref seam_mgr) = self.seam {
             use deepseek_core::engine::hosts::SeamHost;
-            SeamHost::reset(seam_mgr).await;
+            SeamHost::reset(seam_mgr.as_ref()).await;
         }
         // Drop any compaction summary 鈥?that path is incompatible with the
         // fresh-context model and would Frankenstein-merge with the briefing.
@@ -245,7 +245,7 @@ impl Engine {
             // M5: dispatch through TopicMemoryHost — runtime owns its
             // settings (set at Engine::new from config.topic_memory).
             use deepseek_core::engine::hosts::TopicMemoryHost;
-            TopicMemoryHost::compose_block(&mut self.topic_memory_runtime, query_hint.as_deref())
+            TopicMemoryHost::compose_block(&mut *self.topic_memory, query_hint.as_deref())
         };
         let base = prompts::system_prompt_for_mode_with_context_skills_session_and_approval(
             mode,

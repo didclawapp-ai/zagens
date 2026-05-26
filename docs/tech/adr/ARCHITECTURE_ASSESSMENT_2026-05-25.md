@@ -2,41 +2,43 @@
 
 > **类型：** 架构评估 / 决策依据（非功能 ADR）
 > **作者职责：** 维护者 / 架构 owner
+> **M7/M8 复评：** **2026-05-26** — M-series **M1–M8 全部落地**（[`BACKLOG_ENGINE_STRUCT_IN_CORE.md`](./BACKLOG_ENGINE_STRUCT_IN_CORE.md) **Closed**）；§1 第 4 项勾选；进度 **5/10**。
 > **配套 SSOT：** [RUNTIME_ARCHITECTURE.md](../RUNTIME_ARCHITECTURE.md)（系统架构图）· [RUNTIME_EVOLUTION_ROADMAP.md](../RUNTIME_EVOLUTION_ROADMAP.md)（演进排期）· [API_DESIGN.md](../API_DESIGN.md)
-> **相关 backlog ADR：** [PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md](./PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md) · [BACKLOG_ENGINE_STRUCT_IN_CORE.md](./BACKLOG_ENGINE_STRUCT_IN_CORE.md) · [BACKLOG_RUNTIME_UNIFICATION.md](./BACKLOG_RUNTIME_UNIFICATION.md) · [BACKLOG_STATESTORE_JSONL.md](./BACKLOG_STATESTORE_JSONL.md) · [BACKLOG_LANDLOCK_ENFORCE.md](./BACKLOG_LANDLOCK_ENFORCE.md) · [A1_PERSIST_BLOCKING_AUDIT.md](./A1_PERSIST_BLOCKING_AUDIT.md)
+> **相关 backlog ADR：** [PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md](./PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md) · ~~[BACKLOG_ENGINE_STRUCT_IN_CORE.md](./BACKLOG_ENGINE_STRUCT_IN_CORE.md)~~ **Closed 2026-05-26** · [BACKLOG_RUNTIME_UNIFICATION.md](./BACKLOG_RUNTIME_UNIFICATION.md) · [BACKLOG_STATESTORE_JSONL.md](./BACKLOG_STATESTORE_JSONL.md) · [BACKLOG_LANDLOCK_ENFORCE.md](./BACKLOG_LANDLOCK_ENFORCE.md) · [A1_PERSIST_BLOCKING_AUDIT.md](./A1_PERSIST_BLOCKING_AUDIT.md)
 
 ---
 
 ## 0. 摘要与决策建议（最重要的一段）
 
-**结论：架构尚未定型，建议进入「功能冻结 + 结构收尾」窗口期。**
+**结论：M-series（D5）已闭合，架构仍处「结构收尾」窗口期——Engine 已在 core，但 sidecar 仍链 ratatui、持久化仍三套。**
 
 | 决策 | 推荐 |
 |------|------|
-| 新增大型功能（新面板、新工具链路、新协议） | **暂缓** |
+| 新增大型功能（新面板、新工具链路、新协议） | **仍暂缓**（§1 仅 5/10） |
 | 现有功能 bug 修 / 性能 / a11y / 文案 | **正常推进** |
 | 桌面 UI/UX 小迭代（不引入新运行时概念） | **正常推进** |
-| 任何「往 `crates/tui` 加新文件」的改动 | **需 owner 评审**（避免抬高 M-series 难度） |
-| 启动 M-series（D5 = `Engine` struct → core） | **立即** |
-| 端口动态化、删 legacy crate、`commands.rs` 拆分 | **顺手做掉**（≤2 天小债清理） |
+| 任何「往 `crates/tui` 加新文件」的改动 | **需 owner 评审**（tui 仍承载 tools / HTTP / ratatui） |
+| M-series D5（`Engine` struct → core） | **✅ 完成 2026-05-26**（M1–M8） |
+| 下一优先：**D6** `crates/runtime-server`（sidecar 去 ratatui） | **可启动** |
+| 端口动态化、删 legacy crate、`commands.rs` 拆分 | **顺手做掉**（D2/D3 ✅；`commands.rs` 仍待拆） |
 
 **为什么暂缓功能迭代：**
 - 当前 `crates/tui` 承担了"运行时 + HTTP 服务端 + ratatui freeze + 工具实现"四种角色，每多写一行就让 M-series 重构更难；
 - 持久化三套（Sessions / Runtime threads / `deepseek-state`）尚未合并，新功能落到哪一套都会成为后续债；
 - HTTP 契约没有版本化策略，新端点一旦发出去就要长期兼容。
 
-**冻结窗口预计长度：** M-series 7 PR + 持久化整合 ≈ **8-12 周**，期间产品壳层 UX 迭代不受影响（desktop crate 不变）。
+**冻结窗口预计长度：** M-series ✅ 已闭合；剩余定型项（D6–D8、§1 #6–#10）≈ **6-10 周**，期间产品壳层 UX 迭代不受影响（desktop crate 不变）。
 
 ---
 
 ## 1. 定型判定（满足后即可解冻功能迭代）
 
-以下 10 条全部勾选 = 架构定型，可大胆做功能。**当前进度：4/10**（2026-05-25 D3 闭合 + D2 完全闭合 + M1/M2/M3 落地，但 Engine struct 主体（35 字段 + op_loop + engine_new）尚未 in core，第 4 项仍 `[ ]`）。
+以下 10 条全部勾选 = 架构定型，可大胆做功能。**当前进度：5/10**（2026-05-26 M7/M8 复评：§1 第 4 项勾选；D2/D3 已闭合；sidecar 去 ratatui / 持久化单库 / OpenAPI / 巨型文件拆分仍待办）。
 
 - [x] **L1 turn loop 在 core**（P2 PR6 / G3 已闭合，见 [P2_G3_ENGINE_L2_SIGNOFF.md](./P2_G3_ENGINE_L2_SIGNOFF.md)）
 - [x] **L2 契约稳定**（`/v1/*` 路由 + `event_schema_version: 2`，[`runtime_api/router.rs`](../../../crates/tui/src/runtime_api/router.rs)）
 - [x] **桌面 ↔ sidecar 双通道安全模型**（Bearer 不出 WebView + path 白名单，[H06 完成](./IMPLEMENTATION_SUMMARY_2026-05-24.md)）
-- [ ] **Engine struct 在 core**（M-series 进行中：M1 + M2 + M3 + M4 + M5 + M6 已落地 — M1: `Op` / `EngineHandle` / `ThreadContextSnapshot` 入核 + `impl TurnEnginePort for EngineHandle<P,R>` core 侧实现；M2: lean `core::engine::config::EngineConfig` (25 字段) + tui `EngineConfigExt` (8 字段) 类型桩立起，facade `lean()` / `ext()` / `into_parts()` 访问器到位 — `Engine::new(slim, ext)` 签名切换留待 M7；M3: `deepseek_core::engine::hosts::{LspHost, SubAgentHost, ShellHost, SandboxHost}` 四个边界 trait 立起（call-graph driven，2 + 3 + 0 + 1 个方法），`DiagnosticBlock` / `SandboxBackend` trait 入核；M4: `McpHost` trait（4 个 default-impl 方法委派到 core dispatch 自由函数）+ `TurnLoopMcpPool` 1-cycle deprecated alias；**M5**: `SeamHost` (10 方法，覆盖完整 layered-context Flash pipeline #159 — `config_enabled` / `highest_level` / `seam_level_for` / `verbatim_window_start` / `collect_seam_texts` / `produce_soft_seam` / `recompact` / `seam_count` / `produce_flash_briefing` / `reset`，opaque `SeamError = Box<dyn Error + Send + Sync>` 避免 `anyhow` 泄漏到 core 表面) + `WorkshopHost` 空 marker（Engine 不直接调 `workshop_vars` 方法）+ `TopicMemoryHost` 2 方法（`compose_block` / `on_turn_complete`，settings 移入实现 `TopicMemoryRuntime::new(settings)` 避免 R9 spike crate dep）+ `ScratchpadStepState` (2 `usize` 字段 + `reset()`) 入核 per R12；tui 侧 inline `impl SeamHost for SeamManager` 10-方法 UFCS 委派、`impl WorkshopHost for TuiWorkshopHost` 空体、`impl TopicMemoryHost for TopicMemoryRuntime` 借用规避；Engine call sites `layered_context.rs` (8 处) + `cycle_hooks.rs` (4 处) + `message_handlers.rs` (1 处) 经 UFCS swap 走 trait；M6→M8 待启动，见 [`PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md`](./PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md) §6）
+- [x] **Engine struct 在 core**（**✅ M-series M1–M8 闭合 2026-05-26** — 前置 M1–M6 见 CHANGELOG；**M7**：`deepseek_core::engine::{runtime, host_bundle, runtime_new}` — 35 字段 + 7 channel + `Engine::with_hosts`；host 字段为 trait object（`Arc<dyn LspHost>`、`Option<Box<dyn SeamHost>>` 等）；tui `build_engine` 接线 + `#[repr(transparent)]` newtype wrapper（orphan rule：`impl TurnLoopHost` / 各 inherent impl 仍合法）；`engine_new.rs` 删除。**M8**：`deepseek_core::engine::op_loop` — `Engine::run()` + core 侧 cancel/approve/deny/truncate；平台 op 经 `EnginePlatformExt`（tui `EngineRuntimeExt` + `platform_dispatch.rs`）；tui `op_loop.rs` / `op_handlers.rs` 删除。Shim：`crates/tui/src/core/engine.rs` ~130 LOC（含模块树；spike ≤80 LOC 目标以 `prelude_uses.rs` include 部分满足 spirit）。§6 回归 + 原 2 个 pre-existing engine 集成测 green。详见 [`BACKLOG_ENGINE_STRUCT_IN_CORE.md`](./BACKLOG_ENGINE_STRUCT_IN_CORE.md) Closed 表。）
 - [ ] **sidecar 二进制不再链接 ratatui / CLI**（M-series 完成的副产品；可选独立成 `crates/runtime-server`）
 - [ ] **持久化单库**（Sessions + Runtime threads → 单 SQLite + 视图，[`BACKLOG_RUNTIME_UNIFICATION.md`](./BACKLOG_RUNTIME_UNIFICATION.md)）
 - [ ] **`deepseek-state` / `app-server` 实验路径决策**（晋升或下线，二选一）
@@ -91,7 +93,7 @@
 
 | 类别 | 代表文件 | 量级 |
 |---|---|---|
-| Engine 运行时 | `core/engine.rs` + `core/engine/` 子模块 | 209 + ~5.0k |
+| Engine 运行时 | `core/engine/{runtime,op_loop,...}` + tui `core/engine.rs` shim (~130 LOC) + `core/engine/` 子模块 | core struct + tui ~4.8k |
 | HTTP 服务端 | `runtime_api/*` (16 个文件) | ~200k |
 | 线程管理 | `runtime_threads/*` (16 个文件) | ~280k |
 | ratatui UI（**已 freeze**） | `tui/*` | 大量 |
@@ -99,11 +101,11 @@
 | 巨型单文件 | `config.rs` **195k** · `compaction.rs` **97k** · `mcp.rs` **76k** · `client.rs` **71k** · `task_manager.rs` **67k** · `localization.rs` **94k** · `prompts.rs` **51k** | 远超软上限 1000 行 |
 
 **症结：**
-- sidecar 二进制 = ratatui + 工具 + 服务端的合体 → 体积虚胖、冷启动慢、攻击面变宽；
-- "新功能往哪放"在 tui crate 内部已经不可判断；
-- core 已经准备好（P2 PR6 闭合），但 Engine struct 没真正搬过去。
+- sidecar 二进制 = ratatui + 工具 + 服务端的合体 → 体积虚胖、冷启动慢、攻击面变宽（**D6 未做**）；
+- "新功能往哪放"在 tui crate 内部仍然不可判断（tools / HTTP / ratatui 仍同 crate）；
+- **Engine struct + op loop 已在 core** ✅（M7/M8 2026-05-26）；剩余债是 **sidecar 去 ratatui** 与 **capacity_flow 等 engine-flow 仍留 tui**。
 
-**已记账：** [`BACKLOG_ENGINE_STRUCT_IN_CORE.md`](./BACKLOG_ENGINE_STRUCT_IN_CORE.md) + [`PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md`](./PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md)（M1→M8 七 PR 计划）。
+**已记账：** [`BACKLOG_ENGINE_STRUCT_IN_CORE.md`](./BACKLOG_ENGINE_STRUCT_IN_CORE.md) **Closed 2026-05-26** · [`PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md`](./PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md)（M1→M8 已执行完毕）。
 
 ### 3.2【高】持久化三套并存
 
@@ -132,18 +134,23 @@
 
 - `mcp.rs` 2.2k 行、`tools/*` 28k、`lsp/*` 1.3k、`sandbox/*` 2k 行全部和 Engine 同 crate；
 - 想做"sidecar 不带 ratatui"必须先把这些 trait 化；
-- `SandboxBackend` 已经是 `dyn trait` ✅；其余（MCP / LSP / Subagent / Shell / Seam / Cycle）需要补 trait 边界——这是 M-series 的核心工作量。
+- `SandboxBackend` 已经是 `dyn trait` ✅；8 个 host trait 已在 M3–M5 立起；**Engine struct + op loop 已在 core** ✅（M7/M8）。
 - **2026-05-25 M3 进度：** LSP / SubAgent / Shell / Sandbox 四组边界 trait 已在 `deepseek_core::engine::hosts` 立起（call-graph driven，对应 spike §5 R1）；`SandboxBackend` trait 与 `DiagnosticBlock` 数据类型搬入 core；tui 侧通过 inline `impl` + `TuiSandboxHost` / `TuiShellHost` newtype 接线。剩余 MCP / Seam / Cycle / Workshop / TopicMemory 等子系统的 trait 化拆到 M4 / M5。
-- **2026-05-25 M4 进度：** `McpHost` trait 已在 `deepseek_core::engine::hosts::mcp` 立起（4 个 default-impl 方法：`is_mcp_tool` / `tool_is_parallel_safe` / `tool_is_read_only` / `tool_approval_description`），委派到 `core::engine::dispatch` 自由函数；空 marker `TurnLoopMcpPool` 改为 `#[deprecated]` alias + 1-cycle blanket impl from `McpHost`，`TurnLoopHost::McpPool` 关联类型约束改为 `McpHost`。**硬约束兑现**（spike §6 M4）：`crates/tui/src/mcp.rs` 2218 LOC body 零修改 — tui 侧 `impl McpHost for McpPool {}` 是 `host_impl/mod.rs:42` 的一行；core 与 tui 双定义的 `is_mcp_tool` 谓词由 cross-verify drift-guard 单测保证同步。`McpPoolPort::execute_tool`（P2 PR4 dispatch port）保持正交不动 —— `self` 形状不同（`Arc<Mutex<McpPool>>` vs 裸 `McpPool`），合并会破坏 `mcp_pool_as_port` 工厂链。`ensure_pool` / `shutdown_all` 仍是 `Engine` inherent 方法（engine state mutation + `EngineConfigExt.network_policy` 依赖），将在 M7 与字段一起进入 core 端 `Engine` struct。
-- **2026-05-25 M6 进度：** `CapacityController` (677 LOC) + M1-deferred coherence reducer 原子搬核（spike R10 — 单 PR 原子移动，零行为变更）。`crates/tui/src/core/capacity.rs` 677 → 102 LOC re-export shim（保留 `capacity_config_from_app` + 1 测试，因为它依赖 tui `crate::config::Config`）；`crates/tui/src/core/coherence.rs` 102 → 14 LOC 纯 shim。core 侧 `crates/core/src/capacity.rs` 从 41 LOC（只有 `CapacityControllerConfig`）扩到 706 LOC 全套（`CapacityController` + `GuardrailAction` / `RiskBand` / `CapacityObservationInput` / `DynamicSlackProfile` / `CapacitySnapshot` / `CapacityDecision` / `decide_policy` + 12 单测 + 1 ignored microbench），`crates/core/src/coherence.rs` 从 39 → 157 LOC（追加 `CoherenceSignal` + `next_coherence_state` + 1 单测）。**零 Engine call-site swap** — type-move 语义让两个 tui shim 吸收了全部 15 处下游引用（`capacity_flow/*`、`runtime_threads/*`、`tui/ui*`、`tui/widgets/mod.rs`、`cli/commands/legacy.rs`、`core/engine/types.rs`）。剩余 M-series 工作量：`Engine` struct + `engine_new` + `op_handlers` 入核（M7，最重的一刀），`op_loop` 入核 + final cleanup（M8）。
+- **2026-05-25 M4 进度：** `McpHost` trait 已在 `deepseek_core::engine::hosts::mcp` 立起（4 个 default-impl 方法），`mcp.rs` 2218 LOC body 零修改。**M8 后：** MCP pool `shutdown_all` 经 `EnginePlatformExt::on_shutdown`；`ensure_pool` 仍 tui engine-flow。
+- **2026-05-25 M6 进度：** `CapacityController` + coherence reducer 原子搬核（spike R10）。tui `capacity.rs` / `coherence.rs` 收缩为 re-export shim。**M7/M8 后** engine-flow 集成测 green（见 M7/M8 条目）。
 
 - **2026-05-25 M5 进度：** 三个边界 trait + `ScratchpadStepState` 类型搬核：
   - `SeamHost`（M-series 至今最宽 trait，10 方法 — `config_enabled` / `highest_level` / `seam_level_for` / `verbatim_window_start` / `collect_seam_texts` / `produce_soft_seam` / `recompact` / `seam_count` / `produce_flash_briefing` / `reset`）覆盖完整 layered-context Flash pipeline #159；opaque `SeamError = Box<dyn std::error::Error + Send + Sync>` 让 `anyhow::Error` 通过 `.map_err(Into::into)` 安全跨越 core 表面，**不**把 tui 的错误层级（`anyhow` / `reqwest` / `LlmClientError`）泄漏到 core。inherent `new` / `should_cycle`（死代码）/ 私有 `summarize_messages` 按 R1 故意不在 trait 上；`config()` 返回的 `SeamConfig` 因为是 tui-only 类型，被替换为更窄的 `config_enabled() -> bool` 访问器（Engine 只读 `.enabled` 这一位）。
   - `WorkshopHost` 空 marker（mirrors M3 `ShellHost`）— Engine 从不在 `workshop_vars` 上调方法，`tool_context.rs:51` 唯一引用只是把 `Arc<Mutex<WorkshopVariables>>` 克隆到 `ToolContext`（所有 `WorkshopVariables` 方法都从 tool 实现内部调用，与 Engine 正交）。tui 侧 `crates/tui/src/tools/large_output_router.rs` 新增 `TuiWorkshopHost(pub Option<Arc<Mutex<WorkshopVariables>>>)` newtype + 空 `impl`。
   - `TopicMemoryHost` 2 方法 `compose_block(query_hint) -> Option<String>` / `on_turn_complete(user, assistant)`：**settings 移入实现**（`TopicMemoryRuntime` 新增 `settings: TopicMemorySettings` 字段 + `TopicMemoryRuntime::new(settings)` 构造器），trait 表面无 settings 参数，避免 R9 spike option (b) 把 `deepseek-topic-memory` 拉入 core deps，也避免在 core 重复定义 `TopicMemorySettings` 这种平行结构反模式。settings 热加载今天没有任何 slash command 入口，engine init 的一次性克隆已经足够。
   - `ScratchpadStepState`（2 `usize` 字段 + `reset(&mut self)`，~30 LOC）搬入 `core::engine::scratchpad_state` per R12；`crates/tui/src/core/engine/scratchpad_flow.rs` 484 LOC 的 UI / 审计 / 覆盖 / 提醒辅助（`record_tool_outcome` / `inject_summary_if_needed` / `build_layered_summary` / `coverage_gate` / `read_inventory` …）**保持 tui 侧**，文件顶部留 `pub use deepseek_core::engine::ScratchpadStepState;` re-export shim 让所有 `use crate::core::engine::scratchpad_flow::ScratchpadStepState` 调用方编绿。
-  - tui 侧实现：inline `impl SeamHost for SeamManager`（10 个 UFCS 委派，错误 `.map_err(Into::into)`）、`impl WorkshopHost for TuiWorkshopHost`（空体）、`impl TopicMemoryHost for TopicMemoryRuntime`（两个方法把 `self.settings` 克隆到局部以规避 `&mut self + &self.settings` 同时借用）。Engine call-site swap：`layered_context.rs` 8 处、`cycle_hooks.rs` 4 处（含 `topic_memory.compose_block` swap）、`message_handlers.rs` 1 处全部经 UFCS 走 trait；字段类型仍为 `Option<SeamManager>` 等，M7 才会切换到 `Box<dyn ...Host>`。
-  - 剩余 CapacityController → core + coherence reducer（M6） / `Engine` struct + `engine_new` + `op_handlers` 入核（M7） / `op_loop` 入核 + final cleanup（M8）— 见 [`PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md`](./PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md) §6 队列。
+  - tui 侧实现：… Engine call-site swap 经 UFCS 走 trait；**M7** 字段已切换为 `Box<dyn …Host>` / `Arc<dyn LspHost>` 等（见 M7/M8 条目）。
+- **2026-05-26 M7/M8 进度（M-series 闭合）：**
+  - **M7：** `Engine<P,R>` struct + `EngineHostBundle<P,R>` + `Engine::with_hosts` 入 `deepseek_core::engine`；35 字段 host 侧换 trait object；7 条 mpsc channel core 侧创建（R11）；tui `build_engine` 构造具体子系统并装箱；`Engine::ext` 为 `Box<dyn EnginePlatformExt<P,R>>`（承载 `EngineRuntimeExt` + 后续 op 分发）；tui 保留 `#[repr(transparent)]` newtype + `engine_from_core` 供 platform dispatch 复用 inherent impl。
+  - **M8：** `deepseek_core::engine::op_loop` — `Engine::run()` 事件循环；cancel / approve / deny / truncate core 内联；其余 `Op` 经 `EnginePlatformExt::dispatch_op`（tui `platform_dispatch.rs`）；MCP `shutdown_all` 在 `on_shutdown`；删除 tui `op_loop.rs` / `op_handlers.rs` / `engine_new.rs`。
+  - **测试 / 性能：** 原 2 个 pre-existing 失败（topic_memory 注入 fixture、`capacity` 集成测 trim O(n²)）已修复；`context_trim` 增加 bulk-drain 快路径。
+  - **仍留 tui（非 blocking）：** `capacity_flow/*`、`turn_loop/host_impl/*`、`message_handlers` 等 engine-flow 编排；spike 未要求 M8 全量迁入 core。
+  - **下一刀：** D6 `crates/runtime-server` — sidecar 二进制不再链接 ratatui（§1 第 5 项）。
 
 ### 3.5【中】`commands.rs` (desktop) 49k 单文件
 
@@ -186,14 +193,14 @@ WebView → invoke runtime_get_sse → reqwest stream
 
 | 维度 | 评分 | 简评 |
 |---|---|---|
-| 分层与边界（L1/L2/L3） | ★★★★☆ | 三层模型清晰；唯一缺口是 Engine struct 还留在 tui |
+| 分层与边界（L1/L2/L3） | ★★★★★ | L1 turn loop + **Engine struct + op loop 均在 core**；tui 为 shim + tools + HTTP |
 | 进程模型 / 安全 | ★★★★★ | 每次 UUID Bearer + 路径白名单 + token 不出 WebView，业界水平 |
 | 通信契约（HTTP+IPC 双通道） | ★★★★☆ | 切分干净；缺少版本化策略与 OpenAPI 生成 |
 | 持久化 | ★★★☆☆ | 三套并存，需要长期合并 |
 | 可观测性与错误处理 | ★★★★☆ | `ErrorEnvelope` + `tracing` + supervisor.log 完备；缺指标化 |
 | 并发 / 取消 / 背压 | ★★★★☆ | `broadcast + coalesce + Lagged catch-up` 成熟；取消两层需文档化 |
 | 测试基线 | ★★★★☆ | `runtime_api/tests.rs` 76k、`runtime_threads/tests.rs` 103k，回归网密 |
-| **代码物理组织** | **★★☆☆☆** | **巨型文件 + tui crate 过载是最大债** |
+| **代码物理组织** | **★★★☆☆** | Engine 边界已清；巨型文件 + sidecar 仍链 ratatui 是剩余主债 |
 
 ---
 
@@ -207,13 +214,13 @@ WebView → invoke runtime_get_sse → reqwest stream
 | **D2** | 端口动态化：桌面消费 `DS_PICK_READY {port}`，去掉 7878 写死 | ≤2 天 | ✅ **完成 2026-05-25**（含 `--port 0` ephemeral 守卫移除 follow-up） |
 | **D3** | 删 `crates/tui-core` legacy | ≤0.5 天 | ✅ **完成 2026-05-25** |
 | **D4** | 决策 `crates/app-server + deepseek-state`：晋升或 `#[deprecated]` | 决策 0.5 天 + 执行 1-2 天 | — |
-| **D5** | **Engine struct → core（M-series M1→M8）** | 4-6 周 / 1 人 | 🟡 **进行中**：[`PR_M0_*`](./PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md) — **M1 ✅ 2026-05-25**（`Op`/`EngineHandle`/`ThreadContextSnapshot` 入核，net +99 LOC）+ **M2 ✅ 2026-05-25**（lean `EngineConfig` 25 字段 + tui `EngineConfigExt` 8 字段类型桩，net +378 LOC）+ **M3 ✅ 2026-05-25**（4 个边界 trait + `DiagnosticBlock`/`SandboxBackend` 入核，net ~+320 LOC）+ **M4 ✅ 2026-05-25**（`McpHost` trait + `mcp.rs` 2218 LOC body 零修改 + cross-verify drift-guard，net ~+275 LOC）+ **M5 ✅ 2026-05-25**（`SeamHost` 10 方法 + `WorkshopHost` 空 marker + `TopicMemoryHost` 2 方法 + `ScratchpadStepState` 类型搬核 + 13 处 Engine call-site swap，net ~+493 LOC）+ **M6 ✅ 2026-05-25**（`CapacityController` 677 LOC 原子搬核 per R10 + M1-deferred coherence reducer `CoherenceSignal` + `next_coherence_state` 入核；tui 侧 `capacity.rs` 677 → 102 shim 保留 `capacity_config_from_app`，`coherence.rs` 102 → 14 纯 shim；零 Engine call-site swap — type-move 语义让 shims 吸收 15 处下游引用；零行为变更；net ~+75 LOC；`core --lib capacity` 11/11 + `core --lib coherence` 1/1 + `core --lib capacity_policy` 4/4 + `tui --lib capacity_escalation` 2/2 + `tui --lib coherence` 1/1 + `tui --lib core::capacity_memory` 3/3 + 全 §6 回归块 + sidecar contract + protocol_recovery + history_isomorphism + web-ui f3/build 全绿；2 个 pre-existing 失败仍持续 — 确认 bug 在 engine-flow wiring (M7) 而非 `CapacityController` 本身）；M7–M8 排队中 |
+| **D5** | **Engine struct → core（M-series M1→M8）** | 4-6 周 / 1 人 | ✅ **完成 2026-05-26** — M1–M8 全落地；[`BACKLOG_ENGINE_STRUCT_IN_CORE.md`](./BACKLOG_ENGINE_STRUCT_IN_CORE.md) Closed；§6 回归 + sidecar contract green；详见 CHANGELOG `[Unreleased]` M7/M8 条目 |
 
-### P1 · 3-6 个月（解锁未来）
+### P1 · 0-3 个月（D5 完成后立即启动）
 
 | ID | 内容 | 工作量 | 已记账 |
 |----|------|--------|--------|
-| **D6** | 抽 `crates/runtime-server`（sidecar 不再链 ratatui / CLI） | 2-3 周（D5 完成后） | 隐含在 M-series §1.1 invariants 之外 |
+| **D6** | 抽 `crates/runtime-server`（sidecar 不再链 ratatui / CLI） | 2-3 周（D5 完成后） | **可启动** — D5 ✅ |
 | **D7** | 持久化整合 Sessions ⊕ Runtime threads → 单 SQLite + 视图 | 4-6 周 | ✅ [`BACKLOG_RUNTIME_UNIFICATION.md`](./BACKLOG_RUNTIME_UNIFICATION.md) · [`BACKLOG_STATESTORE_JSONL.md`](./BACKLOG_STATESTORE_JSONL.md) |
 | **D8** | OpenAPI schema 导出 + `web-ui` ts 类型自动生成 | 1-2 周 | — |
 | **D9** | 取消/打断两层契约文档化 + `api/client.ts` 统一封装 | 3-5 天 | — |
@@ -232,15 +239,16 @@ WebView → invoke runtime_get_sse → reqwest stream
 
 ## 6. "如果只能做一件事"
 
-**做 D5（Engine struct → core，M-series）。**
+**做 D6（抽 `crates/runtime-server`，sidecar 去 ratatui）。**
+
+D5（M-series）✅ 已闭合。下一刀直接解锁 §1 第 5 项，并让 sidecar 二进制体积 / 攻击面 / 冷启动与文档叙事一致。
 
 理由：
 
-1. 这是 P2 最后一步，做完之后 `crates/tui` 真正瘦身为 "ratatui freeze 维护态"，**整个仓库的结构叙事终于和文档一致**；
-2. **D1（拆巨型文件）、D7（持久化整合）、D11（观测）都会自然变容易**——因为有了边界清晰的"运行时服务"crate，新代码不会再无脑塞 tui；
-3. 桌面用户、CLI 用户、未来的 IDE 插件用户（如果有）都消费同一 `runtime-server` 二进制 / 同一 OpenAPI，**长期摩擦最小**；
-4. **已有完整 spike**：[`PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md`](./PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md) 已经给出 35 字段所有权表、12 风险、M1→M8 七 PR 序列、§1.1 硬不变式（无 `/v1` breaking、tools 不动、每 PR ≤700 行净），**工作量是确定的，不会陷"再设计一轮"**；
-5. 关键切口 `TurnEnginePort` 已经存在。
+1. Engine struct + op loop 已在 core — **物理拆分 sidecar 已无结构 blocker**；
+2. D1（拆巨型文件）、D7（持久化整合）在 runtime-server 独立 crate 后边界更清晰；
+3. 桌面 / CLI / 未来插件仍消费同一 HTTP 契约 + `DS_PICK_READY` 握手；
+4. 工作量 bounded：复用现有 `runtime_api/*` + `runtime_threads/*`，从 `deepseek-tui` 二进制剥离 ratatui / TUI freeze 代码路径。
 
 ---
 
@@ -253,7 +261,7 @@ WebView → invoke runtime_get_sse → reqwest stream
 - ⛔ **禁止**在 `crates/tui` 新建顶层文件（子模块拆分除外）
 - ⛔ **禁止**新增 `/v1/*` 端点，除非配套补 OpenAPI schema 草案
 - ⛔ **禁止**让 `desktop` crate 直接 `use deepseek_core` 或 `deepseek_tui`——它只能消费 HTTP + IPC
-- ⛔ **禁止**给 `Engine` struct 加新字段（M-series 35 字段表已封口）
+- ⛔ **禁止**给 `deepseek_core::engine::Engine` 加新字段（M-series 35 字段表已封口；变更需 spike + owner）
 - ⚠ **谨慎**：往 `commands.rs`、`config.rs`、`compaction.rs` 等巨型文件加代码——必须同 PR 把该文件继续拆小
 
 ### 7.2 允许且鼓励
@@ -262,7 +270,8 @@ WebView → invoke runtime_get_sse → reqwest stream
 - ✅ bug 修复、性能优化、错误信息改善
 - ✅ 测试补充（`runtime_api/tests.rs`、`runtime_threads/tests.rs`、`core/engine/tests.rs`）
 - ✅ 文档：本文件、`RUNTIME_EVOLUTION_ROADMAP.md`、`API_DESIGN.md`、ADR
-- ✅ M-series PR（M1→M8 是最高优先级）
+- ✅ M-series PR（M1→M8）— **✅ 已闭合 2026-05-26**
+- ✅ D6 `runtime-server` spike / 实现 PR（当前最高优先级结构债）
 
 ### 7.3 评审升级路径
 
@@ -280,7 +289,8 @@ WebView → invoke runtime_get_sse → reqwest stream
 - **M-series M6 合并后**（✅ 2026-05-25）：M6 把 §3.4 中 `capacity_controller` 字段（677 LOC controller body）+ M1-deferred coherence reducer 原子搬核进 `deepseek_core::{capacity, coherence}`，tui 两个文件收缩到纯 re-export shim（只保留 tui-`Config`-coupled 的 `capacity_config_from_app` 适配器）。**spike R10 兑现**：单 PR 原子移动 + 同 PR 删除 tui 原 body，没有 double-implementation 窗口。剩余 M-series 工作量：`Engine` struct + `engine_new` + `op_handlers` 进核（M7，最重一刀），`op_loop` 入核 + final cleanup（M8）。§1 第 4-5 项**仍 `[ ]`** — M6 是类型搬核而非 Engine struct 整体迁移，35 字段构造 / engine_new / op_loop 仍在 tui，等 M7+M8 才能勾。
 
 - **M-series M5 合并后**（✅ 2026-05-25）：M5 立起 `SeamHost`（M-series 至今最宽 trait，10 方法覆盖整条 layered-context Flash pipeline #159 — `crates/tui/src/seam_manager.rs` 712 LOC 子系统补齐边界）+ `WorkshopHost`（空 marker，`large_output_router.rs` 604 LOC 体不动）+ `TopicMemoryHost`（2 方法，`topic_memory.rs` 307 LOC 子系统补齐边界，settings 移入实现避免 R9 spike crate dep）+ `ScratchpadStepState` 类型搬核（`scratchpad_flow.rs` 484 LOC UI/审计/覆盖 helpers 保留 tui 侧 per R12，用 re-export shim）。至此 §3.4 列出的全部 tui-only 子系统 host trait 全部立起（LSP / SubAgent / Shell / Sandbox / MCP / Seam / Workshop / TopicMemory — 8 个）。剩余 M-series 工作量：CapacityController + coherence reducer 入核（M6），`Engine` struct + `engine_new` + `op_handlers` 入核（M7），`op_loop` 入核 + final cleanup（M8）。§1 第 4-5 项**仍 `[ ]`** — M5 只是 trait surface + 字段语义清理，Engine struct 整体 35 字段 / engine_new / op_loop 主体仍在 tui，等 M7+M8 完成后才能勾。
-- **M-series M8 合并后**：本文档升级为 **`ARCHITECTURE_ASSESSMENT_<date>.md` 第二版**，重新跑 §1 checklist；
+- **M-series M8 合并后**（✅ **2026-05-26**）：§1 第 4 项 **勾选** — core 侧 `Engine` struct、`Engine::with_hosts`、`Engine::run()` op loop + `EnginePlatformExt` 平台分发；tui 侧 newtype shim ~130 LOC。§1 第 5 项**仍 `[ ]`**（sidecar 仍链 ratatui → **D6**）。进度 **5/10**。2 个 pre-existing engine 集成测修复；[`BACKLOG_ENGINE_STRUCT_IN_CORE.md`](./BACKLOG_ENGINE_STRUCT_IN_CORE.md) Closed；`HANDOFF_M7_M8.md` 已删。
+- **M-series M8 合并后（归档说明）**：当 D6 + §1 ≥ 8/10 时，可将本文档归档并另起 `ARCHITECTURE_ASSESSMENT_<date>.md` v2 全量重写；当前在 **同文件内追加 2026-05-26 复评** 以保持链接稳定。
 - **§1 ≥ 8/10 勾选时**：解除 §7.1 全部红线；
 - **§1 = 10/10 时**：架构定型，本文档归档为历史快照。
 
@@ -292,8 +302,9 @@ WebView → invoke runtime_get_sse → reqwest stream
 - 长期演进：[`RUNTIME_EVOLUTION_ROADMAP.md`](../RUNTIME_EVOLUTION_ROADMAP.md)
 - HTTP/IPC 契约：[`API_DESIGN.md`](../API_DESIGN.md)
 - 实施快照：[`IMPLEMENTATION_SUMMARY_2026-05-24.md`](./IMPLEMENTATION_SUMMARY_2026-05-24.md)
-- M-series spike：[`PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md`](./PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md)
+- M-series spike（**Closed**）：[`PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md`](./PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md) · [`BACKLOG_ENGINE_STRUCT_IN_CORE.md`](./BACKLOG_ENGINE_STRUCT_IN_CORE.md)
 - 持久化合并 backlog：[`BACKLOG_RUNTIME_UNIFICATION.md`](./BACKLOG_RUNTIME_UNIFICATION.md) · [`BACKLOG_STATESTORE_JSONL.md`](./BACKLOG_STATESTORE_JSONL.md)
 - 沙盒增强 backlog：[`BACKLOG_LANDLOCK_ENFORCE.md`](./BACKLOG_LANDLOCK_ENFORCE.md)
 - 阻塞 I/O 审计：[`A1_PERSIST_BLOCKING_AUDIT.md`](./A1_PERSIST_BLOCKING_AUDIT.md)
 - 产品战略：[`../../desktop/DEV_NOTES.md`](../../desktop/DEV_NOTES.md)（D12 Desktop-only）
+- M7/M8 变更记录：[`CHANGELOG.md`](../../../CHANGELOG.md) `[Unreleased]`

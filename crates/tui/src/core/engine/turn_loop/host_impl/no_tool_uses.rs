@@ -1,5 +1,7 @@
 //! Steer / sub-agent / inline REPL when the model returns no tool calls (P2 PR6c).
 
+use std::sync::Arc;
+
 use deepseek_core::chat::{ContentBlock, Message};
 use deepseek_core::engine::context::summarize_text;
 use deepseek_core::engine::turn_loop::control::TurnLoopControl;
@@ -19,9 +21,11 @@ impl Engine {
     ) -> TurnLoopControl {
         if self.maybe_inject_scratchpad_summary().await && !pending_steers.is_empty() {
             for steer in pending_steers.drain(..) {
-                self.session
+                let workspace = self.0.session.workspace.clone();
+                self.0
+                    .session
                     .working_set
-                    .observe_user_message(&steer, &self.session.workspace);
+                    .observe_user_message(&steer, &workspace);
                 Engine::add_session_message(
                     self,
                     Message {
@@ -40,9 +44,11 @@ impl Engine {
 
         if !pending_steers.is_empty() {
             for steer in pending_steers.drain(..) {
-                self.session
+                let workspace = self.0.session.workspace.clone();
+                self.0
+                    .session
                     .working_set
-                    .observe_user_message(&steer, &self.session.workspace);
+                    .observe_user_message(&steer, &workspace);
                 Engine::add_session_message(
                     self,
                     Message {
@@ -60,24 +66,33 @@ impl Engine {
         }
 
         let mut completions: Vec<crate::tools::subagent::SubAgentCompletion> = Vec::new();
-        while let Ok(c) = self.rx_subagent_completion.try_recv() {
-            completions.push(c);
+        {
+            let rx = Arc::clone(&self.runtime_ext().rx_subagent_completion);
+            if let Ok(mut guard) = rx.try_lock() {
+                while let Ok(c) = guard.try_recv() {
+                    completions.push(c);
+                }
+            }
         }
         if completions.is_empty() {
             // M3: route through `SubAgentHost::running_count` so the future
             // core-side Engine can swap `subagent_manager` to a trait object.
-            use deepseek_core::engine::hosts::SubAgentHost;
-            let running = <Engine as SubAgentHost>::running_count(self).await;
+            let running = {
+                let manager = Arc::clone(&self.runtime_ext().subagent_manager);
+                manager.read().await.running_count()
+            };
             if running > 0 {
+                let rx = Arc::clone(&self.runtime_ext().rx_subagent_completion);
                 let _ = self
                     .tx_event
                     .send(Event::status(format!(
                         "Waiting on {running} sub-agent(s) to complete..."
                     )))
                     .await;
+                let cancel = self.0.cancel_token.clone();
                 tokio::select! {
                     biased;
-                    () = self.cancel_token.cancelled() => {
+                    () = cancel.cancelled() => {
                         let _ = self
                             .tx_event
                             .send(Event::status(
@@ -86,18 +101,25 @@ impl Engine {
                             .await;
                         return TurnLoopControl::Return(TurnOutcomeStatus::Interrupted, None);
                     }
-                    Some(c) = self.rx_subagent_completion.recv() => {
+                    Some(c) = {
+                        let rx_wait = Arc::clone(&rx);
+                        async move { rx_wait.lock().await.recv().await }
+                    } => {
                         completions.push(c);
-                        while let Ok(extra) = self.rx_subagent_completion.try_recv() {
-                            completions.push(extra);
+                        if let Ok(mut guard) = rx.try_lock() {
+                            while let Ok(extra) = guard.try_recv() {
+                                completions.push(extra);
+                            }
                         }
                     }
-                    Some(steer) = self.rx_steer.recv() => {
+                    Some(steer) = self.0.rx_steer.recv() => {
                         let trimmed = steer.trim().to_string();
                         if !trimmed.is_empty() {
-                            self.session
+                            let workspace = self.0.session.workspace.clone();
+                            self.0
+                                .session
                                 .working_set
-                                .observe_user_message(&trimmed, &self.session.workspace);
+                                .observe_user_message(&trimmed, &workspace);
                             Engine::add_session_message(
                                 self,
                                 Message {
@@ -123,9 +145,11 @@ impl Engine {
         if !completions.is_empty() {
             let count = completions.len();
             for c in completions {
-                self.session
+                let workspace = self.0.session.workspace.clone();
+                self.0
+                    .session
                     .working_set
-                    .observe_user_message(&c.payload, &self.session.workspace);
+                    .observe_user_message(&c.payload, &workspace);
                 Engine::add_session_message(
                     self,
                     Message {

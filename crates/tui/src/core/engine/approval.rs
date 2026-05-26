@@ -20,7 +20,7 @@ impl Engine {
         &mut self,
         tool_id: &str,
     ) -> Result<ApprovalResult, crate::tools::spec::ToolError> {
-        core_await_tool_approval(tool_id, &self.cancel_token, &mut self.rx_approval).await
+        core_await_tool_approval(tool_id, &self.0.cancel_token, &mut self.0.rx_approval).await
     }
 
     pub(super) async fn await_user_input(
@@ -36,6 +36,6 @@ impl Engine {
             })
             .await;
 
-        recv_user_input_for_tool(tool_id, &self.cancel_token, &mut self.rx_user_input).await
+        recv_user_input_for_tool(tool_id, &self.0.cancel_token, &mut self.0.rx_user_input).await
     }
 }

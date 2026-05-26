@@ -12,8 +12,8 @@ use super::Engine;
 impl Engine {
     pub(in crate::core::engine) fn set_runtime_model(&mut self, model: String) {
         deepseek_core::session::apply_model_selection(
-            &mut self.session,
-            &mut self.config.model,
+            &mut self.0.session,
+            &mut self.0.config.model,
             model,
         );
     }
@@ -54,9 +54,9 @@ impl Engine {
         workspace: PathBuf,
     ) {
         deepseek_core::session::apply_sync_session_payload(
-            &mut self.session,
-            &mut self.config.workspace,
-            &mut self.config.model,
+            &mut self.0.session,
+            &mut self.0.config.workspace,
+            &mut self.0.config.model,
             messages,
             system_prompt,
             model,

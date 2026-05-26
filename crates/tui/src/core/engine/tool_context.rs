@@ -27,8 +27,8 @@ impl Engine {
         )
         .with_state_namespace(self.session.id.clone())
         .with_features(self.config.features.clone())
-        .with_shell_manager(self.shell_manager.clone())
-        .with_runtime_services(self.config.runtime_services.clone())
+        .with_shell_manager(self.runtime_ext().shell_manager.clone())
+        .with_runtime_services(self.config_ext().runtime_services.clone())
         .with_cancel_token(self.cancel_token.clone())
         .with_trusted_external_paths(trusted_paths);
 
@@ -39,7 +39,7 @@ impl Engine {
             ctx.memory_path = Some(self.config.memory_path.clone());
         }
 
-        if let Some(decider) = self.config.network_policy.as_ref() {
+        if let Some(decider) = self.config_ext().network_policy.as_ref() {
             ctx = ctx.with_network_policy(decider.clone());
         }
 
@@ -47,8 +47,8 @@ impl Engine {
         // [workshop] config table is present; sub-agents don't inherit the
         // router (their ToolContext is built separately) to prevent recursive
         // routing of the synthesis call itself.
-        if let Some(workshop_cfg) = self.config.workshop.as_ref()
-            && let Some(vars_arc) = self.workshop_vars.as_ref()
+        if let Some(workshop_cfg) = self.config_ext().workshop.as_ref()
+            && let Some(vars_arc) = self.runtime_ext().workshop_vars.as_ref()
         {
             let router =
                 crate::tools::large_output_router::LargeOutputRouter::new(workshop_cfg.clone());
@@ -58,7 +58,7 @@ impl Engine {
         // Wire the external sandbox backend (#516). exec_shell checks this
         // field and routes commands through the backend instead of spawning
         // a local process when it's set.
-        if let Some(backend) = self.sandbox_backend.as_ref() {
+        if let Some(backend) = self.sandbox.backend() {
             ctx = ctx.with_sandbox_backend(std::sync::Arc::clone(backend));
         }
 
@@ -71,8 +71,9 @@ impl Engine {
 
         // Sub-agents clone this ToolContext via `SubAgentRuntime::child_runtime`;
         // wire LSP here so `diagnostics` and post-edit hooks work in child turns.
-        if self.lsp_manager.config().enabled {
-            ctx = ctx.with_lsp_manager(std::sync::Arc::clone(&self.lsp_manager));
+        let lsp_manager = &self.runtime_ext().lsp_manager;
+        if lsp_manager.config().enabled {
+            ctx = ctx.with_lsp_manager(std::sync::Arc::clone(lsp_manager));
         }
 
         match mode {
@@ -110,16 +111,18 @@ impl Engine {
     }
 
     pub(super) async fn ensure_mcp_pool(&mut self) -> Result<Arc<AsyncMutex<McpPool>>, ToolError> {
-        if let Some(pool) = self.mcp_pool.as_ref() {
-            return Ok(Arc::clone(pool));
+        let existing = self.runtime_ext().mcp_pool.clone();
+        if let Some(pool) = existing {
+            return Ok(pool);
         }
+        let network_policy = self.config_ext().network_policy.clone();
         let mut pool = McpPool::from_config_path(&self.session.mcp_config_path)
             .map_err(|e| ToolError::execution_failed(format!("Failed to load MCP config: {e}")))?;
-        if let Some(decider) = self.config.network_policy.as_ref() {
+        if let Some(decider) = network_policy.as_ref() {
             pool = pool.with_network_policy(decider.clone());
         }
         let pool = Arc::new(AsyncMutex::new(pool));
-        self.mcp_pool = Some(Arc::clone(&pool));
+        self.runtime_ext_mut().mcp_pool = Some(Arc::clone(&pool));
         Ok(pool)
     }
 

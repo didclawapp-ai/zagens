@@ -899,7 +899,7 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 |-------------|----------|------------|
 | Phase 1 harness | sidecar + `/v1/*` + 真 turn | **✅** |
 | A+ §12.2 | `sidecar_contract_full_lifecycle` in CI；`event_schema_version` | **✅** |
-| P2 §12.3 | `handle_deepseek_turn` + phases in core；`engine.rs` ~193 行 | **✅**（Engine struct 仍 tui） |
+| P2 §12.3 / M-series | `handle_deepseek_turn` + phases in core；`Engine` struct + op loop in core（tui ~130 行 newtype shim） | **✅**（M8 2026-05-26） |
 | D10 / F §12.4 | F0–F4 落地；G2 §8–§9 手测 | **✅** |
 | B-L1 §12.5 #1 | 黑板、`craft.*`、角色白名单、fix-loop | **✅** |
 | B2 §12.5 #2 | `topic-memory` + 注入 + `TopicMemoryPanel` + B2.1/B2.5 | **✅ MVP** |
@@ -911,7 +911,7 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 **仍未实施或待签收（按优先序）：**
 
 1. **B3 可选** — `main.rs` 进一步瘦身（`cli/commands/legacy.rs` 已承载命令体）
-2. **Backlog ADR** — 整包 `Engine`→core；StateStore/JSONL 统一；可选 `streaming_phase` 拆子模块；A6.3 Landlock/Windows 沙箱实现
+2. **Backlog ADR** — ~~整包 `Engine`→core~~ **✅ M8 2026-05-26** [BACKLOG_ENGINE_STRUCT_IN_CORE.md](./adr/BACKLOG_ENGINE_STRUCT_IN_CORE.md)；StateStore/JSONL 统一；可选 `streaming_phase` 拆子模块；A6.3 Landlock/Windows 沙箱实现
 3. **GAP（非门控）** — 定时自动化 UI；通知前端触发；TUI 斜杠命令对标；高级线程操作
 
 **已闭合（勿重复立项）：** **A2/A3** [A2_A3_SIGNOFF.md](./adr/A2_A3_SIGNOFF.md)；**A1 follow-up（live `ToolCell` 同构生产级，2026-05-25）** [A1_PERSIST_BLOCKING_AUDIT.md](./adr/A1_PERSIST_BLOCKING_AUDIT.md) §Status；B2.1/B-L3/B2.5；A1.3 `events_since_async`；B3.3；G2 §11。
