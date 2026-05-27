@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
-import { waitForRuntimeBootReady } from '../api/client';
 import type { TurnChatMessage } from './useTurnSend';
 import { ensureDefaultComposerWorkspace } from '../lib/appPreferences';
 import { toast } from '../lib/toast';
@@ -13,7 +12,6 @@ export type UseDesktopShellParams = {
   t: (key: string, params?: Record<string, string>) => string;
   selectedWorkspace: string;
   setSelectedWorkspace: Dispatch<SetStateAction<string>>;
-  refreshSessions: () => Promise<void>;
   streamingRef: MutableRefObject<boolean>;
   streamControllersRef: MutableRefObject<Map<string, AbortController>>;
   streamSessionRef: MutableRefObject<StreamSessionControl | null>;
@@ -35,7 +33,6 @@ export function useDesktopShell({
   t,
   selectedWorkspace,
   setSelectedWorkspace,
-  refreshSessions,
   streamingRef,
   streamControllersRef,
   streamSessionRef,
@@ -47,8 +44,6 @@ export function useDesktopShell({
   const [desktopHost, setDesktopHost] = useState(false);
   const [desktopApiKeyConfigured, setDesktopApiKeyConfigured] = useState<boolean | null>(null);
   const [platform, setPlatform] = useState('unknown');
-  const refreshSessionsRef = useRef(refreshSessions);
-  refreshSessionsRef.current = refreshSessions;
   const selectedWorkspaceRef = useRef(selectedWorkspace);
   selectedWorkspaceRef.current = selectedWorkspace;
 
@@ -127,50 +122,9 @@ export function useDesktopShell({
 
   useEffect(() => {
     if (!desktopHost) return;
-    let cancelled = false;
-    let timedOut = false;
-    let bootHandled = false;
-
-    const showWindow = () => {
-      void import('@tauri-apps/api/window')
-        .then(({ getCurrentWindow }) => getCurrentWindow().show())
-        .catch(() => {});
-    };
-
-    const onReady = () => {
-      if (cancelled || bootHandled) return;
-      bootHandled = true;
-      void refreshSessionsRef.current();
-      showWindow();
-    };
-
-    const fallback = setTimeout(() => {
-      timedOut = true;
-      showWindow();
-    }, 5000);
-
-    void waitForRuntimeBootReady({ timeoutMs: 2_000, intervalMs: 100 }).then((ready) => {
-      if (cancelled || !ready) return;
-      clearTimeout(fallback);
-      if (!timedOut) {
-        onReady();
-      }
-    });
-
-    const unlistenReady = subscribeCurrentWebviewEvent<Record<string, unknown>>(
-      'sidecar://ready',
-      () => {
-        clearTimeout(fallback);
-        if (!timedOut) {
-          onReady();
-        }
-      },
-    );
-    return () => {
-      cancelled = true;
-      clearTimeout(fallback);
-      unlistenReady();
-    };
+    void import('@tauri-apps/api/window')
+      .then(({ getCurrentWindow }) => getCurrentWindow().show())
+      .catch(() => {});
   }, [desktopHost]);
 
   useEffect(() => {

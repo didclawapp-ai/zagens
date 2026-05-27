@@ -116,6 +116,25 @@ fn main() {
             });
             app.manage(terminal::TerminalManager::default());
 
+            let handle = app.handle().clone();
+            let token_for_sidecar = token.clone();
+            let shutdown_for_sidecar = shutdown.clone();
+            // Start the sidecar as early as possible so it warms up while the WebView loads.
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = sidecar::start_and_monitor(
+                    &handle,
+                    7878,
+                    runtime_port_tx,
+                    &token_for_sidecar,
+                    sidecar_restart.clone(),
+                    shutdown_for_sidecar,
+                )
+                .await
+                {
+                    eprintln!("sidecar error: {e}");
+                }
+            });
+
             let registry = app.state::<WindowRegistry>();
             let default_ws = workspace_defaults::default_composer_workspace()
                 .unwrap_or_else(|_| String::new());
@@ -174,29 +193,6 @@ fn main() {
                     }
                 })
                 .build(app)?;
-
-            let handle = app.handle().clone();
-            let token_for_sidecar = token.clone();
-            let shutdown_for_sidecar = shutdown.clone();
-            // `7878` is the **initial suggested** port (back-compat for single-instance setups
-            // + easier external debugging via `curl localhost:7878`). If a stale sidecar holds
-            // it, the supervisor's `wait_loopback_listen_port_free` reclaims; if the listener
-            // ultimately binds elsewhere it'll be reported via `DS_PICK_READY → port_tx` and
-            // every IPC handler picks up the real port through `AppContext::runtime_port`.
-            tauri::async_runtime::spawn(async move {
-                if let Err(e) = sidecar::start_and_monitor(
-                    &handle,
-                    7878,
-                    runtime_port_tx,
-                    &token_for_sidecar,
-                    sidecar_restart,
-                    shutdown_for_sidecar,
-                )
-                .await
-                {
-                    eprintln!("sidecar error: {e}");
-                }
-            });
 
             Ok(())
         })

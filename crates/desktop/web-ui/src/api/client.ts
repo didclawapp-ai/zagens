@@ -118,6 +118,24 @@ export function getRuntimeBase(): string {
   return runtimeBase;
 }
 
+/** Extract `error.message` from runtime JSON envelopes; fall back to raw HTTP text. */
+export function runtimeHttpError(status: number, body: string): Error & { status?: number } {
+  try {
+    const parsed = JSON.parse(body) as { error?: { message?: unknown } };
+    const message = parsed.error?.message;
+    if (typeof message === 'string' && message.trim()) {
+      const err = new Error(message.trim()) as Error & { status?: number };
+      err.status = status;
+      return err;
+    }
+  } catch {
+    /* not JSON */
+  }
+  const err = new Error(`HTTP ${status}: ${body}`) as Error & { status?: number };
+  err.status = status;
+  return err;
+}
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Per-probe ceiling so a wedged socket does not stall the UI for the browser default. */
@@ -468,9 +486,7 @@ export async function fetchJson<T>(path: string): Promise<T> {
   );
   if (!res.ok) {
     const text = await res.text();
-    const err = new Error(`HTTP ${res.status}: ${text}`);
-    (err as Error & { status?: number }).status = res.status;
-    throw err;
+    throw runtimeHttpError(res.status, text);
   }
   return res.json();
 }
@@ -492,9 +508,7 @@ function fetchJsonPoll<T>(path: string): Promise<T> {
     );
     if (!res.ok) {
       const text = await res.text();
-      const err = new Error(`HTTP ${res.status}: ${text}`);
-      (err as Error & { status?: number }).status = res.status;
-      throw err;
+      throw runtimeHttpError(res.status, text);
     }
     return res.json() as Promise<T>;
   });
@@ -511,9 +525,7 @@ export async function postJson<T>(path: string, body: unknown): Promise<T> {
   );
   if (!res.ok) {
     const text = await res.text();
-    const err = new Error(`HTTP ${res.status}: ${text}`);
-    (err as Error & { status?: number }).status = res.status;
-    throw err;
+    throw runtimeHttpError(res.status, text);
   }
   return res.json();
 }

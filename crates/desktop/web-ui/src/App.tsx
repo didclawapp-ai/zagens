@@ -180,7 +180,6 @@ export default function App() {
     t,
     selectedWorkspace,
     setSelectedWorkspace,
-    refreshSessions,
     streamingRef,
     streamControllersRef,
     streamSessionRef,

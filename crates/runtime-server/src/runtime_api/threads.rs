@@ -594,6 +594,22 @@ fn language_from_name(name: &str) -> Option<String> {
     }
 }
 
+fn map_snapshot_io_err(workspace: &str, err: std::io::Error) -> ApiError {
+    let msg = err.to_string();
+    if msg.contains("could not lock config")
+        || msg.contains("git init failed")
+        || msg.contains("snapshot repo init timed out")
+    {
+        ApiError::bad_request(format!(
+            "Workspace snapshot repository for {workspace} is locked or incomplete. \
+             Retry in a moment; if it persists, remove the matching folder under \
+             ~/.zagens/snapshots/ and reload this panel."
+        ))
+    } else {
+        ApiError::bad_request(format!("snapshots unavailable for {workspace}: {msg}"))
+    }
+}
+
 pub(crate) async fn list_thread_snapshots(
     State(state): State<RuntimeApiState>,
     AxumPath(id): AxumPath<String>,
@@ -617,12 +633,7 @@ pub(crate) async fn list_thread_snapshots(
     })
     .await
     .map_err(|e| ApiError::internal(format!("snapshot task: {e}")))?
-    .map_err(|e| {
-        ApiError::bad_request(format!(
-            "snapshots unavailable for {}: {e}",
-            workspace_display
-        ))
-    })?;
+    .map_err(|e| map_snapshot_io_err(&workspace_display, e))?;
     let mut entries = Vec::with_capacity(snapshots.len());
     for (i, s) in snapshots.iter().enumerate() {
         entries.push(SnapshotListEntryJson {
@@ -659,7 +670,7 @@ pub(crate) async fn restore_thread_snapshot(
     let ws = detail.thread.workspace.clone();
     let n = body.n;
     let restored = tokio::task::spawn_blocking(move || {
-        let repo = SnapshotRepo::open_or_init(&ws)?;
+        let repo = SnapshotRepo::open_or_init(&ws).map_err(|e| map_snapshot_io_err(&ws.display().to_string(), e))?;
         let snaps = repo.list(MAX_SNAPSHOT_LIST)?;
         if n > snaps.len() {
             return Err(ApiError::bad_request(format!(

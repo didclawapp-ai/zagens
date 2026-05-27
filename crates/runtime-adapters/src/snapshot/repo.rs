@@ -12,11 +12,12 @@
 //! repo, the command fails fast instead of falling back to "current
 //! directory".
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::io;
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Output};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::sync::{Arc, LazyLock, Mutex};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use super::paths::{ensure_snapshot_dir, snapshot_git_dir};
 
@@ -142,47 +143,11 @@ impl SnapshotRepo {
 
         let _ = ensure_snapshot_dir(&work_tree)?;
         let git_dir = snapshot_git_dir(&work_tree);
+        let snapshot_dir = git_dir.parent().ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidInput, "snapshot dir has no parent")
+        })?;
 
-        let needs_init = !git_dir.exists();
-        if needs_init {
-            let parent = git_dir.parent().ok_or_else(|| {
-                io::Error::new(io::ErrorKind::InvalidInput, "snapshot dir has no parent")
-            })?;
-            std::fs::create_dir_all(parent)?;
-            // `git init` here uses the parent directory as the work tree
-            // and stores metadata in `.git`. We then continue to use
-            // explicit `--git-dir` / `--work-tree` flags for every other
-            // command so behaviour is invariant of cwd.
-            let init = Command::new("git")
-                .arg("init")
-                .arg("--quiet")
-                .arg(parent)
-                .output()
-                .map_err(|e| io_other(format!("failed to spawn git init: {e}")))?;
-            if !init.status.success() {
-                return Err(io_other(format!(
-                    "git init failed: {}",
-                    String::from_utf8_lossy(&init.stderr).trim()
-                )));
-            }
-
-            // Pin a stable identity so snapshot commits are recognisable
-            // and don't bleed into the user's git config.
-            let _ = run_git(
-                &git_dir,
-                &work_tree,
-                &["config", "user.name", "deepseek-snapshots"],
-            );
-            let _ = run_git(
-                &git_dir,
-                &work_tree,
-                &["config", "user.email", "snapshots@deepseek-tui.local"],
-            );
-            // Don't auto-gc on every commit; we manage pruning ourselves.
-            let _ = run_git(&git_dir, &work_tree, &["config", "gc.auto", "0"]);
-            // Ignore CRLF rewriting — we want byte-for-byte fidelity.
-            let _ = run_git(&git_dir, &work_tree, &["config", "core.autocrlf", "false"]);
-        }
+        init_snapshot_repo_if_needed(&snapshot_dir, &git_dir, &work_tree)?;
 
         write_builtin_excludes(&git_dir)?;
         Ok(Self { git_dir, work_tree })
@@ -478,6 +443,216 @@ fn write_builtin_excludes(git_dir: &Path) -> io::Result<()> {
     std::fs::write(info_dir.join("exclude"), BUILTIN_EXCLUDES)
 }
 
+static SNAPSHOT_INIT_MUTEXES: LazyLock<Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+const SNAPSHOT_INIT_FILE_LOCK_MAX_WAIT: Duration = Duration::from_secs(30);
+const SNAPSHOT_INIT_FILE_LOCK_STALE: Duration = Duration::from_secs(120);
+const SNAPSHOT_INIT_FILE_LOCK_POLL: Duration = Duration::from_millis(50);
+
+fn snapshot_init_lock(snapshot_dir: &Path) -> Arc<Mutex<()>> {
+    let key = snapshot_dir.to_path_buf();
+    let mut map = SNAPSHOT_INIT_MUTEXES.lock().expect("snapshot init mutex map");
+    map.entry(key)
+        .or_insert_with(|| Arc::new(Mutex::new(())))
+        .clone()
+}
+
+fn snapshot_repo_initialized(git_dir: &Path, work_tree: &Path) -> bool {
+    git_dir.is_dir()
+        && run_git(git_dir, work_tree, &["rev-parse", "--git-dir"])
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+}
+
+fn remove_stale_git_locks(git_dir: &Path) {
+    for name in ["config.lock", "index.lock", "HEAD.lock", "packed-refs.lock"] {
+        let lock = git_dir.join(name);
+        if lock.is_file() {
+            let _ = std::fs::remove_file(&lock);
+        }
+    }
+}
+
+/// Some interrupted inits leave bare-repo metadata directly under the snapshot dir.
+fn remove_legacy_bare_repo_artifacts(snapshot_dir: &Path, git_dir: &Path) {
+    if git_dir.exists() {
+        return;
+    }
+    for name in ["config", "config.lock", "HEAD", "description", "index", "index.lock"] {
+        let path = snapshot_dir.join(name);
+        if path.is_file() {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+    for name in ["objects", "refs", "info", "hooks"] {
+        let path = snapshot_dir.join(name);
+        if path.is_dir() {
+            let _ = std::fs::remove_dir_all(&path);
+        }
+    }
+}
+
+fn remove_broken_git_dir(git_dir: &Path, work_tree: &Path) -> io::Result<()> {
+    if !git_dir.exists() {
+        return Ok(());
+    }
+    if snapshot_repo_initialized(git_dir, work_tree) {
+        return Ok(());
+    }
+    remove_stale_git_locks(git_dir);
+    if snapshot_repo_initialized(git_dir, work_tree) {
+        return Ok(());
+    }
+    std::fs::remove_dir_all(git_dir)
+}
+
+fn try_git_init(snapshot_dir: &Path) -> io::Result<Output> {
+    Command::new("git")
+        .arg("init")
+        .arg("--quiet")
+        .arg(snapshot_dir)
+        .output()
+        .map_err(|e| io_other(format!("failed to spawn git init: {e}")))
+}
+
+fn git_init_error(output: &Output) -> String {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stderr = stderr.trim();
+    if stderr.is_empty() {
+        String::from_utf8_lossy(&output.stdout).trim().to_string()
+    } else {
+        stderr.to_string()
+    }
+}
+
+fn is_git_config_lock_error(message: &str) -> bool {
+    message.contains("could not lock config file") || message.contains("File exists")
+}
+
+fn apply_snapshot_repo_config(git_dir: &Path, work_tree: &Path) {
+    let _ = run_git(
+        git_dir,
+        work_tree,
+        &["config", "user.name", "deepseek-snapshots"],
+    );
+    let _ = run_git(
+        git_dir,
+        work_tree,
+        &["config", "user.email", "snapshots@deepseek-tui.local"],
+    );
+    let _ = run_git(git_dir, work_tree, &["config", "gc.auto", "0"]);
+    let _ = run_git(git_dir, work_tree, &["config", "core.autocrlf", "false"]);
+}
+
+fn acquire_snapshot_init_file_lock(snapshot_dir: &Path) -> io::Result<PathBuf> {
+    std::fs::create_dir_all(snapshot_dir)?;
+    let lock_path = snapshot_dir.join(".snapshot-init.lock");
+    let started = Instant::now();
+    loop {
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&lock_path)
+        {
+            Ok(_) => return Ok(lock_path),
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+                if file_older_than(&lock_path, SNAPSHOT_INIT_FILE_LOCK_STALE) {
+                    let _ = std::fs::remove_file(&lock_path);
+                    continue;
+                }
+                if started.elapsed() >= SNAPSHOT_INIT_FILE_LOCK_MAX_WAIT {
+                    return Err(io_other(
+                        "snapshot repo init timed out waiting for another initializer",
+                    ));
+                }
+                std::thread::sleep(SNAPSHOT_INIT_FILE_LOCK_POLL);
+            }
+            Err(e) => return Err(e),
+        }
+    }
+}
+
+fn file_older_than(path: &Path, max_age: Duration) -> bool {
+    let Ok(meta) = std::fs::metadata(path) else {
+        return true;
+    };
+    let Ok(modified) = meta.modified() else {
+        return true;
+    };
+    modified
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .and_then(|t| SystemTime::now().duration_since(UNIX_EPOCH).ok().map(|now| now - t))
+        .is_some_and(|age| age >= max_age)
+}
+
+fn init_snapshot_repo_if_needed(
+    snapshot_dir: &Path,
+    git_dir: &Path,
+    work_tree: &Path,
+) -> io::Result<()> {
+    if snapshot_repo_initialized(git_dir, work_tree) {
+        return Ok(());
+    }
+
+    let lock = snapshot_init_lock(snapshot_dir);
+    let _guard = lock
+        .lock()
+        .map_err(|_| io_other("snapshot init mutex poisoned"))?;
+
+    if snapshot_repo_initialized(git_dir, work_tree) {
+        return Ok(());
+    }
+
+    let file_lock = acquire_snapshot_init_file_lock(snapshot_dir)?;
+    let init_result = init_snapshot_repo_locked(snapshot_dir, git_dir, work_tree);
+    let _ = std::fs::remove_file(&file_lock);
+    init_result
+}
+
+fn init_snapshot_repo_locked(
+    snapshot_dir: &Path,
+    git_dir: &Path,
+    work_tree: &Path,
+) -> io::Result<()> {
+    if snapshot_repo_initialized(git_dir, work_tree) {
+        return Ok(());
+    }
+
+    remove_legacy_bare_repo_artifacts(snapshot_dir, git_dir);
+    remove_stale_git_locks(git_dir);
+    remove_broken_git_dir(git_dir, work_tree)?;
+
+    let init = try_git_init(snapshot_dir)?;
+    if init.status.success() {
+        apply_snapshot_repo_config(git_dir, work_tree);
+        return Ok(());
+    }
+
+    let err = git_init_error(&init);
+    if snapshot_repo_initialized(git_dir, work_tree) {
+        apply_snapshot_repo_config(git_dir, work_tree);
+        return Ok(());
+    }
+
+    if is_git_config_lock_error(&err) {
+        remove_stale_git_locks(git_dir);
+        remove_broken_git_dir(git_dir, work_tree)?;
+        let retry = try_git_init(snapshot_dir)?;
+        if retry.status.success() || snapshot_repo_initialized(git_dir, work_tree) {
+            apply_snapshot_repo_config(git_dir, work_tree);
+            return Ok(());
+        }
+        return Err(io_other(format!(
+            "git init failed: {}",
+            git_init_error(&retry)
+        )));
+    }
+
+    Err(io_other(format!("git init failed: {err}")))
+}
+
 fn run_git(git_dir: &Path, work_tree: &Path, args: &[&str]) -> io::Result<Output> {
     Command::new("git")
         .arg("--git-dir")
@@ -552,6 +727,7 @@ fn is_safe_relative_path(path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use crate::snapshot::paths::snapshot_git_dir;
     use super::*;
     use crate::test_support::lock_test_env;
     use std::sync::MutexGuard;
@@ -869,6 +1045,24 @@ mod tests {
             !names.contains("debug.wasm"),
             "binary artifacts should not be in snapshot: {names}",
         );
+    }
+
+    #[test]
+    fn open_or_init_recovers_from_stale_config_lock() {
+        let tmp = tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        std::fs::create_dir_all(&workspace).unwrap();
+        let guard = scoped_home(tmp.path());
+        let git_dir = snapshot_git_dir(&workspace);
+        let snapshot_dir = git_dir.parent().unwrap();
+        std::fs::create_dir_all(snapshot_dir).unwrap();
+        std::fs::create_dir_all(&git_dir).unwrap();
+        std::fs::write(git_dir.join("config.lock"), b"stale").unwrap();
+
+        let repo = SnapshotRepo::open_or_init(&workspace).expect("open_or_init");
+        assert!(repo.git_dir().join("config").exists());
+        assert!(!repo.git_dir().join("config.lock").exists());
+        drop(guard);
     }
 
     #[test]

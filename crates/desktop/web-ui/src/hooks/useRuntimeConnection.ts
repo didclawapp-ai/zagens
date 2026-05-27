@@ -145,6 +145,7 @@ export function useRuntimeConnection({
     let cancelled = false;
     void (async () => {
       try {
+        await initRuntimeConfig();
         const ok = await waitForRuntimeBootReady({ timeoutMs: 90_000, intervalMs: 150 });
         if (!cancelled) {
           const probed = await probeRuntimeConnection();
