@@ -1447,10 +1447,12 @@ name = "deepseek-runtime-orchestrator"
 version = "0.8.15"
 dependencies = [
  "anyhow",
+ "async-trait",
  "chrono",
  "deepseek-core",
  "deepseek-protocol",
  "deepseek-runtime-adapters",
+ "futures-util",
  "pretty_assertions",
  "rusqlite",
  "schemars 1.2.1",

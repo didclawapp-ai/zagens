@@ -49,6 +49,7 @@ pub(crate) type ActiveThreadState =
     ActiveThreadStateInner<RuntimeEnginePolicy, RuntimeUserInputResponse>;
 pub(crate) type ActiveThreads = ActiveThreadsInner<RuntimeEnginePolicy, RuntimeUserInputResponse>;
 
+mod engine_host;
 mod engine_load;
 mod manager;
 mod turn_lifecycle;

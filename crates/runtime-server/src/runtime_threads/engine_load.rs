@@ -15,7 +15,10 @@ use super::types::ThreadRecord;
 use super::RuntimeThreadManager;
 
 impl RuntimeThreadManager {
-    pub(crate) async fn ensure_engine_loaded(&self, thread: &ThreadRecord) -> Result<EngineHandle> {
+    pub(crate) async fn ensure_engine_loaded_impl(
+        &self,
+        thread: &ThreadRecord,
+    ) -> Result<EngineHandle> {
         {
             let mut active = self.active.lock().await;
             if let Some(engine) = active

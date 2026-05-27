@@ -11,11 +11,13 @@ name = "deepseek_runtime_orchestrator"
 path = "src/lib.rs"
 
 [dependencies]
+async-trait.workspace = true
 anyhow.workspace = true
 chrono.workspace = true
 deepseek-core = { path = "../core", version = "0.8.15" }
 deepseek-protocol = { path = "../protocol", version = "0.8.15" }
 deepseek-runtime-adapters = { path = "../runtime-adapters", version = "0.8.15" }
+futures-util = "0.3.31"
 rusqlite.workspace = true
 schemars = { version = "1.2.1", features = ["derive", "preserve_order", "chrono04"] }
 serde.workspace = true

@@ -21,7 +21,7 @@ use super::{
 };
 
 impl RuntimeThreadManager {
-    pub(crate) async fn monitor_turn(
+    pub(crate) async fn monitor_turn_impl(
         &self,
         thread_id: String,
         turn_id: String,
@@ -1005,17 +1005,6 @@ impl RuntimeThreadManager {
             .await
             .map_err(|e| anyhow!("save_item panicked: {e}"))??;
         Ok(item)
-    }
-
-    async fn is_interrupt_requested(&self, thread_id: &str, turn_id: &str) -> Result<bool> {
-        let active = self.active.lock().await;
-        let Some(state) = active.engines.get(thread_id) else {
-            return Ok(false);
-        };
-        let Some(turn) = state.active_turn.as_ref() else {
-            return Ok(false);
-        };
-        Ok(turn.turn_id == turn_id && turn.interrupt_requested)
     }
 
 }

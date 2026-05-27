@@ -7,15 +7,19 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 pub mod active;
+pub mod engine_host;
 pub mod event_coalesce;
 pub mod events;
 pub mod manager;
 pub mod persist;
 pub mod routing;
 pub mod thread_crud;
+pub mod turn_control;
+pub mod turn_lifecycle;
 pub mod turn_wait;
 pub mod types;
 
+pub use engine_host::RuntimeThreadHost;
 pub use manager::{
     EVENT_CHANNEL_CAPACITY, RUNTIME_RESTART_REASON, RuntimeThreadManager,
     checklist_tool_needs_panel_push, scratchpad_tool_needs_panel_push, tool_kind_for_name,
