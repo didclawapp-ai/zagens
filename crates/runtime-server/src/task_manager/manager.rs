@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result, anyhow, bail};
 use chrono::Utc;
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::sync::{Mutex, Notify, mpsc};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;

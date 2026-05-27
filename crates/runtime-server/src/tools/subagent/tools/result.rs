@@ -1,23 +1,18 @@
 use std::time::Duration;
-use std::path::PathBuf;
-use std::sync::Arc;
 
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
-use deepseek_core::subagent::{SubAgentAssignment, SubAgentResult, SubAgentStatus, SubAgentType};
+use deepseek_core::subagent::SubAgentStatus;
 use crate::tools::spec::{
-    ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
-    optional_bool, optional_u64, required_str,
+    ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
+    optional_bool, optional_u64,
 };
 
 use super::super::constants::*;
-use super::super::deprecation::wrap_with_deprecation_notice;
 use super::super::executor::wait_for_result;
 use super::super::factory::SharedSubAgentManager;
-use super::super::registry::summarize_subagent_result;
-use super::super::runtime::SubAgentRuntime;
 
 pub struct AgentResultTool {
     manager: SharedSubAgentManager,

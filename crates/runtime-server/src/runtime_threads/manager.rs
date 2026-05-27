@@ -15,7 +15,7 @@ use crate::config::Config;
 
 use super::background_slots::RuntimeThreadBackgroundSlots;
 use super::{
-    ActiveThreadState, RuntimeApprovalDecision, RuntimeEnginePolicy, RuntimeThreadStore,
+    RuntimeApprovalDecision, RuntimeEnginePolicy, RuntimeThreadStore,
     RuntimeUserInputResponse, RuntimeThreadManagerConfig,
 };
 use deepseek_runtime_orchestrator::runtime_threads::manager::{
@@ -23,7 +23,6 @@ use deepseek_runtime_orchestrator::runtime_threads::manager::{
     scratchpad_tool_needs_panel_push,
 };
 
-pub use deepseek_runtime_orchestrator::runtime_threads::manager::tool_kind_for_name;
 
 pub type SharedRuntimeThreadManager = Arc<RuntimeThreadManager>;
 

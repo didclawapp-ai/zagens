@@ -7,12 +7,11 @@ use flate2::read::GzDecoder;
 
 use crate::network_policy::NetworkPolicy;
 use deepseek_runtime_adapters::network_policy::{Decision, host_from_url};
-use deepseek_runtime_adapters::tools::{check_host_with_policy, host_policy_decision, NetworkGateError};
+use deepseek_runtime_adapters::tools::host_policy_decision;
 
 use super::registry::fetch_registry;
-use super::registry::SKILLS_NETWORK_TOOL;
 use super::types::{
-    DownloadAttempt, DownloadOutcome, InstallError, InstallSource, RegistryDocument,
+    DownloadAttempt, DownloadOutcome, InstallError, InstallSource,
     RegistryFetchResult, UrlResolution,
 };
 
@@ -191,7 +190,7 @@ pub(super) fn stage_tarball(bytes: &[u8], skills_dir: &Path, max_size: u64) -> R
     })
 }
 
-struct TarballScan {
+pub(super) struct TarballScan {
     /// Skill name from SKILL.md frontmatter.
     skill_name: String,
     /// Archive prefix to strip from each entry (e.g. `repo-main/`). May be empty.

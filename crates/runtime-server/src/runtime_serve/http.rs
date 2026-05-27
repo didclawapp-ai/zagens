@@ -14,7 +14,7 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 use crate::automation_manager::{
-    AutomationManager, AutomationSchedulerConfig, SharedAutomationManager, spawn_scheduler,
+    AutomationManager, AutomationSchedulerConfig, spawn_scheduler,
 };
 use crate::config::Config;
 use crate::runtime_api::{build_router, ResumeTaskTracker, RuntimeApiState};

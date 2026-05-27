@@ -1,6 +1,6 @@
 //! web.run wire and internal page types.
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::Value;
 use std::collections::{HashMap, VecDeque};
 use std::time::Instant;

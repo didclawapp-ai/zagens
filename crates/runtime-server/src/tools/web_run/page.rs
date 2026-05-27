@@ -3,9 +3,9 @@
 use super::html::parse_html;
 use super::state::get_page;
 use super::types::{
-    FindMatch, FindResult, PageViewResult, ResponseLength, ScreenshotResult, WebLink, WebPage,
+    FindMatch, FindResult, PageViewResult, ResponseLength, ScreenshotResult, WebPage,
 };
-use super::{DEFAULT_OPEN_TIMEOUT_MS, USER_AGENT};
+use super::USER_AGENT;
 use crate::tools::spec::{ToolContext, ToolError};
 use deepseek_runtime_adapters::tools::check_url_policy;
 use std::time::Duration;

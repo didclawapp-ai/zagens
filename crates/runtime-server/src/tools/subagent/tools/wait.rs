@@ -1,25 +1,20 @@
 use std::collections::HashMap;
 use std::time::Duration;
-use std::path::PathBuf;
-use std::sync::Arc;
 
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
-use deepseek_core::subagent::{SubAgentAssignment, SubAgentResult, SubAgentStatus, SubAgentType};
+use deepseek_core::subagent::{SubAgentResult, SubAgentStatus};
 use crate::tools::spec::{
-    ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
-    optional_bool, optional_u64, required_str,
+    ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_u64,
 };
 
 use super::super::constants::*;
-use super::super::deprecation::wrap_with_deprecation_notice;
-use super::super::executor::{wait_for_agents, wait_for_result};
+use super::super::executor::wait_for_agents;
 use super::super::factory::SharedSubAgentManager;
 use super::super::parse::{parse_wait_ids, parse_wait_mode};
-use super::super::registry::{subagent_status_name, summarize_subagent_result};
-use super::super::runtime::SubAgentRuntime;
+use super::super::registry::subagent_status_name;
 
 pub struct AgentWaitTool {
     manager: SharedSubAgentManager,

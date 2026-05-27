@@ -1,47 +1,30 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow};
-use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
-use tokio::sync::{Mutex, RwLock, mpsc};
-use tokio::task::JoinHandle;
-use tokio_util::sync::CancellationToken;
+use tokio::sync::mpsc;
 use uuid::Uuid;
 
-use crate::config::MAX_SUBAGENTS;
 use deepseek_core::events::Event;
-use crate::models::{ContentBlock, Message, MessageRequest, SystemPrompt, Tool};
-use crate::tools::plan::{PlanState, SharedPlanState};
-use crate::tools::registry::{ToolRegistry, ToolRegistryBuilder};
-use crate::tools::spec::{
-    ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
-    optional_bool, optional_u64, required_str,
-};
-use crate::tools::todo::{SharedTodoList, TodoList};
 use crate::utils::spawn_supervised;
 
-use super::blackboard::{read_blackboard_section, write_blackboard_partition};
 use deepseek_core::subagent::{
-    MailboxMessage, StructuredVerdict, SubAgentAssignment, SubAgentResult, SubAgentStatus,
-    SubAgentType, VerdictLevel,
+    SubAgentAssignment, SubAgentResult, SubAgentStatus,
+    SubAgentType,
 };
-use super::mailbox::{Mailbox, MailboxEnvelope, MailboxReceiver};
 
 use super::constants::*;
 use super::registry::build_allowed_tools;
-use super::resident::{release_resident_file_lease, release_resident_leases_for, try_claim_resident_file_lease};
+use super::resident::release_resident_leases_for;
 use super::executor::{run_subagent_task, SubAgentTask};
 use super::parse::normalize_role_alias;
 use super::types::SubAgentInput;
 use super::factory::SharedSubAgentManager;
 use super::runtime::{SubAgent, SubAgentRuntime};
 use super::factory::{epoch_millis_now, instant_from_duration, write_json_atomic};
-use super::types::{PersistedSubAgent, PersistedSubAgentState, SubAgentSpawnOptions, SpawnRequest};
+use super::types::{PersistedSubAgent, PersistedSubAgentState, SubAgentSpawnOptions};
 
 pub struct SubAgentManager {
     pub(crate) agents: HashMap<String, SubAgent>,

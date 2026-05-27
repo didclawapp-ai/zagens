@@ -8,7 +8,6 @@ use crate::tools::spec::{
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::fs;
-use std::path::Path;
 
 /// Tool for writing UTF-8 files to the workspace.
 pub struct WriteFileTool;

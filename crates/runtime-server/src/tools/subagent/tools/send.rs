@@ -1,21 +1,16 @@
-use std::path::PathBuf;
-use std::sync::Arc;
 
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
-use deepseek_core::subagent::{SubAgentAssignment, SubAgentResult, SubAgentStatus, SubAgentType};
 use crate::tools::spec::{
-    ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
-    optional_bool, optional_u64, required_str,
+    ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
+    optional_bool,
 };
 
 use super::super::deprecation::wrap_with_deprecation_notice;
 use super::super::factory::SharedSubAgentManager;
-use super::super::parse::{optional_input_str, parse_text_or_items};
-use super::super::runtime::SubAgentRuntime;
-use super::super::types::SubAgentInput;
+use super::super::parse::parse_text_or_items;
 
 pub struct AgentSendInputTool {
     manager: SharedSubAgentManager,

@@ -5,7 +5,6 @@ use super::super::types::{ShellResult, ShellStatus};
 use crate::command_safety::{SafetyLevel, analyze_command};
 use crate::execpolicy::{ExecPolicyDecision, load_default_policy};
 use crate::features::Feature;
-use crate::sandbox::SandboxPolicy as ExecutionSandboxPolicy;
 use crate::tools::shell_output::{summarize_output, truncate_with_meta};
 use crate::tools::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,

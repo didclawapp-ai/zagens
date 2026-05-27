@@ -3,7 +3,7 @@
 use anyhow::{Context, Result, anyhow};
 use std::io::{Read, Write};
 use std::path::PathBuf;
-use std::process::{Child, ChildStdin, Command, Stdio};
+use std::process::{Child, ChildStdin, Command};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 

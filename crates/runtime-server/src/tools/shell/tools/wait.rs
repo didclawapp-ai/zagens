@@ -1,6 +1,6 @@
 //! Background shell wait/interact ToolSpecs.
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use super::helpers::{
     build_shell_delta_tool_result, emit_shell_delta_streams, required_task_id,
@@ -9,7 +9,7 @@ use super::helpers::{
 use super::super::types::ShellStatus;
 use crate::tools::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
-    optional_bool, optional_u64, required_str,
+    optional_bool, optional_u64,
 };
 use async_trait::async_trait;
 use serde_json::json;

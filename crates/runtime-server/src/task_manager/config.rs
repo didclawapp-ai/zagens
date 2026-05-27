@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use crate::config::{Config, DEFAULT_TEXT_MODEL, MAX_SUBAGENTS};
 
-use super::{DEFAULT_WORKERS, MAX_WORKERS};
+use super::DEFAULT_WORKERS;
 
 /// Task manager startup options.
 #[derive(Debug, Clone)]

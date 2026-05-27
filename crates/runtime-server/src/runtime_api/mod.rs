@@ -55,6 +55,7 @@ pub use router::build_router;
 
 pub(crate) use sessions::ResumeTaskTracker;
 
+#[cfg(test)]
 pub(crate) use deepseek_runtime_api::cors_layer;
 
 #[derive(Clone)]

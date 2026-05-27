@@ -1,13 +1,11 @@
 //! list_dir tool.
 
 use crate::tools::spec::{
-    ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_bool, optional_str,
-    required_str,
+    ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_str,
 };
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::fs;
-use std::path::Path;
 
 pub struct ListDirTool;
 

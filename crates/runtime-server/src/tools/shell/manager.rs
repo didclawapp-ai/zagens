@@ -16,8 +16,8 @@ use std::os::unix::process::CommandExt;
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 
 use super::process::{
-    BackgroundShell, ShellChild, StdinWriter, install_parent_death_signal, kill_child_process_group,
-    prepend_sandbox_enforcement_warning, spawn_reader_thread, take_delta_from_buffer, tail_text,
+    BackgroundShell, ShellChild, StdinWriter, install_parent_death_signal,
+    prepend_sandbox_enforcement_warning, spawn_reader_thread,
 };
 use super::types::{
     ShellDeltaResult, ShellJobDetail, ShellJobSnapshot, ShellResult, ShellStatus,

@@ -20,17 +20,21 @@ mod tools;
 mod types;
 
 pub use deepseek_core::subagent::{
-    MailboxMessage, StructuredVerdict, SubAgentAssignment, SubAgentResult, SubAgentStatus,
-    SubAgentType, VerdictLevel,
+    SubAgentResult, SubAgentStatus, SubAgentType, VerdictLevel,
+};
+#[cfg(test)]
+pub(crate) use deepseek_core::subagent::{
+    MailboxMessage, StructuredVerdict, SubAgentAssignment,
 };
 #[cfg(test)]
 pub use deepseek_core::subagent::VerdictItem;
 #[allow(unused_imports)]
 pub use mailbox::{Mailbox, MailboxEnvelope, MailboxReceiver};
 
-pub use constants::{WHALE_NICKNAMES, whale_nickname_for_index};
 pub use factory::{SharedSubAgentManager, new_shared_subagent_manager};
-pub use prompts::{subagent_allowed_tools, subagent_system_prompt};
+#[cfg(test)]
+#[allow(deprecated)]
+pub(crate) use prompts::{subagent_allowed_tools, subagent_system_prompt};
 pub use router::resolve_subagent_assignment_route;
 pub use runtime::{SubAgentCompletion, SubAgentRuntime};
 pub use types::DEFAULT_MAX_SPAWN_DEPTH;

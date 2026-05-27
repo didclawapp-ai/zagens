@@ -1,28 +1,23 @@
 use std::time::Duration;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
-use deepseek_core::subagent::{SubAgentAssignment, SubAgentResult, SubAgentStatus, SubAgentType};
+use deepseek_core::subagent::{SubAgentStatus, SubAgentType};
 use crate::tools::spec::{
-    ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
-    optional_bool, optional_u64, required_str,
+    ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_u64,
 };
 
-use super::super::constants::*;
 use super::super::deprecation::wrap_with_deprecation_notice;
 use super::super::factory::SharedSubAgentManager;
 use super::super::parse::parse_spawn_request;
-use super::super::registry::summarize_subagent_result;
 use super::super::parse::configured_model_for_role_or_type;
 use super::super::resident::{release_resident_file_lease, try_claim_resident_file_lease, upgrade_pending_resident_lease};
 use super::super::router::resolve_subagent_assignment_route;
 use super::super::runtime::SubAgentRuntime;
 use super::super::types::SubAgentSpawnOptions;
-use super::super::constants::whale_nickname_for_index;
 
 /// Tool to spawn a background sub-agent.
 pub struct AgentSpawnTool {

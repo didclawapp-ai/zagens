@@ -1,42 +1,29 @@
-use std::collections::{HashMap, VecDeque};
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::collections::VecDeque;
 use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow};
-use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
-use tokio::sync::{Mutex, RwLock, mpsc};
-use tokio::task::JoinHandle;
-use tokio_util::sync::CancellationToken;
-use uuid::Uuid;
+use serde_json::json;
+use tokio::sync::{Mutex, mpsc};
 
-use crate::config::MAX_SUBAGENTS;
 use deepseek_core::events::Event;
-use crate::models::{ContentBlock, Message, MessageRequest, SystemPrompt, Tool};
-use crate::tools::plan::{PlanState, SharedPlanState};
-use crate::tools::registry::{ToolRegistry, ToolRegistryBuilder};
-use crate::tools::spec::{
-    ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
-    optional_bool, optional_u64, required_str,
-};
-use crate::tools::todo::{SharedTodoList, TodoList};
-use crate::utils::spawn_supervised;
+use crate::models::{ContentBlock, Message, MessageRequest, SystemPrompt};
+use crate::tools::plan::PlanState;
+use crate::tools::spec::ToolError;
+use crate::tools::todo::TodoList;
 
 use super::blackboard::{read_blackboard_section, write_blackboard_partition};
 use deepseek_core::subagent::{
-    MailboxMessage, StructuredVerdict, SubAgentAssignment, SubAgentResult, SubAgentStatus,
-    SubAgentType, VerdictLevel,
+    MailboxMessage, SubAgentAssignment, SubAgentResult, SubAgentStatus,
+    SubAgentType,
 };
-use super::mailbox::{Mailbox, MailboxEnvelope, MailboxReceiver};
+use super::mailbox::Mailbox;
 
 use super::constants::*;
 use super::prompts::{build_subagent_system_prompt, parse_structured_verdict};
 use super::registry::{SubAgentToolRegistry, summarize_subagent_result};
 use super::resident::release_resident_leases_for;
-use super::runtime::{SubAgent, SubAgentRuntime};
+use super::runtime::SubAgentRuntime;
 use super::parse::build_assignment_prompt;
 use super::factory::SharedSubAgentManager;
 use super::runtime::SubAgentCompletion;

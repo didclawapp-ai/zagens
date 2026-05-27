@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 
-use super::{CompactThreadRequest, RuntimeThreadManager, SteerTurnRequest, TurnRecord};
+use super::{CompactThreadRequest, RuntimeThreadManager, TurnRecord};
 
 impl RuntimeThreadManager {
     pub async fn compact_thread(

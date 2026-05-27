@@ -1,12 +1,12 @@
 //! web.run ToolSpec implementation.
 
 use super::page::{
-    check_network_policy, fetch_page, find_in_page, render_view, resolve_or_fetch_page,
+    find_in_page, render_view, resolve_or_fetch_page,
     screenshot_page,
 };
-use super::search::{page_from_search, run_bing_search, run_image_search, run_search};
+use super::search::{page_from_search, run_image_search, run_search};
 use super::state::{get_page, scoped_ref_prefix, store_page, with_state};
-use super::types::{ImageResultEntry, ImageQueryResult, PageViewResult, ResponseLength, SearchResult, WebLink, WebPage, WebRunOutput};
+use super::types::{ImageQueryResult, ResponseLength, SearchResult, WebRunOutput};
 use super::{DEFAULT_OPEN_TIMEOUT_MS, DEFAULT_TIMEOUT_MS, MAX_RESULTS};
 use crate::tools::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,

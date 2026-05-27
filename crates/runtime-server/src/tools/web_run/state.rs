@@ -1,8 +1,7 @@
 //! In-memory web.run session and page store.
 
-use super::types::{StoredWebPage, WebPage, WebRunSessionState, WebRunState};
+use super::types::{StoredWebPage, WebPage, WebRunState};
 use super::{MAX_PAGES_PER_SESSION, MAX_WEB_RUN_SESSIONS, WEB_RUN_SESSION_TTL};
-use std::collections::{HashMap, VecDeque};
 use std::hash::{Hash, Hasher};
 use std::sync::{Mutex, OnceLock};
 use std::time::Instant;

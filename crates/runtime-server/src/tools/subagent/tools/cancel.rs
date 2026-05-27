@@ -1,19 +1,13 @@
-use std::path::PathBuf;
-use std::sync::Arc;
 
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
-use deepseek_core::subagent::{SubAgentAssignment, SubAgentResult, SubAgentStatus, SubAgentType};
 use crate::tools::spec::{
-    ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
-    optional_bool, optional_u64, required_str,
+    ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, required_str,
 };
 
-use super::super::deprecation::wrap_with_deprecation_notice;
 use super::super::factory::SharedSubAgentManager;
-use super::super::runtime::SubAgentRuntime;
 
 pub struct AgentCancelTool {
     manager: SharedSubAgentManager,

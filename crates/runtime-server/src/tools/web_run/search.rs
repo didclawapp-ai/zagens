@@ -1,11 +1,11 @@
 //! Web search backends (DuckDuckGo, Bing, image query).
 
 use super::html::{
-    is_duckduckgo_challenge, normalize_bing_url, normalize_search_url, parse_bing_results,
+    is_duckduckgo_challenge, parse_bing_results,
     parse_duckduckgo_results, url_encode,
 };
 use super::types::{ImageResultEntry, SearchEntry, WebLink, WebPage};
-use super::{MAX_RESULTS, USER_AGENT};
+use super::USER_AGENT;
 use crate::tools::spec::ToolError;
 use serde::Deserialize;
 use std::time::Duration;

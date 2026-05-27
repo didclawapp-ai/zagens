@@ -6,13 +6,12 @@ use crate::tools::spec::{
     lsp_diagnostics_for_paths, optional_bool, optional_str, optional_u64, required_str,
 };
 use super::write::{
-    check_jsx_balance, find_match_line_numbers, jsx_balance_warning, make_compact_change,
+    find_match_line_numbers, jsx_balance_warning, make_compact_change,
     normalize_line_endings,
 };
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::fs;
-use std::path::Path;
 
 /// Tool for search/replace editing of files.
 pub struct EditFileTool;

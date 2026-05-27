@@ -11,7 +11,7 @@ use serde_json::json;
 use tokio::sync::{Mutex, Semaphore};
 
 use crate::runtime_threads::CreateThreadRequest;
-use crate::session_manager::{SavedSession, SessionMetadata};
+use crate::session_manager::SavedSession;
 
 use deepseek_runtime_api::{
     ResumeSessionResponse, SessionDetailResponse, SessionsListResponse, ApiError,
