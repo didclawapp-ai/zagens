@@ -48,5 +48,5 @@ Linux/macOS：`scripts/export-runtime-openapi.sh` + 同上 `generate:api-types`�
 ## 后续
 
 - 将 `types/automation.ts`、`types/mcp.ts` 等逐步改为从 `runtimeTypes` / `generated` 引用。
-- CI 可加 `git diff` 守卫（见 `.github/workflows/ci.yml` 可选步骤）。
+- CI：`export-runtime-openapi` + `generate:api-types` diff 守卫（`.github/workflows/ci.yml` · D16 E5）；本地 `./scripts/check-openapi-contract.{sh,ps1}`。
 - `/v2` 版本策略：[`V2_API_VERSIONING.md`](./V2_API_VERSIONING.md)。

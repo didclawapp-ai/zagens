@@ -90,11 +90,24 @@ jobs:
         run: ./scripts/runtime-longrun-baseline.ps1 -DryRun -Runs 3
       - name: Lockfile drift guard
         run: git diff --exit-code -- Cargo.lock
-      - name: OpenAPI spec drift (D8)
+      - name: OpenAPI contract (D8 / D16 E5)
         if: matrix.os == 'ubuntu-latest'
         run: |
           cargo run -p deepseek-runtime-server --locked --bin export-runtime-openapi
           git diff --exit-code -- docs/tech/openapi/zagens-runtime-v1.openapi.json
+      - uses: actions/setup-node@v4
+        if: matrix.os == 'ubuntu-latest'
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: crates/desktop/web-ui/package-lock.json
+      - name: OpenAPI TS types drift (D8 / D16 E5)
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: crates/desktop/web-ui
+        run: |
+          npm ci --include=dev
+          npm run generate:api-types
+          git diff --exit-code -- src/api/generated/runtime-api.ts
 
   # Check documentation builds without warnings
   docs:

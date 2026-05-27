@@ -1235,6 +1235,57 @@ export type components = {
             /** Format: uint32 */
             readonly max_tokens?: number | null;
         };
+        readonly RoutingRule: {
+            readonly intent: string;
+            readonly model: string;
+        };
+        /** RoutingRulesDoc */
+        readonly RoutingRulesDoc: {
+            readonly rules: readonly components["schemas"]["RoutingRule"][];
+        };
+        readonly UsageTotals: {
+            /** Format: uint64 */
+            readonly input_tokens: number;
+            /** Format: uint64 */
+            readonly output_tokens: number;
+            /** Format: uint64 */
+            readonly cached_tokens: number;
+            /** Format: uint64 */
+            readonly reasoning_tokens: number;
+            /** Format: double */
+            readonly cost_usd: number;
+            /** Format: uint64 */
+            readonly turns: number;
+        };
+        readonly UsageBucket: {
+            readonly key: string;
+            /** Format: uint64 */
+            readonly input_tokens: number;
+            /** Format: uint64 */
+            readonly output_tokens: number;
+            /** Format: uint64 */
+            readonly cached_tokens: number;
+            /** Format: uint64 */
+            readonly reasoning_tokens: number;
+            /** Format: double */
+            readonly cost_usd: number;
+            /** Format: uint64 */
+            readonly turns: number;
+        };
+        /** UsageAggregation */
+        readonly UsageAggregation: {
+            /** Format: date-time */
+            readonly since?: string | null;
+            /** Format: date-time */
+            readonly until?: string | null;
+            readonly group_by: string;
+            readonly totals: components["schemas"]["UsageTotals"];
+            readonly buckets: readonly components["schemas"]["UsageBucket"][];
+        };
+        /** ErrorBody */
+        readonly ErrorBody: {
+            readonly error: string;
+        };
         /**
          * TaskStatus
          * @description Durable task status.
@@ -1316,57 +1367,6 @@ export type components = {
         readonly TasksResponse: {
             readonly tasks: readonly components["schemas"]["TaskSummary"][];
             readonly counts: components["schemas"]["TaskCounts"];
-        };
-        readonly RoutingRule: {
-            readonly intent: string;
-            readonly model: string;
-        };
-        /** RoutingRulesDoc */
-        readonly RoutingRulesDoc: {
-            readonly rules: readonly components["schemas"]["RoutingRule"][];
-        };
-        readonly UsageTotals: {
-            /** Format: uint64 */
-            readonly input_tokens: number;
-            /** Format: uint64 */
-            readonly output_tokens: number;
-            /** Format: uint64 */
-            readonly cached_tokens: number;
-            /** Format: uint64 */
-            readonly reasoning_tokens: number;
-            /** Format: double */
-            readonly cost_usd: number;
-            /** Format: uint64 */
-            readonly turns: number;
-        };
-        readonly UsageBucket: {
-            readonly key: string;
-            /** Format: uint64 */
-            readonly input_tokens: number;
-            /** Format: uint64 */
-            readonly output_tokens: number;
-            /** Format: uint64 */
-            readonly cached_tokens: number;
-            /** Format: uint64 */
-            readonly reasoning_tokens: number;
-            /** Format: double */
-            readonly cost_usd: number;
-            /** Format: uint64 */
-            readonly turns: number;
-        };
-        /** UsageAggregation */
-        readonly UsageAggregation: {
-            /** Format: date-time */
-            readonly since?: string | null;
-            /** Format: date-time */
-            readonly until?: string | null;
-            readonly group_by: string;
-            readonly totals: components["schemas"]["UsageTotals"];
-            readonly buckets: readonly components["schemas"]["UsageBucket"][];
-        };
-        /** ErrorBody */
-        readonly ErrorBody: {
-            readonly error: string;
         };
     };
     responses: never;

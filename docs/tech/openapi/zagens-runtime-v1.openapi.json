@@ -3,7 +3,7 @@
   "info": {
     "title": "Zagens Runtime HTTP API",
     "version": "1.0.0",
-    "description": "Local sidecar (`deepseek-runtime`) HTTP/SSE surface consumed by Zagens desktop web-ui. SSOT routes: `crates/tui/src/runtime_api/router.rs`."
+    "description": "Local sidecar (`deepseek-runtime`) HTTP/SSE surface consumed by Zagens desktop web-ui. SSOT routes: `crates/runtime-api/src/openapi/paths.rs`."
   },
   "servers": [
     {
@@ -957,6 +957,176 @@
           "prompt"
         ]
       },
+      "RoutingRule": {
+        "type": "object",
+        "properties": {
+          "intent": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "intent",
+          "model"
+        ]
+      },
+      "RoutingRulesDoc": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "RoutingRulesDoc",
+        "type": "object",
+        "properties": {
+          "rules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoutingRule"
+            }
+          }
+        },
+        "required": [
+          "rules"
+        ]
+      },
+      "UsageTotals": {
+        "type": "object",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "output_tokens": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "cached_tokens": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "reasoning_tokens": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "cost_usd": {
+            "type": "number",
+            "format": "double"
+          },
+          "turns": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "input_tokens",
+          "output_tokens",
+          "cached_tokens",
+          "reasoning_tokens",
+          "cost_usd",
+          "turns"
+        ]
+      },
+      "UsageBucket": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "input_tokens": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "output_tokens": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "cached_tokens": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "reasoning_tokens": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "cost_usd": {
+            "type": "number",
+            "format": "double"
+          },
+          "turns": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "key",
+          "input_tokens",
+          "output_tokens",
+          "cached_tokens",
+          "reasoning_tokens",
+          "cost_usd",
+          "turns"
+        ]
+      },
+      "UsageAggregation": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "UsageAggregation",
+        "type": "object",
+        "properties": {
+          "since": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "until": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "group_by": {
+            "type": "string"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/UsageTotals"
+          },
+          "buckets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UsageBucket"
+            }
+          }
+        },
+        "required": [
+          "group_by",
+          "totals",
+          "buckets"
+        ]
+      },
+      "ErrorBody": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "ErrorBody",
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
       "TaskStatus": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "TaskStatus",
@@ -1214,176 +1384,6 @@
         "required": [
           "tasks",
           "counts"
-        ]
-      },
-      "RoutingRule": {
-        "type": "object",
-        "properties": {
-          "intent": {
-            "type": "string"
-          },
-          "model": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "intent",
-          "model"
-        ]
-      },
-      "RoutingRulesDoc": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "title": "RoutingRulesDoc",
-        "type": "object",
-        "properties": {
-          "rules": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RoutingRule"
-            }
-          }
-        },
-        "required": [
-          "rules"
-        ]
-      },
-      "UsageTotals": {
-        "type": "object",
-        "properties": {
-          "input_tokens": {
-            "type": "integer",
-            "format": "uint64",
-            "minimum": 0
-          },
-          "output_tokens": {
-            "type": "integer",
-            "format": "uint64",
-            "minimum": 0
-          },
-          "cached_tokens": {
-            "type": "integer",
-            "format": "uint64",
-            "minimum": 0
-          },
-          "reasoning_tokens": {
-            "type": "integer",
-            "format": "uint64",
-            "minimum": 0
-          },
-          "cost_usd": {
-            "type": "number",
-            "format": "double"
-          },
-          "turns": {
-            "type": "integer",
-            "format": "uint64",
-            "minimum": 0
-          }
-        },
-        "required": [
-          "input_tokens",
-          "output_tokens",
-          "cached_tokens",
-          "reasoning_tokens",
-          "cost_usd",
-          "turns"
-        ]
-      },
-      "UsageBucket": {
-        "type": "object",
-        "properties": {
-          "key": {
-            "type": "string"
-          },
-          "input_tokens": {
-            "type": "integer",
-            "format": "uint64",
-            "minimum": 0
-          },
-          "output_tokens": {
-            "type": "integer",
-            "format": "uint64",
-            "minimum": 0
-          },
-          "cached_tokens": {
-            "type": "integer",
-            "format": "uint64",
-            "minimum": 0
-          },
-          "reasoning_tokens": {
-            "type": "integer",
-            "format": "uint64",
-            "minimum": 0
-          },
-          "cost_usd": {
-            "type": "number",
-            "format": "double"
-          },
-          "turns": {
-            "type": "integer",
-            "format": "uint64",
-            "minimum": 0
-          }
-        },
-        "required": [
-          "key",
-          "input_tokens",
-          "output_tokens",
-          "cached_tokens",
-          "reasoning_tokens",
-          "cost_usd",
-          "turns"
-        ]
-      },
-      "UsageAggregation": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "title": "UsageAggregation",
-        "type": "object",
-        "properties": {
-          "since": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time"
-          },
-          "until": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time"
-          },
-          "group_by": {
-            "type": "string"
-          },
-          "totals": {
-            "$ref": "#/components/schemas/UsageTotals"
-          },
-          "buckets": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/UsageBucket"
-            }
-          }
-        },
-        "required": [
-          "group_by",
-          "totals",
-          "buckets"
-        ]
-      },
-      "ErrorBody": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "title": "ErrorBody",
-        "type": "object",
-        "properties": {
-          "error": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "error"
         ]
       }
     }
