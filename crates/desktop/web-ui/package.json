@@ -9,6 +9,7 @@
     "generate:api-types": "node ../../../scripts/generate-web-ui-api-types.mjs",
     "test:a+.3": "tsx src/api/streamNormalize.selfcheck.ts",
     "test:f3": "tsx src/lib/a11y/rovingTabList.selfcheck.ts",
+    "test:i18n-locale": "tsx src/i18n/localeDetect.selfcheck.ts",
     "build:analyze": "tsc -b && vite build --mode analyze",
     "preview": "vite preview"
   },

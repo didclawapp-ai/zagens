@@ -14,12 +14,20 @@ type Widen<T> = {
 /** Shape all locale files must conform to (same key structure as zh-Hans, values are `string`). */
 export type TranslationMap = Widen<typeof zhHans>;
 
-export type Locale = 'zh-Hans' | 'en';
+export type Locale = 'zh-Hans' | 'en' | 'ja' | 'pt-BR';
+
+/** Locales with a shipped desktop Web UI translation pack. */
+export const SUPPORTED_LOCALES: readonly Locale[] = ['zh-Hans', 'en', 'ja', 'pt-BR'];
+
+/** Fallback when no stored preference and no system locale matches a pack. */
+export const DEFAULT_LOCALE: Locale = 'en';
 
 /** Locale display names for UI selectors. */
 export const LOCALE_LABELS: Record<Locale, string> = {
   'zh-Hans': '中文',
   en: 'English',
+  ja: '日本語',
+  'pt-BR': 'Português (Brasil)',
 };
 
 // ── deep dot-path key type (simplified, depth-limited to 3) ────────

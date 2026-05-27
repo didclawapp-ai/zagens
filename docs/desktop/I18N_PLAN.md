@@ -1,6 +1,6 @@
 # Zagens 多语言方案
 
-> 状态：草案  
+> 状态：Phase 2 已落地（zh-Hans / en / ja / pt-BR）
 > 日期：2026-05-14  
 > 作者：AI Assistant（经 Hmbown 审核）  
 > 范围：`crates/desktop/web-ui/`
@@ -11,8 +11,9 @@
 
 为 Zagens 桌面端增加中英文切换能力，后续可扩展其他语言。
 
-- **Phase 1**（本期）：简体中文（zh-Hans）+ 英语（en）
-- **Phase 2**（后续）：日语、韩语等按需添加
+- **Phase 1**（已完成）：简体中文（zh-Hans）+ 英语（en）
+- **Phase 2**（已完成）：日语（ja）、巴西葡萄牙语（pt-BR）— 与 Runtime/TUI 已有 locale 对齐
+- **Phase 3**（后续）：韩语、繁体中文等按需添加
 
 ## 2. 现状分析
 
@@ -203,20 +204,17 @@ export type TranslationParams<K extends TranslationKey> = /* ... */;
 #### 3.2.5 语言检测与持久化
 
 ```
-优先级：localStorage > 系统语言（navigator.language）> 默认 zh-Hans
+优先级：localStorage（用户手动选择）> navigator.languages / navigator.language > 默认 en
 ```
 
+未提供语言包的语言（如 zh-TW、de、fr）回退到 **English**，不再默认简体中文。
+
 ```typescript
-// utils.ts
-export function detectLocale(): Locale {
-  const stored = localStorage.getItem('ds-pick-locale');
-  if (stored === 'zh-Hans' || stored === 'en') return stored;
-
-  const nav = navigator.language;
-  if (nav.startsWith('zh')) return 'zh-Hans';
-
-  return 'zh-Hans'; // 默认
-}
+// utils.ts — 系统语言匹配示例
+matchLocaleFromTag('zh-CN')  // → 'zh-Hans'
+matchLocaleFromTag('zh-TW')  // → null（无繁体包 → 最终 en）
+matchLocaleFromTag('ja-JP')  // → 'ja'
+matchLocaleFromTag('de-DE')  // → null → en
 ```
 
 ### 3.3 动态文本（模板字符串）处理策略

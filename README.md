@@ -64,7 +64,7 @@ Features you interact with in the **v0.5.0** window (see [CHANGELOG.md](CHANGELO
 | **Agents** | Sub-agent status panel (SSE); checklist sidebar when the model uses `checklist_write` |
 | **Tasks & skills** | Background tasks + skill create/import/install UI; **scheduled automation list hidden** (API retained) |
 | **Settings rail** | MCP panel, routing rules UI, usage/cost charts, model health, system settings (API key via keyring, vision, sub-agent limits) |
-| **Shell** | System tray, native notifications when minimized, zh-Hans + English UI ([I18N plan](docs/desktop/I18N_PLAN.md)) |
+| **Shell** | System tray, native notifications when minimized, zh-Hans / en / ja / pt-BR UI ([I18N plan](docs/desktop/I18N_PLAN.md)) |
 
 **Not desktop-parity yet (runtime may still support):** rich slash-command palette, per-message edit, “open in Explorer”, some advanced thread ops — see [TUI_DS_PICK_GAP.md](docs/desktop/TUI_DS_PICK_GAP.md).
 
@@ -310,7 +310,7 @@ DS-Pick/
 │   │   │   │   ├── api/        # Runtime API client (SSE, REST)
 │   │   │   │   ├── components/ # Chat, preview, terminal, diff, panels
 │   │   │   │   ├── hooks/      # React hooks
-│   │   │   │   ├── i18n/       # Internationalization (zh-Hans, en)
+│   │   │   │   ├── i18n/       # Internationalization (zh-Hans, en, ja, pt-BR)
 │   │   │   │   ├── lib/        # Utilities
 │   │   │   │   ├── styles/     # Tailwind + custom styles
 │   │   │   │   └── types/      # TypeScript type definitions
@@ -429,7 +429,7 @@ Embedded agent runtime is **third-party MIT code** — [third-party/deepseek-tui
 
 ## Zagens 桌面端
 
-**v0.5.0** 窗口内已具备：多会话聊天（流式/停止/思考/上下文条）、工作区预览与 **diff2html**、会话回放、子代理与清单侧栏、任务与技能（**定时自动化列表未展示**）、MCP/路由/用量/系统设置、托盘与通知、中/英 UI。
+**v0.5.0** 窗口内已具备：多会话聊天（流式/停止/思考/上下文条）、工作区预览与 **diff2html**、会话回放、子代理与清单侧栏、任务与技能（**定时自动化列表未展示**）、MCP/路由/用量/系统设置、托盘与通知、中/英/日/葡 UI。
 
 尚未完全对齐的交互见 [TUI_DS_PICK_GAP.md](docs/desktop/TUI_DS_PICK_GAP.md)。
 

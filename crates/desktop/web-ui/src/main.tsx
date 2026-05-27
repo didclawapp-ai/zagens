@@ -14,7 +14,7 @@ async function bootstrap() {
   await initWindowContext();
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
-      <I18nProvider defaultLocale="zh-Hans">
+      <I18nProvider>
         <ToastProvider>
           <App />
         </ToastProvider>

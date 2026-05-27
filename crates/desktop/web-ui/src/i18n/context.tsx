@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { Locale, TranslationMap } from './keys';
-import { LOCALE_LABELS } from './keys';
+import { DEFAULT_LOCALE, LOCALE_LABELS } from './keys';
 import { detectLocale, interpolate, lookup, persistLocale } from './utils';
 
 // ── lazy-load locale packs (Vite tree-shakes unused) ────────────────
@@ -8,6 +8,8 @@ import { detectLocale, interpolate, lookup, persistLocale } from './utils';
 const localeLoaders: Record<Locale, () => Promise<{ default: TranslationMap }>> = {
   'zh-Hans': () => import('./locales/zh-Hans'),
   en: () => import('./locales/en'),
+  ja: () => import('./locales/ja'),
+  'pt-BR': () => import('./locales/pt-BR'),
 };
 
 // ── context shape ───────────────────────────────────────────────────
@@ -31,7 +33,7 @@ export function I18nProvider({
   children: React.ReactNode;
   defaultLocale?: Locale;
 }) {
-  const [locale, setLocaleState] = useState<Locale>(() => detectLocale(defaultLocale ?? 'zh-Hans'));
+  const [locale, setLocaleState] = useState<Locale>(() => detectLocale(defaultLocale ?? DEFAULT_LOCALE));
   const [messages, setMessages] = useState<TranslationMap | null>(null);
   const [pending, setPending] = useState(true);
 
