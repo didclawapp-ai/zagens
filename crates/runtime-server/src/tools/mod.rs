@@ -2,7 +2,7 @@
 
 pub mod apply_patch;
 pub mod approval_cache;
-pub mod arg_repair;
+pub use deepseek_runtime_adapters::tools::arg_repair;
 pub mod automation;
 pub mod describe_image;
 pub mod diagnostics;
@@ -46,7 +46,7 @@ pub mod user_input;
 pub mod validate_data;
 pub mod web_run;
 pub mod web_search;
-mod workspace_walk;
+pub use deepseek_runtime_adapters::tools::workspace_walk;
 
 pub use registry::{ToolRegistry, ToolRegistryBuilder};
 pub use spec::ToolContext;

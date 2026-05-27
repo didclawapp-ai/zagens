@@ -435,7 +435,7 @@ sequenceDiagram
 | HTTP 路由表 + Bearer 中间件 | [`crates/runtime-server/src/runtime_api/router.rs`](../../crates/runtime-server/src/runtime_api/router.rs) + [`crates/runtime-api/src/auth.rs`](../../crates/runtime-api/src/auth.rs) |
 | SSE handlers | [`crates/runtime-server/src/runtime_api/stream.rs`](../../crates/runtime-server/src/runtime_api/stream.rs) |
 | HTTP server 装配 | [`crates/runtime-server/src/runtime_serve/http.rs`](../../crates/runtime-server/src/runtime_serve/http.rs)（`run_http_server`） · handler 接线 [`runtime_api/mod.rs`](../../crates/runtime-server/src/runtime_api/mod.rs) |
-| Tool host 端口 / 纯工具 helper | [`crates/runtime-adapters/src/tools/`](../../crates/runtime-adapters/src/tools/) | `RuntimeToolHostWire`、`ToolShellEnvHost`、`diff_format`、`schema_sanitize`（D16 E1-a3） |
+| Tool host 端口 / 纯工具 helper | [`crates/runtime-adapters/src/tools/`](../../crates/runtime-adapters/src/tools/) | `RuntimeToolHostWire`、`ToolTaskHost`、`workspace_walk`、`arg_repair`、`diff_format`、`schema_sanitize`（D16 E1-a3–a5） |
 | 线程管理 / LRU / broadcast | [`crates/runtime-server/src/runtime_threads/manager.rs`](../../crates/runtime-server/src/runtime_threads/manager.rs) |
 | 持久化（事件/线程） | [`crates/runtime-server/src/runtime_threads/persist.rs`](../../crates/runtime-server/src/runtime_threads/persist.rs) + [`monitor.rs`](../../crates/runtime-server/src/runtime_threads/monitor.rs) |
 | Engine struct + op loop (core) | [`crates/core/src/engine/runtime.rs`](../../crates/core/src/engine/runtime.rs) · [`op_loop.rs`](../../crates/core/src/engine/op_loop.rs) |

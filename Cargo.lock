@@ -1428,6 +1428,7 @@ dependencies = [
  "deepseek-protocol",
  "dirs",
  "futures-util",
+ "ignore",
  "reqwest",
  "rusqlite",
  "schemars 1.2.1",
