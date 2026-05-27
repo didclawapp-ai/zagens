@@ -7,6 +7,10 @@ use schemars::Schema;
 use serde_json::{json, Map, Value};
 
 pub use paths::{build_paths, path_template_count};
+pub use schemas::{
+    ResumeSessionResponse, SessionDetailResponse, SessionsListResponse, StartTurnResponse,
+    StreamTurnRequest, ThreadSummary,
+};
 pub use schemas::SCHEMA_EXPORTS;
 
 fn rewrite_refs(value: &mut Value) {

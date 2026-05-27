@@ -13,7 +13,11 @@ use tokio::sync::{Mutex, Semaphore};
 use crate::runtime_threads::CreateThreadRequest;
 use crate::session_manager::{SavedSession, SessionMetadata};
 
-use super::{ApiError, RuntimeApiState};
+use deepseek_runtime_api::{
+    ResumeSessionResponse, SessionDetailResponse, SessionsListResponse, ApiError,
+};
+
+use super::RuntimeApiState;
 
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct ResumeTaskState {
@@ -85,32 +89,12 @@ impl ResumeTaskTracker {
     }
 }
 
-#[derive(Debug, Serialize)]
-pub(crate) struct SessionsResponse {
-    sessions: Vec<SessionMetadata>,
-}
-
-#[derive(Debug, Serialize)]
-pub(crate) struct SessionDetailResponse {
-    metadata: SessionMetadata,
-    messages: Vec<serde_json::Value>,
-    system_prompt: Option<String>,
-}
-
 #[derive(Debug, Deserialize)]
 pub(crate) struct ResumeSessionRequest {
     model: Option<String>,
     mode: Option<String>,
     #[serde(default)]
     task_type: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-pub(crate) struct ResumeSessionResponse {
-    thread_id: String,
-    session_id: String,
-    message_count: usize,
-    state: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -122,7 +106,7 @@ pub(crate) struct SessionsQuery {
 pub(crate) async fn list_sessions(
     State(state): State<RuntimeApiState>,
     Query(query): Query<SessionsQuery>,
-) -> Result<Json<SessionsResponse>, ApiError> {
+) -> Result<Json<SessionsListResponse>, ApiError> {
     let manager = state.shared_session_manager.clone();
     let search = query.search.clone();
     let limit = query.limit.unwrap_or(50).clamp(1, 500);
@@ -141,7 +125,7 @@ pub(crate) async fn list_sessions(
     .map_err(|e| ApiError::internal(format!("session list task panicked: {e}")))?
     .map_err(|e: String| ApiError::internal(e))?;
     sessions.truncate(limit);
-    Ok(Json(SessionsResponse { sessions }))
+    Ok(Json(SessionsListResponse { sessions }))
 }
 
 pub(crate) async fn get_session(

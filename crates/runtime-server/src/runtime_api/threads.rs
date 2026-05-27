@@ -21,26 +21,10 @@ use crate::runtime_threads::{
 use crate::session_manager::{create_saved_session_with_mode, update_session, SavedSession};
 use crate::snapshot::SnapshotRepo;
 
+use deepseek_runtime_api::{StartTurnResponse, ThreadSummary};
+
 use super::{map_thread_err, truncate_text, ApiError, ResolveApprovalRequest, RuntimeApiState};
 
-#[derive(Debug, Serialize)]
-pub(crate) struct ThreadSummary {
-    id: String,
-    title: String,
-    preview: String,
-    model: String,
-    mode: String,
-    archived: bool,
-    updated_at: chrono::DateTime<Utc>,
-    latest_turn_id: Option<String>,
-    latest_turn_status: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-pub(crate) struct StartTurnResponse {
-    thread: ThreadRecord,
-    turn: TurnRecord,
-}
 #[derive(Debug, Deserialize)]
 pub(crate) struct ThreadsQuery {
     limit: Option<usize>,
@@ -288,7 +272,7 @@ pub(crate) async fn list_threads_summary(
             model: thread.model,
             mode: thread.mode,
             archived: thread.archived,
-            updated_at: thread.updated_at,
+            updated_at: thread.updated_at.to_rfc3339(),
             latest_turn_id: thread.latest_turn_id,
             latest_turn_status: latest_status,
         });
