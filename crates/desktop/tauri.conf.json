@@ -32,7 +32,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost http://ipc.localhost:* http://127.0.0.1:* http://localhost:* http://tauri.localhost https://tauri.localhost http://tauri.localhost:* https://tauri.localhost:* ws://localhost:* wss://localhost:* ws://127.0.0.1:* wss://127.0.0.1:*; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data: blob:; font-src 'self' data: blob: http://localhost:* http://127.0.0.1:* https://tauri.localhost http://tauri.localhost"
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost http://ipc.localhost:* http://127.0.0.1:* http://localhost:* http://tauri.localhost https://tauri.localhost http://tauri.localhost:* https://tauri.localhost:* https://zagens.com https://*.zagens.com ws://localhost:* wss://localhost:* ws://127.0.0.1:* wss://127.0.0.1:*; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data: blob:; font-src 'self' data: blob: http://localhost:* http://127.0.0.1:* https://tauri.localhost http://tauri.localhost"
     }
   },
   "bundle": {
@@ -49,6 +49,16 @@
     "externalBin": ["binaries/zagens-runtime"],
     "resources": {
       "binaries/python-standalone/python-install": "python/"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://zagens.com/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "basicUi"
+      }
     }
   }
 }

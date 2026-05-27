@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Desktop
 
+- **OTA（预埋）：** Tauri updater endpoint 指向 `https://zagens.com/download/latest.json`（官网未上线；`pubkey` / `tauri-plugin-updater` / CI 签名待后续接入）；CSP `connect-src` 放行 `zagens.com`。
 - **i18n:** 桌面 Web UI 按系统语言自动选择界面语言（`navigator.languages` 优先）；无对应语言包时默认 **English**；用户曾在设置中手动选择的语言仍优先（localStorage）。
 - **Fix:** 多窗口 — 活跃会话 `localStorage` 按窗口 label 隔离（`deepseek-desktop-active-session-id:{label}`）；新建第二窗口不再自动恢复第一窗口的会话；主窗口一次性迁移旧全局键。
 - **Fix:** 侧栏设置折叠菜单 — 接入 i18n（设置、MCP 服务器、模型路由、索引、系统设置、Sessions 等硬编码中文/英文）。
