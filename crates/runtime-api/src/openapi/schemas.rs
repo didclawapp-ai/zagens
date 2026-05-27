@@ -1,21 +1,19 @@
 //! HTTP wire types for OpenAPI `components.schemas` (D8).
 //!
-//! Prefer reusing runtime/session/task types with `JsonSchema`; local wrappers mirror
-//! `pub(crate)` handler response shapes.
+//! Task schemas remain in `deepseek-runtime-server` until `task_manager` ports land.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::core::coherence::CoherenceState;
-use crate::models::{ServerToolUsage, Usage};
-use crate::runtime_threads::{
+use deepseek_core::coherence::CoherenceState;
+use deepseek_core::models::{ServerToolUsage, Usage};
+use deepseek_runtime_adapters::persist::SessionMetadata;
+use deepseek_runtime_orchestrator::runtime_threads::{
     CreateThreadRequest, RoutingRule, RoutingRulesDoc, RuntimeTurnStatus, StartTurnRequest,
     SteerTurnRequest, ThreadDetail, ThreadRecord, TurnItemKind, TurnItemLifecycleStatus,
     TurnItemRecord, TurnRecord, UpdateThreadRequest, UsageAggregation, UsageBucket, UsageTotals,
 };
-use crate::session_manager::SessionMetadata;
-use crate::task_manager::{TaskCounts, TaskRecord, TaskSummary};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SessionsListResponse {
@@ -87,17 +85,11 @@ pub struct StartTurnResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct TasksResponse {
-    pub tasks: Vec<TaskSummary>,
-    pub counts: TaskCounts,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ErrorBody {
     pub error: String,
 }
 
-/// All named schemas exported to OpenAPI components (stable names for TS codegen).
+/// Core schemas exported to OpenAPI components (task schemas merged by sidecar).
 pub const SCHEMA_EXPORTS: &[(&str, fn() -> schemars::Schema)] = &[
     ("CoherenceState", || schemars::schema_for!(CoherenceState)),
     ("RuntimeTurnStatus", || schemars::schema_for!(RuntimeTurnStatus)),
@@ -120,10 +112,6 @@ pub const SCHEMA_EXPORTS: &[(&str, fn() -> schemars::Schema)] = &[
     ("SteerTurnRequest", || schemars::schema_for!(SteerTurnRequest)),
     ("StartTurnResponse", || schemars::schema_for!(StartTurnResponse)),
     ("StreamTurnRequest", || schemars::schema_for!(StreamTurnRequest)),
-    ("TaskRecord", || schemars::schema_for!(TaskRecord)),
-    ("TaskSummary", || schemars::schema_for!(TaskSummary)),
-    ("TasksResponse", || schemars::schema_for!(TasksResponse)),
-    ("TaskStatus", || schemars::schema_for!(crate::task_manager::TaskStatus)),
     ("RoutingRule", || schemars::schema_for!(RoutingRule)),
     ("RoutingRulesDoc", || schemars::schema_for!(RoutingRulesDoc)),
     ("UsageTotals", || schemars::schema_for!(UsageTotals)),

@@ -1443,6 +1443,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "deepseek-runtime-api"
+version = "0.8.15"
+dependencies = [
+ "deepseek-core",
+ "deepseek-protocol",
+ "deepseek-runtime-adapters",
+ "deepseek-runtime-orchestrator",
+ "pretty_assertions",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "deepseek-runtime-orchestrator"
 version = "0.8.15"
 dependencies = [
@@ -1483,6 +1497,7 @@ dependencies = [
  "deepseek-core",
  "deepseek-protocol",
  "deepseek-runtime-adapters",
+ "deepseek-runtime-api",
  "deepseek-runtime-orchestrator",
  "deepseek-secrets",
  "deepseek-tools",

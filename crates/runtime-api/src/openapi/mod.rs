@@ -1,4 +1,4 @@
-//! OpenAPI 3.1 export for Zagens runtime HTTP API (D8).
+//! OpenAPI 3.1 export for Zagens runtime HTTP API (D16 E1-c phase 1).
 
 mod paths;
 mod schemas;
@@ -45,23 +45,31 @@ fn register_schema(components: &mut Map<String, Value>, name: &str, mut schema: 
     components.insert(name.into(), schema);
 }
 
-/// Assemble the full OpenAPI document (JSON Schema 2020-12 components).
-pub fn build_openapi_value() -> Value {
-    let mut components_schemas = Map::new();
-    for (name, make_schema) in SCHEMA_EXPORTS {
+fn register_exports(
+    components: &mut Map<String, Value>,
+    exports: &[(&str, fn() -> Schema)],
+) {
+    for (name, make_schema) in exports {
         let schema: Schema = make_schema();
         let value = serde_json::to_value(&schema).unwrap_or_else(|e| {
             panic!("failed to serialize schema {name}: {e}");
         });
-        register_schema(&mut components_schemas, name, value);
+        register_schema(components, name, value);
     }
+}
+
+/// Assemble the full OpenAPI document (JSON Schema 2020-12 components).
+pub fn build_openapi_value_with(extra_schemas: &[(&str, fn() -> Schema)]) -> Value {
+    let mut components_schemas = Map::new();
+    register_exports(&mut components_schemas, SCHEMA_EXPORTS);
+    register_exports(&mut components_schemas, extra_schemas);
 
     json!({
         "openapi": "3.1.0",
         "info": {
             "title": "Zagens Runtime HTTP API",
             "version": "1.0.0",
-            "description": "Local sidecar (`deepseek-runtime`) HTTP/SSE surface consumed by Zagens desktop web-ui. SSOT routes: `crates/tui/src/runtime_api/router.rs`."
+            "description": "Local sidecar (`deepseek-runtime`) HTTP/SSE surface consumed by Zagens desktop web-ui. SSOT routes: `crates/runtime-api/src/openapi/paths.rs`."
         },
         "servers": [{ "url": "http://127.0.0.1:7878" }],
         "components": {
@@ -79,8 +87,8 @@ pub fn build_openapi_value() -> Value {
 }
 
 /// Pretty-printed OpenAPI JSON for check-in and TS codegen.
-pub fn export_openapi_json() -> String {
-    serde_json::to_string_pretty(&build_openapi_value()).expect("openapi json")
+pub fn export_openapi_json_with(extra_schemas: &[(&str, fn() -> Schema)]) -> String {
+    serde_json::to_string_pretty(&build_openapi_value_with(extra_schemas)).expect("openapi json")
 }
 
 #[cfg(test)]
@@ -107,7 +115,7 @@ mod tests {
 
     #[test]
     fn openapi_components_resolve_session_list_ref() {
-        let doc = build_openapi_value();
+        let doc = build_openapi_value_with(&[]);
         let schemas = &doc["components"]["schemas"];
         let list = &schemas["SessionsListResponse"];
         let items_ref = &list["properties"]["sessions"]["items"]["$ref"];
