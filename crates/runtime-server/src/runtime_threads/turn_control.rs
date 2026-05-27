@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::core::ops::Op;
 
-use super::active::{ActiveTurnState, touch_lru};
+use super::{ActiveTurnState, touch_lru};
 use super::*;
 
 impl RuntimeThreadManager {

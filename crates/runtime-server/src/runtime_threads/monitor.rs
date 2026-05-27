@@ -12,7 +12,7 @@ use crate::core::events::{Event as EngineEvent, TurnOutcomeStatus, TurnSummary};
 use crate::models::Usage;
 use crate::tools::subagent::SubAgentStatus;
 
-use super::active::{touch_lru, PendingApproval, RuntimeApprovalDecision};
+use super::{PendingApproval, RuntimeApprovalDecision, touch_lru};
 use super::persist::duration_ms;
 use super::types::*;
 use super::{

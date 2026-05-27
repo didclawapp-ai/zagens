@@ -2,7 +2,7 @@
 
 use deepseek_core::engine::{StartTurnParams, TurnEnginePort};
 
-use super::active::{ActiveTurnState, touch_lru};
+use super::{ActiveTurnState, touch_lru};
 use super::manager::parse_mode;
 use super::*;
 

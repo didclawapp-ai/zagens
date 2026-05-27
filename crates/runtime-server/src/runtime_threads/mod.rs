@@ -28,14 +28,27 @@ pub use deepseek_runtime_orchestrator::runtime_threads::{
 };
 pub use deepseek_runtime_orchestrator::runtime_threads::types::*;
 
-pub(crate) const EVENT_CHANNEL_CAPACITY: usize = 4096;
 pub(crate) const SUMMARY_LIMIT: usize = 280;
-pub(crate) const RUNTIME_RESTART_REASON: &str = "Interrupted by process restart";
+pub(crate) use deepseek_runtime_orchestrator::runtime_threads::manager::{
+    EVENT_CHANNEL_CAPACITY, RUNTIME_RESTART_REASON,
+};
 pub(crate) use deepseek_runtime_orchestrator::runtime_threads::{
     provider_label_for_model, CURRENT_RUNTIME_SCHEMA_VERSION,
 };
 
-mod active;
+/// Concrete engine host types wired by the sidecar (D16 E1-b phase 2).
+pub(crate) type RuntimeEnginePolicy = crate::sandbox::SandboxPolicy;
+pub(crate) type RuntimeUserInputResponse = crate::tools::user_input::UserInputResponse;
+
+pub(crate) use deepseek_runtime_orchestrator::runtime_threads::active::{
+    ActiveThreadState as ActiveThreadStateInner, ActiveThreads as ActiveThreadsInner,
+    ActiveTurnState, PendingApproval, RuntimeApprovalDecision, enforce_lru_capacity, touch_lru,
+};
+
+pub(crate) type ActiveThreadState =
+    ActiveThreadStateInner<RuntimeEnginePolicy, RuntimeUserInputResponse>;
+pub(crate) type ActiveThreads = ActiveThreadsInner<RuntimeEnginePolicy, RuntimeUserInputResponse>;
+
 mod engine_load;
 mod manager;
 mod turn_lifecycle;
@@ -50,17 +63,11 @@ pub use deepseek_runtime_orchestrator::runtime_threads::events::{
 };
 pub use deepseek_runtime_orchestrator::runtime_threads::routing;
 pub use manager::{RuntimeThreadManager, SharedRuntimeThreadManager};
+pub use deepseek_runtime_orchestrator::runtime_threads::manager::tool_kind_for_name;
 
 #[cfg(test)]
 pub(crate) use deepseek_runtime_orchestrator::runtime_threads::events::AgentRebindStatus;
 
-#[cfg(test)]
-pub(crate) use active::{
-    enforce_lru_capacity, touch_lru, ActiveThreadState, ActiveThreads, ActiveTurnState,
-    RuntimeApprovalDecision,
-};
-pub(crate) use manager::tool_kind_for_name;
-#[cfg(test)]
 pub(crate) use manager::parse_mode;
 
 #[path = "tests.rs"]

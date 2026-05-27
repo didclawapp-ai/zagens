@@ -9,7 +9,7 @@ use crate::models::{Message, SystemPrompt};
 use crate::tools::plan::new_shared_plan_state;
 use crate::tools::todo::new_shared_todo_list;
 
-use super::active::{enforce_lru_capacity, touch_lru, ActiveThreadState};
+use super::{ActiveThreadState, enforce_lru_capacity, touch_lru};
 use super::persist::reconstruct_messages_for_store;
 use super::types::ThreadRecord;
 use super::RuntimeThreadManager;

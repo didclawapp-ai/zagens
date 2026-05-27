@@ -34,14 +34,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **D16 E1-a (WIP):** 新建 `crates/runtime-adapters`（`deepseek-runtime-adapters`）— 迁入 `mcp/`、`network_policy`、`persist/`（`session_manager` + `session_store_sqlite` + `context_reference`）、`snapshot/`、`json_schema_util`；`runtime-server` 经 re-export 保持 `crate::mcp` / `crate::session_manager` 路径；`impl McpHost for McpPool` 随类型迁至 adapters；`tools/` 仍留 `runtime-server`（与 `runtime_threads` / `core::engine` 循环依赖，待 host 边界 refactor 后再迁）。
 - **D16 E1-a2 (WIP):** `scratchpad_gates` + 路径读 scratchpad 子模块迁入 `runtime-adapters`；`tools/{file,tasks}` 直接调用 adapters gate；`scratchpad_flow` re-export 保持 engine 侧兼容。
 - **D16 E1-b (WIP, phase 1):** 新建 `crates/runtime-orchestrator` — 迁入 `runtime_threads/{types,persist}`、`thread_store_sqlite`、`pricing`（usage 聚合）；`RuntimeThreadManager` 等 live orchestration 仍留 `runtime-server`；40 个 `runtime_threads` 单元测试全绿。
-- **D16 E1-b (WIP, phase 2):** 迁入 `runtime_threads/{routing,events,event_coalesce}` 至 orchestrator；`RuntimeThreadManager` / `task_manager` 迁移仍待 Engine host 边界。
+- **D16 E1-b (WIP, phase 2):** 迁入 `runtime_threads/{routing,events,event_coalesce}` 至 orchestrator；新增 `engine` 模块（`EngineHandle<P,R>` 边界）与 `active`/`turn_wait` 迁入 orchestrator；`RuntimeThreadManager<P,R>` 核心（store/active/events/approval）迁入 orchestrator，sidecar 以 `Deref` 包装保留 `Config`/task/scratchpad 面板；`engine_load`/`monitor` 仍留 server。
 
 ### Changed
 
 - **Docs / Harness 文档集：** 新建 [`docs/harness/`](docs/harness/README.md) — 迁入 [`Agent+Harness组合式编程方案.md`](docs/harness/Agent+Harness组合式编程方案.md)、[`HARNESS_INTEGRATION_PROPOSAL.md`](docs/harness/HARNESS_INTEGRATION_PROPOSAL.md)；新增 [`ANTHROPIC_MANAGED_AGENTS_AND_HARNESS.md`](docs/harness/ANTHROPIC_MANAGED_AGENTS_AND_HARNESS.md)（Managed Agents 时间线、官方 Engineering 文章、三模式与组合式方案对照）；`docs/tech/adr/HARNESS_INTEGRATION_PROPOSAL.md` 保留重定向 stub。
 - **Docs / Harness v1.3：** [`Agent+Harness组合式编程方案.md`](docs/harness/Agent+Harness组合式编程方案.md) 增补 **阶段六「自适应主动 Harness」**（§3.4 定义、Manifest 一等公民、§10 路线图阶段六）；[`README.md`](docs/harness/README.md) 演进假设表；归并提案 §3 映射「自适应主动」行。
 - **Docs：** [`docs/prompt-architecture.md`](docs/prompt-architecture.md) 对齐 D6（`crates/runtime-server` 路径、`task overlay`、Engine 模块拆分、`DEEPSEEK_CLIENT_SURFACE=zagens`）。
-- **Zagens desktop / 图标资产：** 新增 `crates/desktop/icons/svg/` — 5 种 SVG 变体（完整版、机器人、神经网络、小尺寸 glyph、单色）及 `preview.html` 本地预览页；风格借鉴截图（深蓝渐变 + 机器人 + 神经网络），已移除中间 zagens 文字。
+- **Zagens desktop / 图标资产：** 新增 `crates/desktop/icons/svg/` — 5 种 SVG 变体及 `preview.html`；神经网络另含 `variants/` 下 6 种配色 + `preview-palettes.html` 对比页（基准：暖白 + 琥珀）。
 
 ### Fixed
 

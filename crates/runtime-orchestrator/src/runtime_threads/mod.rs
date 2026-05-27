@@ -6,11 +6,19 @@ use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+pub mod active;
 pub mod event_coalesce;
 pub mod events;
+pub mod manager;
 pub mod persist;
 pub mod routing;
+pub mod turn_wait;
 pub mod types;
+
+pub use manager::{
+    EVENT_CHANNEL_CAPACITY, RUNTIME_RESTART_REASON, RuntimeThreadManager,
+    checklist_tool_needs_panel_push, scratchpad_tool_needs_panel_push, tool_kind_for_name,
+};
 
 pub use persist::RuntimeThreadStore;
 pub use types::*;
