@@ -12,7 +12,7 @@
 1. docs/tech/adr/SESSION_HANDOFF_D16_PHASE_E.md（本文）
 2. docs/tech/adr/D16_PHASE_E_MAINTAINABILITY.md
 
-现状：E2/E3/E5 已 Landed；**E1-c6** ✅（task schemas → runtime-api）；E1-a8 WIP（`shell/` + `file/` + `web_run/` 已拆）；下一项 **E1-d2**（文档/re-export 对齐）或 E1-a8 收尾（`shell/tools.rs` 再拆）。
+现状：E2/E3/E5 已 Landed；E1-c6/E1-d2/E1-a8 ✅；E1-b phase 6 WIP（`task_manager/` 已拆）；下一项 E1-b 继续或 E4 可选。
 完整 tools/ 迁 adapters 需阶段 2 ToolContext host ADR，勿贸然整包迁移。
 
 规则：不要 commit/push 除非我明确要求；中文回复；最小 diff；每步跑 check-openapi-contract + 相关 cargo test。
@@ -39,10 +39,10 @@
 | **E2** SubAgent 拆文件 | ✅ Landed | `subagent/mod.rs` ~82 行；108 测试 |
 | **E3** App.tsx hooks | ✅ Landed | `App.tsx` ~776 行；`AppShell` + 13 hook/模块 |
 | **E5** OpenAPI contract CI | ✅ Landed | CI：OpenAPI JSON + TS diff；golden path 已有 |
-| **E1-a** adapters tools | 🟡 阶段 1 完成 | a3–**a8** WIP（`shell/` + `file/` 模块内拆分）；完整 `ToolSpec` 仍留 server |
-| **E1-b** orchestrator | 🟡 Partial | monitor/engine_load/task_port 已迁 |
+| **E1-a** adapters tools | 🟡 阶段 1 完成 | a3–**a8** ✅（`shell/`/`file/`/`web_run/` 模块内拆分） |
+| **E1-b** orchestrator | 🟡 Partial | monitor/engine_load/task_port + **task_manager/** 模块内拆分 |
 | **E1-c** runtime-api | 🟡 Partial | phase 1–5 + **c6** ✅ task schemas 已迁 runtime-api |
-| **E1-d** server 瘦身 | 🟡 Partial | bootstrap 完成；`lib.rs` 62 行 |
+| **E1-d** server 瘦身 | 🟡 Partial | bootstrap + **d2** ✅ re-export/文档对齐；`lib.rs` 62 行 |
 | **E4** client.ts 拆分 | ⏸ 可选 | 未做 |
 
 **D16 可不全部完成即发布 Zagens** — E2/E3/E5 已可视为独立 Landed。
@@ -54,14 +54,15 @@
 | 项 | 值 |
 |----|-----|
 | 分支 | `master` |
-| HEAD | `0d843c1` |
-| 工作区 | **未 commit** — E1-a8 + E1-c6 改动在工作区（见 §9）；`workspacePaths.ts` 未跟踪 |
+| HEAD | `223eb1e` |
+| 工作区 | **未 commit** — E1-d2 + E1-a8 `shell/tools/` + E1-b `task_manager/`（见 §9） |
 | Remote | **未配置 `origin`** — push 需用户先 `git remote add origin <url>` |
 
 ### 近期 commit（新 → 旧）
 
 | Commit | 说明 |
 |--------|------|
+| `223eb1e` | **E1-a8** shell/file/web_run 拆分 + **E1-c6** task schemas → runtime-api |
 | `0d843c1` | handoff + **E1-a7** — `skills/install` → `network_gate` |
 | `6fdc011` | **E5** — OpenAPI/TS CI + regenerate spec |
 | `24c9754` | **E1-a6** — `network_gate`（fetch_url/web_run/web_search + SSRF） |
@@ -152,9 +153,8 @@ shell_manager: Option<SharedShellManager>
 
 | ID | 任务 | 说明 |
 |----|------|------|
-| **E1-a8** | 大文件 **模块内**拆分 | `shell/`、`file/`、`web_run/` ✅ WIP；`shell/tools.rs`(~1057) 可选再拆 |
-| ~~**E1-c6**~~ | ~~task OpenAPI schemas → runtime-api~~ | ✅ `runtime-api/src/task.rs`；sidecar openapi re-export |
-| **E1-d2** | 文档/re-export 对齐 | `run_http_server` 公开路径 vs RUNTIME_ARCHITECTURE |
+| ~~**E1-a8**~~ | ~~shell/file/web_run + `shell/tools/`~~ | ✅ |
+| **E1-b** | `task_manager/` 迁 orchestrator（可选） | 模块内拆分已完成；整包迁移需评估 host 依赖 |
 
 ### 需设计（阶段 2）
 

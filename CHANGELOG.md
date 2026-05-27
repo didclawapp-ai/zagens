@@ -29,7 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **D16 E3-b/c/d (Landed):** `useTurnSession` / `useTurnStream` / `useTurnApproval` / `useAgentPanelState` / `useTurnSend`；`AppShell` + `App.tsx` **776 行**。
 - **D16 E1-a3–a6 (Landed):** tools host 端口、workspace_walk/arg_repair、network_gate；fetch_url/web_run/web_search 去重。
 - **D16 E1-a7:** `skills/install.rs` 复用 `network_gate::check_host_with_policy` / `host_policy_decision`。
-- **D16 E1-a8 (WIP):** `tools/shell.rs`（~2600 行）模块内拆为 `shell/{types,process,manager,host,tools}.rs` + 既有 `tests.rs`；仍留 `runtime-server`；22 个 shell 单元测试 + E1-a tools 回归全绿；`tools.rs` ~1057 行（可再拆 exec/wait/cancel）。
+- **D16 E1-a8:** `tools/shell/tools.rs`（~1057 行）再拆为 `shell/tools/{exec,wait,cancel,note,helpers}.rs`；22 个 shell 单元测试全绿。
 - **D16 E1-a8 (WIP):** `tools/file.rs`（~1991 行）模块内拆为 `file/{read,write,edit,list_dir}.rs` + `tests.rs`；`sniff_encoding_label` 仍由 `file_info` 复用；30 个 file 单元测试全绿。
 - **D16 E1-a8 (WIP):** `tools/web_run.rs`（~1638 行）模块内拆为 `web_run/{types,state,tool,search,page,html}.rs` + `tests.rs`；11 个 web_run 单元测试全绿。
 - **D16 E1-c6:** task wire 类型（`TaskRecord`、`TasksResponse`、`NewTaskRequest` 等）迁入 `runtime-api/src/task.rs` 并加入 `SCHEMA_EXPORTS`；sidecar `runtime_api/openapi.rs` 瘦身为 re-export；`task_manager` 删除重复 struct；`check-openapi-contract` + `runtime_api`/`task_manager` 回归全绿。
@@ -44,7 +44,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **D16 E1-c (WIP, phase 3):** `ApiError` 与 `IntoResponse` 错误 envelope 迁入 runtime-api；handler 仍留 sidecar。
 - **D16 E1-c (WIP, phase 4):** 共享 wire response（`SessionsListResponse`、`SessionDetailResponse`、`ResumeSessionResponse`、`StartTurnResponse`、`ThreadSummary`）由 runtime-api 导出；sidecar handler 删除重复 struct。
 - **D16 E1-c (WIP, phase 5):** `StreamTurnRequest` 由 runtime-api 导出；`stream.rs` handler 复用 wire 类型（`workspace: Option<String>` → `PathBuf` 在 handler 内转换）。
-- **D16 E1-d (WIP):** `run_http_server`/`RuntimeApiOptions` 迁入 `runtime_serve/http.rs`；`runtime_api/mod.rs` 仅保留 state、handler 接线与共享 helper；query/request 类型下沉至对应 handler 模块。
+- **D16 E1-d2:** `deepseek_runtime::run_http_server` crate 根 re-export；`RUNTIME_ARCHITECTURE` / D8 对齐 runtime-api OpenAPI SSOT 与 D16 crate 依赖图。
+- **D16 E1-b (WIP, phase 6):** `task_manager.rs`（~1500 行）模块内拆为 `task_manager/{config,executor,manager,persist,helpers,tests}.rs`；wire 类型仍用 runtime-api；4 个 task_manager 单元测试全绿。
 
 ### Changed
 

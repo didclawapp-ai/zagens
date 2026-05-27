@@ -126,8 +126,8 @@ flowchart TB
 | Tauri IPC handlers | [`crates/desktop/src/commands.rs`](../../crates/desktop/src/commands.rs) | 密钥/设置/平台/符号索引/导出 等 30+ 命令 |
 | HTTP 代理（Bearer 注入） | [`crates/desktop/src/runtime_proxy.rs`](../../crates/desktop/src/runtime_proxy.rs) | `runtime_http` / `runtime_post_stream` / `runtime_get_sse` + path 白名单 |
 | Sidecar 监督 | [`crates/desktop/src/sidecar.rs`](../../crates/desktop/src/sidecar.rs) | spawn/重启/退避/`DS_PICK_READY` 行协议；生产 **`deepseek-runtime`**；可选识别磁盘上遗留 `deepseek-tui` 二进制 |
-| HTTP 入口（库） | [`crates/runtime-server/src/runtime_serve/http.rs`](../../crates/runtime-server/src/runtime_serve/http.rs) | `run_http_server` / `RuntimeApiOptions` — `deepseek_runtime` lib |
-| OpenAPI / 共享 wire 类型 | [`crates/runtime-api/`](../../crates/runtime-api/) | `compose_router`、`ApiError`、OpenAPI schemas；handler 仍留 sidecar |
+| HTTP 入口（库） | [`crates/runtime-server/src/runtime_serve/http.rs`](../../crates/runtime-server/src/runtime_serve/http.rs) | `deepseek_runtime::run_http_server` / `RuntimeApiOptions`（crate 根 re-export，实现于 `runtime_serve::http`） |
+| OpenAPI / 共享 wire 类型 | [`crates/runtime-api/`](../../crates/runtime-api/) | `compose_router`、`ApiError`、OpenAPI `paths`/`schemas`（含 [`task.rs`](../../crates/runtime-api/src/task.rs)）；sidecar handler 仍留 `runtime-server` |
 | 路由表 | [`crates/runtime-server/src/runtime_api/router.rs`](../../crates/runtime-server/src/runtime_api/router.rs) | 全部 `/v1/*` 路由集中注册；`/health` `/internal/probe` 不走鉴权 |
 | 线程管理 | [`crates/runtime-server/src/runtime_threads/manager.rs`](../../crates/runtime-server/src/runtime_threads/manager.rs) | `RuntimeThreadManager` + LRU 活跃线程 + 事件 broadcast |
 | Engine struct + op loop | [`crates/core/src/engine/runtime.rs`](../../crates/core/src/engine/runtime.rs) + [`op_loop.rs`](../../crates/core/src/engine/op_loop.rs) | M7/M8：`Engine::with_hosts` / `Engine::run()` 在 core |
@@ -216,6 +216,9 @@ flowchart LR
 flowchart BT
     DESK["deepseek-desktop<br/>(crates/desktop)"]
     RT["deepseek-runtime-server<br/>(crates/runtime-server)<br/>lib: deepseek_runtime<br/>bin: deepseek-runtime"]
+    RTAPI["deepseek-runtime-api<br/>(crates/runtime-api)"]
+    RTO["deepseek-runtime-orchestrator<br/>(crates/runtime-orchestrator)"]
+    RTAD["deepseek-runtime-adapters<br/>(crates/runtime-adapters)"]
     CORE["deepseek-core<br/>(crates/core)"]
     TM["deepseek-topic-memory"]
     PROTO["deepseek-protocol"]
@@ -230,12 +233,17 @@ flowchart BT
     DESK --> CFG
     DESK --> SEC
 
+    RT --> RTAPI
+    RT --> RTO
+    RT --> RTAD
     RT --> CORE
     RT --> CFG
     RT --> SEC
     RT --> PROTO
     RT --> TOOLS
     RT --> TM
+    RTO --> RTAD
+    RTAPI --> RTAD
 
     CORE --> AGENT
     CORE --> CFG
@@ -252,7 +260,10 @@ flowchart BT
 | Crate | 路径 | 角色 |
 |-------|------|------|
 | **deepseek-desktop** | `crates/desktop/` | Zagens Tauri 壳；**只**依赖 `config` + `secrets` + Tauri/reqwest/portable-pty |
-| **deepseek-runtime-server** | `crates/runtime-server/` | 生产 sidecar **lib + bin**：`deepseek_runtime` + **`deepseek-runtime`**；含 `runtime_api` / `runtime_threads` / tools / Engine shim |
+| **deepseek-runtime-server** | `crates/runtime-server/` | 生产 sidecar **lib + bin**：`deepseek_runtime` + **`deepseek-runtime`**；handler、tools、Engine shim、sidecar host 注入 |
+| **deepseek-runtime-api** | `crates/runtime-api/` | HTTP 契约层：OpenAPI export、`ApiError`、auth/health/cors、共享 wire 类型（含 task） |
+| **deepseek-runtime-orchestrator** | `crates/runtime-orchestrator/` | Turn 编排：`RuntimeThreadManager` 核心、`monitor`、engine load、task port |
+| **deepseek-runtime-adapters** | `crates/runtime-adapters/` | 平台适配：MCP、persist、snapshot、tools host 端口与纯 helper |
 | **deepseek-core** | `crates/core/` | `Engine` + `op_loop` + `turn_loop` / Session / `TurnEnginePort` / 工具目录 |
 | ~~**deepseek-app-server**~~ | — | **已删除**（D7 C5）；见 [D4_APPSERVER_DEPRECATED.md](./adr/D4_APPSERVER_DEPRECATED.md) |
 | ~~**deepseek-tui** / ~~**deepseek CLI**~~ | — | **已删除**（D6 Phase B）；见 [D6_PHASE_B_CLI_SUNSET.md](./adr/D6_PHASE_B_CLI_SUNSET.md) |
@@ -263,6 +274,7 @@ flowchart BT
 
 - `deepseek-desktop` **只**依赖 `deepseek-config` + `deepseek-secrets`（加上 Tauri/reqwest/portable-pty/sha2/dirs），**不**直接依赖 `core` 或 runtime lib —— 所有 Agent 能力通过嵌入式 **`deepseek-runtime`** 子进程 + HTTP/IPC 获得。
 - `deepseek-runtime-server` 单 crate：**无** ratatui/crossterm（D6 Phase B ✅；`cargo tree -p deepseek-runtime-server -i ratatui` → 无匹配）。
+- `deepseek_runtime` lib 公开 HTTP 装配入口：`run_http_server` / `RuntimeApiOptions`（crate 根 re-export；实现于 `runtime_serve/http.rs`）。
 - `deepseek_runtime` lib 直接依赖 `deepseek-core`；`Engine` struct + `Engine::run()` 在 core，runtime 保留 ~130 LOC shim + 工具/MCP/LSP 宿主实现。
 - ~~`deepseek-tui-core` legacy crate~~ **已于 2026-05-25 删除**。
 - ~~`deepseek-app-server`~~ **已于 2026-05-26 删除**（D7 C5）。
@@ -434,10 +446,11 @@ sequenceDiagram
 | Sidecar 入口 / `deepseek-runtime` | [`crates/runtime-server/src/main.rs`](../../crates/runtime-server/src/main.rs) · [`runtime_serve/http.rs`](../../crates/runtime-server/src/runtime_serve/http.rs) |
 | HTTP 路由表 + Bearer 中间件 | [`crates/runtime-server/src/runtime_api/router.rs`](../../crates/runtime-server/src/runtime_api/router.rs) + [`crates/runtime-api/src/auth.rs`](../../crates/runtime-api/src/auth.rs) |
 | SSE handlers | [`crates/runtime-server/src/runtime_api/stream.rs`](../../crates/runtime-server/src/runtime_api/stream.rs) |
-| HTTP server 装配 | [`crates/runtime-server/src/runtime_serve/http.rs`](../../crates/runtime-server/src/runtime_serve/http.rs)（`run_http_server`） · handler 接线 [`runtime_api/mod.rs`](../../crates/runtime-server/src/runtime_api/mod.rs) |
+| HTTP server 装配 | [`crates/runtime-server/src/runtime_serve/http.rs`](../../crates/runtime-server/src/runtime_serve/http.rs)（`deepseek_runtime::run_http_server`） · handler 接线 [`runtime_api/mod.rs`](../../crates/runtime-server/src/runtime_api/mod.rs) |
+| OpenAPI export / task wire 类型 | [`crates/runtime-api/src/openapi/`](../../crates/runtime-api/src/openapi/) · [`task.rs`](../../crates/runtime-api/src/task.rs) |
 | Tool host 端口 / 纯工具 helper | [`crates/runtime-adapters/src/tools/`](../../crates/runtime-adapters/src/tools/) | `RuntimeToolHostWire`、`ToolTaskHost`、`network_gate`、`workspace_walk`、`arg_repair`、`diff_format`、`schema_sanitize`（D16 E1-a3–a6） |
-| 线程管理 / LRU / broadcast | [`crates/runtime-server/src/runtime_threads/manager.rs`](../../crates/runtime-server/src/runtime_threads/manager.rs) |
-| 持久化（事件/线程） | [`crates/runtime-server/src/runtime_threads/persist.rs`](../../crates/runtime-server/src/runtime_threads/persist.rs) + [`monitor.rs`](../../crates/runtime-server/src/runtime_threads/monitor.rs) |
+| 线程管理 / LRU / broadcast | [`crates/runtime-server/src/runtime_threads/manager.rs`](../../crates/runtime-server/src/runtime_threads/manager.rs)（sidecar wrapper；核心在 [`orchestrator/.../manager.rs`](../../crates/runtime-orchestrator/src/runtime_threads/manager.rs)） |
+| 持久化（事件/线程） | [`crates/runtime-orchestrator/src/runtime_threads/persist.rs`](../../crates/runtime-orchestrator/src/runtime_threads/persist.rs) · turn monitor [`monitor.rs`](../../crates/runtime-orchestrator/src/runtime_threads/monitor.rs) |
 | Engine struct + op loop (core) | [`crates/core/src/engine/runtime.rs`](../../crates/core/src/engine/runtime.rs) · [`op_loop.rs`](../../crates/core/src/engine/op_loop.rs) |
 | runtime Engine shim + platform dispatch | [`crates/runtime-server/src/core/engine.rs`](../../crates/runtime-server/src/core/engine.rs) · [`platform_dispatch.rs`](../../crates/runtime-server/src/core/engine/platform_dispatch.rs) |
 | Turn loop / Port / Session (core) | [`crates/core/src/engine/`](../../crates/core/src/engine/) |

@@ -15,7 +15,8 @@
 | 路径 | 说明 |
 |------|------|
 | [`docs/tech/openapi/zagens-runtime-v1.openapi.json`](../openapi/zagens-runtime-v1.openapi.json) | 检入的 OpenAPI 3.1 契约（paths + components） |
-| `crates/runtime-server/src/runtime_api/openapi/` | Rust 导出：`schemars` → components，`paths.rs` 对齐 router |
+| `crates/runtime-api/src/openapi/` | Rust 导出 SSOT：`schemars` → components，`paths.rs` 对齐 router；task schemas 见 `task.rs`（E1-c6） |
+| `crates/runtime-server/src/runtime_api/openapi.rs` | Sidecar re-export（`export-runtime-openapi` bin 仍在此 crate） |
 | `crates/runtime-server` binary `export-runtime-openapi` | feature `openapi-export` |
 | `crates/desktop/web-ui/src/api/generated/runtime-api.ts` | `openapi-typescript` 生成 |
 | `crates/desktop/web-ui/src/api/runtimeTypes.ts` | 稳定 re-export 层 |

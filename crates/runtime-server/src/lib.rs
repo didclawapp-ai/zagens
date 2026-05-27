@@ -62,3 +62,5 @@ pub use deepseek_runtime_adapters::persist::{
     context_reference, session_manager, session_store_sqlite, ContextReference,
     SavedSession, SessionContextReference, SessionManager, SessionMetadata,
 };
+// D16 E1-d — stable lib entry for in-proc / test hosts (see RUNTIME_ARCHITECTURE §1).
+pub use runtime_serve::{run_http_server, RuntimeApiOptions};
