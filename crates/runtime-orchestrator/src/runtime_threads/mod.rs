@@ -18,6 +18,7 @@ pub mod monitor_persist;
 pub mod persist;
 pub mod routing;
 pub mod thread_crud;
+pub mod task_port;
 pub mod turn_control;
 pub mod turn_lifecycle;
 pub mod turn_wait;
@@ -27,6 +28,7 @@ pub use engine_host::RuntimeThreadHost;
 pub use engine_load::ensure_engine_loaded;
 pub use monitor::monitor_turn;
 pub use monitor_host::RuntimeThreadMonitorHost;
+pub use task_port::RuntimeThreadTaskPort;
 pub use manager::{
     EVENT_CHANNEL_CAPACITY, RUNTIME_RESTART_REASON, RuntimeThreadManager,
     checklist_tool_needs_panel_push, scratchpad_tool_needs_panel_push, tool_kind_for_name,
@@ -100,10 +102,16 @@ pub struct CreateThreadRequest {
     pub system_prompt: Option<String>,
     #[serde(default)]
     pub task_id: Option<String>,
+    /// `auto` | `office` | `code` — resolved to `office`/`code` on create.
     #[serde(default)]
     pub task_type: Option<String>,
 }
 
+/// Mutable fields accepted by `PATCH /v1/threads/{id}`.
+///
+/// Each field is optional — missing means "no change". Extended in v0.8.10
+/// (#562, whalescale#256) so the UI can flip persistent thread state without
+/// having to recreate a thread or pass per-turn overrides on every send.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, JsonSchema)]
 pub struct UpdateThreadRequest {
     pub archived: Option<bool>,
@@ -114,6 +122,9 @@ pub struct UpdateThreadRequest {
     pub mode: Option<String>,
     pub title: Option<String>,
     pub system_prompt: Option<String>,
+    /// When set, rebind tool workspace for this thread. Path must exist and be a
+    /// directory. Relative paths resolve against the runtime API default workspace.
+    /// Unloads cached engine entry when changed (disallowed while a turn is in progress).
     #[serde(default)]
     pub workspace: Option<String>,
     #[serde(default)]

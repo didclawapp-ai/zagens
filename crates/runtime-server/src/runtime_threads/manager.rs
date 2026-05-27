@@ -13,6 +13,7 @@ use serde_json::{Value, json};
 use crate::agent_surface::AppMode;
 use crate::config::Config;
 
+use super::background_slots::RuntimeThreadBackgroundSlots;
 use super::{
     ActiveThreadState, RuntimeApprovalDecision, RuntimeEnginePolicy, RuntimeThreadStore,
     RuntimeUserInputResponse, RuntimeThreadManagerConfig,
@@ -41,8 +42,7 @@ const SCRATCHPAD_STATUS_CACHE_TTL: Duration = Duration::from_secs(2);
 pub struct RuntimeThreadManager {
     inner: InnerManager,
     pub(crate) config: Config,
-    pub(crate) task_manager: Arc<StdMutex<Option<crate::task_manager::SharedTaskManager>>>,
-    pub(crate) automations: Arc<StdMutex<Option<crate::automation_manager::SharedAutomationManager>>>,
+    pub(crate) background: RuntimeThreadBackgroundSlots,
     checklist_cache: Arc<StdMutex<HashMap<String, String>>>,
     scratchpad_status_cache: Arc<StdMutex<HashMap<String, ScratchpadStatusCacheEntry>>>,
 }
@@ -77,8 +77,7 @@ impl RuntimeThreadManager {
         let manager = Self {
             inner,
             config,
-            task_manager: Arc::new(StdMutex::new(None)),
-            automations: Arc::new(StdMutex::new(None)),
+            background: RuntimeThreadBackgroundSlots::new(),
             checklist_cache: Arc::new(StdMutex::new(HashMap::new())),
             scratchpad_status_cache: Arc::new(StdMutex::new(HashMap::new())),
         };
@@ -107,8 +106,7 @@ impl RuntimeThreadManager {
         Ok(Self {
             inner,
             config,
-            task_manager: Arc::new(StdMutex::new(None)),
-            automations: Arc::new(StdMutex::new(None)),
+            background: RuntimeThreadBackgroundSlots::new(),
             checklist_cache: Arc::new(StdMutex::new(HashMap::new())),
             scratchpad_status_cache: Arc::new(StdMutex::new(HashMap::new())),
         })
@@ -293,9 +291,7 @@ impl RuntimeThreadManager {
     /// Attach the durable task manager so model-visible task tools work inside
     /// runtime thread turns as well as interactive TUI turns.
     pub fn attach_task_manager(&self, task_manager: crate::task_manager::SharedTaskManager) {
-        if let Ok(mut slot) = self.task_manager.lock() {
-            *slot = Some(task_manager);
-        }
+        self.background.attach_task_manager(task_manager);
     }
 
     /// Attach the automation manager for model-visible scheduling tools.
@@ -303,9 +299,7 @@ impl RuntimeThreadManager {
         &self,
         automations: crate::automation_manager::SharedAutomationManager,
     ) {
-        if let Ok(mut slot) = self.automations.lock() {
-            *slot = Some(automations);
-        }
+        self.background.attach_automation_manager(automations);
     }
 
     #[cfg(test)]

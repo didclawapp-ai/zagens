@@ -37,6 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **D16 E1-b (WIP, phase 2):** 迁入 `runtime_threads/{routing,events,event_coalesce}` 至 orchestrator；新增 `engine`/`engine_host`（`EngineHandle<P,R>` + `RuntimeThreadHost` trait）；`active`/`turn_wait`/`turn_control`/`turn_lifecycle` 核心迁入 orchestrator；`RuntimeThreadManager<P,R>` 核心 + `thread_crud` 在 orchestrator；sidecar `Deref` 包装实现 host（`engine_load`/`monitor`/`prepare_start_turn_params`）；server 保留 Config/task/scratchpad 与 symbol index hook。
 - **D16 E1-b (WIP, phase 3):** `monitor_turn` 事件循环（~930 行）迁入 `runtime-orchestrator`/`monitor.rs`；新增 `RuntimeThreadMonitorHost`（panel SSE、artifact refs、全权限 sandbox policy）与 `monitor_persist` 阻塞落盘 helper；sidecar `monitor_host.rs` 实现 host hook；删除 `runtime-server`/`monitor.rs`。
 - **D16 E1-b (WIP, phase 4):** `ensure_engine_loaded` 通用路径（缓存、session sync、LRU）迁入 orchestrator/`engine_load.rs`；`RuntimeThreadHost::spawn_engine_for_thread` 由 sidecar `engine_spawn.rs` 实现；`turn_lifecycle`/`turn_control` 直接调用 orchestrator `ensure_engine_loaded(mgr, host, …)`。
+- **D16 E1-b (WIP, phase 5):** 新增 `RuntimeThreadTaskPort`（background task 最小 turn 面）与 `RuntimeThreadBackgroundSlots`（task/automation 注入 `RuntimeToolServices`）；`EngineTaskExecutor` 改走 task port。
+- **D16 E1-c (WIP, phase 1):** 新建 `crates/runtime-api`（`deepseek-runtime-api`）；OpenAPI `paths`/核心 `schemas` 迁入；sidecar `runtime_api/openapi.rs` 合并 task  schema；`export-runtime-openapi` 行为不变。
 
 ### Changed
 

@@ -28,6 +28,7 @@ use crate::runtime_threads::{
     CreateThreadRequest, RuntimeThreadManager, RuntimeThreadManagerConfig, RuntimeTurnStatus,
     SharedRuntimeThreadManager, StartTurnRequest,
 };
+use deepseek_runtime_orchestrator::runtime_threads::RuntimeThreadTaskPort;
 use crate::utils::spawn_supervised;
 
 const DEFAULT_WORKERS: usize = 2;
@@ -420,13 +421,13 @@ pub trait TaskExecutor: Send + Sync {
 
 /// Engine-backed executor (DeepSeek-only).
 pub struct EngineTaskExecutor {
-    runtime_threads: SharedRuntimeThreadManager,
+    runtime: Arc<dyn RuntimeThreadTaskPort>,
 }
 
 impl EngineTaskExecutor {
     #[must_use]
-    pub fn new(runtime_threads: SharedRuntimeThreadManager) -> Self {
-        Self { runtime_threads }
+    pub fn new(runtime: Arc<dyn RuntimeThreadTaskPort>) -> Self {
+        Self { runtime }
     }
 }
 
@@ -439,7 +440,7 @@ impl TaskExecutor for EngineTaskExecutor {
         cancel: CancellationToken,
     ) -> TaskExecutionResult {
         let thread = match self
-            .runtime_threads
+            .runtime
             .create_thread(CreateThreadRequest {
                 model: Some(task.model.clone()),
                 workspace: Some(task.workspace.clone()),
@@ -465,7 +466,7 @@ impl TaskExecutor for EngineTaskExecutor {
         };
 
         let turn = match self
-            .runtime_threads
+            .runtime
             .start_turn(
                 &thread.id,
                 StartTurnRequest {
@@ -510,7 +511,7 @@ impl TaskExecutor for EngineTaskExecutor {
             if cancel.is_cancelled() && !cancel_requested {
                 cancel_requested = true;
                 let _ = self
-                    .runtime_threads
+                    .runtime
                     .interrupt_turn(&thread.id, &turn.id)
                     .await;
                 let _ = events.send(TaskExecutionEvent::Status {
@@ -519,7 +520,7 @@ impl TaskExecutor for EngineTaskExecutor {
             }
 
             let batch = match self
-                .runtime_threads
+                .runtime
                 .events_since_async(&thread.id, Some(seen_seq))
                 .await
             {
