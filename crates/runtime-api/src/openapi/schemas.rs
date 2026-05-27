@@ -1,10 +1,10 @@
 //! HTTP wire types for OpenAPI `components.schemas` (D8).
-//!
-//! Task schemas remain in `deepseek-runtime-server` until `task_manager` ports land.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+use crate::task::{TaskCounts, TaskRecord, TaskStatus, TaskSummary, TasksResponse};
 
 use deepseek_core::coherence::CoherenceState;
 use deepseek_core::models::{ServerToolUsage, Usage};
@@ -89,7 +89,7 @@ pub struct ErrorBody {
     pub error: String,
 }
 
-/// Core schemas exported to OpenAPI components (task schemas merged by sidecar).
+/// Core schemas exported to OpenAPI components.
 pub const SCHEMA_EXPORTS: &[(&str, fn() -> schemars::Schema)] = &[
     ("CoherenceState", || schemars::schema_for!(CoherenceState)),
     ("RuntimeTurnStatus", || schemars::schema_for!(RuntimeTurnStatus)),
@@ -118,4 +118,9 @@ pub const SCHEMA_EXPORTS: &[(&str, fn() -> schemars::Schema)] = &[
     ("UsageBucket", || schemars::schema_for!(UsageBucket)),
     ("UsageAggregation", || schemars::schema_for!(UsageAggregation)),
     ("ErrorBody", || schemars::schema_for!(ErrorBody)),
+    ("TaskRecord", || schemars::schema_for!(TaskRecord)),
+    ("TaskSummary", || schemars::schema_for!(TaskSummary)),
+    ("TaskCounts", || schemars::schema_for!(TaskCounts)),
+    ("TasksResponse", || schemars::schema_for!(TasksResponse)),
+    ("TaskStatus", || schemars::schema_for!(TaskStatus)),
 ];

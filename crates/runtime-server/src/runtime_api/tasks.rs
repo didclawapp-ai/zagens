@@ -6,15 +6,9 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 
 use crate::config::DEFAULT_TEXT_MODEL;
-use crate::task_manager::{NewTaskRequest, TaskRecord, TaskSummary};
+use deepseek_runtime_api::task::{NewTaskRequest, TaskRecord, TaskSummary, TasksResponse};
 
 use super::{ApiError, RuntimeApiState};
-
-#[derive(Debug, Serialize)]
-pub(crate) struct TasksResponse {
-    tasks: Vec<TaskSummary>,
-    counts: crate::task_manager::TaskCounts,
-}
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct TasksQuery {

@@ -9,6 +9,7 @@ pub mod health;
 pub mod openapi;
 pub mod router;
 pub mod state;
+pub mod task;
 
 pub use auth::require_runtime_token;
 pub use cors::cors_layer;

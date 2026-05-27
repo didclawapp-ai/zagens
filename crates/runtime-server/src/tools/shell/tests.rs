@@ -1,7 +1,9 @@
 use super::*;
 
-use crate::tools::spec::ToolContext;
+use crate::tools::shell_output::{summarize_output, truncate_with_meta};
+use crate::tools::spec::{ToolContext, ToolSpec};
 use serde_json::{Value, json};
+use std::time::Duration;
 use tempfile::tempdir;
 
 fn echo_command(message: &str) -> String {

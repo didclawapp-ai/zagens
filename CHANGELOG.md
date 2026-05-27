@@ -29,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **D16 E3-b/c/d (Landed):** `useTurnSession` / `useTurnStream` / `useTurnApproval` / `useAgentPanelState` / `useTurnSend`；`AppShell` + `App.tsx` **776 行**。
 - **D16 E1-a3–a6 (Landed):** tools host 端口、workspace_walk/arg_repair、network_gate；fetch_url/web_run/web_search 去重。
 - **D16 E1-a7:** `skills/install.rs` 复用 `network_gate::check_host_with_policy` / `host_policy_decision`。
+- **D16 E1-a8 (WIP):** `tools/shell.rs`（~2600 行）模块内拆为 `shell/{types,process,manager,host,tools}.rs` + 既有 `tests.rs`；仍留 `runtime-server`；22 个 shell 单元测试 + E1-a tools 回归全绿；`tools.rs` ~1057 行（可再拆 exec/wait/cancel）。
+- **D16 E1-a8 (WIP):** `tools/file.rs`（~1991 行）模块内拆为 `file/{read,write,edit,list_dir}.rs` + `tests.rs`；`sniff_encoding_label` 仍由 `file_info` 复用；30 个 file 单元测试全绿。
+- **D16 E1-a8 (WIP):** `tools/web_run.rs`（~1638 行）模块内拆为 `web_run/{types,state,tool,search,page,html}.rs` + `tests.rs`；11 个 web_run 单元测试全绿。
+- **D16 E1-c6:** task wire 类型（`TaskRecord`、`TasksResponse`、`NewTaskRequest` 等）迁入 `runtime-api/src/task.rs` 并加入 `SCHEMA_EXPORTS`；sidecar `runtime_api/openapi.rs` 瘦身为 re-export；`task_manager` 删除重复 struct；`check-openapi-contract` + `runtime_api`/`task_manager` 回归全绿。
 - **D16 E5 (Landed):** OpenAPI + TS 契约重新对齐 E1-c；CI `generate:api-types` diff gate；`check-openapi-contract.{sh,ps1}`。
 - **D16 E1-b (WIP, phase 1):** 新建 `crates/runtime-orchestrator` — 迁入 `runtime_threads/{types,persist}`、`thread_store_sqlite`、`pricing`（usage 聚合）；`RuntimeThreadManager` 等 live orchestration 仍留 `runtime-server`；40 个 `runtime_threads` 单元测试全绿。
 - **D16 E1-b (WIP, phase 2):** 迁入 `runtime_threads/{routing,events,event_coalesce}` 至 orchestrator；新增 `engine`/`engine_host`（`EngineHandle<P,R>` + `RuntimeThreadHost` trait）；`active`/`turn_wait`/`turn_control`/`turn_lifecycle` 核心迁入 orchestrator；`RuntimeThreadManager<P,R>` 核心 + `thread_crud` 在 orchestrator；sidecar `Deref` 包装实现 host（`engine_load`/`monitor`/`prepare_start_turn_params`）；server 保留 Config/task/scratchpad 与 symbol index hook。

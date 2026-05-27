@@ -1449,6 +1449,7 @@ name = "deepseek-runtime-api"
 version = "0.8.15"
 dependencies = [
  "axum",
+ "chrono",
  "deepseek-core",
  "deepseek-protocol",
  "deepseek-runtime-adapters",

@@ -11,6 +11,7 @@ name = "deepseek_runtime_api"
 path = "src/lib.rs"
 
 [dependencies]
+chrono.workspace = true
 deepseek-core = { path = "../core", version = "0.8.15" }
 deepseek-protocol = { path = "../protocol", version = "0.8.15" }
 deepseek-runtime-adapters = { path = "../runtime-adapters", version = "0.8.15" }

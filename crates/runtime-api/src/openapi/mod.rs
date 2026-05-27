@@ -95,6 +95,16 @@ pub fn export_openapi_json_with(extra_schemas: &[(&str, fn() -> Schema)]) -> Str
     serde_json::to_string_pretty(&build_openapi_value_with(extra_schemas)).expect("openapi json")
 }
 
+/// Assemble the full OpenAPI document (no sidecar-only schema extensions).
+pub fn build_openapi_value() -> Value {
+    build_openapi_value_with(&[])
+}
+
+/// Pretty-printed OpenAPI JSON for check-in and TS codegen.
+pub fn export_openapi_json() -> String {
+    export_openapi_json_with(&[])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -115,6 +125,12 @@ mod tests {
     fn openapi_exports_core_schemas() {
         assert!(SCHEMA_EXPORTS.iter().any(|(n, _)| *n == "ThreadRecord"));
         assert!(SCHEMA_EXPORTS.iter().any(|(n, _)| *n == "SessionMetadata"));
+    }
+
+    #[test]
+    fn openapi_exports_task_schemas() {
+        assert!(SCHEMA_EXPORTS.iter().any(|(n, _)| *n == "TaskRecord"));
+        assert!(SCHEMA_EXPORTS.iter().any(|(n, _)| *n == "TasksResponse"));
     }
 
     #[test]
