@@ -50,12 +50,12 @@ pub(crate) type ActiveThreadState =
 pub(crate) type ActiveThreads = ActiveThreadsInner<RuntimeEnginePolicy, RuntimeUserInputResponse>;
 
 mod engine_host;
-mod engine_load;
+mod engine_spawn;
 mod manager;
+mod monitor_host;
 mod turn_lifecycle;
 mod turn_control;
 mod thread_crud;
-mod monitor;
 mod turn_wait;
 
 pub use deepseek_runtime_orchestrator::runtime_threads::event_coalesce;

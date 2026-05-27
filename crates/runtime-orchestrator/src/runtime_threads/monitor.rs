@@ -1,32 +1,36 @@
-//! Turn monitor: engine event loop to persisted turns/items (A4.6 extract).
+//! Turn monitor: engine event loop to persisted turns/items (D16 E1-b phase 3).
 
 use std::collections::HashMap;
 
 use anyhow::{Result, anyhow};
 use chrono::Utc;
+use deepseek_core::models::Usage;
+use deepseek_core::subagent::SubAgentStatus;
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::core::engine::EngineHandle;
-use crate::core::events::{Event as EngineEvent, TurnOutcomeStatus, TurnSummary};
-use crate::models::Usage;
-use crate::tools::subagent::SubAgentStatus;
+use crate::engine::{EngineHandle, Event as EngineEvent, TurnOutcomeStatus, TurnSummary};
 
-use super::{PendingApproval, RuntimeApprovalDecision, touch_lru};
+use super::active::{PendingApproval, RuntimeApprovalDecision, touch_lru};
+use super::manager::{RuntimeThreadManager, tool_kind_for_name};
+use super::monitor_host::RuntimeThreadMonitorHost;
 use super::persist::duration_ms;
+use super::thread_crud::SUMMARY_LIMIT;
 use super::types::*;
-use super::{
-    summarize_text, tool_kind_for_name, RuntimeThreadManager, SUMMARY_LIMIT,
-    CURRENT_RUNTIME_SCHEMA_VERSION,
-};
+use super::{summarize_text, CURRENT_RUNTIME_SCHEMA_VERSION};
 
-impl RuntimeThreadManager {
-    pub(crate) async fn monitor_turn_impl(
-        &self,
-        thread_id: String,
-        turn_id: String,
-        engine: EngineHandle,
-    ) -> Result<()> {
+pub async fn monitor_turn<P, R, H>(
+    mgr: &RuntimeThreadManager<P, R>,
+    host: &H,
+    thread_id: String,
+    turn_id: String,
+    engine: EngineHandle<P, R>,
+) -> Result<()>
+where
+    P: Send + Sync + Clone + 'static,
+    R: Send + Sync + Clone + 'static,
+    H: RuntimeThreadMonitorHost<P, R> + 'static,
+{
         tracing::info!(
             thread_id = %thread_id,
             turn_id = %turn_id,
@@ -50,7 +54,7 @@ impl RuntimeThreadManager {
                 rx.recv().await
             };
             let Some(event) = event else {
-                if self
+                if mgr
                     .is_interrupt_requested(&thread_id, &turn_id)
                     .await
                     .unwrap_or(false)
@@ -62,7 +66,7 @@ impl RuntimeThreadManager {
 
             match event {
                 EngineEvent::TurnStarted { .. } => {
-                    self.emit_event(
+                    mgr.emit_event(
                         &thread_id,
                         Some(&turn_id),
                         None,
@@ -77,7 +81,7 @@ impl RuntimeThreadManager {
                 }
                 EngineEvent::ThinkingDelta { content, .. } => {
                     if let Some(ref item_id) = thinking_stream_item_id {
-                        self.emit_event(
+                        mgr.emit_event(
                             &thread_id,
                             Some(&turn_id),
                             Some(item_id.as_str()),
@@ -105,8 +109,8 @@ impl RuntimeThreadManager {
                         started_at: Some(Utc::now()),
                         ended_at: None,
                     };
-                    self.save_item_and_attach_blocking(&item, &turn_id).await?;
-                    self.emit_event(
+                    mgr.save_item_and_attach_blocking(&item, &turn_id).await?;
+                    mgr.emit_event(
                         &thread_id,
                         Some(&turn_id),
                         Some(&item_id),
@@ -119,7 +123,7 @@ impl RuntimeThreadManager {
                 EngineEvent::MessageDelta { content, .. } => {
                     if let Some((item_id, text)) = current_message_item.as_mut() {
                         text.push_str(&content);
-                        self.emit_event(
+                        mgr.emit_event(
                             &thread_id,
                             Some(&turn_id),
                             Some(item_id),
@@ -131,7 +135,7 @@ impl RuntimeThreadManager {
                 }
                 EngineEvent::MessageComplete { .. } => {
                     if let Some((item_id, text)) = current_message_item.take() {
-                        let item = self
+                        let item = mgr
                             .update_and_save_item_blocking(&item_id, |item| {
                                 item.status = TurnItemLifecycleStatus::Completed;
                                 item.summary = summarize_text(&text, SUMMARY_LIMIT);
@@ -139,7 +143,7 @@ impl RuntimeThreadManager {
                                 item.ended_at = Some(Utc::now());
                             })
                             .await?;
-                        self.emit_event(
+                        mgr.emit_event(
                             &thread_id,
                             Some(&turn_id),
                             Some(&item_id),
@@ -148,11 +152,11 @@ impl RuntimeThreadManager {
                         )
                         .await?;
                     }
-                    let mgr = self.clone();
+                    let panel_host = host.clone();
                     let tid = thread_id.clone();
                     let tturn = turn_id.clone();
                     tokio::spawn(async move {
-                        let _ = mgr.emit_panel_context(&tid, &tturn).await;
+                        panel_host.after_message_complete_panels(&tid, &tturn).await;
                     });
                 }
                 EngineEvent::ToolCallStarted { id, name, input } => {
@@ -173,8 +177,8 @@ impl RuntimeThreadManager {
                         started_at: Some(Utc::now()),
                         ended_at: None,
                     };
-                    self.save_item_and_attach_blocking(&item, &turn_id).await?;
-                    self.emit_event(
+                    mgr.save_item_and_attach_blocking(&item, &turn_id).await?;
+                    mgr.emit_event(
                         &thread_id,
                         Some(&turn_id),
                         Some(&item_id),
@@ -185,7 +189,7 @@ impl RuntimeThreadManager {
                 }
                 EngineEvent::ToolCallProgress { id, output } => {
                     if let Some(item_id) = tool_items.get(&id) {
-                        self.emit_event(
+                        mgr.emit_event(
                             &thread_id,
                             Some(&turn_id),
                             Some(item_id),
@@ -197,7 +201,15 @@ impl RuntimeThreadManager {
                 }
                 EngineEvent::ToolCallComplete { id, name, result } => {
                     if let Some(item_id) = tool_items.remove(&id) {
-                        let item = self
+                        let artifact_refs = match &result {
+                            Ok(output) => host.artifact_refs_from_tool_output(
+                                None,
+                                &output.content,
+                                output.metadata.as_ref(),
+                            ),
+                            Err(_) => Vec::new(),
+                        };
+                        let item = mgr
                             .update_and_save_item_blocking(&item_id, |item| {
                                 let now = Utc::now();
                                 item.ended_at = Some(now);
@@ -214,12 +226,7 @@ impl RuntimeThreadManager {
                                         );
                                         item.detail = Some(output.content.clone());
                                         item.metadata = output.metadata.clone();
-                                        item.artifact_refs =
-                                            crate::tools::large_output_router::artifact_refs_from_tool_output(
-                                                None,
-                                                &output.content,
-                                                output.metadata.as_ref(),
-                                            );
+                                        item.artifact_refs = artifact_refs.clone();
                                     }
                                     Err(err) => {
                                         item.status = TurnItemLifecycleStatus::Failed;
@@ -232,7 +239,7 @@ impl RuntimeThreadManager {
                                 }
                             })
                             .await?;
-                        self.emit_event(
+                        mgr.emit_event(
                             &thread_id,
                             Some(&turn_id),
                             Some(&item_id),
@@ -246,55 +253,13 @@ impl RuntimeThreadManager {
                         )
                         .await?;
 
-                        // Cache checklist snapshot for the WebView checklist panel
-                        if matches!(
-                            name.as_str(),
-                            "checklist_write"
-                                | "checklist_add"
-                                | "checklist_update"
-                                | "todo_write"
-                                | "todo_add"
-                                | "todo_update"
-                        ) {
-                            if let Ok(output) = &result {
-                                if output.success {
-                                    if let Some(meta) = &output.metadata {
-                                        if let Some(task_updates) = meta.get("task_updates") {
-                                            if let Some(checklist_json) =
-                                                task_updates.get("checklist")
-                                            {
-                                                if let Ok(json_str) =
-                                                    serde_json::to_string(checklist_json)
-                                                {
-                                                    self.persist_thread_checklist(
-                                                        &thread_id,
-                                                        &json_str,
-                                                    );
-                                                    let _ = self
-                                                        .emit_panel_checklist(
-                                                            &thread_id,
-                                                            &turn_id,
-                                                        )
-                                                        .await;
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        if Self::checklist_tool_needs_panel_push(name.as_str()) {
-                            let _ = self
-                                .emit_panel_checklist(&thread_id, &turn_id)
-                                .await;
-                        }
-                        if Self::scratchpad_tool_needs_panel_push(name.as_str()) {
-                            if result.as_ref().is_ok_and(|o| o.success) {
-                                let _ = self
-                                    .emit_panel_scratchpad(&thread_id, &turn_id)
-                                    .await;
-                            }
-                        }
+                        host.after_tool_call_complete_panels(
+                            &thread_id,
+                            &turn_id,
+                            &name,
+                            &result,
+                        )
+                        .await;
                     }
                 }
                 EngineEvent::CompactionStarted { id, auto, message } => {
@@ -313,8 +278,8 @@ impl RuntimeThreadManager {
                         started_at: Some(Utc::now()),
                         ended_at: None,
                     };
-                    self.save_item_and_attach_blocking(&item, &turn_id).await?;
-                    self.emit_event(
+                    mgr.save_item_and_attach_blocking(&item, &turn_id).await?;
+                    mgr.emit_event(
                         &thread_id,
                         Some(&turn_id),
                         Some(&item_id),
@@ -331,7 +296,7 @@ impl RuntimeThreadManager {
                     messages_after,
                 } => {
                     if let Some(item_id) = compaction_items.remove(&id) {
-                        let item = self
+                        let item = mgr
                             .update_and_save_item_blocking(&item_id, |item| {
                                 item.status = TurnItemLifecycleStatus::Completed;
                                 item.summary = summarize_text(&message, SUMMARY_LIMIT);
@@ -339,7 +304,7 @@ impl RuntimeThreadManager {
                                 item.ended_at = Some(Utc::now());
                             })
                             .await?;
-                        self.emit_event(
+                        mgr.emit_event(
                             &thread_id,
                             Some(&turn_id),
                             Some(&item_id),
@@ -356,7 +321,7 @@ impl RuntimeThreadManager {
                 }
                 EngineEvent::CompactionFailed { id, auto, message } => {
                     if let Some(item_id) = compaction_items.remove(&id) {
-                        let item = self
+                        let item = mgr
                             .update_and_save_item_blocking(&item_id, |item| {
                                 item.status = TurnItemLifecycleStatus::Failed;
                                 item.summary = summarize_text(&message, SUMMARY_LIMIT);
@@ -364,7 +329,7 @@ impl RuntimeThreadManager {
                                 item.ended_at = Some(Utc::now());
                             })
                             .await?;
-                        self.emit_event(
+                        mgr.emit_event(
                             &thread_id,
                             Some(&turn_id),
                             Some(&item_id),
@@ -379,7 +344,7 @@ impl RuntimeThreadManager {
                     // background-task subscribers and replay see it. The actual
                     // archive write is the engine's responsibility (see
                     // `cycle_manager::archive_cycle`); this event is informational.
-                    self.emit_event(
+                    mgr.emit_event(
                         &thread_id,
                         Some(&turn_id),
                         None,
@@ -400,17 +365,17 @@ impl RuntimeThreadManager {
                     description,
                     reason,
                 } => {
-                    let mut thread = self.store.load_thread(&thread_id)?;
+                    let mut thread = mgr.store.load_thread(&thread_id)?;
                     thread.coherence_state = state;
                     thread.updated_at = Utc::now();
                     {
-                        let store = self.store.clone();
+                        let store = mgr.store.clone();
                         let thread_clone = thread.clone();
                         tokio::task::spawn_blocking(move || store.save_thread(&thread_clone))
                             .await
                             .map_err(|e| anyhow!("save thread panicked: {e}"))??;
                     }
-                    self.emit_event(
+                    mgr.emit_event(
                         &thread_id,
                         Some(&turn_id),
                         None,
@@ -447,8 +412,8 @@ impl RuntimeThreadManager {
                         started_at: Some(Utc::now()),
                         ended_at: Some(Utc::now()),
                     };
-                    self.save_item_and_attach_blocking(&item, &turn_id).await?;
-                    self.emit_event(
+                    mgr.save_item_and_attach_blocking(&item, &turn_id).await?;
+                    mgr.emit_event(
                         &thread_id,
                         Some(&turn_id),
                         Some(&item.id),
@@ -482,8 +447,8 @@ impl RuntimeThreadManager {
                         started_at: Some(Utc::now()),
                         ended_at: Some(Utc::now()),
                     };
-                    self.save_item_and_attach_blocking(&item, &turn_id).await?;
-                    self.emit_event(
+                    mgr.save_item_and_attach_blocking(&item, &turn_id).await?;
+                    mgr.emit_event(
                         &thread_id,
                         Some(&turn_id),
                         Some(&item.id),
@@ -508,8 +473,8 @@ impl RuntimeThreadManager {
                         started_at: Some(Utc::now()),
                         ended_at: Some(Utc::now()),
                     };
-                    self.save_item_and_attach_blocking(&item, &turn_id).await?;
-                    self.emit_event(
+                    mgr.save_item_and_attach_blocking(&item, &turn_id).await?;
+                    mgr.emit_event(
                         &thread_id,
                         Some(&turn_id),
                         Some(&item.id),
@@ -536,8 +501,8 @@ impl RuntimeThreadManager {
                         started_at: Some(Utc::now()),
                         ended_at: Some(Utc::now()),
                     };
-                    self.save_item_and_attach_blocking(&item, &turn_id).await?;
-                    self.emit_event(
+                    mgr.save_item_and_attach_blocking(&item, &turn_id).await?;
+                    mgr.emit_event(
                         &thread_id,
                         Some(&turn_id),
                         Some(&item.id),
@@ -561,8 +526,8 @@ impl RuntimeThreadManager {
                         started_at: Some(Utc::now()),
                         ended_at: Some(Utc::now()),
                     };
-                    self.save_item_and_attach_blocking(&item, &turn_id).await?;
-                    self.emit_event(
+                    mgr.save_item_and_attach_blocking(&item, &turn_id).await?;
+                    mgr.emit_event(
                         &thread_id,
                         Some(&turn_id),
                         Some(&item.id),
@@ -589,8 +554,8 @@ impl RuntimeThreadManager {
                         started_at: Some(Utc::now()),
                         ended_at: Some(Utc::now()),
                     };
-                    self.save_item_and_attach_blocking(&item, &turn_id).await?;
-                    self.emit_event(
+                    mgr.save_item_and_attach_blocking(&item, &turn_id).await?;
+                    mgr.emit_event(
                         &thread_id,
                         Some(&turn_id),
                         Some(&item.id),
@@ -607,7 +572,7 @@ impl RuntimeThreadManager {
                     summary,
                     items,
                 } => {
-                    self.emit_event(
+                    mgr.emit_event(
                         &thread_id,
                         Some(&turn_id),
                         None,
@@ -628,7 +593,7 @@ impl RuntimeThreadManager {
                     partition,
                     agent_id,
                 } => {
-                    self.emit_event(
+                    mgr.emit_event(
                         &thread_id,
                         Some(&turn_id),
                         None,
@@ -671,8 +636,8 @@ impl RuntimeThreadManager {
                         started_at: Some(Utc::now()),
                         ended_at: Some(Utc::now()),
                     };
-                    self.save_item_and_attach_blocking(&item, &turn_id).await?;
-                    self.emit_event(
+                    mgr.save_item_and_attach_blocking(&item, &turn_id).await?;
+                    mgr.emit_event(
                         &thread_id,
                         Some(&turn_id),
                         Some(&item.id),
@@ -687,7 +652,7 @@ impl RuntimeThreadManager {
                     description,
                     ..
                 } => {
-                    if self
+                    if mgr
                         .active_turn_flags(&thread_id, &turn_id)
                         .await
                         .is_none()
@@ -695,11 +660,11 @@ impl RuntimeThreadManager {
                         let _ = engine.deny_tool_call(id).await;
                         continue;
                     }
-                    let (auto_approve, trust_mode) = self
+                    let (auto_approve, trust_mode) = mgr
                         .active_turn_flags(&thread_id, &turn_id)
                         .await
                         .unwrap_or((false, false));
-                    match Self::approval_decision(auto_approve, trust_mode, false) {
+                    match RuntimeThreadManager::<P, R>::approval_decision(auto_approve, trust_mode, false) {
                         RuntimeApprovalDecision::ApproveTool => {
                             let _ = engine.approve_tool_call(id).await;
                         }
@@ -707,11 +672,11 @@ impl RuntimeThreadManager {
                         | RuntimeApprovalDecision::RetryWithFullAccess => {
                             // Register pending before SSE/JSONL emit so HTTP
                             // `resolve-approval` cannot race `approval.required`.
-                            let timeout_secs = self.manager_cfg.http_approval_timeout_secs.max(1);
+                            let timeout_secs = mgr.manager_cfg.http_approval_timeout_secs.max(1);
                             let deadline = tokio::time::Instant::now()
                                 + std::time::Duration::from_secs(timeout_secs);
                             {
-                                let mut active = self.active.lock().await;
+                                let mut active = mgr.active.lock().await;
                                 active.pending_approvals.insert(
                                     id.clone(),
                                     PendingApproval {
@@ -723,7 +688,7 @@ impl RuntimeThreadManager {
                                 );
                             }
 
-                            self.emit_event(
+                            mgr.emit_event(
                                 &thread_id,
                                 Some(&turn_id),
                                 None,
@@ -736,12 +701,12 @@ impl RuntimeThreadManager {
                             )
                             .await?;
 
-                            let this = self.clone();
+                            let mgr_clone = mgr.clone();
                             let engine_handle = engine.clone();
                             let tool_id = id.clone();
                             tokio::spawn(async move {
                                 tokio::time::sleep_until(deadline).await;
-                                let mut active = this.active.lock().await;
+                                let mut active = mgr_clone.active.lock().await;
                                 if active.pending_approvals.remove(&tool_id).is_some() {
                                     drop(active);
                                     let _ = engine_handle.deny_tool_call(tool_id).await;
@@ -756,7 +721,7 @@ impl RuntimeThreadManager {
                     denial_reason,
                     ..
                 } => {
-                    self.emit_event(
+                    mgr.emit_event(
                         &thread_id,
                         Some(&turn_id),
                         None,
@@ -768,16 +733,16 @@ impl RuntimeThreadManager {
                         }),
                     )
                     .await?;
-                    let (auto_approve, trust_mode) = self
+                    let (auto_approve, trust_mode) = mgr
                         .active_turn_flags(&thread_id, &turn_id)
                         .await
                         .unwrap_or((false, false));
-                    match Self::approval_decision(auto_approve, trust_mode, true) {
+                    match RuntimeThreadManager::<P, R>::approval_decision(auto_approve, trust_mode, true) {
                         RuntimeApprovalDecision::RetryWithFullAccess => {
                             let _ = engine
                                 .retry_tool_with_policy(
                                     tool_id,
-                                    crate::sandbox::SandboxPolicy::DangerFullAccess,
+                                    host.full_access_sandbox_policy(),
                                 )
                                 .await;
                         }
@@ -801,8 +766,8 @@ impl RuntimeThreadManager {
                         started_at: Some(Utc::now()),
                         ended_at: Some(Utc::now()),
                     };
-                    self.save_item_and_attach_blocking(&item, &turn_id).await?;
-                    self.emit_event(
+                    mgr.save_item_and_attach_blocking(&item, &turn_id).await?;
+                    mgr.emit_event(
                         &thread_id,
                         Some(&turn_id),
                         Some(&item.id),
@@ -828,8 +793,8 @@ impl RuntimeThreadManager {
                         started_at: Some(Utc::now()),
                         ended_at: Some(Utc::now()),
                     };
-                    self.save_item_and_attach_blocking(&item, &turn_id).await?;
-                    self.emit_event(
+                    mgr.save_item_and_attach_blocking(&item, &turn_id).await?;
+                    mgr.emit_event(
                         &thread_id,
                         Some(&turn_id),
                         Some(&item.id),
@@ -860,16 +825,14 @@ impl RuntimeThreadManager {
                     let summary = TurnSummary::new(step_count, tool_names, end_reason);
                     summary.log_turn_complete(&turn_id, status, Some(&thread_id));
                     turn_summary = Some(summary);
-                    let _ = self.emit_panel_context(&thread_id, &turn_id).await;
-                    let _ = self.emit_panel_scratchpad(&thread_id, &turn_id).await;
-                    let _ = self.emit_panel_checklist(&thread_id, &turn_id).await;
+                    host.after_turn_complete_panels(&thread_id, &turn_id).await;
                     break;
                 }
                 _ => {}
             }
         }
 
-        if self
+        if mgr
             .is_interrupt_requested(&thread_id, &turn_id)
             .await
             .unwrap_or(false)
@@ -878,7 +841,7 @@ impl RuntimeThreadManager {
         }
 
         if let Some((item_id, text)) = current_message_item.take() {
-            let mut item = self.store.load_item(&item_id)?;
+            let mut item = mgr.store.load_item(&item_id)?;
             if turn_status == RuntimeTurnStatus::Interrupted {
                 item.status = TurnItemLifecycleStatus::Interrupted;
             } else {
@@ -888,13 +851,13 @@ impl RuntimeThreadManager {
             item.detail = Some(text);
             item.ended_at = Some(Utc::now());
             {
-                let store = self.store.clone();
+                let store = mgr.store.clone();
                 let item_clone = item.clone();
                 tokio::task::spawn_blocking(move || store.save_item(&item_clone))
                     .await
                     .map_err(|e| anyhow!("save item panicked: {e}"))??;
             }
-            self.emit_event(
+            mgr.emit_event(
                 &thread_id,
                 Some(&turn_id),
                 Some(&item_id),
@@ -909,7 +872,7 @@ impl RuntimeThreadManager {
         }
 
         let ended_at = Utc::now();
-        let mut turn = self.store.load_turn(&turn_id)?;
+        let mut turn = mgr.store.load_turn(&turn_id)?;
         turn.status = turn_status;
         turn.ended_at = Some(ended_at);
         turn.duration_ms = turn.started_at.map(|start| duration_ms(start, ended_at));
@@ -917,12 +880,12 @@ impl RuntimeThreadManager {
         turn.last_request_input_tokens = turn_last_request_input_tokens;
         turn.error = turn_error;
 
-        let mut thread = self.get_thread(&thread_id).await?;
+        let mut thread = mgr.get_thread(&thread_id).await?;
         thread.latest_turn_id = Some(turn_id.clone());
         thread.updated_at = Utc::now();
 
         {
-            let store = self.store.clone();
+            let store = mgr.store.clone();
             let turn_clone = turn.clone();
             let thread_clone = thread.clone();
             tokio::task::spawn_blocking(move || -> Result<()> {
@@ -934,7 +897,7 @@ impl RuntimeThreadManager {
             .map_err(|e| anyhow!("save turn completion panicked: {e}"))??;
         }
 
-        self.emit_event(
+        mgr.emit_event(
             &thread_id,
             Some(&turn_id),
             None,
@@ -952,7 +915,7 @@ impl RuntimeThreadManager {
         .await?;
 
         {
-            let mut active = self.active.lock().await;
+            let mut active = mgr.active.lock().await;
             if let Some(state) = active.engines.get_mut(&thread_id)
                 && state
                     .active_turn
@@ -967,44 +930,4 @@ impl RuntimeThreadManager {
         Ok(())
     }
 
-    async fn save_item_and_attach_blocking(
-        &self,
-        item: &TurnItemRecord,
-        turn_id: &str,
-    ) -> Result<()> {
-        let store = self.store.clone();
-        let item = item.clone();
-        let turn_id = turn_id.to_string();
-        tokio::task::spawn_blocking(move || -> Result<()> {
-            store.save_item(&item)?;
-            let mut turn = store.load_turn(&turn_id)?;
-            if !turn.item_ids.iter().any(|id| id == &item.id) {
-                turn.item_ids.push(item.id.clone());
-                store.save_turn(&turn)?;
-            }
-            Ok(())
-        })
-        .await
-        .map_err(|e| anyhow!("save_item_and_attach panicked: {e}"))?
-    }
-
-    async fn update_and_save_item_blocking(
-        &self,
-        item_id: &str,
-        update_fn: impl FnOnce(&mut TurnItemRecord),
-    ) -> Result<TurnItemRecord> {
-        let store = self.store.clone();
-        let item_id = item_id.to_string();
-        let mut item = tokio::task::spawn_blocking(move || store.load_item(&item_id))
-            .await
-            .map_err(|e| anyhow!("load_item panicked: {e}"))??;
-        update_fn(&mut item);
-        let store = self.store.clone();
-        let item_clone = item.clone();
-        tokio::task::spawn_blocking(move || store.save_item(&item_clone))
-            .await
-            .map_err(|e| anyhow!("save_item panicked: {e}"))??;
-        Ok(item)
-    }
-
-}
+    

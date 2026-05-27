@@ -1452,6 +1452,7 @@ dependencies = [
  "deepseek-core",
  "deepseek-protocol",
  "deepseek-runtime-adapters",
+ "deepseek-tools",
  "futures-util",
  "pretty_assertions",
  "rusqlite",

@@ -13,7 +13,7 @@ use deepseek_runtime_orchestrator::runtime_threads::RuntimeThreadHost;
 impl RuntimeThreadHost<super::RuntimeEnginePolicy, super::RuntimeUserInputResponse>
     for RuntimeThreadManager
 {
-    async fn ensure_engine_loaded(
+    async fn spawn_engine_for_thread(
         &self,
         thread: &ThreadRecord,
     ) -> Result<
@@ -22,7 +22,7 @@ impl RuntimeThreadHost<super::RuntimeEnginePolicy, super::RuntimeUserInputRespon
             super::RuntimeUserInputResponse,
         >,
     > {
-        self.ensure_engine_loaded_impl(thread).await
+        self.spawn_engine_for_thread_impl(thread).await
     }
 
     async fn prepare_start_turn_params(
@@ -94,7 +94,14 @@ impl RuntimeThreadHost<super::RuntimeEnginePolicy, super::RuntimeUserInputRespon
             super::RuntimeUserInputResponse,
         >,
     ) -> Result<()> {
-        self.monitor_turn_impl(thread_id, turn_id, engine).await
+        deepseek_runtime_orchestrator::runtime_threads::monitor_turn(
+            self,
+            self,
+            thread_id,
+            turn_id,
+            engine,
+        )
+        .await
     }
 }
 
@@ -103,6 +110,11 @@ impl RuntimeThreadManager {
         &self,
         thread: &ThreadRecord,
     ) -> Result<crate::core::engine::EngineHandle> {
-        RuntimeThreadHost::ensure_engine_loaded(self, thread).await
+        deepseek_runtime_orchestrator::runtime_threads::ensure_engine_loaded(
+            self,
+            self,
+            thread,
+        )
+        .await
     }
 }

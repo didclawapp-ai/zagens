@@ -1,36 +1,20 @@
-//! Engine spawn + session sync for durable threads (R-003 A4.6).
+//! Sidecar engine spawn for durable threads (Config, tools, task/automation slots).
 
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 
 use crate::config::MAX_SUBAGENTS;
 use crate::core::engine::{EngineConfig, EngineHandle, spawn_engine};
-use crate::core::ops::Op;
-use crate::models::{Message, SystemPrompt};
 use crate::tools::plan::new_shared_plan_state;
 use crate::tools::todo::new_shared_todo_list;
 
-use super::{ActiveThreadState, enforce_lru_capacity, touch_lru};
-use super::persist::reconstruct_messages_for_store;
 use super::types::ThreadRecord;
 use super::RuntimeThreadManager;
 
 impl RuntimeThreadManager {
-    pub(crate) async fn ensure_engine_loaded_impl(
+    pub(crate) async fn spawn_engine_for_thread_impl(
         &self,
         thread: &ThreadRecord,
     ) -> Result<EngineHandle> {
-        {
-            let mut active = self.active.lock().await;
-            if let Some(engine) = active
-                .engines
-                .get(thread.id.as_str())
-                .map(|state| state.engine.clone())
-            {
-                touch_lru(&mut active.lru, &thread.id);
-                return Ok(engine);
-            }
-        }
-
         let compaction = self.config.compaction_runtime_config(&thread.model);
         let network_policy = self.config.network.clone().map(|toml_cfg| {
             crate::network_policy::NetworkPolicyDecider::with_default_audit(toml_cfg.into_runtime())
@@ -110,47 +94,6 @@ impl RuntimeThreadManager {
             llm_client_override: None,
         };
 
-        let engine = spawn_engine(engine_cfg, &self.config);
-
-        let store = self.store.clone();
-        let thread_id = thread.id.clone();
-        let session_messages = tokio::task::spawn_blocking(move || -> Result<Vec<Message>> {
-            let turns = store.list_turns_for_thread(&thread_id)?;
-            reconstruct_messages_for_store(&store, &turns)
-        })
-        .await
-        .map_err(|e| anyhow!("ensure_engine_loaded panicked: {e}"))??;
-
-        let sys_prompt = thread
-            .system_prompt
-            .as_ref()
-            .map(|s| SystemPrompt::Text(s.clone()));
-        if !session_messages.is_empty() || sys_prompt.is_some() {
-            engine
-                .send(Op::SyncSession {
-                    messages: session_messages,
-                    system_prompt: sys_prompt,
-                    model: thread.model.clone(),
-                    workspace: thread.workspace.clone(),
-                })
-                .await
-                .map_err(|e| anyhow!("Failed to sync thread session: {e}"))?;
-        }
-
-        let mut active = self.active.lock().await;
-        let evicted = enforce_lru_capacity(&mut active, self.manager_cfg.max_active_threads);
-        active.engines.insert(
-            thread.id.clone(),
-            ActiveThreadState {
-                engine: engine.clone(),
-                active_turn: None,
-            },
-        );
-        touch_lru(&mut active.lru, &thread.id);
-        drop(active);
-        for handle in evicted {
-            let _ = handle.send(Op::Shutdown).await;
-        }
-        Ok(engine)
+        Ok(spawn_engine(engine_cfg, &self.config))
     }
 }

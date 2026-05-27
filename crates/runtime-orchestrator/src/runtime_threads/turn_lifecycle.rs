@@ -9,6 +9,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use super::active::{ActiveTurnState, touch_lru};
+use super::engine_load::ensure_engine_loaded;
 use super::engine_host::{RuntimeThreadHost, spawn_turn_monitor};
 use super::manager::RuntimeThreadManager;
 use super::thread_crud::SUMMARY_LIMIT;
@@ -37,7 +38,7 @@ where
     }
 
     let mut thread = mgr.get_thread(thread_id).await?;
-    let engine = host.ensure_engine_loaded(&thread).await?;
+    let engine = ensure_engine_loaded(mgr, host, &thread).await?;
 
     {
         let active = mgr.active.lock().await;
@@ -189,7 +190,7 @@ where
     }
 
     let thread = mgr.get_thread(thread_id).await?;
-    let engine = host.ensure_engine_loaded(&thread).await?;
+    let engine = ensure_engine_loaded(mgr, host, &thread).await?;
     let truncated = engine
         .truncate_before_last_user_message()
         .await

@@ -8,9 +8,13 @@ use serde::{Deserialize, Serialize};
 
 pub mod active;
 pub mod engine_host;
+pub mod engine_load;
 pub mod event_coalesce;
 pub mod events;
 pub mod manager;
+pub mod monitor;
+pub mod monitor_host;
+pub mod monitor_persist;
 pub mod persist;
 pub mod routing;
 pub mod thread_crud;
@@ -20,6 +24,9 @@ pub mod turn_wait;
 pub mod types;
 
 pub use engine_host::RuntimeThreadHost;
+pub use engine_load::ensure_engine_loaded;
+pub use monitor::monitor_turn;
+pub use monitor_host::RuntimeThreadMonitorHost;
 pub use manager::{
     EVENT_CHANNEL_CAPACITY, RUNTIME_RESTART_REASON, RuntimeThreadManager,
     checklist_tool_needs_panel_push, scratchpad_tool_needs_panel_push, tool_kind_for_name,

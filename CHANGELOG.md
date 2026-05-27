@@ -35,6 +35,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **D16 E1-a2 (WIP):** `scratchpad_gates` + 路径读 scratchpad 子模块迁入 `runtime-adapters`；`tools/{file,tasks}` 直接调用 adapters gate；`scratchpad_flow` re-export 保持 engine 侧兼容。
 - **D16 E1-b (WIP, phase 1):** 新建 `crates/runtime-orchestrator` — 迁入 `runtime_threads/{types,persist}`、`thread_store_sqlite`、`pricing`（usage 聚合）；`RuntimeThreadManager` 等 live orchestration 仍留 `runtime-server`；40 个 `runtime_threads` 单元测试全绿。
 - **D16 E1-b (WIP, phase 2):** 迁入 `runtime_threads/{routing,events,event_coalesce}` 至 orchestrator；新增 `engine`/`engine_host`（`EngineHandle<P,R>` + `RuntimeThreadHost` trait）；`active`/`turn_wait`/`turn_control`/`turn_lifecycle` 核心迁入 orchestrator；`RuntimeThreadManager<P,R>` 核心 + `thread_crud` 在 orchestrator；sidecar `Deref` 包装实现 host（`engine_load`/`monitor`/`prepare_start_turn_params`）；server 保留 Config/task/scratchpad 与 symbol index hook。
+- **D16 E1-b (WIP, phase 3):** `monitor_turn` 事件循环（~930 行）迁入 `runtime-orchestrator`/`monitor.rs`；新增 `RuntimeThreadMonitorHost`（panel SSE、artifact refs、全权限 sandbox policy）与 `monitor_persist` 阻塞落盘 helper；sidecar `monitor_host.rs` 实现 host hook；删除 `runtime-server`/`monitor.rs`。
+- **D16 E1-b (WIP, phase 4):** `ensure_engine_loaded` 通用路径（缓存、session sync、LRU）迁入 orchestrator/`engine_load.rs`；`RuntimeThreadHost::spawn_engine_for_thread` 由 sidecar `engine_spawn.rs` 实现；`turn_lifecycle`/`turn_control` 直接调用 orchestrator `ensure_engine_loaded(mgr, host, …)`。
 
 ### Changed
 

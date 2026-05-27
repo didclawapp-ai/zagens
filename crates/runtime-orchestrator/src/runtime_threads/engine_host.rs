@@ -18,7 +18,10 @@ where
     P: Send + Sync + Clone + 'static,
     R: Send + Sync + Clone + 'static,
 {
-    async fn ensure_engine_loaded(&self, thread: &ThreadRecord) -> Result<EngineHandle<P, R>>;
+    async fn spawn_engine_for_thread(
+        &self,
+        thread: &ThreadRecord,
+    ) -> Result<EngineHandle<P, R>>;
 
     async fn prepare_start_turn_params(
         &self,

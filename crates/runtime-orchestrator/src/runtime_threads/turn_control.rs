@@ -10,6 +10,7 @@ use uuid::Uuid;
 use crate::engine::Op;
 
 use super::active::{ActiveTurnState, touch_lru};
+use super::engine_load::ensure_engine_loaded;
 use super::engine_host::{RuntimeThreadHost, spawn_turn_monitor};
 use super::manager::RuntimeThreadManager;
 use super::thread_crud::SUMMARY_LIMIT;
@@ -152,7 +153,7 @@ where
     H: RuntimeThreadHost<P, R> + 'static,
 {
     let mut thread = mgr.get_thread(thread_id).await?;
-    let engine = host.ensure_engine_loaded(&thread).await?;
+    let engine = ensure_engine_loaded(mgr, host, &thread).await?;
 
     {
         let active = mgr.active.lock().await;
