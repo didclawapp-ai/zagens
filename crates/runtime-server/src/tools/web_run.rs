@@ -7,7 +7,7 @@ use super::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
     optional_u64, required_str,
 };
-use crate::network_policy::{Decision, host_from_url};
+use deepseek_runtime_adapters::tools::check_url_policy;
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose};
 use regex::Regex;
@@ -1046,22 +1046,9 @@ fn page_from_search(query: &str, results: &[SearchEntry]) -> WebPage {
 /// Check network policy for a URL before fetching.
 /// Returns an error if the policy denies access.
 fn check_network_policy(url: &str, context: &ToolContext) -> Result<(), ToolError> {
-    let Some(decider) = context.network_policy.as_ref() else {
-        return Ok(());
-    };
-    let Some(host) = host_from_url(url) else {
-        return Ok(());
-    };
-    match decider.evaluate(&host, "web_run") {
-        Decision::Allow => Ok(()),
-        Decision::Deny => Err(ToolError::permission_denied(format!(
-            "network call to '{host}' blocked by network policy"
-        ))),
-        Decision::Prompt => Err(ToolError::permission_denied(format!(
-            "network call to '{host}' requires approval; \
-             re-run after `/network allow {host}` or set network.default = \"allow\" in config"
-        ))),
-    }
+    check_url_policy(context.network_policy.as_ref(), "web_run", url)
+        .map_err(|e| ToolError::permission_denied(e.denial_message()))?;
+    Ok(())
 }
 
 async fn fetch_page(url: &str, timeout_ms: u64) -> Result<WebPage, ToolError> {

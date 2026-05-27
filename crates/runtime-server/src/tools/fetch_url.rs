@@ -10,7 +10,7 @@
 use super::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_u64,
 };
-use crate::network_policy::{Decision, host_from_url};
+use deepseek_runtime_adapters::tools::{check_url_policy, is_http_url, is_restricted_ip};
 use async_trait::async_trait;
 use regex::Regex;
 use serde::Serialize;
@@ -134,36 +134,15 @@ impl ToolSpec for FetchUrlTool {
         if url.is_empty() {
             return Err(ToolError::invalid_input("`url` cannot be empty"));
         }
-        let scheme_ok = url.starts_with("http://") || url.starts_with("https://");
-        if !scheme_ok {
+        if !is_http_url(&url) {
             return Err(ToolError::invalid_input(
                 "only http:// and https:// URLs are supported",
             ));
         }
 
         // Extract host once for reuse across network policy + SSRF checks.
-        let url_host = host_from_url(&url);
-
-        // Per-domain network policy gate (#135). If no policy is attached
-        // (e.g. ad-hoc tests), behavior is permissive — match pre-v0.7.0.
-        if let Some(decider) = context.network_policy.as_ref()
-            && let Some(ref host) = url_host
-        {
-            match decider.evaluate(host, "fetch_url") {
-                Decision::Allow => {}
-                Decision::Deny => {
-                    return Err(ToolError::permission_denied(format!(
-                        "network call to '{host}' blocked by network policy"
-                    )));
-                }
-                Decision::Prompt => {
-                    return Err(ToolError::permission_denied(format!(
-                        "network call to '{host}' requires approval; \
-                         re-run after `/network allow {host}` or set network.default = \"allow\" in config"
-                    )));
-                }
-            }
-        }
+        let url_host = check_url_policy(context.network_policy.as_ref(), "fetch_url", &url)
+            .map_err(|e| ToolError::permission_denied(e.denial_message()))?;
 
         // SSRF protection: resolve hostname and reject private/link-local/loopback IPs.
         // Prevents LLM-prompted requests to cloud metadata (169.254.169.254),
@@ -291,46 +270,6 @@ impl ToolSpec for FetchUrlTool {
     }
 }
 
-/// Check if an IP address is loopback, private, link-local, cloud-metadata,
-/// multicast, or reserved — all addresses that should not be reachable via
-/// an LLM-initiated fetch_url request (SSRF prevention).
-fn is_restricted_ip(ip: &std::net::IpAddr) -> bool {
-    match ip {
-        std::net::IpAddr::V4(v4) => {
-            v4.is_loopback()
-                || v4.is_private()
-                || v4.is_link_local()
-                || v4.is_multicast()
-                || v4.is_broadcast()
-                || v4.is_unspecified()
-                // 100.64.0.0/10 — Carrier-grade NAT (CGNAT / shared address space)
-                || matches!(v4.octets(), [100, 64..=127, ..])
-                // 169.254.169.254 — cloud metadata (AWS/GCP/Azure)
-                || *ip == std::net::IpAddr::V4(std::net::Ipv4Addr::new(169, 254, 169, 254))
-                // 198.18.0.0/15 — IETF benchmark testing
-                || matches!(v4.octets(), [198, 18..=19, ..])
-                // 240.0.0.0/4 — reserved (former Class E)
-                || v4.octets()[0] >= 240
-        }
-        std::net::IpAddr::V6(v6) => {
-            // IPv4-mapped IPv6 addresses (::ffff:a.b.c.d) — unwrap and check as IPv4
-            // to prevent bypass via ::ffff:127.0.0.1 etc.
-            if v6.is_unspecified()
-                || matches!(v6.octets(), [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, ..])
-            {
-                return true;
-            }
-            if let Some(v4) = v6.to_ipv4_mapped() {
-                return is_restricted_ip(&std::net::IpAddr::V4(v4));
-            }
-            v6.is_loopback()
-                || v6.is_multicast()
-                || matches!(v6.segments(), [0xfc00..=0xfdff, ..]) // ULA fc00::/7
-                || matches!(v6.segments(), [0xfe80..=0xfebf, ..]) // Link-local fe80::/10
-        }
-    }
-}
-
 /// Strip `<script>` / `<style>` blocks, drop remaining tags, and collapse
 /// whitespace. Good enough for "let the model read this page" — not a full
 /// HTML-to-Markdown converter.
@@ -420,61 +359,6 @@ mod tests {
         let tool = FetchUrlTool;
         let res = tool.execute(json!({}), &ctx()).await;
         assert!(res.is_err());
-    }
-
-    #[test]
-    fn rejects_private_localhost_literal() {
-        assert!(is_restricted_ip(&"127.0.0.1".parse().unwrap()));
-        assert!(is_restricted_ip(&"::1".parse().unwrap()));
-    }
-
-    #[test]
-    fn rejects_private_rfc1918() {
-        assert!(is_restricted_ip(&"10.0.0.1".parse().unwrap()));
-        assert!(is_restricted_ip(&"172.16.0.1".parse().unwrap()));
-        assert!(is_restricted_ip(&"192.168.1.1".parse().unwrap()));
-    }
-
-    #[test]
-    fn rejects_cloud_metadata() {
-        assert!(is_restricted_ip(&"169.254.169.254".parse().unwrap()));
-    }
-
-    #[test]
-    fn rejects_link_local() {
-        assert!(is_restricted_ip(&"169.254.1.1".parse().unwrap()));
-    }
-
-    #[test]
-    fn rejects_cgnat() {
-        assert!(is_restricted_ip(&"100.64.0.1".parse().unwrap()));
-        assert!(!is_restricted_ip(&"100.63.0.1".parse().unwrap()));
-        assert!(!is_restricted_ip(&"100.128.0.1".parse().unwrap()));
-    }
-
-    #[test]
-    fn rejects_ipv6_ula() {
-        assert!(is_restricted_ip(&"fc00::1".parse().unwrap()));
-        assert!(is_restricted_ip(&"fd12:3456::1".parse().unwrap()));
-    }
-
-    #[test]
-    fn rejects_ipv4_mapped_ipv6() {
-        // ::ffff:127.0.0.1 — IPv4-mapped IPv6 loopback bypass
-        assert!(is_restricted_ip(&"::ffff:127.0.0.1".parse().unwrap()));
-        assert!(is_restricted_ip(&"::ffff:10.0.0.1".parse().unwrap()));
-        assert!(is_restricted_ip(&"::ffff:169.254.169.254".parse().unwrap()));
-        assert!(is_restricted_ip(&"::ffff:192.168.1.1".parse().unwrap()));
-        // :: (unspecified)
-        assert!(is_restricted_ip(&"::".parse().unwrap()));
-    }
-
-    #[test]
-    fn allows_public_ips() {
-        assert!(!is_restricted_ip(&"8.8.8.8".parse().unwrap()));
-        assert!(!is_restricted_ip(&"1.1.1.1".parse().unwrap()));
-        assert!(!is_restricted_ip(&"93.184.216.34".parse().unwrap()));
-        assert!(!is_restricted_ip(&"2606:4700::1".parse().unwrap()));
     }
 
     #[tokio::test]

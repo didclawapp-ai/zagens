@@ -10,7 +10,8 @@
 use super::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_u64,
 };
-use crate::network_policy::{Decision, NetworkPolicyDecider};
+use deepseek_runtime_adapters::tools::check_host_policy;
+use crate::network_policy::NetworkPolicyDecider;
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose};
 use regex::Regex;
@@ -25,19 +26,8 @@ const BING_HOST: &str = "www.bing.com";
 /// Returns `Ok(())` if the policy allows the call, or a `ToolError` otherwise.
 /// Falls through silently when no policy is attached (back-compat).
 fn check_policy(decider: Option<&NetworkPolicyDecider>, host: &str) -> Result<(), ToolError> {
-    let Some(decider) = decider else {
-        return Ok(());
-    };
-    match decider.evaluate(host, "web_search") {
-        Decision::Allow => Ok(()),
-        Decision::Deny => Err(ToolError::permission_denied(format!(
-            "web search to '{host}' blocked by network policy"
-        ))),
-        Decision::Prompt => Err(ToolError::permission_denied(format!(
-            "web search to '{host}' requires approval; \
-             re-run after `/network allow {host}` or set network.default = \"allow\" in config"
-        ))),
-    }
+    check_host_policy(decider, "web_search", host)
+        .map_err(|e| ToolError::permission_denied(e.denial_message()))
 }
 
 // Cached regex patterns for HTML parsing
