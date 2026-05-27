@@ -29,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **D16 E3-b (WIP):** Extract `hooks/useTurnSession.ts` + `hooks/useTurnStream.ts` — 会话列表/恢复/checkpoint、SSE 流 abort/cancel/Escape；`App.tsx` 已接线，`npm run build` 通过；`handleSend` 等待 E3-d 继续下沉。
 - **D16 E3-c (WIP):** Extract `hooks/useTurnApproval.ts` + `hooks/useAgentPanelState.ts` — 审批策略/对话框、SubAgent 面板状态与 SSE agent 事件；`App.tsx` 已接线，`npm run build` 通过。
 - **D16 E3-d (WIP):** Extract `hooks/useTurnSend.ts` — SSE 发消息/流式事件处理（~500 行）；`App.tsx` 继续瘦身。
+- **D16 E3-e (Landed):** Extract `useSessionNavigation` / `useThreadContext` / `useDesktopShell`、`lib/appPreferences.ts`、`TitleBar` / `ChatActionDialogs` 组件。
+- **D16 E3-f (Landed):** Extract `AppShell.tsx`、`useWorkspacePanel`、`useChatMessageActions`；`App.tsx` **776 行**（<800 验收）；`npm run build` ✅。
 
 ### Changed
 
