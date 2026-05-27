@@ -52,7 +52,7 @@ import {
 import type { ApprovalState } from './useTurnApproval';
 import type { StreamSessionControl } from './useTurnStream';
 import type { ScratchpadStatus } from '../api/client';
-import { ACTIVE_SESSION_STORAGE_KEY } from './useTurnSession';
+import { saveStoredActiveSessionId } from '../lib/windowBridge';
 
 export type TurnChatMessage = {
   id: string;
@@ -286,11 +286,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
             try {
               const res = await persistThreadSession(threadId, activeSessionIdRef.current);
               setActiveSessionId(res.session_id);
-              try {
-                localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, res.session_id);
-              } catch {
-                /* ignore */
-              }
+              saveStoredActiveSessionId(res.session_id);
               await refreshSessions();
             } catch (e) {
               toast.error(t('banner.persistSessionFailed', { message: (e as Error).message }));

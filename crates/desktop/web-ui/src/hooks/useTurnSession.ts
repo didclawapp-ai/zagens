@@ -20,17 +20,11 @@ import {
 } from '../lib/defaultWorkspace';
 import { SESSION_CHECKPOINT_STREAMING_MS } from '../lib/runtimePoll';
 import { toast } from '../lib/toast';
-
-export const ACTIVE_SESSION_STORAGE_KEY = 'deepseek-desktop-active-session-id';
-
-function loadStoredActiveSessionId(): string | null {
-  try {
-    const s = localStorage.getItem(ACTIVE_SESSION_STORAGE_KEY)?.trim();
-    return s && s.length > 0 ? s : null;
-  } catch {
-    return null;
-  }
-}
+import {
+  clearStoredActiveSessionId,
+  loadStoredActiveSessionId,
+  saveStoredActiveSessionId,
+} from '../lib/windowBridge';
 
 export type UseTurnSessionParams = {
   t: (key: string, params?: Record<string, string>) => string;
@@ -133,11 +127,7 @@ export function useTurnSession({
         try {
           const res = await persistThreadSession(tid, activeSessionIdRef.current);
           setActiveSessionId(res.session_id);
-          try {
-            localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, res.session_id);
-          } catch {
-            /* ignore */
-          }
+          saveStoredActiveSessionId(res.session_id);
           await refreshSessions();
         } catch {
           /* avoid toast spam — turn-complete persist will retry */
@@ -161,11 +151,7 @@ export function useTurnSession({
         try {
           const res = await persistThreadSession(tid, activeSessionIdRef.current);
           setActiveSessionId(res.session_id);
-          try {
-            localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, res.session_id);
-          } catch {
-            /* ignore */
-          }
+          saveStoredActiveSessionId(res.session_id);
           await refreshSessions();
         } catch {
           /* ignore */
@@ -186,11 +172,7 @@ export function useTurnSession({
       return;
     }
     if (!sessions.some((s) => s.id === stored)) {
-      try {
-        localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
-      } catch {
-        /* ignore */
-      }
+      clearStoredActiveSessionId();
       startupSessionRestoredRef.current = true;
       return;
     }

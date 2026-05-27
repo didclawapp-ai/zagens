@@ -10,6 +10,51 @@ export function workspaceStorageKey(label: string = windowLabel): string {
   return `deepseek-desktop-workspace:${label}`;
 }
 
+const LEGACY_ACTIVE_SESSION_STORAGE_KEY = 'deepseek-desktop-active-session-id';
+
+export function activeSessionStorageKey(label: string = windowLabel): string {
+  return `deepseek-desktop-active-session-id:${label}`;
+}
+
+export function loadStoredActiveSessionId(): string | null {
+  try {
+    const scopedKey = activeSessionStorageKey();
+    let stored = localStorage.getItem(scopedKey)?.trim();
+    if (!stored && windowLabel === 'main') {
+      const legacy = localStorage.getItem(LEGACY_ACTIVE_SESSION_STORAGE_KEY)?.trim();
+      if (legacy) {
+        localStorage.setItem(scopedKey, legacy);
+        localStorage.removeItem(LEGACY_ACTIVE_SESSION_STORAGE_KEY);
+        stored = legacy;
+      }
+    }
+    return stored && stored.length > 0 ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveStoredActiveSessionId(sessionId: string): void {
+  const id = sessionId.trim();
+  if (!id) return;
+  try {
+    localStorage.setItem(activeSessionStorageKey(), id);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function clearStoredActiveSessionId(): void {
+  try {
+    localStorage.removeItem(activeSessionStorageKey());
+    if (windowLabel === 'main') {
+      localStorage.removeItem(LEGACY_ACTIVE_SESSION_STORAGE_KEY);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 export async function initWindowContext(): Promise<{
   label: string;
   primaryWorkspace: string;

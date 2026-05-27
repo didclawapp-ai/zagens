@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Desktop
 
+- **Fix:** 多窗口 — 活跃会话 `localStorage` 按窗口 label 隔离（`deepseek-desktop-active-session-id:{label}`）；新建第二窗口不再自动恢复第一窗口的会话；主窗口一次性迁移旧全局键。
 - **Fix:** 补齐 `~/.zagens/` 迁移遗漏 — `automations`、`audit.log`、`topic-memory`、`office-py`、`execpolicy.toml`、`tui.toml`、skills cache、crash dumps 等用户级路径不再写入 `~/.deepseek/`（工作区 `.deepseek/` 仍保留 scratchpad/blackboard/项目 config）。
 - **Fix:** `prepare-python.mjs` — 校验 PBS 压缩包完整大小（对比 GitHub `Content-Length`），自动删除中断留下的残缺包并重下；下载进度日志；解压失败时清理部分目录避免下次误判。
 

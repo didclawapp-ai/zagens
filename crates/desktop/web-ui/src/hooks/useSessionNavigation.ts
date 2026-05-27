@@ -19,9 +19,12 @@ import {
 } from '../lib/contextUsage';
 import type { PreviewState } from '../components/preview/types';
 import { toast } from '../lib/toast';
-import { registerWindowThread } from '../lib/windowBridge';
+import {
+  registerWindowThread,
+  saveStoredActiveSessionId,
+  clearStoredActiveSessionId,
+} from '../lib/windowBridge';
 import type { DesktopModelId, DesktopTaskTypeResolved } from '../types/desktop';
-import { ACTIVE_SESSION_STORAGE_KEY } from './useTurnSession';
 
 type NavMessage = CachedUiMessage;
 
@@ -198,11 +201,7 @@ export function useSessionNavigation({
           notifyRuntimeTransient(t('banner.threadWorkspaceError', { errMsg }));
           reconcileRuntimeAfterFetchFailure();
         }
-        try {
-          localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, sessionId);
-        } catch {
-          /* ignore */
-        }
+        saveStoredActiveSessionId(sessionId);
       } catch (e) {
         if (gen !== selectSessionGenerationRef.current) {
           return;
@@ -257,11 +256,7 @@ export function useSessionNavigation({
     setThreadDetailForContext(null);
     setLastTurnOutputTokens(null);
     setContextWindowTokens(contextWindowTokensForModel(selectedModel));
-    try {
-      localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
-    } catch {
-      /* ignore */
-    }
+    clearStoredActiveSessionId();
     threadTurnRef.current = { threadId: '', turnId: '' };
     resetTurnPersistState();
     clearApproval();
