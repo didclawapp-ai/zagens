@@ -1,7 +1,7 @@
 //! Tool dispatch boundary for the agent engine (P2 PR4).
 //!
-//! The live `ToolRegistry` builder stays in `deepseek-tui`; the engine in core
-//! (future PR4 slice) will depend on this trait instead of `crate::tools::*`.
+//! The live `ToolRegistry` builder stays in `deepseek-runtime`; the engine in core
+//! depends on [`EngineToolDispatch`] instead of `crate::tools::*`.
 
 use async_trait::async_trait;
 use deepseek_protocol::ToolOutput;

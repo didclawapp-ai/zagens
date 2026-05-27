@@ -1,6 +1,6 @@
 //! Deferred tool catalog policy and built-in tool-search helpers (P2 PR4).
 //!
-//! Execution of `code_execution` (subprocess) stays in `deepseek-tui` L2.
+//! Execution of `code_execution` (subprocess) stays in the runtime-server tool layer.
 
 use std::collections::HashSet;
 

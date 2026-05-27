@@ -1,4 +1,4 @@
-//! Sub-agent event types (runtime impl stays in `deepseek-tui`).
+//! Sub-agent event types (runtime implementation in `deepseek-runtime/tools/subagent`).
 
 pub mod mailbox;
 pub mod types;

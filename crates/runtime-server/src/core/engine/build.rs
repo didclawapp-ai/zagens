@@ -1,4 +1,4 @@
-//! Tui-side engine builder — wires concrete subsystems into core `Engine::with_hosts`.
+//! Runtime-side engine builder — wires concrete subsystems into core `Engine::with_hosts`.
 
 use std::sync::Arc;
 

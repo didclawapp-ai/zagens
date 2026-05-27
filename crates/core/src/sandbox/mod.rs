@@ -3,15 +3,15 @@
 //! External sandbox backends route shell command execution to a remote service
 //! (e.g. Alibaba OpenSandbox) instead of spawning a local process. This is
 //! complementary to the OS-level sandbox module (Seatbelt / Landlock / Windows
-//! — all of which live in `deepseek-tui::sandbox::*`) — the external backend
+//! — all of which live in `deepseek-runtime` OS sandbox modules) — the external backend
 //! *replaces* local execution entirely when configured.
 //!
 //! M3 (Engine-struct strangler step) moved the trait + output types here so
-//! the future core-side `Engine` struct can hold `Option<Arc<dyn
-//! SandboxBackend>>` without taking a tui dependency. The OS-level sandbox
-//! implementations (`SandboxPolicy`, Seatbelt/Landlock plumbing) and the
-//! `create_backend(&Config)` factory stay in `deepseek-tui::sandbox` because
-//! they depend on tui-owned config and OS-specific glue.
+//! the core-side `Engine` struct can hold `Option<Arc<dyn SandboxBackend>>`
+//! without a sidecar dependency. The OS-level sandbox implementations
+//! (`SandboxPolicy`, Seatbelt/Landlock plumbing) and the `create_backend(&Config)`
+//! factory stay in `deepseek-runtime` because they depend on runtime-owned
+//! config and OS-specific glue.
 
 use std::collections::HashMap;
 

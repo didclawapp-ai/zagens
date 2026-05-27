@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Architecture
 
+- **Docs (D17 修订):** [`D17_ARCHITECTURE_FREEZE.md`](docs/tech/adr/D17_ARCHITECTURE_FREEZE.md) 与实现对齐 — Turn 链（orchestrator → `TurnEnginePort` → sidecar `dispatch_op` → `handle_deepseek_turn`）、SubAgent 锚点路径、`I1`/边界测试范围、`I7`/F2 去 ratatui 误述、OpenAPI 护栏（脚本 + `ci.yml`）、持久化默认路径与环境变量覆盖说明。
+- **D17 (Landed):** Architecture Freeze v1 — 重构主线关闭；D16 Closed (Checkpoint)；明确 **不执行** E1 阶段 2 / E4 / runtime-server <500 行 KPI / Harness 分离。见 [`docs/tech/adr/D17_ARCHITECTURE_FREEZE.md`](docs/tech/adr/D17_ARCHITECTURE_FREEZE.md)。
+- **D17 F1/F2 (Landed):** stale `deepseek-tui` 生产注释清理（core/runtime-server shim/config）；headless `CLIENT_IDENTITY_HEADLESS` 替代 TUI 文案；`architecture_boundary` 补 `deepseek-core` 检查；`scripts/check-architecture-freeze.{ps1,sh}`。
 - **D15 (Landed):** Final architecture convergence — removed `deepseek-state` crate and legacy `core::Runtime` / `ThreadMessageTurnPort`; Zagens Desktop is the sole user entry; sidecar spawn unified to `deepseek-runtime` only. Session remains a projection of `RuntimeThreadStore` (D7 `runtime_thread_id` link). See [`docs/tech/adr/D15_FINAL_ARCHITECTURE_CONVERGENCE.md`](docs/tech/adr/D15_FINAL_ARCHITECTURE_CONVERGENCE.md).
 - **Docs (D16):** Phase E maintainability split plans — [`docs/tech/adr/D16_PHASE_E_MAINTAINABILITY.md`](docs/tech/adr/D16_PHASE_E_MAINTAINABILITY.md) (`runtime-server` crate、SubAgent、`App.tsx` hooks；不阻塞发布).
 - **D16 E2 (Landed):** Split `tools/subagent/mod.rs` (~4340 行) into focused modules — `mod.rs` ~82 行、`manager.rs` / `executor.rs` / `tools/*` / `parse.rs` / `router.rs` / `prompts.rs` 等；108 个 subagent 单元测试全绿。

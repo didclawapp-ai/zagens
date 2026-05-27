@@ -65,9 +65,9 @@ const INSTRUCTIONS_FILE_MAX_BYTES: usize = 100 * 1024;
 pub(crate) const CLIENT_SURFACE_ZAGENS: &str = "zagens";
 pub(crate) const CLIENT_SURFACE_DS_PICK: &str = "ds-pick";
 
-const CLIENT_IDENTITY_TERMINAL: &str = "You are DeepSeek TUI. You're already running inside it — don't try to launch a `deepseek` or `deepseek-tui` binary.";
+const CLIENT_IDENTITY_HEADLESS: &str = "You are assisting inside the **deepseek-runtime** HTTP sidecar (headless agent runtime on loopback). When the user asks what software hosts this conversation, answer **deepseek-runtime** — not a terminal TUI (removed). Don't try to spawn another runtime process unless the user explicitly asks.";
 
-const CLIENT_IDENTITY_DS_PICK: &str = "You are assisting inside **Zagens**, the DeepSeek desktop app (Tauri shell with an embedded chat UI). This session is hosted by Zagens, which connects to the local `deepseek serve` runtime on the loopback interface. When the user asks what software this conversation uses, answer **Zagens** — not \"DeepSeek TUI\" (that name refers to the terminal UI). Don't try to spawn another `deepseek` / `deepseek-tui` process unless the user explicitly asks.";
+const CLIENT_IDENTITY_DS_PICK: &str = "You are assisting inside **Zagens**, the DeepSeek desktop app (Tauri shell with an embedded chat UI). This session is hosted by Zagens, which connects to the local `deepseek-runtime` sidecar on the loopback interface. When the user asks what software this conversation uses, answer **Zagens** — not \"DeepSeek TUI\" (that name referred to the removed terminal UI). Don't try to spawn another `deepseek-runtime` process unless the user explicitly asks.";
 
 fn is_zagens_client_surface(client_surface: &str) -> bool {
     client_surface.eq_ignore_ascii_case(CLIENT_SURFACE_ZAGENS)
@@ -85,7 +85,7 @@ fn client_identity_line(client_surface: Option<&str>) -> &'static str {
     if resolved_ui_shell_label(client_surface).is_some() {
         CLIENT_IDENTITY_DS_PICK
     } else {
-        CLIENT_IDENTITY_TERMINAL
+        CLIENT_IDENTITY_HEADLESS
     }
 }
 
@@ -675,7 +675,7 @@ mod tests {
 
     #[test]
     fn client_identity_reflects_client_surface_hint() {
-        assert!(super::client_identity_line(None).contains("DeepSeek TUI"));
+        assert!(super::client_identity_line(None).contains("deepseek-runtime"));
         assert!(super::client_identity_line(Some("ds-pick")).contains("Zagens"));
         assert!(super::client_identity_line(Some("DS-PICK")).contains("Zagens"));
         assert!(super::client_identity_line(Some("zagens")).contains("Zagens"));

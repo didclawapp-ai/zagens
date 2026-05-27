@@ -1,8 +1,8 @@
 //! Normalized start-turn payload (P2 PR3).
 //!
 //! `RuntimeThreadManager::start_turn` builds this before touching the live
-//! `Engine` in `deepseek-tui`. Keeps validation and field wiring in core so
-//! HTTP/TUI paths share one contract.
+//! `Engine` in `deepseek-runtime`. Keeps validation and field wiring in core so
+//! HTTP and sidecar paths share one contract.
 
 use crate::approval::ApprovalMode;
 

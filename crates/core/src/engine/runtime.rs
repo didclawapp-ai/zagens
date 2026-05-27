@@ -1,7 +1,8 @@
 //! Core `Engine` struct (M7 strangler step).
 //!
 //! Holds lean config, host trait objects, channels, and session state.
-//! Tui-side newtype wrapper attaches inherent impls + [`TurnLoopHost`].
+//! Platform-specific op dispatch and tool wiring live in the sidecar via
+//! [`super::platform_ext::EnginePlatformExt`].
 
 use std::sync::{Arc, Mutex as StdMutex};
 

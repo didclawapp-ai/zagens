@@ -1,11 +1,11 @@
-//! Tui-side re-export shim + factory for the external sandbox backend.
+//! Runtime-side re-export shim + factory for the external sandbox backend.
 //!
 //! The trait + output types live in
 //! [`deepseek_core::sandbox`](deepseek_core::sandbox) (moved by M3 — see
 //! [`PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE`](../../../../../docs/tech/adr/PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md)
 //! §3 row #26 / §6 M3 row). The factory `create_backend(&Config)` stays
-//! tui-side because it consumes the tui-owned `Config` struct and
-//! constructs the tui-owned `OpenSandboxBackend`.
+//! in this crate because it consumes runtime `Config` and constructs
+//! `OpenSandboxBackend`.
 //!
 //! External sandbox backends route shell command execution to a remote
 //! service (e.g. Alibaba OpenSandbox) instead of spawning a local process.

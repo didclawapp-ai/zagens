@@ -1,9 +1,9 @@
-//! Zagens must not link the TUI `Engine` crate; turns run in the `deepseek-runtime` sidecar (P2 spike).
+//! Zagens must not link runtime engine crates; turns run in the `deepseek-runtime` sidecar (D17 I1).
 
 use std::path::Path;
 
 #[test]
-fn desktop_cargo_toml_has_no_tui_runtime_library_dependency() {
+fn desktop_cargo_toml_has_no_runtime_library_dependency() {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let manifest =
         std::fs::read_to_string(manifest_dir.join("Cargo.toml")).expect("read desktop Cargo.toml");
@@ -21,6 +21,16 @@ fn desktop_cargo_toml_has_no_tui_runtime_library_dependency() {
         assert!(
             !trimmed.contains("../runtime-server"),
             "line {}: desktop must not path-depend on crates/runtime-server (use sidecar binary)",
+            line_no + 1
+        );
+        assert!(
+            !trimmed.contains("../core"),
+            "line {}: desktop must not path-depend on crates/core (use sidecar binary)",
+            line_no + 1
+        );
+        assert!(
+            !trimmed.contains("deepseek-core"),
+            "line {}: desktop must not depend on deepseek-core as a library (use sidecar binary)",
             line_no + 1
         );
     }

@@ -40,8 +40,8 @@ pub struct EngineConfig {
     pub mcp_config_path: PathBuf,
     /// Directory containing discoverable skills.
     pub skills_dir: PathBuf,
-    /// Additional instruction files concatenated into the system prompt
-    /// (deepseek-tui #454). Loaded in declared order from the user's
+    /// Additional instruction files concatenated into the system prompt.
+    /// Loaded in declared order from the user's
     /// `instructions = [...]` config (or the per-project override). The
     /// caller is responsible for `expand_path`-style `~` substitution
     /// before constructing this list — `deepseek-core` does no disk I/O

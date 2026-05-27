@@ -1,7 +1,7 @@
 //! Tool-input parsing and batch policy helpers (P2 PR4).
 //!
 //! Types that tie to the live engine batch driver (`ToolExecutionPlan`, lock
-//! guards) remain in `deepseek-tui::core::engine::dispatch`.
+//! guards) remain in `deepseek-runtime` engine dispatch glue.
 
 use serde_json::{Value, json};
 

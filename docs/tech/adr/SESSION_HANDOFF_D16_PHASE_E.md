@@ -1,21 +1,16 @@
 # 新会话交接 — D16 Phase E 维护性拆分
 
+> **状态：** **已归档（2026-05-27）** — D16 Closed (Checkpoint)；活跃架构 SSOT 见 [D17_ARCHITECTURE_FREEZE.md](./D17_ARCHITECTURE_FREEZE.md)  
 > **最后更新：** 2026-05-27  
-> **HEAD：** `0d843c1` · 分支 `master` · **无 `origin` remote**（本地 commit 未 push）
+> **说明：** 下文为历史 handoff，**勿**按「继续 E1-b phase 6」执行。
 
 ---
 
-## 给新窗口的第一句话（复制即用）
+## 给新窗口的第一句话（已过期 — 请用 D17）
 
 ```
-继续 D16 Phase E（Zagens runtime 维护性拆分）。请先读：
-1. docs/tech/adr/SESSION_HANDOFF_D16_PHASE_E.md（本文）
-2. docs/tech/adr/D16_PHASE_E_MAINTAINABILITY.md
-
-现状：E2/E3/E5 已 Landed；E1-c6/E1-d2/E1-a8 ✅；E1-b phase 6 WIP（`task_manager/` 已拆）；下一项 E1-b 继续或 E4 可选。
-完整 tools/ 迁 adapters 需阶段 2 ToolContext host ADR，勿贸然整包迁移。
-
-规则：不要 commit/push 除非我明确要求；中文回复；最小 diff；每步跑 check-openapi-contract + 相关 cargo test。
+架构已 Freeze v1。请先读 docs/tech/adr/D17_ARCHITECTURE_FREEZE.md。
+不要继续 D16 E1 深拆（tools 整包迁移已暂停）。产品功能迭代为主。
 ```
 
 ---

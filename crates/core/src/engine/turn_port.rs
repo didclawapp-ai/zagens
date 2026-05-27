@@ -1,7 +1,7 @@
 //! Engine turn port (P2 PR3) — shell delegates turn start through core.
 //!
-//! The live `Engine` / `turn_loop` remain in `deepseek-tui` until PR4 thins
-//! `engine.rs`; this trait is the stable boundary for `RuntimeThreadManager`.
+//! The live `Engine` / `turn_loop` live in `deepseek-core`; runtime-server
+//! provides the host adapter. This trait is the stable boundary for `RuntimeThreadManager`.
 
 use async_trait::async_trait;
 

@@ -185,15 +185,15 @@ impl ProvidersToml {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ConfigToml {
-    /// TUI-compatible DeepSeek API key. Kept at the root so both `deepseek`
-    /// and `deepseek-tui` can share a single config file.
+    /// Runtime-compatible DeepSeek API key. Kept at the root so desktop
+    /// sidecar and headless hosts can share a single config file.
     pub api_key: Option<String>,
-    /// TUI-compatible DeepSeek base URL.
+    /// Runtime-compatible DeepSeek base URL.
     pub base_url: Option<String>,
     /// Optional extra HTTP headers forwarded to model API requests.
     #[serde(default)]
     pub http_headers: BTreeMap<String, String>,
-    /// TUI-compatible default DeepSeek model.
+    /// Runtime-compatible default DeepSeek model.
     pub default_text_model: Option<String>,
     #[serde(default)]
     pub provider: ProviderKind,

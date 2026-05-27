@@ -1,16 +1,11 @@
-//! Engine configuration — tui-side **facade** over the lean core
+//! Engine configuration — runtime-side **facade** over the lean core
 //! [`deepseek_core::engine::config::EngineConfig`].
 //!
-//! The fields remain laid out flat here so every existing caller (≈30
-//! literal-construction sites in `tests.rs`, `cli/commands/legacy.rs`,
-//! `runtime_threads/engine_load.rs`, etc.) keeps compiling. The
+//! The fields remain laid out flat here so existing callers
+//! (`runtime_threads/engine_spawn.rs`, tests, etc.) keep compiling. The
 //! `lean()` / `ext_ref()` / `into_parts()` accessors carve the
-//! configuration into the (core lean ⊕ tui ext) shape that the M-series
-//! M7 split (Engine struct → core) will adopt as its public surface.
-//!
-//! M2 establishes the type pillars in core + introduces
-//! [`EngineConfigExt`] for tui-only fields. M7 will switch
-//! `Engine::new(config)` to `Engine::with_hosts(lean, ext)`.
+//! configuration into the (core lean ⊕ runtime ext) shape used by
+//! `Engine::with_hosts`.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -25,19 +20,10 @@ use crate::tools::todo::{SharedTodoList, new_shared_todo_list};
 
 use crate::core::capacity::CapacityControllerConfig;
 
-/// Tui-side carve-out: fields whose types are owned by the tui crate
+/// Runtime-side carve-out: fields whose types are owned by the sidecar
 /// (`NetworkPolicyDecider`, `LspConfig`, `WorkshopConfig`,
-/// `TopicMemorySettings`, `RuntimeToolServices`) plus the shared-state
-/// pointers and the test-only LLM client override. Stays in the tui
-/// crate per [`PR_M0_*`](../../../docs/tech/adr/PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md)
-/// §1.2 (out of scope for the core move).
-///
-/// `dead_code` is allowed because M2 stops at type pillars — current
-/// production code still flows through the monolithic `EngineConfig`
-/// facade. M3+ will start consuming `EngineConfigExt` via
-/// host traits, and M7 will make it part of `Engine::with_hosts(...)`'s
-/// signature; both will exercise the struct directly.
-#[allow(dead_code, reason = "M2 type pillar — first consumer lands in M3")]
+/// `TopicMemorySettings`, `RuntimeToolServices`) plus shared-state pointers.
+#[allow(dead_code, reason = "M2 type pillar — consumed via EngineConfig facade")]
 #[derive(Clone)]
 pub struct EngineConfigExt {
     /// Shared Todo list state.

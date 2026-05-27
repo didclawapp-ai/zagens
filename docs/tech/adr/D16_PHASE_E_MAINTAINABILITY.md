@@ -1,10 +1,11 @@
 # D16 — Phase E 维护性拆分方案（不阻塞发布）
 
 > **类型：** 实施计划（维护性 / 工程效率）  
-> **状态：** Proposed（2026-05-26）  
+> **状态：** **Closed (Checkpoint)**（2026-05-27）— 见 [D17_ARCHITECTURE_FREEZE.md](./D17_ARCHITECTURE_FREEZE.md) §3  
 > **前置（已 Landed）：** [D15_FINAL_ARCHITECTURE_CONVERGENCE.md](./D15_FINAL_ARCHITECTURE_CONVERGENCE.md)  
 > **SSOT 架构图：** [RUNTIME_ARCHITECTURE.md](../RUNTIME_ARCHITECTURE.md)  
-> **与 D15 关系：** D15 确立 Desktop-only SSOT；**D16 不改变架构不变量**，仅拆分过大模块以提升可维护性
+> **与 D15 关系：** D15 确立 Desktop-only SSOT；**D16 不改变架构不变量**，仅拆分过大模块以提升可维护性  
+> **⚠ 不再执行：** E1 阶段 2（tools 整包迁移）、E1-d <500 行 KPI、E4 client.ts 拆分 — 截止明细见 D17 §3–§4
 
 ---
 
@@ -323,18 +324,20 @@ cd crates/desktop/web-ui && npm run build
 
 ---
 
-## 5. 完成定义（D16 DoD）
+## 5. 完成定义（D16 DoD — Checkpoint 结案）
 
-满足以下条件可标记 D16 **Landed**（可分 E2/E3/E1 子项单独勾选）：
+**2026-05-27 签收：** D16 以 **Checkpoint** 结案，**不**等待 E1 全部 Landed。执行截止见 [D17 §3](./D17_ARCHITECTURE_FREEZE.md)。
 
-| 子项 | 验收 |
-|------|------|
-| **E2** | ✅ Landed（2026-05-26）— `subagent/mod.rs` ~82 行；`cargo test -p deepseek-runtime-server --lib tools::subagent` 108/108 |
-| **E3** | ✅ Landed — 13 个 hook/模块 + `AppShell`；`App.tsx` **776 行**（<800）；`npm run build` ✅ |
-| **E1** | 4 crate 依赖方向符合 §1.3；OpenAPI 无意外 diff |
-| **E5** | CI 含 OpenAPI diff + 至少 1 条 golden path | ✅ OpenAPI + TS diff gate；`sidecar_contract_full_lifecycle` 已在 CI |
+| 子项 | 验收 | 状态 |
+|------|------|------|
+| **E2** | `subagent/mod.rs` ~82 行；108 测试 | ✅ Landed |
+| **E3** | `AppShell` + hooks；`App.tsx` <800 行 | ✅ Landed |
+| **E5** | OpenAPI + TS diff gate；golden path CI | ✅ Landed |
+| **E1 阶段 1** | api / orchestrator / adapters 骨架；§1.3 依赖方向；OpenAPI 无意外 diff | ✅ Landed |
+| **E1 阶段 2** | tools 整包迁 adapters；`lib.rs` <500 行 | ⏸ **暂停**（D17） |
+| **E4** | `client.ts` domain 拆分 | ❌ **Won't Do (v1)** |
 
-**不要求：** E1–E5 全部完成才发布 Zagens；可按子项独立合并。
+**不要求：** E1 阶段 2 / E4 完成才发布 Zagens — **Architecture Freeze v1 已生效**（D17）。
 
 ---
 
@@ -351,10 +354,11 @@ cd crates/desktop/web-ui && npm run build
 
 ## 7. 新会话推荐开场白
 
+**D16 已 Closed (Checkpoint)。** 新会话请读 [D17_ARCHITECTURE_FREEZE.md](./D17_ARCHITECTURE_FREEZE.md)，**不要**继续 E1 阶段 2  unless 新 ADR 解冻。
+
 ```text
-执行 D16 Phase E 维护性拆分。请先读 docs/tech/adr/D16_PHASE_E_MAINTAINABILITY.md。
-当前子项：[E2 SubAgent / E3 App hooks / E1 crate split]。从 PR-__ 开始。
-不要 commit/push 除非我要求。中文回复。
+架构已 Freeze v1。请先读 docs/tech/adr/D17_ARCHITECTURE_FREEZE.md。
+产品功能迭代为主；遵守 Assessment §7.1 红线。不要重启 D16 E1 深拆。
 ```
 
 ---

@@ -11,7 +11,8 @@
 
 ## 0. 摘要与决策建议（最重要的一段）
 
-**结论：§1 = 10/10，架构定型（2026-05-26）** — M-series、D6–D8、D7、D1 均已闭合；Engine 在 core，`deepseek-runtime` sidecar 已剥离 ratatui。
+**结论：§1 = 10/10，架构定型（2026-05-26）** — M-series、D6–D8、D7、D1 均已闭合；Engine 在 core，`deepseek-runtime` sidecar 已剥离 ratatui。  
+**Architecture Freeze v1（2026-05-27）：** 重构主线关闭 — [D17_ARCHITECTURE_FREEZE.md](./D17_ARCHITECTURE_FREEZE.md)（执行截止与禁区 SSOT）。
 
 | 决策 | 推荐 |
 |------|------|
@@ -21,7 +22,7 @@
 | 任何「往 `crates/runtime-server` 加新顶层文件」的改动 | **需 owner 评审**（runtime lib 承载 tools / HTTP / engine shim） |
 | M-series D5（`Engine` struct → core） | **✅ 完成 2026-05-26**（M1–M8） |
 | D1 巨型文件 | **✅ 闭合 2026-05-26** — runtime 四模块已拆；`desktop/commands.rs` 等见 §5.1「不拆分」 |
-| 下一优先 | **P2**（§5.1 阶段 F：D11–D14）或产品功能迭代 |
+| 下一优先 | **产品功能迭代**（遵守 §7.1）；P2 backlog（D11–D14）须单独 ADR；**不**继续 D16 E1 深拆 — [D17](./D17_ARCHITECTURE_FREEZE.md) |
 | 端口动态化、删 legacy crate | **D2/D3 ✅** |
 
 **定型后仍须遵守：** §7.1 红线（`/v1/*`、Engine 字段、`desktop` 不链 `deepseek_tui` 等）；巨型文件 ~1k 行为指南，**非**硬性拆文件 KPI（§5.1 D1 表）。
