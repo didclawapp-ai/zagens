@@ -40,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **D16 E1-b (WIP, phase 5):** 新增 `RuntimeThreadTaskPort`（background task 最小 turn 面）与 `RuntimeThreadBackgroundSlots`（task/automation 注入 `RuntimeToolServices`）；`EngineTaskExecutor` 改走 task port。
 - **D16 E1-c (WIP, phase 1):** 新建 `crates/runtime-api`（`deepseek-runtime-api`）；OpenAPI `paths`/核心 `schemas` 迁入；sidecar `runtime_api/openapi.rs` 合并 task  schema；`export-runtime-openapi` 行为不变。
 - **D16 E1-c (WIP, phase 2):** `auth`/`health`/`cors`/`compose_router` 迁入 runtime-api；`RuntimeApiAuthState`/`RuntimeApiProbeState` host trait；sidecar `router.rs` 仅保留 `/v1/*` handler 接线；`/v1/*` bearer 中间件仍在 sidecar 挂载以满足 Axum 0.8 状态类型。
+- **D16 E1-c (WIP, phase 3):** `ApiError` 与 `IntoResponse` 错误 envelope 迁入 runtime-api；handler 仍留 sidecar。
 
 ### Changed
 

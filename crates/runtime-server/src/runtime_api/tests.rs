@@ -10,6 +10,7 @@ use crate::models::Usage;
 use crate::runtime_threads::RuntimeEventRecord;
 use anyhow::{Context, bail};
 use axum::response::sse::Sse;
+use axum::response::IntoResponse;
 use futures_util::StreamExt;
 use axum::{Router, routing::get};
 use serde_json::{Value, json};

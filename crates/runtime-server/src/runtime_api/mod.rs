@@ -12,7 +12,6 @@ use anyhow::{Context, Result, anyhow};
 
 use axum::http::StatusCode;
 
-use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncBufReadExt;
@@ -384,6 +383,8 @@ pub(crate) fn truncate_text(text: &str, max_chars: usize) -> String {
     format!("{truncated}...")
 }
 
+pub(crate) use deepseek_runtime_api::ApiError;
+
 pub(crate) fn map_thread_err(err: anyhow::Error) -> ApiError {
     let message = err.to_string();
     if message.contains("not found") {
@@ -394,81 +395,9 @@ pub(crate) fn map_thread_err(err: anyhow::Error) -> ApiError {
         || message.contains("no pending approval for")
         || message.contains("pending approval scope mismatch")
     {
-        ApiError {
-            status: StatusCode::CONFLICT,
-            message,
-        }
+        ApiError::conflict(message)
     } else {
         ApiError::bad_request(message)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct ApiError {
-    status: StatusCode,
-    message: String,
-}
-
-impl ApiError {
-    fn bad_request(message: impl Into<String>) -> Self {
-        Self {
-            status: StatusCode::BAD_REQUEST,
-            message: message.into(),
-        }
-    }
-
-    fn not_found(message: impl Into<String>) -> Self {
-        Self {
-            status: StatusCode::NOT_FOUND,
-            message: message.into(),
-        }
-    }
-
-    fn internal(message: impl Into<String>) -> Self {
-        Self {
-            status: StatusCode::INTERNAL_SERVER_ERROR,
-            message: message.into(),
-        }
-    }
-
-    fn forbidden(message: impl Into<String>) -> Self {
-        Self {
-            status: StatusCode::FORBIDDEN,
-            message: message.into(),
-        }
-    }
-
-    fn conflict(message: impl Into<String>) -> Self {
-        Self {
-            status: StatusCode::CONFLICT,
-            message: message.into(),
-        }
-    }
-}
-
-impl From<std::io::Error> for ApiError {
-    fn from(e: std::io::Error) -> Self {
-        ApiError::internal(e.to_string())
-    }
-}
-
-impl IntoResponse for ApiError {
-    fn into_response(self) -> Response {
-        use deepseek_core::error_taxonomy::ErrorEnvelope;
-
-        let status_recoverable = matches!(
-            self.status,
-            StatusCode::INTERNAL_SERVER_ERROR
-                | StatusCode::BAD_GATEWAY
-                | StatusCode::SERVICE_UNAVAILABLE
-                | StatusCode::GATEWAY_TIMEOUT
-                | StatusCode::REQUEST_TIMEOUT
-                | StatusCode::TOO_MANY_REQUESTS
-        );
-        let mut envelope = ErrorEnvelope::classify(&self.message, status_recoverable);
-        envelope.recoverable = envelope.recoverable || status_recoverable;
-        let body = envelope.to_wire_error_body(self.status.as_u16());
-        (self.status, Json(body)).into_response()
     }
 }
 
