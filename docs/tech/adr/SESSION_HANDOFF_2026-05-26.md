@@ -101,8 +101,8 @@ npm run generate:api-types
 | 路径 | 说明 |
 |------|------|
 | `.gitignore` | `.docs/topic-memory-graph-main/` 忽略 |
-| `docs/Agent+Harness组合式编程方案.md` | 产品草案 |
-| `docs/tech/adr/HARNESS_INTEGRATION_PROPOSAL.md` | Harness 提案 |
+| [`docs/harness/Agent+Harness组合式编程方案.md`](../../harness/Agent+Harness组合式编程方案.md) | 产品草案 |
+| [`docs/harness/HARNESS_INTEGRATION_PROPOSAL.md`](../../harness/HARNESS_INTEGRATION_PROPOSAL.md) | Harness 归并提案 |
 
 ---
 

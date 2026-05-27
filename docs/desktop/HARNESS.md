@@ -2,7 +2,7 @@
 
 > **状态：** 设计备忘（2026-05-20）  
 > **来源：** DeepSeek 社招「Agent Harness」产品经理 / 研发工程师 JD（2026-05-15、2026-05-18，公开信息）；与本仓库试跑、会话恢复修复、audit scratchpad 讨论对齐。  
-> **相关：** [audit-scratchpad-design.md](audit-scratchpad-design.md) §2（契约、产品本质）、[DEV_NOTES.md](DEV_NOTES.md)、[TUI_DS_PICK_GAP.md](TUI_DS_PICK_GAP.md)、[../tech/API_DESIGN.md](../tech/API_DESIGN.md)。
+> **相关：** [Harness 文档集](../harness/README.md)（组合式方案、归并提案、Anthropic 对照）、[audit-scratchpad-design.md](audit-scratchpad-design.md) §2（契约、产品本质）、[DEV_NOTES.md](DEV_NOTES.md)、[TUI_DS_PICK_GAP.md](TUI_DS_PICK_GAP.md)、[../tech/API_DESIGN.md](../tech/API_DESIGN.md)。
 
 ---
 

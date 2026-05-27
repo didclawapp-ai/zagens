@@ -31,4 +31,4 @@
 
 ## 与 Harness 提案
 
-[`HARNESS_INTEGRATION_PROPOSAL.md`](./HARNESS_INTEGRATION_PROPOSAL.md) Phase 2 依赖 D8 生成的 TS；新 harness 端点优先 `/v1` 扩容，直到 v2 策略签收后再批量提升。
+[`HARNESS_INTEGRATION_PROPOSAL.md`](../../harness/HARNESS_INTEGRATION_PROPOSAL.md) Phase 2 依赖 D8 生成的 TS；新 harness 端点优先 `/v1` 扩容，直到 v2 策略签收后再批量提升。
