@@ -28,6 +28,7 @@ path = "src/bin/export_runtime_openapi.rs"
 [dependencies]
 anyhow.workspace = true
 deepseek-runtime-adapters = { path = "../runtime-adapters", version = "0.8.15" }
+deepseek-runtime-orchestrator = { path = "../runtime-orchestrator", version = "0.8.15" }
 deepseek-config = { path = "../config", version = "0.8.15" }
 deepseek-core = { path = "../core", version = "0.8.15" }
 deepseek-topic-memory = { path = "../topic-memory", version = "0.8.15" }

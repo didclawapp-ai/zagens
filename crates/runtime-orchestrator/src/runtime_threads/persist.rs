@@ -30,9 +30,9 @@ use super::{
 
 #[derive(Debug, Clone)]
 pub struct RuntimeThreadStore {
-    pub(crate) threads_dir: PathBuf,
-    pub(crate) turns_dir: PathBuf,
-    pub(crate) items_dir: PathBuf,
+    pub threads_dir: PathBuf,
+    pub turns_dir: PathBuf,
+    pub items_dir: PathBuf,
     pub(crate) events_dir: PathBuf,
     pub(crate) state_path: PathBuf,
     pub(crate) state: Arc<Mutex<RuntimeStoreState>>,
@@ -63,7 +63,6 @@ impl RuntimeThreadStore {
     }
 
     /// JSON-per-file store only (tests that write fixture JSON under `threads/`).
-    #[cfg(test)]
     pub fn open_json_only(root: PathBuf) -> Result<Self> {
         let (threads_dir, turns_dir, items_dir, events_dir, state_path) = Self::prepare_dirs(&root)?;
         let state = if state_path.exists() {
@@ -563,7 +562,7 @@ impl RuntimeThreadStore {
     }
 }
 
-pub(super) fn duration_ms(start: DateTime<Utc>, end: DateTime<Utc>) -> u64 {
+pub fn duration_ms(start: DateTime<Utc>, end: DateTime<Utc>) -> u64 {
     let millis = (end - start).num_milliseconds();
     if millis.is_negative() {
         0
@@ -575,7 +574,7 @@ pub(super) fn duration_ms(start: DateTime<Utc>, end: DateTime<Utc>) -> u64 {
 /// Standalone version of `reconstruct_messages_from_turns` that works on a
 /// cloned `RuntimeThreadStore` — so it can run inside `spawn_blocking` without
 /// holding a reference to the `RuntimeThreadManager` or its `Arc<Mutex<…>>` locks.
-pub(super) fn reconstruct_messages_for_store(
+pub fn reconstruct_messages_for_store(
     store: &RuntimeThreadStore,
     turns: &[TurnRecord],
 ) -> Result<Vec<Message>> {
@@ -632,7 +631,7 @@ pub(super) fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<
             .with_context(|| format!("Failed to create directory {}", parent.display()))?;
     }
     let payload = serde_json::to_string_pretty(value)?;
-    crate::utils::write_atomic(path, payload.as_bytes())
+    deepseek_runtime_adapters::util::write_atomic(path, payload.as_bytes())
         .with_context(|| format!("Failed to write {}", path.display()))
 }
 
@@ -782,127 +781,6 @@ mod tests {
             ]
         );
         assert_eq!(jsonl_texts, reconstructed_texts);
-        assert!(
-            crate::transcript_isomorphism::history_transcript_core_matches_messages(
-                &reconstructed
-            ),
-            "reconstructed messages must round-trip through TUI history rebuild"
-        );
-    }
-
-    /// A1.2 — large-output synthesis in turn item `detail` matches JSONL and on-disk blob.
-    #[tokio::test]
-    async fn large_output_tool_item_detail_matches_jsonl_and_persisted_blob() {
-        use crate::tools::large_output_router::{
-            artifact_refs_from_tool_output, large_output_dir, load_raw_from_artifact_meta_path,
-            LargeOutputExternalRef, LargeOutputRouter, load_large_output_persist_record,
-            parse_workshop_ref_from_message, persist_large_output_blob,
-        };
-
-        let (_dir, store) = temp_store();
-        let thread_id = "thr_lout";
-        let turn_id = "turn_lout";
-        let session_id = "sess_lout_iso";
-
-        let raw = "line\n".repeat(1200);
-        let external_ref = LargeOutputExternalRef::new("read_file", raw.chars().count());
-        persist_large_output_blob(session_id, &external_ref, &raw).expect("persist blob");
-
-        let wrapped = LargeOutputRouter::wrap_synthesis(
-            "read_file",
-            "condensed preview",
-            5000,
-            4096,
-            Some(&external_ref),
-        );
-
-        let meta_path =
-            large_output_dir(session_id).join(format!("{}.json", external_ref.ref_id));
-        let tool_metadata = serde_json::json!({
-            crate::tools::large_output_router::LARGE_OUTPUT_METADATA_KEY: {
-                "ref_id": external_ref.ref_id,
-                "meta_path": meta_path.display().to_string(),
-            }
-        });
-        let artifact_refs = artifact_refs_from_tool_output(
-            Some(session_id),
-            &wrapped,
-            Some(&tool_metadata),
-        );
-        assert_eq!(artifact_refs.len(), 1, "monitor path must resolve meta ref");
-
-        let tool_item = TurnItemRecord {
-            schema_version: CURRENT_EVENT_SCHEMA_VERSION,
-            id: "item_tool".to_string(),
-            turn_id: turn_id.to_string(),
-            kind: TurnItemKind::ToolCall,
-            status: TurnItemLifecycleStatus::Completed,
-            summary: "read_file: condensed".to_string(),
-            detail: Some(wrapped.clone()),
-            metadata: Some(tool_metadata),
-            artifact_refs,
-            started_at: Some(Utc::now()),
-            ended_at: Some(Utc::now()),
-        };
-        store.save_item(&tool_item).expect("save tool item");
-
-        let turn = TurnRecord {
-            schema_version: CURRENT_EVENT_SCHEMA_VERSION,
-            id: turn_id.to_string(),
-            thread_id: thread_id.to_string(),
-            status: RuntimeTurnStatus::Completed,
-            input_summary: "run read".to_string(),
-            created_at: Utc::now(),
-            started_at: Some(Utc::now()),
-            ended_at: Some(Utc::now()),
-            duration_ms: Some(1),
-            usage: None,
-            last_request_input_tokens: None,
-            error: None,
-            item_ids: vec![tool_item.id.clone()],
-            steer_count: 0,
-        };
-        store.save_turn(&turn).expect("save turn");
-
-        store
-            .append_event(
-                thread_id,
-                Some(turn_id),
-                Some(tool_item.id.as_str()),
-                "item.completed",
-                json!({ "item": tool_item }),
-            )
-            .await
-            .expect("append jsonl");
-
-        let events = store.events_since(thread_id, None).expect("events");
-        let jsonl_detail = events
-            .iter()
-            .find(|ev| ev.event == "item.completed")
-            .and_then(|ev| ev.payload.get("item"))
-            .and_then(|item| item.get("detail"))
-            .and_then(|d| d.as_str())
-            .expect("jsonl item detail");
-
-        assert_eq!(jsonl_detail, wrapped);
-
-        let loaded = store.load_item(&tool_item.id).expect("load item");
-        assert_eq!(loaded.detail.as_deref(), Some(wrapped.as_str()));
-
-        let parsed = parse_workshop_ref_from_message(jsonl_detail).expect("workshop-ref");
-        assert_eq!(parsed.ref_id, external_ref.ref_id);
-
-        let record =
-            load_large_output_persist_record(session_id, &parsed.ref_id).expect("persist record");
-        assert_eq!(record.external_ref.ref_id, external_ref.ref_id);
-        assert_eq!(record.raw_bytes, raw.len());
-
-        let loaded_item = store.load_item(&tool_item.id).expect("reload item");
-        assert_eq!(loaded_item.artifact_refs.len(), 1);
-        assert_eq!(
-            load_raw_from_artifact_meta_path(&loaded_item.artifact_refs[0]).expect("blob via ref"),
-            raw
-        );
     }
 }
 

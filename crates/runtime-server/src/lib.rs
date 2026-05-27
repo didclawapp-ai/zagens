@@ -24,7 +24,6 @@ mod lsp;
 mod memory;
 mod models;
 mod path_guard;
-mod pricing;
 mod project_context;
 mod project_doc;
 mod prompts;
@@ -39,7 +38,6 @@ mod sandbox;
 mod schema_migration;
 mod scratchpad;
 mod seam_manager;
-mod thread_store_sqlite;
 mod settings;
 mod skills;
 mod task_type;
@@ -59,6 +57,7 @@ mod workspace_trust;
 pub use deepseek_runtime_adapters::{
     json_schema_util, mcp, network_policy, persist, snapshot,
 };
+pub use deepseek_runtime_orchestrator::pricing;
 pub use deepseek_runtime_adapters::persist::{
     context_reference, session_manager, session_store_sqlite, ContextReference,
     SavedSession, SessionContextReference, SessionManager, SessionMetadata,

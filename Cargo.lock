@@ -1443,6 +1443,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "deepseek-runtime-orchestrator"
+version = "0.8.15"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "deepseek-core",
+ "deepseek-protocol",
+ "deepseek-runtime-adapters",
+ "pretty_assertions",
+ "rusqlite",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "deepseek-runtime-server"
 version = "0.8.15"
 dependencies = [
@@ -1459,6 +1479,7 @@ dependencies = [
  "deepseek-core",
  "deepseek-protocol",
  "deepseek-runtime-adapters",
+ "deepseek-runtime-orchestrator",
  "deepseek-secrets",
  "deepseek-tools",
  "deepseek-topic-memory",

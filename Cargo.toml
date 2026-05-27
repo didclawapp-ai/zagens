@@ -8,6 +8,7 @@ members = [
     "crates/mcp",
     "crates/protocol",
     "crates/runtime-adapters",
+    "crates/runtime-orchestrator",
     "crates/runtime-server",
     "crates/secrets",
     "crates/tools",
