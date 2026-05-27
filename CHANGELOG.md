@@ -42,6 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **D16 E1-c (WIP, phase 2):** `auth`/`health`/`cors`/`compose_router` 迁入 runtime-api；`RuntimeApiAuthState`/`RuntimeApiProbeState` host trait；sidecar `router.rs` 仅保留 `/v1/*` handler 接线；`/v1/*` bearer 中间件仍在 sidecar 挂载以满足 Axum 0.8 状态类型。
 - **D16 E1-c (WIP, phase 3):** `ApiError` 与 `IntoResponse` 错误 envelope 迁入 runtime-api；handler 仍留 sidecar。
 - **D16 E1-c (WIP, phase 4):** 共享 wire response（`SessionsListResponse`、`SessionDetailResponse`、`ResumeSessionResponse`、`StartTurnResponse`、`ThreadSummary`）由 runtime-api 导出；sidecar handler 删除重复 struct。
+- **D16 E1-d (WIP):** `run_http_server`/`RuntimeApiOptions` 迁入 `runtime_serve/http.rs`；`runtime_api/mod.rs` 仅保留 state、handler 接线与共享 helper；query/request 类型下沉至对应 handler 模块。
 
 ### Changed
 

@@ -4,21 +4,32 @@
 use super::*;
 use super::skills::validate_skill_directory_name;
 use super::stream::map_compat_stream_event;
+use crate::automation_manager::AutomationManager;
+use crate::config::{Config, DEFAULT_TEXT_MODEL};
 use crate::core::events::{Event as EngineEvent, TurnOutcomeStatus};
 use crate::core::ops::Op;
 use crate::models::Usage;
-use crate::runtime_threads::RuntimeEventRecord;
-use anyhow::{Context, bail};
+use crate::runtime_threads::{
+    RuntimeEventRecord, RuntimeThreadManager, RuntimeThreadManagerConfig,
+    SharedRuntimeThreadManager,
+};
+use crate::session_manager::SessionManager;
+use crate::task_manager::{TaskManager, TaskManagerConfig};
+use anyhow::{Context, Result, bail};
+use axum::http::StatusCode;
 use axum::response::sse::Sse;
 use axum::response::IntoResponse;
 use futures_util::StreamExt;
 use axum::{Router, routing::get};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::convert::Infallible;
 use std::fs;
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::net::TcpListener;
 use tokio::sync::{Mutex, mpsc};
 use tokio::time::sleep;
 use uuid::Uuid;
@@ -156,20 +167,20 @@ async fn spawn_test_server_with_root_and_token(
     };
     let shared_sm = Arc::new(SessionManager::new(sessions_dir.clone())?);
 
-    let state = RuntimeApiState {
-        config: Config::default(),
-        workspace: PathBuf::from("."),
-        task_manager: manager,
-        runtime_threads: runtime_threads.clone(),
-        cors_origins: Vec::new(),
-        mcp_config_path: root.join("mcp.json"),
+    let state = RuntimeApiState::new(
+        Config::default(),
+        PathBuf::from("."),
+        manager,
+        runtime_threads.clone(),
+        Vec::new(),
+        root.join("mcp.json"),
         automations,
         runtime_token,
-        process_started_at_ms: 0,
-        token_fingerprint: Arc::new(token_fp),
-        shared_session_manager: shared_sm,
-        resume_tracker: sessions::ResumeTaskTracker::new(),
-    };
+        0,
+        Arc::new(token_fp),
+        shared_sm,
+        ResumeTaskTracker::new(),
+    );
     let app = build_router(state);
     let listener = match TcpListener::bind("127.0.0.1:0").await {
         Ok(listener) => listener,

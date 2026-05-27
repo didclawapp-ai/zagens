@@ -23,7 +23,13 @@ use crate::snapshot::SnapshotRepo;
 
 use deepseek_runtime_api::{StartTurnResponse, ThreadSummary};
 
-use super::{map_thread_err, truncate_text, ApiError, ResolveApprovalRequest, RuntimeApiState};
+use super::{map_thread_err, truncate_text, ApiError, RuntimeApiState};
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct ResolveApprovalRequest {
+    tool_call_id: String,
+    decision: String,
+}
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct ThreadsQuery {

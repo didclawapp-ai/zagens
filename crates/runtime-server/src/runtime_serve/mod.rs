@@ -1,5 +1,7 @@
 //! HTTP sidecar entry for Zagens and headless hosts (D6 `runtime-server`).
 
+mod http;
+
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
@@ -7,7 +9,8 @@ use clap::Parser;
 
 use crate::cli::configure_windows_console_utf8;
 use crate::config::Config;
-use crate::runtime_api::{RuntimeApiOptions, run_http_server};
+
+pub use http::{run_http_server, RuntimeApiOptions};
 
 /// CLI for the `deepseek-runtime` sidecar binary (HTTP only — no ratatui / full CLI).
 #[derive(Parser, Debug)]

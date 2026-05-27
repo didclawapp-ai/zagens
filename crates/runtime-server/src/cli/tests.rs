@@ -669,7 +669,8 @@ mod setup_helper_tests {
             include_str!("../logging.rs"),
             include_str!("../tools/describe_image.rs"),
             include_str!("../../../config/src/lib.rs"),
-            include_str!("../runtime_serve.rs"),
+            include_str!("../runtime_serve/mod.rs"),
+            include_str!("../runtime_serve/http.rs"),
         ]
         .join("\n");
 
