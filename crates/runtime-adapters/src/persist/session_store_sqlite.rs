@@ -17,7 +17,7 @@ use anyhow::{Context, bail};
 use chrono::{DateTime, Utc};
 use rusqlite::{Connection, params};
 
-use crate::session_manager::{
+use crate::persist::session_manager::{
     SavedSession, SessionContextReference, SessionMetadata,
 };
 

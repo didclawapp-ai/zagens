@@ -10,7 +10,6 @@ mod command_safety;
 mod compaction;
 mod context_snapshot;
 mod config;
-mod context_reference;
 mod core;
 mod cost_status;
 mod cycle_manager;
@@ -18,15 +17,12 @@ mod error_taxonomy;
 mod execpolicy;
 mod features;
 mod hooks;
-mod json_schema_util;
 mod llm_client;
 mod localization;
 mod logging;
 mod lsp;
-mod mcp;
 mod memory;
 mod models;
-mod network_policy;
 mod path_guard;
 mod pricing;
 mod project_context;
@@ -43,14 +39,11 @@ mod sandbox;
 mod schema_migration;
 mod scratchpad;
 mod seam_manager;
-mod session_manager;
-mod session_store_sqlite;
 mod thread_store_sqlite;
 mod settings;
 mod skills;
 mod task_type;
 mod topic_memory;
-mod snapshot;
 pub mod cli;
 mod symbol_index;
 mod task_manager;
@@ -61,3 +54,12 @@ mod transcript_isomorphism;
 mod utils;
 mod working_set;
 mod workspace_trust;
+
+// D16 E1-a — adapters crate (MCP / persist / snapshot); re-export for stable `crate::` paths.
+pub use deepseek_runtime_adapters::{
+    json_schema_util, mcp, network_policy, persist, snapshot,
+};
+pub use deepseek_runtime_adapters::persist::{
+    context_reference, session_manager, session_store_sqlite, ContextReference,
+    SavedSession, SessionContextReference, SessionManager, SessionMetadata,
+};

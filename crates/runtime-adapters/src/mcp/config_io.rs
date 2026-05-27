@@ -5,7 +5,7 @@ use std::path::Path;
 use anyhow::{Context, Result};
 
 use crate::network_policy::NetworkPolicyDecider;
-use crate::utils::write_atomic;
+use crate::util::write_atomic;
 
 use super::config::{McpConfig, McpServerConfig};
 use super::pool::McpPool;

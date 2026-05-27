@@ -38,7 +38,6 @@ use crate::agent_surface::AppMode;
 use crate::tools::spec::ApprovalRequirement;
 use crate::tools::ToolRegistry;
 impl TurnLoopToolRegistry for ToolRegistry {}
-impl McpHost for McpPool {}
 
 
 mod capacity;

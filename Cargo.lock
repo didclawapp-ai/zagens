@@ -1417,6 +1417,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "deepseek-runtime-adapters"
+version = "0.8.15"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "deepseek-config",
+ "deepseek-core",
+ "deepseek-protocol",
+ "dirs",
+ "futures-util",
+ "reqwest",
+ "rusqlite",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.17",
+ "tokio",
+ "tokio-util",
+ "toml 0.9.11+spec-1.1.0",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "deepseek-runtime-server"
 version = "0.8.15"
 dependencies = [
@@ -1432,6 +1458,7 @@ dependencies = [
  "deepseek-config",
  "deepseek-core",
  "deepseek-protocol",
+ "deepseek-runtime-adapters",
  "deepseek-secrets",
  "deepseek-tools",
  "deepseek-topic-memory",

@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **D16 E3-d (WIP):** Extract `hooks/useTurnSend.ts` — SSE 发消息/流式事件处理（~500 行）；`App.tsx` 继续瘦身。
 - **D16 E3-e (Landed):** Extract `useSessionNavigation` / `useThreadContext` / `useDesktopShell`、`lib/appPreferences.ts`、`TitleBar` / `ChatActionDialogs` 组件。
 - **D16 E3-f (Landed):** Extract `AppShell.tsx`、`useWorkspacePanel`、`useChatMessageActions`；`App.tsx` **776 行**（<800 验收）；`npm run build` ✅。
+- **D16 E1-a (WIP):** 新建 `crates/runtime-adapters`（`deepseek-runtime-adapters`）— 迁入 `mcp/`、`network_policy`、`persist/`（`session_manager` + `session_store_sqlite` + `context_reference`）、`snapshot/`、`json_schema_util`；`runtime-server` 经 re-export 保持 `crate::mcp` / `crate::session_manager` 路径；`impl McpHost for McpPool` 随类型迁至 adapters；`tools/` 仍留 `runtime-server`（与 `runtime_threads` / `core::engine` 循环依赖，待 host 边界 refactor 后再迁）。
 
 ### Changed
 

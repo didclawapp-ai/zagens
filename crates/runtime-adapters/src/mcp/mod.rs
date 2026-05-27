@@ -26,5 +26,9 @@ pub use types::{
     ConnectionState, McpPrompt, McpPromptArgument, McpResource, McpResourceTemplate, McpTool,
 };
 
+use deepseek_core::engine::hosts::McpHost;
+
+impl McpHost for McpPool {}
+
 #[cfg(test)]
 include!("tests.inc.rs");
