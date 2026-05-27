@@ -6,7 +6,7 @@ use anyhow::Result;
 
 use super::{RoutingRule, RoutingRulesDoc};
 
-pub(crate) fn load_routing_rules(path: &Path) -> Result<Vec<RoutingRule>> {
+pub fn load_routing_rules(path: &Path) -> Result<Vec<RoutingRule>> {
     if !path.exists() {
         return Ok(Vec::new());
     }
@@ -15,7 +15,7 @@ pub(crate) fn load_routing_rules(path: &Path) -> Result<Vec<RoutingRule>> {
     Ok(doc.rules)
 }
 
-pub(crate) fn save_routing_rules(path: &Path, rules: &[RoutingRule]) -> Result<()> {
+pub fn save_routing_rules(path: &Path, rules: &[RoutingRule]) -> Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }

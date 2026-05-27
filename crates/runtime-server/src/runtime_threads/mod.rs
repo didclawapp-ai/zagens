@@ -37,21 +37,22 @@ pub(crate) use deepseek_runtime_orchestrator::runtime_threads::{
 
 mod active;
 mod engine_load;
-mod events;
-pub(crate) mod event_coalesce;
 mod manager;
 mod turn_lifecycle;
 mod turn_control;
 mod thread_crud;
 mod monitor;
-mod routing;
 mod turn_wait;
 
-pub use events::{collect_agent_rebind_hints, AgentRebindHint};
+pub use deepseek_runtime_orchestrator::runtime_threads::event_coalesce;
+pub use deepseek_runtime_orchestrator::runtime_threads::events::{
+    collect_agent_rebind_hints, AgentRebindHint,
+};
+pub use deepseek_runtime_orchestrator::runtime_threads::routing;
 pub use manager::{RuntimeThreadManager, SharedRuntimeThreadManager};
 
 #[cfg(test)]
-pub(crate) use events::AgentRebindStatus;
+pub(crate) use deepseek_runtime_orchestrator::runtime_threads::events::AgentRebindStatus;
 
 #[cfg(test)]
 pub(crate) use active::{

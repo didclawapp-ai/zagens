@@ -8,6 +8,8 @@ pub mod mcp;
 pub mod models;
 pub mod network_policy;
 pub mod persist;
+pub mod scratchpad;
+pub mod scratchpad_gates;
 pub mod snapshot;
 pub mod util;
 
