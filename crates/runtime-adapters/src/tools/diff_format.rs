@@ -5,9 +5,6 @@
 //! output. The TUI's `output_looks_like_diff` detector then routes the
 //! payload through `diff_render::render_diff`, which renders it with line
 //! numbers and coloured `+`/`-` gutters (#505).
-//!
-//! The diff is also a strict UX upgrade for the model — it sees exactly
-//! which lines changed instead of a one-line summary.
 
 use similar::TextDiff;
 
@@ -64,9 +61,6 @@ mod tests {
 
     #[test]
     fn diff_contains_hunk_header_so_tui_renders_it() {
-        // The TUI detector scans the first 5 lines for `@@`. Make sure the
-        // unified diff puts a hunk header within that window so the
-        // diff-aware renderer kicks in (#505).
         let diff = make_unified_diff("foo.txt", "a\n", "b\n");
         let head: Vec<&str> = diff.lines().take(5).collect();
         assert!(

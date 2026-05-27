@@ -6,8 +6,8 @@
 //! - `ToolResult`: Unified result type for tool execution
 //! - `ToolCapability`: Capabilities and requirements of tools
 
-use std::path::{Component, Path, PathBuf};
-use std::sync::{Arc, Mutex as StdMutex};
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde_json::Value;
@@ -18,7 +18,11 @@ use crate::lsp::LspManager;
 use crate::network_policy::NetworkPolicyDecider;
 use crate::sandbox::backend::SandboxBackend;
 use crate::tools::shell::{SharedShellManager, new_shared_shell_manager};
-#[allow(unused_imports)]
+use deepseek_runtime_adapters::tools::path::normalize_path;
+pub use deepseek_runtime_adapters::tools::{
+    RuntimeToolHostWire, ToolProgressEmit, ToolShellEnvHost,
+};
+pub use deepseek_runtime_adapters::tools::path::path_has_prefix;
 pub use deepseek_tools::{
     ApprovalRequirement, ToolCapability, ToolError, ToolResult, optional_bool, optional_str,
     optional_u64, required_str, required_u64,
@@ -32,37 +36,23 @@ pub use deepseek_tools::{
 /// attached.
 #[derive(Clone)]
 pub struct RuntimeToolServices {
+    /// Adapter-owned metadata wired at engine spawn (D16 E1-a3).
+    pub wire: RuntimeToolHostWire,
     pub shell_manager: Option<SharedShellManager>,
     pub task_manager: Option<crate::task_manager::SharedTaskManager>,
     pub automations: Option<crate::automation_manager::SharedAutomationManager>,
-    pub task_data_dir: Option<PathBuf>,
-    pub active_task_id: Option<String>,
-    pub active_thread_id: Option<String>,
-    /// Hook executor for `shell_env` injection (#456) and any future
-    /// tool-side hook events. `None` outside the live engine — test
-    /// contexts that don't care about hooks get a no-op.
-    pub hook_executor: Option<std::sync::Arc<crate::hooks::HookExecutor>>,
-    /// Active audit scratchpad `run_id` for the current thread (B2).
-    pub scratchpad_run_id: std::sync::Arc<StdMutex<Option<String>>>,
-    /// Persist `run_id` on the active runtime thread after first scratchpad write.
-    pub persist_scratchpad_run_id: Option<std::sync::Arc<dyn Fn(String) + Send + Sync>>,
-    /// Resolved `[scratchpad]` config for tools (Phase C1 gates on `set_area`).
-    pub scratchpad_config: Option<crate::scratchpad::ScratchpadConfig>,
+    /// Shell env hook injection (#456); sidecar attaches `HookShellEnvHost`.
+    pub shell_env: Option<std::sync::Arc<dyn ToolShellEnvHost>>,
 }
 
 impl Default for RuntimeToolServices {
     fn default() -> Self {
         Self {
+            wire: RuntimeToolHostWire::default(),
             shell_manager: None,
             task_manager: None,
             automations: None,
-            task_data_dir: None,
-            active_task_id: None,
-            active_thread_id: None,
-            hook_executor: None,
-            scratchpad_run_id: Arc::new(StdMutex::new(None)),
-            persist_scratchpad_run_id: None,
-            scratchpad_config: None,
+            shell_env: None,
         }
     }
 }
@@ -70,17 +60,11 @@ impl Default for RuntimeToolServices {
 impl std::fmt::Debug for RuntimeToolServices {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RuntimeToolServices")
+            .field("wire", &self.wire)
             .field("shell_manager", &self.shell_manager.is_some())
             .field("task_manager", &self.task_manager.is_some())
             .field("automations", &self.automations.is_some())
-            .field("task_data_dir", &self.task_data_dir)
-            .field("active_task_id", &self.active_task_id)
-            .field("active_thread_id", &self.active_thread_id)
-            .field("hook_executor", &self.hook_executor.is_some())
-            .field(
-                "scratchpad_run_id",
-                &self.scratchpad_run_id.lock().ok().and_then(|g| g.clone()),
-            )
+            .field("shell_env", &self.shell_env.is_some())
             .finish()
     }
 }
@@ -91,13 +75,6 @@ pub enum SandboxPolicy {
     /// No sandboxing (dangerous but sometimes needed)
     #[default]
     None,
-}
-
-/// Streams incremental tool output to the engine/UI (`ToolCallProgress`), without
-/// pulling `Event` into `tools::spec` (that would cycle with `core::events`).
-pub trait ToolProgressEmit: Send + Sync {
-    fn emit_stdout(&self, chunk: &str);
-    fn emit_stderr(&self, chunk: &str);
 }
 
 /// Context passed to tools during execution.
@@ -562,71 +539,6 @@ pub async fn lsp_diagnostics_for_paths(context: &ToolContext, paths: &[PathBuf])
     }
 
     render_blocks(&blocks)
-}
-
-/// Compare paths for prefix containment, normalizing Windows `\\?\` verbatim prefixes.
-#[must_use]
-pub fn path_has_prefix(path: &Path, prefix: &Path) -> bool {
-    strip_verbatim_prefix(path).starts_with(&strip_verbatim_prefix(prefix))
-}
-
-#[must_use]
-fn strip_verbatim_prefix(path: &Path) -> PathBuf {
-    let s = path.display().to_string();
-    #[cfg(windows)]
-    {
-        if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
-            return PathBuf::from(format!(r"\\{rest}"));
-        }
-        if let Some(rest) = s.strip_prefix(r"\\?\") {
-            return PathBuf::from(rest);
-        }
-    }
-    path.to_path_buf()
-}
-
-fn normalize_path(path: &Path) -> PathBuf {
-    let mut prefix: Option<std::ffi::OsString> = None;
-    let mut is_root = false;
-    let mut stack: Vec<std::ffi::OsString> = Vec::new();
-
-    for component in path.components() {
-        match component {
-            Component::Prefix(prefix_component) => {
-                prefix = Some(prefix_component.as_os_str().to_owned());
-            }
-            Component::RootDir => {
-                is_root = true;
-            }
-            Component::CurDir => {}
-            Component::ParentDir => {
-                let parent = Component::ParentDir.as_os_str();
-                if let Some(last) = stack.pop() {
-                    if last == parent {
-                        stack.push(last);
-                        stack.push(parent.to_owned());
-                    }
-                } else if !is_root {
-                    stack.push(parent.to_owned());
-                }
-            }
-            Component::Normal(part) => {
-                stack.push(part.to_owned());
-            }
-        }
-    }
-
-    let mut normalized = PathBuf::new();
-    if let Some(prefix) = prefix {
-        normalized.push(prefix);
-    }
-    if is_root {
-        normalized.push(Path::new(std::path::MAIN_SEPARATOR_STR));
-    }
-    for part in stack {
-        normalized.push(part);
-    }
-    normalized
 }
 
 /// The core trait that all tools must implement.

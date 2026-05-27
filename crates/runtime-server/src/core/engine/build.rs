@@ -160,6 +160,7 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
 
     let scratchpad_run_id = config_ext
         .runtime_services
+        .wire
         .scratchpad_run_id
         .lock()
         .ok()

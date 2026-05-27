@@ -7,10 +7,10 @@ use crate::scratchpad::AreaStatus;
 use crate::scratchpad::{ScratchpadStore, display_run_path, resolve_run_id};
 
 fn persist_scratchpad_run(ctx: &ToolContext, run_id: &str) {
-    if let Ok(mut guard) = ctx.runtime.scratchpad_run_id.lock() {
+    if let Ok(mut guard) = ctx.runtime.wire.scratchpad_run_id.lock() {
         *guard = Some(run_id.to_string());
     }
-    if let Some(persist) = &ctx.runtime.persist_scratchpad_run_id {
+    if let Some(persist) = &ctx.runtime.wire.persist_scratchpad_run_id {
         persist(run_id.to_string());
     }
 }
@@ -279,6 +279,7 @@ impl ToolSpec for ScratchpadSetAreaTool {
         let store = ScratchpadStore::open(context, &run_id)?;
         let scratchpad_cfg = context
             .runtime
+            .wire
             .scratchpad_config
             .clone()
             .unwrap_or_default();

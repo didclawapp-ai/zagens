@@ -252,6 +252,7 @@ impl ToolSpec for AgentSpawnTool {
                 .runtime
                 .context
                 .runtime
+                .wire
                 .scratchpad_config
                 .clone()
                 .unwrap_or_default();
@@ -262,6 +263,7 @@ impl ToolSpec for AgentSpawnTool {
                 .runtime
                 .context
                 .runtime
+                .wire
                 .scratchpad_run_id
                 .lock()
                 .ok()

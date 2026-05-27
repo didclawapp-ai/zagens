@@ -46,7 +46,7 @@ flowchart TB
 
     subgraph sidecar_proc["子进程: deepseek-runtime  (crates/runtime-server)"]
         MAIN["runtime-server/main.rs<br/>→ runtime_serve::run_from_args"]
-        HTTP["runtime_api::run_http_server<br/>axum @ 127.0.0.1:&lt;dynamic&gt;"]
+        HTTP["runtime_serve/http.rs<br/>run_http_server<br/>axum @ 127.0.0.1:&lt;dynamic&gt;"]
         ROUTER["runtime_api/router.rs<br/>/v1/* · /health · /internal/probe"]
         AUTH["auth.rs<br/>require_runtime_token (Bearer)"]
         STREAM["stream.rs (SSE)"]
@@ -122,11 +122,12 @@ flowchart TB
 |------|------|------|
 | 端口动态化 + Bearer Token UUID | [`crates/desktop/src/main.rs`](../../crates/desktop/src/main.rs) | `tokio::sync::watch::channel::<u16>` 初始 0；supervisor 解析 `DS_PICK_READY.port` 后发布；初始建议端口 7878；`uuid::Uuid::new_v4()` 每次启动新 token，仅注入 sidecar 子进程环境 |
 | Sidecar 二进制嵌入 | [`crates/desktop/build.rs`](../../crates/desktop/build.rs) | 构建期复制为 `binaries/deepseek-runtime-<triple>(.exe)`，作为 Tauri `externalBin` |
-| Sidecar 入口 | [`crates/runtime-server/src/main.rs`](../../crates/runtime-server/src/main.rs) → [`runtime_serve.rs`](../../crates/runtime-server/src/runtime_serve.rs) | `deepseek-runtime --host … --port …`（无 `serve` 子命令） |
+| Sidecar 入口 | [`crates/runtime-server/src/main.rs`](../../crates/runtime-server/src/main.rs) → [`runtime_serve/http.rs`](../../crates/runtime-server/src/runtime_serve/http.rs) | `deepseek-runtime --host … --port …`（无 `serve` 子命令） |
 | Tauri IPC handlers | [`crates/desktop/src/commands.rs`](../../crates/desktop/src/commands.rs) | 密钥/设置/平台/符号索引/导出 等 30+ 命令 |
 | HTTP 代理（Bearer 注入） | [`crates/desktop/src/runtime_proxy.rs`](../../crates/desktop/src/runtime_proxy.rs) | `runtime_http` / `runtime_post_stream` / `runtime_get_sse` + path 白名单 |
 | Sidecar 监督 | [`crates/desktop/src/sidecar.rs`](../../crates/desktop/src/sidecar.rs) | spawn/重启/退避/`DS_PICK_READY` 行协议；生产 **`deepseek-runtime`**；可选识别磁盘上遗留 `deepseek-tui` 二进制 |
-| HTTP 入口（库） | [`crates/runtime-server/src/runtime_api/mod.rs`](../../crates/runtime-server/src/runtime_api/mod.rs) | `run_http_server` — `deepseek_runtime` lib |
+| HTTP 入口（库） | [`crates/runtime-server/src/runtime_serve/http.rs`](../../crates/runtime-server/src/runtime_serve/http.rs) | `run_http_server` / `RuntimeApiOptions` — `deepseek_runtime` lib |
+| OpenAPI / 共享 wire 类型 | [`crates/runtime-api/`](../../crates/runtime-api/) | `compose_router`、`ApiError`、OpenAPI schemas；handler 仍留 sidecar |
 | 路由表 | [`crates/runtime-server/src/runtime_api/router.rs`](../../crates/runtime-server/src/runtime_api/router.rs) | 全部 `/v1/*` 路由集中注册；`/health` `/internal/probe` 不走鉴权 |
 | 线程管理 | [`crates/runtime-server/src/runtime_threads/manager.rs`](../../crates/runtime-server/src/runtime_threads/manager.rs) | `RuntimeThreadManager` + LRU 活跃线程 + 事件 broadcast |
 | Engine struct + op loop | [`crates/core/src/engine/runtime.rs`](../../crates/core/src/engine/runtime.rs) + [`op_loop.rs`](../../crates/core/src/engine/op_loop.rs) | M7/M8：`Engine::with_hosts` / `Engine::run()` 在 core |
@@ -430,10 +431,11 @@ sequenceDiagram
 | 多窗口注册 | [`crates/desktop/src/window_registry.rs`](../../crates/desktop/src/window_registry.rs) |
 | 终端 PTY | [`crates/desktop/src/terminal.rs`](../../crates/desktop/src/terminal.rs) |
 | Sidecar 二进制嵌入 | [`crates/desktop/build.rs`](../../crates/desktop/build.rs) |
-| Sidecar 入口 / `deepseek-runtime` | [`crates/runtime-server/src/main.rs`](../../crates/runtime-server/src/main.rs) · [`runtime_serve.rs`](../../crates/runtime-server/src/runtime_serve.rs) |
-| HTTP 路由表 + Bearer 中间件 | [`crates/runtime-server/src/runtime_api/router.rs`](../../crates/runtime-server/src/runtime_api/router.rs) + [`auth.rs`](../../crates/runtime-server/src/runtime_api/auth.rs) |
+| Sidecar 入口 / `deepseek-runtime` | [`crates/runtime-server/src/main.rs`](../../crates/runtime-server/src/main.rs) · [`runtime_serve/http.rs`](../../crates/runtime-server/src/runtime_serve/http.rs) |
+| HTTP 路由表 + Bearer 中间件 | [`crates/runtime-server/src/runtime_api/router.rs`](../../crates/runtime-server/src/runtime_api/router.rs) + [`crates/runtime-api/src/auth.rs`](../../crates/runtime-api/src/auth.rs) |
 | SSE handlers | [`crates/runtime-server/src/runtime_api/stream.rs`](../../crates/runtime-server/src/runtime_api/stream.rs) |
-| HTTP server 装配 | [`crates/runtime-server/src/runtime_api/mod.rs`](../../crates/runtime-server/src/runtime_api/mod.rs)（`run_http_server`） |
+| HTTP server 装配 | [`crates/runtime-server/src/runtime_serve/http.rs`](../../crates/runtime-server/src/runtime_serve/http.rs)（`run_http_server`） · handler 接线 [`runtime_api/mod.rs`](../../crates/runtime-server/src/runtime_api/mod.rs) |
+| Tool host 端口 / 纯工具 helper | [`crates/runtime-adapters/src/tools/`](../../crates/runtime-adapters/src/tools/) | `RuntimeToolHostWire`、`ToolShellEnvHost`、`diff_format`、`schema_sanitize`（D16 E1-a3） |
 | 线程管理 / LRU / broadcast | [`crates/runtime-server/src/runtime_threads/manager.rs`](../../crates/runtime-server/src/runtime_threads/manager.rs) |
 | 持久化（事件/线程） | [`crates/runtime-server/src/runtime_threads/persist.rs`](../../crates/runtime-server/src/runtime_threads/persist.rs) + [`monitor.rs`](../../crates/runtime-server/src/runtime_threads/monitor.rs) |
 | Engine struct + op loop (core) | [`crates/core/src/engine/runtime.rs`](../../crates/core/src/engine/runtime.rs) · [`op_loop.rs`](../../crates/core/src/engine/op_loop.rs) |

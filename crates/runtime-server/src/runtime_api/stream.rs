@@ -12,6 +12,7 @@ use async_stream::stream;
 use axum::extract::{Path as AxumPath, Query, State};
 use axum::response::sse::{Event as SseEvent, KeepAlive, Sse};
 use axum::Json;
+use deepseek_runtime_api::StreamTurnRequest;
 use futures_util::Stream;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -22,27 +23,6 @@ use crate::runtime_threads::event_coalesce::coalesce_delta_events;
 use crate::runtime_threads::{CreateThreadRequest, StartTurnRequest};
 
 use super::{map_thread_err, ApiError, RuntimeApiState};
-
-#[derive(Debug, Deserialize)]
-pub(super) struct StreamTurnRequest {
-    prompt: String,
-    model: Option<String>,
-    mode: Option<String>,
-    workspace: Option<PathBuf>,
-    allow_shell: Option<bool>,
-    trust_mode: Option<bool>,
-    auto_approve: Option<bool>,
-    #[serde(default)]
-    route_intent: Option<String>,
-    #[serde(default)]
-    task_type: Option<String>,
-    #[serde(default)]
-    temperature: Option<f32>,
-    #[serde(default)]
-    top_p: Option<f32>,
-    #[serde(default)]
-    max_tokens: Option<u32>,
-}
 
 /// Accept `true`/`false`, `1`/`0`, and `yes`/`no` in query strings (desktop used `replay_only=1`).
 fn deserialize_query_bool_option<'de, D>(deserializer: D) -> Result<Option<bool>, D::Error>
@@ -454,7 +434,8 @@ pub(super) async fn stream_turn(
     });
     let workspace = req
         .workspace
-        .clone()
+        .as_ref()
+        .map(PathBuf::from)
         .unwrap_or_else(|| state.workspace.clone());
     let mode = req.mode.clone().unwrap_or_else(|| "agent".to_string());
     let allow_shell = req.allow_shell.unwrap_or(state.config.allow_shell());

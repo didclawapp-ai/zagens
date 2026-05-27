@@ -1758,11 +1758,8 @@ impl ToolSpec for ExecShellTool {
         // synchronously, captures stdout, parses `KEY=VAL` lines, audit-logs
         // the keys (never the values). Empty / no-op when no hook is
         // configured.
-        let extra_env = if let Some(hook_executor) = &context.runtime.hook_executor {
-            let hook_ctx = crate::hooks::HookContext::new()
-                .with_tool_name("exec_shell")
-                .with_tool_args(&input);
-            hook_executor.collect_shell_env(&hook_ctx)
+        let extra_env = if let Some(shell_env) = &context.runtime.shell_env {
+            shell_env.collect_shell_env("exec_shell", &input)
         } else {
             std::collections::HashMap::new()
         };
@@ -1912,7 +1909,7 @@ impl ToolSpec for ExecShellTool {
                 if (background || backgrounded_foreground)
                     && let (Some(shell_id), Some(task_id)) = (
                         result.task_id.as_deref(),
-                        context.runtime.active_task_id.clone(),
+                        context.runtime.wire.active_task_id.clone(),
                     )
                     && let Ok(mut manager) = context.shell_manager.lock()
                 {

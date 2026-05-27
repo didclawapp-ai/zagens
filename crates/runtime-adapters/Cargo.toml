@@ -24,6 +24,7 @@ rusqlite.workspace = true
 schemars = { version = "1.2.1", features = ["derive", "preserve_order", "chrono04"] }
 serde.workspace = true
 serde_json = { workspace = true, features = ["preserve_order"] }
+similar = "2"
 tempfile = "3.16"
 thiserror.workspace = true
 tokio.workspace = true

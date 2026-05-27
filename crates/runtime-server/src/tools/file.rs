@@ -932,11 +932,13 @@ impl ToolSpec for WriteFileTool {
 
         let scratchpad_cfg = context
             .runtime
+            .wire
             .scratchpad_config
             .clone()
             .unwrap_or_default();
         let bound_run = context
             .runtime
+            .wire
             .scratchpad_run_id
             .lock()
             .ok()

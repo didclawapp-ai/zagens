@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **D16 E3-f (Landed):** Extract `AppShell.tsx`、`useWorkspacePanel`、`useChatMessageActions`；`App.tsx` **776 行**（<800 验收）；`npm run build` ✅。
 - **D16 E1-a (WIP):** 新建 `crates/runtime-adapters`（`deepseek-runtime-adapters`）— 迁入 `mcp/`、`network_policy`、`persist/`（`session_manager` + `session_store_sqlite` + `context_reference`）、`snapshot/`、`json_schema_util`；`runtime-server` 经 re-export 保持 `crate::mcp` / `crate::session_manager` 路径；`impl McpHost for McpPool` 随类型迁至 adapters；`tools/` 仍留 `runtime-server`（与 `runtime_threads` / `core::engine` 循环依赖，待 host 边界 refactor 后再迁）。
 - **D16 E1-a2 (WIP):** `scratchpad_gates` + 路径读 scratchpad 子模块迁入 `runtime-adapters`；`tools/{file,tasks}` 直接调用 adapters gate；`scratchpad_flow` re-export 保持 engine 侧兼容。
+- **D16 E1-a3 (WIP):** `runtime-adapters/src/tools/` — 迁入 `diff_format`、`schema_sanitize`、路径 helper；新增 `RuntimeToolHostWire` / `ToolProgressEmit` / `ToolShellEnvHost` host 端口；`RuntimeToolServices` 元数据收拢至 `wire`；sidecar `tools/host_impl.rs` 实现 hook 端口。
 - **D16 E1-b (WIP, phase 1):** 新建 `crates/runtime-orchestrator` — 迁入 `runtime_threads/{types,persist}`、`thread_store_sqlite`、`pricing`（usage 聚合）；`RuntimeThreadManager` 等 live orchestration 仍留 `runtime-server`；40 个 `runtime_threads` 单元测试全绿。
 - **D16 E1-b (WIP, phase 2):** 迁入 `runtime_threads/{routing,events,event_coalesce}` 至 orchestrator；新增 `engine`/`engine_host`（`EngineHandle<P,R>` + `RuntimeThreadHost` trait）；`active`/`turn_wait`/`turn_control`/`turn_lifecycle` 核心迁入 orchestrator；`RuntimeThreadManager<P,R>` 核心 + `thread_crud` 在 orchestrator；sidecar `Deref` 包装实现 host（`engine_load`/`monitor`/`prepare_start_turn_params`）；server 保留 Config/task/scratchpad 与 symbol index hook。
 - **D16 E1-b (WIP, phase 3):** `monitor_turn` 事件循环（~930 行）迁入 `runtime-orchestrator`/`monitor.rs`；新增 `RuntimeThreadMonitorHost`（panel SSE、artifact refs、全权限 sandbox policy）与 `monitor_persist` 阻塞落盘 helper；sidecar `monitor_host.rs` 实现 host hook；删除 `runtime-server`/`monitor.rs`。
@@ -42,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **D16 E1-c (WIP, phase 2):** `auth`/`health`/`cors`/`compose_router` 迁入 runtime-api；`RuntimeApiAuthState`/`RuntimeApiProbeState` host trait；sidecar `router.rs` 仅保留 `/v1/*` handler 接线；`/v1/*` bearer 中间件仍在 sidecar 挂载以满足 Axum 0.8 状态类型。
 - **D16 E1-c (WIP, phase 3):** `ApiError` 与 `IntoResponse` 错误 envelope 迁入 runtime-api；handler 仍留 sidecar。
 - **D16 E1-c (WIP, phase 4):** 共享 wire response（`SessionsListResponse`、`SessionDetailResponse`、`ResumeSessionResponse`、`StartTurnResponse`、`ThreadSummary`）由 runtime-api 导出；sidecar handler 删除重复 struct。
+- **D16 E1-c (WIP, phase 5):** `StreamTurnRequest` 由 runtime-api 导出；`stream.rs` handler 复用 wire 类型（`workspace: Option<String>` → `PathBuf` 在 handler 内转换）。
 - **D16 E1-d (WIP):** `run_http_server`/`RuntimeApiOptions` 迁入 `runtime_serve/http.rs`；`runtime_api/mod.rs` 仅保留 state、handler 接线与共享 helper；query/request 类型下沉至对应 handler 模块。
 
 ### Changed

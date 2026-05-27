@@ -11,6 +11,7 @@ pub mod persist;
 pub mod scratchpad;
 pub mod scratchpad_gates;
 pub mod snapshot;
+pub mod tools;
 pub mod util;
 
 #[cfg(test)]

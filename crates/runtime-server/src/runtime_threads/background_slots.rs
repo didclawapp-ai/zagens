@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex as StdMutex};
 
 use deepseek_runtime_orchestrator::runtime_threads::types::ThreadRecord;
+use deepseek_runtime_adapters::tools::RuntimeToolHostWire;
 
 use crate::automation_manager::SharedAutomationManager;
 use crate::task_manager::SharedTaskManager;
@@ -44,16 +45,18 @@ impl RuntimeThreadBackgroundSlots {
         scratchpad_config: crate::scratchpad::ScratchpadConfig,
     ) -> RuntimeToolServices {
         RuntimeToolServices {
+            wire: RuntimeToolHostWire {
+                task_data_dir: Some(task_data_dir),
+                active_task_id: thread.task_id.clone(),
+                active_thread_id: Some(thread.id.clone()),
+                scratchpad_run_id: scratchpad_run_id_slot,
+                persist_scratchpad_run_id: Some(persist_scratchpad_run_id),
+                scratchpad_config: Some(scratchpad_config),
+            },
+            shell_manager: None,
             task_manager: self.task_manager.lock().ok().and_then(|slot| slot.clone()),
             automations: self.automations.lock().ok().and_then(|slot| slot.clone()),
-            task_data_dir: Some(task_data_dir),
-            active_task_id: thread.task_id.clone(),
-            active_thread_id: Some(thread.id.clone()),
-            shell_manager: None,
-            hook_executor: None,
-            scratchpad_run_id: scratchpad_run_id_slot,
-            persist_scratchpad_run_id: Some(persist_scratchpad_run_id),
-            scratchpad_config: Some(scratchpad_config),
+            shell_env: None,
         }
     }
 }

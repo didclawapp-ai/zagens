@@ -384,7 +384,7 @@ fn write_artifact_if_needed(
     if content.len() <= threshold {
         return Ok(None);
     }
-    let Some(task_id) = context.runtime.active_task_id.as_deref() else {
+    let Some(task_id) = context.runtime.wire.active_task_id.as_deref() else {
         return Ok(None);
     };
     if let Some(manager) = context.runtime.task_manager.as_ref() {
@@ -393,7 +393,7 @@ fn write_artifact_if_needed(
             .map(Some)
             .map_err(|e| ToolError::execution_failed(e.to_string()));
     }
-    let Some(data_dir) = context.runtime.task_data_dir.as_ref() else {
+    let Some(data_dir) = context.runtime.wire.task_data_dir.as_ref() else {
         return Ok(None);
     };
     let dir = data_dir.join("artifacts").join(task_id);

@@ -643,7 +643,7 @@ impl ToolSpec for PrAttemptRecordTool {
                 "artifacts": artifact_updates("attempt_patch", patch_path.clone(), "Captured git diff for PR attempt")
             }
         });
-        if context.runtime.active_task_id.as_deref() != Some(task_id.as_str())
+        if context.runtime.wire.active_task_id.as_deref() != Some(task_id.as_str())
             && let Some(manager) = context.runtime.task_manager.as_ref()
         {
             manager
@@ -815,7 +815,7 @@ fn write_runtime_artifact(
     label: &str,
     content: &str,
 ) -> Result<Option<PathBuf>, ToolError> {
-    let Some(task_id) = context.runtime.active_task_id.as_deref() else {
+    let Some(task_id) = context.runtime.wire.active_task_id.as_deref() else {
         return Ok(None);
     };
     let manager = context.runtime.task_manager.as_ref();
@@ -825,7 +825,7 @@ fn write_runtime_artifact(
             .map(Some)
             .map_err(|e| ToolError::execution_failed(e.to_string()));
     }
-    let Some(data_dir) = context.runtime.task_data_dir.as_ref() else {
+    let Some(data_dir) = context.runtime.wire.task_data_dir.as_ref() else {
         return Ok(None);
     };
     let artifact_dir = data_dir.join("artifacts").join(task_id);
@@ -859,7 +859,7 @@ fn write_task_artifact_for(
             .map(Some)
             .map_err(|e| ToolError::execution_failed(e.to_string()));
     }
-    if context.runtime.active_task_id.as_deref() != Some(task_id) {
+    if context.runtime.wire.active_task_id.as_deref() != Some(task_id) {
         return Ok(None);
     }
     write_runtime_artifact(context, label, content)
@@ -899,7 +899,7 @@ fn task_id_from_input_or_context(
 ) -> Result<String, ToolError> {
     optional_str(input, "task_id")
         .map(ToString::to_string)
-        .or_else(|| context.runtime.active_task_id.clone())
+        .or_else(|| context.runtime.wire.active_task_id.clone())
         .ok_or_else(|| {
             ToolError::invalid_input("task_id is required when no durable task is active")
         })

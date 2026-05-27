@@ -63,21 +63,21 @@ pub fn resolve_run_id(ctx: &ToolContext, explicit: Option<&str>) -> Result<Strin
         return Ok(id.to_string());
     }
 
-    if let Ok(guard) = ctx.runtime.scratchpad_run_id.lock() {
+    if let Ok(guard) = ctx.runtime.wire.scratchpad_run_id.lock() {
         if let Some(id) = guard.as_deref().filter(|s| !s.is_empty()) {
             validate_run_id(id)?;
             return Ok(id.to_string());
         }
     }
 
-    if let Some(tid) = ctx.runtime.active_thread_id.as_deref() {
+    if let Some(tid) = ctx.runtime.wire.active_thread_id.as_deref() {
         validate_run_id(tid)?;
         if run_dir(ctx, tid)?.is_dir() {
             return Ok(tid.to_string());
         }
     }
 
-    if let Some(task_id) = ctx.runtime.active_task_id.as_deref() {
+    if let Some(task_id) = ctx.runtime.wire.active_task_id.as_deref() {
         validate_run_id(task_id)?;
         if run_dir(ctx, task_id)?.is_dir() {
             return Ok(task_id.to_string());
@@ -98,8 +98,8 @@ pub fn try_open_store(
     task_id: Option<&str>,
 ) -> Option<ScratchpadStore> {
     let mut ctx = ToolContext::new(workspace);
-    ctx.runtime.active_thread_id = thread_id.map(str::to_string);
-    ctx.runtime.active_task_id = task_id.map(str::to_string);
+    ctx.runtime.wire.active_thread_id = thread_id.map(str::to_string);
+    ctx.runtime.wire.active_task_id = task_id.map(str::to_string);
     let resolved = resolve_run_id(&ctx, run_id).ok()?;
     ScratchpadStore::open(&ctx, &resolved).ok()
 }
