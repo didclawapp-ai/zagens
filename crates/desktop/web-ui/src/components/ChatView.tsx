@@ -87,10 +87,10 @@ export default function ChatView({
           <div className="flex min-h-[min(60vh,28rem)] items-center justify-center">
             <div className="text-center">
               <h1 className="text-3xl font-bold mb-2 text-accent font-display">
-                DS<span className="opacity-85 font-semibold"> Pick</span>
+                {t('app.title')}
               </h1>
-              <p className="text-lg text-t-text-secondary">你的 AI 编码助手</p>
-              <p className="text-sm mt-2 text-t-text-muted">在下方输入问题开始对话</p>
+              <p className="text-lg text-t-text-secondary">{t('app.heroTagline')}</p>
+              <p className="text-sm mt-2 text-t-text-muted">{t('app.emptyPrompt')}</p>
             </div>
           </div>
         )}

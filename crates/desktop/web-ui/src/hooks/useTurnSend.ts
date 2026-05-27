@@ -346,7 +346,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
                 granted = perm === 'granted';
               }
               if (granted) {
-                mod.sendNotification({ title: 'Zagens', body: '模型已完成回答' });
+                mod.sendNotification({ title: 'Zagens', body: t('notification.turnComplete') });
               }
             } catch {
               /* browser mode — not supported */

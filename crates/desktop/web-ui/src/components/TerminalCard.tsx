@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
+import { useT } from '../i18n';
 import { xtermThemeForAppDarkMode } from '../lib/terminal/xtermTheme';
 
 export type TerminalToolStatus = 'running' | 'done' | 'error';
@@ -151,12 +152,13 @@ function TerminalXtermView({ output }: { output: string }) {
 }
 
 function EmptyOutputHint({ status }: { status: TerminalToolStatus }) {
+  const { t } = useT();
   const line =
     status === 'running'
-      ? '正在执行，尚未收到终端输出…（不少 Python 脚本成功时也不打印任何内容）'
+      ? t('terminalCard.runningEmpty')
       : status === 'error'
-        ? '命令失败，且无 stderr/stdout 文本。'
-        : '命令未向终端打印任何内容（常见于脚本静默成功，仅由退出码表示结果）。';
+        ? t('terminalCard.errorEmpty')
+        : t('terminalCard.silentSuccess');
 
   return (
     <div className="border-t border-divider bg-canvas px-3 py-2 text-[11px] leading-relaxed text-t-text-muted">
@@ -166,13 +168,14 @@ function EmptyOutputHint({ status }: { status: TerminalToolStatus }) {
 }
 
 export default function TerminalCard({ output, command, status = 'done' }: Props) {
+  const { t } = useT();
   const showXterm = hasTerminalText(output);
 
   return (
     <div
       className="rounded-lg border border-card-border overflow-hidden my-2"
       role="region"
-      aria-label={command ? `Shell: ${command}` : 'Shell output'}
+      aria-label={command ? `Shell: ${command}` : t('terminalCard.shellOutput')}
     >
       <div className="flex items-center gap-2 px-3 py-1.5 bg-canvas-alt border-b border-divider">
         <span className="w-2.5 h-2.5 rounded-full bg-t-error/70" />

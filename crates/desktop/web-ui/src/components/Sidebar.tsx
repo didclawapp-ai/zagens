@@ -172,7 +172,7 @@ export default function Sidebar({
         sidebarResizing || prefersReducedMotion ? '' : 'transition-[width] duration-150'
       }`}
       style={{ width: collapsed ? 0 : sidebarWidth }}
-      aria-label="会话与导航"
+      aria-label={t('a11y.sidebarNav')}
     >
       <div className="shrink-0 px-4 pt-5 pb-2">
         <div className="mb-4 flex min-w-0 items-center gap-2.5 pl-0.5">
@@ -304,7 +304,7 @@ export default function Sidebar({
       <div className="flex-1 min-h-0 overflow-y-auto px-2 py-2">
         <div className="flex items-center justify-between gap-1 px-2.5 py-2">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-t-text-muted">
-            Sessions
+            {t('common.sessions')}
           </p>
           {onToggleShowAllSessions && (
             <button
@@ -342,7 +342,7 @@ export default function Sidebar({
               {onDeleteSession && (
                 <button
                   type="button"
-                  title="删除会话"
+                  title={t('sidebar.deleteSessionTitle')}
                   onClick={(e) => {
                     e.stopPropagation();
                     onDeleteSession(s.id);
@@ -359,11 +359,11 @@ export default function Sidebar({
 
       <div className="shrink-0 border-t border-divider px-3 py-2.5 space-y-2">
         {desktopHost && apiKeyConfigured === false && (
-          <p className="px-1 text-[10px] text-amber-text/90 leading-snug">未配置 API Key</p>
+          <p className="px-1 text-[10px] text-amber-text/90 leading-snug">{t('sidebar.apiKeyNotConfigured')}</p>
         )}
         <div
           className="flex items-center gap-2 px-1 py-1 text-xs text-t-text-muted"
-          title="与本地 deepseek-runtime 运行时 (127.0.0.1) 的连接状态"
+          title={t('sidebar.runtimeConnectionTitle')}
         >
           <span
             className={`shrink-0 inline-block w-2 h-2 rounded-full ${runtimeConnIndicatorClass(
@@ -462,13 +462,13 @@ function SettingsAccordion({
   };
 
   const subItems: { tab: SettingsTab; label: string; show: boolean }[] = [
-    { tab: 'api-key', label: 'API Key', show: desktopHost },
-    { tab: 'mcp', label: 'MCP 服务器', show: true },
+    { tab: 'api-key', label: t('sidebar.apiKey'), show: desktopHost },
+    { tab: 'mcp', label: t('panels.mcp'), show: true },
     { tab: 'skills', label: t('sidebar.skills'), show: true },
-    { tab: 'routing', label: '模型路由', show: !officeSession },
+    { tab: 'routing', label: t('panels.routing'), show: !officeSession },
     { tab: 'topic-memory', label: t('sidebar.topicMemory'), show: !officeSession },
-    { tab: 'index', label: '索引', show: !officeSession },
-    { tab: 'system', label: '系统设置', show: true },
+    { tab: 'index', label: t('panels.index'), show: !officeSession },
+    { tab: 'system', label: t('panels.system'), show: true },
     { tab: 'about', label: t('sidebar.about'), show: true },
   ];
 
@@ -483,7 +483,7 @@ function SettingsAccordion({
           <path d="M4 14l4-4 4 4 8-8" />
           <path d="M4 20h16" />
         </svg>
-        设置
+        {t('sidebar.settings')}
         <svg
           viewBox="0 0 24 24"
           className={`ml-auto w-3.5 h-3.5 stroke-current transition-transform ${open ? 'rotate-90' : ''}`}

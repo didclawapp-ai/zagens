@@ -18,15 +18,12 @@ import {
   appendWorkspaceMentionToText,
   formatWorkspaceMention,
 } from '../lib/composerWorkspaceMention';
+import type { TranslationKey } from '../i18n/keys';
 import {
   composerRoutingStatusLabel,
   DESKTOP_MODEL_LABELS,
   DESKTOP_MODEL_SHORT_LABELS,
-  DESKTOP_RUN_MODE_HINTS,
   DESKTOP_RUN_MODE_LABELS,
-  DESKTOP_TASK_TYPE_HINTS,
-  DESKTOP_TASK_TYPE_LABELS,
-  OFFICE_COMPOSER_RUN_MODE_HINT,
 } from '../types/desktop';
 import { runModesForSession } from '../lib/taskTypeSession';
 import { clipboardHtmlToPlainText } from '../lib/sanitizeHtml';
@@ -39,6 +36,27 @@ const MAX_ATTACHMENTS = 8;
 // Detail: "high" at the vision API means the model still gets adequate resolution after resize.
 const COMPRESS_MAX_PX = 1920;
 const COMPRESS_QUALITY = 0.85;
+
+const TASK_TYPE_LABEL_KEYS: Record<
+  DesktopTaskTypePreference | DesktopTaskTypeResolved,
+  TranslationKey
+> = {
+  auto: 'composer.taskTypeAuto',
+  office: 'composer.taskTypeOffice',
+  code: 'composer.taskTypeCode',
+};
+
+const TASK_TYPE_HINT_KEYS: Record<DesktopTaskTypePreference, TranslationKey> = {
+  auto: 'composer.taskTypeAutoHint',
+  office: 'composer.taskTypeOfficeHint',
+  code: 'composer.taskTypeCodeHint',
+};
+
+const RUN_MODE_HINT_KEYS: Record<DesktopRunModeId, TranslationKey> = {
+  plan: 'composer.planModeHint',
+  agent: 'composer.agentModeHint',
+  yolo: 'composer.runModeYoloHint',
+};
 
 export interface ComposerOutboundMessage {
   /** Rendered in the chat transcript (attachment names/summary only — no inlined file bodies). */
@@ -193,7 +211,9 @@ async function readFullUtf8(file: File): Promise<string> {
   });
 }
 
-async function fileToAttached(file: File): Promise<AttachedFile> {
+type TranslateFn = (key: string, params?: Record<string, string>) => string;
+
+async function fileToAttached(file: File, t: TranslateFn): Promise<AttachedFile> {
   const size = file.size;
   const name = file.name;
 
@@ -206,7 +226,7 @@ async function fileToAttached(file: File): Promise<AttachedFile> {
         size,
         inlined: false,
         kind: 'image',
-        omitReason: `图片超过 ${formatSize(MAX_IMAGE_BYTES)}，无法发送`,
+        omitReason: t('composer.imageTooLarge', { size: formatSize(MAX_IMAGE_BYTES) }),
       };
     }
     try {
@@ -231,7 +251,7 @@ async function fileToAttached(file: File): Promise<AttachedFile> {
         size,
         inlined: false,
         kind: 'image',
-        omitReason: '读取图片失败',
+        omitReason: t('composer.imageReadError'),
       };
     }
   }
@@ -243,7 +263,7 @@ async function fileToAttached(file: File): Promise<AttachedFile> {
       truncated: false,
       size,
       inlined: false,
-      omitReason: '一般为二进制或未提取格式（如 PDF / Office / 归档）',
+      omitReason: t('composer.binaryOrUnsupported'),
     };
   }
 
@@ -254,7 +274,7 @@ async function fileToAttached(file: File): Promise<AttachedFile> {
       truncated: false,
       size,
       inlined: false,
-      omitReason: '浏览器 MIME 类型不适合 UTF-8 文本嵌入',
+      omitReason: t('composer.mimeNotText'),
     };
   }
 
@@ -267,7 +287,7 @@ async function fileToAttached(file: File): Promise<AttachedFile> {
         truncated: false,
         size,
         inlined: false,
-        omitReason: '魔数检测为二进制或含大量不可见字节',
+        omitReason: t('composer.magicBinary'),
       };
     }
   }
@@ -284,7 +304,7 @@ async function fileToAttached(file: File): Promise<AttachedFile> {
       truncated: false,
       size,
       inlined: false,
-      omitReason: '读取失败',
+      omitReason: t('composer.readFailed'),
     };
   }
 }
@@ -295,7 +315,7 @@ function toCdata(payload: string): string {
 }
 
 /** Model-facing prompt: user text + note for omitted files + inlined XML excerpts. */
-function buildApiPrompt(userText: string, files: AttachedFile[]): string {
+function buildApiPrompt(userText: string, files: AttachedFile[], t: TranslateFn): string {
   const trimmedUser = userText.trim();
   const fileStack = files.filter((f) => f.kind !== 'image');
   const inlined = fileStack.filter((f) => f.inlined);
@@ -308,15 +328,14 @@ function buildApiPrompt(userText: string, files: AttachedFile[]): string {
   }
 
   if (omitted.length > 0) {
-    const lines = omitted.map(
-      (f) => `- ${f.name}（${formatSize(f.size)}）${f.omitReason ? `：${f.omitReason}` : ''}`,
+    const lines = omitted.map((f) =>
+      t('composerAttachment.omittedLine', {
+        name: f.name,
+        size: formatSize(f.size),
+        reason: f.omitReason ? `：${f.omitReason}` : '',
+      }),
     );
-    parts.push(
-      [
-        '下列附件未在消息中写入原始二进制内容。请让用户把文件放进当前线程「工作区」后用 read_file 读取，或由用户粘贴可复制纯文本。',
-        ...lines,
-      ].join('\n'),
-    );
+    parts.push([t('composer.attachmentSummary'), ...lines].join('\n'));
   }
 
   const fileBlocks =
@@ -342,7 +361,7 @@ function buildApiPrompt(userText: string, files: AttachedFile[]): string {
 }
 
 /** Transcript-visible text — never exposes raw XML/file bodies from attachments. */
-function buildDisplayContent(userText: string, files: AttachedFile[]): string {
+function buildDisplayContent(userText: string, files: AttachedFile[], t: TranslateFn): string {
   const trimmedUser = userText.trim();
   const lines: string[] = [];
   if (trimmedUser) lines.push(trimmedUser);
@@ -352,16 +371,16 @@ function buildDisplayContent(userText: string, files: AttachedFile[]): string {
       const sz = formatSize(f.size);
       if (f.kind === 'image') {
         if (f.imageDataUrl) {
-          return `• ${f.name} · ${sz}（发送前经视觉桥接转写）`;
+          return `• ${f.name} · ${sz}${t('composerAttachment.displayImageBridged')}`;
         }
-        return `• ${f.name} · ${sz}（${f.omitReason ?? '无法发送'}）`;
+        return `• ${f.name} · ${sz}（${f.omitReason ?? t('composer.cannotSend')}）`;
       }
       if (!f.inlined) {
-        return `• ${f.name} · ${sz}（不会在气泡中展开正文）`;
+        return `• ${f.name} · ${sz}${t('composerAttachment.displayNotInlined')}`;
       }
-      return `• ${f.name} · ${sz}${f.truncated ? '（发送至模型时已截断至 128 KB）' : ''}（正文不展示在气泡，仅发往模型）`;
+      return `• ${f.name} · ${sz}${f.truncated ? t('composer.truncated') : ''}${t('composerAttachment.displayInlinedModelOnly')}`;
     });
-    lines.push(['[附件]', ...attLines].join('\n'));
+    lines.push([t('composerAttachment.header'), ...attLines].join('\n'));
   }
 
   return lines.join('\n\n');
@@ -668,14 +687,13 @@ export default function Composer({
     );
     const textOnlyAtt = attachments.filter((a) => a.kind !== 'image');
 
-    let apiPrompt = buildApiPrompt(text, textOnlyAtt);
+    let apiPrompt = buildApiPrompt(text, textOnlyAtt, t);
 
     if (imageAtt.length > 0) {
       setTranscribing(true);
       try {
         const { invoke } = await import('@tauri-apps/api/core');
-        const preamble =
-          '【系统说明】以下是「视觉桥接」模型从你粘贴/附带图片中识别的文字描述；这是消息内嵌内容，不等同于当前工作区内任何路径上的文件。\n请直接据此回答用户提问，不要把工作区文件名与上述插图混为一谈。\n';
+        const preamble = `${t('composerAttachment.visionBridgePreamble')}\n`;
         const chunks: string[] = [];
         for (let i = 0; i < imageAtt.length; i++) {
           const transcription = await invoke<string>('vision_transcribe_image', {
@@ -685,7 +703,7 @@ export default function Composer({
           if (!body) {
             throw new Error(t('composer.visionBridgeEmpty'));
           }
-          chunks.push(`### 附图 ${i + 1}\n\n${body}`);
+          chunks.push(`${t('composerAttachment.visionBridgeImageSection', { index: String(i + 1) })}\n\n${body}`);
         }
         const bridge = `${preamble}\n${chunks.join('\n\n---\n\n')}`;
         apiPrompt =
@@ -701,8 +719,8 @@ export default function Composer({
     if (!apiPrompt.trim()) return;
 
     const displayContent =
-      buildDisplayContent(text, attachments) +
-      (imageAtt.length > 0 ? '\n\n[图片已先经视觉桥接转写并并入提示]' : '');
+      buildDisplayContent(text, attachments, t) +
+      (imageAtt.length > 0 ? `\n\n${t('composer.bridgedNotice')}` : '');
 
     await Promise.resolve(onSend({ displayContent, apiPrompt }));
     setText('');
@@ -736,7 +754,7 @@ export default function Composer({
         for (const it of imageItems) {
           const f = it.getAsFile();
           if (!f) continue;
-          newAtts.push(await fileToAttached(f));
+          newAtts.push(await fileToAttached(f, t));
         }
         if (newAtts.length === 0) return;
         setAttachments((prev) => [...prev, ...newAtts].slice(0, MAX_ATTACHMENTS));
@@ -795,12 +813,12 @@ export default function Composer({
 
   const taskTypeChipLabel =
     lockedThreadTaskType != null
-      ? DESKTOP_TASK_TYPE_LABELS[lockedThreadTaskType]
-      : DESKTOP_TASK_TYPE_LABELS[taskTypePreference];
+      ? t(TASK_TYPE_LABEL_KEYS[lockedThreadTaskType])
+      : t(TASK_TYPE_LABEL_KEYS[taskTypePreference]);
   const taskTypeChipHint =
     lockedThreadTaskType != null
-      ? `本会话固定为${DESKTOP_TASK_TYPE_LABELS[lockedThreadTaskType]}模式`
-      : DESKTOP_TASK_TYPE_HINTS[taskTypePreference];
+      ? t('composer.taskTypeLocked', { type: t(TASK_TYPE_LABEL_KEYS[lockedThreadTaskType]) })
+      : t(TASK_TYPE_HINT_KEYS[taskTypePreference]);
 
   const selectModel = useCallback(
     (m: DesktopModelId) => {
@@ -877,7 +895,7 @@ export default function Composer({
       void (async () => {
         const results: AttachedFile[] = [];
         for (const file of toRead) {
-          results.push(await fileToAttached(file));
+          results.push(await fileToAttached(file, t));
         }
         setAttachments((prev) => [...prev, ...results].slice(0, MAX_ATTACHMENTS));
         if (fileInputRef.current) fileInputRef.current.value = '';
@@ -948,7 +966,7 @@ export default function Composer({
       document.body,
     );
 
-  const routingStatus = composerRoutingStatusLabel(routeIntent, runMode);
+  const routingStatus = composerRoutingStatusLabel(t, routeIntent, runMode);
   const routingActive = routeIntent !== 'off';
   const availableRunModes = runModesForSession(officeSession);
   const runModePickerDisabled = availableRunModes.length <= 1;
@@ -994,7 +1012,7 @@ export default function Composer({
                 <span
                   key={`${f.name}-${i}`}
                   className="inline-flex items-center gap-1 rounded-md border border-card-border bg-canvas-alt px-2 py-1 text-[11px] text-t-text-secondary"
-                  title={`${f.name} · ${formatSize(f.size)}${f.kind === 'image' ? ' · 发送前经视觉桥接' : ''}${!f.inlined && f.kind !== 'image' ? ' · 不按文本嵌入' : ''}${f.truncated ? ' · 已截断至 128 KB（发送模型时）' : ''}${f.omitReason ? `\n${f.omitReason}` : ''}`}
+                  title={`${f.name} · ${formatSize(f.size)}${f.kind === 'image' ? t('composerAttachment.attachTitleImageBridged') : ''}${!f.inlined && f.kind !== 'image' ? t('composerAttachment.attachTitleNotEmbedded') : ''}${f.truncated ? t('composerAttachment.attachTitleTruncated') : ''}${f.omitReason ? `\n${f.omitReason}` : ''}`}
                 >
                   {f.kind === 'image' && f.imageDataUrl ? (
                     <img
@@ -1274,7 +1292,7 @@ export default function Composer({
                 aria-expanded={runModeOpen}
                 aria-haspopup={runModePickerDisabled ? undefined : 'listbox'}
                 title={
-                  officeSession ? OFFICE_COMPOSER_RUN_MODE_HINT : DESKTOP_RUN_MODE_HINTS[runMode]
+                  officeSession ? t('composer.officeRunModeHint') : t(RUN_MODE_HINT_KEYS[runMode])
                 }
                 className={`composer-chip ${runModeOpen ? 'active' : ''} ${runModePickerDisabled ? 'cursor-default opacity-90' : ''}`}
               >
@@ -1297,14 +1315,16 @@ export default function Composer({
                       type="button"
                       role="option"
                       aria-selected={id === runMode}
-                      title={DESKTOP_RUN_MODE_HINTS[id]}
+                      title={t(RUN_MODE_HINT_KEYS[id])}
                       onClick={() => selectRunMode(id)}
                       className={`flex w-full flex-col gap-0.5 rounded-md px-3 py-2 text-left text-sm transition-colors ${
                         id === runMode ? 'bg-accent-soft text-accent' : 'text-t-text hover:bg-hover'
                       }`}
                     >
                       <span className="font-medium">{DESKTOP_RUN_MODE_LABELS[id]}</span>
-                      <span className="text-[11px] leading-snug text-t-text-muted">{DESKTOP_RUN_MODE_HINTS[id]}</span>
+                      <span className="text-[11px] leading-snug text-t-text-muted">
+                        {t(RUN_MODE_HINT_KEYS[id])}
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -1329,7 +1349,7 @@ export default function Composer({
                 <div
                   className="absolute bottom-full left-0 z-[10040] mb-1 w-[min(100vw-2rem,18rem)] max-w-[288px] rounded-lg border border-card-border bg-card p-1.5 shadow-lg ring-1 ring-black/[0.06] dark:ring-white/[0.08]"
                   role="listbox"
-                  aria-label="任务类型"
+                  aria-label={t('composer.selectTaskType')}
                 >
                   {(['auto', 'office', 'code'] as DesktopTaskTypePreference[]).map((id) => (
                     <button
@@ -1341,7 +1361,7 @@ export default function Composer({
                           ? id === taskTypePreference
                           : id === lockedThreadTaskType
                       }
-                      title={DESKTOP_TASK_TYPE_HINTS[id]}
+                      title={t(TASK_TYPE_HINT_KEYS[id])}
                       onClick={() => selectTaskType(id)}
                       className={`flex w-full flex-col gap-0.5 rounded-md px-3 py-2 text-left text-sm transition-colors ${
                         (lockedThreadTaskType == null
@@ -1351,9 +1371,9 @@ export default function Composer({
                           : 'text-t-text hover:bg-hover'
                       }`}
                     >
-                      <span className="font-medium">{DESKTOP_TASK_TYPE_LABELS[id]}</span>
+                      <span className="font-medium">{t(TASK_TYPE_LABEL_KEYS[id])}</span>
                       <span className="text-[11px] leading-snug text-t-text-muted">
-                        {DESKTOP_TASK_TYPE_HINTS[id]}
+                        {t(TASK_TYPE_HINT_KEYS[id])}
                       </span>
                     </button>
                   ))}

@@ -7,21 +7,7 @@ export type DesktopTaskTypePreference = 'auto' | 'office' | 'code';
 
 export type DesktopTaskTypeResolved = 'office' | 'code';
 
-export const DESKTOP_TASK_TYPE_LABELS: Record<DesktopTaskTypePreference, string> = {
-  auto: '自动',
-  office: '办公',
-  code: '代码',
-};
-
-export const DESKTOP_TASK_TYPE_HINTS: Record<DesktopTaskTypePreference, string> = {
-  auto: '按工作区与首条消息推断；新建会话时生效',
-  office: '聊天与办公文档；精简工具与 prompt',
-  code: '完整编程 Agent 工具面',
-};
-
 /** Office sessions only use Agent run mode (Plan/Yolo are code-workflow oriented). */
-export const OFFICE_COMPOSER_RUN_MODE_HINT =
-  '办公模式仅使用 Agent（无 Plan / YOLO）';
 
 export function parseDesktopTaskTypePreference(raw: unknown): DesktopTaskTypePreference | undefined {
   if (raw === 'auto' || raw === 'office' || raw === 'code') return raw;
@@ -38,12 +24,6 @@ export const DESKTOP_RUN_MODE_LABELS: Record<DesktopRunModeId, string> = {
   plan: 'Plan',
   agent: 'Agent',
   yolo: 'YOLO',
-};
-
-export const DESKTOP_RUN_MODE_HINTS: Record<DesktopRunModeId, string> = {
-  plan: 'Strict：无 Shell，不向 Shell 升格 WorkspaceWrite／网络（与 CLI Plan 一致）',
-  agent: 'WorkspaceWrite + 网络（引擎 #273 Shell 升格）',
-  yolo: 'DangerFullAccess：SandboxPolicy 完全不限制（慎用）',
 };
 
 export function parseDesktopRunModeId(raw: unknown): DesktopRunModeId | undefined {
@@ -73,22 +53,6 @@ export const ROUTE_INTENT_OPTIONS: DesktopRouteIntentOption[] = [
   'research',
 ];
 
-export const DESKTOP_ROUTE_INTENT_LABELS: Record<DesktopRouteIntentOption, string> = {
-  off: '关闭路由',
-  follow_runmode: '跟随运行模式',
-  code: '固定意图 · code',
-  chat: '固定意图 · chat',
-  research: '固定意图 · research',
-};
-
-export const DESKTOP_ROUTE_INTENT_HINTS: Record<DesktopRouteIntentOption, string> = {
-  off: '不向运行时发送 route_intent（仅用 Composer 所选模型）',
-  follow_runmode: '将当前 Plan / Agent / YOLO 作为意图传给 routing_rules.json',
-  code: '固定意图 code（用于路由规则匹配）',
-  chat: '固定意图 chat',
-  research: '固定意图 research',
-};
-
 /** Resolved value for API; omit field when `undefined`. */
 export function resolveRouteIntentForApi(
   opt: DesktopRouteIntentOption,
@@ -113,12 +77,15 @@ export const DESKTOP_MODEL_SHORT_LABELS: Record<DesktopModelId, string> = {
 
 /** Compact label for Composer routing status chip. */
 export function composerRoutingStatusLabel(
+  t: (key: string, params?: Record<string, string>) => string,
   opt: DesktopRouteIntentOption,
   runMode: DesktopRunModeId,
 ): string | null {
   if (opt === 'off') return null;
-  if (opt === 'follow_runmode') return `路由 · ${DESKTOP_RUN_MODE_LABELS[runMode]}`;
-  return `路由 · ${opt}`;
+  if (opt === 'follow_runmode') {
+    return t('routing.statusFollowRunmode', { mode: DESKTOP_RUN_MODE_LABELS[runMode] });
+  }
+  return t('routing.statusFixed', { intent: opt });
 }
 
 export function parseDesktopModelId(raw: unknown): DesktopModelId | undefined {

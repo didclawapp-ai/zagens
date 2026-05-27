@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
 import { fetchUsage, type RuntimeConnectionState } from '../api/client';
+import { useT } from '../i18n';
 import { isRuntimeApiAvailable } from '../lib/runtimeReachable';
 import type { UsageAggregation, UsageGroupBy } from '../types/usage';
 
-const GROUP_BY_LABELS: Record<UsageGroupBy, string> = {
-  day: '按日',
-  model: '按模型',
-  provider: '按 Provider',
-  thread: '按线程',
-};
+const GROUP_BY_KEYS = {
+  day: 'usageDashboard.groupDay',
+  model: 'usageDashboard.groupModel',
+  provider: 'usageDashboard.groupProvider',
+  thread: 'usageDashboard.groupThread',
+} as const;
 
 function formatTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -30,6 +31,7 @@ export default function UsageDashboard({
   streaming?: boolean;
   runtimeSessionEstablished?: boolean;
 }) {
+  const { t } = useT();
   const runtimeReady = isRuntimeApiAvailable(runtimeConn, {
     streaming,
     sessionEstablished: runtimeSessionEstablished,
@@ -61,21 +63,23 @@ export default function UsageDashboard({
   if (!runtimeReady) {
     return (
       <div className="p-4 text-xs text-t-text-muted text-center space-y-2">
-        <p>等待运行时连接…</p>
-        <p className="text-[10px]">用量数据将在运行时就绪后自动加载。</p>
+        <p>{t('usageDashboard.waitingRuntime')}</p>
+        <p className="text-[10px]">{t('usageDashboard.waitingDetail')}</p>
       </div>
     );
   }
 
   if (loading && !data) {
-    return <div className="p-4 text-xs text-t-text-muted text-center">正在加载用量数据…</div>;
+    return <div className="p-4 text-xs text-t-text-muted text-center">{t('usageDashboard.loading')}</div>;
   }
 
   if (error && !data) {
     return (
       <div className="p-4 space-y-2">
-        <p className="text-xs text-t-error">加载失败：{error}</p>
-        <button type="button" onClick={reload} className="text-xs text-accent hover:underline">重试</button>
+        <p className="text-xs text-t-error">{t('usageDashboard.loadFailed', { error })}</p>
+        <button type="button" onClick={reload} className="text-xs text-accent hover:underline">
+          {t('usageDashboard.retry')}
+        </button>
       </div>
     );
   }
@@ -86,36 +90,34 @@ export default function UsageDashboard({
 
   return (
     <div className="overflow-y-auto px-3 py-3 space-y-4">
-      {/* Summary cards */}
       <div className="grid grid-cols-2 gap-2">
         <div className="rounded-lg border border-card-border bg-canvas-alt p-3 text-center">
           <div className="text-lg font-bold text-accent font-display">
             {formatTokens(data.totals.input_tokens + data.totals.output_tokens)}
           </div>
-          <div className="text-[10px] text-t-text-muted mt-0.5">Token 总量</div>
+          <div className="text-[10px] text-t-text-muted mt-0.5">{t('usageDashboard.totalTokens')}</div>
         </div>
         <div className="rounded-lg border border-card-border bg-canvas-alt p-3 text-center">
           <div className="text-lg font-bold text-warning font-display">
             {formatCostUsd(data.totals.cost_usd)}
           </div>
-          <div className="text-[10px] text-t-text-muted mt-0.5">估算费用（USD）</div>
+          <div className="text-[10px] text-t-text-muted mt-0.5">{t('usageDashboard.estimatedCostUsd')}</div>
         </div>
         <div className="rounded-lg border border-card-border bg-canvas-alt p-3 text-center">
           <div className="text-lg font-bold text-t-text font-display">{data.totals.turns}</div>
-          <div className="text-[10px] text-t-text-muted mt-0.5">对话轮次</div>
+          <div className="text-[10px] text-t-text-muted mt-0.5">{t('usageDashboard.turnCount')}</div>
         </div>
         <div className="rounded-lg border border-card-border bg-canvas-alt p-3 text-center">
           <div className="text-lg font-bold text-success font-display">
             {formatTokens(data.totals.cached_tokens)}
           </div>
-          <div className="text-[10px] text-t-text-muted mt-0.5">缓存命中 Token</div>
+          <div className="text-[10px] text-t-text-muted mt-0.5">{t('usageDashboard.cacheHitTokens')}</div>
         </div>
       </div>
 
-      {/* Group-by selector */}
       <div className="flex items-center gap-1">
-        <span className="text-[10px] text-t-text-muted shrink-0">分组：</span>
-        {(Object.keys(GROUP_BY_LABELS) as UsageGroupBy[]).map((k) => (
+        <span className="text-[10px] text-t-text-muted shrink-0">{t('usageDashboard.groupByLabel')}</span>
+        {(Object.keys(GROUP_BY_KEYS) as UsageGroupBy[]).map((k) => (
           <button
             key={k}
             type="button"
@@ -126,15 +128,14 @@ export default function UsageDashboard({
                 : 'text-t-text-muted hover:text-t-text hover:bg-hover'
             }`}
           >
-            {GROUP_BY_LABELS[k]}
+            {t(GROUP_BY_KEYS[k])}
           </button>
         ))}
       </div>
 
-      {/* Bar chart */}
       <div className="space-y-1.5">
         {data.buckets.length === 0 && (
-          <p className="text-xs text-t-text-muted text-center py-4">所选范围内无用量数据。</p>
+          <p className="text-xs text-t-text-muted text-center py-4">{t('usageDashboard.noDataInRange')}</p>
         )}
         {data.buckets.map((b) => {
           const total = b.input_tokens + b.output_tokens;

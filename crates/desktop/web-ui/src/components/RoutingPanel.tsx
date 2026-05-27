@@ -5,10 +5,25 @@ import { isRuntimeApiAvailable } from '../lib/runtimeReachable';
 import type { RoutingRule } from '../types/routing';
 import type { DesktopRouteIntentOption } from '../types/desktop';
 import {
-  DESKTOP_ROUTE_INTENT_HINTS,
-  DESKTOP_ROUTE_INTENT_LABELS,
   ROUTE_INTENT_OPTIONS,
 } from '../types/desktop';
+import type { TranslationKey } from '../i18n/keys';
+
+const ROUTE_INTENT_LABEL_KEYS: Record<DesktopRouteIntentOption, TranslationKey> = {
+  off: 'routing.intentOff',
+  follow_runmode: 'routing.intentFollowRunmode',
+  code: 'routing.intentCode',
+  chat: 'routing.intentChat',
+  research: 'routing.intentResearch',
+};
+
+const ROUTE_INTENT_HINT_KEYS: Record<DesktopRouteIntentOption, TranslationKey> = {
+  off: 'routing.intentOffHint',
+  follow_runmode: 'routing.intentFollowRunmodeHint',
+  code: 'routing.intentCodeHint',
+  chat: 'routing.intentChatHint',
+  research: 'routing.intentResearchHint',
+};
 
 const PRESET_INTENTS = ['plan', 'agent', 'yolo', 'code', 'chat', 'research'];
 const PRESET_MODELS = ['deepseek-v4-pro', 'deepseek-v4-flash'];
@@ -122,10 +137,10 @@ export default function RoutingPanel({
                     routeIntent === id ? 'text-accent' : 'text-t-text'
                   }`}
                 >
-                  {DESKTOP_ROUTE_INTENT_LABELS[id]}
+                  {t(ROUTE_INTENT_LABEL_KEYS[id])}
                 </span>
                 <span className="mt-0.5 block text-[10px] leading-snug text-t-text-muted">
-                  {DESKTOP_ROUTE_INTENT_HINTS[id]}
+                  {t(ROUTE_INTENT_HINT_KEYS[id])}
                 </span>
               </div>
             </label>

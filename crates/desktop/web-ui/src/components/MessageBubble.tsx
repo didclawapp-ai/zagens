@@ -59,7 +59,7 @@ export function MessageBubble({
 
   const [reasoningExpanded, setReasoningExpanded] = useState(true);
   const [toolsExpanded, setToolsExpanded] = useState(false);
-  const toolsSummaryLabel = summarizeToolCalls(message.tools ?? []);
+  const toolsSummaryLabel = summarizeToolCalls(message.tools ?? [], t);
 
   const runningToolCount =
     message.tools?.filter((t) => t.status === 'running').length ?? 0;
@@ -226,7 +226,7 @@ export function MessageBubble({
                 {reasoningExpanded ? '▼' : '▶'}
               </span>
               <span className="text-base leading-none">💭</span>
-              <span>Reasoning</span>
+              <span>{t('message.reasoning')}</span>
               <CopyTextButton
                 getText={() => reasoningCopyText}
                 title={t('chatMarkdown.copyReasoning')}
@@ -236,12 +236,12 @@ export function MessageBubble({
               {!reasoningExpanded && (
                 <span className="ml-auto truncate text-[11px] font-normal text-t-text-muted">
                   {message.isStreaming && !message.thinking?.trim()
-                    ? '推理中…'
+                    ? t('message.reasoningStreaming')
                     : message.thinking?.trim()
-                      ? '已收起，点击展开'
+                      ? t('message.reasoningCollapsed')
                       : likelyInReasoningPhase
-                        ? '推理中…'
-                        : '已收起，点击展开'}
+                        ? t('message.reasoningStreaming')
+                        : t('message.reasoningCollapsed')}
                 </span>
               )}
             </button>
@@ -252,7 +252,7 @@ export function MessageBubble({
                 className="max-h-[48vh] overflow-y-auto border-t border-card-border px-2.5 pb-2.5 pt-0 leading-relaxed text-t-text-secondary whitespace-pre-wrap"
               >
                 {message.thinking ||
-                  (message.isStreaming ? '推理中…（内容流式到达后会显示在这里）' : '')}
+                  (message.isStreaming ? t('message.reasoningStreamingPlaceholder') : '')}
               </div>
             )}
           </div>
@@ -281,8 +281,8 @@ export function MessageBubble({
               {!toolsExpanded && (
                 <span className="ml-auto truncate text-[11px] font-normal text-t-text-muted">
                   {runningToolCount > 0
-                    ? `${runningToolCount} 个进行中 · 点击展开`
-                    : '已收起，点击展开'}
+                    ? t('message.toolsRunning', { count: String(runningToolCount) })
+                    : t('message.toolsCollapsed')}
                 </span>
               )}
             </button>
@@ -307,18 +307,18 @@ export function MessageBubble({
                 }
               }}
               className="text-[10px] text-t-text-muted hover:text-t-text px-2 py-0.5 rounded"
-              title="复制消息"
+              title={t('message.copyMessage')}
             >
-              📋 复制
+              📋 {t('message.copyAction')}
             </button>
             {onRetryMessage && (
               <button
                 type="button"
                 onClick={() => onRetryMessage(message.content)}
                 className="text-[10px] text-t-text-muted hover:text-accent px-2 py-0.5 rounded"
-                title="重新发送此消息"
+                title={t('message.retryMessage')}
               >
-                🔄 重试
+                🔄 {t('message.retryAction')}
               </button>
             )}
             {onEditMessage && (
@@ -372,7 +372,7 @@ export function MessageBubble({
         </div>
         {isAssistant && message.isStreaming && (
           <div className="streaming-status-line" aria-live="polite">
-            生成中
+            {t('message.generating')}
           </div>
         )}
       </div>
@@ -454,24 +454,27 @@ function tryParseCommand(input: string): string | undefined {
   }
 }
 
-/** Collapsed tools header: show actual tool name(s) instead of generic "工具调用". */
-function summarizeToolCalls(tools: ToolCardModel[]): string {
-  if (tools.length === 0) return '工具调用';
+/** Collapsed tools header: show actual tool name(s) instead of generic label. */
+function summarizeToolCalls(
+  tools: ToolCardModel[],
+  t: (key: string, params?: Record<string, string>) => string,
+): string {
+  if (tools.length === 0) return t('message.toolCallsDefault');
 
-  const running = tools.filter((t) => t.status === 'running');
+  const running = tools.filter((tool) => tool.status === 'running');
   if (running.length === 1) {
     const name = running[0].name;
-    return tools.length === 1 ? name : `${name} 等 ${tools.length} 项`;
+    return tools.length === 1 ? name : t('message.toolCallsWithName', { name, count: String(tools.length) });
   }
 
-  const uniqueNames = [...new Set(tools.map((t) => t.name))];
+  const uniqueNames = [...new Set(tools.map((tool) => tool.name))];
   if (uniqueNames.length === 1) {
     return tools.length === 1 ? uniqueNames[0] : `${uniqueNames[0]} ×${tools.length}`;
   }
 
   const head = uniqueNames.slice(0, 2).join(' · ');
   if (uniqueNames.length > 2 || tools.length > 2) {
-    return `${head} 等 ${tools.length} 项`;
+    return t('message.toolCallsHeadMore', { head, count: String(tools.length) });
   }
   return head;
 }

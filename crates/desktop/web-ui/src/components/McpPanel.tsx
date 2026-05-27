@@ -10,6 +10,7 @@ import {
   invalidateRuntimeBootReadyCache,
   type RuntimeConnectionState,
 } from '../api/client';
+import { useT } from '../i18n';
 import { isRuntimeApiAvailable } from '../lib/runtimeReachable';
 import type { McpServerEntry, McpToolEntry, McpServerConfigPayload } from '../types/mcp';
 
@@ -51,6 +52,7 @@ export default function McpPanel({
   streaming?: boolean;
   runtimeSessionEstablished?: boolean;
 }) {
+  const { t } = useT();
   const runtimeReady = isRuntimeApiAvailable(runtimeConn, {
     streaming,
     sessionEstablished: runtimeSessionEstablished,
@@ -152,8 +154,8 @@ export default function McpPanel({
   if (!runtimeReady) {
     return (
       <div className="p-4 text-xs text-t-text-muted text-center space-y-2">
-        <p>等待运行时连接…</p>
-        <p className="text-[10px]">MCP 配置将在桌面运行时就绪后自动加载。</p>
+        <p>{t('mcp.waitingRuntime')}</p>
+        <p className="text-[10px]">{t('mcp.waitingDetail')}</p>
       </div>
     );
   }
@@ -161,7 +163,7 @@ export default function McpPanel({
   if (loading && servers.length === 0 && !error) {
     return (
       <div className="p-4 text-xs text-t-text-muted text-center">
-        <p>正在加载 MCP 配置…</p>
+        <p>{t('mcp.loading')}</p>
       </div>
     );
   }
@@ -170,7 +172,10 @@ export default function McpPanel({
     <div className="flex flex-col h-full overflow-hidden relative">
       <div className="flex items-center gap-2 px-3 py-2 border-b border-divider shrink-0 flex-wrap">
         <span className="text-[11px] text-t-text-muted">
-          {servers.length} 个服务器 · {allTools.length} 个工具
+          {t('mcp.serversAndTools', {
+            servers: String(servers.length),
+            tools: String(allTools.length),
+          })}
         </span>
         <div className="flex-1" />
         <button
@@ -181,7 +186,7 @@ export default function McpPanel({
           }}
           className="px-2.5 py-1 rounded text-xs font-medium border border-card-border bg-canvas-alt hover:bg-hover text-t-text transition-colors"
         >
-          {showQuickAdd ? '关闭添加' : '添加服务器'}
+          {showQuickAdd ? t('mcp.closeAdd') : t('mcp.addServer')}
         </button>
         <button
           type="button"
@@ -191,7 +196,7 @@ export default function McpPanel({
           }}
           className="px-2.5 py-1 rounded text-xs font-medium bg-accent text-accent-text hover:opacity-90 transition-opacity"
         >
-          {showAddDialog ? '关闭' : '合并 MCP (JSON)'}
+          {showAddDialog ? t('mcp.close') : t('mcp.mergeJson')}
         </button>
       </div>
 
@@ -235,7 +240,7 @@ export default function McpPanel({
               : 'text-t-text-muted hover:text-t-text hover:bg-hover'
           }`}
         >
-          全部 ({allTools.length})
+          {t('mcp.allTools', { count: String(allTools.length) })}
         </button>
         {servers.map((s) => {
           const c = toolCountByServer.get(s.name) ?? 0;
@@ -274,9 +279,7 @@ export default function McpPanel({
           ))}
           {servers.length === 0 && !loading && (
             <p className="text-xs text-t-text-muted text-center py-6">
-              未配置 MCP 服务器。使用「添加服务器」或「合并 MCP (JSON)」，或在{' '}
-              <code className="font-mono text-[11px]">~/.deepseek/mcp.json</code>{' '}
-              中手动编辑后重启应用。
+              {t('mcp.noServers')}
             </p>
           )}
         </div>
@@ -289,7 +292,7 @@ export default function McpPanel({
           ))}
           {displayedTools.length === 0 && !loading && (
             <p className="text-xs text-t-text-muted text-center py-6">
-              此服务器未公开任何工具（或未连接）。
+              {t('mcp.noTools')}
             </p>
           )}
         </div>
@@ -311,10 +314,9 @@ export default function McpPanel({
       {deletingServer && (
         <div className="absolute inset-0 bg-overlay flex items-center justify-center z-50">
           <div className="bg-card border border-card-border rounded-2xl p-6 mx-4 max-w-sm shadow-lg">
-            <p className="text-sm text-t-text mb-2 font-semibold">删除 MCP 服务器</p>
+            <p className="text-sm text-t-text mb-2 font-semibold">{t('mcp.deleteTitle')}</p>
             <p className="text-xs text-t-text-secondary mb-5 leading-relaxed">
-              确定从配置中移除「{deletingServer}」？此操作会写入{' '}
-              <code className="font-mono text-[11px]">mcp.json</code>，建议随后重启运行时。
+              {t('mcp.deleteConfirm', { name: deletingServer })}
             </p>
             <div className="flex justify-end gap-3">
               <button
@@ -322,14 +324,14 @@ export default function McpPanel({
                 onClick={() => setDeletingServer(null)}
                 className="px-4 py-2 rounded-lg text-xs text-t-text-muted hover:text-t-text hover:bg-hover"
               >
-                取消
+                {t('mcp.cancel')}
               </button>
               <button
                 type="button"
                 onClick={() => void confirmDelete()}
                 className="px-4 py-2 rounded-lg text-xs font-medium bg-t-error text-white hover:opacity-90"
               >
-                删除
+                {t('mcp.delete')}
               </button>
             </div>
           </div>
@@ -339,10 +341,9 @@ export default function McpPanel({
       {showRestartDialog && (
         <div className="absolute inset-0 bg-overlay flex items-center justify-center z-50">
           <div className="bg-card border border-card-border rounded-2xl p-6 mx-4 max-w-sm shadow-lg text-center">
-            <p className="text-sm text-t-text mb-2 font-semibold">MCP 服务器配置已保存</p>
+            <p className="text-sm text-t-text mb-2 font-semibold">{t('mcp.savedTitle')}</p>
             <p className="text-xs text-t-text-secondary mb-5 leading-relaxed">
-              新配置已写入 <code className="font-mono text-[11px]">~/.deepseek/mcp.json</code>
-              ，需要重启运行时以重新连接服务器。是否立即重启？
+              {t('mcp.savedDesc')}
             </p>
             <div className="flex justify-center gap-3">
               <button
@@ -350,7 +351,7 @@ export default function McpPanel({
                 onClick={() => setShowRestartDialog(false)}
                 className="px-4 py-2 rounded-lg text-xs text-t-text-muted hover:text-t-text hover:bg-hover"
               >
-                稍后
+                {t('mcp.later')}
               </button>
               <button
                 type="button"
@@ -358,7 +359,7 @@ export default function McpPanel({
                 disabled={restartPending}
                 className="px-4 py-2 rounded-lg text-xs font-medium bg-accent text-accent-text hover:opacity-90 disabled:opacity-50"
               >
-                {restartPending ? '重启中…' : '立即重启'}
+                {restartPending ? t('mcp.restarting') : t('mcp.restartNow')}
               </button>
             </div>
           </div>
@@ -379,6 +380,7 @@ function QuickAddServerForm({
   onSubmit: (req: { name: string; command?: string; url?: string; args: string[] }) => void | Promise<void>;
   onCancel: () => void;
 }) {
+  const { t } = useT();
   const [name, setName] = useState('');
   const [command, setCommand] = useState('');
   const [url, setUrl] = useState('');
@@ -390,13 +392,13 @@ function QuickAddServerForm({
     setLocalErr(null);
     const n = name.trim();
     if (!n) {
-      setLocalErr('请填写服务器名称');
+      setLocalErr(t('mcp.serverNameRequired'));
       return;
     }
     const cmd = command.trim();
     const u = url.trim();
     if (!cmd && !u) {
-      setLocalErr('请填写 command（stdio）或 URL（远程）之一');
+      setLocalErr(t('mcp.commandOrUrlRequired'));
       return;
     }
     const args = argsText
@@ -420,35 +422,35 @@ function QuickAddServerForm({
 
   return (
     <div className="shrink-0 border-b border-divider px-3 py-3 space-y-2 bg-canvas-alt/50">
-      <div className="text-[11px] font-semibold text-t-text-secondary">快速添加 MCP 服务器</div>
+      <div className="text-[11px] font-semibold text-t-text-secondary">{t('mcp.quickAddTitle')}</div>
       <p className="text-[10px] text-t-text-muted leading-relaxed">
-        与终端配置相同：stdio 填写可执行命令，远程填写 <span className="font-mono">url</span>。参数每行一项。
+        {t('mcp.quickAddHint')}
       </p>
       <input
         type="text"
         value={name}
         onChange={(e) => setName(e.target.value)}
-        placeholder="服务器名称（唯一）"
+        placeholder={t('mcp.serverNamePlaceholder')}
         className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-input-bg border border-input-border text-t-text"
       />
       <input
         type="text"
         value={command}
         onChange={(e) => setCommand(e.target.value)}
-        placeholder="command（例如 npx）"
+        placeholder={t('mcp.commandPlaceholder')}
         className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-input-bg border border-input-border text-t-text font-mono"
       />
       <input
         type="text"
         value={url}
         onChange={(e) => setUrl(e.target.value)}
-        placeholder="url（与 command 二选一）"
+        placeholder={t('mcp.urlPlaceholder')}
         className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-input-bg border border-input-border text-t-text font-mono"
       />
       <textarea
         value={argsText}
         onChange={(e) => setArgsText(e.target.value)}
-        placeholder={'参数，每行一项（可选）\n例如 -y\n@modelcontextprotocol/server-filesystem'}
+        placeholder={t('mcp.argsPlaceholder')}
         rows={4}
         className="w-full px-2.5 py-2 text-[11px] font-mono rounded-lg bg-input-bg border border-input-border text-t-text resize-y min-h-[80px]"
       />
@@ -460,7 +462,7 @@ function QuickAddServerForm({
           onClick={handleSubmit}
           className="px-4 py-1.5 rounded text-xs font-medium bg-accent text-accent-text hover:opacity-90 disabled:opacity-50"
         >
-          {busy ? '保存中…' : '保存'}
+          {busy ? t('common.saving') : t('common.save')}
         </button>
         <button
           type="button"
@@ -468,7 +470,7 @@ function QuickAddServerForm({
           onClick={onCancel}
           className="px-3 py-1.5 rounded text-xs text-t-text-muted hover:text-t-text hover:bg-hover"
         >
-          取消
+          {t('common.cancel')}
         </button>
       </div>
     </div>
@@ -493,6 +495,7 @@ function AddMcpJsonForm({
   onSubmit: (jsonText: string) => void | Promise<void>;
   onCancel: () => void;
 }) {
+  const { t } = useT();
   const [text, setText] = useState(MCP_JSON_EXAMPLE);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -501,7 +504,7 @@ function AddMcpJsonForm({
     setFormError(null);
     const trimmed = text.trim();
     if (!trimmed) {
-      setFormError('请输入 JSON');
+      setFormError(t('mcp.jsonRequired'));
       return;
     }
     void (async () => {
@@ -516,12 +519,9 @@ function AddMcpJsonForm({
 
   return (
     <div className="shrink-0 border-b border-divider px-3 py-3 space-y-2 bg-canvas-alt/50">
-      <div className="text-[11px] font-semibold text-t-text-secondary">从 JSON 合并 MCP 配置</div>
+      <div className="text-[11px] font-semibold text-t-text-secondary">{t('mcp.mergeJsonTitle')}</div>
       <p className="text-[10px] text-t-text-muted leading-relaxed">
-        粘贴与 <code className="font-mono text-[10px]">~/.deepseek/mcp.json</code> 相同结构的片段：完整{' '}
-        <code className="font-mono text-[10px]">mcpServers</code> /{' '}
-        <code className="font-mono text-[10px]">servers</code>，或多个{' '}
-        <code className="font-mono text-[10px]">&quot;名称&quot;: {'{ … }'}</code> 条目。同名服务器会被覆盖。
+        {t('mcp.mergeJsonHint')}
       </p>
       <textarea
         value={text}
@@ -532,7 +532,7 @@ function AddMcpJsonForm({
         spellCheck={false}
         rows={14}
         className="w-full px-2.5 py-2 text-[11px] font-mono leading-relaxed rounded-lg bg-input-bg border border-input-border text-t-text outline-none focus:border-accent resize-y min-h-[180px]"
-        aria-label="MCP JSON"
+        aria-label={t('mcp.jsonAriaLabel')}
       />
       {formError && <p className="text-[10px] text-t-error">{formError}</p>}
       <div className="flex items-center gap-2 pt-1">
@@ -542,7 +542,7 @@ function AddMcpJsonForm({
           onClick={handleSubmit}
           className="px-4 py-1.5 rounded text-xs font-medium bg-accent text-accent-text hover:opacity-90 disabled:opacity-50"
         >
-          {busy ? '保存中…' : '合并并保存'}
+          {busy ? t('common.saving') : t('mcp.mergeAndSave')}
         </button>
         <button
           type="button"
@@ -550,7 +550,7 @@ function AddMcpJsonForm({
           onClick={onCancel}
           className="px-3 py-1.5 rounded text-xs text-t-text-muted hover:text-t-text hover:bg-hover"
         >
-          取消
+          {t('common.cancel')}
         </button>
       </div>
     </div>
@@ -574,6 +574,7 @@ function ServerCard({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const { t } = useT();
   const args = server.args ?? [];
   const transport = server.command ? 'stdio' : server.url ? 'remote' : '—';
 
@@ -591,14 +592,14 @@ function ServerCard({
           <div className="mt-1 text-[11px] text-t-text-muted">
             {transport}
             {' · '}
-            {toolCount} 个工具
+            {t('mcp.toolCount', { count: String(toolCount) })}
             {args.length > 0 && (
               <span className="block mt-0.5 font-mono text-[10px] opacity-80 truncate" title={args.join(' ')}>
                 {server.command ? `${server.command} ` : ''}
                 {args.join(' ')}
               </span>
             )}
-            {server.required && <span className="ml-2 text-[10px] text-amber-text">（必需）</span>}
+            {server.required && <span className="ml-2 text-[10px] text-amber-text">{t('mcp.requiredBadge')}</span>}
           </div>
         </div>
         <span
@@ -608,7 +609,7 @@ function ServerCard({
               : 'bg-error-bg text-t-error'
           }`}
         >
-          {server.connected ? '已连接' : '未连接'}
+          {server.connected ? t('mcp.connected') : t('mcp.disconnected')}
         </span>
       </div>
       <div className="flex flex-wrap gap-2">
@@ -617,21 +618,21 @@ function ServerCard({
           onClick={onSelectTools}
           className="px-2 py-1 rounded text-[10px] font-medium border border-divider hover:bg-hover text-t-text"
         >
-          查看工具
+          {t('mcp.viewTools')}
         </button>
         <button
           type="button"
           onClick={onEdit}
           className="px-2 py-1 rounded text-[10px] font-medium border border-divider hover:bg-hover text-accent"
         >
-          编辑
+          {t('mcp.edit')}
         </button>
         <button
           type="button"
           onClick={onDelete}
           className="px-2 py-1 rounded text-[10px] font-medium border border-divider hover:bg-hover text-t-error"
         >
-          删除
+          {t('mcp.delete')}
         </button>
       </div>
     </div>
@@ -653,6 +654,7 @@ function EditMcpServerDialog({
   onSaved: () => void | Promise<void>;
   onError: (msg: string) => void;
 }) {
+  const { t } = useT();
   const [cfg, setCfg] = useState<McpServerConfigPayload | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -690,19 +692,19 @@ function EditMcpServerDialog({
     const cmd = (cfg.command ?? '').trim();
     const u = (cfg.url ?? '').trim();
     if (!cmd && !u) {
-      onError('请填写 command 或 url');
+      onError(t('mcp.commandOrUrlRequired'));
       return;
     }
     let env: Record<string, string>;
     try {
       const parsed = JSON.parse(envText.trim() || '{}') as unknown;
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        onError('环境变量须为 JSON 对象');
+        onError(t('mcp.envMustBeObject'));
         return;
       }
       env = parsed as Record<string, string>;
     } catch {
-      onError('环境变量 JSON 无效');
+      onError(t('mcp.envJsonInvalid'));
       return;
     }
     const args = argsText
@@ -748,22 +750,24 @@ function EditMcpServerDialog({
     <div className="absolute inset-0 bg-overlay flex items-center justify-center z-50 p-3">
       <div className="bg-card border border-card-border rounded-2xl max-w-lg w-full max-h-[90vh] overflow-hidden flex flex-col shadow-lg">
         <div className="px-4 py-3 border-b border-divider shrink-0 flex items-center gap-2">
-          <h3 className="text-sm font-semibold text-t-text flex-1 truncate">编辑 MCP · {serverName}</h3>
+          <h3 className="text-sm font-semibold text-t-text flex-1 truncate">
+            {t('mcp.editTitle', { name: serverName })}
+          </h3>
           <button
             type="button"
             onClick={onClose}
             className="text-[11px] text-t-text-muted hover:text-t-text px-2 py-1 rounded hover:bg-hover"
           >
-            关闭
+            {t('common.close')}
           </button>
         </div>
         <div className="overflow-y-auto px-4 py-3 space-y-3 text-xs">
           {loadError && <p className="text-[11px] text-t-error">{loadError}</p>}
-          {!cfg && !loadError && <p className="text-[11px] text-t-text-muted">加载中…</p>}
+          {!cfg && !loadError && <p className="text-[11px] text-t-text-muted">{t('common.loading')}</p>}
           {cfg && (
             <>
               <label className="flex flex-col gap-1 text-[10px] text-t-text-muted">
-                command（stdio）
+                {t('mcp.editCommandLabel')}
                 <input
                   type="text"
                   value={cfg.command ?? ''}
@@ -772,7 +776,7 @@ function EditMcpServerDialog({
                 />
               </label>
               <label className="flex flex-col gap-1 text-[10px] text-t-text-muted">
-                url（远程，与 command 二选一）
+                {t('mcp.editUrlLabel')}
                 <input
                   type="text"
                   value={cfg.url ?? ''}
@@ -781,7 +785,7 @@ function EditMcpServerDialog({
                 />
               </label>
               <label className="flex flex-col gap-1 text-[10px] text-t-text-muted">
-                args（每行一项）
+                {t('mcp.editArgsLabel')}
                 <textarea
                   value={argsText}
                   onChange={(e) => setArgsText(e.target.value)}
@@ -790,7 +794,7 @@ function EditMcpServerDialog({
                 />
               </label>
               <label className="flex flex-col gap-1 text-[10px] text-t-text-muted">
-                env（JSON 对象）
+                {t('mcp.editEnvLabel')}
                 <textarea
                   value={envText}
                   onChange={(e) => setEnvText(e.target.value)}
@@ -826,7 +830,7 @@ function EditMcpServerDialog({
                 </label>
               </div>
               <label className="flex flex-col gap-1 text-[10px] text-t-text-muted">
-                enabled_tools（逗号分隔，留空表示全部允许）
+                {t('mcp.editEnabledToolsLabel')}
                 <input
                   type="text"
                   value={enabledToolsText}
@@ -835,7 +839,7 @@ function EditMcpServerDialog({
                 />
               </label>
               <label className="flex flex-col gap-1 text-[10px] text-t-text-muted">
-                disabled_tools（逗号分隔）
+                {t('mcp.editDisabledToolsLabel')}
                 <input
                   type="text"
                   value={disabledToolsText}
@@ -853,7 +857,7 @@ function EditMcpServerDialog({
             disabled={busy}
             className="px-3 py-1.5 rounded-lg text-[11px] text-t-text-muted hover:bg-hover"
           >
-            取消
+            {t('common.cancel')}
           </button>
           <button
             type="button"
@@ -861,7 +865,7 @@ function EditMcpServerDialog({
             onClick={save}
             className="px-4 py-1.5 rounded-lg text-[11px] font-medium bg-accent text-accent-text hover:opacity-90 disabled:opacity-40"
           >
-            {busy ? '保存中…' : '保存'}
+            {busy ? t('common.saving') : t('common.save')}
           </button>
         </div>
       </div>

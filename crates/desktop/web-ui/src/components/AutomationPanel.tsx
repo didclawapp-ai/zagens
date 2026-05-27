@@ -21,11 +21,6 @@ import { toast } from '../lib/toast';
 /** 定时自动化（GET /v1/automations）暂不展示 — 见 docs/desktop/TUI_DS_PICK_GAP.md */
 type TabId = 'tasks' | 'skills';
 
-const TAB_LABELS: Record<TabId, string> = {
-  tasks: '任务',
-  skills: '技能',
-};
-
 function tabBtn(active: boolean) {
   return `px-3 py-1.5 text-xs font-medium rounded transition-colors ${
     active
@@ -33,16 +28,6 @@ function tabBtn(active: boolean) {
       : 'text-t-text-muted hover:text-t-text hover:bg-hover'
   }`;
 }
-
-const TASK_STATUS_LABEL: Record<string, string> = {
-  queued: '排队中',
-  pending: '排队中',
-  running: '运行中',
-  paused: '已暂停',
-  completed: '已完成',
-  failed: '失败',
-  canceled: '已取消',
-};
 
 const TASK_STATUS_COLOR: Record<string, string> = {
   queued: 'text-t-text-muted',
@@ -59,6 +44,25 @@ const MODE_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'plan', label: 'Plan' },
   { value: 'yolo', label: 'YOLO' },
 ];
+
+function taskStatusLabel(
+  t: ReturnType<typeof useT>['t'],
+  status: string,
+): string {
+  const key = `automation.${status}` as 'automation.queued';
+  if (
+    status === 'queued' ||
+    status === 'pending' ||
+    status === 'running' ||
+    status === 'paused' ||
+    status === 'completed' ||
+    status === 'failed' ||
+    status === 'canceled'
+  ) {
+    return t(key);
+  }
+  return status;
+}
 
 function canCancelTask(status: string): boolean {
   return status === 'queued' || status === 'running' || status === 'pending' || status === 'paused';
@@ -223,9 +227,9 @@ export default function AutomationPanel({
       <div className="flex items-center gap-2 px-3 py-2 border-b border-divider shrink-0 flex-wrap">
         {showTabBar && (
           <div className="flex items-center gap-1">
-            {(Object.keys(TAB_LABELS) as TabId[]).map((k) => (
+            {(Object.keys({ tasks: true, skills: true }) as TabId[]).map((k) => (
               <button key={k} type="button" onClick={() => setTab(k)} className={tabBtn(tab === k)}>
-                {TAB_LABELS[k]}
+                {t(`automation.${k}` as 'automation.tasks')}
               </button>
             ))}
           </div>
@@ -271,7 +275,7 @@ export default function AutomationPanel({
                 disabled={loading}
                 className="px-2.5 py-1 text-[11px] font-medium rounded-md border border-card-border bg-canvas-alt hover:bg-hover text-t-text disabled:opacity-50"
               >
-                刷新
+                {t('automation.refresh')}
               </button>
             </>
           )}
@@ -315,6 +319,7 @@ function CreateTaskForm({
   submitting: boolean;
   errorText: string | null;
 }) {
+  const { t } = useT();
   const [prompt, setPrompt] = useState('');
   const [mode, setMode] = useState('agent');
   const [model, setModel] = useState('');
@@ -342,15 +347,14 @@ function CreateTaskForm({
       onSubmit={submit}
       className="mb-4 rounded-lg border border-card-border bg-canvas-alt p-3 space-y-2"
     >
-      <div className="text-[11px] font-medium text-t-text">新建后台任务</div>
+      <div className="text-[11px] font-medium text-t-text">{t('automation.createTaskTitle')}</div>
       <p className="text-[10px] text-t-text-muted leading-relaxed">
-        对应运行时的 <span className="font-mono">POST /v1/tasks</span>
-        。未填工作区时使用当前运行时工作区；未填模型时使用默认文本模型。
+        {t('automation.createTaskDesc')}
       </p>
       <textarea
         value={prompt}
         onChange={(e) => setPrompt(e.target.value)}
-        placeholder="任务描述 / 提示词（必填）"
+        placeholder={t('automation.taskPrompt')}
         rows={4}
         className="w-full rounded-md border border-card-border bg-canvas px-2 py-1.5 text-xs text-t-text placeholder:text-t-text-muted/70 resize-y min-h-[72px]"
         required
@@ -358,7 +362,7 @@ function CreateTaskForm({
       />
       <div className="grid grid-cols-2 gap-2">
         <label className="text-[10px] text-t-text-muted flex flex-col gap-0.5">
-          模式
+          {t('automation.mode')}
           <select
             value={mode}
             onChange={(e) => setMode(e.target.value)}
@@ -373,24 +377,24 @@ function CreateTaskForm({
           </select>
         </label>
         <label className="text-[10px] text-t-text-muted flex flex-col gap-0.5">
-          模型（可选）
+          {t('automation.modelOptional')}
           <input
             type="text"
             value={model}
             onChange={(e) => setModel(e.target.value)}
-            placeholder="默认模型"
+            placeholder={t('automation.defaultModel')}
             disabled={submitting}
             className="rounded-md border border-card-border bg-canvas px-2 py-1 text-xs text-t-text placeholder:text-t-text-muted/60"
           />
         </label>
       </div>
       <label className="text-[10px] text-t-text-muted flex flex-col gap-0.5">
-        工作区路径（可选）
+        {t('automation.workspacePathOptional')}
         <input
           type="text"
           value={workspace}
           onChange={(e) => setWorkspace(e.target.value)}
-          placeholder="留空则使用运行时默认工作区"
+          placeholder={t('automation.workspacePlaceholder')}
           disabled={submitting}
           className="rounded-md border border-card-border bg-canvas px-2 py-1 text-xs text-t-text placeholder:text-t-text-muted/60 font-mono"
         />
@@ -403,7 +407,7 @@ function CreateTaskForm({
             onChange={(e) => setAllowShell(e.target.checked)}
             disabled={submitting}
           />
-          允许 Shell
+          {t('automation.allowShell')}
         </label>
         <label className="inline-flex items-center gap-1.5 cursor-pointer">
           <input
@@ -412,7 +416,7 @@ function CreateTaskForm({
             onChange={(e) => setTrustMode(e.target.checked)}
             disabled={submitting}
           />
-          信任模式
+          {t('automation.trustMode')}
         </label>
         <label className="inline-flex items-center gap-1.5 cursor-pointer">
           <input
@@ -421,7 +425,7 @@ function CreateTaskForm({
             onChange={(e) => setAutoApprove(e.target.checked)}
             disabled={submitting}
           />
-          自动批准工具
+          {t('automation.autoApprove')}
         </label>
       </div>
       {errorText && <p className="text-[10px] text-t-error">{errorText}</p>}
@@ -431,7 +435,7 @@ function CreateTaskForm({
           disabled={submitting || !prompt.trim()}
           className="px-3 py-1.5 text-xs font-medium rounded-md bg-accent text-white hover:opacity-90 disabled:opacity-40"
         >
-          {submitting ? '提交中…' : '创建'}
+          {submitting ? t('automation.submitting') : t('automation.submit')}
         </button>
       </div>
     </form>
@@ -447,37 +451,38 @@ function TasksList({
   onCancel: (id: string) => void;
   cancelingId: string | null;
 }) {
+  const { t } = useT();
   if (tasks.length === 0) {
     return (
       <p className="text-xs text-t-text-muted text-center py-6">
-        暂无任务。点击「新建任务」可enqueue一条后台任务。
+        {t('automation.noTasks')}
       </p>
     );
   }
   return (
     <div className="space-y-2">
-      {tasks.map((t) => (
-        <div key={t.id} className="rounded-lg border border-card-border bg-canvas-alt p-3">
+      {tasks.map((task) => (
+        <div key={task.id} className="rounded-lg border border-card-border bg-canvas-alt p-3">
           <div className="flex items-center gap-2">
-            <span className="font-mono text-[10px] text-t-text-muted shrink-0">{t.id.slice(0, 10)}</span>
-            <span className="text-xs text-t-text truncate flex-1 min-w-0">{t.prompt_summary}</span>
-            <span className={`text-[10px] font-medium shrink-0 ${TASK_STATUS_COLOR[t.status] ?? 'text-t-text-muted'}`}>
-              {TASK_STATUS_LABEL[t.status] ?? t.status}
+            <span className="font-mono text-[10px] text-t-text-muted shrink-0">{task.id.slice(0, 10)}</span>
+            <span className="text-xs text-t-text truncate flex-1 min-w-0">{task.prompt_summary}</span>
+            <span className={`text-[10px] font-medium shrink-0 ${TASK_STATUS_COLOR[task.status] ?? 'text-t-text-muted'}`}>
+              {taskStatusLabel(t, task.status)}
             </span>
-            {canCancelTask(t.status) && (
+            {canCancelTask(task.status) && (
               <button
                 type="button"
-                onClick={() => onCancel(t.id)}
-                disabled={cancelingId === t.id}
+                onClick={() => onCancel(task.id)}
+                disabled={cancelingId === task.id}
                 className="shrink-0 text-[10px] text-t-error hover:underline disabled:opacity-50"
               >
-                {cancelingId === t.id ? '取消中…' : '取消'}
+                {cancelingId === task.id ? t('automation.canceling') : t('automation.cancel')}
               </button>
             )}
           </div>
           <div className="mt-1 text-[10px] text-t-text-muted">
-            {t.model} · {t.mode}
-            {t.duration_ms != null && ` · ${(t.duration_ms / 1000).toFixed(1)}s`}
+            {task.model} · {task.mode}
+            {task.duration_ms != null && ` · ${(task.duration_ms / 1000).toFixed(1)}s`}
           </div>
         </div>
       ))}
