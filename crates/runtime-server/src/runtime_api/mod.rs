@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 
 use anyhow::{Context, Result, anyhow};
 
-use axum::http::{HeaderValue, Method, StatusCode};
+use axum::http::StatusCode;
 
 use axum::response::{IntoResponse, Response};
 use axum::Json;
@@ -20,7 +20,6 @@ use tokio::io::BufReader;
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
-use tower_http::cors::{Any, CorsLayer};
 
 use crate::automation_manager::{
     AutomationManager, AutomationSchedulerConfig, SharedAutomationManager, spawn_scheduler,
@@ -40,14 +39,13 @@ use crate::task_manager::{
 
 pub mod openapi;
 
-mod auth;
 mod automations;
 mod blackboards;
-mod health;
 mod mcp;
 mod router;
 mod sessions;
 mod skills;
+mod state;
 mod stream;
 mod tasks;
 mod topic_memory;
@@ -61,7 +59,6 @@ pub(crate) use automations::{
     create_automation, delete_automation, get_automation, list_automation_runs, list_automations,
     pause_automation, resume_automation, run_automation, update_automation,
 };
-pub(crate) use health::{health, internal_probe};
 pub(crate) use usage::{get_routing_rules, get_usage, rebuild_symbol_index, set_routing_rules};
 pub(crate) use workspace::workspace_status;
 pub(crate) use mcp::{
@@ -83,6 +80,8 @@ pub(crate) use threads::{
 };
 
 pub use router::build_router;
+
+pub(crate) use deepseek_runtime_api::cors_layer;
 
 #[derive(Clone)]
 pub struct RuntimeApiState {
@@ -383,47 +382,6 @@ pub(crate) fn truncate_text(text: &str, max_chars: usize) -> String {
     }
     let truncated: String = text.chars().take(max_chars.saturating_sub(3)).collect();
     format!("{truncated}...")
-}
-
-const DEFAULT_CORS_ORIGINS: &[&str] = &[
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:1420",
-    "http://127.0.0.1:1420",
-    "tauri://localhost",
-    // Tauri 2 WebView2 uses this origin for `fetch` to loopback (desktop shell).
-    "http://tauri.localhost",
-    "https://tauri.localhost",
-];
-
-pub(crate) fn cors_layer(extra_origins: &[String]) -> CorsLayer {
-    let mut origins: Vec<HeaderValue> = DEFAULT_CORS_ORIGINS
-        .iter()
-        .filter_map(|o| HeaderValue::from_str(o).ok())
-        .collect();
-    for raw in extra_origins {
-        let trimmed = raw.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        match HeaderValue::from_str(trimmed) {
-            Ok(value) if !origins.contains(&value) => origins.push(value),
-            Ok(_) => {}
-            Err(err) => tracing::warn!(
-                "Ignoring invalid CORS origin '{trimmed}': {err}; expected scheme://host[:port]"
-            ),
-        }
-    }
-    CorsLayer::new()
-        .allow_origin(origins)
-        .allow_methods([
-            Method::GET,
-            Method::POST,
-            Method::PATCH,
-            Method::DELETE,
-            Method::OPTIONS,
-        ])
-        .allow_headers(Any)
 }
 
 pub(crate) fn map_thread_err(err: anyhow::Error) -> ApiError {

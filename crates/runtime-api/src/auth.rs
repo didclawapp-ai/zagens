@@ -1,25 +1,23 @@
 //! Runtime API bearer-token authentication middleware.
-//!
-//! When `RuntimeApiState.runtime_token` is `Some`, all `/v1/*` routes
-//! are gated behind this middleware.  Requests must carry the token
-//! in either the `Authorization: Bearer <token>` header or the
-//! `x-deepseek-runtime-token` header.
 
 use axum::extract::{Request, State};
-use axum::http::{StatusCode, header};
+use axum::http::{header, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde_json::json;
 
-use super::RuntimeApiState;
+use crate::state::RuntimeApiAuthState;
 
-pub(super) async fn require_runtime_token(
-    State(state): State<RuntimeApiState>,
+pub async fn require_runtime_token<S>(
+    State(state): State<S>,
     req: Request,
     next: Next,
-) -> Response {
-    let Some(expected) = state.runtime_token.as_deref() else {
+) -> Response
+where
+    S: RuntimeApiAuthState,
+{
+    let Some(expected) = state.runtime_token() else {
         return next.run(req).await;
     };
     let authorized = req

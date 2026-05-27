@@ -4,12 +4,12 @@ use axum::extract::State;
 use axum::Json;
 use serde::Serialize;
 
-use crate::runtime_threads::CURRENT_EVENT_SCHEMA_VERSION;
+use deepseek_runtime_orchestrator::runtime_threads::CURRENT_EVENT_SCHEMA_VERSION;
 
-use super::RuntimeApiState;
+use crate::state::RuntimeApiProbeState;
 
 #[derive(Debug, Serialize)]
-pub(crate) struct HealthResponse {
+pub struct HealthResponse {
     status: &'static str,
     service: &'static str,
     mode: &'static str,
@@ -17,7 +17,7 @@ pub(crate) struct HealthResponse {
 }
 
 #[derive(Debug, Serialize)]
-pub(crate) struct InternalProbeResponse {
+pub struct InternalProbeResponse {
     status: &'static str,
     pid: u32,
     started_at_ms: u128,
@@ -25,7 +25,7 @@ pub(crate) struct InternalProbeResponse {
     version: &'static str,
 }
 
-pub(crate) async fn health() -> Json<HealthResponse> {
+pub async fn health() -> Json<HealthResponse> {
     Json(HealthResponse {
         status: "ok",
         service: "deepseek-runtime-api",
@@ -34,13 +34,15 @@ pub(crate) async fn health() -> Json<HealthResponse> {
     })
 }
 
-pub(crate) async fn internal_probe(State(state): State<RuntimeApiState>) -> Json<InternalProbeResponse> {
+pub async fn internal_probe<S>(State(state): State<S>) -> Json<InternalProbeResponse>
+where
+    S: RuntimeApiProbeState,
+{
     Json(InternalProbeResponse {
         status: "ok",
         pid: std::process::id(),
-        started_at_ms: state.process_started_at_ms,
-        token_fingerprint: state.token_fingerprint.as_ref().clone(),
-        version: env!("CARGO_PKG_VERSION"),
+        started_at_ms: state.process_started_at_ms(),
+        token_fingerprint: state.token_fingerprint().to_string(),
+        version: state.service_version(),
     })
 }
-

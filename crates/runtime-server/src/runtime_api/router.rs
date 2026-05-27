@@ -1,20 +1,21 @@
 //! HTTP route table for the runtime API (R-003 A4.1).
 
-use axum::middleware::{self};
+use axum::middleware;
 use axum::routing::{get, post};
 use axum::Router;
 
-use super::auth;
+use deepseek_runtime_api::{compose_router, require_runtime_token};
+
 use super::stream;
 use super::{
     add_mcp_server, browse_thread_workspace, browse_workspace_by_root, cancel_task,
     clear_tasks, compact_thread, create_automation, create_skill, create_task, create_thread,
-    cors_layer, delete_automation, delete_mcp_server, delete_session, edit_last_thread_turn,
+    delete_automation, delete_mcp_server, delete_session, edit_last_thread_turn,
     fork_thread, fork_thread_at_user_message,
     get_automation, get_blackboard, get_mcp_server, get_resume_task, get_routing_rules,
     get_session, get_thread, get_thread_checklist, get_thread_context,
-    get_thread_scratchpad_status, get_topic_memory, get_task, get_usage, health, import_skill_local,
-    install_skill_remote, internal_probe, interrupt_thread_turn, list_automation_runs,
+    get_thread_scratchpad_status, get_topic_memory, get_task, get_usage, import_skill_local,
+    install_skill_remote, interrupt_thread_turn, list_automation_runs,
     list_automations, list_blackboards, list_mcp_servers, list_mcp_tools, list_sessions,
     list_skills, list_tasks, list_thread_snapshots, list_threads, list_threads_summary,
     merge_mcp_config_json, pause_automation, persist_thread_session,
@@ -25,6 +26,7 @@ use super::{
 };
 
 pub fn build_router(state: RuntimeApiState) -> Router {
+    let cors_origins = state.cors_origins.clone();
     let api_routes = Router::new()
         .route("/v1/sessions", get(list_sessions))
         .route("/v1/sessions/{id}", get(get_session).delete(delete_session))
@@ -132,13 +134,8 @@ pub fn build_router(state: RuntimeApiState) -> Router {
         )
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
-            auth::require_runtime_token,
+            require_runtime_token::<RuntimeApiState>,
         ));
 
-    Router::new()
-        .route("/health", get(health))
-        .route("/internal/probe", get(internal_probe))
-        .merge(api_routes)
-        .layer(cors_layer(&state.cors_origins))
-        .with_state(state)
+    compose_router(state, &cors_origins, api_routes)
 }

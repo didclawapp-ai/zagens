@@ -1446,6 +1446,7 @@ dependencies = [
 name = "deepseek-runtime-api"
 version = "0.8.15"
 dependencies = [
+ "axum",
  "deepseek-core",
  "deepseek-protocol",
  "deepseek-runtime-adapters",
@@ -1454,6 +1455,8 @@ dependencies = [
  "schemars 1.2.1",
  "serde",
  "serde_json",
+ "tower-http",
+ "tracing",
 ]
 
 [[package]]
