@@ -165,7 +165,8 @@ pub(crate) fn init_plugins_dir(
 }
 
 pub(crate) fn deepseek_home_dir() -> PathBuf {
-    dirs::home_dir().map_or_else(|| PathBuf::from(".deepseek"), |h| h.join(".deepseek"))
+    deepseek_config::user_data_root()
+        .unwrap_or_else(|_| PathBuf::from(deepseek_config::USER_DATA_DIR_NAME))
 }
 
 pub(crate) fn default_checkpoints_dir() -> PathBuf {

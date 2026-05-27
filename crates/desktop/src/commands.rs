@@ -161,6 +161,22 @@ pub fn save_deepseek_api_key(key: String, ctx: tauri::State<'_, AppContext>) -> 
     Ok(())
 }
 
+#[tauri::command]
+pub fn clear_deepseek_api_key(ctx: tauri::State<'_, AppContext>) -> Result<(), String> {
+    let secrets = deepseek_secrets::Secrets::auto_detect();
+    secrets
+        .delete("deepseek")
+        .map_err(|e| format!("无法从系统密钥链删除: {e}"))?;
+
+    let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
+    store.config.api_key = None;
+    store.config.providers.deepseek.api_key = None;
+    store.save().map_err(|e| e.to_string())?;
+
+    ctx.sidecar_restart.notify_one();
+    Ok(())
+}
+
 #[derive(Debug, Serialize)]
 pub struct VisionBridgeStatus {
     pub configured: bool,

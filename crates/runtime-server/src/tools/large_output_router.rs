@@ -80,14 +80,13 @@ pub fn should_persist_large_output_for_namespace(namespace: &str) -> bool {
 
 /// Directory for large-output blobs for a session (`<sessions>/<session_id>/large_outputs/`).
 ///
-/// Default sessions root: `~/.deepseek/sessions`. Tests may set `DEEPSEEK_LARGE_OUTPUT_ROOT`
+/// Default sessions root: `~/.zagens/sessions`. Tests may set `DEEPSEEK_LARGE_OUTPUT_ROOT`
 /// to a temp directory (used as the sessions root, not the home dir).
 #[must_use]
 pub fn large_output_dir(session_id: &str) -> PathBuf {
     let sessions_base = std::env::var_os(LARGE_OUTPUT_ROOT_ENV)
         .map(PathBuf::from)
-        .or_else(|| dirs::home_dir().map(|h| h.join(".deepseek").join("sessions")))
-        .unwrap_or_else(|| PathBuf::from(".deepseek").join("sessions"));
+        .unwrap_or_else(|| deepseek_config::user_data_path_or_relative("sessions"));
     sessions_base.join(session_id).join("large_outputs")
 }
 

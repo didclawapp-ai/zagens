@@ -10,6 +10,7 @@ mod workspace_defaults;
 
 use std::sync::Arc;
 
+use deepseek_config::ConfigStore;
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -97,6 +98,10 @@ fn main() {
             }
         })
         .setup(move |app| {
+            if let Err(e) = ConfigStore::ensure_default_on_disk(None) {
+                eprintln!("[zagens] warning: failed to create default config.toml: {e}");
+            }
+
             let token = uuid::Uuid::new_v4().to_string();
             let sidecar_restart = Arc::new(Notify::new());
             // Watch channel publishes the runtime port. Initial value `0` means "not ready yet";
@@ -206,6 +211,7 @@ fn main() {
             commands::get_locale,
             commands::get_api_key_status,
             commands::save_deepseek_api_key,
+            commands::clear_deepseek_api_key,
             commands::get_vision_bridge_status,
             commands::save_vision_bridge,
             commands::clear_vision_bridge,

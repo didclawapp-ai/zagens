@@ -250,12 +250,14 @@ impl NetworkAuditor {
         Self { path, enabled }
     }
 
-    /// Auditor pointing at `~/.deepseek/audit.log`. Returns `None` if the
+    /// Auditor pointing at `~/.zagens/audit.log`. Returns `None` if the
     /// home directory can't be resolved.
     #[must_use]
     pub fn default_path(enabled: bool) -> Option<Self> {
-        let home = dirs::home_dir()?;
-        Some(Self::new(home.join(".deepseek").join("audit.log"), enabled))
+        Some(Self::new(
+            deepseek_config::user_data_path_or_relative("audit.log"),
+            enabled,
+        ))
     }
 
     /// Append one line. Best-effort: errors are logged via `eprintln!` but

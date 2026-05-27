@@ -45,3 +45,12 @@
 | 本目录文件移动 | 更新 `docs/tech/adr/` 中的重定向 stub 与根 [CHANGELOG.md](../../CHANGELOG.md) |
 
 **Changelog：** 根目录 [CHANGELOG.md](../../CHANGELOG.md) `[Unreleased]` → Docs。
+
+### Runtime 工作区约定（Scratchpad / Blackboard）
+
+| 功能 | 磁盘路径 | 初始化 |
+|------|----------|--------|
+| **审计 Scratchpad** | `{Composer workspace}/.deepseek/scratchpad/{run_id}/` | `scratchpad_init` 或 Zagens 审计面板「初始化」 |
+| **CRAFT 黑板** | `{Composer workspace}/.deepseek/blackboards/{task_id}.json` | 子代理首次写入时自动创建 |
+
+Composer 工作区必须与待审计/协作的项目根一致，否则 Agent 面板黑板列表与 scratchpad 进度会对不上。

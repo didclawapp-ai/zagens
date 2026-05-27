@@ -16,10 +16,12 @@ import {
     renameSync,
     readdirSync,
     readFileSync,
+    statSync,
     unlinkSync,
+    rmSync,
     createWriteStream,
 } from 'node:fs';
-import { join } from 'node:path';
+import { join, dirname, basename } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
 
@@ -72,6 +74,68 @@ function depsMarkerUpToDate(markerPath) {
     } catch {
         return false;
     }
+}
+
+function formatBytes(n) {
+    if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+    if (n >= 1024) return `${(n / 1024).toFixed(1)} KB`;
+    return `${n} B`;
+}
+
+async function fetchArchiveSize(url) {
+    const resp = await fetch(url, { method: "HEAD" });
+    if (!resp.ok) {
+        throw new Error(`Failed to probe PBS archive: ${resp.status} ${resp.statusText}`);
+    }
+    const len = Number(resp.headers.get("content-length"));
+    return Number.isFinite(len) && len > 0 ? len : null;
+}
+
+function archiveSizeOk(archivePath, expectedBytes) {
+    if (!existsSync(archivePath)) return false;
+    const size = statSync(archivePath).size;
+    if (expectedBytes == null) return size > 0;
+    return size === expectedBytes;
+}
+
+async function downloadPbsArchive(url, archivePath, expectedBytes) {
+    console.log(
+        `[python] downloading PBS ${PBS_VERSION}…` +
+        (expectedBytes ? ` (${formatBytes(expectedBytes)})` : ""),
+    );
+    const resp = await fetch(url);
+    if (!resp.ok) {
+        throw new Error(`Failed to download PBS: ${resp.status} ${resp.statusText}`);
+    }
+
+    mkdirSync(dirname(archivePath), { recursive: true });
+    const writer = createWriteStream(archivePath);
+    let downloaded = 0;
+    let lastLogPct = -1;
+
+    const body = Readable.fromWeb(resp.body);
+    body.on("data", (chunk) => {
+        downloaded += chunk.length;
+        if (expectedBytes == null) return;
+        const pct = Math.floor((downloaded / expectedBytes) * 100);
+        if (pct >= lastLogPct + 10 || pct === 100) {
+            console.log(
+                `[python] download ${pct}% (${formatBytes(downloaded)} / ${formatBytes(expectedBytes)})`,
+            );
+            lastLogPct = pct;
+        }
+    });
+
+    await pipeline(body, writer);
+
+    if (expectedBytes != null && downloaded !== expectedBytes) {
+        try { unlinkSync(archivePath); } catch { /* best-effort */ }
+        throw new Error(
+            `PBS download incomplete (${formatBytes(downloaded)} / ${formatBytes(expectedBytes)}). Retry bundle:prepare.`,
+        );
+    }
+
+    console.log(`[python] downloaded ${basename(archivePath)} (${formatBytes(downloaded)})`);
 }
 
 function installPipDeps(pyExe, pyDir) {
@@ -128,28 +192,42 @@ export async function preparePythonRuntime(binariesDir, triple) {
         return;
     }
 
-    // 1. Download PBS archive
+    // 1. Download PBS archive (re-fetch if a prior run left a truncated file)
     const archiveName = `python-pbs-${triple}${info.ext}`;
     const archivePath = join(binariesDir, archiveName);
+    const expectedBytes = await fetchArchiveSize(info.url);
 
-    if (!existsSync(archivePath)) {
-        console.log(`[python] downloading PBS ${PBS_VERSION} for ${triple}…`);
-        const resp = await fetch(info.url);
-        if (!resp.ok) {
-            throw new Error(`Failed to download PBS: ${resp.status} ${resp.statusText}`);
+    if (!archiveSizeOk(archivePath, expectedBytes)) {
+        if (existsSync(archivePath)) {
+            const got = statSync(archivePath).size;
+            console.warn(
+                `[python] removing incomplete PBS archive (${formatBytes(got)}` +
+                (expectedBytes ? ` / ${formatBytes(expectedBytes)}` : "") +
+                `)`,
+            );
+            unlinkSync(archivePath);
         }
-        mkdirSync(binariesDir, { recursive: true });
-        const writer = createWriteStream(archivePath);
-        await pipeline(Readable.fromWeb(resp.body), writer);
-        console.log(`[python] downloaded ${archiveName}`);
+        if (existsSync(pyDir)) {
+            rmSync(pyDir, { recursive: true, force: true });
+        }
+        await downloadPbsArchive(info.url, archivePath, expectedBytes);
     }
 
     // 2. Extract — requires `tar` (built-in on Win10 1803+, macOS, Linux)
-    if (!existsSync(pyDir)) {
+    if (!existsSync(pyExe)) {
         console.log(`[python] extracting PBS…`);
         mkdirSync(pyDir, { recursive: true });
         if (info.ext === ".tar.gz") {
-            execSync(`tar -xzf "${archivePath}" -C "${pyDir}"`, { stdio: "inherit" });
+            try {
+                execSync(`tar -xzf "${archivePath}" -C "${pyDir}"`, { stdio: "inherit" });
+            } catch (err) {
+                rmSync(pyDir, { recursive: true, force: true });
+                try { unlinkSync(archivePath); } catch { /* best-effort */ }
+                throw new Error(
+                    "PBS extract failed (archive may be corrupt). Removed partial files — rerun bundle:prepare.",
+                    { cause: err },
+                );
+            }
         }
     }
 

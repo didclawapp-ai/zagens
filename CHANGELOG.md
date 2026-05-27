@@ -20,7 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Architecture
+### Desktop
+
+- **Fix:** 补齐 `~/.zagens/` 迁移遗漏 — `automations`、`audit.log`、`topic-memory`、`office-py`、`execpolicy.toml`、`tui.toml`、skills cache、crash dumps 等用户级路径不再写入 `~/.deepseek/`（工作区 `.deepseek/` 仍保留 scratchpad/blackboard/项目 config）。
+- **Fix:** `prepare-python.mjs` — 校验 PBS 压缩包完整大小（对比 GitHub `Content-Length`），自动删除中断留下的残缺包并重下；下载进度日志；解压失败时清理部分目录避免下次误判。
 
 - **Chore:** `deepseek-runtime-server` — `cargo fix` 清理 subagent / web_run / skills 等模块 D16 拆分遗留的 unused import；修正 `TarballScan` / `SubAgentSpawnOptions` 可见性警告。
 
@@ -66,6 +69,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Zagens desktop / 多窗口：** 修复打开第二个窗口时控制台 `Cannot read properties of undefined (reading 'handlerId')` 及 Network 面板 `listen`/`unlisten`/`show`/`runtime_http` 数千次循环 — sidecar/SSE/终端事件改为 webview 级 `listen` + 安全 `unlisten`；启动 effect 不再依赖每轮渲染变化的 `refreshSessions`，并用 `bootHandled` 保证就绪逻辑只执行一次。
 - **Zagens desktop / Tauri IPC：** 修复控制台持续刷屏 `[TAURI] Couldn't find callback id …` — 续聊 turn 在桌面端改为单条 SSE（不再每 120ms 重注册 `listen`/`runtime_get_sse`）；`refreshApiKeyStatus` 与终端/ sidecar 事件订阅改为稳定依赖，避免每次渲染重复 `invoke`。
+- **Zagens desktop / API Key 面板：** 主模型区新增「删除 API KEY」（二次确认，清除系统密钥链与 config 明文）；精简面板说明文案；接入 i18n。
+- **Zagens desktop / 首次配置：** 首次启动（及 runtime sidecar 启动）自动创建 `~/.zagens/config.toml` 默认模板（不含 API Key）；`deepseek-config` 新增 `ConfigStore::ensure_default_on_disk` / `ConfigToml::first_run_defaults`；runtime `ensure_config_file_exists` 改为委托 config crate。
+- **Zagens desktop / 发布命名：** 主程序二进制 **`zagens.exe`**、sidecar **`zagens-runtime.exe`**（Tauri `externalBin`）；全局用户数据目录 **`~/.zagens/`**（与 deepseek-tui 的 `~/.deepseek/` 隔离）；首次启动可选从 legacy `~/.deepseek/config.toml` 迁移配置与 skills/MCP（不迁移 sessions/tasks 数据库）。
+- **Runtime / Scratchpad：** 新增 `scratchpad_init` 工具与 `POST /v1/threads/{id}/scratchpad/init` — 自动创建 `{workspace}/.deepseek/scratchpad/{run_id}/`（`inventory.json` + `notes.jsonl`）并绑定 thread；Zagens 审计面板空态支持一键初始化。
 - **Runtime / prompts：** `DEEPSEEK_CLIENT_SURFACE=zagens`（sidecar 实际值）现与遗留 `ds-pick` 一并识别，恢复 Zagens 客户端身份与 `## Environment` 的 `ui_shell: Zagens (desktop)`；此前仅匹配 `ds-pick` 时桌面会话误用 “DeepSeek TUI” 身份文案。
 - **Zagens desktop / CRAFT：** `GET /v1/blackboards` 支持 `?workspace=`（与 `/v1/workspace/browse` 一致）；AgentPanel 按当前 Composer 工作区拉取黑板，修复 D6 后 sidecar 默认 cwd（用户目录）与子 Agent 写入项目 `.deepseek/blackboards/` 不一致导致 CRAFT 任务列表为空。
 - **Runtime：** 移除已删除 `eval.rs` 的孤儿集成测 `eval_harness.rs`（D6 迁移遗留，阻塞 `cargo test -p deepseek-runtime-server`）。

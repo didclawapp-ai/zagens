@@ -103,11 +103,8 @@ pub async fn run_http_server(
         AutomationSchedulerConfig::default(),
     );
 
-    let sessions_dir = default_sessions_dir().unwrap_or_else(|_| {
-        dirs::home_dir()
-            .map(|h| h.join(".deepseek").join("sessions"))
-            .unwrap_or_else(|| PathBuf::from(".deepseek").join("sessions"))
-    });
+    let sessions_dir = default_sessions_dir()
+        .unwrap_or_else(|_| deepseek_config::user_data_path_or_relative("sessions"));
     let runtime_token = options
         .auth_token
         .clone()

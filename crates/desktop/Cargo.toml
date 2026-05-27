@@ -8,6 +8,10 @@ license = "LicenseRef-Proprietary-Zagens"
 license-file = "../../LICENSE"
 rust-version.workspace = true
 
+[[bin]]
+name = "zagens"
+path = "src/main.rs"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

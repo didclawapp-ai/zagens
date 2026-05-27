@@ -46,7 +46,10 @@ pub fn is_readonly_tool(name: &str) -> bool {
 }
 
 pub fn is_scratchpad_write_tool(name: &str) -> bool {
-    matches!(name, "scratchpad_append" | "scratchpad_set_area")
+    matches!(
+        name,
+        "scratchpad_init" | "scratchpad_append" | "scratchpad_set_area"
+    )
 }
 
 pub fn record_tool_outcome(state: &mut ScratchpadStepState, tool_name: &str, success: bool) {

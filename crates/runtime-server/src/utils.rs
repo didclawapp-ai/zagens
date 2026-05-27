@@ -240,7 +240,7 @@ where
     })
 }
 
-/// Write a panic dump file to `~/.deepseek/crashes/`.
+/// Write a panic dump file to `~/.zagens/crashes/`.
 ///
 /// Creates the directory if needed and writes a timestamped log
 /// with the task name, caller location, and panic message.
@@ -250,10 +250,7 @@ fn write_panic_dump(
     location: &std::panic::Location<'_>,
     message: &str,
 ) -> std::io::Result<()> {
-    let home = dirs::home_dir().ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::NotFound, "home directory not found")
-    })?;
-    let crash_dir = home.join(".deepseek").join("crashes");
+    let crash_dir = deepseek_config::user_data_path_or_relative("crashes");
     write_panic_dump_to(&crash_dir, name, location, message)
 }
 

@@ -7,8 +7,6 @@ use anyhow::{Context, Result};
 #[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 
-use super::super::DEFAULT_TEXT_MODEL;
-
 // === Defaults ===
 
 pub(crate) fn default_config_path() -> Option<PathBuf> {
@@ -47,7 +45,7 @@ pub(crate) fn effective_home_dir() -> Option<PathBuf> {
 }
 
 pub(crate) fn home_config_path() -> Option<PathBuf> {
-    effective_home_dir().map(|home| home.join(".deepseek").join("config.toml"))
+    deepseek_config::default_config_path().ok()
 }
 
 #[must_use]
@@ -128,7 +126,9 @@ pub(crate) fn canonicalize_or_keep(path: &Path) -> PathBuf {
 }
 
 pub(crate) fn env_config_path() -> Option<PathBuf> {
-    if let Ok(path) = std::env::var("DEEPSEEK_CONFIG_PATH") {
+    if let Ok(path) = std::env::var("ZAGENS_CONFIG_PATH")
+        .or_else(|_| std::env::var("DEEPSEEK_CONFIG_PATH"))
+    {
         let trimmed = path.trim();
         if !trimmed.is_empty() {
             return Some(expand_path(trimmed));
@@ -168,40 +168,9 @@ pub(crate) fn resolve_load_config_path(path: Option<PathBuf>) -> Option<PathBuf>
 
 /// Create an inspectable config file on first interactive launch.
 ///
-/// The file intentionally omits `api_key`; onboarding or `deepseek auth set`
-/// writes that field after the user supplies a key.
+/// Delegates to [`deepseek_config::ConfigStore::ensure_default_on_disk`].
 pub fn ensure_config_file_exists(path: Option<PathBuf>) -> Result<Option<PathBuf>> {
-    let config_path = path
-        .map(expand_pathbuf)
-        .or_else(default_config_path)
-        .context("Failed to resolve config path: home directory not found.")?;
-    if config_path.exists() {
-        return Ok(None);
-    }
-
-    ensure_parent_dir(&config_path)?;
-    let content = format!(
-        r#"# DeepSeek TUI Configuration
-# Get your API key from https://platform.deepseek.com
-# Save it with: deepseek auth set --provider deepseek
-
-# Base URL (default: https://api.deepseek.com/beta)
-# Set https://api.deepseek.com to opt out of beta features.
-# base_url = "https://api.deepseek.com/beta"
-
-# Default model
-default_text_model = "{default_model}"
-
-# Thinking mode (DeepSeek V4 reasoning effort):
-# "auto" | "off" | "low" | "medium" | "high" | "max"
-# Shift+Tab in the TUI cycles between off / high / max.
-reasoning_effort = "auto"
-"#,
-        default_model = DEFAULT_TEXT_MODEL
-    );
-    write_config_file_secure(&config_path, &content)
-        .with_context(|| format!("Failed to write config to {}", config_path.display()))?;
-    Ok(Some(config_path))
+    deepseek_config::ConfigStore::ensure_default_on_disk(path)
 }
 
 pub(crate) fn default_managed_config_path() -> Option<PathBuf> {
@@ -211,7 +180,7 @@ pub(crate) fn default_managed_config_path() -> Option<PathBuf> {
     }
     #[cfg(not(unix))]
     {
-        effective_home_dir().map(|home| home.join(".deepseek").join("managed_config.toml"))
+        deepseek_config::user_data_path("managed_config.toml").ok()
     }
 }
 
@@ -222,7 +191,7 @@ pub(crate) fn default_requirements_path() -> Option<PathBuf> {
     }
     #[cfg(not(unix))]
     {
-        effective_home_dir().map(|home| home.join(".deepseek").join("requirements.toml"))
+        deepseek_config::user_data_path("requirements.toml").ok()
     }
 }
 
@@ -243,19 +212,19 @@ pub(crate) fn expand_path(path: &str) -> PathBuf {
 }
 
 pub(crate) fn default_skills_dir() -> Option<PathBuf> {
-    effective_home_dir().map(|home| home.join(".deepseek").join("skills"))
+    deepseek_config::user_data_path("skills").ok()
 }
 
 pub(crate) fn default_mcp_config_path() -> Option<PathBuf> {
-    effective_home_dir().map(|home| home.join(".deepseek").join("mcp.json"))
+    deepseek_config::user_data_path("mcp.json").ok()
 }
 
 pub(crate) fn default_notes_path() -> Option<PathBuf> {
-    effective_home_dir().map(|home| home.join(".deepseek").join("notes.txt"))
+    deepseek_config::user_data_path("notes.txt").ok()
 }
 
 pub(crate) fn default_memory_path() -> Option<PathBuf> {
-    effective_home_dir().map(|home| home.join(".deepseek").join("memory.md"))
+    deepseek_config::user_data_path("memory.md").ok()
 }
 pub fn ensure_parent_dir(path: &Path) -> Result<()> {
     if let Some(parent) = path.parent() {

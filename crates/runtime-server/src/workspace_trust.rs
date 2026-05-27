@@ -158,7 +158,7 @@ fn canonicalize_or_keep(path: &Path) -> PathBuf {
 }
 
 fn trust_file_path() -> Option<PathBuf> {
-    dirs::home_dir().map(|home| home.join(".deepseek").join(TRUST_FILE_NAME))
+    deepseek_config::user_data_path(TRUST_FILE_NAME).ok()
 }
 
 fn read_trust_file_at(path: &Path) -> Result<TrustFile> {

@@ -46,7 +46,7 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "externalBin": ["binaries/deepseek-runtime"],
+    "externalBin": ["binaries/zagens-runtime"],
     "resources": {
       "binaries/python-standalone/python-install": "python/"
     }

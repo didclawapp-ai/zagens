@@ -14,6 +14,7 @@ struct EnvGuard {
     home: Option<OsString>,
     userprofile: Option<OsString>,
     deepseek_config_path: Option<OsString>,
+    zagens_config_path: Option<OsString>,
     deepseek_provider: Option<OsString>,
     deepseek_api_key: Option<OsString>,
     deepseek_base_url: Option<OsString>,
@@ -46,11 +47,12 @@ struct EnvGuard {
 impl EnvGuard {
     fn new(home: &Path) -> Self {
         let home_str = OsString::from(home.as_os_str());
-        let config_path = home.join(".deepseek").join("config.toml");
+        let config_path = home.join(".zagens").join("config.toml");
         let config_str = OsString::from(config_path.as_os_str());
         let home_prev = env::var_os("HOME");
         let userprofile_prev = env::var_os("USERPROFILE");
         let deepseek_config_prev = env::var_os("DEEPSEEK_CONFIG_PATH");
+        let zagens_config_prev = env::var_os("ZAGENS_CONFIG_PATH");
         let deepseek_provider_prev = env::var_os("DEEPSEEK_PROVIDER");
         let api_key_prev = env::var_os("DEEPSEEK_API_KEY");
         let base_url_prev = env::var_os("DEEPSEEK_BASE_URL");
@@ -82,6 +84,7 @@ impl EnvGuard {
         unsafe {
             env::set_var("HOME", &home_str);
             env::set_var("USERPROFILE", &home_str);
+            env::set_var("ZAGENS_CONFIG_PATH", &config_str);
             env::set_var("DEEPSEEK_CONFIG_PATH", &config_str);
             env::remove_var("DEEPSEEK_PROVIDER");
             env::remove_var("DEEPSEEK_API_KEY");
@@ -115,6 +118,7 @@ impl EnvGuard {
             home: home_prev,
             userprofile: userprofile_prev,
             deepseek_config_path: deepseek_config_prev,
+            zagens_config_path: zagens_config_prev,
             deepseek_provider: deepseek_provider_prev,
             deepseek_api_key: api_key_prev,
             deepseek_base_url: base_url_prev,
@@ -153,6 +157,7 @@ impl Drop for EnvGuard {
             Self::restore_var("HOME", self.home.take());
             Self::restore_var("USERPROFILE", self.userprofile.take());
             Self::restore_var("DEEPSEEK_CONFIG_PATH", self.deepseek_config_path.take());
+            Self::restore_var("ZAGENS_CONFIG_PATH", self.zagens_config_path.take());
             Self::restore_var("DEEPSEEK_PROVIDER", self.deepseek_provider.take());
             Self::restore_var("DEEPSEEK_API_KEY", self.deepseek_api_key.take());
             Self::restore_var("DEEPSEEK_BASE_URL", self.deepseek_base_url.take());
@@ -323,9 +328,10 @@ fn ensure_config_file_exists_creates_first_run_template() -> Result<()> {
     let created = ensure_config_file_exists(None)?.expect("should create config");
     let content = fs::read_to_string(&created)?;
 
-    assert_eq!(created, temp_root.join(".deepseek").join("config.toml"));
+    assert_eq!(created, temp_root.join(".zagens").join("config.toml"));
     assert!(content.contains("default_text_model = \"deepseek-v4-pro\""));
-    assert!(content.contains("reasoning_effort = \"auto\""));
+    assert!(content.contains("reasoning_effort = \"max\""));
+    assert!(content.contains("skills_dir = \"~/.zagens/skills\""));
     assert!(!content.contains("api_key ="));
     assert!(ensure_config_file_exists(None)?.is_none());
     Ok(())

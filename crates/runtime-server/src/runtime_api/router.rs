@@ -15,7 +15,7 @@ use super::{
     get_automation, get_blackboard, get_mcp_server, get_resume_task, get_routing_rules,
     get_session, get_thread, get_thread_checklist, get_thread_context,
     get_thread_scratchpad_status, get_topic_memory, get_task, get_usage, import_skill_local,
-    install_skill_remote, interrupt_thread_turn, list_automation_runs,
+    init_thread_scratchpad, install_skill_remote, interrupt_thread_turn, list_automation_runs,
     list_automations, list_blackboards, list_mcp_servers, list_mcp_tools, list_sessions,
     list_skills, list_tasks, list_thread_snapshots, list_threads, list_threads_summary,
     merge_mcp_config_json, pause_automation, persist_thread_session,
@@ -46,6 +46,10 @@ pub fn build_router(state: RuntimeApiState) -> Router {
         .route(
             "/v1/threads/{id}/scratchpad/status",
             get(get_thread_scratchpad_status),
+        )
+        .route(
+            "/v1/threads/{id}/scratchpad/init",
+            post(init_thread_scratchpad),
         )
         .route("/v1/threads/{id}/context", get(get_thread_context))
         .route("/v1/threads/{id}/resume", post(resume_thread))

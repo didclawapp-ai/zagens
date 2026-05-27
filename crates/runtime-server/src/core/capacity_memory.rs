@@ -55,13 +55,11 @@ fn capacity_memory_dirs() -> Vec<PathBuf> {
     }
 
     let mut dirs = Vec::new();
-    if let Some(home) = dirs::home_dir() {
-        dirs.push(home.join(".deepseek").join("memory"));
-    }
+    dirs.push(deepseek_config::user_data_path_or_relative("memory"));
 
     let cwd = std::env::current_dir()
         .unwrap_or_else(|_| PathBuf::from("."))
-        .join(".deepseek")
+        .join(deepseek_config::USER_DATA_DIR_NAME)
         .join("memory");
     dirs.push(cwd);
 

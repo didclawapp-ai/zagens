@@ -93,7 +93,7 @@ pub(super) fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<
         .with_context(|| format!("Failed to write {}", path.display()))
 }
 
-/// Default task persistence location (`~/.deepseek/tasks`).
+/// Default task persistence location (`~/.zagens/tasks`).
 #[must_use]
 pub fn default_tasks_dir() -> PathBuf {
     if let Ok(path) = std::env::var("DEEPSEEK_TASKS_DIR")
@@ -101,8 +101,12 @@ pub fn default_tasks_dir() -> PathBuf {
     {
         return PathBuf::from(path);
     }
-    if let Some(home) = dirs::home_dir() {
-        return home.join(".deepseek").join("tasks");
+    if let Ok(path) = std::env::var("ZAGENS_TASKS_DIR")
+        && !path.trim().is_empty()
+    {
+        return PathBuf::from(path);
     }
-    PathBuf::from(".deepseek").join("tasks")
+    deepseek_config::user_data_path("tasks").unwrap_or_else(|_| {
+        PathBuf::from(deepseek_config::USER_DATA_DIR_NAME).join("tasks")
+    })
 }

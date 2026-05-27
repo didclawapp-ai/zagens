@@ -4,8 +4,8 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "HTTP/SSE runtime sidecar for Zagens (lib + deepseek-runtime binary)"
-default-run = "deepseek-runtime"
+description = "HTTP/SSE runtime sidecar for Zagens (lib + zagens-runtime binary)"
+default-run = "zagens-runtime"
 
 [features]
 default = ["json", "toml"]
@@ -18,7 +18,7 @@ name = "deepseek_runtime"
 path = "src/lib.rs"
 
 [[bin]]
-name = "deepseek-runtime"
+name = "zagens-runtime"
 path = "src/main.rs"
 
 [[bin]]

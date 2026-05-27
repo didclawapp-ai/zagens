@@ -12,15 +12,15 @@ use crate::config::Config;
 
 pub use http::{run_http_server, RuntimeApiOptions};
 
-/// CLI for the `deepseek-runtime` sidecar binary (HTTP only — no ratatui / full CLI).
+/// CLI for the `zagens-runtime` sidecar binary (HTTP only — no ratatui / full CLI).
 #[derive(Parser, Debug)]
 #[command(
-    name = "deepseek-runtime",
+    name = "zagens-runtime",
     about = "DeepSeek runtime HTTP/SSE sidecar (Zagens desktop; no TUI)",
     version
 )]
 pub struct RuntimeServeCli {
-    /// Config file path (default: ~/.deepseek/config.toml)
+    /// Config file path (default: ~/.zagens/config.toml)
     #[arg(short, long)]
     pub config: Option<PathBuf>,
     /// Config profile name
@@ -107,6 +107,8 @@ pub async fn run(cli: RuntimeServeCli) -> Result<()> {
             cli.host,
         );
     }
+
+    let _ = crate::config::ensure_config_file_exists(cli.config.clone());
 
     let config = load_config(&cli)?;
     let workspace = resolve_workspace(&cli);

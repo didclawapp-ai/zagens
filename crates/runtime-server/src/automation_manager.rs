@@ -2,7 +2,7 @@
 //!
 //! Automations are local-first recurring jobs that enqueue standard background
 //! tasks. This module stores automation definitions and run history under
-//! `~/.deepseek/automations` (or `DEEPSEEK_AUTOMATIONS_DIR` override).
+//! `~/.zagens/automations` (or `ZAGENS_AUTOMATIONS_DIR` / `DEEPSEEK_AUTOMATIONS_DIR`).
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -788,15 +788,15 @@ fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<()> {
 }
 
 pub fn default_automations_dir() -> PathBuf {
-    if let Ok(path) = std::env::var("DEEPSEEK_AUTOMATIONS_DIR") {
-        let trimmed = path.trim();
-        if !trimmed.is_empty() {
-            return PathBuf::from(trimmed);
+    for key in ["ZAGENS_AUTOMATIONS_DIR", "DEEPSEEK_AUTOMATIONS_DIR"] {
+        if let Ok(path) = std::env::var(key) {
+            let trimmed = path.trim();
+            if !trimmed.is_empty() {
+                return PathBuf::from(trimmed);
+            }
         }
     }
-    dirs::home_dir()
-        .map(|home| home.join(".deepseek").join("automations"))
-        .unwrap_or_else(|| PathBuf::from(".deepseek").join("automations"))
+    deepseek_config::user_data_path_or_relative("automations")
 }
 
 pub type SharedAutomationManager = Arc<Mutex<AutomationManager>>;

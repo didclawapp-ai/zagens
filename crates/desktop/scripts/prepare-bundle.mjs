@@ -1,5 +1,5 @@
 /**
- * Runs before `tauri build`: Vite production build + release `deepseek-runtime` +
+ * Runs before `tauri build`: Vite production build + release `zagens-runtime` +
  * copy into `binaries/` with the rustc host triple (Tauri `externalBin` layout).
  */
 import { execSync } from 'node:child_process';
@@ -25,7 +25,7 @@ function rustcHostTriple() {
 console.log('[bundle] Building web-ui…');
 execSync('npm run build', { cwd: webUi, stdio: 'inherit' });
 
-console.log('[bundle] Building deepseek-runtime (release)…');
+console.log('[bundle] Building zagens-runtime (release)…');
 execSync('cargo build --release -p deepseek-runtime-server', {
   cwd: workspaceRoot,
   stdio: 'inherit',
@@ -33,8 +33,8 @@ execSync('cargo build --release -p deepseek-runtime-server', {
 
 const triple = rustcHostTriple();
 const ext = process.platform === 'win32' ? '.exe' : '';
-const src = join(workspaceRoot, 'target', 'release', `deepseek-runtime${ext}`);
-const dest = join(binariesDir, `deepseek-runtime-${triple}${ext}`);
+const src = join(workspaceRoot, 'target', 'release', `zagens-runtime${ext}`);
+const dest = join(binariesDir, `zagens-runtime-${triple}${ext}`);
 
 mkdirSync(binariesDir, { recursive: true });
 if (!existsSync(src)) {

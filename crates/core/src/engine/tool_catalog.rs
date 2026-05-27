@@ -70,6 +70,7 @@ pub fn should_default_defer_tool(name: &str, mode: TurnLoopMode) -> bool {
             | "github_issue_context"
             | "github_pr_context"
             | "scratchpad_status"
+            | "scratchpad_init"
             | "scratchpad_append"
             | "scratchpad_set_area"
             | "scratchpad_list_notes"

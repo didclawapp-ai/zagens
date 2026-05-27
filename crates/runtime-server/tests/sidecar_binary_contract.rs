@@ -66,7 +66,7 @@ async fn sidecar_binary_contract_full_lifecycle() -> Result<()> {
     let config_path = root.join("config.toml");
     write_test_config(&config_path)?;
 
-    let bin = env!("CARGO_BIN_EXE_deepseek-runtime");
+    let bin = env!("CARGO_BIN_EXE_zagens-runtime");
 
     let mut child = Command::new(bin)
         .args([

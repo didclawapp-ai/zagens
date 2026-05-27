@@ -7,6 +7,9 @@ pub mod coverage;
 mod schema;
 mod summary;
 pub mod ui_status;
+mod init;
+
+pub use init::{default_init_areas, parse_init_areas, resolve_run_id_for_init};
 
 pub use schema::{
     AreaStatus, Inventory, NoteLine, is_high_severity, is_open_finding,
@@ -104,7 +107,7 @@ pub fn try_open_store(
     ScratchpadStore::open(&ctx, &resolved).ok()
 }
 
-fn run_dir(ctx: &ToolContext, run_id: &str) -> Result<PathBuf, ToolError> {
+pub(crate) fn run_dir(ctx: &ToolContext, run_id: &str) -> Result<PathBuf, ToolError> {
     validate_run_id(run_id)?;
     let rel = format!(".deepseek/scratchpad/{run_id}");
     ctx.resolve_path(&rel)
@@ -512,7 +515,7 @@ impl ScratchpadStore {
     }
 }
 
-fn atomic_write_json(path: &Path, value: &impl serde::Serialize) -> Result<(), ToolError> {
+pub(crate) fn atomic_write_json(path: &Path, value: &impl serde::Serialize) -> Result<(), ToolError> {
     let payload = serde_json::to_string_pretty(value).map_err(|e| {
         ToolError::execution_failed(format!("failed to serialize JSON: {e}"))
     })?;

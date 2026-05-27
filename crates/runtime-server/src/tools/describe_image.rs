@@ -175,8 +175,8 @@ impl ToolSpec for DescribeImageTool {
 
 /// Read `[vision]` section from the TUI config file (if present).
 fn load_vision_from_config() -> (Option<String>, Option<String>, Option<String>) {
-    let path = dirs::home_dir()
-        .map(|h| h.join(".deepseek").join("config.toml"))
+    let path = deepseek_config::default_config_path()
+        .ok()
         .filter(|p| p.exists());
     let path = match path {
         Some(p) => p,

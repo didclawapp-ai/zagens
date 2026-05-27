@@ -732,6 +732,20 @@ export async function fetchThreadScratchpadStatus(
   return raw;
 }
 
+export async function initThreadScratchpad(
+  threadId: string,
+  body?: {
+    run_id?: string;
+    scope?: string;
+    areas?: { id: string; path: string; notes?: string }[];
+  },
+): Promise<ScratchpadStatus> {
+  return postJson<ScratchpadStatus>(
+    `/v1/threads/${encodeURIComponent(threadId)}/scratchpad/init`,
+    body ?? {},
+  );
+}
+
 /** Turn row included in full GET /v1/threads/{id} (ThreadDetail). */
 export interface ThreadTurnRecord {
   id: string;

@@ -172,6 +172,58 @@ impl RuntimeThreadManager {
         Ok(out)
     }
 
+    /// Bootstrap audit scratchpad for a thread (REST / Zagens Audit panel).
+    pub fn init_thread_scratchpad(
+        &self,
+        thread_id: &str,
+        run_id: Option<&str>,
+        scope: Option<&str>,
+        areas_json: Option<&[Value]>,
+    ) -> Result<Value> {
+        let mut thread = self.load_thread_sync(thread_id)?;
+        let mut ctx = crate::tools::spec::ToolContext::new(&thread.workspace);
+        ctx.runtime.wire.active_thread_id = Some(thread.id.clone());
+        ctx.runtime.wire.active_task_id = thread.task_id.clone();
+
+        let resolved_run = if let Some(rid) = run_id.map(str::trim).filter(|s| !s.is_empty()) {
+            crate::scratchpad::validate_run_id(rid)
+                .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+            rid.to_string()
+        } else {
+            thread
+                .scratchpad_run_id
+                .clone()
+                .unwrap_or_else(|| thread.id.clone())
+        };
+
+        let areas = match areas_json {
+            Some(raw) if !raw.is_empty() => crate::scratchpad::parse_init_areas(raw)
+                .map_err(|e| anyhow::anyhow!(e.to_string()))?,
+            _ => crate::scratchpad::default_init_areas(),
+        };
+
+        let store = crate::scratchpad::ScratchpadStore::init(&ctx, &resolved_run, areas, scope)
+            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+
+        thread.scratchpad_run_id = Some(resolved_run);
+        thread.updated_at = Utc::now();
+        self.store.save_thread(&thread)?;
+
+        if let Ok(mut cache) = self.scratchpad_status_cache.lock() {
+            cache.remove(thread_id);
+        }
+
+        let mut status = store
+            .build_status()
+            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+        let checklist_json = self.get_thread_checklist(thread_id);
+        crate::scratchpad::ui_status::enrich_status_for_thread_ui(
+            &mut status,
+            checklist_json.as_deref(),
+        );
+        Ok(status)
+    }
+
     /// Return the cached checklist snapshot for a thread (for Zagens WebView panel).
     pub fn get_thread_checklist(&self, thread_id: &str) -> Option<String> {
         if let Ok(cache) = self.checklist_cache.lock() {

@@ -4,7 +4,10 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 
 use crate::scratchpad::AreaStatus;
-use crate::scratchpad::{ScratchpadStore, display_run_path, resolve_run_id};
+use crate::scratchpad::{
+    ScratchpadStore, default_init_areas, display_run_path, parse_init_areas, resolve_run_id,
+    resolve_run_id_for_init,
+};
 
 fn persist_scratchpad_run(ctx: &ToolContext, run_id: &str) {
     if let Ok(mut guard) = ctx.runtime.wire.scratchpad_run_id.lock() {
@@ -24,6 +27,87 @@ fn run_id_property() -> Value {
         "type": "string",
         "description": "Scratchpad run directory name. Defaults to active thread_id or task_id when that directory exists."
     })
+}
+
+fn run_id_property_for_init() -> Value {
+    json!({
+        "type": "string",
+        "description": "Scratchpad run directory name. Defaults to active thread_id or task_id (creates the directory if missing)."
+    })
+}
+
+#[derive(Debug, Default)]
+pub struct ScratchpadInitTool;
+
+#[async_trait]
+impl ToolSpec for ScratchpadInitTool {
+    fn name(&self) -> &'static str {
+        "scratchpad_init"
+    }
+
+    fn description(&self) -> &'static str {
+        "Bootstrap an audit scratchpad run under .deepseek/scratchpad/{run_id}/ (inventory.json + notes.jsonl). Idempotent when inventory already exists."
+    }
+
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "run_id": run_id_property_for_init(),
+                "scope": {
+                    "type": "string",
+                    "description": "Optional human-readable audit scope stored in inventory.json"
+                },
+                "areas": {
+                    "type": "array",
+                    "description": "Inventory rows (default: one pending area for workspace root)",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": { "type": "string" },
+                            "path": { "type": "string" },
+                            "notes": { "type": "string" }
+                        },
+                        "required": ["id", "path"],
+                        "additionalProperties": false
+                    }
+                }
+            },
+            "additionalProperties": false
+        })
+    }
+
+    fn capabilities(&self) -> Vec<ToolCapability> {
+        vec![ToolCapability::WritesFiles]
+    }
+
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Auto
+    }
+
+    async fn execute(
+        &self,
+        input: Value,
+        context: &ToolContext,
+    ) -> Result<ToolResult, ToolError> {
+        let run_id = resolve_run_id_for_init(context, optional_str(&input, "run_id"))?;
+        let scope = optional_str(&input, "scope");
+        let areas = match input.get("areas").and_then(|v| v.as_array()) {
+            Some(raw) => parse_init_areas(raw)?,
+            None => default_init_areas(),
+        };
+        let store = ScratchpadStore::init(context, &run_id, areas, scope)?;
+        persist_scratchpad_run(context, &run_id);
+        let status = store.build_status()?;
+        Ok(ToolResult::success(
+            serde_json::to_string_pretty(&json!({
+                "run_id": run_id,
+                "path": display_run_path(&run_id),
+                "status": status,
+            }))
+            .unwrap_or_default(),
+        ))
+    }
 }
 
 #[derive(Debug, Default)]

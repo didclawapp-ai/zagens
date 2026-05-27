@@ -60,13 +60,13 @@ pub const SPILLOVER_THRESHOLD_BYTES: usize = 100 * 1024; // 100 KiB
 /// bound. Mirrors the workspace-snapshot 7-day default.
 pub const SPILLOVER_MAX_AGE: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 
-/// Resolve `~/.deepseek/tool_outputs/`. Returns `None` if the home
+/// Resolve `~/.zagens/tool_outputs/`. Returns `None` if the home
 /// directory can't be determined (CI containers occasionally hit
 /// this). Callers should treat `None` as "spillover unavailable" and
 /// degrade gracefully rather than fail the tool call.
 #[must_use]
 pub fn spillover_root() -> Option<PathBuf> {
-    Some(dirs::home_dir()?.join(".deepseek").join(SPILLOVER_DIR_NAME))
+    deepseek_config::user_data_path(SPILLOVER_DIR_NAME).ok()
 }
 
 /// Resolve the spillover-file path for a tool call id. Sanitises the
@@ -345,8 +345,8 @@ mod tests {
                 .filter_map(|c| c.as_os_str().to_str())
                 .collect();
             assert!(
-                components.contains(&".deepseek") && components.contains(&"tool_outputs"),
-                "spillover path missing expected `.deepseek/tool_outputs/...` segments: {path:?}"
+                components.contains(&".zagens") && components.contains(&"tool_outputs"),
+                "spillover path missing expected `.zagens/tool_outputs/...` segments: {path:?}"
             );
         });
     }

@@ -13,6 +13,13 @@ use serde::{Deserialize, Serialize};
 #[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 
+mod paths;
+pub use paths::{
+    LEGACY_USER_DATA_DIR_NAME, USER_DATA_DIR_NAME, default_config_path, legacy_config_path,
+    legacy_user_data_root, migrate_legacy_user_data_if_needed, tilde_user_data_path,
+    user_data_path, user_data_path_or_relative, user_data_root,
+};
+
 pub const CONFIG_FILE_NAME: &str = "config.toml";
 const DEFAULT_DEEPSEEK_MODEL: &str = "deepseek-v4-pro";
 const DEFAULT_NVIDIA_NIM_MODEL: &str = "deepseek-ai/deepseek-v4-pro";
@@ -264,6 +271,96 @@ pub struct ConfigToml {
     pub compaction: Option<CompactionToml>,
     #[serde(flatten)]
     pub extras: BTreeMap<String, toml::Value>,
+}
+
+/// Header prepended to the first-run `config.toml` (not part of the serde schema).
+const FIRST_RUN_CONFIG_HEADER: &str = r#"# Zagens runtime configuration (first launch)
+# API keys: Zagens → Settings → API Key (OS keychain; not stored in this file).
+# Full option reference: config.example.toml in the repository.
+"#;
+
+impl ConfigToml {
+    /// Sensible defaults for a new `~/.zagens/config.toml`.
+    ///
+    /// Intentionally smaller than `config.example.toml`: core provider + security,
+    /// feature flags, common paths, and Zagens Settings defaults. Omits secrets,
+    /// alternate providers, `[tui]`, profiles, network policy, and advanced tables.
+    #[must_use]
+    pub fn first_run_defaults() -> Self {
+        let mut extras = BTreeMap::new();
+        extras.insert(
+            "skills_dir".to_string(),
+            toml::Value::String(tilde_user_data_path("skills")),
+        );
+        extras.insert(
+            "mcp_config_path".to_string(),
+            toml::Value::String(tilde_user_data_path("mcp.json")),
+        );
+        extras.insert(
+            "notes_path".to_string(),
+            toml::Value::String(tilde_user_data_path("notes.txt")),
+        );
+        extras.insert(
+            "memory_path".to_string(),
+            toml::Value::String(tilde_user_data_path("memory.md")),
+        );
+
+        Self {
+            base_url: Some(DEFAULT_DEEPSEEK_BASE_URL.to_string()),
+            default_text_model: Some(DEFAULT_DEEPSEEK_MODEL.to_string()),
+            provider: ProviderKind::Deepseek,
+            reasoning_effort: Some("max".to_string()),
+            cost_currency: Some("usd".to_string()),
+            allow_shell: Some(false),
+            approval_policy: Some("on-request".to_string()),
+            sandbox_mode: Some("workspace-write".to_string()),
+            max_subagents: Some(10),
+            providers: ProvidersToml {
+                deepseek: ProviderConfigToml {
+                    base_url: Some(DEFAULT_DEEPSEEK_BASE_URL.to_string()),
+                    model: Some(DEFAULT_DEEPSEEK_MODEL.to_string()),
+                    ..ProviderConfigToml::default()
+                },
+                ..ProvidersToml::default()
+            },
+            features: Some(FeaturesToml {
+                shell_tool: Some(true),
+                subagents: Some(true),
+                web_search: Some(true),
+                apply_patch: Some(true),
+                mcp: Some(true),
+                exec_policy: Some(true),
+                ..FeaturesToml::default()
+            }),
+            subagents: Some(SubagentsConfigToml {
+                step_timeout_secs: Some(120),
+                ..SubagentsConfigToml::default()
+            }),
+            memory: Some(MemoryToml {
+                enabled: Some(false),
+            }),
+            topic_memory: Some(TopicMemoryToml {
+                enabled: Some(false),
+                ..TopicMemoryToml::default()
+            }),
+            notifications: Some(NotificationsToml {
+                method: Some("auto".to_string()),
+                ..NotificationsToml::default()
+            }),
+            snapshots: Some(SnapshotsToml::default()),
+            lsp: Some(LspConfigToml {
+                enabled: Some(true),
+                ..LspConfigToml::default()
+            }),
+            session: Some(SessionToml::default()),
+            compaction: Some(CompactionToml {
+                auto_compact: Some(false),
+                ..CompactionToml::default()
+            }),
+            extras,
+            ..ConfigToml::default()
+        }
+    }
 }
 
 /// On-disk schema for the `[skills]` table (#140). See `config.example.toml`
@@ -1345,13 +1442,39 @@ impl ConfigStore {
         })
     }
 
+    /// Create `~/.zagens/config.toml` with [`ConfigToml::first_run_defaults`] when missing.
+    ///
+    /// When `~/.deepseek/config.toml` exists and Zagens has no config yet, copies the legacy
+    /// config and optional assets (not session/task databases).
+    pub fn ensure_default_on_disk(path: Option<PathBuf>) -> Result<Option<PathBuf>> {
+        let path = resolve_config_path(path)?;
+        if path.exists() {
+            return Ok(None);
+        }
+        if migrate_legacy_user_data_if_needed(&path)? {
+            return Ok(Some(path));
+        }
+        let store = Self {
+            path: path.clone(),
+            config: ConfigToml::first_run_defaults(),
+        };
+        let body = toml::to_string_pretty(&store.config).context("failed to serialize config")?;
+        let body = format!("{FIRST_RUN_CONFIG_HEADER}\n{body}");
+        store.write_raw(&body)?;
+        Ok(Some(path))
+    }
+
     pub fn save(&self) -> Result<()> {
+        let body = toml::to_string_pretty(&self.config).context("failed to serialize config")?;
+        self.write_raw(&body)
+    }
+
+    fn write_raw(&self, body: &str) -> Result<()> {
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent).with_context(|| {
                 format!("failed to create config directory {}", parent.display())
             })?;
         }
-        let body = toml::to_string_pretty(&self.config).context("failed to serialize config")?;
         #[cfg(unix)]
         {
             let mut file = fs::OpenOptions::new()
@@ -1413,18 +1536,15 @@ pub fn resolve_config_path(explicit: Option<PathBuf>) -> Result<PathBuf> {
     if let Some(path) = explicit {
         return Ok(path);
     }
-    if let Ok(path) = std::env::var("DEEPSEEK_CONFIG_PATH") {
+    if let Ok(path) = std::env::var("ZAGENS_CONFIG_PATH")
+        .or_else(|_| std::env::var("DEEPSEEK_CONFIG_PATH"))
+    {
         let trimmed = path.trim();
         if !trimmed.is_empty() {
             return Ok(PathBuf::from(trimmed));
         }
     }
     default_config_path()
-}
-
-pub fn default_config_path() -> Result<PathBuf> {
-    let home = dirs::home_dir().context("failed to resolve home directory for config path")?;
-    Ok(home.join(".deepseek").join(CONFIG_FILE_NAME))
 }
 
 fn parse_bool(raw: &str) -> Result<bool> {
@@ -2416,5 +2536,35 @@ mod tests {
         let resolved = ConfigToml::default().resolve_runtime_options_with_secrets(&cli, &secrets);
         assert_eq!(resolved.api_key.as_deref(), Some("cli-key"));
         assert_eq!(resolved.api_key_source, Some(RuntimeApiKeySource::Cli));
+    }
+
+    #[test]
+    fn ensure_default_on_disk_creates_first_run_template() -> Result<()> {
+        let _lock = env_lock();
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let temp_root = std::env::temp_dir().join(format!(
+            "deepseek-config-first-run-{}-{}",
+            std::process::id(),
+            nanos
+        ));
+        fs::create_dir_all(&temp_root)?;
+        let config_path = temp_root.join(USER_DATA_DIR_NAME).join(CONFIG_FILE_NAME);
+
+        let created = ConfigStore::ensure_default_on_disk(Some(config_path.clone()))?
+            .expect("should create config");
+        assert_eq!(created, config_path);
+        let content = fs::read_to_string(&config_path)?;
+        assert!(content.contains("first launch"));
+        assert!(content.contains("default_text_model = \"deepseek-v4-pro\""));
+        assert!(content.contains("reasoning_effort = \"max\""));
+        assert!(content.contains("skills_dir = \"~/.zagens/skills\""));
+        assert!(!content.contains("api_key ="));
+
+        assert!(ConfigStore::ensure_default_on_disk(Some(config_path))?.is_none());
+        let _ = fs::remove_dir_all(temp_root);
+        Ok(())
     }
 }

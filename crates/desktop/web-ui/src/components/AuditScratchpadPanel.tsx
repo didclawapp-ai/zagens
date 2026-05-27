@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   fetchThreadScratchpadStatus,
+  initThreadScratchpad,
   type ScratchpadInventoryArea,
   type ScratchpadStatus,
 } from '../api/client';
@@ -10,9 +11,12 @@ import {
   SCRATCHPAD_STATUS_POLL_STREAMING_MS,
 } from '../lib/runtimePoll';
 import { PANEL_SCRATCHPAD_EVENT } from '../lib/panelChannel';
+import { toast } from '../lib/toast';
 
 export interface AuditScratchpadPanelProps {
   threadId: string;
+  /** Composer workspace root — used for empty-state path hint. */
+  workspaceRoot?: string;
   /** Poll faster while the model is streaming or this panel is visible. */
   pollFast?: boolean;
   onOpenWorkspacePath?: (relPath: string) => void;
@@ -33,8 +37,13 @@ function areaStatusClass(status: string): string {
   return AREA_STATUS_CLASS[status] ?? AREA_STATUS_CLASS.pending;
 }
 
+function scratchpadRelPath(threadId: string): string {
+  return `.deepseek/scratchpad/${threadId}/`;
+}
+
 export default function AuditScratchpadPanel({
   threadId,
+  workspaceRoot = '',
   pollFast = false,
   onOpenWorkspacePath,
   subagentActiveCount = 0,
@@ -44,9 +53,16 @@ export default function AuditScratchpadPanel({
   const { t } = useT();
   const [status, setStatus] = useState<ScratchpadStatus | null>(null);
   const [inventoryOpen, setInventoryOpen] = useState(true);
+  const [initBusy, setInitBusy] = useState(false);
   const autoDetectThreadRef = useRef<string | null>(null);
   const onDetectedRef = useRef(onDetected);
   onDetectedRef.current = onDetected;
+
+  const pathHint = useMemo(() => {
+    const rel = scratchpadRelPath(threadId);
+    const ws = workspaceRoot.trim();
+    return ws ? `${ws.replace(/[/\\]+$/, '')}/${rel}` : rel;
+  }, [threadId, workspaceRoot]);
 
   useEffect(() => {
     autoDetectThreadRef.current = null;
@@ -98,6 +114,23 @@ export default function AuditScratchpadPanel({
     };
   }, [threadId, pollFast]);
 
+  const handleInitScratchpad = useCallback(async () => {
+    if (!threadId || initBusy) return;
+    setInitBusy(true);
+    try {
+      const data = await initThreadScratchpad(threadId);
+      setStatus(data);
+      if (autoDetectThreadRef.current !== threadId) {
+        autoDetectThreadRef.current = threadId;
+        onDetectedRef.current?.();
+      }
+    } catch (e) {
+      toast.error(t('auditScratchpad.initFailed', { message: (e as Error).message }));
+    } finally {
+      setInitBusy(false);
+    }
+  }, [initBusy, threadId, t]);
+
   const metrics = useMemo(() => {
     if (!status?.run_id) {
       return null;
@@ -140,7 +173,21 @@ export default function AuditScratchpadPanel({
 
   if (!status?.run_id || !metrics) {
     return (
-      <div className="p-4 text-sm text-t-text-muted leading-relaxed">{t('auditScratchpad.noRun')}</div>
+      <div className="p-4 space-y-3 text-sm text-t-text-muted leading-relaxed">
+        <p className="font-medium text-t-text">{t('auditScratchpad.noRun')}</p>
+        <p>{t('auditScratchpad.noRunDetail')}</p>
+        <p className="font-mono text-[11px] text-t-text-secondary break-all">
+          {t('auditScratchpad.noRunPath', { path: pathHint })}
+        </p>
+        <button
+          type="button"
+          className="rounded-md border border-card-border bg-card px-3 py-1.5 text-xs font-medium text-t-text transition-colors hover:bg-hover disabled:opacity-50"
+          disabled={initBusy}
+          onClick={() => void handleInitScratchpad()}
+        >
+          {initBusy ? t('auditScratchpad.initBusy') : t('auditScratchpad.initScratchpad')}
+        </button>
+      </div>
     );
   }
 

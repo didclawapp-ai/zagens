@@ -1,11 +1,15 @@
 # ╔══════════════════════════════════════════════════════════════════════════════╗
 # ║                    Zagens — Agent Runtime Configuration                      ║
 # ║                                                                              ║
-# ║  Example for ~/.deepseek/config.toml (edited in Zagens → Settings).           ║
+# ║  Example for ~/.zagens/config.toml (edited in Zagens → Settings).            ║
 # ║  Not affiliated with or endorsed by DeepSeek Inc.                             ║
 # ╚══════════════════════════════════════════════════════════════════════════════╝
 
 # Loaded by the embedded runtime sidecar. See README.md § Configuration.
+#
+# First Zagens launch writes a smaller default config.toml under ~/.zagens/ (core provider,
+# security, features, paths). Copy sections from this file to extend it; see ConfigToml::first_run_defaults.
+# If ~/.deepseek/ exists from deepseek-tui, only config + skills/MCP are migrated — not session DBs.
 
 # ─────────────────────────────────────────────────────────────────────────────────
 # Active provider + DeepSeek defaults
@@ -59,11 +63,11 @@ cost_currency = "usd" # usd | cny
 # ─────────────────────────────────────────────────────────────────────────────────
 # Paths
 # ─────────────────────────────────────────────────────────────────────────────────
-skills_dir = "~/.deepseek/skills"
-mcp_config_path = "~/.deepseek/mcp.json"
-notes_path = "~/.deepseek/notes.txt"
+skills_dir = "~/.zagens/skills"
+mcp_config_path = "~/.zagens/mcp.json"
+notes_path = "~/.zagens/notes.txt"
 
-memory_path = "~/.deepseek/memory.md"
+memory_path = "~/.zagens/memory.md"
 
 # instructions = ["./AGENTS.md", "~/.deepseek/global.md"]
 #

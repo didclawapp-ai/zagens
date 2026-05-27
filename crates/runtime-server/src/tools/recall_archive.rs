@@ -156,17 +156,14 @@ struct ArchivedDoc {
 }
 
 fn archive_root(session_id: &str) -> Result<PathBuf, std::io::Error> {
-    let home = dirs::home_dir().ok_or_else(|| {
-        std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "Could not resolve home directory for cycle archive root",
-        )
-    })?;
-    Ok(home
-        .join(".deepseek")
-        .join("sessions")
-        .join(session_id)
-        .join("cycles"))
+    deepseek_config::user_data_path("sessions")
+        .map(|p| p.join(session_id).join("cycles"))
+        .map_err(|e| {
+            std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("Could not resolve cycle archive root: {e}"),
+            )
+        })
 }
 
 /// Enumerate all archive files for a session, sorted by cycle number ascending.

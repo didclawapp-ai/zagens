@@ -1,18 +1,23 @@
 import { useCallback, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { useT } from '../i18n';
+import { confirmDialog } from '../lib/confirmDialog';
 
 /** Defaults match `describe_image` / `DEFAULT_VISION_MODEL` (`deepseek-config`). */
 const PLACEHOLDER_VISION_BASE = 'https://api.siliconflow.cn/v1';
 const PLACEHOLDER_VISION_MODEL = 'Qwen/Qwen3-VL-32B-Instruct';
 
 interface Props {
+  mainKeyConfigured: boolean;
   onSaved: () => void;
   className?: string;
 }
 
-export default function ApiKeyForm({ onSaved, className = '' }: Props) {
+export default function ApiKeyForm({ mainKeyConfigured, onSaved, className = '' }: Props) {
+  const { t } = useT();
   const [key, setKey] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [saveBusy, setSaveBusy] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [visionKey, setVisionKey] = useState('');
@@ -48,7 +53,7 @@ export default function ApiKeyForm({ onSaved, className = '' }: Props) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setBusy(true);
+    setSaveBusy(true);
     try {
       await invoke('save_deepseek_api_key', { key: key.trim() });
       setKey('');
@@ -56,7 +61,22 @@ export default function ApiKeyForm({ onSaved, className = '' }: Props) {
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setBusy(false);
+      setSaveBusy(false);
+    }
+  };
+
+  const handleClearMainKey = async () => {
+    if (!(await confirmDialog(t('apiKey.deleteKeyConfirm')))) return;
+    setError(null);
+    setDeleteBusy(true);
+    try {
+      await invoke('clear_deepseek_api_key');
+      setKey('');
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDeleteBusy(false);
     }
   };
 
@@ -97,47 +117,48 @@ export default function ApiKeyForm({ onSaved, className = '' }: Props) {
 
   return (
     <div className={className}>
-      <p className="text-xs text-t-text-muted leading-relaxed">
-        将写入用户目录下的{' '}
-        <code className="text-t-text-secondary bg-canvas-alt px-1 py-0.5 rounded text-[11px] font-mono">
-          .deepseek/config.toml
-        </code>
-        （与 CLI/TUI 共用）。保存后运行时侧载会重启以生效。
-      </p>
+      <p className="text-xs text-t-text-muted leading-relaxed">{t('apiKey.writeTo')}</p>
       <form onSubmit={(e) => void handleSubmit(e)} className="mt-4 space-y-3">
-        <p className="text-[11px] font-medium text-t-text-secondary">DeepSeek 主模型</p>
+        <p className="text-[11px] font-medium text-t-text-secondary">{t('apiKey.deepseekModel')}</p>
+        {mainKeyConfigured && (
+          <p className="text-xs text-emerald-400/90">{t('apiKey.deepseekConfigured')}</p>
+        )}
         <input
           type="password"
           autoComplete="off"
           value={key}
           onChange={(e) => setKey(e.target.value)}
           placeholder="sk-…"
-          disabled={busy}
+          disabled={saveBusy || deleteBusy}
           className="w-full rounded-lg bg-input-bg border border-input-border px-3 py-2 text-sm text-t-text placeholder-t-text-muted focus:border-accent focus:outline-none disabled:opacity-50 transition-colors"
         />
         {error && <p className="text-xs text-error-text">{error}</p>}
-        <button
-          type="submit"
-          disabled={busy || !key.trim()}
-          className="w-full px-4 py-2 rounded-lg bg-accent text-accent-text hover:bg-accent-hover disabled:opacity-50 text-sm font-medium transition-colors"
-        >
-          {busy ? '保存中…' : '保存'}
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="submit"
+            disabled={saveBusy || deleteBusy || !key.trim()}
+            className="flex-1 px-4 py-2 rounded-lg bg-accent text-accent-text hover:bg-accent-hover disabled:opacity-50 text-sm font-medium transition-colors"
+          >
+            {saveBusy ? t('apiKey.saving') : t('apiKey.save')}
+          </button>
+          <button
+            type="button"
+            disabled={saveBusy || deleteBusy || !mainKeyConfigured}
+            onClick={() => void handleClearMainKey()}
+            className="px-3 py-2 rounded-lg border border-input-border text-sm text-t-text-secondary hover:bg-canvas-alt disabled:opacity-40 transition-colors shrink-0"
+          >
+            {deleteBusy ? t('apiKey.deleting') : t('apiKey.deleteKey')}
+          </button>
+        </div>
       </form>
 
       <hr className="my-5 border-border/60" />
 
       <div className="space-y-2">
-        <p className="text-[11px] font-medium text-t-text-secondary">视觉桥接（describe_image 工具）</p>
-        <p className="text-xs text-t-text-muted leading-relaxed">
-          对应配置表{' '}
-          <code className="text-t-text-secondary bg-canvas-alt px-1 py-0.5 rounded text-[11px] font-mono">
-            [vision]
-          </code>
-          。留空端点/模型时使用运行时默认（硅基流动：`Qwen/Qwen3-VL-32B-Instruct`；仍可选用 `deepseek-ai/DeepSeek-OCR` 等）。密钥保存后不会回显；若已保存过密钥，可只改端点/模型（不填密钥则保留原密钥）。
-        </p>
+        <p className="text-[11px] font-medium text-t-text-secondary">{t('apiKey.visionBridge')}</p>
+        <p className="text-xs text-t-text-muted leading-relaxed">{t('apiKey.visionConfig')}</p>
         {visionConfigured && (
-          <p className="text-xs text-emerald-400/90">已检测到已保存的视觉桥接 API Key。</p>
+          <p className="text-xs text-emerald-400/90">{t('apiKey.visionConfigured')}</p>
         )}
       </div>
       <form onSubmit={(e) => void handleVisionSubmit(e)} className="mt-3 space-y-3">
@@ -147,7 +168,7 @@ export default function ApiKeyForm({ onSaved, className = '' }: Props) {
           value={visionKey}
           onChange={(e) => setVisionKey(e.target.value)}
           placeholder={
-            visionConfigured ? '留空则保留已保存的密钥；输入以覆盖' : '视觉服务商 API Key（如 SiliconFlow）'
+            visionConfigured ? t('apiKey.visionKeyPlaceholderKeep') : t('apiKey.visionKeyPlaceholder')
           }
           disabled={visionBusy}
           className="w-full rounded-lg bg-input-bg border border-input-border px-3 py-2 text-sm text-t-text placeholder-t-text-muted focus:border-accent focus:outline-none disabled:opacity-50 transition-colors"
@@ -177,12 +198,10 @@ export default function ApiKeyForm({ onSaved, className = '' }: Props) {
             disabled={visionBusy || (!visionConfigured && !visionKey.trim())}
             className="flex-1 px-4 py-2 rounded-lg bg-accent text-accent-text hover:bg-accent-hover disabled:opacity-50 text-sm font-medium transition-colors"
             title={
-              visionConfigured
-                ? '保存端点/模型；如需更换密钥请填写新密钥'
-                : '首次请填写视觉 API Key（如 SiliconFlow）'
+              visionConfigured ? t('apiKey.saveEndpointModel') : t('apiKey.fillVisionKey')
             }
           >
-            {visionBusy ? '保存中…' : '保存视觉桥接'}
+            {visionBusy ? t('apiKey.saving') : t('apiKey.saveVision')}
           </button>
           <button
             type="button"
@@ -190,7 +209,7 @@ export default function ApiKeyForm({ onSaved, className = '' }: Props) {
             onClick={() => void handleClearVision()}
             className="px-3 py-2 rounded-lg border border-input-border text-sm text-t-text-secondary hover:bg-canvas-alt disabled:opacity-40 transition-colors"
           >
-            清除
+            {t('apiKey.clear')}
           </button>
         </div>
       </form>

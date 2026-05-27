@@ -586,10 +586,11 @@ impl ToolRegistryBuilder {
     #[must_use]
     pub fn with_scratchpad_tools(self) -> Self {
         use super::scratchpad::{
-            ScratchpadAppendTool, ScratchpadListNotesTool, ScratchpadSetAreaTool,
-            ScratchpadStatusTool,
+            ScratchpadAppendTool, ScratchpadInitTool, ScratchpadListNotesTool,
+            ScratchpadSetAreaTool, ScratchpadStatusTool,
         };
-        self.with_tool(Arc::new(ScratchpadStatusTool))
+        self.with_tool(Arc::new(ScratchpadInitTool))
+            .with_tool(Arc::new(ScratchpadStatusTool))
             .with_tool(Arc::new(ScratchpadAppendTool))
             .with_tool(Arc::new(ScratchpadListNotesTool))
             .with_tool(Arc::new(ScratchpadSetAreaTool))

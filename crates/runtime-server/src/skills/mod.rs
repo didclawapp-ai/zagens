@@ -33,7 +33,7 @@ const MAX_AVAILABLE_SKILLS_CHARS: usize = 12_000;
 pub fn default_skills_dir() -> PathBuf {
     dirs::home_dir().map_or_else(
         || PathBuf::from("/tmp/deepseek/skills"),
-        |p| p.join(".deepseek").join("skills"),
+        |_| deepseek_config::user_data_path_or_relative("skills"),
     )
 }
 

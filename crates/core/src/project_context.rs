@@ -300,13 +300,19 @@ fn is_workspace_trusted_from_config(workspace: &Path) -> bool {
 }
 
 fn default_config_path() -> Option<PathBuf> {
+    if let Ok(path) = std::env::var("ZAGENS_CONFIG_PATH") {
+        let trimmed = path.trim();
+        if !trimmed.is_empty() {
+            return Some(expand_path(trimmed));
+        }
+    }
     if let Ok(path) = std::env::var("DEEPSEEK_CONFIG_PATH") {
         let trimmed = path.trim();
         if !trimmed.is_empty() {
             return Some(expand_path(trimmed));
         }
     }
-    dirs::home_dir().map(|home| home.join(".deepseek").join("config.toml"))
+    deepseek_config::default_config_path().ok()
 }
 
 fn expand_path(path: &str) -> PathBuf {

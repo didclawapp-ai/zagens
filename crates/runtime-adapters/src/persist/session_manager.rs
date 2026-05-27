@@ -39,7 +39,12 @@ fn max_session_file_size() -> u64 {
     }
     // 2. TOML [session] max_file_mb via Config struct
     if let Ok(config_str) = std::fs::read_to_string(
-        dirs::home_dir().unwrap_or_default().join(".deepseek/config.toml"),
+        deepseek_config::default_config_path().unwrap_or_else(|_| {
+            dirs::home_dir()
+                .unwrap_or_default()
+                .join(deepseek_config::USER_DATA_DIR_NAME)
+                .join("config.toml")
+        }),
     )
         && let Ok(config) = toml::from_str::<deepseek_config::ConfigToml>(&config_str)
     {
@@ -567,12 +572,14 @@ fn find_git_root(path: &Path) -> Option<PathBuf> {
     }
 }
 
-/// Resolve the default session directory path (`~/.deepseek/sessions`).
+/// Resolve the default session directory path (`~/.zagens/sessions`).
 pub fn default_sessions_dir() -> std::io::Result<PathBuf> {
-    let home = dirs::home_dir().ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::NotFound, "Home directory not found")
-    })?;
-    Ok(home.join(".deepseek").join("sessions"))
+    deepseek_config::user_data_path("sessions").map_err(|e| {
+        std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("Home directory not found: {e}"),
+        )
+    })
 }
 
 /// Prune snapshots older than `max_age` for `workspace`.

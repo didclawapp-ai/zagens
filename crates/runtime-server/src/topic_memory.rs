@@ -32,13 +32,10 @@ impl Default for TopicMemorySettings {
     }
 }
 
-/// Default storage directory: `~/.deepseek/topic-memory/` (not beside `config.toml`).
+/// Default storage directory: `~/.zagens/topic-memory/` (not beside `config.toml`).
 #[must_use]
 pub fn default_topic_memory_dir() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".deepseek")
-        .join("topic-memory")
+    deepseek_config::user_data_path_or_relative("topic-memory")
 }
 
 #[must_use]
@@ -48,9 +45,8 @@ pub fn default_graph_path() -> PathBuf {
 
 /// Legacy path before the dedicated `topic-memory/` directory (same parent as `config.toml`).
 fn legacy_graph_path() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".deepseek")
+    deepseek_config::legacy_user_data_root()
+        .unwrap_or_else(|_| PathBuf::from("."))
         .join("topic-memory.json")
 }
 

@@ -95,19 +95,19 @@ impl TuiPrefs {
     pub fn path() -> Result<PathBuf> {
         // Honour the same env-var escape hatch used by Settings::path so that
         // integration tests can redirect all config I/O to a temp directory.
-        if let Ok(config_path) = std::env::var("DEEPSEEK_CONFIG_PATH") {
-            let config_path = config_path.trim();
-            if !config_path.is_empty() {
-                let p = expand_path(config_path);
-                if let Some(parent) = p.parent() {
-                    return Ok(parent.join("tui.toml"));
+        for key in ["ZAGENS_CONFIG_PATH", "DEEPSEEK_CONFIG_PATH"] {
+            if let Ok(config_path) = std::env::var(key) {
+                let config_path = config_path.trim();
+                if !config_path.is_empty() {
+                    let p = expand_path(config_path);
+                    if let Some(parent) = p.parent() {
+                        return Ok(parent.join("tui.toml"));
+                    }
                 }
             }
         }
 
-        let home = dirs::home_dir()
-            .context("Failed to resolve home directory: cannot determine tui.toml path.")?;
-        Ok(home.join(".deepseek").join("tui.toml"))
+        Ok(deepseek_config::user_data_path_or_relative("tui.toml"))
     }
 
     /// Load TUI preferences from `~/.deepseek/tui.toml`.
@@ -957,15 +957,13 @@ mod tests {
     }
 
     #[test]
-    fn tui_prefs_path_uses_home_deepseek_subdir_by_default() {
+    fn tui_prefs_path_uses_home_zagens_subdir_by_default() {
         let _g = config_path_test_guard();
-        // Without DEEPSEEK_CONFIG_PATH the path should end with
-        // .deepseek/tui.toml relative to the home directory.
-        // We skip this check if home_dir() is unavailable (CI without HOME).
         if let Some(home) = dirs::home_dir() {
-            let expected = home.join(".deepseek").join("tui.toml");
-            // Only compare when no env override is active.
-            if std::env::var("DEEPSEEK_CONFIG_PATH").is_err() {
+            let expected = home.join(deepseek_config::USER_DATA_DIR_NAME).join("tui.toml");
+            if std::env::var("DEEPSEEK_CONFIG_PATH").is_err()
+                && std::env::var("ZAGENS_CONFIG_PATH").is_err()
+            {
                 let got = TuiPrefs::path().expect("path should resolve");
                 assert_eq!(got, expected);
             }

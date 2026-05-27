@@ -1073,6 +1073,40 @@ pub(crate) async fn get_thread_scratchpad_status(
     Ok(Json(status.unwrap_or(Value::Null)))
 }
 
+#[derive(Debug, serde::Deserialize)]
+pub(crate) struct InitThreadScratchpadRequest {
+    #[serde(default)]
+    run_id: Option<String>,
+    #[serde(default)]
+    scope: Option<String>,
+    #[serde(default)]
+    areas: Option<Vec<serde_json::Value>>,
+}
+
+pub(crate) async fn init_thread_scratchpad(
+    State(state): State<RuntimeApiState>,
+    AxumPath(id): AxumPath<String>,
+    Json(body): Json<InitThreadScratchpadRequest>,
+) -> Result<Json<Value>, ApiError> {
+    let threads = state.runtime_threads.clone();
+    let id = id.clone();
+    let run_id = body.run_id;
+    let scope = body.scope;
+    let areas = body.areas;
+    let status = tokio::task::spawn_blocking(move || {
+        threads.init_thread_scratchpad(
+            &id,
+            run_id.as_deref(),
+            scope.as_deref(),
+            areas.as_deref(),
+        )
+    })
+    .await
+    .map_err(|e| ApiError::internal(format!("scratchpad init task panicked: {e}")))?
+    .map_err(|e| ApiError::bad_request(e.to_string()))?;
+    Ok(Json(status))
+}
+
 pub(crate) async fn get_thread_context(
     State(state): State<RuntimeApiState>,
     AxumPath(id): AxumPath<String>,

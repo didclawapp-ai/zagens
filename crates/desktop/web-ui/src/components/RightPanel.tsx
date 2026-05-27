@@ -829,6 +829,7 @@ export default function RightPanel({
             )}
             {desktopHost && (
               <ApiKeyForm
+                mainKeyConfigured={apiKeyConfigured === true}
                 onSaved={onSavedApiKey}
                 className={!desktopHost ? 'pointer-events-none opacity-50' : ''}
               />
@@ -913,6 +914,7 @@ export default function RightPanel({
         <div style={{ display: view === 'audit' ? undefined : 'none' }}>
           <AuditScratchpadPanel
             threadId={resumedThreadId ?? ''}
+            workspaceRoot={workspaceRoot}
             pollFast={streaming || view === 'audit'}
             onOpenWorkspacePath={openWorkspaceFile}
             subagentActiveCount={subagentActiveCount}

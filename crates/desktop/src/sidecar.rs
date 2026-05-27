@@ -63,11 +63,10 @@ fn sidecar_spawn_cwd() -> Option<PathBuf> {
     }
 }
 
-/// Path to the sidecar stderr log file. Created under `~/.deepseek/logs/` on
+/// Path to the sidecar stderr log file. Created under `~/.zagens/logs/` on
 /// first spawn — the parent directory is ensured before opening the file (#H4).
 fn sidecar_stderr_log_path() -> Option<PathBuf> {
-    let home = sidecar_spawn_cwd()?;
-    let log_dir = home.join(".deepseek").join("logs");
+    let log_dir = deepseek_config::user_data_path("logs").ok()?;
     std::fs::create_dir_all(&log_dir).ok()?;
     Some(log_dir.join("sidecar.log"))
 }
@@ -75,8 +74,7 @@ fn sidecar_stderr_log_path() -> Option<PathBuf> {
 /// Zagens parent process (Tauri) supervisor events — same folder as `sidecar.log`, so GUI users
 /// without a console still get restart / health-check reasons on disk.
 fn supervisor_log_path() -> Option<PathBuf> {
-    let home = sidecar_spawn_cwd()?;
-    let log_dir = home.join(".deepseek").join("logs");
+    let log_dir = deepseek_config::user_data_path("logs").ok()?;
     std::fs::create_dir_all(&log_dir).ok()?;
     Some(log_dir.join("supervisor.log"))
 }
@@ -89,7 +87,7 @@ fn emit_sidecar_restarting(app: &AppHandle, reason: &str) {
     let _ = app.emit("sidecar://restarting", &payload);
 }
 
-/// Append a timestamped line to `~/.deepseek/logs/supervisor.log` and mirror to stderr.
+/// Append a timestamped line to `~/.zagens/logs/supervisor.log` and mirror to stderr.
 fn supervisor_log(message: impl AsRef<str>) {
     let msg = message.as_ref().trim_end();
     let stamped = format!(
@@ -170,9 +168,9 @@ fn runtime_sidecar_cli_args(port: &str) -> Vec<String> {
     args
 }
 
-fn spawn_sidecar(app: &AppHandle, deepseek_bin: &str, port: u16, token: &str) -> Result<Command> {
+fn spawn_sidecar(app: &AppHandle, runtime_bin: &str, port: u16, token: &str) -> Result<Command> {
     let port_s = port.to_string();
-    let mut std_cmd = std::process::Command::new(deepseek_bin);
+    let mut std_cmd = std::process::Command::new(runtime_bin);
     std_cmd.env("DEEPSEEK_RUNTIME_TOKEN", token);
     std_cmd.env("DEEPSEEK_CLIENT_SURFACE", "zagens");
     if let Some(py) = bundled_python_executable(app) {
@@ -466,10 +464,10 @@ pub async fn start_and_monitor(
     // sidecar falls back to an ephemeral allocation). All probe/restart paths below
     // already read the local `port` variable, so updating it propagates everywhere.
     let mut port = initial_port;
-    let deepseek_bin = find_deepseek_binary(app);
+    let runtime_bin = find_runtime_binary(app);
     let token_fp = compute_token_fingerprint(token);
     supervisor_log(format!(
-        "event=supervisor_start initial_port={initial_port} sidecar={deepseek_bin} token_fp={token_fp}"
+        "event=supervisor_start initial_port={initial_port} sidecar={runtime_bin} token_fp={token_fp}"
     ));
     let mut crash_times: VecDeque<Instant> = VecDeque::new();
 
@@ -501,9 +499,9 @@ pub async fn start_and_monitor(
 
             wait_loopback_listen_port_free(port, "before-sidecar-spawn").await;
 
-            let mut c = spawn_sidecar(app, &deepseek_bin, port, token)?
+            let mut c = spawn_sidecar(app, &runtime_bin, port, token)?
                 .spawn()
-                .with_context(|| format!("failed to start sidecar: {deepseek_bin}"))?;
+                .with_context(|| format!("failed to start sidecar: {runtime_bin}"))?;
 
             let stdout = c.stdout.take();
             sidecar_stdin = c.stdin.take();
@@ -767,24 +765,23 @@ pub async fn start_and_monitor(
     }
 }
 
-/// Tauri bundles `externalBin` next to the main executable as `deepseek-runtime-<target>(.exe)`.
+/// Tauri bundles `externalBin` next to the main executable as `zagens-runtime-<target>(.exe)`.
 fn scan_sidecar_dir(dir: &Path) -> Option<PathBuf> {
+    const PREFIX: &str = "zagens-runtime";
     let read = std::fs::read_dir(dir).ok()?;
     let mut matches: Vec<PathBuf> = read
         .filter_map(std::result::Result::ok)
         .map(|e| e.path())
         .filter(|p| {
             p.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
-                n.starts_with("deepseek-runtime")
-                    && n != "deepseek-runtime"
-                    && n != "deepseek-runtime.exe"
+                n.starts_with(PREFIX) && n != PREFIX && n != &format!("{PREFIX}.exe")
             })
         })
         .collect();
     matches.sort_by_key(|p| {
         p.file_name()
             .and_then(|n| n.to_str())
-            .map(|n| !n.starts_with("deepseek-runtime"))
+            .map(|n| !n.starts_with(PREFIX))
             .unwrap_or(true)
     });
     matches.into_iter().next()
@@ -806,12 +803,12 @@ fn bundled_sidecar_path(app: &AppHandle) -> Option<PathBuf> {
     None
 }
 
-fn find_deepseek_binary(app: &AppHandle) -> String {
+fn find_runtime_binary(app: &AppHandle) -> String {
     if let Some(p) = bundled_sidecar_path(app) {
         return p.to_string_lossy().into_owned();
     }
 
-    let candidates = ["deepseek-runtime"];
+    let candidates = ["zagens-runtime"];
     for name in &candidates {
         if std::process::Command::new(name)
             .arg("--version")

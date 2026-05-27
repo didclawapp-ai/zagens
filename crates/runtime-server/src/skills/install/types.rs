@@ -7,7 +7,7 @@ use thiserror::Error;
 pub fn default_cache_skills_dir() -> PathBuf {
     dirs::home_dir().map_or_else(
         || PathBuf::from("/tmp/deepseek/cache/skills"),
-        |p| p.join(".deepseek").join("cache").join("skills"),
+        |_| deepseek_config::user_data_path_or_relative("cache/skills"),
     )
 }
 

@@ -205,7 +205,7 @@ impl FileKeyringStore {
         Self { path: path.into() }
     }
 
-    /// Default path: `<home>/.deepseek/secrets/secrets.json`. Honours
+    /// Default path: `<home>/.zagens/secrets/secrets.json`. Honours
     /// `HOME` (Unix) and `USERPROFILE` (Windows) via the `dirs` crate.
     pub fn default_path() -> Result<PathBuf, SecretsError> {
         let home = dirs::home_dir().ok_or_else(|| {
@@ -214,7 +214,7 @@ impl FileKeyringStore {
                 "could not resolve home directory for FileKeyringStore",
             ))
         })?;
-        Ok(home.join(".deepseek").join("secrets").join("secrets.json"))
+        Ok(home.join(".zagens").join("secrets").join("secrets.json"))
     }
 
     /// Path used for storage.

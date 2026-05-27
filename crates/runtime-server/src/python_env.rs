@@ -193,10 +193,9 @@ pub fn resolve_python_for_office() -> Result<PathBuf, String> {
 
 // ── venv management ─────────────────────────────────────────────────────
 
-/// Resolve the office venv root directory (`~/.deepseek/office-py/`).
+/// Resolve the office venv root directory (`~/.zagens/office-py/`).
 pub fn office_venv_dir() -> Option<PathBuf> {
-    let home = dirs::home_dir()?;
-    Some(home.join(".deepseek").join("office-py"))
+    deepseek_config::user_data_path("office-py").ok()
 }
 
 /// Path to the venv's Python interpreter (platform-aware).
