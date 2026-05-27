@@ -4,10 +4,11 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex as StdMutex};
 
 use deepseek_runtime_orchestrator::runtime_threads::types::ThreadRecord;
-use deepseek_runtime_adapters::tools::RuntimeToolHostWire;
+use deepseek_runtime_adapters::tools::{RuntimeToolHostWire, ToolAutomationHost, ToolTaskHost};
 
 use crate::automation_manager::SharedAutomationManager;
 use crate::task_manager::SharedTaskManager;
+use crate::tools::host_impl::{AutomationManagerHost, TaskManagerHost};
 use crate::tools::spec::RuntimeToolServices;
 
 /// Sidecar-only slots wired into `RuntimeToolServices` at engine spawn.
@@ -44,6 +45,19 @@ impl RuntimeThreadBackgroundSlots {
         persist_scratchpad_run_id: Arc<dyn Fn(String) + Send + Sync>,
         scratchpad_config: crate::scratchpad::ScratchpadConfig,
     ) -> RuntimeToolServices {
+        let task_manager = self.task_manager.lock().ok().and_then(|slot| slot.clone());
+        let automations = self.automations.lock().ok().and_then(|slot| slot.clone());
+        let task_host = task_manager
+            .clone()
+            .map(|mgr| std::sync::Arc::new(TaskManagerHost(mgr)) as std::sync::Arc<dyn ToolTaskHost>);
+        let automation_host = match (automations, task_manager) {
+            (Some(automations), Some(tasks)) => Some(std::sync::Arc::new(AutomationManagerHost {
+                automations,
+                tasks,
+            })
+                as std::sync::Arc<dyn ToolAutomationHost>),
+            _ => None,
+        };
         RuntimeToolServices {
             wire: RuntimeToolHostWire {
                 task_data_dir: Some(task_data_dir),
@@ -54,8 +68,8 @@ impl RuntimeThreadBackgroundSlots {
                 scratchpad_config: Some(scratchpad_config),
             },
             shell_manager: None,
-            task_manager: self.task_manager.lock().ok().and_then(|slot| slot.clone()),
-            automations: self.automations.lock().ok().and_then(|slot| slot.clone()),
+            task_host,
+            automation_host,
             shell_env: None,
         }
     }

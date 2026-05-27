@@ -387,11 +387,11 @@ fn write_artifact_if_needed(
     let Some(task_id) = context.runtime.wire.active_task_id.as_deref() else {
         return Ok(None);
     };
-    if let Some(manager) = context.runtime.task_manager.as_ref() {
-        return manager
+    if let Some(host) = context.runtime.task_host.as_ref() {
+        return host
             .write_task_artifact(task_id, label, content)
             .map(Some)
-            .map_err(|e| ToolError::execution_failed(e.to_string()));
+            .map_err(|e| ToolError::execution_failed(e));
     }
     let Some(data_dir) = context.runtime.wire.task_data_dir.as_ref() else {
         return Ok(None);

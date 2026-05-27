@@ -20,7 +20,7 @@ use crate::sandbox::backend::SandboxBackend;
 use crate::tools::shell::{SharedShellManager, new_shared_shell_manager};
 use deepseek_runtime_adapters::tools::path::normalize_path;
 pub use deepseek_runtime_adapters::tools::{
-    RuntimeToolHostWire, ToolProgressEmit, ToolShellEnvHost,
+    RuntimeToolHostWire, ToolAutomationHost, ToolProgressEmit, ToolShellEnvHost, ToolTaskHost,
 };
 pub use deepseek_runtime_adapters::tools::path::path_has_prefix;
 pub use deepseek_tools::{
@@ -39,8 +39,8 @@ pub struct RuntimeToolServices {
     /// Adapter-owned metadata wired at engine spawn (D16 E1-a3).
     pub wire: RuntimeToolHostWire,
     pub shell_manager: Option<SharedShellManager>,
-    pub task_manager: Option<crate::task_manager::SharedTaskManager>,
-    pub automations: Option<crate::automation_manager::SharedAutomationManager>,
+    pub task_host: Option<std::sync::Arc<dyn ToolTaskHost>>,
+    pub automation_host: Option<std::sync::Arc<dyn ToolAutomationHost>>,
     /// Shell env hook injection (#456); sidecar attaches `HookShellEnvHost`.
     pub shell_env: Option<std::sync::Arc<dyn ToolShellEnvHost>>,
 }
@@ -50,8 +50,8 @@ impl Default for RuntimeToolServices {
         Self {
             wire: RuntimeToolHostWire::default(),
             shell_manager: None,
-            task_manager: None,
-            automations: None,
+            task_host: None,
+            automation_host: None,
             shell_env: None,
         }
     }
@@ -62,8 +62,8 @@ impl std::fmt::Debug for RuntimeToolServices {
         f.debug_struct("RuntimeToolServices")
             .field("wire", &self.wire)
             .field("shell_manager", &self.shell_manager.is_some())
-            .field("task_manager", &self.task_manager.is_some())
-            .field("automations", &self.automations.is_some())
+            .field("task_host", &self.task_host.is_some())
+            .field("automation_host", &self.automation_host.is_some())
             .field("shell_env", &self.shell_env.is_some())
             .finish()
     }

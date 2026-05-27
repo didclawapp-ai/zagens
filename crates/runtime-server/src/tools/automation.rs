@@ -5,12 +5,10 @@ use std::path::PathBuf;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
-use crate::automation_manager::{
-    AutomationStatus, CreateAutomationRequest, UpdateAutomationRequest,
-};
+use crate::automation_manager::AutomationStatus;
 use crate::tools::spec::{
-    ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
-    optional_str, optional_u64, required_str,
+    ApprovalRequirement, ToolAutomationHost, ToolCapability, ToolContext, ToolError, ToolResult,
+    ToolSpec, optional_str, optional_u64, required_str,
 };
 
 pub struct AutomationCreateTool;
@@ -21,6 +19,16 @@ pub struct AutomationPauseTool;
 pub struct AutomationResumeTool;
 pub struct AutomationDeleteTool;
 pub struct AutomationRunTool;
+
+fn require_automation_host(
+    context: &ToolContext,
+) -> Result<&std::sync::Arc<dyn ToolAutomationHost>, ToolError> {
+    context
+        .runtime
+        .automation_host
+        .as_ref()
+        .ok_or_else(|| ToolError::not_available("AutomationManager is not attached"))
+}
 
 #[async_trait]
 impl ToolSpec for AutomationCreateTool {
@@ -59,35 +67,22 @@ impl ToolSpec for AutomationCreateTool {
     }
 
     async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
-        let manager = context
-            .runtime
-            .automations
-            .as_ref()
-            .ok_or_else(|| ToolError::not_available("AutomationManager is not attached"))?;
-        let manager = manager.lock().await;
-        let req = CreateAutomationRequest {
-            name: required_str(&input, "name")?.to_string(),
-            prompt: required_str(&input, "prompt")?.to_string(),
-            rrule: required_str(&input, "rrule")?.to_string(),
-            cwds: string_array(&input, "cwds")?
-                .into_iter()
-                .map(PathBuf::from)
-                .collect(),
-            status: Some(
-                if input
-                    .get("paused")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false)
-                {
-                    AutomationStatus::Paused
-                } else {
-                    AutomationStatus::Active
-                },
-            ),
-        };
-        let automation = manager
+        let host = require_automation_host(context)?;
+        let req = json!({
+            "name": required_str(&input, "name")?,
+            "prompt": required_str(&input, "prompt")?,
+            "rrule": required_str(&input, "rrule")?,
+            "cwds": string_array(&input, "cwds")?.into_iter().map(PathBuf::from).collect::<Vec<_>>(),
+            "status": if input.get("paused").and_then(Value::as_bool).unwrap_or(false) {
+                AutomationStatus::Paused
+            } else {
+                AutomationStatus::Active
+            },
+        });
+        let automation = host
             .create_automation(req)
-            .map_err(|e| ToolError::execution_failed(e.to_string()))?;
+            .await
+            .map_err(|e| ToolError::execution_failed(e))?;
         ToolResult::json(&automation).map_err(|e| ToolError::execution_failed(e.to_string()))
     }
 }
@@ -117,15 +112,13 @@ impl ToolSpec for AutomationListTool {
     }
 
     async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
-        let manager = context
-            .runtime
-            .automations
-            .as_ref()
-            .ok_or_else(|| ToolError::not_available("AutomationManager is not attached"))?;
-        let manager = manager.lock().await;
-        let mut automations = manager
-            .list_automations()
-            .map_err(|e| ToolError::execution_failed(e.to_string()))?;
+        let host = require_automation_host(context)?;
+        let mut automations: Vec<Value> = serde_json::from_value(
+            host.list_automations()
+                .await
+                .map_err(|e| ToolError::execution_failed(e))?,
+        )
+        .map_err(|e| ToolError::execution_failed(e.to_string()))?;
         automations.truncate(optional_u64(&input, "limit", 50).clamp(1, 100) as usize);
         ToolResult::json(&automations).map_err(|e| ToolError::execution_failed(e.to_string()))
     }
@@ -154,19 +147,16 @@ impl ToolSpec for AutomationReadTool {
     }
 
     async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
-        let manager = context
-            .runtime
-            .automations
-            .as_ref()
-            .ok_or_else(|| ToolError::not_available("AutomationManager is not attached"))?;
-        let manager = manager.lock().await;
+        let host = require_automation_host(context)?;
         let id = required_str(&input, "automation_id")?;
-        let automation = manager
+        let automation = host
             .get_automation(id)
-            .map_err(|e| ToolError::execution_failed(e.to_string()))?;
-        let runs = manager
+            .await
+            .map_err(|e| ToolError::execution_failed(e))?;
+        let runs = host
             .list_runs(id, Some(20))
-            .map_err(|e| ToolError::execution_failed(e.to_string()))?;
+            .await
+            .map_err(|e| ToolError::execution_failed(e))?;
         ToolResult::json(&json!({ "automation": automation, "recent_runs": runs }))
             .map_err(|e| ToolError::execution_failed(e.to_string()))
     }
@@ -207,35 +197,26 @@ impl ToolSpec for AutomationUpdateTool {
     }
 
     async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
-        let manager = context
-            .runtime
-            .automations
-            .as_ref()
-            .ok_or_else(|| ToolError::not_available("AutomationManager is not attached"))?;
-        let manager = manager.lock().await;
+        let host = require_automation_host(context)?;
         let status = optional_str(&input, "status").map(|value| match value {
             "paused" => AutomationStatus::Paused,
             _ => AutomationStatus::Active,
         });
-        let req = UpdateAutomationRequest {
-            name: optional_str(&input, "name").map(ToString::to_string),
-            prompt: optional_str(&input, "prompt").map(ToString::to_string),
-            rrule: optional_str(&input, "rrule").map(ToString::to_string),
-            cwds: if input.get("cwds").is_some() {
-                Some(
-                    string_array(&input, "cwds")?
-                        .into_iter()
-                        .map(PathBuf::from)
-                        .collect(),
-                )
+        let req = json!({
+            "name": optional_str(&input, "name").map(ToString::to_string),
+            "prompt": optional_str(&input, "prompt").map(ToString::to_string),
+            "rrule": optional_str(&input, "rrule").map(ToString::to_string),
+            "cwds": if input.get("cwds").is_some() {
+                Some(string_array(&input, "cwds")?.into_iter().map(PathBuf::from).collect::<Vec<_>>())
             } else {
-                None
+                None::<Vec<PathBuf>>
             },
-            status,
-        };
-        let automation = manager
+            "status": status,
+        });
+        let automation = host
             .update_automation(required_str(&input, "automation_id")?, req)
-            .map_err(|e| ToolError::execution_failed(e.to_string()))?;
+            .await
+            .map_err(|e| ToolError::execution_failed(e))?;
         ToolResult::json(&automation).map_err(|e| ToolError::execution_failed(e.to_string()))
     }
 }
@@ -264,14 +245,11 @@ macro_rules! write_automation_tool {
                 input: Value,
                 context: &ToolContext,
             ) -> Result<ToolResult, ToolError> {
-                let manager =
-                    context.runtime.automations.as_ref().ok_or_else(|| {
-                        ToolError::not_available("AutomationManager is not attached")
-                    })?;
-                let manager = manager.lock().await;
-                let automation = manager
+                let host = require_automation_host(context)?;
+                let automation = host
                     .$method(required_str(&input, "automation_id")?)
-                    .map_err(|e| ToolError::execution_failed(e.to_string()))?;
+                    .await
+                    .map_err(|e| ToolError::execution_failed(e))?;
                 ToolResult::json(&automation)
                     .map_err(|e| ToolError::execution_failed(e.to_string()))
             }
@@ -321,21 +299,11 @@ impl ToolSpec for AutomationRunTool {
     }
 
     async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
-        let manager = context
-            .runtime
-            .automations
-            .as_ref()
-            .ok_or_else(|| ToolError::not_available("AutomationManager is not attached"))?;
-        let task_manager = context
-            .runtime
-            .task_manager
-            .as_ref()
-            .ok_or_else(|| ToolError::not_available("TaskManager is not attached"))?;
-        let manager = manager.lock().await;
-        let run = manager
-            .run_now(required_str(&input, "automation_id")?, task_manager)
+        let host = require_automation_host(context)?;
+        let run = host
+            .run_now(required_str(&input, "automation_id")?)
             .await
-            .map_err(|e| ToolError::execution_failed(e.to_string()))?;
+            .map_err(|e| ToolError::execution_failed(e))?;
         ToolResult::json(&run).map_err(|e| ToolError::execution_failed(e.to_string()))
     }
 }

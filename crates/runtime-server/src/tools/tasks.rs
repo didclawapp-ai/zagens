@@ -17,7 +17,7 @@ use crate::task_manager::{
 use crate::tools::shell::{ExecShellTool, ShellWaitTool};
 use crate::tools::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
-    optional_bool, optional_str, optional_u64, required_str,
+    ToolTaskHost, optional_bool, optional_str, optional_u64, required_str,
 };
 
 const MAX_SUMMARY_CHARS: usize = 900;
@@ -84,11 +84,7 @@ impl ToolSpec for TaskCreateTool {
         ) {
             return Err(ToolError::execution_failed(msg));
         }
-        let manager = context
-            .runtime
-            .task_manager
-            .as_ref()
-            .ok_or_else(|| ToolError::not_available("TaskManager is not attached"))?;
+        let host = require_task_host(context)?;
         let workspace = optional_str(&input, "workspace")
             .map(PathBuf::from)
             .unwrap_or_else(|| context.workspace.clone());
@@ -101,10 +97,11 @@ impl ToolSpec for TaskCreateTool {
             trust_mode: input.get("trust_mode").and_then(Value::as_bool),
             auto_approve: input.get("auto_approve").and_then(Value::as_bool),
         };
-        let task = manager
-            .add_task(req)
-            .await
-            .map_err(|e| ToolError::execution_failed(e.to_string()))?;
+        let task = task_from_value(
+            host.add_task(serde_json::to_value(&req).map_err(|e| ToolError::execution_failed(e.to_string()))?)
+                .await
+                .map_err(|e| ToolError::execution_failed(e))?,
+        )?;
         task_result("task_create", &task)
     }
 }
@@ -140,13 +137,14 @@ impl ToolSpec for TaskListTool {
     }
 
     async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
-        let manager = context
-            .runtime
-            .task_manager
-            .as_ref()
-            .ok_or_else(|| ToolError::not_available("TaskManager is not attached"))?;
+        let host = require_task_host(context)?;
         let limit = optional_u64(&input, "limit", 20).clamp(1, 100) as usize;
-        let tasks = manager.list_tasks(Some(limit)).await;
+        let tasks: Vec<TaskRecord> = serde_json::from_value(
+            host.list_tasks(Some(limit))
+                .await
+                .map_err(|e| ToolError::execution_failed(e))?,
+        )
+        .map_err(|e| ToolError::execution_failed(e.to_string()))?;
         ToolResult::json(&json!({
             "summary": format!("{} durable task(s)", tasks.len()),
             "tasks": tasks,
@@ -187,15 +185,12 @@ impl ToolSpec for TaskReadTool {
     }
 
     async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
-        let manager = context
-            .runtime
-            .task_manager
-            .as_ref()
-            .ok_or_else(|| ToolError::not_available("TaskManager is not attached"))?;
-        let task = manager
-            .get_task(required_str(&input, "task_id")?)
-            .await
-            .map_err(|e| ToolError::execution_failed(e.to_string()))?;
+        let host = require_task_host(context)?;
+        let task = task_from_value(
+            host.get_task(required_str(&input, "task_id")?)
+                .await
+                .map_err(|e| ToolError::execution_failed(e))?,
+        )?;
         task_result("task_read", &task)
     }
 }
@@ -230,15 +225,12 @@ impl ToolSpec for TaskCancelTool {
     }
 
     async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
-        let manager = context
-            .runtime
-            .task_manager
-            .as_ref()
-            .ok_or_else(|| ToolError::not_available("TaskManager is not attached"))?;
-        let task = manager
-            .cancel_task(required_str(&input, "task_id")?)
-            .await
-            .map_err(|e| ToolError::execution_failed(e.to_string()))?;
+        let host = require_task_host(context)?;
+        let task = task_from_value(
+            host.cancel_task(required_str(&input, "task_id")?)
+                .await
+                .map_err(|e| ToolError::execution_failed(e))?,
+        )?;
         task_result("task_cancel", &task)
     }
 }
@@ -644,12 +636,11 @@ impl ToolSpec for PrAttemptRecordTool {
             }
         });
         if context.runtime.wire.active_task_id.as_deref() != Some(task_id.as_str())
-            && let Some(manager) = context.runtime.task_manager.as_ref()
+            && let Some(host) = context.runtime.task_host.as_ref()
         {
-            manager
-                .record_tool_metadata(&task_id, &metadata)
+            host.record_tool_metadata(&task_id, &metadata)
                 .await
-                .map_err(|e| ToolError::execution_failed(e.to_string()))?;
+                .map_err(|e| ToolError::execution_failed(e))?;
         }
         Ok(ToolResult::json(&metadata)
             .map_err(|e| ToolError::execution_failed(e.to_string()))?
@@ -747,11 +738,7 @@ impl ToolSpec for PrAttemptPreflightTool {
     }
 
     async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
-        let manager = context
-            .runtime
-            .task_manager
-            .as_ref()
-            .ok_or_else(|| ToolError::not_available("TaskManager is not attached"))?;
+        let host = require_task_host(context)?;
         let task = read_task_for_input(&input, context).await?;
         let attempt_id = required_str(&input, "attempt_id")?;
         let attempt = task
@@ -763,7 +750,7 @@ impl ToolSpec for PrAttemptPreflightTool {
             .patch_path
             .as_ref()
             .ok_or_else(|| ToolError::invalid_input("Attempt has no patch artifact"))?;
-        let patch_path = manager.artifact_absolute_path(patch_ref);
+        let patch_path = host.artifact_absolute_path(patch_ref);
         let out = Command::new("git")
             .args(["apply", "--check"])
             .arg(&patch_path)
@@ -818,12 +805,12 @@ fn write_runtime_artifact(
     let Some(task_id) = context.runtime.wire.active_task_id.as_deref() else {
         return Ok(None);
     };
-    let manager = context.runtime.task_manager.as_ref();
-    if let Some(manager) = manager {
-        return manager
+    let host = context.runtime.task_host.as_ref();
+    if let Some(host) = host {
+        return host
             .write_task_artifact(task_id, label, content)
             .map(Some)
-            .map_err(|e| ToolError::execution_failed(e.to_string()));
+            .map_err(|e| ToolError::execution_failed(e));
     }
     let Some(data_dir) = context.runtime.wire.task_data_dir.as_ref() else {
         return Ok(None);
@@ -853,11 +840,11 @@ fn write_task_artifact_for(
     label: &str,
     content: &str,
 ) -> Result<Option<PathBuf>, ToolError> {
-    if let Some(manager) = context.runtime.task_manager.as_ref() {
-        return manager
+    if let Some(host) = context.runtime.task_host.as_ref() {
+        return host
             .write_task_artifact(task_id, label, content)
             .map(Some)
-            .map_err(|e| ToolError::execution_failed(e.to_string()));
+            .map_err(|e| ToolError::execution_failed(e));
     }
     if context.runtime.wire.active_task_id.as_deref() != Some(task_id) {
         return Ok(None);
@@ -881,16 +868,27 @@ async fn read_task_for_input(
     input: &Value,
     context: &ToolContext,
 ) -> Result<TaskRecord, ToolError> {
-    let manager = context
-        .runtime
-        .task_manager
-        .as_ref()
-        .ok_or_else(|| ToolError::not_available("TaskManager is not attached"))?;
+    let host = require_task_host(context)?;
     let task_id = task_id_from_input_or_context(input, context)?;
-    manager
-        .get_task(&task_id)
-        .await
-        .map_err(|e| ToolError::execution_failed(e.to_string()))
+    task_from_value(
+        host.get_task(&task_id)
+            .await
+            .map_err(|e| ToolError::execution_failed(e))?,
+    )
+}
+
+fn require_task_host(
+    context: &ToolContext,
+) -> Result<&std::sync::Arc<dyn ToolTaskHost>, ToolError> {
+    context
+        .runtime
+        .task_host
+        .as_ref()
+        .ok_or_else(|| ToolError::not_available("TaskManager is not attached"))
+}
+
+fn task_from_value(value: Value) -> Result<TaskRecord, ToolError> {
+    serde_json::from_value(value).map_err(|e| ToolError::execution_failed(e.to_string()))
 }
 
 fn task_id_from_input_or_context(

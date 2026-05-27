@@ -1,13 +1,14 @@
-//! Tool host ports wired by the sidecar at engine spawn (D16 E1-a3).
+//! Tool host ports wired by the sidecar at engine spawn (D16 E1-a3+).
 //!
 //! Durable manager handles (`TaskManager`, `AutomationManager`, …) stay in
-//! `deepseek-runtime-server` until their ports land here. Metadata and hook
-//! injection surfaces are adapter-owned so `tools/` can migrate incrementally.
+//! `deepseek-runtime-server`; tools call through these ports so `tools/`
+//! can migrate to this crate incrementally.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+use async_trait::async_trait;
 use deepseek_core::scratchpad::ScratchpadConfig;
 use serde_json::Value;
 
@@ -21,6 +22,32 @@ pub trait ToolProgressEmit: Send + Sync {
 /// Shell `shell_env` hook injection port (#456).
 pub trait ToolShellEnvHost: Send + Sync {
     fn collect_shell_env(&self, tool_name: &str, tool_args: &Value) -> HashMap<String, String>;
+}
+
+/// Durable task operations for model-visible `task_*` / PR-attempt tools (D16 E1-a4).
+#[async_trait]
+pub trait ToolTaskHost: Send + Sync {
+    async fn add_task(&self, req: Value) -> Result<Value, String>;
+    async fn list_tasks(&self, limit: Option<usize>) -> Result<Value, String>;
+    async fn get_task(&self, task_id: &str) -> Result<Value, String>;
+    async fn cancel_task(&self, task_id: &str) -> Result<Value, String>;
+    async fn record_tool_metadata(&self, task_id: &str, metadata: &Value) -> Result<(), String>;
+    fn artifact_absolute_path(&self, relative: &Path) -> PathBuf;
+    fn write_task_artifact(&self, task_id: &str, label: &str, content: &str) -> Result<PathBuf, String>;
+}
+
+/// Durable automation operations for model-visible `automation_*` tools (D16 E1-a4).
+#[async_trait]
+pub trait ToolAutomationHost: Send + Sync {
+    async fn create_automation(&self, req: Value) -> Result<Value, String>;
+    async fn list_automations(&self) -> Result<Value, String>;
+    async fn get_automation(&self, automation_id: &str) -> Result<Value, String>;
+    async fn list_runs(&self, automation_id: &str, limit: Option<usize>) -> Result<Value, String>;
+    async fn update_automation(&self, automation_id: &str, req: Value) -> Result<Value, String>;
+    async fn pause_automation(&self, automation_id: &str) -> Result<Value, String>;
+    async fn resume_automation(&self, automation_id: &str) -> Result<Value, String>;
+    async fn delete_automation(&self, automation_id: &str) -> Result<Value, String>;
+    async fn run_now(&self, automation_id: &str) -> Result<Value, String>;
 }
 
 /// Durable metadata wired at engine spawn; manager handles stay in sidecar.
