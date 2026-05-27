@@ -39,7 +39,7 @@ mod schema_migration;
 mod scratchpad;
 mod seam_manager;
 mod settings;
-mod skills;
+pub mod skills;
 mod task_type;
 mod topic_memory;
 pub mod cli;

@@ -54,14 +54,15 @@
 | 项 | 值 |
 |----|-----|
 | 分支 | `master` |
-| HEAD | `223eb1e` |
-| 工作区 | **未 commit** — E1-d2 + E1-a8 `shell/tools/` + E1-b `task_manager/`（见 §9） |
+| HEAD | `948341e` |
+| 工作区 | **未 commit** — E1-a8 `skills/install/` 拆分（见 §9） |
 | Remote | **未配置 `origin`** — push 需用户先 `git remote add origin <url>` |
 
 ### 近期 commit（新 → 旧）
 
 | Commit | 说明 |
 |--------|------|
+| `948341e` | **E1-d2** re-export/文档 + **E1-a8** `shell/tools/` + **E1-b** `task_manager/` 拆分 |
 | `223eb1e` | **E1-a8** shell/file/web_run 拆分 + **E1-c6** task schemas → runtime-api |
 | `0d843c1` | handoff + **E1-a7** — `skills/install` → `network_gate` |
 | `6fdc011` | **E5** — OpenAPI/TS CI + regenerate spec |

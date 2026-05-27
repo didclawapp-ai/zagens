@@ -46,6 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **D16 E1-c (WIP, phase 5):** `StreamTurnRequest` 由 runtime-api 导出；`stream.rs` handler 复用 wire 类型（`workspace: Option<String>` → `PathBuf` 在 handler 内转换）。
 - **D16 E1-d2:** `deepseek_runtime::run_http_server` crate 根 re-export；`RUNTIME_ARCHITECTURE` / D8 对齐 runtime-api OpenAPI SSOT 与 D16 crate 依赖图。
 - **D16 E1-b (WIP, phase 6):** `task_manager.rs`（~1500 行）模块内拆为 `task_manager/{config,executor,manager,persist,helpers,tests}.rs`；wire 类型仍用 runtime-api；4 个 task_manager 单元测试全绿。
+- **D16 E1-a8:** `skills/install.rs`（~1534 行）模块内拆为 `install/{types,api,local,registry,download,tests}.rs`；`pub mod skills` 供集成测试；16 单元测试 + `skill_install` 集成测试全绿。
 
 ### Changed
 

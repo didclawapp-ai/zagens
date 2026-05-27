@@ -14,20 +14,10 @@ use flate2::write::GzEncoder;
 use tempfile::TempDir;
 use tiny_http::{Method, Response, Server};
 
-// Pull the production source files into this test binary so the test can
-// reach `install`'s public surface without a dedicated library crate.
-//
-// `install.rs` only references `crate::network_policy` so we just need that
-// one helper module alongside `install` itself.
-#[path = "../src/network_policy.rs"]
-mod network_policy;
-
-#[path = "../src/skills/install.rs"]
-#[allow(dead_code)]
-mod install;
-
-use crate::install::{InstallOutcome, InstallSource, UpdateResult};
-use crate::network_policy::{DecisionToml, NetworkPolicy};
+use deepseek_runtime::network_policy::{DecisionToml, NetworkPolicy};
+use deepseek_runtime::skills::install::{
+    self, InstallOutcome, InstallSource, UpdateResult,
+};
 
 /// Construct a gzipped tarball from `(path, body)` pairs. Permissions are set
 /// to 0o644 so umask differences across platforms don't perturb the bytes.
