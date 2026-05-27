@@ -97,22 +97,29 @@ export function useTurnSession({
     });
   })();
 
+  const notifyRuntimeTransientRef = useRef(notifyRuntimeTransient);
+  notifyRuntimeTransientRef.current = notifyRuntimeTransient;
+  const reconcileRuntimeAfterFetchFailureRef = useRef(reconcileRuntimeAfterFetchFailure);
+  reconcileRuntimeAfterFetchFailureRef.current = reconcileRuntimeAfterFetchFailure;
+  const setRuntimeSessionEstablishedRef = useRef(setRuntimeSessionEstablished);
+  setRuntimeSessionEstablishedRef.current = setRuntimeSessionEstablished;
+
   const refreshSessions = useCallback(async () => {
     try {
       const list = await getSessions();
       setSessions(list);
-      setRuntimeSessionEstablished(true);
+      setRuntimeSessionEstablishedRef.current(true);
       toast.dismissAll();
     } catch (e) {
       const err = e as Error & { status?: number };
       if (err.status === 401) {
-        notifyRuntimeTransient(t('banner.unauthorized'));
+        notifyRuntimeTransientRef.current(t('banner.unauthorized'));
       } else {
-        notifyRuntimeTransient(t('banner.loadSessionsError', { message: err.message }));
+        notifyRuntimeTransientRef.current(t('banner.loadSessionsError', { message: err.message }));
       }
-      reconcileRuntimeAfterFetchFailure();
+      reconcileRuntimeAfterFetchFailureRef.current();
     }
-  }, [reconcileRuntimeAfterFetchFailure, notifyRuntimeTransient, setRuntimeSessionEstablished, t]);
+  }, [t]);
 
   refreshSessionsRef.current = refreshSessions;
 

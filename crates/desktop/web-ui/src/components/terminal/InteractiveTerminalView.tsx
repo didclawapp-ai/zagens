@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
-import { listen } from '@tauri-apps/api/event';
+import { subscribeCurrentWebviewEvent } from '../../lib/tauriListen';
 import { integratedTerminalTheme } from '../../lib/terminal/xtermTheme';
 import { resizeTerminal, writeTerminal, type TerminalDataEvent, type TerminalExitEvent } from '../../lib/terminal/ptyApi';
 
@@ -34,6 +34,10 @@ export default function InteractiveTerminalView({
   activeRef.current = active;
   const bufferRef = useRef(outputBuffer);
   bufferRef.current = outputBuffer;
+  const onOutputRef = useRef(onOutput);
+  onOutputRef.current = onOutput;
+  const onExitRef = useRef(onExit);
+  onExitRef.current = onExit;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -79,28 +83,21 @@ export default function InteractiveTerminalView({
       });
     });
 
-    let unlistenData: (() => void) | undefined;
-    let unlistenExit: (() => void) | undefined;
-
-    void listen<TerminalDataEvent>('terminal-data', (ev) => {
-      if (disposedRef.current || ev.payload.id !== sessionId) return;
-      onOutput(sessionId, ev.payload.data);
-      term.write(ev.payload.data);
-    }).then((fn) => {
-      unlistenData = fn;
+    const unlistenData = subscribeCurrentWebviewEvent<TerminalDataEvent>('terminal-data', (payload) => {
+      if (disposedRef.current || payload.id !== sessionId) return;
+      onOutputRef.current(sessionId, payload.data);
+      term.write(payload.data);
     });
 
-    void listen<TerminalExitEvent>('terminal-exit', (ev) => {
-      if (disposedRef.current || ev.payload.id !== sessionId) return;
-      onExit(sessionId, ev.payload.code);
-      const code = ev.payload.code;
+    const unlistenExit = subscribeCurrentWebviewEvent<TerminalExitEvent>('terminal-exit', (payload) => {
+      if (disposedRef.current || payload.id !== sessionId) return;
+      onExitRef.current(sessionId, payload.code);
+      const code = payload.code;
       const line =
         code != null && code !== 0
           ? `\r\n\x1b[90m[进程已退出，代码 ${code}]\x1b[0m\r\n`
           : '\r\n\x1b[90m[进程已结束]\x1b[0m\r\n';
       term.write(line);
-    }).then((fn) => {
-      unlistenExit = fn;
     });
 
     let roRaf = 0;
@@ -122,15 +119,15 @@ export default function InteractiveTerminalView({
       window.clearTimeout(initialFit);
       window.clearTimeout(delayedFit);
       dataSub.dispose();
-      unlistenData?.();
-      unlistenExit?.();
+      unlistenData();
+      unlistenExit();
       cancelAnimationFrame(roRaf);
       ro.disconnect();
       term.dispose();
       termRef.current = null;
       fitRef.current = null;
     };
-  }, [sessionId, onOutput, onExit]);
+  }, [sessionId]);
 
   useEffect(() => {
     if (!active) return;

@@ -62,6 +62,10 @@ export default function TerminalPanel({ workspaceRoot, desktopHost, active }: Pr
     buffersRef.current.set(sessionId, prev + chunk);
   }, []);
 
+  const onTerminalExit = useCallback((_sessionId: string, _code: number | null) => {
+    /* keep view; user can close tab manually */
+  }, []);
+
   const createSession = useCallback(async () => {
     if (!desktopHost) return;
     if (sessions.length >= MAX_SESSIONS) {
@@ -320,9 +324,7 @@ export default function TerminalPanel({ workspaceRoot, desktopHost, active }: Pr
               sessionId={activeSession.id}
               outputBuffer={buffersRef.current.get(activeSession.id) ?? ''}
               onOutput={appendOutput}
-              onExit={() => {
-                /* keep view; user can close tab manually */
-              }}
+              onExit={onTerminalExit}
               active={active}
             />
           </div>

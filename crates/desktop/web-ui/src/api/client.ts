@@ -21,6 +21,7 @@ import type { RoutingRulesResponse, RoutingRule } from '../types/routing';
 import { normalizeWorkspaceForApi } from '../lib/defaultWorkspace';
 import { coalescePollFetch } from '../lib/pollFetch';
 import { listenRuntimeSseEvent } from '../lib/runtimeSseListen';
+import { createListenerRegistry } from '../lib/tauriListen';
 import { normalizeDesktopStreamEvent } from './streamNormalize';
 import {
   peekWindowOwnsThread,
@@ -396,13 +397,11 @@ async function postStreamTurnViaTauri(
   const { invoke } = await import('@tauri-apps/api/core');
 
   let buffer = '';
-  const unsubs: Array<() => void> = [];
+  const listeners = createListenerRegistry();
   const abort = options?.signal;
 
   const cleanup = () => {
-    for (const u of unsubs) {
-      u();
-    }
+    listeners.finish();
   };
 
   if (abort?.aborted) {
@@ -417,7 +416,7 @@ async function postStreamTurnViaTauri(
   abort?.addEventListener('abort', onAbort, { once: true });
 
   try {
-    unsubs.push(
+    listeners.add(
       await listenRuntimeSseEvent<string>('runtime://stream-chunk', (payload) => {
         buffer += payload;
         const { drained, rest } = drainSseBlocks(buffer);
@@ -425,9 +424,9 @@ async function postStreamTurnViaTauri(
         for (const block of drained) {
           onEvent(block);
         }
-      }),
+      }, { cancelled: listeners.isSettled }),
     );
-    unsubs.push(
+    listeners.add(
       await listenRuntimeSseEvent<unknown>('runtime://stream-done', () => {
         cleanup();
         abort?.removeEventListener('abort', onAbort);
@@ -436,15 +435,19 @@ async function postStreamTurnViaTauri(
           onEvent(block);
         }
         onDone();
-      }),
+      }, { cancelled: listeners.isSettled }),
     );
-    unsubs.push(
+    listeners.add(
       await listenRuntimeSseEvent<string>('runtime://stream-error', (payload) => {
         cleanup();
         abort?.removeEventListener('abort', onAbort);
         onError(new Error(payload));
-      }),
+      }, { cancelled: listeners.isSettled }),
     );
+
+    if (listeners.isSettled()) {
+      return;
+    }
 
     await invoke('runtime_post_stream', { body: JSON.stringify(req) });
   } catch (err) {
@@ -1071,9 +1074,63 @@ function sleepMs(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
+function linkAbortSignals(
+  parent: AbortSignal | undefined,
+  child: AbortController,
+): () => void {
+  if (!parent) {
+    return () => {};
+  }
+  if (parent.aborted) {
+    child.abort();
+    return () => {};
+  }
+  const onAbort = () => child.abort();
+  parent.addEventListener('abort', onAbort, { once: true });
+  return () => parent.removeEventListener('abort', onAbort);
+}
+
 /**
- * Poll `replay_only` thread events until the turn completes. Avoids open-ended
- * `GET …/events` SSE (multiple Tauri `runtime_get_sse` invokes can duplicate chunks).
+ * Desktop Tauri proxy: one open-ended SSE per turn (not 120ms replay polling).
+ * `arm_sse_cancel` on the host ensures a new turn replaces any prior stream; abort
+ * after `turn.completed` closes the read without stacking connections.
+ */
+async function pollThreadTurnEventsViaTauriProxy(
+  threadId: string,
+  sinceSeq: number,
+  onEvent: (ev: SseTurnEvent & { seq?: number }) => void,
+  options?: { signal?: AbortSignal; turnId?: string },
+): Promise<void> {
+  const filter = options?.turnId ? { turnId: options.turnId } : undefined;
+  const localAbort = new AbortController();
+  const unlinkParent = linkAbortSignals(options?.signal, localAbort);
+  try {
+    if (localAbort.signal.aborted) {
+      return;
+    }
+    const path = `/v1/threads/${encodeURIComponent(threadId)}/events?since_seq=${sinceSeq}`;
+    await consumeThreadEventsSse(
+      path,
+      (ev) => {
+        if (localAbort.signal.aborted) {
+          return;
+        }
+        const norm = normalizeDesktopStreamEvent(ev, filter);
+        if (norm?.kind === 'turn_completed' || norm?.kind === 'done') {
+          localAbort.abort();
+        }
+        onEvent(ev);
+      },
+      { signal: localAbort.signal },
+    );
+  } finally {
+    unlinkParent();
+  }
+}
+
+/**
+ * Poll `replay_only` thread events until the turn completes. Browser dev uses a
+ * short poll loop; Tauri desktop holds one SSE (see `pollThreadTurnEventsViaTauriProxy`).
  */
 export async function pollThreadTurnEvents(
   threadId: string,
@@ -1081,6 +1138,9 @@ export async function pollThreadTurnEvents(
   onEvent: (ev: SseTurnEvent & { seq?: number }) => void,
   options?: { signal?: AbortSignal; turnId?: string },
 ): Promise<void> {
+  if (useTauriRuntimeProxy) {
+    return pollThreadTurnEventsViaTauriProxy(threadId, sinceSeq, onEvent, options);
+  }
   let cursor = sinceSeq;
   const filter = options?.turnId ? { turnId: options.turnId } : undefined;
   while (!options?.signal?.aborted) {
@@ -1207,8 +1267,7 @@ async function consumeThreadEventsSse(
   const { invoke } = await import('@tauri-apps/api/core');
   const abort = options?.signal;
   let buffer = '';
-  const unsubs: Array<() => void> = [];
-  let settled = false;
+  const listeners = createListenerRegistry();
 
   const flushTail = () => {
     const { drained: tail } = drainSseBlocks(buffer + '\n\n');
@@ -1232,11 +1291,8 @@ async function consumeThreadEventsSse(
 
   await new Promise<void>((resolve, reject) => {
     const finish = () => {
-      if (settled) return;
-      settled = true;
-      for (const u of unsubs) {
-        u();
-      }
+      if (listeners.isSettled()) return;
+      listeners.finish();
       abort?.removeEventListener('abort', onAbort);
     };
 
@@ -1251,7 +1307,7 @@ async function consumeThreadEventsSse(
 
     void (async () => {
       try {
-        unsubs.push(
+        listeners.add(
           await listenRuntimeSseEvent<string>('runtime://events-chunk', (payload) => {
             if (abort?.aborted) return;
             buffer += payload;
@@ -1270,21 +1326,25 @@ async function consumeThreadEventsSse(
               options?.onChunk?.();
               onEvent({ ...block, seq });
             }
-          }),
+          }, { cancelled: listeners.isSettled }),
         );
-        unsubs.push(
+        listeners.add(
           await listenRuntimeSseEvent<unknown>('runtime://events-done', () => {
             flushTail();
             finish();
             resolve();
-          }),
+          }, { cancelled: listeners.isSettled }),
         );
-        unsubs.push(
+        listeners.add(
           await listenRuntimeSseEvent<string>('runtime://events-error', (payload) => {
             finish();
             reject(new Error(payload));
-          }),
+          }, { cancelled: listeners.isSettled }),
         );
+        if (listeners.isSettled()) {
+          resolve();
+          return;
+        }
         await invoke('runtime_get_sse', { path });
       } catch (err) {
         finish();

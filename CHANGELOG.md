@@ -64,6 +64,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Zagens desktop / 多窗口：** 修复打开第二个窗口时控制台 `Cannot read properties of undefined (reading 'handlerId')` 及 Network 面板 `listen`/`unlisten`/`show`/`runtime_http` 数千次循环 — sidecar/SSE/终端事件改为 webview 级 `listen` + 安全 `unlisten`；启动 effect 不再依赖每轮渲染变化的 `refreshSessions`，并用 `bootHandled` 保证就绪逻辑只执行一次。
+- **Zagens desktop / Tauri IPC：** 修复控制台持续刷屏 `[TAURI] Couldn't find callback id …` — 续聊 turn 在桌面端改为单条 SSE（不再每 120ms 重注册 `listen`/`runtime_get_sse`）；`refreshApiKeyStatus` 与终端/ sidecar 事件订阅改为稳定依赖，避免每次渲染重复 `invoke`。
 - **Runtime / prompts：** `DEEPSEEK_CLIENT_SURFACE=zagens`（sidecar 实际值）现与遗留 `ds-pick` 一并识别，恢复 Zagens 客户端身份与 `## Environment` 的 `ui_shell: Zagens (desktop)`；此前仅匹配 `ds-pick` 时桌面会话误用 “DeepSeek TUI” 身份文案。
 - **Zagens desktop / CRAFT：** `GET /v1/blackboards` 支持 `?workspace=`（与 `/v1/workspace/browse` 一致）；AgentPanel 按当前 Composer 工作区拉取黑板，修复 D6 后 sidecar 默认 cwd（用户目录）与子 Agent 写入项目 `.deepseek/blackboards/` 不一致导致 CRAFT 任务列表为空。
 - **Runtime：** 移除已删除 `eval.rs` 的孤儿集成测 `eval_harness.rs`（D6 迁移遗留，阻塞 `cargo test -p deepseek-runtime-server`）。

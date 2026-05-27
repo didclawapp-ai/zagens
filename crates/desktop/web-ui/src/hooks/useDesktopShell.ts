@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
+import { useCallback, useEffect, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import { waitForRuntimeBootReady } from '../api/client';
 import type { TurnChatMessage } from './useTurnSend';
 import { ensureDefaultComposerWorkspace } from '../lib/appPreferences';
 import { toast } from '../lib/toast';
+import { subscribeCurrentWebviewEvent } from '../lib/tauriListen';
 import { getWindowLabel, workspaceStorageKey } from '../lib/windowBridge';
 import type { StreamSessionControl } from './useTurnStream';
 
@@ -46,26 +47,35 @@ export function useDesktopShell({
   const [desktopHost, setDesktopHost] = useState(false);
   const [desktopApiKeyConfigured, setDesktopApiKeyConfigured] = useState<boolean | null>(null);
   const [platform, setPlatform] = useState('unknown');
+  const refreshSessionsRef = useRef(refreshSessions);
+  refreshSessionsRef.current = refreshSessions;
+  const selectedWorkspaceRef = useRef(selectedWorkspace);
+  selectedWorkspaceRef.current = selectedWorkspace;
+
+  const runRefreshApiKeyStatus = useCallback(async () => {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const s = await invoke<{ configured: boolean }>('get_api_key_status');
+      setDesktopHost(true);
+      setDesktopApiKeyConfigured(s.configured);
+      const info = await invoke<{ os: string; arch: string; version: string }>('get_platform_info');
+      setPlatform(info.os);
+      await ensureDefaultComposerWorkspace(
+        localStorage.getItem(workspaceStorageKey(getWindowLabel()))?.trim() ??
+          selectedWorkspaceRef.current,
+        setSelectedWorkspace,
+      );
+    } catch {
+      setDesktopHost(false);
+      setDesktopApiKeyConfigured(null);
+    }
+  }, [setSelectedWorkspace]);
 
   const refreshApiKeyStatus = useCallback(() => {
-    void (async () => {
-      try {
-        const { invoke } = await import('@tauri-apps/api/core');
-        const s = await invoke<{ configured: boolean }>('get_api_key_status');
-        setDesktopHost(true);
-        setDesktopApiKeyConfigured(s.configured);
-        const info = await invoke<{ os: string; arch: string; version: string }>('get_platform_info');
-        setPlatform(info.os);
-        await ensureDefaultComposerWorkspace(
-          localStorage.getItem(workspaceStorageKey(getWindowLabel()))?.trim() ?? selectedWorkspace,
-          setSelectedWorkspace,
-        );
-      } catch {
-        setDesktopHost(false);
-        setDesktopApiKeyConfigured(null);
-      }
-    })();
-  }, [selectedWorkspace, setSelectedWorkspace]);
+    void runRefreshApiKeyStatus();
+  }, [runRefreshApiKeyStatus]);
+
+  const abortActiveStreamForSidecarRestartRef = useRef<() => void>(() => {});
 
   const abortActiveStreamForSidecarRestart = useCallback(() => {
     if (!streamingRef.current) return;
@@ -109,15 +119,17 @@ export function useDesktopShell({
     t,
   ]);
 
+  abortActiveStreamForSidecarRestartRef.current = abortActiveStreamForSidecarRestart;
+
   useEffect(() => {
-    refreshApiKeyStatus();
-  }, [refreshApiKeyStatus]);
+    void runRefreshApiKeyStatus();
+  }, [runRefreshApiKeyStatus]);
 
   useEffect(() => {
     if (!desktopHost) return;
     let cancelled = false;
     let timedOut = false;
-    let unlistenReady: (() => void) | undefined;
+    let bootHandled = false;
 
     const showWindow = () => {
       void import('@tauri-apps/api/window')
@@ -126,8 +138,9 @@ export function useDesktopShell({
     };
 
     const onReady = () => {
-      if (cancelled) return;
-      void refreshSessions();
+      if (cancelled || bootHandled) return;
+      bootHandled = true;
+      void refreshSessionsRef.current();
       showWindow();
     };
 
@@ -144,43 +157,28 @@ export function useDesktopShell({
       }
     });
 
-    void import('@tauri-apps/api/event')
-      .then(({ listen }) =>
-        listen<Record<string, unknown>>('sidecar://ready', () => {
-          clearTimeout(fallback);
-          if (!timedOut) {
-            onReady();
-          }
-        }),
-      )
-      .then((fn) => {
-        unlistenReady = fn;
-      })
-      .catch(() => {});
+    const unlistenReady = subscribeCurrentWebviewEvent<Record<string, unknown>>(
+      'sidecar://ready',
+      () => {
+        clearTimeout(fallback);
+        if (!timedOut) {
+          onReady();
+        }
+      },
+    );
     return () => {
       cancelled = true;
       clearTimeout(fallback);
-      unlistenReady?.();
+      unlistenReady();
     };
-  }, [desktopHost, refreshSessions]);
+  }, [desktopHost]);
 
   useEffect(() => {
     if (!desktopHost) return;
-    let unlisten: (() => void) | undefined;
-    void import('@tauri-apps/api/event')
-      .then(({ listen }) =>
-        listen('sidecar://restarting', () => {
-          abortActiveStreamForSidecarRestart();
-        }),
-      )
-      .then((fn) => {
-        unlisten = fn;
-      })
-      .catch(() => {});
-    return () => {
-      unlisten?.();
-    };
-  }, [desktopHost, abortActiveStreamForSidecarRestart]);
+    return subscribeCurrentWebviewEvent('sidecar://restarting', () => {
+      abortActiveStreamForSidecarRestartRef.current();
+    });
+  }, [desktopHost]);
 
   return {
     desktopHost,

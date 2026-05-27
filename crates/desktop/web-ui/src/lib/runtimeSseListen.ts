@@ -1,3 +1,5 @@
+import { listenCurrentWebviewEvent } from './tauriListen';
+
 /**
  * Scoped SSE listeners for runtime stream proxy (multi-window).
  *
@@ -8,10 +10,7 @@
 export async function listenRuntimeSseEvent<T>(
   eventName: string,
   handler: (payload: T) => void,
+  options?: { cancelled?: () => boolean },
 ): Promise<() => void> {
-  const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-  const unlisten = await getCurrentWebviewWindow().listen<T>(eventName, (ev) => {
-    handler(ev.payload);
-  });
-  return unlisten;
+  return listenCurrentWebviewEvent(eventName, handler, options);
 }
