@@ -53,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Zagens web-ui:** add `lib/workspacePaths.ts` — `joinWorkspaceSegments` helper for native-style workspace path joins (display / Tauri `open_in_shell`).
 - **Docs / Harness 文档集：** 新建 [`docs/harness/`](docs/harness/README.md) — 迁入 [`Agent+Harness组合式编程方案.md`](docs/harness/Agent+Harness组合式编程方案.md)、[`HARNESS_INTEGRATION_PROPOSAL.md`](docs/harness/HARNESS_INTEGRATION_PROPOSAL.md)；新增 [`ANTHROPIC_MANAGED_AGENTS_AND_HARNESS.md`](docs/harness/ANTHROPIC_MANAGED_AGENTS_AND_HARNESS.md)（Managed Agents 时间线、官方 Engineering 文章、三模式与组合式方案对照）；`docs/tech/adr/HARNESS_INTEGRATION_PROPOSAL.md` 保留重定向 stub。
 - **Docs / Harness v1.3：** [`Agent+Harness组合式编程方案.md`](docs/harness/Agent+Harness组合式编程方案.md) 增补 **阶段六「自适应主动 Harness」**（§3.4 定义、Manifest 一等公民、§10 路线图阶段六）；[`README.md`](docs/harness/README.md) 演进假设表；归并提案 §3 映射「自适应主动」行。
 - **Docs：** [`docs/prompt-architecture.md`](docs/prompt-architecture.md) 对齐 D6（`crates/runtime-server` 路径、`task overlay`、Engine 模块拆分、`DEEPSEEK_CLIENT_SURFACE=zagens`）。
