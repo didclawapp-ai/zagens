@@ -330,7 +330,7 @@ cd crates/desktop/web-ui && npm run build
 | 子项 | 验收 |
 |------|------|
 | **E2** | ✅ Landed（2026-05-26）— `subagent/mod.rs` ~82 行；`cargo test -p deepseek-runtime-server --lib tools::subagent` 108/108 |
-| **E3** | `App.tsx` <800 行；5 个 hook 文件存在；`npm run build` 通过 |
+| **E3** | 🔄 WIP — 6 个 hook（+ `useTurnSend`）；`App.tsx` ~1640 行（目标 <800）；`npm run build` ✅ |
 | **E1** | 4 crate 依赖方向符合 §1.3；OpenAPI 无意外 diff |
 | **E5** | CI 含 OpenAPI diff + 至少 1 条 golden path |
 

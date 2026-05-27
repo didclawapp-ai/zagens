@@ -1,60 +1,24 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  countActiveSubagents,
-  detectNarrativeSpawnWithoutAgents,
-} from './lib/auditSpawnDetect';
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { useInspectorUnread } from './lib/useInspectorUnread';
 import {
-  isAgentSpawnToolName,
-  parseAgentSpawnInput,
-} from './lib/agentSpawnMeta';
-import {
-  metaFromListRow,
-  metaFromSpawn,
-  upsertAgentInList,
-} from './lib/agentStateUpsert';
-import type { AgentSpawnMeta } from './lib/agentSpawnMeta';
-import {
-  postStreamTurn,
-  getSessions,
   getSessionDetail,
   resumeSessionThread,
   getThreadDetail,
   getThreadContext,
   patchThread,
-  startThreadTurn,
-  editLastThreadTurn,
   forkThreadAtUserMessage,
-  pollThreadTurnEvents,
-  postResolveApproval,
-  deleteSession,
-  persistThreadSession,
-  waitForRuntimeReady,
   waitForRuntimeBootReady,
-  invalidateRuntimeBootReadyCache,
-  probeRuntimeConnection,
-  initRuntimeConfig,
-  fetchSystemSettings,
   getRuntimeBase,
   fetchJson,
-  filterThreadStreamEvents,
-  threadIdFromSseEvent,
-  type RuntimeConnectionState,
-  type SessionInfo,
-  type SseTurnEvent,
   type SystemSettings,
 } from './api/client';
-import { stopThreadTurn } from './api/turnControl';
 import { useT } from './i18n';
-import { notifyCraftBlackboardChanged } from './lib/craftBlackboard';
-import { normalizeDesktopStreamEvent, type NormalizedStreamEvent, type TurnUsage } from './api/streamNormalize';
 import ChatView from './components/ChatView';
 import { useAuditNavActivity } from './lib/useAuditNavActivity';
-import Composer, { type ComposerOutboundMessage } from './components/Composer';
+import Composer from './components/Composer';
 import ModelParamsDialog, { type ModelParams } from './components/ModelParamsDialog';
 import {
   loadModelParams,
-  modelSamplingForApi,
   saveModelParams,
 } from './lib/modelParams';
 import Sidebar from './components/Sidebar';
@@ -65,18 +29,20 @@ import {
   createAgentWindow,
   initWindowContext,
   registerWindowThread,
-  threadOwnedByWindow,
   updateWindowTitle,
   getWindowLabel,
   workspaceStorageKey,
 } from './lib/windowBridge';
 import { formatWorkspaceFileError } from './lib/workspaceFileOpenError';
 import type { PreviewState } from './components/preview/types';
-import type { AgentState } from './types/agent';
 import useKeyboardShortcuts from './hooks/useKeyboardShortcuts';
+import { useRuntimeConnection } from './hooks/useRuntimeConnection';
+import { useAgentPanelState } from './hooks/useAgentPanelState';
+import { ACTIVE_SESSION_STORAGE_KEY, useTurnSession } from './hooks/useTurnSession';
+import { useTurnApproval, type ApprovalState } from './hooks/useTurnApproval';
+import { useTurnStream } from './hooks/useTurnStream';
+import { useTurnSend } from './hooks/useTurnSend';
 import SkipToMainLink from './components/SkipToMainLink';
-import { streamFlagsForRunMode } from './lib/runtimeMode';
-import { autoApproveFromPolicy, composerAutoApproveToggleEnabled } from './lib/approvalPolicy';
 import { rebuildMessagesFromThreadEvents } from './lib/chat/rebuildMessagesFromThread';
 import { depthFromTailForUserMessage } from './lib/chat/backtrackDepth';
 import {
@@ -85,14 +51,6 @@ import {
   type CachedUiMessage,
 } from './lib/chat/sessionUiCache';
 import { mapSessionDetailToMessages } from './lib/chat/sessionMessages';
-import {
-  appendCappedToolOutput,
-  capToolOutputForDisplay,
-  mergeStreamingToolOutput,
-  parseAgentIdFromSpawnOutput,
-  stringifyToolInput,
-  toolOutputString,
-} from './lib/chat/toolOutput';
 import {
   type DesktopModelId,
   type DesktopRouteIntentOption,
@@ -104,7 +62,6 @@ import {
   parseDesktopRunModeId,
   parseDesktopTaskTypePreference,
   parseDesktopTaskTypeResolved,
-  resolveRouteIntentForApi,
 } from './types/desktop';
 import {
   applyOfficeDefaultWorkspace,
@@ -114,7 +71,7 @@ import {
   workspacesMatch,
 } from './lib/defaultWorkspace';
 import { confirmDialog } from './lib/confirmDialog';
-import { toast, RUNTIME_TRANSIENT_TAG } from './lib/toast';
+import { toast } from './lib/toast';
 import { coerceRunModeForSession, isOfficeSession } from './lib/taskTypeSession';
 import {
   contextWindowTokensForModel,
@@ -123,20 +80,8 @@ import {
   resolveContextUsagePercent,
   type ThreadContextSnapshot,
 } from './lib/contextUsage';
-import {
-  RUNTIME_PROBE_INTERVAL_IDLE_MS,
-  RUNTIME_PROBE_INTERVAL_STREAMING_MS,
-  SESSION_CHECKPOINT_STREAMING_MS,
-  THREAD_CONTEXT_POLL_STREAMING_MS,
-} from './lib/runtimePoll';
+import { THREAD_CONTEXT_POLL_STREAMING_MS } from './lib/runtimePoll';
 import { isRuntimeApiAvailable } from './lib/runtimeReachable';
-import {
-  dispatchPanelChecklist,
-  dispatchPanelContext,
-  dispatchPanelScratchpad,
-  normalizeChecklistPayload,
-} from './lib/panelChannel';
-import type { ScratchpadStatus } from './api/client';
 
 interface Message {
   id: string;
@@ -153,17 +98,6 @@ interface ToolCall {
   input: string;
   output?: string;
   status: 'running' | 'done' | 'error';
-}
-
-interface ApprovalState {
-  toolCallId: string;
-  toolName: string;
-  description: string;
-}
-
-let msgId = 0;
-function nextId() {
-  return `msg-${++msgId}`;
 }
 
 type Theme = 'light' | 'dark';
@@ -220,7 +154,6 @@ function loadTheme(): Theme {
   return 'light';
 }
 
-const ACTIVE_SESSION_STORAGE_KEY = 'deepseek-desktop-active-session-id';
 const ACTIVE_INSPECTOR_STORAGE_KEY = 'deepseek-desktop-active-inspector';
 const RIGHT_PANEL_COLLAPSED_STORAGE_KEY = 'deepseek-desktop-right-panel-collapsed';
 const ROUTE_INTENT_STORAGE_KEY = 'deepseek-desktop-route-intent';
@@ -239,15 +172,6 @@ function loadRouteIntentPreference(): DesktopRouteIntentOption {
     return parseDesktopRouteIntentOption(localStorage.getItem(ROUTE_INTENT_STORAGE_KEY)) ?? 'off';
   } catch {
     return 'off';
-  }
-}
-
-function loadStoredActiveSessionId(): string | null {
-  try {
-    const s = localStorage.getItem(ACTIVE_SESSION_STORAGE_KEY)?.trim();
-    return s && s.length > 0 ? s : null;
-  } catch {
-    return null;
   }
 }
 
@@ -317,18 +241,10 @@ export default function App() {
   const [selectedModel, setSelectedModel] = useState<DesktopModelId>(() => loadComposerPrefs('main').model);
   const [selectedWorkspace, setSelectedWorkspace] = useState(() => loadComposerPrefs('main').workspace);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [streamingThreadIds, setStreamingThreadIds] = useState<Set<string>>(() => new Set());
-  const [pendingComposerStream, setPendingComposerStream] = useState(false);
-  const [sessions, setSessions] = useState<SessionInfo[]>([]);
+  const [desktopHost, setDesktopHost] = useState(false);
   const [activeInspector, setActiveInspector] = useState<RightPanelView>(() => loadStoredInspector());
-  const [resumedThreadId, setResumedThreadId] = useState<string | null>(null);
-  const retryConnectRef = useRef<() => void>(() => {});
   const [threadTrustMode, setThreadTrustMode] = useState(false);
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const [autoApprove, setAutoApprove] = useState(false);
   const [runMode, setRunMode] = useState<DesktopRunModeId>(() => loadRunModePreference());
-  const [approvalPolicy, setApprovalPolicy] = useState('on-request');
-  const approvalPolicyRef = useRef('on-request');
   const runModeRef = useRef(runMode);
   const [taskTypePreference, setTaskTypePreference] = useState<DesktopTaskTypePreference>(
     () => loadTaskTypePreference(),
@@ -338,24 +254,110 @@ export default function App() {
   );
   const [routeIntent, setRouteIntent] = useState<DesktopRouteIntentOption>(() => loadRouteIntentPreference());
 
-  const streaming = useMemo(() => {
-    if (pendingComposerStream) return true;
-    const tid = resumedThreadId;
-    return Boolean(tid && streamingThreadIds.has(tid));
-  }, [pendingComposerStream, resumedThreadId, streamingThreadIds]);
+  const refreshSessionsRef = useRef<() => Promise<void>>(async () => {});
+  const setRuntimeSessionEstablishedRef = useRef<Dispatch<SetStateAction<boolean>>>(() => {});
+  const notifyRuntimeTransientRef = useRef<(message: string) => void>(() => {});
+  const reconcileRuntimeAfterFetchFailureRef = useRef<() => void>(() => {});
+  const handleSelectSessionRef = useRef<(sessionId: string) => void>(() => {});
+  const handleNewSessionRef = useRef<() => void>(() => {});
+  const streamingRef = useRef(false);
+  const setApprovalRef = useRef<(value: ApprovalState | null) => void>(() => {});
+  const setLastTurnOutputTokensRef = useRef<(value: number | null) => void>(() => {});
 
-  const visibleSessions = useMemo(() => {
-    if (showAllSessions) return sessions;
-    const root = normalizeWorkspaceForApi(selectedWorkspace);
-    if (!root) return sessions;
-    return sessions.filter((s) => {
-      if (!s.workspace?.trim()) return true;
-      return workspacesMatch(s.workspace, root);
-    });
-  }, [sessions, showAllSessions, selectedWorkspace]);
+  const [lastTurnOutputTokens, setLastTurnOutputTokens] = useState<number | null>(null);
 
-  const [approval, setApproval] = useState<ApprovalState | null>(null);
-  const [approvalBusy, setApprovalBusy] = useState(false);
+  const {
+    sessions,
+    activeSessionId,
+    setActiveSessionId,
+    activeSessionIdRef,
+    resumedThreadId,
+    setResumedThreadId,
+    resumedThreadIdRef,
+    visibleSessions,
+    refreshSessions,
+    handleDeleteSession,
+  } = useTurnSession({
+    t,
+    showAllSessions,
+    selectedWorkspace,
+    streamingRef,
+    setRuntimeSessionEstablished: (value) => {
+      setRuntimeSessionEstablishedRef.current(value);
+    },
+    reconcileRuntimeAfterFetchFailure: () => reconcileRuntimeAfterFetchFailureRef.current(),
+    notifyRuntimeTransient: (message) => notifyRuntimeTransientRef.current(message),
+    refreshSessionsRef,
+    onRestoreSession: (sessionId) => handleSelectSessionRef.current(sessionId),
+    onClearActiveSession: () => handleNewSessionRef.current(),
+  });
+
+  const {
+    streamingThreadIds,
+    setStreamingThreadIds,
+    pendingComposerStream,
+    setPendingComposerStream,
+    streaming,
+    streamControllersRef,
+    threadTurnRef,
+    streamSessionRef,
+    abortThreadStream,
+    handleCancelStream,
+  } = useTurnStream({
+    resumedThreadId,
+    streamingRef,
+    t,
+    onCancelSideEffects: () => {
+      setApprovalRef.current(null);
+      setLastTurnOutputTokensRef.current(null);
+    },
+  });
+
+  const {
+    runtimeConn,
+    runtimeSessionEstablished,
+    setRuntimeSessionEstablished,
+    runtimeReachability,
+    reconcileRuntimeAfterFetchFailure,
+    notifyRuntimeTransient,
+  } = useRuntimeConnection({ streaming, streamingRef, t, refreshSessionsRef });
+
+  const {
+    approval,
+    setApproval,
+    approvalBusy,
+    approvalPolicy,
+    autoApprove,
+    setAutoApprove,
+    handleAutoApproveChange,
+    syncAutoApproveFromRunMode,
+    handleSystemSettingsSaved,
+    handleApproveDecision,
+    showApprovalIfOwned,
+    clearApproval,
+  } = useTurnApproval({
+    t,
+    threadTurnRef,
+    desktopHost,
+    runModeRef,
+  });
+
+  const {
+    agentStates,
+    resetAgentPanel,
+    onAgentSpawnToolStarted,
+    onAgentSpawnToolCompleted,
+    applyAgentStreamEvent,
+    subagentActiveCount,
+    narrativeSpawnSuspected,
+  } = useAgentPanelState({ messages });
+
+  setRuntimeSessionEstablishedRef.current = setRuntimeSessionEstablished;
+  notifyRuntimeTransientRef.current = notifyRuntimeTransient;
+  reconcileRuntimeAfterFetchFailureRef.current = reconcileRuntimeAfterFetchFailure;
+  setApprovalRef.current = setApproval;
+  setLastTurnOutputTokensRef.current = setLastTurnOutputTokens;
+
   const [panelPreview, setPanelPreview] = useState<PreviewState | null>(null);
   const [focusWorkspaceFilesNonce, setFocusWorkspaceFilesNonce] = useState(0);
   const [focusWorkspaceFilesRelPath, setFocusWorkspaceFilesRelPath] = useState<string | null>(
@@ -375,20 +377,15 @@ export default function App() {
   } | null>(null);
   const [backtrackBusy, setBacktrackBusy] = useState(false);
   const [composerPrefill, setComposerPrefill] = useState<{ text: string; nonce: number } | undefined>();
-  const [agentStates, setAgentStates] = useState<AgentState[]>([]);
-  /** `agent_spawn` tool input keyed by tool-call id until output returns `agent_id`. */
-  const pendingSpawnMetaRef = useRef<Map<string, AgentSpawnMeta>>(new Map());
   const [contextWindowTokens, setContextWindowTokens] = useState(DEFAULT_CONTEXT_WINDOW_TOKENS);
   /** Thread detail for empty-transcript fallback only (not summed for context %). */
   const [threadDetailForContext, setThreadDetailForContext] = useState<
     import('./lib/contextUsage').ThreadDetailWithTurns | null
   >(null);
   /** Last completed turn output tokens (Claude-style “↓ N tokens” hint). */
-  const [lastTurnOutputTokens, setLastTurnOutputTokens] = useState<number | null>(null);
   /** Runtime-aligned context snapshot (TUI `estimate_input_tokens_conservative`). */
   const [threadContextSnapshot, setThreadContextSnapshot] =
     useState<ThreadContextSnapshot | null>(null);
-  const resumedThreadIdRef = useRef<string | null>(null);
   const threadContextSnapshotRef = useRef<ThreadContextSnapshot | null>(null);
   const threadContextCacheRef = useRef<Map<string, ThreadContextSnapshot>>(new Map());
 
@@ -441,14 +438,7 @@ export default function App() {
     [contextUsedTokens, contextWindowTokens, threadContextSnapshot],
   );
 
-  const [desktopHost, setDesktopHost] = useState(false);
   const [desktopApiKeyConfigured, setDesktopApiKeyConfigured] = useState<boolean | null>(null);
-  const [runtimeConn, setRuntimeConn] = useState<RuntimeConnectionState>('checking');
-  /** Once true, panel APIs stay enabled across probe `offline` blips (B-channel busy). */
-  const [runtimeSessionEstablished, setRuntimeSessionEstablished] = useState(false);
-  const runtimeSessionEstablishedRef = useRef(false);
-  const runtimeProbeFailStreakRef = useRef(0);
-  const PROBE_FAILS_BEFORE_OFFLINE = 3;
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(() =>
     loadStoredRightPanelCollapsed(),
@@ -486,24 +476,7 @@ export default function App() {
     },
   ]);
 
-  /** Per-thread stream abort; switching session does not abort background turns. */
-  const streamControllersRef = useRef<Map<string, AbortController>>(new Map());
-  const threadTurnRef = useRef<{ threadId: string; turnId: string }>({
-    threadId: '',
-    turnId: '',
-  });
-  /** Active chat stream: optimistic interrupt UI + shared finishOnce. */
-  const streamSessionRef = useRef<{
-    markInterrupted: () => void;
-    finishOnce: () => void;
-  } | null>(null);
-  const streamingRef = useRef(false);
-  const activeSessionIdRef = useRef<string | null>(null);
-  const lastPersistedTurnRef = useRef<string>('');
   const selectSessionGenerationRef = useRef(0);
-  const startupSessionRestoredRef = useRef(false);
-  const toolProgressPendingRef = useRef('');
-  const toolProgressRafRef = useRef<number | null>(null);
   const selectSessionAbortRef = useRef<AbortController | null>(null);
   /** Per-session UI snapshots so switching back restores tools + thinking without waiting on replay. */
   const sessionUiCacheRef = useRef<Map<string, CachedUiMessage[]>>(new Map());
@@ -512,30 +485,45 @@ export default function App() {
   const suppressChecklistAutoSwitchRef = useRef(false);
   const suppressAuditAutoSwitchRef = useRef(false);
 
-  useEffect(() => {
-    activeSessionIdRef.current = activeSessionId;
-  }, [activeSessionId]);
-
-  useEffect(() => {
-    resumedThreadIdRef.current = resumedThreadId;
-  }, [resumedThreadId]);
+  const { handleSend, resetTurnPersistState } = useTurnSend({
+    t,
+    streaming,
+    resumedThreadId,
+    resumedThreadIdRef,
+    runMode,
+    autoApprove,
+    routeIntent,
+    selectedModel,
+    selectedWorkspace,
+    taskTypePreference,
+    modelParams,
+    desktopHost,
+    streamControllersRef,
+    threadTurnRef,
+    streamSessionRef,
+    setStreamingThreadIds,
+    setPendingComposerStream,
+    setMessages,
+    setResumedThreadId,
+    setActiveSessionId,
+    setRuntimeSessionEstablished,
+    setLastTurnOutputTokens,
+    activeSessionIdRef,
+    sessionUiCacheRef,
+    refreshSessions,
+    refreshThreadContext,
+    applyThreadContextSnapshot,
+    notifyRuntimeTransient,
+    resetAgentPanel,
+    onAgentSpawnToolStarted,
+    onAgentSpawnToolCompleted,
+    applyAgentStreamEvent,
+    showApprovalIfOwned,
+  });
 
   useEffect(() => {
     threadContextSnapshotRef.current = threadContextSnapshot;
   }, [threadContextSnapshot]);
-
-  useEffect(() => {
-    streamingRef.current = streaming;
-  }, [streaming]);
-
-  useEffect(() => {
-    runtimeSessionEstablishedRef.current = runtimeSessionEstablished;
-  }, [runtimeSessionEstablished]);
-
-  const runtimeReachability = useMemo(
-    () => ({ streaming, sessionEstablished: runtimeSessionEstablished }),
-    [streaming, runtimeSessionEstablished],
-  );
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -729,24 +717,6 @@ export default function App() {
     });
   }, []);
 
-  const dismissRuntimeTransient = useCallback(() => {
-    toast.dismissByTag(RUNTIME_TRANSIENT_TAG);
-  }, []);
-
-  const notifyRuntimeTransient = useCallback(
-    (message: string) => {
-      toast.error(message, {
-        tag: RUNTIME_TRANSIENT_TAG,
-        duration: 0,
-        action: {
-          label: t('common.retryConnection'),
-          onClick: () => retryConnectRef.current(),
-        },
-      });
-    },
-    [t],
-  );
-
   /** Sidecar restart (e.g. save system settings) kills in-flight SSE — clear stale「生成中」UI. */
   const abortActiveStreamForSidecarRestart = useCallback(() => {
     if (!streamingRef.current) return;
@@ -781,168 +751,6 @@ export default function App() {
     notifyRuntimeTransient(t('banner.runtimeRestartDuringStream'));
   }, [t, notifyRuntimeTransient]);
 
-  /** Re-sync sidebar runtime dot; if probe is OK, drop stale transport-level toasts. */
-  const reconcileRuntimeAfterFetchFailure = useCallback(() => {
-    void probeRuntimeConnection({ light: streamingRef.current }).then((s) => {
-      if (s === 'connected') {
-        runtimeProbeFailStreakRef.current = 0;
-        setRuntimeSessionEstablished(true);
-        setRuntimeConn('connected');
-        dismissRuntimeTransient();
-        return;
-      }
-      if (s === 'auth_mismatch') {
-        runtimeProbeFailStreakRef.current = 0;
-        setRuntimeConn('auth_mismatch');
-        return;
-      }
-      if (runtimeSessionEstablishedRef.current || streamingRef.current) {
-        runtimeProbeFailStreakRef.current += 1;
-        if (runtimeProbeFailStreakRef.current >= PROBE_FAILS_BEFORE_OFFLINE) {
-          setRuntimeConn('offline');
-        }
-        return;
-      }
-      runtimeProbeFailStreakRef.current = 0;
-      setRuntimeConn('offline');
-    });
-  }, [dismissRuntimeTransient]);
-
-  const refreshSessions = useCallback(async () => {
-    try {
-      const list = await getSessions();
-      setSessions(list);
-      setRuntimeSessionEstablished(true);
-      toast.dismissAll();
-    } catch (e) {
-      const err = e as Error & { status?: number };
-      if (err.status === 401) {
-        notifyRuntimeTransient(t('banner.unauthorized'));
-      } else {
-        notifyRuntimeTransient(t('banner.loadSessionsError', { message: err.message }));
-      }
-      reconcileRuntimeAfterFetchFailure();
-    }
-  }, [reconcileRuntimeAfterFetchFailure, notifyRuntimeTransient, t]);
-
-  /** Checkpoint session JSON during long streams / tab hide (best-effort). */
-  useEffect(() => {
-    if (!streaming || !resumedThreadId) {
-      return;
-    }
-    const tid = resumedThreadId;
-    const tick = () => {
-      void (async () => {
-        try {
-          const res = await persistThreadSession(tid, activeSessionIdRef.current);
-          setActiveSessionId(res.session_id);
-          try {
-            localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, res.session_id);
-          } catch {
-            /* ignore */
-          }
-          await refreshSessions();
-        } catch {
-          /* avoid toast spam — turn-complete persist will retry */
-        }
-      })();
-    };
-    const id = window.setInterval(tick, SESSION_CHECKPOINT_STREAMING_MS);
-    return () => window.clearInterval(id);
-  }, [streaming, resumedThreadId, refreshSessions]);
-
-  useEffect(() => {
-    const onVis = () => {
-      if (document.visibilityState !== 'hidden') {
-        return;
-      }
-      if (!streaming || !resumedThreadId) {
-        return;
-      }
-      const tid = resumedThreadId;
-      void (async () => {
-        try {
-          const res = await persistThreadSession(tid, activeSessionIdRef.current);
-          setActiveSessionId(res.session_id);
-          try {
-            localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, res.session_id);
-          } catch {
-            /* ignore */
-          }
-          await refreshSessions();
-        } catch {
-          /* ignore */
-        }
-      })();
-    };
-    document.addEventListener('visibilitychange', onVis);
-    return () => document.removeEventListener('visibilitychange', onVis);
-  }, [streaming, resumedThreadId, refreshSessions]);
-
-  const retryConnectAndSessions = useCallback(async () => {
-    toast.dismissAll();
-    setRuntimeConn('checking');
-    try {
-      invalidateRuntimeBootReadyCache();
-      await initRuntimeConfig();
-      const runtimeUrl = getRuntimeBase();
-      const ok = await waitForRuntimeReady({ timeoutMs: 60_000, intervalMs: 150 });
-      const probed = await probeRuntimeConnection();
-      if (probed === 'connected') {
-        setRuntimeSessionEstablished(true);
-        runtimeProbeFailStreakRef.current = 0;
-      }
-      setRuntimeConn(probed);
-      if (!ok) {
-        notifyRuntimeTransient(t('banner.runtimeUnreachableStartup', { url: runtimeUrl }));
-        return;
-      }
-      await refreshSessions();
-    } catch (e) {
-      notifyRuntimeTransient(t('banner.retryFailed', { message: (e as Error).message }));
-      setRuntimeConn('offline');
-    }
-  }, [refreshSessions, notifyRuntimeTransient, t]);
-
-  useEffect(() => {
-    retryConnectRef.current = () => {
-      void retryConnectAndSessions();
-    };
-  }, [retryConnectAndSessions]);
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const ok = await waitForRuntimeBootReady({ timeoutMs: 90_000, intervalMs: 150 });
-        if (!cancelled) {
-          const probed = await probeRuntimeConnection();
-          if (probed === 'connected') {
-            setRuntimeSessionEstablished(true);
-            runtimeProbeFailStreakRef.current = 0;
-          }
-          setRuntimeConn(probed);
-        }
-        if (cancelled) {
-          return;
-        }
-        if (!ok) {
-          notifyRuntimeTransient(t('banner.runtimeUnreachable', { url: getRuntimeBase() }));
-          return;
-        }
-        await refreshSessions();
-      } catch (e) {
-        if (!cancelled) {
-          notifyRuntimeTransient(t('banner.bootCheckFailed', { message: (e as Error).message }));
-          setRuntimeConn('offline');
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [refreshSessions, notifyRuntimeTransient, t]);
-
   const refreshApiKeyStatus = useCallback(() => {
     void (async () => {
       try {
@@ -968,57 +776,14 @@ export default function App() {
     runModeRef.current = runMode;
   }, [runMode]);
 
-  const syncAutoApproveFromPolicy = useCallback((policy: string) => {
-    approvalPolicyRef.current = policy;
-    setApprovalPolicy(policy);
-    const mode = runModeRef.current;
-    if (mode === 'yolo') {
-      setAutoApprove(true);
-    } else if (mode === 'plan') {
-      setAutoApprove(false);
-    } else {
-      setAutoApprove(autoApproveFromPolicy(policy));
-    }
-  }, []);
-
-  const handleAutoApproveChange = useCallback((value: boolean) => {
-    if (!composerAutoApproveToggleEnabled(approvalPolicyRef.current) && value) {
-      return;
-    }
-    setAutoApprove(value);
-  }, []);
-
-  const handleRunModeChange = useCallback((mode: DesktopRunModeId) => {
-    setRunMode(mode);
-    runModeRef.current = mode;
-    if (mode === 'yolo') {
-      setAutoApprove(true);
-    } else if (mode === 'plan') {
-      setAutoApprove(false);
-    } else {
-      setAutoApprove(autoApproveFromPolicy(approvalPolicyRef.current));
-    }
-  }, []);
-
-  const handleSystemSettingsSaved = useCallback(
-    (settings: SystemSettings) => {
-      syncAutoApproveFromPolicy(settings.approval_policy);
+  const handleRunModeChange = useCallback(
+    (mode: DesktopRunModeId) => {
+      setRunMode(mode);
+      runModeRef.current = mode;
+      syncAutoApproveFromRunMode(mode);
     },
-    [syncAutoApproveFromPolicy],
+    [syncAutoApproveFromRunMode],
   );
-
-  useEffect(() => {
-    if (!desktopHost) return;
-    let cancelled = false;
-    fetchSystemSettings()
-      .then((s) => {
-        if (!cancelled) syncAutoApproveFromPolicy(s.approval_policy);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [desktopHost, syncAutoApproveFromPolicy]);
 
   useEffect(() => {
     refreshApiKeyStatus();
@@ -1095,65 +860,6 @@ export default function App() {
     };
   }, [desktopHost, abortActiveStreamForSidecarRestart]);
 
-  useEffect(() => {
-    if (!streaming) {
-      return;
-    }
-    let cancelled = false;
-    void probeRuntimeConnection({ light: true }).then((s) => {
-      if (!cancelled && s === 'connected') {
-        runtimeProbeFailStreakRef.current = 0;
-        setRuntimeSessionEstablished(true);
-        setRuntimeConn('connected');
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [streaming]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const applyProbe = (s: Exclude<RuntimeConnectionState, 'checking'>) => {
-      if (s === 'connected') {
-        runtimeProbeFailStreakRef.current = 0;
-        setRuntimeSessionEstablished(true);
-        setRuntimeConn('connected');
-        dismissRuntimeTransient();
-        return;
-      }
-      if (s === 'auth_mismatch') {
-        runtimeProbeFailStreakRef.current = 0;
-        setRuntimeConn('auth_mismatch');
-        return;
-      }
-      if (runtimeSessionEstablishedRef.current || streamingRef.current) {
-        runtimeProbeFailStreakRef.current += 1;
-        if (runtimeProbeFailStreakRef.current >= PROBE_FAILS_BEFORE_OFFLINE) {
-          setRuntimeConn('offline');
-        }
-        return;
-      }
-      runtimeProbeFailStreakRef.current = 0;
-      setRuntimeConn('offline');
-    };
-    const tick = async () => {
-      const s = await probeRuntimeConnection({ light: streamingRef.current });
-      if (!cancelled) {
-        applyProbe(s);
-      }
-    };
-    void tick();
-    const intervalMs = streaming
-      ? RUNTIME_PROBE_INTERVAL_STREAMING_MS
-      : RUNTIME_PROBE_INTERVAL_IDLE_MS;
-    const id = window.setInterval(() => void tick(), intervalMs);
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
-  }, [dismissRuntimeTransient, streaming]);
-
   const handleSelectSession = useCallback(
     async (sessionId: string) => {
       const gen = ++selectSessionGenerationRef.current;
@@ -1175,14 +881,7 @@ export default function App() {
         threadContextCacheRef.current.set(outgoingThreadId, outgoingSnapshot);
       }
       if (outgoingThreadId) {
-        streamControllersRef.current.get(outgoingThreadId)?.abort();
-        streamControllersRef.current.delete(outgoingThreadId);
-        setStreamingThreadIds((prev) => {
-          const next = new Set(prev);
-          next.delete(outgoingThreadId);
-          return next;
-        });
-        setPendingComposerStream(false);
+        abortThreadStream(outgoingThreadId);
       }
 
       toast.dismissAll();
@@ -1190,7 +889,7 @@ export default function App() {
       setResumedThreadId(null);
       setThreadTrustMode(false);
       setPanelPreview(null);
-      lastPersistedTurnRef.current = '';
+      resetTurnPersistState();
 
       const cachedUi = getCachedSessionUiMessages(sessionUiCacheRef.current, sessionId);
       if (cachedUi?.length) {
@@ -1293,45 +992,16 @@ export default function App() {
       refreshThreadContext,
       restoreThreadContextFromCache,
       selectedModel,
+      abortThreadStream,
+      resetTurnPersistState,
       t,
     ],
   );
 
-  /** After the sidebar session list loads, re-open the last desktop session (if still present). */
-  useEffect(() => {
-    if (sessions.length === 0 || startupSessionRestoredRef.current) {
-      return;
-    }
-    const stored = loadStoredActiveSessionId();
-    if (!stored) {
-      startupSessionRestoredRef.current = true;
-      return;
-    }
-    if (!sessions.some((s) => s.id === stored)) {
-      try {
-        localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
-      } catch {
-        /* ignore */
-      }
-      startupSessionRestoredRef.current = true;
-      return;
-    }
-    startupSessionRestoredRef.current = true;
-    void handleSelectSession(stored);
-  }, [sessions, handleSelectSession]);
+  handleSelectSessionRef.current = handleSelectSession;
 
   const handleNewSession = useCallback(() => {
-    const tid = resumedThreadIdRef.current;
-    if (tid) {
-      streamControllersRef.current.get(tid)?.abort();
-      streamControllersRef.current.delete(tid);
-      setStreamingThreadIds((prev) => {
-        const next = new Set(prev);
-        next.delete(tid);
-        return next;
-      });
-    }
-    setPendingComposerStream(false);
+    abortThreadStream(resumedThreadIdRef.current);
     selectSessionAbortRef.current?.abort();
     selectSessionGenerationRef.current += 1;
     setMessages([]);
@@ -1349,9 +1019,11 @@ export default function App() {
       /* ignore */
     }
     threadTurnRef.current = { threadId: '', turnId: '' };
-    lastPersistedTurnRef.current = '';
-    setApproval(null);
-  }, []);
+    resetTurnPersistState();
+    clearApproval();
+  }, [abortThreadStream, clearApproval, resetTurnPersistState, selectedModel]);
+
+  handleNewSessionRef.current = handleNewSession;
 
   useEffect(() => {
     if (!officeSession) return;
@@ -1398,66 +1070,6 @@ export default function App() {
     },
     [resumedThreadId, handleNewSession],
   );
-
-  const handleDeleteSession = useCallback(
-    async (sessionId: string) => {
-      if (!(await confirmDialog(t('sidebar.deleteConfirm')))) return;
-      toast.dismissAll();
-      try {
-        await deleteSession(sessionId);
-        if (activeSessionId === sessionId) {
-          handleNewSession();
-        }
-        await refreshSessions();
-      } catch (e) {
-        const err = e as Error & { status?: number };
-        toast.error(t('banner.deleteSessionFailed', { message: err.message }));
-      }
-    },
-    [activeSessionId, handleNewSession, refreshSessions, t],
-  );
-
-  const handleCancelStream = useCallback(() => {
-    const { threadId, turnId } = threadTurnRef.current;
-    const streamControl =
-      (threadId ? streamControllersRef.current.get(threadId) : undefined) ??
-      streamControllersRef.current.get('__pending__') ??
-      undefined;
-
-    void stopThreadTurn({ threadId, turnId, streamControl }).catch((e) => {
-      const err = e as Error & { status?: number };
-      if (err.status === 409) {
-        return;
-      }
-      toast.warning(t('composer.interruptFailed', { message: err.message || String(e) }));
-    });
-
-    const session = streamSessionRef.current;
-    if (session) {
-      session.markInterrupted();
-      session.finishOnce();
-    } else {
-      setStreamingThreadIds(new Set());
-      setPendingComposerStream(false);
-    }
-
-    setApproval(null);
-    setLastTurnOutputTokens(null);
-  }, [t]);
-
-  /** F3 — Escape stops generation when focus is not in an input (matches TUI habit). */
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || e.ctrlKey || e.metaKey || e.altKey) return;
-      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
-      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
-      if (!streamingRef.current) return;
-      e.preventDefault();
-      handleCancelStream();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [handleCancelStream]);
 
   const handleComposerWorkspaceChange = useCallback(
     async (next: string) => {
@@ -1609,574 +1221,6 @@ export default function App() {
     }
   }, [resumedThreadId, t]);
 
-  const handleSend = useCallback(
-    (
-      outbound: ComposerOutboundMessage,
-      sendOptions?: { editFromMessageId?: string },
-    ) => {
-      if (!outbound.apiPrompt.trim() || streaming) return;
-
-      setPendingComposerStream(true);
-      const streamKey = resumedThreadIdRef.current ?? '__pending__';
-      streamControllersRef.current.get(streamKey)?.abort();
-      const controller = new AbortController();
-      streamControllersRef.current.set(streamKey, controller);
-      const signal = controller.signal;
-
-      const userMsg: Message = {
-        id: nextId(),
-        role: 'user',
-        content: outbound.displayContent,
-      };
-      setMessages((prev) => {
-        const editId = sendOptions?.editFromMessageId;
-        const base =
-          editId != null
-            ? (() => {
-                const idx = prev.findIndex((m) => m.id === editId);
-                return idx >= 0 ? prev.slice(0, idx) : prev;
-              })()
-            : prev;
-        return [...base, userMsg];
-      });
-
-      const assistantId = nextId();
-      const assistantMsg: Message = {
-        id: assistantId,
-        role: 'assistant',
-        content: '',
-        isStreaming: true,
-      };
-      setMessages((prev) => [...prev, assistantMsg]);
-
-      setRuntimeSessionEstablished(true);
-      setAgentStates([]);
-      pendingSpawnMetaRef.current.clear();
-      toast.dismissAll();
-      toolProgressPendingRef.current = '';
-      if (toolProgressRafRef.current != null) {
-        cancelAnimationFrame(toolProgressRafRef.current);
-        toolProgressRafRef.current = null;
-      }
-      void (async () => {
-      const ctx = {
-        currentToolId: { current: null as string | null },
-      };
-
-      const flushToolProgressToState = () => {
-        const chunk = toolProgressPendingRef.current;
-        if (!chunk) return;
-        toolProgressPendingRef.current = '';
-        setMessages((prev) =>
-          prev.map((m) => {
-            if (m.id !== assistantId) return m;
-            const tools = [...(m.tools ?? [])];
-            let idx = -1;
-            if (ctx.currentToolId.current) {
-              idx = tools.findIndex((t) => t.id === ctx.currentToolId.current);
-            }
-            if (idx < 0) {
-              for (let i = tools.length - 1; i >= 0; i--) {
-                if (tools[i].status === 'running') {
-                  idx = i;
-                  break;
-                }
-              }
-            }
-            if (idx < 0) return m;
-            const t = tools[idx];
-            tools[idx] = {
-              ...t,
-              output: appendCappedToolOutput(t.output ?? '', chunk),
-            };
-            return { ...m, tools };
-          }),
-        );
-      };
-
-      const scheduleToolProgressFlush = () => {
-        if (toolProgressRafRef.current != null) return;
-        toolProgressRafRef.current = requestAnimationFrame(() => {
-          toolProgressRafRef.current = null;
-          flushToolProgressToState();
-        });
-      };
-
-      let finished = false;
-      const interruptedLabel = t('composer.turnInterrupted');
-      const markInterrupted = () => {
-        setMessages((prev) =>
-          prev.map((m) => {
-            if (m.id !== assistantId) return m;
-            const tools = (m.tools ?? []).map((tool) =>
-              tool.status === 'running' ? { ...tool, status: 'error' as const } : tool,
-            );
-            const trimmed = m.content.trim();
-            let content = m.content;
-            if (!trimmed) {
-              content = interruptedLabel;
-            } else if (!trimmed.startsWith(`[${interruptedLabel}]`)) {
-              content = `[${interruptedLabel}] ${m.content}`;
-            }
-            return { ...m, tools, content, isStreaming: false };
-          }),
-        );
-      };
-      const maybePersistCompletedTurn = () => {
-        const { threadId, turnId } = threadTurnRef.current;
-        if (!threadId || !turnId || turnId === lastPersistedTurnRef.current) {
-          return;
-        }
-        lastPersistedTurnRef.current = turnId;
-        void (async () => {
-          try {
-            const res = await persistThreadSession(threadId, activeSessionIdRef.current);
-            setActiveSessionId(res.session_id);
-            try {
-              localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, res.session_id);
-            } catch {
-              /* ignore */
-            }
-            await refreshSessions();
-          } catch (e) {
-            toast.error(t('banner.persistSessionFailed', { message: (e as Error).message }));
-          }
-        })();
-      };
-
-      const finishOnce = () => {
-        if (finished) return;
-        finished = true;
-        streamSessionRef.current = null;
-        if (toolProgressRafRef.current != null) {
-          cancelAnimationFrame(toolProgressRafRef.current);
-          toolProgressRafRef.current = null;
-        }
-        flushToolProgressToState();
-        if (!signal.aborted) {
-          controller.abort();
-        }
-        const finishedThreadId = threadTurnRef.current.threadId;
-        streamControllersRef.current.delete('__pending__');
-        if (finishedThreadId) {
-          setStreamingThreadIds((prev) => {
-            const next = new Set(prev);
-            next.delete(finishedThreadId);
-            return next;
-          });
-          streamControllersRef.current.delete(finishedThreadId);
-        }
-        setPendingComposerStream(false);
-        setMessages((prev) => {
-          const next = prev.map((m) =>
-            m.id === assistantId ? { ...m, isStreaming: false } : m,
-          );
-          const sid = activeSessionIdRef.current;
-          if (sid) {
-            cacheSessionUiMessages(sessionUiCacheRef.current, sid, next);
-          }
-          return next;
-        });
-        const tid = threadTurnRef.current.threadId;
-        if (tid) {
-          void refreshThreadContext(tid);
-        }
-        maybePersistCompletedTurn();
-      };
-      streamSessionRef.current = { markInterrupted, finishOnce };
-
-      const notifyTurnCompleteIfAway = (desktop: boolean) => {
-        if (!desktop || !document.hidden) return;
-        void (async () => {
-          try {
-            const mod = await import('@tauri-apps/plugin-notification');
-            let granted = await mod.isPermissionGranted();
-            if (!granted) {
-              const perm = await mod.requestPermission();
-              granted = perm === 'granted';
-            }
-            if (granted) {
-              mod.sendNotification({ title: 'Zagens', body: '模型已完成回答' });
-            }
-          } catch {
-            /* browser mode — not supported */
-          }
-        })();
-      };
-
-      const applyNorm = (norm: NormalizedStreamEvent) => {
-        switch (norm.kind) {
-          case 'turn_started':
-            threadTurnRef.current = {
-              threadId: norm.threadId,
-              turnId: norm.turnId,
-            };
-            if (norm.threadId) {
-              setResumedThreadId(norm.threadId);
-              void registerWindowThread(norm.threadId);
-              setStreamingThreadIds((prev) => new Set(prev).add(norm.threadId));
-              setPendingComposerStream(false);
-              const pending = streamControllersRef.current.get('__pending__');
-              if (pending) {
-                streamControllersRef.current.delete('__pending__');
-                streamControllersRef.current.set(norm.threadId, pending);
-              }
-            }
-            break;
-          case 'thinking_delta': {
-            setMessages((prev) =>
-              prev.map((m) => {
-                if (m.id !== assistantId) return m;
-                return { ...m, thinking: (m.thinking ?? '') + norm.content };
-              }),
-            );
-            break;
-          }
-          case 'message_delta': {
-            setMessages((prev) =>
-              prev.map((m) => {
-                if (m.id !== assistantId) return m;
-                return { ...m, content: m.content + norm.content };
-              }),
-            );
-            break;
-          }
-          case 'tool_started': {
-            ctx.currentToolId.current = norm.id;
-            if (isAgentSpawnToolName(norm.name)) {
-              const meta = parseAgentSpawnInput(norm.input);
-              if (meta) {
-                pendingSpawnMetaRef.current.set(norm.id, meta);
-              }
-            }
-            const inputStr = stringifyToolInput(norm.input);
-            setMessages((prev) =>
-              prev.map((m) => {
-                if (m.id !== assistantId) return m;
-                const tools = [
-                  ...(m.tools ?? []),
-                  { id: norm.id, name: norm.name, input: inputStr, status: 'running' as const },
-                ];
-                return { ...m, tools };
-              }),
-            );
-            break;
-          }
-          case 'tool_progress': {
-            toolProgressPendingRef.current += norm.output;
-            scheduleToolProgressFlush();
-            break;
-          }
-          case 'tool_completed': {
-            if (toolProgressRafRef.current != null) {
-              cancelAnimationFrame(toolProgressRafRef.current);
-              toolProgressRafRef.current = null;
-            }
-            flushToolProgressToState();
-            const outStr = capToolOutputForDisplay(toolOutputString(norm.output));
-            setMessages((prev) =>
-              prev.map((m) => {
-                if (m.id !== assistantId) return m;
-                const tools = [...(m.tools ?? [])];
-                let idx = tools.findIndex((t) => t.id === norm.id);
-                if (idx < 0) {
-                  for (let i = tools.length - 1; i >= 0; i--) {
-                    if (tools[i].status === 'running') {
-                      idx = i;
-                      break;
-                    }
-                  }
-                }
-                if (idx < 0) return m;
-                const t = tools[idx];
-                const prevOut = (t.output ?? '').trim();
-                const finalOut = outStr.trim();
-                const merged = capToolOutputForDisplay(
-                  mergeStreamingToolOutput(prevOut, finalOut || ''),
-                );
-                const toolName = t.name;
-                tools[idx] = {
-                  ...t,
-                  output: merged,
-                  status: norm.success ? ('done' as const) : ('error' as const),
-                };
-                if (isAgentSpawnToolName(toolName)) {
-                  const agentId = parseAgentIdFromSpawnOutput(merged);
-                  const spawnMeta = pendingSpawnMetaRef.current.get(norm.id);
-                  pendingSpawnMetaRef.current.delete(norm.id);
-                  if (agentId) {
-                    queueMicrotask(() => {
-                      setAgentStates((prev) =>
-                        upsertAgentInList(prev, agentId, {
-                          status: 'spawned',
-                          ...metaFromSpawn(spawnMeta),
-                        }),
-                      );
-                    });
-                  }
-                }
-                return { ...m, tools };
-              }),
-            );
-            if (ctx.currentToolId.current === norm.id) {
-              ctx.currentToolId.current = null;
-            }
-            break;
-          }
-          case 'approval_required': {
-            const tid = threadTurnRef.current.threadId;
-            void (async () => {
-              const show =
-                !tid || !desktopHost || (await threadOwnedByWindow(tid));
-              if (show) {
-                setApproval({
-                  toolCallId: norm.id,
-                  toolName: norm.toolName,
-                  description: norm.description,
-                });
-              }
-            })();
-            break;
-          }
-          case 'turn_completed':
-            finishOnce();
-            notifyTurnCompleteIfAway(desktopHost);
-            if (norm.usage?.output_tokens != null && norm.usage.output_tokens > 0) {
-              setLastTurnOutputTokens(norm.usage.output_tokens);
-            }
-            break;
-          case 'done':
-            finishOnce();
-            notifyTurnCompleteIfAway(desktopHost);
-            break;
-          case 'error':
-            finishOnce();
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantId
-                  ? { ...m, content: m.content || `Error: ${norm.message}`, isStreaming: false }
-                  : m,
-              ),
-            );
-            toast.error(norm.message ? norm.message : t('banner.streamError'));
-            break;
-          case 'agent_spawned':
-            setAgentStates((prev) =>
-              upsertAgentInList(prev, norm.agentId, {
-                status: 'spawned',
-                ...(norm.prompt ? { objective: norm.prompt } : {}),
-              }),
-            );
-            break;
-          case 'agent_progress':
-            setAgentStates((prev) =>
-              upsertAgentInList(prev, norm.agentId, {
-                status: 'running',
-                ...(norm.status ? { progressStatus: norm.status } : {}),
-              }),
-            );
-            break;
-          case 'agent_completed':
-            setAgentStates((prev) =>
-              upsertAgentInList(prev, norm.agentId, {
-                status: 'completed',
-                resultSummary: norm.result,
-                completedAt: Date.now(),
-              }),
-            );
-            break;
-          case 'agent_list': {
-            const mapSubAgentUiStatus = (
-              status: string,
-            ): AgentState['status'] => {
-              if (status === 'Completed') return 'completed';
-              if (status === 'Interrupted' || status === 'Failed' || status === 'Cancelled') {
-                return 'interrupted';
-              }
-              return 'running';
-            };
-            setAgentStates((prev) => {
-              const now = Date.now();
-              let next = prev;
-              for (const row of norm.agents) {
-                if (!row.id) continue;
-                const uiStatus = mapSubAgentUiStatus(row.status);
-                next = upsertAgentInList(next, row.id, {
-                  status: uiStatus,
-                  ...metaFromListRow(row),
-                  completedAt:
-                    uiStatus === 'completed' || uiStatus === 'interrupted' ? now : null,
-                });
-              }
-              return next;
-            });
-            break;
-          }
-          case 'panel_scratchpad': {
-            const raw = norm.scratchpad;
-            if (raw && typeof raw === 'object' && 'run_id' in (raw as Record<string, unknown>)) {
-              dispatchPanelScratchpad(raw as ScratchpadStatus);
-            }
-            break;
-          }
-          case 'panel_checklist': {
-            dispatchPanelChecklist(normalizeChecklistPayload(norm.checklist));
-            break;
-          }
-          case 'panel_context': {
-            const ctx = norm.context as ThreadContextSnapshot;
-            const tid = resumedThreadIdRef.current;
-            if (tid && ctx && typeof ctx.estimated_input_tokens === 'number') {
-              applyThreadContextSnapshot(tid, ctx);
-              dispatchPanelContext(ctx);
-            }
-            break;
-          }
-          case 'craft_verdict':
-          case 'craft_board_updated':
-            notifyCraftBlackboardChanged();
-            break;
-          default:
-            break;
-        }
-      };
-
-      const deliverSseEvent = (ev: SseTurnEvent, filter?: { turnId: string }) => {
-        if (signal.aborted) return;
-        const norm = normalizeDesktopStreamEvent(ev, filter);
-        if (norm) {
-          applyNorm(norm);
-        }
-      };
-
-      const onSseEvent = (ev: SseTurnEvent, filter?: { turnId: string }) => {
-        if (!desktopHost) {
-          deliverSseEvent(ev, filter);
-          return;
-        }
-        const tid =
-          resumedThreadId ||
-          threadTurnRef.current.threadId ||
-          threadIdFromSseEvent(ev);
-        if (!tid) {
-          deliverSseEvent(ev, filter);
-          return;
-        }
-        filterThreadStreamEvents(tid, () => deliverSseEvent(ev, filter))(ev);
-      };
-
-      const handleHttpError = (err: Error & { status?: number }) => {
-        const msg = err.message || String(err);
-        const status = err.status;
-        if (status === 401) {
-          notifyRuntimeTransient(t('banner.unauthorizedBearer'));
-        } else if (/api\s*key|DEEPSEEK_API_KEY|401|unauthorized/i.test(msg)) {
-          notifyRuntimeTransient(t('banner.missingApiKey'));
-        }
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantId
-              ? { ...m, content: m.content || `Error: ${msg}`, isStreaming: false }
-              : m,
-          ),
-        );
-        finishOnce();
-      };
-
-      const streamOpts = streamFlagsForRunMode(runMode, autoApprove);
-      const routeIntentApi = resolveRouteIntentForApi(routeIntent, runMode);
-
-      try {
-        if (resumedThreadId) {
-          const detail = await getThreadDetail(resumedThreadId);
-          if (signal.aborted) {
-            finishOnce();
-            return;
-          }
-          const sinceSeq = detail.latest_seq ?? 0;
-          const turnBody = {
-            model: selectedModel,
-            mode: streamOpts.mode,
-            allow_shell: streamOpts.allow_shell,
-            trust_mode: streamOpts.trust_mode,
-            auto_approve: streamOpts.auto_approve,
-            ...(routeIntentApi != null ? { route_intent: routeIntentApi } : {}),
-            ...modelSamplingForApi(modelParams),
-          };
-          const { turn } = sendOptions?.editFromMessageId
-            ? await editLastThreadTurn(resumedThreadId, {
-                content: outbound.apiPrompt,
-                ...turnBody,
-              })
-            : await startThreadTurn(resumedThreadId, {
-                prompt: outbound.apiPrompt,
-                task_type: taskTypePreference,
-                ...turnBody,
-              });
-          if (signal.aborted) {
-            finishOnce();
-            return;
-          }
-          const turnId = turn.id;
-          threadTurnRef.current = {
-            threadId: resumedThreadId,
-            turnId,
-          };
-
-          await pollThreadTurnEvents(
-            resumedThreadId,
-            sinceSeq,
-            (ev) => onSseEvent(ev, { turnId }),
-            { signal, turnId },
-          );
-          finishOnce();
-        } else {
-          await postStreamTurn(
-            {
-              prompt: outbound.apiPrompt,
-              workspace: selectedWorkspace,
-              mode: streamOpts.mode,
-              model: selectedModel,
-              allow_shell: streamOpts.allow_shell,
-              trust_mode: streamOpts.trust_mode,
-              auto_approve: streamOpts.auto_approve,
-              ...(routeIntentApi != null ? { route_intent: routeIntentApi } : {}),
-              task_type: taskTypePreference,
-              ...modelSamplingForApi(modelParams),
-            },
-            (ev) => onSseEvent(ev),
-            () => finishOnce(),
-            (err) => handleHttpError(err as Error & { status?: number }),
-            { signal },
-          );
-        }
-      } catch (e) {
-        if ((e as Error).name === 'AbortError') {
-          finishOnce();
-          return;
-        }
-        handleHttpError(e as Error & { status?: number });
-      }
-      })();
-    },
-    [
-      streaming,
-      resumedThreadId,
-      autoApprove,
-      runMode,
-      routeIntent,
-      selectedModel,
-      selectedWorkspace,
-      taskTypePreference,
-      modelParams,
-      refreshSessions,
-      refreshThreadContext,
-      notifyRuntimeTransient,
-      desktopHost,
-      t,
-    ],
-  );
-
   const handleEditMessage = useCallback(
     (messageId: string, content: string) => {
       if (streaming || !resumedThreadId) {
@@ -2240,11 +1284,11 @@ export default function App() {
       streamControllersRef.current.delete(sourceThreadId);
       setStreamingThreadIds(new Set());
       setPendingComposerStream(false);
-      setAgentStates([]);
+      resetAgentPanel();
       resumedThreadIdRef.current = newThreadId;
       setResumedThreadId(newThreadId);
       threadTurnRef.current = { threadId: newThreadId, turnId: '' };
-      lastPersistedTurnRef.current = '';
+      resetTurnPersistState();
 
       const rebuilt = (await rebuildMessagesFromThreadEvents(newThreadId)) as Message[];
       setMessages(rebuilt);
@@ -2272,40 +1316,7 @@ export default function App() {
     } finally {
       setBacktrackBusy(false);
     }
-  }, [backtrackDraft, resumedThreadId, backtrackBusy, refreshThreadContext, t]);
-
-  const handleApproveDecision = async (decision: 'approve' | 'deny') => {
-    if (!approval) return;
-    const { threadId, turnId } = threadTurnRef.current;
-    if (!threadId || !turnId) {
-      toast.warning(t('banner.approvalMissingThread'));
-      setApproval(null);
-      return;
-    }
-    setApprovalBusy(true);
-    try {
-      await postResolveApproval(threadId, turnId, approval.toolCallId, decision);
-    } catch (e) {
-      const err = e as Error & { status?: number };
-      if (err.status === 409) {
-        toast.warning(t('banner.approvalExpired'));
-      } else {
-        toast.error(t('banner.approvalSubmitFailed', { message: err.message }));
-      }
-    } finally {
-      setApprovalBusy(false);
-      setApproval(null);
-    }
-  };
-
-  const subagentActiveCount = useMemo(
-    () => countActiveSubagents(agentStates),
-    [agentStates],
-  );
-  const narrativeSpawnSuspected = useMemo(
-    () => detectNarrativeSpawnWithoutAgents(messages, agentStates),
-    [messages, agentStates],
-  );
+  }, [backtrackDraft, resumedThreadId, backtrackBusy, refreshThreadContext, resetAgentPanel, resetTurnPersistState, t]);
 
   const auditActivity = useAuditNavActivity({
     threadId: resumedThreadId,
