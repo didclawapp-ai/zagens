@@ -28,7 +28,7 @@ pub use deepseek_runtime_orchestrator::runtime_threads::{
 };
 pub use deepseek_runtime_orchestrator::runtime_threads::types::*;
 
-pub(crate) const SUMMARY_LIMIT: usize = 280;
+pub(crate) use deepseek_runtime_orchestrator::runtime_threads::thread_crud::SUMMARY_LIMIT;
 pub(crate) use deepseek_runtime_orchestrator::runtime_threads::manager::{
     EVENT_CHANNEL_CAPACITY, RUNTIME_RESTART_REASON,
 };

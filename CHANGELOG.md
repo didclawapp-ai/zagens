@@ -34,7 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **D16 E1-a (WIP):** 新建 `crates/runtime-adapters`（`deepseek-runtime-adapters`）— 迁入 `mcp/`、`network_policy`、`persist/`（`session_manager` + `session_store_sqlite` + `context_reference`）、`snapshot/`、`json_schema_util`；`runtime-server` 经 re-export 保持 `crate::mcp` / `crate::session_manager` 路径；`impl McpHost for McpPool` 随类型迁至 adapters；`tools/` 仍留 `runtime-server`（与 `runtime_threads` / `core::engine` 循环依赖，待 host 边界 refactor 后再迁）。
 - **D16 E1-a2 (WIP):** `scratchpad_gates` + 路径读 scratchpad 子模块迁入 `runtime-adapters`；`tools/{file,tasks}` 直接调用 adapters gate；`scratchpad_flow` re-export 保持 engine 侧兼容。
 - **D16 E1-b (WIP, phase 1):** 新建 `crates/runtime-orchestrator` — 迁入 `runtime_threads/{types,persist}`、`thread_store_sqlite`、`pricing`（usage 聚合）；`RuntimeThreadManager` 等 live orchestration 仍留 `runtime-server`；40 个 `runtime_threads` 单元测试全绿。
-- **D16 E1-b (WIP, phase 2):** 迁入 `runtime_threads/{routing,events,event_coalesce}` 至 orchestrator；新增 `engine` 模块（`EngineHandle<P,R>` 边界）与 `active`/`turn_wait` 迁入 orchestrator；`RuntimeThreadManager<P,R>` 核心（store/active/events/approval）迁入 orchestrator，sidecar 以 `Deref` 包装保留 `Config`/task/scratchpad 面板；`engine_load`/`monitor` 仍留 server。
+- **D16 E1-b (WIP, phase 2):** 迁入 `runtime_threads/{routing,events,event_coalesce}` 至 orchestrator；新增 `engine` 模块（`EngineHandle<P,R>` 边界）与 `active`/`turn_wait` 迁入 orchestrator；`RuntimeThreadManager<P,R>` 核心（store/active/events/approval）迁入 orchestrator，sidecar 以 `Deref` 包装保留 `Config`/task/scratchpad 面板；`thread_crud` 纯 CRUD/fork/seed 迁入 orchestrator，server 保留 `create_thread`/`get_thread_context`/`resume_thread` 与 symbol index hook。
 
 ### Changed
 

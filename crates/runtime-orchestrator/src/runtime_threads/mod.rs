@@ -12,6 +12,7 @@ pub mod events;
 pub mod manager;
 pub mod persist;
 pub mod routing;
+pub mod thread_crud;
 pub mod turn_wait;
 pub mod types;
 
