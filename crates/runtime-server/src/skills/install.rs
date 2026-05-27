@@ -43,7 +43,9 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-use crate::network_policy::{Decision, NetworkPolicy, host_from_url};
+use crate::network_policy::NetworkPolicy;
+use deepseek_runtime_adapters::network_policy::{Decision, host_from_url};
+use deepseek_runtime_adapters::tools::{check_host_with_policy, host_policy_decision, NetworkGateError};
 
 /// Cache directory for registry-synced skills.
 ///
@@ -601,7 +603,14 @@ pub fn trust(name: &str, skills_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Fetch the curated registry and return the parsed entries.
+const SKILLS_NETWORK_TOOL: &str = "skills_install";
+
+fn map_registry_gate_error(err: NetworkGateError) -> RegistryFetchResult {
+    match err {
+        NetworkGateError::Denied { host, .. } => RegistryFetchResult::Denied(host),
+        NetworkGateError::PromptRequired { host, .. } => RegistryFetchResult::NeedsApproval(host),
+    }
+}
 ///
 /// Honours `network` (skipping the call entirely on Deny / Prompt).
 pub async fn fetch_registry(
@@ -612,10 +621,8 @@ pub async fn fetch_registry(
         Some(host) => host,
         None => bail!("invalid registry url: {registry_url}"),
     };
-    match network.decide(&host) {
-        Decision::Allow => {}
-        Decision::Deny => return Ok(RegistryFetchResult::Denied(host)),
-        Decision::Prompt => return Ok(RegistryFetchResult::NeedsApproval(host)),
+    if let Err(err) = check_host_with_policy(network, SKILLS_NETWORK_TOOL, &host) {
+        return Ok(map_registry_gate_error(err));
     }
     let body = reqwest::get(registry_url)
         .await
@@ -756,20 +763,17 @@ async fn sync_one_skill(
             Some(h) => h,
             None => continue,
         };
-        match network.decide(&host) {
-            Decision::Allow => {}
-            Decision::Deny => {
-                return SkillSyncOutcome::Denied {
+        if let Err(err) = check_host_with_policy(network, SKILLS_NETWORK_TOOL, &host) {
+            return match err {
+                NetworkGateError::Denied { host, .. } => SkillSyncOutcome::Denied {
                     name: name.to_string(),
                     host,
-                };
-            }
-            Decision::Prompt => {
-                return SkillSyncOutcome::NeedsApproval {
+                },
+                NetworkGateError::PromptRequired { host, .. } => SkillSyncOutcome::NeedsApproval {
                     name: name.to_string(),
                     host,
-                };
-            }
+                },
+            };
         }
 
         // Perform a HEAD request (or conditional GET) for freshness. We use a
@@ -1055,7 +1059,7 @@ async fn download_first_success(
             Some(h) => h,
             None => bail!("invalid download url: {url}"),
         };
-        match network.decide(&host) {
+        match host_policy_decision(network, &host) {
             Decision::Allow => {}
             Decision::Deny => {
                 denied_host.get_or_insert(host);

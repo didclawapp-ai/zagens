@@ -2,7 +2,7 @@
 
 use std::net::IpAddr;
 
-use crate::network_policy::{Decision, NetworkPolicyDecider, host_from_url};
+use crate::network_policy::{Decision, NetworkPolicy, NetworkPolicyDecider, host_from_url};
 
 /// Policy gate failure for an outbound network call.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -59,6 +59,31 @@ pub fn check_url_policy(
     };
     check_host_policy(decider, tool_name, &host)?;
     Ok(Some(host))
+}
+
+/// Evaluate a static [`NetworkPolicy`] (no session cache) for a known host.
+pub fn check_host_with_policy(
+    policy: &NetworkPolicy,
+    tool_name: &str,
+    host: &str,
+) -> Result<(), NetworkGateError> {
+    match policy.decide(host) {
+        Decision::Allow => Ok(()),
+        Decision::Deny => Err(NetworkGateError::Denied {
+            host: host.to_string(),
+            tool: tool_name.to_string(),
+        }),
+        Decision::Prompt => Err(NetworkGateError::PromptRequired {
+            host: host.to_string(),
+            tool: tool_name.to_string(),
+        }),
+    }
+}
+
+/// Decision for `host` against a static policy (no session cache).
+#[must_use]
+pub fn host_policy_decision(policy: &NetworkPolicy, host: &str) -> Decision {
+    policy.decide(host)
 }
 
 /// True when `url` uses http/https (case-insensitive on scheme).
@@ -166,6 +191,19 @@ mod tests {
         };
         let decider = NetworkPolicyDecider::with_default_audit(policy);
         let err = check_url_policy(Some(&decider), "fetch_url", "https://example.com/private")
+            .expect_err("deny");
+        assert!(matches!(err, NetworkGateError::Denied { .. }));
+    }
+
+    #[test]
+    fn check_host_with_policy_denies_blocked_host() {
+        let policy = NetworkPolicy {
+            default: Decision::Allow.into(),
+            allow: vec![],
+            deny: vec!["example.com".into()],
+            audit: false,
+        };
+        let err = check_host_with_policy(&policy, "skills_install", "example.com")
             .expect_err("deny");
         assert!(matches!(err, NetworkGateError::Denied { .. }));
     }

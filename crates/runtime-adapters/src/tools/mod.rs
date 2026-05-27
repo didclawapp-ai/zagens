@@ -14,7 +14,8 @@ pub use host::{
     RuntimeToolHostWire, ToolAutomationHost, ToolProgressEmit, ToolShellEnvHost, ToolTaskHost,
 };
 pub use network_gate::{
-    NetworkGateError, check_host_policy, check_url_policy, is_http_url, is_restricted_ip,
+    NetworkGateError, check_host_policy, check_host_with_policy, check_url_policy,
+    host_policy_decision, is_http_url, is_restricted_ip,
 };
 pub use path::path_has_prefix;
 pub use schema_sanitize::sanitize;

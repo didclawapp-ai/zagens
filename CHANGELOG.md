@@ -26,18 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Docs (D16):** Phase E maintainability split plans — [`docs/tech/adr/D16_PHASE_E_MAINTAINABILITY.md`](docs/tech/adr/D16_PHASE_E_MAINTAINABILITY.md) (`runtime-server` crate、SubAgent、`App.tsx` hooks；不阻塞发布).
 - **D16 E2 (Landed):** Split `tools/subagent/mod.rs` (~4340 行) into focused modules — `mod.rs` ~82 行、`manager.rs` / `executor.rs` / `tools/*` / `parse.rs` / `router.rs` / `prompts.rs` 等；108 个 subagent 单元测试全绿。
 - **D16 E3-a (Landed):** Extract `hooks/useRuntimeConnection.ts` from `App.tsx` (Sidecar boot、probe、重连、runtime 状态).
-- **D16 E3-b (WIP):** Extract `hooks/useTurnSession.ts` + `hooks/useTurnStream.ts` — 会话列表/恢复/checkpoint、SSE 流 abort/cancel/Escape；`App.tsx` 已接线，`npm run build` 通过；`handleSend` 等待 E3-d 继续下沉。
-- **D16 E3-c (WIP):** Extract `hooks/useTurnApproval.ts` + `hooks/useAgentPanelState.ts` — 审批策略/对话框、SubAgent 面板状态与 SSE agent 事件；`App.tsx` 已接线，`npm run build` 通过。
-- **D16 E3-d (WIP):** Extract `hooks/useTurnSend.ts` — SSE 发消息/流式事件处理（~500 行）；`App.tsx` 继续瘦身。
-- **D16 E3-e (Landed):** Extract `useSessionNavigation` / `useThreadContext` / `useDesktopShell`、`lib/appPreferences.ts`、`TitleBar` / `ChatActionDialogs` 组件。
-- **D16 E3-f (Landed):** Extract `AppShell.tsx`、`useWorkspacePanel`、`useChatMessageActions`；`App.tsx` **776 行**（<800 验收）；`npm run build` ✅。
-- **D16 E1-a (WIP):** 新建 `crates/runtime-adapters`（`deepseek-runtime-adapters`）— 迁入 `mcp/`、`network_policy`、`persist/`（`session_manager` + `session_store_sqlite` + `context_reference`）、`snapshot/`、`json_schema_util`；`runtime-server` 经 re-export 保持 `crate::mcp` / `crate::session_manager` 路径；`impl McpHost for McpPool` 随类型迁至 adapters；`tools/` 仍留 `runtime-server`（与 `runtime_threads` / `core::engine` 循环依赖，待 host 边界 refactor 后再迁）。
-- **D16 E1-a2 (WIP):** `scratchpad_gates` + 路径读 scratchpad 子模块迁入 `runtime-adapters`；`tools/{file,tasks}` 直接调用 adapters gate；`scratchpad_flow` re-export 保持 engine 侧兼容。
-- **D16 E1-a3 (WIP):** `runtime-adapters/src/tools/` — 迁入 `diff_format`、`schema_sanitize`、路径 helper；新增 `RuntimeToolHostWire` / `ToolProgressEmit` / `ToolShellEnvHost` host 端口；`RuntimeToolServices` 元数据收拢至 `wire`；sidecar `tools/host_impl.rs` 实现 hook 端口。
-- **D16 E1-a4 (WIP):** 新增 `ToolTaskHost` / `ToolAutomationHost` adapter 端口；`task_*` / `automation_*` / GitHub 工具改走 host；sidecar `TaskManagerHost` / `AutomationManagerHost` 实现。
-- **D16 E1-a5:** 迁入纯工具 helper — `workspace_walk`、`arg_repair` → `runtime-adapters/src/tools/`；`runtime-server` 经 re-export 保持 `crate::tools::*` 路径。
-- **D16 E1-a6:** 新建 `runtime-adapters/src/tools/network_gate.rs` — 共用的 network policy gate + SSRF `is_restricted_ip`；`fetch_url` / `web_run` / `web_search` 去重。
-- **D16 E5:** OpenAPI + TS 契约重新对齐 E1-c `runtime-api` 导出；CI 增加 `generate:api-types` diff gate；本地 `./scripts/check-openapi-contract.{sh,ps1}`。
+- **D16 E3-b/c/d (Landed):** `useTurnSession` / `useTurnStream` / `useTurnApproval` / `useAgentPanelState` / `useTurnSend`；`AppShell` + `App.tsx` **776 行**。
+- **D16 E1-a3–a6 (Landed):** tools host 端口、workspace_walk/arg_repair、network_gate；fetch_url/web_run/web_search 去重。
+- **D16 E1-a7:** `skills/install.rs` 复用 `network_gate::check_host_with_policy` / `host_policy_decision`。
+- **D16 E5 (Landed):** OpenAPI + TS 契约重新对齐 E1-c；CI `generate:api-types` diff gate；`check-openapi-contract.{sh,ps1}`。
 - **D16 E1-b (WIP, phase 1):** 新建 `crates/runtime-orchestrator` — 迁入 `runtime_threads/{types,persist}`、`thread_store_sqlite`、`pricing`（usage 聚合）；`RuntimeThreadManager` 等 live orchestration 仍留 `runtime-server`；40 个 `runtime_threads` 单元测试全绿。
 - **D16 E1-b (WIP, phase 2):** 迁入 `runtime_threads/{routing,events,event_coalesce}` 至 orchestrator；新增 `engine`/`engine_host`（`EngineHandle<P,R>` + `RuntimeThreadHost` trait）；`active`/`turn_wait`/`turn_control`/`turn_lifecycle` 核心迁入 orchestrator；`RuntimeThreadManager<P,R>` 核心 + `thread_crud` 在 orchestrator；sidecar `Deref` 包装实现 host（`engine_load`/`monitor`/`prepare_start_turn_params`）；server 保留 Config/task/scratchpad 与 symbol index hook。
 - **D16 E1-b (WIP, phase 3):** `monitor_turn` 事件循环（~930 行）迁入 `runtime-orchestrator`/`monitor.rs`；新增 `RuntimeThreadMonitorHost`（panel SSE、artifact refs、全权限 sandbox policy）与 `monitor_persist` 阻塞落盘 helper；sidecar `monitor_host.rs` 实现 host hook；删除 `runtime-server`/`monitor.rs`。
