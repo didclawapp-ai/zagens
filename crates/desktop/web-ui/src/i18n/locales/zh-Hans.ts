@@ -98,6 +98,9 @@ const zhHans = {
   about: {
     description:
       'Zagens 是面向代码与办公工作区的桌面 Agent 控制台，专为 DeepSeek V4 适配。',
+    thirdPartyTitle: '第三方许可证',
+    thirdPartyLicenses:
+      '许可证全文随应用安装在可执行文件同目录的 legal/ 文件夹中，含 embedded deepseek-tui runtime（0.8.15）的 MIT 许可。',
     techStackTitle: '主要技术栈',
     techStackDeepseekTui: 'deepseek-tui 0.8.15',
     techStackTauri: 'Tauri 2',

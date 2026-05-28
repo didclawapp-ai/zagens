@@ -228,6 +228,17 @@ pub trait TurnLoopHost: Send {
 
     fn record_scratchpad_tool_outcome(&mut self, tool_name: &str, success: bool);
 
+    /// Called after a successful scratchpad bind/write tool so the host can sync run_id
+    /// and eager-load audit sub-agent tools in the same turn.
+    fn on_audit_scratchpad_bind_success(
+        &mut self,
+        _mode: TurnLoopMode,
+        _tool_name: &str,
+        _catalog: &mut [Tool],
+        _active: &mut HashSet<String>,
+    ) {
+    }
+
     async fn maybe_inject_scratchpad_summary(&mut self) -> bool;
 
     async fn maybe_inject_scratchpad_reminder(&mut self);

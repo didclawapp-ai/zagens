@@ -101,6 +101,9 @@ const ptBr: TranslationMap = {
   about: {
     description:
       'Zagens é um console de agente para desktop voltado a workspaces de código e escritório, feito para DeepSeek V4.',
+    thirdPartyTitle: 'Licenças de terceiros',
+    thirdPartyLicenses:
+      'Os textos de licença vêm com o app na pasta legal/ ao lado do executável, incluindo o aviso MIT do runtime embedded deepseek-tui (0.8.15).',
     techStackTitle: 'Stack técnica',
     techStackDeepseekTui: 'deepseek-tui 0.8.15',
     techStackTauri: 'Tauri 2',

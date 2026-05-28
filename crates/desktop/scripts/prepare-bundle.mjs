@@ -43,6 +43,10 @@ if (!existsSync(src)) {
 copyFileSync(src, dest);
 console.log(`[bundle] Sidecar ready: ${dest}`);
 
+// Stage third-party license texts (MIT compliance for embedded runtime).
+const { prepareLegalBundle } = await import('./prepare-legal.mjs');
+prepareLegalBundle();
+
 // Prepare bundled Python runtime (python-build-standalone + office deps).
 const { preparePythonRuntime } = await import('./prepare-python.mjs');
 await preparePythonRuntime(binariesDir, triple);

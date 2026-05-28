@@ -35,6 +35,7 @@ mod platform_dispatch;
 mod prelude;
 mod runtime_ext;
 pub mod scratchpad_flow;
+mod scratchpad_sync;
 mod session_messages;
 mod session_ops;
 mod streaming;

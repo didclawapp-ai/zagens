@@ -30,6 +30,8 @@ Reasoning is ephemeral. Durable facts live only under:
 
 **Phase B tools (required):** `scratchpad_init`, `scratchpad_status`, `scratchpad_append`, `scratchpad_list_notes`, `scratchpad_set_area`, `scratchpad_import_agent`, `scratchpad_verify_note`. Pass `run_id` or rely on `thread_id` / bound `scratchpad_run_id`.
 
+After `scratchpad_init` succeeds you may **`agent_spawn` in the same turn** — runtime syncs the bound run and eager-loads sub-agent tools without a separate `tool_search` step.
+
 **Order:** import or append ≥1 note → verify HIGH/BLOCKER → `scratchpad_set_area(done)` (runtime rejects `done` with open HIGH/BLOCKER or zero notes).
 
 `write_file` is **fallback only** when scratchpad tools truly fail.

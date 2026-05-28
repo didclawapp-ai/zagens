@@ -14,8 +14,8 @@ use crate::engine::emit_tool_audit;
 use crate::engine::loop_guard::{AttemptDecision, LoopGuard, OutcomeDecision};
 use crate::engine::streaming::ToolUseState;
 use crate::engine::tool_catalog::{
-    CODE_EXECUTION_TOOL_NAME, is_tool_search_tool, missing_tool_error_message,
-    REQUEST_USER_INPUT_NAME,
+    is_audit_scratchpad_bind_tool, CODE_EXECUTION_TOOL_NAME, is_tool_search_tool,
+    missing_tool_error_message, REQUEST_USER_INPUT_NAME,
 };
 use crate::engine::turn_loop::exec::ToolExecutionPlan;
 use crate::engine::turn_loop::host::TurnLoopHost;
@@ -28,7 +28,7 @@ pub async fn run_tool_execution_phase<H: TurnLoopHost>(
     turn: &mut TurnContext,
     mode: TurnLoopMode,
     tool_uses: &mut [ToolUseState],
-    tool_catalog: &[Tool],
+    tool_catalog: &mut [Tool],
     active_tool_names: &mut HashSet<String>,
     loop_guard: &mut LoopGuard,
     consecutive_tool_error_steps: u32,
@@ -187,6 +187,14 @@ pub async fn run_tool_execution_phase<H: TurnLoopHost>(
         match outcome.result {
             Ok(output) => {
                 host.record_scratchpad_tool_outcome(&outcome.name, output.success);
+                if output.success && is_audit_scratchpad_bind_tool(&outcome.name) {
+                    host.on_audit_scratchpad_bind_success(
+                        mode,
+                        &outcome.name,
+                        tool_catalog,
+                        active_tool_names,
+                    );
+                }
                 match loop_guard.record_outcome(&outcome.name, output.success) {
                     OutcomeDecision::Continue => {}
                     OutcomeDecision::Warn(message) => {

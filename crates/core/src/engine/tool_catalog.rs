@@ -112,6 +112,34 @@ pub fn apply_native_tool_deferral(
     }
 }
 
+/// Scratchpad tools that bind or mutate the active audit run (mid-turn eager-load hook).
+#[must_use]
+pub fn is_audit_scratchpad_bind_tool(name: &str) -> bool {
+    matches!(
+        name,
+        "scratchpad_init"
+            | "scratchpad_append"
+            | "scratchpad_set_area"
+            | "scratchpad_verify_note"
+            | "scratchpad_import_agent"
+    )
+}
+
+/// After scratchpad bind, refresh deferral and add audit sub-agent tools to the active set.
+pub fn activate_audit_subagent_tools(
+    catalog: &mut [Tool],
+    mode: TurnLoopMode,
+    scratchpad_run_id: Option<&str>,
+    active: &mut HashSet<String>,
+) {
+    apply_native_tool_deferral(catalog, mode, scratchpad_run_id);
+    for tool in catalog {
+        if audit_scratchpad_eager_tool(&tool.name) && !tool.defer_loading.unwrap_or(true) {
+            active.insert(tool.name.clone());
+        }
+    }
+}
+
 fn should_keep_mcp_tool_loaded(name: &str) -> bool {
     matches!(
         name,
@@ -452,5 +480,31 @@ mod tests {
     fn deferral_keeps_shell_eager_in_agent_mode() {
         assert!(!should_default_defer_tool("exec_shell", TurnLoopMode::Agent));
         assert!(should_default_defer_tool("exec_shell", TurnLoopMode::Plan));
+    }
+
+    #[test]
+    fn activate_audit_subagent_tools_eager_loads_spawn_after_bind() {
+        use crate::chat::Tool;
+
+        let mut catalog = vec![Tool {
+            tool_type: None,
+            name: "agent_spawn".to_string(),
+            description: String::new(),
+            input_schema: serde_json::json!({}),
+            allowed_callers: None,
+            defer_loading: Some(true),
+            input_examples: None,
+            strict: None,
+            cache_control: None,
+        }];
+        let mut active = HashSet::new();
+        activate_audit_subagent_tools(
+            &mut catalog,
+            TurnLoopMode::Agent,
+            Some("audit-run-1"),
+            &mut active,
+        );
+        assert_eq!(catalog[0].defer_loading, Some(false));
+        assert!(active.contains("agent_spawn"));
     }
 }

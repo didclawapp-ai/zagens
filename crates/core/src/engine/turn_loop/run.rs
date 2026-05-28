@@ -182,7 +182,7 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
                 turn,
                 mode,
                 &mut tool_uses,
-                &tool_catalog,
+                &mut tool_catalog,
                 &mut active_tool_names,
                 &mut loop_guard,
                 consecutive_tool_error_steps,

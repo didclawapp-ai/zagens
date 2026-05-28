@@ -24,6 +24,10 @@ export default function AboutPanel() {
       </div>
       <p className="text-sm leading-relaxed text-t-text-secondary">{t('about.description')}</p>
       <div className="mt-6">
+        <h4 className="text-xs font-medium text-t-text">{t('about.thirdPartyTitle')}</h4>
+        <p className="mt-2 text-xs leading-relaxed text-t-text-muted">{t('about.thirdPartyLicenses')}</p>
+      </div>
+      <div className="mt-6">
         <h4 className="text-xs font-medium text-t-text">{t('about.techStackTitle')}</h4>
         <ul className="mt-2 space-y-1 text-xs leading-relaxed text-t-text-muted">
           <li>{t('about.techStackDeepseekTui')}</li>

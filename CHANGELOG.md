@@ -26,9 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **KV cache observability:** Usage dashboard shows hit rate %, miss tokens, and estimated cache savings (USD); composer footer shows last-turn `cache XX%` with red/yellow thresholds; warns when provider lacks cache telemetry. See [`docs/tech/KV_CACHE_OBSERVABILITY.md`](docs/tech/KV_CACHE_OBSERVABILITY.md).
 - **Build (Windows MSI):** Set `bundle.windows.wix.version` to numeric `0.6.0.1` so WiX accepts pre-release SemVer `0.6.0-preview.1`; document mapping in [`VERSIONING.md`](docs/desktop/VERSIONING.md) and CI check.
+- **Compliance:** Bundle embedded runtime MIT license into installed `legal/` folder (`deepseek-tui-runtime-LICENSE.txt`, `THIRD-PARTY-NOTICES.txt`); About panel notes install location.
 
 ### Runtime
 
+- **Audit scratchpad + sub-agents:** Sync `scratchpad_run_id` from the tool wire slot at turn start and after successful scratchpad bind tools; mid-turn `scratchpad_init` now eager-loads `agent_spawn` / `agent_*` in the same turn without `tool_search`.
 - **`GET /v1/usage`:** `UsageTotals` / `UsageBucket` now include `miss_tokens`, `cache_hit_rate`, `cost_usd_without_cache`, `cache_savings_usd`; response adds `cache_telemetry_incomplete` when any turn used a model without DeepSeek-style cache fields.
 
 ### Process

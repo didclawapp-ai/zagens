@@ -39,6 +39,7 @@ dist/
 # Generated
 outputs/
 tmp/
+crates/desktop/bundle-legal/
 
 # Reference papers / large research blobs (keep locally if needed, don't ship)
 docs/DeepSeek_V4.pdf

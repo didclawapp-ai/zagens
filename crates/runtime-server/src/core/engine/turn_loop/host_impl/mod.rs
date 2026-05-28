@@ -312,6 +312,28 @@ impl TurnLoopHost for Engine {
         scratchpad_flow::record_tool_outcome(&mut self.scratchpad_step, tool_name, success);
     }
 
+    fn on_audit_scratchpad_bind_success(
+        &mut self,
+        mode: TurnLoopMode,
+        tool_name: &str,
+        catalog: &mut [Tool],
+        active: &mut HashSet<String>,
+    ) {
+        if !scratchpad_flow::is_scratchpad_write_tool(tool_name) {
+            return;
+        }
+        self.sync_scratchpad_run_id_from_wire();
+        if self.scratchpad_run_id.is_none() {
+            return;
+        }
+        deepseek_core::engine::tool_catalog::activate_audit_subagent_tools(
+            catalog,
+            mode,
+            self.scratchpad_run_id.as_deref(),
+            active,
+        );
+    }
+
     async fn maybe_inject_scratchpad_summary(&mut self) -> bool {
         if self.scratchpad_summary_injected_this_turn {
             return false;
