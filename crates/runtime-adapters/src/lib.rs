@@ -1,7 +1,11 @@
-//! Runtime adapters — MCP, session persist, snapshots (D16 E1-a).
+//! Runtime adapters — MCP, session persist, snapshots (D16 E1-a, D17 frozen).
 //!
-//! Extracted from `deepseek-runtime-server` to begin the sidecar crate split.
-//! `tools/` migration follows once host-boundary refactors land (see D16 §1.4).
+//! Extracted from `deepseek-runtime-server` as part of the D16 sidecar crate
+//! split.  Further migration of engine, tools, and route handlers is **deferred
+//! by design** (D17 Architecture Freeze) — those remain internal co-located
+//! units in `deepseek-runtime-server`, not candidates for crate extraction.
+//! This crate is the stable boundary for MCP connectors, persistence adapters,
+//! scratchpad gates, snapshots, and network policy.
 
 pub mod json_schema_util;
 pub mod mcp;

@@ -1,7 +1,12 @@
-//! Runtime orchestrator — thread/turn persist (D16 E1-b phase 1).
+//! Runtime orchestrator — thread/turn persist (D16 E1-b, D17 frozen).
 //!
-//! Live engine orchestration (`RuntimeThreadHost` impl) remains in
-//! `deepseek-runtime-server` for spawn/monitor until `task_manager` ports land.
+//! Live engine orchestration (`RuntimeThreadHost` impl, spawn/monitor, turn
+//! lifecycle) intentionally remains in `deepseek-runtime-server`.  Further
+//! extraction is **deferred by design** (D17 Architecture Freeze) — the
+//! engine, tools, and route handlers form an internally co-located unit
+//! that is not a candidate for crate-level splitting.  This crate is the
+//! stable boundary for SQLite thread storage, pricing aggregation, and
+//! `RuntimeThreadManager` persistence helpers.
 
 pub mod engine;
 pub mod models;
