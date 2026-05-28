@@ -3,9 +3,18 @@ import { useT } from '../i18n';
 type Props = {
   desktopHost: boolean;
   onNewWindow: () => void;
+  auditGridAvailable?: boolean;
+  auditGridVisible?: boolean;
+  onToggleAuditGrid?: () => void;
 };
 
-export default function TitleBar({ desktopHost, onNewWindow }: Props) {
+export default function TitleBar({
+  desktopHost,
+  onNewWindow,
+  auditGridAvailable = false,
+  auditGridVisible = false,
+  onToggleAuditGrid,
+}: Props) {
   const { t } = useT();
   const handleMinimize = () => {
     void import('@tauri-apps/api/window').then(({ getCurrentWindow }) => getCurrentWindow().minimize());
@@ -44,6 +53,33 @@ export default function TitleBar({ desktopHost, onNewWindow }: Props) {
         )}
       </div>
       <div className="flex-1 min-w-8" data-tauri-drag-region />
+      {auditGridAvailable && onToggleAuditGrid && (
+        <button
+          type="button"
+          data-tauri-drag-region="false"
+          onClick={onToggleAuditGrid}
+          className={`px-3 py-2 transition-colors ${
+            auditGridVisible
+              ? 'text-accent hover:bg-hover'
+              : 'text-t-text-muted hover:text-t-text hover:bg-hover'
+          }`}
+          title={auditGridVisible ? t('auditGrid.hide') : t('auditGrid.show')}
+          aria-label={auditGridVisible ? t('auditGrid.hide') : t('auditGrid.show')}
+          aria-pressed={auditGridVisible}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            className="w-3.5 h-3.5 stroke-current"
+            style={{ fill: 'none', strokeWidth: 1.6 }}
+            aria-hidden
+          >
+            <rect x="3" y="3" width="8" height="8" rx="1" />
+            <rect x="13" y="3" width="8" height="8" rx="1" />
+            <rect x="3" y="13" width="8" height="8" rx="1" />
+            <rect x="13" y="13" width="8" height="8" rx="1" />
+          </svg>
+        </button>
+      )}
       <button
         type="button"
         data-tauri-drag-region="false"

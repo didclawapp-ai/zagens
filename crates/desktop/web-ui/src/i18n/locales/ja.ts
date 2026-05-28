@@ -53,6 +53,14 @@ const ja: TranslationMap = {
     collapse: 'パネルを折りたたむ',
     expand: 'パネルを展開',
   },
+  auditGrid: {
+    panelAria: '監査ワークスペースグリッド',
+    resizeWidth: 'ドラッグしてグリッド幅を変更',
+    hide: '監査グリッドを非表示',
+    show: '監査グリッドを表示',
+    reserved: '予約',
+    reservedHint: '将来のパネル用',
+  },
   panels: {
     workspace: 'ワークスペース',
     apiKey: 'API Key',

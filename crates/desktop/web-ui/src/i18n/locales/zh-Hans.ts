@@ -51,6 +51,14 @@ const zhHans = {
     collapse: '收起面板',
     expand: '展开面板',
   },
+  auditGrid: {
+    panelAria: '审计工作区网格',
+    resizeWidth: '拖拽调整网格宽度',
+    hide: '隐藏审计网格',
+    show: '显示审计网格',
+    reserved: '预留',
+    reservedHint: '预留扩展位',
+  },
   panels: {
     workspace: '工作台',
     apiKey: 'API Key',

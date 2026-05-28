@@ -7,6 +7,7 @@ import {
 import { useT } from './i18n';
 import AppShell from './components/AppShell';
 import { useAuditNavActivity } from './lib/useAuditNavActivity';
+import { useAuditGridData } from './lib/useAuditGridData';
 import { type ModelParams } from './components/ModelParamsDialog';
 import {
   loadModelParams,
@@ -233,6 +234,7 @@ export default function App() {
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(() =>
     loadStoredRightPanelCollapsed(),
   );
+  const [auditGridDismissed, setAuditGridDismissed] = useState(false);
 
   const {
     panelPreview,
@@ -413,6 +415,7 @@ export default function App() {
   useEffect(() => {
     suppressChecklistAutoSwitchRef.current = false;
     suppressAuditAutoSwitchRef.current = false;
+    setAuditGridDismissed(false);
   }, [resumedThreadId]);
 
   const { taskActivity, agentActivity, checklistActivity, acknowledgeInspectorView } =
@@ -438,6 +441,7 @@ export default function App() {
       if (view === 'audit') {
         suppressAuditAutoSwitchRef.current = false;
       }
+      setAuditGridDismissed(true);
       acknowledgeInspectorView(view);
       setActiveInspector(view);
       setRightPanelCollapsed(false);
@@ -446,19 +450,11 @@ export default function App() {
   );
 
   const handleRequestChecklist = useCallback(() => {
-    if (suppressChecklistAutoSwitchRef.current) {
-      return;
-    }
-    setRightPanelCollapsed(false);
-    setActiveInspector('checklist');
+    /* Audit grid auto-shows via useAuditGridData when checklist data exists. */
   }, []);
 
   const handleRequestAudit = useCallback(() => {
-    if (suppressAuditAutoSwitchRef.current) {
-      return;
-    }
-    setRightPanelCollapsed(false);
-    setActiveInspector('audit');
+    /* Audit grid auto-shows via useAuditGridData when scratchpad data exists. */
   }, []);
 
   useEffect(() => {
@@ -664,6 +660,29 @@ export default function App() {
     narrativeSpawnSuspected,
   });
 
+  const auditGridData = useAuditGridData({
+    threadId: resumedThreadId,
+    streaming,
+    runtimeSessionEstablished,
+    agentStates,
+  });
+  const auditGridAvailable = !officeSession && auditGridData.hasAnyData;
+  const auditGridVisible = auditGridAvailable && !auditGridDismissed;
+
+  useEffect(() => {
+    if (!auditGridData.hasAnyData) {
+      setAuditGridDismissed(false);
+    }
+  }, [auditGridData.hasAnyData]);
+
+  const handleToggleAuditGrid = useCallback(() => {
+    setAuditGridDismissed((dismissed) => !dismissed);
+  }, []);
+
+  const handleDismissAuditGrid = useCallback(() => {
+    setAuditGridDismissed(true);
+  }, []);
+
   return (
     <AppShell
       desktopHost={desktopHost}
@@ -765,6 +784,10 @@ export default function App() {
       focusDiffNonce={focusWorkspaceDiffNonce}
       onRequestChecklist={handleRequestChecklist}
       onRequestAudit={handleRequestAudit}
+      auditGridVisible={auditGridVisible}
+      auditGridAvailable={auditGridAvailable}
+      onToggleAuditGrid={handleToggleAuditGrid}
+      onDismissAuditGrid={handleDismissAuditGrid}
       subagentActiveCount={subagentActiveCount}
       narrativeSpawnSuspected={narrativeSpawnSuspected}
       onRequestMermaid={() => setActiveInspector('mermaid')}

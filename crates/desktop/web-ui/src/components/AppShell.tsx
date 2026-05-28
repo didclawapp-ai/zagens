@@ -6,6 +6,7 @@ import ModelParamsDialog, { type ModelParams } from './ModelParamsDialog';
 import Sidebar from './Sidebar';
 import ApprovalDialog from './ApprovalDialog';
 import RightPanel, { type RightPanelView } from './RightPanel';
+import AuditGridPanel from './AuditGridPanel';
 import TitleBar from './TitleBar';
 import SkipToMainLink from './SkipToMainLink';
 import { createAgentWindow } from '../lib/windowBridge';
@@ -126,6 +127,10 @@ export type AppShellProps = {
   focusDiffNonce: number;
   onRequestChecklist: () => void;
   onRequestAudit: () => void;
+  auditGridVisible: boolean;
+  auditGridAvailable: boolean;
+  onToggleAuditGrid: () => void;
+  onDismissAuditGrid: () => void;
   subagentActiveCount: number;
   narrativeSpawnSuspected: boolean;
   onRequestMermaid: () => void;
@@ -224,6 +229,10 @@ export default function AppShell({
   focusDiffNonce,
   onRequestChecklist,
   onRequestAudit,
+  auditGridVisible,
+  auditGridAvailable,
+  onToggleAuditGrid,
+  onDismissAuditGrid,
   subagentActiveCount,
   narrativeSpawnSuspected,
   onRequestMermaid,
@@ -244,6 +253,9 @@ export default function AppShell({
             toast.error((e as Error).message);
           });
         }}
+        auditGridAvailable={auditGridAvailable}
+        auditGridVisible={auditGridVisible}
+        onToggleAuditGrid={onToggleAuditGrid}
       />
       <div className="flex flex-1 min-h-0 bg-canvas">
         <ApprovalDialog
@@ -379,7 +391,7 @@ export default function AppShell({
             />
           </section>
         </main>
-        {!rightPanelCollapsed && (
+        {!auditGridVisible && !rightPanelCollapsed && (
           <RightPanel
             view={activeInspector}
             officeSession={officeSession}
@@ -421,7 +433,21 @@ export default function AppShell({
             onRouteIntentChange={onRouteIntentChange}
           />
         )}
-        {rightPanelCollapsed && (
+        {auditGridVisible && resumedThreadId && (
+          <AuditGridPanel
+            workspaceRoot={selectedWorkspace}
+            resumedThreadId={resumedThreadId}
+            streaming={streaming}
+            runtimeConn={runtimeConn}
+            runtimeSessionEstablished={runtimeSessionEstablished}
+            agentStates={agentStates}
+            subagentActiveCount={subagentActiveCount}
+            narrativeSpawnSuspected={narrativeSpawnSuspected}
+            openWorkspaceFile={openWorkspaceFile}
+            onDismiss={onDismissAuditGrid}
+          />
+        )}
+        {!auditGridVisible && rightPanelCollapsed && (
           <button
             type="button"
             onClick={onExpandRightPanel}

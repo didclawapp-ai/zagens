@@ -53,6 +53,14 @@ const en: TranslationMap = {
     collapse: 'Collapse panel',
     expand: 'Expand panel',
   },
+  auditGrid: {
+    panelAria: 'Audit workspace grid',
+    resizeWidth: 'Drag to resize grid width',
+    hide: 'Hide audit grid',
+    show: 'Show audit grid',
+    reserved: 'Reserved',
+    reservedHint: 'Reserved for future panels',
+  },
   panels: {
     workspace: 'Workspace',
     apiKey: 'API Key',

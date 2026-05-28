@@ -53,6 +53,14 @@ const ptBr: TranslationMap = {
     collapse: 'Recolher painel',
     expand: 'Expandir painel',
   },
+  auditGrid: {
+    panelAria: 'Grade de workspace de auditoria',
+    resizeWidth: 'Arraste para redimensionar a grade',
+    hide: 'Ocultar grade de auditoria',
+    show: 'Mostrar grade de auditoria',
+    reserved: 'Reservado',
+    reservedHint: 'Reservado para painéis futuros',
+  },
   panels: {
     workspace: 'Workspace',
     apiKey: 'API Key',

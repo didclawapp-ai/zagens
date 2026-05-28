@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Desktop (Zagens)
 
+- **Audit grid panel:** When checklist, audit scratchpad, or sub-agent data appears, a 2×2 right-side grid (checklist / audit / reserved / sub-agents) auto-opens and temporarily replaces the single Inspector panel; auto-hides when all three are empty; title-bar grid toggle and seam collapse respect manual dismiss until data clears or the thread changes.
 - **Symbol index panel:** Freshness check covers JS/Python/Go/C++/Vue sources and flags stale indexes below schema v5.
 - **Binary preview:** Cap reads at 10MB without loading entire files into memory (`read_binary_file_at`).
 - **Shell open:** `open_in_shell` canonicalizes paths and rejects shell metacharacters (aligns with `open_with_system_app`).
