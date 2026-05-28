@@ -71,6 +71,7 @@ pub(crate) async fn run_subagent_task(task: SubAgentTask) {
     let agent_type_for_blackboard = task.agent_type.clone();
     let agent_id = task.agent_id.clone();
     let run_result = std::panic::AssertUnwindSafe(run_subagent(
+        &task.manager_handle,
         &task.runtime,
         agent_id.clone(),
         task.agent_type,
@@ -300,6 +301,7 @@ pub(crate) fn completion_reason_for_error_str(err: &str) -> Option<CompletionRea
 
 #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 async fn run_subagent(
+    manager_handle: &SharedSubAgentManager,
     runtime: &SubAgentRuntime,
     agent_id: String,
     agent_type: SubAgentType,
@@ -334,12 +336,14 @@ async fn run_subagent(
     if let Some(mb) = runtime.mailbox.as_ref() {
         let _ = mb.send(MailboxMessage::started(&agent_id, agent_type.as_str()));
     }
-    emit_agent_progress(
-        runtime.event_tx.as_ref(),
-        runtime.mailbox.as_ref(),
+    record_and_emit_progress(
+        manager_handle,
+        runtime,
         &agent_id,
+        0,
         format!("started ({})", agent_type.as_str()),
-    );
+    )
+    .await;
 
     let mut messages = vec![Message {
         role: "user".to_string(),
@@ -364,12 +368,14 @@ async fn run_subagent(
         // us while we were between steps. Children derive their token from
         // the parent's via `child_token()` so this propagates the whole tree.
         if runtime.cancel_token.is_cancelled() {
-            emit_agent_progress(
-                runtime.event_tx.as_ref(),
-                runtime.mailbox.as_ref(),
+            record_and_emit_progress(
+                manager_handle,
+                runtime,
                 &agent_id,
+                steps,
                 format!("step {steps}/{max_steps}: cancelled"),
-            );
+            )
+            .await;
             if let Some(mb) = runtime.mailbox.as_ref() {
                 let _ = mb.send(MailboxMessage::Cancelled {
                     agent_id: agent_id.clone(),
@@ -393,16 +399,21 @@ async fn run_subagent(
                 step_timeout_ms: u64::try_from(runtime.step_timeout.as_millis()).unwrap_or(u64::MAX),
                 structured_findings_parse_failure: None,
                 scratchpad_run_id: None,
+                progress_status: None,
+                stuck_suspected: false,
+                idle_ms: 0,
             });
         }
 
         steps += 1;
-        emit_agent_progress(
-            runtime.event_tx.as_ref(),
-            runtime.mailbox.as_ref(),
+        record_and_emit_progress(
+            manager_handle,
+            runtime,
             &agent_id,
+            steps,
             format!("step {steps}/{max_steps}: requesting model response"),
-        );
+        )
+        .await;
 
         while let Ok(input) = input_rx.try_recv() {
             if input.interrupt {
@@ -444,12 +455,14 @@ async fn run_subagent(
         let response = tokio::select! {
             biased;
             () = runtime.cancel_token.cancelled() => {
-                emit_agent_progress(
-                    runtime.event_tx.as_ref(),
-                    runtime.mailbox.as_ref(),
+                record_and_emit_progress(
+                    manager_handle,
+                    runtime,
                     &agent_id,
+                    steps,
                     format!("step {steps}/{max_steps}: cancelled mid-request"),
-                );
+                )
+                .await;
                 if let Some(mb) = runtime.mailbox.as_ref() {
                     let _ = mb.send(MailboxMessage::Cancelled {
                         agent_id: agent_id.clone(),
@@ -475,6 +488,9 @@ async fn run_subagent(
                         .unwrap_or(u64::MAX),
                     structured_findings_parse_failure: None,
                     scratchpad_run_id: None,
+                    progress_status: None,
+                    stuck_suspected: false,
+                    idle_ms: 0,
                 });
             }
             api = tokio::time::timeout(runtime.step_timeout, runtime.client.create_message(request)) => {
@@ -520,37 +536,43 @@ async fn run_subagent(
                 pending_inputs.push_back(input);
             }
             if pending_inputs.is_empty() {
-                emit_agent_progress(
-                    runtime.event_tx.as_ref(),
-                    runtime.mailbox.as_ref(),
+                record_and_emit_progress(
+                    manager_handle,
+                    runtime,
                     &agent_id,
+                    steps,
                     format!("step {steps}/{max_steps}: complete"),
-                );
+                )
+                .await;
                 natural_break = true;
                 break;
             }
             continue;
         }
 
-        emit_agent_progress(
-            runtime.event_tx.as_ref(),
-            runtime.mailbox.as_ref(),
+        record_and_emit_progress(
+            manager_handle,
+            runtime,
             &agent_id,
+            steps,
             format!(
                 "step {steps}/{max_steps}: executing {} tool call(s)",
                 tool_uses.len()
             ),
-        );
+        )
+        .await;
         let mut tool_results: Vec<ContentBlock> = Vec::new();
         let step_tool_budget = step_tool_budget(runtime.step_timeout);
         let mut step_tool_spent = Duration::ZERO;
         for (tool_id, tool_name, tool_input) in tool_uses {
-            emit_agent_progress(
-                runtime.event_tx.as_ref(),
-                runtime.mailbox.as_ref(),
+            record_and_emit_progress(
+                manager_handle,
+                runtime,
                 &agent_id,
+                steps,
                 format!("step {steps}/{max_steps}: running tool '{tool_name}'"),
-            );
+            )
+            .await;
             if let Some(mb) = runtime.mailbox.as_ref() {
                 let _ = mb.send(MailboxMessage::ToolCallStarted {
                     agent_id: agent_id.clone(),
@@ -584,12 +606,14 @@ async fn run_subagent(
                 }
             };
             let tool_ok = !result.starts_with("Error:");
-            emit_agent_progress(
-                runtime.event_tx.as_ref(),
-                runtime.mailbox.as_ref(),
+            record_and_emit_progress(
+                manager_handle,
+                runtime,
                 &agent_id,
+                steps,
                 format!("step {steps}/{max_steps}: finished tool '{tool_name}'"),
-            );
+            )
+            .await;
             if let Some(mb) = runtime.mailbox.as_ref() {
                 let _ = mb.send(MailboxMessage::ToolCallCompleted {
                     agent_id: agent_id.clone(),
@@ -648,6 +672,9 @@ async fn run_subagent(
         step_timeout_ms: u64::try_from(runtime.step_timeout.as_millis()).unwrap_or(u64::MAX),
         structured_findings_parse_failure,
         scratchpad_run_id: None,
+        progress_status: None,
+        stuck_suspected: false,
+        idle_ms: 0,
     })
 }
 
@@ -708,6 +735,25 @@ pub(crate) async fn wait_for_agents(
     }
 }
 
+
+pub(crate) async fn record_and_emit_progress(
+    manager_handle: &SharedSubAgentManager,
+    runtime: &SubAgentRuntime,
+    agent_id: &str,
+    steps_taken: u32,
+    status: String,
+) {
+    {
+        let mut mgr = manager_handle.write().await;
+        mgr.record_execution_progress(agent_id, steps_taken, &status);
+    }
+    emit_agent_progress(
+        runtime.event_tx.as_ref(),
+        runtime.mailbox.as_ref(),
+        agent_id,
+        status,
+    );
+}
 
 pub(crate) fn emit_agent_progress(
     event_tx: Option<&mpsc::Sender<Event>>,

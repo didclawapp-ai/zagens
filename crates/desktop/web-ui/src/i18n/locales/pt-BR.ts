@@ -222,6 +222,8 @@ const ptBr: TranslationMap = {
     exportThreadNoId: 'Retome um thread do runtime primeiro (continue uma conversa para obter um ID de thread)',
     exportThreadNoData: 'Falha na exportação: não foi possível obter os dados do thread',
     persistSessionFailed: 'Sessão não persistida em ~/.deepseek/sessions: {{message}}',
+    pageReloadBlocked:
+      'Recarregar a página está desativado (F5 / Ctrl+R). Recarregar apaga o chat na memória — use a barra lateral ou aguarde o término do salvamento do turno.',
     streamError: 'Erro no stream',
     runtimeRestartDuringStream:
       'O runtime local reiniciou (geralmente após salvar configurações do sistema). A geração ativa foi interrompida; use Tentar reconexão e continue a mesma sessão — o progresso do scratchpad costuma permanecer no disco.',
@@ -348,6 +350,9 @@ const ptBr: TranslationMap = {
     craftVerifier: 'Verificador',
     craftYes: 'sim',
     craftDash: '—',
+    stepProgress: 'Passo {{done}}/{{max}}',
+    stepCap: 'máx. {{sec}}s/passo',
+    stuckSuspected: 'Sem progresso por muito tempo — o agente pai pode cancelar e adiar esta área.',
   },
   topicMemoryPanel: {
     hint: 'Grafo de tópicos mantido automaticamente (somente leitura). Ative em Configurações do sistema.',

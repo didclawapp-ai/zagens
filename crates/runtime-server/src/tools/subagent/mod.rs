@@ -33,7 +33,7 @@ pub use deepseek_core::subagent::VerdictItem;
 #[allow(unused_imports)]
 pub use mailbox::{Mailbox, MailboxEnvelope, MailboxReceiver};
 
-pub use factory::{SharedSubAgentManager, new_shared_subagent_manager};
+pub use factory::{SharedSubAgentManager, new_shared_subagent_manager, spawn_subagent_maintenance_task};
 pub(crate) use executor::wait_for_result;
 #[cfg(test)]
 #[allow(deprecated)]

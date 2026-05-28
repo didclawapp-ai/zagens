@@ -20,5 +20,8 @@ export const CHECKLIST_POLL_IDLE_MS = 5_000;
 /** CRAFT blackboard task list in AgentPanel. */
 export const CRAFT_BLACKBOARD_POLL_MS = 5_000;
 
+/** Sub-agent disk snapshot while a turn is streaming (SSE fallback). */
+export const SUBAGENT_STATE_POLL_STREAMING_MS = 3_000;
+
 /** Best-effort session JSON checkpoint during long streams (tab hide still persists immediately). */
 export const SESSION_CHECKPOINT_STREAMING_MS = 60_000;

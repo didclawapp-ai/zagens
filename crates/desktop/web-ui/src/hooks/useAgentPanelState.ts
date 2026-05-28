@@ -1,4 +1,5 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { RuntimeConnectionState } from '../api/client';
 import type { NormalizedStreamEvent } from '../api/streamNormalize';
 import {
   countActiveSubagents,
@@ -15,6 +16,9 @@ import {
   upsertAgentInList,
 } from '../lib/agentStateUpsert';
 import { parseAgentIdFromSpawnOutput } from '../lib/chat/toolOutput';
+import { isRuntimeApiAvailable } from '../lib/runtimeReachable';
+import { SUBAGENT_STATE_POLL_STREAMING_MS } from '../lib/runtimePoll';
+import { fetchSubagentStateFromDisk } from '../lib/subagentStatePoll';
 import type { AgentState } from '../types/agent';
 
 type MessageLike = {
@@ -24,6 +28,10 @@ type MessageLike = {
 
 export type UseAgentPanelStateParams = {
   messages: MessageLike[];
+  workspaceRoot?: string;
+  streaming?: boolean;
+  runtimeConn?: RuntimeConnectionState;
+  runtimeSessionEstablished?: boolean;
 };
 
 export type UseAgentPanelStateResult = {
@@ -48,6 +56,10 @@ function mapSubAgentUiStatus(status: string): AgentState['status'] {
 
 export function useAgentPanelState({
   messages,
+  workspaceRoot = '',
+  streaming = false,
+  runtimeConn = 'offline',
+  runtimeSessionEstablished = false,
 }: UseAgentPanelStateParams): UseAgentPanelStateResult {
   const [agentStates, setAgentStates] = useState<AgentState[]>([]);
   const pendingSpawnMetaRef = useRef<Map<string, AgentSpawnMeta>>(new Map());
@@ -136,6 +148,62 @@ export function useAgentPanelState({
         return false;
     }
   }, []);
+
+  const runtimeReady = isRuntimeApiAvailable(runtimeConn, {
+    streaming,
+    sessionEstablished: runtimeSessionEstablished,
+  });
+
+  useEffect(() => {
+    if (!streaming || !runtimeReady) {
+      return;
+    }
+    const ws = workspaceRoot.trim();
+    if (!ws) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const poll = async () => {
+      const rows = await fetchSubagentStateFromDisk(ws);
+      if (cancelled || rows.length === 0) {
+        return;
+      }
+      setAgentStates((prev) => {
+        let next = prev;
+        for (const row of rows) {
+          if (!row.id) {
+            continue;
+          }
+          const uiStatus = mapSubAgentUiStatus(row.status);
+          next = upsertAgentInList(next, row.id, {
+            status: uiStatus,
+            ...metaFromListRow(row),
+            ...(row.progressStatus ? { progressStatus: row.progressStatus } : {}),
+            stepsTaken: row.stepsTaken,
+            maxSteps: row.maxSteps,
+            stepTimeoutMs: row.stepTimeoutMs,
+            stuckSuspected: row.stuckSuspected,
+            idleMs: row.idleMs,
+            completedAt:
+              uiStatus === 'completed' || uiStatus === 'interrupted' ? Date.now() : null,
+          });
+        }
+        return next;
+      });
+    };
+
+    void poll();
+    const id = window.setInterval(() => {
+      void poll();
+    }, SUBAGENT_STATE_POLL_STREAMING_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [runtimeReady, streaming, workspaceRoot]);
 
   const subagentActiveCount = useMemo(
     () => countActiveSubagents(agentStates),

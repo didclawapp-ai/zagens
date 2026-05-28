@@ -222,6 +222,8 @@ const ja: TranslationMap = {
     exportThreadNoId: '先に runtime スレッドを再開してください（会話を続けて thread ID を取得）',
     exportThreadNoData: 'エクスポートに失敗しました: スレッドデータを取得できませんでした',
     persistSessionFailed: 'セッションが ~/.deepseek/sessions に保存されませんでした: {{message}}',
+    pageReloadBlocked:
+      'ページの再読み込みは無効です（F5 / Ctrl+R）。再読み込みするとメモリ上のチャット状態が消えます — サイドバーでセッションを切り替えるか、ターンの保存完了を待ってください。',
     streamError: 'ストリームエラー',
     runtimeRestartDuringStream:
       'ローカル runtime が再起動しました（システム設定保存後によく発生）。アクティブな生成は停止されました。「接続を再試行」を使い同じセッションを続けてください — スクラッチパッドの進捗は通常ディスク上に残っています。',
@@ -348,6 +350,9 @@ const ja: TranslationMap = {
     craftVerifier: 'Verifier',
     craftYes: 'yes',
     craftDash: '—',
+    stepProgress: 'Step {{done}}/{{max}}',
+    stepCap: 'max {{sec}}s/step',
+    stuckSuspected: 'Long time without progress — parent may cancel and defer this area.',
   },
   topicMemoryPanel: {
     hint: '自動維持される topic graph（読み取り専用）。システム設定で有効化してください。',

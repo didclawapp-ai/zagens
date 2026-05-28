@@ -89,7 +89,20 @@ export function agentTypeLabel(agentType: string | undefined): string | null {
 export function mergeAgentMeta(
   agent: AgentState,
   patch: Partial<
-    Pick<AgentState, 'objective' | 'agentType' | 'role' | 'taskId' | 'nickname' | 'progressStatus'>
+    Pick<
+      AgentState,
+      | 'objective'
+      | 'agentType'
+      | 'role'
+      | 'taskId'
+      | 'nickname'
+      | 'progressStatus'
+      | 'stepsTaken'
+      | 'maxSteps'
+      | 'stepTimeoutMs'
+      | 'stuckSuspected'
+      | 'idleMs'
+    >
   >,
 ): AgentState {
   const next = { ...agent };
@@ -111,6 +124,21 @@ export function mergeAgentMeta(
   if (patch.progressStatus?.trim()) {
     next.progressStatus = patch.progressStatus.trim();
   }
+  if (patch.stepsTaken !== undefined) {
+    next.stepsTaken = patch.stepsTaken;
+  }
+  if (patch.maxSteps !== undefined) {
+    next.maxSteps = patch.maxSteps;
+  }
+  if (patch.stepTimeoutMs !== undefined) {
+    next.stepTimeoutMs = patch.stepTimeoutMs;
+  }
+  if (patch.stuckSuspected !== undefined) {
+    next.stuckSuspected = patch.stuckSuspected;
+  }
+  if (patch.idleMs !== undefined) {
+    next.idleMs = patch.idleMs;
+  }
   return next;
 }
 
@@ -122,6 +150,12 @@ export interface AgentListRowMeta {
   role?: string;
   taskId?: string;
   nickname?: string;
+  stepsTaken?: number;
+  maxSteps?: number;
+  stepTimeoutMs?: number;
+  progressStatus?: string;
+  stuckSuspected?: boolean;
+  idleMs?: number;
 }
 
 /** Parse one entry from runtime `agent.list` / SubAgentResult JSON. */
@@ -142,6 +176,15 @@ export function parseAgentListRow(raw: Record<string, unknown>): AgentListRowMet
   const nickname =
     typeof raw.nickname === 'string' && raw.nickname.trim() ? raw.nickname.trim() : undefined;
   const taskId = typeof raw.task_id === 'string' && raw.task_id.trim() ? raw.task_id.trim() : undefined;
+  const stepsTaken = Number(raw.steps_taken ?? 0);
+  const maxSteps = Number(raw.max_steps ?? 0);
+  const stepTimeoutMs = Number(raw.step_timeout_ms ?? 0);
+  const progressStatus =
+    typeof raw.progress_status === 'string' && raw.progress_status.trim()
+      ? raw.progress_status.trim()
+      : undefined;
+  const idleMs = Number(raw.idle_ms ?? 0);
+  const stuckSuspected = raw.stuck_suspected === true;
 
   return {
     id,
@@ -151,6 +194,12 @@ export function parseAgentListRow(raw: Record<string, unknown>): AgentListRowMet
     ...(role ? { role } : {}),
     ...(taskId ? { taskId } : {}),
     ...(nickname ? { nickname } : {}),
+    ...(raw.steps_taken !== undefined && Number.isFinite(stepsTaken) ? { stepsTaken } : {}),
+    ...(Number.isFinite(maxSteps) && maxSteps > 0 ? { maxSteps } : {}),
+    ...(Number.isFinite(stepTimeoutMs) && stepTimeoutMs > 0 ? { stepTimeoutMs } : {}),
+    ...(progressStatus ? { progressStatus } : {}),
+    ...(stuckSuspected ? { stuckSuspected: true } : {}),
+    ...(Number.isFinite(idleMs) && idleMs > 0 ? { idleMs } : {}),
   };
 }
 

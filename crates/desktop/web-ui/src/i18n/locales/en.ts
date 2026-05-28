@@ -222,6 +222,8 @@ const en: TranslationMap = {
     exportThreadNoId: 'Resume a runtime thread first (continue a conversation to get a thread ID)',
     exportThreadNoData: 'Export failed: could not retrieve thread data',
     persistSessionFailed: 'Session not persisted to ~/.deepseek/sessions: {{message}}',
+    pageReloadBlocked:
+      'Page reload is disabled (F5 / Ctrl+R). Reloading clears in-memory chat state — use the sidebar to switch sessions or wait for the turn to finish saving.',
     streamError: 'Stream error',
     runtimeRestartDuringStream:
       'Local runtime restarted (often after saving system settings). Active generation was stopped; use Retry connection and continue the same session — scratchpad progress is usually still on disk.',
@@ -348,6 +350,9 @@ const en: TranslationMap = {
     craftVerifier: 'Verifier',
     craftYes: 'yes',
     craftDash: '—',
+    stepProgress: 'Step {{done}}/{{max}}',
+    stepCap: 'max {{sec}}s/step',
+    stuckSuspected: 'No progress for a long time — parent may cancel and defer this area.',
   },
   topicMemoryPanel: {
     hint: 'Auto-maintained topic graph (read-only). Enable in System settings.',

@@ -103,6 +103,9 @@ impl SubAgentManager {
                 // Reload converts empty vec back to None (full inheritance).
                 allowed_tools: agent.allowed_tools.clone().unwrap_or_default(),
                 updated_at_ms: now_ms,
+                progress_status: agent.progress_status.clone(),
+                max_steps: agent.max_steps,
+                step_timeout_ms: u64::try_from(agent.step_timeout.as_millis()).unwrap_or(u64::MAX),
                 session_boot_id: agent.session_boot_id.clone(),
                 completion_reason: agent.completion_reason.clone(),
                 blackboard_task_id: agent.blackboard_task_id.clone(),
@@ -173,10 +176,20 @@ impl SubAgentManager {
                 structured_findings: None,
                 structured_findings_parse_failure: None,
                 completion_reason: persisted.completion_reason,
-                step_timeout: STEP_API_TIMEOUT,
-                max_steps: DEFAULT_MAX_STEPS,
+                step_timeout: if persisted.step_timeout_ms > 0 {
+                    Duration::from_millis(persisted.step_timeout_ms)
+                } else {
+                    STEP_API_TIMEOUT
+                },
+                max_steps: if persisted.max_steps > 0 {
+                    persisted.max_steps
+                } else {
+                    DEFAULT_MAX_STEPS
+                },
                 steps_taken: persisted.steps_taken,
                 started_at,
+                last_progress_at: started_at,
+                progress_status: persisted.progress_status.clone(),
                 allowed_tools,
                 session_boot_id: persisted.session_boot_id,
                 blackboard_task_id: persisted.blackboard_task_id,
@@ -492,6 +505,8 @@ impl SubAgentManager {
             agent.structured_findings = None;
             agent.structured_findings_parse_failure = None;
             agent.completion_reason = None;
+            agent.progress_status = None;
+            agent.last_progress_at = restarted_at;
             agent.step_timeout = step_timeout;
             agent.max_steps = self.max_steps;
             agent.started_at = restarted_at;
@@ -775,6 +790,33 @@ impl SubAgentManager {
             }
         }
         if changed {
+            self.persist_state_best_effort();
+        }
+    }
+
+    /// Periodic maintenance: zombie scan (P2-10). Cheap enough to run every 30s.
+    pub(crate) fn run_maintenance(&mut self) {
+        self.ensure_consistency();
+    }
+
+    /// Update in-memory execution progress for live `agent_list` / disk snapshots.
+    pub(crate) fn record_execution_progress(
+        &mut self,
+        agent_id: &str,
+        steps_taken: u32,
+        status: &str,
+    ) {
+        let Some(agent) = self.agents.get_mut(agent_id) else {
+            return;
+        };
+        if agent.status != SubAgentStatus::Running {
+            return;
+        }
+        let step_changed = agent.steps_taken != steps_taken;
+        agent.steps_taken = steps_taken;
+        agent.last_progress_at = Instant::now();
+        agent.progress_status = Some(status.to_string());
+        if step_changed {
             self.persist_state_best_effort();
         }
     }

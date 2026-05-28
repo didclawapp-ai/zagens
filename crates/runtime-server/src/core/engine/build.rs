@@ -12,7 +12,7 @@ use crate::sandbox::TuiSandboxHost;
 use crate::seam_manager::{SeamConfig, SeamManager};
 use crate::tools::large_output_router::TuiWorkshopHost;
 use crate::tools::shell::{new_shared_shell_manager, TuiShellHost};
-use crate::tools::subagent::new_shared_subagent_manager;
+use crate::tools::subagent::{new_shared_subagent_manager, spawn_subagent_maintenance_task};
 use crate::agent_surface::AppMode;
 
 use super::handle::EngineHandle;
@@ -99,6 +99,7 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
 
     let subagent_manager =
         new_shared_subagent_manager(lean.workspace.clone(), lean.max_subagents);
+    spawn_subagent_maintenance_task(subagent_manager.clone());
     let shell_manager = config_ext
         .runtime_services
         .shell_manager

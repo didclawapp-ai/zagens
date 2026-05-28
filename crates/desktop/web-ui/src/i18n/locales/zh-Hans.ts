@@ -218,6 +218,8 @@ const zhHans = {
     exportThreadNoId: '导出线程 JSON 需要先恢复运行时线程（继续对话后即有线程 ID）',
     exportThreadNoData: '导出失败：无法获取线程数据',
     persistSessionFailed: '会话未写入 ~/.deepseek/sessions：{{message}}',
+    pageReloadBlocked:
+      '已禁用页面刷新（F5 / Ctrl+R）。刷新会清空内存中的对话状态 — 请用侧栏切换会话，或等待当前回合保存完成。',
     streamError: '流式错误',
     runtimeRestartDuringStream:
       '本地运行时已重启（多为保存系统设置）。进行中的生成已停止；请点「重试连接」后在同一会话继续，scratchpad 进度一般在磁盘上仍在。',
@@ -343,6 +345,9 @@ const zhHans = {
     craftVerifier: '验收',
     craftYes: '是',
     craftDash: '—',
+    stepProgress: '步数 {{done}}/{{max}}',
+    stepCap: '单步上限 {{sec}}s',
+    stuckSuspected: '长时间无进展 — 父代理可 cancel 并将该区域 defer。',
   },
   topicMemoryPanel: {
     hint: '自动维护的话题关联图（只读）。在系统设置中启用。',

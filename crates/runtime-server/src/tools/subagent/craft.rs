@@ -151,6 +151,9 @@ mod tests {
             step_timeout_ms: 600_000,
             structured_findings_parse_failure: None,
             scratchpad_run_id: None,
+            progress_status: None,
+            stuck_suspected: false,
+            idle_ms: 0,
         }
     }
 

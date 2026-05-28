@@ -38,6 +38,9 @@ fn make_snapshot(status: SubAgentStatus) -> SubAgentResult {
         step_timeout_ms: 600_000,
         structured_findings_parse_failure: None,
         scratchpad_run_id: None,
+        progress_status: None,
+        stuck_suspected: false,
+        idle_ms: 0,
     }
 }
 
@@ -1272,6 +1275,66 @@ fn subagent_failed_sentinel_includes_step_api_timeout_reason() {
 
     let reason = completion_reason_for_error_str(err);
     assert_eq!(reason, Some(CompletionReason::StepApiTimeout));
+}
+
+#[test]
+fn compute_stuck_suspected_flags_running_agent_past_step_timeout() {
+    use std::time::Duration;
+
+    use deepseek_core::subagent::SubAgentStatus;
+
+    assert!(!super::constants::compute_stuck_suspected(
+        &SubAgentStatus::Running,
+        Duration::from_secs(600),
+        Duration::from_secs(600),
+    ));
+    assert!(super::constants::compute_stuck_suspected(
+        &SubAgentStatus::Running,
+        Duration::from_secs(600),
+        Duration::from_secs(661),
+    ));
+    assert!(!super::constants::compute_stuck_suspected(
+        &SubAgentStatus::Completed,
+        Duration::from_secs(600),
+        Duration::from_secs(900),
+    ));
+}
+
+#[test]
+fn record_execution_progress_updates_steps_without_persist_on_tool_lines() {
+    let mut manager = SubAgentManager::new(PathBuf::from("."), 2);
+    let (input_tx, _input_rx) = mpsc::unbounded_channel();
+    let agent = SubAgent::new(
+        SubAgentType::Explore,
+        "prompt".to_string(),
+        make_assignment(),
+        "deepseek-v4-flash".to_string(),
+        None,
+        None,
+        STEP_API_TIMEOUT,
+        DEFAULT_MAX_STEPS,
+        input_tx,
+        "boot_test".to_string(),
+    );
+    let agent_id = agent.id.clone();
+    manager.agents.insert(agent_id.clone(), agent);
+
+    manager.record_execution_progress(&agent_id, 1, "step 1/100: requesting model response");
+    let snap = manager.get_result(&agent_id).expect("agent should exist");
+    assert_eq!(snap.steps_taken, 1);
+    assert_eq!(
+        snap.progress_status.as_deref(),
+        Some("step 1/100: requesting model response")
+    );
+    assert!(!snap.stuck_suspected);
+
+    manager.record_execution_progress(&agent_id, 1, "step 1/100: running tool 'read_file'");
+    let snap2 = manager.get_result(&agent_id).expect("agent should exist");
+    assert_eq!(snap2.steps_taken, 1);
+    assert_eq!(
+        snap2.progress_status.as_deref(),
+        Some("step 1/100: running tool 'read_file'")
+    );
 }
 
 #[test]

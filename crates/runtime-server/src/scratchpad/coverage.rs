@@ -23,6 +23,14 @@ pub struct DeferredAreaSummary {
     pub reason_excerpt: String,
 }
 
+/// One inventory row that is `done`/`deferred` but fails C1 quality gates.
+#[derive(Debug, Clone)]
+pub struct AreaQualityGap {
+    pub id: String,
+    pub status: String,
+    pub fix: String,
+}
+
 #[derive(Debug, Clone)]
 pub enum CoverageGateOutcome {
     Allow { stats: CoverageStats },
@@ -170,6 +178,73 @@ pub fn resume_area_id_from_inventory(inventory: &Inventory) -> String {
         .to_string()
 }
 
+/// Inventory rows marked closed (`done`/`deferred`) that do not count toward `areas_accounted`.
+#[must_use]
+pub fn areas_failing_quality_gate(
+    inventory: &Inventory,
+    notes: &[NoteLine],
+    config: &ScratchpadConfig,
+) -> Vec<AreaQualityGap> {
+    let mut gaps = Vec::new();
+    for area in &inventory.areas {
+        match area.status {
+            AreaStatus::Done if !area_meets_done_quality(&area.id, notes) => {
+                gaps.push(AreaQualityGap {
+                    id: area.id.clone(),
+                    status: "done".into(),
+                    fix: "scratchpad_append kind=finding or kind=cleared (meta-only notes do not count for done)".into(),
+                });
+            }
+            AreaStatus::Deferred
+                if config.coverage_count_deferred_as_accounted
+                    && !area_meets_deferred_quality(&area.id, notes) =>
+            {
+                gaps.push(AreaQualityGap {
+                    id: area.id.clone(),
+                    status: "deferred".into(),
+                    fix: "scratchpad_append kind=meta with non-empty claim (defer reason)".into(),
+                });
+            }
+            _ => {}
+        }
+    }
+    gaps
+}
+
+#[must_use]
+pub fn format_quality_gate_block_reason(
+    stats: &CoverageStats,
+    gaps: &[AreaQualityGap],
+    config: &ScratchpadConfig,
+) -> String {
+    let mut reason = format!(
+        "accounted_ratio {:.0}% is below hard threshold {:.0}% ({} of {} areas meet quality gates)",
+        stats.accounted_ratio * 100.0,
+        config.coverage_hard_ratio * 100.0,
+        stats.areas_accounted,
+        stats.areas_total,
+    );
+    if !gaps.is_empty() {
+        reason.push_str("; areas failing quality gates:");
+        for gap in gaps.iter().take(12) {
+            reason.push_str(&format!(
+                "\n- {} ({}) — {}",
+                gap.id, gap.status, gap.fix
+            ));
+        }
+        if gaps.len() > 12 {
+            reason.push_str(&format!("\n- … and {} more", gaps.len() - 12));
+        }
+    } else if !stats.pending_area_ids.is_empty() {
+        reason.push_str("; finish pending areas or mark deferred with kind=meta reason");
+    } else {
+        reason.push_str(
+            "; for each done area without findings use kind=cleared, not meta-only summaries",
+        );
+    }
+    reason
+}
+
 #[must_use]
 pub fn coverage_gate(
     inventory: &Inventory,
@@ -183,14 +258,8 @@ pub fn coverage_gate(
     }
 
     if stats.accounted_ratio < config.coverage_hard_ratio && config.coverage_hard_block_enabled {
-        let reason = format!(
-            "accounted_ratio {:.0}% is below hard threshold {:.0}% ({} of {} areas meet quality gates); \
-             finish pending areas or mark deferred with kind=meta reason before writing the report",
-            stats.accounted_ratio * 100.0,
-            config.coverage_hard_ratio * 100.0,
-            stats.areas_accounted,
-            stats.areas_total,
-        );
+        let gaps = areas_failing_quality_gate(inventory, notes, config);
+        let reason = format_quality_gate_block_reason(&stats, &gaps, config);
         return CoverageGateOutcome::Block { stats, reason };
     }
 
@@ -300,5 +369,32 @@ mod tests {
         let stats = compute_coverage_stats(&inv, &notes, &ScratchpadConfig::default());
         assert_eq!(stats.areas_accounted, 1);
         assert!((stats.accounted_ratio - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn done_with_meta_only_not_accounted() {
+        let inv = inv_with_areas(vec![InventoryArea {
+            id: "area-types".into(),
+            path: "frontend/src/types".into(),
+            status: AreaStatus::Done,
+            notes: String::new(),
+        }]);
+        let notes = vec![parse_note_line(
+            &json!({"id":"n1","area_id":"area-types","kind":"meta","claim":"audit complete summary"}),
+            1,
+        )];
+        let cfg = ScratchpadConfig::default();
+        let stats = compute_coverage_stats(&inv, &notes, &cfg);
+        assert_eq!(stats.areas_accounted, 0);
+        let gaps = areas_failing_quality_gate(&inv, &notes, &cfg);
+        assert_eq!(gaps.len(), 1);
+        assert_eq!(gaps[0].id, "area-types");
+        let outcome = coverage_gate(&inv, &notes, &cfg);
+        if let CoverageGateOutcome::Block { reason, .. } = outcome {
+            assert!(reason.contains("area-types"));
+            assert!(reason.contains("kind=cleared"));
+        } else {
+            panic!("expected block for meta-only done area");
+        }
     }
 }

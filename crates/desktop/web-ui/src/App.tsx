@@ -22,6 +22,7 @@ import {
   workspaceStorageKey,
 } from './lib/windowBridge';
 import useKeyboardShortcuts from './hooks/useKeyboardShortcuts';
+import { usePreventBrowserReload } from './hooks/usePreventBrowserReload';
 import { useRuntimeConnection } from './hooks/useRuntimeConnection';
 import { useAgentPanelState } from './hooks/useAgentPanelState';
 import { useChatMessageActions } from './hooks/useChatMessageActions';
@@ -67,6 +68,7 @@ import { coerceRunModeForSession, isOfficeSession } from './lib/taskTypeSession'
 
 export default function App() {
   const { t } = useT();
+  usePreventBrowserReload();
   const [theme, setTheme] = useState<Theme>(loadTheme);
   const [windowLabel, setWindowLabel] = useState('dev');
   const [showAllSessions, setShowAllSessions] = useState(false);
@@ -220,7 +222,13 @@ export default function App() {
     applyAgentStreamEvent,
     subagentActiveCount,
     narrativeSpawnSuspected,
-  } = useAgentPanelState({ messages });
+  } = useAgentPanelState({
+    messages,
+    workspaceRoot: selectedWorkspace,
+    streaming,
+    runtimeConn,
+    runtimeSessionEstablished,
+  });
 
   setRuntimeSessionEstablishedRef.current = setRuntimeSessionEstablished;
   notifyRuntimeTransientRef.current = notifyRuntimeTransient;

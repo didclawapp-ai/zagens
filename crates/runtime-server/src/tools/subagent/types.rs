@@ -120,6 +120,20 @@ pub(crate) struct PersistedSubAgent {
     pub(crate) blackboard_task_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) scratchpad_run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) progress_status: Option<String>,
+    #[serde(default = "default_persisted_max_steps")]
+    pub(crate) max_steps: u32,
+    #[serde(default = "default_persisted_step_timeout_ms")]
+    pub(crate) step_timeout_ms: u64,
+}
+
+fn default_persisted_max_steps() -> u32 {
+    super::constants::DEFAULT_MAX_STEPS
+}
+
+fn default_persisted_step_timeout_ms() -> u64 {
+    u64::try_from(super::constants::STEP_API_TIMEOUT.as_millis()).unwrap_or(600_000)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -11,7 +11,7 @@ use crate::config::MAX_SUBAGENTS;
 
 
 use super::manager::SubAgentManager;
-use super::constants::{SUBAGENT_STATE_FILE};
+use super::constants::{SUBAGENT_STATE_FILE, ZOMBIE_SCAN_INTERVAL};
 
 
 /// Thread-safe wrapper for `SubAgentManager`.
@@ -58,5 +58,17 @@ pub fn new_shared_subagent_manager(workspace: PathBuf, max_agents: usize) -> Sha
         eprintln!("Failed to load sub-agent state: {err}");
     }
     Arc::new(RwLock::new(manager))
+}
+
+/// Background zombie scan (P2-10): correct `Running` agents whose task finished
+/// without a status update, even when nothing calls `agent_list`.
+pub fn spawn_subagent_maintenance_task(manager: SharedSubAgentManager) {
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(ZOMBIE_SCAN_INTERVAL).await;
+            let mut mgr = manager.write().await;
+            mgr.run_maintenance();
+        }
+    });
 }
 

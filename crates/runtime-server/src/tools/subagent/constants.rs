@@ -25,6 +25,22 @@ pub(crate) const DEFAULT_RESULT_TIMEOUT_MS: u64 = 30_000;
 pub(crate) const MIN_WAIT_TIMEOUT_MS: u64 = 10_000;
 pub(crate) const MAX_RESULT_TIMEOUT_MS: u64 = 3_600_000;
 pub(crate) const COMPLETED_AGENT_RETENTION: Duration = Duration::from_secs(60 * 60);
+/// Background scan interval for zombie `Running` agents (P2-10).
+pub(crate) const ZOMBIE_SCAN_INTERVAL: Duration = Duration::from_secs(30);
+/// Extra idle time beyond a step's API timeout before flagging `stuck_suspected`.
+pub(crate) const STUCK_IDLE_BUFFER: Duration = Duration::from_secs(60);
+
+pub(crate) fn compute_stuck_suspected(
+    status: &deepseek_core::subagent::SubAgentStatus,
+    step_timeout: Duration,
+    idle: Duration,
+) -> bool {
+    use deepseek_core::subagent::SubAgentStatus;
+    if status != &SubAgentStatus::Running {
+        return false;
+    }
+    idle > step_timeout.saturating_add(STUCK_IDLE_BUFFER)
+}
 pub(crate) const SUBAGENT_STATE_SCHEMA_VERSION: u32 = 1;
 pub(crate) const SUBAGENT_STATE_FILE: &str = "subagents.v1.json";
 pub(crate) const SUBAGENT_RESTART_REASON: &str = "Interrupted by process restart";

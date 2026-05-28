@@ -147,9 +147,36 @@ function CraftTaskCard({ task }: { task: CraftBlackboardTaskSummary }) {
 function AgentCard({ agent }: { agent: AgentState }) {
   const { t } = useT();
   const [expanded, setExpanded] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const isActive = agent.status === 'running' || agent.status === 'spawned';
+
+  useEffect(() => {
+    if (!isActive) {
+      return;
+    }
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [isActive]);
+
   const dotColor = agent.status === 'completed' ? 'bg-success' : agent.status === 'interrupted' ? 'bg-t-error' : 'bg-amber animate-pulse';
   const label = agent.status === 'completed' ? t('agentPanel.completed') : agent.status === 'interrupted' ? t('agentPanel.interrupted') : t('agentPanel.running');
-  const duration = agent.completedAt != null ? ((agent.completedAt - agent.spawnedAt) / 1000).toFixed(1) + 's' : agent.status === 'running' || agent.status === 'spawned' ? ((Date.now() - agent.spawnedAt) / 1000).toFixed(0) + 's' : '—';
+  const duration =
+    agent.completedAt != null
+      ? `${((agent.completedAt - agent.spawnedAt) / 1000).toFixed(1)}s`
+      : isActive
+        ? `${((now - agent.spawnedAt) / 1000).toFixed(0)}s`
+        : '—';
+  const stepTimeoutSec =
+    agent.stepTimeoutMs && agent.stepTimeoutMs > 0
+      ? Math.round(agent.stepTimeoutMs / 1000)
+      : null;
+  const stepsLine =
+    agent.maxSteps != null && agent.maxSteps > 0
+      ? t('agentPanel.stepProgress', {
+          done: String(agent.stepsTaken ?? 0),
+          max: String(agent.maxSteps),
+        })
+      : null;
   const typeLabel = agentTypeLabel(agent.agentType);
   const title = agent.nickname?.trim() || typeLabel || agent.agentId.slice(0, 12);
   const objective = agent.objective?.trim() ?? '';
@@ -170,7 +197,18 @@ function AgentCard({ agent }: { agent: AgentState }) {
           <span className={`shrink-0 text-[10px] font-medium ${agent.status === 'completed' ? 'text-success' : agent.status === 'interrupted' ? 'text-t-error-text' : 'text-amber-text'}`}>{label}</span>
         </div>
         {objectivePreview ? <p className="text-[11px] text-t-text-secondary leading-relaxed line-clamp-3 pl-4">{objectivePreview}</p> : <p className="text-[10px] text-t-text-muted pl-4 italic">{t('agentPanel.objectiveLoading')}</p>}
-        {agent.progressStatus && (agent.status === 'running' || agent.status === 'spawned') ? <p className="text-[10px] text-amber-text/90 pl-4 truncate" title={agent.progressStatus}>{agent.progressStatus}</p> : null}
+        {agent.progressStatus && isActive ? <p className="text-[10px] text-amber-text/90 pl-4 truncate" title={agent.progressStatus}>{agent.progressStatus}</p> : null}
+        {stepsLine && isActive ? (
+          <p className="text-[10px] text-t-text-muted pl-4">
+            {stepsLine}
+            {stepTimeoutSec != null
+              ? ` · ${t('agentPanel.stepCap', { sec: String(stepTimeoutSec) })}`
+              : null}
+          </p>
+        ) : null}
+        {agent.stuckSuspected && isActive ? (
+          <p className="text-[10px] text-t-error-text pl-4">{t('agentPanel.stuckSuspected')}</p>
+        ) : null}
         {agent.taskId?.trim() ? <p className="text-[9px] text-t-text-muted pl-4 font-mono truncate" title={agent.taskId}>{t('agentPanel.workPackage')}: {agent.taskId}</p> : null}
         <div className="flex items-center gap-2 pl-4 text-[10px] text-t-text-muted"><span>{t('agentPanel.toolsCount', { count: String(agent.toolCalls.length) })} · {agent.tokens > 0 ? `${(agent.tokens / 1000).toFixed(1)}k` : '—'} · {duration}</span></div>
       </div>

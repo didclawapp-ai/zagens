@@ -515,6 +515,11 @@ impl ScratchpadStore {
             })
             .collect();
 
+        let coverage_cfg = ScratchpadConfig::default();
+        let coverage = compute_coverage_stats(&inventory, &notes, &coverage_cfg);
+        let quality_gaps = coverage::areas_failing_quality_gate(&inventory, &notes, &coverage_cfg);
+        let quality_gap_ids: Vec<&str> = quality_gaps.iter().map(|g| g.id.as_str()).collect();
+
         Ok(json!({
             "run_id": self.run_id,
             "path": display_run_path(&self.run_id),
@@ -523,6 +528,9 @@ impl ScratchpadStore {
             "areas_deferred": areas_deferred,
             "areas_in_progress": areas_in_progress,
             "areas_pending": areas_pending,
+            "areas_accounted": coverage.areas_accounted,
+            "accounted_ratio": coverage.accounted_ratio,
+            "areas_failing_quality_gate": quality_gap_ids,
             "resume_area_id": resume_area_id,
             "notes_total": notes.len(),
             "findings_verified": findings_verified,
@@ -538,6 +546,8 @@ impl ScratchpadStore {
                 areas_done,
                 areas_deferred,
                 notes.len(),
+                &coverage,
+                &coverage_cfg,
             ),
         }))
     }
@@ -548,6 +558,8 @@ fn build_contract_hints(
     areas_done: usize,
     areas_deferred: usize,
     notes_total: usize,
+    coverage: &coverage::CoverageStats,
+    config: &ScratchpadConfig,
 ) -> Vec<&'static str> {
     let mut hints = Vec::new();
     if areas_pending > 0 && notes_total > 0 {
@@ -561,7 +573,15 @@ fn build_contract_hints(
         );
     }
     if areas_pending == 0 && areas_done + areas_deferred > 0 && notes_total > 0 {
-        hints.push("inventory closed — synthesize report from verified findings via write_file");
+        if coverage.accounted_ratio < config.coverage_hard_ratio
+            && config.coverage_hard_block_enabled
+        {
+            hints.push(
+                "P2 blocked: accounted_ratio below 60% — done areas need kind=finding or kind=cleared (meta-only does not count); see areas_failing_quality_gate",
+            );
+        } else {
+            hints.push("inventory closed — synthesize report from verified findings via write_file");
+        }
     }
     hints
 }

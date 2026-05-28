@@ -691,6 +691,9 @@ mod tests {
             step_timeout_ms: 600_000,
             structured_findings_parse_failure: None,
             scratchpad_run_id: None,
+            progress_status: None,
+            stuck_suspected: false,
+            idle_ms: 0,
         };
 
         // Write to blackboard
@@ -747,6 +750,9 @@ mod tests {
             step_timeout_ms: 600_000,
             structured_findings_parse_failure: None,
             scratchpad_run_id: None,
+            progress_status: None,
+            stuck_suspected: false,
+            idle_ms: 0,
         };
         write_blackboard_partition(&ws, task_id, &SAT::Explore, &explorer_result);
 
@@ -780,6 +786,9 @@ mod tests {
             step_timeout_ms: 600_000,
             structured_findings_parse_failure: None,
             scratchpad_run_id: None,
+            progress_status: None,
+            stuck_suspected: false,
+            idle_ms: 0,
         };
         write_blackboard_partition(&ws, task_id, &SAT::Review, &reviewer_result);
 
@@ -830,6 +839,9 @@ mod tests {
             step_timeout_ms: 600_000,
             structured_findings_parse_failure: None,
             scratchpad_run_id: None,
+            progress_status: None,
+            stuck_suspected: false,
+            idle_ms: 0,
         };
         write_blackboard_partition(&ws, task_id, &SAT::Verifier, &verifier_result);
 

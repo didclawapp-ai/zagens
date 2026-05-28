@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Desktop (Zagens)
 
+- **Agent panel:** Polls `subagents.v1.json` during streaming (3s) for live step count, per-step timeout cap, and stuck-suspected hint when idle exceeds step timeout + 60s.
+- **Page reload guard:** Block F5 / Ctrl+R (Cmd+R) full-page refresh — prevents accidental loss of in-memory chat state before persist-session completes; shows a brief toast instead.
 - **Audit grid panel:** When checklist, audit scratchpad, or sub-agent data appears, a 2×2 right-side grid (checklist / audit / reserved / sub-agents) auto-opens and temporarily replaces the single Inspector panel; auto-hides when all three are empty; title-bar grid toggle and seam collapse respect manual dismiss until data clears or the thread changes.
 - **Symbol index panel:** Freshness check covers JS/Python/Go/C++/Vue sources and flags stale indexes below schema v5.
 - **Binary preview:** Cap reads at 10MB without loading entire files into memory (`read_binary_file_at`).
@@ -42,6 +44,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Cleanup:** Remove unused `crates/execpolicy` (`deepseek-execpolicy` / `ExecPolicyEngine`); runtime uses `runtime-server/src/execpolicy/` + `command_safety.rs` instead.
 - **Audit scratchpad deadlocks:** `scratchpad_import_agent` honors `area_id` override and remaps by `area_path` when child ids mismatch inventory; `scratchpad_set_area(deferred)` defaults `require_min_notes=0` (meta note still required).
 - **Audit scratchpad (Turn-1 report gap):** `scratchpad_import_agent(block=true)` now enriches via `get_result_with_fallback` after wait (fixes missing structured import); truncated `<!-- audit-findings -->` JSON salvages complete items; `checklist_write`/`checklist_update` warn on checklist↔inventory mismatch; active scratchpad blocks prose-only turn break when P2 gates unmet; audit report `write_file` gate covers `doc/*audit*` and `CODE_AUDIT*.md`; `scratchpad_status` returns `contract_hints`.
+- **Audit scratchpad (P2 quality gate UX):** `write_file` block reason and `scratchpad_status` now list `areas_failing_quality_gate` (e.g. `done` with meta-only notes); contract hint no longer says “inventory closed” when `accounted_ratio` is below the 60% hard threshold.
+- **Sub-agent progress & stuck detection (P2):** Executor updates `steps_taken` / `progress_status` in manager on each step heartbeat; `agent_list` / disk snapshot expose `stuck_suspected` and `idle_ms`; 30s background zombie scan (P2-10); AgentPanel polls `subagents.v1.json` during streaming with step/cap/stuck UI; audit-repo skill adds outlier cancel+defer rule.
 - **Skills (`audit-repo`):** Require `checklist_write` after `scratchpad_init` so sidebar 清单 mirrors inventory areas; clarify inventory vs Checklist panel dual-track; document partial-audit defer + import override playbook.
 - **Audit scratchpad + sub-agents:** Sync `scratchpad_run_id` from the tool wire slot at turn start and after successful scratchpad bind tools; mid-turn `scratchpad_init` now eager-loads `agent_spawn` / `agent_*` in the same turn without `tool_search`.
 - **`GET /v1/usage`:** `UsageTotals` / `UsageBucket` now include `miss_tokens`, `cache_hit_rate`, `cost_usd_without_cache`, `cache_savings_usd`; response adds `cache_telemetry_incomplete` when any turn used a model without DeepSeek-style cache fields.

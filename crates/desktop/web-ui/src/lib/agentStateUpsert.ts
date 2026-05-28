@@ -37,6 +37,12 @@ export function metaFromListRow(row: AgentListRowMeta): Partial<AgentState> {
     ...(row.role ? { role: row.role } : {}),
     ...(row.taskId ? { taskId: row.taskId } : {}),
     ...(row.nickname ? { nickname: row.nickname } : {}),
+    ...(row.progressStatus ? { progressStatus: row.progressStatus } : {}),
+    ...(row.stepsTaken !== undefined ? { stepsTaken: row.stepsTaken } : {}),
+    ...(row.maxSteps !== undefined ? { maxSteps: row.maxSteps } : {}),
+    ...(row.stepTimeoutMs !== undefined ? { stepTimeoutMs: row.stepTimeoutMs } : {}),
+    ...(row.stuckSuspected !== undefined ? { stuckSuspected: row.stuckSuspected } : {}),
+    ...(row.idleMs !== undefined ? { idleMs: row.idleMs } : {}),
   };
 }
 

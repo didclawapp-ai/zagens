@@ -153,6 +153,15 @@ pub struct SubAgentResult {
     /// Scratchpad run this agent was spawned against (audit isolation).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scratchpad_run_id: Option<String>,
+    /// Latest execution progress line (also emitted as `agent.progress`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub progress_status: Option<String>,
+    /// Running agent with no progress longer than `step_timeout_ms` + buffer.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub stuck_suspected: bool,
+    /// Milliseconds since the last progress heartbeat.
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
+    pub idle_ms: u64,
 }
 
 fn default_subagent_max_steps() -> u32 {
@@ -165,6 +174,10 @@ fn default_subagent_step_timeout_ms() -> u64 {
 
 fn is_false(b: &bool) -> bool {
     !*b
+}
+
+fn is_zero_u64(n: &u64) -> bool {
+    *n == 0
 }
 
 impl SubAgentAssignment {

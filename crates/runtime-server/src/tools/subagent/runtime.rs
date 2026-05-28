@@ -273,6 +273,8 @@ pub struct SubAgent {
     pub max_steps: u32,
     pub steps_taken: u32,
     pub started_at: Instant,
+    pub last_progress_at: Instant,
+    pub progress_status: Option<String>,
     /// `None` = full registry inheritance (v0.6.6 default).
     /// `Some(list)` = explicit narrow allowlist (Custom agents, legacy).
     pub allowed_tools: Option<Vec<String>>,
@@ -300,6 +302,7 @@ impl SubAgent {
         session_boot_id: String,
     ) -> Self {
         let id = format!("agent_{}", &Uuid::new_v4().to_string()[..8]);
+        let started_at = Instant::now();
 
         Self {
             id,
@@ -319,7 +322,9 @@ impl SubAgent {
             step_timeout,
             max_steps,
             steps_taken: 0,
-            started_at: Instant::now(),
+            started_at,
+            last_progress_at: started_at,
+            progress_status: None,
             allowed_tools,
             session_boot_id,
             input_tx: Some(input_tx),
@@ -330,6 +335,10 @@ impl SubAgent {
     /// Get a snapshot of the current state.
     #[must_use]
     pub fn snapshot(&self) -> SubAgentResult {
+        let idle = self.last_progress_at.elapsed();
+        let idle_ms = u64::try_from(idle.as_millis()).unwrap_or(u64::MAX);
+        let stuck_suspected =
+            super::constants::compute_stuck_suspected(&self.status, self.step_timeout, idle);
         SubAgentResult {
             agent_id: self.id.clone(),
             agent_type: self.agent_type.clone(),
@@ -352,6 +361,9 @@ impl SubAgent {
             step_timeout_ms: u64::try_from(self.step_timeout.as_millis()).unwrap_or(u64::MAX),
             structured_findings_parse_failure: self.structured_findings_parse_failure.clone(),
             scratchpad_run_id: self.scratchpad_run_id.clone(),
+            progress_status: self.progress_status.clone(),
+            stuck_suspected,
+            idle_ms,
         }
     }
 }

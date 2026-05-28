@@ -14,6 +14,11 @@ export interface AgentState {
   nickname?: string;
   /** Latest `agent.progress` status line. */
   progressStatus?: string;
+  stepsTaken?: number;
+  maxSteps?: number;
+  stepTimeoutMs?: number;
+  stuckSuspected?: boolean;
+  idleMs?: number;
   toolCalls: AgentToolCall[];
   resultSummary: string | null;
   tokens: number;
