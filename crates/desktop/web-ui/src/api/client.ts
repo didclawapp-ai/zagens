@@ -730,6 +730,8 @@ export interface ScratchpadStatus {
   checklist_total?: number;
   contract_warnings?: string[];
   subagents_running?: number;
+  /** Earlier audits in this thread (newest first). Latest run fields remain at top level. */
+  previous_runs?: ScratchpadStatus[];
 }
 
 export async function fetchThreadScratchpadStatus(

@@ -167,14 +167,21 @@ where
             }
         }
         if let Some(scratchpad_run_id) = req.scratchpad_run_id {
-            let new_id = if scratchpad_run_id.trim().is_empty() {
-                None
+            if scratchpad_run_id.trim().is_empty() {
+                if thread.scratchpad_run_id.is_some() || thread.scratchpad_run_history.is_some() {
+                    thread.scratchpad_run_id = None;
+                    thread.scratchpad_run_history = None;
+                    changes.insert("scratchpad_run_id".to_string(), json!(null));
+                }
             } else {
-                Some(scratchpad_run_id)
-            };
-            if thread.scratchpad_run_id != new_id {
-                thread.scratchpad_run_id = new_id.clone();
-                changes.insert("scratchpad_run_id".to_string(), json!(new_id));
+                let before = thread.scratchpad_run_id.clone();
+                thread.record_scratchpad_run(scratchpad_run_id.trim());
+                if before != thread.scratchpad_run_id {
+                    changes.insert(
+                        "scratchpad_run_id".to_string(),
+                        json!(thread.scratchpad_run_id),
+                    );
+                }
             }
         }
         if let Some(workspace_raw) = req.workspace.clone() {

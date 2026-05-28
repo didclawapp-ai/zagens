@@ -53,7 +53,15 @@ After building inventory, append:
 ### Parallel areas
 
 - **Use `agent_spawn(type=explore)`** with `task_id` = `run_id` (blackboard only).
-- **`step_timeout_ms`: 240000–360000** for multi-file reads.
+- **`step_timeout_ms` by inventory file count** (count source files under the area path before spawn):
+
+| Area source files | `step_timeout_ms` |
+|-------------------|-------------------|
+| ≤10 | 600000 |
+| 11–20 | 900000 |
+| 21–40 | 1200000 |
+| >40, or path is `crates/runtime-server/src/tools` | 1800000 |
+
 - Assignment MUST include the inventory **`area_id`** and **`path`** so the child emits matching `<!-- audit-findings -->`.
 
 ### Join (mandatory — do not hand-copy prose)

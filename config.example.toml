@@ -151,8 +151,8 @@ max_subagents = 10 # optional (1-20)
 # Optional sub-agent tuning. max_concurrent overrides top-level max_subagents.
 # [subagents]
 # max_concurrent = 10
-# Per-step LLM API timeout (seconds). Default 120; clamped 10–600. Zagens: 系统设置 → 安全。
-# step_timeout_secs = 300
+# Per-step LLM API timeout (seconds). Default 600; clamped 120–1800. Zagens: 系统设置 → 安全。
+# step_timeout_secs = 600
 
 # Optional managed policy paths (defaults to /etc/deepseek/*.toml on unix):
 # managed_config_path = "/etc/deepseek/managed_config.toml"

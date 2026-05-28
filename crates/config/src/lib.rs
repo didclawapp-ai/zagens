@@ -333,7 +333,7 @@ impl ConfigToml {
                 ..FeaturesToml::default()
             }),
             subagents: Some(SubagentsConfigToml {
-                step_timeout_secs: Some(120),
+                step_timeout_secs: Some(600),
                 ..SubagentsConfigToml::default()
             }),
             memory: Some(MemoryToml {
@@ -487,7 +487,7 @@ pub struct FeaturesToml {
 pub struct SubagentsConfigToml {
     #[serde(default)]
     pub max_concurrent: Option<usize>,
-    /// Per-step LLM API timeout for sub-agents (seconds). Default 120; clamped 10–600 at runtime.
+    /// Per-step LLM API timeout for sub-agents (seconds). Default 600; clamped 120–1800 at runtime.
     #[serde(default)]
     pub step_timeout_secs: Option<u64>,
     #[serde(flatten)]

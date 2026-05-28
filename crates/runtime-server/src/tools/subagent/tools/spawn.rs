@@ -6,6 +6,7 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 
 use deepseek_core::subagent::{SubAgentStatus, SubAgentType};
+use crate::config::{MAX_SUBAGENT_STEP_TIMEOUT_SECS, MIN_SUBAGENT_STEP_TIMEOUT_SECS};
 use crate::tools::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_u64,
 };
@@ -61,10 +62,10 @@ impl ToolSpec for AgentSpawnTool {
          peer background jobs (TaskManager) and require `task_read`. Optional `task_id` is only a \
          CRAFT **work-package / blackboard key** (e.g. scratchpad `run_id`), not a TaskManager id. \
          Cap: `[subagents].max_concurrent` (default 10). Omitting `step_timeout_ms` uses \
-         `[subagents] step_timeout_secs` from config (Zagens system settings); for audit/review \
-         workloads prefer 240000–360000 ms or raise the config default — do not assume the child \
-         can run many minutes unless you set it. For parallel read-only tool calls in *this* turn, \
-         batch tools instead of spawning."
+         `[subagents] step_timeout_secs` from config (Zagens system settings, default 600 s); for \
+         audit/review workloads set explicit `step_timeout_ms` per audit-repo inventory tier \
+         (600000–1800000) or raise the config default — do not assume unlimited time. For parallel \
+         read-only tool calls in *this* turn, batch tools instead of spawning."
     }
 
     fn input_schema(&self) -> Value {
@@ -137,9 +138,9 @@ impl ToolSpec for AgentSpawnTool {
                 },
                 "step_timeout_ms": {
                     "type": "integer",
-                    "description": "Per-step LLM API timeout in ms. Omitted → [subagents] step_timeout_secs from config.toml / Zagens settings (else 120000). Full-repo audit: use 240000–360000 unless config default is already high. On step timeout the child fails — parent must re-spawn or shrink scope, not treat as done.",
-                    "minimum": 10000,
-                    "maximum": 600000
+                    "description": "Per-step LLM API timeout in ms. Omitted → [subagents] step_timeout_secs from config.toml / Zagens settings (default 600000). Range 120000–1800000. Full-repo audit: set per inventory file count (audit-repo skill tier table). On step timeout the child fails — parent must re-spawn or shrink scope, not treat as done.",
+                    "minimum": 120000,
+                    "maximum": 1800000
                 }
             }
         })
@@ -208,9 +209,13 @@ impl ToolSpec for AgentSpawnTool {
         if let Some(cwd) = validated_cwd {
             child_runtime.context.workspace = cwd;
         }
-        let default_step_ms = context.subagent_default_step_timeout_ms.clamp(10_000, 600_000);
+        let min_step_ms = MIN_SUBAGENT_STEP_TIMEOUT_SECS * 1000;
+        let max_step_ms = MAX_SUBAGENT_STEP_TIMEOUT_SECS * 1000;
+        let default_step_ms = context
+            .subagent_default_step_timeout_ms
+            .clamp(min_step_ms, max_step_ms);
         let step_timeout_ms =
-            optional_u64(&input, "step_timeout_ms", default_step_ms).clamp(10_000, 600_000);
+            optional_u64(&input, "step_timeout_ms", default_step_ms).clamp(min_step_ms, max_step_ms);
         child_runtime = child_runtime.with_step_timeout(Duration::from_millis(step_timeout_ms));
         let configured_model = match spawn_request.model.clone() {
             Some(model) => Some(model),

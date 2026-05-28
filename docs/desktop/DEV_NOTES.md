@@ -91,7 +91,7 @@ L1  deepseek-runtime sidecar + deepseek-core（Engine / turn_loop / tools）
 | 优先级 | 项 | 说明 |
 |--------|-----|------|
 | **P0** | Sidecar 长跑友好化 | busy-timeout 宽容、SSE 断线重连；见 [SIDECAR_SUPERVISOR_HARDENING_PLAN.md](SIDECAR_SUPERVISOR_HARDENING_PLAN.md) |
-| **P1** | Harness 预置「长任务」 | 如 `craft-audit`：trust + `step_timeout` 360s + 显式长 `agent_wait`；避免模型踩默认短 timeout |
+| **P1** | Harness 预置「长任务」 | 如 `craft-audit`：trust + 按 audit-repo 分档 `step_timeout_ms` + 显式长 `agent_wait`；避免模型踩默认短 timeout |
 | **P1** | AgentPanel 长任务 UX | 运行时长、blocked 原因、子代理树；最小化后分级通知 |
 | **P2** | Handoff Report MVP | 手动「生成本轮摘要」→ `~/.deepseek/handoffs/`；compaction 服务模型，handoff 服务人与跨天 |
 | **P2** | 35 min 基准化 | 纳入 `runtime-longrun-baseline` / 回归门，从「一次手测」变产品指标 |

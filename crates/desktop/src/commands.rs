@@ -1065,8 +1065,8 @@ pub fn get_system_settings() -> Result<SystemSettings, String> {
             .subagents
             .as_ref()
             .and_then(|s| s.step_timeout_secs)
-            .unwrap_or(120)
-            .clamp(10, 600),
+            .unwrap_or(600)
+            .clamp(120, 1800),
         web_search: cfg
             .features
             .as_ref()
@@ -1147,7 +1147,7 @@ pub fn save_system_settings(
     subagents.step_timeout_secs = Some(
         settings
             .subagent_step_timeout_secs
-            .clamp(10, 600),
+            .clamp(120, 1800),
     );
 
     // features：使用 get_or_insert_with 而非 take() ——

@@ -85,7 +85,7 @@ impl RuntimeThreadManager {
             .list_threads()
             .unwrap_or_default()
             .into_iter()
-            .filter_map(|t| t.scratchpad_run_id)
+            .flat_map(|t| t.scratchpad_history())
             .collect();
         crate::scratchpad::cleanup::cleanup_stale_scratchpads(
             &manager.workspace,
@@ -123,43 +123,15 @@ impl RuntimeThreadManager {
                 }
             }
         }
-        let mut thread = self.load_thread_sync(thread_id)?;
-        let run_id = thread
-            .scratchpad_run_id
-            .clone()
-            .or_else(|| crate::scratchpad::discover_scratchpad_run_id_for_ui(&thread.workspace));
-        let Some(run_id) = run_id else {
+        let thread = self.load_thread_sync(thread_id)?;
+        if thread.scratchpad_history().is_empty() {
             return Ok(None);
-        };
-        if thread.scratchpad_run_id.as_deref() != Some(run_id.as_str()) {
-            thread.scratchpad_run_id = Some(run_id.clone());
-            thread.updated_at = Utc::now();
-            let store = self.store.clone();
-            let thread_to_save = thread.clone();
-            if let Ok(handle) = tokio::runtime::Handle::try_current() {
-                handle.spawn(async move {
-                    let _ = tokio::task::spawn_blocking(move || store.save_thread(&thread_to_save))
-                        .await;
-                });
-            } else {
-                let _ = self.store.save_thread(&thread);
-            }
         }
-        let store = crate::scratchpad::try_open_store(
-            &thread.workspace,
-            Some(run_id.as_str()),
-            Some(&thread.id),
-            thread.task_id.as_deref(),
-        );
-        let Some(mut status) = store.and_then(|s| s.build_status().ok()) else {
-            return Ok(None);
-        };
         let checklist_json = self.get_thread_checklist(thread_id);
-        crate::scratchpad::ui_status::enrich_status_for_thread_ui(
-            &mut status,
+        let out = crate::scratchpad::ui_status::build_thread_scratchpad_panel_status(
+            &thread,
             checklist_json.as_deref(),
         );
-        let out = Some(status);
         if let Ok(mut cache) = self.scratchpad_status_cache.lock() {
             cache.insert(
                 thread_id.to_string(),
@@ -189,11 +161,10 @@ impl RuntimeThreadManager {
             crate::scratchpad::validate_run_id(rid)
                 .map_err(|e| anyhow::anyhow!(e.to_string()))?;
             rid.to_string()
+        } else if let Some(active) = thread.scratchpad_run_id.clone() {
+            active
         } else {
-            thread
-                .scratchpad_run_id
-                .clone()
-                .unwrap_or_else(|| thread.id.clone())
+            thread.id.clone()
         };
 
         let areas = match areas_json {
@@ -202,10 +173,10 @@ impl RuntimeThreadManager {
             _ => crate::scratchpad::default_init_areas(),
         };
 
-        let store = crate::scratchpad::ScratchpadStore::init(&ctx, &resolved_run, areas, scope)
+        let _store = crate::scratchpad::ScratchpadStore::init(&ctx, &resolved_run, areas, scope)
             .map_err(|e| anyhow::anyhow!(e.to_string()))?;
 
-        thread.scratchpad_run_id = Some(resolved_run);
+        thread.record_scratchpad_run(&resolved_run);
         thread.updated_at = Utc::now();
         self.store.save_thread(&thread)?;
 
@@ -213,15 +184,12 @@ impl RuntimeThreadManager {
             cache.remove(thread_id);
         }
 
-        let mut status = store
-            .build_status()
-            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
         let checklist_json = self.get_thread_checklist(thread_id);
-        crate::scratchpad::ui_status::enrich_status_for_thread_ui(
-            &mut status,
+        crate::scratchpad::ui_status::build_thread_scratchpad_panel_status(
+            &thread,
             checklist_json.as_deref(),
-        );
-        Ok(status)
+        )
+        .ok_or_else(|| anyhow::anyhow!("scratchpad status unavailable after init"))
     }
 
     /// Return the cached checklist snapshot for a thread (for Zagens WebView panel).

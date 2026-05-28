@@ -9,13 +9,14 @@ pub(crate) const TOOL_TIMEOUT: Duration = Duration::from_secs(30);
 /// Per-step LLM API call timeout. Each `create_message` request must complete
 /// within this window or the step is treated as timed out. Prevents a single
 /// stuck API call from blocking the sub-agent indefinitely.
-pub(crate) const STEP_API_TIMEOUT: Duration = Duration::from_secs(120);
+pub(crate) const STEP_API_TIMEOUT: Duration = Duration::from_secs(600);
 
 pub(crate) fn step_api_timeout_error(secs: u64) -> anyhow::Error {
     anyhow!(
         "API call timed out after {secs}s (per-step cap). Child stopped — not proof the area is \
-         fully reviewed. Parent: re-spawn with a smaller scope and step_timeout_ms=240000–360000, \
-         raise [subagents] step_timeout_secs in config/settings, or continue with parallel \
+         fully reviewed. Parent: re-spawn with a smaller scope and explicit step_timeout_ms \
+         (audit-repo tier: 600000–1800000 by inventory file count), raise \
+         [subagents] step_timeout_secs in config/settings, or continue with parallel \
          read_file; do not mark scratchpad inventory done on timeout alone."
     )
 }

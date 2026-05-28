@@ -1,6 +1,10 @@
 //! Zagens UI enrichments for `GET /v1/threads/{id}/scratchpad/status` (Phase D2).
 
+use std::path::Path;
+
 use serde_json::{Value, json};
+
+use deepseek_runtime_orchestrator::runtime_threads::types::ThreadRecord;
 
 /// Count checklist items from a `checklist_write` snapshot JSON.
 #[must_use]
@@ -69,10 +73,127 @@ pub fn enrich_status_for_thread_ui(status: &mut Value, checklist_json: Option<&s
     }
 }
 
+fn build_run_status(
+    workspace: &Path,
+    run_id: &str,
+    thread_id: &str,
+    task_id: Option<&str>,
+) -> Option<Value> {
+    let store = super::try_open_store(workspace, Some(run_id), Some(thread_id), task_id)?;
+    store.build_status().ok()
+}
+
+/// Build panel JSON: latest run at top level + `previous_runs` (newest-first, folded in UI).
+pub fn build_thread_scratchpad_panel_status(
+    thread: &ThreadRecord,
+    checklist_json: Option<&str>,
+) -> Option<Value> {
+    let history = thread.scratchpad_history();
+    let latest_id = history.last()?.clone();
+    let mut latest = build_run_status(
+        &thread.workspace,
+        &latest_id,
+        &thread.id,
+        thread.task_id.as_deref(),
+    )?;
+    enrich_status_for_thread_ui(&mut latest, checklist_json);
+
+    let mut previous_runs: Vec<Value> = Vec::new();
+    for run_id in history.iter().rev().skip(1) {
+        if let Some(st) = build_run_status(
+            &thread.workspace,
+            run_id,
+            &thread.id,
+            thread.task_id.as_deref(),
+        ) {
+            previous_runs.push(st);
+        }
+    }
+
+    if let Some(obj) = latest.as_object_mut() {
+        if !previous_runs.is_empty() {
+            obj.insert("previous_runs".to_string(), json!(previous_runs));
+        }
+    }
+    Some(latest)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Utc;
     use serde_json::json;
+    use std::path::PathBuf;
+
+    use deepseek_core::coherence::CoherenceState;
+    use deepseek_runtime_orchestrator::runtime_threads::types::ThreadRecord;
+
+    #[test]
+    fn thread_scratchpad_history_backfills_from_active_run() {
+        let thread = ThreadRecord {
+            schema_version: 2,
+            id: "thr_a".to_string(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            model: "m".to_string(),
+            workspace: PathBuf::from("/tmp"),
+            mode: "agent".to_string(),
+            allow_shell: false,
+            trust_mode: false,
+            auto_approve: false,
+            latest_turn_id: None,
+            latest_response_bookmark: None,
+            archived: false,
+            system_prompt: None,
+            task_id: None,
+            title: None,
+            task_type: "code".to_string(),
+            coherence_state: CoherenceState::default(),
+            scratchpad_run_id: Some("run-1".to_string()),
+            scratchpad_run_history: None,
+            checklist_snapshot: None,
+        };
+        assert_eq!(thread.scratchpad_history(), vec!["run-1".to_string()]);
+    }
+
+    #[test]
+    fn record_scratchpad_run_appends_and_promotes_latest() {
+        let mut thread = ThreadRecord {
+            schema_version: 2,
+            id: "thr_b".to_string(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            model: "m".to_string(),
+            workspace: PathBuf::from("/tmp"),
+            mode: "agent".to_string(),
+            allow_shell: false,
+            trust_mode: false,
+            auto_approve: false,
+            latest_turn_id: None,
+            latest_response_bookmark: None,
+            archived: false,
+            system_prompt: None,
+            task_id: None,
+            title: None,
+            task_type: "code".to_string(),
+            coherence_state: CoherenceState::default(),
+            scratchpad_run_id: None,
+            scratchpad_run_history: None,
+            checklist_snapshot: None,
+        };
+        thread.record_scratchpad_run("audit-1");
+        thread.record_scratchpad_run("audit-2");
+        assert_eq!(
+            thread.scratchpad_history(),
+            vec!["audit-1".to_string(), "audit-2".to_string()]
+        );
+        assert_eq!(thread.scratchpad_run_id.as_deref(), Some("audit-2"));
+        thread.record_scratchpad_run("audit-1");
+        assert_eq!(
+            thread.scratchpad_history(),
+            vec!["audit-2".to_string(), "audit-1".to_string()]
+        );
+    }
 
     #[test]
     fn checklist_counts_completed() {

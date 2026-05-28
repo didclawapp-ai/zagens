@@ -571,7 +571,7 @@ const ptBr: TranslationMap = {
     maxSubagents: 'Máx. de subagentes',
     subagentStepTimeout: 'Timeout de passo do subagente',
     subagentStepTimeoutDesc:
-      'Máximo de segundos por chamada de API LLM do subagente. Use 300–600 para revisão/auditoria pesada; salvo como [subagents] step_timeout_secs em config.toml.',
+      'Máximo de segundos por chamada de API LLM do subagente. Padrão 600; intervalo 120–1800. Em auditorias de repo, passe step_timeout_ms explícito por tier do audit-repo; salvo como [subagents] step_timeout_secs em config.toml.',
     lspDiag: 'Diagnósticos LSP',
     lspDiagDesc: 'Injetar diagnósticos LSP do editor no contexto do modelo',
     userMemory: 'Memória do usuário',
@@ -753,9 +753,9 @@ const ptBr: TranslationMap = {
     warnChecklistMismatch: 'Checklist vs inventário inconsistentes',
     dismiss: 'Dispensar barra de auditoria',
     needThread: 'Retome um thread com sessão de runtime ativa primeiro.',
-    noRun: 'Nenhum rascunho de auditoria vinculado a este thread ainda.',
+    noRun: 'Nenhum rascunho de auditoria vinculado a esta sessão ainda.',
     noRunDetail:
-      'O scratchpad fica em `{workspace}/.deepseek/scratchpad/{run_id}/` (inventory.json + notes.jsonl). Use o botão abaixo para inicializar (run_id padrão é este thread).',
+      'Os dados de auditoria persistem em `.deepseek/scratchpad/{run_id}/` no workspace, mas este painel só mostra um run vinculado ao thread atual (scratchpad_init ou ferramentas de auditoria nesta sessão). Outras sessões não herdam por padrão. Use o botão abaixo para iniciar uma nova auditoria aqui (run_id padrão = este thread).',
     noRunPath: 'Caminho: {{path}}',
     initScratchpad: 'Inicializar scratchpad',
     initBusy: 'Inicializando…',
@@ -764,6 +764,10 @@ const ptBr: TranslationMap = {
     toggleInventory: 'Expandir/recolher inventário',
     areaNotes: '{{count}} notas',
     openPath: 'Abrir no workspace: {{path}}',
+    previousRunsHeading: 'Auditorias anteriores ({{count}})',
+    previousRunTitle: 'Auditoria anterior',
+    expandRun: 'Expandir',
+    collapseRun: 'Recolher',
   },
   common: {
     close: 'Fechar',

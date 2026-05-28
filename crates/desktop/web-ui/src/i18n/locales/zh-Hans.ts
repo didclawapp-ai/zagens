@@ -565,7 +565,7 @@ const zhHans = {
     maxSubagents: '最大子代理数',
     subagentStepTimeout: '子代理单步超时',
     subagentStepTimeoutDesc:
-      '每次子代理调用模型的最长时间（秒）。全仓审查等重负载建议 300–600；写入 config.toml 的 [subagents] step_timeout_secs。',
+      '每次子代理调用模型的最长时间（秒）。默认 600；范围 120–1800。全仓审计 spawn 时按 audit-repo 分档显式传 step_timeout_ms；写入 config.toml 的 [subagents] step_timeout_secs。',
     lspDiag: 'LSP 诊断',
     lspDiagDesc: '注入编辑器 LSP 诊断信息供模型参考',
     userMemory: '用户记忆',
@@ -746,9 +746,9 @@ const zhHans = {
     warnChecklistMismatch: 'Checklist 与 inventory 脱节',
     dismiss: '关闭审计栏',
     needThread: '请先恢复或选择带运行时的会话线程。',
-    noRun: '当前线程尚未绑定审计 scratchpad。',
+    noRun: '本会话尚未绑定审计 scratchpad。',
     noRunDetail:
-      'Scratchpad 保存在工作区 `.deepseek/scratchpad/{run_id}/`（含 inventory.json 与 notes.jsonl）。点击下方按钮可一键初始化（默认 run_id 为当前 thread）。',
+      '审计数据持久化在工作区 `.deepseek/scratchpad/{run_id}/`，但仅在本会话执行 scratchpad_init 或审计工具后才会显示。其他会话默认不继承；在本会话点击下方按钮可开始新的审计（默认 run_id 为当前 thread）。',
     noRunPath: '路径：{{path}}',
     initScratchpad: '初始化 scratchpad',
     initBusy: '正在初始化…',
@@ -757,6 +757,10 @@ const zhHans = {
     toggleInventory: '展开/收起 inventory',
     areaNotes: '{{count}} notes',
     openPath: '在工作区打开 {{path}}',
+    previousRunsHeading: '较早的审计（{{count}}）',
+    previousRunTitle: '历史审计',
+    expandRun: '展开',
+    collapseRun: '收起',
   },
   common: {
     close: '关闭',

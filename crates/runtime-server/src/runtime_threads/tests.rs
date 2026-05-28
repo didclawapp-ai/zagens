@@ -69,6 +69,7 @@ use std::path::Path;
             task_type: default_thread_task_type(),
             coherence_state: CoherenceState::default(),
             scratchpad_run_id: None,
+            scratchpad_run_history: None,
             checklist_snapshot: None,
         }
     }
@@ -2316,6 +2317,7 @@ use std::path::Path;
             task_type: default_thread_task_type(),
             coherence_state: CoherenceState::default(),
             scratchpad_run_id: None,
+            scratchpad_run_history: None,
             checklist_snapshot: None,
         };
         manager.store.save_thread(&thread)?;

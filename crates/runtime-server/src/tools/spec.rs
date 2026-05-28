@@ -185,7 +185,7 @@ impl ToolContext {
             workshop_vars: None,
             tool_progress: None,
             audit_scratchpad_run_id: None,
-            subagent_default_step_timeout_ms: 120_000,
+            subagent_default_step_timeout_ms: 600_000,
         }
     }
 
@@ -221,7 +221,7 @@ impl ToolContext {
             workshop_vars: None,
             tool_progress: None,
             audit_scratchpad_run_id: None,
-            subagent_default_step_timeout_ms: 120_000,
+            subagent_default_step_timeout_ms: 600_000,
         }
     }
 
@@ -264,7 +264,7 @@ impl ToolContext {
             workshop_vars: None,
             tool_progress: None,
             audit_scratchpad_run_id: None,
-            subagent_default_step_timeout_ms: 120_000,
+            subagent_default_step_timeout_ms: 600_000,
         }
     }
 

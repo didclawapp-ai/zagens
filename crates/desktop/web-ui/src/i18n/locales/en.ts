@@ -571,7 +571,7 @@ const en: TranslationMap = {
     maxSubagents: 'Max Sub-agents',
     subagentStepTimeout: 'Sub-agent step timeout',
     subagentStepTimeoutDesc:
-      'Max seconds per sub-agent LLM API call. Use 300–600 for heavy review/audit; saved as [subagents] step_timeout_secs in config.toml.',
+      'Max seconds per sub-agent LLM API call. Default 600; range 120–1800. For repo audits, pass explicit step_timeout_ms per audit-repo tier; saved as [subagents] step_timeout_secs in config.toml.',
     lspDiag: 'LSP Diagnostics',
     lspDiagDesc: 'Inject editor LSP diagnostics for model context',
     userMemory: 'User Memory',
@@ -753,9 +753,9 @@ const en: TranslationMap = {
     warnChecklistMismatch: 'Checklist vs inventory mismatch',
     dismiss: 'Dismiss audit bar',
     needThread: 'Resume a thread with an active runtime session first.',
-    noRun: 'No audit scratchpad is bound to this thread yet.',
+    noRun: 'No audit scratchpad is bound to this session yet.',
     noRunDetail:
-      'Scratchpad lives under `{workspace}/.deepseek/scratchpad/{run_id}/` (inventory.json + notes.jsonl). Use the button below to bootstrap (defaults run_id to this thread).',
+      'Audit data persists under `.deepseek/scratchpad/{run_id}/` in the workspace, but this panel only shows a run bound to the current thread (via scratchpad_init or audit tools in this session). Other sessions do not inherit it by default. Use the button below to start a new audit here (defaults run_id to this thread).',
     noRunPath: 'Path: {{path}}',
     initScratchpad: 'Initialize scratchpad',
     initBusy: 'Initializing…',
@@ -764,6 +764,10 @@ const en: TranslationMap = {
     toggleInventory: 'Expand/collapse inventory',
     areaNotes: '{{count}} notes',
     openPath: 'Open in workspace: {{path}}',
+    previousRunsHeading: 'Earlier audits ({{count}})',
+    previousRunTitle: 'Earlier audit',
+    expandRun: 'Expand',
+    collapseRun: 'Collapse',
   },
   common: {
     close: 'Close',

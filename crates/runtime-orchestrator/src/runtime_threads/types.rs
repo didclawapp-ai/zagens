@@ -87,8 +87,37 @@ pub struct ThreadRecord {
     pub coherence_state: CoherenceState,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scratchpad_run_id: Option<String>,
+    /// Chronological scratchpad run ids for this thread (latest last). Powers multi-audit UI.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scratchpad_run_history: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checklist_snapshot: Option<serde_json::Value>,
+}
+
+impl ThreadRecord {
+    /// Active run is always the latest entry in history.
+    pub fn record_scratchpad_run(&mut self, run_id: &str) {
+        let run_id = run_id.trim();
+        if run_id.is_empty() {
+            return;
+        }
+        let mut hist = self.scratchpad_run_history.take().unwrap_or_default();
+        hist.retain(|id| id != run_id);
+        hist.push(run_id.to_string());
+        self.scratchpad_run_history = Some(hist);
+        self.scratchpad_run_id = Some(run_id.to_string());
+    }
+
+    /// Ordered run ids for this thread (oldest first). Backfills from `scratchpad_run_id` when history is empty.
+    #[must_use]
+    pub fn scratchpad_history(&self) -> Vec<String> {
+        if let Some(ref hist) = self.scratchpad_run_history {
+            if !hist.is_empty() {
+                return hist.clone();
+            }
+        }
+        self.scratchpad_run_id.clone().into_iter().collect()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

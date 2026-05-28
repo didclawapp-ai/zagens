@@ -227,9 +227,9 @@ export default function SettingsPanel({
               <div className="flex items-center gap-2">
                 <input
                   type="range"
-                  min={60}
-                  max={600}
-                  step={30}
+                  min={120}
+                  max={1800}
+                  step={60}
                   value={settings.subagent_step_timeout_secs}
                   onChange={(e) =>
                     update('subagent_step_timeout_secs', Number(e.target.value))

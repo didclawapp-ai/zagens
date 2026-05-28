@@ -32,11 +32,9 @@ impl RuntimeThreadManager {
         let persist_scratchpad: std::sync::Arc<dyn Fn(String) + Send + Sync> =
             std::sync::Arc::new(move |run_id: String| {
                 if let Ok(mut t) = store.load_thread(&thread_id_persist) {
-                    if t.scratchpad_run_id.as_deref() != Some(run_id.as_str()) {
-                        t.scratchpad_run_id = Some(run_id);
-                        t.updated_at = chrono::Utc::now();
-                        let _ = store.save_thread(&t);
-                    }
+                    t.record_scratchpad_run(&run_id);
+                    t.updated_at = chrono::Utc::now();
+                    let _ = store.save_thread(&t);
                 }
             });
         let engine_cfg = EngineConfig {

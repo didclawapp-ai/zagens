@@ -48,6 +48,7 @@ impl RuntimeThreadManager {
             task_type: task_type.as_str().to_string(),
             coherence_state: CoherenceState::default(),
             scratchpad_run_id: None,
+            scratchpad_run_history: None,
             checklist_snapshot: None,
         };
         {

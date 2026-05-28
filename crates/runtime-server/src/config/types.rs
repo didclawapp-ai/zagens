@@ -445,15 +445,15 @@ pub struct SubagentsConfig {
     #[serde(default)]
     pub max_concurrent: Option<usize>,
     /// Per-step LLM API timeout for sub-agents (seconds). Used when `agent_spawn`
-    /// omits `step_timeout_ms`. Default 120; runtime clamps to [10, 600].
+    /// omits `step_timeout_ms`. Default 600; runtime clamps to [120, 1800].
     #[serde(default)]
     pub step_timeout_secs: Option<u64>,
 }
 
 /// Default sub-agent per-step API timeout (seconds).
-pub const DEFAULT_SUBAGENT_STEP_TIMEOUT_SECS: u64 = 120;
-pub const MIN_SUBAGENT_STEP_TIMEOUT_SECS: u64 = 10;
-pub const MAX_SUBAGENT_STEP_TIMEOUT_SECS: u64 = 600;
+pub const DEFAULT_SUBAGENT_STEP_TIMEOUT_SECS: u64 = 600;
+pub const MIN_SUBAGENT_STEP_TIMEOUT_SECS: u64 = 120;
+pub const MAX_SUBAGENT_STEP_TIMEOUT_SECS: u64 = 1800;
 
 /// Per-model context tuning.
 #[derive(Debug, Clone, Deserialize)]

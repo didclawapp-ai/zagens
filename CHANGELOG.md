@@ -23,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Runtime
 
 - **Audit / sub-agents:** Structured `<!-- audit-findings -->` output on Explore/Review sub-agents (`StructuredFindings` on `SubAgentResult`); new tools `scratchpad_import_agent` (machine import as `open`) and `scratchpad_verify_note` (parent verification gate); `scratchpad_set_area(done)` rejects open HIGH/BLOCKER; new findings default to `status=open`; `scratchpad_init({ template: "workspace_audit" })` auto-builds inventory from workspace `Cargo.toml` members (includes `runtime-server` + desktop web-ui areas). Updated bundled `audit-repo` skill.
+- **Sub-agents / config:** Raise default per-step LLM API timeout to **600 s** (was 120 s); clamp range **120–1800 s** (was 10–600). `agent_spawn` `step_timeout_ms` schema and runtime clamp aligned; audit-repo skill documents inventory file-count tiers (600000–1800000 ms). Zagens settings slider updated.
+- **Audit scratchpad / isolation:** `GET …/scratchpad/status` no longer discovers the newest workspace run or auto-writes `scratchpad_run_id` on unrelated threads. Only threads that init or use scratchpad tools in-session show audit progress; on-disk runs persist until manual delete.
+- **Audit scratchpad / multi-run:** Threads track `scratchpad_run_history`; status API returns latest run at top level plus `previous_runs` (folded in Zagens audit panel). Agent `scratchpad_init` with a new `run_id` auto-promotes the latest audit — no manual switch.
 
 ### Desktop
 

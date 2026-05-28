@@ -37,6 +37,18 @@ fn ensure_threads_scratchpad_run_id_column(db: &Connection) -> anyhow::Result<()
     Ok(())
 }
 
+fn ensure_threads_scratchpad_run_history_column(db: &Connection) -> anyhow::Result<()> {
+    let mut stmt = db.prepare("PRAGMA table_info(threads)")?;
+    let has_col = stmt
+        .query_map([], |row| row.get::<_, String>(1))?
+        .filter_map(|r| r.ok())
+        .any(|name| name == "scratchpad_run_history_json");
+    if !has_col {
+        db.execute("ALTER TABLE threads ADD COLUMN scratchpad_run_history_json TEXT", [])?;
+    }
+    Ok(())
+}
+
 fn ensure_threads_checklist_json_column(db: &Connection) -> anyhow::Result<()> {
     let mut stmt = db.prepare("PRAGMA table_info(threads)")?;
     let has_col = stmt
@@ -153,6 +165,7 @@ pub fn open_sqlite_thread_db(
     .context("Failed to create runtime tables")?;
     ensure_threads_task_type_column(&db)?;
     ensure_threads_scratchpad_run_id_column(&db)?;
+    ensure_threads_scratchpad_run_history_column(&db)?;
     ensure_threads_checklist_json_column(&db)?;
     ensure_turns_last_request_input_tokens_column(&db)?;
 
@@ -391,6 +404,11 @@ fn thread_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ThreadRec
     let task_type: String = row.get(16).unwrap_or_else(|_| "code".to_string());
     let scratchpad_run_id: Option<String> = row.get(17).ok();
     let checklist_json: Option<String> = row.get(18).ok();
+    let history_json: Option<String> = row.get(19).ok();
+    let scratchpad_run_history = history_json
+        .as_deref()
+        .and_then(|raw| serde_json::from_str::<Vec<String>>(raw).ok())
+        .filter(|v| !v.is_empty());
     let checklist_snapshot = checklist_json
         .as_deref()
         .and_then(|raw| serde_json::from_str(raw).ok());
@@ -414,6 +432,7 @@ fn thread_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ThreadRec
         task_type,
         coherence_state: serde_json::from_str(&coherence_json).unwrap_or_default(),
         scratchpad_run_id,
+        scratchpad_run_history,
         checklist_snapshot,
     })
 }
@@ -426,10 +445,14 @@ pub fn save_thread_sqlite(db: &Connection, thread: &ThreadRecord) -> anyhow::Res
         .checklist_snapshot
         .as_ref()
         .and_then(|v| serde_json::to_string(v).ok());
+    let history_json = thread
+        .scratchpad_run_history
+        .as_ref()
+        .and_then(|v| serde_json::to_string(v).ok());
     db.execute(
         "INSERT OR REPLACE INTO threads
-         (id, created_at, updated_at, model, workspace, mode, allow_shell, trust_mode, auto_approve, latest_turn_id, latest_response_bookmark, archived, system_prompt, task_id, title, coherence_state_json, task_type, scratchpad_run_id, checklist_json)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19)",
+         (id, created_at, updated_at, model, workspace, mode, allow_shell, trust_mode, auto_approve, latest_turn_id, latest_response_bookmark, archived, system_prompt, task_id, title, coherence_state_json, task_type, scratchpad_run_id, checklist_json, scratchpad_run_history_json)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)",
         params![
             thread.id,
             thread.created_at.to_rfc3339(),
@@ -450,6 +473,7 @@ pub fn save_thread_sqlite(db: &Connection, thread: &ThreadRecord) -> anyhow::Res
             thread.task_type,
             thread.scratchpad_run_id,
             checklist_json,
+            history_json,
         ],
     )?;
     Ok(())
@@ -457,7 +481,7 @@ pub fn save_thread_sqlite(db: &Connection, thread: &ThreadRecord) -> anyhow::Res
 
 pub fn load_thread_sqlite(db: &Connection, thread_id: &str) -> anyhow::Result<ThreadRecord> {
     db.query_row(
-        "SELECT id, created_at, updated_at, model, workspace, mode, allow_shell, trust_mode, auto_approve, latest_turn_id, latest_response_bookmark, archived, system_prompt, task_id, title, coherence_state_json, task_type, scratchpad_run_id, checklist_json FROM threads WHERE id = ?1",
+        "SELECT id, created_at, updated_at, model, workspace, mode, allow_shell, trust_mode, auto_approve, latest_turn_id, latest_response_bookmark, archived, system_prompt, task_id, title, coherence_state_json, task_type, scratchpad_run_id, checklist_json, scratchpad_run_history_json FROM threads WHERE id = ?1",
         params![thread_id],
         |row| thread_record_from_row(row),
     )
@@ -466,7 +490,7 @@ pub fn load_thread_sqlite(db: &Connection, thread_id: &str) -> anyhow::Result<Th
 
 pub fn list_threads_sqlite(db: &Connection) -> anyhow::Result<Vec<ThreadRecord>> {
     let mut stmt = db.prepare(
-        "SELECT id, created_at, updated_at, model, workspace, mode, allow_shell, trust_mode, auto_approve, latest_turn_id, latest_response_bookmark, archived, system_prompt, task_id, title, coherence_state_json, task_type, scratchpad_run_id, checklist_json FROM threads ORDER BY updated_at DESC",
+        "SELECT id, created_at, updated_at, model, workspace, mode, allow_shell, trust_mode, auto_approve, latest_turn_id, latest_response_bookmark, archived, system_prompt, task_id, title, coherence_state_json, task_type, scratchpad_run_id, checklist_json, scratchpad_run_history_json FROM threads ORDER BY updated_at DESC",
     )?;
     let threads = stmt
         .query_map([], thread_record_from_row)?

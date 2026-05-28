@@ -571,7 +571,7 @@ const ja: TranslationMap = {
     maxSubagents: 'Max Sub-agents',
     subagentStepTimeout: 'Sub-agent step timeout',
     subagentStepTimeoutDesc:
-      'sub-agent LLM API 呼び出しあたりの最大秒数。重い review/audit には 300–600 を使用。[subagents] step_timeout_secs として config.toml に保存されます。',
+      'sub-agent LLM API 呼び出しあたりの最大秒数。既定 600、範囲 120–1800。全库 audit では audit-repo 分档に従い step_timeout_ms を明示。[subagents] step_timeout_secs として config.toml に保存。',
     lspDiag: 'LSP Diagnostics',
     lspDiagDesc: 'モデル context 用にエディター LSP diagnostics を注入',
     userMemory: 'User Memory',
@@ -753,9 +753,9 @@ const ja: TranslationMap = {
     warnChecklistMismatch: 'Checklist と inventory の不一致',
     dismiss: '監査バーを閉じる',
     needThread: '先にアクティブな runtime セッションのスレッドを再開してください。',
-    noRun: 'このスレッドに audit scratchpad はまだ紐づいていません。',
+    noRun: 'このセッションに audit scratchpad はまだ紐づいていません。',
     noRunDetail:
-      'Scratchpad は `{workspace}/.deepseek/scratchpad/{run_id}/` 配下にあります（inventory.json + notes.jsonl）。下のボタンで bootstrap できます（run_id はこのスレッドがデフォルト）。',
+      '監査データは workspace の `.deepseek/scratchpad/{run_id}/` に永続化されますが、このパネルは現在の thread に紐づいた run のみ表示します（本会話での scratchpad_init / 監査ツール）。他セッションは既定で継承しません。下のボタンで本会話の新規監査を開始（run_id 既定 = この thread）。',
     noRunPath: 'パス: {{path}}',
     initScratchpad: 'Scratchpad を初期化',
     initBusy: '初期化中…',
@@ -764,6 +764,10 @@ const ja: TranslationMap = {
     toggleInventory: 'Inventory を展開/折りたたみ',
     areaNotes: '{{count}} notes',
     openPath: 'ワークスペースで開く: {{path}}',
+    previousRunsHeading: '以前の監査（{{count}}）',
+    previousRunTitle: '過去の監査',
+    expandRun: '展開',
+    collapseRun: '折りたたむ',
   },
   common: {
     close: '閉じる',

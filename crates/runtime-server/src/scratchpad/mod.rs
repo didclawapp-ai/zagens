@@ -122,10 +122,10 @@ pub fn display_run_path(run_id: &str) -> String {
     format!(".deepseek/scratchpad/{run_id}")
 }
 
-/// When `thread.scratchpad_run_id` is unset, pick a run for read-only UI / status (B5).
+/// Pick the newest scratchpad run under a workspace (by `inventory.json` mtime).
 ///
-/// Uses the scratchpad directory whose `inventory.json` was modified most recently.
-/// Callers may persist the returned id on the thread.
+/// Used by tests and internal tooling only — **not** for thread status API. Audit scratchpad
+/// UI/status is bound to `thread.scratchpad_run_id` so other sessions do not inherit a prior run.
 #[must_use]
 pub fn discover_scratchpad_run_id_for_ui(workspace: &Path) -> Option<String> {
     let base = workspace.join(".deepseek/scratchpad");
