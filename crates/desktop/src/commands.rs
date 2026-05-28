@@ -897,13 +897,31 @@ fn is_system_openable(ext_lower: &str) -> bool {
     )
 }
 
-#[tauri::command]
-pub fn open_with_system_app(path: String) -> Result<(), String> {
+fn resolve_system_open_path(path: &str) -> Result<std::path::PathBuf, String> {
     let trimmed = path.trim();
     if trimmed.is_empty() {
         return Err("empty path".into());
     }
-    let ext = std::path::Path::new(trimmed)
+    if trimmed.bytes().any(|b| b == 0) {
+        return Err("invalid path".into());
+    }
+    const BAD: &[char] = &['&', '|', '<', '>', '^', '%', '\n', '\r'];
+    if trimmed.chars().any(|c| BAD.contains(&c)) {
+        return Err("path contains invalid characters".into());
+    }
+    let canonical = std::path::Path::new(trimmed)
+        .canonicalize()
+        .map_err(|e| format!("path not found: {e}"))?;
+    if !canonical.is_file() {
+        return Err("not a file".into());
+    }
+    Ok(canonical)
+}
+
+#[tauri::command]
+pub fn open_with_system_app(path: String) -> Result<(), String> {
+    let canonical = resolve_system_open_path(&path)?;
+    let ext = canonical
         .extension()
         .and_then(|e| e.to_str())
         .unwrap_or("")
@@ -915,28 +933,7 @@ pub fn open_with_system_app(path: String) -> Result<(), String> {
         ));
     }
 
-    #[cfg(target_os = "windows")]
-    {
-        std::process::Command::new("cmd")
-            .args(["/C", "start", "", trimmed])
-            .spawn()
-            .map_err(|e| format!("无法打开文件: {e}"))?;
-    }
-    #[cfg(target_os = "macos")]
-    {
-        std::process::Command::new("open")
-            .arg(trimmed)
-            .spawn()
-            .map_err(|e| format!("无法打开文件: {e}"))?;
-    }
-    #[cfg(target_os = "linux")]
-    {
-        std::process::Command::new("xdg-open")
-            .arg(trimmed)
-            .spawn()
-            .map_err(|e| format!("无法打开文件: {e}"))?;
-    }
-    Ok(())
+    open::that(&canonical).map_err(|e| format!("无法打开文件: {e}"))
 }
 
 #[tauri::command]

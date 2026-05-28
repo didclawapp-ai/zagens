@@ -26,6 +26,7 @@ import c from 'highlight.js/lib/languages/c';
 import cpp from 'highlight.js/lib/languages/cpp';
 
 import type { RendererProps } from '../types';
+import { sanitizeHighlightHtml } from '../../../lib/sanitizeHtml';
 
 // ---------------------------------------------------------------------------
 // Language registration (one-time, module scope)
@@ -86,10 +87,12 @@ export function CodeRenderer({ state }: RendererProps) {
     // (block comments, multi-line strings, etc.).
     let fullHtml: string;
     try {
-      fullHtml = hljs.highlight(truncated, {
-        language: key,
-        ignoreIllegals: true,
-      }).value;
+      fullHtml = sanitizeHighlightHtml(
+        hljs.highlight(truncated, {
+          language: key,
+          ignoreIllegals: true,
+        }).value,
+      );
     } catch {
       fullHtml = escapeHtml(truncated);
     }

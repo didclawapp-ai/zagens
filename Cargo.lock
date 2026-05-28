@@ -1356,6 +1356,7 @@ dependencies = [
  "dirs",
  "futures-util",
  "ignore",
+ "open",
  "portable-pty",
  "reqwest",
  "serde",

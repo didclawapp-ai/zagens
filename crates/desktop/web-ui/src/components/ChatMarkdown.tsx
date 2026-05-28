@@ -178,7 +178,8 @@ export function ChatMarkdown({
     }
     const raw = chatMarkdownIt.render(content);
     const safe = sanitizeChatMarkdown(raw);
-    setHtml(enhanceWorkspacePathTargets(safe));
+    const enhanced = enhanceWorkspacePathTargets(safe);
+    setHtml(sanitizeChatMarkdown(enhanced));
   }, [content, isStreaming]);
 
   useEffect(() => {

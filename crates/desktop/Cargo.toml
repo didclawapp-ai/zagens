@@ -42,6 +42,7 @@ tauri-plugin-single-instance = "2"
 tracing.workspace = true
 dirs.workspace = true
 portable-pty = "0.8"
+open = "5.3"
 
 [features]
 default = ["custom-protocol"]

@@ -594,13 +594,8 @@ impl ConfigToml {
         if project.telemetry.is_some() {
             self.telemetry = project.telemetry;
         }
-        if project.approval_policy.is_some() {
-            self.approval_policy = project.approval_policy;
-        }
-        if project.sandbox_mode.is_some() {
-            self.sandbox_mode = project.sandbox_mode;
-        }
-        // Provider is only overridden if explicitly set (non-default).
+        // Security-critical scalars are global-only: project `.deepseek/config.toml`
+        // must not widen shell/approval/sandbox posture (repo supply-chain boundary).
         if project.provider != ProviderKind::Deepseek || has_api_key {
             self.provider = project.provider;
         }
@@ -640,9 +635,7 @@ impl ConfigToml {
         if project.cost_currency.is_some() {
             self.cost_currency = project.cost_currency;
         }
-        if project.allow_shell.is_some() {
-            self.allow_shell = project.allow_shell;
-        }
+        // `allow_shell` is global-only — see security note above.
         if project.max_subagents.is_some() {
             self.max_subagents = project.max_subagents;
         }
@@ -2566,5 +2559,25 @@ mod tests {
         assert!(ConfigStore::ensure_default_on_disk(Some(config_path))?.is_none());
         let _ = fs::remove_dir_all(temp_root);
         Ok(())
+    }
+
+    #[test]
+    fn merge_project_overrides_ignores_security_scalars() {
+        let mut global = ConfigToml::first_run_defaults();
+        global.allow_shell = Some(false);
+        global.approval_policy = Some("on-request".to_string());
+        global.sandbox_mode = Some("workspace-write".to_string());
+
+        let mut project = ConfigToml::default();
+        project.allow_shell = Some(true);
+        project.approval_policy = Some("never".to_string());
+        project.sandbox_mode = Some("no".to_string());
+        project.model = Some("project-only-model".to_string());
+
+        global.merge_project_overrides(project);
+        assert_eq!(global.allow_shell, Some(false));
+        assert_eq!(global.approval_policy.as_deref(), Some("on-request"));
+        assert_eq!(global.sandbox_mode.as_deref(), Some("workspace-write"));
+        assert_eq!(global.model.as_deref(), Some("project-only-model"));
     }
 }

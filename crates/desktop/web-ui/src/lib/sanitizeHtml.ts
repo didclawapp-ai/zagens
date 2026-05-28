@@ -7,6 +7,14 @@ export function sanitizeHtmlForDisplay(html: string): string {
   });
 }
 
+/** Sanitize highlight.js HTML (span/class only) before dangerouslySetInnerHTML. */
+export function sanitizeHighlightHtml(html: string): string {
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['span'],
+    ALLOWED_ATTR: ['class'],
+  });
+}
+
 /** Strip tags from clipboard HTML; keep plain text only. */
 export function clipboardHtmlToPlainText(html: string): string {
   const clean = DOMPurify.sanitize(html, { ALLOWED_TAGS: [] });

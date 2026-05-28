@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Audit scratchpad / isolation:** `GET …/scratchpad/status` no longer discovers the newest workspace run or auto-writes `scratchpad_run_id` on unrelated threads. Only threads that init or use scratchpad tools in-session show audit progress; on-disk runs persist until manual delete.
 - **Audit scratchpad / multi-run:** Threads track `scratchpad_run_history`; status API returns latest run at top level plus `previous_runs` (folded in Zagens audit panel). Agent `scratchpad_init` with a new `run_id` auto-promotes the latest audit — no manual switch.
 
+### Fixed
+
+- **Security (2026-05-28 audit HIGH):** Block project `.deepseek/config.toml` from overriding global `allow_shell` / `approval_policy` / `sandbox_mode`; replace Windows `cmd /C start` in `open_with_system_app` with canonical path validation + `open` crate (ShellExecute); re-sanitize ChatMarkdown after workspace-link DOM enhancement (mXSS); DOMPurify-sanitize highlight.js output in CodeRenderer.
+
 ### Desktop
 
 - **Fix:** 工作台「恢复」面板 — 修复 side-git 快照仓库并发 `git init` / 残留 `config.lock` 导致 `HTTP 400`；Web UI 解析 runtime JSON 错误体，不再整段显示原始 HTTP 响应。
