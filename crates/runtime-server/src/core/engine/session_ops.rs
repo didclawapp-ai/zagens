@@ -63,6 +63,7 @@ impl Engine {
             workspace,
         );
         self.rehydrate_latest_canonical_state();
+        self.emit_pending_startup_warnings().await;
         self.emit_session_updated().await;
         let _ = self
             .tx_event

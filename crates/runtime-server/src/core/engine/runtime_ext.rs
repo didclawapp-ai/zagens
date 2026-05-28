@@ -23,4 +23,6 @@ pub struct EngineRuntimeExt {
     pub tx_subagent_completion: mpsc::UnboundedSender<SubAgentCompletion>,
     /// Shared lock so recv can run concurrently with other engine field access.
     pub rx_subagent_completion: Arc<AsyncMutex<mpsc::UnboundedReceiver<SubAgentCompletion>>>,
+    /// Emitted once via `Event::status` when the engine first handles user traffic.
+    pub sandbox_init_warning: Option<String>,
 }

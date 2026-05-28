@@ -24,12 +24,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Desktop (Zagens)
 
+- **Binary preview:** Cap reads at 10MB without loading entire files into memory (`read_binary_file_at`).
+- **Shell open:** `open_in_shell` canonicalizes paths and rejects shell metacharacters (aligns with `open_with_system_app`).
 - **KV cache observability:** Usage dashboard shows hit rate %, miss tokens, and estimated cache savings (USD); composer footer shows last-turn `cache XX%` with red/yellow thresholds; warns when provider lacks cache telemetry. See [`docs/tech/KV_CACHE_OBSERVABILITY.md`](docs/tech/KV_CACHE_OBSERVABILITY.md).
 - **Build (Windows MSI):** Set `bundle.windows.wix.version` to numeric `0.6.0.1` so WiX accepts pre-release SemVer `0.6.0-preview.1`; document mapping in [`VERSIONING.md`](docs/desktop/VERSIONING.md) and CI check.
 - **Compliance:** Bundle embedded runtime MIT license into installed `legal/` folder (`deepseek-tui-runtime-LICENSE.txt`, `THIRD-PARTY-NOTICES.txt`); About panel notes install location.
 
 ### Runtime
 
+- **Audit follow-ups (2026-05-28 report):** Binary preview reads at most 10MB via streaming I/O; SQLite RFC3339 parse errors surface instead of silent epoch; execpolicy prefix allow rules no longer match chained shell commands; runtime API bearer compare is constant-time.
+- **Sandbox:** When `sandbox_backend` is configured but initialization fails (or the value is invalid), emit a user-visible status warning instead of silently falling back to unsandboxed shell execution.
+- **Cleanup:** Remove unused `crates/execpolicy` (`deepseek-execpolicy` / `ExecPolicyEngine`); runtime uses `runtime-server/src/execpolicy/` + `command_safety.rs` instead.
+- **Audit scratchpad deadlocks:** `scratchpad_import_agent` honors `area_id` override and remaps by `area_path` when child ids mismatch inventory; `scratchpad_set_area(deferred)` defaults `require_min_notes=0` (meta note still required).
+- **Skills (`audit-repo`):** Require `checklist_write` after `scratchpad_init` so sidebar 清单 mirrors inventory areas; clarify inventory vs Checklist panel dual-track; document partial-audit defer + import override playbook.
 - **Audit scratchpad + sub-agents:** Sync `scratchpad_run_id` from the tool wire slot at turn start and after successful scratchpad bind tools; mid-turn `scratchpad_init` now eager-loads `agent_spawn` / `agent_*` in the same turn without `tool_search`.
 - **`GET /v1/usage`:** `UsageTotals` / `UsageBucket` now include `miss_tokens`, `cache_hit_rate`, `cost_usd_without_cache`, `cache_savings_usd`; response adds `cache_telemetry_incomplete` when any turn used a model without DeepSeek-style cache fields.
 

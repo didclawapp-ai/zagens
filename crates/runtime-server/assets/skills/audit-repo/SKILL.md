@@ -19,8 +19,10 @@ Reasoning is ephemeral. Durable facts live only under:
 
 | File | Role |
 |------|------|
-| `inventory.json` | Checklist of areas (`areas[].id`, `path`, `status`) |
+| `inventory.json` | Area inventory (`areas[].id`, `path`, `status`) — machine-readable audit coverage |
 | `notes.jsonl` | One JSON object per line (append-only) |
+
+**Not the same as the sidebar 清单:** Zagens **Checklist** panel shows only **`checklist_write`** data. `inventory.json` alone does **not** populate the sidebar.
 
 ### `run_id` (pick one)
 
@@ -30,13 +32,15 @@ Reasoning is ephemeral. Durable facts live only under:
 
 **Phase B tools (required):** `scratchpad_init`, `scratchpad_status`, `scratchpad_append`, `scratchpad_list_notes`, `scratchpad_set_area`, `scratchpad_import_agent`, `scratchpad_verify_note`. Pass `run_id` or rely on `thread_id` / bound `scratchpad_run_id`.
 
+**Sidebar visibility (required):** `checklist_write`, `checklist_update` (and `checklist_list` when you need ids).
+
 After `scratchpad_init` succeeds you may **`agent_spawn` in the same turn** — runtime syncs the bound run and eager-loads sub-agent tools without a separate `tool_search` step.
 
 **Order:** import or append ≥1 note → verify HIGH/BLOCKER → `scratchpad_set_area(done)` (runtime rejects `done` with open HIGH/BLOCKER or zero notes).
 
 `write_file` is **fallback only** when scratchpad tools truly fail.
 
-## P0 — Inventory (`inventory.json`)
+## P0 — Inventory (`inventory.json`) + sidebar checklist
 
 **Preferred:** auto-generate from workspace members (includes `runtime-server`, desktop web-ui, all `Cargo.toml` members):
 
@@ -49,6 +53,35 @@ Manual rows remain supported via `areas[]`. Granularity: one row = one check-com
 After building inventory, append:
 
 `{"kind":"meta","area_id":"_global","claim":"inventory_version 1, N areas"}`
+
+### Sidebar checklist (mandatory — same turn as init)
+
+Immediately after `scratchpad_init`, call **`checklist_write`** with **one todo per inventory area**:
+
+```
+checklist_write({
+  "todos": [
+    { "content": "area-core: crates/core", "status": "pending" },
+    { "content": "area-runtime-server: crates/runtime-server", "status": "pending" }
+  ]
+})
+```
+
+Rules:
+
+- **`content`** — `{area_id}: {path}` so rows stay aligned with `inventory.json` (checklist ids are auto-assigned integers).
+- **Exactly one `in_progress`** at a time (mark the area you are examining now).
+- **Keep dual tracks aligned** whenever inventory status changes:
+
+| `inventory.json` | `checklist_write` / `checklist_update` |
+|------------------|----------------------------------------|
+| `pending` | `pending` |
+| `in_progress` | `in_progress` |
+| `done` | `completed` |
+| `deferred` | `completed` (append reason in `content`, e.g. `area-x: path (deferred: out of scope)`) |
+
+- Prefer **`checklist_update({ id, status })`** when only one area moves; full **`checklist_write`** only when adding/removing rows or reordering.
+- After spawn batches, update checklist for areas whose explore agents finished import + `scratchpad_set_area`.
 
 ## P1 — Examine (structured sub-agent pipeline)
 
@@ -65,18 +98,21 @@ After building inventory, append:
 | >40, or path is `crates/runtime-server/src/tools` | 1800000 |
 
 - Assignment MUST include the inventory **`area_id`** and **`path`** so the child emits matching `<!-- audit-findings -->`.
+- **Copy exact `areas[].id` from inventory** — do not invent IDs like `area-core-engine-part1` when inventory says `area-core-part1`. Wrong IDs block import unless you pass `scratchpad_import_agent({ area_id: "<inventory id>" })` or `area_path` matches inventory.
+- Before spawning an area batch, mark those areas **`in_progress`** in both scratchpad (if needed) and **`checklist_update`**.
 
 ### Join (mandatory — do not hand-copy prose)
 
-1. `agent_wait` / `agent_result(block)` — **omit `timeout_ms`** to use adaptive wait (`step_timeout_ms × remaining steps`, clamped). Explicit `timeout_ms` still overrides when you need a hard cap.
-2. `agent_list` until no `Running`.
+1. `agent_wait` / `agent_result(block)` — **omit `timeout_ms`** to use adaptive wait (`step_timeout_ms × remaining steps`, clamped). Explicit `timeout_ms` still overrides when you need a hard cap. On **`timed_out`**, **`agent_cancel`** stuck agents and import completed ones — do not block the parent turn with prose-only steps while agents are Running.
+2. Poll with `agent_list`; import each **Completed + NaturalBreak** agent — do **not** require zero Running before P2 when closing out a partial audit.
 3. For each completed explore agent:
    - Check sentinel / `agent_result` **`completion_reason`**: only treat as fully done when **`NaturalBreak`**. **`StepLimitReached`** means the child hit the step cap — re-spawn a narrower scope or raise limits; **do not** `scratchpad_set_area(done)` on step-limit alone.
-   - `scratchpad_import_agent({ agent_id, area_id? })` — imports `structured_findings` as **`status=open`**, `source=agent:{id}`.
+   - `scratchpad_import_agent({ agent_id, area_id? })` — imports `structured_findings` as **`status=open`**, `source=agent:{id}`. Pass **`area_id`** when the child used a wrong id; runtime also remaps by **`area_path`** when it matches an inventory row.
 4. For each imported **HIGH/BLOCKER** (and MEDIUM you will report):
    - `read_file` / `grep_files` (caller-trace for security claims).
    - `scratchpad_verify_note({ note_id })` — promotes to **`verified`** (append-only supersede).
 5. `scratchpad_set_area({ area_id, status: "done" })` — **blocked** while open HIGH/BLOCKER remain; prefer **`completion_reason=NaturalBreak`** plus imported findings (or explicit “no findings” in prose).
+6. **`checklist_update`** the matching row to **`completed`** (same turn as step 5).
 
 **Do not use `task_create`** for per-area audits during bound scratchpad (E5). Use **`agent_spawn`** only.
 
@@ -121,9 +157,19 @@ They also emit `<!-- craft-verdict -->` for CRAFT blackboard compatibility (runt
 
 ## P2 — Synthesize
 
-1. Every area `done` or `deferred` (with meta reason).
+1. Every area **`done`** or **`deferred`** (with meta reason) — required before `write_file` to `deliverables/*audit*`.
 2. Collect `kind=finding` + `status=verified`, not superseded.
 3. Draft report from those lines only (cite `note_id` or `file:line`).
+
+### Partial audit / closing out (avoid deadlocks)
+
+When you cannot finish all areas in one session:
+
+1. Import all completed agents (use `area_id` override or path remap if needed).
+2. For each remaining **`pending`** area: `scratchpad_append({ kind: "meta", area_id, claim: "deferred: <reason>" })` then `scratchpad_set_area({ area_id, status: "deferred" })`. **`deferred` defaults `require_min_notes=0`** but still needs the **meta** note when `require_deferred_meta` is on.
+3. Only then `write_file` the report; state **coverage gaps** explicitly in the report body.
+
+**Do not** end a turn with prose-only output while sub-agents are still **Running** — the parent turn waits for completions.
 
 ## P3 — Verify
 

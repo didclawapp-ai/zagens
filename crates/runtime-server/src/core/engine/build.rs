@@ -151,12 +151,9 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
         None
     };
 
-    let sandbox_backend = crate::sandbox::backend::create_backend(api_config)
-        .unwrap_or_else(|e| {
-            tracing::warn!("Failed to create sandbox backend: {e}");
-            None
-        })
-        .map(Arc::from);
+    let sandbox_init = crate::sandbox::backend::init_backend(api_config);
+    let sandbox_backend = sandbox_init.backend.map(Arc::from);
+    let sandbox_init_warning = sandbox_init.user_warning;
 
     let scratchpad_run_id = config_ext
         .runtime_services
@@ -182,6 +179,7 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
         mcp_pool: None,
         tx_subagent_completion,
         rx_subagent_completion: rx_subagent_completion.clone(),
+        sandbox_init_warning,
     };
 
     let hosts = EngineHostBundle {

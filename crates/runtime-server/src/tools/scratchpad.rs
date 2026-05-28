@@ -314,7 +314,7 @@ impl ToolSpec for ScratchpadSetAreaTool {
     }
 
     fn description(&self) -> &'static str {
-        "Update one inventory area status. For status=done, require_min_notes (default 1) must be met — append notes first."
+        "Update one inventory area status. status=done defaults require_min_notes=1; status=deferred defaults require_min_notes=0 (still needs kind=meta when require_deferred_meta is enabled)."
     }
 
     fn input_schema(&self) -> Value {
@@ -333,7 +333,7 @@ impl ToolSpec for ScratchpadSetAreaTool {
                 },
                 "require_min_notes": {
                     "type": "integer",
-                    "description": "When status=done, minimum notes.jsonl lines for this area_id (default 1)",
+                    "description": "Minimum notes.jsonl lines for this area_id. Default: 1 for done, 0 for deferred/pending/in_progress",
                     "minimum": 0,
                     "maximum": 50
                 }
@@ -368,7 +368,11 @@ impl ToolSpec for ScratchpadSetAreaTool {
         let require_min = input
             .get("require_min_notes")
             .and_then(|v| v.as_u64())
-            .unwrap_or(1) as usize;
+            .map(|v| v as usize)
+            .unwrap_or_else(|| match status {
+                AreaStatus::Done => 1,
+                _ => 0,
+            });
         let store = ScratchpadStore::open(context, &run_id)?;
         let scratchpad_cfg = context
             .runtime

@@ -50,7 +50,7 @@ impl ToolSpec for ScratchpadImportAgentTool {
                 },
                 "area_id": {
                     "type": "string",
-                    "description": "Override structured_findings.area_id when importing legacy craft-verdict output"
+                    "description": "Inventory area_id to import under. Use when the child emitted a mismatched area_id; must exist in inventory. When omitted, runtime also tries structured_findings.area_path against inventory paths."
                 },
                 "block": {
                     "type": "boolean",

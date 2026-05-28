@@ -38,6 +38,7 @@ pub mod scratchpad_flow;
 mod scratchpad_sync;
 mod session_messages;
 mod session_ops;
+mod startup_warnings;
 mod streaming;
 mod subagent_spawn;
 mod tool_catalog;

@@ -40,6 +40,52 @@ fn validate_area_id_in_inventory(store: &ScratchpadStore, area_id: &str) -> Resu
     Ok(())
 }
 
+fn normalize_area_path(path: &str) -> String {
+    path.replace('\\', "/")
+        .trim()
+        .trim_end_matches('/')
+        .to_string()
+}
+
+/// Resolve inventory row for import: explicit override → agent area_id → area_path match.
+fn resolve_import_area_id(
+    store: &ScratchpadStore,
+    findings: &StructuredFindings,
+    area_id_override: Option<&str>,
+) -> Result<String, ToolError> {
+    if let Some(override_id) = area_id_override.map(str::trim).filter(|s| !s.is_empty()) {
+        validate_area_id_in_inventory(store, override_id)?;
+        return Ok(override_id.to_string());
+    }
+
+    let agent_area_id = findings.area_id.trim();
+    if !agent_area_id.is_empty() && validate_area_id_in_inventory(store, agent_area_id).is_ok() {
+        return Ok(agent_area_id.to_string());
+    }
+
+    if let Some(path) = findings
+        .area_path
+        .as_deref()
+        .map(normalize_area_path)
+        .filter(|p| !p.is_empty())
+    {
+        let inventory = store.read_inventory()?;
+        if let Some(area) = inventory
+            .areas
+            .iter()
+            .find(|a| normalize_area_path(&a.path) == path)
+        {
+            return Ok(area.id.clone());
+        }
+    }
+
+    Err(ToolError::invalid_input(format!(
+        "area_id '{}' is not in scratchpad run '{}' inventory; pass scratchpad_import_agent area_id override or ensure structured_findings.area_id / area_path match inventory",
+        if agent_area_id.is_empty() { "(empty)" } else { agent_area_id },
+        store.run_id()
+    )))
+}
+
 /// Import `structured_findings` (preferred) or `structured_verdict` from a completed sub-agent.
 pub fn import_agent_findings(
     store: &ScratchpadStore,
@@ -72,8 +118,10 @@ pub fn import_agent_findings(
     let mut imported = Vec::new();
 
     if let Some(findings) = &result.structured_findings {
-        validate_area_id_in_inventory(store, &findings.area_id)?;
-        imported.extend(import_structured_findings(store, findings, &source)?);
+        let area_id = resolve_import_area_id(store, findings, area_id_override)?;
+        let mut remapped = findings.clone();
+        remapped.area_id = area_id;
+        imported.extend(import_structured_findings(store, &remapped, &source)?);
         return Ok(imported);
     }
 
@@ -349,5 +397,32 @@ mod import_gate_tests {
         }
         let err = import_agent_findings(&store, &result, None).expect_err("bad area");
         assert!(err.to_string().contains("stale-area-from-old-run"));
+    }
+
+    #[test]
+    fn import_honors_area_id_override_for_structured_findings() {
+        let (_dir, store) = temp_store();
+        let mut result = completed_result(Some(CompletionReason::NaturalBreak));
+        if let Some(ref mut findings) = result.structured_findings {
+            findings.area_id = "area-core-engine-part1".into();
+            findings.area_path = Some("crates/core/src/engine".into());
+        }
+        let notes =
+            import_agent_findings(&store, &result, Some("workspace")).expect("override import");
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0].area_id, "workspace");
+    }
+
+    #[test]
+    fn import_remapped_by_area_path_when_agent_area_id_wrong() {
+        let (_dir, store) = temp_store();
+        let mut result = completed_result(Some(CompletionReason::NaturalBreak));
+        if let Some(ref mut findings) = result.structured_findings {
+            findings.area_id = "area-core-engine-part1".into();
+            findings.area_path = Some(".".into());
+        }
+        let notes = import_agent_findings(&store, &result, None).expect("path remap");
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0].area_id, "workspace");
     }
 }

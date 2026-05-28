@@ -415,8 +415,8 @@ fn thread_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ThreadRec
     Ok(ThreadRecord {
         schema_version: 2,
         id: row.get(0)?,
-        created_at: parse_ts(row.get::<_, String>(1)?),
-        updated_at: parse_ts(row.get::<_, String>(2)?),
+        created_at: parse_ts(row.get::<_, String>(1)?)?,
+        updated_at: parse_ts(row.get::<_, String>(2)?)?,
         model: row.get(3)?,
         workspace: PathBuf::from(workspace),
         mode: row.get(5)?,
@@ -541,9 +541,9 @@ pub fn load_turn_sqlite(db: &Connection, turn_id: &str) -> anyhow::Result<TurnRe
                 thread_id: row.get(1)?,
                 status: parse_turn_status(&status_str),
                 input_summary: row.get(3)?,
-                created_at: parse_ts(row.get::<_, String>(4)?),
-                started_at: row.get::<_, Option<String>>(5)?.map(parse_ts),
-                ended_at: row.get::<_, Option<String>>(6)?.map(parse_ts),
+                created_at: parse_ts(row.get::<_, String>(4)?)?,
+                started_at: parse_ts_opt(row.get::<_, Option<String>>(5)?)?,
+                ended_at: parse_ts_opt(row.get::<_, Option<String>>(6)?)?,
                 duration_ms: row.get::<_, Option<i64>>(7)?.map(|d| d as u64),
                 usage: usage_json.and_then(|s| serde_json::from_str(&s).ok()),
                 last_request_input_tokens: row
@@ -572,9 +572,9 @@ pub fn list_turns_for_thread_sqlite(db: &Connection, thread_id: &str) -> anyhow:
                 thread_id: row.get(1)?,
                 status: parse_turn_status(&status_str),
                 input_summary: row.get(3)?,
-                created_at: parse_ts(row.get::<_, String>(4)?),
-                started_at: row.get::<_, Option<String>>(5)?.map(parse_ts),
-                ended_at: row.get::<_, Option<String>>(6)?.map(parse_ts),
+                created_at: parse_ts(row.get::<_, String>(4)?)?,
+                started_at: parse_ts_opt(row.get::<_, Option<String>>(5)?)?,
+                ended_at: parse_ts_opt(row.get::<_, Option<String>>(6)?)?,
                 duration_ms: row.get::<_, Option<i64>>(7)?.map(|d| d as u64),
                 usage: usage_json.and_then(|s| serde_json::from_str(&s).ok()),
                 last_request_input_tokens: row
@@ -605,9 +605,9 @@ pub fn list_incomplete_turns_sqlite(db: &Connection) -> anyhow::Result<Vec<TurnR
                 thread_id: row.get(1)?,
                 status: parse_turn_status(&status_str),
                 input_summary: row.get(3)?,
-                created_at: parse_ts(row.get::<_, String>(4)?),
-                started_at: row.get::<_, Option<String>>(5)?.map(parse_ts),
-                ended_at: row.get::<_, Option<String>>(6)?.map(parse_ts),
+                created_at: parse_ts(row.get::<_, String>(4)?)?,
+                started_at: parse_ts_opt(row.get::<_, Option<String>>(5)?)?,
+                ended_at: parse_ts_opt(row.get::<_, Option<String>>(6)?)?,
                 duration_ms: row.get::<_, Option<i64>>(7)?.map(|d| d as u64),
                 usage: usage_json.and_then(|s| serde_json::from_str(&s).ok()),
                 last_request_input_tokens: row
@@ -667,8 +667,8 @@ pub fn load_item_sqlite(db: &Connection, item_id: &str) -> anyhow::Result<TurnIt
                 detail: row.get(5)?,
                 metadata: metadata_json.and_then(|s| serde_json::from_str(&s).ok()),
                 artifact_refs: serde_json::from_str(&artifact_refs_json).unwrap_or_default(),
-                started_at: row.get::<_, Option<String>>(8)?.map(parse_ts),
-                ended_at: row.get::<_, Option<String>>(9)?.map(parse_ts),
+                started_at: parse_ts_opt(row.get::<_, Option<String>>(8)?)?,
+                ended_at: parse_ts_opt(row.get::<_, Option<String>>(9)?)?,
             })
         },
     ).map_err(|e| anyhow::anyhow!("item not found ({item_id}): {e}"))
@@ -694,8 +694,8 @@ pub fn list_items_for_turn_sqlite(db: &Connection, turn_id: &str) -> anyhow::Res
                 detail: row.get(5)?,
                 metadata: metadata_json.and_then(|s| serde_json::from_str(&s).ok()),
                 artifact_refs: serde_json::from_str(&artifact_refs_json).unwrap_or_default(),
-                started_at: row.get::<_, Option<String>>(8)?.map(parse_ts),
-                ended_at: row.get::<_, Option<String>>(9)?.map(parse_ts),
+                started_at: parse_ts_opt(row.get::<_, Option<String>>(8)?)?,
+                ended_at: parse_ts_opt(row.get::<_, Option<String>>(9)?)?,
             })
         })?
         .filter_map(|r| r.ok())
@@ -731,7 +731,7 @@ pub fn events_since_sqlite(db: &Connection, thread_id: &str, since_seq: u64) -> 
             Ok(RuntimeEventRecord {
                 schema_version: 2,
                 seq: row.get::<_, i64>(0)? as u64,
-                timestamp: parse_ts(row.get::<_, String>(1)?),
+                timestamp: parse_ts(row.get::<_, String>(1)?)?,
                 thread_id: row.get(2)?,
                 turn_id: row.get(3)?,
                 item_id: row.get(4)?,
@@ -778,7 +778,9 @@ pub fn aggregate_usage_linear_sqlite(
             Ok(u) => u,
             Err(_) => continue,
         };
-        let created_at = parse_ts(created_at_str);
+        let Some(created_at) = parse_ts(created_at_str).ok() else {
+            continue;
+        };
 
         if let Some(s) = since
             && created_at < s
@@ -837,10 +839,26 @@ pub fn aggregate_usage_linear_sqlite(
 
 // === Helpers ===
 
-fn parse_ts(s: String) -> DateTime<Utc> {
+fn parse_ts(s: String) -> rusqlite::Result<DateTime<Utc>> {
     DateTime::parse_from_rfc3339(&s)
         .map(|d| d.with_timezone(&Utc))
-        .unwrap_or_default()
+        .map_err(|e| {
+            rusqlite::Error::FromSqlConversionFailure(
+                0,
+                rusqlite::types::Type::Text,
+                Box::new(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("invalid RFC3339 timestamp '{s}': {e}"),
+                )),
+            )
+        })
+}
+
+fn parse_ts_opt(value: Option<String>) -> rusqlite::Result<Option<DateTime<Utc>>> {
+    match value {
+        Some(s) => parse_ts(s).map(Some),
+        None => Ok(None),
+    }
 }
 
 fn parse_turn_status(s: &str) -> RuntimeTurnStatus {

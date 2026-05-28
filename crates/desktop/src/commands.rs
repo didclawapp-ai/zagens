@@ -746,6 +746,7 @@ fn resolve_under_workspace(workspace_root: &Path, rel: &str) -> Result<PathBuf, 
 
 fn read_binary_file_at(canonical_file: &Path) -> Result<BinaryFileResponse, String> {
     use base64::Engine;
+    use std::io::Read;
 
     let meta = std::fs::metadata(canonical_file).map_err(|e| format!("无法获取文件信息: {e}"))?;
     let size = meta.len();
@@ -756,11 +757,16 @@ fn read_binary_file_at(canonical_file: &Path) -> Result<BinaryFileResponse, Stri
         size as usize
     };
 
-    let data = std::fs::read(canonical_file).map_err(|e| format!("无法读取文件: {e}"))?;
-    let data = &data[..read_limit.min(data.len())];
+    let mut file =
+        std::fs::File::open(canonical_file).map_err(|e| format!("无法读取文件: {e}"))?;
+    let mut data = Vec::with_capacity(read_limit);
+    file.by_ref()
+        .take(read_limit as u64)
+        .read_to_end(&mut data)
+        .map_err(|e| format!("无法读取文件: {e}"))?;
 
-    let mime_type = sniff_mime(data);
-    let b64 = base64::engine::general_purpose::STANDARD.encode(data);
+    let mime_type = sniff_mime(&data);
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
 
     Ok(BinaryFileResponse {
         mime_type,
@@ -833,28 +839,26 @@ fn sniff_mime(data: &[u8]) -> String {
 
 #[tauri::command]
 pub fn open_in_shell(path: String) -> Result<(), String> {
-    let trimmed = path.trim();
-    if trimmed.is_empty() {
-        return Ok(());
-    }
+    let canonical = resolve_shell_dir_path(&path)?;
+    let open_path = canonical.to_string_lossy().into_owned();
     #[cfg(target_os = "windows")]
     {
         std::process::Command::new("explorer")
-            .arg(trimmed)
+            .arg(&open_path)
             .spawn()
             .map_err(|e| format!("无法打开文件管理器: {e}"))?;
     }
     #[cfg(target_os = "macos")]
     {
         std::process::Command::new("open")
-            .arg(trimmed)
+            .arg(&open_path)
             .spawn()
             .map_err(|e| format!("无法打开文件管理器: {e}"))?;
     }
     #[cfg(target_os = "linux")]
     {
         std::process::Command::new("xdg-open")
-            .arg(trimmed)
+            .arg(&open_path)
             .spawn()
             .map_err(|e| format!("无法打开文件管理器: {e}"))?;
     }
@@ -902,6 +906,17 @@ fn resolve_system_open_path(path: &str) -> Result<std::path::PathBuf, String> {
     if trimmed.is_empty() {
         return Err("empty path".into());
     }
+    reject_unsafe_open_path_chars(trimmed)?;
+    let canonical = std::path::Path::new(trimmed)
+        .canonicalize()
+        .map_err(|e| format!("path not found: {e}"))?;
+    if !canonical.is_file() {
+        return Err("not a file".into());
+    }
+    Ok(canonical)
+}
+
+fn reject_unsafe_open_path_chars(trimmed: &str) -> Result<(), String> {
     if trimmed.bytes().any(|b| b == 0) {
         return Err("invalid path".into());
     }
@@ -909,11 +924,20 @@ fn resolve_system_open_path(path: &str) -> Result<std::path::PathBuf, String> {
     if trimmed.chars().any(|c| BAD.contains(&c)) {
         return Err("path contains invalid characters".into());
     }
+    Ok(())
+}
+
+fn resolve_shell_dir_path(path: &str) -> Result<std::path::PathBuf, String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("empty path".into());
+    }
+    reject_unsafe_open_path_chars(trimmed)?;
     let canonical = std::path::Path::new(trimmed)
         .canonicalize()
         .map_err(|e| format!("path not found: {e}"))?;
-    if !canonical.is_file() {
-        return Err("not a file".into());
+    if !canonical.is_dir() {
+        return Err("not a directory".into());
     }
     Ok(canonical)
 }

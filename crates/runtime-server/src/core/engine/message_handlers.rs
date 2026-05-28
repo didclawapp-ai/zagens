@@ -24,6 +24,8 @@ impl Engine {
         top_p: Option<f32>,
         max_output_tokens: Option<u32>,
     ) {
+        self.emit_pending_startup_warnings().await;
+
         // Reset cancel token for fresh turn (in case previous was cancelled)
         self.reset_cancel_token();
 
