@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Desktop (Zagens)
 
+- **i18n → model language:** Settings → Language now syncs to `~/.zagens/settings.toml` `locale`, which drives the runtime system prompt `## Environment` `lang` field — model replies follow the selected UI language (start a **new chat** after switching; existing threads keep their spawn-time locale).
 - **Agent panel:** Polls `subagents.v1.json` during streaming (3s) for live step count, per-step timeout cap, and stuck-suspected hint when idle exceeds step timeout + 60s.
 - **Page reload guard:** Block F5 / Ctrl+R (Cmd+R) full-page refresh — prevents accidental loss of in-memory chat state before persist-session completes; shows a brief toast instead.
 - **Audit grid panel:** When checklist, audit scratchpad, or sub-agent data appears, a 2×2 right-side grid (checklist / audit / reserved / sub-agents) auto-opens and temporarily replaces the single Inspector panel; auto-hides when all three are empty; title-bar grid toggle and seam collapse respect manual dismiss until data clears or the thread changes.
@@ -36,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Runtime
 
+- **Prompt language enforcement:** `## Environment` now includes `reply_language` plus a mandatory reply-language line; `base.md` explicitly maps `lang: en` → English and states Chinese audit examples do not override locale — reduces first-turn Chinese replies when UI locale is English.
 - **Symbol index (V6):** Extend lazy workspace index to JavaScript (`.js`/`.jsx`/`.mjs`/`.cjs`), Python (`.py`), and Go (`.go`); bump `schema_version` to 4; `grep_files(symbol_index: true)` now returns `calls` when present; split parsers into `symbol_index/extract.rs`. See [`docs/symbol-index-v6-improvements.md`](docs/symbol-index-v6-improvements.md).
 - **Symbol index (V7):** Add C/C++, Vue/Svelte SFC parsers; CamelCase fuzzy + caller reverse lookup; parallel build via `std::thread::scope`; sidecar startup warmup; `schema_version` 5. See [`docs/symbol-index-v7-improvements.md`](docs/symbol-index-v7-improvements.md).
 - **Fix (symbol index / sidecar):** Sidecar no longer defaults workspace to `%USERPROFILE%` — passes `--workspace` (`Documents/Zagens`) and skips V7 warmup on user-home / non-project roots; expands index walk skip dirs; caps `annotate_calls` regex size (fixes ~8GB RAM + `/health` connection refused on startup).

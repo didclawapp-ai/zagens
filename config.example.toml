@@ -264,11 +264,11 @@ osc8_links = true            # emit OSC 8 escapes around URLs (Cmd+click in iTer
 #                                    "always" = notify on every successful turn (no threshold);
 #                                    "never"  = suppress all turn-completion notifications;
 #                                    unset    = use [notifications] defaults (recommended).
-# locale = "auto"           # UI chrome language: auto | en | ja | zh-Hans | pt-BR
+# locale = "auto"           # UI + model reply language: auto | en | ja | zh-Hans | pt-BR
 #                           # "auto" reads LC_ALL → LC_MESSAGES → LANG; falls back to English.
 #                           # Override: `locale = "zh-Hans"` for Simplified Chinese regardless of OS locale.
-#                           # Also settable in config: locale = "zh-Hans"
-#                           # Affects terminal-mode chrome only — not model output language.
+#                           # Zagens desktop syncs the Settings → Language picker to this field.
+#                           # New chat sessions pick up changes; in-flight threads keep their spawn-time locale.
 #
 # Ordered footer chips (or use /statusline at runtime).
 # Default: mode, model, cost, status, coherence, agents, reasoning_replay, cache, context_percent

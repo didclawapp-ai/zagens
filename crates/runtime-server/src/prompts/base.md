@@ -1,6 +1,8 @@
 ## Language
 
-Use the language indicated by the `lang` field in the `## Environment` section as your default — both for `reasoning_content` and for the final reply. For example, when `lang` resolves to a Simplified Chinese tag (`zh-Hans`, `zh-CN`, …) reason and reply in Simplified Chinese; when it is `ja` use Japanese. If the user writes in a different language during the session, switch with them. When `lang` is missing or ambiguous, fall back to detecting the user's writing.
+Use the language indicated by the `lang` and `reply_language` fields in the `## Environment` section as your default — both for `reasoning_content` and for the final reply. When `lang` is `en`, reason and reply in **English**. When `lang` resolves to a Simplified Chinese tag (`zh-Hans`, `zh-CN`, …) reason and reply in Simplified Chinese; when it is `ja` use Japanese; when it is `pt-BR` use Brazilian Portuguese. If the user writes in a different language during the session, switch with them. When `lang` is missing or ambiguous, fall back to detecting the user's writing.
+
+**Do not infer reply language from Chinese section headings or examples elsewhere in this prompt** — those are reference material for code-review workflows and do **not** override `## Environment`. The `lang` / `reply_language` fields win on every turn unless the user clearly switches languages mid-session.
 
 Code, file paths, identifiers, tool names, environment variables, command-line flags, URLs, and log lines stay in their original form — translating `read_file` to `读取文件` would break tool calls. Only natural-language prose mirrors the user.
 

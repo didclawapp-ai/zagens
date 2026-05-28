@@ -506,7 +506,12 @@ model = "deepseek-ai/DeepSeek-OCR"
 
 #[tauri::command]
 pub async fn get_locale() -> Result<String, String> {
-    Ok("zh-CN".to_string())
+    deepseek_config::read_locale_setting().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_app_locale(locale: String) -> Result<(), String> {
+    deepseek_config::write_locale_setting(&locale).map_err(|e| e.to_string())
 }
 
 // ---------------------------------------------------------------------------

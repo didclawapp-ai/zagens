@@ -94,6 +94,15 @@ fn client_identity_line_from_env() -> &'static str {
     client_identity_line(std::env::var("DEEPSEEK_CLIENT_SURFACE").ok().as_deref())
 }
 
+fn reply_language_label(locale_tag: &str) -> &'static str {
+    match locale_tag {
+        "zh-Hans" | "zh-CN" | "zh-cn" => "Simplified Chinese",
+        "ja" => "Japanese",
+        "pt-BR" | "pt-br" => "Brazilian Portuguese",
+        _ => "English",
+    }
+}
+
 /// Render a `## Environment` block listing the resolved locale tag,
 /// optional UI shell (when `DEEPSEEK_CLIENT_SURFACE` is set), host
 /// platform, login shell, and current working directory.
@@ -112,13 +121,19 @@ fn render_environment_block_inner(
     let platform = std::env::consts::OS;
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "unknown".to_string());
     let pwd = workspace.display();
+    let reply_language = reply_language_label(locale_tag);
 
-    let mut out = format!("## Environment\n\n- lang: {locale_tag}\n");
+    let mut out = format!(
+        "## Environment\n\n- lang: {locale_tag}\n- reply_language: {reply_language}\n",
+    );
     if let Some(label) = resolved_ui_shell_label(client_surface) {
         out.push_str(&format!("- ui_shell: {label}\n"));
     }
     out.push_str(&format!(
-        "- platform: {platform}\n- shell: {shell}\n- pwd: {pwd}"
+        "- platform: {platform}\n- shell: {shell}\n- pwd: {pwd}\n\n\
+         **Reply language (mandatory):** Reason and write all user-facing prose in **{reply_language}** \
+         while `lang` is `{locale_tag}`. Do not default to Chinese because other sections of the system \
+         prompt contain Chinese examples."
     ));
     out
 }
@@ -659,6 +674,7 @@ mod tests {
         let block = render_environment_block_inner(tmp.path(), "zh-Hans", None);
         assert!(block.starts_with("## Environment"));
         assert!(block.contains("- lang: zh-Hans"));
+        assert!(block.contains("- reply_language: Simplified Chinese"));
         assert!(block.contains(&format!("- pwd: {}", tmp.path().display())));
         assert!(block.contains("- platform:"));
         assert!(block.contains("- shell:"));
@@ -671,6 +687,7 @@ mod tests {
         let block = render_environment_block_inner(tmp.path(), "en", Some("ds-pick"));
         assert!(block.contains("- ui_shell: Zagens (desktop)"));
         assert!(block.contains("- lang: en"));
+        assert!(block.contains("- reply_language: English"));
     }
 
     #[test]

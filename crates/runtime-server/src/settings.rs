@@ -1,6 +1,6 @@
 //! Settings system - Persistent user preferences
 //!
-//! Settings are stored at ~/.config/deepseek/settings.toml
+//! Settings are stored at `~/.zagens/settings.toml` (sibling to `config.toml`).
 //!
 //! TUI-specific preferences (theme, keybinds, font_size) that survive project
 //! switches are stored separately at ~/.deepseek/tui.toml. See [`TuiPrefs`].
@@ -251,23 +251,7 @@ impl Default for Settings {
 impl Settings {
     /// Get the settings file path
     pub fn path() -> Result<PathBuf> {
-        // Allow tests to override the settings directory via the same env var
-        // used for config (DEEPSEEK_CONFIG_PATH points at config.toml; the
-        // settings file lives as a sibling in the same directory).
-        if let Ok(config_path) = std::env::var("DEEPSEEK_CONFIG_PATH") {
-            let config_path = config_path.trim();
-            if !config_path.is_empty() {
-                let p = expand_path(config_path);
-                if let Some(parent) = p.parent() {
-                    return Ok(parent.join("settings.toml"));
-                }
-            }
-        }
-
-        let config_dir = dirs::config_dir()
-            .context("Failed to resolve config directory: not found.")?
-            .join("deepseek");
-        Ok(config_dir.join("settings.toml"))
+        deepseek_config::settings_path()
     }
 
     /// Load settings from disk, or return defaults if not found
@@ -542,7 +526,7 @@ impl Settings {
             ("show_tool_details", "Show detailed tool output: on/off"),
             (
                 "locale",
-                "UI locale: auto, en, ja, zh-Hans, pt-BR (model output is unchanged)",
+                "UI locale: auto, en, ja, zh-Hans, pt-BR (also drives model reply language via system prompt)",
             ),
             (
                 "composer_density",

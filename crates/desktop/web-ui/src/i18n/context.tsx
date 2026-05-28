@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import type { Locale, TranslationMap } from './keys';
 import { DEFAULT_LOCALE, LOCALE_LABELS } from './keys';
 import { detectLocale, interpolate, lookup, persistLocale } from './utils';
+import { reconcileRuntimeLocale, syncLocaleToRuntime } from '../lib/runtimeLocale';
 
 // ── lazy-load locale packs (Vite tree-shakes unused) ────────────────
 
@@ -56,9 +57,20 @@ export function I18nProvider({
     };
   }, [locale]);
 
+  useEffect(() => {
+    let cancelled = false;
+    void reconcileRuntimeLocale((loc) => {
+      if (!cancelled) setLocaleState(loc);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const setLocale = useCallback((loc: Locale) => {
     persistLocale(loc);
     setLocaleState(loc);
+    void syncLocaleToRuntime(loc);
   }, []);
 
   const t = useCallback(

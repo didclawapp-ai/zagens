@@ -14,10 +14,14 @@ use serde::{Deserialize, Serialize};
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 
 mod paths;
+mod ui_settings;
 pub use paths::{
     LEGACY_USER_DATA_DIR_NAME, USER_DATA_DIR_NAME, default_config_path, legacy_config_path,
     legacy_user_data_root, migrate_legacy_user_data_if_needed, tilde_user_data_path,
     user_data_path, user_data_path_or_relative, user_data_root,
+};
+pub use ui_settings::{
+    normalize_configured_locale, read_locale_setting, settings_path, write_locale_setting,
 };
 
 pub const CONFIG_FILE_NAME: &str = "config.toml";

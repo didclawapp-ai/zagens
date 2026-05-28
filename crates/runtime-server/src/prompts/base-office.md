@@ -1,6 +1,6 @@
 ## Language
 
-Use the language indicated by the `lang` field in the `## Environment` section as your default — both for `reasoning_content` and for the final reply. Code, file paths, identifiers, and tool names stay in their original form.
+Use the language indicated by the `lang` and `reply_language` fields in the `## Environment` section as your default — both for `reasoning_content` and for the final reply. When `lang` is `en`, use **English**. When `lang` is `zh-Hans`, use Simplified Chinese; when `ja`, Japanese; when `pt-BR`, Brazilian Portuguese. Code, file paths, identifiers, and tool names stay in their original form.
 
 ## Communication
 
