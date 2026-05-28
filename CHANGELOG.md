@@ -22,8 +22,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Docs
+
+- **Harness / LHT:** [`LONG_HORIZON_CODE_TASKS.md`](docs/harness/LONG_HORIZON_CODE_TASKS.md) — §15 Phase 1 Playbook（9 步实施顺序）；§3.3.2 UI 落点（`LongHorizonPanel` 左下格）。
+
 ### Desktop (Zagens)
 
+- **Session restore:** `replayThreadEvents` no longer aborts after 750 ms idle when rebuilding chat history from thread events — waits for SSE stream close instead, fixing truncated messages on long or tool-heavy sessions.
 - **i18n → model language:** Settings → Language now syncs to `~/.zagens/settings.toml` `locale`, which drives the runtime system prompt `## Environment` `lang` field — model replies follow the selected UI language (start a **new chat** after switching; existing threads keep their spawn-time locale).
 - **Agent panel:** Polls `subagents.v1.json` during streaming (3s) for live step count, per-step timeout cap, and stuck-suspected hint when idle exceeds step timeout + 60s.
 - **Page reload guard:** Block F5 / Ctrl+R (Cmd+R) full-page refresh — prevents accidental loss of in-memory chat state before persist-session completes; shows a brief toast instead.

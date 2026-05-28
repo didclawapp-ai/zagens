@@ -1197,6 +1197,39 @@ export async function pollThreadTurnEvents(
   }
 }
 
+/** Idle abort after the last replay event — used by turn polling, not session restore. */
+const REPLAY_POLL_IDLE_MS = 750;
+const REPLAY_POLL_MAX_MS = 120_000;
+
+export type ReplayThreadEventsOptions = {
+  signal?: AbortSignal;
+  /**
+   * Session restore: wait for the SSE stream to close (`events-done` / body EOF).
+   * Turn polling: omit (default) — abort after {@link REPLAY_POLL_IDLE_MS} idle.
+   */
+  waitForStreamClose?: boolean;
+};
+
+function emitReplayThreadEvents(
+  drained: SseTurnEvent[],
+  onEvent: (ev: SseTurnEvent & { seq?: number }) => void,
+  onActivity?: () => void,
+): void {
+  for (const ev of drained) {
+    let seq: number | undefined;
+    try {
+      const p = JSON.parse(ev.data);
+      if (typeof p.seq === 'number') {
+        seq = p.seq;
+      }
+    } catch {
+      /* ignore */
+    }
+    onActivity?.();
+    onEvent({ ...ev, seq });
+  }
+}
+
 /**
  * Replay persisted thread events only (closes after backlog). Use for session restore —
  * do not use open-ended `getThreadEvents` for live turns (use `pollThreadTurnEvents`).
@@ -1205,8 +1238,9 @@ export async function replayThreadEvents(
   threadId: string,
   sinceSeq: number,
   onEvent: (ev: SseTurnEvent & { seq?: number }) => void,
-  options?: { signal?: AbortSignal },
+  options?: ReplayThreadEventsOptions,
 ): Promise<void> {
+  const waitForStreamClose = options?.waitForStreamClose ?? false;
   const controller = new AbortController();
   if (options?.signal) {
     if (options.signal.aborted) {
@@ -1217,21 +1251,26 @@ export async function replayThreadEvents(
   }
   let sawEvent = false;
   let lastEventMs = 0;
-  const idleGuard = window.setInterval(() => {
-    if (sawEvent && Date.now() - lastEventMs > 750) {
-      controller.abort();
-    }
-  }, 200);
-  const maxGuard = window.setTimeout(() => controller.abort(), 120_000);
+  const markActivity = () => {
+    sawEvent = true;
+    lastEventMs = Date.now();
+  };
+  let idleGuard: ReturnType<typeof window.setInterval> | undefined;
+  let maxGuard: ReturnType<typeof window.setTimeout> | undefined;
+  if (!waitForStreamClose) {
+    idleGuard = window.setInterval(() => {
+      if (sawEvent && Date.now() - lastEventMs > REPLAY_POLL_IDLE_MS) {
+        controller.abort();
+      }
+    }, 200);
+    maxGuard = window.setTimeout(() => controller.abort(), REPLAY_POLL_MAX_MS);
+  }
   const path = `/v1/threads/${encodeURIComponent(threadId)}/events?since_seq=${sinceSeq}&replay_only=true`;
   try {
     if (useTauriRuntimeProxy) {
       await consumeThreadEventsSse(path, onEvent, {
         signal: controller.signal,
-        onChunk: () => {
-          sawEvent = true;
-          lastEventMs = Date.now();
-        },
+        onChunk: markActivity,
       });
     } else {
       const res = await fetch(`${runtimeBase}${path}`, {
@@ -1256,30 +1295,26 @@ export async function replayThreadEvents(
         buffer += decoder.decode(value, { stream: true });
         const { drained, rest } = drainSseBlocks(buffer);
         buffer = rest;
-        for (const ev of drained) {
-          let seq: number | undefined;
-          try {
-            const p = JSON.parse(ev.data);
-            if (typeof p.seq === 'number') {
-              seq = p.seq;
-            }
-          } catch {
-            /* ignore */
-          }
-          sawEvent = true;
-          lastEventMs = Date.now();
-          onEvent({ ...ev, seq });
-        }
+        emitReplayThreadEvents(drained, onEvent, markActivity);
+      }
+      if (waitForStreamClose && buffer.trim()) {
+        const { drained } = drainSseBlocks(`${buffer}\n\n`);
+        emitReplayThreadEvents(drained, onEvent, markActivity);
       }
     }
   } catch (e) {
-    if (sawEvent && (e as Error).name === 'AbortError') {
+    // Poll mode treats idle-timeout abort as end-of-batch; restore waits for stream close.
+    if (!waitForStreamClose && sawEvent && (e as Error).name === 'AbortError') {
       return;
     }
     throw e;
   } finally {
-    window.clearInterval(idleGuard);
-    window.clearTimeout(maxGuard);
+    if (idleGuard != null) {
+      window.clearInterval(idleGuard);
+    }
+    if (maxGuard != null) {
+      window.clearTimeout(maxGuard);
+    }
   }
 }
 

@@ -247,7 +247,7 @@ export async function rebuildMessagesFromThreadEvents(
     (ev) => {
       applyEvent(state, ev);
     },
-    options,
+    { signal: options?.signal, waitForStreamClose: true },
   );
 
   flushAssistant(state);
