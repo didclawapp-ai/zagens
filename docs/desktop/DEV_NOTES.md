@@ -6,6 +6,8 @@
 
 **Harness 总览：** [HARNESS.md](HARNESS.md) — DeepSeek 社招 JD 映射、本仓库栈位、会话恢复案例、「与官方关系」备忘。
 
+**版本 / 发布：** [VERSIONING.md](VERSIONING.md) — Zagens 独立 SemVer；对外预览线默认 **`0.x.y-preview.n`**（当前 **`0.6.0-preview.1`**）。
+
 ---
 
 ## 2026-05-24 — 产品战略方向备忘（架构对话整理）

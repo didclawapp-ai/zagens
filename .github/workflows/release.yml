@@ -1,7 +1,8 @@
 name: Zagens Release
 
 # Desktop installer releases only (Windows for now; macOS/Linux can be added later).
-# Push tag:  git tag zagens-v0.4.3 && git push origin zagens-v0.4.3
+# Push tag:  git tag zagens-v0.6.0-preview.1 && git push origin zagens-v0.6.0-preview.1
+# See docs/desktop/VERSIONING.md — pre-1.0 releases use 0.x.y-preview.n
 # Legacy:   ds-pick-v* tags still trigger this workflow
 # Manual:    Actions → Zagens Release → Run workflow
 
@@ -63,7 +64,8 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          prerelease: false
+          # Pre-1.0 Zagens uses -preview / -beta / -alpha (see docs/desktop/VERSIONING.md)
+          prerelease: ${{ contains(github.ref_name, '-preview') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-alpha') }}
           generate_release_notes: true
           files: release-artifacts/*
           body: |

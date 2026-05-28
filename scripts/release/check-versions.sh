@@ -8,6 +8,8 @@
 #   2. Internal `deepseek-*` path dependency pins match the workspace version.
 #   3. `Cargo.lock` is in sync with the manifests (`cargo metadata --locked`
 #      fails if not).
+#   4. Zagens desktop version matches across Cargo.toml, tauri.conf.json,
+#      web-ui/package.json, and AboutPanel.tsx (SemVer + optional pre-release).
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."
@@ -40,8 +42,32 @@ if ! cargo metadata --locked --format-version 1 --no-deps >/dev/null 2>&1; then
   fail=1
 fi
 
+# 4) Zagens desktop four-way version sync.
+desktop_cargo="$(grep -E '^version = "' crates/desktop/Cargo.toml | head -n1 | sed -E 's/^version = "([^"]+)".*/\1/')"
+desktop_tauri="$(grep -m1 '"version":' crates/desktop/tauri.conf.json | sed -E 's/.*"version": "([^"]+)".*/\1/')"
+desktop_npm="$(grep -m1 '^  "version":' crates/desktop/web-ui/package.json | sed -E 's/^  "version": "([^"]+)".*/\1/')"
+desktop_about="$(grep -E "const APP_VERSION = '" crates/desktop/web-ui/src/components/AboutPanel.tsx | head -n1 | sed -E "s/.*const APP_VERSION = '([^']+)'.*/\1/")"
+
+semver_re='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
+if [[ ! "${desktop_cargo}" =~ ${semver_re} ]]; then
+  echo "::error::Zagens desktop version is not valid SemVer: ${desktop_cargo}" >&2
+  fail=1
+fi
+
+for label in tauri.conf.json package.json AboutPanel.tsx; do
+  case "${label}" in
+    tauri.conf.json) got="${desktop_tauri}" ;;
+    package.json) got="${desktop_npm}" ;;
+    AboutPanel.tsx) got="${desktop_about}" ;;
+  esac
+  if [[ "${got}" != "${desktop_cargo}" ]]; then
+    echo "::error::Zagens version mismatch: Cargo.toml=${desktop_cargo} vs ${label}=${got}" >&2
+    fail=1
+  fi
+done
+
 if [[ "${fail}" -eq 0 ]]; then
-  echo "Version state OK: workspace=${workspace_version}, lockfile in sync."
+  echo "Version state OK: workspace=${workspace_version}, zagens=${desktop_cargo}, lockfile in sync."
 fi
 
 exit "${fail}"

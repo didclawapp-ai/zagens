@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicepage/native/refs/heads/dev/packages/desktop-toolkit/tauri-schema.json",
   "productName": "Zagens",
-  "version": "0.5.0",
+  "version": "0.6.0-preview.1",
   "identifier": "com.zagens.desktop",
   "build": {
     "frontendDist": "./web-ui/dist",

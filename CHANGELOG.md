@@ -6,11 +6,13 @@ All notable changes to **Zagens** and its embedded runtime will be documented in
 
 **Licensing:** Zagens (desktop app in `crates/desktop/`) is **proprietary** — see [LICENSE](LICENSE). Third-party runtime MIT license: [third-party/deepseek-tui/LICENSE](third-party/deepseek-tui/LICENSE) and [NOTICE.md](NOTICE.md).
 
-**Zagens** (desktop app in `crates/desktop/`) has its **own** version line:
-**MAJOR.MINOR.PATCH** in **SemVer** (e.g. **v0.5.0**). Display form **vX.Y.Z**;
-each numeric segment is one or more digits (e.g. `0.2.1`, `0.10.3`). This line
-**does not** follow the embedded runtime workspace version in root `Cargo.toml`
-`[workspace.package] version`.
+**Zagens** (desktop app in `crates/desktop/`) has its **own** version line in
+**SemVer** (e.g. **`0.6.0-preview.1`**). Until **1.0.0 GA**, public releases use
+**pre-release identifiers**: `0.MINOR.PATCH-<channel>.N` with default channel
+**`preview`** (产品 **预览版**). Display form **v** + manifest version (e.g.
+**v0.6.0-preview.1**). Full policy: [`docs/desktop/VERSIONING.md`](docs/desktop/VERSIONING.md).
+This line **does not** follow the embedded runtime workspace version in root
+`Cargo.toml` `[workspace.package] version`.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -19,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > Prefer updating `[Unreleased]` incrementally going forward.
 
 ## [Unreleased]
+
+### Process
+
+- **Versioning:** Zagens 预发布渠道采用 SemVer 预发布标识（默认 **`0.x.y-preview.n`**）；SSOT [`docs/desktop/VERSIONING.md`](docs/desktop/VERSIONING.md)；四处 manifest 对齐 **`0.6.0-preview.1`**。
 
 ### Runtime
 
