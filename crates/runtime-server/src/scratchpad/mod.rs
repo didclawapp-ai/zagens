@@ -6,6 +6,7 @@ pub mod config;
 pub mod coverage;
 mod schema;
 mod summary;
+pub mod checklist_sync;
 pub mod ui_status;
 mod init;
 pub mod import;
@@ -25,6 +26,7 @@ pub use coverage::{
     CoverageGateOutcome, area_meets_deferred_quality, build_l0_status_line,
     compute_coverage_stats, coverage_gate, resume_area_id_from_inventory,
 };
+pub use checklist_sync::checklist_inventory_warning;
 pub use summary::{build_layered_summary, compute_superseded_ids};
 
 use std::collections::HashMap;
@@ -531,8 +533,37 @@ impl ScratchpadStore {
             "findings_open_low": findings_open_low,
             "notes_per_area": notes_per_area,
             "areas": areas,
+            "contract_hints": build_contract_hints(
+                areas_pending,
+                areas_done,
+                areas_deferred,
+                notes.len(),
+            ),
         }))
     }
+}
+
+fn build_contract_hints(
+    areas_pending: usize,
+    areas_done: usize,
+    areas_deferred: usize,
+    notes_total: usize,
+) -> Vec<&'static str> {
+    let mut hints = Vec::new();
+    if areas_pending > 0 && notes_total > 0 {
+        hints.push(
+            "P2 blocked: every pending area needs scratchpad_set_area(done|deferred) before write_file audit report",
+        );
+    }
+    if areas_pending > 0 && notes_total > 0 && areas_done + areas_deferred == 0 {
+        hints.push(
+            "checklist completed rows must match inventory — use scratchpad_set_area, not checklist alone",
+        );
+    }
+    if areas_pending == 0 && areas_done + areas_deferred > 0 && notes_total > 0 {
+        hints.push("inventory closed — synthesize report from verified findings via write_file");
+    }
+    hints
 }
 
 pub(crate) fn atomic_write_json(path: &Path, value: &impl serde::Serialize) -> Result<(), ToolError> {

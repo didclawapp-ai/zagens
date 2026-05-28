@@ -1,6 +1,6 @@
 //! Import structured sub-agent findings into scratchpad notes.
 
-use deepseek_core::subagent::{AuditFindingItem, CompletionReason, StructuredFindings, StructuredVerdict, SubAgentResult};
+use deepseek_core::subagent::{AuditFindingItem, CompletionReason, ParseFailureReason, StructuredFindings, StructuredVerdict, SubAgentResult};
 use serde_json::json;
 
 use crate::tools::spec::ToolError;
@@ -141,9 +141,24 @@ pub fn import_agent_findings(
     }
 
     Err(ToolError::invalid_input(format!(
-        "agent '{}' has no structured_findings or structured_verdict; re-run explorer with <!-- audit-findings --> output",
-        result.agent_id
+        "agent '{}' has no structured_findings or structured_verdict; re-run explorer with <!-- audit-findings --> output{}",
+        result.agent_id,
+        structured_import_hint(result)
     )))
+}
+
+fn structured_import_hint(result: &SubAgentResult) -> String {
+    match result.structured_findings_parse_failure {
+        Some(ParseFailureReason::Truncated) => {
+            "; <!-- audit-findings --> was truncated — retry agent_result(block) or import with area_id override; salvage may recover partial items"
+                .to_string()
+        }
+        Some(ParseFailureReason::NoMarker) => {
+            "; final output missing <!-- audit-findings --> JSON fence".to_string()
+        }
+        Some(ParseFailureReason::InvalidJson(ref e)) => format!("; invalid JSON: {e}"),
+        None => String::new(),
+    }
 }
 
 fn import_structured_findings(

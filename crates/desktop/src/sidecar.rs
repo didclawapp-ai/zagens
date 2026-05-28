@@ -168,8 +168,16 @@ fn runtime_sidecar_cli_args(port: &str) -> Vec<String> {
     args
 }
 
+fn sidecar_spawn_workspace() -> PathBuf {
+    crate::workspace_defaults::default_composer_workspace()
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| sidecar_spawn_cwd().unwrap_or_else(|| PathBuf::from(".")))
+}
+
 fn spawn_sidecar(app: &AppHandle, runtime_bin: &str, port: u16, token: &str) -> Result<Command> {
     let port_s = port.to_string();
+    let workspace = sidecar_spawn_workspace();
+    let workspace_s = workspace.to_string_lossy().into_owned();
     let mut std_cmd = std::process::Command::new(runtime_bin);
     std_cmd.env("DEEPSEEK_RUNTIME_TOKEN", token);
     std_cmd.env("DEEPSEEK_CLIENT_SURFACE", "zagens");
@@ -185,6 +193,8 @@ fn spawn_sidecar(app: &AppHandle, runtime_bin: &str, port: u16, token: &str) -> 
     }
     std_cmd
         .args(runtime_sidecar_cli_args(port_s.as_str()))
+        .arg("--workspace")
+        .arg(&workspace_s)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped());
     if let Some(log_path) = sidecar_stderr_log_path() {

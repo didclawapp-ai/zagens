@@ -274,6 +274,68 @@ pub fn maybe_summary_before_final_answer(
     build_report_summary_message(workspace, Some(store.run_id()), config)
 }
 
+/// When audit scratchpad is active but P2 gates are unmet, nudge the model to keep tooling.
+pub fn maybe_continue_incomplete_audit(
+    workspace: &Path,
+    run_id: Option<&str>,
+    config: &ScratchpadConfig,
+    messages: &[Message],
+) -> Option<Message> {
+    if !config.enabled {
+        return None;
+    }
+    let store = open_store(workspace, run_id, None, None)?;
+    if inventory_complete(&store) {
+        return None;
+    }
+
+    let notes = store.read_notes().ok()?;
+    let user_wants_report = messages.iter().any(|m| {
+        m.role == "user"
+            && m.content.iter().any(|block| {
+                if let ContentBlock::Text { text, .. } = block {
+                    user_prompt_triggers_report_summary(text, config)
+                } else {
+                    false
+                }
+            })
+    });
+    if notes.is_empty() && !user_wants_report {
+        return None;
+    }
+
+    let inventory = store.read_inventory().ok()?;
+    let stats = compute_coverage_stats(&inventory, &notes, config);
+    let run_id = store.run_id();
+    let l0 = build_l0_status_line(
+        run_id,
+        &stats,
+        &resume_area_id_from_inventory(&inventory),
+    );
+    let pending = inventory
+        .areas
+        .iter()
+        .filter(|a| a.status == AreaStatus::Pending)
+        .count();
+
+    let text = format!(
+        "Audit scratchpad P2 incomplete — do **not** end this turn with prose-only output.\n\
+         [{l0}]\n\
+         Required before the report: (1) `scratchpad_import_agent` for any completed explore agents, \
+         (2) `scratchpad_set_area` for all {pending} pending area(s) → `done` or `deferred` (meta note for deferred), \
+         (3) sync `checklist_update` with inventory, \
+         (4) `write_file` the audit report (verified findings only). \
+         Call `scratchpad_status` now and continue with tools."
+    );
+    Some(Message {
+        role: "user".to_string(),
+        content: vec![ContentBlock::Text {
+            text,
+            cache_control: None,
+        }],
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

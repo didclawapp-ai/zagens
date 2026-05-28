@@ -255,6 +255,18 @@ fn annotate_calls(workspace: &Path, files: &mut BTreeMap<String, FileSymbols>) {
         return;
     }
 
+    // Building one giant alternation regex over tens of thousands of symbols (e.g. when
+    // workspace accidentally points at user home) can consume multiple GB of RAM.
+    const MAX_ANNOTATE_CALLS_SYMBOLS: usize = 8_000;
+    if known_names.len() > MAX_ANNOTATE_CALLS_SYMBOLS {
+        tracing::warn!(
+            "annotate_calls skipped: {} symbols exceed cap {}",
+            known_names.len(),
+            MAX_ANNOTATE_CALLS_SYMBOLS
+        );
+        return;
+    }
+
     // Build a regex that matches any known symbol name as a word.
     // (Sorted by length descending so longer names match first — avoids
     // partial matches like "foo" inside "foo_bar".)
@@ -553,11 +565,6 @@ pub fn index_status(workspace: &Path) -> IndexStatus {
     IndexStatus::Fresh
 }
 
-/// Non-blocking alias for sidecar / CLI startup warmup.
-pub fn warmup_if_needed(workspace: &Path) {
-    ensure_symbol_index(workspace);
-}
-
 /// Build or refresh the symbol index in the background if it's missing or stale.
 /// Non-blocking — spawns a background thread and returns immediately.
 /// Idempotent: only one build runs per workspace at a time.
@@ -755,8 +762,74 @@ pub fn format_file_summary(
 
 /// Directories whose contents are skipped entirely during file walk.
 const SKIP_DIRS: &[&str] = &[
-    "target", "node_modules", "dist", ".git", ".deepseek", "binaries",
+    "target",
+    "node_modules",
+    "dist",
+    ".git",
+    ".deepseek",
+    "binaries",
+    "AppData",
+    ".cursor",
+    ".vscode",
+    ".cargo",
+    "vendor",
+    "__pycache__",
+    ".pnpm-store",
+    ".next",
+    "build",
+    ".cache",
+    ".venv",
+    "venv",
+    "site-packages",
+    "Windows",
+    "Program Files",
+    "Program Files (x86)",
+    "Library",
+    ".nuget",
+    ".gradle",
+    ".m2",
+    ".zagens",
 ];
+
+/// Skip symbol-index warmup on user home or non-project roots (V7 sidecar regression).
+fn is_likely_user_home(workspace: &Path) -> bool {
+    let Some(home) = dirs::home_dir() else {
+        return false;
+    };
+    workspace
+        .canonicalize()
+        .ok()
+        .zip(home.canonicalize().ok())
+        .is_some_and(|(ws, hm)| ws == hm)
+}
+
+fn looks_like_project_root(workspace: &Path) -> bool {
+    workspace.join("Cargo.toml").is_file()
+        || workspace.join("package.json").is_file()
+        || workspace.join("go.mod").is_file()
+        || workspace.join("pyproject.toml").is_file()
+        || workspace.join(".git").is_dir()
+        || workspace.join(".deepseek").is_dir()
+}
+
+/// Non-blocking alias for sidecar / CLI startup warmup.
+pub fn warmup_if_needed(workspace: &Path) {
+    if is_likely_user_home(workspace) {
+        tracing::debug!(
+            "symbol index warmup skipped: workspace {:?} is user home",
+            workspace
+        );
+        return;
+    }
+    if !looks_like_project_root(workspace) {
+        tracing::debug!(
+            "symbol index warmup skipped: no project markers under {:?}",
+            workspace
+        );
+        return;
+    }
+    ensure_symbol_index(workspace);
+}
 
 fn walk_source_files(root: &Path) -> Vec<(PathBuf, u64, &'static str)> {
     let mut files = Vec::new();
@@ -1227,6 +1300,16 @@ mod tests {
         assert!(exts.contains(&"js".into()));
         assert!(exts.contains(&"py".into()));
         assert!(exts.contains(&"go".into()));
+    }
+
+    #[test]
+    fn warmup_skips_user_home() {
+        let home = dirs::home_dir().expect("home");
+        assert!(is_likely_user_home(&home));
+        let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(tmp.path().join("Cargo.toml"), "[package]\nname=\"t\"\n").unwrap();
+        assert!(!is_likely_user_home(tmp.path()));
+        assert!(looks_like_project_root(tmp.path()));
     }
 
     #[test]

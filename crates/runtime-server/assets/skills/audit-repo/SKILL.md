@@ -157,9 +157,12 @@ They also emit `<!-- craft-verdict -->` for CRAFT blackboard compatibility (runt
 
 ## P2 — Synthesize
 
-1. Every area **`done`** or **`deferred`** (with meta reason) — required before `write_file` to `deliverables/*audit*`.
+1. Every area **`done`** or **`deferred`** (with meta reason) — required before `write_file` to audit deliverables (`deliverables/*audit*`, `doc/*audit*`, `CODE_AUDIT*.md`).
 2. Collect `kind=finding` + `status=verified`, not superseded.
 3. Draft report from those lines only (cite `note_id` or `file:line`).
+4. **Same turn:** after inventory closes, **`write_file` the report in the same turn** — do not end with prose-only summary. Runtime injects a continue nudge when scratchpad is active but P2 gates fail.
+
+**Runtime dual-track warnings:** When checklist shows completed rows but inventory has no matching `done`/`deferred`, `checklist_write` / `checklist_update` append `WARNING checklist_inventory_mismatch`. `scratchpad_status` includes `contract_hints` — treat as blocking guidance.
 
 ### Partial audit / closing out (avoid deadlocks)
 
@@ -170,6 +173,8 @@ When you cannot finish all areas in one session:
 3. Only then `write_file` the report; state **coverage gaps** explicitly in the report body.
 
 **Do not** end a turn with prose-only output while sub-agents are still **Running** — the parent turn waits for completions.
+
+**Do not** end a turn with prose-only output when scratchpad inventory is still open — runtime will inject a P2 continue message; call `scratchpad_status`, close areas, then `write_file`.
 
 ## P3 — Verify
 

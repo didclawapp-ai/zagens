@@ -88,9 +88,20 @@ fn load_config(cli: &RuntimeServeCli) -> Result<Config> {
 }
 
 fn resolve_workspace(cli: &RuntimeServeCli) -> PathBuf {
-    cli.workspace.clone().unwrap_or_else(|| {
-        std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-    })
+    if let Some(ws) = cli.workspace.clone() {
+        return ws;
+    }
+    // Sidecar spawn cwd is often `$HOME` / `%USERPROFILE%` — never treat that as the tool workspace.
+    if let Some(docs) = dirs::document_dir() {
+        let zagens = docs.join("Zagens");
+        if zagens.is_dir() {
+            return zagens;
+        }
+        if std::fs::create_dir_all(&zagens).is_ok() {
+            return zagens;
+        }
+    }
+    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
 }
 
 /// Run the HTTP runtime sidecar until shutdown.

@@ -40,6 +40,7 @@ impl Engine {
             .mark_turn_start(self.0.turn_counter);
         self.scratchpad_step.reset();
         self.scratchpad_summary_injected_this_turn = false;
+        self.scratchpad_audit_continue_injected_this_turn = false;
         self.sync_scratchpad_run_id_from_wire();
 
         // Snapshot the workspace BEFORE we touch a single tool. Run the git

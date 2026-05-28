@@ -164,7 +164,161 @@ pub(crate) fn parse_structured_findings(text: &str) -> Option<StructuredFindings
 pub(crate) fn parse_structured_findings_result(
     text: &str,
 ) -> Result<StructuredFindings, ParseFailureReason> {
-    parse_json_fence_after_marker(text, "<!-- audit-findings -->")
+    match parse_json_fence_after_marker(text, "<!-- audit-findings -->") {
+        Ok(findings) => Ok(findings),
+        Err(ParseFailureReason::Truncated) => {
+            let Some(marker_idx) = text.find("<!-- audit-findings -->") else {
+                return Err(ParseFailureReason::Truncated);
+            };
+            let after_marker = &text[marker_idx + "<!-- audit-findings -->".len()..];
+            let Some(brace_start) = after_marker.find('{') else {
+                return Err(ParseFailureReason::Truncated);
+            };
+            salvage_structured_findings(&after_marker[brace_start..])
+                .ok_or(ParseFailureReason::Truncated)
+        }
+        Err(other) => Err(other),
+    }
+}
+
+/// Best-effort recovery when the outer JSON object was cut off mid-stream.
+fn salvage_structured_findings(partial_json: &str) -> Option<StructuredFindings> {
+    let area_id = extract_json_string_field(partial_json, "area_id")?;
+    if area_id.trim().is_empty() {
+        return None;
+    }
+    let area_path = extract_json_string_field(partial_json, "area_path");
+    let items = extract_items_from_truncated(partial_json);
+    let summary = extract_json_string_field(partial_json, "summary");
+    Some(StructuredFindings {
+        area_id,
+        area_path,
+        items,
+        summary,
+    })
+}
+
+fn extract_json_string_field(json: &str, key: &str) -> Option<String> {
+    let needle = format!("\"{key}\"");
+    let start = json.find(&needle)?;
+    let rest = json[start + needle.len()..].trim_start();
+    if !rest.starts_with(':') {
+        return None;
+    }
+    let rest = rest[1..].trim_start();
+    parse_json_string_at(rest).map(|(value, _)| value)
+}
+
+fn parse_json_string_at(s: &str) -> Option<(String, usize)> {
+    if !s.starts_with('"') {
+        return None;
+    }
+    let mut out = String::new();
+    let mut escape = false;
+    let mut i = 1usize;
+    let chars: Vec<char> = s.chars().collect();
+    while i < chars.len() {
+        let ch = chars[i];
+        if escape {
+            match ch {
+                'n' => out.push('\n'),
+                't' => out.push('\t'),
+                '"' => out.push('"'),
+                '\\' => out.push('\\'),
+                other => {
+                    out.push('\\');
+                    out.push(other);
+                }
+            }
+            escape = false;
+            i += 1;
+            continue;
+        }
+        if ch == '\\' {
+            escape = true;
+            i += 1;
+            continue;
+        }
+        if ch == '"' {
+            return Some((out, i + 1));
+        }
+        out.push(ch);
+        i += 1;
+    }
+    None
+}
+
+fn extract_balanced_object(s: &str) -> Option<(&str, usize)> {
+    if !s.starts_with('{') {
+        return None;
+    }
+    let mut depth = 0i32;
+    let mut in_str = false;
+    let mut escape = false;
+    for (i, ch) in s.char_indices() {
+        if in_str {
+            if escape {
+                escape = false;
+                continue;
+            }
+            if ch == '\\' {
+                escape = true;
+                continue;
+            }
+            if ch == '"' {
+                in_str = false;
+            }
+            continue;
+        }
+        match ch {
+            '"' => in_str = true,
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some((&s[..i + ch.len_utf8()], i + ch.len_utf8()));
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn extract_items_from_truncated(json: &str) -> Vec<deepseek_core::subagent::AuditFindingItem> {
+    let items_key = "\"items\"";
+    let Some(idx) = json.find(items_key) else {
+        return Vec::new();
+    };
+    let after = &json[idx + items_key.len()..];
+    let Some(bracket) = after.find('[') else {
+        return Vec::new();
+    };
+    let mut slice = &after[bracket + 1..];
+    let mut items = Vec::new();
+    loop {
+        slice = slice.trim_start();
+        if slice.starts_with(']') || slice.is_empty() {
+            break;
+        }
+        if !slice.starts_with('{') {
+            break;
+        }
+        let Some((obj_str, consumed)) = extract_balanced_object(slice) else {
+            break;
+        };
+        if let Ok(item) =
+            serde_json::from_str::<deepseek_core::subagent::AuditFindingItem>(obj_str)
+        {
+            items.push(item);
+        }
+        slice = &slice[consumed..];
+        slice = slice.trim_start();
+        if slice.starts_with(',') {
+            slice = &slice[1..];
+        }
+    }
+    items
 }
 
 /// Parse a `<!-- craft-verdict -->` JSON fence from the agent's final text output.
@@ -278,8 +432,31 @@ mod parse_tests {
     }
 
     #[test]
-    fn parse_structured_findings_reports_truncated_fence() {
-        let text = "<!-- audit-findings -->\n{\"area_id\":\"a\",\"items\":[";
+    fn parse_structured_findings_salvages_truncated_items() {
+        let text = r#"<!-- audit-findings -->
+{
+  "area_id": "area-tools",
+  "area_path": "crates/tools",
+  "items": [{
+    "severity": "HIGH",
+    "file": "src/lib.rs",
+    "line": 10,
+    "claim": "first"
+  }, {
+    "severity": "MEDIUM",
+    "file": "src/other.rs",
+    "line": 20,
+    "claim": "truncated mid-
+"#;
+        let f = parse_structured_findings_result(text).expect("salvaged");
+        assert_eq!(f.area_id, "area-tools");
+        assert_eq!(f.items.len(), 1);
+        assert_eq!(f.items[0].claim, "first");
+    }
+
+    #[test]
+    fn parse_structured_findings_reports_truncated_without_area_id() {
+        let text = "<!-- audit-findings -->\n{\"items\":[";
         assert_eq!(
             parse_structured_findings_result(text),
             Err(ParseFailureReason::Truncated)

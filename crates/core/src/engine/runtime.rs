@@ -53,5 +53,7 @@ pub struct Engine<P, R> {
     pub scratchpad_step: ScratchpadStepState,
     pub scratchpad_run_id: Option<String>,
     pub scratchpad_summary_injected_this_turn: bool,
+    /// One-shot guard: inject incomplete-audit continue nudge before prose-only turn break.
+    pub scratchpad_audit_continue_injected_this_turn: bool,
     pub topic_memory: Box<dyn TopicMemoryHost>,
 }

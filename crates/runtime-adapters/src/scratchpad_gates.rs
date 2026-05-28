@@ -10,18 +10,29 @@ use crate::scratchpad::coverage::{
 use crate::scratchpad::path_store::{read_inventory, read_notes, try_open_run_dir};
 use crate::scratchpad::schema::AreaStatus;
 
-/// Paths that look like formal audit/code-review deliverables under `deliverables/`.
+/// Paths that look like formal audit/code-review deliverables.
 #[must_use]
 pub fn is_audit_deliverable_path(path: &str) -> bool {
     let p = path.replace('\\', "/").to_lowercase();
-    if !p.contains("deliverables/") {
-        return false;
+    let filename = p.rsplit('/').next().unwrap_or(&p);
+
+    if p.contains("deliverables/") {
+        return p.contains("audit")
+            || p.contains("code_review")
+            || p.contains("code-review")
+            || p.ends_with("_review.md")
+            || p.ends_with("/review.md");
     }
-    p.contains("audit")
-        || p.contains("code_review")
-        || p.contains("code-review")
-        || p.ends_with("_review.md")
-        || p.ends_with("/review.md")
+
+    if filename.starts_with("code_audit") && filename.ends_with(".md") {
+        return true;
+    }
+
+    if (p.contains("/doc/") || p.starts_with("doc/")) && p.contains("audit") && p.ends_with(".md") {
+        return true;
+    }
+
+    false
 }
 
 fn inventory_complete(run_dir: &Path) -> bool {
@@ -113,8 +124,11 @@ mod tests {
         assert!(is_audit_deliverable_path(
             "deliverables/CODE_REVIEW_2026-05-19.md"
         ));
+        assert!(is_audit_deliverable_path("doc/CODE_AUDIT_REPORT-v2.67.0.md"));
+        assert!(is_audit_deliverable_path("doc/code_audit_summary.md"));
         assert!(!is_audit_deliverable_path("src/main.rs"));
         assert!(!is_audit_deliverable_path("deliverables/notes.txt"));
+        assert!(!is_audit_deliverable_path("doc/README.md"));
     }
 
     #[test]

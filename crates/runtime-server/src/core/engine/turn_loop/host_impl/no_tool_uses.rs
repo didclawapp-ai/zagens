@@ -24,6 +24,29 @@ pub(super) fn drain_subagent_completions(
 }
 
 impl Engine {
+    async fn maybe_inject_incomplete_audit_continue(&mut self) -> bool {
+        if self.scratchpad_audit_continue_injected_this_turn {
+            return false;
+        }
+        let Some(msg) = crate::core::engine::scratchpad_flow::maybe_continue_incomplete_audit(
+            &self.session.workspace,
+            self.scratchpad_run_id.as_deref(),
+            &self.config.scratchpad,
+            &self.session.messages,
+        ) else {
+            return false;
+        };
+        Engine::add_session_message(self, msg).await;
+        self.scratchpad_audit_continue_injected_this_turn = true;
+        let _ = self
+            .tx_event
+            .send(Event::status(
+                "Audit scratchpad incomplete — continuing turn (P2 gates unmet)",
+            ))
+            .await;
+        true
+    }
+
     pub(super) async fn handle_no_tool_uses_turn_loop(
         &mut self,
         turn: &mut TurnContext,
@@ -276,6 +299,11 @@ impl Engine {
                 return TurnLoopControl::Break;
             }
 
+            turn.next_step();
+            return TurnLoopControl::Continue;
+        }
+
+        if self.maybe_inject_incomplete_audit_continue().await {
             turn.next_step();
             return TurnLoopControl::Continue;
         }

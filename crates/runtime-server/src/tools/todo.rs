@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+use crate::scratchpad::checklist_inventory_warning;
 use crate::tools::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
 };
@@ -353,7 +354,7 @@ impl ToolSpec for TodoUpdateTool {
     async fn execute(
         &self,
         input: serde_json::Value,
-        _context: &ToolContext,
+        context: &ToolContext,
     ) -> Result<ToolResult, ToolError> {
         let id = input
             .get("id")
@@ -372,13 +373,17 @@ impl ToolSpec for TodoUpdateTool {
         let result = serde_json::to_string_pretty(&snapshot).unwrap_or_else(|_| "{}".to_string());
 
         match updated {
-            Some(item) => Ok(ToolResult::success(format!(
-                "Updated todo #{} to {}\n{}",
-                item.id,
-                item.status.as_str(),
-                result
-            ))
-            .with_metadata(checklist_metadata(&snapshot, self.tool_name))),
+            Some(item) => Ok(append_checklist_inventory_warning(
+                ToolResult::success(format!(
+                    "Updated todo #{} to {}\n{}",
+                    item.id,
+                    item.status.as_str(),
+                    result
+                ))
+                .with_metadata(checklist_metadata(&snapshot, self.tool_name)),
+                context,
+                &snapshot,
+            )),
             None => Ok(ToolResult::error(format!("Todo id {id} not found"))),
         }
     }
@@ -505,7 +510,7 @@ impl ToolSpec for TodoWriteTool {
     async fn execute(
         &self,
         input: serde_json::Value,
-        _context: &ToolContext,
+        context: &ToolContext,
     ) -> Result<ToolResult, ToolError> {
         let todos = input
             .get("todos")
@@ -536,14 +541,35 @@ impl ToolSpec for TodoWriteTool {
         let snapshot = list.snapshot();
         let result = serde_json::to_string_pretty(&snapshot).unwrap_or_else(|_| "{}".to_string());
 
-        Ok(ToolResult::success(format!(
-            "Todo list updated ({} items, {}% complete)\n{}",
-            snapshot.items.len(),
-            snapshot.completion_pct,
-            result
+        Ok(append_checklist_inventory_warning(
+            ToolResult::success(format!(
+                "Todo list updated ({} items, {}% complete)\n{}",
+                snapshot.items.len(),
+                snapshot.completion_pct,
+                result
+            ))
+            .with_metadata(checklist_metadata(&snapshot, self.tool_name)),
+            context,
+            &snapshot,
         ))
-        .with_metadata(checklist_metadata(&snapshot, self.tool_name)))
     }
+}
+
+fn append_checklist_inventory_warning(
+    mut result: ToolResult,
+    context: &ToolContext,
+    snapshot: &TodoListSnapshot,
+) -> ToolResult {
+    let completed = snapshot
+        .items
+        .iter()
+        .filter(|item| item.status == TodoStatus::Completed)
+        .count();
+    if let Some(warn) = checklist_inventory_warning(context, completed) {
+        result.content.push('\n');
+        result.content.push_str(&warn);
+    }
+    result
 }
 
 fn checklist_metadata(snapshot: &TodoListSnapshot, tool_name: &str) -> serde_json::Value {

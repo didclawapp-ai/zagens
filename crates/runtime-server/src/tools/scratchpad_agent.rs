@@ -93,14 +93,28 @@ impl ToolSpec for ScratchpadImportAgentTool {
             .clamp(1000, 3_600_000);
 
         let result = if block {
-            let (res, timed_out) =
+            let (_, timed_out) =
                 wait_for_result(&self.manager, agent_id, Duration::from_millis(timeout_ms)).await?;
-            if timed_out && res.status == deepseek_core::subagent::SubAgentStatus::Running {
-                return Err(ToolError::execution_failed(format!(
-                    "agent '{agent_id}' still running after {timeout_ms}ms"
-                )));
+            if timed_out {
+                let still_running = self
+                    .manager
+                    .write()
+                    .await
+                    .get_result(agent_id)
+                    .map(|r| r.status == deepseek_core::subagent::SubAgentStatus::Running)
+                    .unwrap_or(false);
+                if still_running {
+                    return Err(ToolError::execution_failed(format!(
+                        "agent '{agent_id}' still running after {timeout_ms}ms"
+                    )));
+                }
             }
-            res
+            // After wait, enrich from blackboard + prose (same as agent_result).
+            self.manager
+                .write()
+                .await
+                .get_result_with_fallback(agent_id, &context.workspace)
+                .map_err(|e| ToolError::execution_failed(e.to_string()))?
         } else {
             self.manager
                 .write()
