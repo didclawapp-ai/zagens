@@ -66,6 +66,22 @@ for label in tauri.conf.json package.json AboutPanel.tsx; do
   fi
 done
 
+# 5) MSI (WiX) version must be numeric-only: 0.M.P-preview.N -> 0.M.P.N
+desktop_wix="$(grep -E '"version":' crates/desktop/tauri.conf.json | tail -n1 | sed -E 's/.*"version": "([^"]+)".*/\1/')"
+expected_wix="${desktop_cargo}"
+if [[ "${desktop_cargo}" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-(preview|beta|alpha)\.([0-9]+)$ ]]; then
+  expected_wix="${BASH_REMATCH[1]}.${BASH_REMATCH[3]}"
+elif [[ "${desktop_cargo}" =~ ^([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+  expected_wix="${BASH_REMATCH[1]}"
+else
+  echo "::error::Zagens desktop version has unsupported pre-release for MSI mapping: ${desktop_cargo}" >&2
+  fail=1
+fi
+if [[ "${desktop_wix}" != "${expected_wix}" ]]; then
+  echo "::error::MSI wix.version mismatch: expected ${expected_wix} (from ${desktop_cargo}), got ${desktop_wix} in tauri.conf.json bundle.windows.wix.version" >&2
+  fail=1
+fi
+
 if [[ "${fail}" -eq 0 ]]; then
   echo "Version state OK: workspace=${workspace_version}, zagens=${desktop_cargo}, lockfile in sync."
 fi

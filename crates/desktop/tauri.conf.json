@@ -38,6 +38,11 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "windows": {
+      "wix": {
+        "version": "0.6.0.1"
+      }
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

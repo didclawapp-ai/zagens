@@ -46,6 +46,20 @@ Zagens 桌面端（`crates/desktop/`）使用**独立 SemVer**，与根 `Cargo.t
 
 **1.0.0** 保留给「正式版」：行为与支持预期冻结，不再默认带 `-preview`。
 
+### 1.4 Windows MSI（WiX）版本映射
+
+WiX/MSI 只接受纯数字 `major.minor.patch[.build]`，**不能**直接使用 `-preview.N` 等非数字预发布标识。Tauri 会在未覆盖时从 `"version"` 推导并失败。
+
+在 [`tauri.conf.json`](../../crates/desktop/tauri.conf.json) 中单独设置 `bundle.windows.wix.version`：
+
+| SemVer（对外 / UI） | MSI `wix.version` |
+|---------------------|-------------------|
+| `0.6.0-preview.1` | `0.6.0.1` |
+| `0.6.0-preview.2` | `0.6.0.2` |
+| `1.0.0`（GA，无后缀） | `1.0.0` |
+
+规则：`0.M.P-<channel>.N` → `0.M.P.N`（第四段为预发布序号）。NSIS（`-setup.exe`）仍使用完整 SemVer，不受此限制。
+
 ---
 
 ## 2. 必须同步的文件
@@ -56,6 +70,7 @@ Zagens 桌面端（`crates/desktop/`）使用**独立 SemVer**，与根 `Cargo.t
 |------|------|
 | [`crates/desktop/Cargo.toml`](../../crates/desktop/Cargo.toml) | `version = "…"` |
 | [`crates/desktop/tauri.conf.json`](../../crates/desktop/tauri.conf.json) | `"version"` |
+| [`crates/desktop/tauri.conf.json`](../../crates/desktop/tauri.conf.json) | `bundle.windows.wix.version`（仅 Windows MSI，见 §1.4） |
 | [`crates/desktop/web-ui/package.json`](../../crates/desktop/web-ui/package.json) | `"version"` |
 | [`crates/desktop/web-ui/src/components/AboutPanel.tsx`](../../crates/desktop/web-ui/src/components/AboutPanel.tsx) | `APP_VERSION` |
 
