@@ -1006,6 +1006,11 @@
             "format": "uint64",
             "minimum": 0
           },
+          "miss_tokens": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
           "reasoning_tokens": {
             "type": "integer",
             "format": "uint64",
@@ -1013,6 +1018,21 @@
           },
           "cost_usd": {
             "type": "number",
+            "format": "double"
+          },
+          "cost_usd_without_cache": {
+            "type": "number",
+            "format": "double"
+          },
+          "cache_savings_usd": {
+            "type": "number",
+            "format": "double"
+          },
+          "cache_hit_rate": {
+            "type": [
+              "number",
+              "null"
+            ],
             "format": "double"
           },
           "turns": {
@@ -1025,8 +1045,11 @@
           "input_tokens",
           "output_tokens",
           "cached_tokens",
+          "miss_tokens",
           "reasoning_tokens",
           "cost_usd",
+          "cost_usd_without_cache",
+          "cache_savings_usd",
           "turns"
         ]
       },
@@ -1051,6 +1074,11 @@
             "format": "uint64",
             "minimum": 0
           },
+          "miss_tokens": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
           "reasoning_tokens": {
             "type": "integer",
             "format": "uint64",
@@ -1058,6 +1086,21 @@
           },
           "cost_usd": {
             "type": "number",
+            "format": "double"
+          },
+          "cost_usd_without_cache": {
+            "type": "number",
+            "format": "double"
+          },
+          "cache_savings_usd": {
+            "type": "number",
+            "format": "double"
+          },
+          "cache_hit_rate": {
+            "type": [
+              "number",
+              "null"
+            ],
             "format": "double"
           },
           "turns": {
@@ -1071,8 +1114,11 @@
           "input_tokens",
           "output_tokens",
           "cached_tokens",
+          "miss_tokens",
           "reasoning_tokens",
           "cost_usd",
+          "cost_usd_without_cache",
+          "cache_savings_usd",
           "turns"
         ]
       },
@@ -1106,12 +1152,16 @@
             "items": {
               "$ref": "#/components/schemas/UsageBucket"
             }
+          },
+          "cache_telemetry_incomplete": {
+            "type": "boolean"
           }
         },
         "required": [
           "group_by",
           "totals",
-          "buckets"
+          "buckets",
+          "cache_telemetry_incomplete"
         ]
       },
       "ErrorBody": {

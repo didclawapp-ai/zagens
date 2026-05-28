@@ -94,6 +94,7 @@ export type AppShellProps = {
   contextWindowTokens: number;
   threadContextSnapshot: ThreadContextSnapshot | null;
   lastTurnOutputTokens: number | null;
+  lastCacheHitPercent: number | null;
   composerMention?: {
     relPath: string;
     isDirectory: boolean;
@@ -195,6 +196,7 @@ export default function AppShell({
   contextWindowTokens,
   threadContextSnapshot,
   lastTurnOutputTokens,
+  lastCacheHitPercent,
   composerMention,
   composerPrefill,
   messages,
@@ -351,6 +353,7 @@ export default function AppShell({
               compactionThresholdTokens={threadContextSnapshot?.compaction_threshold_tokens}
               lastApiInputTokens={threadContextSnapshot?.last_api_input_tokens ?? null}
               lastTurnOutputTokens={lastTurnOutputTokens}
+              lastCacheHitPercent={lastCacheHitPercent}
               officeSession={officeSession}
               workspaceMention={composerMention}
               composerPrefill={composerPrefill}

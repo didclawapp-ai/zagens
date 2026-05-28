@@ -239,6 +239,7 @@ pub fn format_cost_estimate(estimate: CostEstimate, currency: CostCurrency) -> S
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::Usage;
 
     #[test]
     fn nvidia_nim_deepseek_model_does_not_use_deepseek_platform_pricing() {
@@ -323,6 +324,26 @@ mod tests {
     fn format_cost_amount_uses_selected_symbol() {
         assert_eq!(format_cost_amount(0.42, CostCurrency::Usd), "$0.42");
         assert_eq!(format_cost_amount(2.0, CostCurrency::Cny), "¥2.00");
+    }
+
+    #[test]
+    fn cost_from_usage_splits_cache_hit_and_miss() {
+        let usage = Usage {
+            input_tokens: 1000,
+            output_tokens: 200,
+            prompt_cache_hit_tokens: Some(800),
+            prompt_cache_miss_tokens: Some(200),
+            reasoning_tokens: None,
+            reasoning_replay_tokens: None,
+            server_tool_use: None,
+        };
+        let actual = calculate_turn_cost_from_usage("deepseek-v4-flash", &usage).unwrap();
+        let all_miss =
+            calculate_turn_cost_estimate("deepseek-v4-flash", usage.input_tokens, usage.output_tokens)
+                .unwrap()
+                .usd;
+        assert!(actual < all_miss);
+        assert!(all_miss - actual > 0.0);
     }
 
     #[test]

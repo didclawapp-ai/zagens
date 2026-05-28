@@ -241,8 +241,16 @@ pub struct UsageTotals {
     pub input_tokens: u64,
     pub output_tokens: u64,
     pub cached_tokens: u64,
+    /// Sum of cache-miss input tokens (explicit or inferred per turn).
+    pub miss_tokens: u64,
     pub reasoning_tokens: u64,
     pub cost_usd: f64,
+    /// Estimated USD if all input were billed at cache-miss rate.
+    pub cost_usd_without_cache: f64,
+    /// `cost_usd_without_cache - cost_usd` (floored at 0).
+    pub cache_savings_usd: f64,
+    /// `cached_tokens / input_tokens * 100` when `input_tokens > 0`.
+    pub cache_hit_rate: Option<f64>,
     pub turns: u64,
 }
 
@@ -252,8 +260,12 @@ pub struct UsageBucket {
     pub input_tokens: u64,
     pub output_tokens: u64,
     pub cached_tokens: u64,
+    pub miss_tokens: u64,
     pub reasoning_tokens: u64,
     pub cost_usd: f64,
+    pub cost_usd_without_cache: f64,
+    pub cache_savings_usd: f64,
+    pub cache_hit_rate: Option<f64>,
     pub turns: u64,
 }
 
@@ -264,6 +276,8 @@ pub struct UsageAggregation {
     pub group_by: String,
     pub totals: UsageTotals,
     pub buckets: Vec<UsageBucket>,
+    /// True when any aggregated turn used a model/provider without cache telemetry.
+    pub cache_telemetry_incomplete: bool,
 }
 
 pub fn provider_label_for_model(model: &str) -> &'static str {

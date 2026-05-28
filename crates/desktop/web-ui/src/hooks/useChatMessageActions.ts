@@ -11,6 +11,7 @@ import { depthFromTailForUserMessage } from '../lib/chat/backtrackDepth';
 import { cacheSessionUiMessages, type CachedUiMessage } from '../lib/chat/sessionUiCache';
 import type { ThreadDetailWithTurns } from '../lib/contextUsage';
 import { toast } from '../lib/toast';
+import { usageRecordCacheHitPercent } from '../lib/cacheUsage';
 import type { TurnChatMessage } from './useTurnSend';
 type EditDraft = { messageId: string; content: string };
 
@@ -41,6 +42,7 @@ export type UseChatMessageActionsParams = {
   setPendingComposerStream: Dispatch<SetStateAction<boolean>>;
   setThreadDetailForContext: Dispatch<SetStateAction<ThreadDetailWithTurns | null>>;
   setLastTurnOutputTokens: Dispatch<SetStateAction<number | null>>;
+  setLastCacheHitPercent: Dispatch<SetStateAction<number | null>>;
   setComposerPrefill: Dispatch<
     SetStateAction<{ text: string; nonce: number } | undefined>
   >;
@@ -67,6 +69,7 @@ export function useChatMessageActions({
   setPendingComposerStream,
   setThreadDetailForContext,
   setLastTurnOutputTokens,
+  setLastCacheHitPercent,
   setComposerPrefill,
   resetAgentPanel,
   resetTurnPersistState,
@@ -223,6 +226,7 @@ export function useChatMessageActions({
       setLastTurnOutputTokens(
         lastOut != null && Number.isFinite(lastOut) && lastOut > 0 ? lastOut : null,
       );
+      setLastCacheHitPercent(usageRecordCacheHitPercent(lastTurn?.usage ?? null));
       void refreshThreadContext(newThreadId);
 
       const prefill = original_user_text?.trim();
@@ -254,6 +258,7 @@ export function useChatMessageActions({
     sessionUiCacheRef,
     setThreadDetailForContext,
     setLastTurnOutputTokens,
+    setLastCacheHitPercent,
     setComposerPrefill,
   ]);
 

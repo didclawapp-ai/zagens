@@ -760,6 +760,7 @@ pub fn aggregate_usage_linear_sqlite(
     use std::collections::BTreeMap;
     let mut buckets: BTreeMap<String, UsageBucket> = BTreeMap::new();
     let mut totals = UsageTotals::default();
+    let mut cache_telemetry_incomplete = false;
 
     let rows = stmt.query_map([], |row| {
         let thread_id: String = row.get(0)?;
@@ -790,20 +791,6 @@ pub fn aggregate_usage_linear_sqlite(
             continue;
         }
 
-        let cached = usage.prompt_cache_hit_tokens.unwrap_or(0) as u64;
-        let reasoning = usage.reasoning_tokens.unwrap_or(0) as u64;
-        let input = usage.input_tokens as u64;
-        let output = usage.output_tokens as u64;
-        let cost =
-            crate::pricing::calculate_turn_cost_from_usage(&model, &usage).unwrap_or(0.0);
-
-        totals.input_tokens += input;
-        totals.output_tokens += output;
-        totals.cached_tokens += cached;
-        totals.reasoning_tokens += reasoning;
-        totals.cost_usd += cost;
-        totals.turns += 1;
-
         let key = match group_by {
             UsageGroupBy::Day => created_at.format("%Y-%m-%d").to_string(),
             UsageGroupBy::Model => model.clone(),
@@ -816,12 +803,18 @@ pub fn aggregate_usage_linear_sqlite(
             key,
             ..UsageBucket::default()
         });
-        bucket.input_tokens += input;
-        bucket.output_tokens += output;
-        bucket.cached_tokens += cached;
-        bucket.reasoning_tokens += reasoning;
-        bucket.cost_usd += cost;
-        bucket.turns += 1;
+        crate::usage_aggregate::accumulate_turn_usage(
+            &mut totals,
+            bucket,
+            &model,
+            &usage,
+            &mut cache_telemetry_incomplete,
+        );
+    }
+
+    crate::usage_aggregate::finalize_usage_totals(&mut totals);
+    for bucket in buckets.values_mut() {
+        crate::usage_aggregate::finalize_usage_bucket(bucket);
     }
 
     let group_by_str = match group_by {
@@ -838,6 +831,7 @@ pub fn aggregate_usage_linear_sqlite(
         group_by: group_by_str,
         totals,
         buckets: buckets.into_values().collect(),
+        cache_telemetry_incomplete,
     })
 }
 

@@ -22,10 +22,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Desktop (Zagens)
+
+- **KV cache observability:** Usage dashboard shows hit rate %, miss tokens, and estimated cache savings (USD); composer footer shows last-turn `cache XX%` with red/yellow thresholds; warns when provider lacks cache telemetry. See [`docs/tech/KV_CACHE_OBSERVABILITY.md`](docs/tech/KV_CACHE_OBSERVABILITY.md).
+- **Build (Windows MSI):** Set `bundle.windows.wix.version` to numeric `0.6.0.1` so WiX accepts pre-release SemVer `0.6.0-preview.1`; document mapping in [`VERSIONING.md`](docs/desktop/VERSIONING.md) and CI check.
+
+### Runtime
+
+- **`GET /v1/usage`:** `UsageTotals` / `UsageBucket` now include `miss_tokens`, `cache_hit_rate`, `cost_usd_without_cache`, `cache_savings_usd`; response adds `cache_telemetry_incomplete` when any turn used a model without DeepSeek-style cache fields.
+
 ### Process
 
 - **Versioning:** Zagens 预发布渠道采用 SemVer 预发布标识（默认 **`0.x.y-preview.n`**）；SSOT [`docs/desktop/VERSIONING.md`](docs/desktop/VERSIONING.md)；四处 manifest 对齐 **`0.6.0-preview.1`**。
 - **Docs:** Add [`docs/tech/SUBAGENT_STABILITY_ANALYSIS.md`](docs/tech/SUBAGENT_STABILITY_ANALYSIS.md) — sub-agent spawn/execute/join timeout layers, terminal-state gaps (panic zombie Running, step-limit false Completed), structured persistence, and P0–P2 remediation priorities for audit-repo boundary stability.
+- **Docs:** Update [`SUBAGENT_STABILITY_ANALYSIS.md`](docs/tech/SUBAGENT_STABILITY_ANALYSIS.md) implementation status — P0/P1 marked landed (`dfe9eb1`), §9–§11 acceptance checklists checked, P2 deferred.
 
 ### Runtime
 

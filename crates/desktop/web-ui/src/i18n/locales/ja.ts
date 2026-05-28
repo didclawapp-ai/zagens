@@ -123,6 +123,8 @@ const ja: TranslationMap = {
     lastApiInputTokensTitle: '直近の API リクエスト入力 tokens（プロバイダー値）: {{count}}',
     lastTurnTokens: '↓ {{count}}',
     lastTurnTokensTitle: '直前に完了したターンの出力 tokens',
+    lastCacheHit: 'cache {{pct}}',
+    lastCacheHitTitle: 'Last turn prompt prefix cache hit rate (hit / input)',
     stop: '停止',
     stopAria: '生成を停止（Escape）',
     sendAria: 'メッセージを送信',
@@ -649,6 +651,13 @@ const ja: TranslationMap = {
     estimatedCostUsd: '推定コスト (USD)',
     turnCount: 'Turns',
     cacheHitTokens: 'Cache hit tokens',
+    cacheHitRate: 'Cache hit rate',
+    cacheMissTokens: 'Cache miss tokens',
+    cacheSavingsUsd: 'Cache savings (USD)',
+    cacheTelemetryIncomplete:
+      'Some models/providers do not report cache telemetry; cost assumes all miss (actual bill may be lower).',
+    cacheHitRateHint:
+      'Session rate = cached input / total input; may read low when turns have many tool rounds.',
     groupByLabel: 'グループ化:',
     groupDay: '日別',
     groupModel: 'モデル別',

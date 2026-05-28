@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { fetchUsage, type RuntimeConnectionState } from '../api/client';
 import { useT } from '../i18n';
+import {
+  cacheHitPercentTextClass,
+  formatCacheHitPercent,
+} from '../lib/cacheUsage';
 import { isRuntimeApiAvailable } from '../lib/runtimeReachable';
 import type { UsageAggregation, UsageGroupBy } from '../types/usage';
 
@@ -20,6 +24,16 @@ function formatTokens(n: number): string {
 /** Backend `cost_usd` is USD from `pricing::calculate_turn_cost_from_usage` (not CNY). */
 function formatCostUsd(n: number): string {
   return `$${n.toFixed(2)}`;
+}
+
+function resolveHitRate(
+  rate: number | null | undefined,
+  cached: number,
+  input: number,
+): number | null {
+  if (rate != null && Number.isFinite(rate)) return rate;
+  if (input <= 0) return null;
+  return (cached / input) * 100;
 }
 
 export default function UsageDashboard({
@@ -86,10 +100,26 @@ export default function UsageDashboard({
 
   if (!data) return null;
 
+  const hitRate = resolveHitRate(
+    data.totals.cache_hit_rate,
+    data.totals.cached_tokens,
+    data.totals.input_tokens,
+  );
+  const missTokens = data.totals.miss_tokens ?? 0;
+  const savings = data.totals.cache_savings_usd ?? 0;
+  const hitRateClass =
+    hitRate != null ? cacheHitPercentTextClass(hitRate) : 'text-t-text-muted';
+
   const maxBar = Math.max(...data.buckets.map((b) => b.input_tokens + b.output_tokens), 1);
 
   return (
     <div className="overflow-y-auto px-3 py-3 space-y-4">
+      {data.cache_telemetry_incomplete ? (
+        <p className="text-[10px] text-warning leading-snug rounded-md border border-warning/30 bg-warning/5 px-2 py-1.5">
+          {t('usageDashboard.cacheTelemetryIncomplete')}
+        </p>
+      ) : null}
+
       <div className="grid grid-cols-2 gap-2">
         <div className="rounded-lg border border-card-border bg-canvas-alt p-3 text-center">
           <div className="text-lg font-bold text-accent font-display">
@@ -103,15 +133,29 @@ export default function UsageDashboard({
           </div>
           <div className="text-[10px] text-t-text-muted mt-0.5">{t('usageDashboard.estimatedCostUsd')}</div>
         </div>
+        <div className={`rounded-lg border border-card-border bg-canvas-alt p-3 text-center`}>
+          <div className={`text-lg font-bold font-display tabular-nums ${hitRateClass}`}>
+            {formatCacheHitPercent(hitRate)}
+          </div>
+          <div className="text-[10px] text-t-text-muted mt-0.5" title={t('usageDashboard.cacheHitRateHint')}>
+            {t('usageDashboard.cacheHitRate')}
+          </div>
+        </div>
+        <div className="rounded-lg border border-card-border bg-canvas-alt p-3 text-center">
+          <div className="text-lg font-bold text-t-text font-display tabular-nums">
+            {formatTokens(missTokens)}
+          </div>
+          <div className="text-[10px] text-t-text-muted mt-0.5">{t('usageDashboard.cacheMissTokens')}</div>
+        </div>
+        <div className="rounded-lg border border-card-border bg-canvas-alt p-3 text-center">
+          <div className="text-lg font-bold text-success font-display tabular-nums">
+            {savings > 0.0001 ? formatCostUsd(savings) : '—'}
+          </div>
+          <div className="text-[10px] text-t-text-muted mt-0.5">{t('usageDashboard.cacheSavingsUsd')}</div>
+        </div>
         <div className="rounded-lg border border-card-border bg-canvas-alt p-3 text-center">
           <div className="text-lg font-bold text-t-text font-display">{data.totals.turns}</div>
           <div className="text-[10px] text-t-text-muted mt-0.5">{t('usageDashboard.turnCount')}</div>
-        </div>
-        <div className="rounded-lg border border-card-border bg-canvas-alt p-3 text-center">
-          <div className="text-lg font-bold text-success font-display">
-            {formatTokens(data.totals.cached_tokens)}
-          </div>
-          <div className="text-[10px] text-t-text-muted mt-0.5">{t('usageDashboard.cacheHitTokens')}</div>
         </div>
       </div>
 

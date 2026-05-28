@@ -13,3 +13,4 @@ pub mod models;
 pub mod pricing;
 pub mod runtime_threads;
 pub mod thread_store_sqlite;
+pub mod usage_aggregate;

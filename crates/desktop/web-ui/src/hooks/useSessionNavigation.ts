@@ -24,6 +24,7 @@ import {
   saveStoredActiveSessionId,
   clearStoredActiveSessionId,
 } from '../lib/windowBridge';
+import { usageRecordCacheHitPercent } from '../lib/cacheUsage';
 import type { DesktopModelId, DesktopTaskTypeResolved } from '../types/desktop';
 
 type NavMessage = CachedUiMessage;
@@ -49,6 +50,7 @@ export type UseSessionNavigationParams = {
   setPanelPreview: Dispatch<SetStateAction<PreviewState | null>>;
   setThreadDetailForContext: Dispatch<SetStateAction<import('../lib/contextUsage').ThreadDetailWithTurns | null>>;
   setLastTurnOutputTokens: Dispatch<SetStateAction<number | null>>;
+  setLastCacheHitPercent: Dispatch<SetStateAction<number | null>>;
   setContextWindowTokens: Dispatch<SetStateAction<number>>;
   setSelectedWorkspace: Dispatch<SetStateAction<string>>;
   setLockedThreadTaskType: Dispatch<SetStateAction<DesktopTaskTypeResolved | null>>;
@@ -84,6 +86,7 @@ export function useSessionNavigation({
   setPanelPreview,
   setThreadDetailForContext,
   setLastTurnOutputTokens,
+  setLastCacheHitPercent,
   setContextWindowTokens,
   setSelectedWorkspace,
   setLockedThreadTaskType,
@@ -182,6 +185,7 @@ export function useSessionNavigation({
           setLastTurnOutputTokens(
             lastOut != null && Number.isFinite(lastOut) && lastOut > 0 ? lastOut : null,
           );
+          setLastCacheHitPercent(usageRecordCacheHitPercent(lastTurn?.usage ?? null));
           setContextWindowTokens(
             contextWindowTokensForModel(threadDetail.thread.model ?? selectedModel),
           );
@@ -232,6 +236,7 @@ export function useSessionNavigation({
       setPanelPreview,
       setThreadDetailForContext,
       setLastTurnOutputTokens,
+      setLastCacheHitPercent,
       setContextWindowTokens,
       setSelectedWorkspace,
       refreshThreadContext,
@@ -255,6 +260,7 @@ export function useSessionNavigation({
     setActiveSessionId(null);
     setThreadDetailForContext(null);
     setLastTurnOutputTokens(null);
+    setLastCacheHitPercent(null);
     setContextWindowTokens(contextWindowTokensForModel(selectedModel));
     clearStoredActiveSessionId();
     threadTurnRef.current = { threadId: '', turnId: '' };
@@ -269,6 +275,7 @@ export function useSessionNavigation({
     setActiveSessionId,
     setContextWindowTokens,
     setLastTurnOutputTokens,
+    setLastCacheHitPercent,
     setLockedThreadTaskType,
     setMessages,
     setPanelPreview,

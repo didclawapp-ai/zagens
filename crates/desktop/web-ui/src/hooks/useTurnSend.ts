@@ -53,6 +53,7 @@ import type { ApprovalState } from './useTurnApproval';
 import type { StreamSessionControl } from './useTurnStream';
 import type { ScratchpadStatus } from '../api/client';
 import { saveStoredActiveSessionId } from '../lib/windowBridge';
+import { turnCacheHitPercent } from '../lib/cacheUsage';
 
 export type TurnChatMessage = {
   id: string;
@@ -97,6 +98,7 @@ export type UseTurnSendParams = {
   setActiveSessionId: Dispatch<SetStateAction<string | null>>;
   setRuntimeSessionEstablished: Dispatch<SetStateAction<boolean>>;
   setLastTurnOutputTokens: Dispatch<SetStateAction<number | null>>;
+  setLastCacheHitPercent: Dispatch<SetStateAction<number | null>>;
   activeSessionIdRef: MutableRefObject<string | null>;
   sessionUiCacheRef: MutableRefObject<Map<string, CachedUiMessage[]>>;
   refreshSessions: () => Promise<void>;
@@ -142,6 +144,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
     setActiveSessionId,
     setRuntimeSessionEstablished,
     setLastTurnOutputTokens,
+    setLastCacheHitPercent,
     activeSessionIdRef,
     sessionUiCacheRef,
     refreshSessions,
@@ -463,6 +466,10 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
               if (norm.usage?.output_tokens != null && norm.usage.output_tokens > 0) {
                 setLastTurnOutputTokens(norm.usage.output_tokens);
               }
+              if (norm.usage) {
+                const pct = turnCacheHitPercent(norm.usage);
+                setLastCacheHitPercent(pct);
+              }
               break;
             case 'done':
               finishOnce();
@@ -651,6 +658,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
       setActiveSessionId,
       setRuntimeSessionEstablished,
       setLastTurnOutputTokens,
+      setLastCacheHitPercent,
       activeSessionIdRef,
       sessionUiCacheRef,
       refreshSessions,

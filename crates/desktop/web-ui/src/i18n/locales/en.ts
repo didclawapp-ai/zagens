@@ -123,6 +123,8 @@ const en: TranslationMap = {
     lastApiInputTokensTitle: 'Last API request input tokens (from provider): {{count}}',
     lastTurnTokens: '↓ {{count}}',
     lastTurnTokensTitle: 'Output tokens from the last completed turn',
+    lastCacheHit: 'cache {{pct}}',
+    lastCacheHitTitle: 'Last turn prompt prefix cache hit rate (hit / input)',
     stop: 'Stop',
     stopAria: 'Stop generation (Escape)',
     sendAria: 'Send message',
@@ -649,6 +651,13 @@ const en: TranslationMap = {
     estimatedCostUsd: 'Estimated cost (USD)',
     turnCount: 'Turns',
     cacheHitTokens: 'Cache hit tokens',
+    cacheHitRate: 'Cache hit rate',
+    cacheMissTokens: 'Cache miss tokens',
+    cacheSavingsUsd: 'Cache savings (USD)',
+    cacheTelemetryIncomplete:
+      'Some models/providers do not report cache telemetry; cost assumes all miss (actual bill may be lower).',
+    cacheHitRateHint:
+      'Session rate = cached input / total input; may read low when turns have many tool rounds.',
     groupByLabel: 'Group by:',
     groupDay: 'By day',
     groupModel: 'By model',

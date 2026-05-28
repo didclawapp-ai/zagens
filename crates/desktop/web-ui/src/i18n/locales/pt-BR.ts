@@ -123,6 +123,8 @@ const ptBr: TranslationMap = {
     lastApiInputTokensTitle: 'Tokens de entrada da última requisição à API (do provedor): {{count}}',
     lastTurnTokens: '↓ {{count}}',
     lastTurnTokensTitle: 'Tokens de saída do último turno concluído',
+    lastCacheHit: 'cache {{pct}}',
+    lastCacheHitTitle: 'Last turn prompt prefix cache hit rate (hit / input)',
     stop: 'Parar',
     stopAria: 'Parar geração (Escape)',
     sendAria: 'Enviar mensagem',
@@ -649,6 +651,13 @@ const ptBr: TranslationMap = {
     estimatedCostUsd: 'Custo estimado (USD)',
     turnCount: 'Turnos',
     cacheHitTokens: 'Tokens de cache hit',
+    cacheHitRate: 'Cache hit rate',
+    cacheMissTokens: 'Cache miss tokens',
+    cacheSavingsUsd: 'Cache savings (USD)',
+    cacheTelemetryIncomplete:
+      'Some models/providers do not report cache telemetry; cost assumes all miss (actual bill may be lower).',
+    cacheHitRateHint:
+      'Session rate = cached input / total input; may read low when turns have many tool rounds.',
     groupByLabel: 'Agrupar por:',
     groupDay: 'Por dia',
     groupModel: 'Por modelo',

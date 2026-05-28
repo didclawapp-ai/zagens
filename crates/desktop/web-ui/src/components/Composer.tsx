@@ -28,6 +28,7 @@ import {
 import { runModesForSession } from '../lib/taskTypeSession';
 import { clipboardHtmlToPlainText } from '../lib/sanitizeHtml';
 import { composerAutoApproveToggleEnabled, approvalPolicySettingsKey } from '../lib/approvalPolicy';
+import { cacheHitPercentTextClass } from '../lib/cacheUsage';
 
 const MAX_FILE_BYTES = 128 * 1024; // 128 KB per file
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024; // align with describe_image / vision_transcribe_image
@@ -441,6 +442,8 @@ interface Props {
   lastApiInputTokens?: number | null;
   /** Output tokens from the last completed turn (Claude-style hint). */
   lastTurnOutputTokens?: number | null;
+  /** Prefix cache hit % from the last completed turn (DeepSeek telemetry). */
+  lastCacheHitPercent?: number | null;
   /** Office task session — hides Plan/Yolo and code-only chrome. */
   officeSession?: boolean;
   /** Files panel「添加至对话」— bump `nonce` to append `@path` to the input. */
@@ -480,6 +483,7 @@ export default function Composer({
   compactionThresholdTokens,
   lastApiInputTokens = null,
   lastTurnOutputTokens = null,
+  lastCacheHitPercent = null,
   officeSession = false,
   workspaceMention,
   composerPrefill,
@@ -1218,6 +1222,14 @@ export default function Composer({
                   title={t('composer.lastTurnTokensTitle')}
                 >
                   {t('composer.lastTurnTokens', { count: lastTurnOutputTokens.toLocaleString() })}
+                </span>
+              ) : null}
+              {lastCacheHitPercent != null ? (
+                <span
+                  className={`text-[10px] tabular-nums font-medium ${cacheHitPercentTextClass(lastCacheHitPercent)}`}
+                  title={t('composer.lastCacheHitTitle')}
+                >
+                  {t('composer.lastCacheHit', { pct: lastCacheHitPercent.toFixed(0) })}
                 </span>
               ) : null}
             </div>

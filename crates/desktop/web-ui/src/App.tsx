@@ -99,6 +99,7 @@ export default function App() {
   const suppressAuditAutoSwitchRef = useRef(false);
 
   const [lastTurnOutputTokens, setLastTurnOutputTokens] = useState<number | null>(null);
+  const [lastCacheHitPercent, setLastCacheHitPercent] = useState<number | null>(null);
 
   const {
     sessions,
@@ -144,6 +145,7 @@ export default function App() {
     onCancelSideEffects: () => {
       setApprovalRef.current(null);
       setLastTurnOutputTokensRef.current(null);
+      setLastCacheHitPercent(null);
     },
   });
 
@@ -286,6 +288,7 @@ export default function App() {
     setActiveSessionId,
     setRuntimeSessionEstablished,
     setLastTurnOutputTokens,
+    setLastCacheHitPercent,
     activeSessionIdRef,
     sessionUiCacheRef,
     refreshSessions,
@@ -320,6 +323,7 @@ export default function App() {
     setPanelPreview,
     setThreadDetailForContext,
     setLastTurnOutputTokens,
+    setLastCacheHitPercent,
     setContextWindowTokens,
     setSelectedWorkspace,
     setLockedThreadTaskType,
@@ -362,6 +366,7 @@ export default function App() {
     setPendingComposerStream,
     setThreadDetailForContext,
     setLastTurnOutputTokens,
+    setLastCacheHitPercent,
     setComposerPrefill,
     resetAgentPanel,
     resetTurnPersistState,
@@ -724,6 +729,7 @@ export default function App() {
       contextWindowTokens={contextWindowTokens}
       threadContextSnapshot={threadContextSnapshot}
       lastTurnOutputTokens={lastTurnOutputTokens}
+      lastCacheHitPercent={lastCacheHitPercent}
       composerMention={
         composerMentionRel
           ? {
