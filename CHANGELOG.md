@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Desktop (Zagens)
 
+- **Symbol index panel:** Freshness check covers JS/Python/Go/C++/Vue sources and flags stale indexes below schema v5.
 - **Binary preview:** Cap reads at 10MB without loading entire files into memory (`read_binary_file_at`).
 - **Shell open:** `open_in_shell` canonicalizes paths and rejects shell metacharacters (aligns with `open_with_system_app`).
 - **KV cache observability:** Usage dashboard shows hit rate %, miss tokens, and estimated cache savings (USD); composer footer shows last-turn `cache XX%` with red/yellow thresholds; warns when provider lacks cache telemetry. See [`docs/tech/KV_CACHE_OBSERVABILITY.md`](docs/tech/KV_CACHE_OBSERVABILITY.md).
@@ -32,6 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Runtime
 
+- **Symbol index (V6):** Extend lazy workspace index to JavaScript (`.js`/`.jsx`/`.mjs`/`.cjs`), Python (`.py`), and Go (`.go`); bump `schema_version` to 4; `grep_files(symbol_index: true)` now returns `calls` when present; split parsers into `symbol_index/extract.rs`. See [`docs/symbol-index-v6-improvements.md`](docs/symbol-index-v6-improvements.md).
+- **Symbol index (V7):** Add C/C++, Vue/Svelte SFC parsers; CamelCase fuzzy + caller reverse lookup; parallel build via `std::thread::scope`; sidecar startup warmup; `schema_version` 5. See [`docs/symbol-index-v7-improvements.md`](docs/symbol-index-v7-improvements.md).
 - **Audit follow-ups (2026-05-28 report):** Binary preview reads at most 10MB via streaming I/O; SQLite RFC3339 parse errors surface instead of silent epoch; execpolicy prefix allow rules no longer match chained shell commands; runtime API bearer compare is constant-time.
 - **Sandbox:** When `sandbox_backend` is configured but initialization fails (or the value is invalid), emit a user-visible status warning instead of silently falling back to unsandboxed shell execution.
 - **Cleanup:** Remove unused `crates/execpolicy` (`deepseek-execpolicy` / `ExecPolicyEngine`); runtime uses `runtime-server/src/execpolicy/` + `command_safety.rs` instead.

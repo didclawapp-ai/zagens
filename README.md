@@ -44,7 +44,7 @@
 | **Desktop + sidecar** | Zagens UI talks to a local **runtime sidecar** over HTTP/SSE. Shared `~/.deepseek/config.toml`, sessions, and tools. |
 | **Code vs Office modes** | **Code** and **Office** task types use different tool surfaces and prompts; switching modes starts a **new session** so model KV stays stable ([task-type architecture](docs/task-type-prompt-architecture.md)). |
 | **CRAFT multi-agent** | Sub-agents with role-specific tool sets, structured fix-loop verdicts (PASS / BLOCKER / MAJOR / FAIL), and a **P1 blackboard** for handoffs ([CRAFT notes](docs/craft-v2-improvements.md)). |
-| **Symbol index + bridges** | Lazy per-workspace index (`.deepseek/symbols.json`) for Rust / TS / Go / Python / C++ with call hints and **Tauri command bridges**; desktop Index panel + rebuild API. |
+| **Symbol index + bridges** | Lazy per-workspace index (`.deepseek/symbols.json`) for Rust / TS·JS / Python / Go / C·C++ / Vue·Svelte with call hints, caller lookup, and **Tauri command bridges**; desktop Index panel + rebuild API. |
 | **Office in the loop** | `read_file` extracts Office/PDF text; **`write_office`** builds `.xlsx` (Rust) and `.docx` / `.pptx` / `.pdf` (bundled Python). Workspace preview for common formats. |
 | **Safety-first execution** | Layered exec policy, bash arity dictionary, per-domain network rules, path canonicalization, and **HTTP tool approval** in the desktop UI (default 120s timeout). |
 | **Desktop-native shell** | System tray, turn-complete notifications, session replay, diff panel (diff2html), **embedded PTY** in Code workspaces, sidecar supervisor with health probes and crash backoff. |
@@ -179,7 +179,7 @@ Configured in `~/.deepseek/config.toml` ([config.example.toml](config.example.to
 | **Markdown/Chat** | markdown-it, highlight.js, Mermaid diagrams, diff2html |
 | **Terminal** | xterm.js for interactive PTY and shell output rendering |
 | **Office** | Pure Rust XLSX engine; Python (`python-docx`, `python-pptx`, ReportLab) for DOCX/PPTX/PDF |
-| **Symbol Index** | Regex-based lazy per-workspace index (`.deepseek/symbols.json`); Rust/TS/Go/Python/C++ and Tauri command bridges |
+| **Symbol Index** | Regex-based lazy per-workspace index (`.deepseek/symbols.json`); Rust, TS/JS, Python, Go, C/C++, Vue/Svelte, and Tauri command bridges |
 
 ---
 
@@ -495,7 +495,7 @@ Embedded agent runtime is **third-party MIT code** — [third-party/deepseek-tui
 | **Markdown/聊天** | markdown-it、highlight.js、Mermaid 图表、diff2html |
 | **终端** | xterm.js 用于交互式 PTY 和 Shell 输出渲染 |
 | **Office** | 纯 Rust XLSX 引擎；Python（`python-docx`、`python-pptx`、ReportLab）处理 DOCX/PPTX/PDF |
-| **符号索引** | 按工作区懒加载正则索引（`.deepseek/symbols.json`）；Rust/TS/Go/Python/C++ 与 Tauri 桥接 |
+| **符号索引** | 按工作区懒加载正则索引（`.deepseek/symbols.json`）；Rust / TS·JS / Python / Go / C·C++ / Vue·Svelte 与 Tauri 桥接 |
 
 ---
 

@@ -11,6 +11,12 @@
 
 #![allow(clippy::too_many_lines)]
 
+mod extract;
+
+use extract::{
+    extract_cpp_symbols, extract_go_symbols, extract_py_symbols, extract_sfc_symbols,
+    extract_ts_symbols,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -51,7 +57,16 @@ pub struct FileSymbols {
 
 /// Bump when the index format changes in a way that invalidates
 /// old caches (new file types, new symbol kinds, etc.).
-const CURRENT_SCHEMA_VERSION: u32 = 3;
+const CURRENT_SCHEMA_VERSION: u32 = 5;
+
+/// A symbol that calls the queried name (reverse of `calls`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CallerRef {
+    pub name: String,
+    pub file: String,
+    pub line: usize,
+    pub kind: String,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SymbolIndex {
@@ -118,6 +133,7 @@ pub fn build_index(
 
     let mut files: BTreeMap<String, FileSymbols> = BTreeMap::new();
     let src_entries = walk_source_files(workspace);
+    let mut to_parse: Vec<(PathBuf, u64, &'static str, String)> = Vec::new();
 
     for (path, mtime, lang) in src_entries {
         let rel = match path.strip_prefix(workspace) {
@@ -134,17 +150,11 @@ pub fn build_index(
             }
         }
 
-        let symbols = match lang {
-            "rs" => extract_symbols(&path, visibility, mtime),
-            "ts" => extract_ts_symbols(&path, mtime),
-            _ => None,
-        };
+        to_parse.push((path, mtime, lang, rel_str));
+    }
 
-        if let Some(syms) = symbols {
-            if !syms.is_empty() {
-                files.insert(rel_str, FileSymbols { symbols: syms });
-            }
-        }
+    for (rel_str, syms) in parse_files_parallel(&to_parse, visibility) {
+        files.insert(rel_str, FileSymbols { symbols: syms });
     }
 
     // Second pass: annotate calls for each function-like symbol.
@@ -161,6 +171,71 @@ pub fn build_index(
         files,
         bridge_pairs,
     }
+}
+
+fn parse_file_symbols(
+    path: &Path,
+    lang: &str,
+    visibility: SymbolVisibility,
+    mtime: u64,
+) -> Option<Vec<SymbolEntry>> {
+    match lang {
+        "rs" => extract_symbols(path, visibility, mtime),
+        "ts" => extract_ts_symbols(path, mtime),
+        "py" => extract_py_symbols(path, mtime),
+        "go" => extract_go_symbols(path, mtime),
+        "cpp" => extract_cpp_symbols(path, mtime),
+        "sfc" => extract_sfc_symbols(path, mtime),
+        _ => None,
+    }
+}
+
+fn parse_files_parallel(
+    entries: &[(PathBuf, u64, &'static str, String)],
+    visibility: SymbolVisibility,
+) -> Vec<(String, Vec<SymbolEntry>)> {
+    if entries.is_empty() {
+        return Vec::new();
+    }
+
+    let workers = std::thread::available_parallelism()
+        .map(|n| n.get().min(8))
+        .unwrap_or(4);
+
+    if entries.len() == 1 || workers <= 1 {
+        return entries
+            .iter()
+            .filter_map(|(path, mtime, lang, rel)| {
+                parse_file_symbols(path, lang, visibility, *mtime)
+                    .filter(|syms| !syms.is_empty())
+                    .map(|syms| (rel.clone(), syms))
+            })
+            .collect();
+    }
+
+    std::thread::scope(|scope| {
+        let chunk_size = entries.len().div_ceil(workers);
+        let handles: Vec<_> = entries
+            .chunks(chunk_size)
+            .map(|chunk| {
+                scope.spawn(move || {
+                    chunk
+                        .iter()
+                        .filter_map(|(path, mtime, lang, rel)| {
+                            parse_file_symbols(path, lang, visibility, *mtime)
+                                .filter(|syms| !syms.is_empty())
+                                .map(|syms| (rel.clone(), syms))
+                        })
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect();
+
+        handles
+            .into_iter()
+            .flat_map(|handle| handle.join().unwrap_or_default())
+            .collect()
+    })
 }
 
 /// Second pass: scan each function body for calls to known symbol names
@@ -478,6 +553,11 @@ pub fn index_status(workspace: &Path) -> IndexStatus {
     IndexStatus::Fresh
 }
 
+/// Non-blocking alias for sidecar / CLI startup warmup.
+pub fn warmup_if_needed(workspace: &Path) {
+    ensure_symbol_index(workspace);
+}
+
 /// Build or refresh the symbol index in the background if it's missing or stale.
 /// Non-blocking — spawns a background thread and returns immediately.
 /// Idempotent: only one build runs per workspace at a time.
@@ -596,6 +676,10 @@ pub fn query_symbol_with_mode<'a>(
                         2
                     } else if sym_lower.contains(&name_lower) {
                         3
+                    } else if name_lower.len() >= 3 && subsequence_match(&sym.name, &name_lower) {
+                        4
+                    } else if camel_acronym_match(&sym.name, &name_lower) {
+                        4
                     } else {
                         continue;
                     }
@@ -612,6 +696,33 @@ pub fn query_symbol_with_mode<'a>(
 /// Backward-compatible wrapper: substring match, no kind filter.
 pub fn query_symbol<'a>(index: &'a SymbolIndex, name: &str) -> Vec<(&'a str, usize, &'a str, u8)> {
     query_symbol_with_mode(index, name, MatchMode::Substring, None)
+}
+
+/// Find symbols whose `calls` list references `name` (reverse call graph).
+pub fn query_callers(index: &SymbolIndex, name: &str) -> Vec<CallerRef> {
+    let mut out: Vec<CallerRef> = Vec::new();
+
+    for (file, file_syms) in &index.files {
+        for sym in &file_syms.symbols {
+            let references = sym.calls.iter().any(|c| {
+                c.eq_ignore_ascii_case(name)
+                    || c.rsplit("::")
+                        .next()
+                        .is_some_and(|short| short.eq_ignore_ascii_case(name))
+            });
+            if references {
+                out.push(CallerRef {
+                    name: sym.name.clone(),
+                    file: file.clone(),
+                    line: sym.line,
+                    kind: sym.kind.clone(),
+                });
+            }
+        }
+    }
+
+    out.sort_by(|a, b| a.file.cmp(&b.file).then(a.line.cmp(&b.line)));
+    out
 }
 
 // ── File summary ──────────────────────────────────────────────
@@ -670,7 +781,14 @@ fn walk_source_files_impl(dir: &Path, out: &mut Vec<(PathBuf, u64, &'static str)
         } else {
             let lang = match p.extension().and_then(|e| e.to_str()) {
                 Some("rs") => "rs",
-                Some("ts") | Some("tsx") => "ts",
+                Some("ts") | Some("tsx") | Some("js") | Some("jsx") | Some("mjs") | Some("cjs") => {
+                    "ts"
+                }
+                Some("py") | Some("pyi") => "py",
+                Some("go") => "go",
+                Some("c") | Some("h") | Some("cpp") | Some("cc") | Some("cxx") | Some("hpp")
+                | Some("hxx") | Some("hh") => "cpp",
+                Some("vue") | Some("svelte") => "sfc",
                 _ => continue,
             };
             let mtime = std::fs::metadata(&p)
@@ -794,126 +912,6 @@ fn extract_mod_items(
             }
         }
     }
-}
-
-/// Extract symbols from a TypeScript / TSX file using regex patterns.
-fn extract_ts_symbols(path: &Path, source_mtime: u64) -> Option<Vec<SymbolEntry>> {
-    use std::io::{BufRead, BufReader};
-
-    let file = std::fs::File::open(path).ok()?;
-    let reader = BufReader::new(file);
-    let mut symbols: Vec<SymbolEntry> = Vec::new();
-
-    // Patterns: (regex, kind). Order matters — first match wins per line.
-    let patterns: &[(&str, &str)] = &[
-        // export default function App / export default async function
-        (r"^export\s+default\s+(?:async\s+)?function\s+(\w+)", "fn"),
-        // export async function foo / export function foo
-        (r"^export\s+(?:async\s+)?function\s+(\w+)", "fn"),
-        // async function foo / function foo (non-exported)
-        (r"^(?:async\s+)?function\s+(\w+)", "fn"),
-        // export const foo = async () => / = () => / = (e: Event) =>
-        (r"^export\s+const\s+(\w+)\s*=\s*(?:async\s+)?(?:\(|[A-Za-z_]\w*\s*=>)", "fn"),
-        // export interface Foo / export default interface Foo
-        (r"^export\s+(?:default\s+)?interface\s+(\w+)", "interface"),
-        // interface Foo (non-exported)
-        (r"^interface\s+(\w+)", "interface"),
-        // export type Foo = / export type Foo<
-        (r"^export\s+type\s+(\w+)\s*[=<]", "type"),
-        // export class / export default class / class
-        (r"^(?:export\s+(?:default\s+)?)?class\s+(\w+)", "class"),
-        // export enum / enum (including const enum)
-        (r"^(?:export\s+)?(?:const\s+)?enum\s+(\w+)", "enum"),
-        // class methods (indented): public/private/protected/async methodName(
-        (r"^\s{2,}(?:(?:public|private|protected|static|async|readonly|override)\s+)*(\w+)\s*[<(]", "method"),
-    ];
-
-    let compiled: Vec<(regex::Regex, &str)> = patterns
-        .iter()
-        .filter_map(|(pat, kind)| regex::Regex::new(pat).ok().map(|r| (r, *kind)))
-        .collect();
-
-    // Keywords that regex might accidentally match as function names.
-    const SKIP_NAMES: &[&str] = &[
-        "if", "for", "while", "switch", "catch", "return", "new",
-        "typeof", "instanceof", "in", "of", "from", "import", "export",
-        "constructor", "super", "extends", "implements",
-    ];
-
-    let mut current_class: Option<String> = None;
-    let mut brace_depth: i32 = 0;
-    let mut class_brace_start: i32 = -1;
-
-    for (line_idx, line_result) in reader.lines().enumerate() {
-        let line = match line_result {
-            Ok(l) => l,
-            Err(_) => continue,
-        };
-        let line_num = line_idx + 1; // 1-based
-
-        // Track brace depth to know when class scope ends.
-        for ch in line.chars() {
-            match ch {
-                '{' => brace_depth += 1,
-                '}' => {
-                    brace_depth -= 1;
-                    if current_class.is_some() && brace_depth <= class_brace_start {
-                        current_class = None;
-                        class_brace_start = -1;
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        // Skip pure comment lines.
-        let trimmed = line.trim();
-        if trimmed.starts_with("//")
-            || trimmed.starts_with('*')
-            || trimmed.starts_with("/*")
-        {
-            continue;
-        }
-
-        for (re, kind) in &compiled {
-            if let Some(cap) = re.captures(&line) {
-                if let Some(name_match) = cap.get(1) {
-                    let name = name_match.as_str().to_string();
-
-                    if SKIP_NAMES.contains(&name.as_str()) {
-                        continue;
-                    }
-
-                    let full_name = if *kind == "method" {
-                        match &current_class {
-                            Some(cls) => format!("{}::{}", cls, name),
-                            None => continue, // method outside class context — skip
-                        }
-                    } else {
-                        if *kind == "class" {
-                            current_class = Some(name.clone());
-                            class_brace_start = brace_depth;
-                        }
-                        name
-                    };
-
-                    symbols.push(SymbolEntry {
-                        kind: kind.to_string(),
-                        name: full_name,
-                        line: line_num,
-                        source_mtime,
-                        calls: vec![],
-                    });
-                    break; // first matching pattern wins
-                }
-            }
-        }
-    }
-
-    symbols.sort_by_key(|s| s.line);
-    symbols.dedup_by(|a, b| a.kind == b.kind && a.name == b.name);
-
-    Some(symbols)
 }
 
 fn is_pub(vis: &syn::Visibility) -> bool {
@@ -1114,6 +1112,46 @@ fn is_whole_word_match(sym_original: &str, query_lower: &str) -> bool {
     before && after
 }
 
+/// True when all characters of `needle` appear in order within `haystack` (case-insensitive).
+fn subsequence_match(haystack: &str, needle: &str) -> bool {
+    if needle.len() < 3 {
+        return false;
+    }
+    let h: Vec<char> = haystack.to_lowercase().chars().collect();
+    let n: Vec<char> = needle.to_lowercase().chars().collect();
+    let mut j = 0;
+    for &c in &h {
+        if j < n.len() && c == n[j] {
+            j += 1;
+        }
+    }
+    j == n.len()
+}
+
+/// CamelCase initials: `loadWorkspaceFile` → `lwf`.
+fn camel_initials(s: &str) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    if chars.is_empty() {
+        return String::new();
+    }
+    let mut out = String::new();
+    out.push(chars[0].to_ascii_lowercase());
+    for i in 1..chars.len() {
+        if chars[i].is_uppercase() && !chars[i - 1].is_uppercase() {
+            out.push(chars[i].to_ascii_lowercase());
+        }
+    }
+    out
+}
+
+fn camel_acronym_match(sym: &str, query_lower: &str) -> bool {
+    if query_lower.len() < 2 || query_lower.len() > 16 {
+        return false;
+    }
+    let initials = camel_initials(sym);
+    initials == query_lower || initials.starts_with(query_lower)
+}
+
 // ── Tests ─────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -1160,6 +1198,35 @@ mod tests {
         assert_eq!(hits[0].0, "src/lib.rs");
         assert_eq!(hits[0].1, 42);
         assert_eq!(hits[0].2, "fn");
+    }
+
+    #[test]
+    fn build_index_includes_python_and_go() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(tmp.path().join("worker.py"), "def worker():\n    pass\n").unwrap();
+        std::fs::write(tmp.path().join("main.go"), "package main\n\nfunc main() {}\n").unwrap();
+
+        let idx = build_index(tmp.path(), SymbolVisibility::Public);
+        assert!(idx.files.contains_key("worker.py"));
+        assert!(idx.files.contains_key("main.go"));
+        assert_eq!(idx.schema_version, CURRENT_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn walk_includes_js_and_python_extensions() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::write(tmp.path().join("app.js"), "//").unwrap();
+        std::fs::write(tmp.path().join("mod.py"), "#").unwrap();
+        std::fs::write(tmp.path().join("main.go"), "//").unwrap();
+
+        let files = walk_source_files(tmp.path());
+        let exts: Vec<String> = files
+            .iter()
+            .filter_map(|(p, _, _)| p.extension().map(|e| e.to_string_lossy().into_owned()))
+            .collect();
+        assert!(exts.contains(&"js".into()));
+        assert!(exts.contains(&"py".into()));
+        assert!(exts.contains(&"go".into()));
     }
 
     #[test]
@@ -1276,6 +1343,25 @@ mod tests {
     }
 
     #[test]
+    fn substring_fuzzy_matches_camel_acronym() {
+        let mut idx = empty_index();
+        add_sym(&mut idx, "loadWorkspaceFileIntoPreview", "fn", 10);
+        let hits = query_symbol_with_mode(&idx, "lwfip", MatchMode::Substring, None);
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].3, 4);
+    }
+
+    #[test]
+    fn query_callers_finds_referencing_symbols() {
+        let mut idx = empty_index();
+        add_sym_with_calls(&mut idx, "caller", "fn", 10, &["target"]);
+        add_sym(&mut idx, "target", "fn", 20);
+        let callers = query_callers(&idx, "target");
+        assert_eq!(callers.len(), 1);
+        assert_eq!(callers[0].name, "caller");
+    }
+
+    #[test]
     fn index_status_missing() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let status = index_status(tmp.path());
@@ -1289,6 +1375,28 @@ mod tests {
             files: BTreeMap::new(),
             bridge_pairs: vec![],
         }
+    }
+
+    fn add_sym_with_calls(
+        idx: &mut SymbolIndex,
+        name: &str,
+        kind: &str,
+        line: usize,
+        calls: &[&str],
+    ) {
+        idx.files
+            .entry("src/lib.rs".into())
+            .or_insert_with(|| FileSymbols {
+                symbols: Vec::new(),
+            })
+            .symbols
+            .push(SymbolEntry {
+                kind: kind.into(),
+                name: name.into(),
+                line,
+                source_mtime: 0,
+                calls: calls.iter().map(|c| (*c).to_string()).collect(),
+            });
     }
 
     fn add_sym(idx: &mut SymbolIndex, name: &str, kind: &str, line: usize) {

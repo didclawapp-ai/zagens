@@ -1441,8 +1441,11 @@ pub fn get_symbol_index_info(workspace: String) -> Result<SymbolIndexInfo, Strin
         })
         .unwrap_or(0);
 
-    // Check freshness: compare index mtime against source files.
-    let status = {
+    // Check freshness: schema bump or source files newer than the index file.
+    const CURRENT_SYMBOL_SCHEMA: u32 = 5;
+    let status = if schema_version < CURRENT_SYMBOL_SCHEMA {
+        "stale"
+    } else {
         let idx_mtime = meta
             .modified()
             .ok()
@@ -1450,29 +1453,38 @@ pub fn get_symbol_index_info(workspace: String) -> Result<SymbolIndexInfo, Strin
             .map(|d| d.as_secs())
             .unwrap_or(0);
         let mut stale = false;
-        for dir_name in &["crates", "src"] {
-            let d = ws.join(dir_name);
-            if !d.is_dir() { continue; }
-            let walker = WalkBuilder::new(&d).max_depth(Some(4)).build();
-            for entry in walker.filter_map(|e| e.ok()) {
-                if entry.file_type().is_some_and(|ft| ft.is_file()) {
-                    let ext = entry.path().extension().and_then(|e| e.to_str()).unwrap_or("");
-                    if matches!(ext, "rs" | "ts" | "tsx") {
-                        if let Ok(mt) = entry.metadata() {
-                            if let Some(secs) = mt.modified()
-                                .ok()
-                                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                            {
-                                if secs.as_secs() > idx_mtime {
-                                    stale = true;
-                                    break;
-                                }
-                            }
-                        }
+        let walker = WalkBuilder::new(&ws)
+            .standard_filters(true)
+            .hidden(false)
+            .build();
+        for entry in walker.filter_map(|e| e.ok()) {
+            if !entry.file_type().is_some_and(|ft| ft.is_file()) {
+                continue;
+            }
+            let ext = entry
+                .path()
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("");
+            if !matches!(
+                ext,
+                "rs" | "ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs" | "py" | "pyi" | "go"
+                    | "c" | "h" | "cpp" | "cc" | "cxx" | "hpp" | "hxx" | "hh" | "vue" | "svelte"
+            ) {
+                continue;
+            }
+            if let Ok(mt) = entry.metadata() {
+                if let Some(secs) = mt
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                {
+                    if secs.as_secs() > idx_mtime {
+                        stale = true;
+                        break;
                     }
                 }
             }
-            if stale { break; }
         }
         if stale { "stale" } else { "fresh" }
     };

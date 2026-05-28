@@ -112,6 +112,7 @@ pub async fn run(cli: RuntimeServeCli) -> Result<()> {
 
     let config = load_config(&cli)?;
     let workspace = resolve_workspace(&cli);
+    crate::symbol_index::warmup_if_needed(&workspace);
     let skills_dir = config.skills_dir();
     tokio::spawn(async move {
         if let Err(e) = crate::skills::install_system_skills(&skills_dir) {

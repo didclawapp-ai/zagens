@@ -431,6 +431,48 @@ impl ToolSpec for GrepFilesTool {
                             serde_json::Value::Array(matched_pairs),
                         );
                     }
+
+                    // Reverse call graph: who calls the queried symbol?
+                    for term in &terms {
+                        let callers: Vec<serde_json::Value> = crate::symbol_index::query_callers(&idx, term)
+                            .into_iter()
+                            .map(|c| json!({
+                                "name": c.name,
+                                "file": c.file,
+                                "line": c.line,
+                                "kind": c.kind,
+                            }))
+                            .collect();
+                        if !callers.is_empty() {
+                            extra.insert(
+                                "symbol_index_callers".into(),
+                                serde_json::Value::Array(callers),
+                            );
+                            break;
+                        }
+                    }
+
+                    // C/C++ hits may drift due to macros/templates.
+                    let has_cpp = symbol_hits.iter().any(|h| {
+                        h.get("file")
+                            .and_then(|f| f.as_str())
+                            .is_some_and(|f| {
+                                f.ends_with(".c")
+                                    || f.ends_with(".h")
+                                    || f.ends_with(".cpp")
+                                    || f.ends_with(".cc")
+                                    || f.ends_with(".cxx")
+                                    || f.ends_with(".hpp")
+                                    || f.ends_with(".hxx")
+                                    || f.ends_with(".hh")
+                            })
+                    });
+                    if has_cpp {
+                        extra.insert(
+                            "symbol_index_cpp_note".into(),
+                            json!("C/C++ line numbers are regex-based and may drift for macro-expanded or templated code. Prefer read_file with a wider range when lines look off."),
+                        );
+                    }
                 }
             }
         }
@@ -797,9 +839,28 @@ fn lookup_symbol_hits(workspace: &Path, pattern: &str, kind_filter: Option<&str>
                     let match_score = match prio {
                         0 => 1.0,
                         1 => 0.8,
+                        4 => 0.4,
                         _ => 0.5,
                     };
-                    json!({"symbol": term, "file": file, "line": line, "kind": kind, "match_score": match_score})
+                    let calls = index
+                        .files
+                        .get(file)
+                        .and_then(|fs| fs.symbols.iter().find(|s| s.line == line && s.kind == kind))
+                        .map(|s| s.calls.clone())
+                        .filter(|c| !c.is_empty());
+                    let mut hit = json!({
+                        "symbol": term,
+                        "file": file,
+                        "line": line,
+                        "kind": kind,
+                        "match_score": match_score,
+                    });
+                    if let Some(c) = calls {
+                        hit.as_object_mut()
+                            .expect("hit object")
+                            .insert("calls".into(), json!(c));
+                    }
+                    hit
                 })
                 .collect();
         }
