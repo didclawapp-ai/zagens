@@ -11,7 +11,7 @@ use deepseek_core::events::Event;
 use crate::tools::spec::ToolContext;
 
 use deepseek_core::subagent::{
-    SubAgentAssignment, SubAgentResult, SubAgentStatus,
+    StructuredFindings, StructuredVerdict, SubAgentAssignment, SubAgentResult, SubAgentStatus,
     SubAgentType,
 };
 use super::mailbox::Mailbox;
@@ -263,6 +263,8 @@ pub struct SubAgent {
     pub nickname: Option<String>,
     pub status: SubAgentStatus,
     pub result: Option<String>,
+    pub structured_verdict: Option<StructuredVerdict>,
+    pub structured_findings: Option<StructuredFindings>,
     pub steps_taken: u32,
     pub started_at: Instant,
     /// `None` = full registry inheritance (v0.6.6 default).
@@ -300,6 +302,8 @@ impl SubAgent {
             nickname,
             status: SubAgentStatus::Running,
             result: None,
+            structured_verdict: None,
+            structured_findings: None,
             steps_taken: 0,
             started_at: Instant::now(),
             allowed_tools,
@@ -327,7 +331,8 @@ impl SubAgent {
             // this in when it produces a snapshot via its own
             // `snapshot_for_listing` helper (#405).
             from_prior_session: false,
-            structured_verdict: None,
+            structured_verdict: self.structured_verdict.clone(),
+            structured_findings: self.structured_findings.clone(),
         }
     }
 }

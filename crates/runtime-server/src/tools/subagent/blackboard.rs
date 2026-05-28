@@ -332,8 +332,25 @@ fn format_implementer_changes(board: &Value) -> Option<String> {
 // ── Data extractors (write side) ───────────────────────────────
 
 fn build_explorer_findings(result: &SubAgentResult) -> Value {
-    // P1: Explorer may not yet have structured_verdict (P0 only did
-    // Reviewer + Verifier). Gracefully return empty when it's None.
+    if let Some(f) = &result.structured_findings {
+        let items: Vec<Value> = f
+            .items
+            .iter()
+            .map(|item| {
+                json!({
+                    "file": item.file,
+                    "line": item.line,
+                    "line_end": item.line_end,
+                    "concern": item.claim,
+                    "severity": item.severity,
+                    "evidence": item.evidence,
+                    "kind": item.kind,
+                })
+            })
+            .collect();
+        return json!(items);
+    }
+    // Fallback: CRAFT structured_verdict (legacy explore output)
     match &result.structured_verdict {
         Some(v) => {
             let items: Vec<Value> = v.items.iter().map(|item| {
@@ -617,6 +634,7 @@ mod tests {
             duration_ms: 1000,
             from_prior_session: false,
             structured_verdict: Some(verdict),
+            structured_findings: None,
         };
 
         // Write to blackboard
@@ -667,6 +685,7 @@ mod tests {
                 }],
                 summary: Some("one risk".into()),
             }),
+            structured_findings: None,
         };
         write_blackboard_partition(&ws, task_id, &SAT::Explore, &explorer_result);
 
@@ -694,6 +713,7 @@ mod tests {
                 }],
                 summary: Some("one blocker".into()),
             }),
+            structured_findings: None,
         };
         write_blackboard_partition(&ws, task_id, &SAT::Review, &reviewer_result);
 
@@ -738,6 +758,7 @@ mod tests {
                 }],
                 summary: Some("one failure".into()),
             }),
+            structured_findings: None,
         };
         write_blackboard_partition(&ws, task_id, &SAT::Verifier, &verifier_result);
 

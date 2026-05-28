@@ -145,6 +145,7 @@ mod tests {
                 }],
                 summary: Some("one issue".into()),
             }),
+            structured_findings: None,
         }
     }
 

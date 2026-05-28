@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 use crate::scratchpad::AreaStatus;
 use crate::scratchpad::{
     ScratchpadStore, default_init_areas, display_run_path, parse_init_areas, resolve_run_id,
-    resolve_run_id_for_init,
+    resolve_run_id_for_init, verify_note, workspace_audit_inventory,
 };
 
 fn persist_scratchpad_run(ctx: &ToolContext, run_id: &str) {
@@ -71,6 +71,11 @@ impl ToolSpec for ScratchpadInitTool {
                         "required": ["id", "path"],
                         "additionalProperties": false
                     }
+                },
+                "template": {
+                    "type": "string",
+                    "enum": ["workspace_audit"],
+                    "description": "When set to workspace_audit, auto-build inventory from workspace Cargo.toml members (includes runtime-server, desktop web-ui areas). Ignores default single-row inventory."
                 }
             },
             "additionalProperties": false
@@ -92,9 +97,13 @@ impl ToolSpec for ScratchpadInitTool {
     ) -> Result<ToolResult, ToolError> {
         let run_id = resolve_run_id_for_init(context, optional_str(&input, "run_id"))?;
         let scope = optional_str(&input, "scope");
-        let areas = match input.get("areas").and_then(|v| v.as_array()) {
-            Some(raw) => parse_init_areas(raw)?,
-            None => default_init_areas(),
+        let areas = if optional_str(&input, "template") == Some("workspace_audit") {
+            workspace_audit_inventory(&context.workspace)?
+        } else {
+            match input.get("areas").and_then(|v| v.as_array()) {
+                Some(raw) => parse_init_areas(raw)?,
+                None => default_init_areas(),
+            }
         };
         let store = ScratchpadStore::init(context, &run_id, areas, scope)?;
         persist_scratchpad_run(context, &run_id);
@@ -381,6 +390,64 @@ impl ToolSpec for ScratchpadSetAreaTool {
                 "area_id": area_id,
                 "status": status.as_str(),
                 "areas_done": areas_done,
+            }))
+            .unwrap_or_default(),
+        ))
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct ScratchpadVerifyNoteTool;
+
+#[async_trait]
+impl ToolSpec for ScratchpadVerifyNoteTool {
+    fn name(&self) -> &'static str {
+        "scratchpad_verify_note"
+    }
+
+    fn description(&self) -> &'static str {
+        "Promote an open scratchpad note to status=verified (append-only supersede). \
+         Call only after read_file/grep_files confirms the claim. Required before scratchpad_set_area(done) when open HIGH/BLOCKER findings exist."
+    }
+
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "run_id": run_id_property(),
+                "note_id": {
+                    "type": "string",
+                    "description": "notes.jsonl id (e.g. note-012)"
+                }
+            },
+            "required": ["note_id"],
+            "additionalProperties": false
+        })
+    }
+
+    fn capabilities(&self) -> Vec<ToolCapability> {
+        vec![ToolCapability::WritesFiles]
+    }
+
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Auto
+    }
+
+    async fn execute(
+        &self,
+        input: Value,
+        context: &ToolContext,
+    ) -> Result<ToolResult, ToolError> {
+        let run_id = resolve_run_id(context, optional_str(&input, "run_id"))?;
+        let note_id = required_str(&input, "note_id")?;
+        let store = ScratchpadStore::open(context, &run_id)?;
+        let note = verify_note(&store, note_id)?;
+        persist_scratchpad_run(context, &run_id);
+        Ok(ToolResult::success(
+            serde_json::to_string_pretty(&json!({
+                "verified_id": note.id,
+                "supersedes": note_id,
+                "status": note.status,
             }))
             .unwrap_or_default(),
         ))

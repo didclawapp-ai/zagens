@@ -48,7 +48,11 @@ pub fn is_readonly_tool(name: &str) -> bool {
 pub fn is_scratchpad_write_tool(name: &str) -> bool {
     matches!(
         name,
-        "scratchpad_init" | "scratchpad_append" | "scratchpad_set_area"
+        "scratchpad_init"
+            | "scratchpad_append"
+            | "scratchpad_set_area"
+            | "scratchpad_verify_note"
+            | "scratchpad_import_agent"
     )
 }
 

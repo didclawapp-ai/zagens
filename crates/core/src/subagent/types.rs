@@ -68,6 +68,38 @@ pub struct StructuredVerdict {
     pub summary: Option<String>,
 }
 
+/// One machine-readable audit finding from an Explore/Review sub-agent.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AuditFindingItem {
+    #[serde(default = "default_finding_kind")]
+    pub kind: String,
+    pub severity: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line_end: Option<u32>,
+    pub claim: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<String>,
+}
+
+fn default_finding_kind() -> String {
+    "finding".to_string()
+}
+
+/// Structured audit output (`<!-- audit-findings -->`) for scratchpad import.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StructuredFindings {
+    pub area_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub area_path: Option<String>,
+    pub items: Vec<AuditFindingItem>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+}
+
 /// Snapshot of sub-agent state for tool results and `Event::AgentList`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubAgentResult {
@@ -86,6 +118,8 @@ pub struct SubAgentResult {
     pub from_prior_session: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub structured_verdict: Option<StructuredVerdict>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub structured_findings: Option<StructuredFindings>,
 }
 
 fn is_false(b: &bool) -> bool {

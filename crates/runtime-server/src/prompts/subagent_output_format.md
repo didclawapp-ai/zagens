@@ -42,6 +42,26 @@ Produce the structured report and stop. Do not propose follow-up tasks, do not
 ask the parent what to do next, do not start a new line of investigation. The
 parent will decide whether to spawn additional work based on your report.
 
+## Audit findings block (Explore / Review — code & security review)
+
+When the assignment references scratchpad inventory, `area_id`, or a security/code
+audit, append this block **after** the SUMMARY/EVIDENCE sections (in addition
+to any `<!-- craft-verdict -->` fence):
+
+```
+<!-- audit-findings -->
+{
+  "area_id": "area-example",
+  "area_path": "crates/example/src",
+  "items": [ … ],
+  "summary": "one line"
+}
+```
+
+Each item: `kind`, `severity`, `file`, `line`, `line_end`, `claim`, `evidence`.
+HIGH/BLOCKER require `file` + `line`. Security claims must cite `grep_files`
+callers in `evidence`.
+
 The single exception: if the assigned task is impossible to make progress on
 without a clarification only the parent can provide, fill BLOCKERS with the
 specific question and stop.

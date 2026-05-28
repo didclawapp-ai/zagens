@@ -165,6 +165,8 @@ impl SubAgentManager {
                 nickname: persisted.nickname,
                 status,
                 result: persisted.result,
+                structured_verdict: None,
+                structured_findings: None,
                 steps_taken: persisted.steps_taken,
                 started_at,
                 allowed_tools,
@@ -635,6 +637,8 @@ impl SubAgentManager {
             agent.status = result.status;
             agent.assignment = result.assignment;
             agent.result = result.result;
+            agent.structured_verdict = result.structured_verdict;
+            agent.structured_findings = result.structured_findings;
             agent.steps_taken = result.steps_taken;
             agent.task_handle = None;
             changed = true;

@@ -587,13 +587,14 @@ impl ToolRegistryBuilder {
     pub fn with_scratchpad_tools(self) -> Self {
         use super::scratchpad::{
             ScratchpadAppendTool, ScratchpadInitTool, ScratchpadListNotesTool,
-            ScratchpadSetAreaTool, ScratchpadStatusTool,
+            ScratchpadSetAreaTool, ScratchpadStatusTool, ScratchpadVerifyNoteTool,
         };
         self.with_tool(Arc::new(ScratchpadInitTool))
             .with_tool(Arc::new(ScratchpadStatusTool))
             .with_tool(Arc::new(ScratchpadAppendTool))
             .with_tool(Arc::new(ScratchpadListNotesTool))
             .with_tool(Arc::new(ScratchpadSetAreaTool))
+            .with_tool(Arc::new(ScratchpadVerifyNoteTool))
     }
 
     /// Include cargo test runner tool.
@@ -872,6 +873,7 @@ impl ToolRegistryBuilder {
             AgentResumeTool, AgentSendInputTool, AgentSpawnTool, AgentWaitTool,
             DelegateToAgentTool,
         };
+        use super::scratchpad_agent::ScratchpadImportAgentTool;
 
         self.with_tool(Arc::new(AgentSpawnTool::new(
             manager.clone(),
@@ -911,6 +913,7 @@ impl ToolRegistryBuilder {
         )))
         .with_tool(Arc::new(AgentCloseTool::new(manager.clone())))
         .with_tool(Arc::new(AgentCancelTool::new(manager.clone())))
+        .with_tool(Arc::new(ScratchpadImportAgentTool::new(manager.clone())))
         .with_tool(Arc::new(AgentListTool::new(manager)))
     }
 

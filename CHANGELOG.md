@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Runtime
+
+- **Audit / sub-agents:** Structured `<!-- audit-findings -->` output on Explore/Review sub-agents (`StructuredFindings` on `SubAgentResult`); new tools `scratchpad_import_agent` (machine import as `open`) and `scratchpad_verify_note` (parent verification gate); `scratchpad_set_area(done)` rejects open HIGH/BLOCKER; new findings default to `status=open`; `scratchpad_init({ template: "workspace_audit" })` auto-builds inventory from workspace `Cargo.toml` members (includes `runtime-server` + desktop web-ui areas). Updated bundled `audit-repo` skill.
+
 ### Desktop
 
 - **Fix:** 工作台「恢复」面板 — 修复 side-git 快照仓库并发 `git init` / 残留 `config.lock` 导致 `HTTP 400`；Web UI 解析 runtime JSON 错误体，不再整段显示原始 HTTP 响应。

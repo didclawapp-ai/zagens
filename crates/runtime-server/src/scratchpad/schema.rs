@@ -132,7 +132,7 @@ pub fn parse_note_line(raw: &Value, line_no: usize) -> NoteLine {
     }
     if note.status.is_empty() {
         note.status = match note.kind.as_str() {
-            "finding" => "verified".to_string(),
+            "finding" => "open".to_string(),
             "todo" => "open".to_string(),
             _ => "open".to_string(),
         };
@@ -193,7 +193,7 @@ mod tests {
     }
 
     #[test]
-    fn finding_defaults_verified_status() {
+    fn finding_defaults_open_status() {
         let raw = json!({
             "id": "note-1",
             "kind": "finding",
@@ -201,6 +201,6 @@ mod tests {
             "severity": "LOW"
         });
         let note = parse_note_line(&raw, 1);
-        assert_eq!(note.status, "verified");
+        assert_eq!(note.status, "open");
     }
 }

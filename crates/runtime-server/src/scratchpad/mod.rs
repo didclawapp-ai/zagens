@@ -8,8 +8,12 @@ mod schema;
 mod summary;
 pub mod ui_status;
 mod init;
+pub mod import;
+pub mod inventory_template;
 
 pub use init::{default_init_areas, parse_init_areas, resolve_run_id_for_init};
+pub use import::{import_agent_findings, open_high_finding_ids, verify_note};
+pub use inventory_template::workspace_audit_inventory;
 
 pub use schema::{
     AreaStatus, Inventory, NoteLine, is_high_severity, is_open_finding,
@@ -304,7 +308,7 @@ impl ScratchpadStore {
 
         if kind == "finding" && line.get("status").is_none() {
             if let Some(obj) = line.as_object_mut() {
-                obj.insert("status".into(), json!("verified"));
+                obj.insert("status".into(), json!("open"));
             }
         }
 
@@ -362,6 +366,16 @@ impl ScratchpadStore {
         require_min_notes: usize,
         config: &ScratchpadConfig,
     ) -> Result<Inventory, ToolError> {
+        if status == AreaStatus::Done {
+            let open_high = open_high_finding_ids(self, area_id)?;
+            if !open_high.is_empty() {
+                return Err(ToolError::invalid_input(format!(
+                    "area '{area_id}' has open HIGH/BLOCKER findings {open_high:?}; \
+                     call scratchpad_verify_note for each after read_file/grep_files, then scratchpad_set_area(done)"
+                )));
+            }
+        }
+
         if matches!(status, AreaStatus::Done | AreaStatus::Deferred) && require_min_notes > 0 {
             let count = self.count_notes_for_area(area_id)?;
             if count < require_min_notes {
@@ -656,7 +670,8 @@ mod tests {
             .expect("append");
         let status = store.build_status().expect("status");
         assert_eq!(status["notes_total"], 1);
-        assert_eq!(status["findings_verified"], 1);
+        assert_eq!(status["findings_open"], 1);
+        assert_eq!(status["findings_verified"], 0);
         let areas = status["areas"].as_array().expect("areas array");
         assert_eq!(areas.len(), 1);
         assert_eq!(areas[0]["id"], "area-a");

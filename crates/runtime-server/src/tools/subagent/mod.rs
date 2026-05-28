@@ -32,6 +32,7 @@ pub use deepseek_core::subagent::VerdictItem;
 pub use mailbox::{Mailbox, MailboxEnvelope, MailboxReceiver};
 
 pub use factory::{SharedSubAgentManager, new_shared_subagent_manager};
+pub(crate) use executor::wait_for_result;
 #[cfg(test)]
 #[allow(deprecated)]
 pub(crate) use prompts::{subagent_allowed_tools, subagent_system_prompt};
@@ -56,7 +57,7 @@ pub(crate) use constants::{
 pub(crate) use deprecation::wrap_with_deprecation_notice;
 #[cfg(test)]
 pub(crate) use executor::{
-    emit_parent_completion, subagent_done_sentinel, subagent_failed_sentinel, wait_for_result,
+    emit_parent_completion, subagent_done_sentinel, subagent_failed_sentinel,
 };
 #[cfg(test)]
 pub(crate) use factory::default_state_path;

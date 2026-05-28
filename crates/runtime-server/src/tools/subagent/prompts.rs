@@ -2,8 +2,8 @@
 
 
 use deepseek_core::subagent::{
-    StructuredVerdict, SubAgentAssignment,
-    SubAgentType,
+    StructuredFindings, StructuredVerdict, SubAgentAssignment, SubAgentType, VerdictItem,
+    VerdictLevel,
 };
 
 use super::prompt_text::*;
@@ -155,6 +155,11 @@ pub(crate) fn build_subagent_system_prompt(
 }
 // === Structured Verdict (CRAFT P0) ===
 
+/// Parse a `<!-- audit-findings -->` JSON fence from Explore/Review final output.
+pub(crate) fn parse_structured_findings(text: &str) -> Option<StructuredFindings> {
+    parse_json_fence_after_marker(text, "<!-- audit-findings -->")
+}
+
 /// Parse a `<!-- craft-verdict -->` JSON fence from the agent's final text output.
 ///
 /// Strategy: search for the marker, extract the first `{…}` JSON block
@@ -162,19 +167,23 @@ pub(crate) fn build_subagent_system_prompt(
 /// or the JSON is unparseable — the caller falls back to natural-language
 /// processing (graceful degradation).
 pub(crate) fn parse_structured_verdict(text: &str) -> Option<StructuredVerdict> {
-    let marker = "<!-- craft-verdict -->";
+    parse_json_fence_after_marker(text, "<!-- craft-verdict -->")
+}
+
+fn parse_json_fence_after_marker<T: serde::de::DeserializeOwned>(
+    text: &str,
+    marker: &str,
+) -> Option<T> {
     let Some(after_marker) = text.find(marker).map(|idx| &text[idx + marker.len()..]) else {
         tracing::debug!(
-            "parse_structured_verdict: no fence marker found, falling back to natural-language"
+            "parse_json_fence_after_marker: no marker '{marker}' found"
         );
         return None;
     };
 
-    // Find the first '{' and matching '}'
     let brace_start = after_marker.find('{')?;
     let slice = &after_marker[brace_start..];
 
-    // Naive brace matching: find the final '}' that balances
     let mut depth = 0i32;
     let mut end = None;
     for (i, ch) in slice.char_indices() {
@@ -192,19 +201,69 @@ pub(crate) fn parse_structured_verdict(text: &str) -> Option<StructuredVerdict> 
     }
 
     let json_str = end.map(|e| &slice[..e])?;
-    match serde_json::from_str::<StructuredVerdict>(json_str) {
-        Ok(v) => {
-            tracing::info!(
-                "parse_structured_verdict: success (verdict={}, items={})",
-                super::craft::verdict_level_str(&v.verdict),
-                v.items.len(),
-            );
-            Some(v)
-        }
+    match serde_json::from_str::<T>(json_str) {
+        Ok(v) => Some(v),
         Err(e) => {
-            tracing::warn!("parse_structured_verdict: JSON parse failed: {e}");
+            tracing::warn!("parse_json_fence_after_marker({marker}): JSON parse failed: {e}");
             None
         }
+    }
+}
+
+/// Map audit findings to CRAFT verdict for blackboard compatibility.
+pub(crate) fn findings_to_verdict(findings: &StructuredFindings) -> StructuredVerdict {
+    let verdict = if findings.items.is_empty() {
+        VerdictLevel::Pass
+    } else if findings.items.iter().any(|i| {
+        matches!(
+            i.severity.to_ascii_uppercase().as_str(),
+            "HIGH" | "BLOCKER"
+        )
+    }) {
+        VerdictLevel::Blocker
+    } else {
+        VerdictLevel::Major
+    };
+    let items: Vec<VerdictItem> = findings
+        .items
+        .iter()
+        .map(|i| VerdictItem {
+            severity: i.severity.to_ascii_uppercase(),
+            file: i.file.clone().unwrap_or_default(),
+            line: i.line,
+            description: i.claim.clone(),
+            rule: None,
+            suggestion: i.evidence.clone(),
+        })
+        .collect();
+    StructuredVerdict {
+        verdict,
+        items,
+        summary: findings.summary.clone(),
+    }
+}
+
+#[cfg(test)]
+mod parse_tests {
+    use super::*;
+
+    #[test]
+    fn parse_structured_findings_reads_fence() {
+        let text = r#"done
+<!-- audit-findings -->
+{
+  "area_id": "area-core",
+  "items": [{
+    "severity": "HIGH",
+    "file": "src/lib.rs",
+    "line": 10,
+    "claim": "test"
+  }]
+}"#;
+        let f = parse_structured_findings(text).expect("findings");
+        assert_eq!(f.area_id, "area-core");
+        assert_eq!(f.items.len(), 1);
+        assert_eq!(f.items[0].claim, "test");
     }
 }
 

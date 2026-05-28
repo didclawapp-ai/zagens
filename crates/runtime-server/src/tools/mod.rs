@@ -30,6 +30,7 @@ pub mod remember;
 pub mod revert_turn;
 pub mod review;
 pub mod scratchpad;
+pub mod scratchpad_agent;
 pub mod rlm;
 pub use deepseek_runtime_adapters::tools::schema_sanitize;
 pub mod search;

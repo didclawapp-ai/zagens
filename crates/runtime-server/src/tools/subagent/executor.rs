@@ -20,7 +20,10 @@ use deepseek_core::subagent::{
 use super::mailbox::Mailbox;
 
 use super::constants::*;
-use super::prompts::{build_subagent_system_prompt, parse_structured_verdict};
+use super::prompts::{
+    build_subagent_system_prompt, findings_to_verdict, parse_structured_findings,
+    parse_structured_verdict,
+};
 use super::registry::{SubAgentToolRegistry, summarize_subagent_result};
 use super::resident::release_resident_leases_for;
 use super::runtime::SubAgentRuntime;
@@ -201,6 +204,11 @@ pub(crate) fn subagent_done_sentinel(agent_id: &str, res: &SubAgentResult) -> St
             payload.insert("structured_verdict".into(), val);
         }
     }
+    if let Some(ref f) = res.structured_findings {
+        if let Ok(val) = serde_json::to_value(f) {
+            payload.insert("structured_findings".into(), val);
+        }
+    }
 
     let payload = serde_json::Value::Object(payload);
     format!("<deepseek:subagent.done>{payload}</deepseek:subagent.done>")
@@ -304,6 +312,7 @@ async fn run_subagent(
                 duration_ms: u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX),
                 from_prior_session: false,
                 structured_verdict: None,
+                structured_findings: None,
             });
         }
 
@@ -379,6 +388,7 @@ async fn run_subagent(
                         .unwrap_or(u64::MAX),
                     from_prior_session: false,
                     structured_verdict: None,
+                    structured_findings: None,
                 });
             }
             api = tokio::time::timeout(runtime.step_timeout, runtime.client.create_message(request)) => {
@@ -504,9 +514,13 @@ async fn run_subagent(
 
     release_resident_leases_for(&agent_id);
 
+    let structured_findings = final_result
+        .as_deref()
+        .and_then(parse_structured_findings);
     let structured_verdict = final_result
         .as_deref()
-        .and_then(parse_structured_verdict);
+        .and_then(parse_structured_verdict)
+        .or_else(|| structured_findings.as_ref().map(findings_to_verdict));
 
     Ok(SubAgentResult {
         agent_id,
@@ -520,6 +534,7 @@ async fn run_subagent(
         duration_ms: u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX),
         from_prior_session: false,
         structured_verdict,
+        structured_findings,
     })
 }
 
