@@ -146,6 +146,11 @@ mod tests {
                 summary: Some("one issue".into()),
             }),
             structured_findings: None,
+            completion_reason: None,
+            max_steps: 100,
+            step_timeout_ms: 600_000,
+            structured_findings_parse_failure: None,
+            scratchpad_run_id: None,
         }
     }
 

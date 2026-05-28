@@ -245,7 +245,7 @@ where
 /// Creates the directory if needed and writes a timestamped log
 /// with the task name, caller location, and panic message.
 /// Best-effort — failures are silently ignored.
-fn write_panic_dump(
+pub(crate) fn write_panic_dump(
     name: &str,
     location: &std::panic::Location<'_>,
     message: &str,

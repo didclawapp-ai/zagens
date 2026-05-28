@@ -5,6 +5,6 @@ pub mod types;
 
 pub use mailbox::MailboxMessage;
 pub use types::{
-    AuditFindingItem, StructuredFindings, StructuredVerdict, SubAgentAssignment, SubAgentResult,
-    SubAgentStatus, SubAgentType, VerdictItem, VerdictLevel,
+    AuditFindingItem, CompletionReason, ParseFailureReason, StructuredFindings, StructuredVerdict,
+    SubAgentAssignment, SubAgentResult, SubAgentStatus, SubAgentType, VerdictItem, VerdictLevel,
 };

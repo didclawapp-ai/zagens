@@ -35,6 +35,17 @@ pub enum SubAgentStatus {
     Cancelled,
 }
 
+/// Why a sub-agent reached its terminal state.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub enum CompletionReason {
+    NaturalBreak,
+    StepLimitReached,
+    Cancelled,
+    StepApiTimeout,
+    Panic(String),
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum VerdictLevel {
     #[serde(rename = "PASS")]
@@ -100,6 +111,15 @@ pub struct StructuredFindings {
     pub summary: Option<String>,
 }
 
+/// Why structured `<!-- audit-findings -->` parsing failed.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub enum ParseFailureReason {
+    NoMarker,
+    Truncated,
+    InvalidJson(String),
+}
+
 /// Snapshot of sub-agent state for tool results and `Event::AgentList`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubAgentResult {
@@ -120,6 +140,27 @@ pub struct SubAgentResult {
     pub structured_verdict: Option<StructuredVerdict>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub structured_findings: Option<StructuredFindings>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completion_reason: Option<CompletionReason>,
+    /// Maximum steps this agent may take (spawn-time cap).
+    #[serde(default = "default_subagent_max_steps")]
+    pub max_steps: u32,
+    /// Per-step LLM API timeout in milliseconds (spawn-time value).
+    #[serde(default = "default_subagent_step_timeout_ms")]
+    pub step_timeout_ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub structured_findings_parse_failure: Option<ParseFailureReason>,
+    /// Scratchpad run this agent was spawned against (audit isolation).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scratchpad_run_id: Option<String>,
+}
+
+fn default_subagent_max_steps() -> u32 {
+    100
+}
+
+fn default_subagent_step_timeout_ms() -> u64 {
+    600_000
 }
 
 fn is_false(b: &bool) -> bool {

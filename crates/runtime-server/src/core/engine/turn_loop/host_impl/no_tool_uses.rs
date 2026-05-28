@@ -11,6 +11,18 @@ use deepseek_core::turn::{TurnContext, TurnOutcomeStatus};
 use super::super::Engine;
 use crate::core::events::Event;
 
+/// Drain any pending sub-agent completion notifications (non-blocking).
+pub(super) fn drain_subagent_completions(
+    rx: &Arc<tokio::sync::Mutex<tokio::sync::mpsc::UnboundedReceiver<crate::tools::subagent::SubAgentCompletion>>>,
+    out: &mut Vec<crate::tools::subagent::SubAgentCompletion>,
+) {
+    if let Ok(mut guard) = rx.try_lock() {
+        while let Ok(c) = guard.try_recv() {
+            out.push(c);
+        }
+    }
+}
+
 impl Engine {
     pub(super) async fn handle_no_tool_uses_turn_loop(
         &mut self,
@@ -68,18 +80,14 @@ impl Engine {
         let mut completions: Vec<crate::tools::subagent::SubAgentCompletion> = Vec::new();
         {
             let rx = Arc::clone(&self.runtime_ext().rx_subagent_completion);
-            if let Ok(mut guard) = rx.try_lock() {
-                while let Ok(c) = guard.try_recv() {
-                    completions.push(c);
-                }
-            }
+            drain_subagent_completions(&rx, &mut completions);
         }
         if completions.is_empty() {
             // M3: route through `SubAgentHost::running_count` so the future
             // core-side Engine can swap `subagent_manager` to a trait object.
             let running = {
                 let manager = Arc::clone(&self.runtime_ext().subagent_manager);
-                manager.read().await.running_count()
+                manager.write().await.running_count()
             };
             if running > 0 {
                 let rx = Arc::clone(&self.runtime_ext().rx_subagent_completion);
@@ -140,6 +148,11 @@ impl Engine {
                         return TurnLoopControl::Continue;
                     }
                 }
+            } else {
+                // P1-8: completion may land after the first drain but before
+                // running_count() observed zero — try once more.
+                let rx = Arc::clone(&self.runtime_ext().rx_subagent_completion);
+                drain_subagent_completions(&rx, &mut completions);
             }
         }
         if !completions.is_empty() {
@@ -268,5 +281,35 @@ impl Engine {
         }
 
         TurnLoopControl::Break
+    }
+}
+
+#[cfg(test)]
+mod drain_tests {
+    use std::sync::Arc;
+
+    use tokio::sync::{Mutex, mpsc};
+
+    use super::drain_subagent_completions;
+    use crate::tools::subagent::SubAgentCompletion;
+
+    #[test]
+    fn second_drain_captures_completion_after_empty_first_drain() {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let rx = Arc::new(Mutex::new(rx));
+        let mut first = Vec::new();
+        drain_subagent_completions(&rx, &mut first);
+        assert!(first.is_empty());
+
+        tx.send(SubAgentCompletion {
+            agent_id: "agent_test".into(),
+            payload: "done".into(),
+        })
+        .expect("send completion");
+
+        let mut second = Vec::new();
+        drain_subagent_completions(&rx, &mut second);
+        assert_eq!(second.len(), 1);
+        assert_eq!(second[0].agent_id, "agent_test");
     }
 }

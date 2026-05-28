@@ -28,6 +28,22 @@ pub(crate) const COMPLETED_AGENT_RETENTION: Duration = Duration::from_secs(60 * 
 pub(crate) const SUBAGENT_STATE_SCHEMA_VERSION: u32 = 1;
 pub(crate) const SUBAGENT_STATE_FILE: &str = "subagents.v1.json";
 pub(crate) const SUBAGENT_RESTART_REASON: &str = "Interrupted by process restart";
+pub(crate) const STEP_TOOL_BUDGET_RATIO: f32 = 0.8;
+
+pub(crate) fn step_tool_budget(step_timeout: Duration) -> Duration {
+    Duration::from_secs_f64(step_timeout.as_secs_f64() * f64::from(STEP_TOOL_BUDGET_RATIO))
+}
+
+pub(crate) fn adaptive_wait_timeout_ms(
+    step_timeout_ms: u64,
+    max_steps: u32,
+    steps_taken: u32,
+) -> u64 {
+    let remaining = max_steps.saturating_sub(steps_taken);
+    step_timeout_ms
+        .saturating_mul(u64::from(remaining))
+        .clamp(MIN_WAIT_TIMEOUT_MS, MAX_RESULT_TIMEOUT_MS)
+}
 
 pub(crate) const VALID_SUBAGENT_TYPES: &str = "general, explore, plan, review, implementer, verifier, custom, \
      worker, explorer, awaiter, default, implement, builder, verify, validator, tester";

@@ -3,25 +3,27 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow};
+use futures_util::FutureExt;
 use serde_json::json;
 use tokio::sync::{Mutex, mpsc};
 
 use deepseek_core::events::Event;
 use crate::models::{ContentBlock, Message, MessageRequest, SystemPrompt};
+use crate::utils::write_panic_dump;
 use crate::tools::plan::PlanState;
 use crate::tools::spec::ToolError;
 use crate::tools::todo::TodoList;
 
 use super::blackboard::{read_blackboard_section, write_blackboard_partition};
 use deepseek_core::subagent::{
-    MailboxMessage, SubAgentAssignment, SubAgentResult, SubAgentStatus,
+    CompletionReason, MailboxMessage, SubAgentAssignment, SubAgentResult, SubAgentStatus,
     SubAgentType,
 };
 use super::mailbox::Mailbox;
 
 use super::constants::*;
 use super::prompts::{
-    build_subagent_system_prompt, findings_to_verdict, parse_structured_findings,
+    build_subagent_system_prompt, findings_to_verdict, parse_structured_findings_result,
     parse_structured_verdict,
 };
 use super::registry::{SubAgentToolRegistry, summarize_subagent_result};
@@ -67,9 +69,10 @@ pub(crate) async fn run_subagent_task(task: SubAgentTask) {
     }
 
     let agent_type_for_blackboard = task.agent_type.clone();
-    let result = run_subagent(
+    let agent_id = task.agent_id.clone();
+    let run_result = std::panic::AssertUnwindSafe(run_subagent(
         &task.runtime,
-        task.agent_id.clone(),
+        agent_id.clone(),
         task.agent_type,
         task.prompt,
         task.assignment,
@@ -78,13 +81,37 @@ pub(crate) async fn run_subagent_task(task: SubAgentTask) {
         task.max_steps,
         task.input_rx,
         task.task_id.clone(),
-    )
+    ))
+    .catch_unwind()
     .await;
+
+    let result: Result<SubAgentResult> = match run_result {
+        Ok(inner) => inner,
+        Err(panic_info) => {
+            let panic_msg = if let Some(s) = panic_info.downcast_ref::<&str>() {
+                s.to_string()
+            } else if let Some(s) = panic_info.downcast_ref::<String>() {
+                s.clone()
+            } else {
+                "unknown panic".to_string()
+            };
+            tracing::error!(
+                target: "panic",
+                "Sub-agent task '{agent_id}' panicked: {panic_msg}",
+            );
+            let location = std::panic::Location::caller();
+            let _ = write_panic_dump("subagent-task", location, &panic_msg);
+            Err(anyhow!("panic: {panic_msg}"))
+        }
+    };
 
     let mut manager = task.manager_handle.write().await;
     match &result {
-        Ok(res) => manager.update_from_result(&task.agent_id, res.clone()),
-        Err(err) => manager.update_failed(&task.agent_id, err.to_string()),
+        Ok(res) => manager.update_from_result(&agent_id, res.clone()),
+        Err(err) => {
+            let reason = completion_reason_for_error(err);
+            manager.update_failed_with_reason(&agent_id, err.to_string(), reason);
+        }
     }
 
     // CRAFT P1: write structured output to blackboard
@@ -114,22 +141,22 @@ pub(crate) async fn run_subagent_task(task: SubAgentTask) {
     let (summary, sentinel) = match &result {
         Ok(res) => (
             summarize_subagent_result(res),
-            subagent_done_sentinel(&task.agent_id, res),
+            subagent_done_sentinel(&agent_id, res),
         ),
         Err(err) => (
             format!("Failed: {err}"),
-            subagent_failed_sentinel(&task.agent_id, &err.to_string()),
+            subagent_failed_sentinel(&agent_id, &err.to_string()),
         ),
     };
 
     if let Some(mb) = task.runtime.mailbox.as_ref() {
         let envelope = match &result {
             Ok(_) => MailboxMessage::Completed {
-                agent_id: task.agent_id.clone(),
+                agent_id: agent_id.clone(),
                 summary: summary.clone(),
             },
             Err(err) => MailboxMessage::Failed {
-                agent_id: task.agent_id.clone(),
+                agent_id: agent_id.clone(),
                 error: err.to_string(),
             },
         };
@@ -152,11 +179,11 @@ pub(crate) async fn run_subagent_task(task: SubAgentTask) {
     // children (issue #756). Gating by `spawn_depth == 1` means the parent
     // only sees completions for agents it directly orchestrated, not for
     // grandchildren spawned recursively inside its children.
-    emit_parent_completion(&task.runtime, &task.agent_id, &payload);
+    emit_parent_completion(&task.runtime, &agent_id, &payload);
 
     if let Some(event_tx) = task.runtime.event_tx {
         let _ = event_tx.try_send(Event::AgentComplete {
-            id: task.agent_id,
+            id: agent_id,
             result: payload,
         });
     }
@@ -209,6 +236,16 @@ pub(crate) fn subagent_done_sentinel(agent_id: &str, res: &SubAgentResult) -> St
             payload.insert("structured_findings".into(), val);
         }
     }
+    if let Some(ref reason) = res.completion_reason {
+        if let Ok(val) = serde_json::to_value(reason) {
+            payload.insert("completion_reason".into(), val);
+        }
+    }
+    if let Some(ref reason) = res.structured_findings_parse_failure {
+        if let Ok(val) = serde_json::to_value(reason) {
+            payload.insert("structured_findings_parse_failure".into(), val);
+        }
+    }
 
     let payload = serde_json::Value::Object(payload);
     format!("<deepseek:subagent.done>{payload}</deepseek:subagent.done>")
@@ -216,12 +253,49 @@ pub(crate) fn subagent_done_sentinel(agent_id: &str, res: &SubAgentResult) -> St
 
 /// Build a `<deepseek:subagent.done>` sentinel for a failed child.
 pub(crate) fn subagent_failed_sentinel(agent_id: &str, err: &str) -> String {
-    let payload = json!({
-        "agent_id": agent_id,
-        "status": "failed",
-        "error": err,
-    });
+    subagent_failed_sentinel_with_reason(agent_id, err, completion_reason_for_error_str(err))
+}
+
+pub(crate) fn subagent_failed_sentinel_with_reason(
+    agent_id: &str,
+    err: &str,
+    completion_reason: Option<CompletionReason>,
+) -> String {
+    let mut payload = serde_json::Map::new();
+    payload.insert("agent_id".into(), json!(agent_id));
+    payload.insert("status".into(), json!("failed"));
+    payload.insert("error".into(), json!(err));
+    if let Some(reason) = completion_reason {
+        if let Ok(val) = serde_json::to_value(reason) {
+            payload.insert("completion_reason".into(), val);
+        }
+    }
+    let payload = serde_json::Value::Object(payload);
     format!("<deepseek:subagent.done>{payload}</deepseek:subagent.done>")
+}
+
+pub(crate) fn completion_reason_for_successful_exit(natural_break: bool) -> CompletionReason {
+    if natural_break {
+        CompletionReason::NaturalBreak
+    } else {
+        CompletionReason::StepLimitReached
+    }
+}
+
+fn completion_reason_for_error(err: &anyhow::Error) -> Option<CompletionReason> {
+    completion_reason_for_error_str(&err.to_string())
+}
+
+pub(crate) fn completion_reason_for_error_str(err: &str) -> Option<CompletionReason> {
+    if err.starts_with("panic:") {
+        Some(CompletionReason::Panic(
+            err.strip_prefix("panic:").unwrap_or(err).trim().to_string(),
+        ))
+    } else if err.contains("API call timed out") {
+        Some(CompletionReason::StepApiTimeout)
+    } else {
+        None
+    }
 }
 
 #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
@@ -283,6 +357,7 @@ async fn run_subagent(
     let mut steps = 0;
     let mut final_result: Option<String> = None;
     let mut pending_inputs: VecDeque<SubAgentInput> = VecDeque::new();
+    let mut natural_break = false;
 
     for _step in 0..max_steps {
         // Cooperative cancellation: bail if the parent (or root) cancelled
@@ -313,6 +388,11 @@ async fn run_subagent(
                 from_prior_session: false,
                 structured_verdict: None,
                 structured_findings: None,
+                completion_reason: Some(CompletionReason::Cancelled),
+                max_steps,
+                step_timeout_ms: u64::try_from(runtime.step_timeout.as_millis()).unwrap_or(u64::MAX),
+                structured_findings_parse_failure: None,
+                scratchpad_run_id: None,
             });
         }
 
@@ -389,6 +469,12 @@ async fn run_subagent(
                     from_prior_session: false,
                     structured_verdict: None,
                     structured_findings: None,
+                    completion_reason: Some(CompletionReason::Cancelled),
+                    max_steps,
+                    step_timeout_ms: u64::try_from(runtime.step_timeout.as_millis())
+                        .unwrap_or(u64::MAX),
+                    structured_findings_parse_failure: None,
+                    scratchpad_run_id: None,
                 });
             }
             api = tokio::time::timeout(runtime.step_timeout, runtime.client.create_message(request)) => {
@@ -440,6 +526,7 @@ async fn run_subagent(
                     &agent_id,
                     format!("step {steps}/{max_steps}: complete"),
                 );
+                natural_break = true;
                 break;
             }
             continue;
@@ -455,6 +542,8 @@ async fn run_subagent(
             ),
         );
         let mut tool_results: Vec<ContentBlock> = Vec::new();
+        let step_tool_budget = step_tool_budget(runtime.step_timeout);
+        let mut step_tool_spent = Duration::ZERO;
         for (tool_id, tool_name, tool_input) in tool_uses {
             emit_agent_progress(
                 runtime.event_tx.as_ref(),
@@ -469,16 +558,30 @@ async fn run_subagent(
                     step: steps,
                 });
             }
-            let result = match tokio::time::timeout(TOOL_TIMEOUT, async {
-                tool_registry
-                    .execute(&agent_id, &tool_name, tool_input)
+            let result = {
+                let remaining_budget = step_tool_budget.saturating_sub(step_tool_spent);
+                if remaining_budget.is_zero() {
+                    format!(
+                        "Error: Step tool time budget exhausted ({:.0}s cap for this step)",
+                        step_tool_budget.as_secs_f64()
+                    )
+                } else {
+                    let per_call_timeout = TOOL_TIMEOUT.min(remaining_budget);
+                    let tool_start = Instant::now();
+                    let out = match tokio::time::timeout(per_call_timeout, async {
+                        tool_registry
+                            .execute(&agent_id, &tool_name, tool_input)
+                            .await
+                    })
                     .await
-            })
-            .await
-            {
-                Ok(Ok(output)) => output,
-                Ok(Err(e)) => format!("Error: {e}"),
-                Err(_) => format!("Error: Tool {tool_name} timed out"),
+                    {
+                        Ok(Ok(output)) => output,
+                        Ok(Err(e)) => format!("Error: {e}"),
+                        Err(_) => format!("Error: Tool {tool_name} timed out"),
+                    };
+                    step_tool_spent += tool_start.elapsed().min(per_call_timeout);
+                    out
+                }
             };
             let tool_ok = !result.starts_with("Error:");
             emit_agent_progress(
@@ -514,9 +617,14 @@ async fn run_subagent(
 
     release_resident_leases_for(&agent_id);
 
-    let structured_findings = final_result
-        .as_deref()
-        .and_then(parse_structured_findings);
+    let (structured_findings, structured_findings_parse_failure) =
+        match final_result.as_deref() {
+            Some(text) => match parse_structured_findings_result(text) {
+                Ok(findings) => (Some(findings), None),
+                Err(reason) => (None, Some(reason)),
+            },
+            None => (None, None),
+        };
     let structured_verdict = final_result
         .as_deref()
         .and_then(parse_structured_verdict)
@@ -535,6 +643,11 @@ async fn run_subagent(
         from_prior_session: false,
         structured_verdict,
         structured_findings,
+        completion_reason: Some(completion_reason_for_successful_exit(natural_break)),
+        max_steps,
+        step_timeout_ms: u64::try_from(runtime.step_timeout.as_millis()).unwrap_or(u64::MAX),
+        structured_findings_parse_failure,
+        scratchpad_run_id: None,
     })
 }
 
@@ -547,7 +660,7 @@ pub(crate) async fn wait_for_result(
 
     loop {
         let snapshot = {
-            let manager = manager.read().await;
+            let mut manager = manager.write().await;
             manager
                 .get_result(agent_id)
                 .map_err(|e| ToolError::execution_failed(e.to_string()))?
@@ -574,7 +687,7 @@ pub(crate) async fn wait_for_agents(
 
     loop {
         let snapshots = {
-            let manager = manager.read().await;
+            let mut manager = manager.write().await;
             ids.iter()
                 .map(|id| {
                     manager

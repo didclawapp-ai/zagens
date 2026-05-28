@@ -11,7 +11,7 @@ use deepseek_core::events::Event;
 use crate::utils::spawn_supervised;
 
 use deepseek_core::subagent::{
-    SubAgentAssignment, SubAgentResult, SubAgentStatus,
+    CompletionReason, SubAgentAssignment, SubAgentResult, SubAgentStatus,
     SubAgentType,
 };
 
@@ -23,6 +23,7 @@ use super::parse::normalize_role_alias;
 use super::types::SubAgentInput;
 use super::factory::SharedSubAgentManager;
 use super::runtime::{SubAgent, SubAgentRuntime};
+use super::structured_fallback::enrich_subagent_result;
 use super::factory::{epoch_millis_now, instant_from_duration, write_json_atomic};
 use super::types::{PersistedSubAgent, PersistedSubAgentState, SubAgentSpawnOptions};
 
@@ -103,6 +104,9 @@ impl SubAgentManager {
                 allowed_tools: agent.allowed_tools.clone().unwrap_or_default(),
                 updated_at_ms: now_ms,
                 session_boot_id: agent.session_boot_id.clone(),
+                completion_reason: agent.completion_reason.clone(),
+                blackboard_task_id: agent.blackboard_task_id.clone(),
+                scratchpad_run_id: agent.scratchpad_run_id.clone(),
             });
         }
         agents.sort_by(|a, b| a.id.cmp(&b.id));
@@ -167,13 +171,16 @@ impl SubAgentManager {
                 result: persisted.result,
                 structured_verdict: None,
                 structured_findings: None,
+                structured_findings_parse_failure: None,
+                completion_reason: persisted.completion_reason,
+                step_timeout: STEP_API_TIMEOUT,
+                max_steps: DEFAULT_MAX_STEPS,
                 steps_taken: persisted.steps_taken,
                 started_at,
                 allowed_tools,
-                // Empty string when loading pre-#405 records; the
-                // manager treats that the same as a non-matching id —
-                // i.e. agent classified as prior-session.
                 session_boot_id: persisted.session_boot_id,
+                blackboard_task_id: persisted.blackboard_task_id,
+                scratchpad_run_id: persisted.scratchpad_run_id,
                 input_tx: None,
                 task_handle: None,
             };
@@ -184,7 +191,8 @@ impl SubAgentManager {
     }
 
     /// Count running agents.
-    pub fn running_count(&self) -> usize {
+    pub fn running_count(&mut self) -> usize {
+        self.ensure_consistency();
         self.agents
             .values()
             .filter(|agent| {
@@ -257,11 +265,12 @@ impl SubAgentManager {
     ) -> Result<SubAgentResult> {
         self.cleanup(COMPLETED_AGENT_RETENTION);
 
-        if self.running_count() >= self.max_agents {
+        let running = self.running_count();
+        if running >= self.max_agents {
             return Err(anyhow!(
                 "Sub-agent limit reached (max {}, running {}). Cancel, close, or wait for an existing agent to finish. Consider issuing multiple tool calls in one turn (the dispatcher runs them in parallel) for parallel one-shot work.",
                 self.max_agents,
-                self.running_count()
+                running
             ));
         }
 
@@ -274,6 +283,7 @@ impl SubAgentManager {
             .or_else(|| Some(whale_nickname_for_index(self.agents.len())));
         let tools = build_allowed_tools(&agent_type, allowed_tools, runtime.allow_shell)?;
         let (input_tx, input_rx) = mpsc::unbounded_channel();
+        let max_steps = self.max_steps;
         let mut agent = SubAgent::new(
             agent_type.clone(),
             prompt.clone(),
@@ -281,12 +291,13 @@ impl SubAgentManager {
             effective_model,
             nickname,
             tools.clone(),
+            runtime.step_timeout,
+            max_steps,
             input_tx,
             self.current_session_boot_id.clone(),
         );
         let agent_id = agent.id.clone();
         let started_at = agent.started_at;
-        let max_steps = self.max_steps;
 
         if let Some(event_tx) = runtime.event_tx.clone() {
             let _ = event_tx.try_send(Event::AgentSpawned {
@@ -314,6 +325,8 @@ impl SubAgentManager {
             run_subagent_task(task),
         );
         agent.task_handle = Some(handle);
+        agent.blackboard_task_id = options.task_id.clone();
+        agent.scratchpad_run_id = options.scratchpad_run_id.clone();
         self.agents.insert(agent_id.clone(), agent);
         self.persist_state_best_effort();
 
@@ -325,12 +338,62 @@ impl SubAgentManager {
     }
 
     /// Get the current snapshot for an agent.
-    pub fn get_result(&self, agent_id: &str) -> Result<SubAgentResult> {
+    pub fn get_result(&mut self, agent_id: &str) -> Result<SubAgentResult> {
+        self.ensure_consistency();
         let agent = self
             .agents
             .get(agent_id)
             .ok_or_else(|| anyhow!("Agent {agent_id} not found"))?;
         Ok(agent.snapshot())
+    }
+
+    /// Like [`Self::get_result`], but fills structured fields from blackboard / prose fallback.
+    pub fn get_result_with_fallback(
+        &mut self,
+        agent_id: &str,
+        workspace: &std::path::Path,
+    ) -> Result<SubAgentResult> {
+        self.ensure_consistency();
+        let agent = self
+            .agents
+            .get(agent_id)
+            .ok_or_else(|| anyhow!("Agent {agent_id} not found"))?;
+        let mut snap = agent.snapshot();
+        enrich_subagent_result(&mut snap, agent, workspace);
+        Ok(snap)
+    }
+
+    /// Scratchpad run bound at spawn time (if any).
+    pub fn agent_scratchpad_run_id(&mut self, agent_id: &str) -> Result<Option<String>> {
+        self.ensure_consistency();
+        self.agents
+            .get(agent_id)
+            .map(|agent| agent.scratchpad_run_id.clone())
+            .ok_or_else(|| anyhow!("Agent {agent_id} not found"))
+    }
+
+    /// Adaptive join timeout when `agent_wait` / `agent_result` omit `timeout_ms`.
+    pub(crate) fn adaptive_wait_timeout_ms_for(&mut self, agent_id: &str) -> Result<u64> {
+        self.ensure_consistency();
+        let agent = self
+            .agents
+            .get(agent_id)
+            .ok_or_else(|| anyhow!("Agent {agent_id} not found"))?;
+        Ok(super::constants::adaptive_wait_timeout_ms(
+            u64::try_from(agent.step_timeout.as_millis()).unwrap_or(u64::MAX),
+            agent.max_steps,
+            agent.steps_taken,
+        ))
+    }
+
+    /// Max adaptive timeout across the listed agents (multi-wait).
+    pub(crate) fn adaptive_wait_timeout_ms_for_ids(&mut self, ids: &[String]) -> Result<u64> {
+        ids.iter()
+            .map(|id| self.adaptive_wait_timeout_ms_for(id))
+            .collect::<Result<Vec<_>>>()?
+            .into_iter()
+            .max()
+            .ok_or_else(|| anyhow!("No agent ids provided"))
     }
 
     /// Cancel a running sub-agent.
@@ -381,11 +444,12 @@ impl SubAgentManager {
             return Ok(agent.snapshot());
         }
 
-        if self.running_count() >= self.max_agents {
+        let running = self.running_count();
+        if running >= self.max_agents {
             return Err(anyhow!(
                 "Sub-agent limit reached (max {}, running {}). Close or wait for an existing agent before resuming. Consider issuing multiple tool calls in one turn (the dispatcher runs them in parallel) for parallel one-shot work.",
                 self.max_agents,
-                self.running_count()
+                running
             ));
         }
 
@@ -401,6 +465,7 @@ impl SubAgentManager {
             if !agent.model.trim().is_empty() && agent.model != "unknown" {
                 restart_runtime.model.clone_from(&agent.model);
             }
+            let step_timeout = restart_runtime.step_timeout;
             let task = SubAgentTask {
                 manager_handle,
                 runtime: restart_runtime,
@@ -423,6 +488,12 @@ impl SubAgentManager {
             agent.status = SubAgentStatus::Running;
             agent.result = None;
             agent.steps_taken = 0;
+            agent.structured_verdict = None;
+            agent.structured_findings = None;
+            agent.structured_findings_parse_failure = None;
+            agent.completion_reason = None;
+            agent.step_timeout = step_timeout;
+            agent.max_steps = self.max_steps;
             agent.started_at = restarted_at;
             agent.input_tx = Some(input_tx);
             agent.task_handle = Some(handle);
@@ -450,6 +521,16 @@ impl SubAgentManager {
 
         if agent.status != SubAgentStatus::Running {
             return Err(anyhow!("Agent {agent_id} is not running"));
+        }
+
+        if agent
+            .task_handle
+            .as_ref()
+            .is_some_and(tokio::task::JoinHandle::is_finished)
+        {
+            return Err(anyhow!(
+                "Agent {agent_id} task ended (possible panic); input was not delivered"
+            ));
         }
 
         let tx = agent
@@ -583,7 +664,8 @@ impl SubAgentManager {
     /// List all agents currently held by the manager, regardless of
     /// session origin. Use [`Self::list_filtered`] in user-facing tool
     /// paths so prior-session agents stay hidden by default (#405).
-    pub fn list(&self) -> Vec<SubAgentResult> {
+    pub fn list(&mut self) -> Vec<SubAgentResult> {
+        self.ensure_consistency();
         self.agents
             .values()
             .map(|agent| self.snapshot_for_listing(agent))
@@ -600,7 +682,8 @@ impl SubAgentManager {
     /// `include_archived = true` returns everything, with the
     /// `from_prior_session` flag on each `SubAgentResult` so the model
     /// can tell active and archived apart at a glance.
-    pub fn list_filtered(&self, include_archived: bool) -> Vec<SubAgentResult> {
+    pub fn list_filtered(&mut self, include_archived: bool) -> Vec<SubAgentResult> {
+        self.ensure_consistency();
         self.agents
             .values()
             .filter(|agent| {
@@ -639,6 +722,8 @@ impl SubAgentManager {
             agent.result = result.result;
             agent.structured_verdict = result.structured_verdict;
             agent.structured_findings = result.structured_findings;
+            agent.completion_reason = result.completion_reason;
+            agent.structured_findings_parse_failure = result.structured_findings_parse_failure;
             agent.steps_taken = result.steps_taken;
             agent.task_handle = None;
             changed = true;
@@ -649,12 +734,45 @@ impl SubAgentManager {
     }
 
     pub(super) fn update_failed(&mut self, agent_id: &str, error: String) {
+        self.update_failed_with_reason(agent_id, error, None);
+    }
+
+    pub(super) fn update_failed_with_reason(
+        &mut self,
+        agent_id: &str,
+        error: String,
+        completion_reason: Option<CompletionReason>,
+    ) {
         let mut changed = false;
         if let Some(agent) = self.agents.get_mut(agent_id) {
             agent.status = SubAgentStatus::Failed(error);
+            agent.completion_reason = completion_reason;
             release_resident_leases_for(agent_id);
             agent.task_handle = None;
             changed = true;
+        }
+        if changed {
+            self.persist_state_best_effort();
+        }
+    }
+
+    /// Detect agents whose background task finished without updating status.
+    fn ensure_consistency(&mut self) {
+        let mut changed = false;
+        for agent in self.agents.values_mut() {
+            if matches!(agent.status, SubAgentStatus::Running)
+                && agent
+                    .task_handle
+                    .as_ref()
+                    .is_some_and(tokio::task::JoinHandle::is_finished)
+            {
+                agent.status = SubAgentStatus::Failed(
+                    "Zombie: task ended without status update".into(),
+                );
+                release_resident_leases_for(&agent.id);
+                agent.task_handle = None;
+                changed = true;
+            }
         }
         if changed {
             self.persist_state_best_effort();

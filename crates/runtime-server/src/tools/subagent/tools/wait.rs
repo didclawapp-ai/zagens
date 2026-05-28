@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 
 use deepseek_core::subagent::{SubAgentResult, SubAgentStatus};
 use crate::tools::spec::{
-    ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_u64,
+    ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
 };
 
 use super::super::constants::*;
@@ -15,6 +15,7 @@ use super::super::executor::wait_for_agents;
 use super::super::factory::SharedSubAgentManager;
 use super::super::parse::{parse_wait_ids, parse_wait_mode};
 use super::super::registry::subagent_status_name;
+use super::super::wait_timeout::wait_progress_metadata;
 
 pub struct AgentWaitTool {
     manager: SharedSubAgentManager,
@@ -69,7 +70,7 @@ impl ToolSpec for AgentWaitTool {
                 },
                 "timeout_ms": {
                     "type": "integer",
-                    "description": "Max wait time in milliseconds (default: 30000, clamped to 10000-3600000)"
+                    "description": "Max wait time in milliseconds. When omitted, defaults adaptively from the agent's step_timeout_ms and remaining steps (clamped 10000-3600000). Explicit values override."
                 }
             }
         })
@@ -80,11 +81,10 @@ impl ToolSpec for AgentWaitTool {
     }
 
     async fn execute(&self, input: Value, _context: &ToolContext) -> Result<ToolResult, ToolError> {
-        let timeout_ms = optional_u64(&input, "timeout_ms", DEFAULT_RESULT_TIMEOUT_MS)
-            .clamp(MIN_WAIT_TIMEOUT_MS, MAX_RESULT_TIMEOUT_MS);
+        let explicit_timeout_ms = input.get("timeout_ms").and_then(|v| v.as_u64());
         let mut ids = parse_wait_ids(&input);
         if ids.is_empty() {
-            let manager = self.manager.read().await;
+            let mut manager = self.manager.write().await;
             ids = manager
                 .list()
                 .into_iter()
@@ -102,7 +102,7 @@ impl ToolSpec for AgentWaitTool {
                 "wait_mode": wait_mode.as_str(),
                 "timed_out": false,
                 "status": "Completed",
-                "timeout_ms": timeout_ms,
+                "timeout_ms": explicit_timeout_ms.unwrap_or(DEFAULT_RESULT_TIMEOUT_MS),
                 "waited_ids": [],
                 "completed_ids": [],
                 "running_ids": [],
@@ -112,6 +112,15 @@ impl ToolSpec for AgentWaitTool {
         }
 
         let waited_ids = ids.clone();
+
+        let timeout_ms = if let Some(ms) = explicit_timeout_ms {
+            ms.clamp(MIN_WAIT_TIMEOUT_MS, MAX_RESULT_TIMEOUT_MS)
+        } else {
+            let mut manager = self.manager.write().await;
+            manager
+                .adaptive_wait_timeout_ms_for_ids(&ids)
+                .map_err(|e| ToolError::execution_failed(e.to_string()))?
+        };
 
         let (snapshots, timed_out) = wait_for_agents(
             &self.manager,
@@ -146,7 +155,7 @@ impl ToolSpec for AgentWaitTool {
 
         let mut result =
             ToolResult::json(&snapshots).map_err(|e| ToolError::execution_failed(e.to_string()))?;
-        result.metadata = Some(json!({
+        let mut metadata = json!({
             "wait_mode": wait_mode.as_str(),
             "timed_out": timed_out,
             "status": if timed_out { "TimedOut" } else if all_done { "Completed" } else { "Partial" },
@@ -155,7 +164,19 @@ impl ToolSpec for AgentWaitTool {
             "completed_ids": completed_ids,
             "running_ids": running_ids,
             "status_by_id": status_by_id
-        }));
+        });
+        if timed_out {
+            if snapshots.len() == 1 {
+                if let Some(progress) = metadata.as_object_mut() {
+                    if let Some(progress_obj) = wait_progress_metadata(&snapshots[0]).as_object() {
+                        for (key, value) in progress_obj {
+                            progress.insert(key.clone(), value.clone());
+                        }
+                    }
+                }
+            }
+        }
+        result.metadata = Some(metadata);
         Ok(result)
     }
 }

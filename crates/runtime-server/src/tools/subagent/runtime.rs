@@ -11,8 +11,8 @@ use deepseek_core::events::Event;
 use crate::tools::spec::ToolContext;
 
 use deepseek_core::subagent::{
-    StructuredFindings, StructuredVerdict, SubAgentAssignment, SubAgentResult, SubAgentStatus,
-    SubAgentType,
+    CompletionReason, ParseFailureReason, StructuredFindings, StructuredVerdict,
+    SubAgentAssignment, SubAgentResult, SubAgentStatus, SubAgentType,
 };
 use super::mailbox::Mailbox;
 
@@ -265,6 +265,12 @@ pub struct SubAgent {
     pub result: Option<String>,
     pub structured_verdict: Option<StructuredVerdict>,
     pub structured_findings: Option<StructuredFindings>,
+    pub completion_reason: Option<CompletionReason>,
+    pub structured_findings_parse_failure: Option<ParseFailureReason>,
+    pub blackboard_task_id: Option<String>,
+    pub scratchpad_run_id: Option<String>,
+    pub step_timeout: Duration,
+    pub max_steps: u32,
     pub steps_taken: u32,
     pub started_at: Instant,
     /// `None` = full registry inheritance (v0.6.6 default).
@@ -288,6 +294,8 @@ impl SubAgent {
         model: String,
         nickname: Option<String>,
         allowed_tools: Option<Vec<String>>,
+        step_timeout: Duration,
+        max_steps: u32,
         input_tx: mpsc::UnboundedSender<SubAgentInput>,
         session_boot_id: String,
     ) -> Self {
@@ -304,6 +312,12 @@ impl SubAgent {
             result: None,
             structured_verdict: None,
             structured_findings: None,
+            completion_reason: None,
+            structured_findings_parse_failure: None,
+            blackboard_task_id: None,
+            scratchpad_run_id: None,
+            step_timeout,
+            max_steps,
             steps_taken: 0,
             started_at: Instant::now(),
             allowed_tools,
@@ -333,6 +347,11 @@ impl SubAgent {
             from_prior_session: false,
             structured_verdict: self.structured_verdict.clone(),
             structured_findings: self.structured_findings.clone(),
+            completion_reason: self.completion_reason.clone(),
+            max_steps: self.max_steps,
+            step_timeout_ms: u64::try_from(self.step_timeout.as_millis()).unwrap_or(u64::MAX),
+            structured_findings_parse_failure: self.structured_findings_parse_failure.clone(),
+            scratchpad_run_id: self.scratchpad_run_id.clone(),
         }
     }
 }

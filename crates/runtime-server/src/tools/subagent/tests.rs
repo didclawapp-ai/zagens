@@ -33,6 +33,11 @@ fn make_snapshot(status: SubAgentStatus) -> SubAgentResult {
         from_prior_session: false,
         structured_verdict: None,
         structured_findings: None,
+        completion_reason: None,
+        max_steps: DEFAULT_MAX_STEPS,
+        step_timeout_ms: 600_000,
+        structured_findings_parse_failure: None,
+        scratchpad_run_id: None,
     }
 }
 
@@ -570,6 +575,8 @@ async fn test_wait_for_result_reports_timeout_when_still_running() {
         "deepseek-v4-flash".to_string(),
         Some("Blue".to_string()),
         Some(vec!["read_file".to_string()]),
+        STEP_API_TIMEOUT,
+        DEFAULT_MAX_STEPS,
         input_tx,
         "boot_test".to_string(),
     );
@@ -597,6 +604,8 @@ async fn test_running_count_counts_only_agents_with_live_task_handles() {
         "deepseek-v4-flash".to_string(),
         Some("Blue".to_string()),
         Some(vec!["read_file".to_string()]),
+        STEP_API_TIMEOUT,
+        DEFAULT_MAX_STEPS,
         input_tx,
         "boot_test".to_string(),
     );
@@ -628,6 +637,8 @@ fn test_running_count_ignores_running_status_without_task_handle() {
         "deepseek-v4-flash".to_string(),
         Some("Blue".to_string()),
         Some(vec!["read_file".to_string()]),
+        STEP_API_TIMEOUT,
+        DEFAULT_MAX_STEPS,
         input_tx,
         "boot_test".to_string(),
     );
@@ -648,6 +659,8 @@ async fn test_running_count_ignores_finished_task_handles() {
         "deepseek-v4-flash".to_string(),
         Some("Blue".to_string()),
         Some(vec!["read_file".to_string()]),
+        STEP_API_TIMEOUT,
+        DEFAULT_MAX_STEPS,
         input_tx,
         "boot_test".to_string(),
     );
@@ -665,6 +678,138 @@ async fn test_running_count_ignores_finished_task_handles() {
     assert_eq!(manager.running_count(), 0);
 }
 
+#[tokio::test]
+async fn ensure_consistency_marks_finished_handle_as_failed() {
+    let mut manager = SubAgentManager::new(PathBuf::from("."), 2);
+    let (input_tx, _input_rx) = mpsc::unbounded_channel();
+    let mut agent = SubAgent::new(
+        SubAgentType::Explore,
+        "prompt".to_string(),
+        make_assignment(),
+        "deepseek-v4-flash".to_string(),
+        Some("Blue".to_string()),
+        Some(vec!["read_file".to_string()]),
+        STEP_API_TIMEOUT,
+        DEFAULT_MAX_STEPS,
+        input_tx,
+        "boot_test".to_string(),
+    );
+    agent.status = SubAgentStatus::Running;
+    let handle = tokio::spawn(async {});
+    handle.await.expect("dummy task should finish immediately");
+    agent.task_handle = Some(tokio::spawn(async {}));
+    if let Some(handle) = agent.task_handle.as_ref() {
+        while !handle.is_finished() {
+            tokio::task::yield_now().await;
+        }
+    }
+    let agent_id = agent.id.clone();
+    manager.agents.insert(agent_id.clone(), agent);
+
+    let snapshot = manager
+        .get_result(&agent_id)
+        .expect("zombie agent should be readable");
+    assert!(
+        matches!(snapshot.status, SubAgentStatus::Failed(ref msg) if msg.contains("Zombie")),
+        "expected Failed zombie status, got {:?}",
+        snapshot.status
+    );
+    assert_eq!(manager.running_count(), 0);
+}
+
+#[tokio::test]
+async fn send_input_rejects_finished_task_handle() {
+    let mut manager = SubAgentManager::new(PathBuf::from("."), 2);
+    let (input_tx, _input_rx) = mpsc::unbounded_channel();
+    let mut agent = SubAgent::new(
+        SubAgentType::Explore,
+        "prompt".to_string(),
+        make_assignment(),
+        "deepseek-v4-flash".to_string(),
+        Some("Blue".to_string()),
+        Some(vec!["read_file".to_string()]),
+        STEP_API_TIMEOUT,
+        DEFAULT_MAX_STEPS,
+        input_tx,
+        "boot_test".to_string(),
+    );
+    agent.status = SubAgentStatus::Running;
+    let handle = tokio::spawn(async {});
+    handle.await.expect("dummy task should finish immediately");
+    agent.task_handle = Some(tokio::spawn(async {}));
+    if let Some(handle) = agent.task_handle.as_ref() {
+        while !handle.is_finished() {
+            tokio::task::yield_now().await;
+        }
+    }
+    let agent_id = agent.id.clone();
+    manager.agents.insert(agent_id.clone(), agent);
+
+    let err = manager
+        .send_input(&agent_id, "hello".to_string(), false)
+        .expect_err("finished task should reject input");
+    assert!(
+        err.to_string().contains("task ended"),
+        "unexpected error: {err}"
+    );
+}
+
+#[tokio::test]
+async fn resume_clears_structured_output() {
+    use deepseek_core::subagent::{AuditFindingItem, StructuredFindings};
+
+    let manager = new_shared_subagent_manager(PathBuf::from("."), 2);
+    let (input_tx, _input_rx) = mpsc::unbounded_channel();
+    let mut agent = SubAgent::new(
+        SubAgentType::Explore,
+        "prompt".to_string(),
+        make_assignment(),
+        "deepseek-v4-flash".to_string(),
+        None,
+        Some(vec!["read_file".to_string()]),
+        STEP_API_TIMEOUT,
+        DEFAULT_MAX_STEPS,
+        input_tx,
+        "boot_test".to_string(),
+    );
+    agent.status = SubAgentStatus::Completed;
+    agent.structured_findings = Some(StructuredFindings {
+        area_id: "area-1".into(),
+        area_path: None,
+        items: vec![AuditFindingItem {
+            kind: "finding".into(),
+            severity: "HIGH".into(),
+            file: None,
+            line: None,
+            line_end: None,
+            claim: "test".into(),
+            evidence: None,
+        }],
+        summary: None,
+    });
+    let agent_id = agent.id.clone();
+    manager.write().await.agents.insert(agent_id.clone(), agent);
+
+    let mut runtime = stub_runtime();
+    runtime.manager = Arc::clone(&manager);
+    let snapshot = manager
+        .write()
+        .await
+        .resume(Arc::clone(&manager), runtime, &agent_id)
+        .expect("resume should succeed");
+
+    assert!(snapshot.structured_findings.is_none());
+    assert!(snapshot.structured_verdict.is_none());
+    assert_eq!(snapshot.status, SubAgentStatus::Running);
+
+    // Abort the spawned resume task so the test doesn't leak a background worker.
+    if let Some(agent) = manager.write().await.agents.get_mut(&agent_id) {
+        if let Some(handle) = agent.task_handle.take() {
+            handle.abort();
+        }
+    }
+}
+
 #[test]
 fn test_assign_updates_running_agent_and_sends_message() {
     let mut manager = SubAgentManager::new(PathBuf::from("."), 2);
@@ -676,6 +821,8 @@ fn test_assign_updates_running_agent_and_sends_message() {
         "deepseek-v4-flash".to_string(),
         Some("Blue".to_string()),
         Some(vec!["read_file".to_string()]),
+        STEP_API_TIMEOUT,
+        DEFAULT_MAX_STEPS,
         input_tx,
         "boot_test".to_string(),
     );
@@ -713,6 +860,8 @@ fn test_assign_rejects_message_for_non_running_agent() {
         "deepseek-v4-flash".to_string(),
         Some("Blue".to_string()),
         Some(vec!["read_file".to_string()]),
+        STEP_API_TIMEOUT,
+        DEFAULT_MAX_STEPS,
         input_tx,
         "boot_test".to_string(),
     );
@@ -737,6 +886,8 @@ fn test_assign_updates_non_running_metadata_without_message() {
         "deepseek-v4-flash".to_string(),
         Some("Blue".to_string()),
         Some(vec!["read_file".to_string()]),
+        STEP_API_TIMEOUT,
+        DEFAULT_MAX_STEPS,
         input_tx,
         "boot_test".to_string(),
     );
@@ -772,6 +923,8 @@ fn test_persist_and_reload_marks_running_agent_as_interrupted() {
         "deepseek-v4-flash".to_string(),
         Some("Blue".to_string()),
         Some(vec!["read_file".to_string()]),
+        STEP_API_TIMEOUT,
+        DEFAULT_MAX_STEPS,
         input_tx,
         "boot_test".to_string(),
     );
@@ -1077,6 +1230,58 @@ fn subagent_failed_sentinel_format_is_well_formed() {
 }
 
 #[test]
+fn completion_reason_for_successful_exit_distinguishes_natural_break_and_step_limit() {
+    use deepseek_core::subagent::CompletionReason;
+
+    assert_eq!(
+        completion_reason_for_successful_exit(true),
+        CompletionReason::NaturalBreak
+    );
+    assert_eq!(
+        completion_reason_for_successful_exit(false),
+        CompletionReason::StepLimitReached
+    );
+}
+
+#[test]
+fn subagent_done_sentinel_includes_completion_reason() {
+    use deepseek_core::subagent::CompletionReason;
+
+    let mut res = make_snapshot(SubAgentStatus::Completed);
+    res.completion_reason = Some(CompletionReason::StepLimitReached);
+    let sentinel = subagent_done_sentinel("agent_limit", &res);
+    let inner = sentinel
+        .trim_start_matches("<deepseek:subagent.done>")
+        .trim_end_matches("</deepseek:subagent.done>");
+    let parsed: serde_json::Value = serde_json::from_str(inner).expect("inner JSON parses");
+    assert_eq!(parsed["completion_reason"], "StepLimitReached");
+}
+
+#[test]
+fn subagent_failed_sentinel_includes_step_api_timeout_reason() {
+    use deepseek_core::subagent::CompletionReason;
+
+    let err = "API call timed out after 600s (per-step cap). Child stopped";
+    let sentinel = subagent_failed_sentinel("agent_timeout", err);
+    let inner = sentinel
+        .trim_start_matches("<deepseek:subagent.done>")
+        .trim_end_matches("</deepseek:subagent.done>");
+    let parsed: serde_json::Value = serde_json::from_str(inner).expect("inner JSON parses");
+    assert_eq!(parsed["completion_reason"], "StepApiTimeout");
+    assert_eq!(parsed["status"], "failed");
+
+    let reason = completion_reason_for_error_str(err);
+    assert_eq!(reason, Some(CompletionReason::StepApiTimeout));
+}
+
+#[test]
+fn adaptive_wait_timeout_scales_with_remaining_steps() {
+    assert_eq!(adaptive_wait_timeout_ms(600_000, 100, 50), MAX_RESULT_TIMEOUT_MS);
+    assert_eq!(adaptive_wait_timeout_ms(600_000, 100, 99), 600_000);
+    assert_eq!(adaptive_wait_timeout_ms(600_000, 100, 100), MIN_WAIT_TIMEOUT_MS);
+}
+
+#[test]
 fn subagent_runtime_default_max_depth_is_three() {
     // Sanity-check the constant — bumping it without a test means stale docs.
     assert_eq!(DEFAULT_MAX_SPAWN_DEPTH, 3);
@@ -1358,6 +1563,8 @@ fn insert_prior_session_agent(
         "deepseek-v4-flash".to_string(),
         None,
         None,
+        STEP_API_TIMEOUT,
+        DEFAULT_MAX_STEPS,
         input_tx,
         boot_id.to_string(),
     );
@@ -1690,4 +1897,211 @@ fn resident_file_release_by_agent_id_clears_all_paths() {
     super::try_claim_resident_file_lease("a.rs", "agent_y").expect("a freed");
     super::try_claim_resident_file_lease("b.rs", "agent_y").expect("b freed");
     super::release_resident_leases_for("agent_y");
+}
+
+#[test]
+fn step_tool_budget_is_eighty_percent_of_step_timeout() {
+    let step = Duration::from_secs(600);
+    let budget = step_tool_budget(step);
+    assert_eq!(budget.as_secs(), 480);
+}
+
+#[test]
+fn persist_round_trip_preserves_completion_reason_and_blackboard_task_id() {
+    use deepseek_core::subagent::CompletionReason;
+
+    let dir = tempdir().expect("tempdir");
+    let state_path = dir.path().join(SUBAGENT_STATE_FILE);
+    let boot = "boot_meta_test".to_string();
+
+    {
+        let mut writer =
+            SubAgentManager::new(dir.path().to_path_buf(), 2).with_state_path(state_path.clone());
+        let (input_tx, _input_rx) = mpsc::unbounded_channel();
+        let mut agent = SubAgent::new(
+            SubAgentType::Explore,
+            "prompt".to_string(),
+            make_assignment(),
+            "deepseek-v4-flash".to_string(),
+            None,
+            None,
+            STEP_API_TIMEOUT,
+            DEFAULT_MAX_STEPS,
+            input_tx,
+            boot.clone(),
+        );
+        agent.id = "agent_meta".to_string();
+        agent.status = SubAgentStatus::Completed;
+        agent.completion_reason = Some(CompletionReason::NaturalBreak);
+        agent.blackboard_task_id = Some("task-audit-1".to_string());
+        writer.agents.insert(agent.id.clone(), agent);
+        writer.persist_state().expect("persist");
+    }
+
+    let mut reader =
+        SubAgentManager::new(dir.path().to_path_buf(), 2).with_state_path(state_path);
+    reader.load_state().expect("reload");
+    let agent = reader.agents.get("agent_meta").expect("agent present");
+    assert_eq!(
+        agent.completion_reason,
+        Some(CompletionReason::NaturalBreak)
+    );
+    assert_eq!(
+        agent.blackboard_task_id.as_deref(),
+        Some("task-audit-1")
+    );
+}
+
+#[test]
+fn get_result_with_fallback_reads_structured_findings_from_blackboard() {
+    use deepseek_core::subagent::{AuditFindingItem, StructuredFindings};
+
+    let dir = tempdir().expect("tempdir");
+    let ws = dir.path().to_path_buf();
+    let mut manager = SubAgentManager::new(ws.clone(), 2);
+
+    let findings = StructuredFindings {
+        area_id: "auth".into(),
+        area_path: Some("src/auth".into()),
+        items: vec![AuditFindingItem {
+            kind: "finding".into(),
+            severity: "HIGH".into(),
+            file: Some("login.rs".into()),
+            line: Some(10),
+            line_end: None,
+            claim: "weak rng".into(),
+            evidence: Some("use rand".into()),
+        }],
+        summary: None,
+    };
+
+    let mut board_result = make_snapshot(SubAgentStatus::Completed);
+    board_result.agent_id = "agent_bb".into();
+    board_result.agent_type = SubAgentType::Explore;
+    board_result.structured_findings = Some(findings.clone());
+    super::blackboard::write_blackboard_partition(&ws, "task-1", &SubAgentType::Explore, &board_result);
+
+    let (input_tx, _input_rx) = mpsc::unbounded_channel();
+    let mut agent = SubAgent::new(
+        SubAgentType::Explore,
+        "prompt".to_string(),
+        make_assignment(),
+        "deepseek-v4-flash".to_string(),
+        None,
+        None,
+        STEP_API_TIMEOUT,
+        DEFAULT_MAX_STEPS,
+        input_tx,
+        manager.session_boot_id().to_string(),
+    );
+    agent.id = "agent_bb".into();
+    agent.status = SubAgentStatus::Completed;
+    agent.blackboard_task_id = Some("task-1".into());
+    agent.result = Some("exploration summary".into());
+    manager.agents.insert(agent.id.clone(), agent);
+
+    let snap = manager
+        .get_result_with_fallback("agent_bb", &ws)
+        .expect("fallback");
+    let loaded = snap.structured_findings.expect("findings from blackboard");
+    assert_eq!(loaded.area_id, "auth");
+    assert_eq!(loaded.items[0].claim, "weak rng");
+}
+
+#[test]
+fn get_result_with_fallback_records_parse_failure_from_prose() {
+    use deepseek_core::subagent::ParseFailureReason;
+
+    let dir = tempdir().expect("tempdir");
+    let ws = dir.path().to_path_buf();
+    let mut manager = SubAgentManager::new(ws.clone(), 2);
+
+    let (input_tx, _input_rx) = mpsc::unbounded_channel();
+    let mut agent = SubAgent::new(
+        SubAgentType::Explore,
+        "prompt".to_string(),
+        make_assignment(),
+        "deepseek-v4-flash".to_string(),
+        None,
+        None,
+        STEP_API_TIMEOUT,
+        DEFAULT_MAX_STEPS,
+        input_tx,
+        manager.session_boot_id().to_string(),
+    );
+    agent.id = "agent_parse".into();
+    agent.status = SubAgentStatus::Completed;
+    agent.result = Some("plain prose without audit-findings marker".into());
+    manager.agents.insert(agent.id.clone(), agent);
+
+    let snap = manager
+        .get_result_with_fallback("agent_parse", &ws)
+        .expect("fallback");
+    assert!(snap.structured_findings.is_none());
+    assert_eq!(
+        snap.structured_findings_parse_failure,
+        Some(ParseFailureReason::NoMarker)
+    );
+}
+
+#[test]
+fn persist_round_trip_preserves_scratchpad_run_id() {
+    let dir = tempdir().expect("tempdir");
+    let state_path = dir.path().join(SUBAGENT_STATE_FILE);
+
+    {
+        let mut writer =
+            SubAgentManager::new(dir.path().to_path_buf(), 2).with_state_path(state_path.clone());
+        let (input_tx, _input_rx) = mpsc::unbounded_channel();
+        let mut agent = SubAgent::new(
+            SubAgentType::Explore,
+            "prompt".to_string(),
+            make_assignment(),
+            "deepseek-v4-flash".to_string(),
+            None,
+            None,
+            STEP_API_TIMEOUT,
+            DEFAULT_MAX_STEPS,
+            input_tx,
+            writer.session_boot_id().to_string(),
+        );
+        agent.id = "agent_run".to_string();
+        agent.status = SubAgentStatus::Completed;
+        agent.scratchpad_run_id = Some("audit-run-a".to_string());
+        writer.agents.insert(agent.id.clone(), agent);
+        writer.persist_state().expect("persist");
+    }
+
+    let mut reader =
+        SubAgentManager::new(dir.path().to_path_buf(), 2).with_state_path(state_path);
+    reader.load_state().expect("reload");
+    let agent = reader.agents.get("agent_run").expect("agent present");
+    assert_eq!(
+        agent.scratchpad_run_id.as_deref(),
+        Some("audit-run-a")
+    );
+}
+
+#[test]
+fn spawn_snapshot_includes_scratchpad_run_id_when_set() {
+    let mut manager = SubAgentManager::new(PathBuf::from("."), 2);
+    let (input_tx, _input_rx) = mpsc::unbounded_channel();
+    let mut agent = SubAgent::new(
+        SubAgentType::Explore,
+        "prompt".to_string(),
+        make_assignment(),
+        "deepseek-v4-flash".to_string(),
+        None,
+        None,
+        STEP_API_TIMEOUT,
+        DEFAULT_MAX_STEPS,
+        input_tx,
+        manager.session_boot_id().to_string(),
+    );
+    agent.id = "agent_bound".to_string();
+    agent.scratchpad_run_id = Some("run-2026".to_string());
+    manager.agents.insert(agent.id.clone(), agent);
+
+    let snap = manager.get_result("agent_bound").expect("snapshot");
+    assert_eq!(snap.scratchpad_run_id.as_deref(), Some("run-2026"));
 }

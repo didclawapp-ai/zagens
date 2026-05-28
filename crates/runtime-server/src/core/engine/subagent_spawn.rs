@@ -38,7 +38,7 @@ impl SubAgentHost for Engine {
     }
 
     async fn running_count(&self) -> usize {
-        let mgr = self.runtime_ext().subagent_manager.read().await;
+        let mut mgr = self.runtime_ext().subagent_manager.write().await;
         mgr.running_count()
     }
 }

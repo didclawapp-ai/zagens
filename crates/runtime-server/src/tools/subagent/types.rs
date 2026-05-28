@@ -4,8 +4,7 @@ use serde::{Deserialize, Serialize};
 
 
 use deepseek_core::subagent::{
-    SubAgentAssignment, SubAgentResult, SubAgentStatus,
-    SubAgentType,
+    CompletionReason, SubAgentAssignment, SubAgentResult, SubAgentStatus, SubAgentType,
 };
 
 use super::constants::SUBAGENT_STATE_SCHEMA_VERSION;
@@ -16,6 +15,8 @@ pub(crate) struct SubAgentSpawnOptions {
     pub nickname: Option<String>,
     /// Optional task id for blackboard association (CRAFT P1).
     pub task_id: Option<String>,
+    /// Scratchpad run bound at spawn (audit multi-run isolation).
+    pub scratchpad_run_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -113,6 +114,12 @@ pub(crate) struct PersistedSubAgent {
     /// "from_prior_session" because it can't match any current id.
     #[serde(default)]
     pub(crate) session_boot_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) completion_reason: Option<CompletionReason>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) blackboard_task_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) scratchpad_run_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

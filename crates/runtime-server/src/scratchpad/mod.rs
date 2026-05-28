@@ -12,7 +12,7 @@ pub mod import;
 pub mod inventory_template;
 
 pub use init::{default_init_areas, parse_init_areas, resolve_run_id_for_init};
-pub use import::{import_agent_findings, open_high_finding_ids, verify_note};
+pub use import::{import_agent_findings, open_high_finding_ids, validate_agent_run_binding, verify_note};
 pub use inventory_template::workspace_audit_inventory;
 
 pub use schema::{
@@ -94,6 +94,12 @@ pub fn resolve_run_id(ctx: &ToolContext, explicit: Option<&str>) -> Result<Strin
     Err(ToolError::invalid_input(
         "run_id required: pass run_id explicitly or create scratchpad under thread/task id first",
     ))
+}
+
+/// Best-effort scratchpad run binding for sub-agent spawn (no error when unset).
+#[must_use]
+pub fn try_resolve_run_id(ctx: &ToolContext, explicit: Option<&str>) -> Option<String> {
+    resolve_run_id(ctx, explicit).ok()
 }
 
 /// Open scratchpad for a workspace when `run_id` resolves (tools / API / engine).

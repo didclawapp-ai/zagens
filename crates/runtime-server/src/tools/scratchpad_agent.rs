@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
-use crate::scratchpad::{ScratchpadStore, import_agent_findings, resolve_run_id};
+use crate::scratchpad::{ScratchpadStore, import_agent_findings, resolve_run_id, validate_agent_run_binding};
 use crate::tools::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
     optional_str, required_str,
@@ -103,13 +103,20 @@ impl ToolSpec for ScratchpadImportAgentTool {
             res
         } else {
             self.manager
-                .read()
+                .write()
                 .await
-                .get_result(agent_id)
+                .get_result_with_fallback(agent_id, &context.workspace)
                 .map_err(|e| ToolError::execution_failed(e.to_string()))?
         };
 
         let store = ScratchpadStore::open(context, &run_id)?;
+        let bound_run = self
+            .manager
+            .write()
+            .await
+            .agent_scratchpad_run_id(agent_id)
+            .map_err(|e| ToolError::execution_failed(e.to_string()))?;
+        validate_agent_run_binding(bound_run.as_deref(), &run_id, agent_id)?;
         let notes = import_agent_findings(&store, &result, area_override)?;
         let out = json!({
             "run_id": run_id,

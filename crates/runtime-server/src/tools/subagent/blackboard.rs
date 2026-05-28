@@ -9,8 +9,9 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
+use deepseek_core::subagent::{StructuredFindings, StructuredVerdict, SubAgentType};
+
 use super::SubAgentResult;
-use super::SubAgentType;
 
 // ── Path helpers ──────────────────────────────────────────────
 
@@ -153,26 +154,44 @@ pub fn write_blackboard_partition(
         SubAgentType::Explore => {
             // Explorer: write findings from structured verdict (P1+)
             // CRAFT V2: also extract coverage metadata from the output
-            ("explorer", json!({
+            let mut partition = json!({
                 "findings": build_explorer_findings(result),
                 "impact_summary": extract_impact_summary(result),
                 "files_examined": extract_files_examined(result),
                 "coverage_confidence": extract_coverage_confidence(result),
-            }))
+            });
+            if let Some(findings) = &result.structured_findings {
+                if let Value::Object(ref mut map) = partition {
+                    map.insert(
+                        "structured_findings".to_string(),
+                        serde_json::to_value(findings).unwrap_or(Value::Null),
+                    );
+                }
+            }
+            ("explorer", partition)
         }
         SubAgentType::Implementer => {
             // CRAFT V2: append current round to rounds[] history
             ("implementer", build_implementer_rounds(result, &existing_raw, workspace))
         }
         SubAgentType::Review => {
-            ("reviewer", json!({
+            let mut partition = json!({
                 "verdict": result.structured_verdict.as_ref()
                     .map(|v| serde_json::to_value(&v.verdict).unwrap_or(json!("PASS")))
                     .unwrap_or(json!("PASS")),
                 "blockers": result.structured_verdict.as_ref()
                     .map(|v| &v.items)
                     .unwrap_or(&vec![]),
-            }))
+            });
+            if let Some(verdict) = &result.structured_verdict {
+                if let Value::Object(ref mut map) = partition {
+                    map.insert(
+                        "structured_verdict".to_string(),
+                        serde_json::to_value(verdict).unwrap_or(Value::Null),
+                    );
+                }
+            }
+            ("reviewer", partition)
         }
         SubAgentType::Verifier => {
             ("verifier", json!({
@@ -215,6 +234,38 @@ pub fn write_blackboard_partition(
     let tmp_path = path.with_extension("tmp");
     let _ = std::fs::write(&tmp_path, &payload);
     let _ = std::fs::rename(&tmp_path, &path);
+}
+
+/// Read structured audit findings written by an Explore agent.
+pub fn read_structured_findings_from_blackboard(
+    workspace: &Path,
+    task_id: &str,
+    agent_type: &SubAgentType,
+) -> Option<StructuredFindings> {
+    if !matches!(agent_type, SubAgentType::Explore) {
+        return None;
+    }
+    let board = read_blackboard_raw(workspace, task_id)?;
+    board
+        .get("explorer")?
+        .get("structured_findings")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+}
+
+/// Read structured CRAFT verdict written by a Review agent.
+pub fn read_structured_verdict_from_blackboard(
+    workspace: &Path,
+    task_id: &str,
+    agent_type: &SubAgentType,
+) -> Option<StructuredVerdict> {
+    if !matches!(agent_type, SubAgentType::Review) {
+        return None;
+    }
+    let board = read_blackboard_raw(workspace, task_id)?;
+    board
+        .get("reviewer")?
+        .get("structured_verdict")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
 }
 
 // ── Markdown formatters (read side) ────────────────────────────
@@ -635,6 +686,11 @@ mod tests {
             from_prior_session: false,
             structured_verdict: Some(verdict),
             structured_findings: None,
+            completion_reason: None,
+            max_steps: 100,
+            step_timeout_ms: 600_000,
+            structured_findings_parse_failure: None,
+            scratchpad_run_id: None,
         };
 
         // Write to blackboard
@@ -686,6 +742,11 @@ mod tests {
                 summary: Some("one risk".into()),
             }),
             structured_findings: None,
+            completion_reason: None,
+            max_steps: 100,
+            step_timeout_ms: 600_000,
+            structured_findings_parse_failure: None,
+            scratchpad_run_id: None,
         };
         write_blackboard_partition(&ws, task_id, &SAT::Explore, &explorer_result);
 
@@ -714,6 +775,11 @@ mod tests {
                 summary: Some("one blocker".into()),
             }),
             structured_findings: None,
+            completion_reason: None,
+            max_steps: 100,
+            step_timeout_ms: 600_000,
+            structured_findings_parse_failure: None,
+            scratchpad_run_id: None,
         };
         write_blackboard_partition(&ws, task_id, &SAT::Review, &reviewer_result);
 
@@ -759,6 +825,11 @@ mod tests {
                 summary: Some("one failure".into()),
             }),
             structured_findings: None,
+            completion_reason: None,
+            max_steps: 100,
+            step_timeout_ms: 600_000,
+            structured_findings_parse_failure: None,
+            scratchpad_run_id: None,
         };
         write_blackboard_partition(&ws, task_id, &SAT::Verifier, &verifier_result);
 

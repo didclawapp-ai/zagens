@@ -66,13 +66,15 @@ After building inventory, append:
 
 ### Join (mandatory — do not hand-copy prose)
 
-1. `agent_list` until no `Running`.
-2. For each completed explore agent:
+1. `agent_wait` / `agent_result(block)` — **omit `timeout_ms`** to use adaptive wait (`step_timeout_ms × remaining steps`, clamped). Explicit `timeout_ms` still overrides when you need a hard cap.
+2. `agent_list` until no `Running`.
+3. For each completed explore agent:
+   - Check sentinel / `agent_result` **`completion_reason`**: only treat as fully done when **`NaturalBreak`**. **`StepLimitReached`** means the child hit the step cap — re-spawn a narrower scope or raise limits; **do not** `scratchpad_set_area(done)` on step-limit alone.
    - `scratchpad_import_agent({ agent_id, area_id? })` — imports `structured_findings` as **`status=open`**, `source=agent:{id}`.
-3. For each imported **HIGH/BLOCKER** (and MEDIUM you will report):
+4. For each imported **HIGH/BLOCKER** (and MEDIUM you will report):
    - `read_file` / `grep_files` (caller-trace for security claims).
    - `scratchpad_verify_note({ note_id })` — promotes to **`verified`** (append-only supersede).
-4. `scratchpad_set_area({ area_id, status: "done" })` — **blocked** while open HIGH/BLOCKER remain.
+5. `scratchpad_set_area({ area_id, status: "done" })` — **blocked** while open HIGH/BLOCKER remain; prefer **`completion_reason=NaturalBreak`** plus imported findings (or explicit “no findings” in prose).
 
 **Do not use `task_create`** for per-area audits during bound scratchpad (E5). Use **`agent_spawn`** only.
 

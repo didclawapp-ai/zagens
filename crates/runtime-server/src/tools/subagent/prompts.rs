@@ -2,8 +2,8 @@
 
 
 use deepseek_core::subagent::{
-    StructuredFindings, StructuredVerdict, SubAgentAssignment, SubAgentType, VerdictItem,
-    VerdictLevel,
+    ParseFailureReason, StructuredFindings, StructuredVerdict, SubAgentAssignment, SubAgentType,
+    VerdictItem, VerdictLevel,
 };
 
 use super::prompt_text::*;
@@ -157,31 +157,35 @@ pub(crate) fn build_subagent_system_prompt(
 
 /// Parse a `<!-- audit-findings -->` JSON fence from Explore/Review final output.
 pub(crate) fn parse_structured_findings(text: &str) -> Option<StructuredFindings> {
+    parse_structured_findings_result(text).ok()
+}
+
+/// Parse audit findings with an explicit failure reason for diagnostics.
+pub(crate) fn parse_structured_findings_result(
+    text: &str,
+) -> Result<StructuredFindings, ParseFailureReason> {
     parse_json_fence_after_marker(text, "<!-- audit-findings -->")
 }
 
 /// Parse a `<!-- craft-verdict -->` JSON fence from the agent's final text output.
-///
-/// Strategy: search for the marker, extract the first `{…}` JSON block
-/// that follows, and deserialize. Returns `None` if the marker is absent
-/// or the JSON is unparseable — the caller falls back to natural-language
-/// processing (graceful degradation).
 pub(crate) fn parse_structured_verdict(text: &str) -> Option<StructuredVerdict> {
-    parse_json_fence_after_marker(text, "<!-- craft-verdict -->")
+    parse_json_fence_after_marker(text, "<!-- craft-verdict -->").ok()
 }
 
 fn parse_json_fence_after_marker<T: serde::de::DeserializeOwned>(
     text: &str,
     marker: &str,
-) -> Option<T> {
+) -> Result<T, ParseFailureReason> {
     let Some(after_marker) = text.find(marker).map(|idx| &text[idx + marker.len()..]) else {
         tracing::debug!(
             "parse_json_fence_after_marker: no marker '{marker}' found"
         );
-        return None;
+        return Err(ParseFailureReason::NoMarker);
     };
 
-    let brace_start = after_marker.find('{')?;
+    let Some(brace_start) = after_marker.find('{') else {
+        return Err(ParseFailureReason::Truncated);
+    };
     let slice = &after_marker[brace_start..];
 
     let mut depth = 0i32;
@@ -200,14 +204,13 @@ fn parse_json_fence_after_marker<T: serde::de::DeserializeOwned>(
         }
     }
 
-    let json_str = end.map(|e| &slice[..e])?;
-    match serde_json::from_str::<T>(json_str) {
-        Ok(v) => Some(v),
-        Err(e) => {
-            tracing::warn!("parse_json_fence_after_marker({marker}): JSON parse failed: {e}");
-            None
-        }
-    }
+    let Some(json_str) = end.map(|e| &slice[..e]) else {
+        return Err(ParseFailureReason::Truncated);
+    };
+    serde_json::from_str::<T>(json_str).map_err(|e| {
+        tracing::warn!("parse_json_fence_after_marker({marker}): JSON parse failed: {e}");
+        ParseFailureReason::InvalidJson(e.to_string())
+    })
 }
 
 /// Map audit findings to CRAFT verdict for blackboard compatibility.
@@ -260,10 +263,36 @@ mod parse_tests {
     "claim": "test"
   }]
 }"#;
-        let f = parse_structured_findings(text).expect("findings");
+        let f = parse_structured_findings_result(text).expect("findings");
         assert_eq!(f.area_id, "area-core");
         assert_eq!(f.items.len(), 1);
         assert_eq!(f.items[0].claim, "test");
+    }
+
+    #[test]
+    fn parse_structured_findings_reports_no_marker() {
+        assert_eq!(
+            parse_structured_findings_result("plain prose only"),
+            Err(ParseFailureReason::NoMarker)
+        );
+    }
+
+    #[test]
+    fn parse_structured_findings_reports_truncated_fence() {
+        let text = "<!-- audit-findings -->\n{\"area_id\":\"a\",\"items\":[";
+        assert_eq!(
+            parse_structured_findings_result(text),
+            Err(ParseFailureReason::Truncated)
+        );
+    }
+
+    #[test]
+    fn parse_structured_findings_reports_invalid_json() {
+        let text = "<!-- audit-findings -->\n{not-json}";
+        assert!(matches!(
+            parse_structured_findings_result(text),
+            Err(ParseFailureReason::InvalidJson(_))
+        ));
     }
 }
 

@@ -18,6 +18,8 @@ mod router;
 mod runtime;
 mod tools;
 mod types;
+mod structured_fallback;
+mod wait_timeout;
 
 pub use deepseek_core::subagent::{
     SubAgentResult, SubAgentStatus, SubAgentType, VerdictLevel,
@@ -57,8 +59,11 @@ pub(crate) use constants::{
 pub(crate) use deprecation::wrap_with_deprecation_notice;
 #[cfg(test)]
 pub(crate) use executor::{
+    completion_reason_for_error_str, completion_reason_for_successful_exit,
     emit_parent_completion, subagent_done_sentinel, subagent_failed_sentinel,
 };
+#[cfg(test)]
+pub(crate) use constants::{adaptive_wait_timeout_ms, step_tool_budget, DEFAULT_MAX_STEPS, MAX_RESULT_TIMEOUT_MS, MIN_WAIT_TIMEOUT_MS};
 #[cfg(test)]
 pub(crate) use factory::default_state_path;
 #[cfg(test)]

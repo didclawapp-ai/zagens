@@ -302,6 +302,10 @@ impl ToolSpec for AgentSpawnTool {
 
         let mut manager = self.manager.write().await;
 
+        let explicit_run = input.get("scratchpad_run_id").and_then(|v| v.as_str());
+        let scratchpad_run_id =
+            crate::scratchpad::try_resolve_run_id(&self.runtime.context, explicit_run);
+
         let spawn_result = manager
             .spawn_background_with_assignment_options(
                 Arc::clone(&self.manager),
@@ -314,6 +318,7 @@ impl ToolSpec for AgentSpawnTool {
                     model: Some(effective_model),
                     nickname: None,
                     task_id: spawn_request.task_id.clone(),
+                    scratchpad_run_id,
                 },
             );
         if spawn_result.is_err()
