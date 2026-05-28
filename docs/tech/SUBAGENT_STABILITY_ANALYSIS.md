@@ -3,15 +3,24 @@
 | 字段 | 值 |
 |------|-----|
 | **日期** | 2026-05-28 |
-| **修订** | 2026-05-28（Zagens 评估反馈并入）；2026-05-28（二次审核修订） |
+| **修订** | 2026-05-28（Zagens 评估反馈并入）；2026-05-28（二次审核修订）；2026-05-28（**P0/P1 落地状态更新**） |
 | **范围** | `crates/runtime-server` 子代理管道（spawn → execute → join）及 audit-repo / scratchpad 集成 |
-| **状态** | 分析文档；P0/P1 修复项尚未落地 |
+| **状态** | **P0 + P1 已落地**（2026-05-28，commit `dfe9eb1`）；**P2 按需排期**（阶段 8） |
 | **读者** | runtime 维护者、audit 链路排期 |
 | **关联** | [`RUNTIME_ARCHITECTURE.md`](RUNTIME_ARCHITECTURE.md)、[`../desktop/auditor-subagent-design.md`](../desktop/auditor-subagent-design.md)、[`../desktop/audit-scratchpad-design.md`](../desktop/audit-scratchpad-design.md) |
 
 **如何读本文：** §2–§3 架构与超时层叠；§4–§6 Join / 终态 / 持久化；§7 audit 链路；§9 测试缺口；**§9b 六项未覆盖风险**；§10 代码级修复方案；**§11 改进实施步骤**；§15 已知并发限制。代码引用路径均相对仓库根目录。
 
-**代码引用审核（2026-05-28）：** 文档 §3–§6 所列行号与实现逐一核对，**全部准确**；二次审核补充 §11 阶段 3 前置缺口（`SubAgent` 缺 `step_timeout`/`max_steps`）已写入实施步骤。
+**实施状态总览（2026-05-28，`dfe9eb1`）：**
+
+| 里程碑 | 内容 | 状态 | 回归 |
+|--------|------|------|------|
+| **M1–M3** | P0：panic/zombie、`completion_reason`、自适应 join | ✅ | `cargo test -p deepseek-runtime-server tools::subagent` **125 项** |
+| **M4** | P1 第一批：resume 清 structured、send_input 僵尸、双次 drain | ✅ | 同上 |
+| **M5** | P1 第二、三批：persist/fallback、工具预算、parse 诊断、多 run 绑定 | ✅ | + `scratchpad::import` **4 项** |
+| **P2** | 阶段 8：守护任务、per-agent persist、progress 节流等 | ⏸ 按需 | — |
+
+**代码引用审核（2026-05-28）：** 文档 §3–§6 所列行号与 **P0/P1 落地前** 实现逐一核对，全部准确。落地后部分路径已变更（如 `parse_structured_findings` → `parse_structured_findings_result`、`SubAgent` 已含 `step_timeout`/`max_steps`/`scratchpad_run_id`）；§10–§11 以 **实施状态** 列为准，历史行号引用仅供 diff 对照。
 
 ---
 
@@ -19,13 +28,13 @@
 
 子代理 **Execute 层**（单步 API `step_timeout`、默认 600s、失败显式 `Failed`）近期已加强；主要不稳定源集中在 **Join 层、终态判定与持久化/解析边界**：
 
-| # | 问题 | 典型表现 | 优先级 |
-|---|------|----------|--------|
-| 1 | Join 默认 **30s** vs Execute 默认 **600s** 不对齐 | 长 audit 中 `agent_wait` 返回 `timed_out`，子 agent 仍 `Running` | P0 |
-| 2 | 步数耗尽（`max_steps=100`）无条件标 **`Completed`** | 未完成审计被 scratchpad / 父 agent 当作成功 | P0 |
-| 3 | panic 后 manager 状态仍为 **`Running`** | 僵尸 agent；`agent_wait` 永不结束；`no_tool_uses` 可能永久挂起 | P0 |
-| 4 | `structured_findings` / `structured_verdict` **不落盘** | 重启或 `resume` 后 verify 链不可靠 | P1 |
-| 5–10 | 见 **§9b**（persist / structured 一致性等六项缺口） | 低频但可级联 | P1–P2 |
+| # | 问题 | 典型表现 | 优先级 | 状态 |
+|---|------|----------|--------|------|
+| 1 | Join 默认 **30s** vs Execute 默认 **600s** 不对齐 | 长 audit 中 `agent_wait` 返回 `timed_out`，子 agent 仍 `Running` | P0 | ✅ P0-3 自适应 join |
+| 2 | 步数耗尽（`max_steps=100`）无条件标 **`Completed`** | 未完成审计被 scratchpad / 父 agent 当作成功 | P0 | ✅ P0-2 `completion_reason` + import 门禁 |
+| 3 | panic 后 manager 状态仍为 **`Running`** | 僵尸 agent；`agent_wait` 永不结束；`no_tool_uses` 可能永久挂起 | P0 | ✅ P0-1 panic→Failed + `ensure_consistency` |
+| 4 | `structured_findings` / `structured_verdict` **不落盘** | 重启或 `resume` 后 verify 链不可靠 | P1 | ✅ 部分：P1-4 元数据 + blackboard fallback；structured 本体仍不写 v1 JSON |
+| 5–10 | 见 **§9b**（persist / structured 一致性等六项缺口） | 低频但可级联 | P1–P2 | ✅ P1 六项已落地；P2-10/11/13 仍开放 |
 
 **最高 ROI 修复方向：** 消除假 Completed、消除假 Running、对齐 wait 与 step 超时、持久化 completion 元数据 + blackboard 引用、补齐 fence 解析诊断。
 
@@ -282,23 +291,23 @@ flowchart TD
 
 | 环节 | 当前防护 | 缺口 |
 |------|----------|------|
-| inventory 分档 timeout | skill + spawn clamp 120–1800s | wait 默认仍 30s |
-| findings 硬格式 | `<!-- audit-findings -->` | fence 静默 None；步数耗尽仍 Completed |
-| scratchpad verify | notes `status=verified` | 不区分 Completed vs StepLimit |
-| 多 run 隔离 | per-thread binding（已修） | agent → area / run_id 映射（§9b 缺口 6） |
-| auditor spawn | base.md P3 | 上游 explore 假成功会级联 |
+| inventory 分档 timeout | skill + spawn clamp 120–1800s | ~~wait 默认仍 30s~~ → **P0-3 自适应 wait** |
+| findings 硬格式 | `<!-- audit-findings -->` | ~~fence 静默 None~~ → **P1-9 `ParseFailureReason`**；步数耗尽仍 `Completed` 但 **import 看 `completion_reason`** |
+| scratchpad verify | notes `status=verified` | **P1 import 门禁** 拒绝 `StepLimitReached` / timeout / cancel |
+| 多 run 隔离 | per-thread binding + **`scratchpad_run_id` 绑定** | ✅ P1 阶段 7；旧 agent 无 binding 时仍靠 area inventory 校验 |
+| auditor spawn | base.md P3 | 上游 explore 假成功已可凭 `completion_reason` 识别 |
 
 ---
 
 ## 8. 可观测性与复现
 
-| 症状 | 日志 / 工具信号 | 根因候选 |
-|------|-----------------|----------|
-| 区域 marked done 但 findings 空 | scratchpad + `agent_result` 无 fence | Join 30s / step limit / fence 解析 None |
-| 子 agent UI 一直 Running | `agent_list` Running + task 已结束 | panic 僵尸 |
-| 父 turn 长时间无响应 | 「Waiting on N sub-agent(s)…」 | `no_tool_uses` + 僵尸或极慢子 agent |
-| 重启后 verify 失败 | `subagents.v1.json` 有 result 无 structured | persist schema 缺口 |
-| 同会话第二 run 导入错乱 | notes 写入错误 area | run_id 未校验（§9b 缺口 6） |
+| 症状 | 日志 / 工具信号 | 根因候选 | 落地后 |
+|------|-----------------|----------|--------|
+| 区域 marked done 但 findings 空 | scratchpad + `agent_result` 无 fence | Join 30s / step limit / fence 解析 None | **缓解：** 自适应 wait + `ParseFailureReason` + fallback |
+| 子 agent UI 一直 Running | `agent_list` Running + task 已结束 | panic 僵尸 | **缓解：** panic→Failed + `ensure_consistency` |
+| 父 turn 长时间无响应 | 「Waiting on N sub-agent(s)…」 | `no_tool_uses` + 僵尸或极慢子 agent | **缓解：** 双次 drain + 僵尸检测 |
+| 重启后 verify 失败 | `subagents.v1.json` 有 result 无 structured | persist schema 缺口 | **部分缓解：** `blackboard_task_id` + `get_result_with_fallback` |
+| 同会话第二 run 导入错乱 | notes 写入错误 area | run_id 未校验 | **缓解：** `scratchpad_run_id` 绑定 + area inventory 校验 |
 
 **本地排查：** `{workspace}/.deepseek/state/subagents.v1.json` → sidecar 日志 `target: "panic"` → `agent_wait` metadata → transcript sentinel。
 
@@ -306,18 +315,22 @@ flowchart TD
 
 ## 9. 测试覆盖缺口
 
+> **2026-05-28 更新：** P0/P1 落地后 `tools::subagent` **125 项** + `scratchpad::import` **4 项**全绿。下表「缺口」列标注 **仍缺** 或 **已补** 项。
+
 | 场景 | 现有测试 | 缺口 |
 |------|----------|------|
-| `agent_wait` timeout | `wait_for_result` 10ms `timed_out` | 无 step_timeout 联动回归 |
-| panic → Failed | — | **无** |
-| step limit 终态 | — | **无** natural break 区分 |
-| persist structured | load/save round-trip | **无** structured / blackboard 引用 |
-| resume 清 structured | — | **无** |
-| 僵尸检测 | `running_count` 排除 finished handle | **无** agent_list 一致性 |
-| fence 解析失败模式 | `parse_structured_findings_reads_fence` | **无** 截断 / 非法 JSON 分级 |
-| no_tool_uses 竞态 | — | **无** |
-| send_input 僵尸 | schema 测试 | **无** finished handle 拒绝 |
-| persist 并发 / crash | — | **无** |
+| `agent_wait` timeout | `wait_for_result` + 自适应公式回归 | ✅ 已补 step_timeout 联动 |
+| panic → Failed | `ensure_consistency_marks_finished_handle_as_failed` | ✅ 已补（单元）；无集成 panic 注入 |
+| step limit 终态 | `completion_reason_for_successful_exit_*`、`subagent_done_sentinel_includes_completion_reason` | ✅ 已补 |
+| persist structured | `persist_round_trip_preserves_*` | ✅ 元数据 round-trip；**无** structured JSON 落盘（by design） |
+| resume 清 structured | `resume_clears_structured_output` | ✅ 已补 |
+| 僵尸检测 | `ensure_consistency_marks_finished_handle_as_failed` | ✅ 已补 |
+| fence 解析失败模式 | `parse_structured_findings_reports_*`、`get_result_with_fallback_records_parse_failure_from_prose` | ✅ 已补 NoMarker/Truncated/InvalidJson |
+| no_tool_uses 竞态 | `second_drain_captures_completion_after_empty_first_drain` | ✅ 已补 |
+| send_input 僵尸 | `send_input_rejects_finished_task_handle` | ✅ 已补 |
+| persist 并发 / crash | — | **仍缺**（P2-11 范畴） |
+| 多 run import | `validate_agent_run_binding_*`、`import_rejects_area_id_not_in_target_run_inventory` | ✅ 已补 |
+| blackboard 写入失败 fallback | — | **仍缺** 自动化 mock（运行时靠 memory→prose fallback） |
 
 ---
 
@@ -325,7 +338,11 @@ flowchart TD
 
 以下缺口在初版文档中未展开；Zagens 二次审核已对照代码确认。**原「缺口 1」与「缺口 6」为同一根因的两个表现**（持久化模型未定义 structured 权威源），合述如下。
 
+> **实施状态（2026-05-28）：** 缺口 2–6 经 P1 已落地；缺口 1 **部分缓解**（元数据 + fallback），全量崩溃窗口缩小待 **P2-11**。
+
 ### 缺口 1：持久化与 structured 权威源（合述：原缺口 1 + 6）
+
+**实施状态：** ✅ **部分缓解**（P1-4 + `structured_fallback.rs`）。runtime 约定：**blackboard 为 structured 权威源**；内存为热缓存；`agent_result` / `scratchpad_import_agent` 三级 fallback（内存 → blackboard → prose）。`subagents.v1.json` persist `completion_reason`、`blackboard_task_id`、`scratchpad_run_id`（**不** embed structured JSON）。**仍开放：** 多 agent 连续完成时的崩溃窗口（P2-11 per-agent journal）。
 
 **共同根因：** manager 内存态、全量 `subagents.v1.json`、blackboard 文件 **三者无统一 SSOT**；structured 数据尤甚。
 
@@ -379,6 +396,8 @@ pub(crate) fn parse_structured_findings(text: &str) -> Option<StructuredFindings
 
 **建议（P1-9）：** 改为 `Result<T, ParseFailureReason>`（`NoMarker` / `Truncated` / `InvalidJson`），sentinel 携带诊断。与 P0-2 `completion_reason` 可交叉参考（如 `StepLimitReached` + `Truncated` 同现时表示步数截断）。
 
+**实施状态：** ✅ **已落地**（`parse_structured_findings_result`、`SubAgentResult.structured_findings_parse_failure`、sentinel 诊断字段）。
+
 ### 缺口 3：`no_tool_uses` completion channel 竞态
 
 **现状（`no_tool_uses.rs:68–84`）：**
@@ -393,9 +412,13 @@ pub(crate) fn parse_structured_findings(text: &str) -> Option<StructuredFindings
 
 **建议（P1-8）：** `running_count() == 0` 后 **再次 drain** `rx_subagent_completion`。
 
+**实施状态：** ✅ **已落地**（`no_tool_uses.rs::drain_subagent_completions` + 单元测试）。
+
 ### 缺口 4：工具超时累积
 
 见 **§3.4**。建议 **§10 P1-6**。
+
+**实施状态：** ✅ **已落地**（`step_tool_budget()` = `step_timeout × 0.8`，该步内所有 tool 共享剩余预算）。
 
 ### 缺口 5：`agent_send_input` 僵尸交互
 
@@ -414,11 +437,15 @@ panic 僵尸：`input_tx` 仍 open，`send` 成功，但 task 已结束 → inpu
 
 **建议（P1-7）：** `task_handle.is_finished()` 时返回 `"Agent task ended (possible panic)"`。
 
+**实施状态：** ✅ **已落地**（`manager.rs::send_input` + 单元测试）。**仍开放：** 周期性守护扫描（P2-10）。
+
 ### 缺口 6：多 run scratchpad 的 agent → area 映射
 
 同会话第二 run 使用不同 `run_id` / inventory，但 **agent manager 为会话单例**。若 explore prompt 含旧 `area_id`，`scratchpad_import_agent` 可能 **错误导入新 run**。
 
 **建议：** `agent_spawn` 注入 `run_id` metadata；`scratchpad_import_agent` 校验 run_id 一致。
+
+**实施状态：** ✅ **已落地**（`SubAgent.scratchpad_run_id` spawn 绑定；import 校验 run 一致 + `area_id` ∈ target inventory）。
 
 ---
 
@@ -426,23 +453,24 @@ panic 僵尸：`input_tx` 仍 open，`send` 成功，但 task 已结束 → inpu
 
 ### 10.1 优先级矩阵
 
-| 级别 | 编号 | 修复项 | 工作量 | 覆盖 |
-|------|------|--------|--------|------|
-| **P0** | 1a | Panic → Failed（`run_subagent_task` 内层 `catch_unwind`） | 小 ~20 行 | §4.1 |
-| **P0** | 1b | Zombie 自动检测（`ensure_consistency`） | 小 ~15 行 | §4.1 |
-| **P0** | 2a | `completion_reason` 枚举 + `natural_break` 记录 | 中 ~40 行 | §3.3 |
-| **P0** | 2b | sentinel 携带 `completion_reason` | 小 ~10 行 | §3.3 |
-| **P0** | 3 | Join 自适应超时 + `timed_out` 进度上下文 | 中 ~50 行 | §3.2 |
-| **P1** | 4 | persist `completion_reason` + `blackboard_task_id`（方案 A，不 bump version） | 中 ~60 行 | §9b 缺口 1 |
-| **P1** | 5 | resume 清 structured | 极小 ~3 行 | §6.2 |
-| **P1** | 6 | per-step 工具总超时预算 | 小 ~20 行 | 缺口 4 |
-| **P1** | 7 | `send_input` 僵尸检测 | 极小 ~5 行 | 缺口 5 |
-| **P1** | 8 | `no_tool_uses` 双次 drain | 极小 ~5 行 | 缺口 3 |
-| **P1** | 9 | `parse_structured_findings` → `Result` | 中 ~40 行 | 缺口 2 |
-| **P2** | 10 | 守护任务周期性僵尸扫描 | 小 ~30 行 | 缺口 5 |
-| **P2** | 11 | per-agent 独立持久化 | 大 ~120 行 | 缺口 1 |
-| **P2** | 12 | depth>1 completion 中继 | 文档/实现 | §5.2 |
-| **P2** | 13 | progress 节流 | 小 | §13 |
+| 级别 | 编号 | 修复项 | 工作量 | 覆盖 | 状态 |
+|------|------|--------|--------|------|------|
+| **P0** | 1a | Panic → Failed（`run_subagent_task` 内层 `catch_unwind`） | 小 ~20 行 | §4.1 | ✅ |
+| **P0** | 1b | Zombie 自动检测（`ensure_consistency`） | 小 ~15 行 | §4.1 | ✅ |
+| **P0** | 2a | `completion_reason` 枚举 + `natural_break` 记录 | 中 ~40 行 | §3.3 | ✅ |
+| **P0** | 2b | sentinel 携带 `completion_reason` | 小 ~10 行 | §3.3 | ✅ |
+| **P0** | 3 | Join 自适应超时 + `timed_out` 进度上下文 | 中 ~50 行 | §3.2 | ✅ |
+| **P1** | 4 | persist `completion_reason` + `blackboard_task_id`（方案 A，不 bump version） | 中 ~60 行 | §9b 缺口 1 | ✅ |
+| **P1** | 5 | resume 清 structured | 极小 ~3 行 | §6.2 | ✅ |
+| **P1** | 6 | per-step 工具总超时预算 | 小 ~20 行 | 缺口 4 | ✅ |
+| **P1** | 7 | `send_input` 僵尸检测 | 极小 ~5 行 | 缺口 5 | ✅ |
+| **P1** | 8 | `no_tool_uses` 双次 drain | 极小 ~5 行 | 缺口 3 | ✅ |
+| **P1** | 9 | `parse_structured_findings` → `Result` | 中 ~40 行 | 缺口 2 | ✅ |
+| **P1** | — | 多 run：`scratchpad_run_id` 绑定 + import 校验 | 中 ~80 行 | 缺口 6 | ✅ |
+| **P2** | 10 | 守护任务周期性僵尸扫描 | 小 ~30 行 | 缺口 5 | ⏸ |
+| **P2** | 11 | per-agent 独立持久化 | 大 ~120 行 | 缺口 1 | ⏸ |
+| **P2** | 12 | depth>1 completion 中继 | 文档/实现 | §5.2 | ⏸ |
+| **P2** | 13 | progress 节流 | 小 | §13 | ⏸ |
 
 ---
 
@@ -627,7 +655,7 @@ flowchart LR
 
 ---
 
-### 阶段 1 — P0-1：消除假 Running（PR #1）
+### 阶段 1 — P0-1：消除假 Running（PR #1） ✅ **已落地**
 
 **目标：** panic / 异常退出不再留下 `Running` 僵尸；父 turn 不再因此永久挂起。
 
@@ -641,16 +669,16 @@ flowchart LR
 
 **验收清单：**
 
-- [ ] 注入 panic 的子 agent 在 `agent_list` 中为 `Failed`
-- [ ] `agent_wait` 不再对已完成 task 无限 poll
-- [ ] `~/.zagens/crashes/` 仍有 dump
-- [ ] 现有 108 个 subagent 测试仍绿
+- [x] 注入 panic 的子 agent 在 `agent_list` 中为 `Failed`（`catch_unwind` + `ensure_consistency`）
+- [x] `agent_wait` 不再对已完成 task 无限 poll
+- [x] `~/.zagens/crashes/` 仍有 dump
+- [x] subagent 单元测试仍绿（**125 项**，2026-05-28）
 
 **合并门槛：** 仅 runtime-server + 测试；**不**改 OpenAPI / web-ui。
 
 ---
 
-### 阶段 2 — P0-2：消除假 Completed（PR #2）
+### 阶段 2 — P0-2：消除假 Completed（PR #2） ✅ **已落地**
 
 **目标：** 区分 natural complete 与 step limit；sentinel 与 scratchpad 可据此门禁。
 
@@ -670,25 +698,17 @@ flowchart LR
 
 **验收清单：**
 
-- [ ] step 100 耗尽 → sentinel 含 `"completion_reason":"StepLimitReached"`
-- [ ] natural break → `"completion_reason":"NaturalBreak"`
-- [ ] OpenAPI / TS 类型若引用 `SubAgentResult`，同步 regen（见 D8 流程）
+- [x] step 100 耗尽 → sentinel 含 `"completion_reason":"StepLimitReached"`
+- [x] natural break → `"completion_reason":"NaturalBreak"`
+- [ ] OpenAPI / TS 类型若引用 `SubAgentResult`，同步 regen（见 D8 流程）— **待办，非阻塞**
 
 ---
 
-### 阶段 3 — P0-3：Join 自适应超时（PR #3）
+### 阶段 3 — P0-3：Join 自适应超时（PR #3） ✅ **已落地**
 
 **目标：** 长 audit 在不传 `timeout_ms` 时不被 30s 误伤。
 
-**前置缺口（已验证）：** 自适应公式需 `step_timeout × remaining_steps`，但 wait 路径 **当前不可读**：
-
-| 字段 | 所在位置 | wait 路径可读？ |
-|------|----------|----------------|
-| `step_timeout` | `SubAgentRuntime`（spawn 时写入） | ❌ 不在 `SubAgent` / snapshot |
-| `max_steps` | `SubAgentManager.max_steps` | ❌ 未暴露给 wait |
-| `steps_taken` | `SubAgent.steps_taken` | ✅ 已在 snapshot |
-
-因此步骤 3.1 不仅是「暴露」，需在 **`SubAgent` 持久化 spawn 参数**。
+**前置缺口（已解决）：** `SubAgent` / `SubAgentResult` 现已含 `step_timeout_ms`、`max_steps`；wait 路径通过 `adaptive_wait_timeout_ms()` 读取。
 
 | 顺序 | 任务 | 主要文件 | 估时 |
 |------|------|----------|------|
@@ -700,27 +720,27 @@ flowchart LR
 
 **验收清单：**
 
-- [ ] 单 agent、600s step、50 步已跑 → 默认 wait ≥ 300000ms 量级
-- [ ] 显式 `timeout_ms=30000` 行为不变
-- [ ] metadata 含进度字段
+- [x] 单 agent、600s step、50 步已跑 → 默认 wait ≥ 300000ms 量级
+- [x] 显式 `timeout_ms=30000` 行为不变
+- [x] metadata 含进度字段
 
 ---
 
-### 阶段 4 — P0 收口与文档（PR #3 或独立 docs PR）
+### 阶段 4 — P0 收口与文档 ✅ **已落地**
 
-| 任务 | 说明 |
-|------|------|
-| 更新本文档文首 **状态** →「P0 已落地（日期）」 | 勾选 §11 阶段 1–3 验收项 |
-| CHANGELOG `[Unreleased]` | 三条 P0 用户可见摘要 |
-| **`audit-repo/SKILL.md`** | 自适应 `agent_wait` 默认行为；`completion_reason` 语义；scratchpad mark done 门禁（`NaturalBreak` + findings） |
-| **`prompts/base.md`** | §3.2 wait 指引：**默认自适应**，显式 `timeout_ms` 仍优先（不再要求「必须显式传 wait timeout」） |
-| 可选 smoke | 本地 workspace audit 1 区域 explore → wait → import |
+| 任务 | 说明 | 状态 |
+|------|------|------|
+| 更新本文档文首 **状态** | P0/P1 落地 + §11 验收勾选 | ✅ 本文 |
+| CHANGELOG `[Unreleased]` | P0/P1 用户可见摘要 | ✅ `dfe9eb1` |
+| **`audit-repo/SKILL.md`** | 自适应 wait、`completion_reason`、import 门禁 | ✅ |
+| **`prompts/base.md`** | §3.2 wait 指引 | ✅ |
+| 可选 smoke | 本地 workspace audit 1 区域 explore → wait → import | 手动 |
 
 **P0 完成定义：** 阶段 1–3 验收全绿 + 上述 prompt/skill 文档合入 + CI `tools::subagent` + 无新增 clippy warning。
 
 ---
 
-### 阶段 5 — P1 第一批：低风险边界修复（PR #4）
+### 阶段 5 — P1 第一批：低风险边界修复（PR #4） ✅ **已落地**
 
 **可并行，建议同一 PR（改动小、无 schema 版本）：**
 
@@ -732,14 +752,14 @@ flowchart LR
 
 **验收清单：**
 
-- [ ] **P1-5：** `resume` 后 `structured_findings` / `structured_verdict` 均为 `None`（旧值不残留）
-- [ ] **P1-7：** finished `task_handle` + `Running` status → `send_input` 返回明确错误（非 silent success）
-- [ ] **P1-8：** 模拟 completion 落在 `running_count()==0` 窗口 → 双次 drain 仍能注入 `SubAgentCompletion`
-- [ ] 108 + 3 新测试全绿
+- [x] **P1-5：** `resume` 后 `structured_findings` / `structured_verdict` 均为 `None`
+- [x] **P1-7：** finished `task_handle` → `send_input` 返回明确错误
+- [x] **P1-8：** 双次 drain 仍能注入 `SubAgentCompletion`
+- [x] 125 项 subagent 测试全绿
 
 ---
 
-### 阶段 6 — P1 第二批：数据与解析（PR #5）
+### 阶段 6 — P1 第二批：数据与解析（PR #5） ✅ **已落地**
 
 **依赖 P0-2（`CompletionReason` 已存在）：**
 
@@ -755,22 +775,22 @@ flowchart LR
 
 **验收清单：**
 
-- [ ] 新完成 agent persist 后磁盘 JSON 含 `completion_reason` / `blackboard_task_id`（若适用）
-- [ ] **无** `blackboard_task_id` 键的旧 JSON 行 → load 成功，新字段为 `None`
-- [ ] `agent_result` fallback：仅 blackboard 有数据 → 仍返回 structured
-- [ ] blackboard 写入失败（测试 mock）→ 内存 + prose 解析仍可服务单次 session
-- [ ] fence 截断输出 → `ParseFailureReason::Truncated` + sentinel 含诊断字段
+- [x] 新完成 agent persist 后磁盘 JSON 含 `completion_reason` / `blackboard_task_id`（若适用）
+- [x] **无** `blackboard_task_id` 键的旧 JSON 行 → load 成功，新字段为 `None`
+- [x] `agent_result` fallback：仅 blackboard 有数据 → 仍返回 structured
+- [ ] blackboard 写入失败（测试 mock）→ 内存 + prose 解析仍可服务单次 session — **未自动化**
+- [x] fence 截断输出 → `ParseFailureReason::Truncated` + sentinel 含诊断字段
 
 ---
 
-### 阶段 7 — P1 第三批：多 run 映射（PR #6）
+### 阶段 7 — P1 第三批：多 run 映射（PR #6） ✅ **已落地**
 
-| 任务 | 说明 |
-|------|------|
-| 缺口 6 | `agent_spawn` 注入当前 scratchpad `run_id`；`scratchpad_import_agent` 校验 |
-| 测试 | 同会话两 run，旧 area_id 不得写入新 run notes |
+| 任务 | 说明 | 状态 |
+|------|------|------|
+| 缺口 6 | `agent_spawn` 注入当前 scratchpad `run_id`；`scratchpad_import_agent` 校验 | ✅ |
+| 测试 | 同会话两 run，旧 area_id 不得写入新 run notes | ✅ `import_rejects_area_id_not_in_target_run_inventory` 等 |
 
-可与 PR #5 解耦，但 **audit 多 run 场景** 建议 P1 内完成。
+可与 PR #5 解耦，但 **audit 多 run 场景** 建议 P1 内完成。—— **已在同一 commit `dfe9eb1` 合入。**
 
 ---
 
@@ -787,16 +807,16 @@ flowchart LR
 
 ### 11.1 总排期参考
 
-| 里程碑 | 内容 | 累计估时 |
-|--------|------|----------|
-| **M1** | 阶段 1 P0-1 | ~1.5d |
-| **M2** | 阶段 2 P0-2 | ~2d |
-| **M3** | 阶段 3 P0-3 + 收口 | ~**2d**（3.1 含 SubAgent 字段扩展） |
-| **M4** | 阶段 5 P1 第一批 | ~0.5d |
-| **M5** | 阶段 6–7 P1 第二、三批 | ~3.5d |
-| **P2** | 阶段 8 | 按需 |
+| 里程碑 | 内容 | 累计估时 | 状态 |
+|--------|------|----------|------|
+| **M1** | 阶段 1 P0-1 | ~1.5d | ✅ 2026-05-28 |
+| **M2** | 阶段 2 P0-2 | ~2d | ✅ 2026-05-28 |
+| **M3** | 阶段 3 P0-3 + 收口 | ~**2d** | ✅ 2026-05-28 |
+| **M4** | 阶段 5 P1 第一批 | ~0.5d | ✅ 2026-05-28 |
+| **M5** | 阶段 6–7 P1 第二、三批 | ~3.5d | ✅ 2026-05-28 |
+| **P2** | 阶段 8 | 按需 | ⏸ |
 
-> **建议首发范围：** 仅 **M1–M3（P0 全部）** 即可显著改善 audit 挂死与假成功；P1 可在下一 sprint 按 PR #4–#6 分批合入。
+> **落地 commit：** `dfe9eb1` — `feat(runtime): sub-agent stability P0-P1 for audit-repo reliability`
 
 ---
 
@@ -824,13 +844,15 @@ flowchart LR
 
 ## 14. 结论
 
-子代理 **Execute 层** 已明显优于 Join / 终态 / 解析层。边界稳定性 **最高 ROI**：
+子代理 **Execute 层** 已明显优于 Join / 终态 / 解析层。**P0 + P1（2026-05-28）已落地**，audit-repo 边界稳定性显著改善：
 
-1. 消除 **假 Completed**（`completion_reason`）
-2. 消除 **假 Running**（panic + zombie 检测）
-3. **自适应 Join 超时**（长 audit）
-4. **blackboard 引用 + completion 元数据** 持久化
-5. 补齐 **§9b 六项** 低频但级联风险
+1. ~~消除 **假 Completed**~~ → ✅ `completion_reason` + scratchpad import 门禁
+2. ~~消除 **假 Running**~~ → ✅ panic + zombie 检测
+3. ~~**自适应 Join 超时**~~ → ✅ 长 audit 默认不再 30s 误伤
+4. ~~**blackboard 引用 + completion 元数据**~~ → ✅ persist + 三级 fallback
+5. ~~补齐 **§9b 六项**~~ → ✅ P1 六项；崩溃窗口缩小待 P2-11
+
+**剩余 ROI（P2，按需）：** P2-10 周期性僵尸扫描、P2-11 per-agent persist、P2-13 progress 节流、P2-12 depth>1 中继。
 
 本文档随 P0/P1 落地更新文首「状态」、§11 验收清单与 [CHANGELOG.md](../../CHANGELOG.md)。
 
@@ -845,7 +867,7 @@ flowchart LR
 | **Manager 锁粒度** | `SharedSubAgentManager` = `Arc<RwLock<SubAgentManager>>` | 读路径（`agent_list`）与写路径（`update_from_result`）可并发；长时间读锁可能延迟 persist |
 | **persist 模型** | 全量 snapshot + 单文件 atomic rename | 进程内写锁串行化更新；**崩溃窗口** 见 §9b 缺口 1，非 TOCTOU 覆盖写 |
 | **completion channel** | unbounded mpsc，`try_recv` + 阻塞 `recv` 混用 | 无背压；竞态见 §9b 缺口 3 |
-| **structured 权威源** | 内存 vs blackboard **未定义 SSOT** | 重启后可能分歧，见 §9b 缺口 1 |
+| **structured 权威源** | blackboard 权威 + 内存热缓存 + fallback（P1-4） | 崩溃窗口仍见 §9b 缺口 1；P2-11 journal 可选 |
 | **定量影响** | 无生产故障统计 | 竞态 / 僵尸等标注为 engineering judgment（如 <1%），待 telemetry 验证 |
 
 ---
@@ -854,6 +876,7 @@ flowchart LR
 
 | Commit | 说明 |
 |--------|------|
+| `dfe9eb1` | **P0/P1 子代理稳定性全量落地**（panic、`completion_reason`、自适应 wait、fallback、多 run 绑定） |
 | `97707f3` | structured audit findings 管道 |
 | `5d0efad` | scratchpad 隔离、多 run UI、step_timeout 600s |
 | `508b665` | 2026-05-28 audit 四条 HIGH 安全修复 |
