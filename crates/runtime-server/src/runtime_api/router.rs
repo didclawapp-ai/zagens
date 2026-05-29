@@ -14,7 +14,9 @@ use super::{
     fork_thread, fork_thread_at_user_message,
     get_automation, get_blackboard, get_mcp_server, get_resume_task, get_routing_rules,
     get_session, get_thread, get_thread_checklist, get_thread_context,
-    get_thread_scratchpad_status, get_topic_memory, get_task, get_usage, import_skill_local,
+    get_thread_harness_cycles, get_thread_harness_task_graph, get_thread_scratchpad_status,
+    get_topic_memory, get_task,
+    get_usage, import_skill_local,
     init_thread_scratchpad, install_skill_remote, interrupt_thread_turn, list_automation_runs,
     list_automations, list_blackboards, list_mcp_servers, list_mcp_tools, list_sessions,
     list_skills, list_tasks, list_thread_snapshots, list_threads, list_threads_summary,
@@ -43,6 +45,14 @@ pub fn build_router(state: RuntimeApiState) -> Router {
         .route("/v1/threads/summary", get(list_threads_summary))
         .route("/v1/threads/{id}", get(get_thread).patch(update_thread))
         .route("/v1/threads/{id}/checklist", get(get_thread_checklist))
+        .route(
+            "/v1/threads/{id}/harness/task-graph",
+            get(get_thread_harness_task_graph),
+        )
+        .route(
+            "/v1/threads/{id}/harness/cycles",
+            get(get_thread_harness_cycles),
+        )
         .route(
             "/v1/threads/{id}/scratchpad/status",
             get(get_thread_scratchpad_status),

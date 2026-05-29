@@ -3,6 +3,7 @@ import type { TurnChatMessage } from './useTurnSend';
 import { ensureDefaultComposerWorkspace } from '../lib/appPreferences';
 import { toast } from '../lib/toast';
 import { subscribeCurrentWebviewEvent } from '../lib/tauriListen';
+import { dispatchSidecarReadyForPanels } from '../lib/sidecarPanelRecovery';
 import { getWindowLabel, workspaceStorageKey } from '../lib/windowBridge';
 import type { StreamSessionControl } from './useTurnStream';
 
@@ -129,9 +130,16 @@ export function useDesktopShell({
 
   useEffect(() => {
     if (!desktopHost) return;
-    return subscribeCurrentWebviewEvent('sidecar://restarting', () => {
+    const unlistenRestart = subscribeCurrentWebviewEvent('sidecar://restarting', () => {
       abortActiveStreamForSidecarRestartRef.current();
     });
+    const unlistenReady = subscribeCurrentWebviewEvent('sidecar://ready', () => {
+      dispatchSidecarReadyForPanels();
+    });
+    return () => {
+      unlistenRestart();
+      unlistenReady();
+    };
   }, [desktopHost]);
 
   return {

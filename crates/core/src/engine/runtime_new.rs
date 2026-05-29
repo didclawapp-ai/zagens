@@ -80,6 +80,7 @@ where
             scratchpad_run_id,
             scratchpad_summary_injected_this_turn: false,
             scratchpad_audit_continue_injected_this_turn: false,
+            long_horizon_continue_injected_this_turn: false,
             topic_memory,
         };
 

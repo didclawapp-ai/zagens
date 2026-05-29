@@ -326,9 +326,16 @@ pub(super) fn map_compat_stream_event(
             "craft.board_updated",
             payload.clone(),
         )),
-        "panel.checklist" | "panel.scratchpad" | "panel.context" => {
-            Some(sse_json_seq(event.seq, event.event.as_str(), payload.clone()))
-        }
+        "panel.checklist"
+        | "panel.plan"
+        | "panel.scratchpad"
+        | "panel.context"
+        | "harness.task_graph"
+        | "harness.cycle_advanced" => Some(sse_json_seq(
+            event.seq,
+            event.event.as_str(),
+            payload.clone(),
+        )),
         _ => None,
     }
 }

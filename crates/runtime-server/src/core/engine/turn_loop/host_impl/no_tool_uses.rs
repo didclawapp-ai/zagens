@@ -47,6 +47,138 @@ impl Engine {
         true
     }
 
+    async fn maybe_inject_incomplete_lht_continue(&mut self, turn: &TurnContext) -> bool {
+        if self.long_horizon_continue_injected_this_turn {
+            return false;
+        }
+
+        let lh_config = self.config.long_horizon.clone();
+        let scratchpad = self.config.scratchpad.clone();
+        let task_type = self.config.task_type;
+        let locale = self.config.locale_tag.clone();
+        let workspace = self.session.workspace.clone();
+        let run_id = self.scratchpad_run_id.clone();
+        let messages = self.session.messages.clone();
+        let plan_state = self.config_ext().plan_state.clone();
+        let todos = self.config_ext().todos.clone();
+        let app_mode = self.runtime_ext().turn_app_mode;
+        let steps_remaining = turn.steps_remaining();
+
+        self.runtime_ext_mut()
+            .long_horizon_state
+            .on_assistant_no_tools();
+        let blocked_before = self
+            .runtime_ext()
+            .long_horizon_state
+            .tracker
+            .is_blocked();
+        let converted_before = self
+            .runtime_ext()
+            .long_horizon_state
+            .telemetry
+            .converted;
+
+        let input = crate::long_horizon::LongHorizonContinueInput {
+            config: &lh_config,
+            scratchpad: &scratchpad,
+            task_type,
+            app_mode,
+            workspace: &workspace,
+            scratchpad_run_id: run_id.as_deref(),
+            messages: &messages,
+            lang: &locale,
+            plan_state: &plan_state,
+            todos: &todos,
+            session: &mut self.runtime_ext_mut().long_horizon_state,
+            already_injected_this_turn: false,
+            steps_remaining,
+        };
+
+        let gate = crate::long_horizon::maybe_continue_incomplete_code_task(input).await;
+
+        // Telemetry (§4.9): emit a `nudge_outcome` whenever a prior nudge just
+        // converted into qualified progress — the evidence we want for tuning.
+        let converted_now = self
+            .runtime_ext()
+            .long_horizon_state
+            .telemetry
+            .converted;
+        if converted_now > converted_before {
+            let _ = self
+                .tx_event
+                .send(Event::status(format!(
+                    "long_horizon.nudge_outcome: {{\"converted\":{converted_now}}}"
+                )))
+                .await;
+        }
+
+        let msg = match gate {
+            crate::long_horizon::LhtGateOutcome::Nudge(msg) => msg,
+            crate::long_horizon::LhtGateOutcome::Skip(reason) => {
+                // §4.9 observability: emit exactly which guard suppressed the nudge,
+                // alongside the engine-side state, so "it didn't fire" becomes
+                // "it skipped at <reason> with <facts>" in a single run.
+                let plan = plan_state.lock().await.snapshot();
+                let todo = todos.lock().await.snapshot();
+                let graph = crate::long_horizon::CodeTaskGraph::from_snapshots(&plan, &todo);
+                let in_progress = graph
+                    .in_progress_id
+                    .map_or_else(|| "null".to_string(), |id| id.to_string());
+                let _ = self
+                    .tx_event
+                    .send(Event::status(format!(
+                        "long_horizon.gate_skip: {{\"reason\":\"{reason}\",\"enabled\":{},\"app_mode\":\"{:?}\",\"code_surface\":{},\"empty\":{},\"incomplete\":{},\"trivial\":{},\"in_progress_id\":{in_progress},\"open_items\":{}}}",
+                        lh_config.enabled,
+                        app_mode,
+                        task_type.uses_code_tool_surface(),
+                        graph.is_empty(),
+                        graph.incomplete(),
+                        graph.is_trivial(),
+                        graph.open_items,
+                    )))
+                    .await;
+
+                let blocked_now = self
+                    .runtime_ext()
+                    .long_horizon_state
+                    .tracker
+                    .is_blocked();
+                if blocked_before || blocked_now {
+                    let _ = self
+                        .tx_event
+                        .send(Event::status(format!(
+                            "long_horizon.blocked: {{\"open_items\":{},\"reason\":\"max_nudges_without_progress\"}}",
+                            graph.open_items
+                        )))
+                        .await;
+                }
+                return false;
+            }
+        };
+
+        Engine::add_session_message(self, msg).await;
+        self.long_horizon_continue_injected_this_turn = true;
+
+        let plan = plan_state.lock().await.snapshot();
+        let todo = todos.lock().await.snapshot();
+        let open = crate::long_horizon::CodeTaskGraph::from_snapshots(&plan, &todo).open_items;
+        let (nudge_count, emitted, converted) = {
+            let lh = &self.runtime_ext().long_horizon_state;
+            (
+                lh.tracker.max_item_nudge_count(),
+                lh.telemetry.emitted,
+                lh.telemetry.converted,
+            )
+        };
+        let _ = self
+            .tx_event
+            .send(Event::status(format!(
+                "long_horizon.continue_injected: {{\"open_items\":{open},\"nudge_count\":{nudge_count},\"emitted\":{emitted},\"converted\":{converted}}}"
+            )))
+            .await;
+        true
+    }
+
     pub(super) async fn handle_no_tool_uses_turn_loop(
         &mut self,
         turn: &mut TurnContext,
@@ -146,6 +278,9 @@ impl Engine {
                     Some(steer) = self.0.rx_steer.recv() => {
                         let trimmed = steer.trim().to_string();
                         if !trimmed.is_empty() {
+                            self.runtime_ext_mut()
+                                .long_horizon_state
+                                .on_steer(&trimmed);
                             let workspace = self.0.session.workspace.clone();
                             self.0
                                 .session
@@ -305,6 +440,11 @@ impl Engine {
 
         if self.maybe_inject_incomplete_audit_continue().await {
             turn.next_step();
+            return TurnLoopControl::Continue;
+        }
+
+        if self.maybe_inject_incomplete_lht_continue(turn).await {
+            // LHT harness nudge: Continue without bumping step (§4.6).
             return TurnLoopControl::Continue;
         }
 

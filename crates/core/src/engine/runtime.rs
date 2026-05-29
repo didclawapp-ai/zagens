@@ -55,5 +55,7 @@ pub struct Engine<P, R> {
     pub scratchpad_summary_injected_this_turn: bool,
     /// One-shot guard: inject incomplete-audit continue nudge before prose-only turn break.
     pub scratchpad_audit_continue_injected_this_turn: bool,
+    /// One-shot guard: inject LHT continue nudge before prose-only turn break.
+    pub long_horizon_continue_injected_this_turn: bool,
     pub topic_memory: Box<dyn TopicMemoryHost>,
 }

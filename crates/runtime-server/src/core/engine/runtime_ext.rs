@@ -10,11 +10,15 @@ use crate::tools::large_output_router::WorkshopVariables;
 use crate::tools::shell::SharedShellManager;
 use crate::tools::subagent::{SharedSubAgentManager, SubAgentCompletion};
 
+use crate::long_horizon::LongHorizonSessionState;
+
 use super::types::EngineConfigExt;
 
 /// Concrete handles + tui-only config extension bundled for M7 layering.
 pub struct EngineRuntimeExt {
     pub config_ext: EngineConfigExt,
+    pub long_horizon_state: LongHorizonSessionState,
+    pub turn_app_mode: crate::agent_surface::AppMode,
     pub lsp_manager: Arc<LspManager>,
     pub shell_manager: SharedShellManager,
     pub workshop_vars: Option<Arc<AsyncMutex<WorkshopVariables>>>,

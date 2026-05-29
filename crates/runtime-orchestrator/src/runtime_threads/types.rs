@@ -92,6 +92,8 @@ pub struct ThreadRecord {
     pub scratchpad_run_history: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checklist_snapshot: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan_snapshot: Option<serde_json::Value>,
 }
 
 impl ThreadRecord {

@@ -219,6 +219,21 @@ impl StructuredState {
             }
         }
 
+        if let (Some(plan), Some(todos)) =
+            (self.plan_snapshot.as_ref(), self.todo_snapshot.as_ref())
+        {
+            let graph = crate::long_horizon::CodeTaskGraph::from_snapshots(plan, todos);
+            if graph.incomplete() && !graph.is_empty() {
+                out.push_str(&format!(
+                    "\n### Long-horizon task ({}% complete, {} open)\n",
+                    graph.completion_pct, graph.open_items
+                ));
+                if !graph.objective.is_empty() {
+                    out.push_str(&format!("- Objective: {}\n", graph.objective));
+                }
+            }
+        }
+
         if !self.subagent_snapshots.is_empty() {
             out.push_str("\n### Open Sub-Agents\n");
             for s in &self.subagent_snapshots {
@@ -378,10 +393,55 @@ pub struct CycleArchiveHeader {
 }
 
 /// Resolve the on-disk archive directory: `~/.zagens/sessions/<id>/cycles`.
-fn archive_dir_for(session_id: &str) -> Result<PathBuf> {
+pub fn archive_dir_for(session_id: &str) -> Result<PathBuf> {
     Ok(deepseek_config::user_data_path("sessions")?
         .join(session_id)
         .join("cycles"))
+}
+
+/// Summary of an on-disk cycle archive (first JSONL line).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CycleArchiveSummary {
+    pub cycle: u32,
+    pub started: DateTime<Utc>,
+    pub ended: DateTime<Utc>,
+    pub message_count: usize,
+}
+
+/// List archived cycles for a session (for harness API when engine is unloaded).
+pub fn list_cycle_archive_summaries(session_id: &str) -> Vec<CycleArchiveSummary> {
+    let Ok(dir) = archive_dir_for(session_id) else {
+        return Vec::new();
+    };
+    let Ok(read) = std::fs::read_dir(&dir) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for entry in read.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+            continue;
+        }
+        let Ok(file) = File::open(&path) else {
+            continue;
+        };
+        let mut reader = std::io::BufReader::new(file);
+        let mut line = String::new();
+        if std::io::BufRead::read_line(&mut reader, &mut line).is_err() {
+            continue;
+        }
+        let Ok(header) = serde_json::from_str::<CycleArchiveHeader>(line.trim()) else {
+            continue;
+        };
+        out.push(CycleArchiveSummary {
+            cycle: header.cycle,
+            started: header.started,
+            ended: header.ended,
+            message_count: header.message_count,
+        });
+    }
+    out.sort_by_key(|s| s.cycle);
+    out
 }
 
 /// Archive a cycle's messages to JSONL on disk and return the path written.

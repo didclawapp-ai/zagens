@@ -5,10 +5,17 @@
 
 import type { ScratchpadStatus } from '../api/client';
 import type { ThreadContextSnapshot } from './contextUsage';
+import type { HarnessTaskGraph } from './types/longHorizon';
 
 export const PANEL_SCRATCHPAD_EVENT = 'deepseek-panel-scratchpad';
 export const PANEL_CHECKLIST_EVENT = 'deepseek-panel-checklist';
 export const PANEL_CONTEXT_EVENT = 'deepseek-panel-context';
+export const PANEL_TASK_GRAPH_EVENT = 'deepseek-panel-task-graph';
+export const HARNESS_CYCLE_ADVANCED_EVENT = 'deepseek-harness-cycle-advanced';
+
+export interface TaskGraphPanelPayload {
+  task_graph: HarnessTaskGraph;
+}
 
 export interface ChecklistPanelPayload {
   items: Array<{
@@ -35,6 +42,21 @@ export function dispatchPanelChecklist(checklist: ChecklistPanelPayload | null):
 export function dispatchPanelContext(context: ThreadContextSnapshot): void {
   window.dispatchEvent(
     new CustomEvent(PANEL_CONTEXT_EVENT, { detail: context }),
+  );
+}
+
+export function dispatchPanelTaskGraph(task_graph: HarnessTaskGraph): void {
+  window.dispatchEvent(
+    new CustomEvent(PANEL_TASK_GRAPH_EVENT, { detail: { task_graph } }),
+  );
+}
+
+export function dispatchHarnessCycleAdvanced(detail: {
+  from: number;
+  to: number;
+}): void {
+  window.dispatchEvent(
+    new CustomEvent(HARNESS_CYCLE_ADVANCED_EVENT, { detail }),
   );
 }
 

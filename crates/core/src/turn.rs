@@ -108,6 +108,12 @@ impl TurnContext {
         self.step >= self.max_steps
     }
 
+    /// Remaining assistant steps before `max_steps` (inclusive of current step).
+    #[must_use]
+    pub fn steps_remaining(&self) -> u32 {
+        self.max_steps.saturating_sub(self.step)
+    }
+
     pub fn record_tool_call(&mut self, call: TurnToolCall) {
         self.tool_calls.push(call);
     }

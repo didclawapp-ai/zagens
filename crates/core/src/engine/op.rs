@@ -118,6 +118,16 @@ pub enum Op {
         reply: oneshot::Sender<ThreadContextSnapshot>,
     },
 
+    /// Return derived LHT task graph JSON (`GET …/harness/task-graph`).
+    QueryHarnessTaskGraph {
+        reply: oneshot::Sender<serde_json::Value>,
+    },
+
+    /// Return cycle briefings + archive summaries (`GET …/harness/cycles`).
+    QueryHarnessCycles {
+        reply: oneshot::Sender<serde_json::Value>,
+    },
+
     /// Shutdown the engine.
     Shutdown,
 }

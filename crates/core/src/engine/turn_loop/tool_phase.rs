@@ -187,6 +187,17 @@ pub async fn run_tool_execution_phase<H: TurnLoopHost>(
         match outcome.result {
             Ok(output) => {
                 host.record_scratchpad_tool_outcome(&outcome.name, output.success);
+                let mut result_text = output.content.clone();
+                host.record_long_horizon_tool_outcome(
+                    &outcome.name,
+                    &tool_input,
+                    &result_text,
+                    output.success,
+                )
+                .await;
+                if let Some(suffix) = host.take_long_horizon_tool_suffix() {
+                    result_text.push_str(&suffix);
+                }
                 if output.success && is_audit_scratchpad_bind_tool(&outcome.name) {
                     host.on_audit_scratchpad_bind_success(
                         mode,
@@ -216,9 +227,11 @@ pub async fn run_tool_execution_phase<H: TurnLoopHost>(
                 }));
                 let workspace = host.workspace().to_path_buf();
                 let session_model = host.session_mut().model.clone();
+                let mut output_for_model = output.clone();
+                output_for_model.content = result_text.clone();
                 let output_for_context =
-                    compact_tool_result_for_context(&session_model, &outcome.name, &output);
-                let output_content = output.content;
+                    compact_tool_result_for_context(&session_model, &outcome.name, &output_for_model);
+                let output_content = result_text;
 
                 tool_call.set_result(output_content.clone(), duration);
                 host.session_mut().working_set.observe_tool_call(

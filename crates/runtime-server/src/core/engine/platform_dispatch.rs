@@ -117,6 +117,12 @@ impl EnginePlatformExt<crate::sandbox::SandboxPolicy, crate::tools::user_input::
             Op::QueryContext { reply } => {
                 engine.handle_query_context_op(reply);
             }
+            Op::QueryHarnessTaskGraph { reply } => {
+                engine.handle_query_harness_task_graph_op(reply).await;
+            }
+            Op::QueryHarnessCycles { reply } => {
+                engine.handle_query_harness_cycles_op(reply).await;
+            }
             Op::CancelRequest
             | Op::ApproveToolCall { .. }
             | Op::DenyToolCall { .. }
@@ -157,6 +163,47 @@ impl Engine {
         reply: oneshot::Sender<ThreadContextSnapshot>,
     ) {
         let _ = reply.send(self.engine_context_snapshot());
+    }
+
+    pub(in crate::core::engine) async fn handle_query_harness_task_graph_op(
+        &self,
+        reply: oneshot::Sender<serde_json::Value>,
+    ) {
+        let plan = self.config_ext().plan_state.lock().await.snapshot();
+        let checklist = self.config_ext().todos.lock().await.snapshot();
+        let value = crate::long_horizon::build_task_graph_value(
+            &plan,
+            &checklist,
+            &self.session.messages,
+            &self.config.locale_tag,
+            &self.config.long_horizon,
+            Some(&self.runtime_ext().long_horizon_state),
+        );
+        let _ = reply.send(value);
+    }
+
+    pub(in crate::core::engine) async fn handle_query_harness_cycles_op(
+        &self,
+        reply: oneshot::Sender<serde_json::Value>,
+    ) {
+        let active = self.estimated_input_tokens() as u64;
+        let headroom = super::context::turn_response_headroom_tokens();
+        let pressure = crate::long_horizon::context_pressure_ratio(
+            active,
+            headroom,
+            &self.session.model,
+        )
+        .map(|r| (r * 100.0).round() as u8);
+        let archives =
+            crate::cycle_manager::list_cycle_archive_summaries(&self.session.id);
+        let value = crate::long_horizon::build_cycles_value(
+            self.session.cycle_count,
+            &self.session.cycle_briefings,
+            &archives,
+            pressure,
+            Some(self.session.model.as_str()),
+        );
+        let _ = reply.send(value);
     }
 
     pub(in crate::core::engine) async fn handle_compact_context_op(&mut self) {

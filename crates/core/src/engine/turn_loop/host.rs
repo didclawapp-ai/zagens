@@ -228,6 +228,23 @@ pub trait TurnLoopHost: Send {
 
     fn record_scratchpad_tool_outcome(&mut self, tool_name: &str, success: bool);
 
+    async fn record_long_horizon_tool_outcome(
+        &mut self,
+        _tool_name: &str,
+        _tool_input: &Value,
+        _result: &str,
+        _success: bool,
+    ) {
+    }
+
+    /// Suffix to append to tool result text (verify mismatch, etc.).
+    fn take_long_horizon_tool_suffix(&mut self) -> Option<String> {
+        None
+    }
+
+    /// Emit warning-band status once; reinject objective on configured step interval.
+    async fn maybe_lht_pre_request_hooks(&mut self, _mode: TurnLoopMode) {}
+
     /// Called after a successful scratchpad bind/write tool so the host can sync run_id
     /// and eager-load audit sub-agent tools in the same turn.
     fn on_audit_scratchpad_bind_success(

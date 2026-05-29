@@ -148,6 +148,8 @@ pub struct EngineConfig {
     pub workshop: Option<crate::tools::large_output_router::WorkshopConfig>,
     /// Audit scratchpad engine hooks (Phase B).
     pub scratchpad: crate::scratchpad::ScratchpadConfig,
+    /// Long-horizon code task harness (LHT Phase 1).
+    pub long_horizon: deepseek_core::long_horizon::LongHorizonConfig,
     /// Test/dev override: skip `DeepSeekClient::new` and use this client instead.
     #[doc(hidden)]
     pub llm_client_override: Option<std::sync::Arc<dyn crate::llm_client::LlmClient>>,
@@ -190,6 +192,7 @@ impl Default for EngineConfig {
             task_type: crate::task_type::TaskType::default(),
             workshop: None,
             scratchpad: crate::scratchpad::ScratchpadConfig::default(),
+            long_horizon: deepseek_core::long_horizon::LongHorizonConfig::default(),
             llm_client_override: None,
         }
     }
@@ -233,6 +236,7 @@ impl EngineConfig {
             strict_tool_mode: self.strict_tool_mode,
             task_type: self.task_type,
             scratchpad: self.scratchpad.clone(),
+            long_horizon: self.long_horizon.clone(),
         }
     }
 
@@ -284,6 +288,7 @@ impl EngineConfig {
             strict_tool_mode: self.strict_tool_mode,
             task_type: self.task_type,
             scratchpad: self.scratchpad,
+            long_horizon: self.long_horizon,
         };
         let ext = EngineConfigExt {
             todos: self.todos,
@@ -340,6 +345,7 @@ impl EngineConfig {
             task_type: lean.task_type,
             workshop: ext.workshop,
             scratchpad: lean.scratchpad,
+            long_horizon: lean.long_horizon,
             llm_client_override: ext.llm_client_override,
         }
     }

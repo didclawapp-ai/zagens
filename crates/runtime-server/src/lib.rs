@@ -18,6 +18,7 @@ mod execpolicy;
 mod features;
 mod hooks;
 mod llm_client;
+mod long_horizon;
 mod localization;
 mod logging;
 mod lsp;

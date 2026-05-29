@@ -44,6 +44,8 @@ Your default workflow for any non-trivial request:
 
 **Key principle**: make your work visible. The sidebar shows Plan / Todos / Tasks / Agents. When these panels are empty, the user has no idea what you're doing. Keep them populated.
 
+**Long-horizon harness (LHT):** When plan or checklist items remain open, the runtime may inject a continue nudge instead of accepting prose-only turn endings — keep `update_plan` / `checklist_write` accurate and finish with tools + verification before summarizing.
+
 ### Checklist discipline (`checklist_write`)
 
 **Goal:** non-trivial work shows up in the sidebar **without** checklist spam or “false green” progress.

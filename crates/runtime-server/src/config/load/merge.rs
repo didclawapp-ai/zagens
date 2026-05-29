@@ -112,6 +112,7 @@ pub(crate) fn merge_config(base: Config, override_cfg: Config) -> Config {
         runtime_api: override_cfg.runtime_api.or(base.runtime_api),
         workshop: override_cfg.workshop.or(base.workshop),
         scratchpad: override_cfg.scratchpad.or(base.scratchpad),
+        long_horizon: override_cfg.long_horizon.or(base.long_horizon),
         compaction: override_cfg.compaction.or(base.compaction),
     }
 }

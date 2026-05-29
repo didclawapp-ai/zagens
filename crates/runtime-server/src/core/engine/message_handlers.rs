@@ -41,6 +41,11 @@ impl Engine {
         self.scratchpad_step.reset();
         self.scratchpad_summary_injected_this_turn = false;
         self.scratchpad_audit_continue_injected_this_turn = false;
+        self.long_horizon_continue_injected_this_turn = false;
+        self.runtime_ext_mut().turn_app_mode = mode;
+        self.runtime_ext_mut()
+            .long_horizon_state
+            .on_new_user_message();
         self.sync_scratchpad_run_id_from_wire();
 
         // Snapshot the workspace BEFORE we touch a single tool. Run the git

@@ -17,6 +17,7 @@ pub mod lsp;
 pub mod models;
 pub mod project_context;
 pub mod sandbox;
+pub mod long_horizon;
 pub mod scratchpad;
 pub mod session;
 pub mod subagent;

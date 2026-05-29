@@ -33,4 +33,9 @@ where
         tool_name: &str,
         result: &Result<ToolResult, ToolError>,
     );
+
+    /// Observe a `long_horizon.*` status line as it streams (real-time harness
+    /// observability). Lets the host cache nudge telemetry off the engine op
+    /// loop so the task-graph panel stays live mid-turn. Default: no-op.
+    async fn observe_harness_status(&self, _thread_id: &str, _turn_id: &str, _message: &str) {}
 }

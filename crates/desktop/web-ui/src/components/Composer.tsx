@@ -444,6 +444,8 @@ interface Props {
   lastTurnOutputTokens?: number | null;
   /** Prefix cache hit % from the last completed turn (DeepSeek telemetry). */
   lastCacheHitPercent?: number | null;
+  /** Long-horizon harness status chip (nudge / blocked / context warning). */
+  lhtChip?: import('../lib/lhtChip').LhtChipState | null;
   /** Office task session — hides Plan/Yolo and code-only chrome. */
   officeSession?: boolean;
   /** Files panel「添加至对话」— bump `nonce` to append `@path` to the input. */
@@ -484,6 +486,7 @@ export default function Composer({
   lastApiInputTokens = null,
   lastTurnOutputTokens = null,
   lastCacheHitPercent = null,
+  lhtChip = null,
   officeSession = false,
   workspaceMention,
   composerPrefill,
@@ -1230,6 +1233,32 @@ export default function Composer({
                   title={t('composer.lastCacheHitTitle')}
                 >
                   {t('composer.lastCacheHit', { pct: lastCacheHitPercent.toFixed(0) })}
+                </span>
+              ) : null}
+              {lhtChip && !officeSession ? (
+                <span
+                  className={`composer-chip max-w-[8rem] truncate px-2 py-0 text-[10px] ${
+                    lhtChip.kind === 'blocked'
+                      ? 'text-amber-700 dark:text-amber-300'
+                      : lhtChip.kind === 'warning'
+                        ? 'text-amber-600 dark:text-amber-400'
+                        : 'text-t-text-muted'
+                  }`}
+                  title={
+                    lhtChip.kind === 'continue'
+                      ? t('composer.lhtContinueTitle')
+                      : lhtChip.kind === 'blocked'
+                        ? lhtChip.reason === 'max_nudges_without_progress'
+                          ? t('composer.lhtBlockedNoProgressTitle')
+                          : t('composer.lhtBlockedTitle')
+                        : t('composer.lhtWarningTitle')
+                  }
+                >
+                  {lhtChip.kind === 'continue'
+                    ? t('composer.lhtContinue', { detail: lhtChip.detail ?? '' })
+                    : lhtChip.kind === 'blocked'
+                      ? t('composer.lhtBlocked', { detail: lhtChip.detail ?? '' })
+                      : t('composer.lhtWarning', { detail: lhtChip.detail ?? '' })}
                 </span>
               ) : null}
             </div>

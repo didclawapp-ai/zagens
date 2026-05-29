@@ -600,6 +600,10 @@ pub struct Config {
     #[serde(default)]
     pub scratchpad: Option<crate::scratchpad::ScratchpadConfigToml>,
 
+    /// Long-horizon code task harness (LHT Phase 1).
+    #[serde(default)]
+    pub long_horizon: Option<deepseek_core::long_horizon::LongHorizonConfigToml>,
+
     /// Automatic context compaction (`[compaction]` table).
     #[serde(default)]
     pub compaction: Option<CompactionConfigToml>,

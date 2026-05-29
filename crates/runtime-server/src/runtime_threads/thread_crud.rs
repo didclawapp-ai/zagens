@@ -50,6 +50,7 @@ impl RuntimeThreadManager {
             scratchpad_run_id: None,
             scratchpad_run_history: None,
             checklist_snapshot: None,
+            plan_snapshot: None,
         };
         {
             let store = self.store.clone();

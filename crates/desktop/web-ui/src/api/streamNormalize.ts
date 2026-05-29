@@ -26,8 +26,11 @@ export const KNOWN_DESKTOP_SSE_EVENTS = new Set([
   'craft.verdict',
   'craft.board_updated',
   'panel.checklist',
+  'panel.plan',
   'panel.scratchpad',
   'panel.context',
+  'harness.task_graph',
+  'harness.cycle_advanced',
   'done',
 ]);
 
@@ -74,7 +77,9 @@ export type NormalizedStreamEvent =
   | { kind: 'craft_board_updated'; taskId: string; partition: string; agentId: string }
   | { kind: 'panel_scratchpad'; scratchpad: unknown }
   | { kind: 'panel_checklist'; checklist: unknown }
-  | { kind: 'panel_context'; context: unknown };
+  | { kind: 'panel_context'; context: unknown }
+  | { kind: 'panel_task_graph'; task_graph: unknown }
+  | { kind: 'harness_cycle_advanced'; from: number; to: number };
 
 export function normalizeDesktopStreamEvent(
   ev: { event: string; data: string },
@@ -213,6 +218,14 @@ export function normalizeDesktopStreamEvent(
   }
   if (sse === 'panel.context' && j.context != null) {
     return { kind: 'panel_context', context: j.context };
+  }
+  if (sse === 'harness.task_graph' && j.task_graph != null) {
+    return { kind: 'panel_task_graph', task_graph: j.task_graph };
+  }
+  if (sse === 'harness.cycle_advanced') {
+    const from = Number(j.from ?? 0);
+    const to = Number(j.to ?? 0);
+    return { kind: 'harness_cycle_advanced', from, to };
   }
 
   // —— Raw runtime records from `GET /v1/threads/{id}/events` ——
@@ -365,6 +378,15 @@ export function normalizeDesktopStreamEvent(
   if (recordEvent === 'panel.context' && inner) {
     const context = (inner.context ?? inner) as unknown;
     return { kind: 'panel_context', context };
+  }
+  if (recordEvent === 'harness.task_graph' && inner) {
+    const task_graph = (inner.task_graph ?? inner) as unknown;
+    return { kind: 'panel_task_graph', task_graph };
+  }
+  if (recordEvent === 'harness.cycle_advanced' && inner) {
+    const from = Number(inner.from ?? 0);
+    const to = Number(inner.to ?? 0);
+    return { kind: 'harness_cycle_advanced', from, to };
   }
 
   return null;

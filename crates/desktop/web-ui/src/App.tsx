@@ -7,7 +7,7 @@ import {
 import { useT } from './i18n';
 import AppShell from './components/AppShell';
 import { useAuditNavActivity } from './lib/useAuditNavActivity';
-import { useAuditGridData } from './lib/useAuditGridData';
+import { useHarnessGridData } from './lib/useHarnessGridData';
 import { type ModelParams } from './components/ModelParamsDialog';
 import {
   loadModelParams,
@@ -64,6 +64,7 @@ import {
 import { type CachedUiMessage } from './lib/chat/sessionUiCache';
 import { confirmDialog } from './lib/confirmDialog';
 import { toast } from './lib/toast';
+import type { LhtChipState } from './lib/lhtChip';
 import { coerceRunModeForSession, isOfficeSession } from './lib/taskTypeSession';
 
 export default function App() {
@@ -103,6 +104,7 @@ export default function App() {
 
   const [lastTurnOutputTokens, setLastTurnOutputTokens] = useState<number | null>(null);
   const [lastCacheHitPercent, setLastCacheHitPercent] = useState<number | null>(null);
+  const [lhtChip, setLhtChip] = useState<LhtChipState | null>(null);
 
   const {
     sessions,
@@ -299,6 +301,7 @@ export default function App() {
     setRuntimeSessionEstablished,
     setLastTurnOutputTokens,
     setLastCacheHitPercent,
+    setLhtChip,
     activeSessionIdRef,
     sessionUiCacheRef,
     refreshSessions,
@@ -668,7 +671,7 @@ export default function App() {
     narrativeSpawnSuspected,
   });
 
-  const auditGridData = useAuditGridData({
+  const auditGridData = useHarnessGridData({
     threadId: resumedThreadId,
     streaming,
     runtimeSessionEstablished,
@@ -757,6 +760,7 @@ export default function App() {
       threadContextSnapshot={threadContextSnapshot}
       lastTurnOutputTokens={lastTurnOutputTokens}
       lastCacheHitPercent={lastCacheHitPercent}
+      lhtChip={lhtChip}
       composerMention={
         composerMentionRel
           ? {

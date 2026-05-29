@@ -647,6 +647,15 @@ impl Config {
             .unwrap_or_default()
     }
 
+    /// Long-horizon code task harness settings (LHT Phase 1).
+    #[must_use]
+    pub fn long_horizon_config(&self) -> deepseek_core::long_horizon::LongHorizonConfig {
+        self.long_horizon
+            .clone()
+            .map(deepseek_core::long_horizon::LongHorizonConfigToml::into_runtime)
+            .unwrap_or_default()
+    }
+
     /// Resolve enabled features from defaults and config entries.
     #[must_use]
     pub fn features(&self) -> Features {

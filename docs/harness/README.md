@@ -9,6 +9,7 @@
 | 文档 | 角色 |
 |------|------|
 | [Agent+Harness组合式编程方案.md](./Agent+Harness组合式编程方案.md) | **远景 SSOT**（v1.3）：组合式 Harness（阶段五）、**自适应主动 Harness**（阶段六展望）、黑板三身份、长程机制 |
+| [LONG_HORIZON_CODE_TASKS.md](./LONG_HORIZON_CODE_TASKS.md) | **长程代码任务**（Phase 1 已落地 Runtime）：生成 / 修复 / 重构 — checklist 强制续写 + 任务图；与 CRAFT（审查）、Audit Scratchpad 边界分离 |
 | [HARNESS_INTEGRATION_PROPOSAL.md](./HARNESS_INTEGRATION_PROPOSAL.md) | **落地提案**（Proposed）：名词映射、Phase 0–3 搭车 D-series、数学基础降级清单 |
 | [ANTHROPIC_MANAGED_AGENTS_AND_HARNESS.md](./ANTHROPIC_MANAGED_AGENTS_AND_HARNESS.md) | **行业对照**（2026-05）：Anthropic Claude Managed Agents、Harness 工程文章、与组合式方案的异同 |
 

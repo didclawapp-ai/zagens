@@ -36,6 +36,18 @@ struct ScratchpadStatusCacheEntry {
 
 const SCRATCHPAD_STATUS_CACHE_TTL: Duration = Duration::from_secs(2);
 
+/// Live LHT nudge telemetry, fed by `long_horizon.*` status events so the
+/// task-graph panel reflects converted/blocked counts mid-turn without the
+/// engine op loop (which is starved during a long turn).
+#[derive(Clone, Default)]
+pub(crate) struct HarnessTelemetryCacheEntry {
+    pub emitted: u32,
+    pub converted: u32,
+    pub blocked: u32,
+    pub nudge_count: u32,
+    pub lht_blocked: bool,
+}
+
 /// Sidecar runtime thread manager — orchestrator core plus host-only services.
 #[derive(Clone)]
 pub struct RuntimeThreadManager {
@@ -43,7 +55,9 @@ pub struct RuntimeThreadManager {
     pub(crate) config: Config,
     pub(crate) background: RuntimeThreadBackgroundSlots,
     checklist_cache: Arc<StdMutex<HashMap<String, String>>>,
+    plan_cache: Arc<StdMutex<HashMap<String, String>>>,
     scratchpad_status_cache: Arc<StdMutex<HashMap<String, ScratchpadStatusCacheEntry>>>,
+    harness_telemetry_cache: Arc<StdMutex<HashMap<String, HarnessTelemetryCacheEntry>>>,
 }
 
 impl Deref for RuntimeThreadManager {
@@ -78,7 +92,9 @@ impl RuntimeThreadManager {
             config,
             background: RuntimeThreadBackgroundSlots::new(),
             checklist_cache: Arc::new(StdMutex::new(HashMap::new())),
+            plan_cache: Arc::new(StdMutex::new(HashMap::new())),
             scratchpad_status_cache: Arc::new(StdMutex::new(HashMap::new())),
+            harness_telemetry_cache: Arc::new(StdMutex::new(HashMap::new())),
         };
         let active_ids: Vec<String> = manager
             .store
@@ -107,7 +123,9 @@ impl RuntimeThreadManager {
             config,
             background: RuntimeThreadBackgroundSlots::new(),
             checklist_cache: Arc::new(StdMutex::new(HashMap::new())),
+            plan_cache: Arc::new(StdMutex::new(HashMap::new())),
             scratchpad_status_cache: Arc::new(StdMutex::new(HashMap::new())),
+            harness_telemetry_cache: Arc::new(StdMutex::new(HashMap::new())),
         })
     }
 
@@ -237,6 +255,215 @@ impl RuntimeThreadManager {
                 tracing::warn!(thread_id, "failed to persist checklist snapshot on thread");
             }
         }
+    }
+
+    /// Return the cached plan snapshot for a thread (for Zagens harness task-graph).
+    pub fn get_thread_plan(&self, thread_id: &str) -> Option<String> {
+        if let Ok(cache) = self.plan_cache.lock() {
+            if let Some(json) = cache.get(thread_id) {
+                return Some(json.clone());
+            }
+        }
+        let thread = self.store.load_thread(thread_id).ok()?;
+        let json = thread
+            .plan_snapshot
+            .and_then(|v| serde_json::to_string(&v).ok())?;
+        if let Ok(mut cache) = self.plan_cache.lock() {
+            cache.insert(thread_id.to_string(), json.clone());
+        }
+        Some(json)
+    }
+
+    pub(crate) fn persist_thread_plan(&self, thread_id: &str, plan_json: &str) {
+        if let Ok(mut cache) = self.plan_cache.lock() {
+            cache.insert(thread_id.to_string(), plan_json.to_string());
+        }
+        let snapshot: Option<serde_json::Value> = serde_json::from_str(plan_json).ok();
+        let store = self.store.clone();
+        let thread_id_owned = thread_id.to_string();
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                let thread_id = thread_id_owned;
+                let _ = tokio::task::spawn_blocking(move || {
+                    if let Ok(mut thread) = store.load_thread(&thread_id) {
+                        thread.plan_snapshot = snapshot;
+                        thread.updated_at = Utc::now();
+                        if store.save_thread(&thread).is_err() {
+                            tracing::warn!(%thread_id, "failed to persist plan snapshot on thread");
+                        }
+                    }
+                })
+                .await;
+            });
+        } else if let Ok(mut thread) = self.store.load_thread(thread_id) {
+            thread.plan_snapshot = snapshot;
+            thread.updated_at = Utc::now();
+            if self.store.save_thread(&thread).is_err() {
+                tracing::warn!(thread_id, "failed to persist plan snapshot on thread");
+            }
+        }
+    }
+
+    /// Derived LHT task graph — built from persisted plan/checklist snapshots
+    /// plus cached nudge telemetry. Intentionally avoids the engine op loop:
+    /// during a long turn that loop is busy and a live query would time out,
+    /// blanking the panel exactly when observability matters most (§4.9).
+    pub async fn get_thread_harness_task_graph(&self, thread_id: &str) -> Result<Value> {
+        let plan_json = self.get_thread_plan(thread_id);
+        let plan = plan_json
+            .as_deref()
+            .and_then(|s| serde_json::from_str::<Value>(s).ok())
+            .map(|v| crate::long_horizon::snapshots::plan_from_json(Some(&v)))
+            .unwrap_or_else(crate::long_horizon::snapshots::empty_plan_snapshot);
+        let checklist_json = self.get_thread_checklist(thread_id);
+        let checklist_value = checklist_json
+            .as_deref()
+            .and_then(|s| serde_json::from_str::<Value>(s).ok());
+        let checklist =
+            crate::long_horizon::snapshots::checklist_from_json(checklist_value.as_ref());
+        let lht = self.config.long_horizon_config();
+
+        let (lht_blocked, nudge_count, telemetry) = self
+            .harness_telemetry_cache
+            .lock()
+            .ok()
+            .and_then(|c| c.get(thread_id).cloned())
+            .map(|e| {
+                let conversion_pct = if e.emitted == 0 {
+                    0
+                } else {
+                    ((e.converted * 100) / e.emitted).min(100) as u8
+                };
+                (
+                    Some(e.lht_blocked),
+                    Some(e.nudge_count),
+                    Some(crate::long_horizon::TaskGraphTelemetryJson {
+                        emitted: e.emitted,
+                        converted: e.converted,
+                        blocked: e.blocked,
+                        conversion_pct,
+                    }),
+                )
+            })
+            .unwrap_or((None, None, None));
+
+        Ok(crate::long_horizon::build_task_graph_value_with_telemetry(
+            &plan,
+            &checklist,
+            "en",
+            &lht,
+            lht_blocked,
+            nudge_count,
+            telemetry,
+        ))
+    }
+
+    /// Fold a `long_horizon.*` status line into the live telemetry cache.
+    /// Returns `true` when the cache changed (caller should push a panel frame).
+    pub(crate) fn update_harness_telemetry_from_status(
+        &self,
+        thread_id: &str,
+        message: &str,
+    ) -> bool {
+        let payload = message
+            .find('{')
+            .and_then(|i| serde_json::from_str::<Value>(&message[i..]).ok());
+        let Ok(mut cache) = self.harness_telemetry_cache.lock() else {
+            return false;
+        };
+        let entry = cache.entry(thread_id.to_string()).or_default();
+        if message.starts_with("long_horizon.continue_injected") {
+            if let Some(p) = payload.as_ref() {
+                if let Some(v) = p.get("emitted").and_then(Value::as_u64) {
+                    entry.emitted = v as u32;
+                }
+                if let Some(v) = p.get("converted").and_then(Value::as_u64) {
+                    entry.converted = v as u32;
+                }
+                if let Some(v) = p.get("nudge_count").and_then(Value::as_u64) {
+                    entry.nudge_count = v as u32;
+                }
+            }
+            entry.lht_blocked = false;
+            true
+        } else if message.starts_with("long_horizon.nudge_outcome") {
+            if let Some(v) = payload
+                .as_ref()
+                .and_then(|p| p.get("converted"))
+                .and_then(Value::as_u64)
+            {
+                entry.converted = v as u32;
+            }
+            true
+        } else if message.starts_with("long_horizon.blocked") {
+            entry.blocked = entry.blocked.saturating_add(1);
+            entry.lht_blocked = true;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Cycle briefings — live engine or on-disk archives (thread id = session id).
+    pub async fn get_thread_harness_cycles(&self, thread_id: &str) -> Result<Value> {
+        {
+            let active = self.active.lock().await;
+            if let Some(state) = active.engines.get(thread_id) {
+                let engine = state.engine.clone();
+                drop(active);
+                return engine.query_harness_cycles().await.map_err(Into::into);
+            }
+        }
+        let archives = crate::cycle_manager::list_cycle_archive_summaries(thread_id);
+        let model = self
+            .store
+            .load_thread(thread_id)
+            .ok()
+            .map(|t| t.model);
+        Ok(crate::long_horizon::build_cycles_value(
+            0,
+            &[],
+            &archives,
+            None,
+            model.as_deref(),
+        ))
+    }
+
+    /// Zagens panel channel (C): push harness task-graph on SSE.
+    pub(crate) async fn emit_panel_harness_task_graph(
+        &self,
+        thread_id: &str,
+        turn_id: &str,
+    ) -> Result<()> {
+        let graph = self.get_thread_harness_task_graph(thread_id).await?;
+        self.emit_event(
+            thread_id,
+            Some(turn_id),
+            None,
+            "harness.task_graph",
+            json!({ "task_graph": graph }),
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// Zagens panel channel (C): push plan snapshot on SSE (symmetric with checklist).
+    pub(crate) async fn emit_panel_plan(&self, thread_id: &str, turn_id: &str) -> Result<()> {
+        let Some(json_str) = self.get_thread_plan(thread_id) else {
+            return Ok(());
+        };
+        let plan = serde_json::from_str::<Value>(&json_str).unwrap_or_else(|_| {
+            json!({ "raw": json_str })
+        });
+        self.emit_event(
+            thread_id,
+            Some(turn_id),
+            None,
+            "panel.plan",
+            json!({ "plan": plan }),
+        )
+        .await?;
+        Ok(())
     }
 
     /// Zagens panel channel (C): push checklist snapshot on the live SSE stream (B-channel fallback).

@@ -71,6 +71,7 @@ use std::path::Path;
             scratchpad_run_id: None,
             scratchpad_run_history: None,
             checklist_snapshot: None,
+            plan_snapshot: None,
         }
     }
 
@@ -2319,6 +2320,7 @@ use std::path::Path;
             scratchpad_run_id: None,
             scratchpad_run_history: None,
             checklist_snapshot: None,
+            plan_snapshot: None,
         };
         manager.store.save_thread(&thread)?;
 

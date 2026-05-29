@@ -82,6 +82,7 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
         }
 
         host.refresh_system_prompt(mode).await;
+        host.maybe_lht_pre_request_hooks(mode).await;
 
         if turn.at_max_steps() {
             let _ = host

@@ -54,7 +54,7 @@ pub struct TodoItem {
 }
 
 /// Snapshot of a todo list for display or serialization.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TodoListSnapshot {
     pub items: Vec<TodoItem>,
     pub completion_pct: u8,

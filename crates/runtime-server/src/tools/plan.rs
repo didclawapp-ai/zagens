@@ -115,7 +115,7 @@ impl PlanStep {
 }
 
 /// Serializable snapshot for display
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlanSnapshot {
     pub explanation: Option<String>,
     pub items: Vec<PlanItemArg>,
@@ -278,6 +278,32 @@ pub fn validate_plan_update(current: &PlanState, update: &UpdatePlanArgs) -> Pla
     PlanValidation::Ok
 }
 
+fn plan_metadata(snapshot: &PlanSnapshot) -> serde_json::Value {
+    let items = snapshot
+        .items
+        .iter()
+        .map(|item| {
+            json!({
+                "step": item.step,
+                "status": match item.status {
+                    StepStatus::Pending => "pending",
+                    StepStatus::InProgress => "in_progress",
+                    StepStatus::Completed => "completed",
+                },
+            })
+        })
+        .collect::<Vec<_>>();
+    json!({
+        "canonical_tool": "update_plan",
+        "task_updates": {
+            "plan": {
+                "explanation": snapshot.explanation,
+                "items": items,
+            }
+        }
+    })
+}
+
 // === UpdatePlanTool - ToolSpec implementation ===
 
 /// Shared reference to `PlanState` for use across tools
@@ -399,8 +425,12 @@ impl ToolSpec for UpdatePlanTool {
 
         let result = serde_json::to_string_pretty(&snapshot).unwrap_or_else(|_| "{}".to_string());
 
-        Ok(ToolResult::success(format!(
-            "Plan updated: {pending} pending, {in_progress} in progress, {completed} completed ({progress}% done)\n{result}"
-        )))
+        let metadata = plan_metadata(&snapshot);
+        Ok(
+            ToolResult::success(format!(
+                "Plan updated: {pending} pending, {in_progress} in progress, {completed} completed ({progress}% done)\n{result}"
+            ))
+            .with_metadata(metadata),
+        )
     }
 }

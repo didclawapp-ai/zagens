@@ -41,6 +41,7 @@ impl RuntimeThreadMonitorHost<super::RuntimeEnginePolicy, super::RuntimeUserInpu
         let _ = self.emit_panel_context(thread_id, turn_id).await;
         let _ = self.emit_panel_scratchpad(thread_id, turn_id).await;
         let _ = self.emit_panel_checklist(thread_id, turn_id).await;
+        let _ = self.emit_panel_harness_task_graph(thread_id, turn_id).await;
     }
 
     async fn after_tool_call_complete_panels(
@@ -50,6 +51,26 @@ impl RuntimeThreadMonitorHost<super::RuntimeEnginePolicy, super::RuntimeUserInpu
         tool_name: &str,
         result: &Result<ToolResult, ToolError>,
     ) {
+        if tool_name == "update_plan" {
+            if let Ok(output) = result {
+                if output.success {
+                    if let Some(meta) = &output.metadata {
+                        if let Some(plan) = meta
+                            .get("task_updates")
+                            .and_then(|u| u.get("plan"))
+                        {
+                            if let Ok(json_str) = serde_json::to_string(plan) {
+                                self.persist_thread_plan(thread_id, &json_str);
+                                let _ = self.emit_panel_plan(thread_id, turn_id).await;
+                                let _ = self
+                                    .emit_panel_harness_task_graph(thread_id, turn_id)
+                                    .await;
+                            }
+                        }
+                    }
+                }
+            }
+        }
         if matches!(
             tool_name,
             "checklist_write"
@@ -67,6 +88,9 @@ impl RuntimeThreadMonitorHost<super::RuntimeEnginePolicy, super::RuntimeUserInpu
                                 if let Ok(json_str) = serde_json::to_string(checklist_json) {
                                     self.persist_thread_checklist(thread_id, &json_str);
                                     let _ = self.emit_panel_checklist(thread_id, turn_id).await;
+                                    let _ = self
+                                        .emit_panel_harness_task_graph(thread_id, turn_id)
+                                        .await;
                                 }
                             }
                         }
@@ -81,6 +105,12 @@ impl RuntimeThreadMonitorHost<super::RuntimeEnginePolicy, super::RuntimeUserInpu
             && result.as_ref().is_ok_and(|o| o.success)
         {
             let _ = self.emit_panel_scratchpad(thread_id, turn_id).await;
+        }
+    }
+
+    async fn observe_harness_status(&self, thread_id: &str, turn_id: &str, message: &str) {
+        if self.update_harness_telemetry_from_status(thread_id, message) {
+            let _ = self.emit_panel_harness_task_graph(thread_id, turn_id).await;
         }
     }
 }

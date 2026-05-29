@@ -8,6 +8,9 @@ use crate::cycle_manager::{
     CycleBriefing, StructuredState, archive_cycle, build_seed_messages, estimate_briefing_tokens,
     produce_briefing, should_advance_cycle,
 };
+use crate::long_horizon::{
+    context_pressure_ratio, in_lht_warning_band, should_lht_early_advance_cycle,
+};
 use crate::core::events::Event;
 use crate::models::SystemPrompt;
 use crate::prompts;
@@ -20,13 +23,28 @@ use super::Engine;
 impl Engine {
     /// Advance checkpoint-restart cycle when input estimate crosses threshold (#124).
     pub(super) async fn maybe_advance_cycle(&mut self, mode: AppMode) {
-        if !should_advance_cycle(
-            self.estimated_input_tokens() as u64,
-            turn_response_headroom_tokens(),
-            &self.session.model,
-            &self.config.cycle,
-            false,
-        ) {
+        let active = self.estimated_input_tokens() as u64;
+        let headroom = turn_response_headroom_tokens();
+        let model = self.session.model.clone();
+        let lht_enabled = self.config.long_horizon.enabled;
+        let threshold =
+            should_advance_cycle(active, headroom, &model, &self.config.cycle, false);
+        let lht_early = {
+            let lh = &mut self.runtime_ext_mut().long_horizon_state;
+            let pending = lh.pending_cycle_at_checkpoint;
+            let early = should_lht_early_advance_cycle(
+                active,
+                headroom,
+                &model,
+                lht_enabled,
+                pending,
+            );
+            if early {
+                lh.pending_cycle_at_checkpoint = false;
+            }
+            early
+        };
+        if !threshold && !lht_early {
             return;
         }
 
@@ -42,10 +60,15 @@ impl Engine {
         let archive_started = self.session.current_cycle_started;
         let max_briefing_tokens = self.config.cycle.briefing_max_for(&self.session.model);
 
+        let reason = if lht_early && !threshold {
+            "long-horizon checkpoint"
+        } else {
+            "context threshold"
+        };
         let _ = self
             .tx_event
             .send(Event::status(format!(
-                "鈫?context refreshing (cycle {from} 鈫?{to}, generating briefing鈥?"
+                "↻ context refreshing (cycle {from} → {to}, {reason}, generating briefing…)"
             )))
             .await;
 
@@ -216,6 +239,24 @@ impl Engine {
                 "鈫?context refreshed (cycle {from} 鈫?{to}, briefing: {briefing_tokens} tokens carried)"
             )))
             .await;
+
+        if lht_enabled {
+            let plan = self.config_ext().plan_state.lock().await.snapshot();
+            let checklist = self.config_ext().todos.lock().await.snapshot();
+            if let Some(section) =
+                crate::long_horizon::build_lht_handoff_section(to, &plan, &checklist)
+            {
+                let workspace = self.session.workspace.clone();
+                let section_owned = section;
+                if let Ok(Err(io_err)) = tokio::task::spawn_blocking(move || {
+                    crate::long_horizon::merge_lht_into_handoff(&workspace, &section_owned)
+                })
+                .await
+                {
+                    crate::logging::warn(format!("LHT handoff block write failed: {io_err}"));
+                }
+            }
+        }
     }
 
     /// Refresh the system prompt based on current mode and context.

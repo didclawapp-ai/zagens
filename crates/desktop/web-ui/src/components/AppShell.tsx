@@ -96,6 +96,7 @@ export type AppShellProps = {
   threadContextSnapshot: ThreadContextSnapshot | null;
   lastTurnOutputTokens: number | null;
   lastCacheHitPercent: number | null;
+  lhtChip?: import('../lib/lhtChip').LhtChipState | null;
   composerMention?: {
     relPath: string;
     isDirectory: boolean;
@@ -202,6 +203,7 @@ export default function AppShell({
   threadContextSnapshot,
   lastTurnOutputTokens,
   lastCacheHitPercent,
+  lhtChip,
   composerMention,
   composerPrefill,
   messages,
@@ -366,6 +368,7 @@ export default function AppShell({
               lastApiInputTokens={threadContextSnapshot?.last_api_input_tokens ?? null}
               lastTurnOutputTokens={lastTurnOutputTokens}
               lastCacheHitPercent={lastCacheHitPercent}
+              lhtChip={lhtChip}
               officeSession={officeSession}
               workspaceMention={composerMention}
               composerPrefill={composerPrefill}

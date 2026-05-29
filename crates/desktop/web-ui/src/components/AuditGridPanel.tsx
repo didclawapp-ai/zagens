@@ -10,6 +10,7 @@ import { useT } from '../i18n';
 import PanelEdgeSeam from './PanelEdgeSeam';
 import ChecklistPanel from './ChecklistPanel';
 import AuditScratchpadPanel from './AuditScratchpadPanel';
+import LongHorizonPanel from './LongHorizonPanel';
 import AgentPanel from './AgentPanel';
 import type { AgentState } from '../types/agent';
 import type { RuntimeConnectionState } from '../api/client';
@@ -186,10 +187,8 @@ export default function AuditGridPanel({
               narrativeSpawnSuspected={narrativeSpawnSuspected}
             />
           </GridCell>
-          <GridCell title={t('auditGrid.reserved')}>
-            <div className="flex h-full items-center justify-center p-4 text-xs text-t-text-muted">
-              {t('auditGrid.reservedHint')}
-            </div>
+          <GridCell title={t('auditGrid.longHorizon')}>
+            <LongHorizonPanel threadId={resumedThreadId} pollFast={streaming} />
           </GridCell>
           <GridCell title={t('sidebar.agents')}>
             <AgentPanel

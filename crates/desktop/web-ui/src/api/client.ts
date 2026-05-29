@@ -697,6 +697,8 @@ export interface RuntimeThreadRecord {
   trust_mode?: boolean;
   task_type?: string;
   scratchpad_run_id?: string | null;
+  /** Most recent turn id — used to reconcile composer lock with backend state. */
+  latest_turn_id?: string | null;
 }
 
 /** One inventory row from `GET /v1/threads/{id}/scratchpad/status` (Phase D1). */
@@ -763,11 +765,35 @@ export async function initThreadScratchpad(
 /** Turn row included in full GET /v1/threads/{id} (ThreadDetail). */
 export interface ThreadTurnRecord {
   id: string;
+  /** `RuntimeTurnStatus` on the wire: queued | in_progress | completed | failed | interrupted | canceled. */
+  status?: string;
   usage?: {
     input_tokens?: number;
     output_tokens?: number;
     reasoning_tokens?: number;
   } | null;
+}
+
+/** Turn states where the backend still owns the thread (composer must stay locked). */
+const ACTIVE_TURN_STATUSES = new Set(['queued', 'in_progress']);
+
+/** Authoritative check: does the backend still have an active turn for this thread? */
+export async function threadTurnStillActive(
+  threadId: string,
+  turnId?: string,
+): Promise<boolean> {
+  try {
+    const detail = await getThreadDetail(threadId);
+    const turns = detail.turns ?? [];
+    const turn = turnId
+      ? turns.find((tr) => tr.id === turnId)
+      : turns[turns.length - 1];
+    const status = turn?.status;
+    return status != null && ACTIVE_TURN_STATUSES.has(status);
+  } catch {
+    // Backend unreachable — do not assume active (avoid an unbreakable lock).
+    return false;
+  }
 }
 
 export interface ThreadDetailResponse {
@@ -787,6 +813,20 @@ export async function getThreadContext(threadId: string): Promise<ThreadContextS
 
 export async function fetchThreadChecklist(threadId: string): Promise<any> {
   return fetchJsonPoll(`/v1/threads/${encodeURIComponent(threadId)}/checklist`);
+}
+
+/** Derived LHT task graph (`GET /v1/threads/{id}/harness/task-graph`). */
+export async function fetchThreadHarnessTaskGraph(threadId: string): Promise<unknown> {
+  return fetchJsonPoll(
+    `/v1/threads/${encodeURIComponent(threadId)}/harness/task-graph`,
+  );
+}
+
+/** Cycle briefings + archives (`GET /v1/threads/{id}/harness/cycles`). */
+export async function fetchThreadHarnessCycles(threadId: string): Promise<unknown> {
+  return fetchJsonPoll(
+    `/v1/threads/${encodeURIComponent(threadId)}/harness/cycles`,
+  );
 }
 
 /** Side-git snapshots for a runtime thread (`GET /v1/threads/{id}/snapshots`). */
@@ -1123,6 +1163,21 @@ function linkAbortSignals(
  * `arm_sse_cancel` on the host ensures a new turn replaces any prior stream; abort
  * after `turn.completed` closes the read without stacking connections.
  */
+function sseEventSeq(ev: SseTurnEvent & { seq?: number }): number | undefined {
+  if (typeof ev.seq === 'number') {
+    return ev.seq;
+  }
+  try {
+    const p = JSON.parse(ev.data) as { seq?: unknown };
+    if (typeof p.seq === 'number') {
+      return p.seq;
+    }
+  } catch {
+    /* non-JSON frame */
+  }
+  return undefined;
+}
+
 async function pollThreadTurnEventsViaTauriProxy(
   threadId: string,
   sinceSeq: number,
@@ -1132,25 +1187,48 @@ async function pollThreadTurnEventsViaTauriProxy(
   const filter = options?.turnId ? { turnId: options.turnId } : undefined;
   const localAbort = new AbortController();
   const unlinkParent = linkAbortSignals(options?.signal, localAbort);
+  let cursor = sinceSeq;
   try {
-    if (localAbort.signal.aborted) {
-      return;
+    // The desktop SSE is meant to stay open until `turn_completed`/`done`. But a
+    // long, quiet turn (slow build, blocked exec, model thinking) can let the
+    // connection close first. Treating that close as turn-end desynced the
+    // composer lock from backend state ("Thread already has an active turn").
+    // Instead: when the stream closes without a terminal event, reconcile with
+    // the backend and reconnect (from the latest seq) while the turn is active.
+    for (;;) {
+      if (localAbort.signal.aborted) {
+        return;
+      }
+      let sawTerminal = false;
+      const path = `/v1/threads/${encodeURIComponent(threadId)}/events?since_seq=${cursor}`;
+      await consumeThreadEventsSse(
+        path,
+        (ev) => {
+          if (localAbort.signal.aborted) {
+            return;
+          }
+          const seq = sseEventSeq(ev);
+          if (seq != null && seq > cursor) {
+            cursor = seq;
+          }
+          const norm = normalizeDesktopStreamEvent(ev, filter);
+          if (norm?.kind === 'turn_completed' || norm?.kind === 'done') {
+            sawTerminal = true;
+            localAbort.abort();
+          }
+          onEvent(ev);
+        },
+        { signal: localAbort.signal },
+      );
+      if (sawTerminal || localAbort.signal.aborted) {
+        return;
+      }
+      // Stream closed with no terminal event — is the turn really over?
+      if (!(await threadTurnStillActive(threadId, options?.turnId))) {
+        return;
+      }
+      await sleepMs(THREAD_TURN_POLL_MS, localAbort.signal);
     }
-    const path = `/v1/threads/${encodeURIComponent(threadId)}/events?since_seq=${sinceSeq}`;
-    await consumeThreadEventsSse(
-      path,
-      (ev) => {
-        if (localAbort.signal.aborted) {
-          return;
-        }
-        const norm = normalizeDesktopStreamEvent(ev, filter);
-        if (norm?.kind === 'turn_completed' || norm?.kind === 'done') {
-          localAbort.abort();
-        }
-        onEvent(ev);
-      },
-      { signal: localAbort.signal },
-    );
   } finally {
     unlinkParent();
   }

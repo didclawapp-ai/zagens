@@ -1053,6 +1053,32 @@ pub(crate) async fn compact_thread(
     ))
 }
 
+pub(crate) async fn get_thread_harness_task_graph(
+    State(state): State<RuntimeApiState>,
+    AxumPath(id): AxumPath<String>,
+) -> Result<Json<Value>, ApiError> {
+    let threads = state.runtime_threads.clone();
+    let id = id.clone();
+    let graph = threads
+        .get_thread_harness_task_graph(&id)
+        .await
+        .map_err(map_thread_err)?;
+    Ok(Json(graph))
+}
+
+pub(crate) async fn get_thread_harness_cycles(
+    State(state): State<RuntimeApiState>,
+    AxumPath(id): AxumPath<String>,
+) -> Result<Json<Value>, ApiError> {
+    let threads = state.runtime_threads.clone();
+    let id = id.clone();
+    let cycles = threads
+        .get_thread_harness_cycles(&id)
+        .await
+        .map_err(map_thread_err)?;
+    Ok(Json(cycles))
+}
+
 pub(crate) async fn get_thread_checklist(
     State(state): State<RuntimeApiState>,
     AxumPath(id): AxumPath<String>,

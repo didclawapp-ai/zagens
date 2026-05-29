@@ -14,6 +14,7 @@ import {
   persistThreadSession,
   startThreadTurn,
   threadIdFromSseEvent,
+  threadTurnStillActive,
   type SseTurnEvent,
 } from '../api/client';
 import type { ComposerOutboundMessage } from '../components/Composer';
@@ -37,8 +38,11 @@ import {
   dispatchPanelChecklist,
   dispatchPanelContext,
   dispatchPanelScratchpad,
+  dispatchPanelTaskGraph,
+  dispatchHarnessCycleAdvanced,
   normalizeChecklistPayload,
 } from '../lib/panelChannel';
+import type { HarnessTaskGraph } from '../lib/types/longHorizon';
 import { streamFlagsForRunMode } from '../lib/runtimeMode';
 import { toast } from '../lib/toast';
 import { registerWindowThread } from '../lib/windowBridge';
@@ -54,6 +58,7 @@ import type { StreamSessionControl } from './useTurnStream';
 import type { ScratchpadStatus } from '../api/client';
 import { saveStoredActiveSessionId } from '../lib/windowBridge';
 import { turnCacheHitPercent } from '../lib/cacheUsage';
+import { parseLhtStatusMessage, type LhtChipState } from '../lib/lhtChip';
 
 export type TurnChatMessage = {
   id: string;
@@ -99,6 +104,7 @@ export type UseTurnSendParams = {
   setRuntimeSessionEstablished: Dispatch<SetStateAction<boolean>>;
   setLastTurnOutputTokens: Dispatch<SetStateAction<number | null>>;
   setLastCacheHitPercent: Dispatch<SetStateAction<number | null>>;
+  setLhtChip: Dispatch<SetStateAction<LhtChipState | null>>;
   activeSessionIdRef: MutableRefObject<string | null>;
   sessionUiCacheRef: MutableRefObject<Map<string, CachedUiMessage[]>>;
   refreshSessions: () => Promise<void>;
@@ -145,6 +151,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
     setRuntimeSessionEstablished,
     setLastTurnOutputTokens,
     setLastCacheHitPercent,
+    setLhtChip,
     activeSessionIdRef,
     sessionUiCacheRef,
     refreshSessions,
@@ -207,6 +214,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
       setMessages((prev) => [...prev, assistantMsg]);
 
       setRuntimeSessionEstablished(true);
+      setLhtChip(null);
       resetAgentPanel();
       toast.dismissAll();
       toolProgressPendingRef.current = '';
@@ -502,6 +510,12 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
             case 'panel_checklist':
               dispatchPanelChecklist(normalizeChecklistPayload(norm.checklist));
               break;
+            case 'panel_task_graph':
+              dispatchPanelTaskGraph(norm.task_graph as HarnessTaskGraph);
+              break;
+            case 'harness_cycle_advanced':
+              dispatchHarnessCycleAdvanced({ from: norm.from, to: norm.to });
+              break;
             case 'panel_context': {
               const panelCtx = norm.context as ThreadContextSnapshot;
               const tid = resumedThreadIdRef.current;
@@ -515,6 +529,13 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
             case 'craft_board_updated':
               notifyCraftBlackboardChanged();
               break;
+            case 'status': {
+              const chip = parseLhtStatusMessage(norm.message);
+              if (chip) {
+                setLhtChip(chip);
+              }
+              break;
+            }
             default:
               break;
           }
@@ -631,6 +652,44 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
           if ((e as Error).name === 'AbortError') {
             finishOnce();
             return;
+          }
+          // Composer desync recovery: the backend already has a turn running for
+          // this thread (our local stream had closed early and unlocked the box).
+          // Reconnect to that turn instead of surfacing a raw error, and keep the
+          // composer locked until it actually ends.
+          const emsg = (e as Error).message || '';
+          if (resumedThreadId && /active turn/i.test(emsg)) {
+            const recovered = await (async () => {
+              try {
+                const detail = await getThreadDetail(resumedThreadId);
+                const activeTurnId = detail.thread.latest_turn_id ?? undefined;
+                if (!(await threadTurnStillActive(resumedThreadId, activeTurnId))) {
+                  return false;
+                }
+                // The just-typed prompt was rejected — drop the optimistic bubbles.
+                setMessages((prev) =>
+                  prev.filter((m) => m.id !== userMsg.id && m.id !== assistantId),
+                );
+                threadTurnRef.current = {
+                  threadId: resumedThreadId,
+                  turnId: activeTurnId ?? '',
+                };
+                setResumedThreadId(resumedThreadId);
+                setStreamingThreadIds((prev) => new Set(prev).add(resumedThreadId));
+                toast.warning(t('composer.turnStillRunning'));
+                await pollThreadTurnEvents(
+                  resumedThreadId,
+                  detail.latest_seq ?? 0,
+                  (ev) => onSseEvent(ev, activeTurnId ? { turnId: activeTurnId } : undefined),
+                  { signal, turnId: activeTurnId },
+                );
+                finishOnce();
+                return true;
+              } catch {
+                return false;
+              }
+            })();
+            if (recovered) return;
           }
           handleHttpError(e as Error & { status?: number });
         }

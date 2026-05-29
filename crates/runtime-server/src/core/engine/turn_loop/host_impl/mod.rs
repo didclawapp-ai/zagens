@@ -312,6 +312,149 @@ impl TurnLoopHost for Engine {
         scratchpad_flow::record_tool_outcome(&mut self.scratchpad_step, tool_name, success);
     }
 
+    async fn record_long_horizon_tool_outcome(
+        &mut self,
+        tool_name: &str,
+        tool_input: &serde_json::Value,
+        result: &str,
+        success: bool,
+    ) {
+        if !self.config.long_horizon.enabled {
+            return;
+        }
+        if success
+            && matches!(tool_name, "exec_shell" | "run_tests")
+            && crate::long_horizon::VERIFICATION_RE.is_match(
+                tool_input
+                    .get("command")
+                    .or_else(|| tool_input.get("cmd"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(""),
+            )
+            && crate::long_horizon::result_contains_success(result)
+        {
+            let cmd = tool_input
+                .get("command")
+                .or_else(|| tool_input.get("cmd"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            self.runtime_ext_mut()
+                .long_horizon_state
+                .record_verification_exec(cmd);
+        }
+
+        let verify_suffix = if success
+            && matches!(tool_name, "checklist_update" | "todo_update")
+            && tool_input
+                .get("status")
+                .and_then(|v| v.as_str())
+                == Some("completed")
+        {
+            let id = tool_input
+                .get("id")
+                .and_then(|v| v.as_u64())
+                .and_then(|v| u32::try_from(v).ok());
+            let checklist = self.config_ext().todos.lock().await.snapshot();
+            let lang = self.config.locale_tag.as_str();
+            let recent = self
+                .runtime_ext()
+                .long_horizon_state
+                .recent_verification_cmds
+                .clone();
+            id.and_then(|item_id| checklist.items.iter().find(|i| i.id == item_id))
+            .and_then(|item| crate::long_horizon::parse_verify_command(&item.content))
+            .filter(|expected| !crate::long_horizon::verification_satisfied(expected, &recent))
+            .map(|expected| crate::long_horizon::verify_mismatch_suffix(&expected, lang))
+        } else {
+            None
+        };
+
+        // Qualified progress (§4.3.1): read-only execs such as `ls`/`echo` do
+        // NOT count — exec/test commands must match the verification pattern and
+        // exit 0, while write/plan/checklist tools count on success.
+        let qualifies = success
+            && match tool_name {
+                "edit_file" | "write_file" | "apply_patch" | "checklist_update"
+                | "checklist_write" | "todo_update" | "update_plan" => true,
+                "exec_shell" | "run_tests" => {
+                    let cmd = tool_input
+                        .get("command")
+                        .or_else(|| tool_input.get("cmd"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    crate::long_horizon::VERIFICATION_RE.is_match(cmd)
+                        && crate::long_horizon::result_contains_success(result)
+                }
+                _ => false,
+            };
+
+        let state = &mut self.runtime_ext_mut().long_horizon_state;
+        state.on_assistant_with_tools();
+        if crate::long_horizon::tool_marks_lht_checkpoint(tool_name, tool_input, success) {
+            state.pending_cycle_at_checkpoint = true;
+        }
+        if let Some(suffix) = verify_suffix {
+            state.pending_tool_result_suffix = Some(suffix);
+        }
+        if qualifies {
+            state.progress_since_last_nudge = true;
+        }
+    }
+
+    fn take_long_horizon_tool_suffix(&mut self) -> Option<String> {
+        self.runtime_ext_mut()
+            .long_horizon_state
+            .take_tool_result_suffix()
+    }
+
+    async fn maybe_lht_pre_request_hooks(&mut self, _mode: TurnLoopMode) {
+        if !self.config.long_horizon.enabled {
+            return;
+        }
+        let active = self.estimated_input_tokens() as u64;
+        let headroom = crate::core::engine::context::turn_response_headroom_tokens();
+        let model = self.session.model.clone();
+        let in_band =
+            crate::long_horizon::in_lht_warning_band(active, headroom, &model);
+        let emit_warning = {
+            let lh = &self.runtime_ext().long_horizon_state;
+            in_band && !lh.last_warning_band_emitted
+        };
+        if emit_warning {
+            let pct = crate::long_horizon::context_pressure_ratio(active, headroom, &model)
+                .map(|r| (r * 100.0).round() as u8)
+                .unwrap_or(0);
+            let _ = self
+                .tx_event
+                .send(crate::core::events::Event::status(format!(
+                    "long_horizon.context_warning: {{\"pressure_pct\":{pct}}}"
+                )))
+                .await;
+        }
+        let lh_cfg = self.config.long_horizon.clone();
+        let reinject = {
+            let lh = &mut self.runtime_ext_mut().long_horizon_state;
+            lh.last_warning_band_emitted = in_band;
+            lh.assistant_steps = lh.assistant_steps.saturating_add(1);
+            crate::long_horizon::should_reinject_this_step(&lh_cfg, lh.assistant_steps)
+        };
+        if !reinject {
+            return;
+        }
+        let plan = self.config_ext().plan_state.lock().await.snapshot();
+        let checklist = self.config_ext().todos.lock().await.snapshot();
+        let lang = self.config.locale_tag.as_str();
+        let Some(msg) = crate::long_horizon::build_objective_reinject_message(
+            &plan,
+            &checklist,
+            &self.session.messages,
+            lang,
+        ) else {
+            return;
+        };
+        Engine::add_session_message(self, msg).await;
+    }
+
     fn on_audit_scratchpad_bind_success(
         &mut self,
         mode: TurnLoopMode,

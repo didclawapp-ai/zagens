@@ -165,6 +165,26 @@ where
             .map_err(|_| anyhow::anyhow!("engine dropped context query"))
     }
 
+    /// Query derived long-horizon task graph from the live engine session.
+    pub async fn query_harness_task_graph(&self) -> Result<serde_json::Value> {
+        let (tx, rx) = oneshot::channel();
+        self.send(Op::QueryHarnessTaskGraph { reply: tx }).await?;
+        tokio::time::timeout(Duration::from_secs(5), rx)
+            .await
+            .map_err(|_| anyhow::anyhow!("harness task-graph query timed out"))?
+            .map_err(|_| anyhow::anyhow!("engine dropped harness task-graph query"))
+    }
+
+    /// Query cycle briefings and archive metadata from the live engine session.
+    pub async fn query_harness_cycles(&self) -> Result<serde_json::Value> {
+        let (tx, rx) = oneshot::channel();
+        self.send(Op::QueryHarnessCycles { reply: tx }).await?;
+        tokio::time::timeout(Duration::from_secs(5), rx)
+            .await
+            .map_err(|_| anyhow::anyhow!("harness cycles query timed out"))?
+            .map_err(|_| anyhow::anyhow!("engine dropped harness cycles query"))
+    }
+
     /// Remove the last user message and everything after it (F4 / `#383`).
     pub async fn truncate_before_last_user_message(&self) -> Result<bool> {
         let (tx, rx) = oneshot::channel();

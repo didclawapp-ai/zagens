@@ -17,6 +17,7 @@ use crate::capacity::CapacityControllerConfig;
 use crate::compaction::CompactionConfig;
 use crate::cycle::CycleConfig;
 use crate::features::Features;
+use crate::long_horizon::LongHorizonConfig;
 use crate::scratchpad::ScratchpadConfig;
 use crate::task_type::TaskType;
 
@@ -81,6 +82,8 @@ pub struct EngineConfig {
     pub task_type: TaskType,
     /// Audit scratchpad engine hooks (Phase B).
     pub scratchpad: ScratchpadConfig,
+    /// Long-horizon code task harness (LHT Phase 1).
+    pub long_horizon: LongHorizonConfig,
 }
 
 impl Default for EngineConfig {
@@ -114,6 +117,7 @@ impl Default for EngineConfig {
             strict_tool_mode: false,
             task_type: TaskType::default(),
             scratchpad: ScratchpadConfig::default(),
+            long_horizon: LongHorizonConfig::default(),
         }
     }
 }

@@ -22,6 +22,7 @@ use crate::core::capacity::CapacityController;
 use crate::core::session::Session;
 use super::cycle_hooks;
 use super::Engine;
+use crate::long_horizon::LongHorizonSessionState;
 
 fn env_only_api_key_recovery_hint(api_config: &Config) -> Option<String> {
     if !crate::config::active_provider_uses_env_only_api_key(api_config) {
@@ -173,6 +174,8 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
 
     let runtime_ext = EngineRuntimeExt {
         config_ext,
+        long_horizon_state: LongHorizonSessionState::default(),
+        turn_app_mode: AppMode::Agent,
         lsp_manager: Arc::clone(&lsp_manager),
         shell_manager: shell_manager.clone(),
         workshop_vars: workshop_vars.clone(),

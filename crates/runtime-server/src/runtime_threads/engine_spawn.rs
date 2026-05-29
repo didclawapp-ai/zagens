@@ -84,6 +84,7 @@ impl RuntimeThreadManager {
                 .unwrap_or(crate::task_type::TaskType::Code),
             workshop: self.config.workshop.clone(),
             scratchpad: self.config.scratchpad_config(),
+            long_horizon: self.config.long_horizon_config(),
             llm_client_override: None,
         };
 

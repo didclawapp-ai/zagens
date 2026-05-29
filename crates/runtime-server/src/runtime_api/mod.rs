@@ -23,7 +23,7 @@ mod tasks;
 mod topic_memory;
 mod threads;
 mod usage;
-mod workspace;
+pub(crate) mod workspace;
 
 pub(crate) use blackboards::{get_blackboard, list_blackboards};
 pub(crate) use topic_memory::get_topic_memory;
@@ -44,7 +44,8 @@ pub(crate) use skills::{create_skill, import_skill_local, install_skill_remote, 
 pub(crate) use tasks::{cancel_task, clear_tasks, create_task, get_task, list_tasks};
 pub(crate) use threads::{
     browse_thread_workspace, browse_workspace_by_root, compact_thread, create_thread,
-    edit_last_thread_turn, fork_thread, fork_thread_at_user_message, get_thread, get_thread_checklist, get_thread_context,
+    edit_last_thread_turn, fork_thread, fork_thread_at_user_message, get_thread, get_thread_checklist,
+    get_thread_context, get_thread_harness_cycles, get_thread_harness_task_graph,
     get_thread_scratchpad_status, init_thread_scratchpad, interrupt_thread_turn, list_thread_snapshots, list_threads,
     list_threads_summary, persist_thread_session, read_thread_workspace_file,
     read_workspace_file_by_root, resolve_approval, restore_thread_snapshot, resume_thread,

@@ -472,7 +472,7 @@ gantt
 
 ### 9.1 B1 — CRAFT（多智能体可靠性）
 
-详见 [agent-reliability-craft-plan.md](../agent-reliability-craft-plan.md)。
+详见 [agent-reliability-craft-plan.md](../agent-reliability-craft-plan.md)（含 **CRAFT 缩写 SSOT**：Closed-loop / Review / Agent / Fix-loop / Traceable → B1.1–B1.4）。
 
 | 步骤 | 实施内容 | 主要文件 |
 |------|----------|----------|

@@ -3,6 +3,20 @@
 > **状态：** 草案（根据产品讨论整理，便于后续迭代为实施清单）。  
 > **范围：** DeepSeek-TUI / Zagens 共用 runtime；不替代现有 [子智能体文档](SUBAGENTS.md)，在其上增量演进。
 
+## 命名备忘：CRAFT 缩写（SSOT）
+
+拼写固定为 **CRAFT**（非 CARFT）。五个字母概括 **机制**，不是 Explorer / Implementer / Reviewer / Verifier 四个角色名的首字母缩写。路线图 **§9.1 B1** 见 [RUNTIME_EVOLUTION_ROADMAP.md](tech/RUNTIME_EVOLUTION_ROADMAP.md)。
+
+| 字母 | 含义 | 对应 B1 步骤 |
+|------|------|----------------|
+| **C** | **Closed-loop**（闭环） | B1.4 fix-loop、`turn_loop` |
+| **R** | **Review** | B1.2 `verdict` / `blockers`、Reviewer |
+| **A** | **Agent**（多角色 `agent_spawn`） | B1.1 角色白名单、B1.3 spawn |
+| **F** | **Fix-loop** | B1.4 程序化修复轮 |
+| **T** | **Traceable**（黑板 + `task_id`） | B1.2–B1.3 黑板 |
+
+**边界：** 全库审计子代理 **Auditor** + scratchpad 见 [audit-scratchpad-design.md](desktop/audit-scratchpad-design.md)，可与 CRAFT 黑板互补，但 **Auditor 不是上表中的 A**。长程代码任务（生成 / 修复 / 重构防早停）见 [harness/LONG_HORIZON_CODE_TASKS.md](harness/LONG_HORIZON_CODE_TASKS.md)（**LHT**），与 CRAFT 审查闭环分轨。
+
 ## 1. 目标与非目标
 
 ### 1.1 目标

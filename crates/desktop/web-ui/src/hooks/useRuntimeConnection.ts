@@ -22,6 +22,8 @@ import {
 import { RUNTIME_TRANSIENT_TAG, toast } from '../lib/toast';
 
 const PROBE_FAILS_BEFORE_OFFLINE = 3;
+/** When a “busy” (degraded) state is entered and this many ms elapse, do one fast extra probe. */
+const BUSY_FAST_RECOVERY_DELAY_MS = 1000;
 
 export type UseRuntimeConnectionParams = {
   streaming: boolean;
@@ -52,6 +54,14 @@ export function useRuntimeConnection({
   const [runtimeSessionEstablished, setRuntimeSessionEstablished] = useState(false);
   const runtimeSessionEstablishedRef = useRef(false);
   const runtimeProbeFailStreakRef = useRef(0);
+  const busyRecoveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearBusyRecovery = useCallback(() => {
+    if (busyRecoveryTimerRef.current !== null) {
+      clearTimeout(busyRecoveryTimerRef.current);
+      busyRecoveryTimerRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     runtimeSessionEstablishedRef.current = runtimeSessionEstablished;
@@ -194,12 +204,30 @@ export function useRuntimeConnection({
 
   useEffect(() => {
     let cancelled = false;
+    const scheduleBusyRecovery = () => {
+      if (runtimeSessionEstablishedRef.current) {
+        clearBusyRecovery();
+        busyRecoveryTimerRef.current = setTimeout(() => {
+          void probeRuntimeConnection({ light: streamingRef.current }).then((s) => {
+            if (s === 'connected') {
+              runtimeProbeFailStreakRef.current = 0;
+              setRuntimeSessionEstablished(true);
+              setRuntimeConn('connected');
+              dismissRuntimeTransient();
+            }
+            // If still not connected, normal poll cycle will retry later.
+          });
+        }, BUSY_FAST_RECOVERY_DELAY_MS);
+      }
+    };
+
     const applyProbe = (s: Exclude<RuntimeConnectionState, 'checking'>) => {
       if (s === 'connected') {
         runtimeProbeFailStreakRef.current = 0;
         setRuntimeSessionEstablished(true);
         setRuntimeConn('connected');
         dismissRuntimeTransient();
+        clearBusyRecovery();
         return;
       }
       if (s === 'auth_mismatch') {
@@ -211,6 +239,7 @@ export function useRuntimeConnection({
         runtimeProbeFailStreakRef.current += 1;
         if (runtimeProbeFailStreakRef.current >= PROBE_FAILS_BEFORE_OFFLINE) {
           setRuntimeConn('offline');
+          scheduleBusyRecovery();
         }
         return;
       }
@@ -231,8 +260,9 @@ export function useRuntimeConnection({
     return () => {
       cancelled = true;
       window.clearInterval(id);
+      clearBusyRecovery();
     };
-  }, [dismissRuntimeTransient, streaming, streamingRef]);
+  }, [dismissRuntimeTransient, streaming, streamingRef, clearBusyRecovery]);
 
   return {
     runtimeConn,

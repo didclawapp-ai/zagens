@@ -344,6 +344,11 @@ where
                     // background-task subscribers and replay see it. The actual
                     // archive write is the engine's responsibility (see
                     // `cycle_manager::archive_cycle`); this event is informational.
+                    let briefing_preview: String = briefing
+                        .briefing_text
+                        .chars()
+                        .take(400)
+                        .collect();
                     mgr.emit_event(
                         &thread_id,
                         Some(&turn_id),
@@ -353,6 +358,21 @@ where
                             "from": from,
                             "to": to,
                             "briefing_tokens": briefing.token_estimate,
+                            "cycle": briefing.cycle,
+                            "timestamp": briefing.timestamp,
+                        }),
+                    )
+                    .await?;
+                    mgr.emit_event(
+                        &thread_id,
+                        Some(&turn_id),
+                        None,
+                        "harness.cycle_advanced",
+                        json!({
+                            "from": from,
+                            "to": to,
+                            "briefing_tokens": briefing.token_estimate,
+                            "briefing_preview": briefing_preview,
                             "cycle": briefing.cycle,
                             "timestamp": briefing.timestamp,
                         }),
@@ -775,6 +795,10 @@ where
                         json!({ "item": item }),
                     )
                     .await?;
+                    if message.starts_with("long_horizon.") {
+                        host.observe_harness_status(&thread_id, &turn_id, &message)
+                            .await;
+                    }
                 }
                 EngineEvent::Error { envelope, .. } => {
                     turn_status = RuntimeTurnStatus::Failed;
