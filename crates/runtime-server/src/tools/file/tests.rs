@@ -194,8 +194,9 @@ async fn test_read_file_tool() {
             .expect("execute");
 
         assert!(result.success);
-        // New file → "Created …" summary; the unified diff above the summary
-        // primes the TUI's diff-aware renderer (#505).
+        // Small new file → "Created …" summary + real unified diff (kept so the
+        // web-ui DiffCard / 「本轮变更」panel render it; only LARGE writes switch
+        // to the summary+preview path — see 3.1/3.2).
         assert!(result.content.contains("Created"), "{}", result.content);
         assert!(result.content.contains("--- a/"), "{}", result.content);
         assert!(
@@ -207,6 +208,96 @@ async fn test_read_file_tool() {
         // Verify file was written
         let written = fs::read_to_string(tmp.path().join("output.txt")).expect("read");
         assert_eq!(written, "test content");
+    }
+
+    #[tokio::test]
+    async fn test_write_file_large_uses_preview_not_diff() {
+        let tmp = tempdir().expect("tempdir");
+        let ctx = ToolContext::new(tmp.path().to_path_buf());
+
+        // Exceed DIFF_MAX_INPUT_BYTES so the diff is intentionally skipped.
+        let big = "x\n".repeat(DIFF_MAX_INPUT_BYTES);
+        let tool = WriteFileTool;
+        let result = tool
+            .execute(json!({"path": "big.txt", "content": big}), &ctx)
+            .await
+            .expect("execute");
+
+        assert!(result.success);
+        assert!(
+            result.content.contains("diff omitted"),
+            "{}",
+            &result.content[..result.content.len().min(300)]
+        );
+        assert!(
+            result.content.contains("preview (head)"),
+            "{}",
+            &result.content[..result.content.len().min(300)]
+        );
+        // Must NOT start with a unified-diff header (web-ui would misrender it).
+        assert!(
+            !result.content.contains("--- a/"),
+            "{}",
+            &result.content[..result.content.len().min(300)]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_write_file_preserves_crlf() {
+        let tmp = tempdir().expect("tempdir");
+        let ctx = ToolContext::new(tmp.path().to_path_buf());
+        let path = tmp.path().join("crlf.txt");
+        fs::write(&path, "line1\r\nline2\r\n").expect("seed");
+
+        let tool = WriteFileTool;
+        tool.execute(
+            json!({"path": "crlf.txt", "content": "newA\nnewB\n"}),
+            &ctx,
+        )
+        .await
+        .expect("execute");
+
+        let written = fs::read(&path).expect("read");
+        // LF input must be re-normalized to the file's original CRLF (2.1).
+        assert_eq!(written, b"newA\r\nnewB\r\n");
+    }
+
+    #[tokio::test]
+    async fn test_write_file_skips_identical_content() {
+        let tmp = tempdir().expect("tempdir");
+        let ctx = ToolContext::new(tmp.path().to_path_buf());
+        let path = tmp.path().join("same.txt");
+        fs::write(&path, "unchanged\n").expect("seed");
+
+        let tool = WriteFileTool;
+        let result = tool
+            .execute(
+                json!({"path": "same.txt", "content": "unchanged\n"}),
+                &ctx,
+            )
+            .await
+            .expect("execute");
+
+        assert!(result.success);
+        assert!(
+            result.content.contains("no changes"),
+            "{}",
+            result.content
+        );
+    }
+
+    #[tokio::test]
+    async fn test_write_file_too_large() {
+        let tmp = tempdir().expect("tempdir");
+        let ctx = ToolContext::new(tmp.path().to_path_buf());
+
+        let tool = WriteFileTool;
+        let huge = "x".repeat(MAX_WRITE_SIZE + 1);
+        let err = tool
+            .execute(json!({"path": "big.txt", "content": huge}), &ctx)
+            .await
+            .expect_err("should reject oversized content");
+        assert!(format!("{err:?}").contains("TOO_LARGE"), "{err:?}");
     }
 
     #[tokio::test]
@@ -342,6 +433,28 @@ async fn test_read_file_tool() {
         assert!(result.content.contains("file2.txt"));
         assert!(result.content.contains("subdir"));
         assert!(result.content.contains("\"is_dir\": true"));
+    }
+
+    #[tokio::test]
+    async fn test_list_dir_sorts_dirs_first_then_name() {
+        let tmp = tempdir().expect("tempdir");
+        let ctx = ToolContext::new(tmp.path().to_path_buf());
+        fs::write(tmp.path().join("b.txt"), "").expect("write");
+        fs::write(tmp.path().join("a.txt"), "").expect("write");
+        fs::create_dir(tmp.path().join("zdir")).expect("mkdir");
+
+        let tool = ListDirTool;
+        let result = tool.execute(json!({}), &ctx).await.expect("execute");
+        let parsed: serde_json::Value = serde_json::from_str(&result.content).expect("json");
+        let entries = parsed["entries"].as_array().expect("entries array");
+
+        // Directory comes first regardless of name, then files sorted by name.
+        assert_eq!(entries[0]["name"], "zdir");
+        assert_eq!(entries[0]["is_dir"], true);
+        assert_eq!(entries[1]["name"], "a.txt");
+        assert_eq!(entries[2]["name"], "b.txt");
+        assert_eq!(parsed["truncated"], false);
+        assert_eq!(parsed["total"], 3);
     }
 
     #[tokio::test]

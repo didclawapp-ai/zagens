@@ -133,10 +133,9 @@ let diff = TextDiff::from_lines(old, new); // old="" → 整份 new 全部成为
 
 返回 body 形如 `{diff}\n{summary}`，于是**整份代码会被再复制一遍**（每行带 `+` 前缀）。一个 2000 行的新文件，工具结果里等于塞进 4000 行——直接挤占模型上下文，并触发 `LargeOutputRouter` 的压缩开销。
 
-**建议：** 对**新建文件**或**变更比例极大**（diff 行数接近全文件）的情况，不输出完整 diff，改为：
-- summary（行数 / 字节数）；
-- 可选：前 N 行 + 后 N 行预览；
-- 可选：若已有符号索引，输出结构大纲（参照 `read.rs` 的 `format_file_summary`）。
+**建议：** 仅在**输入超阈值**（新内容或旧内容 > `DIFF_MAX_INPUT_BYTES`）时跳过完整 diff，改为 summary（行数 / 字节数）+ head 预览。**小的新建文件仍输出真实 unified diff**，否则会丢失前端体验——web-ui 的 `diffEntries.ts` 把 `write_file` 列入 `DIFF_TOOL_NAMES`，新建文件的 diff 会渲染成 `DiffCard` 并进入 Office「本轮变更」面板。
+
+> **前端兼容约束：** 摘要 / 预览文本**不得以 `--- ` / `+++ ` / `@@` 开头**，否则会命中 `looksLikeDiff` 的 `/^--- /m` 正则被误当成 unified diff 渲染。实现里预览头用 `=== preview (head) ===`，每行带 `行号 | ` 前缀规避。
 
 ### 3.2 diff 计算成本随内容增大急剧上升 — 中优先级
 
@@ -206,3 +205,40 @@ cargo clippy --workspace --all-targets --all-features
 - 括号严重不平衡的内容触发 `[TRUNCATION_SUSPECTED]` / `[JSX_WARNING]`。
 
 每次改动同步在 [CHANGELOG.md](../../CHANGELOG.md) 的 `[Unreleased]` 记录（仓库规则要求）。
+
+---
+
+## 6. 其它工具的同源加固（已实施）
+
+`write_file` 暴露的几类问题在其它工具里同样存在。为统一行为，把 `tools/file` 内的 helper 提升为 `pub(crate)` 并共享复用：`normalize_line_endings`、`atomic_write`、`detect_and_decode`、`line_ending_of`。
+
+### 6.1 `apply_patch`（`tools/apply_patch.rs`）
+
+另一条主要写入路径，原本与旧 `write_file` 有完全相同的缺陷：
+
+- **行尾丢失**：`base_content.lines().join("\n")` 把 CRLF 压成 LF。→ 用 `line_ending_of` 记录原行尾，写回前 `normalize_line_endings`。
+- **末尾换行丢失**：`lines()` 吃掉结尾换行，补丁后产生 "No newline at end of file" 噪声。→ 记录 `had_trailing_newline`（新文件默认 `true`），写回时补回。
+- **非原子写**：逐文件 `fs::write` + best-effort 回滚。→ 写入与回滚都改用 `atomic_write`。
+- **`changes` 全量替换**：等价于 `write_file` 覆写，现同样保留原行尾 + 原子写。
+
+> 注：补丁模式仍以 UTF-8 读取原文件（`read_to_string`）。**刻意不**对非 UTF-8 文件做 `detect_and_decode` 后打补丁——那会把文件转码成 UTF-8 写回、破坏原编码；保持「非 UTF-8 文件打补丁直接报错」更安全。
+
+### 6.2 `grep_files`（`tools/search.rs`）
+
+- **编码安全（准确性）**：原 `fs::read_to_string` 对 GB18030/UTF-16 源文件失败 → 被计入 `files_skipped_binary` 而搜不到。改用 `fs::read` + `detect_and_decode`，与 `read_file` 一致。中文 Windows 仓库尤其受益。
+- **`files_with_matches` 提前停（效率）**：该模式只需判断文件是否命中，首行命中即 `break`，不再扫完整文件。
+- **BM25 去重（效率）**：原 `dl = matches.iter().filter(...).count()` 在每个文件上重扫全部 matches（O(文件×匹配)）。改为预计算 `file_match_total` 哈希表后 O(1) 查表。
+
+### 6.3 `list_dir`（`tools/file/list_dir.rs`）
+
+- **稳定排序**：`read_dir` 顺序依赖文件系统、不可复现。改为**目录优先 + 名称升序**。
+- **分页上限**：新增 `limit`（默认 1000、上限 10000），返回 `{ path, total, truncated, entries }`，避免超大目录灌爆上下文。
+- **符号链接标识**：条目新增 `is_symlink` 字段。
+
+### 6.4 暂未做（需单独评估）
+
+- **`grep_files` 并行搜索**：当前单线程顺序 `read + regex`，大仓库慢于 ripgrep。并行化（如 rayon）收益明显但会引入依赖、改变结果时序，且与 BM25 重排交互需验证，作为独立改动评估。
+
+### 6.5 验证
+
+`apply_patch` / `grep_files` / `list_dir` 各补充回归测试：补丁保留 CRLF + 末尾换行；grep 命中 GB18030 文件；list_dir 目录优先 + 名称排序 + `total`/`truncated`。三组测试均通过。

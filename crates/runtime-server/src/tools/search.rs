@@ -249,10 +249,14 @@ impl ToolSpec for GrepFilesTool {
                 continue;
             }
 
-            let Ok(file_content) = fs::read_to_string(&file_path) else {
+            // Encoding-tolerant read: GB18030 / UTF-16 source files (common on
+            // Chinese Windows) would fail `read_to_string` and be silently
+            // skipped — decode them like read_file does so grep can find matches.
+            let Ok(raw_bytes) = fs::read(&file_path) else {
                 files_skipped_binary += 1;
                 continue;
             };
+            let (file_content, _enc, _via) = super::file::detect_and_decode(&raw_bytes);
 
             files_searched += 1;
             let lines: Vec<&str> = file_content.lines().collect();
@@ -269,6 +273,12 @@ impl ToolSpec for GrepFilesTool {
                 }
                 total_matches += 1;
                 hits_in_file += 1;
+
+                // files_with_matches only needs to know the file matched at all
+                // — stop scanning the rest of its lines after the first hit.
+                if output_mode == GrepOutputMode::FilesWithMatches {
+                    break;
+                }
 
                 if output_mode == GrepOutputMode::Content {
                     let context_before: Vec<String> = (line_idx.saturating_sub(context_lines)
@@ -742,10 +752,17 @@ fn bm25_rank(matches: &mut Vec<GrepMatch>, pattern: &str) {
     let b: f64 = 0.75;
     let avgdl: f64 = total_files; // use file count as avgdl proxy
 
+    // Precompute matches-per-file once (was an O(files × matches) inner scan).
+    let mut file_match_total: std::collections::HashMap<&str, usize> =
+        std::collections::HashMap::new();
+    for m in matches.iter() {
+        *file_match_total.entry(m.file.as_str()).or_insert(0) += 1;
+    }
+
     let mut file_scores: Vec<(String, f64)> = file_term_counts
         .iter()
         .map(|(file, counts)| {
-            let dl = matches.iter().filter(|m| &m.file == file).count() as f64;
+            let dl = file_match_total.get(file.as_str()).copied().unwrap_or(0) as f64;
             let score: f64 = terms
                 .iter()
                 .filter_map(|term| {
@@ -1077,6 +1094,26 @@ mod tests {
             .expect("execute");
         let parsed_all: Value = serde_json::from_str(&all.content).unwrap();
         assert!(parsed_all["total_matches"].as_u64().unwrap() >= 1);
+    }
+
+    #[tokio::test]
+    async fn test_grep_files_decodes_gb18030() {
+        let tmp = tempdir().expect("tempdir");
+        let ctx = ToolContext::new(tmp.path().to_path_buf());
+
+        // ASCII "needle" followed by GBK-encoded 你好 (invalid UTF-8). Before the
+        // fix `read_to_string` failed and the file was skipped as binary.
+        let mut bytes = b"fn needle() {}\n".to_vec();
+        bytes.extend_from_slice(&[0xC4, 0xE3, 0xBA, 0xC3, b'\n']);
+        fs::write(tmp.path().join("zh.rs"), bytes).expect("write");
+
+        let tool = GrepFilesTool;
+        let result = tool
+            .execute(json!({"pattern": "needle"}), &ctx)
+            .await
+            .expect("execute");
+        let parsed: Value = serde_json::from_str(&result.content).unwrap();
+        assert_eq!(parsed["total_matches"].as_u64().unwrap(), 1);
     }
 
     #[tokio::test]

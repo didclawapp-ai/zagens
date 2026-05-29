@@ -254,7 +254,7 @@ pub(in crate::tools::file) fn parse_pages_arg(spec: &str) -> Option<(u32, u32)> 
     }
 }
 
-fn detect_and_decode(bytes: &[u8]) -> (String, String, String) {
+pub(crate) fn detect_and_decode(bytes: &[u8]) -> (String, String, String) {
     if bytes.is_empty() {
         return (String::new(), "utf-8".into(), "empty".into());
     }

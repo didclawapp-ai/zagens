@@ -661,9 +661,19 @@ fn build_pending_writes_from_changes(
         };
         let created = original.is_none();
 
+        // Full-content replacement: preserve the existing file's line endings
+        // (match write_file — avoids flipping a CRLF file to LF on Windows).
+        let content_out = match &original {
+            Some(orig) => {
+                let le = crate::tools::file::line_ending_of(orig);
+                crate::tools::file::normalize_line_endings(content, le)
+            }
+            None => content.to_string(),
+        };
+
         pending.push(PendingWrite {
             path: resolved,
-            content: Some(content.to_string()),
+            content: Some(content_out),
             original,
         });
 
@@ -725,6 +735,14 @@ fn build_pending_writes_from_patches(
         }
 
         let base_content = original.clone().unwrap_or_default();
+        // Capture the original line ending + trailing-newline so the patched
+        // result keeps them (lines.join("\n") would otherwise flatten CRLF and
+        // drop a trailing newline — both produce spurious whole-file diffs).
+        let file_le = crate::tools::file::line_ending_of(&base_content);
+        let had_trailing_newline = match &original {
+            Some(text) => text.ends_with('\n'),
+            None => true, // new files: default to a POSIX trailing newline
+        };
         let mut lines: Vec<String> = if base_content.is_empty() {
             Vec::new()
         } else {
@@ -756,7 +774,11 @@ fn build_pending_writes_from_patches(
                 original,
             });
         } else {
-            let new_content = lines.join("\n");
+            let mut new_content = lines.join("\n");
+            if had_trailing_newline && !new_content.is_empty() {
+                new_content.push('\n');
+            }
+            let new_content = crate::tools::file::normalize_line_endings(&new_content, file_le);
             pending.push(PendingWrite {
                 path: resolved,
                 content: Some(new_content),
@@ -782,7 +804,7 @@ fn apply_pending_writes(pending: &[PendingWrite]) -> Result<(), ToolError> {
                     ))
                 })?;
             }
-            fs::write(&entry.path, content).map_err(|e| {
+            crate::tools::file::atomic_write(&entry.path, content.as_bytes()).map_err(|e| {
                 ToolError::execution_failed(format!(
                     "Failed to write {}: {}",
                     entry.path.display(),
@@ -816,7 +838,7 @@ fn rollback_pending_writes(applied: &[PendingWrite]) {
     for entry in applied.iter().rev() {
         match entry.original.as_ref() {
             Some(content) => {
-                let _ = fs::write(&entry.path, content);
+                let _ = crate::tools::file::atomic_write(&entry.path, content.as_bytes());
             }
             None => {
                 let _ = fs::remove_file(&entry.path);
@@ -1418,6 +1440,24 @@ diff --git a/b.txt b/b.txt
                 .message
                 .contains("path` overrides to `override.txt`")
         );
+    }
+
+    #[tokio::test]
+    async fn test_apply_patch_preserves_crlf_and_trailing_newline() {
+        let tmp = tempdir().expect("tempdir");
+        let ctx = ToolContext::new(tmp.path().to_path_buf());
+        let path = tmp.path().join("crlf.txt");
+        fs::write(&path, "line1\r\nline2\r\nline3\r\n").expect("seed");
+
+        let patch = "--- a/crlf.txt\n+++ b/crlf.txt\n@@ -1,3 +1,3 @@\n line1\n-line2\n+modified\n line3\n";
+        let tool = ApplyPatchTool;
+        tool.execute(json!({"path": "crlf.txt", "patch": patch}), &ctx)
+            .await
+            .expect("execute");
+
+        // CRLF and the trailing newline must survive the patch round-trip.
+        let written = fs::read(&path).expect("read");
+        assert_eq!(written, b"line1\r\nmodified\r\nline3\r\n");
     }
 
     #[test]

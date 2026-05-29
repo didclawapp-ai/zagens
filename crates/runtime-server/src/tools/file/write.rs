@@ -1,5 +1,7 @@
 //! write_file tool and shared edit/write helpers.
 
+use super::read::detect_and_decode;
+use super::{DIFF_MAX_INPUT_BYTES, MAX_WRITE_SIZE, WRITE_PREVIEW_LINES};
 use crate::tools::diff_format::make_unified_diff;
 use crate::tools::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
@@ -8,6 +10,8 @@ use crate::tools::spec::{
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::fs;
+use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Tool for writing UTF-8 files to the workspace.
 pub struct WriteFileTool;
@@ -53,7 +57,16 @@ impl ToolSpec for WriteFileTool {
 
     async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
         let path_str = required_str(&input, "path")?;
-        let file_content = required_str(&input, "content")?;
+        let requested_content = required_str(&input, "content")?;
+
+        // 3.3: guard against runaway / accidental huge writes (mirror read_file).
+        if requested_content.len() > MAX_WRITE_SIZE {
+            return Err(ToolError::execution_failed(format!(
+                "[TOO_LARGE] 写入内容 {} 字节超过上限 ({}MB)，请分块写入或改用 edit_file 增量补全",
+                requested_content.len(),
+                MAX_WRITE_SIZE / 1024 / 1024
+            )));
+        }
 
         let scratchpad_cfg = context
             .runtime
@@ -79,58 +92,191 @@ impl ToolSpec for WriteFileTool {
 
         let file_path = context.resolve_path(path_str)?;
 
-        // Snapshot the existing contents (if any) before we overwrite — used
-        // to render an inline diff in the tool result.
+        // 2.2: snapshot prior contents with encoding-tolerant decode (GB18030 /
+        // UTF-16), so the diff/summary doesn't pretend an existing file is empty.
         let existed_before = file_path.exists();
         let prior_contents = if existed_before {
-            fs::read_to_string(&file_path).unwrap_or_default()
+            read_prior_text(&file_path)
         } else {
             String::new()
         };
 
-        // Create parent directories if needed
-        if let Some(parent) = file_path.parent() {
-            fs::create_dir_all(parent).map_err(|e| {
-                ToolError::execution_failed(format!(
-                    "Failed to create directory {}: {}",
-                    parent.display(),
-                    e
-                ))
-            })?;
+        // 2.1: preserve the file's original line endings on overwrite. The model
+        // almost always sends LF; blindly writing it would flip a CRLF file to LF
+        // and produce a whole-file git diff on Windows.
+        let file_le = if existed_before && prior_contents.contains("\r\n") {
+            "\r\n"
+        } else {
+            "\n"
+        };
+        let file_content = if file_le == "\r\n" {
+            normalize_line_endings(requested_content, file_le)
+        } else {
+            requested_content.to_string()
+        };
+
+        // 2.7: skip the write entirely when the (normalized) content is identical
+        // to what's on disk — avoids touching mtime / triggering file watchers.
+        if existed_before && file_content == prior_contents {
+            let display = file_path.display().to_string();
+            return Ok(ToolResult::success(format!(
+                "{display}\n(no changes — content identical, write skipped)"
+            )));
         }
 
-        fs::write(&file_path, file_content).map_err(|e| {
-            ToolError::execution_failed(format!("Failed to write {}: {}", file_path.display(), e))
-        })?;
+        // Create parent directories if needed.
+        if let Some(parent) = file_path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| map_write_io_error(parent, e))?;
+        }
+
+        // 2.4: atomic write — temp file in the same dir + rename, so an
+        // interrupted/failed write never leaves a truncated original behind.
+        atomic_write(&file_path, file_content.as_bytes())
+            .map_err(|e| map_write_io_error(&file_path, e))?;
 
         let display = file_path.display().to_string();
-        let diff = make_unified_diff(&display, &prior_contents, file_content);
-        let summary = if existed_before {
-            format!("Wrote {} bytes to {}", file_content.len(), display)
+        let byte_len = file_content.len();
+        let line_count = file_content.lines().count();
+
+        // 3.1 / 3.2: only LARGE inputs skip the full unified diff (which would
+        // echo the whole file back / cost O(N·D)). Small writes — including new
+        // files — keep the real diff so the web-ui DiffCard and 「本轮变更」panel
+        // render them exactly as before (avoids a frontend regression).
+        let large_input =
+            file_content.len() > DIFF_MAX_INPUT_BYTES || prior_contents.len() > DIFF_MAX_INPUT_BYTES;
+        let verb = if existed_before { "Wrote" } else { "Created" };
+        let body = if large_input {
+            // 3.4: echo size/lines so the model can self-check truncation.
+            format!(
+                "{verb} {byte_len} bytes ({line_count} lines) to {display}\n\
+                [diff omitted — large file; showing head preview]\n{}",
+                preview_block(&file_content, WRITE_PREVIEW_LINES, line_count)
+            )
         } else {
-            format!("Created {} ({} bytes)", display, file_content.len())
+            let diff = make_unified_diff(&display, &prior_contents, &file_content);
+            let summary = format!("{verb} {byte_len} bytes ({line_count} lines) to {display}");
+            if diff.is_empty() {
+                format!("{summary}\n(no textual changes)")
+            } else {
+                format!("{diff}\n{summary}")
+            }
         };
-        let body = if diff.is_empty() {
-            format!("{summary}\n(no changes)")
-        } else {
-            format!("{diff}\n{summary}")
-        };
+
+        // 2.3 / 3.4: balance check — for .tsx/.jsx flags unbalanced JSX, and for
+        // any file a gross brace imbalance is a likely truncation signal.
+        let balance_warning = balance_warning(&file_path, &file_content);
 
         // Append LSP diagnostics for the written file when enabled (#428).
         let diag_block = lsp_diagnostics_for_paths(context, &[file_path]).await;
         let full_body = if diag_block.is_empty() {
-            body
+            format!("{body}{balance_warning}")
         } else {
-            format!("{body}\n{diag_block}")
+            format!("{body}{balance_warning}\n{diag_block}")
         };
 
         Ok(ToolResult::success(full_body))
     }
 }
 
+/// Decode an existing file's bytes into text, tolerant of non-UTF-8 encodings
+/// (GB18030 / UTF-16). Falls back to an empty string when the file can't be read.
+fn read_prior_text(path: &Path) -> String {
+    match fs::read(path) {
+        Ok(bytes) => {
+            let (text, _enc, _via) = detect_and_decode(&bytes);
+            text
+        }
+        Err(_) => String::new(),
+    }
+}
+
+/// Localized IO-error mapping for writes, matching the `[NOT_FOUND]` /
+/// `[PERMISSION]` diagnostic style used by `read_file` / `edit_file`.
+fn map_write_io_error(path: &Path, e: std::io::Error) -> ToolError {
+    match e.kind() {
+        std::io::ErrorKind::PermissionDenied => ToolError::execution_failed(format!(
+            "[PERMISSION] 没有权限写入 {}: {e}",
+            path.display()
+        )),
+        std::io::ErrorKind::NotFound => ToolError::execution_failed(format!(
+            "[NOT_FOUND] 路径不存在，无法写入 {}: {e}",
+            path.display()
+        )),
+        _ => ToolError::execution_failed(format!("写入 {} 失败: {e}", path.display())),
+    }
+}
+
+static ATOMIC_WRITE_SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// Write `bytes` to `path` atomically: write to a temp file in the same
+/// directory, then rename over the target. `fs::rename` replaces an existing
+/// destination on all supported platforms (incl. Windows).
+pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let parent = path.parent().filter(|p| !p.as_os_str().is_empty());
+    let dir = parent.unwrap_or_else(|| Path::new("."));
+    let file_name = path
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "out".to_string());
+    let seq = ATOMIC_WRITE_SEQ.fetch_add(1, Ordering::Relaxed);
+    let tmp = dir.join(format!(".{file_name}.tmp.{}.{seq}", std::process::id()));
+
+    let result = (|| {
+        fs::write(&tmp, bytes)?;
+        fs::rename(&tmp, path)
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&tmp);
+    }
+    result
+}
+
+/// Build a head-only preview (first `max_lines` lines) for cases where the full
+/// diff is intentionally skipped (large files). `total_lines` is passed in by
+/// the caller to avoid a second full O(n) scan of large content.
+fn preview_block(content: &str, max_lines: usize, total_lines: usize) -> String {
+    // NOTE: must not start with "--- " / "+++ " / "@@" — the web-ui's
+    // `looksLikeDiff` would otherwise misrender this preview as a unified diff.
+    let mut out = String::from("=== preview (head) ===\n");
+    for (i, line) in content.lines().take(max_lines).enumerate() {
+        out.push_str(&format!("{:>5} | {}\n", i + 1, line));
+    }
+    if total_lines > max_lines {
+        out.push_str(&format!("... ({} more lines)\n", total_lines - max_lines));
+    }
+    out
+}
+
+/// Balance warning for written content. For `.tsx`/`.jsx` reuses the JSX check;
+/// for other text it flags a gross brace imbalance as a likely truncation signal.
+fn balance_warning(file_path: &Path, content: &str) -> String {
+    let jsx = jsx_balance_warning(file_path, content);
+    if !jsx.is_empty() {
+        return jsx;
+    }
+    // Generic truncation heuristic — restricted to languages where the brace
+    // counter is reliable. Rust/Python are excluded because `'` (lifetimes,
+    // char literals, quotes) confuses the simple string-state scanner.
+    let safe_ext = matches!(
+        file_path.extension().and_then(|e| e.to_str()),
+        Some("json" | "js" | "ts" | "css" | "html" | "scss")
+    );
+    if safe_ext
+        && content.len() >= 200
+        && let Some(w) = check_jsx_balance(content)
+        && w.contains("unclosed")
+    {
+        return format!(
+            "\n[TRUNCATION_SUSPECTED] {w} — 内容可能在生成时被截断，请核对文件是否完整"
+        );
+    }
+    String::new()
+}
+
 /// Normalize text line-endings to match the file's actual format.
 /// When the file uses CRLF, converts `\n` → `\r\n` in the provided text.
-pub(in crate::tools::file) fn normalize_line_endings(text: &str, file_le: &str) -> String {
+pub(crate) fn normalize_line_endings(text: &str, file_le: &str) -> String {
     if file_le == "\r\n" {
         let s = text.replace("\r\n", "\n");
         s.replace('\n', "\r\n")
