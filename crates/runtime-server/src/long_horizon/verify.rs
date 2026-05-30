@@ -134,6 +134,39 @@ pub fn unverified_acceptance_suffix(content: &str, lang: &str) -> Option<String>
     })
 }
 
+/// Compute the verify-gate verdict for a checklist item that was just marked
+/// **completed**. Pure (no I/O) so it can back both the per-item
+/// `checklist_update`/`todo_update` path and the bulk `checklist_write` path,
+/// and be unit-tested directly.
+///
+/// Returns a stable verdict label (for the `long_horizon.verify_gate` node /
+/// `sidecar.log` probe) and an optional advisory suffix to append to the tool
+/// result:
+/// - tagged `[verify: cmd]` with a recent matching exec → `("verified", None)`
+/// - tagged `[verify: cmd]` with no matching exec → `("mismatch", Some(warn))`
+/// - untagged but reads like a runnable acceptance → `("unverified_acceptance", Some(note))`
+/// - plain implementation item → `("untagged_ok", None)`
+#[must_use]
+pub fn verify_gate_verdict(
+    content: &str,
+    recent_execs: &[String],
+    lang: &str,
+) -> (&'static str, Option<String>) {
+    match parse_verify_command(content) {
+        Some(expected) => {
+            if verification_satisfied(&expected, recent_execs) {
+                ("verified", None)
+            } else {
+                ("mismatch", Some(verify_mismatch_suffix(&expected, lang)))
+            }
+        }
+        None => match unverified_acceptance_suffix(content, lang) {
+            Some(s) => ("unverified_acceptance", Some(s)),
+            None => ("untagged_ok", None),
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -171,5 +204,26 @@ mod tests {
         assert!(unverified_acceptance_suffix("创建 lexer 包", "zh").is_none());
         // Already a [verify:] item → handled by the matched-exec gate, not here.
         assert!(unverified_acceptance_suffix("[verify: go test ./...] tests pass", "en").is_none());
+    }
+
+    #[test]
+    fn verdict_covers_all_four_cases() {
+        let recent = vec![normalize_cmd("go test ./...")];
+        // Tagged + matching recent exec → verified, no suffix.
+        let (v, s) = verify_gate_verdict("[verify: go test ./...] all green", &recent, "en");
+        assert_eq!(v, "verified");
+        assert!(s.is_none());
+        // Tagged + no matching exec → mismatch, with suffix.
+        let (v, s) = verify_gate_verdict("[verify: go vet ./...] no warnings", &recent, "en");
+        assert_eq!(v, "mismatch");
+        assert!(s.is_some());
+        // Untagged but runnable acceptance → unverified_acceptance, with suffix.
+        let (v, s) = verify_gate_verdict("go build passes cleanly", &[], "en");
+        assert_eq!(v, "unverified_acceptance");
+        assert!(s.is_some());
+        // Plain implementation item → untagged_ok, no suffix.
+        let (v, s) = verify_gate_verdict("Create token/token.go", &[], "en");
+        assert_eq!(v, "untagged_ok");
+        assert!(s.is_none());
     }
 }

@@ -17,6 +17,16 @@ export interface HarnessNudgeTelemetry {
   conversion_pct: number;
 }
 
+/** One harness node decision for the LHT "nodes" tab (DEMO5 #3). */
+export interface HarnessNode {
+  /** e.g. 'continue_injected', 'gate_skip', 'incomplete_stop', 'verify_gate'. */
+  kind: string;
+  /** Epoch milliseconds when the decision was recorded. */
+  ts_ms: number;
+  /** Parsed `{…}` payload (reason / open_items / nudge_count / verdict / …). */
+  payload?: Record<string, unknown> | null;
+}
+
 export interface HarnessTaskGraph {
   objective: string;
   objective_source?: string;
@@ -31,6 +41,8 @@ export interface HarnessTaskGraph {
   nudge_count?: number | null;
   /** Nudge effectiveness telemetry (§4.9) — present when an engine is live. */
   telemetry?: HarnessNudgeTelemetry | null;
+  /** Recent harness node-decision trail (newest last); DEMO5 #3. */
+  recent_nodes?: HarnessNode[] | null;
 }
 
 export interface HarnessCycleBriefing {
@@ -59,4 +71,4 @@ export interface HarnessCycles {
   lht_warning_high_pct?: number | null;
 }
 
-export type LongHorizonPanelTab = 'task' | 'cycle' | 'context';
+export type LongHorizonPanelTab = 'task' | 'cycle' | 'context' | 'nodes';

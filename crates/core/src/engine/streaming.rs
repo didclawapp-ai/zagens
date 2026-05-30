@@ -53,6 +53,17 @@ pub const MAX_LOOP_GUARD_CONTINUATIONS: u32 = 2;
 /// room to spare. Kept tiny: if even a fresh briefing seed can't fit, the task
 /// is genuinely too large and we fall back to the hard failure.
 pub const MAX_CONTEXT_CYCLE_HANDOFFS: u32 = 2;
+/// Max **clean** in-turn cycle advances at a per-step safe boundary. The cycle
+/// threshold / long-horizon early-advance band is normally only evaluated
+/// *between turns*; a long-horizon turn that loops many tool steps without
+/// returning never reaches that boundary, so a turn crossing ~75% would only
+/// get the hard-overflow emergency handoff ([`MAX_CONTEXT_CYCLE_HANDOFFS`]),
+/// never a clean early refresh. Evaluating the gate after each completed tool
+/// step closes that gap. Each clean advance resets context to a small briefing
+/// seed (so the gate won't immediately re-fire); this bound is the safety net
+/// against a pathological seed that itself stays over threshold. Generous —
+/// a genuinely long turn may legitimately refresh several times.
+pub const MAX_IN_TURN_CYCLE_ADVANCES: u32 = 8;
 
 pub fn should_transparently_retry_stream(
     any_content_received: bool,

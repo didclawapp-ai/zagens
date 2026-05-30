@@ -8,7 +8,8 @@ use crate::engine::context::{
 };
 use crate::engine::loop_guard::LoopGuard;
 use crate::engine::streaming::{
-    MAX_CONTEXT_CYCLE_HANDOFFS, MAX_LOOP_GUARD_CONTINUATIONS, MAX_STEP_LIMIT_CONTINUATIONS,
+    MAX_CONTEXT_CYCLE_HANDOFFS, MAX_IN_TURN_CYCLE_ADVANCES, MAX_LOOP_GUARD_CONTINUATIONS,
+    MAX_STEP_LIMIT_CONTINUATIONS,
 };
 use crate::error_taxonomy::ErrorEnvelope;
 use crate::events::Event;
@@ -58,6 +59,11 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
     // handoff (briefing seed + preserved state) instead of hard-failing the
     // turn and dumping a manual `/compact` on the user.
     let mut cycle_handoff_attempts: u32 = 0;
+    // Clean in-turn cycle advances (LHT #5): the cycle threshold / early-advance
+    // gate is normally only checked between turns; evaluate it at each per-step
+    // safe boundary so a long turn crossing ~75% gets a clean refresh instead of
+    // only the hard-overflow fallback. Bounded so a pathological seed can't loop.
+    let mut in_turn_cycle_advances: u32 = 0;
 
     loop {
         tracing::debug!(turn_id = %turn.id, step = turn.step, "turn step");
@@ -327,6 +333,21 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
         }
 
         host.maybe_inject_scratchpad_reminder().await;
+
+        // Per-step safe boundary (#5): a long-horizon turn can loop many tool
+        // steps without returning to the between-turns boundary where the cycle
+        // gate is normally evaluated. Check the clean threshold / early-advance
+        // gate here (stream + tools already finished → no in-flight cut). On a
+        // handoff the buffer becomes a small briefing seed, so re-loop to
+        // re-request with the fresh context. Bounded against pathological seeds.
+        if !mode.is_plan()
+            && in_turn_cycle_advances < MAX_IN_TURN_CYCLE_ADVANCES
+            && host.maybe_advance_cycle_at_checkpoint(mode).await
+        {
+            in_turn_cycle_advances = in_turn_cycle_advances.saturating_add(1);
+            turn.next_step();
+            continue;
+        }
 
         turn.next_step();
     }

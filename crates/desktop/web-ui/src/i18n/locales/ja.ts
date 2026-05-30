@@ -72,6 +72,8 @@ const ja: TranslationMap = {
     tabTask: 'タスク',
     tabCycle: 'Cycle',
     tabContext: 'コンテキスト',
+    tabNodes: 'ノード',
+    nodesEmpty: 'ハーネスのノード判断はまだありません',
     cyclesEmpty: 'サイクル引き継ぎなし',
     currentCycle: 'サイクル {{n}}',
     cycleN: 'サイクル {{n}}',

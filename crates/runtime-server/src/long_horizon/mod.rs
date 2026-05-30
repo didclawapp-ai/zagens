@@ -19,11 +19,8 @@ pub use cycle_band::{
 };
 pub use cycles::build_cycles_value;
 pub use reinject::{build_objective_reinject_message, should_reinject_this_step};
-pub(crate) use nudge::{result_contains_success, VERIFICATION_RE};
-pub(crate) use verify::{
-    parse_verify_command, unverified_acceptance_suffix, verification_satisfied,
-    verify_mismatch_suffix,
-};
+pub(crate) use nudge::VERIFICATION_RE;
+pub(crate) use verify::verify_gate_verdict;
 
 pub use graph::CodeTaskGraph;
 pub use handoff::{build_lht_handoff_section, merge_lht_into_handoff};

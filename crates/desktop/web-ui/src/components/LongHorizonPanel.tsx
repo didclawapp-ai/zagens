@@ -7,6 +7,7 @@ import {
 import { useT } from '../i18n';
 import {
   HARNESS_CYCLE_ADVANCED_EVENT,
+  PANEL_CONTEXT_EVENT,
   PANEL_TASK_GRAPH_EVENT,
   type TaskGraphPanelPayload,
 } from '../lib/panelChannel';
@@ -18,6 +19,7 @@ import {
 } from '../lib/runtimePoll';
 import type {
   HarnessCycles,
+  HarnessNode,
   HarnessTaskGraph,
   LongHorizonPanelTab,
 } from '../lib/types/longHorizon';
@@ -314,6 +316,100 @@ function ContextView({
   );
 }
 
+// Clock time HH:MM:SS from epoch millis (local), for the node decision trail.
+function formatClock(tsMs: number): string {
+  const d = new Date(tsMs);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+// Color class per node kind (and verify verdict): continue/advance → green,
+// skip/warning → amber, incomplete_stop/halt → red, verify mismatch → orange.
+function nodeKindClass(kind: string, payload?: Record<string, unknown> | null): string {
+  if (kind === 'verify_gate') {
+    const verdict = typeof payload?.verdict === 'string' ? payload.verdict : '';
+    return verdict === 'mismatch' || verdict === 'unverified_acceptance'
+      ? 'text-orange-600 dark:text-orange-400'
+      : 'text-t-text-muted';
+  }
+  if (
+    kind === 'continue_injected' ||
+    kind === 'step_limit_continue' ||
+    kind === 'loop_guard_continue' ||
+    kind === 'cycle_advanced'
+  ) {
+    return 'text-emerald-600 dark:text-emerald-400';
+  }
+  if (kind === 'incomplete_stop' || kind === 'halt') {
+    return 'text-red-600 dark:text-red-400';
+  }
+  if (kind === 'gate_skip' || kind === 'blocked' || kind === 'context_warning') {
+    return 'text-amber-600 dark:text-amber-400';
+  }
+  return 'text-t-text-muted';
+}
+
+// Terse key=value summary from the node payload (reason / open_items /
+// nudge_count / verdict / converted / emitted), in a stable order.
+function nodePayloadSummary(payload?: Record<string, unknown> | null): string {
+  if (!payload) return '';
+  const keys = [
+    'verdict',
+    'reason',
+    'open_items',
+    'nudge_count',
+    'emitted',
+    'converted',
+    'item',
+  ];
+  const parts: string[] = [];
+  for (const k of keys) {
+    const v = payload[k];
+    if (v != null && (typeof v === 'string' || typeof v === 'number')) {
+      parts.push(`${k}=${v}`);
+    }
+  }
+  return parts.join(' · ');
+}
+
+function NodesView({
+  nodes,
+  t,
+}: {
+  nodes: HarnessNode[];
+  t: (k: string, vars?: Record<string, string>) => string;
+}) {
+  if (nodes.length === 0) {
+    return <p className="text-xs text-t-text-muted">{t('longHorizon.nodesEmpty')}</p>;
+  }
+  // Newest first for readability.
+  const ordered = [...nodes].reverse();
+  return (
+    <ul className="space-y-1 text-xs">
+      {ordered.map((n, i) => (
+        <li
+          key={`${n.ts_ms}-${i}`}
+          className="flex flex-col gap-0.5 border-b border-t-border/20 pb-1 last:border-0"
+        >
+          <div className="flex items-baseline gap-2">
+            <span className="font-mono text-[10px] tabular-nums text-t-text-muted">
+              {formatClock(n.ts_ms)}
+            </span>
+            <span className={`font-medium ${nodeKindClass(n.kind, n.payload)}`}>
+              {n.kind}
+            </span>
+          </div>
+          {nodePayloadSummary(n.payload) ? (
+            <span className="pl-[3.25rem] font-mono text-[10px] text-t-text-muted">
+              {nodePayloadSummary(n.payload)}
+            </span>
+          ) : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export default function LongHorizonPanel({ threadId, pollFast = false }: Props) {
   const { t } = useT();
   const [tab, setTab] = useState<LongHorizonPanelTab>('task');
@@ -322,6 +418,7 @@ export default function LongHorizonPanel({ threadId, pollFast = false }: Props) 
   const [context, setContext] = useState<ThreadContextSnapshot | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
   const startedAtRef = useRef<number | null>(null);
+  const wasCompletedRef = useRef(false);
 
   const taskActive =
     !!graph && (graph.phases.length > 0 || graph.checklist.length > 0);
@@ -377,13 +474,21 @@ export default function LongHorizonPanel({ threadId, pollFast = false }: Props) 
     setCycles(null);
     setContext(null);
     startedAtRef.current = null;
+    wasCompletedRef.current = false;
     setElapsedMs(0);
   }, [threadId]);
 
   // Client-side stopwatch: starts when a task graph first appears, ticks while
-  // the task is incomplete, freezes on 100% completion. No backend timestamp.
+  // the task is incomplete, freezes on 100% completion, then restarts from zero
+  // when a new round begins (completion drops back below 100%). No backend timestamp.
   useEffect(() => {
     if (!taskActive) return;
+    // New round after a frozen completion: reset the stopwatch to zero.
+    if (wasCompletedRef.current && !taskCompleted) {
+      startedAtRef.current = Date.now();
+      setElapsedMs(0);
+    }
+    wasCompletedRef.current = taskCompleted;
     if (startedAtRef.current == null) startedAtRef.current = Date.now();
     if (taskCompleted) {
       setElapsedMs(Date.now() - startedAtRef.current);
@@ -405,6 +510,14 @@ export default function LongHorizonPanel({ threadId, pollFast = false }: Props) 
         setGraph(detail.task_graph);
       }
     };
+    // Live context updates while streaming (channel C `panel.context`), so the
+    // Context tab no longer waits on the 30s task-graph poll.
+    const onContext = (ev: Event) => {
+      const detail = (ev as CustomEvent<ThreadContextSnapshot>).detail;
+      if (detail && typeof detail.estimated_input_tokens === 'number') {
+        setContext(detail);
+      }
+    };
     const onCycleAdvanced = () => {
       void fetchCycles();
       void fetchGraph();
@@ -415,6 +528,7 @@ export default function LongHorizonPanel({ threadId, pollFast = false }: Props) 
       void fetchContext();
     };
     window.addEventListener(PANEL_TASK_GRAPH_EVENT, onPush);
+    window.addEventListener(PANEL_CONTEXT_EVENT, onContext);
     window.addEventListener(HARNESS_CYCLE_ADVANCED_EVENT, onCycleAdvanced);
     window.addEventListener(SIDECAR_READY_PANEL_EVENT, onSidecarReady);
     void fetchGraph();
@@ -429,6 +543,7 @@ export default function LongHorizonPanel({ threadId, pollFast = false }: Props) 
     return () => {
       window.clearInterval(id);
       window.removeEventListener(PANEL_TASK_GRAPH_EVENT, onPush);
+      window.removeEventListener(PANEL_CONTEXT_EVENT, onContext);
       window.removeEventListener(HARNESS_CYCLE_ADVANCED_EVENT, onCycleAdvanced);
       window.removeEventListener(SIDECAR_READY_PANEL_EVENT, onSidecarReady);
     };
@@ -443,6 +558,7 @@ export default function LongHorizonPanel({ threadId, pollFast = false }: Props) 
     { id: 'task', label: t('longHorizon.tabTask') },
     { id: 'cycle', label: t('longHorizon.tabCycle') },
     { id: 'context', label: t('longHorizon.tabContext') },
+    { id: 'nodes', label: t('longHorizon.tabNodes') },
   ];
 
   const emptyTask =
@@ -488,6 +604,7 @@ export default function LongHorizonPanel({ threadId, pollFast = false }: Props) 
           ))}
         {tab === 'cycle' && <CycleView cycles={cycles} t={t} />}
         {tab === 'context' && <ContextView ctx={context} cycles={cycles} t={t} />}
+        {tab === 'nodes' && <NodesView nodes={graph?.recent_nodes ?? []} t={t} />}
       </div>
     </div>
   );

@@ -22,7 +22,15 @@ use super::Engine;
 
 impl Engine {
     /// Advance checkpoint-restart cycle when input estimate crosses threshold (#124).
-    pub(super) async fn maybe_advance_cycle(&mut self, mode: AppMode) {
+    ///
+    /// Returns `true` when a cycle handoff actually happened (context was
+    /// swapped for a fresh briefing seed). The clean threshold / long-horizon
+    /// early-advance gate here is evaluated both *between turns*
+    /// (`message_handlers`) and, for long-horizon turns, at a per-step safe
+    /// boundary inside the turn loop (#5 — `maybe_advance_cycle_at_checkpoint`),
+    /// so a turn that loops many tool steps still gets a clean refresh instead
+    /// of only the hard-overflow fallback.
+    pub(super) async fn maybe_advance_cycle(&mut self, mode: AppMode) -> bool {
         let active = self.estimated_input_tokens() as u64;
         let headroom = turn_response_headroom_tokens();
         let model = self.session.model.clone();
@@ -45,7 +53,7 @@ impl Engine {
             early
         };
         if !threshold && !lht_early {
-            return;
+            return false;
         }
 
         let reason = if lht_early && !threshold {
@@ -53,7 +61,7 @@ impl Engine {
         } else {
             "context threshold"
         };
-        let _ = self.perform_cycle_advance(mode, reason).await;
+        self.perform_cycle_advance(mode, reason).await
     }
 
     /// Force a cycle handoff regardless of the threshold gate. Used as a

@@ -284,6 +284,20 @@ pub trait TurnLoopHost: Send {
         false
     }
 
+    /// At a per-step safe boundary inside the turn loop (a tool step completed,
+    /// no in-flight stream / pending approval): give a long-horizon host the
+    /// chance to evaluate the **clean** cycle-advance gate (context threshold /
+    /// long-horizon early-advance band) and roll a cycle handoff if crossed.
+    /// The gate is otherwise only checked *between turns*, so a long-horizon
+    /// turn that loops many tool steps without returning would only ever get
+    /// the hard-overflow emergency handoff, never a clean early refresh (#5).
+    /// Returns `true` when a handoff happened (the caller bounds the count and
+    /// re-loops with the fresh, in-budget context); `false` otherwise. Default:
+    /// no-op (non-LHT / cycle-disabled hosts are unaffected).
+    async fn maybe_advance_cycle_at_checkpoint(&mut self, _mode: TurnLoopMode) -> bool {
+        false
+    }
+
     /// Defensive observability at the final turn fallthrough. Every `break` in
     /// the outer loop converges to a `Completed` outcome; if a long-horizon
     /// task is still incomplete at that point (not cancelled, no error), the

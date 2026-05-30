@@ -316,12 +316,18 @@ impl TurnLoopHost for Engine {
         &mut self,
         tool_name: &str,
         tool_input: &serde_json::Value,
-        result: &str,
+        _result: &str,
         success: bool,
     ) {
         if !self.config.long_horizon.enabled {
             return;
         }
+        // `success` already encodes exit-0 from the tool layer; do NOT also
+        // require the result *text* to contain an "exit code: 0" marker — a
+        // successful exec_shell returns raw stdout (e.g. `ok  monkey/lexer …`)
+        // with no exit-code line (only failures print one), so that extra check
+        // made recording NEVER fire on success and left `recent_verification_cmds`
+        // permanently empty → every `[verify:]` item false-mismatched (DEMO5 #2).
         if success
             && matches!(tool_name, "exec_shell" | "run_tests")
             && crate::long_horizon::VERIFICATION_RE.is_match(
@@ -331,7 +337,6 @@ impl TurnLoopHost for Engine {
                     .and_then(|v| v.as_str())
                     .unwrap_or(""),
             )
-            && crate::long_horizon::result_contains_success(result)
         {
             let cmd = tool_input
                 .get("command")
@@ -343,60 +348,65 @@ impl TurnLoopHost for Engine {
                 .record_verification_exec(cmd);
         }
 
+        // Verify gate (DEMO5 #2 / DEMO6): fires on any checklist mutation that
+        // can mark items done — per-item `checklist_update`/`todo_update` **and**
+        // bulk `checklist_write`. Earlier it only hooked the per-item tools, so
+        // when the model completed items via `checklist_write` (as DEMO6 did) the
+        // gate never ran and emitted no `verify_gate` nodes. We now scan the
+        // post-write snapshot for completed items and run the verdict on each
+        // *newly* completed one, deduped via `gated_completed_ids` so a bulk write
+        // that re-sends the whole list only fires once per item.
         let verify_suffix = if success
-            && matches!(tool_name, "checklist_update" | "todo_update")
-            && tool_input
-                .get("status")
-                .and_then(|v| v.as_str())
-                == Some("completed")
+            && matches!(
+                tool_name,
+                "checklist_update" | "todo_update" | "checklist_write"
+            )
         {
-            let id = tool_input
-                .get("id")
-                .and_then(|v| v.as_u64())
-                .and_then(|v| u32::try_from(v).ok());
             let checklist = self.config_ext().todos.lock().await.snapshot();
-            let lang = self.config.locale_tag.as_str();
+            let lang = self.config.locale_tag.clone();
             let recent = self
                 .runtime_ext()
                 .long_horizon_state
                 .recent_verification_cmds
                 .clone();
-            let item_opt = id.and_then(|item_id| checklist.items.iter().find(|i| i.id == item_id));
-            let (verdict, suffix) = match item_opt {
-                None => ("no_item", None),
-                Some(item) => match crate::long_horizon::parse_verify_command(&item.content) {
-                    // Tagged `[verify: cmd]`: warn if no recent exec matched.
-                    Some(expected) => {
-                        if crate::long_horizon::verification_satisfied(&expected, &recent) {
-                            ("verified", None)
-                        } else {
-                            ("mismatch", Some(crate::long_horizon::verify_mismatch_suffix(&expected, lang)))
-                        }
-                    }
-                    // Untagged but reads like a runnable acceptance → flag the
-                    // "false green" (created/claimed, never run; #DEMO3 lesson).
-                    None => match crate::long_horizon::unverified_acceptance_suffix(&item.content, lang) {
-                        Some(s) => ("unverified_acceptance", Some(s)),
-                        None => ("untagged_ok", None),
-                    },
-                },
+            let newly: Vec<(u32, String)> = {
+                let state = &mut self.runtime_ext_mut().long_horizon_state;
+                checklist
+                    .items
+                    .iter()
+                    .filter(|i| i.status == crate::tools::todo::TodoStatus::Completed)
+                    .filter(|i| state.mark_completion_gated(i.id))
+                    .map(|i| (i.id, i.content.clone()))
+                    .collect()
             };
-            // [lht-probe] verify gate verdict on every checklist completion →
-            // sidecar.log (verified / mismatch / unverified_acceptance / untagged_ok).
-            let item_snippet = item_opt
-                .map(|i| {
-                    if i.content.chars().count() > 60 {
-                        format!("{}…", i.content.chars().take(60).collect::<String>())
-                    } else {
-                        i.content.clone()
-                    }
-                })
-                .unwrap_or_default();
-            eprintln!(
-                "[lht-probe] verify_gate tool={tool_name} item={} verdict={verdict} content={item_snippet:?}",
-                id.map(|v| v.to_string()).unwrap_or_else(|| "?".into())
-            );
-            suffix
+            // Surface the first actionable advisory (mismatch / unverified).
+            let mut chosen: Option<String> = None;
+            for (id, content) in newly {
+                let (verdict, suffix) =
+                    crate::long_horizon::verify_gate_verdict(&content, &recent, &lang);
+                // [lht-probe] verdict per newly-completed item → sidecar.log
+                // (verified / mismatch / unverified_acceptance / untagged_ok).
+                let item_snippet = if content.chars().count() > 60 {
+                    format!("{}…", content.chars().take(60).collect::<String>())
+                } else {
+                    content.clone()
+                };
+                eprintln!(
+                    "[lht-probe] verify_gate tool={tool_name} item={id} verdict={verdict} content={item_snippet:?}"
+                );
+                // Also surface as a `long_horizon.*` status event so the decision
+                // shows up live in the LHT panel "nodes" tab (DEMO5 #3).
+                let _ = self
+                    .tx_event
+                    .send(Event::status(format!(
+                        "long_horizon.verify_gate: {{\"item\":{id},\"verdict\":\"{verdict}\"}}"
+                    )))
+                    .await;
+                if suffix.is_some() && chosen.is_none() {
+                    chosen = suffix;
+                }
+            }
+            chosen
         } else {
             None
         };
@@ -415,7 +425,6 @@ impl TurnLoopHost for Engine {
                         .and_then(|v| v.as_str())
                         .unwrap_or("");
                     crate::long_horizon::VERIFICATION_RE.is_match(cmd)
-                        && crate::long_horizon::result_contains_success(result)
                 }
                 _ => false,
             };
@@ -585,6 +594,24 @@ impl TurnLoopHost for Engine {
             return false;
         }
         Engine::force_cycle_handoff_for_overflow(self, turn_loop_to_app_mode(mode)).await
+    }
+
+    async fn maybe_advance_cycle_at_checkpoint(&mut self, mode: TurnLoopMode) -> bool {
+        // Only long-horizon code tasks evaluate the cycle gate mid-turn; the
+        // between-turns boundary still covers everything else. Plan mode never
+        // rolls a cycle, and there's no point without the cycle machinery.
+        if mode.is_plan()
+            || !self.config.cycle.enabled
+            || !self.config.long_horizon.enabled
+            || !self.config.task_type.uses_code_tool_surface()
+        {
+            return false;
+        }
+        // Reuse the exact between-turns gate (threshold + long-horizon
+        // early-advance band) and handoff body. At this call site the streaming
+        // phase and tool execution have completed, so `in_flight` is false —
+        // a clean per-step boundary with no mid-edit/stream cut.
+        Engine::maybe_advance_cycle(self, turn_loop_to_app_mode(mode)).await
     }
 
     async fn note_incomplete_stop_if_lht(&mut self) {

@@ -72,6 +72,8 @@ const ptBr: TranslationMap = {
     tabTask: 'Tarefa',
     tabCycle: 'Cycle',
     tabContext: 'Contexto',
+    tabNodes: 'Nós',
+    nodesEmpty: 'Nenhuma decisão de nó do harness ainda',
     cyclesEmpty: 'Sem handoffs de ciclo',
     currentCycle: 'Ciclo {{n}}',
     cycleN: 'Ciclo {{n}}',

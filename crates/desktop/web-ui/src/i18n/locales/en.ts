@@ -72,6 +72,8 @@ const en: TranslationMap = {
     tabTask: 'Task',
     tabCycle: 'Cycle',
     tabContext: 'Context',
+    tabNodes: 'Nodes',
+    nodesEmpty: 'No harness node decisions yet',
     cyclesEmpty: 'No cycle handoffs yet',
     currentCycle: 'Cycle {{n}}',
     cycleN: 'Cycle {{n}}',

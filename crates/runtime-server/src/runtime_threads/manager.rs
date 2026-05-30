@@ -1,6 +1,6 @@
 //! Sidecar wrapper around orchestrator `RuntimeThreadManager` core (D16 E1-b phase 2).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex as StdMutex};
@@ -36,6 +36,21 @@ struct ScratchpadStatusCacheEntry {
 
 const SCRATCHPAD_STATUS_CACHE_TTL: Duration = Duration::from_secs(2);
 
+/// Max harness node decisions retained per thread for the LHT "nodes" tab.
+/// Bounded ring — the panel only shows a recent decision trail, the full log
+/// lives in the persisted thread items / `sidecar.log`.
+const MAX_HARNESS_NODE_RECORDS: usize = 80;
+
+/// One harness node decision (`long_horizon.<kind>: {…}`) captured for the
+/// LHT panel "nodes" tab, so the decision stream that previously only reached
+/// `sidecar.log` is visible live in the UI (DEMO5 #3).
+#[derive(Clone)]
+pub(crate) struct HarnessNodeRecord {
+    pub kind: String,
+    pub payload: Value,
+    pub ts_ms: i64,
+}
+
 /// Live LHT nudge telemetry, fed by `long_horizon.*` status events so the
 /// task-graph panel reflects converted/blocked counts mid-turn without the
 /// engine op loop (which is starved during a long turn).
@@ -46,6 +61,8 @@ pub(crate) struct HarnessTelemetryCacheEntry {
     pub blocked: u32,
     pub nudge_count: u32,
     pub lht_blocked: bool,
+    /// Bounded ring of recent harness node decisions (newest last).
+    pub recent_nodes: VecDeque<HarnessNodeRecord>,
 }
 
 /// Sidecar runtime thread manager — orchestrator core plus host-only services.
@@ -323,11 +340,13 @@ impl RuntimeThreadManager {
             crate::long_horizon::snapshots::checklist_from_json(checklist_value.as_ref());
         let lht = self.config.long_horizon_config();
 
-        let (lht_blocked, nudge_count, telemetry) = self
+        let cached = self
             .harness_telemetry_cache
             .lock()
             .ok()
-            .and_then(|c| c.get(thread_id).cloned())
+            .and_then(|c| c.get(thread_id).cloned());
+        let (lht_blocked, nudge_count, telemetry) = cached
+            .as_ref()
             .map(|e| {
                 let conversion_pct = if e.emitted == 0 {
                     0
@@ -347,7 +366,7 @@ impl RuntimeThreadManager {
             })
             .unwrap_or((None, None, None));
 
-        Ok(crate::long_horizon::build_task_graph_value_with_telemetry(
+        let mut value = crate::long_horizon::build_task_graph_value_with_telemetry(
             &plan,
             &checklist,
             "en",
@@ -355,7 +374,25 @@ impl RuntimeThreadManager {
             lht_blocked,
             nudge_count,
             telemetry,
-        ))
+        );
+        // Attach the recent harness node-decision trail (newest last) for the
+        // LHT panel "nodes" tab (DEMO5 #3). Pure read of the live cache; empty
+        // when no node has fired yet.
+        if let (Some(obj), Some(entry)) = (value.as_object_mut(), cached.as_ref()) {
+            let nodes: Vec<Value> = entry
+                .recent_nodes
+                .iter()
+                .map(|n| {
+                    json!({
+                        "kind": n.kind,
+                        "ts_ms": n.ts_ms,
+                        "payload": n.payload,
+                    })
+                })
+                .collect();
+            obj.insert("recent_nodes".to_string(), Value::Array(nodes));
+        }
+        Ok(value)
     }
 
     /// Fold a `long_horizon.*` status line into the live telemetry cache.
@@ -372,6 +409,27 @@ impl RuntimeThreadManager {
             return false;
         };
         let entry = cache.entry(thread_id.to_string()).or_default();
+        // Record the node decision for the "nodes" tab regardless of kind: the
+        // kind is the token between `long_horizon.` and the first `:`/space.
+        let mut node_recorded = false;
+        if let Some(rest) = message.strip_prefix("long_horizon.") {
+            let kind = rest
+                .split(|c: char| c == ':' || c.is_whitespace())
+                .next()
+                .unwrap_or("")
+                .to_string();
+            if !kind.is_empty() {
+                entry.recent_nodes.push_back(HarnessNodeRecord {
+                    kind,
+                    payload: payload.clone().unwrap_or(Value::Null),
+                    ts_ms: Utc::now().timestamp_millis(),
+                });
+                while entry.recent_nodes.len() > MAX_HARNESS_NODE_RECORDS {
+                    entry.recent_nodes.pop_front();
+                }
+                node_recorded = true;
+            }
+        }
         if message.starts_with("long_horizon.continue_injected") {
             if let Some(p) = payload.as_ref() {
                 if let Some(v) = p.get("emitted").and_then(Value::as_u64) {
@@ -400,7 +458,7 @@ impl RuntimeThreadManager {
             entry.lht_blocked = true;
             true
         } else {
-            false
+            node_recorded
         }
     }
 

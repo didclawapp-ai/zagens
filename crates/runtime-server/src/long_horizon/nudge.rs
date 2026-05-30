@@ -1,6 +1,6 @@
 //! Nudge tracker and bilingual continue messages (LHT Phase 1).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use deepseek_core::long_horizon::LongHorizonConfig;
 use regex::Regex;
@@ -10,8 +10,13 @@ use super::graph::CodeTaskGraph;
 use crate::tools::plan::StepStatus;
 use crate::tools::todo::TodoStatus;
 
-pub const VERIFICATION_CMD_RE: &str =
-    r"(?i)\b(cargo\s+(test|check|build|clippy)|npm\s+test|pnpm\s+test|yarn\s+test|pytest|go\s+test)\b";
+// Verification-class shell commands recorded for `[verify: cmd]` matching.
+// Covers build/lint/format/test/run verbs across common toolchains plus
+// script/binary acceptance invocations (`bash …`, `sh …`, `make …`, `./…`)
+// so a Go project's `go build`/`go vet`/`gofmt`/`bash scripts/run_examples.sh`
+// acceptances are recordable, not just `go test` (DEMO5 #2 — items 12–19 used
+// build/vet/fmt/script commands the old narrow pattern could never record).
+pub const VERIFICATION_CMD_RE: &str = r"(?i)(\b(cargo\s+(test|check|build|clippy)|go\s+(test|build|vet|run)|gofmt|npm\s+test|pnpm\s+test|yarn\s+test|pytest|make)\b|(?:^|[;&|]\s*)(bash|sh)\s+\S|(?:^|[;&|]\s*)\./\S)";
 
 pub(crate) static VERIFICATION_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(VERIFICATION_CMD_RE).expect("VERIFICATION_CMD_RE"));
@@ -51,6 +56,12 @@ pub struct LongHorizonSessionState {
     pub recent_verification_cmds: Vec<String>,
     /// Appended to the next tool result body (e.g. verify mismatch warning).
     pub pending_tool_result_suffix: Option<String>,
+    /// Session-scoped: checklist item ids already run through the verify gate.
+    /// Lets the gate fire **once per completed item** regardless of whether the
+    /// model marks it done via per-item `checklist_update` or a bulk
+    /// `checklist_write` (DEMO6: items were completed via `checklist_write`, so
+    /// the per-item-only gate never fired and emitted no `verify_gate` nodes).
+    pub gated_completed_ids: HashSet<u32>,
     /// Git working-tree signature captured when the last nudge was emitted
     /// (§4.8). Compared against the current signature to detect objective,
     /// language-agnostic progress. Reset on new user message.
@@ -86,7 +97,7 @@ impl NudgeTelemetry {
     }
 }
 
-const MAX_RECENT_VERIFICATION_CMDS: usize = 12;
+const MAX_RECENT_VERIFICATION_CMDS: usize = 24;
 
 impl LongHorizonSessionState {
     pub fn on_new_user_message(&mut self) {
@@ -116,6 +127,14 @@ impl LongHorizonSessionState {
 
     pub fn take_tool_result_suffix(&mut self) -> Option<String> {
         self.pending_tool_result_suffix.take()
+    }
+
+    /// Record that a completed checklist item has been run through the verify
+    /// gate. Returns `true` only the **first** time a given id is seen, so the
+    /// gate fires exactly once per completion even when a bulk `checklist_write`
+    /// re-sends the same completed items on every call.
+    pub fn mark_completion_gated(&mut self, id: u32) -> bool {
+        self.gated_completed_ids.insert(id)
     }
 
     pub fn on_steer(&mut self, text: &str) {
@@ -251,16 +270,6 @@ pub enum NudgeDecision {
 }
 
 #[must_use]
-pub(crate) fn result_contains_success(result: &str) -> bool {
-    let lower = result.to_ascii_lowercase();
-    lower.contains("exit code: 0")
-        || lower.contains("exit_code\":0")
-        || lower.contains("\"exit_code\": 0")
-        || lower.contains("success\": true")
-        || lower.contains("success: true")
-}
-
-#[must_use]
 pub fn build_nudge_message(
     graph: &CodeTaskGraph,
     objective: &str,
@@ -382,6 +391,25 @@ mod tests {
     fn verification_cmd_matches_cargo_test() {
         assert!(VERIFICATION_RE.is_match("cargo test -p auth"));
         assert!(!VERIFICATION_RE.is_match("ls -la"));
+    }
+
+    #[test]
+    fn verification_cmd_matches_broadened_verbs() {
+        // DEMO5 #2: build/vet/fmt/run + script/binary acceptances must record.
+        assert!(VERIFICATION_RE.is_match("go build ./..."));
+        assert!(VERIFICATION_RE.is_match("go vet ./..."));
+        assert!(VERIFICATION_RE.is_match("go run ./cmd/monkey"));
+        assert!(VERIFICATION_RE.is_match("gofmt -l ."));
+        assert!(VERIFICATION_RE.is_match("go test -cover ./..."));
+        assert!(VERIFICATION_RE.is_match("make build"));
+        assert!(VERIFICATION_RE.is_match("bash scripts/run_examples.sh"));
+        assert!(VERIFICATION_RE.is_match("sh scripts/conformance.sh"));
+        assert!(VERIFICATION_RE.is_match("./monkey run examples/fibonacci.monkey --engine=vm"));
+        assert!(VERIFICATION_RE.is_match("cd /tmp && bash run.sh"));
+        // Non-verification noise stays out.
+        assert!(!VERIFICATION_RE.is_match("ls -la"));
+        assert!(!VERIFICATION_RE.is_match("echo hello"));
+        assert!(!VERIFICATION_RE.is_match("cat go.mod"));
     }
 
     #[test]

@@ -70,6 +70,8 @@ const zhHans = {
     tabTask: '任务图',
     tabCycle: 'Cycle',
     tabContext: '上下文',
+    tabNodes: '节点',
+    nodesEmpty: '尚无 harness 节点决策',
     cyclesEmpty: '尚无周期交接',
     currentCycle: '第 {{n}} 周期',
     cycleN: '周期 {{n}}',
