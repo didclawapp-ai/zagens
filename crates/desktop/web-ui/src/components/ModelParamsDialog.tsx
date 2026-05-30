@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { useT } from '../i18n';
+import { MODEL_MAX_TOKENS } from '../lib/modelParams';
 
 interface Props {
   open: boolean;
@@ -133,7 +134,8 @@ export default function ModelParamsDialog({ open, onClose, onApply, initial }: P
               id="model-params-max-tokens"
               type="number"
               min={256}
-              max={65536}
+              max={MODEL_MAX_TOKENS}
+              step={1024}
               value={maxTokens}
               onChange={(e) => setMaxTokens(Number(e.target.value))}
               className="w-full px-3 py-2 rounded-lg bg-input-bg border border-input-border text-sm text-t-text outline-none focus:border-accent"
@@ -151,7 +153,13 @@ export default function ModelParamsDialog({ open, onClose, onApply, initial }: P
           </button>
           <button
             type="button"
-            onClick={() => onApply({ temperature, topP, maxTokens })}
+            onClick={() =>
+              onApply({
+                temperature,
+                topP,
+                maxTokens: Math.min(MODEL_MAX_TOKENS, Math.max(256, Math.round(maxTokens) || 256)),
+              })
+            }
             className="px-4 py-2 rounded-lg text-sm font-medium bg-accent text-accent-text hover:opacity-90"
           >
             {t('modelParams.apply')}

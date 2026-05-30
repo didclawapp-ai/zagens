@@ -10,9 +10,9 @@ use crate::engine::context::{
 };
 use crate::engine::streaming::{
     contains_fake_tool_wrapper, filter_tool_call_delta, should_transparently_retry_stream,
-    ContentBlockKind, ToolUseState, FAKE_WRAPPER_NOTICE, MAX_STREAM_ERRORS_BEFORE_FAIL,
-    MAX_STREAM_RETRIES, MAX_TRANSPARENT_STREAM_RETRIES, STREAM_CHUNK_TIMEOUT_SECS,
-    STREAM_MAX_CONTENT_BYTES, STREAM_MAX_DURATION_SECS,
+    ContentBlockKind, ToolUseState, FAKE_WRAPPER_NOTICE, MAX_LENGTH_CONTINUATIONS,
+    MAX_STREAM_ERRORS_BEFORE_FAIL, MAX_STREAM_RETRIES, MAX_TRANSPARENT_STREAM_RETRIES,
+    STREAM_CHUNK_TIMEOUT_SECS, STREAM_MAX_CONTENT_BYTES, STREAM_MAX_DURATION_SECS,
 };
 use super::control::{TurnLoopControl, TurnLoopStreamingPhaseOutcome};
 use super::helpers::messages_with_turn_metadata;
@@ -36,6 +36,7 @@ pub async fn run_streaming_phase<H: TurnLoopHost>(host: &mut H,
     force_update_plan_first: bool,
     stream_retry_attempts: &mut u32,
     context_recovery_attempts: &mut u8,
+    length_continuations: &mut u32,
     turn_error: &mut Option<String>,
 ) -> TurnLoopStreamingPhaseOutcome {
 // Build the request
@@ -157,21 +158,43 @@ let mut stream_start = Instant::now();
 let mut stream_content_bytes: usize = 0;
 let chunk_timeout = Duration::from_secs(STREAM_CHUNK_TIMEOUT_SECS);
 let max_duration = Duration::from_secs(STREAM_MAX_DURATION_SECS);
+// Stream-truncation probe: why did this stream loop end? Written to stderr
+// (→ sidecar.log) on loop exit. `upstream_eof` = provider closed the
+// connection (the suspected idle-close after backpressure); `chunk_timeout`
+// = 90s with no chunk; `cancelled` = client/turn cancel.
+let mut stream_end_reason = "stream_event_break";
+// Last `finish_reason` the provider sent before closing (e.g. "length" =
+// hit token cap, "stop" = model decided done, "tool_calls"). `None` at EOF
+// means the connection closed with no finish marker (infra/duration cut).
+let mut last_stop_reason: Option<String> = None;
+let loop_t0 = Instant::now();
 
 // Process stream events
 loop {
     let poll_outcome = tokio::select! {
-        _ = host.cancel_token().cancelled() => None,
+        _ = host.cancel_token().cancelled() => {
+            stream_end_reason = "cancelled";
+            None
+        }
         result = tokio::time::timeout(chunk_timeout, stream.next()) => {
             match result {
                 Ok(Some(event_result)) => Some(event_result),
-                Ok(None) => None, // stream ended normally
+                Ok(None) => {
+                    // Stream ended: provider closed the connection. This is the
+                    // signature of the idle-close truncation (no error, no body).
+                    stream_end_reason = "upstream_eof";
+                    None
+                }
                 Err(_) => {
                     let envelope = StreamError::Stall {
                         timeout_secs: STREAM_CHUNK_TIMEOUT_SECS,
                     }
                     .into_envelope();
-                    tracing::warn!("{}", envelope.message);
+                    stream_end_reason = "chunk_timeout";
+                    eprintln!(
+                        "[stream-probe] chunk_timeout after {}s idle: {}",
+                        STREAM_CHUNK_TIMEOUT_SECS, envelope.message
+                    );
                     let _ = host.tx_event().send(Event::error(envelope)).await;
                     None
                 }
@@ -393,11 +416,24 @@ loop {
                     stream_content_bytes.saturating_add(thinking.len());
                 current_thinking.push_str(&thinking);
                 if !thinking.is_empty() {
+                    // Backpressure probe (stream-truncation investigation): the
+                    // event channel is bounded (256). When the monitor drains
+                    // slower than the model streams reasoning (per-delta DB
+                    // write under a global lock), this `.await` blocks — and
+                    // while blocked the loop stops polling the upstream HTTP
+                    // stream, which can let the provider idle-close the socket.
+                    let send_t0 = Instant::now();
                     let _ = host.tx_event().send(Event::ThinkingDelta {
                             index: index as usize,
                             content: thinking,
                         })
                         .await;
+                    let send_ms = send_t0.elapsed().as_millis() as u64;
+                    if send_ms >= 50 {
+                        eprintln!(
+                            "[stream-probe] engine ThinkingDelta send blocked {send_ms}ms on bounded event channel (backpressure stalls upstream read)"
+                        );
+                    }
                 }
             }
             Delta::InputJsonDelta { partial_json } => {
@@ -481,8 +517,12 @@ loop {
             }
         }
         StreamEvent::MessageDelta {
-            usage: delta_usage, ..
+            delta: msg_delta,
+            usage: delta_usage,
         } => {
+            if let Some(reason) = &msg_delta.stop_reason {
+                last_stop_reason = Some(reason.clone());
+            }
             if let Some(u) = delta_usage {
                 usage = u;
             }
@@ -490,6 +530,22 @@ loop {
         StreamEvent::MessageStop | StreamEvent::Ping => {}
     }
 }
+
+// Stream-truncation probe: summarize how this stream ended and what it
+// produced. `upstream_eof` with non-empty thinking + empty text/tools is the
+// empty-body `Completed` truncation signature.
+eprintln!(
+    "[stream-probe] stream ended reason={stream_end_reason} stop_reason={last_stop_reason:?} elapsed_ms={} thinking_bytes={} text_bytes={} tool_uses={} out_tokens={} max_tokens={} stream_errors={} pending_msg={} transparent_retries={}",
+    loop_t0.elapsed().as_millis(),
+    current_thinking.len(),
+    current_text_visible.len(),
+    tool_uses.len(),
+    usage.output_tokens,
+    stream_request.max_tokens,
+    stream_errors,
+    pending_message_complete,
+    transparent_stream_retries,
+);
 
 // #103 Phase 3 — transparent retry. The inner loop above bails
 // when reqwest yields chunk decode errors three times in a row;
@@ -625,7 +681,71 @@ if has_sendable_assistant_content {
     .await;
 }
 
+// Length-truncation auto-recovery. The provider sets `finish_reason=length`
+// when the model hit the output `max_tokens` cap mid-output (a very long
+// answer, or — before the 384K default — reasoning that ate the whole
+// budget). Reset the consecutive-continuation counter on any other ending so
+// occasional cuts across a long task don't accumulate toward the cap.
+let truncated_by_length = last_stop_reason.as_deref() == Some("length");
+if !truncated_by_length {
+    *length_continuations = 0;
+}
+
 if tool_uses.is_empty() {
+    // When length-truncated with NO tool call to carry the turn forward,
+    // ending here would surface as a truncated / empty-body `Completed` turn —
+    // the worst failure for a user mid–large task. Instead persist what we
+    // have, inject a continuation hint, and re-issue, bounded by
+    // MAX_LENGTH_CONTINUATIONS so a pathological cut→continue loop can't run
+    // away. (A length cut WITH tool calls self-recovers: the tools execute and
+    // the next step continues, so we only special-case the empty-tool path.)
+    if truncated_by_length && *length_continuations < MAX_LENGTH_CONTINUATIONS {
+        *length_continuations = length_continuations.saturating_add(1);
+        if !has_sendable_assistant_content {
+            // No assistant turn was persisted for a reasoning-only truncation;
+            // add a short placeholder so role alternation stays valid and the
+            // model gets a breadcrumb that its previous attempt was cut.
+            host.add_session_message(Message {
+                role: "assistant".to_string(),
+                content: vec![ContentBlock::Text {
+                    text: "(上一轮回复因达到输出长度上限被中断)".to_string(),
+                    cache_control: None,
+                }],
+            })
+            .await;
+        }
+        let hint = if has_sendable_assistant_content {
+            "[系统] 你上一条回复因达到输出长度上限被截断。请从中断处继续输出剩余内容，不要重复或重写已经输出的部分。"
+        } else {
+            "[系统] 你上一轮思考因达到输出长度上限被截断，尚未产出任何回复。请基于已有分析直接给出结论或下一步操作，并精简思考过程。"
+        };
+        host.add_session_message(Message {
+            role: "user".to_string(),
+            content: vec![ContentBlock::Text {
+                text: hint.to_string(),
+                cache_control: None,
+            }],
+        })
+        .await;
+        let _ = host
+            .tx_event()
+            .send(Event::status(format!(
+                "Output hit the length limit; continuing automatically ({}/{})",
+                *length_continuations, MAX_LENGTH_CONTINUATIONS
+            )))
+            .await;
+        eprintln!(
+            "[stream-probe] length-truncation auto-continue {}/{} had_text={}",
+            *length_continuations, MAX_LENGTH_CONTINUATIONS, has_sendable_assistant_content
+        );
+        turn.next_step();
+        return TurnLoopStreamingPhaseOutcome {
+            pending_steers,
+            continue_outer_loop: true,
+            ..Default::default()
+        };
+    }
+
     match host.handle_no_tool_uses(
         turn,
         &mut pending_steers,

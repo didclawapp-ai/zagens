@@ -63,6 +63,14 @@ impl LoopGuard {
         }
         OutcomeDecision::Continue
     }
+
+    /// Clear consecutive-failure counters so a granted continuation (e.g. a
+    /// long-horizon "change approach" nudge issued after a [`OutcomeDecision::Halt`])
+    /// doesn't immediately re-halt on the same tool. Identical-call counts are
+    /// left intact, so blindly repeating the *exact* same call is still blocked.
+    pub fn reset_failures(&mut self) {
+        self.failure_counts.clear();
+    }
 }
 
 fn hash_args(args: &Value) -> u64 {
@@ -200,6 +208,43 @@ mod tests {
             guard.record_outcome("grep_files", false),
             OutcomeDecision::Continue
         );
+    }
+
+    #[test]
+    fn reset_failures_clears_halt_so_a_continuation_does_not_immediately_rehalt() {
+        let mut guard = LoopGuard::default();
+        // Drive to the halt threshold (8 consecutive failures); intermediate
+        // decisions include a Warn at 3, which we don't assert here.
+        for _ in 0..7 {
+            let _ = guard.record_outcome("apply_patch", false);
+        }
+        // Eighth consecutive failure halts.
+        assert!(matches!(
+            guard.record_outcome("apply_patch", false),
+            OutcomeDecision::Halt(_)
+        ));
+        // A granted "change approach" continuation resets the counters …
+        guard.reset_failures();
+        // … so the next failure starts the count over instead of re-halting.
+        assert_eq!(
+            guard.record_outcome("apply_patch", false),
+            OutcomeDecision::Continue
+        );
+    }
+
+    #[test]
+    fn reset_failures_leaves_identical_call_blocking_intact() {
+        let mut guard = LoopGuard::default();
+        let args = json!({"path": "src/main.rs"});
+        assert_eq!(guard.record_attempt("read_file", &args), AttemptDecision::Proceed);
+        assert_eq!(guard.record_attempt("read_file", &args), AttemptDecision::Proceed);
+        guard.reset_failures();
+        // Identical-call counter is independent of the failure counter, so the
+        // third unchanged call is still blocked after a failure reset.
+        assert!(matches!(
+            guard.record_attempt("read_file", &args),
+            AttemptDecision::Block(_)
+        ));
     }
 
     #[test]

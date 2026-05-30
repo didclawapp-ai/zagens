@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   fetchThreadHarnessCycles,
   fetchThreadHarnessTaskGraph,
@@ -38,8 +38,46 @@ function statusSymbol(status: string): string {
   }
 }
 
+// Status-dot color: completed → green (live progress at a glance).
+function statusDotClass(status: string): string {
+  switch (status) {
+    case 'completed':
+      return 'text-emerald-600 dark:text-emerald-400';
+    case 'in_progress':
+      return 'text-sky-600 dark:text-sky-400';
+    default:
+      return 'text-t-text-muted';
+  }
+}
+
+// Row text color matching the dot semantics.
+function statusLineClass(status: string): string {
+  switch (status) {
+    case 'completed':
+      return 'text-emerald-700 dark:text-emerald-400/90';
+    case 'in_progress':
+      return 'font-medium text-t-text';
+    default:
+      return 'text-t-text-muted';
+  }
+}
+
+// mm:ss, rolling up to h:mm:ss past an hour. Number-only (no label).
+function formatElapsed(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const s = total % 60;
+  const m = Math.floor(total / 60) % 60;
+  const h = Math.floor(total / 3600);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+}
+
+function filledBlocks(pct: number): number {
+  return Math.min(10, Math.max(0, Math.round(pct / 10)));
+}
+
 function progressBar(pct: number): string {
-  const filled = Math.min(10, Math.round(pct / 10));
+  const filled = filledBlocks(pct);
   return '█'.repeat(filled) + '░'.repeat(10 - filled);
 }
 
@@ -50,7 +88,14 @@ function TaskGraphView({ graph, t }: { graph: HarnessTaskGraph; t: (k: string, v
         <p className="font-medium leading-snug">{graph.objective}</p>
       ) : null}
       <div className="text-t-text-muted">
-        <span className="font-mono">{progressBar(graph.completion_pct)}</span>{' '}
+        <span className="font-mono">
+          <span className="text-amber-600 dark:text-amber-400">
+            {'█'.repeat(filledBlocks(graph.completion_pct))}
+          </span>
+          <span className="text-t-text-muted">
+            {'░'.repeat(10 - filledBlocks(graph.completion_pct))}
+          </span>
+        </span>{' '}
         {graph.completion_pct}% · {t('longHorizon.openItems', { count: String(graph.open_items) })}
       </div>
       {(graph.lht_blocked || (graph.nudge_count ?? 0) > 0) && (
@@ -72,13 +117,10 @@ function TaskGraphView({ graph, t }: { graph: HarnessTaskGraph; t: (k: string, v
           <h4 className="mb-1 font-semibold text-t-text-muted">{t('longHorizon.plan')}</h4>
           <ul className="space-y-1">
             {graph.phases.map((phase) => (
-              <li
-                key={phase.step}
-                className={
-                  phase.status === 'in_progress' ? 'font-medium text-t-text' : 'text-t-text-muted'
-                }
-              >
-                <span className="mr-1">{statusSymbol(phase.status)}</span>
+              <li key={phase.step} className={statusLineClass(phase.status)}>
+                <span className={`mr-1 ${statusDotClass(phase.status)}`}>
+                  {statusSymbol(phase.status)}
+                </span>
                 {phase.step}
               </li>
             ))}
@@ -90,13 +132,10 @@ function TaskGraphView({ graph, t }: { graph: HarnessTaskGraph; t: (k: string, v
           <h4 className="mb-1 font-semibold text-t-text-muted">{t('longHorizon.checklist')}</h4>
           <ul className="space-y-1">
             {graph.checklist.map((item) => (
-              <li
-                key={item.id}
-                className={
-                  item.status === 'in_progress' ? 'font-medium text-t-text' : 'text-t-text-muted'
-                }
-              >
-                <span className="mr-1">{statusSymbol(item.status)}</span>
+              <li key={item.id} className={statusLineClass(item.status)}>
+                <span className={`mr-1 ${statusDotClass(item.status)}`}>
+                  {statusSymbol(item.status)}
+                </span>
                 {item.content}
                 {item.verify_command ? (
                   <span className="mt-0.5 block font-mono text-[10px] text-t-text-muted">
@@ -281,6 +320,12 @@ export default function LongHorizonPanel({ threadId, pollFast = false }: Props) 
   const [graph, setGraph] = useState<HarnessTaskGraph | null>(null);
   const [cycles, setCycles] = useState<HarnessCycles | null>(null);
   const [context, setContext] = useState<ThreadContextSnapshot | null>(null);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const startedAtRef = useRef<number | null>(null);
+
+  const taskActive =
+    !!graph && (graph.phases.length > 0 || graph.checklist.length > 0);
+  const taskCompleted = !!graph && graph.completion_pct >= 100;
 
   const fetchGraph = useCallback(async () => {
     if (!threadId) {
@@ -331,7 +376,27 @@ export default function LongHorizonPanel({ threadId, pollFast = false }: Props) 
     setGraph(null);
     setCycles(null);
     setContext(null);
+    startedAtRef.current = null;
+    setElapsedMs(0);
   }, [threadId]);
+
+  // Client-side stopwatch: starts when a task graph first appears, ticks while
+  // the task is incomplete, freezes on 100% completion. No backend timestamp.
+  useEffect(() => {
+    if (!taskActive) return;
+    if (startedAtRef.current == null) startedAtRef.current = Date.now();
+    if (taskCompleted) {
+      setElapsedMs(Date.now() - startedAtRef.current);
+      return;
+    }
+    setElapsedMs(Date.now() - startedAtRef.current);
+    const id = window.setInterval(() => {
+      if (startedAtRef.current != null) {
+        setElapsedMs(Date.now() - startedAtRef.current);
+      }
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [taskActive, taskCompleted, threadId]);
 
   useEffect(() => {
     const onPush = (ev: Event) => {
@@ -400,6 +465,17 @@ export default function LongHorizonPanel({ threadId, pollFast = false }: Props) 
             {label}
           </button>
         ))}
+        {taskActive ? (
+          <span
+            className={`ml-auto self-center font-mono text-xs tabular-nums ${
+              taskCompleted
+                ? 'text-emerald-600 dark:text-emerald-400'
+                : 'text-t-text-muted'
+            }`}
+          >
+            {formatElapsed(elapsedMs)}
+          </span>
+        ) : null}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {tab === 'task' &&

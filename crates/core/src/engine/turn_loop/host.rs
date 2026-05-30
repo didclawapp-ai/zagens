@@ -245,6 +245,33 @@ pub trait TurnLoopHost: Send {
     /// Emit warning-band status once; reinject objective on configured step interval.
     async fn maybe_lht_pre_request_hooks(&mut self, _mode: TurnLoopMode) {}
 
+    /// At the `max_steps` cap: give a long-horizon host the chance to convert a
+    /// step-exhaustion stop into a bounded continuation. Returns `true` if the
+    /// host injected a continue nudge and the loop should be granted another
+    /// step-budget window (caller bounds the number of grants); `false` keeps
+    /// the original "Reached maximum steps" termination. Default: no
+    /// continuation (non-LHT hosts terminate at the cap as before).
+    async fn maybe_continue_at_step_limit(&mut self, _turn: &TurnContext) -> bool {
+        false
+    }
+
+    /// On a `LoopGuard` halt (a tool failed too many times in a row): give a
+    /// long-horizon host one bounded chance to convert the stuck-stop into a
+    /// "change approach" continuation. Returns `true` if the host injected a
+    /// nudge and the loop should keep going (the caller resets the guard's
+    /// failure counters and bounds the number of grants); `false` keeps the
+    /// original halt → turn termination. Default: no continuation.
+    async fn maybe_continue_after_loop_guard_halt(&mut self, _turn: &TurnContext) -> bool {
+        false
+    }
+
+    /// Defensive observability at the final turn fallthrough. Every `break` in
+    /// the outer loop converges to a `Completed` outcome; if a long-horizon
+    /// task is still incomplete at that point (not cancelled, no error), the
+    /// host should surface that the stop was a give-up rather than a genuine
+    /// completion, so the UI / logs don't show a false green. Default: no-op.
+    async fn note_incomplete_stop_if_lht(&mut self) {}
+
     /// Called after a successful scratchpad bind/write tool so the host can sync run_id
     /// and eager-load audit sub-agent tools in the same turn.
     fn on_audit_scratchpad_bind_success(

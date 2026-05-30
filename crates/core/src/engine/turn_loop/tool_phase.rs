@@ -313,6 +313,7 @@ pub async fn run_tool_execution_phase<H: TurnLoopHost>(
         step_error_count,
         step_error_categories,
         break_outer_loop: stop_after_plan_tool || loop_guard_halt.is_some(),
+        loop_guard_halted: loop_guard_halt.is_some(),
         continue_outer_loop: false,
     };
     if let Some(message) = loop_guard_halt {

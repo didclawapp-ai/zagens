@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use deepseek_core::chat::{LlmClient, Message, Tool};
+use deepseek_core::chat::{ContentBlock, LlmClient, Message, Tool};
 use deepseek_core::engine::context::estimate_input_tokens_conservative;
 use deepseek_core::engine::turn_loop::control::TurnLoopControl;
 use deepseek_core::engine::turn_loop::exec::{
@@ -361,10 +361,42 @@ impl TurnLoopHost for Engine {
                 .long_horizon_state
                 .recent_verification_cmds
                 .clone();
-            id.and_then(|item_id| checklist.items.iter().find(|i| i.id == item_id))
-            .and_then(|item| crate::long_horizon::parse_verify_command(&item.content))
-            .filter(|expected| !crate::long_horizon::verification_satisfied(expected, &recent))
-            .map(|expected| crate::long_horizon::verify_mismatch_suffix(&expected, lang))
+            let item_opt = id.and_then(|item_id| checklist.items.iter().find(|i| i.id == item_id));
+            let (verdict, suffix) = match item_opt {
+                None => ("no_item", None),
+                Some(item) => match crate::long_horizon::parse_verify_command(&item.content) {
+                    // Tagged `[verify: cmd]`: warn if no recent exec matched.
+                    Some(expected) => {
+                        if crate::long_horizon::verification_satisfied(&expected, &recent) {
+                            ("verified", None)
+                        } else {
+                            ("mismatch", Some(crate::long_horizon::verify_mismatch_suffix(&expected, lang)))
+                        }
+                    }
+                    // Untagged but reads like a runnable acceptance → flag the
+                    // "false green" (created/claimed, never run; #DEMO3 lesson).
+                    None => match crate::long_horizon::unverified_acceptance_suffix(&item.content, lang) {
+                        Some(s) => ("unverified_acceptance", Some(s)),
+                        None => ("untagged_ok", None),
+                    },
+                },
+            };
+            // [lht-probe] verify gate verdict on every checklist completion →
+            // sidecar.log (verified / mismatch / unverified_acceptance / untagged_ok).
+            let item_snippet = item_opt
+                .map(|i| {
+                    if i.content.chars().count() > 60 {
+                        format!("{}…", i.content.chars().take(60).collect::<String>())
+                    } else {
+                        i.content.clone()
+                    }
+                })
+                .unwrap_or_default();
+            eprintln!(
+                "[lht-probe] verify_gate tool={tool_name} item={} verdict={verdict} content={item_snippet:?}",
+                id.map(|v| v.to_string()).unwrap_or_else(|| "?".into())
+            );
+            suffix
         } else {
             None
         };
@@ -453,6 +485,115 @@ impl TurnLoopHost for Engine {
             return;
         };
         Engine::add_session_message(self, msg).await;
+    }
+
+    async fn maybe_continue_at_step_limit(&mut self, _turn: &TurnContext) -> bool {
+        // Only long-horizon code tasks convert step-exhaustion into a
+        // continuation; everything else terminates at the cap as before.
+        if !self.config.long_horizon.enabled || !self.config.task_type.uses_code_tool_surface() {
+            return false;
+        }
+        let plan = self.config_ext().plan_state.lock().await.snapshot();
+        let checklist = self.config_ext().todos.lock().await.snapshot();
+        let graph = crate::long_horizon::CodeTaskGraph::from_snapshots(&plan, &checklist);
+        // Nothing to continue toward: no graph, already complete, or trivial.
+        if graph.is_empty() || !graph.incomplete() || graph.is_trivial() {
+            return false;
+        }
+        let open = graph.open_items;
+        let text = if self.config.locale_tag.starts_with("zh") {
+            format!(
+                "已达本轮工具步数上限,但长程任务尚未完成(还剩 {open} 项)。请继续推进未完成的清单项:聚焦下一个 in_progress / pending 项,对声称完成的项用其 `[verify:]` 命令实跑验证,不要重复已完成的工作,也不要在此停下。"
+            )
+        } else {
+            format!(
+                "Hit the per-turn tool-step budget, but the long-horizon task is not finished ({open} item(s) left). Keep going on the unfinished checklist: focus the next in_progress / pending item, verify any claimed-done item by actually running its `[verify:]` command, do not repeat completed work, and do not stop here."
+            )
+        };
+        Engine::add_session_message(
+            self,
+            Message {
+                role: "user".to_string(),
+                content: vec![ContentBlock::Text {
+                    text,
+                    cache_control: None,
+                }],
+            },
+        )
+        .await;
+        let _ = self
+            .tx_event
+            .send(Event::status(format!(
+                "long_horizon.step_limit_continue: {{\"open_items\":{open}}}"
+            )))
+            .await;
+        true
+    }
+
+    async fn maybe_continue_after_loop_guard_halt(&mut self, _turn: &TurnContext) -> bool {
+        // Only long-horizon code tasks convert a loop-guard halt into a
+        // continuation; everything else terminates as before.
+        if !self.config.long_horizon.enabled || !self.config.task_type.uses_code_tool_surface() {
+            return false;
+        }
+        let plan = self.config_ext().plan_state.lock().await.snapshot();
+        let checklist = self.config_ext().todos.lock().await.snapshot();
+        let graph = crate::long_horizon::CodeTaskGraph::from_snapshots(&plan, &checklist);
+        if graph.is_empty() || !graph.incomplete() || graph.is_trivial() {
+            return false;
+        }
+        let open = graph.open_items;
+        let text = if self.config.locale_tag.starts_with("zh") {
+            format!(
+                "检测到你在重复调用同一个反复失败的工具,已被循环保护中断。长程任务尚未完成(还剩 {open} 项)。不要再用相同参数重试同一工具——换一种方法:换工具、改参数、或先读取相关文件/错误输出定位根因,然后继续推进未完成的清单项。不要在此停下。"
+            )
+        } else {
+            format!(
+                "You got stuck repeatedly calling the same failing tool and the loop guard halted the turn. The long-horizon task is not finished ({open} item(s) left). Do NOT retry the same tool with the same arguments — change approach: switch tools, change the arguments, or read the relevant file / error output to find the root cause first, then keep going on the unfinished checklist. Do not stop here."
+            )
+        };
+        Engine::add_session_message(
+            self,
+            Message {
+                role: "user".to_string(),
+                content: vec![ContentBlock::Text {
+                    text,
+                    cache_control: None,
+                }],
+            },
+        )
+        .await;
+        let _ = self
+            .tx_event
+            .send(Event::status(format!(
+                "long_horizon.loop_guard_continue: {{\"open_items\":{open}}}"
+            )))
+            .await;
+        true
+    }
+
+    async fn note_incomplete_stop_if_lht(&mut self) {
+        // The turn loop is about to end as `Completed`. If a long-horizon task
+        // graph is still incomplete, this is a give-up (nudge budget exhausted,
+        // loop-guard continuations spent, REPL/no-tool break, etc.), not a real
+        // completion — emit a probe so the UI / sidecar.log don't read a false
+        // green. Purely observational; the outcome itself is unchanged.
+        if !self.config.long_horizon.enabled || !self.config.task_type.uses_code_tool_surface() {
+            return;
+        }
+        let plan = self.config_ext().plan_state.lock().await.snapshot();
+        let checklist = self.config_ext().todos.lock().await.snapshot();
+        let graph = crate::long_horizon::CodeTaskGraph::from_snapshots(&plan, &checklist);
+        if graph.is_empty() || !graph.incomplete() || graph.is_trivial() {
+            return;
+        }
+        let open = graph.open_items;
+        let _ = self
+            .tx_event
+            .send(Event::status(format!(
+                "long_horizon.incomplete_stop: {{\"open_items\":{open}}}"
+            )))
+            .await;
     }
 
     fn on_audit_scratchpad_bind_success(

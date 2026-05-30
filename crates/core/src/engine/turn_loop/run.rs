@@ -7,6 +7,7 @@ use crate::engine::context::{
     context_input_budget, summarize_text, MAX_CONTEXT_RECOVERY_ATTEMPTS, TURN_MAX_OUTPUT_TOKENS,
 };
 use crate::engine::loop_guard::LoopGuard;
+use crate::engine::streaming::{MAX_LOOP_GUARD_CONTINUATIONS, MAX_STEP_LIMIT_CONTINUATIONS};
 use crate::error_taxonomy::ErrorEnvelope;
 use crate::events::Event;
 use crate::turn::{TurnContext, TurnLoopMode, TurnOutcomeStatus};
@@ -41,6 +42,15 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
     let mut active_tool_names = host.initial_active_tool_names(&tool_catalog);
     let mut loop_guard = LoopGuard::default();
     let mut stream_retry_attempts: u32 = 0;
+    let mut length_continuations: u32 = 0;
+    // Step-exhaustion continuation (LHT): grant another step-budget window when a
+    // long-horizon task hits `max_steps` mid-flight, instead of silently stopping.
+    let step_budget_increment = turn.max_steps.max(1);
+    let mut step_limit_continuations: u32 = 0;
+    // Loop-guard-halt continuation (LHT): when a tool fails enough times in a
+    // row that `LoopGuard` halts the turn, give an incomplete long-horizon task
+    // a bounded "change approach" continuation instead of silently completing.
+    let mut loop_guard_continuations: u32 = 0;
 
     loop {
         tracing::debug!(turn_id = %turn.id, step = turn.step, "turn step");
@@ -85,6 +95,26 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
         host.maybe_lht_pre_request_hooks(mode).await;
 
         if turn.at_max_steps() {
+            // Step-exhaustion early-stop: before terminating at the cap, give a
+            // long-horizon host one bounded chance to keep going on an
+            // incomplete task graph (it injects a continue nudge). Each grant
+            // extends the budget by the original `max_steps`; capped so a
+            // runaway task can't loop forever. Plan mode never continues here.
+            if !mode.is_plan()
+                && step_limit_continuations < MAX_STEP_LIMIT_CONTINUATIONS
+                && host.maybe_continue_at_step_limit(turn).await
+            {
+                step_limit_continuations = step_limit_continuations.saturating_add(1);
+                turn.max_steps = turn.max_steps.saturating_add(step_budget_increment);
+                let _ = host
+                    .tx_event()
+                    .send(Event::status(format!(
+                        "Step budget reached; continuing long-horizon task ({}/{})",
+                        step_limit_continuations, MAX_STEP_LIMIT_CONTINUATIONS
+                    )))
+                    .await;
+                continue;
+            }
             let _ = host
                 .tx_event()
                 .send(Event::status("Reached maximum steps"))
@@ -152,6 +182,7 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
                 force_update_plan_first,
                 &mut stream_retry_attempts,
                 &mut context_recovery_attempts,
+                &mut length_continuations,
                 &mut turn_error,
             )
             .await
@@ -195,6 +226,30 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
         .await;
 
         if phase.break_outer_loop {
+            // A loop-guard halt (model stuck repeating a failing tool) would
+            // otherwise fall through to the `Completed` outcome below, bypassing
+            // the no-tool-uses LHT continue gate entirely. Offer a bounded
+            // "change approach" continuation for incomplete long-horizon tasks.
+            if phase.loop_guard_halted
+                && !mode.is_plan()
+                && loop_guard_continuations < MAX_LOOP_GUARD_CONTINUATIONS
+                && host.maybe_continue_after_loop_guard_halt(turn).await
+            {
+                loop_guard_continuations = loop_guard_continuations.saturating_add(1);
+                // Clear consecutive-failure counters so the next step doesn't
+                // immediately re-halt on the same tool; the injected nudge asks
+                // the model to switch strategy rather than repeat the call.
+                loop_guard.reset_failures();
+                let _ = host
+                    .tx_event()
+                    .send(Event::status(format!(
+                        "Loop-guard halt; nudging long-horizon task to change approach ({}/{})",
+                        loop_guard_continuations, MAX_LOOP_GUARD_CONTINUATIONS
+                    )))
+                    .await;
+                turn.next_step();
+                continue;
+            }
             break;
         }
 
@@ -256,5 +311,9 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
     if let Some(err) = turn_error {
         return (TurnOutcomeStatus::Failed, Some(err));
     }
+    // Defense-in-depth: every `break` above converges here as `Completed`,
+    // regardless of whether a long-horizon task graph is actually finished.
+    // Surface an incomplete give-up so the outcome isn't a silent false green.
+    host.note_incomplete_stop_if_lht().await;
     (TurnOutcomeStatus::Completed, None)
 }

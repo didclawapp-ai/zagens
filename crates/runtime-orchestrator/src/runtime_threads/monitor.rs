@@ -12,6 +12,50 @@ use uuid::Uuid;
 use crate::engine::{EngineHandle, Event as EngineEvent, TurnOutcomeStatus, TurnSummary};
 
 use super::active::{PendingApproval, RuntimeApprovalDecision, touch_lru};
+
+/// Reasoning (`thinking`) deltas are coalesced in-memory and persisted/broadcast
+/// only on a size or time threshold instead of once per token. Per-token
+/// persistence ran a `spawn_blocking` + global `db.lock()` write inline in the
+/// monitor's drain loop, so a reasoning-heavy turn (thousands of deltas) drained
+/// the bounded (256) engine event channel slower than the model streamed —
+/// backpressuring `tx_event.send().await` in the engine, which then stopped
+/// polling the upstream HTTP stream until the provider idle-closed it
+/// (mid-reasoning truncation → empty-body `Completed`). Coalescing makes the
+/// common path an O(1) buffer append so the monitor drains fast.
+const THINKING_FLUSH_BYTES: usize = 512;
+const THINKING_FLUSH_INTERVAL: std::time::Duration = std::time::Duration::from_millis(60);
+
+/// Flush the coalesced reasoning buffer as a single `item.delta` event. Returns
+/// the `emit_event` latency in ms (for the backpressure probe). No-op when the
+/// buffer is empty.
+async fn flush_thinking_buffer<P, R>(
+    mgr: &RuntimeThreadManager<P, R>,
+    thread_id: &str,
+    turn_id: &str,
+    item_id: &str,
+    buffer: &mut String,
+    last_flush: &mut std::time::Instant,
+) -> Result<u64>
+where
+    P: Send + Sync + Clone + 'static,
+    R: Send + Sync + Clone + 'static,
+{
+    if buffer.is_empty() {
+        return Ok(0);
+    }
+    let emit_t0 = std::time::Instant::now();
+    mgr.emit_event(
+        thread_id,
+        Some(turn_id),
+        Some(item_id),
+        "item.delta",
+        json!({ "delta": buffer.as_str(), "kind": "thinking" }),
+    )
+    .await?;
+    buffer.clear();
+    *last_flush = std::time::Instant::now();
+    Ok(emit_t0.elapsed().as_millis() as u64)
+}
 use super::manager::{RuntimeThreadManager, tool_kind_for_name};
 use super::monitor_host::RuntimeThreadMonitorHost;
 use super::persist::duration_ms;
@@ -48,10 +92,24 @@ where
         let mut turn_error: Option<String> = None;
         let mut turn_summary: Option<TurnSummary> = None;
 
+        // Coalesced reasoning buffer + backpressure probe (stream-truncation
+        // investigation). `thinking_buffer` accumulates deltas between flushes;
+        // the probe tracks per-flush `emit_event` latency and the bounded (256)
+        // engine event-channel backlog so a regression back into per-token DB
+        // contention is visible in the logs.
+        let mut thinking_buffer = String::new();
+        let mut thinking_last_flush = std::time::Instant::now();
+        let mut thinking_delta_count: u64 = 0;
+        let mut thinking_flush_count: u64 = 0;
+        let mut thinking_emit_total_ms: u64 = 0;
+        let mut thinking_emit_max_ms: u64 = 0;
+
         loop {
-            let event = {
+            let (event, rx_backlog) = {
                 let mut rx = engine.rx_event.write().await;
-                rx.recv().await
+                let event = rx.recv().await;
+                let backlog = rx.len();
+                (event, backlog)
             };
             let Some(event) = event else {
                 if mgr
@@ -78,20 +136,58 @@ where
                 EngineEvent::ThinkingStarted { .. } => {
                     thinking_stream_item_id =
                         Some(format!("item_{}", &Uuid::new_v4().to_string()[..8]));
+                    thinking_buffer.clear();
+                    thinking_last_flush = std::time::Instant::now();
                 }
                 EngineEvent::ThinkingDelta { content, .. } => {
-                    if let Some(ref item_id) = thinking_stream_item_id {
-                        mgr.emit_event(
-                            &thread_id,
-                            Some(&turn_id),
-                            Some(item_id.as_str()),
-                            "item.delta",
-                            json!({ "delta": content, "kind": "thinking" }),
-                        )
-                        .await?;
+                    if thinking_stream_item_id.is_some() {
+                        thinking_delta_count += 1;
+                        thinking_buffer.push_str(&content);
+                        let should_flush = thinking_buffer.len() >= THINKING_FLUSH_BYTES
+                            || thinking_last_flush.elapsed() >= THINKING_FLUSH_INTERVAL;
+                        if should_flush
+                            && let Some(item_id) = thinking_stream_item_id.as_deref()
+                        {
+                            let emit_ms = flush_thinking_buffer(
+                                mgr,
+                                &thread_id,
+                                &turn_id,
+                                item_id,
+                                &mut thinking_buffer,
+                                &mut thinking_last_flush,
+                            )
+                            .await?;
+                            thinking_flush_count += 1;
+                            thinking_emit_total_ms =
+                                thinking_emit_total_ms.saturating_add(emit_ms);
+                            if emit_ms > thinking_emit_max_ms {
+                                thinking_emit_max_ms = emit_ms;
+                            }
+                            if emit_ms >= 50 || rx_backlog >= 200 {
+                                eprintln!(
+                                    "[thinking-probe] SLOW flush emit_ms={emit_ms} rx_backlog={rx_backlog} deltas={thinking_delta_count} flushes={thinking_flush_count} thread={thread_id}"
+                                );
+                            } else if thinking_flush_count.is_multiple_of(100) {
+                                eprintln!(
+                                    "[thinking-probe] stats deltas={thinking_delta_count} flushes={thinking_flush_count} avg_ms={} max_ms={thinking_emit_max_ms} rx_backlog={rx_backlog} thread={thread_id}",
+                                    thinking_emit_total_ms / thinking_flush_count.max(1)
+                                );
+                            }
+                        }
                     }
                 }
                 EngineEvent::ThinkingComplete { .. } => {
+                    if let Some(item_id) = thinking_stream_item_id.as_deref() {
+                        flush_thinking_buffer(
+                            mgr,
+                            &thread_id,
+                            &turn_id,
+                            item_id,
+                            &mut thinking_buffer,
+                            &mut thinking_last_flush,
+                        )
+                        .await?;
+                    }
                     thinking_stream_item_id = None;
                 }
                 EngineEvent::MessageStarted { .. } => {
@@ -796,6 +892,10 @@ where
                     )
                     .await?;
                     if message.starts_with("long_horizon.") {
+                        // [lht-probe] central tee: every harness node decision
+                        // (gate_skip/continue_injected/blocked/context_warning/
+                        // nudge_outcome) lands in sidecar.log for offline debug.
+                        eprintln!("[lht-probe] {message} thread={thread_id} turn={turn_id}");
                         host.observe_harness_status(&thread_id, &turn_id, &message)
                             .await;
                     }
@@ -854,6 +954,26 @@ where
                 }
                 _ => {}
             }
+        }
+
+        // Persist any reasoning buffered when the stream ended mid-thinking
+        // (e.g. truncation) so partial reasoning isn't dropped on coalescing.
+        if let Some(item_id) = thinking_stream_item_id.as_deref() {
+            let _ = flush_thinking_buffer(
+                mgr,
+                &thread_id,
+                &turn_id,
+                item_id,
+                &mut thinking_buffer,
+                &mut thinking_last_flush,
+            )
+            .await;
+        }
+
+        if thinking_delta_count > 0 {
+            eprintln!(
+                "[thinking-probe] turn done deltas={thinking_delta_count} flushes={thinking_flush_count} max_emit_ms={thinking_emit_max_ms} thread={thread_id} turn={turn_id}"
+            );
         }
 
         if mgr

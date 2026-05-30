@@ -21,6 +21,8 @@
 
 **待积累数据后再做：** §4.9 遥测 conversion_pct 反推阈值（先量后调）；Phase 4 CRAFT 末段；遥测跨会话持久化 + Desktop 面板。
 
+**⬜ 0.8 之后（金矿 backlog，源自设计对话）：** ①**设计评审前置**——在 plan/任务图派生后、首个实现动手前加一道「方案审」闸门（抓幻觉趁它还是计划里一句话，而非已写进 N 个文件）；②**可追溯矩阵**——`目标 ↔ 实现 ↔ 验证` 三元绑定，堵死 DEMO3「验收项分解时悄悄变形」。详见 [`../agent-reliability-craft-plan.md` §11.5](../agent-reliability-craft-plan.md) 与 [`../desktop/DEV_NOTES.md` §2026-05-30](../desktop/DEV_NOTES.md)。
+
 ---
 
 ## 0. TL;DR
@@ -505,6 +507,12 @@ Plan-only：key = `0xFFFF_0000 | plan_index`。
 
 **`had_progress` 的作用边界（DEMO2 实证修正，2026-05）：** qualified progress **只**清零 `no_progress_streak`（保护正在干活的模型不被误判为 `blocked` 放弃续写），**不**跳过 nudge。理由：gate 只在「模型不调工具、prose 收尾、任务未完成」时触发，而「先写了点东西、然后中途撒手」恰恰是 LHT 要抓的认知早停形态——这一轮 `had_progress` 几乎必然为真。早期实现里 `had_progress=true` 会直接 `SkipProgressReset`（不 nudge），导致模型写了文件、清单停在 0% 就让它收尾。修正后：进展轮仍照常 nudge，由 `max_nudges_per_item` 硬上限兜底；只有 `!had_progress` 的轮次才累加 streak 趋近 `blocked`。实证见线程 `thr_0eda7dcc`（`long_horizon.gate_skip: reason=nudge_skip_progress_reset`，turn `Completed` 且 `incomplete=true`）。
 
+**「验收塌缩成创建项」假绿（DEMO3 实证修正，2026-05）：** 一次 2W 行 Go 解释器压测里，任务**完整跑完、checklist 全勾、turn `Completed`**，但事后实跑示例脚本 4 个崩 2 个（`%` 取模未实现、带数字标识符 `counter1` 词法器不认）。根因不是模型谎报，而是**分解时把「可运行的验收」语义降级成了「创建文件」项**：验收「REPL 能跑通全部示例」被拆成 checklist 第 13 项「创建示例脚本(.monkey)」——创建文件即算完成；唯一带 `[verify:]` gate 的只有 `go build/vet/test` 项，而单测没覆盖那两个特性，于是 `go test` 真绿 → 全勾 → 收尾。`max_tokens=393216` 全程在位、零 length 截断（截断修复有效），所以这是**纯验证闭环漏洞**，不是截断或早停。两处修复：①（根因）`base.md` checklist 纪律新增 `[verify: <command>]` 教学——凡「运行/构建/测试通过/跑示例」类验收**必须**写成 `[verify: cmd] <label>`，并明示「创建文件 ≠ 验证通过」；② `verify::unverified_acceptance_suffix` + `host_impl` gate 加固：标 `completed` 的项若**读起来像可运行验收却没带 `[verify:]` 前缀**，在 `checklist_update`/`todo_update` 结果后追加硬提示，专抓这类假绿。前者让 `[verify:]` 真正被模型使用，后者兜住漏标的情况。
+
+**step 耗尽型早停（DEMO4 实证修正，2026-05）：** 一次 2W 行 Go 解释器压测跑到 ~29 分钟**卡在 40%、turn 空转**。`sidecar.log` 证明**不是流/length 截断**：`[stream-probe]` **恰好 100 条**、全 `stop_reason=tool_calls`、`stream_errors=0`、`chunk_timeout=0`、`max_tokens=393216`、`rx_backlog` 个位数——即撞满了**默认 `max_steps: 100`** 工具步预算，`run.rs` 用一句 `break`（`Reached maximum steps`）就终止了。这是继 length 截断、prose 早停之后的**第三种静默早停**：LHT 续写 nudge 只挂在 *no-tool-uses* 路径，而工具密集型 turn 打满步数预算时**完全绕过了 harness**，任务直接停摆（所以全程无 `[lht-probe]`、无 checklist 完成项）。修复见 §4.6「step 耗尽自动续写」：`maybe_continue_at_step_limit` 钩子在 cap 处给长程任务**再发预算窗口 + 注入续写**，受 `MAX_STEP_LIMIT_CONTINUATIONS=3` 约束。关键教训：**任何「turn 结束」的出口都必须经过 LHT 续写闸门**，否则就是一个新的 silent early-stop 漏点（length / prose / step 耗尽是同一类问题的三个出口）。
+
+**turn 终止出口审计（DEMO4 之后的系统排查，2026-05）：** 顺着上面的教训，对 `core/engine/turn_loop/{run,streaming_phase,tool_phase}.rs` 的**全部 turn 终止出口**做了一次走查。结构性结论：**外层循环里所有 `break` 最终都汇到 `run.rs` 同一个 `Completed` 落点**（除非 `turn_error` 被置则走 `Failed`）——所以判定标准很简单：**任何「绕过 no-tool-uses LHT 续写闸门就 break、且没置 `turn_error`」的出口 = 任务未完成却标 `Completed` 的假绿**。逐出口结论：① 顶部 cancel → `Interrupted`（合理）；② `at_max_steps` → 已接续写（上一条）；③ context 溢出恢复耗尽 → `Failed` 提示 `/compact`（会上抛、非假绿，但长任务被硬打断，缺 LHT 感知的 cycle 交接——列为后续 backlog）；④ 流内 duration/overflow/stream-error 耗尽 → 置 `turn_error` → `Failed`（合理）；⑤ chunk_timeout 思维链空闲截断 → 走 no-tool-uses → 进 LHT 闸门续写（已兜住）；⑥ `stop_after_plan_tool` → 仅 `is_plan_mode && update_plan`，LHT 在 agent 模式，**非缺口**；⑦ **loop_guard 停机 → `break` → `Completed`，完全绕过 LHT 闸门 = 第四种静默早停**（见下）。**第四种：loop_guard 停机型早停。** 同一工具连续失败 `FAILURE_HALT_THRESHOLD=8` 次时 `LoopGuard` 用 `OutcomeDecision::Halt` 中断 turn，`tool_phase` 直接 `break_outer_loop`，不经 no-tool-uses 路径。修复见 §4.6「loop_guard 停机续写」：`tool_phase` outcome 新增 `loop_guard_halted` 标志，`run.rs` 在该出口经 `maybe_continue_after_loop_guard_halt` 钩子，对未完成的长程任务**清空每工具失败计数**（`LoopGuard::reset_failures`，identical-call 阻断保留）并注入「你卡在重复调用同一失败工具了——换方法：换工具/改参数/先读错误定位根因，别停」的 nudge，由 `MAX_LOOP_GUARD_CONTINUATIONS=2` 兜底。**防御层：给放弃出口装可观测探针。** 根因是「所有 break 都长成干净的 `Completed`，不区分真完成 vs 放弃」。`run.rs` 最终落点新增 `note_incomplete_stop_if_lht` 钩子:若收尾为 `Completed` 但 LHT 图仍 incomplete（nudge 预算用尽 / 续写次数耗尽 / REPL / no-tool break …），发 `long_horizon.incomplete_stop: {open_items:n}` 探针(经 `[lht-probe]` tee 落 `sidecar.log`),让压测和 UI 一眼区分「真干完」vs「放弃了」。纯观测，不改 outcome 类型。
+
 ### 4.4 豁免
 
 | 场景 | 行为 |
@@ -549,6 +557,9 @@ pub fn derive_objective(
 - **`max_steps`（默认 100）：** LHT harness nudge 路径 **不 bump** step（`continue_without_step_bump` 或等价）。
 - **边界（🔵#12）：** 模型在 nudge 后发起的 **正常 tool call 仍 bump step**。当 `turn.steps_remaining() ≤ 3` 且 graph incomplete 时，nudge 模板追加一行：`Approaching turn step limit — consider cycle refresh or steer.` / 中文等价句。
 - **与 blocked 区别：** 用户看到 `Reached maximum steps` 表示 **step 预算耗尽**，不是 `long_horizon_blocked`；UI 应区分二者。
+- **step 耗尽自动续写（DEMO4 实证修正，2026-05）：** `at_max_steps` 不再无脑 `break`。在终止前先经 `TurnLoopHost::maybe_continue_at_step_limit` 钩子：若 **LHT enabled + code task-surface + 任务图仍 incomplete 且非 trivial**，注入一条聚焦续写 nudge 并**再发一个步数预算窗口**（`turn.max_steps += 原预算`），由 `MAX_STEP_LIMIT_CONTINUATIONS=3` 兜底（≤4× 基准，如 100→400）防失控。plan 模式不续写；非 LHT host 默认返回 `false` 维持原 cap 行为。发 `Step budget reached; continuing long-horizon task (n/N)` 状态 + `long_horizon.step_limit_continue` 事件。详见下方 DEMO4 实证。
+- **loop_guard 停机续写（turn 终止出口审计，2026-05）：** 同一工具连续失败 8 次时 `LoopGuard::Halt` 让 `tool_phase` 直接 `break`，原本绕过 LHT 闸门标 `Completed`（第四种静默早停）。现 `tool_phase` outcome 带 `loop_guard_halted` 标志，`run.rs` 在此出口经 `TurnLoopHost::maybe_continue_after_loop_guard_halt` 钩子：对未完成长程任务**清空每工具失败计数**（`reset_failures`，identical-call 阻断保留）并注入「换方法别重复」nudge，由 `MAX_LOOP_GUARD_CONTINUATIONS=2` 兜底。发 `Loop-guard halt; nudging long-horizon task to change approach (n/N)` 状态 + `long_horizon.loop_guard_continue` 事件。plan 模式与非 LHT host 维持原 halt（默认 `false`）。
+- **放弃出口可观测（同审计）：** `run.rs` 最终 `Completed` 落点新增 `note_incomplete_stop_if_lht`：收尾时若 LHT 图仍 incomplete，发 `long_horizon.incomplete_stop: {open_items:n}`（经 `[lht-probe]` 落 `sidecar.log`），区分真完成 vs 放弃。纯观测、不改 outcome。
 
 ### 4.7 目标重注入（Phase 2）
 
@@ -605,6 +616,17 @@ audit 靠 scratchpad L0 行；LHT 靠 **plan/checklist 摘要**：
 **用途：** 跑若干真实长程会话后，用 conversion_pct 反推阈值是否合理（如长期 <30% 说明 nudge 在做无用功，应调高 blocked 阈值或改 nudge 文案）。**本期只埋点不调参**——调参本身要等数据，这正是「实践出真知」。
 
 **不做（留后续）：** 持久化遥测到 thread events（跨会话聚合）、Desktop 遥测面板——先验证内存信号有用再投入。
+
+### 4.9.1 离线节点日志 `[lht-probe]`（调试/测试用）
+
+遥测进 UI 面板 + DB，**不落 `sidecar.log`**——离线复盘一次卡死/false-green 跑时面板已关、DB 难直读，没有可 grep 的 LHT 足迹。补两条 `eprintln!` 探针（sidecar 无 `tracing` subscriber，stderr → `sidecar.log` 是唯一落点，与 `[stream-probe]`/`[thinking-probe]` 同约定，低频 ≈1–2 行/轮、无门控、纯诊断）：
+
+| 探针 | 落点 | 输出 |
+|------|------|------|
+| **中心 tee** | `runtime-orchestrator/.../monitor.rs`（`long_horizon.*` 咽喉点） | `[lht-probe] long_horizon.<kind>: {…} thread=… turn=…` —— 镜像每个节点：`gate_skip`（哪条 guard 抑制了 nudge）/`continue_injected`（nudge 已发 + emitted/converted/open_items）/`blocked`/`context_warning`/`nudge_outcome` |
+| **verify gate 判定** | `runtime-server/.../host_impl/mod.rs`（每次 checklist/todo 标 `completed`） | `[lht-probe] verify_gate tool=… item=<id> verdict=<verified\|mismatch\|unverified_acceptance\|untagged_ok\|no_item> content="…"` —— 把 false-green 守卫的逐项判定打出来 |
+
+**用法：** `Select-String -Path $env:USERPROFILE\.zagens\logs\sidecar.log -Pattern '\[lht-probe\]'`（PowerShell）即可按时序重放整条 harness 决策环。DEMO4「全 `[verify:]` 项」压测时，直接看 `verdict=` 是否出现 `untagged_ok`（漏标）或 `mismatch`（标了没跑）。
 
 ---
 

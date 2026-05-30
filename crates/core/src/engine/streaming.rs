@@ -25,6 +25,25 @@ pub const MAX_STREAM_ERRORS_BEFORE_FAIL: u32 = 5;
 pub const MAX_TRANSPARENT_STREAM_RETRIES: u32 = 2;
 /// Outer turn-step retries when a stream dies with no actionable content (#103).
 pub const MAX_STREAM_RETRIES: u32 = 3;
+/// Max consecutive auto-continuations after the model hits the output
+/// `max_tokens` cap (`finish_reason=length`) with no tool call to carry the
+/// turn. Bounds runaway cost / an infinite cut→continue loop while still
+/// letting a genuinely huge answer (or reasoning) finish across several rounds.
+/// Reset to 0 on any step that does not end in a length truncation.
+pub const MAX_LENGTH_CONTINUATIONS: u32 = 8;
+/// Max times a long-horizon turn that exhausts its `max_steps` budget may be
+/// granted another full step window to keep pursuing an incomplete task graph,
+/// instead of silently ending at the step cap (step-exhaustion early-stop).
+/// Each grant extends the budget by the original `max_steps`; bounded so a
+/// runaway task can't loop forever (e.g. 3 → up to 4× the base step budget).
+pub const MAX_STEP_LIMIT_CONTINUATIONS: u32 = 3;
+/// Max times a long-horizon turn whose [`LoopGuard`](crate::engine::loop_guard::LoopGuard)
+/// halts (a tool failed `FAILURE_HALT_THRESHOLD` consecutive times) may be
+/// granted a "change approach" continuation instead of silently ending the
+/// turn as `Completed`. Kept small — a halt means the model is genuinely stuck,
+/// so we reset the failure counters and nudge it to switch strategy at most
+/// this many times before accepting the stop.
+pub const MAX_LOOP_GUARD_CONTINUATIONS: u32 = 2;
 
 pub fn should_transparently_retry_stream(
     any_content_received: bool,

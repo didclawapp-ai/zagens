@@ -22,6 +22,11 @@ pub struct TurnLoopToolPhaseOutcome {
     pub step_error_categories: Vec<ErrorCategory>,
     /// `stop_after_plan_tool` or loop-guard halt — exit the outer turn loop.
     pub break_outer_loop: bool,
+    /// The break was caused by a [`LoopGuard`](crate::engine::loop_guard::LoopGuard)
+    /// halt (a tool failed too many times in a row), as opposed to a plan-mode
+    /// `update_plan` stop. Lets the outer loop offer a long-horizon
+    /// "change approach" continuation instead of a silent `Completed`.
+    pub loop_guard_halted: bool,
     /// Capacity post-tool checkpoint requested another model step.
     pub continue_outer_loop: bool,
 }

@@ -766,6 +766,17 @@ P2 依赖 P0（`structured_verdict` 字段出现在 `agent_result` JSON 载荷�
 9. **安全与供应链** — 自动化更新若涉及二进制拉取，须对齐 [SECURITY.md](SECURITY.md) 与 `.cursor/rules/security-trust.mdc`。
 10. **即刻可做** — 跑通全链 CRAFT、收集围栏缺失/JSON 截断样本、按上表拆解带验收标准的 issue。
 
+### 11.5 两个「金矿」backlog（2026-05-30 设计对话）— ⬜ 规划中
+
+来源：[`desktop/DEV_NOTES.md` §2026-05-30 抗幻觉工程哲学](desktop/DEV_NOTES.md)「人类工程机制 ↔ harness」映射表中**尚未映射**的两条。按人类工程方法论，二者都属「抗幻觉上游收益最高」，但**0.8 引擎分离之后再做**（现阶段先把幻觉率与稳定性踩平，勿同时调多个动目标）。
+
+| # | 金矿 | 对应 CRAFT 字母 | 缺口 / 动机 | 落点 | 验收草案 |
+|---|------|------|------|------|----------|
+| ① | **设计评审前置（design review）** | **R**（Review 前移） | 现 CRAFT 重「事后审代码」；人类工程最省钱的审查是「动手前审方案」——错误设计实现得再漂亮也白干。抓幻觉要趁它**还是计划里一句话**，而非已写进 N 个文件 | LHT plan / 任务图阶段加一道「方案审」闸门（见 [harness/LONG_HORIZON_CODE_TASKS.md](harness/LONG_HORIZON_CODE_TASKS.md)）；可复用 Reviewer 角色，输入从 diff 换成 plan/任务图 | 任务图派生后、首个 Implementer 动手前，产出一份对「目标↔任务图」的结构化 verdict（PASS/BLOCKER），BLOCKER 阻止进入实现 |
+| ② | **可追溯矩阵（traceability）** | **T**（Traceable，落实命名里已有的字母） | 现已绑「实现↔验证」（`[verify:]`），差锚回「目标/需求」。堵死 DEMO3 那种「验收项在分解时悄悄变形」（runnable acceptance 塌缩成 create-only） | checklist item / 任务图节点增加回指「原始目标/需求」的 trace 字段，形成 `目标 ↔ 实现 ↔ 验证` 三元绑定；黑板 `task_id` 已是天然锚 | 任一清单项完成可反查「它满足了哪条原始要求」；目标未被任何 verify 项覆盖时可检出告警 |
+
+> 与「单模型自审共谋盲区」配套结论（同源对话）：**S3 程序化校验优先级应高于 S1 双模型 Judge**——让不会幻觉的工具（编译器/测试/`read_file` 真实调用记录）当终审，而非引第二个模型。见 [`craft-v2-improvements.md` §4 S1/S3](craft-v2-improvements.md)。
+
 ---
 
-**文档修订记录（摘要）：** 增补 §3.2（并行调度与子代理写路径现状核对）、§11.4（LSP/锁/集成回合落地表）；既往：附录 A、§11；§10 增加 LOCALIZATION 链接。
+**文档修订记录（摘要）：** 新增 §11.5（两个金矿 backlog：设计评审前置 / 可追溯矩阵，源自 DEV_NOTES 2026-05-30）；增补 §3.2（并行调度与子代理写路径现状核对）、§11.4（LSP/锁/集成回合落地表）；既往：附录 A、§11；§10 增加 LOCALIZATION 链接。
