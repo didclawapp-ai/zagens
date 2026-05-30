@@ -572,6 +572,21 @@ impl TurnLoopHost for Engine {
         true
     }
 
+    async fn maybe_cycle_handoff_on_context_overflow(
+        &mut self,
+        _turn: &TurnContext,
+        mode: TurnLoopMode,
+    ) -> bool {
+        // Only roll a handoff when the cycle mechanism is actually enabled;
+        // otherwise there's no briefing/seed machinery to fall back to and the
+        // turn fails as before. The handoff itself preserves LHT state
+        // (plan / todos / handoff.md) when long-horizon is on.
+        if !self.config.cycle.enabled {
+            return false;
+        }
+        Engine::force_cycle_handoff_for_overflow(self, turn_loop_to_app_mode(mode)).await
+    }
+
     async fn note_incomplete_stop_if_lht(&mut self) {
         // The turn loop is about to end as `Completed`. If a long-horizon task
         // graph is still incomplete, this is a give-up (nudge budget exhausted,

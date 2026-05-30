@@ -777,6 +777,8 @@ P2 依赖 P0（`structured_verdict` 字段出现在 `agent_result` JSON 载荷�
 
 > 与「单模型自审共谋盲区」配套结论（同源对话）：**S3 程序化校验优先级应高于 S1 双模型 Judge**——让不会幻觉的工具（编译器/测试/`read_file` 真实调用记录）当终审，而非引第二个模型。见 [`craft-v2-improvements.md` §4 S1/S3](craft-v2-improvements.md)。
 
+> **首个落地抓手（2026-05-30）：** 二者已在「**全新项目并行代码生成**」方案中找到具体落点 —— ①设计评审前置 = 并行分发前的 **P0.5 契约固化闸门**；②可追溯矩阵 = 集成前 **P1.5 符合性审核**天然产出的 `契约条款 ↔ 模块 ↔ 审核` 绑定表。详见 [`harness/PARALLEL_FRESH_GENERATION.md`](harness/PARALLEL_FRESH_GENERATION.md)。
+
 ---
 
 **文档修订记录（摘要）：** 新增 §11.5（两个金矿 backlog：设计评审前置 / 可追溯矩阵，源自 DEV_NOTES 2026-05-30）；增补 §3.2（并行调度与子代理写路径现状核对）、§11.4（LSP/锁/集成回合落地表）；既往：附录 A、§11；§10 增加 LOCALIZATION 链接。

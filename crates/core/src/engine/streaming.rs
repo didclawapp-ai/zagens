@@ -44,6 +44,15 @@ pub const MAX_STEP_LIMIT_CONTINUATIONS: u32 = 3;
 /// so we reset the failure counters and nudge it to switch strategy at most
 /// this many times before accepting the stop.
 pub const MAX_LOOP_GUARD_CONTINUATIONS: u32 = 2;
+/// Max times an in-flight turn whose context overflows the model budget (and
+/// can't be brought back under it by emergency compaction within
+/// [`MAX_CONTEXT_RECOVERY_ATTEMPTS`](crate::engine::context::MAX_CONTEXT_RECOVERY_ATTEMPTS))
+/// may roll a long-horizon **cycle handoff** instead of hard-failing the turn.
+/// A handoff swaps the bloated message buffer for a small `<carry_forward>`
+/// briefing seed plus preserved structured state, so the next step starts with
+/// room to spare. Kept tiny: if even a fresh briefing seed can't fit, the task
+/// is genuinely too large and we fall back to the hard failure.
+pub const MAX_CONTEXT_CYCLE_HANDOFFS: u32 = 2;
 
 pub fn should_transparently_retry_stream(
     any_content_received: bool,

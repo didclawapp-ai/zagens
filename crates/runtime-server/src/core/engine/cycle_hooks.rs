@@ -48,11 +48,38 @@ impl Engine {
             return;
         }
 
+        let reason = if lht_early && !threshold {
+            "long-horizon checkpoint"
+        } else {
+            "context threshold"
+        };
+        let _ = self.perform_cycle_advance(mode, reason).await;
+    }
+
+    /// Force a cycle handoff regardless of the threshold gate. Used as a
+    /// last-resort recovery when an in-flight turn's context overflows the
+    /// model budget and emergency compaction can't get back under it: instead
+    /// of hard-failing the turn (dumping a manual `/compact` on the user),
+    /// roll the cycle so the next step starts from a small `<carry_forward>`
+    /// briefing seed plus preserved structured state (plan / todos / working
+    /// set / handoff.md). Returns `true` when the swap happened (caller can
+    /// retry the request) and `false` when the briefing turn failed (caller
+    /// falls back to the original hard failure).
+    pub(super) async fn force_cycle_handoff_for_overflow(&mut self, mode: AppMode) -> bool {
+        self.perform_cycle_advance(mode, "context overflow").await
+    }
+
+    /// Body of a cycle advance: produce the model-curated briefing, archive
+    /// the outgoing cycle, capture structured state, build the seed messages,
+    /// and atomically swap the session buffer. Returns `true` when the swap
+    /// completed and `false` when the briefing turn failed (no swap done).
+    async fn perform_cycle_advance(&mut self, mode: AppMode, reason: &str) -> bool {
+        let lht_enabled = self.config.long_horizon.enabled;
         let Some(client) = self.deepseek_client.clone() else {
             crate::logging::warn(
                 "Cycle boundary skipped: API client not configured for briefing turn",
             );
-            return;
+            return false;
         };
 
         let from = self.session.cycle_count;
@@ -60,11 +87,6 @@ impl Engine {
         let archive_started = self.session.current_cycle_started;
         let max_briefing_tokens = self.config.cycle.briefing_max_for(&self.session.model);
 
-        let reason = if lht_early && !threshold {
-            "long-horizon checkpoint"
-        } else {
-            "context threshold"
-        };
         let _ = self
             .tx_event
             .send(Event::status(format!(
@@ -119,7 +141,7 @@ impl Engine {
                                     "鈫?cycle handoff failed (continuing in cycle {from}): {err2}"
                                 )))
                                 .await;
-                            return;
+                            return false;
                         }
                     }
                 }
@@ -144,7 +166,7 @@ impl Engine {
                             "鈫?cycle handoff failed (continuing in cycle {from}): {err}"
                         )))
                         .await;
-                    return;
+                    return false;
                 }
             }
         };
@@ -257,6 +279,8 @@ impl Engine {
                 }
             }
         }
+
+        true
     }
 
     /// Refresh the system prompt based on current mode and context.

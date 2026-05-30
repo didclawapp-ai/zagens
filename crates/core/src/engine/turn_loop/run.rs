@@ -7,7 +7,9 @@ use crate::engine::context::{
     context_input_budget, summarize_text, MAX_CONTEXT_RECOVERY_ATTEMPTS, TURN_MAX_OUTPUT_TOKENS,
 };
 use crate::engine::loop_guard::LoopGuard;
-use crate::engine::streaming::{MAX_LOOP_GUARD_CONTINUATIONS, MAX_STEP_LIMIT_CONTINUATIONS};
+use crate::engine::streaming::{
+    MAX_CONTEXT_CYCLE_HANDOFFS, MAX_LOOP_GUARD_CONTINUATIONS, MAX_STEP_LIMIT_CONTINUATIONS,
+};
 use crate::error_taxonomy::ErrorEnvelope;
 use crate::events::Event;
 use crate::turn::{TurnContext, TurnLoopMode, TurnOutcomeStatus};
@@ -51,6 +53,11 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
     // row that `LoopGuard` halts the turn, give an incomplete long-horizon task
     // a bounded "change approach" continuation instead of silently completing.
     let mut loop_guard_continuations: u32 = 0;
+    // Context-overflow cycle handoff (LHT): when the request grows past the
+    // model budget and emergency compaction can't recover it, roll a cycle
+    // handoff (briefing seed + preserved state) instead of hard-failing the
+    // turn and dumping a manual `/compact` on the user.
+    let mut cycle_handoff_attempts: u32 = 0;
 
     loop {
         tracing::debug!(turn_id = %turn.id, step = turn.step, "turn step");
@@ -136,6 +143,25 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
             let estimated_input = host.estimated_input_tokens();
             if estimated_input > input_budget {
                 if context_recovery_attempts >= MAX_CONTEXT_RECOVERY_ATTEMPTS {
+                    // Emergency compaction couldn't get the request back under
+                    // the model limit. Before hard-failing the turn (and asking
+                    // the user to run /compact), give a long-horizon host a
+                    // bounded chance to roll a cycle handoff: swap the bloated
+                    // buffer for a small briefing seed + preserved task state
+                    // and keep going in the same thread. Plan mode never does.
+                    if !mode.is_plan()
+                        && cycle_handoff_attempts < MAX_CONTEXT_CYCLE_HANDOFFS
+                        && host
+                            .maybe_cycle_handoff_on_context_overflow(turn, mode)
+                            .await
+                    {
+                        cycle_handoff_attempts = cycle_handoff_attempts.saturating_add(1);
+                        // The fresh cycle starts small, so grant it its own
+                        // emergency-recovery budget rather than carrying over
+                        // the spent attempts from the overflowing buffer.
+                        context_recovery_attempts = 0;
+                        continue;
+                    }
                     let message = format!(
                         "Context remains above model limit after {} recovery attempts \
                          (~{} token estimate, ~{} budget). Please run /compact or /clear.",

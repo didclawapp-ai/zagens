@@ -265,6 +265,25 @@ pub trait TurnLoopHost: Send {
         false
     }
 
+    /// When an in-flight turn's context overflows the model budget and
+    /// emergency compaction has been exhausted (the loop is about to hard-fail
+    /// the turn and tell the user to run `/compact`): give a long-horizon host
+    /// one bounded chance to roll a **cycle handoff** instead. A handoff
+    /// summarizes the conversation into a small `<carry_forward>` briefing seed
+    /// and preserves structured task state (plan / todos / working set /
+    /// handoff.md), so the next step continues in the same thread with a fresh,
+    /// in-budget context. Returns `true` if the host rotated the cycle (the
+    /// caller resets its recovery budget, bounds the number of handoffs, and
+    /// retries the request); `false` keeps the original hard failure. Default:
+    /// no handoff (non-LHT / cycle-disabled hosts fail as before).
+    async fn maybe_cycle_handoff_on_context_overflow(
+        &mut self,
+        _turn: &TurnContext,
+        _mode: TurnLoopMode,
+    ) -> bool {
+        false
+    }
+
     /// Defensive observability at the final turn fallthrough. Every `break` in
     /// the outer loop converges to a `Completed` outcome; if a long-horizon
     /// task is still incomplete at that point (not cancelled, no error), the
