@@ -68,6 +68,7 @@ const ja: TranslationMap = {
     blocked: 'LHT 一時停止',
     nudges: '再開 {{count}} 回',
     plan: 'プラン',
+    planOutlineNote: '· 概要（完了判定はチェックリスト）',
     checklist: 'チェックリスト',
     tabTask: 'タスク',
     tabCycle: 'Cycle',

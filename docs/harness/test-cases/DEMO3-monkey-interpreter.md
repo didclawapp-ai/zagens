@@ -142,5 +142,18 @@ Select-String -Path $env:USERPROFILE\.zagens\logs\sidecar.log -Pattern '\[stream
 
 ---
 
+## 6. 2026-05-30 复跑结论（真绿 + 闭环未阻断 → 已根治）
+
+**产物（`F:\DEMO3-2`）：** 模型这次**真把两个钓鱼特性写进了代码**——`token.go` 有 `PERCENT="%"`、`lexer.go` `case '%'`、parser 把 `token.PERCENT` 归到 `PRODUCT` 优先级、`evaluator.go` `case "%"` 真求值；标识符 `readIdentifier` 改用 `isIdentChar`（字母/下划线后接数字），`counter1` 不再被截断。人工编译 + 逐个跑 `examples/02_modulo.monkey` / `03_identifiers.monkey` 全过。**这是真绿**（产物维度全部通过），不是假绿。
+
+**但闭环仍有一处弱点（本次要修的）：** 关键验收项「`go build`/`vet`/`gofmt`/`go test`/`run_examples` 全绿」被模型写成**完成项却没带 `[verify:]` 前缀**。`verify_gate` 正确判出 `unverified_acceptance` 并追加了软提示，**但它只是 tool-result 末尾的提示、不阻断收尾**——graph 仍判 `graph_complete`、turn 直接 `Completed`。也就是说：这次靠「模型恰好把代码写对了」躲过假绿，而**非 harness 强制**。换一次非确定性采样（见 [`../LHT_TEST_SUITE.md` §5.1](../LHT_TEST_SUITE.md)），同样的漏标就可能放行一个真崩的产物。
+
+**根治（B，2026-05-30 落地）：** 把 `unverified_acceptance` 从**软提示**升级为**软门禁**——续写 gate 在 `graph_complete` 这一步旁路加检查：若已完成 checklist 里仍有「读起来像可运行验收、却既无 `[verify:]` 又无匹配近期执行」的项，则**不放行收尾**，改注入一条聚焦续写（要求改写成 `[verify: <命令>]` 并真跑），有界重试 `MAX_UNVERIFIED_ACCEPTANCE_NUDGES=2` 次以防模型死活不加而空转。**刻意不改 `completion_pct`/`graph.incomplete()`**——进度条仍显示 100%（不回退 DEMO5 #1），只挡 turn 结束。新发独立可观测事件 `long_horizon.unverified_acceptance_nudge`（Nodes Tab 橙色，与 verify mismatch 同色系）。
+
+**配套 UI 收尾（A）：** 清单为完成权威（非空）且任务 100% 时，plan 里仍 pending 的阶段属**展示用大纲**而非未完成工作——面板在 Plan 标题加「大纲（以清单为完成依据）」注记并把这些 pending 阶段淡化/删除线，消解「进度 100% 但清单看着没关闭」的认知错位。
+
+---
+
 **修订记录:**
 - 2026-05-30 创建：DEMO3 复现规格（prompt + `[verify:]` checklist + oracle/conformance 脚本 + 离线回放 + 判定矩阵）。
+- 2026-05-30 补 §6：记录复跑结论（真绿但闭环未阻断），并落地 B（`unverified_acceptance` 软提示→软门禁/续写 gate）+ A（plan display-only 大纲淡化 UI）。

@@ -66,6 +66,7 @@ const zhHans = {
     blocked: 'LHT 已暂停（无进展）',
     nudges: '已续写 {{count}} 次',
     plan: '计划',
+    planOutlineNote: '· 大纲（以清单为完成依据）',
     checklist: '清单',
     tabTask: '任务图',
     tabCycle: 'Cycle',

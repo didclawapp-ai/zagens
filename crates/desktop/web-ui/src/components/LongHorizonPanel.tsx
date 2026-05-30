@@ -115,19 +115,48 @@ function TaskGraphView({ graph, t }: { graph: HarnessTaskGraph; t: (k: string, v
         </div>
       )}
       {graph.phases.length > 0 ? (
-        <section>
-          <h4 className="mb-1 font-semibold text-t-text-muted">{t('longHorizon.plan')}</h4>
-          <ul className="space-y-1">
-            {graph.phases.map((phase) => (
-              <li key={phase.step} className={statusLineClass(phase.status)}>
-                <span className={`mr-1 ${statusDotClass(phase.status)}`}>
-                  {statusSymbol(phase.status)}
-                </span>
-                {phase.step}
-              </li>
-            ))}
-          </ul>
-        </section>
+        (() => {
+          // DEMO5 #1 UI收尾: when the checklist is the completion authority
+          // (non-empty) and the task is done (100%), the plan's still-pending
+          // phases are a display-only outline, NOT open work. Annotate the header
+          // and dim those phases so "100% complete" doesn't visually clash with a
+          // row of grey pending dots ("进度100%但清单没关闭" confusion).
+          const hasPendingPhases = graph.phases.some((p) => p.status !== 'completed');
+          const planIsOutline = graph.checklist.length > 0 && hasPendingPhases;
+          const dimPending = planIsOutline && graph.completion_pct >= 100;
+          return (
+            <section>
+              <h4 className="mb-1 font-semibold text-t-text-muted">
+                {t('longHorizon.plan')}
+                {planIsOutline ? (
+                  <span className="ml-1 font-normal text-[10px] text-t-text-muted">
+                    {t('longHorizon.planOutlineNote')}
+                  </span>
+                ) : null}
+              </h4>
+              <ul className="space-y-1">
+                {graph.phases.map((phase) => {
+                  const muted = dimPending && phase.status !== 'completed';
+                  return (
+                    <li
+                      key={phase.step}
+                      className={
+                        muted
+                          ? 'text-t-text-muted line-through opacity-50'
+                          : statusLineClass(phase.status)
+                      }
+                    >
+                      <span className={`mr-1 ${statusDotClass(phase.status)}`}>
+                        {statusSymbol(phase.status)}
+                      </span>
+                      {phase.step}
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          );
+        })()
       ) : null}
       {graph.checklist.length > 0 ? (
         <section>
@@ -339,6 +368,11 @@ function nodeKindClass(kind: string, payload?: Record<string, unknown> | null): 
     kind === 'cycle_advanced'
   ) {
     return 'text-emerald-600 dark:text-emerald-400';
+  }
+  if (kind === 'unverified_acceptance_nudge') {
+    // DEMO3 false-green guard escalation — orange, same family as a verify
+    // mismatch (a runnable acceptance was marked done without being verified).
+    return 'text-orange-600 dark:text-orange-400';
   }
   if (kind === 'incomplete_stop' || kind === 'halt') {
     return 'text-red-600 dark:text-red-400';

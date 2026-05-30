@@ -25,6 +25,13 @@ pub(crate) static VERIFICATION_RE: LazyLock<Regex> =
 /// nudge switches to a "steer or update checklist" message (§4.3).
 pub(crate) const STALE_ASSISTANT_TURNS: u32 = 8;
 
+/// Hard cap on DEMO3 "unverified acceptance" continue nudges per session — when
+/// the task graph is otherwise complete but a completed item is a runnable
+/// acceptance never actually verified (`[verify:]`-less + no matching exec), the
+/// gate nudges to force real verification. Bounded so a model that genuinely
+/// can't (or won't) add `[verify:]` cannot loop the turn forever.
+pub(crate) const MAX_UNVERIFIED_ACCEPTANCE_NUDGES: u32 = 2;
+
 /// Per-session LHT state.
 ///
 /// Lifetime conventions (see [`Self::on_new_user_message`]):
@@ -62,6 +69,12 @@ pub struct LongHorizonSessionState {
     /// `checklist_write` (DEMO6: items were completed via `checklist_write`, so
     /// the per-item-only gate never fired and emitted no `verify_gate` nodes).
     pub gated_completed_ids: HashSet<u32>,
+    /// Session-scoped: number of DEMO3 "unverified acceptance" continue nudges
+    /// fired this session (a completed runnable-acceptance item with no
+    /// `[verify:]` and no matching recent exec). Persists across user messages
+    /// and is bounded by [`MAX_UNVERIFIED_ACCEPTANCE_NUDGES`] so the false-green
+    /// guard can't nudge forever when the model won't add a verify command.
+    pub unverified_acceptance_nudges: u32,
     /// Git working-tree signature captured when the last nudge was emitted
     /// (§4.8). Compared against the current signature to detect objective,
     /// language-agnostic progress. Reset on new user message.
@@ -320,6 +333,33 @@ pub fn build_nudge_message(
     }
 }
 
+/// Nudge fired when the task graph is otherwise "complete" but one or more
+/// completed checklist items read like a *runnable acceptance* (build / tests
+/// pass / run examples) that was never actually verified — no `[verify: cmd]`
+/// prefix **and** no matching recent exec. This is the DEMO3 false-green:
+/// "create example scripts" marked done without ever running them. We do not
+/// touch the completion percentage (it stays 100% — display only); we refuse to
+/// let the turn end so the model must verify for real.
+#[must_use]
+pub fn build_unverified_acceptance_nudge(items: &[String], lang: &str) -> String {
+    let list = items
+        .iter()
+        .map(|s| format!("- {s}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    if is_zh(lang) {
+        format!(
+            "清单已全部勾选，但下面这些“可运行的验收”项并没有被真正验证过 —— 它们没有 `[verify: <命令>]` 前缀，也没有匹配的近期执行记录（创建文件 / 自述完成 ≠ 跑通）：\n\n{list}\n\n\
+             请对每一项：① 改写为 `[verify: <命令>] <描述>`（如 `[verify: bash scripts/run_examples.sh] 全部示例跑通`）；② **实际运行该命令并看到通过输出**后再保持 completed。若确实没有可运行命令，请把它拆成有客观验收的子项。不要仅凭文字声明结束本轮。"
+        )
+    } else {
+        format!(
+            "The checklist is fully checked, but these \"runnable acceptance\" items were never actually verified — they have no `[verify: <command>]` prefix and no matching recent run (creating a file / self-declaring done is NOT the same as running it):\n\n{list}\n\n\
+             For each: (1) rewrite as `[verify: <command>] <label>` (e.g. `[verify: bash scripts/run_examples.sh] all examples pass`); (2) **run that command and see it pass** before keeping it completed. If there is genuinely no runnable command, split it into sub-items with objective acceptance. Do not end this turn on a prose claim alone."
+        )
+    }
+}
+
 fn build_stale_message(lang: &str) -> String {
     if is_zh(lang) {
         "长程任务 checklist 项长时间无工具进展 — 请 steer 调整目标，或用 checklist_update 更新状态；勿重复 prose 收尾。"
@@ -410,6 +450,21 @@ mod tests {
         assert!(!VERIFICATION_RE.is_match("ls -la"));
         assert!(!VERIFICATION_RE.is_match("echo hello"));
         assert!(!VERIFICATION_RE.is_match("cat go.mod"));
+    }
+
+    #[test]
+    fn unverified_acceptance_nudge_lists_items_bilingual() {
+        let items = vec![
+            "全部 8 个示例跑通".to_string(),
+            "go build / vet / test 全绿".to_string(),
+        ];
+        let zh = build_unverified_acceptance_nudge(&items, "zh-Hans");
+        assert!(zh.contains("[verify:"));
+        assert!(zh.contains("全部 8 个示例跑通"));
+        assert!(zh.contains("go build / vet / test 全绿"));
+        let en = build_unverified_acceptance_nudge(&items, "en");
+        assert!(en.contains("[verify:"));
+        assert!(en.contains("run that command and see it pass"));
     }
 
     #[test]

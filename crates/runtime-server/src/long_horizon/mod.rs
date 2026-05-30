@@ -79,6 +79,13 @@ fn audit_scratchpad_blocks_lht(
 /// pinpointing *which* guard suppressed the nudge.
 pub enum LhtGateOutcome {
     Nudge(Message),
+    /// DEMO3 false-green guard: the task graph is otherwise *complete*, but one
+    /// or more completed checklist items are runnable acceptances that were
+    /// never actually verified (no `[verify:]` prefix and no matching recent
+    /// exec). Carries a focused nudge to force real verification. Distinct from
+    /// [`Self::Nudge`] so the caller can emit a separate observability node and
+    /// avoid muddling the normal continue/conversion telemetry.
+    NudgeUnverifiedAcceptance(Message),
     Skip(&'static str),
 }
 
@@ -118,6 +125,40 @@ pub async fn maybe_continue_incomplete_code_task(
         return LhtGateOutcome::Skip("graph_empty");
     }
     if !graph.incomplete() {
+        // DEMO3 root-cause guard: a "complete" graph can still be a false green
+        // when a *completed* checklist item reads like a runnable acceptance
+        // (build / tests pass / run examples) yet was never actually verified —
+        // no `[verify:]` prefix AND no matching recent exec. Rather than let the
+        // turn end on that, nudge (bounded) to force real verification. This does
+        // NOT touch `completion_pct` / `graph.incomplete()` — the displayed
+        // progress stays 100% (DEMO5 #1); only the turn-ending decision is gated.
+        let unverified: Vec<String> = checklist
+            .items
+            .iter()
+            .filter(|i| i.status == crate::tools::todo::TodoStatus::Completed)
+            .filter(|i| {
+                verify::verify_gate_verdict(
+                    &i.content,
+                    &input.session.recent_verification_cmds,
+                    input.lang,
+                )
+                .0 == "unverified_acceptance"
+            })
+            .map(|i| verify::strip_verify_prefix(&i.content))
+            .collect();
+        if !unverified.is_empty()
+            && input.session.unverified_acceptance_nudges < nudge::MAX_UNVERIFIED_ACCEPTANCE_NUDGES
+        {
+            input.session.unverified_acceptance_nudges += 1;
+            let text = nudge::build_unverified_acceptance_nudge(&unverified, input.lang);
+            return LhtGateOutcome::NudgeUnverifiedAcceptance(Message {
+                role: "user".to_string(),
+                content: vec![ContentBlock::Text {
+                    text,
+                    cache_control: None,
+                }],
+            });
+        }
         return LhtGateOutcome::Skip("graph_complete");
     }
     if graph.is_trivial() {

@@ -68,6 +68,7 @@ const en: TranslationMap = {
     blocked: 'LHT paused (no progress)',
     nudges: '{{count}} nudges',
     plan: 'Plan',
+    planOutlineNote: '· outline (checklist drives completion)',
     checklist: 'Checklist',
     tabTask: 'Task',
     tabCycle: 'Cycle',

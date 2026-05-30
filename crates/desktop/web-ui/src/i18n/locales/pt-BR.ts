@@ -68,6 +68,7 @@ const ptBr: TranslationMap = {
     blocked: 'LHT pausado',
     nudges: '{{count}} lembretes',
     plan: 'Plano',
+    planOutlineNote: '· esboço (checklist define a conclusão)',
     checklist: 'Checklist',
     tabTask: 'Tarefa',
     tabCycle: 'Cycle',

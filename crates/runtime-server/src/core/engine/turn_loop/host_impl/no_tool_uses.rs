@@ -114,6 +114,27 @@ impl Engine {
 
         let msg = match gate {
             crate::long_horizon::LhtGateOutcome::Nudge(msg) => msg,
+            crate::long_horizon::LhtGateOutcome::NudgeUnverifiedAcceptance(msg) => {
+                // DEMO3 false-green guard fired: the graph is "complete" but a
+                // completed item is an unverified runnable acceptance. Inject the
+                // focused nudge and emit a *distinct* node (not the generic
+                // continue_injected) so the LHT panel / sidecar.log show the
+                // guard explicitly and the normal continue/conversion telemetry
+                // is not muddied.
+                Engine::add_session_message(self, msg).await;
+                self.long_horizon_continue_injected_this_turn = true;
+                let count = self
+                    .runtime_ext()
+                    .long_horizon_state
+                    .unverified_acceptance_nudges;
+                let _ = self
+                    .tx_event
+                    .send(Event::status(format!(
+                        "long_horizon.unverified_acceptance_nudge: {{\"count\":{count}}}"
+                    )))
+                    .await;
+                return true;
+            }
             crate::long_horizon::LhtGateOutcome::Skip(reason) => {
                 // §4.9 observability: emit exactly which guard suppressed the nudge,
                 // alongside the engine-side state, so "it didn't fire" becomes

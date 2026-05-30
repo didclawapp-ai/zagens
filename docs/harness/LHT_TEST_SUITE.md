@@ -114,6 +114,18 @@ prompt：<一句话目标，显式点名易漏特性>
 
 **判定准则:** 一次测试**通过** = `[verify:]` gate 全 `verified`(无 `mismatch`/`untagged_ok`)+ 进度图诚实 100% + 抽查产物行为正确 + **无任何静默早停出口**(节点流里不出现孤立的 `incomplete_stop`)。
 
+### 5.1 为什么判定只能靠 oracle，不能靠输出比对（非确定性）
+
+同一 prompt 每次输出都不同，是 LLM 的**固有属性**，分三层、且大部分压不掉：
+
+1. **采样随机**(`temperature`/`top_p`)—— 唯一原本可调的旋钮;
+2. **系统级不确定**(浮点非结合 + GPU 规约顺序 + 服务端 batching + MoE 专家路由受同 batch 影响)—— 即便贪心解码也压不掉,且与 prompt 无关;
+3. **agent 级联放大** —— 长程任务里上游一个 token 的差异沿数百 step 放大成完全不同的执行路径。
+
+> **⚠️ DeepSeek V4 quirk（[官方文档](https://api-docs.deepseek.com/zh-cn/guides/thinking_mode)）:** 思考模式**不支持 `temperature`/`top_p`/`presence_penalty`/`frequency_penalty`**——为兼容已有软件,**设置不报错、但也不生效**(静默忽略,排查时易被骗)。思考强度改由 `reasoning_effort`(high/max;Agent 类请求默认 max)控制,与采样随机性无关。所以连第 1 层旋钮都没有——**"调低 temperature 稳复现"这条路对 V4 思考模式封死**。本仓库 runtime 也未下发 `seed`(DeepSeek 链路无此参数)。
+
+**推论(本测试集的立身之本):** 既然随机性既不可控、又会被长程放大,**测试判定就绝不能依赖"输出逐字/逐结构一致"**,只能靠不会随机的客观 oracle(`[verify:]` 跑测试、`conformance.sh` 验特性、SWE-bench `FAIL_TO_PASS`)判**终态行为**。模型每次走的路不同无所谓,终态正确即过。这正是"事实源 > 模型声明"在测试层的硬约束。
+
 ---
 
 ## 6. 最小回归集建议（先跑这三个）
