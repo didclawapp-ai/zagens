@@ -288,9 +288,11 @@ export function MessageBubble({
             </button>
             {toolsExpanded && (
               <div className="space-y-1.5 border-t border-divider px-2.5 pb-2.5 pt-2">
-                {message.tools.map((tool) =>
-                  renderToolCard(tool, onOpenDiffInPanel, t('chatMarkdown.copyTool'), agentStates),
-                )}
+                {message.tools.map((tool) => (
+                  <div key={tool.id} className="tool-stream-item">
+                    {renderToolCard(tool, onOpenDiffInPanel, t('chatMarkdown.copyTool'), agentStates)}
+                  </div>
+                ))}
               </div>
             )}
           </div>

@@ -41,7 +41,7 @@ LHT 的第一原则是**事实源 > 模型声明**（[`LONG_HORIZON_CODE_TASKS.m
 | 案例 | 任务 | 钓出的漏洞 | 验收信号（回归时盯） |
 |------|------|-----------|---------------------|
 | **DEMO2** | Go 解释器（写文件后 prose 收尾） | **progress-pass 放行早停**：写了文件却 0% checklist 收尾 | gate 不再 `SkipProgressReset`；`thr_0eda7dcc` 重放 `incomplete=true` 时必须续写 |
-| **DEMO3** | 2W 行 Go 解释器（Monkey） | **验收塌缩成创建项**：checklist 全勾、turn `Completed`，但实跑 4 示例崩 2（`%` 取模、`counter1` 词法器不认） | 凡「运行/构建/跑示例」类验收**必须** `[verify: cmd]`；`unverified_acceptance_suffix` 兜漏标 ｜ **完整复现规格：** [`test-cases/DEMO3-monkey-interpreter.md`](./test-cases/DEMO3-monkey-interpreter.md) |
+| **DEMO3** | 2W 行 Go 解释器（Monkey） | **验收塌缩成创建项**：checklist 全勾、turn `Completed`，但实跑 4 示例崩 2（`%` 取模、`counter1` 词法器不认） | 凡「运行/构建/跑示例」类验收**必须** `[verify: cmd]`；漏标走**软门禁**（B：`unverified_acceptance` 不放行收尾，注入续写，发 `long_horizon.unverified_acceptance_nudge`）。**B 验证：连跑 5 次 5/5 真绿、nudge 全员触发、旧 `graph_complete` 假绿出口归零**（§7） ｜ **完整复现规格：** [`test-cases/DEMO3-monkey-interpreter.md`](./test-cases/DEMO3-monkey-interpreter.md) |
 | **DEMO4** | 2W 行 Go 解释器 | **step 耗尽型早停**：~29 分钟卡 40%、turn 空转，撞满默认 `max_steps:100` | `maybe_continue_at_step_limit` 再发预算窗口；`[stream-probe]` 恰 100 条是签名 |
 | **DEMO5** | 全新 Go 项目（Monkey 双后端解释器） | **plan/checklist 双计数**：实际全完成、可 build，但进度卡 61%、12 假未完成项、假 `incomplete_stop`；外加 **verify_gate 全 `mismatch` 假绿噪声** + **长 turn 内 cycle 不评估** | checklist 为完成权威 → 100%/0 open；verify matcher 不再误判；`maybe_advance_cycle_at_checkpoint` 长 turn 内换脑 |
 
@@ -106,7 +106,7 @@ prompt：<一句话目标，显式点名易漏特性>
 
 | 信号源 | 看什么 | 工具 |
 |--------|--------|------|
-| **`[lht-probe]` 节点流** | `continue_injected` 是否触发、`gate_skip` 的 `reason`、`verify_gate` 的 `verdict`(`verified`/`mismatch`/`untagged_ok`) | `Select-String -Path $env:USERPROFILE\.zagens\logs\sidecar.log -Pattern '\[lht-probe\]'` |
+| **`[lht-probe]` 节点流** | `continue_injected` 是否触发、`gate_skip` 的 `reason`、`verify_gate` 的 `verdict`(`verified`/`mismatch`/`unverified_acceptance`/`untagged_ok`)、漏标验收是否触发 `unverified_acceptance_nudge`（B 软门禁，理想：漏标→nudge→补 `[verify:]` 真跑→`verified`，而非 `graph_complete` 直接收尾） | `Select-String -Path $env:USERPROFILE\.zagens\logs\sidecar.log -Pattern '\[lht-probe\]'` |
 | **LHT 面板 Nodes Tab** | 决策流实时颜色编码(续写绿 / skip 黄 / `incomplete_stop` 红 / verify `mismatch` 橙) | Zagens 左下长程面板(DEMO5 #3 落地) |
 | **`[stream-probe]` 摘要** | 区分截断类型:`stop_reason`、`stream_errors`、`chunk_timeout`、流条数(恰 100 = step 耗尽签名) | 同上 grep `[stream-probe]` |
 | **进度图客观性** | checklist 全勾时 `completion_pct=100`、`open_items=0`、`incomplete=false`(DEMO5 #1 回归) | `harness/task-graph` 负载 |
@@ -142,3 +142,4 @@ prompt：<一句话目标，显式点名易漏特性>
 
 **文档修订记录:**
 - 2026-05-30 创建:编纂 DEMO2–DEMO5 真实压测为黄金回归案例 + 外部经典案例映射 + `[verify:]` 编写规范 + 最小回归集。
+- 2026-05-30 更新 DEMO3 行 + §5 信号表:记录 B（`unverified_acceptance` 软门禁）落地后连跑 5 次 5/5 真绿验证、`unverified_acceptance_nudge` 纳入观测信号、旧 `graph_complete` 假绿出口归零。

@@ -676,6 +676,18 @@ body {
     opacity: 1;
   }
 
+  /* Tool-stream list items: skip rendering + layout for off-screen tool cards.
+     Expanding a long tool stream (dozens of cards, each with large input/output
+     <pre> scroll boxes) used to mount and lay out every card at once — a spike
+     on expand and a stutter on every subsequent scroll frame. content-visibility
+     defers that work for cards outside the viewport (WebView2/Chromium supports
+     it), and contain-intrinsic-size reserves an estimated height so the
+     scrollbar stays stable and doesn't jump as cards render in. */
+  .tool-stream-item {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 96px;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .message-body-scroll--expanding {
       transition: none;

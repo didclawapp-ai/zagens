@@ -62,7 +62,19 @@ pub fn new_shared_subagent_manager(workspace: PathBuf, max_agents: usize) -> Sha
 
 /// Background zombie scan (P2-10): correct `Running` agents whose task finished
 /// without a status update, even when nothing calls `agent_list`.
+///
+/// `Engine::new` is a **synchronous** constructor that can be called outside a
+/// Tokio runtime — unit tests build an `Engine` from a plain `#[test]`, and a
+/// host may construct the engine before entering its async runtime. Bare
+/// `tokio::spawn` panics with "there is no reactor running" in that case, which
+/// would abort engine construction. This maintenance loop is best-effort
+/// background hygiene, so when no runtime is present we skip spawning it rather
+/// than panic; the sidecar always builds the engine inside its Tokio runtime,
+/// so production behavior is unchanged.
 pub fn spawn_subagent_maintenance_task(manager: SharedSubAgentManager) {
+    if tokio::runtime::Handle::try_current().is_err() {
+        return;
+    }
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(ZOMBIE_SCAN_INTERVAL).await;

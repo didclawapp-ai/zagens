@@ -5,7 +5,7 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
@@ -192,6 +192,35 @@ pub(in crate::tools::shell) fn spawn_reader_thread<R: Read + Send + 'static>(
     })
 }
 
+/// Grace period a just-exited child's reader thread gets to drain its pipe to
+/// EOF before we stop waiting on it. Comfortably covers the normal flush; only
+/// hit when a surviving grandchild keeps the pipe write handle open.
+const READER_DRAIN_GRACE: Duration = Duration::from_millis(500);
+
+/// Join a reader thread, but never block longer than [`READER_DRAIN_GRACE`].
+///
+/// `JoinHandle` has no timed join, so we poll [`JoinHandle::is_finished`]
+/// (stable since Rust 1.61) and detach instead of blocking if the thread is
+/// still reading — see [`BackgroundShell::collect_output`] for why an unbounded
+/// join can hang forever on a grandchild-held pipe. A detached thread is left
+/// to exit on its own; it only touches the shared output buffer behind a mutex,
+/// so dropping the handle is safe.
+fn join_reader_bounded(handle: Option<std::thread::JoinHandle<()>>) {
+    let Some(handle) = handle else {
+        return;
+    };
+    let deadline = Instant::now() + READER_DRAIN_GRACE;
+    while !handle.is_finished() {
+        if Instant::now() >= deadline {
+            // Surviving grandchild still holds the pipe — detach rather than
+            // wedge poll()/kill()/the foreground timeout loop.
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let _ = handle.join();
+}
+
 /// A background shell process being tracked
 pub struct BackgroundShell {
     pub id: String,
@@ -243,14 +272,30 @@ impl BackgroundShell {
         }
     }
 
-    /// Collect output from the background threads
+    /// Collect output from the background reader threads.
+    ///
+    /// The reader threads (`spawn_reader_thread`) block on `read()` until the
+    /// child's stdout/stderr pipe reaches EOF. Normally EOF arrives the moment
+    /// the child exits — but if the child spawned a **grandchild that inherited
+    /// the pipe write handle** (PowerShell `Start-Process -NoNewWindow`, a
+    /// daemonized server, any `cmd &` background job, …), the write end stays
+    /// open for as long as that grandchild lives, so the readers never see EOF.
+    /// A blocking `join()` here would then hang forever — wedging `poll()` /
+    /// `kill()` and, transitively, the foreground timeout loop in
+    /// `helpers::execute_foreground_via_background` (which calls `poll()` while
+    /// holding the shell-manager lock, so it never reaches its own deadline
+    /// check). That is exactly how an `exec_shell` that launches a long-lived
+    /// server hangs the whole turn regardless of `timeout_ms`.
+    ///
+    /// So we join only with a bounded grace period: long enough for the common
+    /// case where the readers drain a just-exited child's pipe and exit, then
+    /// **detach** (drop the handle) if a surviving grandchild is still holding
+    /// the pipe. Detached readers keep appending to the shared buffer harmlessly
+    /// and exit on their own once the handle finally closes (or at process exit);
+    /// the output captured up to this point is already in the buffer.
     fn collect_output(&mut self) {
-        if let Some(handle) = self.stdout_thread.take() {
-            let _ = handle.join();
-        }
-        if let Some(handle) = self.stderr_thread.take() {
-            let _ = handle.join();
-        }
+        join_reader_bounded(self.stdout_thread.take());
+        join_reader_bounded(self.stderr_thread.take());
         self.stdin = None;
         self.child = None;
     }
@@ -441,4 +486,63 @@ pub(in crate::tools::shell) fn tail_text(text: &str, max_chars: usize) -> String
         .rev()
         .collect::<String>();
     format!("...{tail}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::mpsc;
+
+    #[test]
+    fn join_reader_bounded_detaches_when_thread_never_finishes() {
+        // Models a reader thread blocked on a pipe whose write handle is held
+        // open by a surviving grandchild: it never returns. The bounded join
+        // must give up after the grace window instead of hanging forever
+        // (the regression that wedged poll()/kill()/the foreground timeout).
+        let (unblock_tx, unblock_rx) = mpsc::channel::<()>();
+        let handle = std::thread::spawn(move || {
+            // Block until the test explicitly releases us (simulates EOF).
+            let _ = unblock_rx.recv();
+        });
+
+        let started = Instant::now();
+        join_reader_bounded(Some(handle));
+        let elapsed = started.elapsed();
+
+        // Returned via detach (not by the thread finishing) — so it must be
+        // close to the grace window, never unbounded.
+        assert!(
+            elapsed >= READER_DRAIN_GRACE,
+            "should have waited the full grace window, waited {elapsed:?}"
+        );
+        assert!(
+            elapsed < READER_DRAIN_GRACE + Duration::from_secs(2),
+            "detach took too long ({elapsed:?}); join was effectively unbounded"
+        );
+
+        // Release the still-running detached thread so the test leaks nothing.
+        let _ = unblock_tx.send(());
+    }
+
+    #[test]
+    fn join_reader_bounded_joins_promptly_when_thread_finishes() {
+        // The common case: the child exited, the reader drained EOF and is
+        // about to return. We should join (near-)immediately, well under the
+        // grace window.
+        let handle = std::thread::spawn(|| {
+            std::thread::sleep(Duration::from_millis(20));
+        });
+        let started = Instant::now();
+        join_reader_bounded(Some(handle));
+        assert!(
+            started.elapsed() < READER_DRAIN_GRACE,
+            "a finishing reader should be joined before the grace window elapses"
+        );
+    }
+
+    #[test]
+    fn join_reader_bounded_handles_none() {
+        // No reader thread (e.g. tty stderr) — must be a no-op.
+        join_reader_bounded(None);
+    }
 }

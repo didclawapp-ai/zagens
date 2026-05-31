@@ -154,6 +154,33 @@ Select-String -Path $env:USERPROFILE\.zagens\logs\sidecar.log -Pattern '\[stream
 
 ---
 
+## 7. 2026-05-30 B 落地后验证（5/5 真绿，B 全员上场）
+
+打包重装含 B 的二进制后，用 DEMO3 复现 prompt **连跑 5 次**（产物 `F:\DEMO3\1..5`），全程客观 oracle + 日志双核验，**不看模型 prose**：
+
+**产物侧（最终裁判）—— 5/5 真绿：**
+- 5 个产物 `go build ./...` / `go vet ./...` / `go test ./...` 全部 **exit 0**。
+- 两个钓鱼特性全过（5/5）：`puts(10 % 3)` → `1`（取模正确）；`let counter1 = 42; let x9y = 7; puts(counter1 + x9y)` → `49`（数字标识符未被词法器截断，否则 `counter1` 截成 `counter` 会报未定义）。
+- 一点观察：run 3/run 5 未生成任何 `_test.go`、run 2 只有 lexer/parser 有测试 → 这些 run 的 `go test` 全绿是"无测试 trivially green"。产物功能正确（钓鱼特性实跑过），但**测试覆盖各 run 落差大**——属语义阈值（DEMO6 边界）后续要管，不是本次假绿问题。
+
+**日志侧（`~/.zagens/logs/sidecar.log`）—— B 确实上场、旧假绿出口消失：**
+
+| 信号 | 这批 | 旧批（§6 之前） | 含义 |
+|------|------|----------------|------|
+| `long_horizon.unverified_acceptance_nudge` | **5**（每 run 各 1 次，`count:1`） | 0 | B 新事件，全员触发 |
+| `graph_complete` / `gate_skip` | **0** | 失败 100% 走这条 | 旧假绿出口彻底没出现 |
+| `verify_gate verdict=verified` | 16 | — | 模型补 `[verify:]` 且匹配到真实执行 |
+| `incomplete_stop`/`loop_guard`/`blocked` | 0 | 0 | 无其它失败出口 |
+
+**B 因果链坐实**（run 5 `thr_1069b5b2`）：items 1–8 `untagged_ok` → item 9/10 复合验收行无 tag → `unverified_acceptance` → **B 阻断 + nudge(count:1)** → 模型续写给后续项补 `[verify: go build/vet/test]` → 判 `verified`。`step_limit_continue{open_items:3}` 是正常步数续写，非失败。`verify_gate` 明细可见 `[verify: go build ./...] 编译通过`、`[verify: go test ./...] 测试全绿` 等**真跑后**的 `verified` 记录——模型是真执行命令，不是空贴标签逃逸。
+
+**判定：B 治本成功。** 主因（可运行验收漏标 `[verify:]` → graph_complete 假绿）在这 5 次 100% 被拦下并纠偏，产物 5/5 客观真绿，对比交接基线 ~62.5% 显著提升。**收尾结束。**
+
+**残留洞（下一锤候选，已标注）：** `mismatch` 出现 4 次 = 模型贴了 `[verify: cmd]` 但匹配器没关联到执行（多为复合/改写措辞命令）。问题在 **B 只阻断 `unverified_acceptance`、不阻断 `mismatch`**——理论上模型只贴标签不真跑就能降级逃逸。这次未造成假绿（命令真跑了，只是匹配器对复合命令太严没关联上），属信号质量问题。建议后续：让 B 对"标了 `[verify:]` 却无匹配执行（mismatch）的验收项"也做一次更克制的阻断，或放宽匹配器对复合命令的关联。
+
+---
+
 **修订记录:**
 - 2026-05-30 创建：DEMO3 复现规格（prompt + `[verify:]` checklist + oracle/conformance 脚本 + 离线回放 + 判定矩阵）。
 - 2026-05-30 补 §6：记录复跑结论（真绿但闭环未阻断），并落地 B（`unverified_acceptance` 软提示→软门禁/续写 gate）+ A（plan display-only 大纲淡化 UI）。
+- 2026-05-30 补 §7：B 落地后 DEMO3 连跑 5 次验证——5/5 真绿、B 全员上场、旧 `graph_complete` 假绿出口归零；标注 `mismatch` 残留逃逸洞为下一锤候选。收尾结束。

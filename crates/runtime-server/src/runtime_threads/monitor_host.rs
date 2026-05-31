@@ -109,6 +109,18 @@ impl RuntimeThreadMonitorHost<super::RuntimeEnginePolicy, super::RuntimeUserInpu
     }
 
     async fn observe_harness_status(&self, thread_id: &str, turn_id: &str, message: &str) {
+        // Authoritative checklist snapshot pushed by the engine on every
+        // successful checklist mutation (CCR progress-desync fix). Reconcile the
+        // persisted/cached checklist — the source the desktop UI reads — to the
+        // engine's truth, then re-emit the checklist + task-graph panels. This
+        // closes the gap where the monitor's per-tool persistence missed a
+        // checklist mutation and left the UI frozen mid-task.
+        if let Some(checklist_json) = message.strip_prefix("long_horizon.checklist_persist:") {
+            self.persist_thread_checklist(thread_id, checklist_json);
+            let _ = self.emit_panel_checklist(thread_id, turn_id).await;
+            let _ = self.emit_panel_harness_task_graph(thread_id, turn_id).await;
+            return;
+        }
         if self.update_harness_telemetry_from_status(thread_id, message) {
             let _ = self.emit_panel_harness_task_graph(thread_id, turn_id).await;
         }

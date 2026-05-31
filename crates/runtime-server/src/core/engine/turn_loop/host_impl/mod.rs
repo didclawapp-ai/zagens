@@ -363,6 +363,31 @@ impl TurnLoopHost for Engine {
             )
         {
             let checklist = self.config_ext().todos.lock().await.snapshot();
+
+            // Authoritative checklist sync (CCR progress-desync fix): push the
+            // engine's *live* checklist snapshot to the host through the reliable
+            // harness-status channel. The persisted checklist that the desktop UI
+            // reads is otherwise written ONLY by the monitor's per-tool
+            // `ToolCallComplete` hook, which silently misses some checklist
+            // mutations — e.g. a `checklist_update` issued in a parallel/deferred
+            // tool batch whose `ToolCallStarted` the monitor never tracked, so its
+            // completion is dropped by the `tool_items` id-match. The result is a
+            // progress bar / checklist frozen mid-task (observed at 7/12 = 58%)
+            // even though the engine's task graph is actually complete. Emitting
+            // here — where we already hold the authoritative snapshot for every
+            // successful checklist mutation — guarantees the UI reconciles to the
+            // engine's truth regardless of monitor event-tracking gaps. The JSON
+            // is a serialized `TodoListSnapshot`, exactly what `checklist_from_json`
+            // and the `panel.checklist` consumer already parse.
+            if let Ok(checklist_json) = serde_json::to_string(&checklist) {
+                let _ = self
+                    .tx_event
+                    .send(Event::status(format!(
+                        "long_horizon.checklist_persist:{checklist_json}"
+                    )))
+                    .await;
+            }
+
             let lang = self.config.locale_tag.clone();
             let recent = self
                 .runtime_ext()

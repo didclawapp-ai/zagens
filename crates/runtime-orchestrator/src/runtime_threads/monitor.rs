@@ -869,35 +869,47 @@ where
                     }
                 }
                 EngineEvent::Status { message } => {
-                    let item = TurnItemRecord {
-                        schema_version: CURRENT_RUNTIME_SCHEMA_VERSION,
-                        id: format!("item_{}", &Uuid::new_v4().to_string()[..8]),
-                        turn_id: turn_id.clone(),
-                        kind: TurnItemKind::Status,
-                        status: TurnItemLifecycleStatus::Completed,
-                        summary: summarize_text(&message, SUMMARY_LIMIT),
-                        detail: Some(message.clone()),
-                        metadata: None,
-                        artifact_refs: Vec::new(),
-                        started_at: Some(Utc::now()),
-                        ended_at: Some(Utc::now()),
-                    };
-                    mgr.save_item_and_attach_blocking(&item, &turn_id).await?;
-                    mgr.emit_event(
-                        &thread_id,
-                        Some(&turn_id),
-                        Some(&item.id),
-                        "item.completed",
-                        json!({ "item": item }),
-                    )
-                    .await?;
-                    if message.starts_with("long_horizon.") {
-                        // [lht-probe] central tee: every harness node decision
-                        // (gate_skip/continue_injected/blocked/context_warning/
-                        // nudge_outcome) lands in sidecar.log for offline debug.
-                        eprintln!("[lht-probe] {message} thread={thread_id} turn={turn_id}");
+                    // Internal authoritative-checklist sync carries the full
+                    // checklist JSON in its payload — persist it via the host but
+                    // do NOT create a verbose status timeline item for it (it is a
+                    // reconciliation signal, not a user-facing harness decision).
+                    if message.starts_with("long_horizon.checklist_persist:") {
+                        eprintln!(
+                            "[lht-probe] long_horizon.checklist_persist thread={thread_id} turn={turn_id}"
+                        );
                         host.observe_harness_status(&thread_id, &turn_id, &message)
                             .await;
+                    } else {
+                        let item = TurnItemRecord {
+                            schema_version: CURRENT_RUNTIME_SCHEMA_VERSION,
+                            id: format!("item_{}", &Uuid::new_v4().to_string()[..8]),
+                            turn_id: turn_id.clone(),
+                            kind: TurnItemKind::Status,
+                            status: TurnItemLifecycleStatus::Completed,
+                            summary: summarize_text(&message, SUMMARY_LIMIT),
+                            detail: Some(message.clone()),
+                            metadata: None,
+                            artifact_refs: Vec::new(),
+                            started_at: Some(Utc::now()),
+                            ended_at: Some(Utc::now()),
+                        };
+                        mgr.save_item_and_attach_blocking(&item, &turn_id).await?;
+                        mgr.emit_event(
+                            &thread_id,
+                            Some(&turn_id),
+                            Some(&item.id),
+                            "item.completed",
+                            json!({ "item": item }),
+                        )
+                        .await?;
+                        if message.starts_with("long_horizon.") {
+                            // [lht-probe] central tee: every harness node decision
+                            // (gate_skip/continue_injected/blocked/context_warning/
+                            // nudge_outcome) lands in sidecar.log for offline debug.
+                            eprintln!("[lht-probe] {message} thread={thread_id} turn={turn_id}");
+                            host.observe_harness_status(&thread_id, &turn_id, &message)
+                                .await;
+                        }
                     }
                 }
                 EngineEvent::Error { envelope, .. } => {
