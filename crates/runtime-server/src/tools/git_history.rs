@@ -444,17 +444,39 @@ fn pathspec_from(working_dir: &Path, resolved: &Path) -> PathBuf {
     }
 }
 
+/// Wall-clock cap on a single `git` invocation (C6) — see `git.rs`.
+const GIT_TIMEOUT_MS: u64 = 30_000;
+
 async fn run_git_command(working_dir: &Path, args: &[String]) -> Result<Output, ToolError> {
     // C4: async process to avoid blocking a tokio worker on a slow git call.
     let mut cmd = tokio::process::Command::new("git");
-    cmd.args(args).current_dir(working_dir);
-    cmd.output().await.map_err(|e| {
+    cmd.args(args)
+        .current_dir(working_dir)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        // `spawn()` defaults to inheriting stdio (unlike `output()`), so we must
+        // pipe explicitly or `wait_with_output()` would capture nothing.
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
+    let child = cmd.spawn().map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
             ToolError::not_available("git is not installed or not in PATH")
         } else {
             ToolError::execution_failed(format!("Failed to run git: {e}"))
         }
-    })
+    })?;
+    // C6: bound the call; on timeout the dropped child is killed (kill_on_drop).
+    match tokio::time::timeout(
+        std::time::Duration::from_millis(GIT_TIMEOUT_MS),
+        child.wait_with_output(),
+    )
+    .await
+    {
+        Ok(res) => res.map_err(|e| ToolError::execution_failed(format!("Failed to run git: {e}"))),
+        Err(_) => Err(ToolError::execution_failed(format!(
+            "git command exceeded the {GIT_TIMEOUT_MS} ms timeout and was killed"
+        ))),
+    }
 }
 
 fn format_command(working_dir: &Path, args: &[String]) -> String {

@@ -18,7 +18,7 @@
 | C3 | **SSRF：重定向/分支不复校验 IP** — `fetch_url` 初始 URL 校验内网 IP，但 302 跟随后不再校验；`web_run` 取页仅查 network policy、完全无 IP 阻断 | 健壮性/安全 | **P0**（取决于 network policy 是否默认 allow） | `fetch_url.rs:193-214`、`web_run/page.rs:39-89` | **已缓解** — 新增共享 `tools/ssrf.rs`:`fetch_with_ssrf_guard` 手动跟随重定向(`Policy::none()`),**每跳** host 都过 policy + `is_restricted_ip` + pin 校验后 IP;DNS 失败/零地址**fail closed**;`fetch_url` 与 `web_run/page` 共用。单测:metadata IP / 私网 / loopback / `::1` / localhost / DNS 失败 / 公网 IP 放行 ×5 |
 | C4 | **async 里同步阻塞 `Command::output()`** — 阻塞 tokio worker，并发工具相互拖累 | 健壮性/效率 | **P1** | `git.rs:259`、`git_history.rs:447`、`test_runner.rs:86`、`diagnostics.rs:165`、`describe_image.rs:248`(blocking reqwest) | **已缓解** — `git`/`git_history`/`test_runner` 改 `tokio::process::Command` + `.output().await`;`diagnostics` 把全部探测包进 `spawn_blocking`(深层 sync 助手树不动);`describe_image` 改异步 `reqwest::Client` |
 | C5 | **`follow_links(true)` 可跟符号链接读出工作区外** — walk 到的文件不过 `resolve_path` | 健壮性/安全 | **P1** | `runtime-adapters/.../workspace_walk.rs:27`（grep/glob/file_search/project 共用） | **已缓解** — 改 `follow_links(false)`(亦对齐 ripgrep 默认),工作区内指向区外的 symlink 不再被跟随;grep/glob/file_search/project 全过 |
-| C6 | **子进程/HTTP 无超时 + 响应体全量读** — git/test/office Python/web 抓取无 timeout；web 响应先 `bytes().await` 全读再按上限截断（OOM 风险在截断之前） | 健壮性/边界 | **P1** | `test_runner.rs`、`office_write.rs`、`fetch_url.rs`、`web_run/page.rs` | **大部已缓解★** — web 抓取改 `read_body_capped`(流式上限);`run_tests` 加 `timeout_ms`+ 超时树杀;`office_write` 超时改为杀进程。**剩**：git 子进程无超时、web `CancellationToken` 绑定待后续 |
+| C6 | **子进程/HTTP 无超时 + 响应体全量读** — git/test/office Python/web 抓取无 timeout；web 响应先 `bytes().await` 全读再按上限截断（OOM 风险在截断之前） | 健壮性/边界 | **P1** | `test_runner.rs`、`office_write.rs`、`fetch_url.rs`、`web_run/page.rs`、`git.rs`/`git_history.rs` | **大部已缓解★** — web 抓取改 `read_body_capped`(流式上限);`run_tests` 加 `timeout_ms`+ 超时树杀;`office_write` 超时改为杀进程;git 加 30s 超时 + `GIT_TERMINAL_PROMPT=0`。**剩**：web `CancellationToken` 绑定待后续 |
 | C7 | **静默截断、不报总数** — 结果超上限直接 `truncate`，部分工具无 `total`/`truncated`，模型以为已全 | 准确性 | **P1** | `file_search.rs`；`shell_output.rs` summary | **已缓解** — grep/glob 有 `truncated`;`file_search` 返回 `{matches,total_matches,returned,truncated}`★;`shell_output::summarize_output` 现从尾部扫高信号行(`test result:`/失败/错误),不再只取头 3 行★ |
 | C8 | **编码：写侧不保留、edit/patch 仅 UTF-8** — `read_file`/`grep` 已 `detect_and_decode`，但 `write_file` 把 GB18030 静默转 UTF-8；`edit_file`/`apply_patch`/`fim` 仅 `read_to_string`（非 UTF-8 直接报错） | 健壮性/准确性 | **P1** | `write.rs`、`edit.rs`、`apply_patch.rs`、`fim.rs` | **已缓解★** — 新增 `encode_text`(支持 utf-8/utf-16le/be(含 BOM)/gb18030/win-1252)+ `read_decoded_for_edit`;`write_file`/`edit_file`(4 op)/`fim`/`apply_patch`(含 PendingWrite 编码透传 + 回滚)均读侧 `detect_and_decode`、写侧按原编码回写 |
 
@@ -107,7 +107,7 @@
 - **[已缓解★] `search.rs:755-760`** — BM25 用 `file_match_total` 预计算去掉 O(文件×匹配)。
 - **[P1] `search.rs:328`** — 每次 grep 调 `ensure_symbol_index`,陈旧时后台全量构建。
 - **[P2] `search.rs:318-321`** — BM25 仅对**已截断**的 matches 重排,第 101 个相关命中(在未扫文件)模型永远看不到（有 `truncated`）。
-- **[部分缓解] `git.rs`/`git_history.rs` C4 + C6** — C4 阻塞 async 已修(tokio::process);**C6 子进程无超时仍未做**;大 diff 先挂起再 40k 截断。
+- **[已缓解★] `git.rs`/`git_history.rs` C4 + C6** — C4 阻塞 async 已修(tokio::process);C6 现加 30s 超时 + `kill_on_drop` + `GIT_TERMINAL_PROMPT=0`(防凭据提示挂起)。大 diff 仍先读后 40k 截断(P2)。
 
 ---
 
@@ -151,7 +151,7 @@
 ### P1（长任务高频痛点 — 多为快速修）
 6. **C2 foreground 透传 `cwd`** ★ — `execute_foreground_via_background` 加 `working_dir` 参数,`exec.rs:318` 传 `working_dir.as_deref()`。**~5 行,直接消除 MicroStack 那类 cwd 落错**。
 7. **C4 async 阻塞** — ✅ 已缓解(git/git_history/test_runner→tokio::process;diagnostics→spawn_blocking;describe_image→异步 reqwest)。
-8. **C6 子进程/HTTP 超时 + kill** — ✅ test_runner 加 `timeout_ms`+树杀;✅ office Python 超时杀进程;✅ web 抓取流式上限。**剩** git 子进程超时 + web cancel 绑定(待后续)。
+8. **C6 子进程/HTTP 超时 + kill** — ✅ test_runner 加 `timeout_ms`+树杀;✅ office Python 超时杀进程;✅ web 抓取流式上限;✅ git 30s 超时 + `GIT_TERMINAL_PROMPT=0`。**剩** web `CancellationToken` 绑定(待后续)。
 9. **C5 symlink** — ✅ 已缓解(`workspace_walk` 改 `follow_links(false)`)。
 10. **C7 截断报总数** — ✅ `file_search` 补 `total_matches`/`truncated`;✅ `shell_output` summary 从尾部扫(均已缓解)。
 11. **C8 编码保留** — ✅ `write_file`/`edit_file`/`fim`/`apply_patch` 全部按原编码回写(已缓解)。
