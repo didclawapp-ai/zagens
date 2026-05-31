@@ -174,6 +174,7 @@ impl ToolSpec for WebSearchTool {
         // `run_bing_search` so a deny on one engine doesn't block the other.
         let decider = context.network_policy.as_ref();
         check_policy(decider, DUCKDUCKGO_HOST)?;
+        crate::tools::ssrf::ensure_not_cancelled(context.cancel_token.as_ref())?;
 
         let client = reqwest::Client::builder()
             .timeout(Duration::from_millis(timeout_ms))
@@ -202,7 +203,7 @@ impl ToolSpec for WebSearchTool {
         match ddg_resp {
             Err(ddg_err) => {
                 check_policy(decider, BING_HOST)?;
-                match run_bing_search(&client, &query, max_results).await {
+                match run_bing_search(&client, &query, max_results, context.cancel_token.as_ref()).await {
                     Ok(fallback) if !fallback.is_empty() => {
                         results = fallback;
                         source = "bing".to_string();
@@ -227,7 +228,7 @@ impl ToolSpec for WebSearchTool {
                 if !status.is_success() {
                     check_policy(decider, BING_HOST)?;
                     let code = status.as_u16();
-                    match run_bing_search(&client, &query, max_results).await {
+                    match run_bing_search(&client, &query, max_results, context.cancel_token.as_ref()).await {
                         Ok(fallback) if !fallback.is_empty() => {
                             results = fallback;
                             source = "bing".to_string();
@@ -247,7 +248,12 @@ impl ToolSpec for WebSearchTool {
                         }
                     }
                 } else {
-                    match crate::tools::ssrf::read_body_capped(resp, MAX_SEARCH_RESPONSE_BYTES).await
+                    match crate::tools::ssrf::read_body_capped(
+                        resp,
+                        MAX_SEARCH_RESPONSE_BYTES,
+                        context.cancel_token.as_ref(),
+                    )
+                    .await
                     {
                         Ok((bytes, _truncated)) => {
                             let body = String::from_utf8_lossy(&bytes).into_owned();
@@ -256,7 +262,7 @@ impl ToolSpec for WebSearchTool {
                             if results.is_empty() {
                                 let duckduckgo_blocked = is_duckduckgo_challenge(&body);
                                 check_policy(decider, BING_HOST)?;
-                                match run_bing_search(&client, &query, max_results).await {
+                                match run_bing_search(&client, &query, max_results, context.cancel_token.as_ref()).await {
                                     Ok(fallback_results) if !fallback_results.is_empty() => {
                                         results = fallback_results;
                                         source = "bing".to_string();
@@ -284,7 +290,7 @@ impl ToolSpec for WebSearchTool {
                         }
                         Err(read_err) => {
                             check_policy(decider, BING_HOST)?;
-                            match run_bing_search(&client, &query, max_results).await {
+                            match run_bing_search(&client, &query, max_results, context.cancel_token.as_ref()).await {
                                 Ok(fallback) if !fallback.is_empty() => {
                                     results = fallback;
                                     source = "bing".to_string();
@@ -384,6 +390,7 @@ async fn run_bing_search(
     client: &reqwest::Client,
     query: &str,
     max_results: usize,
+    cancel: Option<&tokio_util::sync::CancellationToken>,
 ) -> Result<Vec<WebSearchEntry>, ToolError> {
     let encoded = url_encode(query);
     let url = format!("https://www.bing.com/search?q={encoded}");
@@ -399,8 +406,12 @@ async fn run_bing_search(
         .map_err(|e| ToolError::execution_failed(format!("Bing fallback request failed: {e}")))?;
 
     let status = resp.status();
-    let (bytes, _truncated) =
-        crate::tools::ssrf::read_body_capped(resp, MAX_SEARCH_RESPONSE_BYTES).await?;
+    let (bytes, _truncated) = crate::tools::ssrf::read_body_capped(
+        resp,
+        MAX_SEARCH_RESPONSE_BYTES,
+        None,
+    )
+    .await?;
     let body = String::from_utf8_lossy(&bytes).into_owned();
 
     if !status.is_success() {

@@ -66,7 +66,12 @@ pub(in crate::tools::web_run) async fn fetch_page(
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
     // C6: cap the buffered body so an unbounded response can't OOM us.
-    let (bytes, _truncated) = crate::tools::ssrf::read_body_capped(resp, MAX_PAGE_BYTES).await?;
+    let (bytes, _truncated) = crate::tools::ssrf::read_body_capped(
+        resp,
+        MAX_PAGE_BYTES,
+        context.cancel_token.as_ref(),
+    )
+    .await?;
 
     if !status.is_success() {
         return Err(ToolError::execution_failed(format!(

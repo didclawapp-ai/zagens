@@ -107,6 +107,11 @@ impl ToolSpec for GlobFilesTool {
         let respect_gitignore = optional_bool(&input, "respect_gitignore", true);
 
         let base_path = context.resolve_path(path_str)?;
+        if !base_path.exists() {
+            return Err(ToolError::invalid_input(format!(
+                "Path does not exist: {path_str}"
+            )));
+        }
         let glob_set = build_glob_set(pattern)?;
 
         let files = collect_workspace_files(&base_path, respect_gitignore);
@@ -243,5 +248,17 @@ mod tests {
         assert_eq!(paths.len(), 1);
         assert!(paths[0].contains("main.rs"));
         assert!(!paths.iter().any(|p| p.contains("root.rs")));
+    }
+
+    #[tokio::test]
+    async fn glob_files_errors_when_path_missing() {
+        let tmp = tempdir().expect("tempdir");
+        let ctx = ToolContext::new(tmp.path().to_path_buf());
+        let tool = GlobFilesTool;
+        let err = tool
+            .execute(json!({"pattern": "*.rs", "path": "no_such_dir"}), &ctx)
+            .await
+            .expect_err("missing path should error");
+        assert!(!err.to_string().is_empty());
     }
 }

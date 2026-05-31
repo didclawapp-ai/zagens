@@ -1,21 +1,37 @@
 //! Web search backends (DuckDuckGo, Bing, image query).
 
 use super::html::{
-    is_duckduckgo_challenge, parse_bing_results,
-    parse_duckduckgo_results, url_encode,
+    is_duckduckgo_challenge, parse_bing_results, parse_duckduckgo_results, url_encode,
 };
 use super::types::{ImageResultEntry, SearchEntry, WebLink, WebPage};
 use super::USER_AGENT;
-use crate::tools::spec::ToolError;
+use crate::network_policy::NetworkPolicyDecider;
+use crate::tools::spec::{ToolContext, ToolError};
+use deepseek_runtime_adapters::tools::check_host_policy;
 use serde::Deserialize;
 use std::time::Duration;
+use tokio_util::sync::CancellationToken;
+
+const DUCKDUCKGO_HOST: &str = "html.duckduckgo.com";
+const BING_HOST: &str = "www.bing.com";
+const MAX_SEARCH_RESPONSE_BYTES: usize = 5 * 1024 * 1024;
+
+fn check_policy(decider: Option<&NetworkPolicyDecider>, host: &str) -> Result<(), ToolError> {
+    check_host_policy(decider, "web.run", host)
+        .map_err(|e| ToolError::permission_denied(e.denial_message()))
+}
 
 pub(in crate::tools::web_run) async fn run_search(
     query: &str,
     max_results: usize,
     timeout_ms: u64,
     domains: &[String],
+    context: &ToolContext,
 ) -> Result<(Vec<SearchEntry>, String, Option<String>), ToolError> {
+    let decider = context.network_policy.as_ref();
+    check_policy(decider, DUCKDUCKGO_HOST)?;
+    crate::tools::ssrf::ensure_not_cancelled(context.cancel_token.as_ref())?;
+
     let client = reqwest::Client::builder()
         .timeout(Duration::from_millis(timeout_ms))
         .user_agent(USER_AGENT)
@@ -24,7 +40,9 @@ pub(in crate::tools::web_run) async fn run_search(
 
     let encoded = url_encode(query);
     let url = format!("https://html.duckduckgo.com/html/?q={encoded}");
-    let resp = client
+    let cancel = context.cancel_token.as_ref();
+
+    let ddg_resp = client
         .get(&url)
         .header(
             "Accept",
@@ -32,49 +50,124 @@ pub(in crate::tools::web_run) async fn run_search(
         )
         .header("Accept-Language", "en-US,en;q=0.5")
         .send()
-        .await
-        .map_err(|e| ToolError::execution_failed(format!("Web search request failed: {e}")))?;
+        .await;
 
-    let status = resp.status();
-    let body = resp
-        .text()
-        .await
-        .map_err(|e| ToolError::execution_failed(format!("Failed to read response: {e}")))?;
-
-    if !status.is_success() {
-        return Err(ToolError::execution_failed(format!(
-            "Web search failed: HTTP {}",
-            status.as_u16()
-        )));
-    }
-
-    let mut results = parse_duckduckgo_results(&body, max_results);
-    let mut source = "duckduckgo".to_string();
+    let mut results;
+    let mut source;
     let mut warnings = Vec::new();
 
-    if results.is_empty() {
-        let duckduckgo_blocked = is_duckduckgo_challenge(&body);
-        match run_bing_search(&client, query, max_results).await {
-            Ok(fallback_results) if !fallback_results.is_empty() => {
-                results = fallback_results;
-                source = "bing".to_string();
-                warnings.push(if duckduckgo_blocked {
-                    "DuckDuckGo returned a bot challenge; used Bing fallback".to_string()
-                } else {
-                    "DuckDuckGo returned no parseable results; used Bing fallback".to_string()
-                });
+    match ddg_resp {
+        Err(err) => {
+            check_policy(decider, BING_HOST)?;
+            match run_bing_search(&client, query, max_results, cancel).await {
+                Ok(fallback) if !fallback.is_empty() => {
+                    results = fallback;
+                    source = "bing".to_string();
+                    warnings.push(format!(
+                        "DuckDuckGo request failed ({err}); used Bing fallback"
+                    ));
+                }
+                Ok(_) => {
+                    return Err(ToolError::execution_failed(format!(
+                        "Web search failed: DuckDuckGo request failed ({err}); Bing returned no results"
+                    )));
+                }
+                Err(bing_err) => {
+                    return Err(ToolError::execution_failed(format!(
+                        "Web search failed: DuckDuckGo request failed ({err}); Bing fallback: {bing_err}"
+                    )));
+                }
             }
-            Ok(_) if duckduckgo_blocked => {
-                return Err(ToolError::execution_failed(
-                    "DuckDuckGo returned a bot challenge and Bing fallback returned no results",
-                ));
+        }
+        Ok(resp) => {
+            let status = resp.status();
+            if !status.is_success() {
+                check_policy(decider, BING_HOST)?;
+                let code = status.as_u16();
+                match run_bing_search(&client, query, max_results, cancel).await {
+                    Ok(fallback) if !fallback.is_empty() => {
+                        results = fallback;
+                        source = "bing".to_string();
+                        warnings.push(format!(
+                            "DuckDuckGo returned HTTP {code}; used Bing fallback"
+                        ));
+                    }
+                    Ok(_) => {
+                        return Err(ToolError::execution_failed(format!(
+                            "Web search failed: DuckDuckGo HTTP {code} and Bing returned no results"
+                        )));
+                    }
+                    Err(bing_err) => {
+                        return Err(ToolError::execution_failed(format!(
+                            "Web search failed: DuckDuckGo HTTP {code}; Bing fallback: {bing_err}"
+                        )));
+                    }
+                }
+            } else {
+                match crate::tools::ssrf::read_body_capped(
+                    resp,
+                    MAX_SEARCH_RESPONSE_BYTES,
+                    cancel,
+                )
+                .await
+                {
+                    Ok((bytes, _truncated)) => {
+                        let body = String::from_utf8_lossy(&bytes).into_owned();
+                        source = "duckduckgo".to_string();
+                        results = parse_duckduckgo_results(&body, max_results);
+                        if results.is_empty() {
+                            let duckduckgo_blocked = is_duckduckgo_challenge(&body);
+                            check_policy(decider, BING_HOST)?;
+                            match run_bing_search(&client, query, max_results, cancel).await {
+                                Ok(fallback_results) if !fallback_results.is_empty() => {
+                                    results = fallback_results;
+                                    source = "bing".to_string();
+                                    warnings.push(if duckduckgo_blocked {
+                                        "DuckDuckGo returned a bot challenge; used Bing fallback"
+                                            .to_string()
+                                    } else {
+                                        "DuckDuckGo returned no parseable results; used Bing fallback"
+                                            .to_string()
+                                    });
+                                }
+                                Ok(_) if duckduckgo_blocked => {
+                                    return Err(ToolError::execution_failed(
+                                        "DuckDuckGo returned a bot challenge and Bing fallback returned no results",
+                                    ));
+                                }
+                                Err(err) if duckduckgo_blocked => {
+                                    return Err(ToolError::execution_failed(format!(
+                                        "DuckDuckGo returned a bot challenge and Bing fallback failed: {err}"
+                                    )));
+                                }
+                                Ok(_) | Err(_) => {}
+                            }
+                        }
+                    }
+                    Err(read_err) => {
+                        check_policy(decider, BING_HOST)?;
+                        match run_bing_search(&client, query, max_results, cancel).await {
+                            Ok(fallback) if !fallback.is_empty() => {
+                                results = fallback;
+                                source = "bing".to_string();
+                                warnings.push(format!(
+                                    "Failed to read DuckDuckGo response ({read_err}); used Bing fallback"
+                                ));
+                            }
+                            Ok(_) => {
+                                return Err(ToolError::execution_failed(format!(
+                                    "Web search failed: failed to read DuckDuckGo response ({read_err}); Bing returned no results"
+                                )));
+                            }
+                            Err(bing_err) => {
+                                return Err(ToolError::execution_failed(format!(
+                                    "Web search failed: failed to read DuckDuckGo response ({read_err}); Bing fallback: {bing_err}"
+                                )));
+                            }
+                        }
+                    }
+                }
             }
-            Err(err) if duckduckgo_blocked => {
-                return Err(ToolError::execution_failed(format!(
-                    "DuckDuckGo returned a bot challenge and Bing fallback failed: {err}"
-                )));
-            }
-            Ok(_) | Err(_) => {}
         }
     }
 
@@ -101,6 +194,7 @@ pub(in crate::tools::web_run) async fn run_bing_search(
     client: &reqwest::Client,
     query: &str,
     max_results: usize,
+    cancel: Option<&CancellationToken>,
 ) -> Result<Vec<SearchEntry>, ToolError> {
     let encoded = url_encode(query);
     let url = format!("https://www.bing.com/search?q={encoded}");
@@ -116,9 +210,13 @@ pub(in crate::tools::web_run) async fn run_bing_search(
         .map_err(|e| ToolError::execution_failed(format!("Bing fallback request failed: {e}")))?;
 
     let status = resp.status();
-    let body = resp.text().await.map_err(|e| {
-        ToolError::execution_failed(format!("Failed to read Bing fallback response: {e}"))
-    })?;
+    let (bytes, _truncated) = crate::tools::ssrf::read_body_capped(
+        resp,
+        MAX_SEARCH_RESPONSE_BYTES,
+        cancel,
+    )
+    .await?;
+    let body = String::from_utf8_lossy(&bytes).into_owned();
 
     if !status.is_success() {
         return Err(ToolError::execution_failed(format!(

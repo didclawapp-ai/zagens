@@ -12,11 +12,21 @@
 use std::time::Duration;
 
 use deepseek_runtime_adapters::tools::{check_url_policy, is_http_url, is_restricted_ip};
+use tokio_util::sync::CancellationToken;
 
 use crate::tools::spec::{ToolContext, ToolError};
 
 /// Maximum redirect hops we will follow before giving up.
 pub(crate) const MAX_REDIRECTS: usize = 5;
+
+/// Return an error when the turn's cancellation token has fired.
+pub(crate) fn ensure_not_cancelled(cancel: Option<&CancellationToken>) -> Result<(), ToolError> {
+    if cancel.is_some_and(CancellationToken::is_cancelled) {
+        Err(ToolError::execution_failed("request canceled"))
+    } else {
+        Ok(())
+    }
+}
 
 /// Read a response body but stop buffering once `max_bytes` have been read, so
 /// an unbounded / maliciously huge response can't OOM the runtime (C6). The
@@ -26,14 +36,24 @@ pub(crate) const MAX_REDIRECTS: usize = 5;
 pub(crate) async fn read_body_capped(
     mut resp: reqwest::Response,
     max_bytes: usize,
+    cancel: Option<&CancellationToken>,
 ) -> Result<(Vec<u8>, bool), ToolError> {
     let mut buf: Vec<u8> = Vec::new();
     let mut truncated = false;
     loop {
-        let chunk = resp
-            .chunk()
-            .await
-            .map_err(|e| ToolError::execution_failed(format!("failed to read body: {e}")))?;
+        ensure_not_cancelled(cancel)?;
+        let chunk = if let Some(token) = cancel {
+            tokio::select! {
+                biased;
+                _ = token.cancelled() => {
+                    return Err(ToolError::execution_failed("request canceled"));
+                }
+                chunk = resp.chunk() => chunk,
+            }
+        } else {
+            resp.chunk().await
+        };
+        let chunk = chunk.map_err(|e| ToolError::execution_failed(format!("failed to read body: {e}")))?;
         let Some(chunk) = chunk else { break };
         let remaining = max_bytes.saturating_sub(buf.len());
         if chunk.len() > remaining {
@@ -123,7 +143,9 @@ pub(crate) async fn fetch_with_ssrf_guard(
     timeout_ms: u64,
 ) -> Result<reqwest::Response, ToolError> {
     let mut current_url = initial_url.to_string();
+    let cancel = context.cancel_token.as_ref();
     for _ in 0..=MAX_REDIRECTS {
+        ensure_not_cancelled(cancel)?;
         let pinning = validate_url_ssrf(context, tool_name, &current_url).await?;
         let mut builder = reqwest::Client::builder()
             .timeout(Duration::from_millis(timeout_ms))
@@ -136,13 +158,27 @@ pub(crate) async fn fetch_with_ssrf_guard(
             ToolError::execution_failed(format!("failed to build HTTP client: {e}"))
         })?;
 
-        let resp = client
-            .get(&current_url)
-            .header("Accept", accept)
-            .header("Accept-Language", "en-US,en;q=0.5")
-            .send()
-            .await
-            .map_err(|e| ToolError::execution_failed(format!("request failed: {e}")))?;
+        let resp = if let Some(token) = cancel {
+            tokio::select! {
+                biased;
+                _ = token.cancelled() => {
+                    return Err(ToolError::execution_failed("request canceled"));
+                }
+                resp = client
+                    .get(&current_url)
+                    .header("Accept", accept)
+                    .header("Accept-Language", "en-US,en;q=0.5")
+                    .send() => resp,
+            }
+        } else {
+            client
+                .get(&current_url)
+                .header("Accept", accept)
+                .header("Accept-Language", "en-US,en;q=0.5")
+                .send()
+                .await
+        }
+        .map_err(|e| ToolError::execution_failed(format!("request failed: {e}")))?;
 
         if resp.status().is_redirection() {
             let location = resp

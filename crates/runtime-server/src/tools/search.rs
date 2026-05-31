@@ -17,6 +17,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
+use tokio_util::sync::CancellationToken;
 
 /// Wall-clock cap for the blocking file scan (C6 / audit §3 P0).
 const GREP_TIMEOUT_SECS: u64 = 120;
@@ -158,8 +159,9 @@ impl ToolSpec for GrepFilesTool {
     async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
         let pattern_str = required_str(&input, "pattern")?;
         let path_str = optional_str(&input, "path").unwrap_or(".");
-        let context_lines =
-            usize::try_from(optional_u64(&input, "context_lines", 2)).unwrap_or(usize::MAX);
+        let context_lines = usize::try_from(optional_u64(&input, "context_lines", 2))
+            .unwrap_or(2)
+            .min(20);
         let case_insensitive = optional_bool(&input, "case_insensitive", false);
         let symbol_index_enabled = optional_bool(&input, "symbol_index", false);
         let symbol_kind = optional_str(&input, "symbol_kind").map(|s| s.to_string());
@@ -225,6 +227,7 @@ impl ToolSpec for GrepFilesTool {
             max_results,
             output_mode,
             regex,
+            cancel: context.cancel_token.clone(),
         };
 
         let scan = match tokio::time::timeout(
@@ -251,6 +254,7 @@ impl ToolSpec for GrepFilesTool {
         let file_match_counts = scan.file_match_counts;
         let files_searched = scan.files_searched;
         let files_skipped_binary = scan.files_skipped_binary;
+        let files_skipped_io = scan.files_skipped_io;
         let files_skipped_size = scan.files_skipped_size;
         let total_matches = scan.total_matches;
 
@@ -468,6 +472,7 @@ impl ToolSpec for GrepFilesTool {
             ("total_matches".into(), serde_json::json!(total_matches)),
             ("files_searched".into(), serde_json::json!(files_searched)),
             ("files_skipped_binary".into(), serde_json::json!(files_skipped_binary)),
+            ("files_skipped_io".into(), serde_json::json!(files_skipped_io)),
             ("files_skipped_size".into(), serde_json::json!(files_skipped_size)),
             ("respect_gitignore".into(), serde_json::json!(respect_gitignore)),
             ("truncated".into(), serde_json::json!(truncated)),
@@ -503,6 +508,7 @@ struct GrepScanParams {
     max_results: usize,
     output_mode: GrepOutputMode,
     regex: Regex,
+    cancel: Option<CancellationToken>,
 }
 
 struct GrepFileScanOutput {
@@ -510,6 +516,7 @@ struct GrepFileScanOutput {
     file_match_counts: HashMap<String, usize>,
     files_searched: u64,
     files_skipped_binary: u64,
+    files_skipped_io: u64,
     files_skipped_size: u64,
     total_matches: usize,
 }
@@ -527,6 +534,7 @@ fn grep_file_scan(params: GrepScanParams) -> Result<GrepFileScanOutput, ToolErro
         max_results,
         output_mode,
         regex,
+        cancel,
     } = params;
 
     let files = collect_files(
@@ -540,10 +548,14 @@ fn grep_file_scan(params: GrepScanParams) -> Result<GrepFileScanOutput, ToolErro
     let mut file_match_counts: HashMap<String, usize> = HashMap::new();
     let mut files_searched = 0;
     let mut files_skipped_binary = 0u64;
+    let mut files_skipped_io = 0u64;
     let mut files_skipped_size = 0u64;
     let mut total_matches = 0;
 
     'files: for file_path in files {
+        if cancel.as_ref().is_some_and(CancellationToken::is_cancelled) {
+            break 'files;
+        }
         if output_mode == GrepOutputMode::Content && results.len() >= max_results {
             break;
         }
@@ -566,7 +578,7 @@ fn grep_file_scan(params: GrepScanParams) -> Result<GrepFileScanOutput, ToolErro
         }
 
         let Ok(raw_bytes) = fs::read(&file_path) else {
-            files_skipped_binary += 1;
+            files_skipped_io += 1;
             continue;
         };
         let (file_content, _enc, _via) = super::file::detect_and_decode(&raw_bytes);
@@ -631,6 +643,7 @@ fn grep_file_scan(params: GrepScanParams) -> Result<GrepFileScanOutput, ToolErro
         file_match_counts,
         files_searched,
         files_skipped_binary,
+        files_skipped_io,
         files_skipped_size,
         total_matches,
     })

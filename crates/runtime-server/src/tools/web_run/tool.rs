@@ -158,7 +158,7 @@ impl ToolSpec for WebRunTool {
                     .unwrap_or_default();
 
                 let (entries, source, warning) =
-                    run_search(&query, max_results, timeout_ms, &domains).await?;
+                    run_search(&query, max_results, timeout_ms, &domains, context).await?;
                 let mut warnings = Vec::new();
                 if recency > 0 {
                     warnings.push(format!(

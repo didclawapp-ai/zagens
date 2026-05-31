@@ -171,8 +171,12 @@ impl ToolSpec for FetchUrlTool {
         // C6: stream the body with a hard byte cap instead of buffering the
         // whole response first — a multi-GB / unbounded response would OOM us
         // before the post-hoc `[..max_bytes]` slice ever ran.
-        let (bytes, truncated) =
-            crate::tools::ssrf::read_body_capped(resp, max_bytes as usize).await?;
+        let (bytes, truncated) = crate::tools::ssrf::read_body_capped(
+            resp,
+            max_bytes as usize,
+            context.cancel_token.as_ref(),
+        )
+        .await?;
 
         let body_text = String::from_utf8_lossy(&bytes).to_string();
         let processed = match format {

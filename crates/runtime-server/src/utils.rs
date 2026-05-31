@@ -99,6 +99,15 @@ pub fn summarize_project(root: &Path) -> String {
     }
 }
 
+/// Default cap for `project_map` tool tree output (lines).
+pub const DEFAULT_PROJECT_TREE_LINE_LIMIT: usize = 500;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProjectTreeMeta {
+    pub total_lines: usize,
+    pub truncated: bool,
+}
+
 /// Generate a tree-like view of the project structure.
 ///
 /// Sibling order is fixed by sorting collected paths — the underlying
@@ -106,8 +115,15 @@ pub fn summarize_project(root: &Path) -> String {
 /// across filesystems. Sorting by full path preserves the tree shape (a
 /// directory still precedes its children because `"src" < "src/lib.rs"`)
 /// while making the rendered output byte-stable across runs.
+///
+/// When `max_lines` is `Some`, output is capped and [`ProjectTreeMeta::truncated`]
+/// reflects whether entries were omitted.
 #[must_use]
-pub fn project_tree(root: &Path, max_depth: usize) -> String {
+pub fn project_tree_with_limit(
+    root: &Path,
+    max_depth: usize,
+    max_lines: Option<usize>,
+) -> (String, ProjectTreeMeta) {
     let mut entries: Vec<(PathBuf, bool)> = Vec::new();
 
     let mut builder = WalkBuilder::new(root);
@@ -145,7 +161,30 @@ pub fn project_tree(root: &Path, max_depth: usize) -> String {
         ));
     }
 
-    tree_lines.join("\n")
+    let total = tree_lines.len();
+    let truncated = if let Some(limit) = max_lines {
+        if tree_lines.len() > limit {
+            tree_lines.truncate(limit);
+            true
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
+    (
+        tree_lines.join("\n"),
+        ProjectTreeMeta {
+            total_lines: total,
+            truncated,
+        },
+    )
+}
+
+#[must_use]
+pub fn project_tree(root: &Path, max_depth: usize) -> String {
+    project_tree_with_limit(root, max_depth, None).0
 }
 
 // === Filesystem Helpers ===

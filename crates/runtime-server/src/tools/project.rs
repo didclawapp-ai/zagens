@@ -1,6 +1,6 @@
 //! Project mapping tool for understanding codebase structure.
 
-use crate::utils::{is_key_file, project_tree, summarize_project};
+use crate::utils::{is_key_file, project_tree_with_limit, summarize_project, DEFAULT_PROJECT_TREE_LINE_LIMIT};
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::Serialize;
@@ -17,6 +17,8 @@ struct ProjectMap {
     tree: String,
     summary: String,
     key_files: Vec<String>,
+    tree_total_lines: usize,
+    tree_truncated: bool,
 }
 
 #[async_trait]
@@ -57,7 +59,8 @@ impl ToolSpec for ProjectMapTool {
 }
 
 fn generate_project_map(root: &std::path::Path, max_depth: usize) -> Result<ProjectMap, ToolError> {
-    let tree = project_tree(root, max_depth);
+    let (tree, tree_meta) =
+        project_tree_with_limit(root, max_depth, Some(DEFAULT_PROJECT_TREE_LINE_LIMIT));
     let summary = summarize_project(root);
 
     // For key_files, we can just do a quick scan since summarize_project doesn't return them directly anymore
@@ -78,5 +81,7 @@ fn generate_project_map(root: &std::path::Path, max_depth: usize) -> Result<Proj
         tree,
         summary,
         key_files,
+        tree_total_lines: tree_meta.total_lines,
+        tree_truncated: tree_meta.truncated,
     })
 }
