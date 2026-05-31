@@ -15,7 +15,7 @@
 |---|------|------|--------|----------|------|
 | C1 | **Windows 杀不掉进程树** — `child.kill()` 只杀直接子进程，`Start-Process`/守护进程化的孙进程变孤儿、继续占端口（今日 7878 占用即此） | 健壮性/跨平台 | **P0** | `process.rs:170-173,454-461`、`manager.rs:375-376,473-474`、`cancel.rs` | **已缓解** — 新增 `kill_process_tree(pid)` 走 `taskkill /T /F /PID`;非 unix `kill_child_process_group` 先树杀再 reap;`ShellChild::kill` 两平台统一走 group/tree kill(Drop / `BackgroundShell::kill` / cancel 自动受益);manager 两处 sync 超时 kill 统一。`#[cfg(windows)]` 单测 `test_exec_shell_kill_terminates_grandchild_process_tree` 验证孙进程被终止。**Job Object 更彻底但需改 spawn 多路;taskkill 为轻量足够方案** |
 | C2 | **foreground `exec_shell` 丢弃 `cwd` 参数** ★已核实 — 默认前台路径硬传 `None`，回退工作区根；background/interactive 正常 | 健壮性/边界 | **P1** | `exec.rs:318` → `helpers.rs:66-68`（对比 `exec.rs:296/308` 传 `working_dir`） | **已缓解** — `execute_foreground_via_background` 加 `working_dir` 形参,`exec.rs` 调用处透传 `working_dir.as_deref()`;单测 `test_exec_shell_foreground_respects_cwd`。**残留：** OpenSandbox `backend.exec`(`exec.rs:210`)仍不带 cwd(trait 协议改动,另议) |
-| C3 | **SSRF：重定向/分支不复校验 IP** — `fetch_url` 初始 URL 校验内网 IP，但 302 跟随后不再校验；`web_run` 取页仅查 network policy、完全无 IP 阻断 | 健壮性/安全 | **P0**（取决于 network policy 是否默认 allow） | `fetch_url.rs:193-214`、`web_run/page.rs:39-89` | 未缓解 |
+| C3 | **SSRF：重定向/分支不复校验 IP** — `fetch_url` 初始 URL 校验内网 IP，但 302 跟随后不再校验；`web_run` 取页仅查 network policy、完全无 IP 阻断 | 健壮性/安全 | **P0**（取决于 network policy 是否默认 allow） | `fetch_url.rs:193-214`、`web_run/page.rs:39-89` | **已缓解** — 新增共享 `tools/ssrf.rs`:`fetch_with_ssrf_guard` 手动跟随重定向(`Policy::none()`),**每跳** host 都过 policy + `is_restricted_ip` + pin 校验后 IP;DNS 失败/零地址**fail closed**;`fetch_url` 与 `web_run/page` 共用。单测:metadata IP / 私网 / loopback / `::1` / localhost / DNS 失败 / 公网 IP 放行 ×5 |
 | C4 | **async 里同步阻塞 `Command::output()`** — 阻塞 tokio worker，并发工具相互拖累 | 健壮性/效率 | **P1** | `git.rs:259`、`git_history.rs:447`、`test_runner.rs:86`、`diagnostics.rs:165`、`describe_image.rs:248`(blocking reqwest) | 未缓解 |
 | C5 | **`follow_links(true)` 可跟符号链接读出工作区外** — walk 到的文件不过 `resolve_path` | 健壮性/安全 | **P1** | `runtime-adapters/.../workspace_walk.rs:27`（grep/glob/file_search/project 共用） | 未缓解 |
 | C6 | **子进程/HTTP 无超时 + 响应体全量读** — git/test/office Python/web 抓取无 timeout；web 响应先 `bytes().await` 全读再按上限截断（OOM 风险在截断之前） | 健壮性/边界 | **P1** | `test_runner.rs:108`、`office_write.rs:1305`、`fetch_url.rs:223`、`web_run/page.rs:63` | 部分（输出截断有，但内存/挂起未防） |
@@ -114,8 +114,8 @@
 ## 4. Web/网络 + 实用工具（`web_search`/`fetch_url`/`web.run`/`validate_data`/`diagnostics`/`test_runner`/`describe_image`/`write_office`）
 
 **健壮性 / 安全**
-- **[P0] C3** — `fetch_url.rs:193-214` 重定向不复校验 IP;`web_run/page.rs:39-89` 完全无 IP 阻断（仅 network policy）。
-- **[P1] `fetch_url.rs:182-183`** — DNS 解析失败时**跳过** SSRF 检查放行,与成功路径策略不一致。
+- **[已缓解★] C3** — 共享 `tools/ssrf.rs::fetch_with_ssrf_guard` 手动跟随重定向、每跳复校验 IP;`fetch_url` 与 `web_run/page` 共用。
+- **[已缓解★] `fetch_url` DNS 失败** — `validate_url_ssrf` 现 DNS 失败/零地址 **fail closed**(拒绝),不再放行。
 - **[P1] C6** — `web_search.rs:248`/`page.rs:63`/`fetch_url.rs:223` 全量读响应体(只有展示截断,无内存/带宽防护);无 `CancellationToken` 绑定,取消后请求仍跑满 timeout。
 - **[P1] `web_run/search.rs:13-98`** — `web.run` 的 search 不调 `check_host_policy`、DDG 失败不 fallback Bing → 与 `web_search` 策略/结果不一致(policy deny 时仍可能出网)。
 - **[P1] `test_runner.rs:108`/`office_write.rs:1305`** — 无 timeout / 超时不 `kill` → Python 孤儿 + 文件锁残留。
@@ -143,9 +143,9 @@
 
 ### P0（挂死 / 丢数据 / 安全）
 1. **C1 Windows 进程树 kill** — ✅ 已缓解(`taskkill /T /F /PID`,kill/cancel/Drop/manager 超时四路统一)。Job Object 为后续更彻底选项。
-2. **C3 SSRF** — `fetch_url` 自定义 redirect policy 对每跳复校验 IP;`web_run/page` 补 `is_restricted_ip`。
+2. **C3 SSRF** — ✅ 已缓解(共享 `tools/ssrf.rs`,每跳复校验 + DNS fail closed)。
 3. **edit_file 空 search 防呆** — ✅ 已缓解(`edit.rs:149-158`,空/纯空白直接报错)。
-4. **grep UTF-16** — 解码先于 NUL 二进制嗅探,或对 UTF-16 BOM 放行。
+4. **grep UTF-16** — 解码先于 NUL 二进制嗅探,或对 UTF-16 BOM 放行。（待办 T7）
 5. **sync 路径 reader 无界 join** — ✅ 已缓解(`join_reader_thread_bounded`,sync 成功/超时两路均有界)。
 
 ### P1（长任务高频痛点 — 多为快速修）

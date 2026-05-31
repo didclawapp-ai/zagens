@@ -8,7 +8,6 @@ use super::types::{
 use super::USER_AGENT;
 use crate::tools::spec::{ToolContext, ToolError};
 use deepseek_runtime_adapters::tools::check_url_policy;
-use std::time::Duration;
 
 pub(in crate::tools::web_run) async fn resolve_or_fetch_page(
     ref_id: &str,
@@ -19,8 +18,10 @@ pub(in crate::tools::web_run) async fn resolve_or_fetch_page(
         return Ok(page);
     }
     if looks_like_url(ref_id) {
-        check_network_policy(ref_id, context)?;
-        return fetch_page(ref_id, timeout_ms).await;
+        // SSRF (C3): fetch_page validates network policy + restricted IPs on
+        // every redirect hop. (check_network_policy alone left web_run with no
+        // IP blocking at all — only policy host matching.)
+        return fetch_page(ref_id, timeout_ms, context).await;
     }
     Err(ToolError::invalid_input(format!(
         "Unknown ref_id '{ref_id}'"
@@ -36,23 +37,22 @@ pub(in crate::tools::web_run) fn check_network_policy(url: &str, context: &ToolC
     Ok(())
 }
 
-pub(in crate::tools::web_run) async fn fetch_page(url: &str, timeout_ms: u64) -> Result<WebPage, ToolError> {
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_millis(timeout_ms))
-        .user_agent(USER_AGENT)
-        .build()
-        .map_err(|e| ToolError::execution_failed(format!("Failed to build HTTP client: {e}")))?;
-
-    let resp = client
-        .get(url)
-        .header(
-            "Accept",
-            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        )
-        .header("Accept-Language", "en-US,en;q=0.5")
-        .send()
-        .await
-        .map_err(|e| ToolError::execution_failed(format!("Web request failed: {e}")))?;
+pub(in crate::tools::web_run) async fn fetch_page(
+    url: &str,
+    timeout_ms: u64,
+    context: &ToolContext,
+) -> Result<WebPage, ToolError> {
+    // SSRF (C3): validate every hop's host (policy + restricted IPs), follow
+    // redirects manually, pin the validated IP. Shared with fetch_url.
+    let resp = crate::tools::ssrf::fetch_with_ssrf_guard(
+        context,
+        "web_run",
+        url,
+        USER_AGENT,
+        "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        timeout_ms,
+    )
+    .await?;
 
     let status = resp.status();
     let content_type = resp

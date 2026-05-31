@@ -36,6 +36,7 @@ pub use deepseek_runtime_adapters::tools::schema_sanitize;
 pub mod search;
 pub mod shell;
 mod shell_output;
+pub mod ssrf;
 pub mod skill;
 pub mod spec;
 pub mod subagent;

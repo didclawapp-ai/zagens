@@ -10,19 +10,17 @@
 use super::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_u64,
 };
-use deepseek_runtime_adapters::tools::{check_url_policy, is_http_url, is_restricted_ip};
+use deepseek_runtime_adapters::tools::is_http_url;
 use async_trait::async_trait;
 use regex::Regex;
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::sync::OnceLock;
-use std::time::Duration;
 
 const DEFAULT_MAX_BYTES: u64 = 1_000_000;
 const HARD_MAX_BYTES: u64 = 10 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS: u64 = 15_000;
 const HARD_MAX_TIMEOUT_MS: u64 = 60_000;
-const MAX_REDIRECTS: usize = 5;
 const USER_AGENT: &str = "Mozilla/5.0 (compatible; ds-pick-runtime/0.8)";
 
 static SCRIPT_RE: OnceLock<Regex> = OnceLock::new();
@@ -140,76 +138,26 @@ impl ToolSpec for FetchUrlTool {
             ));
         }
 
-        // Extract host once for reuse across network policy + SSRF checks.
-        let url_host = check_url_policy(context.network_policy.as_ref(), "fetch_url", &url)
-            .map_err(|e| ToolError::permission_denied(e.denial_message()))?;
-
-        // SSRF protection: resolve hostname and reject private/link-local/loopback IPs.
-        // Prevents LLM-prompted requests to cloud metadata (169.254.169.254),
-        // localhost services, and internal networks.
-        // Pin the validated IP via ClientBuilder::resolve() to close the DNS rebinding
-        // TOCTOU window — reqwest will use the pinned IP instead of re-resolving.
-        let mut dns_pinning = None; // (hostname, validated_ip)
-        if let Some(host) = &url_host {
-            if host == "localhost" || host == "localhost.localdomain" {
-                return Err(ToolError::permission_denied(
-                    "requests to localhost are not allowed",
-                ));
-            }
-            if let Ok(ip) = host.parse::<std::net::IpAddr>() {
-                if is_restricted_ip(&ip) {
-                    return Err(ToolError::permission_denied(format!(
-                        "IP {ip} is a restricted address (private/loopback/link-local)"
-                    )));
-                }
-            } else if let Ok(addrs) = tokio::net::lookup_host((&**host, 0u16)).await {
-                let mut first_valid: Option<std::net::IpAddr> = None;
-                for addr in addrs {
-                    if is_restricted_ip(&addr.ip()) {
-                        return Err(ToolError::permission_denied(format!(
-                            "resolved IP {} is a restricted address (private/loopback/link-local)",
-                            addr.ip()
-                        )));
-                    }
-                    if first_valid.is_none() {
-                        first_valid = Some(addr.ip());
-                    }
-                }
-                if let Some(validated_ip) = first_valid {
-                    dns_pinning = Some((host.clone(), validated_ip));
-                }
-            }
-            // If DNS resolution fails, let the HTTP request proceed and fail naturally.
-        }
-
         let format = Format::parse(input.get("format").and_then(Value::as_str))?;
         let max_bytes = optional_u64(&input, "max_bytes", DEFAULT_MAX_BYTES).min(HARD_MAX_BYTES);
         let timeout_ms =
             optional_u64(&input, "timeout_ms", DEFAULT_TIMEOUT_MS).min(HARD_MAX_TIMEOUT_MS);
 
-        let mut client_builder = reqwest::Client::builder()
-            .timeout(Duration::from_millis(timeout_ms))
-            .user_agent(USER_AGENT)
-            .redirect(reqwest::redirect::Policy::limited(MAX_REDIRECTS));
-
-        // Pin validated IP to prevent DNS rebinding (TOCTOU) — reqwest will
-        // connect to the validated IP directly instead of re-resolving.
-        if let Some((hostname, validated_ip)) = dns_pinning {
-            client_builder =
-                client_builder.resolve(&hostname, std::net::SocketAddr::new(validated_ip, 0));
-        }
-
-        let client = client_builder.build().map_err(|e| {
-            ToolError::execution_failed(format!("failed to build HTTP client: {e}"))
-        })?;
-
-        let resp = client
-            .get(&url)
-            .header("Accept", "text/html,text/plain,application/json,*/*;q=0.5")
-            .header("Accept-Language", "en-US,en;q=0.5")
-            .send()
-            .await
-            .map_err(|e| ToolError::execution_failed(format!("request failed: {e}")))?;
+        // SSRF protection (C3): the host of EVERY hop is validated, not just the
+        // initial URL. `fetch_with_ssrf_guard` follows redirects manually with
+        // `Policy::none()` so each `Location` target is re-resolved + checked
+        // against `is_restricted_ip` (a bare `Policy::limited()` would follow a
+        // public → 302 → 169.254.169.254 hop with no re-check). DNS failures
+        // fail closed instead of being let through to reqwest's resolver.
+        let resp = crate::tools::ssrf::fetch_with_ssrf_guard(
+            context,
+            "fetch_url",
+            &url,
+            USER_AGENT,
+            "text/html,text/plain,application/json,*/*;q=0.5",
+            timeout_ms,
+        )
+        .await?;
 
         let final_url = resp.url().to_string();
         let status = resp.status();
