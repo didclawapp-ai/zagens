@@ -121,6 +121,18 @@ impl RuntimeThreadMonitorHost<super::RuntimeEnginePolicy, super::RuntimeUserInpu
             let _ = self.emit_panel_harness_task_graph(thread_id, turn_id).await;
             return;
         }
+        // Live context-usage snapshot pushed by the engine at each per-step safe
+        // boundary. The op-loop `QueryContext` is starved mid-turn (only steer/
+        // cancel drain), so `emit_panel_context`'s live query times out and falls
+        // back to a stale store snapshot — freezing the Context tab / pressure
+        // bar until turn end. Forwarding the engine's pre-computed snapshot here
+        // keeps it live during a long turn (mirrors `checklist_persist`).
+        if let Some(snapshot_json) = message.strip_prefix("long_horizon.context_snapshot:") {
+            let _ = self
+                .emit_panel_context_snapshot(thread_id, turn_id, snapshot_json)
+                .await;
+            return;
+        }
         if self.update_harness_telemetry_from_status(thread_id, message) {
             let _ = self.emit_panel_harness_task_graph(thread_id, turn_id).await;
         }

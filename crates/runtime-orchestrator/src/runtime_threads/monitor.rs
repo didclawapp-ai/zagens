@@ -873,10 +873,19 @@ where
                     // checklist JSON in its payload — persist it via the host but
                     // do NOT create a verbose status timeline item for it (it is a
                     // reconciliation signal, not a user-facing harness decision).
-                    if message.starts_with("long_horizon.checklist_persist:") {
-                        eprintln!(
-                            "[lht-probe] long_horizon.checklist_persist thread={thread_id} turn={turn_id}"
-                        );
+                    if message.starts_with("long_horizon.checklist_persist:")
+                        || message.starts_with("long_horizon.context_snapshot:")
+                    {
+                        // Reconciliation signals carrying full JSON — forward to
+                        // the host to refresh persisted/cached panel state off the
+                        // op loop (starved mid-turn), without a verbose timeline
+                        // item. `context_snapshot` fires every step, so keep it out
+                        // of the `[lht-probe]` tee to avoid spamming sidecar.log.
+                        if message.starts_with("long_horizon.checklist_persist:") {
+                            eprintln!(
+                                "[lht-probe] long_horizon.checklist_persist thread={thread_id} turn={turn_id}"
+                            );
+                        }
                         host.observe_harness_status(&thread_id, &turn_id, &message)
                             .await;
                     } else {

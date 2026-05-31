@@ -86,7 +86,7 @@ pub fn extract_topics(text: &str) -> Vec<String> {
         .ok()
         .map(|re| re.replace_all(&cleaned, " ").to_string())
         .unwrap_or(cleaned);
-    let cleaned = Regex::new(r"[#*_~>|[\]()]+")
+    let cleaned = Regex::new(r"[#*_~>|\[\]()]+")
         .ok()
         .map(|re| re.replace_all(&cleaned, " ").to_string())
         .unwrap_or(cleaned);

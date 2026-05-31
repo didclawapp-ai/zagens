@@ -317,8 +317,24 @@ l2_threshold = 384000
 l3_threshold = 576000
 # Hard cycle reserves the normal 262144-token internal turn budget plus 1024
 # safety tokens, separate from V4's official 384000 max-output metadata.
+#
+# `cycle_threshold` now drives BOTH the layered seam manager (above, opt-in via
+# `enabled`) AND the checkpoint-restart cycle (`should_advance_cycle`) — the
+# active-input level at which a long-horizon turn rolls a clean `<carry_forward>`
+# handoff into a fresh context. Default 768000 (~75% of a 1M window). The actual
+# trigger is `min(cycle_threshold, window − response_headroom)`.
+#
+# To VERIFY cycle triggers correctly without a multi-hour run to 768K, set a
+# lower threshold for a validation run (the genuine pressure run keeps 768000):
+#   [context.per_model.deepseek-v4-pro]
+#   cycle_threshold = 120000
 cycle_threshold = 768000
 seam_model = "deepseek-v4-flash"
+
+# Per-model threshold overrides. A model NOT listed here uses the values above.
+# `cycle_threshold` here wins over the global one for that specific model.
+# [context.per_model.deepseek-v4-pro]
+# cycle_threshold = 120000
 
 # ─────────────────────────────────────────────────────────────────────────────────
 # Workshop / Large-Output Routing (#548)

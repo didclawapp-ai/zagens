@@ -66,6 +66,7 @@ DEMO3–5 都选了 [*Writing an Interpreter in Go*](https://interpreterbook.com
 |------------|----------|----------|----------|
 | **强制续写（§4）+ 验收纪律** | 光线追踪器（*Ray Tracing in One Weekend*）、Crafting Interpreters（Lox） | 渐进式叠特性，中途留 pending 项可测「不早停」 | 渲染输出像素比对 / 解释器测试套件 |
 | **Cycle + 交接** | SQLite-clone（cstack 教程）、库级生成（Long Code Arena） | 状态强依赖、超单窗，逼出换脑 + carry_forward | 自带集成测试 / 库 API 编译 |
+| **接口稳定性 + 重构抗性 + cycle 交接** | **MicroStack（Go 微服务框架，1.5–4 万行）** — 见 [`test-cases/microstack-framework.md`](./test-cases/microstack-framework.md) | 15+ 互相依赖包 + 跨模块接口契约 → 测长期架构稳定性 + 非破坏性修改（解释器/Redis 测不到）；cycle 走「验证跑 A」低阈值单长 turn | `go build/vet/gofmt/test -cover` + **`git diff contracts/` 零改动** + Router 换 trie 后测试全绿 + Todo e2e |
 | **并行 fan-out/join + 契约闸门** | CodeCrafters「Build your own Redis / Git / HTTP server」、全栈 CRUD（TodoMVC） | 协议/接口即天然契约，模块边界清晰 → 验 P0.5/P1.5 | 协议官方测试用例 / 端到端 e2e |
 | **修复 / 重构（不可并行，验 §1.2）** | SWE-bench Verified 小样本（500 题取子集） | 真实 issue + 仓库自带测试判定，已存在代码耦合 | 仓库 `pytest` / 复现脚本 |
 | **算法生成（防污染）** | LiveCodeBench、Exercism（Aider polyglot 同源） | 持续更新题库，测纯生成 + 多语言编辑纪律 | 题目自带测试 |

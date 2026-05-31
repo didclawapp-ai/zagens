@@ -65,14 +65,17 @@ pub fn briefing_to_json(b: &CycleBriefing) -> HarnessCycleBriefingJson {
     }
 }
 
-fn context_meta_for_model(model: &str) -> (Option<u32>, Option<u32>, Option<u8>, Option<u8>) {
+fn context_meta_for_model(
+    model: &str,
+    configured_threshold: Option<u32>,
+) -> (Option<u32>, Option<u32>, Option<u8>, Option<u8>) {
     let Some(window) = context_window_for_model(model) else {
         return (None, None, None, None);
     };
     let window_u32 = u32::from(window);
     (
         Some(window_u32),
-        Some(DEFAULT_CYCLE_THRESHOLD_TOKENS as u32),
+        Some(configured_threshold.unwrap_or(DEFAULT_CYCLE_THRESHOLD_TOKENS as u32)),
         Some((LHT_WARNING_BAND_LOW * 100.0).round() as u8),
         Some((LHT_WARNING_BAND_HIGH * 100.0).round() as u8),
     )
@@ -85,10 +88,11 @@ pub fn build_cycles_value(
     archive_summaries: &[CycleArchiveSummary],
     context_pressure_pct: Option<u8>,
     model: Option<&str>,
+    configured_threshold_tokens: Option<u32>,
 ) -> Value {
     let (context_window_tokens, cycle_threshold_tokens, lht_warning_low_pct, lht_warning_high_pct) =
         model
-            .map(context_meta_for_model)
+            .map(|m| context_meta_for_model(m, configured_threshold_tokens))
             .unwrap_or((None, None, None, None));
     let briefing_cycles: std::collections::HashSet<u32> =
         briefings.iter().map(|b| b.cycle).collect();

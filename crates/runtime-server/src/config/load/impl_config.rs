@@ -556,6 +556,43 @@ impl Config {
         }
     }
 
+    /// Resolved checkpoint-restart cycle config for the engine.
+    ///
+    /// Starts from the per-model defaults (`CycleConfig::default()`, 768K) and
+    /// applies any `[context] cycle_threshold` (global) / `[context.per_model.
+    /// <model>] cycle_threshold` (per-model) overrides, so the cycle boundary
+    /// is operator-tunable. With no override the default (768K) is unchanged.
+    ///
+    /// Note: `CycleConfig::threshold_for` checks `per_model` *before* the
+    /// top-level `threshold_tokens`, and the default config seeds per-model
+    /// entries for the V4 models — so a global override must also rewrite those
+    /// seeded entries, otherwise it would be shadowed for exactly those models.
+    #[must_use]
+    pub fn cycle_runtime_config(&self, model: &str) -> crate::cycle_manager::CycleConfig {
+        use deepseek_core::cycle::ModelCycleConfig;
+
+        let mut cfg = crate::cycle_manager::CycleConfig::default();
+        if let Some(t) = self.context.cycle_threshold {
+            cfg.threshold_tokens = t;
+            for m in cfg.per_model.values_mut() {
+                m.threshold_tokens = t;
+            }
+        }
+        if let Some(t) = self
+            .context
+            .per_model
+            .as_ref()
+            .and_then(|pm| pm.get(model))
+            .and_then(|pm| pm.cycle_threshold)
+        {
+            cfg.per_model
+                .entry(model.to_string())
+                .or_insert_with(ModelCycleConfig::default)
+                .threshold_tokens = t;
+        }
+        cfg
+    }
+
     /// 读取 session 文件上限（MB）：`[session] max_file_mb` > 环境变量 > 默认 5。
     /// **0 表示不限制**（返回 `u64::MAX`），与现有 `max_session_file_size()` 语义一致。
     #[must_use]

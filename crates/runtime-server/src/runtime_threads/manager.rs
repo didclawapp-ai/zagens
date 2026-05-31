@@ -478,12 +478,16 @@ impl RuntimeThreadManager {
             .load_thread(thread_id)
             .ok()
             .map(|t| t.model);
+        let configured_threshold = model.as_deref().and_then(|m| {
+            u32::try_from(self.config.cycle_runtime_config(m).threshold_for(m)).ok()
+        });
         Ok(crate::long_horizon::build_cycles_value(
             0,
             &[],
             &archives,
             None,
             model.as_deref(),
+            configured_threshold,
         ))
     }
 
@@ -556,6 +560,31 @@ impl RuntimeThreadManager {
             )
             .await?;
         }
+        Ok(())
+    }
+
+    /// Zagens panel channel (C): push a pre-computed context snapshot on SSE.
+    ///
+    /// Unlike [`Self::emit_panel_context`], this does NOT re-query the engine —
+    /// the engine has already serialized its live `ThreadContextSnapshot` and
+    /// handed it over via the harness-status channel. Used to keep the Context
+    /// tab live mid-turn, when the op-loop `QueryContext` is starved and the
+    /// query-based path would fall back to a stale store snapshot.
+    pub(crate) async fn emit_panel_context_snapshot(
+        &self,
+        thread_id: &str,
+        turn_id: &str,
+        snapshot_json: &str,
+    ) -> Result<()> {
+        let snapshot: serde_json::Value = serde_json::from_str(snapshot_json)?;
+        self.emit_event(
+            thread_id,
+            Some(turn_id),
+            None,
+            "panel.context",
+            json!({ "context": snapshot }),
+        )
+        .await?;
         Ok(())
     }
 

@@ -954,6 +954,79 @@ fn default_context_seams_are_opt_in() {
 }
 
 #[test]
+fn cycle_runtime_config_default_keeps_768k() {
+    let config = Config::default();
+    assert_eq!(
+        config
+            .cycle_runtime_config("deepseek-v4-pro")
+            .threshold_for("deepseek-v4-pro"),
+        768_000
+    );
+}
+
+#[test]
+fn cycle_runtime_config_global_override_rewrites_seeded_models() {
+    // The default CycleConfig seeds per-model entries for the V4 models, and
+    // `threshold_for` checks per_model first — so a global `[context]
+    // cycle_threshold` must also rewrite those seeds or it would be shadowed
+    // for exactly the V4 models.
+    let config = Config {
+        context: ContextConfig {
+            cycle_threshold: Some(120_000),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    assert_eq!(
+        config
+            .cycle_runtime_config("deepseek-v4-pro")
+            .threshold_for("deepseek-v4-pro"),
+        120_000
+    );
+    assert_eq!(
+        config
+            .cycle_runtime_config("some-other-model")
+            .threshold_for("some-other-model"),
+        120_000
+    );
+}
+
+#[test]
+fn cycle_runtime_config_per_model_override_wins_over_global() {
+    let mut per_model = HashMap::new();
+    per_model.insert(
+        "deepseek-v4-pro".to_string(),
+        PerModelContextConfig {
+            l1_threshold: None,
+            l2_threshold: None,
+            l3_threshold: None,
+            cycle_threshold: Some(90_000),
+        },
+    );
+    let config = Config {
+        context: ContextConfig {
+            cycle_threshold: Some(120_000),
+            per_model: Some(per_model),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    assert_eq!(
+        config
+            .cycle_runtime_config("deepseek-v4-pro")
+            .threshold_for("deepseek-v4-pro"),
+        90_000
+    );
+    // A model without a per-model entry still gets the global override.
+    assert_eq!(
+        config
+            .cycle_runtime_config("deepseek-v4-flash")
+            .threshold_for("deepseek-v4-flash"),
+        120_000
+    );
+}
+
+#[test]
 fn profile_without_context_does_not_disable_base_context() {
     let mut profiles = HashMap::new();
     profiles.insert("work".to_string(), Config::default());

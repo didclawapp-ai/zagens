@@ -54,7 +54,7 @@ impl RuntimeThreadManager {
             subagent_step_timeout: self.config.subagent_step_timeout(),
             features: self.config.features(),
             compaction,
-            cycle: crate::cycle_manager::CycleConfig::default(),
+            cycle: self.config.cycle_runtime_config(&thread.model),
             capacity: crate::core::capacity::capacity_config_from_app(&self.config),
             todos: new_shared_todo_list(),
             plan_state: new_shared_plan_state(),

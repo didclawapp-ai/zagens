@@ -632,6 +632,18 @@ impl TurnLoopHost for Engine {
         {
             return false;
         }
+        // Push a live context-usage snapshot off the (mid-turn starved) op loop:
+        // the monitor forwards this as `panel.context`, so the Context tab /
+        // cycle-pressure bar update every step instead of freezing until turn
+        // end (where the op-loop `QueryContext` finally drains). Same channel as
+        // `checklist_persist`. Cheap relative to the per-step token estimate the
+        // cycle gate already computes below.
+        if let Ok(json) = serde_json::to_string(&self.engine_context_snapshot()) {
+            let _ = self
+                .tx_event
+                .send(Event::status(format!("long_horizon.context_snapshot:{json}")))
+                .await;
+        }
         // Reuse the exact between-turns gate (threshold + long-horizon
         // early-advance band) and handoff body. At this call site the streaming
         // phase and tool execution have completed, so `in_flight` is false —

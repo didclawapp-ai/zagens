@@ -196,12 +196,15 @@ impl Engine {
         .map(|r| (r * 100.0).round() as u8);
         let archives =
             crate::cycle_manager::list_cycle_archive_summaries(&self.session.id);
+        let configured_threshold =
+            u32::try_from(self.config.cycle.threshold_for(&self.session.model)).ok();
         let value = crate::long_horizon::build_cycles_value(
             self.session.cycle_count,
             &self.session.cycle_briefings,
             &archives,
             pressure,
             Some(self.session.model.as_str()),
+            configured_threshold,
         );
         let _ = reply.send(value);
     }
