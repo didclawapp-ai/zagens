@@ -16,6 +16,10 @@ use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
+
+/// Wall-clock cap for the blocking file scan (C6 / audit §3 P0).
+const GREP_TIMEOUT_SECS: u64 = 120;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum GrepOutputMode {
@@ -211,109 +215,44 @@ impl ToolSpec for GrepFilesTool {
         // Resolve search path
         let search_path = context.resolve_path(path_str)?;
 
-        // Collect files (ignore crate / ripgrep-style walk).
-        let files = collect_files(
-            &search_path,
-            &include_patterns,
-            &exclude_patterns,
+        let scan_params = GrepScanParams {
+            search_path,
+            workspace: context.workspace.clone(),
+            include_patterns,
+            exclude_patterns,
             respect_gitignore,
-        )?;
+            context_lines,
+            max_results,
+            output_mode,
+            regex,
+        };
 
-        // Search files
-        let mut results: Vec<GrepMatch> = Vec::new();
-        let mut file_match_counts: HashMap<String, usize> = HashMap::new();
-        let mut files_searched = 0;
-        let mut files_skipped_binary = 0u64;
-        let mut files_skipped_size = 0u64;
-        let mut total_matches = 0;
-
-        'files: for file_path in files {
-            if output_mode == GrepOutputMode::Content && results.len() >= max_results {
-                break;
+        let scan = match tokio::time::timeout(
+            Duration::from_secs(GREP_TIMEOUT_SECS),
+            tokio::task::spawn_blocking(move || grep_file_scan(scan_params)),
+        )
+        .await
+        {
+            Ok(Ok(Ok(out))) => out,
+            Ok(Ok(Err(e))) => return Err(e),
+            Ok(Err(e)) => {
+                return Err(ToolError::execution_failed(format!(
+                    "grep_files worker failed: {e}"
+                )));
             }
-            if output_mode == GrepOutputMode::FilesWithMatches
-                && file_match_counts.len() >= max_results
-            {
-                break;
+            Err(_) => {
+                return Err(ToolError::execution_failed(format!(
+                    "grep_files exceeded the {GREP_TIMEOUT_SECS}s timeout"
+                )));
             }
+        };
 
-            if let Ok(metadata) = fs::metadata(&file_path) {
-                if metadata.len() > MAX_FILE_SIZE {
-                    files_skipped_size += 1;
-                    continue;
-                }
-            }
-
-            if is_probably_binary(&file_path) {
-                files_skipped_binary += 1;
-                continue;
-            }
-
-            // Encoding-tolerant read: GB18030 / UTF-16 source files (common on
-            // Chinese Windows) would fail `read_to_string` and be silently
-            // skipped — decode them like read_file does so grep can find matches.
-            let Ok(raw_bytes) = fs::read(&file_path) else {
-                files_skipped_binary += 1;
-                continue;
-            };
-            let (file_content, _enc, _via) = super::file::detect_and_decode(&raw_bytes);
-
-            files_searched += 1;
-            let lines: Vec<&str> = file_content.lines().collect();
-            let relative_path = file_path
-                .strip_prefix(&context.workspace)
-                .unwrap_or(&file_path)
-                .to_string_lossy()
-                .to_string();
-            let mut hits_in_file = 0usize;
-
-            for (line_idx, line) in lines.iter().enumerate() {
-                if !regex.is_match(line) {
-                    continue;
-                }
-                total_matches += 1;
-                hits_in_file += 1;
-
-                // files_with_matches only needs to know the file matched at all
-                // — stop scanning the rest of its lines after the first hit.
-                if output_mode == GrepOutputMode::FilesWithMatches {
-                    break;
-                }
-
-                if output_mode == GrepOutputMode::Content {
-                    let context_before: Vec<String> = (line_idx.saturating_sub(context_lines)
-                        ..line_idx)
-                        .filter_map(|i| lines.get(i).map(|s| (*s).to_string()))
-                        .collect();
-
-                    let context_after: Vec<String> = ((line_idx + 1)
-                        ..=(line_idx + context_lines).min(lines.len() - 1))
-                        .filter_map(|i| lines.get(i).map(|s| (*s).to_string()))
-                        .collect();
-
-                    results.push(GrepMatch {
-                        file: relative_path.clone(),
-                        line_number: line_idx + 1,
-                        line: (*line).to_string(),
-                        context_before,
-                        context_after,
-                    });
-
-                    if results.len() >= max_results {
-                        break;
-                    }
-                }
-            }
-
-            if hits_in_file > 0 {
-                file_match_counts.insert(relative_path, hits_in_file);
-                if output_mode == GrepOutputMode::FilesWithMatches
-                    && file_match_counts.len() >= max_results
-                {
-                    break 'files;
-                }
-            }
-        }
+        let mut results = scan.results;
+        let file_match_counts = scan.file_match_counts;
+        let files_searched = scan.files_searched;
+        let files_skipped_binary = scan.files_skipped_binary;
+        let files_skipped_size = scan.files_skipped_size;
+        let total_matches = scan.total_matches;
 
         if output_mode == GrepOutputMode::Content {
             // BM25 re-rank: order files by relevance so the model sees the
@@ -552,6 +491,149 @@ impl ToolSpec for GrepFilesTool {
 
         ToolResult::json(&result).map_err(|e| ToolError::execution_failed(e.to_string()))
     }
+}
+
+struct GrepScanParams {
+    search_path: PathBuf,
+    workspace: PathBuf,
+    include_patterns: Vec<String>,
+    exclude_patterns: Vec<String>,
+    respect_gitignore: bool,
+    context_lines: usize,
+    max_results: usize,
+    output_mode: GrepOutputMode,
+    regex: Regex,
+}
+
+struct GrepFileScanOutput {
+    results: Vec<GrepMatch>,
+    file_match_counts: HashMap<String, usize>,
+    files_searched: u64,
+    files_skipped_binary: u64,
+    files_skipped_size: u64,
+    total_matches: usize,
+}
+
+/// Blocking file walk + scan — runs on the blocking pool so large monorepos
+/// don't stall tokio workers (C4/C6).
+fn grep_file_scan(params: GrepScanParams) -> Result<GrepFileScanOutput, ToolError> {
+    let GrepScanParams {
+        search_path,
+        workspace,
+        include_patterns,
+        exclude_patterns,
+        respect_gitignore,
+        context_lines,
+        max_results,
+        output_mode,
+        regex,
+    } = params;
+
+    let files = collect_files(
+        &search_path,
+        &include_patterns,
+        &exclude_patterns,
+        respect_gitignore,
+    )?;
+
+    let mut results: Vec<GrepMatch> = Vec::new();
+    let mut file_match_counts: HashMap<String, usize> = HashMap::new();
+    let mut files_searched = 0;
+    let mut files_skipped_binary = 0u64;
+    let mut files_skipped_size = 0u64;
+    let mut total_matches = 0;
+
+    'files: for file_path in files {
+        if output_mode == GrepOutputMode::Content && results.len() >= max_results {
+            break;
+        }
+        if output_mode == GrepOutputMode::FilesWithMatches
+            && file_match_counts.len() >= max_results
+        {
+            break;
+        }
+
+        if let Ok(metadata) = fs::metadata(&file_path) {
+            if metadata.len() > MAX_FILE_SIZE {
+                files_skipped_size += 1;
+                continue;
+            }
+        }
+
+        if is_probably_binary(&file_path) {
+            files_skipped_binary += 1;
+            continue;
+        }
+
+        let Ok(raw_bytes) = fs::read(&file_path) else {
+            files_skipped_binary += 1;
+            continue;
+        };
+        let (file_content, _enc, _via) = super::file::detect_and_decode(&raw_bytes);
+
+        files_searched += 1;
+        let lines: Vec<&str> = file_content.lines().collect();
+        let relative_path = file_path
+            .strip_prefix(&workspace)
+            .unwrap_or(&file_path)
+            .to_string_lossy()
+            .to_string();
+        let mut hits_in_file = 0usize;
+
+        for (line_idx, line) in lines.iter().enumerate() {
+            if !regex.is_match(line) {
+                continue;
+            }
+            total_matches += 1;
+            hits_in_file += 1;
+
+            if output_mode == GrepOutputMode::FilesWithMatches {
+                break;
+            }
+
+            if output_mode == GrepOutputMode::Content {
+                let context_before: Vec<String> = (line_idx.saturating_sub(context_lines)
+                    ..line_idx)
+                    .filter_map(|i| lines.get(i).map(|s| (*s).to_string()))
+                    .collect();
+
+                let context_after: Vec<String> = ((line_idx + 1)
+                    ..=(line_idx + context_lines).min(lines.len() - 1))
+                    .filter_map(|i| lines.get(i).map(|s| (*s).to_string()))
+                    .collect();
+
+                results.push(GrepMatch {
+                    file: relative_path.clone(),
+                    line_number: line_idx + 1,
+                    line: (*line).to_string(),
+                    context_before,
+                    context_after,
+                });
+
+                if results.len() >= max_results {
+                    break;
+                }
+            }
+        }
+
+        if hits_in_file > 0 {
+            file_match_counts.insert(relative_path, hits_in_file);
+            if output_mode == GrepOutputMode::FilesWithMatches
+                && file_match_counts.len() >= max_results
+            {
+                break 'files;
+            }
+        }
+    }
+
+    Ok(GrepFileScanOutput {
+        results,
+        file_match_counts,
+        files_searched,
+        files_skipped_binary,
+        files_skipped_size,
+        total_matches,
+    })
 }
 
 /// Collect files to search: workspace walk + optional include/exclude globs.

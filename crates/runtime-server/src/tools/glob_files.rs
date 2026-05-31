@@ -113,16 +113,23 @@ impl ToolSpec for GlobFilesTool {
         let mut matches: Vec<(PathBuf, String, Option<u64>)> = Vec::new();
 
         for path in files {
-            let relative = path
-                .strip_prefix(&context.workspace)
-                .or_else(|_| path.strip_prefix(&base_path))
+            // Match pattern relative to `path` (base_path), not workspace root —
+            // so `path:"src"` + `*.rs` hits `src/foo.rs` without needing `**/*.rs`.
+            let glob_relative = path
+                .strip_prefix(&base_path)
                 .unwrap_or(&path)
                 .to_string_lossy()
-                .to_string();
-            if path_matches_glob(&glob_set, &relative) {
-                let mtime = modified_secs(&path);
-                matches.push((path, relative, mtime));
+                .replace('\\', "/");
+            if !path_matches_glob(&glob_set, &glob_relative) {
+                continue;
             }
+            let workspace_rel = path
+                .strip_prefix(&context.workspace)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            let mtime = modified_secs(&path);
+            matches.push((path, workspace_rel, mtime));
         }
 
         matches.sort_by(|a, b| {
@@ -210,5 +217,31 @@ mod tests {
             .collect();
         assert!(paths.iter().any(|p| p.contains("visible.ts")));
         assert!(!paths.iter().any(|p| p.contains("ignored")));
+    }
+
+    #[tokio::test]
+    async fn glob_files_pattern_relative_to_path_not_workspace() {
+        let tmp = tempdir().expect("tempdir");
+        fs::create_dir_all(tmp.path().join("src")).expect("mkdir");
+        fs::write(tmp.path().join("src").join("main.rs"), "x").expect("write");
+        fs::write(tmp.path().join("root.rs"), "y").expect("write");
+
+        let ctx = ToolContext::new(tmp.path().to_path_buf());
+        let tool = GlobFilesTool;
+        let result = tool
+            .execute(json!({"pattern": "*.rs", "path": "src"}), &ctx)
+            .await
+            .expect("execute");
+
+        let parsed: Value = serde_json::from_str(&result.content).unwrap();
+        let paths: Vec<&str> = parsed["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|v| v["path"].as_str())
+            .collect();
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].contains("main.rs"));
+        assert!(!paths.iter().any(|p| p.contains("root.rs")));
     }
 }

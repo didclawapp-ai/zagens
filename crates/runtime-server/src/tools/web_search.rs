@@ -22,6 +22,8 @@ use std::time::Duration;
 
 const DUCKDUCKGO_HOST: &str = "html.duckduckgo.com";
 const BING_HOST: &str = "www.bing.com";
+/// Cap HTML response size so a huge/broken page can't OOM before parse (C6).
+const MAX_SEARCH_RESPONSE_BYTES: usize = 5 * 1024 * 1024;
 
 /// Returns `Ok(())` if the policy allows the call, or a `ToolError` otherwise.
 /// Falls through silently when no policy is attached (back-compat).
@@ -245,8 +247,10 @@ impl ToolSpec for WebSearchTool {
                         }
                     }
                 } else {
-                    match resp.text().await {
-                        Ok(body) => {
+                    match crate::tools::ssrf::read_body_capped(resp, MAX_SEARCH_RESPONSE_BYTES).await
+                    {
+                        Ok((bytes, _truncated)) => {
+                            let body = String::from_utf8_lossy(&bytes).into_owned();
                             source = "duckduckgo".to_string();
                             results = parse_duckduckgo_results(&body, max_results);
                             if results.is_empty() {
@@ -395,9 +399,9 @@ async fn run_bing_search(
         .map_err(|e| ToolError::execution_failed(format!("Bing fallback request failed: {e}")))?;
 
     let status = resp.status();
-    let body = resp.text().await.map_err(|e| {
-        ToolError::execution_failed(format!("Failed to read Bing fallback response: {e}"))
-    })?;
+    let (bytes, _truncated) =
+        crate::tools::ssrf::read_body_capped(resp, MAX_SEARCH_RESPONSE_BYTES).await?;
+    let body = String::from_utf8_lossy(&bytes).into_owned();
 
     if !status.is_success() {
         return Err(ToolError::execution_failed(format!(

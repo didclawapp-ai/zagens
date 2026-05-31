@@ -51,7 +51,7 @@ pub fn summarize_project(root: &Path) -> String {
     let mut key_files = Vec::new();
 
     let mut builder = WalkBuilder::new(root);
-    builder.hidden(false).follow_links(true).max_depth(Some(2));
+    builder.hidden(false).follow_links(false).max_depth(Some(2));
     let walker = builder.build();
 
     for entry in walker {
@@ -113,7 +113,7 @@ pub fn project_tree(root: &Path, max_depth: usize) -> String {
     let mut builder = WalkBuilder::new(root);
     builder
         .hidden(false)
-        .follow_links(true)
+        .follow_links(false)
         .max_depth(Some(max_depth + 1));
 
     for entry in builder.build().flatten() {

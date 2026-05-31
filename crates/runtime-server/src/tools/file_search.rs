@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 
 use super::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
-    optional_str, optional_u64, required_str,
+    optional_bool, optional_str, optional_u64, required_str,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -30,6 +30,8 @@ struct FileSearchResult {
     returned: usize,
     /// True when `total_matches > returned` (results were capped by `limit`).
     truncated: bool,
+    /// Whether `.gitignore` was honored during the walk.
+    respect_gitignore: bool,
 }
 
 pub struct FileSearchTool;
@@ -64,6 +66,10 @@ impl ToolSpec for FileSearchTool {
                     "type": "array",
                     "items": { "type": "string" },
                     "description": "Optional list of file extensions to include (e.g. [\"rs\", \"md\"])."
+                },
+                "respect_gitignore": {
+                    "type": "boolean",
+                    "description": "Honor .gitignore when true (default: true). Set false to search ignored paths (like grep_files)."
                 }
             },
             "required": ["query"]
@@ -90,8 +96,9 @@ impl ToolSpec for FileSearchTool {
             _ => context.workspace.clone(),
         };
 
+        let respect_gitignore = optional_bool(&input, "respect_gitignore", true);
         let extensions = parse_extensions(&input);
-        let result = search_files(query, &base_path, extensions, limit)?;
+        let result = search_files(query, &base_path, extensions, limit, respect_gitignore)?;
         ToolResult::json(&result).map_err(|e| ToolError::execution_failed(e.to_string()))
     }
 }
@@ -124,6 +131,7 @@ fn search_files(
     base_path: &Path,
     extensions: Vec<String>,
     limit: usize,
+    respect_gitignore: bool,
 ) -> Result<FileSearchResult, ToolError> {
     if !base_path.exists() {
         return Err(ToolError::invalid_input(format!(
@@ -136,7 +144,7 @@ fn search_files(
     let mut results: Vec<FileSearchMatch> = Vec::new();
 
     let mut builder = WalkBuilder::new(base_path);
-    configure_workspace_walk(&mut builder, true);
+    configure_workspace_walk(&mut builder, respect_gitignore);
     let walker = builder.build();
 
     for entry in walker.flatten() {
@@ -179,6 +187,7 @@ fn search_files(
         total_matches,
         returned,
         truncated: total_matches > returned,
+        respect_gitignore,
     })
 }
 
@@ -316,6 +325,26 @@ mod tests {
 
         assert!(result.success);
         assert!(!result.content.contains("ignored.txt"));
+        assert!(result.content.contains("keep.txt"));
+    }
+
+    #[tokio::test]
+    async fn test_file_search_respect_gitignore_false() {
+        let tmp = tempdir().expect("tempdir");
+        let root = tmp.path();
+        std::fs::write(root.join(".gitignore"), "ignored.txt\n").expect("write");
+        std::fs::write(root.join("ignored.txt"), "nope\n").expect("write");
+        std::fs::write(root.join("keep.txt"), "ok\n").expect("write");
+
+        let ctx = ToolContext::new(root.to_path_buf());
+        let tool = FileSearchTool;
+        let result = tool
+            .execute(json!({"query": "txt", "respect_gitignore": false}), &ctx)
+            .await
+            .expect("execute");
+
+        assert!(result.success);
+        assert!(result.content.contains("ignored.txt"));
         assert!(result.content.contains("keep.txt"));
     }
 
