@@ -20,7 +20,7 @@
 | C5 | **`follow_links(true)` 可跟符号链接读出工作区外** — walk 到的文件不过 `resolve_path` | 健壮性/安全 | **P1** | `runtime-adapters/.../workspace_walk.rs:27`（grep/glob/file_search/project 共用） | **已缓解** — 改 `follow_links(false)`(亦对齐 ripgrep 默认),工作区内指向区外的 symlink 不再被跟随;grep/glob/file_search/project 全过 |
 | C6 | **子进程/HTTP 无超时 + 响应体全量读** — git/test/office Python/web 抓取无 timeout；web 响应先 `bytes().await` 全读再按上限截断（OOM 风险在截断之前） | 健壮性/边界 | **P1** | `test_runner.rs:108`、`office_write.rs:1305`、`fetch_url.rs:223`、`web_run/page.rs:63` | 部分（输出截断有，但内存/挂起未防） |
 | C7 | **静默截断、不报总数** — 结果超上限直接 `truncate`，部分工具无 `total`/`truncated`，模型以为已全 | 准确性 | **P1** | `file_search.rs`；`shell_output.rs` summary | **已缓解** — grep/glob 有 `truncated`;`file_search` 返回 `{matches,total_matches,returned,truncated}`★;`shell_output::summarize_output` 现从尾部扫高信号行(`test result:`/失败/错误),不再只取头 3 行★ |
-| C8 | **编码：写侧不保留、edit/patch 仅 UTF-8** — `read_file`/`grep` 已 `detect_and_decode`，但 `write_file` 把 GB18030 静默转 UTF-8；`edit_file`/`apply_patch`/`fim` 仅 `read_to_string`（非 UTF-8 直接报错） | 健壮性/准确性 | **P1** | `write.rs`、`edit.rs`、`apply_patch.rs:850`、`fim.rs` | **大部已缓解★** — 新增 `encode_text`(支持 utf-8/utf-16le/be(含 BOM)/gb18030/win-1252)+ `read_decoded_for_edit`;`write_file`/`edit_file`(4 op)/`fim` 现读侧 `detect_and_decode`、写侧按原编码回写。`apply_patch` 待办(仍 UTF-8) |
+| C8 | **编码：写侧不保留、edit/patch 仅 UTF-8** — `read_file`/`grep` 已 `detect_and_decode`，但 `write_file` 把 GB18030 静默转 UTF-8；`edit_file`/`apply_patch`/`fim` 仅 `read_to_string`（非 UTF-8 直接报错） | 健壮性/准确性 | **P1** | `write.rs`、`edit.rs`、`apply_patch.rs`、`fim.rs` | **已缓解★** — 新增 `encode_text`(支持 utf-8/utf-16le/be(含 BOM)/gb18030/win-1252)+ `read_decoded_for_edit`;`write_file`/`edit_file`(4 op)/`fim`/`apply_patch`(含 PendingWrite 编码透传 + 回滚)均读侧 `detect_and_decode`、写侧按原编码回写 |
 
 ---
 
@@ -57,7 +57,7 @@
 **健壮性**
 - **[已缓解★] `edit.rs:149-158`** — 空/纯空白 `search` 现直接 `invalid_input` 报错(导向 `insert_after`/`replace_line`),不再在每个 UTF-8 边界插入破坏整文件;单测 `test_edit_file_empty_search_rejected`(空/空格/`\n\t` 三态 + 文件不变)。
 - **[已缓解★] `edit.rs` ×4 + `fim.rs:166`** — `edit_file`/`fim` 改用 `atomic_write`(temp + rename),与 `write_file`/`apply_patch` 一致,崩溃/磁盘满不再留截断文件。
-- **[大部已缓解★] C8** — `edit_file`/`fim` 改用 `read_decoded_for_edit`(GB18030/UTF-16 可改)+ `encode_text` 原编码回写;`apply_patch` 待办。
+- **[已缓解★] C8** — `edit_file`/`fim`/`apply_patch` 改用 `read_decoded_for_edit`(GB18030/UTF-16 可改)+ `encode_text` 原编码回写。
 - **[P1] 全写路径** — 无文件锁/版本检查;并行 `edit_file` 同文件后写覆盖先写（`write_file` `supports_parallel=false` 但 runtime 不强制串行）。
 - **[P1] `edit.rs:157` / `apply_patch.rs:633` / `read.rs:475-541`(Office) / `fim.rs:117`** — 无文件大小上限，大文件 OOM（普通文本 `read_file` 有 `MAX_FILE_SIZE`，这些路径绕过）。
 - **[P1] `apply_patch.rs:837-847`** — rollback 错误被 `let _ =` 吞，主写失败 + rollback 失败 → 半新半旧无上报。
@@ -154,7 +154,7 @@
 8. **C6 子进程/HTTP 超时 + kill** — test_runner/office Python 加 timeout 并 kill;web 抓取流式 + `Content-Length` 上限 + cancel 绑定。
 9. **C5 symlink** — ✅ 已缓解(`workspace_walk` 改 `follow_links(false)`)。
 10. **C7 截断报总数** — ✅ `file_search` 补 `total_matches`/`truncated`;✅ `shell_output` summary 从尾部扫(均已缓解)。
-11. **C8 编码保留** — ✅ `write_file`/`edit_file`/`fim` 已按原编码回写;`apply_patch` 待办。
+11. **C8 编码保留** — ✅ `write_file`/`edit_file`/`fim`/`apply_patch` 全部按原编码回写(已缓解)。
 12. **edit_file/fim 原子写** — ✅ 已缓解(复用 `atomic_write`)。
 13. **glob_files/file_search 语义** — glob 相对基准对齐 schema;`file_search` 加 `respect_gitignore`。
 

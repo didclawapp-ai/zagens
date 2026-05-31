@@ -93,6 +93,11 @@ struct PendingWrite {
     path: PathBuf,
     content: Option<String>,
     original: Option<String>,
+    /// Encoding label (from `detect_and_decode`) to write back in (C8). New
+    /// files default to `utf-8`.
+    encoding: String,
+    /// Whether the original file carried a BOM, to restore on write/rollback.
+    had_bom: bool,
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -654,12 +659,18 @@ fn build_pending_writes_from_changes(
             .ok_or_else(|| ToolError::missing_field("changes[].content"))?;
 
         let resolved = context.resolve_path(path)?;
-        let original = if resolved.exists() {
-            Some(read_file_content(&resolved)?)
+        // C8: decode tolerantly + remember the encoding so the write-back keeps it.
+        let decoded = if resolved.exists() {
+            Some(crate::tools::file::read_decoded_for_edit(&resolved)?)
         } else {
             None
         };
-        let created = original.is_none();
+        let created = decoded.is_none();
+        let (encoding, had_bom) = decoded
+            .as_ref()
+            .map(|d| (d.label.clone(), d.had_bom))
+            .unwrap_or_else(|| ("utf-8".to_string(), false));
+        let original = decoded.map(|d| d.text);
 
         // Full-content replacement: preserve the existing file's line endings
         // (match write_file — avoids flipping a CRLF file to LF on Windows).
@@ -675,6 +686,8 @@ fn build_pending_writes_from_changes(
             path: resolved,
             content: Some(content_out),
             original,
+            encoding,
+            had_bom,
         });
 
         stats.stats.files_total += 1;
@@ -712,11 +725,17 @@ fn build_pending_writes_from_patches(
         }
 
         let resolved = context.resolve_path(&file_patch.path)?;
-        let original = if resolved.exists() {
-            Some(read_file_content(&resolved)?)
+        // C8: decode tolerantly + remember the encoding for write-back.
+        let decoded = if resolved.exists() {
+            Some(crate::tools::file::read_decoded_for_edit(&resolved)?)
         } else {
             None
         };
+        let (encoding, had_bom) = decoded
+            .as_ref()
+            .map(|d| (d.label.clone(), d.had_bom))
+            .unwrap_or_else(|| ("utf-8".to_string(), false));
+        let original = decoded.map(|d| d.text);
 
         if original.is_none() && !file_patch.create_if_missing {
             return Err(ToolError::execution_failed(format!(
@@ -772,6 +791,8 @@ fn build_pending_writes_from_patches(
                 path: resolved,
                 content: None,
                 original,
+                encoding,
+                had_bom,
             });
         } else {
             let mut new_content = lines.join("\n");
@@ -783,6 +804,8 @@ fn build_pending_writes_from_patches(
                 path: resolved,
                 content: Some(new_content),
                 original,
+                encoding,
+                had_bom,
             });
         }
     }
@@ -804,7 +827,9 @@ fn apply_pending_writes(pending: &[PendingWrite]) -> Result<(), ToolError> {
                     ))
                 })?;
             }
-            crate::tools::file::atomic_write(&entry.path, content.as_bytes()).map_err(|e| {
+            // C8: write back in the file's original encoding.
+            let encoded = crate::tools::file::encode_text(content, &entry.encoding, entry.had_bom);
+            crate::tools::file::atomic_write(&entry.path, &encoded).map_err(|e| {
                 ToolError::execution_failed(format!(
                     "Failed to write {}: {}",
                     entry.path.display(),
@@ -838,19 +863,16 @@ fn rollback_pending_writes(applied: &[PendingWrite]) {
     for entry in applied.iter().rev() {
         match entry.original.as_ref() {
             Some(content) => {
-                let _ = crate::tools::file::atomic_write(&entry.path, content.as_bytes());
+                // C8: restore in the original encoding.
+                let encoded =
+                    crate::tools::file::encode_text(content, &entry.encoding, entry.had_bom);
+                let _ = crate::tools::file::atomic_write(&entry.path, &encoded);
             }
             None => {
                 let _ = fs::remove_file(&entry.path);
             }
         }
     }
-}
-
-fn read_file_content(path: &PathBuf) -> Result<String, ToolError> {
-    fs::read_to_string(path).map_err(|e| {
-        ToolError::execution_failed(format!("Failed to read {}: {}", path.display(), e))
-    })
 }
 
 fn preview_expected_lines(hunk: &Hunk, limit: usize) -> Vec<String> {
@@ -1458,6 +1480,32 @@ diff --git a/b.txt b/b.txt
         // CRLF and the trailing newline must survive the patch round-trip.
         let written = fs::read(&path).expect("read");
         assert_eq!(written, b"line1\r\nmodified\r\nline3\r\n");
+    }
+
+    /// Tool surface audit C8 — apply_patch must keep a GB18030 file in GB18030
+    /// instead of silently transcoding it to UTF-8 on write-back.
+    #[tokio::test]
+    async fn test_apply_patch_preserves_gb18030_encoding() {
+        let tmp = tempdir().expect("tempdir");
+        let ctx = ToolContext::new(tmp.path().to_path_buf());
+        let path = tmp.path().join("gb.txt");
+        let seed = encoding_rs::GB18030.encode("第一行\n第二行\n").0.into_owned();
+        fs::write(&path, &seed).expect("seed");
+
+        let patch = "--- a/gb.txt\n+++ b/gb.txt\n@@ -1,2 +1,2 @@\n 第一行\n-第二行\n+修改行\n";
+        let tool = ApplyPatchTool;
+        tool.execute(json!({"path": "gb.txt", "patch": patch}), &ctx)
+            .await
+            .expect("execute");
+
+        let written = fs::read(&path).expect("read");
+        assert!(
+            std::str::from_utf8(&written).is_err(),
+            "patched file must stay GB18030, not become UTF-8"
+        );
+        let (decoded, label, _via) = crate::tools::file::detect_and_decode(&written);
+        assert_eq!(decoded, "第一行\n修改行\n");
+        assert_eq!(label, "gb18030");
     }
 
     #[test]
