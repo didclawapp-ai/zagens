@@ -17,7 +17,9 @@ use super::spec::{
     lsp_diagnostics_for_paths, optional_bool, optional_str, optional_u64, required_str,
 };
 
-/// Maximum lines of context for fuzzy matching (increased for better tolerance)
+/// Default fuzz factor when the caller omits `fuzz` (matches schema; was MAX_FUZZ).
+const DEFAULT_FUZZ: usize = 3;
+/// Maximum lines of context for fuzzy matching.
 const MAX_FUZZ: usize = 50;
 /// Limit how much context we print in error messages.
 const HUNK_PREVIEW_LINES: usize = 4;
@@ -187,7 +189,7 @@ impl ToolSpec for ApplyPatchTool {
                 },
                 "fuzz": {
                     "type": "integer",
-                    "description": "Maximum fuzz factor for fuzzy matching (default: 3)"
+                    "description": "Maximum fuzz factor for fuzzy matching (default: 3, max: 50)"
                 },
                 "create_if_missing": {
                     "type": "boolean",
@@ -214,8 +216,8 @@ impl ToolSpec for ApplyPatchTool {
     }
 
     async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
-        let fuzz = optional_u64(&input, "fuzz", MAX_FUZZ as u64).min(MAX_FUZZ as u64);
-        let fuzz = usize::try_from(fuzz).unwrap_or(MAX_FUZZ);
+        let fuzz = optional_u64(&input, "fuzz", DEFAULT_FUZZ as u64).min(MAX_FUZZ as u64);
+        let fuzz = usize::try_from(fuzz).unwrap_or(DEFAULT_FUZZ);
         let create_if_missing = optional_bool(&input, "create_if_missing", false);
 
         if let Some(changes_value) = input.get("changes") {

@@ -39,7 +39,7 @@ impl ToolSpec for ExecShellTool {
                 },
                 "timeout_ms": {
                     "type": "integer",
-                    "description": "Timeout in milliseconds (default: 120000, max: 600000)"
+                    "description": "Timeout in milliseconds (default: 120000, min: 1000, max: 600000)"
                 },
                 "background": {
                     "type": "boolean",
@@ -84,7 +84,7 @@ impl ToolSpec for ExecShellTool {
         context: &ToolContext,
     ) -> Result<ToolResult, ToolError> {
         let command = required_str(&input, "command")?;
-        let timeout_ms = optional_u64(&input, "timeout_ms", 120_000).min(600_000);
+        let timeout_ms = optional_u64(&input, "timeout_ms", 120_000).clamp(1000, 600_000);
         let background = optional_bool(&input, "background", false);
         let interactive = optional_bool(&input, "interactive", false);
         let tty = optional_bool(&input, "tty", false);

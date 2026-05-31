@@ -1,6 +1,6 @@
 # 工具面审计 — Tool Surface Audit
 
-**状态:** v1.2（2026-05-31，T1–T7h + 收尾 + 残余 P1）
+**状态:** v1.3（2026-05-31，P2 第一批体验优化完成）
 **触发:** MicroStack03 长程压测复盘——最大弱点暴露在**工具功能本身**（健壮性 / 跨平台 / 边界 / 效率与准确性），而非模型能力。
 **方法:** 4 个只读探查代理对 `crates/runtime-server/src/tools/**` 逐文件代码核对，每条带 `文件:行号` 实证；标★者已由本审计二次人工核实。非全采纳代理结论（部分"按设计"项已剔除或标注）。
 **严重度:** **P0** = 挂死 / 丢数据 / 安全穿透；**P1** = 长任务里高频踩、误判、烧 token；**P2** = 体验 / 保真度。
@@ -41,7 +41,7 @@
 - **[已缓解★] C2** — foreground 丢 `cwd`（`execute_foreground_via_background` 已透传 `working_dir`）。
 - **[P1] `exec.rs:210`** — OpenSandbox 分支 `backend.exec` 不传 `working_dir`，外部 sandbox 下 cwd 无效。
 - **[P1] `manager.rs:188-189,283`** — `cwd` 仅校验 workspace 边界，**不校验目录存在**，指向已删目录行为因 OS 而异。
-- **[P2] `exec.rs:87` vs `manager.rs:191`** — `timeout_ms` 工具层只 `.min(600k)` 未设下限，manager 层 `clamp(1000,..)`，传 500 实际 1000，和 schema 不符。
+- **[P2] `exec.rs:87` vs `manager.rs:191`** — ~~`timeout_ms` 工具层只 `.min(600k)` 未设下限~~ **已缓解** — `exec_shell` 现 `clamp(1000, 600_000)` 与 manager 一致,schema 注明 min 1000。
 - **[设计] `manager.rs:188` + `base.md`** — 跨调用无 cwd 状态（无状态 shell）；prompt 已说明用 `cwd`/`cd &&`。
 
 **效率与准确性**
@@ -65,19 +65,19 @@
 
 **跨平台**
 - **[已缓解★] `write.rs:107-116,215-232` + `apply_patch.rs:738-781`** — 原子写 + CRLF 保留（有单测）。
-- **[P2] 末尾换行不一致** — `apply_patch` 保留 trailing newline；`write_file`（`write.rs:112`）与 `edit_file` 行操作（`edit.rs:346-368`）会丢掉原文件末尾 `\n`。
-- **[P2] `read.rs:151`** — 返回给模型统一 LF（行内 `\r` 已 trim），与磁盘 CRLF 字节不一致;metadata 无 `line_ending` 字段。
+- **[P2] 末尾换行不一致** — `apply_patch` 保留 trailing newline；`write_file`/`edit_file` 行操作仍可能丢 `\n`(未改,行为变更风险)。
+- **[P2] `read.rs:151`** — 返回 LF、无 `line_ending` metadata(未改)。
+- **[P2] `apply_patch` fuzz** — **已缓解** — 默认 fuzz 改 3(对齐 schema),上限仍 50。
+- **[P2] `edit.rs:445` delete_lines** — **已缓解** — `end_line` 超文件时在 summary 注明 clamped。
+- **[P2] `edit.rs:284` diff** — **已缓解** — 超 `DIFF_MAX_INPUT_BYTES` 跳过 unified diff(对齐 `write_file`)。
+- **[设计/已缓解] 路径越界** — 非 trust 模式统一 `resolve_path`(canonicalize + no `..`);`trust_mode=true` 按设计跳过（`spec.rs:347`）。Windows 保留名(CON/NUL)/长路径无专门处理。
 
 **边界**
-- **[P1] `edit.rs:209`** — 精确子串匹配，无锚定/空白容错 → gofmt 后预写 search 必失配。已加:零匹配提示(`edit.rs:216-222`)、多匹配强制 `replace_mode`(`236-257`)、别名提示(★本轮)、prompt 重读指引(★本轮)；**匹配本身仍精确**。
-- **[P2] `apply_patch.rs:212 vs 185`** — schema 写 fuzz 默认 3，代码实际 `MAX_FUZZ=50`，未传时搜索窗 ±50 行，重复上下文易误匹配（文档与实现不符）。
-- **[P2] `edit.rs:445`** — `delete_lines` 的 `end_line` 超文件静默 `min(len)`，"删 100-200" 实删到 50 仍报成功。
-- **[设计/已缓解] 路径越界** — 非 trust 模式统一 `resolve_path`(canonicalize + no `..`);`trust_mode=true` 按设计跳过（`spec.rs:347`）。Windows 保留名(CON/NUL)/长路径无专门处理。
+- **[P1] `edit.rs:209`** — 精确子串匹配，无锚定/空白容错；已加零匹配/多匹配/别名提示；**匹配本身仍精确**。
 
 **效率与准确性**
 - **[已缓解★] `read.rs:90-99`** — `offset`/`limit` 分页 + 流式读。
-- **[P2] `edit.rs:284`** — 每次成功都全文件 `make_unified_diff`，大文件无 `DIFF_MAX_INPUT_BYTES` 跳过（`write.rs:146` 有）。
-- **[P2] `list_dir.rs:57-83`** — 仅 `limit` 无 `offset`/cursor，超大目录无法翻页（有 `truncated`）。
+- **[已缓解★] `list_dir`** — 新增 `offset`/`returned` 分页(对齐 `truncated`/`total`)。
 
 ---
 
@@ -90,15 +90,14 @@
 
 **跨平台**
 - **[已缓解★] `search.rs:583-591`** — `grep_files` include/exclude 匹配前把相对路径 `\` 规范为 `/`,Windows 下 `src/**/*.rs` 正常匹配。
-- **[P2] `search.rs:262,270`** — 解码后只按 `\n` 分行，CRLF 残留 `\r`，正则可能不匹配 `fn foo`(实为 `fn foo\r`)。
-- **[P2] `git.rs:72,168`** — pathspec 用 `display()`，Windows 反斜杠。
+- **[已缓解★] `search.rs` CRLF** — 分行后 strip `\r`,Windows CRLF 文件可匹配 LF 写法正则。
+- **[已缓解★] `git.rs`/`git_history.rs` pathspec** — argv 用 `git_pathspec_arg`(`\`→`/`)。
 
 **边界**
 - **[已缓解★] `file_search.rs`** — 不再返回裸数组,改为 `{matches,total_matches,returned,truncated}`;收尾加 `respect_gitignore` 参数(对齐 grep/glob)。
 - **[已缓解★] `glob_files.rs:116-123`** — pattern 现按 **`path` 相对**匹配(`strip_prefix(base_path)`),`path:"src"` + `*.ts` 正常命中;输出仍返回 workspace 相对路径。
 - **[已缓解★] `project.rs`** — `project_map` tree 输出上限 500 行,返回 `tree_total_lines`/`tree_truncated`;`key_files` walk 已 `follow_links(false)`。
-- **[P2] `glob_files.rs`** — `base_path` 不存在现返回 `invalid_input`(对齐 grep)。
-- **[P2] `search.rs:157-158`** — `context_lines` 解析失败退回 2 并 clamp ≤20(不再 `usize::MAX`)。
+- **[已缓解★] `glob_files`/`grep` context_lines** — 路径不存在报错;`context_lines` clamp ≤20(见 P1 收尾)。
 
 **效率与准确性**
 - **[已缓解★] `search.rs:277-280`** — `files_with_matches` 单文件首命中 `break`；**但 `count` 模式仍全文件扫**(`270-275`)。
@@ -125,9 +124,9 @@
 
 **边界**
 - **[P2] `fetch_url.rs:235-244`/`web_run/page.rs:222-246`** — 非 HTML(PDF/二进制)仍 `from_utf8_lossy` 出乱码无类型警告;`web.run` 的 `screenshot` 实际只返回 PDF 文本拼接,**非图像**(名实不符)。
-- **[P2] `web_search.rs:307-313`** — HTTP 200 零结果仍 success,难区分真无结果 vs HTML 改版。
+- **[已缓解★] `web_search` 零结果** — 空结果 message 区分 challenge/fallback/解析失败。
 - **[P1] `validate_data.rs:118`** — `read_to_string` 无文件大小上限。
-- **[P2] `describe_image.rs:118`** — 仅 png/jpg/jpeg/gif/bmp,不含 webp/heic(常见截图)。
+- **[已缓解★] `describe_image`** — 支持 webp(仍不含 heic)。
 
 **效率与准确性**
 - **[P2] `fetch_url.rs:289-297`/`web_run/html.rs:204-212`** — HTML 实体解码仅 6-7 种字面量,无 `&#...;`/`&#x...;`;markdown 保真度低。
@@ -156,8 +155,8 @@
 12. **edit_file/fim 原子写** — ✅ 已缓解(复用 `atomic_write`)。
 13. **glob_files/file_search 语义** — ✅ glob pattern 相对 `path` 匹配;✅ `file_search` 加 `respect_gitignore`。
 
-### P2（体验 / 保真度）
-- shell `timeout_ms` 下限对齐 schema;apply_patch fuzz 默认对齐文档;list_dir `offset` 分页;HTML 实体/CJK 换行;describe_image 支持 webp;office 合并单元格内容;`screenshot` 名实对齐。
+### P2（体验 / 保真度 — 第一批 ✅ 已做: timeout 对齐/fuzz 默认/grep CRLF/git pathspec/list_dir offset/edit diff+delete_lines/webp/零结果提示）
+- **仍开放:** trailing newline 一致;HTML 实体/CJK wrap;`screenshot` 名实;office 合并格;heic;BM25 截断;ripgrep 化 grep 等。
 
 ---
 

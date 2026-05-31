@@ -68,7 +68,7 @@ impl ToolSpec for GitStatusTool {
         ];
         if let Some(pathspec) = &git_ctx.pathspec {
             args.push("--".to_string());
-            args.push(pathspec.display().to_string());
+            args.push(git_pathspec_arg(pathspec));
         }
 
         let command_str = format_command(&git_ctx.working_dir, &args);
@@ -164,7 +164,7 @@ impl ToolSpec for GitDiffTool {
         }
         if let Some(pathspec) = &git_ctx.pathspec {
             args.push("--".to_string());
-            args.push(pathspec.display().to_string());
+            args.push(git_pathspec_arg(pathspec));
         }
 
         let command_str = format_command(&git_ctx.working_dir, &args);
@@ -253,6 +253,11 @@ fn pathspec_from(working_dir: &Path, resolved: &Path) -> PathBuf {
         Ok(rel) => rel.to_path_buf(),
         Err(_) => PathBuf::from("."),
     }
+}
+
+/// Git pathspec argv uses forward slashes even on Windows.
+pub(in crate::tools) fn git_pathspec_arg(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
 }
 
 /// Wall-clock cap on a single `git` invocation (C6). Guards against a git

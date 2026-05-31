@@ -7,6 +7,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Output;
 
+use super::git::git_pathspec_arg;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
@@ -107,7 +108,7 @@ impl ToolSpec for GitLogTool {
         }
         if let Some(pathspec) = &git_ctx.pathspec {
             args.push("--".to_string());
-            args.push(pathspec.display().to_string());
+            args.push(git_pathspec_arg(pathspec));
         }
 
         let command_str = format_command(&git_ctx.working_dir, &args);
@@ -224,7 +225,7 @@ impl ToolSpec for GitShowTool {
         args.push(rev.to_string());
         if let Some(pathspec) = &git_ctx.pathspec {
             args.push("--".to_string());
-            args.push(pathspec.display().to_string());
+            args.push(git_pathspec_arg(pathspec));
         }
 
         let command_str = format_command(&git_ctx.working_dir, &args);
@@ -354,7 +355,7 @@ impl ToolSpec for GitBlameTool {
         }
         args.push(rev.to_string());
         args.push("--".to_string());
-        args.push(pathspec.display().to_string());
+        args.push(git_pathspec_arg(&pathspec));
 
         let command_str = format_command(working_dir, &args);
         let output = run_git_command(working_dir, &args).await?;

@@ -34,6 +34,10 @@ impl ToolSpec for ListDirTool {
                 "limit": {
                     "type": "integer",
                     "description": "Maximum entries to return (default: 1000, max: 10000). Directories are listed first, then files, each sorted by name."
+                },
+                "offset": {
+                    "type": "integer",
+                    "description": "Skip this many entries after sorting (default: 0). Use with limit to paginate large directories."
                 }
             },
             "required": []
@@ -53,6 +57,7 @@ impl ToolSpec for ListDirTool {
         let dir_path = context.resolve_path(path_str)?;
         let limit = (optional_u64(&input, "limit", DEFAULT_LIST_LIMIT as u64) as usize)
             .clamp(1, MAX_LIST_LIMIT);
+        let offset = optional_u64(&input, "offset", 0) as usize;
 
         // Collect first so we can sort deterministically (read_dir order is
         // filesystem-dependent and otherwise non-reproducible).
@@ -79,10 +84,13 @@ impl ToolSpec for ListDirTool {
         raw.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
 
         let total = raw.len();
-        let truncated = total > limit;
-        raw.truncate(limit);
+        let offset = offset.min(total);
+        let remaining = total.saturating_sub(offset);
+        let truncated = remaining > limit;
+        let page: Vec<_> = raw.into_iter().skip(offset).take(limit).collect();
+        let returned = page.len();
 
-        let entries: Vec<Value> = raw
+        let entries: Vec<Value> = page
             .into_iter()
             .map(|(name, is_dir, is_symlink)| {
                 json!({ "name": name, "is_dir": is_dir, "is_symlink": is_symlink })
@@ -92,6 +100,8 @@ impl ToolSpec for ListDirTool {
         let payload = json!({
             "path": dir_path.to_string_lossy(),
             "total": total,
+            "offset": offset,
+            "returned": returned,
             "truncated": truncated,
             "entries": entries,
         });

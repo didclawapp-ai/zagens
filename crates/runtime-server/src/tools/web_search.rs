@@ -315,7 +315,18 @@ impl ToolSpec for WebSearchTool {
             }
         }
         let message = if results.is_empty() {
-            "No results found".to_string()
+            if message_suffix
+                .as_deref()
+                .is_some_and(|s| s.contains("bot challenge"))
+            {
+                "No results found — search engine returned a bot challenge".to_string()
+            } else if let Some(suffix) = message_suffix.as_deref() {
+                format!("No results found ({suffix})")
+            } else {
+                format!(
+                    "No results found via {source} (request succeeded but no parseable entries — HTML layout may have changed)"
+                )
+            }
         } else if let Some(suffix) = message_suffix.as_deref() {
             format!("Found {} result(s). {suffix}", results.len())
         } else {
@@ -409,7 +420,7 @@ async fn run_bing_search(
     let (bytes, _truncated) = crate::tools::ssrf::read_body_capped(
         resp,
         MAX_SEARCH_RESPONSE_BYTES,
-        None,
+        cancel,
     )
     .await?;
     let body = String::from_utf8_lossy(&bytes).into_owned();

@@ -74,7 +74,7 @@ impl ToolSpec for DescribeImageTool {
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "Path to the image file. Supported: png, jpg, jpeg, gif, bmp."
+                    "description": "Path to the image file. Supported: png, jpg, jpeg, gif, bmp, webp."
                 },
                 "prompt": {
                     "type": "string",
@@ -115,9 +115,9 @@ impl ToolSpec for DescribeImageTool {
             .and_then(|e| e.to_str())
             .unwrap_or("")
             .to_lowercase();
-        if !matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "gif" | "bmp") {
+        if !matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "gif" | "bmp" | "webp") {
             return Ok(ToolResult::error(format!(
-                "不支持的图片格式: .{ext}。支持: png, jpg, jpeg, gif, bmp"
+                "不支持的图片格式: .{ext}。支持: png, jpg, jpeg, gif, bmp, webp"
             )));
         }
 
@@ -136,6 +136,7 @@ impl ToolSpec for DescribeImageTool {
             "jpg" | "jpeg" => "image/jpeg",
             "gif" => "image/gif",
             "bmp" => "image/bmp",
+            "webp" => "image/webp",
             _ => "image/png",
         };
         let b64 = base64::engine::general_purpose::STANDARD.encode(&image_bytes);

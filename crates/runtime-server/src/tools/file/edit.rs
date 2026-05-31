@@ -9,8 +9,17 @@ use super::write::{
     find_match_line_numbers, jsx_balance_warning, make_compact_change,
     normalize_line_endings,
 };
+use super::DIFF_MAX_INPUT_BYTES;
 use async_trait::async_trait;
 use serde_json::{Value, json};
+
+fn edit_unified_diff(display: &str, before: &str, after: &str) -> String {
+    if before.len() > DIFF_MAX_INPUT_BYTES || after.len() > DIFF_MAX_INPUT_BYTES {
+        String::new()
+    } else {
+        make_unified_diff(display, before, after)
+    }
+}
 
 /// Extract the replacement-text field, but emit a targeted hint when the model
 /// used a wrong alias (`new_str` / `new_string` / `replacement` — habits carried
@@ -284,7 +293,7 @@ impl EditFileTool {
             .iter()
             .map(|n| format!("line {n}"))
             .collect();
-        let diff = make_unified_diff(&display, &contents, &updated);
+        let diff = edit_unified_diff(&display, &contents, &updated);
         let total_lines = updated.lines().count();
         let summary = if line_list.is_empty() {
             format!("Replaced {count} occurrence(s) in {display} — file now {total_lines} lines")
@@ -373,7 +382,7 @@ impl EditFileTool {
         })?;
 
         let display = file_path.display().to_string();
-        let diff = make_unified_diff(&display, &contents, &updated);
+        let diff = edit_unified_diff(&display, &contents, &updated);
         let inserted_count = text_normalized.lines().count();
         let total_lines = updated.lines().count();
         let position = if after_line == 0 {
@@ -438,6 +447,7 @@ impl EditFileTool {
             )));
         }
         let e = end.min(lines.len());
+        let end_clamped = end > lines.len();
         let dry_run = optional_bool(input, "dry_run", false);
 
         let deleted_lines: Vec<&str> = lines[start.saturating_sub(1)..e].to_vec();
@@ -446,6 +456,11 @@ impl EditFileTool {
             format!("line {start}")
         } else {
             format!("lines {start}–{e}")
+        };
+        let clamp_note = if end_clamped {
+            format!(" (end_line {end} clamped to file length {})", lines.len())
+        } else {
+            String::new()
         };
 
         if dry_run {
@@ -480,10 +495,10 @@ impl EditFileTool {
         })?;
 
         let display = file_path.display().to_string();
-        let diff = make_unified_diff(&display, &contents, &updated);
+        let diff = edit_unified_diff(&display, &contents, &updated);
         let total_lines = updated.lines().count();
         let summary = format!(
-            "Deleted {deleted_count} line(s) ({range}) in {display} — file now {total_lines} lines"
+            "Deleted {deleted_count} line(s) ({range}){clamp_note} in {display} — file now {total_lines} lines"
         );
         let body = format!("{diff}\n{summary}");
 
@@ -557,7 +572,7 @@ impl EditFileTool {
         })?;
 
         let display = file_path.display().to_string();
-        let diff = make_unified_diff(&display, &contents, &updated);
+        let diff = edit_unified_diff(&display, &contents, &updated);
         let compact = make_compact_change(old_line, &text_normalized);
         let total_lines = updated.lines().count();
         let summary = format!("Replaced line {line} in {display} — file now {total_lines} lines");

@@ -1,7 +1,7 @@
 use super::*;
 
 use crate::tools::spec::{ApprovalRequirement, ToolContext, ToolSpec};
-use serde_json::json;
+use serde_json::{Value, json};
 use std::fs;
 use std::process::{Command, Stdio};
 use tempfile::tempdir;
@@ -524,6 +524,28 @@ async fn test_read_file_tool() {
 
         assert!(result.success);
         assert!(result.content.contains("nested.txt"));
+    }
+
+    #[tokio::test]
+    async fn test_list_dir_offset_paginates() {
+        let tmp = tempdir().expect("tempdir");
+        for i in 0..5 {
+            std::fs::write(tmp.path().join(format!("file_{i}.txt")), "x\n").expect("write");
+        }
+
+        let ctx = ToolContext::new(tmp.path().to_path_buf());
+        let tool = ListDirTool;
+        let result = tool
+            .execute(json!({"limit": 2, "offset": 2}), &ctx)
+            .await
+            .expect("execute");
+
+        assert!(result.success);
+        let parsed: Value = serde_json::from_str(&result.content).expect("json");
+        assert_eq!(parsed["total"].as_u64().unwrap(), 5);
+        assert_eq!(parsed["offset"].as_u64().unwrap(), 2);
+        assert_eq!(parsed["returned"].as_u64().unwrap(), 2);
+        assert!(parsed["truncated"].as_bool().unwrap());
     }
 
     #[test]

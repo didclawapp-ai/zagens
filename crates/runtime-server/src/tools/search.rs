@@ -584,7 +584,11 @@ fn grep_file_scan(params: GrepScanParams) -> Result<GrepFileScanOutput, ToolErro
         let (file_content, _enc, _via) = super::file::detect_and_decode(&raw_bytes);
 
         files_searched += 1;
-        let lines: Vec<&str> = file_content.lines().collect();
+        // Strip trailing CR so CRLF files match patterns written for LF (Windows).
+        let lines: Vec<String> = file_content
+            .lines()
+            .map(|line| line.trim_end_matches('\r').to_string())
+            .collect();
         let relative_path = file_path
             .strip_prefix(&workspace)
             .unwrap_or(&file_path)
@@ -606,18 +610,18 @@ fn grep_file_scan(params: GrepScanParams) -> Result<GrepFileScanOutput, ToolErro
             if output_mode == GrepOutputMode::Content {
                 let context_before: Vec<String> = (line_idx.saturating_sub(context_lines)
                     ..line_idx)
-                    .filter_map(|i| lines.get(i).map(|s| (*s).to_string()))
+                    .filter_map(|i| lines.get(i).cloned())
                     .collect();
 
                 let context_after: Vec<String> = ((line_idx + 1)
                     ..=(line_idx + context_lines).min(lines.len() - 1))
-                    .filter_map(|i| lines.get(i).map(|s| (*s).to_string()))
+                    .filter_map(|i| lines.get(i).cloned())
                     .collect();
 
                 results.push(GrepMatch {
                     file: relative_path.clone(),
                     line_number: line_idx + 1,
-                    line: (*line).to_string(),
+                    line: line.clone(),
                     context_before,
                     context_after,
                 });
@@ -1273,6 +1277,22 @@ mod tests {
         assert_eq!(parsed["output_mode"], "count");
         let counts = parsed["file_counts"].as_array().unwrap();
         assert_eq!(counts[0]["match_count"].as_u64().unwrap(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_grep_files_matches_crlf_lines() {
+        let tmp = tempdir().expect("tempdir");
+        fs::write(tmp.path().join("crlf.txt"), "fn foo()\r\n").expect("write");
+
+        let ctx = ToolContext::new(tmp.path().to_path_buf());
+        let tool = GrepFilesTool;
+        let result = tool
+            .execute(json!({"pattern": "fn foo"}), &ctx)
+            .await
+            .expect("execute");
+
+        let parsed: Value = serde_json::from_str(&result.content).unwrap();
+        assert_eq!(parsed["total_matches"].as_u64().unwrap(), 1);
     }
 
     #[test]
