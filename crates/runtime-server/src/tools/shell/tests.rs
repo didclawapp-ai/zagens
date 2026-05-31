@@ -258,6 +258,38 @@ async fn test_exec_shell_metadata_includes_summaries() {
 }
 
 #[tokio::test]
+async fn test_exec_shell_foreground_respects_cwd() {
+    // Regression for C2: foreground exec_shell used to drop the `cwd` arg and
+    // run from the workspace root. A relative write must land in the subdir.
+    let tmp = tempdir().expect("tempdir");
+    let subdir = tmp.path().join("nested");
+    std::fs::create_dir(&subdir).expect("create subdir");
+    let ctx = ToolContext::new(tmp.path());
+    let tool = ExecShellTool;
+
+    let result = tool
+        .execute(
+            json!({
+                "command": "echo marker > marker.txt",
+                "cwd": "nested"
+            }),
+            &ctx,
+        )
+        .await
+        .expect("execute");
+
+    assert!(result.success, "command failed: {}", result.content);
+    assert!(
+        subdir.join("marker.txt").exists(),
+        "marker.txt should be created inside the cwd subdir, not the workspace root"
+    );
+    assert!(
+        !tmp.path().join("marker.txt").exists(),
+        "marker.txt must not leak to the workspace root"
+    );
+}
+
+#[tokio::test]
 async fn test_exec_shell_foreground_timeout_guides_background_rerun() {
     let tmp = tempdir().expect("tempdir");
     let ctx = ToolContext::new(tmp.path());

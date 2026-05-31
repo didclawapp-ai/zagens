@@ -51,6 +51,7 @@ pub(super) fn emit_shell_delta_streams(context: &ToolContext, result: &ShellResu
 pub(super) async fn execute_foreground_via_background(
     context: &ToolContext,
     command: &str,
+    working_dir: Option<&str>,
     timeout_ms: u64,
     stdin_data: Option<&str>,
     policy_override: Option<ExecutionSandboxPolicy>,
@@ -65,7 +66,7 @@ pub(super) async fn execute_foreground_via_background(
         manager.clear_foreground_background_request();
         manager.execute_with_options_env(
             command,
-            None,
+            working_dir,
             timeout_ms,
             true,
             stdin_data,

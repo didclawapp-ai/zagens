@@ -14,7 +14,7 @@
 | # | 主题 | 维度 | 严重度 | 代表位置 | 现状 |
 |---|------|------|--------|----------|------|
 | C1 | **Windows 杀不掉进程树** — `child.kill()` 只杀直接子进程，`Start-Process`/守护进程化的孙进程变孤儿、继续占端口（今日 7878 占用即此） | 健壮性/跨平台 | **P0** | `process.rs:170-173,454-461`、`manager.rs:375-376,473-474`、`cancel.rs` | 未缓解；无 Job Object / `taskkill /T` |
-| C2 | **foreground `exec_shell` 丢弃 `cwd` 参数** ★已核实 — 默认前台路径硬传 `None`，回退工作区根；background/interactive 正常 | 健壮性/边界 | **P1** | `exec.rs:318` → `helpers.rs:66-68`（对比 `exec.rs:296/308` 传 `working_dir`） | 未缓解（**快速修**：透传 working_dir） |
+| C2 | **foreground `exec_shell` 丢弃 `cwd` 参数** ★已核实 — 默认前台路径硬传 `None`，回退工作区根；background/interactive 正常 | 健壮性/边界 | **P1** | `exec.rs:318` → `helpers.rs:66-68`（对比 `exec.rs:296/308` 传 `working_dir`） | **已缓解** — `execute_foreground_via_background` 加 `working_dir` 形参,`exec.rs` 调用处透传 `working_dir.as_deref()`;单测 `test_exec_shell_foreground_respects_cwd`。**残留：** OpenSandbox `backend.exec`(`exec.rs:210`)仍不带 cwd(trait 协议改动,另议) |
 | C3 | **SSRF：重定向/分支不复校验 IP** — `fetch_url` 初始 URL 校验内网 IP，但 302 跟随后不再校验；`web_run` 取页仅查 network policy、完全无 IP 阻断 | 健壮性/安全 | **P0**（取决于 network policy 是否默认 allow） | `fetch_url.rs:193-214`、`web_run/page.rs:39-89` | 未缓解 |
 | C4 | **async 里同步阻塞 `Command::output()`** — 阻塞 tokio worker，并发工具相互拖累 | 健壮性/效率 | **P1** | `git.rs:259`、`git_history.rs:447`、`test_runner.rs:86`、`diagnostics.rs:165`、`describe_image.rs:248`(blocking reqwest) | 未缓解 |
 | C5 | **`follow_links(true)` 可跟符号链接读出工作区外** — walk 到的文件不过 `resolve_path` | 健壮性/安全 | **P1** | `runtime-adapters/.../workspace_walk.rs:27`（grep/glob/file_search/project 共用） | 未缓解 |
@@ -38,7 +38,7 @@
 - **[P2] `manager.rs:568-586`** — background spawn 未装 `install_parent_death_signal`（sync/interactive 有），Linux runtime 被 SIGKILL 时可能留孤儿。
 
 **边界**
-- **[P1] C2** ★ — foreground 丢 `cwd`。
+- **[已缓解★] C2** — foreground 丢 `cwd`（`execute_foreground_via_background` 已透传 `working_dir`）。
 - **[P1] `exec.rs:210`** — OpenSandbox 分支 `backend.exec` 不传 `working_dir`，外部 sandbox 下 cwd 无效。
 - **[P1] `manager.rs:188-189,283`** — `cwd` 仅校验 workspace 边界，**不校验目录存在**，指向已删目录行为因 OS 而异。
 - **[P2] `exec.rs:87` vs `manager.rs:191`** — `timeout_ms` 工具层只 `.min(600k)` 未设下限，manager 层 `clamp(1000,..)`，传 500 实际 1000，和 schema 不符。

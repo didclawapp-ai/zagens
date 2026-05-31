@@ -318,6 +318,7 @@ impl ToolSpec for ExecShellTool {
             execute_foreground_via_background(
                 context,
                 command,
+                working_dir.as_deref(),
                 timeout_ms,
                 stdin_data.as_deref(),
                 policy_override,
