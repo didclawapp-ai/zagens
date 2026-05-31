@@ -169,6 +169,28 @@ fn truncate_chars(text: &str, max_chars: usize) -> String {
 }
 
 pub(crate) fn summarize_output(text: &str) -> String {
+    // High-signal lines (test result:/failures/errors/panics/exit status) almost
+    // always live at the *tail* of build/test output. Scanning the full text
+    // (including any "[Preserved summary lines ...]" block that truncation
+    // appended) and biasing toward the last matches surfaces the conclusion —
+    // taking the first N lines would only show `Compiling`/`running N tests`
+    // and silently drop `test result:` (C7).
+    let mut tail_signal: Vec<&str> = text
+        .lines()
+        .rev()
+        .filter(|line| is_summary_line(line))
+        .take(SUMMARY_MAX_LINES)
+        .collect();
+    if !tail_signal.is_empty() {
+        tail_signal.reverse();
+        let joined = tail_signal.join("\n");
+        let joined = joined.trim();
+        if !joined.is_empty() {
+            return truncate_chars(joined, SUMMARY_MAX_CHARS);
+        }
+    }
+
+    // Fallback: no recognised signal lines, summarise from the head.
     let stripped = strip_truncation_note(text);
     let summary = stripped
         .lines()
@@ -234,6 +256,51 @@ mod tests {
     fn collect_summary_lines_skips_noise() {
         let body = "\nblah blah\nrandom line\nokay\n\n";
         assert!(collect_summary_lines(body).is_empty());
+    }
+
+    #[test]
+    fn summarize_output_surfaces_tail_test_result() {
+        let body = "\
+Compiling deepseek-runtime-server v0.8.15
+   Compiling foo v1.0
+running 1687 tests
+test a ... ok
+test b ... ok
+test result: ok. 1687 passed; 0 failed; 2 ignored
+";
+        let summary = summarize_output(body);
+        assert!(
+            summary.contains("test result: ok. 1687 passed"),
+            "summary must surface the tail conclusion, got: {summary}"
+        );
+        assert!(
+            !summary.contains("Compiling deepseek"),
+            "summary should not be dominated by head noise, got: {summary}"
+        );
+    }
+
+    #[test]
+    fn summarize_output_falls_back_to_head_without_signal() {
+        let body = "first line\nsecond line\nthird line\nfourth line\n";
+        let summary = summarize_output(body);
+        assert!(summary.contains("first line"), "got: {summary}");
+    }
+
+    #[test]
+    fn summarize_output_finds_result_in_preserved_tail_block() {
+        let mut head = String::with_capacity(MAX_OUTPUT_SIZE + 1_000);
+        head.push_str("running 5 tests\n");
+        while head.len() < MAX_OUTPUT_SIZE {
+            head.push_str("noise line that is not a summary line\n");
+        }
+        head.push_str("\ntest result: FAILED. 4 passed; 1 failed\n");
+        let (truncated, meta) = truncate_with_meta(&head);
+        assert!(meta.truncated);
+        let summary = summarize_output(&truncated);
+        assert!(
+            summary.contains("test result: FAILED"),
+            "summary must read the preserved tail block, got: {summary}"
+        );
     }
 
     #[test]

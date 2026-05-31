@@ -19,7 +19,7 @@
 | C4 | **async 里同步阻塞 `Command::output()`** — 阻塞 tokio worker，并发工具相互拖累 | 健壮性/效率 | **P1** | `git.rs:259`、`git_history.rs:447`、`test_runner.rs:86`、`diagnostics.rs:165`、`describe_image.rs:248`(blocking reqwest) | **已缓解** — `git`/`git_history`/`test_runner` 改 `tokio::process::Command` + `.output().await`;`diagnostics` 把全部探测包进 `spawn_blocking`(深层 sync 助手树不动);`describe_image` 改异步 `reqwest::Client` |
 | C5 | **`follow_links(true)` 可跟符号链接读出工作区外** — walk 到的文件不过 `resolve_path` | 健壮性/安全 | **P1** | `runtime-adapters/.../workspace_walk.rs:27`（grep/glob/file_search/project 共用） | **已缓解** — 改 `follow_links(false)`(亦对齐 ripgrep 默认),工作区内指向区外的 symlink 不再被跟随;grep/glob/file_search/project 全过 |
 | C6 | **子进程/HTTP 无超时 + 响应体全量读** — git/test/office Python/web 抓取无 timeout；web 响应先 `bytes().await` 全读再按上限截断（OOM 风险在截断之前） | 健壮性/边界 | **P1** | `test_runner.rs:108`、`office_write.rs:1305`、`fetch_url.rs:223`、`web_run/page.rs:63` | 部分（输出截断有，但内存/挂起未防） |
-| C7 | **静默截断、不报总数** — 结果超上限直接 `truncate`，部分工具无 `total`/`truncated`，模型以为已全 | 准确性 | **P1** | `file_search.rs`（无 total）；`shell_output.rs` 80 行 summary 丢尾部 `test result:` | 部分缓解 — grep/glob 有 `truncated`;`file_search` 现返回 `{matches,total_matches,returned,truncated}`★;`shell_output` summary 待办 |
+| C7 | **静默截断、不报总数** — 结果超上限直接 `truncate`，部分工具无 `total`/`truncated`，模型以为已全 | 准确性 | **P1** | `file_search.rs`；`shell_output.rs` summary | **已缓解** — grep/glob 有 `truncated`;`file_search` 返回 `{matches,total_matches,returned,truncated}`★;`shell_output::summarize_output` 现从尾部扫高信号行(`test result:`/失败/错误),不再只取头 3 行★ |
 | C8 | **编码：写侧不保留、edit/patch 仅 UTF-8** — `read_file`/`grep` 已 `detect_and_decode`，但 `write_file` 把 GB18030 静默转 UTF-8；`edit_file`/`apply_patch`/`fim` 仅 `read_to_string`（非 UTF-8 直接报错） | 健壮性/准确性 | **P1** | `write.rs:184-191`、`edit.rs:157`、`apply_patch.rs:850`、`fim.rs:117` | 读侧已缓解；写/改侧未 |
 
 ---
@@ -45,7 +45,7 @@
 - **[设计] `manager.rs:188` + `base.md`** — 跨调用无 cwd 状态（无状态 shell）；prompt 已说明用 `cwd`/`cd &&`。
 
 **效率与准确性**
-- **[P1] `shell_output.rs:33-48,66-76`** — 超 30KB 保留 head + 从尾段**首部**扫 ≤80 行 summary；cargo 海量 `Compiling` 占满配额 → 尾部 `test result:` 被丢。**建议从尾部末尾向上扫**。
+- **[已缓解★] `shell_output.rs`** — `summarize_output` 此前取**头** 3 行 → cargo 输出只显 `Compiling`,尾部 `test result:` 被丢。现改为对全文(含截断时追加的“Preserved summary lines”块)**从尾部反向扫** `is_summary_line`,取最后 ≤3 条高信号行(`test result:`/失败/错误/退出码),无高信号时才退回头部。注:`truncate_with_meta` 保留块仍从尾段首部扫 ≤80 行(海量 `error[` 仍可能占满),后续可再优化。
 - **[P1] `large_output_router.rs:240-246` + `registry.rs:190-197`** — 大输出 synthesis 实际只用前 1200 字符，非完整内容。
 - **[P2] `large_output_router.rs:197-200`** — `estimate_tokens` 用 chars/3，CJK 低估、路由偏晚。
 - **[P2] `manager.rs:713-722`** — `get_output_delta(wait=true)` 持 `shell` 可变引用时 `sleep(100ms)`，阻塞同 session 其它操作（前台用 `wait=false` 影响有限）。
@@ -153,7 +153,7 @@
 7. **C4 async 阻塞** — ✅ 已缓解(git/git_history/test_runner→tokio::process;diagnostics→spawn_blocking;describe_image→异步 reqwest)。
 8. **C6 子进程/HTTP 超时 + kill** — test_runner/office Python 加 timeout 并 kill;web 抓取流式 + `Content-Length` 上限 + cancel 绑定。
 9. **C5 symlink** — ✅ 已缓解(`workspace_walk` 改 `follow_links(false)`)。
-10. **C7 截断报总数** — ✅ `file_search` 补 `total_matches`/`truncated`(已缓解);`shell_output` summary 从尾部扫(待办)。
+10. **C7 截断报总数** — ✅ `file_search` 补 `total_matches`/`truncated`;✅ `shell_output` summary 从尾部扫(均已缓解)。
 11. **C8 编码保留** — `write_file` 按读到的编码回写;`edit_file`/`apply_patch`/`fim` 改 `detect_and_decode`。
 12. **edit_file/fim 原子写** — ✅ 已缓解(复用 `atomic_write`)。
 13. **glob_files/file_search 语义** — glob 相对基准对齐 schema;`file_search` 加 `respect_gitignore`。
