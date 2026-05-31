@@ -278,7 +278,9 @@ impl EditFileTool {
             updated_target
         };
 
-        fs::write(&file_path, &updated).map_err(|e| {
+        // Atomic write (temp + rename) so a crash / disk-full mid-write can't
+        // leave a truncated file (write_file / apply_patch already do this).
+        super::write::atomic_write(&file_path, updated.as_bytes()).map_err(|e| {
             ToolError::execution_failed(format!("Failed to write {}: {}", file_path.display(), e))
         })?;
 
@@ -376,7 +378,9 @@ impl EditFileTool {
         }
         let updated = new_lines.join(file_le);
 
-        fs::write(&file_path, &updated).map_err(|e| {
+        // Atomic write (temp + rename) so a crash / disk-full mid-write can't
+        // leave a truncated file (write_file / apply_patch already do this).
+        super::write::atomic_write(&file_path, updated.as_bytes()).map_err(|e| {
             ToolError::execution_failed(format!("Failed to write {}: {e}", file_path.display()))
         })?;
 
@@ -485,7 +489,9 @@ impl EditFileTool {
         }
         let updated = new_lines.join(file_le);
 
-        fs::write(&file_path, &updated).map_err(|e| {
+        // Atomic write (temp + rename) so a crash / disk-full mid-write can't
+        // leave a truncated file (write_file / apply_patch already do this).
+        super::write::atomic_write(&file_path, updated.as_bytes()).map_err(|e| {
             ToolError::execution_failed(format!("Failed to write {}: {e}", file_path.display()))
         })?;
 
@@ -564,7 +570,9 @@ impl EditFileTool {
         }
         let updated = new_lines.join(file_le);
 
-        fs::write(&file_path, &updated).map_err(|e| {
+        // Atomic write (temp + rename) so a crash / disk-full mid-write can't
+        // leave a truncated file (write_file / apply_patch already do this).
+        super::write::atomic_write(&file_path, updated.as_bytes()).map_err(|e| {
             ToolError::execution_failed(format!("Failed to write {}: {e}", file_path.display()))
         })?;
 

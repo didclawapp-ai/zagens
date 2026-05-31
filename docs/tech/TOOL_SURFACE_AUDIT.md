@@ -56,7 +56,7 @@
 
 **健壮性**
 - **[已缓解★] `edit.rs:149-158`** — 空/纯空白 `search` 现直接 `invalid_input` 报错(导向 `insert_after`/`replace_line`),不再在每个 UTF-8 边界插入破坏整文件;单测 `test_edit_file_empty_search_rejected`(空/空格/`\n\t` 三态 + 文件不变)。
-- **[P1] `edit.rs:272,370,479,558` + `fim.rs:166`** — `edit_file`/`fim` 用 `fs::write` **非原子**（`write_file`/`apply_patch` 已 `atomic_write`★）；崩溃/磁盘满留截断文件。
+- **[已缓解★] `edit.rs` ×4 + `fim.rs:166`** — `edit_file`/`fim` 改用 `atomic_write`(temp + rename),与 `write_file`/`apply_patch` 一致,崩溃/磁盘满不再留截断文件。
 - **[P1] C8** — `edit_file`/`apply_patch`/`fim` 仅 UTF-8，GB18030 文件无法改。
 - **[P1] 全写路径** — 无文件锁/版本检查;并行 `edit_file` 同文件后写覆盖先写（`write_file` `supports_parallel=false` 但 runtime 不强制串行）。
 - **[P1] `edit.rs:157` / `apply_patch.rs:633` / `read.rs:475-541`(Office) / `fim.rs:117`** — 无文件大小上限，大文件 OOM（普通文本 `read_file` 有 `MAX_FILE_SIZE`，这些路径绕过）。
@@ -155,7 +155,7 @@
 9. **C5 symlink** — ✅ 已缓解(`workspace_walk` 改 `follow_links(false)`)。
 10. **C7 截断报总数** — `file_search` 补 `total_matches`/`truncated`;`shell_output` summary 从尾部扫。
 11. **C8 编码保留** — `write_file` 按读到的编码回写;`edit_file`/`apply_patch`/`fim` 改 `detect_and_decode`。
-12. **edit_file/fim 原子写** — 复用 `atomic_write`。
+12. **edit_file/fim 原子写** — ✅ 已缓解(复用 `atomic_write`)。
 13. **glob_files/file_search 语义** — glob 相对基准对齐 schema;`file_search` 加 `respect_gitignore`。
 
 ### P2（体验 / 保真度）
