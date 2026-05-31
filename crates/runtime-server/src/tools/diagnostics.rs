@@ -82,9 +82,21 @@ impl ToolSpec for DiagnosticsTool {
             Err(err) => (None, Some(err.to_string())),
         };
 
-        let git = probe_git(&context.workspace);
         let sandbox_type = crate::sandbox::get_platform_sandbox().map(|s| s.to_string());
         let sandbox_available = sandbox_type.is_some();
+
+        // C4: the git probe + version probes all shell out via blocking
+        // `Command::output()`. Run them on a blocking thread so we don't stall a
+        // tokio worker (this tool advertises `supports_parallel`).
+        let workspace = context.workspace.clone();
+        let (git, rustc_version, cargo_version) = tokio::task::spawn_blocking(move || {
+            let git = probe_git(&workspace);
+            let rustc = probe_version("rustc", &["--version"], &workspace);
+            let cargo = probe_version("cargo", &["--version"], &workspace);
+            (git, rustc, cargo)
+        })
+        .await
+        .map_err(|e| ToolError::execution_failed(format!("diagnostics task failed: {e}")))?;
 
         let trusted_external_paths = context
             .trusted_external_paths
@@ -100,8 +112,8 @@ impl ToolSpec for DiagnosticsTool {
             git_error: git.error,
             sandbox_available,
             sandbox_type,
-            rustc_version: probe_version("rustc", &["--version"], &context.workspace),
-            cargo_version: probe_version("cargo", &["--version"], &context.workspace),
+            rustc_version,
+            cargo_version,
             trusted_external_paths,
         };
 

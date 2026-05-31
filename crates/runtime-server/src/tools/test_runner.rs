@@ -4,7 +4,6 @@
 //! frequent verification loops while still scoping execution to the workspace.
 
 use std::path::Path;
-use std::process::Command;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -83,7 +82,7 @@ impl ToolSpec for RunTestsTool {
         }
 
         let command_str = format_command(&context.workspace, &args);
-        let output = run_cargo(&context.workspace, &args)?;
+        let output = run_cargo(&context.workspace, &args).await?;
 
         let exit_code = output.status.code().unwrap_or(-1);
         let stdout_raw = String::from_utf8_lossy(&output.stdout);
@@ -105,10 +104,11 @@ impl ToolSpec for RunTestsTool {
 
 // === Helpers ===
 
-fn run_cargo(workspace: &Path, args: &[String]) -> Result<std::process::Output, ToolError> {
-    let mut cmd = Command::new("cargo");
+async fn run_cargo(workspace: &Path, args: &[String]) -> Result<std::process::Output, ToolError> {
+    // C4: async process so a long `cargo test` does not block a tokio worker.
+    let mut cmd = tokio::process::Command::new("cargo");
     cmd.args(args).current_dir(workspace);
-    cmd.output().map_err(|e| {
+    cmd.output().await.map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
             ToolError::not_available("cargo is not installed or not in PATH")
         } else {

@@ -152,7 +152,7 @@ impl ToolSpec for DescribeImageTool {
             data_uri: &data_uri,
         };
 
-        match client.call(&request) {
+        match client.call(&request).await {
             Ok(text) => {
                 let meta = serde_json::json!({
                     "path": image_path.to_string_lossy(),
@@ -238,14 +238,16 @@ impl VisionClient {
         Self { model, base_url, api_key }
     }
 
-    fn call(&self, request: &VisionRequest) -> Result<String, String> {
+    async fn call(&self, request: &VisionRequest<'_>) -> Result<String, String> {
         let timeout_secs = std::env::var("VISION_TIMEOUT_SECS")
             .ok()
             .and_then(|v| v.trim().parse::<u64>().ok())
             .filter(|&t| t >= 30)
             .unwrap_or(120)
             .min(600);
-        let client = reqwest::blocking::Client::builder()
+        // C4: async reqwest so the vision HTTP round-trip doesn't block a tokio
+        // worker for up to `timeout_secs` (was `reqwest::blocking`).
+        let client = reqwest::Client::builder()
             .connect_timeout(std::time::Duration::from_secs(30))
             .timeout(std::time::Duration::from_secs(timeout_secs))
             .build()
@@ -271,11 +273,13 @@ impl VisionClient {
             .header("Content-Type", "application/json")
             .json(&body)
             .send()
+            .await
             .map_err(|e| chain_vision_transport_error_cn("视觉模型 HTTP 请求失败", &e))?;
 
         let status = resp.status();
         let resp_body: serde_json::Value = resp
             .json()
+            .await
             .map_err(|e| format!("解析 API 响应失败: {e}"))?;
 
         if !status.is_success() {

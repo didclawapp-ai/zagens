@@ -5,7 +5,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::Output;
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
@@ -111,7 +111,7 @@ impl ToolSpec for GitLogTool {
         }
 
         let command_str = format_command(&git_ctx.working_dir, &args);
-        let output = run_git_command(&git_ctx.working_dir, &args)?;
+        let output = run_git_command(&git_ctx.working_dir, &args).await?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Ok(
@@ -228,7 +228,7 @@ impl ToolSpec for GitShowTool {
         }
 
         let command_str = format_command(&git_ctx.working_dir, &args);
-        let output = run_git_command(&git_ctx.working_dir, &args)?;
+        let output = run_git_command(&git_ctx.working_dir, &args).await?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Ok(ToolResult::error(format!(
@@ -357,7 +357,7 @@ impl ToolSpec for GitBlameTool {
         args.push(pathspec.display().to_string());
 
         let command_str = format_command(working_dir, &args);
-        let output = run_git_command(working_dir, &args)?;
+        let output = run_git_command(working_dir, &args).await?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Ok(ToolResult::error(format!(
@@ -444,10 +444,11 @@ fn pathspec_from(working_dir: &Path, resolved: &Path) -> PathBuf {
     }
 }
 
-fn run_git_command(working_dir: &Path, args: &[String]) -> Result<Output, ToolError> {
-    let mut cmd = Command::new("git");
+async fn run_git_command(working_dir: &Path, args: &[String]) -> Result<Output, ToolError> {
+    // C4: async process to avoid blocking a tokio worker on a slow git call.
+    let mut cmd = tokio::process::Command::new("git");
     cmd.args(args).current_dir(working_dir);
-    cmd.output().map_err(|e| {
+    cmd.output().await.map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
             ToolError::not_available("git is not installed or not in PATH")
         } else {

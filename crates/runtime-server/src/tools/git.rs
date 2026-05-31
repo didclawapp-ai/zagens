@@ -5,7 +5,6 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
@@ -73,7 +72,7 @@ impl ToolSpec for GitStatusTool {
         }
 
         let command_str = format_command(&git_ctx.working_dir, &args);
-        let output = run_git_command(&git_ctx.working_dir, &args)?;
+        let output = run_git_command(&git_ctx.working_dir, &args).await?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -169,7 +168,7 @@ impl ToolSpec for GitDiffTool {
         }
 
         let command_str = format_command(&git_ctx.working_dir, &args);
-        let output = run_git_command(&git_ctx.working_dir, &args)?;
+        let output = run_git_command(&git_ctx.working_dir, &args).await?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -256,10 +255,15 @@ fn pathspec_from(working_dir: &Path, resolved: &Path) -> PathBuf {
     }
 }
 
-fn run_git_command(working_dir: &Path, args: &[String]) -> Result<std::process::Output, ToolError> {
-    let mut cmd = Command::new("git");
+async fn run_git_command(
+    working_dir: &Path,
+    args: &[String],
+) -> Result<std::process::Output, ToolError> {
+    // C4: use tokio's async process so a slow/large `git` invocation does not
+    // block a shared tokio worker thread (and stall other concurrent tools).
+    let mut cmd = tokio::process::Command::new("git");
     cmd.args(args).current_dir(working_dir);
-    cmd.output().map_err(|e| {
+    cmd.output().await.map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
             ToolError::not_available("git is not installed or not in PATH")
         } else {
