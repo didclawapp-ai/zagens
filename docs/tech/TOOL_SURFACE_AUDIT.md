@@ -27,7 +27,7 @@
 ## 1. Shell 类（`exec_shell` / `task_shell_*` / cancel）
 
 **健壮性**
-- **[P0] `process.rs:378-379` + `manager.rs:371-379`** — sync 路径超时 kill 后对 reader 线程**无界 `join()`**（`read_to_end` 在 grandchild 持管道时永不 EOF）。背景路径已用 `join_reader_bounded` 缓解（`process.rs:208-217`★），**sync 路径未缓解**。注:`exec_shell` 前台走背景包装，sync 路径主要影响 `ShellManager.execute(..,false)` 与测试。
+- **[已缓解★] `manager.rs` sync 路径** — 新增 `join_reader_thread_bounded`(返回 `Vec<u8>` 版的有界 join);sync 路径**成功与超时两条**出口的 stdout/stderr `join()` 均改用它,grandchild 持管道时按 `READER_DRAIN_GRACE` detach 而非无界阻塞。新增两单测(detach 返回空 buf / 正常返回 buffer)。
 - **[已缓解★] C1**（见上）— Windows 进程树 kill（`taskkill /T /F`）。
 - **[P1] `process.rs:175-187`** — detach 后的 reader 仍向 `Vec<u8>` 无上限追加 → 长跑 server 日志内存持续涨。
 - **[P2] `process.rs:185-189`** — `buffer.lock()` 失败 `break` 静默丢输出。
@@ -146,7 +146,7 @@
 2. **C3 SSRF** — `fetch_url` 自定义 redirect policy 对每跳复校验 IP;`web_run/page` 补 `is_restricted_ip`。
 3. **edit_file 空 search 防呆** — ✅ 已缓解(`edit.rs:149-158`,空/纯空白直接报错)。
 4. **grep UTF-16** — 解码先于 NUL 二进制嗅探,或对 UTF-16 BOM 放行。
-5. **sync 路径 reader 无界 join** — 复用 `join_reader_bounded`。
+5. **sync 路径 reader 无界 join** — ✅ 已缓解(`join_reader_thread_bounded`,sync 成功/超时两路均有界)。
 
 ### P1（长任务高频痛点 — 多为快速修）
 6. **C2 foreground 透传 `cwd`** ★ — `execute_foreground_via_background` 加 `working_dir` 参数,`exec.rs:318` 传 `working_dir.as_deref()`。**~5 行,直接消除 MicroStack 那类 cwd 落错**。

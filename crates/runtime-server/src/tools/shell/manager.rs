@@ -17,7 +17,8 @@ use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 
 use super::process::{
     BackgroundShell, ShellChild, StdinWriter, install_parent_death_signal,
-    kill_child_process_group, prepend_sandbox_enforcement_warning, spawn_reader_thread,
+    join_reader_thread_bounded, kill_child_process_group, prepend_sandbox_enforcement_warning,
+    spawn_reader_thread,
 };
 use super::types::{
     ShellDeltaResult, ShellJobDetail, ShellJobSnapshot, ShellResult, ShellStatus,
@@ -331,8 +332,10 @@ impl ShellManager {
 
         // Wait with timeout
         if let Some(status) = child.wait_timeout(timeout)? {
-            let stdout = stdout_thread.join().unwrap_or_default();
-            let stderr = stderr_thread.join().unwrap_or_default();
+            // Bounded join (T4): a grandchild holding the pipe write end can keep
+            // read_to_end from ever hitting EOF even after the parent exited.
+            let stdout = join_reader_thread_bounded(stdout_thread);
+            let stderr = join_reader_thread_bounded(stderr_thread);
             let stdout_str = String::from_utf8_lossy(&stdout).to_string();
             let mut stderr_str = String::from_utf8_lossy(&stderr).to_string();
             prepend_sandbox_enforcement_warning(exec_env, &mut stderr_str);
@@ -373,8 +376,10 @@ impl ShellManager {
             // via Start-Process / daemonization would otherwise orphan).
             let _ = kill_child_process_group(&mut child);
             let status = child.wait().ok();
-            let stdout = stdout_thread.join().unwrap_or_default();
-            let stderr = stderr_thread.join().unwrap_or_default();
+            // Bounded join (T4): after a timeout kill the reader threads must not
+            // wedge on a surviving grandchild that still holds the pipe.
+            let stdout = join_reader_thread_bounded(stdout_thread);
+            let stderr = join_reader_thread_bounded(stderr_thread);
             let stdout_str = String::from_utf8_lossy(&stdout).to_string();
             let stderr_str = String::from_utf8_lossy(&stderr).to_string();
             let (stdout, stdout_meta) = truncate_with_meta(&stdout_str);

@@ -246,6 +246,27 @@ fn join_reader_bounded(handle: Option<std::thread::JoinHandle<()>>) {
     let _ = handle.join();
 }
 
+/// Bounded join for a sync-path reader thread that *returns* its collected
+/// buffer (the `ShellManager::execute(.., false)` path spawns `read_to_end`
+/// threads yielding `Vec<u8>`, unlike the background path's shared-buffer
+/// readers). Same rationale as [`join_reader_bounded`]: a surviving grandchild
+/// holding the pipe write end makes `read_to_end` never EOF, so an unbounded
+/// `join()` wedges forever (T4). On timeout we detach and return what we have
+/// (empty) rather than block; the detached thread exits on its own once the
+/// pipe finally closes.
+pub(in crate::tools::shell) fn join_reader_thread_bounded(
+    handle: std::thread::JoinHandle<Vec<u8>>,
+) -> Vec<u8> {
+    let deadline = Instant::now() + READER_DRAIN_GRACE;
+    while !handle.is_finished() {
+        if Instant::now() >= deadline {
+            return Vec::new();
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    handle.join().unwrap_or_default()
+}
+
 /// A background shell process being tracked
 pub struct BackgroundShell {
     pub id: String,
@@ -569,5 +590,49 @@ mod tests {
     fn join_reader_bounded_handles_none() {
         // No reader thread (e.g. tty stderr) — must be a no-op.
         join_reader_bounded(None);
+    }
+
+    #[test]
+    fn join_reader_thread_bounded_detaches_when_thread_never_finishes() {
+        // Sync-path analogue of the wedge: a read_to_end thread blocked on a
+        // grandchild-held pipe never returns. The bounded join must give up
+        // after the grace window and return an empty buffer, not hang.
+        let (unblock_tx, unblock_rx) = mpsc::channel::<()>();
+        let handle = std::thread::spawn(move || {
+            let _ = unblock_rx.recv();
+            b"late".to_vec()
+        });
+
+        let started = Instant::now();
+        let buf = join_reader_thread_bounded(handle);
+        let elapsed = started.elapsed();
+
+        assert!(buf.is_empty(), "detach must return an empty buffer");
+        assert!(
+            elapsed >= READER_DRAIN_GRACE,
+            "should have waited the grace window, waited {elapsed:?}"
+        );
+        assert!(
+            elapsed < READER_DRAIN_GRACE + Duration::from_secs(2),
+            "detach took too long ({elapsed:?}); join was effectively unbounded"
+        );
+
+        let _ = unblock_tx.send(());
+    }
+
+    #[test]
+    fn join_reader_thread_bounded_returns_buffer_when_thread_finishes() {
+        // Common case: the reader drained EOF and returns its bytes promptly.
+        let handle = std::thread::spawn(|| {
+            std::thread::sleep(Duration::from_millis(20));
+            b"hello".to_vec()
+        });
+        let started = Instant::now();
+        let buf = join_reader_thread_bounded(handle);
+        assert_eq!(buf, b"hello");
+        assert!(
+            started.elapsed() < READER_DRAIN_GRACE,
+            "a finishing reader should be joined before the grace window elapses"
+        );
     }
 }
