@@ -21,6 +21,17 @@ struct FileSearchMatch {
     score: f64,
 }
 
+#[derive(Debug, Clone, Serialize)]
+struct FileSearchResult {
+    matches: Vec<FileSearchMatch>,
+    /// Total scored matches found before applying `limit`.
+    total_matches: usize,
+    /// Number of matches actually returned (`matches.len()`).
+    returned: usize,
+    /// True when `total_matches > returned` (results were capped by `limit`).
+    truncated: bool,
+}
+
 pub struct FileSearchTool;
 
 #[async_trait]
@@ -80,8 +91,8 @@ impl ToolSpec for FileSearchTool {
         };
 
         let extensions = parse_extensions(&input);
-        let matches = search_files(query, &base_path, extensions, limit)?;
-        ToolResult::json(&matches).map_err(|e| ToolError::execution_failed(e.to_string()))
+        let result = search_files(query, &base_path, extensions, limit)?;
+        ToolResult::json(&result).map_err(|e| ToolError::execution_failed(e.to_string()))
     }
 }
 
@@ -113,7 +124,7 @@ fn search_files(
     base_path: &Path,
     extensions: Vec<String>,
     limit: usize,
-) -> Result<Vec<FileSearchMatch>, ToolError> {
+) -> Result<FileSearchResult, ToolError> {
     if !base_path.exists() {
         return Err(ToolError::invalid_input(format!(
             "Base path does not exist: {}",
@@ -158,10 +169,17 @@ fn search_files(
     }
 
     results.sort_by(compare_match);
+    let total_matches = results.len();
     if results.len() > limit {
         results.truncate(limit);
     }
-    Ok(results)
+    let returned = results.len();
+    Ok(FileSearchResult {
+        matches: results,
+        total_matches,
+        returned,
+        truncated: total_matches > returned,
+    })
 }
 
 fn extension_matches(path: &Path, extensions: &[String]) -> bool {
@@ -318,5 +336,48 @@ mod tests {
         assert!(result.success);
         assert!(result.content.contains("main.rs"));
         assert!(!result.content.contains("notes.md"));
+    }
+
+    #[tokio::test]
+    async fn test_file_search_reports_total_and_truncated() {
+        let tmp = tempdir().expect("tempdir");
+        let root = tmp.path();
+        for i in 0..10 {
+            std::fs::write(root.join(format!("match_{i}.rs")), "x\n").expect("write");
+        }
+
+        let ctx = ToolContext::new(root.to_path_buf());
+        let tool = FileSearchTool;
+        let result = tool
+            .execute(json!({"query": "match", "limit": 3}), &ctx)
+            .await
+            .expect("execute");
+
+        assert!(result.success);
+        let parsed: Value = serde_json::from_str(&result.content).expect("json");
+        assert_eq!(parsed["total_matches"].as_u64().unwrap(), 10);
+        assert_eq!(parsed["returned"].as_u64().unwrap(), 3);
+        assert_eq!(parsed["matches"].as_array().unwrap().len(), 3);
+        assert!(parsed["truncated"].as_bool().unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_file_search_not_truncated_when_under_limit() {
+        let tmp = tempdir().expect("tempdir");
+        let root = tmp.path();
+        std::fs::write(root.join("only.rs"), "x\n").expect("write");
+
+        let ctx = ToolContext::new(root.to_path_buf());
+        let tool = FileSearchTool;
+        let result = tool
+            .execute(json!({"query": "only", "limit": 20}), &ctx)
+            .await
+            .expect("execute");
+
+        assert!(result.success);
+        let parsed: Value = serde_json::from_str(&result.content).expect("json");
+        assert_eq!(parsed["total_matches"].as_u64().unwrap(), 1);
+        assert_eq!(parsed["returned"].as_u64().unwrap(), 1);
+        assert!(!parsed["truncated"].as_bool().unwrap());
     }
 }
