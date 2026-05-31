@@ -9,6 +9,11 @@ use super::USER_AGENT;
 use crate::tools::spec::{ToolContext, ToolError};
 use deepseek_runtime_adapters::tools::check_url_policy;
 
+/// Hard cap on a fetched page/PDF body (C6). `web_run` has no per-call
+/// `max_bytes`, so this bounds memory for an unbounded / huge response while
+/// staying generous enough for typical HTML and moderate PDFs.
+const MAX_PAGE_BYTES: usize = 25 * 1024 * 1024;
+
 pub(in crate::tools::web_run) async fn resolve_or_fetch_page(
     ref_id: &str,
     timeout_ms: u64,
@@ -60,10 +65,8 @@ pub(in crate::tools::web_run) async fn fetch_page(
         .get(reqwest::header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
-    let bytes = resp
-        .bytes()
-        .await
-        .map_err(|e| ToolError::execution_failed(format!("Failed to read response: {e}")))?;
+    // C6: cap the buffered body so an unbounded response can't OOM us.
+    let (bytes, _truncated) = crate::tools::ssrf::read_body_capped(resp, MAX_PAGE_BYTES).await?;
 
     if !status.is_success() {
         return Err(ToolError::execution_failed(format!(

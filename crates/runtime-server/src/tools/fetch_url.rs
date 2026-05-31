@@ -168,19 +168,13 @@ impl ToolSpec for FetchUrlTool {
             .unwrap_or("application/octet-stream")
             .to_string();
 
-        let bytes = resp
-            .bytes()
-            .await
-            .map_err(|e| ToolError::execution_failed(format!("failed to read body: {e}")))?;
-        let total_bytes = bytes.len() as u64;
-        let truncated = total_bytes > max_bytes;
-        let usable = if truncated {
-            &bytes[..max_bytes as usize]
-        } else {
-            &bytes[..]
-        };
+        // C6: stream the body with a hard byte cap instead of buffering the
+        // whole response first — a multi-GB / unbounded response would OOM us
+        // before the post-hoc `[..max_bytes]` slice ever ran.
+        let (bytes, truncated) =
+            crate::tools::ssrf::read_body_capped(resp, max_bytes as usize).await?;
 
-        let body_text = String::from_utf8_lossy(usable).to_string();
+        let body_text = String::from_utf8_lossy(&bytes).to_string();
         let processed = match format {
             Format::Raw => body_text,
             Format::Text | Format::Markdown => {

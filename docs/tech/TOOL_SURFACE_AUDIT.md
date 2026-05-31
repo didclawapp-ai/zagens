@@ -116,7 +116,7 @@
 **健壮性 / 安全**
 - **[已缓解★] C3** — 共享 `tools/ssrf.rs::fetch_with_ssrf_guard` 手动跟随重定向、每跳复校验 IP;`fetch_url` 与 `web_run/page` 共用。
 - **[已缓解★] `fetch_url` DNS 失败** — `validate_url_ssrf` 现 DNS 失败/零地址 **fail closed**(拒绝),不再放行。
-- **[P1] C6** — `web_search.rs:248`/`page.rs:63`/`fetch_url.rs:223` 全量读响应体(只有展示截断,无内存/带宽防护);无 `CancellationToken` 绑定,取消后请求仍跑满 timeout。
+- **[部分缓解★] C6** — `fetch_url`/`web_run` 改用 `ssrf::read_body_capped`(流式 + 字节上限,内存恒定);`web_search.rs:248` 仍待办。**无 `CancellationToken` 绑定**(取消后请求仍跑满 timeout)仍待后续。
 - **[P1] `web_run/search.rs:13-98`** — `web.run` 的 search 不调 `check_host_policy`、DDG 失败不 fallback Bing → 与 `web_search` 策略/结果不一致(policy deny 时仍可能出网)。
 - **[P1] `test_runner.rs:108`/`office_write.rs:1305`** — 无 timeout / 超时不 `kill` → Python 孤儿 + 文件锁残留。
 - **[已缓解★] C4** — `describe_image` 改异步 `reqwest::Client`;`diagnostics` 探测包进 `spawn_blocking`;`test_runner` 改 `tokio::process`。

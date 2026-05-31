@@ -18,6 +18,34 @@ use crate::tools::spec::{ToolContext, ToolError};
 /// Maximum redirect hops we will follow before giving up.
 pub(crate) const MAX_REDIRECTS: usize = 5;
 
+/// Read a response body but stop buffering once `max_bytes` have been read, so
+/// an unbounded / maliciously huge response can't OOM the runtime (C6). The
+/// previous `resp.bytes().await` buffered the *entire* body into memory before
+/// any truncation. Returns `(bytes, truncated)` where `truncated` is true if
+/// the server had more data than `max_bytes`.
+pub(crate) async fn read_body_capped(
+    mut resp: reqwest::Response,
+    max_bytes: usize,
+) -> Result<(Vec<u8>, bool), ToolError> {
+    let mut buf: Vec<u8> = Vec::new();
+    let mut truncated = false;
+    loop {
+        let chunk = resp
+            .chunk()
+            .await
+            .map_err(|e| ToolError::execution_failed(format!("failed to read body: {e}")))?;
+        let Some(chunk) = chunk else { break };
+        let remaining = max_bytes.saturating_sub(buf.len());
+        if chunk.len() > remaining {
+            buf.extend_from_slice(&chunk[..remaining]);
+            truncated = true;
+            break;
+        }
+        buf.extend_from_slice(&chunk);
+    }
+    Ok((buf, truncated))
+}
+
 /// Validate a URL's host for SSRF: enforce network policy, reject `localhost`,
 /// reject literal restricted IPs, and for hostnames resolve DNS and reject if
 /// *any* resolved address is restricted. Returns `(host, pinned_ip)` so the
