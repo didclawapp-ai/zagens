@@ -11,7 +11,6 @@ use super::write::{
 };
 use async_trait::async_trait;
 use serde_json::{Value, json};
-use std::fs;
 
 /// Extract the replacement-text field, but emit a targeted hint when the model
 /// used a wrong alias (`new_str` / `new_string` / `replacement` — habits carried
@@ -163,24 +162,15 @@ impl EditFileTool {
 
         let file_path = context.resolve_path(path_str)?;
 
-        let contents = fs::read_to_string(&file_path).map_err(|e| {
-            let kind = e.kind();
-            if kind == std::io::ErrorKind::NotFound {
-                ToolError::execution_failed(format!(
-                    "[NOT_FOUND] 文件 {} 不存在: {e}",
-                    file_path.display()
-                ))
-            } else if kind == std::io::ErrorKind::PermissionDenied {
-                ToolError::execution_failed(format!(
-                    "[PERMISSION] 没有权限读取 {}: {e}",
-                    file_path.display()
-                ))
-            } else {
-                ToolError::execution_failed(format!("Failed to read {}: {e}", file_path.display()))
-            }
-        })?;
+        // C8: read + decode tolerantly (GB18030 / UTF-16) and remember the
+        // encoding so the edit is written back in the same one.
+        let super::write::DecodedFile {
+            text: contents,
+            label: enc_label,
+            had_bom,
+        } = super::write::read_decoded_for_edit(&file_path)?;
 
-        // E1: Normalize line endings — `fs::read_to_string` preserves platform
+        // E1: Normalize line endings — the decoded text preserves platform
         // CRLF on Windows, but the model's search string uses LF (\n).
         let file_le = if contents.contains("\r\n") { "\r\n" } else { "\n" };
         let search_norm = if file_le == "\r\n" {
@@ -280,7 +270,9 @@ impl EditFileTool {
 
         // Atomic write (temp + rename) so a crash / disk-full mid-write can't
         // leave a truncated file (write_file / apply_patch already do this).
-        super::write::atomic_write(&file_path, updated.as_bytes()).map_err(|e| {
+        // C8: preserve the file's original encoding.
+        let encoded = super::write::encode_text(&updated, &enc_label, had_bom);
+        super::write::atomic_write(&file_path, &encoded).map_err(|e| {
             ToolError::execution_failed(format!("Failed to write {}: {}", file_path.display(), e))
         })?;
 
@@ -340,17 +332,11 @@ impl EditFileTool {
         let after_line = optional_u64(input, "after_line", 0) as usize;
 
         let file_path = context.resolve_path(path_str)?;
-        let contents = fs::read_to_string(&file_path).map_err(|e| {
-            let kind = e.kind();
-            if kind == std::io::ErrorKind::NotFound {
-                ToolError::execution_failed(format!(
-                    "[NOT_FOUND] file {} does not exist: {e}",
-                    file_path.display()
-                ))
-            } else {
-                ToolError::execution_failed(format!("Failed to read {}: {e}", file_path.display()))
-            }
-        })?;
+        let super::write::DecodedFile {
+            text: contents,
+            label: enc_label,
+            had_bom,
+        } = super::write::read_decoded_for_edit(&file_path)?;
 
         let file_le = if contents.contains("\r\n") { "\r\n" } else { "\n" };
         let text_normalized = normalize_line_endings(text, file_le);
@@ -380,7 +366,9 @@ impl EditFileTool {
 
         // Atomic write (temp + rename) so a crash / disk-full mid-write can't
         // leave a truncated file (write_file / apply_patch already do this).
-        super::write::atomic_write(&file_path, updated.as_bytes()).map_err(|e| {
+        // C8: preserve the file's original encoding.
+        let encoded = super::write::encode_text(&updated, &enc_label, had_bom);
+        super::write::atomic_write(&file_path, &encoded).map_err(|e| {
             ToolError::execution_failed(format!("Failed to write {}: {e}", file_path.display()))
         })?;
 
@@ -433,17 +421,11 @@ impl EditFileTool {
         }
 
         let file_path = context.resolve_path(path_str)?;
-        let contents = fs::read_to_string(&file_path).map_err(|e| {
-            let kind = e.kind();
-            if kind == std::io::ErrorKind::NotFound {
-                ToolError::execution_failed(format!(
-                    "[NOT_FOUND] file {} does not exist: {e}",
-                    file_path.display()
-                ))
-            } else {
-                ToolError::execution_failed(format!("Failed to read {}: {e}", file_path.display()))
-            }
-        })?;
+        let super::write::DecodedFile {
+            text: contents,
+            label: enc_label,
+            had_bom,
+        } = super::write::read_decoded_for_edit(&file_path)?;
 
         let file_le = if contents.contains("\r\n") { "\r\n" } else { "\n" };
         let lines: Vec<&str> = contents.lines().collect();
@@ -491,7 +473,9 @@ impl EditFileTool {
 
         // Atomic write (temp + rename) so a crash / disk-full mid-write can't
         // leave a truncated file (write_file / apply_patch already do this).
-        super::write::atomic_write(&file_path, updated.as_bytes()).map_err(|e| {
+        // C8: preserve the file's original encoding.
+        let encoded = super::write::encode_text(&updated, &enc_label, had_bom);
+        super::write::atomic_write(&file_path, &encoded).map_err(|e| {
             ToolError::execution_failed(format!("Failed to write {}: {e}", file_path.display()))
         })?;
 
@@ -531,17 +515,11 @@ impl EditFileTool {
         }
 
         let file_path = context.resolve_path(path_str)?;
-        let contents = fs::read_to_string(&file_path).map_err(|e| {
-            let kind = e.kind();
-            if kind == std::io::ErrorKind::NotFound {
-                ToolError::execution_failed(format!(
-                    "[NOT_FOUND] file {} does not exist: {e}",
-                    file_path.display()
-                ))
-            } else {
-                ToolError::execution_failed(format!("Failed to read {}: {e}", file_path.display()))
-            }
-        })?;
+        let super::write::DecodedFile {
+            text: contents,
+            label: enc_label,
+            had_bom,
+        } = super::write::read_decoded_for_edit(&file_path)?;
 
         let file_le = if contents.contains("\r\n") { "\r\n" } else { "\n" };
         let text_normalized = normalize_line_endings(text, file_le);
@@ -572,7 +550,9 @@ impl EditFileTool {
 
         // Atomic write (temp + rename) so a crash / disk-full mid-write can't
         // leave a truncated file (write_file / apply_patch already do this).
-        super::write::atomic_write(&file_path, updated.as_bytes()).map_err(|e| {
+        // C8: preserve the file's original encoding.
+        let encoded = super::write::encode_text(&updated, &enc_label, had_bom);
+        super::write::atomic_write(&file_path, &encoded).map_err(|e| {
             ToolError::execution_failed(format!("Failed to write {}: {e}", file_path.display()))
         })?;
 

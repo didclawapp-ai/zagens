@@ -706,3 +706,126 @@ async fn test_read_file_tool() {
     assert_eq!(metadata["lines_read"], 0);
     assert_eq!(metadata["total_lines"], 2);
 }
+
+// --- Tool surface audit C8 — encoding preservation on write/edit/fim ---
+
+#[test]
+fn encode_text_roundtrips_gb18030() {
+    let text = "中文内容 abc";
+    let bytes = encode_text(text, "gb18030", false);
+    // GB18030 of multi-byte Chinese is not valid UTF-8.
+    assert!(std::str::from_utf8(&bytes).is_err());
+    let (decoded, label, _via) = detect_and_decode(&bytes);
+    assert_eq!(decoded, text);
+    assert_eq!(label, "gb18030");
+}
+
+#[test]
+fn encode_text_roundtrips_utf16le_with_bom() {
+    let text = "héllo 世界";
+    let bytes = encode_text(text, "utf-16le", true);
+    assert_eq!(&bytes[..2], &[0xFF, 0xFE], "UTF-16LE BOM must be restored");
+    let (decoded, label, via) = detect_and_decode(&bytes);
+    assert_eq!(decoded, text);
+    assert_eq!(label, "utf-16le");
+    assert_eq!(via, "bom");
+}
+
+#[test]
+fn encode_text_roundtrips_utf16be_with_bom() {
+    let text = "abc 你好";
+    let bytes = encode_text(text, "utf-16be", true);
+    assert_eq!(&bytes[..2], &[0xFE, 0xFF], "UTF-16BE BOM must be restored");
+    let (decoded, _label, _via) = detect_and_decode(&bytes);
+    assert_eq!(decoded, text);
+}
+
+#[test]
+fn encode_text_unknown_label_falls_back_to_utf8() {
+    let text = "plain";
+    let bytes = encode_text(text, "iso-2022-jp", false);
+    assert_eq!(bytes, text.as_bytes());
+}
+
+#[tokio::test]
+async fn test_write_file_preserves_gb18030_encoding() {
+    let tmp = tempdir().expect("tempdir");
+    let ctx = ToolContext::new(tmp.path().to_path_buf());
+    let path = tmp.path().join("gb.txt");
+
+    // Seed a GB18030-encoded file.
+    let seed_bytes = encoding_rs::GB18030.encode("原始中文").0.into_owned();
+    fs::write(&path, &seed_bytes).expect("seed");
+
+    let result = WriteFileTool
+        .execute(json!({"path": "gb.txt", "content": "新的中文内容"}), &ctx)
+        .await
+        .expect("execute");
+    assert!(result.success);
+
+    let written = fs::read(&path).expect("read");
+    assert!(
+        std::str::from_utf8(&written).is_err(),
+        "GB18030 file must NOT be silently transcoded to UTF-8"
+    );
+    let (decoded, label, _via) = detect_and_decode(&written);
+    assert_eq!(decoded, "新的中文内容");
+    assert_eq!(label, "gb18030");
+}
+
+#[tokio::test]
+async fn test_edit_file_preserves_gb18030_encoding() {
+    let tmp = tempdir().expect("tempdir");
+    let ctx = ToolContext::new(tmp.path().to_path_buf());
+    let path = tmp.path().join("edit_gb.txt");
+
+    let seed_bytes = encoding_rs::GB18030.encode("你好世界").0.into_owned();
+    fs::write(&path, &seed_bytes).expect("seed");
+
+    let result = EditFileTool
+        .execute(
+            json!({"path": "edit_gb.txt", "search": "世界", "replace": "中国"}),
+            &ctx,
+        )
+        .await
+        .expect("execute");
+    assert!(result.success);
+
+    let written = fs::read(&path).expect("read");
+    assert!(
+        std::str::from_utf8(&written).is_err(),
+        "edit must keep GB18030 bytes, not UTF-8"
+    );
+    let (decoded, label, _via) = detect_and_decode(&written);
+    assert_eq!(decoded, "你好中国");
+    assert_eq!(label, "gb18030");
+}
+
+#[tokio::test]
+async fn test_edit_file_preserves_utf16le_bom() {
+    let tmp = tempdir().expect("tempdir");
+    let ctx = ToolContext::new(tmp.path().to_path_buf());
+    let path = tmp.path().join("u16.txt");
+
+    // UTF-16LE with BOM.
+    let mut seed = vec![0xFF, 0xFEu8];
+    for u in "alpha beta".encode_utf16() {
+        seed.extend_from_slice(&u.to_le_bytes());
+    }
+    fs::write(&path, &seed).expect("seed");
+
+    let result = EditFileTool
+        .execute(
+            json!({"path": "u16.txt", "search": "beta", "replace": "gamma"}),
+            &ctx,
+        )
+        .await
+        .expect("execute");
+    assert!(result.success);
+
+    let written = fs::read(&path).expect("read");
+    assert_eq!(&written[..2], &[0xFF, 0xFE], "UTF-16LE BOM must survive edit");
+    let (decoded, label, _via) = detect_and_decode(&written);
+    assert_eq!(decoded, "alpha gamma");
+    assert_eq!(label, "utf-16le");
+}

@@ -94,11 +94,19 @@ impl ToolSpec for WriteFileTool {
 
         // 2.2: snapshot prior contents with encoding-tolerant decode (GB18030 /
         // UTF-16), so the diff/summary doesn't pretend an existing file is empty.
+        // Also capture the original encoding so an overwrite preserves it (C8)
+        // rather than silently transcoding e.g. GB18030 → UTF-8.
         let existed_before = file_path.exists();
-        let prior_contents = if existed_before {
-            read_prior_text(&file_path)
+        let (prior_contents, prior_label, prior_had_bom) = if existed_before {
+            match fs::read(&file_path) {
+                Ok(bytes) => {
+                    let (text, label, via) = detect_and_decode(&bytes);
+                    (text, label, via == "bom")
+                }
+                Err(_) => (String::new(), "utf-8".to_string(), false),
+            }
         } else {
-            String::new()
+            (String::new(), "utf-8".to_string(), false)
         };
 
         // 2.1: preserve the file's original line endings on overwrite. The model
@@ -132,11 +140,12 @@ impl ToolSpec for WriteFileTool {
 
         // 2.4: atomic write — temp file in the same dir + rename, so an
         // interrupted/failed write never leaves a truncated original behind.
-        atomic_write(&file_path, file_content.as_bytes())
-            .map_err(|e| map_write_io_error(&file_path, e))?;
+        // C8: re-encode in the file's original encoding when it wasn't UTF-8.
+        let encoded = encode_text(&file_content, &prior_label, prior_had_bom);
+        atomic_write(&file_path, &encoded).map_err(|e| map_write_io_error(&file_path, e))?;
 
         let display = file_path.display().to_string();
-        let byte_len = file_content.len();
+        let byte_len = encoded.len();
         let line_count = file_content.lines().count();
 
         // 3.1 / 3.2: only LARGE inputs skip the full unified diff (which would
@@ -179,16 +188,85 @@ impl ToolSpec for WriteFileTool {
     }
 }
 
-/// Decode an existing file's bytes into text, tolerant of non-UTF-8 encodings
-/// (GB18030 / UTF-16). Falls back to an empty string when the file can't be read.
-fn read_prior_text(path: &Path) -> String {
-    match fs::read(path) {
-        Ok(bytes) => {
-            let (text, _enc, _via) = detect_and_decode(&bytes);
-            text
+/// A file decoded for in-place editing, carrying enough metadata to write the
+/// result back in the *same* encoding instead of silently transcoding to UTF-8
+/// (C8). `label` is the encoding name from [`detect_and_decode`]; `had_bom`
+/// records whether a BOM was present so it can be restored.
+pub(crate) struct DecodedFile {
+    pub text: String,
+    pub label: String,
+    pub had_bom: bool,
+}
+
+/// Read + decode a file for the edit/fim paths. Mirrors the `[NOT_FOUND]` /
+/// `[PERMISSION]` diagnostic style used elsewhere and, unlike `read_to_string`,
+/// tolerates GB18030 / UTF-16 so those files can be edited rather than rejected.
+pub(crate) fn read_decoded_for_edit(path: &Path) -> Result<DecodedFile, ToolError> {
+    let bytes = fs::read(path).map_err(|e| match e.kind() {
+        std::io::ErrorKind::NotFound => {
+            ToolError::execution_failed(format!("[NOT_FOUND] 文件 {} 不存在: {e}", path.display()))
         }
-        Err(_) => String::new(),
+        std::io::ErrorKind::PermissionDenied => ToolError::execution_failed(format!(
+            "[PERMISSION] 没有权限读取 {}: {e}",
+            path.display()
+        )),
+        _ => ToolError::execution_failed(format!("Failed to read {}: {e}", path.display())),
+    })?;
+    let (text, label, via) = detect_and_decode(&bytes);
+    Ok(DecodedFile {
+        text,
+        label,
+        had_bom: via == "bom",
+    })
+}
+
+/// Re-encode `text` to bytes using the encoding `label` produced by
+/// [`detect_and_decode`], restoring a BOM when `had_bom` is true. Used by the
+/// write/edit/fim paths to preserve a file's original encoding (C8). Unknown
+/// labels fall back to UTF-8, which is the safe default.
+pub(crate) fn encode_text(text: &str, label: &str, had_bom: bool) -> Vec<u8> {
+    let norm = label.trim().to_ascii_lowercase();
+    match norm.as_str() {
+        "utf-8" => {
+            if had_bom {
+                let mut out = vec![0xEF, 0xBB, 0xBF];
+                out.extend_from_slice(text.as_bytes());
+                out
+            } else {
+                text.as_bytes().to_vec()
+            }
+        }
+        "utf-16le" => encode_utf16(text, true, had_bom),
+        "utf-16be" => encode_utf16(text, false, had_bom),
+        "gb18030" => encoding_rs::GB18030.encode(text).0.into_owned(),
+        _ if norm.starts_with("windows-1252") => {
+            encoding_rs::WINDOWS_1252.encode(text).0.into_owned()
+        }
+        // Unknown / unsupported (encoding_rs has no UTF-16 *encoder* beyond the
+        // manual path above): default to UTF-8 rather than risk a lossy round-trip.
+        _ => text.as_bytes().to_vec(),
     }
+}
+
+/// Manually encode `text` as UTF-16 (encoding_rs deliberately has no UTF-16
+/// encoder), optionally prefixing the byte-order mark.
+fn encode_utf16(text: &str, little_endian: bool, had_bom: bool) -> Vec<u8> {
+    let mut out = Vec::with_capacity(text.len() * 2 + 2);
+    if had_bom {
+        out.extend_from_slice(if little_endian {
+            &[0xFF, 0xFE]
+        } else {
+            &[0xFE, 0xFF]
+        });
+    }
+    for unit in text.encode_utf16() {
+        if little_endian {
+            out.extend_from_slice(&unit.to_le_bytes());
+        } else {
+            out.extend_from_slice(&unit.to_be_bytes());
+        }
+    }
+    out
 }
 
 /// Localized IO-error mapping for writes, matching the `[NOT_FOUND]` /

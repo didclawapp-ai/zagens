@@ -4,8 +4,6 @@
 //! DeepSeek `/beta/completions` FIM endpoint, and writes the generated
 //! middle content back into the file.
 
-use std::fs;
-
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -112,11 +110,13 @@ impl ToolSpec for FimEditTool {
         let suffix_anchor = required_str(&input, "suffix_anchor")?;
         let max_tokens = optional_u64(&input, "max_tokens", 1024);
 
-        // 1. Read the file
+        // 1. Read the file (C8: decode tolerantly + remember encoding)
         let resolved = context.resolve_path(path)?;
-        let content = fs::read_to_string(&resolved).map_err(|e| {
-            ToolError::execution_failed(format!("Failed to read {}: {}", resolved.display(), e))
-        })?;
+        let crate::tools::file::DecodedFile {
+            text: content,
+            label: enc_label,
+            had_bom,
+        } = crate::tools::file::read_decoded_for_edit(&resolved)?;
 
         // 2. Find prefix anchor
         let prefix_pos = content.find(prefix_anchor).ok_or_else(|| {
@@ -164,8 +164,9 @@ impl ToolSpec for FimEditTool {
         let generated_len = generated_text.len();
         let new_content = format!("{}{}{}", fim_prompt, generated_text, fim_suffix);
         // Atomic write (temp + rename) so a crash mid-write can't truncate the
-        // file (write_file / apply_patch already do this).
-        crate::tools::file::atomic_write(&resolved, new_content.as_bytes()).map_err(|e| {
+        // file (write_file / apply_patch already do this). C8: preserve encoding.
+        let encoded = crate::tools::file::encode_text(&new_content, &enc_label, had_bom);
+        crate::tools::file::atomic_write(&resolved, &encoded).map_err(|e| {
             ToolError::execution_failed(format!("Failed to write {}: {}", resolved.display(), e))
         })?;
 

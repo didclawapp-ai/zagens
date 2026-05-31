@@ -15,7 +15,9 @@ pub use write::WriteFileTool;
 
 // Shared file-IO helpers reused by other write paths (apply_patch) and search.
 pub(crate) use read::detect_and_decode;
-pub(crate) use write::{atomic_write, normalize_line_endings};
+pub(crate) use write::{
+    DecodedFile, atomic_write, encode_text, normalize_line_endings, read_decoded_for_edit,
+};
 
 /// Detect a text's dominant line ending. CRLF when any `\r\n` is present.
 pub(crate) fn line_ending_of(text: &str) -> &'static str {
