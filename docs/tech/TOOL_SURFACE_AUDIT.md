@@ -55,7 +55,7 @@
 ## 2. 文件读写/编辑类（`read_file`/`write_file`/`edit_file`/`apply_patch`/`list_dir`/`file_info`/`fim`）
 
 **健壮性**
-- **[P0] `edit.rs:209-264`** — 未拒绝**空 `search`**;`replace_mode:"all"` + 空 search 会在每个 UTF-8 边界插入 → **破坏整文件**。（快速修：空 search 直接报错。）
+- **[已缓解★] `edit.rs:149-158`** — 空/纯空白 `search` 现直接 `invalid_input` 报错(导向 `insert_after`/`replace_line`),不再在每个 UTF-8 边界插入破坏整文件;单测 `test_edit_file_empty_search_rejected`(空/空格/`\n\t` 三态 + 文件不变)。
 - **[P1] `edit.rs:272,370,479,558` + `fim.rs:166`** — `edit_file`/`fim` 用 `fs::write` **非原子**（`write_file`/`apply_patch` 已 `atomic_write`★）；崩溃/磁盘满留截断文件。
 - **[P1] C8** — `edit_file`/`apply_patch`/`fim` 仅 UTF-8，GB18030 文件无法改。
 - **[P1] 全写路径** — 无文件锁/版本检查;并行 `edit_file` 同文件后写覆盖先写（`write_file` `supports_parallel=false` 但 runtime 不强制串行）。
@@ -144,7 +144,7 @@
 ### P0（挂死 / 丢数据 / 安全）
 1. **C1 Windows 进程树 kill** — 引入 Job Object(`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`)或 `taskkill /T /F /PID`,kill/cancel/Drop 三处统一。根治孤儿占端口(今日 7878)。
 2. **C3 SSRF** — `fetch_url` 自定义 redirect policy 对每跳复校验 IP;`web_run/page` 补 `is_restricted_ip`。
-3. **edit_file 空 search 防呆** — 空/纯空白 search 直接报错(尤其 `replace_mode:all`)。一行级修复。
+3. **edit_file 空 search 防呆** — ✅ 已缓解(`edit.rs:149-158`,空/纯空白直接报错)。
 4. **grep UTF-16** — 解码先于 NUL 二进制嗅探,或对 UTF-16 BOM 放行。
 5. **sync 路径 reader 无界 join** — 复用 `join_reader_bounded`。
 

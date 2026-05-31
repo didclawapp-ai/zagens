@@ -360,6 +360,34 @@ async fn test_read_file_tool() {
         assert_eq!(edited, "hi world hi");
     }
 
+    /// Tool surface audit T2 — empty `search` + replace_mode:"all" used to
+    /// insert at every UTF-8 boundary and corrupt the whole file. Must error
+    /// up front and leave the file byte-for-byte unchanged.
+    #[tokio::test]
+    async fn test_edit_file_empty_search_rejected() {
+        let tmp = tempdir().expect("tempdir");
+        let ctx = ToolContext::new(tmp.path().to_path_buf());
+
+        let test_file = tmp.path().join("keep_me.txt");
+        let original = "line one\nline two\nline three";
+        fs::write(&test_file, original).expect("write");
+
+        let tool = EditFileTool;
+        for search in ["", "   ", "\n\t "] {
+            let result = tool
+                .execute(
+                    json!({"path": "keep_me.txt", "search": search, "replace": "X", "replace_mode": "all"}),
+                    &ctx,
+                )
+                .await;
+            assert!(result.is_err(), "empty search {search:?} must error");
+            assert!(result.unwrap_err().to_string().contains("search 不能为空"));
+        }
+
+        let after = fs::read_to_string(&test_file).expect("read");
+        assert_eq!(after, original, "file must be untouched by rejected edits");
+    }
+
     #[tokio::test]
     async fn test_edit_file_not_found() {
         let tmp = tempdir().expect("tempdir");

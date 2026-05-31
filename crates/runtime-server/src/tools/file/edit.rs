@@ -147,6 +147,15 @@ impl EditFileTool {
     ) -> Result<ToolResult, ToolError> {
         let path_str = required_str(input, "path")?;
         let search = required_str(input, "search")?;
+        // Guard: an empty (or whitespace-only) `search` matches at every UTF-8
+        // boundary; with replace_mode:"all" this inserts the replacement between
+        // every byte and corrupts the whole file. Reject up front.
+        if search.trim().is_empty() {
+            return Err(ToolError::invalid_input(
+                "search 不能为空: 提供要匹配的确切文本。如需在指定行插入,请用 operation: \"insert_after\"; \
+                 如需替换整行,请用 operation: \"replace_line\"。",
+            ));
+        }
         let replace = required_replacement_field(input, "replace")?;
         let start_line = optional_u64(input, "start_line", 0) as usize;
         let end_line = optional_u64(input, "end_line", 0) as usize;
