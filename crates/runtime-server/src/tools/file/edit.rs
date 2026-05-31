@@ -13,6 +13,35 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::fs;
 
+/// Extract the replacement-text field, but emit a targeted hint when the model
+/// used a wrong alias (`new_str` / `new_string` / `replacement` — habits carried
+/// over from other editing tools). The bare "missing required field" error left
+/// the model guessing and retrying; naming the right field avoids a wasted call.
+fn required_replacement_field<'a>(
+    input: &'a Value,
+    field: &str,
+) -> Result<&'a str, ToolError> {
+    if let Some(v) = input.get(field).and_then(Value::as_str) {
+        return Ok(v);
+    }
+    const ALIASES: &[&str] = &[
+        "new_str",
+        "new_string",
+        "new_text",
+        "newText",
+        "replacement",
+        "new",
+    ];
+    for alias in ALIASES {
+        if input.get(*alias).is_some() {
+            return Err(ToolError::invalid_input(format!(
+                "edit_file uses '{field}' for the replacement text, not '{alias}'. Re-send with '{field}'."
+            )));
+        }
+    }
+    required_str(input, field)
+}
+
 /// Tool for search/replace editing of files.
 pub struct EditFileTool;
 
@@ -40,7 +69,7 @@ impl ToolSpec for EditFileTool {
                 },
                 "replace": {
                     "type": "string",
-                    "description": "Text to replace with"
+                    "description": "Replacement text (this field is named 'replace' — NOT 'new_str'/'new_string'/'replacement')."
                 },
                 "start_line": {
                     "type": "integer",
@@ -118,7 +147,7 @@ impl EditFileTool {
     ) -> Result<ToolResult, ToolError> {
         let path_str = required_str(input, "path")?;
         let search = required_str(input, "search")?;
-        let replace = required_str(input, "replace")?;
+        let replace = required_replacement_field(input, "replace")?;
         let start_line = optional_u64(input, "start_line", 0) as usize;
         let end_line = optional_u64(input, "end_line", 0) as usize;
         let replace_mode = optional_str(input, "replace_mode");
@@ -296,7 +325,7 @@ impl EditFileTool {
         context: &ToolContext,
     ) -> Result<ToolResult, ToolError> {
         let path_str = required_str(input, "path")?;
-        let text = required_str(input, "text")?;
+        let text = required_replacement_field(input, "text")?;
         let after_line = optional_u64(input, "after_line", 0) as usize;
 
         let file_path = context.resolve_path(path_str)?;
@@ -477,7 +506,7 @@ impl EditFileTool {
         context: &ToolContext,
     ) -> Result<ToolResult, ToolError> {
         let path_str = required_str(input, "path")?;
-        let text = required_str(input, "text")?;
+        let text = required_replacement_field(input, "text")?;
         let line = optional_u64(input, "line", 0) as usize;
 
         if line == 0 {

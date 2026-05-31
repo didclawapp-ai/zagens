@@ -10,6 +10,33 @@ use std::path::Path;
 
 use crate::runtime_api::workspace::run_git;
 
+use super::nudge::LongHorizonSessionState;
+
+/// Whether the git working tree changed in a way that counts as model progress (§4.8, §6.4).
+///
+/// After a manifest gate run, [`LongHorizonSessionState::suppress_git_progress_baseline`]
+/// holds the post-gate signature until the workspace moves past it — so harness-only
+/// build/test artifacts do not count as progress.
+#[must_use]
+pub fn git_counts_as_progress(
+    session: &LongHorizonSessionState,
+    current: Option<&String>,
+    last_nudge: Option<&String>,
+) -> bool {
+    let (Some(cur), Some(prev)) = (current, last_nudge) else {
+        return false;
+    };
+    if cur == prev {
+        return false;
+    }
+    if let Some(suppress) = session.suppress_git_progress_baseline.as_ref() {
+        if cur == suppress {
+            return false;
+        }
+    }
+    true
+}
+
 /// Stable signature of the workspace git working tree (`git status --porcelain`).
 ///
 /// Returns `None` when the path is not a git repo or git is unavailable, so the
@@ -31,6 +58,7 @@ pub fn workspace_change_signature(workspace: &Path) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::long_horizon::nudge::LongHorizonSessionState;
     use std::process::Command;
 
     fn git(dir: &Path, args: &[&str]) -> bool {
@@ -44,6 +72,22 @@ mod tests {
 
     fn git_available() -> bool {
         Command::new("git").arg("--version").output().is_ok()
+    }
+
+    #[test]
+    fn git_progress_suppressed_at_gate_baseline() {
+        let mut session = LongHorizonSessionState::default();
+        session.suppress_git_progress_baseline = Some("aaa".to_string());
+        assert!(!git_counts_as_progress(
+            &session,
+            Some(&"aaa".to_string()),
+            Some(&"bbb".to_string()),
+        ));
+        assert!(git_counts_as_progress(
+            &session,
+            Some(&"ccc".to_string()),
+            Some(&"bbb".to_string()),
+        ));
     }
 
     #[test]

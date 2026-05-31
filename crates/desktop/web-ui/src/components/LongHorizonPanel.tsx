@@ -19,6 +19,7 @@ import {
 } from '../lib/runtimePoll';
 import type {
   HarnessCycles,
+  HarnessCompletionGate,
   HarnessNode,
   HarnessTaskGraph,
   LongHorizonPanelTab,
@@ -380,6 +381,31 @@ function nodeKindClass(kind: string, payload?: Record<string, unknown> | null): 
   if (kind === 'gate_skip' || kind === 'blocked' || kind === 'context_warning') {
     return 'text-amber-600 dark:text-amber-400';
   }
+  if (
+    kind === 'manifest_gate_start' ||
+    kind === 'manifest_gate' ||
+    kind === 'manifest_gate_result'
+  ) {
+    const passed =
+      payload?.passed === true ||
+      payload?.pass === true ||
+      payload?.last_manifest_passed === true;
+    const failed =
+      payload?.passed === false ||
+      payload?.pass === false ||
+      payload?.observe === true;
+    if (passed) return 'text-emerald-600 dark:text-emerald-400';
+    if (failed) return 'text-amber-600 dark:text-amber-400';
+    return 'text-sky-600 dark:text-sky-400';
+  }
+  if (kind === 'completion_audit') {
+    return payload?.pass === true
+      ? 'text-emerald-600 dark:text-emerald-400'
+      : 'text-amber-600 dark:text-amber-400';
+  }
+  if (kind === 'audit_unmet') {
+    return 'text-red-600 dark:text-red-400';
+  }
   return 'text-t-text-muted';
 }
 
@@ -395,31 +421,111 @@ function nodePayloadSummary(payload?: Record<string, unknown> | null): string {
     'emitted',
     'converted',
     'item',
+    'manifest_round',
+    'audit_round',
+    'first_gap_count',
+    'failing_count',
+    'missing_deliverables',
+    'pass',
+    'passed',
+    'observe',
+    'enforce',
+    'gate_reinject_while_blocked',
   ];
   const parts: string[] = [];
   for (const k of keys) {
     const v = payload[k];
-    if (v != null && (typeof v === 'string' || typeof v === 'number')) {
+    if (v != null && (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean')) {
       parts.push(`${k}=${v}`);
     }
   }
   return parts.join(' · ');
 }
 
+function CompletionGateSummary({
+  gate,
+  t,
+}: {
+  gate: HarnessCompletionGate;
+  t: (k: string, vars?: Record<string, string>) => string;
+}) {
+  if (!gate.active) return null;
+  const mode = gate.mode ?? '—';
+  const manifestOk =
+    gate.last_manifest_passed === true
+      ? t('longHorizon.gateManifestOk')
+      : gate.last_manifest_passed === false
+        ? t('longHorizon.gateManifestFail')
+        : t('longHorizon.gateManifestUnknown');
+  const auditOk =
+    gate.last_audit_pass === true
+      ? t('longHorizon.gateAuditOk')
+      : gate.last_audit_pass === false
+        ? t('longHorizon.gateAuditFail')
+        : t('longHorizon.gateAuditUnknown');
+  return (
+    <div className="mb-2 rounded border border-t-border/40 bg-t-surface-elevated/50 px-2 py-1.5 text-[10px]">
+      <div className="font-medium text-t-text-secondary">{t('longHorizon.gateSummaryTitle')}</div>
+      <ul className="mt-1 space-y-0.5 text-t-text-muted">
+        <li>
+          {t('longHorizon.gateMode', { mode })}{' '}
+          · {t('longHorizon.gateRounds', {
+            manifest: String(gate.manifest_round),
+            audit: String(gate.audit_round),
+          })}
+        </li>
+        {gate.auto_verify_replay || gate.toolchain_gate ? (
+          <li>
+            {t('longHorizon.gateGenericSources', {
+              replay: gate.auto_verify_replay ?? 'off',
+              toolchain: gate.toolchain_gate ?? 'off',
+            })}
+          </li>
+        ) : null}
+        <li>
+          {manifestOk} · {auditOk}
+        </li>
+        {gate.first_gap_count != null ? (
+          <li>{t('longHorizon.gateFirstGap', { n: String(gate.first_gap_count) })}</li>
+        ) : null}
+        {gate.gate_reinject_while_blocked > 0 ? (
+          <li className="text-amber-700 dark:text-amber-300">
+            {t('longHorizon.gateReinjectBlocked', {
+              n: String(gate.gate_reinject_while_blocked),
+            })}
+          </li>
+        ) : null}
+        {gate.last_unmet_reason ? (
+          <li className="text-red-700 dark:text-red-300">
+            {t('longHorizon.gateAuditUnmet', { reason: gate.last_unmet_reason })}
+          </li>
+        ) : null}
+      </ul>
+    </div>
+  );
+}
+
 function NodesView({
   nodes,
+  completionGate,
   t,
 }: {
   nodes: HarnessNode[];
+  completionGate?: HarnessCompletionGate | null;
   t: (k: string, vars?: Record<string, string>) => string;
 }) {
-  if (nodes.length === 0) {
+  const hasGate = completionGate?.active === true;
+  if (nodes.length === 0 && !hasGate) {
     return <p className="text-xs text-t-text-muted">{t('longHorizon.nodesEmpty')}</p>;
   }
   // Newest first for readability.
   const ordered = [...nodes].reverse();
   return (
-    <ul className="space-y-1 text-xs">
+    <div className="space-y-2 text-xs">
+      {hasGate && completionGate ? (
+        <CompletionGateSummary gate={completionGate} t={t} />
+      ) : null}
+    <ul className="space-y-1">
       {ordered.map((n, i) => (
         <li
           key={`${n.ts_ms}-${i}`}
@@ -441,6 +547,7 @@ function NodesView({
         </li>
       ))}
     </ul>
+    </div>
   );
 }
 
@@ -638,7 +745,13 @@ export default function LongHorizonPanel({ threadId, pollFast = false }: Props) 
           ))}
         {tab === 'cycle' && <CycleView cycles={cycles} t={t} />}
         {tab === 'context' && <ContextView ctx={context} cycles={cycles} t={t} />}
-        {tab === 'nodes' && <NodesView nodes={graph?.recent_nodes ?? []} t={t} />}
+        {tab === 'nodes' && (
+          <NodesView
+            nodes={graph?.recent_nodes ?? []}
+            completionGate={graph?.completion_gate}
+            t={t}
+          />
+        )}
       </div>
     </div>
   );

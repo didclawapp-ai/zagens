@@ -84,6 +84,30 @@ pub struct LongHorizonSessionState {
     pub(crate) awaiting_nudge_outcome: bool,
     /// Session-scoped nudge effectiveness telemetry ("先量后调", §4.9).
     pub telemetry: NudgeTelemetry,
+    /// Composable harness: layer-2 manifest gate rounds this session.
+    pub manifest_gate_rounds: u32,
+    /// Composable harness: layer-3 deliverable audit rounds this session.
+    pub audit_rounds: u32,
+    /// Prevents concurrent manifest gate evaluation on the same session (§6.4).
+    pub completion_gate_evaluating: bool,
+    /// Cached layer-2 result from the latest gate evaluation (same-round trust for layer 3).
+    pub last_manifest_gate: Option<super::manifest_gate::ManifestGateResult>,
+    /// Cached layer-3 audit from the latest gate evaluation.
+    pub last_completion_audit: Option<super::completion_audit::CompletionAuditResult>,
+    /// Git signature before harness gate side effects — excludes gate churn from progress (§6.4).
+    pub harness_side_effect_signature: Option<String>,
+    /// First gate evaluation that recorded any gap (observe/enforce telemetry).
+    pub first_gate_gap_count: Option<u32>,
+    /// Enforce reinject while `NudgeTracker` is blocked (§7.8 telemetry).
+    pub gate_reinject_while_blocked: u32,
+    /// Observe mode: gaps recorded; turn may still complete at `graph_complete`.
+    pub completion_gate_observe_pending: bool,
+    /// Consecutive layer-2 rounds where all failures are infra-class (§6.4).
+    pub consecutive_infra_gate_strikes: u32,
+    /// Git signature after gate exec; suppress false progress until workspace moves past it.
+    pub suppress_git_progress_baseline: Option<String>,
+    /// Gate telemetry drained by `no_tool_uses` after `maybe_continue_incomplete_code_task`.
+    pub pending_gate_events: Vec<super::gate_telemetry::CompletionGateEvent>,
 }
 
 /// In-memory nudge effectiveness counters (§4.9 — evidence for tuning, not yet
@@ -340,6 +364,64 @@ pub fn build_nudge_message(
 /// "create example scripts" marked done without ever running them. We do not
 /// touch the completion percentage (it stays 100% — display only); we refuse to
 /// let the turn end so the model must verify for real.
+/// Layer-2 manifest gate failed — list gates that did not exit 0.
+#[must_use]
+pub fn build_manifest_failed_nudge(
+    failing: &[&super::manifest_gate::VerifyRunResult],
+    lang: &str,
+) -> String {
+    let lines: Vec<String> = failing
+        .iter()
+        .map(|r| {
+            format!(
+                "- [{}] {} (exit={}, class={:?})",
+                r.id, r.command_display, r.exit_code, r.exit_class
+            )
+        })
+        .collect();
+    let list = lines.join("\n");
+    if is_zh(lang) {
+        format!(
+            "任务图已勾选完成，但**规格 manifest 硬验收门未全绿**（harness 主动执行，exit code 为法官）。下列门未通过：\n\n{list}\n\n\
+             请逐项修复并**实际跑通**上述命令（看到 exit 0）后再结束本轮。不要仅凭文字声明完成。"
+        )
+    } else {
+        format!(
+            "The checklist graph is complete, but **manifest acceptance gates are not all green** \
+             (harness actively executed them — exit code is the judge). Failed gates:\n\n{list}\n\n\
+             Fix each item and **actually run** these commands to exit 0 before ending this turn. \
+             Do not finish on prose alone."
+        )
+    }
+}
+
+/// Layer-3 deliverable manifest reconciliation failed.
+#[must_use]
+pub fn build_deliverables_failed_nudge(
+    audit: &super::completion_audit::CompletionAuditResult,
+    lang: &str,
+) -> String {
+    let lines: Vec<String> = audit
+        .missing_deliverables
+        .iter()
+        .map(|m| format!("- [{}] {} ({})", m.id, m.what, m.evidence))
+        .collect();
+    let list = lines.join("\n");
+    if is_zh(lang) {
+        format!(
+            "硬验收门已通过，但**交付物 manifest 对账未通过**（机器路径/glob 命中，非 LLM 判断）。缺失项：\n\n{list}\n\n\
+             请补齐上述交付物（生成对应文件/目录并满足 manifest），必要时补充 `[verify:]` 命令并真跑，再 checklist_update。"
+        )
+    } else {
+        format!(
+            "Acceptance gates passed, but the **deliverable manifest reconciliation failed** \
+             (machine path/glob hits — not LLM judgment). Missing:\n\n{list}\n\n\
+             Produce these deliverables in the workspace, add `[verify:]` commands where needed, \
+             run them to exit 0, then checklist_update."
+        )
+    }
+}
+
 #[must_use]
 pub fn build_unverified_acceptance_nudge(items: &[String], lang: &str) -> String {
     let list = items
@@ -491,12 +573,14 @@ mod tests {
     #[test]
     fn blocked_after_three_nudges_without_progress() {
         let mut tracker = NudgeTracker::default();
+        let cfg = LongHorizonConfig::default();
         let cfg = LongHorizonConfig {
             enabled: true,
             max_nudges_per_item: 5,
             blocked_nudges_without_progress: 3,
-            reinject_every_steps: 0,
+            reinject_every_steps: cfg.reinject_every_steps,
             progress_via_git: true,
+            completion_gate: cfg.completion_gate,
         };
         for _ in 0..3 {
             assert!(matches!(
@@ -531,12 +615,14 @@ mod tests {
         // only protects against `blocked`; the hard total cap (5) is what stops
         // the nudging, never give-up.
         let mut tracker = NudgeTracker::default();
+        let cfg = LongHorizonConfig::default();
         let cfg = LongHorizonConfig {
             enabled: true,
             max_nudges_per_item: 5,
             blocked_nudges_without_progress: 3,
-            reinject_every_steps: 0,
+            reinject_every_steps: cfg.reinject_every_steps,
             progress_via_git: true,
+            completion_gate: cfg.completion_gate,
         };
         let mut nudges = 0;
         for _ in 0..20 {
@@ -559,12 +645,14 @@ mod tests {
         // Interleaving a progress turn resets the streak so `blocked` is avoided,
         // while no-progress turns still accumulate toward give-up.
         let mut tracker = NudgeTracker::default();
+        let defaults = LongHorizonConfig::default();
         let cfg = LongHorizonConfig {
             enabled: true,
             max_nudges_per_item: 100,
             blocked_nudges_without_progress: 3,
             reinject_every_steps: 0,
             progress_via_git: true,
+            completion_gate: defaults.completion_gate,
         };
         // Two no-progress nudges (streak = 2), then a progress turn resets it.
         let _ = tracker.prepare_nudge(Some(1), &cfg, false);

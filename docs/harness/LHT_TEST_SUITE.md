@@ -108,7 +108,7 @@ prompt：<一句话目标，显式点名易漏特性>
 | 信号源 | 看什么 | 工具 |
 |--------|--------|------|
 | **`[lht-probe]` 节点流** | `continue_injected` 是否触发、`gate_skip` 的 `reason`、`verify_gate` 的 `verdict`(`verified`/`mismatch`/`unverified_acceptance`/`untagged_ok`)、漏标验收是否触发 `unverified_acceptance_nudge`（B 软门禁，理想：漏标→nudge→补 `[verify:]` 真跑→`verified`，而非 `graph_complete` 直接收尾） | `Select-String -Path $env:USERPROFILE\.zagens\logs\sidecar.log -Pattern '\[lht-probe\]'` |
-| **LHT 面板 Nodes Tab** | 决策流实时颜色编码(续写绿 / skip 黄 / `incomplete_stop` 红 / verify `mismatch` 橙) | Zagens 左下长程面板(DEMO5 #3 落地) |
+| **LHT 面板 Nodes Tab** | 决策流实时颜色编码(续写绿 / skip 黄 / `incomplete_stop` 红 / verify `mismatch` 橙)；**组合式门禁(P2)** 顶栏 `completion_gate` 摘要 + `manifest_gate_*`/`completion_audit`/`audit_unmet` 节点 | Zagens 左下长程面板；grep 模板见 [`COMPOSABLE_HARNESS.md` §11](./COMPOSABLE_HARNESS.md) |
 | **`[stream-probe]` 摘要** | 区分截断类型:`stop_reason`、`stream_errors`、`chunk_timeout`、流条数(恰 100 = step 耗尽签名) | 同上 grep `[stream-probe]` |
 | **进度图客观性** | checklist 全勾时 `completion_pct=100`、`open_items=0`、`incomplete=false`(DEMO5 #1 回归) | `harness/task-graph` 负载 |
 | **产物实跑** | 抽查 `[verify:]` 之外的真实行为(DEMO3:示例真能跑、取模真实现) | 人工 / 脚本 |

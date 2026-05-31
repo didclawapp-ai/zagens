@@ -1,6 +1,13 @@
 //! Long-horizon code task (LHT) harness configuration — shared between core and runtime.
 
+mod completion_gate;
+
 use serde::Deserialize;
+
+pub use completion_gate::{
+    CompletionGateConfig, CompletionGateConfigToml, CompletionGateDeliverableEntry,
+    CompletionGateMode, CompletionGateVerifyEntry, GenericGateMode, ManifestShell, VerifySource,
+};
 
 /// Resolved LHT settings for the engine turn loop.
 #[derive(Debug, Clone)]
@@ -14,6 +21,8 @@ pub struct LongHorizonConfig {
     /// as objective, language-agnostic qualified progress. Auto-degrades to the
     /// Phase 1 tool signals when the workspace is not a git repo.
     pub progress_via_git: bool,
+    /// Composable harness completion gate (§6 — manifest oracle + deliverable audit).
+    pub completion_gate: CompletionGateConfig,
 }
 
 impl Default for LongHorizonConfig {
@@ -24,6 +33,7 @@ impl Default for LongHorizonConfig {
             blocked_nudges_without_progress: 3,
             reinject_every_steps: 0,
             progress_via_git: true,
+            completion_gate: CompletionGateConfig::default(),
         }
     }
 }
@@ -41,6 +51,8 @@ pub struct LongHorizonConfigToml {
     pub reinject_every_steps: Option<u32>,
     #[serde(default)]
     pub progress_via_git: Option<bool>,
+    #[serde(default)]
+    pub completion_gate: Option<CompletionGateConfigToml>,
 }
 
 impl LongHorizonConfigToml {
@@ -59,6 +71,10 @@ impl LongHorizonConfigToml {
                 .reinject_every_steps
                 .unwrap_or(defaults.reinject_every_steps),
             progress_via_git: self.progress_via_git.unwrap_or(defaults.progress_via_git),
+            completion_gate: self
+                .completion_gate
+                .map(CompletionGateConfigToml::into_runtime)
+                .unwrap_or_default(),
         }
     }
 }

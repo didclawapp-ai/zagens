@@ -78,6 +78,13 @@ impl Engine {
             .telemetry
             .converted;
 
+        let shell_manager = std::sync::Arc::clone(&self.runtime_ext().shell_manager);
+        let cancel_token = self.0.cancel_token.clone();
+        let gate_exec = crate::long_horizon::CompletionGateExec {
+            shell_manager: &shell_manager,
+            cancel_token: Some(&cancel_token),
+        };
+
         let input = crate::long_horizon::LongHorizonContinueInput {
             config: &lh_config,
             scratchpad: &scratchpad,
@@ -92,9 +99,22 @@ impl Engine {
             session: &mut self.runtime_ext_mut().long_horizon_state,
             already_injected_this_turn: false,
             steps_remaining,
+            gate_exec: Some(gate_exec),
         };
 
         let gate = crate::long_horizon::maybe_continue_incomplete_code_task(input).await;
+
+        for event in std::mem::take(
+            &mut self
+                .runtime_ext_mut()
+                .long_horizon_state
+                .pending_gate_events,
+        ) {
+            let _ = self
+                .tx_event
+                .send(Event::status(event.status_message()))
+                .await;
+        }
 
         // Telemetry (§4.9): emit a `nudge_outcome` whenever a prior nudge just
         // converted into qualified progress — the evidence we want for tuning.
@@ -114,6 +134,65 @@ impl Engine {
 
         let msg = match gate {
             crate::long_horizon::LhtGateOutcome::Nudge(msg) => msg,
+            crate::long_horizon::LhtGateOutcome::NudgeManifestFailed(msg)
+            | crate::long_horizon::LhtGateOutcome::NudgeDeliverablesMissing(msg) => {
+                Engine::add_session_message(self, msg).await;
+                self.long_horizon_continue_injected_this_turn = true;
+                let rounds = self.runtime_ext().long_horizon_state.manifest_gate_rounds;
+                let audit_rounds = self.runtime_ext().long_horizon_state.audit_rounds;
+                let blocked = self
+                    .runtime_ext()
+                    .long_horizon_state
+                    .gate_reinject_while_blocked;
+                let _ = self
+                    .tx_event
+                    .send(Event::status(format!(
+                        "long_horizon.manifest_gate: {{\"enforce\":true,\"reinject\":true,\"manifest_round\":{rounds},\"audit_round\":{audit_rounds},\"gate_reinject_while_blocked\":{blocked}}}"
+                    )))
+                    .await;
+                return true;
+            }
+            crate::long_horizon::LhtGateOutcome::ObserveManifestGate {
+                failing_gate_ids,
+                audit,
+            } => {
+                let missing = audit
+                    .as_ref()
+                    .map(|a| a.missing_deliverables.len())
+                    .unwrap_or(0);
+                let first_gap = self
+                    .runtime_ext()
+                    .long_horizon_state
+                    .first_gate_gap_count
+                    .unwrap_or(0);
+                let _ = self
+                    .tx_event
+                    .send(Event::status(format!(
+                        "long_horizon.manifest_gate: {{\"observe\":true,\"failing_gates\":{},\"missing_deliverables\":{missing},\"first_gap_count\":{first_gap}}}",
+                        failing_gate_ids.len()
+                    )))
+                    .await;
+                return false;
+            }
+            crate::long_horizon::LhtGateOutcome::AuditUnmet {
+                reason,
+                failing_gates,
+                missing_deliverable_ids,
+                manifest_round,
+                audit_round,
+                first_gap_count,
+            } => {
+                let first = first_gap_count.unwrap_or(0);
+                let _ = self
+                    .tx_event
+                    .send(Event::status(format!(
+                        "long_horizon.audit_unmet: {{\"reason\":\"{reason}\",\"failing_gates\":{},\"missing_deliverables\":{},\"manifest_round\":{manifest_round},\"audit_round\":{audit_round},\"first_gap_count\":{first}}}",
+                        failing_gates.len(),
+                        missing_deliverable_ids.len()
+                    )))
+                    .await;
+                return false;
+            }
             crate::long_horizon::LhtGateOutcome::NudgeUnverifiedAcceptance(msg) => {
                 // DEMO3 false-green guard fired: the graph is "complete" but a
                 // completed item is an unverified runnable acceptance. Inject the

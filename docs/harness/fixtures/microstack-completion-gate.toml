@@ -1,0 +1,90 @@
+# MicroStack 生产级 B 跑 — 组合式 Harness manifest（复制到 ~/.zagens/config.toml 的 [long_horizon] 下）
+# 见 docs/harness/test-cases/microstack-framework.md §7 与 COMPOSABLE_HARNESS.md §6
+#
+# 这是一份【回归夹具】：用 MicroStack02 式欠拆场景验证门禁机器本身有效，
+# 不是"每个任务都要写一份"的推广路径（per-task manifest 天然不可规模化，见 §7.9）。
+#
+# 前置条件（务必先满足，否则部分门会判 infra 红而非真验收红）：
+#   1. 产物目录必须是 git 仓库且 contracts/ 冻结后已 commit —— 否则
+#      `git diff --exit-code contracts/` 与 deliverable `tracked=true` 无基线、恒红。
+#   2. 带 `shell = "bash"` 的门依赖 bash + 常见 unix 工具（gofmt/awk/curl/jq）。
+#      Windows 测试机需 git bash 在 PATH；纯 win32 无 bash 时请改用仓库内置
+#      跨平台子命令（见下方 coverage 门注释）。
+
+[long_horizon]
+enabled = true
+
+[long_horizon.completion_gate]
+mode = "enforce"   # 欠拆回归用 enforce；先观测缺口用 observe
+max_manifest_rounds = 5
+max_audit_rounds = 5
+max_infra_strikes = 3
+
+# —— 任务无关层2（§6.5，零 per-task 配置）——
+# 本夹具是 operator-manifest 回归用例，故默认关闭通用来源以保持确定性。
+# 真实任务里只需打开下面两个全局开关即可覆盖所有代码任务，无需手写 verify：
+#   auto_verify_replay = "enforce"   # 主动复跑模型自己声明的 [verify:]
+#   toolchain_gate     = "observe"   # 工具链探测 build/test 门（go.mod → go build/test）
+
+# —— 层2：硬验收门（harness 主动 exec，exit code 为法官）——
+
+[[long_horizon.completion_gate.verify]]
+id = "build"
+cmd = "go build ./..."
+
+[[long_horizon.completion_gate.verify]]
+id = "vet"
+cmd = "go vet ./..."
+
+# gofmt：`gofmt -d`/`-l` 退出码恒 0、只打印输出，不能当门。
+# 用 bash 把"有未格式化文件"转成退出码：gofmt -l 有输出即 exit 1。
+[[long_horizon.completion_gate.verify]]
+id = "gofmt"
+shell = "bash"
+cmd = "test -z \"$(gofmt -l .)\""
+
+# 覆盖率防稀释门：`go test ./... -cover` 退出码恒 0（覆盖率 4% 也绿），不能当门。
+# 这里用 bash 真门——先保证全部测试通过（&&），再对【每个有测试的包】卡 ≥75%
+# （§1-B 防稀释：禁止 contracts 100% 把 app/orm 低覆盖率稀释成总体达标）。
+# 跨平台正解是仓库内置子命令（仍未做）：shell="none", argv=["zagens","coverage-gate","--min","75"]。
+[[long_horizon.completion_gate.verify]]
+id = "coverage_per_package_min75"
+shell = "bash"
+cmd = "go test -cover ./... > cover.txt 2>&1 && awk '/coverage:/{c=$0; sub(/.*coverage: /,\"\",c); sub(/%.*/,\"\",c); if (c+0 < 75){print \"LOW\",$2,c\"%\"; bad=1}} END{exit bad+0}' cover.txt"
+timeout_secs = 600
+
+[[long_horizon.completion_gate.verify]]
+id = "contracts_stable"
+cmd = "git diff --exit-code contracts/"
+
+[[long_horizon.completion_gate.verify]]
+id = "e2e_todo"
+shell = "bash"
+cmd = "bash scripts/e2e_todo.sh"
+timeout_secs = 600
+
+# —— 层3：交付物对账（欠拆解核心 — 未进 checklist 的项）——
+
+[[long_horizon.completion_gate.deliverable]]
+id = "gzip_middleware"
+path = "middleware/gzip.go"
+
+[[long_horizon.completion_gate.deliverable]]
+id = "main_entry"
+path = "cmd/microstack/main.go"
+
+[[long_horizon.completion_gate.deliverable]]
+id = "contracts_frozen"
+path = "contracts/server.go"
+tracked = true   # 依赖前置条件 1：产物目录为 git 仓库且已 commit
+
+# Router trie 重构（§1-B 20% 权重最强信号）。模块结构交模型自定，故 glob
+# 不假设顶层 router/，用 **/*trie*.go 匹配任意层级；optional_verify_cmd 再真跑一条 oracle。
+[[long_horizon.completion_gate.deliverable]]
+id = "deliverable_24_refactor"
+glob = "**/*trie*.go"
+optional_verify_cmd = "go test ./... -run Refactor"
+
+[[long_horizon.completion_gate.deliverable]]
+id = "e2e_script"
+path = "scripts/e2e_todo.sh"

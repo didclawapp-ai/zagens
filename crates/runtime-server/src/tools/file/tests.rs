@@ -382,9 +382,9 @@ async fn test_read_file_tool() {
         assert!(err.to_string().contains("not found"));
     }
 
-    /// #157 — When the model uses `replacement` instead of `replace`,
-    /// the error should name the provided fields so the model can
-    /// self-correct without a second round-trip.
+    /// #157 — When the model uses a wrong alias (`replacement`/`new_str`/…)
+    /// instead of `replace`, the error names the right field directly so the
+    /// model self-corrects without a second guess-and-retry round-trip.
     #[tokio::test]
     async fn test_edit_file_wrong_param_name_shows_provided_fields() {
         let tmp = tempdir().expect("tempdir");
@@ -404,15 +404,36 @@ async fn test_read_file_tool() {
 
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
-        // The error must name both the missing field AND the provided ones.
+        // The hint must name the correct field AND the wrong alias used.
         assert!(
-            err.contains("missing required field 'replace'"),
-            "error must name the missing field: {err}"
+            err.contains("'replace'"),
+            "error must name the correct field: {err}"
         );
         assert!(
-            err.contains("Input provided:") || err.contains("provided:"),
-            "error must list the fields the model did supply: {err}"
+            err.contains("replacement"),
+            "error must name the wrong alias the model used: {err}"
         );
+    }
+
+    /// The same targeted hint fires for the `new_str` habit (carried over from
+    /// other editing tools).
+    #[tokio::test]
+    async fn test_edit_file_new_str_alias_hint() {
+        let tmp = tempdir().expect("tempdir");
+        let ctx = ToolContext::new(tmp.path().to_path_buf());
+        let test_file = tmp.path().join("test.txt");
+        fs::write(&test_file, "hello world").expect("write");
+
+        let tool = EditFileTool;
+        let result = tool
+            .execute(
+                json!({"path": "test.txt", "search": "hello", "new_str": "hi"}),
+                &ctx,
+            )
+            .await;
+
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("'replace'") && err.contains("new_str"), "{err}");
     }
 
     #[tokio::test]

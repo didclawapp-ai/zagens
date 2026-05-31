@@ -28,6 +28,8 @@ pub struct TaskGraphChecklistJson {
     pub status: String,
 }
 
+pub use super::completion_gate_panel::CompletionGatePanelJson;
+
 #[derive(Debug, Clone, Serialize)]
 pub struct TaskGraphTelemetryJson {
     pub emitted: u32,
@@ -54,6 +56,8 @@ pub struct TaskGraphResponse {
     pub nudge_count: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub telemetry: Option<TaskGraphTelemetryJson>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completion_gate: Option<CompletionGatePanelJson>,
 }
 
 #[must_use]
@@ -65,7 +69,7 @@ pub fn build_task_graph_response(
     lht: &LongHorizonConfig,
     session: Option<&LongHorizonSessionState>,
 ) -> TaskGraphResponse {
-    let (lht_blocked, nudge_count, telemetry) = session
+    let (lht_blocked, nudge_count, telemetry, completion_gate) = session
         .map(|s| {
             (
                 Some(s.tracker.is_blocked() || s.paused),
@@ -76,11 +80,50 @@ pub fn build_task_graph_response(
                     blocked: s.telemetry.blocked,
                     conversion_pct: s.telemetry.conversion_pct(),
                 }),
+                lht.completion_gate.is_active().then(|| {
+                    let mut cache = super::completion_gate_panel::CompletionGatePanelCache::default();
+                    cache.active = true;
+                    cache.mode = Some(match lht.completion_gate.mode {
+                        deepseek_core::long_horizon::CompletionGateMode::Enforce => {
+                            "enforce".to_string()
+                        }
+                        deepseek_core::long_horizon::CompletionGateMode::Observe => {
+                            "observe".to_string()
+                        }
+                    });
+                    cache.manifest_round = s.manifest_gate_rounds;
+                    cache.audit_round = s.audit_rounds;
+                    cache.first_gap_count = s.first_gate_gap_count;
+                    cache.gate_reinject_while_blocked = s.gate_reinject_while_blocked;
+                    if let Some(ref mg) = s.last_manifest_gate {
+                        cache.last_manifest_passed = Some(mg.passed);
+                    }
+                    if let Some(ref au) = s.last_completion_audit {
+                        cache.last_audit_pass = Some(au.pass);
+                    }
+                    super::completion_gate_panel::merge_completion_gate_panel(
+                        &cache,
+                        Some(super::completion_gate_panel::CompletionGateSessionSnapshot {
+                            manifest_gate_rounds: s.manifest_gate_rounds,
+                            audit_rounds: s.audit_rounds,
+                            first_gap_count: s.first_gate_gap_count,
+                            gate_reinject_while_blocked: s.gate_reinject_while_blocked,
+                        }),
+                    )
+                }),
             )
         })
-        .unwrap_or((None, None, None));
+        .unwrap_or((None, None, None, None));
     assemble_task_graph(
-        plan, checklist, messages, lang, lht, lht_blocked, nudge_count, telemetry,
+        plan,
+        checklist,
+        messages,
+        lang,
+        lht,
+        lht_blocked,
+        nudge_count,
+        telemetry,
+        completion_gate,
     )
 }
 
@@ -98,6 +141,7 @@ fn assemble_task_graph(
     lht_blocked: Option<bool>,
     nudge_count: Option<u32>,
     telemetry: Option<TaskGraphTelemetryJson>,
+    completion_gate: Option<CompletionGatePanelJson>,
 ) -> TaskGraphResponse {
     let mut graph = CodeTaskGraph::from_snapshots(plan, checklist);
     let (objective, source) = derive_objective(plan, checklist, messages, lang);
@@ -137,6 +181,7 @@ fn assemble_task_graph(
         lht_blocked,
         nudge_count,
         telemetry,
+        completion_gate,
     }
 }
 
@@ -166,6 +211,7 @@ pub fn build_task_graph_value_with_telemetry(
     lht_blocked: Option<bool>,
     nudge_count: Option<u32>,
     telemetry: Option<TaskGraphTelemetryJson>,
+    completion_gate: Option<CompletionGatePanelJson>,
 ) -> Value {
     serde_json::to_value(assemble_task_graph(
         plan,
@@ -176,6 +222,7 @@ pub fn build_task_graph_value_with_telemetry(
         lht_blocked,
         nudge_count,
         telemetry,
+        completion_gate,
     ))
     .unwrap_or_else(|_| json!({ "error": "task_graph_serialize_failed" }))
 }

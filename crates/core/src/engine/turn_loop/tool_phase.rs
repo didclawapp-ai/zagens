@@ -219,6 +219,13 @@ pub async fn run_tool_execution_phase<H: TurnLoopHost>(
                         loop_guard_halt.get_or_insert(message);
                     }
                 }
+                // A successful file-mutating tool changed the workspace, so a
+                // subsequently repeated identical verify/read call is no longer a
+                // redundant loop — clear the identical-call block (see
+                // `LoopGuard::note_state_changed`).
+                if output.success && LoopGuard::is_state_mutating_tool(&outcome.name) {
+                    loop_guard.note_state_changed();
+                }
                 emit_tool_audit(json!({
                     "event": "tool.result",
                     "tool_id": outcome.id.clone(),

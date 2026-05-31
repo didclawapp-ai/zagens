@@ -1,10 +1,16 @@
 //! Long-horizon code task (LHT) harness — Phase 1 forced continue.
 
 mod checkpoint;
+mod completion_audit;
+mod completion_gate_flow;
+pub(crate) mod completion_gate_panel;
+mod gate_telemetry;
 mod cycle_band;
 mod cycles;
 pub(crate) mod handoff;
+mod generic_gate;
 mod graph;
+mod manifest_gate;
 mod nudge;
 mod objective;
 pub(crate) mod progress;
@@ -24,6 +30,8 @@ pub(crate) use verify::verify_gate_verdict;
 
 pub use graph::CodeTaskGraph;
 pub use handoff::{build_lht_handoff_section, merge_lht_into_handoff};
+pub use completion_gate_panel::CompletionGatePanelJson;
+pub use manifest_gate::CompletionGateExec;
 pub use nudge::{build_nudge_message, LongHorizonSessionState, NudgeDecision};
 pub use objective::derive_objective;
 pub use task_graph::{
@@ -56,6 +64,8 @@ pub struct LongHorizonContinueInput<'a> {
     pub session: &'a mut LongHorizonSessionState,
     pub already_injected_this_turn: bool,
     pub steps_remaining: u32,
+    /// Shell execution for layer-2 manifest oracle (§6.4). `None` skips active exec.
+    pub gate_exec: Option<CompletionGateExec<'a>>,
 }
 
 /// When audit scratchpad is active and incomplete, audit continue owns the path.
@@ -86,6 +96,24 @@ pub enum LhtGateOutcome {
     /// [`Self::Nudge`] so the caller can emit a separate observability node and
     /// avoid muddling the normal continue/conversion telemetry.
     NudgeUnverifiedAcceptance(Message),
+    /// Layer-2 manifest gate: harness-active verify commands failed (§6.1).
+    NudgeManifestFailed(Message),
+    /// Layer-3 deliverable manifest reconciliation failed (§6.2).
+    NudgeDeliverablesMissing(Message),
+    /// Observe mode: record gaps but allow `graph_complete` (§7.3).
+    ObserveManifestGate {
+        failing_gate_ids: Vec<String>,
+        audit: Option<completion_audit::CompletionAuditResult>,
+    },
+    /// Bounded gate rounds exhausted — honest stop without fake green (§7.1).
+    AuditUnmet {
+        reason: &'static str,
+        failing_gates: Vec<String>,
+        missing_deliverable_ids: Vec<String>,
+        manifest_round: u32,
+        audit_round: u32,
+        first_gap_count: Option<u32>,
+    },
     Skip(&'static str),
 }
 
@@ -159,7 +187,16 @@ pub async fn maybe_continue_incomplete_code_task(
                 }],
             });
         }
-        return LhtGateOutcome::Skip("graph_complete");
+        return completion_gate_flow::evaluate_completion_gate(
+            input.workspace,
+            &input.config.completion_gate,
+            &checklist,
+            input.session,
+            input.lang,
+            input.steps_remaining,
+            input.gate_exec.as_ref(),
+        )
+        .await;
     }
     if graph.is_trivial() {
         return LhtGateOutcome::Skip("graph_trivial");
@@ -182,13 +219,11 @@ pub async fn maybe_continue_incomplete_code_task(
     } else {
         None
     };
-    let git_progress = match (
+    let git_progress = progress::git_counts_as_progress(
+        input.session,
         current_git_signature.as_ref(),
         input.session.last_nudge_git_signature.as_ref(),
-    ) {
-        (Some(cur), Some(prev)) => cur != prev,
-        _ => false,
-    };
+    );
 
     let had_progress = input.session.progress_since_last_nudge || git_progress;
     input.session.progress_since_last_nudge = false;

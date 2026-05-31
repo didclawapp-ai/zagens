@@ -63,6 +63,8 @@ pub(crate) struct HarnessTelemetryCacheEntry {
     pub lht_blocked: bool,
     /// Bounded ring of recent harness node decisions (newest last).
     pub recent_nodes: VecDeque<HarnessNodeRecord>,
+    /// Composable harness completion gate (P2 panel).
+    pub completion_gate: crate::long_horizon::completion_gate_panel::CompletionGatePanelCache,
 }
 
 /// Sidecar runtime thread manager — orchestrator core plus host-only services.
@@ -366,6 +368,44 @@ impl RuntimeThreadManager {
             })
             .unwrap_or((None, None, None));
 
+        let mut completion_gate = cached.as_ref().map(|e| {
+            crate::long_horizon::completion_gate_panel::merge_completion_gate_panel(
+                &e.completion_gate,
+                None,
+            )
+        });
+        if lht.completion_gate.is_active() {
+            let mode = match lht.completion_gate.mode {
+                deepseek_core::long_horizon::CompletionGateMode::Enforce => "enforce",
+                deepseek_core::long_horizon::CompletionGateMode::Observe => "observe",
+            };
+            let generic_mode = |m: deepseek_core::long_horizon::GenericGateMode| match m {
+                deepseek_core::long_horizon::GenericGateMode::Enforce => Some("enforce".to_string()),
+                deepseek_core::long_horizon::GenericGateMode::Observe => Some("observe".to_string()),
+                deepseek_core::long_horizon::GenericGateMode::Off => None,
+            };
+            let replay = generic_mode(lht.completion_gate.auto_verify_replay);
+            let toolchain = generic_mode(lht.completion_gate.toolchain_gate);
+            match &mut completion_gate {
+                Some(cg) => {
+                    cg.active = true;
+                    if cg.mode.is_none() {
+                        cg.mode = Some(mode.to_string());
+                    }
+                    cg.auto_verify_replay = replay;
+                    cg.toolchain_gate = toolchain;
+                }
+                None => {
+                    completion_gate = Some(crate::long_horizon::CompletionGatePanelJson {
+                        active: true,
+                        mode: Some(mode.to_string()),
+                        auto_verify_replay: replay,
+                        toolchain_gate: toolchain,
+                        ..Default::default()
+                    });
+                }
+            }
+        }
         let mut value = crate::long_horizon::build_task_graph_value_with_telemetry(
             &plan,
             &checklist,
@@ -374,6 +414,7 @@ impl RuntimeThreadManager {
             lht_blocked,
             nudge_count,
             telemetry,
+            completion_gate,
         );
         // Attach the recent harness node-decision trail (newest last) for the
         // LHT panel "nodes" tab (DEMO5 #3). Pure read of the live cache; empty
@@ -430,6 +471,9 @@ impl RuntimeThreadManager {
                 node_recorded = true;
             }
         }
+        entry
+            .completion_gate
+            .apply_status(message, payload.as_ref());
         if message.starts_with("long_horizon.continue_injected") {
             if let Some(p) = payload.as_ref() {
                 if let Some(v) = p.get("emitted").and_then(Value::as_u64) {

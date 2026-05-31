@@ -687,10 +687,20 @@ impl Config {
     /// Long-horizon code task harness settings (LHT Phase 1).
     #[must_use]
     pub fn long_horizon_config(&self) -> deepseek_core::long_horizon::LongHorizonConfig {
-        self.long_horizon
+        let mut cfg = self
+            .long_horizon
             .clone()
             .map(deepseek_core::long_horizon::LongHorizonConfigToml::into_runtime)
-            .unwrap_or_default()
+            .unwrap_or_default();
+        // §6.1/§6.4 (v0.4): the executable completion-gate manifest is only
+        // trusted because this `Config` is loaded from a single global/explicit
+        // path (`resolve_load_config_path`) and never merges workspace project
+        // config. The trust hook is applied explicitly so that if a future
+        // workspace/overlay merge feeds `[long_horizon.completion_gate]`, it must
+        // pass `trusted = false` here (or sanitize the merged subtree) to keep an
+        // untrusted enforce manifest from auto-executing commands.
+        cfg.completion_gate = cfg.completion_gate.sanitized_for_source(true);
+        cfg
     }
 
     /// Resolve enabled features from defaults and config entries.

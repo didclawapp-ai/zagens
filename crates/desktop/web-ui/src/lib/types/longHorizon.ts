@@ -17,6 +17,23 @@ export interface HarnessNudgeTelemetry {
   conversion_pct: number;
 }
 
+/** Composable harness completion gate live counters (P2). */
+export interface HarnessCompletionGate {
+  active: boolean;
+  mode?: string | null;
+  /** Generic layer-2: model `[verify:]` replay mode (off/observe/enforce). */
+  auto_verify_replay?: string | null;
+  /** Generic layer-2: toolchain build/test gate mode (off/observe/enforce). */
+  toolchain_gate?: string | null;
+  manifest_round: number;
+  audit_round: number;
+  first_gap_count?: number | null;
+  gate_reinject_while_blocked: number;
+  last_manifest_passed?: boolean | null;
+  last_audit_pass?: boolean | null;
+  last_unmet_reason?: string | null;
+}
+
 /** One harness node decision for the LHT "nodes" tab (DEMO5 #3). */
 export interface HarnessNode {
   /** e.g. 'continue_injected', 'gate_skip', 'incomplete_stop', 'verify_gate'. */
@@ -43,6 +60,8 @@ export interface HarnessTaskGraph {
   telemetry?: HarnessNudgeTelemetry | null;
   /** Recent harness node-decision trail (newest last); DEMO5 #3. */
   recent_nodes?: HarnessNode[] | null;
+  /** Completion gate summary (manifest / audit rounds, P2). */
+  completion_gate?: HarnessCompletionGate | null;
 }
 
 export interface HarnessCycleBriefing {

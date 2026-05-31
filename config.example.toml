@@ -146,7 +146,15 @@ sandbox_mode = "workspace-write" # read-only | workspace-write | danger-full-acc
 #   auto_allow = ["cargo check", "npm run"]
 #
 # auto_allow = []
-max_subagents = 10 # optional (1-20)
+max_subagents = 10 # optional (1-20; 0/negative are clamped to 1 — to fully
+                   # disable sub-agents use the hard kill switch below)
+
+# Hard kill switch (machine-enforced): set `subagents = false` under [features]
+# to remove agent_spawn / agent_* tools entirely — the model then *cannot* spawn
+# sub-agents regardless of any prompt/doc. Use this (not max_subagents) when a
+# task or policy forbids sub-agents.
+#   [features]
+#   subagents = false
 
 # Optional sub-agent tuning. max_concurrent overrides top-level max_subagents.
 # [subagents]

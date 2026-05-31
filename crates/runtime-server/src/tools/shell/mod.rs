@@ -15,6 +15,7 @@ mod tools;
 mod types;
 
 pub use host::{SharedShellManager, TuiShellHost, new_shared_shell_manager};
+pub(crate) use types::ShellStatus;
 pub use tools::{
     ExecShellTool, NoteTool, ShellCancelTool, ShellInteractTool, ShellWaitTool,
 };
@@ -24,9 +25,7 @@ pub(crate) use manager::ShellManager;
 #[cfg(test)]
 pub(crate) use process::BackgroundShell;
 #[cfg(test)]
-pub(crate) use types::{
-    ShellDeltaResult, ShellJobDetail, ShellJobSnapshot, ShellResult, ShellStatus,
-};
+pub(crate) use types::{ShellDeltaResult, ShellJobDetail, ShellJobSnapshot};
 
 #[cfg(test)]
 mod tests;

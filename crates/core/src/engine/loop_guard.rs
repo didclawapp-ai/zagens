@@ -71,6 +71,30 @@ impl LoopGuard {
     pub fn reset_failures(&mut self) {
         self.failure_counts.clear();
     }
+
+    /// Clear identical-call counts after the workspace changed (a state-mutating
+    /// tool succeeded). Re-running the *exact same* verify/read call after an
+    /// intervening edit is legitimate work — not a redundant loop — so it must
+    /// not stay blocked. Without this, an iterative `edit → re-run same test`
+    /// loop trips the 3× block and the model is forced into meaningless
+    /// arg-reordering to dodge the guard (defeating its purpose). Hammering the
+    /// same call with **no** intervening change still blocks, because nothing
+    /// calls this between those identical attempts.
+    pub fn note_state_changed(&mut self) {
+        self.call_counts.clear();
+    }
+
+    /// Whether a tool's success means the workspace materially changed, so the
+    /// identical-call counter should be cleared (see [`Self::note_state_changed`]).
+    /// Deliberately limited to file-mutating tools: a repeated `exec_shell` with
+    /// no intervening edit is still a loop and must keep tripping the block.
+    #[must_use]
+    pub fn is_state_mutating_tool(tool: &str) -> bool {
+        matches!(
+            tool,
+            "write_file" | "edit_file" | "apply_patch" | "create_dirs"
+        )
+    }
 }
 
 fn hash_args(args: &Value) -> u64 {
@@ -245,6 +269,37 @@ mod tests {
             guard.record_attempt("read_file", &args),
             AttemptDecision::Block(_)
         ));
+    }
+
+    #[test]
+    fn note_state_changed_unblocks_identical_call_after_an_edit() {
+        let mut guard = LoopGuard::default();
+        let cmd = json!({"command": "go test ./config/..."});
+        assert_eq!(guard.record_attempt("exec_shell", &cmd), AttemptDecision::Proceed);
+        assert_eq!(guard.record_attempt("exec_shell", &cmd), AttemptDecision::Proceed);
+        // An intervening successful edit changed the workspace → prior identical
+        // verify calls are no longer redundant, so re-running is allowed again.
+        guard.note_state_changed();
+        assert_eq!(guard.record_attempt("exec_shell", &cmd), AttemptDecision::Proceed);
+        assert_eq!(guard.record_attempt("exec_shell", &cmd), AttemptDecision::Proceed);
+        // …but without any further change, hammering it still trips the block.
+        assert!(matches!(
+            guard.record_attempt("exec_shell", &cmd),
+            AttemptDecision::Block(_)
+        ));
+    }
+
+    #[test]
+    fn only_file_mutating_tools_count_as_state_changes() {
+        assert!(LoopGuard::is_state_mutating_tool("write_file"));
+        assert!(LoopGuard::is_state_mutating_tool("edit_file"));
+        assert!(LoopGuard::is_state_mutating_tool("apply_patch"));
+        assert!(LoopGuard::is_state_mutating_tool("create_dirs"));
+        // Read/exec tools must NOT reset the block — repeating them with no edit
+        // in between is exactly the loop the guard exists to stop.
+        assert!(!LoopGuard::is_state_mutating_tool("exec_shell"));
+        assert!(!LoopGuard::is_state_mutating_tool("read_file"));
+        assert!(!LoopGuard::is_state_mutating_tool("grep_files"));
     }
 
     #[test]
