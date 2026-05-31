@@ -17,7 +17,7 @@ use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 
 use super::process::{
     BackgroundShell, ShellChild, StdinWriter, install_parent_death_signal,
-    prepend_sandbox_enforcement_warning, spawn_reader_thread,
+    kill_child_process_group, prepend_sandbox_enforcement_warning, spawn_reader_thread,
 };
 use super::types::{
     ShellDeltaResult, ShellJobDetail, ShellJobSnapshot, ShellResult, ShellStatus,
@@ -369,11 +369,9 @@ impl ShellManager {
                 sandbox_denied,
             })
         } else {
-            // Timeout - kill the process
-            #[cfg(unix)]
+            // Timeout - kill the whole process tree (C1: grandchildren spawned
+            // via Start-Process / daemonization would otherwise orphan).
             let _ = kill_child_process_group(&mut child);
-            #[cfg(not(unix))]
-            let _ = child.kill();
             let status = child.wait().ok();
             let stdout = stdout_thread.join().unwrap_or_default();
             let stderr = stderr_thread.join().unwrap_or_default();
@@ -468,10 +466,8 @@ impl ShellManager {
                 sandbox_denied: false,
             })
         } else {
-            #[cfg(unix)]
+            // C1: kill the whole tree, not just the direct child.
             let _ = kill_child_process_group(&mut child);
-            #[cfg(not(unix))]
-            let _ = child.kill();
             let status = child.wait().ok();
 
             Ok(ShellResult {

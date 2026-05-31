@@ -575,3 +575,92 @@ async fn test_exec_shell_cancel_tool_can_kill_all_running_processes() {
     assert_eq!(first_job.snapshot.status, ShellStatus::Killed);
     assert_eq!(second_job.snapshot.status, ShellStatus::Killed);
 }
+
+/// Tool surface audit T3 / C1 — killing a background shell must terminate the
+/// whole process tree, not just the direct child. A bare `child.kill()` on
+/// Windows leaves `Start-Process` grandchildren orphaned (the 7878/6379 port
+/// leaks). The parent records its detached grandchild's PID, we kill the
+/// parent, then assert the grandchild is gone.
+#[cfg(windows)]
+#[tokio::test]
+async fn test_exec_shell_kill_terminates_grandchild_process_tree() {
+    use std::time::Duration as StdDuration;
+
+    fn pid_is_alive(pid: u32) -> bool {
+        // `tasklist /FI "PID eq <pid>"` prints the image name when the PID is
+        // running, and "No tasks are running…" otherwise.
+        let out = std::process::Command::new("tasklist")
+            .args(["/FI", &format!("PID eq {pid}"), "/NH"])
+            .output()
+            .expect("tasklist");
+        let text = String::from_utf8_lossy(&out.stdout);
+        text.contains(&pid.to_string())
+    }
+
+    let tmp = tempdir().expect("tempdir");
+    let ctx = ToolContext::new(tmp.path());
+    let shell_manager = ctx.shell_manager.clone();
+
+    let pid_file = tmp.path().join("gc_pid.txt");
+    // Parent spawns a detached grandchild (Start-Process => CreateProcess child)
+    // that sleeps long, writes its PID to a file, then the parent also sleeps so
+    // it stays Running until we kill it.
+    let command = format!(
+        "$gc = Start-Process powershell -PassThru -WindowStyle Hidden \
+         -ArgumentList '-NoProfile','-Command','Start-Sleep -Seconds 120'; \
+         Set-Content -LiteralPath '{pid_path}' -Value $gc.Id; \
+         Start-Sleep -Seconds 120",
+        pid_path = pid_file.display()
+    );
+
+    let task_id = shell_manager
+        .lock()
+        .expect("shell manager lock")
+        .execute(&command, None, 600_000, true)
+        .expect("execute")
+        .task_id
+        .expect("task id");
+
+    // Wait for the grandchild to register its PID (up to ~15s).
+    let mut grandchild_pid: Option<u32> = None;
+    for _ in 0..150 {
+        if let Ok(text) = std::fs::read_to_string(&pid_file)
+            && let Ok(pid) = text.trim().parse::<u32>()
+        {
+            grandchild_pid = Some(pid);
+            break;
+        }
+        tokio::time::sleep(StdDuration::from_millis(100)).await;
+    }
+    let grandchild_pid = grandchild_pid.expect("grandchild should have recorded its PID");
+    assert!(
+        pid_is_alive(grandchild_pid),
+        "grandchild {grandchild_pid} should be running before kill"
+    );
+
+    shell_manager
+        .lock()
+        .expect("shell manager lock")
+        .kill(&task_id)
+        .expect("kill");
+
+    // The tree kill is best-effort/asynchronous; give taskkill a moment.
+    let mut terminated = false;
+    for _ in 0..50 {
+        if !pid_is_alive(grandchild_pid) {
+            terminated = true;
+            break;
+        }
+        tokio::time::sleep(StdDuration::from_millis(100)).await;
+    }
+    if !terminated {
+        // Avoid leaking the orphan if the assertion is about to fail.
+        let _ = std::process::Command::new("taskkill")
+            .args(["/F", "/PID", &grandchild_pid.to_string()])
+            .output();
+    }
+    assert!(
+        terminated,
+        "grandchild {grandchild_pid} must be terminated when the parent shell is killed"
+    );
+}

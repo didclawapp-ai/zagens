@@ -137,10 +137,11 @@ impl ShellChild {
 
     fn kill(&mut self) -> std::io::Result<()> {
         match self {
-            #[cfg(unix)]
+            // Both branches route through `kill_child_process_group`, which
+            // terminates the whole process tree (unix: SIGKILL to the process
+            // group; windows: `taskkill /T`) so Start-Process / daemonized
+            // grandchildren don't survive as orphans holding ports (C1).
             ShellChild::Process(child) => kill_child_process_group(child),
-            #[cfg(not(unix))]
-            ShellChild::Process(child) => child.kill(),
             ShellChild::Pty(child) => child.kill(),
         }
     }
@@ -167,8 +168,32 @@ impl StdinWriter {
     }
 }
 
+/// Terminate `pid` and its entire process tree (best-effort).
+///
+/// Windows has no process-group SIGKILL: a bare `child.kill()` (which maps to
+/// `TerminateProcess`) only ends the direct child. Anything it spawned via
+/// `Start-Process`, a daemonized server, or `cmd /c start` survives as an
+/// orphan — and keeps holding listening ports (the 7878 / 6379 leaks seen in
+/// long-horizon runs). `taskkill /T /F /PID <pid>` walks the tree and force-
+/// kills every descendant. Errors are swallowed: the caller still reaps the
+/// direct child via `child.kill()`, and the target may already be gone.
+#[cfg(not(unix))]
+pub(in crate::tools::shell) fn kill_process_tree(pid: u32) {
+    use std::process::Stdio;
+    let _ = Command::new("taskkill")
+        .args(["/T", "/F", "/PID", &pid.to_string()])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+}
+
 #[cfg(not(unix))]
 pub(in crate::tools::shell) fn kill_child_process_group(child: &mut Child) -> std::io::Result<()> {
+    // Kill the whole tree first so grandchildren don't outlive the parent…
+    kill_process_tree(child.id());
+    // …then reap the direct child so its handle / exit status is updated even
+    // if taskkill missed it (already exited, race, etc.).
     child.kill()
 }
 
