@@ -1302,10 +1302,22 @@ fn generate_via_python(format: &str, input: &Value, path: &PathBuf) -> Result<()
         serde_json::to_writer(stdin, &data_payload).map_err(|e| format!("写入 stdin 失败: {e}"))?;
     }
 
-    let exit_status = child
+    let exit_status = match child
         .wait_timeout(Duration::from_secs(120))
         .map_err(|e| format!("等待 Python 脚本失败: {e}"))?
-        .ok_or_else(|| "Python 脚本执行超时 (120s)".to_string())?;
+    {
+        Some(status) => status,
+        None => {
+            // C6: on timeout the child was previously dropped *without* being
+            // killed → orphaned Python process holding the output file lock.
+            // Kill it (and any tree on Windows) before returning.
+            let pid = child.id();
+            let _ = child.kill();
+            let _ = child.wait();
+            kill_python_tree_best_effort(pid);
+            return Err("Python 脚本执行超时 (120s),已终止进程".to_string());
+        }
+    };
 
     if !exit_status.success() {
         // Read stderr from the already-exited child
@@ -1327,6 +1339,22 @@ fn generate_via_python(format: &str, input: &Value, path: &PathBuf) -> Result<()
 
     Ok(())
 }
+
+/// Best-effort kill of a timed-out Python process tree (C6). On Windows the
+/// script may have spawned helpers; `taskkill /T` sweeps them. On Unix the
+/// direct `child.kill()` above already handles the single Python process.
+#[cfg(windows)]
+fn kill_python_tree_best_effort(pid: u32) {
+    let _ = Command::new("taskkill")
+        .args(["/T", "/F", "/PID", &pid.to_string()])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+}
+
+#[cfg(not(windows))]
+fn kill_python_tree_best_effort(_pid: u32) {}
 
 /// Embedded Python scripts version — bump when scripts change.
 const SCRIPTS_VERSION: &str = "11";

@@ -11,10 +11,15 @@ use serde_json::{Value, json};
 
 use super::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
-    optional_bool, optional_str,
+    optional_bool, optional_str, optional_u64,
 };
 
 const MAX_OUTPUT_CHARS: usize = 40_000;
+/// Default wall-clock cap on a `cargo test` run (C6). Without it a hung test /
+/// build blocks the tool — and the spawned process tree — indefinitely.
+const DEFAULT_TIMEOUT_MS: u64 = 600_000;
+/// Upper bound a caller may request via `timeout_ms`.
+const HARD_MAX_TIMEOUT_MS: u64 = 1_800_000;
 
 /// Tool for running `cargo test` in the workspace root.
 pub struct RunTestsTool;
@@ -49,6 +54,10 @@ impl ToolSpec for RunTestsTool {
                 "all_features": {
                     "type": "boolean",
                     "description": "When true, include `--all-features`."
+                },
+                "timeout_ms": {
+                    "type": "integer",
+                    "description": "Wall-clock timeout in milliseconds before the test run is killed (default 600,000; max 1,800,000)."
                 }
             },
             "additionalProperties": false
@@ -81,8 +90,11 @@ impl ToolSpec for RunTestsTool {
             args.extend(split);
         }
 
+        let timeout_ms =
+            optional_u64(&input, "timeout_ms", DEFAULT_TIMEOUT_MS).min(HARD_MAX_TIMEOUT_MS);
+
         let command_str = format_command(&context.workspace, &args);
-        let output = run_cargo(&context.workspace, &args).await?;
+        let output = run_cargo(&context.workspace, &args, timeout_ms).await?;
 
         let exit_code = output.status.code().unwrap_or(-1);
         let stdout_raw = String::from_utf8_lossy(&output.stdout);
@@ -104,18 +116,70 @@ impl ToolSpec for RunTestsTool {
 
 // === Helpers ===
 
-async fn run_cargo(workspace: &Path, args: &[String]) -> Result<std::process::Output, ToolError> {
+async fn run_cargo(
+    workspace: &Path,
+    args: &[String],
+    timeout_ms: u64,
+) -> Result<std::process::Output, ToolError> {
+    use std::process::Stdio;
     // C4: async process so a long `cargo test` does not block a tokio worker.
     let mut cmd = tokio::process::Command::new("cargo");
-    cmd.args(args).current_dir(workspace);
-    cmd.output().await.map_err(|e| {
+    cmd.args(args)
+        .current_dir(workspace)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        // C6: if we drop the child (timeout below) make sure cargo itself is
+        // killed rather than detaching into a background process.
+        .kill_on_drop(true);
+    let child = cmd.spawn().map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
             ToolError::not_available("cargo is not installed or not in PATH")
         } else {
             ToolError::execution_failed(format!("Failed to run cargo: {e}"))
         }
-    })
+    })?;
+    let pid = child.id();
+
+    // C6: bound the run. On timeout the wait future is dropped (kill_on_drop
+    // terminates cargo) and we additionally sweep the process tree so rustc /
+    // test binaries cargo spawned don't linger as orphans.
+    match tokio::time::timeout(
+        std::time::Duration::from_millis(timeout_ms),
+        child.wait_with_output(),
+    )
+    .await
+    {
+        Ok(res) => {
+            res.map_err(|e| ToolError::execution_failed(format!("Failed to run cargo: {e}")))
+        }
+        Err(_) => {
+            if let Some(pid) = pid {
+                kill_tree_best_effort(pid);
+            }
+            Err(ToolError::execution_failed(format!(
+                "cargo test exceeded the {timeout_ms} ms timeout and was killed \
+                 (raise `timeout_ms` if the suite legitimately needs longer)"
+            )))
+        }
+    }
 }
+
+/// Best-effort kill of `pid` and its descendants. On Windows a dropped child
+/// only ends cargo itself, leaving rustc / test binaries as orphans, so we
+/// `taskkill /T`. On Unix `kill_on_drop` already SIGKILLs the spawned cargo.
+#[cfg(windows)]
+fn kill_tree_best_effort(pid: u32) {
+    use std::process::{Command, Stdio};
+    let _ = Command::new("taskkill")
+        .args(["/T", "/F", "/PID", &pid.to_string()])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+}
+
+#[cfg(not(windows))]
+fn kill_tree_best_effort(_pid: u32) {}
 
 fn format_command(workspace: &Path, args: &[String]) -> String {
     format!(
@@ -249,5 +313,28 @@ mod tests {
         let long = "x".repeat(MAX_OUTPUT_CHARS + 128);
         let truncated = truncate_with_note(&long, MAX_OUTPUT_CHARS);
         assert!(truncated.contains("output truncated"));
+    }
+
+    /// Tool surface audit C6 — a too-small timeout must abort the run with a
+    /// timeout error rather than blocking indefinitely.
+    #[tokio::test]
+    async fn run_tests_times_out_and_kills() {
+        if !cargo_available() {
+            return;
+        }
+        let tmp = tempdir().expect("tempdir");
+        let project_dir = init_cargo_project(tmp.path());
+
+        let ctx = ToolContext::new(&project_dir);
+        let tool = RunTestsTool;
+        // 1ms is unreachable for a real `cargo test` (build alone takes longer).
+        let result = tool
+            .execute(json!({"timeout_ms": 1}), &ctx)
+            .await;
+        let err = result.expect_err("must time out");
+        assert!(
+            format!("{err}").contains("timeout"),
+            "expected timeout error, got: {err}"
+        );
     }
 }
