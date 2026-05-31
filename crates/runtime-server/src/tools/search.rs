@@ -582,7 +582,10 @@ fn collect_files(
     let mut files = collect_workspace_files(search_path, respect_gitignore);
     files.retain(|path| {
         let relative = path.strip_prefix(search_path).unwrap_or(path);
-        let relative_str = relative.to_string_lossy();
+        // Normalize Windows `\` to `/` so include/exclude globs (written with
+        // `/`, e.g. `src/**/*.rs`) match on Windows too — matches_glob splits
+        // on `/`. (glob_files already does this.)
+        let relative_str = relative.to_string_lossy().replace('\\', "/");
         if should_exclude(&relative_str, exclude_patterns) {
             return false;
         }

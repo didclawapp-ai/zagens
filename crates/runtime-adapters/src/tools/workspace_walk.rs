@@ -1,7 +1,10 @@
 //! Shared workspace directory walking (ripgrep-style defaults).
 //!
 //! Uses the same `ignore` crate as ripgrep: honors `.gitignore` / `.ignore`,
-//! skips common build/vendor directory names, and follows symlinks.
+//! skips common build/vendor directory names. Symlinks are **not** followed
+//! (C5) — matching ripgrep's own default — so a symlink inside the workspace
+//! pointing outside it can't be used to read files beyond the workspace
+//! boundary via grep / glob / file_search / project_tree.
 
 use ignore::WalkBuilder;
 use std::path::{Path, PathBuf};
@@ -24,7 +27,10 @@ pub const SKIP_DIR_NAMES: &[&str] = &[
 pub fn configure_workspace_walk(builder: &mut WalkBuilder, respect_gitignore: bool) {
     builder
         .hidden(false)
-        .follow_links(true)
+        // C5: do not follow symlinks — a workspace-internal symlink to an
+        // external path would otherwise let search tools read outside the
+        // workspace boundary (the per-file path is not re-checked downstream).
+        .follow_links(false)
         .require_git(false)
         .git_ignore(respect_gitignore)
         .git_global(respect_gitignore)
@@ -62,6 +68,12 @@ pub fn collect_workspace_files(root: &Path, respect_gitignore: bool) -> Vec<Path
 }
 
 /// ripgrep-style binary sniff: NUL byte in the first 8 KiB ⇒ treat as binary.
+///
+/// Exception: files starting with a UTF-16 (LE/BE) or UTF-8 BOM are treated as
+/// text. UTF-16-encoded text is full of NUL bytes (every other byte for ASCII
+/// content), so the bare NUL heuristic would wrongly flag it as binary and a
+/// grep over a UTF-16 source file (common on Chinese Windows) would find
+/// nothing. `detect_and_decode` handles the actual decode downstream.
 pub fn is_probably_binary(path: &Path) -> bool {
     use std::io::Read;
 
@@ -74,5 +86,13 @@ pub fn is_probably_binary(path: &Path) -> bool {
     let Ok(n) = file.read(&mut buf) else {
         return true;
     };
-    buf[..n].contains(&0)
+    let head = &buf[..n];
+    if head.starts_with(&[0xFF, 0xFE]) // UTF-16 LE BOM
+        || head.starts_with(&[0xFE, 0xFF]) // UTF-16 BE BOM
+        || head.starts_with(&[0xEF, 0xBB, 0xBF])
+    // UTF-8 BOM
+    {
+        return false;
+    }
+    head.contains(&0)
 }

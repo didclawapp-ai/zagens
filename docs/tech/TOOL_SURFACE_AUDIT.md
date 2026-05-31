@@ -17,7 +17,7 @@
 | C2 | **foreground `exec_shell` 丢弃 `cwd` 参数** ★已核实 — 默认前台路径硬传 `None`，回退工作区根；background/interactive 正常 | 健壮性/边界 | **P1** | `exec.rs:318` → `helpers.rs:66-68`（对比 `exec.rs:296/308` 传 `working_dir`） | **已缓解** — `execute_foreground_via_background` 加 `working_dir` 形参,`exec.rs` 调用处透传 `working_dir.as_deref()`;单测 `test_exec_shell_foreground_respects_cwd`。**残留：** OpenSandbox `backend.exec`(`exec.rs:210`)仍不带 cwd(trait 协议改动,另议) |
 | C3 | **SSRF：重定向/分支不复校验 IP** — `fetch_url` 初始 URL 校验内网 IP，但 302 跟随后不再校验；`web_run` 取页仅查 network policy、完全无 IP 阻断 | 健壮性/安全 | **P0**（取决于 network policy 是否默认 allow） | `fetch_url.rs:193-214`、`web_run/page.rs:39-89` | **已缓解** — 新增共享 `tools/ssrf.rs`:`fetch_with_ssrf_guard` 手动跟随重定向(`Policy::none()`),**每跳** host 都过 policy + `is_restricted_ip` + pin 校验后 IP;DNS 失败/零地址**fail closed**;`fetch_url` 与 `web_run/page` 共用。单测:metadata IP / 私网 / loopback / `::1` / localhost / DNS 失败 / 公网 IP 放行 ×5 |
 | C4 | **async 里同步阻塞 `Command::output()`** — 阻塞 tokio worker，并发工具相互拖累 | 健壮性/效率 | **P1** | `git.rs:259`、`git_history.rs:447`、`test_runner.rs:86`、`diagnostics.rs:165`、`describe_image.rs:248`(blocking reqwest) | **已缓解** — `git`/`git_history`/`test_runner` 改 `tokio::process::Command` + `.output().await`;`diagnostics` 把全部探测包进 `spawn_blocking`(深层 sync 助手树不动);`describe_image` 改异步 `reqwest::Client` |
-| C5 | **`follow_links(true)` 可跟符号链接读出工作区外** — walk 到的文件不过 `resolve_path` | 健壮性/安全 | **P1** | `runtime-adapters/.../workspace_walk.rs:27`（grep/glob/file_search/project 共用） | 未缓解 |
+| C5 | **`follow_links(true)` 可跟符号链接读出工作区外** — walk 到的文件不过 `resolve_path` | 健壮性/安全 | **P1** | `runtime-adapters/.../workspace_walk.rs:27`（grep/glob/file_search/project 共用） | **已缓解** — 改 `follow_links(false)`(亦对齐 ripgrep 默认),工作区内指向区外的 symlink 不再被跟随;grep/glob/file_search/project 全过 |
 | C6 | **子进程/HTTP 无超时 + 响应体全量读** — git/test/office Python/web 抓取无 timeout；web 响应先 `bytes().await` 全读再按上限截断（OOM 风险在截断之前） | 健壮性/边界 | **P1** | `test_runner.rs:108`、`office_write.rs:1305`、`fetch_url.rs:223`、`web_run/page.rs:63` | 部分（输出截断有，但内存/挂起未防） |
 | C7 | **静默截断、不报总数** — 结果超上限直接 `truncate`，部分工具无 `total`/`truncated`，模型以为已全 | 准确性 | **P1** | `file_search.rs:160-163`（无 total）；`shell_output.rs` 80 行 summary 丢尾部 `test result:` | 部分（grep/glob 有 `truncated`） |
 | C8 | **编码：写侧不保留、edit/patch 仅 UTF-8** — `read_file`/`grep` 已 `detect_and_decode`，但 `write_file` 把 GB18030 静默转 UTF-8；`edit_file`/`apply_patch`/`fim` 仅 `read_to_string`（非 UTF-8 直接报错） | 健壮性/准确性 | **P1** | `write.rs:184-191`、`edit.rs:157`、`apply_patch.rs:850`、`fim.rs:117` | 读侧已缓解；写/改侧未 |
@@ -84,13 +84,13 @@
 ## 3. 搜索/检索类（`grep_files`/`glob_files`/`file_search`/`project_*`/`git_*`）
 
 **健壮性**
-- **[P0] `search.rs:247-250` + `workspace_walk.rs:64-77`** — `is_probably_binary` 前 8KiB 见 NUL 即跳过，**先于** `detect_and_decode` → **UTF-16 文本被当二进制搜不到**（与 CHANGELOG "UTF-16 可搜" 表述不符；GB18030 有单测、UTF-16 无）。
+- **[已缓解★] `workspace_walk.rs is_probably_binary`** — 现对 UTF-16 LE/BE BOM 与 UTF-8 BOM 放行(不当二进制),NUL 启发式仅作用于无 BOM 文件 → 带 BOM 的 UTF-16 文本可被 grep 搜到。
 - **[P0/P1] `search.rs:215-262`** — 无超时/无 `spawn_blocking`，先全量 `collect_files` 再逐文件 `fs::read`（≤10MB/文件）+ `lines().collect()`;大 monorepo 阻塞 async + 大内存。自实现 walk，**非 ripgrep 进程**。
 - **[P1] `search.rs:255-257`** — `fs::read` 失败与二进制嗅探共用 `files_skipped_binary`，权限/IO 错误被误报为"跳过二进制"→ 静默漏搜。
 - **[P1] C5** — `follow_links(true)` 跟符号链接出工作区。
 
 **跨平台**
-- **[P1] `search.rs:583-590,631`** — `grep_files` 的 include/exclude `matches_glob` 只按 `/` 切分，未把 `\` 规范为 `/`（`glob_files.rs:42` 已做）→ Windows 下 `src/**/*.rs` 可能漏/多扫。
+- **[已缓解★] `search.rs:583-591`** — `grep_files` include/exclude 匹配前把相对路径 `\` 规范为 `/`,Windows 下 `src/**/*.rs` 正常匹配。
 - **[P2] `search.rs:262,270`** — 解码后只按 `\n` 分行，CRLF 残留 `\r`，正则可能不匹配 `fn foo`(实为 `fn foo\r`)。
 - **[P2] `git.rs:72,168`** — pathspec 用 `display()`，Windows 反斜杠。
 
@@ -145,14 +145,14 @@
 1. **C1 Windows 进程树 kill** — ✅ 已缓解(`taskkill /T /F /PID`,kill/cancel/Drop/manager 超时四路统一)。Job Object 为后续更彻底选项。
 2. **C3 SSRF** — ✅ 已缓解(共享 `tools/ssrf.rs`,每跳复校验 + DNS fail closed)。
 3. **edit_file 空 search 防呆** — ✅ 已缓解(`edit.rs:149-158`,空/纯空白直接报错)。
-4. **grep UTF-16** — 解码先于 NUL 二进制嗅探,或对 UTF-16 BOM 放行。（待办 T7）
+4. **grep UTF-16** — ✅ 已缓解(`is_probably_binary` 对 UTF-16/UTF-8 BOM 放行)。
 5. **sync 路径 reader 无界 join** — ✅ 已缓解(`join_reader_thread_bounded`,sync 成功/超时两路均有界)。
 
 ### P1（长任务高频痛点 — 多为快速修）
 6. **C2 foreground 透传 `cwd`** ★ — `execute_foreground_via_background` 加 `working_dir` 参数,`exec.rs:318` 传 `working_dir.as_deref()`。**~5 行,直接消除 MicroStack 那类 cwd 落错**。
 7. **C4 async 阻塞** — ✅ 已缓解(git/git_history/test_runner→tokio::process;diagnostics→spawn_blocking;describe_image→异步 reqwest)。
 8. **C6 子进程/HTTP 超时 + kill** — test_runner/office Python 加 timeout 并 kill;web 抓取流式 + `Content-Length` 上限 + cancel 绑定。
-9. **C5 symlink** — `workspace_walk` 默认 `follow_links(false)` 或对解析后路径再做 workspace 边界校验。
+9. **C5 symlink** — ✅ 已缓解(`workspace_walk` 改 `follow_links(false)`)。
 10. **C7 截断报总数** — `file_search` 补 `total_matches`/`truncated`;`shell_output` summary 从尾部扫。
 11. **C8 编码保留** — `write_file` 按读到的编码回写;`edit_file`/`apply_patch`/`fim` 改 `detect_and_decode`。
 12. **edit_file/fim 原子写** — 复用 `atomic_write`。
