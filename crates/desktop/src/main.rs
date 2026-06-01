@@ -206,6 +206,8 @@ fn main() {
             commands::get_os_theme,
             commands::get_locale,
             commands::set_app_locale,
+            commands::get_lht_strict,
+            commands::set_lht_strict,
             commands::get_api_key_status,
             commands::save_deepseek_api_key,
             commands::clear_deepseek_api_key,

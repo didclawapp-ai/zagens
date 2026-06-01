@@ -26,6 +26,7 @@ import {
   DESKTOP_RUN_MODE_LABELS,
 } from '../types/desktop';
 import { runModesForSession } from '../lib/taskTypeSession';
+import LhtModeToggle from './LhtModeToggle';
 import { clipboardHtmlToPlainText } from '../lib/sanitizeHtml';
 import { composerAutoApproveToggleEnabled, approvalPolicySettingsKey } from '../lib/approvalPolicy';
 import { cacheHitPercentTextClass } from '../lib/cacheUsage';
@@ -1421,6 +1422,7 @@ export default function Composer({
                 </div>
               )}
             </div>
+            {!officeSession ? <LhtModeToggle disabled={disabled} /> : null}
             <div className="min-w-[0.5rem] flex-1" />
             {routingStatus && onOpenRouting && !officeSession ? (
               <button

@@ -28,6 +28,7 @@ use super::nudge::{
     build_deliverables_failed_nudge, build_manifest_failed_nudge, LongHorizonSessionState,
 };
 use super::progress::workspace_change_signature;
+use super::stub_gate;
 use super::LhtGateOutcome;
 use crate::tools::todo::TodoListSnapshot;
 
@@ -132,6 +133,20 @@ async fn evaluate_completion_gate_inner(
     steps_remaining: u32,
     exec: Option<&CompletionGateExec<'_>>,
 ) -> LhtGateOutcome {
+    // Task-agnostic stub / incompleteness gate (§ stub gate). Runs first because
+    // it is a cheap filesystem scan (no command exec): if the workspace still
+    // ships blocking-class stubs (`todo!()` / `unimplemented!()` /
+    // `NotImplementedError` / "not implemented" throws) there is no point
+    // running the build/test gate to "prove" a green that hides a missing
+    // feature. `observe` records counts and falls through; `enforce` blocks.
+    if gate.stub_gate.is_on() {
+        if let Some(outcome) =
+            evaluate_stub_gate(workspace, gate, session, lang, steps_remaining).await
+        {
+            return outcome;
+        }
+    }
+
     // Resolve where build/test commands actually run. Normally the workspace
     // root is the project root, but a model can nest the whole project one
     // level down (e.g. `microstack/go.mod`); running `go build ./...` from the
@@ -290,6 +305,70 @@ async fn evaluate_completion_gate_inner(
     // `layer2_cache` is retained for diagnostics / same-round trust semantics.
     let _ = layer2_cache;
     LhtGateOutcome::Skip("graph_complete")
+}
+
+/// Task-agnostic stub / incompleteness gate. Scans the workspace for
+/// "intentionally unfinished" markers and, in `enforce`, blocks `graph_complete`
+/// (bounded by `max_manifest_rounds`) until the blocking-class stubs are gone.
+/// Returns `Some(outcome)` only when it short-circuits (enforce block / honest
+/// stop); `None` falls through to the layer-2/3 gates. `observe` always returns
+/// `None` after recording telemetry.
+async fn evaluate_stub_gate(
+    workspace: &Path,
+    gate: &CompletionGateConfig,
+    session: &mut LongHorizonSessionState,
+    lang: &str,
+    steps_remaining: u32,
+) -> Option<LhtGateOutcome> {
+    let enforce = gate.stub_gate.is_enforce();
+    let mode = if enforce { "enforce" } else { "observe" };
+    let ws = workspace.to_path_buf();
+    // Filesystem-only scan — keep it off the async reactor.
+    let scan = tokio::task::spawn_blocking(move || stub_gate::scan_workspace_stubs(&ws))
+        .await
+        .unwrap_or_default();
+
+    session
+        .pending_gate_events
+        .push(CompletionGateEvent::StubGate {
+            payload_json: stub_gate::telemetry_payload(&scan, mode),
+        });
+
+    let blocking = scan.blocking();
+    if blocking.is_empty() {
+        return None;
+    }
+    record_first_gap(session, blocking.len());
+
+    if !enforce {
+        // Observe: record the gap but allow the turn to complete ("先量后调").
+        session.completion_gate_observe_pending = true;
+        return None;
+    }
+
+    session.stub_gate_rounds = session.stub_gate_rounds.saturating_add(1);
+    let ids: Vec<String> = blocking
+        .iter()
+        .take(12)
+        .map(|h| format!("{}:{}", h.file, h.line))
+        .collect();
+
+    if session.stub_gate_rounds > gate.max_manifest_rounds {
+        return Some(audit_unmet_outcome("stub_rounds_exhausted", &ids, &[], session));
+    }
+    if steps_remaining == 0 {
+        return Some(audit_unmet_outcome(
+            "steps_and_stub_exhausted",
+            &ids,
+            &[],
+            session,
+        ));
+    }
+    if session.tracker.is_blocked() {
+        session.gate_reinject_while_blocked += 1;
+    }
+    let text = super::nudge::build_stubs_found_nudge(&blocking, lang);
+    Some(LhtGateOutcome::NudgeStubsFound(user_message(text)))
 }
 
 /// Honest stop when consecutive enforced layer-2 rounds fail only on infra

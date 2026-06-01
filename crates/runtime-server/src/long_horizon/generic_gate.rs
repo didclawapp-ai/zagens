@@ -82,6 +82,61 @@ pub fn resolve_project_root(workspace: &Path) -> PathBuf {
     }
 }
 
+/// Marker files a command's toolchain expects in its working directory.
+/// `None` for commands with no directory-bound toolchain (run as-is).
+fn command_markers(command: &str) -> Option<&'static [&'static str]> {
+    let first = command.trim_start().split_whitespace().next().unwrap_or("");
+    // Strip any path prefix and a trailing `.exe` so `./node`, `C:\…\cargo.exe`
+    // and bare `cargo` all map to the same verb.
+    let verb = first.rsplit(['/', '\\']).next().unwrap_or(first);
+    let verb = verb.strip_suffix(".exe").unwrap_or(verb);
+    match verb {
+        "cargo" | "rustc" => Some(&["Cargo.toml"]),
+        "go" | "gofmt" => Some(&["go.mod"]),
+        "npm" | "pnpm" | "yarn" | "npx" | "node" => Some(&["package.json"]),
+        "pytest" | "python" | "python3" | "uv" | "poetry" => Some(&["pyproject.toml", "setup.py"]),
+        "mvn" => Some(&["pom.xml"]),
+        "gradle" => Some(&["build.gradle", "build.gradle.kts"]),
+        _ => None,
+    }
+}
+
+/// Resolve the working directory for a **single** verify command by its
+/// toolchain marker. Unlike [`resolve_project_root`] (one root for the whole
+/// gate), this is per-command, so a polyglot/nested layout works — e.g. an npm
+/// frontend at the workspace root with a Cargo backend in `src-tauri/`: the
+/// model's `cargo check` replay runs in `src-tauri/` while `npm test` stays at
+/// the root. Rule mirrors `resolve_project_root`: marker at the workspace root
+/// wins; otherwise a **unique** depth-1 child with the marker is used;
+/// ambiguous/none falls back to the workspace root unchanged.
+#[must_use]
+pub fn resolve_command_root(workspace: &Path, command: &str) -> PathBuf {
+    let Some(markers) = command_markers(command) else {
+        return workspace.to_path_buf();
+    };
+    let has = |dir: &Path| markers.iter().any(|m| dir.join(m).exists());
+    if has(workspace) {
+        return workspace.to_path_buf();
+    }
+    let Ok(entries) = std::fs::read_dir(workspace) else {
+        return workspace.to_path_buf();
+    };
+    let mut matches: Vec<PathBuf> = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() && has(&path) {
+            matches.push(path);
+            if matches.len() > 1 {
+                return workspace.to_path_buf();
+            }
+        }
+    }
+    matches
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| workspace.to_path_buf())
+}
+
 /// Extract the model's own `[verify: cmd]` commands from **completed** checklist
 /// items (the ones it claims are done). Deduplicated by normalized command so a
 /// command listed on several items runs once.
@@ -314,6 +369,35 @@ mod tests {
         std::fs::write(b.join("Cargo.toml"), b"[package]\n").unwrap();
         // Two candidate children → don't guess, keep workspace root.
         assert_eq!(resolve_project_root(&dir), dir);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn command_root_descends_to_nested_cargo_under_npm_root() {
+        // Polyglot layout: npm frontend at root, Cargo backend in src-tauri/.
+        // The exact F:\LHT_TEST\lable_Standalone false-RED: `cargo check` ran at
+        // the root (package.json) and could not find Cargo.toml.
+        let dir = std::env::temp_dir().join(format!("lht-cr-poly-{}", std::process::id()));
+        let backend = dir.join("src-tauri");
+        let _ = std::fs::create_dir_all(&backend);
+        std::fs::write(dir.join("package.json"), b"{}\n").unwrap();
+        std::fs::write(backend.join("Cargo.toml"), b"[package]\n").unwrap();
+        // cargo → needs Cargo.toml → descends into src-tauri.
+        assert_eq!(resolve_command_root(&dir, "cargo check --lib"), backend);
+        // npm → marker at root → stays at root.
+        assert_eq!(resolve_command_root(&dir, "npm test --silent"), dir);
+        // unknown verb → unchanged.
+        assert_eq!(resolve_command_root(&dir, "echo hello"), dir);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn command_root_handles_path_prefixed_and_exe_verbs() {
+        let dir = std::env::temp_dir().join(format!("lht-cr-exe-{}", std::process::id()));
+        let backend = dir.join("api");
+        let _ = std::fs::create_dir_all(&backend);
+        std::fs::write(backend.join("go.mod"), b"module x\n").unwrap();
+        assert_eq!(resolve_command_root(&dir, "go build ./..."), backend);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -39,6 +39,10 @@
     "active": true,
     "targets": "all",
     "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      },
       "wix": {
         "version": "0.6.0.1"
       }

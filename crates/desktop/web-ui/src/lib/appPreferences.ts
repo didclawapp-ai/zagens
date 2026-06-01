@@ -22,6 +22,24 @@ export const ACTIVE_INSPECTOR_STORAGE_KEY = 'deepseek-desktop-active-inspector';
 export const RIGHT_PANEL_COLLAPSED_STORAGE_KEY = 'deepseek-desktop-right-panel-collapsed';
 export const ROUTE_INTENT_STORAGE_KEY = 'deepseek-desktop-route-intent';
 export const TASK_TYPE_STORAGE_KEY = 'deepseek-desktop-task-type';
+export const ONBOARDED_STORAGE_KEY = 'deepseek-desktop-onboarded';
+
+/** Whether the first-run guided setup has already been completed (or skipped). */
+export function isOnboarded(): boolean {
+  try {
+    return localStorage.getItem(ONBOARDED_STORAGE_KEY) === '1';
+  } catch {
+    return true;
+  }
+}
+
+export function markOnboarded(): void {
+  try {
+    localStorage.setItem(ONBOARDED_STORAGE_KEY, '1');
+  } catch {
+    /* ignore */
+  }
+}
 
 export function loadRunModePreference(): DesktopRunModeId {
   try {

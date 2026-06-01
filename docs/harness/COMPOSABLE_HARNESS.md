@@ -1,6 +1,6 @@
 # 组合式 Harness — 规格锚定的完成门禁（Composable Harness / Spec-Anchored Completion Gate）
 
-**状态:** 设计草案 **v0.6** + **P0/P1/P2 已实现** + **任务无关层2（§6.5）已实现**（面板见下 §11；MicroStack manifest 见 [`fixtures/microstack-completion-gate.toml`](./fixtures/microstack-completion-gate.toml)）。**enforce 来源**已落 `CompletionGateConfig::sanitized_for_source(trusted)` 防御性护栏。**§6.5 新增**两个**零 per-task 配置、一个全局开关覆盖所有任务**的层2来源：模型 `[verify:]` 主动复跑 + 工具链探测 build/test 门。**仍未做:** 内置 `coverage-gate` 子命令。
+**状态:** 设计草案 **v0.7** + **P0/P1/P2 已实现** + **任务无关层2（§6.5）已实现** + **通用 stub/半成品门（§6.6）已实现**（面板见下 §11；MicroStack manifest 见 [`fixtures/microstack-completion-gate.toml`](./fixtures/microstack-completion-gate.toml)）。**enforce 来源**已落 `CompletionGateConfig::sanitized_for_source(trusted)` 防御性护栏。**§6.5 新增**两个**零 per-task 配置、一个全局开关覆盖所有任务**的层2来源：模型 `[verify:]` 主动复跑 + 工具链探测 build/test 门。**§0.1** 新增设计动机的外部研究锚定（grounding signal 质量×独立性）；**§3.1 / §6.7** 钉死「法官 vs 缺口枚举器」边界，为对抗式审核员（路线图 #2）立设计原则。**仍未做:** §6.7 对抗式审核员、内置 `coverage-gate` 子命令。
 **所属:** [`LHT_TEST_SUITE.md`](./LHT_TEST_SUITE.md) / [`LONG_HORIZON_CODE_TASKS.md`](./LONG_HORIZON_CODE_TASKS.md) / [`test-cases/microstack-framework.md`](./test-cases/microstack-framework.md)
 **一句话:** 在「模型自产任务图清零」之上，叠加一道**算子声明、harness 主动真跑、exit-code 裁决**的完成门禁 + 一道**纯机器交付物对账**，未达标即强制返工迭代，有界循环直到按 manifest 真完成或诚实记 `audit_unmet`。**全程无 LLM 当法官**——裁决只取决于退出码与路径/glob 命中。
 
@@ -9,6 +9,20 @@
 ## 0. 为什么需要它（一句话动机）
 
 现状的 LHT「完成」= **模型自产 checklist 的 `open_items` 清零**。这衡量的是「对自己计划的忠实度」，**不是「对规格目标的完成度」**。模型欠拆一个不完整的清单 → 跑到 0 → 合法 `graph_complete` 收尾。**「无早停」是真完成的必要不充分条件。**
+
+### 0.1 外部研究锚定：grounding signal 的「质量 × 独立性」
+
+本门禁体系不是临时补丁，而是与近期「持续学习 / 自我改进」研究的核心判断**同构**。Deli Chen（DeepSeek agent+harness 负责人）2026-06 的 continual-learning survey 给出一条对工程直接有约束力的结论：
+
+> **自我改进的轨迹不取决于生成机制有多复杂，而取决于 grounding signal（锚定/评估信号）的质量，以及它相对于模型自身的独立性。没有可靠且独立的锚定信号，自我改进的循环最终必然退化——尤其在缺少外部验证器的语言任务中，模型会陷入「自我确认」：不断强化自己已相信的模式，而不一定更接近真实目标。**
+
+「模型自报全部完成、build 也绿」正是**自我确认**的工程实例；本 harness 的完成门禁就是那个**外部 grounding signal**。由此推出本文件三条贯穿性设计原则（后续各层都服从）：
+
+1. **信号质量 = 退出码 / 路径命中 oracle**，不是 LLM 散文判断（§3 铁律）。
+2. **信号独立性有两层**——**规则独立**（机器扫描，不经模型推理，如 §6.6 stub 门）与**主体独立**（由建造者之外的主体产出，如 §6.7 对抗式审核员）。两层独立性叠加，才是论文所说「不退化」的锚定。
+3. **独立性绝不能换成「另一个 LLM 盖章」**——否则把「建造者自我确认」平移成「审核者—建造者合谋确认」，独立性形同虚设（见 §3 与 §6.7 的「法官 vs 缺口枚举器」之分）。
+
+> 同时认账一条边界（survey 同一判断）：**上下文管理 + 文档化记忆**（我们的 cycle / `handoff.md` / memory）能维持注意力、保留经验，但**注意力窗口终会填满，届时需要把知识参数化**——那属于训练侧，harness 层够不到。本 harness 只负责「**情节记忆 + 外部锚定**」这一半；参数化是另一条轴。
 
 ---
 
@@ -66,6 +80,19 @@ if !graph.incomplete()      -> [DEMO3 防假绿闸] -> Skip("graph_complete")
 第二行那种「**你压根没拆进清单的交付物**」——静态验收命令表达不了、而我们这次栽的洞——靠的不是 LLM 的「理解力」，而是**算子把规格里的必需交付物离线翻译成一张显式 manifest**，运行时只做存在性/命中对账。第一行硬门仍由退出码裁决，二者都**可离线回放、可回归比较**。
 
 **关键决策（v0.3）:** 层3 **不是 LLM headless runner，而是与层2 同性质的纯 Rust 对账模块**。在本 harness 的 oracle 铁律下，交付物清单必须算子显式声明、机器对账，LLM 没有任何**非自由裁量**的活可干（自由读规格 = 把「欠拆解」换成「审核者漏读规格」，禁止）。因此层3 不需要 `agent_spawn`、不需要独立 LLM context、不产生 token 成本——这也大幅降低原 v0.2 把「headless audit runner」列为 P1 阻塞项的代价。§6.3 的结构化 JSON 是该模块的**纯函数输出**，不是某个 LLM 的回答。
+
+### 3.1 例外的边界：「法官」禁止，「缺口枚举器」允许（§6.7 设计原则）
+
+§3 反对的是**让 LLM 子代理当「法官」**——即赋予它**否决 / 盖章（pass/fail veto）**的权力。这与「能不能用一个独立的 LLM 主体**找出**缺口」是**两件事**，必须分清，否则会误杀 §6.7 的对抗式审核员（路线图 #2）：
+
+| | 法官型审核员（**禁止**） | 缺口枚举器型审核员（**允许**，§6.7） |
+|---|---|---|
+| 权力 | 直接判 `pass`/`fail`、放行或拦截 | **无放行/否决权**；只产出「疑似缺口」候选 |
+| 输出 | 「LGTM / 不通过」散文 | **机器可检验的断言**：`{file:line, 缺什么, 建议 [verify: cmd]}` |
+| 谁最终裁决 | 它自己（软、可被忽悠、不可回放） | **仍是机器 oracle**——候选回灌后由 stub 门 / 退出码 / 路径对账裁决 |
+| 失败模式 | 审核者—建造者合谋盖章（自我确认平移） | 最坏只是「多报几个假缺口」，被机器门一跑即证伪，**不会放水** |
+
+**设计原则（写死）:** 对抗式审核员的产物**绝不直接进入 `graph_complete` 的放行/拦截判定**；它只能**扩大机器门的检查面**（把"模型没拆进 checklist、stub 门正则也没覆盖"的缺口，转译成新的 `[verify:]` / deliverable 条目或 stub 模式），最终绿不绿仍由退出码与路径命中说了算。这样它满足 §0.1 的「**主体独立**」却不违反「**信号质量 = 机器 oracle**」——独立性用来**拓宽**锚定信号，而非**替代**它。
 
 ---
 
@@ -225,6 +252,7 @@ MicroStack 完整 24 项清单应固化在 [`microstack-framework.md`](./test-ca
 | **算子 manifest** | `operator` | §6.1 手写 `verify` 列表（per-task） | 受信全局配置 / 夹具 |
 | **模型 `[verify:]` 复跑** | `model_declared` | 收尾时扫描**已完成 checklist 项**里模型自己写的 `[verify: cmd]`，主动 exec | **无新增授信面**——这些命令本就在模型既有 exec 权限内，它自己就能跑；仅多了"harness 替它再真跑一遍看退出码" |
 | **工具链探测门** | `toolchain` | 探测 workspace 根的 `go.mod`/`Cargo.toml`/`package.json`/`pyproject.toml`/`pom.xml`/`build.gradle*` → 跑该工具链 canonical build/test | 内置固定命令 |
+| **stub/半成品门** | （非 verify 条目，独立扫描层） | 收尾时对工作区**纯文件扫描**高信号「故意未完成」标记（`todo!()`/`unimplemented!()`/`NotImplementedError`/"not implemented" 抛出） | 内置；不可信来源 enforce 自动降 observe |
 
 ```toml
 [long_horizon.completion_gate]
@@ -233,7 +261,10 @@ mode = "observe"            # 管 operator manifest 的 enforce/observe
 # 新增（任务无关，一个全局开关覆盖所有任务）：
 auto_verify_replay = "enforce"   # off | observe | enforce —— 复跑模型自己的 [verify:]
 toolchain_gate     = "observe"   # off | observe | enforce —— 工具链 build/test 门
+stub_gate          = "observe"   # off | observe | enforce —— stub/半成品扫描（省略=observe）
 ```
+
+> **stub/半成品门**（表中第 4 行）不是 verify 命令条目，而是一条**独立的纯扫描层**，完整规格见 **§6.6**。它与上面三类 verify 来源正交：先跑、不 exec。
 
 **评估模型（每条 verify 按自己来源的 mode 裁决，单轮可混合 enforce/observe）：**
 - 三来源命令合并去重（按归一化命令，优先级 **operator > toolchain > model**），一次 harness-active 跑完；
@@ -249,6 +280,48 @@ toolchain_gate     = "observe"   # off | observe | enforce —— 工具链 buil
 **与算子 manifest 的分工（结论）：** 层2 的 **build/test/lint 类假绿**这一半，应优先靠**任务无关来源**覆盖（零配置、对所有任务生效）；算子 manifest 收窄为**回归夹具 + 少数高价值任务的层3 交付物对账**（"欠拆解"那一半，不可规模化、永远是少数派）。
 
 实现：`crates/runtime-server/src/long_horizon/generic_gate.rs`（提取/探测/去重）+ `completion_gate_flow.rs`（按来源拆 enforce/observe）。
+
+---
+
+## 6.6 通用 stub/半成品门（规则独立的锚定信号，**已实现**）
+
+**定位（§0.1 第 1 类独立性「规则独立」）：** 堵最常见的假完成——**「项目能编译、`cargo build --release` exit 0、二进制也产出，但功能其实还是 stub」**。绿色构建掩盖了缺失实现；§6.5 的 build/test 门**证明不了**这一点（stub 恰恰能编过）。本门用**机器正则扫描**做一道与模型推理无关的锚定，是论文「grounding signal 独立性」中**不经模型自由裁量**的那一极。
+
+**触发点：** 在 `graph_complete` 候选时、**先于** §6.5 层2/层3 跑——因为它是**纯文件系统扫描、零命令执行**：既然有 stub 就没必要再花分钟级去跑 build「证明」一个掩盖了缺失功能的绿。
+
+**判定（两档，严格区分以防 enforce 误伤）：**
+
+| 档 | 标记 | enforce 行为 |
+|----|------|--------------|
+| **阻断级**（高信号「故意未完成」） | `todo!()` / `unimplemented!()`（Rust 宏，编过但运行即 panic）、`NotImplementedError` / `raise NotImplementedError`、`throw`/`panic!`/`raise`/`return`/`reject` 携带 "not implemented" 的句子（语言无关） | **命中即顶回** `graph_complete` |
+| **仅记录** | `TODO` / `FIXME` 裸注释 | **永不阻断**（真实代码里太常见，enforce 会误伤；只进遥测计数） |
+
+**配置：** `[long_horizon.completion_gate] stub_gate = "off" | "observe" | "enforce"`，**省略即 `observe`**（先量后调）——一旦 operator 启用任何完成门禁，默认就把 stub 计数浮现到遥测；要静默显式 `"off"`，要阻断设 `"enforce"`。不可信来源的 `enforce` 由 `sanitized_for_source` 自动降 `observe`（drive-by 配置不得阻断 turn）。
+
+**有界 + 诚实停：** `enforce` 命中即回灌强制返工的双语 nudge（`build_stubs_found_nudge`，列 `file:line` + 片段，上限 12 行），由 `max_manifest_rounds` 兜底防止对模型修不掉的 stub 空转；耗尽记 `audit_unmet`（`reason=stub_rounds_exhausted`）。
+
+**扫描边界（成本/噪声）：** 跳过 `node_modules`/`target`/`dist`/`.git` 等依赖产物目录、仅看源码扩展名、按文件数 / 命中数 / 单文件字节封顶，跑在 `spawn_blocking`（不占 async reactor）。
+
+**可观测：** 遥测 `long_horizon.stub_gate`（`{mode, blocking, todo, total, sample}`）；阻断走**独立的** `LhtGateOutcome::NudgeStubsFound` 节点，与 verify 命令失败（`NudgeManifestFailed`）区分，面板/`sidecar.log` 一眼看出是「编过但功能缺」被顶回。
+
+**实现：** `crates/runtime-server/src/long_horizon/stub_gate.rs`（扫描器 + 4 单测）+ `completion_gate_flow.rs::evaluate_stub_gate`；config 见 `crates/core/src/long_horizon/completion_gate.rs`。
+
+---
+
+## 6.7 对抗式只读审核员（**待实现 · 路线图 #2 · 主体独立的锚定信号**）
+
+**定位（§0.1 第 2 类独立性「主体独立」+ §3.1 边界）：** stub 门（§6.6）是「规则独立」，但正则覆盖不了的缺口（如「函数体只 `return Ok(())` 占位、却无任何标记」「整模块没进 checklist」）需要**另一个主体**来发现。这正是论文强调的「评估信号相对模型自身的**独立性**」——但**必须**按 §3.1 实现为**缺口枚举器**，而非法官。
+
+**设计原则（写死，不可违反）：**
+1. **无放行/否决权。** 审核员的输出**绝不直接进入** `graph_complete` 放行/拦截判定。
+2. **只读。** 读 plan + diff + 工作树，**不许改被测产物**（同 §7.5：防替建造者把活干了，污染「模型能否自完成」的测量）。
+3. **产物必须机器可检验。** 输出形如 `{file:line, 缺什么, 建议 [verify: cmd] 或 deliverable 条目 或 stub 模式}`，而非「LGTM / 看起来不完整」散文。
+4. **回灌后仍由机器裁决。** 候选缺口转译成 §6.5 的 `[verify:]` / §6.2 的 deliverable / §6.6 的 stub 模式，**最终绿不绿由退出码与路径命中说了算**。最坏失败模式只是「多报几个假缺口」，被机器门一跑即证伪，**不会放水**。
+5. **有界 + 成本可控。** 复用 `subagent` 设施，但每轮调用次数 / token 有上限；与 §7.1 的有界循环、诚实耗尽对齐。
+
+**与既有 §3 铁律的关系：** §3 禁止的是「LLM 法官」（软、可被忽悠、不可回放、会与建造者合谋盖章）；§6.7 是「LLM 缺口枚举器」（独立主体**拓宽**机器锚定信号的检查面，而非**替代**它）。二者经 §3.1 表格严格区分，互不矛盾。
+
+**状态：** 设计已定，待实现。实现时落 `crates/runtime-server/src/long_horizon/` 下新模块 + 复用 `tools/subagent`，遥测节点 `long_horizon.adversarial_audit`。
 
 ---
 
@@ -359,6 +432,7 @@ rg '\[lht-probe\].*long_horizon\.' "$LOG"
 ---
 
 **修订记录:**
+- 2026-06-01 修订 v0.7（grounding-signal 锚定 + stub 门落地 + 审核员设计原则）：① **§0.1 外部研究锚定**——把整套门禁的设计动机对齐近期「持续学习/自我改进」survey（Deli Chen，DeepSeek agent+harness 负责人，2026-06）的核心判断「**自我改进取决于 grounding signal 的质量×独立性，缺独立锚定必然退化为自我确认**」；提炼三条贯穿性原则（信号质量=机器 oracle、独立性分「规则独立/主体独立」两层、独立性不得换成另一个 LLM 盖章），并认账「上下文/文档化记忆有界、参数化属训练侧」的边界。② **§6.6 通用 stub/半成品门（已实现）**——规则独立的锚定：`graph_complete` 时纯文件扫描高信号「故意未完成」标记（`todo!()`/`unimplemented!()`/`NotImplementedError`/"not implemented" 抛出）即顶回，`TODO`/`FIXME` 只记不拦；`stub_gate=off|observe|enforce`（省略=observe），先于层2/3 跑、`spawn_blocking`、`max_manifest_rounds` 兜底、独立 `NudgeStubsFound` 节点 + `long_horizon.stub_gate` 遥测；不可信来源 enforce 自动降 observe。③ **§3.1 + §6.7 「法官 vs 缺口枚举器」**——为对抗式只读审核员（路线图 #2，主体独立）立设计原则：**无放行/否决权、只读、产物机器可检验、回灌后仍由机器裁决**，以此调和 §3「禁止 LLM 当法官」铁律（独立性用来**拓宽**锚定信号而非替代）。Files: `crates/core/src/long_horizon/completion_gate.rs`、`crates/runtime-server/src/long_horizon/{stub_gate.rs(新),completion_gate_flow.rs,nudge.rs,gate_telemetry.rs,mod.rs}`、`.../turn_loop/host_impl/no_tool_uses.rs`、本文件、`CHANGELOG.md`。
 - 2026-05-31 创建 v0.1：基于 MicroStack02 实证提出三层组合 harness；核心结论：审核子代理 oracle 锚定，exit code 当法官。
 - 2026-05-31 修订 v0.2（Plan 审核吸收）：① 层2 明确为 **harness 主动 exec**，不依赖 `recent_verification_cmds`；② 层3 交付物改为 **机器 manifest**，禁止 LLM 自由读规格；③ 收窄 §5 可复用件（auditor/audit_continue/subagent _factory 仅借鉴模式）；④ 补充 observe/enforce、独立轮次计数、step 预算交互；⑤ 核实模型侧 exit 0 记录已有；⑥ P0/P1 能力边界写清；⑦ 新增 manifest schema 草案与 headless runner P1 阻塞项；⑧ 架构约束：状态进 `LongHorizonSessionState`，不给 `Engine` 加字段。
 - 2026-05-31 修订 v0.3（第二轮代码核对吸收）：**C1** 解决「层3 LLM 在 oracle 铁律下无活可干」的自相矛盾——层3 **去 LLM 化**为纯 Rust 对账模块 `completion_audit.rs`，删除 headless LLM runner / `agent_spawn` 依赖，P1 不再是 LLM 阻塞项（§3 关键决策 / §4 / §5.2 / §6.3 / §8#5 / §10）；**C2** §7.9 诚实声明适用边界：完成度上界 = manifest 完整度，非规格散文本身（「模型欠拆」→「算子欠写 manifest」的平移）；**H1/H2** 新增 §6.4「层2 主动执行模型」（Windows/shell 选择、cwd、超时、crash vs assertion 的 `exit_class`、副作用边界、sandbox 授信）+ §6.1 覆盖率门改仓库内置跨平台子命令；**H3** §7.8 定 gate 返工 vs `NudgeTracker.Blocked`/`max_nudges` 优先级；**H4** §7.7 定层2→层3「同轮」原子边界（中间不得插模型 step，cache 不跨轮）；**M1** §10 写清 P0 独立受益场景；**M2** §10 给 observe 模式 P0 最小遥测落点；**S1** §5.1 修正 `long_horizon_state` 字段路径（`runtime_ext.rs` vs `nudge.rs`）。核对结论：方案对代码的全部论断（`maybe_continue_incomplete_code_task` 根因、DEMO3 guard 遍历范围、`verify.rs`/`nudge.rs` 可复用件、`record_long_horizon_tool_outcome`→`recent_verification_cmds`、`EngineRuntimeExt.long_horizon_state`、scratchpad/subagent 现状）经逐一核实属实。

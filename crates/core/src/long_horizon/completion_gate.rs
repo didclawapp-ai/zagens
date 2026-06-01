@@ -133,6 +133,13 @@ pub struct CompletionGateConfig {
     /// Task-agnostic: harness runs a toolchain-detected canonical build/test
     /// gate at `graph_complete` (zero per-task config).
     pub toolchain_gate: GenericGateMode,
+    /// Task-agnostic: scan the workspace for high-signal "intentionally
+    /// unfinished" stub markers (`todo!()` / `unimplemented!()` /
+    /// `NotImplementedError` / "not implemented" throws) at `graph_complete`.
+    /// Catches the "compiles but feature is a stub" false-completion without any
+    /// per-task manifest. `observe` records counts; `enforce` blocks until the
+    /// stubs are gone (bounded by `max_manifest_rounds`). Zero per-task config.
+    pub stub_gate: GenericGateMode,
 }
 
 impl CompletionGateConfig {
@@ -142,6 +149,7 @@ impl CompletionGateConfig {
             || !self.deliverable.is_empty()
             || self.auto_verify_replay.is_on()
             || self.toolchain_gate.is_on()
+            || self.stub_gate.is_on()
     }
 
     /// Layer-2 may have entries from the operator manifest **or** a task-agnostic
@@ -171,6 +179,12 @@ impl CompletionGateConfig {
         if !trusted && self.mode == CompletionGateMode::Enforce {
             self.mode = CompletionGateMode::Observe;
         }
+        // The stub gate does not execute commands, but an untrusted source must
+        // still not gain the power to *block* the turn in enforce — downgrade to
+        // observe so a drive-by config can at most record.
+        if !trusted && self.stub_gate.is_enforce() {
+            self.stub_gate = GenericGateMode::Observe;
+        }
         self
     }
 }
@@ -196,6 +210,10 @@ pub struct CompletionGateConfigToml {
     /// `off` | `observe` | `enforce` — toolchain-detected build/test gate.
     #[serde(default)]
     pub toolchain_gate: Option<String>,
+    /// `off` | `observe` | `enforce` — stub / incompleteness scan. Absent
+    /// defaults to `observe` ("先量后调") when a `[completion_gate]` table exists.
+    #[serde(default)]
+    pub stub_gate: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -241,6 +259,14 @@ impl CompletionGateConfigToml {
                 self.auto_verify_replay.as_deref(),
             ),
             toolchain_gate: GenericGateMode::from_optional_str(self.toolchain_gate.as_deref()),
+            // Absent → observe ("先量后调"): once an operator opts into a
+            // completion gate at all, surface stub counts by default; they must
+            // explicitly set `stub_gate = "off"` to silence or `"enforce"` to block.
+            stub_gate: self
+                .stub_gate
+                .as_deref()
+                .map(|s| GenericGateMode::from_optional_str(Some(s)))
+                .unwrap_or(GenericGateMode::Observe),
         }
     }
 }

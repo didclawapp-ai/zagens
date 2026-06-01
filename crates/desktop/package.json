@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "bundle:prepare": "node ./scripts/prepare-bundle.mjs"
+    "bundle:prepare": "node ./scripts/prepare-bundle.mjs",
+    "package:release": "node ./scripts/package-release.mjs"
   }
 }

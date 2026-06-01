@@ -138,6 +138,49 @@ pub fn write_locale_setting(locale: &str) -> Result<()> {
     Ok(())
 }
 
+/// Read the `lht_strict` flag from disk (`false` when absent). Drives the
+/// composer LHT (strict long-horizon) toggle; read live by the sidecar engine
+/// spawn so the switch takes effect on the next turn without a restart.
+pub fn read_lht_strict_setting() -> Result<bool> {
+    let path = settings_path()?;
+    if !path.exists() {
+        return Ok(false);
+    }
+    let content = fs::read_to_string(&path)
+        .with_context(|| format!("Failed to read settings from {}", path.display()))?;
+    let doc: toml::Value = toml::from_str(&content)
+        .with_context(|| format!("Failed to parse settings from {}", path.display()))?;
+    Ok(doc
+        .get("lht_strict")
+        .and_then(toml::Value::as_bool)
+        .unwrap_or(false))
+}
+
+/// Persist the `lht_strict` flag (composer LHT strict-mode toggle).
+pub fn write_lht_strict_setting(enabled: bool) -> Result<()> {
+    let path = settings_path()?;
+    ensure_parent(&path)?;
+
+    let mut doc = if path.exists() {
+        let content = fs::read_to_string(&path)
+            .with_context(|| format!("Failed to read settings from {}", path.display()))?;
+        toml::from_str::<toml::Value>(&content)
+            .with_context(|| format!("Failed to parse settings from {}", path.display()))?
+    } else {
+        toml::Value::Table(toml::map::Map::new())
+    };
+
+    let table = doc
+        .as_table_mut()
+        .context("settings.toml root must be a table")?;
+    table.insert("lht_strict".to_string(), toml::Value::Boolean(enabled));
+
+    let serialized = toml::to_string_pretty(&doc).context("Failed to serialize settings")?;
+    fs::write(&path, serialized)
+        .with_context(|| format!("Failed to write settings to {}", path.display()))?;
+    Ok(())
+}
+
 fn ensure_parent(path: &Path) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)

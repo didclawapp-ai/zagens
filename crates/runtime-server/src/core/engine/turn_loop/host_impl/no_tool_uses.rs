@@ -85,8 +85,10 @@ impl Engine {
             cancel_token: Some(&cancel_token),
         };
 
+        let lht_mode_override = self.runtime_ext().turn_lht_mode;
         let input = crate::long_horizon::LongHorizonContinueInput {
             config: &lh_config,
+            lht_mode_override,
             scratchpad: &scratchpad,
             task_type,
             app_mode,
@@ -148,6 +150,44 @@ impl Engine {
                     .tx_event
                     .send(Event::status(format!(
                         "long_horizon.manifest_gate: {{\"enforce\":true,\"reinject\":true,\"manifest_round\":{rounds},\"audit_round\":{audit_rounds},\"gate_reinject_while_blocked\":{blocked}}}"
+                    )))
+                    .await;
+                return true;
+            }
+            crate::long_horizon::LhtGateOutcome::NudgeStubsFound(msg) => {
+                // Generic stub gate fired in enforce: the graph is "complete" and
+                // the code compiles, but blocking-class stub markers remain. Inject
+                // the focused nudge and emit a *distinct* node so the LHT panel /
+                // sidecar.log show the "compiles but feature is a stub" block
+                // separately from verify-command failures.
+                Engine::add_session_message(self, msg).await;
+                self.long_horizon_continue_injected_this_turn = true;
+                let rounds = self.runtime_ext().long_horizon_state.stub_gate_rounds;
+                let blocked = self
+                    .runtime_ext()
+                    .long_horizon_state
+                    .gate_reinject_while_blocked;
+                let _ = self
+                    .tx_event
+                    .send(Event::status(format!(
+                        "long_horizon.stub_gate: {{\"enforce\":true,\"reinject\":true,\"stub_round\":{rounds},\"gate_reinject_while_blocked\":{blocked}}}"
+                    )))
+                    .await;
+                return true;
+            }
+            crate::long_horizon::LhtGateOutcome::NudgePlanRequired(msg) => {
+                // Strict-mode plan-bootstrap: the model was working with an empty
+                // task graph (no plan/checklist). Inject the "establish a plan"
+                // nudge to keep the turn alive until a plan exists. The
+                // `long_horizon.plan_gate` telemetry node was already queued via
+                // pending_gate_events and emitted above.
+                Engine::add_session_message(self, msg).await;
+                self.long_horizon_continue_injected_this_turn = true;
+                let rounds = self.runtime_ext().long_horizon_state.plan_gate_rounds;
+                let _ = self
+                    .tx_event
+                    .send(Event::status(format!(
+                        "long_horizon.plan_gate: {{\"enforce\":true,\"reinject\":true,\"plan_round\":{rounds}}}"
                     )))
                     .await;
                 return true;
@@ -274,6 +314,90 @@ impl Engine {
             .tx_event
             .send(Event::status(format!(
                 "long_horizon.continue_injected: {{\"open_items\":{open},\"nudge_count\":{nudge_count},\"emitted\":{emitted},\"converted\":{converted}}}"
+            )))
+            .await;
+        true
+    }
+
+    /// "一推到底" auto-continue override (C2). Called only after the routine LHT
+    /// continue gate ([`Self::maybe_inject_incomplete_lht_continue`]) has already
+    /// declined — i.e. the nudge tracker has given up (`blocked` / max nudges) or
+    /// skipped — yet the task graph is still genuinely incomplete. When
+    /// `[long_horizon] auto_continue = true`, this resets the tracker give-up
+    /// state and re-injects a forceful continue message so the turn keeps moving
+    /// to the next phase instead of ending as a false green. Bounded per turn by
+    /// `max_auto_continue_rounds`, so a model that truly cannot progress still
+    /// terminates the turn. Returns `true` if the turn should keep going.
+    async fn maybe_auto_continue_incomplete_lht(&mut self) -> bool {
+        let cfg = self.config.long_horizon.clone();
+        if !cfg.enabled || !cfg.auto_continue {
+            return false;
+        }
+        // Code-surface agent tasks only; never override a user "stop" steer.
+        let app_mode = self.runtime_ext().turn_app_mode;
+        if !matches!(
+            app_mode,
+            crate::agent_surface::AppMode::Agent | crate::agent_surface::AppMode::Yolo
+        ) {
+            return false;
+        }
+        if !self.config.task_type.uses_code_tool_surface() {
+            return false;
+        }
+        if self.runtime_ext().long_horizon_state.paused {
+            return false;
+        }
+
+        // Only override for a genuinely incomplete, non-trivial task graph.
+        let plan_state = self.config_ext().plan_state.clone();
+        let todos = self.config_ext().todos.clone();
+        let plan = plan_state.lock().await.snapshot();
+        let todo = todos.lock().await.snapshot();
+        let graph = crate::long_horizon::CodeTaskGraph::from_snapshots(&plan, &todo);
+        if graph.is_empty() || graph.is_trivial() || !graph.incomplete() {
+            return false;
+        }
+
+        // Hard per-turn ceiling: bound the give-up override.
+        if self.long_horizon_auto_continue_rounds >= cfg.max_auto_continue_rounds {
+            let _ = self
+                .tx_event
+                .send(Event::status(format!(
+                    "long_horizon.auto_continue_exhausted: {{\"max\":{},\"open_items\":{}}}",
+                    cfg.max_auto_continue_rounds, graph.open_items
+                )))
+                .await;
+            return false;
+        }
+
+        // Fresh nudge budget for the next phase + re-arm the once-per-turn gate.
+        self.runtime_ext_mut()
+            .long_horizon_state
+            .tracker
+            .clear_blocked();
+        self.long_horizon_continue_injected_this_turn = false;
+        self.long_horizon_auto_continue_rounds =
+            self.long_horizon_auto_continue_rounds.saturating_add(1);
+        let round = self.long_horizon_auto_continue_rounds;
+
+        let locale = self.config.locale_tag.clone();
+        let text = crate::long_horizon::build_auto_continue_message(&graph, round, &locale);
+        Engine::add_session_message(
+            self,
+            Message {
+                role: "user".to_string(),
+                content: vec![ContentBlock::Text {
+                    text,
+                    cache_control: None,
+                }],
+            },
+        )
+        .await;
+        let _ = self
+            .tx_event
+            .send(Event::status(format!(
+                "long_horizon.auto_continue: {{\"round\":{round},\"max\":{},\"open_items\":{}}}",
+                cfg.max_auto_continue_rounds, graph.open_items
             )))
             .await;
         true
@@ -545,6 +669,13 @@ impl Engine {
 
         if self.maybe_inject_incomplete_lht_continue(turn).await {
             // LHT harness nudge: Continue without bumping step (§4.6).
+            return TurnLoopControl::Continue;
+        }
+
+        // C2 ("一推到底"): the routine nudge gate gave up but the task is still
+        // incomplete — when auto_continue is enabled, override the give-up and
+        // keep the turn alive (bounded by `max_auto_continue_rounds`).
+        if self.maybe_auto_continue_incomplete_lht().await {
             return TurnLoopControl::Continue;
         }
 

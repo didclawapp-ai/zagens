@@ -465,6 +465,16 @@ impl TurnLoopHost for Engine {
         if qualifies {
             state.progress_since_last_nudge = true;
         }
+        // C1 ("一推到底"): qualified tool progress re-arms the once-per-turn LHT
+        // continue nudge. Without this the harness could nudge a prose-only stop
+        // exactly once per turn, so a phased refactor stalled after the model
+        // finished phase 1 and summarized. Re-arming lets the gate fire again on
+        // the next premature stop; the per-item `NudgeTracker` caps
+        // (`max_nudges_per_item` / `blocked_nudges_without_progress`) still bound
+        // total nudges, so a model that stops without real work is not looped.
+        if qualifies {
+            self.long_horizon_continue_injected_this_turn = false;
+        }
     }
 
     fn take_long_horizon_tool_suffix(&mut self) -> Option<String> {

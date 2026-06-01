@@ -210,6 +210,11 @@ pub struct Settings {
     pub max_input_history: usize,
     /// Default model to use
     pub default_model: Option<String>,
+    /// Force LHT strict mode (composer top-bar toggle). When true, the sidecar
+    /// engine spawn raises `[long_horizon] mode` to `strict` (and enables the
+    /// harness) so a code task must plan first and the completion/stub gates
+    /// run in enforce — read live per turn, no restart needed.
+    pub lht_strict: bool,
 }
 
 impl Default for Settings {
@@ -244,6 +249,7 @@ impl Default for Settings {
             cost_currency: "usd".to_string(),
             max_input_history: 100,
             default_model: None,
+            lht_strict: false,
         }
     }
 }

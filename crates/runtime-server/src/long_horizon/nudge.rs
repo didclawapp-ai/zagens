@@ -32,6 +32,15 @@ pub(crate) const STALE_ASSISTANT_TURNS: u32 = 8;
 /// can't (or won't) add `[verify:]` cannot loop the turn forever.
 pub(crate) const MAX_UNVERIFIED_ACCEPTANCE_NUDGES: u32 = 2;
 
+/// Strict-mode plan-bootstrap: max times the runtime forces "establish a plan"
+/// while the graph is empty before giving up (honest stop) for this session.
+pub(crate) const MAX_PLAN_GATE_ROUNDS: u32 = 3;
+
+/// Strict-mode plan-bootstrap: only force a plan once the thread already shows
+/// this many tool calls with no plan/checklist — so trivial single-step or
+/// conversational turns are not forced to plan.
+pub(crate) const MIN_TOOL_USES_FOR_PLAN_GATE: usize = 3;
+
 /// Per-session LHT state.
 ///
 /// Lifetime conventions (see [`Self::on_new_user_message`]):
@@ -86,6 +95,14 @@ pub struct LongHorizonSessionState {
     pub telemetry: NudgeTelemetry,
     /// Composable harness: layer-2 manifest gate rounds this session.
     pub manifest_gate_rounds: u32,
+    /// Generic stub / incompleteness gate enforce rounds this session (bounded
+    /// by `max_manifest_rounds` to avoid looping on a stub the model can't fix).
+    pub stub_gate_rounds: u32,
+    /// Strict-mode plan-bootstrap gate rounds this session: how many times the
+    /// runtime has nudged the model to establish a plan/checklist while the task
+    /// graph was still empty. Bounded by [`MAX_PLAN_GATE_ROUNDS`] so a model that
+    /// refuses to plan stops honestly instead of looping forever.
+    pub plan_gate_rounds: u32,
     /// Composable harness: layer-3 deliverable audit rounds this session.
     pub audit_rounds: u32,
     /// Prevents concurrent manifest gate evaluation on the same session (§6.4).
@@ -422,6 +439,57 @@ pub fn build_deliverables_failed_nudge(
     }
 }
 
+/// Generic stub / incompleteness gate (enforce): blocking-class markers found.
+/// Task-agnostic — fires on the "compiles green but the feature is still a stub"
+/// false-completion without any per-task manifest.
+#[must_use]
+pub fn build_stubs_found_nudge(hits: &[&super::stub_gate::StubHit], lang: &str) -> String {
+    const MAX_SHOWN: usize = 12;
+    let total = hits.len();
+    let lines: Vec<String> = hits
+        .iter()
+        .take(MAX_SHOWN)
+        .map(|h| format!("- {}:{}  `{}`", h.file, h.line, h.snippet))
+        .collect();
+    let mut list = lines.join("\n");
+    if total > MAX_SHOWN {
+        list.push_str(&format!("\n- … (+{} more)", total - MAX_SHOWN));
+    }
+    if is_zh(lang) {
+        format!(
+            "任务图已勾选完成、代码也能编译，但工作区里仍有 **{total} 处“半成品”标记**（`todo!()` / `unimplemented!()` / `NotImplementedError` / 抛出 \"not implemented\"）——这是典型的“编过但功能缺”的假完成：\n\n{list}\n\n\
+             请把每一处真正实现掉（删除占位、补上真实逻辑并跑通对应验收），不要把 stub 留在交付里。如果某一项确属本任务范围之外，请在 checklist 里显式拆出并说明，而不是用占位糊弄过去。全部清零后再结束本轮。"
+        )
+    } else {
+        format!(
+            "The checklist graph is complete and the code compiles, but the workspace still contains **{total} \"stub\" markers** (`todo!()` / `unimplemented!()` / `NotImplementedError` / a \"not implemented\" throw) — the classic \"compiles but the feature is missing\" false completion:\n\n{list}\n\n\
+             Actually implement each one (remove the placeholder, add the real logic, and run its acceptance to pass). Do not ship stubs. If an item is genuinely out of scope, split it out in the checklist with a reason instead of leaving a placeholder. Clear them all before ending this turn."
+        )
+    }
+}
+
+/// Strict-mode plan-bootstrap nudge: the model has done real work (multiple
+/// tool calls) but never authored a plan/checklist, so the whole LHT net is
+/// being bypassed. Force it to establish a visible plan before continuing.
+#[must_use]
+pub fn build_plan_required_nudge(lang: &str) -> String {
+    if is_zh(lang) {
+        "[长程任务 · 强制模式] 你已经在动手做事,但**还没有建立任何计划/清单**——侧栏 Plan/Todos 是空的,\
+         进度无法跟踪,完成门禁也无从校验。现在先停下来用 `checklist_write` 把这件事拆成几个**具体、可验证**的步骤\
+         (把第一步标为 `in_progress`,其余 `pending`);复杂任务再用 `update_plan` 给出 3–6 个高层阶段。\
+         建好计划后立刻继续推进,并随完成情况更新清单状态。不要在没有计划的情况下闷头往下做。"
+            .to_string()
+    } else {
+        "[Long-horizon · strict mode] You are already doing real work but have **not established any \
+         plan/checklist** — the Plan/Todos sidebar is empty, progress can't be tracked, and the \
+         completion gate has nothing to verify. Stop now and use `checklist_write` to break this into \
+         a few **concrete, verifiable** steps (mark the first `in_progress`, the rest `pending`); for a \
+         complex task also lay out 3–6 high-level phases with `update_plan`. Then immediately continue, \
+         updating checklist status as you go. Do not keep working without a plan."
+            .to_string()
+    }
+}
+
 #[must_use]
 pub fn build_unverified_acceptance_nudge(items: &[String], lang: &str) -> String {
     let list = items
@@ -438,6 +506,44 @@ pub fn build_unverified_acceptance_nudge(items: &[String], lang: &str) -> String
         format!(
             "The checklist is fully checked, but these \"runnable acceptance\" items were never actually verified — they have no `[verify: <command>]` prefix and no matching recent run (creating a file / self-declaring done is NOT the same as running it):\n\n{list}\n\n\
              For each: (1) rewrite as `[verify: <command>] <label>` (e.g. `[verify: bash scripts/run_examples.sh] all examples pass`); (2) **run that command and see it pass** before keeping it completed. If there is genuinely no runnable command, split it into sub-items with objective acceptance. Do not end this turn on a prose claim alone."
+        )
+    }
+}
+
+/// "一推到底" auto-continue override (C2). Fired when the in-turn nudge gate has
+/// already given up (tracker `blocked` / `max_nudges`) but the task graph is
+/// still genuinely incomplete and `auto_continue` is enabled. Far more forceful
+/// than the routine nudge: it spells out the only two valid stop conditions so
+/// the model resumes the next phase instead of summarizing. Bounded per turn by
+/// `max_auto_continue_rounds`.
+#[must_use]
+pub fn build_auto_continue_message(graph: &CodeTaskGraph, round: u32, lang: &str) -> String {
+    let progress_bar = progress_bar(graph.completion_pct);
+    let open_lines = format_open_items(graph);
+    let pct = graph.completion_pct;
+    if is_zh(lang) {
+        format!(
+            "[长程任务 — 自动续跑 #{round}] 任务尚未完成，不要停下来总结或等待确认。\n\n\
+             进度：{progress_bar} {pct}%\n\
+             仍待完成：\n{open_lines}\n\n\
+             立刻继续推进下一阶段并用工具实际完成、验证（如 cargo check/test、运行验收命令看到 exit 0），\
+             再 checklist_update / update_plan。写 handoff、cycle 切换、清单清空都是\"继续\"的信号，不是停下来的理由。\n\
+             只有在以下两种情况才允许停下：①遇到必须由用户决策的真实阻断（互斥方案二选一、与业务规则冲突）；\
+             ②全部阶段已完成且通过验证。除此之外，继续。"
+        )
+    } else {
+        format!(
+            "[Long-horizon — auto-continue #{round}] The task is not finished. Do not stop to \
+             summarize or wait for confirmation.\n\n\
+             Progress: {progress_bar} {pct}%\n\
+             Still open:\n{open_lines}\n\n\
+             Immediately resume the next phase: complete it with tools and verify for real \
+             (e.g. cargo check/test, run the acceptance command and see exit 0), then \
+             checklist_update / update_plan. Writing handoff, a cycle boundary, or an emptied \
+             checklist are all signals to KEEP GOING, not to stop.\n\
+             You may stop ONLY when: (1) a genuine blocker needs a user decision (two mutually \
+             exclusive approaches, a conflict with business rules), or (2) every phase is done \
+             and verified. Otherwise, continue."
         )
     }
 }
@@ -550,6 +656,32 @@ mod tests {
     }
 
     #[test]
+    fn auto_continue_message_is_forceful_and_bilingual() {
+        use super::super::graph::{CodeTaskGraph, GraphChecklistItem};
+        let graph = CodeTaskGraph {
+            objective: "refactor".to_string(),
+            objective_source: "test",
+            phases: Vec::new(),
+            checklist: vec![GraphChecklistItem {
+                id: 2,
+                content: "phase 2: extract module".to_string(),
+                status: TodoStatus::InProgress,
+            }],
+            completion_pct: 40,
+            open_items: 1,
+            in_progress_id: Some(2),
+        };
+        let zh = build_auto_continue_message(&graph, 3, "zh-Hans");
+        assert!(zh.contains("自动续跑 #3"));
+        assert!(zh.contains("phase 2: extract module"));
+        assert!(zh.contains("继续"));
+        let en = build_auto_continue_message(&graph, 1, "en");
+        assert!(en.contains("auto-continue #1"));
+        assert!(en.contains("KEEP GOING"));
+        assert!(en.contains("phase 2: extract module"));
+    }
+
+    #[test]
     fn stop_steer_matches_phrases_not_substrings() {
         assert!(is_stop_steer("stop"));
         assert!(is_stop_steer("please stop here"));
@@ -576,10 +708,13 @@ mod tests {
         let cfg = LongHorizonConfig::default();
         let cfg = LongHorizonConfig {
             enabled: true,
+            mode: deepseek_core::long_horizon::LhtMode::Auto,
             max_nudges_per_item: 5,
             blocked_nudges_without_progress: 3,
             reinject_every_steps: cfg.reinject_every_steps,
             progress_via_git: true,
+            auto_continue: cfg.auto_continue,
+            max_auto_continue_rounds: cfg.max_auto_continue_rounds,
             completion_gate: cfg.completion_gate,
         };
         for _ in 0..3 {
@@ -618,10 +753,13 @@ mod tests {
         let cfg = LongHorizonConfig::default();
         let cfg = LongHorizonConfig {
             enabled: true,
+            mode: deepseek_core::long_horizon::LhtMode::Auto,
             max_nudges_per_item: 5,
             blocked_nudges_without_progress: 3,
             reinject_every_steps: cfg.reinject_every_steps,
             progress_via_git: true,
+            auto_continue: cfg.auto_continue,
+            max_auto_continue_rounds: cfg.max_auto_continue_rounds,
             completion_gate: cfg.completion_gate,
         };
         let mut nudges = 0;
@@ -648,10 +786,13 @@ mod tests {
         let defaults = LongHorizonConfig::default();
         let cfg = LongHorizonConfig {
             enabled: true,
+            mode: deepseek_core::long_horizon::LhtMode::Auto,
             max_nudges_per_item: 100,
             blocked_nudges_without_progress: 3,
             reinject_every_steps: 0,
             progress_via_git: true,
+            auto_continue: defaults.auto_continue,
+            max_auto_continue_rounds: defaults.max_auto_continue_rounds,
             completion_gate: defaults.completion_gate,
         };
         // Two no-progress nudges (streak = 2), then a progress turn resets it.

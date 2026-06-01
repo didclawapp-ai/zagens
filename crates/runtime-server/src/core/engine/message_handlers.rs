@@ -42,6 +42,7 @@ impl Engine {
         self.scratchpad_summary_injected_this_turn = false;
         self.scratchpad_audit_continue_injected_this_turn = false;
         self.long_horizon_continue_injected_this_turn = false;
+        self.long_horizon_auto_continue_rounds = 0;
         self.runtime_ext_mut().turn_app_mode = mode;
         self.runtime_ext_mut()
             .long_horizon_state

@@ -132,6 +132,14 @@ async fn run_single_verify(
     let timeout_ms = u64::from(entry.timeout_secs.max(1).min(600)) * 1000;
     let display = command_display(entry);
 
+    // Per-command working directory by toolchain marker. The gate's single
+    // `cmd_root` cannot serve a polyglot/nested layout — e.g. an npm frontend at
+    // the workspace root with a Cargo backend in `src-tauri/`. Without this, the
+    // model's `cargo check` replay ran at the root and failed with
+    // "could not find Cargo.toml" (a false RED) even though the code built fine.
+    let run_dir = super::generic_gate::resolve_command_root(workspace, &display);
+    let workspace = run_dir.as_path();
+
     if entry.shell == ManifestShell::None {
         if entry.argv.is_empty() {
             return VerifyRunResult {

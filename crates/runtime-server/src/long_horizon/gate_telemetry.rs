@@ -23,6 +23,18 @@ pub enum CompletionGateEvent {
     CompletionAudit {
         payload_json: String,
     },
+    /// Generic stub / incompleteness scan result (§ stub gate). `payload_json`
+    /// carries the mode + blocking/todo/total counts + a small sample.
+    StubGate {
+        payload_json: String,
+    },
+    /// Strict-mode plan-bootstrap gate: `nudged=true` when a "establish a plan"
+    /// nudge was injected (empty graph + real work), `false` when rounds were
+    /// exhausted and the gate gave up. `round` is the session plan-gate count.
+    PlanGate {
+        nudged: bool,
+        round: u32,
+    },
 }
 
 #[derive(Serialize)]
@@ -66,7 +78,18 @@ impl CompletionGateEvent {
             Self::CompletionAudit { payload_json } => {
                 format!("long_horizon.completion_audit: {payload_json}")
             }
+            Self::StubGate { payload_json } => {
+                format!("long_horizon.stub_gate: {payload_json}")
+            }
+            Self::PlanGate { nudged, round } => format!(
+                "long_horizon.plan_gate: {{\"nudged\":{nudged},\"round\":{round}}}"
+            ),
         }
+    }
+
+    #[must_use]
+    pub fn plan_gate(nudged: bool, round: u32) -> Self {
+        Self::PlanGate { nudged, round }
     }
 
     pub fn queue_manifest_start(

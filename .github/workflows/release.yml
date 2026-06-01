@@ -42,6 +42,10 @@ jobs:
         working-directory: crates/desktop
         run: cargo tauri build
 
+      - name: Package installers (zip + SHA-256)
+        working-directory: crates/desktop
+        run: npm run package:release
+
       - name: Stage installer artifacts
         shell: pwsh
         run: |
@@ -51,7 +55,7 @@ jobs:
           }
           New-Item -ItemType Directory -Force -Path release-artifacts | Out-Null
           Get-ChildItem -Path $bundle -Recurse -File |
-            Where-Object { $_.Extension -in '.msi', '.exe', '.zip' } |
+            Where-Object { $_.Extension -in '.msi', '.exe', '.zip', '.sha256' } |
             ForEach-Object {
               Copy-Item $_.FullName -Destination "release-artifacts/$($_.Name)"
             }
@@ -73,4 +77,11 @@ jobs:
 
             Installers attached to this release. macOS and Linux packages may be added in a future release.
 
-            See [CHANGELOG.md](../../blob/main/CHANGELOG.md) for release notes.
+            **Recommended download:** the `*-setup.exe.zip` archive. Because Zagens
+            is not yet code-signed, Windows SmartScreen may warn on the raw `.exe`.
+            **Right-click the downloaded `.zip` → Properties → check "Unblock" →
+            extract → run the installer** for a prompt-free install. Verify the
+            download with the matching `.sha256` file.
+
+            See [SMARTSCREEN.md](../../blob/main/docs/desktop/SMARTSCREEN.md) for
+            details, and [CHANGELOG.md](../../blob/main/CHANGELOG.md) for release notes.

@@ -16,6 +16,7 @@ mod objective;
 pub(crate) mod progress;
 pub(crate) mod snapshots;
 mod reinject;
+mod stub_gate;
 mod task_graph;
 mod verify;
 
@@ -32,7 +33,9 @@ pub use graph::CodeTaskGraph;
 pub use handoff::{build_lht_handoff_section, merge_lht_into_handoff};
 pub use completion_gate_panel::CompletionGatePanelJson;
 pub use manifest_gate::CompletionGateExec;
-pub use nudge::{build_nudge_message, LongHorizonSessionState, NudgeDecision};
+pub use nudge::{
+    build_auto_continue_message, build_nudge_message, LongHorizonSessionState, NudgeDecision,
+};
 pub use objective::derive_objective;
 pub use task_graph::{
     build_task_graph_value, build_task_graph_value_with_telemetry, TaskGraphTelemetryJson,
@@ -41,7 +44,9 @@ pub use task_graph::{
 use std::path::Path;
 
 use deepseek_core::chat::{ContentBlock, Message};
-use deepseek_core::long_horizon::LongHorizonConfig;
+use deepseek_core::long_horizon::{
+    CompletionGateMode, GenericGateMode, LhtMode, LongHorizonConfig,
+};
 use deepseek_core::scratchpad::ScratchpadConfig;
 use deepseek_core::task_type::TaskType;
 
@@ -52,6 +57,10 @@ use crate::tools::todo::SharedTodoList;
 /// Inputs for evaluating whether to inject an LHT continue nudge.
 pub struct LongHorizonContinueInput<'a> {
     pub config: &'a LongHorizonConfig,
+    /// Per-turn override of `config.mode` from the UI LHT toggle (`None` = use
+    /// the configured default). Lets a session force `Strict` without editing
+    /// `config.toml`.
+    pub lht_mode_override: Option<LhtMode>,
     pub scratchpad: &'a ScratchpadConfig,
     pub task_type: TaskType,
     pub app_mode: AppMode,
@@ -84,6 +93,70 @@ fn audit_scratchpad_blocks_lht(
     .is_some()
 }
 
+/// Count assistant tool-use blocks across the thread — a task-agnostic "real
+/// work is underway" signal used by the strict-mode plan-bootstrap gate so it
+/// only fires once the model has actually started doing things without a plan.
+fn count_tool_uses(messages: &[Message]) -> usize {
+    messages
+        .iter()
+        .flat_map(|m| m.content.iter())
+        .filter(|b| matches!(b, ContentBlock::ToolUse { .. }))
+        .count()
+}
+
+/// Strict-mode plan-bootstrap gate (empty graph): if the thread already shows
+/// substantive tool activity but no plan/checklist, force the model to plan
+/// first (bounded). Returns `None` to fall through to the normal `graph_empty`
+/// skip (trivial / too-early / rounds exhausted).
+fn evaluate_plan_bootstrap(
+    messages: &[Message],
+    session: &mut LongHorizonSessionState,
+    lang: &str,
+) -> Option<LhtGateOutcome> {
+    if count_tool_uses(messages) < nudge::MIN_TOOL_USES_FOR_PLAN_GATE {
+        return None; // trivial / too early — don't force a plan
+    }
+    if session.plan_gate_rounds >= nudge::MAX_PLAN_GATE_ROUNDS {
+        // Model won't plan after repeated nudges — stop honestly, don't loop.
+        session.pending_gate_events.push(
+            gate_telemetry::CompletionGateEvent::plan_gate(false, session.plan_gate_rounds),
+        );
+        return None;
+    }
+    session.plan_gate_rounds += 1;
+    session
+        .pending_gate_events
+        .push(gate_telemetry::CompletionGateEvent::plan_gate(
+            true,
+            session.plan_gate_rounds,
+        ));
+    Some(LhtGateOutcome::NudgePlanRequired(Message {
+        role: "user".to_string(),
+        content: vec![ContentBlock::Text {
+            text: nudge::build_plan_required_nudge(lang),
+            cache_control: None,
+        }],
+    }))
+}
+
+/// In strict mode, return a copy of the completion-gate config with `mode` and
+/// `stub_gate` raised to `enforce`; otherwise the config is returned unchanged.
+fn strict_completion_gate(
+    base: &deepseek_core::long_horizon::CompletionGateConfig,
+    mode: LhtMode,
+) -> deepseek_core::long_horizon::CompletionGateConfig {
+    let mut gate = base.clone();
+    if mode.is_strict() {
+        if gate.mode != CompletionGateMode::Enforce {
+            gate.mode = CompletionGateMode::Enforce;
+        }
+        if !gate.stub_gate.is_enforce() {
+            gate.stub_gate = GenericGateMode::Enforce;
+        }
+    }
+    gate
+}
+
 /// Outcome of the LHT continue gate. `Skip` carries a stable diagnostic reason
 /// (§4.9 observability) so the caller can emit a `long_horizon.gate_skip` event
 /// pinpointing *which* guard suppressed the nudge.
@@ -98,6 +171,18 @@ pub enum LhtGateOutcome {
     NudgeUnverifiedAcceptance(Message),
     /// Layer-2 manifest gate: harness-active verify commands failed (§6.1).
     NudgeManifestFailed(Message),
+    /// Generic stub / incompleteness gate: blocking-class markers (`todo!()`,
+    /// `unimplemented!()`, `NotImplementedError`, "not implemented" throws) were
+    /// found in `enforce` mode. Distinct from [`Self::NudgeManifestFailed`] so the
+    /// LHT panel / telemetry show the "compiles but feature is a stub"
+    /// false-completion block separately from verify-command failures.
+    NudgeStubsFound(Message),
+    /// Strict-mode plan-bootstrap gate: a code-surface task is proceeding with an
+    /// **empty** task graph (no plan/checklist) despite real tool activity. The
+    /// runtime forces the model to establish a visible plan before continuing,
+    /// so the rest of the LHT net (progress, completion gate, stub gate) cannot
+    /// be silently bypassed by never planning. Strict mode only.
+    NudgePlanRequired(Message),
     /// Layer-3 deliverable manifest reconciliation failed (§6.2).
     NudgeDeliverablesMissing(Message),
     /// Observe mode: record gaps but allow `graph_complete` (§7.3).
@@ -145,11 +230,23 @@ pub async fn maybe_continue_incomplete_code_task(
         return LhtGateOutcome::Skip("audit_owns_path");
     }
 
+    let effective_mode = input.lht_mode_override.unwrap_or(input.config.mode);
+
     let plan = input.plan_state.lock().await.snapshot();
     let checklist = input.todos.lock().await.snapshot();
     let mut graph = CodeTaskGraph::from_snapshots(&plan, &checklist);
 
     if graph.is_empty() {
+        // Strict mode: a code task may not free-style past an empty graph once
+        // real work is underway. Force a plan first so the rest of the net is
+        // not silently bypassed. Auto mode keeps the historical skip.
+        if effective_mode.is_strict() {
+            if let Some(outcome) =
+                evaluate_plan_bootstrap(input.messages, &mut *input.session, input.lang)
+            {
+                return outcome;
+            }
+        }
         return LhtGateOutcome::Skip("graph_empty");
     }
     if !graph.incomplete() {
@@ -187,9 +284,13 @@ pub async fn maybe_continue_incomplete_code_task(
                 }],
             });
         }
+        // Strict mode tightens the completion/stub gates to `enforce` so the
+        // full net (false-green + stub block) applies even if the operator left
+        // them on `observe` in config — the user explicitly opted into LHT.
+        let effective_gate = strict_completion_gate(&input.config.completion_gate, effective_mode);
         return completion_gate_flow::evaluate_completion_gate(
             input.workspace,
-            &input.config.completion_gate,
+            &effective_gate,
             &checklist,
             input.session,
             input.lang,
@@ -275,4 +376,75 @@ pub async fn maybe_continue_incomplete_code_task(
             cache_control: None,
         }],
     })
+}
+
+#[cfg(test)]
+mod plan_bootstrap_tests {
+    use super::*;
+
+    fn tool_use_msg(id: &str) -> Message {
+        Message {
+            role: "assistant".to_string(),
+            content: vec![ContentBlock::ToolUse {
+                id: id.to_string(),
+                name: "read_file".to_string(),
+                input: serde_json::json!({}),
+                caller: None,
+            }],
+        }
+    }
+
+    fn text_msg(t: &str) -> Message {
+        Message {
+            role: "assistant".to_string(),
+            content: vec![ContentBlock::Text {
+                text: t.to_string(),
+                cache_control: None,
+            }],
+        }
+    }
+
+    #[test]
+    fn count_tool_uses_only_counts_tool_use_blocks() {
+        let msgs = vec![text_msg("hi"), tool_use_msg("a"), tool_use_msg("b")];
+        assert_eq!(count_tool_uses(&msgs), 2);
+    }
+
+    #[test]
+    fn too_few_tool_uses_does_not_force_plan() {
+        let mut session = LongHorizonSessionState::default();
+        // Only one tool call — trivial / too early, must fall through.
+        let msgs = vec![tool_use_msg("a")];
+        assert!(evaluate_plan_bootstrap(&msgs, &mut session, "en").is_none());
+        assert_eq!(session.plan_gate_rounds, 0);
+    }
+
+    #[test]
+    fn real_work_without_plan_forces_plan_then_gives_up() {
+        let mut session = LongHorizonSessionState::default();
+        let msgs: Vec<Message> = (0..nudge::MIN_TOOL_USES_FOR_PLAN_GATE)
+            .map(|i| tool_use_msg(&format!("t{i}")))
+            .collect();
+
+        // First MAX rounds nudge to establish a plan.
+        for round in 1..=nudge::MAX_PLAN_GATE_ROUNDS {
+            let out = evaluate_plan_bootstrap(&msgs, &mut session, "en");
+            assert!(matches!(out, Some(LhtGateOutcome::NudgePlanRequired(_))));
+            assert_eq!(session.plan_gate_rounds, round);
+        }
+        // Beyond the bound: give up (honest stop), do not loop forever.
+        assert!(evaluate_plan_bootstrap(&msgs, &mut session, "en").is_none());
+        assert_eq!(session.plan_gate_rounds, nudge::MAX_PLAN_GATE_ROUNDS);
+    }
+
+    #[test]
+    fn strict_completion_gate_raises_modes() {
+        use deepseek_core::long_horizon::{CompletionGateConfig, CompletionGateMode};
+        let base = CompletionGateConfig::default();
+        let auto = strict_completion_gate(&base, LhtMode::Auto);
+        assert_eq!(auto.mode, base.mode);
+        let strict = strict_completion_gate(&base, LhtMode::Strict);
+        assert_eq!(strict.mode, CompletionGateMode::Enforce);
+        assert!(strict.stub_gate.is_enforce());
+    }
 }

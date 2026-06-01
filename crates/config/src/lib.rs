@@ -21,7 +21,8 @@ pub use paths::{
     user_data_path, user_data_path_or_relative, user_data_root,
 };
 pub use ui_settings::{
-    normalize_configured_locale, read_locale_setting, settings_path, write_locale_setting,
+    normalize_configured_locale, read_lht_strict_setting, read_locale_setting, settings_path,
+    write_lht_strict_setting, write_locale_setting,
 };
 
 pub const CONFIG_FILE_NAME: &str = "config.toml";

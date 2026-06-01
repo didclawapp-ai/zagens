@@ -663,6 +663,17 @@ reinject_every_steps = 8              # Phase 2 — 目标重注入（§4.7）
 require_checklist_for_writes = false  # Phase 2 — 可选警告
 ```
 
+**一推到底（C1+C2，跨阶段连续推进）：**
+
+```toml
+auto_continue = true                  # 开启「跨 give-up 续跑」兜底（默认 false）
+max_auto_continue_rounds = 16         # 每 turn 自动续跑硬上限（防真卡死空转）
+```
+
+- **C1（默认生效）：** 同一 turn 内，模型每次有质量工具进展后，prose-only 早停会被再次 nudge（不再每 turn 仅一次）；上限仍由 `max_nudges_per_item` / `blocked_nudges_without_progress` 按进展兜底。
+- **C2（`auto_continue=true` 才生效）：** 当常规 nudge 网关已 give-up 但任务图仍真实未完成时，清除 give-up 并重注入更强硬续跑消息，保持 turn 存活，至多 `max_auto_continue_rounds` 轮；遥测见 `long_horizon.auto_continue` / `long_horizon.auto_continue_exhausted`。
+- 模型侧纪律由 `prompts/base.md`「Run to completion（一推到底）」段约束：handoff / cycle / 清单清空 / 目标重注入**都不是停止信号**，仅「真实需用户决策的阻断」与「全部完成且验证通过」才停。
+
 **Phase 2.x（客观信号 + 遥测）：**
 
 ```toml

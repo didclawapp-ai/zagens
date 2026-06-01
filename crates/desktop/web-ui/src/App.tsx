@@ -6,6 +6,7 @@ import {
 } from './api/client';
 import { useT } from './i18n';
 import AppShell from './components/AppShell';
+import OnboardingOverlay from './components/OnboardingOverlay';
 import { useAuditNavActivity } from './lib/useAuditNavActivity';
 import { useHarnessGridData } from './lib/useHarnessGridData';
 import { type ModelParams } from './components/ModelParamsDialog';
@@ -49,6 +50,8 @@ import {
   ACTIVE_INSPECTOR_STORAGE_KEY,
   applyTheme,
   ensureDefaultComposerWorkspace,
+  isOnboarded,
+  markOnboarded,
   loadComposerPrefs,
   loadRouteIntentPreference,
   loadRunModePreference,
@@ -87,6 +90,9 @@ export default function App() {
     null,
   );
   const [routeIntent, setRouteIntent] = useState<DesktopRouteIntentOption>(() => loadRouteIntentPreference());
+  const [onboardingState, setOnboardingState] = useState<'unknown' | 'show' | 'hidden'>(() =>
+    isOnboarded() ? 'hidden' : 'unknown',
+  );
 
   const refreshSessionsRef = useRef<() => Promise<void>>(async () => {});
   const setRuntimeSessionEstablishedRef = useRef<Dispatch<SetStateAction<boolean>>>(() => {});
@@ -195,6 +201,20 @@ export default function App() {
     setMessages,
     notifyRuntimeTransient,
   });
+
+  // First-run decision (runs once): show guided setup only for fresh desktop
+  // installs without a key; silently mark existing/keyed users as onboarded.
+  useEffect(() => {
+    if (onboardingState !== 'unknown') return;
+    if (!desktopHost) return;
+    if (desktopApiKeyConfigured === null) return;
+    if (desktopApiKeyConfigured === true) {
+      markOnboarded();
+      setOnboardingState('hidden');
+    } else {
+      setOnboardingState('show');
+    }
+  }, [onboardingState, desktopHost, desktopApiKeyConfigured]);
 
   const {
     approval,
@@ -695,7 +715,21 @@ export default function App() {
   }, []);
 
   return (
-    <AppShell
+    <>
+      {onboardingState === 'show' && (
+        <OnboardingOverlay
+          runtimeConn={runtimeConn}
+          apiKeyConfigured={desktopApiKeyConfigured}
+          refreshApiKeyStatus={refreshApiKeyStatus}
+          taskTypePreference={taskTypePreference}
+          onTaskTypePreferenceChange={handleTaskTypePreferenceChange}
+          onComplete={() => {
+            markOnboarded();
+            setOnboardingState('hidden');
+          }}
+        />
+      )}
+      <AppShell
       desktopHost={desktopHost}
       selectedWorkspace={selectedWorkspace}
       approval={approval}
@@ -807,6 +841,7 @@ export default function App() {
       onSystemSettingsSaved={handleSystemSettingsSaved}
       onRouteIntentChange={setRouteIntent}
       refreshApiKeyStatus={refreshApiKeyStatus}
-    />
+      />
+    </>
   );
 }

@@ -81,6 +81,7 @@ where
             scratchpad_summary_injected_this_turn: false,
             scratchpad_audit_continue_injected_this_turn: false,
             long_horizon_continue_injected_this_turn: false,
+            long_horizon_auto_continue_rounds: 0,
             topic_memory,
         };
 

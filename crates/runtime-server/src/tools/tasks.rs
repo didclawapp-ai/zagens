@@ -295,10 +295,14 @@ impl ToolSpec for TaskGateRunTool {
         }
 
         let started = Instant::now();
-        let mut cmd = Command::new("/bin/sh");
-        cmd.arg("-lc")
-            .arg(&command)
-            .current_dir(&cwd)
+        // Cross-platform shell selection. The previous hard-coded `/bin/sh` does
+        // not exist on Windows, so every `task_gate_run` (even `echo hello`)
+        // failed to spawn with `os error 3` (ERROR_PATH_NOT_FOUND) at
+        // `duration_ms≈0` — wrongly read as an "F: drive / `\\?\` path" infra
+        // limit. Use `cmd /C` on Windows and `/bin/sh -lc` elsewhere, matching
+        // how `exec_shell` runs the same commands.
+        let mut cmd = gate_shell_command(&command);
+        cmd.current_dir(&cwd)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         let output =
@@ -779,6 +783,23 @@ fn task_result(label: &str, task: &TaskRecord) -> Result<ToolResult, ToolError> 
         "task": task,
     }))
     .map_err(|e| ToolError::execution_failed(e.to_string()))
+}
+
+/// Platform shell wrapper for a `task_gate_run` command string. Windows has no
+/// `/bin/sh`; using it made the gate runner unusable (spawn `os error 3`).
+fn gate_shell_command(command: &str) -> Command {
+    #[cfg(windows)]
+    {
+        let mut cmd = Command::new("cmd");
+        cmd.arg("/C").arg(command);
+        cmd
+    }
+    #[cfg(not(windows))]
+    {
+        let mut cmd = Command::new("/bin/sh");
+        cmd.arg("-lc").arg(command);
+        cmd
+    }
 }
 
 fn resolve_cwd(context: &ToolContext, raw: Option<&str>) -> Result<PathBuf, ToolError> {

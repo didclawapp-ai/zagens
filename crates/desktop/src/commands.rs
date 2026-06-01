@@ -514,6 +514,19 @@ pub fn set_app_locale(locale: String) -> Result<(), String> {
     deepseek_config::write_locale_setting(&locale).map_err(|e| e.to_string())
 }
 
+/// Read the composer LHT strict-mode toggle (`false` when unset).
+#[tauri::command]
+pub async fn get_lht_strict() -> Result<bool, String> {
+    deepseek_config::read_lht_strict_setting().map_err(|e| e.to_string())
+}
+
+/// Persist the composer LHT strict-mode toggle. Read live by the sidecar engine
+/// spawn, so it takes effect on the next turn without a restart.
+#[tauri::command]
+pub fn set_lht_strict(enabled: bool) -> Result<(), String> {
+    deepseek_config::write_lht_strict_setting(enabled).map_err(|e| e.to_string())
+}
+
 // ---------------------------------------------------------------------------
 // Binary file reader — used by the preview system for images, PDFs, and
 // Office documents.  The runtime API (`/v1/threads/:id/workspace/file`)

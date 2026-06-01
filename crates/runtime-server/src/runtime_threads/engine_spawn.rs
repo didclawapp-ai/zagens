@@ -27,6 +27,15 @@ impl RuntimeThreadManager {
         let scratchpad_run_id_slot = std::sync::Arc::new(std::sync::Mutex::new(
             thread.scratchpad_run_id.clone(),
         ));
+        // Live UI settings (read fresh per spawn, like locale): the composer LHT
+        // toggle persists `lht_strict` here so it takes effect next turn without
+        // a sidecar restart.
+        let ui_settings = crate::settings::Settings::load().unwrap_or_default();
+        let mut long_horizon = self.config.long_horizon_config();
+        if ui_settings.lht_strict {
+            long_horizon.enabled = true;
+            long_horizon.mode = deepseek_core::long_horizon::LhtMode::Strict;
+        }
         let store = self.store.clone();
         let thread_id_persist = thread.id.clone();
         let persist_scratchpad: std::sync::Arc<dyn Fn(String) + Send + Sync> =
@@ -75,16 +84,14 @@ impl RuntimeThreadManager {
             topic_memory: crate::topic_memory::settings_from_config(&self.config),
             strict_tool_mode: self.config.strict_tool_mode.unwrap_or(false),
             goal_objective: None,
-            locale_tag: crate::localization::resolve_locale(
-                &crate::settings::Settings::load().unwrap_or_default().locale,
-            )
-            .tag()
-            .to_string(),
+            locale_tag: crate::localization::resolve_locale(&ui_settings.locale)
+                .tag()
+                .to_string(),
             task_type: crate::task_type::TaskType::parse_str(&thread.task_type)
                 .unwrap_or(crate::task_type::TaskType::Code),
             workshop: self.config.workshop.clone(),
             scratchpad: self.config.scratchpad_config(),
-            long_horizon: self.config.long_horizon_config(),
+            long_horizon,
             llm_client_override: None,
         };
 

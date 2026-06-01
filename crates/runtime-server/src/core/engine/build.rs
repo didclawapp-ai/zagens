@@ -176,6 +176,7 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
         config_ext,
         long_horizon_state: LongHorizonSessionState::default(),
         turn_app_mode: AppMode::Agent,
+        turn_lht_mode: None,
         lsp_manager: Arc::clone(&lsp_manager),
         shell_manager: shell_manager.clone(),
         workshop_vars: workshop_vars.clone(),
