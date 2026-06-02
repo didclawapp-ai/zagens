@@ -156,7 +156,9 @@ const ja: TranslationMap = {
   },
   about: {
     description:
-      'Zagens は、DeepSeek V4 向けに構築された、コードおよびオフィスワークスペース用のデスクトップ agent コンソールです。',
+      'DeepSeek V4 エコシステム向けの Agent Harness デスクトップ版。長期コーディング、オフィスワークフロー、ワークスペース認識の Agent タスクに特化。',
+    emailLabel: 'メール',
+    websiteLabel: '公式サイト',
     thirdPartyTitle: 'サードパーティライセンス',
     thirdPartyLicenses:
       'ライセンス全文は実行ファイル横の legal/ フォルダに同梱されています（embedded deepseek-tui runtime 0.8.15 の MIT 表示を含む）。',

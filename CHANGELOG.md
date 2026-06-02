@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Zagens desktop
+
+- **About（关于）:** 产品描述与 [官网](https://zagens.com/) 文案对齐；新增支持邮箱 `didclawapp@gmail.com` 与官网链接。Files: `AboutPanel.tsx`、i18n ×4。
+
 ### Zagens website
 
 - **Copy (官网首页副标题):** 中文改为「面向 DeepSeek V4 生态的 Agent Harness 桌面端…」；英文 meta/subtitle 同步。Files: `website/src/i18n/{zh-Hans,en}.ts`。

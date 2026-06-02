@@ -156,7 +156,9 @@ const en: TranslationMap = {
   },
   about: {
     description:
-      'Zagens is a desktop agent console for code and office workspaces, built for DeepSeek V4.',
+      'A desktop Agent Harness built for the DeepSeek V4 ecosystem — long-horizon coding, office workflows, and workspace-aware agent tasks.',
+    emailLabel: 'Email',
+    websiteLabel: 'Website',
     thirdPartyTitle: 'Third-party licenses',
     thirdPartyLicenses:
       'License texts ship with the app in the legal/ folder next to the executable, including the MIT notice for the embedded deepseek-tui runtime (0.8.15).',
