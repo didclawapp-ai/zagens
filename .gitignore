@@ -1,3 +1,9 @@
+# =============================================================================
+# Remote push policy: only source, configs, and small tracked assets.
+# Build outputs, secrets, local harness results, and internal notes stay local.
+# Website-specific: see website/.gitignore (dist/, node_modules/, .astro/).
+# =============================================================================
+
 # Build artifacts
 /target
 *.pdb
@@ -39,6 +45,8 @@ dist/
 # Generated
 outputs/
 tmp/
+results/lht-eval/
+results/lht-harness/
 crates/desktop/bundle-legal/
 
 # Reference papers / large research blobs (keep locally if needed, don't ship)

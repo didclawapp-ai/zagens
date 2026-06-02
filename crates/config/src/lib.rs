@@ -30,7 +30,8 @@ pub use paths::{
     workspace_meta_file_write, workspace_meta_rel,
 };
 pub use ui_settings::{
-    normalize_configured_locale, read_lht_strict_setting, read_locale_setting, settings_path,
+    LhtComposerMode, normalize_configured_locale, read_lht_composer_mode_setting,
+    read_lht_strict_setting, read_locale_setting, settings_path, write_lht_composer_mode_setting,
     write_lht_strict_setting, write_locale_setting,
 };
 

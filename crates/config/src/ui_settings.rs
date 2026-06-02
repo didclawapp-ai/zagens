@@ -138,26 +138,79 @@ pub fn write_locale_setting(locale: &str) -> Result<()> {
     Ok(())
 }
 
-/// Read the `lht_strict` flag from disk (`false` when absent). Drives the
-/// composer LHT (strict long-horizon) toggle; read live by the sidecar engine
-/// spawn so the switch takes effect on the next turn without a restart.
-pub fn read_lht_strict_setting() -> Result<bool> {
+/// Composer LHT tri-state override (`settings.toml` → read live each engine spawn).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LhtComposerMode {
+    /// Inherit `[long_horizon]` from `config.toml` (default product: enabled + auto).
+    #[default]
+    Auto,
+    /// Force harness on + strict plan/completion gates.
+    Strict,
+    /// Force harness off regardless of `config.toml` `enabled`.
+    Off,
+}
+
+impl LhtComposerMode {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Strict => "strict",
+            Self::Off => "off",
+        }
+    }
+
+    #[must_use]
+    pub fn from_storage(raw: &str) -> Self {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "strict" => Self::Strict,
+            "off" | "disabled" | "false" => Self::Off,
+            _ => Self::Auto,
+        }
+    }
+
+    /// Composer chip cycle: auto → strict → off → auto.
+    #[must_use]
+    pub fn cycle(self) -> Self {
+        match self {
+            Self::Auto => Self::Strict,
+            Self::Strict => Self::Off,
+            Self::Off => Self::Auto,
+        }
+    }
+}
+
+fn parse_lht_composer_mode(doc: &toml::Value) -> LhtComposerMode {
+    if let Some(raw) = doc.get("lht_composer_mode").and_then(toml::Value::as_str) {
+        return LhtComposerMode::from_storage(raw);
+    }
+    // Legacy boolean: true → strict; false/absent → auto (not off).
+    if doc
+        .get("lht_strict")
+        .and_then(toml::Value::as_bool)
+        .unwrap_or(false)
+    {
+        LhtComposerMode::Strict
+    } else {
+        LhtComposerMode::Auto
+    }
+}
+
+/// Read the composer LHT tri-state from disk (`auto` when absent).
+pub fn read_lht_composer_mode_setting() -> Result<LhtComposerMode> {
     let path = settings_path()?;
     if !path.exists() {
-        return Ok(false);
+        return Ok(LhtComposerMode::Auto);
     }
     let content = fs::read_to_string(&path)
         .with_context(|| format!("Failed to read settings from {}", path.display()))?;
     let doc: toml::Value = toml::from_str(&content)
         .with_context(|| format!("Failed to parse settings from {}", path.display()))?;
-    Ok(doc
-        .get("lht_strict")
-        .and_then(toml::Value::as_bool)
-        .unwrap_or(false))
+    Ok(parse_lht_composer_mode(&doc))
 }
 
-/// Persist the `lht_strict` flag (composer LHT strict-mode toggle).
-pub fn write_lht_strict_setting(enabled: bool) -> Result<()> {
+/// Persist the composer LHT tri-state. Removes legacy `lht_strict` when writing.
+pub fn write_lht_composer_mode_setting(mode: LhtComposerMode) -> Result<()> {
     let path = settings_path()?;
     ensure_parent(&path)?;
 
@@ -173,12 +226,30 @@ pub fn write_lht_strict_setting(enabled: bool) -> Result<()> {
     let table = doc
         .as_table_mut()
         .context("settings.toml root must be a table")?;
-    table.insert("lht_strict".to_string(), toml::Value::Boolean(enabled));
+    table.remove("lht_strict");
+    table.insert(
+        "lht_composer_mode".to_string(),
+        toml::Value::String(mode.as_str().to_string()),
+    );
 
     let serialized = toml::to_string_pretty(&doc).context("Failed to serialize settings")?;
     fs::write(&path, serialized)
         .with_context(|| format!("Failed to write settings to {}", path.display()))?;
     Ok(())
+}
+
+/// Legacy: `true` when composer mode is strict.
+pub fn read_lht_strict_setting() -> Result<bool> {
+    Ok(read_lht_composer_mode_setting()? == LhtComposerMode::Strict)
+}
+
+/// Legacy: `true` → strict; `false` → auto (not off).
+pub fn write_lht_strict_setting(enabled: bool) -> Result<()> {
+    write_lht_composer_mode_setting(if enabled {
+        LhtComposerMode::Strict
+    } else {
+        LhtComposerMode::Auto
+    })
 }
 
 fn ensure_parent(path: &Path) -> Result<()> {
@@ -200,5 +271,18 @@ mod tests {
         assert_eq!(normalize_configured_locale("zh-CN"), Some("zh-Hans"));
         assert_eq!(normalize_configured_locale("pt"), Some("pt-BR"));
         assert_eq!(normalize_configured_locale("ar"), None);
+    }
+
+    #[test]
+    fn lht_composer_mode_cycle_and_legacy_migration() {
+        assert_eq!(LhtComposerMode::Auto.cycle(), LhtComposerMode::Strict);
+        assert_eq!(LhtComposerMode::Strict.cycle(), LhtComposerMode::Off);
+        assert_eq!(LhtComposerMode::Off.cycle(), LhtComposerMode::Auto);
+        let legacy: toml::Value = toml::from_str("lht_strict = true").unwrap();
+        assert_eq!(parse_lht_composer_mode(&legacy), LhtComposerMode::Strict);
+        let legacy_off: toml::Value = toml::from_str("lht_strict = false").unwrap();
+        assert_eq!(parse_lht_composer_mode(&legacy_off), LhtComposerMode::Auto);
+        let modern: toml::Value = toml::from_str(r#"lht_composer_mode = "off""#).unwrap();
+        assert_eq!(parse_lht_composer_mode(&modern), LhtComposerMode::Off);
     }
 }

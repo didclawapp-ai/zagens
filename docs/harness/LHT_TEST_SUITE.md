@@ -127,6 +127,17 @@ prompt：<一句话目标，显式点名易漏特性>
 
 **推论(本测试集的立身之本):** 既然随机性既不可控、又会被长程放大,**测试判定就绝不能依赖"输出逐字/逐结构一致"**,只能靠不会随机的客观 oracle(`[verify:]` 跑测试、`conformance.sh` 验特性、SWE-bench `FAIL_TO_PASS`)判**终态行为**。模型每次走的路不同无所谓,终态正确即过。这正是"事实源 > 模型声明"在测试层的硬约束。
 
+### 5.2 自动化：headless L2 测试基建
+
+§5 的观测信号应能**机器采集**,而非只靠桌面 grep。端到端驱动、任务 TOML、harness profile、JSONL 落盘与 PR/nightly gate 的规格见 **[`LHT_EVAL_INFRASTRUCTURE.md`](./LHT_EVAL_INFRASTRUCTURE.md)**（v0.2 定位：**Harness 正规测试方法**,非论文统计）。
+
+| 人工（今天） | 自动化（目标） |
+|--------------|----------------|
+| 粘贴 prompt、盯面板 | `lht-harness-run.ps1` + task spec |
+| grep `sidecar.log` | run 结束解析 `[lht-probe]` → `probe_summary` |
+| 手跑 `scripts/test_redis.sh` | oracle 子进程 + exit code |
+| 「感觉 DEMO3 又假绿了」 | `outcome_class: false_green` + harness 不变量断言 |
+
 ---
 
 ## 6. 最小回归集建议（先跑这三个）

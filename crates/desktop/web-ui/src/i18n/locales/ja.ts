@@ -192,10 +192,14 @@ const ja: TranslationMap = {
     lhtWarning: 'LHT {{detail}}%',
     lhtWarningTitle: 'コンテキスト警告帯',
     lhtModeLabel: 'LHT',
-    lhtModeOnLabel: 'LHT·厳格',
-    lhtModeOffHint: 'LHT 自動：長期タスク規律に従うかはモデルが判断します。クリックで厳格モードを有効化。',
-    lhtModeOnHint:
-      'LHT 厳格モード：コードタスクは先に計画が必須。完了/未実装/auto-verify 再実行/ツールチェーンゲートは強制され回避できません。クリックで無効化。',
+    lhtModeStrictLabel: 'LHT·厳格',
+    lhtModeDisabledLabel: 'LHT·オフ',
+    lhtModeAutoHint:
+      'LHT 自動：モデルが plan した後 config の long_horizon を適用。クリックで 自動→厳格→オフ を循環。',
+    lhtModeStrictHint:
+      'LHT 厳格：先に plan 必須。完了/未実装/verify 再実行/ツールチェーンゲートは enforce。クリックで循環。',
+    lhtModeDisabledHint:
+      'LHT オフ：ハーネス無効（nudge・完了ゲートなし）。クリックで自動に戻る。',
     stop: '停止',
     stopAria: '生成を停止（Escape）',
     sendAria: 'メッセージを送信',
@@ -885,7 +889,11 @@ const ja: TranslationMap = {
   },
   lhtSettings: {
     intro:
-      '~/.zagens/config.toml の [long_horizon] を編集します。Composer の LHT·strict（settings.toml）は次ターンでモードを上書きし、再起動不要です。',
+      '~/.zagens/config.toml の [long_horizon] を編集。Composer 三態（LHT / LHT·厳格 / LHT·オフ）は次ターンで一部を上書き、再起動不要。',
+    composerOverrideOff:
+      'Composer は LHT·オフ — harness 無効。下の「有効化」「デフォルトモード」はこの turn では適用されません。',
+    composerOverrideStrict:
+      'Composer は LHT·厳格 — 下の「デフォルトモード」を上書きし enforce 子門を強制。',
     sectionHarness: '長期 harness',
     sectionCompletionGate: '完了ゲート（タスク非依存）',
     completionGateIntro:

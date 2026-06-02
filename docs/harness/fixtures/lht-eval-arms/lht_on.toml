@@ -1,0 +1,17 @@
+# Harness profile: product default (observe sub-gates)
+
+[long_horizon]
+enabled = true
+mode = "auto"
+max_nudges_per_item = 5
+blocked_nudges_without_progress = 3
+auto_continue = false
+max_auto_continue_rounds = 16
+
+[long_horizon.completion_gate]
+auto_verify_replay = "observe"
+toolchain_gate = "observe"
+stub_gate = "observe"
+max_manifest_rounds = 5
+max_audit_rounds = 5
+max_infra_strikes = 3

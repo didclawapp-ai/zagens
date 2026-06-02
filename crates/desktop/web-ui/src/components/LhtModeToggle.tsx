@@ -2,45 +2,51 @@ import { useEffect, useState, useCallback } from 'react';
 import { useT } from '../i18n';
 
 /**
- * Composer top-bar toggle for LHT (long-horizon) strict mode. Global (not
- * per-session): persisted to `settings.toml` via the `set_lht_strict` Tauri
- * command and read live by the sidecar engine spawn, so it takes effect on the
- * next turn without a restart. `localStorage` mirrors the value for instant UI
- * paint and browser dev mode (where Tauri is unavailable).
+ * Composer top-bar tri-state LHT override: auto → strict → off → auto.
+ * Persisted to `settings.toml` as `lht_composer_mode`; read live by engine
+ * spawn (next turn, no restart). `localStorage` mirrors for instant paint.
  */
-const LHT_STRICT_STORAGE_KEY = 'zagens-lht-strict';
+export type LhtComposerMode = 'auto' | 'strict' | 'off';
 
-function readStored(): boolean {
+const LHT_MODE_STORAGE_KEY = 'zagens-lht-composer-mode';
+
+const CYCLE: LhtComposerMode[] = ['auto', 'strict', 'off'];
+
+function readStored(): LhtComposerMode {
   try {
-    return localStorage.getItem(LHT_STRICT_STORAGE_KEY) === '1';
+    const v = localStorage.getItem(LHT_MODE_STORAGE_KEY);
+    if (v === 'strict' || v === 'off' || v === 'auto') return v;
   } catch {
-    return false;
+    /* ignore */
+  }
+  return 'auto';
+}
+
+function persistLocal(mode: LhtComposerMode): void {
+  try {
+    localStorage.setItem(LHT_MODE_STORAGE_KEY, mode);
+  } catch {
+    /* ignore */
   }
 }
 
-function persistLocal(enabled: boolean): void {
-  try {
-    localStorage.setItem(LHT_STRICT_STORAGE_KEY, enabled ? '1' : '0');
-  } catch {
-    /* ignore quota / disabled storage */
-  }
-}
-
-async function readRuntimeLhtStrict(): Promise<boolean | null> {
+async function readRuntimeMode(): Promise<LhtComposerMode | null> {
   try {
     const { invoke } = await import('@tauri-apps/api/core');
-    return await invoke<boolean>('get_lht_strict');
+    const raw = await invoke<string>('get_lht_composer_mode');
+    if (raw === 'strict' || raw === 'off' || raw === 'auto') return raw;
+    return 'auto';
   } catch {
-    return null; // browser dev / Tauri unavailable
+    return null;
   }
 }
 
-async function writeRuntimeLhtStrict(enabled: boolean): Promise<void> {
+async function writeRuntimeMode(mode: LhtComposerMode): Promise<void> {
   try {
     const { invoke } = await import('@tauri-apps/api/core');
-    await invoke('set_lht_strict', { enabled });
+    await invoke('set_lht_composer_mode', { mode });
   } catch {
-    /* browser dev / Tauri unavailable — UI-only */
+    /* browser dev */
   }
 }
 
@@ -50,15 +56,14 @@ interface Props {
 
 export default function LhtModeToggle({ disabled = false }: Props) {
   const { t } = useT();
-  const [strict, setStrict] = useState<boolean>(readStored);
+  const [mode, setMode] = useState<LhtComposerMode>(readStored);
 
-  // Reconcile with the persisted runtime value on mount (settings.toml wins).
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const runtime = await readRuntimeLhtStrict();
+      const runtime = await readRuntimeMode();
       if (!cancelled && runtime != null) {
-        setStrict(runtime);
+        setMode(runtime);
         persistLocal(runtime);
       }
     })();
@@ -67,25 +72,48 @@ export default function LhtModeToggle({ disabled = false }: Props) {
     };
   }, []);
 
-  const toggle = useCallback(() => {
-    setStrict((prev) => {
-      const next = !prev;
+  const cycle = useCallback(() => {
+    setMode((prev) => {
+      const idx = CYCLE.indexOf(prev);
+      const next = CYCLE[(idx + 1) % CYCLE.length] ?? 'auto';
       persistLocal(next);
-      void writeRuntimeLhtStrict(next);
+      void writeRuntimeMode(next);
       return next;
     });
   }, []);
+
+  const label =
+    mode === 'strict'
+      ? t('composer.lhtModeStrictLabel')
+      : mode === 'off'
+        ? t('composer.lhtModeDisabledLabel')
+        : t('composer.lhtModeLabel');
+
+  const title =
+    mode === 'strict'
+      ? t('composer.lhtModeStrictHint')
+      : mode === 'off'
+        ? t('composer.lhtModeDisabledHint')
+        : t('composer.lhtModeAutoHint');
+
+  const chipClass =
+    mode === 'strict'
+      ? 'composer-chip active text-accent'
+      : mode === 'off'
+        ? 'composer-chip text-t-text-muted opacity-60 line-through'
+        : 'composer-chip text-t-text-muted';
 
   return (
     <button
       type="button"
       disabled={disabled}
-      onClick={toggle}
-      aria-pressed={strict}
-      title={strict ? t('composer.lhtModeOnHint') : t('composer.lhtModeOffHint')}
-      className={`composer-chip ${strict ? 'active text-accent' : 'text-t-text-muted'}`}
+      onClick={cycle}
+      aria-pressed={mode !== 'off'}
+      aria-label={label}
+      title={title}
+      className={chipClass}
     >
-      {strict ? t('composer.lhtModeOnLabel') : t('composer.lhtModeLabel')}
+      {label}
     </button>
   );
 }

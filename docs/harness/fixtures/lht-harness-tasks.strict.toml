@@ -1,0 +1,62 @@
+# LHT strict-mode E2E tasks — use with Profile harness_strict (or lht_strict)
+#   .\scripts\lht-harness-run.ps1 -TaskSpec docs\harness\fixtures\lht-harness-tasks.strict.toml `
+#       -Profile harness_strict -RunLabel strict-run -KeepWorkspace
+
+[meta]
+schema_version = 1
+description = "DEMO3-smoke under LHT strict + enforce sub-gates"
+suite_ref = "docs/harness/test-cases/DEMO3-monkey-interpreter.md"
+
+# ── Primary: minimal Monkey + verify discipline (strict full path) ─────────
+
+[[task]]
+id = "demo3-strict-smoke"
+tier = "standard"
+suite_ref = "DEMO3-monkey-interpreter.md (smoke scope)"
+workspace_seed = "docs/harness/fixtures/strict-task-seed"
+turn_timeout_sec = 5400
+requires = ["go", "bash"]
+harness_profile = "harness_strict"
+prompt = """
+你在一个已有 go.mod 的 Go 工程里实现 **最小 Monkey 解释器**（单仓库、串行、不要 spawn 子代理）。
+工作区已包含 scripts/lht_strict_oracle.sh —— 最终必须以它 exit 0 为准。
+
+必须实现并真跑通：
+1. 整数取模运算符 %（例如 10 % 3 == 1）；
+2. 标识符允许数字：counter1、x2 等（首字符字母或下划线，后可跟数字）；
+3. 最小 REPL 或 `go run` 入口能执行 .monkey 脚本。
+
+必须提供 scripts/conformance.sh，至少覆盖：
+- conformance/modulo.monkey（输出含 ok modulo）
+- conformance/ident_digits.monkey（输出含 ok ident-digits）
+（脚本内用你实现的解释器执行；任一脚本失败或非零退出则整体失败。）
+
+checklist 纪律（LHT strict 会 enforce）：
+- 每一项「编译/测试/跑示例」类验收必须写 [verify: <命令>] 并真实执行；
+- 禁止用「创建 conformance 脚本」代替「跑通 conformance」。
+
+完成标准：
+- go build ./...、go vet ./...、go test ./... 通过；
+- bash scripts/conformance.sh 全绿；
+- bash scripts/lht_strict_oracle.sh 全绿（不要改 oracle 为永远通过）。
+"""
+oracle_cmd = "bash scripts/lht_strict_oracle.sh"
+
+# ── Optional: Redis under strict (same infra as standard, stricter harness) ─
+
+[[task]]
+id = "redis-s1-strict"
+tier = "standard"
+suite_ref = "codecrafters-redis.md §1 stage 1-2 + strict profile"
+turn_timeout_sec = 3600
+requires = ["cargo", "bash", "redis-cli"]
+harness_profile = "harness_strict"
+prompt = """
+用 Rust 从零实现 Redis 协议服务器（TCP + 手写 RESP，不用 Redis 库）。串行、不要子代理。
+
+仅完成：监听 127.0.0.1:6379 + PING→PONG。
+提供 scripts/test_redis.sh（redis-cli 断言），checklist 里所有可运行验收必须带 [verify:] 并真跑。
+
+完成标准：cargo build 通过；bash scripts/test_redis.sh 全绿。
+"""
+oracle_cmd = "bash scripts/test_redis.sh"

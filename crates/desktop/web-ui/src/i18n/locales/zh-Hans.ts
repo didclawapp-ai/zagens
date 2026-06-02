@@ -189,10 +189,13 @@ const zhHans = {
     lhtWarning: 'LHT {{detail}}%',
     lhtWarningTitle: '上下文进入预警带，建议在断点换脑',
     lhtModeLabel: 'LHT',
-    lhtModeOnLabel: 'LHT·严格',
-    lhtModeOffHint: 'LHT 自动：模型自行决定是否按长程纪律推进。点按开启严格模式。',
-    lhtModeOnHint:
-      'LHT 严格模式已开启：代码任务必须先建计划；完成门、半成品门、auto-verify 复跑与工具链门均强制执行、无法避让。点按关闭。',
+    lhtModeStrictLabel: 'LHT·严格',
+    lhtModeDisabledLabel: 'LHT·关',
+    lhtModeAutoHint:
+      'LHT 自动：模型 plan 后按 config.toml 的长程设置介入。点按循环：自动 → 严格 → 关。',
+    lhtModeStrictHint:
+      'LHT 严格：必须先 plan，完成门/半成品门/verify 复跑/工具链门均 enforce。点按循环。',
+    lhtModeDisabledHint: 'LHT 已关闭：不注入续写 nudge、不跑完成门禁。点按循环回到自动。',
     stop: '停止',
     stopAria: '停止生成（Escape）',
     sendAria: '发送消息',
@@ -877,7 +880,11 @@ const zhHans = {
   },
   lhtSettings: {
     intro:
-      '写入 ~/.zagens/config.toml 的 [long_horizon]。Composer 顶栏 LHT·strict（settings.toml）可在下一 turn 临时覆盖模式，无需重启。',
+      '写入 ~/.zagens/config.toml 的 [long_horizon]。Composer 顶栏三态（LHT / LHT·严格 / LHT·关）在下一 turn 覆盖下方部分项，无需重启 sidecar。',
+    composerOverrideOff:
+      'Composer 当前为 LHT·关 — runtime harness 已硬关闭，下方「启用」与「默认模式」在此 turn 不生效。',
+    composerOverrideStrict:
+      'Composer 当前为 LHT·严格 — 覆盖下方「默认模式」并强制 enforce 子门。',
     sectionHarness: '长程 harness',
     sectionCompletionGate: '完成门禁（任务无关）',
     completionGateIntro:

@@ -1,0 +1,73 @@
+# Build Zagens static site and deploy to your VPS (rsync over SSH).
+#
+# Required GitHub repository secrets (Settings → Secrets and variables → Actions):
+#   WEBSITE_DEPLOY_HOST   — e.g. 43.160.233.39
+#   WEBSITE_DEPLOY_USER   — dedicated Linux user (see docs/website/DEPLOY.md)
+#   WEBSITE_DEPLOY_KEY    — private key (PEM) matching that user's authorized_keys
+#   WEBSITE_DEPLOY_PATH   — web root on server, e.g. /var/www/zagens
+#
+# Optional: WEBSITE_DEPLOY_PORT (default 22)
+
+name: Website
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'website/**'
+      - '.github/workflows/website.yml'
+      - 'docs/website/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-deploy:
+    name: Build and deploy static site
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: website
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Deploy to VPS (rsync)
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        env:
+          DEPLOY_HOST: ${{ secrets.WEBSITE_DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.WEBSITE_DEPLOY_USER }}
+          DEPLOY_KEY: ${{ secrets.WEBSITE_DEPLOY_KEY }}
+          DEPLOY_PATH: ${{ secrets.WEBSITE_DEPLOY_PATH }}
+          DEPLOY_PORT: ${{ secrets.WEBSITE_DEPLOY_PORT || '22' }}
+        run: |
+          set -euo pipefail
+          missing=""
+          [ -z "$DEPLOY_HOST" ] && missing="$missing WEBSITE_DEPLOY_HOST"
+          [ -z "$DEPLOY_USER" ] && missing="$missing WEBSITE_DEPLOY_USER"
+          [ -z "$DEPLOY_KEY" ] && missing="$missing WEBSITE_DEPLOY_KEY"
+          [ -z "$DEPLOY_PATH" ] && missing="$missing WEBSITE_DEPLOY_PATH"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing GitHub secrets:$missing (see docs/website/DEPLOY.md)"
+            exit 1
+          fi
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$DEPLOY_PORT" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+          rsync -avz --delete \
+            -e "ssh -i ~/.ssh/deploy_key -p $DEPLOY_PORT -o StrictHostKeyChecking=yes" \
+            dist/ "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/"
+        working-directory: website

@@ -1,0 +1,235 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import Button from '@/components/Button.astro';
+import { getCopy, localePath, type Locale } from '@/i18n';
+
+interface Props {
+  locale: Locale;
+  currentPath: string;
+}
+
+const { locale, currentPath } = Astro.props;
+const copy = getCopy(locale);
+const t = copy.home;
+
+const featureIcons = [
+  // Local sidecar
+  '<rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><line x1="7" y1="7" x2="7.01" y2="7"/><line x1="7" y1="17" x2="7.01" y2="17"/>',
+  // Code & Office modes
+  '<rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="9" x2="9" y2="20"/>',
+  // Long-horizon tasks
+  '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
+  // Workspace-native
+  '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+];
+---
+
+<BaseLayout
+  locale={locale}
+  copy={copy}
+  title={t.title}
+  description={copy.meta.defaultDescription}
+  currentPath={currentPath}
+>
+  <section class="relative overflow-hidden border-b border-card-border bg-gradient-to-b from-white via-canvas to-canvas-alt">
+    <div class="hero-glow pointer-events-none absolute inset-0"></div>
+    <div class="relative mx-auto grid max-w-6xl gap-12 px-4 py-20 sm:px-6 lg:grid-cols-[1.05fr_1fr] lg:items-center lg:py-28">
+      <div class="fade-up">
+        <p class="mb-4 inline-flex items-center gap-2 rounded-full border border-card-border bg-card/70 px-3 py-1 text-sm text-muted backdrop-blur">
+          <span class="rounded-full bg-accent-soft px-2 py-0.5 text-xs font-semibold text-accent">
+            {copy.common.previewBadge}
+          </span>
+          <span>{copy.common.windowsOnly}</span>
+        </p>
+        <h1 class="text-4xl font-semibold leading-[1.1] tracking-tight text-ink sm:text-5xl lg:text-6xl">
+          {t.title}
+        </h1>
+        <p class="mt-5 max-w-xl text-lg leading-relaxed text-muted">{t.subtitle}</p>
+        <div class="mt-8 flex flex-wrap gap-3">
+          <Button href={localePath(locale, '/download')} size="lg">{t.ctaDownload}</Button>
+          <Button href={localePath(locale, '/install')} variant="secondary" size="lg">
+            {t.ctaInstall}
+          </Button>
+        </div>
+        <ul class="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted">
+          {
+            t.heroHighlights.map((item) => (
+              <li class="inline-flex items-center gap-2">
+                <svg class="h-4 w-4 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                {item}
+              </li>
+            ))
+          }
+        </ul>
+        <p class="mt-6 max-w-xl text-sm text-subtle">{t.disclaimer}</p>
+      </div>
+
+      <div class="fade-up relative" style="animation-delay:120ms">
+        <div class="absolute -inset-6 -z-10 rounded-[2rem] bg-accent-soft blur-2xl"></div>
+        <div class="window-chrome relative overflow-hidden rounded-2xl border border-card-border bg-card pt-9 shadow-card">
+          <img
+            src="/screenshots/hero.png"
+            alt={t.heroAlt}
+            width="1200"
+            height="750"
+            class="w-full"
+            loading="eager"
+          />
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="mx-auto max-w-6xl px-4 py-20 sm:px-6">
+    <div class="mx-auto max-w-2xl text-center">
+      <p class="text-sm font-semibold uppercase tracking-wide text-accent">{t.featuresEyebrow}</p>
+      <h2 class="mt-2 text-3xl font-semibold tracking-tight text-ink sm:text-4xl">{t.featuresTitle}</h2>
+      <p class="mt-4 text-lg leading-relaxed text-muted">{t.featuresSubtitle}</p>
+    </div>
+    <div class="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+      {
+        t.features.map((feature, i) => (
+          <article class="group rounded-2xl border border-card-border bg-card p-6 shadow-sm transition-all hover:-translate-y-1 hover:shadow-card">
+            <span class="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-accent-soft text-accent transition-colors group-hover:bg-accent group-hover:text-white">
+              <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" set:html={featureIcons[i]} />
+            </span>
+            <div class="mt-5 flex items-center gap-2">
+              <h3 class="text-lg font-semibold text-ink">{feature.title}</h3>
+              {'badge' in feature && feature.badge && (
+                <span class="rounded-full border border-warning/40 bg-warning-bg px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warning">
+                  {feature.badge}
+                </span>
+              )}
+            </div>
+            <p class="mt-2 text-sm leading-relaxed text-muted">{feature.body}</p>
+          </article>
+        ))
+      }
+    </div>
+  </section>
+
+  <section class="border-y border-card-border bg-canvas-alt">
+    <div class="mx-auto max-w-6xl px-4 py-20 sm:px-6">
+      <div class="mx-auto max-w-2xl text-center">
+        <p class="text-sm font-semibold uppercase tracking-wide text-accent">{t.howEyebrow}</p>
+        <h2 class="mt-2 text-3xl font-semibold tracking-tight text-ink sm:text-4xl">{t.howTitle}</h2>
+      </div>
+      <ol class="mt-14 grid gap-8 md:grid-cols-3">
+        {
+          t.howSteps.map((step, i) => (
+            <li class="relative rounded-2xl border border-card-border bg-card p-6">
+              <span class="flex h-10 w-10 items-center justify-center rounded-full bg-accent text-base font-semibold text-white">
+                {i + 1}
+              </span>
+              <h3 class="mt-5 text-lg font-semibold text-ink">{step.title}</h3>
+              <p class="mt-2 text-sm leading-relaxed text-muted">{step.body}</p>
+            </li>
+          ))
+        }
+      </ol>
+    </div>
+  </section>
+
+  <section class="mx-auto max-w-6xl px-4 py-20 sm:px-6">
+    <div class="mx-auto max-w-2xl text-center">
+      <p class="text-sm font-semibold uppercase tracking-wide text-accent">{t.capabilitiesEyebrow}</p>
+      <h2 class="mt-2 text-3xl font-semibold tracking-tight text-ink sm:text-4xl">{t.capabilitiesTitle}</h2>
+      <p class="mt-4 text-lg leading-relaxed text-muted">{t.capabilitiesSubtitle}</p>
+    </div>
+
+    <div class="mt-10 fade-up">
+      <div class="window-chrome relative overflow-hidden rounded-2xl border border-card-border bg-card pt-9 shadow-card">
+        <img
+          src="/UI02.png"
+          alt={t.capabilitiesScreenshotAlt}
+          width="1920"
+          height="1080"
+          class="w-full"
+          loading="lazy"
+        />
+      </div>
+    </div>
+
+    <div class="mt-12 grid gap-10 lg:grid-cols-[1fr_auto] lg:items-start">
+      <ul class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {
+          t.capabilities.map((cap) => (
+            <li class="flex items-center gap-3 rounded-xl border border-card-border bg-card px-4 py-3 text-sm font-medium text-ink shadow-sm">
+              <svg class="h-4 w-4 shrink-0 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              {cap}
+            </li>
+          ))
+        }
+      </ul>
+
+      <div class="shrink-0 rounded-2xl border border-card-border bg-canvas-alt p-6 lg:w-80">
+        <h3 class="text-sm font-semibold text-ink">{t.requirementsTitle}</h3>
+        <ul class="mt-3 space-y-2 text-sm text-muted">
+          {
+            t.requirements.map((item) => (
+              <li class="flex items-start gap-2">
+                <svg class="mt-0.5 h-4 w-4 shrink-0 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                {item}
+              </li>
+            ))
+          }
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="mx-auto max-w-6xl px-4 pb-20 sm:px-6">
+    <div class="relative overflow-hidden rounded-3xl bg-gradient-to-br from-accent to-accent-hover px-6 py-16 text-center shadow-card sm:px-12">
+      <h2 class="text-3xl font-semibold tracking-tight text-white sm:text-4xl">{t.ctaTitle}</h2>
+      <p class="mx-auto mt-4 max-w-xl text-lg leading-relaxed text-white/85">{t.ctaSubtitle}</p>
+      <div class="mt-8 flex flex-wrap justify-center gap-3">
+        <a
+          href={localePath(locale, '/download')}
+          class="inline-flex items-center justify-center rounded-lg bg-white px-6 py-3 text-base font-semibold text-accent shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+        >
+          {t.ctaDownload}
+        </a>
+        <a
+          href={localePath(locale, '/install')}
+          class="inline-flex items-center justify-center rounded-lg border border-white/40 px-6 py-3 text-base font-medium text-white transition-colors hover:bg-white/10"
+        >
+          {t.ctaInstall}
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <section class="border-t border-card-border">
+    <div class="mx-auto max-w-3xl px-4 py-20 sm:px-6">
+      <h2 class="text-3xl font-semibold tracking-tight text-ink">{t.faqTitle}</h2>
+      <div class="mt-8 space-y-3">
+        {
+          t.faq.map((item) => (
+            <details class="group rounded-xl border border-card-border bg-card p-5">
+              <summary class="flex cursor-pointer list-none items-center justify-between gap-4 text-base font-medium text-ink marker:content-[''] [&::-webkit-details-marker]:hidden">
+                {item.q}
+                <svg
+                  class="h-5 w-5 shrink-0 text-subtle transition-transform group-open:rotate-180"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  aria-hidden="true"
+                >
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </summary>
+              <p class="mt-3 text-sm leading-relaxed text-muted">{item.a}</p>
+            </details>
+          ))
+        }
+      </div>
+    </div>
+  </section>
+</BaseLayout>

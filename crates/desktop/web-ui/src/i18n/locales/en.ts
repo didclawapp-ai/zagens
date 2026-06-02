@@ -192,10 +192,14 @@ const en: TranslationMap = {
     lhtWarning: 'LHT {{detail}}%',
     lhtWarningTitle: 'Context in LHT warning band — consider cycle at next checkpoint',
     lhtModeLabel: 'LHT',
-    lhtModeOnLabel: 'LHT·strict',
-    lhtModeOffHint: 'LHT auto: the model decides whether to follow long-horizon discipline. Click to enable strict mode.',
-    lhtModeOnHint:
-      'LHT strict mode ON: code tasks must plan first; completion, stub, auto-verify replay, and toolchain gates are enforced and cannot be bypassed. Click to disable.',
+    lhtModeStrictLabel: 'LHT·strict',
+    lhtModeDisabledLabel: 'LHT·off',
+    lhtModeAutoHint:
+      'LHT auto: inherits [long_horizon] from config after the model plans. Click to cycle: auto → strict → off.',
+    lhtModeStrictHint:
+      'LHT strict: plan-first + completion/stub/verify/toolchain gates enforced. Click to cycle.',
+    lhtModeDisabledHint:
+      'LHT off: harness disabled (no nudges or completion gates). Click to cycle back to auto.',
     stop: 'Stop',
     stopAria: 'Stop generation (Escape)',
     sendAria: 'Send message',
@@ -885,7 +889,11 @@ const en: TranslationMap = {
   },
   lhtSettings: {
     intro:
-      'Writes ~/.zagens/config.toml [long_horizon]. Composer LHT·strict (settings.toml) overrides mode on the next turn without restart.',
+      'Writes ~/.zagens/config.toml [long_horizon]. Composer tri-state (LHT / LHT·strict / LHT·off) overrides some fields on the next turn without restart.',
+    composerOverrideOff:
+      'Composer is LHT·off — runtime harness is hard-disabled; Enable and Default mode below do not apply this turn.',
+    composerOverrideStrict:
+      'Composer is LHT·strict — overrides Default mode below and forces enforce sub-gates.',
     sectionHarness: 'Long-horizon harness',
     sectionCompletionGate: 'Completion gate (task-agnostic)',
     completionGateIntro:

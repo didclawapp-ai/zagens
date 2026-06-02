@@ -1,0 +1,17 @@
+# Harness profile: strict mode + enforce sub-gates
+
+[long_horizon]
+enabled = true
+mode = "strict"
+max_nudges_per_item = 5
+blocked_nudges_without_progress = 3
+auto_continue = false
+max_auto_continue_rounds = 16
+
+[long_horizon.completion_gate]
+auto_verify_replay = "enforce"
+toolchain_gate = "enforce"
+stub_gate = "enforce"
+max_manifest_rounds = 5
+max_audit_rounds = 5
+max_infra_strikes = 3

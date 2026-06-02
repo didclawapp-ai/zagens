@@ -312,7 +312,7 @@ DEMO4/DEMO6 的节点流进一步验证了多类出口的修复：DEMO6 复跑�
 3. **消融实验：** 三层门 + stub 门各自的边际贡献（关掉某层通过率/假绿率如何变）。
 4. **跨任务族泛化：** 已规划但未系统跑——CodeCrafters Redis（协议即契约）、SWE-bench Verified 子集（修复路径）、MicroStack（微服务框架、接口稳定性）。
 5. **跨模型验证：** 当前仅 DeepSeek V4。需在不同模型上验证分类法与门禁的普适性。
-6. **评测基建：** 目前缺 headless 批量跑 + 自动判 pass/fail；2 万行任务单次约 45 分钟，10 次约 7.5 小时，需更快的 proxy 任务把单次压到分钟级。
+6. **评测基建：** 端到端 harness 测试方案见 [`LHT_EVAL_INFRASTRUCTURE.md`](./LHT_EVAL_INFRASTRUCTURE.md)（L2 smoke → 回归集 → gate）；论文若需统计可复用同一 JSONL，但基建一等目标是产品回归。
 
 ### 7.6 案例证据：LHT·strict + CRAFT + Audit 自发宏流程（LabelMakePro v2.67.1）
 

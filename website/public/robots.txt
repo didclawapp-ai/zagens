@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://zagens.com/sitemap-index.xml

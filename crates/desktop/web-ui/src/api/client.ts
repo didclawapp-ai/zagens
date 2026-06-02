@@ -1614,6 +1614,15 @@ export async function saveLhtSettings(settings: LhtSettings): Promise<void> {
   await invoke('save_lht_settings', { settings });
 }
 
+export type LhtComposerMode = 'auto' | 'strict' | 'off';
+
+export async function fetchLhtComposerMode(): Promise<LhtComposerMode> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  const raw = await invoke<string>('get_lht_composer_mode');
+  if (raw === 'strict' || raw === 'off' || raw === 'auto') return raw;
+  return 'auto';
+}
+
 // ========== CRAFT blackboards (B-L3) ==========
 
 export interface BlackboardListResponse {

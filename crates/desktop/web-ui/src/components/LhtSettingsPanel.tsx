@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useT } from '../i18n';
 import {
+  fetchLhtComposerMode,
   fetchLhtSettings,
   saveLhtSettings,
+  type LhtComposerMode,
   type LhtGateMode,
   type LhtSettings,
 } from '../api/client';
@@ -18,6 +20,7 @@ const GATE_OPTIONS: LhtGateMode[] = ['off', 'observe', 'enforce'];
 export default function LhtSettingsPanel({ desktopHost, streaming = false }: Props) {
   const { t } = useT();
   const [settings, setSettings] = useState<LhtSettings | null>(null);
+  const [composerMode, setComposerMode] = useState<LhtComposerMode>('auto');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -27,9 +30,12 @@ export default function LhtSettingsPanel({ desktopHost, streaming = false }: Pro
       return;
     }
     let cancelled = false;
-    fetchLhtSettings()
-      .then((s) => {
-        if (!cancelled) setSettings(s);
+    Promise.all([fetchLhtSettings(), fetchLhtComposerMode()])
+      .then(([s, mode]) => {
+        if (!cancelled) {
+          setSettings(s);
+          setComposerMode(mode);
+        }
       })
       .catch(() => {})
       .finally(() => {
@@ -72,11 +78,24 @@ export default function LhtSettingsPanel({ desktopHost, streaming = false }: Pro
 
   const gateLabel = (mode: LhtGateMode) => t(`lhtSettings.gate_${mode}` as 'lhtSettings.gate_off');
 
+  const harnessFieldsDisabled = composerMode === 'off' || composerMode === 'strict';
+
   return (
     <div className="p-4 space-y-5 overflow-y-auto h-full">
       <p className="text-xs text-t-text-muted leading-relaxed border-b border-divider pb-3">
         {t('lhtSettings.intro')}
       </p>
+
+      {composerMode === 'off' && (
+        <p className="text-xs text-amber-600 dark:text-amber-400 leading-relaxed rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+          {t('lhtSettings.composerOverrideOff')}
+        </p>
+      )}
+      {composerMode === 'strict' && (
+        <p className="text-xs text-accent leading-relaxed rounded-lg border border-accent/30 bg-accent/10 px-3 py-2">
+          {t('lhtSettings.composerOverrideStrict')}
+        </p>
+      )}
 
       {!desktopHost && (
         <p className="text-xs text-t-text-muted leading-relaxed">{t('settings.notAvailable')}</p>
@@ -98,6 +117,7 @@ export default function LhtSettingsPanel({ desktopHost, streaming = false }: Pro
                 type="checkbox"
                 className="shrink-0 w-4 h-4 accent-accent rounded"
                 checked={settings.enabled}
+                disabled={composerMode === 'off'}
                 onChange={(e) => update('enabled', e.target.checked)}
               />
             </label>
@@ -108,6 +128,7 @@ export default function LhtSettingsPanel({ desktopHost, streaming = false }: Pro
               <select
                 className={selectCls}
                 value={settings.mode}
+                disabled={harnessFieldsDisabled}
                 onChange={(e) => update('mode', e.target.value as LhtSettings['mode'])}
               >
                 <option value="auto">{t('lhtSettings.modeAuto')}</option>

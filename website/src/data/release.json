@@ -1,0 +1,21 @@
+{
+  "version": "0.6.0-preview.1",
+  "publishedAt": "2026-05-28",
+  "githubRepo": "zagens-desktop/zagens",
+  "githubReleaseTag": "zagens-v0.6.0-preview.1",
+  "platforms": {
+    "windows-x64": {
+      "zip": {
+        "filename": "Zagens_0.6.0-preview.1_x64-setup.exe.zip",
+        "url": "",
+        "sha256": ""
+      },
+      "exe": {
+        "filename": "Zagens_0.6.0-preview.1_x64-setup.exe",
+        "url": "",
+        "sha256": ""
+      }
+    }
+  },
+  "notes": "Placeholder until npm run sync:manifest runs against a published GitHub Release."
+}

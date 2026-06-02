@@ -192,10 +192,14 @@ const ptBr: TranslationMap = {
     lhtWarning: 'LHT {{detail}}%',
     lhtWarningTitle: 'Faixa de aviso de contexto',
     lhtModeLabel: 'LHT',
-    lhtModeOnLabel: 'LHT·estrito',
-    lhtModeOffHint: 'LHT automático: o modelo decide se segue a disciplina de longo prazo. Clique para ativar o modo estrito.',
-    lhtModeOnHint:
-      'Modo LHT estrito ATIVO: tarefas de código devem planejar primeiro; portões de conclusão, stub, replay auto-verify e toolchain são aplicados e não podem ser ignorados. Clique para desativar.',
+    lhtModeStrictLabel: 'LHT·estrito',
+    lhtModeDisabledLabel: 'LHT·off',
+    lhtModeAutoHint:
+      'LHT auto: herda [long_horizon] do config após o modelo planejar. Clique para alternar: auto → estrito → off.',
+    lhtModeStrictHint:
+      'LHT estrito: plano primeiro + portões enforce. Clique para alternar.',
+    lhtModeDisabledHint:
+      'LHT off: harness desligado (sem nudges nem portões). Clique para voltar ao auto.',
     stop: 'Parar',
     stopAria: 'Parar geração (Escape)',
     sendAria: 'Enviar mensagem',
@@ -885,7 +889,11 @@ const ptBr: TranslationMap = {
   },
   lhtSettings: {
     intro:
-      'Grava [long_horizon] em ~/.zagens/config.toml. LHT·strict no Composer (settings.toml) sobrescreve o modo no próximo turno, sem reiniciar.',
+      'Grava [long_horizon] em ~/.zagens/config.toml. Tri-estado do Composer (LHT / LHT·estrito / LHT·off) sobrescreve campos no próximo turno.',
+    composerOverrideOff:
+      'Composer em LHT·off — harness desligado; Ativar e Modo padrão abaixo não valem neste turno.',
+    composerOverrideStrict:
+      'Composer em LHT·estrito — sobrescreve Modo padrão e força sub-portões enforce.',
     sectionHarness: 'Harness de longo prazo',
     sectionCompletionGate: 'Portão de conclusão (agnóstico à tarefa)',
     completionGateIntro:

@@ -22,11 +22,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Zagens website
+
+- **Copy (官网首页副标题):** 中文改为「面向 DeepSeek V4 生态的 Agent Harness 桌面端…」；英文 meta/subtitle 同步。Files: `website/src/i18n/{zh-Hans,en}.ts`。
+
+- **Feature (官网 MVP — `website/`):** 新增 Astro 5 + Tailwind 静态站：首页、下载、安装指引（SmartScreen / zip Unblock）、Privacy/Terms 草案；en + zh-Hans 路由；`src/data/release.json` + `scripts/sync-download-manifest.mjs`（GitHub Release → 下载 URL / SHA-256 / `public/download/latest.json`）；品牌资产自 `crates/desktop/icons/` 与 `assets/screenshot.png`；CI [`.github/workflows/website.yml`](.github/workflows/website.yml) 构建后经 SSH/rsync 部署至自有 VPS（见 [`docs/website/DEPLOY.md`](docs/website/DEPLOY.md)）。见 [`website/README.md`](website/README.md)。
+
 ### Runtime
+
+- **Feature (Composer LHT 三态开关 — auto / strict / off):** Composer 顶栏由二态 boolean 改为循环三态（`LHT` → `LHT·严格` → `LHT·关`）；`settings.toml` 新字段 `lht_composer_mode`（legacy `lht_strict` 迁移为 strict/auto）。**off** 在 engine spawn 硬设 `long_horizon.enabled=false`；**strict** 强制 enforce；**auto** 继承 `config.toml`。Tauri `get/set_lht_composer_mode`；LHT 配置面板显示 Composer 覆盖提示。Files: `crates/config/src/ui_settings.rs`、`engine_spawn.rs`、`LhtModeToggle.tsx`、`LhtSettingsPanel.tsx`、i18n ×4。
+
+- **Tooling (LHT harness E2E tests — Phase 0–1):** 新增 headless 端到端测试：`scripts/lht-harness-smoke.ps1`、`scripts/lht-harness-run.ps1`、`scripts/lht-harness-report.py`、`scripts/lht_harness_util.py`、`scripts/lht-harness-lib.ps1`；修正 `runtime-longrun-baseline.ps1` 为 `zagens-runtime --port --config`。新增 **strict 任务集** [`docs/harness/fixtures/lht-harness-tasks.strict.toml`](docs/harness/fixtures/lht-harness-tasks.strict.toml) + 种子 [`docs/harness/fixtures/strict-task-seed/`](docs/harness/fixtures/strict-task-seed/)。规格 [`docs/harness/LHT_EVAL_INFRASTRUCTURE.md`](docs/harness/LHT_EVAL_INFRASTRUCTURE.md)。
 
 - **Fix (LHT 层2 verify — Windows 上 `grep`/`rg`/`test -d` 原生探测，消除 infra 假 RED):** `label_rust` Round 2 实证：checklist 项 `[verify: grep -c not_impl …]` 在 Windows PowerShell 下因无 `grep` 被判 `exit_class: infra`，manifest 8 轮耗尽 (`manifest_rounds_exhausted`) 而代码已达标。新增 `verify_platform.rs`：manifest 门在执行 shell 前对常见 Unix 探测（`grep`/`rg` 计数或匹配、`test -d`/`test ! -d`）做**跨平台 in-process** 扫描；对 `not_impl`/`todo!`/`unimplemented` 等 stub 模式采用 **absence 语义**（零匹配 = 通过）。`verification_satisfied` 扩展等价 normalized 形式。Fixture：[`lht-label-rust-round2-checklist.md`](docs/harness/fixtures/lht-label-rust-round2-checklist.md)、[`lht-refactor-round2-checklist.md`](docs/harness/fixtures/lht-refactor-round2-checklist.md)。Files: `crates/runtime-server/src/long_horizon/{verify_platform.rs,manifest_gate.rs,verify.rs,mod.rs}`。
 
 ### Docs
+
+- **Docs (LHT 端到端测试基建 v0.2):** 重写 [`docs/harness/LHT_EVAL_INFRASTRUCTURE.md`](docs/harness/LHT_EVAL_INFRASTRUCTURE.md) 定位 —— **Harness 正规 L2 测试方法**（三层金字塔、oracle + harness 不变量、profile 对照、outcome 分诊、PR/nightly gate）；非论文统计一等目标。夹具 [`fixtures/lht-eval-tasks.example.toml`](docs/harness/fixtures/lht-eval-tasks.example.toml)、[`fixtures/lht-eval-arms/`](docs/harness/fixtures/lht-eval-arms/)（规划 rename 为 `lht-harness-*`）。
 
 - **Docs (LHT Round 2 — label_rust Tauri 补全清单):** 新增 [`docs/harness/fixtures/lht-label-rust-round2-checklist.md`](docs/harness/fixtures/lht-label-rust-round2-checklist.md)（Round 1 后 43× `not_impl`、adapters/sync 接线、`npm run build` / `cargo tauri build` 验收；含可复制开场指令 + 17 项 `[verify:]` checklist）；[`lht-refactor-round2-checklist.md`](docs/harness/fixtures/lht-refactor-round2-checklist.md) 交叉引用。
 
@@ -37,6 +49,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Docs (LHT Phase 4 — LHT↔CRAFT 组合式宏观循环规格):** 在 [`docs/harness/LONG_HORIZON_CODE_TASKS.md`](docs/harness/LONG_HORIZON_CODE_TASKS.md) 将 Phase 4 从「可选 CRAFT 末段」扩展为 **LHT 实现段 → CRAFT 质检段 → LHT 补全段** 的有界宏观循环（`max_macro_cycles`、blockers→checklist 编排、CRAFT 作缺口枚举器非法官、与 Composable 层2/3 micro 闭环 compose）；新增 §7.4 大 refactor 走查、§15.5 实施 PR 草案。交叉引用：[`COMPOSABLE_HARNESS.md`](docs/harness/COMPOSABLE_HARNESS.md) §4 macro 第四维、[`harness/README.md`](docs/harness/README.md) 索引更新。动机：单次 LHT realistic ~70–80%，宏观 1–2 轮目标 ~85–90%+（label_rust 类迁移实测与设计对话）。
 
 ### Zagens desktop
+
+- **Feature (Composer LHT 三态):** 顶栏 `LhtModeToggle` 单击循环 **LHT → LHT·严格 → LHT·关**；`settings.toml` 字段 `lht_composer_mode`。`LhtSettingsPanel` 在 off/strict 时显示 Composer 覆盖提示并灰显被覆盖项。
 
 - **Fix (Zagens 启动页):** 连接等待阶段改为全屏 `bg-canvas`，仅显示「启动中，请稍等」；移除欢迎语、进度条与连接状态文案。API Key / 模式步骤 UI 不变。 首次创建 `~/.zagens/` 时写入 `config.advanced.example.toml`（OpenRouter / OpenAI / Ollama / vLLM / SGLang 常用模型 id、profiles 示例；**不自动加载**、UI 不展示）。复制片段到 `config.toml` 后重启 sidecar。仓库 `config.example.toml` 同步补充 `[providers.openrouter]` / `[providers.openai]`。
 

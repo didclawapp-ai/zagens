@@ -210,11 +210,11 @@ pub struct Settings {
     pub max_input_history: usize,
     /// Default model to use
     pub default_model: Option<String>,
-    /// Force LHT strict mode (composer top-bar toggle). When true, the sidecar
-    /// engine spawn raises `[long_horizon] mode` to `strict` (and enables the
-    /// harness) so a code task must plan first and the completion/stub gates
-    /// run in enforce — read live per turn, no restart needed.
-    pub lht_strict: bool,
+    /// Composer LHT tri-state override: `auto` | `strict` | `off`. Read live per
+    /// turn via [`deepseek_config::read_lht_composer_mode_setting`] in engine spawn;
+    /// kept here so `Settings::save` does not drop the field.
+    #[serde(default = "default_lht_composer_mode")]
+    pub lht_composer_mode: String,
 }
 
 impl Default for Settings {
@@ -249,9 +249,13 @@ impl Default for Settings {
             cost_currency: "usd".to_string(),
             max_input_history: 100,
             default_model: None,
-            lht_strict: false,
+            lht_composer_mode: default_lht_composer_mode(),
         }
     }
+}
+
+fn default_lht_composer_mode() -> String {
+    "auto".to_string()
 }
 
 impl Settings {
@@ -268,8 +272,18 @@ impl Settings {
         } else {
             let content = std::fs::read_to_string(&path)
                 .with_context(|| format!("Failed to read settings from {}", path.display()))?;
+            let doc: toml::Value = toml::from_str(&content)
+                .with_context(|| format!("Failed to parse settings from {}", path.display()))?;
             let mut s: Settings = toml::from_str(&content)
                 .with_context(|| format!("Failed to parse settings from {}", path.display()))?;
+            if doc.get("lht_composer_mode").is_none()
+                && doc
+                    .get("lht_strict")
+                    .and_then(toml::Value::as_bool)
+                    .unwrap_or(false)
+            {
+                s.lht_composer_mode = "strict".to_string();
+            }
             s.default_mode = normalize_mode(&s.default_mode).to_string();
             s.composer_density = normalize_composer_density(&s.composer_density).to_string();
             s.transcript_spacing = normalize_transcript_spacing(&s.transcript_spacing).to_string();
@@ -278,6 +292,9 @@ impl Settings {
                 .unwrap_or("en")
                 .to_string();
             s.default_model = s.default_model.as_deref().and_then(normalize_default_model);
+            s.lht_composer_mode = deepseek_config::LhtComposerMode::from_storage(&s.lht_composer_mode)
+                .as_str()
+                .to_string();
             s
         };
         settings.apply_env_overrides();

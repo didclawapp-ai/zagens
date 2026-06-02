@@ -1,0 +1,67 @@
+# LHT Harness 端到端测试 — 任务目录（Phase 1 示例）
+# 驱动：scripts/lht-harness-run.ps1（待实现）
+# 规格：docs/harness/LHT_EVAL_INFRASTRUCTURE.md §7
+# 案例来源：docs/harness/LHT_TEST_SUITE.md · test-cases/codecrafters-redis.md
+
+[meta]
+schema_version = 1
+description = "CodeCrafters Redis 子集 — L2-Standard 快 proxy（P0 回归）"
+suite_ref = "docs/harness/test-cases/codecrafters-redis.md"
+
+# ── Stage 1：PING/PONG ─────────────────────────────────────────────
+
+[[task]]
+id = "redis-s1-ping"
+tier = "standard"
+suite_ref = "codecrafters-redis.md §1 stage 1-2"
+turn_timeout_sec = 2400
+requires = ["cargo", "bash"]
+prompt = """
+用 Rust 从零实现一个兼容 Redis 协议的服务器（不要用 Redis 客户端/服务端库；TCP + 手写 RESP）。
+串行完成、不要 spawn 子代理。
+
+本任务仅完成前两阶段：
+1. 监听 127.0.0.1:6379，接受 TCP 连接；
+2. 正确解析 RESP（数组/批量字符串），响应 PING → +PONG。
+
+工程要求：
+- cargo 工程结构；
+- 提供 scripts/test_redis.sh：启动服务器，用 redis-cli 断言 PING→PONG，结束后关停；
+- 错误命令返回 RESP 错误，不得 panic 拖垮进程。
+
+完成标准（必须用 [verify:] 写进 checklist 并真实跑过）：
+cargo build 通过、bash scripts/test_redis.sh 全绿。
+"""
+oracle_cmd = "bash scripts/test_redis.sh"
+
+# ── Stage 2：ECHO ─────────────────────────────────────────────────
+
+[[task]]
+id = "redis-s2-echo"
+tier = "standard"
+suite_ref = "codecrafters-redis.md §1 stage 4"
+turn_timeout_sec = 3000
+requires = ["cargo", "bash", "redis-cli"]
+prompt = """
+（接续）在同一 Rust Redis 兼容服务器上增加 ECHO：ECHO hello → 原样返回。
+保持 PING/PONG 仍可用。更新 scripts/test_redis.sh 覆盖 ECHO 断言。
+串行完成、不要 spawn 子代理。
+完成标准：cargo build + bash scripts/test_redis.sh 全绿；checklist 含 [verify:] 项且已实跑。
+"""
+oracle_cmd = "bash scripts/test_redis.sh"
+
+# ── Stage 3：SET/GET ───────────────────────────────────────────────
+
+[[task]]
+id = "redis-s3-setget"
+tier = "regression"
+suite_ref = "codecrafters-redis.md §1 stage 5-6"
+turn_timeout_sec = 3600
+requires = ["cargo", "bash", "redis-cli"]
+prompt = """
+（接续）实现 SET key value / GET key（不存在返回 nil）。
+更新 scripts/test_redis.sh：SET foo bar、GET foo=bar、GET missing=nil。
+串行完成、不要 spawn 子代理。
+完成标准：cargo build + bash scripts/test_redis.sh 全绿。
+"""
+oracle_cmd = "bash scripts/test_redis.sh"

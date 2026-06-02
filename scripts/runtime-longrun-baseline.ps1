@@ -275,15 +275,24 @@ if ($DryRun) {
     exit 0
 }
 
-# Release build: debug `deepseek-runtime` can stack-overflow on Windows (2026-05-22).
-$binary = Join-Path $workspaceRoot "target\release\deepseek-runtime.exe"
-if (-not (Test-Path $binary)) {
-    Write-Host "Building deepseek-runtime (release)..."
+# Release build: debug runtime can stack-overflow on Windows (2026-05-22).
+$binary = $null
+foreach ($name in @("zagens-runtime.exe", "deepseek-runtime.exe")) {
+    $candidate = Join-Path $workspaceRoot "target\release\$name"
+    if (Test-Path $candidate) { $binary = $candidate; break }
+}
+if (-not $binary) {
+    Write-Host "Building zagens-runtime (release)..."
     Push-Location $workspaceRoot
     cargo build -p deepseek-runtime-server --release
     Pop-Location
     if ($LASTEXITCODE -ne 0) { throw "Build failed" }
+    foreach ($name in @("zagens-runtime.exe", "deepseek-runtime.exe")) {
+        $candidate = Join-Path $workspaceRoot "target\release\$name"
+        if (Test-Path $candidate) { $binary = $candidate; break }
+    }
 }
+if (-not $binary) { throw "Runtime binary not found after build" }
 
 $resolvedModel = Get-ResolvedModel
 
@@ -298,7 +307,7 @@ for ($run = 1; $run -le $Runs; $run++) {
 
     $env:DEEPSEEK_RUNTIME_DIR = $dataDir
     $proc = Start-Process -FilePath $binary `
-        -ArgumentList @("serve", "--http", "--port", $port) `
+        -ArgumentList @("--port", $port, "--config", $configPath) `
         -PassThru -NoNewWindow `
         -RedirectStandardOutput (Join-Path $env:TEMP "deepseek-baseline-stdout.log") `
         -RedirectStandardError (Join-Path $env:TEMP "deepseek-baseline-stderr.log")

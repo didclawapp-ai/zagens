@@ -28,13 +28,21 @@ impl RuntimeThreadManager {
             thread.scratchpad_run_id.clone(),
         ));
         // Live UI settings (read fresh per spawn, like locale): the composer LHT
-        // toggle persists `lht_strict` here so it takes effect next turn without
-        // a sidecar restart.
+        // tri-state persists in `settings.toml` so it takes effect next turn
+        // without a sidecar restart.
         let ui_settings = crate::settings::Settings::load().unwrap_or_default();
+        let composer_mode = deepseek_config::read_lht_composer_mode_setting()
+            .unwrap_or(deepseek_config::LhtComposerMode::Auto);
         let mut long_horizon = self.config.long_horizon_config();
-        if ui_settings.lht_strict {
-            long_horizon.enabled = true;
-            long_horizon.mode = deepseek_core::long_horizon::LhtMode::Strict;
+        match composer_mode {
+            deepseek_config::LhtComposerMode::Strict => {
+                long_horizon.enabled = true;
+                long_horizon.mode = deepseek_core::long_horizon::LhtMode::Strict;
+            }
+            deepseek_config::LhtComposerMode::Off => {
+                long_horizon.enabled = false;
+            }
+            deepseek_config::LhtComposerMode::Auto => {}
         }
         let store = self.store.clone();
         let thread_id_persist = thread.id.clone();

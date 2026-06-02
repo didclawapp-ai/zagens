@@ -1,0 +1,4 @@
+# Harness profile: LHT disabled (negative control / bare agent baseline)
+
+[long_horizon]
+enabled = false

@@ -1,0 +1,7 @@
+{
+  "description": "Placeholder baseline for lht-harness-report.py --baseline. Update after a known-good nightly.",
+  "total_runs": 0,
+  "outcome_counts": {},
+  "gate_failure_count": 0,
+  "rows": []
+}

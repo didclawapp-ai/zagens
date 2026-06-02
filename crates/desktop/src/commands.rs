@@ -517,14 +517,31 @@ pub fn set_app_locale(locale: String) -> Result<(), String> {
     deepseek_config::write_locale_setting(&locale).map_err(|e| e.to_string())
 }
 
-/// Read the composer LHT strict-mode toggle (`false` when unset).
+/// Read the composer LHT tri-state (`auto` | `strict` | `off`).
+#[tauri::command]
+pub async fn get_lht_composer_mode() -> Result<String, String> {
+    Ok(deepseek_config::read_lht_composer_mode_setting()
+        .map_err(|e| e.to_string())?
+        .as_str()
+        .to_string())
+}
+
+/// Persist the composer LHT tri-state. Takes effect on the next turn without restart.
+#[tauri::command]
+pub fn set_lht_composer_mode(mode: String) -> Result<(), String> {
+    deepseek_config::write_lht_composer_mode_setting(deepseek_config::LhtComposerMode::from_storage(
+        &mode,
+    ))
+    .map_err(|e| e.to_string())
+}
+
+/// Legacy: read strict flag (`true` only when mode is strict).
 #[tauri::command]
 pub async fn get_lht_strict() -> Result<bool, String> {
     deepseek_config::read_lht_strict_setting().map_err(|e| e.to_string())
 }
 
-/// Persist the composer LHT strict-mode toggle. Read live by the sidecar engine
-/// spawn, so it takes effect on the next turn without a restart.
+/// Legacy: `true` → strict; `false` → auto (not off).
 #[tauri::command]
 pub fn set_lht_strict(enabled: bool) -> Result<(), String> {
     deepseek_config::write_lht_strict_setting(enabled).map_err(|e| e.to_string())

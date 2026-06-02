@@ -1,0 +1,16 @@
+# Harness profile: continue/nudge only — completion gates off
+# Use when verifying layer-1 behavior in isolation
+
+[long_horizon]
+enabled = true
+mode = "auto"
+max_nudges_per_item = 5
+blocked_nudges_without_progress = 3
+auto_continue = true
+max_auto_continue_rounds = 16
+
+[long_horizon.completion_gate]
+mode = "off"
+auto_verify_replay = "off"
+toolchain_gate = "off"
+stub_gate = "off"
