@@ -22,6 +22,8 @@ export const zhHans: SiteCopy = {
     learnMore: '了解更多',
     backHome: '返回首页',
     lastUpdated: '最后更新',
+    supportEmail: 'didclawapp@gmail.com',
+    contact: '联系',
   },
   home: {
     title: '桌面 Agent Harness',
@@ -130,9 +132,8 @@ export const zhHans: SiteCopy = {
     exeHint: '首次运行可能出现 SmartScreen 提示。',
     sha256: 'SHA-256',
     verifyHint: 'PowerShell 校验：Get-FileHash .\\file -Algorithm SHA256',
-    releaseNotes: 'Release 标签',
-    noReleaseYet:
-      '首个 GitHub Release 发布前，下载链接为占位。打 tag 后请运行 npm run sync:manifest 同步。',
+    releaseNotes: '版本',
+    noReleaseYet: '安装包暂不可用。请将安装文件上传至站点 download 目录后重新部署。',
     apiKeyNote: '安装完成后，在 Zagens 引导流程中填写 API Key。',
   },
   install: {
@@ -167,8 +168,7 @@ export const zhHans: SiteCopy = {
   },
   privacy: {
     title: '隐私政策',
-    intro:
-      '本文档说明 Zagens（预览版）在本机如何处理数据。仅为发布前草案，不构成法律意见 — 上线前请法务审阅。',
+    intro: '本文档说明 Zagens（预览版）在本机如何处理数据。',
     sections: [
       {
         heading: '本地优先',
@@ -188,7 +188,7 @@ export const zhHans: SiteCopy = {
       },
       {
         heading: '联系',
-        body: '问题咨询：上线前请将此处替换为正式支持邮箱。',
+        body: '问题咨询、反馈或隐私相关请求：',
       },
     ],
   },
@@ -215,6 +215,10 @@ export const zhHans: SiteCopy = {
       {
         heading: '责任限制',
         body: '在法律允许范围内，作者不对预览软件使用导致的数据丢失、停机或损害承担责任。',
+      },
+      {
+        heading: '联系',
+        body: '支持与反馈：',
       },
     ],
   },

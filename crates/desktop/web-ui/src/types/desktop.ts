@@ -33,7 +33,7 @@ export function parseDesktopRunModeId(raw: unknown): DesktopRunModeId | undefine
 
 /**
  * Optional intent passed as `route_intent` on thread/stream turns.
- * Runtime matches against `~/.deepseek/routing_rules.json` (RoutingPanel).
+ * Runtime matches against `~/.zagens/routing_rules.json` (RoutingPanel).
  */
 export type DesktopRouteIntentOption = 'off' | 'follow_runmode' | 'code' | 'chat' | 'research';
 

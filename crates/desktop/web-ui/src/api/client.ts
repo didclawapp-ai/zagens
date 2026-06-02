@@ -1058,7 +1058,7 @@ export async function addMcpServer(req: AddMcpServerRequest): Promise<void> {
   }
 }
 
-/** Merge MCP servers (and optional timeouts) from a JSON fragment into ~/.deepseek/mcp.json. */
+/** Merge MCP servers (and optional timeouts) from a JSON fragment into ~/.zagens/mcp.json. */
 export async function mergeMcpConfigJson(fragmentText: string): Promise<{ merged_servers: number }> {
   let parsed: unknown;
   try {

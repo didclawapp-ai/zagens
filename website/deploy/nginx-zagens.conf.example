@@ -2,9 +2,9 @@
 # Replace server_name and root if you use a different path.
 
 server {
-    listen 80;
-    listen [::]:80;
-    server_name zagens.com www.zagens.com;
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name zagens.com www.zagens.com 43.160.233.39;
 
     root /var/www/zagens;
     index index.html;

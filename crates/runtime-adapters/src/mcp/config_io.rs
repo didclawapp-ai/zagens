@@ -221,7 +221,7 @@ pub fn merge_mcp_json_fragment(path: &Path, fragment: &str) -> Result<usize> {
         let mut inner = obj.clone();
         inner.remove("name");
         let server: McpServerConfig = serde_json::from_value(serde_json::Value::Object(inner))
-            .context("服务器字段无效（可与 ~/.deepseek/mcp.json 中条目对照）")?;
+            .context("服务器字段无效（可与 ~/.zagens/mcp.json 中条目对照）")?;
         if server.command.is_none() && server.url.is_none() {
             anyhow::bail!("必须提供 command 或 url");
         }

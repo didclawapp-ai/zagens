@@ -26,9 +26,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **About（关于）:** 产品描述与 [官网](https://zagens.com/) 文案对齐；新增支持邮箱 `didclawapp@gmail.com` 与官网链接。Files: `AboutPanel.tsx`、i18n ×4。
 
+### Zagens desktop
+
+- **Fix (UI 文案 — 用户数据路径 ~/.deepseek → ~/.zagens):** MCP、会话、API Key、skills 等 i18n 四语言路径统一为 `~/.zagens/`；runtime MCP merge 错误提示同步。Files: `web-ui/src/i18n/locales/*`, `types/desktop.ts`, `api/client.ts`, `runtime-adapters/.../config_io.rs`。
+- **Fix (UI 文案 — 移除已 sunset 的 CLI/TUI 引用):** 设置/API Key、快照恢复、技能面板、系统设置等 i18n 四语言去掉「CLI/TUI 共用配置」「TUI /restore」「终端 TUI /skill install」等过时表述，改为 desktop + `~/.zagens` + runtime sidecar。Files: `web-ui/src/i18n/locales/{zh-Hans,en,ja,pt-BR}.ts`。
+
 ### Zagens website
 
-- **Copy (官网首页副标题):** 中文改为「面向 DeepSeek V4 生态的 Agent Harness 桌面端…」；英文 meta/subtitle 同步。Files: `website/src/i18n/{zh-Hans,en}.ts`。
+- **Copy (官网):** 支持邮箱 `didclawapp@gmail.com`（Privacy/Terms/Footer/Download）；下载改为主站 `/download/` 托管，移除 GitHub Release 占位文案。Files: `website/src/i18n/*`, `website/src/data/{site,release}.json`, `website/src/views/*`, `Footer.astro`.
 
 - **Feature (官网 MVP — `website/`):** 新增 Astro 5 + Tailwind 静态站：首页、下载、安装指引（SmartScreen / zip Unblock）、Privacy/Terms 草案；en + zh-Hans 路由；`src/data/release.json` + `scripts/sync-download-manifest.mjs`（GitHub Release → 下载 URL / SHA-256 / `public/download/latest.json`）；品牌资产自 `crates/desktop/icons/` 与 `assets/screenshot.png`；CI [`.github/workflows/website.yml`](.github/workflows/website.yml) 构建后经 SSH/rsync 部署至自有 VPS（见 [`docs/website/DEPLOY.md`](docs/website/DEPLOY.md)）。见 [`website/README.md`](website/README.md)。
 

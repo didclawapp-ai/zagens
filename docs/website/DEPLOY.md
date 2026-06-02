@@ -28,7 +28,32 @@ git ls-files --others --exclude-standard
 
 ## 二、服务器首次初始化（43.160.233.39）
 
+当前规划实例（腾讯云轻量 · 新加坡）：**Ubuntu**，公网 **`43.160.233.39`**，内网 `10.3.0.14`，2 核 / 4GB / 60GB。默认 SSH 用户一般为 **`ubuntu`**（以控制台「登录」说明为准）。
+
+### 0. 腾讯云防火墙（控制台，必做）
+
+在实例 **防火墙** 面板放行（来源 `0.0.0.0/0` 或按需收紧）：
+
+| 协议 | 端口 | 用途 |
+|------|------|------|
+| TCP | 22 | SSH |
+| TCP | 80 | HTTP 官网 |
+| TCP | 443 | HTTPS（证书就绪后） |
+
+未放行 80/443 时，外网无法访问 Nginx，CI rsync 虽可能成功但浏览器打不开站点。
+
 以下以 **Ubuntu 22.04+** 为例；其他发行版请对照包名调整。
+
+### 一键脚本（推荐）
+
+在本机将脚本拷到服务器后执行（把 `ubuntu` 换成你的登录名）：
+
+```powershell
+scp f:\DeepSeek-TUI-desktop\website\deploy\server-init.sh ubuntu@43.160.233.39:~/
+ssh ubuntu@43.160.233.39 "sudo bash ~/server-init.sh"
+```
+
+或登录服务器后手动粘贴运行 [`website/deploy/server-init.sh`](../../website/deploy/server-init.sh)。
 
 ### 1. 登录并安装 Nginx
 
@@ -39,6 +64,20 @@ sudo systemctl enable nginx
 ```
 
 ### 2. 站点目录与专用部署用户
+
+**WinSCP / SFTP 用 `ubuntu` 上传时：** 站点目录建议属主为 `ubuntu`，并把 `zagens-deploy` 加入 `ubuntu` 组，这样手动上传与 GitHub Actions（rsync）都能写入：
+
+```bash
+sudo chown -R ubuntu:ubuntu /var/www/zagens
+sudo chmod -R 775 /var/www/zagens
+sudo usermod -aG ubuntu zagens-deploy
+# 重新登录 SFTP 或执行 newgrp ubuntu 后生效；已有文件也一并改属主：
+sudo find /var/www/zagens -exec chown ubuntu:ubuntu {} +
+```
+
+Nginx 以 `www-data` 运行，只需目录对「其他用户」可读（`775` 通常足够）；若 403，再执行：`sudo chmod -R g+rX /var/www/zagens`。
+
+### 2b. 仅 CI 部署、不用 SFTP 时的原始做法
 
 ```bash
 sudo useradd -m -s /bin/bash -d /home/zagens-deploy zagens-deploy
@@ -57,7 +96,13 @@ sudo chmod -R g+rX /var/www/zagens
 
 ### 3. 为 GitHub Actions 配置 SSH 密钥
 
-在**本机**生成仅用于部署的密钥（不要复用个人密钥）：
+在**本机 Windows** 生成仅用于部署的密钥（输出在 `secrets-local/`，已 gitignore）：
+
+```powershell
+pwsh -File scripts/website/new-deploy-key.ps1
+```
+
+或 Git Bash：
 
 ```bash
 ssh-keygen -t ed25519 -f ./zagens-website-deploy -N "" -C "github-actions-website"

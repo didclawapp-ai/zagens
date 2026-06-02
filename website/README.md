@@ -44,19 +44,11 @@ npm run build
 npm run preview
 ```
 
-## Sync download links after a GitHub Release
+## Hosting installers (private repo)
 
-After tagging `zagens-v0.6.0-preview.x` and publishing assets:
+Installers live under **`public/download/`** (served as `https://zagens.com/download/*`). Update `src/data/release.json` when bumping version — no public GitHub Release required.
 
-```bash
-cd website
-GITHUB_REPO=owner/repo RELEASE_TAG=zagens-v0.6.0-preview.1 npm run sync:manifest
-npm run build
-```
-
-With `gh` CLI authenticated, the script pulls asset URLs and computes SHA-256. Without `gh`, it writes GitHub download URL templates.
-
-`public/download/latest.json` is regenerated for the Tauri updater. **Updater signatures are empty until `pubkey` is configured** in the desktop crate — manual download remains the primary path for preview.
+Optional: `npm run sync:manifest` still works if you later publish GitHub Releases (needs `gh` CLI).
 
 ## Deploy (GitHub Actions → VPS)
 
@@ -71,10 +63,11 @@ Optional: run `npm run sync:manifest` in CI before `build` when `RELEASE_TAG` is
 - `public/icon.png`, `favicon.ico` — copied from `crates/desktop/icons/`
 - `public/screenshots/hero.png` — from repo `assets/screenshot.png` (replace with real Zagens UI shot before PH launch)
 
-## Before public launch
+## Launch checklist
 
-- [ ] Replace privacy/terms placeholders (support email, legal review)
-- [ ] Run `sync:manifest` against real GitHub Release
-- [ ] Swap hero screenshot for current Zagens desktop UI
-- [ ] Point DNS to static host
-- [ ] Add PH-sized OG image (`public/og-image.png`, 1200×630)
+- [x] Support email: `didclawapp@gmail.com` (Privacy / Terms / Footer)
+- [x] Hero screenshot — Zagens desktop UI
+- [x] DNS → zagens.com
+- [ ] Product Hunt assets (1270×760 gallery, OG 1200×630) — in progress
+- [ ] Legal review of Privacy/Terms (optional)
+- [ ] `public/download/latest.json` + updater pubkey when OTA is ready

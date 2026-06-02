@@ -14,10 +14,8 @@ const copy = getCopy(locale);
 const t = copy.download;
 
 const win = release.platforms['windows-x64'];
-const hasUrls = Boolean(win.zip.url && win.exe.url);
-const releaseUrl = release.githubRepo
-  ? `https://github.com/${release.githubRepo}/releases/tag/${release.githubReleaseTag}`
-  : '#';
+const zipReady = Boolean(win.zip.url);
+const exeReady = Boolean(win.exe.url);
 ---
 
 <BaseLayout locale={locale} copy={copy} title={t.title} currentPath={currentPath}>
@@ -30,7 +28,7 @@ const releaseUrl = release.githubRepo
     </p>
 
     {
-      !hasUrls && (
+      !zipReady && (
         <div
           class="mt-8 rounded-xl border border-warning/30 bg-warning-bg px-4 py-3 text-sm text-ink"
           role="status"
@@ -52,14 +50,12 @@ const releaseUrl = release.githubRepo
         </div>
         <div class="mt-5 flex flex-wrap gap-3">
           {
-            hasUrls ? (
-              <Button href={win.zip.url} external>
+            zipReady ? (
+              <Button href={win.zip.url} external={win.zip.url.startsWith('http')}>
                 {locale === 'zh-Hans' ? '下载 zip' : 'Download zip'}
               </Button>
             ) : (
-              <Button href={releaseUrl} external variant="secondary">
-                GitHub Releases
-              </Button>
+              <span class="text-sm text-subtle">—</span>
             )
           }
           <Button href={localePath(locale, '/install')} variant="secondary">
@@ -81,8 +77,8 @@ const releaseUrl = release.githubRepo
         <p class="mt-2 font-mono text-xs text-subtle">{win.exe.filename}</p>
         <div class="mt-5">
           {
-            hasUrls && win.exe.url ? (
-              <Button href={win.exe.url} external variant="secondary">
+            exeReady ? (
+              <Button href={win.exe.url} external={win.exe.url.startsWith('http')} variant="secondary">
                 {locale === 'zh-Hans' ? '下载 .exe' : 'Download .exe'}
               </Button>
             ) : (
@@ -103,15 +99,11 @@ const releaseUrl = release.githubRepo
     <p class="mt-8 text-sm text-muted">{t.verifyHint}</p>
     <p class="mt-4 text-sm text-muted">{t.apiKeyNote}</p>
 
-    {
-      release.githubReleaseTag && (
-        <p class="mt-6 text-sm">
-          {t.releaseNotes}:{' '}
-          <a class="text-accent hover:underline" href={releaseUrl} target="_blank" rel="noopener noreferrer">
-            {release.githubReleaseTag}
-          </a>
-        </p>
-      )
-    }
+    <p class="mt-6 text-sm text-muted">
+      {copy.common.contact}:{' '}
+      <a class="text-accent hover:underline" href={`mailto:${copy.common.supportEmail}`}>
+        {copy.common.supportEmail}
+      </a>
+    </p>
   </div>
 </BaseLayout>

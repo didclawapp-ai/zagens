@@ -17,6 +17,8 @@ export const en = {
     learnMore: 'Learn more',
     backHome: 'Back to home',
     lastUpdated: 'Last updated',
+    supportEmail: 'didclawapp@gmail.com',
+    contact: 'Contact',
   },
   home: {
     title: 'Desktop agent harness',
@@ -127,9 +129,9 @@ export const en = {
     exeHint: 'May show a SmartScreen prompt on first run.',
     sha256: 'SHA-256',
     verifyHint: 'Compare with PowerShell: Get-FileHash .\\file -Algorithm SHA256',
-    releaseNotes: 'Release tag',
+    releaseNotes: 'Version',
     noReleaseYet:
-      'Download links are placeholders until the first GitHub Release is published. Run npm run sync:manifest after tagging.',
+      'Installer files are not available yet. Upload them to the site download folder and redeploy.',
     apiKeyNote: 'After install, open Zagens and enter your API key in the onboarding flow.',
   },
   install: {
@@ -166,7 +168,7 @@ export const en = {
   privacy: {
     title: 'Privacy policy',
     intro:
-      'This draft describes how Zagens (preview) handles data on your device. It is not legal advice — review before public launch.',
+      'This policy describes how Zagens (preview) handles data on your device.',
     sections: [
       {
         heading: 'Local-first by design',
@@ -186,7 +188,7 @@ export const en = {
       },
       {
         heading: 'Contact',
-        body: 'Questions: replace this placeholder with your support email before launch.',
+        body: 'Questions, feedback, or privacy requests:',
       },
     ],
   },
@@ -214,6 +216,10 @@ export const en = {
       {
         heading: 'Limitation of liability',
         body: 'To the maximum extent permitted by law, the authors are not liable for data loss, downtime, or damages arising from use of preview software.',
+      },
+      {
+        heading: 'Contact',
+        body: 'Support and feedback:',
       },
     ],
   },
