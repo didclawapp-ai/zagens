@@ -5,6 +5,7 @@ mod export_path;
 mod runtime_proxy;
 mod sidecar;
 mod terminal;
+mod update;
 mod window_registry;
 mod workspace_defaults;
 
@@ -59,6 +60,7 @@ fn main() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(WindowRegistry::new());
 
     builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
@@ -246,6 +248,8 @@ fn main() {
             window_registry::register_window_thread,
             window_registry::thread_owned_by_window,
             window_registry::close_current_window,
+            update::get_update_status,
+            update::install_app_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Zagens");

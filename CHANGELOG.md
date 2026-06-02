@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Zagens desktop
 
+- **Feature (OTA 应用内更新):** 接入 `tauri-plugin-updater`（`get_update_status` / `install_app_update`、关于页检查/安装、启动 toast）；`createUpdaterArtifacts` + 仓库公钥；[`docs/desktop/UPDATER.md`](docs/desktop/UPDATER.md)；`website/scripts/sync-download-manifest.mjs` 写入 `latest.json` 的 NSIS 签名与 setup.exe URL。CI Release 支持 `TAURI_SIGNING_PRIVATE_KEY`。
 - **About（关于）:** 产品描述与 [官网](https://zagens.com/) 文案对齐；新增支持邮箱 `didclawapp@gmail.com` 与官网链接。Files: `AboutPanel.tsx`、i18n ×4。
 
 ### Zagens desktop
@@ -38,6 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Feature (官网 MVP — `website/`):** 新增 Astro 5 + Tailwind 静态站：首页、下载、安装指引（SmartScreen / zip Unblock）、Privacy/Terms 草案；en + zh-Hans 路由；`src/data/release.json` + `scripts/sync-download-manifest.mjs`（GitHub Release → 下载 URL / SHA-256 / `public/download/latest.json`）；品牌资产自 `crates/desktop/icons/` 与 `assets/screenshot.png`；CI [`.github/workflows/website.yml`](.github/workflows/website.yml) 构建后经 SSH/rsync 部署至自有 VPS（见 [`docs/website/DEPLOY.md`](docs/website/DEPLOY.md)）。见 [`website/README.md`](website/README.md)。
 
 ### Runtime
+
+- **Skills (随包安装):** 新增 bundled **`multi-search-engine`**（16 引擎多源搜索，`SKILL.md` + `config.json` + `references/*`）；bundled skills marker **v5**。Files: `crates/runtime-server/assets/skills/multi-search-engine/`, `crates/runtime-server/src/skills/system.rs`。
 
 - **Feature (Composer LHT 三态开关 — auto / strict / off):** Composer 顶栏由二态 boolean 改为循环三态（`LHT` → `LHT·严格` → `LHT·关`）；`settings.toml` 新字段 `lht_composer_mode`（legacy `lht_strict` 迁移为 strict/auto）。**off** 在 engine spawn 硬设 `long_horizon.enabled=false`；**strict** 强制 enforce；**auto** 继承 `config.toml`。Tauri `get/set_lht_composer_mode`；LHT 配置面板显示 Composer 覆盖提示。Files: `crates/config/src/ui_settings.rs`、`engine_spawn.rs`、`LhtModeToggle.tsx`、`LhtSettingsPanel.tsx`、i18n ×4。
 

@@ -3,6 +3,7 @@ import type { TurnChatMessage } from './useTurnSend';
 import { ensureDefaultComposerWorkspace } from '../lib/appPreferences';
 import { toast } from '../lib/toast';
 import { subscribeCurrentWebviewEvent } from '../lib/tauriListen';
+import { fetchAppUpdateStatus } from '../lib/appUpdate';
 import { dispatchSidecarReadyForPanels } from '../lib/sidecarPanelRecovery';
 import { getWindowLabel, workspaceStorageKey } from '../lib/windowBridge';
 import type { StreamSessionControl } from './useTurnStream';
@@ -127,6 +128,20 @@ export function useDesktopShell({
       .then(({ getCurrentWindow }) => getCurrentWindow().show())
       .catch(() => {});
   }, [desktopHost]);
+
+  useEffect(() => {
+    if (!desktopHost) return;
+    let cancelled = false;
+    void fetchAppUpdateStatus()
+      .then((status) => {
+        if (cancelled || status.status !== 'available' || !status.availableVersion) return;
+        toast.info(t('about.updateToastAvailable', { version: status.availableVersion }));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [desktopHost, t]);
 
   useEffect(() => {
     if (!desktopHost) return;

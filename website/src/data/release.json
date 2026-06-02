@@ -1,19 +1,19 @@
 {
   "version": "0.6.0-preview.1",
-  "publishedAt": "2026-05-28",
+  "publishedAt": "2026-06-02",
   "platforms": {
     "windows-x64": {
       "zip": {
         "filename": "Zagens_0.6.0-preview.1_x64-setup.exe.zip",
         "url": "/download/Zagens_0.6.0-preview.1_x64-setup.exe.zip",
-        "sha256": ""
+        "sha256": "cfaf69aab4a0ea086c174078ce0abc0b61ce1c6f5f548cf888235cc03d518542"
       },
       "exe": {
         "filename": "Zagens_0.6.0-preview.1_x64-setup.exe",
         "url": "/download/Zagens_0.6.0-preview.1_x64-setup.exe",
-        "sha256": ""
+        "sha256": "7606780881b7ef516f8bcce4cc11640780263dd20a291aa9d5a6ccdf61125f59"
       }
     }
   },
-  "notes": "Installers hosted on zagens.com/download/ (private repo — no public GitHub Release)."
+  "notes": "Hosted on zagens.com/download/ (local signed build 2026-06-02)."
 }

@@ -70,4 +70,5 @@ Optional: run `npm run sync:manifest` in CI before `build` when `RELEASE_TAG` is
 - [x] DNS → zagens.com
 - [ ] Product Hunt assets (1270×760 gallery, OG 1200×630) — in progress
 - [ ] Legal review of Privacy/Terms (optional)
-- [ ] `public/download/latest.json` + updater pubkey when OTA is ready
+- [x] `public/download/latest.json` + updater pubkey — see [`docs/desktop/UPDATER.md`](../docs/desktop/UPDATER.md)
+- [ ] Upload signed `*-setup.exe` + `.sig` to `public/download/` and run `npm run sync:manifest`

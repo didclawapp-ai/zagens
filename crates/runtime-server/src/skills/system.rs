@@ -1,16 +1,68 @@
-//! System-skill installer: bundles skill-creator, audit-repo, and auto-installs on first launch.
+//! System-skill installer: bundles skill-creator, audit-repo, multi-search-engine,
+//! and auto-installs on first launch.
 
 use std::fs;
 use std::path::Path;
 
-const BUNDLED_SKILL_VERSION: &str = "4";
-const SKILL_CREATOR_BODY: &str = include_str!("../../assets/skills/skill-creator/SKILL.md");
-const AUDIT_REPO_BODY: &str = include_str!("../../assets/skills/audit-repo/SKILL.md");
+const BUNDLED_SKILL_VERSION: &str = "5";
 
-const BUNDLED_SKILLS: &[(&str, &str)] = &[
-    ("skill-creator", SKILL_CREATOR_BODY),
-    ("audit-repo", AUDIT_REPO_BODY),
-];
+struct BundledFile {
+    path: &'static str,
+    body: &'static str,
+}
+
+struct BundledSkill {
+    name: &'static str,
+    files: &'static [BundledFile],
+}
+
+const SKILL_CREATOR: BundledSkill = BundledSkill {
+    name: "skill-creator",
+    files: &[BundledFile {
+        path: "SKILL.md",
+        body: include_str!("../../assets/skills/skill-creator/SKILL.md"),
+    }],
+};
+
+const AUDIT_REPO: BundledSkill = BundledSkill {
+    name: "audit-repo",
+    files: &[BundledFile {
+        path: "SKILL.md",
+        body: include_str!("../../assets/skills/audit-repo/SKILL.md"),
+    }],
+};
+
+const MULTI_SEARCH_ENGINE: BundledSkill = BundledSkill {
+    name: "multi-search-engine",
+    files: &[
+        BundledFile {
+            path: "SKILL.md",
+            body: include_str!("../../assets/skills/multi-search-engine/SKILL.md"),
+        },
+        BundledFile {
+            path: "config.json",
+            body: include_str!("../../assets/skills/multi-search-engine/config.json"),
+        },
+        BundledFile {
+            path: "CHANGELOG.md",
+            body: include_str!("../../assets/skills/multi-search-engine/CHANGELOG.md"),
+        },
+        BundledFile {
+            path: "references/advanced-search.md",
+            body: include_str!(
+                "../../assets/skills/multi-search-engine/references/advanced-search.md"
+            ),
+        },
+        BundledFile {
+            path: "references/international-search.md",
+            body: include_str!(
+                "../../assets/skills/multi-search-engine/references/international-search.md"
+            ),
+        },
+    ],
+};
+
+const BUNDLED_SKILLS: &[BundledSkill] = &[SKILL_CREATOR, AUDIT_REPO, MULTI_SEARCH_ENGINE];
 
 fn should_install_skill(
     skills_dir: &Path,
@@ -25,10 +77,31 @@ fn should_install_skill(
     }
 }
 
+fn install_bundled_skill(skills_dir: &Path, skill: &BundledSkill) -> std::io::Result<()> {
+    let target_dir = skills_dir.join(skill.name);
+    fs::create_dir_all(&target_dir)?;
+    for file in skill.files {
+        let dest = target_dir.join(file.path);
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(dest, file.body)?;
+    }
+    Ok(())
+}
+
+fn skill_md_body(skill: &BundledSkill) -> Option<&'static str> {
+    skill
+        .files
+        .iter()
+        .find(|file| file.path == "SKILL.md")
+        .map(|file| file.body)
+}
+
 /// Install bundled system skills into `skills_dir`.
 ///
 /// Behaviour:
-/// - Fresh install (no marker, no dirs): installs all bundled `SKILL.md` files and writes
+/// - Fresh install (no marker, no dirs): installs all bundled skill files and writes
 ///   the version marker.
 /// - Version bump (marker present with older version, dirs present): re-installs those dirs.
 /// - User deleted a dir while marker still present at same version: leaves it gone.
@@ -45,18 +118,16 @@ pub fn install_system_skills(skills_dir: &Path) -> std::io::Result<()> {
 
     let any_install = BUNDLED_SKILLS
         .iter()
-        .any(|(name, _)| should_install_skill(skills_dir, name, version_ref));
+        .any(|skill| should_install_skill(skills_dir, skill.name, version_ref));
 
     if !any_install {
         return Ok(());
     }
 
     fs::create_dir_all(skills_dir)?;
-    for (name, body) in BUNDLED_SKILLS {
-        if should_install_skill(skills_dir, name, version_ref) {
-            let target_dir = skills_dir.join(name);
-            fs::create_dir_all(&target_dir)?;
-            fs::write(target_dir.join("SKILL.md"), body)?;
+    for skill in BUNDLED_SKILLS {
+        if should_install_skill(skills_dir, skill.name, version_ref) {
+            install_bundled_skill(skills_dir, skill)?;
         }
     }
     fs::write(&marker, BUNDLED_SKILL_VERSION)?;
@@ -69,8 +140,8 @@ pub fn install_system_skills(skills_dir: &Path) -> std::io::Result<()> {
 #[allow(dead_code)]
 pub fn uninstall_system_skills(skills_dir: &Path) -> std::io::Result<()> {
     let marker = skills_dir.join(".system-installed-version");
-    for (name, _) in BUNDLED_SKILLS {
-        let target_dir = skills_dir.join(name);
+    for skill in BUNDLED_SKILLS {
+        let target_dir = skills_dir.join(skill.name);
         if target_dir.exists() {
             fs::remove_dir_all(&target_dir)?;
         }
@@ -99,10 +170,13 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         install_system_skills(tmp.path()).unwrap();
 
-        for (name, body) in BUNDLED_SKILLS {
-            let path = skill_file(&tmp, name);
-            assert!(path.exists(), "{name}/SKILL.md should be created");
-            assert_eq!(fs::read_to_string(path).unwrap(), *body);
+        for skill in BUNDLED_SKILLS {
+            let path = skill_file(&tmp, skill.name);
+            assert!(path.exists(), "{}/SKILL.md should be created", skill.name);
+            assert_eq!(
+                fs::read_to_string(path).unwrap(),
+                skill_md_body(skill).unwrap()
+            );
         }
         assert!(marker_file(&tmp).exists());
         assert_eq!(
@@ -112,19 +186,36 @@ mod tests {
     }
 
     #[test]
+    fn multi_search_engine_includes_reference_docs() {
+        let tmp = TempDir::new().unwrap();
+        install_system_skills(tmp.path()).unwrap();
+
+        let skill_dir = tmp.path().join("multi-search-engine");
+        assert!(skill_dir.join("config.json").exists());
+        assert!(skill_dir
+            .join("references")
+            .join("advanced-search.md")
+            .exists());
+        assert!(skill_dir
+            .join("references")
+            .join("international-search.md")
+            .exists());
+    }
+
+    #[test]
     fn calling_twice_is_idempotent() {
         let tmp = TempDir::new().unwrap();
         install_system_skills(tmp.path()).unwrap();
 
-        for (name, _) in BUNDLED_SKILLS {
-            fs::write(skill_file(&tmp, name), "sentinel").unwrap();
+        for skill in BUNDLED_SKILLS {
+            fs::write(skill_file(&tmp, skill.name), "sentinel").unwrap();
         }
 
         install_system_skills(tmp.path()).unwrap();
 
-        for (name, _) in BUNDLED_SKILLS {
+        for skill in BUNDLED_SKILLS {
             assert_eq!(
-                fs::read_to_string(skill_file(&tmp, name)).unwrap(),
+                fs::read_to_string(skill_file(&tmp, skill.name)).unwrap(),
                 "sentinel",
                 "second install should not overwrite when version is current"
             );
@@ -154,13 +245,14 @@ mod tests {
         install_system_skills(tmp.path()).unwrap();
 
         assert!(skill_file(&tmp, "audit-repo").exists());
+        assert!(skill_file(&tmp, "multi-search-engine").exists());
     }
 
     #[test]
     fn outdated_marker_triggers_reinstall() {
         let tmp = TempDir::new().unwrap();
-        for (name, _) in BUNDLED_SKILLS {
-            let skill_dir = tmp.path().join(name);
+        for skill in BUNDLED_SKILLS {
+            let skill_dir = tmp.path().join(skill.name);
             fs::create_dir_all(&skill_dir).unwrap();
             fs::write(skill_dir.join("SKILL.md"), "old content").unwrap();
         }
@@ -168,8 +260,11 @@ mod tests {
 
         install_system_skills(tmp.path()).unwrap();
 
-        for (name, body) in BUNDLED_SKILLS {
-            assert_eq!(fs::read_to_string(skill_file(&tmp, name)).unwrap(), *body);
+        for skill in BUNDLED_SKILLS {
+            assert_eq!(
+                fs::read_to_string(skill_file(&tmp, skill.name)).unwrap(),
+                skill_md_body(skill).unwrap()
+            );
         }
     }
 
@@ -179,8 +274,8 @@ mod tests {
         install_system_skills(tmp.path()).unwrap();
         uninstall_system_skills(tmp.path()).unwrap();
 
-        for (name, _) in BUNDLED_SKILLS {
-            assert!(!skill_file(&tmp, name).exists());
+        for skill in BUNDLED_SKILLS {
+            assert!(!skill_file(&tmp, skill.name).exists());
         }
         assert!(!marker_file(&tmp).exists());
     }

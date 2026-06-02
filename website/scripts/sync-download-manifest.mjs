@@ -11,7 +11,8 @@
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { createReadStream } from 'node:fs';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile, access } from 'node:fs/promises';
+import { constants as fsConstants } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -64,6 +65,39 @@ async function sha256File(path) {
 
 function pickAsset(assets, pattern) {
   return assets.find((a) => pattern.test(a.name));
+}
+
+async function fileExists(path) {
+  try {
+    await access(path, fsConstants.R_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Read minisign `.sig` file content for Tauri updater `latest.json`. */
+async function resolveUpdaterSignature(exeName) {
+  if (process.env.UPDATER_SIGNATURE?.trim()) {
+    return process.env.UPDATER_SIGNATURE.trim();
+  }
+  const sigPath =
+    process.env.UPDATER_SIG_FILE ??
+    join(websiteRoot, 'public', 'download', `${exeName}.sig`);
+  if (await fileExists(sigPath)) {
+    return (await readFile(sigPath, 'utf8')).trim();
+  }
+  return '';
+}
+
+function updaterDownloadUrl(exeName, fallbackUrl) {
+  if (process.env.UPDATER_DOWNLOAD_URL?.trim()) {
+    return process.env.UPDATER_DOWNLOAD_URL.trim();
+  }
+  if (fallbackUrl?.startsWith('http')) {
+    return fallbackUrl;
+  }
+  return `https://zagens.com/download/${encodeURIComponent(exeName)}`;
 }
 
 async function main() {
@@ -123,14 +157,17 @@ async function main() {
 
   await writeFile(releasePath, `${JSON.stringify(release, null, 2)}\n`);
 
+  const updaterSig = await resolveUpdaterSignature(exeName);
+  const updaterUrl = updaterDownloadUrl(exeName, exeUrl);
+
   const latest = {
     version,
     notes: `Zagens ${version} preview`,
     pub_date: new Date().toISOString(),
     platforms: {
       'windows-x86_64': {
-        signature: '',
-        url: zipUrl || exeUrl,
+        signature: updaterSig,
+        url: updaterUrl,
       },
     },
   };
@@ -139,7 +176,12 @@ async function main() {
   console.log(`[sync] wrote ${releasePath}`);
   console.log(`[sync] wrote ${latestJsonPath}`);
   if (!latest.platforms['windows-x86_64'].signature) {
-    console.warn('[sync] latest.json signature empty — Tauri updater disabled until pubkey is configured');
+    console.warn(
+      '[sync] latest.json signature empty — copy NSIS .sig to public/download/ or set UPDATER_SIGNATURE after a signed tauri build',
+    );
+  }
+  if (!latest.platforms['windows-x86_64'].url) {
+    console.warn('[sync] latest.json updater url empty — upload installer to public/download/');
   }
 }
 

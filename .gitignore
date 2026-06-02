@@ -91,6 +91,9 @@ apps/
 # Deploy keys (generate with scripts/website/new-deploy-key.ps1)
 secrets-local/
 
+# Tauri updater signing private key (public key: crates/desktop/updater.key.pub)
+crates/desktop/updater.key
+
 # Maintainer-internal design notes (trade-secret material, never published)
 .private/
 scripts/fix_composer_tab_order.py

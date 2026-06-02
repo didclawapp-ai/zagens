@@ -1,5 +1,5 @@
 /**
- * Zagens OTA update endpoints (pre-wired; site not live yet).
+ * Zagens OTA update endpoints.
  * Keep in sync with `crates/desktop/tauri.conf.json` → `plugins.updater.endpoints`.
  */
 export const UPDATE_DOWNLOAD_BASE = 'https://zagens.com/download/';
