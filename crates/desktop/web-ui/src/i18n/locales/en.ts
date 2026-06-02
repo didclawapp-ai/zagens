@@ -452,6 +452,8 @@ const en: TranslationMap = {
     graphNoHotNodes: 'No topics above the strength threshold yet; keep chatting.',
     graphNoEdges: 'Topics recorded; co-occurrence links appear after related turns.',
     resetView: 'Reset view',
+    graphStale: 'Data may be outdated (last fetch failed)',
+    notInGraph: 'Not in graph',
   },
   automation: {
     tasks: 'Tasks',

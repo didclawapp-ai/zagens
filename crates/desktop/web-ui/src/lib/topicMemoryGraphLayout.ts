@@ -45,7 +45,12 @@ export function parseEdgeEndpoints(edgeKey: string): [string, string] | null {
   return [a, b];
 }
 
-/** Subgraph for visualization — same hot-node / hot-edge policy as `generate_memory_section`. */
+/**
+ * Subgraph for visualization — same hot-node / hot-edge policy as `generate_memory_section`:
+ * - Top-N nodes by strength (above threshold, non-dormant)
+ * - Top-M edges by weight globally (no both-ends constraint here; `buildTopicMemoryLinks`
+ *   will skip edges whose endpoints are not on the canvas)
+ */
 export function selectHotTopicSubgraph(
   nodes: TopicMemoryGraphNodeInput[],
   edges: TopicMemoryGraphEdgeInput[],
@@ -54,14 +59,9 @@ export function selectHotTopicSubgraph(
     .filter((n) => !n.dormant && n.strength >= MIN_HOT_NODE_STRENGTH)
     .sort((a, b) => b.strength - a.strength)
     .slice(0, MAX_HOT_NODES);
-  const hotIds = new Set(hotNodes.map((n) => n.id));
 
   const hotEdges = edges
-    .filter((e) => {
-      const ends = parseEdgeEndpoints(e.id);
-      if (!ends) return false;
-      return hotIds.has(ends[0]) && hotIds.has(ends[1]);
-    })
+    .filter((e) => parseEdgeEndpoints(e.id) !== null)
     .sort((a, b) => b.weight - a.weight)
     .slice(0, MAX_HOT_EDGES);
 

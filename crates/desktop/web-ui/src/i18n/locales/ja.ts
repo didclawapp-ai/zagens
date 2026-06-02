@@ -452,6 +452,8 @@ const ja: TranslationMap = {
     graphNoHotNodes: '強度しきい値を超えるトピックはまだありません。会話を続けてください。',
     graphNoEdges: 'トピックは記録済み。共起リンクは関連する会話の後に表示されます。',
     resetView: 'ビューをリセット',
+    graphStale: 'データが古い可能性があります（最終取得に失敗）',
+    notInGraph: 'グラフに未表示',
   },
   automation: {
     tasks: 'Tasks',
@@ -683,10 +685,10 @@ const ja: TranslationMap = {
     lspDiagDesc: 'モデル context 用にエディター LSP diagnostics を注入',
     userMemory: 'User Memory',
     userMemoryDesc: 'user memory ファイルを system prompt に読み込む',
-    topicMemory: 'Topic memory graph',
+    topicMemory: 'トピックメモリグラフ',
     topicMemoryDesc:
       'topic graph を自動維持し、N ターンごとに k-hop cognitive map を system prompt に注入',
-    topicMemoryInterval: 'Topic memory inject interval (turns)',
+    topicMemoryInterval: 'トピックメモリ注入間隔（ターン）',
     topicMemoryIntervalDesc: 'cognitive map 注入の間隔（完了ターン数、デフォルト 5）',
     snapshots: 'Workspace Snapshots',
     snapshotsDesc: '各ターン前後にワークスペース Git スナップショットを作成',

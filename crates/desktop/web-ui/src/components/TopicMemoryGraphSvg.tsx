@@ -41,10 +41,11 @@ export default function TopicMemoryGraphSvg({
     [nodes, edges],
   );
 
+  // Include strength so edge rendering can look up node radii without layout.find
   const posById = useMemo(() => {
-    const m = new Map<string, { x: number; y: number }>();
+    const m = new Map<string, { x: number; y: number; strength: number }>();
     for (const p of layout) {
-      m.set(p.id, { x: p.x, y: p.y });
+      m.set(p.id, { x: p.x, y: p.y, strength: p.strength });
     }
     return m;
   }, [layout]);
@@ -153,10 +154,8 @@ export default function TopicMemoryGraphSvg({
             const a = posById.get(link.source);
             const b = posById.get(link.target);
             if (!a || !b) return null;
-            const nodeA = layout.find((n) => n.id === link.source);
-            const nodeB = layout.find((n) => n.id === link.target);
-            const rA = nodeA ? nodeRadius(nodeA.strength) : 10;
-            const rB = nodeB ? nodeRadius(nodeB.strength) : 10;
+            const rA = nodeRadius(a.strength);
+            const rB = nodeRadius(b.strength);
             const { x1, y1, x2, y2 } = linkLineEndpoints(a.x, a.y, b.x, b.y, rA, rB);
             const norm = link.weight / maxWeight;
             const dimmed =
@@ -167,17 +166,19 @@ export default function TopicMemoryGraphSvg({
             const strokeWidth = dimmed ? 0.5 : 0.6 + norm * 2.2;
             const key = `${link.source}\u2192${link.target}`;
             return (
-              <line
-                key={key}
-                x1={x1}
-                y1={y1}
-                x2={x2}
-                y2={y2}
-                stroke="currentColor"
-                strokeOpacity={opacity}
-                strokeWidth={strokeWidth}
-                strokeLinecap="round"
-              />
+              <g key={key}>
+                <title>{`${link.source} → ${link.target}  (${link.weight.toFixed(2)})`}</title>
+                <line
+                  x1={x1}
+                  y1={y1}
+                  x2={x2}
+                  y2={y2}
+                  stroke="currentColor"
+                  strokeOpacity={opacity}
+                  strokeWidth={strokeWidth}
+                  strokeLinecap="round"
+                />
+              </g>
             );
           })}
 
@@ -236,6 +237,17 @@ export default function TopicMemoryGraphSvg({
           {t('topicMemoryPanel.resetView')}
         </button>
       )}
+
+      {/* Edge weight legend */}
+      <div className="absolute bottom-1 left-2 flex items-center gap-2 pointer-events-none">
+        <svg width="28" height="8" className="text-accent opacity-50">
+          <line x1="0" y1="4" x2="28" y2="4" stroke="currentColor" strokeWidth="0.8" strokeLinecap="round" />
+        </svg>
+        <svg width="28" height="8" className="text-accent opacity-75">
+          <line x1="0" y1="4" x2="28" y2="4" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+        </svg>
+        <span className="text-[9px] text-t-text-muted/60">weak → strong</span>
+      </div>
     </div>
   );
 }

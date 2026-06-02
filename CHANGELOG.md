@@ -22,6 +22,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [0.6.1-preview.1] - 2026-06-02
+
+### Zagens desktop
+
+- **Fix (话题记忆图 — 边筛选对齐引擎):** `selectHotTopicSubgraph` 原错误要求边两端均在热节点集合内，与 Rust `generate_memory_section` 全图 Top-6 边策略不一致，导致注入 Markdown 中有关联而图上不显示。修正为先全局按权重取 Top 6 边，再由 `buildTopicMemoryLinks` 在绘制时过滤两端不在画布的边，与引擎行为完全对齐。File: `topicMemoryGraphLayout.ts`。
+- **Enhancement (话题记忆图 — 实时刷新):** 流式回合结束后立即触发一次 `refresh()`（`prevStreamingRef` + effect），不再需等待 15 秒轮询。File: `TopicMemoryPanel.tsx`。
+- **Enhancement (话题记忆图 — 列表/图联动):** 列表中点击不在热子图内的话题节点时，显示「不在图中」标注，消除视觉歧义。File: `TopicMemoryPanel.tsx`，i18n ×4（新增 `notInGraph`）。
+- **Enhancement (话题记忆图 — 加载与错误态):** 首次加载前显示骨架屏（6 格指标 + 图区占位）；请求失败且已有旧数据时显示「数据可能已过时」琥珀色警告（保留旧快照而非清空），无旧数据时显示红色错误信息。File: `TopicMemoryPanel.tsx`，i18n ×4（新增 `graphStale`）。
+- **Enhancement (话题记忆图 — 边可视化):** 边增加 SVG `<title>` tooltip 显示 `A → B  (weight)`；图区左下角新增「细线 → 粗线 = 弱 → 强关联」图例。File: `TopicMemoryGraphSvg.tsx`。
+- **Perf (话题记忆图 — 渲染):** 边循环中 `layout.find`（O(n) 遍历）改为从 `posById` Map 直接 O(1) 查找节点半径，消除不必要遍历。File: `TopicMemoryGraphSvg.tsx`。
+- **i18n (日语 settings — 话题记忆):** `settings.topicMemory` 和 `settings.topicMemoryInterval` 补充日语翻译（此前仍为英文占位）。File: `ja.ts`。
+
+---
+
 ### Zagens desktop
 
 - **Enhancement (话题记忆图面板):** 网络图仅展示引擎同策略的 Top 12 话题 / Top 6 关联；滚轮缩放、拖拽平移、节点 hover/列表联动高亮、连线端点避让；补充常见关联、知识边界、认知轨迹与空态文案；指标增加重复话题率、每 10 回合注入。Files: `TopicMemoryPanel.tsx`, `TopicMemoryGraphSvg.tsx`, `topicMemoryGraphLayout.ts`, `client.ts`, i18n ×4。

@@ -33,7 +33,7 @@
 - [Configuration](#configuration)
 - [License](#license)
 
-> **Not affiliated with DeepSeek Inc.** Capabilities below reflect **Zagens v0.6.0-preview.1** (预览版). Desktop parity notes vs terminal-style workflows: [docs/desktop/TUI_DS_PICK_GAP.md](docs/desktop/TUI_DS_PICK_GAP.md). Harness memo: [docs/desktop/HARNESS.md](docs/desktop/HARNESS.md). Version policy: [docs/desktop/VERSIONING.md](docs/desktop/VERSIONING.md).
+> **Not affiliated with DeepSeek Inc.** Capabilities below reflect **Zagens v0.6.1-preview.1** (预览版). Desktop parity notes vs terminal-style workflows: [docs/desktop/TUI_DS_PICK_GAP.md](docs/desktop/TUI_DS_PICK_GAP.md). Harness memo: [docs/desktop/HARNESS.md](docs/desktop/HARNESS.md). Version policy: [docs/desktop/VERSIONING.md](docs/desktop/VERSIONING.md).
 
 ---
 
@@ -41,7 +41,7 @@
 
 | Theme | What you get |
 |-------|----------------|
-| **Desktop + sidecar** | Zagens UI talks to a local **runtime sidecar** over HTTP/SSE. Shared `~/.deepseek/config.toml`, sessions, and tools. |
+| **Desktop + sidecar** | Zagens UI talks to a local **runtime sidecar** over HTTP/SSE. Shared `~/.zagens/config.toml`, sessions, and tools. |
 | **Code vs Office modes** | **Code** and **Office** task types use different tool surfaces and prompts; switching modes starts a **new session** so model KV stays stable ([task-type architecture](docs/task-type-prompt-architecture.md)). |
 | **CRAFT multi-agent** | Sub-agents with role-specific tool sets, structured fix-loop verdicts (PASS / BLOCKER / MAJOR / FAIL), and a **P1 blackboard** for handoffs ([CRAFT notes](docs/craft-v2-improvements.md)). |
 | **Symbol index + bridges** | Lazy per-workspace index (`.deepseek/symbols.json`) for Rust / TS·JS / Python / Go / C·C++ / Vue·Svelte with call hints, caller lookup, and **Tauri command bridges**; desktop Index panel + rebuild API. |
@@ -54,7 +54,7 @@
 
 ## Zagens (Desktop UI)
 
-Features you interact with in the **v0.6.0-preview.1** window (see [CHANGELOG.md](CHANGELOG.md)):
+Features you interact with in the **v0.6.1-preview.1** window (see [CHANGELOG.md](CHANGELOG.md)):
 
 | Area | Shipped in Zagens |
 |------|-------------------|
@@ -74,9 +74,9 @@ Features you interact with in the **v0.6.0-preview.1** window (see [CHANGELOG.md
 
 Available through the embedded sidecar process that powers Zagens chat, tools, and settings:
 
-- **Sessions & threads** — SQLite-backed persistence, resume/fork, workspace snapshots (side-git under `~/.deepseek/snapshots/`)
+- **Sessions & threads** — SQLite-backed persistence, resume/fork, workspace snapshots (side-git under `~/.zagens/snapshots/`)
 - **MCP** — stdio servers, per-tool enable/disable, allow/deny filters
-- **Skills** — `~/.deepseek/skills`, `SKILL.md`; desktop `POST /v1/skills` + import/install APIs
+- **Skills** — `~/.zagens/skills`, `SKILL.md`; desktop `POST /v1/skills` + import/install APIs
 - **Hooks** — lifecycle shell commands (`session_start`, `tool_call_before`, `shell_env`, …) with stdout / JSONL / webhook sinks
 - **Providers** — multi-provider config, profiles, runtime provider switch; routing rules file (`routing_rules.json`)
 - **Metrics** — usage rollups from audit log + session store
@@ -108,7 +108,7 @@ Implementation: `crates/runtime-server/src/tools/`. HTTP routes: [`docs/tech/API
 
 ## AI Providers & Models
 
-Configured in `~/.deepseek/config.toml` ([config.example.toml](config.example.toml)). Model IDs change with upstream APIs — treat the table as **examples**, not guarantees.
+Configured in `~/.zagens/config.toml` ([config.example.toml](config.example.toml)). Model IDs change with upstream APIs — treat the table as **examples**, not guarantees.
 
 | Provider | Example model IDs | API endpoint (typical) |
 |----------|-------------------|-------------------------|
@@ -155,7 +155,7 @@ Configured in `~/.deepseek/config.toml` ([config.example.toml](config.example.to
 | **Per-domain rules** | Allow/deny lists for `fetch_url`, `web_search`, and MCP HTTP transport |
 | **Wildcard support** | `.example.com` matches all subdomains |
 | **Default modes** | `allow`, `deny`, or `prompt` (ask on first use) |
-| **Audit logging** | One line per network call to `~/.deepseek/audit.log` |
+| **Audit logging** | One line per network call to `~/.zagens/audit.log` |
 
 ### Additional Safeguards
 
@@ -250,7 +250,7 @@ The sidecar binary **`deepseek-runtime`** (loopback HTTP/SSE) exposes a local AP
 |-------|---------|
 | **Prompt stack** | `prompts/base.md` → personality → mode (Agent / Plan / YOLO) → approval policy → workspace (`.deepseek/pick-rules.md`, `AGENTS.md`) → skills catalog + optional user memory |
 | **Hooks** | `[hooks]` in config — e.g. `session_start`, `tool_call_before` / `after`, `shell_env` (parse `KEY=VALUE` into env); output to stdout, JSONL, or webhooks |
-| **Snapshots** | Side-git under `~/.deepseek/snapshots/` (not your repo `.git`); restore with `/restore` or `revert_turn`; prune by `max_age_days` |
+| **Snapshots** | Side-git under `~/.zagens/snapshots/` (not your repo `.git`); restore with `/restore` or `revert_turn`; prune by `max_age_days` |
 | **Context** | Auto-compaction (L1/L2/L3), optional Flash seams, workshop routing for oversized tool output, capacity pressure — `[context]`, `[workshop]`, `[capacity]` in [config.example.toml](config.example.toml) |
 
 ---
@@ -263,13 +263,14 @@ The sidecar binary **`deepseek-runtime`** (loopback HTTP/SSE) exposes a local AP
 - **[Tauri CLI 2](https://v2.tauri.app/start/prerequisites/)** — `cargo install tauri-cli --version "^2"` (once per machine)
 - Platform-specific Tauri [system dependencies](https://v2.tauri.app/start/prerequisites/)
 
-**Versions:** Zagens desktop **v0.6.0-preview.1** ([`VERSIONING.md`](docs/desktop/VERSIONING.md)); embedded runtime crates **0.8.15** (root `Cargo.toml`).
+**Versions:** Zagens desktop **v0.6.1-preview.1** ([`VERSIONING.md`](docs/desktop/VERSIONING.md)); embedded runtime crates **0.8.15** (root `Cargo.toml`).
 
 ## Quick Start
 
 ```bash
-# Clone this repository, then:
-cd DeepSeek-TUI-desktop
+# Clone and enter the repository:
+git clone https://github.com/zagens/zagens
+cd zagens
 
 # Sidecar binary (build.rs copies debug/release into crates/desktop/binaries/)
 cargo build -p deepseek-runtime-server
@@ -282,10 +283,10 @@ npm install
 cd ..
 cargo tauri dev
 
-# Configure API key in Zagens Settings, or in ~/.deepseek/config.toml
+# Configure API key in Zagens Settings, or in ~/.zagens/config.toml
 ```
 
-Release / installer build (Windows): from `crates/desktop`, run `npm run bundle:prepare` then `cargo tauri build`. CI release: push tag `ds-pick-vX.Y.Z` (see `.github/workflows/release.yml`).
+Release / installer build (Windows): from `crates/desktop`, run `npm run bundle:prepare` then `cargo tauri build`. CI release: push tag `zagens-vX.Y.Z` (see `.github/workflows/release.yml`).
 
 ## Development
 
@@ -302,7 +303,7 @@ Release / installer build (Windows): from `crates/desktop`, run `npm run bundle:
 ## Project Structure
 
 ```
-DS-Pick/
+zagens/
 ├── crates/
 │   ├── desktop/          # Zagens Tauri app
 │   │   ├── web-ui/       # React/TypeScript frontend
@@ -343,7 +344,7 @@ DS-Pick/
 
 ## Configuration
 
-Set your DeepSeek API key before first use in **Zagens → Settings**, or in `~/.deepseek/config.toml` (see [config.example.toml](config.example.toml)).
+Set your DeepSeek API key before first use in **Zagens → Settings**, or in `~/.zagens/config.toml` (see [config.example.toml](config.example.toml)).
 
 **Key configuration sections:**
 
@@ -409,7 +410,7 @@ Embedded agent runtime is **third-party MIT code** — [third-party/deepseek-tui
 - [配置](#配置)
 - [许可与第三方声明](#许可与第三方声明)
 
-> **与 DeepSeek 公司无关联。** 功能以 **Zagens v0.6.0-preview.1**（预览版）为准。桌面与终端式工作流差距：[TUI_DS_PICK_GAP.md](docs/desktop/TUI_DS_PICK_GAP.md)。版本规则：[VERSIONING.md](docs/desktop/VERSIONING.md)。英文详情见 [What Makes This Project Different](#what-makes-this-project-different)。
+> **与 DeepSeek 公司无关联。** 功能以 **Zagens v0.6.1-preview.1**（预览版）为准。桌面与终端式工作流差距：[TUI_DS_PICK_GAP.md](docs/desktop/TUI_DS_PICK_GAP.md)。版本规则：[VERSIONING.md](docs/desktop/VERSIONING.md)。英文详情见 [What Makes This Project Different](#what-makes-this-project-different)。
 
 ---
 
@@ -417,7 +418,7 @@ Embedded agent runtime is **third-party MIT code** — [third-party/deepseek-tui
 
 | 方向 | 说明 |
 |------|------|
-| **桌面 + Sidecar** | Zagens UI 通过本地 **runtime sidecar**（HTTP/SSE）通信；共用 `~/.deepseek/config.toml`、会话与工具。 |
+| **桌面 + Sidecar** | Zagens UI 通过本地 **runtime sidecar**（HTTP/SSE）通信；共用 `~/.zagens/config.toml`、会话与工具。 |
 | **Code / Office 分场景** | 不同工具面与提示词；切换任务类型会**新开会话**以保持 KV 稳定。 |
 | **CRAFT 多代理** | 角色化子代理、结构化 fix-loop 裁决、P1 黑板交接。 |
 | **符号索引** | 懒加载 `.deepseek/symbols.json`，含 Tauri 命令桥接；桌面索引面板。 |
@@ -429,7 +430,7 @@ Embedded agent runtime is **third-party MIT code** — [third-party/deepseek-tui
 
 ## Zagens 桌面端
 
-**v0.6.0-preview.1** 窗口内已具备：多会话聊天（流式/停止/思考/上下文条）、工作区预览与 **diff2html**、会话回放、子代理与清单侧栏、任务与技能（**定时自动化列表未展示**）、MCP/路由/用量/系统设置、托盘与通知、中/英/日/葡 UI。
+**v0.6.1-preview.1** 窗口内已具备：多会话聊天（流式/停止/思考/上下文条）、工作区预览与 **diff2html**、会话回放、子代理与清单侧栏、任务与技能（**定时自动化列表未展示**）、MCP/路由/用量/系统设置、托盘与通知、中/英/日/葡 UI。
 
 尚未完全对齐的交互见 [TUI_DS_PICK_GAP.md](docs/desktop/TUI_DS_PICK_GAP.md)。
 
@@ -471,7 +472,7 @@ Embedded agent runtime is **third-party MIT code** — [third-party/deepseek-tui
 | **按域名规则** | `fetch_url`、`web_search` 和 MCP HTTP 传输的 allow/deny 列表 |
 | **通配符支持** | `.example.com` 匹配所有子域名 |
 | **默认模式** | `allow`、`deny` 或 `prompt`（首次使用时询问） |
-| **审计日志** | 每次网络调用一行记录到 `~/.deepseek/audit.log` |
+| **审计日志** | 每次网络调用一行记录到 `~/.zagens/audit.log` |
 
 ### 额外保障
 
@@ -572,13 +573,14 @@ Sidecar（**`deepseek-runtime`** 二进制）在 loopback 暴露 HTTP/SSE。完�
 - **[Tauri CLI 2](https://v2.tauri.app/start/prerequisites/)** — `cargo install tauri-cli --version "^2"`
 - 各平台 Tauri [系统依赖](https://v2.tauri.app/start/prerequisites/)
 
-**版本：** Zagens 桌面 **v0.6.0-preview.1**（预览版，见 [VERSIONING.md](docs/desktop/VERSIONING.md)）；嵌入式 runtime **0.8.15**（根 `Cargo.toml`）。
+**版本：** Zagens 桌面 **v0.6.1-preview.1**（预览版，见 [VERSIONING.md](docs/desktop/VERSIONING.md)）；嵌入式 runtime **0.8.15**（根 `Cargo.toml`）。
 
 ## 快速开始
 
 ```bash
-# 克隆本仓库后：
-cd DeepSeek-TUI-desktop
+# 克隆并进入仓库：
+git clone https://github.com/zagens/zagens
+cd zagens
 
 # Sidecar（build.rs 会从 target/ 复制到 crates/desktop/binaries/）
 cargo build -p deepseek-runtime-server
@@ -591,10 +593,10 @@ npm install
 cd ..
 cargo tauri dev
 
-# API Key：在 Zagens 设置中配置，或写入 ~/.deepseek/config.toml
+# API Key：在 Zagens 设置中配置，或写入 ~/.zagens/config.toml
 ```
 
-发布安装包（Windows）：在 `crates/desktop` 执行 `npm run bundle:prepare`，再 `cargo tauri build`。CI 发布：推送标签 `ds-pick-vX.Y.Z`（见 `.github/workflows/release.yml`）。
+发布安装包（Windows）：在 `crates/desktop` 执行 `npm run bundle:prepare`，再 `cargo tauri build`。CI 发布：推送标签 `zagens-vX.Y.Z`（见 `.github/workflows/release.yml`）。
 
 ## 开发指南
 
@@ -611,7 +613,7 @@ cargo tauri dev
 ## 项目结构
 
 ```
-DS-Pick/
+zagens/
 ├── crates/
 │   ├── desktop/          # Zagens Tauri 应用
 │   │   ├── web-ui/       # React/TypeScript 前端
@@ -639,7 +641,7 @@ DS-Pick/
 
 ## 配置
 
-首次使用前在 **Zagens → 设置** 中配置 DeepSeek API Key，或写入 `~/.deepseek/config.toml`（参见 [config.example.toml](config.example.toml)）。
+首次使用前在 **Zagens → 设置** 中配置 DeepSeek API Key，或写入 `~/.zagens/config.toml`（参见 [config.example.toml](config.example.toml)）。
 
 **主要配置段：**
 

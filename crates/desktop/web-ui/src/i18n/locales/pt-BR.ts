@@ -452,6 +452,8 @@ const ptBr: TranslationMap = {
     graphNoHotNodes: 'Nenhum tópico acima do limiar de força; continue conversando.',
     graphNoEdges: 'Tópicos registrados; ligações de coocorrência surgem após turnos relacionados.',
     resetView: 'Redefinir vista',
+    graphStale: 'Dados podem estar desatualizados (última busca falhou)',
+    notInGraph: 'Não está no grafo',
   },
   automation: {
     tasks: 'Tarefas',

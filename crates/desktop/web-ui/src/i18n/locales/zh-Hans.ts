@@ -446,6 +446,8 @@ const zhHans = {
     graphNoHotNodes: '暂无达到热度阈值的话题，继续对话后会出现在图中。',
     graphNoEdges: '话题已记录，共现关联尚未形成；多轮相关对话后会出现连线。',
     resetView: '重置视图',
+    graphStale: '数据可能已过时（上次拉取失败）',
+    notInGraph: '不在图中',
   },
   automation: {
     tasks: '任务',

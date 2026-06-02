@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RuntimeConnectionState } from '../api/client';
 import {
   fetchTopicMemory,
@@ -76,6 +76,15 @@ export default function TopicMemoryPanel({
     return () => window.clearInterval(id);
   }, [refresh, runtimeReady]);
 
+  // Refresh immediately when a streaming turn finishes
+  const prevStreamingRef = useRef(false);
+  useEffect(() => {
+    if (prevStreamingRef.current && !streaming && runtimeReady) {
+      void refresh();
+    }
+    prevStreamingRef.current = streaming;
+  }, [streaming, runtimeReady, refresh]);
+
   const nodes = useMemo(() => {
     if (!snapshot?.graph?.nodes) return [];
     return Object.entries(snapshot.graph.nodes)
@@ -136,6 +145,11 @@ export default function TopicMemoryPanel({
 
   const metrics = snapshot?.metrics;
 
+  const hotIds = useMemo(
+    () => new Set(hotSubgraph.nodes.map((n) => n.id)),
+    [hotSubgraph.nodes],
+  );
+
   return (
     <div className="overflow-y-auto px-3 py-3 space-y-3">
       <div className="flex items-center justify-between gap-2">
@@ -154,7 +168,25 @@ export default function TopicMemoryPanel({
         <p className="text-sm text-t-text-muted">{t('topicMemoryPanel.runtimeUnavailable')}</p>
       )}
 
-      {error && <p className="text-sm text-danger">{error}</p>}
+      {/* Loading skeleton — only before first data arrives */}
+      {loading && !snapshot && (
+        <div className="space-y-2 animate-pulse">
+          <div className="grid grid-cols-3 gap-2">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="h-10 rounded-lg bg-hover" />
+            ))}
+          </div>
+          <div className="h-52 rounded-lg bg-hover" />
+        </div>
+      )}
+
+      {/* Error: stale indicator if we still have old data, or full error if not */}
+      {error && snapshot && (
+        <p className="text-xs text-amber-text border border-amber-text/30 rounded px-2 py-1">
+          {t('topicMemoryPanel.graphStale')}
+        </p>
+      )}
+      {error && !snapshot && <p className="text-sm text-danger">{error}</p>}
 
       {snapshot && !snapshot.enabled && (
         <p className="text-sm text-amber-text border border-amber-text/30 rounded-lg px-3 py-2">
@@ -229,6 +261,7 @@ export default function TopicMemoryPanel({
           <ul className="space-y-1.5">
             {nodes.slice(0, 24).map((node) => {
               const active = selectedId === node.id;
+              const inGraph = hotIds.has(node.id);
               return (
                 <li key={node.id}>
                   <button
@@ -239,8 +272,13 @@ export default function TopicMemoryPanel({
                     onClick={() => setSelectedId(active ? null : node.id)}
                   >
                     <span className="truncate flex-1 text-t-text">{node.id}</span>
-                    <span className="text-t-text-muted w-8 text-right">{node.count}</span>
-                    <div className="w-16 h-1.5 rounded bg-hover overflow-hidden">
+                    {active && !inGraph && (
+                      <span className="text-[9px] text-t-text-muted/70 shrink-0">
+                        {t('topicMemoryPanel.notInGraph')}
+                      </span>
+                    )}
+                    <span className="text-t-text-muted w-8 text-right shrink-0">{node.count}</span>
+                    <div className="w-16 h-1.5 rounded bg-hover overflow-hidden shrink-0">
                       <div
                         className="h-full bg-accent"
                         style={{ width: `${strengthPct(node.strength)}%` }}
