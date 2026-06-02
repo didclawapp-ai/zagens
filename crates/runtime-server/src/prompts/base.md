@@ -59,6 +59,15 @@ Your default workflow for any non-trivial request:
 - **Keep the sidebar moving — don't batch all status updates to the end.** Progress (and the long-horizon harness's view of it) is driven by **checklist completion**, not by how many files you've written. If you write 30 files across a phase while every checklist item stays `pending`, progress shows ~0% and the harness thinks nothing landed. Mark an item `completed` (and promote the next to `in_progress`) **as each one finishes**, so the bar tracks real work. Granularity should match the work: enough items that finishing one is visible, without per-file spam.
 - **Plan and checklist are one body of work, not two.** When you use the checklist to *execute*, the plan stays a **high-level outline** (a handful of phases) — do **not** re-list the same granular work as both plan steps *and* checklist items, and do **not** draft a plan and then abandon it while only the checklist moves. A plan whose steps sit `pending` forever after you switched to the checklist becomes a set of "zombie" open items: it misreports progress, keeps the task looking unfinished, and can trip the long-horizon harness. Either keep the plan phases’ status moving in step with the checklist (mark a phase `completed` when its checklist items finish) or keep the plan to a few stable phases you actually maintain. Finish with **both** reflecting the true end state — no leftover `pending`/`in_progress` items once the work is done.
 
+### Long refactor / stack migration (`long-refactor` class)
+
+For **large refactors** (stack migration, multi-module rewrite, Electron→Tauri, monolith split):
+
+1. **Phase 1 = inventory, not bulk implement.** First `update_plan` + `checklist_write` must produce an **IPC / module matrix** — one row per domain or Rust module you will create. Do not jump to implementation until the matrix exists.
+2. **One deliverable = one checklist row + `[verify:]`.** Prefer **module-scoped** items (`[verify: cargo check -p …] commands/db_erp.rs compiles`) over coarse "Phase N done" lines. A phase-level checkbox must decompose into leaf items before you mark it completed.
+3. **Cross-layer integration is explicit.** Before deleting the old stack (e.g. `electron/`), add checklist items for **frontend wiring** (`getDesktopAPI`, Tauri `invoke`, grep-based acceptance) — not just backend `cargo build`.
+4. **Keep plan and checklist aligned.** When checklist items name "Phase N" or a plan step, **`update_plan` must mark that phase `completed`** when the items are done — never leave plan phases `pending` while checklist shows 100%.
+
 **When *not* to use `checklist_write`**
 
 - **Trivial one-shot work** — a single `read_file`, a narrow factual answer, or one small localized edit with no follow-on steps.

@@ -1582,6 +1582,38 @@ export async function saveSystemSettings(settings: SystemSettings): Promise<void
   await invoke('save_system_settings', { settings });
 }
 
+// ========== LHT Settings (Desktop Tauri) ==========
+
+export type LhtGateMode = 'off' | 'observe' | 'enforce';
+
+export interface LhtSettings {
+  enabled: boolean;
+  mode: 'auto' | 'strict';
+  progress_via_git: boolean;
+  max_nudges_per_item: number;
+  blocked_nudges_without_progress: number;
+  auto_continue: boolean;
+  max_auto_continue_rounds: number;
+  auto_verify_replay: LhtGateMode;
+  toolchain_gate: LhtGateMode;
+  stub_gate: LhtGateMode;
+  max_manifest_rounds: number;
+  max_audit_rounds: number;
+  max_infra_strikes: number;
+  custom_verify_count: number;
+  custom_deliverable_count: number;
+}
+
+export async function fetchLhtSettings(): Promise<LhtSettings> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  return invoke<LhtSettings>('get_lht_settings');
+}
+
+export async function saveLhtSettings(settings: LhtSettings): Promise<void> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  await invoke('save_lht_settings', { settings });
+}
+
 // ========== CRAFT blackboards (B-L3) ==========
 
 export interface BlackboardListResponse {

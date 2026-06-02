@@ -2,7 +2,8 @@ import { readComposerWorkspaceFile } from '../api/client';
 import { parseAgentListRow, type AgentListRowMeta } from './agentSpawnMeta';
 
 /** Relative path under workspace for persisted sub-agent snapshots. */
-export const SUBAGENT_STATE_REL_PATH = '.deepseek/state/subagents.v1.json';
+export const SUBAGENT_STATE_REL_PATH = '.zagens/state/subagents.v1.json';
+export const LEGACY_SUBAGENT_STATE_REL_PATH = '.deepseek/state/subagents.v1.json';
 
 export type SubagentPollRow = AgentListRowMeta & {
   stepsTaken: number;
@@ -59,7 +60,7 @@ function parsePollRow(raw: Record<string, unknown>): SubagentPollRow | null {
   };
 }
 
-/** Read `{workspace}/.deepseek/state/subagents.v1.json` (B-channel fallback for AgentPanel). */
+/** Read `{workspace}/.zagens/state/subagents.v1.json` (legacy `.deepseek/` fallback). */
 export async function fetchSubagentStateFromDisk(
   workspaceRoot: string,
 ): Promise<SubagentPollRow[]> {
@@ -67,24 +68,27 @@ export async function fetchSubagentStateFromDisk(
   if (!root) {
     return [];
   }
-  try {
-    const file = await readComposerWorkspaceFile(root, SUBAGENT_STATE_REL_PATH);
-    const parsed = JSON.parse(file.content) as { agents?: unknown[] };
-    if (!Array.isArray(parsed.agents)) {
-      return [];
-    }
-    const rows: SubagentPollRow[] = [];
-    for (const entry of parsed.agents) {
-      if (!entry || typeof entry !== 'object') {
-        continue;
+  for (const rel of [SUBAGENT_STATE_REL_PATH, LEGACY_SUBAGENT_STATE_REL_PATH]) {
+    try {
+      const file = await readComposerWorkspaceFile(root, rel);
+      const parsed = JSON.parse(file.content) as { agents?: unknown[] };
+      if (!Array.isArray(parsed.agents)) {
+        return [];
       }
-      const row = parsePollRow(entry as Record<string, unknown>);
-      if (row) {
-        rows.push(row);
+      const rows: SubagentPollRow[] = [];
+      for (const entry of parsed.agents) {
+        if (!entry || typeof entry !== 'object') {
+          continue;
+        }
+        const row = parsePollRow(entry as Record<string, unknown>);
+        if (row) {
+          rows.push(row);
+        }
       }
+      return rows;
+    } catch {
+      // try legacy path
     }
-    return rows;
-  } catch {
-    return [];
   }
+  return [];
 }

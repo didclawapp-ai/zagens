@@ -7,11 +7,17 @@ use anyhow::{Context, Result};
 
 use crate::CONFIG_FILE_NAME;
 
-/// Global user data directory for Zagens (not workspace-local `.deepseek/`).
+/// Global user data directory for Zagens (not workspace-local `.zagens/`).
 pub const USER_DATA_DIR_NAME: &str = ".zagens";
 
 /// Legacy directory shared with upstream deepseek-tui / CLI.
 pub const LEGACY_USER_DATA_DIR_NAME: &str = ".deepseek";
+
+/// Per-workspace metadata directory (rules, scratchpad, symbol index, blackboards, …).
+pub const WORKSPACE_META_DIR_NAME: &str = ".zagens";
+
+/// Legacy per-workspace metadata directory (pre-Zagens desktop branding).
+pub const LEGACY_WORKSPACE_META_DIR_NAME: &str = ".deepseek";
 
 /// Resolve `~/.zagens/`.
 pub fn user_data_root() -> Result<PathBuf> {
@@ -40,6 +46,57 @@ pub fn user_data_path_or_relative(relative: &str) -> PathBuf {
 #[must_use]
 pub fn tilde_user_data_path(relative: &str) -> String {
     format!("~/{USER_DATA_DIR_NAME}/{relative}")
+}
+
+/// `$WORKSPACE/.zagens/` — target for all new workspace-local metadata writes.
+#[must_use]
+pub fn workspace_meta_dir(workspace: &Path) -> PathBuf {
+    workspace.join(WORKSPACE_META_DIR_NAME)
+}
+
+#[must_use]
+pub fn legacy_workspace_meta_dir(workspace: &Path) -> PathBuf {
+    workspace.join(LEGACY_WORKSPACE_META_DIR_NAME)
+}
+
+/// Resolve workspace meta directory for reads: prefer `.zagens/` when present, else legacy `.deepseek/`, else default `.zagens/`.
+#[must_use]
+pub fn workspace_meta_dir_read(workspace: &Path) -> PathBuf {
+    let zagens = workspace_meta_dir(workspace);
+    if zagens.is_dir() {
+        return zagens;
+    }
+    let legacy = legacy_workspace_meta_dir(workspace);
+    if legacy.is_dir() {
+        return legacy;
+    }
+    zagens
+}
+
+/// Resolve a file under workspace meta for reads (`.zagens/` first, then legacy).
+#[must_use]
+pub fn workspace_meta_file_read(workspace: &Path, relative: &str) -> PathBuf {
+    let zagens = workspace_meta_dir(workspace).join(relative);
+    if zagens.exists() {
+        return zagens;
+    }
+    let legacy = legacy_workspace_meta_dir(workspace).join(relative);
+    if legacy.exists() {
+        return legacy;
+    }
+    zagens
+}
+
+/// Path for a new/updated file under `$WORKSPACE/.zagens/`.
+#[must_use]
+pub fn workspace_meta_file_write(workspace: &Path, relative: &str) -> PathBuf {
+    workspace_meta_dir(workspace).join(relative)
+}
+
+/// Workspace-relative path string for display (always `.zagens/…` for new artifacts).
+#[must_use]
+pub fn workspace_meta_rel(relative: &str) -> String {
+    format!("{WORKSPACE_META_DIR_NAME}/{relative}")
 }
 
 /// Default `~/.zagens/config.toml`.

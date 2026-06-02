@@ -50,10 +50,10 @@ fn msg(role: &str, text: &str) -> Message {
     #[test]
     fn anchor_summary_section_parses_anchor_file_into_bullets() {
         let tmpdir = tempfile::TempDir::new().unwrap();
-        let deepseek_dir = tmpdir.path().join(".deepseek");
-        std::fs::create_dir_all(&deepseek_dir).unwrap();
+        let meta_dir = deepseek_config::workspace_meta_dir(tmpdir.path());
+        std::fs::create_dir_all(&meta_dir).unwrap();
         std::fs::write(
-            deepseek_dir.join("anchors.md"),
+            meta_dir.join("anchors.md"),
             "\n---\nDo not touch .ssh\n---\nStatus field is unreliable\n",
         )
         .unwrap();

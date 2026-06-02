@@ -16,11 +16,13 @@ use deepseek_core::long_horizon::{
 };
 
 use super::completion_audit::{audit_deliverables_async, CompletionAuditResult};
+use super::deliverable_manifest;
 use super::gate_telemetry::CompletionGateEvent;
 use super::generic_gate::{
     collect_model_verify_entries, detect_toolchain_entries, merge_verify_entries,
     resolve_project_root,
 };
+use super::integration_gate;
 use super::manifest_gate::{
     CompletionGateExec, ManifestGateResult, VerifyExitClass, VerifyRunResult, run_manifest_gate,
 };
@@ -60,10 +62,13 @@ pub async fn evaluate_completion_gate(
     session.completion_gate_evaluating = true;
     session.pending_gate_events.clear();
 
+    let runtime_deliverables =
+        deliverable_manifest::merge_runtime_deliverables(workspace, &gate.deliverable);
+
     CompletionGateEvent::queue_manifest_start(
         &mut session.pending_gate_events,
         gate.verify.len() as u32,
-        gate.deliverable.len() as u32,
+        runtime_deliverables.len() as u32,
         gate.mode,
     );
 
@@ -76,6 +81,7 @@ pub async fn evaluate_completion_gate(
         lang,
         steps_remaining,
         exec,
+        &runtime_deliverables,
     )
     .await;
 
@@ -132,6 +138,7 @@ async fn evaluate_completion_gate_inner(
     lang: &str,
     steps_remaining: u32,
     exec: Option<&CompletionGateExec<'_>>,
+    runtime_deliverables: &[deepseek_core::long_horizon::CompletionGateDeliverableEntry],
 ) -> LhtGateOutcome {
     // Task-agnostic stub / incompleteness gate (§ stub gate). Runs first because
     // it is a cheap filesystem scan (no command exec): if the workspace still
@@ -158,7 +165,9 @@ async fn evaluate_completion_gate_inner(
     let cmd_root = resolve_project_root(workspace);
 
     // Assemble the effective layer-2 entries from all three sources.
-    let toolchain = detect_toolchain_entries(&cmd_root, gate.toolchain_gate);
+    // P1-3: polyglot/Tauri detection uses the full workspace root (not only
+    // `cmd_root`) so npm+cargo layouts prefer cargo probes over root npm test.
+    let toolchain = detect_toolchain_entries(workspace, gate.toolchain_gate);
     let model = collect_model_verify_entries(checklist, gate.auto_verify_replay);
     let effective = merge_verify_entries(&gate.verify, toolchain, model);
 
@@ -231,12 +240,52 @@ async fn evaluate_completion_gate_inner(
         }
     }
 
-    // Layer 3 reached only with no *enforced* layer-2 failure → trust the cache.
-    if gate.has_layer3() {
+    // P1-4 / P1′: cross-layer integration heuristics.
+    let cross = integration_gate::evaluate_cross_layer_gaps(workspace);
+    if !cross.enforce.is_empty() && gate.mode == CompletionGateMode::Enforce {
+        record_first_gap(session, cross.enforce.len());
+        session.last_integration_gap_count = Some(cross.enforce.len() as u32);
+        session.integration_gate_rounds = session.integration_gate_rounds.saturating_add(1);
+        CompletionGateEvent::queue_integration_observe(
+            &mut session.pending_gate_events,
+            &cross.enforce,
+            true,
+        );
+        if session.integration_gate_rounds <= gate.max_manifest_rounds {
+            if steps_remaining == 0 {
+                return audit_unmet_outcome(
+                    "steps_and_integration_exhausted",
+                    &[],
+                    &[],
+                    session,
+                );
+            }
+            let text = super::nudge::build_integration_incomplete_nudge(&cross.enforce, lang);
+            return LhtGateOutcome::NudgeIntegrationIncomplete(user_message(text));
+        }
+    }
+    if !cross.observe.is_empty() {
+        record_first_gap(session, cross.observe.len());
+        session.last_integration_gap_count = Some(
+            session
+                .last_integration_gap_count
+                .unwrap_or(0)
+                .max(cross.observe.len() as u32),
+        );
+        session.completion_gate_observe_pending = true;
+        CompletionGateEvent::queue_integration_observe(
+            &mut session.pending_gate_events,
+            &cross.observe,
+            false,
+        );
+    }
+
+    // Layer 3: operator manifest + workspace overlay + auto IPC discovery (P1c).
+    if !runtime_deliverables.is_empty() {
         session.audit_rounds = session.audit_rounds.saturating_add(1);
         let audit = audit_deliverables_async(
             workspace,
-            &gate.deliverable,
+            runtime_deliverables,
             true,
             &[],
             session.manifest_gate_rounds.max(1),

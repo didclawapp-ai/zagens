@@ -4,21 +4,25 @@ mod checkpoint;
 mod completion_audit;
 mod completion_gate_flow;
 pub(crate) mod completion_gate_panel;
+mod deliverable_manifest;
 mod gate_telemetry;
 mod cycle_band;
 mod cycles;
 pub(crate) mod handoff;
 mod generic_gate;
 mod graph;
+mod integration_gate;
 mod manifest_gate;
 mod nudge;
 mod objective;
+mod plan_drift;
 pub(crate) mod progress;
 pub(crate) mod snapshots;
 mod reinject;
 mod stub_gate;
 mod task_graph;
 mod verify;
+mod verify_platform;
 
 pub use checkpoint::tool_marks_lht_checkpoint;
 pub use cycle_band::{
@@ -139,8 +143,9 @@ fn evaluate_plan_bootstrap(
     }))
 }
 
-/// In strict mode, return a copy of the completion-gate config with `mode` and
-/// `stub_gate` raised to `enforce`; otherwise the config is returned unchanged.
+/// In strict mode, return a copy of the completion-gate config with layer-2/3
+/// gates raised to `enforce` (P0-1): top-level `mode`, `stub_gate`, and the
+/// task-agnostic layer-2 sources `auto_verify_replay` / `toolchain_gate`.
 fn strict_completion_gate(
     base: &deepseek_core::long_horizon::CompletionGateConfig,
     mode: LhtMode,
@@ -152,6 +157,12 @@ fn strict_completion_gate(
         }
         if !gate.stub_gate.is_enforce() {
             gate.stub_gate = GenericGateMode::Enforce;
+        }
+        if gate.auto_verify_replay.is_on() && !gate.auto_verify_replay.is_enforce() {
+            gate.auto_verify_replay = GenericGateMode::Enforce;
+        }
+        if gate.toolchain_gate.is_on() && !gate.toolchain_gate.is_enforce() {
+            gate.toolchain_gate = GenericGateMode::Enforce;
         }
     }
     gate
@@ -169,6 +180,14 @@ pub enum LhtGateOutcome {
     /// [`Self::Nudge`] so the caller can emit a separate observability node and
     /// avoid muddling the normal continue/conversion telemetry.
     NudgeUnverifiedAcceptance(Message),
+    /// P0-2: completed items carry `[verify: cmd]` but no matching recent exec
+    /// (`verify_gate verdict=mismatch`). Distinct telemetry from unverified.
+    NudgeVerifyMismatch(Message),
+    /// P1-5: checklist marks a plan phase done while that plan step is still
+    /// pending/in_progress — sync plan before ending the turn.
+    NudgePlanChecklistDrift(Message),
+    /// P1′: enforce-mode cross-layer integration gaps (`electron/` remains, …).
+    NudgeIntegrationIncomplete(Message),
     /// Layer-2 manifest gate: harness-active verify commands failed (§6.1).
     NudgeManifestFailed(Message),
     /// Generic stub / incompleteness gate: blocking-class markers (`todo!()`,
@@ -277,6 +296,62 @@ pub async fn maybe_continue_incomplete_code_task(
             input.session.unverified_acceptance_nudges += 1;
             let text = nudge::build_unverified_acceptance_nudge(&unverified, input.lang);
             return LhtGateOutcome::NudgeUnverifiedAcceptance(Message {
+                role: "user".to_string(),
+                content: vec![ContentBlock::Text {
+                    text,
+                    cache_control: None,
+                }],
+            });
+        }
+        // P0-2: `[verify:]` prefix present but no matching recent exec — tagged
+        // without running. Check after unverified so both guards can fire on
+        // separate turns (bounded each).
+        let mismatched: Vec<(String, String)> = checklist
+            .items
+            .iter()
+            .filter(|i| i.status == crate::tools::todo::TodoStatus::Completed)
+            .filter_map(|i| {
+                if verify::verify_gate_verdict(
+                    &i.content,
+                    &input.session.recent_verification_cmds,
+                    input.lang,
+                )
+                .0
+                    != "mismatch"
+                {
+                    return None;
+                }
+                verify::parse_verify_command(&i.content).map(|cmd| {
+                    (
+                        verify::strip_verify_prefix(&i.content),
+                        cmd,
+                    )
+                })
+            })
+            .collect();
+        if !mismatched.is_empty()
+            && input.session.verify_mismatch_nudges < nudge::MAX_VERIFY_MISMATCH_NUDGES
+        {
+            input.session.verify_mismatch_nudges += 1;
+            let text = nudge::build_verify_mismatch_nudge(&mismatched, input.lang);
+            return LhtGateOutcome::NudgeVerifyMismatch(Message {
+                role: "user".to_string(),
+                content: vec![ContentBlock::Text {
+                    text,
+                    cache_control: None,
+                }],
+            });
+        }
+        // P1-5: plan/checklist drift — checklist names a phase as done while
+        // the matching plan step is still open.
+        let drift = plan_drift::find_plan_checklist_drift(&plan, &checklist);
+        if !drift.is_empty()
+            && input.session.plan_checklist_drift_nudges
+                < nudge::MAX_PLAN_CHECKLIST_DRIFT_NUDGES
+        {
+            input.session.plan_checklist_drift_nudges += 1;
+            let text = nudge::build_plan_checklist_drift_nudge(&drift, input.lang);
+            return LhtGateOutcome::NudgePlanChecklistDrift(Message {
                 role: "user".to_string(),
                 content: vec![ContentBlock::Text {
                     text,
@@ -439,12 +514,16 @@ mod plan_bootstrap_tests {
 
     #[test]
     fn strict_completion_gate_raises_modes() {
-        use deepseek_core::long_horizon::{CompletionGateConfig, CompletionGateMode};
-        let base = CompletionGateConfig::default();
+        use deepseek_core::long_horizon::{CompletionGateConfig, CompletionGateMode, GenericGateMode};
+        let mut base = CompletionGateConfig::default();
+        base.auto_verify_replay = GenericGateMode::Observe;
+        base.toolchain_gate = GenericGateMode::Observe;
         let auto = strict_completion_gate(&base, LhtMode::Auto);
         assert_eq!(auto.mode, base.mode);
         let strict = strict_completion_gate(&base, LhtMode::Strict);
         assert_eq!(strict.mode, CompletionGateMode::Enforce);
         assert!(strict.stub_gate.is_enforce());
+        assert_eq!(strict.auto_verify_replay, GenericGateMode::Enforce);
+        assert_eq!(strict.toolchain_gate, GenericGateMode::Enforce);
     }
 }

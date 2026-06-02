@@ -1,44 +1,98 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useT } from '../i18n';
 import type { RuntimeConnectionState } from '../api/client';
 import type { DesktopTaskTypePreference } from '../types/desktop';
+import { persistTaskTypePreference } from '../lib/appPreferences';
 
 const DEEPSEEK_API_KEYS_URL = 'https://platform.deepseek.com/api_keys';
+
+/** Minimum splash duration so the connect progress feels deliberate (~2–3 s). */
+const CONNECT_MIN_MS = 2200;
+
+type Phase = 'connect' | 'key' | 'mode';
 
 interface Props {
   runtimeConn: RuntimeConnectionState;
   apiKeyConfigured: boolean | null;
+  needsKeyStep: boolean;
+  needsModeStep: boolean;
   refreshApiKeyStatus: () => void;
   taskTypePreference: DesktopTaskTypePreference;
   onTaskTypePreferenceChange: (value: DesktopTaskTypePreference) => void;
   onComplete: () => void;
 }
 
-type Step = 1 | 2 | 3;
-
 const MODE_OPTIONS: DesktopTaskTypePreference[] = ['auto', 'code', 'office'];
 
 export default function OnboardingOverlay({
   runtimeConn,
   apiKeyConfigured,
+  needsKeyStep,
+  needsModeStep,
   refreshApiKeyStatus,
   taskTypePreference,
   onTaskTypePreferenceChange,
   onComplete,
 }: Props) {
   const { t } = useT();
-  const [step, setStep] = useState<Step>(1);
+  const mountMsRef = useRef(Date.now());
+  const [phase, setPhase] = useState<Phase>('connect');
+  const [connectDone, setConnectDone] = useState(false);
   const [key, setKey] = useState('');
   const [saveBusy, setSaveBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Step 1 auto-advances once the runtime reports connected.
+  const setupSteps = useMemo(() => {
+    const steps: Phase[] = ['connect'];
+    if (needsKeyStep) steps.push('key');
+    if (needsModeStep) steps.push('mode');
+    return steps;
+  }, [needsKeyStep, needsModeStep]);
+
+  const advanceFromConnect = useCallback(() => {
+    if (needsKeyStep && apiKeyConfigured !== true) {
+      setPhase('key');
+      return;
+    }
+    if (needsModeStep) {
+      setPhase('mode');
+      return;
+    }
+    onComplete();
+  }, [apiKeyConfigured, needsKeyStep, needsModeStep, onComplete]);
+
+  const advanceFromKey = useCallback(() => {
+    if (needsModeStep) {
+      setPhase('mode');
+      return;
+    }
+    onComplete();
+  }, [needsModeStep, onComplete]);
+
+  // Animate connect progress; finish when runtime is connected, key status is known, and min duration elapsed.
   useEffect(() => {
-    if (step !== 1 || runtimeConn !== 'connected') return;
-    const id = window.setTimeout(() => setStep(2), 500);
+    if (phase !== 'connect') return;
+    const tick = () => {
+      const elapsed = Date.now() - mountMsRef.current;
+      const connected = runtimeConn === 'connected';
+      const keyStatusKnown = apiKeyConfigured !== null;
+      const ready = connected && keyStatusKnown && elapsed >= CONNECT_MIN_MS;
+      if (ready) {
+        setConnectDone(true);
+        return;
+      }
+    };
+    tick();
+    const id = window.setInterval(tick, 50);
+    return () => window.clearInterval(id);
+  }, [phase, runtimeConn, apiKeyConfigured]);
+
+  useEffect(() => {
+    if (!connectDone || phase !== 'connect') return;
+    const id = window.setTimeout(advanceFromConnect, 350);
     return () => window.clearTimeout(id);
-  }, [step, runtimeConn]);
+  }, [connectDone, phase, advanceFromConnect]);
 
   const handleSaveKey = useCallback(async () => {
     setError(null);
@@ -47,116 +101,76 @@ export default function OnboardingOverlay({
       await invoke('save_deepseek_api_key', { key: key.trim() });
       setKey('');
       refreshApiKeyStatus();
-      setStep(3);
+      advanceFromKey();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSaveBusy(false);
     }
-  }, [key, refreshApiKeyStatus]);
+  }, [key, refreshApiKeyStatus, advanceFromKey]);
 
-  const connectStatus = (() => {
-    switch (runtimeConn) {
-      case 'connected':
-        return { text: t('onboarding.connectConnected'), tone: 'ok' as const };
-      case 'auth_mismatch':
-        return { text: t('onboarding.connectAuthMismatch'), tone: 'warn' as const };
-      case 'offline':
-        return { text: t('onboarding.connectOffline'), tone: 'warn' as const };
-      default:
-        return { text: t('onboarding.connectChecking'), tone: 'busy' as const };
-    }
-  })();
+  const stepLabels: Record<Phase, string> = {
+    connect: t('onboarding.stepConnect'),
+    key: t('onboarding.stepKey'),
+    mode: t('onboarding.stepMode'),
+  };
 
-  const steps: Array<{ n: Step; label: string }> = [
-    { n: 1, label: t('onboarding.stepConnect') },
-    { n: 2, label: t('onboarding.stepKey') },
-    { n: 3, label: t('onboarding.stepMode') },
-  ];
+  const phaseIndex = setupSteps.indexOf(phase);
+  const showStepRail = setupSteps.length > 1;
+
+  if (phase === 'connect') {
+    return (
+      <div className="fixed inset-0 z-[200] flex items-center justify-center bg-canvas">
+        <p className="text-sm text-t-text-muted">{t('onboarding.startingWait')}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div className="w-full max-w-md rounded-2xl bg-canvas-alt border border-border shadow-2xl overflow-hidden">
         <div className="px-6 pt-6 pb-4">
           <h1 className="text-lg font-semibold text-t-text">{t('onboarding.welcomeTitle')}</h1>
-          <p className="text-xs text-t-text-muted mt-1">{t('onboarding.welcomeSubtitle')}</p>
+          <p className="text-xs text-t-text-muted mt-1">
+            {setupSteps.length > 1 ? t('onboarding.welcomeSubtitle') : t('onboarding.connectHint')}
+          </p>
         </div>
 
-        <div className="flex items-center gap-2 px-6 pb-5">
-          {steps.map((s, idx) => {
-            const active = s.n === step;
-            const done = s.n < step;
-            return (
-              <div key={s.n} className="flex items-center gap-2 flex-1">
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-medium transition-colors ${
-                      active
-                        ? 'bg-accent text-accent-text'
-                        : done
-                          ? 'bg-emerald-500 text-white'
-                          : 'bg-input-bg text-t-text-muted border border-input-border'
-                    }`}
-                  >
-                    {done ? '✓' : s.n}
-                  </span>
-                  <span
-                    className={`text-xs ${active ? 'text-t-text font-medium' : 'text-t-text-muted'}`}
-                  >
-                    {s.label}
-                  </span>
+        {showStepRail && (
+          <div className="flex items-center gap-2 px-6 pb-5">
+            {setupSteps.map((s, idx) => {
+              const active = s === phase;
+              const done = idx < phaseIndex;
+              const n = idx + 1;
+              return (
+                <div key={s} className="flex items-center gap-2 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-medium transition-colors ${
+                        active
+                          ? 'bg-accent text-accent-text'
+                          : done
+                            ? 'bg-emerald-500 text-white'
+                            : 'bg-input-bg text-t-text-muted border border-input-border'
+                      }`}
+                    >
+                      {done ? '✓' : n}
+                    </span>
+                    <span
+                      className={`text-xs ${active ? 'text-t-text font-medium' : 'text-t-text-muted'}`}
+                    >
+                      {stepLabels[s]}
+                    </span>
+                  </div>
+                  {idx < setupSteps.length - 1 && <div className="flex-1 h-px bg-border" />}
                 </div>
-                {idx < steps.length - 1 && (
-                  <div className="flex-1 h-px bg-border" />
-                )}
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
 
         <div className="px-6 pb-6 min-h-[200px]">
-          {step === 1 && (
-            <div className="space-y-4">
-              <p className="text-sm font-medium text-t-text">{t('onboarding.connectTitle')}</p>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-input-bg">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    connectStatus.tone === 'ok'
-                      ? 'w-full bg-emerald-500'
-                      : connectStatus.tone === 'warn'
-                        ? 'w-1/3 bg-amber-500 animate-pulse'
-                        : 'w-2/3 bg-accent animate-pulse'
-                  }`}
-                />
-              </div>
-              <p
-                className={`text-xs ${
-                  connectStatus.tone === 'ok'
-                    ? 'text-emerald-500'
-                    : connectStatus.tone === 'warn'
-                      ? 'text-amber-500'
-                      : 'text-t-text-muted'
-                }`}
-              >
-                {connectStatus.text}
-              </p>
-              <p className="text-[11px] text-t-text-muted leading-relaxed">
-                {t('onboarding.connectHint')}
-              </p>
-              <div className="flex justify-end pt-2">
-                <button
-                  type="button"
-                  disabled={runtimeConn !== 'connected'}
-                  onClick={() => setStep(2)}
-                  className="px-4 py-2 rounded-lg bg-accent text-accent-text hover:bg-accent-hover disabled:opacity-50 text-sm font-medium transition-colors"
-                >
-                  {t('onboarding.next')}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {step === 2 && (
+          {phase === 'key' && (
             <div className="space-y-3">
               <p className="text-sm font-medium text-t-text">{t('onboarding.keyTitle')}</p>
               <p className="text-xs text-t-text-muted leading-relaxed">{t('onboarding.keyDesc')}</p>
@@ -181,38 +195,29 @@ export default function OnboardingOverlay({
               >
                 {t('onboarding.keyGetLink')}
               </button>
-              <div className="flex items-center justify-between pt-2">
-                <button
-                  type="button"
-                  onClick={() => setStep(1)}
-                  className="px-3 py-2 rounded-lg border border-input-border text-sm text-t-text-secondary hover:bg-canvas-alt transition-colors"
-                >
-                  {t('onboarding.back')}
-                </button>
-                <div className="flex items-center gap-3">
-                  {!apiKeyConfigured && (
-                    <button
-                      type="button"
-                      onClick={() => setStep(3)}
-                      className="text-xs text-t-text-muted hover:text-t-text transition-colors"
-                    >
-                      {t('onboarding.keySkip')}
-                    </button>
-                  )}
+              <div className="flex items-center justify-end pt-2 gap-3">
+                {!apiKeyConfigured && (
                   <button
                     type="button"
-                    disabled={saveBusy || (!apiKeyConfigured && !key.trim())}
-                    onClick={() => (apiKeyConfigured ? setStep(3) : void handleSaveKey())}
-                    className="px-4 py-2 rounded-lg bg-accent text-accent-text hover:bg-accent-hover disabled:opacity-50 text-sm font-medium transition-colors"
+                    onClick={advanceFromKey}
+                    className="text-xs text-t-text-muted hover:text-t-text transition-colors"
                   >
-                    {saveBusy ? t('common.saving') : t('onboarding.next')}
+                    {t('onboarding.keySkip')}
                   </button>
-                </div>
+                )}
+                <button
+                  type="button"
+                  disabled={saveBusy || (!apiKeyConfigured && !key.trim())}
+                  onClick={() => (apiKeyConfigured ? advanceFromKey() : void handleSaveKey())}
+                  className="px-4 py-2 rounded-lg bg-accent text-accent-text hover:bg-accent-hover disabled:opacity-50 text-sm font-medium transition-colors"
+                >
+                  {saveBusy ? t('common.saving') : t('onboarding.next')}
+                </button>
               </div>
             </div>
           )}
 
-          {step === 3 && (
+          {phase === 'mode' && (
             <div className="space-y-3">
               <p className="text-sm font-medium text-t-text">{t('onboarding.modeTitle')}</p>
               <p className="text-xs text-t-text-muted leading-relaxed">{t('onboarding.modeDesc')}</p>
@@ -235,7 +240,10 @@ export default function OnboardingOverlay({
                     <button
                       key={mode}
                       type="button"
-                      onClick={() => onTaskTypePreferenceChange(mode)}
+                      onClick={() => {
+                        onTaskTypePreferenceChange(mode);
+                        persistTaskTypePreference(mode);
+                      }}
                       className={`w-full text-left rounded-lg border px-3 py-2.5 transition-colors ${
                         selected
                           ? 'border-accent bg-accent/10'
@@ -250,17 +258,13 @@ export default function OnboardingOverlay({
                   );
                 })}
               </div>
-              <div className="flex items-center justify-between pt-2">
+              <div className="flex items-center justify-end pt-2">
                 <button
                   type="button"
-                  onClick={() => setStep(2)}
-                  className="px-3 py-2 rounded-lg border border-input-border text-sm text-t-text-secondary hover:bg-canvas-alt transition-colors"
-                >
-                  {t('onboarding.back')}
-                </button>
-                <button
-                  type="button"
-                  onClick={onComplete}
+                  onClick={() => {
+                    persistTaskTypePreference(taskTypePreference);
+                    onComplete();
+                  }}
                   className="px-4 py-2 rounded-lg bg-accent text-accent-text hover:bg-accent-hover text-sm font-medium transition-colors"
                 >
                   {t('onboarding.finish')}

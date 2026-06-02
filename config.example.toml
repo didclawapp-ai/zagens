@@ -9,6 +9,7 @@
 #
 # First Zagens launch writes a smaller default config.toml under ~/.zagens/ (core provider,
 # security, features, paths). Copy sections from this file to extend it; see ConfigToml::first_run_defaults.
+# Power-user provider recipes: ~/.zagens/config.advanced.example.toml (OpenRouter, local, profiles).
 # If ~/.deepseek/ exists from deepseek-tui, only config + skills/MCP are migrated — not session DBs.
 
 # ─────────────────────────────────────────────────────────────────────────────────
@@ -78,13 +79,13 @@ memory_path = "~/.zagens/memory.md"
 # a tracing warning. Files are capped at 100 KiB per entry.
 #
 # Example: short repo-local addendum on top of built-in prompts (keep lean for KV cache hits):
-#   instructions = [ ".deepseek/grounding-rules.md" ]
+#   instructions = [ ".zagens/grounding-rules.md" ]
 #
-# Zagens desktop: the app can also maintain `.deepseek/pick-rules.md` per workspace
+# Zagens desktop: the app can also maintain `.zagens/pick-rules.md` per workspace
 # from 工作台 → 「项目规则」; the runtime prepends that file to the effective
 # `instructions` list for new engines (no `instructions = [...]` entry required).
 #
-# Project-level config (.deepseek/config.toml in the workspace) replaces
+# Project-level config (.zagens/config.toml in the workspace) replaces
 # the user-level array wholesale rather than merging — list `~/global.md`
 # inside the project array if you want both. An explicit empty array
 # (`instructions = []`) clears the user list for the current repo.
@@ -191,6 +192,28 @@ max_subagents = 10 # optional (1-20; 0/negative are clamped to 1 — to fully
 # api_key = "YOUR_NVIDIA_API_KEY"
 # base_url = "https://integrate.api.nvidia.com/v1"
 # model = "deepseek-ai/deepseek-v4-pro"     # or deepseek-ai/deepseek-v4-flash
+
+# OpenRouter — Claude, GPT, Gemini, DeepSeek, Llama, … (https://openrouter.ai/models)
+[providers.openrouter]
+# api_key = "YOUR_OPENROUTER_KEY"
+# base_url = "https://openrouter.ai/api/v1"
+# model = "anthropic/claude-sonnet-4"
+# # model = "openai/gpt-4.1"
+# # model = "google/gemini-2.5-pro-preview"
+# # model = "deepseek/deepseek-v4-pro"
+# http_headers = { "HTTP-Referer" = "https://zagens.local", "X-Title" = "Zagens" }
+
+# OpenAI direct (https://platform.openai.com)
+[providers.openai]
+# api_key = "YOUR_OPENAI_KEY"
+# base_url = "https://api.openai.com/v1"
+# model = "gpt-4.1"
+
+# Novita AI (https://novita.ai)
+[providers.novita]
+# api_key = "YOUR_NOVITA_KEY"
+# base_url = "https://api.novita.ai/v1"
+# model = "deepseek/deepseek-v4-pro"
 
 # Fireworks AI-hosted DeepSeek V4 (https://fireworks.ai)
 [providers.fireworks]

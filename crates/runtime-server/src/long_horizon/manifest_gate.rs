@@ -140,6 +140,25 @@ async fn run_single_verify(
     let run_dir = super::generic_gate::resolve_command_root(workspace, &display);
     let workspace = run_dir.as_path();
 
+    if let Some(cmd) = entry.cmd.as_deref().filter(|c| !c.trim().is_empty()) {
+        if let Some(native) = super::verify_platform::try_native_verify(workspace, cmd) {
+            return VerifyRunResult {
+                id: entry.id.clone(),
+                command_display: native.command_display,
+                exit_code: native.exit_code,
+                exit_class: match native.exit_class {
+                    super::verify_platform::NativeExitClass::Ok => VerifyExitClass::Ok,
+                    super::verify_platform::NativeExitClass::Assertion => {
+                        VerifyExitClass::Assertion
+                    }
+                    super::verify_platform::NativeExitClass::Infra => VerifyExitClass::Infra,
+                },
+                stdout_tail: native.stdout_tail,
+                stderr_tail: native.stderr_tail,
+            };
+        }
+    }
+
     if entry.shell == ManifestShell::None {
         if entry.argv.is_empty() {
             return VerifyRunResult {
@@ -203,7 +222,10 @@ async fn run_single_verify(
         .await;
     }
 
-    let safety = analyze_command(cmd);
+    let adapted = super::verify_platform::adapt_verify_command_for_platform(cmd);
+    let cmd_to_run = adapted.as_ref();
+
+    let safety = analyze_command(cmd_to_run);
     if matches!(safety.level, SafetyLevel::Dangerous) {
         return VerifyRunResult {
             id: entry.id.clone(),
@@ -215,7 +237,7 @@ async fn run_single_verify(
         };
     }
 
-    run_via_shell_manager(workspace, cmd, &entry.id, &display, timeout_ms, exec).await
+    run_via_shell_manager(workspace, cmd_to_run, &entry.id, &display, timeout_ms, exec).await
 }
 
 /// Wrap a manifest `cmd` for an explicit shell. For complex commands prefer

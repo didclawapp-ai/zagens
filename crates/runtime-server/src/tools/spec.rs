@@ -161,8 +161,8 @@ impl ToolContext {
     pub fn new(workspace: impl Into<PathBuf>) -> Self {
         let workspace = workspace.into();
         let shell_manager = new_shared_shell_manager(workspace.clone());
-        let notes_path = workspace.join(".deepseek").join("notes.md");
-        let mcp_config_path = workspace.join(".deepseek").join("mcp.json");
+        let notes_path = deepseek_config::workspace_meta_file_read(&workspace, "notes.md");
+        let mcp_config_path = deepseek_config::workspace_meta_file_read(&workspace, "mcp.json");
         Self {
             workspace,
             shell_manager,

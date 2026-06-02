@@ -1,0 +1,10 @@
+# Workspace overlay: copy to `{workspace}/.zagens/lht-deliverables.toml`
+# Layer-3 deliverables merged with operator config + auto IPC discovery (P1c).
+
+[[deliverable]]
+id = "desktop_api_adapter"
+path = "src/desktop-api.ts"
+
+[[deliverable]]
+id = "ipc_db_erp"
+path = "src-tauri/src/commands/db_erp.rs"

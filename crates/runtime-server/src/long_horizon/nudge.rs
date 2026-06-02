@@ -32,6 +32,15 @@ pub(crate) const STALE_ASSISTANT_TURNS: u32 = 8;
 /// can't (or won't) add `[verify:]` cannot loop the turn forever.
 pub(crate) const MAX_UNVERIFIED_ACCEPTANCE_NUDGES: u32 = 2;
 
+/// Hard cap on `[verify:]` **mismatch** continue nudges per session — when a
+/// completed item carries a verify prefix but no matching recent exec was
+/// recorded (P0-2: "tagged but didn't run"). Bounded like
+/// [`MAX_UNVERIFIED_ACCEPTANCE_NUDGES`].
+pub(crate) const MAX_VERIFY_MISMATCH_NUDGES: u32 = 2;
+
+/// Hard cap on plan↔checklist drift nudges per session (P1-5).
+pub(crate) const MAX_PLAN_CHECKLIST_DRIFT_NUDGES: u32 = 2;
+
 /// Strict-mode plan-bootstrap: max times the runtime forces "establish a plan"
 /// while the graph is empty before giving up (honest stop) for this session.
 pub(crate) const MAX_PLAN_GATE_ROUNDS: u32 = 3;
@@ -84,6 +93,14 @@ pub struct LongHorizonSessionState {
     /// and is bounded by [`MAX_UNVERIFIED_ACCEPTANCE_NUDGES`] so the false-green
     /// guard can't nudge forever when the model won't add a verify command.
     pub unverified_acceptance_nudges: u32,
+    /// Session-scoped: number of `[verify:]` **mismatch** continue nudges fired
+    /// (completed item has a verify prefix but no matching recent exec). Bounded
+    /// by [`MAX_VERIFY_MISMATCH_NUDGES`] (P0-2).
+    pub verify_mismatch_nudges: u32,
+    /// Session-scoped: plan↔checklist drift nudges (P1-5).
+    pub plan_checklist_drift_nudges: u32,
+    /// Session-scoped: cross-layer integration enforce nudges (P1′ electron/ etc.).
+    pub integration_gate_rounds: u32,
     /// Git working-tree signature captured when the last nudge was emitted
     /// (§4.8). Compared against the current signature to detect objective,
     /// language-agnostic progress. Reset on new user message.
@@ -115,6 +132,8 @@ pub struct LongHorizonSessionState {
     pub harness_side_effect_signature: Option<String>,
     /// First gate evaluation that recorded any gap (observe/enforce telemetry).
     pub first_gate_gap_count: Option<u32>,
+    /// Latest cross-layer integration gap count (P1′).
+    pub last_integration_gap_count: Option<u32>,
     /// Enforce reinject while `NudgeTracker` is blocked (§7.8 telemetry).
     pub gate_reinject_while_blocked: u32,
     /// Observe mode: gaps recorded; turn may still complete at `graph_complete`.
@@ -510,6 +529,70 @@ pub fn build_unverified_acceptance_nudge(items: &[String], lang: &str) -> String
     }
 }
 
+/// P0-2: completed checklist items tagged `[verify: cmd]` but with no matching
+/// recent exec — force a real run before the turn may end on `graph_complete`.
+#[must_use]
+pub fn build_verify_mismatch_nudge(items: &[(String, String)], lang: &str) -> String {
+    let list = items
+        .iter()
+        .map(|(label, cmd)| format!("- `{cmd}` — {label}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    if is_zh(lang) {
+        format!(
+            "清单已全部勾选，但下面这些项带有 `[verify: …]` 前缀，却**没有匹配的近期执行记录**（贴标签 ≠ 真跑过）：\n\n{list}\n\n\
+             请对每一项：**实际运行 verify 命令并看到通过输出**（exit 0）后再保持 completed；或撤销 completed、先跑命令再勾选。不要仅凭文字声明结束本轮。"
+        )
+    } else {
+        format!(
+            "The checklist is fully checked, but these items have a `[verify: …]` prefix with **no matching recent run** (tagging is NOT the same as running):\n\n{list}\n\n\
+             For each: **run the verify command and see it pass** (exit 0) before keeping it completed; or revert to pending, run, then mark done. Do not end this turn on a prose claim alone."
+        )
+    }
+}
+
+/// P1-5: checklist claims a plan phase is done while that plan step is still open.
+#[must_use]
+pub fn build_plan_checklist_drift_nudge(items: &[String], lang: &str) -> String {
+    let list = items
+        .iter()
+        .map(|s| format!("- {s}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    if is_zh(lang) {
+        format!(
+            "清单已全部勾选，但 plan 与 checklist **不同步** —— 下列 plan 阶段仍为 pending/in_progress，却已有对应 checklist 完成项：\n\n{list}\n\n\
+             请用 `update_plan` 把已完成阶段标为 completed，或撤销 checklist 中过早勾选的项。Plan 与 checklist 必须反映同一真实进度后再结束本轮。"
+        )
+    } else {
+        format!(
+            "The checklist is fully checked, but **plan and checklist are out of sync** — these plan phases are still pending/in_progress while matching checklist items are completed:\n\n{list}\n\n\
+             Use `update_plan` to mark finished phases completed, or revert prematurely checked checklist items. Plan and checklist must reflect the same real progress before ending this turn."
+        )
+    }
+}
+
+/// P1′: strict/enforce cross-layer gaps (electron/ still present, missing adapter, …).
+#[must_use]
+pub fn build_integration_incomplete_nudge(gaps: &[String], lang: &str) -> String {
+    let list = gaps
+        .iter()
+        .map(|s| format!("- {s}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    if is_zh(lang) {
+        format!(
+            "清单已全部勾选，但**跨层集成门禁**仍发现硬性缺口：\n\n{list}\n\n\
+             请逐项修复（删 `electron/`、补前端 adapter、`[verify: npm run build]` 等）后再保持 completed。不要仅凭 prose 声明迁移完成。"
+        )
+    } else {
+        format!(
+            "The checklist is fully checked, but the **cross-layer integration gate** still reports hard gaps:\n\n{list}\n\n\
+             Fix each item (remove `electron/`, add the frontend adapter, `[verify: npm run build]`, etc.) before keeping items completed. Do not end this turn on a prose-only migration claim."
+        )
+    }
+}
+
 /// "一推到底" auto-continue override (C2). Fired when the in-turn nudge gate has
 /// already given up (tracker `blocked` / `max_nudges`) but the task graph is
 /// still genuinely incomplete and `auto_continue` is enabled. Far more forceful
@@ -653,6 +736,18 @@ mod tests {
         let en = build_unverified_acceptance_nudge(&items, "en");
         assert!(en.contains("[verify:"));
         assert!(en.contains("run that command and see it pass"));
+    }
+
+    #[test]
+    fn verify_mismatch_nudge_lists_cmd_and_label() {
+        let items = vec![
+            ("cargo check".to_string(), "cargo check --manifest-path src-tauri/Cargo.toml".to_string()),
+        ];
+        let zh = build_verify_mismatch_nudge(&items, "zh-Hans");
+        assert!(zh.contains("cargo check --manifest-path"));
+        assert!(zh.contains("贴标签"));
+        let en = build_verify_mismatch_nudge(&items, "en");
+        assert!(en.contains("no matching recent run"));
     }
 
     #[test]

@@ -81,7 +81,7 @@ pub struct Cli {
     #[arg(long = "fresh")]
     pub fresh: bool,
 
-    /// Skip loading project-level config from $WORKSPACE/.deepseek/config.toml
+    /// Skip loading project-level config from $WORKSPACE/.zagens/config.toml
     #[arg(long = "no-project-config")]
     pub no_project_config: bool,
 }

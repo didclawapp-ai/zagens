@@ -21,6 +21,8 @@ pub struct CompletionGatePanelJson {
     pub audit_round: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub first_gap_count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub integration_gap_count: Option<u32>,
     pub gate_reinject_while_blocked: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_manifest_passed: Option<bool>,
@@ -44,6 +46,7 @@ pub fn merge_completion_gate_panel(
         manifest_round: cache.manifest_round,
         audit_round: cache.audit_round,
         first_gap_count: cache.first_gap_count,
+        integration_gap_count: cache.integration_gap_count,
         gate_reinject_while_blocked: cache.gate_reinject_while_blocked,
         last_manifest_passed: cache.last_manifest_passed,
         last_audit_pass: cache.last_audit_pass,
@@ -58,6 +61,9 @@ pub fn merge_completion_gate_panel(
         if out.first_gap_count.is_none() {
             out.first_gap_count = s.first_gap_count;
         }
+        if out.integration_gap_count.is_none() {
+            out.integration_gap_count = s.integration_gap_count;
+        }
     }
     out
 }
@@ -70,6 +76,7 @@ pub struct CompletionGatePanelCache {
     pub manifest_round: u32,
     pub audit_round: u32,
     pub first_gap_count: Option<u32>,
+    pub integration_gap_count: Option<u32>,
     pub gate_reinject_while_blocked: u32,
     pub last_manifest_passed: Option<bool>,
     pub last_audit_pass: Option<bool>,
@@ -82,6 +89,7 @@ pub struct CompletionGateSessionSnapshot {
     pub manifest_gate_rounds: u32,
     pub audit_rounds: u32,
     pub first_gap_count: Option<u32>,
+    pub integration_gap_count: Option<u32>,
     pub gate_reinject_while_blocked: u32,
 }
 
@@ -158,6 +166,17 @@ impl CompletionGatePanelCache {
                     self.mode = Some("enforce".to_string());
                 } else if p.get("observe").and_then(Value::as_bool) == Some(true) {
                     self.mode = Some("observe".to_string());
+                }
+            }
+            return;
+        }
+        if message.starts_with("long_horizon.integration_gate:") {
+            if let Some(p) = payload {
+                if let Some(g) = p.get("gap_count").and_then(Value::as_u64) {
+                    self.integration_gap_count = Some(g as u32);
+                }
+                if p.get("enforce").and_then(Value::as_bool) == Some(true) {
+                    self.mode = Some("enforce".to_string());
                 }
             }
         }

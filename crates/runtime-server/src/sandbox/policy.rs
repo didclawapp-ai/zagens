@@ -186,10 +186,12 @@ impl SandboxPolicy {
                     .map(|root| {
                         let mut read_only_subpaths = Vec::new();
 
-                        // Protect .deepseek directories from modification
-                        let deepseek_dir = root.join(".deepseek");
-                        if deepseek_dir.is_dir() {
-                            read_only_subpaths.push(deepseek_dir);
+                        // Protect workspace metadata directories from modification
+                        for meta_name in [".zagens", ".deepseek"] {
+                            let meta_dir = root.join(meta_name);
+                            if meta_dir.is_dir() {
+                                read_only_subpaths.push(meta_dir);
+                            }
                         }
 
                         WritableRoot {

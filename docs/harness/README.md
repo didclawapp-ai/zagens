@@ -9,7 +9,7 @@
 | 文档 | 角色 |
 |------|------|
 | [Agent+Harness组合式编程方案.md](./Agent+Harness组合式编程方案.md) | **远景 SSOT**（v1.3）：组合式 Harness（阶段五）、**自适应主动 Harness**（阶段六展望）、黑板三身份、长程机制 |
-| [LONG_HORIZON_CODE_TASKS.md](./LONG_HORIZON_CODE_TASKS.md) | **长程代码任务**（Phase 1 已落地 Runtime）：生成 / 修复 / 重构 — checklist 强制续写 + 任务图；与 CRAFT（审查）、Audit Scratchpad 边界分离 |
+| [LONG_HORIZON_CODE_TASKS.md](./LONG_HORIZON_CODE_TASKS.md) | **长程代码任务**（Phase 1–3 已落地；Phase 4 + **§6 产品迭代 P0–P3** 规格）：LHT↔CRAFT 宏观循环 · 加严/mismatch/manifest 路线图 |
 | [PARALLEL_FRESH_GENERATION.md](./PARALLEL_FRESH_GENERATION.md) | **全新项目并行生成**（⬜ 规划中，0.8 之后）：契约优先 fan-out/join + 两道闸门（P0.5 契约固化 / P1.5 符合性审核）；挂 LHT，落地 §11.5 两个金矿 |
 | [LHT_TEST_SUITE.md](./LHT_TEST_SUITE.md) | **长程任务测试集**（活文档）：DEMO2–DEMO5 真实压测（2W 行级 Go 解释器）编为黄金回归 + 外部经典案例映射（解释器 / CodeCrafters / SWE-bench）+ `[verify:]` 编写规范 + 最小回归集 |
 | [HARNESS_INTEGRATION_PROPOSAL.md](./HARNESS_INTEGRATION_PROPOSAL.md) | **落地提案**（Proposed）：名词映射、Phase 0–3 搭车 D-series、数学基础降级清单 |

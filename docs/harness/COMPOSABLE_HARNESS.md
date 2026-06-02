@@ -121,6 +121,8 @@ flowchart TD
 
 > **组合式 = 三层可独立开关。** 只跑层1=现状；层1+2=纯 exit-code 门禁（无 LLM，最确定）；层1+2+3=完整。算子按任务选组合。
 
+> **Macro 第四维（Phase 4 规格，未实现）：** 大 refactor（~1.5–2W 行）在 micro 层1–3 之上叠加 **LHT 实现段 ↔ CRAFT 质检段 ↔ LHT 补全段** 宏观循环。完整规格：[`LONG_HORIZON_CODE_TASKS.md`](./LONG_HORIZON_CODE_TASKS.md) §6 Phase 4。**产品迭代 P0–P3**（strict/mismatch/manifest/测量）：同文档 **§6 产品迭代**。
+
 ---
 
 ## 5. 挂载点与可复用件

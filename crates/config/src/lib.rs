@@ -15,10 +15,19 @@ use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 
 mod paths;
 mod ui_settings;
+mod lht_config;
+pub use lht_config::{
+    CompletionGateConfigToml, CompletionGateDeliverableToml, CompletionGateVerifyToml,
+    LongHorizonConfigToml, normalize_gate_mode, normalize_lht_mode,
+    product_defaults as lht_product_defaults, resolve_lht,
+};
 pub use paths::{
-    LEGACY_USER_DATA_DIR_NAME, USER_DATA_DIR_NAME, default_config_path, legacy_config_path,
-    legacy_user_data_root, migrate_legacy_user_data_if_needed, tilde_user_data_path,
-    user_data_path, user_data_path_or_relative, user_data_root,
+    LEGACY_USER_DATA_DIR_NAME, LEGACY_WORKSPACE_META_DIR_NAME, USER_DATA_DIR_NAME,
+    WORKSPACE_META_DIR_NAME, default_config_path, legacy_config_path,
+    legacy_user_data_root, legacy_workspace_meta_dir, migrate_legacy_user_data_if_needed,
+    tilde_user_data_path, user_data_path, user_data_path_or_relative, user_data_root,
+    workspace_meta_dir, workspace_meta_dir_read, workspace_meta_file_read,
+    workspace_meta_file_write, workspace_meta_rel,
 };
 pub use ui_settings::{
     normalize_configured_locale, read_lht_strict_setting, read_locale_setting, settings_path,
@@ -26,6 +35,15 @@ pub use ui_settings::{
 };
 
 pub const CONFIG_FILE_NAME: &str = "config.toml";
+
+/// Power-user provider recipes written under `~/.zagens/` on first setup (not loaded automatically).
+pub const ADVANCED_CONFIG_EXAMPLE_FILE_NAME: &str = "config.advanced.example.toml";
+
+/// Static content for [`ADVANCED_CONFIG_EXAMPLE_FILE_NAME`].
+#[must_use]
+pub fn advanced_config_example_content() -> &'static str {
+    include_str!("../assets/config.advanced.example.toml")
+}
 const DEFAULT_DEEPSEEK_MODEL: &str = "deepseek-v4-pro";
 const DEFAULT_NVIDIA_NIM_MODEL: &str = "deepseek-ai/deepseek-v4-pro";
 const DEFAULT_NVIDIA_NIM_FLASH_MODEL: &str = "deepseek-ai/deepseek-v4-flash";
@@ -274,6 +292,9 @@ pub struct ConfigToml {
     /// Automatic context compaction (`[compaction]`).
     #[serde(default)]
     pub compaction: Option<CompactionToml>,
+    /// Long-horizon code task harness (`[long_horizon]`).
+    #[serde(default)]
+    pub long_horizon: Option<LongHorizonConfigToml>,
     #[serde(flatten)]
     pub extras: BTreeMap<String, toml::Value>,
 }
@@ -281,6 +302,7 @@ pub struct ConfigToml {
 /// Header prepended to the first-run `config.toml` (not part of the serde schema).
 const FIRST_RUN_CONFIG_HEADER: &str = r#"# Zagens runtime configuration (first launch)
 # API keys: Zagens → Settings → API Key (OS keychain; not stored in this file).
+# Advanced providers (OpenRouter, local Ollama/vLLM, …): ~/.zagens/config.advanced.example.toml
 # Full option reference: config.example.toml in the repository.
 "#;
 
@@ -362,6 +384,7 @@ impl ConfigToml {
                 auto_compact: Some(false),
                 ..CompactionToml::default()
             }),
+            long_horizon: Some(lht_product_defaults()),
             extras,
             ..ConfigToml::default()
         }
@@ -565,7 +588,7 @@ impl Default for SessionToml {
 }
 
 impl ConfigToml {
-    /// Merge project-level overrides from `$WORKSPACE/.deepseek/config.toml`.
+    /// Merge project-level overrides from `$WORKSPACE/.zagens/config.toml`.
     /// Only populated fields in `project` are applied; everything else
     /// keeps its global value. Provider-specific sub-tables are merged
     /// field-by-field so a project can set just `providers.deepseek.model`
@@ -599,7 +622,7 @@ impl ConfigToml {
         if project.telemetry.is_some() {
             self.telemetry = project.telemetry;
         }
-        // Security-critical scalars are global-only: project `.deepseek/config.toml`
+        // Security-critical scalars are global-only: project `.zagens/config.toml`
         // must not widen shell/approval/sandbox posture (repo supply-chain boundary).
         if project.provider != ProviderKind::Deepseek || has_api_key {
             self.provider = project.provider;
@@ -1298,10 +1321,10 @@ fn merge_provider_config(target: &mut ProviderConfigToml, source: &ProviderConfi
     }
 }
 
-/// Load a project-level config from `$WORKSPACE/.deepseek/config.toml`.
+/// Load a project-level config from `$WORKSPACE/.zagens/config.toml` (legacy `.deepseek/` fallback).
 /// Returns `None` if the file doesn't exist or can't be parsed.
 pub fn load_project_config(workspace: &Path) -> Option<ConfigToml> {
-    let path = workspace.join(".deepseek").join(CONFIG_FILE_NAME);
+    let path = workspace_meta_file_read(workspace, CONFIG_FILE_NAME);
     if !path.exists() {
         return None;
     }
@@ -1419,6 +1442,27 @@ pub struct ConfigStore {
     pub config: ConfigToml,
 }
 
+/// Write `config.advanced.example.toml` under `user_root` when missing (never overwrites).
+fn ensure_advanced_config_example_on_disk(user_root: &Path) -> Result<bool> {
+    let path = user_root.join(ADVANCED_CONFIG_EXAMPLE_FILE_NAME);
+    if path.is_file() {
+        return Ok(false);
+    }
+    fs::create_dir_all(user_root).with_context(|| {
+        format!(
+            "failed to create user data directory {}",
+            user_root.display()
+        )
+    })?;
+    fs::write(&path, advanced_config_example_content()).with_context(|| {
+        format!(
+            "failed to write advanced config example at {}",
+            path.display()
+        )
+    })?;
+    Ok(true)
+}
+
 impl ConfigStore {
     pub fn load(path: Option<PathBuf>) -> Result<Self> {
         let path = resolve_config_path(path)?;
@@ -1446,6 +1490,9 @@ impl ConfigStore {
     /// config and optional assets (not session/task databases).
     pub fn ensure_default_on_disk(path: Option<PathBuf>) -> Result<Option<PathBuf>> {
         let path = resolve_config_path(path)?;
+        if let Some(parent) = path.parent() {
+            ensure_advanced_config_example_on_disk(parent)?;
+        }
         if path.exists() {
             return Ok(None);
         }
@@ -1460,6 +1507,12 @@ impl ConfigStore {
         let body = format!("{FIRST_RUN_CONFIG_HEADER}\n{body}");
         store.write_raw(&body)?;
         Ok(Some(path))
+    }
+
+    /// Write `~/.zagens/config.advanced.example.toml` when missing (never overwrites).
+    pub fn ensure_advanced_example_on_disk() -> Result<bool> {
+        let root = user_data_root()?;
+        ensure_advanced_config_example_on_disk(&root)
     }
 
     pub fn save(&self) -> Result<()> {
@@ -2559,7 +2612,16 @@ mod tests {
         assert!(content.contains("default_text_model = \"deepseek-v4-pro\""));
         assert!(content.contains("reasoning_effort = \"max\""));
         assert!(content.contains("skills_dir = \"~/.zagens/skills\""));
+        assert!(content.contains("[long_horizon]"));
+        assert!(content.contains("enabled = true"));
         assert!(!content.contains("api_key ="));
+        let advanced = temp_root
+            .join(USER_DATA_DIR_NAME)
+            .join(ADVANCED_CONFIG_EXAMPLE_FILE_NAME);
+        assert!(advanced.is_file(), "advanced example should be created");
+        let advanced_body = fs::read_to_string(&advanced)?;
+        assert!(advanced_body.contains("[providers.openrouter]"));
+        assert!(advanced_body.contains("anthropic/claude-sonnet-4"));
 
         assert!(ConfigStore::ensure_default_on_disk(Some(config_path))?.is_none());
         let _ = fs::remove_dir_all(temp_root);

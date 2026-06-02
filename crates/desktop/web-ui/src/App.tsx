@@ -50,18 +50,17 @@ import {
   ACTIVE_INSPECTOR_STORAGE_KEY,
   applyTheme,
   ensureDefaultComposerWorkspace,
-  isOnboarded,
-  markOnboarded,
+  hasTaskTypePreferenceStored,
   loadComposerPrefs,
   loadRouteIntentPreference,
   loadRunModePreference,
   loadStoredInspector,
   loadStoredRightPanelCollapsed,
   loadTaskTypePreference,
+  persistTaskTypePreference,
   loadTheme,
   RIGHT_PANEL_COLLAPSED_STORAGE_KEY,
   ROUTE_INTENT_STORAGE_KEY,
-  TASK_TYPE_STORAGE_KEY,
   type Theme,
 } from './lib/appPreferences';
 import { type CachedUiMessage } from './lib/chat/sessionUiCache';
@@ -90,9 +89,7 @@ export default function App() {
     null,
   );
   const [routeIntent, setRouteIntent] = useState<DesktopRouteIntentOption>(() => loadRouteIntentPreference());
-  const [onboardingState, setOnboardingState] = useState<'unknown' | 'show' | 'hidden'>(() =>
-    isOnboarded() ? 'hidden' : 'unknown',
-  );
+  const [startupOverlayOpen, setStartupOverlayOpen] = useState(false);
 
   const refreshSessionsRef = useRef<() => Promise<void>>(async () => {});
   const setRuntimeSessionEstablishedRef = useRef<Dispatch<SetStateAction<boolean>>>(() => {});
@@ -202,19 +199,9 @@ export default function App() {
     notifyRuntimeTransient,
   });
 
-  // First-run decision (runs once): show guided setup only for fresh desktop
-  // installs without a key; silently mark existing/keyed users as onboarded.
   useEffect(() => {
-    if (onboardingState !== 'unknown') return;
-    if (!desktopHost) return;
-    if (desktopApiKeyConfigured === null) return;
-    if (desktopApiKeyConfigured === true) {
-      markOnboarded();
-      setOnboardingState('hidden');
-    } else {
-      setOnboardingState('show');
-    }
-  }, [onboardingState, desktopHost, desktopApiKeyConfigured]);
+    if (desktopHost) setStartupOverlayOpen(true);
+  }, [desktopHost]);
 
   const {
     approval,
@@ -538,12 +525,13 @@ export default function App() {
     }
   }, [runMode]);
 
+  const taskTypePersistReadyRef = useRef(false);
   useEffect(() => {
-    try {
-      localStorage.setItem(TASK_TYPE_STORAGE_KEY, taskTypePreference);
-    } catch {
-      /* ignore */
+    if (!taskTypePersistReadyRef.current) {
+      taskTypePersistReadyRef.current = true;
+      return;
     }
+    persistTaskTypePreference(taskTypePreference);
   }, [taskTypePreference]);
 
   const officeSession = isOfficeSession(
@@ -627,7 +615,8 @@ export default function App() {
       activeInspector === 'index' ||
       activeInspector === 'checklist' ||
       activeInspector === 'audit' ||
-      activeInspector === 'routing'
+      activeInspector === 'routing' ||
+      activeInspector === 'lht-settings'
     ) {
       setActiveInspector('workspace');
     }
@@ -716,17 +705,16 @@ export default function App() {
 
   return (
     <>
-      {onboardingState === 'show' && (
+      {desktopHost && startupOverlayOpen && (
         <OnboardingOverlay
           runtimeConn={runtimeConn}
           apiKeyConfigured={desktopApiKeyConfigured}
+          needsKeyStep={desktopApiKeyConfigured === false}
+          needsModeStep={!hasTaskTypePreferenceStored()}
           refreshApiKeyStatus={refreshApiKeyStatus}
           taskTypePreference={taskTypePreference}
           onTaskTypePreferenceChange={handleTaskTypePreferenceChange}
-          onComplete={() => {
-            markOnboarded();
-            setOnboardingState('hidden');
-          }}
+          onComplete={() => setStartupOverlayOpen(false)}
         />
       )}
       <AppShell

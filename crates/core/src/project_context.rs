@@ -6,7 +6,8 @@
 //! - `AGENTS.md` - Project-level agent instructions (primary)
 //! - `.claude/instructions.md` - Claude-style hidden instructions
 //! - `CLAUDE.md` - Claude-style instructions
-//! - `.deepseek/instructions.md` - Hidden instructions file (legacy)
+//! - `.zagens/instructions.md` - Hidden instructions file (Zagens)
+//! - `.deepseek/instructions.md` - Legacy hidden instructions file
 //!
 //! The loaded content is injected into the system prompt to give the agent
 //! context about the project's conventions, structure, and requirements.
@@ -21,6 +22,7 @@ const PROJECT_CONTEXT_FILES: &[&str] = &[
     "AGENTS.md",
     ".claude/instructions.md",
     "CLAUDE.md",
+    ".zagens/instructions.md",
     ".deepseek/instructions.md",
 ];
 
@@ -187,21 +189,20 @@ fn load_context_file(path: &Path) -> Result<String, ProjectContextError> {
     Ok(content)
 }
 
+use deepseek_config::{legacy_workspace_meta_dir, workspace_meta_dir};
+
 /// Check if this project is marked as trusted
 fn check_trust_status(workspace: &Path) -> bool {
     if is_workspace_trusted_from_config(workspace) {
         return true;
     }
 
-    // Check for trust markers
-    let trust_markers = [
-        workspace.join(".deepseek").join("trusted"),
-        workspace.join(".deepseek").join("trust.json"),
-    ];
-
-    for marker in &trust_markers {
-        if marker.exists() {
-            return true;
+    // Check for trust markers under `.zagens/` or legacy `.deepseek/`.
+    for meta in [workspace_meta_dir(workspace), legacy_workspace_meta_dir(workspace)] {
+        for name in ["trusted", "trust.json"] {
+            if meta.join(name).exists() {
+                return true;
+            }
         }
     }
 

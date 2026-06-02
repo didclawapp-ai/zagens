@@ -44,6 +44,44 @@ const PROJECT_MARKERS: &[&str] = &[
     "build.gradle.kts",
 ];
 
+/// Resolve nested Rust backend root for polyglot layouts (npm/vue frontend at
+/// workspace root + Cargo backend in `src-tauri/` or a unique depth-1 child).
+#[must_use]
+pub fn nested_rust_backend_root(workspace: &Path) -> Option<PathBuf> {
+    if workspace.join("Cargo.toml").exists() {
+        return None;
+    }
+    let tauri = workspace.join("src-tauri");
+    if tauri.join("Cargo.toml").exists() {
+        return Some(tauri);
+    }
+    let Ok(entries) = std::fs::read_dir(workspace) else {
+        return None;
+    };
+    let mut matches: Vec<PathBuf> = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() && path.join("Cargo.toml").exists() {
+            matches.push(path);
+            if matches.len() > 1 {
+                return None;
+            }
+        }
+    }
+    matches.into_iter().next()
+}
+
+/// True when the workspace looks like a polyglot frontend + nested Cargo backend
+/// (Tauri/Electron→Tauri class). Toolchain gate should prefer `cargo` probes and
+/// skip root `npm test` false-REDs (P1-3).
+#[must_use]
+pub fn is_polyglot_rust_backend(workspace: &Path) -> bool {
+    nested_rust_backend_root(workspace).is_some()
+        && (workspace.join("package.json").exists()
+            || workspace.join("pnpm-lock.yaml").exists()
+            || workspace.join("yarn.lock").exists())
+}
+
 /// Resolve the directory the gate should run build/test commands from.
 ///
 /// The harness workspace root is normally the project root, but a model can
@@ -184,9 +222,8 @@ pub fn detect_toolchain_entries(
     if !mode.is_on() {
         return Vec::new();
     }
-    let exists = |name: &str| workspace.join(name).exists();
     let mut out = Vec::new();
-
+    let exists = |dir: &Path, name: &str| dir.join(name).exists();
     let mut push = |id: &str, cmd: &str| {
         out.push(CompletionGateVerifyEntry {
             id: format!("toolchain_{id}"),
@@ -198,22 +235,30 @@ pub fn detect_toolchain_entries(
         });
     };
 
-    if exists("go.mod") {
+    // P1-3: polyglot Tauri / npm+cargo — prefer backend cargo probes; skip root
+    // `npm test` which often fails unrelated to the migration backend.
+    if is_polyglot_rust_backend(workspace) {
+        push("cargo_check", "cargo check");
+        push("cargo_build", "cargo build");
+        return out;
+    }
+
+    if exists(workspace, "go.mod") {
         push("go_build", "go build ./...");
         push("go_test", "go test ./...");
-    } else if exists("Cargo.toml") {
+    } else if exists(workspace, "Cargo.toml") {
         push("cargo_build", "cargo build");
         push("cargo_test", "cargo test");
-    } else if exists("package.json") {
+    } else if exists(workspace, "package.json") {
         // `npm test` exits non-zero when there is no test script, which would be
         // a false infra failure; gate on build first, tests are model/operator's
         // job to declare. We still run the build/typecheck if present via test.
         push("npm_test", "npm test --silent");
-    } else if exists("pyproject.toml") || exists("setup.py") {
+    } else if exists(workspace, "pyproject.toml") || exists(workspace, "setup.py") {
         push("pytest", "pytest -q");
-    } else if exists("pom.xml") {
+    } else if exists(workspace, "pom.xml") {
         push("maven_test", "mvn -q -B test");
-    } else if exists("build.gradle") || exists("build.gradle.kts") {
+    } else if exists(workspace, "build.gradle") || exists(workspace, "build.gradle.kts") {
         push("gradle_test", "gradle test -q");
     }
     out
@@ -398,6 +443,31 @@ mod tests {
         let _ = std::fs::create_dir_all(&backend);
         std::fs::write(backend.join("go.mod"), b"module x\n").unwrap();
         assert_eq!(resolve_command_root(&dir, "go build ./..."), backend);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn toolchain_prefers_cargo_over_npm_for_tauri_polyglot() {
+        let dir = std::env::temp_dir().join(format!("lht-tc-tauri-{}", std::process::id()));
+        let backend = dir.join("src-tauri");
+        let _ = std::fs::create_dir_all(&backend);
+        std::fs::write(dir.join("package.json"), b"{}\n").unwrap();
+        std::fs::write(backend.join("Cargo.toml"), b"[package]\n").unwrap();
+        let entries = detect_toolchain_entries(&dir, GenericGateMode::Enforce);
+        assert_eq!(entries.len(), 2);
+        assert!(entries.iter().all(|e| e.source == VerifySource::Toolchain));
+        assert!(entries
+            .iter()
+            .all(|e| e.cmd.as_deref().unwrap_or("").starts_with("cargo ")));
+        assert!(entries
+            .iter()
+            .any(|e| e.id == "toolchain_cargo_build"));
+        assert!(!entries
+            .iter()
+            .any(|e| e.id == "toolchain_cargo_test"));
+        assert!(!entries
+            .iter()
+            .any(|e| e.cmd.as_deref().unwrap_or("").contains("npm")));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

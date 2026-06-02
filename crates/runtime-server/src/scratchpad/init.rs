@@ -110,7 +110,7 @@ pub fn resolve_run_id_for_init(
 }
 
 impl ScratchpadStore {
-    /// Create `.deepseek/scratchpad/{run_id}/` with `inventory.json` + empty `notes.jsonl`.
+    /// Create `.zagens/scratchpad/{run_id}/` with `inventory.json` + empty `notes.jsonl`.
     /// Idempotent when the run directory already has a valid inventory.
     pub fn init(
         ctx: &ToolContext,

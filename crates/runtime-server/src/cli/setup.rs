@@ -319,7 +319,7 @@ pub(crate) fn skills_count_for(dir: &Path) -> usize {
 }
 
 pub(crate) fn merge_project_config(config: &mut crate::config::Config, workspace: &Path) {
-    let path = workspace.join(".deepseek").join("config.toml");
+    let path = deepseek_config::workspace_meta_file_read(workspace, "config.toml");
     let raw = match std::fs::read_to_string(&path) {
         Ok(r) => r,
         Err(_) => return,

@@ -5,9 +5,12 @@
 //! [`ARCHITECTURE_ASSESSMENT_2026-05-25.md`](../../../docs/tech/adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md) §5.1「D1 — 已闭合」。
 
 use deepseek_config::{
-    CompactionToml, ConfigStore, ConfigToml, DEFAULT_VISION_MODEL,
-    compaction_threshold_tokens_for_model, vision_should_check_degenerate_ocr_template,
-    vision_user_prompt_for_model,
+    CompactionToml, CompletionGateConfigToml, ConfigStore, ConfigToml, DEFAULT_VISION_MODEL,
+    LongHorizonConfigToml, WORKSPACE_META_DIR_NAME, compaction_threshold_tokens_for_model,
+    legacy_workspace_meta_dir, normalize_gate_mode, normalize_lht_mode, resolve_lht,
+    vision_should_check_degenerate_ocr_template, vision_user_prompt_for_model,
+    workspace_meta_dir, workspace_meta_dir_read, workspace_meta_file_read,
+    workspace_meta_file_write,
 };
 use ignore::WalkBuilder;
 use serde::{Deserialize, Serialize};
@@ -1235,6 +1238,119 @@ pub fn save_system_settings(
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// LHT settings — desktop panel for `[long_horizon]` / `[long_horizon.completion_gate]`
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LhtSettings {
+    pub enabled: bool,
+    /// `"auto"` | `"strict"`.
+    pub mode: String,
+    pub progress_via_git: bool,
+    pub max_nudges_per_item: u32,
+    pub blocked_nudges_without_progress: u32,
+    pub auto_continue: bool,
+    pub max_auto_continue_rounds: u32,
+    /// `off` | `observe` | `enforce`.
+    pub auto_verify_replay: String,
+    pub toolchain_gate: String,
+    pub stub_gate: String,
+    pub max_manifest_rounds: u32,
+    pub max_audit_rounds: u32,
+    pub max_infra_strikes: u32,
+    /// Read-only: operator `[[verify]]` rows preserved on save.
+    pub custom_verify_count: u32,
+    /// Read-only: operator `[[deliverable]]` rows preserved on save.
+    pub custom_deliverable_count: u32,
+}
+
+fn gate_mode_from_toml(raw: Option<&String>) -> String {
+    normalize_gate_mode(raw.map(String::as_str).unwrap_or("off"))
+}
+
+fn lht_settings_from_config(cfg: &ConfigToml) -> LhtSettings {
+    let lh = resolve_lht(&cfg.long_horizon);
+    let gate = lh
+        .completion_gate
+        .clone()
+        .unwrap_or_default();
+    LhtSettings {
+        enabled: lh.enabled.unwrap_or(false),
+        mode: normalize_lht_mode(lh.mode.as_deref().unwrap_or("auto")),
+        progress_via_git: lh.progress_via_git.unwrap_or(true),
+        max_nudges_per_item: lh.max_nudges_per_item.unwrap_or(5),
+        blocked_nudges_without_progress: lh.blocked_nudges_without_progress.unwrap_or(3),
+        auto_continue: lh.auto_continue.unwrap_or(false),
+        max_auto_continue_rounds: lh.max_auto_continue_rounds.unwrap_or(16),
+        auto_verify_replay: gate_mode_from_toml(gate.auto_verify_replay.as_ref()),
+        toolchain_gate: gate_mode_from_toml(gate.toolchain_gate.as_ref()),
+        stub_gate: normalize_gate_mode(
+            gate.stub_gate
+                .as_deref()
+                .unwrap_or("observe"),
+        ),
+        max_manifest_rounds: gate.max_manifest_rounds.unwrap_or(5),
+        max_audit_rounds: gate.max_audit_rounds.unwrap_or(5),
+        max_infra_strikes: gate.max_infra_strikes.unwrap_or(3),
+        custom_verify_count: gate.verify.len() as u32,
+        custom_deliverable_count: gate.deliverable.len() as u32,
+    }
+}
+
+#[tauri::command]
+pub fn get_lht_settings() -> Result<LhtSettings, String> {
+    let store = ConfigStore::load(None).map_err(|e| e.to_string())?;
+    Ok(lht_settings_from_config(&store.config))
+}
+
+#[tauri::command]
+pub fn save_lht_settings(
+    settings: LhtSettings,
+    ctx: tauri::State<'_, AppContext>,
+) -> Result<(), String> {
+    let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
+    let existing_gate = store
+        .config
+        .long_horizon
+        .as_ref()
+        .and_then(|lh| lh.completion_gate.clone())
+        .unwrap_or_default();
+
+    let completion_gate = CompletionGateConfigToml {
+        auto_verify_replay: Some(normalize_gate_mode(&settings.auto_verify_replay)),
+        toolchain_gate: Some(normalize_gate_mode(&settings.toolchain_gate)),
+        stub_gate: Some(normalize_gate_mode(&settings.stub_gate)),
+        max_manifest_rounds: Some(settings.max_manifest_rounds.clamp(1, 32)),
+        max_audit_rounds: Some(settings.max_audit_rounds.clamp(1, 32)),
+        max_infra_strikes: Some(settings.max_infra_strikes.clamp(1, 16)),
+        verify: existing_gate.verify,
+        deliverable: existing_gate.deliverable,
+        mode: existing_gate.mode,
+    };
+
+    store.config.long_horizon = Some(LongHorizonConfigToml {
+        enabled: Some(settings.enabled),
+        mode: Some(normalize_lht_mode(&settings.mode)),
+        progress_via_git: Some(settings.progress_via_git),
+        max_nudges_per_item: Some(settings.max_nudges_per_item.clamp(1, 20)),
+        blocked_nudges_without_progress: Some(settings.blocked_nudges_without_progress.clamp(1, 10)),
+        auto_continue: Some(settings.auto_continue),
+        max_auto_continue_rounds: Some(settings.max_auto_continue_rounds.clamp(1, 64)),
+        reinject_every_steps: store
+            .config
+            .long_horizon
+            .as_ref()
+            .and_then(|lh| lh.reinject_every_steps),
+        completion_gate: Some(completion_gate),
+    });
+
+    tracing::info!("save_lht_settings: writing config");
+    store.save().map_err(|e| e.to_string())?;
+    ctx.sidecar_restart.notify_one();
+    Ok(())
+}
+
 #[tauri::command]
 pub fn restart_sidecar(ctx: tauri::State<'_, AppContext>) -> Result<(), String> {
     ctx.sidecar_restart.notify_one();
@@ -1252,7 +1368,7 @@ pub fn default_composer_workspace() -> Result<String, String> {
 }
 
 // ---------------------------------------------------------------------------
-// pick-rules — `.deepseek/pick-rules.md` per workspace (Zagens project rules)
+// pick-rules — `.zagens/pick-rules.md` per workspace (Zagens project rules)
 // ---------------------------------------------------------------------------
 
 /// Matches `crates/tui/src/prompts.rs` `INSTRUCTIONS_FILE_MAX_BYTES`.
@@ -1274,7 +1390,7 @@ fn workspace_root_canonical(raw: &str) -> Result<PathBuf, String> {
 }
 
 fn pick_rules_path_under_workspace(base: &Path) -> PathBuf {
-    base.join(".deepseek").join("pick-rules.md")
+    workspace_meta_file_read(base, "pick-rules.md")
 }
 
 /// Read Zagens project rules for a workspace. Returns empty string if the file is missing.
@@ -1288,13 +1404,14 @@ pub fn read_pick_rules(workspace_root: String) -> Result<String, String> {
     std::fs::read_to_string(&path).map_err(|e| format!("读取项目规则失败: {e}"))
 }
 
-/// Write Zagens project rules. Creates `.deepseek/` when needed.
+/// Write Zagens project rules. Creates `.zagens/` when needed.
 #[tauri::command]
 pub fn save_pick_rules(workspace_root: String, content: String) -> Result<(), String> {
     let base = workspace_root_canonical(&workspace_root)?;
-    let deepseek = base.join(".deepseek");
-    std::fs::create_dir_all(&deepseek).map_err(|e| format!("创建 .deepseek 目录失败: {e}"))?;
-    let path = pick_rules_path_under_workspace(&base);
+    let meta = workspace_meta_dir(&base);
+    std::fs::create_dir_all(&meta)
+        .map_err(|e| format!("创建 {WORKSPACE_META_DIR_NAME} 目录失败: {e}"))?;
+    let path = workspace_meta_file_write(&base, "pick-rules.md");
 
     if content.as_bytes().len() > PICK_RULES_MAX_BYTES {
         return Err(format!(
@@ -1419,14 +1536,14 @@ pub fn get_symbol_index_info(workspace: String) -> Result<SymbolIndexInfo, Strin
     if !ws.is_dir() {
         return Err("工作区路径不存在".to_string());
     }
-    let deepseek_dir = ws.join(".deepseek");
-    let index_path = deepseek_dir.join("symbols.json");
+    let meta_dir = workspace_meta_dir_read(&ws);
+    let index_path = workspace_meta_file_read(&ws, "symbols.json");
 
     if !index_path.exists() {
         return Ok(SymbolIndexInfo {
             status: "missing".to_string(),
             path: index_path.to_string_lossy().to_string(),
-            dir: deepseek_dir.to_string_lossy().to_string(),
+            dir: meta_dir.to_string_lossy().to_string(),
             size_bytes: 0,
             schema_version: 0,
             file_count: 0,
@@ -1510,7 +1627,7 @@ pub fn get_symbol_index_info(workspace: String) -> Result<SymbolIndexInfo, Strin
     Ok(SymbolIndexInfo {
         status: status.to_string(),
         path: index_path.to_string_lossy().to_string(),
-        dir: deepseek_dir.to_string_lossy().to_string(),
+        dir: meta_dir.to_string_lossy().to_string(),
         size_bytes,
         schema_version,
         file_count,
@@ -1524,17 +1641,21 @@ pub fn delete_symbol_index(workspace: String) -> Result<(), String> {
     if !ws.is_dir() {
         return Err("工作区路径不存在".to_string());
     }
-    let index_path = ws.join(".deepseek").join("symbols.json");
-    if index_path.exists() {
-        std::fs::remove_file(&index_path).map_err(|e| format!("删除索引文件失败: {e}"))?;
-    }
-    let fp_path = ws.join(".deepseek").join(".symbols_fingerprint");
-    if fp_path.exists() {
-        let _ = std::fs::remove_file(&fp_path);
-    }
-    let changes_path = ws.join(".deepseek").join(".symbols_changes.json");
-    if changes_path.exists() {
-        let _ = std::fs::remove_file(&changes_path);
+    for rel in [
+        "symbols.json",
+        ".symbols_fingerprint",
+        ".symbols_changes.json",
+    ] {
+        for root in [
+            workspace_meta_dir(&ws),
+            legacy_workspace_meta_dir(&ws),
+        ] {
+            let path = root.join(rel);
+            if path.exists() {
+                std::fs::remove_file(&path)
+                    .map_err(|e| format!("删除索引文件失败: {e}"))?;
+            }
+        }
     }
     Ok(())
 }

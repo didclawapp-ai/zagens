@@ -428,7 +428,7 @@ impl Config {
     /// 1. Explicit non-empty `instructions = [...]` → use as-is (expanded).
     /// 2. Otherwise auto-discover `PROJECT_RULES.md` and `.cursor/rules/*.mdc`.
     ///
-    /// `.deepseek/pick-rules.md` is handled separately by
+    /// `.zagens/pick-rules.md` is handled separately by
     /// [`crate::prompts::merge_instruction_paths_with_pick_rules`].
     #[must_use]
     pub fn instructions_paths(&self, workspace: &std::path::Path) -> Vec<PathBuf> {

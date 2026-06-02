@@ -13,7 +13,7 @@ import { agentTypeLabel, isLikelySubAgentId, truncateObjective } from '../lib/ag
 
 interface Props {
   agents: AgentState[];
-  /** Composer / thread workspace — CRAFT blackboards live under `{workspace}/.deepseek/blackboards/`. */
+  /** Composer / thread workspace — CRAFT blackboards live under `{workspace}/.zagens/blackboards/`. */
   workspaceRoot: string;
   runtimeConn: RuntimeConnectionState;
   streaming?: boolean;

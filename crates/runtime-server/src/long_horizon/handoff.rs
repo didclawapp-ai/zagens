@@ -1,9 +1,10 @@
-//! Merge LHT open-task summary into `.deepseek/handoff.md` on cycle advance (Phase 3b).
+//! Merge LHT open-task summary into `.zagens/handoff.md` on cycle advance (Phase 3b).
+
+use deepseek_config::workspace_meta_file_write;
 
 use std::io;
 use std::path::Path;
 
-use crate::prompts;
 use crate::tools::plan::PlanSnapshot;
 use crate::tools::todo::{TodoListSnapshot, TodoStatus};
 
@@ -86,10 +87,10 @@ pub fn build_lht_handoff_section(
 
 /// Replace or append the LHT auto block in the workspace handoff artifact.
 pub fn merge_lht_into_handoff(workspace: &Path, section: &str) -> io::Result<()> {
-    let handoff_dir = workspace.join(".deepseek");
-    std::fs::create_dir_all(&handoff_dir)?;
-    let path = workspace.join(prompts::HANDOFF_RELATIVE_PATH);
-
+    let path = workspace_meta_file_write(workspace, "handoff.md");
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
     let existing = std::fs::read_to_string(&path).unwrap_or_default();
     let merged = replace_lht_block(&existing, section);
     std::fs::write(path, merged)

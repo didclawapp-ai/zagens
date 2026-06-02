@@ -184,7 +184,7 @@ pub(crate) fn read_workspace_anchors(workspace: Option<&Path>) -> Vec<String> {
         return Vec::new();
     };
 
-    let anchors_path = ws.join(".deepseek").join("anchors.md");
+    let anchors_path = deepseek_config::workspace_meta_file_read(ws, "anchors.md");
     let Ok(content) = std::fs::read_to_string(anchors_path) else {
         return Vec::new();
     };

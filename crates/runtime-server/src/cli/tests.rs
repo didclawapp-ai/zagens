@@ -72,12 +72,12 @@ mod project_config_tests {
     use std::fs;
     use tempfile::tempdir;
 
-    /// Write a `<workspace>/.deepseek/config.toml` and return the workspace
+    /// Write a `<workspace>/.zagens/config.toml` and return the workspace
     /// root so the merge function can find it.
     fn workspace_with_project_config(body: &str) -> tempfile::TempDir {
         let tmp = tempdir().expect("tempdir");
-        let project_dir = tmp.path().join(".deepseek");
-        fs::create_dir_all(&project_dir).expect("mkdir .deepseek");
+        let project_dir = deepseek_config::workspace_meta_dir(tmp.path());
+        fs::create_dir_all(&project_dir).expect("mkdir .zagens");
         fs::write(project_dir.join("config.toml"), body).expect("write project config");
         tmp
     }

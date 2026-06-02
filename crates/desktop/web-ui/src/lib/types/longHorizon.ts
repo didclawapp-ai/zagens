@@ -28,6 +28,8 @@ export interface HarnessCompletionGate {
   manifest_round: number;
   audit_round: number;
   first_gap_count?: number | null;
+  /** Cross-layer integration gate gap count (P1′). */
+  integration_gap_count?: number | null;
   gate_reinject_while_blocked: number;
   last_manifest_passed?: boolean | null;
   last_audit_pass?: boolean | null;

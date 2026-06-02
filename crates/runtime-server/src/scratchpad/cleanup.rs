@@ -4,9 +4,11 @@ use std::fs;
 use std::path::Path;
 use std::time::SystemTime;
 
+use deepseek_config::{legacy_workspace_meta_dir, workspace_meta_dir};
+
 use crate::scratchpad::config::ScratchpadConfig;
 
-/// Remove stale `scratchpad/{run_id}/` directories under `workspace/.deepseek/scratchpad/`.
+/// Remove stale `scratchpad/{run_id}/` directories under workspace meta dirs.
 ///
 /// Skips `active_run_ids` (e.g. thread-bound runs still in use).
 pub fn cleanup_stale_scratchpads(
@@ -17,16 +19,29 @@ pub fn cleanup_stale_scratchpads(
     if config.retention_days == 0 {
         return;
     }
-    let root = workspace.join(".deepseek").join("scratchpad");
-    if !root.is_dir() {
-        return;
-    }
     let max_age = std::time::Duration::from_secs(u64::from(config.retention_days) * 86_400);
     let now = SystemTime::now();
     let active: std::collections::HashSet<&str> =
         active_run_ids.iter().map(String::as_str).collect();
+    for root in [
+        workspace_meta_dir(workspace).join("scratchpad"),
+        legacy_workspace_meta_dir(workspace).join("scratchpad"),
+    ] {
+        cleanup_root(&root, max_age, now, &active);
+    }
+}
 
-    let entries = match fs::read_dir(&root) {
+fn cleanup_root(
+    root: &Path,
+    max_age: std::time::Duration,
+    now: SystemTime,
+    active: &std::collections::HashSet<&str>,
+) {
+    if !root.is_dir() {
+        return;
+    }
+
+    let entries = match fs::read_dir(root) {
         Ok(e) => e,
         Err(_) => return,
     };

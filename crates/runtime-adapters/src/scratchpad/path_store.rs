@@ -2,6 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
+use deepseek_config::{workspace_meta_dir_read, workspace_meta_rel};
 use serde_json::Value;
 
 use crate::scratchpad::schema::{Inventory, NoteLine, parse_note_line};
@@ -9,7 +10,7 @@ use crate::scratchpad::schema::{Inventory, NoteLine, parse_note_line};
 /// Workspace-relative display path for a run directory.
 #[must_use]
 pub fn display_run_path(run_id: &str) -> String {
-    format!(".deepseek/scratchpad/{run_id}")
+    workspace_meta_rel(&format!("scratchpad/{run_id}"))
 }
 
 fn validate_run_id(run_id: &str) -> bool {
@@ -27,7 +28,9 @@ pub fn try_open_run_dir(workspace: &Path, run_id: Option<&str>) -> Option<(PathB
     if !validate_run_id(run_id) {
         return None;
     }
-    let dir = workspace.join(".deepseek/scratchpad").join(run_id);
+    let dir = workspace_meta_dir_read(workspace)
+        .join("scratchpad")
+        .join(run_id);
     if dir.is_dir() {
         Some((dir, run_id.to_string()))
     } else {

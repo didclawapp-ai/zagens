@@ -27,7 +27,7 @@ export interface AuditScratchpadPanelProps {
 }
 
 function scratchpadRelPath(threadId: string): string {
-  return `.deepseek/scratchpad/${threadId}/`;
+  return `.zagens/scratchpad/${threadId}/`;
 }
 
 export default function AuditScratchpadPanel({

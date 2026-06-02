@@ -1,4 +1,6 @@
-//! Audit scratchpad store (`.deepseek/scratchpad/{run_id}/`).
+//! Audit scratchpad store (`.zagens/scratchpad/{run_id}/`).
+
+use deepseek_config::{workspace_meta_dir_read, workspace_meta_rel};
 
 pub mod auditor;
 pub mod cleanup;
@@ -121,13 +123,13 @@ pub fn try_open_store(
 
 pub(crate) fn run_dir(ctx: &ToolContext, run_id: &str) -> Result<PathBuf, ToolError> {
     validate_run_id(run_id)?;
-    let rel = format!(".deepseek/scratchpad/{run_id}");
+    let rel = workspace_meta_rel(&format!("scratchpad/{run_id}"));
     ctx.resolve_path(&rel)
 }
 
 /// Workspace-relative display path for a run directory.
 pub fn display_run_path(run_id: &str) -> String {
-    format!(".deepseek/scratchpad/{run_id}")
+    workspace_meta_rel(&format!("scratchpad/{run_id}"))
 }
 
 /// Pick the newest scratchpad run under a workspace (by `inventory.json` mtime).
@@ -136,7 +138,7 @@ pub fn display_run_path(run_id: &str) -> String {
 /// UI/status is bound to `thread.scratchpad_run_id` so other sessions do not inherit a prior run.
 #[must_use]
 pub fn discover_scratchpad_run_id_for_ui(workspace: &Path) -> Option<String> {
-    let base = workspace.join(".deepseek/scratchpad");
+    let base = workspace_meta_dir_read(workspace).join("scratchpad");
     if !base.is_dir() {
         return None;
     }
@@ -611,6 +613,7 @@ mod tests {
     use crate::scratchpad::config::ScratchpadConfig;
     use crate::scratchpad::schema::AreaStatus;
     use crate::tools::spec::ToolContext;
+    use deepseek_config::workspace_meta_dir;
     use serde_json::json;
     use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -626,7 +629,9 @@ mod tests {
     }
 
     fn write_fixture(ctx: &ToolContext, run_id: &str) {
-        let base = ctx.workspace.join(".deepseek/scratchpad").join(run_id);
+        let base = workspace_meta_dir(&ctx.workspace)
+            .join("scratchpad")
+            .join(run_id);
         std::fs::create_dir_all(&base).expect("mkdir");
         let inv = json!({
             "run_id": run_id,
@@ -699,7 +704,7 @@ mod tests {
     fn discover_run_id_picks_newest_inventory() {
         let dir = tempfile::tempdir().expect("tempdir");
         let ws = dir.path();
-        let base = ws.join(".deepseek/scratchpad");
+        let base = workspace_meta_dir(ws).join("scratchpad");
         fs::create_dir_all(base.join("older-run")).expect("mkdir");
         fs::write(
             base.join("older-run/inventory.json"),

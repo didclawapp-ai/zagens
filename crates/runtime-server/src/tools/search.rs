@@ -10,6 +10,7 @@ use super::spec::{
 };
 use super::workspace_walk::{collect_workspace_files, is_probably_binary};
 use async_trait::async_trait;
+use deepseek_config::workspace_meta_file_read;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -335,7 +336,7 @@ impl ToolSpec for GrepFilesTool {
                 .collect();
             if hit_files.len() <= 3 {
                 // Load the index once (already called ensure_symbol_index above).
-                let idx_path = context.workspace.join(".deepseek").join("symbols.json");
+                let idx_path = workspace_meta_file_read(&context.workspace, "symbols.json");
                 if let Ok(raw) = std::fs::read_to_string(&idx_path) {
                     if let Ok(idx) = serde_json::from_str::<crate::symbol_index::SymbolIndex>(&raw) {
                         let mut file_summaries = serde_json::Map::new();
@@ -363,7 +364,7 @@ impl ToolSpec for GrepFilesTool {
         }
         // Attach Tauri bridge pairs when the pattern matches a command name.
         if symbol_index_enabled {
-            let idx_path = context.workspace.join(".deepseek").join("symbols.json");
+            let idx_path = workspace_meta_file_read(&context.workspace, "symbols.json");
             if let Ok(raw) = std::fs::read_to_string(&idx_path) {
                 if let Ok(idx) = serde_json::from_str::<crate::symbol_index::SymbolIndex>(&raw) {
                     let cleaned = pattern_str
@@ -921,7 +922,7 @@ fn boost_index_hits(matches: &mut Vec<GrepMatch>, symbol_hits: &[serde_json::Val
 /// Returns file:line pairs with match_score. Assumes `ensure_symbol_index()`
 /// has been called recently — uses whatever index is on disk (may be stale).
 fn lookup_symbol_hits(workspace: &Path, pattern: &str, kind_filter: Option<&str>) -> Vec<serde_json::Value> {
-    let index_path = workspace.join(".deepseek").join("symbols.json");
+    let index_path = workspace_meta_file_read(workspace, "symbols.json");
 
     let index: Option<crate::symbol_index::SymbolIndex> = std::fs::read_to_string(&index_path)
         .ok()

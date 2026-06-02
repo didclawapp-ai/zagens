@@ -429,6 +429,7 @@ type SettingsTab =
   | 'routing'
   | 'topic-memory'
   | 'system'
+  | 'lht-settings'
   | 'index'
   | 'about';
 
@@ -469,6 +470,7 @@ function SettingsAccordion({
     { tab: 'topic-memory', label: t('sidebar.topicMemory'), show: !officeSession },
     { tab: 'index', label: t('panels.index'), show: !officeSession },
     { tab: 'system', label: t('panels.system'), show: true },
+    { tab: 'lht-settings', label: t('panels.lhtSettings'), show: !officeSession },
     { tab: 'about', label: t('sidebar.about'), show: true },
   ];
 

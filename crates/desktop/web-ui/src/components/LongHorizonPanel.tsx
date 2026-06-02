@@ -84,9 +84,30 @@ function progressBar(pct: number): string {
   return '█'.repeat(filled) + '░'.repeat(10 - filled);
 }
 
+/** P0-3: checklist 100% but completion gate still has gaps (observe) or manifest failed. */
+function isConditionalComplete(graph: HarnessTaskGraph): boolean {
+  const gate = graph.completion_gate;
+  if (!gate?.active || graph.completion_pct < 100 || graph.open_items > 0) {
+    return false;
+  }
+  if (gate.last_manifest_passed === false) return true;
+  if ((gate.first_gap_count ?? 0) > 0) return true;
+  if ((gate.integration_gap_count ?? 0) > 0) return true;
+  return false;
+}
+
 function TaskGraphView({ graph, t }: { graph: HarnessTaskGraph; t: (k: string, vars?: Record<string, string>) => string }) {
+  const conditionalComplete = isConditionalComplete(graph);
   return (
     <div className="space-y-3 text-xs text-t-text">
+      {conditionalComplete ? (
+        <div className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-amber-800 dark:text-amber-200">
+          <span className="font-medium">{t('longHorizon.conditionalCompleteTitle')}</span>
+          <p className="mt-0.5 text-[10px] leading-snug opacity-90">
+            {t('longHorizon.conditionalCompleteHint')}
+          </p>
+        </div>
+      ) : null}
       {graph.objective ? (
         <p className="font-medium leading-snug">{graph.objective}</p>
       ) : null}
@@ -370,10 +391,20 @@ function nodeKindClass(kind: string, payload?: Record<string, unknown> | null): 
   ) {
     return 'text-emerald-600 dark:text-emerald-400';
   }
-  if (kind === 'unverified_acceptance_nudge') {
-    // DEMO3 false-green guard escalation — orange, same family as a verify
-    // mismatch (a runnable acceptance was marked done without being verified).
+  if (kind === 'unverified_acceptance_nudge' || kind === 'verify_mismatch_nudge') {
+    // DEMO3 false-green / P0-2 verify mismatch guards — orange family.
     return 'text-orange-600 dark:text-orange-400';
+  }
+  if (kind === 'plan_checklist_drift_nudge') {
+    return 'text-amber-600 dark:text-amber-400';
+  }
+  if (kind === 'integration_gate') {
+    const enforce = payload?.enforce === true;
+    const reinject = payload?.reinject === true;
+    if (enforce && reinject) {
+      return 'text-orange-600 dark:text-orange-400';
+    }
+    return 'text-sky-600 dark:text-sky-400';
   }
   if (kind === 'incomplete_stop' || kind === 'halt') {
     return 'text-red-600 dark:text-red-400';
@@ -430,6 +461,7 @@ function nodePayloadSummary(payload?: Record<string, unknown> | null): string {
     'passed',
     'observe',
     'enforce',
+    'gap_count',
     'gate_reinject_while_blocked',
   ];
   const parts: string[] = [];
@@ -487,6 +519,13 @@ function CompletionGateSummary({
         </li>
         {gate.first_gap_count != null ? (
           <li>{t('longHorizon.gateFirstGap', { n: String(gate.first_gap_count) })}</li>
+        ) : null}
+        {(gate.integration_gap_count ?? 0) > 0 ? (
+          <li className="text-amber-700 dark:text-amber-300">
+            {t('longHorizon.gateIntegrationGap', {
+              n: String(gate.integration_gap_count),
+            })}
+          </li>
         ) : null}
         {gate.gate_reinject_while_blocked > 0 ? (
           <li className="text-amber-700 dark:text-amber-300">
@@ -564,6 +603,7 @@ export default function LongHorizonPanel({ threadId, pollFast = false }: Props) 
   const taskActive =
     !!graph && (graph.phases.length > 0 || graph.checklist.length > 0);
   const taskCompleted = !!graph && graph.completion_pct >= 100;
+  const conditionalComplete = !!graph && isConditionalComplete(graph);
 
   const fetchGraph = useCallback(async () => {
     if (!threadId) {
@@ -726,7 +766,9 @@ export default function LongHorizonPanel({ threadId, pollFast = false }: Props) 
           <span
             className={`ml-auto self-center font-mono text-xs tabular-nums ${
               taskCompleted
-                ? 'text-emerald-600 dark:text-emerald-400'
+                ? conditionalComplete
+                  ? 'text-amber-600 dark:text-amber-400'
+                  : 'text-emerald-600 dark:text-emerald-400'
                 : 'text-t-text-muted'
             }`}
           >

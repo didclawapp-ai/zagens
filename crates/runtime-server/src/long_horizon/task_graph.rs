@@ -94,6 +94,7 @@ pub fn build_task_graph_response(
                     cache.manifest_round = s.manifest_gate_rounds;
                     cache.audit_round = s.audit_rounds;
                     cache.first_gap_count = s.first_gate_gap_count;
+                    cache.integration_gap_count = s.last_integration_gap_count;
                     cache.gate_reinject_while_blocked = s.gate_reinject_while_blocked;
                     if let Some(ref mg) = s.last_manifest_gate {
                         cache.last_manifest_passed = Some(mg.passed);
@@ -107,6 +108,7 @@ pub fn build_task_graph_response(
                             manifest_gate_rounds: s.manifest_gate_rounds,
                             audit_rounds: s.audit_rounds,
                             first_gap_count: s.first_gate_gap_count,
+                            integration_gap_count: s.last_integration_gap_count,
                             gate_reinject_while_blocked: s.gate_reinject_while_blocked,
                         }),
                     )

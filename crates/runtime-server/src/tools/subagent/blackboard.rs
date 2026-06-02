@@ -1,11 +1,16 @@
 //! CRAFT P1: File-based blackboard for structured inter-agent context sharing.
 //!
-//! The blackboard is a JSON file at `.deepseek/blackboards/{task_id}.json`.
+//! The blackboard is a JSON file at `.zagens/blackboards/{task_id}.json`.
 //! Each role writes its own partition on completion; the next agent in the
 //! task reads the board at spawn time. No live reload — the snapshot is taken
 //! once and injected into the child's assignment prompt.
 
 use std::path::{Path, PathBuf};
+
+use deepseek_config::{
+    legacy_workspace_meta_dir, workspace_meta_dir, workspace_meta_file_read,
+    workspace_meta_file_write,
+};
 
 use serde_json::{Value, json};
 
@@ -15,7 +20,7 @@ use super::SubAgentResult;
 
 // ── Path helpers ──────────────────────────────────────────────
 
-/// Validate a CRAFT blackboard task id (filename stem under `.deepseek/blackboards/`).
+/// Validate a CRAFT blackboard task id (filename stem under `.zagens/blackboards/`).
 pub fn validate_task_id(task_id: &str) -> Result<(), String> {
     if task_id.is_empty() {
         return Err("task_id 不能为空".to_string());
@@ -32,13 +37,17 @@ pub fn validate_task_id(task_id: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn blackboard_path(workspace: &Path, task_id: &str) -> Result<PathBuf, String> {
+fn blackboard_rel(task_id: &str) -> Result<String, String> {
     validate_task_id(task_id)?;
-    let mut path = workspace.to_path_buf();
-    path.push(".deepseek");
-    path.push("blackboards");
-    path.push(format!("{task_id}.json"));
-    Ok(path)
+    Ok(format!("blackboards/{task_id}.json"))
+}
+
+fn blackboard_path_read(workspace: &Path, task_id: &str) -> Result<PathBuf, String> {
+    Ok(workspace_meta_file_read(workspace, &blackboard_rel(task_id)?))
+}
+
+fn blackboard_path_write(workspace: &Path, task_id: &str) -> Result<PathBuf, String> {
+    Ok(workspace_meta_file_write(workspace, &blackboard_rel(task_id)?))
 }
 
 fn ensure_dir(path: &PathBuf) {
@@ -58,7 +67,7 @@ pub fn read_blackboard_section(
     task_id: &str,
     agent_type: &SubAgentType,
 ) -> Option<String> {
-    let path = blackboard_path(workspace, task_id).ok()?;
+    let path = blackboard_path_read(workspace, task_id).ok()?;
     let raw = std::fs::read_to_string(&path).ok()?;
     let board: Value = serde_json::from_str(&raw).ok()?;
 
@@ -112,24 +121,29 @@ pub fn read_blackboard_section(
 /// Read the full blackboard as a raw `serde_json::Value`.
 /// Returns `None` when the file doesn't exist or is unparseable.
 pub fn read_blackboard_raw(workspace: &Path, task_id: &str) -> Option<Value> {
-    let path = blackboard_path(workspace, task_id).ok()?;
+    let path = blackboard_path_read(workspace, task_id).ok()?;
     let raw = std::fs::read_to_string(&path).ok()?;
     serde_json::from_str(&raw).ok()
 }
 
 /// List all task_ids that have a blackboard file under the given workspace.
 pub fn list_blackboard_tasks(workspace: &Path) -> Vec<String> {
-    let root = workspace.join(".deepseek").join("blackboards");
-    let dir = match std::fs::read_dir(&root) {
-        Ok(d) => d,
-        Err(_) => return Vec::new(),
-    };
-    dir.filter_map(|entry| {
-        let entry = entry.ok()?;
-        let name = entry.file_name().to_string_lossy().into_owned();
-        name.strip_suffix(".json").map(String::from)
-    })
-    .collect()
+    let mut tasks = std::collections::BTreeSet::new();
+    for root in [
+        workspace_meta_dir(workspace).join("blackboards"),
+        legacy_workspace_meta_dir(workspace).join("blackboards"),
+    ] {
+        let Ok(dir) = std::fs::read_dir(&root) else {
+            continue;
+        };
+        for entry in dir.filter_map(Result::ok) {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if let Some(task_id) = name.strip_suffix(".json") {
+                tasks.insert(task_id.to_string());
+            }
+        }
+    }
+    tasks.into_iter().collect()
 }
 
 /// Write one partition to the blackboard for the given agent type.
@@ -142,7 +156,7 @@ pub fn write_blackboard_partition(
     agent_type: &SubAgentType,
     result: &SubAgentResult,
 ) {
-    let Ok(path) = blackboard_path(workspace, task_id) else {
+    let Ok(path) = blackboard_path_write(workspace, task_id) else {
         return;
     };
     ensure_dir(&path);
@@ -524,7 +538,7 @@ pub fn write_scratchpad_mirror(
 }
 
 fn merge_board_partition(workspace: &Path, task_id: &str, partition_key: &str, partition_data: Value) {
-    let Ok(path) = blackboard_path(workspace, task_id) else {
+    let Ok(path) = blackboard_path_write(workspace, task_id) else {
         return;
     };
     ensure_dir(&path);
@@ -589,9 +603,9 @@ mod tests {
     }
 
     #[test]
-    fn test_blackboard_path_contains_task_id() {
+    fn test_blackboard_path_write_contains_task_id() {
         let ws = test_workspace();
-        let path = blackboard_path(&ws, "bugfix-001").expect("valid task id");
+        let path = blackboard_path_write(&ws, "bugfix-001").expect("valid task id");
         let s = path.to_string_lossy();
         assert!(s.contains("bugfix-001"), "path should contain task id, got: {s}");
         assert!(s.ends_with(".json"), "path should end with .json, got: {s}");
@@ -599,10 +613,10 @@ mod tests {
     }
 
     #[test]
-    fn test_blackboard_path_rejects_traversal() {
+    fn test_blackboard_path_write_rejects_traversal() {
         let ws = test_workspace();
-        assert!(blackboard_path(&ws, "/tmp/evil").is_err());
-        assert!(blackboard_path(&ws, "..\\escape").is_err());
+        assert!(blackboard_path_write(&ws, "/tmp/evil").is_err());
+        assert!(blackboard_path_write(&ws, "..\\escape").is_err());
     }
 
     #[test]
@@ -616,7 +630,7 @@ mod tests {
     fn test_list_and_read_blackboard_raw() {
         let ws = test_workspace();
         let task_id = "list-test-001";
-        let path = blackboard_path(&ws, task_id).expect("valid task id");
+        let path = blackboard_path_write(&ws, task_id).expect("valid task id");
         let _ = std::fs::remove_file(&path);
         assert!(list_blackboard_tasks(&ws).is_empty());
 
@@ -647,7 +661,7 @@ mod tests {
     fn test_write_and_read_explorer_findings() {
         let ws = test_workspace();
         let task_id = "test-001";
-        let _ = std::fs::remove_file(blackboard_path(&ws, task_id).expect("valid task id"));
+        let _ = std::fs::remove_file(blackboard_path_write(&ws, task_id).expect("valid task id"));
 
         // Simulate Explorer completion with structured_verdict
         let verdict = StructuredVerdict {
@@ -711,14 +725,14 @@ mod tests {
         assert!(section.contains("session timeout"), "section: {section}");
 
         // Clean up
-        let _ = std::fs::remove_file(blackboard_path(&ws, task_id).expect("valid task id"));
+        let _ = std::fs::remove_file(blackboard_path_write(&ws, task_id).expect("valid task id"));
     }
 
     #[test]
     fn test_write_and_read_roundtrip_multiple_roles() {
         let ws = test_workspace();
         let task_id = "test-002";
-        let _ = std::fs::remove_file(blackboard_path(&ws, task_id).expect("valid task id"));
+        let _ = std::fs::remove_file(blackboard_path_write(&ws, task_id).expect("valid task id"));
 
         // Write explorer findings
         let explorer_result = SubAgentResult {
@@ -801,14 +815,14 @@ mod tests {
         assert!(section.contains("### Reviewer blockers"), "section: {section}");
         assert!(section.contains("missing null check"), "section: {section}");
 
-        let _ = std::fs::remove_file(blackboard_path(&ws, task_id).expect("valid task id"));
+        let _ = std::fs::remove_file(blackboard_path_write(&ws, task_id).expect("valid task id"));
     }
 
     #[test]
     fn test_verifier_failures_injected_for_implementer() {
         let ws = test_workspace();
         let task_id = "test-verifier-003";
-        let _ = std::fs::remove_file(blackboard_path(&ws, task_id).expect("valid task id"));
+        let _ = std::fs::remove_file(blackboard_path_write(&ws, task_id).expect("valid task id"));
 
         let verifier_result = SubAgentResult {
             agent_id: "v1".into(),
@@ -851,7 +865,7 @@ mod tests {
         assert!(section.contains("assertion failed"), "{section}");
         assert!(section.contains("fix test setup"), "{section}");
 
-        let _ = std::fs::remove_file(blackboard_path(&ws, task_id).expect("valid task id"));
+        let _ = std::fs::remove_file(blackboard_path_write(&ws, task_id).expect("valid task id"));
     }
 }
 
@@ -928,7 +942,7 @@ fn build_implementer_rounds(result: &SubAgentResult, existing_raw: &str, workspa
 }
 
 fn read_symbol_changes(workspace: &Path) -> Value {
-    let path = workspace.join(".deepseek").join(".symbols_changes.json");
+    let path = workspace_meta_file_read(workspace, ".symbols_changes.json");
     std::fs::read_to_string(&path)
         .ok()
         .and_then(|raw| serde_json::from_str(&raw).ok())

@@ -46,7 +46,7 @@ impl ToolSpec for ScratchpadInitTool {
     }
 
     fn description(&self) -> &'static str {
-        "Bootstrap an audit scratchpad run under .deepseek/scratchpad/{run_id}/ (inventory.json + notes.jsonl). Idempotent when inventory already exists."
+        "Bootstrap an audit scratchpad run under .zagens/scratchpad/{run_id}/ (inventory.json + notes.jsonl). Idempotent when inventory already exists."
     }
 
     fn input_schema(&self) -> Value {

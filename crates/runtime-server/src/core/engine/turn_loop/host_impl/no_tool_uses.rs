@@ -254,6 +254,58 @@ impl Engine {
                     .await;
                 return true;
             }
+            crate::long_horizon::LhtGateOutcome::NudgeVerifyMismatch(msg) => {
+                // P0-2: completed item has `[verify:]` but no matching recent
+                // exec — tagged without running. Same injection pattern as
+                // unverified_acceptance but distinct telemetry.
+                Engine::add_session_message(self, msg).await;
+                self.long_horizon_continue_injected_this_turn = true;
+                let count = self
+                    .runtime_ext()
+                    .long_horizon_state
+                    .verify_mismatch_nudges;
+                let _ = self
+                    .tx_event
+                    .send(Event::status(format!(
+                        "long_horizon.verify_mismatch_nudge: {{\"count\":{count}}}"
+                    )))
+                    .await;
+                return true;
+            }
+            crate::long_horizon::LhtGateOutcome::NudgePlanChecklistDrift(msg) => {
+                Engine::add_session_message(self, msg).await;
+                self.long_horizon_continue_injected_this_turn = true;
+                let count = self
+                    .runtime_ext()
+                    .long_horizon_state
+                    .plan_checklist_drift_nudges;
+                let _ = self
+                    .tx_event
+                    .send(Event::status(format!(
+                        "long_horizon.plan_checklist_drift_nudge: {{\"count\":{count}}}"
+                    )))
+                    .await;
+                return true;
+            }
+            crate::long_horizon::LhtGateOutcome::NudgeIntegrationIncomplete(msg) => {
+                Engine::add_session_message(self, msg).await;
+                self.long_horizon_continue_injected_this_turn = true;
+                let rounds = self
+                    .runtime_ext()
+                    .long_horizon_state
+                    .integration_gate_rounds;
+                let blocked = self
+                    .runtime_ext()
+                    .long_horizon_state
+                    .gate_reinject_while_blocked;
+                let _ = self
+                    .tx_event
+                    .send(Event::status(format!(
+                        "long_horizon.integration_gate: {{\"enforce\":true,\"reinject\":true,\"round\":{rounds},\"gate_reinject_while_blocked\":{blocked}}}"
+                    )))
+                    .await;
+                return true;
+            }
             crate::long_horizon::LhtGateOutcome::Skip(reason) => {
                 // §4.9 observability: emit exactly which guard suppressed the nudge,
                 // alongside the engine-side state, so "it didn't fire" becomes

@@ -11,6 +11,7 @@ import RoutingPanel from './RoutingPanel';
 import ChecklistPanel from './ChecklistPanel';
 import MermaidPanel from './MermaidPanel';
 import SettingsPanel from './SettingsPanel';
+import LhtSettingsPanel from './LhtSettingsPanel';
 import IndexPanel from './IndexPanel';
 import TerminalPanel from './terminal/TerminalPanel';
 import DiffPanel from './diff/DiffPanel';
@@ -39,6 +40,7 @@ export type RightPanelView =
   | 'api-key'
   | 'settings'
   | 'system'
+  | 'lht-settings'
   | 'mcp'
   | 'usage'
   | 'tasks'
@@ -138,6 +140,7 @@ const PANEL_TITLE_KEYS: Record<RightPanelView, TranslationKey> = {
   'api-key': 'panels.apiKey',
   settings: 'panels.settings',
   system: 'panels.system',
+  'lht-settings': 'panels.lhtSettings',
   mcp: 'panels.mcp',
   usage: 'panels.usage',
   tasks: 'panels.tasks',
@@ -947,6 +950,10 @@ export default function RightPanel({
             streaming={streaming}
             onSettingsSaved={onSystemSettingsSaved}
           />
+        )}
+
+        {view === 'lht-settings' && (
+          <LhtSettingsPanel desktopHost={desktopHost} streaming={streaming} />
         )}
 
         {view === 'about' && <AboutPanel />}

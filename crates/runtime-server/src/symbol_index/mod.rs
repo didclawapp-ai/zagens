@@ -1,6 +1,6 @@
 //! Build and query a symbol index for the workspace.
 //!
-//! The index is a JSON file at `.deepseek/symbols.json` mapping
+//! The index is a JSON file at `.zagens/symbols.json` mapping
 //! workspace-relative file paths → list of (kind, name, line).
 //!
 //! Warmed up at `serve --http` startup (non-blocking background build)
@@ -16,6 +16,10 @@ mod extract;
 use extract::{
     extract_cpp_symbols, extract_go_symbols, extract_py_symbols, extract_sfc_symbols,
     extract_ts_symbols,
+};
+use deepseek_config::{
+    WORKSPACE_META_DIR_NAME, legacy_workspace_meta_dir, workspace_meta_dir,
+    workspace_meta_file_read, workspace_meta_file_write,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -395,7 +399,7 @@ fn write_changes(
         "modified": modified,
     });
 
-    let changes_dir = workspace.join(".deepseek");
+    let changes_dir = workspace_meta_dir(workspace);
     std::fs::create_dir_all(&changes_dir)?;
     std::fs::write(
         changes_dir.join(".symbols_changes.json"),
@@ -509,7 +513,7 @@ pub(crate) fn compute_fingerprint(workspace: &Path) -> String {
 /// current version, or when any source file's on-disk mtime is newer
 /// than the index entry.
 pub fn index_status(workspace: &Path) -> IndexStatus {
-    let index_path = workspace.join(".deepseek").join("symbols.json");
+    let index_path = workspace_meta_file_read(workspace, "symbols.json");
     if !index_path.exists() {
         return IndexStatus::Missing;
     }
@@ -528,7 +532,7 @@ pub fn index_status(workspace: &Path) -> IndexStatus {
 
     // Fast path: if a cached fingerprint matches the current workspace,
     // no source file has changed since the last build.
-    let fp_path = workspace.join(".deepseek").join(".symbols_fingerprint");
+    let fp_path = workspace_meta_file_read(workspace, ".symbols_fingerprint");
     if let Ok(cached) = std::fs::read_to_string(&fp_path) {
         let current = compute_fingerprint(workspace);
         if cached.trim() == current {
@@ -579,7 +583,7 @@ pub fn ensure_symbol_index(workspace: &Path) {
     static BUILDING: LazyLock<Mutex<HashSet<PathBuf>>> =
         LazyLock::new(|| Mutex::new(HashSet::new()));
 
-    let index_path = workspace.join(".deepseek").join("symbols.json");
+    let index_path = workspace_meta_file_read(workspace, "symbols.json");
     let index: Option<SymbolIndex> = std::fs::read_to_string(&index_path)
         .ok()
         .and_then(|raw| serde_json::from_str(&raw).ok());
@@ -610,14 +614,14 @@ pub fn ensure_symbol_index(workspace: &Path) {
         .stack_size(8 * 1024 * 1024)
         .spawn(move || {
             let index = build_index(&ws, SymbolVisibility::Public);
-            let _ = std::fs::create_dir_all(ws.join(".deepseek"));
+            let _ = std::fs::create_dir_all(workspace_meta_dir(&ws));
             let _ = std::fs::write(
-                ws.join(".deepseek").join("symbols.json"),
+                workspace_meta_file_write(&ws, "symbols.json"),
                 serde_json::to_string_pretty(&index).unwrap_or_default(),
             );
             let fp = compute_fingerprint(&ws);
             let _ = std::fs::write(
-                ws.join(".deepseek").join(".symbols_fingerprint"),
+                workspace_meta_file_write(&ws, ".symbols_fingerprint"),
                 fp,
             );
             BUILDING.lock().unwrap().remove(&ws);
@@ -766,6 +770,7 @@ const SKIP_DIRS: &[&str] = &[
     "node_modules",
     "dist",
     ".git",
+    WORKSPACE_META_DIR_NAME,
     ".deepseek",
     "binaries",
     "AppData",
@@ -809,7 +814,8 @@ fn looks_like_project_root(workspace: &Path) -> bool {
         || workspace.join("go.mod").is_file()
         || workspace.join("pyproject.toml").is_file()
         || workspace.join(".git").is_dir()
-        || workspace.join(".deepseek").is_dir()
+        || workspace_meta_dir(workspace).is_dir()
+        || legacy_workspace_meta_dir(workspace).is_dir()
 }
 
 /// Non-blocking alias for sidecar / CLI startup warmup.
@@ -876,7 +882,7 @@ fn walk_source_files_impl(dir: &Path, out: &mut Vec<(PathBuf, u64, &'static str)
 
 /// Load the previous index for incremental rebuild.
 fn load_old_index(workspace: &Path) -> BTreeMap<String, FileSymbols> {
-    let index_path = workspace.join(".deepseek").join("symbols.json");
+    let index_path = workspace_meta_file_read(workspace, "symbols.json");
     let raw = match std::fs::read_to_string(&index_path) {
         Ok(r) => r,
         Err(_) => return BTreeMap::new(),

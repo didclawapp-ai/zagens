@@ -11,6 +11,7 @@ use crate::models::SystemPrompt;
 use crate::project_context::{ProjectContext, load_project_context_with_parents};
 use crate::task_type::TaskType;
 use crate::agent_surface::AppMode;
+use deepseek_config::workspace_meta_file_read;
 use deepseek_core::approval::ApprovalMode;
 use std::path::{Path, PathBuf};
 
@@ -46,12 +47,12 @@ impl<'a> Default for PromptSessionContext<'a> {
 /// A previous session writes it on exit / `/compact`; the next session reads
 /// it back on startup and prepends it to the system prompt so a fresh agent
 /// doesn't have to re-discover open blockers from scratch.
-pub const HANDOFF_RELATIVE_PATH: &str = ".deepseek/handoff.md";
+pub const HANDOFF_RELATIVE_PATH: &str = ".zagens/handoff.md";
 
 /// Workspace-local rules edited in **Zagens** (and readable by any runtime using
 /// the same workspace). Loaded as the first `instructions` document when the
 /// file exists and has non-whitespace content — no `config.toml` entry required.
-pub const PICK_RULES_RELATIVE_PATH: &str = ".deepseek/pick-rules.md";
+pub const PICK_RULES_RELATIVE_PATH: &str = ".zagens/pick-rules.md";
 
 /// Per-file size cap for `instructions = [...]` entries (#454). Mirrors
 /// the existing project-context cap in `project_context::load_context_file`
@@ -196,7 +197,7 @@ fn render_instructions_block(paths: &[PathBuf]) -> Option<String> {
 /// system-prompt block. Returns `None` when the file is absent or empty so
 /// callers can keep the default-uncluttered prompt for fresh workspaces.
 fn load_handoff_block(workspace: &Path) -> Option<String> {
-    let path = workspace.join(HANDOFF_RELATIVE_PATH);
+    let path = workspace_meta_file_read(workspace, "handoff.md");
     let raw = std::fs::read_to_string(&path).ok()?;
     let trimmed = raw.trim();
     if trimmed.is_empty() {
@@ -208,7 +209,7 @@ fn load_handoff_block(workspace: &Path) -> Option<String> {
     ))
 }
 
-/// If `.deepseek/pick-rules.md` exists under `workspace` and is non-empty after
+/// If `.zagens/pick-rules.md` exists under `workspace` and is non-empty after
 /// trim, prepend it to the config `instructions` list (deduped by canonical
 /// path). Order: **Pick rules first**, then paths from `config.toml`.
 #[must_use]
@@ -216,7 +217,7 @@ pub fn merge_instruction_paths_with_pick_rules(
     workspace: &Path,
     config_paths: Vec<PathBuf>,
 ) -> Vec<PathBuf> {
-    let pick = workspace.join(PICK_RULES_RELATIVE_PATH);
+    let pick = workspace_meta_file_read(workspace, "pick-rules.md");
     if !pick.is_file() {
         return config_paths;
     }
@@ -285,7 +286,7 @@ pub const SUGGEST_APPROVAL: &str = include_str!("prompts/approvals/suggest.md");
 pub const NEVER_APPROVAL: &str = include_str!("prompts/approvals/never.md");
 
 /// Compaction handoff template — written into the system prompt so the
-/// model knows the format to use when writing `.deepseek/handoff.md`.
+/// model knows the format to use when writing `.zagens/handoff.md`.
 pub const COMPACT_TEMPLATE: &str = include_str!("prompts/compact.md");
 
 // ── Legacy prompt constants (kept for backwards compatibility) ────────
@@ -609,7 +610,7 @@ pub fn system_prompt_for_mode_with_context_skills_session_and_approval(
     }
 
     // 5. Compaction handoff template — so the model knows the format to use
-    //    when writing `.deepseek/handoff.md` on exit / `/compact`.
+    //    when writing `.zagens/handoff.md` on exit / `/compact`.
     full_prompt.push_str("\n\n");
     full_prompt.push_str(COMPACT_TEMPLATE);
 
@@ -666,7 +667,7 @@ mod tests {
 
     /// Discriminator unique to the injected handoff block (not present in the
     /// agent prompt's own discussion of the convention).
-    const HANDOFF_BLOCK_MARKER: &str = "left a handoff at `.deepseek/handoff.md`";
+    const HANDOFF_BLOCK_MARKER: &str = "left a handoff at `.zagens/handoff.md`";
 
     #[test]
     fn render_environment_block_lists_supplied_locale_and_workspace() {
@@ -734,7 +735,7 @@ mod tests {
     fn handoff_artifact_is_prepended_to_system_prompt_when_present() {
         let tmp = tempdir().expect("tempdir");
         let workspace = tmp.path();
-        let handoff_dir = workspace.join(".deepseek");
+        let handoff_dir = workspace.join(".zagens");
         std::fs::create_dir_all(&handoff_dir).unwrap();
         std::fs::write(
             handoff_dir.join("handoff.md"),
@@ -765,7 +766,7 @@ mod tests {
     #[test]
     fn empty_handoff_file_does_not_inject_block() {
         let tmp = tempdir().expect("tempdir");
-        let dir = tmp.path().join(".deepseek");
+        let dir = tmp.path().join(".zagens");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("handoff.md"), "   \n\n  ").unwrap();
         let prompt = match system_prompt_for_mode_with_context(AppMode::Agent, tmp.path(), None) {
@@ -1074,13 +1075,13 @@ mod tests {
 
     #[test]
     fn system_prompt_with_handoff_file_is_byte_stable_when_file_is_unchanged() {
-        // If `.deepseek/handoff.md` hasn't moved between two builds, the
+        // If `.zagens/handoff.md` hasn't moved between two builds, the
         // rendered prompt must produce identical bytes. The handoff block
         // lands below the static boundary in
         // `system_prompt_for_mode_with_context_and_skills`.
         let tmp = tempdir().expect("tempdir");
         let workspace = tmp.path();
-        let handoff_dir = workspace.join(".deepseek");
+        let handoff_dir = workspace.join(".zagens");
         std::fs::create_dir_all(&handoff_dir).unwrap();
         std::fs::write(
             handoff_dir.join("handoff.md"),
@@ -1113,7 +1114,7 @@ mod tests {
         // metadata now, not a system-prompt tail block.
         let tmp = tempdir().expect("tempdir");
         let workspace = tmp.path();
-        let handoff_dir = workspace.join(".deepseek");
+        let handoff_dir = workspace.join(".zagens");
         std::fs::create_dir_all(&handoff_dir).unwrap();
         std::fs::write(handoff_dir.join("handoff.md"), "# handoff body\n").unwrap();
 
@@ -1248,7 +1249,7 @@ mod tests {
     fn merge_pick_rules_prepends_when_nonempty_file_exists() {
         let tmp = tempdir().expect("tempdir");
         let ws = tmp.path();
-        let ds = ws.join(".deepseek");
+        let ds = ws.join(".zagens");
         std::fs::create_dir_all(&ds).unwrap();
         let pick = ds.join("pick-rules.md");
         std::fs::write(&pick, "pick rules body").unwrap();
@@ -1271,7 +1272,7 @@ mod tests {
             super::merge_instruction_paths_with_pick_rules(ws, vec![other.clone()]),
             vec![other.clone()]
         );
-        let ds = ws.join(".deepseek");
+        let ds = ws.join(".zagens");
         std::fs::create_dir_all(&ds).unwrap();
         std::fs::write(ds.join("pick-rules.md"), " \n\t ").unwrap();
         assert_eq!(

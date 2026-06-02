@@ -6,6 +6,7 @@ use crate::tools::spec::{
     optional_str, optional_u64, required_str,
 };
 use async_trait::async_trait;
+use deepseek_config::workspace_meta_file_read;
 use regex::Regex;
 use serde_json::{Value, json};
 use std::fs;
@@ -159,7 +160,7 @@ impl ToolSpec for ReadFileTool {
                 .unwrap_or(&file_path)
                 .to_string_lossy()
                 .replace('\\', "/");
-            let index_path = context.workspace.join(".deepseek").join("symbols.json");
+            let index_path = workspace_meta_file_read(&context.workspace, "symbols.json");
             if let Ok(raw) = std::fs::read_to_string(&index_path) {
                 if let Ok(index) = serde_json::from_str::<crate::symbol_index::SymbolIndex>(&raw) {
                     if let Some(summary) =

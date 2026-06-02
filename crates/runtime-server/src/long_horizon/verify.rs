@@ -13,11 +13,13 @@ pub fn normalize_cmd(command: &str) -> String {
 /// True when a recent exec command satisfies the checklist `[verify: …]` expectation.
 #[must_use]
 pub fn verification_satisfied(expected: &str, recent_execs: &[String]) -> bool {
-    let expected_norm = normalize_cmd(expected);
-    if expected_norm.is_empty() {
+    if expected.trim().is_empty() {
         return true;
     }
-    recent_execs.iter().any(|ran| commands_match(&expected_norm, ran))
+    let equivalents: Vec<String> = super::verify_platform::verify_command_equivalents(expected);
+    equivalents
+        .iter()
+        .any(|expected_norm| recent_execs.iter().any(|ran| commands_match(expected_norm, ran)))
 }
 
 fn commands_match(expected_norm: &str, ran_norm: &str) -> bool {

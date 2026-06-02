@@ -7,6 +7,7 @@ use anyhow::{Result, anyhow};
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
+use deepseek_config::workspace_meta_file_read;
 use deepseek_core::events::Event;
 use crate::utils::spawn_supervised;
 
@@ -128,14 +129,18 @@ impl SubAgentManager {
     }
 
     pub(crate) fn load_state(&mut self) -> Result<()> {
-        let Some(path) = self.state_path.as_ref() else {
+        if self.state_path.is_none() {
             return Ok(());
-        };
-        if !path.exists() {
+        }
+        let read_path = workspace_meta_file_read(
+            &self.workspace,
+            &format!("state/{}", SUBAGENT_STATE_FILE),
+        );
+        if !read_path.exists() {
             return Ok(());
         }
 
-        let raw = fs::read_to_string(path)?;
+        let raw = fs::read_to_string(&read_path)?;
         let state = serde_json::from_str::<PersistedSubAgentState>(&raw)?;
         if state.schema_version != SUBAGENT_STATE_SCHEMA_VERSION {
             return Err(anyhow!(

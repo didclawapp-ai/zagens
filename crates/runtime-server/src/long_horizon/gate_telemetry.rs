@@ -35,6 +35,10 @@ pub enum CompletionGateEvent {
         nudged: bool,
         round: u32,
     },
+    /// P1-4: cross-layer integration observe heuristics (Electron→Tauri class).
+    IntegrationGate {
+        payload_json: String,
+    },
 }
 
 #[derive(Serialize)]
@@ -84,6 +88,9 @@ impl CompletionGateEvent {
             Self::PlanGate { nudged, round } => format!(
                 "long_horizon.plan_gate: {{\"nudged\":{nudged},\"round\":{round}}}"
             ),
+            Self::IntegrationGate { payload_json } => {
+                format!("long_horizon.integration_gate: {payload_json}")
+            }
         }
     }
 
@@ -152,5 +159,24 @@ impl CompletionGateEvent {
         let payload_json =
             serde_json::to_string(audit).unwrap_or_else(|_| "{}".to_string());
         out.push(Self::CompletionAudit { payload_json });
+    }
+
+    pub fn queue_integration_observe(out: &mut Vec<Self>, gaps: &[String], enforce: bool) {
+        let payload = if enforce {
+            serde_json::json!({
+                "enforce": true,
+                "gap_count": gaps.len(),
+                "gaps": gaps,
+            })
+        } else {
+            serde_json::json!({
+                "observe": true,
+                "gap_count": gaps.len(),
+                "gaps": gaps,
+            })
+        };
+        out.push(Self::IntegrationGate {
+            payload_json: payload.to_string(),
+        });
     }
 }

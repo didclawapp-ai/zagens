@@ -22,22 +22,12 @@ export const ACTIVE_INSPECTOR_STORAGE_KEY = 'deepseek-desktop-active-inspector';
 export const RIGHT_PANEL_COLLAPSED_STORAGE_KEY = 'deepseek-desktop-right-panel-collapsed';
 export const ROUTE_INTENT_STORAGE_KEY = 'deepseek-desktop-route-intent';
 export const TASK_TYPE_STORAGE_KEY = 'deepseek-desktop-task-type';
-export const ONBOARDED_STORAGE_KEY = 'deepseek-desktop-onboarded';
-
-/** Whether the first-run guided setup has already been completed (or skipped). */
-export function isOnboarded(): boolean {
+/** Whether the user has explicitly chosen a default task type (onboarding step 3). */
+export function hasTaskTypePreferenceStored(): boolean {
   try {
-    return localStorage.getItem(ONBOARDED_STORAGE_KEY) === '1';
+    return localStorage.getItem(TASK_TYPE_STORAGE_KEY) != null;
   } catch {
     return true;
-  }
-}
-
-export function markOnboarded(): void {
-  try {
-    localStorage.setItem(ONBOARDED_STORAGE_KEY, '1');
-  } catch {
-    /* ignore */
   }
 }
 
@@ -100,6 +90,15 @@ export function loadTaskTypePreference(): DesktopTaskTypePreference {
   }
 }
 
+/** Persist an explicit task-type choice (onboarding or composer). */
+export function persistTaskTypePreference(value: DesktopTaskTypePreference): void {
+  try {
+    localStorage.setItem(TASK_TYPE_STORAGE_KEY, value);
+  } catch {
+    /* ignore */
+  }
+}
+
 export function loadRouteIntentPreference(): DesktopRouteIntentOption {
   try {
     return parseDesktopRouteIntentOption(localStorage.getItem(ROUTE_INTENT_STORAGE_KEY)) ?? 'off';
@@ -129,6 +128,7 @@ export function loadStoredInspector(): RightPanelView {
       s === 'skills' ||
       s === 'agents' ||
       s === 'routing' ||
+      s === 'lht-settings' ||
       s === 'index' ||
       s === 'checklist' ||
       s === 'audit' ||

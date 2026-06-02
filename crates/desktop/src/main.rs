@@ -224,6 +224,8 @@ fn main() {
             commands::restart_sidecar,
             commands::get_system_settings,
             commands::save_system_settings,
+            commands::get_lht_settings,
+            commands::save_lht_settings,
             commands::default_composer_workspace,
             commands::read_pick_rules,
             commands::save_pick_rules,

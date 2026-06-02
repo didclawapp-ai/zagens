@@ -17,11 +17,13 @@ use super::constants::{SUBAGENT_STATE_FILE, ZOMBIE_SCAN_INTERVAL};
 /// Thread-safe wrapper for `SubAgentManager`.
 pub type SharedSubAgentManager = Arc<RwLock<SubAgentManager>>;
 
+use deepseek_config::workspace_meta_file_write;
+
 pub(crate) fn default_state_path(workspace: &Path) -> PathBuf {
-    workspace
-        .join(".deepseek")
-        .join("state")
-        .join(SUBAGENT_STATE_FILE)
+    workspace_meta_file_write(
+        workspace,
+        &format!("state/{}", SUBAGENT_STATE_FILE),
+    )
 }
 
 pub(super) fn epoch_millis_now() -> u64 {

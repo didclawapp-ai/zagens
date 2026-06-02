@@ -1,12 +1,12 @@
 # 长程代码任务 Harness 方案
 
-**状态:** **已实施**（Phase 1 / 2 / 2.x / 3 主体落地；Phase 4 未启动）— 详见 §6 与下方总览  
-**日期:** 2026-05-28（创建）· 2026-05-29（实施状态更新）  
-**范围:** 代码**生成**、**修复**、**重构**等多步执行任务 — **不含** CRAFT 审查闭环、**不含** 全库审计 scratchpad  
+**状态:** **已实施**（Phase 1 / 2 / 2.x / 3 主体落地；**§6 产品迭代 P0 / P1 / P1′ 已落地**；**Phase 4 规格已定**）— 详见 §6 与下方总览  
+**日期:** 2026-05-28（创建）· 2026-05-29（实施状态更新）· 2026-06-01（Phase 4 宏观循环 + **产品迭代路线图** + **P0–P1′ 对齐修订**）  
+**范围:** 代码**生成**、**修复**、**重构**等多步执行任务 — Phase 4 规格含 **LHT↔CRAFT 组合式宏观循环**（见 §6 Phase 4）；**不含** 全库审计 scratchpad 主线  
 **上游:** [`Agent+Harness组合式编程方案.md`](./Agent+Harness组合式编程方案.md) §4、[`HARNESS_INTEGRATION_PROPOSAL.md`](./HARNESS_INTEGRATION_PROPOSAL.md) 名词映射  
 **相关:** [`../agent-reliability-craft-plan.md`](../agent-reliability-craft-plan.md)（审查向，互补）、[`../desktop/DEV_NOTES.md`](../desktop/DEV_NOTES.md) §5 L3、`crates/runtime-server/src/prompts/base.md`
 
-### 实施状态总览（2026-05-29）
+### 实施状态总览（2026-06-01）
 
 | Phase | 主题 | 状态 | 关键落点 |
 |-------|------|------|----------|
@@ -14,16 +14,21 @@
 | **1** | 强制续写 MVP（gate + NudgeTracker + config + events） | ✅ 已落地 | `long_horizon/{mod,graph,nudge,objective}.rs`、`no_tool_uses.rs` 分支 6 |
 | **2** | 任务图 API + Cycle 联动 + 交接 + 左下面板 | ✅ 已落地 | `harness/task-graph`·`cycles`、`LongHorizonPanel`、`[verify:]`、预警带 cycle |
 | **2.x** | 客观 progress 信号（git）+ nudge 遥测 | ✅ 本期落地 | `progress.rs`、`progress_via_git`、`telemetry`、`nudge_outcome` 事件（§4.8 / §4.9） |
-| **3** | 格内 tab + Context 阈值线 + Handoff + sidecar 恢复 | ✅ 主体落地 | `LongHorizonPanel` tabs、`.deepseek/handoff.md` auto 块 |
-| **4** | 可选 CRAFT 末段（opt-in） | ⛔ 未启动 | 非阻塞，按需 |
+| **3** | 格内 tab + Context 阈值线 + Handoff + sidecar 恢复 | ✅ 主体落地 | `LongHorizonPanel` tabs、`.zagens/handoff.md` auto 块 |
+| **4** | **LHT↔CRAFT 组合式宏观循环**（实现段 + 质检段交替） | 📋 规格已定 | §6 Phase 4；上游 [`COMPOSABLE_HARNESS.md`](./COMPOSABLE_HARNESS.md) §3.1 / §6.7 |
+| **P0** | 加严可信度 + mismatch 假绿 | ✅ 已落地 | §6 · P0a/P0b（`strict_completion_gate`、mismatch nudge、UI 有条件完成） |
+| **P1** | 大 refactor 清单 / manifest / 工具链 / 跨层验收 | ✅ 已落地 | §6 · P1a–P1d |
+| **P1′** | 80% 路径补强（shim / electron enforce / lib.rs IPC / cargo build） | ✅ 已落地 | §6 · P1′ 实施清单 |
+| **P2** | 宏观循环落地 + 缺口枚举器 | 📋 规格已定 | §6 Phase 4 + §6 产品迭代 · P2 |
+| **P3** | 规模化测量 + 金矿 backlog | 📋 规格已定 | §6 产品迭代 · P3 |
 
 **已修复缺陷（实施期）：** 进度条填充、qualified-progress 误判（read-only exec）、`max_nudges_per_item` 硬上限可达、stop-steer 放宽匹配。详见 [`../../CHANGELOG.md`](../../CHANGELOG.md) `[Unreleased]`。
 
-**待积累数据后再做：** §4.9 遥测 conversion_pct 反推阈值（先量后调）；Phase 4 CRAFT 末段；遥测跨会话持久化 + Desktop 面板。
+**待积累数据后再做：** §4.9 遥测 conversion_pct 反推阈值（先量后调）；Phase 4 编排层；遥测跨 session 持久化；Desktop **LHT 高级设置**（`LhtSettingsPanel`）与跑批回归自动化。
 
-**⬜ 0.8 之后（金矿 backlog，源自设计对话）：** ①**设计评审前置**——在 plan/任务图派生后、首个实现动手前加一道「方案审」闸门（抓幻觉趁它还是计划里一句话，而非已写进 N 个文件）；②**可追溯矩阵**——`目标 ↔ 实现 ↔ 验证` 三元绑定，堵死 DEMO3「验收项分解时悄悄变形」。详见 [`../agent-reliability-craft-plan.md` §11.5](../agent-reliability-craft-plan.md) 与 [`../desktop/DEV_NOTES.md` §2026-05-30](../desktop/DEV_NOTES.md)。
+**实证基线（2026-06 · label_rust 首轮 ~35min）：** 驱动 P0→P1′ 的 harness 观测见 §6 产品迭代 · **实证摘要**（历史记录；对应项已在 P0/P1/P1′ 修复，**第二轮压测**用于验证 ~80% 路径）。
 
-**⬜ 0.8 之后（全新项目并行生成，源自设计对话 2026-05-30）：** 全新项目/模块生成主模型串行慢，可走**契约优先 fan-out/join**并行化（重构/修复**不可**并行——已存在代码语义耦合）。两道闸门夹住并行段：**P0.5 契约固化**（分发前，落地金矿①设计评审前置）+ **P1.5 符合性审核**（集成前，产出金矿②可追溯矩阵）。复用现有子代理 spawn/wait/黑板/resident 文件租约。详见 [`PARALLEL_FRESH_GENERATION.md`](./PARALLEL_FRESH_GENERATION.md)。
+**金矿 backlog（并入 §6 P3-5）：** ① 设计评审前置；② 可追溯矩阵 — 详见 [`../agent-reliability-craft-plan.md` §11.5](../agent-reliability-craft-plan.md)。并行生成见 [`PARALLEL_FRESH_GENERATION.md`](./PARALLEL_FRESH_GENERATION.md)（P0.5 / P1.5）。
 
 ---
 
@@ -32,7 +37,7 @@
 | 问题 | 立场 |
 |------|------|
 | 模型做 refactor / 生成 / 修复时，常在一阶段 prose 收尾 | **Harness 不信任自我声明**；checklist/plan 未空 → 强制续写 |
-| CRAFT 能否直接复用？ | **不能当主线**。CRAFT = 审查 verdict + fix-loop；本方案 = **执行任务图直到验收** |
+| CRAFT 能否直接复用？ | **不能当 LHT 主线**；Phase 4 作为 **质检段** 与 LHT **宏观交替**（blockers→checklist→再 LHT），见 §6 Phase 4 |
 | 新建第四套持久化？ | **否**。任务图从 `update_plan` + `checklist_write` **derived**；行为与 audit `maybe_continue_incomplete_audit` 同族 |
 | 第一刀改什么？ | `no_tool_uses.rs` 增加 **`maybe_continue_incomplete_code_task`** + 配置开关 + Desktop 侧栏进度 |
 
@@ -62,13 +67,14 @@
 |--------|-------------|----------|-----------|
 | **Audit scratchpad** | 全库 / 大范围 **审查** | inventory 区域 closed + P2 gate | ✅ `maybe_continue_incomplete_audit` |
 | **CRAFT** | 审查 → 修复 **闭环** | review/verifier structured verdict | ✅ `<deepseek:craft.fix_loop>` |
-| **LHT（本方案）** | **写**代码：生成 / 修 bug / 重构 | checklist + plan **未全部 completed** | ❌ 仅 prompt 软约束 |
+| **LHT（本方案）** | **写**代码：生成 / 修 bug / 重构 | checklist + plan **未全部 completed** + completion/stub 门（Composable） | ✅ 续跑 / verify / 完成门禁 |
+| **LHT + CRAFT 宏观循环（Phase 4）** | 大 refactor **多轮收口**（~80%→~90%+） | LHT 段 checklist 清空 + 机器门绿 → CRAFT 枚举 gap → 补全段 | 📋 规格已定，编排未落地 |
 
 **不重复建设：**
 
-- 不把 CRAFT 黑板/verdict 强加给「纯实现」任务；
+- 不把 CRAFT **verdict 绑为** `graph_complete` 的唯一法官（与 [`COMPOSABLE_HARNESS.md`](./COMPOSABLE_HARNESS.md) §3 铁律一致）；
 - 不把 audit inventory 套在 refactor 上；
-- 审查末段可选 **接入** CRAFT（见 §7.3），但 LHT 主干独立。
+- 小任务 / bugfix **不必** 走 CRAFT 段（见 §7.2）；大 refactor 走 **LHT→CRAFT→LHT** 宏观循环（§7.4）。
 
 ### 1.3 非目标（本方案首版不承诺）
 
@@ -115,7 +121,7 @@ LHT 不是只有「模型停了再踹一脚」。数小时级代码任务靠三�
 |------|----------|----------|----------|
 | **Cycle** | 1M 窗仍不够 / 深窗检索衰减 | ✅ `cycle_manager` + `cycle_hooks` | 与 checklist **断点**联动 schedule；LHT 上下文策略（§10.2） |
 | **交接** | 换脑后「还记得要干什么」 | ✅ 双层：`StructuredState` + `<carry_forward>` | briefing 模板 **显式带 CodeTaskGraph**；LHT objective pin |
-| **可视化** | 黑盒焦虑、无法 steer | 🔶 Checklist 面板；❌ Plan / Cycle 时间线 | **Harness 任务视图** + cycle 事件 + 交接只读预览 |
+| **可视化** | 黑盒焦虑、无法 steer | ✅ `LongHorizonPanel`（任务图 / Cycle / Context / Nodes）+ Composer LHT chip | completion_gate 摘要、有条件完成态（P0/P1′） |
 
 ---
 
@@ -238,19 +244,24 @@ Also include in <carry_forward>:
 
 **原则（组合式方案 §2.2）：** Harness 产生事实，可视化让人看见 — 长程任务没有任务图 + cycle 线，用户只能看 prose，必然过早 steer 或误以为已完成。
 
-#### 3.3.1 现状（2026-05-28）
+#### 3.3.1 现状（2026-06-01，对齐仓库）
 
 | 能力 | Desktop | Runtime 事件 / API |
 |------|---------|-------------------|
 | Checklist 进度条 | ✅ [`ChecklistPanel.tsx`](../../crates/desktop/web-ui/src/components/ChecklistPanel.tsx) — **AuditGrid 左上** | `panel_checklist` / poll |
 | Audit scratchpad | ✅ [`AuditScratchpadPanel.tsx`](../../crates/desktop/web-ui/src/components/AuditScratchpadPanel.tsx) — **AuditGrid 右上** | `GET …/scratchpad/status` |
 | 子代理 / CRAFT | ✅ [`AgentPanel.tsx`](../../crates/desktop/web-ui/src/components/AgentPanel.tsx) — **AuditGrid 右下** | `/v1/blackboards` |
-| **LHT 任务图** | ❌ **左下「预留」格为空**（`auditGrid.reservedHint`） | Phase 1 事件待接 UI |
-| Plan 阶段 | ❌ 无独立展示（仅在 cycle state 文本里） | plan 工具有 state，**未** emit panel |
-| Context 使用率 | ✅ Composer 页脚 / `GET .../context` | `contextUsage.ts` |
-| Cycle 序号 / 时间线 | ❌ 仅 status 文案「context refreshing」 | `cycle_count` 在 session，**无** dedicated SSE kind |
-| carry_forward 预览 | ❌ 用户看不到交接摘要 | 在 seed messages 内，未拆 UI |
-| LHT 续写次数 | ❌ | Phase 1 `long_horizon.continue_injected` 待接 UI |
+| **LHT 任务图** | ✅ [`LongHorizonPanel.tsx`](../../crates/desktop/web-ui/src/components/LongHorizonPanel.tsx) — **AuditGrid 左下** | `GET …/harness/task-graph` + SSE |
+| Plan 阶段 | ✅ LongHorizonPanel「计划」区 + plan outline 淡化 | derived from `SharedPlanState` |
+| Context 使用率 | ✅ Composer 页脚 / Context tab 768K 线 | `contextUsage.ts` |
+| Cycle 序号 / 时间线 | ✅ LongHorizonPanel Cycle tab | `GET …/harness/cycles` |
+| carry_forward 预览 | ✅ Cycle tab briefing 预览 | cycle archive + API |
+| LHT 续写 / 门禁节点 | ✅ Nodes tab + Composer chip | `long_horizon.*` status 事件 |
+| LHT 加严开关 | ✅ [`LhtModeToggle.tsx`](../../crates/desktop/web-ui/src/components/LhtModeToggle.tsx)（Composer） | `get/set_lht_strict` → `settings.toml` |
+| LHT 高级门禁 | ✅ [`LhtSettingsPanel.tsx`](../../crates/desktop/web-ui/src/components/LhtSettingsPanel.tsx)（侧栏） | `get/save_lht_settings` → completion 子门 |
+| 工作区 deliverable 覆盖 | ✅ 可选 `{workspace}/.zagens/lht-deliverables.toml` | `merge_runtime_deliverables` |
+
+**仍缺 / 后续：** macro 段面板节点（Phase 4）；跨 session 遥测持久化（P3）。
 
 **缺口一句话：** 右侧 **2×2 Harness 网格**（[`AuditGridPanel.tsx`](../../crates/desktop/web-ui/src/components/AuditGridPanel.tsx)）已承载清单 / 审计 / 子代理；**左下预留格** 即 LHT 可视化落点 — 与审计对称，不另开顶层面板。
 
@@ -305,16 +316,15 @@ Also include in <carry_forward>:
 │ 上下文：768K 阈值线 vs 1M 顶、下次换脑提示                            │
 ```
 
-#### 3.3.3 Runtime → UI 契约（待实现）
+#### 3.3.3 Runtime → UI 契约（已落地 + 后续）
 
-| 事件 / API |  payload 要点 | Phase |
-|------------|---------------|-------|
-| `harness.task_graph`（SSE 或 poll） | §4.1 `CodeTaskGraph` JSON | 2 |
-| `harness.cycle_advanced` | `{ from, to, reason, briefing_preview }` | 2 |
-| `long_horizon.continue_injected` | `{ open_items, nudge_count }` | 1 |
-| `GET /v1/threads/{id}/harness/task-graph` | derived view | 2 |
-| `GET /v1/threads/{id}/harness/cycles` | cycle 列表 + briefing 摘要 | 3 |
-| `panel_plan`（可选） | 与 checklist 对称的 plan snapshot emit | 2 |
+| 事件 / API |  payload 要点 | 状态 |
+|------------|---------------|------|
+| `GET /v1/threads/{id}/harness/task-graph` | §4.1 `CodeTaskGraph` JSON + `completion_gate` | ✅ |
+| `GET /v1/threads/{id}/harness/cycles` | cycle 列表 + briefing 摘要 | ✅ |
+| SSE `harness.task_graph` | panel push | ✅ |
+| `long_horizon.continue_injected` / `blocked` / `gate_skip` / `integration_gate` / … | harness 节点流 | ✅ |
+| `panel_plan`（可选） | 与 checklist 对称的 plan snapshot emit | 🔶 未做（derived view 已够） |
 
 **持久化：** cycle 边界写入 thread event（`kind: cycle_advance`），便于 **replay** 与跨天 resume 时渲染时间线（D7 JSONL 衍生，不新表）。
 
@@ -735,7 +745,7 @@ progress_via_git = true               # Phase 2.x — git 工作树变更作为�
 
 **逐步实施：** 见 **§15 Phase 1 Playbook**（推荐按 Step 1→9 顺序合入，可单 PR 多 commit）。
 
-### Phase 2 — Cycle 联动 + 交接增强 + 任务图 API（P1）— **部分落地**
+### Phase 2 — Cycle 联动 + 交接增强 + 任务图 API（P1）— ✅ **已落地**
 
 - [x] `GET /v1/threads/{id}/harness/task-graph` + `Op::QueryHarnessTaskGraph`（live engine）  
 - [x] SSE `harness.task_graph` + panel push  
@@ -771,12 +781,12 @@ progress_via_git = true               # Phase 2.x — git 工作树变更作为�
 
 > 本期**只埋点不调参**：阈值调整须等真实会话 conversion_pct 数据（实践出真知）。
 
-### Phase 3 — 可视化 + 长跑稳定（P1，L3 产品化）— **部分落地**
+### Phase 3 — 可视化 + 长跑稳定（P1，L3 产品化）— ✅ **主体落地**
 
 - [x] `GET /v1/threads/{id}/harness/cycles` + `Op::QueryHarnessCycles`  
 - [x] `LongHorizonPanel` 格内 tab：任务图 / Cycle / 上下文（§3.3.2 Phase 3）  
 - [x] LHT Composer footer chip（`long_horizon.continue_injected` / blocked / context_warning）  
-- [x] Handoff Report 携带 open checklist + cycle #（3b — `.deepseek/handoff.md` `<!-- lht-handoff:auto -->` on cycle advance）
+- [x] Handoff Report 携带 open checklist + cycle #（3b — `.zagens/handoff.md` `<!-- lht-handoff:auto -->` on cycle advance）
 
 **可视化（§3.3）：**
 
@@ -790,9 +800,269 @@ progress_via_git = true               # Phase 2.x — git 工作树变更作为�
 - Sidecar supervisor 架构硬化（见 [`SIDECAR_SUPERVISOR_HARDENING_PLAN.md`](../desktop/SIDECAR_SUPERVISOR_HARDENING_PLAN.md) — v1 已落地，非 LHT 专属）  
 - [x] Handoff Report 携带未完成 checklist + 当前 cycle #（跨天续 — cycle advance 写入 handoff）
 
-### Phase 4 — 可选 CRAFT 末段（P2，非阻塞）
+### Phase 4 — LHT↔CRAFT 组合式宏观循环（P2，规格已定，未启动）
 
-大 refactor **最后一 phase** 可提示用户或自动 spawn `review` + `verifier`；失败走现有 fix-loop。**不**把 LHT 完成条件绑死在 CRAFT verdict 上。
+**动机（2026-06 设计对话 + label_rust 实测）：** 单次 LHT 长 turn（加严 + Composable 层2/3）realistic 上界约 **70–80%** 功能覆盖——主干能跑、边缘与欠拆解项仍漏。要到 **85–90%+**，需要 **宏观多轮**：实现段跑完后进入质检段，把缺口 **写回 checklist**，再开补全段；而非仅靠同 turn 内 `continue_injected` 续写。
+
+**与 Composable Harness 的关系：** Phase 1–3 + [`COMPOSABLE_HARNESS.md`](./COMPOSABLE_HARNESS.md) 的 **层1–3** 解决 **micro 闭环**（同 turn / 同 graph_complete 候选内的 reinject）。Phase 4 解决 **macro 闭环**（实现轮 ↔ 质检轮）。二者 **compose**，不互相替代：
+
+| 层级 | 机制 | 裁决者 |
+|------|------|--------|
+| **Micro** | 层1 nudge / 层2 exit 0 / 层3 manifest / stub 门 | **机器 oracle** |
+| **Macro** | LHT 实现段 → CRAFT 质检段 → LHT 补全段 | CRAFT = **缺口枚举器**；绿不绿仍由机器门 |
+
+> **组合式 Harness 完整形态（产品叙述）：** `Layer₁(LHT 执行) ⊕ Layer₂₋₃(机器完成门) ⊕ Macro(LHT↔CRAFT 交替)`。详见 COMPOSABLE §3.1「法官 vs 缺口枚举器」。
+
+#### 4.1 宏观流程
+
+```mermaid
+flowchart TB
+  subgraph impl["LHT 实现段"]
+    A[plan + checklist] --> B[工具推进 + continue_injected]
+    B --> C{graph.incomplete?}
+    C -- 是 --> B
+    C -- 否 --> D[层2/3 + stub 门<br/>Composable micro]
+  end
+  D -- 未绿 --> B
+  D -- micro 通过 --> E{进入 CRAFT 段?}
+  E -- 否 / 小任务 --> F[结束]
+  E -- 是 --> G[CRAFT Review + Verifier<br/>blackboard blockers]
+  G --> H{verdict / 缺口}
+  H -- PASS 且无 open gap --> F
+  H -- BLOCKER / gap --> I[blockers → 新 checklist 项]
+  I --> J[LHT 补全段<br/>只攻 open / 禁重复勾旧项]
+  J --> G
+  H -. max_macro_cycles .-> K[诚实 macro_unmet<br/>列剩余 gap]
+```
+
+**段切换 SSOT：**
+
+| 持久化 | 写入方 | 用途 |
+|--------|--------|------|
+| plan + checklist | LHT 各段 | 任务图 SSOT；补全段 **追加** gap 项，不删已完成历史 |
+| `.zagens/blackboards/{task_id}` | CRAFT | structured verdict、blockers、rounds[] |
+| `.zagens/handoff.md` `<!-- lht-handoff:auto -->` | cycle / 段边界 | open 项 + cycle #（已有 Phase 3b） |
+| completion_gate 遥测 | Composable | micro 门结果；**不**替代 CRAFT 段 |
+
+#### 4.2 CRAFT 角色边界（必须写死）
+
+对齐 [`COMPOSABLE_HARNESS.md`](./COMPOSABLE_HARNESS.md) §3.1 / §6.7：
+
+| | 禁止（法官） | 允许（缺口枚举器） |
+|---|-------------|-------------------|
+| CRAFT Review/Verifier | 直接 `pass`/`fail` 放行 `graph_complete` | 产出 `blockers[]`、coverage 缺口、IPC 漏迁列表 |
+| 最终完成 | ❌ CRAFT verdict  alone | ✅ blockers 转 checklist + **`[verify:]`** 后仍由 exit 0 / stub 门裁决 |
+
+**Review 输入（大 refactor 必喂）：** 算子或 Phase 1 产物——Electron IPC 清单 / 架构对照表 / stub 扫描摘要 / 本轮 git diff 范围。否则 Review 只能泛泛 prose，无法枚举可检验 gap。
+
+**Verifier 范围：** 补全轮可缩为 **Verifier + 轻量 Review（仅 delta）**，不必每轮跑满 Explorer→Implementer 全链（控 token / 延迟）。
+
+#### 4.3 blockers → checklist 转换（编排器职责）
+
+Phase 4 **新增编排层**（非 Engine 新字段；状态挂 `long_horizon_state` 或独立 `harness_orchestrator` 模块，实施时定）：
+
+1. CRAFT 段结束 → 读 blackboard `blockers[]` + structured verdict  
+2. 对每条 blocker：**幂等**写入 checklist（`pending`），content 含 `[verify: <cmd>]` 或指向 deliverable path（可机器对账）  
+3. 注入合成 user 消息：「补全段：只完成下列 open 项，勿重复标记已完成项」  
+4. 切回 **LHT 补全段**（`long_horizon.enabled` + 同 thread；可选 `macro_phase = "remediation"` 遥测标签）
+
+**与现有 fix-loop 分工：** `craft_fix_loop_hint` / `<deepseek:craft.fix_loop>` 仍可在 **CRAFT 段内** 驱动 implementer 子代理；Phase 4 宏观循环在 **段末** 把未消 blockers **批量** 落 checklist，由 **主 agent LHT** 补全（适合 2W 行迁移，避免子代理与主 agent 双轨改同一文件）。
+
+#### 4.4 终止条件与有界
+
+| 计数器 | 建议默认 | 耗尽行为 |
+|--------|----------|----------|
+| `max_macro_cycles` | 2–3 | 发 `long_horizon.macro_unmet` + 列剩余 blockers；**不假绿** |
+| `max_craft_rounds_per_cycle` | 2 | 同 macro cycle 内 CRAFT 重审上限 |
+| 既有 `manifest_gate_rounds` / `audit_rounds` | 不变 | micro 门独立计数 |
+
+**合法结束：** ① CRAFT PASS **且** micro 层2/3 绿 **且** checklist open=0；② 用户签收「接受 macro_unmet」；③ 真实 L3/L4 阻断（互斥方案需人决）。
+
+**完成度预期（诚实）：**
+
+| 组合 | realistic 上界 |
+|------|----------------|
+| 仅 LHT + Composable micro | ~70–80% |
+| + Phase 4 宏观 1–2 轮 | ~85–90% |
+| 98%+ | 仍须人工 QA + 真实用户场景；非单次 harness 承诺 |
+
+#### 4.5 配置草案（Phase 4 实施时落地）
+
+```toml
+[long_horizon.macro_loop]
+enabled = false              # opt-in；大 refactor 预置可默认 true
+max_macro_cycles = 3
+max_craft_rounds_per_cycle = 2
+auto_enter_craft = "on_micro_pass"   # on_micro_pass | user_confirm | off
+craft_on_small_tasks = false         # bugfix / <N checklist 项跳过 CRAFT 段
+```
+
+**Desktop 预置对齐 §5.2：** `long-refactor` 预置可设 `macro_loop.enabled = true`；`code-default` / `long-fix` 保持 false。
+
+#### 4.6 遥测与面板（Phase 4）
+
+| 事件 | 载荷要点 |
+|------|----------|
+| `long_horizon.macro_phase` | `{phase:"implement"|"craft"|"remediation", cycle, macro_cycle}` |
+| `long_horizon.macro_craft_start` | `{task_id, review_scope}` |
+| `long_horizon.macro_craft_result` | `{verdict, blockers_count, converted_to_checklist}` |
+| `long_horizon.macro_unmet` | `{remaining_blockers[], macro_cycles_used}` |
+
+`LongHorizonPanel`：Nodes 流区分 micro（现有）与 macro 段；可选 Composer chip「审查轮 / 补全轮」。
+
+#### 4.7 实施清单（Phase 4 — 未启动）
+
+- [ ] **4a 编排器** — `macro_loop` config；micro pass → 触发 CRAFT 段；blockers→checklist 纯函数 + 单测  
+- [ ] **4b CRAFT 段** — spawn review/verifier + blackboard 写入；复用 `craft.rs` / `emit_craft_events`  
+- [ ] **4c LHT 补全段** — 合成 nudge + `macro_phase=remediation`；与 `continue_injected` / completion 门顺序文档化  
+- [ ] **4d Desktop** — 预置、`macro_loop` 设置项（高级，可仅 toml）；面板 macro 节点 + i18n  
+- [ ] **4e 回归** — label_rust 类迁移：baseline「仅 LHT」vs「LHT+1 macro 轮」gap 数 / Rust LOC / verify 命中率  
+
+**非阻塞：** Phase 4 未落地前，用户可 **手动** 在同一 thread 触发 CRAFT 子代理，再 steer「只补 blockers」——与 Phase 4 自动化等价但无编排器。
+
+### 产品迭代路线图（2026-06 · label_rust 类大 refactor 实测驱动）
+
+**目标完成度（产品诚实预期）：**
+
+| 组合 | realistic 上界 | 说明 |
+|------|----------------|------|
+| 仅 LHT micro（续跑 + checklist） | ~70–80% | 防早停有效，清单可假绿 |
+| LHT + Composable micro（层2/3 observe） | ~65–75% **可运行面** | 记缺口但不强制返工 |
+| LHT + Composable **enforce** + P0 | ~75–80% | 收尾 oracle 真拦 |
+| + P1 细清单 / IPC manifest | ~78–83% | 减欠拆解 |
+| + **P1′** shim / `electron/` enforce / `cargo build` | ~**80–85%** | label_rust 类第二轮目标 |
+| + P2 宏观 LHT↔CRAFT 1–2 轮 | ~85–90% | 补系统性漏项 |
+| 98%+ | 多轮 + 人工 QA | 非单次 harness 承诺 |
+
+**组合式完整形态：** `Layer₁(LHT 执行) ⊕ Layer₂₋₃(机器完成门) ⊕ Macro(LHT↔CRAFT)` — 见 [`COMPOSABLE_HARNESS.md`](./COMPOSABLE_HARNESS.md) §4 macro 第四维。
+
+#### 实证摘要（label_rust 首轮 · 历史驱动项，**已在 P0/P1/P1′ 修复**）
+
+一次 **Electron→Tauri · 加严 LHT · ~35min** 长 turn 的 harness 侧结论（只看 log + 产物 oracle，不看模型 prose）：
+
+| 观测 | 结论 | 修复 |
+|------|------|------|
+| `plan_gate` enforce、`continue_injected`×2、`nudge_outcome converted=1` | **micro 续跑链正常** | — |
+| P2 item 5/6 `verify_gate mismatch` 仍 completed | mismatch 未阻断假绿 | **P0-2** |
+| 收尾 `toolchain_npm_test` exit 1，`enforced_failing=0` | strict 未联动层2 子门 | **P0-1** |
+| checklist 100%，plan 灰字 pending | 清单/plan 语义错位 | **P1-5** |
+| checklist 粗粒度，IPC 未进清单 | 欠拆解 | **P1b/P1c** |
+| 删旧栈 + 前端未接适配层 | 跨层无验收 | **P1d → P1′ enforce** |
+| `electron/` 仍在 + shim 误报 observe | 集成假绿 | **P1′ integration′** |
+| 单体 `lib.rs` IPC 未 manifest | 层3 漏扫 | **P1c+** |
+| `cargo test` 0 tests 空绿 | 工具链假绿 | **P1′ toolchain′** |
+| enforce gap 但 UI 纯绿 | 误导 prose 100% | **P0-3+** |
+| `stub_gate` blocking=0 | stub 门符合设计 | — |
+
+---
+
+#### P0 — 加严可信度 + verify 假绿（✅ 已落地）
+
+**原问题（label_rust 首轮）：** 加严只抬 `completion_gate.mode` + `stub_gate`，层2 子来源仍 observe → checklist 100% 但 gap 仍结束 turn。
+
+**实现要点：** `strict_completion_gate()` 在 `LhtMode::Strict` 下把 **已开启**（`observe` 或 `enforce`）的 `auto_verify_replay` / `toolchain_gate` 同步提到 `enforce`；默认 `off` 的子门不会被 silent 打开——需在 `~/.zagens/config.toml` 或 **`LhtSettingsPanel`** 显式开启 observe/enforce。
+
+| ID | 改进 | 落点 | 验收 |
+|----|------|------|------|
+| P0-1 | **Strict 全链路 enforce**（子门须已 `on`） | `long_horizon/mod.rs` · `strict_completion_gate` | 加严 + 子门 on → `enforced_failing>0` reinject |
+| P0-2 | **`verify_gate mismatch` graph_complete 阻断** | `verify.rs` · `mod.rs` · `no_tool_uses.rs` | 贴标签不真跑 → 无干净 `graph_complete` |
+| P0-3 | **有 gap 的 UI 态**（P0-3+ 扩展为任意 gap） | `LongHorizonPanel.tsx` · i18n | `first_gap_count` / `integration_gap_count` → amber |
+| P0-4 | **Composer 加严说明** | `LhtModeToggle` · 文档 | tooltip 覆盖 plan/stub/completion 子门 |
+
+**实施清单：**
+
+- [x] **P0a Runtime** — `strict_completion_gate` 扩展 + mismatch nudge 变体 + 单测  
+- [x] **P0b Desktop** — 有条件完成态 + 加严说明 copy  
+
+---
+
+#### P1 — 大 refactor 完成度（✅ 已落地）
+
+| ID | 改进 | 落点 | 验收 |
+|----|------|------|------|
+| P1-1 | **模块级 checklist 模板** | `base.md` · prompt overlay | long-refactor 纪律段（P1b） |
+| P1-2 | **IPC / 交付物 manifest（层3）** | `deliverable_manifest.rs` · `.zagens/lht-deliverables.toml` | `commands/*.rs` + 算子 overlay |
+| P1-3 | **工具链门任务感知** | `generic_gate.rs` | polyglot：`cargo check` + **`cargo build`**（P1′），跳过根 `npm test` |
+| P1-4 | **跨层集成验收** | `integration_gate.rs` | observe 启发式 + **P1′ strict 下 `electron/` enforce** |
+| P1-5 | **Plan 与 checklist 一致性** | `plan_drift.rs` · `LongHorizonPanel` | plan 灰字 + checklist 全勾 → nudge |
+
+**与金矿 backlog 关系：** P1-1 承接 **② 可追溯矩阵**；P1-1 前置可接 **① 设计评审前置**（0.8+）。
+
+**实施清单：**
+
+- [x] **P1a** — 工具链门任务感知 + 单测  
+- [x] **P1b** — `long-refactor` checklist 模板 / prompt 段  
+- [x] **P1c** — IPC manifest（`.zagens/lht-deliverables.toml` + `commands/*.rs` 自动发现）  
+- [x] **P1d** — 跨层集成门（observe + plan 一致性；**P1′** 增 enforce）  
+
+---
+
+#### P1′ — 80% 路径补强（label_rust 第二轮）
+
+**问题：** P1 落地后单次 enforce run 仍 ~70%：`lib.rs` 单体 IPC 未 manifest、`electron/` 残留、shim 误报、`cargo test` 空绿、enforce gap 时 UI 仍纯绿。
+
+| ID | 改进 | 验收 |
+|----|------|------|
+| P1c+ | 扫描 `lib.rs` `#[tauri::command]` + 迁移 deliverable | 单体 Tauri 也有层3 IPC 条目 |
+| integration′ | shim 识别 + `electron/` enforce | strict 下残留旧栈 → reinject |
+| P0-3+ | 任意 gap → UI 有条件完成 | enforce + `first_gap_count>0` 也 amber |
+| toolchain′ | polyglot `cargo build` 替 `cargo test` | 无空 test 假绿 |
+
+**实施清单：**
+
+- [x] **P1c+** — lib.rs command scan + migration deliverables  
+- [x] **integration′** — shim-aware + electron/ enforce + nudge  
+- [x] **P0-3+** — UI 有条件完成（不限 observe）  
+- [x] **toolchain′** — polyglot cargo build  
+- [x] **round2 fixture** — [`fixtures/lht-refactor-round2-checklist.md`](fixtures/lht-refactor-round2-checklist.md)  
+
+---
+
+#### P2 — 90%+ 路径（宏观循环 + 缺口枚举）
+
+**问题：** 单次 LHT turn 即使用 P0+P1，realistic 仍 ~80–85%；**系统性漏项**（架构级、清单外）需 **质检段**。
+
+| ID | 改进 | 关系 |
+|----|------|------|
+| P2-1 | **Phase 4 编排器落地**（§6 Phase 4.7 4a–4e） | LHT → CRAFT → LHT 有界循环 |
+| P2-2 | **§6.7 对抗式审核员**（缺口枚举器，非法官） | [`COMPOSABLE_HARNESS.md`](./COMPOSABLE_HARNESS.md) · blockers→checklist |
+| P2-3 | **`auto_continue` 与 strict 预置对齐** | 无人值守多 Phase：`long-refactor` 可默认 `auto_continue=true`（文档化风险） |
+
+**实施清单：** 合并 §6 Phase 4.7；COMPOSABLE §6.7 单独立项。
+
+---
+
+#### P3 — 规模化与测量
+
+| ID | 改进 | 说明 |
+|----|------|------|
+| P3-1 | **conversion_pct 数据驱动调参** | §4.9 埋点已有；积累后调 `max_nudges` / blocked |
+| P3-2 | **遥测跨 session 持久化** | 10 次/N 次通过率统计 |
+| P3-3 | **Headless 回归跑批** | [`LHT_TEST_SUITE.md`](./LHT_TEST_SUITE.md) · Cursor SDK / 脚本 + oracle |
+| P3-4 | **长 turn 压力场景集** | 35min+ refactor 进回归：续跑次数、cycle、manifest、step_limit |
+| P3-5 | **金矿 ① 设计评审前置 · ② 可追溯矩阵** | 见文首 backlog · [`PARALLEL_FRESH_GENERATION.md`](./PARALLEL_FRESH_GENERATION.md) P0.5/P1.5 |
+| P3-6 | **内置 `coverage-gate` 子命令** | COMPOSABLE §6.1 H2 · 跨平台覆盖率门 |
+
+---
+
+#### 迭代顺序总览
+
+```mermaid
+flowchart TB
+  subgraph done["已落地"]
+    P1P[Phase 1–3 + Composable]
+    P0d[P0 加严 + mismatch]
+    P1d[P1 + P1′ 80% 路径]
+  end
+  subgraph next["推荐顺序"]
+    P2[P2 Phase4 + 缺口枚举器]
+    P3[P3 测量 + 金矿]
+  end
+  done --> P2 --> P3
+  P2 -. 规格 .-> P4doc[§6 Phase 4]
+```
+
+**与 Phase 4 关系：** P2-1 = Phase 4 代码落地；P0/P1/P1′ 已在生产路径验证 micro 假绿修复；macro 轮仍待 Phase 4。
 
 ---
 
@@ -816,7 +1086,19 @@ progress_via_git = true               # Phase 2.x — git 工作树变更作为�
 
 1. plan + checklist 含「接口 / 实现 / 测试 / 文档」  
 2. 子代理并行只读探索（已有 `agent_spawn`）— LHT **不**替代 sub-agent join  
-3. 可选末段 CRAFT verifier（用户 opt-in）  
+3. 可选末段 CRAFT verifier（用户 opt-in）；Phase 4 落地后见 §7.4 宏观循环  
+
+### 7.4 大 refactor + 组合式宏观循环（Phase 4 目标场景）
+
+**典型：** Electron→Tauri、1.5–2W 行后端迁移（label_rust 类）。
+
+1. **LHT 实现段：** 8 phase plan + 模块级 checklist（带 `[verify: cargo check …]`）；加严 `plan_gate` + `continue_injected` 推过 P1/P2…  
+2. **Micro 门：** checklist 清零候选 → 层2 `[verify:]` 复跑 + 工具链门 + stub 门（Composable）  
+3. **CRAFT 质检段（Phase 4）：** Review 对照 IPC 清单 + Verifier 跑 smoke；blockers 写入 blackboard  
+4. **LHT 补全段：** blockers → 新 checklist 项；主 agent 只补 gap，**禁止**重复勾已完成项  
+5. **再 CRAFT / 再 micro 门** — 至多 `max_macro_cycles`；PASS → 结束（~85–90%）；否则 `macro_unmet` 诚实停  
+
+**与 §7.1 差异：** §7.1 假定单次 turn 内跑完；§7.4 假定 **多 macro 轮** 才 realistic。
 
 ---
 
@@ -828,7 +1110,10 @@ progress_via_git = true               # Phase 2.x — git 工作树变更作为�
 | **Unit** | 豁免：Plan mode stop、max_nudges、Office disabled |
 | **Integration** | mock turn loop：0 tools + incomplete checklist → 第二条 user message 含 "prose-only" |
 | **Regression** | audit `maybe_continue_incomplete_audit` 优先级 **高于** LHT（审查会话不双注入） |
+| **Regression** | §6 P0：`strict` + 层2 enforce；mismatch → 无干净 `graph_complete` |
+| **Regression** | §6 P1/P1′：polyglot `cargo build`；`lib.rs` IPC manifest；`electron/` enforce；shim 降噪 |
 | **Manual** | 10+ checklist 项 refactor 剧本；记录是否中途停 turn |
+| **Manual** | 大 refactor 35min+ 压测（§6 产品迭代 · 实证摘要）— 记录 `first_gap_count` / conversion |
 
 ---
 
@@ -841,6 +1126,9 @@ progress_via_git = true               # Phase 2.x — git 工作树变更作为�
 | R3 | 与 audit 同时激活 | 审查模式检测 scratchpad run → **仅 audit continue** |
 | R4 | Plan 模式语义冲突 | LHT 显式 skip `should_stop_after_plan_tool` 路径 |
 | R5 | 冻结期 Engine 字段 | 状态放 `EngineRuntimeExt` / session flags |
+| R6 | Strict 开但层2 子门仍 observe | ✅ P0-1（子门须已 `on`）；`LhtSettingsPanel` 可配 |
+| R7 | `[verify:]` 贴标签不真跑（mismatch） | ✅ P0-2 |
+| R8 | 大 refactor 清单过粗 / 跨层假绿 | ✅ P1 + P1′ |
 
 **开放问题（评审待定）：**
 
@@ -925,6 +1213,13 @@ progress_via_git = true               # Phase 2.x — git 工作树变更作为�
 ---
 
 ## 11. 相关文档与代码索引
+
+| 文档 | 用途 |
+|------|------|
+| [`COMPOSABLE_HARNESS.md`](./COMPOSABLE_HARNESS.md) | 层2/3 完成门禁 · macro 第四维 · §6.7 缺口枚举器 |
+| [`LHT_TEST_SUITE.md`](./LHT_TEST_SUITE.md) | DEMO2–5 回归 · 非确定性 · 跑批基建（§6 P3-3） |
+| [`agent-reliability-craft-plan.md`](../agent-reliability-craft-plan.md) | CRAFT · Phase 4 质检段 |
+| **§6 产品迭代 P0–P3** | **2026-06 路线图 SSOT**（优先于 scattered backlog 行） |
 
 | 资源 | 关系 |
 |------|------|
@@ -1111,7 +1406,30 @@ flowchart LR
   P1 --> P2b[Phase 2b LongHorizonPanel]
   P2a --> P3[Phase 3 tabs + 稳定]
   P2b --> P3
-  P3 --> P4[Phase 4 CRAFT opt-in]
+  P3 --> P4a[Phase 4a 编排器 + macro config]
+  P4a --> P4b[Phase 4b CRAFT 段 + blockers→checklist]
+  P4b --> P4c[Phase 4c 补全段 + 面板遥测]
+  P4c --> Iter0[P0–P1′ 已落地]
+  Iter0 --> Iter2[P2 Phase4 + 枚举器]
+  Iter2 --> Iter3[P3 测量 / 金矿]
 ```
 
-**评审检查点：** Phase 1 PR 合并前跑 §6 验收 1–9 + §8 regression（audit 优先）；Phase 2b 合并前手工对照截图网格四格布局。
+### 15.5 Phase 4 — LHT↔CRAFT 宏观循环（2–3 PR，规格见 §6 Phase 4）
+
+| PR | 范围 | 关键文件（草案） |
+|----|------|------------------|
+| **4a** | `[long_horizon.macro_loop]` config；micro pass 触发；`macro_phase` 遥测 | `long_horizon/mod.rs`、`config` crate、`nudge.rs` |
+| **4b** | CRAFT 段 spawn + blackboard；`blockers_to_checklist()` 单测 | `long_horizon/macro_loop.rs`（新）、`tools/subagent/craft.rs` |
+| **4c** | Desktop 预置 + `LongHorizonPanel` macro 节点；label_rust 类回归笔记 | `web-ui`、`completion_gate_panel` 扩展 |
+
+**评审检查点：** Phase 4 合并前跑 §7.4 剧本 + 证明 CRAFT verdict **未**直接绑 `graph_complete`（§4.2 边界单测）。
+
+### 15.6 产品迭代 P0–P3（Playbook 摘要，SSOT 见 §6 产品迭代）
+
+| 优先级 | 主题 | 状态 |
+|--------|------|------|
+| **P0** | strict 全 enforce + mismatch 阻断 + UI 有条件完成 | ✅ P0a/P0b |
+| **P1** | 工具链感知 · IPC manifest · 跨层门 · plan 一致性 | ✅ P1a–P1d |
+| **P1′** | lib.rs IPC · shim · electron enforce · cargo build · UI gap | ✅ 见 §6 P1′ |
+| **P2** | Phase 4 编排 + COMPOSABLE §6.7 | 📋 |
+| **P3** | conversion 调参 · 跑批 · 金矿 ①② | 📋 |
