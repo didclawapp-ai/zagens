@@ -223,6 +223,7 @@ fn main() {
             commands::read_workspace_binary_at_root,
             commands::open_in_shell,
             commands::open_with_system_app,
+            commands::open_external_url,
             commands::export_thread_json,
             commands::export_session_json,
             commands::restart_sidecar,

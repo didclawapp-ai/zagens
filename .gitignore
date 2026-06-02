@@ -103,3 +103,6 @@ deepseek-thread-thr_86a1.json
 #dcs memory
 .docs/topic-memory-graph-main/
 deliverables/code-review-2026-05-28.md
+.zagens/.symbols_changes.json
+.zagens/.symbols_fingerprint
+.zagens/symbols.json

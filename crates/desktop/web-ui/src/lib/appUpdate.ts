@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { subscribeCurrentWebviewEvent } from './tauriListen';
-import { UPDATE_MANIFEST_URL } from './updateConfig';
+import { UPDATE_DOWNLOAD_BASE, UPDATE_MANIFEST_URL } from './updateConfig';
 
 export type AppUpdateStatus = {
   ready: boolean;
@@ -19,9 +19,21 @@ type RawUpdateStatus = {
   status: string;
   availableVersion?: string;
   notes?: string;
-  downloadPageUrl: string;
+  downloadPageUrl?: string;
+  download_page_url?: string;
   error?: string;
 };
+
+function normalizeDownloadPageUrl(raw: RawUpdateStatus): string {
+  const url = (raw.downloadPageUrl ?? raw.download_page_url ?? '').trim();
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+  const base = UPDATE_DOWNLOAD_BASE.endsWith('/')
+    ? UPDATE_DOWNLOAD_BASE
+    : `${UPDATE_DOWNLOAD_BASE}/`;
+  return url.startsWith('/') ? `https://zagens.com${url}` : base;
+}
 
 function normalizeStatus(raw: RawUpdateStatus): AppUpdateStatus {
   const status = raw.status as AppUpdateStatus['status'];
@@ -37,7 +49,7 @@ function normalizeStatus(raw: RawUpdateStatus): AppUpdateStatus {
         : 'error',
     availableVersion: raw.availableVersion,
     notes: raw.notes,
-    downloadPageUrl: raw.downloadPageUrl,
+    downloadPageUrl: normalizeDownloadPageUrl(raw),
     error: raw.error,
   };
 }

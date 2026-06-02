@@ -1652,15 +1652,33 @@ export async function fetchBlackboardDetail(
 
 // ========== Topic memory graph (B-L3) ==========
 
+export type TopicMemoryEmotion = 'A' | 'B' | 'C' | 'N';
+
+export interface TopicMemoryBlockedPoint {
+  node: string;
+  context: string;
+  since: string;
+}
+
+export interface TopicMemoryTrail {
+  entry: string;
+  exit: string;
+  date: string;
+  emotion: TopicMemoryEmotion;
+}
+
 export interface TopicMemoryGraphNode {
   count: number;
   strength: number;
   depth?: number;
   dormant?: boolean;
+  blocked?: boolean;
+  lastSeen?: string;
 }
 
 export interface TopicMemoryGraphEdge {
   weight: number;
+  lastSeen?: string;
 }
 
 export interface TopicMemoryEvalMetrics {
@@ -1680,6 +1698,8 @@ export interface TopicMemorySnapshot {
   graph: {
     nodes: Record<string, TopicMemoryGraphNode>;
     edges: Record<string, TopicMemoryGraphEdge>;
+    blockedPoints?: TopicMemoryBlockedPoint[];
+    trails?: TopicMemoryTrail[];
   };
   metrics: TopicMemoryEvalMetrics;
 }

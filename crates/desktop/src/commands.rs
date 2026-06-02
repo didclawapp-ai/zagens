@@ -998,6 +998,22 @@ pub fn open_with_system_app(path: String) -> Result<(), String> {
     open::that(&canonical).map_err(|e| format!("无法打开文件: {e}"))
 }
 
+/// Open an http(s) or mailto URL in the system default handler (browser / mail client).
+#[tauri::command]
+pub fn open_external_url(url: String) -> Result<(), String> {
+    let url = url.trim();
+    if url.is_empty() {
+        return Err("链接为空".into());
+    }
+    let allowed = url.starts_with("https://")
+        || url.starts_with("http://")
+        || url.starts_with("mailto:");
+    if !allowed {
+        return Err("仅支持 http(s) 与 mailto 链接".into());
+    }
+    open::that(url).map_err(|e| format!("无法打开链接: {e}"))
+}
+
 #[tauri::command]
 pub async fn export_thread_json(
     thread_id: String,

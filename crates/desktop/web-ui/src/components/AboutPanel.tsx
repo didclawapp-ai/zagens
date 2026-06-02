@@ -6,10 +6,12 @@ import {
   subscribeAppUpdateProgress,
   type AppUpdateStatus,
 } from '../lib/appUpdate';
+import { openExternalUrl } from '../lib/openExternalUrl';
 import { UPDATE_DOWNLOAD_BASE } from '../lib/updateConfig';
 
 const SUPPORT_EMAIL = 'didclawapp@gmail.com';
 const WEBSITE_URL = 'https://zagens.com/';
+const DOWNLOAD_PAGE_URL = `${WEBSITE_URL}download`;
 
 export default function AboutPanel() {
   const { t } = useT();
@@ -149,14 +151,15 @@ export default function AboutPanel() {
               {installing ? t('about.updateInstalling') : t('about.updateInstall')}
             </button>
           )}
-          <a
-            href={updateStatus?.downloadPageUrl ?? `${WEBSITE_URL}download`}
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            type="button"
             className="rounded-md border border-card-border px-3 py-1.5 text-xs text-t-text-secondary hover:text-accent"
+            onClick={() =>
+              void openExternalUrl(updateStatus?.downloadPageUrl ?? DOWNLOAD_PAGE_URL)
+            }
           >
             {t('about.updateManualDownload')}
-          </a>
+          </button>
         </div>
       </section>
 
@@ -164,22 +167,25 @@ export default function AboutPanel() {
         <div className="flex flex-wrap gap-x-2 gap-y-0.5">
           <dt className="text-t-text-muted">{t('about.emailLabel')}</dt>
           <dd>
-            <a href={`mailto:${SUPPORT_EMAIL}`} className="text-accent hover:underline">
+            <button
+              type="button"
+              className="text-accent hover:underline"
+              onClick={() => void openExternalUrl(`mailto:${SUPPORT_EMAIL}`)}
+            >
               {SUPPORT_EMAIL}
-            </a>
+            </button>
           </dd>
         </div>
         <div className="flex flex-wrap gap-x-2 gap-y-0.5">
           <dt className="text-t-text-muted">{t('about.websiteLabel')}</dt>
           <dd>
-            <a
-              href={WEBSITE_URL}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              type="button"
               className="text-accent hover:underline"
+              onClick={() => void openExternalUrl(WEBSITE_URL)}
             >
               {WEBSITE_URL}
-            </a>
+            </button>
           </dd>
         </div>
       </dl>

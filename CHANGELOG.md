@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Zagens desktop
 
+- **Enhancement (话题记忆图面板):** 网络图仅展示引擎同策略的 Top 12 话题 / Top 6 关联；滚轮缩放、拖拽平移、节点 hover/列表联动高亮、连线端点避让；补充常见关联、知识边界、认知轨迹与空态文案；指标增加重复话题率、每 10 回合注入。Files: `TopicMemoryPanel.tsx`, `TopicMemoryGraphSvg.tsx`, `topicMemoryGraphLayout.ts`, `client.ts`, i18n ×4。
+- **Fix (话题记忆图可视化):** 边键按引擎格式 `A→B` 解析（此前误用 `->` 导致连线不显示）；力导向布局、节点标签与边粗细/透明度按权重展示，对齐 `docs/topic-memory-graph-main` 认知地图风格。Files: `TopicMemoryGraphSvg.tsx`, `topicMemoryGraphLayout.ts`, `TopicMemoryPanel.tsx`。
+- **Fix (关于页外链):** 官网与「官网手动下载」改用 `open_external_url` 在系统浏览器/邮件客户端打开（Tauri WebView 内 `<a href>` / `window.open` 无效）。
 - **Feature (OTA 应用内更新):** 接入 `tauri-plugin-updater`（`get_update_status` / `install_app_update`、关于页检查/安装、启动 toast）；`createUpdaterArtifacts` + 仓库公钥；[`docs/desktop/UPDATER.md`](docs/desktop/UPDATER.md)；`website/scripts/sync-download-manifest.mjs` 写入 `latest.json` 的 NSIS 签名与 setup.exe URL。CI Release 支持 `TAURI_SIGNING_PRIVATE_KEY`。
 - **About（关于）:** 产品描述与 [官网](https://zagens.com/) 文案对齐；新增支持邮箱 `didclawapp@gmail.com` 与官网链接。Files: `AboutPanel.tsx`、i18n ×4。
 
