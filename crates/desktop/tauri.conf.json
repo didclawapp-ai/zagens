@@ -28,7 +28,7 @@
         "decorations": false,
         "visible": false,
         "transparent": false,
-        "devtools": true
+        "devtools": false
       }
     ],
     "security": {
