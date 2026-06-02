@@ -1345,7 +1345,7 @@ dependencies = [
 
 [[package]]
 name = "deepseek-desktop"
-version = "0.6.0-preview.1"
+version = "0.6.1-preview.1"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
