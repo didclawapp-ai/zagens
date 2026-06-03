@@ -1,6 +1,6 @@
 # 办公模式迭代方案
 
-> **实施状态（2026-06-03 收尾）：** P0 读取（`read_office`+calamine）、默认 `deliverables/`、payload 增量、**预览策略已定**：右栏内嵌 **PDF/HTML**；**DOCX/PPTX/XLSX 用系统默认应用打开**（不做右栏 Office 内嵌预览，避免 PDF 侧车/渲染工程量）。生成后 UI 发现、环境诊断、`office_smoke` 跨格式测试、办公空态任务卡片、周报技能、意图识别、引用 prompt 约定已落地。**未做**：DOCX/PPTX 预览 PDF 侧车、一键导出 PDF、企业模板、Composer 全量 8 类模板技能、OCR、round-trip 手改文件、风险分层 UI。
+> **实施状态（2026-06-03 收尾 + 后续）：** P0/P1/P2 主体已落地（见下表）。**新增**：`write_office` **`source`** 直喂 CSV/TSV/XLSX；`read_office` **PPTX 图表数据**抽取。**未做**：DOCX/PPTX 预览 PDF 侧车、一键导出 PDF、企业模板、round-trip 手改文件、风险分层 UI、意图歧义 UI。
 
 > 重写说明：原方案低估了现有能力、且只围绕“生成文件 → 预览 PDF”这条窄链路。
 > 本版本从**办公真实工作流**出发，先校准现状，再用“需求地图 → 能力差距 → 优先级”
@@ -295,9 +295,10 @@ Windows CI 不因 Python 子进程挂死。
 | 4 | P0-4 | ✅ payload + `load_office_payload` |
 | 5 | R3/R4 | ✅ DOCX 表/标题、PPTX 备注/表（首版） |
 | 6 | P1-5 + P1-6 | ✅ `office_smoke.rs` + 环境 API/设置页（PPTX/PDF smoke 随 Python 就绪） |
-| 7 | P1-7/8 + R5/R6 | ⚠️ prompt 流程；❌ `source:` 直喂、OCR、ODF、round-trip |
-| 8 | P2-9/10/11 | ✅ 空态 4 卡片 + 意图识别 + `office.md` 引用约定；⚠️ 仅 1 个内置技能 |
+| 7 | P1-7/8 + R5/R6 | ✅ `source:` 直喂；✅ PPTX 图表读取；⚠️ OCR 经 `describe_image`；❌ round-trip |
+| 8 | P2-9/10/11 | ✅ 空态 **8** 卡片 + 意图识别 + `office.md` 引用；✅ **8** 个 `office-*` bundled 技能（v6） |
 | 9 | P3 | ⚠️ 状态条 ✅；❌ 企业模板、一键导出 PDF、风险分层 |
+| — | 工具可见性 | ✅ `read_office` / `load_office_payload` / `describe_image` Agent 预加载 |
 
 **后续 backlog：** 一键导出 PDF、企业模板、更多内置技能卡片、numFmt 全量 golden、PPTX 图表数据读取。
 

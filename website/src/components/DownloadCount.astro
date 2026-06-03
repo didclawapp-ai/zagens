@@ -1,0 +1,69 @@
+---
+import { getCopy, type Locale } from '@/i18n';
+
+interface Props {
+  locale: Locale;
+  class?: string;
+  variant?: 'inline' | 'badge';
+}
+
+const { locale, class: className = '', variant = 'inline' } = Astro.props;
+const t = getCopy(locale).download.count;
+
+const baseClass =
+  variant === 'badge'
+    ? 'inline-flex items-center gap-1.5 rounded-full border border-card-border bg-card/80 px-3 py-1 text-sm text-muted backdrop-blur'
+    : 'text-sm text-muted';
+---
+
+<p
+  id={`download-count-${locale}`}
+  class={`${baseClass} ${className}`}
+  data-locale={locale}
+  data-label={t.label}
+  data-loading={t.loading}
+  data-unavailable={t.unavailable}
+  aria-live="polite"
+>
+  <span data-role="text">{t.loading}</span>
+</p>
+
+<script>
+  function formatCount(n: number, locale: string): string {
+    try {
+      return new Intl.NumberFormat(locale === 'zh-Hans' ? 'zh-CN' : 'en-US').format(n);
+    } catch {
+      return String(n);
+    }
+  }
+
+  function applyLabel(el: HTMLElement, template: string, n: number) {
+    const locale = el.dataset.locale ?? 'en';
+    const formatted = formatCount(n, locale);
+    el.querySelector('[data-role="text"]')!.textContent = template.replace('{n}', formatted);
+  }
+
+  document.querySelectorAll<HTMLElement>('[id^="download-count-"]').forEach((el) => {
+    const loading = el.dataset.loading ?? '…';
+    const unavailable = el.dataset.unavailable ?? '';
+    const label = el.dataset.label ?? '{n}';
+
+    fetch('/download/stats.json', { cache: 'no-store' })
+      .then((res) => {
+        if (!res.ok) throw new Error(String(res.status));
+        return res.json() as Promise<{ total?: number }>;
+      })
+      .then((data) => {
+        const total = typeof data.total === 'number' && data.total >= 0 ? data.total : 0;
+        if (total === 0 && unavailable) {
+          el.querySelector('[data-role="text"]')!.textContent = unavailable;
+          el.classList.add('opacity-70');
+          return;
+        }
+        applyLabel(el, label, total);
+      })
+      .catch(() => {
+        el.querySelector('[data-role="text"]')!.textContent = loading;
+      });
+  });
+</script>

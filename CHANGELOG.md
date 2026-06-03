@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Zagens website
+
+- **Feature (官网下载计数):** 首页与下载页展示累计下载次数（`DownloadCount` 拉取 `/download/stats.json`）；VPS 上由 Nginx `zagens-download.log` + `scripts/aggregate-download-stats.mjs` 聚合；CI rsync 排除 `download/stats.json` 以免覆盖服务器计数。Files: `website/src/components/DownloadCount.astro`, `website/public/download/stats.json`, `website/deploy/*`, `website.yml`.
+
 ### Docs
 
 - **Harness (DEMO7):** 新增 DEMO6 超集长程规格——目标 ≥10k 行 Go（`loc_gate.sh`）、class/while、fmt/lint/disasm、testdata≥50。File: `docs/harness/test-cases/DEMO7-monkey-platform-10k.md`.
@@ -30,14 +34,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Runtime
 
-- **Test (办公 smoke):** `office_smoke.rs` — XLSX/DOCX 默认路径与 payload 缓存、DOCX 表 read 回环、XLSX 增量 payload 重生成；PPTX/PDF 在 Office Python 就绪时校验魔数。File: `crates/runtime-server/src/tools/office_smoke.rs`.
-
-- **Feature (`read_office`):** Office 会话新增高保真办公文档读取工具：XLSX/XLS/XLSB/ODS 经 **calamine**（日期、公式、列对齐、`start_row`/`limit` 分页）；DOCX 表格与标题层级；PPTX 演讲者备注与表格；PDF/CSV/TSV 与大小上限防护。`read_file` 办公路径保留作兜底。Files: `crates/runtime-server/src/tools/office_read.rs`, `registry.rs`, `office.md`.
-- **Feature (办公交付闭环):** `write_office` 的 `path` 可选（默认 `deliverables/`、重名递增）；成功后缓存 payload（`load_office_payload`）；XLSX 生成 HTML 预览侧车；Python 错误分类；`GET /v1/office/environment`；办公意图识别扩展；smoke 测试。Files: `office_common.rs`, `office_payload.rs`, `office_env.rs`, `office_write.rs`, `task_type.rs`.
-- **Feature (内置技能):** `office-weekly-report` 周报技能模板。File: `assets/skills/office-weekly-report/SKILL.md`.
+- **Feature (办公数据管道):** `write_office` XLSX `sheets[].source` 直喂 CSV/TSV/XLSX（免模型重抄整表）；`read_office` 从 PPTX slide 关系读取**图表系列数据**。Files: `office_common.rs`, `office_write.rs`, `office_read.rs`, `office.md`, `office_smoke.rs`.
+- **Feature (办公产品化 P2):** 8 个 `office-*` 技能纳入 `install_system_skills`（bundled marker **v6**，含 7 个新增 `SKILL.md` 资产）；办公 tool surface 增加 `describe_image`（扫描件 OCR）；`office_smoke` 增加 numFmt golden 与旧版 `.doc` 提示测试。Files: `assets/skills/office-*`, `skills/system.rs`, `registry.rs`, `office_smoke.rs`, `tool_catalog.rs`, `base-office.md`.
+- **Fix (办公 `read_office` 首轮不可见):** `read_office` / `load_office_payload` 与 `write_office` 一样在 Agent 模式**预加载**（不再默认 `defer_loading`），避免模型首轮只见 `read_file`、对 XLSX 只抽到 sheet 名。`base-office.md` 工具表改为优先 `read_office`。Files: `crates/core/src/engine/tool_catalog.rs`, `prompts/base-office.md`.
 
 ### Zagens desktop
 
+- **Feature (办公空态 8 卡):** 空态扩展为 8 个任务卡片（周报、纪要、汇报 PPT、数据报表、竞品分析、合同初稿、简历、发布说明），prefill 对齐 `load_skill office-*`。Files: `OfficeEmptyState.tsx`, i18n ×4.
 - **Feature (磁盘压力):** 监测 `~/.zagens` 与当前工作区所在盘剩余空间；临界（&lt;100MB）时自动 **停止** 进行中回合、禁止新发消息，并显示顶部告警（针对 DEMO8 观察：C 盘满 → WebView「页面不存在」且刷新后 LHT/计划仍在后台跑、继续扣费）。`index.html` 增加脚本加载失败时的静态说明。Harness 记录见 `DEMO8-monkey-blind-goal-only.md` §3.5。Files: `disk_guard.rs`, `get_storage_pressure`, `useStoragePressure.ts`, `StoragePressureBanner.tsx`, `ShellLoadFailure.tsx`.
 - **Fix (流式断连恢复):** Sidecar 重启或 runtime 离线时，不再把 UI 误判为「已停止」而后台继续扣费——保持流式锁定、持久提示 + **停止**、在 `sidecar://ready` / 探测恢复后自动重连 SSE；离线超过 2 分钟自动 `interrupt` 后台回合。Files: `useTurnStreamRecovery.ts`, `useTurnSend.ts`, `useTurnStream.ts`, `useDesktopShell.ts`.
 - **Fix (聊天流与面板 desync):** 重连已有回合时重新绑定最后一条 assistant 气泡，恢复思考链/工具链/正文的 SSE 增量；`finishOnce` 在后台回合仍活跃时不解锁；无 live handler 时每 8s 从线程事件回放刷新聊天（右栏 checklist/LHT 仍靠 HTTP 轮询）。Files: `activeTurnStreamUi.ts`, `useTurnSend.ts`, `useTurnStreamRecovery.ts`.

@@ -546,6 +546,7 @@ impl ToolRegistryBuilder {
             .with_load_office_payload_tool()
             .with_office_search_tools()
             .with_skill_tools()
+            .with_describe_image_tool()
             .with_note_tool()
             .with_user_input_tool()
             .with_parallel_tool();
@@ -1429,6 +1430,7 @@ mod tests {
             "read_office",
             "load_office_payload",
             "write_office",
+            "describe_image",
             "load_skill",
             "web_search",
             "fetch_url",

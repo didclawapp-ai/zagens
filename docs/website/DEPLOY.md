@@ -168,6 +168,18 @@ sudo certbot --nginx -d zagens.com -d www.zagens.com
 
 首次部署可手动触发：**Actions → Website → Run workflow**。
 
+## 三b、下载次数统计（可选）
+
+首页与下载页会请求 `https://zagens.com/download/stats.json`。该文件在 VPS 上由 Nginx 访问日志聚合更新，**CI rsync 已排除**此文件，避免每次部署把计数重置为 0。
+
+1. 在 Nginx 站点配置中加入 [`website/deploy/nginx-zagens.conf.example`](../../website/deploy/nginx-zagens.conf.example) 里针对 `.exe` / `.zip` 的 `location` 与 `zagens-download.log`。
+2. `sudo nginx -t && sudo systemctl reload nginx`
+3. 将 `website/deploy/update-download-stats.sh` 与 `website/scripts/aggregate-download-stats.mjs` 拷到服务器（或保留在 `/var/www/zagens/deploy/`），安装 Node 20+。
+4. 首次可设历史基线后聚合：`DOWNLOAD_COUNT_OFFSET=120 node scripts/aggregate-download-stats.mjs --out /var/www/zagens/download/stats.json`
+5. Cron 示例（每小时）：`17 * * * * WEB_ROOT=/var/www/zagens /var/www/zagens/deploy/update-download-stats.sh`
+
+本地调试：`cd website && npm run stats:aggregate -- --log /path/to/access.log --dry-run`
+
 ## 四、本地与发布流程
 
 ```bash

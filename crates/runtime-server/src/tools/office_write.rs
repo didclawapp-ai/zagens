@@ -14,7 +14,7 @@
 
 use async_trait::async_trait;
 use serde_json::Value;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Duration;
 use wait_timeout::ChildExt;
@@ -118,7 +118,7 @@ impl ToolSpec for WriteOfficeTool {
                 },
                 "sheets": {
                     "type": "array",
-                    "description": "XLSX sheets: [{ name, header?: bool, columns?: [{ width?, label?, format?: text|number|currency|percentage|date, number_format?, formula?, wrap? }], merged_cells?: [{ row, col, rows, cols }], charts?: [{ type: bar|line|pie|stacked_bar, title?, categories_range, values_range, position: { row, col }, size?: { width, height } }], conditional_formats?: [{ range: { row, col, rows, cols }, type: data_bar|cell_highlight, color?, condition?, value? }], rows: [[value...]] }]",
+                    "description": "XLSX sheets: [{ name, source?: path or { path, sheet?, start_row?, limit? } — loads CSV/TSV/XLSX rows without retyping, rows?: [[value...]] (omit when source set), header?, columns?, merged_cells?, charts?, conditional_formats? }]",
                     "items": { "type": "object" }
                 },
                 "blocks": {
@@ -165,9 +165,10 @@ impl ToolSpec for WriteOfficeTool {
         let data = input.clone();
         let out = output_path.clone();
         let workspace = context.workspace.clone();
+        let workspace_gen = workspace.clone();
         let format_owned = format.to_string();
         let result = tokio::task::spawn_blocking(move || match format_owned.as_str() {
-            "xlsx" => generate_xlsx(&data, &out),
+            "xlsx" => generate_xlsx(&data, &out, &workspace_gen),
             "docx" => generate_docx(&data, &out),
             "pptx" => generate_pptx(&data, &out),
             "pdf" => generate_pdf(&data, &out),
@@ -404,7 +405,8 @@ fn resolve_theme(input: &Value) -> &XlsxTheme {
 
 // ── generate_xlsx (Phase 1 production rewrite) ───────────────────────────
 
-fn generate_xlsx(input: &Value, path: &PathBuf) -> Result<String, String> {
+fn generate_xlsx(input: &Value, path: &PathBuf, workspace: &Path) -> Result<String, String> {
+    use super::office_common::load_sheet_rows_from_source;
     use rust_xlsxwriter::*;
 
     fn xlsx_hex_color(s: &str) -> &str {
@@ -471,9 +473,15 @@ fn generate_xlsx(input: &Value, path: &PathBuf) -> Result<String, String> {
     // ── per-sheet loop ────────────────────────────────────────────────
     for sheet_val in sheets {
         let name = sheet_val["name"].as_str().unwrap_or("Sheet1").to_string();
-        let rows = sheet_val["rows"]
-            .as_array()
-            .ok_or("每个 sheet 的 `rows` 必须是二维数组")?;
+        let loaded_rows;
+        let rows: &Vec<Value> = if let Some(source) = sheet_val.get("source") {
+            loaded_rows = load_sheet_rows_from_source(workspace, source)?;
+            &loaded_rows
+        } else {
+            sheet_val["rows"]
+                .as_array()
+                .ok_or("每个 sheet 须提供 `rows` 或 `source`（csv/tsv/xlsx 路径）")?
+        };
         let columns = sheet_val.get("columns").and_then(|v| v.as_array());
         let has_header = sheet_val
             .get("header")

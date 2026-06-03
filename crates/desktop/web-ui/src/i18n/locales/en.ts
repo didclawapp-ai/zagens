@@ -29,16 +29,40 @@ const en: TranslationMap = {
         title: 'Data report',
         hint: 'XLSX · tables and charts',
       },
+      competitiveAnalysis: {
+        title: 'Competitive analysis',
+        hint: 'DOCX · research with sources',
+      },
+      contractDraft: {
+        title: 'Contract draft',
+        hint: 'DOCX · clause structure',
+      },
+      resume: {
+        title: 'Resume / cover letter',
+        hint: 'DOCX · personal materials',
+      },
+      releaseNotes: {
+        title: 'Release notes',
+        hint: 'DOCX · version and changes',
+      },
     },
     prefill: {
       weeklyReport:
         'Write this week’s work report (DOCX). Run load_skill office-weekly-report first, then follow the skill: confirm date range and audience, read_office any attachments I provide, write_office to deliverables/ (path optional).',
       meetingMinutes:
-        'Draft meeting minutes (DOCX): time, attendees, discussion points, decisions, and action items (owner and due date). write_office to deliverables/ without path.',
+        'Draft meeting minutes (DOCX). Run load_skill office-meeting-minutes first, confirm time and attendees, read_office any materials I provide, write_office to deliverables/ (path optional).',
       projectDeck:
-        'Create a project status deck (PPTX): cover (name + presenter), progress bullets, risks, and next steps. write_office to deliverables/ without path.',
+        'Create a project status deck (PPTX). Run load_skill office-project-report first, confirm project name and audience, write_office to deliverables/ (path optional).',
       dataReport:
-        'Build an Excel data report (XLSX) with headers, key metrics, and optional charts. read_office any existing spreadsheet first, then write_office to deliverables/.',
+        'Build an Excel data report (XLSX). Run load_skill office-data-report first, read_office any spreadsheet I provide, then write_office to deliverables/.',
+      competitiveAnalysis:
+        'Write a competitive analysis report (DOCX). Run load_skill office-competitive-analysis first, use web_search and cite sources, write_office to deliverables/.',
+      contractDraft:
+        'Draft a contract (DOCX). Run load_skill office-contract-draft first, confirm contract type and parties, write_office to deliverables/.',
+      resume:
+        'Prepare a resume and cover letter (DOCX). Run load_skill office-resume first, confirm target role, write_office to deliverables/.',
+      releaseNotes:
+        'Write product release notes (DOCX). Run load_skill office-release-notes first, confirm version and audience, write_office to deliverables/.',
     },
   },
   a11y: {

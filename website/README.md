@@ -25,6 +25,7 @@ Keep these paths stable:
 |-----|----------|
 | `https://zagens.com/download/latest.json` | Tauri updater (`tauri.conf.json`, `updateConfig.ts`) |
 | `https://zagens.com/download/*` | OTA download base |
+| `https://zagens.com/download/stats.json` | Public download counter (updated on VPS from Nginx logs) |
 | `https://zagens.com` | Installer README / help link |
 
 ## Development
@@ -49,6 +50,10 @@ npm run preview
 Installers live under **`public/download/`** (served as `https://zagens.com/download/*`). Update `src/data/release.json` when bumping version — no public GitHub Release required.
 
 Optional: `npm run sync:manifest` still works if you later publish GitHub Releases (needs `gh` CLI).
+
+## Download counter
+
+The home and download pages fetch **`/download/stats.json`** (client-side). On the VPS, Nginx logs `.exe` / `.zip` hits to `zagens-download.log`; cron runs `deploy/update-download-stats.sh` (or `npm run stats:aggregate`) to refresh the JSON. CI **does not** overwrite `stats.json` on deploy (`--exclude='download/stats.json'`). See [`deploy/nginx-zagens.conf.example`](deploy/nginx-zagens.conf.example) and [`docs/website/DEPLOY.md`](../docs/website/DEPLOY.md).
 
 ## Deploy (GitHub Actions → VPS)
 

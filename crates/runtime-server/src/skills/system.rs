@@ -1,10 +1,10 @@
 //! System-skill installer: bundles skill-creator, audit-repo, multi-search-engine,
-//! and auto-installs on first launch.
+//! office task skills, and auto-installs on first launch.
 
 use std::fs;
 use std::path::Path;
 
-const BUNDLED_SKILL_VERSION: &str = "5";
+const BUNDLED_SKILL_VERSION: &str = "6";
 
 struct BundledFile {
     path: &'static str,
@@ -62,7 +62,64 @@ const MULTI_SEARCH_ENGINE: BundledSkill = BundledSkill {
     ],
 };
 
-const BUNDLED_SKILLS: &[BundledSkill] = &[SKILL_CREATOR, AUDIT_REPO, MULTI_SEARCH_ENGINE];
+macro_rules! bundled_md_skill {
+    ($name:expr, $path:literal) => {
+        BundledSkill {
+            name: $name,
+            files: &[BundledFile {
+                path: "SKILL.md",
+                body: include_str!($path),
+            }],
+        }
+    };
+}
+
+const OFFICE_WEEKLY_REPORT: BundledSkill = bundled_md_skill!(
+    "office-weekly-report",
+    "../../assets/skills/office-weekly-report/SKILL.md"
+);
+const OFFICE_MEETING_MINUTES: BundledSkill = bundled_md_skill!(
+    "office-meeting-minutes",
+    "../../assets/skills/office-meeting-minutes/SKILL.md"
+);
+const OFFICE_PROJECT_REPORT: BundledSkill = bundled_md_skill!(
+    "office-project-report",
+    "../../assets/skills/office-project-report/SKILL.md"
+);
+const OFFICE_DATA_REPORT: BundledSkill = bundled_md_skill!(
+    "office-data-report",
+    "../../assets/skills/office-data-report/SKILL.md"
+);
+const OFFICE_COMPETITIVE_ANALYSIS: BundledSkill = bundled_md_skill!(
+    "office-competitive-analysis",
+    "../../assets/skills/office-competitive-analysis/SKILL.md"
+);
+const OFFICE_CONTRACT_DRAFT: BundledSkill = bundled_md_skill!(
+    "office-contract-draft",
+    "../../assets/skills/office-contract-draft/SKILL.md"
+);
+const OFFICE_RESUME: BundledSkill = bundled_md_skill!(
+    "office-resume",
+    "../../assets/skills/office-resume/SKILL.md"
+);
+const OFFICE_RELEASE_NOTES: BundledSkill = bundled_md_skill!(
+    "office-release-notes",
+    "../../assets/skills/office-release-notes/SKILL.md"
+);
+
+const BUNDLED_SKILLS: &[BundledSkill] = &[
+    SKILL_CREATOR,
+    AUDIT_REPO,
+    MULTI_SEARCH_ENGINE,
+    OFFICE_WEEKLY_REPORT,
+    OFFICE_MEETING_MINUTES,
+    OFFICE_PROJECT_REPORT,
+    OFFICE_DATA_REPORT,
+    OFFICE_COMPETITIVE_ANALYSIS,
+    OFFICE_CONTRACT_DRAFT,
+    OFFICE_RESUME,
+    OFFICE_RELEASE_NOTES,
+];
 
 fn should_install_skill(
     skills_dir: &Path,

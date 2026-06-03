@@ -28,6 +28,12 @@ static DOCX_STYLE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#"<w:pStyle w:val="([^"]+)""#).expect("DOCX_STYLE_RE"));
 static PPTX_AT_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"<a:t[^>]*>([^<]*)</a:t>").expect("PPTX_AT_RE"));
+static PPTX_REL_CHART_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"<Relationship[^>]+Type="[^"]*?/relationships/chart"[^>]+Target="([^"]+)""#)
+        .expect("PPTX_REL_CHART_RE")
+});
+static PPTX_CV_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"<c:v>([^<]*)</c:v>").expect("PPTX_CV_RE"));
 
 // ── ReadOfficeTool ────────────────────────────────────────────────────────
 
@@ -633,8 +639,9 @@ fn read_pptx_enhanced(path: &Path) -> Result<ToolResult, ToolError> {
         }
 
         let notes = read_pptx_notes(&mut archive, i);
+        let charts = read_pptx_charts_for_slide(&mut archive, i);
 
-        if slide_text.trim().is_empty() && notes.trim().is_empty() {
+        if slide_text.trim().is_empty() && notes.trim().is_empty() && charts.trim().is_empty() {
             continue;
         }
 
@@ -650,6 +657,9 @@ fn read_pptx_enhanced(path: &Path) -> Result<ToolResult, ToolError> {
             result.push_str("[演讲者备注]\n");
             result.push_str(notes.trim());
             result.push('\n');
+        }
+        if !charts.trim().is_empty() {
+            result.push_str(&charts);
         }
     }
 
@@ -668,6 +678,87 @@ fn read_pptx_enhanced(path: &Path) -> Result<ToolResult, ToolError> {
         "kind": "pptx",
         "size_bytes": size_bytes,
     })))
+}
+
+fn read_pptx_charts_for_slide(archive: &mut zip::ZipArchive<fs::File>, slide: usize) -> String {
+    let rels_path = format!("ppt/slides/_rels/slide{slide}.xml.rels");
+    let rels_xml = {
+        let Ok(mut entry) = archive.by_name(&rels_path) else {
+            return String::new();
+        };
+        let mut xml = String::new();
+        if entry.read_to_string(&mut xml).is_err() {
+            return String::new();
+        }
+        xml
+    };
+    let chart_paths: Vec<String> = PPTX_REL_CHART_RE
+        .captures_iter(&rels_xml)
+        .filter_map(|cap| cap.get(1).map(|m| resolve_pptx_chart_path(m.as_str())))
+        .collect();
+    let mut out = String::new();
+    for chart_path in chart_paths {
+        let Ok(mut chart_entry) = archive.by_name(chart_path.as_str()) else {
+            continue;
+        };
+        let mut chart_xml = String::new();
+        if chart_entry.read_to_string(&mut chart_xml).is_err() {
+            continue;
+        }
+        let formatted = format_pptx_chart_xml(&chart_xml);
+        if formatted.trim().is_empty() {
+            continue;
+        }
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        out.push_str(&formatted);
+    }
+    out
+}
+
+fn resolve_pptx_chart_path(target: &str) -> String {
+    let t = target.trim_start_matches("../");
+    if t.starts_with("ppt/") {
+        t.to_string()
+    } else {
+        format!("ppt/{t}")
+    }
+}
+
+fn format_pptx_chart_xml(xml: &str) -> String {
+    let mut out = String::new();
+    for (idx, ser) in xml.split("<c:ser").skip(1).enumerate() {
+        let ser_body = ser.split("</c:ser>").next().unwrap_or(ser);
+        let title = ser_body
+            .split("<c:tx")
+            .nth(1)
+            .and_then(|tx| PPTX_CV_RE.captures(tx))
+            .and_then(|c| c.get(1))
+            .map(|m| m.as_str().trim().to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| format!("系列{}", idx + 1));
+        let val_section = ser_body
+            .split("<c:val")
+            .nth(1)
+            .unwrap_or("");
+        let values: Vec<String> = PPTX_CV_RE
+            .captures_iter(val_section)
+            .filter_map(|c| c.get(1).map(|m| m.as_str().trim().to_string()))
+            .filter(|s| !s.is_empty())
+            .collect();
+        if values.is_empty() {
+            continue;
+        }
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        out.push_str("[图表数据] ");
+        out.push_str(&title);
+        out.push_str(": ");
+        out.push_str(&values.join(", "));
+    }
+    out
 }
 
 fn read_pptx_notes(archive: &mut zip::ZipArchive<fs::File>, slide: usize) -> String {

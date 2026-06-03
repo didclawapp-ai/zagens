@@ -19,13 +19,16 @@ Before any judgment, evaluation, or recommendation:
 
 | Tool | Use when |
 |------|----------|
-| `read_file` | Read attachments or confirm content |
+| `read_office` | **XLSX/DOCX/PPTX/PDF/CSV** — dates, formulas, tables, paging (office read; use this first) |
+| `read_file` | Plain text or fallback when `read_office` does not apply |
+| `load_office_payload` | Incremental edit: load cached JSON from a prior `write_office`, patch, regenerate |
 | `list_dir` | Explore folders under the workspace |
 | `glob_files` | Find files by name pattern |
 | `file_search` | Fuzzy find by filename |
 | `write_office` | Create XLSX, DOCX, PPTX, PDF (default under `deliverables/`) |
 | `write_file` | Plain-text deliverables when appropriate |
 | `file_info` | File size, mtime, line count |
+| `describe_image` | OCR / read text from screenshots or scanned PDF pages (`VISION_API_KEY`) |
 | `note` | Brief session notes when useful |
 
 ## Research & market data
@@ -45,6 +48,6 @@ The `## Skills` section lists workspace and global `SKILL.md` playbooks (templat
 
 - When a task matches a skill name or description, call `load_skill` with that skill id **before** drafting documents or long replies.
 - Office tasks (reports, contracts, slides, recurring formats) should **prefer** skills over improvising from scratch.
-- Follow the loaded skill’s steps; use `read_file` on companion files it references.
+- Follow the loaded skill’s steps; use `read_office` (or `read_file` for plain text) on companion files it references.
 
 Do **not** use shell, grep, patch, or sub-agent tools in this session.

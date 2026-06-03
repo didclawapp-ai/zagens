@@ -135,6 +135,11 @@ export const zhHans: SiteCopy = {
     releaseNotes: '版本',
     noReleaseYet: '安装包暂不可用。请将安装文件上传至站点 download 目录后重新部署。',
     apiKeyNote: '安装完成后，在 Zagens 引导流程中填写 API Key。',
+    count: {
+      label: '累计下载 {n} 次',
+      loading: '加载下载次数…',
+      unavailable: '',
+    },
   },
   install: {
     title: 'Windows 安装指引',

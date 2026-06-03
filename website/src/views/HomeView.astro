@@ -1,6 +1,7 @@
 ---
 import BaseLayout from '@/layouts/BaseLayout.astro';
 import Button from '@/components/Button.astro';
+import DownloadCount from '@/components/DownloadCount.astro';
 import { getCopy, localePath, type Locale } from '@/i18n';
 
 interface Props {
@@ -45,11 +46,12 @@ const featureIcons = [
           {t.title}
         </h1>
         <p class="mt-5 max-w-xl text-lg leading-relaxed text-muted">{t.subtitle}</p>
-        <div class="mt-8 flex flex-wrap gap-3">
+        <div class="mt-8 flex flex-wrap items-center gap-3">
           <Button href={localePath(locale, '/download')} size="lg">{t.ctaDownload}</Button>
           <Button href={localePath(locale, '/install')} variant="secondary" size="lg">
             {t.ctaInstall}
           </Button>
+          <DownloadCount locale={locale} variant="badge" />
         </div>
         <ul class="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted">
           {

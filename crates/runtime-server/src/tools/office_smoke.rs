@@ -193,6 +193,118 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn read_office_legacy_doc_hint() {
+        let dir = tempdir().expect("tempdir");
+        let legacy = dir.path().join("legacy.doc");
+        fs::write(&legacy, b"\x00").expect("write");
+        let ctx = ToolContext::new(dir.path().to_path_buf());
+        let err = ReadOfficeTool
+            .execute(json!({ "path": "legacy.doc" }), &ctx)
+            .await
+            .expect_err("legacy .doc should fail");
+        let msg = err.to_string();
+        assert!(msg.contains("UNSUPPORTED") || msg.contains("docx"), "{msg}");
+    }
+
+    #[tokio::test]
+    async fn write_office_xlsx_from_csv_source() {
+        let dir = tempdir().expect("tempdir");
+        fs::write(dir.path().join("input.csv"), "Product,Qty\nWidget,10\nGadget,5")
+            .expect("csv");
+        let ctx = ToolContext::new(dir.path().to_path_buf());
+        let result = WriteOfficeTool
+            .execute(
+                json!({
+                    "format": "xlsx",
+                    "title": "from-source",
+                    "sheets": [{
+                        "name": "Sales",
+                        "source": "input.csv"
+                    }]
+                }),
+                &ctx,
+            )
+            .await
+            .expect("execute");
+        assert!(result.success, "{}", result.content);
+        let read = ReadOfficeTool
+            .execute(
+                json!({ "path": "deliverables/from-source.xlsx" }),
+                &ctx,
+            )
+            .await
+            .expect("read");
+        assert!(read.content.contains("Widget") && read.content.contains("10"));
+    }
+
+    #[tokio::test]
+    async fn read_office_pptx_chart_when_python_ready() {
+        if !office_python_ready() {
+            eprintln!("skip read_office_pptx_chart: office python not ready");
+            return;
+        }
+        let dir = tempdir().expect("tempdir");
+        let ctx = ToolContext::new(dir.path().to_path_buf());
+        let write = WriteOfficeTool;
+        write
+            .execute(
+                json!({
+                    "format": "pptx",
+                    "title": "chart-read",
+                    "slides": [{
+                        "title": "Sales",
+                        "chart": {
+                            "type": "bar",
+                            "categories": ["Q1", "Q2"],
+                            "series": [{ "name": "Revenue", "values": [100.0, 120.0] }]
+                        }
+                    }]
+                }),
+                &ctx,
+            )
+            .await
+            .expect("write");
+        let read = ReadOfficeTool
+            .execute(json!({ "path": "deliverables/chart-read.pptx" }), &ctx)
+            .await
+            .expect("read");
+        assert!(
+            read.content.contains("[图表数据]") || read.content.contains("Revenue"),
+            "chart data: {}",
+            read.content
+        );
+    }
+
+    #[tokio::test]
+    async fn read_office_xlsx_numfmt_golden() {
+        use rust_xlsxwriter::{Format, Workbook};
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("numfmt.xlsx");
+        let mut workbook = Workbook::new();
+        let pct = Format::new().set_num_format("0.00%");
+        let sheet = workbook.add_worksheet();
+        sheet.write_string(0, 0, "Rate").expect("cell");
+        sheet
+            .write_number_with_format(0, 1, 0.125, &pct)
+            .expect("pct cell");
+        workbook.save(&path).expect("save xlsx");
+
+        let ctx = ToolContext::new(dir.path().to_path_buf());
+        let result = ReadOfficeTool
+            .execute(json!({ "path": "numfmt.xlsx" }), &ctx)
+            .await
+            .expect("read");
+        assert!(result.success, "{}", result.content);
+        assert!(
+            result.content.contains("12.5%")
+                || result.content.contains("0.125")
+                || result.content.contains("12.5"),
+            "percentage display: {}",
+            result.content
+        );
+    }
+
+    #[tokio::test]
     async fn write_office_pdf_smoke_when_python_ready() {
         if !office_python_ready() {
             eprintln!("skip write_office_pdf_smoke: office python not ready");

@@ -5,6 +5,10 @@ const CARD_IDS = [
   'meetingMinutes',
   'projectDeck',
   'dataReport',
+  'competitiveAnalysis',
+  'contractDraft',
+  'resume',
+  'releaseNotes',
 ] as const;
 
 export type OfficeQuickStartId = (typeof CARD_IDS)[number];
@@ -21,7 +25,7 @@ export function OfficeEmptyState({ onPick }: Props) {
       <h1 className="font-display text-3xl font-bold text-accent">{t('officeEmpty.title')}</h1>
       <p className="mt-2 text-lg text-t-text-secondary">{t('officeEmpty.subtitle')}</p>
       <p className="mt-1 max-w-lg text-sm text-t-text-muted">{t('officeEmpty.hint')}</p>
-      <div className="mt-6 grid w-full max-w-2xl gap-3 sm:grid-cols-2">
+      <div className="mt-6 grid w-full max-w-3xl gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {CARD_IDS.map((id) => (
           <button
             key={id}

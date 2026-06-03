@@ -133,6 +133,11 @@ export const en = {
     noReleaseYet:
       'Installer files are not available yet. Upload them to the site download folder and redeploy.',
     apiKeyNote: 'After install, open Zagens and enter your API key in the onboarding flow.',
+    count: {
+      label: '{n} downloads',
+      loading: 'Loading download count…',
+      unavailable: '',
+    },
   },
   install: {
     title: 'Windows install guide',

@@ -29,16 +29,40 @@ const ptBr: TranslationMap = {
         title: 'Relatório de dados',
         hint: 'XLSX · tabelas e gráficos',
       },
+      competitiveAnalysis: {
+        title: 'Análise competitiva',
+        hint: 'DOCX · pesquisa com fontes',
+      },
+      contractDraft: {
+        title: 'Rascunho de contrato',
+        hint: 'DOCX · estrutura de cláusulas',
+      },
+      resume: {
+        title: 'Currículo / carta',
+        hint: 'DOCX · materiais pessoais',
+      },
+      releaseNotes: {
+        title: 'Notas de versão',
+        hint: 'DOCX · versão e mudanças',
+      },
     },
     prefill: {
       weeklyReport:
         'Escreva o relatório semanal (DOCX). Execute load_skill office-weekly-report, confirme período e público, read_office nos anexos se houver, write_office em deliverables/ (path opcional).',
       meetingMinutes:
-        'Redija a ata (DOCX): data, participantes, discussão, decisões e ações (responsável e prazo). write_office em deliverables/ sem path.',
+        'Redija a ata (DOCX). Execute load_skill office-meeting-minutes, confirme data e participantes, read_office nos materiais se houver, write_office em deliverables/ (path opcional).',
       projectDeck:
-        'Crie um deck de status (PPTX): capa, progresso, riscos e próximos passos. write_office em deliverables/ sem path.',
+        'Crie um deck de status (PPTX). Execute load_skill office-project-report, confirme o projeto, write_office em deliverables/ (path opcional).',
       dataReport:
-        'Gere relatório Excel (XLSX) com cabeçalhos, métricas e gráficos opcionais. read_office na planilha existente, depois write_office em deliverables/.',
+        'Gere relatório Excel (XLSX). Execute load_skill office-data-report, read_office na planilha existente, depois write_office em deliverables/.',
+      competitiveAnalysis:
+        'Escreva análise competitiva (DOCX). Execute load_skill office-competitive-analysis, use web_search e cite fontes, write_office em deliverables/.',
+      contractDraft:
+        'Rascunhe um contrato (DOCX). Execute load_skill office-contract-draft, confirme tipo e partes, write_office em deliverables/.',
+      resume:
+        'Prepare currículo e carta (DOCX). Execute load_skill office-resume, confirme a vaga, write_office em deliverables/.',
+      releaseNotes:
+        'Escreva notas de versão (DOCX). Execute load_skill office-release-notes, confirme versão e público, write_office em deliverables/.',
     },
   },
   a11y: {

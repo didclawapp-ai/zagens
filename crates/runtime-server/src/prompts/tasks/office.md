@@ -15,9 +15,9 @@
 - 列目录：`list_dir`；找文件：`glob_files` / `file_search`；元信息：`file_info`。
 
 ### 基于已有数据做报表（流程）
-1. `read_office` 或 `read_file` 读取 CSV/XLSX（大表用 `start_row`/`limit` 分页）。
-2. 在回复中归纳要点，**不要把整表重抄进 JSON**（避免精度丢失）。
-3. `write_office` 用归纳后的数据生成图表/报表（XLSX `sheets` 或 PPTX `slides`）。
+1. 优先在 `write_office` 的 XLSX `sheets` 上使用 **`source`**（路径或 `{ path, sheet?, start_row?, limit? }`）直接喂入 CSV/TSV/XLSX，避免把整表重抄进 JSON。
+2. 仅需分析、不必立即生成时：`read_office` 读取（大表用 `start_row`/`limit` 分页）。
+3. `write_office` 生成图表/报表（XLSX `sheets` 或 PPTX `slides`）；`read_office` 读 PPTX 时会抽取**图表数据**与演讲者备注。
 
 ### 多文档加工（翻译 / 摘要 / 合并）
 1. 对每个源文件 `read_office`（必要时指定 `sheet` / `pages`）。

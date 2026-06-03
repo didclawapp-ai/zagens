@@ -27,16 +27,40 @@ const zhHans = {
         title: '数据报表',
         hint: 'XLSX · 表格与图表',
       },
+      competitiveAnalysis: {
+        title: '竞品分析',
+        hint: 'DOCX · 调研与来源',
+      },
+      contractDraft: {
+        title: '合同初稿',
+        hint: 'DOCX · 条款结构',
+      },
+      resume: {
+        title: '简历 / 求职信',
+        hint: 'DOCX · 个人材料',
+      },
+      releaseNotes: {
+        title: '发布说明',
+        hint: 'DOCX · 版本与变更',
+      },
     },
     prefill: {
       weeklyReport:
         '请撰写本周工作周报（DOCX）。先 load_skill office-weekly-report，再按技能执行：确认时间范围与汇报对象，用 read_office 读取我提供的附件（若有），write_office 输出到 deliverables/（不必填 path）。',
       meetingMinutes:
-        '请整理本次会议纪要（DOCX）。包含：时间、参会人、议题讨论要点、决议与行动项（负责人/截止日期）。write_office 输出到 deliverables/，不必填 path。',
+        '请整理本次会议纪要（DOCX）。先 load_skill office-meeting-minutes，确认时间与参会人，用 read_office 读取会议材料（若有），write_office 输出到 deliverables/（不必填 path）。',
       projectDeck:
-        '请制作项目汇报 PPT（PPTX）：封面（项目名+汇报人）、进展要点、风险与下一步。write_office 输出到 deliverables/，不必填 path。',
+        '请制作项目汇报 PPT（PPTX）。先 load_skill office-project-report，确认项目名与汇报对象，write_office 输出到 deliverables/（不必填 path）。',
       dataReport:
-        '请根据我提供的数据生成 Excel 数据报表（XLSX）：表头、关键指标、可选图表。先用 read_office 读取已有表格（若有），再 write_office 输出到 deliverables/。',
+        '请生成 Excel 数据报表（XLSX）。先 load_skill office-data-report，用 read_office 读取我提供的表格（若有），再 write_office 输出到 deliverables/。',
+      competitiveAnalysis:
+        '请撰写竞品分析报告（DOCX）。先 load_skill office-competitive-analysis，用 web_search 调研并标注来源，write_office 输出到 deliverables/。',
+      contractDraft:
+        '请起草合同初稿（DOCX）。先 load_skill office-contract-draft，确认合同类型与双方，write_office 输出到 deliverables/。',
+      resume:
+        '请撰写简历与求职信（DOCX）。先 load_skill office-resume，确认目标岗位，write_office 输出到 deliverables/。',
+      releaseNotes:
+        '请整理产品发布说明（DOCX）。先 load_skill office-release-notes，确认版本与受众，write_office 输出到 deliverables/。',
     },
   },
   a11y: {

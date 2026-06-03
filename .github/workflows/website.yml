@@ -70,6 +70,7 @@ jobs:
           rsync -avz --delete --omit-dir-times \
             --exclude='download/*.exe' \
             --exclude='download/*.zip' \
+            --exclude='download/stats.json' \
             -e "ssh -i ~/.ssh/deploy_key -p $DEPLOY_PORT -o StrictHostKeyChecking=yes" \
             dist/ "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/"
         working-directory: website

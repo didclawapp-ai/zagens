@@ -14,6 +14,13 @@ server {
         try_files $uri $uri/ $uri.html /index.html;
     }
 
+    # Installer artifacts — separate log for download counter (see scripts/aggregate-download-stats.mjs)
+    location ~ ^/download/.+\.(exe|zip)$ {
+        access_log /var/log/nginx/zagens-download.log combined;
+        add_header Cache-Control "public, max-age=300";
+        try_files $uri =404;
+    }
+
     location /download/ {
         add_header Cache-Control "public, max-age=300";
         try_files $uri $uri/index.html =404;

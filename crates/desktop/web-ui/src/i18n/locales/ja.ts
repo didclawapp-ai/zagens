@@ -29,16 +29,40 @@ const ja: TranslationMap = {
         title: 'データレポート',
         hint: 'XLSX · 表とグラフ',
       },
+      competitiveAnalysis: {
+        title: '競合分析',
+        hint: 'DOCX · 調査と出典',
+      },
+      contractDraft: {
+        title: '契約初稿',
+        hint: 'DOCX · 条項構成',
+      },
+      resume: {
+        title: '履歴書 / 志望書',
+        hint: 'DOCX · 個人資料',
+      },
+      releaseNotes: {
+        title: 'リリースノート',
+        hint: 'DOCX · 版と変更',
+      },
     },
     prefill: {
       weeklyReport:
         '今週の週報（DOCX）を作成してください。先に load_skill office-weekly-report を実行し、期間と宛先を確認、添付があれば read_office、write_office は deliverables/（path 省略可）。',
       meetingMinutes:
-        '議事録（DOCX）を作成：日時、参加者、議論、決定事項、アクション（担当・期限）。write_office は deliverables/、path 不要。',
+        '議事録（DOCX）を作成。先に load_skill office-meeting-minutes、日時と参加者を確認、資料があれば read_office、write_office は deliverables/（path 省略可）。',
       projectDeck:
-        'プロジェクト報告 PPT（PPTX）：表紙、進捗、リスク、次のステップ。write_office は deliverables/、path 不要。',
+        'プロジェクト報告 PPT（PPTX）。先に load_skill office-project-report、プロジェクト名を確認、write_office は deliverables/（path 省略可）。',
       dataReport:
-        'Excel データレポート（XLSX）を作成。既存表があれば read_office の後 write_office で deliverables/ に出力。',
+        'Excel データレポート（XLSX）。先に load_skill office-data-report、表があれば read_office の後 write_office で deliverables/ に出力。',
+      competitiveAnalysis:
+        '競合分析レポート（DOCX）。先に load_skill office-competitive-analysis、web_search で調査し出典を明記、write_office は deliverables/。',
+      contractDraft:
+        '契約初稿（DOCX）。先に load_skill office-contract-draft、契約種別と当事者を確認、write_office は deliverables/。',
+      resume:
+        '履歴書と志望書（DOCX）。先に load_skill office-resume、希望職種を確認、write_office は deliverables/。',
+      releaseNotes:
+        'リリースノート（DOCX）。先に load_skill office-release-notes、版と対象読者を確認、write_office は deliverables/。',
     },
   },
   a11y: {
