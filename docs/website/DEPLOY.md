@@ -206,6 +206,8 @@ git add public/download/latest.json src/data/release.json
 
 再推 `main`，CI 会重新构建并 rsync 到 VPS。
 
+**CI rsync 报 `failed to set permissions` / exit 23：** 部署用户（如 `zagens-deploy`）对 `ubuntu` 属主的 `/var/www/zagens` 不能 `chmod` 目录。工作流已使用 `--no-perms --no-owner --no-group`（与 `--omit-dir-times` 一并）。若仍失败，确认 `zagens-deploy` 在 `ubuntu` 组且目录为 `775`（见上文 §2）。
+
 ## 五、与旧 GitHub Pages 工作流的区别
 
 当前工作流**不再**使用 `deploy-pages`；静态文件只落在你控制的 VPS 上。若曾启用 GitHub Pages，请在仓库 Settings 中关闭，避免与自有 Nginx 混淆。

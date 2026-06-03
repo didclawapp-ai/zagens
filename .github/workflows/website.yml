@@ -68,14 +68,16 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p "$DEPLOY_PORT" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
           RSYNC_SSH="ssh -i ~/.ssh/deploy_key -p $DEPLOY_PORT -o StrictHostKeyChecking=yes"
-          rsync -avz --delete --omit-dir-times \
+          # Deploy user often cannot chown/chmod existing web root (ubuntu-owned); skip permission bits.
+          RSYNC_FLAGS=( -avz --omit-dir-times --no-perms --no-owner --no-group )
+          rsync "${RSYNC_FLAGS[@]}" --delete \
             --exclude='download/*.exe' \
             --exclude='download/*.zip' \
             --exclude='download/stats.json' \
             -e "$RSYNC_SSH" \
             dist/ "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/"
           # Seed stats.json when missing; do not overwrite server-side counts from cron.
-          rsync -avz --ignore-existing -e "$RSYNC_SSH" \
+          rsync "${RSYNC_FLAGS[@]}" --ignore-existing -e "$RSYNC_SSH" \
             dist/download/stats.json \
             "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/download/stats.json"
         working-directory: website
