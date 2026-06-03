@@ -473,7 +473,7 @@ fn is_pptx(path: &Path) -> Result<bool, ToolError> {
         .is_some_and(|ext| ext.eq_ignore_ascii_case("pptx")))
 }
 
-fn read_docx(path: &Path) -> Result<ToolResult, ToolError> {
+pub(crate) fn read_docx(path: &Path) -> Result<ToolResult, ToolError> {
     let size_bytes = fs::metadata(path).map(|m| m.len()).ok();
     let file = fs::File::open(path).map_err(|e| {
         ToolError::execution_failed(format!(
@@ -686,7 +686,7 @@ fn read_xlsx(path: &Path) -> Result<ToolResult, ToolError> {
     )
 }
 
-fn read_pptx(path: &Path) -> Result<ToolResult, ToolError> {
+pub(crate) fn read_pptx(path: &Path) -> Result<ToolResult, ToolError> {
     let size_bytes = fs::metadata(path).map(|m| m.len()).ok();
     let file = fs::File::open(path).map_err(|e| {
         ToolError::execution_failed(format!(
@@ -748,7 +748,7 @@ fn read_pptx(path: &Path) -> Result<ToolResult, ToolError> {
     })))
 }
 
-fn read_pdf(path: &Path, pages: Option<&str>) -> Result<ToolResult, ToolError> {
+pub(crate) fn read_pdf(path: &Path, pages: Option<&str>) -> Result<ToolResult, ToolError> {
     let size_bytes = fs::metadata(path).map(|m| m.len()).ok();
 
     let mut cmd = Command::new("pdftotext");

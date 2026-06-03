@@ -87,6 +87,7 @@ rusqlite.workspace = true
 encoding_rs = "0.8"
 zip = "2.2"
 rust_xlsxwriter = "0.81"
+calamine = { version = "0.35", features = ["dates"] }
 
 [dev-dependencies]
 anyhow.workspace = true

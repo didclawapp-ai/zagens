@@ -14,7 +14,7 @@ pub use read::{ReadFileTool, sniff_encoding_label};
 pub use write::WriteFileTool;
 
 // Shared file-IO helpers reused by other write paths (apply_patch) and search.
-pub(crate) use read::detect_and_decode;
+pub(crate) use read::{detect_and_decode, read_pdf};
 pub(crate) use write::{
     DecodedFile, atomic_write, encode_text, normalize_line_endings, read_decoded_for_edit,
 };

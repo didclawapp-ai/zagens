@@ -9,7 +9,9 @@
 ### 文档与文件
 - 生成 XLSX/DOCX/PPTX/PDF：使用 `write_office`（PDF 与 DOCX 共用 `blocks` 结构）。
 - 未指定路径时，默认写入工作区下的 `deliverables/`（例如 `deliverables/报告.xlsx`）。
-- 读取附件或确认路径：`read_file`、`list_dir`；按名找文件：`glob_files` 或 `file_search`；元信息：`file_info`。
+- 读取办公附件（Excel/Word/PPT/PDF/CSV）：**优先 `read_office`**（日期/格式/公式、表格对齐、分页、演讲者备注）；纯文本或兜底再用 `read_file`。
+- 扫描版 PDF 文本极少时，对页面截图使用 `describe_image` 做 OCR。
+- 确认路径与列目录：`list_dir`；按名找文件：`glob_files` 或 `file_search`；元信息：`file_info`。
 - 生成前确认路径与格式。
 
 ### 联网与行情

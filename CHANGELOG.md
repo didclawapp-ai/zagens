@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Runtime
+
+- **Feature (`read_office`):** Office 会话新增高保真办公文档读取工具：XLSX/XLS/XLSB/ODS 经 **calamine**（日期、公式、列对齐、`start_row`/`limit` 分页）；DOCX 表格与标题层级；PPTX 演讲者备注与表格；PDF/CSV/TSV 与大小上限防护。`read_file` 办公路径保留作兜底。Files: `crates/runtime-server/src/tools/office_read.rs`, `registry.rs`, `office.md`。
+
 ---
 
 ## [0.6.1-preview.1] - 2026-06-02

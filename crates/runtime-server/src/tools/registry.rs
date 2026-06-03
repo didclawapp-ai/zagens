@@ -464,6 +464,13 @@ impl ToolRegistryBuilder {
         self.with_tool(Arc::new(WriteOfficeTool))
     }
 
+    /// Include the office document read tool (`read_office`).
+    #[must_use]
+    pub fn with_read_office_tool(self) -> Self {
+        use super::office_read::ReadOfficeTool;
+        self.with_tool(Arc::new(ReadOfficeTool))
+    }
+
     /// Include the image description tool (`describe_image`).
     ///
     /// Reads an image file and extracts its text content via a configured
@@ -529,6 +536,7 @@ impl ToolRegistryBuilder {
             .with_tool(Arc::new(FileInfoTool))
             .with_tool(Arc::new(WriteFileTool))
             .with_office_write_tool()
+            .with_read_office_tool()
             .with_office_search_tools()
             .with_skill_tools()
             .with_note_tool()
@@ -1411,6 +1419,7 @@ mod tests {
             .build(ctx);
 
         for name in [
+            "read_office",
             "write_office",
             "load_skill",
             "web_search",

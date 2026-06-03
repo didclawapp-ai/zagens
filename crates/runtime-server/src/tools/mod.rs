@@ -20,6 +20,7 @@ pub mod glob_files;
 pub mod github;
 pub mod host_impl;
 pub mod large_output_router;
+pub mod office_read;
 pub mod office_write;
 pub mod parallel;
 pub mod plan;
