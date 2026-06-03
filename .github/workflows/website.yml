@@ -67,17 +67,30 @@ jobs:
           printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p "$DEPLOY_PORT" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
-          RSYNC_SSH="ssh -i ~/.ssh/deploy_key -p $DEPLOY_PORT -o StrictHostKeyChecking=yes"
+          RSYNC_SSH="ssh -i ~/.ssh/deploy_key -p ${DEPLOY_PORT} -o StrictHostKeyChecking=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -o TCPKeepAlive=yes -o ConnectTimeout=60 -o ConnectionAttempts=3"
           # Deploy user often cannot chown/chmod existing web root (ubuntu-owned); skip permission bits.
-          RSYNC_FLAGS=( -avz --omit-dir-times --no-perms --no-owner --no-group )
-          rsync "${RSYNC_FLAGS[@]}" --delete \
+          RSYNC_FLAGS=( -avz --omit-dir-times --no-perms --no-owner --no-group --timeout=120 --partial )
+          rsync_with_retry() {
+            local attempt=1 max=3 rc=0
+            until rsync "$@"; then
+              rc=$?
+              if [ "$attempt" -ge "$max" ]; then
+                echo "::error::rsync failed after ${max} attempts (exit ${rc})"
+                return "$rc"
+              fi
+              echo "::warning::rsync attempt ${attempt} failed (exit ${rc}); retrying in 15s..."
+              sleep 15
+              attempt=$((attempt + 1))
+            done
+          }
+          rsync_with_retry "${RSYNC_FLAGS[@]}" --delete \
             --exclude='download/*.exe' \
             --exclude='download/*.zip' \
             --exclude='download/stats.json' \
             -e "$RSYNC_SSH" \
             dist/ "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/"
           # Seed stats.json when missing; do not overwrite server-side counts from cron.
-          rsync "${RSYNC_FLAGS[@]}" --ignore-existing -e "$RSYNC_SSH" \
+          rsync_with_retry "${RSYNC_FLAGS[@]}" --ignore-existing -e "$RSYNC_SSH" \
             dist/download/stats.json \
             "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/download/stats.json"
         working-directory: website

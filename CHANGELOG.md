@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Zagens website
 
+- **Fix (官网 CI rsync exit 12):** SSH 保活 + rsync `--timeout`/`--partial` + 失败自动重试 3 次，缓解 `Broken pipe` 断连。File: `.github/workflows/website.yml`, `docs/website/DEPLOY.md`.
+
 - **Fix (官网 CI rsync exit 23):** 部署 rsync 增加 `--no-perms --no-owner --no-group`，避免 `zagens-deploy` 无法 chmod `ubuntu` 属主站点目录。File: `.github/workflows/website.yml`, `docs/website/DEPLOY.md`.
 
 - **Fix (官网下载计数 404):** CI 在排除主 rsync 后增加 `rsync --ignore-existing` 补种 `download/stats.json`；`DownloadCount` 对 404 显示 0 次、其它错误隐藏组件。File: `.github/workflows/website.yml`, `DownloadCount.astro`.
