@@ -1693,6 +1693,14 @@ pub fn delete_symbol_index(workspace: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Free space on user-data (`~/.zagens`) and optional workspace volumes (for pause-turn UX).
+#[tauri::command]
+pub fn get_storage_pressure(
+    workspace_root: Option<String>,
+) -> Result<crate::disk_guard::StoragePressureSnapshot, String> {
+    crate::disk_guard::storage_pressure_snapshot(workspace_root.as_deref())
+}
+
 /// Percent-encode a string for use in URL query parameters.
 fn urlencoding(s: &str) -> String {
     let mut out = String::with_capacity(s.len());

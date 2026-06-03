@@ -361,6 +361,19 @@ const ptBr: TranslationMap = {
     approvalSubmitFailed: 'Falha ao enviar aprovação: {{message}}',
     trustModeFailed: 'Falha ao ativar modo de confiança: {{message}}',
   },
+  storage: {
+    criticalTitle: 'Espaço em disco baixo — turnos do agente pausados',
+    criticalBody:
+      'Pouco espaço no volume de dados do usuário (~/.zagens) ou do workspace. Continuar pode corromper sessões ou manter cobrança de API. Libere espaço e tente novamente ou reinicie o app.',
+    warnTitle: 'Espaço em disco baixo',
+    warnBody: 'Libere espaço no volume de dados ou do workspace para evitar falhas de gravação.',
+    volumeFree: '{{path}} — {{free}} livres',
+    criticalPaused: 'Espaço em disco baixo: o turno atual foi interrompido automaticamente. Libere espaço antes de continuar.',
+    sendBlocked: 'Espaço em disco baixo — não é possível enviar. Libere espaço em ~/.zagens ou no volume do workspace.',
+    shellInitFailed: 'Falha ao iniciar o shell desktop do Zagens',
+    shellInitHint:
+      'Não foi possível conectar ao IPC local (comum quando o volume do sistema ou de dados do usuário está cheio). Libere espaço, clique em Tentar novamente ou reinicie o app.',
+  },
   keyboard: {
     newSession: 'Novo chat',
     newWindow: 'Nova janela',

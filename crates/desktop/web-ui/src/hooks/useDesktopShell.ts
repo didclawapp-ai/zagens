@@ -12,6 +12,8 @@ export type UseDesktopShellParams = {
 
 export type UseDesktopShellResult = {
   desktopHost: boolean;
+  /** Tauri present but shell IPC failed (e.g. disk full on user-data volume). */
+  shellInitFailed: boolean;
   desktopApiKeyConfigured: boolean | null;
   platform: string;
   refreshApiKeyStatus: () => void;
@@ -23,15 +25,19 @@ export function useDesktopShell({
   setSelectedWorkspace,
 }: UseDesktopShellParams): UseDesktopShellResult {
   const [desktopHost, setDesktopHost] = useState(false);
+  const [shellInitFailed, setShellInitFailed] = useState(false);
   const [desktopApiKeyConfigured, setDesktopApiKeyConfigured] = useState<boolean | null>(null);
   const [platform, setPlatform] = useState('unknown');
   const selectedWorkspaceRef = useRef(selectedWorkspace);
   selectedWorkspaceRef.current = selectedWorkspace;
 
   const runRefreshApiKeyStatus = useCallback(async () => {
+    const inTauri =
+      typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       const s = await invoke<{ configured: boolean }>('get_api_key_status');
+      setShellInitFailed(false);
       setDesktopHost(true);
       setDesktopApiKeyConfigured(s.configured);
       const info = await invoke<{ os: string; arch: string; version: string }>('get_platform_info');
@@ -44,6 +50,7 @@ export function useDesktopShell({
     } catch {
       setDesktopHost(false);
       setDesktopApiKeyConfigured(null);
+      setShellInitFailed(inTauri);
     }
   }, [setSelectedWorkspace]);
 
@@ -78,6 +85,7 @@ export function useDesktopShell({
 
   return {
     desktopHost,
+    shellInitFailed,
     desktopApiKeyConfigured,
     platform,
     refreshApiKeyStatus,

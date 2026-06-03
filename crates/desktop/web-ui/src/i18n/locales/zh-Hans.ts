@@ -353,6 +353,19 @@ const zhHans = {
     approvalSubmitFailed: '审批提交失败：{{message}}',
     trustModeFailed: '启用信任模式失败：{{message}}',
   },
+  storage: {
+    criticalTitle: '磁盘空间不足 — 已暂停 Agent 回合',
+    criticalBody:
+      '用户数据目录或当前工作区所在盘剩余空间过低，继续运行可能导致会话损坏或持续扣费。请释放空间后点击「重试」或重启应用。',
+    warnTitle: '磁盘空间偏低',
+    warnBody: '建议尽快清理用户数据盘或工作区所在盘，避免写入失败。',
+    volumeFree: '{{path}} — 剩余 {{free}}',
+    criticalPaused: '磁盘空间不足：已自动停止当前回合，请释放空间后再继续。',
+    sendBlocked: '磁盘空间不足，无法发送新消息。请先释放 ~/.zagens 或工作区所在盘的剩余空间。',
+    shellInitFailed: 'Zagens 桌面壳未能启动',
+    shellInitHint:
+      '无法连接本地 IPC（常见于系统盘或 %USERPROFILE%\\.zagens 所在盘已满）。请释放磁盘空间后点击重试，或完全退出并重新打开应用。',
+  },
   keyboard: {
     newSession: '新对话',
     newWindow: '新建窗口',

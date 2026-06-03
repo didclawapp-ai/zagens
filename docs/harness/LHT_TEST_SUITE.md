@@ -59,6 +59,8 @@ DEMO3–5 都选了 [*Writing an Interpreter in Go*](https://interpreterbook.com
 > **Zagens vs Cursor 对比实验：** 用 [**DEMO6 双后端超集**](./test-cases/DEMO6-monkey-dual-backend.md)（同一 prompt + §3 oracle 记录表）——比 DEMO3 更长、多 `parity.sh` / `coverage_gate.sh`，用于观察 LHT 在「无人帮你跑 oracle」时是否仍占优。
 >
 > **代码量 ≥10k 加压：** [**DEMO7 Monkey 平台化**](./test-cases/DEMO7-monkey-platform-10k.md)（DEMO6 + class/while/工具链/testdata≥50 + `scripts/loc_gate.sh`）——DEMO6 实证仅 ~4k 行，本案例用硬 LOC 闸门拉高长程与 step 压力。
+>
+> **盲测对比（仅目标 · 无过程）：** [**DEMO8**](./test-cases/DEMO8-monkey-blind-goal-only.md) — 同最终 oracle（DEMO7 §4），prompt **不写**步骤/脚本名/行数阈值；用于 Zagens / OpenCode / Cursor 公平对比「自主拆解 vs 显式 harness」。
 
 ---
 

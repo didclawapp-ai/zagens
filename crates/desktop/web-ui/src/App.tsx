@@ -28,6 +28,8 @@ import { useRuntimeConnection } from './hooks/useRuntimeConnection';
 import { useAgentPanelState } from './hooks/useAgentPanelState';
 import { useChatMessageActions } from './hooks/useChatMessageActions';
 import { useDesktopShell } from './hooks/useDesktopShell';
+import { useStoragePressure } from './hooks/useStoragePressure';
+import ShellLoadFailure from './components/ShellLoadFailure';
 import { useSessionNavigation } from './hooks/useSessionNavigation';
 import { useThreadContext } from './hooks/useThreadContext';
 import { useWorkspacePanel } from './hooks/useWorkspacePanel';
@@ -189,11 +191,22 @@ export default function App() {
     streaming,
   });
 
-  const { desktopHost, desktopApiKeyConfigured, platform, refreshApiKeyStatus } = useDesktopShell({
-    t,
-    selectedWorkspace,
-    setSelectedWorkspace,
-  });
+  const { desktopHost, shellInitFailed, desktopApiKeyConfigured, platform, refreshApiKeyStatus } =
+    useDesktopShell({
+      t,
+      selectedWorkspace,
+      setSelectedWorkspace,
+    });
+
+  const { snapshot: storageSnapshot, pauseTurns: storagePauseTurns, level: storageLevel } =
+    useStoragePressure({
+      desktopHost,
+      workspaceRoot: selectedWorkspace,
+      streaming,
+      threadTurnRef,
+      handleCancelStream,
+      t,
+    });
 
   useEffect(() => {
     if (desktopHost) setStartupOverlayOpen(true);
@@ -322,6 +335,7 @@ export default function App() {
     showApprovalIfOwned,
     cancelCleanupRef,
     handleCancelStream,
+    storagePauseTurns,
     onToolCompleted: (toolName, success, output) => {
       if (!officeSession || !success || toolName !== 'write_office') return;
       const rel = parseWriteOfficeOutputPath(output);
@@ -710,6 +724,10 @@ export default function App() {
     setAuditGridDismissed(true);
   }, []);
 
+  if (shellInitFailed) {
+    return <ShellLoadFailure onRetry={refreshApiKeyStatus} />;
+  }
+
   return (
     <>
       {desktopHost && startupOverlayOpen && (
@@ -726,6 +744,9 @@ export default function App() {
       )}
       <AppShell
       desktopHost={desktopHost}
+      storagePauseTurns={storagePauseTurns}
+      storageSnapshot={storageSnapshot}
+      storageLevel={storageLevel}
       selectedWorkspace={selectedWorkspace}
       approval={approval}
       approvalBusy={approvalBusy}

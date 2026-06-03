@@ -1397,6 +1397,7 @@ dependencies = [
  "dirs",
  "futures-util",
  "ignore",
+ "libc",
  "open",
  "portable-pty",
  "reqwest",

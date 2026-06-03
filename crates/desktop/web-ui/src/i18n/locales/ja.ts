@@ -360,6 +360,19 @@ const ja: TranslationMap = {
     approvalSubmitFailed: '承認の送信に失敗しました: {{message}}',
     trustModeFailed: 'trust mode の有効化に失敗しました: {{message}}',
   },
+  storage: {
+    criticalTitle: 'ディスク容量不足 — エージェントのターンを一時停止',
+    criticalBody:
+      'ユーザーデータ（~/.zagens）またはワークスペースのボリュームの空きが少なすぎます。続行するとセッション破損や課金継続の恐れがあります。空きを確保してから再試行または再起動してください。',
+    warnTitle: 'ディスク容量が少なくなっています',
+    warnBody: 'ユーザーデータまたはワークスペースのボリュームの空きを確保してください。',
+    volumeFree: '{{path}} — 残り {{free}}',
+    criticalPaused: 'ディスク容量不足のため、現在のターンを自動停止しました。空きを確保してから続行してください。',
+    sendBlocked: 'ディスク容量不足のため送信できません。~/.zagens またはワークスペースのボリュームの空きを確保してください。',
+    shellInitFailed: 'Zagens デスクトップシェルの起動に失敗',
+    shellInitHint:
+      'ローカル IPC に接続できません（システムまたはユーザーデータのボリューム満杯が多い原因）。空きを確保して再試行するか、アプリを終了して開き直してください。',
+  },
   keyboard: {
     newSession: '新しいチャット',
     newWindow: '新しいウィンドウ',

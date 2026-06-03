@@ -167,22 +167,144 @@ bash scripts/parity.sh
 | 子命令 | run/repl | **+fmt +lint +disasm** |
 | 典型墙钟 | ~20–40 min | **~60–120 min**（易触 step_limit_continue） |
 
+### 4.4 Zagens 实证记录（`F:\DEMO6-3`，2026-06-03 人工 oracle）
+
+工作区为 DEMO6 对比目录续跑 DEMO7 规格（线程曾中断重连；右栏 LHT/Checklist 曾显示 100%）。**裁判仍为 §4 脚本，非 UI 面板。**
+
+#### Oracle §4（12 项）
+
+| 命令 | exit | 备注 |
+|------|------|------|
+| `go build ./...` | 0 | |
+| `go vet ./...` | 0 | |
+| `gofmt -l .` | 0 | 干净 |
+| `go test ./...` | 0 | 含 `code_test.go` 集成测 |
+| `bash scripts/run_examples.sh` | 0 | **40/40**（20×tree+vm） |
+| `bash scripts/conformance.sh` | 0 | |
+| `bash scripts/parity.sh` | 0 | **20/20** |
+| `bash scripts/coverage_gate.sh` | **1** | evaluator **78.8%**、compiler **74.1%**、**vm 7.9%**（&lt;60%） |
+| `bash scripts/run_testdata.sh` | 0 | **55/55**（本地逐文件 vm 亦 0 失败） |
+| `bash scripts/loc_gate.sh` | 0 | **10014** 行（阈值 10000，余量 **+14**） |
+| `bash scripts/toolchain.sh` | 0 | fmt/lint/disasm 三例 |
+
+**§4 合计：11/12 真绿；未达标项 = `coverage_gate`（vm 包覆盖率）。**
+
+#### 体量与特性快检
+
+| 项 | 实测 |
+|----|------|
+| `examples/*.monkey` | 20（均有 `.expected`） |
+| `testdata/programs` | 55 |
+| `testdata/invalid` | 13（其中 **7/13** 仅 `lint` 仍 exit 0；规格要求 lint/run 须报错 — **invalid 门禁偏弱**） |
+| 子命令 | `run` / `fmt` / `lint` / `disasm`（`main.go`） |
+| 新内建 | ≥12（含 `map`；无 `range`，符合 map/filter 二选一） |
+| class + vm | `examples/class_methods.monkey` tree/vm → `42` |
+| `*_test.go` 物理行 | ~5409 |
+
+#### 质量结论（相对 DEMO7 目标）
+
+| 维度 | 判定 |
+|------|------|
+| DEMO6 基线 + 双后端一致性 | **达标**（parity / examples / testdata 执行面） |
+| DEMO7 平台体量 `loc_gate` | **压线达标**（主要靠测试与 `code_test.go` 等撑行数） |
+| DEMO7 `coverage_gate` | **未达标**（vm 单元测试过薄；集成路径绿但包覆盖率红） |
+| 右栏 100% vs oracle | **可能假绿**：面板 HTTP 轮询与 checklist 可绿，`coverage_gate` 若未 `[verify:]` 不会挡 Completed |
+| `run_testdata.sh` | 脚本在 vm 失败时 **SKIP 仍计 PASS**（本次 vm 全过未触发，属潜在假绿） |
+
+**补刀建议（真绿）：** 增厚 `vm/*_test.go`；收紧 `run_testdata.sh`（vm 失败 → FAIL）；修正 invalid 样本；checklist 增加 `[verify: bash scripts/coverage_gate.sh]`。
+
+### 4.5 OpenCode 实证记录（`F:\DEMO6-5`，2026-06-03 人工 oracle）
+
+同一 §1 prompt（IDE 工作流 + 子代理并行铺 examples/testdata/scripts）。**裁判仍为 §4 脚本。**
+
+#### Oracle §4（12 项）
+
+| 命令 | exit | 备注 |
+|------|------|------|
+| `go build ./...` | 0 | |
+| `go vet ./...` | 0 | |
+| `gofmt -l .` | 0 | |
+| `go test ./...` | 0 | 分包 `*_test.go`（含 `vm` **83.6%** 覆盖） |
+| `bash scripts/run_examples.sh` | 0 | **46/46**（23×tree+vm） |
+| `bash scripts/conformance.sh` | 0 | |
+| `bash scripts/parity.sh` | 0 | **23/23** |
+| `bash scripts/coverage_gate.sh` | 0 | evaluator **76.8%**、compiler **75.8%**、vm **83.6%** |
+| `bash scripts/run_testdata.sh` | 0 | 55 programs tree+vm |
+| `bash scripts/loc_gate.sh` | 0 | **10742** 行（余量 **+742**） |
+| `bash scripts/toolchain.sh` | 0 | |
+
+**§4 合计：12/12 真绿（DEMO7 唯一裁判全过）。**
+
+#### 运行与对话一致性
+
+| 项 | 记录 |
+|----|------|
+| **墙钟** | **64 分钟**（用户计时，turn 结束） |
+| 对话收尾表 | 与 §4 oracle **一致**（build/vet/gofmt/test、23 examples、parity、55 testdata、coverage、toolchain、10742 行） |
+| 对话宣称 vs oracle | **一致真绿**（非仅 prose；与人工 bash 复验同） |
+
+模型收尾自述要点（存档）：DEMO6 基线保留；DEMO7 增 while/break/continue、class/this/字段、17 内建（含 **range**）、fmt/lint/disasm；**~5900 行** Go 测试 / 10 个 `*_test.go`。  
+**注意：** 自述写「VM 对 class **partial support**」，但 `parity.sh` **23/23** 与 `run_examples` **46/46** 全过 — 以脚本为准；若 class 仅在 tree 完整，应补仅-vm 的 class 用例或收紧 parity 集合。
+
+#### 体量与特性快检
+
+| 项 | 实测 |
+|----|------|
+| `examples/*.monkey` | **23** |
+| `testdata/programs` | 55 |
+| `testdata/invalid` | 11 |
+| `scripts/*.sh` | 7 |
+| CLI | `cmd/monkey`（`go build` 后脚本调用） |
+| `*_test.go`（自述） | ~5900 行 / 10 文件 |
+| 上下文（产品 UI） | 约 **113k Token、~11% 使用率**（同任务 Zagens 约 **20–30%**） |
+
+#### 与 Zagens §4.4 对照（同 prompt、同盘 oracle）
+
+| 维度 | Zagens `DEMO6-3` | OpenCode `DEMO6-5` |
+|------|------------------|---------------------|
+| 墙钟 | （待补） | **64 min** |
+| §4 oracle | 11/12 | **12/12** |
+| `loc_gate` | 10014（+14） | **10742**（+742） |
+| `coverage_gate` / vm | **7.9% fail** | **83.6% pass** |
+| `run_examples` | 40 | **46** |
+| `parity` | 20 | **23** |
+| 对话 vs oracle | 面板可 100%、oracle 11/12 | **一致 12/12** |
+| Harness 可观测 | LHT / verify / sidecar | 清单 14 项 + 子代理铺量 |
+| 上下文占用 | 较高 | **较低**（见 §8） |
+
 ---
 
-## 5. Zagens vs Cursor 对比（沿用 DEMO6 §4）
+## 5. Zagens vs Cursor / OpenCode 对比（沿用 DEMO6 §4）
 
-| 维度 | 记录 |
-|------|------|
-| 目录 | `DEMO7-zagens` / `DEMO7-cursor` |
-| Prompt | 本文 §1 逐字 |
-| Oracle | §4 全部命令 |
-| LHT 重点信号 | `step_limit_continue`、`manifest_gate_result`、`unverified_acceptance_nudge`、`loc_gate` 失败仍 Completed？ |
-| 代码行数 | `loc_gate` 打印值 + §2 分包 wc |
+### 5.1 实验设置
 
-**预期差异（假设）：**
+| 项 | 要求 |
+|----|------|
+| 工作区 | Zagens `F:\DEMO6-3`、OpenCode `F:\DEMO6-5`、Cursor `DEMO7-cursor`（须在记录表注明） |
+| Prompt | 本文 §1 **逐字** |
+| Oracle | §4 **全部 12 项**（含 `loc_gate` / `coverage_gate`） |
+| 人工裁判 | 跑完后 **同一套 bash 脚本** — 不信 prose / 右栏百分比 alone |
+
+### 5.2 记录表（跑完填）
+
+| 维度 | Zagens（`F:\DEMO6-3`） | OpenCode（`F:\DEMO6-5`） | Cursor |
+|------|------------------------|-------------------------|--------|
+| 墙钟 | （待补） | **64 min** | |
+| §4 oracle（12 项） | **11/12** | **12/12** | |
+| 对话收尾 vs oracle | 可能不一致（coverage） | **一致** | |
+| `loc_gate` | **10014** | **10742** | |
+| `run_examples` | 40/40 | **46/46** | |
+| `parity.sh` | 20/20 | **23/23** | |
+| `run_testdata.sh` | 55/55 | 55/55 | |
+| `coverage_gate` | fail（vm **7.9%**） | **pass**（vm **83.6%**） | |
+| 上下文占用（UI） | ~20–30% | ~**11%** / ~113k tok | |
+| 右栏/清单 vs oracle | 面板可 100%，oracle 缺 coverage | 清单完成 ≠ 需人工 §4（本次 **一致全绿**） | |
+| `step_limit_continue` | （待补） | N/A | N/A |
+
+### 5.3 预期差异（假设）
 
 - **Cursor：** 可能交付 DEMO6 体量 + 部分 DEMO7 特性，`loc_gate` 红而 prose 宣称完成 → **对话假绿**（无人跑 `loc_gate` 时）。
-- **Zagens：** 更易出现 `step_limit_continue` 续写；`manifest_gate` 在收尾重跑脚本；若 `loc_gate` 未进 checklist `[verify:]`，可能需 B 类 nudge（应把 `loc_gate` 写成 `[verify: bash scripts/loc_gate.sh]`）。
+- **Zagens：** 更易出现 `step_limit_continue` 续写；`manifest_gate` 在收尾重跑脚本；若 `loc_gate` / `coverage_gate` 未进 checklist `[verify:]`，可能出现 **面板绿 + oracle 红**（见 §4.4）。
 
 ---
 
@@ -209,6 +331,34 @@ DEMO7 与 DEMO6 **同赛道**（Monkey），便于你连续对比；MicroStack �
 
 ---
 
+## 8. 后续迭代方向（Zagens harness）
+
+OpenCode 对照（`F:\DEMO6-5`）在 **build 通过后** 用子代理并行铺 `examples` / `testdata` / `scripts`，墙钟上明显优于单线程逐个 `write_file`。Zagens runtime **已具备** `agent_spawn` / `delegate_to_agent` 与 `max_subagents`（系统设置），DEMO7 Zagens 实证（`F:\DEMO6-3`）未强制走该路径，主 turn 直写仍可达相近 oracle。
+
+**建议作为下一版 LHT / prompt 迭代（缩短长程墙钟，不降低 oracle）：**
+
+| 阶段 | 主 agent | 子代理（并行） |
+|------|----------|----------------|
+| A 内核 | 串行：lexer…vm、双后端打通 | — |
+| B 扩容 | 协调、`agent_wait` 收束 | 分片：`examples`+`.expected`、`testdata/programs`、`testdata/invalid` |
+| C 测试/脚本 | 跑 `[verify:]`、`manifest_gate` | 分片：`*_test.go` 表驱动、7×`scripts/*.sh` 草稿 |
+| 收尾 | **必须**主线程执行 §4 全部 12 项（含 `loc_gate` / `coverage_gate`） | 子代理不得单独宣称「完成」 |
+
+**落地触点（实现时择一或组合）：**
+
+1. **任务 prompt 增补**（§1 可选附录）：铺体量文件时优先 `agent_spawn` 分目录并行，并限制每子代理 scope（≤10–20 文件/批）。
+2. **LHT checklist 模板**：阶段 D 拆为可并行子项 + 主线程 `[verify: bash scripts/run_testdata.sh]` 等硬门。
+3. **产品默认**：长程 code 任务提高 `max_subagents` 提示或 LHT strict 下默认开启「扩容阶段 spawn 策略」（仍由模型调用工具，非硬编码编排）。
+4. **对比指标**：同 prompt 记录墙钟、spawn 次数、§4 pass 数；目标 **墙钟↓、oracle 不缩水**。
+
+**非目标：** 用子代理替代 `verify_gate` / §4 oracle；避免子代理铺盘与主线程 `[verify:]` 脱节导致「Agents 绿、loc/coverage 红」。
+
+---
+
 **修订记录:**
 
 - 2026-06-03 创建：DEMO6 超集、≥10k 行 `loc_gate`、class/while/工具链/testdata 扩容规格。
+- 2026-06-03 §4.4：填入 Zagens `F:\DEMO6-3` 人工 oracle（11/12、`loc_gate` 10014、vm coverage 7.9%）；§5 记录表 Zagens 列预填。
+- 2026-06-03 §8：子代理并行铺量缩短墙钟 — 后续 harness / prompt 迭代方向（对照 OpenCode `F:\DEMO6-5`）。
+- 2026-06-03 §4.5：OpenCode `F:\DEMO6-5` 人工 oracle **12/12**；§5.2 增加 OpenCode 列。
+- 2026-06-03 §4.5：OpenCode 墙钟 **64 min**、对话收尾表与 oracle 一致；备注 class/vm 自述 vs parity 全绿。

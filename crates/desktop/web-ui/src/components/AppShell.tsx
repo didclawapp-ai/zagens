@@ -8,6 +8,8 @@ import ApprovalDialog from './ApprovalDialog';
 import RightPanel, { type RightPanelView } from './RightPanel';
 import AuditGridPanel from './AuditGridPanel';
 import TitleBar from './TitleBar';
+import StoragePressureBanner from './StoragePressureBanner';
+import type { StoragePressureSnapshot } from '../lib/storagePressure';
 import SkipToMainLink from './SkipToMainLink';
 import { createAgentWindow } from '../lib/windowBridge';
 import { toast } from '../lib/toast';
@@ -30,6 +32,9 @@ import type { InspectorNavActivity } from '../lib/inspectorUnread';
 
 export type AppShellProps = {
   desktopHost: boolean;
+  storagePauseTurns?: boolean;
+  storageSnapshot?: StoragePressureSnapshot | null;
+  storageLevel?: 'ok' | 'warn' | 'critical';
   selectedWorkspace: string;
   approval: ApprovalState | null;
   approvalBusy: boolean;
@@ -145,6 +150,9 @@ export type AppShellProps = {
 
 export default function AppShell({
   desktopHost,
+  storagePauseTurns = false,
+  storageSnapshot = null,
+  storageLevel = 'ok',
   selectedWorkspace,
   approval,
   approvalBusy,
@@ -252,6 +260,7 @@ export default function AppShell({
   return (
     <div className="flex flex-col h-screen w-screen bg-canvas">
       <SkipToMainLink />
+      <StoragePressureBanner snapshot={storageSnapshot} level={storageLevel} />
       <TitleBar
         desktopHost={desktopHost}
         onNewWindow={() => {
@@ -343,7 +352,7 @@ export default function AppShell({
             <Composer
               onSend={onSend}
               onCancel={onCancelStream}
-              disabled={streaming}
+              disabled={streaming || storagePauseTurns}
               autoApprove={autoApprove}
               approvalPolicy={approvalPolicy}
               onAutoApproveChange={onAutoApproveChange}

@@ -32,5 +32,15 @@ try {
   bootstrap();
 } catch (e) {
   console.error(e);
-  document.getElementById('root')!.textContent = `Failed to start: ${e}`;
+  const fb = document.getElementById('zagens-boot-fallback');
+  const root = document.getElementById('root');
+  const msg = `界面初始化失败：${e instanceof Error ? e.message : String(e)}。请释放系统盘与 ~/.zagens 所在盘的磁盘空间后重启。`;
+  if (fb) {
+    const p = document.getElementById('zagens-boot-fallback-msg');
+    if (p) p.textContent = msg;
+    fb.style.display = 'block';
+    if (root) root.style.display = 'none';
+  } else if (root) {
+    root.textContent = msg;
+  }
 }

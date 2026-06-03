@@ -4,9 +4,75 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Zagens</title>
+    <style>
+      #zagens-boot-fallback {
+        display: none;
+        box-sizing: border-box;
+        min-height: 100vh;
+        margin: 0;
+        padding: 2rem 1.5rem;
+        font-family: system-ui, sans-serif;
+        background: #0f1419;
+        color: #e8eaed;
+        text-align: center;
+      }
+      #zagens-boot-fallback h1 {
+        font-size: 1.125rem;
+        font-weight: 600;
+        margin: 0 0 0.75rem;
+      }
+      #zagens-boot-fallback p {
+        font-size: 0.875rem;
+        line-height: 1.5;
+        color: #9aa0a6;
+        max-width: 28rem;
+        margin: 0 auto;
+      }
+    </style>
   </head>
   <body>
+    <div id="zagens-boot-fallback" role="alert">
+      <h1>Zagens 无法加载界面</h1>
+      <p id="zagens-boot-fallback-msg">
+        常见原因：系统盘或用户数据盘（%USERPROFILE%\.zagens）空间已满。请释放磁盘空间后完全退出并重新打开 Zagens。
+      </p>
+    </div>
     <div id="root"></div>
+    <script>
+      (function () {
+        var shown = false;
+        function showBootFailure(msg) {
+          if (shown) return;
+          shown = true;
+          var fb = document.getElementById('zagens-boot-fallback');
+          var root = document.getElementById('root');
+          if (msg) {
+            var p = document.getElementById('zagens-boot-fallback-msg');
+            if (p) p.textContent = msg;
+          }
+          if (fb) fb.style.display = 'block';
+          if (root) root.style.display = 'none';
+        }
+        window.addEventListener(
+          'error',
+          function (e) {
+            var t = e.target;
+            if (t && t.tagName === 'SCRIPT') {
+              showBootFailure(
+                '前端脚本加载失败（WebView 常显示「页面不存在」）。请检查系统盘与用户数据盘剩余空间后重启 Zagens。',
+              );
+            }
+          },
+          true,
+        );
+        window.setTimeout(function () {
+          var root = document.getElementById('root');
+          if (!root || root.childElementCount === 0) {
+            showBootFailure();
+          }
+        }, 15000);
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

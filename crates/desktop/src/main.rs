@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
+mod disk_guard;
 mod export_path;
 mod runtime_proxy;
 mod sidecar;
@@ -237,6 +238,7 @@ fn main() {
             commands::rebuild_symbol_index,
             commands::get_symbol_index_info,
             commands::delete_symbol_index,
+            commands::get_storage_pressure,
             terminal::spawn_terminal,
             terminal::write_terminal,
             terminal::resize_terminal,

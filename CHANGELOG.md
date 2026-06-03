@@ -38,7 +38,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Zagens desktop
 
+- **Feature (磁盘压力):** 监测 `~/.zagens` 与当前工作区所在盘剩余空间；临界（&lt;100MB）时自动 **停止** 进行中回合、禁止新发消息，并显示顶部告警（针对 DEMO8 观察：C 盘满 → WebView「页面不存在」且刷新后 LHT/计划仍在后台跑、继续扣费）。`index.html` 增加脚本加载失败时的静态说明。Harness 记录见 `DEMO8-monkey-blind-goal-only.md` §3.5。Files: `disk_guard.rs`, `get_storage_pressure`, `useStoragePressure.ts`, `StoragePressureBanner.tsx`, `ShellLoadFailure.tsx`.
 - **Fix (流式断连恢复):** Sidecar 重启或 runtime 离线时，不再把 UI 误判为「已停止」而后台继续扣费——保持流式锁定、持久提示 + **停止**、在 `sidecar://ready` / 探测恢复后自动重连 SSE；离线超过 2 分钟自动 `interrupt` 后台回合。Files: `useTurnStreamRecovery.ts`, `useTurnSend.ts`, `useTurnStream.ts`, `useDesktopShell.ts`.
+- **Fix (聊天流与面板 desync):** 重连已有回合时重新绑定最后一条 assistant 气泡，恢复思考链/工具链/正文的 SSE 增量；`finishOnce` 在后台回合仍活跃时不解锁；无 live handler 时每 8s 从线程事件回放刷新聊天（右栏 checklist/LHT 仍靠 HTTP 轮询）。Files: `activeTurnStreamUi.ts`, `useTurnSend.ts`, `useTurnStreamRecovery.ts`.
+- **Docs (harness DEMO7):** §4.4 Zagens `F:\DEMO6-3` 人工 oracle 记录（11/12、`loc_gate` 10014、vm coverage 7.9%）；§5 对比表预填。File: `docs/harness/test-cases/DEMO7-monkey-platform-10k.md`.
+- **Docs (harness):** DEMO7 §8 — 子代理并行铺 examples/testdata/测试以缩短长程墙钟，作为后续 LHT/prompt 迭代方向（对照 OpenCode）。File: `docs/harness/test-cases/DEMO7-monkey-platform-10k.md`.
+- **Docs (harness DEMO7):** §4.5 OpenCode `F:\DEMO6-5` oracle **12/12**、墙钟 **64 min**、对话与 oracle 一致；与 Zagens 11/12 对照。File: `docs/harness/test-cases/DEMO7-monkey-platform-10k.md`.
+- **Docs (harness DEMO8):** 新增盲测规格 — 仅目标 prompt、隐藏 DEMO7 §4 oracle、Zagens LHT Off/Strict 两档、三方记录表。File: `docs/harness/test-cases/DEMO8-monkey-blind-goal-only.md`；索引 `LHT_TEST_SUITE.md`.
+- **Docs (harness DEMO8):** 实盘路径 `F:\DEMO6-6|7|8`（Cursor/Zagens/OpenCode）与开工快照记入 §3.4。
+- **Docs (harness DEMO8):** §3.6 收工状态 — Zagens `F:\DEMO6-7` 已结束；Cursor 中断；OpenCode 进行中（待 §4 oracle）。
+- **Docs (harness DEMO8):** §4.4 Zagens 盲测收工 UI 证据（checklist/plan/manifest 全绿 vs 产物 ~4.3k 行、无 scripts）。
+- **Docs (harness DEMO8):** §3.7 右栏可观测性 — OpenCode Checklist 非实时；Zagens 实时更新。
+- **Docs (harness DEMO8):** §4.5 OpenCode `F:\DEMO6-8` 盲测收工摘要（15 sub-tasks · 与 Zagens 扫盘对照）；§3.6 三方终态更新。
+- **Docs (harness DEMO8):** §3.8 C: 耗尽与 F: 工作区分裂 — 解释 Zagens bat/终态扫盘与 §4.4 时间差、OpenCode 相对未受影响。
+- **Docs (harness DEMO8):** §4.6 Zagens 第二轮 bat 自验 vs DEMO7 §4 官方复跑 **4/12**（`F:\DEMO6-7`）。
 - **Feature (办公空态入口):** 办公会话无消息时展示 4 个任务卡片（周报、纪要、汇报 PPT、数据报表），点击填充 Composer 提示（含 `load_skill office-weekly-report`）。Files: `OfficeEmptyState.tsx`, `ChatView.tsx`, i18n ×4.
 - **Docs:** `office-mode-iteration-plan.md` 同步预览策略（PDF/HTML 右栏；Office 系统打开）与推荐顺序实施状态表。
 

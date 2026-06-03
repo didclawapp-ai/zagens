@@ -62,6 +62,10 @@ import { saveStoredActiveSessionId } from '../lib/windowBridge';
 import { turnCacheHitPercent } from '../lib/cacheUsage';
 import { parseLhtStatusMessage, type LhtChipState } from '../lib/lhtChip';
 import {
+  lastAssistantMessageId,
+  rebindStreamingAssistant,
+} from '../lib/chat/activeTurnStreamUi';
+import {
   useTurnStreamRecovery,
   type StreamRecoveryContext,
 } from './useTurnStreamRecovery';
@@ -128,6 +132,8 @@ export type UseTurnSendParams = {
   cancelCleanupRef: MutableRefObject<(() => void) | null>;
   handleCancelStream: () => void;
   streamingRef: MutableRefObject<boolean>;
+  /** When user-data or workspace volume is critically low. */
+  storagePauseTurns: boolean;
 };
 
 export type UseTurnSendResult = {
@@ -180,12 +186,16 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
     cancelCleanupRef,
     handleCancelStream,
     streamingRef,
+    storagePauseTurns,
   } = params;
 
   const lastPersistedTurnRef = useRef('');
   const toolProgressPendingRef = useRef('');
   const toolProgressRafRef = useRef<number | null>(null);
   const streamRecoveryContextRef = useRef<StreamRecoveryContext | null>(null);
+  const liveStreamDeliverRef = useRef<
+    ((ev: SseTurnEvent, filter?: { turnId: string }) => void) | null
+  >(null);
 
   const { shouldSkipFinishOnAbort, clearDetachedState } = useTurnStreamRecovery({
     t,
@@ -197,6 +207,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
     streamControllersRef,
     streamSessionRef,
     streamRecoveryContextRef,
+    liveStreamDeliverRef,
     setMessages,
     setStreamingThreadIds,
     setPendingComposerStream,
@@ -222,6 +233,10 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
       sendOptions?: { editFromMessageId?: string },
     ) => {
       if (!outbound.apiPrompt.trim() || streaming) return;
+      if (storagePauseTurns) {
+        notifyRuntimeTransient(t('storage.sendBlocked'));
+        return;
+      }
 
       setPendingComposerStream(true);
       const streamKey = resumedThreadIdRef.current ?? '__pending__';
@@ -247,9 +262,9 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
         return [...base, userMsg];
       });
 
-      const assistantId = nextId();
+      const streamTarget = { assistantId: nextId() };
       const assistantMsg: TurnChatMessage = {
-        id: assistantId,
+        id: streamTarget.assistantId,
         role: 'assistant',
         content: '',
         isStreaming: true,
@@ -276,7 +291,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
           toolProgressPendingRef.current = '';
           setMessages((prev) =>
             prev.map((m) => {
-              if (m.id !== assistantId) return m;
+              if (m.id !== streamTarget.assistantId) return m;
               const tools = [...(m.tools ?? [])];
               let idx = -1;
               if (ctx.currentToolId.current) {
@@ -310,11 +325,12 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
         };
 
         let finished = false;
+        let finishPending = false;
         const interruptedLabel = t('composer.turnInterrupted');
         const markInterrupted = () => {
           setMessages((prev) =>
             prev.map((m) => {
-              if (m.id !== assistantId) return m;
+              if (m.id !== streamTarget.assistantId) return m;
               const tools = (m.tools ?? []).map((tool) =>
                 tool.status === 'running' ? { ...tool, status: 'error' as const } : tool,
               );
@@ -348,9 +364,10 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
           })();
         };
 
-        const finishOnce = () => {
+        const completeStreamUi = () => {
           if (finished) return;
           finished = true;
+          liveStreamDeliverRef.current = null;
           streamSessionRef.current = null;
           streamRecoveryContextRef.current = null;
           if (toolProgressRafRef.current != null) {
@@ -374,7 +391,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
           setPendingComposerStream(false);
           setMessages((prev) => {
             const next = prev.map((m) =>
-              m.id === assistantId ? { ...m, isStreaming: false } : m,
+              m.id === streamTarget.assistantId ? { ...m, isStreaming: false } : m,
             );
             const sid = activeSessionIdRef.current;
             if (sid) {
@@ -387,6 +404,43 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
             void refreshThreadContext(tid);
           }
           maybePersistCompletedTurn();
+        };
+
+        const finishOnce = () => {
+          if (finished || finishPending) return;
+          const { threadId, turnId } = threadTurnRef.current;
+          if (!threadId) {
+            completeStreamUi();
+            return;
+          }
+          finishPending = true;
+          void threadTurnStillActive(threadId, turnId || undefined)
+            .then((active) => {
+              finishPending = false;
+              if (finished) return;
+              if (signal.aborted && shouldSkipFinishOnAbort()) {
+                return;
+              }
+              if (active) {
+                setStreamingThreadIds((prev) => new Set(prev).add(threadId));
+                setPendingComposerStream(true);
+                setMessages((prev) => {
+                  const lastId = lastAssistantMessageId(prev);
+                  const targetId = lastId ?? streamTarget.assistantId;
+                  if (lastId && lastId !== streamTarget.assistantId) {
+                    streamTarget.assistantId = lastId;
+                  }
+                  return rebindStreamingAssistant(prev, targetId) as TurnChatMessage[];
+                });
+                syncRecoveryContext();
+                return;
+              }
+              completeStreamUi();
+            })
+            .catch(() => {
+              finishPending = false;
+              if (!finished) completeStreamUi();
+            });
         };
         streamSessionRef.current = { markInterrupted, finishOnce };
 
@@ -432,7 +486,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
             case 'thinking_delta':
               setMessages((prev) =>
                 prev.map((m) => {
-                  if (m.id !== assistantId) return m;
+                  if (m.id !== streamTarget.assistantId) return m;
                   return { ...m, thinking: (m.thinking ?? '') + norm.content };
                 }),
               );
@@ -440,7 +494,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
             case 'message_delta':
               setMessages((prev) =>
                 prev.map((m) => {
-                  if (m.id !== assistantId) return m;
+                  if (m.id !== streamTarget.assistantId) return m;
                   return { ...m, content: m.content + norm.content };
                 }),
               );
@@ -451,7 +505,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
               const inputStr = stringifyToolInput(norm.input);
               setMessages((prev) =>
                 prev.map((m) => {
-                  if (m.id !== assistantId) return m;
+                  if (m.id !== streamTarget.assistantId) return m;
                   const tools = [
                     ...(m.tools ?? []),
                     { id: norm.id, name: norm.name, input: inputStr, status: 'running' as const },
@@ -474,7 +528,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
               const outStr = capToolOutputForDisplay(toolOutputString(norm.output));
               setMessages((prev) =>
                 prev.map((m) => {
-                  if (m.id !== assistantId) return m;
+                  if (m.id !== streamTarget.assistantId) return m;
                   const tools = [...(m.tools ?? [])];
                   let idx = tools.findIndex((tool) => tool.id === norm.id);
                   if (idx < 0) {
@@ -533,7 +587,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
               finishOnce();
               setMessages((prev) =>
                 prev.map((m) =>
-                  m.id === assistantId
+                  m.id === streamTarget.assistantId
                     ? { ...m, content: m.content || `Error: ${norm.message}`, isStreaming: false }
                     : m,
                 ),
@@ -608,12 +662,13 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
           }
           filterThreadStreamEvents(tid, () => deliverSseEvent(ev, filter))(ev);
         };
+        liveStreamDeliverRef.current = onSseEvent;
 
         const syncRecoveryContext = () => {
           const { threadId, turnId } = threadTurnRef.current;
           if (!threadId || !turnId) return;
           streamRecoveryContextRef.current = {
-            assistantId,
+            assistantId: streamTarget.assistantId,
             threadId,
             turnId,
             deliverSseEvent: (ev, filter) => onSseEvent(ev, filter),
@@ -631,7 +686,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
           }
           setMessages((prev) =>
             prev.map((m) =>
-              m.id === assistantId
+              m.id === streamTarget.assistantId
                 ? { ...m, content: m.content || `Error: ${msg}`, isStreaming: false }
                 : m,
             ),
@@ -734,17 +789,37 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
                 if (!(await threadTurnStillActive(resumedThreadId, activeTurnId))) {
                   return false;
                 }
-                // The just-typed prompt was rejected — drop the optimistic bubbles.
-                setMessages((prev) =>
-                  prev.filter((m) => m.id !== userMsg.id && m.id !== assistantId),
-                );
+                // The just-typed prompt was rejected — drop optimistic bubbles, rebind live stream
+                // to the last assistant row so thinking/tools/output SSE deltas apply again.
+                setMessages((prev) => {
+                  const filtered = prev.filter(
+                    (m) => m.id !== userMsg.id && m.id !== streamTarget.assistantId,
+                  );
+                  const lastId = lastAssistantMessageId(filtered);
+                  if (lastId) {
+                    streamTarget.assistantId = lastId;
+                    return rebindStreamingAssistant(filtered, lastId) as TurnChatMessage[];
+                  }
+                  const fallbackId = nextId();
+                  streamTarget.assistantId = fallbackId;
+                  return [
+                    ...filtered,
+                    {
+                      id: fallbackId,
+                      role: 'assistant',
+                      content: '',
+                      isStreaming: true,
+                    },
+                  ];
+                });
                 threadTurnRef.current = {
                   threadId: resumedThreadId,
                   turnId: activeTurnId ?? '',
                 };
-                syncRecoveryContext();
                 setResumedThreadId(resumedThreadId);
                 setStreamingThreadIds((prev) => new Set(prev).add(resumedThreadId));
+                setPendingComposerStream(true);
+                syncRecoveryContext();
                 toast.warning(t('composer.turnStillRunning'));
                 await pollThreadTurnEvents(
                   resumedThreadId,
@@ -752,7 +827,9 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
                   (ev) => onSseEvent(ev, activeTurnId ? { turnId: activeTurnId } : undefined),
                   { signal, turnId: activeTurnId },
                 );
-                finishOnce();
+                if (!shouldSkipFinishOnAbort()) {
+                  finishOnce();
+                }
                 return true;
               } catch {
                 return false;
@@ -766,6 +843,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
     },
     [
       shouldSkipFinishOnAbort,
+      storagePauseTurns,
       streaming,
       runtimeConn,
       resumedThreadId,

@@ -360,6 +360,19 @@ const en: TranslationMap = {
     approvalSubmitFailed: 'Approval submission failed: {{message}}',
     trustModeFailed: 'Failed to enable trust mode: {{message}}',
   },
+  storage: {
+    criticalTitle: 'Low disk space — agent turns paused',
+    criticalBody:
+      'Free space on the user-data volume (~/.zagens) or workspace volume is critically low. Continuing may corrupt sessions or keep billing API usage. Free space, then Retry or restart the app.',
+    warnTitle: 'Disk space is low',
+    warnBody: 'Free space on the user-data or workspace volume soon to avoid write failures.',
+    volumeFree: '{{path}} — {{free}} free',
+    criticalPaused: 'Low disk space: the current turn was stopped automatically. Free space before continuing.',
+    sendBlocked: 'Low disk space — cannot send. Free space on ~/.zagens or the workspace volume first.',
+    shellInitFailed: 'Zagens desktop shell failed to start',
+    shellInitHint:
+      'Could not reach local IPC (often when the system or user-data volume is full). Free disk space, click Retry, or fully quit and reopen the app.',
+  },
   keyboard: {
     newSession: 'New Chat',
     newWindow: 'New window',

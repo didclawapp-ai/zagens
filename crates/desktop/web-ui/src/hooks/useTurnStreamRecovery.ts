@@ -20,6 +20,12 @@ import { getRuntimeBase, type RuntimeConnectionState } from '../api/client';
 import { subscribeCurrentWebviewEvent } from '../lib/tauriListen';
 import { dispatchSidecarReadyForPanels } from '../lib/sidecarPanelRecovery';
 import { RUNTIME_TRANSIENT_TAG, toast } from '../lib/toast';
+import {
+  lastAssistantMessageId,
+  markLastAssistantStreaming,
+  rebindStreamingAssistant,
+} from '../lib/chat/activeTurnStreamUi';
+import { rebuildMessagesFromThreadEvents } from '../lib/chat/rebuildMessagesFromThread';
 import type { StreamSessionControl } from './useTurnStream';
 import type { TurnChatMessage } from './useTurnSend';
 
@@ -33,6 +39,9 @@ export const OFFLINE_AUTO_INTERRUPT_MS = 120_000;
 
 /** Warn the user that billing may continue before auto-interrupt. */
 export const OFFLINE_BILLING_WARN_MS = 15_000;
+
+/** When chat SSE handler is gone but the backend turn is still active, refresh transcript from replay. */
+export const ACTIVE_TURN_CHAT_RECONCILE_MS = 8_000;
 
 export type StreamRecoveryContext = {
   assistantId: string;
@@ -52,6 +61,9 @@ export type UseTurnStreamRecoveryParams = {
   streamControllersRef: MutableRefObject<Map<string, AbortController>>;
   streamSessionRef: MutableRefObject<StreamSessionControl | null>;
   streamRecoveryContextRef: MutableRefObject<StreamRecoveryContext | null>;
+  liveStreamDeliverRef: MutableRefObject<
+    ((ev: SseTurnEvent, filter?: { turnId: string }) => void) | null
+  >;
   setMessages: Dispatch<SetStateAction<TurnChatMessage[]>>;
   setStreamingThreadIds: Dispatch<SetStateAction<Set<string>>>;
   setPendingComposerStream: Dispatch<SetStateAction<boolean>>;
@@ -87,6 +99,7 @@ export function useTurnStreamRecovery({
   streamControllersRef,
   streamSessionRef,
   streamRecoveryContextRef,
+  liveStreamDeliverRef,
   setMessages,
   setStreamingThreadIds,
   setPendingComposerStream,
@@ -128,6 +141,74 @@ export function useTurnStreamRecovery({
     [handleCancelStream, t],
   );
 
+  const rebindRecoveryAssistant = useCallback(
+    (banner?: string): string | undefined => {
+      let reboundId: string | undefined;
+      setMessages((prev) => {
+        const lastId = lastAssistantMessageId(prev);
+        if (!lastId) return prev;
+        reboundId = lastId;
+        return rebindStreamingAssistant(prev, lastId, banner) as TurnChatMessage[];
+      });
+      const ctx = streamRecoveryContextRef.current;
+      if (ctx && reboundId) {
+        ctx.assistantId = reboundId;
+      }
+      return reboundId;
+    },
+    [setMessages, streamRecoveryContextRef],
+  );
+
+  const resolveEventDeliver = useCallback((): ((
+    ev: SseTurnEvent,
+    filter?: { turnId: string },
+  ) => void) | null => {
+    return (
+      streamRecoveryContextRef.current?.deliverSseEvent ??
+      liveStreamDeliverRef.current ??
+      null
+    );
+  }, [liveStreamDeliverRef, streamRecoveryContextRef]);
+
+  const runTurnEventPoll = useCallback(
+    async (threadId: string, turnId: string): Promise<boolean> => {
+      const deliver = resolveEventDeliver();
+      if (!deliver) {
+        return false;
+      }
+
+      rebindRecoveryAssistant();
+
+      const detail = await getThreadDetail(threadId);
+      if (!(await threadTurnStillActive(threadId, turnId))) {
+        return false;
+      }
+
+      const controller = new AbortController();
+      streamControllersRef.current.set(threadId, controller);
+      threadTurnRef.current = { threadId, turnId };
+      setStreamingThreadIds((prev) => new Set(prev).add(threadId));
+      setPendingComposerStream(true);
+
+      await pollThreadTurnEvents(
+        threadId,
+        detail.latest_seq ?? 0,
+        (ev) => deliver(ev, { turnId }),
+        { signal: controller.signal, turnId },
+      );
+
+      return await threadTurnStillActive(threadId, turnId);
+    },
+    [
+      rebindRecoveryAssistant,
+      resolveEventDeliver,
+      setPendingComposerStream,
+      setStreamingThreadIds,
+      streamControllersRef,
+      threadTurnRef,
+    ],
+  );
+
   const detachActiveStream = useCallback(
     (reason: StreamDetachReason) => {
       const ctx = streamRecoveryContextRef.current;
@@ -158,25 +239,28 @@ export function useTurnStreamRecovery({
       if (activeThreadId) {
         setStreamingThreadIds((prev) => new Set(prev).add(activeThreadId));
       }
-      setPendingComposerStream(false);
+      setPendingComposerStream(true);
 
-      const assistantId = ctx?.assistantId;
-      if (assistantId) {
-        setMessages((prev) =>
-          prev.map((m) => {
-            if (m.id !== assistantId) return m;
-            const tools = (m.tools ?? []).map((tool) =>
-              tool.status === 'running' ? { ...tool, status: 'error' as const } : tool,
-            );
-            return {
-              ...m,
-              tools,
-              content: appendDetachBanner(m.content, banner),
-              isStreaming: true,
-            };
-          }),
-        );
-      }
+      setMessages((prev) => {
+        const lastId = lastAssistantMessageId(prev);
+        const targetId = lastId ?? ctx?.assistantId;
+        if (!targetId) return prev;
+        if (ctx) ctx.assistantId = targetId;
+        return prev.map((m) => {
+          if (m.id !== targetId) {
+            return m.role === 'assistant' && m.isStreaming ? { ...m, isStreaming: false } : m;
+          }
+          const tools = (m.tools ?? []).map((tool) =>
+            tool.status === 'running' ? { ...tool, status: 'error' as const } : tool,
+          );
+          return {
+            ...m,
+            tools,
+            content: appendDetachBanner(m.content, banner),
+            isStreaming: true,
+          };
+        });
+      });
 
       showDetachedToast(reason);
       if (reason === 'runtime_offline') {
@@ -204,6 +288,99 @@ export function useTurnStreamRecovery({
     return true;
   }, []);
 
+  const resumeLiveTurnStream = useCallback(async () => {
+    if (recoveringRef.current || detachReasonRef.current) {
+      return;
+    }
+    const threadId = resumedThreadIdRef.current || threadTurnRef.current.threadId;
+    if (!threadId || streamingRef.current) {
+      return;
+    }
+    if (!(await threadTurnStillActive(threadId, threadTurnRef.current.turnId || undefined))) {
+      return;
+    }
+    if (!resolveEventDeliver()) {
+      return;
+    }
+
+    let turnId = threadTurnRef.current.turnId;
+    if (!turnId) {
+      try {
+        const detail = await getThreadDetail(threadId);
+        turnId = detail.thread.latest_turn_id ?? '';
+        if (turnId) {
+          threadTurnRef.current = { threadId, turnId };
+        }
+      } catch {
+        return;
+      }
+    }
+    if (!turnId) return;
+
+    recoveringRef.current = true;
+    try {
+      const stillActive = await runTurnEventPoll(threadId, turnId);
+      if (!stillActive) {
+        streamRecoveryContextRef.current?.finishOnce();
+        streamSessionRef.current?.finishOnce();
+      }
+    } catch {
+      /* best-effort */
+    } finally {
+      recoveringRef.current = false;
+    }
+  }, [
+    resolveEventDeliver,
+    resumedThreadIdRef,
+    runTurnEventPoll,
+    streamRecoveryContextRef,
+    streamSessionRef,
+    streamingRef,
+    threadTurnRef,
+  ]);
+
+  const reconcileChatFromThreadReplay = useCallback(async () => {
+    const threadId = resumedThreadIdRef.current;
+    if (!threadId || streamingRef.current || recoveringRef.current) {
+      return;
+    }
+    if (detachReasonRef.current) {
+      return;
+    }
+    if (!(await threadTurnStillActive(threadId, threadTurnRef.current.turnId || undefined))) {
+      return;
+    }
+    if (resolveEventDeliver()) {
+      void resumeLiveTurnStream();
+      return;
+    }
+
+    try {
+      const rebuilt = await rebuildMessagesFromThreadEvents(threadId);
+      if (!(await threadTurnStillActive(threadId))) {
+        return;
+      }
+      const { messages, assistantId } = markLastAssistantStreaming(rebuilt);
+      if (!assistantId) {
+        return;
+      }
+      setMessages(messages as TurnChatMessage[]);
+      setStreamingThreadIds((prev) => new Set(prev).add(threadId));
+      setPendingComposerStream(true);
+    } catch {
+      /* keep last snapshot */
+    }
+  }, [
+    resolveEventDeliver,
+    resumedThreadIdRef,
+    resumeLiveTurnStream,
+    setMessages,
+    setPendingComposerStream,
+    setStreamingThreadIds,
+    streamingRef,
+    threadTurnRef,
+  ]);
+
   const tryRecoverDetachedTurn = useCallback(async () => {
     if (!detachReasonRef.current || recoveringRef.current) {
       return;
@@ -212,7 +389,7 @@ export function useTurnStreamRecovery({
     const threadId =
       ctx?.threadId || threadTurnRef.current.threadId || resumedThreadIdRef.current || '';
     const turnId = ctx?.turnId || threadTurnRef.current.turnId || '';
-    if (!threadId || !turnId || !ctx) {
+    if (!threadId || !turnId) {
       detachReasonRef.current = null;
       toast.dismissByTag(TURN_DETACHED_TAG);
       return;
@@ -220,33 +397,29 @@ export function useTurnStreamRecovery({
 
     recoveringRef.current = true;
     try {
-      const detail = await getThreadDetail(threadId);
       if (!(await threadTurnStillActive(threadId, turnId))) {
         detachReasonRef.current = null;
         clearOfflineTimers();
         toast.dismissByTag(TURN_DETACHED_TAG);
-        ctx.finishOnce();
+        ctx?.finishOnce();
+        return;
+      }
+
+      if (!resolveEventDeliver()) {
+        await reconcileChatFromThreadReplay();
         return;
       }
 
       toast.dismissByTag(TURN_DETACHED_TAG);
       toast.info(t('composer.turnReconnecting'));
 
-      const controller = new AbortController();
-      streamControllersRef.current.set(threadId, controller);
-      threadTurnRef.current = { threadId, turnId };
-      setStreamingThreadIds((prev) => new Set(prev).add(threadId));
-
-      await pollThreadTurnEvents(
-        threadId,
-        detail.latest_seq ?? 0,
-        (ev) => ctx.deliverSseEvent(ev, { turnId }),
-        { signal: controller.signal, turnId },
-      );
+      const stillActive = await runTurnEventPoll(threadId, turnId);
 
       detachReasonRef.current = null;
       clearOfflineTimers();
-      ctx.finishOnce();
+      if (!stillActive) {
+        ctx?.finishOnce();
+      }
       void refreshThreadContext(threadId);
     } catch (e) {
       if ((e as Error).name !== 'AbortError') {
@@ -259,9 +432,10 @@ export function useTurnStreamRecovery({
     clearOfflineTimers,
     notifyRuntimeTransient,
     refreshThreadContext,
+    reconcileChatFromThreadReplay,
+    resolveEventDeliver,
     resumedThreadIdRef,
-    setStreamingThreadIds,
-    streamControllersRef,
+    runTurnEventPoll,
     streamRecoveryContextRef,
     t,
     threadTurnRef,
@@ -350,6 +524,14 @@ export function useTurnStreamRecovery({
     threadTurnRef,
     tryRecoverDetachedTurn,
   ]);
+
+  useEffect(() => {
+    if (!desktopHost) return;
+    const id = setInterval(() => {
+      void reconcileChatFromThreadReplay();
+    }, ACTIVE_TURN_CHAT_RECONCILE_MS);
+    return () => clearInterval(id);
+  }, [desktopHost, reconcileChatFromThreadReplay]);
 
   useEffect(() => () => clearOfflineTimers(), [clearOfflineTimers]);
 
