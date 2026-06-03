@@ -49,7 +49,8 @@ const baseClass =
     const label = el.dataset.label ?? '{n}';
 
     fetch('/download/stats.json', { cache: 'no-store' })
-      .then((res) => {
+      .then(async (res) => {
+        if (res.status === 404) return { total: 0 };
         if (!res.ok) throw new Error(String(res.status));
         return res.json() as Promise<{ total?: number }>;
       })
@@ -63,6 +64,7 @@ const baseClass =
         applyLabel(el, label, total);
       })
       .catch(() => {
+        el.hidden = true;
         el.querySelector('[data-role="text"]')!.textContent = loading;
       });
   });

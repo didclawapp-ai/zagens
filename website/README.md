@@ -53,7 +53,7 @@ Optional: `npm run sync:manifest` still works if you later publish GitHub Releas
 
 ## Download counter
 
-The home and download pages fetch **`/download/stats.json`** (client-side). On the VPS, Nginx logs `.exe` / `.zip` hits to `zagens-download.log`; cron runs `deploy/update-download-stats.sh` (or `npm run stats:aggregate`) to refresh the JSON. CI **does not** overwrite `stats.json` on deploy (`--exclude='download/stats.json'`). See [`deploy/nginx-zagens.conf.example`](deploy/nginx-zagens.conf.example) and [`docs/website/DEPLOY.md`](../docs/website/DEPLOY.md).
+The home and download pages fetch **`/download/stats.json`** (client-side). On the VPS, Nginx logs `.exe` / `.zip` hits to `zagens-download.log`; cron runs `deploy/update-download-stats.sh` (or `npm run stats:aggregate`) to refresh the JSON. CI excludes `stats.json` from the main `--delete` rsync, then **seeds** it with a second `rsync --ignore-existing` (fixes 404 when the file was never created). Cron updates on the VPS are preserved. See [`deploy/nginx-zagens.conf.example`](deploy/nginx-zagens.conf.example) and [`docs/website/DEPLOY.md`](../docs/website/DEPLOY.md).
 
 ## Deploy (GitHub Actions → VPS)
 

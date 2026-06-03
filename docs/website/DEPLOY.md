@@ -172,6 +172,12 @@ sudo certbot --nginx -d zagens.com -d www.zagens.com
 
 首页与下载页会请求 `https://zagens.com/download/stats.json`。该文件在 VPS 上由 Nginx 访问日志聚合更新，**CI rsync 已排除**此文件，避免每次部署把计数重置为 0。
 
+0. 若浏览器报 `/download/stats.json` **404**，在服务器上先创建基线文件（后续 CI 会用 `--ignore-existing` 补种，且不再覆盖已有计数）：
+   ```bash
+   sudo mkdir -p /var/www/zagens/download
+   echo '{"total":0,"updatedAt":null}' | sudo tee /var/www/zagens/download/stats.json
+   sudo chown ubuntu:ubuntu /var/www/zagens/download/stats.json
+   ```
 1. 在 Nginx 站点配置中加入 [`website/deploy/nginx-zagens.conf.example`](../../website/deploy/nginx-zagens.conf.example) 里针对 `.exe` / `.zip` 的 `location` 与 `zagens-download.log`。
 2. `sudo nginx -t && sudo systemctl reload nginx`
 3. 将 `website/deploy/update-download-stats.sh` 与 `website/scripts/aggregate-download-stats.mjs` 拷到服务器（或保留在 `/var/www/zagens/deploy/`），安装 Node 20+。
