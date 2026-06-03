@@ -55,6 +55,10 @@ DEMO3–5 都选了 [*Writing an Interpreter in Go*](https://interpreterbook.com
 - **双后端变体（DEMO5）** — tree-walking + 编译到字节码两个后端，制造 plan（高层阶段）与 checklist（细粒度）并存的结构，钓出双计数 bug。
 
 > **复现建议：** 固定 prompt「用 Go 实现 Monkey 语言完整解释器，含 REPL，并写示例脚本覆盖算术（含取模 `%`）、字符串、数组、哈希、闭包、带数字的标识符，最后跑通全部示例」。这条 prompt 同时踩中 DEMO3（取模/`counter1`）与长程阈值，是性价比最高的单条回归。
+>
+> **Zagens vs Cursor 对比实验：** 用 [**DEMO6 双后端超集**](./test-cases/DEMO6-monkey-dual-backend.md)（同一 prompt + §3 oracle 记录表）——比 DEMO3 更长、多 `parity.sh` / `coverage_gate.sh`，用于观察 LHT 在「无人帮你跑 oracle」时是否仍占优。
+>
+> **代码量 ≥10k 加压：** [**DEMO7 Monkey 平台化**](./test-cases/DEMO7-monkey-platform-10k.md)（DEMO6 + class/while/工具链/testdata≥50 + `scripts/loc_gate.sh`）——DEMO6 实证仅 ~4k 行，本案例用硬 LOC 闸门拉高长程与 step 压力。
 
 ---
 

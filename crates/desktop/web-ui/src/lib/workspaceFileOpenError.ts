@@ -4,13 +4,15 @@ export type WorkspaceFileErrorKey =
   | 'invalidRel'
   | 'pathTraversal'
   | 'needWorkspace'
-  | 'binaryNeedsDesktop';
+  | 'binaryNeedsDesktop'
+  | 'officeUseSystemApp';
 
 const ERROR_KEYS: Record<WorkspaceFileErrorKey, TranslationKey> = {
   invalidRel: 'workspaceFiles.errors.invalidRel',
   pathTraversal: 'workspaceFiles.errors.pathTraversal',
   needWorkspace: 'workspaceFiles.errors.needWorkspace',
   binaryNeedsDesktop: 'workspaceFiles.errors.binaryNeedsDesktop',
+  officeUseSystemApp: 'workspaceFiles.errors.officeUseSystemApp',
 };
 
 export class WorkspaceFileOpenError extends Error {

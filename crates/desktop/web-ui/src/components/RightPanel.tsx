@@ -133,6 +133,8 @@ interface Props {
   onRouteIntentChange: (v: DesktopRouteIntentOption) => void;
   officeSession?: boolean;
   onSystemSettingsSaved?: (settings: import('../api/client').SystemSettings) => void;
+  /** Parent bump refreshes workspace file list (e.g. after write_office). */
+  filesRefreshNonce?: number;
 }
 
 const PANEL_TITLE_KEYS: Record<RightPanelView, TranslationKey> = {
@@ -205,6 +207,7 @@ export default function RightPanel({
   onRouteIntentChange,
   officeSession = false,
   onSystemSettingsSaved,
+  filesRefreshNonce: filesRefreshNonceProp = 0,
   subagentActiveCount = 0,
   narrativeSpawnSuspected = false,
 }: Props) {
@@ -240,7 +243,8 @@ export default function RightPanel({
   const [pickRulesSaving, setPickRulesSaving] = useState(false);
   const [pickRulesErr, setPickRulesErr] = useState<string | null>(null);
   const [pickRulesOk, setPickRulesOk] = useState<string | null>(null);
-  const [filesRefreshNonce, setFilesRefreshNonce] = useState(0);
+  const [filesRefreshNonceLocal, setFilesRefreshNonceLocal] = useState(0);
+  const filesRefreshNonce = filesRefreshNonceProp + filesRefreshNonceLocal;
 
   const runtimeReach = {
     streaming: Boolean(streaming),
@@ -368,7 +372,7 @@ export default function RightPanel({
         );
         const list = await getThreadSnapshots(resumedThreadId, { limit: 50 });
         setSnapshots(list.snapshots ?? []);
-        setFilesRefreshNonce((x) => x + 1);
+        setFilesRefreshNonceLocal((x) => x + 1);
       } catch (e) {
         const err = e as Error & { status?: number };
         if (err.status === 403) {

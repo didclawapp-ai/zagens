@@ -8,6 +8,39 @@ const en: TranslationMap = {
     heroTagline: 'Your AI coding assistant',
     emptyPrompt: 'Start a conversation below',
   },
+  officeEmpty: {
+    title: 'Office mode',
+    subtitle: 'Draft, refine, and deliver documents',
+    hint: 'Pick a task card to fill the prompt, or type your request below',
+    cards: {
+      weeklyReport: {
+        title: 'Weekly report',
+        hint: 'DOCX · default deliverables/',
+      },
+      meetingMinutes: {
+        title: 'Meeting minutes',
+        hint: 'DOCX · topics and action items',
+      },
+      projectDeck: {
+        title: 'Project deck',
+        hint: 'PPTX · cover and bullet slides',
+      },
+      dataReport: {
+        title: 'Data report',
+        hint: 'XLSX · tables and charts',
+      },
+    },
+    prefill: {
+      weeklyReport:
+        'Write this week’s work report (DOCX). Run load_skill office-weekly-report first, then follow the skill: confirm date range and audience, read_office any attachments I provide, write_office to deliverables/ (path optional).',
+      meetingMinutes:
+        'Draft meeting minutes (DOCX): time, attendees, discussion points, decisions, and action items (owner and due date). write_office to deliverables/ without path.',
+      projectDeck:
+        'Create a project status deck (PPTX): cover (name + presenter), progress bullets, risks, and next steps. write_office to deliverables/ without path.',
+      dataReport:
+        'Build an Excel data report (XLSX) with headers, key metrics, and optional charts. read_office any existing spreadsheet first, then write_office to deliverables/.',
+    },
+  },
   a11y: {
     skipToMain: 'Skip to main content',
     skipToComposer: 'Skip to message input',
@@ -219,7 +252,11 @@ const en: TranslationMap = {
     sendAria: 'Send message',
     turnInterrupted: 'Interrupted',
     turnStillRunning: 'A turn is still running on this thread — reconnected to it. Wait for it to finish or press Stop.',
+    turnReconnecting: 'Reconnected to the background turn — syncing progress…',
     runtimeSidecarRestart: 'Runtime restarted; generation stopped',
+    runtimeSidecarRestartReconnecting: 'Local runtime restarted — reconnecting to the background turn…',
+    runtimeOfflineReconnecting:
+      'Disconnected from the local runtime — reconnecting (the background turn may still be running)',
     interruptFailed: 'Could not interrupt the turn: {{message}}',
     workspaceLabel: 'Workspace directory',
     chooseWorkspace: 'Choose workspace directory',
@@ -278,6 +315,7 @@ const en: TranslationMap = {
     selectTaskType: 'Task type',
     agentModeHint: 'WorkspaceWrite + network (engine #273 shell elevation)',
     officeRunModeHint: 'Office mode uses Agent only (no Plan / YOLO)',
+    officeStatusBar: 'Office mode · default output: deliverables/ · auto-refresh and preview after generate',
     runModeYoloHint: 'DangerFullAccess: SandboxPolicy fully unrestricted (use with caution)',
   },
   banner: {
@@ -305,7 +343,16 @@ const en: TranslationMap = {
       'Page reload is disabled (F5 / Ctrl+R). Reloading clears in-memory chat state — use the sidebar to switch sessions or wait for the turn to finish saving.',
     streamError: 'Stream error',
     runtimeRestartDuringStream:
-      'Local runtime restarted (often after saving system settings). Active generation was stopped; use Retry connection and continue the same session — scratchpad progress is usually still on disk.',
+      'Local runtime restarted (often after saving settings). If a turn was in progress, we will try to reconnect automatically; billing may continue until you press Stop.',
+    turnDetachedSidecar:
+      'Local runtime restarted. The background turn may still be running and billing API usage — reconnecting automatically. Press Stop if you do not need it.',
+    turnDetachedOffline:
+      'Cannot reach the local runtime. The background turn may still be running and billing — we will sync when the connection returns. Press Stop if you do not need it.',
+    turnDetachedBillingWarn:
+      'The background turn has been unreachable for 15+ seconds and may still be billing. Press Stop to end it, or wait for reconnect.',
+    turnAutoStoppedOffline:
+      'Runtime was unreachable for 2 minutes — the background turn was stopped automatically to prevent further API charges.',
+    turnReconnectFailed: 'Failed to reconnect to the background turn: {{message}}',
     unauthorizedBearer: 'Unauthorized (401): runtime Bearer token does not match sidecar.',
     missingApiKey: 'Missing or invalid DeepSeek API Key. Configure it in ~/.zagens/config.toml or the DEEPSEEK_API_KEY environment variable.',
     approvalMissingThread: 'Cannot resolve approval: missing thread / turn. Wait for turn.started and retry.',
@@ -385,11 +432,13 @@ const en: TranslationMap = {
       changes: 'This session',
     },
     officeFilterChangesEmpty: 'No file diffs in this session yet — cannot filter by changes.',
+    openedWithSystemApp: 'Opened with the system default app',
     errors: {
       invalidRel: 'Invalid workspace-relative path',
       pathTraversal: 'Path must not contain ..',
       needWorkspace: 'Set a Composer workspace path first',
       binaryNeedsDesktop: 'Binary preview requires the desktop app, or start a session first',
+      officeUseSystemApp: 'Word/Excel/PowerPoint files open in your system app',
     },
   },
   workspaceRules: {

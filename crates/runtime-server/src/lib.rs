@@ -28,6 +28,7 @@ mod path_guard;
 mod project_context;
 mod project_doc;
 mod prompts;
+mod office_env;
 mod python_env;
 pub mod repl;
 mod retry_status;

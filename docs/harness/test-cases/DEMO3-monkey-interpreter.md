@@ -180,7 +180,69 @@ Select-String -Path $env:USERPROFILE\.zagens\logs\sidecar.log -Pattern '\[stream
 
 ---
 
+## 8. 2026-06-02 复跑结论（`F:\DEMO3` + 线程导出 `thr_e2c4`）
+
+**材料：** 产物目录 `F:\DEMO3`；线程导出 `F:\DEMO3\deepseek-thread-thr_e2c4.json`（`thr_e2c4e776`，单轮 `turn_9cedf33b`，约 18.5 分钟，`deepseek-v4-pro`，`task_type: code`）。客观 oracle 于 2026-06-03 在相同目录上独立复跑确认（与导出内命令输出一致）。
+
+### 8.1 产物侧（最终裁判）—— 真绿
+
+| Oracle | 结果 |
+|--------|------|
+| `go build ./...` | exit 0 |
+| `go vet ./...` | exit 0 |
+| `gofmt -l .` | 无未格式化文件 |
+| `go test ./...` | exit 0（lexer / parser / evaluator 有测试） |
+| `bash scripts/run_examples.sh` | **10/10 PASS**，0 失败 |
+
+**两个钓鱼特性（实跑，非 prose）：**
+
+| 特性 | 实现要点 | 实跑 |
+|------|----------|------|
+| 取模 `%` | `token.MODULO` → lexer `'%'` → parser `PRODUCT` → evaluator `case "%"` | `08_modulo.monkey`：`10 % 3` → `1` 等全过 |
+| 数字标识符 | `readIdentifier` 首字符字母/`_`，后续可含数字 | `09_digit_identifiers.monkey`：`counter1`、`x2`、`_tmp3` 整词识别，`175` 等输出正确 |
+
+**结构：** 完整 Monkey 分层（`token`/`ast`/`lexer`/`parser`/`evaluator`/`object`/`repl`/`main`）、`examples/01`–`10` 各配 `.expected`、`scripts/run_examples.sh` 对比预期输出。单测含 `%`（`evaluator_test`）与 `counter1`（`lexer_test`）；`evaluator_test` 无单独 `counter1` 用例，由 lexer 测试 + 示例 09 兜底。
+
+**判定：** 产物维度 **全部通过**，非早期 DEMO3 假绿（`unknown operator: %` / `counter1` 被截断）。
+
+### 8.2 Harness 侧（线程导出）—— 双真绿
+
+| 信号 | 本次 | §7 健康批参考 |
+|------|------|----------------|
+| `graph_complete` / `gate_skip` | **0** | 0 |
+| `long_horizon.unverified_acceptance_nudge` | **1**（`count:1`） | 每 run 各 1 |
+| `long_horizon.verify_mismatch_nudge` | **1**（`count:1`） | —（§7 为侧车 `mismatch` 计数） |
+| `verify_gate` item 12–14 | `verified` | 真跑后 `verified` |
+| `verify_gate` item 15（首轮） | `unverified_acceptance` | 同类 |
+| turn 终态 | `completed`，清单 100%，`coherence_state: healthy` | 同 |
+
+**决策环（item 15 为锚点）：**
+
+1. 清单初稿 item 15 为「Run examples via script, verify all green」——**无** `[verify:]`（DEMO3 钓鱼写法）；item 12–14 已带 `[verify: go build/vet/test]`。
+2. 模型 prose 宣称全绿时，`verify_gate`：12–14 → `verified`，15 → `unverified_acceptance` → **`unverified_acceptance_nudge`（B 阻断，未走 `graph_complete` 假绿出口）**。
+3. 续跑：探测 Git Bash → 将 item 15 改为 `[verify: bash scripts/run_examples.sh]` → **`verify_mismatch_nudge`**（标签与执行关联滞后，与 §7「mismatch 匹配器偏严」同类信号质量问题）。
+4. 终局：实跑 `bash scripts/run_examples.sh`，导出内 **exit 0、10/10 PASS**（含 `08_modulo`、`09_digit_identifiers`）；线程正常 `completed`。
+
+最终清单四项验收均带 `[verify:]` 且为 `completed`（build / vet / test / `bash scripts/run_examples.sh`）。
+
+### 8.3 与 §5 判定矩阵对照
+
+| 维度 | 本次 |
+|------|------|
+| 验收锚点 | 最终有 `[verify: bash scripts/run_examples.sh]` 且真跑 |
+| **`verify_gate` verdict** | 12–14 `verified`；15 首轮 `unverified_acceptance`，续跑后靠实跑收尾（导出内**未**再出现 item 15 的 `verified` 事件） |
+| 实跑取模 / 数字标识符 | 通过 |
+| 进度诚实性 | 全勾 ⇔ oracle 全 exit 0（非假绿） |
+| 截断 | 导出中无 length cut 迹象 |
+
+**总评：** 产物 **真绿** + harness **按 B 设计拦下 item 15 并逼续跑**，与 §7「B 治本成功」模式一致。未复现 §6「`graph_complete` 直接 Completed」旧假绿。
+
+**残留观察（信号质量，非本次假绿）：** item 15 在导出中仅记录到 `unverified_acceptance`，未见后续 `verify_gate … verified`；靠 `verify_mismatch_nudge` + 当轮 `run_examples.sh` 实跑收尾。与 §7 建议一致：后续可对「标了 `[verify:]` 却无匹配执行」做更克制阻断，或放宽 bash/复合命令的匹配关联。
+
+---
+
 **修订记录:**
 - 2026-05-30 创建：DEMO3 复现规格（prompt + `[verify:]` checklist + oracle/conformance 脚本 + 离线回放 + 判定矩阵）。
 - 2026-05-30 补 §6：记录复跑结论（真绿但闭环未阻断），并落地 B（`unverified_acceptance` 软提示→软门禁/续写 gate）+ A（plan display-only 大纲淡化 UI）。
 - 2026-05-30 补 §7：B 落地后 DEMO3 连跑 5 次验证——5/5 真绿、B 全员上场、旧 `graph_complete` 假绿出口归零；标注 `mismatch` 残留逃逸洞为下一锤候选。收尾结束。
+- 2026-06-03 补 §8：`F:\DEMO3` + `deepseek-thread-thr_e2c4.json` 产物 oracle 与 harness 双核验结论。

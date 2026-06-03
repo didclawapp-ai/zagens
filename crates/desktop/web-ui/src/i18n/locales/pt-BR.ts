@@ -8,6 +8,39 @@ const ptBr: TranslationMap = {
     heroTagline: 'Seu assistente de código com IA',
     emptyPrompt: 'Comece uma conversa abaixo',
   },
+  officeEmpty: {
+    title: 'Modo escritório',
+    subtitle: 'Redigir, organizar e entregar documentos',
+    hint: 'Escolha um cartão de tarefa ou digite o pedido abaixo',
+    cards: {
+      weeklyReport: {
+        title: 'Relatório semanal',
+        hint: 'DOCX · padrão deliverables/',
+      },
+      meetingMinutes: {
+        title: 'Ata de reunião',
+        hint: 'DOCX · tópicos e ações',
+      },
+      projectDeck: {
+        title: 'Apresentação de projeto',
+        hint: 'PPTX · capa e tópicos',
+      },
+      dataReport: {
+        title: 'Relatório de dados',
+        hint: 'XLSX · tabelas e gráficos',
+      },
+    },
+    prefill: {
+      weeklyReport:
+        'Escreva o relatório semanal (DOCX). Execute load_skill office-weekly-report, confirme período e público, read_office nos anexos se houver, write_office em deliverables/ (path opcional).',
+      meetingMinutes:
+        'Redija a ata (DOCX): data, participantes, discussão, decisões e ações (responsável e prazo). write_office em deliverables/ sem path.',
+      projectDeck:
+        'Crie um deck de status (PPTX): capa, progresso, riscos e próximos passos. write_office em deliverables/ sem path.',
+      dataReport:
+        'Gere relatório Excel (XLSX) com cabeçalhos, métricas e gráficos opcionais. read_office na planilha existente, depois write_office em deliverables/.',
+    },
+  },
   a11y: {
     skipToMain: 'Ir para o conteúdo principal',
     skipToComposer: 'Ir para a entrada de mensagem',
@@ -219,7 +252,12 @@ const ptBr: TranslationMap = {
     sendAria: 'Enviar mensagem',
     turnInterrupted: 'Interrompido',
     turnStillRunning: 'Ainda há um turno em execução nesta thread — reconectado a ele. Aguarde terminar ou pressione Parar.',
+    turnReconnecting: 'Reconectado ao turno em segundo plano — sincronizando progresso…',
     runtimeSidecarRestart: 'Runtime reiniciado; geração interrompida',
+    runtimeSidecarRestartReconnecting:
+      'Runtime local reiniciado — reconectando ao turno em segundo plano…',
+    runtimeOfflineReconnecting:
+      'Desconectado do runtime local — reconectando (o turno em segundo plano pode ainda estar ativo)',
     interruptFailed: 'Não foi possível interromper o turno: {{message}}',
     workspaceLabel: 'Diretório do workspace',
     chooseWorkspace: 'Escolher diretório do workspace',
@@ -278,6 +316,7 @@ const ptBr: TranslationMap = {
     selectTaskType: 'Tipo de tarefa',
     agentModeHint: 'WorkspaceWrite + rede (elevação de shell do engine #273)',
     officeRunModeHint: 'O modo Escritório usa apenas Agent (sem Plan / YOLO)',
+    officeStatusBar: 'Escritório · deliverables/ · visualização após gerar',
     runModeYoloHint: 'DangerFullAccess: SandboxPolicy totalmente irrestrita (use com cautela)',
   },
   banner: {
@@ -305,7 +344,16 @@ const ptBr: TranslationMap = {
       'Recarregar a página está desativado (F5 / Ctrl+R). Recarregar apaga o chat na memória — use a barra lateral ou aguarde o término do salvamento do turno.',
     streamError: 'Erro no stream',
     runtimeRestartDuringStream:
-      'O runtime local reiniciou (geralmente após salvar configurações do sistema). A geração ativa foi interrompida; use Tentar reconexão e continue a mesma sessão — o progresso do scratchpad costuma permanecer no disco.',
+      'O runtime local reiniciou (geralmente após salvar configurações). Se havia um turno em andamento, tentaremos reconectar automaticamente; a cobrança pode continuar até você pressionar Parar.',
+    turnDetachedSidecar:
+      'Runtime local reiniciou. O turno em segundo plano pode ainda estar ativo e cobrando a API — reconectando automaticamente. Pressione Parar se não precisar dele.',
+    turnDetachedOffline:
+      'Não foi possível alcançar o runtime local. O turno em segundo plano pode ainda estar ativo e cobrando — sincronizaremos quando a conexão voltar. Pressione Parar se não precisar dele.',
+    turnDetachedBillingWarn:
+      'O turno em segundo plano está inalcançável há mais de 15 segundos e pode continuar cobrando. Pressione Parar para encerrar ou aguarde a reconexão.',
+    turnAutoStoppedOffline:
+      'Runtime inalcançável por 2 minutos — o turno em segundo plano foi interrompido automaticamente para evitar mais cobranças da API.',
+    turnReconnectFailed: 'Falha ao reconectar ao turno em segundo plano: {{message}}',
     unauthorizedBearer: 'Não autorizado (401): o Bearer token do runtime não corresponde ao sidecar.',
     missingApiKey: 'DeepSeek API Key ausente ou inválida. Configure em ~/.zagens/config.toml ou na variável de ambiente DEEPSEEK_API_KEY.',
     approvalMissingThread: 'Não foi possível resolver a aprovação: thread / turno ausente. Aguarde turn.started e tente novamente.',
@@ -385,11 +433,13 @@ const ptBr: TranslationMap = {
       changes: 'Esta sessão',
     },
     officeFilterChangesEmpty: 'Ainda não há diffs de arquivo nesta sessão — não é possível filtrar por alterações.',
+    openedWithSystemApp: 'Aberto com o aplicativo padrão do sistema',
     errors: {
       invalidRel: 'Caminho relativo ao workspace inválido',
       pathTraversal: 'O caminho não pode conter ..',
       needWorkspace: 'Defina primeiro um caminho de workspace no Composer',
       binaryNeedsDesktop: 'Pré-visualização binária exige o app desktop ou iniciar uma sessão primeiro',
+      officeUseSystemApp: 'Word/Excel/PowerPoint abrem no aplicativo do sistema',
     },
   },
   workspaceRules: {

@@ -103,6 +103,7 @@ export type AppShellProps = {
     nonce: number;
   };
   composerPrefill?: { text: string; nonce: number };
+  onOfficeQuickStart?: (prefill: string) => void;
   messages: TurnChatMessage[];
   agentStates: AgentState[];
   onChatOpenWorkspacePath: (relPath: string) => void;
@@ -125,6 +126,7 @@ export type AppShellProps = {
   addWorkspaceFileToChat: (relPath: string, isDirectory?: boolean) => void;
   focusFilesNonce: number;
   focusFilesRelPath: string | null;
+  filesRefreshNonce?: number;
   focusDiffNonce: number;
   onRequestChecklist: () => void;
   onRequestAudit: () => void;
@@ -206,6 +208,7 @@ export default function AppShell({
   lhtChip,
   composerMention,
   composerPrefill,
+  onOfficeQuickStart,
   messages,
   agentStates,
   onChatOpenWorkspacePath,
@@ -228,6 +231,7 @@ export default function AppShell({
   addWorkspaceFileToChat,
   focusFilesNonce,
   focusFilesRelPath,
+  filesRefreshNonce,
   focusDiffNonce,
   onRequestChecklist,
   onRequestAudit,
@@ -391,6 +395,8 @@ export default function AppShell({
               }
               onEditMessage={onEditMessage}
               onBacktrackFromMessage={onBacktrackFromMessage}
+              officeSession={officeSession}
+              onOfficeQuickStart={officeSession ? onOfficeQuickStart : undefined}
             />
           </section>
         </main>
@@ -420,6 +426,7 @@ export default function AppShell({
             addWorkspaceFileToChat={addWorkspaceFileToChat}
             focusFilesNonce={focusFilesNonce}
             focusFilesRelPath={focusFilesRelPath}
+            filesRefreshNonce={filesRefreshNonce}
             focusDiffNonce={focusDiffNonce}
             agentStates={agentStates}
             onRequestChecklist={onRequestChecklist}

@@ -8,6 +8,39 @@ const ja: TranslationMap = {
     heroTagline: 'AI コーディングアシスタント',
     emptyPrompt: '下の入力欄から会話を始めましょう',
   },
+  officeEmpty: {
+    title: 'Office モード',
+    subtitle: '文書の作成・整理・納品',
+    hint: 'タスクカードでプロンプトを入力欄に入れるか、下に直接入力',
+    cards: {
+      weeklyReport: {
+        title: '週報',
+        hint: 'DOCX · 既定 deliverables/',
+      },
+      meetingMinutes: {
+        title: '議事録',
+        hint: 'DOCX · 議題とアクション',
+      },
+      projectDeck: {
+        title: 'プロジェクト報告 PPT',
+        hint: 'PPTX · 表紙と要点',
+      },
+      dataReport: {
+        title: 'データレポート',
+        hint: 'XLSX · 表とグラフ',
+      },
+    },
+    prefill: {
+      weeklyReport:
+        '今週の週報（DOCX）を作成してください。先に load_skill office-weekly-report を実行し、期間と宛先を確認、添付があれば read_office、write_office は deliverables/（path 省略可）。',
+      meetingMinutes:
+        '議事録（DOCX）を作成：日時、参加者、議論、決定事項、アクション（担当・期限）。write_office は deliverables/、path 不要。',
+      projectDeck:
+        'プロジェクト報告 PPT（PPTX）：表紙、進捗、リスク、次のステップ。write_office は deliverables/、path 不要。',
+      dataReport:
+        'Excel データレポート（XLSX）を作成。既存表があれば read_office の後 write_office で deliverables/ に出力。',
+    },
+  },
   a11y: {
     skipToMain: 'メインコンテンツへスキップ',
     skipToComposer: 'メッセージ入力へスキップ',
@@ -219,7 +252,11 @@ const ja: TranslationMap = {
     sendAria: 'メッセージを送信',
     turnInterrupted: '中断されました',
     turnStillRunning: 'このスレッドではターンがまだ実行中です。再接続しました。完了を待つか、停止を押してください。',
+    turnReconnecting: 'バックグラウンドのターンに再接続しました。進捗を同期中…',
     runtimeSidecarRestart: 'Runtime が再起動したため、生成を停止しました',
+    runtimeSidecarRestartReconnecting: 'ローカル Runtime が再起動しました。バックグラウンドのターンに再接続しています…',
+    runtimeOfflineReconnecting:
+      'ローカル Runtime への接続が切れました。再接続中（バックグラウンドのターンはまだ動いている可能性があります）',
     interruptFailed: 'ターンを中断できませんでした: {{message}}',
     workspaceLabel: 'ワークスペースディレクトリ',
     chooseWorkspace: 'ワークスペースディレクトリを選択',
@@ -278,6 +315,7 @@ const ja: TranslationMap = {
     selectTaskType: 'タスクタイプ',
     agentModeHint: 'WorkspaceWrite + ネットワーク（engine #273 shell 昇格）',
     officeRunModeHint: 'Office モードは Agent のみ使用（Plan / YOLO なし）',
+    officeStatusBar: 'Office · deliverables/ · 生成後にプレビュー',
     runModeYoloHint: 'DangerFullAccess: SandboxPolicy が完全に制限なし（注意して使用）',
   },
   banner: {
@@ -305,7 +343,16 @@ const ja: TranslationMap = {
       'ページの再読み込みは無効です（F5 / Ctrl+R）。再読み込みするとメモリ上のチャット状態が消えます — サイドバーでセッションを切り替えるか、ターンの保存完了を待ってください。',
     streamError: 'ストリームエラー',
     runtimeRestartDuringStream:
-      'ローカル runtime が再起動しました（システム設定保存後によく発生）。アクティブな生成は停止されました。「接続を再試行」を使い同じセッションを続けてください — スクラッチパッドの進捗は通常ディスク上に残っています。',
+      'ローカル runtime が再起動しました（設定保存後によく発生）。進行中のターンがあれば自動再接続を試みます。不要なら「停止」を押してください（課金が続く場合があります）。',
+    turnDetachedSidecar:
+      'ローカル runtime が再起動しました。バックグラウンドのターンはまだ動いて API 課金が続く可能性があります。自動再接続中。不要なら「停止」を押してください。',
+    turnDetachedOffline:
+      'ローカル runtime に接続できません。バックグラウンドのターンはまだ動いている可能性があります。接続復帰後に同期します。不要なら「停止」を押してください。',
+    turnDetachedBillingWarn:
+      'バックグラウンドのターンが 15 秒以上到達不能で、課金が続いている可能性があります。「停止」で終了するか、再接続をお待ちください。',
+    turnAutoStoppedOffline:
+      'runtime が 2 分間到達不能のため、追加課金防止のためバックグラウンドのターンを自動停止しました。',
+    turnReconnectFailed: 'バックグラウンドのターンへの再接続に失敗しました: {{message}}',
     unauthorizedBearer: '未認可 (401): runtime Bearer token が sidecar と一致しません。',
     missingApiKey: 'DeepSeek API Key が未設定または無効です。~/.zagens/config.toml または DEEPSEEK_API_KEY 環境変数で設定してください。',
     approvalMissingThread: '承認を解決できません: thread / turn がありません。turn.started を待って再試行してください。',
@@ -385,11 +432,13 @@ const ja: TranslationMap = {
       changes: 'このセッション',
     },
     officeFilterChangesEmpty: 'このセッションにファイル差分がまだありません — changes でフィルタできません。',
+    openedWithSystemApp: 'システムの既定アプリで開きました',
     errors: {
       invalidRel: 'ワークスペース相対パスが無効です',
       pathTraversal: 'パスに .. を含めることはできません',
       needWorkspace: '先に Composer ワークスペースパスを設定してください',
       binaryNeedsDesktop: 'バイナリプレビューにはデスクトップアプリが必要です。または先にセッションを開始してください',
+      officeUseSystemApp: 'Word/Excel/PowerPoint はシステムアプリで開いてください',
     },
   },
   workspaceRules: {

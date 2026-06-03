@@ -5,6 +5,7 @@ import type { ToolCardModel } from './ToolCard';
 import type { AgentState } from '../types/agent';
 import { isLastUserMessage } from '../lib/chat/backtrackDepth';
 import { useT } from '../i18n';
+import { OfficeEmptyState } from './OfficeEmptyState';
 
 interface Message {
   id: string;
@@ -26,6 +27,8 @@ interface Props {
   onRetryMessage?: (content: string) => void;
   onOpenDiffInPanel?: () => void;
   onBacktrackFromMessage?: (messageId: string, content: string) => void;
+  officeSession?: boolean;
+  onOfficeQuickStart?: (prefill: string) => void;
 }
 
 /** Assistant body scroll cap handles follow-scroll while tokens arrive. */
@@ -49,6 +52,8 @@ export default function ChatView({
   onRetryMessage,
   onOpenDiffInPanel,
   onBacktrackFromMessage,
+  officeSession = false,
+  onOfficeQuickStart,
 }: Props) {
   const { t } = useT();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -83,17 +88,20 @@ export default function ChatView({
     >
       {/* Match Composer: mx-auto max-w-3xl so transcript edges align with the input card */}
       <div className="mx-auto w-full max-w-3xl">
-        {messages.length === 0 && (
-          <div className="flex min-h-[min(60vh,28rem)] items-center justify-center">
-            <div className="text-center">
-              <h1 className="text-3xl font-bold mb-2 text-accent font-display">
-                {t('app.title')}
-              </h1>
-              <p className="text-lg text-t-text-secondary">{t('app.heroTagline')}</p>
-              <p className="text-sm mt-2 text-t-text-muted">{t('app.emptyPrompt')}</p>
+        {messages.length === 0 &&
+          (officeSession && onOfficeQuickStart ? (
+            <OfficeEmptyState onPick={onOfficeQuickStart} />
+          ) : (
+            <div className="flex min-h-[min(60vh,28rem)] items-center justify-center">
+              <div className="text-center">
+                <h1 className="mb-2 font-display text-3xl font-bold text-accent">
+                  {t('app.title')}
+                </h1>
+                <p className="text-lg text-t-text-secondary">{t('app.heroTagline')}</p>
+                <p className="mt-2 text-sm text-t-text-muted">{t('app.emptyPrompt')}</p>
+              </div>
             </div>
-          </div>
-        )}
+          ))}
 
         {messages.map((msg) => (
           <ChatErrorBoundary key={msg.id}>

@@ -19,6 +19,10 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 use wait_timeout::ChildExt;
 
+use super::office_common::{
+    classify_office_generation_error, resolve_write_office_path, save_office_payload,
+    workspace_rel_path, write_xlsx_html_preview,
+};
 use super::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
     optional_str, required_str,
@@ -53,7 +57,7 @@ impl ToolSpec for WriteOfficeTool {
                 },
                 "path": {
                     "type": "string",
-                    "description": "Output file path (relative to workspace or absolute)"
+                    "description": "Output file path (optional). Default: deliverables/<title-or-timestamp>.<format> (auto-increment on collision)"
                 },
                 "title": {
                     "type": "string",
@@ -128,7 +132,7 @@ impl ToolSpec for WriteOfficeTool {
                     "items": { "type": "object" }
                 }
             },
-            "required": ["format", "path"]
+            "required": ["format"]
         })
     }
 
@@ -150,10 +154,8 @@ impl ToolSpec for WriteOfficeTool {
 
     async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
         let format = required_str(&input, "format")?;
-        let path_str = required_str(&input, "path")?;
-        let output_path = context.resolve_path(path_str)?;
+        let output_path = resolve_write_office_path(&input, context, format)?;
 
-        // Ensure parent directory exists
         if let Some(parent) = output_path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
                 ToolError::execution_failed(format!("无法创建目录 {}: {}", parent.display(), e))
@@ -162,7 +164,7 @@ impl ToolSpec for WriteOfficeTool {
 
         let data = input.clone();
         let out = output_path.clone();
-
+        let workspace = context.workspace.clone();
         let format_owned = format.to_string();
         let result = tokio::task::spawn_blocking(move || match format_owned.as_str() {
             "xlsx" => generate_xlsx(&data, &out),
@@ -176,19 +178,39 @@ impl ToolSpec for WriteOfficeTool {
 
         match result {
             Ok(engine) => {
-                let meta = serde_json::json!({
-                    "path": output_path.to_string_lossy(),
+                let rel = workspace_rel_path(&workspace, &output_path);
+                let cache_path = save_office_payload(&workspace, &output_path, &input).ok();
+                let preview_path = if format == "xlsx" {
+                    write_xlsx_html_preview(&workspace, &output_path).ok().flatten()
+                } else {
+                    None
+                };
+                let preview_rel = preview_path
+                    .as_ref()
+                    .map(|p| workspace_rel_path(&workspace, p));
+                let mut meta = serde_json::json!({
+                    "path": rel,
                     "format": format,
                     "engine": engine,
                 });
-                Ok(ToolResult::success(format!(
-                    "已生成 {} ({} 引擎)",
-                    output_path.display(),
-                    engine
-                ))
-                .with_metadata(meta))
+                if let Some(c) = cache_path.as_ref() {
+                    meta["payload_cache"] = serde_json::json!(workspace_rel_path(&workspace, c));
+                }
+                if let Some(pr) = preview_rel {
+                    meta["preview_html"] = serde_json::json!(pr);
+                }
+                let mut msg = format!("已生成 {rel} ({engine} 引擎)");
+                if cache_path.is_some() {
+                    msg.push_str(&format!(
+                        "\n增量修改：先 load_office_payload path=\"{rel}\"，改 payload 后再 write_office 同路径覆盖。"
+                    ));
+                }
+                Ok(ToolResult::success(msg).with_metadata(meta))
             }
-            Err(msg) => Ok(ToolResult::error(msg)),
+            Err(msg) => {
+                let classified = classify_office_generation_error(&msg, &msg);
+                Ok(ToolResult::error(classified))
+            }
         }
     }
 }
@@ -1331,10 +1353,11 @@ fn generate_via_python(format: &str, input: &Value, path: &PathBuf) -> Result<()
                 Some(String::from_utf8_lossy(&buf).to_string())
             })
             .unwrap_or_default();
-        return Err(format!(
+        let raw = format!(
             "Python 脚本执行失败 (exit {:?}):\n{stderr_output}",
             exit_status.code()
-        ));
+        );
+        return Err(classify_office_generation_error(&raw, &stderr_output));
     }
 
     Ok(())
@@ -1443,3 +1466,4 @@ fn xml_escape(s: &str) -> String {
         .replace('"', "&quot;")
         .replace('\'', "&apos;")
 }
+

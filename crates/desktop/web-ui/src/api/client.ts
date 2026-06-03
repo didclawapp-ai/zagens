@@ -1582,6 +1582,22 @@ export async function saveSystemSettings(settings: SystemSettings): Promise<void
   await invoke('save_system_settings', { settings });
 }
 
+export type OfficeEnvironmentStatus = {
+  bundled_python?: string | null;
+  office_venv_ready?: boolean;
+  resolved_python?: string | null;
+  ready?: boolean;
+  imports?: Record<string, unknown>;
+};
+
+export async function fetchOfficeEnvironment(): Promise<OfficeEnvironmentStatus> {
+  const res = await runtimeRequest('/v1/office/environment', { method: 'GET' });
+  if (!res.ok) {
+    throw new Error(`office environment: HTTP ${res.status}`);
+  }
+  return res.json() as Promise<OfficeEnvironmentStatus>;
+}
+
 // ========== LHT Settings (Desktop Tauri) ==========
 
 export type LhtGateMode = 'off' | 'observe' | 'enforce';

@@ -16,7 +16,7 @@ use super::{
     get_session, get_thread, get_thread_checklist, get_thread_context,
     get_thread_harness_cycles, get_thread_harness_task_graph, get_thread_scratchpad_status,
     get_topic_memory, get_task,
-    get_usage, import_skill_local,
+    get_office_environment, get_usage, import_skill_local,
     init_thread_scratchpad, install_skill_remote, interrupt_thread_turn, list_automation_runs,
     list_automations, list_blackboards, list_mcp_servers, list_mcp_tools, list_sessions,
     list_skills, list_tasks, list_thread_snapshots, list_threads, list_threads_summary,
@@ -38,6 +38,7 @@ pub fn build_router(state: RuntimeApiState) -> Router {
         )
         .route("/v1/resume-tasks/{thread_id}", get(get_resume_task))
         .route("/v1/workspace/status", get(workspace_status))
+        .route("/v1/office/environment", get(get_office_environment))
         .route("/v1/workspace/browse", get(browse_workspace_by_root))
         .route("/v1/workspace/file", get(read_workspace_file_by_root))
         .route("/v1/stream", post(stream::stream_turn))

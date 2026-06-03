@@ -9,6 +9,8 @@ export enum FileType {
   Image = 'image',
   Csv = 'csv',
   Pdf = 'pdf',
+  Html = 'html',
+  /** Legacy routing label; DOCX/PPTX/XLSX are opened externally, not previewed. */
   Office = 'office',
   Unknown = 'unknown',
 }
@@ -36,6 +38,8 @@ export interface PreviewState {
   size?: number;
   /** MIME type for binary files (e.g. "image/png"). */
   mimeType?: string;
+  /** When true, `content` is UTF-8 HTML (sidecar preview), not base64. */
+  htmlPreview?: boolean;
   /** True when binary payload was capped at `PREVIEW_MAX_BINARY_BYTES` on disk. */
   truncated?: boolean;
 }

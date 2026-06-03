@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useEffect,
   useRef,
   type Dispatch,
   type MutableRefObject,
@@ -15,6 +16,7 @@ import {
   startThreadTurn,
   threadIdFromSseEvent,
   threadTurnStillActive,
+  type RuntimeConnectionState,
   type SseTurnEvent,
 } from '../api/client';
 import type { ComposerOutboundMessage } from '../components/Composer';
@@ -59,6 +61,10 @@ import type { ScratchpadStatus } from '../api/client';
 import { saveStoredActiveSessionId } from '../lib/windowBridge';
 import { turnCacheHitPercent } from '../lib/cacheUsage';
 import { parseLhtStatusMessage, type LhtChipState } from '../lib/lhtChip';
+import {
+  useTurnStreamRecovery,
+  type StreamRecoveryContext,
+} from './useTurnStreamRecovery';
 
 export type TurnChatMessage = {
   id: string;
@@ -82,6 +88,7 @@ function nextId() {
 
 export type UseTurnSendParams = {
   t: (key: string, params?: Record<string, string>) => string;
+  runtimeConn: RuntimeConnectionState;
   streaming: boolean;
   resumedThreadId: string | null;
   resumedThreadIdRef: MutableRefObject<string | null>;
@@ -116,6 +123,11 @@ export type UseTurnSendParams = {
   onAgentSpawnToolCompleted: (toolCallId: string, toolName: string, mergedOutput: string) => void;
   applyAgentStreamEvent: (norm: NormalizedStreamEvent) => boolean;
   showApprovalIfOwned: (desktopHost: boolean, payload: ApprovalState) => void;
+  /** Called after each tool finishes (office deliverable hook, etc.). */
+  onToolCompleted?: (toolName: string, success: boolean, output: string) => void;
+  cancelCleanupRef: MutableRefObject<(() => void) | null>;
+  handleCancelStream: () => void;
+  streamingRef: MutableRefObject<boolean>;
 };
 
 export type UseTurnSendResult = {
@@ -129,6 +141,7 @@ export type UseTurnSendResult = {
 export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
   const {
     t,
+    runtimeConn,
     streaming,
     resumedThreadId,
     resumedThreadIdRef,
@@ -163,11 +176,41 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
     onAgentSpawnToolCompleted,
     applyAgentStreamEvent,
     showApprovalIfOwned,
+    onToolCompleted,
+    cancelCleanupRef,
+    handleCancelStream,
+    streamingRef,
   } = params;
 
   const lastPersistedTurnRef = useRef('');
   const toolProgressPendingRef = useRef('');
   const toolProgressRafRef = useRef<number | null>(null);
+  const streamRecoveryContextRef = useRef<StreamRecoveryContext | null>(null);
+
+  const { shouldSkipFinishOnAbort, clearDetachedState } = useTurnStreamRecovery({
+    t,
+    desktopHost,
+    runtimeConn,
+    streamingRef,
+    resumedThreadIdRef,
+    threadTurnRef,
+    streamControllersRef,
+    streamSessionRef,
+    streamRecoveryContextRef,
+    setMessages,
+    setStreamingThreadIds,
+    setPendingComposerStream,
+    handleCancelStream,
+    notifyRuntimeTransient,
+    refreshThreadContext,
+  });
+
+  useEffect(() => {
+    cancelCleanupRef.current = clearDetachedState;
+    return () => {
+      cancelCleanupRef.current = null;
+    };
+  }, [cancelCleanupRef, clearDetachedState]);
 
   const resetTurnPersistState = useCallback(() => {
     lastPersistedTurnRef.current = '';
@@ -309,6 +352,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
           if (finished) return;
           finished = true;
           streamSessionRef.current = null;
+          streamRecoveryContextRef.current = null;
           if (toolProgressRafRef.current != null) {
             cancelAnimationFrame(toolProgressRafRef.current);
             toolProgressRafRef.current = null;
@@ -372,6 +416,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
                 threadId: norm.threadId,
                 turnId: norm.turnId,
               };
+              syncRecoveryContext();
               if (norm.threadId) {
                 setResumedThreadId(norm.threadId);
                 void registerWindowThread(norm.threadId);
@@ -453,6 +498,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
                     status: norm.success ? ('done' as const) : ('error' as const),
                   };
                   onAgentSpawnToolCompleted(norm.id, tool.name, merged);
+                  onToolCompleted?.(tool.name, norm.success, merged);
                   return { ...m, tools };
                 }),
               );
@@ -563,6 +609,18 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
           filterThreadStreamEvents(tid, () => deliverSseEvent(ev, filter))(ev);
         };
 
+        const syncRecoveryContext = () => {
+          const { threadId, turnId } = threadTurnRef.current;
+          if (!threadId || !turnId) return;
+          streamRecoveryContextRef.current = {
+            assistantId,
+            threadId,
+            turnId,
+            deliverSseEvent: (ev, filter) => onSseEvent(ev, filter),
+            finishOnce,
+          };
+        };
+
         const handleHttpError = (err: Error & { status?: number }) => {
           const msg = err.message || String(err);
           const status = err.status;
@@ -620,6 +678,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
               threadId: resumedThreadId,
               turnId,
             };
+            syncRecoveryContext();
 
             await pollThreadTurnEvents(
               resumedThreadId,
@@ -627,7 +686,9 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
               (ev) => onSseEvent(ev, { turnId }),
               { signal, turnId },
             );
-            finishOnce();
+            if (!shouldSkipFinishOnAbort()) {
+              finishOnce();
+            }
           } else {
             await postStreamTurn(
               {
@@ -643,13 +704,20 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
                 ...modelSamplingForApi(modelParams),
               },
               (ev) => onSseEvent(ev),
-              () => finishOnce(),
+              () => {
+                if (!shouldSkipFinishOnAbort()) {
+                  finishOnce();
+                }
+              },
               (err) => handleHttpError(err as Error & { status?: number }),
               { signal },
             );
           }
         } catch (e) {
           if ((e as Error).name === 'AbortError') {
+            if (shouldSkipFinishOnAbort()) {
+              return;
+            }
             finishOnce();
             return;
           }
@@ -674,6 +742,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
                   threadId: resumedThreadId,
                   turnId: activeTurnId ?? '',
                 };
+                syncRecoveryContext();
                 setResumedThreadId(resumedThreadId);
                 setStreamingThreadIds((prev) => new Set(prev).add(resumedThreadId));
                 toast.warning(t('composer.turnStillRunning'));
@@ -696,7 +765,9 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
       })();
     },
     [
+      shouldSkipFinishOnAbort,
       streaming,
+      runtimeConn,
       resumedThreadId,
       resumedThreadIdRef,
       runMode,

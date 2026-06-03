@@ -35,6 +35,7 @@ import { useTurnSession } from './hooks/useTurnSession';
 import { useTurnApproval, type ApprovalState } from './hooks/useTurnApproval';
 import { useTurnStream } from './hooks/useTurnStream';
 import { useTurnSend, type TurnChatMessage } from './hooks/useTurnSend';
+import { parseWriteOfficeOutputPath } from './lib/officeDeliverable';
 import {
   type DesktopModelId,
   type DesktopRouteIntentOption,
@@ -98,6 +99,7 @@ export default function App() {
   const handleSelectSessionRef = useRef<(sessionId: string) => void>(() => {});
   const handleNewSessionRef = useRef<() => void>(() => {});
   const streamingRef = useRef(false);
+  const cancelCleanupRef = useRef<(() => void) | null>(null);
   const setApprovalRef = useRef<(value: ApprovalState | null) => void>(() => {});
   const setLastTurnOutputTokensRef = useRef<(value: number | null) => void>(() => {});
   const messagesRef = useRef<TurnChatMessage[]>([]);
@@ -149,6 +151,7 @@ export default function App() {
   } = useTurnStream({
     resumedThreadId,
     streamingRef,
+    cancelCleanupRef,
     t,
     onCancelSideEffects: () => {
       setApprovalRef.current(null);
@@ -190,13 +193,6 @@ export default function App() {
     t,
     selectedWorkspace,
     setSelectedWorkspace,
-    streamingRef,
-    streamControllersRef,
-    streamSessionRef,
-    setStreamingThreadIds,
-    setPendingComposerStream,
-    setMessages,
-    notifyRuntimeTransient,
   });
 
   useEffect(() => {
@@ -272,6 +268,8 @@ export default function App() {
     openDiffInPanel,
     handleRequestDiffPanel,
     handleComposerWorkspaceChange,
+    filesRefreshNonce,
+    handleOfficeDeliverableReady,
   } = useWorkspacePanel({
     t,
     runtimeConn,
@@ -286,7 +284,9 @@ export default function App() {
 
   const { handleSend, resetTurnPersistState } = useTurnSend({
     t,
+    runtimeConn,
     streaming,
+    streamingRef,
     resumedThreadId,
     resumedThreadIdRef,
     runMode,
@@ -320,6 +320,13 @@ export default function App() {
     onAgentSpawnToolCompleted,
     applyAgentStreamEvent,
     showApprovalIfOwned,
+    cancelCleanupRef,
+    handleCancelStream,
+    onToolCompleted: (toolName, success, output) => {
+      if (!officeSession || !success || toolName !== 'write_office') return;
+      const rel = parseWriteOfficeOutputPath(output);
+      if (rel) void handleOfficeDeliverableReady(rel);
+    },
   });
 
   const { handleSelectSession, handleNewSession } = useSessionNavigation({
@@ -793,6 +800,9 @@ export default function App() {
           : undefined
       }
       composerPrefill={composerPrefill}
+      onOfficeQuickStart={(text) =>
+        setComposerPrefill({ text: text.trim(), nonce: Date.now() })
+      }
       messages={messages}
       agentStates={agentStates}
       onChatOpenWorkspacePath={(rel) => void handleChatOpenWorkspacePath(rel)}
@@ -815,6 +825,7 @@ export default function App() {
       addWorkspaceFileToChat={addWorkspaceFileToChat}
       focusFilesNonce={focusWorkspaceFilesNonce}
       focusFilesRelPath={focusWorkspaceFilesRelPath}
+      filesRefreshNonce={filesRefreshNonce}
       focusDiffNonce={focusWorkspaceDiffNonce}
       onRequestChecklist={handleRequestChecklist}
       onRequestAudit={handleRequestAudit}

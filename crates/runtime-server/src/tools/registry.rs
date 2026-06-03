@@ -471,6 +471,12 @@ impl ToolRegistryBuilder {
         self.with_tool(Arc::new(ReadOfficeTool))
     }
 
+    #[must_use]
+    pub fn with_load_office_payload_tool(self) -> Self {
+        use super::office_payload::LoadOfficePayloadTool;
+        self.with_tool(Arc::new(LoadOfficePayloadTool))
+    }
+
     /// Include the image description tool (`describe_image`).
     ///
     /// Reads an image file and extracts its text content via a configured
@@ -537,6 +543,7 @@ impl ToolRegistryBuilder {
             .with_tool(Arc::new(WriteFileTool))
             .with_office_write_tool()
             .with_read_office_tool()
+            .with_load_office_payload_tool()
             .with_office_search_tools()
             .with_skill_tools()
             .with_note_tool()
@@ -1420,6 +1427,7 @@ mod tests {
 
         for name in [
             "read_office",
+            "load_office_payload",
             "write_office",
             "load_skill",
             "web_search",

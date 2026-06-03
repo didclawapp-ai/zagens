@@ -3,9 +3,13 @@ import { patchThread, type RuntimeConnectionState } from '../api/client';
 import type { RightPanelView } from '../components/RightPanel';
 import type { PreviewState } from '../components/preview/types';
 import { loadWorkspaceFileIntoPreview, normalizeWorkspaceRelPath } from '../lib/openWorkspaceFile';
-import { formatWorkspaceFileError } from '../lib/workspaceFileOpenError';
-import { isRuntimeApiAvailable } from '../lib/runtimeReachable';
+import {
+  isOfficePreviewExternal,
+  openWorkspaceFileWithSystemApp,
+} from '../lib/openWorkspaceSystem';
+import { formatWorkspaceFileError, WorkspaceFileOpenError } from '../lib/workspaceFileOpenError';
 import { toast } from '../lib/toast';
+import { isRuntimeApiAvailable } from '../lib/runtimeReachable';
 export type UseWorkspacePanelParams = {
   t: (key: string, params?: Record<string, string>) => string;
   runtimeConn: RuntimeConnectionState;
@@ -41,6 +45,7 @@ export function useWorkspacePanel({
   const [composerPrefill, setComposerPrefill] = useState<
     { text: string; nonce: number } | undefined
   >();
+  const [filesRefreshNonce, setFilesRefreshNonce] = useState(0);
 
   const closePanelPreview = useCallback(() => {
     setPanelPreview(null);
@@ -71,6 +76,16 @@ export function useWorkspacePanel({
         throw new Error(t('banner.runtimeNotConnected'));
       }
       revealWorkspaceFileInDirectory(relPath);
+      const fileName = (title?.trim() || relPath).split('/').pop() ?? relPath;
+      if (isOfficePreviewExternal(fileName)) {
+        if (!desktopHost) {
+          throw new WorkspaceFileOpenError('binaryNeedsDesktop');
+        }
+        await openWorkspaceFileWithSystemApp(selectedWorkspace, relPath);
+        setPanelPreview(null);
+        toast.info(t('workspaceFiles.openedWithSystemApp'));
+        return;
+      }
       const state = await loadWorkspaceFileIntoPreview({
         relPath,
         title,
@@ -88,6 +103,26 @@ export function useWorkspacePanel({
       desktopHost,
       t,
       revealWorkspaceFileInDirectory,
+    ],
+  );
+
+  const handleOfficeDeliverableReady = useCallback(
+    async (relPath: string) => {
+      setActiveInspector('workspace');
+      setRightPanelCollapsed(false);
+      setFocusWorkspaceFilesRelPath(relPath);
+      setFocusWorkspaceFilesNonce((n) => n + 1);
+      setFilesRefreshNonce((n) => n + 1);
+      try {
+        await openWorkspaceFileForPreview(relPath);
+      } catch {
+        // files tab still reveals path; office formats open via system app
+      }
+    },
+    [
+      setActiveInspector,
+      setRightPanelCollapsed,
+      openWorkspaceFileForPreview,
     ],
   );
 
@@ -158,5 +193,7 @@ export function useWorkspacePanel({
     openDiffInPanel,
     handleRequestDiffPanel,
     handleComposerWorkspaceChange,
+    filesRefreshNonce,
+    handleOfficeDeliverableReady,
   };
 }

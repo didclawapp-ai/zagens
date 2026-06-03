@@ -3,8 +3,9 @@ import {
   readThreadWorkspaceFile,
   readComposerWorkspaceFile,
 } from '../api/client';
-import { detectFileType, isBinaryFileType } from '../components/preview';
+import { detectFileType, isBinaryFileType, FileType } from '../components/preview';
 import type { PreviewState } from '../components/preview/types';
+import { isOfficePreviewExternal } from './openWorkspaceSystem';
 import { WorkspaceFileOpenError } from './workspaceFileOpenError';
 
 export function normalizeWorkspaceRelPath(raw: string): string {
@@ -18,7 +19,7 @@ export function normalizeWorkspaceRelPath(raw: string): string {
 
 /**
  * Load a file under the composer workspace or active thread workspace into a preview payload.
- * Same resolution rules as the file tree in RightPanel (runtime + optional Tauri for binary).
+ * DOCX/PPTX/XLSX (etc.) must use {@link openWorkspaceFileWithSystemApp} instead.
  */
 export async function loadWorkspaceFileIntoPreview(opts: {
   relPath: string;
@@ -36,7 +37,12 @@ export async function loadWorkspaceFileIntoPreview(opts: {
   }
 
   const title = opts.title?.trim() || relPath.split('/').pop() || relPath;
-  const fileType = detectFileType(title);
+  const fileName = relPath.split('/').pop() ?? relPath;
+  if (isOfficePreviewExternal(fileName)) {
+    throw new WorkspaceFileOpenError('officeUseSystemApp');
+  }
+
+  const fileType = detectFileType(fileName);
   const root = opts.workspaceRoot.trim();
 
   if (opts.resumedThreadId) {
@@ -52,7 +58,7 @@ export async function loadWorkspaceFileIntoPreview(opts: {
       });
       return {
         title,
-        fileName: relPath.split('/').pop(),
+        fileName,
         workspaceRelPath: relPath,
         content: bin.base64,
         fileType,
@@ -62,13 +68,15 @@ export async function loadWorkspaceFileIntoPreview(opts: {
       };
     }
     const file = await readThreadWorkspaceFile(opts.resumedThreadId, relPath);
+    const resolved = detectFileType(fileName, file.language_hint);
     return {
       title,
-      fileName: relPath.split('/').pop(),
+      fileName,
       workspaceRelPath: relPath,
       content: file.content,
       language: file.language_hint ?? undefined,
-      fileType: detectFileType(relPath.split('/').pop(), file.language_hint),
+      fileType: resolved,
+      htmlPreview: resolved === FileType.Html,
     };
   }
 
@@ -91,7 +99,7 @@ export async function loadWorkspaceFileIntoPreview(opts: {
     });
     return {
       title,
-      fileName: relPath.split('/').pop(),
+      fileName,
       workspaceRelPath: relPath,
       content: bin.base64,
       fileType,
@@ -102,12 +110,14 @@ export async function loadWorkspaceFileIntoPreview(opts: {
   }
 
   const file = await readComposerWorkspaceFile(root, relPath);
+  const resolved = detectFileType(fileName, file.language_hint);
   return {
     title,
-    fileName: relPath.split('/').pop(),
+    fileName,
     workspaceRelPath: relPath,
     content: file.content,
     language: file.language_hint ?? undefined,
-    fileType: detectFileType(relPath.split('/').pop(), file.language_hint),
+    fileType: resolved,
+    htmlPreview: resolved === FileType.Html,
   };
 }

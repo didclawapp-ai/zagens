@@ -9,6 +9,8 @@ import {
   TextRenderer,
   ImageRenderer,
   CsvRenderer,
+  PdfRenderer,
+  HtmlPreviewRenderer,
 } from './renderers';
 
 export function PreviewDispatcher({
@@ -26,40 +28,18 @@ export function PreviewDispatcher({
     case FileType.Csv:
       return <CsvRenderer {...common} />;
     case FileType.Pdf:
+      return <PdfRenderer {...common} />;
+    case FileType.Html:
+      return <HtmlPreviewRenderer {...common} />;
     case FileType.Office:
-      return <OfficePlaceholder {...common} />;
+      return (
+        <p className="p-6 text-center text-sm text-t-text-muted">
+          Word / Excel / PowerPoint 请使用系统默认应用打开（双击文件或右键「用系统应用打开」）。
+        </p>
+      );
     case FileType.Text:
     case FileType.Unknown:
     default:
       return <TextRenderer {...common} />;
   }
-}
-
-// ---------------------------------------------------------------------------
-// Phase 2 placeholder for binary document types
-// ---------------------------------------------------------------------------
-
-function OfficePlaceholder({ state }: RendererProps) {
-  const label =
-    state.fileType === FileType.Pdf
-      ? 'PDF 预览即将支持'
-      : 'Office 文档预览即将支持';
-
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-sm text-t-text-muted">
-      <p>{label}</p>
-      <p className="text-xs">
-        文件：{state.fileName ?? state.title}
-        {state.size != null ? `（${(state.size / 1024).toFixed(1)} KB）` : ''}
-      </p>
-      {state.truncated && (
-        <p className="text-xs text-amber-text/90 max-w-md">
-          内嵌预览尚未支持；已读取大小用于展示，若文件超过 10 MB 仅部分加载。
-        </p>
-      )}
-      <p className="text-xs text-t-text-muted/70">
-        目前可右键点击文件，用外部程序打开。
-      </p>
-    </div>
-  );
 }

@@ -20,8 +20,13 @@ pub mod glob_files;
 pub mod github;
 pub mod host_impl;
 pub mod large_output_router;
+pub mod office_common;
+pub mod office_payload;
 pub mod office_read;
 pub mod office_write;
+
+#[cfg(test)]
+mod office_smoke;
 pub mod parallel;
 pub mod plan;
 pub mod project;

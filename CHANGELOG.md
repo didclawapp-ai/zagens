@@ -22,9 +22,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Docs
+
+- **Harness (DEMO7):** 新增 DEMO6 超集长程规格——目标 ≥10k 行 Go（`loc_gate.sh`）、class/while、fmt/lint/disasm、testdata≥50。File: `docs/harness/test-cases/DEMO7-monkey-platform-10k.md`.
+- **Harness (DEMO6):** 新增 DEMO3 超集对比规格——Monkey 双后端（tree + 字节码 VM）、`parity.sh` / `coverage_gate.sh`、Zagens vs Cursor 同一 oracle 记录表。File: `docs/harness/test-cases/DEMO6-monkey-dual-backend.md`.
+- **Harness (DEMO3):** 补 §8——`F:\DEMO3`（`thr_e2c4` 线程导出）产物 oracle 真绿 + B/`verify_mismatch_nudge` 闭环记录。File: `docs/harness/test-cases/DEMO3-monkey-interpreter.md`.
+
 ### Runtime
 
-- **Feature (`read_office`):** Office 会话新增高保真办公文档读取工具：XLSX/XLS/XLSB/ODS 经 **calamine**（日期、公式、列对齐、`start_row`/`limit` 分页）；DOCX 表格与标题层级；PPTX 演讲者备注与表格；PDF/CSV/TSV 与大小上限防护。`read_file` 办公路径保留作兜底。Files: `crates/runtime-server/src/tools/office_read.rs`, `registry.rs`, `office.md`。
+- **Test (办公 smoke):** `office_smoke.rs` — XLSX/DOCX 默认路径与 payload 缓存、DOCX 表 read 回环、XLSX 增量 payload 重生成；PPTX/PDF 在 Office Python 就绪时校验魔数。File: `crates/runtime-server/src/tools/office_smoke.rs`.
+
+- **Feature (`read_office`):** Office 会话新增高保真办公文档读取工具：XLSX/XLS/XLSB/ODS 经 **calamine**（日期、公式、列对齐、`start_row`/`limit` 分页）；DOCX 表格与标题层级；PPTX 演讲者备注与表格；PDF/CSV/TSV 与大小上限防护。`read_file` 办公路径保留作兜底。Files: `crates/runtime-server/src/tools/office_read.rs`, `registry.rs`, `office.md`.
+- **Feature (办公交付闭环):** `write_office` 的 `path` 可选（默认 `deliverables/`、重名递增）；成功后缓存 payload（`load_office_payload`）；XLSX 生成 HTML 预览侧车；Python 错误分类；`GET /v1/office/environment`；办公意图识别扩展；smoke 测试。Files: `office_common.rs`, `office_payload.rs`, `office_env.rs`, `office_write.rs`, `task_type.rs`.
+- **Feature (内置技能):** `office-weekly-report` 周报技能模板。File: `assets/skills/office-weekly-report/SKILL.md`.
+
+### Zagens desktop
+
+- **Fix (流式断连恢复):** Sidecar 重启或 runtime 离线时，不再把 UI 误判为「已停止」而后台继续扣费——保持流式锁定、持久提示 + **停止**、在 `sidecar://ready` / 探测恢复后自动重连 SSE；离线超过 2 分钟自动 `interrupt` 后台回合。Files: `useTurnStreamRecovery.ts`, `useTurnSend.ts`, `useTurnStream.ts`, `useDesktopShell.ts`.
+- **Feature (办公空态入口):** 办公会话无消息时展示 4 个任务卡片（周报、纪要、汇报 PPT、数据报表），点击填充 Composer 提示（含 `load_skill office-weekly-report`）。Files: `OfficeEmptyState.tsx`, `ChatView.tsx`, i18n ×4.
+- **Docs:** `office-mode-iteration-plan.md` 同步预览策略（PDF/HTML 右栏；Office 系统打开）与推荐顺序实施状态表。
+
+- **Feature (办公预览与发现):** 右侧内嵌预览 **PDF / HTML**；**DOCX/PPTX/XLSX** 双击或生成后用系统默认应用打开；`write_office` 完成后刷新 `deliverables` 并按扩展名分流。Files: `openWorkspaceSystem.ts`, `PdfRenderer.tsx`, `HtmlPreviewRenderer.tsx`, `useWorkspacePanel.ts`.
+- **Enhancement (办公 UI):** Composer 办公状态条；设置页 Office 环境就绪状态。Files: `Composer.tsx`, `SettingsPanel.tsx`, i18n ×4.
 
 ---
 

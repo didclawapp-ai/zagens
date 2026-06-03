@@ -1008,6 +1008,11 @@ export default function Composer({
         <div className="mx-auto max-w-3xl">
           <div className="card flex flex-col overflow-visible">
             <div className="order-2 flex flex-col">
+          {officeSession ? (
+            <p className="px-3 pt-2 pb-1 text-[10px] text-t-text-muted border-b border-divider/40">
+              {t('composer.officeStatusBar')}
+            </p>
+          ) : null}
           {bridgeError && (
             <p className="px-3 pt-3 text-xs text-error-text leading-relaxed">{bridgeError}</p>
           )}

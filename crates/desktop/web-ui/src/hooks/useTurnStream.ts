@@ -21,6 +21,8 @@ export type UseTurnStreamParams = {
   streamingRef: MutableRefObject<boolean>;
   t: (key: string, params?: Record<string, string>) => string;
   onCancelSideEffects: () => void;
+  /** Clears detach/recovery state before runtime interrupt (wired by useTurnSend). */
+  cancelCleanupRef?: MutableRefObject<(() => void) | null>;
 };
 
 export type UseTurnStreamResult = {
@@ -42,6 +44,7 @@ export function useTurnStream({
   streamingRef,
   t,
   onCancelSideEffects,
+  cancelCleanupRef,
 }: UseTurnStreamParams): UseTurnStreamResult {
   const [streamingThreadIds, setStreamingThreadIds] = useState<Set<string>>(() => new Set());
   const [pendingComposerStream, setPendingComposerStream] = useState(false);
@@ -76,6 +79,7 @@ export function useTurnStream({
   }, []);
 
   const handleCancelStream = useCallback(() => {
+    cancelCleanupRef?.current?.();
     const { threadId, turnId } = threadTurnRef.current;
     const streamControl =
       (threadId ? streamControllersRef.current.get(threadId) : undefined) ??
@@ -100,7 +104,7 @@ export function useTurnStream({
     }
 
     onCancelSideEffects();
-  }, [onCancelSideEffects, t]);
+  }, [cancelCleanupRef, onCancelSideEffects, t]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

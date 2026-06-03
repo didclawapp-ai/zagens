@@ -77,12 +77,27 @@ fn message_implies_office(msg: &str) -> bool {
         "word",
         "powerpoint",
         "write_office",
+        "read_office",
         "deliverables",
         "表格",
         "文档",
         "演示",
         "汇报",
         "ppt",
+        "周报",
+        "月报",
+        "会议纪要",
+        "纪要",
+        "写一份",
+        "整理成",
+        "总结为",
+        "汇报材料",
+        "方案",
+        "报告",
+        "合同",
+        "邮件",
+        "简历",
+        "发布说明",
     ];
     OFFICE.iter().any(|k| lower.contains(k))
 }
@@ -193,6 +208,20 @@ mod tests {
         assert_eq!(
             resolve_task_type(Some("auto"), dir.path(), Some("write a docx summary")),
             TaskType::Office
+        );
+    }
+
+    #[test]
+    fn infer_office_from_chinese_weekly_report() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("Cargo.toml"), "[package]\n").unwrap();
+        assert_eq!(
+            infer_task_type(dir.path(), Some("帮我整理一份发布说明")),
+            TaskType::Office
+        );
+        assert_eq!(
+            infer_task_type(dir.path(), Some("实现发布说明页面")),
+            TaskType::Code
         );
     }
 

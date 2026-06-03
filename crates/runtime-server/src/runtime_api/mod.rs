@@ -14,6 +14,7 @@ pub mod openapi;
 mod automations;
 mod blackboards;
 mod mcp;
+mod office;
 mod router;
 mod sessions;
 mod skills;
@@ -32,6 +33,7 @@ pub(crate) use automations::{
     pause_automation, resume_automation, run_automation, update_automation,
 };
 pub(crate) use usage::{get_routing_rules, get_usage, rebuild_symbol_index, set_routing_rules};
+pub(crate) use office::get_office_environment;
 pub(crate) use workspace::workspace_status;
 pub(crate) use mcp::{
     add_mcp_server, delete_mcp_server, get_mcp_server, list_mcp_servers, list_mcp_tools,

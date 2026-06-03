@@ -6,6 +6,39 @@ const zhHans = {
     heroTagline: '你的 AI 编码助手',
     emptyPrompt: '在下方输入问题开始对话',
   },
+  officeEmpty: {
+    title: '办公模式',
+    subtitle: '撰写、整理与交付文档',
+    hint: '点击下方任务卡片填充提示，或直接在下方输入需求',
+    cards: {
+      weeklyReport: {
+        title: '周报',
+        hint: 'DOCX · 默认 deliverables/',
+      },
+      meetingMinutes: {
+        title: '会议纪要',
+        hint: 'DOCX · 议题与行动项',
+      },
+      projectDeck: {
+        title: '项目汇报 PPT',
+        hint: 'PPTX · 封面与要点页',
+      },
+      dataReport: {
+        title: '数据报表',
+        hint: 'XLSX · 表格与图表',
+      },
+    },
+    prefill: {
+      weeklyReport:
+        '请撰写本周工作周报（DOCX）。先 load_skill office-weekly-report，再按技能执行：确认时间范围与汇报对象，用 read_office 读取我提供的附件（若有），write_office 输出到 deliverables/（不必填 path）。',
+      meetingMinutes:
+        '请整理本次会议纪要（DOCX）。包含：时间、参会人、议题讨论要点、决议与行动项（负责人/截止日期）。write_office 输出到 deliverables/，不必填 path。',
+      projectDeck:
+        '请制作项目汇报 PPT（PPTX）：封面（项目名+汇报人）、进展要点、风险与下一步。write_office 输出到 deliverables/，不必填 path。',
+      dataReport:
+        '请根据我提供的数据生成 Excel 数据报表（XLSX）：表头、关键指标、可选图表。先用 read_office 读取已有表格（若有），再 write_office 输出到 deliverables/。',
+    },
+  },
   a11y: {
     skipToMain: '跳到主要内容',
     skipToComposer: '跳到输入框',
@@ -215,7 +248,10 @@ const zhHans = {
     sendAria: '发送消息',
     turnInterrupted: '已中断',
     turnStillRunning: '该线程仍有回合在进行——已为你重新接上。请等待其完成或点击停止。',
+    turnReconnecting: '已重新连接后台回合，正在同步进度…',
     runtimeSidecarRestart: '运行时已重启，生成已停止',
+    runtimeSidecarRestartReconnecting: '本地运行时已重启，正在尝试重新连接后台回合…',
+    runtimeOfflineReconnecting: '与本地运行时的连接已断开，正在尝试重连（后台回合可能仍在进行）',
     interruptFailed: '无法中断当前轮次：{{message}}',
     workspaceLabel: '目录',
     chooseWorkspace: '选择工作区目录',
@@ -273,6 +309,7 @@ const zhHans = {
     selectTaskType: '任务类型',
     agentModeHint: 'WorkspaceWrite + 网络（引擎 #273 Shell 升格）',
     officeRunModeHint: '办公模式仅使用 Agent（无 Plan / YOLO）',
+    officeStatusBar: '办公模式 · 默认 deliverables/ · PDF/HTML 右侧预览 · Word/Excel/PPT 系统打开',
     runModeYoloHint: 'DangerFullAccess：SandboxPolicy 完全不限制（慎用）',
   },
   banner: {
@@ -300,7 +337,15 @@ const zhHans = {
       '已禁用页面刷新（F5 / Ctrl+R）。刷新会清空内存中的对话状态 — 请用侧栏切换会话，或等待当前回合保存完成。',
     streamError: '流式错误',
     runtimeRestartDuringStream:
-      '本地运行时已重启（多为保存系统设置）。进行中的生成已停止；请点「重试连接」后在同一会话继续，scratchpad 进度一般在磁盘上仍在。',
+      '本地运行时已重启（多为保存系统设置）。若当时有进行中的回合，将自动尝试重连；后台可能仍在计费，不需要请点「停止」。',
+    turnDetachedSidecar:
+      '本地运行时已重启。后台回合可能仍在进行并继续计费；正在自动重连。不需要请点「停止」。',
+    turnDetachedOffline:
+      '无法连接本地运行时。后台回合可能仍在进行并继续计费；连接恢复后将自动同步。不需要请点「停止」。',
+    turnDetachedBillingWarn:
+      '后台回合仍在运行且可能继续计费已超过 15 秒。请点「停止」结束，或等待自动重连。',
+    turnAutoStoppedOffline: '运行时断开超过 2 分钟，已自动停止后台回合以防继续计费。',
+    turnReconnectFailed: '重新连接后台回合失败：{{message}}',
     unauthorizedBearer: '未授权 (401)：运行时 Bearer token 与 sidecar 不一致。',
     missingApiKey: '可能缺少或无效的 DeepSeek API Key。请在 ~/.zagens/config.toml 或环境变量 DEEPSEEK_API_KEY 中配置后再试。',
     approvalMissingThread: '无法解析审批：缺少 thread / turn。请等待 turn.started 后重试。',
@@ -379,11 +424,13 @@ const zhHans = {
       changes: '本轮变更',
     },
     officeFilterChangesEmpty: '当前会话尚无文件 diff，无法筛选本轮变更。',
+    openedWithSystemApp: '已用系统默认应用打开',
     errors: {
       invalidRel: '文件相对路径无效',
       pathTraversal: '路径不能包含 ..',
       needWorkspace: '请先设置 Composer 工作区路径',
       binaryNeedsDesktop: '二进制预览需使用桌面应用，或先发消息创建会话后再试',
+      officeUseSystemApp: 'Word/Excel/PowerPoint 请用系统应用打开',
     },
   },
   workspaceRules: {

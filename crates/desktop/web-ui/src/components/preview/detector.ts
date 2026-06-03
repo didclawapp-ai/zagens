@@ -37,8 +37,6 @@ const EXT_MAP: Record<string, FileType> = {
   '.sh': FileType.Code,
   '.bash': FileType.Code,
   '.css': FileType.Code,
-  '.html': FileType.Code,
-  '.htm': FileType.Code,
   '.sql': FileType.Code,
   '.xml': FileType.Code,
   '.java': FileType.Code,
@@ -72,8 +70,12 @@ const EXT_MAP: Record<string, FileType> = {
   '.csv': FileType.Csv,
   '.tsv': FileType.Csv,
 
-  // Binary documents (Phase 2 renderers; binary routing applies now)
+  // In-app preview: PDF blob + HTML source
   '.pdf': FileType.Pdf,
+  '.html': FileType.Html,
+  '.htm': FileType.Html,
+
+  // Office binaries — opened via system app (see `isOfficePreviewExternal`)
   '.docx': FileType.Office,
   '.xlsx': FileType.Office,
   '.pptx': FileType.Office,
@@ -126,6 +128,7 @@ export function detectFileType(
  * Returns `true` when the file type requires the Tauri `read_thread_workspace_binary`
  * command (the runtime API rejects non-UTF-8 content).
  */
+/** Binary payloads loaded for in-app preview (base64). Office docs use the system app. */
 export function isBinaryFileType(ft: FileType): boolean {
-  return ft === FileType.Image || ft === FileType.Pdf || ft === FileType.Office;
+  return ft === FileType.Image || ft === FileType.Pdf;
 }

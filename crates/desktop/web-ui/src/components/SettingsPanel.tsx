@@ -2,7 +2,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { useT, LOCALE_LABELS } from '../i18n';
 import type { Locale } from '../i18n';
 import type { RuntimeConnectionState } from '../api/client';
-import { fetchSystemSettings, saveSystemSettings, type SystemSettings } from '../api/client';
+import {
+  fetchOfficeEnvironment,
+  fetchSystemSettings,
+  saveSystemSettings,
+  type OfficeEnvironmentStatus,
+  type SystemSettings,
+} from '../api/client';
 import { confirmDialog } from '../lib/confirmDialog';
 
 type Theme = 'light' | 'dark';
@@ -34,6 +40,7 @@ export default function SettingsPanel({
   const [settings, setSettings] = useState<SystemSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [officeEnv, setOfficeEnv] = useState<OfficeEnvironmentStatus | null>(null);
 
   useEffect(() => {
     if (!desktopHost) {
@@ -51,6 +58,24 @@ export default function SettingsPanel({
       });
     return () => { cancelled = true; };
   }, [desktopHost]);
+
+  useEffect(() => {
+    if (runtimeConn !== 'connected') {
+      setOfficeEnv(null);
+      return;
+    }
+    let cancelled = false;
+    fetchOfficeEnvironment()
+      .then((s) => {
+        if (!cancelled) setOfficeEnv(s);
+      })
+      .catch(() => {
+        if (!cancelled) setOfficeEnv(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [runtimeConn]);
 
   const handleSave = useCallback(async () => {
     if (!settings || !desktopHost) return;
@@ -98,6 +123,23 @@ export default function SettingsPanel({
           </span>
         </div>
       </div>
+
+      {runtimeConn === 'connected' && (
+        <div className="space-y-1.5 pb-3 border-b border-divider">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-t-text-muted">
+            Office
+          </p>
+          <div className="flex justify-between gap-2 py-1 text-xs">
+            <span className="text-t-text-muted">DOCX/PPTX/PDF 引擎</span>
+            <span className={officeEnv?.ready ? 'text-emerald-600' : 'text-amber-600'}>
+              {officeEnv?.ready ? '就绪' : officeEnv == null ? '…' : '未就绪'}
+            </span>
+          </div>
+          {officeEnv?.resolved_python ? (
+            <p className={`${descCls} break-all`}>{officeEnv.resolved_python}</p>
+          ) : null}
+        </div>
+      )}
 
       {!desktopHost && (
         <p className="text-xs text-t-text-muted leading-relaxed">{t('settings.notAvailable')}</p>
