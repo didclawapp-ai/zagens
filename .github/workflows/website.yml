@@ -72,7 +72,10 @@ jobs:
           RSYNC_FLAGS=( -avz --omit-dir-times --no-perms --no-owner --no-group --timeout=120 --partial )
           rsync_with_retry() {
             local attempt=1 max=3 rc=0
-            until rsync "$@"; then
+            while true; do
+              if rsync "$@"; then
+                return 0
+              fi
               rc=$?
               if [ "$attempt" -ge "$max" ]; then
                 echo "::error::rsync failed after ${max} attempts (exit ${rc})"
