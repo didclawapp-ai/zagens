@@ -7,10 +7,9 @@ All notable changes to **Zagens** and its embedded runtime will be documented in
 **Licensing:** Zagens (desktop app in `crates/desktop/`) is **proprietary** — see [LICENSE](LICENSE). Third-party runtime MIT license: [third-party/deepseek-tui/LICENSE](third-party/deepseek-tui/LICENSE) and [NOTICE.md](NOTICE.md).
 
 **Zagens** (desktop app in `crates/desktop/`) has its **own** version line in
-**SemVer** (e.g. **`0.6.0-preview.1`**). Until **1.0.0 GA**, public releases use
-**pre-release identifiers**: `0.MINOR.PATCH-<channel>.N` with default channel
-**`preview`** (产品 **预览版**). Display form **v** + manifest version (e.g.
-**v0.6.0-preview.1**). Full policy: [`docs/desktop/VERSIONING.md`](docs/desktop/VERSIONING.md).
+**SemVer** (e.g. **`0.7.0`**). Public releases use `0.MINOR.PATCH` until **1.0.0 GA**
+(pre-release channels such as `-preview.N` may still appear on older tags). Display form
+**v** + manifest version (e.g. **v0.7.0**). Full policy: [`docs/desktop/VERSIONING.md`](docs/desktop/VERSIONING.md).
 This line **does not** follow the embedded runtime workspace version in root
 `Cargo.toml` `[workspace.package] version`.
 
@@ -21,6 +20,257 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > Prefer updating `[Unreleased]` incrementally going forward.
 
 ## [Unreleased]
+
+### Repo split — product vs website platform
+
+- **Change:** Moved `website/` to private repo [zagens_website](https://github.com/jjlin0603-svg/zagens_website); monorepo keeps [`website/README.md`](website/README.md) stub. User docs SSOT: [`docs/user/`](docs/user/). Overview: [`docs/REPO_SPLIT.md`](docs/REPO_SPLIT.md).
+- **Change (CI):** Removed [`.github/workflows/website.yml`](.github/workflows/website.yml); product [`.github/workflows/release.yml`](.github/workflows/release.yml) dispatches `desktop-release` to website repo `sync-release.yml`.
+- **Docs:** Updated [`docs/desktop/UPDATER.md`](docs/desktop/UPDATER.md), [`docs/website/P8_DOCS_CONTENT_PLAN.md`](docs/website/P8_DOCS_CONTENT_PLAN.md).
+
+### Zagens website — blog UI polish
+
+- **Blog list & post pages:** hero gradient header, featured card, tag chips, loading skeleton, prev/next navigation, TOC sidebar, and download/docs CTA — aligned with home/use-cases visual language.
+- **Blog content:** seed posts for LHT (DEMO3 Monkey interpreter field test) and CRAFT (HTTP error-handling refactor fix-loop) — EN + zh-Hans.
+
+### Zagens v0.7.0 — version bump & drop preview branding
+
+- **Release:** bump Zagens desktop to **0.7.0** (Cargo, Tauri, web-ui, updater manifest); MSI WiX `0.7.0`.
+- **Copy (官网 + docs + CMS DB):** remove product **预览版** / **Preview** badges and channel wording; seed upserts **0.7.0** release, retires `zagens-061-preview` blog posts; sync deploy/versioning meta docs.
+
+### Zagens website — remove affiliation disclaimers
+
+- **Copy (官网):** 全站移除「与 DeepSeek Inc. 无隶属关系」类表述 — 首页、页脚、使用条款、FAQ 文档、博客种子数据（中英文）。
+
+### Zagens website — faster locale switching
+
+- **Fix (官网):** language toggle keeps the current page path (`/docs/...` ↔ `/zh-Hans/docs/...`) instead of jumping home; site config + page content are cached and prefetched for instant EN ↔ 中文 swaps.
+
+### Zagens website — LHT feature badge copy
+
+- **Copy (官网):** homepage「长程任务」功能卡片徽章由「实验性」改为「试用版」（英文 Trial）；需 `website/backend` 下 `npm run db:seed` 同步 SQLite，`usePublicPage` 命中缓存后会后台刷新以免旧文案滞留。
+
+### Zagens website — header & footer UI refresh
+
+- **Enhancement (官网):** `SiteHeader` / `SiteFooter` visual polish — brand logo lockup, active nav states, mobile menu, download CTA in header, multi-column footer with product/legal groups and preview badge.
+
+### Zagens website — docs sidebar collapse on active branch
+
+- **Fix (官网):** doc nav chevron can collapse a section even when the current page is inside that branch (`docsNavCollapsed` overrides auto-expand).
+
+### Zagens website — expand CRAFT, audit scratchpad, sub-agents docs
+
+- **Content:** `code/{craft,audit-scratchpad,subagents}` (en/zh-Hans) rewritten — roles/verdicts/blackboard, scratchpad tools/UI badges, audit grid, CRAFT task cards, settings; aligned with desktop panels and runtime.
+
+### Zagens website — expand LHT settings doc to match desktop panel (full)
+
+- **Content:** `settings/lht` (en/zh-Hans) rewritten as panel-aligned reference — composer override flow, four sections field-by-field (ranges, defaults, disabled states), presets with `reinject_every_steps`, completion gates, macro loop timing, `config.toml` map, FAQ.
+
+### Zagens website — align product docs with shipped desktop (P8 audit)
+
+- **Content (官网文档):** +8 pages (`task-types`, `workspace/file-tree`, `office/deliverables`, `desktop/i18n` × en/zh-Hans); nav updated (remove duplicate LHT under Code, add new slugs).
+- **Content:** fix misalignments — ui-tour (Tasks/Usage/Agents, hidden automations), settings (skills entry, Vision bridge, LHT `settings.toml` path, sandbox `danger-full-access`, approval `auto`), tools (`load_office_payload`, network links), office (deliverables lifecycle, production skill vs SKILL.md, executive confirm flow), symbol index (`.deepseek/symbols.json`), FAQ config paths, getting-started v0.6.1-preview.1.
+
+### Zagens website — docs sidebar section expand/collapse
+
+- **Feature (官网):** documentation nav sections with children show a chevron toggle; default collapsed except the branch containing the active page.
+
+### Zagens website — docs nav: LHT settings under Settings
+
+- **Content (官网文档):** add `settings/lht` (en/zh); Settings sidebar lists **LHT settings**; `code/lht-settings` redirects to canonical page.
+
+### Zagens website — expand LHT settings doc to match desktop panel
+
+- **Content:** `settings/lht` rewritten — composer tri-state vs `[long_horizon]` panel, four preset overlays, harness / completion-gate / macro-loop fields with ranges; aligns with `LhtSettingsPanel` and `lht_presets.rs`.
+
+### Zagens website — P8-C advanced docs (code, settings, help)
+
+- **Content (官网文档):** +11 pages per locale — `code/{symbol-index,lht-settings,subagents,checklist}`, `settings/{routing,exec-policy,network,usage,topic-memory}`, `help/{smartscreen,privacy}`; expanded `faq`; nav adds Code/Settings/Help subtrees.
+
+### Zagens website — P8-B office skill guides (11 × bilingual)
+
+- **Content (官网文档):** +11 pages per locale under `office/skills/*` — one user guide per bundled Office skill; index and P0 overview cross-link skill + walkthrough pages; nav expands Built-in skills subtree.
+
+### Zagens website — P8-A3 docs content (desktop, tools, office skills)
+
+- **Content (官网文档):** +10 pages per locale — `office/skills`, `desktop/{tray,updates,approval-dialog}`, `tools/{files,git,shell,web,office-io,vision}`; nav tree adds Office skills, Agent tools, and Desktop sections.
+- **Docs:** [`P8_DOCS_CONTENT_PLAN.md`](docs/website/P8_DOCS_CONTENT_PLAN.md) — phase A complete (~39 pages / locale).
+
+### Zagens website — P8-A2 docs content (chat, code topics, settings)
+
+- **Content (官网文档):** +13 pages per locale — `chat/*`, `workspace/{diff,snapshots}`, `code/{lht,craft,audit-scratchpad}`, `settings/{api-key,approval,mcp,skills}`; nav tree expanded.
+
+### Zagens website — P8-A1 docs content (UI tour, workspace, P0 split)
+
+- **Content (官网文档):** +11 pages per locale — `ui-tour`, `workspace/{overview,preview,terminal}`, `office/{workspace,p0-competitive,p0-executive,p0-production,p0-quote}`; expanded getting-started/code-mode; P0 overview links to detail pages.
+- **Docs:** [`P8_DOCS_CONTENT_PLAN.md`](docs/website/P8_DOCS_CONTENT_PLAN.md) status → in progress (A1 done).
+
+### Zagens website — P8 docs content roadmap
+
+- **Docs:** [`docs/website/P8_DOCS_CONTENT_PLAN.md`](docs/website/P8_DOCS_CONTENT_PLAN.md) — phased plan to cover all user-facing features (~55 new pages per locale); P7 linked as prerequisite.
+
+### Zagens website — P7 docs CMS, TOC, search
+
+- **Feature (官网 CMS):** `DocArticle` model; `/admin/docs` list + Markdown editor (parent, sort order, publish).
+- **Feature (官网):** Public docs prefer published CMS rows, fallback to `content/docs/` files; `GET /api/public/docs/search`.
+- **Feature (官网):** In-page h2/h3 anchor TOC (desktop right rail) and sidebar full-text search.
+- **Docs:** [`docs/website/P7_IMPLEMENTATION.md`](docs/website/P7_IMPLEMENTATION.md).
+
+### Zagens website — product docs (left nav + Markdown)
+
+- **Feature (官网):** `/docs` and `/zh-Hans/docs` with sidebar tree navigation and Markdown articles served from `website/content/docs/` via `GET /api/public/docs/tree` and `GET /api/public/docs/:slug`.
+- **Content:** Initial en / zh-Hans pages (getting started, install, code mode, office scenarios, FAQ); header nav「文档 / Docs」.
+- **Deploy:** CI rsyncs `website/content/` to VPS alongside the API so runtime doc files are available.
+
+### Zagens website — P5 download page releases
+
+- **Feature (官网):** `GET /api/public/releases` lists version history; download page shows changelog, older releases (collapsible), and copy SHA-256 buttons.
+- **Change (官网 CMS):** Admin releases table shows changelog;「设为最新」confirms before rollback.
+- **Docs:** [`docs/website/P5_IMPLEMENTATION.md`](docs/website/P5_IMPLEMENTATION.md); download page seed copy (en / zh-Hans).
+
+### Zagens website — P4 installer VPS deploy + Nginx API cache
+
+- **Change (CI):** `release.yml` job `deploy-installers-vps` rsyncs `release-artifacts/` to VPS `download/` and upserts CMS via `release-meta.json` + `upsert-from-manifest.ts`; uploads CI artifact for the job.
+- **Change (CI):** `website.yml` packs office-demo zip each build; rsync includes `backend/scripts/`; frontend deploy no longer overwrites VPS `latest.json`/installer metadata from release.
+- **Change (nginx):** `zagens.conf.example` adds `proxy_cache` for `/api/public/` with ETag revalidation (`X-Cache-Status` header).
+- **Docs:** [`docs/website/P4_IMPLEMENTATION.md`](docs/website/P4_IMPLEMENTATION.md).
+
+### Zagens website — P3 ETag, prerender, release deploy hook
+
+- **Feature (官网 API):** Public JSON responses use weak `ETag` + `304 Not Modified`; SPA axios uses `Cache-Control: no-store` to avoid empty 304 bodies.
+- **Feature (官网 SEO):** Post-build `prerender-shells.mjs` writes per-route `index.html` with title/description/canonical (seed copy + blog slugs).
+- **Feature (官网 CMS):** Admin blog editor — Markdown tab + live preview (`marked` + DOMPurify).
+- **Change (CI):** `release.yml` job `trigger-website-deploy` dispatches `website.yml` on default branch after tag release.
+- **Fix (官网 CI):** rsync excludes only `Zagens_*.zip` / `Zagens_*.exe` so `office-demo-fixtures.zip` deploys with the site.
+- **Docs:** [`docs/website/P3_IMPLEMENTATION.md`](docs/website/P3_IMPLEMENTATION.md).
+
+### Zagens website — P2 CMS forms, cache, release CI
+
+- **Fix (官网 API):** Public page slug allowlist now includes `use-cases` (fixes 404 on `/api/public/pages/use-cases`).
+- **Feature (官网):** `Cache-Control` on `/api/public/*` (pages 120s, releases 300s, blog 60–120s).
+- **Feature (官网):** `PageSkeleton` loading state on public views; CMS **schema form editor** for all page slugs (form + JSON tabs).
+- **Feature (官网):** `npm run pack:office-demo` → `/download/office-demo-fixtures.zip`; use-cases page download button.
+- **Change (CI):** `release.yml` runs `gen-local-manifest.mjs` (`--artifact-dir release-artifacts`) — attaches OTA `latest.json` + checksums to GitHub Release.
+- **Change (website):** `gen-local-manifest` default bundle dir prefers `crates/desktop/target/...`; `--artifact-dir` flag for CI.
+- **Docs:** [`docs/website/P2_IMPLEMENTATION.md`](docs/website/P2_IMPLEMENTATION.md).
+
+### Zagens website — P1 use cases, SEO, blog
+
+- **Feature (官网):** Added `/use-cases` landing page — Code vs Office comparison and four P0 office demo workflows; CMS seed + nav link (en / zh-Hans).
+- **Feature (官网):** Per-page SEO via `@unhead/vue` (`usePageSeo`); build-time `scripts/gen-sitemap.mjs` → `frontend/public/sitemap.xml`; `robots.txt` updated.
+- **Feature (官网):** Blog posts render Markdown (`marked` + `DOMPurify`); seed ships two bilingual articles (0.6.1 preview notes, Office mode intro).
+- **Docs:** [`docs/website/P1_IMPLEMENTATION.md`](docs/website/P1_IMPLEMENTATION.md).
+
+### Zagens website — P0 cleanup & release pipeline
+
+- **Change (website):** Removed legacy Astro tree (`website/src/`, `website/public/`, astro/tailwind configs).
+- **Change (website):** Unified release scripts — `gen-local-manifest.mjs` / `sync-download-manifest.mjs` now write `frontend/public/download/latest.json` and upsert CMS `Release` via `backend/scripts/upsert-release.ts`; shared `scripts/paths.mjs`.
+- **Change (website):** Added `express-rate-limit` on admin login (10/15min) and `/api/admin/*` (200/15min).
+- **Docs:** [`docs/website/P0_IMPLEMENTATION.md`](docs/website/P0_IMPLEMENTATION.md); updated DEPLOY.md, UPDATER.md for new paths and `npm run release:local`.
+
+### Zagens website — Vue SPA + Express CMS
+
+- **Change (website):** Rebuilt `website/` from Astro static site to **Vue 3 SPA + Express API + SQLite** (LabelMakePro-style architecture). Public pages load content from `/api/public/*`; CMS at `/admin` manages pages, blog, releases, and site config.
+- **Change (website):** Added `website/frontend/` (Vue + Vite + Tailwind + Element Plus), `website/backend/` (Express + Prisma + SQLite file at `backend/data/`), seed script migrating existing i18n copy.
+- **Change (website):** Switched CMS datastore from PostgreSQL to **SQLite** — no Docker/DB server; production DB at `/opt/zagens-website/data/zagens.db`.
+- **Change (website):** Updated GitHub Actions workflow — rsync `frontend/dist` to VPS + deploy backend with PM2; Nginx example adds `/api` proxy.
+- **Docs:** Rewrote [`docs/website/DEPLOY.md`](docs/website/DEPLOY.md) for new stack.
+
+### Docs — CMS 存量审计测试案例（CMS-AUDIT / CMS02）
+
+- **Docs:** 新增 [`docs/harness/test-cases/cms-full-code-audit.md`](docs/harness/test-cases/cms-full-code-audit.md) — `F:\CMS框架` 首跑实证（221 源文件、19 区域、12 Explore、5 项 verify、HIGH×13、审修闭环）；含可复制 prompt、判定矩阵、OpenCode 对标字段与 CMS-L/XL 规模梯度预留。
+- **Docs:** 新增 [`docs/harness/fixtures/cms-audit-completion-gate.toml`](docs/harness/fixtures/cms-audit-completion-gate.toml)（`tsc`/`vue-tsc`/报告存在门）；[`LHT_TEST_SUITE.md`](docs/harness/LHT_TEST_SUITE.md) §2.2 + §3、[`OPENCODE_AGENT_CORE_BENCHMARK.md`](docs/tech/OPENCODE_AGENT_CORE_BENCHMARK.md) §4.1 交叉引用。
+- **Docs:** CMS02 **全链路终态归档** — §9 实证明细（verify 多轮真绿、Prisma generated 判别、19 处类型清理、P0×5+P1×3、9/9 checklist·100%、§9.5 诚实边界）；测试集与 OpenCode §4.1 摘要同步更新。
+
+### Runtime — sub-agent display names
+
+- **Change (sub-agent nicknames):** Replaced whale-species rotation with task-oriented labels: explicit `nickname` / `display_name` on `agent_spawn`, else derive from `area_id`, `## Audit Task:` title, `task_id`, spawn `cwd` basename, then `{type} #N`. Audit parallel spawns now show scopes like `BE-Services` in the agent panel title.
+
+### Zagens desktop — composer Stop after start failure
+
+- **Fix (Stop stuck after `channel closed`):** When `startThreadTurn` failed (e.g. `Failed to start turn: channel closed`), the UI could stay in「生成中」and **Stop** did nothing — `finishOnce` re-locked against a zombie backend `active_turn`, and Stop called the same path. Local finish now supports `force` (user Stop + HTTP start errors skip re-lock); Stop resolves `latest_turn_id` when `turnId` was never assigned. Runtime rolls back in-memory `active_turn` and persists `Failed` when `engine.start_turn` never starts.
+
+### Docs — OpenCode agent 核心对标
+
+- **Docs:** 新增 [`docs/tech/OPENCODE_AGENT_CORE_BENCHMARK.md`](docs/tech/OPENCODE_AGENT_CORE_BENCHMARK.md) — OpenCode（`dev`）与 Zagens agent 核心对照、已借鉴项、ROI 排序建议与 P0–P4 路线图。
+- **Docs:** 审核修订对标文档 — 修正 V2 eager 工具表述、区分 V1/V2 doom loop、补充 Desktop Beta 竞争注记与 harness 借鉴边界。
+- **Runtime (P0+P1):** `TurnCoordinator` per-thread drain 串行化；SQLite `session_input` durable inbox + `StartTurnRequest.delivery`（`queue` 时 202 + `queued`）；turn 结束后自动 drain queue。P2–P4 冻结。
+
+### Zagens desktop — 会话历史恢复
+
+- **Fix (会话历史):** 切换会话时 best-effort `persist-session` 落盘 outgoing thread，避免未持久化回合在重启后丢失。
+- **Fix (会话历史):** 恢复时从 cache / session JSON / thread 事件三路取最完整快照，避免 thread 回放较短时覆盖更完整的本地缓存。
+- **Fix (会话历史):** `sessionUiCache` 改为 LRU 淘汰（不再按 Object.keys 顺序误删活跃会话）；窗口隐藏时对任意已恢复 thread 触发 persist（不再仅限 streaming）。
+- **Fix (会话历史):** thread 事件回放时在 `agent_message` 完成与 `turn.completed` 立即 flush assistant，避免跨 turn 合并导致消息截断。
+
+### Zagens desktop — 长程任务计时
+
+- **Fix (LongHorizonPanel):** 任务图计时改为绑定 composer **会话进行中**（`streaming` /「生成中」），不再在 checklist 100% 时冻结；主 turn 结束后冻结，同一 thread 内 LHT 多轮复跑**累计**不重置。
+
+### Runtime / Zagens — LHT+CRAFT 宏观循环触发扩展
+
+- **Feature (LHT Phase 4):** CRAFT 宏观循环新增进入时机 `on_graph_complete`（checklist 已勾完、微观门可未绿）与 `on_manifest_exhausted`（manifest 轮次诚实耗尽）；`long-refactor` 预置默认改为 `on_graph_complete`。微观门未绿时也可 spawn CRAFT；补全段注入 `MacroRemediation` 继续修缺口，并提示须重新通过微观验收门。
+- **Fix (LHT+CRAFT 闭环):** CRAFT spawn 后 turn 在收尾前等待 review 子代理完成；若 turn 已结束但 blackboard 有 blockers，下轮 `maybe_inject` 自动 `try_resume_pending_macro_remediation` 注入补全段。补全 nudge 合并 `macro_pending_manifest_hints`（微观门失败摘要）。
+- **Fix (LHT Go 假绿):** plan-bootstrap nudge 附加 Go harness 规划提示（per-package 覆盖率、`cmd/*` 可测布局）；manifest 失败 nudge 与 `go_toolchain_audit` 对 `cmd/`/`examples/` 低覆盖给出可操作建议。
+- **UX (LHT 设置):** 启用宏观审查循环时展示 token/API 费用增高提示（i18n ×4）。
+
+### Runtime — LHT 假绿加固（MicroStack 日志复盘）
+
+- **Fix (LHT P0-3):** `go test` toolchain 门不再对全 `[no test files]` 假绿；`go test -cover` 解析覆盖率，默认 **≥60%** 才过（`go_toolchain_audit.rs`）。工具链探测改为 `go test -cover ./...`。
+- **Fix (LHT P0-3):** checklist ≥5 项且 **零** `[verify:]` 标签时，在 `graph_complete` 前注入 `insufficient_verify_nudge`（阻断「只 build/vet 就收尾」）。
+- **Fix (LHT):** `stub_gate` 跳过 `crates/runtime-server/src/long_horizon/` 等 harness 基础设施路径，避免在 Zagens  monorepo 内自举分析时误拦 51 条 stub。
+- **Feature (LHT):** `gofmt -l` 跨平台原生探针（`verify_platform`），Windows 无需 bash 即可作格式门。
+- **Config:** `~/.zagens/config.toml` 示例增加 `completion_gate.mode = enforce` + 全局 `gofmt` verify；MicroStack 层3 夹具仍见 `docs/harness/fixtures/microstack-completion-gate.toml`。
+
+### Zagens desktop — LHT Phase 4 宏观审查循环
+
+- **Feature (LHT Phase 4 — macro review loop):** 微观完成门通过后，可选 **LHT 实现段 → CRAFT Review → 补全段** 有界宏观循环（`[long_horizon.macro_loop]`，默认关）。编排：`macro_loop.rs`（blockers→checklist 幂等转换、段状态机）；micro `graph_complete` 后评估；harness 程序化 spawn CRAFT Review（`spawn_macro_craft_review`）；遥测 `long_horizon.macro_phase` / `macro_craft_start` / `macro_craft_result` / `macro_unmet`。**用户确认**默认：`/lht-craft-go` 或「开始审查」进入审查轮。Desktop **LHT 配置面板**新增「宏观审查循环」区（非 Composer 第四态；需 strict）。**LongHorizonPanel** Nodes/任务图展示宏观段摘要与 `macro_*` 节点着色；**Harness 预置**（`lht_presets.rs` + `apply_lht_preset`）：`long-refactor` 自动 `strict` + `macro_loop.enabled` + `on_micro_pass`。Files: `macro_loop_panel.rs`, `LongHorizonPanel.tsx`, `lht_presets.rs`, `commands.rs`, i18n ×4.
+
+### Zagens desktop — 工作台预览
+
+- **Feature (HTML 预览模式):** 工作台打开 `.html` / `.htm` 时可在「代码」与「预览」（iframe 渲染）之间切换；Office 侧车 `.preview.html` 默认进入预览。Files: `preview/detector.ts`, `preview/renderers/HtmlRenderer.tsx`, `PreviewDispatcher.tsx`.
+
+### Runtime / prompts
+
+- **Feature (`web_search` 多后端):** `web_search` 工具新增 5 个可配置搜索后端，满足国内访问需求。在 `~/.deepseek/config.toml` 中配置 `[search]` 表即可切换：
+  - `metaso`（秘塔搜索）— 国内友好，有内置社区免费 Key，无需配置即可尝试
+  - `baidu`（百度 AI 搜索 / 千帆）— 需 `BAIDU_SEARCH_API_KEY` 或 `api_key`
+  - `bocha`（博查）— 国内 AI 搜索 API
+  - `volcengine`（火山引擎 Ark）— ByteDance，带重试与 90 s 超时保护
+  - `tavily` — 国际 AI 搜索 API
+  - `bing` — 可单独指定必应（不再仅作 DDG 的 fallback）
+  - 默认仍为 `duckduckgo`（自动 Bing fallback），行为不变。
+  API Key 支持 config 文件 `api_key = "..."` 或对应环境变量（`METASO_API_KEY`、`BAIDU_SEARCH_API_KEY`、`VOLCENGINE_API_KEY` 等）。
+  Files: `tools/web_search.rs`, `config/types.rs`, `tools/spec.rs`, `core/engine/types.rs`, `core/engine/tool_context.rs`, `runtime_threads/engine_spawn.rs`.
+
+- **Fix (sub-agents):** `[subagents] heartbeat_timeout_secs` (default 300s) — maintenance loop auto-cancels running sub-agents with no progress and releases concurrent slots (upstream v0.8.52 parity).
+- **Fix (snapshots):** `[snapshots] max_workspace_gb` (default 2) — skip side-git init / `git add -A` when the workspace tree exceeds the cap; prevents first-turn hangs on huge trees.
+- **Fix (LLM errors):** HTTP error bodies are sanitized (HTML stripped, secrets redacted, length capped) before UI/logs/model context — avoids Cloudflare HTML dumps and leaked tokens.
+- **Feature (tool approval):** Session-scoped approval cache wired into the engine; `write_file` / `edit_file` / `write_office` fingerprint by path; desktop dialog adds「本会话记住」→ `POST resolve-approval` `remember_for_session`.
+- **Fix (MCP):** SSE / Streamable HTTP clients honor `HTTP(S)_PROXY` and `NO_PROXY` (reqwest has no default proxy in this workspace).
+
+- **Fix (提示词 — 移除 DeepSeek TUI 遗留文案):** 系统 prompt 的 `CLIENT_IDENTITY_*`、自动路由/子代理路由分类器、遗留 `base.txt`、Office 模板 README 与默认 `AGENTS.md` 模板中不再出现 `DeepSeek TUI` / `deepseek-tui`；桌面会话身份仅指向 **Zagens**。Files: `runtime-server/src/prompts.rs`, `prompts/base.txt`, `auto_route.rs`, `tools/subagent/router.rs`, `assets/scripts/templates/README.md`, `core/src/project_context.rs`.
+
+### Zagens desktop — 审计方格会话隔离
+
+- **Fix (审计方格子代理面板):** 新建会话或切换历史会话时清空子代理面板状态，避免上一会话的 Completed 卡片泄漏到新 thread。Files: `useSessionNavigation.ts`, `App.tsx`.
+
+### Docs
+
+- **Desktop (办公场景地图 — 落地口径同步):** [`docs/desktop/OFFICE_SCENARIOS.md`](docs/desktop/OFFICE_SCENARIOS.md) — Phase A ~90%、11 技能/卡片、P0 落地状态列；扫描件 OCR 标为视觉桥接（`describe_image`）；STT/TTS、ERP/CRM、`inbox`/`data` 自动初始化标为本期范围外；§8 能力差距与附录 A 状态对齐。
+- **Docs (架构边界分析):** 新增 [`docs/tech/ARCHITECTURE_BOUNDARY_ANALYSIS.md`](docs/tech/ARCHITECTURE_BOUNDARY_ANALYSIS.md) — sidecar 三通道连接、硬/软边界、场景化评估与速查矩阵。
+
+### MCP 超时改善
+
+- **Fix (MCP connect_timeout 默认值):** 将 `connect_timeout` 默认值从 10 秒提升至 **30 秒**，解决 `npx -y` 类 stdio 服务器在首次下载包时因超时导致连接时有时无的问题。Files: `crates/runtime-adapters/src/mcp/config.rs`.
+- **Feature (MCP 编辑面板超时字段):** MCP 服务器编辑对话框新增 **连接超时 / 执行超时 / 读取超时** 三个数字输入框，供用户按需覆盖全局默认值。Files: `McpPanel.tsx`, i18n ×4.
+
+### Zagens desktop — Office P0 实施（Phase A Step 1–2）
+
+- **Feature (办公 P0 空态卡片):** 办公空态新增 **经营日报汇总**、**客户报价单**、**生产品质晨报** 任务卡片，prefill 对齐对应 `office-*` 技能。Files: `OfficeEmptyState.tsx`, i18n ×4.
+- **Feature (办公 bundled 技能 v8):** `install_system_skills` 纳入 `office-executive-daily-brief`、`office-customer-quote`、`office-production-daily-report`（bundled marker **v8**）。Files: `skills/system.rs`, `assets/skills/office-*`.
+- **Docs (技能契约):** 现有 8 个 `office-*` 技能统一补 `## 技能契约` YAML 块（约定层，引擎不解析）。
+- **Docs (P0 fixtures):** `office-demo/data/` 价目表 CSV、客户需求、**生产日报_昨日.xlsx**（`scripts/gen-office-demo-fixtures.py` 可重生）。
+- **Tooling:** `scripts/office-demo-oracle.ps1` — P0-2 / P0-3 / P0-4 deliverables 验收 oracle。
 
 ### Zagens website
 
@@ -34,17 +284,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Docs
 
+- **Desktop (办公场景地图):** 新增并迭代 [`docs/desktop/OFFICE_SCENARIOS.md`](docs/desktop/OFFICE_SCENARIOS.md) — 四轴架构、L1–L4 分层、技能契约三阶段落地、§4 四轴缩写列、P0 探针说明；样板技能 `office-executive-daily-brief`；演示 fixtures [`docs/harness/fixtures/office-demo/`](docs/harness/fixtures/office-demo/README.md)。
+- **Desktop (办公统一架构):** `OFFICE_SCENARIOS.md` 新增「四轴正交模型」（摄取/处理/输出/交互，§2.3）与 4 层统一架构 + 声明式「技能契约」（§3.1/§3.2），将 40+ 场景收敛为「同一流水线 × 四轴取值」，新增场景退化为填表；P0-1~P0-4 标注为四轴验证、§8 能力差距挂回 L2 原语。
 - **Harness (DEMO7):** 新增 DEMO6 超集长程规格——目标 ≥10k 行 Go（`loc_gate.sh`）、class/while、fmt/lint/disasm、testdata≥50。File: `docs/harness/test-cases/DEMO7-monkey-platform-10k.md`.
 - **Harness (DEMO6):** 新增 DEMO3 超集对比规格——Monkey 双后端（tree + 字节码 VM）、`parity.sh` / `coverage_gate.sh`、Zagens vs Cursor 同一 oracle 记录表。File: `docs/harness/test-cases/DEMO6-monkey-dual-backend.md`.
 - **Harness (DEMO3):** 补 §8——`F:\DEMO3`（`thr_e2c4` 线程导出）产物 oracle 真绿 + B/`verify_mismatch_nudge` 闭环记录。File: `docs/harness/test-cases/DEMO3-monkey-interpreter.md`.
 
 ### Runtime
 
+- **Fix (MCP 面板误报未连接):** `GET /v1/apps/mcp/servers` 与 `/tools` 改为读取 sidecar **共享 `McpPool`** 的实时连接状态，不再每次新建临时池并用 2s 超时判定（Agent 已连通时面板仍显示「未连接」）。Files: `runtime_api/mcp.rs`, `McpPanel.tsx`.
+- **Fix (MCP stdio Windows 启动失败):** 新增 `mcp/stdio_spawn.rs`：为 sidecar 子进程补全 `PATH`（Node/npm 常见目录），解析 `npx`→`npx.cmd`，并通过 `cmd.exe /C` 执行批处理 shim，修复 GUI 启动时 `MCP stdio spawn failed` 无法连接 npm 类服务器的问题。Files: `stdio_spawn.rs`, `connection.rs`.
+- **Feature (MCP UI 与可观测性):** 新增 `mcp/observability.rs` 内存环形调用日志；`connection`/`pool` 记录 RPC 与工具调用耗时；`GET /v1/apps/mcp/discover`（tools/resources/prompts 快照 + 最近调用）与 `GET /v1/apps/mcp/calls`。桌面 `McpPanel` 服务器详情改为标签页（工具逐条开关、资源、提示词、调用记录），每 20s 轮询连接状态。`crates/mcp` 增加弃用说明 README。Files: `observability.rs`, `config_io.rs`, `runtime_api/mcp.rs`, `McpServerDetail.tsx`, `McpPanel.tsx`, `crates/mcp/README.md`. (MCP 迭代方案阶段 4)
+- **Feature (MCP 配置热重载):** sidecar 启动时创建进程级共享 `McpPool`，所有 Engine 复用同一连接池；新增 `POST /v1/apps/mcp/reload` 与 `McpPool::reload_config`（diff 配置 → 断开移除/变更项 → 重连）。桌面 `McpPanel` 在增删改/合并后自动热重载，并提供「应用配置」按钮，替代原先保存后必须重启 sidecar 的流程。Files: `crates/runtime-adapters/src/mcp/pool.rs`, `crates/runtime-server/src/mcp_shared.rs`, `runtime_serve/http.rs`, `runtime_api/mcp.rs`, `tool_context.rs`, `web-ui/McpPanel.tsx`, `api/client.ts`. (MCP 迭代方案阶段 3，后台健康探测留待后续)
+- **Feature (MCP 远程认证 — 静态头):** 远程 MCP（`sse`/`http`）支持 `headers` 与 `auth`（`bearer` / `apiKey`）配置；值支持 `${ENV_VAR}` / `$VAR` 环境变量占位，连接时解析并注入 reqwest 默认头。`GET /v1/apps/mcp/servers/{name}` 对明文密钥脱敏（省略敏感字段），`PUT` 保存时 [`merge_preserved_secrets`](crates/runtime-adapters/src/mcp/auth.rs) 合并未改动的旧密钥，避免 UI 回写清空。桌面 `McpPanel` 编辑对话框增加 headers / auth 字段。OAuth 留待后续。Files: `mcp/auth.rs`, `config.rs`, `connection.rs`, `config_io.rs`, `runtime_api/mcp.rs`, `web-ui/McpPanel.tsx`, `types/mcp.ts`. (MCP 迭代方案阶段 2，静态头部分)
+- **Feature (MCP Streamable HTTP 传输):** 新增 `StreamableHttpTransport`（单 endpoint POST JSON-RPC + `application/json`/`text/event-stream` 响应解析 + `Mcp-Session-Id` 会话维护 + `MCP-Protocol-Version` 头），可连接仅提供 2025 规范 Streamable HTTP 的远程 MCP 服务器。`connection.rs` 按 `transport_kind`（`stdio`/`sse`/`http`）分派，`call_method` 将整个 send+recv 纳入超时以正确约束 HTTP 长调用。Files: `crates/runtime-adapters/src/mcp/transport.rs`, `connection.rs`, `config.rs`. (MCP 迭代方案阶段 1)
+- **Feature (MCP 协议版本协商):** `initialize` 改为通告 `2025-06-18` 并解析服务器返回的 `protocolVersion` 做协商/降级（支持 `2025-06-18`/`2025-03-26`/`2024-11-05`，未知版本告警后尽力兼容），协商结果下发给传输层。Files: `crates/runtime-adapters/src/mcp/connection.rs`.
+- **Feature (MCP 传输配置 + 类型同步):** `McpServerConfig` 新增 `transport`（别名 `type`，可选 `stdio`/`sse`/`http`，省略时按 command/url 推断、url 默认 SSE 向后兼容）；快照与 `GET /v1/apps/mcp/servers` 回填解析后的 transport 标签；web-ui `McpServerConfigPayload` 同步 `transport` 字段，服务器列表徽标优先展示后端解析值。修复 `list_mcp_tools` 复用 `split_once('_')` 的同名缺陷（改用已知 `tool.name` 反推 server）。Files: `crates/runtime-adapters/src/mcp/config.rs`, `config_io.rs`, `crates/runtime-server/src/runtime_api/mcp.rs`, `crates/desktop/web-ui/src/types/mcp.ts`, `components/McpPanel.tsx`. (MCP 迭代方案阶段 1)
+- **Fix (MCP 工具 `isError` 误判为成功):** MCP `tools/call` 执行路径改用 `extract_tool_content()` 提取 `content[]` 文本块（非 text 块降级为 `[<type> content]` 占位符），并按 MCP 规范将 `isError == true` 映射为 `ToolResult::error`，不再把含 `content`/`isError`/`meta` 的原始 JSON 噪声当成功结果塞给模型。Files: `crates/runtime-server/src/core/engine/tool_execution/mcp.rs`, `crates/runtime-adapters/src/mcp/format.rs`, `mcp/mod.rs`. (MCP 迭代方案阶段 0)
+- **Fix (MCP 含下划线服务器名工具调用失败):** `pool.rs::parse_prefixed_name` 改为按已配置服务器名最长前缀匹配解析 `mcp_{server}_{tool}`，与拼接逻辑对称；含下划线的服务器名（如 `github_mcp`）不再被错误拆分，未知服务器名回退首下划线切分。补含下划线服务器名、`isError=true`、非 text content 块的单元测试。Files: `crates/runtime-adapters/src/mcp/pool.rs`, `mcp/tests.inc.rs`. (MCP 迭代方案阶段 0)
 - **Feature (办公数据管道):** `write_office` XLSX `sheets[].source` 直喂 CSV/TSV/XLSX（免模型重抄整表）；`read_office` 从 PPTX slide 关系读取**图表系列数据**。Files: `office_common.rs`, `office_write.rs`, `office_read.rs`, `office.md`, `office_smoke.rs`.
 - **Feature (办公产品化 P2):** 8 个 `office-*` 技能纳入 `install_system_skills`（bundled marker **v6**，含 7 个新增 `SKILL.md` 资产）；办公 tool surface 增加 `describe_image`（扫描件 OCR）；`office_smoke` 增加 numFmt golden 与旧版 `.doc` 提示测试。Files: `assets/skills/office-*`, `skills/system.rs`, `registry.rs`, `office_smoke.rs`, `tool_catalog.rs`, `base-office.md`.
 - **Fix (办公 `read_office` 首轮不可见):** `read_office` / `load_office_payload` 与 `write_office` 一样在 Agent 模式**预加载**（不再默认 `defer_loading`），避免模型首轮只见 `read_file`、对 XLSX 只抽到 sheet 名。`base-office.md` 工具表改为优先 `read_office`。Files: `crates/core/src/engine/tool_catalog.rs`, `prompts/base-office.md`.
 
 ### Zagens desktop
+
+- **UX (MCP 添加简化):** 移除分栏「快速添加」表单，统一为单一 **「添加 MCP」** JSON 粘贴（与 Cursor/Claude 相同格式）；无服务器时自动展开编辑区；示例改为 `server-everything`。Files: `McpPanel.tsx`, i18n ×4.
+- **UX (toast 位置):** 全局 toast 从输入区上方居中改为窗口**右下角**堆叠；Composer 内联错误/转写状态也改为 toast，输入框不再被提示挤占。Files: `toast.tsx`, `Composer.tsx`.
+- **Fix (启动慢 / 控制台 401 风暴):** 工作区文件树 `useEffect` 误将每次渲染新建的 `treeCache` 对象列入依赖，办公模式反复请求 `deliverables` browse；所有 runtime HTTP 在 `initRuntimeConfig`（Tauri 端口 + Bearer 代理）完成前排队等待，避免 sidecar 未就绪时裸连 `127.0.0.1:7878` 触发海量 401。Files: `WorkspaceFilesPanel.tsx`, `web-ui/src/api/client.ts`.
+- **Fix (启动卡死 / `plugin:event|listen` 循环):** `App` 每帧传入新的 `onCancelSideEffects` 导致 `handleCancelStream` 与 sidecar `listen`/`unlisten` 在每次渲染时重建（网络面板可达数千次）；改为稳定 `useCallback`，sidecar 订阅改经 ref 绑定。Files: `App.tsx`, `useTurnStream.ts`, `useTurnStreamRecovery.ts`.
 
 - **Feature (办公空态 8 卡):** 空态扩展为 8 个任务卡片（周报、纪要、汇报 PPT、数据报表、竞品分析、合同初稿、简历、发布说明），prefill 对齐 `load_skill office-*`。Files: `OfficeEmptyState.tsx`, i18n ×4.
 - **Feature (磁盘压力):** 监测 `~/.zagens` 与当前工作区所在盘剩余空间；临界（&lt;100MB）时自动 **停止** 进行中回合、禁止新发消息，并显示顶部告警（针对 DEMO8 观察：C 盘满 → WebView「页面不存在」且刷新后 LHT/计划仍在后台跑、继续扣费）。`index.html` 增加脚本加载失败时的静态说明。Harness 记录见 `DEMO8-monkey-blind-goal-only.md` §3.5。Files: `disk_guard.rs`, `get_storage_pressure`, `useStoragePressure.ts`, `StoragePressureBanner.tsx`, `ShellLoadFailure.tsx`.

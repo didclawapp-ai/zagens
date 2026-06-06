@@ -2,7 +2,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use deepseek_core::long_horizon::LongHorizonConfig;
+use deepseek_core::long_horizon::{LongHorizonConfig, MacroPhase};
 use regex::Regex;
 use std::sync::LazyLock;
 
@@ -40,6 +40,17 @@ pub(crate) const MAX_VERIFY_MISMATCH_NUDGES: u32 = 2;
 
 /// Hard cap on plan↔checklist drift nudges per session (P1-5).
 pub(crate) const MAX_PLAN_CHECKLIST_DRIFT_NUDGES: u32 = 2;
+
+/// P0-3: checklist must have at least this many completed items before the
+/// "insufficient `[verify:]`" guard applies (avoids nudging tiny tasks).
+pub(crate) const MIN_CHECKLIST_ITEMS_FOR_VERIFY_RATIO: usize = 5;
+
+/// P0-3: at least one completed checklist item must carry `[verify:]` before
+/// `graph_complete` when the checklist is large enough.
+pub(crate) const MIN_VERIFY_TAGGED_ITEMS: usize = 1;
+
+/// Hard cap on insufficient-verify nudges per session (P0-3).
+pub(crate) const MAX_INSUFFICIENT_VERIFY_NUDGES: u32 = 2;
 
 /// Strict-mode plan-bootstrap: max times the runtime forces "establish a plan"
 /// while the graph is empty before giving up (honest stop) for this session.
@@ -99,6 +110,8 @@ pub struct LongHorizonSessionState {
     pub verify_mismatch_nudges: u32,
     /// Session-scoped: plan↔checklist drift nudges (P1-5).
     pub plan_checklist_drift_nudges: u32,
+    /// Session-scoped: insufficient `[verify:]` tag nudges (P0-3).
+    pub insufficient_verify_nudges: u32,
     /// Session-scoped: cross-layer integration enforce nudges (P1′ electron/ etc.).
     pub integration_gate_rounds: u32,
     /// Git working-tree signature captured when the last nudge was emitted
@@ -144,6 +157,21 @@ pub struct LongHorizonSessionState {
     pub suppress_git_progress_baseline: Option<String>,
     /// Gate telemetry drained by `no_tool_uses` after `maybe_continue_incomplete_code_task`.
     pub pending_gate_events: Vec<super::gate_telemetry::CompletionGateEvent>,
+    /// Phase 4 macro loop: implement / craft / remediation.
+    pub macro_phase: MacroPhase,
+    pub macro_cycles_used: u32,
+    pub craft_rounds_this_cycle: u32,
+    pub macro_task_id: Option<String>,
+    /// Harness-spawned CRAFT review sub-agent (awaiting completion).
+    pub macro_craft_agent_id: Option<String>,
+    /// `user_confirm` mode: waiting for operator to approve CRAFT entry.
+    pub macro_awaiting_confirm: bool,
+    /// CRAFT was entered while micro gates were still red — remediation must
+    /// re-pass manifest/toolchain gates before final completion.
+    pub macro_after_audit_unmet: bool,
+    /// Layer-2 manifest failures captured when CRAFT is entered after
+    /// `audit_unmet` — merged into the remediation nudge alongside CRAFT gaps.
+    pub macro_pending_manifest_hints: Vec<String>,
 }
 
 /// In-memory nudge effectiveness counters (§4.9 — evidence for tuning, not yet
@@ -416,18 +444,45 @@ pub fn build_manifest_failed_nudge(
         })
         .collect();
     let list = lines.join("\n");
+    let go_tail = go_manifest_failure_appendix(failing, lang);
     if is_zh(lang) {
         format!(
             "任务图已勾选完成，但**规格 manifest 硬验收门未全绿**（harness 主动执行，exit code 为法官）。下列门未通过：\n\n{list}\n\n\
-             请逐项修复并**实际跑通**上述命令（看到 exit 0）后再结束本轮。不要仅凭文字声明完成。"
+             请逐项修复并**实际跑通**上述命令（看到 exit 0）后再结束本轮。不要仅凭文字声明完成。{go_tail}"
         )
     } else {
         format!(
             "The checklist graph is complete, but **manifest acceptance gates are not all green** \
              (harness actively executed them — exit code is the judge). Failed gates:\n\n{list}\n\n\
              Fix each item and **actually run** these commands to exit 0 before ending this turn. \
-             Do not finish on prose alone."
+             Do not finish on prose alone.{go_tail}"
         )
+    }
+}
+
+fn go_manifest_failure_appendix(
+    failing: &[&super::manifest_gate::VerifyRunResult],
+    lang: &str,
+) -> String {
+    let is_go_test = failing.iter().any(|r| {
+        r.id == "toolchain_go_test"
+            || r.command_display.contains("go test")
+            || r.stderr_tail.contains("coverage")
+            || r.stdout_tail.contains("coverage:")
+    });
+    if !is_go_test {
+        return String::new();
+    }
+    if is_zh(lang) {
+        "\n\n**Go 覆盖率提示：** harness 取 `go test -cover ./...` 各包**最低**覆盖率。\
+         `cmd/todo`、`examples/*` 若 0% 或 `[no test files]` 会拖死全局——把业务逻辑抽到可测子包并写 `*_test.go`，\
+         或直接在 `cmd/*` 下补测试。"
+            .to_string()
+    } else {
+        "\n\n**Go coverage note:** the harness uses the **minimum per-package** coverage from \
+         `go test -cover ./...`. A `cmd/todo` or `examples/*` package at 0% or `[no test files]` \
+         fails the whole run — extract logic into testable packages or add `*_test.go` under `cmd/*`."
+            .to_string()
     }
 }
 
@@ -492,7 +547,7 @@ pub fn build_stubs_found_nudge(hits: &[&super::stub_gate::StubHit], lang: &str) 
 /// being bypassed. Force it to establish a visible plan before continuing.
 #[must_use]
 pub fn build_plan_required_nudge(lang: &str) -> String {
-    if is_zh(lang) {
+    let base = if is_zh(lang) {
         "[长程任务 · 强制模式] 你已经在动手做事,但**还没有建立任何计划/清单**——侧栏 Plan/Todos 是空的,\
          进度无法跟踪,完成门禁也无从校验。现在先停下来用 `checklist_write` 把这件事拆成几个**具体、可验证**的步骤\
          (把第一步标为 `in_progress`,其余 `pending`);复杂任务再用 `update_plan` 给出 3–6 个高层阶段。\
@@ -506,7 +561,59 @@ pub fn build_plan_required_nudge(lang: &str) -> String {
          complex task also lay out 3–6 high-level phases with `update_plan`. Then immediately continue, \
          updating checklist status as you go. Do not keep working without a plan."
             .to_string()
+    };
+    format!("{base}\n\n{}", build_go_harness_planning_appendix(lang))
+}
+
+/// Go code-task harness hints injected at plan-bootstrap (before large impl dumps).
+#[must_use]
+pub fn build_go_harness_planning_appendix(lang: &str) -> String {
+    if is_zh(lang) {
+        "**Go 工程门禁（规划时纳入，不要事后补）：**\n\
+         - `go test -cover ./...` 按**各包最低**覆盖率 ≥60% 判定；`cmd/*`、`examples/*` 不能 0% 或 `[no test files]`。\n\
+         - 示例/Todo 逻辑抽到可测子包（如 `internal/todo`），`main` 只做装配；或给 `cmd/*` 写 `*_test.go`。\n\
+         - 关键验收写进 checklist：`[verify: go test -cover ./...]`、`[verify: gofmt -l .]`（输出为空）。\n\
+         - manifest 轮次耗尽 ≠ 可收尾；checklist 勾完 ≠ 微观门全绿。"
+            .to_string()
+    } else {
+        "**Go harness (plan for this up front — do not bolt on later):**\n\
+         - `go test -cover ./...` uses the **minimum per-package** coverage (≥60%); `cmd/*` and `examples/*` cannot be 0% or `[no test files]`.\n\
+         - Extract demo/Todo logic into testable packages (e.g. `internal/todo`); keep `main` as wiring, or add `*_test.go` under `cmd/*`.\n\
+         - Put oracles on the checklist: `[verify: go test -cover ./...]`, `[verify: gofmt -l .]` (empty output).\n\
+         - Manifest round exhaustion ≠ done; a 100% checklist ≠ micro gates green."
+            .to_string()
     }
+}
+
+/// Snapshot failing manifest verify tails for macro-loop remediation (ms-5 gap).
+pub fn capture_manifest_gate_hints(session: &mut LongHorizonSessionState) {
+    let Some(ref gate) = session.last_manifest_gate else {
+        session.macro_pending_manifest_hints.clear();
+        return;
+    };
+    let mut hints = Vec::new();
+    for r in &gate.results {
+        if !gate.failing_ids.contains(&r.id) {
+            continue;
+        }
+        let detail = format!(
+            "[{}] {} — {}",
+            r.id,
+            r.command_display,
+            r.stderr_tail.trim()
+        );
+        if !r.stderr_tail.trim().is_empty() {
+            hints.push(detail);
+        } else if !r.stdout_tail.trim().is_empty() {
+            hints.push(format!(
+                "[{}] {} — {}",
+                r.id,
+                r.command_display,
+                r.stdout_tail.trim()
+            ));
+        }
+    }
+    session.macro_pending_manifest_hints = hints;
 }
 
 #[must_use]
@@ -525,6 +632,32 @@ pub fn build_unverified_acceptance_nudge(items: &[String], lang: &str) -> String
         format!(
             "The checklist is fully checked, but these \"runnable acceptance\" items were never actually verified — they have no `[verify: <command>]` prefix and no matching recent run (creating a file / self-declaring done is NOT the same as running it):\n\n{list}\n\n\
              For each: (1) rewrite as `[verify: <command>] <label>` (e.g. `[verify: bash scripts/run_examples.sh] all examples pass`); (2) **run that command and see it pass** before keeping it completed. If there is genuinely no runnable command, split it into sub-items with objective acceptance. Do not end this turn on a prose claim alone."
+        )
+    }
+}
+
+/// P0-3: checklist is complete but carries almost no `[verify:]` tags.
+#[must_use]
+pub fn build_insufficient_verify_nudge(completed_count: usize, lang: &str) -> String {
+    if is_zh(lang) {
+        format!(
+            "清单已勾选 {completed_count} 项，但**没有任何一项**带 `[verify: <命令>]` 前缀。\
+             仅靠 build/vet/自述完成无法证明任务真做完（MicroStack 类假绿）。\n\n\
+             请至少为关键验收项补上可执行 oracle，例如：\n\
+             - `[verify: go test -cover ./...] 测试覆盖率 ≥60%`\n\
+             - `[verify: gofmt -l .] 格式检查（输出为空）`\n\
+             - `[verify: bash scripts/e2e_todo.sh] Todo 端到端`\n\n\
+             写好前缀后**实际运行命令、看到 exit 0**，再保持 completed。不要仅凭文字声明结束本轮。"
+        )
+    } else {
+        format!(
+            "The checklist has {completed_count} completed items but **none** carry a `[verify: <command>]` prefix. \
+             Build/vet/prose claims alone do not prove the task is done (MicroStack-style false green).\n\n\
+             Add executable oracles for key acceptance items, e.g.:\n\
+             - `[verify: go test -cover ./...] tests with ≥60% coverage`\n\
+             - `[verify: gofmt -l .] formatting clean (empty output)`\n\
+             - `[verify: bash scripts/e2e_todo.sh] Todo e2e`\n\n\
+             Then **run each command and see exit 0** before keeping items completed. Do not end this turn on prose alone."
         )
     }
 }
@@ -811,6 +944,7 @@ mod tests {
             auto_continue: cfg.auto_continue,
             max_auto_continue_rounds: cfg.max_auto_continue_rounds,
             completion_gate: cfg.completion_gate,
+            macro_loop: cfg.macro_loop,
         };
         for _ in 0..3 {
             assert!(matches!(
@@ -856,6 +990,7 @@ mod tests {
             auto_continue: cfg.auto_continue,
             max_auto_continue_rounds: cfg.max_auto_continue_rounds,
             completion_gate: cfg.completion_gate,
+            macro_loop: cfg.macro_loop,
         };
         let mut nudges = 0;
         for _ in 0..20 {
@@ -889,6 +1024,7 @@ mod tests {
             auto_continue: defaults.auto_continue,
             max_auto_continue_rounds: defaults.max_auto_continue_rounds,
             completion_gate: defaults.completion_gate,
+            macro_loop: defaults.macro_loop,
         };
         // Two no-progress nudges (streak = 2), then a progress turn resets it.
         let _ = tracker.prepare_nudge(Some(1), &cfg, false);

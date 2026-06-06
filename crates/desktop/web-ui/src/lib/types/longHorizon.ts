@@ -17,6 +17,18 @@ export interface HarnessNudgeTelemetry {
   conversion_pct: number;
 }
 
+/** Phase 4 macro loop live state (implement / craft / remediation). */
+export interface HarnessMacroLoop {
+  configured: boolean;
+  active: boolean;
+  phase?: string | null;
+  macro_cycles_used: number;
+  craft_rounds_this_cycle: number;
+  awaiting_confirm: boolean;
+  last_blockers_count?: number | null;
+  macro_task_id?: string | null;
+}
+
 /** Composable harness completion gate live counters (P2). */
 export interface HarnessCompletionGate {
   active: boolean;
@@ -64,6 +76,8 @@ export interface HarnessTaskGraph {
   recent_nodes?: HarnessNode[] | null;
   /** Completion gate summary (manifest / audit rounds, P2). */
   completion_gate?: HarnessCompletionGate | null;
+  /** Macro review loop (Phase 4). */
+  macro_loop?: HarnessMacroLoop | null;
 }
 
 export interface HarnessCycleBriefing {

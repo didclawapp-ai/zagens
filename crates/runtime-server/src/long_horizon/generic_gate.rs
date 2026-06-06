@@ -245,7 +245,9 @@ pub fn detect_toolchain_entries(
 
     if exists(workspace, "go.mod") {
         push("go_build", "go build ./...");
-        push("go_test", "go test ./...");
+        // `-cover` so [`go_toolchain_audit`] can enforce a minimum coverage %;
+        // plain `go test` exits 0 with all `[no test files]` (false green).
+        push("go_test", "go test -cover ./...");
     } else if exists(workspace, "Cargo.toml") {
         push("cargo_build", "cargo build");
         push("cargo_test", "cargo test");
@@ -370,6 +372,9 @@ mod tests {
         assert_eq!(entries.len(), 2);
         assert!(entries.iter().all(|e| e.source == VerifySource::Toolchain));
         assert!(entries.iter().any(|e| e.cmd.as_deref() == Some("go build ./...")));
+        assert!(entries
+            .iter()
+            .any(|e| e.cmd.as_deref() == Some("go test -cover ./...")));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

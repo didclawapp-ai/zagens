@@ -143,7 +143,7 @@ export function useTurnSession({
       if (document.visibilityState !== 'hidden') {
         return;
       }
-      if (!streamingRef.current || !resumedThreadId) {
+      if (!resumedThreadId) {
         return;
       }
       const tid = resumedThreadId;
@@ -160,7 +160,7 @@ export function useTurnSession({
     };
     document.addEventListener('visibilitychange', onVis);
     return () => document.removeEventListener('visibilitychange', onVis);
-  }, [resumedThreadId, refreshSessions, streamingRef]);
+  }, [resumedThreadId, refreshSessions]);
 
   useEffect(() => {
     if (sessions.length === 0 || startupSessionRestoredRef.current) {

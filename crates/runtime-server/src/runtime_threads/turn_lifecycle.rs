@@ -2,10 +2,14 @@
 
 use anyhow::Result;
 
-use super::{EditLastTurnRequest, RuntimeThreadManager, StartTurnRequest, TurnRecord};
+use super::{EditLastTurnRequest, RuntimeThreadManager, StartTurnOutcome, StartTurnRequest, TurnRecord};
 
 impl RuntimeThreadManager {
-    pub async fn start_turn(&self, thread_id: &str, req: StartTurnRequest) -> Result<TurnRecord> {
+    pub async fn start_turn(
+        &self,
+        thread_id: &str,
+        req: StartTurnRequest,
+    ) -> Result<StartTurnOutcome> {
         deepseek_runtime_orchestrator::runtime_threads::turn_lifecycle::start_turn(
             self, self, thread_id, req,
         )
@@ -16,10 +20,19 @@ impl RuntimeThreadManager {
         &self,
         thread_id: &str,
         req: EditLastTurnRequest,
-    ) -> Result<TurnRecord> {
+    ) -> Result<StartTurnOutcome> {
         deepseek_runtime_orchestrator::runtime_threads::turn_lifecycle::edit_last_turn(
             self, self, thread_id, req,
         )
         .await
+    }
+
+    /// Convenience wrapper for callers that only need the started turn record.
+    pub async fn start_turn_record(
+        &self,
+        thread_id: &str,
+        req: StartTurnRequest,
+    ) -> Result<TurnRecord> {
+        Ok(self.start_turn(thread_id, req).await?.turn)
     }
 }

@@ -282,6 +282,17 @@ pub fn read_structured_verdict_from_blackboard(
         .and_then(|v| serde_json::from_value(v.clone()).ok())
 }
 
+/// BLOCKER-severity items from the latest CRAFT review blackboard partition.
+#[must_use]
+pub fn read_reviewer_blocker_items(workspace: &Path, task_id: &str) -> Vec<deepseek_core::subagent::VerdictItem> {
+    read_structured_verdict_from_blackboard(workspace, task_id, &SubAgentType::Review)
+        .map(|v| v.items)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|item| item.severity.eq_ignore_ascii_case("BLOCKER"))
+        .collect()
+}
+
 // ── Markdown formatters (read side) ────────────────────────────
 
 fn format_explorer_findings(board: &Value) -> Option<String> {

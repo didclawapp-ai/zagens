@@ -56,6 +56,7 @@ where
     *last_flush = std::time::Instant::now();
     Ok(emit_t0.elapsed().as_millis() as u64)
 }
+use super::engine_host::RuntimeThreadHost;
 use super::manager::{RuntimeThreadManager, tool_kind_for_name};
 use super::monitor_host::RuntimeThreadMonitorHost;
 use super::persist::duration_ms;
@@ -73,7 +74,7 @@ pub async fn monitor_turn<P, R, H>(
 where
     P: Send + Sync + Clone + 'static,
     R: Send + Sync + Clone + 'static,
-    H: RuntimeThreadMonitorHost<P, R> + 'static,
+    H: RuntimeThreadMonitorHost<P, R> + RuntimeThreadHost<P, R> + 'static,
 {
         tracing::info!(
             thread_id = %thread_id,
@@ -766,7 +767,7 @@ where
                     id,
                     tool_name,
                     description,
-                    ..
+                    approval_key,
                 } => {
                     if mgr
                         .active_turn_flags(&thread_id, &turn_id)
@@ -799,6 +800,7 @@ where
                                         thread_id: thread_id.clone(),
                                         turn_id: turn_id.clone(),
                                         tool_call_id: id.clone(),
+                                        approval_key: approval_key.clone(),
                                         deadline,
                                     },
                                 );
@@ -1090,6 +1092,15 @@ where
                 state.active_turn = None;
             }
             touch_lru(&mut active.lru, &thread_id);
+        }
+
+        if let Err(err) =
+            super::turn_lifecycle::drain_queued_turn(mgr, host, &thread_id).await
+        {
+            tracing::error!(
+                thread_id = %thread_id,
+                "Failed to drain queued prompt after turn completion: {err}"
+            );
         }
 
         Ok(())

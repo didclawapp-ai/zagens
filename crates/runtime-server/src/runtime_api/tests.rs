@@ -167,6 +167,12 @@ async fn spawn_test_server_with_root_and_token(
     };
     let shared_sm = Arc::new(SessionManager::new(sessions_dir.clone())?);
 
+    let shared_mcp_pool = Arc::new(tokio::sync::Mutex::new(
+        crate::mcp::McpPool::from_config_path(&root.join("mcp.json"))
+            .unwrap_or_else(|_| crate::mcp::McpPool::new(crate::mcp::McpConfig::default())),
+    ));
+    crate::mcp_shared::install_shared_mcp_pool(Arc::clone(&shared_mcp_pool));
+
     let state = RuntimeApiState::new(
         Config::default(),
         PathBuf::from("."),
@@ -180,6 +186,7 @@ async fn spawn_test_server_with_root_and_token(
         Arc::new(token_fp),
         shared_sm,
         ResumeTaskTracker::new(),
+        shared_mcp_pool,
     );
     let app = build_router(state);
     let listener = match TcpListener::bind("127.0.0.1:0").await {

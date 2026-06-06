@@ -1,12 +1,24 @@
 use serde_json;
 
-pub fn format_tool_result(result: &serde_json::Value) -> String {
-    let is_error = result
+/// Whether an MCP `tools/call` result signals a **tool-level** failure via
+/// the spec's `isError` flag. This is distinct from a JSON-RPC protocol
+/// error (handled in `connection.rs`): a tool can return a successful RPC
+/// response whose payload still represents a failed tool invocation.
+pub fn is_tool_error(result: &serde_json::Value) -> bool {
+    result
         .get("isError")
         .and_then(serde_json::Value::as_bool)
-        .unwrap_or(false);
+        .unwrap_or(false)
+}
 
-    let content = result
+/// Extract the model-facing content from an MCP `tools/call` result.
+///
+/// Concatenates the text of every `text` content block; non-text blocks
+/// (image, resource, …) are rendered as `[<type> content]` placeholders so
+/// the model knows something was returned without flooding the context with
+/// base64. Falls back to pretty-printed JSON when there's no `content` array.
+pub fn extract_tool_content(result: &serde_json::Value) -> String {
+    result
         .get("content")
         .and_then(|v| v.as_array())
         .map_or_else(
@@ -20,9 +32,15 @@ pub fn format_tool_result(result: &serde_json::Value) -> String {
                     .collect::<Vec<_>>()
                     .join("\n")
             },
-        );
+        )
+}
 
-    if is_error {
+/// Human-readable rendering of a tool result, prefixing `Error:` on failure.
+/// Prefer [`is_tool_error`] + [`extract_tool_content`] on execution paths that
+/// need to map failures onto a structured error type.
+pub fn format_tool_result(result: &serde_json::Value) -> String {
+    let content = extract_tool_content(result);
+    if is_tool_error(result) {
         format!("Error: {content}")
     } else {
         content

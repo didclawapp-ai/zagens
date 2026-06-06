@@ -11,6 +11,7 @@ use crate::prompts;
 use crate::sandbox::TuiSandboxHost;
 use crate::seam_manager::{SeamConfig, SeamManager};
 use crate::tools::large_output_router::TuiWorkshopHost;
+use crate::tools::approval_cache::ApprovalCache;
 use crate::tools::shell::{new_shared_shell_manager, TuiShellHost};
 use crate::tools::subagent::{new_shared_subagent_manager, spawn_subagent_maintenance_task};
 use crate::agent_surface::AppMode;
@@ -98,8 +99,11 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
         Some(cycle_hooks::system_prompt_hash(stable_prompt.as_ref()));
     session.system_prompt = stable_prompt;
 
-    let subagent_manager =
-        new_shared_subagent_manager(lean.workspace.clone(), lean.max_subagents);
+    let subagent_manager = new_shared_subagent_manager(
+        lean.workspace.clone(),
+        lean.max_subagents,
+        api_config.subagent_heartbeat_timeout(),
+    );
     spawn_subagent_maintenance_task(subagent_manager.clone());
     let shell_manager = config_ext
         .runtime_services
@@ -182,6 +186,7 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
         workshop_vars: workshop_vars.clone(),
         subagent_manager: subagent_manager.clone(),
         mcp_pool: None,
+        approval_cache: ApprovalCache::default(),
         tx_subagent_completion,
         rx_subagent_completion: rx_subagent_completion.clone(),
         sandbox_init_warning,

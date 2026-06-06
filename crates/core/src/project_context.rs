@@ -215,7 +215,7 @@ pub fn create_default_agents_md(workspace: &Path) -> std::io::Result<PathBuf> {
 
     let default_content = r#"# Project Agent Instructions
 
-This file provides guidance to AI agents (DeepSeek TUI, Claude Code, etc.) when working with code in this repository.
+This file provides guidance to AI agents (Zagens, Claude Code, etc.) when working with code in this repository.
 
 ## File Location
 

@@ -113,7 +113,7 @@ pub(crate) async fn subagent_flash_router(
 }
 
 const SUBAGENT_ROUTER_SYSTEM_PROMPT: &str = "\
-You are the DeepSeek TUI sub-agent routing manager. Return only compact JSON: \
+You are the Zagens sub-agent routing manager. Return only compact JSON: \
 {\"model\":\"deepseek-v4-flash|deepseek-v4-pro\",\"thinking\":\"off|high|max\"}. \
 Treat each child assignment like a customer request entering a team queue: decide the least \
 sufficient worker and thinking budget for that assignment. Do not treat being a sub-agent as \

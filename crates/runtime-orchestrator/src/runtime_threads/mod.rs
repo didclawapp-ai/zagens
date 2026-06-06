@@ -16,10 +16,12 @@ pub mod monitor;
 pub mod monitor_host;
 pub mod monitor_persist;
 pub mod persist;
+pub mod prompt_inbox;
 pub mod routing;
 pub mod thread_crud;
 pub mod task_port;
 pub mod turn_control;
+pub mod turn_coordinator;
 pub mod turn_lifecycle;
 pub mod turn_wait;
 pub mod types;
@@ -35,6 +37,8 @@ pub use manager::{
 };
 
 pub use persist::RuntimeThreadStore;
+pub use prompt_inbox::{PromptAdmission, PromptDelivery, PromptQueuedResponse};
+pub use turn_coordinator::TurnCoordinator;
 pub use types::*;
 
 pub const CURRENT_RUNTIME_SCHEMA_VERSION: u32 = 2;
@@ -160,6 +164,10 @@ pub struct StartTurnRequest {
     pub top_p: Option<f32>,
     #[serde(default)]
     pub max_tokens: Option<u32>,
+    /// `queue` admits while a turn is active and starts after it completes.
+    /// Omitted preserves legacy behaviour (error when a turn is already active).
+    #[serde(default)]
+    pub delivery: Option<PromptDelivery>,
 }
 
 impl Default for StartTurnRequest {
@@ -176,8 +184,16 @@ impl Default for StartTurnRequest {
             temperature: None,
             top_p: None,
             max_tokens: None,
+            delivery: None,
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct StartTurnOutcome {
+    pub turn: TurnRecord,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub queued: Option<PromptAdmission>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

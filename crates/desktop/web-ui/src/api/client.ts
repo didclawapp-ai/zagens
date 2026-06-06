@@ -3,7 +3,13 @@ import type {
   StartTurnRequest,
   TurnRecord as WireTurnRecord,
 } from './runtimeTypes';
-import type { McpServersResponse, McpToolsResponse, McpServerConfigPayload } from '../types/mcp';
+import type {
+  McpDiscoverResponse,
+  McpCallRecord,
+  McpServersResponse,
+  McpToolsResponse,
+  McpServerConfigPayload,
+} from '../types/mcp';
 import type { UsageAggregation, UsageParams } from '../types/usage';
 import type {
   TaskSummary,
@@ -73,19 +79,31 @@ let runtimeBase = 'http://127.0.0.1:7878';
 /** Zagens shell: REST/SSE via Tauri; Bearer stays in Rust (H06). */
 let useTauriRuntimeProxy = false;
 
+let runtimeConfigInit: Promise<void> | null = null;
+
 /** Call before render when running inside Tauri; no-op in plain Vite dev. */
 export async function initRuntimeConfig(): Promise<void> {
-  try {
-    const { invoke } = await import('@tauri-apps/api/core');
-    const port = await invoke<number>('get_runtime_port');
-    runtimeBase = `http://127.0.0.1:${port}`;
-    useTauriRuntimeProxy = true;
-  } catch {
-    useTauriRuntimeProxy = false;
+  if (!runtimeConfigInit) {
+    runtimeConfigInit = (async () => {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const port = await invoke<number>('get_runtime_port');
+        runtimeBase = `http://127.0.0.1:${port}`;
+        useTauriRuntimeProxy = true;
+      } catch {
+        useTauriRuntimeProxy = false;
+      }
+    })();
   }
+  return runtimeConfigInit;
+}
+
+async function awaitRuntimeConfig(): Promise<void> {
+  await initRuntimeConfig();
 }
 
 async function runtimeRequest(path: string, init: RequestInit = {}): Promise<Response> {
+  await awaitRuntimeConfig();
   if (!useTauriRuntimeProxy) {
     return fetch(`${runtimeBase}${path}`, {
       ...init,
@@ -153,6 +171,7 @@ function runtimeProbeInit(): RequestInit {
 
 /** Single attempt: `/health` then (if authed desktop) `/v1/sessions` — sequential while the port is down avoids doubling refused connections in DevTools. */
 async function tryRuntimeFullyReady(): Promise<boolean> {
+  await awaitRuntimeConfig();
   try {
     const h = useTauriRuntimeProxy
       ? await runtimeRequest('/health', { method: 'GET', signal: runtimeProbeInit().signal })
@@ -262,6 +281,7 @@ let bootRuntimeReadyPromise: Promise<boolean> | null = null;
 
 export function invalidateRuntimeBootReadyCache(): void {
   bootRuntimeReadyPromise = null;
+  runtimeConfigInit = null;
 }
 
 export function waitForRuntimeBootReady(options?: {
@@ -289,6 +309,7 @@ export type RuntimeConnectionState =
 export async function probeRuntimeConnection(options?: {
   light?: boolean;
 }): Promise<Exclude<RuntimeConnectionState, 'checking'>> {
+  await awaitRuntimeConfig();
   if (!useTauriRuntimeProxy) {
     try {
       const r = await fetch(`${runtimeBase}/health`, runtimeProbeInit());
@@ -584,10 +605,15 @@ export async function postResolveApproval(
   turnId: string,
   toolCallId: string,
   decision: 'approve' | 'deny',
+  rememberForSession = false,
 ): Promise<unknown> {
   return postJson(
     `/v1/threads/${encodeURIComponent(threadId)}/turns/${encodeURIComponent(turnId)}/resolve-approval`,
-    { tool_call_id: toolCallId, decision },
+    {
+      tool_call_id: toolCallId,
+      decision,
+      remember_for_session: rememberForSession,
+    },
   );
 }
 
@@ -1034,6 +1060,15 @@ export async function fetchMcpTools(server?: string): Promise<McpToolsResponse> 
   return fetchJson<McpToolsResponse>(`/v1/apps/mcp/tools${qs}`);
 }
 
+/** Full discover snapshot (tools/resources/prompts) + recent call log. */
+export async function fetchMcpDiscover(): Promise<McpDiscoverResponse> {
+  return fetchJson<McpDiscoverResponse>('/v1/apps/mcp/discover');
+}
+
+export async function fetchMcpCalls(): Promise<McpCallRecord[]> {
+  return fetchJson<McpCallRecord[]>('/v1/apps/mcp/calls');
+}
+
 export interface AddMcpServerRequest {
   name: string;
   command?: string;
@@ -1056,6 +1091,16 @@ export async function addMcpServer(req: AddMcpServerRequest): Promise<void> {
     (err as Error & { status?: number }).status = res.status;
     throw err;
   }
+}
+
+/** Hot-reload MCP config into the running sidecar (no restart). */
+export async function reloadMcpConfig(): Promise<{
+  removed: string[];
+  updated: string[];
+  connected: string[];
+  connect_errors: [string, string][];
+}> {
+  return postJson('/v1/apps/mcp/reload', {});
 }
 
 /** Merge MCP servers (and optional timeouts) from a JSON fragment into ~/.zagens/mcp.json. */
@@ -1618,6 +1663,17 @@ export interface LhtSettings {
   max_infra_strikes: number;
   custom_verify_count: number;
   custom_deliverable_count: number;
+  macro_loop_enabled: boolean;
+  macro_loop_max_cycles: number;
+  macro_loop_max_craft_rounds: number;
+  macro_loop_auto_enter_craft:
+    | 'user_confirm'
+    | 'on_micro_pass'
+    | 'on_graph_complete'
+    | 'on_manifest_exhausted'
+    | 'off';
+  macro_loop_craft_on_small_tasks: boolean;
+  macro_loop_min_checklist_items: number;
 }
 
 export async function fetchLhtSettings(): Promise<LhtSettings> {
@@ -1628,6 +1684,13 @@ export async function fetchLhtSettings(): Promise<LhtSettings> {
 export async function saveLhtSettings(settings: LhtSettings): Promise<void> {
   const { invoke } = await import('@tauri-apps/api/core');
   await invoke('save_lht_settings', { settings });
+}
+
+export type LhtPresetId = 'code-default' | 'long-refactor' | 'long-fix' | 'craft-audit';
+
+export async function applyLhtPreset(presetId: LhtPresetId): Promise<LhtSettings> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  return invoke<LhtSettings>('apply_lht_preset', { presetId });
 }
 
 export type LhtComposerMode = 'auto' | 'strict' | 'off';

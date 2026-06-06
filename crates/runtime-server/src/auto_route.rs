@@ -69,7 +69,7 @@ pub struct AutoRouteSelection {
 }
 
 pub const AUTO_MODEL_ROUTER_SYSTEM_PROMPT: &str = "\
-You are the DeepSeek TUI auto-routing classifier. Return only compact JSON: \
+You are the Zagens agent runtime auto-routing classifier. Return only compact JSON: \
 {\"model\":\"deepseek-v4-flash|deepseek-v4-pro\",\"thinking\":\"off|high|max\"}. \
 Use deepseek-v4-flash for trivial, conversational, status, or single-step work. \
 Use deepseek-v4-pro for coding, debugging, release work, multi-step tasks, high-risk decisions, \

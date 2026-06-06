@@ -38,7 +38,7 @@ export type AppShellProps = {
   selectedWorkspace: string;
   approval: ApprovalState | null;
   approvalBusy: boolean;
-  onApproveDecision: (decision: 'approve' | 'deny') => void;
+  onApproveDecision: (decision: 'approve' | 'deny', rememberForSession?: boolean) => void;
   modelParamsOpen: boolean;
   modelParams: ModelParams;
   onModelParamsOpenChange: (open: boolean) => void;
@@ -278,7 +278,7 @@ export default function AppShell({
           toolName={approval?.toolName ?? ''}
           description={approval?.description ?? ''}
           busy={approvalBusy}
-          onApprove={() => void onApproveDecision('approve')}
+          onApprove={(rememberForSession) => void onApproveDecision('approve', rememberForSession)}
           onDeny={() => void onApproveDecision('deny')}
         />
         <ModelParamsDialog

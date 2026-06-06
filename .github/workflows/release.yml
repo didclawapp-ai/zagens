@@ -5,6 +5,9 @@ name: Zagens Release
 # See docs/desktop/VERSIONING.md — pre-1.0 releases use 0.x.y-preview.n
 # Legacy:   ds-pick-v* tags still trigger this workflow
 # Manual:    Actions → Zagens Release → Run workflow
+#
+# Installers + OTA manifest are synced to zagens.com by the private website repo:
+#   https://github.com/jjlin0603-svg/zagens_website
 
 on:
   push:
@@ -51,27 +54,34 @@ jobs:
 
       - name: Stage installer artifacts
         shell: pwsh
+        working-directory: crates/desktop
         run: |
           $bundle = "target/release/bundle"
           if (-not (Test-Path $bundle)) {
             Write-Error "Missing bundle dir: $bundle"
           }
-          New-Item -ItemType Directory -Force -Path release-artifacts | Out-Null
+          New-Item -ItemType Directory -Force -Path ../../release-artifacts | Out-Null
           Get-ChildItem -Path $bundle -Recurse -File |
-            Where-Object { $_.Extension -in '.msi', '.exe', '.zip', '.sha256' } |
+            Where-Object { $_.Extension -in '.msi', '.exe', '.zip', '.sha256', '.sig' } |
             ForEach-Object {
-              Copy-Item $_.FullName -Destination "release-artifacts/$($_.Name)"
+              Copy-Item $_.FullName -Destination "../../release-artifacts/$($_.Name)"
             }
-          if (-not (Get-ChildItem release-artifacts)) {
+          if (-not (Get-ChildItem ../../release-artifacts)) {
             Write-Error "No installer artifacts found under $bundle"
           }
-          Get-ChildItem release-artifacts
+          Get-ChildItem ../../release-artifacts
+
+      - name: Upload release artifacts (CI)
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts
+          path: release-artifacts/
+          retention-days: 14
 
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          # Pre-1.0 Zagens uses -preview / -beta / -alpha (see docs/desktop/VERSIONING.md)
           prerelease: ${{ contains(github.ref_name, '-preview') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-alpha') }}
           generate_release_notes: true
           files: release-artifacts/*
@@ -86,5 +96,23 @@ jobs:
             extract → run the installer** for a prompt-free install. Verify the
             download with the matching `.sha256` file.
 
+            OTA `latest.json` and zagens.com `/download/` are updated by the
+            [zagens_website](https://github.com/jjlin0603-svg/zagens_website) repo
+            after this release is published.
+
             See [SMARTSCREEN.md](../../blob/main/docs/desktop/SMARTSCREEN.md) for
             details, and [CHANGELOG.md](../../blob/main/CHANGELOG.md) for release notes.
+
+  notify-website-release:
+    name: Sync installers to zagens.com
+    needs: build-windows
+    if: success() && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch website sync-release workflow
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.WEBSITE_REPO_DISPATCH_TOKEN }}
+          repository: jjlin0603-svg/zagens_website
+          event-type: desktop-release
+          client-payload: '{"tag": "${{ github.ref_name }}"}'

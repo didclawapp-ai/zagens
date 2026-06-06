@@ -139,6 +139,12 @@ export default function App() {
     onClearActiveSession: () => handleNewSessionRef.current(),
   });
 
+  const onCancelStreamSideEffects = useCallback(() => {
+    setApprovalRef.current(null);
+    setLastTurnOutputTokensRef.current(null);
+    setLastCacheHitPercent(null);
+  }, []);
+
   const {
     streamingThreadIds,
     setStreamingThreadIds,
@@ -155,11 +161,7 @@ export default function App() {
     streamingRef,
     cancelCleanupRef,
     t,
-    onCancelSideEffects: () => {
-      setApprovalRef.current(null);
-      setLastTurnOutputTokensRef.current(null);
-      setLastCacheHitPercent(null);
-    },
+    onCancelSideEffects: onCancelStreamSideEffects,
   });
 
   const {
@@ -372,6 +374,7 @@ export default function App() {
     restoreThreadContextFromCache,
     reconcileRuntimeAfterFetchFailure,
     notifyRuntimeTransient,
+    resetAgentPanel,
   });
 
   handleSelectSessionRef.current = handleSelectSession;
@@ -750,7 +753,9 @@ export default function App() {
       selectedWorkspace={selectedWorkspace}
       approval={approval}
       approvalBusy={approvalBusy}
-      onApproveDecision={(decision) => void handleApproveDecision(decision)}
+      onApproveDecision={(decision, rememberForSession) =>
+        void handleApproveDecision(decision, rememberForSession)
+      }
       modelParamsOpen={modelParamsOpen}
       modelParams={modelParams}
       onModelParamsOpenChange={setModelParamsOpen}

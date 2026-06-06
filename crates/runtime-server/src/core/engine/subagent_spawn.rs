@@ -113,6 +113,75 @@ impl Engine {
         manager.list()
     }
 
+    /// Spawn a CRAFT Review sub-agent for the LHT macro loop (Phase 4).
+    pub(in crate::core::engine) async fn spawn_macro_craft_review(
+        &self,
+        task_id: &str,
+        prompt: &str,
+    ) -> Result<SubAgentSpawnOutcome, SubAgentSpawnError> {
+        use crate::tools::subagent::{SubAgentRuntime, SubAgentSpawnOptions, SubAgentType};
+        use deepseek_core::subagent::SubAgentAssignment;
+
+        let Some(client) = self.deepseek_client.clone() else {
+            let message = self
+                .deepseek_client_error
+                .as_deref()
+                .map(|err| format!("Failed to spawn CRAFT review: {err}"))
+                .unwrap_or_else(|| {
+                    "Failed to spawn CRAFT review: API client not configured".to_string()
+                });
+            return Err(if self.deepseek_client_error.is_some() {
+                SubAgentSpawnError::SpawnFailed(message)
+            } else {
+                SubAgentSpawnError::NoClient
+            });
+        };
+
+        let runtime = SubAgentRuntime::new(
+            client,
+            self.session.model.clone(),
+            self.build_tool_context(AppMode::Agent, self.session.auto_approve),
+            self.session.allow_shell,
+            Some(self.tx_event.clone()),
+            Arc::clone(&self.runtime_ext().subagent_manager),
+        )
+        .with_role_models(self.config.subagent_model_overrides.clone())
+        .with_auto_model(self.session.auto_model)
+        .with_reasoning_effort(
+            self.session.reasoning_effort.clone(),
+            self.session.reasoning_effort_auto,
+        )
+        .with_max_spawn_depth(self.config.max_spawn_depth)
+        .with_step_timeout(self.config.subagent_step_timeout)
+        .background_runtime();
+
+        let assignment = SubAgentAssignment::new(prompt.to_string(), None);
+        let options = SubAgentSpawnOptions {
+            task_id: Some(task_id.to_string()),
+            nickname: Some("LHT review".to_string()),
+            ..SubAgentSpawnOptions::default()
+        };
+
+        let snapshot = {
+            let mut manager = self.runtime_ext().subagent_manager.write().await;
+            manager
+                .spawn_background_with_assignment_options(
+                    Arc::clone(&self.runtime_ext().subagent_manager),
+                    runtime,
+                    SubAgentType::Review,
+                    prompt.to_string(),
+                    assignment,
+                    None,
+                    options,
+                )
+                .map_err(|err| SubAgentSpawnError::SpawnFailed(err.to_string()))?
+        };
+
+        Ok(SubAgentSpawnOutcome {
+            agent_id: snapshot.agent_id,
+        })
+    }
+
     pub(in crate::core::engine) async fn handle_spawn_subagent_op(&self, prompt: &str) {
         use crate::core::events::Event;
         use deepseek_core::error_taxonomy::ErrorEnvelope;

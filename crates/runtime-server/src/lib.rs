@@ -35,6 +35,7 @@ mod retry_status;
 pub mod rlm;
 pub mod runtime_api;
 pub mod runtime_serve;
+mod mcp_shared;
 mod runtime_threads;
 mod sandbox;
 mod schema_migration;

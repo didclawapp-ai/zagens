@@ -44,7 +44,11 @@ where
             Op::ApproveToolCall { id } => {
                 let _ = engine
                     .tx_approval
-                    .send(crate::engine::approval::ApprovalDecision::Approved { id })
+                    .send(crate::engine::approval::ApprovalDecision::Approved {
+                        id,
+                        cache_key: None,
+                        remember_for_session: false,
+                    })
                     .await;
                 true
             }

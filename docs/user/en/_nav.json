@@ -1,0 +1,111 @@
+[
+  { "title": "Getting started", "slug": "getting-started" },
+  { "title": "Install", "slug": "install" },
+  { "title": "UI tour", "slug": "ui-tour" },
+  { "title": "Task types", "slug": "task-types" },
+  {
+    "title": "Chat",
+    "slug": "chat/sessions",
+    "children": [
+      { "title": "Streaming & stop", "slug": "chat/streaming" },
+      { "title": "Context usage", "slug": "chat/context" },
+      { "title": "Replay & export", "slug": "chat/replay-export" }
+    ]
+  },
+  {
+    "title": "Workspace",
+    "slug": "workspace/overview",
+    "children": [
+      { "title": "File tree", "slug": "workspace/file-tree" },
+      { "title": "File preview", "slug": "workspace/preview" },
+      { "title": "Diff review", "slug": "workspace/diff" },
+      { "title": "Terminal", "slug": "workspace/terminal" },
+      { "title": "Snapshots", "slug": "workspace/snapshots" }
+    ]
+  },
+  {
+    "title": "Code mode",
+    "slug": "code-mode",
+    "children": [
+      { "title": "LHT", "slug": "code/lht" },
+      { "title": "Symbol index", "slug": "code/symbol-index" },
+      { "title": "CRAFT", "slug": "code/craft" },
+      { "title": "Sub-agents", "slug": "code/subagents" },
+      { "title": "Checklist", "slug": "code/checklist" },
+      { "title": "Audit scratchpad", "slug": "code/audit-scratchpad" }
+    ]
+  },
+  {
+    "title": "Office mode",
+    "slug": "office/overview",
+    "children": [
+      { "title": "Office workspace", "slug": "office/workspace" },
+      { "title": "Deliverables", "slug": "office/deliverables" },
+      { "title": "P0 demos overview", "slug": "office/scenarios" },
+      { "title": "Competitive analysis", "slug": "office/p0-competitive" },
+      { "title": "Executive daily brief", "slug": "office/p0-executive" },
+      { "title": "Production report", "slug": "office/p0-production" },
+      { "title": "Customer quote", "slug": "office/p0-quote" },
+      {
+        "title": "Built-in skills",
+        "slug": "office/skills",
+        "children": [
+          { "title": "Competitive analysis", "slug": "office/skills/competitive" },
+          { "title": "Executive daily brief", "slug": "office/skills/executive-daily" },
+          { "title": "Production report", "slug": "office/skills/production-daily" },
+          { "title": "Customer quote", "slug": "office/skills/customer-quote" },
+          { "title": "Weekly report", "slug": "office/skills/weekly-report" },
+          { "title": "Meeting minutes", "slug": "office/skills/meeting-minutes" },
+          { "title": "Project report PPT", "slug": "office/skills/project-report" },
+          { "title": "Data report", "slug": "office/skills/data-report" },
+          { "title": "Contract draft", "slug": "office/skills/contract-draft" },
+          { "title": "Resume", "slug": "office/skills/resume" },
+          { "title": "Release notes", "slug": "office/skills/release-notes" }
+        ]
+      }
+    ]
+  },
+  {
+    "title": "Agent tools",
+    "slug": "tools/files",
+    "children": [
+      { "title": "Git", "slug": "tools/git" },
+      { "title": "Shell", "slug": "tools/shell" },
+      { "title": "Web", "slug": "tools/web" },
+      { "title": "Office I/O", "slug": "tools/office-io" },
+      { "title": "Vision", "slug": "tools/vision" }
+    ]
+  },
+  {
+    "title": "Desktop",
+    "slug": "desktop/tray",
+    "children": [
+      { "title": "UI language", "slug": "desktop/i18n" },
+      { "title": "In-app updates", "slug": "desktop/updates" },
+      { "title": "Approval dialog", "slug": "desktop/approval-dialog" }
+    ]
+  },
+  {
+    "title": "Settings",
+    "slug": "settings/api-key",
+    "children": [
+      { "title": "Tool approval", "slug": "settings/approval" },
+      { "title": "LHT settings", "slug": "settings/lht" },
+      { "title": "Execution policy", "slug": "settings/exec-policy" },
+      { "title": "Network policy", "slug": "settings/network" },
+      { "title": "Model routing", "slug": "settings/routing" },
+      { "title": "Usage & cost", "slug": "settings/usage" },
+      { "title": "Topic memory", "slug": "settings/topic-memory" },
+      { "title": "MCP servers", "slug": "settings/mcp" },
+      { "title": "Skills", "slug": "settings/skills" }
+    ]
+  },
+  {
+    "title": "Help",
+    "slug": "faq",
+    "children": [
+      { "title": "SmartScreen install", "slug": "help/smartscreen" },
+      { "title": "Privacy summary", "slug": "help/privacy" }
+    ]
+  }
+]

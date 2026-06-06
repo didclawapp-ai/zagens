@@ -20,6 +20,7 @@ use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use super::paths::{ensure_snapshot_dir, snapshot_git_dir};
+use super::size::{DEFAULT_SNAPSHOT_MAX_WORKSPACE_GB, workspace_exceeds_size_limit};
 
 /// Identifier for a snapshot — currently the underlying git commit SHA.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -119,13 +120,15 @@ __pycache__/
 impl SnapshotRepo {
     /// Open or initialize the snapshot repo for `workspace`.
     ///
-    /// On first use this:
-    /// 1. Creates the `~/.deepseek/snapshots/<…>/.git` dir.
-    /// 2. Runs `git init --bare=false --quiet`.
-    /// 3. Sets a fixed `user.name` / `user.email` so commits don't pick up
-    ///    the user's global git identity (we don't want our snapshots to
-    ///    look like they came from the user).
+    /// Uses [`DEFAULT_SNAPSHOT_MAX_WORKSPACE_GB`]. Prefer
+    /// [`Self::open_or_init_with_max_gb`] when config supplies a limit.
     pub fn open_or_init(workspace: &Path) -> io::Result<Self> {
+        Self::open_or_init_with_max_gb(workspace, DEFAULT_SNAPSHOT_MAX_WORKSPACE_GB)
+    }
+
+    /// Open or initialize the snapshot repo, skipping side-git init when the
+    /// workspace on-disk size exceeds `max_workspace_gb`.
+    pub fn open_or_init_with_max_gb(workspace: &Path, max_workspace_gb: f64) -> io::Result<Self> {
         let work_tree = workspace
             .canonicalize()
             .unwrap_or_else(|_| workspace.to_path_buf());
@@ -136,6 +139,16 @@ impl SnapshotRepo {
                 io::ErrorKind::InvalidInput,
                 format!(
                     "workspace snapshots are disabled for {reason}: {}",
+                    work_tree.display()
+                ),
+            ));
+        }
+
+        if workspace_exceeds_size_limit(&work_tree, max_workspace_gb)? {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "workspace snapshots skipped: tree exceeds max_workspace_gb ({max_workspace_gb} GB): {}",
                     work_tree.display()
                 ),
             ));
@@ -1063,6 +1076,23 @@ mod tests {
         assert!(repo.git_dir().join("config").exists());
         assert!(!repo.git_dir().join("config.lock").exists());
         drop(guard);
+    }
+
+    #[test]
+    fn open_or_init_rejects_workspace_over_max_gb() {
+        let tmp = tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        std::fs::create_dir_all(&workspace).unwrap();
+        std::fs::write(workspace.join("big.bin"), vec![0u8; 2048]).unwrap();
+        let err = SnapshotRepo::open_or_init_with_max_gb(&workspace, 0.000001)
+            .err()
+            .expect("should reject huge workspace");
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert!(
+            err.to_string().contains("max_workspace_gb"),
+            "{}",
+            err
+        );
     }
 
     #[test]

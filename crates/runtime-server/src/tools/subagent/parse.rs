@@ -275,6 +275,10 @@ pub(crate) fn parse_spawn_request(input: &Value) -> Result<SpawnRequest, ToolErr
         .map(str::to_string)
         .filter(|s| !s.trim().is_empty());
 
+    let nickname = optional_input_str(input, &["nickname", "display_name"])
+        .map(str::to_string)
+        .filter(|s| !s.trim().is_empty());
+
     Ok(SpawnRequest {
         prompt: prompt.clone(),
         agent_type,
@@ -284,6 +288,7 @@ pub(crate) fn parse_spawn_request(input: &Value) -> Result<SpawnRequest, ToolErr
         cwd,
         resident_file,
         task_id,
+        nickname,
     })
 }
 

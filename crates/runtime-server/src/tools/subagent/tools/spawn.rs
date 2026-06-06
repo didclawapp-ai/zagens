@@ -132,6 +132,14 @@ impl ToolSpec for AgentSpawnTool {
                     "type": "string",
                     "description": "Optional CRAFT work-package id (blackboard filename under `.deepseek/blackboards/{task_id}.json`). Same string may equal audit `run_id`. This is NOT `task_create` / TaskManager — do not call `task_create` just to set this field."
                 },
+                "nickname": {
+                    "type": "string",
+                    "description": "Optional short display label in the agent panel (e.g. BE-Services). When omitted, runtime derives a label from area_id / audit task title / task_id / cwd."
+                },
+                "display_name": {
+                    "type": "string",
+                    "description": "Alias for nickname"
+                },
                 "scratchpad_run_id": {
                     "type": "string",
                     "description": "Optional audit scratchpad run_id. For type=auditor, runtime builds track A from verified notes and track B from prompt (prose draft). Defaults to the active thread scratchpad_run_id when set."
@@ -205,6 +213,11 @@ impl ToolSpec for AgentSpawnTool {
         // its own cancellation token, forces auto_approve, and optionally
         // overrides cwd if the caller passed one (used for the parallel-
         // worktree pattern).
+        let cwd_label = validated_cwd.as_ref().and_then(|p| {
+            p.file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .filter(|s| !s.trim().is_empty())
+        });
         let mut child_runtime = self.runtime.background_runtime();
         if let Some(cwd) = validated_cwd {
             child_runtime.context.workspace = cwd;
@@ -316,9 +329,10 @@ impl ToolSpec for AgentSpawnTool {
                 spawn_request.allowed_tools,
                 SubAgentSpawnOptions {
                     model: Some(effective_model),
-                    nickname: None,
+                    nickname: spawn_request.nickname.clone(),
                     task_id: spawn_request.task_id.clone(),
                     scratchpad_run_id,
+                    cwd_label,
                 },
             );
         if spawn_result.is_err()

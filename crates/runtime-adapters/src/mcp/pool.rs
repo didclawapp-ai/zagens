@@ -6,6 +6,15 @@ use anyhow::{Context, Result};
 use crate::network_policy::NetworkPolicyDecider;
 
 use super::config::McpConfig;
+
+/// Summary of an in-place MCP pool reload (config diff + optional reconnect).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct McpReloadReport {
+    pub removed: Vec<String>,
+    pub updated: Vec<String>,
+    pub connected: Vec<String>,
+    pub connect_errors: Vec<(String, String)>,
+}
 use super::connection::McpConnection;
 use super::types::{McpPrompt, McpResource, McpResourceTemplate, McpTool};
 
@@ -276,16 +285,37 @@ impl McpPool {
         conn.get_prompt(prompt_name, arguments, timeout).await
     }
 
-    /// Parse a prefixed name into (server_name, tool_name)
-    fn parse_prefixed_name<'a>(&self, prefixed_name: &'a str) -> Result<(&'a str, &'a str)> {
-        if !prefixed_name.starts_with("mcp_") {
-            anyhow::bail!("Invalid MCP tool name: {}", prefixed_name);
+    /// Parse a prefixed name `mcp_{server}_{tool}` into (server_name, tool_name).
+    ///
+    /// Server names may themselves contain underscores (e.g. `github_mcp`), so a
+    /// naive `split_once('_')` misattributes the boundary. We match against the
+    /// configured server names, longest first, and split the tool off the
+    /// remainder — this is symmetric with the `mcp_{server}_{tool}` formatting in
+    /// [`Self::all_tools`]. Falls back to `split_once('_')` for names whose
+    /// server isn't in the current config (preserves prior behavior).
+    pub(super) fn parse_prefixed_name<'a>(
+        &self,
+        prefixed_name: &'a str,
+    ) -> Result<(&'a str, &'a str)> {
+        let rest = prefixed_name
+            .strip_prefix("mcp_")
+            .ok_or_else(|| anyhow::anyhow!("Invalid MCP tool name: {prefixed_name}"))?;
+
+        let mut servers: Vec<&str> = self.config.servers.keys().map(String::as_str).collect();
+        servers.sort_by_key(|name| std::cmp::Reverse(name.len()));
+        for server in servers {
+            if let Some(tool) = rest
+                .strip_prefix(server)
+                .and_then(|tail| tail.strip_prefix('_'))
+                && !tool.is_empty()
+            {
+                return Ok((&rest[..server.len()], tool));
+            }
         }
-        let rest = &prefixed_name[4..];
-        let Some((server, tool)) = rest.split_once('_') else {
-            anyhow::bail!("Invalid MCP tool name format: {}", prefixed_name);
-        };
-        Ok((server, tool))
+
+        rest.split_once('_')
+            .filter(|(server, tool)| !server.is_empty() && !tool.is_empty())
+            .ok_or_else(|| anyhow::anyhow!("Invalid MCP tool name format: {prefixed_name}"))
     }
 
     /// Convert discovered tools to API Tool format
@@ -486,7 +516,26 @@ impl McpPool {
             anyhow::bail!("MCP tool '{tool_name}' is disabled for server '{server_name}'");
         }
         let timeout = conn.config().effective_execute_timeout(&global_timeouts);
-        conn.call_tool(tool_name, arguments, timeout).await
+        let started = std::time::Instant::now();
+        let result = conn.call_tool(tool_name, arguments, timeout).await;
+        let duration_ms = started.elapsed().as_millis() as u64;
+        let (success, err_msg, result_bytes) = match &result {
+            Ok(value) => (
+                true,
+                None,
+                serde_json::to_string(value).map(|s| s.len()).unwrap_or(0),
+            ),
+            Err(err) => (false, Some(err.to_string()), 0),
+        };
+        super::observability::record_mcp_call(
+            server_name,
+            format!("tools/call:{tool_name}"),
+            duration_ms,
+            success,
+            err_msg,
+            result_bytes,
+        );
+        result
     }
 
     /// Get list of configured server names
@@ -512,6 +561,90 @@ impl McpPool {
     #[allow(dead_code)] // Public API for MCP lifecycle management
     pub fn disconnect_all(&mut self) {
         self.connections.clear();
+    }
+
+    /// Reload pool configuration from disk and reconcile live connections.
+    pub async fn reload_from_path(&mut self, path: &std::path::Path) -> Result<McpReloadReport> {
+        let config = if path.exists() {
+            let contents = fs::read_to_string(path)
+                .with_context(|| format!("Failed to read MCP config: {}", path.display()))?;
+            serde_json::from_str(&contents)
+                .with_context(|| format!("Failed to parse MCP config: {}", path.display()))?
+        } else {
+            McpConfig::default()
+        };
+        Ok(self.reload_config(config, true).await)
+    }
+
+    /// Apply a new config: drop removed/changed/disabled connections, swap
+    /// config, then optionally reconnect all enabled servers.
+    pub async fn reload_config(
+        &mut self,
+        new_config: McpConfig,
+        reconnect: bool,
+    ) -> McpReloadReport {
+        let old_config = std::mem::replace(&mut self.config, new_config);
+        let mut removed = Vec::new();
+        let mut updated = Vec::new();
+
+        let old_names: std::collections::HashSet<_> = old_config.servers.keys().collect();
+        let new_names: std::collections::HashSet<_> = self.config.servers.keys().collect();
+
+        for name in old_names.difference(&new_names) {
+            removed.push((*name).clone());
+            if let Some(mut conn) = self.connections.remove(*name) {
+                conn.transport.shutdown().await;
+            }
+        }
+
+        for name in old_names.intersection(&new_names) {
+            if old_config.servers[*name] != self.config.servers[*name] {
+                updated.push((*name).clone());
+                if let Some(mut conn) = self.connections.remove(*name) {
+                    conn.transport.shutdown().await;
+                }
+            }
+        }
+
+        let disabled_or_missing: Vec<String> = self
+            .connections
+            .keys()
+            .filter(|name| {
+                self.config
+                    .servers
+                    .get(*name)
+                    .is_none_or(|cfg| !cfg.is_enabled())
+            })
+            .cloned()
+            .collect();
+        for name in disabled_or_missing {
+            if let Some(mut conn) = self.connections.remove(&name) {
+                conn.transport.shutdown().await;
+            }
+        }
+
+        let mut connect_errors = Vec::new();
+        if reconnect {
+            connect_errors = self
+                .connect_all()
+                .await
+                .into_iter()
+                .map(|(name, err)| (name, err.to_string()))
+                .collect();
+        }
+
+        let connected = self
+            .connected_servers()
+            .into_iter()
+            .map(str::to_string)
+            .collect();
+
+        McpReloadReport {
+            removed,
+            updated,
+            connected,
+            connect_errors,
+        }
     }
 
     /// Graceful shutdown of every connection in the pool: send SIGTERM to

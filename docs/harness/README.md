@@ -11,7 +11,8 @@
 | [Agent+Harness组合式编程方案.md](./Agent+Harness组合式编程方案.md) | **远景 SSOT**（v1.3）：组合式 Harness（阶段五）、**自适应主动 Harness**（阶段六展望）、黑板三身份、长程机制 |
 | [LONG_HORIZON_CODE_TASKS.md](./LONG_HORIZON_CODE_TASKS.md) | **长程代码任务**（Phase 1–3 已落地；Phase 4 + **§6 产品迭代 P0–P3** 规格）：LHT↔CRAFT 宏观循环 · 加严/mismatch/manifest 路线图 |
 | [PARALLEL_FRESH_GENERATION.md](./PARALLEL_FRESH_GENERATION.md) | **全新项目并行生成**（⬜ 规划中，0.8 之后）：契约优先 fan-out/join + 两道闸门（P0.5 契约固化 / P1.5 符合性审核）；挂 LHT，落地 §11.5 两个金矿 |
-| [LHT_TEST_SUITE.md](./LHT_TEST_SUITE.md) | **长程任务测试集**（活文档）：DEMO2–DEMO5 真实压测（2W 行级 Go 解释器）编为黄金回归 + 外部经典案例映射（解释器 / CodeCrafters / SWE-bench）+ `[verify:]` 编写规范 + 最小回归集 |
+| [LHT_TEST_SUITE.md](./LHT_TEST_SUITE.md) | **长程任务测试集**（活文档）：DEMO2–DEMO5 真实压测（2W 行级 Go 解释器）编为黄金回归 + 外部经典案例映射（解释器 / CodeCrafters / SWE-bench / **CMS 存量审计**）+ `[verify:]` 编写规范 + 最小回归集 |
+| [test-cases/cms-full-code-audit.md](./test-cases/cms-full-code-audit.md) | **CMS-AUDIT（CMS02）**：221 文件 TypeScript/Vue 全库审计 + CRAFT Explore + 审修闭环；OpenCode 存量对标 |
 | [LHT_EVAL_INFRASTRUCTURE.md](./LHT_EVAL_INFRASTRUCTURE.md) | **L2 端到端测试基建**（v0.2）：headless 驱动 + oracle + harness profile + JSONL/gate；支撑 LHT 回归与发版，非论文专用 |
 | [PAPER_silent_early_stopping.md](./PAPER_silent_early_stopping.md) | **论文草稿**（路径 A）：静默早停分类法 + 组合式完成门禁 + 案例实证 |
 | [HARNESS_INTEGRATION_PROPOSAL.md](./HARNESS_INTEGRATION_PROPOSAL.md) | **落地提案**（Proposed）：名词映射、Phase 0–3 搭车 D-series、数学基础降级清单 |

@@ -18,8 +18,8 @@ use rusqlite::{Connection, params};
 
 use crate::models::Usage;
 use crate::runtime_threads::{
-    RuntimeEventRecord, RuntimeStoreState, RuntimeTurnStatus, ThreadRecord,
-    TurnItemKind, TurnItemLifecycleStatus, TurnItemRecord, TurnRecord,
+    PromptAdmission, PromptDelivery, RuntimeEventRecord, RuntimeStoreState, RuntimeTurnStatus,
+    ThreadRecord, TurnItemKind, TurnItemLifecycleStatus, TurnItemRecord, TurnRecord,
     UsageAggregation, UsageBucket, UsageGroupBy, UsageTotals,
 };
 
@@ -85,6 +85,25 @@ fn ensure_threads_task_type_column(db: &Connection) -> anyhow::Result<()> {
             [],
         )?;
     }
+    Ok(())
+}
+
+fn ensure_session_input_table(db: &Connection) -> anyhow::Result<()> {
+    db.execute_batch(
+        "CREATE TABLE IF NOT EXISTS session_input (
+            id TEXT PRIMARY KEY,
+            thread_id TEXT NOT NULL,
+            admitted_seq INTEGER NOT NULL,
+            prompt TEXT NOT NULL,
+            delivery TEXT NOT NULL,
+            request_json TEXT,
+            time_created TEXT NOT NULL,
+            promoted_seq INTEGER,
+            promoted_turn_id TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_session_input_thread_pending
+            ON session_input(thread_id, admitted_seq);",
+    )?;
     Ok(())
 }
 
@@ -181,6 +200,7 @@ pub fn open_sqlite_thread_db(
     ensure_threads_checklist_json_column(&db)?;
     ensure_threads_plan_json_column(&db)?;
     ensure_turns_last_request_input_tokens_column(&db)?;
+    ensure_session_input_table(&db)?;
 
     let needs_migration: bool = db
         .query_row(
@@ -926,4 +946,126 @@ impl std::fmt::Display for RuntimeTurnStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{self:?}")
     }
+}
+
+fn next_session_input_seq(db: &Connection, thread_id: &str) -> anyhow::Result<u64> {
+    let seq: i64 = db
+        .query_row(
+            "SELECT COALESCE(MAX(admitted_seq), 0) + 1 FROM session_input WHERE thread_id = ?1",
+            params![thread_id],
+            |row| row.get(0),
+        )
+        .unwrap_or(1);
+    Ok(seq.max(1) as u64)
+}
+
+fn parse_delivery(raw: &str) -> PromptDelivery {
+    match raw {
+        "steer" => PromptDelivery::Steer,
+        _ => PromptDelivery::Queue,
+    }
+}
+
+fn delivery_str(delivery: PromptDelivery) -> &'static str {
+    match delivery {
+        PromptDelivery::Steer => "steer",
+        PromptDelivery::Queue => "queue",
+    }
+}
+
+pub fn admit_session_input_sqlite(
+    db: &Connection,
+    input: &PromptAdmission,
+    request_json: Option<&str>,
+) -> anyhow::Result<()> {
+    db.execute(
+        "INSERT OR IGNORE INTO session_input
+         (id, thread_id, admitted_seq, prompt, delivery, request_json, time_created, promoted_seq, promoted_turn_id)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,NULL,NULL)",
+        params![
+            input.id,
+            input.thread_id,
+            input.admitted_seq as i64,
+            input.prompt,
+            delivery_str(input.delivery),
+            request_json,
+            input.time_created.to_rfc3339(),
+        ],
+    )?;
+    Ok(())
+}
+
+pub fn find_session_input_sqlite(db: &Connection, id: &str) -> anyhow::Result<Option<PromptAdmission>> {
+    let mut stmt = db.prepare(
+        "SELECT id, thread_id, admitted_seq, prompt, delivery, time_created, promoted_seq
+         FROM session_input WHERE id = ?1",
+    )?;
+    let mut rows = stmt.query(params![id])?;
+    if let Some(row) = rows.next()? {
+        return Ok(Some(PromptAdmission {
+            id: row.get(0)?,
+            thread_id: row.get(1)?,
+            admitted_seq: row.get::<_, i64>(2)? as u64,
+            prompt: row.get(3)?,
+            delivery: parse_delivery(&row.get::<_, String>(4)?),
+            time_created: parse_ts(row.get(5)?)?,
+            promoted_seq: row
+                .get::<_, Option<i64>>(6)?
+                .map(|v| v as u64),
+        }));
+    }
+    Ok(None)
+}
+
+pub fn promote_session_input_sqlite(
+    db: &Connection,
+    id: &str,
+    promoted_seq: u64,
+    turn_id: Option<&str>,
+) -> anyhow::Result<()> {
+    let updated = db.execute(
+        "UPDATE session_input
+         SET promoted_seq = ?1, promoted_turn_id = ?2
+         WHERE id = ?3 AND promoted_seq IS NULL",
+        params![promoted_seq as i64, turn_id, id],
+    )?;
+    if updated == 0 {
+        anyhow::bail!("session input {id} already promoted or missing");
+    }
+    Ok(())
+}
+
+pub fn next_pending_queue_sqlite(
+    db: &Connection,
+    thread_id: &str,
+) -> anyhow::Result<Option<(PromptAdmission, Option<String>)>> {
+    let mut stmt = db.prepare(
+        "SELECT id, thread_id, admitted_seq, prompt, delivery, time_created, promoted_seq, request_json
+         FROM session_input
+         WHERE thread_id = ?1 AND promoted_seq IS NULL AND delivery = 'queue'
+         ORDER BY admitted_seq ASC
+         LIMIT 1",
+    )?;
+    let mut rows = stmt.query(params![thread_id])?;
+    if let Some(row) = rows.next()? {
+        return Ok(Some((
+            PromptAdmission {
+                id: row.get(0)?,
+                thread_id: row.get(1)?,
+                admitted_seq: row.get::<_, i64>(2)? as u64,
+                prompt: row.get(3)?,
+                delivery: parse_delivery(&row.get::<_, String>(4)?),
+                time_created: parse_ts(row.get(5)?)?,
+                promoted_seq: row
+                    .get::<_, Option<i64>>(6)?
+                    .map(|v| v as u64),
+            },
+            row.get(7)?,
+        )));
+    }
+    Ok(None)
+}
+
+pub fn allocate_session_input_seq_sqlite(db: &Connection, thread_id: &str) -> anyhow::Result<u64> {
+    next_session_input_seq(db, thread_id)
 }

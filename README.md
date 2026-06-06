@@ -14,6 +14,15 @@
 
 > **Licensing:** Zagens is proprietary — [LICENSE](LICENSE). The embedded runtime uses MIT-licensed **third-party** code; attribution and license text live under [third-party/deepseek-tui/](third-party/deepseek-tui/) — see [NOTICE.md](NOTICE.md).
 
+### Repositories
+
+| Repo | Description |
+|------|-------------|
+| **zagens** (this repo) | Desktop agent harness + embedded runtime |
+| [**zagens_website**](https://github.com/jjlin0603-svg/zagens_website) | Official site, CMS, downloads, future platform services (private) |
+
+User docs: [`docs/user/`](docs/user/). Split notes: [`docs/REPO_SPLIT.md`](docs/REPO_SPLIT.md).
+
 ---
 
 ## Table of Contents
@@ -33,7 +42,7 @@
 - [Configuration](#configuration)
 - [License](#license)
 
-> **Not affiliated with DeepSeek Inc.** Capabilities below reflect **Zagens v0.6.1-preview.1** (预览版). Desktop parity notes vs terminal-style workflows: [docs/desktop/TUI_DS_PICK_GAP.md](docs/desktop/TUI_DS_PICK_GAP.md). Harness memo: [docs/desktop/HARNESS.md](docs/desktop/HARNESS.md). Version policy: [docs/desktop/VERSIONING.md](docs/desktop/VERSIONING.md).
+> **Not affiliated with DeepSeek Inc.** Capabilities below reflect **Zagens v0.7.0**. Desktop parity notes vs terminal-style workflows: [docs/desktop/TUI_DS_PICK_GAP.md](docs/desktop/TUI_DS_PICK_GAP.md). Harness memo: [docs/desktop/HARNESS.md](docs/desktop/HARNESS.md). Version policy: [docs/desktop/VERSIONING.md](docs/desktop/VERSIONING.md).
 
 ---
 
@@ -54,7 +63,7 @@
 
 ## Zagens (Desktop UI)
 
-Features you interact with in the **v0.6.1-preview.1** window (see [CHANGELOG.md](CHANGELOG.md)):
+Features you interact with in the **v0.7.0** window (see [CHANGELOG.md](CHANGELOG.md)):
 
 | Area | Shipped in Zagens |
 |------|-------------------|
@@ -263,7 +272,7 @@ The sidecar binary **`deepseek-runtime`** (loopback HTTP/SSE) exposes a local AP
 - **[Tauri CLI 2](https://v2.tauri.app/start/prerequisites/)** — `cargo install tauri-cli --version "^2"` (once per machine)
 - Platform-specific Tauri [system dependencies](https://v2.tauri.app/start/prerequisites/)
 
-**Versions:** Zagens desktop **v0.6.1-preview.1** ([`VERSIONING.md`](docs/desktop/VERSIONING.md)); embedded runtime crates **0.8.15** (root `Cargo.toml`).
+**Versions:** Zagens desktop **v0.7.0** ([`VERSIONING.md`](docs/desktop/VERSIONING.md)); embedded runtime crates **0.8.15** (root `Cargo.toml`).
 
 ## Quick Start
 
@@ -393,6 +402,15 @@ Embedded agent runtime is **third-party MIT code** — [third-party/deepseek-tui
 
 > **许可：** Zagens 为专有软件 — [LICENSE](LICENSE)。嵌入式 runtime 使用 MIT **第三方**代码；归属与许可证见 [third-party/deepseek-tui/](third-party/deepseek-tui/) 与 [NOTICE.md](NOTICE.md)。
 
+### 仓库
+
+| 仓库 | 说明 |
+|------|------|
+| **zagens**（本仓库） | 桌面 Agent Harness + 嵌入式 runtime |
+| [**zagens_website**](https://github.com/jjlin0603-svg/zagens_website) | 官网、CMS、下载托管与未来平台服务（私有） |
+
+用户文档：[`docs/user/`](docs/user/)。拆分说明：[`docs/REPO_SPLIT.md`](docs/REPO_SPLIT.md)。
+
 ---
 
 ## 目录
@@ -410,7 +428,7 @@ Embedded agent runtime is **third-party MIT code** — [third-party/deepseek-tui
 - [配置](#配置)
 - [许可与第三方声明](#许可与第三方声明)
 
-> **与 DeepSeek 公司无关联。** 功能以 **Zagens v0.6.1-preview.1**（预览版）为准。桌面与终端式工作流差距：[TUI_DS_PICK_GAP.md](docs/desktop/TUI_DS_PICK_GAP.md)。版本规则：[VERSIONING.md](docs/desktop/VERSIONING.md)。英文详情见 [What Makes This Project Different](#what-makes-this-project-different)。
+> **与 DeepSeek 公司无关联。** 功能以 **Zagens v0.7.0** 为准。桌面与终端式工作流差距：[TUI_DS_PICK_GAP.md](docs/desktop/TUI_DS_PICK_GAP.md)。版本规则：[VERSIONING.md](docs/desktop/VERSIONING.md)。英文详情见 [What Makes This Project Different](#what-makes-this-project-different)。
 
 ---
 
@@ -430,7 +448,7 @@ Embedded agent runtime is **third-party MIT code** — [third-party/deepseek-tui
 
 ## Zagens 桌面端
 
-**v0.6.1-preview.1** 窗口内已具备：多会话聊天（流式/停止/思考/上下文条）、工作区预览与 **diff2html**、会话回放、子代理与清单侧栏、任务与技能（**定时自动化列表未展示**）、MCP/路由/用量/系统设置、托盘与通知、中/英/日/葡 UI。
+**v0.7.0** 窗口内已具备：多会话聊天（流式/停止/思考/上下文条）、工作区预览与 **diff2html**、会话回放、子代理与清单侧栏、任务与技能（**定时自动化列表未展示**）、MCP/路由/用量/系统设置、托盘与通知、中/英/日/葡 UI。
 
 尚未完全对齐的交互见 [TUI_DS_PICK_GAP.md](docs/desktop/TUI_DS_PICK_GAP.md)。
 
@@ -573,7 +591,7 @@ Sidecar（**`deepseek-runtime`** 二进制）在 loopback 暴露 HTTP/SSE。完�
 - **[Tauri CLI 2](https://v2.tauri.app/start/prerequisites/)** — `cargo install tauri-cli --version "^2"`
 - 各平台 Tauri [系统依赖](https://v2.tauri.app/start/prerequisites/)
 
-**版本：** Zagens 桌面 **v0.6.1-preview.1**（预览版，见 [VERSIONING.md](docs/desktop/VERSIONING.md)）；嵌入式 runtime **0.8.15**（根 `Cargo.toml`）。
+**版本：** Zagens 桌面 **v0.7.0**（见 [VERSIONING.md](docs/desktop/VERSIONING.md)）；嵌入式 runtime **0.8.15**（根 `Cargo.toml`）。
 
 ## 快速开始
 

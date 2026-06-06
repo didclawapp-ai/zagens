@@ -15,6 +15,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Context, Result, anyhow, bail};
+use rusqlite::params;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use serde_json::Value;
@@ -22,10 +23,11 @@ use tokio::sync::Mutex;
 
 use crate::models::{ContentBlock, Message};
 
+use super::prompt_inbox::PromptAdmission;
 use super::types::*;
 use super::{
-    provider_label_for_model, UsageAggregation, UsageBucket, UsageGroupBy, UsageTotals,
-    CURRENT_RUNTIME_SCHEMA_VERSION,
+    provider_label_for_model, StartTurnRequest, UsageAggregation, UsageBucket, UsageGroupBy,
+    UsageTotals, CURRENT_RUNTIME_SCHEMA_VERSION,
 };
 
 #[derive(Debug, Clone)]
@@ -322,6 +324,103 @@ impl RuntimeThreadStore {
             }
         }
         Ok(out)
+    }
+
+    pub fn allocate_session_input_seq(&self, thread_id: &str) -> Result<u64> {
+        if let Some(ref db) = self.db {
+            return crate::thread_store_sqlite::allocate_session_input_seq_sqlite(
+                &db.lock().unwrap(),
+                thread_id,
+            )
+            .map_err(|e| anyhow!("allocate_session_input_seq: {e}"));
+        }
+        Ok(1)
+    }
+
+    pub fn admit_session_input(
+        &self,
+        admission: &PromptAdmission,
+        request: Option<&StartTurnRequest>,
+    ) -> Result<()> {
+        if let Some(ref db) = self.db {
+            let request_json = request.map(serde_json::to_string).transpose()?;
+            return crate::thread_store_sqlite::admit_session_input_sqlite(
+                &db.lock().unwrap(),
+                admission,
+                request_json.as_deref(),
+            )
+            .map_err(|e| anyhow!("admit_session_input: {e}"));
+        }
+        Ok(())
+    }
+
+    pub fn promote_session_input(
+        &self,
+        id: &str,
+        promoted_seq: u64,
+        turn_id: Option<&str>,
+    ) -> Result<()> {
+        if let Some(ref db) = self.db {
+            return crate::thread_store_sqlite::promote_session_input_sqlite(
+                &db.lock().unwrap(),
+                id,
+                promoted_seq,
+                turn_id,
+            )
+            .map_err(|e| anyhow!("promote_session_input: {e}"));
+        }
+        Ok(())
+    }
+
+    pub fn next_pending_queue(
+        &self,
+        thread_id: &str,
+    ) -> Result<Option<(PromptAdmission, Option<StartTurnRequest>)>> {
+        if let Some(ref db) = self.db {
+            let pending = crate::thread_store_sqlite::next_pending_queue_sqlite(
+                &db.lock().unwrap(),
+                thread_id,
+            )
+            .map_err(|e| anyhow!("next_pending_queue: {e}"))?;
+            return Ok(pending.map(|(admission, request_json)| {
+                let req = request_json
+                    .as_deref()
+                    .and_then(|raw| serde_json::from_str(raw).ok());
+                (admission, req)
+            }));
+        }
+        Ok(None)
+    }
+
+    pub fn list_pending_session_inputs(&self, thread_id: &str) -> Result<Vec<PromptAdmission>> {
+        if let Some(ref db) = self.db {
+            let conn = db.lock().unwrap();
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id FROM session_input
+                     WHERE thread_id = ?1 AND promoted_seq IS NULL
+                     ORDER BY admitted_seq ASC",
+                )
+                .map_err(|e| anyhow!("list_pending_session_inputs: {e}"))?;
+            let ids: Vec<String> = stmt
+                .query_map(params![thread_id], |row| row.get(0))
+                .map_err(|e| anyhow!("list_pending_session_inputs: {e}"))?
+                .filter_map(|r| r.ok())
+                .collect();
+            let mut out = Vec::new();
+            for id in ids {
+                if let Some(admission) = crate::thread_store_sqlite::find_session_input_sqlite(
+                    &db.lock().unwrap(),
+                    &id,
+                )
+                .map_err(|e| anyhow!("list_pending_session_inputs: {e}"))?
+                {
+                    out.push(admission);
+                }
+            }
+            return Ok(out);
+        }
+        Ok(Vec::new())
     }
 
     pub fn list_items_for_turn(&self, turn_id: &str) -> Result<Vec<TurnItemRecord>> {

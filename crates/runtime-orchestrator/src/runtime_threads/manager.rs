@@ -20,6 +20,7 @@ use crate::models::Message;
 use super::active::{ActiveThreads, RuntimeApprovalDecision};
 use super::persist::{RuntimeThreadStore, reconstruct_messages_for_store};
 use super::routing::load_routing_rules;
+use super::turn_coordinator::TurnCoordinator;
 use super::types::*;
 use super::{RoutingRule, RuntimeThreadManagerConfig};
 
@@ -45,6 +46,7 @@ pub struct RuntimeThreadManager<P, R> {
     pub cancel_token: CancellationToken,
     pub routing_rules: Arc<Mutex<Vec<RoutingRule>>>,
     pub routing_rules_path: PathBuf,
+    pub coordinators: Arc<Mutex<TurnCoordinator>>,
 }
 
 impl<P, R> RuntimeThreadManager<P, R>
@@ -77,6 +79,7 @@ where
             cancel_token: CancellationToken::new(),
             routing_rules: Arc::new(Mutex::new(routing_rules)),
             routing_rules_path,
+            coordinators: Arc::new(Mutex::new(TurnCoordinator::default())),
         };
         manager.recover_interrupted_state()?;
         Ok(manager)
@@ -218,8 +221,9 @@ where
         turn_id: &str,
         tool_call_id: &str,
         approved: bool,
+        remember_for_session: bool,
     ) -> Result<()> {
-        let engine = {
+        let (engine, approval_key) = {
             let mut active = self.active.lock().await;
             let pending = active
                 .pending_approvals
@@ -235,15 +239,22 @@ where
                     "pending approval scope mismatch for {tool_call_id}: expected thread {expected_thread} turn {expected_turn}, URL had thread {thread_id} turn {turn_id}"
                 );
             }
+            let approval_key = pending.approval_key.clone();
             let state = active
                 .engines
                 .get(thread_id)
                 .ok_or_else(|| anyhow!("engine not found for {thread_id}"))?;
-            state.engine.clone()
+            (state.engine.clone(), approval_key)
         };
 
         if approved {
-            engine.approve_tool_call(tool_call_id).await?;
+            engine
+                .approve_tool_call_with_options(
+                    tool_call_id,
+                    Some(approval_key),
+                    remember_for_session,
+                )
+                .await?;
         } else {
             engine.deny_tool_call(tool_call_id).await?;
         }

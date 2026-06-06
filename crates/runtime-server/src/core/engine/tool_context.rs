@@ -43,6 +43,12 @@ impl Engine {
             ctx = ctx.with_network_policy(decider.clone());
         }
 
+        // Wire the search provider so the web_search tool uses the configured backend.
+        ctx = ctx.with_search_config(
+            self.config_ext().search_provider.clone(),
+            self.config_ext().search_api_key.clone(),
+        );
+
         // Wire the large-output router (#548). Only attaches when the
         // [workshop] config table is present; sub-agents don't inherit the
         // router (their ToolContext is built separately) to prevent recursive
@@ -111,17 +117,24 @@ impl Engine {
     }
 
     pub(super) async fn ensure_mcp_pool(&mut self) -> Result<Arc<AsyncMutex<McpPool>>, ToolError> {
-        let existing = self.runtime_ext().mcp_pool.clone();
-        if let Some(pool) = existing {
+        if let Some(pool) = self.runtime_ext().mcp_pool.clone() {
             return Ok(pool);
         }
-        let network_policy = self.config_ext().network_policy.clone();
-        let mut pool = McpPool::from_config_path(&self.session.mcp_config_path)
-            .map_err(|e| ToolError::execution_failed(format!("Failed to load MCP config: {e}")))?;
-        if let Some(decider) = network_policy.as_ref() {
-            pool = pool.with_network_policy(decider.clone());
-        }
-        let pool = Arc::new(AsyncMutex::new(pool));
+
+        let pool = if let Some(shared) = crate::mcp_shared::shared_mcp_pool() {
+            shared
+        } else {
+            let network_policy = self.config_ext().network_policy.clone();
+            let mut pool = McpPool::from_config_path(&self.session.mcp_config_path)
+                .map_err(|e| {
+                    ToolError::execution_failed(format!("Failed to load MCP config: {e}"))
+                })?;
+            if let Some(decider) = network_policy.as_ref() {
+                pool = pool.with_network_policy(decider.clone());
+            }
+            Arc::new(AsyncMutex::new(pool))
+        };
+
         self.runtime_ext_mut().mcp_pool = Some(Arc::clone(&pool));
         Ok(pool)
     }

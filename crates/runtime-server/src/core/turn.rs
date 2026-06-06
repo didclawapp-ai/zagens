@@ -22,8 +22,16 @@ use std::path::Path;
 ///
 /// Returns the snapshot SHA on success, `None` on any error. Errors are
 /// logged at WARN; the turn loop must not block on this.
-pub fn pre_turn_snapshot(workspace: &Path, turn_seq: u64) -> Option<String> {
-    snapshot_with_label(workspace, &format!("pre-turn:{turn_seq}"))
+pub fn pre_turn_snapshot(
+    workspace: &Path,
+    turn_seq: u64,
+    max_workspace_gb: f64,
+) -> Option<String> {
+    snapshot_with_label(
+        workspace,
+        &format!("pre-turn:{turn_seq}"),
+        max_workspace_gb,
+    )
 }
 
 /// Take a `tool:<call_id>` workspace snapshot, taken before executing a
@@ -34,18 +42,26 @@ pub fn pre_turn_snapshot(workspace: &Path, turn_seq: u64) -> Option<String> {
 ///
 /// Returns the snapshot SHA on success, `None` on any error. Errors are
 /// logged at WARN and are non-fatal.
-pub fn pre_tool_snapshot(workspace: &Path, call_id: &str) -> Option<String> {
-    snapshot_with_label(workspace, &format!("tool:{call_id}"))
+pub fn pre_tool_snapshot(workspace: &Path, call_id: &str, max_workspace_gb: f64) -> Option<String> {
+    snapshot_with_label(workspace, &format!("tool:{call_id}"), max_workspace_gb)
 }
 
 /// Take a `post-turn:<seq>` workspace snapshot. Same failure model as
 /// [`pre_turn_snapshot`].
-pub fn post_turn_snapshot(workspace: &Path, turn_seq: u64) -> Option<String> {
-    snapshot_with_label(workspace, &format!("post-turn:{turn_seq}"))
+pub fn post_turn_snapshot(
+    workspace: &Path,
+    turn_seq: u64,
+    max_workspace_gb: f64,
+) -> Option<String> {
+    snapshot_with_label(
+        workspace,
+        &format!("post-turn:{turn_seq}"),
+        max_workspace_gb,
+    )
 }
 
-fn snapshot_with_label(workspace: &Path, label: &str) -> Option<String> {
-    match SnapshotRepo::open_or_init(workspace) {
+fn snapshot_with_label(workspace: &Path, label: &str, max_workspace_gb: f64) -> Option<String> {
+    match SnapshotRepo::open_or_init_with_max_gb(workspace, max_workspace_gb) {
         Ok(repo) => match repo.snapshot(label) {
             Ok(id) => Some(id.0),
             Err(e) => {

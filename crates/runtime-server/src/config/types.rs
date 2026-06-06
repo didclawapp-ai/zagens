@@ -8,6 +8,34 @@ use crate::hooks::HooksConfig;
 
 // === Types ===
 
+/// Web search backend provider.
+///
+/// Set via `[search] provider = "..."` in `~/.deepseek/config.toml`.
+/// DuckDuckGo (with automatic Bing fallback) is the default and requires no
+/// API key. API-backed providers (tavily, bocha, metaso, baidu, volcengine)
+/// need an `api_key` in the same `[search]` table or the corresponding env var.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum SearchProvider {
+    #[default]
+    DuckDuckGo,
+    Bing,
+    Tavily,
+    Bocha,
+    Metaso,
+    Baidu,
+    Volcengine,
+}
+
+/// `[search]` table — web search provider and credentials.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SearchConfig {
+    /// Which search provider to use. Defaults to `duckduckgo`.
+    pub provider: Option<SearchProvider>,
+    /// API key for the selected provider (not needed for duckduckgo/bing).
+    pub api_key: Option<String>,
+}
+
 /// Raw retry configuration loaded from config files.
 #[derive(Debug, Clone, Deserialize)]
 pub struct RetryConfig {
@@ -111,6 +139,10 @@ fn default_snapshot_max_age_days() -> u64 {
     crate::snapshot::DEFAULT_MAX_AGE.as_secs() / (24 * 60 * 60)
 }
 
+fn default_snapshot_max_workspace_gb() -> f64 {
+    deepseek_runtime_adapters::snapshot::DEFAULT_SNAPSHOT_MAX_WORKSPACE_GB
+}
+
 /// Workspace side-git snapshot configuration (#137).
 #[derive(Debug, Clone, Deserialize)]
 pub struct SnapshotsConfig {
@@ -120,6 +152,10 @@ pub struct SnapshotsConfig {
     /// Prune side-git snapshots older than this many days at session boot.
     #[serde(default = "default_snapshot_max_age_days")]
     pub max_age_days: u64,
+    /// Skip side-git init / `git add -A` when the workspace tree exceeds this
+    /// size (GB). Prevents first-turn hangs on huge trees (node_modules, weights).
+    #[serde(default = "default_snapshot_max_workspace_gb")]
+    pub max_workspace_gb: f64,
 }
 
 impl Default for SnapshotsConfig {
@@ -127,6 +163,7 @@ impl Default for SnapshotsConfig {
         Self {
             enabled: default_snapshots_enabled(),
             max_age_days: default_snapshot_max_age_days(),
+            max_workspace_gb: default_snapshot_max_workspace_gb(),
         }
     }
 }
@@ -448,12 +485,21 @@ pub struct SubagentsConfig {
     /// omits `step_timeout_ms`. Default 600; runtime clamps to [120, 1800].
     #[serde(default)]
     pub step_timeout_secs: Option<u64>,
+    /// Cancel running sub-agents with no progress longer than this (seconds).
+    /// Default 300; runtime clamps to [60, 3600]. Frees concurrent slots when
+    /// a child is stuck without step advancement.
+    #[serde(default)]
+    pub heartbeat_timeout_secs: Option<u64>,
 }
 
 /// Default sub-agent per-step API timeout (seconds).
 pub const DEFAULT_SUBAGENT_STEP_TIMEOUT_SECS: u64 = 600;
 pub const MIN_SUBAGENT_STEP_TIMEOUT_SECS: u64 = 120;
 pub const MAX_SUBAGENT_STEP_TIMEOUT_SECS: u64 = 1800;
+/// Default idle heartbeat before auto-cancelling a stuck sub-agent (seconds).
+pub const DEFAULT_SUBAGENT_HEARTBEAT_TIMEOUT_SECS: u64 = 300;
+pub const MIN_SUBAGENT_HEARTBEAT_TIMEOUT_SECS: u64 = 60;
+pub const MAX_SUBAGENT_HEARTBEAT_TIMEOUT_SECS: u64 = 3600;
 
 /// Per-model context tuning.
 #[derive(Debug, Clone, Deserialize)]
@@ -555,6 +601,10 @@ pub struct Config {
     /// retention when the table is absent.
     #[serde(default)]
     pub snapshots: Option<SnapshotsConfig>,
+
+    /// `[search]` table — web search provider and credentials.
+    #[serde(default)]
+    pub search: Option<SearchConfig>,
 
     /// User-level memory file (#489). Default behaviour is **opt-in**:
     /// loading + injection happens only when `[memory] enabled = true` or

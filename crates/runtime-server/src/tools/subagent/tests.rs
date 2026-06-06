@@ -761,7 +761,11 @@ async fn send_input_rejects_finished_task_handle() {
 async fn resume_clears_structured_output() {
     use deepseek_core::subagent::{AuditFindingItem, StructuredFindings};
 
-    let manager = new_shared_subagent_manager(PathBuf::from("."), 2);
+    let manager = new_shared_subagent_manager(
+        PathBuf::from("."),
+        2,
+        super::constants::DEFAULT_SUBAGENT_HEARTBEAT_TIMEOUT,
+    );
     let (input_tx, _input_rx) = mpsc::unbounded_channel();
     let mut agent = SubAgent::new(
         SubAgentType::Explore,
@@ -1300,6 +1304,50 @@ fn compute_stuck_suspected_flags_running_agent_past_step_timeout() {
     ));
 }
 
+#[tokio::test]
+async fn heartbeat_maintenance_cancels_idle_running_agent() {
+    use std::time::{Duration, Instant};
+
+    use deepseek_core::subagent::SubAgentStatus;
+    use tokio::sync::mpsc;
+
+    let mut manager = SubAgentManager::new(PathBuf::from("."), 2)
+        .with_heartbeat_timeout(Duration::from_millis(1));
+    let (input_tx, _input_rx) = mpsc::unbounded_channel();
+    let mut agent = SubAgent::new(
+        SubAgentType::Explore,
+        "prompt".to_string(),
+        make_assignment(),
+        "deepseek-v4-flash".to_string(),
+        Some("Blue".to_string()),
+        Some(vec!["read_file".to_string()]),
+        STEP_API_TIMEOUT,
+        DEFAULT_MAX_STEPS,
+        input_tx,
+        "boot_test".to_string(),
+    );
+    agent.status = SubAgentStatus::Running;
+    agent.last_progress_at = Instant::now()
+        .checked_sub(Duration::from_secs(600))
+        .unwrap_or_else(Instant::now);
+    agent.task_handle = Some(tokio::spawn(async {
+        tokio::time::sleep(Duration::from_secs(3600)).await;
+    }));
+    let agent_id = agent.id.clone();
+    manager.agents.insert(agent_id.clone(), agent);
+
+    tokio::time::sleep(Duration::from_millis(5)).await;
+    manager.run_maintenance();
+
+    let updated = manager.agents.get(&agent_id).expect("agent");
+    assert!(
+        matches!(updated.status, SubAgentStatus::Failed(_)),
+        "expected Failed after heartbeat cancel, got {:?}",
+        updated.status
+    );
+    assert_eq!(manager.running_count(), 0);
+}
+
 #[test]
 fn record_execution_progress_updates_steps_without_persist_on_tool_lines() {
     let mut manager = SubAgentManager::new(PathBuf::from("."), 2);
@@ -1581,7 +1629,11 @@ fn stub_runtime() -> SubAgentRuntime {
         context,
         allow_shell: true,
         event_tx: None,
-        manager: new_shared_subagent_manager(workspace, 5),
+        manager: new_shared_subagent_manager(
+            workspace,
+            5,
+            super::constants::DEFAULT_SUBAGENT_HEARTBEAT_TIMEOUT,
+        ),
         spawn_depth: 0,
         max_spawn_depth: DEFAULT_MAX_SPAWN_DEPTH,
         cancel_token: CancellationToken::new(),

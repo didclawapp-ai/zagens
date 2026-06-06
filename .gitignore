@@ -1,17 +1,19 @@
 # =============================================================================
 # Remote push policy: only source, configs, and small tracked assets.
 # Build outputs, secrets, local harness results, and internal notes stay local.
-# Website-specific: see website/.gitignore (dist/, node_modules/, .astro/).
+# Website / installers: private zagens_website repo + VPS /download/ only.
 # =============================================================================
 
 # Build artifacts
 /target
 *.pdb
 *.exe
-# Large installer binaries: uploaded to VPS manually, not via git/CI
-# Only .sig / .sha256 / latest.json are tracked (small metadata files)
-website/public/download/*.exe
-website/public/download/*.zip
+*.msi
+# Installers — never in product repo (zagens_website + VPS /download/)
+**/*.exe
+**/*.exe.zip
+**/download/Zagens_*
+**/public/download/Zagens_*
 *.dll
 *.so
 *.dylib
@@ -126,3 +128,11 @@ producthunt/Snipaste_2026-06-02_23-44-19.png
 producthunt/Snipaste_2026-06-02_23-44-37.png
 producthunt/Snipaste_2026-06-02_23-45-07.png
 producthunt/Snipaste_2026-06-02_23-45-22.png
+
+cms/
+
+# Marketing / article drafts (not product source)
+deliverables/
+
+# Website ops docs live in private zagens_website repo (see docs/REPO_SPLIT.md)
+docs/website/

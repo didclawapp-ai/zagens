@@ -21,6 +21,12 @@ pub trait McpTransport: Send + Sync {
     /// SIGKILL as the backstop. Default is a no-op for non-stdio transports
     /// that have no child process. Whalescale#420.
     async fn shutdown(&mut self) {}
+
+    /// Inform the transport of the protocol version negotiated during
+    /// `initialize`. Streamable HTTP echoes it back via the
+    /// `MCP-Protocol-Version` request header on every subsequent call (per the
+    /// 2025-06-18 spec); other transports ignore it.
+    fn set_protocol_version(&mut self, _version: &str) {}
 }
 
 pub struct StdioTransport {
@@ -279,5 +285,152 @@ impl McpTransport for SseTransport {
             }
             return Ok(msg);
         }
+    }
+}
+
+/// 2025 Streamable HTTP transport (spec rev `2025-03-26`/`2025-06-18`).
+///
+/// Unlike the legacy [`SseTransport`] (separate GET stream + POST endpoint),
+/// Streamable HTTP uses a **single** endpoint: every JSON-RPC message is
+/// `POST`ed, and the server replies either with `application/json` (a single
+/// response) or `text/event-stream` (an SSE batch that may interleave
+/// server notifications before the response). Responses are buffered into
+/// `inbox`; the connection's `recv` loop drains them and matches by id.
+///
+/// Session continuity is maintained via the `Mcp-Session-Id` header: we
+/// capture whatever the server returns (typically on `initialize`) and echo
+/// it back on subsequent requests. We do not open the optional standalone GET
+/// stream for server-initiated messages — request/response over POST covers
+/// tool discovery and invocation.
+pub struct StreamableHttpTransport {
+    client: reqwest::Client,
+    url: String,
+    session_id: Option<String>,
+    protocol_version: Option<String>,
+    pub(super) inbox: std::collections::VecDeque<serde_json::Value>,
+}
+
+impl StreamableHttpTransport {
+    pub fn new(client: reqwest::Client, url: String) -> Self {
+        Self {
+            client,
+            url,
+            session_id: None,
+            protocol_version: None,
+            inbox: std::collections::VecDeque::new(),
+        }
+    }
+
+    /// Parse an SSE response body, enqueuing every `message` event's JSON data.
+    pub(super) fn enqueue_sse_body(&mut self, body: &str) {
+        for block in body.split("\n\n") {
+            let mut event_type = "message";
+            let mut data = String::new();
+            for line in block.lines() {
+                if let Some(rest) = line.strip_prefix("event:") {
+                    event_type = rest.trim();
+                } else if let Some(rest) = line.strip_prefix("data:") {
+                    if !data.is_empty() {
+                        data.push('\n');
+                    }
+                    data.push_str(rest.strip_prefix(' ').unwrap_or(rest));
+                }
+            }
+            if event_type == "message" && !data.is_empty() {
+                if let Ok(value) = serde_json::from_str::<serde_json::Value>(&data) {
+                    self.inbox.push_back(value);
+                }
+            }
+        }
+    }
+
+    /// Enqueue a JSON body, flattening a top-level array (JSON-RPC batch).
+    pub(super) fn enqueue_json_body(&mut self, body: &str) {
+        match serde_json::from_str::<serde_json::Value>(body) {
+            Ok(serde_json::Value::Array(items)) => {
+                for item in items {
+                    self.inbox.push_back(item);
+                }
+            }
+            Ok(value) => self.inbox.push_back(value),
+            Err(_) => {}
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl McpTransport for StreamableHttpTransport {
+    async fn send(&mut self, msg: serde_json::Value) -> Result<()> {
+        let mut req = self
+            .client
+            .post(&self.url)
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .header(
+                reqwest::header::ACCEPT,
+                "application/json, text/event-stream",
+            );
+        if let Some(session) = &self.session_id {
+            req = req.header("Mcp-Session-Id", session);
+        }
+        if let Some(version) = &self.protocol_version {
+            req = req.header("MCP-Protocol-Version", version);
+        }
+
+        let response = req.json(&msg).send().await.with_context(|| {
+            format!(
+                "MCP Streamable HTTP POST failed (transport=http url={})",
+                mask_url_secrets(&self.url),
+            )
+        })?;
+
+        // Capture/refresh the session id from any response (set on initialize).
+        if let Some(session) = response
+            .headers()
+            .get("mcp-session-id")
+            .and_then(|v| v.to_str().ok())
+        {
+            self.session_id = Some(session.to_string());
+        }
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = bounded_body_excerpt(response, ERROR_BODY_PREVIEW_BYTES).await;
+            anyhow::bail!(
+                "MCP Streamable HTTP rejected (transport=http url={} status={}): {}",
+                mask_url_secrets(&self.url),
+                status,
+                body,
+            );
+        }
+
+        // 202 Accepted is the spec's reply to notifications/responses that
+        // carry no body — nothing to enqueue.
+        if status == reqwest::StatusCode::ACCEPTED {
+            return Ok(());
+        }
+
+        let content_type = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        let body = response.text().await.context("MCP Streamable HTTP: failed to read response body")?;
+        if content_type.contains("text/event-stream") {
+            self.enqueue_sse_body(&body);
+        } else if !body.trim().is_empty() {
+            self.enqueue_json_body(&body);
+        }
+        Ok(())
+    }
+
+    async fn recv(&mut self) -> Result<serde_json::Value> {
+        self.inbox
+            .pop_front()
+            .context("MCP Streamable HTTP: no message available from server")
+    }
+
+    fn set_protocol_version(&mut self, version: &str) {
+        self.protocol_version = Some(version.to_string());
     }
 }

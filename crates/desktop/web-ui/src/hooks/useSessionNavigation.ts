@@ -5,8 +5,14 @@ import {
   type MutableRefObject,
   type SetStateAction,
 } from 'react';
-import { getSessionDetail, getThreadDetail, resumeSessionThread } from '../api/client';
+import {
+  getSessionDetail,
+  getThreadDetail,
+  persistThreadSession,
+  resumeSessionThread,
+} from '../api/client';
 import { rebuildMessagesFromThreadEvents } from '../lib/chat/rebuildMessagesFromThread';
+import { pickBestSessionMessages } from '../lib/chat/sessionMessagePick';
 import {
   cacheSessionUiMessages,
   getCachedSessionUiMessages,
@@ -58,6 +64,7 @@ export type UseSessionNavigationParams = {
   restoreThreadContextFromCache: (threadId: string) => void;
   reconcileRuntimeAfterFetchFailure: () => void;
   notifyRuntimeTransient: (message: string) => void;
+  resetAgentPanel: () => void;
 };
 
 export type UseSessionNavigationResult = {
@@ -94,6 +101,7 @@ export function useSessionNavigation({
   restoreThreadContextFromCache,
   reconcileRuntimeAfterFetchFailure,
   notifyRuntimeTransient,
+  resetAgentPanel,
 }: UseSessionNavigationParams): UseSessionNavigationResult {
   const selectSessionGenerationRef = useRef(0);
   const selectSessionAbortRef = useRef<AbortController | null>(null);
@@ -114,6 +122,11 @@ export function useSessionNavigation({
         );
       }
       const outgoingThreadId = resumedThreadIdRef.current;
+      if (outgoingThreadId) {
+        void persistThreadSession(outgoingThreadId, outgoingSessionId).catch(() => {
+          /* best-effort — UI cache already saved above */
+        });
+      }
       const outgoingSnapshot = threadContextSnapshotRef.current;
       if (outgoingThreadId && outgoingSnapshot) {
         threadContextCacheRef.current.set(outgoingThreadId, outgoingSnapshot);
@@ -123,6 +136,7 @@ export function useSessionNavigation({
       }
 
       toast.dismissAll();
+      resetAgentPanel();
       setActiveSessionId(sessionId);
       setResumedThreadId(null);
       setThreadTrustMode(false);
@@ -147,8 +161,16 @@ export function useSessionNavigation({
           return;
         }
         const sessionFallback = mapSessionDetailToMessages(detail);
-        if (!cachedUi?.length) {
-          setMessages(sessionFallback);
+        const restoreCandidates: Parameters<typeof pickBestSessionMessages>[0] = [];
+        if (cachedUi?.length) {
+          restoreCandidates.push({ source: 'cache', messages: cachedUi });
+        }
+        if (sessionFallback.length > 0) {
+          restoreCandidates.push({ source: 'session', messages: sessionFallback });
+        }
+        const provisional = pickBestSessionMessages(restoreCandidates);
+        if (provisional.length > 0) {
+          setMessages(provisional);
         }
         resumedThreadIdRef.current = resumed.thread_id;
         setResumedThreadId(resumed.thread_id);
@@ -162,15 +184,18 @@ export function useSessionNavigation({
             return;
           }
           if (fromThread.length > 0) {
-            setMessages(fromThread);
-            cacheSessionUiMessages(sessionUiCacheRef.current, sessionId, fromThread);
-          } else if (!cachedUi?.length && sessionFallback.length > 0) {
-            cacheSessionUiMessages(sessionUiCacheRef.current, sessionId, sessionFallback);
+            restoreCandidates.push({ source: 'thread', messages: fromThread });
           }
         } catch {
-          if (!cachedUi?.length && sessionFallback.length > 0) {
-            setMessages(sessionFallback);
-          }
+          /* thread replay failed — keep cache/session fallback */
+        }
+        if (gen !== selectSessionGenerationRef.current) {
+          return;
+        }
+        const restored = pickBestSessionMessages(restoreCandidates);
+        if (restored.length > 0) {
+          setMessages(restored);
+          cacheSessionUiMessages(sessionUiCacheRef.current, sessionId, restored);
         }
         threadTurnRef.current = { threadId: resumed.thread_id, turnId: '' };
         try {
@@ -227,6 +252,7 @@ export function useSessionNavigation({
       threadContextCacheRef,
       messagesRef,
       abortThreadStream,
+      resetAgentPanel,
       resetTurnPersistState,
       setMessages,
       setActiveSessionId,
@@ -252,6 +278,7 @@ export function useSessionNavigation({
     abortThreadStream(resumedThreadIdRef.current);
     selectSessionAbortRef.current?.abort();
     selectSessionGenerationRef.current += 1;
+    resetAgentPanel();
     setMessages([]);
     setResumedThreadId(null);
     setLockedThreadTaskType(null);
@@ -269,6 +296,7 @@ export function useSessionNavigation({
   }, [
     abortThreadStream,
     clearApproval,
+    resetAgentPanel,
     resetTurnPersistState,
     resumedThreadIdRef,
     selectedModel,

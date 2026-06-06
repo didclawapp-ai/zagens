@@ -15,7 +15,14 @@ impl Engine {
             .call_tool(name, input)
             .await
             .map_err(|e| ToolError::execution_failed(format!("MCP tool failed: {e}")))?;
-        let content = serde_json::to_string_pretty(&result).unwrap_or_else(|_| result.to_string());
-        Ok(ToolResult::success(content))
+        // Extract the spec content blocks instead of dumping the raw JSON
+        // envelope (content/isError/meta) at the model, and honor the
+        // tool-level `isError` flag so failures aren't reported as success.
+        let content = crate::mcp::extract_tool_content(&result);
+        if crate::mcp::is_tool_error(&result) {
+            Ok(ToolResult::error(content))
+        } else {
+            Ok(ToolResult::success(content))
+        }
     }
 }

@@ -4,7 +4,7 @@
 use std::fs;
 use std::path::Path;
 
-const BUNDLED_SKILL_VERSION: &str = "6";
+const BUNDLED_SKILL_VERSION: &str = "8";
 
 struct BundledFile {
     path: &'static str,
@@ -106,6 +106,18 @@ const OFFICE_RELEASE_NOTES: BundledSkill = bundled_md_skill!(
     "office-release-notes",
     "../../assets/skills/office-release-notes/SKILL.md"
 );
+const OFFICE_EXECUTIVE_DAILY_BRIEF: BundledSkill = bundled_md_skill!(
+    "office-executive-daily-brief",
+    "../../assets/skills/office-executive-daily-brief/SKILL.md"
+);
+const OFFICE_CUSTOMER_QUOTE: BundledSkill = bundled_md_skill!(
+    "office-customer-quote",
+    "../../assets/skills/office-customer-quote/SKILL.md"
+);
+const OFFICE_PRODUCTION_DAILY_REPORT: BundledSkill = bundled_md_skill!(
+    "office-production-daily-report",
+    "../../assets/skills/office-production-daily-report/SKILL.md"
+);
 
 const BUNDLED_SKILLS: &[BundledSkill] = &[
     SKILL_CREATOR,
@@ -119,6 +131,9 @@ const BUNDLED_SKILLS: &[BundledSkill] = &[
     OFFICE_CONTRACT_DRAFT,
     OFFICE_RESUME,
     OFFICE_RELEASE_NOTES,
+    OFFICE_EXECUTIVE_DAILY_BRIEF,
+    OFFICE_CUSTOMER_QUOTE,
+    OFFICE_PRODUCTION_DAILY_REPORT,
 ];
 
 fn should_install_skill(

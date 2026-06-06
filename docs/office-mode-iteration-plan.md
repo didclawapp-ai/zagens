@@ -1,5 +1,7 @@
 # 办公模式迭代方案
 
+> **场景目录（按角色 / 职能）：** [desktop/OFFICE_SCENARIOS.md](desktop/OFFICE_SCENARIOS.md)
+
 > **实施状态（2026-06-03 收尾 + 后续）：** P0/P1/P2 主体已落地（见下表）。**新增**：`write_office` **`source`** 直喂 CSV/TSV/XLSX；`read_office` **PPTX 图表数据**抽取。**未做**：DOCX/PPTX 预览 PDF 侧车、一键导出 PDF、企业模板、round-trip 手改文件、风险分层 UI、意图歧义 UI。
 
 > 重写说明：原方案低估了现有能力、且只围绕“生成文件 → 预览 PDF”这条窄链路。

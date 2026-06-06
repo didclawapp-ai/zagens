@@ -823,6 +823,7 @@ F 完成 ────────┴──► B-L3（AgentPanel、记忆地图 U
 | [UNDERLYING_ITERATION_REFERENCE.md](../tui/UNDERLYING_ITERATION_REFERENCE.md) | 阶段 A/B 技术方向明细 |
 | [DESKTOP_IMPLEMENTATION_PLAN.md](../desktop/DESKTOP_IMPLEMENTATION_PLAN.md) | 桌面 Phase 1 选型（路线 B） |
 | [RUNTIME_ARCHITECTURE.md](./RUNTIME_ARCHITECTURE.md) | 三层模型、crate 依赖、双持久化/双通道附图 |
+| [OPENCODE_AGENT_CORE_BENCHMARK.md](./OPENCODE_AGENT_CORE_BENCHMARK.md) | OpenCode agent 核心对标、P0–P4 借鉴路线图 |
 | [API_DESIGN.md](./API_DESIGN.md) | HTTP/SSE + Tauri IPC 契约 SSOT |
 | [adr/RUNTIME_BASELINE.md](./adr/RUNTIME_BASELINE.md) | A1.6 长跑基准数值（R-015 填入） |
 | [TUI_DS_PICK_GAP.md](../desktop/TUI_DS_PICK_GAP.md) | 桌面差距排期 |

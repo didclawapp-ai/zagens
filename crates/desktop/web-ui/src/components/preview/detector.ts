@@ -94,33 +94,45 @@ const EXT_MAP: Record<string, FileType> = {
  * When the runtime API returns a `language_hint` the file passed UTF-8
  * validation — treat it as Code (the hint carries the exact language).
  */
+function extensionOf(fileName?: string): string | undefined {
+  if (!fileName) return undefined;
+  const dot = fileName.lastIndexOf('.');
+  if (dot === -1) return undefined;
+  return fileName.slice(dot).toLowerCase();
+}
+
 export function detectFileType(
   fileName?: string,
   languageHint?: string | null,
 ): FileType {
-  // 1. Server-side language hint → definite text file with known language
+  const ext = extensionOf(fileName);
+
+  // 1. Extension overrides for formats with dedicated renderers (even when the
+  //    runtime returns a language_hint for UTF-8 text files).
+  if (ext === '.md' || ext === '.markdown' || ext === '.mdx') {
+    return FileType.Markdown;
+  }
+  if (ext === '.html' || ext === '.htm') {
+    return FileType.Html;
+  }
+
+  // 2. Server-side language hint → definite text file with known language
   if (languageHint) {
-    // Markdown files get a language hint of "markdown" from the server;
-    // route them to the Markdown renderer for full markdown-it treatment.
     if (languageHint === 'markdown') {
       return FileType.Markdown;
     }
     return FileType.Code;
   }
 
-  // 2. Extension lookup
-  if (fileName) {
-    const dot = fileName.lastIndexOf('.');
-    if (dot !== -1) {
-      const ext = fileName.slice(dot).toLowerCase();
-      const mapped = EXT_MAP[ext];
-      if (mapped !== undefined) {
-        return mapped;
-      }
+  // 3. Extension lookup
+  if (ext) {
+    const mapped = EXT_MAP[ext];
+    if (mapped !== undefined) {
+      return mapped;
     }
   }
 
-  // 3. Fallback — assume plain text
+  // 4. Fallback — assume plain text
   return FileType.Text;
 }
 

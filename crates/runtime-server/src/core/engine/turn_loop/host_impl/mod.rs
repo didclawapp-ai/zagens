@@ -751,7 +751,11 @@ impl TurnLoopHost for Engine {
     }
 
     fn pre_tool_snapshot(&self, workspace: &std::path::Path, tool_id: &str) {
-        pre_tool_snapshot(workspace, tool_id);
+        pre_tool_snapshot(
+            workspace,
+            tool_id,
+            self.config.snapshots_max_workspace_gb,
+        );
     }
 
     fn effective_reasoning_effort_for_request(&mut self) -> Option<String> {

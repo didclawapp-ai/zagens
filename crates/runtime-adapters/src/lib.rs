@@ -7,6 +7,7 @@
 //! This crate is the stable boundary for MCP connectors, persistence adapters,
 //! scratchpad gates, snapshots, and network policy.
 
+pub mod http_client;
 pub mod json_schema_util;
 pub mod mcp;
 pub mod models;

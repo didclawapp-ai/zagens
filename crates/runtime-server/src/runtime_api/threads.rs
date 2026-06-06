@@ -28,6 +28,8 @@ use super::{map_thread_err, truncate_text, ApiError, RuntimeApiState};
 pub(crate) struct ResolveApprovalRequest {
     tool_call_id: String,
     decision: String,
+    #[serde(default)]
+    remember_for_session: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -627,8 +629,9 @@ pub(crate) async fn list_thread_snapshots(
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(50)
         .clamp(1, MAX_SNAPSHOT_LIST);
+    let max_gb = state.config.snapshots_config().max_workspace_gb;
     let snapshots = tokio::task::spawn_blocking(move || {
-        let repo = SnapshotRepo::open_or_init(&ws)?;
+        let repo = SnapshotRepo::open_or_init_with_max_gb(&ws, max_gb)?;
         repo.list(limit)
     })
     .await
@@ -669,8 +672,10 @@ pub(crate) async fn restore_thread_snapshot(
     }
     let ws = detail.thread.workspace.clone();
     let n = body.n;
+    let max_gb = state.config.snapshots_config().max_workspace_gb;
     let restored = tokio::task::spawn_blocking(move || {
-        let repo = SnapshotRepo::open_or_init(&ws).map_err(|e| map_snapshot_io_err(&ws.display().to_string(), e))?;
+        let repo = SnapshotRepo::open_or_init_with_max_gb(&ws, max_gb)
+            .map_err(|e| map_snapshot_io_err(&ws.display().to_string(), e))?;
         let snaps = repo.list(MAX_SNAPSHOT_LIST)?;
         if n > snaps.len() {
             return Err(ApiError::bad_request(format!(
@@ -943,7 +948,7 @@ pub(crate) async fn start_thread_turn(
     AxumPath(id): AxumPath<String>,
     Json(req): Json<StartTurnRequest>,
 ) -> Result<(StatusCode, Json<StartTurnResponse>), ApiError> {
-    let turn = state
+    let outcome = state
         .runtime_threads
         .start_turn(&id, req)
         .await
@@ -953,9 +958,18 @@ pub(crate) async fn start_thread_turn(
         .get_thread(&id)
         .await
         .map_err(map_thread_err)?;
+    let status = if outcome.queued.is_some() {
+        StatusCode::ACCEPTED
+    } else {
+        StatusCode::CREATED
+    };
     Ok((
-        StatusCode::CREATED,
-        Json(StartTurnResponse { thread, turn }),
+        status,
+        Json(StartTurnResponse {
+            thread,
+            turn: outcome.turn,
+            queued: outcome.queued,
+        }),
     ))
 }
 
@@ -964,7 +978,7 @@ pub(crate) async fn edit_last_thread_turn(
     AxumPath(id): AxumPath<String>,
     Json(req): Json<EditLastTurnRequest>,
 ) -> Result<(StatusCode, Json<StartTurnResponse>), ApiError> {
-    let turn = state
+    let outcome = state
         .runtime_threads
         .edit_last_turn(&id, req)
         .await
@@ -976,7 +990,11 @@ pub(crate) async fn edit_last_thread_turn(
         .map_err(map_thread_err)?;
     Ok((
         StatusCode::CREATED,
-        Json(StartTurnResponse { thread, turn }),
+        Json(StartTurnResponse {
+            thread,
+            turn: outcome.turn,
+            queued: outcome.queued,
+        }),
     ))
 }
 
@@ -1009,7 +1027,13 @@ pub(crate) async fn resolve_approval(
     };
     state
         .runtime_threads
-        .resolve_approval(&id, &turn_id, &req.tool_call_id, approved)
+        .resolve_approval(
+            &id,
+            &turn_id,
+            &req.tool_call_id,
+            approved,
+            req.remember_for_session,
+        )
         .await
         .map_err(map_thread_err)?;
     Ok(Json(json!({
@@ -1049,7 +1073,11 @@ pub(crate) async fn compact_thread(
         .map_err(map_thread_err)?;
     Ok((
         StatusCode::ACCEPTED,
-        Json(StartTurnResponse { thread, turn }),
+        Json(StartTurnResponse {
+            thread,
+            turn,
+            queued: None,
+        }),
     ))
 }
 

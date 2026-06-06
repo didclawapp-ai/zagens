@@ -78,6 +78,7 @@ impl RuntimeThreadManager {
             max_spawn_depth: crate::tools::subagent::DEFAULT_MAX_SPAWN_DEPTH,
             network_policy,
             snapshots_enabled: self.config.snapshots_config().enabled,
+            snapshots_max_workspace_gb: self.config.snapshots_config().max_workspace_gb,
             lsp_config,
             runtime_services: self.background.build_runtime_tool_services(
                 thread,
@@ -101,6 +102,11 @@ impl RuntimeThreadManager {
             scratchpad: self.config.scratchpad_config(),
             long_horizon,
             llm_client_override: None,
+            search_provider: {
+                let search = self.config.search_config();
+                search.provider.unwrap_or_default()
+            },
+            search_api_key: self.config.search_config().api_key,
         };
 
         Ok(spawn_engine(engine_cfg, &self.config))

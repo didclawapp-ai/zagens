@@ -7,7 +7,8 @@ use anyhow::{Context, Result};
 use crate::network_policy::NetworkPolicyDecider;
 use crate::util::write_atomic;
 
-use super::config::{McpConfig, McpServerConfig};
+use super::auth::merge_preserved_secrets;
+use super::config::{McpConfig, McpServerConfig, McpTransportKind};
 use super::pool::McpPool;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -17,14 +18,21 @@ pub enum McpWriteStatus {
     SkippedExists,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct McpDiscoveredItem {
     pub name: String,
     pub model_name: String,
     pub description: Option<String>,
+    /// Whether the tool is enabled in server config (`enabled_tools` / `disabled_tools`).
+    #[serde(default = "default_item_enabled")]
+    pub enabled: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+fn default_item_enabled() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct McpServerSnapshot {
     pub name: String,
     pub enabled: bool,
@@ -41,7 +49,7 @@ pub struct McpServerSnapshot {
     pub prompts: Vec<McpDiscoveredItem>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct McpManagerSnapshot {
     pub config_path: std::path::PathBuf,
     pub config_exists: bool,
@@ -80,6 +88,9 @@ fn mcp_template_json() -> Result<String> {
             args: vec!["./path/to/your-mcp-server.js".to_string()],
             env: HashMap::new(),
             url: None,
+            transport: None,
+            headers: HashMap::new(),
+            auth: None,
             connect_timeout: None,
             execute_timeout: None,
             read_timeout: None,
@@ -131,6 +142,9 @@ pub fn add_server_config(
             args,
             env: HashMap::new(),
             url,
+            transport: None,
+            headers: HashMap::new(),
+            auth: None,
             connect_timeout: None,
             execute_timeout: None,
             read_timeout: None,
@@ -151,13 +165,15 @@ pub fn get_server_entry(path: &Path, name: &str) -> Result<Option<McpServerConfi
     Ok(cfg.servers.get(name).cloned())
 }
 
-/// Remove a server entry and persist. Errors if the name is missing.
-pub fn remove_server_from_config(path: &Path, name: &str) -> Result<()> {
+/// Remove a server entry and persist.
+/// Returns `true` when removed, `false` when the name was already absent (idempotent).
+pub fn remove_server_from_config(path: &Path, name: &str) -> Result<bool> {
     let mut cfg = load_config(path)?;
     if cfg.servers.remove(name).is_none() {
-        anyhow::bail!("MCP server '{name}' is not configured");
+        return Ok(false);
     }
-    save_config(path, &cfg)
+    save_config(path, &cfg)?;
+    Ok(true)
 }
 
 /// Replace an existing server block (full document for that key). Errors if the name is missing.
@@ -166,9 +182,13 @@ pub fn replace_server_in_config(path: &Path, name: &str, server: McpServerConfig
         anyhow::bail!("MCP server '{name}': provide either `command` or `url`");
     }
     let mut cfg = load_config(path)?;
-    if !cfg.servers.contains_key(name) {
-        anyhow::bail!("MCP server '{name}' is not configured");
-    }
+    let old = cfg
+        .servers
+        .get(name)
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("MCP server '{name}' is not configured"))?;
+    let mut server = server;
+    merge_preserved_secrets(&mut server, &old);
     cfg.servers.insert(name.to_string(), server);
     save_config(path, &cfg)
 }
@@ -315,6 +335,21 @@ pub async fn discover_manager_snapshot(
     ))
 }
 
+/// Build a manager snapshot from a live pool (shared sidecar pool / hot-reload path).
+pub async fn manager_snapshot_from_pool(
+    path: &Path,
+    pool: &mut McpPool,
+) -> McpManagerSnapshot {
+    let cfg = load_config(path).unwrap_or_default();
+    let errors: HashMap<String, String> = pool
+        .connect_all()
+        .await
+        .into_iter()
+        .map(|(name, err)| (name, err.to_string()))
+        .collect();
+    snapshot_from_config(path, path.exists(), false, &cfg, Some((pool, &errors)))
+}
+
 fn snapshot_from_config(
     path: &Path,
     config_exists: bool,
@@ -326,11 +361,9 @@ fn snapshot_from_config(
         .servers
         .iter()
         .map(|(name, server)| {
-            let transport = if server.url.is_some() {
-                "http/sse"
-            } else {
-                "stdio"
-            };
+            let transport = server
+                .transport_kind()
+                .map_or("unknown", McpTransportKind::as_str);
             let command_or_url = server.url.clone().unwrap_or_else(|| {
                 let mut command = server
                     .command
@@ -371,11 +404,11 @@ fn snapshot_from_config(
                     snapshot.tools = conn
                         .tools()
                         .iter()
-                        .filter(|tool| conn.config().is_tool_enabled(&tool.name))
                         .map(|tool| McpDiscoveredItem {
                             name: tool.name.clone(),
                             model_name: format!("mcp_{}_{}", name, tool.name),
                             description: tool.description.clone(),
+                            enabled: conn.config().is_tool_enabled(&tool.name),
                         })
                         .collect();
                     snapshot.resources =
@@ -389,6 +422,7 @@ fn snapshot_from_config(
                                     resource.name.replace(' ', "_").to_lowercase()
                                 ),
                                 description: resource.description.clone(),
+                                enabled: true,
                             })
                             .chain(conn.resource_templates().iter().map(|template| {
                                 McpDiscoveredItem {
@@ -399,6 +433,7 @@ fn snapshot_from_config(
                                         template.name.replace(' ', "_").to_lowercase()
                                     ),
                                     description: template.description.clone(),
+                                    enabled: true,
                                 }
                             }))
                             .collect();
@@ -409,6 +444,7 @@ fn snapshot_from_config(
                             name: prompt.name.clone(),
                             model_name: format!("mcp_{}_{}", name, prompt.name),
                             description: prompt.description.clone(),
+                            enabled: true,
                         })
                         .collect();
                 }

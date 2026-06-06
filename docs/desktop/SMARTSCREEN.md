@@ -77,7 +77,7 @@ A matching hash confirms the file is intact and untampered.
 
 ## 为什么不签名? / Why unsigned?
 
-代码签名证书(尤其能立即免警告的 EV 证书)费用较高。作为早期预览版,我们先以
+代码签名证书(尤其能立即免警告的 EV 证书)费用较高。在尚未签名阶段,我们先以
 "zip 解锁 + 校验值"的零成本方式发布;后续计划接入 **Microsoft Store** 或
 **Azure Trusted Signing** 以彻底消除该提示。
 

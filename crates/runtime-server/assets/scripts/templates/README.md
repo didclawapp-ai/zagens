@@ -8,7 +8,7 @@
 python write_pptx.py --input templates/8d_report.json --output 8D报告.pptx
 ```
 
-或在 DeepSeek TUI 中直接让模型基于模板生成：模型会读取模板 JSON，替换占位数据后调用 `write_office`。
+或在 Zagens 中直接让模型基于模板生成：模型会读取模板 JSON，替换占位数据后调用 `write_office`。
 
 ## 模板列表
 

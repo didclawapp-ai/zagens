@@ -29,6 +29,7 @@ pub struct TaskGraphChecklistJson {
 }
 
 pub use super::completion_gate_panel::CompletionGatePanelJson;
+pub use super::macro_loop_panel::MacroLoopPanelJson;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct TaskGraphTelemetryJson {
@@ -58,6 +59,8 @@ pub struct TaskGraphResponse {
     pub telemetry: Option<TaskGraphTelemetryJson>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub completion_gate: Option<CompletionGatePanelJson>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub macro_loop: Option<MacroLoopPanelJson>,
 }
 
 #[must_use]
@@ -69,6 +72,10 @@ pub fn build_task_graph_response(
     lht: &LongHorizonConfig,
     session: Option<&LongHorizonSessionState>,
 ) -> TaskGraphResponse {
+    let macro_configured = lht.macro_loop.enabled;
+    let macro_loop = session.map(|s| {
+        super::macro_loop_panel::merge_macro_loop_panel(macro_configured, &Default::default(), Some(s))
+    });
     let (lht_blocked, nudge_count, telemetry, completion_gate) = session
         .map(|s| {
             (
@@ -126,6 +133,7 @@ pub fn build_task_graph_response(
         nudge_count,
         telemetry,
         completion_gate,
+        macro_loop,
     )
 }
 
@@ -144,6 +152,7 @@ fn assemble_task_graph(
     nudge_count: Option<u32>,
     telemetry: Option<TaskGraphTelemetryJson>,
     completion_gate: Option<CompletionGatePanelJson>,
+    macro_loop: Option<MacroLoopPanelJson>,
 ) -> TaskGraphResponse {
     let mut graph = CodeTaskGraph::from_snapshots(plan, checklist);
     let (objective, source) = derive_objective(plan, checklist, messages, lang);
@@ -184,6 +193,7 @@ fn assemble_task_graph(
         nudge_count,
         telemetry,
         completion_gate,
+        macro_loop,
     }
 }
 
@@ -214,6 +224,7 @@ pub fn build_task_graph_value_with_telemetry(
     nudge_count: Option<u32>,
     telemetry: Option<TaskGraphTelemetryJson>,
     completion_gate: Option<CompletionGatePanelJson>,
+    macro_loop: Option<MacroLoopPanelJson>,
 ) -> Value {
     serde_json::to_value(assemble_task_graph(
         plan,
@@ -225,6 +236,7 @@ pub fn build_task_graph_value_with_telemetry(
         nudge_count,
         telemetry,
         completion_gate,
+        macro_loop,
     ))
     .unwrap_or_else(|_| json!({ "error": "task_graph_serialize_failed" }))
 }

@@ -110,6 +110,9 @@ fn test_server_effective_timeouts() {
         args: vec![],
         env: HashMap::new(),
         url: None,
+        transport: None,
+        headers: HashMap::new(),
+        auth: None,
         connect_timeout: Some(20),
         execute_timeout: None,
         read_timeout: Some(180),
@@ -170,6 +173,263 @@ fn test_format_tool_result_multiple_content() {
     assert!(formatted.contains("Line 1"));
     assert!(formatted.contains("Line 2"));
     assert!(formatted.contains("[image content]"));
+}
+
+#[test]
+fn test_is_tool_error_flag() {
+    let ok = serde_json::json!({ "content": [{"type": "text", "text": "done"}] });
+    assert!(!is_tool_error(&ok));
+
+    let err = serde_json::json!({
+        "isError": true,
+        "content": [{"type": "text", "text": "boom"}]
+    });
+    assert!(is_tool_error(&err));
+}
+
+#[test]
+fn test_extract_tool_content_drops_envelope() {
+    // Only the text blocks survive — the isError/meta envelope is stripped.
+    let err = serde_json::json!({
+        "isError": true,
+        "content": [{"type": "text", "text": "boom"}],
+        "meta": {"trace": "abc"}
+    });
+    assert_eq!(extract_tool_content(&err), "boom");
+}
+
+#[test]
+fn test_extract_tool_content_non_text_block() {
+    let result = serde_json::json!({
+        "content": [
+            {"type": "image", "data": "base64..."},
+            {"type": "text", "text": "caption"}
+        ]
+    });
+    assert_eq!(extract_tool_content(&result), "[image content]\ncaption");
+}
+
+#[test]
+fn test_parse_prefixed_name_underscore_server() {
+    let config: McpConfig = serde_json::from_str(
+        r#"{
+            "servers": {
+                "github_mcp": { "command": "node" },
+                "git": { "command": "node" }
+            }
+        }"#,
+    )
+    .unwrap();
+    let pool = McpPool::new(config);
+
+    // Server name with an underscore must not be split at the first `_`.
+    assert_eq!(
+        pool.parse_prefixed_name("mcp_github_mcp_search").unwrap(),
+        ("github_mcp", "search")
+    );
+    // A shorter, overlapping prefix still resolves to the right server.
+    assert_eq!(
+        pool.parse_prefixed_name("mcp_git_status").unwrap(),
+        ("git", "status")
+    );
+    // Tool names may also contain underscores.
+    assert_eq!(
+        pool.parse_prefixed_name("mcp_github_mcp_create_issue")
+            .unwrap(),
+        ("github_mcp", "create_issue")
+    );
+}
+
+#[test]
+fn test_parse_prefixed_name_unknown_server_falls_back() {
+    let pool = McpPool::new(McpConfig::default());
+    // Server not in config: fall back to first-underscore split.
+    assert_eq!(
+        pool.parse_prefixed_name("mcp_unknown_tool").unwrap(),
+        ("unknown", "tool")
+    );
+    assert!(pool.parse_prefixed_name("notmcp_x").is_err());
+    assert!(pool.parse_prefixed_name("mcp_noseparator").is_err());
+}
+
+#[test]
+fn test_transport_kind_inference() {
+    let cfg: McpConfig = serde_json::from_str(
+        r#"{
+            "servers": {
+                "local":  { "command": "node" },
+                "legacy": { "url": "https://example.com/sse" }
+            }
+        }"#,
+    )
+    .unwrap();
+    assert_eq!(
+        cfg.servers["local"].transport_kind().unwrap(),
+        McpTransportKind::Stdio
+    );
+    // url without explicit transport stays SSE for backward compatibility.
+    assert_eq!(
+        cfg.servers["legacy"].transport_kind().unwrap(),
+        McpTransportKind::Sse
+    );
+}
+
+#[test]
+fn test_transport_kind_explicit_and_alias() {
+    let cfg: McpConfig = serde_json::from_str(
+        r#"{
+            "servers": {
+                "stream": { "url": "https://example.com/mcp", "transport": "http" },
+                "aliased": { "url": "https://example.com/mcp", "type": "streamable-http" },
+                "forced_sse": { "url": "https://example.com/mcp", "type": "sse" }
+            }
+        }"#,
+    )
+    .unwrap();
+    assert_eq!(
+        cfg.servers["stream"].transport_kind().unwrap(),
+        McpTransportKind::Http
+    );
+    assert_eq!(
+        cfg.servers["aliased"].transport_kind().unwrap(),
+        McpTransportKind::Http
+    );
+    assert_eq!(
+        cfg.servers["forced_sse"].transport_kind().unwrap(),
+        McpTransportKind::Sse
+    );
+}
+
+#[tokio::test]
+async fn test_mcp_pool_reload_config_diff() {
+    let cfg_a: McpConfig = serde_json::from_str(
+        r#"{
+            "servers": {
+                "alpha": { "command": "node", "args": ["a.js"] },
+                "beta": { "command": "node", "args": ["b.js"] }
+            }
+        }"#,
+    )
+    .unwrap();
+    let mut pool = McpPool::new(cfg_a);
+
+    let cfg_b: McpConfig = serde_json::from_str(
+        r#"{
+            "servers": {
+                "alpha": { "command": "node", "args": ["a.v2.js"] },
+                "gamma": { "command": "node", "args": ["g.js"] }
+            }
+        }"#,
+    )
+    .unwrap();
+    let report = pool.reload_config(cfg_b, false).await;
+    assert_eq!(report.removed, vec!["beta".to_string()]);
+    assert!(report.updated.contains(&"alpha".to_string()));
+    assert!(pool.config().servers.contains_key("gamma"));
+    assert!(!pool.config().servers.contains_key("beta"));
+}
+
+#[test]
+fn test_merge_preserved_secrets_on_save() {
+    let old = McpServerConfig {
+        command: None,
+        args: vec![],
+        env: HashMap::new(),
+        url: Some("https://example.com/mcp".to_string()),
+        transport: Some("http".to_string()),
+        headers: HashMap::new(),
+        auth: Some(McpAuthConfig {
+            auth_type: Some("bearer".to_string()),
+            token: Some("secret-token".to_string()),
+            header: None,
+            api_key: None,
+        }),
+        connect_timeout: None,
+        execute_timeout: None,
+        read_timeout: None,
+        disabled: false,
+        enabled: true,
+        required: false,
+        enabled_tools: vec![],
+        disabled_tools: vec![],
+    };
+    let mut new = old.redacted_for_display();
+    assert!(new.auth.as_ref().unwrap().token.is_none());
+    merge_preserved_secrets(&mut new, &old);
+    assert_eq!(new.auth.as_ref().unwrap().token.as_deref(), Some("secret-token"));
+}
+
+#[test]
+fn test_redacted_display_keeps_env_placeholder() {
+    let cfg = McpServerConfig {
+        command: None,
+        args: vec![],
+        env: HashMap::new(),
+        url: Some("https://example.com/mcp".to_string()),
+        transport: None,
+        headers: HashMap::from([(
+            "Authorization".to_string(),
+            "Bearer ${MCP_TOKEN}".to_string(),
+        )]),
+        auth: None,
+        connect_timeout: None,
+        execute_timeout: None,
+        read_timeout: None,
+        disabled: false,
+        enabled: true,
+        required: false,
+        enabled_tools: vec![],
+        disabled_tools: vec![],
+    };
+    let redacted = cfg.redacted_for_display();
+    assert_eq!(
+        redacted.headers.get("Authorization").map(String::as_str),
+        Some("Bearer ${MCP_TOKEN}")
+    );
+}
+
+#[test]
+fn test_transport_kind_invalid() {
+    // Unknown transport label.
+    let bad: McpConfig = serde_json::from_str(
+        r#"{ "servers": { "x": { "url": "https://e.com", "transport": "carrier-pigeon" } } }"#,
+    )
+    .unwrap();
+    assert!(bad.servers["x"].transport_kind().is_err());
+
+    // http transport without a url.
+    let no_url: McpConfig = serde_json::from_str(
+        r#"{ "servers": { "x": { "command": "node", "transport": "http" } } }"#,
+    )
+    .unwrap();
+    assert!(no_url.servers["x"].transport_kind().is_err());
+}
+
+#[test]
+fn test_streamable_http_sse_body_parsing() {
+    let client = reqwest::Client::new();
+    let mut transport =
+        self::transport::StreamableHttpTransport::new(client, "https://example.com/mcp".to_string());
+    transport.enqueue_sse_body(
+        "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ok\":true}}\n\n\
+         event: message\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\"}\n\n",
+    );
+    let first = transport.inbox.pop_front().unwrap();
+    assert_eq!(first["id"], 1);
+    assert_eq!(first["result"]["ok"], true);
+    let second = transport.inbox.pop_front().unwrap();
+    assert_eq!(second["method"], "notifications/progress");
+}
+
+#[test]
+fn test_streamable_http_json_batch_parsing() {
+    let client = reqwest::Client::new();
+    let mut transport =
+        self::transport::StreamableHttpTransport::new(client, "https://example.com/mcp".to_string());
+    transport.enqueue_json_body(r#"[{"id":1,"result":1},{"id":2,"result":2}]"#);
+    assert_eq!(transport.inbox.len(), 2);
+    assert_eq!(transport.inbox[0]["id"], 1);
+    assert_eq!(transport.inbox[1]["id"], 2);
 }
 
 #[tokio::test]

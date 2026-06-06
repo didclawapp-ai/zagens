@@ -488,10 +488,12 @@ pub(super) async fn stream_turn(
                 temperature: req.temperature,
                 top_p: req.top_p,
                 max_tokens: req.max_tokens,
+                delivery: None,
             },
         )
         .await
-        .map_err(|e| ApiError::internal(format!("Failed to start stream turn: {e}")))?;
+        .map_err(|e| ApiError::internal(format!("Failed to start stream turn: {e}")))?
+        .turn;
 
     let backlog = state
         .runtime_threads

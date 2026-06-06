@@ -156,6 +156,29 @@ export function loadStoredRightPanelCollapsed(): boolean {
   return true;
 }
 
+const NOTIFY_METHOD_KEY = 'deepseek-desktop-notify-method';
+
+/**
+ * Read the cached notify_method from localStorage.
+ * Returns 'auto' if not yet set (matches sidecar default).
+ */
+export function loadNotifyMethod(): string {
+  try {
+    return localStorage.getItem(NOTIFY_METHOD_KEY) ?? 'auto';
+  } catch {
+    return 'auto';
+  }
+}
+
+/** Persist the notify_method chosen in SettingsPanel so the frontend can read it. */
+export function persistNotifyMethod(method: string): void {
+  try {
+    localStorage.setItem(NOTIFY_METHOD_KEY, method);
+  } catch {
+    /* ignore */
+  }
+}
+
 export function applyTheme(theme: Theme) {
   const root = document.documentElement;
   if (theme === 'dark') {

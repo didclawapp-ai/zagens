@@ -154,7 +154,17 @@ export default function WorkspaceFilesPanel({
   const isSearchMode = fileSearch.isSearchMode;
   const isTree = viewMode === 'tree' && !isSearchMode;
 
-  const treeCache = useWorkspaceDirCache({
+  const {
+    cache: treeDirCache,
+    loadingPaths: treeLoadingPaths,
+    rootLoading: treeRootLoading,
+    error: treeDirError,
+    browseWorkspace: treeBrowseWorkspace,
+    ensureLoaded: treeEnsureLoaded,
+    loadDir: treeLoadDir,
+    clearCache: treeClearCache,
+    setError: treeSetError,
+  } = useWorkspaceDirCache({
     active: active && isTree,
     workspaceRoot,
     resumedThreadId,
@@ -162,7 +172,7 @@ export default function WorkspaceFilesPanel({
     refreshNonce: browseNonce + externalRefreshNonce,
   });
   const resolvedWorkspace =
-    (isTree ? treeCache.browseWorkspace : browseWorkspace) ?? workspaceRoot;
+    (isTree ? treeBrowseWorkspace : browseWorkspace) ?? workspaceRoot;
   const threadPathDiffers =
     Boolean(browseWorkspace?.trim()) &&
     browseWorkspace!.trim() !== workspaceRoot.trim();
@@ -193,20 +203,20 @@ export default function WorkspaceFilesPanel({
 
   const hiddenFilteredCount = useMemo(() => {
     if (showHidden) return 0;
-    const entries = isTree ? (treeCache.cache.get('') ?? []) : browseEntries;
+    const entries = isTree ? (treeDirCache.get('') ?? []) : browseEntries;
     return entries.filter(
       (e) => e.kind === 'directory' && isDeniedDirName(e.name, false),
     ).length;
-  }, [browseEntries, showHidden, isTree, treeCache.cache]);
+  }, [browseEntries, showHidden, isTree, treeDirCache]);
 
   const absPath = useCallback(
     (rel: string) =>
       resolveBrowseAbsPath(
         rel,
-        isTree ? treeCache.browseWorkspace : browseWorkspace,
+        isTree ? treeBrowseWorkspace : browseWorkspace,
         workspaceRoot,
       ),
-    [browseWorkspace, workspaceRoot, isTree, treeCache.browseWorkspace],
+    [browseWorkspace, workspaceRoot, isTree, treeBrowseWorkspace],
   );
 
   useEffect(() => {
@@ -247,11 +257,11 @@ export default function WorkspaceFilesPanel({
       writeExpandedDirs(expandStorageKey, next);
       return next;
     });
-    void treeCache.ensureLoaded('');
+    void treeEnsureLoaded('');
     for (const p of toExpand) {
-      void treeCache.ensureLoaded(p);
+      void treeEnsureLoaded(p);
     }
-  }, [focusFilesNonce, focusFilesRelPath, isTree, active, canBrowse, expandStorageKey, treeCache]);
+  }, [focusFilesNonce, focusFilesRelPath, isTree, active, canBrowse, expandStorageKey, treeEnsureLoaded]);
 
   useEffect(() => {
     if (!officeSession || !isTree || !active) return;
@@ -261,8 +271,8 @@ export default function WorkspaceFilesPanel({
       writeExpandedDirs(expandStorageKey, next);
       return next;
     });
-    void treeCache.ensureLoaded('deliverables');
-  }, [officeSession, isTree, active, expandStorageKey, treeCache]);
+    void treeEnsureLoaded('deliverables');
+  }, [officeSession, isTree, active, expandStorageKey, treeEnsureLoaded]);
 
   useEffect(() => {
     setBrowseRelPath('');
@@ -385,8 +395,8 @@ export default function WorkspaceFilesPanel({
     [],
   );
 
-  const listError = isTree ? treeCache.error : browseError;
-  const listLoading = isTree ? treeCache.rootLoading : browseLoading;
+  const listError = isTree ? treeDirError : browseError;
+  const listLoading = isTree ? treeRootLoading : browseLoading;
 
   useEffect(() => {
     if (!active || focusFilesNonce <= 0 || listLoading) return;
@@ -405,16 +415,16 @@ export default function WorkspaceFilesPanel({
     isTree,
     expandedDirs,
     visibleEntries.length,
-    treeCache.cache,
+    treeDirCache,
   ]);
 
   const handleRefresh = useCallback(() => {
     setBrowseNonce((n) => n + 1);
     if (isTree) {
-      treeCache.clearCache();
-      void treeCache.loadDir('', { force: true });
+      treeClearCache();
+      void treeLoadDir('', { force: true });
     }
-  }, [isTree, treeCache]);
+  }, [isTree, treeClearCache, treeLoadDir]);
 
   useEffect(() => {
     if (!ctxMenu) return;
@@ -432,10 +442,10 @@ export default function WorkspaceFilesPanel({
         const err = e as Error & { status?: number };
         const msg = formatWorkspaceFileError(e, t);
         setBrowseError(msg);
-        treeCache.setError(msg);
+        treeSetError(msg);
       }
     },
-    [runtimeOk, openWorkspaceFile, treeCache, t],
+    [runtimeOk, openWorkspaceFile, treeSetError, t],
   );
 
   const ctxCopyAbs = useCallback(async () => {
@@ -819,8 +829,8 @@ export default function WorkspaceFilesPanel({
             )}
             {isTree ? (
               <WorkspaceFileTree
-                cache={treeCache.cache}
-                loadingPaths={treeCache.loadingPaths}
+                cache={treeDirCache}
+                loadingPaths={treeLoadingPaths}
                 expanded={expandedDirs}
                 onToggleExpanded={onToggleExpanded}
                 showHidden={showHidden}
@@ -828,7 +838,7 @@ export default function WorkspaceFilesPanel({
                 officeChangePaths={
                   officeSession && officePreset === 'changes' ? officeChangeSet : undefined
                 }
-                ensureLoaded={treeCache.ensureLoaded}
+                ensureLoaded={treeEnsureLoaded}
                 onOpenFile={(rel, title) => void onOpenFile(rel, title)}
                 onAddToChat={onAddToChat}
                 onOpenContextMenu={openCtx}

@@ -25,6 +25,25 @@ pub struct LongHorizonConfigToml {
     pub max_auto_continue_rounds: Option<u32>,
     #[serde(default)]
     pub completion_gate: Option<CompletionGateConfigToml>,
+    #[serde(default)]
+    pub macro_loop: Option<MacroLoopConfigToml>,
+}
+
+/// `[long_horizon.macro_loop]` table (Phase 4 macro review cycle).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct MacroLoopConfigToml {
+    #[serde(default)]
+    pub enabled: Option<bool>,
+    #[serde(default)]
+    pub max_macro_cycles: Option<u32>,
+    #[serde(default)]
+    pub max_craft_rounds_per_cycle: Option<u32>,
+    #[serde(default)]
+    pub auto_enter_craft: Option<String>,
+    #[serde(default)]
+    pub craft_on_small_tasks: Option<bool>,
+    #[serde(default)]
+    pub min_checklist_items_for_craft: Option<u32>,
 }
 
 /// `[long_horizon.completion_gate]` table.
@@ -96,6 +115,14 @@ pub fn product_defaults() -> LongHorizonConfigToml {
             max_audit_rounds: Some(5),
             max_infra_strikes: Some(3),
             ..CompletionGateConfigToml::default()
+        }),
+        macro_loop: Some(MacroLoopConfigToml {
+            enabled: Some(false),
+            max_macro_cycles: Some(3),
+            max_craft_rounds_per_cycle: Some(2),
+            auto_enter_craft: Some("user_confirm".into()),
+            craft_on_small_tasks: Some(false),
+            min_checklist_items_for_craft: Some(3),
         }),
     }
 }

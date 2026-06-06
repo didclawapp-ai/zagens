@@ -5,6 +5,7 @@ pub mod craft;
 pub mod mailbox;
 
 mod constants;
+mod nickname;
 mod deprecation;
 mod executor;
 mod factory;
@@ -41,6 +42,7 @@ pub(crate) use prompts::{subagent_allowed_tools, subagent_system_prompt};
 pub use router::resolve_subagent_assignment_route;
 pub use runtime::{SubAgentCompletion, SubAgentRuntime};
 pub use types::DEFAULT_MAX_SPAWN_DEPTH;
+pub(crate) use types::SubAgentSpawnOptions;
 
 pub use tools::{
     AgentAssignTool, AgentCancelTool, AgentCloseTool, AgentListTool, AgentResultTool,

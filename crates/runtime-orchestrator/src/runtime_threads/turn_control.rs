@@ -24,6 +24,15 @@ where
 {
     pub async fn interrupt_turn(&self, thread_id: &str, turn_id: &str) -> Result<TurnRecord> {
         {
+            let interrupt_seq = self
+                .store
+                .allocate_session_input_seq(thread_id)
+                .unwrap_or(0);
+            let mut coordinators = self.coordinators.lock().await;
+            coordinators.interrupt(thread_id, interrupt_seq);
+        }
+
+        {
             let mut active = self.active.lock().await;
             let Some(active_thread) = active.engines.get_mut(thread_id) else {
                 bail!("Thread is not loaded");
@@ -61,6 +70,18 @@ where
         if prompt.is_empty() {
             bail!("prompt is required");
         }
+
+        let admitted_seq = self.store.allocate_session_input_seq(thread_id)?;
+        let admission = super::prompt_inbox::PromptAdmission {
+            id: format!("inp_{}", &Uuid::new_v4().to_string()[..8]),
+            thread_id: thread_id.to_string(),
+            admitted_seq,
+            prompt: prompt.clone(),
+            delivery: super::prompt_inbox::PromptDelivery::Steer,
+            time_created: Utc::now(),
+            promoted_seq: None,
+        };
+        self.store.admit_session_input(&admission, None)?;
 
         let engine = {
             let mut active = self.active.lock().await;
@@ -103,11 +124,26 @@ where
             ended_at: Some(now),
         };
         turn.item_ids.push(item.id.clone());
+
+        let promoted = self
+            .emit_event(
+                thread_id,
+                Some(turn_id),
+                Some(&item.id),
+                "prompt.promoted",
+                json!({ "admission": admission, "turn_id": turn_id }),
+            )
+            .await?;
+
         {
             let store = self.store.clone();
             let turn_clone = turn.clone();
             let item_clone = item.clone();
+            let admission_id = admission.id.clone();
+            let promoted_seq = promoted.seq;
+            let turn_id_owned = turn_id.to_string();
             tokio::task::spawn_blocking(move || -> Result<()> {
+                store.promote_session_input(&admission_id, promoted_seq, Some(&turn_id_owned))?;
                 store.save_turn(&turn_clone)?;
                 store.save_item(&item_clone)?;
                 Ok(())

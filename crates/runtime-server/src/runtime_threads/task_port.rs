@@ -17,7 +17,9 @@ impl RuntimeThreadTaskPort for RuntimeThreadManager {
     }
 
     async fn start_turn(&self, thread_id: &str, req: StartTurnRequest) -> Result<TurnRecord> {
-        RuntimeThreadManager::start_turn(self, thread_id, req).await
+        RuntimeThreadManager::start_turn(self, thread_id, req)
+            .await
+            .map(|outcome| outcome.turn)
     }
 
     async fn interrupt_turn(&self, thread_id: &str, turn_id: &str) -> Result<TurnRecord> {

@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useT } from '../i18n';
 import {
+  applyLhtPreset,
   fetchLhtComposerMode,
   fetchLhtSettings,
   saveLhtSettings,
   type LhtComposerMode,
   type LhtGateMode,
+  type LhtPresetId,
   type LhtSettings,
 } from '../api/client';
 import { confirmDialog } from '../lib/confirmDialog';
@@ -16,6 +18,13 @@ interface Props {
 }
 
 const GATE_OPTIONS: LhtGateMode[] = ['off', 'observe', 'enforce'];
+
+const LHT_PRESETS: { id: LhtPresetId; labelKey: string; descKey: string }[] = [
+  { id: 'code-default', labelKey: 'lhtSettings.presetCodeDefault', descKey: 'lhtSettings.presetCodeDefaultDesc' },
+  { id: 'long-refactor', labelKey: 'lhtSettings.presetLongRefactor', descKey: 'lhtSettings.presetLongRefactorDesc' },
+  { id: 'long-fix', labelKey: 'lhtSettings.presetLongFix', descKey: 'lhtSettings.presetLongFixDesc' },
+  { id: 'craft-audit', labelKey: 'lhtSettings.presetCraftAudit', descKey: 'lhtSettings.presetCraftAuditDesc' },
+];
 
 export default function LhtSettingsPanel({ desktopHost, streaming = false }: Props) {
   const { t } = useT();
@@ -50,6 +59,23 @@ export default function LhtSettingsPanel({ desktopHost, streaming = false }: Pro
     setSettings((prev) => (prev ? { ...prev, [key]: value } : prev));
   }, []);
 
+  const handleApplyPreset = useCallback(
+    async (presetId: LhtPresetId) => {
+      if (!desktopHost) return;
+      if (streaming && !(await confirmDialog(t('settings.saveRestartsSidecar')))) {
+        return;
+      }
+      setSaving(true);
+      try {
+        const next = await applyLhtPreset(presetId);
+        setSettings(next);
+      } finally {
+        setSaving(false);
+      }
+    },
+    [desktopHost, streaming, t],
+  );
+
   const handleSave = useCallback(async () => {
     if (!settings || !desktopHost) return;
     const enforcing =
@@ -79,6 +105,10 @@ export default function LhtSettingsPanel({ desktopHost, streaming = false }: Pro
   const gateLabel = (mode: LhtGateMode) => t(`lhtSettings.gate_${mode}` as 'lhtSettings.gate_off');
 
   const harnessFieldsDisabled = composerMode === 'off' || composerMode === 'strict';
+  const macroFieldsDisabled =
+    composerMode === 'off' ||
+    !settings?.macro_loop_enabled ||
+    (composerMode !== 'strict' && settings?.mode !== 'strict');
 
   return (
     <div className="p-4 space-y-5 overflow-y-auto h-full">
@@ -105,6 +135,25 @@ export default function LhtSettingsPanel({ desktopHost, streaming = false }: Pro
 
       {settings && (
         <>
+          <section className="space-y-3">
+            <p className={sectionCls}>{t('lhtSettings.sectionPresets')}</p>
+            <p className={descCls}>{t('lhtSettings.presetsIntro')}</p>
+            <div className="grid gap-2">
+              {LHT_PRESETS.map(({ id, labelKey, descKey }) => (
+                <button
+                  key={id}
+                  type="button"
+                  disabled={saving}
+                  onClick={() => void handleApplyPreset(id)}
+                  className="rounded-lg border border-divider bg-canvas px-3 py-2 text-left hover:border-accent/50 hover:bg-canvas-alt transition-colors disabled:opacity-50"
+                >
+                  <span className={`${labelCls} block`}>{t(labelKey)}</span>
+                  <span className={`${descCls} block mt-0.5`}>{t(descKey)}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+
           <section className="space-y-3">
             <p className={sectionCls}>{t('lhtSettings.sectionHarness')}</p>
 
@@ -290,6 +339,124 @@ export default function LhtSettingsPanel({ desktopHost, streaming = false }: Pro
                   deliverable: String(settings.custom_deliverable_count),
                 })}
               </p>
+            )}
+          </section>
+
+          <section className="space-y-3">
+            <p className={sectionCls}>{t('lhtSettings.sectionMacroLoop')}</p>
+            <p className={descCls}>{t('lhtSettings.macroLoopIntro')}</p>
+            {composerMode !== 'strict' && settings.mode !== 'strict' && (
+              <p className="text-[10px] text-amber-600 dark:text-amber-400 leading-relaxed">
+                {t('lhtSettings.macroLoopStrictHint')}
+              </p>
+            )}
+
+            <label className="flex items-center justify-between gap-2 py-1">
+              <div className="flex-1 min-w-0">
+                <span className={labelCls}>{t('lhtSettings.macroLoopEnabled')}</span>
+                <p className={descCls}>{t('lhtSettings.macroLoopEnabledDesc')}</p>
+              </div>
+              <input
+                type="checkbox"
+                className="shrink-0 w-4 h-4 accent-accent rounded"
+                checked={settings.macro_loop_enabled}
+                disabled={composerMode === 'off' || (composerMode !== 'strict' && settings.mode !== 'strict')}
+                onChange={(e) => update('macro_loop_enabled', e.target.checked)}
+              />
+            </label>
+
+            <label className="block space-y-1">
+              <span className={labelCls}>{t('lhtSettings.macroLoopAutoEnter')}</span>
+              <p className={descCls}>{t('lhtSettings.macroLoopAutoEnterDesc')}</p>
+              <select
+                className={selectCls}
+                value={settings.macro_loop_auto_enter_craft}
+                disabled={macroFieldsDisabled}
+                onChange={(e) =>
+                  update(
+                    'macro_loop_auto_enter_craft',
+                    e.target.value as LhtSettings['macro_loop_auto_enter_craft'],
+                  )
+                }
+              >
+                <option value="user_confirm">{t('lhtSettings.macroLoopAutoUserConfirm')}</option>
+                <option value="on_graph_complete">{t('lhtSettings.macroLoopAutoOnGraphComplete')}</option>
+                <option value="on_manifest_exhausted">
+                  {t('lhtSettings.macroLoopAutoOnManifestExhausted')}
+                </option>
+                <option value="on_micro_pass">{t('lhtSettings.macroLoopAutoOnMicroPass')}</option>
+                <option value="off">{t('lhtSettings.macroLoopAutoOff')}</option>
+              </select>
+            </label>
+
+            {settings.macro_loop_enabled && (
+              <p className="text-[10px] text-amber-600 dark:text-amber-400 leading-relaxed">
+                {t('lhtSettings.macroLoopCostWarning')}
+              </p>
+            )}
+
+            <label className="block space-y-1">
+              <span className={labelCls}>{t('lhtSettings.macroLoopMaxCycles')}</span>
+              <input
+                type="number"
+                min={1}
+                max={8}
+                className={selectCls}
+                value={settings.macro_loop_max_cycles}
+                disabled={macroFieldsDisabled}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  if (v >= 1 && v <= 8) update('macro_loop_max_cycles', v);
+                }}
+              />
+            </label>
+
+            <label className="block space-y-1">
+              <span className={labelCls}>{t('lhtSettings.macroLoopMaxCraftRounds')}</span>
+              <input
+                type="number"
+                min={1}
+                max={4}
+                className={selectCls}
+                value={settings.macro_loop_max_craft_rounds}
+                disabled={macroFieldsDisabled}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  if (v >= 1 && v <= 4) update('macro_loop_max_craft_rounds', v);
+                }}
+              />
+            </label>
+
+            <label className="flex items-center justify-between gap-2 py-1">
+              <div className="flex-1 min-w-0">
+                <span className={labelCls}>{t('lhtSettings.macroLoopSmallTasks')}</span>
+                <p className={descCls}>{t('lhtSettings.macroLoopSmallTasksDesc')}</p>
+              </div>
+              <input
+                type="checkbox"
+                className="shrink-0 w-4 h-4 accent-accent rounded"
+                checked={settings.macro_loop_craft_on_small_tasks}
+                disabled={macroFieldsDisabled}
+                onChange={(e) => update('macro_loop_craft_on_small_tasks', e.target.checked)}
+              />
+            </label>
+
+            {!settings.macro_loop_craft_on_small_tasks && (
+              <label className="block space-y-1">
+                <span className={labelCls}>{t('lhtSettings.macroLoopMinChecklist')}</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={32}
+                  className={selectCls}
+                  value={settings.macro_loop_min_checklist_items}
+                  disabled={macroFieldsDisabled}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    if (v >= 1 && v <= 32) update('macro_loop_min_checklist_items', v);
+                  }}
+                />
+              </label>
             )}
           </section>
 

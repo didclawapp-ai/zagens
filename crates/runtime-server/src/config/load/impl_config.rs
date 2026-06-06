@@ -528,6 +528,21 @@ impl Config {
             .unwrap_or(u64::MAX)
     }
 
+    /// Resolved sub-agent heartbeat idle timeout (`[subagents] heartbeat_timeout_secs`).
+    #[must_use]
+    pub fn subagent_heartbeat_timeout(&self) -> std::time::Duration {
+        let secs = self
+            .subagents
+            .as_ref()
+            .and_then(|s| s.heartbeat_timeout_secs)
+            .unwrap_or(DEFAULT_SUBAGENT_HEARTBEAT_TIMEOUT_SECS)
+            .clamp(
+                MIN_SUBAGENT_HEARTBEAT_TIMEOUT_SECS,
+                MAX_SUBAGENT_HEARTBEAT_TIMEOUT_SECS,
+            );
+        std::time::Duration::from_secs(secs)
+    }
+
     /// Resolved compaction policy for the engine / runtime API (config.toml
     /// `[compaction]` overrides `settings.toml` `auto_compact` when set).
     #[must_use]
@@ -673,6 +688,12 @@ impl Config {
     #[must_use]
     pub fn snapshots_config(&self) -> SnapshotsConfig {
         self.snapshots.clone().unwrap_or_default()
+    }
+
+    /// Resolved `[search]` settings with defaults applied.
+    #[must_use]
+    pub fn search_config(&self) -> SearchConfig {
+        self.search.clone().unwrap_or_default()
     }
 
     /// Audit scratchpad runtime settings (Phase B).

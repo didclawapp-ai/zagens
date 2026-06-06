@@ -26,7 +26,7 @@ import {
   rebindStreamingAssistant,
 } from '../lib/chat/activeTurnStreamUi';
 import { rebuildMessagesFromThreadEvents } from '../lib/chat/rebuildMessagesFromThread';
-import type { StreamSessionControl } from './useTurnStream';
+import type { FinishOnceOptions, StreamSessionControl } from './useTurnStream';
 import type { TurnChatMessage } from './useTurnSend';
 
 /** Why the live SSE consumer was detached (backend turn may still run). */
@@ -48,7 +48,7 @@ export type StreamRecoveryContext = {
   threadId: string;
   turnId: string;
   deliverSseEvent: (ev: SseTurnEvent, filter?: { turnId: string }) => void;
-  finishOnce: () => void;
+  finishOnce: (options?: FinishOnceOptions) => void;
 };
 
 export type UseTurnStreamRecoveryParams = {
@@ -441,6 +441,13 @@ export function useTurnStreamRecovery({
     threadTurnRef,
   ]);
 
+  const detachActiveStreamRef = useRef(detachActiveStream);
+  detachActiveStreamRef.current = detachActiveStream;
+  const tryRecoverDetachedTurnRef = useRef(tryRecoverDetachedTurn);
+  tryRecoverDetachedTurnRef.current = tryRecoverDetachedTurn;
+  const reconcileChatFromThreadReplayRef = useRef(reconcileChatFromThreadReplay);
+  reconcileChatFromThreadReplayRef.current = reconcileChatFromThreadReplay;
+
   const scheduleOfflineBillingGuard = useCallback(() => {
     clearOfflineTimers();
     offlineWarnTimerRef.current = setTimeout(() => {
@@ -484,23 +491,17 @@ export function useTurnStreamRecovery({
       if (!streamingRef.current && !streamRecoveryContextRef.current) {
         return;
       }
-      detachActiveStream('sidecar_restart');
+      detachActiveStreamRef.current('sidecar_restart');
     });
     const unlistenReady = subscribeCurrentWebviewEvent('sidecar://ready', () => {
       dispatchSidecarReadyForPanels();
-      void tryRecoverDetachedTurn();
+      void tryRecoverDetachedTurnRef.current();
     });
     return () => {
       unlistenRestart();
       unlistenReady();
     };
-  }, [
-    desktopHost,
-    detachActiveStream,
-    streamRecoveryContextRef,
-    streamingRef,
-    tryRecoverDetachedTurn,
-  ]);
+  }, [desktopHost]);
 
   useEffect(() => {
     if (runtimeConn === 'offline' && streamingRef.current && threadTurnRef.current.turnId) {
@@ -528,10 +529,10 @@ export function useTurnStreamRecovery({
   useEffect(() => {
     if (!desktopHost) return;
     const id = setInterval(() => {
-      void reconcileChatFromThreadReplay();
+      void reconcileChatFromThreadReplayRef.current();
     }, ACTIVE_TURN_CHAT_RECONCILE_MS);
     return () => clearInterval(id);
-  }, [desktopHost, reconcileChatFromThreadReplay]);
+  }, [desktopHost]);
 
   useEffect(() => () => clearOfflineTimers(), [clearOfflineTimers]);
 

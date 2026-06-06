@@ -153,6 +153,10 @@ pub struct ToolContext {
     pub audit_scratchpad_run_id: Option<String>,
     /// Default `step_timeout_ms` for `agent_spawn` when omitted (from `[subagents] step_timeout_secs`).
     pub subagent_default_step_timeout_ms: u64,
+    /// Active web search provider for the session (from `[search] provider`).
+    pub search_provider: crate::config::SearchProvider,
+    /// API key for the active search provider (from `[search] api_key` or env).
+    pub search_api_key: Option<String>,
 }
 
 impl ToolContext {
@@ -186,6 +190,8 @@ impl ToolContext {
             tool_progress: None,
             audit_scratchpad_run_id: None,
             subagent_default_step_timeout_ms: 600_000,
+            search_provider: crate::config::SearchProvider::default(),
+            search_api_key: None,
         }
     }
 
@@ -222,6 +228,8 @@ impl ToolContext {
             tool_progress: None,
             audit_scratchpad_run_id: None,
             subagent_default_step_timeout_ms: 600_000,
+            search_provider: crate::config::SearchProvider::default(),
+            search_api_key: None,
         }
     }
 
@@ -265,6 +273,8 @@ impl ToolContext {
             tool_progress: None,
             audit_scratchpad_run_id: None,
             subagent_default_step_timeout_ms: 600_000,
+            search_provider: crate::config::SearchProvider::default(),
+            search_api_key: None,
         }
     }
 
@@ -279,6 +289,18 @@ impl ToolContext {
     #[must_use]
     pub fn with_network_policy(mut self, policy: NetworkPolicyDecider) -> Self {
         self.network_policy = Some(policy);
+        self
+    }
+
+    /// Set the search provider and optional API key.
+    #[must_use]
+    pub fn with_search_config(
+        mut self,
+        provider: crate::config::SearchProvider,
+        api_key: Option<String>,
+    ) -> Self {
+        self.search_provider = provider;
+        self.search_api_key = api_key;
         self
     }
 

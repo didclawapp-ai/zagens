@@ -52,10 +52,16 @@ pub(super) fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<
 
 /// Create a shared sub-agent manager with a configurable limit.
 #[must_use]
-pub fn new_shared_subagent_manager(workspace: PathBuf, max_agents: usize) -> SharedSubAgentManager {
+pub fn new_shared_subagent_manager(
+    workspace: PathBuf,
+    max_agents: usize,
+    heartbeat_timeout: Duration,
+) -> SharedSubAgentManager {
     let max_agents = max_agents.clamp(1, MAX_SUBAGENTS);
     let state_path = default_state_path(&workspace);
-    let mut manager = SubAgentManager::new(workspace, max_agents).with_state_path(state_path);
+    let mut manager = SubAgentManager::new(workspace, max_agents)
+        .with_heartbeat_timeout(heartbeat_timeout)
+        .with_state_path(state_path);
     if let Err(err) = manager.load_state() {
         eprintln!("Failed to load sub-agent state: {err}");
     }

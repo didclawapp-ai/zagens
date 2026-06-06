@@ -2,17 +2,24 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   fetchMcpServers,
   fetchMcpTools,
+  fetchMcpDiscover,
   mergeMcpConfigJson,
-  addMcpServer,
+  reloadMcpConfig,
   getMcpServer,
   putMcpServer,
   deleteMcpServer,
-  invalidateRuntimeBootReadyCache,
   type RuntimeConnectionState,
 } from '../api/client';
 import { useT } from '../i18n';
 import { isRuntimeApiAvailable } from '../lib/runtimeReachable';
-import type { McpServerEntry, McpToolEntry, McpServerConfigPayload } from '../types/mcp';
+import type {
+  McpCallRecord,
+  McpServerDiscoverEntry,
+  McpServerEntry,
+  McpToolEntry,
+  McpServerConfigPayload,
+} from '../types/mcp';
+import McpServerDetail from './McpServerDetail';
 
 function emptyServerConfig(): McpServerConfigPayload {
   return {
@@ -20,6 +27,9 @@ function emptyServerConfig(): McpServerConfigPayload {
     args: [],
     env: {},
     url: null,
+    transport: null,
+    headers: {},
+    auth: null,
     connect_timeout: null,
     execute_timeout: null,
     read_timeout: null,
@@ -38,9 +48,31 @@ function normalizeServerConfig(raw: Partial<McpServerConfigPayload>): McpServerC
     ...raw,
     args: Array.isArray(raw.args) ? raw.args : d.args,
     env: raw.env && typeof raw.env === 'object' ? raw.env : d.env,
+    headers: raw.headers && typeof raw.headers === 'object' ? raw.headers : d.headers,
     enabled_tools: Array.isArray(raw.enabled_tools) ? raw.enabled_tools : d.enabled_tools,
     disabled_tools: Array.isArray(raw.disabled_tools) ? raw.disabled_tools : d.disabled_tools,
   };
+}
+
+function formatHeadersText(headers: Record<string, string> | undefined): string {
+  if (!headers) return '';
+  return Object.entries(headers)
+    .map(([k, v]) => `${k}: ${v}`)
+    .join('\n');
+}
+
+function parseHeadersText(text: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const idx = trimmed.indexOf(':');
+    if (idx <= 0) continue;
+    const name = trimmed.slice(0, idx).trim();
+    const value = trimmed.slice(idx + 1).trim();
+    if (name) out[name] = value;
+  }
+  return out;
 }
 
 export default function McpPanel({
@@ -59,13 +91,16 @@ export default function McpPanel({
   });
   const [servers, setServers] = useState<McpServerEntry[]>([]);
   const [allTools, setAllTools] = useState<McpToolEntry[]>([]);
+  const [discoverByServer, setDiscoverByServer] = useState<Map<string, McpServerDiscoverEntry>>(
+    new Map(),
+  );
+  const [recentCalls, setRecentCalls] = useState<McpCallRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [discovering, setDiscovering] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedServer, setSelectedServer] = useState<string | null>(null);
-  const [showAddDialog, setShowAddDialog] = useState(false);
-  const [showQuickAdd, setShowQuickAdd] = useState(false);
-  const [showRestartDialog, setShowRestartDialog] = useState(false);
-  const [restartPending, setRestartPending] = useState(false);
+  const [togglingTool, setTogglingTool] = useState<string | null>(null);
+  const [showAddJson, setShowAddJson] = useState(false);
   const [editingServer, setEditingServer] = useState<string | null>(null);
   const [deletingServer, setDeletingServer] = useState<string | null>(null);
 
@@ -77,23 +112,65 @@ export default function McpPanel({
     return m;
   }, [allTools]);
 
-  const requestReloadRestart = useCallback(() => {
-    setShowRestartDialog(true);
+  const applyDiscover = useCallback((snapshot: { servers: McpServerDiscoverEntry[] }) => {
+    const m = new Map<string, McpServerDiscoverEntry>();
+    for (const s of snapshot.servers) m.set(s.name, s);
+    setDiscoverByServer(m);
   }, []);
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (opts?: { discover?: boolean }) => {
+    const withDiscover = opts?.discover !== false;
     setLoading(true);
     setError(null);
+    if (withDiscover) setDiscovering(true);
     try {
-      const [srv, tl] = await Promise.all([fetchMcpServers(), fetchMcpTools()]);
-      setServers(srv.servers);
+      const [srv, tl, disc] = await Promise.all([
+        fetchMcpServers(),
+        fetchMcpTools(),
+        withDiscover ? fetchMcpDiscover() : Promise.resolve(null),
+      ]);
+      if (disc) {
+        applyDiscover(disc.snapshot);
+        setRecentCalls(disc.recent_calls);
+        const connectedByName = new Map(
+          disc.snapshot.servers.map((s) => [s.name, s.connected] as const),
+        );
+        setServers(
+          srv.servers.map((s) => ({
+            ...s,
+            connected: connectedByName.get(s.name) ?? s.connected,
+          })),
+        );
+      } else {
+        setServers(srv.servers);
+      }
       setAllTools(tl.tools);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
+      setDiscovering(false);
+    }
+  }, [applyDiscover]);
+
+  const pollServers = useCallback(async () => {
+    try {
+      const srv = await fetchMcpServers();
+      setServers(srv.servers);
+    } catch {
+      /* ignore background poll errors */
     }
   }, []);
+
+  const applyMcpHotReload = useCallback(async () => {
+    setError(null);
+    try {
+      await reloadMcpConfig();
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }, [reload]);
 
   useEffect(() => {
     if (runtimeReady) {
@@ -101,32 +178,67 @@ export default function McpPanel({
     }
   }, [runtimeReady, reload]);
 
-  const displayedTools =
-    selectedServer === null ? [] : allTools.filter((t) => t.server === selectedServer);
+  useEffect(() => {
+    if (runtimeReady && !loading && servers.length === 0) {
+      setShowAddJson(true);
+    }
+  }, [runtimeReady, loading, servers.length]);
+
+  useEffect(() => {
+    if (!runtimeReady) return;
+    const id = window.setInterval(() => void pollServers(), 20_000);
+    return () => window.clearInterval(id);
+  }, [runtimeReady, pollServers]);
+
+  const selectedServerEntry = useMemo(
+    () => (selectedServer ? servers.find((s) => s.name === selectedServer) : undefined),
+    [servers, selectedServer],
+  );
+
+  const selectedDiscover = selectedServer ? discoverByServer.get(selectedServer) : undefined;
+
+  const handleToggleTool = useCallback(
+    async (toolName: string, enable: boolean) => {
+      if (!selectedServer) return;
+      setTogglingTool(toolName);
+      setError(null);
+      try {
+        const cfg = await getMcpServer(selectedServer);
+        let enabledTools = [...cfg.enabled_tools];
+        let disabledTools = [...cfg.disabled_tools];
+        if (enable) {
+          disabledTools = disabledTools.filter((t) => t !== toolName);
+          if (enabledTools.length > 0 && !enabledTools.includes(toolName)) {
+            enabledTools.push(toolName);
+          }
+        } else {
+          if (!disabledTools.includes(toolName)) disabledTools.push(toolName);
+          enabledTools = enabledTools.filter((t) => t !== toolName);
+        }
+        await putMcpServer(selectedServer, {
+          ...cfg,
+          enabled_tools: enabledTools,
+          disabled_tools: disabledTools,
+        });
+        await reloadMcpConfig();
+        await reload();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setTogglingTool(null);
+      }
+    },
+    [selectedServer, reload],
+  );
 
   const handleMergeMcpJson = async (jsonText: string) => {
     setError(null);
     try {
       await mergeMcpConfigJson(jsonText);
-      setShowAddDialog(false);
-      requestReloadRestart();
-      await reload();
+      setShowAddJson(false);
+      await applyMcpHotReload();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-    }
-  };
-
-  const handleRestartSidecar = async () => {
-    setRestartPending(true);
-    try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('restart_sidecar');
-      invalidateRuntimeBootReadyCache();
-    } catch {
-      /* Best-effort — desktop invoke may throw in browser mode */
-    } finally {
-      setRestartPending(false);
-      setShowRestartDialog(false);
     }
   };
 
@@ -143,8 +255,7 @@ export default function McpPanel({
       setDeletingServer(null);
       if (selectedServer === deletingServer) setSelectedServer(null);
       if (editingServer === deletingServer) setEditingServer(null);
-      requestReloadRestart();
-      await reload();
+      await applyMcpHotReload();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setDeletingServer(null);
@@ -180,23 +291,18 @@ export default function McpPanel({
         <div className="flex-1" />
         <button
           type="button"
-          onClick={() => {
-            setShowQuickAdd((v) => !v);
-            setShowAddDialog(false);
-          }}
+          onClick={() => void applyMcpHotReload()}
           className="px-2.5 py-1 rounded text-xs font-medium border border-card-border bg-canvas-alt hover:bg-hover text-t-text transition-colors"
+          title={t('mcp.applyConfigHint')}
         >
-          {showQuickAdd ? t('mcp.closeAdd') : t('mcp.addServer')}
+          {t('mcp.applyConfig')}
         </button>
         <button
           type="button"
-          onClick={() => {
-            setShowAddDialog(!showAddDialog);
-            setShowQuickAdd(false);
-          }}
+          onClick={() => setShowAddJson((v) => !v)}
           className="px-2.5 py-1 rounded text-xs font-medium bg-accent text-accent-text hover:opacity-90 transition-opacity"
         >
-          {showAddDialog ? t('mcp.close') : t('mcp.mergeJson')}
+          {showAddJson ? t('mcp.closeAdd') : t('mcp.addServer')}
         </button>
       </div>
 
@@ -206,27 +312,10 @@ export default function McpPanel({
         </p>
       )}
 
-      {showQuickAdd && (
-        <QuickAddServerForm
-          onSubmit={async (req) => {
-            setError(null);
-            try {
-              await addMcpServer(req);
-              setShowQuickAdd(false);
-              requestReloadRestart();
-              await reload();
-            } catch (e) {
-              setError(e instanceof Error ? e.message : String(e));
-            }
-          }}
-          onCancel={() => setShowQuickAdd(false)}
-        />
-      )}
-
-      {showAddDialog && (
+      {showAddJson && (
         <AddMcpJsonForm
           onSubmit={handleMergeMcpJson}
-          onCancel={() => setShowAddDialog(false)}
+          onCancel={() => setShowAddJson(false)}
         />
       )}
 
@@ -285,17 +374,21 @@ export default function McpPanel({
         </div>
       )}
 
-      {selectedServer !== null && (
-        <div className="overflow-y-auto px-3 py-2 space-y-1.5">
-          {displayedTools.map((t) => (
-            <ToolRow key={`${t.server}/${t.name}`} tool={t} />
-          ))}
-          {displayedTools.length === 0 && !loading && (
-            <p className="text-xs text-t-text-muted text-center py-6">
-              {t('mcp.noTools')}
-            </p>
-          )}
-        </div>
+      {selectedServer !== null && selectedServerEntry && (
+        <McpServerDetail
+          server={selectedServerEntry}
+          discover={selectedDiscover}
+          tools={allTools}
+          recentCalls={recentCalls}
+          togglingTool={togglingTool}
+          onToggleTool={handleToggleTool}
+        />
+      )}
+
+      {discovering && selectedServer !== null && (
+        <p className="text-[10px] text-t-text-muted text-center py-1 shrink-0">
+          {t('mcp.discovering')}
+        </p>
       )}
 
       {editingServer && (
@@ -304,8 +397,7 @@ export default function McpPanel({
           onClose={() => setEditingServer(null)}
           onSaved={async () => {
             setEditingServer(null);
-            requestReloadRestart();
-            await reload();
+            await applyMcpHotReload();
           }}
           onError={(msg) => setError(msg)}
         />
@@ -338,153 +430,18 @@ export default function McpPanel({
         </div>
       )}
 
-      {showRestartDialog && (
-        <div className="absolute inset-0 bg-overlay flex items-center justify-center z-50">
-          <div className="bg-card border border-card-border rounded-2xl p-6 mx-4 max-w-sm shadow-lg text-center">
-            <p className="text-sm text-t-text mb-2 font-semibold">{t('mcp.savedTitle')}</p>
-            <p className="text-xs text-t-text-secondary mb-5 leading-relaxed">
-              {t('mcp.savedDesc')}
-            </p>
-            <div className="flex justify-center gap-3">
-              <button
-                type="button"
-                onClick={() => setShowRestartDialog(false)}
-                className="px-4 py-2 rounded-lg text-xs text-t-text-muted hover:text-t-text hover:bg-hover"
-              >
-                {t('mcp.later')}
-              </button>
-              <button
-                type="button"
-                onClick={handleRestartSidecar}
-                disabled={restartPending}
-                className="px-4 py-2 rounded-lg text-xs font-medium bg-accent text-accent-text hover:opacity-90 disabled:opacity-50"
-              >
-                {restartPending ? t('mcp.restarting') : t('mcp.restartNow')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
 /* ------------------------------------------------------------------ */
-/*  Quick add (POST /v1/apps/mcp/servers)                              */
-/* ------------------------------------------------------------------ */
-
-function QuickAddServerForm({
-  onSubmit,
-  onCancel,
-}: {
-  onSubmit: (req: { name: string; command?: string; url?: string; args: string[] }) => void | Promise<void>;
-  onCancel: () => void;
-}) {
-  const { t } = useT();
-  const [name, setName] = useState('');
-  const [command, setCommand] = useState('');
-  const [url, setUrl] = useState('');
-  const [argsText, setArgsText] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [localErr, setLocalErr] = useState<string | null>(null);
-
-  const handleSubmit = () => {
-    setLocalErr(null);
-    const n = name.trim();
-    if (!n) {
-      setLocalErr(t('mcp.serverNameRequired'));
-      return;
-    }
-    const cmd = command.trim();
-    const u = url.trim();
-    if (!cmd && !u) {
-      setLocalErr(t('mcp.commandOrUrlRequired'));
-      return;
-    }
-    const args = argsText
-      .split('\n')
-      .map((l) => l.trimEnd())
-      .filter((l) => l.length > 0);
-    void (async () => {
-      setBusy(true);
-      try {
-        await onSubmit({
-          name: n,
-          ...(cmd ? { command: cmd } : {}),
-          ...(u ? { url: u } : {}),
-          args,
-        });
-      } finally {
-        setBusy(false);
-      }
-    })();
-  };
-
-  return (
-    <div className="shrink-0 border-b border-divider px-3 py-3 space-y-2 bg-canvas-alt/50">
-      <div className="text-[11px] font-semibold text-t-text-secondary">{t('mcp.quickAddTitle')}</div>
-      <p className="text-[10px] text-t-text-muted leading-relaxed">
-        {t('mcp.quickAddHint')}
-      </p>
-      <input
-        type="text"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        placeholder={t('mcp.serverNamePlaceholder')}
-        className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-input-bg border border-input-border text-t-text"
-      />
-      <input
-        type="text"
-        value={command}
-        onChange={(e) => setCommand(e.target.value)}
-        placeholder={t('mcp.commandPlaceholder')}
-        className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-input-bg border border-input-border text-t-text font-mono"
-      />
-      <input
-        type="text"
-        value={url}
-        onChange={(e) => setUrl(e.target.value)}
-        placeholder={t('mcp.urlPlaceholder')}
-        className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-input-bg border border-input-border text-t-text font-mono"
-      />
-      <textarea
-        value={argsText}
-        onChange={(e) => setArgsText(e.target.value)}
-        placeholder={t('mcp.argsPlaceholder')}
-        rows={4}
-        className="w-full px-2.5 py-2 text-[11px] font-mono rounded-lg bg-input-bg border border-input-border text-t-text resize-y min-h-[80px]"
-      />
-      {localErr && <p className="text-[10px] text-t-error">{localErr}</p>}
-      <div className="flex items-center gap-2 pt-1">
-        <button
-          type="button"
-          disabled={busy}
-          onClick={handleSubmit}
-          className="px-4 py-1.5 rounded text-xs font-medium bg-accent text-accent-text hover:opacity-90 disabled:opacity-50"
-        >
-          {busy ? t('common.saving') : t('common.save')}
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={onCancel}
-          className="px-3 py-1.5 rounded text-xs text-t-text-muted hover:text-t-text hover:bg-hover"
-        >
-          {t('common.cancel')}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Merge MCP config JSON                                              */
+/*  Add MCP servers via JSON (same shape as ~/.zagens/mcp.json)        */
 /* ------------------------------------------------------------------ */
 
 const MCP_JSON_EXAMPLE = `{
-  "my-filesystem": {
+  "everything": {
     "command": "npx",
-    "args": ["-y", "@modelcontextprotocol/server-filesystem", "."]
+    "args": ["-y", "@modelcontextprotocol/server-everything"]
   }
 }`;
 
@@ -519,10 +476,7 @@ function AddMcpJsonForm({
 
   return (
     <div className="shrink-0 border-b border-divider px-3 py-3 space-y-2 bg-canvas-alt/50">
-      <div className="text-[11px] font-semibold text-t-text-secondary">{t('mcp.mergeJsonTitle')}</div>
-      <p className="text-[10px] text-t-text-muted leading-relaxed">
-        {t('mcp.mergeJsonHint')}
-      </p>
+      <p className="text-[10px] text-t-text-muted leading-relaxed">{t('mcp.addJsonHint')}</p>
       <textarea
         value={text}
         onChange={(e) => {
@@ -530,8 +484,8 @@ function AddMcpJsonForm({
           setFormError(null);
         }}
         spellCheck={false}
-        rows={14}
-        className="w-full px-2.5 py-2 text-[11px] font-mono leading-relaxed rounded-lg bg-input-bg border border-input-border text-t-text outline-none focus:border-accent resize-y min-h-[180px]"
+        rows={10}
+        className="w-full px-2.5 py-2 text-[11px] font-mono leading-relaxed rounded-lg bg-input-bg border border-input-border text-t-text outline-none focus:border-accent resize-y min-h-[140px]"
         aria-label={t('mcp.jsonAriaLabel')}
       />
       {formError && <p className="text-[10px] text-t-error">{formError}</p>}
@@ -542,7 +496,7 @@ function AddMcpJsonForm({
           onClick={handleSubmit}
           className="px-4 py-1.5 rounded text-xs font-medium bg-accent text-accent-text hover:opacity-90 disabled:opacity-50"
         >
-          {busy ? t('common.saving') : t('mcp.mergeAndSave')}
+          {busy ? t('common.saving') : t('mcp.addAndApply')}
         </button>
         <button
           type="button"
@@ -576,7 +530,8 @@ function ServerCard({
 }) {
   const { t } = useT();
   const args = server.args ?? [];
-  const transport = server.command ? 'stdio' : server.url ? 'remote' : '—';
+  const transport =
+    server.transport ?? (server.command ? 'stdio' : server.url ? 'remote' : '—');
 
   return (
     <div className="rounded-lg border border-card-border bg-canvas-alt p-3 space-y-2">
@@ -662,6 +617,9 @@ function EditMcpServerDialog({
   const [envText, setEnvText] = useState('{}');
   const [enabledToolsText, setEnabledToolsText] = useState('');
   const [disabledToolsText, setDisabledToolsText] = useState('');
+  const [headersText, setHeadersText] = useState('');
+  const [authType, setAuthType] = useState('');
+  const [authToken, setAuthToken] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -675,6 +633,9 @@ function EditMcpServerDialog({
         setEnvText(JSON.stringify(n.env ?? {}, null, 2));
         setEnabledToolsText(n.enabled_tools.join(', '));
         setDisabledToolsText(n.disabled_tools.join(', '));
+        setHeadersText(formatHeadersText(n.headers));
+        setAuthType(n.auth?.type ?? '');
+        setAuthToken(n.auth?.token ?? n.auth?.apiKey ?? '');
         setLoadError(null);
       } catch (e) {
         if (!cancelled) {
@@ -720,12 +681,29 @@ function EditMcpServerDialog({
       .map((s) => s.trim())
       .filter(Boolean);
 
+    const headers = parseHeadersText(headersText);
+    const authTypeTrim = authType.trim().toLowerCase();
+    const auth =
+      authTypeTrim.length > 0
+        ? {
+            type: authTypeTrim,
+            token: authToken.trim() || null,
+            header: cfg.auth?.header ?? null,
+            apiKey:
+              authTypeTrim === 'apikey' || authTypeTrim === 'api_key'
+                ? authToken.trim() || null
+                : cfg.auth?.apiKey ?? null,
+          }
+        : null;
+
     const payload: McpServerConfigPayload = {
       ...cfg,
       command: cmd || null,
       url: u || null,
       args,
       env,
+      headers,
+      auth,
       enabled_tools,
       disabled_tools,
       connect_timeout: cfg.connect_timeout ?? null,
@@ -803,6 +781,42 @@ function EditMcpServerDialog({
                   className="px-2 py-1.5 rounded-lg bg-input-bg border border-input-border text-t-text font-mono text-[11px] resize-y min-h-[64px]"
                 />
               </label>
+              <label className="flex flex-col gap-1 text-[10px] text-t-text-muted">
+                {t('mcp.editHeadersLabel')}
+                <textarea
+                  value={headersText}
+                  onChange={(e) => setHeadersText(e.target.value)}
+                  rows={3}
+                  spellCheck={false}
+                  placeholder={t('mcp.headersPlaceholder')}
+                  className="px-2 py-1.5 rounded-lg bg-input-bg border border-input-border text-t-text font-mono text-[11px] resize-y min-h-[56px]"
+                />
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="flex flex-col gap-1 text-[10px] text-t-text-muted">
+                  {t('mcp.editAuthTypeLabel')}
+                  <select
+                    value={authType}
+                    onChange={(e) => setAuthType(e.target.value)}
+                    className="px-2 py-1.5 rounded-lg bg-input-bg border border-input-border text-t-text text-[11px]"
+                  >
+                    <option value="">—</option>
+                    <option value="bearer">bearer</option>
+                    <option value="apiKey">apiKey</option>
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-[10px] text-t-text-muted">
+                  {t('mcp.editAuthTokenLabel')}
+                  <input
+                    type="password"
+                    value={authToken}
+                    onChange={(e) => setAuthToken(e.target.value)}
+                    placeholder={t('mcp.authTokenPlaceholder')}
+                    autoComplete="off"
+                    className="px-2 py-1.5 rounded-lg bg-input-bg border border-input-border text-t-text font-mono text-[11px]"
+                  />
+                </label>
+              </div>
               <div className="grid grid-cols-3 gap-2">
                 <label className="inline-flex items-center gap-1.5 text-[10px] text-t-text cursor-pointer">
                   <input
@@ -827,6 +841,59 @@ function EditMcpServerDialog({
                     onChange={(e) => setCfg({ ...cfg, required: e.target.checked })}
                   />
                   required
+                </label>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <label className="flex flex-col gap-1 text-[10px] text-t-text-muted">
+                  {t('mcp.editConnectTimeoutLabel')}
+                  <input
+                    type="number"
+                    min={1}
+                    max={300}
+                    placeholder="30"
+                    value={cfg.connect_timeout ?? ''}
+                    onChange={(e) =>
+                      setCfg({
+                        ...cfg,
+                        connect_timeout: e.target.value ? Number(e.target.value) : null,
+                      })
+                    }
+                    className="px-2 py-1.5 rounded-lg bg-input-bg border border-input-border text-t-text text-[11px] w-full"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-[10px] text-t-text-muted">
+                  {t('mcp.editExecuteTimeoutLabel')}
+                  <input
+                    type="number"
+                    min={1}
+                    max={3600}
+                    placeholder="60"
+                    value={cfg.execute_timeout ?? ''}
+                    onChange={(e) =>
+                      setCfg({
+                        ...cfg,
+                        execute_timeout: e.target.value ? Number(e.target.value) : null,
+                      })
+                    }
+                    className="px-2 py-1.5 rounded-lg bg-input-bg border border-input-border text-t-text text-[11px] w-full"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-[10px] text-t-text-muted">
+                  {t('mcp.editReadTimeoutLabel')}
+                  <input
+                    type="number"
+                    min={1}
+                    max={3600}
+                    placeholder="120"
+                    value={cfg.read_timeout ?? ''}
+                    onChange={(e) =>
+                      setCfg({
+                        ...cfg,
+                        read_timeout: e.target.value ? Number(e.target.value) : null,
+                      })
+                    }
+                    className="px-2 py-1.5 rounded-lg bg-input-bg border border-input-border text-t-text text-[11px] w-full"
+                  />
                 </label>
               </div>
               <label className="flex flex-col gap-1 text-[10px] text-t-text-muted">
@@ -873,41 +940,3 @@ function EditMcpServerDialog({
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Tool row                                                           */
-/* ------------------------------------------------------------------ */
-
-function ToolRow({ tool }: { tool: McpToolEntry }) {
-  const [expanded, setExpanded] = useState(false);
-
-  return (
-    <div className="rounded border border-divider bg-canvas-alt overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setExpanded(!expanded)}
-        className="w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-hover transition-colors"
-      >
-        <span className="font-mono text-xs text-accent">{tool.prefixed_name}</span>
-        {tool.description && (
-          <span className="text-[11px] text-t-text-muted truncate flex-1">— {tool.description}</span>
-        )}
-        <svg
-          viewBox="0 0 24 24"
-          className={`w-3.5 h-3.5 stroke-current text-t-text-muted transition-transform ${
-            expanded ? 'rotate-90' : ''
-          }`}
-          style={{ fill: 'none', strokeWidth: 2 }}
-        >
-          <path d="M9 5l7 7-7 7" />
-        </svg>
-      </button>
-      {expanded && (
-        <div className="border-t border-divider px-3 py-2">
-          <pre className="text-[10px] font-mono text-t-text-muted whitespace-pre-wrap max-h-32 overflow-auto leading-relaxed">
-            {JSON.stringify(tool.input_schema, null, 2)}
-          </pre>
-        </div>
-      )}
-    </div>
-  );
-}

@@ -1,20 +1,6 @@
 #![allow(dead_code)]
 //! Per‑call approval cache with fingerprint keys (§5.A).
 //!
-//! Instead of caching by tool name alone (which would let an approved
-//! `exec_shell "cat foo"` silently pass `exec_shell "rm -rf /"`), the
-//! cache keys off a **call fingerprint** — a digest of the tool name and
-//! the semantically‑relevant portion of its arguments.
-//!
-//! ## Fingerprint shape
-//!
-//! | Tool           | Key                                      |
-//! |---------------|------------------------------------------|
-//! | `apply_patch`  | `patch:<hash of file paths>`             |
-//! | `exec_shell`   | `shell:<command prefix (first 3 tokens)>` |
-//! | `fetch_url`    | `net:<hostname>`                         |
-//! | everything else| `tool:<tool_name>`                       |
-//!
 //! The cache is **session‑keyed**: entries carry an
 //! `ApprovedForSession` flag. When true, the approval is reused for the
 //! remainder of the session; when false, it is a one‑shot grant (future
@@ -73,7 +59,8 @@ impl ApprovalCache {
         if entry.approved_for_session {
             ApprovalCacheStatus::Approved
         } else {
-            ApprovalCacheStatus::Denied
+            // One-shot entries are not reused; treat as unknown so the user is prompted again.
+            ApprovalCacheStatus::Unknown
         }
     }
 
@@ -135,6 +122,18 @@ pub fn build_approval_key(tool_name: &str, input: &serde_json::Value) -> Approva
         "fetch_url" | "web.fetch" | "web_fetch" => {
             let host = parse_host(input);
             format!("net:{host}")
+        }
+        "write_file" | "edit_file" | "write_office" => {
+            let path = input
+                .get("path")
+                .or_else(|| input.get("file_path"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if path.is_empty() {
+                format!("tool:{tool_name}")
+            } else {
+                format!("file:{path}")
+            }
         }
         _ => format!("tool:{tool_name}"),
     };
@@ -219,7 +218,7 @@ mod tests {
         let mut cache = ApprovalCache::new();
         let key = build_approval_key("exec_shell", &json!({"command": "cargo build"}));
         cache.insert(key.clone(), false);
-        assert_eq!(cache.check(&key), ApprovalCacheStatus::Denied);
+        assert_eq!(cache.check(&key), ApprovalCacheStatus::Unknown);
     }
 
     #[test]
@@ -271,10 +270,10 @@ mod tests {
     }
 
     #[test]
-    fn generic_tool_uses_tool_name() {
-        let key_a = build_approval_key("read_file", &json!({"path": "a.txt"}));
-        let key_b = build_approval_key("read_file", &json!({"path": "b.txt"}));
-        assert_eq!(key_a, key_b);
-        assert_eq!(key_a.0, "tool:read_file");
+    fn write_file_keys_differ_by_path() {
+        let key_a = build_approval_key("write_file", &json!({"path": "a.txt"}));
+        let key_b = build_approval_key("write_file", &json!({"path": "b.txt"}));
+        assert_ne!(key_a, key_b);
+        assert_eq!(key_a.0, "file:a.txt");
     }
 }

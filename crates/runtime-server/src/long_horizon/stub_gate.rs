@@ -157,6 +157,22 @@ fn has_code_ext(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+/// Paths that are harness infrastructure, not the task artifact — skip during
+/// stub scan so dogfooding on the Zagens monorepo does not self-block on LHT
+/// source markers (e.g. `unfinished_macro` in comments/strings).
+fn is_harness_infra_path(workspace: &Path, path: &Path) -> bool {
+    let Ok(rel) = path.strip_prefix(workspace) else {
+        return false;
+    };
+    let rel = rel.to_string_lossy().replace('\\', "/");
+    const SKIP_PREFIXES: &[&str] = &[
+        "crates/runtime-server/src/long_horizon/",
+        "third-party/",
+        ".cursor/",
+    ];
+    SKIP_PREFIXES.iter().any(|p| rel.starts_with(p))
+}
+
 fn snippet(line: &str) -> String {
     let t = line.trim();
     if t.chars().count() <= SNIPPET_MAX {
@@ -197,7 +213,10 @@ pub fn scan_workspace_stubs(workspace: &Path) -> StubScanResult {
                 }
                 continue;
             }
-            if !file_type.is_file() || !has_code_ext(&path) {
+            if !file_type.is_file()
+                || !has_code_ext(&path)
+                || is_harness_infra_path(workspace, &path)
+            {
                 continue;
             }
             if files_scanned >= MAX_FILES {

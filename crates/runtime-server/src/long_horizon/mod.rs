@@ -10,9 +10,12 @@ mod cycle_band;
 mod cycles;
 pub(crate) mod handoff;
 mod generic_gate;
+mod go_toolchain_audit;
 mod graph;
 mod integration_gate;
 mod manifest_gate;
+pub(crate) mod macro_loop;
+pub(crate) mod macro_loop_panel;
 mod nudge;
 mod objective;
 mod plan_drift;
@@ -75,6 +78,7 @@ pub struct LongHorizonContinueInput<'a> {
     pub plan_state: &'a SharedPlanState,
     pub todos: &'a SharedTodoList,
     pub session: &'a mut LongHorizonSessionState,
+    pub thread_id: &'a str,
     pub already_injected_this_turn: bool,
     pub steps_remaining: u32,
     /// Shell execution for layer-2 manifest oracle (§6.4). `None` skips active exec.
@@ -183,6 +187,9 @@ pub enum LhtGateOutcome {
     /// P0-2: completed items carry `[verify: cmd]` but no matching recent exec
     /// (`verify_gate verdict=mismatch`). Distinct telemetry from unverified.
     NudgeVerifyMismatch(Message),
+    /// P0-3: checklist is "complete" but too few items carry `[verify:]` — the
+    /// MicroStack false-green pattern (many `untagged_ok`, build/vet only).
+    NudgeInsufficientVerify(Message),
     /// P1-5: checklist marks a plan phase done while that plan step is still
     /// pending/in_progress — sync plan before ending the turn.
     NudgePlanChecklistDrift(Message),
@@ -217,6 +224,17 @@ pub enum LhtGateOutcome {
         manifest_round: u32,
         audit_round: u32,
         first_gap_count: Option<u32>,
+    },
+    /// Phase 4: spawn CRAFT Review sub-agent (harness-driven).
+    MacroCraftSpawn {
+        task_id: String,
+    },
+    /// Phase 4: remediation segment after blockers → checklist.
+    MacroRemediation(Message),
+    /// Phase 4: macro cycles exhausted with open CRAFT gaps.
+    MacroUnmet {
+        remaining_blockers: Vec<String>,
+        macro_cycles_used: u32,
     },
     Skip(&'static str),
 }
@@ -342,6 +360,33 @@ pub async fn maybe_continue_incomplete_code_task(
                 }],
             });
         }
+        // P0-3: large checklist with zero `[verify:]` tags — block graph_complete
+        // on build/vet/toolchain alone (MicroStack01/02 false-green pattern).
+        let completed_count = checklist
+            .items
+            .iter()
+            .filter(|i| i.status == crate::tools::todo::TodoStatus::Completed)
+            .count();
+        let verify_tagged_count = checklist
+            .items
+            .iter()
+            .filter(|i| i.status == crate::tools::todo::TodoStatus::Completed)
+            .filter(|i| verify::parse_verify_command(&i.content).is_some())
+            .count();
+        if completed_count >= nudge::MIN_CHECKLIST_ITEMS_FOR_VERIFY_RATIO
+            && verify_tagged_count < nudge::MIN_VERIFY_TAGGED_ITEMS
+            && input.session.insufficient_verify_nudges < nudge::MAX_INSUFFICIENT_VERIFY_NUDGES
+        {
+            input.session.insufficient_verify_nudges += 1;
+            let text = nudge::build_insufficient_verify_nudge(completed_count, input.lang);
+            return LhtGateOutcome::NudgeInsufficientVerify(Message {
+                role: "user".to_string(),
+                content: vec![ContentBlock::Text {
+                    text,
+                    cache_control: None,
+                }],
+            });
+        }
         // P1-5: plan/checklist drift — checklist names a phase as done while
         // the matching plan step is still open.
         let drift = plan_drift::find_plan_checklist_drift(&plan, &checklist);
@@ -363,7 +408,7 @@ pub async fn maybe_continue_incomplete_code_task(
         // full net (false-green + stub block) applies even if the operator left
         // them on `observe` in config — the user explicitly opted into LHT.
         let effective_gate = strict_completion_gate(&input.config.completion_gate, effective_mode);
-        return completion_gate_flow::evaluate_completion_gate(
+        let gate_outcome = completion_gate_flow::evaluate_completion_gate(
             input.workspace,
             &effective_gate,
             &checklist,
@@ -373,6 +418,43 @@ pub async fn maybe_continue_incomplete_code_task(
             input.gate_exec.as_ref(),
         )
         .await;
+        let latest_user = latest_user_text(input.messages);
+        if matches!(&gate_outcome, LhtGateOutcome::Skip("graph_complete")) {
+            let macro_outcome = macro_loop::evaluate_macro_loop(
+                macro_loop::MacroLoopInput {
+                    config: &input.config.macro_loop,
+                    effective_mode,
+                    workspace: input.workspace,
+                    checklist: &checklist,
+                    session: input.session,
+                    lang: input.lang,
+                    thread_id: input.thread_id,
+                    latest_user_text: latest_user,
+                },
+                macro_loop::MacroTrigger::MicroPass,
+            );
+            return macro_loop::macro_outcome_to_gate(macro_outcome);
+        }
+        if let LhtGateOutcome::AuditUnmet { reason, .. } = &gate_outcome {
+            nudge::capture_manifest_gate_hints(input.session);
+            let macro_outcome = macro_loop::evaluate_macro_loop(
+                macro_loop::MacroLoopInput {
+                    config: &input.config.macro_loop,
+                    effective_mode,
+                    workspace: input.workspace,
+                    checklist: &checklist,
+                    session: input.session,
+                    lang: input.lang,
+                    thread_id: input.thread_id,
+                    latest_user_text: latest_user,
+                },
+                macro_loop::MacroTrigger::AuditUnmet { reason },
+            );
+            if !matches!(macro_outcome, macro_loop::MacroLoopOutcome::Inactive) {
+                return macro_loop::macro_outcome_to_gate(macro_outcome);
+            }
+        }
+        return gate_outcome;
     }
     if graph.is_trivial() {
         return LhtGateOutcome::Skip("graph_trivial");
@@ -451,6 +533,19 @@ pub async fn maybe_continue_incomplete_code_task(
             cache_control: None,
         }],
     })
+}
+
+fn latest_user_text(messages: &[Message]) -> Option<&str> {
+    messages
+        .iter()
+        .rev()
+        .find(|m| m.role == "user")
+        .and_then(|m| {
+            m.content.iter().find_map(|b| match b {
+                ContentBlock::Text { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+        })
 }
 
 #[cfg(test)]

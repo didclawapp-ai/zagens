@@ -41,6 +41,16 @@ use std::path::Path;
         RuntimeThreadManager::open_with_store(Config::default(), PathBuf::from("."), cfg, store)
     }
 
+    fn test_sqlite_store(data_dir: &Path) -> Result<RuntimeThreadStore> {
+        RuntimeThreadStore::open(data_dir.to_path_buf())
+    }
+
+    fn test_manager_sqlite(data_dir: PathBuf) -> Result<RuntimeThreadManager> {
+        let cfg = test_manager_config(data_dir.clone());
+        let store = test_sqlite_store(&data_dir)?;
+        RuntimeThreadManager::open_with_store(Config::default(), PathBuf::from("."), cfg, store)
+    }
+
     fn test_manager_with_config(data_dir: PathBuf, config: Config) -> Result<RuntimeThreadManager> {
         let cfg = test_manager_config(data_dir.clone());
         let store = test_store(&data_dir)?;
@@ -120,7 +130,11 @@ use std::path::Path;
     ) -> Option<MockApprovalEvent> {
         use deepseek_core::engine::approval::ApprovalDecision;
         match rx.recv().await? {
-            ApprovalDecision::Approved { id } => Some(MockApprovalEvent::Approved { id }),
+            ApprovalDecision::Approved {
+                id,
+                cache_key: _,
+                remember_for_session: _,
+            } => Some(MockApprovalEvent::Approved { id }),
             ApprovalDecision::Denied { id } => Some(MockApprovalEvent::Denied { id }),
             ApprovalDecision::RetryWithPolicy { id, policy } => {
                 Some(MockApprovalEvent::RetryWithPolicy { id, policy })
@@ -459,7 +473,7 @@ use std::path::Path;
         });
 
         let turn = manager
-            .start_turn(
+            .start_turn_record(
                 &thread.id,
                 StartTurnRequest {
                     prompt: "first prompt".to_string(),
@@ -549,7 +563,7 @@ use std::path::Path;
         let mut rx_op = harness.rx_op;
 
         let _turn = manager
-            .start_turn(
+            .start_turn_record(
                 &thread.id,
                 StartTurnRequest {
                     prompt: "override approval".to_string(),
@@ -600,7 +614,7 @@ use std::path::Path;
         let mut rx_op = harness.rx_op;
 
         let _turn = manager
-            .start_turn(
+            .start_turn_record(
                 &thread.id,
                 StartTurnRequest {
                     prompt: "read-only policy".to_string(),
@@ -661,7 +675,7 @@ use std::path::Path;
         let mut rx_op = harness.rx_op;
 
         let _turn = manager
-            .start_turn(
+            .start_turn_record(
                 &thread.id,
                 StartTurnRequest {
                     prompt: "route me".to_string(),
@@ -709,7 +723,7 @@ use std::path::Path;
         let mut rx_op = harness.rx_op;
 
         let _turn = manager
-            .start_turn(
+            .start_turn_record(
                 &thread.id,
                 StartTurnRequest {
                     prompt: "disable approval".to_string(),
@@ -885,7 +899,7 @@ use std::path::Path;
         });
 
         let turn_1 = manager
-            .start_turn(
+            .start_turn_record(
                 &thread.id,
                 StartTurnRequest {
                     prompt: "first".to_string(),
@@ -905,7 +919,7 @@ use std::path::Path;
         wait_for_active_turn_cleared(&manager, &thread.id, &turn_1.id, Duration::from_secs(2)).await?;
 
         let turn_2 = manager
-            .start_turn(
+            .start_turn_record(
                 &thread.id,
                 StartTurnRequest {
                     prompt: "second".to_string(),
@@ -1010,7 +1024,7 @@ use std::path::Path;
         });
 
         let turn = manager
-            .start_turn(
+            .start_turn_record(
                 &thread.id,
                 StartTurnRequest {
                     prompt: "summarise".to_string(),
@@ -1096,7 +1110,7 @@ use std::path::Path;
         });
 
         let turn = manager
-            .start_turn(
+            .start_turn_record(
                 &thread.id,
                 StartTurnRequest {
                     prompt: "interrupt me".to_string(),
@@ -1167,7 +1181,7 @@ use std::path::Path;
 
         let mut harness = install_mock_engine(&manager, &thread.id).await;
         let turn = manager
-            .start_turn(
+            .start_turn_record(
                 &thread.id,
                 StartTurnRequest {
                     prompt: "needs approval".to_string(),
@@ -1256,7 +1270,7 @@ use std::path::Path;
 
         let mut harness = install_mock_engine(&manager, &thread.id).await;
         let turn = manager
-            .start_turn(
+            .start_turn_record(
                 &thread.id,
                 StartTurnRequest {
                     prompt: "needs http approval".to_string(),
@@ -1295,7 +1309,7 @@ use std::path::Path;
         );
 
         let (resolve_result, approval_event) = tokio::join!(
-            manager.resolve_approval(&thread.id, &turn.id, "tool_http1", true),
+            manager.resolve_approval(&thread.id, &turn.id, "tool_http1", true, false),
             harness.recv_approval_event(),
         );
         resolve_result?;
@@ -1351,7 +1365,7 @@ use std::path::Path;
 
         let mut harness = install_mock_engine(&manager, &thread.id).await;
         let turn = manager
-            .start_turn(
+            .start_turn_record(
                 &thread.id,
                 StartTurnRequest {
                     prompt: "needs approval — will be denied".to_string(),
@@ -1392,7 +1406,7 @@ use std::path::Path;
 
         // HTTP client resolves with "deny" (concurrent recv — approve channel is bounded).
         let (resolve_result, approval_event) = tokio::join!(
-            manager.resolve_approval(&thread.id, &turn.id, "tool_deny_1", false),
+            manager.resolve_approval(&thread.id, &turn.id, "tool_deny_1", false, false),
             harness.recv_approval_event(),
         );
         resolve_result?;
@@ -1484,7 +1498,7 @@ use std::path::Path;
         });
 
         let turn_a = manager
-            .start_turn(
+            .start_turn_record(
                 &thread_a.id,
                 StartTurnRequest {
                     prompt: "thread A turn".to_string(),
@@ -1529,7 +1543,7 @@ use std::path::Path;
         });
 
         let turn_b = manager
-            .start_turn(
+            .start_turn_record(
                 &thread_b.id,
                 StartTurnRequest {
                     prompt: "thread B turn".to_string(),
@@ -1637,7 +1651,7 @@ use std::path::Path;
         });
 
         let turn_a = manager
-            .start_turn(
+            .start_turn_record(
                 &thread_a.id,
                 StartTurnRequest {
                     prompt: "thread A needs approval".to_string(),
@@ -1683,7 +1697,7 @@ use std::path::Path;
         });
 
         let turn_b = manager
-            .start_turn(
+            .start_turn_record(
                 &thread_b.id,
                 StartTurnRequest {
                     prompt: "thread B needs approval".to_string(),
@@ -1727,7 +1741,7 @@ use std::path::Path;
         );
 
         let cross = manager
-            .resolve_approval(&thread_b.id, &turn_b.id, "tool_parallel_a", true)
+            .resolve_approval(&thread_b.id, &turn_b.id, "tool_parallel_a", true, false)
             .await
             .expect_err("tool_parallel_a belongs to thread A");
         assert!(
@@ -1744,7 +1758,7 @@ use std::path::Path;
         );
 
         let (resolve_a, approval_a) = tokio::join!(
-            manager.resolve_approval(&thread_a.id, &turn_a.id, "tool_parallel_a", true),
+            manager.resolve_approval(&thread_a.id, &turn_a.id, "tool_parallel_a", true, false),
             recv_mock_approval(&mut rx_approval_a),
         );
         resolve_a?;
@@ -1765,7 +1779,7 @@ use std::path::Path;
         );
 
         let (resolve_b, approval_b) = tokio::join!(
-            manager.resolve_approval(&thread_b.id, &turn_b.id, "tool_parallel_b", true),
+            manager.resolve_approval(&thread_b.id, &turn_b.id, "tool_parallel_b", true, false),
             recv_mock_approval(&mut rx_approval_b),
         );
         resolve_b?;
@@ -1809,7 +1823,7 @@ use std::path::Path;
 
         let mut harness = install_mock_engine(&manager, &thread.id).await;
         let turn = manager
-            .start_turn(
+            .start_turn_record(
                 &thread.id,
                 StartTurnRequest {
                     prompt: "needs approval".to_string(),
@@ -1844,13 +1858,13 @@ use std::path::Path;
         sleep(Duration::from_millis(150)).await;
 
         let err = manager
-            .resolve_approval(&thread.id, "wrong-turn-id", "tool_scope", true)
+            .resolve_approval(&thread.id, "wrong-turn-id", "tool_scope", true, false)
             .await
             .expect_err("expected scope error");
         assert!(format!("{err:#}").contains("scope mismatch"), "got {err:#}");
 
         let (resolve_result, approval_event) = tokio::join!(
-            manager.resolve_approval(&thread.id, &turn.id, "tool_scope", true),
+            manager.resolve_approval(&thread.id, &turn.id, "tool_scope", true, false),
             harness.recv_approval_event(),
         );
         resolve_result?;
@@ -1903,7 +1917,7 @@ use std::path::Path;
 
         let mut harness = install_mock_engine(&manager, &thread.id).await;
         let turn = manager
-            .start_turn(
+            .start_turn_record(
                 &thread.id,
                 StartTurnRequest {
                     prompt: "needs elevation".to_string(),
@@ -2038,7 +2052,7 @@ use std::path::Path;
         });
 
         let turn = manager
-            .start_turn(
+            .start_turn_record(
                 &thread.id,
                 StartTurnRequest {
                     prompt: "initial".to_string(),
@@ -2085,6 +2099,176 @@ use std::path::Path;
                     .and_then(Value::as_str)
                     == Some("add bullet list")
         }));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn queue_delivery_while_active_drains_after_turn_completes() -> Result<()> {
+        let dir = test_runtime_dir();
+        let manager = test_manager_sqlite(dir.clone())?;
+        let thread = manager
+            .create_thread(CreateThreadRequest {
+                model: None,
+                workspace: None,
+                mode: None,
+                allow_shell: None,
+                trust_mode: None,
+                auto_approve: None,
+                archived: false,
+                system_prompt: None,
+                task_id: None,
+                task_type: None,
+            })
+            .await?;
+
+        let harness = install_mock_engine(&manager, &thread.id).await;
+        let mut rx_op = harness.rx_op;
+        let tx_event = harness.tx_event;
+        tokio::spawn(async move {
+            let mut turn_index = 0u8;
+            while let Some(op) = rx_op.recv().await {
+                if !matches!(op, Op::SendMessage { .. }) {
+                    continue;
+                }
+                turn_index = turn_index.saturating_add(1);
+                let _ = tx_event
+                    .send(EngineEvent::TurnStarted {
+                        turn_id: format!("engine_turn_{turn_index}"),
+                    })
+                    .await;
+                let _ = tx_event
+                    .send(EngineEvent::MessageStarted { index: 0 })
+                    .await;
+                let _ = tx_event
+                    .send(EngineEvent::MessageDelta {
+                        index: 0,
+                        content: format!("reply {turn_index}"),
+                    })
+                    .await;
+                let _ = tx_event
+                    .send(EngineEvent::MessageComplete { index: 0 })
+                    .await;
+                let _ = tx_event
+                    .send(EngineEvent::TurnComplete {
+                        usage: Usage {
+                            input_tokens: 5,
+                            output_tokens: 5,
+                            ..Usage::default()
+                        },
+                        last_request_input_tokens: None,
+                        status: TurnOutcomeStatus::Completed,
+                        error: None,
+                        step_count: 0,
+                        tool_names: vec![],
+                        end_reason: None,
+                    })
+                    .await;
+                if turn_index >= 2 {
+                    break;
+                }
+            }
+        });
+
+        let turn_1 = manager
+            .start_turn_record(
+                &thread.id,
+                StartTurnRequest {
+                    prompt: "first".to_string(),
+                    input_summary: None,
+                    model: None,
+                    mode: None,
+                    allow_shell: None,
+                    trust_mode: None,
+                    auto_approve: None,
+                    route_intent: None,
+                    ..Default::default()
+                },
+            )
+            .await?;
+
+        let queued_prompt = "queued follow-up".to_string();
+        let queued_outcome = manager
+            .start_turn(
+                &thread.id,
+                StartTurnRequest {
+                    prompt: queued_prompt.clone(),
+                    input_summary: None,
+                    model: None,
+                    mode: None,
+                    allow_shell: None,
+                    trust_mode: None,
+                    auto_approve: None,
+                    route_intent: None,
+                    delivery: Some(PromptDelivery::Queue),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        let admission = queued_outcome
+            .queued
+            .as_ref()
+            .context("expected queued admission while turn is active")?;
+        assert_eq!(admission.prompt, queued_prompt);
+        assert_eq!(admission.delivery, PromptDelivery::Queue);
+        assert_eq!(queued_outcome.turn.id, turn_1.id);
+
+        let err = manager
+            .start_turn(
+                &thread.id,
+                StartTurnRequest {
+                    prompt: "should fail without delivery".to_string(),
+                    input_summary: None,
+                    model: None,
+                    mode: None,
+                    allow_shell: None,
+                    trust_mode: None,
+                    auto_approve: None,
+                    route_intent: None,
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect_err("legacy start without delivery must fail when busy");
+        assert!(
+            err.to_string().contains("active turn"),
+            "unexpected error: {err:#}"
+        );
+
+        let turn_1_done =
+            wait_for_terminal_turn(&manager, &turn_1.id, Duration::from_secs(5)).await?;
+        assert_eq!(turn_1_done.status, RuntimeTurnStatus::Completed);
+        wait_for_active_turn_cleared(&manager, &thread.id, &turn_1.id, Duration::from_secs(5))
+            .await?;
+
+        let detail = manager.get_thread_detail(&thread.id).await?;
+        assert_eq!(detail.turns.len(), 2, "queued prompt should open a second turn");
+        let turn_2 = detail
+            .turns
+            .iter()
+            .find(|t| t.id != turn_1.id)
+            .context("missing auto-started queued turn")?;
+        assert!(detail.items.iter().any(|item| {
+            item.turn_id == turn_2.id
+                && item.kind == TurnItemKind::UserMessage
+                && item.detail.as_deref() == Some(queued_prompt.as_str())
+        }));
+
+        let turn_2_done =
+            wait_for_terminal_turn(&manager, &turn_2.id, Duration::from_secs(5)).await?;
+        assert_eq!(turn_2_done.status, RuntimeTurnStatus::Completed);
+
+        let events = manager.events_since(&thread.id, None)?;
+        assert!(events.iter().any(|ev| ev.event == "prompt.admitted"));
+        assert!(
+            events
+                .iter()
+                .filter(|ev| ev.event == "prompt.promoted")
+                .count()
+                >= 2,
+            "both turns should promote admitted inbox rows"
+        );
+
+        let _ = std::fs::remove_dir_all(dir);
         Ok(())
     }
 
@@ -2195,7 +2379,7 @@ use std::path::Path;
         });
 
         let auto_turn = manager
-            .start_turn(
+            .start_turn_record(
                 &thread.id,
                 StartTurnRequest {
                     prompt: "trigger auto".to_string(),

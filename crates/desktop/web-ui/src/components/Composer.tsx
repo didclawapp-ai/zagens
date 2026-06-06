@@ -30,6 +30,10 @@ import LhtModeToggle from './LhtModeToggle';
 import { clipboardHtmlToPlainText } from '../lib/sanitizeHtml';
 import { composerAutoApproveToggleEnabled, approvalPolicySettingsKey } from '../lib/approvalPolicy';
 import { cacheHitPercentTextClass } from '../lib/cacheUsage';
+import { toast } from '../lib/toast';
+
+const COMPOSER_ERROR_TAG = 'composer-error';
+const COMPOSER_TRANSCRIBING_TAG = 'composer-transcribing';
 
 const MAX_FILE_BYTES = 128 * 1024; // 128 KB per file
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024; // align with describe_image / vision_transcribe_image
@@ -496,7 +500,6 @@ export default function Composer({
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState<AttachedFile[]>([]);
   const [transcribing, setTranscribing] = useState(false);
-  const [bridgeError, setBridgeError] = useState<string | null>(null);
   const [modelOpen, setModelOpen] = useState(false);
   const [runModeOpen, setRunModeOpen] = useState(false);
   const [taskTypeOpen, setTaskTypeOpen] = useState(false);
@@ -684,10 +687,10 @@ export default function Composer({
 
     const badImages = attachments.filter((a) => a.kind === 'image' && !a.imageDataUrl);
     if (badImages.length > 0) {
-      setBridgeError(t('composer.badImagesError'));
+      toast.error(t('composer.badImagesError'), { tag: COMPOSER_ERROR_TAG });
       return;
     }
-    setBridgeError(null);
+    toast.dismissByTag(COMPOSER_ERROR_TAG);
 
     const imageAtt = attachments.filter(
       (a): a is AttachedFile & { kind: 'image'; imageDataUrl: string } =>
@@ -699,6 +702,7 @@ export default function Composer({
 
     if (imageAtt.length > 0) {
       setTranscribing(true);
+      toast.info(t('composer.transcribing'), { tag: COMPOSER_TRANSCRIBING_TAG, duration: 0 });
       try {
         const { invoke } = await import('@tauri-apps/api/core');
         const preamble = `${t('composerAttachment.visionBridgePreamble')}\n`;
@@ -717,10 +721,11 @@ export default function Composer({
         apiPrompt =
           apiPrompt.trim().length > 0 ? `${bridge}\n\n---\n\n${apiPrompt}` : bridge;
       } catch (err) {
-        setBridgeError(err instanceof Error ? err.message : String(err));
+        toast.error(err instanceof Error ? err.message : String(err), { tag: COMPOSER_ERROR_TAG });
         return;
       } finally {
         setTranscribing(false);
+        toast.dismissByTag(COMPOSER_TRANSCRIBING_TAG);
       }
     }
 
@@ -756,7 +761,7 @@ export default function Composer({
     }
     if (imageItems.length > 0) {
       e.preventDefault();
-      setBridgeError(null);
+      toast.dismissByTag(COMPOSER_ERROR_TAG);
       void (async () => {
         const newAtts: AttachedFile[] = [];
         for (const it of imageItems) {
@@ -1013,12 +1018,6 @@ export default function Composer({
               {t('composer.officeStatusBar')}
             </p>
           ) : null}
-          {bridgeError && (
-            <p className="px-3 pt-3 text-xs text-error-text leading-relaxed">{bridgeError}</p>
-          )}
-          {transcribing && (
-            <p className="px-3 pt-3 text-xs text-accent leading-relaxed">{t('composer.transcribing')}</p>
-          )}
           {attachments.length > 0 && (
             <div className="flex flex-wrap gap-1.5 px-3 pt-3 pb-0">
               {attachments.map((f, i) => (
@@ -1068,7 +1067,7 @@ export default function Composer({
             ref={textareaRef}
             value={text}
             onChange={(e) => {
-              setBridgeError(null);
+              toast.dismissByTag(COMPOSER_ERROR_TAG);
               setText(e.target.value);
             }}
             onKeyDown={handleKeyDown}

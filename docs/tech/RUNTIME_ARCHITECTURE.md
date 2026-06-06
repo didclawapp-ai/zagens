@@ -4,6 +4,7 @@
 > **HTTP / IPC 契约：** [API_DESIGN.md](./API_DESIGN.md)  
 > **架构评估 / 定型判定：** [adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md](./adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md)（**§1 = 10/10 架构定型**）  
 > **架构冻结（执行截止）：** [adr/D17_ARCHITECTURE_FREEZE.md](./adr/D17_ARCHITECTURE_FREEZE.md) — **Architecture Freeze v1**（2026-05-27）  
+> **架构边界分析：** [ARCHITECTURE_BOUNDARY_ANALYSIS.md](./ARCHITECTURE_BOUNDARY_ANALYSIS.md) — 通道数、硬/软上限、场景评估  
 > **OpenAPI / TS 类型：** [openapi/zagens-runtime-v1.openapi.json](./openapi/zagens-runtime-v1.openapi.json) · [adr/D8_OPENAPI_TS_GENERATION.md](./adr/D8_OPENAPI_TS_GENERATION.md)  
 > **实施后快照：** [adr/IMPLEMENTATION_SUMMARY_2026-05-24.md](./adr/IMPLEMENTATION_SUMMARY_2026-05-24.md)  
 > **D6 Phase B：** [adr/D6_PHASE_B_CLI_SUNSET.md](./adr/D6_PHASE_B_CLI_SUNSET.md) — 生产 binary 为 **`deepseek-runtime`**；CLI + ratatui TUI 已移除  

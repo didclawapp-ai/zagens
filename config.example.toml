@@ -162,6 +162,8 @@ max_subagents = 10 # optional (1-20; 0/negative are clamped to 1 — to fully
 # max_concurrent = 10
 # Per-step LLM API timeout (seconds). Default 600; clamped 120–1800. Zagens: 系统设置 → 安全。
 # step_timeout_secs = 600
+# Cancel sub-agents with no progress longer than this (seconds). Default 300.
+# heartbeat_timeout_secs = 300
 
 # Optional managed policy paths (defaults to /etc/deepseek/*.toml on unix):
 # managed_config_path = "/etc/deepseek/managed_config.toml"
@@ -469,6 +471,7 @@ default_text_model = "deepseek-ai/deepseek-v4-pro"
 # [snapshots]
 # enabled = true        # Snapshot workspace pre/post each turn for /restore
 # max_age_days = 7      # Older snapshots pruned at session start
+# max_workspace_gb = 2  # Skip side-git init when workspace tree exceeds this size
 
 # ─────────────────────────────────────────────────────────────────────────────────
 # LSP Diagnostics (post-edit) (#136)

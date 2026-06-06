@@ -76,6 +76,7 @@ function applyNormalized(state: HistoryState, norm: ReturnType<typeof normalizeD
   if (!norm) return;
   switch (norm.kind) {
     case 'turn_started':
+    case 'turn_completed':
       flushAssistant(state);
       break;
     case 'thinking_delta':
@@ -182,6 +183,7 @@ function applyRawRecord(state: HistoryState, ev: { event: string; data: string }
     if (detail.trim()) {
       state.assistantContent = detail;
     }
+    flushAssistant(state);
     return;
   }
 

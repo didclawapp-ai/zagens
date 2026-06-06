@@ -10,7 +10,7 @@ import {
   ImageRenderer,
   CsvRenderer,
   PdfRenderer,
-  HtmlPreviewRenderer,
+  HtmlRenderer,
 } from './renderers';
 
 export function PreviewDispatcher({
@@ -30,7 +30,7 @@ export function PreviewDispatcher({
     case FileType.Pdf:
       return <PdfRenderer {...common} />;
     case FileType.Html:
-      return <HtmlPreviewRenderer {...common} />;
+      return <HtmlRenderer {...common} />;
     case FileType.Office:
       return (
         <p className="p-6 text-center text-sm text-t-text-muted">

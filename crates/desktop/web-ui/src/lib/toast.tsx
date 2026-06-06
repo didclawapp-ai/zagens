@@ -142,7 +142,7 @@ function ToastViewport({
 
   return (
     <div
-      className="pointer-events-none fixed inset-x-0 bottom-[7.5rem] z-[10000] flex flex-col items-center gap-2 px-4"
+      className="pointer-events-none fixed bottom-4 right-4 z-[10000] flex w-[min(24rem,calc(100vw-2rem))] flex-col items-stretch gap-2"
       aria-live="polite"
       aria-relevant="additions"
     >
@@ -152,7 +152,7 @@ function ToastViewport({
           <div
             key={item.id}
             role="status"
-            className={`pointer-events-auto flex w-full max-w-md items-start gap-2.5 rounded-xl border px-3.5 py-2.5 text-sm shadow-lg ${styles.box}`}
+            className={`pointer-events-auto flex w-full items-start gap-2.5 rounded-xl border px-3.5 py-2.5 text-sm shadow-lg ${styles.box}`}
             style={{ boxShadow: 'var(--color-shadow-lg)' }}
           >
             <span

@@ -24,6 +24,80 @@ pub(super) fn drain_subagent_completions(
 }
 
 impl Engine {
+    async fn maybe_handle_macro_gate_outcome(
+        &mut self,
+        gate: crate::long_horizon::LhtGateOutcome,
+    ) -> bool {
+        match gate {
+            crate::long_horizon::LhtGateOutcome::MacroCraftSpawn { task_id } => {
+                let locale = self.config.locale_tag.clone();
+                let prompt = crate::long_horizon::macro_loop::build_craft_review_prompt(&locale);
+                match self.spawn_macro_craft_review(&task_id, &prompt).await {
+                    Ok(outcome) => {
+                        let lh = &mut self.runtime_ext_mut().long_horizon_state;
+                        lh.macro_craft_agent_id = Some(outcome.agent_id.clone());
+                        lh.macro_phase = deepseek_core::long_horizon::MacroPhase::Craft;
+                        let cycle = lh.macro_cycles_used;
+                        let _ = self
+                            .tx_event
+                            .send(Event::status(format!(
+                                "long_horizon.macro_craft_start: {{\"task_id\":\"{task_id}\",\"agent_id\":\"{}\",\"macro_cycle\":{cycle}}}",
+                                outcome.agent_id
+                            )))
+                            .await;
+                        let _ = self
+                            .tx_event
+                            .send(Event::status(format!(
+                                "long_horizon.macro_phase: {{\"phase\":\"craft\",\"macro_cycle\":{cycle}}}"
+                            )))
+                            .await;
+                        self.long_horizon_continue_injected_this_turn = true;
+                        true
+                    }
+                    Err(err) => {
+                        let _ = self
+                            .tx_event
+                            .send(Event::status(format!(
+                                "long_horizon.macro_craft_start: {{\"error\":\"{err:?}\"}}"
+                            )))
+                            .await;
+                        false
+                    }
+                }
+            }
+            crate::long_horizon::LhtGateOutcome::MacroRemediation(msg) => {
+                Engine::add_session_message(self, msg).await;
+                self.long_horizon_continue_injected_this_turn = true;
+                let phase = self
+                    .runtime_ext()
+                    .long_horizon_state
+                    .macro_phase
+                    .as_str();
+                let _ = self
+                    .tx_event
+                    .send(Event::status(format!(
+                        "long_horizon.macro_phase: {{\"phase\":\"{phase}\"}}"
+                    )))
+                    .await;
+                true
+            }
+            crate::long_horizon::LhtGateOutcome::MacroUnmet {
+                remaining_blockers,
+                macro_cycles_used,
+            } => {
+                let count = remaining_blockers.len();
+                let _ = self
+                    .tx_event
+                    .send(Event::status(format!(
+                        "long_horizon.macro_unmet: {{\"remaining_blockers\":{count},\"macro_cycles_used\":{macro_cycles_used}}}"
+                    )))
+                    .await;
+                false
+            }
+            _ => false,
+        }
+    }
+
     async fn maybe_inject_incomplete_audit_continue(&mut self) -> bool {
         if self.scratchpad_audit_continue_injected_this_turn {
             return false;
@@ -78,6 +152,23 @@ impl Engine {
             .telemetry
             .converted;
 
+        let macro_cfg = lh_config.macro_loop.clone();
+        if macro_cfg.enabled {
+            let resume = crate::long_horizon::macro_loop::try_resume_pending_macro_remediation(
+                &workspace,
+                &mut self.runtime_ext_mut().long_horizon_state,
+                &macro_cfg,
+                &todos,
+                &locale,
+            )
+            .await;
+            if let Some(gate) = resume
+                && self.maybe_handle_macro_gate_outcome(gate).await
+            {
+                return true;
+            }
+        }
+
         let shell_manager = std::sync::Arc::clone(&self.runtime_ext().shell_manager);
         let cancel_token = self.0.cancel_token.clone();
         let gate_exec = crate::long_horizon::CompletionGateExec {
@@ -86,6 +177,7 @@ impl Engine {
         };
 
         let lht_mode_override = self.runtime_ext().turn_lht_mode;
+        let thread_id = self.session.id.clone();
         let input = crate::long_horizon::LongHorizonContinueInput {
             config: &lh_config,
             lht_mode_override,
@@ -99,6 +191,7 @@ impl Engine {
             plan_state: &plan_state,
             todos: &todos,
             session: &mut self.runtime_ext_mut().long_horizon_state,
+            thread_id: &thread_id,
             already_injected_this_turn: false,
             steps_remaining,
             gate_exec: Some(gate_exec),
@@ -272,6 +365,21 @@ impl Engine {
                     .await;
                 return true;
             }
+            crate::long_horizon::LhtGateOutcome::NudgeInsufficientVerify(msg) => {
+                Engine::add_session_message(self, msg).await;
+                self.long_horizon_continue_injected_this_turn = true;
+                let count = self
+                    .runtime_ext()
+                    .long_horizon_state
+                    .insufficient_verify_nudges;
+                let _ = self
+                    .tx_event
+                    .send(Event::status(format!(
+                        "long_horizon.insufficient_verify_nudge: {{\"count\":{count}}}"
+                    )))
+                    .await;
+                return true;
+            }
             crate::long_horizon::LhtGateOutcome::NudgePlanChecklistDrift(msg) => {
                 Engine::add_session_message(self, msg).await;
                 self.long_horizon_continue_injected_this_turn = true;
@@ -306,6 +414,11 @@ impl Engine {
                     .await;
                 return true;
             }
+            gate @ (crate::long_horizon::LhtGateOutcome::MacroCraftSpawn { .. }
+            | crate::long_horizon::LhtGateOutcome::MacroRemediation(_)
+            | crate::long_horizon::LhtGateOutcome::MacroUnmet { .. }) => {
+                return self.maybe_handle_macro_gate_outcome(gate).await;
+            }
             crate::long_horizon::LhtGateOutcome::Skip(reason) => {
                 // §4.9 observability: emit exactly which guard suppressed the nudge,
                 // alongside the engine-side state, so "it didn't fire" becomes
@@ -329,6 +442,24 @@ impl Engine {
                         graph.open_items,
                     )))
                     .await;
+
+                if reason == "macro_await_confirm" {
+                    let micro_passed = !self
+                        .runtime_ext()
+                        .long_horizon_state
+                        .macro_after_audit_unmet;
+                    let hint = crate::long_horizon::macro_loop::build_confirm_prompt(
+                        &self.config.locale_tag,
+                        micro_passed,
+                    );
+                    let _ = self
+                        .tx_event
+                        .send(Event::status(format!(
+                            "long_horizon.macro_phase: {{\"phase\":\"implement\",\"awaiting_confirm\":true,\"hint\":{}}}",
+                            serde_json::to_string(&hint).unwrap_or_else(|_| "\"\"".into())
+                        )))
+                        .await;
+                }
 
                 let blocked_now = self
                     .runtime_ext()
@@ -591,7 +722,59 @@ impl Engine {
         }
         if !completions.is_empty() {
             let count = completions.len();
+            let macro_craft_id = self
+                .runtime_ext()
+                .long_horizon_state
+                .macro_craft_agent_id
+                .clone();
+            let macro_task_id = self
+                .runtime_ext()
+                .long_horizon_state
+                .macro_task_id
+                .clone();
             for c in completions {
+                if macro_craft_id.as_deref() == Some(c.agent_id.as_str()) {
+                    if let Some(task_id) = macro_task_id.as_deref() {
+                        let workspace = self.session.workspace.clone();
+                        let todos = self.config_ext().todos.clone();
+                        let locale = self.config.locale_tag.clone();
+                        let macro_cfg = self.config.long_horizon.macro_loop.clone();
+                        if let Some(outcome) = crate::long_horizon::macro_loop::on_craft_review_complete(
+                            &workspace,
+                            task_id,
+                            &mut self.runtime_ext_mut().long_horizon_state,
+                            &macro_cfg,
+                            &todos,
+                            &locale,
+                        )
+                        .await
+                        {
+                            let blockers = match &outcome {
+                                crate::long_horizon::LhtGateOutcome::MacroUnmet {
+                                    remaining_blockers, ..
+                                } => remaining_blockers.len(),
+                                _ => 0,
+                            };
+                            let _ = self
+                                .tx_event
+                                .send(Event::status(format!(
+                                    "long_horizon.macro_craft_result: {{\"task_id\":\"{task_id}\",\"blockers_count\":{blockers}}}"
+                                )))
+                                .await;
+                            if self.maybe_handle_macro_gate_outcome(outcome).await {
+                                turn.next_step();
+                                return TurnLoopControl::Continue;
+                            }
+                        } else {
+                            let _ = self
+                                .tx_event
+                                .send(Event::status(format!(
+                                    "long_horizon.macro_craft_result: {{\"task_id\":\"{task_id}\",\"blockers_count\":0}}"
+                                )))
+                                .await;
+                        }
+                    }
+                }
                 let workspace = self.0.session.workspace.clone();
                 self.0
                     .session
@@ -731,7 +914,138 @@ impl Engine {
             return TurnLoopControl::Continue;
         }
 
+        if self
+            .maybe_await_macro_craft_completion(turn)
+            .await
+            .is_some()
+        {
+            return TurnLoopControl::Continue;
+        }
+
         TurnLoopControl::Break
+    }
+
+    /// Hold the turn open while LHT CRAFT review runs, then inject remediation.
+    async fn maybe_await_macro_craft_completion(
+        &mut self,
+        turn: &mut TurnContext,
+    ) -> Option<()> {
+        if self
+            .runtime_ext()
+            .long_horizon_state
+            .macro_craft_agent_id
+            .is_none()
+        {
+            return None;
+        }
+
+        let rx = Arc::clone(&self.runtime_ext().rx_subagent_completion);
+        let manager = Arc::clone(&self.runtime_ext().subagent_manager);
+        let running = manager.write().await.running_count();
+        if running == 0 {
+            let workspace = self.session.workspace.clone();
+            let todos = self.config_ext().todos.clone();
+            let locale = self.config.locale_tag.clone();
+            let macro_cfg = self.config.long_horizon.macro_loop.clone();
+            if let Some(outcome) =
+                crate::long_horizon::macro_loop::try_resume_pending_macro_remediation(
+                    &workspace,
+                    &mut self.runtime_ext_mut().long_horizon_state,
+                    &macro_cfg,
+                    &todos,
+                    &locale,
+                )
+                .await
+                && self.maybe_handle_macro_gate_outcome(outcome).await
+            {
+                turn.next_step();
+                return Some(());
+            }
+            return None;
+        }
+
+        let _ = self
+            .tx_event
+            .send(Event::status(format!(
+                "Waiting on CRAFT review sub-agent ({running} sub-agent(s) running)..."
+            )))
+            .await;
+
+        let cancel = self.0.cancel_token.clone();
+        let mut completions: Vec<crate::tools::subagent::SubAgentCompletion> = Vec::new();
+        tokio::select! {
+            biased;
+            () = cancel.cancelled() => {
+                let _ = self
+                    .tx_event
+                    .send(Event::status(
+                        "Request cancelled while waiting for CRAFT review",
+                    ))
+                    .await;
+                return None;
+            }
+            Some(c) = {
+                let rx_wait = Arc::clone(&rx);
+                async move { rx_wait.lock().await.recv().await }
+            } => {
+                completions.push(c);
+                if let Ok(mut guard) = rx.try_lock() {
+                    while let Ok(extra) = guard.try_recv() {
+                        completions.push(extra);
+                    }
+                }
+            }
+        }
+
+        let macro_craft_id = self
+            .runtime_ext()
+            .long_horizon_state
+            .macro_craft_agent_id
+            .clone();
+        let macro_task_id = self
+            .runtime_ext()
+            .long_horizon_state
+            .macro_task_id
+            .clone();
+        for c in completions {
+            if macro_craft_id.as_deref() == Some(c.agent_id.as_str()) {
+                if let Some(task_id) = macro_task_id.as_deref() {
+                    let workspace = self.session.workspace.clone();
+                    let todos = self.config_ext().todos.clone();
+                    let locale = self.config.locale_tag.clone();
+                    let macro_cfg = self.config.long_horizon.macro_loop.clone();
+                    if let Some(outcome) =
+                        crate::long_horizon::macro_loop::on_craft_review_complete(
+                            &workspace,
+                            task_id,
+                            &mut self.runtime_ext_mut().long_horizon_state,
+                            &macro_cfg,
+                            &todos,
+                            &locale,
+                        )
+                        .await
+                    {
+                        let blockers = match &outcome {
+                            crate::long_horizon::LhtGateOutcome::MacroUnmet {
+                                remaining_blockers, ..
+                            } => remaining_blockers.len(),
+                            _ => 0,
+                        };
+                        let _ = self
+                            .tx_event
+                            .send(Event::status(format!(
+                                "long_horizon.macro_craft_result: {{\"task_id\":\"{task_id}\",\"blockers_count\":{blockers}}}"
+                            )))
+                            .await;
+                        if self.maybe_handle_macro_gate_outcome(outcome).await {
+                            turn.next_step();
+                            return Some(());
+                        }
+                    }
+                }
+            }
+        }
+        None
     }
 }
 

@@ -17,6 +17,8 @@ pub(crate) struct SubAgentSpawnOptions {
     pub task_id: Option<String>,
     /// Scratchpad run bound at spawn (audit multi-run isolation).
     pub scratchpad_run_id: Option<String>,
+    /// Basename of spawn `cwd` for display labels when prompt lacks scope metadata.
+    pub cwd_label: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -79,6 +81,8 @@ pub(crate) struct SpawnRequest {
     /// Optional task id for blackboard association (CRAFT P1).
     /// When set, the child reads/writes `.deepseek/blackboards/{task_id}.json`.
     pub(crate) task_id: Option<String>,
+    /// Optional UI label override (also accepted as `display_name` on spawn tools).
+    pub(crate) nickname: Option<String>,
 }
 
 #[derive(Debug, Clone)]

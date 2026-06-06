@@ -128,6 +128,17 @@ pub async fn run_http_server(
             .context("Failed to create SessionManager")?,
     );
 
+    let mut shared_mcp_pool = crate::mcp::McpPool::from_config_path(&config.mcp_config_path())
+        .context("Failed to load MCP config for shared pool")?;
+    if let Some(network_toml) = config.network.clone() {
+        let decider = crate::network_policy::NetworkPolicyDecider::with_default_audit(
+            network_toml.into_runtime(),
+        );
+        shared_mcp_pool = shared_mcp_pool.with_network_policy(decider);
+    }
+    let shared_mcp_pool = Arc::new(tokio::sync::Mutex::new(shared_mcp_pool));
+    crate::mcp_shared::install_shared_mcp_pool(Arc::clone(&shared_mcp_pool));
+
     let token_fp = token_fingerprint.as_ref().clone();
     let state = RuntimeApiState::new(
         config.clone(),
@@ -142,6 +153,7 @@ pub async fn run_http_server(
         token_fingerprint,
         shared_session_manager,
         ResumeTaskTracker::new(),
+        shared_mcp_pool,
     );
     let app = build_router(state);
 

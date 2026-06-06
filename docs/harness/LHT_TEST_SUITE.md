@@ -62,6 +62,10 @@ DEMO3–5 都选了 [*Writing an Interpreter in Go*](https://interpreterbook.com
 >
 > **盲测对比（仅目标 · 无过程）：** [**DEMO8**](./test-cases/DEMO8-monkey-blind-goal-only.md) — 同最终 oracle（DEMO7 §4），prompt **不写**步骤/脚本名/行数阈值；用于 Zagens / OpenCode / Cursor 公平对比「自主拆解 vs 显式 harness」。
 
+### 2.2 存量审计实证：CMS-AUDIT（CMS02，2026-06）
+
+[`cms-full-code-audit.md`](./test-cases/cms-full-code-audit.md) 记录 **F:\CMS框架** **CMS02 全链路跑通（✅）**：**221 源文件、19 区域、12 Explore、5 项 `[verify:]` 多轮真绿、HIGH×13 报告、19 处类型清理、P0×5+P1×3 修复、checklist 9/9·100%、终验 `tsc` exit 0**。价值在于证明 LHT 与 CRAFT **无意组合**即可撑起「审→验→修→再验」——单 thread 内无需用户切换模式。诚实边界：P2 设计器残留与部分 HIGH 未收口（见案例 §9.5）。后续 **CMS-L** / **CMS-XL** 沿用同一 oracle 骨架。
+
 ---
 
 ## 3. 推荐扩展案例（外部经典，按 harness 能力分组）
@@ -73,6 +77,7 @@ DEMO3–5 都选了 [*Writing an Interpreter in Go*](https://interpreterbook.com
 | **强制续写（§4）+ 验收纪律** | 光线追踪器（*Ray Tracing in One Weekend*）、Crafting Interpreters（Lox） | 渐进式叠特性，中途留 pending 项可测「不早停」 | 渲染输出像素比对 / 解释器测试套件 |
 | **Cycle + 交接** | SQLite-clone（cstack 教程）、库级生成（Long Code Arena） | 状态强依赖、超单窗，逼出换脑 + carry_forward | 自带集成测试 / 库 API 编译 |
 | **接口稳定性 + 重构抗性 + cycle 交接** | **MicroStack（Go 微服务框架，1.5–4 万行）** — 见 [`test-cases/microstack-framework.md`](./test-cases/microstack-framework.md) | 15+ 互相依赖包 + 跨模块接口契约 → 测长期架构稳定性 + 非破坏性修改（解释器/Redis 测不到）；cycle 走「验证跑 A」低阈值单长 turn | `go build/vet/gofmt/test -cover` + **`git diff contracts/` 零改动** + Router 换 trie 后测试全绿 + Todo e2e |
+| **存量全库审计 + LHT↔CRAFT 审修闭环** | **CMS 单体（TypeScript/Vue，~221 文件）** — 见 [`test-cases/cms-full-code-audit.md`](./test-cases/cms-full-code-audit.md)（首跑 **CMS02**） | 19 区域并行 Explore + scratchpad + 可交付 DOCX 报告 + **审→验→修→再验**；与 MicroStack（从零搭建）互补；对标 OpenCode 存量审计族 | `tsc`/`vue-tsc` exit 0 + 报告存在 + inventory 全 done + scratchpad 笔记数；夹具 [`fixtures/cms-audit-completion-gate.toml`](./fixtures/cms-audit-completion-gate.toml) |
 | **并行 fan-out/join + 契约闸门** | CodeCrafters「Build your own Redis / Git / HTTP server」、全栈 CRUD（TodoMVC） | 协议/接口即天然契约，模块边界清晰 → 验 P0.5/P1.5 | 协议官方测试用例 / 端到端 e2e |
 | **修复 / 重构（不可并行，验 §1.2）** | SWE-bench Verified 小样本（500 题取子集） | 真实 issue + 仓库自带测试判定，已存在代码耦合 | 仓库 `pytest` / 复现脚本 |
 | **算法生成（防污染）** | LiveCodeBench、Exercism（Aider polyglot 同源） | 持续更新题库，测纯生成 + 多语言编辑纪律 | 题目自带测试 |
@@ -161,3 +166,5 @@ prompt：<一句话目标，显式点名易漏特性>
 **文档修订记录:**
 - 2026-05-30 创建:编纂 DEMO2–DEMO5 真实压测为黄金回归案例 + 外部经典案例映射 + `[verify:]` 编写规范 + 最小回归集。
 - 2026-05-30 更新 DEMO3 行 + §5 信号表:记录 B（`unverified_acceptance` 软门禁）落地后连跑 5 次 5/5 真绿验证、`unverified_acceptance_nudge` 纳入观测信号、旧 `graph_complete` 假绿出口归零。
+- 2026-06-05 新增 §2.2 + §3 行：**CMS-AUDIT（CMS02）** 存量全库审计案例（`test-cases/cms-full-code-audit.md` + `fixtures/cms-audit-completion-gate.toml`）；预留 CMS-L / CMS-XL 规模梯度。
+- 2026-06-05 §2.2 终态：CMS02 全链路签收（审计+verify+类型清理+P0/P1+终验）。

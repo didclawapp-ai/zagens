@@ -55,8 +55,11 @@ impl Engine {
         if self.config.snapshots_enabled {
             let pre_workspace = self.session.workspace.clone();
             let pre_seq = self.turn_counter;
-            let _ = tokio::task::spawn_blocking(move || pre_turn_snapshot(&pre_workspace, pre_seq))
-                .await;
+            let max_gb = self.config.snapshots_max_workspace_gb;
+            let _ = tokio::task::spawn_blocking(move || {
+                pre_turn_snapshot(&pre_workspace, pre_seq, max_gb)
+            })
+            .await;
         }
 
         // Emit turn started event
@@ -342,8 +345,9 @@ impl Engine {
         if self.config.snapshots_enabled {
             let post_workspace = self.session.workspace.clone();
             let post_seq = self.turn_counter;
+            let max_gb = self.config.snapshots_max_workspace_gb;
             crate::utils::spawn_blocking_supervised("post-turn-snapshot", move || {
-                post_turn_snapshot(&post_workspace, post_seq);
+                post_turn_snapshot(&post_workspace, post_seq, max_gb);
             });
         }
     }

@@ -37,7 +37,11 @@ pub(crate) enum MockApprovalEvent {
 impl MockEngineHandle {
     pub(crate) async fn recv_approval_event(&mut self) -> Option<MockApprovalEvent> {
         match self.rx_approval.recv().await? {
-            ApprovalDecision::Approved { id } => Some(MockApprovalEvent::Approved { id }),
+            ApprovalDecision::Approved {
+                id,
+                cache_key: _,
+                remember_for_session: _,
+            } => Some(MockApprovalEvent::Approved { id }),
             ApprovalDecision::Denied { id } => Some(MockApprovalEvent::Denied { id }),
             ApprovalDecision::RetryWithPolicy { id, policy } => {
                 Some(MockApprovalEvent::RetryWithPolicy { id, policy })

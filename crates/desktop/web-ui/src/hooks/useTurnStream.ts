@@ -8,12 +8,18 @@ import {
   type MutableRefObject,
   type SetStateAction,
 } from 'react';
+import { getThreadDetail, threadTurnStillActive } from '../api/client';
 import { stopThreadTurn } from '../api/turnControl';
 import { toast } from '../lib/toast';
 
+export type FinishOnceOptions = {
+  /** Skip backend active-turn re-lock (user Stop or local start failure). */
+  force?: boolean;
+};
+
 export type StreamSessionControl = {
   markInterrupted: () => void;
-  finishOnce: () => void;
+  finishOnce: (options?: FinishOnceOptions) => void;
 };
 
 export type UseTurnStreamParams = {
@@ -78,6 +84,9 @@ export function useTurnStream({
     setPendingComposerStream(false);
   }, []);
 
+  const onCancelSideEffectsRef = useRef(onCancelSideEffects);
+  onCancelSideEffectsRef.current = onCancelSideEffects;
+
   const handleCancelStream = useCallback(() => {
     cancelCleanupRef?.current?.();
     const { threadId, turnId } = threadTurnRef.current;
@@ -86,25 +95,42 @@ export function useTurnStream({
       streamControllersRef.current.get('__pending__') ??
       undefined;
 
-    void stopThreadTurn({ threadId, turnId, streamControl }).catch((e) => {
-      const err = e as Error & { status?: number };
-      if (err.status === 409) {
-        return;
+    void (async () => {
+      let resolvedTurnId = turnId;
+      if (threadId && !resolvedTurnId.trim()) {
+        try {
+          const detail = await getThreadDetail(threadId);
+          const latest = detail.thread.latest_turn_id ?? '';
+          if (latest && (await threadTurnStillActive(threadId, latest))) {
+            resolvedTurnId = latest;
+            threadTurnRef.current = { threadId, turnId: latest };
+          }
+        } catch {
+          /* best-effort — still tear down local UI */
+        }
       }
-      toast.warning(t('composer.interruptFailed', { message: err.message || String(e) }));
-    });
 
-    const session = streamSessionRef.current;
-    if (session) {
-      session.markInterrupted();
-      session.finishOnce();
-    } else {
-      setStreamingThreadIds(new Set());
-      setPendingComposerStream(false);
-    }
+      try {
+        await stopThreadTurn({ threadId, turnId: resolvedTurnId, streamControl });
+      } catch (e) {
+        const err = e as Error & { status?: number };
+        if (err.status !== 409) {
+          toast.warning(t('composer.interruptFailed', { message: err.message || String(e) }));
+        }
+      }
 
-    onCancelSideEffects();
-  }, [cancelCleanupRef, onCancelSideEffects, t]);
+      const session = streamSessionRef.current;
+      if (session) {
+        session.markInterrupted();
+        session.finishOnce({ force: true });
+      } else {
+        setStreamingThreadIds(new Set());
+        setPendingComposerStream(false);
+      }
+
+      onCancelSideEffectsRef.current();
+    })();
+  }, [cancelCleanupRef, streamControllersRef, t, threadTurnRef]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

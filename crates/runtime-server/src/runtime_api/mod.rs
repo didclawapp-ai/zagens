@@ -37,7 +37,7 @@ pub(crate) use office::get_office_environment;
 pub(crate) use workspace::workspace_status;
 pub(crate) use mcp::{
     add_mcp_server, delete_mcp_server, get_mcp_server, list_mcp_servers, list_mcp_tools,
-    merge_mcp_config_json, update_mcp_server,
+    discover_mcp, list_mcp_calls, merge_mcp_config_json, reload_mcp_config, update_mcp_server,
 };
 pub(crate) use sessions::{
     delete_session, get_resume_task, get_session, list_sessions, resume_session_thread,
@@ -75,6 +75,8 @@ pub struct RuntimeApiState {
     token_fingerprint: Arc<String>,
     shared_session_manager: Arc<SessionManager>,
     resume_tracker: sessions::ResumeTaskTracker,
+    /// Shared MCP connection pool (hot-reload target for all engines).
+    shared_mcp_pool: std::sync::Arc<tokio::sync::Mutex<crate::mcp::McpPool>>,
 }
 
 impl RuntimeApiState {
@@ -92,6 +94,7 @@ impl RuntimeApiState {
         token_fingerprint: Arc<String>,
         shared_session_manager: Arc<SessionManager>,
         resume_tracker: sessions::ResumeTaskTracker,
+        shared_mcp_pool: std::sync::Arc<tokio::sync::Mutex<crate::mcp::McpPool>>,
     ) -> Self {
         Self {
             config,
@@ -106,6 +109,7 @@ impl RuntimeApiState {
             token_fingerprint,
             shared_session_manager,
             resume_tracker,
+            shared_mcp_pool,
         }
     }
 }

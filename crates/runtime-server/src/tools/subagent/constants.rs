@@ -29,6 +29,8 @@ pub(crate) const COMPLETED_AGENT_RETENTION: Duration = Duration::from_secs(60 * 
 pub(crate) const ZOMBIE_SCAN_INTERVAL: Duration = Duration::from_secs(30);
 /// Extra idle time beyond a step's API timeout before flagging `stuck_suspected`.
 pub(crate) const STUCK_IDLE_BUFFER: Duration = Duration::from_secs(60);
+/// Default idle window before maintenance auto-cancels a running sub-agent.
+pub(crate) const DEFAULT_SUBAGENT_HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(300);
 
 pub(crate) fn compute_stuck_suspected(
     status: &deepseek_core::subagent::SubAgentStatus,
@@ -63,71 +65,6 @@ pub(crate) fn adaptive_wait_timeout_ms(
 
 pub(crate) const VALID_SUBAGENT_TYPES: &str = "general, explore, plan, review, implementer, verifier, custom, \
      worker, explorer, awaiter, default, implement, builder, verify, validator, tester";
-/// Whale species names rotated through `whale_nickname_for_index` to label
-/// sub-agents in the UI. English and Simplified-Chinese names are interleaved
-/// so any newly spawned agent has a roughly even chance of either — the goal
-/// is friendly variety, not a strict locale match.
-pub const WHALE_NICKNAMES: &[&str] = &[
-    "Blue",
-    "蓝鲸",
-    "Humpback",
-    "座头鲸",
-    "Sperm",
-    "抹香鲸",
-    "Fin",
-    "长须鲸",
-    "Sei",
-    "塞鲸",
-    "Bryde's",
-    "布氏鲸",
-    "Minke",
-    "小须鲸",
-    "Antarctic Minke",
-    "南极小须鲸",
-    "Gray",
-    "灰鲸",
-    "Bowhead",
-    "弓头鲸",
-    "North Atlantic Right",
-    "北大西洋露脊鲸",
-    "North Pacific Right",
-    "北太平洋露脊鲸",
-    "Southern Right",
-    "南露脊鲸",
-    "Beluga",
-    "白鲸",
-    "Narwhal",
-    "独角鲸",
-    "Orca",
-    "虎鲸",
-    "Pilot",
-    "领航鲸",
-    "False Killer",
-    "伪虎鲸",
-    "Pygmy Killer",
-    "小虎鲸",
-    "Melon-headed",
-    "瓜头鲸",
-    "Beaked",
-    "喙鲸",
-    "Cuvier's Beaked",
-    "柯氏喙鲸",
-    "Baird's Beaked",
-    "贝氏喙鲸",
-    "Blainville's Beaked",
-    "柏氏喙鲸",
-];
-
 /// Removal version for deprecated tool aliases.
 pub(crate) const DEPRECATION_REMOVAL_VERSION: &str = "0.8.0";
-
-#[must_use]
-pub fn whale_nickname_for_index(index: usize) -> String {
-    let base = WHALE_NICKNAMES[index % WHALE_NICKNAMES.len()];
-    if index < WHALE_NICKNAMES.len() {
-        base.to_string()
-    } else {
-        format!("{base} {}", index / WHALE_NICKNAMES.len() + 1)
-    }
-}
 

@@ -17,6 +17,11 @@ export interface CachedUiMessage {
 
 const MAX_CACHED_SESSIONS = 24;
 const STORAGE_KEY = 'deepseek-desktop-session-ui-v1';
+const STORAGE_META_KEY = 'deepseek-desktop-session-ui-meta-v1';
+
+type CacheAccessMeta = {
+  accessedAt: Record<string, number>;
+};
 
 function cloneMessages(msgs: CachedUiMessage[]): CachedUiMessage[] {
   return msgs.map((m) => ({
@@ -47,30 +52,81 @@ function writeDiskStore(store: Record<string, CachedUiMessage[]>): void {
   }
 }
 
+function readAccessMeta(): CacheAccessMeta {
+  try {
+    const raw = localStorage.getItem(STORAGE_META_KEY);
+    if (!raw) {
+      return { accessedAt: {} };
+    }
+    const parsed = JSON.parse(raw) as CacheAccessMeta;
+    if (!parsed || typeof parsed !== 'object' || !parsed.accessedAt) {
+      return { accessedAt: {} };
+    }
+    return parsed;
+  } catch {
+    return { accessedAt: {} };
+  }
+}
+
+function writeAccessMeta(meta: CacheAccessMeta): void {
+  try {
+    localStorage.setItem(STORAGE_META_KEY, JSON.stringify(meta));
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+function touchSessionAccess(sessionId: string): void {
+  const meta = readAccessMeta();
+  meta.accessedAt[sessionId] = Date.now();
+  writeAccessMeta(meta);
+}
+
+function evictOldestSessions(
+  store: Record<string, CachedUiMessage[]>,
+  maxSessions: number,
+): void {
+  const meta = readAccessMeta();
+  const ids = Object.keys(store);
+  while (ids.length > maxSessions) {
+    let oldestId = ids[0];
+    let oldestAt = meta.accessedAt[oldestId] ?? 0;
+    for (const id of ids) {
+      const at = meta.accessedAt[id] ?? 0;
+      if (at < oldestAt) {
+        oldestAt = at;
+        oldestId = id;
+      }
+    }
+    delete store[oldestId];
+    delete meta.accessedAt[oldestId];
+    ids.splice(ids.indexOf(oldestId), 1);
+  }
+  writeAccessMeta(meta);
+}
+
 function persistDisk(sessionId: string, messages: CachedUiMessage[]): void {
   if (!sessionId || messages.length === 0) {
     return;
   }
   const store = readDiskStore();
   store[sessionId] = cloneMessages(messages);
-  const keys = Object.keys(store);
-  while (keys.length > MAX_CACHED_SESSIONS) {
-    const oldest = keys.shift();
-    if (!oldest) {
-      break;
-    }
-    delete store[oldest];
-  }
+  touchSessionAccess(sessionId);
+  evictOldestSessions(store, MAX_CACHED_SESSIONS);
   writeDiskStore(store);
 }
 
 /** Load UI snapshot from localStorage (survives app restart). */
 export function loadPersistedSessionUiMessages(sessionId: string): CachedUiMessage[] | undefined {
   const hit = readDiskStore()[sessionId];
-  return hit?.length ? cloneMessages(hit) : undefined;
+  if (!hit?.length) {
+    return undefined;
+  }
+  touchSessionAccess(sessionId);
+  return cloneMessages(hit);
 }
 
-/** Store a snapshot; evict oldest entries when over capacity. */
+/** Store a snapshot; evict least-recently-used entries when over capacity. */
 export function cacheSessionUiMessages(
   cache: Map<string, CachedUiMessage[]>,
   sessionId: string,
@@ -82,12 +138,27 @@ export function cacheSessionUiMessages(
   const cloned = cloneMessages(messages);
   cache.set(sessionId, cloned);
   persistDisk(sessionId, cloned);
+  touchSessionAccess(sessionId);
   while (cache.size > MAX_CACHED_SESSIONS) {
-    const oldest = cache.keys().next().value;
-    if (!oldest) {
-      break;
+    const meta = readAccessMeta();
+    let oldestId: string | undefined;
+    let oldestAt = Number.POSITIVE_INFINITY;
+    for (const id of cache.keys()) {
+      const at = meta.accessedAt[id] ?? 0;
+      if (at < oldestAt) {
+        oldestAt = at;
+        oldestId = id;
+      }
     }
-    cache.delete(oldest);
+    if (!oldestId) {
+      const first = cache.keys().next().value;
+      if (!first) {
+        break;
+      }
+      cache.delete(first);
+      continue;
+    }
+    cache.delete(oldestId);
   }
 }
 
@@ -97,6 +168,7 @@ export function getCachedSessionUiMessages(
 ): CachedUiMessage[] | undefined {
   const mem = cache.get(sessionId);
   if (mem?.length) {
+    touchSessionAccess(sessionId);
     return cloneMessages(mem);
   }
   return loadPersistedSessionUiMessages(sessionId);

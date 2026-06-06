@@ -1,6 +1,9 @@
 import { useT } from '../i18n';
 
 const CARD_IDS = [
+  'executiveDailyBrief',
+  'customerQuote',
+  'productionDailyReport',
   'weeklyReport',
   'meetingMinutes',
   'projectDeck',

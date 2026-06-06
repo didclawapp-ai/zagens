@@ -39,6 +39,7 @@ pub struct PendingApproval {
     pub thread_id: String,
     pub turn_id: String,
     pub tool_call_id: String,
+    pub approval_key: String,
     pub deadline: tokio::time::Instant,
 }
 

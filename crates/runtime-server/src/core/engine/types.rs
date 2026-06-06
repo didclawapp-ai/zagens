@@ -40,6 +40,10 @@ pub struct EngineConfigExt {
     pub topic_memory: crate::topic_memory::TopicMemorySettings,
     /// Workshop / large-tool-output routing (#548). `None` disables routing.
     pub workshop: Option<crate::tools::large_output_router::WorkshopConfig>,
+    /// Active web search provider (from `[search] provider`).
+    pub search_provider: crate::config::SearchProvider,
+    /// API key for the active search provider.
+    pub search_api_key: Option<String>,
     /// Test/dev override: skip `DeepSeekClient::new` and use this client.
     #[doc(hidden)]
     pub llm_client_override: Option<std::sync::Arc<dyn crate::llm_client::LlmClient>>,
@@ -55,6 +59,8 @@ impl Default for EngineConfigExt {
             runtime_services: RuntimeToolServices::default(),
             topic_memory: crate::topic_memory::TopicMemorySettings::default(),
             workshop: None,
+            search_provider: crate::config::SearchProvider::default(),
+            search_api_key: None,
             llm_client_override: None,
         }
     }
@@ -117,6 +123,8 @@ pub struct EngineConfig {
     pub network_policy: Option<crate::network_policy::NetworkPolicyDecider>,
     /// Whether to take side-git workspace snapshots before/after each turn.
     pub snapshots_enabled: bool,
+    /// Skip side-git when workspace tree exceeds this size (GB).
+    pub snapshots_max_workspace_gb: f64,
     /// Post-edit LSP diagnostics injection (#136). When `None`, the engine
     /// constructs a disabled manager so the field is always present.
     pub lsp_config: Option<crate::lsp::LspConfig>,
@@ -153,6 +161,10 @@ pub struct EngineConfig {
     /// Test/dev override: skip `DeepSeekClient::new` and use this client instead.
     #[doc(hidden)]
     pub llm_client_override: Option<std::sync::Arc<dyn crate::llm_client::LlmClient>>,
+    /// Active web search provider (from `[search] provider`).
+    pub search_provider: crate::config::SearchProvider,
+    /// API key for the active search provider.
+    pub search_api_key: Option<String>,
 }
 
 impl Default for EngineConfig {
@@ -180,6 +192,8 @@ impl Default for EngineConfig {
             max_spawn_depth: crate::tools::subagent::DEFAULT_MAX_SPAWN_DEPTH,
             network_policy: None,
             snapshots_enabled: true,
+            snapshots_max_workspace_gb:
+                deepseek_runtime_adapters::snapshot::DEFAULT_SNAPSHOT_MAX_WORKSPACE_GB,
             lsp_config: None,
             runtime_services: RuntimeToolServices::default(),
             subagent_model_overrides: HashMap::new(),
@@ -194,6 +208,8 @@ impl Default for EngineConfig {
             scratchpad: crate::scratchpad::ScratchpadConfig::default(),
             long_horizon: deepseek_core::long_horizon::LongHorizonConfig::default(),
             llm_client_override: None,
+            search_provider: crate::config::SearchProvider::default(),
+            search_api_key: None,
         }
     }
 }
@@ -228,6 +244,7 @@ impl EngineConfig {
             capacity: self.capacity.clone(),
             max_spawn_depth: self.max_spawn_depth,
             snapshots_enabled: self.snapshots_enabled,
+            snapshots_max_workspace_gb: self.snapshots_max_workspace_gb,
             subagent_model_overrides: self.subagent_model_overrides.clone(),
             memory_enabled: self.memory_enabled,
             memory_path: self.memory_path.clone(),
@@ -252,6 +269,8 @@ impl EngineConfig {
             runtime_services: self.runtime_services.clone(),
             topic_memory: self.topic_memory.clone(),
             workshop: self.workshop.clone(),
+            search_provider: self.search_provider.clone(),
+            search_api_key: self.search_api_key.clone(),
             llm_client_override: self.llm_client_override.clone(),
         }
     }
@@ -280,6 +299,7 @@ impl EngineConfig {
             capacity: self.capacity,
             max_spawn_depth: self.max_spawn_depth,
             snapshots_enabled: self.snapshots_enabled,
+            snapshots_max_workspace_gb: self.snapshots_max_workspace_gb,
             subagent_model_overrides: self.subagent_model_overrides,
             memory_enabled: self.memory_enabled,
             memory_path: self.memory_path,
@@ -298,6 +318,8 @@ impl EngineConfig {
             runtime_services: self.runtime_services,
             topic_memory: self.topic_memory,
             workshop: self.workshop,
+            search_provider: self.search_provider,
+            search_api_key: self.search_api_key,
             llm_client_override: self.llm_client_override,
         };
         (lean, ext)
@@ -333,6 +355,7 @@ impl EngineConfig {
             max_spawn_depth: lean.max_spawn_depth,
             network_policy: ext.network_policy,
             snapshots_enabled: lean.snapshots_enabled,
+            snapshots_max_workspace_gb: lean.snapshots_max_workspace_gb,
             lsp_config: ext.lsp_config,
             runtime_services: ext.runtime_services,
             subagent_model_overrides: lean.subagent_model_overrides,
@@ -347,6 +370,8 @@ impl EngineConfig {
             scratchpad: lean.scratchpad,
             long_horizon: lean.long_horizon,
             llm_client_override: ext.llm_client_override,
+            search_provider: ext.search_provider,
+            search_api_key: ext.search_api_key,
         }
     }
 }

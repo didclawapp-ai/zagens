@@ -28,7 +28,7 @@ use std::future::Future;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
-#[cfg(test)]
+mod error_body;
 pub mod mock;
 
 // === LlmClient Trait ===
@@ -155,12 +155,13 @@ impl LlmError {
     /// - Status code (429 = rate limit, 401/403 = auth, 5xx = server error)
     /// - Response body keywords (`context_length`, `content_policy`, safety, etc.)
     pub fn from_http_response(status: u16, body: &str) -> Self {
+        let body = error_body::truncate_http_error_body(body);
         match status {
             429 => LlmError::RateLimited {
-                message: body.to_string(),
+                message: body,
                 retry_after: None,
             },
-            401 | 403 => LlmError::AuthenticationError(body.to_string()),
+            401 | 403 => LlmError::AuthenticationError(body),
             400 => {
                 // Classify 400 errors by examining the response body
                 let body_lower = body.to_lowercase();
@@ -169,35 +170,35 @@ impl LlmError {
                     || body_lower.contains("too long")
                     || body_lower.contains("maximum")
                 {
-                    LlmError::ContextLengthError(body.to_string())
+                    LlmError::ContextLengthError(body)
                 } else if body_lower.contains("content_policy")
                     || body_lower.contains("safety")
                     || body_lower.contains("harmful")
                     || body_lower.contains("inappropriate")
                 {
-                    LlmError::ContentPolicyError(body.to_string())
+                    LlmError::ContentPolicyError(body)
                 } else if body_lower.contains("model") && body_lower.contains("not found") {
-                    LlmError::ModelError(body.to_string())
+                    LlmError::ModelError(body)
                 } else {
                     LlmError::InvalidRequest {
                         status,
-                        message: body.to_string(),
+                        message: body,
                     }
                 }
             }
             404 => {
                 if body.to_lowercase().contains("model") {
-                    LlmError::ModelError(body.to_string())
+                    LlmError::ModelError(body)
                 } else {
                     LlmError::InvalidRequest {
                         status,
-                        message: body.to_string(),
+                        message: body,
                     }
                 }
             }
             500..=599 => LlmError::ServerError {
                 status,
-                message: body.to_string(),
+                message: body,
             },
             _ => LlmError::Other(format!("HTTP {status}: {body}")),
         }

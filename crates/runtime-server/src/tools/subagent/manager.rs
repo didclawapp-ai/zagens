@@ -17,6 +17,7 @@ use deepseek_core::subagent::{
 };
 
 use super::constants::*;
+use super::nickname::{DeriveSubagentNicknameInput, derive_subagent_nickname};
 use super::registry::build_allowed_tools;
 use super::resident::release_resident_leases_for;
 use super::executor::{run_subagent_task, SubAgentTask};
@@ -35,6 +36,8 @@ pub struct SubAgentManager {
     state_path: Option<PathBuf>,
     max_steps: u32,
     max_agents: usize,
+    /// Cancel running agents with no progress longer than this idle window.
+    heartbeat_timeout: Duration,
     /// Stable id assigned at manager construction (#405). Stamped on
     /// every agent the manager spawns; agents loaded from the
     /// persisted state file carry whatever id the prior session
@@ -54,6 +57,7 @@ impl SubAgentManager {
             state_path: None,
             max_steps: DEFAULT_MAX_STEPS,
             max_agents,
+            heartbeat_timeout: DEFAULT_SUBAGENT_HEARTBEAT_TIMEOUT,
             // Fresh boot id per manager. Used by #405 to classify
             // re-loaded persisted agents as "prior session".
             current_session_boot_id: format!("boot_{}", &Uuid::new_v4().to_string()[..12]),
@@ -78,6 +82,12 @@ impl SubAgentManager {
     #[must_use]
     pub(crate) fn with_state_path(mut self, path: PathBuf) -> Self {
         self.state_path = Some(path);
+        self
+    }
+
+    #[must_use]
+    pub(crate) fn with_heartbeat_timeout(mut self, timeout: Duration) -> Self {
+        self.heartbeat_timeout = timeout;
         self
     }
 
@@ -296,9 +306,28 @@ impl SubAgentManager {
             runtime.model = model.to_string();
         }
         let effective_model = runtime.model.clone();
+        let type_index = self
+            .agents
+            .values()
+            .filter(|agent| agent.agent_type == agent_type)
+            .count()
+            .saturating_add(1);
         let nickname = options
             .nickname
-            .or_else(|| Some(whale_nickname_for_index(self.agents.len())));
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .or_else(|| {
+                Some(derive_subagent_nickname(DeriveSubagentNicknameInput {
+                    agent_type: &agent_type,
+                    prompt: &prompt,
+                    assignment: &assignment,
+                    task_id: options.task_id.as_deref(),
+                    cwd_label: options.cwd_label.as_deref(),
+                    type_index,
+                }))
+            });
         let tools = build_allowed_tools(&agent_type, allowed_tools, runtime.allow_shell)?;
         let (input_tx, input_rx) = mpsc::unbounded_channel();
         let max_steps = self.max_steps;
@@ -799,9 +828,91 @@ impl SubAgentManager {
         }
     }
 
-    /// Periodic maintenance: zombie scan (P2-10). Cheap enough to run every 30s.
+    /// Periodic maintenance: zombie scan (P2-10) and heartbeat auto-cancel.
     pub(crate) fn run_maintenance(&mut self) {
         self.ensure_consistency();
+        self.cancel_stale_on_heartbeat();
+    }
+
+    /// Cancel running agents that exceeded the idle heartbeat window.
+    fn cancel_stale_on_heartbeat(&mut self) {
+        let timeout = self.heartbeat_timeout;
+        if timeout.is_zero() {
+            return;
+        }
+        let stale_ids: Vec<String> = self
+            .agents
+            .iter()
+            .filter_map(|(id, agent)| {
+                if agent.status != SubAgentStatus::Running {
+                    return None;
+                }
+                let handle_live = agent
+                    .task_handle
+                    .as_ref()
+                    .is_some_and(|h| !h.is_finished());
+                if !handle_live {
+                    return None;
+                }
+                if agent.last_progress_at.elapsed() > timeout {
+                    Some(id.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        for id in stale_ids {
+            let idle_secs = self
+                .agents
+                .get(&id)
+                .map(|a| a.last_progress_at.elapsed().as_secs())
+                .unwrap_or(0);
+            match self.cancel_on_heartbeat(&id) {
+                Ok(_) => tracing::warn!(
+                    target: "subagent",
+                    agent_id = %id,
+                    idle_secs,
+                    heartbeat_timeout_secs = timeout.as_secs(),
+                    "Sub-agent auto-cancelled: no progress within heartbeat window"
+                ),
+                Err(err) => tracing::warn!(
+                    target: "subagent",
+                    agent_id = %id,
+                    %err,
+                    "Failed to auto-cancel stale sub-agent"
+                ),
+            }
+        }
+    }
+
+    fn cancel_on_heartbeat(&mut self, agent_id: &str) -> Result<SubAgentResult> {
+        let (snapshot, changed) = {
+            let agent = self
+                .agents
+                .get_mut(agent_id)
+                .ok_or_else(|| anyhow!("Agent {agent_id} not found"))?;
+
+            let mut changed = false;
+            if agent.status == SubAgentStatus::Running {
+                let idle_secs = agent.last_progress_at.elapsed().as_secs();
+                agent.status = SubAgentStatus::Failed(format!(
+                    "Sub-agent cancelled: no progress for {idle_secs}s (heartbeat_timeout_secs={})",
+                    self.heartbeat_timeout.as_secs()
+                ));
+                agent.completion_reason = Some(CompletionReason::StepApiTimeout);
+                release_resident_leases_for(&agent.id);
+                if let Some(handle) = agent.task_handle.take() {
+                    handle.abort();
+                }
+                changed = true;
+            }
+            (agent.snapshot(), changed)
+        };
+
+        if changed {
+            self.persist_state_best_effort();
+        }
+        Ok(snapshot)
     }
 
     /// Update in-memory execution progress for live `agent_list` / disk snapshots.

@@ -66,9 +66,9 @@ const INSTRUCTIONS_FILE_MAX_BYTES: usize = 100 * 1024;
 pub(crate) const CLIENT_SURFACE_ZAGENS: &str = "zagens";
 pub(crate) const CLIENT_SURFACE_DS_PICK: &str = "ds-pick";
 
-const CLIENT_IDENTITY_HEADLESS: &str = "You are assisting inside the **deepseek-runtime** HTTP sidecar (headless agent runtime on loopback). When the user asks what software hosts this conversation, answer **deepseek-runtime** — not a terminal TUI (removed). Don't try to spawn another runtime process unless the user explicitly asks.";
+const CLIENT_IDENTITY_HEADLESS: &str = "You are assisting inside the **deepseek-runtime** HTTP sidecar (headless agent runtime on loopback). When the user asks what software hosts this conversation, answer **deepseek-runtime**. Don't try to spawn another runtime process unless the user explicitly asks.";
 
-const CLIENT_IDENTITY_DS_PICK: &str = "You are assisting inside **Zagens**, the DeepSeek desktop app (Tauri shell with an embedded chat UI). This session is hosted by Zagens, which connects to the local `deepseek-runtime` sidecar on the loopback interface. When the user asks what software this conversation uses, answer **Zagens** — not \"DeepSeek TUI\" (that name referred to the removed terminal UI). Don't try to spawn another `deepseek-runtime` process unless the user explicitly asks.";
+const CLIENT_IDENTITY_DS_PICK: &str = "You are assisting inside **Zagens**, the DeepSeek desktop app (Tauri shell with an embedded chat UI). This session is hosted by Zagens, which connects to the local `deepseek-runtime` sidecar on the loopback interface. When the user asks what software this conversation uses, answer **Zagens**. Don't try to spawn another `deepseek-runtime` process unless the user explicitly asks.";
 
 fn is_zagens_client_surface(client_surface: &str) -> bool {
     client_surface.eq_ignore_ascii_case(CLIENT_SURFACE_ZAGENS)
@@ -693,6 +693,14 @@ mod tests {
 
     #[test]
     fn client_identity_reflects_client_surface_hint() {
+        for line in [
+            super::client_identity_line(None),
+            super::client_identity_line(Some("ds-pick")),
+            super::client_identity_line(Some("zagens")),
+        ] {
+            assert!(!line.to_ascii_lowercase().contains("deepseek tui"));
+            assert!(!line.contains("deepseek-tui"));
+        }
         assert!(super::client_identity_line(None).contains("deepseek-runtime"));
         assert!(super::client_identity_line(Some("ds-pick")).contains("Zagens"));
         assert!(super::client_identity_line(Some("DS-PICK")).contains("Zagens"));
@@ -779,8 +787,10 @@ mod tests {
     #[test]
     fn compose_prompt_includes_all_layers() {
         let prompt = compose_prompt(AppMode::Agent, Personality::Calm);
-        // Base layer
-        assert!(prompt.contains("You are DeepSeek TUI"));
+        // Base layer (client identity + base.md)
+        assert!(prompt.contains("## Language"));
+        assert!(!prompt.to_ascii_lowercase().contains("deepseek tui"));
+        assert!(!prompt.contains("deepseek-tui"));
         // Personality layer
         assert!(prompt.contains("Personality: Calm"));
         // Mode layer

@@ -5,8 +5,10 @@
 //! [`ARCHITECTURE_ASSESSMENT_2026-05-25.md`](../../../docs/tech/adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md) §5.1「D1 — 已闭合」。
 
 use deepseek_config::{
-    CompactionToml, CompletionGateConfigToml, ConfigStore, ConfigToml, DEFAULT_VISION_MODEL,
-    LongHorizonConfigToml, WORKSPACE_META_DIR_NAME, compaction_threshold_tokens_for_model,
+    apply_lht_preset as apply_lht_preset_overlay, CompactionToml, CompletionGateConfigToml,
+    ConfigStore, ConfigToml, DEFAULT_VISION_MODEL, LongHorizonConfigToml, LhtPresetId,
+    MacroLoopConfigToml, WORKSPACE_META_DIR_NAME, compaction_threshold_tokens_for_model,
+    lht_product_defaults,
     legacy_workspace_meta_dir, normalize_gate_mode, normalize_lht_mode, resolve_lht,
     vision_should_check_degenerate_ocr_template, vision_user_prompt_for_model,
     workspace_meta_dir, workspace_meta_dir_read, workspace_meta_file_read,
@@ -1296,6 +1298,14 @@ pub struct LhtSettings {
     pub custom_verify_count: u32,
     /// Read-only: operator `[[deliverable]]` rows preserved on save.
     pub custom_deliverable_count: u32,
+    /// Phase 4: LHT↔CRAFT macro review loop (`[long_horizon.macro_loop]`).
+    pub macro_loop_enabled: bool,
+    pub macro_loop_max_cycles: u32,
+    pub macro_loop_max_craft_rounds: u32,
+    /// `user_confirm` | `on_micro_pass` | `off`
+    pub macro_loop_auto_enter_craft: String,
+    pub macro_loop_craft_on_small_tasks: bool,
+    pub macro_loop_min_checklist_items: u32,
 }
 
 fn gate_mode_from_toml(raw: Option<&String>) -> String {
@@ -1328,7 +1338,71 @@ fn lht_settings_from_config(cfg: &ConfigToml) -> LhtSettings {
         max_infra_strikes: gate.max_infra_strikes.unwrap_or(3),
         custom_verify_count: gate.verify.len() as u32,
         custom_deliverable_count: gate.deliverable.len() as u32,
+        macro_loop_enabled: lh
+            .macro_loop
+            .as_ref()
+            .and_then(|m| m.enabled)
+            .unwrap_or(false),
+        macro_loop_max_cycles: lh
+            .macro_loop
+            .as_ref()
+            .and_then(|m| m.max_macro_cycles)
+            .unwrap_or(3)
+            .clamp(1, 8),
+        macro_loop_max_craft_rounds: lh
+            .macro_loop
+            .as_ref()
+            .and_then(|m| m.max_craft_rounds_per_cycle)
+            .unwrap_or(2)
+            .clamp(1, 4),
+        macro_loop_auto_enter_craft: lh
+            .macro_loop
+            .as_ref()
+            .and_then(|m| m.auto_enter_craft.as_deref())
+            .map(normalize_macro_auto_enter)
+            .unwrap_or_else(|| "user_confirm".into()),
+        macro_loop_craft_on_small_tasks: lh
+            .macro_loop
+            .as_ref()
+            .and_then(|m| m.craft_on_small_tasks)
+            .unwrap_or(false),
+        macro_loop_min_checklist_items: lh
+            .macro_loop
+            .as_ref()
+            .and_then(|m| m.min_checklist_items_for_craft)
+            .unwrap_or(3)
+            .max(1),
     }
+}
+
+fn normalize_macro_auto_enter(raw: &str) -> String {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "on_micro_pass" | "auto" | "immediate" => "on_micro_pass".into(),
+        "on_graph_complete" | "graph_complete" => "on_graph_complete".into(),
+        "on_manifest_exhausted" | "manifest_exhausted" => "on_manifest_exhausted".into(),
+        "off" | "disabled" | "false" => "off".into(),
+        _ => "user_confirm".into(),
+    }
+}
+
+#[tauri::command]
+pub fn apply_lht_preset(
+    preset_id: String,
+    ctx: tauri::State<'_, AppContext>,
+) -> Result<LhtSettings, String> {
+    let preset = LhtPresetId::from_str_id(&preset_id)
+        .ok_or_else(|| format!("unknown LHT preset: {preset_id}"))?;
+    let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
+    let mut lh = store
+        .config
+        .long_horizon
+        .take()
+        .unwrap_or_else(lht_product_defaults);
+    apply_lht_preset_overlay(&mut lh, preset);
+    store.config.long_horizon = Some(lh);
+    store.save().map_err(|e| e.to_string())?;
+    ctx.sidecar_restart.notify_one();
+    get_lht_settings()
 }
 
 #[tauri::command]
@@ -1376,6 +1450,14 @@ pub fn save_lht_settings(
             .as_ref()
             .and_then(|lh| lh.reinject_every_steps),
         completion_gate: Some(completion_gate),
+        macro_loop: Some(MacroLoopConfigToml {
+            enabled: Some(settings.macro_loop_enabled),
+            max_macro_cycles: Some(settings.macro_loop_max_cycles.clamp(1, 8)),
+            max_craft_rounds_per_cycle: Some(settings.macro_loop_max_craft_rounds.clamp(1, 4)),
+            auto_enter_craft: Some(normalize_macro_auto_enter(&settings.macro_loop_auto_enter_craft)),
+            craft_on_small_tasks: Some(settings.macro_loop_craft_on_small_tasks),
+            min_checklist_items_for_craft: Some(settings.macro_loop_min_checklist_items.max(1)),
+        }),
     });
 
     tracing::info!("save_lht_settings: writing config");

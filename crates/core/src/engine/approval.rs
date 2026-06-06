@@ -11,6 +11,10 @@ use tokio_util::sync::CancellationToken;
 pub enum ApprovalDecision<P> {
     Approved {
         id: String,
+        /// Fingerprint for session-scoped approval cache (runtime-server).
+        cache_key: Option<String>,
+        /// When true, identical tool calls skip future prompts for this engine session.
+        remember_for_session: bool,
     },
     Denied {
         id: String,
@@ -64,7 +68,11 @@ where
                     ));
                 };
                 match decision {
-                    ApprovalDecision::Approved { id } if id == tool_id => {
+                    ApprovalDecision::Approved {
+                        id,
+                        cache_key: _,
+                        remember_for_session: _,
+                    } if id == tool_id => {
                         return Ok(ApprovalResult::Approved);
                     }
                     ApprovalDecision::Denied { id } if id == tool_id => {
@@ -141,6 +149,8 @@ mod tests {
         .unwrap();
         tx.send(ApprovalDecision::Approved {
             id: tool_id.into(),
+            cache_key: None,
+            remember_for_session: false,
         })
         .await
         .unwrap();

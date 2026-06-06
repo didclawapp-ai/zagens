@@ -82,6 +82,8 @@ pub struct ThreadSummary {
 pub struct StartTurnResponse {
     pub thread: ThreadRecord,
     pub turn: TurnRecord,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub queued: Option<deepseek_runtime_orchestrator::runtime_threads::PromptAdmission>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

@@ -315,6 +315,14 @@ pub(super) async fn execute_tool_plans(
                         Option<Result<ToolResult, ToolError>>,
                         Option<crate::tools::ToolContext>,
                     ) = if plan.approval_required {
+                        if engine.approval_cache_hit(&tool_name, &tool_input) {
+                            emit_tool_audit(json!({
+                                "event": "tool.approval_cache_hit",
+                                "tool_id": tool_id.clone(),
+                                "tool_name": tool_name.clone(),
+                            }));
+                            (None, None)
+                        } else {
                         emit_tool_audit(json!({
                             "event": "tool.approval_required",
                             "tool_id": tool_id.clone(),
@@ -377,6 +385,7 @@ pub(super) async fn execute_tool_plans(
                             }
                             Err(err) => (Some(Err(err)), None),
                         }
+                        }
                     } else {
                         (None, None)
                     };
@@ -392,8 +401,9 @@ pub(super) async fn execute_tool_plans(
                     {
                         let ws = engine.session.workspace.clone();
                         let tid = tool_id.clone();
+                        let max_gb = engine.config.snapshots_max_workspace_gb;
                         let _ = tokio::task::spawn_blocking(move || {
-                            crate::core::turn::pre_tool_snapshot(&ws, &tid)
+                            crate::core::turn::pre_tool_snapshot(&ws, &tid, max_gb)
                         })
                         .await;
                     }

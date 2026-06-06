@@ -20,6 +20,7 @@ import {
 import type {
   HarnessCycles,
   HarnessCompletionGate,
+  HarnessMacroLoop,
   HarnessNode,
   HarnessTaskGraph,
   LongHorizonPanelTab,
@@ -96,10 +97,72 @@ function isConditionalComplete(graph: HarnessTaskGraph): boolean {
   return false;
 }
 
+function macroPhaseLabel(
+  phase: string | null | undefined,
+  t: (k: string, vars?: Record<string, string>) => string,
+): string {
+  switch (phase) {
+    case 'craft':
+      return t('longHorizon.macroPhaseCraft');
+    case 'remediation':
+      return t('longHorizon.macroPhaseRemediation');
+    case 'unmet':
+      return t('longHorizon.macroPhaseUnmet');
+    case 'implement':
+    default:
+      return t('longHorizon.macroPhaseImplement');
+  }
+}
+
+function MacroLoopSummary({
+  macro,
+  t,
+}: {
+  macro: HarnessMacroLoop;
+  t: (k: string, vars?: Record<string, string>) => string;
+}) {
+  if (!macro.configured && !macro.active) return null;
+  const phaseLabel = macroPhaseLabel(macro.phase, t);
+  return (
+    <div className="mb-2 rounded border border-violet-500/30 bg-violet-500/10 px-2 py-1.5 text-[10px]">
+      <div className="font-medium text-violet-800 dark:text-violet-200">
+        {t('longHorizon.macroSummaryTitle')}
+      </div>
+      <ul className="mt-1 space-y-0.5 text-t-text-muted">
+        <li>
+          {t('longHorizon.macroPhaseLine', { phase: phaseLabel })}
+          {macro.awaiting_confirm
+            ? ` · ${t('longHorizon.macroAwaitingConfirm')}`
+            : ''}
+        </li>
+        <li>
+          {t('longHorizon.macroCyclesLine', {
+            used: String(macro.macro_cycles_used),
+            craft: String(macro.craft_rounds_this_cycle),
+          })}
+        </li>
+        {(macro.last_blockers_count ?? 0) > 0 ? (
+          <li className="text-amber-700 dark:text-amber-300">
+            {t('longHorizon.macroBlockersLine', {
+              n: String(macro.last_blockers_count),
+            })}
+          </li>
+        ) : null}
+        {macro.macro_task_id ? (
+          <li className="font-mono text-[9px] opacity-80">{macro.macro_task_id}</li>
+        ) : null}
+      </ul>
+    </div>
+  );
+}
+
 function TaskGraphView({ graph, t }: { graph: HarnessTaskGraph; t: (k: string, vars?: Record<string, string>) => string }) {
   const conditionalComplete = isConditionalComplete(graph);
   return (
     <div className="space-y-3 text-xs text-t-text">
+      {graph.macro_loop?.configured ? (
+        <MacroLoopSummary macro={graph.macro_loop} t={t} />
+      ) : null}
       {conditionalComplete ? (
         <div className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-amber-800 dark:text-amber-200">
           <span className="font-medium">{t('longHorizon.conditionalCompleteTitle')}</span>
@@ -437,6 +500,22 @@ function nodeKindClass(kind: string, payload?: Record<string, unknown> | null): 
   if (kind === 'audit_unmet') {
     return 'text-red-600 dark:text-red-400';
   }
+  if (kind === 'macro_phase') {
+    const phase = typeof payload?.phase === 'string' ? payload.phase : '';
+    if (phase === 'craft' || phase === 'remediation') {
+      return 'text-violet-600 dark:text-violet-400';
+    }
+    if (payload?.awaiting_confirm === true) {
+      return 'text-amber-600 dark:text-amber-400';
+    }
+    return 'text-sky-600 dark:text-sky-400';
+  }
+  if (kind === 'macro_craft_start' || kind === 'macro_craft_result') {
+    return 'text-violet-600 dark:text-violet-400';
+  }
+  if (kind === 'macro_unmet') {
+    return 'text-red-600 dark:text-red-400';
+  }
   return 'text-t-text-muted';
 }
 
@@ -463,6 +542,14 @@ function nodePayloadSummary(payload?: Record<string, unknown> | null): string {
     'enforce',
     'gap_count',
     'gate_reinject_while_blocked',
+    'phase',
+    'macro_cycle',
+    'task_id',
+    'agent_id',
+    'blockers_count',
+    'remaining_blockers',
+    'awaiting_confirm',
+    'macro_cycles_used',
   ];
   const parts: string[] = [];
   for (const k of keys) {
@@ -547,25 +634,63 @@ function CompletionGateSummary({
 function NodesView({
   nodes,
   completionGate,
+  macroLoop,
   t,
 }: {
   nodes: HarnessNode[];
   completionGate?: HarnessCompletionGate | null;
+  macroLoop?: HarnessMacroLoop | null;
   t: (k: string, vars?: Record<string, string>) => string;
 }) {
   const hasGate = completionGate?.active === true;
-  if (nodes.length === 0 && !hasGate) {
+  const hasMacro = macroLoop?.configured === true;
+  if (nodes.length === 0 && !hasGate && !hasMacro) {
     return <p className="text-xs text-t-text-muted">{t('longHorizon.nodesEmpty')}</p>;
   }
   // Newest first for readability.
   const ordered = [...nodes].reverse();
+  const macroNodes = ordered.filter((n) => n.kind.startsWith('macro_'));
+  const microNodes = ordered.filter((n) => !n.kind.startsWith('macro_'));
   return (
     <div className="space-y-2 text-xs">
+      {hasMacro && macroLoop ? <MacroLoopSummary macro={macroLoop} t={t} /> : null}
       {hasGate && completionGate ? (
         <CompletionGateSummary gate={completionGate} t={t} />
       ) : null}
+      {macroNodes.length > 0 ? (
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-violet-700 dark:text-violet-300">
+          {t('longHorizon.macroNodesSection')}
+        </p>
+      ) : null}
+      <ul className="space-y-1">
+      {macroNodes.map((n, i) => (
+        <li
+          key={`macro-${n.ts_ms}-${i}`}
+          className="flex flex-col gap-0.5 border-b border-t-border/20 pb-1 last:border-0"
+        >
+          <div className="flex items-baseline gap-2">
+            <span className="font-mono text-[10px] tabular-nums text-t-text-muted">
+              {formatClock(n.ts_ms)}
+            </span>
+            <span className={`font-medium ${nodeKindClass(n.kind, n.payload)}`}>
+              {n.kind}
+            </span>
+          </div>
+          {nodePayloadSummary(n.payload) ? (
+            <span className="pl-[3.25rem] font-mono text-[10px] text-t-text-muted">
+              {nodePayloadSummary(n.payload)}
+            </span>
+          ) : null}
+        </li>
+      ))}
+      </ul>
+      {microNodes.length > 0 && macroNodes.length > 0 ? (
+        <p className="pt-1 text-[10px] font-semibold uppercase tracking-wider text-t-text-muted">
+          {t('longHorizon.microNodesSection')}
+        </p>
+      ) : null}
     <ul className="space-y-1">
-      {ordered.map((n, i) => (
+      {microNodes.map((n, i) => (
         <li
           key={`${n.ts_ms}-${i}`}
           className="flex flex-col gap-0.5 border-b border-t-border/20 pb-1 last:border-0"
@@ -597,13 +722,17 @@ export default function LongHorizonPanel({ threadId, pollFast = false }: Props) 
   const [cycles, setCycles] = useState<HarnessCycles | null>(null);
   const [context, setContext] = useState<ThreadContextSnapshot | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
-  const startedAtRef = useRef<number | null>(null);
-  const wasCompletedRef = useRef(false);
+  /** Accumulated ms from ended session segments (same thread, no per-round reset). */
+  const frozenMsRef = useRef(0);
+  /** Start of the current in-progress segment (`pollFast` / streaming). */
+  const segmentStartRef = useRef<number | null>(null);
 
   const taskActive =
     !!graph && (graph.phases.length > 0 || graph.checklist.length > 0);
   const taskCompleted = !!graph && graph.completion_pct >= 100;
   const conditionalComplete = !!graph && isConditionalComplete(graph);
+  /** Composer turn still streaming — aligns with footer「生成中」. */
+  const sessionInProgress = pollFast && taskActive;
 
   const fetchGraph = useCallback(async () => {
     if (!threadId) {
@@ -654,35 +783,39 @@ export default function LongHorizonPanel({ threadId, pollFast = false }: Props) 
     setGraph(null);
     setCycles(null);
     setContext(null);
-    startedAtRef.current = null;
-    wasCompletedRef.current = false;
+    frozenMsRef.current = 0;
+    segmentStartRef.current = null;
     setElapsedMs(0);
   }, [threadId]);
 
-  // Client-side stopwatch: starts when a task graph first appears, ticks while
-  // the task is incomplete, freezes on 100% completion, then restarts from zero
-  // when a new round begins (completion drops back below 100%). No backend timestamp.
+  // Client-side stopwatch: ticks while the composer turn is in progress
+  // (`pollFast` ← streaming /「生成中」), not while checklist % alone says complete.
+  // Freezes when the turn ends; accumulates across LHT reinject rounds without
+  // resetting at 100%. Only resets when `threadId` changes.
   useEffect(() => {
     if (!taskActive) return;
-    // New round after a frozen completion: reset the stopwatch to zero.
-    if (wasCompletedRef.current && !taskCompleted) {
-      startedAtRef.current = Date.now();
-      setElapsedMs(0);
-    }
-    wasCompletedRef.current = taskCompleted;
-    if (startedAtRef.current == null) startedAtRef.current = Date.now();
-    if (taskCompleted) {
-      setElapsedMs(Date.now() - startedAtRef.current);
-      return;
-    }
-    setElapsedMs(Date.now() - startedAtRef.current);
-    const id = window.setInterval(() => {
-      if (startedAtRef.current != null) {
-        setElapsedMs(Date.now() - startedAtRef.current);
+
+    if (pollFast) {
+      if (segmentStartRef.current === null) {
+        segmentStartRef.current = Date.now();
       }
-    }, 1000);
-    return () => window.clearInterval(id);
-  }, [taskActive, taskCompleted, threadId]);
+      const tick = () => {
+        const segment = segmentStartRef.current
+          ? Date.now() - segmentStartRef.current
+          : 0;
+        setElapsedMs(frozenMsRef.current + segment);
+      };
+      tick();
+      const id = window.setInterval(tick, 1000);
+      return () => window.clearInterval(id);
+    }
+
+    if (segmentStartRef.current !== null) {
+      frozenMsRef.current += Date.now() - segmentStartRef.current;
+      segmentStartRef.current = null;
+      setElapsedMs(frozenMsRef.current);
+    }
+  }, [pollFast, taskActive, threadId]);
 
   useEffect(() => {
     const onPush = (ev: Event) => {
@@ -765,12 +898,19 @@ export default function LongHorizonPanel({ threadId, pollFast = false }: Props) 
         {taskActive ? (
           <span
             className={`ml-auto self-center font-mono text-xs tabular-nums ${
-              taskCompleted
-                ? conditionalComplete
-                  ? 'text-amber-600 dark:text-amber-400'
-                  : 'text-emerald-600 dark:text-emerald-400'
-                : 'text-t-text-muted'
+              sessionInProgress
+                ? 'text-t-text-muted'
+                : taskCompleted
+                  ? conditionalComplete
+                    ? 'text-amber-600 dark:text-amber-400'
+                    : 'text-emerald-600 dark:text-emerald-400'
+                  : 'text-t-text-muted'
             }`}
+            title={
+              sessionInProgress
+                ? t('longHorizon.timerRunning')
+                : t('longHorizon.timerFrozen')
+            }
           >
             {formatElapsed(elapsedMs)}
           </span>
@@ -791,6 +931,7 @@ export default function LongHorizonPanel({ threadId, pollFast = false }: Props) 
           <NodesView
             nodes={graph?.recent_nodes ?? []}
             completionGate={graph?.completion_gate}
+            macroLoop={graph?.macro_loop}
             t={t}
           />
         )}

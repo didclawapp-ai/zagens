@@ -237,6 +237,29 @@ fn subagent_step_timeout_reads_subagents_table() {
 }
 
 #[test]
+fn subagent_heartbeat_timeout_reads_subagents_table() {
+    let config = Config {
+        subagents: Some(SubagentsConfig {
+            heartbeat_timeout_secs: Some(120),
+            ..SubagentsConfig::default()
+        }),
+        ..Config::default()
+    };
+    assert_eq!(config.subagent_heartbeat_timeout().as_secs(), 120);
+    let clamped = Config {
+        subagents: Some(SubagentsConfig {
+            heartbeat_timeout_secs: Some(10),
+            ..SubagentsConfig::default()
+        }),
+        ..Config::default()
+    };
+    assert_eq!(
+        clamped.subagent_heartbeat_timeout().as_secs(),
+        MIN_SUBAGENT_HEARTBEAT_TIMEOUT_SECS
+    );
+}
+
+#[test]
 fn subagents_max_concurrent_overrides_top_level_cap() {
     let config = Config {
         max_subagents: Some(3),

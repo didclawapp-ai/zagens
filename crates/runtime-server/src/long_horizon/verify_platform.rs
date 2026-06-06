@@ -61,6 +61,9 @@ pub fn try_native_verify(workspace: &Path, command: &str) -> Option<NativeVerify
     if let Some(out) = try_test_directory(&root, rest) {
         return Some(to_result("native_test", command, out));
     }
+    if let Some(out) = try_gofmt_list(&root, rest) {
+        return Some(to_result("native_gofmt", command, out));
+    }
     None
 }
 
@@ -119,6 +122,36 @@ fn strip_cd_prefix(command: &str) -> (Option<PathBuf>, &str) {
 fn try_grep_like(workspace: &Path, command: &str) -> Option<NativeOutcome> {
     let spec = parse_grep_like(command)?;
     run_pattern_file_probe(workspace, &spec)
+}
+
+fn is_gofmt_list_command(command: &str) -> bool {
+    let tokens = tokenize_command(command);
+    tokens.first().map(|t| t == "gofmt").unwrap_or(false)
+        && tokens.iter().any(|t| t == "-l")
+}
+
+/// `gofmt -l` exits 0 even when files need formatting — treat non-empty stdout as failure.
+fn try_gofmt_list(workspace: &Path, command: &str) -> Option<NativeOutcome> {
+    if !is_gofmt_list_command(command) {
+        return None;
+    }
+    let output = std::process::Command::new("gofmt")
+        .args(["-l", "."])
+        .current_dir(workspace)
+        .output()
+        .ok()?;
+    let listing = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let pass = listing.is_empty();
+    Some(NativeOutcome {
+        exit_code: if pass { 0 } else { 1 },
+        stdout: listing.clone(),
+        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+        exit_class: if pass {
+            NativeExitClass::Ok
+        } else {
+            NativeExitClass::Assertion
+        },
+    })
 }
 
 fn try_test_directory(workspace: &Path, command: &str) -> Option<NativeOutcome> {
@@ -375,6 +408,12 @@ mod tests {
     #[test]
     fn non_grep_command_not_handled() {
         assert!(try_native_verify(Path::new("."), "cargo check").is_none());
+    }
+
+    #[test]
+    fn gofmt_list_detected_as_native_candidate() {
+        assert!(is_gofmt_list_command("gofmt -l ."));
+        assert!(!is_gofmt_list_command("go test ./..."));
     }
 
     #[test]

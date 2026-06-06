@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useT } from '../i18n';
 
 interface Props {
@@ -5,7 +6,7 @@ interface Props {
   toolName: string;
   description: string;
   busy?: boolean;
-  onApprove: () => void;
+  onApprove: (rememberForSession: boolean) => void;
   onDeny: () => void;
 }
 
@@ -18,6 +19,14 @@ export default function ApprovalDialog({
   onDeny,
 }: Props) {
   const { t } = useT();
+  const [rememberForSession, setRememberForSession] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setRememberForSession(false);
+    }
+  }, [open, toolName]);
+
   if (!open) {
     return null;
   }
@@ -40,6 +49,16 @@ export default function ApprovalDialog({
         <div className="mt-4 rounded-lg bg-canvas-alt border border-card-border p-3 text-sm text-t-text max-h-48 overflow-y-auto whitespace-pre-wrap leading-relaxed">
           {description || t('approval.noDescription')}
         </div>
+        <label className="mt-4 flex items-start gap-2 text-sm text-t-text-secondary cursor-pointer select-none">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={rememberForSession}
+            disabled={busy}
+            onChange={(e) => setRememberForSession(e.target.checked)}
+          />
+          <span>{t('approval.rememberForSession')}</span>
+        </label>
         <div className="mt-6 flex justify-end gap-3">
           <button
             type="button"
@@ -52,7 +71,7 @@ export default function ApprovalDialog({
           <button
             type="button"
             disabled={busy}
-            onClick={onApprove}
+            onClick={() => onApprove(rememberForSession)}
             className="px-4 py-2 rounded-lg bg-amber text-white hover:brightness-105 disabled:opacity-50 transition-all"
           >
             {t('approval.approve')}

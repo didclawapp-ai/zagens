@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { fetchSystemSettings, postResolveApproval, type SystemSettings } from '../api/client';
 import { autoApproveFromPolicy, composerAutoApproveToggleEnabled } from '../lib/approvalPolicy';
+import { persistNotifyMethod } from '../lib/appPreferences';
 import { threadOwnedByWindow } from '../lib/windowBridge';
 import { toast } from '../lib/toast';
 import type { DesktopRunModeId } from '../types/desktop';
@@ -37,7 +38,7 @@ export type UseTurnApprovalResult = {
   syncAutoApproveFromPolicy: (policy: string) => void;
   syncAutoApproveFromRunMode: (mode: DesktopRunModeId) => void;
   handleSystemSettingsSaved: (settings: SystemSettings) => void;
-  handleApproveDecision: (decision: 'approve' | 'deny') => Promise<void>;
+  handleApproveDecision: (decision: 'approve' | 'deny', rememberForSession?: boolean) => Promise<void>;
   showApprovalIfOwned: (desktopHost: boolean, payload: ApprovalState) => void;
   clearApproval: () => void;
 };
@@ -90,6 +91,7 @@ export function useTurnApproval({
   const handleSystemSettingsSaved = useCallback(
     (settings: SystemSettings) => {
       syncAutoApproveFromPolicy(settings.approval_policy);
+      persistNotifyMethod(settings.notify_method);
     },
     [syncAutoApproveFromPolicy],
   );
@@ -99,7 +101,10 @@ export function useTurnApproval({
     let cancelled = false;
     fetchSystemSettings()
       .then((s) => {
-        if (!cancelled) syncAutoApproveFromPolicy(s.approval_policy);
+        if (!cancelled) {
+          syncAutoApproveFromPolicy(s.approval_policy);
+          persistNotifyMethod(s.notify_method);
+        }
       })
       .catch(() => {});
     return () => {
@@ -125,7 +130,7 @@ export function useTurnApproval({
   );
 
   const handleApproveDecision = useCallback(
-    async (decision: 'approve' | 'deny') => {
+    async (decision: 'approve' | 'deny', rememberForSession = false) => {
       if (!approval) return;
       const { threadId, turnId } = threadTurnRef.current;
       if (!threadId || !turnId) {
@@ -135,7 +140,13 @@ export function useTurnApproval({
       }
       setApprovalBusy(true);
       try {
-        await postResolveApproval(threadId, turnId, approval.toolCallId, decision);
+        await postResolveApproval(
+          threadId,
+          turnId,
+          approval.toolCallId,
+          decision,
+          decision === 'approve' ? rememberForSession : false,
+        );
       } catch (e) {
         const err = e as Error & { status?: number };
         if (err.status === 409) {

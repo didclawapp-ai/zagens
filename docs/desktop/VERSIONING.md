@@ -31,7 +31,7 @@ Zagens 桌面端（`crates/desktop/`）使用**独立 SemVer**，与根 `Cargo.t
 | `<channel>` | 默认 **`preview`**（产品文案：**预览版** / Early Access）。可选 `beta`、`alpha`（更早期、更小范围；不用于当前主线）。 |
 | `<N>` | 从 **1** 起的整数；同一 `0.MINOR.PATCH` 基线上仅修 bug / 重打包时递增（`preview.1` → `preview.2`）。 |
 
-**当前示例：** `0.6.0-preview.1`
+**当前示例：** `0.7.0`（主线已去掉 `-preview` 后缀；历史标签仍可能带预发布标识）
 
 **显示：** UI / README 可写 `v0.6.0-preview.1`（前缀 `v` 仅展示用，写入 manifest 时不带 `v`）。
 
@@ -40,7 +40,7 @@ Zagens 桌面端（`crates/desktop/`）使用**独立 SemVer**，与根 `Cargo.t
 | 变更 | 版本动作 |
 |------|----------|
 | 同一次预览线的 bugfix / 安装包重发 | `0.6.0-preview.1` → `0.6.0-preview.2` |
-| 新一批用户可见功能（仍非 GA） | `0.6.0-preview.x` → `0.7.0-preview.1`（升 **MINOR**） |
+| 新一批用户可见功能（仍非 GA） | `0.6.x-preview.x` → `0.7.0`（升 **MINOR**，可去掉 `-preview`） |
 | 破坏性配置或 `/v1` 行为变更（pre-1.0 仍可能发生） | 升 **MINOR** 或 **PATCH**，并在 CHANGELOG 标明 |
 | 对外承诺 GA、Updater/支持策略就绪 | `1.0.0`（去掉 `-preview`） |
 
@@ -111,10 +111,10 @@ git push origin zagens-v0.6.0-preview.1
 
 | 产品线 | 版本线 | 示例 |
 |--------|--------|------|
-| **Zagens 桌面** | 独立 SemVer + 预发布 | `0.6.0-preview.1` |
+| **Zagens 桌面** | 独立 SemVer | `0.7.0` |
 | **嵌入式 runtime crates** | 根 `[workspace.package] version` | `0.8.15` |
 
-不要在 Zagens 发布说明中混用两条版本线；对外以 **Zagens `0.x-preview.n`** 为准。
+不要在 Zagens 发布说明中混用两条版本线；对外以 **Zagens `0.MINOR.PATCH`** 为准（历史 tag 可能带 `-preview.n`）。
 
 ---
 
@@ -127,4 +127,4 @@ git push origin zagens-v0.6.0-preview.1
 | `-alpha.N` | Alpha | 内测版 |
 | （无后缀，≥1.0.0） | Stable / GA | **正式版** |
 
-当前主线：**预览版** → `0.x.y-preview.n`。
+当前主线：**0.7.0** → `0.MINOR.PATCH`（官网与产品文案不再使用「预览版」渠道用语）。历史 `-preview.N` 标签与文档示例仍保留在 §1.2 / §6。

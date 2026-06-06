@@ -16,7 +16,8 @@ pub use deepseek_runtime_orchestrator::runtime_threads::types;
 pub use deepseek_runtime_orchestrator::runtime_threads::{
     CompactThreadRequest, CreateThreadRequest, EditLastTurnRequest,
     ForkAtUserMessageRequest, ForkAtUserMessageResponse, RoutingRule,
-    RuntimeThreadManagerConfig, RuntimeThreadStore, StartTurnRequest, SteerTurnRequest,
+    PromptAdmission, PromptDelivery, RuntimeThreadManagerConfig, RuntimeThreadStore,
+    StartTurnOutcome, StartTurnRequest, SteerTurnRequest,
     ThreadDetail, ThreadListFilter, UpdateThreadRequest, UsageGroupBy,
 };
 pub use deepseek_runtime_orchestrator::runtime_threads::types::*;

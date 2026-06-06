@@ -16,11 +16,13 @@ use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 mod paths;
 mod ui_settings;
 mod lht_config;
+mod lht_presets;
 pub use lht_config::{
     CompletionGateConfigToml, CompletionGateDeliverableToml, CompletionGateVerifyToml,
-    LongHorizonConfigToml, normalize_gate_mode, normalize_lht_mode,
+    LongHorizonConfigToml, MacroLoopConfigToml, normalize_gate_mode, normalize_lht_mode,
     product_defaults as lht_product_defaults, resolve_lht,
 };
+pub use lht_presets::{apply_lht_preset, LhtPresetId};
 pub use paths::{
     LEGACY_USER_DATA_DIR_NAME, LEGACY_WORKSPACE_META_DIR_NAME, USER_DATA_DIR_NAME,
     WORKSPACE_META_DIR_NAME, default_config_path, legacy_config_path,
@@ -414,6 +416,13 @@ pub struct SnapshotsToml {
     pub enabled: bool,
     #[serde(default = "default_snapshot_max_age_days")]
     pub max_age_days: u64,
+    /// Skip side-git when workspace tree exceeds this size (GB). Default 2.
+    #[serde(default = "default_snapshot_max_workspace_gb")]
+    pub max_workspace_gb: f64,
+}
+
+fn default_snapshot_max_workspace_gb() -> f64 {
+    2.0
 }
 
 fn default_snapshots_enabled() -> bool {
@@ -429,6 +438,7 @@ impl Default for SnapshotsToml {
         Self {
             enabled: default_snapshots_enabled(),
             max_age_days: default_snapshot_max_age_days(),
+            max_workspace_gb: default_snapshot_max_workspace_gb(),
         }
     }
 }
@@ -519,6 +529,9 @@ pub struct SubagentsConfigToml {
     /// Per-step LLM API timeout for sub-agents (seconds). Default 600; clamped 120–1800 at runtime.
     #[serde(default)]
     pub step_timeout_secs: Option<u64>,
+    /// Cancel sub-agents with no progress longer than this (seconds). Default 300.
+    #[serde(default)]
+    pub heartbeat_timeout_secs: Option<u64>,
     #[serde(flatten)]
     pub extras: BTreeMap<String, toml::Value>,
 }

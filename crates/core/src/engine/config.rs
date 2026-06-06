@@ -66,6 +66,8 @@ pub struct EngineConfig {
     pub max_spawn_depth: u32,
     /// Whether to take side-git workspace snapshots before/after each turn.
     pub snapshots_enabled: bool,
+    /// Skip side-git when workspace tree exceeds this size (GB).
+    pub snapshots_max_workspace_gb: f64,
     /// Per-role/type sub-agent model overrides already resolved from config.
     pub subagent_model_overrides: HashMap<String, String>,
     /// Whether the user-memory feature is enabled (#489).
@@ -109,6 +111,7 @@ impl Default for EngineConfig {
             capacity: CapacityControllerConfig::default(),
             max_spawn_depth: 0,
             snapshots_enabled: true,
+            snapshots_max_workspace_gb: 2.0,
             subagent_model_overrides: HashMap::new(),
             memory_enabled: false,
             memory_path: PathBuf::from("./memory.md"),

@@ -60,9 +60,9 @@ function GridCell({
   children: ReactNode;
 }) {
   return (
-    <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border border-divider bg-card">
-      <header className="shrink-0 border-b border-divider bg-canvas-alt/40 px-3 py-2">
-        <h3 className="truncate text-xs font-semibold text-t-text">{title}</h3>
+    <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-card">
+      <header className="shrink-0 border-b border-divider bg-canvas-alt px-3 py-2">
+        <h3 className="truncate text-xs font-semibold tracking-wide text-t-text-muted uppercase">{title}</h3>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
     </section>
@@ -151,7 +151,7 @@ export default function AuditGridPanel({
   }, []);
 
   return (
-    <div className="flex h-full max-h-screen shrink-0">
+    <div className="flex h-full shrink-0">
       <PanelEdgeSeam
         side="right"
         seamClass="chrome-seam-l"
@@ -168,7 +168,7 @@ export default function AuditGridPanel({
       <aside
         role="complementary"
         aria-label={t('auditGrid.panelAria')}
-        className="flex min-w-0 shrink-0 flex-col overflow-hidden bg-canvas"
+        className="flex min-w-0 shrink-0 flex-col overflow-hidden border-t border-divider bg-canvas"
         style={{ width: panelWidth }}
       >
         <div className="grid min-h-0 flex-1 grid-cols-2 grid-rows-2 gap-px bg-divider p-px">

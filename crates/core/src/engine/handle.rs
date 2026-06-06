@@ -97,8 +97,22 @@ where
 
     /// Approve a pending tool call.
     pub async fn approve_tool_call(&self, id: impl Into<String>) -> Result<()> {
+        self.approve_tool_call_with_options(id, None, false).await
+    }
+
+    /// Approve a pending tool call and optionally remember the decision for the session.
+    pub async fn approve_tool_call_with_options(
+        &self,
+        id: impl Into<String>,
+        cache_key: Option<String>,
+        remember_for_session: bool,
+    ) -> Result<()> {
         self.tx_approval
-            .send(ApprovalDecision::Approved { id: id.into() })
+            .send(ApprovalDecision::Approved {
+                id: id.into(),
+                cache_key,
+                remember_for_session,
+            })
             .await?;
         Ok(())
     }

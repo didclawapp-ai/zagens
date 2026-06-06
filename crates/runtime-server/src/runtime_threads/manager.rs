@@ -65,6 +65,8 @@ pub(crate) struct HarnessTelemetryCacheEntry {
     pub recent_nodes: VecDeque<HarnessNodeRecord>,
     /// Composable harness completion gate (P2 panel).
     pub completion_gate: crate::long_horizon::completion_gate_panel::CompletionGatePanelCache,
+    /// Phase 4 macro loop (implement / craft / remediation).
+    pub macro_loop: crate::long_horizon::macro_loop_panel::MacroLoopPanelCache,
 }
 
 /// Sidecar runtime thread manager — orchestrator core plus host-only services.
@@ -406,6 +408,13 @@ impl RuntimeThreadManager {
                 }
             }
         }
+        let macro_loop = cached.as_ref().map(|e| {
+            crate::long_horizon::macro_loop_panel::merge_macro_loop_panel(
+                lht.macro_loop.enabled,
+                &e.macro_loop,
+                None,
+            )
+        });
         let mut value = crate::long_horizon::build_task_graph_value_with_telemetry(
             &plan,
             &checklist,
@@ -415,6 +424,7 @@ impl RuntimeThreadManager {
             nudge_count,
             telemetry,
             completion_gate,
+            macro_loop,
         );
         // Attach the recent harness node-decision trail (newest last) for the
         // LHT panel "nodes" tab (DEMO5 #3). Pure read of the live cache; empty
@@ -473,6 +483,9 @@ impl RuntimeThreadManager {
         }
         entry
             .completion_gate
+            .apply_status(message, payload.as_ref());
+        entry
+            .macro_loop
             .apply_status(message, payload.as_ref());
         if message.starts_with("long_horizon.continue_injected") {
             if let Some(p) = payload.as_ref() {

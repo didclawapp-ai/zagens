@@ -103,7 +103,22 @@ pub async fn run_manifest_gate(
             continue;
         }
 
-        let run = run_single_verify(workspace, entry, exec).await;
+        let mut run = run_single_verify(workspace, entry, exec).await;
+        if run.exit_code == 0 && run.exit_class == VerifyExitClass::Ok {
+            if let Some(msg) = super::go_toolchain_audit::audit_go_test_output(
+                &run.command_display,
+                &run.stdout_tail,
+                &run.stderr_tail,
+            ) {
+                run.exit_code = 1;
+                run.exit_class = VerifyExitClass::Assertion;
+                if run.stderr_tail.is_empty() {
+                    run.stderr_tail = msg;
+                } else {
+                    run.stderr_tail = format!("{}\n{}", run.stderr_tail, msg);
+                }
+            }
+        }
         if run.exit_code != 0 || run.exit_class != VerifyExitClass::Ok {
             failing_ids.push(entry.id.clone());
         }

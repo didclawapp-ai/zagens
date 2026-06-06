@@ -1,4 +1,5 @@
 # Generate an ed25519 key pair for GitHub Actions -> VPS rsync deploy.
+# Secrets live in the zagens_website repo (not the product repo).
 # Run: pwsh -File scripts/website/new-deploy-key.ps1
 
 $ErrorActionPreference = 'Stop'

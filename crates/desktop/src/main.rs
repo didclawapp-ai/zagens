@@ -232,6 +232,7 @@ fn main() {
             commands::save_system_settings,
             commands::get_lht_settings,
             commands::save_lht_settings,
+            commands::apply_lht_preset,
             commands::default_composer_workspace,
             commands::read_pick_rules,
             commands::save_pick_rules,

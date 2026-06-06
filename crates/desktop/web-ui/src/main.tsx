@@ -19,7 +19,7 @@ function bootstrap() {
     </React.StrictMode>,
   );
 
-  // Port discovery runs in the background; AppShell renders while runtimeConn is `checking`.
+  // Start port discovery before first paint; all runtime HTTP awaits this promise in client.ts.
   void initRuntimeConfig();
 
   // Show the shell as soon as React mounts — do not wait for sidecar boot or session list.

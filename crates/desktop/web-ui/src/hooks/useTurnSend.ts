@@ -22,6 +22,7 @@ import {
 import type { ComposerOutboundMessage } from '../components/Composer';
 import { normalizeDesktopStreamEvent, type NormalizedStreamEvent } from '../api/streamNormalize';
 import { notifyCraftBlackboardChanged } from '../lib/craftBlackboard';
+import { loadNotifyMethod } from '../lib/appPreferences';
 import {
   appendCappedToolOutput,
   capToolOutputForDisplay,
@@ -406,8 +407,12 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
           maybePersistCompletedTurn();
         };
 
-        const finishOnce = () => {
+        const finishOnce = (options?: { force?: boolean }) => {
           if (finished || finishPending) return;
+          if (options?.force) {
+            completeStreamUi();
+            return;
+          }
           const { threadId, turnId } = threadTurnRef.current;
           if (!threadId) {
             completeStreamUi();
@@ -445,9 +450,15 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
         streamSessionRef.current = { markInterrupted, finishOnce };
 
         const notifyTurnCompleteIfAway = (host: boolean) => {
-          if (!host || !document.hidden) return;
+          if (!host) return;
+          // Respect the user's notify_method preference; 'off' suppresses all notifications.
+          if (loadNotifyMethod() === 'off') return;
           void (async () => {
             try {
+              // Use Tauri's isFocused() — more reliable than document.hidden in WebView2 on Windows.
+              const { getCurrentWindow } = await import('@tauri-apps/api/window');
+              const focused = await getCurrentWindow().isFocused();
+              if (focused) return;
               const mod = await import('@tauri-apps/plugin-notification');
               let granted = await mod.isPermissionGranted();
               if (!granted) {
@@ -458,7 +469,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
                 mod.sendNotification({ title: 'Zagens', body: t('notification.turnComplete') });
               }
             } catch {
-              /* browser mode — not supported */
+              /* browser mode or Tauri API unavailable */
             }
           })();
         };
@@ -691,7 +702,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
                 : m,
             ),
           );
-          finishOnce();
+          finishOnce({ force: true });
         };
 
         const streamOpts = streamFlagsForRunMode(runMode, autoApprove);
