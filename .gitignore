@@ -134,5 +134,7 @@ cms/
 # Marketing / article drafts (not product source)
 deliverables/
 
-# Website ops docs live in private zagens_website repo (see docs/REPO_SPLIT.md)
+# Website — private zagens_website repo only (see docs/REPO_SPLIT.md)
+website/
+scripts/website/
 docs/website/

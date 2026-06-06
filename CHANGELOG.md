@@ -23,9 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Repo split — product vs website platform
 
-- **Change:** Moved `website/` to private repo [zagens_website](https://github.com/jjlin0603-svg/zagens_website); monorepo keeps [`website/README.md`](website/README.md) stub. User docs SSOT: [`docs/user/`](docs/user/). Overview: [`docs/REPO_SPLIT.md`](docs/REPO_SPLIT.md).
+- **Change:** Moved `website/` to private repo [zagens_website](https://github.com/jjlin0603-svg/zagens_website); product repo has **no** `website/` tree (see `.gitignore`). User docs SSOT: [`docs/user/`](docs/user/). Overview: [`docs/REPO_SPLIT.md`](docs/REPO_SPLIT.md).
 - **Change (CI):** Removed [`.github/workflows/website.yml`](.github/workflows/website.yml); product [`.github/workflows/release.yml`](.github/workflows/release.yml) dispatches `desktop-release` to website repo `sync-release.yml`.
-- **Docs:** Updated [`docs/desktop/UPDATER.md`](docs/desktop/UPDATER.md), [`docs/website/P8_DOCS_CONTENT_PLAN.md`](docs/website/P8_DOCS_CONTENT_PLAN.md).
+- **Docs:** Updated [`docs/desktop/UPDATER.md`](docs/desktop/UPDATER.md); website ops docs live only in `zagens_website`.
 
 ### Zagens website — blog UI polish
 

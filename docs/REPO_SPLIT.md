@@ -13,8 +13,7 @@ Zagens 采用**双仓库**结构，为后续开源本体 + 闭源平台服务做
 |------------------|--------|
 | `crates/`、`docs/harness/`、`docs/desktop/` | 产品仓 |
 | `docs/user/` | 产品仓（用户文档 SSOT） |
-| `website/` | 已迁出 → 官网仓根目录 |
-| `docs/website/`（运维） | 官网仓 `docs/` |
+| 原 `website/`、`docs/website/`、`scripts/website/` | 官网仓（**不在产品仓**） |
 
 ## 本地开发
 
@@ -64,4 +63,4 @@ npm run dev
 
 ## 迁移说明
 
-原 monorepo 内 `website/` 目录已移除，仅保留 [`website/README.md`](../website/README.md) 指向外链。历史实现记录见官网仓 `docs/P*.md`。
+产品仓**不包含**任何 `website/` 路径；官网代码与运维文档均在 [zagens_website](https://github.com/jjlin0603-svg/zagens_website)。
