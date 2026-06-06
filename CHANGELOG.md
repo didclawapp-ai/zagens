@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **CI lint:** Remove needless `return` statements in `policy_degraded_mode_notice()` (`crates/runtime-server/src/sandbox/mod.rs`) — resolves `clippy::needless_return` errors that broke CI on push.
+- **CI test (macOS/Windows):** Pre-build `deepseek-runtime-server` before `cargo test --workspace` in `.github/workflows/ci.yml`; `crates/desktop/build.rs` requires the sidecar binary in `target/debug/` at compile time, causing build failure on all non-Linux runners when the binary wasn't yet present.
 
 ### Repo split — product vs website platform
 

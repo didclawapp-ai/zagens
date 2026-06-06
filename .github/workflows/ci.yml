@@ -71,6 +71,8 @@ jobs:
         if: runner.os == 'Linux'
         run: bash scripts/ci/install-linux-deps.sh
       - uses: Swatinem/rust-cache@v2
+      - name: Pre-build runtime sidecar (required by desktop build.rs)
+        run: cargo build -p deepseek-runtime-server --locked
       - name: Run tests
         run: cargo test --workspace --all-features --locked
       - name: Runtime sidecar contract (A+.4 / R-009)
