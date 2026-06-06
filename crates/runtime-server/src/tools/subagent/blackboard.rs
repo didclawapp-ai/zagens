@@ -56,7 +56,7 @@ fn blackboard_path_write(workspace: &Path, task_id: &str) -> Result<PathBuf, Str
     ))
 }
 
-fn ensure_dir(path: &PathBuf) {
+fn ensure_dir(path: &Path) {
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
@@ -180,13 +180,13 @@ pub fn write_blackboard_partition(
                 "files_examined": extract_files_examined(result),
                 "coverage_confidence": extract_coverage_confidence(result),
             });
-            if let Some(findings) = &result.structured_findings {
-                if let Value::Object(ref mut map) = partition {
-                    map.insert(
-                        "structured_findings".to_string(),
-                        serde_json::to_value(findings).unwrap_or(Value::Null),
-                    );
-                }
+            if let Some(findings) = &result.structured_findings
+                && let Value::Object(ref mut map) = partition
+            {
+                map.insert(
+                    "structured_findings".to_string(),
+                    serde_json::to_value(findings).unwrap_or(Value::Null),
+                );
             }
             ("explorer", partition)
         }
@@ -206,13 +206,13 @@ pub fn write_blackboard_partition(
                     .map(|v| &v.items)
                     .unwrap_or(&vec![]),
             });
-            if let Some(verdict) = &result.structured_verdict {
-                if let Value::Object(ref mut map) = partition {
-                    map.insert(
-                        "structured_verdict".to_string(),
-                        serde_json::to_value(verdict).unwrap_or(Value::Null),
-                    );
-                }
+            if let Some(verdict) = &result.structured_verdict
+                && let Value::Object(ref mut map) = partition
+            {
+                map.insert(
+                    "structured_verdict".to_string(),
+                    serde_json::to_value(verdict).unwrap_or(Value::Null),
+                );
             }
             ("reviewer", partition)
         }
@@ -389,31 +389,30 @@ fn format_implementer_changes(board: &Value) -> Option<String> {
         }
     }
     // Append factual symbol index change record (not model-narrated).
-    if let Some(round) = rounds.last() {
-        if let Some(sc) = round.get("symbol_changes") {
-            if !sc.is_null() {
-                lines.push(String::new());
-                lines.push("### Symbol index changes (factual)".to_string());
-                if let Some(added) = sc.get("added").and_then(|v| v.as_array()) {
-                    for a in added {
-                        if let Some(s) = a.as_str() {
-                            lines.push(format!("- added: `{s}`"));
-                        }
-                    }
+    if let Some(round) = rounds.last()
+        && let Some(sc) = round.get("symbol_changes")
+        && !sc.is_null()
+    {
+        lines.push(String::new());
+        lines.push("### Symbol index changes (factual)".to_string());
+        if let Some(added) = sc.get("added").and_then(|v| v.as_array()) {
+            for a in added {
+                if let Some(s) = a.as_str() {
+                    lines.push(format!("- added: `{s}`"));
                 }
-                if let Some(removed) = sc.get("removed").and_then(|v| v.as_array()) {
-                    for r in removed {
-                        if let Some(s) = r.as_str() {
-                            lines.push(format!("- removed: `{s}`"));
-                        }
-                    }
+            }
+        }
+        if let Some(removed) = sc.get("removed").and_then(|v| v.as_array()) {
+            for r in removed {
+                if let Some(s) = r.as_str() {
+                    lines.push(format!("- removed: `{s}`"));
                 }
-                if let Some(modified) = sc.get("modified").and_then(|v| v.as_array()) {
-                    for m in modified {
-                        if let Some(s) = m.as_str() {
-                            lines.push(format!("- modified: `{s}`"));
-                        }
-                    }
+            }
+        }
+        if let Some(modified) = sc.get("modified").and_then(|v| v.as_array()) {
+            for m in modified {
+                if let Some(s) = m.as_str() {
+                    lines.push(format!("- modified: `{s}`"));
                 }
             }
         }
@@ -958,12 +957,11 @@ fn extract_files_examined(result: &SubAgentResult) -> Value {
 fn extract_coverage_confidence(result: &SubAgentResult) -> Value {
     let text = result.result.as_deref().unwrap_or("");
     let re = regex::Regex::new(r"(?im)^-?\s*\*\*Confidence\*\*:\s*(high|medium|low)").ok();
-    if let Some(re) = re {
-        if let Some(cap) = re.captures(text) {
-            if let Some(m) = cap.get(1) {
-                return json!(m.as_str());
-            }
-        }
+    if let Some(re) = re
+        && let Some(cap) = re.captures(text)
+        && let Some(m) = cap.get(1)
+    {
+        return json!(m.as_str());
     }
     json!("unknown")
 }

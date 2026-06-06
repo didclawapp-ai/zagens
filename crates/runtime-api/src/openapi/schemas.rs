@@ -91,8 +91,11 @@ pub struct ErrorBody {
     pub error: String,
 }
 
+/// One OpenAPI component schema export (`name`, `schema_for!` thunk).
+pub type SchemaExportFn = fn() -> schemars::Schema;
+
 /// Core schemas exported to OpenAPI components.
-pub const SCHEMA_EXPORTS: &[(&str, fn() -> schemars::Schema)] = &[
+pub const SCHEMA_EXPORTS: &[(&str, SchemaExportFn)] = &[
     ("CoherenceState", || schemars::schema_for!(CoherenceState)),
     ("RuntimeTurnStatus", || {
         schemars::schema_for!(RuntimeTurnStatus)

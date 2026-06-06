@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(unused_imports))]
+
 //! Durable thread/turn/item runtime for the HTTP API and background tasks.
 //!
 //! Persist types/store live in `deepseek-runtime-orchestrator` (D16 E1-b); this
@@ -16,9 +18,9 @@ pub use deepseek_runtime_orchestrator::runtime_threads::types;
 pub use deepseek_runtime_orchestrator::runtime_threads::types::*;
 pub use deepseek_runtime_orchestrator::runtime_threads::{
     CompactThreadRequest, CreateThreadRequest, EditLastTurnRequest, ForkAtUserMessageRequest,
-    ForkAtUserMessageResponse, PromptAdmission, PromptDelivery, RoutingRule,
-    RuntimeThreadManagerConfig, RuntimeThreadStore, StartTurnOutcome, StartTurnRequest,
-    SteerTurnRequest, ThreadDetail, ThreadListFilter, UpdateThreadRequest, UsageGroupBy,
+    ForkAtUserMessageResponse, RoutingRule, RuntimeThreadManagerConfig, RuntimeThreadStore,
+    StartTurnOutcome, StartTurnRequest, SteerTurnRequest, ThreadDetail, ThreadListFilter,
+    UpdateThreadRequest, UsageGroupBy,
 };
 
 pub(crate) use deepseek_runtime_orchestrator::runtime_threads::CURRENT_RUNTIME_SCHEMA_VERSION;

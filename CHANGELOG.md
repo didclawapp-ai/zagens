@@ -35,6 +35,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Fix (CI):** collapse nested `if` in `crates/config/src/ui_settings.rs` (`clippy::collapsible_if`).
 - **Fix (CI):** `deepseek-core` clippy — `too_many_arguments` on turn-loop host/phase fns, `collapsible_if` in `project_context`, `needless_borrow` / `should_implement_trait` allows.
 - **Fix (CI):** `deepseek-runtime-adapters` clippy — `double_must_use`, `collapsible_if`, `needless_question_mark`, `io_other_error`, `needless_borrow(s)`.
+- **Tooling:** Pin dev/CI Rust **1.96** via [`rust-toolchain.toml`](rust-toolchain.toml); add [`scripts/ci/verify-lint.sh`](scripts/ci/verify-lint.sh) / [`verify-workspace.sh`](scripts/ci/verify-workspace.sh) and optional git hooks ([`scripts/ci/install-git-hooks.sh`](scripts/ci/install-git-hooks.sh)) so fmt/clippy fail locally before push.
+- **Fix (CI):** `topic-memory` + `runtime-orchestrator` clippy under Rust 1.96; lint job builds `web-ui/dist` when missing ([`scripts/ci/ensure-web-ui-dist.sh`](scripts/ci/ensure-web-ui-dist.sh)).
 
 ### Zagens website — blog UI polish
 

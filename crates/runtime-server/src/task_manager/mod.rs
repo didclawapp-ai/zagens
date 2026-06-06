@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(unused_imports))]
+
 //! Persistent background task manager for DeepSeek agent work.
 //!
 //! Tasks are durable across restarts and execute with a bounded worker pool.

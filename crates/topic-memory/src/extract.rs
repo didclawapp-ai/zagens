@@ -55,12 +55,11 @@ pub fn detect_emotion(text: &str) -> EmotionMode {
     ];
     for (mode, patterns) in emotion_patterns() {
         for pat in *patterns {
-            if let Ok(re) = Regex::new(pat) {
-                if re.is_match(trimmed) {
-                    if let Some((_, score)) = scores.iter_mut().find(|(m, _)| *m == *mode) {
-                        *score += 1;
-                    }
-                }
+            if let Ok(re) = Regex::new(pat)
+                && re.is_match(trimmed)
+                && let Some((_, score)) = scores.iter_mut().find(|(m, _)| *m == *mode)
+            {
+                *score += 1;
             }
         }
     }
@@ -117,7 +116,7 @@ pub fn extract_topics(text: &str) -> Vec<String> {
     }
 
     let mut entries: Vec<_> = freq.into_iter().collect();
-    entries.sort_by(|a, b| b.1.cmp(&a.1));
+    entries.sort_by_key(|b| std::cmp::Reverse(b.1));
     entries
         .into_iter()
         .take(MAX_TOPICS_PER_TURN)

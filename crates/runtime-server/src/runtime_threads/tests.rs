@@ -5,7 +5,9 @@ use crate::agent_surface::AppMode;
 use crate::config::Config;
 use crate::core::engine::{MockApprovalEvent, MockEngineHandle, mock_engine_handle};
 use crate::models::Usage;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+use deepseek_runtime_orchestrator::runtime_threads::prompt_inbox::PromptDelivery;
 type TestApprovalDecision =
     deepseek_core::engine::approval::ApprovalDecision<crate::sandbox::SandboxPolicy>;
 use crate::core::events::{Event as EngineEvent, TurnOutcomeStatus};

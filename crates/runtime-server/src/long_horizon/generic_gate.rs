@@ -126,7 +126,7 @@ pub fn resolve_project_root(workspace: &Path) -> PathBuf {
 /// Marker files a command's toolchain expects in its working directory.
 /// `None` for commands with no directory-bound toolchain (run as-is).
 fn command_markers(command: &str) -> Option<&'static [&'static str]> {
-    let first = command.trim_start().split_whitespace().next().unwrap_or("");
+    let first = command.split_whitespace().next().unwrap_or("");
     // Strip any path prefix and a trailing `.exe` so `./node`, `C:\…\cargo.exe`
     // and bare `cargo` all map to the same verb.
     let verb = first.rsplit(['/', '\\']).next().unwrap_or(first);
@@ -290,12 +290,7 @@ pub fn merge_verify_entries(
         }
     };
 
-    for e in operator
-        .iter()
-        .cloned()
-        .chain(toolchain.into_iter())
-        .chain(model.into_iter())
-    {
+    for e in operator.iter().cloned().chain(toolchain).chain(model) {
         let k = key(&e);
         // Empty-key entries (e.g. argv-only operator entries with odd shape)
         // are kept as-is; only dedup non-empty command keys.

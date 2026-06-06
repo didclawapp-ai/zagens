@@ -29,14 +29,13 @@ fn load_fixture(path: &Path) -> Vec<FixtureEvent> {
     let reader = BufReader::new(file);
     reader
         .lines()
-        .map(|line| {
+        .filter_map(|line| {
             let line = line.expect("read line");
             if line.trim().is_empty() {
                 return None;
             }
             Some(serde_json::from_str(&line).expect("parse fixture event"))
         })
-        .filter_map(|e| e)
         .collect()
 }
 
@@ -62,7 +61,7 @@ fn runtime_turn_minimal_fixture_has_monotonic_seq_and_lifecycle() {
 
     let names: Vec<&str> = events.iter().map(|e| e.event.as_str()).collect();
     assert_eq!(names.first(), Some(&"turn.started"));
-    assert!(names.iter().any(|e| *e == "item.completed"));
+    assert!(names.contains(&"item.completed"));
     assert_eq!(names.last(), Some(&"turn.completed"));
 }
 
@@ -81,7 +80,7 @@ fn runtime_turn_replay_fixture_covers_full_turn_lifecycle() {
     assert_eq!(names.first(), Some(&"turn.started"));
     assert_eq!(names.last(), Some(&"turn.completed"));
     assert!(
-        names.iter().any(|e| *e == "approval.required"),
+        names.contains(&"approval.required"),
         "replay should include approval gate"
     );
     assert!(
@@ -89,7 +88,7 @@ fn runtime_turn_replay_fixture_covers_full_turn_lifecycle() {
         "replay should include multiple streaming deltas"
     );
     assert!(
-        names.iter().any(|e| *e == "item.started"),
+        names.contains(&"item.started"),
         "replay should include item.started"
     );
 }

@@ -1,3 +1,14 @@
+#![cfg_attr(
+    test,
+    allow(
+        clippy::cloned_ref_to_slice_refs,
+        clippy::collapsible_if,
+        clippy::field_reassign_with_default,
+        clippy::items_after_test_module,
+        clippy::needless_borrows_for_generic_args,
+    )
+)]
+
 //! DeepSeek runtime library + HTTP sidecar (`deepseek-runtime`) — D6 Phase B single crate.
 
 mod agent_surface;

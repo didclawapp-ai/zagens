@@ -80,10 +80,7 @@ impl ToolSpec for FileInfoTool {
 
         let is_pdf_flag = is_pdf(&file_path).unwrap_or(false);
 
-        let head_sample = match read_sniff_sample(&file_path, BINARY_SNIFF_BYTES) {
-            Ok(b) => b,
-            Err(_) => Vec::new(),
-        };
+        let head_sample = read_sniff_sample(&file_path, BINARY_SNIFF_BYTES).unwrap_or_default();
 
         let (is_binary, binary_reason) = detect_binary_sniff(&head_sample);
 

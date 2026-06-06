@@ -82,7 +82,7 @@ impl ToolSpec for AutomationCreateTool {
         let automation = host
             .create_automation(req)
             .await
-            .map_err(|e| ToolError::execution_failed(e))?;
+            .map_err(ToolError::execution_failed)?;
         ToolResult::json(&automation).map_err(|e| ToolError::execution_failed(e.to_string()))
     }
 }
@@ -116,7 +116,7 @@ impl ToolSpec for AutomationListTool {
         let mut automations: Vec<Value> = serde_json::from_value(
             host.list_automations()
                 .await
-                .map_err(|e| ToolError::execution_failed(e))?,
+                .map_err(ToolError::execution_failed)?,
         )
         .map_err(|e| ToolError::execution_failed(e.to_string()))?;
         automations.truncate(optional_u64(&input, "limit", 50).clamp(1, 100) as usize);
@@ -152,11 +152,11 @@ impl ToolSpec for AutomationReadTool {
         let automation = host
             .get_automation(id)
             .await
-            .map_err(|e| ToolError::execution_failed(e))?;
+            .map_err(ToolError::execution_failed)?;
         let runs = host
             .list_runs(id, Some(20))
             .await
-            .map_err(|e| ToolError::execution_failed(e))?;
+            .map_err(ToolError::execution_failed)?;
         ToolResult::json(&json!({ "automation": automation, "recent_runs": runs }))
             .map_err(|e| ToolError::execution_failed(e.to_string()))
     }
@@ -216,7 +216,7 @@ impl ToolSpec for AutomationUpdateTool {
         let automation = host
             .update_automation(required_str(&input, "automation_id")?, req)
             .await
-            .map_err(|e| ToolError::execution_failed(e))?;
+            .map_err(ToolError::execution_failed)?;
         ToolResult::json(&automation).map_err(|e| ToolError::execution_failed(e.to_string()))
     }
 }
@@ -303,7 +303,7 @@ impl ToolSpec for AutomationRunTool {
         let run = host
             .run_now(required_str(&input, "automation_id")?)
             .await
-            .map_err(|e| ToolError::execution_failed(e))?;
+            .map_err(ToolError::execution_failed)?;
         ToolResult::json(&run).map_err(|e| ToolError::execution_failed(e.to_string()))
     }
 }

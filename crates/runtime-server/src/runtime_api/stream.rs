@@ -238,10 +238,10 @@ pub(super) fn map_compat_stream_event(
                 .unwrap_or(json!(null));
             let turn_summary = payload.get("turn_summary").cloned();
             let mut body = json!({ "usage": usage });
-            if let Some(ref summary) = turn_summary {
-                if let Some(obj) = body.as_object_mut() {
-                    obj.insert("turn_summary".to_string(), summary.clone());
-                }
+            if let Some(ref summary) = turn_summary
+                && let Some(obj) = body.as_object_mut()
+            {
+                obj.insert("turn_summary".to_string(), summary.clone());
             }
             Some(sse_json_seq(event.seq, "turn.completed", body))
         }

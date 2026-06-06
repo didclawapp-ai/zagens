@@ -23,6 +23,7 @@ fn usage_percent_for(used: u32, window: u32) -> f64 {
 
 /// Build a snapshot using the same conservative estimator and compaction gate as the TUI engine.
 #[must_use]
+#[allow(clippy::too_many_arguments)]
 pub fn build_thread_context_snapshot(
     model: &str,
     messages: &[Message],

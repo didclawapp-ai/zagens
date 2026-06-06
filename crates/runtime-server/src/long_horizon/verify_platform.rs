@@ -309,8 +309,6 @@ fn run_pattern_file_probe(workspace: &Path, spec: &GrepLikeSpec) -> Option<Nativ
     let count = count_pattern_matches(&spec.pattern, &content);
     let pass = if spec.absence_ok {
         count == 0
-    } else if spec.count_mode {
-        count > 0
     } else {
         count > 0
     };

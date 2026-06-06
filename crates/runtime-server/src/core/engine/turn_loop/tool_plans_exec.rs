@@ -30,6 +30,7 @@ use crate::mcp::McpPool;
 use crate::tools::user_input::UserInputRequest;
 use deepseek_core::engine::turn_loop::TurnLoopToolExec;
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn execute_tool_plans(
     engine: &mut Engine,
     _mode: TurnLoopMode,
@@ -252,7 +253,7 @@ pub(super) async fn execute_tool_plans(
             if is_tool_search_tool(&tool_name) {
                 let started_at = Instant::now();
                 let result =
-                    execute_tool_search(&tool_name, &tool_input, &tool_catalog, active_tool_names);
+                    execute_tool_search(&tool_name, &tool_input, tool_catalog, active_tool_names);
 
                 let _ = engine
                     .tx_event

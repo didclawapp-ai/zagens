@@ -29,10 +29,10 @@ pub fn git_counts_as_progress(
     if cur == prev {
         return false;
     }
-    if let Some(suppress) = session.suppress_git_progress_baseline.as_ref() {
-        if cur == suppress {
-            return false;
-        }
+    if let Some(suppress) = session.suppress_git_progress_baseline.as_ref()
+        && cur == suppress
+    {
+        return false;
     }
     true
 }

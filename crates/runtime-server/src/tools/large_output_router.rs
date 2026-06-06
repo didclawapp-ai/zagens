@@ -137,30 +137,30 @@ pub fn artifact_refs_from_tool_output(
     content: &str,
     metadata: Option<&serde_json::Value>,
 ) -> Vec<PathBuf> {
-    if let Some(meta) = metadata {
-        if let Some(lo) = meta.get(LARGE_OUTPUT_METADATA_KEY) {
-            if let Some(path) = lo.get("meta_path").and_then(|v| v.as_str()) {
-                let p = PathBuf::from(path);
-                if p.is_file() {
-                    return vec![p];
-                }
-            }
-            if let Some(ref_id) = lo.get("ref_id").and_then(|v| v.as_str()) {
-                if let Some(sid) = session_id {
-                    let p = large_output_meta_path(sid, ref_id);
-                    if p.is_file() {
-                        return vec![p];
-                    }
-                }
-            }
-        }
-    }
-    if let Some(sid) = session_id {
-        if let Some(ext) = parse_workshop_ref_from_message(content) {
-            let p = large_output_meta_path(sid, &ext.ref_id);
+    if let Some(meta) = metadata
+        && let Some(lo) = meta.get(LARGE_OUTPUT_METADATA_KEY)
+    {
+        if let Some(path) = lo.get("meta_path").and_then(|v| v.as_str()) {
+            let p = PathBuf::from(path);
             if p.is_file() {
                 return vec![p];
             }
+        }
+        if let Some(ref_id) = lo.get("ref_id").and_then(|v| v.as_str())
+            && let Some(sid) = session_id
+        {
+            let p = large_output_meta_path(sid, ref_id);
+            if p.is_file() {
+                return vec![p];
+            }
+        }
+    }
+    if let Some(sid) = session_id
+        && let Some(ext) = parse_workshop_ref_from_message(content)
+    {
+        let p = large_output_meta_path(sid, &ext.ref_id);
+        if p.is_file() {
+            return vec![p];
         }
     }
     Vec::new()

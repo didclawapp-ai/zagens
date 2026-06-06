@@ -388,10 +388,10 @@ fn allowed_skill_roots_for_picker(
         .map_err(|e| ApiError::bad_request(format!("workspace path could not be resolved: {e}")))?;
     for rel in [".agents/skills", "skills"] {
         let p = ws.join(rel);
-        if p.is_dir() {
-            if let Ok(c) = p.canonicalize() {
-                roots.push(c);
-            }
+        if p.is_dir()
+            && let Ok(c) = p.canonicalize()
+        {
+            roots.push(c);
         }
     }
 

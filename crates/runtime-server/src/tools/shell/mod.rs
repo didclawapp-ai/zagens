@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(unused_imports))]
+
 //! Advanced shell execution with background process support and sandboxing.
 //!
 //! Provides:

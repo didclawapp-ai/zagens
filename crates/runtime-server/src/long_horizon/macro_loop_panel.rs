@@ -65,18 +65,18 @@ impl MacroLoopPanelCache {
         }
         if message.starts_with("long_horizon.macro_craft_start") {
             self.phase = Some(MacroPhase::Craft.as_str().to_string());
-            if let Some(p) = payload {
-                if let Some(id) = p.get("task_id").and_then(Value::as_str) {
-                    self.macro_task_id = Some(id.to_string());
-                }
+            if let Some(p) = payload
+                && let Some(id) = p.get("task_id").and_then(Value::as_str)
+            {
+                self.macro_task_id = Some(id.to_string());
             }
             return;
         }
         if message.starts_with("long_horizon.macro_craft_result") {
-            if let Some(p) = payload {
-                if let Some(n) = p.get("blockers_count").and_then(Value::as_u64) {
-                    self.last_blockers_count = Some(n as u32);
-                }
+            if let Some(p) = payload
+                && let Some(n) = p.get("blockers_count").and_then(Value::as_u64)
+            {
+                self.last_blockers_count = Some(n as u32);
             }
             return;
         }

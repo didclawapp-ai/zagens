@@ -103,7 +103,7 @@ impl ToolSpec for TaskCreateTool {
                     .map_err(|e| ToolError::execution_failed(e.to_string()))?,
             )
             .await
-            .map_err(|e| ToolError::execution_failed(e))?,
+            .map_err(ToolError::execution_failed)?,
         )?;
         task_result("task_create", &task)
     }
@@ -145,7 +145,7 @@ impl ToolSpec for TaskListTool {
         let tasks: Vec<TaskRecord> = serde_json::from_value(
             host.list_tasks(Some(limit))
                 .await
-                .map_err(|e| ToolError::execution_failed(e))?,
+                .map_err(ToolError::execution_failed)?,
         )
         .map_err(|e| ToolError::execution_failed(e.to_string()))?;
         ToolResult::json(&json!({
@@ -192,7 +192,7 @@ impl ToolSpec for TaskReadTool {
         let task = task_from_value(
             host.get_task(required_str(&input, "task_id")?)
                 .await
-                .map_err(|e| ToolError::execution_failed(e))?,
+                .map_err(ToolError::execution_failed)?,
         )?;
         task_result("task_read", &task)
     }
@@ -232,7 +232,7 @@ impl ToolSpec for TaskCancelTool {
         let task = task_from_value(
             host.cancel_task(required_str(&input, "task_id")?)
                 .await
-                .map_err(|e| ToolError::execution_failed(e))?,
+                .map_err(ToolError::execution_failed)?,
         )?;
         task_result("task_cancel", &task)
     }
@@ -647,7 +647,7 @@ impl ToolSpec for PrAttemptRecordTool {
         {
             host.record_tool_metadata(&task_id, &metadata)
                 .await
-                .map_err(|e| ToolError::execution_failed(e))?;
+                .map_err(ToolError::execution_failed)?;
         }
         Ok(ToolResult::json(&metadata)
             .map_err(|e| ToolError::execution_failed(e.to_string()))?
@@ -834,7 +834,7 @@ fn write_runtime_artifact(
         return host
             .write_task_artifact(task_id, label, content)
             .map(Some)
-            .map_err(|e| ToolError::execution_failed(e));
+            .map_err(ToolError::execution_failed);
     }
     let Some(data_dir) = context.runtime.wire.task_data_dir.as_ref() else {
         return Ok(None);
@@ -868,7 +868,7 @@ fn write_task_artifact_for(
         return host
             .write_task_artifact(task_id, label, content)
             .map(Some)
-            .map_err(|e| ToolError::execution_failed(e));
+            .map_err(ToolError::execution_failed);
     }
     if context.runtime.wire.active_task_id.as_deref() != Some(task_id) {
         return Ok(None);
@@ -897,7 +897,7 @@ async fn read_task_for_input(
     task_from_value(
         host.get_task(&task_id)
             .await
-            .map_err(|e| ToolError::execution_failed(e))?,
+            .map_err(ToolError::execution_failed)?,
     )
 }
 

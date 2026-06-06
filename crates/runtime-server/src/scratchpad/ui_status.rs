@@ -51,9 +51,7 @@ pub fn compute_contract_warnings(status: &Value, checklist_completed: usize) -> 
         warnings.push("notes_without_accounted".to_string());
     }
 
-    if checklist_completed > 0 && accounted == 0 {
-        warnings.push("checklist_inventory_mismatch".to_string());
-    } else if checklist_completed > 0 && areas_done == 0 && areas_in_progress == 0 {
+    if checklist_completed > 0 && (accounted == 0 || (areas_done == 0 && areas_in_progress == 0)) {
         warnings.push("checklist_inventory_mismatch".to_string());
     }
 
@@ -116,10 +114,10 @@ pub fn build_thread_scratchpad_panel_status(
         }
     }
 
-    if let Some(obj) = latest.as_object_mut() {
-        if !previous_runs.is_empty() {
-            obj.insert("previous_runs".to_string(), json!(previous_runs));
-        }
+    if let Some(obj) = latest.as_object_mut()
+        && !previous_runs.is_empty()
+    {
+        obj.insert("previous_runs".to_string(), json!(previous_runs));
     }
     Some(latest)
 }

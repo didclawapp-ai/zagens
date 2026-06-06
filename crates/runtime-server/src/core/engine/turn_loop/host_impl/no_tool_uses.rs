@@ -710,48 +710,48 @@ impl Engine {
                 .clone();
             let macro_task_id = self.runtime_ext().long_horizon_state.macro_task_id.clone();
             for c in completions {
-                if macro_craft_id.as_deref() == Some(c.agent_id.as_str()) {
-                    if let Some(task_id) = macro_task_id.as_deref() {
-                        let workspace = self.session.workspace.clone();
-                        let todos = self.config_ext().todos.clone();
-                        let locale = self.config.locale_tag.clone();
-                        let macro_cfg = self.config.long_horizon.macro_loop.clone();
-                        if let Some(outcome) =
-                            crate::long_horizon::macro_loop::on_craft_review_complete(
-                                &workspace,
-                                task_id,
-                                &mut self.runtime_ext_mut().long_horizon_state,
-                                &macro_cfg,
-                                &todos,
-                                &locale,
-                            )
-                            .await
-                        {
-                            let blockers = match &outcome {
-                                crate::long_horizon::LhtGateOutcome::MacroUnmet {
-                                    remaining_blockers,
-                                    ..
-                                } => remaining_blockers.len(),
-                                _ => 0,
-                            };
-                            let _ = self
+                if macro_craft_id.as_deref() == Some(c.agent_id.as_str())
+                    && let Some(task_id) = macro_task_id.as_deref()
+                {
+                    let workspace = self.session.workspace.clone();
+                    let todos = self.config_ext().todos.clone();
+                    let locale = self.config.locale_tag.clone();
+                    let macro_cfg = self.config.long_horizon.macro_loop.clone();
+                    if let Some(outcome) =
+                        crate::long_horizon::macro_loop::on_craft_review_complete(
+                            &workspace,
+                            task_id,
+                            &mut self.runtime_ext_mut().long_horizon_state,
+                            &macro_cfg,
+                            &todos,
+                            &locale,
+                        )
+                        .await
+                    {
+                        let blockers = match &outcome {
+                            crate::long_horizon::LhtGateOutcome::MacroUnmet {
+                                remaining_blockers,
+                                ..
+                            } => remaining_blockers.len(),
+                            _ => 0,
+                        };
+                        let _ = self
                                 .tx_event
                                 .send(Event::status(format!(
                                     "long_horizon.macro_craft_result: {{\"task_id\":\"{task_id}\",\"blockers_count\":{blockers}}}"
                                 )))
                                 .await;
-                            if self.maybe_handle_macro_gate_outcome(outcome).await {
-                                turn.next_step();
-                                return TurnLoopControl::Continue;
-                            }
-                        } else {
-                            let _ = self
+                        if self.maybe_handle_macro_gate_outcome(outcome).await {
+                            turn.next_step();
+                            return TurnLoopControl::Continue;
+                        }
+                    } else {
+                        let _ = self
                                 .tx_event
                                 .send(Event::status(format!(
                                     "long_horizon.macro_craft_result: {{\"task_id\":\"{task_id}\",\"blockers_count\":0}}"
                                 )))
                                 .await;
-                        }
                     }
                 }
                 let workspace = self.0.session.workspace.clone();
@@ -908,14 +908,10 @@ impl Engine {
 
     /// Hold the turn open while LHT CRAFT review runs, then inject remediation.
     async fn maybe_await_macro_craft_completion(&mut self, turn: &mut TurnContext) -> Option<()> {
-        if self
-            .runtime_ext()
+        self.runtime_ext()
             .long_horizon_state
             .macro_craft_agent_id
-            .is_none()
-        {
-            return None;
-        }
+            .as_ref()?;
 
         let rx = Arc::clone(&self.runtime_ext().rx_subagent_completion);
         let manager = Arc::clone(&self.runtime_ext().subagent_manager);
@@ -982,40 +978,39 @@ impl Engine {
             .clone();
         let macro_task_id = self.runtime_ext().long_horizon_state.macro_task_id.clone();
         for c in completions {
-            if macro_craft_id.as_deref() == Some(c.agent_id.as_str()) {
-                if let Some(task_id) = macro_task_id.as_deref() {
-                    let workspace = self.session.workspace.clone();
-                    let todos = self.config_ext().todos.clone();
-                    let locale = self.config.locale_tag.clone();
-                    let macro_cfg = self.config.long_horizon.macro_loop.clone();
-                    if let Some(outcome) =
-                        crate::long_horizon::macro_loop::on_craft_review_complete(
-                            &workspace,
-                            task_id,
-                            &mut self.runtime_ext_mut().long_horizon_state,
-                            &macro_cfg,
-                            &todos,
-                            &locale,
-                        )
-                        .await
-                    {
-                        let blockers = match &outcome {
-                            crate::long_horizon::LhtGateOutcome::MacroUnmet {
-                                remaining_blockers,
-                                ..
-                            } => remaining_blockers.len(),
-                            _ => 0,
-                        };
-                        let _ = self
+            if macro_craft_id.as_deref() == Some(c.agent_id.as_str())
+                && let Some(task_id) = macro_task_id.as_deref()
+            {
+                let workspace = self.session.workspace.clone();
+                let todos = self.config_ext().todos.clone();
+                let locale = self.config.locale_tag.clone();
+                let macro_cfg = self.config.long_horizon.macro_loop.clone();
+                if let Some(outcome) = crate::long_horizon::macro_loop::on_craft_review_complete(
+                    &workspace,
+                    task_id,
+                    &mut self.runtime_ext_mut().long_horizon_state,
+                    &macro_cfg,
+                    &todos,
+                    &locale,
+                )
+                .await
+                {
+                    let blockers = match &outcome {
+                        crate::long_horizon::LhtGateOutcome::MacroUnmet {
+                            remaining_blockers,
+                            ..
+                        } => remaining_blockers.len(),
+                        _ => 0,
+                    };
+                    let _ = self
                             .tx_event
                             .send(Event::status(format!(
                                 "long_horizon.macro_craft_result: {{\"task_id\":\"{task_id}\",\"blockers_count\":{blockers}}}"
                             )))
                             .await;
-                        if self.maybe_handle_macro_gate_outcome(outcome).await {
-                            turn.next_step();
-                            return Some(());
-                        }
+                    if self.maybe_handle_macro_gate_outcome(outcome).await {
+                        turn.next_step();
+                        return Some(());
                     }
                 }
             }

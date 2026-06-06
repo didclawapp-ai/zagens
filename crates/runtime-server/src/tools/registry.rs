@@ -156,27 +156,24 @@ impl ToolRegistry {
                     };
 
                     let mut large_output_meta: Option<serde_json::Value> = None;
-                    if let Some(ref ext) = external_ref {
-                        if should_persist_large_output_for_namespace(&ctx.state_namespace) {
-                            match persist_large_output_blob(
-                                &ctx.state_namespace,
-                                ext,
-                                &result.content,
-                            ) {
-                                Ok(meta_path) => {
-                                    large_output_meta = Some(serde_json::json!({
-                                        "ref_id": ext.ref_id,
-                                        "meta_path": meta_path.display().to_string(),
-                                    }));
-                                }
-                                Err(err) => {
-                                    tracing::warn!(
-                                        session_id = %ctx.state_namespace,
-                                        ref_id = %ext.ref_id,
-                                        error = %err,
-                                        "failed to persist large tool output blob"
-                                    );
-                                }
+                    if let Some(ref ext) = external_ref
+                        && should_persist_large_output_for_namespace(&ctx.state_namespace)
+                    {
+                        match persist_large_output_blob(&ctx.state_namespace, ext, &result.content)
+                        {
+                            Ok(meta_path) => {
+                                large_output_meta = Some(serde_json::json!({
+                                    "ref_id": ext.ref_id,
+                                    "meta_path": meta_path.display().to_string(),
+                                }));
+                            }
+                            Err(err) => {
+                                tracing::warn!(
+                                    session_id = %ctx.state_namespace,
+                                    ref_id = %ext.ref_id,
+                                    error = %err,
+                                    "failed to persist large tool output blob"
+                                );
                             }
                         }
                     }

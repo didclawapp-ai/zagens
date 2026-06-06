@@ -289,10 +289,10 @@ fn coerce_chat_completion_message_text(content: &serde_json::Value) -> Result<St
     };
     let mut out: Vec<String> = Vec::new();
     for item in parts {
-        if let Some(t) = item.get("text").and_then(|v| v.as_str()) {
-            if !t.trim().is_empty() {
-                out.push(t.to_string());
-            }
+        if let Some(t) = item.get("text").and_then(|v| v.as_str())
+            && !t.trim().is_empty()
+        {
+            out.push(t.to_string());
         }
     }
     if out.is_empty() {
@@ -1536,15 +1536,14 @@ pub fn save_pick_rules(workspace_root: String, content: String) -> Result<(), St
         .map_err(|e| format!("创建 {WORKSPACE_META_DIR_NAME} 目录失败: {e}"))?;
     let path = workspace_meta_file_write(&base, "pick-rules.md");
 
-    if content.as_bytes().len() > PICK_RULES_MAX_BYTES {
+    if content.len() > PICK_RULES_MAX_BYTES {
         return Err(format!(
             "规则内容过长（最大 {} KiB，与 instructions 文件上限一致）",
             PICK_RULES_MAX_BYTES / 1024
         ));
     }
 
-    std::fs::write(&path, content.as_str().as_bytes())
-        .map_err(|e| format!("写入项目规则失败: {e}"))?;
+    std::fs::write(&path, content.as_bytes()).map_err(|e| format!("写入项目规则失败: {e}"))?;
     Ok(())
 }
 
@@ -1755,17 +1754,15 @@ pub fn get_symbol_index_info(workspace: String) -> Result<SymbolIndexInfo, Strin
             ) {
                 continue;
             }
-            if let Ok(mt) = entry.metadata() {
-                if let Some(secs) = mt
+            if let Ok(mt) = entry.metadata()
+                && let Some(secs) = mt
                     .modified()
                     .ok()
                     .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                {
-                    if secs.as_secs() > idx_mtime {
-                        stale = true;
-                        break;
-                    }
-                }
+                && secs.as_secs() > idx_mtime
+            {
+                stale = true;
+                break;
             }
         }
         if stale { "stale" } else { "fresh" }

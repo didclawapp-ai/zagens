@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(unused_imports))]
+
 //! Sub-agent spawning system.
 
 pub mod blackboard;

@@ -2,8 +2,7 @@ use super::*;
 use crate::client::DeepSeekClient;
 use tempfile::tempdir;
 
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 

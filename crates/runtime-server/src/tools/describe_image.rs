@@ -307,10 +307,10 @@ impl VisionClient {
             serde_json::Value::Array(parts) => {
                 let mut chunks = Vec::new();
                 for item in parts {
-                    if let Some(t) = item.get("text").and_then(|v| v.as_str()) {
-                        if !t.trim().is_empty() {
-                            chunks.push(t.to_string());
-                        }
+                    if let Some(t) = item.get("text").and_then(|v| v.as_str())
+                        && !t.trim().is_empty()
+                    {
+                        chunks.push(t.to_string());
                     }
                 }
                 if chunks.is_empty() {

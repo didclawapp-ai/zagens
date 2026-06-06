@@ -92,10 +92,10 @@ impl WindowRegistry {
     }
 
     pub fn set_last_focused(&self, label: &str) {
-        if let Ok(mut g) = self.inner.lock() {
-            if g.windows.contains_key(label) {
-                g.last_focused = label.to_string();
-            }
+        if let Ok(mut g) = self.inner.lock()
+            && g.windows.contains_key(label)
+        {
+            g.last_focused = label.to_string();
         }
     }
 
@@ -188,10 +188,10 @@ pub fn window_title_for_workspace(workspace: &str) -> String {
 }
 
 fn webview_url() -> WebviewUrl {
-    if cfg!(debug_assertions) {
-        if let Ok(url) = "http://localhost:1420".parse() {
-            return WebviewUrl::External(url);
-        }
+    if cfg!(debug_assertions)
+        && let Ok(url) = "http://localhost:1420".parse()
+    {
+        return WebviewUrl::External(url);
     }
     WebviewUrl::App("index.html".into())
 }
@@ -393,10 +393,10 @@ pub fn handle_close_requested(
 pub fn parse_workspace_from_args(args: &[String]) -> Option<String> {
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
-        if arg == "--workspace" || arg == "-w" {
-            if let Some(path) = iter.next() {
-                return Some(path.clone());
-            }
+        if (arg == "--workspace" || arg == "-w")
+            && let Some(path) = iter.next()
+        {
+            return Some(path.clone());
         }
     }
     args.iter()

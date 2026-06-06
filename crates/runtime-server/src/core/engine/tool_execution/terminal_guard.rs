@@ -20,16 +20,16 @@ impl InteractiveTerminalGuard {
 
 impl Drop for InteractiveTerminalGuard {
     fn drop(&mut self) {
-        if let Some(tx) = self.tx.take() {
-            if let Err(err) = tx.try_send(Event::ResumeEvents) {
-                tracing::warn!(
-                    target: "engine.tool_execution",
-                    ?err,
-                    "InteractiveTerminalGuard: try_send(ResumeEvents) failed; \
-                     terminal may stay in paused state until the next \
-                     pause/resume cycle"
-                );
-            }
+        if let Some(tx) = self.tx.take()
+            && let Err(err) = tx.try_send(Event::ResumeEvents)
+        {
+            tracing::warn!(
+                target: "engine.tool_execution",
+                ?err,
+                "InteractiveTerminalGuard: try_send(ResumeEvents) failed; \
+                 terminal may stay in paused state until the next \
+                 pause/resume cycle"
+            );
         }
     }
 }

@@ -48,21 +48,16 @@ impl RuntimeThreadMonitorHost<super::RuntimeEnginePolicy, super::RuntimeUserInpu
         tool_name: &str,
         result: &Result<ToolResult, ToolError>,
     ) {
-        if tool_name == "update_plan" {
-            if let Ok(output) = result {
-                if output.success {
-                    if let Some(meta) = &output.metadata {
-                        if let Some(plan) = meta.get("task_updates").and_then(|u| u.get("plan")) {
-                            if let Ok(json_str) = serde_json::to_string(plan) {
-                                self.persist_thread_plan(thread_id, &json_str);
-                                let _ = self.emit_panel_plan(thread_id, turn_id).await;
-                                let _ =
-                                    self.emit_panel_harness_task_graph(thread_id, turn_id).await;
-                            }
-                        }
-                    }
-                }
-            }
+        if tool_name == "update_plan"
+            && let Ok(output) = result
+            && output.success
+            && let Some(meta) = &output.metadata
+            && let Some(plan) = meta.get("task_updates").and_then(|u| u.get("plan"))
+            && let Ok(json_str) = serde_json::to_string(plan)
+        {
+            self.persist_thread_plan(thread_id, &json_str);
+            let _ = self.emit_panel_plan(thread_id, turn_id).await;
+            let _ = self.emit_panel_harness_task_graph(thread_id, turn_id).await;
         }
         if matches!(
             tool_name,
@@ -72,24 +67,16 @@ impl RuntimeThreadMonitorHost<super::RuntimeEnginePolicy, super::RuntimeUserInpu
                 | "todo_write"
                 | "todo_add"
                 | "todo_update"
-        ) {
-            if let Ok(output) = result {
-                if output.success {
-                    if let Some(meta) = &output.metadata {
-                        if let Some(task_updates) = meta.get("task_updates") {
-                            if let Some(checklist_json) = task_updates.get("checklist") {
-                                if let Ok(json_str) = serde_json::to_string(checklist_json) {
-                                    self.persist_thread_checklist(thread_id, &json_str);
-                                    let _ = self.emit_panel_checklist(thread_id, turn_id).await;
-                                    let _ = self
-                                        .emit_panel_harness_task_graph(thread_id, turn_id)
-                                        .await;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+        ) && let Ok(output) = result
+            && output.success
+            && let Some(meta) = &output.metadata
+            && let Some(task_updates) = meta.get("task_updates")
+            && let Some(checklist_json) = task_updates.get("checklist")
+            && let Ok(json_str) = serde_json::to_string(checklist_json)
+        {
+            self.persist_thread_checklist(thread_id, &json_str);
+            let _ = self.emit_panel_checklist(thread_id, turn_id).await;
+            let _ = self.emit_panel_harness_task_graph(thread_id, turn_id).await;
         }
         if checklist_tool_needs_panel_push(tool_name) {
             let _ = self.emit_panel_checklist(thread_id, turn_id).await;

@@ -1,6 +1,6 @@
 //! Layer-3 completion gate — pure machine deliverable reconciliation (§6.2–6.3).
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use deepseek_core::long_horizon::CompletionGateDeliverableEntry;
 use globset::{Glob, GlobSetBuilder};
@@ -193,7 +193,7 @@ fn count_glob_hits(workspace: &Path, pattern: &str) -> usize {
             p.strip_prefix(workspace)
                 .ok()
                 .and_then(|rel| rel.to_str())
-                .is_some_and(|rel| set.is_match(&rel.replace('\\', "/")))
+                .is_some_and(|rel| set.is_match(rel.replace('\\', "/")))
         })
         .count()
 }
@@ -202,7 +202,7 @@ fn check_git_tracked(
     workspace: &Path,
     entry: &CompletionGateDeliverableEntry,
     raw_path: &str,
-    resolved: &PathBuf,
+    resolved: &Path,
 ) -> Option<MissingDeliverable> {
     if !resolved.exists() {
         return Some(MissingDeliverable {

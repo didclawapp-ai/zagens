@@ -147,8 +147,7 @@ fn scan_crate_src_areas(member: &str, crate_root: &Path) -> Result<Vec<Inventory
 
     let slug = member
         .trim_start_matches("crates/")
-        .replace('/', "-")
-        .replace('.', "-");
+        .replace(['/', '.'], "-");
 
     let mut subdirs: Vec<PathBuf> = fs::read_dir(&src)
         .map_err(|e| ToolError::execution_failed(format!("read_dir {}: {e}", src.display())))?

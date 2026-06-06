@@ -24,21 +24,20 @@ pub fn audit_go_test_output(command: &str, stdout: &str, stderr: &str) -> Option
                 .to_string(),
         );
     }
-    if command.contains("-cover") || combined.contains("coverage:") {
-        if let Some(min) = min_coverage_percent(&combined) {
-            if min < DEFAULT_MIN_COVERAGE_PCT {
-                let mut msg = format!(
-                    "go test coverage {:.1}% is below minimum {:.0}%",
-                    min, DEFAULT_MIN_COVERAGE_PCT
-                );
-                if combined.contains("cmd/") || combined.contains("examples/") {
-                    msg.push_str(
+    if (command.contains("-cover") || combined.contains("coverage:"))
+        && let Some(min) = min_coverage_percent(&combined)
+        && min < DEFAULT_MIN_COVERAGE_PCT
+    {
+        let mut msg = format!(
+            "go test coverage {:.1}% is below minimum {:.0}%",
+            min, DEFAULT_MIN_COVERAGE_PCT
+        );
+        if combined.contains("cmd/") || combined.contains("examples/") {
+            msg.push_str(
                         " — extract cmd/examples logic into testable packages or add *_test.go under those paths",
                     );
-                }
-                return Some(msg);
-            }
         }
+        return Some(msg);
     }
     None
 }
@@ -48,7 +47,7 @@ fn is_go_test_command(command: &str) -> bool {
     for i in 0..tokens.len().saturating_sub(1) {
         if tokens[i].eq_ignore_ascii_case("go") && tokens[i + 1].eq_ignore_ascii_case("test") {
             // `go test -c` compiles without running — do not audit as a test run.
-            return !tokens.iter().any(|t| *t == "-c");
+            return !tokens.contains(&"-c");
         }
     }
     false

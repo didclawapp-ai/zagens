@@ -275,12 +275,11 @@ pub async fn maybe_continue_incomplete_code_task(
         // Strict mode: a code task may not free-style past an empty graph once
         // real work is underway. Force a plan first so the rest of the net is
         // not silently bypassed. Auto mode keeps the historical skip.
-        if effective_mode.is_strict() {
-            if let Some(outcome) =
+        if effective_mode.is_strict()
+            && let Some(outcome) =
                 evaluate_plan_bootstrap(input.messages, &mut *input.session, input.lang)
-            {
-                return outcome;
-            }
+        {
+            return outcome;
         }
         return LhtGateOutcome::Skip("graph_empty");
     }

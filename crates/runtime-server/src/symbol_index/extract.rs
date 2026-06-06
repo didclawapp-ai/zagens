@@ -95,20 +95,20 @@ pub(crate) fn extract_cpp_symbols(path: &Path, source_mtime: u64) -> Option<Vec<
             (&re_enum, "enum"),
             (&re_namespace, "namespace"),
         ] {
-            if let Some(cap) = re.captures(trimmed) {
-                if let Some(name) = cap.get(1) {
-                    let name = name.as_str();
-                    if !SKIP.contains(&name) {
-                        symbols.push(SymbolEntry {
-                            kind: kind.to_string(),
-                            name: name.to_string(),
-                            line: line_num,
-                            source_mtime,
-                            calls: vec![],
-                        });
-                        matched = true;
-                        break;
-                    }
+            if let Some(cap) = re.captures(trimmed)
+                && let Some(name) = cap.get(1)
+            {
+                let name = name.as_str();
+                if !SKIP.contains(&name) {
+                    symbols.push(SymbolEntry {
+                        kind: kind.to_string(),
+                        name: name.to_string(),
+                        line: line_num,
+                        source_mtime,
+                        calls: vec![],
+                    });
+                    matched = true;
+                    break;
                 }
             }
         }
@@ -132,18 +132,18 @@ pub(crate) fn extract_cpp_symbols(path: &Path, source_mtime: u64) -> Option<Vec<
             continue;
         }
 
-        if let Some(cap) = re_fn_decl.captures(trimmed) {
-            if let Some(name) = cap.get(1) {
-                let name = name.as_str();
-                if !SKIP.contains(&name) {
-                    symbols.push(SymbolEntry {
-                        kind: "fn".into(),
-                        name: name.to_string(),
-                        line: line_num,
-                        source_mtime,
-                        calls: vec![],
-                    });
-                }
+        if let Some(cap) = re_fn_decl.captures(trimmed)
+            && let Some(name) = cap.get(1)
+        {
+            let name = name.as_str();
+            if !SKIP.contains(&name) {
+                symbols.push(SymbolEntry {
+                    kind: "fn".into(),
+                    name: name.to_string(),
+                    line: line_num,
+                    source_mtime,
+                    calls: vec![],
+                });
             }
         }
     }
@@ -224,21 +224,21 @@ pub(crate) fn extract_py_symbols(path: &Path, source_mtime: u64) -> Option<Vec<S
                 }
                 continue;
             }
-        } else if let Some(cap) = re_method.captures(&line) {
-            if let Some(name) = cap.get(1) {
-                let name = name.as_str();
-                if name == "self" || SKIP_NAMES.contains(&name) {
-                    continue;
-                }
-                if let Some(cls) = &current_class {
-                    symbols.push(SymbolEntry {
-                        kind: "method".into(),
-                        name: format!("{}::{}", cls, name),
-                        line: line_num,
-                        source_mtime,
-                        calls: vec![],
-                    });
-                }
+        } else if let Some(cap) = re_method.captures(&line)
+            && let Some(name) = cap.get(1)
+        {
+            let name = name.as_str();
+            if name == "self" || SKIP_NAMES.contains(&name) {
+                continue;
+            }
+            if let Some(cls) = &current_class {
+                symbols.push(SymbolEntry {
+                    kind: "method".into(),
+                    name: format!("{}::{}", cls, name),
+                    line: line_num,
+                    source_mtime,
+                    calls: vec![],
+                });
             }
         }
     }
@@ -411,36 +411,36 @@ where
         }
 
         for (re, kind) in &compiled {
-            if let Some(cap) = re.captures(line) {
-                if let Some(name_match) = cap.get(1) {
-                    let name = name_match.as_str().to_string();
+            if let Some(cap) = re.captures(line)
+                && let Some(name_match) = cap.get(1)
+            {
+                let name = name_match.as_str().to_string();
 
-                    if skip_names.contains(&name.as_str()) {
-                        continue;
-                    }
-
-                    let full_name = if *kind == "method" {
-                        match &current_class {
-                            Some(cls) => format!("{}::{}", cls, name),
-                            None => continue,
-                        }
-                    } else {
-                        if *kind == "class" {
-                            current_class = Some(name.clone());
-                            class_brace_start = brace_depth;
-                        }
-                        name
-                    };
-
-                    symbols.push(SymbolEntry {
-                        kind: kind.to_string(),
-                        name: full_name,
-                        line: line_num,
-                        source_mtime,
-                        calls: vec![],
-                    });
-                    break;
+                if skip_names.contains(&name.as_str()) {
+                    continue;
                 }
+
+                let full_name = if *kind == "method" {
+                    match &current_class {
+                        Some(cls) => format!("{}::{}", cls, name),
+                        None => continue,
+                    }
+                } else {
+                    if *kind == "class" {
+                        current_class = Some(name.clone());
+                        class_brace_start = brace_depth;
+                    }
+                    name
+                };
+
+                symbols.push(SymbolEntry {
+                    kind: kind.to_string(),
+                    name: full_name,
+                    line: line_num,
+                    source_mtime,
+                    calls: vec![],
+                });
+                break;
             }
         }
     }

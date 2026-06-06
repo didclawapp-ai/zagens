@@ -355,9 +355,7 @@ pub async fn on_craft_review_complete(
     todos: &crate::tools::todo::SharedTodoList,
     lang: &str,
 ) -> Option<LhtGateOutcome> {
-    if session.macro_craft_agent_id.is_none() {
-        return None;
-    }
+    session.macro_craft_agent_id.as_ref()?;
     session.macro_craft_agent_id = None;
     session.craft_rounds_this_cycle = session.craft_rounds_this_cycle.saturating_add(1);
 

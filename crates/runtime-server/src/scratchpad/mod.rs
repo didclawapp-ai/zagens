@@ -76,11 +76,11 @@ pub fn resolve_run_id(ctx: &ToolContext, explicit: Option<&str>) -> Result<Strin
         return Ok(id.to_string());
     }
 
-    if let Ok(guard) = ctx.runtime.wire.scratchpad_run_id.lock() {
-        if let Some(id) = guard.as_deref().filter(|s| !s.is_empty()) {
-            validate_run_id(id)?;
-            return Ok(id.to_string());
-        }
+    if let Ok(guard) = ctx.runtime.wire.scratchpad_run_id.lock()
+        && let Some(id) = guard.as_deref().filter(|s| !s.is_empty())
+    {
+        validate_run_id(id)?;
+        return Ok(id.to_string());
     }
 
     if let Some(tid) = ctx.runtime.wire.active_thread_id.as_deref() {
@@ -164,7 +164,7 @@ pub fn discover_scratchpad_run_id_for_ui(workspace: &Path) -> Option<String> {
     if candidates.is_empty() {
         return None;
     }
-    candidates.sort_by(|a, b| b.0.cmp(&a.0));
+    candidates.sort_by_key(|a| std::cmp::Reverse(a.0));
     Some(candidates[0].1.clone())
 }
 
@@ -310,10 +310,11 @@ impl ScratchpadStore {
             }
         }
 
-        if kind == "finding" && line.get("status").is_none() {
-            if let Some(obj) = line.as_object_mut() {
-                obj.insert("status".into(), json!("open"));
-            }
+        if kind == "finding"
+            && line.get("status").is_none()
+            && let Some(obj) = line.as_object_mut()
+        {
+            obj.insert("status".into(), json!("open"));
         }
 
         let note_id = self.next_note_id()?;

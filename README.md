@@ -266,7 +266,7 @@ The sidecar binary **`deepseek-runtime`** (loopback HTTP/SSE) exposes a local AP
 
 ## Prerequisites
 
-- **Rust** 1.88+ (stable)
+- **Rust** 1.88+ (MSRV); **dev/CI pin 1.96** — see [`rust-toolchain.toml`](rust-toolchain.toml) (`rustup` auto-selects on `cd` into the repo)
 - **Node.js** 20 LTS recommended (18+ may work for `web-ui` only)
 - **Python** 3.8+ (for office document generation, code execution, RLM)
 - **[Tauri CLI 2](https://v2.tauri.app/start/prerequisites/)** — `cargo install tauri-cli --version "^2"` (once per machine)
@@ -299,11 +299,22 @@ Release / installer build (Windows): from `crates/desktop`, run `npm run bundle:
 
 ## Development
 
+**Before push** (mirrors CI Lint; avoids remote-only failures):
+
+```bash
+rustup toolchain install 1.96.0   # once, if rust-toolchain.toml not active yet
+bash scripts/ci/verify-lint.sh      # fmt + clippy -D warnings
+# or full gate: bash scripts/ci/verify-workspace.sh   # lint + tests + lockfile
+pwsh scripts/ci/install-git-hooks.ps1   # optional: pre-commit fmt + pre-push lint
+```
+
 | Command | Description |
 |---------|-------------|
+| `bash scripts/ci/verify-lint.sh` | **CI Lint mirror** (fmt + strict clippy) |
+| `bash scripts/ci/verify-workspace.sh` | Lint + `cargo test --workspace --all-features --locked` |
 | `cargo build --workspace` | Build all Rust crates |
 | `cargo test --workspace --all-features` | Run all tests |
-| `cargo clippy --workspace --all-targets --all-features` | Lint all Rust code |
+| `cargo clippy --workspace --all-targets --all-features -- -D warnings` | Lint all Rust code (strict) |
 | `cd crates/desktop/web-ui && npm run build` | Build the web UI (TypeScript + Vite) |
 | `cd crates/desktop/web-ui && npm run dev` | Start Vite dev server (port 1420) |
 | `cd crates/desktop && cargo tauri dev` | Launch Zagens in development mode |

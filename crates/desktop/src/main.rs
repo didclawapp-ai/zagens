@@ -24,11 +24,11 @@ use window_registry::WindowRegistry;
 fn focus_last_or_main(app: &tauri::AppHandle) {
     let registry = app.state::<WindowRegistry>();
     let label = registry.last_focused_label();
-    if window_registry::focus_window(app, &label).is_err() {
-        if let Some(w) = app.get_webview_window("main") {
-            let _ = w.show();
-            let _ = w.set_focus();
-        }
+    if window_registry::focus_window(app, &label).is_err()
+        && let Some(w) = app.get_webview_window("main")
+    {
+        let _ = w.show();
+        let _ = w.set_focus();
     }
 }
 

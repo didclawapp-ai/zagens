@@ -125,15 +125,16 @@ impl Engine {
         };
         self.session.add_message(user_msg);
 
-        if inject_report_summary && !self.scratchpad_summary_injected_this_turn {
-            if let Some(summary_msg) = scratchpad_flow::build_report_summary_message(
+        if inject_report_summary
+            && !self.scratchpad_summary_injected_this_turn
+            && let Some(summary_msg) = scratchpad_flow::build_report_summary_message(
                 &self.session.workspace,
                 self.scratchpad_run_id.as_deref(),
                 &self.config.scratchpad,
-            ) {
-                self.session.add_message(summary_msg);
-                self.scratchpad_summary_injected_this_turn = true;
-            }
+            )
+        {
+            self.session.add_message(summary_msg);
+            self.scratchpad_summary_injected_this_turn = true;
         }
 
         self.0.session.model = model;

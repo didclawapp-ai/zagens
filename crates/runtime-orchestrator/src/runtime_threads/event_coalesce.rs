@@ -33,14 +33,13 @@ pub fn coalesce_delta_events(events: Vec<RuntimeEventRecord>) -> Vec<RuntimeEven
         if event.event == "item.delta" {
             let kind = delta_kind(&event.payload);
             let item = delta_item_id(&event);
-            if let Some(last) = out.last_mut() {
-                if last.event == "item.delta"
-                    && delta_item_id(last) == item
-                    && delta_kind(&last.payload) == kind
-                {
-                    append_delta(last, &event);
-                    continue;
-                }
+            if let Some(last) = out.last_mut()
+                && last.event == "item.delta"
+                && delta_item_id(last) == item
+                && delta_kind(&last.payload) == kind
+            {
+                append_delta(last, &event);
+                continue;
             }
         }
         out.push(event);

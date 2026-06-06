@@ -146,7 +146,7 @@ pub struct RoutingRulesDoc {
     pub rules: Vec<RoutingRule>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct StartTurnRequest {
     pub prompt: String,
     #[serde(default)]
@@ -168,25 +168,6 @@ pub struct StartTurnRequest {
     /// Omitted preserves legacy behaviour (error when a turn is already active).
     #[serde(default)]
     pub delivery: Option<PromptDelivery>,
-}
-
-impl Default for StartTurnRequest {
-    fn default() -> Self {
-        Self {
-            prompt: String::new(),
-            input_summary: None,
-            model: None,
-            mode: None,
-            allow_shell: None,
-            trust_mode: None,
-            auto_approve: None,
-            route_intent: None,
-            temperature: None,
-            top_p: None,
-            max_tokens: None,
-            delivery: None,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

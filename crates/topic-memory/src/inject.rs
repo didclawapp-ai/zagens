@@ -21,11 +21,11 @@ pub fn inject_memory_section(
     let section = format!("{}\n{}\n{}", markers.start, content, markers.end);
     let si = existing.find(markers.start);
     let ei = existing.find(markers.end);
-    if let (Some(si), Some(ei)) = (si, ei) {
-        if ei > si {
-            let after_end = ei + markers.end.len();
-            return format!("{}{}{}", &existing[..si], section, &existing[after_end..]);
-        }
+    if let (Some(si), Some(ei)) = (si, ei)
+        && ei > si
+    {
+        let after_end = ei + markers.end.len();
+        return format!("{}{}{}", &existing[..si], section, &existing[after_end..]);
     }
     let trimmed = existing.trim_end();
     if trimmed.is_empty() {

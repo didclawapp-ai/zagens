@@ -18,12 +18,12 @@ pub fn validate_agent_run_binding(
     target_run_id: &str,
     agent_id: &str,
 ) -> Result<(), ToolError> {
-    if let Some(bound) = agent_scratchpad_run_id {
-        if bound != target_run_id {
-            return Err(ToolError::invalid_input(format!(
-                "agent '{agent_id}' was spawned for scratchpad run '{bound}'; cannot import into '{target_run_id}'"
-            )));
-        }
+    if let Some(bound) = agent_scratchpad_run_id
+        && bound != target_run_id
+    {
+        return Err(ToolError::invalid_input(format!(
+            "agent '{agent_id}' was spawned for scratchpad run '{bound}'; cannot import into '{target_run_id}'"
+        )));
     }
     Ok(())
 }

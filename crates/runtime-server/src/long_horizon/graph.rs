@@ -77,7 +77,7 @@ impl CodeTaskGraph {
         let completion_pct = if total == 0 {
             100
         } else {
-            ((completed * 100) / total).min(100) as u8
+            completed.saturating_mul(100).saturating_div(total).min(100) as u8
         };
 
         // When the checklist is authoritative, the in-progress pointer must come

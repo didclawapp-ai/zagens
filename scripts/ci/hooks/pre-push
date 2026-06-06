@@ -1,0 +1,17 @@
+#!/bin/sh
+# Strict lint gate before push (mirrors CI Lint job). Skip: SKIP_VERIFY=1 git push
+set -e
+if [ "${SKIP_VERIFY:-}" = "1" ]; then
+  echo "pre-push: SKIP_VERIFY=1, skipping verify-lint"
+  exit 0
+fi
+root="$(git rev-parse --show-toplevel)"
+cd "${root}"
+if command -v bash >/dev/null 2>&1; then
+  bash scripts/ci/verify-lint.sh
+elif command -v pwsh >/dev/null 2>&1; then
+  pwsh -NoProfile -File scripts/ci/verify-lint.ps1
+else
+  echo "pre-push: need bash or pwsh to run verify-lint" >&2
+  exit 1
+fi

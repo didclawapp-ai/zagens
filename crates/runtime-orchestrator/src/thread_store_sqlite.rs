@@ -547,7 +547,7 @@ pub fn load_thread_sqlite(db: &Connection, thread_id: &str) -> anyhow::Result<Th
     db.query_row(
         "SELECT id, created_at, updated_at, model, workspace, mode, allow_shell, trust_mode, auto_approve, latest_turn_id, latest_response_bookmark, archived, system_prompt, task_id, title, coherence_state_json, task_type, scratchpad_run_id, checklist_json, scratchpad_run_history_json, plan_json FROM threads WHERE id = ?1",
         params![thread_id],
-        |row| thread_record_from_row(row),
+        thread_record_from_row,
     )
     .map_err(|e| anyhow::anyhow!("thread not found ({thread_id}): {e}"))
 }

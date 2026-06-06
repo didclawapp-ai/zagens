@@ -97,10 +97,10 @@ impl CompletionGatePanelCache {
     pub fn apply_status(&mut self, message: &str, payload: Option<&Value>) {
         if message.starts_with("long_horizon.manifest_gate_start:") {
             self.active = true;
-            if let Some(p) = payload {
-                if let Some(m) = p.get("mode").and_then(Value::as_str) {
-                    self.mode = Some(m.to_string());
-                }
+            if let Some(p) = payload
+                && let Some(m) = p.get("mode").and_then(Value::as_str)
+            {
+                self.mode = Some(m.to_string());
             }
             return;
         }
@@ -167,14 +167,14 @@ impl CompletionGatePanelCache {
             }
             return;
         }
-        if message.starts_with("long_horizon.integration_gate:") {
-            if let Some(p) = payload {
-                if let Some(g) = p.get("gap_count").and_then(Value::as_u64) {
-                    self.integration_gap_count = Some(g as u32);
-                }
-                if p.get("enforce").and_then(Value::as_bool) == Some(true) {
-                    self.mode = Some("enforce".to_string());
-                }
+        if message.starts_with("long_horizon.integration_gate:")
+            && let Some(p) = payload
+        {
+            if let Some(g) = p.get("gap_count").and_then(Value::as_u64) {
+                self.integration_gap_count = Some(g as u32);
+            }
+            if p.get("enforce").and_then(Value::as_bool) == Some(true) {
+                self.mode = Some("enforce".to_string());
             }
         }
     }

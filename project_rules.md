@@ -56,8 +56,9 @@ When unsure, **draft + list risk** for maintainer review instead of shipping qui
 
 **Cursor:** `globs: "**/*.rs"`, `alwaysApply: false`
 
-- **Toolchain:** Rust **1.88+**, **stable only** (see [`AGENTS.md`](AGENTS.md): no nightly `feature`, `if let` match-arm guards on `< 1.94`; `let_chains` in `if`/`while` is OK on 1.88+).
-- **Verify:** `cargo build`, `cargo test --workspace --all-features`, `cargo clippy --workspace --all-targets --all-features` before claiming the change compiles.
+- **Toolchain:** MSRV **1.88+**; dev/CI pin **`rust-toolchain.toml`** (currently **1.96**). No nightly `feature`; `let_chains` in `if`/`while` is OK on 1.88+.
+- **Verify before push:** `bash scripts/ci/verify-lint.sh` (CI Lint mirror). Full gate: `bash scripts/ci/verify-workspace.sh`. Optional hooks: `scripts/ci/install-git-hooks.sh`.
+- **Verify:** `cargo build`, `cargo test --workspace --all-features`, `cargo clippy --workspace --all-targets --all-features -- -D warnings` before claiming the change compiles.
 - **Modules:** prefer **smaller sources** (~1000 lines soft cap); split rather than growing one file (see §3).
 - **CLI entry:** prefer documenting **`deepseek`** (dispatcher); not `deepseek-tui` alone for general flows.
 - **HTTP runtime:** [`docs/tech/API_DESIGN.md`](docs/tech/API_DESIGN.md) and `crates/tui/src/runtime_api.rs` for `/v1/...` contracts used by Zagens WebView.

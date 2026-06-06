@@ -391,7 +391,7 @@ fn write_artifact_if_needed(
         return host
             .write_task_artifact(task_id, label, content)
             .map(Some)
-            .map_err(|e| ToolError::execution_failed(e));
+            .map_err(ToolError::execution_failed);
     }
     let Some(data_dir) = context.runtime.wire.task_data_dir.as_ref() else {
         return Ok(None);

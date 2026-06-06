@@ -1,0 +1,6 @@
+# Dev + CI toolchain (SSOT). MSRV in root Cargo.toml `[workspace.package] rust-version`
+# stays 1.88 for downstream compatibility; contributors and CI use this pin.
+[toolchain]
+channel = "1.96.0"
+components = ["clippy", "rustfmt"]
+profile = "default"

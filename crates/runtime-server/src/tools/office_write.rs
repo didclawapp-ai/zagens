@@ -319,7 +319,7 @@ fn parse_date_to_serial(s: &str) -> Result<f64, ()> {
     let year: i32 = y_part.parse().map_err(|_| ())?;
     let month: u32 = m_part.parse().map_err(|_| ())?;
     let day: u32 = d_part.parse().map_err(|_| ())?;
-    if year < 1900 || month < 1 || month > 12 || day < 1 || day > 31 {
+    if year < 1900 || !(1..=12).contains(&month) || !(1..=31).contains(&day) {
         return Err(());
     }
 
@@ -626,7 +626,7 @@ fn generate_xlsx(input: &Value, path: &PathBuf, workspace: &Path) -> Result<Stri
                                 .write_with_format(
                                     row_offset,
                                     ci as u16,
-                                    &other.to_string(),
+                                    other.to_string(),
                                     &header_fmt,
                                 )
                                 .map_err(|e| format!("写入表头行失败: {e}"))?;
@@ -663,7 +663,7 @@ fn generate_xlsx(input: &Value, path: &PathBuf, workspace: &Path) -> Result<Stri
         for (ri, row_val) in rows.iter().enumerate().skip(row_start_idx) {
             let excel_row = data_start_row + (ri - row_start_idx) as u32;
             let row = row_val.as_array().ok_or("每行必须是数组")?;
-            let is_even = (excel_row as usize) % 2 == 0;
+            let is_even = (excel_row as usize).is_multiple_of(2);
 
             let base_fmt = if is_even && banded_rows && !theme.banded_bg.is_empty() {
                 &banded_fmt
@@ -675,28 +675,28 @@ fn generate_xlsx(input: &Value, path: &PathBuf, workspace: &Path) -> Result<Stri
                 let col_u16 = ci as u16;
 
                 // Check for column-level formula
-                if let Some(cf) = col_formats.get(ci) {
-                    if let Some(ref tmpl) = cf.formula_template {
-                        let col_letter = col_to_letter(col_u16);
-                        let formula_str = tmpl
-                            .replace("{{row}}", &(excel_row + 1).to_string())
-                            .replace("{{col}}", &col_letter)
-                            .replace("{{last_row}}", &(last_data_row + 1).to_string());
-                        worksheet
-                            .write_formula_with_format(
-                                excel_row,
-                                col_u16,
-                                formula_str.as_str(),
-                                &cf.fmt,
-                            )
-                            .map_err(|e| format!("写入公式失败: {e}"))?;
-                        continue;
-                    }
+                if let Some(cf) = col_formats.get(ci)
+                    && let Some(ref tmpl) = cf.formula_template
+                {
+                    let col_letter = col_to_letter(col_u16);
+                    let formula_str = tmpl
+                        .replace("{{row}}", &(excel_row + 1).to_string())
+                        .replace("{{col}}", &col_letter)
+                        .replace("{{last_row}}", &(last_data_row + 1).to_string());
+                    worksheet
+                        .write_formula_with_format(
+                            excel_row,
+                            col_u16,
+                            formula_str.as_str(),
+                            &cf.fmt,
+                        )
+                        .map_err(|e| format!("写入公式失败: {e}"))?;
+                    continue;
                 }
 
                 // Determine format for this cell
                 let cell_fmt: &Format = if let Some(cf) = col_formats.get(ci) {
-                    if matches!(cf.formula_template, Some(_)) {
+                    if cf.formula_template.is_some() {
                         // formula handled above; shouldn't reach here
                         base_fmt
                     } else {
@@ -867,11 +867,11 @@ fn generate_xlsx(input: &Value, path: &PathBuf, workspace: &Path) -> Result<Stri
                 let cat_range = chart_val
                     .get("categories_range")
                     .and_then(|v| v.as_str())
-                    .map(|r| qualify(r));
+                    .map(&qualify);
                 let val_range = chart_val
                     .get("values_range")
                     .and_then(|v| v.as_str())
-                    .map(|r| qualify(r));
+                    .map(qualify);
                 match (cat_range.as_deref(), val_range.as_deref()) {
                     (Some(cat), Some(val)) => {
                         chart.add_series().set_categories(cat).set_values(val);
@@ -895,15 +895,15 @@ fn generate_xlsx(input: &Value, path: &PathBuf, workspace: &Path) -> Result<Stri
                     .unwrap_or(0) as u16;
 
                 // Apply size if specified
-                if let Some(size) = chart_val.get("size") {
-                    if let (Some(w), Some(h)) = (
+                if let Some(size) = chart_val.get("size")
+                    && let (Some(w), Some(h)) = (
                         size.get("width").and_then(|v| v.as_f64()),
                         size.get("height").and_then(|v| v.as_f64()),
-                    ) {
-                        let w_px = w.round().clamp(1.0, f64::from(u32::MAX)) as u32;
-                        let h_px = h.round().clamp(1.0, f64::from(u32::MAX)) as u32;
-                        chart.set_width(w_px).set_height(h_px);
-                    }
+                    )
+                {
+                    let w_px = w.round().clamp(1.0, f64::from(u32::MAX)) as u32;
+                    let h_px = h.round().clamp(1.0, f64::from(u32::MAX)) as u32;
+                    chart.set_width(w_px).set_height(h_px);
                 }
 
                 worksheet
@@ -1012,57 +1012,57 @@ fn generate_xlsx(input: &Value, path: &PathBuf, workspace: &Path) -> Result<Stri
         if let Some(orientation) = pc.get("orientation").and_then(|v| v.as_str()) {
             // We'll apply to the first sheet as a reasonable default.
             // A full per-sheet print config can come in Phase 3.
-            if let Ok(first_sheet) = workbook.worksheet_from_index(0) {
-                if orientation == "landscape" {
-                    first_sheet.set_landscape();
-                }
+            if let Ok(first_sheet) = workbook.worksheet_from_index(0)
+                && orientation == "landscape"
+            {
+                first_sheet.set_landscape();
             }
         }
-        if let Some(ps) = pc.get("paper_size").and_then(|v| v.as_str()) {
-            if let Ok(first_sheet) = workbook.worksheet_from_index(0) {
-                let size: u8 = match ps {
-                    "A3" => 8,
-                    "A4" => 9,
-                    "Letter" => 1,
-                    _ => 9,
-                };
-                first_sheet.set_paper_size(size);
-            }
+        if let Some(ps) = pc.get("paper_size").and_then(|v| v.as_str())
+            && let Ok(first_sheet) = workbook.worksheet_from_index(0)
+        {
+            let size: u8 = match ps {
+                "A3" => 8,
+                "A4" => 9,
+                "Letter" => 1,
+                _ => 9,
+            };
+            first_sheet.set_paper_size(size);
         }
-        if let Some(fit) = pc.get("fit_to_width").and_then(|v| v.as_u64()) {
-            if let Ok(first_sheet) = workbook.worksheet_from_index(0) {
-                first_sheet.set_print_fit_to_pages(fit as u16, 0);
-            }
+        if let Some(fit) = pc.get("fit_to_width").and_then(|v| v.as_u64())
+            && let Ok(first_sheet) = workbook.worksheet_from_index(0)
+        {
+            first_sheet.set_print_fit_to_pages(fit as u16, 0);
         }
-        if let Some(hdr) = pc.get("header").and_then(|v| v.as_str()) {
-            if let Ok(first_sheet) = workbook.worksheet_from_index(0) {
-                first_sheet.set_header(hdr);
-            }
+        if let Some(hdr) = pc.get("header").and_then(|v| v.as_str())
+            && let Ok(first_sheet) = workbook.worksheet_from_index(0)
+        {
+            first_sheet.set_header(hdr);
         }
-        if let Some(ftr) = pc.get("footer").and_then(|v| v.as_str()) {
-            if let Ok(first_sheet) = workbook.worksheet_from_index(0) {
-                first_sheet.set_footer(ftr);
-            }
+        if let Some(ftr) = pc.get("footer").and_then(|v| v.as_str())
+            && let Ok(first_sheet) = workbook.worksheet_from_index(0)
+        {
+            first_sheet.set_footer(ftr);
         }
-        if let Some(margins) = pc.get("margins") {
-            if let Ok(first_sheet) = workbook.worksheet_from_index(0) {
-                let left = margins.get("left").and_then(|v| v.as_f64()).unwrap_or(0.7);
-                let right = margins.get("right").and_then(|v| v.as_f64()).unwrap_or(0.7);
-                let top = margins.get("top").and_then(|v| v.as_f64()).unwrap_or(0.75);
-                let bottom = margins
-                    .get("bottom")
-                    .and_then(|v| v.as_f64())
-                    .unwrap_or(0.75);
-                let header_margin = margins
-                    .get("header")
-                    .and_then(|v| v.as_f64())
-                    .unwrap_or(0.3);
-                let footer_margin = margins
-                    .get("footer")
-                    .and_then(|v| v.as_f64())
-                    .unwrap_or(0.3);
-                first_sheet.set_margins(left, right, top, bottom, header_margin, footer_margin);
-            }
+        if let Some(margins) = pc.get("margins")
+            && let Ok(first_sheet) = workbook.worksheet_from_index(0)
+        {
+            let left = margins.get("left").and_then(|v| v.as_f64()).unwrap_or(0.7);
+            let right = margins.get("right").and_then(|v| v.as_f64()).unwrap_or(0.7);
+            let top = margins.get("top").and_then(|v| v.as_f64()).unwrap_or(0.75);
+            let bottom = margins
+                .get("bottom")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.75);
+            let header_margin = margins
+                .get("header")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.3);
+            let footer_margin = margins
+                .get("footer")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.3);
+            first_sheet.set_margins(left, right, top, bottom, header_margin, footer_margin);
         }
     }
 
@@ -1084,16 +1084,14 @@ fn generate_pdf(input: &Value, path: &PathBuf) -> Result<String, String> {
 fn generate_docx(input: &Value, path: &PathBuf) -> Result<String, String> {
     // Try Python first
     match generate_via_python("docx", input, path) {
-        Ok(()) => return Ok("python-docx".to_string()),
+        Ok(()) => Ok("python-docx".to_string()),
         Err(py_err) => {
             // Fall back to Rust minimal DOCX
             match generate_docx_rust_fallback(input, path) {
-                Ok(()) => return Ok("rust-minimal-docx".to_string()),
-                Err(rust_err) => {
-                    return Err(format!(
-                        "DOCX 生成失败。\nPython 引擎: {py_err}\nRust 兜底: {rust_err}"
-                    ));
-                }
+                Ok(()) => Ok("rust-minimal-docx".to_string()),
+                Err(rust_err) => Err(format!(
+                    "DOCX 生成失败。\nPython 引擎: {py_err}\nRust 兜底: {rust_err}"
+                )),
             }
         }
     }
@@ -1408,7 +1406,7 @@ fn find_office_script(format: &str) -> Result<PathBuf, String> {
     let need_install = !script_path.exists()
         || std::fs::read_to_string(&marker)
             .ok()
-            .map_or(true, |v| v.trim() != SCRIPTS_VERSION);
+            .is_none_or(|v| v.trim() != SCRIPTS_VERSION);
 
     if need_install {
         install_embedded_scripts(&scripts_dir)?;

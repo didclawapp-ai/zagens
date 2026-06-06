@@ -39,13 +39,12 @@ impl Engine {
                             cache_key,
                             remember_for_session,
                         } if id == tool_id => {
-                            if remember_for_session {
-                                if let Some(key) = cache_key {
+                            if remember_for_session
+                                && let Some(key) = cache_key {
                                     self.runtime_ext_mut()
                                         .approval_cache
                                         .insert(ApprovalKey(key), true);
                                 }
-                            }
                             return Ok(ApprovalResult::Approved);
                         }
                         ApprovalDecision::Denied { id } if id == tool_id => {

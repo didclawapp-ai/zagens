@@ -163,15 +163,13 @@ impl ToolSpec for AgentWaitTool {
             "running_ids": running_ids,
             "status_by_id": status_by_id
         });
-        if timed_out {
-            if snapshots.len() == 1 {
-                if let Some(progress) = metadata.as_object_mut() {
-                    if let Some(progress_obj) = wait_progress_metadata(&snapshots[0]).as_object() {
-                        for (key, value) in progress_obj {
-                            progress.insert(key.clone(), value.clone());
-                        }
-                    }
-                }
+        if timed_out
+            && snapshots.len() == 1
+            && let Some(progress) = metadata.as_object_mut()
+            && let Some(progress_obj) = wait_progress_metadata(&snapshots[0]).as_object()
+        {
+            for (key, value) in progress_obj {
+                progress.insert(key.clone(), value.clone());
             }
         }
         result.metadata = Some(metadata);

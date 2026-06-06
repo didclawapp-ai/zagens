@@ -230,25 +230,25 @@ pub(crate) fn subagent_done_sentinel(agent_id: &str, res: &SubAgentResult) -> St
     payload.insert("steps".into(), json!(res.steps_taken));
     payload.insert("summary".into(), json!(summarize_subagent_result(res)));
 
-    if let Some(ref v) = res.structured_verdict {
-        if let Ok(val) = serde_json::to_value(v) {
-            payload.insert("structured_verdict".into(), val);
-        }
+    if let Some(ref v) = res.structured_verdict
+        && let Ok(val) = serde_json::to_value(v)
+    {
+        payload.insert("structured_verdict".into(), val);
     }
-    if let Some(ref f) = res.structured_findings {
-        if let Ok(val) = serde_json::to_value(f) {
-            payload.insert("structured_findings".into(), val);
-        }
+    if let Some(ref f) = res.structured_findings
+        && let Ok(val) = serde_json::to_value(f)
+    {
+        payload.insert("structured_findings".into(), val);
     }
-    if let Some(ref reason) = res.completion_reason {
-        if let Ok(val) = serde_json::to_value(reason) {
-            payload.insert("completion_reason".into(), val);
-        }
+    if let Some(ref reason) = res.completion_reason
+        && let Ok(val) = serde_json::to_value(reason)
+    {
+        payload.insert("completion_reason".into(), val);
     }
-    if let Some(ref reason) = res.structured_findings_parse_failure {
-        if let Ok(val) = serde_json::to_value(reason) {
-            payload.insert("structured_findings_parse_failure".into(), val);
-        }
+    if let Some(ref reason) = res.structured_findings_parse_failure
+        && let Ok(val) = serde_json::to_value(reason)
+    {
+        payload.insert("structured_findings_parse_failure".into(), val);
     }
 
     let payload = serde_json::Value::Object(payload);
@@ -269,10 +269,10 @@ pub(crate) fn subagent_failed_sentinel_with_reason(
     payload.insert("agent_id".into(), json!(agent_id));
     payload.insert("status".into(), json!("failed"));
     payload.insert("error".into(), json!(err));
-    if let Some(reason) = completion_reason {
-        if let Ok(val) = serde_json::to_value(reason) {
-            payload.insert("completion_reason".into(), val);
-        }
+    if let Some(reason) = completion_reason
+        && let Ok(val) = serde_json::to_value(reason)
+    {
+        payload.insert("completion_reason".into(), val);
     }
     let payload = serde_json::Value::Object(payload);
     format!("<deepseek:subagent.done>{payload}</deepseek:subagent.done>")

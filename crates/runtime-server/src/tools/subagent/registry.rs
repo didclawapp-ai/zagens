@@ -140,7 +140,7 @@ pub(crate) fn build_allowed_tools(
                 let cap = read_only_tool_cap(agent_type);
                 deduped
                     .into_iter()
-                    .filter(|t| cap.iter().any(|c| *c == t.as_str()))
+                    .filter(|t| cap.contains(&t.as_str()))
                     .collect::<Vec<_>>()
             }
             _ => deduped,

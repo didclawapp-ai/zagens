@@ -23,7 +23,8 @@ pub const DEFAULT_INJECT_INTERVAL_RUNS: u32 = 5;
 
 #[must_use]
 pub fn today_str() -> String {
-    NaiveDate::from(chrono::Local::now().date_naive())
+    chrono::Local::now()
+        .date_naive()
         .format("%Y-%m-%d")
         .to_string()
 }
@@ -364,37 +365,37 @@ pub fn generate_memory_section(
         }
     }
 
-    if let Some(emotions) = &graph.recent_emotions {
-        if !emotions.is_empty() {
-            let mut counts = [0u32; 4];
-            for e in emotions {
-                match e {
-                    EmotionMode::Angry => counts[0] += 1,
-                    EmotionMode::Happy => counts[1] += 1,
-                    EmotionMode::Sad => counts[2] += 1,
-                    EmotionMode::Neutral => counts[3] += 1,
-                }
+    if let Some(emotions) = &graph.recent_emotions
+        && !emotions.is_empty()
+    {
+        let mut counts = [0u32; 4];
+        for e in emotions {
+            match e {
+                EmotionMode::Angry => counts[0] += 1,
+                EmotionMode::Happy => counts[1] += 1,
+                EmotionMode::Sad => counts[2] += 1,
+                EmotionMode::Neutral => counts[3] += 1,
             }
-            let dominant = [
-                (EmotionMode::Angry, counts[0]),
-                (EmotionMode::Happy, counts[1]),
-                (EmotionMode::Sad, counts[2]),
-                (EmotionMode::Neutral, counts[3]),
-            ]
-            .into_iter()
-            .max_by_key(|(_, c)| *c)
-            .map(|(m, _)| m)
-            .unwrap_or(EmotionMode::Neutral);
-            let label = match dominant {
-                EmotionMode::Angry => "focused/intense (A)",
-                EmotionMode::Happy => "expansive/positive (B)",
-                EmotionMode::Sad => "ruminant/low-energy (C)",
-                EmotionMode::Neutral => "neutral (N)",
-            };
-            lines.push(String::new());
-            lines.push("### Recent Mood Tendency".to_string());
-            lines.push(format!("- {label} across last {} turns", emotions.len()));
         }
+        let dominant = [
+            (EmotionMode::Angry, counts[0]),
+            (EmotionMode::Happy, counts[1]),
+            (EmotionMode::Sad, counts[2]),
+            (EmotionMode::Neutral, counts[3]),
+        ]
+        .into_iter()
+        .max_by_key(|(_, c)| *c)
+        .map(|(m, _)| m)
+        .unwrap_or(EmotionMode::Neutral);
+        let label = match dominant {
+            EmotionMode::Angry => "focused/intense (A)",
+            EmotionMode::Happy => "expansive/positive (B)",
+            EmotionMode::Sad => "ruminant/low-energy (C)",
+            EmotionMode::Neutral => "neutral (N)",
+        };
+        lines.push(String::new());
+        lines.push("### Recent Mood Tendency".to_string());
+        lines.push(format!("- {label} across last {} turns", emotions.len()));
     }
 
     lines.push(String::new());

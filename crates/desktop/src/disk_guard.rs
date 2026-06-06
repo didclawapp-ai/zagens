@@ -55,7 +55,7 @@ fn severity(a: StoragePressureLevel, b: StoragePressureLevel) -> StoragePressure
 pub fn volume_free_bytes(path: &Path) -> Result<u64, String> {
     #[cfg(windows)]
     {
-        return windows_free_bytes(path);
+        windows_free_bytes(path)
     }
     #[cfg(unix)]
     {

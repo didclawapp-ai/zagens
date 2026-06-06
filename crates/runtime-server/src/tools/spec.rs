@@ -34,7 +34,7 @@ pub use deepseek_tools::{
 /// contexts keep working. Tools that need durable task/automation state fail
 /// closed with a clear "not available" error when the relevant service is not
 /// attached.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct RuntimeToolServices {
     /// Adapter-owned metadata wired at engine spawn (D16 E1-a3).
     pub wire: RuntimeToolHostWire,
@@ -43,18 +43,6 @@ pub struct RuntimeToolServices {
     pub automation_host: Option<std::sync::Arc<dyn ToolAutomationHost>>,
     /// Shell env hook injection (#456); sidecar attaches `HookShellEnvHost`.
     pub shell_env: Option<std::sync::Arc<dyn ToolShellEnvHost>>,
-}
-
-impl Default for RuntimeToolServices {
-    fn default() -> Self {
-        Self {
-            wire: RuntimeToolHostWire::default(),
-            shell_manager: None,
-            task_host: None,
-            automation_host: None,
-            shell_env: None,
-        }
-    }
 }
 
 impl std::fmt::Debug for RuntimeToolServices {

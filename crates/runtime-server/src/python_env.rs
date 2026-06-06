@@ -44,23 +44,21 @@ reportlab==4.2.5
 /// suitable Python was found.
 pub fn find_python() -> Option<(String, u16, u16)> {
     // ── Path 1: Bundled Python (shipped with the app) ──
-    if let Some(py) = find_bundled_python() {
-        if let Some(ver) = probe_python(&py.to_string_lossy(), &[]) {
-            if ver.0 > MIN_PYTHON_MAJOR || (ver.0 == MIN_PYTHON_MAJOR && ver.1 >= MIN_PYTHON_MINOR)
-            {
-                return Some((py.to_string_lossy().into_owned(), ver.0, ver.1));
-            }
-        }
+    if let Some(py) = find_bundled_python()
+        && let Some(ver) = probe_python(&py.to_string_lossy(), &[])
+        && (ver.0 > MIN_PYTHON_MAJOR || (ver.0 == MIN_PYTHON_MAJOR && ver.1 >= MIN_PYTHON_MINOR))
+    {
+        return Some((py.to_string_lossy().into_owned(), ver.0, ver.1));
     }
 
     // ── Path 2: System PATH scan ──
     for args in PYTHON_CANDIDATES {
         let (bin, extra) = (args[0], &args[1..]);
-        if let Some(ver) = probe_python(bin, extra) {
-            if ver.0 > MIN_PYTHON_MAJOR || (ver.0 == MIN_PYTHON_MAJOR && ver.1 >= MIN_PYTHON_MINOR)
-            {
-                return Some((bin.to_string(), ver.0, ver.1));
-            }
+        if let Some(ver) = probe_python(bin, extra)
+            && (ver.0 > MIN_PYTHON_MAJOR
+                || (ver.0 == MIN_PYTHON_MAJOR && ver.1 >= MIN_PYTHON_MINOR))
+        {
+            return Some((bin.to_string(), ver.0, ver.1));
         }
     }
     None
@@ -136,14 +134,9 @@ pub fn find_bundled_python() -> Option<PathBuf> {
             .join(python_bin_name()),
     ];
 
-    for path in candidates {
-        if path.is_file() {
-            if probe_python(&path.to_string_lossy(), &[]).is_some() {
-                return Some(path);
-            }
-        }
-    }
-    None
+    candidates
+        .into_iter()
+        .find(|path| path.is_file() && probe_python(&path.to_string_lossy(), &[]).is_some())
 }
 
 /// Parse `(major, minor)` from output like `(3, 11)` or `(3, 11)\r\n`.

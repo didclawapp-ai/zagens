@@ -7,11 +7,11 @@ use schemars::Schema;
 use serde_json::{Map, Value, json};
 
 pub use paths::{build_paths, path_template_count};
-pub use schemas::SCHEMA_EXPORTS;
 pub use schemas::{
     ResumeSessionResponse, SessionDetailResponse, SessionsListResponse, StartTurnResponse,
     StreamTurnRequest, ThreadSummary,
 };
+pub use schemas::{SCHEMA_EXPORTS, SchemaExportFn};
 
 fn rewrite_refs(value: &mut Value) {
     match value {
@@ -38,18 +38,18 @@ fn rewrite_refs(value: &mut Value) {
 }
 
 fn register_schema(components: &mut Map<String, Value>, name: &str, mut schema: Value) {
-    if let Some(defs) = schema.as_object_mut().and_then(|o| o.remove("$defs")) {
-        if let Some(def_map) = defs.as_object() {
-            for (def_name, def_schema) in def_map {
-                register_schema(components, def_name, def_schema.clone());
-            }
+    if let Some(defs) = schema.as_object_mut().and_then(|o| o.remove("$defs"))
+        && let Some(def_map) = defs.as_object()
+    {
+        for (def_name, def_schema) in def_map {
+            register_schema(components, def_name, def_schema.clone());
         }
     }
     rewrite_refs(&mut schema);
     components.insert(name.into(), schema);
 }
 
-fn register_exports(components: &mut Map<String, Value>, exports: &[(&str, fn() -> Schema)]) {
+fn register_exports(components: &mut Map<String, Value>, exports: &[(&str, SchemaExportFn)]) {
     for (name, make_schema) in exports {
         let schema: Schema = make_schema();
         let value = serde_json::to_value(&schema).unwrap_or_else(|e| {
@@ -60,7 +60,7 @@ fn register_exports(components: &mut Map<String, Value>, exports: &[(&str, fn() 
 }
 
 /// Assemble the full OpenAPI document (JSON Schema 2020-12 components).
-pub fn build_openapi_value_with(extra_schemas: &[(&str, fn() -> Schema)]) -> Value {
+pub fn build_openapi_value_with(extra_schemas: &[(&str, SchemaExportFn)]) -> Value {
     let mut components_schemas = Map::new();
     register_exports(&mut components_schemas, SCHEMA_EXPORTS);
     register_exports(&mut components_schemas, extra_schemas);
@@ -88,7 +88,7 @@ pub fn build_openapi_value_with(extra_schemas: &[(&str, fn() -> Schema)]) -> Val
 }
 
 /// Pretty-printed OpenAPI JSON for check-in and TS codegen.
-pub fn export_openapi_json_with(extra_schemas: &[(&str, fn() -> Schema)]) -> String {
+pub fn export_openapi_json_with(extra_schemas: &[(&str, SchemaExportFn)]) -> String {
     serde_json::to_string_pretty(&build_openapi_value_with(extra_schemas)).expect("openapi json")
 }
 

@@ -262,7 +262,7 @@ impl ToolSpec for GrepFilesTool {
         if output_mode == GrepOutputMode::Content {
             // BM25 re-rank: order files by relevance so the model sees the
             // most likely definitions / usages first, not filesystem order.
-            bm25_rank(&mut results, &pattern_str);
+            bm25_rank(&mut results, pattern_str);
         }
 
         // Symbol index maintenance: trigger a background rebuild when the
@@ -276,7 +276,7 @@ impl ToolSpec for GrepFilesTool {
         // definitions. Disabled by default — enable with `symbol_index: true`
         // when grep is used for definition search rather than call-site audit.
         let (symbol_hits, symbol_status) = if symbol_index_enabled {
-            let hits = lookup_symbol_hits(&context.workspace, &pattern_str, symbol_kind.as_deref());
+            let hits = lookup_symbol_hits(&context.workspace, pattern_str, symbol_kind.as_deref());
             let status = crate::symbol_index::index_status(&context.workspace);
 
             // Boost index hits: lines that match the symbol index float to the top
@@ -340,28 +340,25 @@ impl ToolSpec for GrepFilesTool {
             if hit_files.len() <= 3 {
                 // Load the index once (already called ensure_symbol_index above).
                 let idx_path = workspace_meta_file_read(&context.workspace, "symbols.json");
-                if let Ok(raw) = std::fs::read_to_string(&idx_path) {
-                    if let Ok(idx) = serde_json::from_str::<crate::symbol_index::SymbolIndex>(&raw)
-                    {
-                        let mut file_summaries = serde_json::Map::new();
-                        for file in hit_files {
-                            if let Some(fs) = idx.files.get(file) {
-                                let syms: Vec<serde_json::Value> = fs
-                                    .symbols
-                                    .iter()
-                                    .map(
-                                        |s| json!({"name": s.name, "kind": s.kind, "line": s.line}),
-                                    )
-                                    .collect();
-                                file_summaries.insert(file.to_string(), json!({"symbols": syms}));
-                            }
+                if let Ok(raw) = std::fs::read_to_string(&idx_path)
+                    && let Ok(idx) = serde_json::from_str::<crate::symbol_index::SymbolIndex>(&raw)
+                {
+                    let mut file_summaries = serde_json::Map::new();
+                    for file in hit_files {
+                        if let Some(fs) = idx.files.get(file) {
+                            let syms: Vec<serde_json::Value> = fs
+                                .symbols
+                                .iter()
+                                .map(|s| json!({"name": s.name, "kind": s.kind, "line": s.line}))
+                                .collect();
+                            file_summaries.insert(file.to_string(), json!({"symbols": syms}));
                         }
-                        if !file_summaries.is_empty() {
-                            extra.insert(
-                                "symbol_index_file_summaries".into(),
-                                serde_json::Value::Object(file_summaries),
-                            );
-                        }
+                    }
+                    if !file_summaries.is_empty() {
+                        extra.insert(
+                            "symbol_index_file_summaries".into(),
+                            serde_json::Value::Object(file_summaries),
+                        );
                     }
                 }
             }
@@ -369,80 +366,80 @@ impl ToolSpec for GrepFilesTool {
         // Attach Tauri bridge pairs when the pattern matches a command name.
         if symbol_index_enabled {
             let idx_path = workspace_meta_file_read(&context.workspace, "symbols.json");
-            if let Ok(raw) = std::fs::read_to_string(&idx_path) {
-                if let Ok(idx) = serde_json::from_str::<crate::symbol_index::SymbolIndex>(&raw) {
-                    let cleaned = pattern_str.replace(
-                        [
-                            '.', '*', '+', '?', '(', ')', '[', ']', '{', '}', '^', '$', '|', '\\',
-                        ],
-                        " ",
+            if let Ok(raw) = std::fs::read_to_string(&idx_path)
+                && let Ok(idx) = serde_json::from_str::<crate::symbol_index::SymbolIndex>(&raw)
+            {
+                let cleaned = pattern_str.replace(
+                    [
+                        '.', '*', '+', '?', '(', ')', '[', ']', '{', '}', '^', '$', '|', '\\',
+                    ],
+                    " ",
+                );
+                let terms: Vec<&str> = cleaned.split_whitespace().collect();
+                let matched_pairs: Vec<serde_json::Value> = idx
+                    .bridge_pairs
+                    .iter()
+                    .filter(|bp| {
+                        terms
+                            .iter()
+                            .any(|t| bp.command.to_lowercase().contains(&t.to_lowercase()))
+                    })
+                    .map(|bp| {
+                        json!({
+                            "command": bp.command,
+                            "rust": {"file": bp.rust_file, "line": bp.rust_line},
+                            "ts": {"file": bp.ts_file, "line": bp.ts_line},
+                        })
+                    })
+                    .collect();
+                if !matched_pairs.is_empty() {
+                    extra.insert(
+                        "symbol_index_bridge_pairs".into(),
+                        serde_json::Value::Array(matched_pairs),
                     );
-                    let terms: Vec<&str> = cleaned.split_whitespace().collect();
-                    let matched_pairs: Vec<serde_json::Value> = idx
-                        .bridge_pairs
-                        .iter()
-                        .filter(|bp| {
-                            terms
-                                .iter()
-                                .any(|t| bp.command.to_lowercase().contains(&t.to_lowercase()))
-                        })
-                        .map(|bp| {
-                            json!({
-                                "command": bp.command,
-                                "rust": {"file": bp.rust_file, "line": bp.rust_line},
-                                "ts": {"file": bp.ts_file, "line": bp.ts_line},
-                            })
-                        })
-                        .collect();
-                    if !matched_pairs.is_empty() {
-                        extra.insert(
-                            "symbol_index_bridge_pairs".into(),
-                            serde_json::Value::Array(matched_pairs),
-                        );
-                    }
+                }
 
-                    // Reverse call graph: who calls the queried symbol?
-                    for term in &terms {
-                        let callers: Vec<serde_json::Value> =
-                            crate::symbol_index::query_callers(&idx, term)
-                                .into_iter()
-                                .map(|c| {
-                                    json!({
-                                        "name": c.name,
-                                        "file": c.file,
-                                        "line": c.line,
-                                        "kind": c.kind,
-                                    })
+                // Reverse call graph: who calls the queried symbol?
+                for term in &terms {
+                    let callers: Vec<serde_json::Value> =
+                        crate::symbol_index::query_callers(&idx, term)
+                            .into_iter()
+                            .map(|c| {
+                                json!({
+                                    "name": c.name,
+                                    "file": c.file,
+                                    "line": c.line,
+                                    "kind": c.kind,
                                 })
-                                .collect();
-                        if !callers.is_empty() {
-                            extra.insert(
-                                "symbol_index_callers".into(),
-                                serde_json::Value::Array(callers),
-                            );
-                            break;
-                        }
-                    }
-
-                    // C/C++ hits may drift due to macros/templates.
-                    let has_cpp = symbol_hits.iter().any(|h| {
-                        h.get("file").and_then(|f| f.as_str()).is_some_and(|f| {
-                            f.ends_with(".c")
-                                || f.ends_with(".h")
-                                || f.ends_with(".cpp")
-                                || f.ends_with(".cc")
-                                || f.ends_with(".cxx")
-                                || f.ends_with(".hpp")
-                                || f.ends_with(".hxx")
-                                || f.ends_with(".hh")
-                        })
-                    });
-                    if has_cpp {
+                            })
+                            .collect();
+                    if !callers.is_empty() {
                         extra.insert(
+                            "symbol_index_callers".into(),
+                            serde_json::Value::Array(callers),
+                        );
+                        break;
+                    }
+                }
+
+                // C/C++ hits may drift due to macros/templates.
+                let has_cpp = symbol_hits.iter().any(|h| {
+                    h.get("file").and_then(|f| f.as_str()).is_some_and(|f| {
+                        f.ends_with(".c")
+                            || f.ends_with(".h")
+                            || f.ends_with(".cpp")
+                            || f.ends_with(".cc")
+                            || f.ends_with(".cxx")
+                            || f.ends_with(".hpp")
+                            || f.ends_with(".hxx")
+                            || f.ends_with(".hh")
+                    })
+                });
+                if has_cpp {
+                    extra.insert(
                             "symbol_index_cpp_note".into(),
                             json!("C/C++ line numbers are regex-based and may drift for macro-expanded or templated code. Prefer read_file with a wider range when lines look off."),
                         );
-                    }
                 }
             }
         }
@@ -596,11 +593,11 @@ fn grep_file_scan(params: GrepScanParams) -> Result<GrepFileScanOutput, ToolErro
             break;
         }
 
-        if let Ok(metadata) = fs::metadata(&file_path) {
-            if metadata.len() > MAX_FILE_SIZE {
-                files_skipped_size += 1;
-                continue;
-            }
+        if let Ok(metadata) = fs::metadata(&file_path)
+            && metadata.len() > MAX_FILE_SIZE
+        {
+            files_skipped_size += 1;
+            continue;
         }
 
         if is_probably_binary(&file_path) {
@@ -833,7 +830,7 @@ fn matches_simple_glob(text: &str, pattern: &str) -> bool {
 
 /// Reorder `matches` by BM25 relevance score so files with more and rarer
 /// term matches appear first. Stable for files with equal scores.
-fn bm25_rank(matches: &mut Vec<GrepMatch>, pattern: &str) {
+fn bm25_rank(matches: &mut [GrepMatch], pattern: &str) {
     if matches.is_empty() {
         return;
     }
@@ -923,7 +920,7 @@ fn bm25_rank(matches: &mut Vec<GrepMatch>, pattern: &str) {
 
 /// Boost matches that also appear in symbol index hits to the top.
 /// Uses a stable sort so existing BM25 order is preserved among peers.
-fn boost_index_hits(matches: &mut Vec<GrepMatch>, symbol_hits: &[serde_json::Value]) {
+fn boost_index_hits(matches: &mut [GrepMatch], symbol_hits: &[serde_json::Value]) {
     if symbol_hits.is_empty() || matches.is_empty() {
         return;
     }
@@ -947,8 +944,6 @@ fn boost_index_hits(matches: &mut Vec<GrepMatch>, symbol_hits: &[serde_json::Val
         }
     });
 }
-
-/// Ensure the symbol index exists and is up-to-date.
 
 /// Query the symbol index for definitions matching `pattern`.
 /// Returns file:line pairs with match_score. Assumes `ensure_symbol_index()`

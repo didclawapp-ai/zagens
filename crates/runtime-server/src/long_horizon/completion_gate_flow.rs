@@ -130,6 +130,7 @@ fn classify_failures(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn evaluate_completion_gate_inner(
     workspace: &Path,
     gate: &CompletionGateConfig,
@@ -146,12 +147,11 @@ async fn evaluate_completion_gate_inner(
     // `NotImplementedError` / "not implemented" throws) there is no point
     // running the build/test gate to "prove" a green that hides a missing
     // feature. `observe` records counts and falls through; `enforce` blocks.
-    if gate.stub_gate.is_on() {
-        if let Some(outcome) =
+    if gate.stub_gate.is_on()
+        && let Some(outcome) =
             evaluate_stub_gate(workspace, gate, session, lang, steps_remaining).await
-        {
-            return outcome;
-        }
+    {
+        return outcome;
     }
 
     // Resolve where build/test commands actually run. Normally the workspace

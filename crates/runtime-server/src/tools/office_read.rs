@@ -179,15 +179,14 @@ fn read_spreadsheet_calamine(
     let sheet_infos: Vec<Value> = sheet_names
         .iter()
         .map(|name| {
-            let dims = workbook
+            workbook
                 .worksheet_range(name)
                 .ok()
                 .map(|r| {
                     let (h, w) = r.get_size();
                     json!({ "name": name, "rows": h, "cols": w })
                 })
-                .unwrap_or_else(|| json!({ "name": name }));
-            dims
+                .unwrap_or_else(|| json!({ "name": name }))
         })
         .collect();
 
@@ -449,10 +448,7 @@ fn read_docx_enhanced(path: &Path, max_paragraphs: usize) -> Result<ToolResult, 
     }
 
     for segment in doc_xml.split("<w:tbl").skip(1) {
-        let (tbl_part, rest) = segment
-            .split_once("</w:tbl>")
-            .map(|(a, b)| (a, b))
-            .unwrap_or((segment, ""));
+        let (tbl_part, rest) = segment.split_once("</w:tbl>").unwrap_or((segment, ""));
         if !result.is_empty() {
             result.push('\n');
         }

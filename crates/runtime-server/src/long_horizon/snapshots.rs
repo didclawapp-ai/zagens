@@ -28,10 +28,10 @@ pub fn plan_from_json(value: Option<&serde_json::Value>) -> PlanSnapshot {
     if let Ok(plan) = serde_json::from_value::<PlanSnapshot>(v.clone()) {
         return plan;
     }
-    if let Some(inner) = v.get("plan") {
-        if let Ok(plan) = serde_json::from_value::<PlanSnapshot>(inner.clone()) {
-            return plan;
-        }
+    if let Some(inner) = v.get("plan")
+        && let Ok(plan) = serde_json::from_value::<PlanSnapshot>(inner.clone())
+    {
+        return plan;
     }
     empty_plan_snapshot()
 }
@@ -44,10 +44,10 @@ pub fn checklist_from_json(value: Option<&serde_json::Value>) -> TodoListSnapsho
     if let Ok(snap) = serde_json::from_value::<TodoListSnapshot>(v.clone()) {
         return snap;
     }
-    if let Some(inner) = v.get("checklist") {
-        if let Ok(snap) = serde_json::from_value::<TodoListSnapshot>(inner.clone()) {
-            return snap;
-        }
+    if let Some(inner) = v.get("checklist")
+        && let Ok(snap) = serde_json::from_value::<TodoListSnapshot>(inner.clone())
+    {
+        return snap;
     }
     empty_checklist_snapshot()
 }

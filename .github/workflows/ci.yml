@@ -19,6 +19,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
         run: bash scripts/ci/install-linux-deps.sh
@@ -36,10 +38,19 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
+      - name: Assert pinned toolchain
+        run: rustc --version | grep -F '1.96.0'
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
         run: bash scripts/ci/install-linux-deps.sh
       - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: crates/desktop/web-ui/package-lock.json
+      - name: Ensure web-ui dist (desktop clippy)
+        run: bash scripts/ci/ensure-web-ui-dist.sh
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Clippy (strict)
@@ -54,6 +65,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
         run: bash scripts/ci/install-linux-deps.sh
@@ -99,6 +112,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
         run: bash scripts/ci/install-linux-deps.sh

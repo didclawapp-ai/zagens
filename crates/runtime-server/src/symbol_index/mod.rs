@@ -144,15 +144,11 @@ pub fn build_index(workspace: &Path, visibility: SymbolVisibility) -> SymbolInde
         let rel_str = rel.to_string_lossy().replace('\\', "/");
 
         // Incremental: reuse old entries when mtime hasn't changed.
-        if let Some(old) = old_index.get(&rel_str) {
-            if old
-                .symbols
-                .first()
-                .map_or(false, |s| s.source_mtime >= mtime)
-            {
-                files.insert(rel_str, old.clone());
-                continue;
-            }
+        if let Some(old) = old_index.get(&rel_str)
+            && old.symbols.first().is_some_and(|s| s.source_mtime >= mtime)
+        {
+            files.insert(rel_str, old.clone());
+            continue;
         }
 
         to_parse.push((path, mtime, lang, rel_str));
@@ -443,7 +439,10 @@ fn build_bridge_pairs(workspace: &Path, _files: &BTreeMap<String, FileSymbols>) 
                 if let Ok(body) = std::fs::read_to_string(path) {
                     for m in re_attr.find_iter(&body) {
                         let after = &body[m.end()..];
-                        let limit = after.floor_char_boundary(200.min(after.len()));
+                        let mut limit = 200.min(after.len());
+                        while limit > 0 && !after.is_char_boundary(limit) {
+                            limit -= 1;
+                        }
                         if let Some(cap) = re_fn.captures(&after[..limit]) {
                             let fn_name = cap[1].to_string();
                             let pre = match std::str::from_utf8(&body.as_bytes()[..m.start()]) {
@@ -504,7 +503,7 @@ pub(crate) fn compute_fingerprint(workspace: &Path) -> String {
     for (path, mtime) in &entries {
         hasher.update(path.to_string_lossy().as_bytes());
         hasher.update(b"\x00");
-        hasher.update(&mtime.to_le_bytes());
+        hasher.update(mtime.to_le_bytes());
     }
     format!("{:x}", hasher.finalize())
 }
@@ -555,16 +554,16 @@ pub fn index_status(workspace: &Path) -> IndexStatus {
     // the file on disk.
     for (rel_str, file_syms) in &index.files {
         let disk_path = workspace.join(rel_str.replace('/', std::path::MAIN_SEPARATOR_STR));
-        if let Ok(meta) = std::fs::metadata(&disk_path) {
-            if let Ok(disk_mtime) = meta.modified().map(|t| {
+        if let Ok(meta) = std::fs::metadata(&disk_path)
+            && let Ok(disk_mtime) = meta.modified().map(|t| {
                 t.duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
                     .as_secs()
-            }) {
-                let idx_mtime = file_syms.symbols.first().map_or(0, |s| s.source_mtime);
-                if disk_mtime > idx_mtime {
-                    return IndexStatus::Stale;
-                }
+            })
+        {
+            let idx_mtime = file_syms.symbols.first().map_or(0, |s| s.source_mtime);
+            if disk_mtime > idx_mtime {
+                return IndexStatus::Stale;
             }
         }
     }
@@ -645,10 +644,10 @@ pub fn query_symbol_with_mode<'a>(
 
     for (file, file_syms) in &index.files {
         for sym in &file_syms.symbols {
-            if let Some(k) = kind_filter {
-                if sym.kind != k {
-                    continue;
-                }
+            if let Some(k) = kind_filter
+                && sym.kind != k
+            {
+                continue;
             }
             let sym_lower = sym.name.to_lowercase();
             let prio = match mode {
@@ -686,9 +685,9 @@ pub fn query_symbol_with_mode<'a>(
                         2
                     } else if sym_lower.contains(&name_lower) {
                         3
-                    } else if name_lower.len() >= 3 && subsequence_match(&sym.name, &name_lower) {
-                        4
-                    } else if camel_acronym_match(&sym.name, &name_lower) {
+                    } else if (name_lower.len() >= 3 && subsequence_match(&sym.name, &name_lower))
+                        || camel_acronym_match(&sym.name, &name_lower)
+                    {
                         4
                     } else {
                         continue;
@@ -700,10 +699,7 @@ pub fn query_symbol_with_mode<'a>(
     }
 
     results.sort_by(|a, b| a.3.cmp(&b.3).then_with(|| a.0.cmp(b.0)));
-    results
-        .into_iter()
-        .map(|(f, l, k, p)| (f, l, k, p))
-        .collect()
+    results.into_iter().collect()
 }
 
 /// Backward-compatible wrapper: substring match, no kind filter.
@@ -999,10 +995,10 @@ fn extract_mod_items(
             symbols.push(entry);
         }
         // Recurse into inline mod content.
-        if let syn::Item::Mod(m) = item {
-            if let Some((_, ref content)) = m.content {
-                extract_mod_items(content, visibility, line_starts, source_mtime, symbols);
-            }
+        if let syn::Item::Mod(m) = item
+            && let Some((_, ref content)) = m.content
+        {
+            extract_mod_items(content, visibility, line_starts, source_mtime, symbols);
         }
     }
 }
@@ -1134,23 +1130,15 @@ fn item_symbol(
                 source_mtime,
             ))
         }
-        syn::Item::Macro(m) => {
-            if let Some(ident) = &m.ident {
-                // ItemMacro does not have a `vis` field — all macros are
-                // effectively crate-visible, indexed regardless of visibility.
-                // Private macros from external crates are excluded via
-                // the workspace walk anyway.
-                Some(make_entry(
-                    ident.to_string(),
-                    "macro",
-                    ident.span().byte_range().start,
-                    line_starts,
-                    source_mtime,
-                ))
-            } else {
-                None
-            }
-        }
+        syn::Item::Macro(m) => m.ident.as_ref().map(|ident| {
+            make_entry(
+                ident.to_string(),
+                "macro",
+                ident.span().byte_range().start,
+                line_starts,
+                source_mtime,
+            )
+        }),
         syn::Item::Impl(_) => {
             // impl blocks are handled inline in extract_symbols
             None
@@ -1187,7 +1175,7 @@ fn is_whole_word_match(sym_original: &str, query_lower: &str) -> bool {
             b if b.is_ascii_lowercase() => sym_original
                 .as_bytes()
                 .get(pos)
-                .map_or(false, |m| m.is_ascii_uppercase()),
+                .is_some_and(|m| m.is_ascii_uppercase()),
             _ => false,
         }
     };

@@ -20,6 +20,7 @@ impl Engine {
         Self::run_capacity_pre_request_checkpoint(self, turn, client, mode).await
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(super) async fn turn_loop_capacity_post_tool(
         &mut self,
         turn: &mut TurnContext,

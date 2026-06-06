@@ -92,22 +92,23 @@ pub fn build_task_graph_response(
                     conversion_pct: s.telemetry.conversion_pct(),
                 }),
                 lht.completion_gate.is_active().then(|| {
-                    let mut cache =
-                        super::completion_gate_panel::CompletionGatePanelCache::default();
-                    cache.active = true;
-                    cache.mode = Some(match lht.completion_gate.mode {
-                        deepseek_core::long_horizon::CompletionGateMode::Enforce => {
-                            "enforce".to_string()
-                        }
-                        deepseek_core::long_horizon::CompletionGateMode::Observe => {
-                            "observe".to_string()
-                        }
-                    });
-                    cache.manifest_round = s.manifest_gate_rounds;
-                    cache.audit_round = s.audit_rounds;
-                    cache.first_gap_count = s.first_gate_gap_count;
-                    cache.integration_gap_count = s.last_integration_gap_count;
-                    cache.gate_reinject_while_blocked = s.gate_reinject_while_blocked;
+                    let mut cache = super::completion_gate_panel::CompletionGatePanelCache {
+                        active: true,
+                        mode: Some(match lht.completion_gate.mode {
+                            deepseek_core::long_horizon::CompletionGateMode::Enforce => {
+                                "enforce".to_string()
+                            }
+                            deepseek_core::long_horizon::CompletionGateMode::Observe => {
+                                "observe".to_string()
+                            }
+                        }),
+                        manifest_round: s.manifest_gate_rounds,
+                        audit_round: s.audit_rounds,
+                        first_gap_count: s.first_gate_gap_count,
+                        integration_gap_count: s.last_integration_gap_count,
+                        gate_reinject_while_blocked: s.gate_reinject_while_blocked,
+                        ..Default::default()
+                    };
                     if let Some(ref mg) = s.last_manifest_gate {
                         cache.last_manifest_passed = Some(mg.passed);
                     }
@@ -222,6 +223,7 @@ pub fn build_task_graph_value(
 /// Real-time task-graph from persisted snapshots + cached telemetry — never
 /// touches the engine op loop, so it stays live during a long turn (§4.9).
 #[must_use]
+#[allow(clippy::too_many_arguments)]
 pub fn build_task_graph_value_with_telemetry(
     plan: &PlanSnapshot,
     checklist: &TodoListSnapshot,

@@ -197,15 +197,13 @@ impl CommandSpec {
         if self.program == "sh" && self.args.len() == 2 && self.args[0] == "-c" {
             // For shell commands, show the actual command
             self.args[1].clone()
-        } else if self.program.eq_ignore_ascii_case("cmd")
+        } else if (self.program.eq_ignore_ascii_case("cmd")
             && self.args.len() == 2
-            && self.args[0].eq_ignore_ascii_case("/C")
-        {
-            self.args[1].clone()
-        } else if (self.program.eq_ignore_ascii_case("powershell")
-            || self.program.eq_ignore_ascii_case("pwsh"))
-            && self.args.len() == 2
-            && self.args[0].eq_ignore_ascii_case("-Command")
+            && self.args[0].eq_ignore_ascii_case("/C"))
+            || ((self.program.eq_ignore_ascii_case("powershell")
+                || self.program.eq_ignore_ascii_case("pwsh"))
+                && self.args.len() == 2
+                && self.args[0].eq_ignore_ascii_case("-Command"))
         {
             self.args[1].clone()
         } else {
@@ -357,9 +355,9 @@ pub fn policy_degraded_mode_notice() -> Option<&'static str> {
     #[cfg(target_os = "windows")]
     {
         let _ = windows::is_available();
-        return Some(
+        Some(
             "Degraded mode: Windows sandbox is not enforced yet; sandbox_mode declares policy only.",
-        );
+        )
     }
 
     #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]

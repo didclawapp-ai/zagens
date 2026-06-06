@@ -102,11 +102,11 @@ impl ToolSpec for AgentResultTool {
                 "status": "TimedOut",
                 "timed_out": true,
             });
-            if let Some(progress) = metadata.as_object_mut() {
-                if let Some(progress_obj) = wait_progress_metadata(&result).as_object() {
-                    for (key, value) in progress_obj {
-                        progress.insert(key.clone(), value.clone());
-                    }
+            if let Some(progress) = metadata.as_object_mut()
+                && let Some(progress_obj) = wait_progress_metadata(&result).as_object()
+            {
+                for (key, value) in progress_obj {
+                    progress.insert(key.clone(), value.clone());
                 }
             }
             tool_result.metadata = Some(metadata);

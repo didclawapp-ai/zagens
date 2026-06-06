@@ -183,8 +183,8 @@ fn scan_tauri_command_fns(path: &Path) -> Vec<String> {
         {
             continue;
         }
-        for j in i + 1..lines.len().min(i + 6) {
-            if let Some(name) = parse_rust_fn_name(lines[j]) {
+        for line in lines.iter().skip(i + 1).take(5) {
+            if let Some(name) = parse_rust_fn_name(line) {
                 names.push(name);
                 break;
             }

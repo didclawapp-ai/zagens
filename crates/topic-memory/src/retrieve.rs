@@ -17,7 +17,7 @@ fn parse_edge_endpoints(key: &str) -> Option<(&str, &str)> {
 
 fn neighbors(graph: &PheromoneGraph, node: &str) -> Vec<String> {
     let mut out = Vec::new();
-    for (key, _) in &graph.edges {
+    for key in graph.edges.keys() {
         if let Some((a, b)) = parse_edge_endpoints(key) {
             if a == node && graph.nodes.contains_key(b) {
                 out.push(b.to_string());

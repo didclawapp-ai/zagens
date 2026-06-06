@@ -51,10 +51,10 @@ impl TerminalManager {
             .map(|(id, _)| id.clone())
             .collect();
         for id in ids {
-            if let Some(session) = inner.sessions.remove(&id) {
-                if let Ok(mut child) = session.child.lock() {
-                    let _ = child.kill();
-                }
+            if let Some(session) = inner.sessions.remove(&id)
+                && let Ok(mut child) = session.child.lock()
+            {
+                let _ = child.kill();
             }
         }
     }
@@ -253,10 +253,10 @@ pub fn spawn_terminal(
                 code: Some(code),
             },
         );
-        if let Some(mgr) = app_wait.try_state::<TerminalManager>() {
-            if let Ok(mut inner) = mgr.inner.lock() {
-                inner.sessions.remove(&child_id);
-            }
+        if let Some(mgr) = app_wait.try_state::<TerminalManager>()
+            && let Ok(mut inner) = mgr.inner.lock()
+        {
+            inner.sessions.remove(&child_id);
         }
     });
 
@@ -329,10 +329,10 @@ pub fn kill_terminal(manager: State<'_, TerminalManager>, id: String) -> Result<
         .inner
         .lock()
         .map_err(|_| "终端管理器锁失败".to_string())?;
-    if let Some(session) = inner.sessions.remove(&id) {
-        if let Ok(mut child) = session.child.lock() {
-            let _ = child.kill();
-        }
+    if let Some(session) = inner.sessions.remove(&id)
+        && let Ok(mut child) = session.child.lock()
+    {
+        let _ = child.kill();
     }
     Ok(())
 }

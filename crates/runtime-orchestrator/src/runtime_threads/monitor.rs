@@ -1053,10 +1053,10 @@ where
 
     mgr.emit_event(&thread_id, Some(&turn_id), None, "turn.completed", {
         let mut payload = json!({ "turn": turn.clone() });
-        if let Some(ref summary) = turn_summary {
-            if let Some(obj) = payload.as_object_mut() {
-                obj.insert("turn_summary".to_string(), summary.to_value());
-            }
+        if let Some(ref summary) = turn_summary
+            && let Some(obj) = payload.as_object_mut()
+        {
+            obj.insert("turn_summary".to_string(), summary.to_value());
         }
         payload
     })

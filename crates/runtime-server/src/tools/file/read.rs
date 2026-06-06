@@ -161,14 +161,11 @@ impl ToolSpec for ReadFileTool {
                 .to_string_lossy()
                 .replace('\\', "/");
             let index_path = workspace_meta_file_read(&context.workspace, "symbols.json");
-            if let Ok(raw) = std::fs::read_to_string(&index_path) {
-                if let Ok(index) = serde_json::from_str::<crate::symbol_index::SymbolIndex>(&raw) {
-                    if let Some(summary) =
-                        crate::symbol_index::format_file_summary(&index, &rel, total)
-                    {
-                        content = format!("{summary}\n\n---\n\n{content}");
-                    }
-                }
+            if let Ok(raw) = std::fs::read_to_string(&index_path)
+                && let Ok(index) = serde_json::from_str::<crate::symbol_index::SymbolIndex>(&raw)
+                && let Some(summary) = crate::symbol_index::format_file_summary(&index, &rel, total)
+            {
+                content = format!("{summary}\n\n---\n\n{content}");
             }
         }
 
@@ -392,12 +389,15 @@ fn summarize_physical_line_encoding(utf: u64, gbk: u64, win: u64) -> String {
     format!("mixed(utf8_lines={utf}, gb18030_lines={gbk}, windows1252_lines={win})")
 }
 
+type PlainLinesStreamResult =
+    Result<(Vec<String>, bool, Option<usize>, String, String), std::io::Error>;
+
 fn read_plain_lines_stream(
     path: &Path,
     skip: usize,
     limit: usize,
     sniff_totals: bool,
-) -> Result<(Vec<String>, bool, Option<usize>, String, String), std::io::Error> {
+) -> PlainLinesStreamResult {
     let file = fs::File::open(path)?;
     let mut reader = BufReader::new(file);
     let mut buf = Vec::new();
@@ -590,6 +590,10 @@ fn read_xlsx(path: &Path) -> Result<ToolResult, ToolError> {
     let sheet_re =
         regex::Regex::new(r#"<c r="([A-Z]+)(\d+)"(?:\s+t="([^"]*)")?>(?:<v>([^<]*)</v>)?</c>"#)
             .unwrap();
+    let inline_re = regex::Regex::new(
+        r#"<c r="([A-Z]+)(\d+)"[^>]*t="inlineStr"[^>]*>.*?<t[^>]*>(.*?)</t>.*?</c>"#,
+    )
+    .unwrap();
     let mut result = String::new();
 
     for i in 1.. {
@@ -619,10 +623,6 @@ fn read_xlsx(path: &Path) -> Result<ToolResult, ToolError> {
 
         // Pass 1: inlineStr cells — XML layout: <c r="A1" t="inlineStr"><is><t>text</t></is></c>
         // These have no <v> tag so the main sheet_re does not match them.
-        let inline_re = regex::Regex::new(
-            r#"<c r="([A-Z]+)(\d+)"[^>]*t="inlineStr"[^>]*>.*?<t[^>]*>(.*?)</t>.*?</c>"#,
-        )
-        .unwrap();
         for cap in inline_re.captures_iter(&sheet_xml) {
             let col = cap.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
             let row: u64 = cap
@@ -657,7 +657,7 @@ fn read_xlsx(path: &Path) -> Result<ToolResult, ToolError> {
             rows.entry(row).or_default().push((col, cell_text));
         }
 
-        for (_row_idx, cells) in &rows {
+        for cells in rows.values() {
             let line: Vec<String> = cells
                 .iter()
                 .map(|(col, txt)| format!("[{col}] {txt}"))

@@ -154,12 +154,11 @@ impl RuntimeThreadManager {
         &self,
         thread_id: &str,
     ) -> Result<Option<serde_json::Value>> {
-        if let Ok(cache) = self.scratchpad_status_cache.lock() {
-            if let Some(entry) = cache.get(thread_id) {
-                if entry.fetched_at.elapsed() < SCRATCHPAD_STATUS_CACHE_TTL {
-                    return Ok(entry.status.clone());
-                }
-            }
+        if let Ok(cache) = self.scratchpad_status_cache.lock()
+            && let Some(entry) = cache.get(thread_id)
+            && entry.fetched_at.elapsed() < SCRATCHPAD_STATUS_CACHE_TTL
+        {
+            return Ok(entry.status.clone());
         }
         let thread = self.load_thread_sync(thread_id)?;
         if thread.scratchpad_history().is_empty() {
@@ -231,10 +230,10 @@ impl RuntimeThreadManager {
 
     /// Return the cached checklist snapshot for a thread (for Zagens WebView panel).
     pub fn get_thread_checklist(&self, thread_id: &str) -> Option<String> {
-        if let Ok(cache) = self.checklist_cache.lock() {
-            if let Some(json) = cache.get(thread_id) {
-                return Some(json.clone());
-            }
+        if let Ok(cache) = self.checklist_cache.lock()
+            && let Some(json) = cache.get(thread_id)
+        {
+            return Some(json.clone());
         }
         let thread = self.store.load_thread(thread_id).ok()?;
         let json = thread
@@ -278,10 +277,10 @@ impl RuntimeThreadManager {
 
     /// Return the cached plan snapshot for a thread (for Zagens harness task-graph).
     pub fn get_thread_plan(&self, thread_id: &str) -> Option<String> {
-        if let Ok(cache) = self.plan_cache.lock() {
-            if let Some(json) = cache.get(thread_id) {
-                return Some(json.clone());
-            }
+        if let Ok(cache) = self.plan_cache.lock()
+            && let Some(json) = cache.get(thread_id)
+        {
+            return Some(json.clone());
         }
         let thread = self.store.load_thread(thread_id).ok()?;
         let json = thread
@@ -353,7 +352,10 @@ impl RuntimeThreadManager {
                 let conversion_pct = if e.emitted == 0 {
                     0
                 } else {
-                    ((e.converted * 100) / e.emitted).min(100) as u8
+                    e.converted
+                        .saturating_mul(100)
+                        .saturating_div(e.emitted)
+                        .min(100) as u8
                 };
                 (
                     Some(e.lht_blocked),
@@ -526,7 +528,7 @@ impl RuntimeThreadManager {
             if let Some(state) = active.engines.get(thread_id) {
                 let engine = state.engine.clone();
                 drop(active);
-                return engine.query_harness_cycles().await.map_err(Into::into);
+                return engine.query_harness_cycles().await;
             }
         }
         let archives = crate::cycle_manager::list_cycle_archive_summaries(thread_id);

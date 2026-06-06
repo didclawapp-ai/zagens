@@ -34,7 +34,7 @@ pub fn in_lht_warning_band(
         reserved_response_headroom_tokens,
         model,
     )
-    .is_some_and(|r| r >= LHT_WARNING_BAND_LOW && r < LHT_WARNING_BAND_HIGH)
+    .is_some_and(|r| (LHT_WARNING_BAND_LOW..LHT_WARNING_BAND_HIGH).contains(&r))
 }
 
 /// Whether LHT queued a checkpoint and context is in the warning band.

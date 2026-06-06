@@ -58,7 +58,7 @@ pub fn briefing_to_json(b: &CycleBriefing) -> HarnessCycleBriefingJson {
             .chars()
             .take(BRIEFING_PREVIEW_CHARS)
             .collect();
-        s.push_str("…");
+        s.push('…');
         s
     };
     HarnessCycleBriefingJson {
@@ -76,7 +76,7 @@ fn context_meta_for_model(
     let Some(window) = context_window_for_model(model) else {
         return (None, None, None, None);
     };
-    let window_u32 = u32::from(window);
+    let window_u32 = window;
     (
         Some(window_u32),
         Some(configured_threshold.unwrap_or(DEFAULT_CYCLE_THRESHOLD_TOKENS as u32)),

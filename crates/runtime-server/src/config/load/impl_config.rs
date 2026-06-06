@@ -3,7 +3,6 @@ use std::fs;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use toml;
 
 use crate::features::{Features, FeaturesToml, is_known_feature_key};
 use crate::hooks::HooksConfig;
@@ -621,10 +620,10 @@ impl Config {
             };
         }
         // 2. 环境变量（向后兼容）
-        if let Ok(val) = std::env::var("DEEPSEEK_MAX_SESSION_FILE_MB") {
-            if let Ok(mb) = val.trim().parse::<u64>() {
-                return if mb > 0 { mb } else { u64::MAX };
-            }
+        if let Ok(val) = std::env::var("DEEPSEEK_MAX_SESSION_FILE_MB")
+            && let Ok(mb) = val.trim().parse::<u64>()
+        {
+            return if mb > 0 { mb } else { u64::MAX };
         }
         // 3. 默认 5 MB
         5

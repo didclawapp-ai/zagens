@@ -183,28 +183,24 @@ pub(crate) async fn resume_session_thread(
     // replay tool cards and thinking after app restart (instead of seeding a blank thread).
     if let Some(ref stored_tid) = session.metadata.runtime_thread_id {
         let stored_tid = stored_tid.trim();
-        if !stored_tid.is_empty() {
-            if state.runtime_threads.load_thread_sync(stored_tid).is_ok() {
-                let has_events = state
-                    .runtime_threads
-                    .events_since_async(stored_tid, Some(0))
-                    .await
-                    .map(|events| !events.is_empty())
-                    .unwrap_or(false);
-                if has_events {
-                    eprintln!(
-                        "[resume-session] reusing runtime thread {stored_tid} (events present)"
-                    );
-                    return Ok((
-                        StatusCode::OK,
-                        Json(ResumeSessionResponse {
-                            thread_id: stored_tid.to_string(),
-                            session_id: id,
-                            message_count: session.messages.len(),
-                            state: "ready".to_string(),
-                        }),
-                    ));
-                }
+        if !stored_tid.is_empty() && state.runtime_threads.load_thread_sync(stored_tid).is_ok() {
+            let has_events = state
+                .runtime_threads
+                .events_since_async(stored_tid, Some(0))
+                .await
+                .map(|events| !events.is_empty())
+                .unwrap_or(false);
+            if has_events {
+                eprintln!("[resume-session] reusing runtime thread {stored_tid} (events present)");
+                return Ok((
+                    StatusCode::OK,
+                    Json(ResumeSessionResponse {
+                        thread_id: stored_tid.to_string(),
+                        session_id: id,
+                        message_count: session.messages.len(),
+                        state: "ready".to_string(),
+                    }),
+                ));
             }
         }
     }

@@ -48,10 +48,10 @@ pub fn craft_fix_loop_hint(res: &SubAgentResult, task_id: Option<&str>) -> Optio
     if let Ok(v) = serde_json::to_value(&verdict.verdict) {
         payload.insert("verdict".into(), v);
     }
-    if !verdict.items.is_empty() {
-        if let Ok(items) = serde_json::to_value(&verdict.items) {
-            payload.insert("items".into(), items);
-        }
+    if !verdict.items.is_empty()
+        && let Ok(items) = serde_json::to_value(&verdict.items)
+    {
+        payload.insert("items".into(), items);
     }
     if let Some(summary) = verdict.summary.as_deref().filter(|s| !s.is_empty()) {
         payload.insert("summary".into(), json!(summary));

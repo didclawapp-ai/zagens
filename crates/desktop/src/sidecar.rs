@@ -55,7 +55,7 @@ static SIDECAR_PROBE_HTTP: LazyLock<reqwest::Client> = LazyLock::new(|| {
 fn sidecar_spawn_cwd() -> Option<PathBuf> {
     #[cfg(windows)]
     {
-        return std::env::var_os("USERPROFILE").map(PathBuf::from);
+        std::env::var_os("USERPROFILE").map(PathBuf::from)
     }
     #[cfg(not(windows))]
     {
@@ -95,17 +95,15 @@ fn supervisor_log(message: impl AsRef<str>) {
         chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.3f"),
         msg
     );
-    if let Ok(_guard) = SUPERVISOR_LOG_MUTEX.lock() {
-        if let Some(path) = supervisor_log_path() {
-            if let Ok(mut f) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(path)
-            {
-                let _ = f.write_all(stamped.as_bytes());
-                let _ = f.flush();
-            }
-        }
+    if let Ok(_guard) = SUPERVISOR_LOG_MUTEX.lock()
+        && let Some(path) = supervisor_log_path()
+        && let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+    {
+        let _ = f.write_all(stamped.as_bytes());
+        let _ = f.flush();
     }
     eprintln!("{msg}");
 }
@@ -135,20 +133,15 @@ fn bundled_python_executable(app: &AppHandle) -> Option<PathBuf> {
     if let Ok(res) = app.path().resource_dir() {
         candidates.push(res.join("python").join(py_name));
     }
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            candidates.push(dir.join("python").join(py_name));
-            #[cfg(target_os = "macos")]
-            candidates.push(dir.join("../Resources/python").join(py_name));
-        }
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(dir) = exe.parent()
+    {
+        candidates.push(dir.join("python").join(py_name));
+        #[cfg(target_os = "macos")]
+        candidates.push(dir.join("../Resources/python").join(py_name));
     }
 
-    for path in candidates {
-        if path.is_file() {
-            return Some(path);
-        }
-    }
-    None
+    candidates.into_iter().find(|path| path.is_file())
 }
 
 fn runtime_sidecar_cli_args(port: &str) -> Vec<String> {
@@ -337,20 +330,18 @@ fn spawn_stdout_forwarder(
         let mut reader = BufReader::new(stdout).lines();
         let mut ready_tx = Some(ready_tx);
         while let Ok(Some(line)) = reader.next_line().await {
-            if let Some(log_path) = sidecar_stderr_log_path() {
-                if let Ok(mut f) = std::fs::OpenOptions::new()
+            if let Some(log_path) = sidecar_stderr_log_path()
+                && let Ok(mut f) = std::fs::OpenOptions::new()
                     .create(true)
                     .append(true)
                     .open(&log_path)
-                {
-                    let _ = writeln!(f, "{line}");
-                }
+            {
+                let _ = writeln!(f, "{line}");
             }
-            if line.starts_with("DS_PICK_READY ") {
+            if let Some(rest) = line.strip_prefix("DS_PICK_READY ") {
                 if let Some(tx) = ready_tx.take() {
                     supervisor_log(format!("event=ready_signal line={line}"));
-                    let payload: serde_json::Value =
-                        line["DS_PICK_READY ".len()..].parse().unwrap_or_default();
+                    let payload: serde_json::Value = rest.parse().unwrap_or_default();
                     let real_port = payload
                         .get("port")
                         .and_then(serde_json::Value::as_u64)
@@ -359,8 +350,7 @@ fn spawn_stdout_forwarder(
                     let _ = app.emit("sidecar://ready", &payload);
                     let _ = tx.send(ReadySignal { port: real_port });
                 }
-            } else if line.starts_with("DS_PICK_PONG ") {
-                let payload = &line["DS_PICK_PONG ".len()..];
+            } else if let Some(payload) = line.strip_prefix("DS_PICK_PONG ") {
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(payload) {
                     let seq = v.get("seq").and_then(|s| s.as_u64()).unwrap_or(0);
                     let pid = v.get("pid").and_then(|p| p.as_u64()).unwrap_or(0) as u32;
@@ -371,8 +361,7 @@ fn spawn_stdout_forwarder(
                         uptime_ms,
                     });
                 }
-            } else if line.starts_with("DS_PICK_DRAIN ") {
-                let payload = &line["DS_PICK_DRAIN ".len()..];
+            } else if let Some(payload) = line.strip_prefix("DS_PICK_DRAIN ") {
                 let state = serde_json::from_str::<serde_json::Value>(payload)
                     .ok()
                     .and_then(|v| v.get("state").and_then(|s| s.as_str()).map(String::from))
@@ -642,10 +631,10 @@ pub async fn start_and_monitor(
                             ping_seq += 1;
                             // Wait up to 1s for the pong reply via stdout → forwarder → pong_rx
                             if let Some(ref mut rx) = pong_rx {
-                                match tokio::time::timeout(Duration::from_secs(1), rx.recv()).await {
-                                    Ok(Some(PongEvent::Pong { .. })) => true,
-                                    _ => false,
-                                }
+                                matches!(
+                                    tokio::time::timeout(Duration::from_secs(1), rx.recv()).await,
+                                    Ok(Some(PongEvent::Pong { .. }))
+                                )
                             } else {
                                 false
                             }
@@ -792,7 +781,7 @@ fn scan_sidecar_dir(dir: &Path) -> Option<PathBuf> {
         .map(|e| e.path())
         .filter(|p| {
             p.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
-                n.starts_with(PREFIX) && n != PREFIX && n != &format!("{PREFIX}.exe")
+                n.starts_with(PREFIX) && n != PREFIX && n != format!("{PREFIX}.exe")
             })
         })
         .collect();
@@ -806,17 +795,16 @@ fn scan_sidecar_dir(dir: &Path) -> Option<PathBuf> {
 }
 
 fn bundled_sidecar_path(app: &AppHandle) -> Option<PathBuf> {
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            if let Some(p) = scan_sidecar_dir(dir) {
-                return Some(p);
-            }
-        }
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(dir) = exe.parent()
+        && let Some(p) = scan_sidecar_dir(dir)
+    {
+        return Some(p);
     }
-    if let Ok(res) = app.path().resource_dir() {
-        if let Some(p) = scan_sidecar_dir(&res) {
-            return Some(p);
-        }
+    if let Ok(res) = app.path().resource_dir()
+        && let Some(p) = scan_sidecar_dir(&res)
+    {
+        return Some(p);
     }
     None
 }

@@ -104,19 +104,20 @@ pub async fn run_manifest_gate(
         }
 
         let mut run = run_single_verify(workspace, entry, exec).await;
-        if run.exit_code == 0 && run.exit_class == VerifyExitClass::Ok {
-            if let Some(msg) = super::go_toolchain_audit::audit_go_test_output(
+        if run.exit_code == 0
+            && run.exit_class == VerifyExitClass::Ok
+            && let Some(msg) = super::go_toolchain_audit::audit_go_test_output(
                 &run.command_display,
                 &run.stdout_tail,
                 &run.stderr_tail,
-            ) {
-                run.exit_code = 1;
-                run.exit_class = VerifyExitClass::Assertion;
-                if run.stderr_tail.is_empty() {
-                    run.stderr_tail = msg;
-                } else {
-                    run.stderr_tail = format!("{}\n{}", run.stderr_tail, msg);
-                }
+            )
+        {
+            run.exit_code = 1;
+            run.exit_class = VerifyExitClass::Assertion;
+            if run.stderr_tail.is_empty() {
+                run.stderr_tail = msg;
+            } else {
+                run.stderr_tail = format!("{}\n{}", run.stderr_tail, msg);
             }
         }
         if run.exit_code != 0 || run.exit_class != VerifyExitClass::Ok {
@@ -144,7 +145,7 @@ async fn run_single_verify(
     entry: &CompletionGateVerifyEntry,
     exec: &CompletionGateExec<'_>,
 ) -> VerifyRunResult {
-    let timeout_ms = u64::from(entry.timeout_secs.max(1).min(600)) * 1000;
+    let timeout_ms = u64::from(entry.timeout_secs.clamp(1, 600)) * 1000;
     let display = command_display(entry);
 
     // Per-command working directory by toolchain marker. The gate's single
@@ -155,23 +156,21 @@ async fn run_single_verify(
     let run_dir = super::generic_gate::resolve_command_root(workspace, &display);
     let workspace = run_dir.as_path();
 
-    if let Some(cmd) = entry.cmd.as_deref().filter(|c| !c.trim().is_empty()) {
-        if let Some(native) = super::verify_platform::try_native_verify(workspace, cmd) {
-            return VerifyRunResult {
-                id: entry.id.clone(),
-                command_display: native.command_display,
-                exit_code: native.exit_code,
-                exit_class: match native.exit_class {
-                    super::verify_platform::NativeExitClass::Ok => VerifyExitClass::Ok,
-                    super::verify_platform::NativeExitClass::Assertion => {
-                        VerifyExitClass::Assertion
-                    }
-                    super::verify_platform::NativeExitClass::Infra => VerifyExitClass::Infra,
-                },
-                stdout_tail: native.stdout_tail,
-                stderr_tail: native.stderr_tail,
-            };
-        }
+    if let Some(cmd) = entry.cmd.as_deref().filter(|c| !c.trim().is_empty())
+        && let Some(native) = super::verify_platform::try_native_verify(workspace, cmd)
+    {
+        return VerifyRunResult {
+            id: entry.id.clone(),
+            command_display: native.command_display,
+            exit_code: native.exit_code,
+            exit_class: match native.exit_class {
+                super::verify_platform::NativeExitClass::Ok => VerifyExitClass::Ok,
+                super::verify_platform::NativeExitClass::Assertion => VerifyExitClass::Assertion,
+                super::verify_platform::NativeExitClass::Infra => VerifyExitClass::Infra,
+            },
+            stdout_tail: native.stdout_tail,
+            stderr_tail: native.stderr_tail,
+        };
     }
 
     if entry.shell == ManifestShell::None {

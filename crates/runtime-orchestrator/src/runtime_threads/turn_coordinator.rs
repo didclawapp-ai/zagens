@@ -26,25 +26,13 @@ pub enum CoordinatorAction {
     NoOp,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 struct Entry {
     draining: bool,
     current: Option<DemandTag>,
     pending: Option<DemandTag>,
     interrupt_seq: u64,
     wake_seq: u64,
-}
-
-impl Default for Entry {
-    fn default() -> Self {
-        Self {
-            draining: false,
-            current: None,
-            pending: None,
-            interrupt_seq: 0,
-            wake_seq: 0,
-        }
-    }
 }
 
 #[derive(Debug, Default)]
@@ -106,9 +94,7 @@ impl TurnCoordinator {
 
     /// End the current drain. Returns whether a coalesced follow-up should run.
     pub fn finish_drain(&mut self, thread_id: &str) -> Option<DemandTag> {
-        let Some(entry) = self.entries.get_mut(thread_id) else {
-            return None;
-        };
+        let entry = self.entries.get_mut(thread_id)?;
         if !entry.draining {
             return None;
         }
@@ -127,10 +113,10 @@ impl TurnCoordinator {
     pub fn interrupt(&mut self, thread_id: &str, seq: u64) {
         let entry = self.entries.entry(thread_id.to_string()).or_default();
         entry.interrupt_seq = entry.interrupt_seq.max(seq);
-        if let Some(DemandTag::Wake) = entry.pending {
-            if entry.wake_seq <= entry.interrupt_seq {
-                entry.pending = None;
-            }
+        if let Some(DemandTag::Wake) = entry.pending
+            && entry.wake_seq <= entry.interrupt_seq
+        {
+            entry.pending = None;
         }
     }
 }

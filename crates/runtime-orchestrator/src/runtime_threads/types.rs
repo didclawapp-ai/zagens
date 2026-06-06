@@ -115,10 +115,10 @@ impl ThreadRecord {
     /// Ordered run ids for this thread (oldest first). Backfills from `scratchpad_run_id` when history is empty.
     #[must_use]
     pub fn scratchpad_history(&self) -> Vec<String> {
-        if let Some(ref hist) = self.scratchpad_run_history {
-            if !hist.is_empty() {
-                return hist.clone();
-            }
+        if let Some(ref hist) = self.scratchpad_run_history
+            && !hist.is_empty()
+        {
+            return hist.clone();
         }
         self.scratchpad_run_id.clone().into_iter().collect()
     }
