@@ -117,7 +117,7 @@ pwsh scripts/ci/verify-workspace.ps1
 | CI Job | 本地等价 |
 |--------|----------|
 | Lint（fmt + clippy） | `verify-lint` 或 pre-push hook |
-| Test（三平台 test） | `verify-workspace`（仅当前 OS；完整矩阵仍在 CI） |
+| Test（三平台 test） | `verify-workspace`（仅当前 OS；完整矩阵仍在 CI；**CI 上需 Lint 通过后才启动**） |
 | Version drift | `bash scripts/release/check-versions.sh` |
 
 ---

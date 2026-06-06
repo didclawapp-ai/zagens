@@ -60,6 +60,7 @@ jobs:
 
   test:
     name: Test
+    needs: lint
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
