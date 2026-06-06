@@ -19,7 +19,10 @@ pub fn derive_objective(
 ) -> (String, &'static str) {
     if let Some(explanation) = plan.explanation.as_deref().filter(|s| !s.trim().is_empty()) {
         let first = first_sentence(explanation);
-        return (truncate_chars(&first, MAX_OBJECTIVE_CHARS), "plan_explanation");
+        return (
+            truncate_chars(&first, MAX_OBJECTIVE_CHARS),
+            "plan_explanation",
+        );
     }
 
     if let Some((_, item)) = plan
@@ -86,7 +89,6 @@ fn truncate_chars(text: &str, max: usize) -> String {
     }
     text.chars().take(max).collect::<String>() + "…"
 }
-
 
 fn latest_user_message(messages: &[Message]) -> Option<String> {
     messages.iter().rev().find_map(|m| {

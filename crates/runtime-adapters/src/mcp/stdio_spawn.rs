@@ -83,7 +83,8 @@ fn executable_extensions(name: &str) -> Vec<String> {
     }
     #[cfg(windows)]
     {
-        let pathext = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_string());
+        let pathext =
+            std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_string());
         let mut exts: Vec<String> = pathext
             .split(';')
             .filter_map(|e| {
@@ -121,9 +122,8 @@ fn augmented_path() -> OsString {
         }
     }
 
-    std::env::join_paths(dirs).unwrap_or_else(|_| {
-        std::env::var_os("PATH").unwrap_or_else(|| OsString::from(""))
-    })
+    std::env::join_paths(dirs)
+        .unwrap_or_else(|_| std::env::var_os("PATH").unwrap_or_else(|| OsString::from("")))
 }
 
 /// On Windows, `.cmd` / `.bat` shims (e.g. `npx.cmd`) must run under `cmd.exe /C`.

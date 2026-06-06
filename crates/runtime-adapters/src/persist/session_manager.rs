@@ -38,14 +38,13 @@ fn max_session_file_size() -> u64 {
         return if mb > 0 { mb * 1024 * 1024 } else { u64::MAX };
     }
     // 2. TOML [session] max_file_mb via Config struct
-    if let Ok(config_str) = std::fs::read_to_string(
-        deepseek_config::default_config_path().unwrap_or_else(|_| {
+    if let Ok(config_str) =
+        std::fs::read_to_string(deepseek_config::default_config_path().unwrap_or_else(|_| {
             dirs::home_dir()
                 .unwrap_or_default()
                 .join(deepseek_config::USER_DATA_DIR_NAME)
                 .join("config.toml")
-        }),
-    )
+        }))
         && let Ok(config) = toml::from_str::<deepseek_config::ConfigToml>(&config_str)
     {
         let mb = config.session.as_ref().map(|s| s.max_file_mb).unwrap_or(5);
@@ -184,7 +183,9 @@ impl SessionManager {
     pub fn new(sessions_dir: PathBuf) -> std::io::Result<Self> {
         fs::create_dir_all(&sessions_dir)?;
         let db_path = sessions_dir.join("sessions.db");
-        let db = crate::persist::session_store_sqlite::open_sqlite_session_db(&db_path, &sessions_dir).ok();
+        let db =
+            crate::persist::session_store_sqlite::open_sqlite_session_db(&db_path, &sessions_dir)
+                .ok();
         Ok(Self {
             sessions_dir,
             db: db.map(std::sync::Mutex::new),
@@ -209,7 +210,10 @@ impl SessionManager {
     /// Save a session to disk using SQLite (or atomic write JSON if no DB).
     pub fn save_session(&self, session: &SavedSession) -> std::io::Result<PathBuf> {
         if let Some(ref db) = self.db {
-            sqlite_to_io(crate::persist::session_store_sqlite::save_session_sqlite(&db.lock().unwrap(), session))?;
+            sqlite_to_io(crate::persist::session_store_sqlite::save_session_sqlite(
+                &db.lock().unwrap(),
+                session,
+            ))?;
             return Ok(self.validated_session_path(&session.metadata.id)?);
         }
 
@@ -318,7 +322,10 @@ impl SessionManager {
     /// Load a session by ID (SQLite first, then JSON fallback)
     pub fn load_session(&self, id: &str) -> std::io::Result<SavedSession> {
         if let Some(ref db) = self.db {
-            return sqlite_to_io(crate::persist::session_store_sqlite::load_session_sqlite(&db.lock().unwrap(), id));
+            return sqlite_to_io(crate::persist::session_store_sqlite::load_session_sqlite(
+                &db.lock().unwrap(),
+                id,
+            ));
         }
 
         let path = self.validated_session_path(id)?;
@@ -384,7 +391,9 @@ impl SessionManager {
     /// List all saved sessions (SQLite indexed, then JSON fallback)
     pub fn list_sessions(&self) -> std::io::Result<Vec<SessionMetadata>> {
         if let Some(ref db) = self.db {
-            return sqlite_to_io(crate::persist::session_store_sqlite::list_sessions_sqlite(&db.lock().unwrap()));
+            return sqlite_to_io(crate::persist::session_store_sqlite::list_sessions_sqlite(
+                &db.lock().unwrap(),
+            ));
         }
 
         let mut sessions = Vec::new();
@@ -452,7 +461,10 @@ impl SessionManager {
     /// Delete a session by ID
     pub fn delete_session(&self, id: &str) -> std::io::Result<()> {
         if let Some(ref db) = self.db {
-            return sqlite_to_io(crate::persist::session_store_sqlite::delete_session_sqlite(&db.lock().unwrap(), id));
+            return sqlite_to_io(crate::persist::session_store_sqlite::delete_session_sqlite(
+                &db.lock().unwrap(),
+                id,
+            ));
         }
         let path = self.validated_session_path(id)?;
         fs::remove_file(path)
@@ -714,7 +726,8 @@ fn cap_messages(messages: &[Message]) -> (Vec<Message>, Option<String>) {
 /// per turn. The text answer and tool results are preserved.
 fn strip_thinking_blocks(messages: &mut [Message]) {
     for msg in messages {
-        msg.content.retain(|block| !matches!(block, ContentBlock::Thinking { .. }));
+        msg.content
+            .retain(|block| !matches!(block, ContentBlock::Thinking { .. }));
     }
 }
 

@@ -1,9 +1,8 @@
 //! Integration tests for the runtime HTTP API (R-003 A4.5).
 
-
-use super::*;
 use super::skills::validate_skill_directory_name;
 use super::stream::map_compat_stream_event;
+use super::*;
 use crate::automation_manager::AutomationManager;
 use crate::config::{Config, DEFAULT_TEXT_MODEL};
 use crate::core::events::{Event as EngineEvent, TurnOutcomeStatus};
@@ -17,10 +16,10 @@ use crate::session_manager::SessionManager;
 use crate::task_manager::{TaskManager, TaskManagerConfig};
 use anyhow::{Context, Result, bail};
 use axum::http::StatusCode;
-use axum::response::sse::Sse;
 use axum::response::IntoResponse;
-use futures_util::StreamExt;
+use axum::response::sse::Sse;
 use axum::{Router, routing::get};
+use futures_util::StreamExt;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::convert::Infallible;
@@ -770,14 +769,9 @@ async fn thread_endpoints_expose_lifecycle_contract() -> Result<()> {
         .context("missing turn id")?
         .to_string();
 
-    let _ = wait_for_terminal_turn_status(
-        &client,
-        addr,
-        &thread_id,
-        &turn_id,
-        Duration::from_secs(2),
-    )
-    .await?;
+    let _ =
+        wait_for_terminal_turn_status(&client, addr, &thread_id, &turn_id, Duration::from_secs(2))
+            .await?;
 
     {
         let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
@@ -954,14 +948,9 @@ async fn events_endpoint_respects_since_seq_cursor() -> Result<()> {
         .context("missing turn id")?
         .to_string();
 
-    let _ = wait_for_terminal_turn_status(
-        &client,
-        addr,
-        &thread_id,
-        &turn_id,
-        Duration::from_secs(2),
-    )
-    .await?;
+    let _ =
+        wait_for_terminal_turn_status(&client, addr, &thread_id, &turn_id, Duration::from_secs(2))
+            .await?;
 
     let resp_a = client
         .get(format!(
@@ -1108,14 +1097,9 @@ async fn steer_and_interrupt_endpoints_work_on_active_turn() -> Result<()> {
         .await?;
     assert_eq!(interrupt_resp["id"], turn_id);
 
-    let terminal = wait_for_terminal_turn_status(
-        &client,
-        addr,
-        &thread_id,
-        &turn_id,
-        Duration::from_secs(3),
-    )
-    .await?;
+    let terminal =
+        wait_for_terminal_turn_status(&client, addr, &thread_id, &turn_id, Duration::from_secs(3))
+            .await?;
     assert_eq!(terminal, "interrupted");
 
     let events = runtime_threads.events_since(&thread_id, None)?;
@@ -1336,14 +1320,9 @@ async fn stream_endpoint_remains_backward_compatible() -> Result<()> {
         .context("missing turn id")?
         .to_string();
 
-    let _ = wait_for_terminal_turn_status(
-        &client,
-        addr,
-        &thread_id,
-        &turn_id,
-        Duration::from_secs(2),
-    )
-    .await?;
+    let _ =
+        wait_for_terminal_turn_status(&client, addr, &thread_id, &turn_id, Duration::from_secs(2))
+            .await?;
 
     // Verify that the persisted events include the expected turn lifecycle events.
     let events = runtime_threads.events_since(&thread_id, None)?;
@@ -1511,9 +1490,7 @@ async fn session_resume_thread_creates_thread_from_saved_session() -> Result<()>
     // Poll for seed completion since resume is now async
     for _ in 0..30 {
         let task_resp = client
-            .get(format!(
-                "http://{addr}/v1/resume-tasks/{thread_id}"
-            ))
+            .get(format!("http://{addr}/v1/resume-tasks/{thread_id}"))
             .send()
             .await?;
         if task_resp.status().is_success() {
@@ -1550,10 +1527,8 @@ async fn session_resume_reuses_runtime_thread_when_sqlite_has_link() -> Result<(
     use crate::models::{ContentBlock, Message};
     use crate::session_manager::SessionManager;
 
-    let root = std::env::temp_dir().join(format!(
-        "deepseek-session-sqlite-link-{}",
-        Uuid::new_v4()
-    ));
+    let root =
+        std::env::temp_dir().join(format!("deepseek-session-sqlite-link-{}", Uuid::new_v4()));
     let sessions_dir = root.join("sessions");
     fs::create_dir_all(&sessions_dir)?;
 
@@ -2025,9 +2000,7 @@ async fn api_error_payload_includes_taxonomy_fields() -> Result<()> {
         .await?;
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     let body: serde_json::Value = resp.json().await?;
-    let err = body
-        .get("error")
-        .context("missing error object")?;
+    let err = body.get("error").context("missing error object")?;
     assert!(err.get("message").and_then(|v| v.as_str()).is_some());
     assert_eq!(err.get("category"), err.get("class"));
     assert!(err.get("hint").and_then(|v| v.as_str()).is_some());
@@ -2185,9 +2158,7 @@ async fn wait_for_approval_required_event(
             return Ok(());
         }
         if tokio::time::Instant::now() >= deadline {
-            bail!(
-                "timed out waiting for approval.required tool={tool_call_id} thread={thread_id}"
-            );
+            bail!("timed out waiting for approval.required tool={tool_call_id} thread={thread_id}");
         }
         sleep(std::time::Duration::from_millis(25)).await;
     }
@@ -2206,9 +2177,7 @@ async fn install_parallel_approval_mock(
     let mut rx_op = harness.rx_op;
     let tx_event = harness.tx_event;
     let mut rx_approval = harness.rx_approval;
-    tokio::spawn(async move {
-        while rx_approval.recv().await.is_some() {}
-    });
+    tokio::spawn(async move { while rx_approval.recv().await.is_some() {} });
     tokio::spawn(async move {
         if !matches!(rx_op.recv().await, Some(Op::SendMessage { .. })) {
             return;
@@ -2266,18 +2235,12 @@ async fn sidecar_parallel_pending_approvals_resolve_then_continue() -> Result<()
     let thread_a_id = thread_a["id"].as_str().context("thread A id")?.to_string();
     let thread_b_id = thread_b["id"].as_str().context("thread B id")?.to_string();
 
-    let release_a = install_parallel_approval_mock(
-        &runtime_threads,
-        &thread_a_id,
-        "tool_http_parallel_a",
-    )
-    .await?;
-    let release_b = install_parallel_approval_mock(
-        &runtime_threads,
-        &thread_b_id,
-        "tool_http_parallel_b",
-    )
-    .await?;
+    let release_a =
+        install_parallel_approval_mock(&runtime_threads, &thread_a_id, "tool_http_parallel_a")
+            .await?;
+    let release_b =
+        install_parallel_approval_mock(&runtime_threads, &thread_b_id, "tool_http_parallel_b")
+            .await?;
 
     let turn_a: serde_json::Value = client
         .post(format!("{base}/v1/threads/{thread_a_id}/turns"))
@@ -2426,7 +2389,10 @@ async fn sidecar_contract_full_lifecycle() -> Result<()> {
         .error_for_status()?
         .json()
         .await?;
-    let thread_id = thread["id"].as_str().context("missing thread id")?.to_string();
+    let thread_id = thread["id"]
+        .as_str()
+        .context("missing thread id")?
+        .to_string();
 
     // 3. Start turn (simulated via mock engine events)
     let turn: serde_json::Value = client
@@ -2478,11 +2444,11 @@ fn seed_test_turns_with_user_messages(
     thread_id: &str,
     user_texts: &[&str],
 ) -> Result<()> {
-    use chrono::Utc;
     use crate::runtime_threads::{
-        RuntimeTurnStatus, TurnItemKind, TurnItemLifecycleStatus, TurnItemRecord, TurnRecord,
-        CURRENT_EVENT_SCHEMA_VERSION,
+        CURRENT_EVENT_SCHEMA_VERSION, RuntimeTurnStatus, TurnItemKind, TurnItemLifecycleStatus,
+        TurnItemRecord, TurnRecord,
     };
+    use chrono::Utc;
 
     let base = Utc::now();
     for (offset, text) in user_texts.iter().enumerate() {

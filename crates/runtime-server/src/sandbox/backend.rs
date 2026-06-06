@@ -27,7 +27,10 @@ pub struct SandboxBackendInit {
 }
 
 fn configured_sandbox_kind(config: &Config) -> Option<SandboxKind> {
-    config.sandbox_backend.as_deref().and_then(SandboxKind::parse)
+    config
+        .sandbox_backend
+        .as_deref()
+        .and_then(SandboxKind::parse)
 }
 
 fn invalid_sandbox_backend_value(config: &Config) -> bool {

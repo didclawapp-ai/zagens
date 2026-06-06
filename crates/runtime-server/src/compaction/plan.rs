@@ -58,7 +58,10 @@ pub(crate) fn path_regex() -> &'static Regex {
     })
 }
 
-pub(crate) fn normalize_path_candidate(candidate: &str, workspace: Option<&Path>) -> Option<String> {
+pub(crate) fn normalize_path_candidate(
+    candidate: &str,
+    workspace: Option<&Path>,
+) -> Option<String> {
     if candidate.is_empty() {
         return None;
     }
@@ -181,7 +184,10 @@ pub(crate) fn message_text(msg: &Message) -> String {
     text
 }
 
-pub(crate) fn extract_paths_from_message(message: &Message, workspace: Option<&Path>) -> Vec<String> {
+pub(crate) fn extract_paths_from_message(
+    message: &Message,
+    workspace: Option<&Path>,
+) -> Vec<String> {
     let mut paths = Vec::new();
     for block in &message.content {
         let candidates = match block {
@@ -432,4 +438,3 @@ pub(crate) fn enforce_tool_call_pairs(messages: &[Message], pinned_indices: &mut
         ));
     }
 }
-

@@ -226,15 +226,8 @@ async fn run_single_verify(
                 stderr_tail: format!("blocked dangerous command: {}", safety.reasons.join("; ")),
             };
         }
-        return run_via_shell_manager(
-            workspace,
-            &cmdline,
-            &entry.id,
-            &display,
-            timeout_ms,
-            exec,
-        )
-        .await;
+        return run_via_shell_manager(workspace, &cmdline, &entry.id, &display, timeout_ms, exec)
+            .await;
     }
 
     let adapted = super::verify_platform::adapt_verify_command_for_platform(cmd);
@@ -402,10 +395,7 @@ fn poll_foreground_shell(
                 exit_code: 1,
                 exit_class: VerifyExitClass::Infra,
                 stdout_tail: String::new(),
-                stderr_tail: snapshot
-                    .err()
-                    .map(|e| e.to_string())
-                    .unwrap_or_default(),
+                stderr_tail: snapshot.err().map(|e| e.to_string()).unwrap_or_default(),
             };
         };
 

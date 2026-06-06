@@ -70,7 +70,9 @@ impl ExecPolicyConfig {
 }
 
 pub fn default_execpolicy_path() -> Option<PathBuf> {
-    Some(deepseek_config::user_data_path_or_relative("execpolicy.toml"))
+    Some(deepseek_config::user_data_path_or_relative(
+        "execpolicy.toml",
+    ))
 }
 
 pub fn load_default_policy() -> Result<Option<ExecPolicyConfig>> {

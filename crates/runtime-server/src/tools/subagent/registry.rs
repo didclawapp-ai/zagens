@@ -1,4 +1,3 @@
-
 use anyhow::{Result, anyhow};
 use serde_json::Value;
 
@@ -7,13 +6,9 @@ use crate::tools::plan::SharedPlanState;
 use crate::tools::registry::{ToolRegistry, ToolRegistryBuilder};
 use crate::tools::todo::SharedTodoList;
 
-use deepseek_core::subagent::{
-    SubAgentResult, SubAgentStatus,
-    SubAgentType,
-};
+use deepseek_core::subagent::{SubAgentResult, SubAgentStatus, SubAgentType};
 
 use super::runtime::SubAgentRuntime;
-
 
 // === Tool Registry Helpers ===
 
@@ -94,7 +89,12 @@ impl SubAgentToolRegistry {
         }
     }
 
-    pub(crate) async fn execute(&self, _agent_id: &str, name: &str, input: Value) -> Result<String> {
+    pub(crate) async fn execute(
+        &self,
+        _agent_id: &str,
+        name: &str,
+        input: Value,
+    ) -> Result<String> {
         if !self.is_tool_allowed(name) {
             return Err(anyhow!("Tool {name} not allowed for this sub-agent"));
         }
@@ -163,14 +163,12 @@ pub(crate) fn build_allowed_tools(
     // Explore and Review return explicit narrow lists — no write files,
     // no shell. Other types keep full inheritance.
     match agent_type {
-        SubAgentType::Explore | SubAgentType::Review => {
-            Ok(Some(
-                read_only_tool_cap(agent_type)
-                    .iter()
-                    .map(|s| (*s).to_string())
-                    .collect(),
-            ))
-        }
+        SubAgentType::Explore | SubAgentType::Review => Ok(Some(
+            read_only_tool_cap(agent_type)
+                .iter()
+                .map(|s| (*s).to_string())
+                .collect(),
+        )),
         _ => Ok(None),
     }
 }
@@ -178,11 +176,22 @@ pub(crate) fn build_allowed_tools(
 pub(crate) fn read_only_tool_cap(agent_type: &SubAgentType) -> &'static [&'static str] {
     match agent_type {
         SubAgentType::Explore => &[
-            "list_dir", "read_file", "grep_files", "glob_files", "file_search", "web.run",
-            "web_search", "note",
+            "list_dir",
+            "read_file",
+            "grep_files",
+            "glob_files",
+            "file_search",
+            "web.run",
+            "web_search",
+            "note",
         ],
         SubAgentType::Review => &[
-            "list_dir", "read_file", "grep_files", "glob_files", "file_search", "exec_shell",
+            "list_dir",
+            "read_file",
+            "grep_files",
+            "glob_files",
+            "file_search",
+            "exec_shell",
             "note",
         ],
         _ => &[],
@@ -218,4 +227,3 @@ pub(crate) fn truncate_preview(text: &str) -> String {
         format!("{}...", text.chars().take(MAX_LEN).collect::<String>())
     }
 }
-

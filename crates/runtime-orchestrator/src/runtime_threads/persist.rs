@@ -15,8 +15,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Context, Result, anyhow, bail};
-use rusqlite::params;
 use chrono::{DateTime, Utc};
+use rusqlite::params;
 use serde::Serialize;
 use serde_json::Value;
 use tokio::sync::Mutex;
@@ -26,8 +26,8 @@ use crate::models::{ContentBlock, Message};
 use super::prompt_inbox::PromptAdmission;
 use super::types::*;
 use super::{
-    provider_label_for_model, StartTurnRequest, UsageAggregation, UsageBucket, UsageGroupBy,
-    UsageTotals, CURRENT_RUNTIME_SCHEMA_VERSION,
+    CURRENT_RUNTIME_SCHEMA_VERSION, StartTurnRequest, UsageAggregation, UsageBucket, UsageGroupBy,
+    UsageTotals, provider_label_for_model,
 };
 
 #[derive(Debug, Clone)]
@@ -66,7 +66,8 @@ impl RuntimeThreadStore {
 
     /// JSON-per-file store only (tests that write fixture JSON under `threads/`).
     pub fn open_json_only(root: PathBuf) -> Result<Self> {
-        let (threads_dir, turns_dir, items_dir, events_dir, state_path) = Self::prepare_dirs(&root)?;
+        let (threads_dir, turns_dir, items_dir, events_dir, state_path) =
+            Self::prepare_dirs(&root)?;
         let state = if state_path.exists() {
             let raw = fs::read_to_string(&state_path)
                 .with_context(|| format!("Failed to read {}", state_path.display()))?;
@@ -89,30 +90,38 @@ impl RuntimeThreadStore {
     }
 
     pub fn open(root: PathBuf) -> Result<Self> {
-        let (threads_dir, turns_dir, items_dir, events_dir, state_path) = Self::prepare_dirs(&root)?;
+        let (threads_dir, turns_dir, items_dir, events_dir, state_path) =
+            Self::prepare_dirs(&root)?;
 
         // SQLite backend with auto-migration from existing JSON files.
         let db_path = root.join("runtime.db");
-        let (state, db) = match crate::thread_store_sqlite::open_sqlite_thread_db(&db_path, &threads_dir) {
-            Ok((conn, sqlite_state)) => {
-                eprintln!("[thread-store] SQLite backend active at {}", db_path.display());
-                (sqlite_state, Some(Arc::new(std::sync::Mutex::new(conn))))
-            }
-            Err(e) => {
-                eprintln!("[thread-store] SQLite unavailable ({}): falling back to JSON files", e);
-                let state = if state_path.exists() {
-                    let raw = fs::read_to_string(&state_path)
-                        .with_context(|| format!("Failed to read {}", state_path.display()))?;
-                    serde_json::from_str::<RuntimeStoreState>(&raw)
-                        .with_context(|| format!("Failed to parse {}", state_path.display()))?
-                } else {
-                    let default = RuntimeStoreState::default();
-                    write_json_atomic(&state_path, &default)?;
-                    default
-                };
-                (state, None)
-            }
-        };
+        let (state, db) =
+            match crate::thread_store_sqlite::open_sqlite_thread_db(&db_path, &threads_dir) {
+                Ok((conn, sqlite_state)) => {
+                    eprintln!(
+                        "[thread-store] SQLite backend active at {}",
+                        db_path.display()
+                    );
+                    (sqlite_state, Some(Arc::new(std::sync::Mutex::new(conn))))
+                }
+                Err(e) => {
+                    eprintln!(
+                        "[thread-store] SQLite unavailable ({}): falling back to JSON files",
+                        e
+                    );
+                    let state = if state_path.exists() {
+                        let raw = fs::read_to_string(&state_path)
+                            .with_context(|| format!("Failed to read {}", state_path.display()))?;
+                        serde_json::from_str::<RuntimeStoreState>(&raw)
+                            .with_context(|| format!("Failed to parse {}", state_path.display()))?
+                    } else {
+                        let default = RuntimeStoreState::default();
+                        write_json_atomic(&state_path, &default)?;
+                        default
+                    };
+                    (state, None)
+                }
+            };
 
         Ok(Self {
             threads_dir,
@@ -258,8 +267,11 @@ impl RuntimeThreadStore {
 
     pub fn list_turns_for_thread(&self, thread_id: &str) -> Result<Vec<TurnRecord>> {
         if let Some(ref db) = self.db {
-            return crate::thread_store_sqlite::list_turns_for_thread_sqlite(&db.lock().unwrap(), thread_id)
-                .map_err(|e| anyhow!("list_turns_for_thread: {e}"));
+            return crate::thread_store_sqlite::list_turns_for_thread_sqlite(
+                &db.lock().unwrap(),
+                thread_id,
+            )
+            .map_err(|e| anyhow!("list_turns_for_thread: {e}"));
         }
         let mut out = Vec::new();
         for entry in fs::read_dir(&self.turns_dir)
@@ -409,11 +421,9 @@ impl RuntimeThreadStore {
                 .collect();
             let mut out = Vec::new();
             for id in ids {
-                if let Some(admission) = crate::thread_store_sqlite::find_session_input_sqlite(
-                    &db.lock().unwrap(),
-                    &id,
-                )
-                .map_err(|e| anyhow!("list_pending_session_inputs: {e}"))?
+                if let Some(admission) =
+                    crate::thread_store_sqlite::find_session_input_sqlite(&db.lock().unwrap(), &id)
+                        .map_err(|e| anyhow!("list_pending_session_inputs: {e}"))?
                 {
                     out.push(admission);
                 }
@@ -425,8 +435,11 @@ impl RuntimeThreadStore {
 
     pub fn list_items_for_turn(&self, turn_id: &str) -> Result<Vec<TurnItemRecord>> {
         if let Some(ref db) = self.db {
-            return crate::thread_store_sqlite::list_items_for_turn_sqlite(&db.lock().unwrap(), turn_id)
-                .map_err(|e| anyhow!("list_items_for_turn: {e}"));
+            return crate::thread_store_sqlite::list_items_for_turn_sqlite(
+                &db.lock().unwrap(),
+                turn_id,
+            )
+            .map_err(|e| anyhow!("list_items_for_turn: {e}"));
         }
         let mut out = Vec::new();
         for entry in fs::read_dir(&self.items_dir)
@@ -523,8 +536,12 @@ impl RuntimeThreadStore {
     ) -> Result<Vec<RuntimeEventRecord>> {
         if let Some(ref db) = self.db {
             let since = since_seq.unwrap_or(0);
-            return crate::thread_store_sqlite::events_since_sqlite(&db.lock().unwrap(), thread_id, since)
-                .map_err(|e| anyhow!("events_since: {e}"));
+            return crate::thread_store_sqlite::events_since_sqlite(
+                &db.lock().unwrap(),
+                thread_id,
+                since,
+            )
+            .map_err(|e| anyhow!("events_since: {e}"));
         }
         let path = self.events_path(thread_id);
         if !path.exists() {
@@ -733,17 +750,18 @@ pub(super) fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::runtime_threads::CURRENT_EVENT_SCHEMA_VERSION;
+    use crate::runtime_threads::RuntimeTurnStatus;
     use crate::runtime_threads::types::{
         RuntimeEventRecord, TurnItemKind, TurnItemLifecycleStatus, TurnItemRecord, TurnRecord,
     };
-    use crate::runtime_threads::CURRENT_EVENT_SCHEMA_VERSION;
-    use crate::runtime_threads::RuntimeTurnStatus;
     use chrono::Utc;
     use serde_json::json;
 
     fn temp_store() -> (tempfile::TempDir, RuntimeThreadStore) {
         let dir = tempfile::tempdir().expect("tempdir");
-        let store = RuntimeThreadStore::open_json_only(dir.path().to_path_buf()).expect("open store");
+        let store =
+            RuntimeThreadStore::open_json_only(dir.path().to_path_buf()).expect("open store");
         (dir, store)
     }
 
@@ -863,7 +881,8 @@ mod tests {
 
         let turns = store.list_turns_for_thread(thread_id).expect("list turns");
         let reconstructed = reconstruct_messages_for_store(&store, &turns).expect("reconstruct");
-        let reconstructed_texts: Vec<String> = reconstructed.iter().map(message_visible_text).collect();
+        let reconstructed_texts: Vec<String> =
+            reconstructed.iter().map(message_visible_text).collect();
 
         let events = store.events_since(thread_id, None).expect("read jsonl");
         let jsonl_texts: Vec<String> = events.iter().filter_map(jsonl_item_detail).collect();
@@ -878,4 +897,3 @@ mod tests {
         assert_eq!(jsonl_texts, reconstructed_texts);
     }
 }
-

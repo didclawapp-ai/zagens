@@ -1,11 +1,13 @@
 use std::path::Path;
 
-use deepseek_core::subagent::{SubAgentResult};
+use deepseek_core::subagent::SubAgentResult;
 
 use super::blackboard::{
     read_structured_findings_from_blackboard, read_structured_verdict_from_blackboard,
 };
-use super::prompts::{findings_to_verdict, parse_structured_findings_result, parse_structured_verdict};
+use super::prompts::{
+    findings_to_verdict, parse_structured_findings_result, parse_structured_verdict,
+};
 use super::runtime::SubAgent;
 
 /// Enrich a snapshot with structured output using memory → blackboard → prose fallback.
@@ -44,10 +46,7 @@ pub(crate) fn enrich_subagent_result(
             snap.structured_verdict = parse_structured_verdict(text);
         }
         if snap.structured_verdict.is_none() {
-            snap.structured_verdict = snap
-                .structured_findings
-                .as_ref()
-                .map(findings_to_verdict);
+            snap.structured_verdict = snap.structured_findings.as_ref().map(findings_to_verdict);
         }
     }
 }

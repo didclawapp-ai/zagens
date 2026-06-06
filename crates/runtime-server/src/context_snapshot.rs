@@ -7,11 +7,9 @@
 
 use std::path::Path;
 
-use crate::compaction::{
-    CompactionConfig, estimate_input_tokens_conservative, should_compact,
-};
+use crate::compaction::{CompactionConfig, estimate_input_tokens_conservative, should_compact};
 use crate::models::{
-    Message, SystemPrompt, LEGACY_DEEPSEEK_CONTEXT_WINDOW_TOKENS, context_window_for_model,
+    LEGACY_DEEPSEEK_CONTEXT_WINDOW_TOKENS, Message, SystemPrompt, context_window_for_model,
 };
 
 pub use deepseek_core::engine::context_snapshot::ThreadContextSnapshot;
@@ -36,13 +34,11 @@ pub fn build_thread_context_snapshot(
     source: &str,
 ) -> ThreadContextSnapshot {
     let estimated = estimate_input_tokens_conservative(messages, system);
-    let window =
-        context_window_for_model(model).unwrap_or(LEGACY_DEEPSEEK_CONTEXT_WINDOW_TOKENS);
+    let window = context_window_for_model(model).unwrap_or(LEGACY_DEEPSEEK_CONTEXT_WINDOW_TOKENS);
     let window_f64 = f64::from(window);
     let used_f64 = (estimated as f64).min(window_f64);
     let percent = ((used_f64 / window_f64) * 100.0).clamp(0.0, 100.0);
-    let last_api_usage_percent =
-        last_api_input_tokens.map(|t| usage_percent_for(t, window));
+    let last_api_usage_percent = last_api_input_tokens.map(|t| usage_percent_for(t, window));
     ThreadContextSnapshot {
         estimated_input_tokens: estimated,
         context_window_tokens: window,

@@ -51,8 +51,7 @@ pub fn evaluate_cross_layer_gaps(workspace: &Path) -> CrossLayerGaps {
 
     if !has_tauri_adapter_file(workspace) {
         enforce.push(
-            "missing frontend Tauri adapter (`**/tauri-api.ts` or `**/desktop-api.ts`)"
-                .to_string(),
+            "missing frontend Tauri adapter (`**/tauri-api.ts` or `**/desktop-api.ts`)".to_string(),
         );
     }
 
@@ -127,7 +126,9 @@ fn scan_tree_for_shim(dir: &Path) -> bool {
         let Ok(text) = std::fs::read_to_string(&path) else {
             continue;
         };
-        if text.contains("electronAPI") && (text.contains("invoke(") || text.contains("@tauri-apps")) {
+        if text.contains("electronAPI")
+            && (text.contains("invoke(") || text.contains("@tauri-apps"))
+        {
             return true;
         }
     }
@@ -176,11 +177,18 @@ fn looks_like_tauri_migration(workspace: &Path) -> bool {
 }
 
 fn frontend_roots(workspace: &Path) -> Vec<PathBuf> {
-    ["src", "frontend", "web-ui/src", "app", "client", "resources"]
-        .iter()
-        .map(|d| workspace.join(d))
-        .filter(|p| p.is_dir())
-        .collect()
+    [
+        "src",
+        "frontend",
+        "web-ui/src",
+        "app",
+        "client",
+        "resources",
+    ]
+    .iter()
+    .map(|d| workspace.join(d))
+    .filter(|p| p.is_dir())
+    .collect()
 }
 
 fn scan_dir(dir: &Path, scan: &mut CrossLayerScan) {

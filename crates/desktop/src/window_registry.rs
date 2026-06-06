@@ -5,9 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use serde::Serialize;
-use tauri::{
-    AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder,
-};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use uuid::Uuid;
 
 pub const MAX_AGENT_WINDOWS: usize = 8;
@@ -124,7 +122,8 @@ impl WindowRegistry {
         if !g.windows.contains_key(window_label) {
             return Err(format!("未知窗口: {window_label}"));
         }
-        g.thread_owner.insert(tid.to_string(), window_label.to_string());
+        g.thread_owner
+            .insert(tid.to_string(), window_label.to_string());
         if let Some(rec) = g.windows.get_mut(window_label) {
             rec.focused_thread_id = Some(tid.to_string());
         }
@@ -324,7 +323,9 @@ pub async fn create_agent_window(
 }
 
 #[tauri::command]
-pub fn list_agent_windows(registry: State<'_, WindowRegistry>) -> Result<Vec<AgentWindowSummary>, String> {
+pub fn list_agent_windows(
+    registry: State<'_, WindowRegistry>,
+) -> Result<Vec<AgentWindowSummary>, String> {
     registry.list_summaries()
 }
 

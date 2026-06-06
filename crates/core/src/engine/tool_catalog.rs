@@ -4,8 +4,8 @@
 
 use std::collections::HashSet;
 
-use deepseek_tools::{required_str, ToolError, ToolResult};
-use serde_json::{json, Value};
+use deepseek_tools::{ToolError, ToolResult, required_str};
+use serde_json::{Value, json};
 
 use crate::chat::Tool;
 use crate::turn::TurnLoopMode;
@@ -481,15 +481,27 @@ mod tests {
 
     #[test]
     fn deferral_keeps_shell_eager_in_agent_mode() {
-        assert!(!should_default_defer_tool("exec_shell", TurnLoopMode::Agent));
+        assert!(!should_default_defer_tool(
+            "exec_shell",
+            TurnLoopMode::Agent
+        ));
         assert!(should_default_defer_tool("exec_shell", TurnLoopMode::Plan));
     }
 
     #[test]
     fn deferral_keeps_office_read_tools_eager_in_agent_mode() {
-        assert!(!should_default_defer_tool("read_office", TurnLoopMode::Agent));
-        assert!(!should_default_defer_tool("load_office_payload", TurnLoopMode::Agent));
-        assert!(!should_default_defer_tool("write_office", TurnLoopMode::Agent));
+        assert!(!should_default_defer_tool(
+            "read_office",
+            TurnLoopMode::Agent
+        ));
+        assert!(!should_default_defer_tool(
+            "load_office_payload",
+            TurnLoopMode::Agent
+        ));
+        assert!(!should_default_defer_tool(
+            "write_office",
+            TurnLoopMode::Agent
+        ));
     }
 
     #[test]

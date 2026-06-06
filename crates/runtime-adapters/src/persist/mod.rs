@@ -4,9 +4,7 @@ pub mod context_reference;
 pub mod session_manager;
 pub mod session_store_sqlite;
 
-pub use context_reference::{
-    ContextReference, ContextReferenceKind, ContextReferenceSource,
-};
+pub use context_reference::{ContextReference, ContextReferenceKind, ContextReferenceSource};
 pub use session_manager::{
     SavedSession, SessionContextReference, SessionManager, SessionMetadata,
     prune_workspace_snapshots,

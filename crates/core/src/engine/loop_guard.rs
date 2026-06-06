@@ -260,8 +260,14 @@ mod tests {
     fn reset_failures_leaves_identical_call_blocking_intact() {
         let mut guard = LoopGuard::default();
         let args = json!({"path": "src/main.rs"});
-        assert_eq!(guard.record_attempt("read_file", &args), AttemptDecision::Proceed);
-        assert_eq!(guard.record_attempt("read_file", &args), AttemptDecision::Proceed);
+        assert_eq!(
+            guard.record_attempt("read_file", &args),
+            AttemptDecision::Proceed
+        );
+        assert_eq!(
+            guard.record_attempt("read_file", &args),
+            AttemptDecision::Proceed
+        );
         guard.reset_failures();
         // Identical-call counter is independent of the failure counter, so the
         // third unchanged call is still blocked after a failure reset.
@@ -275,13 +281,25 @@ mod tests {
     fn note_state_changed_unblocks_identical_call_after_an_edit() {
         let mut guard = LoopGuard::default();
         let cmd = json!({"command": "go test ./config/..."});
-        assert_eq!(guard.record_attempt("exec_shell", &cmd), AttemptDecision::Proceed);
-        assert_eq!(guard.record_attempt("exec_shell", &cmd), AttemptDecision::Proceed);
+        assert_eq!(
+            guard.record_attempt("exec_shell", &cmd),
+            AttemptDecision::Proceed
+        );
+        assert_eq!(
+            guard.record_attempt("exec_shell", &cmd),
+            AttemptDecision::Proceed
+        );
         // An intervening successful edit changed the workspace → prior identical
         // verify calls are no longer redundant, so re-running is allowed again.
         guard.note_state_changed();
-        assert_eq!(guard.record_attempt("exec_shell", &cmd), AttemptDecision::Proceed);
-        assert_eq!(guard.record_attempt("exec_shell", &cmd), AttemptDecision::Proceed);
+        assert_eq!(
+            guard.record_attempt("exec_shell", &cmd),
+            AttemptDecision::Proceed
+        );
+        assert_eq!(
+            guard.record_attempt("exec_shell", &cmd),
+            AttemptDecision::Proceed
+        );
         // …but without any further change, hammering it still trips the block.
         assert!(matches!(
             guard.record_attempt("exec_shell", &cmd),

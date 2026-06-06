@@ -10,8 +10,8 @@ use super::download::{candidate_urls, download_first_success, stage_tarball};
 use super::local::source_spec_string;
 use super::registry::InstalledFromMarker;
 use super::types::{
-    DownloadOutcome, InstallError, InstallOutcome, InstallSource, InstalledSkill, UpdateResult,
-    UrlResolution, DEFAULT_REGISTRY_URL, INSTALLED_FROM_MARKER,
+    DEFAULT_REGISTRY_URL, DownloadOutcome, INSTALLED_FROM_MARKER, InstallError, InstallOutcome,
+    InstallSource, InstalledSkill, UpdateResult, UrlResolution,
 };
 
 pub async fn install(

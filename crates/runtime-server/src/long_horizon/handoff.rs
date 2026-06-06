@@ -179,7 +179,8 @@ mod tests {
     #[test]
     fn replace_block_is_idempotent() {
         let old = "# Handoff\n\nfoo\n\n<!-- lht-handoff:auto -->\n## Long-horizon task (auto)\n\n- **Cycle:** 1\n\n## User notes\n\nbar\n";
-        let new_section = "<!-- lht-handoff:auto -->\n## Long-horizon task (auto)\n\n- **Cycle:** 2\n";
+        let new_section =
+            "<!-- lht-handoff:auto -->\n## Long-horizon task (auto)\n\n- **Cycle:** 2\n";
         let merged = replace_lht_block(old, new_section);
         assert!(merged.contains("Cycle:** 2"));
         assert!(merged.contains("User notes"));

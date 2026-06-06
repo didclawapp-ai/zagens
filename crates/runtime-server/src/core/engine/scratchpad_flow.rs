@@ -5,9 +5,8 @@ use std::path::Path;
 use crate::models::{ContentBlock, Message, SystemBlock, SystemPrompt};
 use crate::scratchpad::config::ScratchpadConfig;
 use crate::scratchpad::{
-    AreaStatus, CoverageGateOutcome, ScratchpadStore, build_layered_summary,
-    build_l0_status_line, compute_coverage_stats, coverage_gate, display_run_path,
-    resume_area_id_from_inventory,
+    AreaStatus, CoverageGateOutcome, ScratchpadStore, build_l0_status_line, build_layered_summary,
+    compute_coverage_stats, coverage_gate, display_run_path, resume_area_id_from_inventory,
 };
 
 // M5: `ScratchpadStepState` moved to
@@ -77,11 +76,7 @@ pub fn open_store(
 }
 
 /// C0 — pin scratchpad paths for compaction (§6.12.3).
-pub fn extend_compaction_paths(
-    workspace: &Path,
-    run_id: Option<&str>,
-    paths: &mut Vec<String>,
-) {
+pub fn extend_compaction_paths(workspace: &Path, run_id: Option<&str>, paths: &mut Vec<String>) {
     let Some(store) = open_store(workspace, run_id, None, None) else {
         return;
     };
@@ -154,12 +149,10 @@ fn inventory_complete(store: &ScratchpadStore) -> bool {
         return false;
     };
     !inventory.areas.is_empty()
-        && inventory.areas.iter().all(|a| {
-            matches!(
-                a.status,
-                AreaStatus::Done | AreaStatus::Deferred
-            )
-        })
+        && inventory
+            .areas
+            .iter()
+            .all(|a| matches!(a.status, AreaStatus::Done | AreaStatus::Deferred))
 }
 
 pub fn user_prompt_triggers_report_summary(prompt: &str, config: &ScratchpadConfig) -> bool {
@@ -174,7 +167,9 @@ fn wrap_scratchpad_summary(run_id: &str, body: &str) -> Message {
     Message {
         role: "user".to_string(),
         content: vec![ContentBlock::Text {
-            text: format!("<scratchpad_summary run_id=\"{run_id}\">\n{body}\n</scratchpad_summary>"),
+            text: format!(
+                "<scratchpad_summary run_id=\"{run_id}\">\n{body}\n</scratchpad_summary>"
+            ),
             cache_control: None,
         }],
     }
@@ -196,11 +191,8 @@ pub fn build_report_summary_message(
 
     match coverage_gate(&inventory, &notes, config) {
         CoverageGateOutcome::Block { reason, stats } => {
-            let l0 = build_l0_status_line(
-                &run_id,
-                &stats,
-                &resume_area_id_from_inventory(&inventory),
-            );
+            let l0 =
+                build_l0_status_line(&run_id, &stats, &resume_area_id_from_inventory(&inventory));
             let body = format!("[L0] {l0};\nBLOCKED: {reason}");
             Some(wrap_scratchpad_summary(&run_id, &body))
         }
@@ -208,11 +200,8 @@ pub fn build_report_summary_message(
             warning_text,
             stats,
         } => {
-            let l0 = build_l0_status_line(
-                &run_id,
-                &stats,
-                &resume_area_id_from_inventory(&inventory),
-            );
+            let l0 =
+                build_l0_status_line(&run_id, &stats, &resume_area_id_from_inventory(&inventory));
             let body = format!("[L0] {l0};\n{warning_text}");
             Some(wrap_scratchpad_summary(&run_id, &body))
         }
@@ -307,11 +296,7 @@ pub fn maybe_continue_incomplete_audit(
     let inventory = store.read_inventory().ok()?;
     let stats = compute_coverage_stats(&inventory, &notes, config);
     let run_id = store.run_id();
-    let l0 = build_l0_status_line(
-        run_id,
-        &stats,
-        &resume_area_id_from_inventory(&inventory),
-    );
+    let l0 = build_l0_status_line(run_id, &stats, &resume_area_id_from_inventory(&inventory));
     let pending = inventory
         .areas
         .iter()
@@ -350,7 +335,10 @@ mod tests {
     #[test]
     fn report_keyword_match() {
         let cfg = ScratchpadConfig::default();
-        assert!(user_prompt_triggers_report_summary("请写报告 synthesize", &cfg));
+        assert!(user_prompt_triggers_report_summary(
+            "请写报告 synthesize",
+            &cfg
+        ));
         assert!(user_prompt_triggers_report_summary(
             "帮我对项目进行代码级审核，输出md格式的报告",
             &cfg

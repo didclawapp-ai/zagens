@@ -18,11 +18,12 @@ mod tests;
 
 pub use config::TaskManagerConfig;
 pub use deepseek_runtime_api::task::{
-    CURRENT_TASK_SCHEMA_VERSION, NewTaskRequest, TaskArtifactRef, TaskAttemptRecord, TaskChecklistState, TaskCounts, TaskGateRecord, TaskGithubEvent,
-    TaskRecord, TaskStatus, TaskSummary, TaskTimelineEntry, TaskToolCallSummary, TaskToolStatus,
+    CURRENT_TASK_SCHEMA_VERSION, NewTaskRequest, TaskArtifactRef, TaskAttemptRecord,
+    TaskChecklistState, TaskCounts, TaskGateRecord, TaskGithubEvent, TaskRecord, TaskStatus,
+    TaskSummary, TaskTimelineEntry, TaskToolCallSummary, TaskToolStatus,
 };
-pub use manager::{SharedTaskManager, TaskManager};
 #[cfg(test)]
 pub(crate) use executor::{
     EngineTaskExecutor, ExecutionTask, TaskExecutionEvent, TaskExecutionResult, TaskExecutor,
 };
+pub use manager::{SharedTaskManager, TaskManager};

@@ -3,7 +3,9 @@
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
-use crate::scratchpad::{ScratchpadStore, import_agent_findings, resolve_run_id, validate_agent_run_binding};
+use crate::scratchpad::{
+    ScratchpadStore, import_agent_findings, resolve_run_id, validate_agent_run_binding,
+};
 use crate::tools::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
     optional_str, required_str,
@@ -74,18 +76,11 @@ impl ToolSpec for ScratchpadImportAgentTool {
         ApprovalRequirement::Auto
     }
 
-    async fn execute(
-        &self,
-        input: Value,
-        context: &ToolContext,
-    ) -> Result<ToolResult, ToolError> {
+    async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
         let agent_id = required_str(&input, "agent_id")?;
         let run_id = resolve_run_id(context, optional_str(&input, "run_id"))?;
         let area_override = optional_str(&input, "area_id");
-        let block = input
-            .get("block")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(true);
+        let block = input.get("block").and_then(|v| v.as_bool()).unwrap_or(true);
         let timeout_ms = input
             .get("timeout_ms")
             .and_then(|v| v.as_u64())

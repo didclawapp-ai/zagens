@@ -15,14 +15,13 @@ use crate::config::Config;
 
 use super::background_slots::RuntimeThreadBackgroundSlots;
 use super::{
-    RuntimeApprovalDecision, RuntimeEnginePolicy, RuntimeThreadStore,
-    RuntimeUserInputResponse, RuntimeThreadManagerConfig,
+    RuntimeApprovalDecision, RuntimeEnginePolicy, RuntimeThreadManagerConfig, RuntimeThreadStore,
+    RuntimeUserInputResponse,
 };
 use deepseek_runtime_orchestrator::runtime_threads::manager::{
     RuntimeThreadManager as RuntimeThreadManagerCore, checklist_tool_needs_panel_push,
     scratchpad_tool_needs_panel_push,
 };
-
 
 pub type SharedRuntimeThreadManager = Arc<RuntimeThreadManager>;
 
@@ -197,8 +196,7 @@ impl RuntimeThreadManager {
         ctx.runtime.wire.active_task_id = thread.task_id.clone();
 
         let resolved_run = if let Some(rid) = run_id.map(str::trim).filter(|s| !s.is_empty()) {
-            crate::scratchpad::validate_run_id(rid)
-                .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+            crate::scratchpad::validate_run_id(rid).map_err(|e| anyhow::anyhow!(e.to_string()))?;
             rid.to_string()
         } else if let Some(active) = thread.scratchpad_run_id.clone() {
             active
@@ -382,8 +380,12 @@ impl RuntimeThreadManager {
                 deepseek_core::long_horizon::CompletionGateMode::Observe => "observe",
             };
             let generic_mode = |m: deepseek_core::long_horizon::GenericGateMode| match m {
-                deepseek_core::long_horizon::GenericGateMode::Enforce => Some("enforce".to_string()),
-                deepseek_core::long_horizon::GenericGateMode::Observe => Some("observe".to_string()),
+                deepseek_core::long_horizon::GenericGateMode::Enforce => {
+                    Some("enforce".to_string())
+                }
+                deepseek_core::long_horizon::GenericGateMode::Observe => {
+                    Some("observe".to_string())
+                }
                 deepseek_core::long_horizon::GenericGateMode::Off => None,
             };
             let replay = generic_mode(lht.completion_gate.auto_verify_replay);
@@ -484,9 +486,7 @@ impl RuntimeThreadManager {
         entry
             .completion_gate
             .apply_status(message, payload.as_ref());
-        entry
-            .macro_loop
-            .apply_status(message, payload.as_ref());
+        entry.macro_loop.apply_status(message, payload.as_ref());
         if message.starts_with("long_horizon.continue_injected") {
             if let Some(p) = payload.as_ref() {
                 if let Some(v) = p.get("emitted").and_then(Value::as_u64) {
@@ -530,14 +530,10 @@ impl RuntimeThreadManager {
             }
         }
         let archives = crate::cycle_manager::list_cycle_archive_summaries(thread_id);
-        let model = self
-            .store
-            .load_thread(thread_id)
-            .ok()
-            .map(|t| t.model);
-        let configured_threshold = model.as_deref().and_then(|m| {
-            u32::try_from(self.config.cycle_runtime_config(m).threshold_for(m)).ok()
-        });
+        let model = self.store.load_thread(thread_id).ok().map(|t| t.model);
+        let configured_threshold = model
+            .as_deref()
+            .and_then(|m| u32::try_from(self.config.cycle_runtime_config(m).threshold_for(m)).ok());
         Ok(crate::long_horizon::build_cycles_value(
             0,
             &[],
@@ -571,9 +567,8 @@ impl RuntimeThreadManager {
         let Some(json_str) = self.get_thread_plan(thread_id) else {
             return Ok(());
         };
-        let plan = serde_json::from_str::<Value>(&json_str).unwrap_or_else(|_| {
-            json!({ "raw": json_str })
-        });
+        let plan =
+            serde_json::from_str::<Value>(&json_str).unwrap_or_else(|_| json!({ "raw": json_str }));
         self.emit_event(
             thread_id,
             Some(turn_id),
@@ -590,9 +585,8 @@ impl RuntimeThreadManager {
         let Some(json_str) = self.get_thread_checklist(thread_id) else {
             return Ok(());
         };
-        let checklist = serde_json::from_str::<Value>(&json_str).unwrap_or_else(|_| {
-            json!({ "raw": json_str })
-        });
+        let checklist =
+            serde_json::from_str::<Value>(&json_str).unwrap_or_else(|_| json!({ "raw": json_str }));
         self.emit_event(
             thread_id,
             Some(turn_id),
@@ -698,7 +692,7 @@ impl RuntimeThreadManager {
         thread_id: &str,
         engine: crate::core::engine::EngineHandle,
     ) -> Result<()> {
-        use super::{touch_lru, ActiveThreadState};
+        use super::{ActiveThreadState, touch_lru};
         let _ = self.get_thread(thread_id).await?;
         let mut active = self.active.lock().await;
         active.engines.insert(

@@ -1,6 +1,4 @@
-use super::html::{
-    parse_bing_results, parse_html, percent_decode, wrap_line,
-};
+use super::html::{parse_bing_results, parse_html, percent_decode, wrap_line};
 use super::search::extract_duckduckgo_vqd;
 use super::state::{
     get_page, next_turn_for_namespace, reset_web_run_state, scoped_ref_prefix, store_page,
@@ -133,8 +131,8 @@ fn turn_counters_are_scoped_per_session() {
 
 #[test]
 fn stale_session_pages_are_evicted() {
-    use super::state::with_state;
     use super::WEB_RUN_SESSION_TTL;
+    use super::state::with_state;
     use std::time::{Duration, Instant};
 
     reset_web_run_state();

@@ -3,12 +3,12 @@
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
+use axum::Json;
 use axum::extract::{Path as AxumPath, Query, State};
 use axum::http::StatusCode;
-use axum::Json;
 use ignore::WalkBuilder;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::config::DEFAULT_TEXT_MODEL;
 use crate::models::SystemPrompt;
@@ -17,12 +17,12 @@ use crate::runtime_threads::{
     ForkAtUserMessageResponse, StartTurnRequest, SteerTurnRequest, ThreadDetail, ThreadListFilter,
     ThreadRecord, TurnItemKind, TurnRecord, UpdateThreadRequest,
 };
-use crate::session_manager::{create_saved_session_with_mode, update_session, SavedSession};
+use crate::session_manager::{SavedSession, create_saved_session_with_mode, update_session};
 use crate::snapshot::SnapshotRepo;
 
 use deepseek_runtime_api::{StartTurnResponse, ThreadSummary};
 
-use super::{map_thread_err, truncate_text, ApiError, RuntimeApiState};
+use super::{ApiError, RuntimeApiState, map_thread_err, truncate_text};
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct ResolveApprovalRequest {
@@ -104,7 +104,7 @@ pub(crate) async fn persist_thread_session(
 
             if sid.is_none() && messages.is_empty() {
                 return Err(
-                    "thread has no messages to persist; wait for turn.completed".to_string(),
+                    "thread has no messages to persist; wait for turn.completed".to_string()
                 );
             }
 
@@ -117,8 +117,7 @@ pub(crate) async fn persist_thread_session(
                 let existing = manager
                     .load_session(&existing_id)
                     .map_err(|e| format!("read existing session: {e}"))?;
-                let mut session =
-                    update_session(existing, &messages, total_tokens, sys.as_ref());
+                let mut session = update_session(existing, &messages, total_tokens, sys.as_ref());
                 session.metadata.model = thread.model.clone();
                 session.metadata.workspace = thread.workspace.clone();
                 session.metadata.mode = Some(thread.mode.clone());
@@ -1159,12 +1158,7 @@ pub(crate) async fn init_thread_scratchpad(
     let scope = body.scope;
     let areas = body.areas;
     let status = tokio::task::spawn_blocking(move || {
-        threads.init_thread_scratchpad(
-            &id,
-            run_id.as_deref(),
-            scope.as_deref(),
-            areas.as_deref(),
-        )
+        threads.init_thread_scratchpad(&id, run_id.as_deref(), scope.as_deref(), areas.as_deref())
     })
     .await
     .map_err(|e| ApiError::internal(format!("scratchpad init task panicked: {e}")))?

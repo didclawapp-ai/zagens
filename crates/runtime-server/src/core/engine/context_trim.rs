@@ -1,13 +1,12 @@
 //! Partition-aware emergency message trim (A1-full).
 
 use deepseek_core::chat::SystemPrompt;
-use deepseek_core::context_partition::{next_message_index_to_trim, SessionContextPartition};
+use deepseek_core::context_partition::{SessionContextPartition, next_message_index_to_trim};
 use deepseek_core::engine::context::{
-    count_oldest_messages_to_drain, estimate_input_tokens_conservative,
-    MIN_RECENT_MESSAGES_TO_KEEP,
+    MIN_RECENT_MESSAGES_TO_KEEP, count_oldest_messages_to_drain, estimate_input_tokens_conservative,
 };
 
-use crate::compaction::{plan_compaction, KEEP_RECENT_MESSAGES};
+use crate::compaction::{KEEP_RECENT_MESSAGES, plan_compaction};
 use crate::core::engine::scratchpad_flow;
 use crate::models::Message as TuiMessage;
 use deepseek_core::working_set::WorkingSet;
@@ -58,12 +57,8 @@ pub fn trim_messages_partition_aware(
     while estimate_input_tokens_conservative(messages, system_prompt) > target_input_budget
         && messages.len() > MIN_RECENT_MESSAGES_TO_KEEP
     {
-        let partition = session_context_partition_for_trim(
-            messages,
-            workspace,
-            working_set,
-            scratchpad_run_id,
-        );
+        let partition =
+            session_context_partition_for_trim(messages, workspace, working_set, scratchpad_run_id);
         let Some(idx) = next_message_index_to_trim(&partition, messages.len()) else {
             break;
         };
@@ -122,14 +117,8 @@ mod tests {
             .chain((0..4).map(|i| msg("user", &format!("recent-{i}"))))
             .collect();
 
-        let removed = trim_messages_partition_aware(
-            &mut messages,
-            None,
-            500,
-            workspace,
-            &working_set,
-            None,
-        );
+        let removed =
+            trim_messages_partition_aware(&mut messages, None, 500, workspace, &working_set, None);
         assert!(removed > 0, "should trim cold filler");
         assert!(
             messages
@@ -162,14 +151,8 @@ mod tests {
         messages.push(msg("assistant", "final-answer"));
         messages.extend((0..2).map(|i| msg("user", &format!("recent-{i}"))));
 
-        let removed = trim_messages_partition_aware(
-            &mut messages,
-            None,
-            800,
-            workspace,
-            &working_set,
-            None,
-        );
+        let removed =
+            trim_messages_partition_aware(&mut messages, None, 800, workspace, &working_set, None);
         assert!(removed > 0);
         assert!(
             crate::transcript_isomorphism::history_transcript_core_matches_messages(&messages),

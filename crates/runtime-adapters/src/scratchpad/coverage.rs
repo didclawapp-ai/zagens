@@ -33,7 +33,9 @@ pub struct AreaQualityGap {
 
 #[derive(Debug, Clone)]
 pub enum CoverageGateOutcome {
-    Allow { stats: CoverageStats },
+    Allow {
+        stats: CoverageStats,
+    },
     Warn {
         stats: CoverageStats,
         warning_text: String,
@@ -47,9 +49,9 @@ pub enum CoverageGateOutcome {
 /// `done` area counts as reviewed/accounted when it has ≥1 finding or cleared note.
 #[must_use]
 pub fn area_meets_done_quality(area_id: &str, notes: &[NoteLine]) -> bool {
-    notes.iter().any(|n| {
-        n.area_id == area_id && (n.kind == "finding" || n.kind == "cleared")
-    })
+    notes
+        .iter()
+        .any(|n| n.area_id == area_id && (n.kind == "finding" || n.kind == "cleared"))
 }
 
 /// `deferred` area counts as accounted when it has ≥1 meta note with non-empty claim.
@@ -58,9 +60,7 @@ pub fn area_meets_deferred_quality(area_id: &str, notes: &[NoteLine]) -> bool {
     notes.iter().any(|n| {
         n.area_id == area_id
             && n.kind == "meta"
-            && n.claim
-                .as_ref()
-                .is_some_and(|c| !c.trim().is_empty())
+            && n.claim.as_ref().is_some_and(|c| !c.trim().is_empty())
     })
 }
 
@@ -227,10 +227,7 @@ pub fn format_quality_gate_block_reason(
     if !gaps.is_empty() {
         reason.push_str("; areas failing quality gates:");
         for gap in gaps.iter().take(12) {
-            reason.push_str(&format!(
-                "\n- {} ({}) — {}",
-                gap.id, gap.status, gap.fix
-            ));
+            reason.push_str(&format!("\n- {} ({}) — {}", gap.id, gap.status, gap.fix));
         }
         if gaps.len() > 12 {
             reason.push_str(&format!("\n- … and {} more", gaps.len() - 12));
@@ -270,7 +267,10 @@ pub fn coverage_gate(
              pending_area_ids: [{pending}]",
             stats.pending_area_ids.len(),
         );
-        return CoverageGateOutcome::Warn { stats, warning_text: warning };
+        return CoverageGateOutcome::Warn {
+            stats,
+            warning_text: warning,
+        };
     }
 
     CoverageGateOutcome::Allow { stats }

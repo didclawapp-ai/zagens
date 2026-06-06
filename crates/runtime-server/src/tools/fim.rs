@@ -10,7 +10,6 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 use thiserror::Error;
 
-
 use super::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
     optional_u64, required_str,

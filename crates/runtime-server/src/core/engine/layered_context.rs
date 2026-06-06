@@ -51,7 +51,8 @@ impl Engine {
             .await;
 
         // If we have existing seams, recompact; otherwise produce fresh.
-        let existing_seams = SeamHost::collect_seam_texts(seam_mgr.as_ref(), &self.session.messages).await;
+        let existing_seams =
+            SeamHost::collect_seam_texts(seam_mgr.as_ref(), &self.session.messages).await;
         let seam_text = if existing_seams.is_empty() {
             match SeamHost::produce_soft_seam(
                 seam_mgr.as_ref(),
@@ -118,4 +119,3 @@ impl Engine {
             .await;
     }
 }
-

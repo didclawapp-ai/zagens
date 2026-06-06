@@ -35,12 +35,11 @@ pub fn build_objective_reinject_message(
         "Progress: {}% · {} open item(s)",
         graph.completion_pct, graph.open_items
     ));
-    for phase in graph.phases.iter().filter(|p| {
-        !matches!(
-            p.status,
-            crate::tools::plan::StepStatus::Completed
-        )
-    }) {
+    for phase in graph
+        .phases
+        .iter()
+        .filter(|p| !matches!(p.status, crate::tools::plan::StepStatus::Completed))
+    {
         let marker = match phase.status {
             crate::tools::plan::StepStatus::InProgress => "[~]",
             crate::tools::plan::StepStatus::Pending => "[ ]",
@@ -48,9 +47,11 @@ pub fn build_objective_reinject_message(
         };
         lines.push(format!("- {marker} {}", phase.step));
     }
-    for item in graph.checklist.iter().filter(|c| {
-        c.status != crate::tools::todo::TodoStatus::Completed
-    }) {
+    for item in graph
+        .checklist
+        .iter()
+        .filter(|c| c.status != crate::tools::todo::TodoStatus::Completed)
+    {
         let marker = match item.status {
             crate::tools::todo::TodoStatus::InProgress => "[~]",
             crate::tools::todo::TodoStatus::Pending => "[ ]",

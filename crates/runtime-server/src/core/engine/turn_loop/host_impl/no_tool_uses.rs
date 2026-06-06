@@ -3,9 +3,9 @@
 use std::sync::Arc;
 
 use deepseek_core::chat::{ContentBlock, Message};
+use deepseek_core::engine::TurnLoopHost;
 use deepseek_core::engine::context::summarize_text;
 use deepseek_core::engine::turn_loop::control::TurnLoopControl;
-use deepseek_core::engine::TurnLoopHost;
 use deepseek_core::turn::{TurnContext, TurnOutcomeStatus};
 
 use super::super::Engine;
@@ -13,7 +13,11 @@ use crate::core::events::Event;
 
 /// Drain any pending sub-agent completion notifications (non-blocking).
 pub(super) fn drain_subagent_completions(
-    rx: &Arc<tokio::sync::Mutex<tokio::sync::mpsc::UnboundedReceiver<crate::tools::subagent::SubAgentCompletion>>>,
+    rx: &Arc<
+        tokio::sync::Mutex<
+            tokio::sync::mpsc::UnboundedReceiver<crate::tools::subagent::SubAgentCompletion>,
+        >,
+    >,
     out: &mut Vec<crate::tools::subagent::SubAgentCompletion>,
 ) {
     if let Ok(mut guard) = rx.try_lock() {
@@ -68,11 +72,7 @@ impl Engine {
             crate::long_horizon::LhtGateOutcome::MacroRemediation(msg) => {
                 Engine::add_session_message(self, msg).await;
                 self.long_horizon_continue_injected_this_turn = true;
-                let phase = self
-                    .runtime_ext()
-                    .long_horizon_state
-                    .macro_phase
-                    .as_str();
+                let phase = self.runtime_ext().long_horizon_state.macro_phase.as_str();
                 let _ = self
                     .tx_event
                     .send(Event::status(format!(
@@ -141,16 +141,8 @@ impl Engine {
         self.runtime_ext_mut()
             .long_horizon_state
             .on_assistant_no_tools();
-        let blocked_before = self
-            .runtime_ext()
-            .long_horizon_state
-            .tracker
-            .is_blocked();
-        let converted_before = self
-            .runtime_ext()
-            .long_horizon_state
-            .telemetry
-            .converted;
+        let blocked_before = self.runtime_ext().long_horizon_state.tracker.is_blocked();
+        let converted_before = self.runtime_ext().long_horizon_state.telemetry.converted;
 
         let macro_cfg = lh_config.macro_loop.clone();
         if macro_cfg.enabled {
@@ -213,11 +205,7 @@ impl Engine {
 
         // Telemetry (§4.9): emit a `nudge_outcome` whenever a prior nudge just
         // converted into qualified progress — the evidence we want for tuning.
-        let converted_now = self
-            .runtime_ext()
-            .long_horizon_state
-            .telemetry
-            .converted;
+        let converted_now = self.runtime_ext().long_horizon_state.telemetry.converted;
         if converted_now > converted_before {
             let _ = self
                 .tx_event
@@ -353,10 +341,7 @@ impl Engine {
                 // unverified_acceptance but distinct telemetry.
                 Engine::add_session_message(self, msg).await;
                 self.long_horizon_continue_injected_this_turn = true;
-                let count = self
-                    .runtime_ext()
-                    .long_horizon_state
-                    .verify_mismatch_nudges;
+                let count = self.runtime_ext().long_horizon_state.verify_mismatch_nudges;
                 let _ = self
                     .tx_event
                     .send(Event::status(format!(
@@ -461,11 +446,7 @@ impl Engine {
                         .await;
                 }
 
-                let blocked_now = self
-                    .runtime_ext()
-                    .long_horizon_state
-                    .tracker
-                    .is_blocked();
+                let blocked_now = self.runtime_ext().long_horizon_state.tracker.is_blocked();
                 if blocked_before || blocked_now {
                     let _ = self
                         .tx_event
@@ -727,11 +708,7 @@ impl Engine {
                 .long_horizon_state
                 .macro_craft_agent_id
                 .clone();
-            let macro_task_id = self
-                .runtime_ext()
-                .long_horizon_state
-                .macro_task_id
-                .clone();
+            let macro_task_id = self.runtime_ext().long_horizon_state.macro_task_id.clone();
             for c in completions {
                 if macro_craft_id.as_deref() == Some(c.agent_id.as_str()) {
                     if let Some(task_id) = macro_task_id.as_deref() {
@@ -739,19 +716,21 @@ impl Engine {
                         let todos = self.config_ext().todos.clone();
                         let locale = self.config.locale_tag.clone();
                         let macro_cfg = self.config.long_horizon.macro_loop.clone();
-                        if let Some(outcome) = crate::long_horizon::macro_loop::on_craft_review_complete(
-                            &workspace,
-                            task_id,
-                            &mut self.runtime_ext_mut().long_horizon_state,
-                            &macro_cfg,
-                            &todos,
-                            &locale,
-                        )
-                        .await
+                        if let Some(outcome) =
+                            crate::long_horizon::macro_loop::on_craft_review_complete(
+                                &workspace,
+                                task_id,
+                                &mut self.runtime_ext_mut().long_horizon_state,
+                                &macro_cfg,
+                                &todos,
+                                &locale,
+                            )
+                            .await
                         {
                             let blockers = match &outcome {
                                 crate::long_horizon::LhtGateOutcome::MacroUnmet {
-                                    remaining_blockers, ..
+                                    remaining_blockers,
+                                    ..
                                 } => remaining_blockers.len(),
                                 _ => 0,
                             };
@@ -822,7 +801,9 @@ impl Engine {
                 let round_num = i + 1;
                 let _ = self
                     .tx_event
-                    .send(Event::status(format!("REPL round {round_num}: executing...")))
+                    .send(Event::status(format!(
+                        "REPL round {round_num}: executing..."
+                    )))
                     .await;
 
                 match runtime.execute(&block.code).await {
@@ -926,10 +907,7 @@ impl Engine {
     }
 
     /// Hold the turn open while LHT CRAFT review runs, then inject remediation.
-    async fn maybe_await_macro_craft_completion(
-        &mut self,
-        turn: &mut TurnContext,
-    ) -> Option<()> {
+    async fn maybe_await_macro_craft_completion(&mut self, turn: &mut TurnContext) -> Option<()> {
         if self
             .runtime_ext()
             .long_horizon_state
@@ -1002,11 +980,7 @@ impl Engine {
             .long_horizon_state
             .macro_craft_agent_id
             .clone();
-        let macro_task_id = self
-            .runtime_ext()
-            .long_horizon_state
-            .macro_task_id
-            .clone();
+        let macro_task_id = self.runtime_ext().long_horizon_state.macro_task_id.clone();
         for c in completions {
             if macro_craft_id.as_deref() == Some(c.agent_id.as_str()) {
                 if let Some(task_id) = macro_task_id.as_deref() {
@@ -1027,7 +1001,8 @@ impl Engine {
                     {
                         let blockers = match &outcome {
                             crate::long_horizon::LhtGateOutcome::MacroUnmet {
-                                remaining_blockers, ..
+                                remaining_blockers,
+                                ..
                             } => remaining_blockers.len(),
                             _ => 0,
                         };

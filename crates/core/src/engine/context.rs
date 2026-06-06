@@ -222,7 +222,11 @@ fn tool_result_context_limits_for_model(model: &str) -> ToolResultContextLimits 
 }
 
 #[must_use]
-pub fn compact_tool_result_for_context(model: &str, tool_name: &str, output: &ToolResult) -> String {
+pub fn compact_tool_result_for_context(
+    model: &str,
+    tool_name: &str,
+    output: &ToolResult,
+) -> String {
     let raw = output.content.trim();
     if raw.is_empty() {
         return String::new();
@@ -393,8 +397,8 @@ mod tests {
 
     #[test]
     fn context_budget_subtracts_output_and_headroom() {
-        let budget = context_input_budget("deepseek-v4-pro", TURN_MAX_OUTPUT_TOKENS)
-            .expect("v4 window");
+        let budget =
+            context_input_budget("deepseek-v4-pro", TURN_MAX_OUTPUT_TOKENS).expect("v4 window");
         let v4_window = context_window_for_model("deepseek-v4-pro").unwrap() as usize;
         let expected = v4_window
             .checked_sub(TURN_MAX_OUTPUT_TOKENS as usize)

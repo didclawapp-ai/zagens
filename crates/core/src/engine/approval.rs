@@ -28,13 +28,8 @@ pub enum ApprovalDecision<P> {
 
 #[derive(Debug, Clone)]
 pub enum UserInputDecision<R> {
-    Submitted {
-        id: String,
-        response: R,
-    },
-    Cancelled {
-        id: String,
-    },
+    Submitted { id: String, response: R },
+    Cancelled { id: String },
 }
 
 /// Result of awaiting tool approval from the user.
@@ -138,15 +133,11 @@ mod tests {
         let tool_id = "tool-1";
         let task = tokio::spawn({
             let cancel = cancel.clone();
-            async move {
-                await_tool_approval::<TestPolicy>(tool_id, &cancel, &mut rx).await
-            }
+            async move { await_tool_approval::<TestPolicy>(tool_id, &cancel, &mut rx).await }
         });
-        tx.send(ApprovalDecision::Denied {
-            id: "other".into(),
-        })
-        .await
-        .unwrap();
+        tx.send(ApprovalDecision::Denied { id: "other".into() })
+            .await
+            .unwrap();
         tx.send(ApprovalDecision::Approved {
             id: tool_id.into(),
             cache_key: None,
@@ -154,7 +145,10 @@ mod tests {
         })
         .await
         .unwrap();
-        assert!(matches!(task.await.unwrap().unwrap(), ApprovalResult::Approved));
+        assert!(matches!(
+            task.await.unwrap().unwrap(),
+            ApprovalResult::Approved
+        ));
     }
 
     #[tokio::test]

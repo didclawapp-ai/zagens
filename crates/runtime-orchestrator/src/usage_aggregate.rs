@@ -90,17 +90,13 @@ pub fn accumulate_turn_usage(
 
 /// Derive hit-rate and savings fields after summing raw counters.
 pub fn finalize_usage_totals(totals: &mut crate::runtime_threads::UsageTotals) {
-    totals.cache_hit_rate =
-        aggregate_cache_hit_percent(totals.cached_tokens, totals.input_tokens);
-    totals.cache_savings_usd =
-        (totals.cost_usd_without_cache - totals.cost_usd).max(0.0);
+    totals.cache_hit_rate = aggregate_cache_hit_percent(totals.cached_tokens, totals.input_tokens);
+    totals.cache_savings_usd = (totals.cost_usd_without_cache - totals.cost_usd).max(0.0);
 }
 
 pub fn finalize_usage_bucket(bucket: &mut crate::runtime_threads::UsageBucket) {
-    bucket.cache_hit_rate =
-        aggregate_cache_hit_percent(bucket.cached_tokens, bucket.input_tokens);
-    bucket.cache_savings_usd =
-        (bucket.cost_usd_without_cache - bucket.cost_usd).max(0.0);
+    bucket.cache_hit_rate = aggregate_cache_hit_percent(bucket.cached_tokens, bucket.input_tokens);
+    bucket.cache_savings_usd = (bucket.cost_usd_without_cache - bucket.cost_usd).max(0.0);
 }
 
 #[cfg(test)]

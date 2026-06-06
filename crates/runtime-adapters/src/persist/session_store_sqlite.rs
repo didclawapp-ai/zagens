@@ -17,9 +17,7 @@ use anyhow::{Context, bail};
 use chrono::{DateTime, Utc};
 use rusqlite::{Connection, params};
 
-use crate::persist::session_manager::{
-    SavedSession, SessionContextReference, SessionMetadata,
-};
+use crate::persist::session_manager::{SavedSession, SessionContextReference, SessionMetadata};
 
 const CURRENT_META_VERSION: u32 = 1;
 
@@ -87,11 +85,9 @@ pub fn open_sqlite_session_db(
 
     // Check if migration is needed
     let needs_migration: bool = db
-        .query_row(
-            "SELECT value FROM _meta WHERE key = 'version'",
-            [],
-            |row| row.get::<_, String>(0),
-        )
+        .query_row("SELECT value FROM _meta WHERE key = 'version'", [], |row| {
+            row.get::<_, String>(0)
+        })
         .ok()
         .is_none();
 
@@ -172,8 +168,7 @@ fn migrate_json_sessions(db: &Connection, sessions_dir: &std::path::Path) -> any
 
 pub fn save_session_sqlite(db: &Connection, session: &SavedSession) -> anyhow::Result<()> {
     let messages_json = serde_json::to_string(&session.messages).unwrap_or_default();
-    let context_refs_json =
-        serde_json::to_string(&session.context_references).unwrap_or_default();
+    let context_refs_json = serde_json::to_string(&session.context_references).unwrap_or_default();
     let created_at = session.metadata.created_at.to_rfc3339();
     let updated_at = session.metadata.updated_at.to_rfc3339();
     let mode = session.metadata.mode.as_deref().unwrap_or("");
@@ -213,7 +208,10 @@ pub fn load_session_sqlite(db: &Connection, id: &str) -> anyhow::Result<SavedSes
     if id.is_empty() {
         bail!("Session id cannot be empty");
     }
-    if !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+    if !id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
         bail!("Invalid session id '{id}'");
     }
 
@@ -321,7 +319,10 @@ pub fn list_sessions_sqlite(db: &Connection) -> anyhow::Result<Vec<SessionMetada
     Ok(sessions)
 }
 
-pub fn search_sessions_sqlite(db: &Connection, query: &str) -> anyhow::Result<Vec<SessionMetadata>> {
+pub fn search_sessions_sqlite(
+    db: &Connection,
+    query: &str,
+) -> anyhow::Result<Vec<SessionMetadata>> {
     let all = list_sessions_sqlite(db)?;
     let query_lower = query.to_lowercase();
     Ok(all
@@ -332,10 +333,16 @@ pub fn search_sessions_sqlite(db: &Connection, query: &str) -> anyhow::Result<Ve
 
 pub fn delete_session_sqlite(db: &Connection, id: &str) -> anyhow::Result<()> {
     let id = id.trim();
-    if id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+    if id.is_empty()
+        || !id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
         bail!("Invalid session id '{id}'");
     }
-    let affected = db.execute("DELETE FROM sessions WHERE id = ?1", params![id]).context("delete_session_sqlite")?;
+    let affected = db
+        .execute("DELETE FROM sessions WHERE id = ?1", params![id])
+        .context("delete_session_sqlite")?;
     if affected == 0 {
         bail!("session {id} not found");
     }
@@ -444,10 +451,7 @@ mod tests {
         );
 
         let listed = list_sessions_sqlite(&db).unwrap();
-        assert_eq!(
-            listed[0].runtime_thread_id.as_deref(),
-            Some("thr_abc")
-        );
+        assert_eq!(listed[0].runtime_thread_id.as_deref(), Some("thr_abc"));
     }
 
     #[test]

@@ -81,9 +81,18 @@ mod tests {
     fn sandbox_kind_parse_accepts_aliases() {
         assert_eq!(SandboxKind::parse("none"), Some(SandboxKind::None));
         assert_eq!(SandboxKind::parse(""), Some(SandboxKind::None));
-        assert_eq!(SandboxKind::parse("opensandbox"), Some(SandboxKind::OpenSandbox));
-        assert_eq!(SandboxKind::parse("Open-Sandbox"), Some(SandboxKind::OpenSandbox));
-        assert_eq!(SandboxKind::parse("OPEN_SANDBOX"), Some(SandboxKind::OpenSandbox));
+        assert_eq!(
+            SandboxKind::parse("opensandbox"),
+            Some(SandboxKind::OpenSandbox)
+        );
+        assert_eq!(
+            SandboxKind::parse("Open-Sandbox"),
+            Some(SandboxKind::OpenSandbox)
+        );
+        assert_eq!(
+            SandboxKind::parse("OPEN_SANDBOX"),
+            Some(SandboxKind::OpenSandbox)
+        );
         assert_eq!(SandboxKind::parse("unknown"), None);
     }
 

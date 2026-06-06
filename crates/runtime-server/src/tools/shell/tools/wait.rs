@@ -2,11 +2,11 @@
 
 use std::time::Duration;
 
+use super::super::types::ShellStatus;
 use super::helpers::{
     build_shell_delta_tool_result, emit_shell_delta_streams, required_task_id,
     wait_for_shell_delta_cancellable,
 };
-use super::super::types::ShellStatus;
 use crate::tools::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
     optional_bool, optional_u64,

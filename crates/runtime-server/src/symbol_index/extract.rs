@@ -9,19 +9,40 @@ const TS_PATTERNS: &[(&str, &str)] = &[
     (r"^export\s+default\s+(?:async\s+)?function\s+(\w+)", "fn"),
     (r"^export\s+(?:async\s+)?function\s+(\w+)", "fn"),
     (r"^(?:async\s+)?function\s+(\w+)", "fn"),
-    (r"^export\s+const\s+(\w+)\s*=\s*(?:async\s+)?(?:\(|[A-Za-z_]\w*\s*=>)", "fn"),
+    (
+        r"^export\s+const\s+(\w+)\s*=\s*(?:async\s+)?(?:\(|[A-Za-z_]\w*\s*=>)",
+        "fn",
+    ),
     (r"^export\s+(?:default\s+)?interface\s+(\w+)", "interface"),
     (r"^interface\s+(\w+)", "interface"),
     (r"^export\s+type\s+(\w+)\s*[=<]", "type"),
     (r"^(?:export\s+(?:default\s+)?)?class\s+(\w+)", "class"),
     (r"^(?:export\s+)?(?:const\s+)?enum\s+(\w+)", "enum"),
-    (r"^\s{2,}(?:(?:public|private|protected|static|async|readonly|override)\s+)*(\w+)\s*[<(]", "method"),
+    (
+        r"^\s{2,}(?:(?:public|private|protected|static|async|readonly|override)\s+)*(\w+)\s*[<(]",
+        "method",
+    ),
 ];
 
 const TS_SKIP_NAMES: &[&str] = &[
-    "if", "for", "while", "switch", "catch", "return", "new",
-    "typeof", "instanceof", "in", "of", "from", "import", "export",
-    "constructor", "super", "extends", "implements",
+    "if",
+    "for",
+    "while",
+    "switch",
+    "catch",
+    "return",
+    "new",
+    "typeof",
+    "instanceof",
+    "in",
+    "of",
+    "from",
+    "import",
+    "export",
+    "constructor",
+    "super",
+    "extends",
+    "implements",
 ];
 
 /// Extract symbols from TypeScript, TSX, or JavaScript source files.
@@ -385,10 +406,7 @@ where
         }
 
         let trimmed = line.trim();
-        if trimmed.starts_with("//")
-            || trimmed.starts_with('*')
-            || trimmed.starts_with("/*")
-        {
+        if trimmed.starts_with("//") || trimmed.starts_with('*') || trimmed.starts_with("/*") {
             continue;
         }
 
@@ -447,8 +465,14 @@ mod tests {
         .unwrap();
 
         let syms = extract_py_symbols(&path, 0).expect("parse");
-        assert!(syms.iter().any(|s| s.kind == "class" && s.name == "Service"));
-        assert!(syms.iter().any(|s| s.kind == "method" && s.name == "Service::run"));
+        assert!(
+            syms.iter()
+                .any(|s| s.kind == "class" && s.name == "Service")
+        );
+        assert!(
+            syms.iter()
+                .any(|s| s.kind == "method" && s.name == "Service::run")
+        );
         assert!(syms.iter().any(|s| s.kind == "fn" && s.name == "main"));
     }
 
@@ -464,8 +488,14 @@ mod tests {
 
         let syms = extract_go_symbols(&path, 0).expect("parse");
         assert!(syms.iter().any(|s| s.kind == "fn" && s.name == "Hello"));
-        assert!(syms.iter().any(|s| s.kind == "struct" && s.name == "Config"));
-        assert!(syms.iter().any(|s| s.kind == "method" && s.name == "Config::Load"));
+        assert!(
+            syms.iter()
+                .any(|s| s.kind == "struct" && s.name == "Config")
+        );
+        assert!(
+            syms.iter()
+                .any(|s| s.kind == "method" && s.name == "Config::Load")
+        );
     }
 
     #[test]
@@ -475,18 +505,17 @@ mod tests {
         std::fs::write(&path, "export function normalizePath(p) {}\n").unwrap();
 
         let syms = extract_ts_symbols(&path, 0).expect("parse");
-        assert!(syms.iter().any(|s| s.kind == "fn" && s.name == "normalizePath"));
+        assert!(
+            syms.iter()
+                .any(|s| s.kind == "fn" && s.name == "normalizePath")
+        );
     }
 
     #[test]
     fn extract_cpp_symbols_finds_class_and_fn() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let path = tmp.path().join("widget.cpp");
-        std::fs::write(
-            &path,
-            "class Widget {\n};\n\nvoid reset() {\n}\n",
-        )
-        .unwrap();
+        std::fs::write(&path, "class Widget {\n};\n\nvoid reset() {\n}\n").unwrap();
 
         let syms = extract_cpp_symbols(&path, 0).expect("parse");
         assert!(syms.iter().any(|s| s.kind == "class" && s.name == "Widget"));

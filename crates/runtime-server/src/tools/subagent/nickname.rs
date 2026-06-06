@@ -52,10 +52,7 @@ pub fn derive_subagent_nickname(input: DeriveSubagentNicknameInput<'_>) -> Strin
 }
 
 fn sanitize_label(raw: &str) -> String {
-    let collapsed: String = raw
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ");
+    let collapsed: String = raw.split_whitespace().collect::<Vec<_>>().join(" ");
     if collapsed.len() <= MAX_NICKNAME_LEN {
         return collapsed;
     }
@@ -164,11 +161,7 @@ mod tests {
     use super::*;
     use deepseek_core::subagent::SubAgentAssignment;
 
-    fn derive_for_prompt(
-        agent_type: &SubAgentType,
-        prompt: &str,
-        type_index: usize,
-    ) -> String {
+    fn derive_for_prompt(agent_type: &SubAgentType, prompt: &str, type_index: usize) -> String {
         let assignment = SubAgentAssignment::new(prompt.to_string(), None);
         derive_subagent_nickname(DeriveSubagentNicknameInput {
             agent_type,
@@ -210,11 +203,7 @@ mod tests {
 
     #[test]
     fn falls_back_to_type_index() {
-        let nick = derive_for_prompt(
-            &SubAgentType::Explore,
-            "Read the README and summarize.",
-            3,
-        );
+        let nick = derive_for_prompt(&SubAgentType::Explore, "Read the README and summarize.", 3);
         assert_eq!(nick, "explore #3");
     }
 

@@ -115,7 +115,10 @@ pub fn resolve_project_root(workspace: &Path) -> PathBuf {
         }
     }
     match matches.len() {
-        1 => matches.into_iter().next().unwrap_or_else(|| workspace.to_path_buf()),
+        1 => matches
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| workspace.to_path_buf()),
         _ => workspace.to_path_buf(),
     }
 }
@@ -338,8 +341,16 @@ mod tests {
     #[test]
     fn model_replay_extracts_completed_verify_commands() {
         let snap = snapshot(vec![
-            item(1, "[verify: go test ./...] tests pass", TodoStatus::Completed),
-            item(2, "[verify: go vet ./...] no warnings", TodoStatus::Completed),
+            item(
+                1,
+                "[verify: go test ./...] tests pass",
+                TodoStatus::Completed,
+            ),
+            item(
+                2,
+                "[verify: go vet ./...] no warnings",
+                TodoStatus::Completed,
+            ),
             // pending item ignored
             item(3, "[verify: go build ./...] builds", TodoStatus::Pending),
             // untagged ignored
@@ -347,7 +358,11 @@ mod tests {
         ]);
         let entries = collect_model_verify_entries(&snap, GenericGateMode::Enforce);
         assert_eq!(entries.len(), 2);
-        assert!(entries.iter().all(|e| e.source == VerifySource::ModelDeclared));
+        assert!(
+            entries
+                .iter()
+                .all(|e| e.source == VerifySource::ModelDeclared)
+        );
         assert_eq!(entries[0].cmd.as_deref(), Some("go test ./..."));
     }
 
@@ -371,10 +386,16 @@ mod tests {
         let entries = detect_toolchain_entries(&dir, GenericGateMode::Enforce);
         assert_eq!(entries.len(), 2);
         assert!(entries.iter().all(|e| e.source == VerifySource::Toolchain));
-        assert!(entries.iter().any(|e| e.cmd.as_deref() == Some("go build ./...")));
-        assert!(entries
-            .iter()
-            .any(|e| e.cmd.as_deref() == Some("go test -cover ./...")));
+        assert!(
+            entries
+                .iter()
+                .any(|e| e.cmd.as_deref() == Some("go build ./..."))
+        );
+        assert!(
+            entries
+                .iter()
+                .any(|e| e.cmd.as_deref() == Some("go test -cover ./..."))
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -461,18 +482,18 @@ mod tests {
         let entries = detect_toolchain_entries(&dir, GenericGateMode::Enforce);
         assert_eq!(entries.len(), 2);
         assert!(entries.iter().all(|e| e.source == VerifySource::Toolchain));
-        assert!(entries
-            .iter()
-            .all(|e| e.cmd.as_deref().unwrap_or("").starts_with("cargo ")));
-        assert!(entries
-            .iter()
-            .any(|e| e.id == "toolchain_cargo_build"));
-        assert!(!entries
-            .iter()
-            .any(|e| e.id == "toolchain_cargo_test"));
-        assert!(!entries
-            .iter()
-            .any(|e| e.cmd.as_deref().unwrap_or("").contains("npm")));
+        assert!(
+            entries
+                .iter()
+                .all(|e| e.cmd.as_deref().unwrap_or("").starts_with("cargo "))
+        );
+        assert!(entries.iter().any(|e| e.id == "toolchain_cargo_build"));
+        assert!(!entries.iter().any(|e| e.id == "toolchain_cargo_test"));
+        assert!(
+            !entries
+                .iter()
+                .any(|e| e.cmd.as_deref().unwrap_or("").contains("npm"))
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -507,6 +528,10 @@ mod tests {
         assert_eq!(merged.len(), 2);
         assert_eq!(merged[0].source, VerifySource::Operator);
         assert_eq!(merged[0].id, "op_build");
-        assert!(merged.iter().any(|e| e.cmd.as_deref() == Some("go test ./...")));
+        assert!(
+            merged
+                .iter()
+                .any(|e| e.cmd.as_deref() == Some("go test ./..."))
+        );
     }
 }

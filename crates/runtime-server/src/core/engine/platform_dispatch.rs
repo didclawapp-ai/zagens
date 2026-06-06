@@ -1,13 +1,13 @@
 //! Tui [`EnginePlatformExt`] — op-loop dispatch (M8).
 
 use async_trait::async_trait;
+use deepseek_core::engine::Engine as CoreEngine;
 use deepseek_core::engine::op::Op;
 use deepseek_core::engine::platform_ext::EnginePlatformExt;
-use deepseek_core::engine::Engine as CoreEngine;
 
+use crate::agent_surface::AppMode;
 use crate::context_snapshot::ThreadContextSnapshot;
 use crate::core::events::Event;
-use crate::agent_surface::AppMode;
 use tokio::sync::oneshot;
 
 use super::Engine;
@@ -188,14 +188,10 @@ impl Engine {
     ) {
         let active = self.estimated_input_tokens() as u64;
         let headroom = super::context::turn_response_headroom_tokens();
-        let pressure = crate::long_horizon::context_pressure_ratio(
-            active,
-            headroom,
-            &self.session.model,
-        )
-        .map(|r| (r * 100.0).round() as u8);
-        let archives =
-            crate::cycle_manager::list_cycle_archive_summaries(&self.session.id);
+        let pressure =
+            crate::long_horizon::context_pressure_ratio(active, headroom, &self.session.model)
+                .map(|r| (r * 100.0).round() as u8);
+        let archives = crate::cycle_manager::list_cycle_archive_summaries(&self.session.id);
         let configured_threshold =
             u32::try_from(self.config.cycle.threshold_for(&self.session.model)).ok();
         let value = crate::long_horizon::build_cycles_value(
@@ -220,6 +216,7 @@ impl Engine {
         child_model: String,
         max_depth: u32,
     ) {
-        self.handle_rlm(content, model, child_model, max_depth).await;
+        self.handle_rlm(content, model, child_model, max_depth)
+            .await;
     }
 }

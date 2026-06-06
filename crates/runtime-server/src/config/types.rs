@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 use crate::features::FeaturesToml;
 use crate::hooks::HooksConfig;
 
-
 // === Types ===
 
 /// Web search backend provider.
@@ -867,7 +866,10 @@ impl std::fmt::Debug for Config {
         f.debug_struct("Config")
             .field("provider", &self.provider)
             .field("api_key", &debug_redact_secret(&self.api_key))
-            .field("sandbox_api_key", &debug_redact_secret(&self.sandbox_api_key))
+            .field(
+                "sandbox_api_key",
+                &debug_redact_secret(&self.sandbox_api_key),
+            )
             .field("default_text_model", &self.default_text_model)
             .field("allow_shell", &self.allow_shell)
             .field("approval_policy", &self.approval_policy)
@@ -875,4 +877,3 @@ impl std::fmt::Debug for Config {
             .finish_non_exhaustive()
     }
 }
-

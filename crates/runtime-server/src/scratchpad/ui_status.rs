@@ -29,8 +29,14 @@ pub fn count_checklist_items(snapshot: &Value) -> (usize, usize) {
 pub fn compute_contract_warnings(status: &Value, checklist_completed: usize) -> Vec<String> {
     let mut warnings = Vec::new();
 
-    let notes_total = status.get("notes_total").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
-    let areas_done = status.get("areas_done").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+    let notes_total = status
+        .get("notes_total")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0) as usize;
+    let areas_done = status
+        .get("areas_done")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0) as usize;
     let areas_deferred = status
         .get("areas_deferred")
         .and_then(|v| v.as_u64())

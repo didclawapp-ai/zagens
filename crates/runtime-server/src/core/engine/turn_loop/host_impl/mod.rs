@@ -5,40 +5,39 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use deepseek_core::chat::{ContentBlock, LlmClient, Message, Tool};
+use deepseek_core::engine::TurnLoopHost;
 use deepseek_core::engine::context::estimate_input_tokens_conservative;
-use deepseek_core::engine::turn_loop::control::TurnLoopControl;
-use deepseek_core::engine::turn_loop::exec::{
-    ToolExecOutcome, ToolExecutionPlan, ToolPlanApprovalMeta,
-};
-use deepseek_core::engine::turn_loop::{build_edit_file_approval_desc, TurnLoopToolRegistry};
-use deepseek_core::engine::tool_catalog::{CODE_EXECUTION_TOOL_NAME, is_tool_search_tool};
 use deepseek_core::engine::dispatch::{
     mcp_tool_approval_description, mcp_tool_is_parallel_safe, mcp_tool_is_read_only,
 };
 use deepseek_core::engine::hosts::McpHost;
-use deepseek_core::engine::TurnLoopHost;
 use deepseek_core::engine::streaming::ToolUseState;
+use deepseek_core::engine::tool_catalog::{CODE_EXECUTION_TOOL_NAME, is_tool_search_tool};
+use deepseek_core::engine::turn_loop::control::TurnLoopControl;
+use deepseek_core::engine::turn_loop::exec::{
+    ToolExecOutcome, ToolExecutionPlan, ToolPlanApprovalMeta,
+};
+use deepseek_core::engine::turn_loop::{TurnLoopToolRegistry, build_edit_file_approval_desc};
 use deepseek_core::turn::{TurnContext, TurnLoopMode};
 use deepseek_tools::{ToolError, ToolResult};
 use serde_json::Value;
-use tokio::sync::{mpsc, Mutex as AsyncMutex, RwLock};
+use tokio::sync::{Mutex as AsyncMutex, RwLock, mpsc};
 
-use deepseek_core::engine::tool_catalog::{
-    active_tools_for_step, ensure_advanced_tooling, execute_tool_search, initial_active_tools,
-    maybe_activate_requested_deferred_tool,
-};
-use super::super::tool_catalog::execute_code_execution_tool;
 use super::super::scratchpad_flow;
+use super::super::tool_catalog::execute_code_execution_tool;
 use super::Engine;
+use crate::agent_surface::AppMode;
 use crate::compaction::{compact_messages_safe, should_compact};
 use crate::core::events::Event;
 use crate::core::turn::pre_tool_snapshot;
 use crate::mcp::McpPool;
-use crate::agent_surface::AppMode;
-use crate::tools::spec::ApprovalRequirement;
 use crate::tools::ToolRegistry;
+use crate::tools::spec::ApprovalRequirement;
+use deepseek_core::engine::tool_catalog::{
+    active_tools_for_step, ensure_advanced_tooling, execute_tool_search, initial_active_tools,
+    maybe_activate_requested_deferred_tool,
+};
 impl TurnLoopToolRegistry for ToolRegistry {}
-
 
 mod capacity;
 mod no_tool_uses;
@@ -235,15 +234,19 @@ impl TurnLoopHost for Engine {
                     let _ = self.tx_event.send(Event::status(status)).await;
                 } else {
                     let message = "Auto-compaction skipped: empty result".to_string();
-                    Engine::emit_compaction_failed(self, compaction_id.clone(), true, message.clone())
-                        .await;
+                    Engine::emit_compaction_failed(
+                        self,
+                        compaction_id.clone(),
+                        true,
+                        message.clone(),
+                    )
+                    .await;
                     let _ = self.tx_event.send(Event::status(message)).await;
                 }
             }
             Err(err) => {
                 let message = format!("Auto-compaction failed: {err}");
-                Engine::emit_compaction_failed(self, compaction_id, true, message.clone())
-                    .await;
+                Engine::emit_compaction_failed(self, compaction_id, true, message.clone()).await;
                 let _ = self.tx_event.send(Event::status(message)).await;
             }
         }
@@ -283,7 +286,8 @@ impl TurnLoopHost for Engine {
         client: Option<&dyn LlmClient>,
         mode: TurnLoopMode,
     ) -> bool {
-        self.turn_loop_capacity_pre_request(turn, client, mode).await
+        self.turn_loop_capacity_pre_request(turn, client, mode)
+            .await
     }
 
     async fn run_capacity_error_escalation_checkpoint(
@@ -360,8 +364,7 @@ impl TurnLoopHost for Engine {
             && matches!(
                 tool_name,
                 "checklist_update" | "todo_update" | "checklist_write"
-            )
-        {
+            ) {
             let checklist = self.config_ext().todos.lock().await.snapshot();
 
             // Authoritative checklist sync (CCR progress-desync fix): push the
@@ -490,8 +493,7 @@ impl TurnLoopHost for Engine {
         let active = self.estimated_input_tokens() as u64;
         let headroom = crate::core::engine::context::turn_response_headroom_tokens();
         let model = self.session.model.clone();
-        let in_band =
-            crate::long_horizon::in_lht_warning_band(active, headroom, &model);
+        let in_band = crate::long_horizon::in_lht_warning_band(active, headroom, &model);
         let emit_warning = {
             let lh = &self.runtime_ext().long_horizon_state;
             in_band && !lh.last_warning_band_emitted
@@ -651,7 +653,9 @@ impl TurnLoopHost for Engine {
         if let Ok(json) = serde_json::to_string(&self.engine_context_snapshot()) {
             let _ = self
                 .tx_event
-                .send(Event::status(format!("long_horizon.context_snapshot:{json}")))
+                .send(Event::status(format!(
+                    "long_horizon.context_snapshot:{json}"
+                )))
                 .await;
         }
         // Reuse the exact between-turns gate (threshold + long-horizon
@@ -751,11 +755,7 @@ impl TurnLoopHost for Engine {
     }
 
     fn pre_tool_snapshot(&self, workspace: &std::path::Path, tool_id: &str) {
-        pre_tool_snapshot(
-            workspace,
-            tool_id,
-            self.config.snapshots_max_workspace_gb,
-        );
+        pre_tool_snapshot(workspace, tool_id, self.config.snapshots_max_workspace_gb);
     }
 
     fn effective_reasoning_effort_for_request(&mut self) -> Option<String> {
@@ -782,16 +782,16 @@ impl TurnLoopHost for Engine {
         &mut self,
         tool_uses: &[ToolUseState],
     ) -> Option<Arc<AsyncMutex<McpPool>>> {
-        if !tool_uses.iter().any(|tool| McpPool::is_mcp_tool(&tool.name)) {
+        if !tool_uses
+            .iter()
+            .any(|tool| McpPool::is_mcp_tool(&tool.name))
+        {
             return None;
         }
         match self.ensure_mcp_pool().await {
             Ok(pool) => Some(pool),
             Err(err) => {
-                let _ = self
-                    .tx_event
-                    .send(Event::status(err.to_string()))
-                    .await;
+                let _ = self.tx_event.send(Event::status(err.to_string())).await;
                 None
             }
         }
@@ -843,8 +843,8 @@ impl TurnLoopHost for Engine {
         if tool_name == CODE_EXECUTION_TOOL_NAME {
             return ToolPlanApprovalMeta {
                 approval_required: true,
-                approval_description:
-                    "Run model-provided Python code in local execution sandbox".to_string(),
+                approval_description: "Run model-provided Python code in local execution sandbox"
+                    .to_string(),
                 supports_parallel: false,
                 read_only: false,
             };

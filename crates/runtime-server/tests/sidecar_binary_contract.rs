@@ -16,24 +16,16 @@ use uuid::Uuid;
 const READY_TIMEOUT: Duration = Duration::from_secs(120);
 
 async fn wait_for_ready(child: &mut Child) -> Result<(u16, String)> {
-    let stdout = child
-        .stdout
-        .take()
-        .context("sidecar stdout not captured")?;
+    let stdout = child.stdout.take().context("sidecar stdout not captured")?;
     let mut lines = BufReader::new(stdout).lines();
 
     let ready = timeout(READY_TIMEOUT, async {
         while let Some(line) = lines.next_line().await? {
             if let Some(json_str) = line.strip_prefix("DS_PICK_READY ") {
-                let v: serde_json::Value = serde_json::from_str(json_str)
-                    .context("parse DS_PICK_READY JSON")?;
-                let port = v["port"]
-                    .as_u64()
-                    .context("DS_PICK_READY missing port")? as u16;
-                let token_fp = v["token_fp"]
-                    .as_str()
-                    .unwrap_or("")
-                    .to_string();
+                let v: serde_json::Value =
+                    serde_json::from_str(json_str).context("parse DS_PICK_READY JSON")?;
+                let port = v["port"].as_u64().context("DS_PICK_READY missing port")? as u16;
+                let token_fp = v["token_fp"].as_str().unwrap_or("").to_string();
                 return Ok((port, token_fp));
             }
         }
@@ -154,7 +146,8 @@ async fn sidecar_binary_contract_full_lifecycle() -> Result<()> {
         .error_for_status()?;
     let events_body = events_resp.text().await?;
     assert!(
-        events_body.contains("event: turn.started") || events_body.contains("event: turn.completed"),
+        events_body.contains("event: turn.started")
+            || events_body.contains("event: turn.completed"),
         "expected SSE replay events, got: {}",
         &events_body[..events_body.len().min(200)]
     );

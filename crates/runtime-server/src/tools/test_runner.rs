@@ -328,9 +328,7 @@ mod tests {
         let ctx = ToolContext::new(&project_dir);
         let tool = RunTestsTool;
         // 1ms is unreachable for a real `cargo test` (build alone takes longer).
-        let result = tool
-            .execute(json!({"timeout_ms": 1}), &ctx)
-            .await;
+        let result = tool.execute(json!({"timeout_ms": 1}), &ctx).await;
         let err = result.expect_err("must time out");
         assert!(
             format!("{err}").contains("timeout"),

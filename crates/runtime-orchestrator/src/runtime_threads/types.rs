@@ -7,8 +7,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use deepseek_core::coherence::CoherenceState;
 use crate::models::Usage;
+use deepseek_core::coherence::CoherenceState;
 
 use super::CURRENT_RUNTIME_SCHEMA_VERSION;
 
@@ -17,7 +17,9 @@ const fn default_runtime_schema_version() -> u32 {
 }
 
 pub fn default_thread_task_type() -> String {
-    deepseek_core::task_type::TaskType::Code.as_str().to_string()
+    deepseek_core::task_type::TaskType::Code
+        .as_str()
+        .to_string()
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]

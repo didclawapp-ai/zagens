@@ -1,8 +1,8 @@
 //! Scheduled automations HTTP handlers (R-003 A4.5).
 
+use axum::Json;
 use axum::extract::{Path as AxumPath, Query, State};
 use axum::http::StatusCode;
-use axum::Json;
 use serde::Deserialize;
 
 use crate::automation_manager::{
@@ -119,4 +119,3 @@ fn map_automation_err(err: anyhow::Error) -> ApiError {
         ApiError::bad_request(message)
     }
 }
-

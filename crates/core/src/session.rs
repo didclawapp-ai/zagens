@@ -278,11 +278,7 @@ mod tests {
         assert_eq!(session.model, "auto");
         assert_eq!(config_model, "auto");
 
-        apply_model_selection(
-            &mut session,
-            &mut config_model,
-            "deepseek-v4-pro".into(),
-        );
+        apply_model_selection(&mut session, &mut config_model, "deepseek-v4-pro".into());
         assert!(!session.auto_model);
         assert_eq!(session.model, "deepseek-v4-pro");
         assert_eq!(config_model, "deepseek-v4-pro");

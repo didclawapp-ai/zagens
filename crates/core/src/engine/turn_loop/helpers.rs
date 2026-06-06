@@ -7,7 +7,10 @@ use std::path::Path;
 
 /// Inject `<turn_meta>` (date + working-set summary) into the last real user message.
 #[must_use]
-pub fn messages_with_turn_metadata(session: &Session, workspace_for_summary: &Path) -> Vec<Message> {
+pub fn messages_with_turn_metadata(
+    session: &Session,
+    workspace_for_summary: &Path,
+) -> Vec<Message> {
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
     let working_set_summary = session
         .working_set
@@ -85,10 +88,7 @@ pub fn resolve_auto_effort(
 /// Human-readable approval description for `edit_file` tool calls.
 #[must_use]
 pub fn build_edit_file_approval_desc(input: &Value) -> String {
-    let path = input
-        .get("path")
-        .and_then(|v| v.as_str())
-        .unwrap_or("?");
+    let path = input.get("path").and_then(|v| v.as_str()).unwrap_or("?");
     let op = input
         .get("operation")
         .and_then(|v| v.as_str())
@@ -96,7 +96,10 @@ pub fn build_edit_file_approval_desc(input: &Value) -> String {
 
     match op {
         "delete_lines" => {
-            let start = input.get("start_line").and_then(|v| v.as_u64()).unwrap_or(0);
+            let start = input
+                .get("start_line")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
             let end = input.get("end_line").and_then(|v| v.as_u64()).unwrap_or(0);
             let count = if start > 0 && end >= start {
                 end - start + 1
@@ -106,7 +109,10 @@ pub fn build_edit_file_approval_desc(input: &Value) -> String {
             format!("⚠️ DELETE {count} line(s) (lines {start}–{end}) in {path}")
         }
         "insert_after" => {
-            let after = input.get("after_line").and_then(|v| v.as_u64()).unwrap_or(0);
+            let after = input
+                .get("after_line")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
             let text = input.get("text").and_then(|v| v.as_str()).unwrap_or("");
             let preview: String = text
                 .lines()
@@ -125,14 +131,29 @@ pub fn build_edit_file_approval_desc(input: &Value) -> String {
         "replace_line" => {
             let line = input.get("line").and_then(|v| v.as_u64()).unwrap_or(0);
             let text = input.get("text").and_then(|v| v.as_str()).unwrap_or("");
-            let preview: String = text.lines().take(2).map(|l| l.trim()).collect::<Vec<_>>().join(" | ");
+            let preview: String = text
+                .lines()
+                .take(2)
+                .map(|l| l.trim())
+                .collect::<Vec<_>>()
+                .join(" | ");
             format!("Replace line {line} in {path} with: «{preview}»")
         }
         _ => {
             let search = input.get("search").and_then(|v| v.as_str()).unwrap_or("?");
             let replace = input.get("replace").and_then(|v| v.as_str()).unwrap_or("?");
-            let search_preview: String = search.lines().take(2).map(|l| l.trim()).collect::<Vec<_>>().join(" | ");
-            let replace_preview: String = replace.lines().take(2).map(|l| l.trim()).collect::<Vec<_>>().join(" | ");
+            let search_preview: String = search
+                .lines()
+                .take(2)
+                .map(|l| l.trim())
+                .collect::<Vec<_>>()
+                .join(" | ");
+            let replace_preview: String = replace
+                .lines()
+                .take(2)
+                .map(|l| l.trim())
+                .collect::<Vec<_>>()
+                .join(" | ");
             format!("Search/replace in {path}: «{search_preview}» → «{replace_preview}»")
         }
     }

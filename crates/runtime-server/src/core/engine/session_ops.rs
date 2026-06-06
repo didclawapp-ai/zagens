@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use crate::compaction::CompactionConfig;
-use crate::context_snapshot::{build_thread_context_snapshot, ThreadContextSnapshot};
+use crate::context_snapshot::{ThreadContextSnapshot, build_thread_context_snapshot};
 use crate::core::events::Event;
 use crate::models::{Message, SystemPrompt};
 
@@ -29,13 +29,19 @@ impl Engine {
             .await;
     }
 
-    pub(in crate::core::engine) fn set_compaction_config(&mut self, config: CompactionConfig) -> bool {
+    pub(in crate::core::engine) fn set_compaction_config(
+        &mut self,
+        config: CompactionConfig,
+    ) -> bool {
         let enabled = config.enabled;
         self.config.compaction = config;
         enabled
     }
 
-    pub(in crate::core::engine) async fn apply_set_compaction_op(&mut self, config: CompactionConfig) {
+    pub(in crate::core::engine) async fn apply_set_compaction_op(
+        &mut self,
+        config: CompactionConfig,
+    ) {
         let enabled = self.set_compaction_config(config);
         let _ = self
             .tx_event

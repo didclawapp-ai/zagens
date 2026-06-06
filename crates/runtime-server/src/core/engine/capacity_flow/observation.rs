@@ -6,7 +6,10 @@ use crate::models::{ContentBlock, LEGACY_DEEPSEEK_CONTEXT_WINDOW_TOKENS};
 use super::super::*;
 
 impl Engine {
-    pub(in crate::core::engine) fn capacity_observation(&self, turn: &TurnContext) -> CapacityObservationInput {
+    pub(in crate::core::engine) fn capacity_observation(
+        &self,
+        turn: &TurnContext,
+    ) -> CapacityObservationInput {
         let message_window = self.config.capacity.profile_window.max(8) * 3;
         let action_count_this_turn = usize::try_from(turn.step)
             .unwrap_or(usize::MAX)

@@ -5,7 +5,6 @@ use super::context_trim::trim_messages_partition_aware;
 use super::*;
 
 impl Engine {
-
     /// Handle a Recursive Language Model (RLM) query — Algorithm 1 from
     /// Zhang et al. (arXiv:2512.24601).
     ///
@@ -227,4 +226,3 @@ impl Engine {
         false
     }
 }
-

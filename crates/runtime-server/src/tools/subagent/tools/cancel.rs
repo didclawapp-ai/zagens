@@ -1,4 +1,3 @@
-
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::{Value, json};
@@ -65,5 +64,3 @@ impl ToolSpec for AgentCancelTool {
         ToolResult::json(&result).map_err(|e| ToolError::execution_failed(e.to_string()))
     }
 }
-
-

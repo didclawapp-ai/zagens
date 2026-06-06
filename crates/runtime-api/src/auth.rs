@@ -1,10 +1,10 @@
 //! Runtime API bearer-token authentication middleware.
 
+use axum::Json;
 use axum::extract::{Request, State};
-use axum::http::{header, StatusCode};
+use axum::http::{StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
-use axum::Json;
 use serde_json::json;
 
 use crate::state::RuntimeApiAuthState;
@@ -23,11 +23,7 @@ fn bearer_token_from_header(value: &str) -> Option<&str> {
     value.strip_prefix("Bearer ")
 }
 
-pub async fn require_runtime_token<S>(
-    State(state): State<S>,
-    req: Request,
-    next: Next,
-) -> Response
+pub async fn require_runtime_token<S>(State(state): State<S>, req: Request, next: Next) -> Response
 where
     S: RuntimeApiAuthState,
 {

@@ -94,31 +94,55 @@ pub struct ErrorBody {
 /// Core schemas exported to OpenAPI components.
 pub const SCHEMA_EXPORTS: &[(&str, fn() -> schemars::Schema)] = &[
     ("CoherenceState", || schemars::schema_for!(CoherenceState)),
-    ("RuntimeTurnStatus", || schemars::schema_for!(RuntimeTurnStatus)),
+    ("RuntimeTurnStatus", || {
+        schemars::schema_for!(RuntimeTurnStatus)
+    }),
     ("TurnItemKind", || schemars::schema_for!(TurnItemKind)),
-    ("TurnItemLifecycleStatus", || schemars::schema_for!(TurnItemLifecycleStatus)),
+    ("TurnItemLifecycleStatus", || {
+        schemars::schema_for!(TurnItemLifecycleStatus)
+    }),
     ("Usage", || schemars::schema_for!(Usage)),
     ("ServerToolUsage", || schemars::schema_for!(ServerToolUsage)),
     ("SessionMetadata", || schemars::schema_for!(SessionMetadata)),
-    ("SessionsListResponse", || schemars::schema_for!(SessionsListResponse)),
-    ("SessionDetailResponse", || schemars::schema_for!(SessionDetailResponse)),
-    ("ResumeSessionResponse", || schemars::schema_for!(ResumeSessionResponse)),
+    ("SessionsListResponse", || {
+        schemars::schema_for!(SessionsListResponse)
+    }),
+    ("SessionDetailResponse", || {
+        schemars::schema_for!(SessionDetailResponse)
+    }),
+    ("ResumeSessionResponse", || {
+        schemars::schema_for!(ResumeSessionResponse)
+    }),
     ("ThreadRecord", || schemars::schema_for!(ThreadRecord)),
     ("TurnItemRecord", || schemars::schema_for!(TurnItemRecord)),
     ("ThreadDetail", || schemars::schema_for!(ThreadDetail)),
     ("ThreadSummary", || schemars::schema_for!(ThreadSummary)),
     ("TurnRecord", || schemars::schema_for!(TurnRecord)),
-    ("CreateThreadRequest", || schemars::schema_for!(CreateThreadRequest)),
-    ("UpdateThreadRequest", || schemars::schema_for!(UpdateThreadRequest)),
-    ("StartTurnRequest", || schemars::schema_for!(StartTurnRequest)),
-    ("SteerTurnRequest", || schemars::schema_for!(SteerTurnRequest)),
-    ("StartTurnResponse", || schemars::schema_for!(StartTurnResponse)),
-    ("StreamTurnRequest", || schemars::schema_for!(StreamTurnRequest)),
+    ("CreateThreadRequest", || {
+        schemars::schema_for!(CreateThreadRequest)
+    }),
+    ("UpdateThreadRequest", || {
+        schemars::schema_for!(UpdateThreadRequest)
+    }),
+    ("StartTurnRequest", || {
+        schemars::schema_for!(StartTurnRequest)
+    }),
+    ("SteerTurnRequest", || {
+        schemars::schema_for!(SteerTurnRequest)
+    }),
+    ("StartTurnResponse", || {
+        schemars::schema_for!(StartTurnResponse)
+    }),
+    ("StreamTurnRequest", || {
+        schemars::schema_for!(StreamTurnRequest)
+    }),
     ("RoutingRule", || schemars::schema_for!(RoutingRule)),
     ("RoutingRulesDoc", || schemars::schema_for!(RoutingRulesDoc)),
     ("UsageTotals", || schemars::schema_for!(UsageTotals)),
     ("UsageBucket", || schemars::schema_for!(UsageBucket)),
-    ("UsageAggregation", || schemars::schema_for!(UsageAggregation)),
+    ("UsageAggregation", || {
+        schemars::schema_for!(UsageAggregation)
+    }),
     ("ErrorBody", || schemars::schema_for!(ErrorBody)),
     ("TaskRecord", || schemars::schema_for!(TaskRecord)),
     ("TaskSummary", || schemars::schema_for!(TaskSummary)),

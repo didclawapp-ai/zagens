@@ -109,11 +109,7 @@ pub fn classify_session_messages(
         }
     }
 
-    SessionContextPartition {
-        tiers,
-        hot,
-        cold,
-    }
+    SessionContextPartition { tiers, hot, cold }
 }
 
 /// Indices that must survive partition-aware emergency trim (hot + pinned + external refs).
@@ -206,7 +202,9 @@ mod tests {
 
         assert_eq!(partition.tiers[1], MessageContextTier::ColdExternalRef);
         assert_eq!(partition.cold.external_ref_indices, vec![1]);
-        assert!(message_has_external_ref(&message_visible_text(&messages[1])));
+        assert!(message_has_external_ref(&message_visible_text(
+            &messages[1]
+        )));
     }
 
     #[test]
@@ -226,14 +224,14 @@ mod tests {
     fn next_trim_skips_external_ref_when_only_cold_summary_removable() {
         let messages = vec![
             text_message("user", "cold old"),
-            text_message(
-                "tool",
-                "[workshop-ref: {\"ref_id\":\"lout_x\"}]\n\nsummary",
-            ),
+            text_message("tool", "[workshop-ref: {\"ref_id\":\"lout_x\"}]\n\nsummary"),
             text_message("user", "hot"),
         ];
         let partition = classify_session_messages(&messages, 1, &BTreeSet::new());
-        assert_eq!(next_message_index_to_trim(&partition, messages.len()), Some(0));
+        assert_eq!(
+            next_message_index_to_trim(&partition, messages.len()),
+            Some(0)
+        );
         assert_eq!(partition.cold.external_ref_indices, vec![1]);
     }
 
@@ -241,10 +239,7 @@ mod tests {
     fn protected_indices_cover_hot_pin_and_external_ref() {
         let messages = vec![
             text_message("user", "cold"),
-            text_message(
-                "tool",
-                "[workshop-ref: {\"ref_id\":\"lout_x\"}]\n\nsummary",
-            ),
+            text_message("tool", "[workshop-ref: {\"ref_id\":\"lout_x\"}]\n\nsummary"),
             text_message("user", "hot"),
         ];
         let mut pinned = BTreeSet::new();

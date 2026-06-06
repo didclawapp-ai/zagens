@@ -74,7 +74,11 @@ pub async fn runtime_http(
 ) -> Result<RuntimeHttpResponse, String> {
     validate_runtime_path(&request.path)?;
     let method = request.method.trim().to_uppercase();
-    let url = format!("http://127.0.0.1:{}{}", ctx.require_port()?, request.path.trim());
+    let url = format!(
+        "http://127.0.0.1:{}{}",
+        ctx.require_port()?,
+        request.path.trim()
+    );
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(120))
@@ -92,9 +96,7 @@ pub async fn runtime_http(
 
     rb = rb.header(AUTHORIZATION, format!("Bearer {}", ctx.runtime_token));
     if let Some(body) = request.body {
-        rb = rb
-            .header(CONTENT_TYPE, "application/json")
-            .body(body);
+        rb = rb.header(CONTENT_TYPE, "application/json").body(body);
     }
 
     let resp = rb

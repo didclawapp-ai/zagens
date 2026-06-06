@@ -1,10 +1,10 @@
 //! Topic memory graph HTTP handlers (B-L3 read-only).
 
-use axum::extract::State;
 use axum::Json;
+use axum::extract::State;
 use deepseek_topic_memory::{
-    eval_report, load_graph, load_metrics, metrics_path_for_graph, PheromoneGraph,
-    TopicMemoryEvalReport,
+    PheromoneGraph, TopicMemoryEvalReport, eval_report, load_graph, load_metrics,
+    metrics_path_for_graph,
 };
 use serde::Serialize;
 

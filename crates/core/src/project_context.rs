@@ -198,7 +198,10 @@ fn check_trust_status(workspace: &Path) -> bool {
     }
 
     // Check for trust markers under `.zagens/` or legacy `.deepseek/`.
-    for meta in [workspace_meta_dir(workspace), legacy_workspace_meta_dir(workspace)] {
+    for meta in [
+        workspace_meta_dir(workspace),
+        legacy_workspace_meta_dir(workspace),
+    ] {
         for name in ["trusted", "trust.json"] {
             if meta.join(name).exists() {
                 return true;

@@ -22,16 +22,8 @@ use std::path::Path;
 ///
 /// Returns the snapshot SHA on success, `None` on any error. Errors are
 /// logged at WARN; the turn loop must not block on this.
-pub fn pre_turn_snapshot(
-    workspace: &Path,
-    turn_seq: u64,
-    max_workspace_gb: f64,
-) -> Option<String> {
-    snapshot_with_label(
-        workspace,
-        &format!("pre-turn:{turn_seq}"),
-        max_workspace_gb,
-    )
+pub fn pre_turn_snapshot(workspace: &Path, turn_seq: u64, max_workspace_gb: f64) -> Option<String> {
+    snapshot_with_label(workspace, &format!("pre-turn:{turn_seq}"), max_workspace_gb)
 }
 
 /// Take a `tool:<call_id>` workspace snapshot, taken before executing a

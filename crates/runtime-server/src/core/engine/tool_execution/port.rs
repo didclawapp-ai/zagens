@@ -3,17 +3,15 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use deepseek_core::engine::turn_loop::{
-    McpPoolPort, TurnLoopToolExec, TurnLoopToolExecutor,
-};
+use deepseek_core::engine::turn_loop::{McpPoolPort, TurnLoopToolExec, TurnLoopToolExecutor};
 use deepseek_tools::{ToolError, ToolResult};
-use serde_json::json;
 use serde_json::Value;
+use serde_json::json;
 use tokio::sync::Mutex as AsyncMutex;
 
 use crate::mcp::McpPool;
-use crate::tools::spec::ToolContext;
 use crate::tools::ToolRegistry;
+use crate::tools::spec::ToolContext;
 use deepseek_core::engine::emit_tool_audit;
 
 use super::super::Engine;
@@ -23,11 +21,7 @@ pub struct McpPoolHandle(pub Arc<AsyncMutex<McpPool>>);
 
 #[async_trait]
 impl McpPoolPort for McpPoolHandle {
-    async fn execute_tool(
-        &self,
-        tool_name: &str,
-        input: Value,
-    ) -> Result<ToolResult, ToolError> {
+    async fn execute_tool(&self, tool_name: &str, input: Value) -> Result<ToolResult, ToolError> {
         Engine::execute_mcp_tool_with_pool(self.0.clone(), tool_name, input).await
     }
 }
@@ -78,8 +72,7 @@ impl TurnLoopToolExecutor for Engine {
 pub fn mcp_pool_as_port(
     pool: Arc<AsyncMutex<McpPool>>,
 ) -> Arc<AsyncMutex<dyn McpPoolPort + Send + Sync>> {
-    Arc::new(AsyncMutex::new(McpPoolHandle(pool)))
-        as Arc<AsyncMutex<dyn McpPoolPort + Send + Sync>>
+    Arc::new(AsyncMutex::new(McpPoolHandle(pool))) as Arc<AsyncMutex<dyn McpPoolPort + Send + Sync>>
 }
 
 /// Execute a tool plan without `&mut Engine` (parallel `FuturesUnordered` tasks).

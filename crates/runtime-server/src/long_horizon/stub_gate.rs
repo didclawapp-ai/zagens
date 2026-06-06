@@ -206,7 +206,7 @@ pub fn scan_workspace_stubs(workspace: &Path) -> StubScanResult {
                 let skip = path
                     .file_name()
                     .and_then(|n| n.to_str())
-                    .map(|n| SKIP_DIRS.contains(&n) || n.starts_with('.') && n != "." )
+                    .map(|n| SKIP_DIRS.contains(&n) || n.starts_with('.') && n != ".")
                     .unwrap_or(false);
                 if !skip {
                     stack.push(path);
@@ -286,7 +286,11 @@ mod tests {
     fn detects_high_signal_blocking_stubs() {
         let dir = std::env::temp_dir().join(format!("lht-stub-hi-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
-        write(&dir, "src/license.rs", "pub fn verify() -> bool {\n    todo!()\n}\n");
+        write(
+            &dir,
+            "src/license.rs",
+            "pub fn verify() -> bool {\n    todo!()\n}\n",
+        );
         write(
             &dir,
             "src/mes.rs",
@@ -328,7 +332,11 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("lht-stub-skip-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
         // Stub markers inside skipped dirs / non-code files must not be counted.
-        write(&dir, "node_modules/pkg/index.js", "throw new Error('not implemented')\n");
+        write(
+            &dir,
+            "node_modules/pkg/index.js",
+            "throw new Error('not implemented')\n",
+        );
         write(&dir, "target/debug/gen.rs", "todo!()\n");
         write(&dir, "README.md", "This feature is not implemented yet.\n");
         let r = scan_workspace_stubs(&dir);

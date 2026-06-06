@@ -158,8 +158,23 @@ fn is_code_extension(ext: Option<&str>) -> bool {
     matches!(
         ext,
         Some(
-            "rs" | "ts" | "tsx" | "js" | "jsx" | "py" | "go" | "java" | "kt" | "c" | "cpp"
-                | "h" | "hpp" | "cs" | "rb" | "php" | "swift" | "toml"
+            "rs" | "ts"
+                | "tsx"
+                | "js"
+                | "jsx"
+                | "py"
+                | "go"
+                | "java"
+                | "kt"
+                | "c"
+                | "cpp"
+                | "h"
+                | "hpp"
+                | "cs"
+                | "rb"
+                | "php"
+                | "swift"
+                | "toml"
         )
     )
 }

@@ -336,10 +336,7 @@ pub async fn discover_manager_snapshot(
 }
 
 /// Build a manager snapshot from a live pool (shared sidecar pool / hot-reload path).
-pub async fn manager_snapshot_from_pool(
-    path: &Path,
-    pool: &mut McpPool,
-) -> McpManagerSnapshot {
+pub async fn manager_snapshot_from_pool(path: &Path, pool: &mut McpPool) -> McpManagerSnapshot {
     let cfg = load_config(path).unwrap_or_default();
     let errors: HashMap<String, String> = pool
         .connect_all()

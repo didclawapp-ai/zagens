@@ -9,7 +9,6 @@
 /// turn/item/thread saves). WAL + `synchronous=NORMAL` keeps fsync off the
 /// tokio worker; see [`docs/tech/adr/RUNTIME_BASELINE.md`](../../../docs/tech/adr/RUNTIME_BASELINE.md)
 /// § crash-safe checkpoint.
-
 use std::path::PathBuf;
 
 use anyhow::Context;
@@ -44,7 +43,10 @@ fn ensure_threads_scratchpad_run_history_column(db: &Connection) -> anyhow::Resu
         .filter_map(|r| r.ok())
         .any(|name| name == "scratchpad_run_history_json");
     if !has_col {
-        db.execute("ALTER TABLE threads ADD COLUMN scratchpad_run_history_json TEXT", [])?;
+        db.execute(
+            "ALTER TABLE threads ADD COLUMN scratchpad_run_history_json TEXT",
+            [],
+        )?;
     }
     Ok(())
 }
@@ -114,7 +116,10 @@ fn ensure_turns_last_request_input_tokens_column(db: &Connection) -> anyhow::Res
         .filter_map(|r| r.ok())
         .any(|name| name == "last_request_input_tokens");
     if !has_col {
-        db.execute("ALTER TABLE turns ADD COLUMN last_request_input_tokens INTEGER", [])?;
+        db.execute(
+            "ALTER TABLE turns ADD COLUMN last_request_input_tokens INTEGER",
+            [],
+        )?;
     }
     Ok(())
 }
@@ -203,11 +208,9 @@ pub fn open_sqlite_thread_db(
     ensure_session_input_table(&db)?;
 
     let needs_migration: bool = db
-        .query_row(
-            "SELECT value FROM _meta WHERE key = 'version'",
-            [],
-            |row| row.get::<_, String>(0),
-        )
+        .query_row("SELECT value FROM _meta WHERE key = 'version'", [], |row| {
+            row.get::<_, String>(0)
+        })
         .ok()
         .is_none();
 
@@ -221,11 +224,7 @@ pub fn open_sqlite_thread_db(
     } else {
         // Load state from DB
         let next_seq: i64 = db
-            .query_row(
-                "SELECT MAX(seq) + 1 FROM events",
-                [],
-                |row| row.get(0),
-            )
+            .query_row("SELECT MAX(seq) + 1 FROM events", [], |row| row.get(0))
             .unwrap_or(1);
         RuntimeStoreState {
             schema_version: 2,
@@ -242,7 +241,12 @@ fn migrate_json_threads(
 ) -> anyhow::Result<RuntimeStoreState> {
     let dir = match std::fs::read_dir(threads_dir) {
         Ok(d) => d,
-        Err(_) => return Ok(RuntimeStoreState { schema_version: 2, next_seq: 1 }),
+        Err(_) => {
+            return Ok(RuntimeStoreState {
+                schema_version: 2,
+                next_seq: 1,
+            });
+        }
     };
 
     // threads_dir is <root>/threads; parent is <root>/
@@ -300,7 +304,11 @@ fn migrate_json_threads(
     // Migrate turns
     let mut migrated_turns = 0usize;
     if turns_dir.is_dir() {
-        for entry in std::fs::read_dir(&turns_dir).into_iter().flatten().filter_map(|e| e.ok()) {
+        for entry in std::fs::read_dir(&turns_dir)
+            .into_iter()
+            .flatten()
+            .filter_map(|e| e.ok())
+        {
             let path = entry.path();
             if path.extension().and_then(|e| e.to_str()) != Some("json") {
                 continue;
@@ -313,7 +321,10 @@ fn migrate_json_threads(
                 Ok(t) => t,
                 Err(_) => continue,
             };
-            let usage_json = turn.usage.as_ref().map(|u| serde_json::to_string(u).unwrap_or_default());
+            let usage_json = turn
+                .usage
+                .as_ref()
+                .map(|u| serde_json::to_string(u).unwrap_or_default());
             let item_ids_json = serde_json::to_string(&turn.item_ids).unwrap_or_default();
             tx.execute(
                 "INSERT OR REPLACE INTO turns
@@ -341,7 +352,11 @@ fn migrate_json_threads(
     // Migrate items
     let mut migrated_items = 0usize;
     if items_dir.is_dir() {
-        for entry in std::fs::read_dir(&items_dir).into_iter().flatten().filter_map(|e| e.ok()) {
+        for entry in std::fs::read_dir(&items_dir)
+            .into_iter()
+            .flatten()
+            .filter_map(|e| e.ok())
+        {
             let path = entry.path();
             if path.extension().and_then(|e| e.to_str()) != Some("json") {
                 continue;
@@ -354,7 +369,9 @@ fn migrate_json_threads(
                 Ok(i) => i,
                 Err(_) => continue,
             };
-            let metadata_json = item.metadata.map(|v| serde_json::to_string(&v).unwrap_or_default());
+            let metadata_json = item
+                .metadata
+                .map(|v| serde_json::to_string(&v).unwrap_or_default());
             let artifact_refs_json = serde_json::to_string(&item.artifact_refs).unwrap_or_default();
             tx.execute(
                 "INSERT OR REPLACE INTO items
@@ -380,7 +397,11 @@ fn migrate_json_threads(
     // Migrate events
     let mut migrated_events = 0usize;
     if events_dir.is_dir() {
-        for entry in std::fs::read_dir(&events_dir).into_iter().flatten().filter_map(|e| e.ok()) {
+        for entry in std::fs::read_dir(&events_dir)
+            .into_iter()
+            .flatten()
+            .filter_map(|e| e.ok())
+        {
             let path = entry.path();
             if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
                 continue;
@@ -545,7 +566,10 @@ pub fn list_threads_sqlite(db: &Connection) -> anyhow::Result<Vec<ThreadRecord>>
 // === Turn operations ===
 
 pub fn save_turn_sqlite(db: &Connection, turn: &TurnRecord) -> anyhow::Result<()> {
-    let usage_json = turn.usage.as_ref().map(|u| serde_json::to_string(u).unwrap_or_default());
+    let usage_json = turn
+        .usage
+        .as_ref()
+        .map(|u| serde_json::to_string(u).unwrap_or_default());
     let item_ids_json = serde_json::to_string(&turn.item_ids).unwrap_or_default();
     db.execute(
         "INSERT OR REPLACE INTO turns
@@ -600,7 +624,10 @@ pub fn load_turn_sqlite(db: &Connection, turn_id: &str) -> anyhow::Result<TurnRe
     ).map_err(|e| anyhow::anyhow!("turn not found ({turn_id}): {e}"))
 }
 
-pub fn list_turns_for_thread_sqlite(db: &Connection, thread_id: &str) -> anyhow::Result<Vec<TurnRecord>> {
+pub fn list_turns_for_thread_sqlite(
+    db: &Connection,
+    thread_id: &str,
+) -> anyhow::Result<Vec<TurnRecord>> {
     let mut stmt = db.prepare(
         "SELECT id, thread_id, status, input_summary, created_at, started_at, ended_at, duration_ms, usage_json, error, item_ids_json, steer_count, last_request_input_tokens FROM turns WHERE thread_id = ?1 ORDER BY created_at ASC",
     )?;
@@ -620,9 +647,7 @@ pub fn list_turns_for_thread_sqlite(db: &Connection, thread_id: &str) -> anyhow:
                 ended_at: parse_ts_opt(row.get::<_, Option<String>>(6)?)?,
                 duration_ms: row.get::<_, Option<i64>>(7)?.map(|d| d as u64),
                 usage: usage_json.and_then(|s| serde_json::from_str(&s).ok()),
-                last_request_input_tokens: row
-                    .get::<_, Option<i64>>(12)?
-                    .map(|t| t as u32),
+                last_request_input_tokens: row.get::<_, Option<i64>>(12)?.map(|t| t as u32),
                 error: row.get(9)?,
                 item_ids: serde_json::from_str(&item_ids_json).unwrap_or_default(),
                 steer_count: row.get::<_, i64>(11)? as usize,
@@ -653,9 +678,7 @@ pub fn list_incomplete_turns_sqlite(db: &Connection) -> anyhow::Result<Vec<TurnR
                 ended_at: parse_ts_opt(row.get::<_, Option<String>>(6)?)?,
                 duration_ms: row.get::<_, Option<i64>>(7)?.map(|d| d as u64),
                 usage: usage_json.and_then(|s| serde_json::from_str(&s).ok()),
-                last_request_input_tokens: row
-                    .get::<_, Option<i64>>(12)?
-                    .map(|t| t as u32),
+                last_request_input_tokens: row.get::<_, Option<i64>>(12)?.map(|t| t as u32),
                 error: row.get(9)?,
                 item_ids: serde_json::from_str(&item_ids_json).unwrap_or_default(),
                 steer_count: row.get::<_, i64>(11)? as usize,
@@ -669,7 +692,10 @@ pub fn list_incomplete_turns_sqlite(db: &Connection) -> anyhow::Result<Vec<TurnR
 // === Item operations ===
 
 pub fn save_item_sqlite(db: &Connection, item: &TurnItemRecord) -> anyhow::Result<()> {
-    let metadata_json = item.metadata.as_ref().map(|v| serde_json::to_string(v).unwrap_or_default());
+    let metadata_json = item
+        .metadata
+        .as_ref()
+        .map(|v| serde_json::to_string(v).unwrap_or_default());
     let artifact_refs_json = serde_json::to_string(&item.artifact_refs).unwrap_or_default();
     db.execute(
         "INSERT OR REPLACE INTO items
@@ -717,7 +743,10 @@ pub fn load_item_sqlite(db: &Connection, item_id: &str) -> anyhow::Result<TurnIt
     ).map_err(|e| anyhow::anyhow!("item not found ({item_id}): {e}"))
 }
 
-pub fn list_items_for_turn_sqlite(db: &Connection, turn_id: &str) -> anyhow::Result<Vec<TurnItemRecord>> {
+pub fn list_items_for_turn_sqlite(
+    db: &Connection,
+    turn_id: &str,
+) -> anyhow::Result<Vec<TurnItemRecord>> {
     let mut stmt = db.prepare(
         "SELECT id, turn_id, kind, status, summary, detail, metadata_json, artifact_refs_json, started_at, ended_at FROM items WHERE turn_id = ?1 ORDER BY started_at ASC",
     )?;
@@ -748,7 +777,11 @@ pub fn list_items_for_turn_sqlite(db: &Connection, turn_id: &str) -> anyhow::Res
 
 // === Event operations ===
 
-pub fn append_event_sqlite(db: &Connection, event: &RuntimeEventRecord, next_seq: u64) -> anyhow::Result<()> {
+pub fn append_event_sqlite(
+    db: &Connection,
+    event: &RuntimeEventRecord,
+    next_seq: u64,
+) -> anyhow::Result<()> {
     db.execute(
         "INSERT INTO events (seq, timestamp, thread_id, turn_id, item_id, event, payload_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
         params![
@@ -764,7 +797,11 @@ pub fn append_event_sqlite(db: &Connection, event: &RuntimeEventRecord, next_seq
     Ok(())
 }
 
-pub fn events_since_sqlite(db: &Connection, thread_id: &str, since_seq: u64) -> anyhow::Result<Vec<RuntimeEventRecord>> {
+pub fn events_since_sqlite(
+    db: &Connection,
+    thread_id: &str,
+    since_seq: u64,
+) -> anyhow::Result<Vec<RuntimeEventRecord>> {
     let mut stmt = db.prepare(
         "SELECT seq, timestamp, thread_id, turn_id, item_id, event, payload_json FROM events WHERE thread_id = ?1 AND seq > ?2 ORDER BY seq ASC",
     )?;
@@ -995,7 +1032,10 @@ pub fn admit_session_input_sqlite(
     Ok(())
 }
 
-pub fn find_session_input_sqlite(db: &Connection, id: &str) -> anyhow::Result<Option<PromptAdmission>> {
+pub fn find_session_input_sqlite(
+    db: &Connection,
+    id: &str,
+) -> anyhow::Result<Option<PromptAdmission>> {
     let mut stmt = db.prepare(
         "SELECT id, thread_id, admitted_seq, prompt, delivery, time_created, promoted_seq
          FROM session_input WHERE id = ?1",
@@ -1009,9 +1049,7 @@ pub fn find_session_input_sqlite(db: &Connection, id: &str) -> anyhow::Result<Op
             prompt: row.get(3)?,
             delivery: parse_delivery(&row.get::<_, String>(4)?),
             time_created: parse_ts(row.get(5)?)?,
-            promoted_seq: row
-                .get::<_, Option<i64>>(6)?
-                .map(|v| v as u64),
+            promoted_seq: row.get::<_, Option<i64>>(6)?.map(|v| v as u64),
         }));
     }
     Ok(None)
@@ -1056,9 +1094,7 @@ pub fn next_pending_queue_sqlite(
                 prompt: row.get(3)?,
                 delivery: parse_delivery(&row.get::<_, String>(4)?),
                 time_created: parse_ts(row.get(5)?)?,
-                promoted_seq: row
-                    .get::<_, Option<i64>>(6)?
-                    .map(|v| v as u64),
+                promoted_seq: row.get::<_, Option<i64>>(6)?.map(|v| v as u64),
             },
             row.get(7)?,
         )));

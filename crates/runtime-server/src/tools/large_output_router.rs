@@ -169,10 +169,10 @@ pub fn artifact_refs_from_tool_output(
 /// Load raw tool output bytes via a persisted metadata path from [`artifact_refs_from_tool_output`].
 pub fn load_raw_from_artifact_meta_path(meta_path: &Path) -> std::io::Result<String> {
     let raw = std::fs::read_to_string(meta_path)?;
-    let record: LargeOutputPersistRecord =
-        serde_json::from_str(&raw).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-    let raw_path = large_output_dir(&record.session_id)
-        .join(format!("{}.txt", record.external_ref.ref_id));
+    let record: LargeOutputPersistRecord = serde_json::from_str(&raw)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    let raw_path =
+        large_output_dir(&record.session_id).join(format!("{}.txt", record.external_ref.ref_id));
     std::fs::read_to_string(raw_path)
 }
 
@@ -435,7 +435,10 @@ mod tests {
                 threshold,
             } => {
                 assert!(estimated_tokens > threshold);
-                assert!(estimated_tokens >= 350_000, "1.1MB should estimate well above threshold");
+                assert!(
+                    estimated_tokens >= 350_000,
+                    "1.1MB should estimate well above threshold"
+                );
             }
             RouteDecision::PassThrough => panic!("1.1 MB output must route to synthesis"),
         }

@@ -1,10 +1,10 @@
 //! Web search backends (DuckDuckGo, Bing, image query).
 
+use super::USER_AGENT;
 use super::html::{
     is_duckduckgo_challenge, parse_bing_results, parse_duckduckgo_results, url_encode,
 };
 use super::types::{ImageResultEntry, SearchEntry, WebLink, WebPage};
-use super::USER_AGENT;
 use crate::network_policy::NetworkPolicyDecider;
 use crate::tools::spec::{ToolContext, ToolError};
 use deepseek_runtime_adapters::tools::check_host_policy;
@@ -104,12 +104,8 @@ pub(in crate::tools::web_run) async fn run_search(
                     }
                 }
             } else {
-                match crate::tools::ssrf::read_body_capped(
-                    resp,
-                    MAX_SEARCH_RESPONSE_BYTES,
-                    cancel,
-                )
-                .await
+                match crate::tools::ssrf::read_body_capped(resp, MAX_SEARCH_RESPONSE_BYTES, cancel)
+                    .await
                 {
                     Ok((bytes, _truncated)) => {
                         let body = String::from_utf8_lossy(&bytes).into_owned();
@@ -210,12 +206,8 @@ pub(in crate::tools::web_run) async fn run_bing_search(
         .map_err(|e| ToolError::execution_failed(format!("Bing fallback request failed: {e}")))?;
 
     let status = resp.status();
-    let (bytes, _truncated) = crate::tools::ssrf::read_body_capped(
-        resp,
-        MAX_SEARCH_RESPONSE_BYTES,
-        cancel,
-    )
-    .await?;
+    let (bytes, _truncated) =
+        crate::tools::ssrf::read_body_capped(resp, MAX_SEARCH_RESPONSE_BYTES, cancel).await?;
     let body = String::from_utf8_lossy(&bytes).into_owned();
 
     if !status.is_success() {

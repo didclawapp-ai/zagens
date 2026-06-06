@@ -1,8 +1,8 @@
 use std::path::Path;
 
-use super::*;
 use super::download::{is_safe_path, parse_frontmatter_name, strip_prefix};
 use super::local::source_spec_string;
+use super::*;
 
 #[test]
 fn parse_github_source() {
@@ -53,8 +53,8 @@ fn parse_github_browser_url_routes_to_github_repo() {
         "http://github.com/obra/superpowers",
         "  https://github.com/obra/superpowers  ",
     ] {
-        let parsed = InstallSource::parse(spec)
-            .unwrap_or_else(|err| panic!("parse({spec}) failed: {err}"));
+        let parsed =
+            InstallSource::parse(spec).unwrap_or_else(|err| panic!("parse({spec}) failed: {err}"));
         assert_eq!(
             parsed,
             InstallSource::GitHubRepo("obra/superpowers".to_string()),

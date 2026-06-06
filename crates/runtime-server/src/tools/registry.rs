@@ -723,14 +723,22 @@ impl ToolRegistryBuilder {
     /// `llm_query` / `llm_query_batched` / `rlm_query` / `rlm_query_batched`
     /// helpers for sub-LLM work — that's where parallel fan-out belongs.
     #[must_use]
-    pub fn with_rlm_tool(self, client: Option<Arc<dyn crate::llm_client::LlmClient>>, root_model: String) -> Self {
+    pub fn with_rlm_tool(
+        self,
+        client: Option<Arc<dyn crate::llm_client::LlmClient>>,
+        root_model: String,
+    ) -> Self {
         use super::rlm::RlmTool;
         self.with_tool(Arc::new(RlmTool::new(client, root_model)))
     }
 
     /// Include the review tool.
     #[must_use]
-    pub fn with_review_tool(self, client: Option<Arc<dyn crate::llm_client::LlmClient>>, model: String) -> Self {
+    pub fn with_review_tool(
+        self,
+        client: Option<Arc<dyn crate::llm_client::LlmClient>>,
+        model: String,
+    ) -> Self {
         use super::review::ReviewTool;
         self.with_tool(Arc::new(ReviewTool::new(client, model)))
     }
@@ -752,7 +760,11 @@ impl ToolRegistryBuilder {
 
     /// Include the FIM (Fill-in-the-Middle) edit tool.
     #[must_use]
-    pub fn with_fim_tool(self, client: Option<Arc<dyn crate::llm_client::LlmClient>>, model: String) -> Self {
+    pub fn with_fim_tool(
+        self,
+        client: Option<Arc<dyn crate::llm_client::LlmClient>>,
+        model: String,
+    ) -> Self {
         use super::fim::FimEditTool;
         self.with_tool(Arc::new(FimEditTool::new(client, model)))
     }
@@ -884,12 +896,12 @@ impl ToolRegistryBuilder {
         manager: super::subagent::SharedSubAgentManager,
         runtime: super::subagent::SubAgentRuntime,
     ) -> Self {
+        use super::scratchpad_agent::ScratchpadImportAgentTool;
         use super::subagent::{
             AgentAssignTool, AgentCancelTool, AgentCloseTool, AgentListTool, AgentResultTool,
             AgentResumeTool, AgentSendInputTool, AgentSpawnTool, AgentWaitTool,
             DelegateToAgentTool,
         };
-        use super::scratchpad_agent::ScratchpadImportAgentTool;
 
         self.with_tool(Arc::new(AgentSpawnTool::new(
             manager.clone(),

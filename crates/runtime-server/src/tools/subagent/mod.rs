@@ -5,11 +5,11 @@ pub mod craft;
 pub mod mailbox;
 
 mod constants;
-mod nickname;
 mod deprecation;
 mod executor;
 mod factory;
 mod manager;
+mod nickname;
 mod parse;
 mod prompt_text;
 mod prompts;
@@ -17,25 +17,23 @@ mod registry;
 mod resident;
 mod router;
 mod runtime;
+mod structured_fallback;
 mod tools;
 mod types;
-mod structured_fallback;
 mod wait_timeout;
 
-pub use deepseek_core::subagent::{
-    SubAgentResult, SubAgentStatus, SubAgentType, VerdictLevel,
-};
-#[cfg(test)]
-pub(crate) use deepseek_core::subagent::{
-    MailboxMessage, StructuredVerdict, SubAgentAssignment,
-};
 #[cfg(test)]
 pub use deepseek_core::subagent::VerdictItem;
+#[cfg(test)]
+pub(crate) use deepseek_core::subagent::{MailboxMessage, StructuredVerdict, SubAgentAssignment};
+pub use deepseek_core::subagent::{SubAgentResult, SubAgentStatus, SubAgentType, VerdictLevel};
 #[allow(unused_imports)]
 pub use mailbox::{Mailbox, MailboxEnvelope, MailboxReceiver};
 
-pub use factory::{SharedSubAgentManager, new_shared_subagent_manager, spawn_subagent_maintenance_task};
 pub(crate) use executor::wait_for_result;
+pub use factory::{
+    SharedSubAgentManager, new_shared_subagent_manager, spawn_subagent_maintenance_task,
+};
 #[cfg(test)]
 #[allow(deprecated)]
 pub(crate) use prompts::{subagent_allowed_tools, subagent_system_prompt};
@@ -54,6 +52,11 @@ mod tests;
 
 #[cfg(test)]
 pub(crate) use constants::{
+    DEFAULT_MAX_STEPS, MAX_RESULT_TIMEOUT_MS, MIN_WAIT_TIMEOUT_MS, adaptive_wait_timeout_ms,
+    step_tool_budget,
+};
+#[cfg(test)]
+pub(crate) use constants::{
     DEPRECATION_REMOVAL_VERSION, STEP_API_TIMEOUT, SUBAGENT_RESTART_REASON, SUBAGENT_STATE_FILE,
     SUBAGENT_STATE_SCHEMA_VERSION,
 };
@@ -61,11 +64,9 @@ pub(crate) use constants::{
 pub(crate) use deprecation::wrap_with_deprecation_notice;
 #[cfg(test)]
 pub(crate) use executor::{
-    completion_reason_for_error_str, completion_reason_for_successful_exit,
-    emit_parent_completion, subagent_done_sentinel, subagent_failed_sentinel,
+    completion_reason_for_error_str, completion_reason_for_successful_exit, emit_parent_completion,
+    subagent_done_sentinel, subagent_failed_sentinel,
 };
-#[cfg(test)]
-pub(crate) use constants::{adaptive_wait_timeout_ms, step_tool_budget, DEFAULT_MAX_STEPS, MAX_RESULT_TIMEOUT_MS, MIN_WAIT_TIMEOUT_MS};
 #[cfg(test)]
 pub(crate) use factory::default_state_path;
 #[cfg(test)]
@@ -91,4 +92,3 @@ pub(crate) use router::{fallback_subagent_assignment_route, subagent_router_prom
 pub(crate) use runtime::SubAgent;
 #[cfg(test)]
 pub(crate) use types::WaitMode;
-

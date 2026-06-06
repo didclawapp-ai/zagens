@@ -6,8 +6,8 @@ use deepseek_core::engine::StartTurnParams;
 
 use super::manager::parse_mode;
 use super::{RuntimeThreadManager, StartTurnRequest};
-use deepseek_runtime_orchestrator::runtime_threads::types::ThreadRecord;
 use deepseek_runtime_orchestrator::runtime_threads::RuntimeThreadHost;
+use deepseek_runtime_orchestrator::runtime_threads::types::ThreadRecord;
 
 #[async_trait]
 impl RuntimeThreadHost<super::RuntimeEnginePolicy, super::RuntimeUserInputResponse>
@@ -32,10 +32,7 @@ impl RuntimeThreadHost<super::RuntimeEnginePolicy, super::RuntimeUserInputRespon
         prompt: &str,
     ) -> Result<StartTurnParams> {
         let mode = parse_mode(req.mode.as_deref().unwrap_or(&thread.mode));
-        let requested_model = req
-            .model
-            .clone()
-            .unwrap_or_else(|| thread.model.clone());
+        let requested_model = req.model.clone().unwrap_or_else(|| thread.model.clone());
         let auto_model = requested_model.trim().eq_ignore_ascii_case("auto");
         let (model, reasoning_effort) = if auto_model {
             let selection = crate::auto_route::resolve_auto_route_with_flash(
@@ -95,11 +92,7 @@ impl RuntimeThreadHost<super::RuntimeEnginePolicy, super::RuntimeUserInputRespon
         >,
     ) -> Result<()> {
         deepseek_runtime_orchestrator::runtime_threads::monitor_turn(
-            self,
-            self,
-            thread_id,
-            turn_id,
-            engine,
+            self, self, thread_id, turn_id, engine,
         )
         .await
     }
@@ -110,11 +103,7 @@ impl RuntimeThreadManager {
         &self,
         thread: &ThreadRecord,
     ) -> Result<crate::core::engine::EngineHandle> {
-        deepseek_runtime_orchestrator::runtime_threads::ensure_engine_loaded(
-            self,
-            self,
-            thread,
-        )
-        .await
+        deepseek_runtime_orchestrator::runtime_threads::ensure_engine_loaded(self, self, thread)
+            .await
     }
 }

@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use deepseek_tools::{ToolError, ToolResult};
 use serde_json::Value;
 
-use tokio::sync::{mpsc, Mutex as AsyncMutex, RwLock};
+use tokio::sync::{Mutex as AsyncMutex, RwLock, mpsc};
 use tokio_util::sync::CancellationToken;
 
 use crate::chat::{LlmClient, Message, Tool};

@@ -569,9 +569,9 @@ impl SandboxManager {
                 "Linux Landlock sandbox is not enforced yet; command runs with full user privileges.",
             ),
             #[cfg(target_os = "windows")]
-            SandboxType::Windows => Some(
-                "Windows sandbox is not enforced yet; command runs with full user privileges.",
-            ),
+            SandboxType::Windows => {
+                Some("Windows sandbox is not enforced yet; command runs with full user privileges.")
+            }
             _ => None,
         }
     }

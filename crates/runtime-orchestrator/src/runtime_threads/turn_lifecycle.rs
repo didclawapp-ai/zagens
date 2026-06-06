@@ -9,8 +9,8 @@ use serde_json::json;
 use uuid::Uuid;
 
 use super::active::{ActiveTurnState, touch_lru};
-use super::engine_load::ensure_engine_loaded;
 use super::engine_host::{RuntimeThreadHost, spawn_turn_monitor};
+use super::engine_load::ensure_engine_loaded;
 use super::manager::RuntimeThreadManager;
 use super::prompt_inbox::{PromptAdmission, PromptDelivery};
 use super::thread_crud::SUMMARY_LIMIT;
@@ -54,8 +54,7 @@ where
         time_created: Utc::now(),
         promoted_seq: None,
     };
-    mgr.store
-        .admit_session_input(&admission, Some(&req))?;
+    mgr.store.admit_session_input(&admission, Some(&req))?;
 
     let active_turn_id = {
         let active = mgr.active.lock().await;
@@ -97,10 +96,7 @@ where
     }
 
     let turn = start_turn_promoted(mgr, host, thread_id, &req, &prompt, &admission).await?;
-    Ok(StartTurnOutcome {
-        turn,
-        queued: None,
-    })
+    Ok(StartTurnOutcome { turn, queued: None })
 }
 
 pub async fn start_turn_promoted<P, R, H>(
@@ -160,13 +156,17 @@ where
     thread.latest_turn_id = Some(turn_id.clone());
     thread.updated_at = now;
 
-    let promoted_seq = mgr.store.append_event(
-        thread_id,
-        Some(&turn_id),
-        Some(&user_item_id),
-        "prompt.promoted",
-        json!({ "admission": admission, "turn_id": turn_id }),
-    ).await?.seq;
+    let promoted_seq = mgr
+        .store
+        .append_event(
+            thread_id,
+            Some(&turn_id),
+            Some(&user_item_id),
+            "prompt.promoted",
+            json!({ "admission": admission, "turn_id": turn_id }),
+        )
+        .await?
+        .seq;
 
     {
         let store = mgr.store.clone();
@@ -225,9 +225,7 @@ where
         touch_lru(&mut active.lru, thread_id);
     }
 
-    let start_params = host
-        .prepare_start_turn_params(&thread, req, prompt)
-        .await?;
+    let start_params = host.prepare_start_turn_params(&thread, req, prompt).await?;
     if let Err(e) = engine.start_turn(start_params).await {
         rollback_failed_turn_start(mgr, thread_id, &turn_id, e.to_string()).await?;
         return Err(anyhow!("Failed to start turn: {e}"));
@@ -274,15 +272,7 @@ where
         ..Default::default()
     });
 
-    let _ = start_turn_promoted(
-        mgr,
-        host,
-        thread_id,
-        &req,
-        &admission.prompt,
-        &admission,
-    )
-    .await?;
+    let _ = start_turn_promoted(mgr, host, thread_id, &req, &admission.prompt, &admission).await?;
 
     Ok(())
 }

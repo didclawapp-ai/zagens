@@ -7,10 +7,10 @@
 //! This keeps each concern in its own file and makes prompt tuning
 //! a single-file operation.
 
+use crate::agent_surface::AppMode;
 use crate::models::SystemPrompt;
 use crate::project_context::{ProjectContext, load_project_context_with_parents};
 use crate::task_type::TaskType;
-use crate::agent_surface::AppMode;
 use deepseek_config::workspace_meta_file_read;
 use deepseek_core::approval::ApprovalMode;
 use std::path::{Path, PathBuf};
@@ -124,9 +124,8 @@ fn render_environment_block_inner(
     let pwd = workspace.display();
     let reply_language = reply_language_label(locale_tag);
 
-    let mut out = format!(
-        "## Environment\n\n- lang: {locale_tag}\n- reply_language: {reply_language}\n",
-    );
+    let mut out =
+        format!("## Environment\n\n- lang: {locale_tag}\n- reply_language: {reply_language}\n",);
     if let Some(label) = resolved_ui_shell_label(client_surface) {
         out.push_str(&format!("- ui_shell: {label}\n"));
     }
@@ -802,7 +801,9 @@ mod tests {
     #[test]
     fn compose_prompt_deterministic_order() {
         let prompt = compose_prompt(AppMode::Yolo, Personality::Calm);
-        let base_pos = prompt.find("## Language").expect("base layer includes Language heading");
+        let base_pos = prompt
+            .find("## Language")
+            .expect("base layer includes Language heading");
         let personality_pos = prompt.find("Personality: Calm").unwrap();
         let mode_pos = prompt.find("Mode: YOLO").unwrap();
         let approval_pos = prompt.find("Approval Policy: Auto").unwrap();
@@ -825,13 +826,12 @@ mod tests {
 
     #[test]
     fn agent_prompt_can_reflect_never_approval_policy() {
-        let prompt =
-            compose_prompt_with_approval(
-                AppMode::Agent,
-                Personality::Calm,
-                ApprovalMode::Never,
-                TaskType::Code,
-            );
+        let prompt = compose_prompt_with_approval(
+            AppMode::Agent,
+            Personality::Calm,
+            ApprovalMode::Never,
+            TaskType::Code,
+        );
         assert!(prompt.contains("Mode: Agent"));
         assert!(prompt.contains("Approval Policy: Never"));
         assert!(prompt.contains("/config approval_mode suggest"));

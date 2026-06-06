@@ -1,21 +1,23 @@
-use std::time::Duration;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
-use deepseek_core::subagent::{SubAgentStatus, SubAgentType};
 use crate::config::{MAX_SUBAGENT_STEP_TIMEOUT_SECS, MIN_SUBAGENT_STEP_TIMEOUT_SECS};
 use crate::tools::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_u64,
 };
+use deepseek_core::subagent::{SubAgentStatus, SubAgentType};
 
 use super::super::deprecation::wrap_with_deprecation_notice;
 use super::super::factory::SharedSubAgentManager;
-use super::super::parse::parse_spawn_request;
 use super::super::parse::configured_model_for_role_or_type;
-use super::super::resident::{release_resident_file_lease, try_claim_resident_file_lease, upgrade_pending_resident_lease};
+use super::super::parse::parse_spawn_request;
+use super::super::resident::{
+    release_resident_file_lease, try_claim_resident_file_lease, upgrade_pending_resident_lease,
+};
 use super::super::router::resolve_subagent_assignment_route;
 use super::super::runtime::SubAgentRuntime;
 use super::super::types::SubAgentSpawnOptions;
@@ -227,8 +229,8 @@ impl ToolSpec for AgentSpawnTool {
         let default_step_ms = context
             .subagent_default_step_timeout_ms
             .clamp(min_step_ms, max_step_ms);
-        let step_timeout_ms =
-            optional_u64(&input, "step_timeout_ms", default_step_ms).clamp(min_step_ms, max_step_ms);
+        let step_timeout_ms = optional_u64(&input, "step_timeout_ms", default_step_ms)
+            .clamp(min_step_ms, max_step_ms);
         child_runtime = child_runtime.with_step_timeout(Duration::from_millis(step_timeout_ms));
         let configured_model = match spawn_request.model.clone() {
             Some(model) => Some(model),
@@ -242,7 +244,8 @@ impl ToolSpec for AgentSpawnTool {
         // Cache-aware resident mode (#529): prepend file contents to the prompt
         // so the child's prefix is byte-stable for DeepSeek prefix caching.
         let effective_prompt = if let Some(ref file_path) = spawn_request.resident_file {
-            try_claim_resident_file_lease(file_path, "pending").map_err(ToolError::execution_failed)?;
+            try_claim_resident_file_lease(file_path, "pending")
+                .map_err(ToolError::execution_failed)?;
 
             let abs_path = if std::path::Path::new(file_path).is_absolute() {
                 std::path::PathBuf::from(file_path)
@@ -269,9 +272,7 @@ impl ToolSpec for AgentSpawnTool {
                 .scratchpad_config
                 .clone()
                 .unwrap_or_default();
-            let explicit_run = input
-                .get("scratchpad_run_id")
-                .and_then(|v| v.as_str());
+            let explicit_run = input.get("scratchpad_run_id").and_then(|v| v.as_str());
             let slot_run = self
                 .runtime
                 .context
@@ -319,22 +320,21 @@ impl ToolSpec for AgentSpawnTool {
         let scratchpad_run_id =
             crate::scratchpad::try_resolve_run_id(&self.runtime.context, explicit_run);
 
-        let spawn_result = manager
-            .spawn_background_with_assignment_options(
-                Arc::clone(&self.manager),
-                child_runtime,
-                spawn_request.agent_type,
-                effective_prompt,
-                spawn_request.assignment,
-                spawn_request.allowed_tools,
-                SubAgentSpawnOptions {
-                    model: Some(effective_model),
-                    nickname: spawn_request.nickname.clone(),
-                    task_id: spawn_request.task_id.clone(),
-                    scratchpad_run_id,
-                    cwd_label,
-                },
-            );
+        let spawn_result = manager.spawn_background_with_assignment_options(
+            Arc::clone(&self.manager),
+            child_runtime,
+            spawn_request.agent_type,
+            effective_prompt,
+            spawn_request.assignment,
+            spawn_request.allowed_tools,
+            SubAgentSpawnOptions {
+                model: Some(effective_model),
+                nickname: spawn_request.nickname.clone(),
+                task_id: spawn_request.task_id.clone(),
+                scratchpad_run_id,
+                cwd_label,
+            },
+        );
         if spawn_result.is_err()
             && let Some(ref file_path) = spawn_request.resident_file
         {
@@ -380,5 +380,3 @@ impl ToolSpec for AgentSpawnTool {
         Ok(tool_result)
     }
 }
-
-

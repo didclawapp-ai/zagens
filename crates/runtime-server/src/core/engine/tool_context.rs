@@ -125,8 +125,8 @@ impl Engine {
             shared
         } else {
             let network_policy = self.config_ext().network_policy.clone();
-            let mut pool = McpPool::from_config_path(&self.session.mcp_config_path)
-                .map_err(|e| {
+            let mut pool =
+                McpPool::from_config_path(&self.session.mcp_config_path).map_err(|e| {
                     ToolError::execution_failed(format!("Failed to load MCP config: {e}"))
                 })?;
             if let Some(decider) = network_policy.as_ref() {
@@ -162,4 +162,3 @@ impl Engine {
         pool.to_api_tools()
     }
 }
-

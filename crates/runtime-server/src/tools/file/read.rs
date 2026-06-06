@@ -2,8 +2,8 @@
 
 use super::{DEFAULT_LIMIT, FILE_SIZE_LINE_COUNT_LIMIT, MAX_FILE_SIZE, MAX_LIMIT};
 use crate::tools::spec::{
-    ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
-    optional_str, optional_u64, required_str,
+    ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_str, optional_u64,
+    required_str,
 };
 use async_trait::async_trait;
 use deepseek_config::workspace_meta_file_read;

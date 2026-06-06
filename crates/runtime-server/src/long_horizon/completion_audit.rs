@@ -243,10 +243,7 @@ mod tests {
 
     #[test]
     fn path_deliverable_detects_missing_file() {
-        let dir = std::env::temp_dir().join(format!(
-            "lht-audit-{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("lht-audit-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
         let entry = CompletionGateDeliverableEntry {
             id: "gzip".into(),
@@ -264,10 +261,7 @@ mod tests {
 
     #[test]
     fn path_deliverable_passes_when_file_exists() {
-        let dir = std::env::temp_dir().join(format!(
-            "lht-audit-ok-{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("lht-audit-ok-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir.join("pkg"));
         std::fs::write(dir.join("pkg/main.go"), b"package pkg\n").unwrap();
         let entry = CompletionGateDeliverableEntry {
@@ -287,10 +281,7 @@ mod tests {
         if Command::new("git").arg("--version").output().is_err() {
             return;
         }
-        let dir = std::env::temp_dir().join(format!(
-            "lht-audit-git-{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("lht-audit-git-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
         assert!(git(&dir, &["init"]));
         std::fs::write(dir.join("contracts.go"), b"package c\n").unwrap();

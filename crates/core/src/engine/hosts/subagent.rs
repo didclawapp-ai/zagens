@@ -44,10 +44,8 @@ pub trait SubAgentHost: Send + Sync {
     /// new agent's id on success. Surfaces `NoClient` when the API
     /// client is not configured and `SpawnFailed(msg)` for all other
     /// orchestration failures (depth cap, manager rejection, …).
-    async fn spawn_general(
-        &self,
-        prompt: &str,
-    ) -> Result<SubAgentSpawnOutcome, SubAgentSpawnError>;
+    async fn spawn_general(&self, prompt: &str)
+    -> Result<SubAgentSpawnOutcome, SubAgentSpawnError>;
 
     /// List all sub-agents held by the manager. Calls `manager.cleanup`
     /// with the standard retention window before returning so stale

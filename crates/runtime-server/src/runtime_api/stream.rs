@@ -9,9 +9,9 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use async_stream::stream;
+use axum::Json;
 use axum::extract::{Path as AxumPath, Query, State};
 use axum::response::sse::{Event as SseEvent, KeepAlive, Sse};
-use axum::Json;
 use deepseek_runtime_api::StreamTurnRequest;
 use futures_util::Stream;
 use serde::Deserialize;
@@ -22,7 +22,7 @@ use crate::config::DEFAULT_TEXT_MODEL;
 use crate::runtime_threads::event_coalesce::coalesce_delta_events;
 use crate::runtime_threads::{CreateThreadRequest, StartTurnRequest};
 
-use super::{map_thread_err, ApiError, RuntimeApiState};
+use super::{ApiError, RuntimeApiState, map_thread_err};
 
 /// Accept `true`/`false`, `1`/`0`, and `yes`/`no` in query strings (desktop used `replay_only=1`).
 fn deserialize_query_bool_option<'de, D>(deserializer: D) -> Result<Option<bool>, D::Error>
@@ -316,11 +316,7 @@ pub(super) fn map_compat_stream_event(
                 json!({ "agents": agents }),
             ))
         }
-        "craft.verdict" => Some(sse_json_seq(
-            event.seq,
-            "craft.verdict",
-            payload.clone(),
-        )),
+        "craft.verdict" => Some(sse_json_seq(event.seq, "craft.verdict", payload.clone())),
         "craft.board_updated" => Some(sse_json_seq(
             event.seq,
             "craft.board_updated",
@@ -611,10 +607,9 @@ mod tests {
         let stream = async_stream::stream! {
             yield Ok::<_, Infallible>(event);
         };
-        let body =
-            axum::body::to_bytes(Sse::new(stream).into_response().into_body(), usize::MAX)
-                .await
-                .unwrap();
+        let body = axum::body::to_bytes(Sse::new(stream).into_response().into_body(), usize::MAX)
+            .await
+            .unwrap();
         String::from_utf8_lossy(&body).to_string()
     }
 
@@ -622,7 +617,10 @@ mod tests {
 
     #[tokio::test]
     async fn maps_message_delta() {
-        let r = record("item.delta", json!({"kind": "agent_message", "delta": "hello"}));
+        let r = record(
+            "item.delta",
+            json!({"kind": "agent_message", "delta": "hello"}),
+        );
         let sse = map_compat_stream_event(&r).expect("should map message.delta");
         let text = render(sse).await;
         assert!(text.contains("event: message.delta"));
@@ -640,7 +638,10 @@ mod tests {
 
     #[tokio::test]
     async fn maps_tool_progress() {
-        let r = record("item.delta", json!({"kind": "tool_call", "delta": "building..."}));
+        let r = record(
+            "item.delta",
+            json!({"kind": "tool_call", "delta": "building..."}),
+        );
         let sse = map_compat_stream_event(&r).expect("should map tool.progress");
         let text = render(sse).await;
         assert!(text.contains("event: tool.progress"));
@@ -709,7 +710,10 @@ mod tests {
 
     #[tokio::test]
     async fn maps_approval_required() {
-        let r = record("approval.required", json!({"id": "ap1", "tool_name": "exec_shell"}));
+        let r = record(
+            "approval.required",
+            json!({"id": "ap1", "tool_name": "exec_shell"}),
+        );
         let sse = map_compat_stream_event(&r).expect("should map approval.required");
         let text = render(sse).await;
         assert!(text.contains("event: approval.required"));
@@ -742,7 +746,10 @@ mod tests {
 
     #[tokio::test]
     async fn maps_agent_spawned() {
-        let r = record("agent.spawned", json!({"agent_id": "a1", "prompt": "do it"}));
+        let r = record(
+            "agent.spawned",
+            json!({"agent_id": "a1", "prompt": "do it"}),
+        );
         let sse = map_compat_stream_event(&r).expect("should map agent.spawned");
         let text = render(sse).await;
         assert!(text.contains("event: agent.spawned"));
@@ -758,7 +765,10 @@ mod tests {
 
     #[tokio::test]
     async fn maps_agent_progress() {
-        let r = record("agent.progress", json!({"agent_id": "a1", "status": "working"}));
+        let r = record(
+            "agent.progress",
+            json!({"agent_id": "a1", "status": "working"}),
+        );
         let sse = map_compat_stream_event(&r).expect("should map agent.progress");
         let text = render(sse).await;
         assert!(text.contains("event: agent.progress"));
@@ -766,7 +776,10 @@ mod tests {
 
     #[tokio::test]
     async fn maps_agent_completed() {
-        let r = record("agent.completed", json!({"agent_id": "a1", "result": "done"}));
+        let r = record(
+            "agent.completed",
+            json!({"agent_id": "a1", "result": "done"}),
+        );
         let sse = map_compat_stream_event(&r).expect("should map agent.completed");
         let text = render(sse).await;
         assert!(text.contains("event: agent.completed"));
@@ -802,8 +815,7 @@ mod tests {
     async fn maps_panel_events() {
         for ev in ["panel.checklist", "panel.scratchpad", "panel.context"] {
             let r = record(ev, json!({"data": []}));
-            let sse = map_compat_stream_event(&r)
-                .unwrap_or_else(|| panic!("should map {ev}"));
+            let sse = map_compat_stream_event(&r).unwrap_or_else(|| panic!("should map {ev}"));
             let text = render(sse).await;
             assert!(
                 text.contains(&format!("event: {ev}")),
@@ -866,5 +878,4 @@ mod tests {
         let r = record("item.completed", json!({"not_item": {}}));
         assert!(map_compat_stream_event(&r).is_none());
     }
-
 }

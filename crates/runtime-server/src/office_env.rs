@@ -5,16 +5,17 @@ use std::process::Command;
 
 /// Probe bundled/system Python and office library imports.
 pub fn office_environment_status() -> Value {
-    let bundled = crate::python_env::find_bundled_python()
-        .map(|p| p.display().to_string());
-    let system_python = crate::python_env::find_python().map(|(bin, maj, min)| {
-        json!({ "binary": bin, "version": format!("{maj}.{min}") })
-    });
-    let venv_dir = crate::python_env::office_venv_dir()
-        .map(|p| p.display().to_string());
+    let bundled = crate::python_env::find_bundled_python().map(|p| p.display().to_string());
+    let system_python = crate::python_env::find_python()
+        .map(|(bin, maj, min)| json!({ "binary": bin, "version": format!("{maj}.{min}") }));
+    let venv_dir = crate::python_env::office_venv_dir().map(|p| p.display().to_string());
     let venv_ready = venv_dir
         .as_ref()
-        .map(|d| std::path::Path::new(d).join(".requirements-installed-v2").is_file())
+        .map(|d| {
+            std::path::Path::new(d)
+                .join(".requirements-installed-v2")
+                .is_file()
+        })
         .unwrap_or(false);
 
     let resolve = crate::python_env::resolve_python_for_office().ok();
@@ -49,9 +50,7 @@ for m in mods:
         out[m] = str(e)
 print(json.dumps(out))
 "#;
-    let output = Command::new(python)
-        .args(["-c", script])
-        .output();
+    let output = Command::new(python).args(["-c", script]).output();
     match output {
         Ok(o) if o.status.success() => {
             let stdout = String::from_utf8_lossy(&o.stdout);

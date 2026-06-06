@@ -1781,7 +1781,9 @@ fn stream_retry_invalid_input_is_not_retryable() {
     assert!(!is_stream_failure_retryable(
         "Missing reasoning_content field on assistant message with tool_calls"
     ));
-    assert!(is_stream_failure_retryable("connection reset while reading body"));
+    assert!(is_stream_failure_retryable(
+        "connection reset while reading body"
+    ));
 }
 
 #[test]
@@ -2121,7 +2123,11 @@ async fn engine_llm_client_override_runs_mock_turn() {
     }
 
     assert!(saw_complete, "mock LLM turn should emit TurnComplete");
-    assert_eq!(mock.call_count(), 1, "mock client should receive one stream call");
+    assert_eq!(
+        mock.call_count(),
+        1,
+        "mock client should receive one stream call"
+    );
 }
 
 /// A5.3 — full engine + mock LLM: manual compaction uses non-streaming client path.
@@ -2181,10 +2187,7 @@ async fn engine_mock_manual_compaction_completes_with_canned_summary() {
         engine.run().await;
     });
 
-    handle
-        .send(Op::CompactContext)
-        .await
-        .expect("compact op");
+    handle.send(Op::CompactContext).await.expect("compact op");
 
     let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
     let mut saw_compaction_complete = false;
@@ -2239,9 +2242,8 @@ async fn engine_mock_parallel_readonly_tools_complete_turn() {
     ];
     let turn_done = canned::simple_text_turn("listed both");
 
-    let mock = Arc::new(
-        MockLlmClient::new(vec![turn_tools, turn_done]).with_model("deepseek-v4-pro"),
-    );
+    let mock =
+        Arc::new(MockLlmClient::new(vec![turn_tools, turn_done]).with_model("deepseek-v4-pro"));
     let config = EngineConfig {
         llm_client_override: Some(mock.clone()),
         workspace: workspace.path().to_path_buf(),
@@ -2336,7 +2338,10 @@ async fn engine_mock_spawn_subagent_lists_running_agent() {
             }
         }
     }
-    assert!(saw_spawn_status, "spawn op should emit status with agent id");
+    assert!(
+        saw_spawn_status,
+        "spawn op should emit status with agent id"
+    );
 
     handle
         .send(Op::ListSubAgents)
@@ -2449,7 +2454,9 @@ async fn engine_mock_capacity_pre_request_observes_mock_and_emits_decision() {
             continue;
         };
         match event {
-            Event::CapacityDecision { action, .. } if action.contains("targeted_context_refresh") => {
+            Event::CapacityDecision { action, .. }
+                if action.contains("targeted_context_refresh") =>
+            {
                 saw_capacity_decision = true;
             }
             Event::TurnComplete { .. } => {
@@ -2464,7 +2471,10 @@ async fn engine_mock_capacity_pre_request_observes_mock_and_emits_decision() {
         saw_capacity_decision,
         "enabled capacity controller should emit CapacityDecision on pre-request checkpoint"
     );
-    assert!(saw_complete, "turn should complete after capacity gate + mock stream");
+    assert!(
+        saw_complete,
+        "turn should complete after capacity gate + mock stream"
+    );
     assert!(
         mock.call_count() >= 1,
         "mock LLM should be invoked after capacity pre-request gate"

@@ -4,14 +4,14 @@ mod paths;
 mod schemas;
 
 use schemars::Schema;
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 pub use paths::{build_paths, path_template_count};
+pub use schemas::SCHEMA_EXPORTS;
 pub use schemas::{
     ResumeSessionResponse, SessionDetailResponse, SessionsListResponse, StartTurnResponse,
     StreamTurnRequest, ThreadSummary,
 };
-pub use schemas::SCHEMA_EXPORTS;
 
 fn rewrite_refs(value: &mut Value) {
     match value {
@@ -49,10 +49,7 @@ fn register_schema(components: &mut Map<String, Value>, name: &str, mut schema: 
     components.insert(name.into(), schema);
 }
 
-fn register_exports(
-    components: &mut Map<String, Value>,
-    exports: &[(&str, fn() -> Schema)],
-) {
+fn register_exports(components: &mut Map<String, Value>, exports: &[(&str, fn() -> Schema)]) {
     for (name, make_schema) in exports {
         let schema: Schema = make_schema();
         let value = serde_json::to_value(&schema).unwrap_or_else(|e| {

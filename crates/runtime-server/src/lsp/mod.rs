@@ -53,17 +53,17 @@ pub use deepseek_core::lsp::LspConfig;
 /// Resolve `(command, args)` for `lang`. User-supplied overrides take
 /// precedence over the built-in registry.
 fn resolve_lsp_command(config: &LspConfig, lang: Language) -> Option<(String, Vec<String>)> {
-        if let Some(parts) = config.servers.get(lang.as_key())
-            && let Some((first, rest)) = parts.split_first()
-        {
-            return Some((first.clone(), rest.to_vec()));
-        }
-        let (cmd, args) = registry::server_for(lang)?;
-        Some((
-            cmd.to_string(),
-            args.iter().map(|a| (*a).to_string()).collect(),
-        ))
+    if let Some(parts) = config.servers.get(lang.as_key())
+        && let Some((first, rest)) = parts.split_first()
+    {
+        return Some((first.clone(), rest.to_vec()));
     }
+    let (cmd, args) = registry::server_for(lang)?;
+    Some((
+        cmd.to_string(),
+        args.iter().map(|a| (*a).to_string()).collect(),
+    ))
+}
 
 /// The LspManager holds a lazily populated map of `Language -> Transport`.
 /// One transport is reused across files of the same language for the
@@ -270,11 +270,7 @@ impl deepseek_core::engine::hosts::LspHost for LspManager {
         self.config.enabled
     }
 
-    async fn diagnostics_for(
-        &self,
-        file: &Path,
-        edit_seq: u64,
-    ) -> Option<DiagnosticBlock> {
+    async fn diagnostics_for(&self, file: &Path, edit_seq: u64) -> Option<DiagnosticBlock> {
         LspManager::diagnostics_for(self, file, edit_seq).await
     }
 }

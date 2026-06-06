@@ -24,9 +24,9 @@ use super::spec::{
 };
 use crate::config::SearchProvider;
 use crate::network_policy::NetworkPolicyDecider;
-use deepseek_runtime_adapters::tools::check_host_policy;
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose};
+use deepseek_runtime_adapters::tools::check_host_policy;
 use regex::Regex;
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -353,8 +353,10 @@ impl ToolSpec for WebSearchTool {
                             results = parse_duckduckgo_results(&body, max_results);
 
                             if bing_was_empty && !results.is_empty() {
-                                message_suffix =
-                                    Some("Bing returned no results; used DuckDuckGo fallback".to_string());
+                                message_suffix = Some(
+                                    "Bing returned no results; used DuckDuckGo fallback"
+                                        .to_string(),
+                                );
                             }
 
                             if results.is_empty() {
@@ -513,8 +515,9 @@ impl WebSearchTool {
             )));
         }
 
-        let parsed: Value = serde_json::from_str(&body)
-            .map_err(|e| ToolError::execution_failed(format!("Failed to parse Tavily response: {e}")))?;
+        let parsed: Value = serde_json::from_str(&body).map_err(|e| {
+            ToolError::execution_failed(format!("Failed to parse Tavily response: {e}"))
+        })?;
 
         let results: Vec<WebSearchEntry> = parsed
             .get("results")
@@ -529,7 +532,11 @@ impl WebSearchTool {
                     .or_else(|| item.get("snippet"))
                     .and_then(|s| s.as_str())
                     .map(|s| s.to_string());
-                Some(WebSearchEntry { title, url, snippet })
+                Some(WebSearchEntry {
+                    title,
+                    url,
+                    snippet,
+                })
             })
             .take(max_results)
             .collect();
@@ -583,8 +590,9 @@ impl WebSearchTool {
             )));
         }
 
-        let parsed: Value = serde_json::from_str(&body)
-            .map_err(|e| ToolError::execution_failed(format!("Failed to parse Bocha response: {e}")))?;
+        let parsed: Value = serde_json::from_str(&body).map_err(|e| {
+            ToolError::execution_failed(format!("Failed to parse Bocha response: {e}"))
+        })?;
 
         // Bocha returns `{"code": 200, "data": {"pages": [...]}}`
         let results: Vec<WebSearchEntry> = parsed
@@ -611,7 +619,11 @@ impl WebSearchTool {
                     .or_else(|| item.get("description"))
                     .and_then(|s| s.as_str())
                     .map(|s| s.to_string());
-                Some(WebSearchEntry { title, url, snippet })
+                Some(WebSearchEntry {
+                    title,
+                    url,
+                    snippet,
+                })
             })
             .take(max_results)
             .collect();
@@ -674,8 +686,9 @@ impl WebSearchTool {
             return Err(ToolError::execution_failed(msg));
         }
 
-        let parsed: Value = serde_json::from_str(&body)
-            .map_err(|e| ToolError::execution_failed(format!("Failed to parse Metaso response: {e}")))?;
+        let parsed: Value = serde_json::from_str(&body).map_err(|e| {
+            ToolError::execution_failed(format!("Failed to parse Metaso response: {e}"))
+        })?;
 
         // Check business-logic error codes.
         if let Some(code) = parsed.get("code").and_then(|v| v.as_i64())
@@ -705,7 +718,11 @@ impl WebSearchTool {
                     .or_else(|| item.get("summary"))
                     .and_then(|s| s.as_str())
                     .map(|s| s.to_string());
-                Some(WebSearchEntry { title, url, snippet })
+                Some(WebSearchEntry {
+                    title,
+                    url,
+                    snippet,
+                })
             })
             .take(size)
             .collect();
@@ -763,8 +780,9 @@ impl WebSearchTool {
             return Err(ToolError::execution_failed(msg));
         }
 
-        let parsed: Value = serde_json::from_str(&body)
-            .map_err(|e| ToolError::execution_failed(format!("Failed to parse Baidu response: {e}")))?;
+        let parsed: Value = serde_json::from_str(&body).map_err(|e| {
+            ToolError::execution_failed(format!("Failed to parse Baidu response: {e}"))
+        })?;
 
         if let Some(error) = baidu_error_message(&parsed) {
             return Err(ToolError::execution_failed(error));
@@ -863,12 +881,9 @@ impl WebSearchTool {
                         return Err(ToolError::execution_failed(error));
                     }
 
-                    let response_text =
-                        volcengine_extract_text(&parsed).ok_or_else(|| {
-                            ToolError::execution_failed(
-                                "Volcengine response contains no output text",
-                            )
-                        })?;
+                    let response_text = volcengine_extract_text(&parsed).ok_or_else(|| {
+                        ToolError::execution_failed("Volcengine response contains no output text")
+                    })?;
 
                     let results = parse_volcengine_results(&response_text, max_results);
                     return build_result(query.to_string(), "volcengine", results, None);

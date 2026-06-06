@@ -3,32 +3,34 @@
 use deepseek_config::{workspace_meta_dir_read, workspace_meta_rel};
 
 pub mod auditor;
+pub mod checklist_sync;
 pub mod cleanup;
 pub mod config;
 pub mod coverage;
+pub mod import;
+mod init;
+pub mod inventory_template;
 mod schema;
 mod summary;
-pub mod checklist_sync;
 pub mod ui_status;
-mod init;
-pub mod import;
-pub mod inventory_template;
 
+pub use import::{
+    import_agent_findings, open_high_finding_ids, validate_agent_run_binding, verify_note,
+};
 pub use init::{default_init_areas, parse_init_areas, resolve_run_id_for_init};
-pub use import::{import_agent_findings, open_high_finding_ids, validate_agent_run_binding, verify_note};
 pub use inventory_template::workspace_audit_inventory;
 
-pub use schema::{
-    AreaStatus, Inventory, NoteLine, is_high_severity, is_open_finding,
-    is_verified_finding, parse_note_line,
-};
-pub use config::{ScratchpadConfig, ScratchpadConfigToml};
 pub use auditor::{build_auditor_assignment_sections, resolve_auditor_run_id};
-pub use coverage::{
-    CoverageGateOutcome, area_meets_deferred_quality, build_l0_status_line,
-    compute_coverage_stats, coverage_gate, resume_area_id_from_inventory,
-};
 pub use checklist_sync::checklist_inventory_warning;
+pub use config::{ScratchpadConfig, ScratchpadConfigToml};
+pub use coverage::{
+    CoverageGateOutcome, area_meets_deferred_quality, build_l0_status_line, compute_coverage_stats,
+    coverage_gate, resume_area_id_from_inventory,
+};
+pub use schema::{
+    AreaStatus, Inventory, NoteLine, is_high_severity, is_open_finding, is_verified_finding,
+    parse_note_line,
+};
 pub use summary::{build_layered_summary, compute_superseded_ids};
 
 use std::collections::HashMap;
@@ -210,14 +212,10 @@ impl ScratchpadStore {
     pub fn read_inventory(&self) -> Result<Inventory, ToolError> {
         let path = self.inventory_path();
         let raw = fs::read_to_string(&path).map_err(|e| {
-            ToolError::execution_failed(format!(
-                "failed to read {}: {e}",
-                path.display()
-            ))
+            ToolError::execution_failed(format!("failed to read {}: {e}", path.display()))
         })?;
-        serde_json::from_str(&raw).map_err(|e| {
-            ToolError::execution_failed(format!("invalid inventory.json: {e}"))
-        })
+        serde_json::from_str(&raw)
+            .map_err(|e| ToolError::execution_failed(format!("invalid inventory.json: {e}")))
     }
 
     pub fn write_inventory(&self, inventory: &Inventory) -> Result<(), ToolError> {
@@ -234,9 +232,8 @@ impl ScratchpadStore {
         if !path.exists() {
             return Ok(Vec::new());
         }
-        let raw = fs::read_to_string(&path).map_err(|e| {
-            ToolError::execution_failed(format!("failed to read notes.jsonl: {e}"))
-        })?;
+        let raw = fs::read_to_string(&path)
+            .map_err(|e| ToolError::execution_failed(format!("failed to read notes.jsonl: {e}")))?;
         let mut notes = Vec::new();
         for (idx, line) in raw.lines().enumerate() {
             let trimmed = line.trim();
@@ -244,10 +241,7 @@ impl ScratchpadStore {
                 continue;
             }
             let value: Value = serde_json::from_str(trimmed).map_err(|e| {
-                ToolError::execution_failed(format!(
-                    "invalid notes.jsonl line {}: {e}",
-                    idx + 1
-                ))
+                ToolError::execution_failed(format!("invalid notes.jsonl line {}: {e}", idx + 1))
             })?;
             notes.push(parse_note_line(&value, idx + 1));
         }
@@ -256,10 +250,7 @@ impl ScratchpadStore {
 
     pub fn count_notes_for_area(&self, area_id: &str) -> Result<usize, ToolError> {
         let notes = self.read_notes()?;
-        Ok(notes
-            .iter()
-            .filter(|n| n.area_id == area_id)
-            .count())
+        Ok(notes.iter().filter(|n| n.area_id == area_id).count())
     }
 
     pub fn next_note_id(&self) -> Result<String, ToolError> {
@@ -307,7 +298,10 @@ impl ScratchpadStore {
             .and_then(|v| v.as_str())
             .map(str::to_uppercase);
         if kind == "finding" && is_high_severity(severity.as_deref()) {
-            let has_file = line.get("file").and_then(|v| v.as_str()).is_some_and(|s| !s.is_empty());
+            let has_file = line
+                .get("file")
+                .and_then(|v| v.as_str())
+                .is_some_and(|s| !s.is_empty());
             let has_line = line.get("line").and_then(|v| v.as_u64()).is_some();
             if !has_file || !has_line {
                 return Err(ToolError::invalid_input(
@@ -350,7 +344,9 @@ impl ScratchpadStore {
             .create(true)
             .append(true)
             .open(&path)
-            .map_err(|e| ToolError::execution_failed(format!("failed to append notes.jsonl: {e}")))?;
+            .map_err(|e| {
+                ToolError::execution_failed(format!("failed to append notes.jsonl: {e}"))
+            })?;
         writeln!(file, "{payload}").map_err(|e| {
             ToolError::execution_failed(format!("failed to write notes.jsonl: {e}"))
         })?;
@@ -360,10 +356,7 @@ impl ScratchpadStore {
 
     pub fn list_notes(&self, area_id: &str, limit: usize) -> Result<Vec<NoteLine>, ToolError> {
         let notes = self.read_notes()?;
-        let filtered: Vec<NoteLine> = notes
-            .into_iter()
-            .filter(|n| n.area_id == area_id)
-            .collect();
+        let filtered: Vec<NoteLine> = notes.into_iter().filter(|n| n.area_id == area_id).collect();
         let start = filtered.len().saturating_sub(limit);
         Ok(filtered[start..].to_vec())
     }
@@ -582,20 +575,22 @@ fn build_contract_hints(
                 "P2 blocked: accounted_ratio below 60% — done areas need kind=finding or kind=cleared (meta-only does not count); see areas_failing_quality_gate",
             );
         } else {
-            hints.push("inventory closed — synthesize report from verified findings via write_file");
+            hints
+                .push("inventory closed — synthesize report from verified findings via write_file");
         }
     }
     hints
 }
 
-pub(crate) fn atomic_write_json(path: &Path, value: &impl serde::Serialize) -> Result<(), ToolError> {
-    let payload = serde_json::to_string_pretty(value).map_err(|e| {
-        ToolError::execution_failed(format!("failed to serialize JSON: {e}"))
-    })?;
+pub(crate) fn atomic_write_json(
+    path: &Path,
+    value: &impl serde::Serialize,
+) -> Result<(), ToolError> {
+    let payload = serde_json::to_string_pretty(value)
+        .map_err(|e| ToolError::execution_failed(format!("failed to serialize JSON: {e}")))?;
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| {
-            ToolError::execution_failed(format!("failed to create directory: {e}"))
-        })?;
+        fs::create_dir_all(parent)
+            .map_err(|e| ToolError::execution_failed(format!("failed to create directory: {e}")))?;
     }
     let tmp = path.with_extension("tmp");
     fs::write(&tmp, &payload).map_err(|e| {

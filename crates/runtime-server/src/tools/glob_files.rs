@@ -137,11 +137,7 @@ impl ToolSpec for GlobFilesTool {
             matches.push((path, workspace_rel, mtime));
         }
 
-        matches.sort_by(|a, b| {
-            b.2
-                .cmp(&a.2)
-                .then_with(|| a.1.cmp(&b.1))
-        });
+        matches.sort_by(|a, b| b.2.cmp(&a.2).then_with(|| a.1.cmp(&b.1)));
         let total = matches.len();
         let truncated = total > limit;
         if truncated {

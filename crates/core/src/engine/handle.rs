@@ -17,7 +17,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use async_trait::async_trait;
-use tokio::sync::{mpsc, oneshot, RwLock};
+use tokio::sync::{RwLock, mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
 use crate::engine::approval::{ApprovalDecision, UserInputDecision};
@@ -126,11 +126,7 @@ where
     }
 
     /// Retry a tool call with an elevated sandbox policy.
-    pub async fn retry_tool_with_policy(
-        &self,
-        id: impl Into<String>,
-        policy: P,
-    ) -> Result<()> {
+    pub async fn retry_tool_with_policy(&self, id: impl Into<String>, policy: P) -> Result<()> {
         self.tx_approval
             .send(ApprovalDecision::RetryWithPolicy {
                 id: id.into(),
@@ -141,11 +137,7 @@ where
     }
 
     /// Submit a response for `request_user_input`.
-    pub async fn submit_user_input(
-        &self,
-        id: impl Into<String>,
-        response: R,
-    ) -> Result<()> {
+    pub async fn submit_user_input(&self, id: impl Into<String>, response: R) -> Result<()> {
         self.tx_user_input
             .send(UserInputDecision::Submitted {
                 id: id.into(),

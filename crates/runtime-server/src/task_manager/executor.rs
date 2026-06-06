@@ -4,14 +4,14 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 use tokio_util::sync::CancellationToken;
 
 use crate::runtime_threads::{CreateThreadRequest, RuntimeTurnStatus, StartTurnRequest};
 use deepseek_runtime_orchestrator::runtime_threads::RuntimeThreadTaskPort;
 
-use super::helpers::{summarize_text, TIMELINE_SUMMARY_LIMIT};
 use super::TaskStatus;
+use super::helpers::{TIMELINE_SUMMARY_LIMIT, summarize_text};
 
 #[derive(Debug, Clone)]
 pub struct ExecutionTask {
@@ -174,10 +174,7 @@ impl TaskExecutor for EngineTaskExecutor {
         loop {
             if cancel.is_cancelled() && !cancel_requested {
                 cancel_requested = true;
-                let _ = self
-                    .runtime
-                    .interrupt_turn(&thread.id, &turn.id)
-                    .await;
+                let _ = self.runtime.interrupt_turn(&thread.id, &turn.id).await;
                 let _ = events.send(TaskExecutionEvent::Status {
                     message: "Cancellation requested".to_string(),
                 });

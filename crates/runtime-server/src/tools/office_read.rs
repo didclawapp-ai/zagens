@@ -13,11 +13,11 @@ use std::io::{BufReader, Read};
 use std::path::Path;
 use std::sync::LazyLock;
 
-use super::file::{DEFAULT_LIMIT, MAX_FILE_SIZE, MAX_LIMIT};
 use super::file::read_pdf;
+use super::file::{DEFAULT_LIMIT, MAX_FILE_SIZE, MAX_LIMIT};
 use super::spec::{
-    ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
-    optional_str, optional_u64, required_str,
+    ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_str, optional_u64,
+    required_str,
 };
 
 const OFFICE_DEFAULT_ROW_LIMIT: u64 = DEFAULT_LIMIT as u64;
@@ -120,16 +120,8 @@ impl ToolSpec for ReadOfficeTool {
             Some("pdf") => read_pdf_office(&file_path, pages),
             Some("csv") => read_delimited_table(&file_path, b',', start_row, limit),
             Some("tsv") => read_delimited_table(&file_path, b'\t', start_row, limit),
-            Some("doc") => Err(legacy_binary_hint(
-                &file_path,
-                "DOC",
-                ".docx",
-            )),
-            Some("ppt") => Err(legacy_binary_hint(
-                &file_path,
-                "PPT",
-                ".pptx",
-            )),
+            Some("doc") => Err(legacy_binary_hint(&file_path, "DOC", ".docx")),
+            Some("ppt") => Err(legacy_binary_hint(&file_path, "PPT", ".pptx")),
             _ => Err(ToolError::invalid_input(format!(
                 "read_office does not support this extension ({}). Supported: xlsx, xls, xlsb, ods, docx, pptx, pdf, csv, tsv.",
                 ext.as_deref().unwrap_or("(none)")
@@ -140,10 +132,7 @@ impl ToolSpec for ReadOfficeTool {
 
 fn check_file_size(path: &Path) -> Result<(), ToolError> {
     let size = fs::metadata(path).map_err(|e| {
-        ToolError::execution_failed(format!(
-            "[NOT_FOUND] 无法访问文件 {}: {e}",
-            path.display()
-        ))
+        ToolError::execution_failed(format!("[NOT_FOUND] 无法访问文件 {}: {e}", path.display()))
     })?;
     if size.len() > MAX_FILE_SIZE {
         return Err(ToolError::execution_failed(format!(
@@ -172,21 +161,19 @@ fn read_spreadsheet_calamine(
     start_row: u64,
     limit: usize,
 ) -> Result<ToolResult, ToolError> {
-    let mut workbook: Sheets<BufReader<fs::File>> =
-        open_workbook_auto(path).map_err(|e| {
-            ToolError::execution_failed(format!(
-                "[BINARY] 无法打开表格文件 {}: {e}",
-                path.display()
-            ))
-        })?;
+    let mut workbook: Sheets<BufReader<fs::File>> = open_workbook_auto(path).map_err(|e| {
+        ToolError::execution_failed(format!("[BINARY] 无法打开表格文件 {}: {e}", path.display()))
+    })?;
 
     let sheet_names = workbook.sheet_names().to_vec();
     if sheet_names.is_empty() {
-        return Ok(ToolResult::success("[表格] 文件无工作表。").with_metadata(json!({
-            "path": path.to_string_lossy(),
-            "kind": spreadsheet_kind(path),
-            "sheets": [],
-        })));
+        return Ok(
+            ToolResult::success("[表格] 文件无工作表。").with_metadata(json!({
+                "path": path.to_string_lossy(),
+                "kind": spreadsheet_kind(path),
+                "sheets": [],
+            })),
+        );
     }
 
     let sheet_infos: Vec<Value> = sheet_names
@@ -223,13 +210,8 @@ fn read_spreadsheet_calamine(
         })?;
 
         let formula_range = workbook.worksheet_formula(name).ok();
-        let (body, meta) = format_sheet_range(
-            name,
-            &range,
-            formula_range.as_ref(),
-            start_row,
-            limit,
-        )?;
+        let (body, meta) =
+            format_sheet_range(name, &range, formula_range.as_ref(), start_row, limit)?;
         if meta.truncated {
             truncated_any = true;
             next_start_row = Some(meta.next_start_row);
@@ -238,7 +220,8 @@ fn read_spreadsheet_calamine(
     }
 
     if output.trim().is_empty() {
-        output = format!("[表格] 工作表无可见数据（可能为空或超出分页范围 start_row={start_row}）。");
+        output =
+            format!("[表格] 工作表无可见数据（可能为空或超出分页范围 start_row={start_row}）。");
     }
 
     let mut metadata = json!({
@@ -673,11 +656,13 @@ fn read_pptx_enhanced(path: &Path) -> Result<ToolResult, ToolError> {
         );
     }
 
-    Ok(ToolResult::success(result.trim_end().to_string()).with_metadata(json!({
-        "path": path.to_string_lossy(),
-        "kind": "pptx",
-        "size_bytes": size_bytes,
-    })))
+    Ok(
+        ToolResult::success(result.trim_end().to_string()).with_metadata(json!({
+            "path": path.to_string_lossy(),
+            "kind": "pptx",
+            "size_bytes": size_bytes,
+        })),
+    )
 }
 
 fn read_pptx_charts_for_slide(archive: &mut zip::ZipArchive<fs::File>, slide: usize) -> String {
@@ -738,10 +723,7 @@ fn format_pptx_chart_xml(xml: &str) -> String {
             .map(|m| m.as_str().trim().to_string())
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| format!("系列{}", idx + 1));
-        let val_section = ser_body
-            .split("<c:val")
-            .nth(1)
-            .unwrap_or("");
+        let val_section = ser_body.split("<c:val").nth(1).unwrap_or("");
         let values: Vec<String> = PPTX_CV_RE
             .captures_iter(val_section)
             .filter_map(|c| c.get(1).map(|m| m.as_str().trim().to_string()))
@@ -849,20 +831,19 @@ fn read_delimited_table(
     limit: usize,
 ) -> Result<ToolResult, ToolError> {
     let content = fs::read_to_string(path).map_err(|e| {
-        ToolError::execution_failed(format!(
-            "[NOT_FOUND] 无法读取 {}: {e}",
-            path.display()
-        ))
+        ToolError::execution_failed(format!("[NOT_FOUND] 无法读取 {}: {e}", path.display()))
     })?;
 
     let lines: Vec<&str> = content.lines().collect();
     let total = lines.len();
     if total == 0 {
-        return Ok(ToolResult::success("[CSV] 文件为空。").with_metadata(json!({
-            "path": path.to_string_lossy(),
-            "kind": if delimiter == b',' { "csv" } else { "tsv" },
-            "rows": 0,
-        })));
+        return Ok(
+            ToolResult::success("[CSV] 文件为空。").with_metadata(json!({
+                "path": path.to_string_lossy(),
+                "kind": if delimiter == b',' { "csv" } else { "tsv" },
+                "rows": 0,
+            })),
+        );
     }
 
     let start_idx = start_row.saturating_sub(1) as usize;
@@ -894,15 +875,17 @@ fn read_delimited_table(
     }
 
     let kind = if delimiter == b',' { "csv" } else { "tsv" };
-    Ok(ToolResult::success(out.trim_end().to_string()).with_metadata(json!({
-        "path": path.to_string_lossy(),
-        "kind": kind,
-        "rows": total,
-        "cols": lines.first().map(|l| parse_delimited_line(l, delimiter).len()),
-        "start_row": start_row,
-        "limit": limit,
-        "truncated": truncated,
-    })))
+    Ok(
+        ToolResult::success(out.trim_end().to_string()).with_metadata(json!({
+            "path": path.to_string_lossy(),
+            "kind": kind,
+            "rows": total,
+            "cols": lines.first().map(|l| parse_delimited_line(l, delimiter).len()),
+            "start_row": start_row,
+            "limit": limit,
+            "truncated": truncated,
+        })),
+    )
 }
 
 fn parse_delimited_line(line: &str, delimiter: u8) -> Vec<String> {
@@ -977,17 +960,17 @@ mod tests {
         let tool = ReadOfficeTool;
         let ctx = ToolContext::new(dir.path().to_path_buf());
         let result = tool
-            .execute(
-                json!({ "path": "sample.xlsx", "limit": 50 }),
-                &ctx,
-            )
+            .execute(json!({ "path": "sample.xlsx", "limit": 50 }), &ctx)
             .await
             .expect("execute");
 
         let text = &result.content;
         assert!(text.contains("月度汇总"), "sheet name: {text}");
         assert!(text.contains("2025-01"), "string cell: {text}");
-        assert!(text.contains("150000") || text.contains("150,000") || text.contains("150000"), "number: {text}");
+        assert!(
+            text.contains("150000") || text.contains("150,000") || text.contains("150000"),
+            "number: {text}"
+        );
         assert!(
             text.contains("12.5%") || text.contains("0.125") || text.contains("12.5"),
             "percentage: {text}"

@@ -19,7 +19,8 @@ mod tests {
 
     #[test]
     fn classify_office_errors_tags_deps_and_timeout() {
-        let deps = classify_office_generation_error("fail", "ModuleNotFoundError: No module named 'docx'");
+        let deps =
+            classify_office_generation_error("fail", "ModuleNotFoundError: No module named 'docx'");
         assert!(deps.contains("[OFFICE_DEPS]"), "{deps}");
         let timeout = classify_office_generation_error("生成超时", "");
         assert!(timeout.contains("[OFFICE_TIMEOUT]"), "{timeout}");
@@ -209,8 +210,11 @@ mod tests {
     #[tokio::test]
     async fn write_office_xlsx_from_csv_source() {
         let dir = tempdir().expect("tempdir");
-        fs::write(dir.path().join("input.csv"), "Product,Qty\nWidget,10\nGadget,5")
-            .expect("csv");
+        fs::write(
+            dir.path().join("input.csv"),
+            "Product,Qty\nWidget,10\nGadget,5",
+        )
+        .expect("csv");
         let ctx = ToolContext::new(dir.path().to_path_buf());
         let result = WriteOfficeTool
             .execute(
@@ -228,10 +232,7 @@ mod tests {
             .expect("execute");
         assert!(result.success, "{}", result.content);
         let read = ReadOfficeTool
-            .execute(
-                json!({ "path": "deliverables/from-source.xlsx" }),
-                &ctx,
-            )
+            .execute(json!({ "path": "deliverables/from-source.xlsx" }), &ctx)
             .await
             .expect("read");
         assert!(read.content.contains("Widget") && read.content.contains("10"));
@@ -329,6 +330,10 @@ mod tests {
         assert!(result.success, "{}", result.content);
         let out = dir.path().join("deliverables/smoke-pdf.pdf");
         let bytes = fs::read(&out).expect("read");
-        assert!(bytes.starts_with(b"%PDF"), "magic: {:?}", &bytes[..8.min(bytes.len())]);
+        assert!(
+            bytes.starts_with(b"%PDF"),
+            "magic: {:?}",
+            &bytes[..8.min(bytes.len())]
+        );
     }
 }

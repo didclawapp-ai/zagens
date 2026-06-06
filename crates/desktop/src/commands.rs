@@ -5,12 +5,11 @@
 //! [`ARCHITECTURE_ASSESSMENT_2026-05-25.md`](../../../docs/tech/adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md) §5.1「D1 — 已闭合」。
 
 use deepseek_config::{
-    apply_lht_preset as apply_lht_preset_overlay, CompactionToml, CompletionGateConfigToml,
-    ConfigStore, ConfigToml, DEFAULT_VISION_MODEL, LongHorizonConfigToml, LhtPresetId,
-    MacroLoopConfigToml, WORKSPACE_META_DIR_NAME, compaction_threshold_tokens_for_model,
-    lht_product_defaults,
-    legacy_workspace_meta_dir, normalize_gate_mode, normalize_lht_mode, resolve_lht,
-    vision_should_check_degenerate_ocr_template, vision_user_prompt_for_model,
+    CompactionToml, CompletionGateConfigToml, ConfigStore, ConfigToml, DEFAULT_VISION_MODEL,
+    LhtPresetId, LongHorizonConfigToml, MacroLoopConfigToml, WORKSPACE_META_DIR_NAME,
+    apply_lht_preset as apply_lht_preset_overlay, compaction_threshold_tokens_for_model,
+    legacy_workspace_meta_dir, lht_product_defaults, normalize_gate_mode, normalize_lht_mode,
+    resolve_lht, vision_should_check_degenerate_ocr_template, vision_user_prompt_for_model,
     workspace_meta_dir, workspace_meta_dir_read, workspace_meta_file_read,
     workspace_meta_file_write,
 };
@@ -242,7 +241,11 @@ pub fn save_vision_bridge(
         Some(bu.to_string())
     };
     let m = model.trim();
-    v.model = if m.is_empty() { None } else { Some(m.to_string()) };
+    v.model = if m.is_empty() {
+        None
+    } else {
+        Some(m.to_string())
+    };
 
     store.config.vision = Some(v);
     store.save().map_err(|e| e.to_string())?;
@@ -319,18 +322,23 @@ pub async fn vision_transcribe_image(data_url: String) -> Result<String, String>
     }
 
     let store = ConfigStore::load(None).map_err(|e| e.to_string())?;
-    let vision = store.config.vision.as_ref().ok_or_else(|| {
-        "未配置视觉桥接：请在 设置 → API Key 中保存视觉桥接密钥".to_string()
-    })?;
+    let vision = store
+        .config
+        .vision
+        .as_ref()
+        .ok_or_else(|| "未配置视觉桥接：请在 设置 → API Key 中保存视觉桥接密钥".to_string())?;
     // Key from OS keyring first, then config.toml fallback (legacy plaintext)
     let secrets = deepseek_secrets::Secrets::auto_detect();
-    let api_key = secrets.resolve("vision").or_else(|| {
-        vision
-            .api_key
-            .as_ref()
-            .filter(|s| !s.trim().is_empty())
-            .cloned()
-    }).ok_or_else(|| "未配置视觉桥接 API Key".to_string())?;
+    let api_key = secrets
+        .resolve("vision")
+        .or_else(|| {
+            vision
+                .api_key
+                .as_ref()
+                .filter(|s| !s.trim().is_empty())
+                .cloned()
+        })
+        .ok_or_else(|| "未配置视觉桥接 API Key".to_string())?;
     let base_url = vision
         .base_url
         .as_deref()
@@ -397,12 +405,19 @@ pub async fn vision_transcribe_image(data_url: String) -> Result<String, String>
 
     let body_bytes = serde_json::to_vec(&body).map_err(|e| format!("序列化请求失败: {e}"))?;
     let body_mb = body_bytes.len() as f64 / (1024.0 * 1024.0);
-    let upload_est_seconds = |mbps: f64| -> f64 { (body_bytes.len() as f64 * 8.0) / (mbps * 1_000_000.0) };
+    let upload_est_seconds =
+        |mbps: f64| -> f64 { (body_bytes.len() as f64 * 8.0) / (mbps * 1_000_000.0) };
     eprintln!(
         "[vision] POST {}/chat/completions  body={:.1} MB  model={}  timeout={}s \
          上传耗时估算: 10Mbps≈{:.1}s 5Mbps≈{:.1}s 2Mbps≈{:.1}s 1Mbps≈{:.1}s",
-        base_url, body_mb, model, timeout_secs,
-        upload_est_seconds(10.0), upload_est_seconds(5.0), upload_est_seconds(2.0), upload_est_seconds(1.0),
+        base_url,
+        body_mb,
+        model,
+        timeout_secs,
+        upload_est_seconds(10.0),
+        upload_est_seconds(5.0),
+        upload_est_seconds(2.0),
+        upload_est_seconds(1.0),
     );
 
     let resp = client
@@ -429,9 +444,11 @@ pub async fn vision_transcribe_image(data_url: String) -> Result<String, String>
         return Err(format!("视觉桥接返回错误 (HTTP {status}): {msg}"));
     }
 
-    let content_raw = resp_body["choices"].get(0).and_then(|c| c.get("message")).and_then(|m| m.get("content")).ok_or_else(|| {
-        "视觉桥接响应格式异常：缺少 choices[0].message.content".to_string()
-    })?;
+    let content_raw = resp_body["choices"]
+        .get(0)
+        .and_then(|c| c.get("message"))
+        .and_then(|m| m.get("content"))
+        .ok_or_else(|| "视觉桥接响应格式异常：缺少 choices[0].message.content".to_string())?;
     let text = coerce_chat_completion_message_text(content_raw)?;
     let text = text.trim().to_string();
     if text.is_empty() {
@@ -531,9 +548,9 @@ pub async fn get_lht_composer_mode() -> Result<String, String> {
 /// Persist the composer LHT tri-state. Takes effect on the next turn without restart.
 #[tauri::command]
 pub fn set_lht_composer_mode(mode: String) -> Result<(), String> {
-    deepseek_config::write_lht_composer_mode_setting(deepseek_config::LhtComposerMode::from_storage(
-        &mode,
-    ))
+    deepseek_config::write_lht_composer_mode_setting(
+        deepseek_config::LhtComposerMode::from_storage(&mode),
+    )
     .map_err(|e| e.to_string())
 }
 
@@ -797,8 +814,7 @@ fn read_binary_file_at(canonical_file: &Path) -> Result<BinaryFileResponse, Stri
         size as usize
     };
 
-    let mut file =
-        std::fs::File::open(canonical_file).map_err(|e| format!("无法读取文件: {e}"))?;
+    let mut file = std::fs::File::open(canonical_file).map_err(|e| format!("无法读取文件: {e}"))?;
     let mut data = Vec::with_capacity(read_limit);
     file.by_ref()
         .take(read_limit as u64)
@@ -1007,9 +1023,8 @@ pub fn open_external_url(url: String) -> Result<(), String> {
     if url.is_empty() {
         return Err("链接为空".into());
     }
-    let allowed = url.starts_with("https://")
-        || url.starts_with("http://")
-        || url.starts_with("mailto:");
+    let allowed =
+        url.starts_with("https://") || url.starts_with("http://") || url.starts_with("mailto:");
     if !allowed {
         return Err("仅支持 http(s) 与 mailto 链接".into());
     }
@@ -1026,7 +1041,11 @@ pub async fn export_thread_json(
     if enc.is_empty() {
         return Err("thread_id 无效".to_string());
     }
-    let url = format!("http://127.0.0.1:{}/v1/threads/{}", ctx.require_port()?, enc);
+    let url = format!(
+        "http://127.0.0.1:{}/v1/threads/{}",
+        ctx.require_port()?,
+        enc
+    );
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
         .build()
@@ -1159,11 +1178,7 @@ pub fn get_system_settings() -> Result<SystemSettings, String> {
             .as_ref()
             .and_then(|f| f.exec_policy)
             .unwrap_or(true),
-        memory_enabled: cfg
-            .memory
-            .as_ref()
-            .and_then(|m| m.enabled)
-            .unwrap_or(false),
+        memory_enabled: cfg.memory.as_ref().and_then(|m| m.enabled).unwrap_or(false),
         topic_memory_enabled: cfg
             .topic_memory
             .as_ref()
@@ -1221,11 +1236,7 @@ pub fn save_system_settings(
         s.max_concurrent = None;
     }
     let subagents = cfg.subagents.get_or_insert_with(Default::default);
-    subagents.step_timeout_secs = Some(
-        settings
-            .subagent_step_timeout_secs
-            .clamp(120, 1800),
-    );
+    subagents.step_timeout_secs = Some(settings.subagent_step_timeout_secs.clamp(120, 1800));
 
     // features：使用 get_or_insert_with 而非 take() ——
     // 避免丢弃 config.toml 中已有的其他 features 字段
@@ -1314,10 +1325,7 @@ fn gate_mode_from_toml(raw: Option<&String>) -> String {
 
 fn lht_settings_from_config(cfg: &ConfigToml) -> LhtSettings {
     let lh = resolve_lht(&cfg.long_horizon);
-    let gate = lh
-        .completion_gate
-        .clone()
-        .unwrap_or_default();
+    let gate = lh.completion_gate.clone().unwrap_or_default();
     LhtSettings {
         enabled: lh.enabled.unwrap_or(false),
         mode: normalize_lht_mode(lh.mode.as_deref().unwrap_or("auto")),
@@ -1328,11 +1336,7 @@ fn lht_settings_from_config(cfg: &ConfigToml) -> LhtSettings {
         max_auto_continue_rounds: lh.max_auto_continue_rounds.unwrap_or(16),
         auto_verify_replay: gate_mode_from_toml(gate.auto_verify_replay.as_ref()),
         toolchain_gate: gate_mode_from_toml(gate.toolchain_gate.as_ref()),
-        stub_gate: normalize_gate_mode(
-            gate.stub_gate
-                .as_deref()
-                .unwrap_or("observe"),
-        ),
+        stub_gate: normalize_gate_mode(gate.stub_gate.as_deref().unwrap_or("observe")),
         max_manifest_rounds: gate.max_manifest_rounds.unwrap_or(5),
         max_audit_rounds: gate.max_audit_rounds.unwrap_or(5),
         max_infra_strikes: gate.max_infra_strikes.unwrap_or(3),
@@ -1441,7 +1445,9 @@ pub fn save_lht_settings(
         mode: Some(normalize_lht_mode(&settings.mode)),
         progress_via_git: Some(settings.progress_via_git),
         max_nudges_per_item: Some(settings.max_nudges_per_item.clamp(1, 20)),
-        blocked_nudges_without_progress: Some(settings.blocked_nudges_without_progress.clamp(1, 10)),
+        blocked_nudges_without_progress: Some(
+            settings.blocked_nudges_without_progress.clamp(1, 10),
+        ),
         auto_continue: Some(settings.auto_continue),
         max_auto_continue_rounds: Some(settings.max_auto_continue_rounds.clamp(1, 64)),
         reinject_every_steps: store
@@ -1454,7 +1460,9 @@ pub fn save_lht_settings(
             enabled: Some(settings.macro_loop_enabled),
             max_macro_cycles: Some(settings.macro_loop_max_cycles.clamp(1, 8)),
             max_craft_rounds_per_cycle: Some(settings.macro_loop_max_craft_rounds.clamp(1, 4)),
-            auto_enter_craft: Some(normalize_macro_auto_enter(&settings.macro_loop_auto_enter_craft)),
+            auto_enter_craft: Some(normalize_macro_auto_enter(
+                &settings.macro_loop_auto_enter_craft,
+            )),
             craft_on_small_tasks: Some(settings.macro_loop_craft_on_small_tasks),
             min_checklist_items_for_craft: Some(settings.macro_loop_min_checklist_items.max(1)),
         }),
@@ -1554,7 +1562,11 @@ pub async fn export_session_json(
     if enc.is_empty() {
         return Err("session_id 无效".to_string());
     }
-    let url = format!("http://127.0.0.1:{}/v1/sessions/{}", ctx.require_port()?, enc);
+    let url = format!(
+        "http://127.0.0.1:{}/v1/sessions/{}",
+        ctx.require_port()?,
+        enc
+    );
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
         .build()
@@ -1673,7 +1685,10 @@ pub fn get_symbol_index_info(workspace: String) -> Result<SymbolIndexInfo, Strin
     let index: serde_json::Value =
         serde_json::from_str(&raw).map_err(|e| format!("索引 JSON 解析失败: {e}"))?;
 
-    let schema_version = index.get("schema_version").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+    let schema_version = index
+        .get("schema_version")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0) as u32;
     let file_count = index
         .get("files")
         .and_then(|v| v.as_object())
@@ -1718,8 +1733,25 @@ pub fn get_symbol_index_info(workspace: String) -> Result<SymbolIndexInfo, Strin
                 .unwrap_or("");
             if !matches!(
                 ext,
-                "rs" | "ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs" | "py" | "pyi" | "go"
-                    | "c" | "h" | "cpp" | "cc" | "cxx" | "hpp" | "hxx" | "hh" | "vue" | "svelte"
+                "rs" | "ts"
+                    | "tsx"
+                    | "js"
+                    | "jsx"
+                    | "mjs"
+                    | "cjs"
+                    | "py"
+                    | "pyi"
+                    | "go"
+                    | "c"
+                    | "h"
+                    | "cpp"
+                    | "cc"
+                    | "cxx"
+                    | "hpp"
+                    | "hxx"
+                    | "hh"
+                    | "vue"
+                    | "svelte"
             ) {
                 continue;
             }
@@ -1761,14 +1793,10 @@ pub fn delete_symbol_index(workspace: String) -> Result<(), String> {
         ".symbols_fingerprint",
         ".symbols_changes.json",
     ] {
-        for root in [
-            workspace_meta_dir(&ws),
-            legacy_workspace_meta_dir(&ws),
-        ] {
+        for root in [workspace_meta_dir(&ws), legacy_workspace_meta_dir(&ws)] {
             let path = root.join(rel);
             if path.exists() {
-                std::fs::remove_file(&path)
-                    .map_err(|e| format!("删除索引文件失败: {e}"))?;
+                std::fs::remove_file(&path).map_err(|e| format!("删除索引文件失败: {e}"))?;
             }
         }
     }

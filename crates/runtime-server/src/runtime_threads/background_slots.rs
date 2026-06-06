@@ -3,8 +3,8 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex as StdMutex};
 
-use deepseek_runtime_orchestrator::runtime_threads::types::ThreadRecord;
 use deepseek_runtime_adapters::tools::{RuntimeToolHostWire, ToolAutomationHost, ToolTaskHost};
+use deepseek_runtime_orchestrator::runtime_threads::types::ThreadRecord;
 
 use crate::automation_manager::SharedAutomationManager;
 use crate::task_manager::SharedTaskManager;
@@ -47,17 +47,17 @@ impl RuntimeThreadBackgroundSlots {
     ) -> RuntimeToolServices {
         let task_manager = self.task_manager.lock().ok().and_then(|slot| slot.clone());
         let automations = self.automations.lock().ok().and_then(|slot| slot.clone());
-        let task_host = task_manager
-            .clone()
-            .map(|mgr| std::sync::Arc::new(TaskManagerHost(mgr)) as std::sync::Arc<dyn ToolTaskHost>);
-        let automation_host = match (automations, task_manager) {
-            (Some(automations), Some(tasks)) => Some(std::sync::Arc::new(AutomationManagerHost {
-                automations,
-                tasks,
-            })
-                as std::sync::Arc<dyn ToolAutomationHost>),
-            _ => None,
-        };
+        let task_host = task_manager.clone().map(|mgr| {
+            std::sync::Arc::new(TaskManagerHost(mgr)) as std::sync::Arc<dyn ToolTaskHost>
+        });
+        let automation_host =
+            match (automations, task_manager) {
+                (Some(automations), Some(tasks)) => Some(std::sync::Arc::new(
+                    AutomationManagerHost { automations, tasks },
+                )
+                    as std::sync::Arc<dyn ToolAutomationHost>),
+                _ => None,
+            };
         RuntimeToolServices {
             wire: RuntimeToolHostWire {
                 task_data_dir: Some(task_data_dir),

@@ -1,11 +1,9 @@
-
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
 use crate::tools::spec::{
-    ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
-    optional_bool,
+    ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_bool,
 };
 
 use super::super::deprecation::wrap_with_deprecation_notice;
@@ -106,5 +104,3 @@ impl ToolSpec for AgentSendInputTool {
         }
     }
 }
-
-

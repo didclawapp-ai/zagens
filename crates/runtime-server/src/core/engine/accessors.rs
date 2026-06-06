@@ -1,8 +1,8 @@
 //! Downcast accessors for tui concrete handles on the core [`Engine`].
 
+use super::Engine;
 use super::runtime_ext::EngineRuntimeExt;
 use super::types::EngineConfigExt;
-use super::Engine;
 
 impl Engine {
     pub(in crate::core::engine) fn runtime_ext(&self) -> &EngineRuntimeExt {

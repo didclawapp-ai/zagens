@@ -10,11 +10,7 @@ use crate::audit::log_sensitive_event;
 use super::super::providers::ApiProvider;
 use super::super::types::Config;
 use super::super::{API_KEYRING_SENTINEL, DEFAULT_TEXT_MODEL};
-use super::paths::{
-    default_config_path, ensure_parent_dir,
-    write_config_file_secure,
-};
-
+use super::paths::{default_config_path, ensure_parent_dir, write_config_file_secure};
 
 /// Where a saved credential ended up. Returned by [`save_api_key`] so
 /// the caller can show a confirmation message without leaking the key.
@@ -464,4 +460,3 @@ pub fn clear_api_key() -> Result<()> {
 
     Ok(())
 }
-

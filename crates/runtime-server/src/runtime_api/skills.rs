@@ -3,16 +3,16 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use axum::Json;
 use serde::{Deserialize, Serialize};
 
 use crate::config::Config;
 use crate::skills::install::{
-    import_local_directory, InstallError, InstallOutcome, InstallSource, DEFAULT_MAX_SIZE_BYTES,
+    DEFAULT_MAX_SIZE_BYTES, InstallError, InstallOutcome, InstallSource, import_local_directory,
 };
-use crate::skills::{install, SkillRegistry};
+use crate::skills::{SkillRegistry, install};
 
 use super::{ApiError, RuntimeApiState};
 
@@ -197,13 +197,9 @@ pub(crate) async fn import_skill_local(
                 root.display()
             ))
         })?;
-        let installed = import_local_directory(
-            &source_directory,
-            &root,
-            replace,
-            DEFAULT_MAX_SIZE_BYTES,
-        )
-        .map_err(map_skill_install_api_error)?;
+        let installed =
+            import_local_directory(&source_directory, &root, replace, DEFAULT_MAX_SIZE_BYTES)
+                .map_err(map_skill_install_api_error)?;
         Ok::<_, ApiError>((root, installed))
     })
     .await
@@ -242,18 +238,12 @@ pub(crate) async fn install_skill_remote(
     let max_size = skills_cfg
         .map(crate::config::SkillsConfig::max_install_size_bytes)
         .unwrap_or(DEFAULT_MAX_SIZE_BYTES);
-    let network = config
-        .network
-        .clone()
-        .unwrap_or_default()
-        .into_runtime();
+    let network = config.network.clone().unwrap_or_default().into_runtime();
 
     let skills_root = tokio::task::spawn_blocking({
         let config = config.clone();
         let workspace = workspace.clone();
-        move || {
-            resolve_create_skill_parent(&config, &workspace, parent_directory.as_ref(), &scope)
-        }
+        move || resolve_create_skill_parent(&config, &workspace, parent_directory.as_ref(), &scope)
     })
     .await
     .map_err(|e| ApiError::internal(format!("resolve skills root: {e}")))??;
@@ -327,7 +317,9 @@ async fn build_skill_mutation_response(
 
 fn map_skill_install_api_error(err: anyhow::Error) -> ApiError {
     if let Some(InstallError::AlreadyInstalled(name)) = err.downcast_ref() {
-        return ApiError::conflict(format!("skill already installed: {name} (set replace=true to overwrite)"));
+        return ApiError::conflict(format!(
+            "skill already installed: {name} (set replace=true to overwrite)"
+        ));
     }
     ApiError::bad_request(format!("{err:#}"))
 }
@@ -477,4 +469,3 @@ fn resolve_skills_dir(config: &Config, workspace: &std::path::Path) -> PathBuf {
     }
     config.skills_dir()
 }
-

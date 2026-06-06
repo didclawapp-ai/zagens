@@ -79,8 +79,7 @@ impl RuntimeThreadManager {
         };
         let thread = self.deref().update_thread(id, req).await?;
         if let (Some(raw), Some(old_ws)) = (workspace_change.as_ref(), prior_workspace) {
-            let new_ws =
-                RuntimeThreadManager::resolve_thread_workspace_path(&self.workspace, raw)?;
+            let new_ws = RuntimeThreadManager::resolve_thread_workspace_path(&self.workspace, raw)?;
             let old_canonical = fs::canonicalize(&old_ws).unwrap_or(old_ws);
             if new_ws != old_canonical {
                 let rebuild_ws = thread.workspace.clone();
@@ -106,12 +105,8 @@ impl RuntimeThreadManager {
             .list_turns_for_thread(id)
             .ok()
             .and_then(|turns| turns.last().cloned());
-        let last_api = last_turn
-            .as_ref()
-            .and_then(|t| t.last_request_input_tokens);
-        let last_reported = last_turn
-            .and_then(|t| t.usage)
-            .map(|u| u.input_tokens);
+        let last_api = last_turn.as_ref().and_then(|t| t.last_request_input_tokens);
+        let last_reported = last_turn.and_then(|t| t.usage).map(|u| u.input_tokens);
 
         {
             let active = self.active.lock().await;

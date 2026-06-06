@@ -20,9 +20,7 @@ use super::process::{
     join_reader_thread_bounded, kill_child_process_group, prepend_sandbox_enforcement_warning,
     spawn_reader_thread,
 };
-use super::types::{
-    ShellDeltaResult, ShellJobDetail, ShellJobSnapshot, ShellResult, ShellStatus,
-};
+use super::types::{ShellDeltaResult, ShellJobDetail, ShellJobSnapshot, ShellResult, ShellStatus};
 use crate::sandbox::{
     CommandSpec, ExecEnv, SandboxManager, SandboxPolicy as ExecutionSandboxPolicy, SandboxType,
 };

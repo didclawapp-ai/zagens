@@ -7,7 +7,7 @@ use anyhow::{Result, bail};
 use async_trait::async_trait;
 use chrono::Utc;
 use tokio::sync::mpsc;
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 

@@ -43,11 +43,17 @@ fn blackboard_rel(task_id: &str) -> Result<String, String> {
 }
 
 fn blackboard_path_read(workspace: &Path, task_id: &str) -> Result<PathBuf, String> {
-    Ok(workspace_meta_file_read(workspace, &blackboard_rel(task_id)?))
+    Ok(workspace_meta_file_read(
+        workspace,
+        &blackboard_rel(task_id)?,
+    ))
 }
 
 fn blackboard_path_write(workspace: &Path, task_id: &str) -> Result<PathBuf, String> {
-    Ok(workspace_meta_file_write(workspace, &blackboard_rel(task_id)?))
+    Ok(workspace_meta_file_write(
+        workspace,
+        &blackboard_rel(task_id)?,
+    ))
 }
 
 fn ensure_dir(path: &PathBuf) {
@@ -186,7 +192,10 @@ pub fn write_blackboard_partition(
         }
         SubAgentType::Implementer => {
             // CRAFT V2: append current round to rounds[] history
-            ("implementer", build_implementer_rounds(result, &existing_raw, workspace))
+            (
+                "implementer",
+                build_implementer_rounds(result, &existing_raw, workspace),
+            )
         }
         SubAgentType::Review => {
             let mut partition = json!({
@@ -207,23 +216,25 @@ pub fn write_blackboard_partition(
             }
             ("reviewer", partition)
         }
-        SubAgentType::Verifier => {
-            ("verifier", json!({
+        SubAgentType::Verifier => (
+            "verifier",
+            json!({
                 "verdict": result.structured_verdict.as_ref()
                     .map(|v| serde_json::to_value(&v.verdict).unwrap_or(json!("PASS")))
                     .unwrap_or(json!("PASS")),
                 "failures": build_verifier_failures(result),
                 "summary": extract_verifier_summary(result),
-            }))
-        }
-        SubAgentType::Auditor => {
-            ("auditor", json!({
+            }),
+        ),
+        SubAgentType::Auditor => (
+            "auditor",
+            json!({
                 "verdict": result.structured_verdict.as_ref()
                     .map(|v| serde_json::to_value(&v.verdict).unwrap_or(json!("FAIL")))
                     .unwrap_or(json!("FAIL")),
                 "details": extract_auditor_details(result),
-            }))
-        }
+            }),
+        ),
         _ => return, // General / Plan / Custom — no blackboard write
     };
 
@@ -284,7 +295,10 @@ pub fn read_structured_verdict_from_blackboard(
 
 /// BLOCKER-severity items from the latest CRAFT review blackboard partition.
 #[must_use]
-pub fn read_reviewer_blocker_items(workspace: &Path, task_id: &str) -> Vec<deepseek_core::subagent::VerdictItem> {
+pub fn read_reviewer_blocker_items(
+    workspace: &Path,
+    task_id: &str,
+) -> Vec<deepseek_core::subagent::VerdictItem> {
     read_structured_verdict_from_blackboard(workspace, task_id, &SubAgentType::Review)
         .map(|v| v.items)
         .unwrap_or_default()
@@ -305,7 +319,8 @@ fn format_explorer_findings(board: &Value) -> Option<String> {
         let file = f.get("file").and_then(|v| v.as_str()).unwrap_or("?");
         let concern = f.get("concern").and_then(|v| v.as_str()).unwrap_or("?");
         let severity = f.get("severity").and_then(|v| v.as_str()).unwrap_or("?");
-        let suggestion = f.get("suggestion")
+        let suggestion = f
+            .get("suggestion")
             .and_then(|v| v.as_str())
             .map(|s| format!(" → {s}"))
             .unwrap_or_default();
@@ -323,7 +338,11 @@ fn format_reviewer_blockers(board: &Value) -> Option<String> {
     for b in blockers {
         let id = b.get("id").and_then(|v| v.as_str()).unwrap_or("?");
         let file = b.get("file").and_then(|v| v.as_str()).unwrap_or("?");
-        let line = b.get("line").and_then(|v| v.as_u64()).map(|l| format!(":{l}")).unwrap_or_default();
+        let line = b
+            .get("line")
+            .and_then(|v| v.as_u64())
+            .map(|l| format!(":{l}"))
+            .unwrap_or_default();
         let desc = b.get("description").and_then(|v| v.as_str()).unwrap_or("?");
         lines.push(format!("- [{id}] `{file}{line}` — {desc}"));
     }
@@ -343,10 +362,7 @@ fn format_verifier_failures(board: &Value) -> Option<String> {
             .and_then(|v| v.as_u64())
             .map(|l| format!(":{l}"))
             .unwrap_or_default();
-        let observed = f
-            .get("observed")
-            .and_then(|v| v.as_str())
-            .unwrap_or("?");
+        let observed = f.get("observed").and_then(|v| v.as_str()).unwrap_or("?");
         let hypothesis = f
             .get("hypothesis")
             .and_then(|v| v.as_str())
@@ -429,14 +445,18 @@ fn build_explorer_findings(result: &SubAgentResult) -> Value {
     // Fallback: CRAFT structured_verdict (legacy explore output)
     match &result.structured_verdict {
         Some(v) => {
-            let items: Vec<Value> = v.items.iter().map(|item| {
-                json!({
-                    "file": item.file,
-                    "concern": item.description,
-                    "severity": item.severity,
-                    "suggestion": item.suggestion,
+            let items: Vec<Value> = v
+                .items
+                .iter()
+                .map(|item| {
+                    json!({
+                        "file": item.file,
+                        "concern": item.description,
+                        "severity": item.severity,
+                        "suggestion": item.suggestion,
+                    })
                 })
-            }).collect();
+                .collect();
             json!(items)
         }
         None => json!([]),
@@ -456,7 +476,10 @@ fn build_verifier_failures(result: &SubAgentResult) -> Value {
     let Some(v) = &result.structured_verdict else {
         return json!([]);
     };
-    if !matches!(v.verdict, super::VerdictLevel::Fail | super::VerdictLevel::Blocker) {
+    if !matches!(
+        v.verdict,
+        super::VerdictLevel::Fail | super::VerdictLevel::Blocker
+    ) {
         return json!([]);
     }
     let failures: Vec<Value> = v
@@ -480,12 +503,7 @@ fn extract_verifier_summary(result: &SubAgentResult) -> String {
         .structured_verdict
         .as_ref()
         .and_then(|v| v.summary.as_deref())
-        .unwrap_or(
-            result
-                .result
-                .as_deref()
-                .unwrap_or("")
-        )
+        .unwrap_or(result.result.as_deref().unwrap_or(""))
         .to_string()
 }
 
@@ -548,7 +566,12 @@ pub fn write_scratchpad_mirror(
     merge_board_partition(workspace, task_id, "scratchpad", partition);
 }
 
-fn merge_board_partition(workspace: &Path, task_id: &str, partition_key: &str, partition_data: Value) {
+fn merge_board_partition(
+    workspace: &Path,
+    task_id: &str,
+    partition_key: &str,
+    partition_data: Value,
+) {
     let Ok(path) = blackboard_path_write(workspace, task_id) else {
         return;
     };
@@ -607,10 +630,7 @@ mod tests {
     use std::path::PathBuf;
 
     fn test_workspace() -> PathBuf {
-        std::env::temp_dir().join(format!(
-            "deepseek-blackboard-test-{}",
-            std::process::id()
-        ))
+        std::env::temp_dir().join(format!("deepseek-blackboard-test-{}", std::process::id()))
     }
 
     #[test]
@@ -618,9 +638,15 @@ mod tests {
         let ws = test_workspace();
         let path = blackboard_path_write(&ws, "bugfix-001").expect("valid task id");
         let s = path.to_string_lossy();
-        assert!(s.contains("bugfix-001"), "path should contain task id, got: {s}");
+        assert!(
+            s.contains("bugfix-001"),
+            "path should contain task id, got: {s}"
+        );
         assert!(s.ends_with(".json"), "path should end with .json, got: {s}");
-        assert!(s.contains(&ws.to_string_lossy().to_string()), "path should be under workspace");
+        assert!(
+            s.contains(&ws.to_string_lossy().to_string()),
+            "path should be under workspace"
+        );
     }
 
     #[test]
@@ -633,7 +659,8 @@ mod tests {
     #[test]
     fn test_read_blackboard_returns_none_for_missing_file() {
         let ws = test_workspace();
-        let result = read_blackboard_section(&ws, "nonexistent-task-99999", &SubAgentType::Implementer);
+        let result =
+            read_blackboard_section(&ws, "nonexistent-task-99999", &SubAgentType::Implementer);
         assert!(result.is_none(), "missing file should return None");
     }
 
@@ -663,9 +690,8 @@ mod tests {
     // ── CRAFT P1 integration tests ──────────────────────────
 
     use crate::tools::subagent::{
-        StructuredVerdict, VerdictItem, VerdictLevel,
-        SubAgentResult, SubAgentType as SAT, SubAgentAssignment,
-        SubAgentStatus,
+        StructuredVerdict, SubAgentAssignment, SubAgentResult, SubAgentStatus, SubAgentType as SAT,
+        VerdictItem, VerdictLevel,
     };
 
     #[test]
@@ -728,9 +754,15 @@ mod tests {
         let section = read_blackboard_section(&ws, task_id, &SAT::Implementer)
             .expect("should read back explorer findings for implementer");
 
-        assert!(section.contains("### Explorer findings"), "section: {section}");
+        assert!(
+            section.contains("### Explorer findings"),
+            "section: {section}"
+        );
         assert!(section.contains("auth/login.rs"), "section: {section}");
-        assert!(section.contains("token uses standard RNG"), "section: {section}");
+        assert!(
+            section.contains("token uses standard RNG"),
+            "section: {section}"
+        );
         assert!(section.contains("replace with OsRng"), "section: {section}");
         assert!(section.contains("auth/session.rs"), "section: {section}");
         assert!(section.contains("session timeout"), "section: {section}");
@@ -821,9 +853,15 @@ mod tests {
         let section = read_blackboard_section(&ws, task_id, &SAT::Implementer)
             .expect("should read both sections");
 
-        assert!(section.contains("### Explorer findings"), "section: {section}");
+        assert!(
+            section.contains("### Explorer findings"),
+            "section: {section}"
+        );
         assert!(section.contains("unsafe usage"), "section: {section}");
-        assert!(section.contains("### Reviewer blockers"), "section: {section}");
+        assert!(
+            section.contains("### Reviewer blockers"),
+            "section: {section}"
+        );
         assert!(section.contains("missing null check"), "section: {section}");
 
         let _ = std::fs::remove_file(blackboard_path_write(&ws, task_id).expect("valid task id"));
@@ -891,7 +929,9 @@ fn extract_files_examined(result: &SubAgentResult) -> Value {
         let mut in_files = false;
         for line in section.lines() {
             let trimmed = line.trim();
-            if trimmed.starts_with("- **Files examined**") || trimmed.starts_with("- Files examined") {
+            if trimmed.starts_with("- **Files examined**")
+                || trimmed.starts_with("- Files examined")
+            {
                 in_files = true;
                 continue;
             }
@@ -901,7 +941,10 @@ fn extract_files_examined(result: &SubAgentResult) -> Value {
                     if !path.is_empty() {
                         files.push(path.to_string());
                     }
-                } else if trimmed.starts_with("- **") || trimmed.starts_with("##") || trimmed.is_empty() {
+                } else if trimmed.starts_with("- **")
+                    || trimmed.starts_with("##")
+                    || trimmed.is_empty()
+                {
                     break;
                 }
             }
@@ -925,7 +968,11 @@ fn extract_coverage_confidence(result: &SubAgentResult) -> Value {
     json!("unknown")
 }
 
-fn build_implementer_rounds(result: &SubAgentResult, existing_raw: &str, workspace: &Path) -> Value {
+fn build_implementer_rounds(
+    result: &SubAgentResult,
+    existing_raw: &str,
+    workspace: &Path,
+) -> Value {
     // Read existing rounds, append a new one
     let mut existing_rounds: Vec<Value> = if existing_raw.trim().is_empty() {
         Vec::new()
@@ -963,9 +1010,7 @@ fn read_symbol_changes(workspace: &Path) -> Value {
 fn extract_changes_from_result(result: &SubAgentResult) -> Value {
     // Extract changed files from result text (look for path-like references)
     let text = result.result.as_deref().unwrap_or("");
-    let re = regex::Regex::new(
-        r"(?m)^\s*(?:Modified|Changed|Added|Edited):\s*(.+)$"
-    ).ok();
+    let re = regex::Regex::new(r"(?m)^\s*(?:Modified|Changed|Added|Edited):\s*(.+)$").ok();
     let mut files: Vec<Value> = Vec::new();
     if let Some(re) = re {
         for cap in re.captures_iter(text) {
@@ -976,9 +1021,7 @@ fn extract_changes_from_result(result: &SubAgentResult) -> Value {
     }
     if files.is_empty() {
         // Fallback: look for file paths in the result
-        let path_re = regex::Regex::new(
-            r"`(crates/\S+\.(?:rs|toml|ts|tsx|js|json|md))`"
-        ).ok();
+        let path_re = regex::Regex::new(r"`(crates/\S+\.(?:rs|toml|ts|tsx|js|json|md))`").ok();
         if let Some(re) = path_re {
             for cap in re.captures_iter(text) {
                 if let Some(m) = cap.get(1) {

@@ -3,8 +3,7 @@
 use std::io::Write;
 
 use crate::tools::spec::{
-    ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
-    required_str,
+    ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, required_str,
 };
 use async_trait::async_trait;
 use serde_json::json;

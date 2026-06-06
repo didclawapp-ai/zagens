@@ -1,6 +1,8 @@
 //! Project mapping tool for understanding codebase structure.
 
-use crate::utils::{is_key_file, project_tree_with_limit, summarize_project, DEFAULT_PROJECT_TREE_LINE_LIMIT};
+use crate::utils::{
+    DEFAULT_PROJECT_TREE_LINE_LIMIT, is_key_file, project_tree_with_limit, summarize_project,
+};
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::Serialize;

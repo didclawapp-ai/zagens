@@ -11,8 +11,8 @@ use deepseek_runtime_adapters::tools::host_policy_decision;
 
 use super::registry::fetch_registry;
 use super::types::{
-    DownloadAttempt, DownloadOutcome, InstallError, InstallSource,
-    RegistryFetchResult, UrlResolution,
+    DownloadAttempt, DownloadOutcome, InstallError, InstallSource, RegistryFetchResult,
+    UrlResolution,
 };
 
 /// Resolve the source spec into one or more candidate URLs to try in order.
@@ -322,7 +322,12 @@ pub(super) fn scan_tarball(bytes: &[u8], max_size: u64) -> Result<TarballScan> {
     })
 }
 
-pub(super) fn extract_into(scan: &TarballScan, bytes: &[u8], dest: &Path, max_size: u64) -> Result<()> {
+pub(super) fn extract_into(
+    scan: &TarballScan,
+    bytes: &[u8],
+    dest: &Path,
+    max_size: u64,
+) -> Result<()> {
     let cursor = std::io::Cursor::new(bytes);
     let gz = GzDecoder::new(cursor);
     let mut archive = tar::Archive::new(gz);

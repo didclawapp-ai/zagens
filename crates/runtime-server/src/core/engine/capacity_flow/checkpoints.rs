@@ -18,10 +18,7 @@ impl Engine {
         mode: TurnLoopMode,
     ) -> bool {
         let observation = self.capacity_observation(turn);
-        let snapshot = self
-            .0
-            .capacity_controller
-            .observe_pre_turn(observation);
+        let snapshot = self.0.capacity_controller.observe_pre_turn(observation);
         let decision = self
             .0
             .capacity_controller
@@ -49,10 +46,7 @@ impl Engine {
         _consecutive_tool_error_steps: u32,
     ) -> bool {
         let observation = self.capacity_observation(turn);
-        let snapshot = self
-            .0
-            .capacity_controller
-            .observe_post_tool(observation);
+        let snapshot = self.0.capacity_controller.observe_post_tool(observation);
         let decision = self
             .0
             .capacity_controller
@@ -105,9 +99,7 @@ impl Engine {
             .cloned()
             .or_else(|| {
                 let observation = self.capacity_observation(turn);
-                self.0
-                    .capacity_controller
-                    .observe_pre_turn(observation)
+                self.0.capacity_controller.observe_pre_turn(observation)
             });
         let Some(snapshot) = snapshot else {
             return false;

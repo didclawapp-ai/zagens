@@ -3,9 +3,7 @@
 use std::path::{Path, PathBuf};
 
 fn workspace_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..")
 }
 
 fn read_crate_sources(crate_dir: &str) -> String {
@@ -66,17 +64,17 @@ fn production_crates_do_not_reference_legacy_thread_message_turn_port() {
 
 #[test]
 fn workspace_has_no_state_crate() {
-    let state_cargo = workspace_root().join("crates").join("state").join("Cargo.toml");
-    assert!(
-        !state_cargo.exists(),
-        "crates/state must be removed (D15)"
-    );
+    let state_cargo = workspace_root()
+        .join("crates")
+        .join("state")
+        .join("Cargo.toml");
+    assert!(!state_cargo.exists(), "crates/state must be removed (D15)");
 }
 
 #[test]
 fn core_cargo_has_no_state_dependency() {
-    let manifest =
-        std::fs::read_to_string(workspace_root().join("crates/core/Cargo.toml")).expect("core manifest");
+    let manifest = std::fs::read_to_string(workspace_root().join("crates/core/Cargo.toml"))
+        .expect("core manifest");
     assert!(
         !manifest.contains("deepseek-state"),
         "core must not depend on deepseek-state"

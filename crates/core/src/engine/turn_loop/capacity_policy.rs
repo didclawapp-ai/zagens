@@ -60,6 +60,10 @@ mod tests {
 
     #[test]
     fn runs_on_consecutive_tool_failures() {
-        assert!(should_run_capacity_error_escalation(0, 2, &[ErrorCategory::Tool]));
+        assert!(should_run_capacity_error_escalation(
+            0,
+            2,
+            &[ErrorCategory::Tool]
+        ));
     }
 }

@@ -62,9 +62,7 @@ fn coalesce(left: Option<DemandTag>, right: DemandTag) -> DemandTag {
 
 impl TurnCoordinator {
     pub fn is_draining(&self, thread_id: &str) -> bool {
-        self.entries
-            .get(thread_id)
-            .is_some_and(|e| e.draining)
+        self.entries.get(thread_id).is_some_and(|e| e.draining)
     }
 
     /// Mark the start of a drain generation (explicit `run` or promoted work).
@@ -153,18 +151,21 @@ mod tests {
         let mut c = TurnCoordinator::default();
         assert_eq!(c.request_run("t1"), CoordinatorAction::StartDrain);
         assert_eq!(c.request_run("t1"), CoordinatorAction::JoinDrain);
-        assert_eq!(
-            c.finish_drain("t1"),
-            Some(DemandTag::Run)
-        );
+        assert_eq!(c.finish_drain("t1"), Some(DemandTag::Run));
     }
 
     #[test]
     fn wake_coalesces_while_draining() {
         let mut c = TurnCoordinator::default();
         c.begin_drain("t1", true);
-        assert_eq!(c.request_wake("t1", 10), CoordinatorAction::ScheduleFollowUp);
-        assert_eq!(c.request_wake("t1", 11), CoordinatorAction::ScheduleFollowUp);
+        assert_eq!(
+            c.request_wake("t1", 10),
+            CoordinatorAction::ScheduleFollowUp
+        );
+        assert_eq!(
+            c.request_wake("t1", 11),
+            CoordinatorAction::ScheduleFollowUp
+        );
         assert_eq!(c.finish_drain("t1"), Some(DemandTag::Wake));
     }
 

@@ -68,9 +68,21 @@ mod tests {
     fn engine_serialized_snapshot_round_trips_through_checklist_from_json() {
         let snap = TodoListSnapshot {
             items: vec![
-                TodoItem { id: 1, content: "done item".into(), status: TodoStatus::Completed },
-                TodoItem { id: 2, content: "active item".into(), status: TodoStatus::InProgress },
-                TodoItem { id: 3, content: "todo item".into(), status: TodoStatus::Pending },
+                TodoItem {
+                    id: 1,
+                    content: "done item".into(),
+                    status: TodoStatus::Completed,
+                },
+                TodoItem {
+                    id: 2,
+                    content: "active item".into(),
+                    status: TodoStatus::InProgress,
+                },
+                TodoItem {
+                    id: 3,
+                    content: "todo item".into(),
+                    status: TodoStatus::Pending,
+                },
             ],
             completion_pct: 33,
             in_progress_id: Some(2),

@@ -23,7 +23,10 @@ use crate::core::capacity::CapacityControllerConfig;
 /// Runtime-side carve-out: fields whose types are owned by the sidecar
 /// (`NetworkPolicyDecider`, `LspConfig`, `WorkshopConfig`,
 /// `TopicMemorySettings`, `RuntimeToolServices`) plus shared-state pointers.
-#[allow(dead_code, reason = "M2 type pillar — consumed via EngineConfig facade")]
+#[allow(
+    dead_code,
+    reason = "M2 type pillar — consumed via EngineConfig facade"
+)]
 #[derive(Clone)]
 pub struct EngineConfigExt {
     /// Shared Todo list state.
@@ -278,9 +281,7 @@ impl EngineConfig {
     /// Consume the facade and produce `(lean, ext)` for the future
     /// core-side `Engine::with_hosts(lean, ext)` entry point (M7).
     #[must_use]
-    pub fn into_parts(
-        self,
-    ) -> (deepseek_core::engine::config::EngineConfig, EngineConfigExt) {
+    pub fn into_parts(self) -> (deepseek_core::engine::config::EngineConfig, EngineConfigExt) {
         let lean = deepseek_core::engine::config::EngineConfig {
             model: self.model,
             workspace: self.workspace,

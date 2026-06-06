@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 
 use crate::tools::spec::ToolError;
 
-use super::schema::InventoryArea;
 use super::AreaStatus;
+use super::schema::InventoryArea;
 
 const MAX_FILES_PER_AREA: usize = 20;
 
@@ -44,9 +44,8 @@ fn parse_workspace_members(workspace: &Path) -> Result<Vec<String>, ToolError> {
     let raw = fs::read_to_string(&cargo_path).map_err(|e| {
         ToolError::execution_failed(format!("failed to read {}: {e}", cargo_path.display()))
     })?;
-    let table: toml::Table = toml::from_str(&raw).map_err(|e| {
-        ToolError::execution_failed(format!("invalid workspace Cargo.toml: {e}"))
-    })?;
+    let table: toml::Table = toml::from_str(&raw)
+        .map_err(|e| ToolError::execution_failed(format!("invalid workspace Cargo.toml: {e}")))?;
     let workspace_table = table
         .get("workspace")
         .and_then(|v| v.as_table())
@@ -213,7 +212,11 @@ fn split_large_area(
         areas.push(area_row(
             &format!("area-{slug}-part{}", idx + 1),
             rel_base,
-            &format!("{rel_base} (~{}/{} files, start {first})", chunk.len(), total),
+            &format!(
+                "{rel_base} (~{}/{} files, start {first})",
+                chunk.len(),
+                total
+            ),
         ));
     }
     Ok(areas)

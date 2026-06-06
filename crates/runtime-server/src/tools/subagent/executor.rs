@@ -7,34 +7,34 @@ use futures_util::FutureExt;
 use serde_json::json;
 use tokio::sync::{Mutex, mpsc};
 
-use deepseek_core::events::Event;
 use crate::models::{ContentBlock, Message, MessageRequest, SystemPrompt};
-use crate::utils::write_panic_dump;
 use crate::tools::plan::PlanState;
 use crate::tools::spec::ToolError;
 use crate::tools::todo::TodoList;
+use crate::utils::write_panic_dump;
+use deepseek_core::events::Event;
 
 use super::blackboard::{read_blackboard_section, write_blackboard_partition};
+use super::mailbox::Mailbox;
 use deepseek_core::subagent::{
     CompletionReason, MailboxMessage, SubAgentAssignment, SubAgentResult, SubAgentStatus,
     SubAgentType,
 };
-use super::mailbox::Mailbox;
 
 use super::constants::*;
+use super::craft;
+use super::factory::SharedSubAgentManager;
+use super::parse::build_assignment_prompt;
 use super::prompts::{
     build_subagent_system_prompt, findings_to_verdict, parse_structured_findings_result,
     parse_structured_verdict,
 };
+use super::registry::subagent_status_name;
 use super::registry::{SubAgentToolRegistry, summarize_subagent_result};
 use super::resident::release_resident_leases_for;
-use super::runtime::SubAgentRuntime;
-use super::parse::build_assignment_prompt;
-use super::factory::SharedSubAgentManager;
 use super::runtime::SubAgentCompletion;
+use super::runtime::SubAgentRuntime;
 use super::types::{SubAgentInput, WaitMode};
-use super::registry::subagent_status_name;
-use super::craft;
 
 pub(crate) struct SubAgentTask {
     pub(crate) manager_handle: SharedSubAgentManager,
@@ -61,7 +61,10 @@ pub(crate) async fn run_subagent_task(task: SubAgentTask) {
     // not an automated revert mechanism.
     if task.agent_type == SubAgentType::Implementer {
         let workspace = &task.runtime.context.workspace;
-        let stash_msg = format!("craft-auto-{}", &task.agent_id[..8.min(task.agent_id.len())]);
+        let stash_msg = format!(
+            "craft-auto-{}",
+            &task.agent_id[..8.min(task.agent_id.len())]
+        );
         let _ = std::process::Command::new("git")
             .args(["stash", "push", "--include-untracked", "-m", &stash_msg])
             .current_dir(workspace)
@@ -396,7 +399,8 @@ async fn run_subagent(
                 structured_findings: None,
                 completion_reason: Some(CompletionReason::Cancelled),
                 max_steps,
-                step_timeout_ms: u64::try_from(runtime.step_timeout.as_millis()).unwrap_or(u64::MAX),
+                step_timeout_ms: u64::try_from(runtime.step_timeout.as_millis())
+                    .unwrap_or(u64::MAX),
                 structured_findings_parse_failure: None,
                 scratchpad_run_id: None,
                 progress_status: None,
@@ -641,14 +645,13 @@ async fn run_subagent(
 
     release_resident_leases_for(&agent_id);
 
-    let (structured_findings, structured_findings_parse_failure) =
-        match final_result.as_deref() {
-            Some(text) => match parse_structured_findings_result(text) {
-                Ok(findings) => (Some(findings), None),
-                Err(reason) => (None, Some(reason)),
-            },
-            None => (None, None),
-        };
+    let (structured_findings, structured_findings_parse_failure) = match final_result.as_deref() {
+        Some(text) => match parse_structured_findings_result(text) {
+            Ok(findings) => (Some(findings), None),
+            Err(reason) => (None, Some(reason)),
+        },
+        None => (None, None),
+    };
     let structured_verdict = final_result
         .as_deref()
         .and_then(parse_structured_verdict)
@@ -734,7 +737,6 @@ pub(crate) async fn wait_for_agents(
         tokio::time::sleep(RESULT_POLL_INTERVAL).await;
     }
 }
-
 
 pub(crate) async fn record_and_emit_progress(
     manager_handle: &SharedSubAgentManager,

@@ -3,11 +3,10 @@
 use std::path::{Path, PathBuf};
 
 use deepseek_topic_memory::{
-    apply_decay, as_system_block, extract_topics, generate_memory_section,
+    DEFAULT_INJECT_INTERVAL_RUNS, DEFAULT_RETRIEVE_K_HOPS, GenerateMemorySectionOptions,
+    TopicMemoryMetrics, apply_decay, as_system_block, extract_topics, generate_memory_section,
     load_graph, load_metrics, metrics_path_for_graph, record_inject, record_turn_update,
     retrieve_for_query, save_graph, save_metrics, should_inject_memory, update_graph,
-    GenerateMemorySectionOptions, TopicMemoryMetrics, DEFAULT_INJECT_INTERVAL_RUNS,
-    DEFAULT_RETRIEVE_K_HOPS,
 };
 
 /// Resolved topic-memory settings (opt-in by default).
@@ -185,9 +184,12 @@ impl TopicMemoryRuntime {
 
         let section = generate_memory_section(
             &inject_graph,
-            settings.attribution.as_deref().map(|a| GenerateMemorySectionOptions {
-                attribution: Some(a),
-            }),
+            settings
+                .attribution
+                .as_deref()
+                .map(|a| GenerateMemorySectionOptions {
+                    attribution: Some(a),
+                }),
         );
         self.runs_since_last_inject = 0;
 

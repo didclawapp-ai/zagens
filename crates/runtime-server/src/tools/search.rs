@@ -286,7 +286,10 @@ impl ToolSpec for GrepFilesTool {
             }
             (hits, status)
         } else {
-            (Vec::new(), crate::symbol_index::index_status(&context.workspace))
+            (
+                Vec::new(),
+                crate::symbol_index::index_status(&context.workspace),
+            )
         };
 
         // Build result
@@ -314,14 +317,14 @@ impl ToolSpec for GrepFilesTool {
                 if symbol_hits.len() > 3 {
                     s.push_str(&format!(" ... and {} more", symbol_hits.len() - 3));
                 }
-                extra.insert(
-                    "symbol_index_summary".into(),
-                    serde_json::Value::String(s),
-                );
+                extra.insert("symbol_index_summary".into(), serde_json::Value::String(s));
             }
             // When symbol_index_hits include impl_fn (derive-expanded code),
             // warn that line numbers may be off by 5-20 lines.
-            if symbol_hits.iter().any(|h| h.get("symbol") == Some(&json!("impl_fn"))) {
+            if symbol_hits
+                .iter()
+                .any(|h| h.get("symbol") == Some(&json!("impl_fn")))
+            {
                 extra.insert(
                     "symbol_index_warning".into(),
                     json!("Some hits are 'impl_fn' — these come from #[derive] expansions and line numbers may be off by 5-20 lines. Use read_file with a wider range.")
@@ -338,18 +341,19 @@ impl ToolSpec for GrepFilesTool {
                 // Load the index once (already called ensure_symbol_index above).
                 let idx_path = workspace_meta_file_read(&context.workspace, "symbols.json");
                 if let Ok(raw) = std::fs::read_to_string(&idx_path) {
-                    if let Ok(idx) = serde_json::from_str::<crate::symbol_index::SymbolIndex>(&raw) {
+                    if let Ok(idx) = serde_json::from_str::<crate::symbol_index::SymbolIndex>(&raw)
+                    {
                         let mut file_summaries = serde_json::Map::new();
                         for file in hit_files {
                             if let Some(fs) = idx.files.get(file) {
-                                let syms: Vec<serde_json::Value> = fs.symbols
+                                let syms: Vec<serde_json::Value> = fs
+                                    .symbols
                                     .iter()
-                                    .map(|s| json!({"name": s.name, "kind": s.kind, "line": s.line}))
+                                    .map(
+                                        |s| json!({"name": s.name, "kind": s.kind, "line": s.line}),
+                                    )
                                     .collect();
-                                file_summaries.insert(
-                                    file.to_string(),
-                                    json!({"symbols": syms}),
-                                );
+                                file_summaries.insert(file.to_string(), json!({"symbols": syms}));
                             }
                         }
                         if !file_summaries.is_empty() {
@@ -367,17 +371,28 @@ impl ToolSpec for GrepFilesTool {
             let idx_path = workspace_meta_file_read(&context.workspace, "symbols.json");
             if let Ok(raw) = std::fs::read_to_string(&idx_path) {
                 if let Ok(idx) = serde_json::from_str::<crate::symbol_index::SymbolIndex>(&raw) {
-                    let cleaned = pattern_str
-                        .replace(['.', '*', '+', '?', '(', ')', '[', ']', '{', '}', '^', '$', '|', '\\'], " ");
+                    let cleaned = pattern_str.replace(
+                        [
+                            '.', '*', '+', '?', '(', ')', '[', ']', '{', '}', '^', '$', '|', '\\',
+                        ],
+                        " ",
+                    );
                     let terms: Vec<&str> = cleaned.split_whitespace().collect();
-                    let matched_pairs: Vec<serde_json::Value> = idx.bridge_pairs
+                    let matched_pairs: Vec<serde_json::Value> = idx
+                        .bridge_pairs
                         .iter()
-                        .filter(|bp| terms.iter().any(|t| bp.command.to_lowercase().contains(&t.to_lowercase())))
-                        .map(|bp| json!({
-                            "command": bp.command,
-                            "rust": {"file": bp.rust_file, "line": bp.rust_line},
-                            "ts": {"file": bp.ts_file, "line": bp.ts_line},
-                        }))
+                        .filter(|bp| {
+                            terms
+                                .iter()
+                                .any(|t| bp.command.to_lowercase().contains(&t.to_lowercase()))
+                        })
+                        .map(|bp| {
+                            json!({
+                                "command": bp.command,
+                                "rust": {"file": bp.rust_file, "line": bp.rust_line},
+                                "ts": {"file": bp.ts_file, "line": bp.ts_line},
+                            })
+                        })
                         .collect();
                     if !matched_pairs.is_empty() {
                         extra.insert(
@@ -388,15 +403,18 @@ impl ToolSpec for GrepFilesTool {
 
                     // Reverse call graph: who calls the queried symbol?
                     for term in &terms {
-                        let callers: Vec<serde_json::Value> = crate::symbol_index::query_callers(&idx, term)
-                            .into_iter()
-                            .map(|c| json!({
-                                "name": c.name,
-                                "file": c.file,
-                                "line": c.line,
-                                "kind": c.kind,
-                            }))
-                            .collect();
+                        let callers: Vec<serde_json::Value> =
+                            crate::symbol_index::query_callers(&idx, term)
+                                .into_iter()
+                                .map(|c| {
+                                    json!({
+                                        "name": c.name,
+                                        "file": c.file,
+                                        "line": c.line,
+                                        "kind": c.kind,
+                                    })
+                                })
+                                .collect();
                         if !callers.is_empty() {
                             extra.insert(
                                 "symbol_index_callers".into(),
@@ -408,18 +426,16 @@ impl ToolSpec for GrepFilesTool {
 
                     // C/C++ hits may drift due to macros/templates.
                     let has_cpp = symbol_hits.iter().any(|h| {
-                        h.get("file")
-                            .and_then(|f| f.as_str())
-                            .is_some_and(|f| {
-                                f.ends_with(".c")
-                                    || f.ends_with(".h")
-                                    || f.ends_with(".cpp")
-                                    || f.ends_with(".cc")
-                                    || f.ends_with(".cxx")
-                                    || f.ends_with(".hpp")
-                                    || f.ends_with(".hxx")
-                                    || f.ends_with(".hh")
-                            })
+                        h.get("file").and_then(|f| f.as_str()).is_some_and(|f| {
+                            f.ends_with(".c")
+                                || f.ends_with(".h")
+                                || f.ends_with(".cpp")
+                                || f.ends_with(".cc")
+                                || f.ends_with(".cxx")
+                                || f.ends_with(".hpp")
+                                || f.ends_with(".hxx")
+                                || f.ends_with(".hh")
+                        })
                     });
                     if has_cpp {
                         extra.insert(
@@ -472,13 +488,28 @@ impl ToolSpec for GrepFilesTool {
             ("output_mode".into(), json!(output_mode.as_str())),
             ("total_matches".into(), serde_json::json!(total_matches)),
             ("files_searched".into(), serde_json::json!(files_searched)),
-            ("files_skipped_binary".into(), serde_json::json!(files_skipped_binary)),
-            ("files_skipped_io".into(), serde_json::json!(files_skipped_io)),
-            ("files_skipped_size".into(), serde_json::json!(files_skipped_size)),
-            ("respect_gitignore".into(), serde_json::json!(respect_gitignore)),
+            (
+                "files_skipped_binary".into(),
+                serde_json::json!(files_skipped_binary),
+            ),
+            (
+                "files_skipped_io".into(),
+                serde_json::json!(files_skipped_io),
+            ),
+            (
+                "files_skipped_size".into(),
+                serde_json::json!(files_skipped_size),
+            ),
+            (
+                "respect_gitignore".into(),
+                serde_json::json!(respect_gitignore),
+            ),
             ("truncated".into(), serde_json::json!(truncated)),
             ("symbol_index_hits".into(), serde_json::json!(symbol_hits)),
-            ("symbol_index_status".into(), serde_json::json!(symbol_status)),
+            (
+                "symbol_index_status".into(),
+                serde_json::json!(symbol_status),
+            ),
         ]);
 
         match output_mode {
@@ -560,8 +591,7 @@ fn grep_file_scan(params: GrepScanParams) -> Result<GrepFileScanOutput, ToolErro
         if output_mode == GrepOutputMode::Content && results.len() >= max_results {
             break;
         }
-        if output_mode == GrepOutputMode::FilesWithMatches
-            && file_match_counts.len() >= max_results
+        if output_mode == GrepOutputMode::FilesWithMatches && file_match_counts.len() >= max_results
         {
             break;
         }
@@ -811,7 +841,9 @@ fn bm25_rank(matches: &mut Vec<GrepMatch>, pattern: &str) {
     // 1. Extract query terms from the regex pattern.
     let terms: Vec<String> = pattern
         .replace(
-            ['.', '*', '+', '?', '(', ')', '[', ']', '{', '}', '^', '$', '|', '\\'],
+            [
+                '.', '*', '+', '?', '(', ')', '[', ']', '{', '}', '^', '$', '|', '\\',
+            ],
             " ",
         )
         .split_whitespace()
@@ -823,12 +855,12 @@ fn bm25_rank(matches: &mut Vec<GrepMatch>, pattern: &str) {
     }
 
     // 2. Group matches by file, count term occurrences per file.
-    let mut file_term_counts: std::collections::HashMap<String, std::collections::HashMap<String, usize>> =
-        std::collections::HashMap::new();
+    let mut file_term_counts: std::collections::HashMap<
+        String,
+        std::collections::HashMap<String, usize>,
+    > = std::collections::HashMap::new();
     for m in matches.iter() {
-        let entry = file_term_counts
-            .entry(m.file.clone())
-            .or_default();
+        let entry = file_term_counts.entry(m.file.clone()).or_default();
         let line_lower = m.line.to_lowercase();
         for term in &terms {
             if line_lower.contains(term.as_str()) {
@@ -921,7 +953,11 @@ fn boost_index_hits(matches: &mut Vec<GrepMatch>, symbol_hits: &[serde_json::Val
 /// Query the symbol index for definitions matching `pattern`.
 /// Returns file:line pairs with match_score. Assumes `ensure_symbol_index()`
 /// has been called recently — uses whatever index is on disk (may be stale).
-fn lookup_symbol_hits(workspace: &Path, pattern: &str, kind_filter: Option<&str>) -> Vec<serde_json::Value> {
+fn lookup_symbol_hits(
+    workspace: &Path,
+    pattern: &str,
+    kind_filter: Option<&str>,
+) -> Vec<serde_json::Value> {
     let index_path = workspace_meta_file_read(workspace, "symbols.json");
 
     let index: Option<crate::symbol_index::SymbolIndex> = std::fs::read_to_string(&index_path)
@@ -934,8 +970,12 @@ fn lookup_symbol_hits(workspace: &Path, pattern: &str, kind_filter: Option<&str>
     };
 
     // Strip regex metacharacters to extract a plain symbol name.
-    let cleaned = pattern
-        .replace(['.', '*', '+', '?', '(', ')', '[', ']', '{', '}', '^', '$', '|', '\\'], " ");
+    let cleaned = pattern.replace(
+        [
+            '.', '*', '+', '?', '(', ')', '[', ']', '{', '}', '^', '$', '|', '\\',
+        ],
+        " ",
+    );
     let terms: Vec<&str> = cleaned.split_whitespace().collect();
     if terms.is_empty() {
         return Vec::new();
@@ -945,7 +985,8 @@ fn lookup_symbol_hits(workspace: &Path, pattern: &str, kind_filter: Option<&str>
     for term in &terms {
         let hits = if let Some(kf) = kind_filter {
             crate::symbol_index::query_symbol_with_mode(
-                &index, term,
+                &index,
+                term,
                 crate::symbol_index::MatchMode::Substring,
                 Some(kf),
             )

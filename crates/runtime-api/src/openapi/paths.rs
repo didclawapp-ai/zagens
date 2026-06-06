@@ -1,6 +1,6 @@
 //! OpenAPI `paths` — kept in sync with `router.rs` (R-003 A4.1).
 
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 fn schema_ref(name: &str) -> Value {
     json!({ "$ref": format!("#/components/schemas/{name}") })
@@ -89,7 +89,14 @@ pub fn build_paths() -> Map<String, Value> {
 
     add(
         "/health",
-        vec![json_op("get", "health", "Liveness probe", None, "ErrorBody", false)],
+        vec![json_op(
+            "get",
+            "health",
+            "Liveness probe",
+            None,
+            "ErrorBody",
+            false,
+        )],
     );
     add(
         "/internal/probe",
@@ -158,15 +165,36 @@ pub fn build_paths() -> Map<String, Value> {
     );
     add(
         "/v1/workspace/status",
-        vec![json_op("get", "workspaceStatus", "Workspace status", None, "ErrorBody", u)],
+        vec![json_op(
+            "get",
+            "workspaceStatus",
+            "Workspace status",
+            None,
+            "ErrorBody",
+            u,
+        )],
     );
     add(
         "/v1/workspace/browse",
-        vec![json_op("get", "browseWorkspace", "Browse workspace", None, "ErrorBody", u)],
+        vec![json_op(
+            "get",
+            "browseWorkspace",
+            "Browse workspace",
+            None,
+            "ErrorBody",
+            u,
+        )],
     );
     add(
         "/v1/workspace/file",
-        vec![json_op("get", "readWorkspaceFile", "Read workspace file", None, "ErrorBody", u)],
+        vec![json_op(
+            "get",
+            "readWorkspaceFile",
+            "Read workspace file",
+            None,
+            "ErrorBody",
+            u,
+        )],
     );
     add(
         "/v1/stream",
@@ -182,7 +210,14 @@ pub fn build_paths() -> Map<String, Value> {
     add(
         "/v1/threads",
         vec![
-            json_op("get", "listThreads", "List threads", None, "ThreadRecord", u),
+            json_op(
+                "get",
+                "listThreads",
+                "List threads",
+                None,
+                "ThreadRecord",
+                u,
+            ),
             json_op(
                 "post",
                 "createThread",
@@ -220,7 +255,14 @@ pub fn build_paths() -> Map<String, Value> {
     );
     add(
         "/v1/threads/{id}/checklist",
-        vec![json_op("get", "getThreadChecklist", "Thread checklist", None, "ErrorBody", u)],
+        vec![json_op(
+            "get",
+            "getThreadChecklist",
+            "Thread checklist",
+            None,
+            "ErrorBody",
+            u,
+        )],
     );
     add(
         "/v1/threads/{id}/scratchpad/status",
@@ -235,15 +277,36 @@ pub fn build_paths() -> Map<String, Value> {
     );
     add(
         "/v1/threads/{id}/context",
-        vec![json_op("get", "getThreadContext", "Thread context", None, "ErrorBody", u)],
+        vec![json_op(
+            "get",
+            "getThreadContext",
+            "Thread context",
+            None,
+            "ErrorBody",
+            u,
+        )],
     );
     add(
         "/v1/threads/{id}/resume",
-        vec![json_op("post", "resumeThread", "Resume thread", None, "ThreadRecord", u)],
+        vec![json_op(
+            "post",
+            "resumeThread",
+            "Resume thread",
+            None,
+            "ThreadRecord",
+            u,
+        )],
     );
     add(
         "/v1/threads/{id}/fork",
-        vec![json_op("post", "forkThread", "Fork thread", None, "ThreadRecord", u)],
+        vec![json_op(
+            "post",
+            "forkThread",
+            "Fork thread",
+            None,
+            "ThreadRecord",
+            u,
+        )],
     );
     add(
         "/v1/threads/{id}/fork-at-user-message",
@@ -313,7 +376,14 @@ pub fn build_paths() -> Map<String, Value> {
     );
     add(
         "/v1/threads/{id}/compact",
-        vec![json_op("post", "compactThread", "Compact thread context", None, "ErrorBody", u)],
+        vec![json_op(
+            "post",
+            "compactThread",
+            "Compact thread context",
+            None,
+            "ErrorBody",
+            u,
+        )],
     );
     add(
         "/v1/threads/{id}/persist-session",
@@ -328,7 +398,14 @@ pub fn build_paths() -> Map<String, Value> {
     );
     add(
         "/v1/threads/{id}/snapshots",
-        vec![json_op("get", "listThreadSnapshots", "List snapshots", None, "ErrorBody", u)],
+        vec![json_op(
+            "get",
+            "listThreadSnapshots",
+            "List snapshots",
+            None,
+            "ErrorBody",
+            u,
+        )],
     );
     add(
         "/v1/threads/{id}/snapshots/restore",
@@ -383,7 +460,14 @@ pub fn build_paths() -> Map<String, Value> {
     );
     add(
         "/v1/tasks/clear",
-        vec![json_op("post", "clearTasks", "Clear tasks", None, "ErrorBody", u)],
+        vec![json_op(
+            "post",
+            "clearTasks",
+            "Clear tasks",
+            None,
+            "ErrorBody",
+            u,
+        )],
     );
     add(
         "/v1/tasks/{id}",
@@ -391,19 +475,47 @@ pub fn build_paths() -> Map<String, Value> {
     );
     add(
         "/v1/tasks/{id}/cancel",
-        vec![json_op("post", "cancelTask", "Cancel task", None, "TaskRecord", u)],
+        vec![json_op(
+            "post",
+            "cancelTask",
+            "Cancel task",
+            None,
+            "TaskRecord",
+            u,
+        )],
     );
     add(
         "/v1/blackboards",
-        vec![json_op("get", "listBlackboards", "List blackboards", None, "ErrorBody", u)],
+        vec![json_op(
+            "get",
+            "listBlackboards",
+            "List blackboards",
+            None,
+            "ErrorBody",
+            u,
+        )],
     );
     add(
         "/v1/blackboards/{id}",
-        vec![json_op("get", "getBlackboard", "Get blackboard", None, "ErrorBody", u)],
+        vec![json_op(
+            "get",
+            "getBlackboard",
+            "Get blackboard",
+            None,
+            "ErrorBody",
+            u,
+        )],
     );
     add(
         "/v1/topic-memory",
-        vec![json_op("get", "getTopicMemory", "Topic memory graph", None, "ErrorBody", u)],
+        vec![json_op(
+            "get",
+            "getTopicMemory",
+            "Topic memory graph",
+            None,
+            "ErrorBody",
+            u,
+        )],
     );
     add(
         "/v1/skills",
@@ -414,24 +526,66 @@ pub fn build_paths() -> Map<String, Value> {
     );
     add(
         "/v1/skills/import",
-        vec![json_op("post", "importSkillLocal", "Import local skill", None, "ErrorBody", u)],
+        vec![json_op(
+            "post",
+            "importSkillLocal",
+            "Import local skill",
+            None,
+            "ErrorBody",
+            u,
+        )],
     );
     add(
         "/v1/skills/install",
-        vec![json_op("post", "installSkillRemote", "Install remote skill", None, "ErrorBody", u)],
+        vec![json_op(
+            "post",
+            "installSkillRemote",
+            "Install remote skill",
+            None,
+            "ErrorBody",
+            u,
+        )],
     );
     add(
         "/v1/apps/mcp/servers",
         vec![
-            json_op("get", "listMcpServers", "List MCP servers", None, "ErrorBody", u),
-            json_op("post", "addMcpServer", "Add MCP server", None, "ErrorBody", u),
+            json_op(
+                "get",
+                "listMcpServers",
+                "List MCP servers",
+                None,
+                "ErrorBody",
+                u,
+            ),
+            json_op(
+                "post",
+                "addMcpServer",
+                "Add MCP server",
+                None,
+                "ErrorBody",
+                u,
+            ),
         ],
     );
     add(
         "/v1/apps/mcp/servers/{name}",
         vec![
-            json_op("get", "getMcpServer", "Get MCP server", None, "ErrorBody", u),
-            json_op("put", "updateMcpServer", "Update MCP server", None, "ErrorBody", u),
+            json_op(
+                "get",
+                "getMcpServer",
+                "Get MCP server",
+                None,
+                "ErrorBody",
+                u,
+            ),
+            json_op(
+                "put",
+                "updateMcpServer",
+                "Update MCP server",
+                None,
+                "ErrorBody",
+                u,
+            ),
             operation(
                 "delete",
                 "deleteMcpServer",
@@ -444,16 +598,37 @@ pub fn build_paths() -> Map<String, Value> {
     );
     add(
         "/v1/apps/mcp/config/merge",
-        vec![json_op("post", "mergeMcpConfig", "Merge MCP config JSON", None, "ErrorBody", u)],
+        vec![json_op(
+            "post",
+            "mergeMcpConfig",
+            "Merge MCP config JSON",
+            None,
+            "ErrorBody",
+            u,
+        )],
     );
     add(
         "/v1/apps/mcp/tools",
-        vec![json_op("get", "listMcpTools", "List MCP tools", None, "ErrorBody", u)],
+        vec![json_op(
+            "get",
+            "listMcpTools",
+            "List MCP tools",
+            None,
+            "ErrorBody",
+            u,
+        )],
     );
     add(
         "/v1/automations",
         vec![
-            json_op("get", "listAutomations", "List automations", None, "ErrorBody", u),
+            json_op(
+                "get",
+                "listAutomations",
+                "List automations",
+                None,
+                "ErrorBody",
+                u,
+            ),
             json_op(
                 "post",
                 "createAutomation",
@@ -467,8 +642,22 @@ pub fn build_paths() -> Map<String, Value> {
     add(
         "/v1/automations/{id}",
         vec![
-            json_op("get", "getAutomation", "Get automation", None, "ErrorBody", u),
-            json_op("patch", "updateAutomation", "Update automation", None, "ErrorBody", u),
+            json_op(
+                "get",
+                "getAutomation",
+                "Get automation",
+                None,
+                "ErrorBody",
+                u,
+            ),
+            json_op(
+                "patch",
+                "updateAutomation",
+                "Update automation",
+                None,
+                "ErrorBody",
+                u,
+            ),
             operation(
                 "delete",
                 "deleteAutomation",
@@ -481,15 +670,36 @@ pub fn build_paths() -> Map<String, Value> {
     );
     add(
         "/v1/automations/{id}/run",
-        vec![json_op("post", "runAutomation", "Run automation", None, "ErrorBody", u)],
+        vec![json_op(
+            "post",
+            "runAutomation",
+            "Run automation",
+            None,
+            "ErrorBody",
+            u,
+        )],
     );
     add(
         "/v1/automations/{id}/pause",
-        vec![json_op("post", "pauseAutomation", "Pause automation", None, "ErrorBody", u)],
+        vec![json_op(
+            "post",
+            "pauseAutomation",
+            "Pause automation",
+            None,
+            "ErrorBody",
+            u,
+        )],
     );
     add(
         "/v1/automations/{id}/resume",
-        vec![json_op("post", "resumeAutomation", "Resume automation", None, "ErrorBody", u)],
+        vec![json_op(
+            "post",
+            "resumeAutomation",
+            "Resume automation",
+            None,
+            "ErrorBody",
+            u,
+        )],
     );
     add(
         "/v1/automations/{id}/runs",

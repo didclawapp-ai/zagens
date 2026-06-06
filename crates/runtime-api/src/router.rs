@@ -3,8 +3,8 @@
 //! Bearer auth on `/v1/*` is applied by the sidecar before calling [`compose_router`]
 //! so Axum state types stay aligned when merging route trees.
 
-use axum::routing::get;
 use axum::Router;
+use axum::routing::get;
 
 use crate::cors::cors_layer;
 use crate::health::{health, internal_probe};

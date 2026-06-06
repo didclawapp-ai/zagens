@@ -94,9 +94,6 @@ mod tests {
     #[test]
     fn parse_patch_paths_skips_dev_null() {
         let patch = "--- a/old\n+++ /dev/null\n--- a/keep\n+++ b/src/lib.rs\n";
-        assert_eq!(
-            parse_patch_paths(patch),
-            vec![PathBuf::from("src/lib.rs")]
-        );
+        assert_eq!(parse_patch_paths(patch), vec![PathBuf::from("src/lib.rs")]);
     }
 }

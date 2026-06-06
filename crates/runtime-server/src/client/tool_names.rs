@@ -1,4 +1,3 @@
-
 pub(super) fn to_api_tool_name(name: &str) -> String {
     let mut out = String::new();
     for ch in name.chars() {

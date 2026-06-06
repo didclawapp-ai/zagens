@@ -139,10 +139,7 @@ fn bundled_python_executable(app: &AppHandle) -> Option<PathBuf> {
         if let Some(dir) = exe.parent() {
             candidates.push(dir.join("python").join(py_name));
             #[cfg(target_os = "macos")]
-            candidates.push(
-                dir.join("../Resources/python")
-                    .join(py_name),
-            );
+            candidates.push(dir.join("../Resources/python").join(py_name));
         }
     }
 
@@ -330,7 +327,10 @@ pub(crate) struct ReadySignal {
 fn spawn_stdout_forwarder(
     stdout: tokio::process::ChildStdout,
     app: AppHandle,
-) -> (oneshot::Receiver<ReadySignal>, mpsc::UnboundedReceiver<PongEvent>) {
+) -> (
+    oneshot::Receiver<ReadySignal>,
+    mpsc::UnboundedReceiver<PongEvent>,
+) {
     let (ready_tx, ready_rx) = oneshot::channel::<ReadySignal>();
     let (pong_tx, pong_rx) = mpsc::unbounded_channel();
     tokio::spawn(async move {
@@ -349,9 +349,8 @@ fn spawn_stdout_forwarder(
             if line.starts_with("DS_PICK_READY ") {
                 if let Some(tx) = ready_tx.take() {
                     supervisor_log(format!("event=ready_signal line={line}"));
-                    let payload: serde_json::Value = line["DS_PICK_READY ".len()..]
-                        .parse()
-                        .unwrap_or_default();
+                    let payload: serde_json::Value =
+                        line["DS_PICK_READY ".len()..].parse().unwrap_or_default();
                     let real_port = payload
                         .get("port")
                         .and_then(serde_json::Value::as_u64)
@@ -366,7 +365,11 @@ fn spawn_stdout_forwarder(
                     let seq = v.get("seq").and_then(|s| s.as_u64()).unwrap_or(0);
                     let pid = v.get("pid").and_then(|p| p.as_u64()).unwrap_or(0) as u32;
                     let uptime_ms = v.get("uptime_ms").and_then(|u| u.as_u64()).unwrap_or(0);
-                    let _ = pong_tx.send(PongEvent::Pong { seq, pid, uptime_ms });
+                    let _ = pong_tx.send(PongEvent::Pong {
+                        seq,
+                        pid,
+                        uptime_ms,
+                    });
                 }
             } else if line.starts_with("DS_PICK_DRAIN ") {
                 let payload = &line["DS_PICK_DRAIN ".len()..];
@@ -515,7 +518,9 @@ pub async fn start_and_monitor(
 
             let stdout = c.stdout.take();
             sidecar_stdin = c.stdin.take();
-            let (ready_rx, rx) = stdout.map(|s| spawn_stdout_forwarder(s, app.clone())).unzip();
+            let (ready_rx, rx) = stdout
+                .map(|s| spawn_stdout_forwarder(s, app.clone()))
+                .unzip();
             pong_rx = rx;
             child = Some(c);
 
@@ -523,7 +528,10 @@ pub async fn start_and_monitor(
 
             // Wait up to 60s for the READY signal from stdout.
             let ready_signal = if let Some(rx) = ready_rx {
-                tokio::time::timeout(Duration::from_secs(60), rx).await.ok().and_then(|r| r.ok())
+                tokio::time::timeout(Duration::from_secs(60), rx)
+                    .await
+                    .ok()
+                    .and_then(|r| r.ok())
             } else {
                 None
             };

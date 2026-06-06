@@ -16,21 +16,21 @@ use crate::runtime_threads::{
 };
 use crate::utils::spawn_supervised;
 
+use super::MAX_WORKERS;
 use super::config::TaskManagerConfig;
 use super::executor::{
     EngineTaskExecutor, ExecutionTask, TaskExecutionEvent, TaskExecutionResult, TaskExecutor,
 };
 use super::helpers::{
-    duration_ms, resolve_task_id, sanitize_filename, summarize_json, summarize_text,
-    ARTIFACT_THRESHOLD, TIMELINE_SUMMARY_LIMIT,
+    ARTIFACT_THRESHOLD, TIMELINE_SUMMARY_LIMIT, duration_ms, resolve_task_id, sanitize_filename,
+    summarize_json, summarize_text,
 };
-use super::persist::{load_state, write_json_atomic, QueueFile};
+use super::persist::{QueueFile, load_state, write_json_atomic};
 use super::{
     CURRENT_TASK_SCHEMA_VERSION, NewTaskRequest, TaskArtifactRef, TaskAttemptRecord,
     TaskChecklistState, TaskCounts, TaskGateRecord, TaskGithubEvent, TaskRecord, TaskStatus,
     TaskSummary, TaskTimelineEntry, TaskToolCallSummary, TaskToolStatus,
 };
-use super::MAX_WORKERS;
 
 /// Thread-safe task manager.
 pub type SharedTaskManager = Arc<TaskManager>;

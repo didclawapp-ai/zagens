@@ -125,10 +125,14 @@ impl TurnContext {
     pub fn add_usage(&mut self, usage: &crate::models::Usage) {
         self.usage.input_tokens += usage.input_tokens;
         self.usage.output_tokens += usage.output_tokens;
-        self.usage.prompt_cache_hit_tokens =
-            add_optional_usage(self.usage.prompt_cache_hit_tokens, usage.prompt_cache_hit_tokens);
-        self.usage.prompt_cache_miss_tokens =
-            add_optional_usage(self.usage.prompt_cache_miss_tokens, usage.prompt_cache_miss_tokens);
+        self.usage.prompt_cache_hit_tokens = add_optional_usage(
+            self.usage.prompt_cache_hit_tokens,
+            usage.prompt_cache_hit_tokens,
+        );
+        self.usage.prompt_cache_miss_tokens = add_optional_usage(
+            self.usage.prompt_cache_miss_tokens,
+            usage.prompt_cache_miss_tokens,
+        );
         self.usage.reasoning_tokens =
             add_optional_usage(self.usage.reasoning_tokens, usage.reasoning_tokens);
     }

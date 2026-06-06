@@ -54,10 +54,7 @@ where
     P: Send + Sync + Clone + 'static,
     R: Send + Sync + Clone + 'static,
 {
-    pub fn open(
-        workspace: PathBuf,
-        manager_cfg: RuntimeThreadManagerConfig,
-    ) -> Result<Self> {
+    pub fn open(workspace: PathBuf, manager_cfg: RuntimeThreadManagerConfig) -> Result<Self> {
         let store = RuntimeThreadStore::open(manager_cfg.data_dir.clone())?;
         Self::open_with_store(workspace, manager_cfg, store)
     }
@@ -184,7 +181,10 @@ where
         Ok(())
     }
 
-    pub fn export_thread_for_session_persist(&self, thread_id: &str) -> Result<(Vec<Message>, u64)> {
+    pub fn export_thread_for_session_persist(
+        &self,
+        thread_id: &str,
+    ) -> Result<(Vec<Message>, u64)> {
         let turns = self
             .store
             .list_turns_for_thread(thread_id)

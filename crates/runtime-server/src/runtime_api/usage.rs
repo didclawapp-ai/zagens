@@ -2,11 +2,11 @@
 
 use std::path::PathBuf;
 
-use axum::extract::{Query, State};
 use axum::Json;
+use axum::extract::{Query, State};
 use chrono::Utc;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::runtime_threads::UsageGroupBy;
 
@@ -67,7 +67,9 @@ pub(crate) async fn get_usage(
 
 // ============== Routing Rules ==============
 
-pub(crate) async fn get_routing_rules(State(state): State<RuntimeApiState>) -> Result<Json<Value>, ApiError> {
+pub(crate) async fn get_routing_rules(
+    State(state): State<RuntimeApiState>,
+) -> Result<Json<Value>, ApiError> {
     let rules = state.runtime_threads.get_routing_rules().await;
     Ok(Json(json!({ "rules": rules })))
 }
@@ -113,7 +115,10 @@ pub(crate) async fn rebuild_symbol_index(
     let ws_for_build = ws.clone();
     let path = deepseek_config::workspace_meta_file_write(&ws, "symbols.json");
     let index = tokio::task::spawn_blocking(move || {
-        crate::symbol_index::build_index(&ws_for_build, crate::symbol_index::SymbolVisibility::Public)
+        crate::symbol_index::build_index(
+            &ws_for_build,
+            crate::symbol_index::SymbolVisibility::Public,
+        )
     })
     .await
     .map_err(|e| ApiError::internal(format!("build_index panicked: {e}")))?;

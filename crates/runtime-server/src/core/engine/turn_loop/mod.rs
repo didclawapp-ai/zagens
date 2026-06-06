@@ -19,10 +19,7 @@ impl Engine {
         tools: Option<Vec<crate::models::Tool>>,
         mode: crate::agent_surface::AppMode,
         force_update_plan_first: bool,
-    ) -> (
-        deepseek_core::turn::TurnOutcomeStatus,
-        Option<String>,
-    ) {
+    ) -> (deepseek_core::turn::TurnOutcomeStatus, Option<String>) {
         deepseek_core::engine::handle_deepseek_turn(
             self,
             turn,

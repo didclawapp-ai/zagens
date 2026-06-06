@@ -17,12 +17,11 @@
 
 use async_trait::async_trait;
 use base64::Engine as _;
-use std::error::Error;
 use deepseek_config::{
-    DEFAULT_VISION_MODEL, vision_should_check_degenerate_ocr_template,
-    vision_user_prompt_for_model,
+    DEFAULT_VISION_MODEL, vision_should_check_degenerate_ocr_template, vision_user_prompt_for_model,
 };
 use serde_json::Value;
+use std::error::Error;
 
 use super::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
@@ -86,10 +85,7 @@ impl ToolSpec for DescribeImageTool {
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
-        vec![
-            ToolCapability::ReadOnly,
-            ToolCapability::Network,
-        ]
+        vec![ToolCapability::ReadOnly, ToolCapability::Network]
     }
 
     fn approval_requirement(&self) -> ApprovalRequirement {
@@ -106,7 +102,8 @@ impl ToolSpec for DescribeImageTool {
 
         if !image_path.exists() {
             return Ok(ToolResult::error(format!(
-                "图片文件不存在: {}", image_path.display()
+                "图片文件不存在: {}",
+                image_path.display()
             )));
         }
 
@@ -115,20 +112,23 @@ impl ToolSpec for DescribeImageTool {
             .and_then(|e| e.to_str())
             .unwrap_or("")
             .to_lowercase();
-        if !matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "gif" | "bmp" | "webp") {
+        if !matches!(
+            ext.as_str(),
+            "png" | "jpg" | "jpeg" | "gif" | "bmp" | "webp"
+        ) {
             return Ok(ToolResult::error(format!(
                 "不支持的图片格式: .{ext}。支持: png, jpg, jpeg, gif, bmp, webp"
             )));
         }
 
-        let image_bytes = std::fs::read(&image_path).map_err(|e| {
-            ToolError::execution_failed(format!("读取图片失败: {e}"))
-        })?;
+        let image_bytes = std::fs::read(&image_path)
+            .map_err(|e| ToolError::execution_failed(format!("读取图片失败: {e}")))?;
 
         let size_mb = image_bytes.len() as f64 / (1024.0 * 1024.0);
         if size_mb > 20.0 {
             return Ok(ToolResult::error(format!(
-                "图片太大 ({:.1} MB)，最大支持 20 MB", size_mb
+                "图片太大 ({:.1} MB)，最大支持 20 MB",
+                size_mb
             )));
         }
 
@@ -160,10 +160,7 @@ impl ToolSpec for DescribeImageTool {
                     "model": client.model,
                     "size_bytes": image_bytes.len(),
                 });
-                Ok(ToolResult::success(format!(
-                    "图片文字提取结果:\n\n{text}"
-                ))
-                .with_metadata(meta))
+                Ok(ToolResult::success(format!("图片文字提取结果:\n\n{text}")).with_metadata(meta))
             }
             Err(msg) => Ok(ToolResult::error(format!(
                 "视觉模型调用失败: {msg}\n\n请在 Zagens 设置 → API Key 中配置视觉桥接密钥，或设置环境变量 VISION_API_KEY / SILICONFLOW_API_KEY，或在 config.toml 的 [vision] 表中填写 api_key。"
@@ -195,9 +192,18 @@ fn load_vision_from_config() -> (Option<String>, Option<String>, Option<String>)
         Some(toml::Value::Table(t)) => t,
         _ => return (None, None, None),
     };
-    let api_key = vision.get("api_key").and_then(|v| v.as_str()).map(|s| s.to_string());
-    let base_url = vision.get("base_url").and_then(|v| v.as_str()).map(|s| s.to_string());
-    let model = vision.get("model").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let api_key = vision
+        .get("api_key")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let base_url = vision
+        .get("base_url")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let model = vision
+        .get("model")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
     (api_key, base_url, model)
 }
 
@@ -236,7 +242,11 @@ impl VisionClient {
             .or(cfg_model)
             .filter(|m| !m.is_empty())
             .unwrap_or_else(|| DEFAULT_VISION_MODEL.to_string());
-        Self { model, base_url, api_key }
+        Self {
+            model,
+            base_url,
+            api_key,
+        }
     }
 
     async fn call(&self, request: &VisionRequest<'_>) -> Result<String, String> {

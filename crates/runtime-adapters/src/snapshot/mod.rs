@@ -41,4 +41,6 @@ pub use paths::{snapshot_dir_for, snapshot_git_dir};
 pub use prune::{DEFAULT_MAX_AGE, prune_older_than};
 #[allow(unused_imports)]
 pub use repo::{Snapshot, SnapshotId, SnapshotRepo};
-pub use size::{DEFAULT_SNAPSHOT_MAX_WORKSPACE_GB, estimate_workspace_bytes, workspace_exceeds_size_limit};
+pub use size::{
+    DEFAULT_SNAPSHOT_MAX_WORKSPACE_GB, estimate_workspace_bytes, workspace_exceeds_size_limit,
+};

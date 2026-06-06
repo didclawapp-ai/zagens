@@ -9,8 +9,8 @@ use deepseek_core::subagent::VerdictItem;
 use crate::tools::subagent::blackboard;
 use crate::tools::todo::{TodoItem, TodoListSnapshot, TodoStatus};
 
-use super::nudge::LongHorizonSessionState;
 use super::LhtGateOutcome;
+use super::nudge::LongHorizonSessionState;
 
 /// What caused macro-loop evaluation (micro pass vs graph done but gates red).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,9 +27,7 @@ pub enum MacroLoopOutcome {
     /// Wait for the user to confirm entering CRAFT (turn may end).
     AwaitUserConfirm,
     /// Harness will spawn (or has spawned) a CRAFT Review sub-agent.
-    CraftSpawnRequested {
-        task_id: String,
-    },
+    CraftSpawnRequested { task_id: String },
     /// Macro cycles exhausted — honest stop with remaining gaps listed.
     Unmet {
         remaining_blockers: Vec<String>,
@@ -75,7 +73,10 @@ pub fn blockers_to_checklist_contents(
             continue;
         }
         let key = blocker_stable_key(b);
-        if existing.iter().any(|i| i.content.contains(&key) || i.content == content) {
+        if existing
+            .iter()
+            .any(|i| i.content.contains(&key) || i.content == content)
+        {
             continue;
         }
         out.push(content);
@@ -84,10 +85,7 @@ pub fn blockers_to_checklist_contents(
 }
 
 fn format_blocker_checklist_content(item: &VerdictItem) -> String {
-    let line = item
-        .line
-        .map(|l| format!(":{l}"))
-        .unwrap_or_default();
+    let line = item.line.map(|l| format!(":{l}")).unwrap_or_default();
     let key = blocker_stable_key(item);
     format!(
         "CRAFT gap [{key}]: {desc} — `{file}{line}`",
@@ -155,7 +153,8 @@ pub fn build_craft_review_prompt(lang: &str) -> String {
     if lang.starts_with("zh") {
         "LHT 宏观审查轮：对照当前 plan/checklist 与代码变更，枚举可检验的缺口（BLOCKER 级）。
 只作缺口枚举，不要宣布任务完成。输出 `<!-- craft-verdict -->` JSON。
-优先对照 IPC/架构清单与 `[verify:]` 可执行项。".to_string()
+优先对照 IPC/架构清单与 `[verify:]` 可执行项。"
+            .to_string()
     } else {
         "LHT macro review round: compare plan/checklist vs code changes. Enumerate testable gaps as BLOCKER items only — do not declare the task complete. Emit `<!-- craft-verdict -->` JSON. Prioritize IPC/architecture manifests and runnable `[verify:]` items.".to_string()
     }
@@ -298,8 +297,7 @@ pub fn evaluate_macro_loop(input: MacroLoopInput<'_>, trigger: MacroTrigger) -> 
                     macro_cycles_used: input.session.macro_cycles_used,
                 };
             }
-            input.session.macro_after_audit_unmet =
-                !matches!(trigger, MacroTrigger::MicroPass);
+            input.session.macro_after_audit_unmet = !matches!(trigger, MacroTrigger::MicroPass);
             match input.config.auto_enter_craft {
                 AutoEnterCraft::Off => MacroLoopOutcome::Inactive,
                 AutoEnterCraft::UserConfirm => {

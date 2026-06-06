@@ -3,7 +3,9 @@
 use schemars::JsonSchema;
 
 /// Server-side tool usage counters.
-#[derive(Debug, serde::Serialize, serde::Deserialize, Clone, Default, PartialEq, Eq, JsonSchema)]
+#[derive(
+    Debug, serde::Serialize, serde::Deserialize, Clone, Default, PartialEq, Eq, JsonSchema,
+)]
 pub struct ServerToolUsage {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub code_execution_requests: Option<u32>,
@@ -12,7 +14,9 @@ pub struct ServerToolUsage {
 }
 
 /// Token usage metadata for a response.
-#[derive(Debug, serde::Serialize, serde::Deserialize, Clone, Default, PartialEq, Eq, JsonSchema)]
+#[derive(
+    Debug, serde::Serialize, serde::Deserialize, Clone, Default, PartialEq, Eq, JsonSchema,
+)]
 pub struct Usage {
     pub input_tokens: u32,
     pub output_tokens: u32,

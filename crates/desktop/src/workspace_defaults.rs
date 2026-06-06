@@ -9,9 +9,8 @@ pub const OFFICE_OUTPUT_DIR_NAME: &str = "deliverables";
 
 /// User Documents folder (platform-specific via `dirs` crate).
 pub fn user_documents_dir() -> Result<PathBuf, String> {
-    dirs::document_dir().ok_or_else(|| {
-        "Cannot resolve the Documents directory on this system.".to_string()
-    })
+    dirs::document_dir()
+        .ok_or_else(|| "Cannot resolve the Documents directory on this system.".to_string())
 }
 
 /// Default Composer workspace: `<Documents>/Zagens` (or legacy `<Documents>/Zagens` if it exists).
@@ -25,8 +24,12 @@ pub fn default_composer_workspace() -> Result<String, String> {
         legacy_root
     };
     if !root.is_dir() {
-        std::fs::create_dir_all(&root)
-            .map_err(|e| format!("Failed to create workspace directory {}: {e}", root.display()))?;
+        std::fs::create_dir_all(&root).map_err(|e| {
+            format!(
+                "Failed to create workspace directory {}: {e}",
+                root.display()
+            )
+        })?;
     }
     let _ = std::fs::create_dir_all(root.join(OFFICE_OUTPUT_DIR_NAME));
     let display = path_for_ui_display(root.canonicalize().unwrap_or(root));

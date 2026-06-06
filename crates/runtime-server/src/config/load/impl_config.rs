@@ -8,13 +8,13 @@ use toml;
 use crate::features::{Features, FeaturesToml, is_known_feature_key};
 use crate::hooks::HooksConfig;
 
-use super::super::providers::{normalize_model_name, ApiProvider};
+use super::super::providers::{ApiProvider, normalize_model_name};
 use super::super::types::*;
 use super::super::{
     API_KEYRING_SENTINEL, DEFAULT_DEEPSEEK_BASE_URL, DEFAULT_DEEPSEEKCN_BASE_URL,
     DEFAULT_FIREWORKS_BASE_URL, DEFAULT_FIREWORKS_MODEL, DEFAULT_MAX_SUBAGENTS,
-    DEFAULT_NVIDIA_NIM_BASE_URL, DEFAULT_NVIDIA_NIM_MODEL, DEFAULT_NOVITA_BASE_URL,
-    DEFAULT_NOVITA_MODEL, DEFAULT_OLLAMA_BASE_URL, DEFAULT_OLLAMA_MODEL,
+    DEFAULT_NOVITA_BASE_URL, DEFAULT_NOVITA_MODEL, DEFAULT_NVIDIA_NIM_BASE_URL,
+    DEFAULT_NVIDIA_NIM_MODEL, DEFAULT_OLLAMA_BASE_URL, DEFAULT_OLLAMA_MODEL,
     DEFAULT_OPENROUTER_BASE_URL, DEFAULT_OPENROUTER_MODEL, DEFAULT_SGLANG_BASE_URL,
     DEFAULT_SGLANG_MODEL, DEFAULT_TEXT_MODEL, DEFAULT_VLLM_BASE_URL, DEFAULT_VLLM_MODEL,
     MAX_SUBAGENTS,
@@ -25,7 +25,7 @@ use super::model::{
     model_for_provider, normalize_base_url, normalize_model_config, normalize_model_for_provider,
 };
 use super::paths::{
-    default_memory_path, default_mcp_config_path, default_notes_path, default_skills_dir,
+    default_mcp_config_path, default_memory_path, default_notes_path, default_skills_dir,
     expand_path, resolve_load_config_path,
 };
 

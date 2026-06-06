@@ -42,11 +42,7 @@ pub fn select_auditor_findings(
     if medium_included {
         track_a.extend(mediums.clone());
     }
-    let medium_skipped = if medium_included {
-        0
-    } else {
-        mediums.len()
-    };
+    let medium_skipped = if medium_included { 0 } else { mediums.len() };
 
     AuditorFindingSelection {
         track_a,
@@ -72,7 +68,7 @@ fn format_note_row(note: &NoteLine) -> String {
     let sev = note.severity.as_deref().unwrap_or("?");
     format!(
         "| {} | {} | `{file}{line}` | {title} | {claim} |",
-        note.id, sev, 
+        note.id, sev,
     )
 }
 

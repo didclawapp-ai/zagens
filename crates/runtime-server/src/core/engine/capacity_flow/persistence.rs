@@ -3,7 +3,10 @@
 use super::super::*;
 
 impl Engine {
-    pub(in crate::core::engine) fn capacity_source_message_ids(&self, turn: &TurnContext) -> Vec<String> {
+    pub(in crate::core::engine) fn capacity_source_message_ids(
+        &self,
+        turn: &TurnContext,
+    ) -> Vec<String> {
         let mut ids: Vec<String> = turn
             .tool_calls
             .iter()

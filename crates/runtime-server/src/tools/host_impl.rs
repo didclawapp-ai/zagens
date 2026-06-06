@@ -32,11 +32,7 @@ impl ToolTaskHost for TaskManagerHost {
     async fn add_task(&self, req: Value) -> Result<Value, String> {
         let req: NewTaskRequest =
             serde_json::from_value(req).map_err(|e| format!("invalid task request: {e}"))?;
-        let task = self
-            .0
-            .add_task(req)
-            .await
-            .map_err(|e| e.to_string())?;
+        let task = self.0.add_task(req).await.map_err(|e| e.to_string())?;
         serde_json::to_value(task).map_err(|e| e.to_string())
     }
 
@@ -46,11 +42,7 @@ impl ToolTaskHost for TaskManagerHost {
     }
 
     async fn get_task(&self, task_id: &str) -> Result<Value, String> {
-        let task = self
-            .0
-            .get_task(task_id)
-            .await
-            .map_err(|e| e.to_string())?;
+        let task = self.0.get_task(task_id).await.map_err(|e| e.to_string())?;
         serde_json::to_value(task).map_err(|e| e.to_string())
     }
 
@@ -75,7 +67,12 @@ impl ToolTaskHost for TaskManagerHost {
         self.0.artifact_absolute_path(relative)
     }
 
-    fn write_task_artifact(&self, task_id: &str, label: &str, content: &str) -> Result<PathBuf, String> {
+    fn write_task_artifact(
+        &self,
+        task_id: &str,
+        label: &str,
+        content: &str,
+    ) -> Result<PathBuf, String> {
         self.0
             .write_task_artifact(task_id, label, content)
             .map_err(|e| e.to_string())
@@ -94,9 +91,7 @@ impl ToolAutomationHost for AutomationManagerHost {
         let req: crate::automation_manager::CreateAutomationRequest =
             serde_json::from_value(req).map_err(|e| format!("invalid automation request: {e}"))?;
         let manager = self.automations.lock().await;
-        let automation = manager
-            .create_automation(req)
-            .map_err(|e| e.to_string())?;
+        let automation = manager.create_automation(req).map_err(|e| e.to_string())?;
         serde_json::to_value(automation).map_err(|e| e.to_string())
     }
 

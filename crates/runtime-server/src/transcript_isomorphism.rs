@@ -9,10 +9,18 @@ use crate::models::{ContentBlock, Message};
 /// Minimal transcript cell for user/assistant/system/thinking/archived blocks.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum TranscriptCell {
-    User { content: String },
-    Assistant { content: String },
-    System { content: String },
-    Thinking { content: String },
+    User {
+        content: String,
+    },
+    Assistant {
+        content: String,
+    },
+    System {
+        content: String,
+    },
+    Thinking {
+        content: String,
+    },
     ArchivedContext {
         level: u8,
         range: String,

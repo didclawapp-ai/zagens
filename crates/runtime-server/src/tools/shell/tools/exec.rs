@@ -1,7 +1,7 @@
 //! `exec_shell` ToolSpec.
 
-use super::helpers::{execute_foreground_via_background};
 use super::super::types::{ShellResult, ShellStatus};
+use super::helpers::execute_foreground_via_background;
 use crate::command_safety::{SafetyLevel, analyze_command};
 use crate::execpolicy::{ExecPolicyDecision, load_default_policy};
 use crate::features::Feature;

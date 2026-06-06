@@ -104,15 +104,9 @@ impl ErrorCategory {
 #[must_use]
 pub fn user_hint_for_category(category: ErrorCategory) -> &'static str {
     match category {
-        ErrorCategory::Network => {
-            "Check your network or proxy, then retry the message."
-        }
-        ErrorCategory::Timeout => {
-            "The request timed out; retry or reduce context with /compact."
-        }
-        ErrorCategory::RateLimit => {
-            "Wait briefly and retry, or switch to a lighter model."
-        }
+        ErrorCategory::Network => "Check your network or proxy, then retry the message.",
+        ErrorCategory::Timeout => "The request timed out; retry or reduce context with /compact.",
+        ErrorCategory::RateLimit => "Wait briefly and retry, or switch to a lighter model.",
         ErrorCategory::InvalidInput => {
             "Fix model/thinking settings or compact context — this request cannot be retried automatically."
         }
@@ -122,10 +116,16 @@ pub fn user_hint_for_category(category: ErrorCategory) -> &'static str {
         ErrorCategory::Authorization => {
             "This action is not allowed in the current trust or approval mode."
         }
-        ErrorCategory::Parse => "The response could not be parsed; retry once or report if it persists.",
+        ErrorCategory::Parse => {
+            "The response could not be parsed; retry once or report if it persists."
+        }
         ErrorCategory::Tool => "Review the tool output in the transcript and adjust the request.",
-        ErrorCategory::State => "The thread or resource may have ended; refresh or start a new turn.",
-        ErrorCategory::Internal => "Retry the message; if it persists, check logs or restart the runtime.",
+        ErrorCategory::State => {
+            "The thread or resource may have ended; refresh or start a new turn."
+        }
+        ErrorCategory::Internal => {
+            "Retry the message; if it persists, check logs or restart the runtime."
+        }
     }
 }
 
@@ -256,7 +256,6 @@ impl ErrorEnvelope {
             message,
         )
     }
-
 }
 
 /// Stream-specific errors for the turn loop (chunk timeout, overflow, duration).

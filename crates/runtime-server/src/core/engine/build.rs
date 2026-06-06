@@ -5,24 +5,24 @@ use std::sync::Arc;
 use deepseek_core::engine::EngineHostBundle;
 use tokio::sync::{Mutex as AsyncMutex, mpsc};
 
+use crate::agent_surface::AppMode;
 use crate::client::DeepSeekClient;
 use crate::config::{ApiProvider, Config};
 use crate::prompts;
 use crate::sandbox::TuiSandboxHost;
 use crate::seam_manager::{SeamConfig, SeamManager};
-use crate::tools::large_output_router::TuiWorkshopHost;
 use crate::tools::approval_cache::ApprovalCache;
-use crate::tools::shell::{new_shared_shell_manager, TuiShellHost};
+use crate::tools::large_output_router::TuiWorkshopHost;
+use crate::tools::shell::{TuiShellHost, new_shared_shell_manager};
 use crate::tools::subagent::{new_shared_subagent_manager, spawn_subagent_maintenance_task};
-use crate::agent_surface::AppMode;
 
+use super::Engine;
+use super::cycle_hooks;
 use super::handle::EngineHandle;
 use super::runtime_ext::EngineRuntimeExt;
 use super::types::EngineConfig;
 use crate::core::capacity::CapacityController;
 use crate::core::session::Session;
-use super::cycle_hooks;
-use super::Engine;
 use crate::long_horizon::LongHorizonSessionState;
 
 fn env_only_api_key_recovery_hint(api_config: &Config) -> Option<String> {
@@ -77,8 +77,7 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
         lean.notes_path.clone(),
         lean.mcp_config_path.clone(),
     );
-    let user_memory_block =
-        crate::memory::compose_block(lean.memory_enabled, &lean.memory_path);
+    let user_memory_block = crate::memory::compose_block(lean.memory_enabled, &lean.memory_path);
     let system_prompt = prompts::system_prompt_for_mode_with_context_skills_session_and_approval(
         AppMode::Agent,
         &lean.workspace,
@@ -95,8 +94,7 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
         session.approval_mode,
     );
     let stable_prompt = Some(system_prompt);
-    session.last_system_prompt_hash =
-        Some(cycle_hooks::system_prompt_hash(stable_prompt.as_ref()));
+    session.last_system_prompt_hash = Some(cycle_hooks::system_prompt_hash(stable_prompt.as_ref()));
     session.system_prompt = stable_prompt;
 
     let subagent_manager = new_shared_subagent_manager(
@@ -170,8 +168,7 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
         .and_then(|g| g.clone());
 
     let topic_memory_settings = config_ext.topic_memory.clone();
-    let topic_memory_runtime =
-        crate::topic_memory::TopicMemoryRuntime::new(topic_memory_settings);
+    let topic_memory_runtime = crate::topic_memory::TopicMemoryRuntime::new(topic_memory_settings);
 
     let (tx_subagent_completion, rx_subagent_completion) = mpsc::unbounded_channel();
     let rx_subagent_completion = Arc::new(AsyncMutex::new(rx_subagent_completion));

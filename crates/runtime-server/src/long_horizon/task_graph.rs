@@ -3,7 +3,7 @@
 use deepseek_core::chat::Message;
 use deepseek_core::long_horizon::LongHorizonConfig;
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::tools::plan::{PlanSnapshot, StepStatus};
 use crate::tools::todo::{TodoListSnapshot, TodoStatus};
@@ -74,7 +74,11 @@ pub fn build_task_graph_response(
 ) -> TaskGraphResponse {
     let macro_configured = lht.macro_loop.enabled;
     let macro_loop = session.map(|s| {
-        super::macro_loop_panel::merge_macro_loop_panel(macro_configured, &Default::default(), Some(s))
+        super::macro_loop_panel::merge_macro_loop_panel(
+            macro_configured,
+            &Default::default(),
+            Some(s),
+        )
     });
     let (lht_blocked, nudge_count, telemetry, completion_gate) = session
         .map(|s| {
@@ -88,7 +92,8 @@ pub fn build_task_graph_response(
                     conversion_pct: s.telemetry.conversion_pct(),
                 }),
                 lht.completion_gate.is_active().then(|| {
-                    let mut cache = super::completion_gate_panel::CompletionGatePanelCache::default();
+                    let mut cache =
+                        super::completion_gate_panel::CompletionGatePanelCache::default();
                     cache.active = true;
                     cache.mode = Some(match lht.completion_gate.mode {
                         deepseek_core::long_horizon::CompletionGateMode::Enforce => {
@@ -111,13 +116,15 @@ pub fn build_task_graph_response(
                     }
                     super::completion_gate_panel::merge_completion_gate_panel(
                         &cache,
-                        Some(super::completion_gate_panel::CompletionGateSessionSnapshot {
-                            manifest_gate_rounds: s.manifest_gate_rounds,
-                            audit_rounds: s.audit_rounds,
-                            first_gap_count: s.first_gate_gap_count,
-                            integration_gap_count: s.last_integration_gap_count,
-                            gate_reinject_while_blocked: s.gate_reinject_while_blocked,
-                        }),
+                        Some(
+                            super::completion_gate_panel::CompletionGateSessionSnapshot {
+                                manifest_gate_rounds: s.manifest_gate_rounds,
+                                audit_rounds: s.audit_rounds,
+                                first_gap_count: s.first_gate_gap_count,
+                                integration_gap_count: s.last_integration_gap_count,
+                                gate_reinject_while_blocked: s.gate_reinject_while_blocked,
+                            },
+                        ),
                     )
                 }),
             )

@@ -318,7 +318,10 @@ mod tests {
     #[tokio::test]
     async fn agent_id_is_extractable_from_every_variant() {
         let cases: Vec<(MailboxMessage, &str)> = vec![
-            (MailboxMessage::started("a1", SubAgentType::General.as_str()), "a1"),
+            (
+                MailboxMessage::started("a1", SubAgentType::General.as_str()),
+                "a1",
+            ),
             (MailboxMessage::progress("a2", "x"), "a2"),
             (
                 MailboxMessage::ToolCallStarted {

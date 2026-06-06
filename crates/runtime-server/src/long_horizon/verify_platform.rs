@@ -53,7 +53,10 @@ fn is_stub_absence_pattern(pattern: &str) -> bool {
 #[must_use]
 pub fn try_native_verify(workspace: &Path, command: &str) -> Option<NativeVerifyResult> {
     let (root, rest) = strip_cd_prefix(command.trim());
-    let root = root.as_deref().map(|d| workspace.join(d)).unwrap_or_else(|| workspace.to_path_buf());
+    let root = root
+        .as_deref()
+        .map(|d| workspace.join(d))
+        .unwrap_or_else(|| workspace.to_path_buf());
 
     if let Some(out) = try_grep_like(&root, rest) {
         return Some(to_result("native_grep", command, out));
@@ -126,8 +129,7 @@ fn try_grep_like(workspace: &Path, command: &str) -> Option<NativeOutcome> {
 
 fn is_gofmt_list_command(command: &str) -> bool {
     let tokens = tokenize_command(command);
-    tokens.first().map(|t| t == "gofmt").unwrap_or(false)
-        && tokens.iter().any(|t| t == "-l")
+    tokens.first().map(|t| t == "gofmt").unwrap_or(false) && tokens.iter().any(|t| t == "-l")
 }
 
 /// `gofmt -l` exits 0 even when files need formatting — treat non-empty stdout as failure.
@@ -368,11 +370,7 @@ mod tests {
     #[test]
     fn grep_count_stub_absence_fails_when_present() {
         let dir = TempDir::new().unwrap();
-        fs::write(
-            dir.path().join("commands.rs"),
-            "fn x() { not_impl() }\n",
-        )
-        .unwrap();
+        fs::write(dir.path().join("commands.rs"), "fn x() { not_impl() }\n").unwrap();
         let result = try_native_verify(dir.path(), "grep -c not_impl commands.rs").unwrap();
         assert_eq!(result.exit_code, 1);
         assert_eq!(result.exit_class, NativeExitClass::Assertion);

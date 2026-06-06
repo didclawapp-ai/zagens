@@ -10,7 +10,7 @@ use clap::Parser;
 use crate::cli::configure_windows_console_utf8;
 use crate::config::Config;
 
-pub use http::{run_http_server, RuntimeApiOptions};
+pub use http::{RuntimeApiOptions, run_http_server};
 
 /// CLI for the `zagens-runtime` sidecar binary (HTTP only — no ratatui / full CLI).
 #[derive(Parser, Debug)]

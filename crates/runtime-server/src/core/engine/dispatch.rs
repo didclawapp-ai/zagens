@@ -6,15 +6,14 @@
 
 use serde_json::Value;
 
-use crate::tools::spec::{ToolError, ToolResult};
 use crate::agent_surface::AppMode;
+use crate::tools::spec::{ToolError, ToolResult};
 
 use deepseek_core::engine::dispatch::{self, ToolParallelPlanFlags};
 use deepseek_core::engine::streaming::ToolUseState;
 
 pub use deepseek_core::engine::dispatch::{
-    mcp_tool_is_parallel_safe, mcp_tool_is_read_only,
-    parse_parallel_tool_calls,
+    mcp_tool_is_parallel_safe, mcp_tool_is_read_only, parse_parallel_tool_calls,
 };
 
 // === Types (stay in tui until Engine moves to core) ===================

@@ -374,4 +374,3 @@ pub(super) const AUDITOR_AGENT_PROMPT: &str = concat!(
     "\n",
     include_str!("../../prompts/subagent_output_format.md"),
 );
-

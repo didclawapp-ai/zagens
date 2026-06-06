@@ -1,8 +1,8 @@
 //! Tool planning + outcome aggregation for one turn step (P2 PR6b — `deepseek-core`).
 
-use std::collections::HashSet;
 use deepseek_tools::{ToolError, ToolResult};
 use serde_json::json;
+use std::collections::HashSet;
 
 use crate::chat::{ContentBlock, Message, Tool};
 use crate::engine::context::compact_tool_result_for_context;
@@ -14,12 +14,12 @@ use crate::engine::emit_tool_audit;
 use crate::engine::loop_guard::{AttemptDecision, LoopGuard, OutcomeDecision};
 use crate::engine::streaming::ToolUseState;
 use crate::engine::tool_catalog::{
-    is_audit_scratchpad_bind_tool, CODE_EXECUTION_TOOL_NAME, is_tool_search_tool,
-    missing_tool_error_message, REQUEST_USER_INPUT_NAME,
+    CODE_EXECUTION_TOOL_NAME, REQUEST_USER_INPUT_NAME, is_audit_scratchpad_bind_tool,
+    is_tool_search_tool, missing_tool_error_message,
 };
+use crate::engine::turn_loop::control::TurnLoopToolPhaseOutcome;
 use crate::engine::turn_loop::exec::ToolExecutionPlan;
 use crate::engine::turn_loop::host::TurnLoopHost;
-use crate::engine::turn_loop::control::TurnLoopToolPhaseOutcome;
 use crate::error_taxonomy::ErrorEnvelope;
 use crate::turn::{TurnContext, TurnLoopMode, TurnToolCall};
 
@@ -44,11 +44,7 @@ pub async fn run_tool_execution_phase<H: TurnLoopHost>(
         let tool_input = tool.input.clone();
         let tool_caller = tool.caller.clone();
 
-        tracing::info!(
-            "Planning tool '{}' with input: {:?}",
-            tool_name,
-            tool_input
-        );
+        tracing::info!("Planning tool '{}' with input: {:?}", tool_name, tool_input);
 
         let interactive = (tool_name == "exec_shell"
             && tool_input
@@ -88,8 +84,7 @@ pub async fn run_tool_execution_phase<H: TurnLoopHost>(
             if tool_def.is_some() {
                 tool_name = canonical;
                 tool.name = tool_name.clone();
-                if host.maybe_activate_deferred_tool(&tool_name, tool_catalog, active_tool_names)
-                {
+                if host.maybe_activate_deferred_tool(&tool_name, tool_catalog, active_tool_names) {
                     let _ = host
                         .tx_event()
                         .send(crate::events::Event::status(format!(
@@ -178,11 +173,8 @@ pub async fn run_tool_execution_phase<H: TurnLoopHost>(
         let tool_name_for_ws = outcome.name.clone();
         let mut tool_call =
             TurnToolCall::new(outcome.id.clone(), outcome.name.clone(), outcome.input);
-        let should_stop_this_turn = should_stop_after_plan_tool(
-            mode == TurnLoopMode::Plan,
-            &outcome.name,
-            &outcome.result,
-        );
+        let should_stop_this_turn =
+            should_stop_after_plan_tool(mode == TurnLoopMode::Plan, &outcome.name, &outcome.result);
 
         match outcome.result {
             Ok(output) => {
@@ -236,8 +228,11 @@ pub async fn run_tool_execution_phase<H: TurnLoopHost>(
                 let session_model = host.session_mut().model.clone();
                 let mut output_for_model = output.clone();
                 output_for_model.content = result_text.clone();
-                let output_for_context =
-                    compact_tool_result_for_context(&session_model, &outcome.name, &output_for_model);
+                let output_for_context = compact_tool_result_for_context(
+                    &session_model,
+                    &outcome.name,
+                    &output_for_model,
+                );
                 let output_content = result_text;
 
                 tool_call.set_result(output_content.clone(), duration);

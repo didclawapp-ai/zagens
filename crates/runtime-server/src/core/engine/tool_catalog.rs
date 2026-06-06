@@ -8,17 +8,17 @@ use std::time::Duration;
 use deepseek_core::turn::TurnLoopMode;
 use serde_json::Value;
 
+use crate::agent_surface::AppMode;
 use crate::models::Tool;
 use crate::tools::spec::{ToolError, ToolResult};
-use crate::agent_surface::AppMode;
 
 pub use deepseek_core::engine::tool_catalog::{
-    active_tools_for_step, apply_mcp_tool_deferral, apply_native_tool_deferral,
-    build_model_tool_catalog as build_model_tool_catalog_for_mode, ensure_advanced_tooling,
-    execute_tool_search, initial_active_tools, is_tool_search_tool,
+    CODE_EXECUTION_TOOL_NAME, MULTI_TOOL_PARALLEL_NAME, REQUEST_USER_INPUT_NAME,
+    TOOL_SEARCH_BM25_NAME, active_tools_for_step, apply_mcp_tool_deferral,
+    apply_native_tool_deferral, build_model_tool_catalog as build_model_tool_catalog_for_mode,
+    ensure_advanced_tooling, execute_tool_search, initial_active_tools, is_tool_search_tool,
     maybe_activate_requested_deferred_tool, missing_tool_error_message,
-    should_default_defer_tool as should_default_defer_tool_for_mode, CODE_EXECUTION_TOOL_NAME,
-    MULTI_TOOL_PARALLEL_NAME, REQUEST_USER_INPUT_NAME, TOOL_SEARCH_BM25_NAME,
+    should_default_defer_tool as should_default_defer_tool_for_mode,
 };
 
 fn app_mode_to_turn_loop(mode: AppMode) -> TurnLoopMode {

@@ -12,11 +12,13 @@ pub fn tool_marks_lht_checkpoint(tool_name: &str, tool_input: &Value, success: b
         return false;
     }
     match tool_name {
-        "checklist_update" | "todo_update" => tool_input
-            .get("status")
-            .and_then(|v| v.as_str())
-            .and_then(TodoStatus::from_str)
-            == Some(TodoStatus::Completed),
+        "checklist_update" | "todo_update" => {
+            tool_input
+                .get("status")
+                .and_then(|v| v.as_str())
+                .and_then(TodoStatus::from_str)
+                == Some(TodoStatus::Completed)
+        }
         "update_plan" => plan_input_marks_completion(tool_input),
         _ => false,
     }

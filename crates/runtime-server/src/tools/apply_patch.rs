@@ -1473,7 +1473,8 @@ diff --git a/b.txt b/b.txt
         let path = tmp.path().join("crlf.txt");
         fs::write(&path, "line1\r\nline2\r\nline3\r\n").expect("seed");
 
-        let patch = "--- a/crlf.txt\n+++ b/crlf.txt\n@@ -1,3 +1,3 @@\n line1\n-line2\n+modified\n line3\n";
+        let patch =
+            "--- a/crlf.txt\n+++ b/crlf.txt\n@@ -1,3 +1,3 @@\n line1\n-line2\n+modified\n line3\n";
         let tool = ApplyPatchTool;
         tool.execute(json!({"path": "crlf.txt", "patch": patch}), &ctx)
             .await
@@ -1491,7 +1492,10 @@ diff --git a/b.txt b/b.txt
         let tmp = tempdir().expect("tempdir");
         let ctx = ToolContext::new(tmp.path().to_path_buf());
         let path = tmp.path().join("gb.txt");
-        let seed = encoding_rs::GB18030.encode("第一行\n第二行\n").0.into_owned();
+        let seed = encoding_rs::GB18030
+            .encode("第一行\n第二行\n")
+            .0
+            .into_owned();
         fs::write(&path, &seed).expect("seed");
 
         let patch = "--- a/gb.txt\n+++ b/gb.txt\n@@ -1,2 +1,2 @@\n 第一行\n-第二行\n+修改行\n";

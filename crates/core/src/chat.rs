@@ -250,8 +250,9 @@ pub struct MessageDelta {
 // ── LLM Client trait (P2 PR3b) ───────────────────────────────────────
 
 /// Type alias for boxed stream of SSE events.
-pub type StreamEventBox =
-    std::pin::Pin<Box<dyn futures_util::Stream<Item = anyhow::Result<StreamEvent>> + Send + 'static>>;
+pub type StreamEventBox = std::pin::Pin<
+    Box<dyn futures_util::Stream<Item = anyhow::Result<StreamEvent>> + Send + 'static>,
+>;
 
 /// Unified interface for LLM providers — dyn-compatible via `#[async_trait]`.
 ///

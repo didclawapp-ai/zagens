@@ -9,7 +9,10 @@ use super::TaskRecord;
 pub(crate) const TIMELINE_SUMMARY_LIMIT: usize = 240;
 pub(crate) const ARTIFACT_THRESHOLD: usize = 1200;
 
-pub(super) fn resolve_task_id(tasks: &HashMap<String, TaskRecord>, id_or_prefix: &str) -> Result<String> {
+pub(super) fn resolve_task_id(
+    tasks: &HashMap<String, TaskRecord>,
+    id_or_prefix: &str,
+) -> Result<String> {
     if tasks.contains_key(id_or_prefix) {
         return Ok(id_or_prefix.to_string());
     }

@@ -63,7 +63,7 @@ const CYCLE_ARCHIVE_SCHEMA_VERSION: u32 = 1;
 pub use deepseek_core::cycle::CycleConfig;
 #[cfg(test)]
 pub use deepseek_core::cycle::{
-    ModelCycleConfig, DEFAULT_BRIEFING_MAX_TOKENS, DEFAULT_CYCLE_THRESHOLD_TOKENS,
+    DEFAULT_BRIEFING_MAX_TOKENS, DEFAULT_CYCLE_THRESHOLD_TOKENS, ModelCycleConfig,
 };
 
 /// Conservative chars-per-token used to bound the briefing length to the

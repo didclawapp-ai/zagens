@@ -4,8 +4,7 @@ use anyhow::{Context, Result};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use tokio::process::{Child, ChildStdin, ChildStdout};
 
-
-use super::diagnostics::{bounded_body_excerpt, mask_url_secrets, ERROR_BODY_PREVIEW_BYTES};
+use super::diagnostics::{ERROR_BODY_PREVIEW_BYTES, bounded_body_excerpt, mask_url_secrets};
 
 // === McpConnection - Async Connection Management ===
 
@@ -415,7 +414,10 @@ impl McpTransport for StreamableHttpTransport {
             .and_then(|v| v.to_str().ok())
             .unwrap_or("")
             .to_ascii_lowercase();
-        let body = response.text().await.context("MCP Streamable HTTP: failed to read response body")?;
+        let body = response
+            .text()
+            .await
+            .context("MCP Streamable HTTP: failed to read response body")?;
         if content_type.contains("text/event-stream") {
             self.enqueue_sse_body(&body);
         } else if !body.trim().is_empty() {

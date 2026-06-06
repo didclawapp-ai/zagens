@@ -7,22 +7,19 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-use deepseek_core::events::Event;
 use crate::tools::spec::ToolContext;
+use deepseek_core::events::Event;
 
+use super::mailbox::Mailbox;
 use deepseek_core::subagent::{
     CompletionReason, ParseFailureReason, StructuredFindings, StructuredVerdict,
     SubAgentAssignment, SubAgentResult, SubAgentStatus, SubAgentType,
 };
-use super::mailbox::Mailbox;
-
 
 use super::constants::STEP_API_TIMEOUT;
-use super::types::DEFAULT_MAX_SPAWN_DEPTH;
 use super::factory::SharedSubAgentManager;
+use super::types::DEFAULT_MAX_SPAWN_DEPTH;
 use super::types::SubAgentInput;
-
-
 
 /// Terminal-state notification emitted to the engine's parent turn loop
 /// when one of its direct children finishes (issue #756). Carries the

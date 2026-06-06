@@ -33,8 +33,6 @@
 //!   command writes a `.trusted` marker; tool-execution gating is a separate
 //!   concern that lives next to the tool registry.
 
-
-
 mod api;
 mod download;
 mod local;
@@ -45,11 +43,11 @@ mod types;
 mod tests;
 
 pub use api::{install, install_with_registry, update, update_with_registry};
-pub use local::{import_local_directory, uninstall, trust};
+pub use local::{import_local_directory, trust, uninstall};
 pub use registry::{fetch_registry, sync_registry};
 pub use types::{
-    default_cache_skills_dir, InstallError, InstallOutcome, InstallSource, InstalledSkill,
-    RegistryDocument, RegistryEntry, RegistryFetchResult, SkillSyncOutcome, SyncResult,
-    UpdateResult, DEFAULT_MAX_SIZE_BYTES, DEFAULT_REGISTRY_URL, INSTALLED_FROM_MARKER,
-    TRUSTED_MARKER,
+    DEFAULT_MAX_SIZE_BYTES, DEFAULT_REGISTRY_URL, INSTALLED_FROM_MARKER, InstallError,
+    InstallOutcome, InstallSource, InstalledSkill, RegistryDocument, RegistryEntry,
+    RegistryFetchResult, SkillSyncOutcome, SyncResult, TRUSTED_MARKER, UpdateResult,
+    default_cache_skills_dir,
 };

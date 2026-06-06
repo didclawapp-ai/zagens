@@ -5,8 +5,8 @@ use crate::tools::approval_cache::{ApprovalCacheStatus, ApprovalKey};
 use crate::tools::user_input::{UserInputRequest, UserInputResponse};
 
 use deepseek_core::engine::approval::{
-    recv_user_input_for_tool, ApprovalDecision as CoreApprovalDecision,
-    ApprovalResult as CoreApprovalResult, UserInputDecision as CoreUserInputDecision,
+    ApprovalDecision as CoreApprovalDecision, ApprovalResult as CoreApprovalResult,
+    UserInputDecision as CoreUserInputDecision, recv_user_input_for_tool,
 };
 
 use super::Engine;

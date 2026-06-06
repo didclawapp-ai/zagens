@@ -104,9 +104,7 @@ pub fn read_locale_setting() -> Result<String> {
 /// Persist an explicit UI locale (`en`, `ja`, `zh-Hans`, `pt-BR`) for model output.
 pub fn write_locale_setting(locale: &str) -> Result<()> {
     let Some(normalized) = normalize_configured_locale(locale) else {
-        bail!(
-            "invalid locale '{locale}'. Expected: auto, en, ja, zh-Hans, pt-BR."
-        );
+        bail!("invalid locale '{locale}'. Expected: auto, en, ja, zh-Hans, pt-BR.");
     };
     if normalized == "auto" {
         bail!("Zagens UI locale sync requires an explicit locale tag.");

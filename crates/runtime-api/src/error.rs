@@ -1,8 +1,8 @@
 //! Shared HTTP error envelope for runtime API handlers (D16 E1-c phase 3).
 
+use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::Json;
 
 #[derive(Debug, Clone)]
 pub struct ApiError {

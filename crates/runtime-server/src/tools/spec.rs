@@ -19,10 +19,10 @@ use crate::network_policy::NetworkPolicyDecider;
 use crate::sandbox::backend::SandboxBackend;
 use crate::tools::shell::{SharedShellManager, new_shared_shell_manager};
 use deepseek_runtime_adapters::tools::path::normalize_path;
+pub use deepseek_runtime_adapters::tools::path::path_has_prefix;
 pub use deepseek_runtime_adapters::tools::{
     RuntimeToolHostWire, ToolAutomationHost, ToolProgressEmit, ToolShellEnvHost, ToolTaskHost,
 };
-pub use deepseek_runtime_adapters::tools::path::path_has_prefix;
 pub use deepseek_tools::{
     ApprovalRequirement, ToolCapability, ToolError, ToolResult, optional_bool, optional_str,
     optional_u64, required_str, required_u64,

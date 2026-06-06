@@ -6,8 +6,8 @@ use deepseek_core::engine::{tool_progress_opening_line, tool_progress_phase_line
 
 use deepseek_core::engine::EngineToolDispatch;
 
-use super::progress::{emit_tool_progress, ChannelToolProgress};
 use super::super::*;
+use super::progress::{ChannelToolProgress, emit_tool_progress};
 use super::terminal_guard::InteractiveTerminalGuard;
 
 impl Engine {
@@ -47,8 +47,7 @@ impl Engine {
                 )))
             }
         } else if let Some(registry) = registry {
-            let needs_context_path =
-                context_override.is_some() || tool_progress_id.is_some();
+            let needs_context_path = context_override.is_some() || tool_progress_id.is_some();
             if needs_context_path {
                 let merged_ctx: Option<ToolContext> = match tool_progress_id.as_ref() {
                     Some(tid) => {

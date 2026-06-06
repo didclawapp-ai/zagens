@@ -264,14 +264,18 @@ mod tests {
 
         let skill_dir = tmp.path().join("multi-search-engine");
         assert!(skill_dir.join("config.json").exists());
-        assert!(skill_dir
-            .join("references")
-            .join("advanced-search.md")
-            .exists());
-        assert!(skill_dir
-            .join("references")
-            .join("international-search.md")
-            .exists());
+        assert!(
+            skill_dir
+                .join("references")
+                .join("advanced-search.md")
+                .exists()
+        );
+        assert!(
+            skill_dir
+                .join("references")
+                .join("international-search.md")
+                .exists()
+        );
     }
 
     #[test]

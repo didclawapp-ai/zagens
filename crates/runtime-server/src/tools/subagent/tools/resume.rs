@@ -74,4 +74,3 @@ impl ToolSpec for AgentResumeTool {
         ToolResult::json(&result).map_err(|e| ToolError::execution_failed(e.to_string()))
     }
 }
-

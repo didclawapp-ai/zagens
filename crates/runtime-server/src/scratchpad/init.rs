@@ -175,8 +175,7 @@ mod tests {
         ctx.runtime.wire.active_thread_id = Some("thr_test".to_string());
         let run_id = resolve_run_id_for_init(&ctx, None).expect("run id");
         assert_eq!(run_id, "thr_test");
-        let store = ScratchpadStore::init(&ctx, &run_id, default_init_areas(), None)
-            .expect("init");
+        let store = ScratchpadStore::init(&ctx, &run_id, default_init_areas(), None).expect("init");
         let inv = store.read_inventory().expect("inventory");
         assert_eq!(inv.areas.len(), 1);
         assert_eq!(inv.areas[0].id, "workspace");
@@ -190,7 +189,10 @@ mod tests {
         let areas = default_init_areas();
         ScratchpadStore::init(&ctx, "thr_idem", areas.clone(), None).expect("first");
         let store = ScratchpadStore::init(&ctx, "thr_idem", areas, None).expect("second");
-        assert_eq!(store.read_inventory().expect("inv").areas[0].id, "workspace");
+        assert_eq!(
+            store.read_inventory().expect("inv").areas[0].id,
+            "workspace"
+        );
     }
 
     #[test]

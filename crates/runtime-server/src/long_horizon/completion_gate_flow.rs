@@ -15,7 +15,8 @@ use deepseek_core::long_horizon::{
     CompletionGateConfig, CompletionGateMode, CompletionGateVerifyEntry, VerifySource,
 };
 
-use super::completion_audit::{audit_deliverables_async, CompletionAuditResult};
+use super::LhtGateOutcome;
+use super::completion_audit::{CompletionAuditResult, audit_deliverables_async};
 use super::deliverable_manifest;
 use super::gate_telemetry::CompletionGateEvent;
 use super::generic_gate::{
@@ -27,11 +28,10 @@ use super::manifest_gate::{
     CompletionGateExec, ManifestGateResult, VerifyExitClass, VerifyRunResult, run_manifest_gate,
 };
 use super::nudge::{
-    build_deliverables_failed_nudge, build_manifest_failed_nudge, LongHorizonSessionState,
+    LongHorizonSessionState, build_deliverables_failed_nudge, build_manifest_failed_nudge,
 };
 use super::progress::workspace_change_signature;
 use super::stub_gate;
-use super::LhtGateOutcome;
 use crate::tools::todo::TodoListSnapshot;
 
 /// Is a failing entry from this source a hard (enforce) failure?
@@ -253,12 +253,7 @@ async fn evaluate_completion_gate_inner(
         );
         if session.integration_gate_rounds <= gate.max_manifest_rounds {
             if steps_remaining == 0 {
-                return audit_unmet_outcome(
-                    "steps_and_integration_exhausted",
-                    &[],
-                    &[],
-                    session,
-                );
+                return audit_unmet_outcome("steps_and_integration_exhausted", &[], &[], session);
             }
             let text = super::nudge::build_integration_incomplete_nudge(&cross.enforce, lang);
             return LhtGateOutcome::NudgeIntegrationIncomplete(user_message(text));
@@ -324,12 +319,7 @@ async fn evaluate_completion_gate_inner(
                         session,
                     );
                 }
-                return nudge_deliverables(
-                    session,
-                    &audit,
-                    lang,
-                    session.tracker.is_blocked(),
-                );
+                return nudge_deliverables(session, &audit, lang, session.tracker.is_blocked());
             }
             session.completion_gate_observe_pending = true;
             return LhtGateOutcome::ObserveManifestGate {
@@ -403,7 +393,12 @@ async fn evaluate_stub_gate(
         .collect();
 
     if session.stub_gate_rounds > gate.max_manifest_rounds {
-        return Some(audit_unmet_outcome("stub_rounds_exhausted", &ids, &[], session));
+        return Some(audit_unmet_outcome(
+            "stub_rounds_exhausted",
+            &ids,
+            &[],
+            session,
+        ));
     }
     if steps_remaining == 0 {
         return Some(audit_unmet_outcome(

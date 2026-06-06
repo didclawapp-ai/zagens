@@ -13,8 +13,7 @@ fn tag_re() -> &'static Regex {
 fn bearer_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
-        Regex::new(r"(?i)bearer\s+[A-Za-z0-9._\-+/=]{8,}")
-            .expect("bearer token regex")
+        Regex::new(r"(?i)bearer\s+[A-Za-z0-9._\-+/=]{8,}").expect("bearer token regex")
     })
 }
 
@@ -86,7 +85,8 @@ mod tests {
 
     #[test]
     fn redacts_bearer_and_api_key() {
-        let body = r#"{"error":"invalid","Authorization":"Bearer sk-secret1234567890","api_key=leaked"}"#;
+        let body =
+            r#"{"error":"invalid","Authorization":"Bearer sk-secret1234567890","api_key=leaked"}"#;
         let out = sanitize_http_error_body(body);
         assert!(!out.contains("sk-secret"));
         assert!(out.contains("[REDACTED]"));

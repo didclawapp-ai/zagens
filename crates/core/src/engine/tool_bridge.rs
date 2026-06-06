@@ -1,9 +1,7 @@
 //! `ToolCall` ↔ registry/`ToolResult` conversions for `EngineToolDispatch` (P2 PR4).
 
 use deepseek_protocol::{ToolOutput, ToolPayload};
-use deepseek_tools::{
-    FunctionCallError, ToolCall, ToolCallSource, ToolError, ToolResult,
-};
+use deepseek_tools::{FunctionCallError, ToolCall, ToolCallSource, ToolError, ToolResult};
 use serde_json::Value;
 
 /// Build a protocol `ToolCall` from the engine's `(name, JSON input)` shape.
@@ -55,8 +53,7 @@ pub fn tool_output_to_result(output: ToolOutput) -> Result<ToolResult, ToolError
         ToolOutput::Function { body, success } => {
             let content = match body {
                 Some(Value::String(s)) => s,
-                Some(v) => serde_json::to_string_pretty(&v)
-                    .unwrap_or_else(|_| v.to_string()),
+                Some(v) => serde_json::to_string_pretty(&v).unwrap_or_else(|_| v.to_string()),
                 None => String::new(),
             };
             Ok(ToolResult {
@@ -65,8 +62,9 @@ pub fn tool_output_to_result(output: ToolOutput) -> Result<ToolResult, ToolError
                 metadata: None,
             })
         }
-        ToolOutput::Mcp { result } => ToolResult::json(&result)
-            .map_err(|e| ToolError::execution_failed(e.to_string())),
+        ToolOutput::Mcp { result } => {
+            ToolResult::json(&result).map_err(|e| ToolError::execution_failed(e.to_string()))
+        }
     }
 }
 
@@ -78,7 +76,10 @@ pub fn function_call_to_tool_error(err: FunctionCallError, tool_name: &str) -> T
         FunctionCallError::MutatingToolRejected { name } => ToolError::permission_denied(format!(
             "Tool '{name}' requires approval before mutating execution"
         )),
-        FunctionCallError::TimedOut { name: _, timeout_ms } => ToolError::Timeout {
+        FunctionCallError::TimedOut {
+            name: _,
+            timeout_ms,
+        } => ToolError::Timeout {
             seconds: timeout_ms.div_ceil(1000).max(1),
         },
         FunctionCallError::Cancelled { name } => {

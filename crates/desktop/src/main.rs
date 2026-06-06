@@ -14,9 +14,9 @@ use std::sync::Arc;
 
 use deepseek_config::ConfigStore;
 use tauri::{
+    Manager, WindowEvent,
     menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager, WindowEvent,
 };
 use tokio::sync::Notify;
 use window_registry::WindowRegistry;
@@ -85,12 +85,7 @@ fn main() {
                 WindowEvent::CloseRequested { api, .. } => {
                     let label = window.label().to_string();
                     if let Some(wv) = app.get_webview_window(&label) {
-                        window_registry::handle_close_requested(
-                            &wv,
-                            api,
-                            &registry,
-                            &terminal,
-                        );
+                        window_registry::handle_close_requested(&wv, api, &registry, &terminal);
                     }
                 }
                 WindowEvent::Destroyed => {
@@ -139,8 +134,8 @@ fn main() {
             });
 
             let registry = app.state::<WindowRegistry>();
-            let default_ws = workspace_defaults::default_composer_workspace()
-                .unwrap_or_else(|_| String::new());
+            let default_ws =
+                workspace_defaults::default_composer_workspace().unwrap_or_else(|_| String::new());
             let _ = registry.register("main", &default_ws);
             registry.set_last_focused("main");
             if let Some(main) = app.get_webview_window("main") {
@@ -169,8 +164,11 @@ fn main() {
                         focus_last_or_main(tray.app_handle());
                     }
                 })
-                .on_menu_event(|app: &tauri::AppHandle, event: tauri::menu::MenuEvent| {
-                    match event.id().as_ref() {
+                .on_menu_event(
+                    |app: &tauri::AppHandle, event: tauri::menu::MenuEvent| match event
+                        .id()
+                        .as_ref()
+                    {
                         "show" => focus_last_or_main(app),
                         "new_window" => {
                             let app = app.clone();
@@ -187,14 +185,12 @@ fn main() {
                         }
                         id if id.starts_with("focus:") => {
                             let label = id.trim_start_matches("focus:");
-                            let _ = window_registry::focus_agent_window(
-                                app.clone(),
-                                label.to_string(),
-                            );
+                            let _ =
+                                window_registry::focus_agent_window(app.clone(), label.to_string());
                         }
                         _ => {}
-                    }
-                })
+                    },
+                )
                 .build(app)?;
 
             Ok(())

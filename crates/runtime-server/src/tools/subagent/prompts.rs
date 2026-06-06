@@ -1,13 +1,9 @@
-
-
-
 use deepseek_core::subagent::{
     ParseFailureReason, StructuredFindings, StructuredVerdict, SubAgentAssignment, SubAgentType,
     VerdictItem, VerdictLevel,
 };
 
 use super::prompt_text::*;
-
 
 pub fn subagent_system_prompt(agent_type: &SubAgentType) -> String {
     match *agent_type {
@@ -31,111 +27,118 @@ pub fn subagent_system_prompt(agent_type: &SubAgentType) -> String {
 pub fn subagent_allowed_tools(agent_type: &SubAgentType) -> Vec<&'static str> {
     match *agent_type {
         SubAgentType::General => vec![
-                "list_dir",
-                "read_file",
-                "write_file",
-                "edit_file",
-                "apply_patch",
-                "grep_files",
-                "file_search",
-                "web.run",
-                "web_search",
-                "exec_shell",
-                "exec_shell_wait",
-                "exec_shell_interact",
-                "exec_wait",
-                "exec_interact",
-                "note",
-                "checklist_write",
-                "checklist_add",
-                "checklist_update",
-                "checklist_list",
-                "todo_write",
-                "todo_add",
-                "todo_update",
-                "todo_list",
-                "update_plan",
-            ],
+            "list_dir",
+            "read_file",
+            "write_file",
+            "edit_file",
+            "apply_patch",
+            "grep_files",
+            "file_search",
+            "web.run",
+            "web_search",
+            "exec_shell",
+            "exec_shell_wait",
+            "exec_shell_interact",
+            "exec_wait",
+            "exec_interact",
+            "note",
+            "checklist_write",
+            "checklist_add",
+            "checklist_update",
+            "checklist_list",
+            "todo_write",
+            "todo_add",
+            "todo_update",
+            "todo_list",
+            "update_plan",
+        ],
         SubAgentType::Explore => vec![
-                "list_dir",
-                "read_file",
-                "grep_files",
-                "glob_files",
-                "file_search",
-                "web.run",
-                "web_search",
-                "exec_shell",
-                "exec_shell_wait",
-                "exec_shell_interact",
-                "exec_wait",
-                "exec_interact",
-            ],
+            "list_dir",
+            "read_file",
+            "grep_files",
+            "glob_files",
+            "file_search",
+            "web.run",
+            "web_search",
+            "exec_shell",
+            "exec_shell_wait",
+            "exec_shell_interact",
+            "exec_wait",
+            "exec_interact",
+        ],
         SubAgentType::Plan => vec![
-                "list_dir",
-                "read_file",
-                "grep_files",
-                "glob_files",
-                "file_search",
-                "web.run",
-                "note",
-                "update_plan",
-                "checklist_write",
-                "checklist_add",
-                "checklist_update",
-                "checklist_list",
-                "todo_write",
-                "todo_add",
-                "todo_update",
-                "todo_list",
-            ],
-        SubAgentType::Review => vec!["list_dir", "read_file", "grep_files", "glob_files", "file_search", "note"],
+            "list_dir",
+            "read_file",
+            "grep_files",
+            "glob_files",
+            "file_search",
+            "web.run",
+            "note",
+            "update_plan",
+            "checklist_write",
+            "checklist_add",
+            "checklist_update",
+            "checklist_list",
+            "todo_write",
+            "todo_add",
+            "todo_update",
+            "todo_list",
+        ],
+        SubAgentType::Review => vec![
+            "list_dir",
+            "read_file",
+            "grep_files",
+            "glob_files",
+            "file_search",
+            "note",
+        ],
         SubAgentType::Implementer => vec![
-                "list_dir",
-                "read_file",
-                "write_file",
-                "edit_file",
-                "apply_patch",
-                "grep_files",
-                "file_search",
-                "exec_shell",
-                "exec_shell_wait",
-                "exec_shell_interact",
-                "exec_wait",
-                "exec_interact",
-                "note",
-                "checklist_write",
-                "checklist_add",
-                "checklist_update",
-                "checklist_list",
-                "todo_write",
-                "todo_add",
-                "todo_update",
-                "todo_list",
-                "update_plan",
-            ],
+            "list_dir",
+            "read_file",
+            "write_file",
+            "edit_file",
+            "apply_patch",
+            "grep_files",
+            "file_search",
+            "exec_shell",
+            "exec_shell_wait",
+            "exec_shell_interact",
+            "exec_wait",
+            "exec_interact",
+            "note",
+            "checklist_write",
+            "checklist_add",
+            "checklist_update",
+            "checklist_list",
+            "todo_write",
+            "todo_add",
+            "todo_update",
+            "todo_list",
+            "update_plan",
+        ],
         SubAgentType::Verifier => vec![
-                "list_dir",
-                "read_file",
-                "grep_files",
-                "file_search",
-                "exec_shell",
-                "exec_shell_wait",
-                "exec_shell_interact",
-                "exec_wait",
-                "exec_interact",
-                "run_tests",
-                "diagnostics",
-                "note",
-            ],
+            "list_dir",
+            "read_file",
+            "grep_files",
+            "file_search",
+            "exec_shell",
+            "exec_shell_wait",
+            "exec_shell_interact",
+            "exec_wait",
+            "exec_interact",
+            "run_tests",
+            "diagnostics",
+            "note",
+        ],
         SubAgentType::Custom => vec![],
         SubAgentType::Auditor => vec![
-                "list_dir",
-                "read_file",
-                "grep_files",
-                "glob_files",
-                "file_search",
-                "note",
-            ],
+            "list_dir",
+            "read_file",
+            "grep_files",
+            "glob_files",
+            "file_search",
+            "note",
+        ],
     }
 }
 pub(crate) fn build_subagent_system_prompt(
@@ -307,8 +310,7 @@ fn extract_items_from_truncated(json: &str) -> Vec<deepseek_core::subagent::Audi
         let Some((obj_str, consumed)) = extract_balanced_object(slice) else {
             break;
         };
-        if let Ok(item) =
-            serde_json::from_str::<deepseek_core::subagent::AuditFindingItem>(obj_str)
+        if let Ok(item) = serde_json::from_str::<deepseek_core::subagent::AuditFindingItem>(obj_str)
         {
             items.push(item);
         }
@@ -331,9 +333,7 @@ fn parse_json_fence_after_marker<T: serde::de::DeserializeOwned>(
     marker: &str,
 ) -> Result<T, ParseFailureReason> {
     let Some(after_marker) = text.find(marker).map(|idx| &text[idx + marker.len()..]) else {
-        tracing::debug!(
-            "parse_json_fence_after_marker: no marker '{marker}' found"
-        );
+        tracing::debug!("parse_json_fence_after_marker: no marker '{marker}' found");
         return Err(ParseFailureReason::NoMarker);
     };
 
@@ -371,12 +371,11 @@ fn parse_json_fence_after_marker<T: serde::de::DeserializeOwned>(
 pub(crate) fn findings_to_verdict(findings: &StructuredFindings) -> StructuredVerdict {
     let verdict = if findings.items.is_empty() {
         VerdictLevel::Pass
-    } else if findings.items.iter().any(|i| {
-        matches!(
-            i.severity.to_ascii_uppercase().as_str(),
-            "HIGH" | "BLOCKER"
-        )
-    }) {
+    } else if findings
+        .items
+        .iter()
+        .any(|i| matches!(i.severity.to_ascii_uppercase().as_str(), "HIGH" | "BLOCKER"))
+    {
         VerdictLevel::Blocker
     } else {
         VerdictLevel::Major
@@ -472,4 +471,3 @@ mod parse_tests {
         ));
     }
 }
-

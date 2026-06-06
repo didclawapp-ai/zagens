@@ -118,7 +118,10 @@ pub(crate) fn merge_config(base: Config, override_cfg: Config) -> Config {
     }
 }
 
-pub(crate) fn merge_provider_config(base: ProviderConfig, override_cfg: ProviderConfig) -> ProviderConfig {
+pub(crate) fn merge_provider_config(
+    base: ProviderConfig,
+    override_cfg: ProviderConfig,
+) -> ProviderConfig {
     ProviderConfig {
         api_key: override_cfg.api_key.or(base.api_key),
         base_url: override_cfg.base_url.or(base.base_url),

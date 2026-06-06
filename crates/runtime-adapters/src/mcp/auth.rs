@@ -81,17 +81,13 @@ impl McpAuthConfig {
 
         match kind.to_ascii_lowercase().as_str() {
             "bearer" => {
-                let token = self
-                    .token
-                    .as_deref()
-                    .ok_or_else(|| {
-                        anyhow::anyhow!(
-                            "MCP server '{server_name}' bearer auth requires a 'token' field"
-                        )
-                    })?;
-                let resolved = resolve_env_placeholders(token).with_context(|| {
-                    format!("MCP server '{server_name}' bearer token")
+                let token = self.token.as_deref().ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "MCP server '{server_name}' bearer auth requires a 'token' field"
+                    )
                 })?;
+                let resolved = resolve_env_placeholders(token)
+                    .with_context(|| format!("MCP server '{server_name}' bearer token"))?;
                 let value = normalize_bearer_value(&resolved);
                 out.insert("Authorization".to_string(), value);
             }
@@ -101,17 +97,17 @@ impl McpAuthConfig {
                     .as_deref()
                     .filter(|s| !s.trim().is_empty())
                     .unwrap_or("X-API-Key");
-                let key = self.api_key.as_deref().or(self.token.as_deref()).ok_or_else(
-                    || {
+                let key = self
+                    .api_key
+                    .as_deref()
+                    .or(self.token.as_deref())
+                    .ok_or_else(|| {
                         anyhow::anyhow!(
                             "MCP server '{server_name}' apiKey auth requires 'apiKey' or 'token'"
                         )
-                    },
-                )?;
-                let resolved =
-                    resolve_env_placeholders(key).with_context(|| {
-                        format!("MCP server '{server_name}' apiKey value")
                     })?;
+                let resolved = resolve_env_placeholders(key)
+                    .with_context(|| format!("MCP server '{server_name}' apiKey value"))?;
                 out.insert(header.to_string(), resolved);
             }
             other => anyhow::bail!(
@@ -244,8 +240,8 @@ pub fn resolve_env_placeholders(raw: &str) -> Result<String> {
                 break;
             }
         }
-        let name = std::str::from_utf8(&bytes[start..j])
-            .context("invalid UTF-8 in env placeholder")?;
+        let name =
+            std::str::from_utf8(&bytes[start..j]).context("invalid UTF-8 in env placeholder")?;
         let value = std::env::var(name)
             .with_context(|| format!("environment variable '{name}' is not set"))?;
         out.push_str(&value);
@@ -297,9 +293,7 @@ fn redact_header_map(headers: &HashMap<String, String>) -> HashMap<String, Strin
 
 fn is_sensitive_header(name: &str) -> bool {
     let lower = name.trim().to_ascii_lowercase();
-    SENSITIVE_HEADER_NAMES
-        .iter()
-        .any(|s| *s == lower)
+    SENSITIVE_HEADER_NAMES.iter().any(|s| *s == lower)
 }
 
 fn looks_like_env_placeholder(value: &str) -> bool {
@@ -350,7 +344,10 @@ mod tests {
             disabled_tools: vec![],
         };
         let headers = cfg.resolve_http_headers("test").unwrap();
-        assert_eq!(headers.get("Authorization").map(String::as_str), Some("Bearer tok123"));
+        assert_eq!(
+            headers.get("Authorization").map(String::as_str),
+            Some("Bearer tok123")
+        );
     }
 
     #[test]

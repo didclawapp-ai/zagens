@@ -13,13 +13,13 @@
 
 mod extract;
 
-use extract::{
-    extract_cpp_symbols, extract_go_symbols, extract_py_symbols, extract_sfc_symbols,
-    extract_ts_symbols,
-};
 use deepseek_config::{
     WORKSPACE_META_DIR_NAME, legacy_workspace_meta_dir, workspace_meta_dir,
     workspace_meta_file_read, workspace_meta_file_write,
+};
+use extract::{
+    extract_cpp_symbols, extract_go_symbols, extract_py_symbols, extract_sfc_symbols,
+    extract_ts_symbols,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -128,10 +128,7 @@ pub enum MatchMode {
 /// `visibility` controls whether private symbols are included.
 /// `is_building` is set to `true` while the build is in progress
 /// (the caller should toggle it).
-pub fn build_index(
-    workspace: &Path,
-    visibility: SymbolVisibility,
-) -> SymbolIndex {
+pub fn build_index(workspace: &Path, visibility: SymbolVisibility) -> SymbolIndex {
     // Load old index for incremental skip.
     let old_index = load_old_index(workspace);
 
@@ -148,7 +145,11 @@ pub fn build_index(
 
         // Incremental: reuse old entries when mtime hasn't changed.
         if let Some(old) = old_index.get(&rel_str) {
-            if old.symbols.first().map_or(false, |s| s.source_mtime >= mtime) {
+            if old
+                .symbols
+                .first()
+                .map_or(false, |s| s.source_mtime >= mtime)
+            {
                 files.insert(rel_str, old.clone());
                 continue;
             }
@@ -314,16 +315,15 @@ fn annotate_calls(workspace: &Path, files: &mut BTreeMap<String, FileSymbols>) {
 
         for (i, sym) in file_syms.symbols.iter_mut().enumerate() {
             // Only function-like symbols get calls.
-            if !matches!(
-                sym.kind.as_str(),
-                "fn" | "impl_fn" | "method" | "trait_fn"
-            ) {
+            if !matches!(sym.kind.as_str(), "fn" | "impl_fn" | "method" | "trait_fn") {
                 continue;
             }
             let start_line = sym.line.saturating_sub(1); // 0-based
             let end_line = end_lines.get(i).copied().unwrap_or(body.lines().count());
             let start = *line_offsets.get(start_line).unwrap_or(&0);
-            let end = *line_offsets.get(end_line.min(line_offsets.len() - 1)).unwrap_or(&body.len());
+            let end = *line_offsets
+                .get(end_line.min(line_offsets.len() - 1))
+                .unwrap_or(&body.len());
             let fn_body = &body[start..end.min(body.len())];
 
             let mut calls: Vec<String> = re_calls
@@ -460,7 +460,9 @@ fn build_bridge_pairs(workspace: &Path, _files: &BTreeMap<String, FileSymbols>) 
                 if let Ok(body) = std::fs::read_to_string(path) {
                     for cap in re_invoke.captures_iter(&body) {
                         let cmd_name = cap[1].to_string();
-                        if cmd_name.is_empty() { continue; }
+                        if cmd_name.is_empty() {
+                            continue;
+                        }
                         let pre = &body[..cap.get(0).unwrap().start()];
                         let line = pre.lines().count() + 1;
                         ts_commands.insert(cmd_name, (rel.clone(), line));
@@ -491,7 +493,7 @@ fn build_bridge_pairs(workspace: &Path, _files: &BTreeMap<String, FileSymbols>) 
 /// paths + mtimes.  When this fingerprint matches the cached copy,
 /// `index_status()` can skip the expensive per-file mtime comparison.
 pub(crate) fn compute_fingerprint(workspace: &Path) -> String {
-    use sha2::{Sha256, Digest};
+    use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
     // Sort for deterministic output.
     let mut entries: Vec<(PathBuf, u64)> = walk_source_files(workspace)
@@ -554,10 +556,11 @@ pub fn index_status(workspace: &Path) -> IndexStatus {
     for (rel_str, file_syms) in &index.files {
         let disk_path = workspace.join(rel_str.replace('/', std::path::MAIN_SEPARATOR_STR));
         if let Ok(meta) = std::fs::metadata(&disk_path) {
-            if let Ok(disk_mtime) = meta
-                .modified()
-                .map(|t| t.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs())
-            {
+            if let Ok(disk_mtime) = meta.modified().map(|t| {
+                t.duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs()
+            }) {
                 let idx_mtime = file_syms.symbols.first().map_or(0, |s| s.source_mtime);
                 if disk_mtime > idx_mtime {
                     return IndexStatus::Stale;
@@ -620,15 +623,11 @@ pub fn ensure_symbol_index(workspace: &Path) {
                 serde_json::to_string_pretty(&index).unwrap_or_default(),
             );
             let fp = compute_fingerprint(&ws);
-            let _ = std::fs::write(
-                workspace_meta_file_write(&ws, ".symbols_fingerprint"),
-                fp,
-            );
+            let _ = std::fs::write(workspace_meta_file_write(&ws, ".symbols_fingerprint"), fp);
             BUILDING.lock().unwrap().remove(&ws);
         })
         .ok();
 }
-
 
 /// Query the index for a symbol name with configurable match mode
 /// and optional kind filter.
@@ -701,7 +700,10 @@ pub fn query_symbol_with_mode<'a>(
     }
 
     results.sort_by(|a, b| a.3.cmp(&b.3).then_with(|| a.0.cmp(b.0)));
-    results.into_iter().map(|(f, l, k, p)| (f, l, k, p)).collect()
+    results
+        .into_iter()
+        .map(|(f, l, k, p)| (f, l, k, p))
+        .collect()
 }
 
 /// Backward-compatible wrapper: substring match, no kind filter.
@@ -753,11 +755,13 @@ pub fn format_file_summary(
         return None;
     }
 
-    let mut out = format!(
-        "## File Summary: {file_path}\n| Line | Kind | Name |\n|------|------|------|\n"
-    );
+    let mut out =
+        format!("## File Summary: {file_path}\n| Line | Kind | Name |\n|------|------|------|\n");
     for sym in &file_syms.symbols {
-        out.push_str(&format!("| {} | {} | `{}` |\n", sym.line, sym.kind, sym.name));
+        out.push_str(&format!(
+            "| {} | {} | `{}` |\n",
+            sym.line, sym.kind, sym.name
+        ));
     }
     Some(out)
 }
@@ -873,7 +877,11 @@ fn walk_source_files_impl(dir: &Path, out: &mut Vec<(PathBuf, u64, &'static str)
             let mtime = std::fs::metadata(&p)
                 .ok()
                 .and_then(|m| m.modified().ok())
-                .map(|t| t.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs())
+                .map(|t| {
+                    t.duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs()
+                })
                 .unwrap_or(0);
             out.push((p, mtime, lang));
         }
@@ -909,7 +917,13 @@ fn extract_symbols(
         .collect();
 
     // Top-level items + nested mods (recursive).
-    extract_mod_items(&file.items, visibility, &line_starts, source_mtime, &mut symbols);
+    extract_mod_items(
+        &file.items,
+        visibility,
+        &line_starts,
+        source_mtime,
+        &mut symbols,
+    );
 
     // Handle impl blocks: collect method names with type prefix.
     for item in &file.items {
@@ -1170,22 +1184,20 @@ fn is_whole_word_match(sym_original: &str, query_lower: &str) -> bool {
             b'_' => true,
             // Lowercase letter before an uppercase match start → CamelCase boundary
             // e.g. "AppConfig" matching "Config": 'p' before 'C' at pos 3
-            b if b.is_ascii_lowercase() => {
-                sym_original.as_bytes().get(pos).map_or(false, |m| m.is_ascii_uppercase())
-            }
+            b if b.is_ascii_lowercase() => sym_original
+                .as_bytes()
+                .get(pos)
+                .map_or(false, |m| m.is_ascii_uppercase()),
             _ => false,
         }
     };
 
     let after = {
         let end = pos + query_lower.len();
-        end >= sym_original.len()
-            || {
-                let c = sym_original.as_bytes()[end];
-                !c.is_ascii_alphanumeric()
-                    || c == b'_'
-                    || c.is_ascii_uppercase() // next word starts with uppercase
-            }
+        end >= sym_original.len() || {
+            let c = sym_original.as_bytes()[end];
+            !c.is_ascii_alphanumeric() || c == b'_' || c.is_ascii_uppercase() // next word starts with uppercase
+        }
     };
 
     before && after
@@ -1283,7 +1295,11 @@ mod tests {
     fn build_index_includes_python_and_go() {
         let tmp = tempfile::tempdir().expect("tempdir");
         std::fs::write(tmp.path().join("worker.py"), "def worker():\n    pass\n").unwrap();
-        std::fs::write(tmp.path().join("main.go"), "package main\n\nfunc main() {}\n").unwrap();
+        std::fs::write(
+            tmp.path().join("main.go"),
+            "package main\n\nfunc main() {}\n",
+        )
+        .unwrap();
 
         let idx = build_index(tmp.path(), SymbolVisibility::Public);
         assert!(idx.files.contains_key("worker.py"));
@@ -1418,17 +1434,21 @@ mod tests {
 
         // First build
         let idx1 = build_index(tmp.path(), SymbolVisibility::Public);
-        assert!(idx1.files["src/lib.rs"]
-            .symbols
-            .iter()
-            .any(|s| s.name == "foo"));
+        assert!(
+            idx1.files["src/lib.rs"]
+                .symbols
+                .iter()
+                .any(|s| s.name == "foo")
+        );
 
         // Second build — unchanged file should reuse old entry
         let idx2 = build_index(tmp.path(), SymbolVisibility::Public);
-        assert!(idx2.files["src/lib.rs"]
-            .symbols
-            .iter()
-            .any(|s| s.name == "foo"));
+        assert!(
+            idx2.files["src/lib.rs"]
+                .symbols
+                .iter()
+                .any(|s| s.name == "foo")
+        );
     }
 
     #[test]

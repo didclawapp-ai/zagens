@@ -3,20 +3,13 @@ use std::path::PathBuf;
 use anyhow::Result;
 use serde_json::Value;
 
-use crate::tools::spec::{
-    ToolError,
-    optional_bool,
-};
+use crate::tools::spec::{ToolError, optional_bool};
 
-use deepseek_core::subagent::{
-    SubAgentAssignment,
-    SubAgentType,
-};
+use deepseek_core::subagent::{SubAgentAssignment, SubAgentType};
 
 use super::constants::VALID_SUBAGENT_TYPES;
 use super::runtime::SubAgentRuntime;
 use super::types::{AssignRequest, SpawnRequest, WaitMode};
-
 
 pub(crate) fn parse_wait_mode(input: &Value) -> Result<WaitMode, ToolError> {
     let raw_mode = input
@@ -328,7 +321,10 @@ pub(crate) fn configured_model_for_role_or_type(
     Ok(None)
 }
 
-pub(crate) fn parse_optional_subagent_model(input: &Value, key: &str) -> Result<Option<String>, ToolError> {
+pub(crate) fn parse_optional_subagent_model(
+    input: &Value,
+    key: &str,
+) -> Result<Option<String>, ToolError> {
     match input.get(key) {
         None | Some(Value::Null) => Ok(None),
         Some(Value::String(value)) => normalize_requested_subagent_model(value, key).map(Some),

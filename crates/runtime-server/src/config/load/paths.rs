@@ -99,7 +99,10 @@ pub(crate) fn save_workspace_trust(workspace: &Path) -> Result<PathBuf> {
     Ok(config_path)
 }
 
-pub(crate) fn workspace_trust_level_from_doc<'a>(doc: &'a toml::Value, workspace: &Path) -> Option<&'a str> {
+pub(crate) fn workspace_trust_level_from_doc<'a>(
+    doc: &'a toml::Value,
+    workspace: &Path,
+) -> Option<&'a str> {
     let workspace = canonicalize_or_keep(workspace);
     let projects = doc.get("projects")?.as_table()?;
     for (raw_path, project) in projects {
@@ -126,8 +129,8 @@ pub(crate) fn canonicalize_or_keep(path: &Path) -> PathBuf {
 }
 
 pub(crate) fn env_config_path() -> Option<PathBuf> {
-    if let Ok(path) = std::env::var("ZAGENS_CONFIG_PATH")
-        .or_else(|_| std::env::var("DEEPSEEK_CONFIG_PATH"))
+    if let Ok(path) =
+        std::env::var("ZAGENS_CONFIG_PATH").or_else(|_| std::env::var("DEEPSEEK_CONFIG_PATH"))
     {
         let trimmed = path.trim();
         if !trimmed.is_empty() {

@@ -1,15 +1,14 @@
 //! edit_file tool (search/replace and line operations).
 
+use super::DIFF_MAX_INPUT_BYTES;
+use super::write::{
+    find_match_line_numbers, jsx_balance_warning, make_compact_change, normalize_line_endings,
+};
 use crate::tools::diff_format::make_unified_diff;
 use crate::tools::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
     lsp_diagnostics_for_paths, optional_bool, optional_str, optional_u64, required_str,
 };
-use super::write::{
-    find_match_line_numbers, jsx_balance_warning, make_compact_change,
-    normalize_line_endings,
-};
-use super::DIFF_MAX_INPUT_BYTES;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
@@ -25,10 +24,7 @@ fn edit_unified_diff(display: &str, before: &str, after: &str) -> String {
 /// used a wrong alias (`new_str` / `new_string` / `replacement` — habits carried
 /// over from other editing tools). The bare "missing required field" error left
 /// the model guessing and retrying; naming the right field avoids a wasted call.
-fn required_replacement_field<'a>(
-    input: &'a Value,
-    field: &str,
-) -> Result<&'a str, ToolError> {
+fn required_replacement_field<'a>(input: &'a Value, field: &str) -> Result<&'a str, ToolError> {
     if let Some(v) = input.get(field).and_then(Value::as_str) {
         return Ok(v);
     }
@@ -181,7 +177,11 @@ impl EditFileTool {
 
         // E1: Normalize line endings — the decoded text preserves platform
         // CRLF on Windows, but the model's search string uses LF (\n).
-        let file_le = if contents.contains("\r\n") { "\r\n" } else { "\n" };
+        let file_le = if contents.contains("\r\n") {
+            "\r\n"
+        } else {
+            "\n"
+        };
         let search_norm = if file_le == "\r\n" {
             let s = search.replace("\r\n", "\n");
             s.replace('\n', "\r\n")
@@ -197,22 +197,22 @@ impl EditFileTool {
 
         // E2: If start_line/end_line are specified, narrow the search to that
         // line range to avoid false matches in unrelated parts of the file.
-        let (search_target, _range_offset, range_prefix, range_suffix) =
-            if start_line > 0 {
-                let lines: Vec<&str> = contents.lines().collect();
-                let s = start_line.saturating_sub(1);
-                let e = if end_line > 0 { end_line.min(lines.len()) } else { lines.len() };
-                let slice = lines[s..e].join(file_le);
-                let byte_offset: usize = lines[..s]
-                    .iter()
-                    .map(|l| l.len() + file_le.len())
-                    .sum();
-                let prefix = &contents[..byte_offset];
-                let suffix = &contents[byte_offset + slice.len()..];
-                (slice, byte_offset, prefix.to_string(), suffix.to_string())
+        let (search_target, _range_offset, range_prefix, range_suffix) = if start_line > 0 {
+            let lines: Vec<&str> = contents.lines().collect();
+            let s = start_line.saturating_sub(1);
+            let e = if end_line > 0 {
+                end_line.min(lines.len())
             } else {
-                (contents.clone(), 0, String::new(), String::new())
+                lines.len()
             };
+            let slice = lines[s..e].join(file_le);
+            let byte_offset: usize = lines[..s].iter().map(|l| l.len() + file_le.len()).sum();
+            let prefix = &contents[..byte_offset];
+            let suffix = &contents[byte_offset + slice.len()..];
+            (slice, byte_offset, prefix.to_string(), suffix.to_string())
+        } else {
+            (contents.clone(), 0, String::new(), String::new())
+        };
 
         let count = search_target.matches(&search_norm).count();
         if count == 0 {
@@ -248,7 +248,11 @@ impl EditFileTool {
             let line_list: Vec<String> = match_lines
                 .iter()
                 .map(|n| {
-                    let adjusted = n + if start_line > 0 { start_line.saturating_sub(1) } else { 0 };
+                    let adjusted = n + if start_line > 0 {
+                        start_line.saturating_sub(1)
+                    } else {
+                        0
+                    };
                     format!("line {adjusted}")
                 })
                 .collect();
@@ -289,10 +293,7 @@ impl EditFileTool {
         // E5: Include hit line numbers so the model can verify without a
         // follow-up read_file call.
         let match_lines = find_match_line_numbers(&contents, &search_norm, 5);
-        let line_list: Vec<String> = match_lines
-            .iter()
-            .map(|n| format!("line {n}"))
-            .collect();
+        let line_list: Vec<String> = match_lines.iter().map(|n| format!("line {n}")).collect();
         let diff = edit_unified_diff(&display, &contents, &updated);
         let total_lines = updated.lines().count();
         let summary = if line_list.is_empty() {
@@ -314,7 +315,10 @@ impl EditFileTool {
         // Append LSP diagnostics for the edited file when enabled (#428).
         // V1-4: Append compact before/after for small changes (≤5 lines total).
         let compact = if search.lines().count() + replace.lines().count() <= 5 {
-            format!("\n--- compact ---\n{}", make_compact_change(search, replace))
+            format!(
+                "\n--- compact ---\n{}",
+                make_compact_change(search, replace)
+            )
         } else {
             String::new()
         };
@@ -347,7 +351,11 @@ impl EditFileTool {
             had_bom,
         } = super::write::read_decoded_for_edit(&file_path)?;
 
-        let file_le = if contents.contains("\r\n") { "\r\n" } else { "\n" };
+        let file_le = if contents.contains("\r\n") {
+            "\r\n"
+        } else {
+            "\n"
+        };
         let text_normalized = normalize_line_endings(text, file_le);
         let lines: Vec<&str> = contents.lines().collect();
 
@@ -436,7 +444,11 @@ impl EditFileTool {
             had_bom,
         } = super::write::read_decoded_for_edit(&file_path)?;
 
-        let file_le = if contents.contains("\r\n") { "\r\n" } else { "\n" };
+        let file_le = if contents.contains("\r\n") {
+            "\r\n"
+        } else {
+            "\n"
+        };
         let lines: Vec<&str> = contents.lines().collect();
 
         if start > lines.len() {
@@ -536,7 +548,11 @@ impl EditFileTool {
             had_bom,
         } = super::write::read_decoded_for_edit(&file_path)?;
 
-        let file_le = if contents.contains("\r\n") { "\r\n" } else { "\n" };
+        let file_le = if contents.contains("\r\n") {
+            "\r\n"
+        } else {
+            "\n"
+        };
         let text_normalized = normalize_line_endings(text, file_le);
         let lines: Vec<&str> = contents.lines().collect();
 
@@ -549,9 +565,8 @@ impl EditFileTool {
         }
 
         let old_line = lines[line.saturating_sub(1)];
-        let mut new_lines: Vec<String> = Vec::with_capacity(
-            lines.len() + text_normalized.lines().count().saturating_sub(1),
-        );
+        let mut new_lines: Vec<String> =
+            Vec::with_capacity(lines.len() + text_normalized.lines().count().saturating_sub(1));
         for (i, l) in lines.iter().enumerate() {
             if i + 1 == line {
                 for t in text_normalized.lines() {

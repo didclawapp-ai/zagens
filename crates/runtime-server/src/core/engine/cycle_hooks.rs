@@ -3,7 +3,9 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
+use crate::agent_surface::AppMode;
 use crate::compaction::merge_system_prompts;
+use crate::core::events::Event;
 use crate::cycle_manager::{
     CycleBriefing, StructuredState, archive_cycle, build_seed_messages, estimate_briefing_tokens,
     produce_briefing, should_advance_cycle,
@@ -11,14 +13,12 @@ use crate::cycle_manager::{
 use crate::long_horizon::{
     context_pressure_ratio, in_lht_warning_band, should_lht_early_advance_cycle,
 };
-use crate::core::events::Event;
 use crate::models::SystemPrompt;
 use crate::prompts;
-use crate::agent_surface::AppMode;
 
+use super::Engine;
 use super::context::turn_response_headroom_tokens;
 use super::scratchpad_flow;
-use super::Engine;
 
 impl Engine {
     /// Advance checkpoint-restart cycle when input estimate crosses threshold (#124).
@@ -35,18 +35,12 @@ impl Engine {
         let headroom = turn_response_headroom_tokens();
         let model = self.session.model.clone();
         let lht_enabled = self.config.long_horizon.enabled;
-        let threshold =
-            should_advance_cycle(active, headroom, &model, &self.config.cycle, false);
+        let threshold = should_advance_cycle(active, headroom, &model, &self.config.cycle, false);
         let lht_early = {
             let lh = &mut self.runtime_ext_mut().long_horizon_state;
             let pending = lh.pending_cycle_at_checkpoint;
-            let early = should_lht_early_advance_cycle(
-                active,
-                headroom,
-                &model,
-                lht_enabled,
-                pending,
-            );
+            let early =
+                should_lht_early_advance_cycle(active, headroom, &model, lht_enabled, pending);
             if early {
                 lh.pending_cycle_at_checkpoint = false;
             }
@@ -110,7 +104,8 @@ impl Engine {
         // explicit UFCS to keep the trait import obvious at the seam.
         let briefing_text = if let Some(ref seam_mgr) = self.seam {
             use deepseek_core::engine::hosts::SeamHost;
-            let seams = SeamHost::collect_seam_texts(seam_mgr.as_ref(), &self.session.messages).await;
+            let seams =
+                SeamHost::collect_seam_texts(seam_mgr.as_ref(), &self.session.messages).await;
             let state_text = {
                 let s = StructuredState::capture(
                     mode.label(),
@@ -124,7 +119,9 @@ impl Engine {
                 .await;
                 s.to_system_block()
             };
-            match SeamHost::produce_flash_briefing(seam_mgr.as_ref(), &seams, state_text.as_deref()).await {
+            match SeamHost::produce_flash_briefing(seam_mgr.as_ref(), &seams, state_text.as_deref())
+                .await
+            {
                 Ok(text) => text,
                 Err(err) => {
                     crate::logging::warn(format!(
@@ -310,8 +307,7 @@ impl Engine {
         } else {
             crate::memory::compose_block(self.config.memory_enabled, &self.config.memory_path)
         };
-        let query_hint =
-            crate::topic_memory::last_user_query_from_messages(&self.session.messages);
+        let query_hint = crate::topic_memory::last_user_query_from_messages(&self.session.messages);
         let topic_memory_block = if arbitration.omit_topic_memory {
             None
         } else {
@@ -326,13 +322,13 @@ impl Engine {
             None,
             Some(&self.config.skills_dir),
             Some(&self.config.instructions),
-                prompts::PromptSessionContext {
-                    user_memory_block: user_memory_block.as_deref(),
-                    topic_memory_block: topic_memory_block.as_deref(),
-                    goal_objective: self.config.goal_objective.as_deref(),
-                    locale_tag: &self.config.locale_tag,
-                    task_type: self.config.task_type,
-                },
+            prompts::PromptSessionContext {
+                user_memory_block: user_memory_block.as_deref(),
+                topic_memory_block: topic_memory_block.as_deref(),
+                goal_objective: self.config.goal_objective.as_deref(),
+                locale_tag: &self.config.locale_tag,
+                task_type: self.config.task_type,
+            },
             self.session.approval_mode,
         );
         let stable_prompt =
@@ -396,4 +392,3 @@ pub(super) fn system_prompt_hash(prompt: Option<&SystemPrompt>) -> u64 {
     }
     hasher.finish()
 }
-

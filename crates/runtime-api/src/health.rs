@@ -1,7 +1,7 @@
 //! Health and internal probe routes (R-003 A4.5).
 
-use axum::extract::State;
 use axum::Json;
+use axum::extract::State;
 use serde::Serialize;
 
 use deepseek_runtime_orchestrator::runtime_threads::CURRENT_EVENT_SCHEMA_VERSION;

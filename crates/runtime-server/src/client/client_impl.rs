@@ -7,9 +7,7 @@ use tokio::sync::Mutex as AsyncMutex;
 use anyhow::Result;
 
 use crate::config::Config;
-use crate::llm_client::{
-    LlmError, RetryConfig as LlmRetryConfig, extract_retry_after, with_retry,
-};
+use crate::llm_client::{LlmError, RetryConfig as LlmRetryConfig, extract_retry_after, with_retry};
 use crate::logging;
 
 use super::api_parse::parse_models_response;
@@ -18,8 +16,8 @@ use super::http::{
     force_http1_from_env, validate_base_url_security,
 };
 use super::types::{
-    AvailableModel, ConnectionHealth, DeepSeekClient, TokenBucket,
-    apply_request_failure, apply_request_success, mark_recovery_probe_if_due,
+    AvailableModel, ConnectionHealth, DeepSeekClient, TokenBucket, apply_request_failure,
+    apply_request_success, mark_recovery_probe_if_due,
 };
 
 impl DeepSeekClient {

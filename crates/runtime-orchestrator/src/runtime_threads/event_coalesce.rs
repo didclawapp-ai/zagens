@@ -1,6 +1,6 @@
 //! B3.3 — Coalesce consecutive `item.delta` events after broadcast lag (backpressure).
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::types::RuntimeEventRecord;
 

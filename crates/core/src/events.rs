@@ -215,11 +215,7 @@ pub struct TurnSummary {
 
 impl TurnSummary {
     #[must_use]
-    pub fn new(
-        step_count: u32,
-        tool_names: Vec<String>,
-        end_reason: Option<String>,
-    ) -> Self {
+    pub fn new(step_count: u32, tool_names: Vec<String>, end_reason: Option<String>) -> Self {
         Self {
             step_count,
             tool_names,

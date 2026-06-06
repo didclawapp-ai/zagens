@@ -119,10 +119,7 @@ pub fn build_layered_summary(
 
 fn format_finding_line(note: &NoteLine) -> String {
     let file = note.file.as_deref().unwrap_or("?");
-    let line = note
-        .line
-        .map(|l| format!(":{l}"))
-        .unwrap_or_default();
+    let line = note.line.map(|l| format!(":{l}")).unwrap_or_default();
     let claim = note.claim.as_deref().unwrap_or("");
     format!(
         "- [{}] {}`{}{}` — {}",

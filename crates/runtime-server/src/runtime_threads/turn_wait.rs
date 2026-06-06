@@ -9,11 +9,7 @@ use super::types::TurnRecord;
 
 impl RuntimeThreadManager {
     /// Poll the store until the turn reaches a terminal status or times out.
-    pub async fn wait_turn_terminal(
-        &self,
-        turn_id: &str,
-        timeout: Duration,
-    ) -> Result<TurnRecord> {
+    pub async fn wait_turn_terminal(&self, turn_id: &str, timeout: Duration) -> Result<TurnRecord> {
         deepseek_runtime_orchestrator::runtime_threads::turn_wait::wait_turn_terminal(
             &self.store,
             turn_id,

@@ -1,31 +1,29 @@
 //! HTTP route table for the runtime API (R-003 A4.1).
 
+use axum::Router;
 use axum::middleware;
 use axum::routing::{get, post};
-use axum::Router;
 
 use deepseek_runtime_api::{compose_router, require_runtime_token};
 
 use super::stream;
 use super::{
-    add_mcp_server, browse_thread_workspace, browse_workspace_by_root, cancel_task,
-    clear_tasks, compact_thread, create_automation, create_skill, create_task, create_thread,
-    delete_automation, delete_mcp_server, delete_session, edit_last_thread_turn,
-    fork_thread, fork_thread_at_user_message,
-    get_automation, get_blackboard, get_mcp_server, get_resume_task, get_routing_rules,
-    get_session, get_thread, get_thread_checklist, get_thread_context,
+    RuntimeApiState, add_mcp_server, browse_thread_workspace, browse_workspace_by_root,
+    cancel_task, clear_tasks, compact_thread, create_automation, create_skill, create_task,
+    create_thread, delete_automation, delete_mcp_server, delete_session, discover_mcp,
+    edit_last_thread_turn, fork_thread, fork_thread_at_user_message, get_automation,
+    get_blackboard, get_mcp_server, get_office_environment, get_resume_task, get_routing_rules,
+    get_session, get_task, get_thread, get_thread_checklist, get_thread_context,
     get_thread_harness_cycles, get_thread_harness_task_graph, get_thread_scratchpad_status,
-    get_topic_memory, get_task,
-    get_office_environment, get_usage, import_skill_local,
-    init_thread_scratchpad, install_skill_remote, interrupt_thread_turn, list_automation_runs,
-    discover_mcp, list_automations, list_blackboards, list_mcp_calls, list_mcp_servers,
-    list_mcp_tools, list_sessions,
-    list_skills, list_tasks, list_thread_snapshots, list_threads, list_threads_summary,
-    merge_mcp_config_json, pause_automation, persist_thread_session, reload_mcp_config,
-    read_thread_workspace_file, read_workspace_file_by_root, rebuild_symbol_index,
-    resolve_approval, restore_thread_snapshot, resume_automation, resume_session_thread,
-    resume_thread, run_automation, set_routing_rules, start_thread_turn, steer_thread_turn,
-    update_automation, update_mcp_server, update_thread, workspace_status, RuntimeApiState,
+    get_topic_memory, get_usage, import_skill_local, init_thread_scratchpad, install_skill_remote,
+    interrupt_thread_turn, list_automation_runs, list_automations, list_blackboards,
+    list_mcp_calls, list_mcp_servers, list_mcp_tools, list_sessions, list_skills, list_tasks,
+    list_thread_snapshots, list_threads, list_threads_summary, merge_mcp_config_json,
+    pause_automation, persist_thread_session, read_thread_workspace_file,
+    read_workspace_file_by_root, rebuild_symbol_index, reload_mcp_config, resolve_approval,
+    restore_thread_snapshot, resume_automation, resume_session_thread, resume_thread,
+    run_automation, set_routing_rules, start_thread_turn, steer_thread_turn, update_automation,
+    update_mcp_server, update_thread, workspace_status,
 };
 
 pub fn build_router(state: RuntimeApiState) -> Router {
@@ -70,7 +68,10 @@ pub fn build_router(state: RuntimeApiState) -> Router {
             "/v1/threads/{id}/fork-at-user-message",
             post(fork_thread_at_user_message),
         )
-        .route("/v1/threads/{id}/edit-last-turn", post(edit_last_thread_turn))
+        .route(
+            "/v1/threads/{id}/edit-last-turn",
+            post(edit_last_thread_turn),
+        )
         .route("/v1/threads/{id}/turns", post(start_thread_turn))
         .route(
             "/v1/threads/{id}/turns/{turn_id}/steer",
@@ -147,10 +148,7 @@ pub fn build_router(state: RuntimeApiState) -> Router {
             "/v1/apps/routing/rules",
             get(get_routing_rules).put(set_routing_rules),
         )
-        .route(
-            "/v1/symbol-index/rebuild",
-            post(rebuild_symbol_index),
-        )
+        .route("/v1/symbol-index/rebuild", post(rebuild_symbol_index))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             require_runtime_token::<RuntimeApiState>,

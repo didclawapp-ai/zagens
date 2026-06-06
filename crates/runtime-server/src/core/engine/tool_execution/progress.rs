@@ -1,13 +1,17 @@
 //! Tool progress streaming to `Event::ToolCallProgress`.
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::tools::spec::ToolProgressEmit;
 
 use super::super::*;
 
-pub(super) async fn emit_tool_progress(tx: &mpsc::Sender<Event>, tool_call_id: &str, message: &str) {
+pub(super) async fn emit_tool_progress(
+    tx: &mpsc::Sender<Event>,
+    tool_call_id: &str,
+    message: &str,
+) {
     let text = message.trim_end_matches('\n');
     if text.is_empty() {
         return;

@@ -1,9 +1,6 @@
 //! web.run ToolSpec implementation.
 
-use super::page::{
-    find_in_page, render_view, resolve_or_fetch_page,
-    screenshot_page,
-};
+use super::page::{find_in_page, render_view, resolve_or_fetch_page, screenshot_page};
 use super::search::{page_from_search, run_image_search, run_search};
 use super::state::{get_page, scoped_ref_prefix, store_page, with_state};
 use super::types::{ImageQueryResult, ResponseLength, SearchResult, WebRunOutput};

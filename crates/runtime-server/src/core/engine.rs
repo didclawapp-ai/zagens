@@ -3,7 +3,10 @@
 //! The struct, channels, and `Engine::with_hosts` live in `deepseek-core`;
 //! this module provides the sidecar builder and host injection.
 
-#![allow(unused_imports, reason = "prelude_uses imports consumed by engine submodules via `super::*`")]
+#![allow(
+    unused_imports,
+    reason = "prelude_uses imports consumed by engine submodules via `super::*`"
+)]
 
 pub use deepseek_core::engine::EngineHostBundle;
 pub use handle::EngineHandle;
@@ -54,11 +57,10 @@ use prelude::*;
 
 include!("engine/prelude_uses.rs");
 
-
 /// Sandbox/user-input–specialized core engine (M7).
 #[repr(transparent)]
 pub struct Engine(
-    pub(crate) deepseek_core::engine::Engine<
+    pub(crate)  deepseek_core::engine::Engine<
         crate::sandbox::SandboxPolicy,
         crate::tools::user_input::UserInputResponse,
     >,
@@ -125,7 +127,7 @@ pub fn spawn_engine(config: EngineConfig, api_config: &Config) -> EngineHandle {
 }
 
 #[cfg(test)]
-pub(crate) use mock::{mock_engine_handle, MockApprovalEvent, MockEngineHandle};
+pub(crate) use mock::{MockApprovalEvent, MockEngineHandle, mock_engine_handle};
 pub(crate) use tool_dispatch_port::RegistryToolDispatch;
 
 #[cfg(test)]

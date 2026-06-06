@@ -7,8 +7,8 @@ use crate::core::engine::{EngineConfig, EngineHandle, spawn_engine};
 use crate::tools::plan::new_shared_plan_state;
 use crate::tools::todo::new_shared_todo_list;
 
-use super::types::ThreadRecord;
 use super::RuntimeThreadManager;
+use super::types::ThreadRecord;
 
 impl RuntimeThreadManager {
     pub(crate) async fn spawn_engine_for_thread_impl(
@@ -24,9 +24,8 @@ impl RuntimeThreadManager {
             .lsp
             .clone()
             .map(crate::config::LspConfigToml::into_runtime);
-        let scratchpad_run_id_slot = std::sync::Arc::new(std::sync::Mutex::new(
-            thread.scratchpad_run_id.clone(),
-        ));
+        let scratchpad_run_id_slot =
+            std::sync::Arc::new(std::sync::Mutex::new(thread.scratchpad_run_id.clone()));
         // Live UI settings (read fresh per spawn, like locale): the composer LHT
         // tri-state persists in `settings.toml` so it takes effect next turn
         // without a sidecar restart.

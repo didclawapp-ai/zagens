@@ -1,11 +1,11 @@
 //! Fetch pages, render views, find text, screenshots.
 
+use super::USER_AGENT;
 use super::html::parse_html;
 use super::state::get_page;
 use super::types::{
     FindMatch, FindResult, PageViewResult, ResponseLength, ScreenshotResult, WebPage,
 };
-use super::USER_AGENT;
 use crate::tools::spec::{ToolContext, ToolError};
 use deepseek_runtime_adapters::tools::check_url_policy;
 
@@ -36,7 +36,10 @@ pub(in crate::tools::web_run) async fn resolve_or_fetch_page(
 pub(in crate::tools::web_run) fn looks_like_url(value: &str) -> bool {
     value.starts_with("http://") || value.starts_with("https://")
 }
-pub(in crate::tools::web_run) fn check_network_policy(url: &str, context: &ToolContext) -> Result<(), ToolError> {
+pub(in crate::tools::web_run) fn check_network_policy(
+    url: &str,
+    context: &ToolContext,
+) -> Result<(), ToolError> {
     check_url_policy(context.network_policy.as_ref(), "web_run", url)
         .map_err(|e| ToolError::permission_denied(e.denial_message()))?;
     Ok(())
@@ -66,12 +69,9 @@ pub(in crate::tools::web_run) async fn fetch_page(
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
     // C6: cap the buffered body so an unbounded response can't OOM us.
-    let (bytes, _truncated) = crate::tools::ssrf::read_body_capped(
-        resp,
-        MAX_PAGE_BYTES,
-        context.cancel_token.as_ref(),
-    )
-    .await?;
+    let (bytes, _truncated) =
+        crate::tools::ssrf::read_body_capped(resp, MAX_PAGE_BYTES, context.cancel_token.as_ref())
+            .await?;
 
     if !status.is_success() {
         return Err(ToolError::execution_failed(format!(
@@ -184,7 +184,11 @@ pub(in crate::tools::web_run) fn render_view(
     }
 }
 
-pub(in crate::tools::web_run) fn render_lines(lines: &[String], start: usize, end: usize) -> String {
+pub(in crate::tools::web_run) fn render_lines(
+    lines: &[String],
+    start: usize,
+    end: usize,
+) -> String {
     lines
         .iter()
         .enumerate()

@@ -3,7 +3,7 @@
 use chrono::{DateTime, Utc};
 use deepseek_core::cycle::CycleBriefing;
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::cycle_manager::CycleArchiveSummary;
 use crate::models::context_window_for_model;
@@ -53,7 +53,11 @@ pub fn briefing_to_json(b: &CycleBriefing) -> HarnessCycleBriefingJson {
     let preview = if b.briefing_text.chars().count() <= BRIEFING_PREVIEW_CHARS {
         b.briefing_text.clone()
     } else {
-        let mut s: String = b.briefing_text.chars().take(BRIEFING_PREVIEW_CHARS).collect();
+        let mut s: String = b
+            .briefing_text
+            .chars()
+            .take(BRIEFING_PREVIEW_CHARS)
+            .collect();
         s.push_str("…");
         s
     };

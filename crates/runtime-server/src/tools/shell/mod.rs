@@ -15,10 +15,8 @@ mod tools;
 mod types;
 
 pub use host::{SharedShellManager, TuiShellHost, new_shared_shell_manager};
+pub use tools::{ExecShellTool, NoteTool, ShellCancelTool, ShellInteractTool, ShellWaitTool};
 pub(crate) use types::ShellStatus;
-pub use tools::{
-    ExecShellTool, NoteTool, ShellCancelTool, ShellInteractTool, ShellWaitTool,
-};
 
 #[cfg(test)]
 pub(crate) use manager::ShellManager;

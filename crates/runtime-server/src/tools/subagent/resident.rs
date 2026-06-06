@@ -17,8 +17,8 @@ pub(crate) fn release_resident_leases_for(agent_id: &str) {
 /// Claim a resident-file lease. Returns `Err` when another agent already holds
 /// the path (hard lock — spawn is rejected).
 pub(crate) fn try_claim_resident_file_lease(file_path: &str, owner: &str) -> Result<(), String> {
-    let leases = RESIDENT_LEASES
-        .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    let leases =
+        RESIDENT_LEASES.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
     let mut guard = leases.lock().unwrap_or_else(|p| p.into_inner());
     if let Some(existing) = guard.get(file_path) {
         return Err(format!(
@@ -37,7 +37,6 @@ pub(crate) fn release_resident_file_lease(file_path: &str) {
         guard.remove(file_path);
     }
 }
-
 
 /// Replace a pending resident-file lease placeholder with the spawned agent id.
 pub(crate) fn upgrade_pending_resident_lease(file_path: &str, agent_id: &str) {

@@ -2,8 +2,8 @@
 
 use std::path::{Path, PathBuf};
 
-use deepseek_core::long_horizon::CompletionGateDeliverableEntry;
 use deepseek_config::{CompletionGateDeliverableToml, workspace_meta_dir_read};
+use deepseek_core::long_horizon::CompletionGateDeliverableEntry;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -67,7 +67,11 @@ fn load_workspace_overlay(workspace: &Path) -> Vec<CompletionGateDeliverableEntr
             return Vec::new();
         }
     };
-    parsed.deliverable.into_iter().map(toml_deliverable_to_entry).collect()
+    parsed
+        .deliverable
+        .into_iter()
+        .map(toml_deliverable_to_entry)
+        .collect()
 }
 
 fn toml_deliverable_to_entry(d: CompletionGateDeliverableToml) -> CompletionGateDeliverableEntry {
@@ -95,10 +99,7 @@ fn discover_tauri_command_deliverables(workspace: &Path) -> Vec<CompletionGateDe
             let Some(rel) = path.strip_prefix(workspace).ok().map(path_to_slash) else {
                 continue;
             };
-            let stem = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("cmd");
+            let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("cmd");
             out.push(CompletionGateDeliverableEntry {
                 id: format!("ipc_cmd_{stem}"),
                 path: Some(rel),
@@ -176,7 +177,9 @@ fn scan_tauri_command_fns(path: &Path) -> Vec<String> {
     let mut names = Vec::new();
     for i in 0..lines.len() {
         let line = lines[i].trim();
-        if !line.contains("#[tauri::command]") && line != "#[command]" && !line.starts_with("#[command(")
+        if !line.contains("#[tauri::command]")
+            && line != "#[command]"
+            && !line.starts_with("#[command(")
         {
             continue;
         }

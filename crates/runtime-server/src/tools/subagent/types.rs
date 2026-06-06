@@ -2,7 +2,6 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-
 use deepseek_core::subagent::{
     CompletionReason, SubAgentAssignment, SubAgentResult, SubAgentStatus, SubAgentType,
 };
@@ -158,4 +157,3 @@ impl Default for PersistedSubAgentState {
 /// Default cap on sub-agent recursion depth. Override via
 /// `[runtime] max_spawn_depth = N` in `~/.deepseek/config.toml`.
 pub const DEFAULT_MAX_SPAWN_DEPTH: u32 = 3;
-

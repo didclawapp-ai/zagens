@@ -110,7 +110,10 @@ impl Engine {
         let force_update_plan_first = should_force_update_plan_first(mode, &content);
 
         let inject_report_summary = self.config.scratchpad.enabled
-            && scratchpad_flow::user_prompt_triggers_report_summary(&content, &self.config.scratchpad);
+            && scratchpad_flow::user_prompt_triggers_report_summary(
+                &content,
+                &self.config.scratchpad,
+            );
 
         // Add user message to session
         let user_msg = Message {
@@ -226,7 +229,9 @@ impl Engine {
                         )
                         .with_max_spawn_depth(self.config.max_spawn_depth)
                         .with_step_timeout(self.config.subagent_step_timeout)
-                        .with_parent_completion_tx(self.runtime_ext().tx_subagent_completion.clone());
+                        .with_parent_completion_tx(
+                            self.runtime_ext().tx_subagent_completion.clone(),
+                        );
                         if let Some((mailbox, cancel_token)) = mailbox_for_runtime.as_ref() {
                             rt = rt
                                 .with_mailbox(mailbox.clone())
@@ -241,7 +246,10 @@ impl Engine {
                     if let Some(runtime) = runtime {
                         Some(
                             builder
-                                .with_subagent_tools(self.runtime_ext().subagent_manager.clone(), runtime)
+                                .with_subagent_tools(
+                                    self.runtime_ext().subagent_manager.clone(),
+                                    runtime,
+                                )
                                 .build(tool_context),
                         )
                     } else {
@@ -295,11 +303,7 @@ impl Engine {
                 // by the runtime (set at Engine::new from
                 // config.topic_memory).
                 use deepseek_core::engine::hosts::TopicMemoryHost;
-                TopicMemoryHost::on_turn_complete(
-                    &mut *self.topic_memory,
-                    &user,
-                    &assistant,
-                );
+                TopicMemoryHost::on_turn_complete(&mut *self.topic_memory, &user, &assistant);
             }
             self.maybe_advance_cycle(mode).await;
         }
@@ -316,11 +320,8 @@ impl Engine {
                 Some(error.as_deref().unwrap_or("unknown error").to_string())
             }
         };
-        let mut tool_names: Vec<String> = turn
-            .tool_calls
-            .iter()
-            .map(|tc| tc.name.clone())
-            .collect();
+        let mut tool_names: Vec<String> =
+            turn.tool_calls.iter().map(|tc| tc.name.clone()).collect();
         tool_names.sort();
         tool_names.dedup();
         let summary = TurnSummary::new(turn.step, tool_names.clone(), end_reason.clone());
@@ -352,4 +353,3 @@ impl Engine {
         }
     }
 }
-

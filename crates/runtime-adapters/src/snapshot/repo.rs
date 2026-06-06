@@ -465,7 +465,9 @@ const SNAPSHOT_INIT_FILE_LOCK_POLL: Duration = Duration::from_millis(50);
 
 fn snapshot_init_lock(snapshot_dir: &Path) -> Arc<Mutex<()>> {
     let key = snapshot_dir.to_path_buf();
-    let mut map = SNAPSHOT_INIT_MUTEXES.lock().expect("snapshot init mutex map");
+    let mut map = SNAPSHOT_INIT_MUTEXES
+        .lock()
+        .expect("snapshot init mutex map");
     map.entry(key)
         .or_insert_with(|| Arc::new(Mutex::new(())))
         .clone()
@@ -492,7 +494,14 @@ fn remove_legacy_bare_repo_artifacts(snapshot_dir: &Path, git_dir: &Path) {
     if git_dir.exists() {
         return;
     }
-    for name in ["config", "config.lock", "HEAD", "description", "index", "index.lock"] {
+    for name in [
+        "config",
+        "config.lock",
+        "HEAD",
+        "description",
+        "index",
+        "index.lock",
+    ] {
         let path = snapshot_dir.join(name);
         if path.is_file() {
             let _ = std::fs::remove_file(&path);
@@ -596,7 +605,12 @@ fn file_older_than(path: &Path, max_age: Duration) -> bool {
     modified
         .duration_since(UNIX_EPOCH)
         .ok()
-        .and_then(|t| SystemTime::now().duration_since(UNIX_EPOCH).ok().map(|now| now - t))
+        .and_then(|t| {
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .ok()
+                .map(|now| now - t)
+        })
         .is_some_and(|age| age >= max_age)
 }
 
@@ -740,8 +754,8 @@ fn is_safe_relative_path(path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::snapshot::paths::snapshot_git_dir;
     use super::*;
+    use crate::snapshot::paths::snapshot_git_dir;
     use crate::test_support::lock_test_env;
     use std::sync::MutexGuard;
     use tempfile::tempdir;
@@ -1088,11 +1102,7 @@ mod tests {
             .err()
             .expect("should reject huge workspace");
         assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
-        assert!(
-            err.to_string().contains("max_workspace_gb"),
-            "{}",
-            err
-        );
+        assert!(err.to_string().contains("max_workspace_gb"), "{}", err);
     }
 
     #[test]

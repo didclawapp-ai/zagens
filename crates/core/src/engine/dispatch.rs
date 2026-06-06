@@ -105,9 +105,7 @@ pub fn format_tool_error(err: &ToolError, tool_name: &str) -> String {
     }
 }
 
-pub fn parse_parallel_tool_calls(
-    input: &Value,
-) -> Result<Vec<(String, Value)>, ToolError> {
+pub fn parse_parallel_tool_calls(input: &Value) -> Result<Vec<(String, Value)>, ToolError> {
     let tool_uses = input
         .get("tool_uses")
         .and_then(|v| v.as_array())
@@ -144,10 +142,7 @@ pub fn parse_parallel_tool_calls(
 pub fn should_parallelize_tool_batch(plans: &[ToolParallelPlanFlags]) -> bool {
     !plans.is_empty()
         && plans.iter().all(|plan| {
-            plan.read_only
-                && plan.supports_parallel
-                && !plan.approval_required
-                && !plan.interactive
+            plan.read_only && plan.supports_parallel && !plan.approval_required && !plan.interactive
         })
 }
 

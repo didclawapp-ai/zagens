@@ -95,7 +95,7 @@ pub(crate) fn is_transient_error(e: &anyhow::Error) -> bool {
 /// - Never corrupts the original messages (returns error instead)
 /// - Only retries on transient errors (network, rate limit, etc.)
 pub async fn compact_messages_safe(
-    client: &dyn crate::llm_client::LlmClient ,
+    client: &dyn crate::llm_client::LlmClient,
     messages: &[Message],
     config: &CompactionConfig,
     workspace: Option<&Path>,
@@ -218,7 +218,7 @@ pub(crate) fn anchor_summary_section(workspace: Option<&Path>) -> String {
 }
 
 pub async fn compact_messages(
-    client: &dyn crate::llm_client::LlmClient ,
+    client: &dyn crate::llm_client::LlmClient,
     messages: &[Message],
     config: &CompactionConfig,
     workspace: Option<&Path>,
@@ -295,7 +295,7 @@ pub async fn compact_messages(
 }
 
 pub(crate) async fn create_summary(
-    client: &dyn crate::llm_client::LlmClient ,
+    client: &dyn crate::llm_client::LlmClient,
     messages: &[Message],
     model: &str,
 ) -> Result<String> {

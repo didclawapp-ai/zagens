@@ -1,8 +1,8 @@
 //! Background task queue HTTP handlers (R-003 A4.5).
 
+use axum::Json;
 use axum::extract::{Path as AxumPath, Query, State};
 use axum::http::StatusCode;
-use axum::Json;
 use serde::{Deserialize, Serialize};
 
 use crate::config::DEFAULT_TEXT_MODEL;

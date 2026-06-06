@@ -4,7 +4,7 @@ use tracing::Instrument;
 
 use crate::chat::{ContentBlock, Message, Tool};
 use crate::engine::context::{
-    context_input_budget, summarize_text, MAX_CONTEXT_RECOVERY_ATTEMPTS, TURN_MAX_OUTPUT_TOKENS,
+    MAX_CONTEXT_RECOVERY_ATTEMPTS, TURN_MAX_OUTPUT_TOKENS, context_input_budget, summarize_text,
 };
 use crate::engine::loop_guard::LoopGuard;
 use crate::engine::streaming::{

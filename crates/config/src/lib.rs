@@ -13,23 +13,23 @@ use serde::{Deserialize, Serialize};
 #[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 
-mod paths;
-mod ui_settings;
 mod lht_config;
 mod lht_presets;
+mod paths;
+mod ui_settings;
 pub use lht_config::{
     CompletionGateConfigToml, CompletionGateDeliverableToml, CompletionGateVerifyToml,
     LongHorizonConfigToml, MacroLoopConfigToml, normalize_gate_mode, normalize_lht_mode,
     product_defaults as lht_product_defaults, resolve_lht,
 };
-pub use lht_presets::{apply_lht_preset, LhtPresetId};
+pub use lht_presets::{LhtPresetId, apply_lht_preset};
 pub use paths::{
     LEGACY_USER_DATA_DIR_NAME, LEGACY_WORKSPACE_META_DIR_NAME, USER_DATA_DIR_NAME,
-    WORKSPACE_META_DIR_NAME, default_config_path, legacy_config_path,
-    legacy_user_data_root, legacy_workspace_meta_dir, migrate_legacy_user_data_if_needed,
-    tilde_user_data_path, user_data_path, user_data_path_or_relative, user_data_root,
-    workspace_meta_dir, workspace_meta_dir_read, workspace_meta_file_read,
-    workspace_meta_file_write, workspace_meta_rel,
+    WORKSPACE_META_DIR_NAME, default_config_path, legacy_config_path, legacy_user_data_root,
+    legacy_workspace_meta_dir, migrate_legacy_user_data_if_needed, tilde_user_data_path,
+    user_data_path, user_data_path_or_relative, user_data_root, workspace_meta_dir,
+    workspace_meta_dir_read, workspace_meta_file_read, workspace_meta_file_write,
+    workspace_meta_rel,
 };
 pub use ui_settings::{
     LhtComposerMode, normalize_configured_locale, read_lht_composer_mode_setting,
@@ -998,13 +998,19 @@ impl ConfigToml {
             "providers.ollama.model" => self.providers.ollama.model = None,
             "providers.ollama.http_headers" => self.providers.ollama.http_headers.clear(),
             "vision.api_key" => {
-                if let Some(v) = self.vision.as_mut() { v.api_key = None; }
+                if let Some(v) = self.vision.as_mut() {
+                    v.api_key = None;
+                }
             }
             "vision.base_url" => {
-                if let Some(v) = self.vision.as_mut() { v.base_url = None; }
+                if let Some(v) = self.vision.as_mut() {
+                    v.base_url = None;
+                }
             }
             "vision.model" => {
-                if let Some(v) = self.vision.as_mut() { v.model = None; }
+                if let Some(v) = self.vision.as_mut() {
+                    v.model = None;
+                }
             }
             _ => {
                 self.extras.remove(key);
@@ -1601,8 +1607,8 @@ pub fn resolve_config_path(explicit: Option<PathBuf>) -> Result<PathBuf> {
     if let Some(path) = explicit {
         return Ok(path);
     }
-    if let Ok(path) = std::env::var("ZAGENS_CONFIG_PATH")
-        .or_else(|_| std::env::var("DEEPSEEK_CONFIG_PATH"))
+    if let Ok(path) =
+        std::env::var("ZAGENS_CONFIG_PATH").or_else(|_| std::env::var("DEEPSEEK_CONFIG_PATH"))
     {
         let trimmed = path.trim();
         if !trimmed.is_empty() {
@@ -1779,8 +1785,7 @@ pub fn context_window_tokens_for_model(model: &str) -> u32 {
 #[must_use]
 pub fn compaction_threshold_tokens_for_model(model: &str) -> usize {
     let window = u64::from(context_window_tokens_for_model(model));
-    usize::try_from((window * u64::from(COMPACTION_THRESHOLD_PERCENT)) / 100)
-        .unwrap_or(800_000)
+    usize::try_from((window * u64::from(COMPACTION_THRESHOLD_PERCENT)) / 100).unwrap_or(800_000)
 }
 
 #[cfg(test)]

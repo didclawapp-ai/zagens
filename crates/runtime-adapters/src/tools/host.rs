@@ -33,7 +33,12 @@ pub trait ToolTaskHost: Send + Sync {
     async fn cancel_task(&self, task_id: &str) -> Result<Value, String>;
     async fn record_tool_metadata(&self, task_id: &str, metadata: &Value) -> Result<(), String>;
     fn artifact_absolute_path(&self, relative: &Path) -> PathBuf;
-    fn write_task_artifact(&self, task_id: &str, label: &str, content: &str) -> Result<PathBuf, String>;
+    fn write_task_artifact(
+        &self,
+        task_id: &str,
+        label: &str,
+        content: &str,
+    ) -> Result<PathBuf, String>;
 }
 
 /// Durable automation operations for model-visible `automation_*` tools (D16 E1-a4).

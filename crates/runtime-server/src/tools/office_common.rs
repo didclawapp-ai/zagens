@@ -56,17 +56,14 @@ fn unique_office_filename(
     title: Option<&str>,
 ) -> Result<String, ToolError> {
     let ext = format;
-    let stem = title
-        .map(sanitize_office_stem)
-        .unwrap_or_else(|| {
-            Local::now()
-                .format("office-{format}-%Y%m%d-%H%M%S")
-                .to_string()
-        });
+    let stem = title.map(sanitize_office_stem).unwrap_or_else(|| {
+        Local::now()
+            .format("office-{format}-%Y%m%d-%H%M%S")
+            .to_string()
+    });
     let deliverables = workspace.join(DELIVERABLES_DIR);
-    fs::create_dir_all(&deliverables).map_err(|e| {
-        ToolError::execution_failed(format!("无法创建 {DELIVERABLES_DIR}/: {e}"))
-    })?;
+    fs::create_dir_all(&deliverables)
+        .map_err(|e| ToolError::execution_failed(format!("无法创建 {DELIVERABLES_DIR}/: {e}")))?;
 
     let candidate = format!("{stem}.{ext}");
     if !deliverables.join(&candidate).exists() {
@@ -78,11 +75,7 @@ fn unique_office_filename(
             return Ok(candidate);
         }
     }
-    let candidate = format!(
-        "{stem}-{}.{}",
-        Local::now().format("%H%M%S"),
-        ext
-    );
+    let candidate = format!("{stem}-{}.{}", Local::now().format("%H%M%S"), ext);
     Ok(candidate)
 }
 
@@ -93,9 +86,8 @@ pub fn office_payload_cache_path(workspace: &Path, output: &Path) -> Result<Path
         .and_then(|n| n.to_str())
         .ok_or_else(|| ToolError::execution_failed("无效输出文件名"))?;
     let cache_dir = workspace.join(OFFICE_CACHE_DIR);
-    fs::create_dir_all(&cache_dir).map_err(|e| {
-        ToolError::execution_failed(format!("无法创建 {OFFICE_CACHE_DIR}/: {e}"))
-    })?;
+    fs::create_dir_all(&cache_dir)
+        .map_err(|e| ToolError::execution_failed(format!("无法创建 {OFFICE_CACHE_DIR}/: {e}")))?;
     Ok(cache_dir.join(format!("{file_name}.payload.json")))
 }
 
@@ -113,7 +105,10 @@ pub fn save_office_payload(
     let bytes = serde_json::to_vec_pretty(&payload)
         .map_err(|e| ToolError::execution_failed(format!("序列化 payload 失败: {e}")))?;
     fs::write(&cache_path, bytes).map_err(|e| {
-        ToolError::execution_failed(format!("写入 payload 缓存失败 ({}): {e}", cache_path.display()))
+        ToolError::execution_failed(format!(
+            "写入 payload 缓存失败 ({}): {e}",
+            cache_path.display()
+        ))
     })?;
     Ok(cache_path)
 }
@@ -127,9 +122,8 @@ pub fn load_office_payload_file(workspace: &Path, office_path: &Path) -> Result<
             cache_path.display()
         )));
     }
-    let bytes = fs::read(&cache_path).map_err(|e| {
-        ToolError::execution_failed(format!("读取 payload 缓存失败: {e}"))
-    })?;
+    let bytes = fs::read(&cache_path)
+        .map_err(|e| ToolError::execution_failed(format!("读取 payload 缓存失败: {e}")))?;
     serde_json::from_slice(&bytes)
         .map_err(|e| ToolError::execution_failed(format!("解析 payload 缓存失败: {e}")))
 }
@@ -151,7 +145,8 @@ pub fn classify_office_generation_error(raw: &str, stderr: &str) -> String {
     if combined.contains("permission denied") || combined.contains("access is denied") {
         return format!("[OFFICE_PERMISSION] 无写入权限: {raw}");
     }
-    if combined.contains("resolve_python") || combined.contains("python") && combined.contains("not found")
+    if combined.contains("resolve_python")
+        || combined.contains("python") && combined.contains("not found")
     {
         return format!("[OFFICE_PYTHON] 未找到可用的 Python 运行时: {raw}");
     }
@@ -162,7 +157,10 @@ pub fn classify_office_generation_error(raw: &str, stderr: &str) -> String {
 }
 
 /// Write HTML table preview sidecar for XLSX (`.preview.html` next to payload cache).
-pub fn write_xlsx_html_preview(workspace: &Path, xlsx_path: &Path) -> Result<Option<PathBuf>, String> {
+pub fn write_xlsx_html_preview(
+    workspace: &Path,
+    xlsx_path: &Path,
+) -> Result<Option<PathBuf>, String> {
     let meta = fs::metadata(xlsx_path).map_err(|e| e.to_string())?;
     if meta.len() > MAX_FILE_SIZE {
         return Ok(None);
@@ -178,7 +176,10 @@ pub fn write_xlsx_html_preview(workspace: &Path, xlsx_path: &Path) -> Result<Opt
     let mut workbook =
         open_workbook_auto(xlsx_path).map_err(|e| format!("preview open failed: {e}"))?;
     let sheet_names = workbook.sheet_names().to_vec();
-    let sheet_name = sheet_names.first().cloned().unwrap_or_else(|| "Sheet1".to_string());
+    let sheet_name = sheet_names
+        .first()
+        .cloned()
+        .unwrap_or_else(|| "Sheet1".to_string());
     let range = workbook
         .worksheet_range(&sheet_name)
         .map_err(|e| format!("preview range failed: {e}"))?;
@@ -196,7 +197,9 @@ pub fn write_xlsx_html_preview(workspace: &Path, xlsx_path: &Path) -> Result<Opt
         "<p><strong>{sheet_name}</strong> — 预览前 {rows} 行（共 {height} 行）</p><table>"
     ));
     for row_idx in 0..rows {
-        html.push_str(if row_idx == 0 { "<thead><tr>" } else if row_idx == 1 {
+        html.push_str(if row_idx == 0 {
+            "<thead><tr>"
+        } else if row_idx == 1 {
             "</tr></thead><tbody><tr>"
         } else {
             "<tr>"
@@ -253,7 +256,9 @@ pub fn resolve_office_data_path(workspace: &Path, raw: &str) -> Result<PathBuf, 
     let resolved = if candidate.exists() {
         candidate.canonicalize()
     } else if let Some(parent) = candidate.parent() {
-        parent.canonicalize().map(|p| p.join(candidate.file_name().unwrap_or_default()))
+        parent
+            .canonicalize()
+            .map(|p| p.join(candidate.file_name().unwrap_or_default()))
     } else {
         candidate.canonicalize()
     }
@@ -267,10 +272,7 @@ pub fn resolve_office_data_path(workspace: &Path, raw: &str) -> Result<PathBuf, 
 /// Load tabular rows from `source` for `write_office` XLSX sheets.
 ///
 /// `source` may be a path string or `{ "path", "sheet?", "start_row?", "limit?" }`.
-pub fn load_sheet_rows_from_source(
-    workspace: &Path,
-    source: &Value,
-) -> Result<Vec<Value>, String> {
+pub fn load_sheet_rows_from_source(workspace: &Path, source: &Value) -> Result<Vec<Value>, String> {
     let (path_str, sheet, start_row, limit) = parse_source_spec(source)?;
     let path = resolve_office_data_path(workspace, &path_str)?;
     let ext = path
@@ -290,9 +292,7 @@ pub fn load_sheet_rows_from_source(
     }
 }
 
-fn parse_source_spec(
-    source: &Value,
-) -> Result<(String, Option<String>, u64, usize), String> {
+fn parse_source_spec(source: &Value) -> Result<(String, Option<String>, u64, usize), String> {
     match source {
         Value::String(path) => Ok((path.clone(), None, 1, SOURCE_ROW_LIMIT)),
         Value::Object(obj) => {
@@ -301,7 +301,10 @@ fn parse_source_spec(
                 .and_then(|v| v.as_str())
                 .ok_or("source.path 必填（字符串路径）")?
                 .to_string();
-            let sheet = obj.get("sheet").and_then(|v| v.as_str()).map(str::to_string);
+            let sheet = obj
+                .get("sheet")
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
             let start_row = obj
                 .get("start_row")
                 .and_then(|v| v.as_u64())
@@ -379,7 +382,10 @@ fn load_spreadsheet_rows(
         if rows.len() >= limit {
             break;
         }
-        let cells: Vec<Value> = row.iter().map(|c| calamine_cell_to_json(c.clone())).collect();
+        let cells: Vec<Value> = row
+            .iter()
+            .map(|c| calamine_cell_to_json(c.clone()))
+            .collect();
         rows.push(Value::Array(cells));
     }
     if rows.is_empty() {
@@ -396,8 +402,8 @@ fn load_csv_rows(
     start_row: u64,
     limit: usize,
 ) -> Result<Vec<Value>, String> {
-    let content = fs::read_to_string(path)
-        .map_err(|e| format!("无法读取 {}: {e}", path.display()))?;
+    let content =
+        fs::read_to_string(path).map_err(|e| format!("无法读取 {}: {e}", path.display()))?;
     let lines: Vec<&str> = content.lines().collect();
     if lines.is_empty() {
         return Err(format!("CSV/TSV 为空: {}", path.display()));
@@ -463,7 +469,10 @@ mod tests {
 
     #[test]
     fn sanitize_stem_basic() {
-        assert_eq!(sanitize_office_stem("Weekly Report 2025"), "Weekly-Report-2025");
+        assert_eq!(
+            sanitize_office_stem("Weekly Report 2025"),
+            "Weekly-Report-2025"
+        );
     }
 
     #[test]

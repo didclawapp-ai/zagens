@@ -9,6 +9,4 @@
 //! `pub use diagnostics::{...}` re-export, so no import-path churn is
 //! required.
 
-pub use deepseek_core::lsp::diagnostics::{
-    Diagnostic, DiagnosticBlock, Severity, render_blocks,
-};
+pub use deepseek_core::lsp::diagnostics::{Diagnostic, DiagnosticBlock, Severity, render_blocks};

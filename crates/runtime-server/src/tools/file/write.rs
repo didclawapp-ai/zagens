@@ -81,12 +81,14 @@ impl ToolSpec for WriteFileTool {
             .lock()
             .ok()
             .and_then(|g| g.clone());
-        if let Some(block_msg) = deepseek_runtime_adapters::scratchpad_gates::check_write_file_audit_report_gate(
-            &context.workspace,
-            bound_run.as_deref(),
-            &scratchpad_cfg,
-            path_str,
-        ) {
+        if let Some(block_msg) =
+            deepseek_runtime_adapters::scratchpad_gates::check_write_file_audit_report_gate(
+                &context.workspace,
+                bound_run.as_deref(),
+                &scratchpad_cfg,
+                path_str,
+            )
+        {
             return Err(ToolError::execution_failed(block_msg));
         }
 
@@ -134,8 +136,7 @@ impl ToolSpec for WriteFileTool {
 
         // Create parent directories if needed.
         if let Some(parent) = file_path.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|e| map_write_io_error(parent, e))?;
+            fs::create_dir_all(parent).map_err(|e| map_write_io_error(parent, e))?;
         }
 
         // 2.4: atomic write — temp file in the same dir + rename, so an
@@ -152,8 +153,8 @@ impl ToolSpec for WriteFileTool {
         // echo the whole file back / cost O(N·D)). Small writes — including new
         // files — keep the real diff so the web-ui DiffCard and 「本轮变更」panel
         // render them exactly as before (avoids a frontend regression).
-        let large_input =
-            file_content.len() > DIFF_MAX_INPUT_BYTES || prior_contents.len() > DIFF_MAX_INPUT_BYTES;
+        let large_input = file_content.len() > DIFF_MAX_INPUT_BYTES
+            || prior_contents.len() > DIFF_MAX_INPUT_BYTES;
         let verb = if existed_before { "Wrote" } else { "Created" };
         let body = if large_input {
             // 3.4: echo size/lines so the model can self-check truncation.
@@ -463,7 +464,10 @@ pub(in crate::tools::file) fn check_jsx_balance(content: &str) -> Option<String>
     }
 }
 
-pub(in crate::tools::file) fn jsx_balance_warning(file_path: &std::path::Path, content: &str) -> String {
+pub(in crate::tools::file) fn jsx_balance_warning(
+    file_path: &std::path::Path,
+    content: &str,
+) -> String {
     if matches!(
         file_path.extension().and_then(|e| e.to_str()),
         Some("tsx") | Some("jsx")

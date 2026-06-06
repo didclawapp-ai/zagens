@@ -83,9 +83,7 @@ fn windows_free_bytes(path: &Path) -> Result<u64, String> {
         ) -> i32;
     }
 
-    let canonical = path
-        .canonicalize()
-        .unwrap_or_else(|_| path.to_path_buf());
+    let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
     let s = canonical.to_string_lossy();
     let root = if s.starts_with(r"\\") {
         s.to_string()
@@ -98,19 +96,10 @@ fn windows_free_bytes(path: &Path) -> Result<u64, String> {
     let mut free_avail = 0u64;
     let mut total = 0u64;
     let mut total_free = 0u64;
-    let ok = unsafe {
-        GetDiskFreeSpaceExW(
-            wide.as_ptr(),
-            &mut free_avail,
-            &mut total,
-            &mut total_free,
-        )
-    };
+    let ok =
+        unsafe { GetDiskFreeSpaceExW(wide.as_ptr(), &mut free_avail, &mut total, &mut total_free) };
     if ok == 0 {
-        return Err(format!(
-            "无法读取磁盘剩余空间（{}）",
-            canonical.display()
-        ));
+        return Err(format!("无法读取磁盘剩余空间（{}）", canonical.display()));
     }
     Ok(free_avail)
 }
@@ -120,18 +109,13 @@ fn unix_free_bytes(path: &Path) -> Result<u64, String> {
     use std::ffi::CString;
     use std::mem::MaybeUninit;
 
-    let canonical = path
-        .canonicalize()
-        .unwrap_or_else(|_| path.to_path_buf());
+    let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
     let c_path = CString::new(canonical.to_string_lossy().as_bytes())
         .map_err(|_| "路径包含空字节".to_string())?;
     let mut stat: MaybeUninit<libc::statvfs> = MaybeUninit::uninit();
     let rc = unsafe { libc::statvfs(c_path.as_ptr(), stat.as_mut_ptr()) };
     if rc != 0 {
-        return Err(format!(
-            "无法读取磁盘剩余空间（{}）",
-            canonical.display()
-        ));
+        return Err(format!("无法读取磁盘剩余空间（{}）", canonical.display()));
     }
     let stat = unsafe { stat.assume_init() };
     let free = stat.f_bavail as u64 * stat.f_frsize as u64;

@@ -116,9 +116,9 @@ pub fn merge_macro_loop_panel(
     let in_flight = awaiting_confirm
         || macro_cycles_used > 0
         || craft_rounds > 0
-        || phase.as_deref().is_some_and(|p| {
-            p != MacroPhase::Implement.as_str() && p != "unmet"
-        })
+        || phase
+            .as_deref()
+            .is_some_and(|p| p != MacroPhase::Implement.as_str() && p != "unmet")
         || cache.last_blockers_count.is_some();
     MacroLoopPanelJson {
         configured,

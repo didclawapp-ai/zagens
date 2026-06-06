@@ -40,20 +40,15 @@ fn inventory_complete(run_dir: &Path) -> bool {
         return false;
     };
     !inventory.areas.is_empty()
-        && inventory.areas.iter().all(|a| {
-            matches!(
-                a.status,
-                AreaStatus::Done | AreaStatus::Deferred
-            )
-        })
+        && inventory
+            .areas
+            .iter()
+            .all(|a| matches!(a.status, AreaStatus::Done | AreaStatus::Deferred))
 }
 
 /// E5 — block `task_create` while a full-repo audit inventory is active (use `agent_spawn` for P1).
 #[must_use]
-pub fn check_task_create_audit_gate(
-    workspace: &Path,
-    run_id: Option<&str>,
-) -> Option<String> {
+pub fn check_task_create_audit_gate(workspace: &Path, run_id: Option<&str>) -> Option<String> {
     let run_id = run_id?.trim();
     if run_id.is_empty() {
         return None;
@@ -100,9 +95,7 @@ pub fn check_write_file_audit_report_gate(
         ));
     }
 
-    if let CoverageGateOutcome::Block { reason, .. } =
-        coverage_gate(&inventory, &notes, config)
-    {
+    if let CoverageGateOutcome::Block { reason, .. } = coverage_gate(&inventory, &notes, config) {
         return Some(format!(
             "scratchpad audit report write blocked for `{path_str}`: {reason} [{l0}]"
         ));
@@ -124,7 +117,9 @@ mod tests {
         assert!(is_audit_deliverable_path(
             "deliverables/CODE_REVIEW_2026-05-19.md"
         ));
-        assert!(is_audit_deliverable_path("doc/CODE_AUDIT_REPORT-v2.67.0.md"));
+        assert!(is_audit_deliverable_path(
+            "doc/CODE_AUDIT_REPORT-v2.67.0.md"
+        ));
         assert!(is_audit_deliverable_path("doc/code_audit_summary.md"));
         assert!(!is_audit_deliverable_path("src/main.rs"));
         assert!(!is_audit_deliverable_path("deliverables/notes.txt"));
@@ -189,13 +184,9 @@ mod tests {
         std::fs::write(base.join("notes.jsonl"), "").expect("notes");
 
         let cfg = ScratchpadConfig::default();
-        let msg = check_write_file_audit_report_gate(
-            &ws,
-            Some(run_id),
-            &cfg,
-            "deliverables/Audit.md",
-        )
-        .expect("blocked");
+        let msg =
+            check_write_file_audit_report_gate(&ws, Some(run_id), &cfg, "deliverables/Audit.md")
+                .expect("blocked");
         assert!(msg.contains("inventory incomplete"));
     }
 }

@@ -134,9 +134,8 @@ fn migrate_legacy_user_data_at(
     }
 
     if let Some(parent) = config_dest.parent() {
-        fs::create_dir_all(parent).with_context(|| {
-            format!("failed to create config directory {}", parent.display())
-        })?;
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create config directory {}", parent.display()))?;
     }
     fs::copy(&legacy_config, config_dest).with_context(|| {
         format!(

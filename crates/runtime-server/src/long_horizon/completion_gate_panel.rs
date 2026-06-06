@@ -154,10 +154,7 @@ impl CompletionGatePanelCache {
                 if let Some(g) = p.get("first_gap_count").and_then(Value::as_u64) {
                     self.first_gap_count = Some(g as u32);
                 }
-                if let Some(g) = p
-                    .get("gate_reinject_while_blocked")
-                    .and_then(Value::as_u64)
-                {
+                if let Some(g) = p.get("gate_reinject_while_blocked").and_then(Value::as_u64) {
                     self.gate_reinject_while_blocked = g as u32;
                 }
                 if let Some(m) = p.get("mode").and_then(Value::as_str) {

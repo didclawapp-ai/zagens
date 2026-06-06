@@ -85,7 +85,10 @@ pub(in crate::tools::web_run) fn get_bing_snippet_re() -> &'static Regex {
     })
 }
 
-pub(in crate::tools::web_run) fn parse_html(html: &str, base_url: &str) -> (Vec<String>, Vec<WebLink>, Option<String>) {
+pub(in crate::tools::web_run) fn parse_html(
+    html: &str,
+    base_url: &str,
+) -> (Vec<String>, Vec<WebLink>, Option<String>) {
     let title = extract_title(html);
     let without_scripts = get_script_re().replace_all(html, "").to_string();
     let without_styles = get_style_re().replace_all(&without_scripts, "").to_string();
@@ -121,7 +124,10 @@ pub(in crate::tools::web_run) fn extract_title(html: &str) -> Option<String> {
     }
 }
 
-pub(in crate::tools::web_run) fn replace_links(html: &str, base_url: &str) -> (String, Vec<WebLink>) {
+pub(in crate::tools::web_run) fn replace_links(
+    html: &str,
+    base_url: &str,
+) -> (String, Vec<WebLink>) {
     let re = get_anchor_re();
     let mut links = Vec::new();
     let mut output = String::with_capacity(html.len());
@@ -211,7 +217,10 @@ pub(in crate::tools::web_run) fn decode_html_entities(text: &str) -> String {
         .replace("&nbsp;", " ")
 }
 
-pub(in crate::tools::web_run) fn parse_duckduckgo_results(html: &str, max_results: usize) -> Vec<SearchEntry> {
+pub(in crate::tools::web_run) fn parse_duckduckgo_results(
+    html: &str,
+    max_results: usize,
+) -> Vec<SearchEntry> {
     let title_re = get_search_title_re();
     let snippet_re = get_search_snippet_re();
     let snippets: Vec<String> = snippet_re
@@ -251,7 +260,10 @@ pub(in crate::tools::web_run) fn is_duckduckgo_challenge(html: &str) -> bool {
     html.contains("anomaly-modal") || html.contains("Unfortunately, bots use DuckDuckGo too")
 }
 
-pub(in crate::tools::web_run) fn parse_bing_results(html: &str, max_results: usize) -> Vec<SearchEntry> {
+pub(in crate::tools::web_run) fn parse_bing_results(
+    html: &str,
+    max_results: usize,
+) -> Vec<SearchEntry> {
     let mut results = Vec::new();
     for cap in get_bing_result_re().captures_iter(html) {
         if results.len() >= max_results {

@@ -61,4 +61,3 @@ pub fn collect_agent_rebind_hints(events: &[RuntimeEventRecord]) -> Vec<AgentReb
         .map(|(agent_id, status)| AgentRebindHint { agent_id, status })
         .collect()
 }
-

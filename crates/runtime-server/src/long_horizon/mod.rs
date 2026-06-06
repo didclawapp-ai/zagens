@@ -4,48 +4,46 @@ mod checkpoint;
 mod completion_audit;
 mod completion_gate_flow;
 pub(crate) mod completion_gate_panel;
-mod deliverable_manifest;
-mod gate_telemetry;
 mod cycle_band;
 mod cycles;
-pub(crate) mod handoff;
+mod deliverable_manifest;
+mod gate_telemetry;
 mod generic_gate;
 mod go_toolchain_audit;
 mod graph;
+pub(crate) mod handoff;
 mod integration_gate;
-mod manifest_gate;
 pub(crate) mod macro_loop;
 pub(crate) mod macro_loop_panel;
+mod manifest_gate;
 mod nudge;
 mod objective;
 mod plan_drift;
 pub(crate) mod progress;
-pub(crate) mod snapshots;
 mod reinject;
+pub(crate) mod snapshots;
 mod stub_gate;
 mod task_graph;
 mod verify;
 mod verify_platform;
 
 pub use checkpoint::tool_marks_lht_checkpoint;
-pub use cycle_band::{
-    context_pressure_ratio, in_lht_warning_band, should_lht_early_advance_cycle,
-};
+pub use cycle_band::{context_pressure_ratio, in_lht_warning_band, should_lht_early_advance_cycle};
 pub use cycles::build_cycles_value;
-pub use reinject::{build_objective_reinject_message, should_reinject_this_step};
 pub(crate) use nudge::VERIFICATION_RE;
+pub use reinject::{build_objective_reinject_message, should_reinject_this_step};
 pub(crate) use verify::verify_gate_verdict;
 
+pub use completion_gate_panel::CompletionGatePanelJson;
 pub use graph::CodeTaskGraph;
 pub use handoff::{build_lht_handoff_section, merge_lht_into_handoff};
-pub use completion_gate_panel::CompletionGatePanelJson;
 pub use manifest_gate::CompletionGateExec;
 pub use nudge::{
-    build_auto_continue_message, build_nudge_message, LongHorizonSessionState, NudgeDecision,
+    LongHorizonSessionState, NudgeDecision, build_auto_continue_message, build_nudge_message,
 };
 pub use objective::derive_objective;
 pub use task_graph::{
-    build_task_graph_value, build_task_graph_value_with_telemetry, TaskGraphTelemetryJson,
+    TaskGraphTelemetryJson, build_task_graph_value, build_task_graph_value_with_telemetry,
 };
 
 use std::path::Path;
@@ -93,10 +91,7 @@ fn audit_scratchpad_blocks_lht(
     messages: &[Message],
 ) -> bool {
     crate::core::engine::scratchpad_flow::maybe_continue_incomplete_audit(
-        workspace,
-        run_id,
-        scratchpad,
-        messages,
+        workspace, run_id, scratchpad, messages,
     )
     .is_some()
 }
@@ -126,9 +121,12 @@ fn evaluate_plan_bootstrap(
     }
     if session.plan_gate_rounds >= nudge::MAX_PLAN_GATE_ROUNDS {
         // Model won't plan after repeated nudges — stop honestly, don't loop.
-        session.pending_gate_events.push(
-            gate_telemetry::CompletionGateEvent::plan_gate(false, session.plan_gate_rounds),
-        );
+        session
+            .pending_gate_events
+            .push(gate_telemetry::CompletionGateEvent::plan_gate(
+                false,
+                session.plan_gate_rounds,
+            ));
         return None;
     }
     session.plan_gate_rounds += 1;
@@ -334,17 +332,12 @@ pub async fn maybe_continue_incomplete_code_task(
                     &input.session.recent_verification_cmds,
                     input.lang,
                 )
-                .0
-                    != "mismatch"
+                .0 != "mismatch"
                 {
                     return None;
                 }
-                verify::parse_verify_command(&i.content).map(|cmd| {
-                    (
-                        verify::strip_verify_prefix(&i.content),
-                        cmd,
-                    )
-                })
+                verify::parse_verify_command(&i.content)
+                    .map(|cmd| (verify::strip_verify_prefix(&i.content), cmd))
             })
             .collect();
         if !mismatched.is_empty()
@@ -391,8 +384,7 @@ pub async fn maybe_continue_incomplete_code_task(
         // the matching plan step is still open.
         let drift = plan_drift::find_plan_checklist_drift(&plan, &checklist);
         if !drift.is_empty()
-            && input.session.plan_checklist_drift_nudges
-                < nudge::MAX_PLAN_CHECKLIST_DRIFT_NUDGES
+            && input.session.plan_checklist_drift_nudges < nudge::MAX_PLAN_CHECKLIST_DRIFT_NUDGES
         {
             input.session.plan_checklist_drift_nudges += 1;
             let text = nudge::build_plan_checklist_drift_nudge(&drift, input.lang);
@@ -609,7 +601,9 @@ mod plan_bootstrap_tests {
 
     #[test]
     fn strict_completion_gate_raises_modes() {
-        use deepseek_core::long_horizon::{CompletionGateConfig, CompletionGateMode, GenericGateMode};
+        use deepseek_core::long_horizon::{
+            CompletionGateConfig, CompletionGateMode, GenericGateMode,
+        };
         let mut base = CompletionGateConfig::default();
         base.auto_verify_replay = GenericGateMode::Observe;
         base.toolchain_gate = GenericGateMode::Observe;

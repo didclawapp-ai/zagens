@@ -18,8 +18,8 @@ fn persist_scratchpad_run(ctx: &ToolContext, run_id: &str) {
     }
 }
 use crate::tools::spec::{
-    ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_str,
-    required_str,
+    ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
+    optional_str, required_str,
 };
 
 fn run_id_property() -> Value {
@@ -90,11 +90,7 @@ impl ToolSpec for ScratchpadInitTool {
         ApprovalRequirement::Auto
     }
 
-    async fn execute(
-        &self,
-        input: Value,
-        context: &ToolContext,
-    ) -> Result<ToolResult, ToolError> {
+    async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
         let run_id = resolve_run_id_for_init(context, optional_str(&input, "run_id"))?;
         let scope = optional_str(&input, "scope");
         let areas = if optional_str(&input, "template") == Some("workspace_audit") {
@@ -150,11 +146,7 @@ impl ToolSpec for ScratchpadStatusTool {
         ApprovalRequirement::Auto
     }
 
-    async fn execute(
-        &self,
-        input: Value,
-        context: &ToolContext,
-    ) -> Result<ToolResult, ToolError> {
+    async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
         let run_id = resolve_run_id(context, optional_str(&input, "run_id"))?;
         let store = ScratchpadStore::open(context, &run_id)?;
         persist_scratchpad_run(context, &run_id);
@@ -217,11 +209,7 @@ impl ToolSpec for ScratchpadAppendTool {
         ApprovalRequirement::Auto
     }
 
-    async fn execute(
-        &self,
-        input: Value,
-        context: &ToolContext,
-    ) -> Result<ToolResult, ToolError> {
+    async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
         let run_id = resolve_run_id(context, optional_str(&input, "run_id"))?;
         let line = input
             .get("line")
@@ -282,11 +270,7 @@ impl ToolSpec for ScratchpadListNotesTool {
         ApprovalRequirement::Auto
     }
 
-    async fn execute(
-        &self,
-        input: Value,
-        context: &ToolContext,
-    ) -> Result<ToolResult, ToolError> {
+    async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
         let run_id = resolve_run_id(context, optional_str(&input, "run_id"))?;
         persist_scratchpad_run(context, &run_id);
         let area_id = required_str(&input, "area_id")?;
@@ -351,11 +335,7 @@ impl ToolSpec for ScratchpadSetAreaTool {
         ApprovalRequirement::Auto
     }
 
-    async fn execute(
-        &self,
-        input: Value,
-        context: &ToolContext,
-    ) -> Result<ToolResult, ToolError> {
+    async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
         let run_id = resolve_run_id(context, optional_str(&input, "run_id"))?;
         let area_id = required_str(&input, "area_id")?;
         let status_str = required_str(&input, "status")?;
@@ -437,11 +417,7 @@ impl ToolSpec for ScratchpadVerifyNoteTool {
         ApprovalRequirement::Auto
     }
 
-    async fn execute(
-        &self,
-        input: Value,
-        context: &ToolContext,
-    ) -> Result<ToolResult, ToolError> {
+    async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
         let run_id = resolve_run_id(context, optional_str(&input, "run_id"))?;
         let note_id = required_str(&input, "note_id")?;
         let store = ScratchpadStore::open(context, &run_id)?;

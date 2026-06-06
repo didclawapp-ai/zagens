@@ -10,8 +10,7 @@ mod system;
 pub use install::{
     DEFAULT_MAX_SIZE_BYTES, DEFAULT_REGISTRY_URL, INSTALLED_FROM_MARKER, InstallOutcome,
     InstallSource, InstalledSkill, RegistryDocument, RegistryEntry, RegistryFetchResult,
-    SkillSyncOutcome, SyncResult, UpdateResult, default_cache_skills_dir,
-    import_local_directory,
+    SkillSyncOutcome, SyncResult, UpdateResult, default_cache_skills_dir, import_local_directory,
 };
 pub use system::install_system_skills;
 

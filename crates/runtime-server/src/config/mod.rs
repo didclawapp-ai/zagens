@@ -1,6 +1,5 @@
 //! Configuration loading and defaults for DeepSeek TUI.
 
-
 pub const DEFAULT_MAX_SUBAGENTS: usize = 10;
 pub const MAX_SUBAGENTS: usize = 20;
 pub const DEFAULT_TEXT_MODEL: &str = "deepseek-v4-pro";

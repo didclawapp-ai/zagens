@@ -85,9 +85,9 @@ impl CompletionGateEvent {
             Self::StubGate { payload_json } => {
                 format!("long_horizon.stub_gate: {payload_json}")
             }
-            Self::PlanGate { nudged, round } => format!(
-                "long_horizon.plan_gate: {{\"nudged\":{nudged},\"round\":{round}}}"
-            ),
+            Self::PlanGate { nudged, round } => {
+                format!("long_horizon.plan_gate: {{\"nudged\":{nudged},\"round\":{round}}}")
+            }
             Self::IntegrationGate { payload_json } => {
                 format!("long_horizon.integration_gate: {payload_json}")
             }
@@ -145,8 +145,7 @@ impl CompletionGateEvent {
             sources,
             results: &result.results,
         };
-        let payload_json =
-            serde_json::to_string(&payload).unwrap_or_else(|_| "{}".to_string());
+        let payload_json = serde_json::to_string(&payload).unwrap_or_else(|_| "{}".to_string());
         out.push(Self::ManifestGateResult {
             passed: result.passed,
             failing_ids: result.failing_ids.clone(),
@@ -156,8 +155,7 @@ impl CompletionGateEvent {
     }
 
     pub fn queue_completion_audit(out: &mut Vec<Self>, audit: &CompletionAuditResult) {
-        let payload_json =
-            serde_json::to_string(audit).unwrap_or_else(|_| "{}".to_string());
+        let payload_json = serde_json::to_string(audit).unwrap_or_else(|_| "{}".to_string());
         out.push(Self::CompletionAudit { payload_json });
     }
 

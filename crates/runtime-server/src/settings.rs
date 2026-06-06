@@ -292,9 +292,10 @@ impl Settings {
                 .unwrap_or("en")
                 .to_string();
             s.default_model = s.default_model.as_deref().and_then(normalize_default_model);
-            s.lht_composer_mode = deepseek_config::LhtComposerMode::from_storage(&s.lht_composer_mode)
-                .as_str()
-                .to_string();
+            s.lht_composer_mode =
+                deepseek_config::LhtComposerMode::from_storage(&s.lht_composer_mode)
+                    .as_str()
+                    .to_string();
             s
         };
         settings.apply_env_overrides();
@@ -967,7 +968,9 @@ mod tests {
     fn tui_prefs_path_uses_home_zagens_subdir_by_default() {
         let _g = config_path_test_guard();
         if let Some(home) = dirs::home_dir() {
-            let expected = home.join(deepseek_config::USER_DATA_DIR_NAME).join("tui.toml");
+            let expected = home
+                .join(deepseek_config::USER_DATA_DIR_NAME)
+                .join("tui.toml");
             if std::env::var("DEEPSEEK_CONFIG_PATH").is_err()
                 && std::env::var("ZAGENS_CONFIG_PATH").is_err()
             {

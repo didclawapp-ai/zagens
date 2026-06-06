@@ -338,10 +338,13 @@ mod tests {
             server_tool_use: None,
         };
         let actual = calculate_turn_cost_from_usage("deepseek-v4-flash", &usage).unwrap();
-        let all_miss =
-            calculate_turn_cost_estimate("deepseek-v4-flash", usage.input_tokens, usage.output_tokens)
-                .unwrap()
-                .usd;
+        let all_miss = calculate_turn_cost_estimate(
+            "deepseek-v4-flash",
+            usage.input_tokens,
+            usage.output_tokens,
+        )
+        .unwrap()
+        .usd;
         assert!(actual < all_miss);
         assert!(all_miss - actual > 0.0);
     }

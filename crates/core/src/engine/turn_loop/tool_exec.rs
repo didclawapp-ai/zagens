@@ -5,7 +5,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use deepseek_tools::{ToolError, ToolResult};
 use serde_json::Value;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{RwLock, mpsc};
 
 use crate::events::Event;
 
@@ -40,9 +40,5 @@ pub trait TurnLoopToolExecutor: Send + Sync {
 /// Opaque MCP pool surface for the core turn loop.
 #[async_trait]
 pub trait McpPoolPort: Send + Sync {
-    async fn execute_tool(
-        &self,
-        tool_name: &str,
-        input: Value,
-    ) -> Result<ToolResult, ToolError>;
+    async fn execute_tool(&self, tool_name: &str, input: Value) -> Result<ToolResult, ToolError>;
 }

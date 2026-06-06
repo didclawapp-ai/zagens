@@ -3,9 +3,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use axum::Json;
 use axum::extract::{Path as AxumPath, Query, State};
 use axum::http::StatusCode;
-use axum::Json;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::sync::{Mutex, Semaphore};
@@ -14,7 +14,7 @@ use crate::runtime_threads::CreateThreadRequest;
 use crate::session_manager::SavedSession;
 
 use deepseek_runtime_api::{
-    ResumeSessionResponse, SessionDetailResponse, SessionsListResponse, ApiError,
+    ApiError, ResumeSessionResponse, SessionDetailResponse, SessionsListResponse,
 };
 
 use super::RuntimeApiState;
@@ -155,9 +155,7 @@ pub(crate) async fn resume_session_thread(
     let manager = state.shared_session_manager.clone();
     let session = tokio::task::spawn_blocking({
         let id = id.clone();
-        move || -> Result<SavedSession, std::io::Error> {
-            manager.load_session(&id)
-        }
+        move || -> Result<SavedSession, std::io::Error> { manager.load_session(&id) }
     })
     .await
     .map_err(|e| ApiError::internal(format!("resume session task panicked: {e}")))?
@@ -179,11 +177,7 @@ pub(crate) async fn resume_session_thread(
     });
 
     let workspace = session.metadata.workspace.clone();
-    let task_type = crate::task_type::resolve_task_type(
-        req.task_type.as_deref(),
-        &workspace,
-        None,
-    );
+    let task_type = crate::task_type::resolve_task_type(req.task_type.as_deref(), &workspace, None);
 
     // Reuse the persisted runtime thread when it still has events so Zagens can
     // replay tool cards and thinking after app restart (instead of seeding a blank thread).
@@ -259,10 +253,7 @@ pub(crate) async fn resume_session_thread(
         }
     }
 
-    state
-        .resume_tracker
-        .register(&tid, &id, msg_count)
-        .await;
+    state.resume_tracker.register(&tid, &id, msg_count).await;
 
     let tracker = state.resume_tracker.clone();
     let threads = state.runtime_threads.clone();
@@ -273,11 +264,7 @@ pub(crate) async fn resume_session_thread(
             let rt = tokio::runtime::Handle::current();
             let tid_clone = tid.clone();
             move || {
-                rt.block_on(async {
-                    threads
-                        .seed_thread_from_messages(&tid_clone, &msgs)
-                        .await
-                })
+                rt.block_on(async { threads.seed_thread_from_messages(&tid_clone, &msgs).await })
             }
         })
         .await
@@ -295,10 +282,7 @@ pub(crate) async fn resume_session_thread(
                 tracker.mark_ready(&tid).await;
             }
             Err(err) => {
-                eprintln!(
-                    "[resume-session] seed failed, thread={}: {}",
-                    tid_log, err,
-                );
+                eprintln!("[resume-session] seed failed, thread={}: {}", tid_log, err,);
                 tracker.mark_error(&tid, err).await;
             }
         }
@@ -322,9 +306,7 @@ pub(crate) async fn delete_session(
     let manager = state.shared_session_manager.clone();
     tokio::task::spawn_blocking({
         let id = id.clone();
-        move || -> Result<(), std::io::Error> {
-            manager.delete_session(&id)
-        }
+        move || -> Result<(), std::io::Error> { manager.delete_session(&id) }
     })
     .await
     .map_err(|e| ApiError::internal(format!("delete session task panicked: {e}")))?
@@ -387,4 +369,3 @@ pub(crate) fn map_session_err(id: &str, err: std::io::Error, action: &str) -> Ap
         _ => ApiError::internal(format!("Failed to {action} session '{id}': {err}")),
     }
 }
-

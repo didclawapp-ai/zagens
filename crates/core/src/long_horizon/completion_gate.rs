@@ -306,8 +306,14 @@ mod tests {
             mode: CompletionGateMode::Enforce,
             ..Default::default()
         };
-        assert_eq!(cfg.clone().sanitized_for_source(true).mode, CompletionGateMode::Enforce);
-        assert_eq!(cfg.sanitized_for_source(false).mode, CompletionGateMode::Observe);
+        assert_eq!(
+            cfg.clone().sanitized_for_source(true).mode,
+            CompletionGateMode::Enforce
+        );
+        assert_eq!(
+            cfg.sanitized_for_source(false).mode,
+            CompletionGateMode::Observe
+        );
     }
 
     #[test]
@@ -316,6 +322,9 @@ mod tests {
             mode: CompletionGateMode::Observe,
             ..Default::default()
         };
-        assert_eq!(cfg.sanitized_for_source(false).mode, CompletionGateMode::Observe);
+        assert_eq!(
+            cfg.sanitized_for_source(false).mode,
+            CompletionGateMode::Observe
+        );
     }
 }

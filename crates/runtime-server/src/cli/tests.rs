@@ -2,13 +2,13 @@
 
 use std::path::Path;
 
-use crate::config::Config;
 use crate::cli::{
-    collect_clean_targets, doctor_api_target, doctor_check_mcp_server, doctor_timeout_recovery_lines,
-    dotenv_status_line, execute_clean_plan, format_pr_prompt, init_plugins_dir, init_tools_dir,
-    is_command_available, merge_project_config, resolve_api_key_source, run_setup_clean,
-    skills_count_for, ApiKeySource, GhPullRequest, McpServerDoctorStatus, WriteStatus,
+    ApiKeySource, GhPullRequest, McpServerDoctorStatus, WriteStatus, collect_clean_targets,
+    doctor_api_target, doctor_check_mcp_server, doctor_timeout_recovery_lines, dotenv_status_line,
+    execute_clean_plan, format_pr_prompt, init_plugins_dir, init_tools_dir, is_command_available,
+    merge_project_config, resolve_api_key_source, run_setup_clean, skills_count_for,
 };
+use crate::config::Config;
 use crate::mcp::McpServerConfig;
 
 #[cfg(test)]

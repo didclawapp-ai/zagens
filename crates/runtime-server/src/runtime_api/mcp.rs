@@ -3,16 +3,16 @@
 use std::collections::HashSet;
 use std::fs;
 
+use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path as AxumPath, Query, State};
 use axum::http::StatusCode;
-use axum::Json;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::mcp::{
-    manager_snapshot_from_pool, recent_mcp_calls, McpConfig, McpManagerSnapshot,
-    McpReloadReport, McpServerConfig,
+    McpConfig, McpManagerSnapshot, McpReloadReport, McpServerConfig, manager_snapshot_from_pool,
+    recent_mcp_calls,
 };
 
 use super::{ApiError, RuntimeApiState};

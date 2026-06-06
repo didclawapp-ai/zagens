@@ -18,8 +18,8 @@ pub mod monitor_persist;
 pub mod persist;
 pub mod prompt_inbox;
 pub mod routing;
-pub mod thread_crud;
 pub mod task_port;
+pub mod thread_crud;
 pub mod turn_control;
 pub mod turn_coordinator;
 pub mod turn_lifecycle;
@@ -28,13 +28,13 @@ pub mod types;
 
 pub use engine_host::RuntimeThreadHost;
 pub use engine_load::ensure_engine_loaded;
-pub use monitor::monitor_turn;
-pub use monitor_host::RuntimeThreadMonitorHost;
-pub use task_port::RuntimeThreadTaskPort;
 pub use manager::{
     EVENT_CHANNEL_CAPACITY, RUNTIME_RESTART_REASON, RuntimeThreadManager,
     checklist_tool_needs_panel_push, scratchpad_tool_needs_panel_push, tool_kind_for_name,
 };
+pub use monitor::monitor_turn;
+pub use monitor_host::RuntimeThreadMonitorHost;
+pub use task_port::RuntimeThreadTaskPort;
 
 pub use persist::RuntimeThreadStore;
 pub use prompt_inbox::{PromptAdmission, PromptDelivery, PromptQueuedResponse};

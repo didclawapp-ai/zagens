@@ -17,20 +17,13 @@ pub fn validate_export_json_path(save_path: &str) -> Result<PathBuf, String> {
         return Err("导出路径必须是绝对路径".to_string());
     }
 
-    let ext = raw
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("");
+    let ext = raw.extension().and_then(|e| e.to_str()).unwrap_or("");
     if !ext.eq_ignore_ascii_case("json") {
         return Err("仅允许导出 .json 文件".to_string());
     }
 
-    let file_name = raw
-        .file_name()
-        .ok_or_else(|| "无效的文件名".to_string())?;
-    let parent = raw
-        .parent()
-        .ok_or_else(|| "无效的父目录".to_string())?;
+    let file_name = raw.file_name().ok_or_else(|| "无效的文件名".to_string())?;
+    let parent = raw.parent().ok_or_else(|| "无效的父目录".to_string())?;
 
     let canon_parent = parent
         .canonicalize()

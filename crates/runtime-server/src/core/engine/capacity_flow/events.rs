@@ -61,7 +61,12 @@ impl Engine {
             .await;
     }
 
-    pub(in crate::core::engine) async fn emit_compaction_failed(&mut self, id: String, auto: bool, message: String) {
+    pub(in crate::core::engine) async fn emit_compaction_failed(
+        &mut self,
+        id: String,
+        auto: bool,
+        message: String,
+    ) {
         let _ = self
             .tx_event
             .send(Event::CompactionFailed {

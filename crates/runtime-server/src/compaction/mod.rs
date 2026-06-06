@@ -1,6 +1,9 @@
 //! Context compaction for long conversations.
 
-#![allow(unused_imports, reason = "tests.inc uses `super::*` for compaction helpers")]
+#![allow(
+    unused_imports,
+    reason = "tests.inc uses `super::*` for compaction helpers"
+)]
 
 mod execute;
 mod plan;
@@ -9,7 +12,7 @@ mod prune;
 mod tokens;
 
 pub use deepseek_core::compaction::{CompactionConfig, MINIMUM_AUTO_COMPACTION_TOKENS};
-pub use execute::{compact_messages, compact_messages_safe, CompactionResult};
+pub use execute::{CompactionResult, compact_messages, compact_messages_safe};
 pub use plan::{CompactionPlan, plan_compaction};
 pub use prompt::merge_system_prompts;
 pub use prune::prune_tool_results;
@@ -43,8 +46,8 @@ pub(crate) use execute::{
 };
 #[cfg(test)]
 pub(crate) use plan::{
-    enforce_tool_call_pairs, extract_paths_from_text, extract_paths_from_tool_input,
-    message_text, normalize_path_candidate,
+    enforce_tool_call_pairs, extract_paths_from_text, extract_paths_from_tool_input, message_text,
+    normalize_path_candidate,
 };
 #[cfg(test)]
 pub(crate) use prune::truncate_chars;

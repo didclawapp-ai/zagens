@@ -116,9 +116,10 @@ impl Engine {
             false,
         )
         .await;
-        self.0
-            .capacity_controller
-            .mark_intervention_applied(self.0.turn_counter, GuardrailAction::TargetedContextRefresh);
+        self.0.capacity_controller.mark_intervention_applied(
+            self.0.turn_counter,
+            GuardrailAction::TargetedContextRefresh,
+        );
         true
     }
 
@@ -195,7 +196,9 @@ impl Engine {
                 )
             }
             Err(err) => {
-                self.0.capacity_controller.mark_replay_failed(self.0.turn_counter);
+                self.0
+                    .capacity_controller
+                    .mark_replay_failed(self.0.turn_counter);
                 (
                     false,
                     "error".to_string(),
@@ -220,7 +223,8 @@ impl Engine {
         .await;
 
         if !pass {
-            self.0.capacity_controller
+            self.0
+                .capacity_controller
                 .mark_replay_failed(self.0.turn_counter);
         }
 
@@ -269,7 +273,8 @@ impl Engine {
             false,
         )
         .await;
-        self.0.capacity_controller
+        self.0
+            .capacity_controller
             .mark_intervention_applied(self.0.turn_counter, GuardrailAction::VerifyWithToolReplay);
         true
     }
@@ -363,7 +368,8 @@ impl Engine {
             true,
         )
         .await;
-        self.0.capacity_controller
+        self.0
+            .capacity_controller
             .mark_intervention_applied(self.0.turn_counter, GuardrailAction::VerifyAndReplan);
         true
     }

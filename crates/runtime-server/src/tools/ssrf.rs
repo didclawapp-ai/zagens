@@ -53,7 +53,8 @@ pub(crate) async fn read_body_capped(
         } else {
             resp.chunk().await
         };
-        let chunk = chunk.map_err(|e| ToolError::execution_failed(format!("failed to read body: {e}")))?;
+        let chunk =
+            chunk.map_err(|e| ToolError::execution_failed(format!("failed to read body: {e}")))?;
         let Some(chunk) = chunk else { break };
         let remaining = max_bytes.saturating_sub(buf.len());
         if chunk.len() > remaining {
@@ -226,9 +227,13 @@ mod tests {
     async fn rejects_cloud_metadata_ip() {
         // The classic SSRF target — link-local metadata endpoint. Also the hop
         // a malicious 302 would aim at.
-        let err = validate_url_ssrf(&ctx(), "fetch_url", "http://169.254.169.254/latest/meta-data/")
-            .await
-            .expect_err("metadata IP must be rejected");
+        let err = validate_url_ssrf(
+            &ctx(),
+            "fetch_url",
+            "http://169.254.169.254/latest/meta-data/",
+        )
+        .await
+        .expect_err("metadata IP must be rejected");
         assert!(format!("{err}").contains("restricted"));
     }
 

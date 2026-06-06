@@ -29,6 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Cleanup:** Removed orphan `vendor/schemaui-0.12.0/` (stale lockfile only; `schemaui` comes from crates.io).
 - **Cleanup:** Stop tracking `.claude/*` session handoffs and `.trae/` (duplicate of [`project_rules.md`](project_rules.md)); keep [`.cursor/rules/`](.cursor/rules/) as the committed AI/coding conventions.
 - **Fix (CI):** Run version/OpenAPI scripts via `bash` (Windows checkout lacks `+x`); install Tauri Linux deps (`libwebkit2gtk-4.1-dev`, …) via `scripts/ci/install-linux-deps.sh`; re-sync OpenAPI + `runtime-api.ts` usage cache telemetry fields.
+- **Fix (CI):** `cargo fmt` for `crates/topic-memory` (stopwords list); move Windows-only path strip under `#[cfg(windows)]` (fixes macOS `-D warnings` unused `s`).
+- **Fix (CI):** `cargo fmt --all` — `sidecar_binary_contract.rs` assert line-break, `skill_install.rs` use import, and workspace-wide rustfmt drift after main-repo push.
+- **Fix (CI):** add Unix-only `libc` dep to `deepseek-runtime-adapters` for `StdioTransport::shutdown` SIGTERM (`mcp/transport.rs`; fixes macOS Test job E0433).
 
 ### Zagens website — blog UI polish
 

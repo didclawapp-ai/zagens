@@ -2,7 +2,7 @@
 
 use std::sync::{Arc, Mutex as StdMutex};
 
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{RwLock, mpsc};
 use tokio_util::sync::CancellationToken;
 
 use crate::coherence::CoherenceState;

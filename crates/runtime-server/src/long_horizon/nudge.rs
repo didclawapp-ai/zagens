@@ -873,9 +873,10 @@ mod tests {
 
     #[test]
     fn verify_mismatch_nudge_lists_cmd_and_label() {
-        let items = vec![
-            ("cargo check".to_string(), "cargo check --manifest-path src-tauri/Cargo.toml".to_string()),
-        ];
+        let items = vec![(
+            "cargo check".to_string(),
+            "cargo check --manifest-path src-tauri/Cargo.toml".to_string(),
+        )];
         let zh = build_verify_mismatch_nudge(&items, "zh-Hans");
         assert!(zh.contains("cargo check --manifest-path"));
         assert!(zh.contains("贴标签"));
@@ -958,7 +959,10 @@ mod tests {
             NudgeDecision::Blocked
         );
         // Fourth attempt stays blocked without injecting.
-        assert_eq!(tracker.prepare_nudge(Some(1), &cfg, false), NudgeDecision::Blocked);
+        assert_eq!(
+            tracker.prepare_nudge(Some(1), &cfg, false),
+            NudgeDecision::Blocked
+        );
     }
 
     #[test]

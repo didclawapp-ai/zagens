@@ -12,8 +12,8 @@ mod observation;
 mod persistence;
 mod replay;
 
-use deepseek_core::turn::TurnLoopMode;
 use crate::agent_surface::AppMode;
+use deepseek_core::turn::TurnLoopMode;
 
 use super::Engine;
 

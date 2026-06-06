@@ -10,9 +10,7 @@ mod port;
 mod progress;
 mod terminal_guard;
 
-pub use port::{
-    apply_tool_spillover_audit, detached_execute_with_lock, execute_plan_on_engine,
-};
+pub use port::{apply_tool_spillover_audit, detached_execute_with_lock, execute_plan_on_engine};
 
 #[cfg(test)]
 pub(crate) use port::McpPoolHandle;

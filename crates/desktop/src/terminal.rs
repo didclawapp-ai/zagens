@@ -5,7 +5,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
-use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
+use portable_pty::{CommandBuilder, MasterPty, PtySize, native_pty_system};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 use uuid::Uuid;
@@ -58,7 +58,6 @@ impl TerminalManager {
             }
         }
     }
-
 }
 
 #[derive(Clone, Serialize)]
@@ -81,8 +80,7 @@ fn resolve_terminal_cwd(workspace: &str) -> Result<PathBuf, String> {
         PathBuf::from(trimmed)
     };
     if !path.exists() {
-        std::fs::create_dir_all(&path)
-            .map_err(|e| format!("无法创建工作区目录: {e}"))?;
+        std::fs::create_dir_all(&path).map_err(|e| format!("无法创建工作区目录: {e}"))?;
     }
     let canon = path
         .canonicalize()
@@ -232,12 +230,7 @@ pub fn spawn_terminal(
     let master = Arc::new(Mutex::new(pair.master));
     let writer = Arc::new(Mutex::new(writer));
 
-    spawn_reader_thread(
-        app.clone(),
-        window_label.clone(),
-        id.clone(),
-        reader,
-    );
+    spawn_reader_thread(app.clone(), window_label.clone(), id.clone(), reader);
 
     let child = Arc::new(Mutex::new(child));
     let child_wait = Arc::clone(&child);
@@ -301,9 +294,7 @@ pub fn write_terminal(
     writer
         .write_all(data.as_bytes())
         .map_err(|e| format!("写入终端失败: {e}"))?;
-    writer
-        .flush()
-        .map_err(|e| format!("刷新终端失败: {e}"))?;
+    writer.flush().map_err(|e| format!("刷新终端失败: {e}"))?;
     Ok(())
 }
 

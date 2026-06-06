@@ -1,4 +1,3 @@
-
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::{Value, json};
@@ -109,4 +108,3 @@ impl ToolSpec for DelegateToAgentTool {
         ))
     }
 }
-

@@ -5,7 +5,9 @@ use anyhow::{Context, Result, bail};
 use sha2::{Digest, Sha256};
 
 use super::download::{is_safe_path, parse_frontmatter_name};
-use super::types::{InstallError, InstalledSkill, InstallSource, INSTALLED_FROM_MARKER, TRUSTED_MARKER};
+use super::types::{
+    INSTALLED_FROM_MARKER, InstallError, InstallSource, InstalledSkill, TRUSTED_MARKER,
+};
 
 pub fn import_local_directory(
     source_directory: &Path,
@@ -46,9 +48,8 @@ pub fn import_local_directory(
         })?;
     }
     if let Some(parent) = final_path.parent() {
-        fs::create_dir_all(parent).with_context(|| {
-            format!("failed to create skills directory {}", parent.display())
-        })?;
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create skills directory {}", parent.display()))?;
     }
     fs::create_dir_all(&final_path)
         .with_context(|| format!("failed to create {}", final_path.display()))?;
@@ -87,7 +88,9 @@ pub(super) fn copy_local_skill_tree(
         .with_context(|| format!("failed to read directory {}", current.display()))?
     {
         let entry = entry.with_context(|| current.display().to_string())?;
-        let file_type = entry.file_type().with_context(|| entry.path().display().to_string())?;
+        let file_type = entry
+            .file_type()
+            .with_context(|| entry.path().display().to_string())?;
         if file_type.is_symlink() {
             return Err(InstallError::SymlinkRejected.into());
         }

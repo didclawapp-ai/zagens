@@ -7,12 +7,12 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tokio::sync::{Mutex, RwLock, mpsc};
 
-use crate::tools::plan::{new_shared_plan_state, PlanState, SharedPlanState};
+use crate::tools::plan::{PlanState, SharedPlanState, new_shared_plan_state};
 use crate::tools::spec::{ToolContext, ToolSpec};
-use crate::tools::todo::{new_shared_todo_list, SharedTodoList, TodoList};
+use crate::tools::todo::{SharedTodoList, TodoList, new_shared_todo_list};
 use tokio_util::sync::CancellationToken;
 
 fn make_assignment() -> SubAgentAssignment {
@@ -471,7 +471,8 @@ fn parse_structured_verdict_extracts_from_mid_text() {
 
 #[test]
 fn build_assignment_prompt_includes_blackboard_when_provided() {
-    let assignment = SubAgentAssignment::new("Fix login bug".to_string(), Some("worker".to_string()));
+    let assignment =
+        SubAgentAssignment::new("Fix login bug".to_string(), Some("worker".to_string()));
     let prompt = build_assignment_prompt(
         "Fix the login bug",
         &assignment,
@@ -1055,18 +1056,42 @@ fn build_allowed_tools_general_returns_none_for_full_inheritance() {
 fn build_allowed_tools_explore_returns_read_only_list() {
     // CRAFT P3: Explore gets a hard read-only list (no write files, no shell).
     let result = build_allowed_tools(&SubAgentType::Explore, None, true).unwrap();
-    assert!(result.is_some(), "Explore should get an explicit read-only list");
+    assert!(
+        result.is_some(),
+        "Explore should get an explicit read-only list"
+    );
     let tools = result.unwrap();
     // Must include read tools
-    assert!(tools.iter().any(|t| t == "read_file"), "should have read_file");
-    assert!(tools.iter().any(|t| t == "grep_files"), "should have grep_files");
-    assert!(tools.iter().any(|t| t == "list_dir"), "should have list_dir");
+    assert!(
+        tools.iter().any(|t| t == "read_file"),
+        "should have read_file"
+    );
+    assert!(
+        tools.iter().any(|t| t == "grep_files"),
+        "should have grep_files"
+    );
+    assert!(
+        tools.iter().any(|t| t == "list_dir"),
+        "should have list_dir"
+    );
     // Must NOT include write tools
-    assert!(!tools.iter().any(|t| t == "write_file"), "should NOT have write_file");
-    assert!(!tools.iter().any(|t| t == "edit_file"), "should NOT have edit_file");
-    assert!(!tools.iter().any(|t| t == "apply_patch"), "should NOT have apply_patch");
+    assert!(
+        !tools.iter().any(|t| t == "write_file"),
+        "should NOT have write_file"
+    );
+    assert!(
+        !tools.iter().any(|t| t == "edit_file"),
+        "should NOT have edit_file"
+    );
+    assert!(
+        !tools.iter().any(|t| t == "apply_patch"),
+        "should NOT have apply_patch"
+    );
     // Must NOT include shell
-    assert!(!tools.iter().any(|t| t == "exec_shell"), "should NOT have exec_shell");
+    assert!(
+        !tools.iter().any(|t| t == "exec_shell"),
+        "should NOT have exec_shell"
+    );
 }
 
 #[test]
@@ -1204,7 +1229,10 @@ fn subagent_done_sentinel_includes_structured_verdict_when_present() {
         .trim_end_matches("</deepseek:subagent.done>");
     let parsed: serde_json::Value = serde_json::from_str(inner).expect("inner JSON parses");
     assert_eq!(parsed["structured_verdict"]["verdict"], "BLOCKER");
-    assert_eq!(parsed["structured_verdict"]["items"][0]["file"], "src/main.rs");
+    assert_eq!(
+        parsed["structured_verdict"]["items"][0]["file"],
+        "src/main.rs"
+    );
 }
 
 #[test]
@@ -1387,9 +1415,15 @@ fn record_execution_progress_updates_steps_without_persist_on_tool_lines() {
 
 #[test]
 fn adaptive_wait_timeout_scales_with_remaining_steps() {
-    assert_eq!(adaptive_wait_timeout_ms(600_000, 100, 50), MAX_RESULT_TIMEOUT_MS);
+    assert_eq!(
+        adaptive_wait_timeout_ms(600_000, 100, 50),
+        MAX_RESULT_TIMEOUT_MS
+    );
     assert_eq!(adaptive_wait_timeout_ms(600_000, 100, 99), 600_000);
-    assert_eq!(adaptive_wait_timeout_ms(600_000, 100, 100), MIN_WAIT_TIMEOUT_MS);
+    assert_eq!(
+        adaptive_wait_timeout_ms(600_000, 100, 100),
+        MIN_WAIT_TIMEOUT_MS
+    );
 }
 
 #[test]
@@ -2053,18 +2087,14 @@ fn persist_round_trip_preserves_completion_reason_and_blackboard_task_id() {
         writer.persist_state().expect("persist");
     }
 
-    let mut reader =
-        SubAgentManager::new(dir.path().to_path_buf(), 2).with_state_path(state_path);
+    let mut reader = SubAgentManager::new(dir.path().to_path_buf(), 2).with_state_path(state_path);
     reader.load_state().expect("reload");
     let agent = reader.agents.get("agent_meta").expect("agent present");
     assert_eq!(
         agent.completion_reason,
         Some(CompletionReason::NaturalBreak)
     );
-    assert_eq!(
-        agent.blackboard_task_id.as_deref(),
-        Some("task-audit-1")
-    );
+    assert_eq!(agent.blackboard_task_id.as_deref(), Some("task-audit-1"));
 }
 
 #[test]
@@ -2094,7 +2124,12 @@ fn get_result_with_fallback_reads_structured_findings_from_blackboard() {
     board_result.agent_id = "agent_bb".into();
     board_result.agent_type = SubAgentType::Explore;
     board_result.structured_findings = Some(findings.clone());
-    super::blackboard::write_blackboard_partition(&ws, "task-1", &SubAgentType::Explore, &board_result);
+    super::blackboard::write_blackboard_partition(
+        &ws,
+        "task-1",
+        &SubAgentType::Explore,
+        &board_result,
+    );
 
     let (input_tx, _input_rx) = mpsc::unbounded_channel();
     let mut agent = SubAgent::new(
@@ -2187,14 +2222,10 @@ fn persist_round_trip_preserves_scratchpad_run_id() {
         writer.persist_state().expect("persist");
     }
 
-    let mut reader =
-        SubAgentManager::new(dir.path().to_path_buf(), 2).with_state_path(state_path);
+    let mut reader = SubAgentManager::new(dir.path().to_path_buf(), 2).with_state_path(state_path);
     reader.load_state().expect("reload");
     let agent = reader.agents.get("agent_run").expect("agent present");
-    assert_eq!(
-        agent.scratchpad_run_id.as_deref(),
-        Some("audit-run-a")
-    );
+    assert_eq!(agent.scratchpad_run_id.as_deref(), Some("audit-run-a"));
 }
 
 #[test]

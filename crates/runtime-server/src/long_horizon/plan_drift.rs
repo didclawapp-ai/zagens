@@ -7,10 +7,7 @@ use super::verify::strip_verify_prefix;
 
 /// Completed checklist items that name a plan phase still `pending` / `in_progress`.
 #[must_use]
-pub fn find_plan_checklist_drift(
-    plan: &PlanSnapshot,
-    checklist: &TodoListSnapshot,
-) -> Vec<String> {
+pub fn find_plan_checklist_drift(plan: &PlanSnapshot, checklist: &TodoListSnapshot) -> Vec<String> {
     if checklist.items.is_empty() {
         return Vec::new();
     }

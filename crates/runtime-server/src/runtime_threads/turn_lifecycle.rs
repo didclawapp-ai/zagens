@@ -2,7 +2,9 @@
 
 use anyhow::Result;
 
-use super::{EditLastTurnRequest, RuntimeThreadManager, StartTurnOutcome, StartTurnRequest, TurnRecord};
+use super::{
+    EditLastTurnRequest, RuntimeThreadManager, StartTurnOutcome, StartTurnRequest, TurnRecord,
+};
 
 impl RuntimeThreadManager {
     pub async fn start_turn(

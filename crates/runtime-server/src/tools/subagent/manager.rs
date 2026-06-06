@@ -7,26 +7,25 @@ use anyhow::{Result, anyhow};
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
+use crate::utils::spawn_supervised;
 use deepseek_config::workspace_meta_file_read;
 use deepseek_core::events::Event;
-use crate::utils::spawn_supervised;
 
 use deepseek_core::subagent::{
-    CompletionReason, SubAgentAssignment, SubAgentResult, SubAgentStatus,
-    SubAgentType,
+    CompletionReason, SubAgentAssignment, SubAgentResult, SubAgentStatus, SubAgentType,
 };
 
 use super::constants::*;
+use super::executor::{SubAgentTask, run_subagent_task};
+use super::factory::SharedSubAgentManager;
+use super::factory::{epoch_millis_now, instant_from_duration, write_json_atomic};
 use super::nickname::{DeriveSubagentNicknameInput, derive_subagent_nickname};
+use super::parse::normalize_role_alias;
 use super::registry::build_allowed_tools;
 use super::resident::release_resident_leases_for;
-use super::executor::{run_subagent_task, SubAgentTask};
-use super::parse::normalize_role_alias;
-use super::types::SubAgentInput;
-use super::factory::SharedSubAgentManager;
 use super::runtime::{SubAgent, SubAgentRuntime};
 use super::structured_fallback::enrich_subagent_result;
-use super::factory::{epoch_millis_now, instant_from_duration, write_json_atomic};
+use super::types::SubAgentInput;
 use super::types::{PersistedSubAgent, PersistedSubAgentState, SubAgentSpawnOptions};
 
 pub struct SubAgentManager {
@@ -142,10 +141,8 @@ impl SubAgentManager {
         if self.state_path.is_none() {
             return Ok(());
         }
-        let read_path = workspace_meta_file_read(
-            &self.workspace,
-            &format!("state/{}", SUBAGENT_STATE_FILE),
-        );
+        let read_path =
+            workspace_meta_file_read(&self.workspace, &format!("state/{}", SUBAGENT_STATE_FILE));
         if !read_path.exists() {
             return Ok(());
         }
@@ -815,9 +812,8 @@ impl SubAgentManager {
                     .as_ref()
                     .is_some_and(tokio::task::JoinHandle::is_finished)
             {
-                agent.status = SubAgentStatus::Failed(
-                    "Zombie: task ended without status update".into(),
-                );
+                agent.status =
+                    SubAgentStatus::Failed("Zombie: task ended without status update".into());
                 release_resident_leases_for(&agent.id);
                 agent.task_handle = None;
                 changed = true;
@@ -847,10 +843,7 @@ impl SubAgentManager {
                 if agent.status != SubAgentStatus::Running {
                     return None;
                 }
-                let handle_live = agent
-                    .task_handle
-                    .as_ref()
-                    .is_some_and(|h| !h.is_finished());
+                let handle_live = agent.task_handle.as_ref().is_some_and(|h| !h.is_finished());
                 if !handle_live {
                     return None;
                 }
@@ -937,4 +930,3 @@ impl SubAgentManager {
         }
     }
 }
-

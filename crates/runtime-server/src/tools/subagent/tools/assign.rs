@@ -1,11 +1,8 @@
-
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
-use crate::tools::spec::{
-    ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
-};
+use crate::tools::spec::{ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec};
 
 use super::super::factory::SharedSubAgentManager;
 use super::super::parse::parse_assign_request;
@@ -102,5 +99,3 @@ impl ToolSpec for AgentAssignTool {
         ToolResult::json(&result).map_err(|e| ToolError::execution_failed(e.to_string()))
     }
 }
-
-

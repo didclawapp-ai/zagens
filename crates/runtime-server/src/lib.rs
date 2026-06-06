@@ -5,11 +5,12 @@ mod audit;
 mod auto_reasoning;
 mod auto_route;
 mod automation_manager;
+pub mod cli;
 mod client;
 mod command_safety;
 mod compaction;
-mod context_snapshot;
 mod config;
+mod context_snapshot;
 mod core;
 mod cost_status;
 mod cycle_manager;
@@ -18,24 +19,24 @@ mod execpolicy;
 mod features;
 mod hooks;
 mod llm_client;
-mod long_horizon;
 mod localization;
 mod logging;
+mod long_horizon;
 mod lsp;
+mod mcp_shared;
 mod memory;
 mod models;
+mod office_env;
 mod path_guard;
 mod project_context;
 mod project_doc;
 mod prompts;
-mod office_env;
 mod python_env;
 pub mod repl;
 mod retry_status;
 pub mod rlm;
 pub mod runtime_api;
 pub mod runtime_serve;
-mod mcp_shared;
 mod runtime_threads;
 mod sandbox;
 mod schema_migration;
@@ -43,27 +44,24 @@ mod scratchpad;
 mod seam_manager;
 mod settings;
 pub mod skills;
-mod task_type;
-mod topic_memory;
-pub mod cli;
 mod symbol_index;
 mod task_manager;
+mod task_type;
 #[cfg(test)]
 mod test_support;
 mod tools;
+mod topic_memory;
 mod transcript_isomorphism;
 mod utils;
 mod working_set;
 mod workspace_trust;
 
 // D16 E1-a — adapters crate (MCP / persist / snapshot); re-export for stable `crate::` paths.
-pub use deepseek_runtime_adapters::{
-    json_schema_util, mcp, network_policy, persist, snapshot,
-};
-pub use deepseek_runtime_orchestrator::pricing;
 pub use deepseek_runtime_adapters::persist::{
-    context_reference, session_manager, session_store_sqlite, ContextReference,
-    SavedSession, SessionContextReference, SessionManager, SessionMetadata,
+    ContextReference, SavedSession, SessionContextReference, SessionManager, SessionMetadata,
+    context_reference, session_manager, session_store_sqlite,
 };
+pub use deepseek_runtime_adapters::{json_schema_util, mcp, network_policy, persist, snapshot};
+pub use deepseek_runtime_orchestrator::pricing;
 // D16 E1-d — stable lib entry for in-proc / test hosts (see RUNTIME_ARCHITECTURE §1).
-pub use runtime_serve::{run_http_server, RuntimeApiOptions};
+pub use runtime_serve::{RuntimeApiOptions, run_http_server};

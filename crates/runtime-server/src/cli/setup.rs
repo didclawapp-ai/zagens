@@ -376,8 +376,7 @@ pub(crate) fn merge_project_config(config: &mut crate::config::Config, workspace
     if let Some(v) = table.get("max_subagents").and_then(toml::Value::as_integer)
         && v > 0
     {
-        config.max_subagents =
-            Some((v as usize).clamp(1, crate::config::MAX_SUBAGENTS));
+        config.max_subagents = Some((v as usize).clamp(1, crate::config::MAX_SUBAGENTS));
     }
     if let Some(v) = table.get("allow_shell").and_then(toml::Value::as_bool) {
         config.allow_shell = Some(v);

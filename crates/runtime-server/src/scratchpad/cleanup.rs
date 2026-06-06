@@ -68,10 +68,7 @@ fn cleanup_root(
         };
         if age > max_age {
             let _ = fs::remove_dir_all(&path);
-            tracing::info!(
-                run_id = name,
-                "Removed stale audit scratchpad directory"
-            );
+            tracing::info!(run_id = name, "Removed stale audit scratchpad directory");
         }
     }
 }

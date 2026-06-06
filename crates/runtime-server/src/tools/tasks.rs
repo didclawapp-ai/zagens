@@ -98,9 +98,12 @@ impl ToolSpec for TaskCreateTool {
             auto_approve: input.get("auto_approve").and_then(Value::as_bool),
         };
         let task = task_from_value(
-            host.add_task(serde_json::to_value(&req).map_err(|e| ToolError::execution_failed(e.to_string()))?)
-                .await
-                .map_err(|e| ToolError::execution_failed(e))?,
+            host.add_task(
+                serde_json::to_value(&req)
+                    .map_err(|e| ToolError::execution_failed(e.to_string()))?,
+            )
+            .await
+            .map_err(|e| ToolError::execution_failed(e))?,
         )?;
         task_result("task_create", &task)
     }

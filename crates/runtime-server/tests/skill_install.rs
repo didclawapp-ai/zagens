@@ -15,9 +15,7 @@ use tempfile::TempDir;
 use tiny_http::{Method, Response, Server};
 
 use deepseek_runtime::network_policy::{DecisionToml, NetworkPolicy};
-use deepseek_runtime::skills::install::{
-    self, InstallOutcome, InstallSource, UpdateResult,
-};
+use deepseek_runtime::skills::install::{self, InstallOutcome, InstallSource, UpdateResult};
 
 /// Construct a gzipped tarball from `(path, body)` pairs. Permissions are set
 /// to 0o644 so umask differences across platforms don't perturb the bytes.

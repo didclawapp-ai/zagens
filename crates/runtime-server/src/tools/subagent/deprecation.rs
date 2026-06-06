@@ -1,8 +1,6 @@
-
 use serde_json::{Value, json};
 
 use crate::tools::spec::ToolResult;
-
 
 use super::constants::DEPRECATION_REMOVAL_VERSION;
 
@@ -57,4 +55,3 @@ pub(crate) fn wrap_with_deprecation_notice(
 
     result
 }
-

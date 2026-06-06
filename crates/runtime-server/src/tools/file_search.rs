@@ -3,8 +3,8 @@
 use std::cmp::Ordering;
 use std::path::Path;
 
-use async_trait::async_trait;
 use super::workspace_walk::configure_workspace_walk;
+use async_trait::async_trait;
 use ignore::WalkBuilder;
 use serde::Serialize;
 use serde_json::{Value, json};

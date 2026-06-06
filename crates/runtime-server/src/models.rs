@@ -6,11 +6,10 @@
 // ── Re-exports from deepseek-core ─────────────────────────────────────
 
 pub use deepseek_core::chat::{
-    CacheControl, ContentBlock, ContentBlockStart, Delta, Message, MessageDelta,
-    MessageRequest, MessageResponse, StreamEvent, SystemBlock, SystemPrompt, Tool, ToolCaller,
-    compaction_threshold_for_model, context_window_for_model,
-    DEEPSEEK_V4_CONTEXT_WINDOW_TOKENS,
-    LEGACY_DEEPSEEK_CONTEXT_WINDOW_TOKENS,
+    CacheControl, ContentBlock, ContentBlockStart, DEEPSEEK_V4_CONTEXT_WINDOW_TOKENS, Delta,
+    LEGACY_DEEPSEEK_CONTEXT_WINDOW_TOKENS, Message, MessageDelta, MessageRequest, MessageResponse,
+    StreamEvent, SystemBlock, SystemPrompt, Tool, ToolCaller, compaction_threshold_for_model,
+    context_window_for_model,
 };
 pub use deepseek_core::models::{ServerToolUsage, Usage};
 

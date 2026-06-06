@@ -203,8 +203,8 @@ mod tests {
             deny: vec!["example.com".into()],
             audit: false,
         };
-        let err = check_host_with_policy(&policy, "skills_install", "example.com")
-            .expect_err("deny");
+        let err =
+            check_host_with_policy(&policy, "skills_install", "example.com").expect_err("deny");
         assert!(matches!(err, NetworkGateError::Denied { .. }));
     }
 

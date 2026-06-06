@@ -1464,6 +1464,7 @@ dependencies = [
  "dirs",
  "futures-util",
  "ignore",
+ "libc",
  "reqwest",
  "rusqlite",
  "schemars 1.2.1",

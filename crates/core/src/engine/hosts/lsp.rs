@@ -34,9 +34,5 @@ pub trait LspHost: Send + Sync {
     /// miss / read failure / timeout. `edit_seq` is currently a correlation
     /// tag only; it is preserved in the signature for the v0.7.x batched
     /// diagnostics-request roadmap.
-    async fn diagnostics_for(
-        &self,
-        file: &Path,
-        edit_seq: u64,
-    ) -> Option<DiagnosticBlock>;
+    async fn diagnostics_for(&self, file: &Path, edit_seq: u64) -> Option<DiagnosticBlock>;
 }

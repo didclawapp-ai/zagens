@@ -9,10 +9,8 @@ use tokio::sync::RwLock;
 
 use crate::config::MAX_SUBAGENTS;
 
-
-use super::manager::SubAgentManager;
 use super::constants::{SUBAGENT_STATE_FILE, ZOMBIE_SCAN_INTERVAL};
-
+use super::manager::SubAgentManager;
 
 /// Thread-safe wrapper for `SubAgentManager`.
 pub type SharedSubAgentManager = Arc<RwLock<SubAgentManager>>;
@@ -20,10 +18,7 @@ pub type SharedSubAgentManager = Arc<RwLock<SubAgentManager>>;
 use deepseek_config::workspace_meta_file_write;
 
 pub(crate) fn default_state_path(workspace: &Path) -> PathBuf {
-    workspace_meta_file_write(
-        workspace,
-        &format!("state/{}", SUBAGENT_STATE_FILE),
-    )
+    workspace_meta_file_write(workspace, &format!("state/{}", SUBAGENT_STATE_FILE))
 }
 
 pub(super) fn epoch_millis_now() -> u64 {
@@ -91,4 +86,3 @@ pub fn spawn_subagent_maintenance_task(manager: SharedSubAgentManager) {
         }
     });
 }
-

@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use deepseek_core::engine::{
-    tool_call_input, tool_name_is_mutating, tool_result_to_output, EngineToolDispatch,
+    EngineToolDispatch, tool_call_input, tool_name_is_mutating, tool_result_to_output,
 };
 use deepseek_protocol::ToolOutput;
 use deepseek_tools::{FunctionCallError, ToolCall};

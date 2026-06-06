@@ -14,11 +14,11 @@ pub use entry::configure_windows_console_utf8;
 
 #[cfg(test)]
 pub(crate) use doctor::{
-    doctor_api_target, doctor_check_mcp_server, doctor_timeout_recovery_lines,
-    McpServerDoctorStatus,
+    McpServerDoctorStatus, doctor_api_target, doctor_check_mcp_server,
+    doctor_timeout_recovery_lines,
 };
 #[cfg(test)]
-pub(crate) use pr_prompt::{format_pr_prompt, GhPullRequest};
+pub(crate) use pr_prompt::{GhPullRequest, format_pr_prompt};
 #[cfg(test)]
 pub(crate) use setup::{
     ApiKeySource, WriteStatus, collect_clean_targets, dotenv_status_line, execute_clean_plan,

@@ -1,8 +1,8 @@
 //! CRAFT B-L1 helpers: fix-loop hints, runtime events, sentinel parsing.
 
-use deepseek_core::subagent::{SubAgentResult, SubAgentType, VerdictLevel};
 use deepseek_core::events::Event;
-use serde_json::{json, Map, Value};
+use deepseek_core::subagent::{SubAgentResult, SubAgentType, VerdictLevel};
+use serde_json::{Map, Value, json};
 use tokio::sync::mpsc;
 
 /// Blackboard partition key written for a CRAFT role.

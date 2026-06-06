@@ -2,8 +2,6 @@ use std::time::Duration;
 
 use anyhow::anyhow;
 
-
-
 pub(crate) const DEFAULT_MAX_STEPS: u32 = 100;
 pub(crate) const TOOL_TIMEOUT: Duration = Duration::from_secs(30);
 /// Per-step LLM API call timeout. Each `create_message` request must complete
@@ -67,4 +65,3 @@ pub(crate) const VALID_SUBAGENT_TYPES: &str = "general, explore, plan, review, i
      worker, explorer, awaiter, default, implement, builder, verify, validator, tester";
 /// Removal version for deprecated tool aliases.
 pub(crate) const DEPRECATION_REMOVAL_VERSION: &str = "0.8.0";
-

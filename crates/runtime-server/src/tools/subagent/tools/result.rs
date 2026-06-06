@@ -4,11 +4,10 @@ use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
-use deepseek_core::subagent::SubAgentStatus;
 use crate::tools::spec::{
-    ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
-    optional_bool,
+    ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_bool,
 };
+use deepseek_core::subagent::SubAgentStatus;
 
 use super::super::constants::*;
 use super::super::executor::wait_for_result;
@@ -117,5 +116,3 @@ impl ToolSpec for AgentResultTool {
         Ok(tool_result)
     }
 }
-
-

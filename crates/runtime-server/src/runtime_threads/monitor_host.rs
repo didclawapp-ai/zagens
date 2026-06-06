@@ -8,8 +8,7 @@ use serde_json::Value;
 
 use super::manager::RuntimeThreadManager;
 use deepseek_runtime_orchestrator::runtime_threads::{
-    RuntimeThreadMonitorHost, checklist_tool_needs_panel_push,
-    scratchpad_tool_needs_panel_push,
+    RuntimeThreadMonitorHost, checklist_tool_needs_panel_push, scratchpad_tool_needs_panel_push,
 };
 
 #[async_trait]
@@ -27,9 +26,7 @@ impl RuntimeThreadMonitorHost<super::RuntimeEnginePolicy, super::RuntimeUserInpu
         metadata: Option<&Value>,
     ) -> Vec<PathBuf> {
         crate::tools::large_output_router::artifact_refs_from_tool_output(
-            session_id,
-            content,
-            metadata,
+            session_id, content, metadata,
         )
     }
 
@@ -55,16 +52,12 @@ impl RuntimeThreadMonitorHost<super::RuntimeEnginePolicy, super::RuntimeUserInpu
             if let Ok(output) = result {
                 if output.success {
                     if let Some(meta) = &output.metadata {
-                        if let Some(plan) = meta
-                            .get("task_updates")
-                            .and_then(|u| u.get("plan"))
-                        {
+                        if let Some(plan) = meta.get("task_updates").and_then(|u| u.get("plan")) {
                             if let Ok(json_str) = serde_json::to_string(plan) {
                                 self.persist_thread_plan(thread_id, &json_str);
                                 let _ = self.emit_panel_plan(thread_id, turn_id).await;
-                                let _ = self
-                                    .emit_panel_harness_task_graph(thread_id, turn_id)
-                                    .await;
+                                let _ =
+                                    self.emit_panel_harness_task_graph(thread_id, turn_id).await;
                             }
                         }
                     }
@@ -101,9 +94,7 @@ impl RuntimeThreadMonitorHost<super::RuntimeEnginePolicy, super::RuntimeUserInpu
         if checklist_tool_needs_panel_push(tool_name) {
             let _ = self.emit_panel_checklist(thread_id, turn_id).await;
         }
-        if scratchpad_tool_needs_panel_push(tool_name)
-            && result.as_ref().is_ok_and(|o| o.success)
-        {
+        if scratchpad_tool_needs_panel_push(tool_name) && result.as_ref().is_ok_and(|o| o.success) {
             let _ = self.emit_panel_scratchpad(thread_id, turn_id).await;
         }
     }

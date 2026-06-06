@@ -109,9 +109,7 @@ pub enum Op {
     EditLastTurn { new_message: String },
 
     /// Drop the last user message and everything after it (#383 `/edit`, F4 HTTP).
-    TruncateBeforeLastUserMessage {
-        reply: oneshot::Sender<bool>,
-    },
+    TruncateBeforeLastUserMessage { reply: oneshot::Sender<bool> },
 
     /// Return a TUI-aligned context usage snapshot (Zagens / runtime API).
     QueryContext {

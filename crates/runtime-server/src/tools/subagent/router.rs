@@ -4,9 +4,7 @@ use anyhow::Result;
 
 use crate::models::{ContentBlock, Message, MessageRequest, SystemPrompt};
 
-
 use super::runtime::SubAgentRuntime;
-
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SubAgentResolvedRoute {
@@ -55,7 +53,7 @@ pub(crate) fn fallback_subagent_assignment_route(
     let reasoning_effort = if runtime.reasoning_effort_auto {
         let effort = match crate::auto_reasoning::select(false, prompt) {
             crate::agent_surface::ReasoningEffort::Low
-                | crate::agent_surface::ReasoningEffort::Medium => {
+            | crate::agent_surface::ReasoningEffort::Medium => {
                 crate::agent_surface::ReasoningEffort::High
             }
             other => other,
@@ -169,5 +167,3 @@ pub(crate) fn message_response_text(blocks: &[ContentBlock]) -> String {
     }
     out
 }
-
-

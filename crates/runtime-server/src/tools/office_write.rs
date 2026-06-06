@@ -172,7 +172,9 @@ impl ToolSpec for WriteOfficeTool {
             "docx" => generate_docx(&data, &out),
             "pptx" => generate_pptx(&data, &out),
             "pdf" => generate_pdf(&data, &out),
-            other => Err(format!("不支持的格式: {other}。支持: xlsx, docx, pptx, pdf")),
+            other => Err(format!(
+                "不支持的格式: {other}。支持: xlsx, docx, pptx, pdf"
+            )),
         })
         .await
         .map_err(|e| ToolError::execution_failed(format!("spawn_blocking 失败: {e}")))?;
@@ -182,7 +184,9 @@ impl ToolSpec for WriteOfficeTool {
                 let rel = workspace_rel_path(&workspace, &output_path);
                 let cache_path = save_office_payload(&workspace, &output_path, &input).ok();
                 let preview_path = if format == "xlsx" {
-                    write_xlsx_html_preview(&workspace, &output_path).ok().flatten()
+                    write_xlsx_html_preview(&workspace, &output_path)
+                        .ok()
+                        .flatten()
                 } else {
                     None
                 };
@@ -1173,7 +1177,9 @@ fn generate_docx_rust_fallback(input: &Value, path: &PathBuf) -> Result<(), Stri
                 }
 
                 // Start table wrapper
-                doc_xml.push_str(r#"<w:tbl><w:tblPr><w:tblStyle w:val="TableGrid"/></w:tblPr><w:tblGrid>"#);
+                doc_xml.push_str(
+                    r#"<w:tbl><w:tblPr><w:tblStyle w:val="TableGrid"/></w:tblPr><w:tblGrid>"#,
+                );
                 for _ in 0..ncols {
                     doc_xml.push_str(r#"<w:gridCol w:w="2000"/>"#);
                 }
@@ -1474,4 +1480,3 @@ fn xml_escape(s: &str) -> String {
         .replace('"', "&quot;")
         .replace('\'', "&apos;")
 }
-

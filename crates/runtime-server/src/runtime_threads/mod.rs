@@ -13,14 +13,13 @@ pub use crate::models::{Message, SystemPrompt};
 
 pub(crate) use deepseek_runtime_orchestrator::runtime_threads::persist;
 pub use deepseek_runtime_orchestrator::runtime_threads::types;
-pub use deepseek_runtime_orchestrator::runtime_threads::{
-    CompactThreadRequest, CreateThreadRequest, EditLastTurnRequest,
-    ForkAtUserMessageRequest, ForkAtUserMessageResponse, RoutingRule,
-    PromptAdmission, PromptDelivery, RuntimeThreadManagerConfig, RuntimeThreadStore,
-    StartTurnOutcome, StartTurnRequest, SteerTurnRequest,
-    ThreadDetail, ThreadListFilter, UpdateThreadRequest, UsageGroupBy,
-};
 pub use deepseek_runtime_orchestrator::runtime_threads::types::*;
+pub use deepseek_runtime_orchestrator::runtime_threads::{
+    CompactThreadRequest, CreateThreadRequest, EditLastTurnRequest, ForkAtUserMessageRequest,
+    ForkAtUserMessageResponse, PromptAdmission, PromptDelivery, RoutingRule,
+    RuntimeThreadManagerConfig, RuntimeThreadStore, StartTurnOutcome, StartTurnRequest,
+    SteerTurnRequest, ThreadDetail, ThreadListFilter, UpdateThreadRequest, UsageGroupBy,
+};
 
 pub(crate) use deepseek_runtime_orchestrator::runtime_threads::CURRENT_RUNTIME_SCHEMA_VERSION;
 
@@ -38,24 +37,13 @@ pub(crate) type ActiveThreadState =
 pub(crate) type ActiveThreads = ActiveThreadsInner<RuntimeEnginePolicy, RuntimeUserInputResponse>;
 
 #[cfg(test)]
-pub(crate) use {
-    std::collections::HashMap,
-    std::fs,
-    std::path::PathBuf,
-    std::sync::Arc,
-    anyhow::{Context, Result, anyhow, bail},
-    chrono::DateTime,
-    serde_json::{Value, json},
-};
-#[cfg(test)]
 pub(crate) use crate::models::ContentBlock;
 #[cfg(test)]
-pub(crate) use deepseek_runtime_orchestrator::runtime_threads::{
-    summarize_text, RoutingRulesDoc, UsageAggregation, UsageBucket, UsageTotals,
-    CURRENT_EVENT_SCHEMA_VERSION,
+pub(crate) use deepseek_runtime_orchestrator::runtime_threads::active::{
+    ActiveTurnState, PendingApproval, enforce_lru_capacity, touch_lru,
 };
 #[cfg(test)]
-pub(crate) use deepseek_runtime_orchestrator::runtime_threads::thread_crud::SUMMARY_LIMIT;
+pub use deepseek_runtime_orchestrator::runtime_threads::manager::tool_kind_for_name;
 #[cfg(test)]
 pub(crate) use deepseek_runtime_orchestrator::runtime_threads::manager::{
     EVENT_CHANNEL_CAPACITY, RUNTIME_RESTART_REASON,
@@ -63,15 +51,26 @@ pub(crate) use deepseek_runtime_orchestrator::runtime_threads::manager::{
 #[cfg(test)]
 pub(crate) use deepseek_runtime_orchestrator::runtime_threads::provider_label_for_model;
 #[cfg(test)]
-pub(crate) use deepseek_runtime_orchestrator::runtime_threads::active::{
-    ActiveTurnState, PendingApproval, enforce_lru_capacity, touch_lru,
-};
-#[cfg(test)]
 pub use deepseek_runtime_orchestrator::runtime_threads::routing;
 #[cfg(test)]
-pub use deepseek_runtime_orchestrator::runtime_threads::manager::tool_kind_for_name;
+pub(crate) use deepseek_runtime_orchestrator::runtime_threads::thread_crud::SUMMARY_LIMIT;
+#[cfg(test)]
+pub(crate) use deepseek_runtime_orchestrator::runtime_threads::{
+    CURRENT_EVENT_SCHEMA_VERSION, RoutingRulesDoc, UsageAggregation, UsageBucket, UsageTotals,
+    summarize_text,
+};
 #[cfg(test)]
 pub(crate) use manager::parse_mode;
+#[cfg(test)]
+pub(crate) use {
+    anyhow::{Context, Result, anyhow, bail},
+    chrono::DateTime,
+    serde_json::{Value, json},
+    std::collections::HashMap,
+    std::fs,
+    std::path::PathBuf,
+    std::sync::Arc,
+};
 
 mod background_slots;
 mod engine_host;
@@ -79,14 +78,14 @@ mod engine_spawn;
 mod manager;
 mod monitor_host;
 mod task_port;
-mod turn_lifecycle;
-mod turn_control;
 mod thread_crud;
+mod turn_control;
+mod turn_lifecycle;
 mod turn_wait;
 
 pub use deepseek_runtime_orchestrator::runtime_threads::event_coalesce;
 pub use deepseek_runtime_orchestrator::runtime_threads::events::{
-    collect_agent_rebind_hints, AgentRebindHint,
+    AgentRebindHint, collect_agent_rebind_hints,
 };
 pub use manager::{RuntimeThreadManager, SharedRuntimeThreadManager};
 

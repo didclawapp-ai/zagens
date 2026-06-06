@@ -1,19 +1,15 @@
-
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
-use crate::tools::spec::{
-    ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
-};
+use crate::tools::spec::{ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec};
 
-use super::super::factory::SharedSubAgentManager;
 use super::super::constants::COMPLETED_AGENT_RETENTION;
+use super::super::factory::SharedSubAgentManager;
 
 pub struct AgentListTool {
     manager: SharedSubAgentManager,
 }
-
 
 impl AgentListTool {
     /// Create a new list tool.
@@ -62,4 +58,3 @@ impl ToolSpec for AgentListTool {
         ToolResult::json(&results).map_err(|e| ToolError::execution_failed(e.to_string()))
     }
 }
-

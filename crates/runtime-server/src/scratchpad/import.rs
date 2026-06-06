@@ -1,6 +1,9 @@
 //! Import structured sub-agent findings into scratchpad notes.
 
-use deepseek_core::subagent::{AuditFindingItem, CompletionReason, ParseFailureReason, StructuredFindings, StructuredVerdict, SubAgentResult};
+use deepseek_core::subagent::{
+    AuditFindingItem, CompletionReason, ParseFailureReason, StructuredFindings, StructuredVerdict,
+    SubAgentResult,
+};
 use serde_json::json;
 
 use crate::tools::spec::ToolError;
@@ -81,7 +84,11 @@ fn resolve_import_area_id(
 
     Err(ToolError::invalid_input(format!(
         "area_id '{}' is not in scratchpad run '{}' inventory; pass scratchpad_import_agent area_id override or ensure structured_findings.area_id / area_path match inventory",
-        if agent_area_id.is_empty() { "(empty)" } else { agent_area_id },
+        if agent_area_id.is_empty() {
+            "(empty)"
+        } else {
+            agent_area_id
+        },
         store.run_id()
     )))
 }
@@ -131,11 +138,7 @@ pub fn import_agent_findings(
             .unwrap_or_else(|| "_global".to_string());
         validate_area_id_in_inventory(store, &area_id)?;
         imported.extend(import_verdict_as_findings(
-            store,
-            &area_id,
-            None,
-            verdict,
-            &source,
+            store, &area_id, None, verdict, &source,
         )?);
         return Ok(imported);
     }
@@ -312,7 +315,10 @@ pub fn verify_note(store: &ScratchpadStore, note_id: &str) -> Result<NoteLine, T
 }
 
 /// Returns open HIGH/BLOCKER finding ids for an area (post-supersedes).
-pub fn open_high_finding_ids(store: &ScratchpadStore, area_id: &str) -> Result<Vec<String>, ToolError> {
+pub fn open_high_finding_ids(
+    store: &ScratchpadStore,
+    area_id: &str,
+) -> Result<Vec<String>, ToolError> {
     let notes = store.read_notes()?;
     let superseded = compute_superseded_ids(&notes);
     Ok(notes
@@ -400,8 +406,8 @@ mod import_gate_tests {
 
     #[test]
     fn validate_agent_run_binding_rejects_mismatched_run() {
-        let err = validate_agent_run_binding(Some("run-a"), "run-b", "agent_x")
-            .expect_err("mismatch");
+        let err =
+            validate_agent_run_binding(Some("run-a"), "run-b", "agent_x").expect_err("mismatch");
         assert!(err.to_string().contains("run-a"));
         assert!(err.to_string().contains("run-b"));
     }

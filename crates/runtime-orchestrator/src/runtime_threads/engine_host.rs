@@ -7,9 +7,9 @@ use async_trait::async_trait;
 use deepseek_core::engine::{StartTurnParams, handle::EngineHandle};
 use tokio_util::sync::CancellationToken;
 
+use super::StartTurnRequest;
 use super::manager::RuntimeThreadManager;
 use super::types::ThreadRecord;
-use super::StartTurnRequest;
 
 /// Sidecar-specific engine wiring: spawn, start-turn params, event monitor loop.
 #[async_trait]
@@ -18,10 +18,7 @@ where
     P: Send + Sync + Clone + 'static,
     R: Send + Sync + Clone + 'static,
 {
-    async fn spawn_engine_for_thread(
-        &self,
-        thread: &ThreadRecord,
-    ) -> Result<EngineHandle<P, R>>;
+    async fn spawn_engine_for_thread(&self, thread: &ThreadRecord) -> Result<EngineHandle<P, R>>;
 
     async fn prepare_start_turn_params(
         &self,
@@ -57,13 +54,9 @@ pub fn spawn_turn_monitor<P, R, H>(
             return;
         }
         use futures_util::FutureExt;
-        let result = std::panic::AssertUnwindSafe(host.monitor_turn(
-            thread_id,
-            turn_id,
-            engine,
-        ))
-        .catch_unwind()
-        .await;
+        let result = std::panic::AssertUnwindSafe(host.monitor_turn(thread_id, turn_id, engine))
+            .catch_unwind()
+            .await;
         match result {
             Ok(res) => {
                 if let Err(err) = res {
@@ -88,11 +81,7 @@ where
     P: Send + Sync + Clone + 'static,
     R: Send + Sync + Clone + 'static,
 {
-    pub async fn is_interrupt_requested(
-        &self,
-        thread_id: &str,
-        turn_id: &str,
-    ) -> Result<bool> {
+    pub async fn is_interrupt_requested(&self, thread_id: &str, turn_id: &str) -> Result<bool> {
         let active = self.active.lock().await;
         let Some(state) = active.engines.get(thread_id) else {
             return Ok(false);

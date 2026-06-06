@@ -15,11 +15,8 @@ use super::transport::{McpTransport, SseTransport, StdioTransport, StreamableHtt
 const PREFERRED_PROTOCOL_VERSION: &str = "2025-06-18";
 
 /// Protocol versions this client knows how to speak, newest first.
-const SUPPORTED_PROTOCOL_VERSIONS: &[&str] =
-    &["2025-06-18", "2025-03-26", "2024-11-05"];
-use super::types::{
-    ConnectionState, McpPrompt, McpResource, McpResourceTemplate, McpTool,
-};
+const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
+use super::types::{ConnectionState, McpPrompt, McpResource, McpResourceTemplate, McpTool};
 
 pub struct McpConnection {
     name: String,

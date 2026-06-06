@@ -15,10 +15,7 @@ pub fn display_run_path(run_id: &str) -> String {
 
 fn validate_run_id(run_id: &str) -> bool {
     let run_id = run_id.trim();
-    !run_id.is_empty()
-        && !run_id.contains("..")
-        && !run_id.contains('/')
-        && !run_id.contains('\\')
+    !run_id.is_empty() && !run_id.contains("..") && !run_id.contains('/') && !run_id.contains('\\')
 }
 
 /// Open an existing scratchpad run directory under `workspace`.

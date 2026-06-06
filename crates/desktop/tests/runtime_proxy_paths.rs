@@ -20,7 +20,12 @@ fn validate_like_runtime_proxy(path: &str) -> Result<(), String> {
 
 #[test]
 fn desktop_runtime_proxy_allowlist_matches_v1_and_health() {
-    for ok in ["/health", "/v1/sessions", "/v1/stream", "/v1/threads/x/events"] {
+    for ok in [
+        "/health",
+        "/v1/sessions",
+        "/v1/stream",
+        "/v1/threads/x/events",
+    ] {
         validate_like_runtime_proxy(ok).expect(ok);
     }
     for bad in ["/v0/sessions", "/internal", "/v1/../x"] {

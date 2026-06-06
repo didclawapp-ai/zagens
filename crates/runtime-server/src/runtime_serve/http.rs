@@ -13,13 +13,11 @@ use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
-use crate::automation_manager::{
-    AutomationManager, AutomationSchedulerConfig, spawn_scheduler,
-};
+use crate::automation_manager::{AutomationManager, AutomationSchedulerConfig, spawn_scheduler};
 use crate::config::Config;
-use crate::runtime_api::{build_router, ResumeTaskTracker, RuntimeApiState};
+use crate::runtime_api::{ResumeTaskTracker, RuntimeApiState, build_router};
 use crate::runtime_threads::{RuntimeThreadManager, RuntimeThreadManagerConfig};
-use crate::session_manager::{default_sessions_dir, SessionManager};
+use crate::session_manager::{SessionManager, default_sessions_dir};
 use crate::task_manager::{TaskManager, TaskManagerConfig};
 
 #[derive(Debug, Clone)]
@@ -124,8 +122,7 @@ pub async fn run_http_server(
         Arc::new(fp)
     };
     let shared_session_manager = Arc::new(
-        SessionManager::new(sessions_dir.clone())
-            .context("Failed to create SessionManager")?,
+        SessionManager::new(sessions_dir.clone()).context("Failed to create SessionManager")?,
     );
 
     let mut shared_mcp_pool = crate::mcp::McpPool::from_config_path(&config.mcp_config_path())
@@ -228,15 +225,16 @@ pub async fn run_http_server(
         }
     });
 
-    eprintln!(
-        "[deepseek-runtime] axum::serve started, listening on {bound_addr}"
-    );
+    eprintln!("[deepseek-runtime] axum::serve started, listening on {bound_addr}");
     let serve_result = axum::serve(listener, app)
         .await
         .map_err(|e| anyhow!("Runtime API server error: {e}"));
     eprintln!(
         "[deepseek-runtime] axum::serve returned: {:?}",
-        serve_result.as_ref().map(|_| "ok").map_err(|e| format!("{e:#}"))
+        serve_result
+            .as_ref()
+            .map(|_| "ok")
+            .map_err(|e| format!("{e:#}"))
     );
     scheduler_cancel.cancel();
     scheduler_handle.abort();
