@@ -333,9 +333,11 @@ mod tests {
                 notes: String::new(),
             },
         ]);
-        let mut cfg = ScratchpadConfig::default();
-        cfg.coverage_hard_ratio = 0.6;
-        cfg.coverage_soft_ratio = 0.85;
+        let cfg = ScratchpadConfig {
+            coverage_hard_ratio: 0.6,
+            coverage_soft_ratio: 0.85,
+            ..Default::default()
+        };
         let outcome = coverage_gate(&inv, &[], &cfg);
         assert!(matches!(outcome, CoverageGateOutcome::Block { .. }));
     }

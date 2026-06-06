@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Fix (CI):** add Unix-only `libc` dep to `deepseek-runtime-adapters` for `StdioTransport::shutdown` SIGTERM (`mcp/transport.rs`; fixes macOS Test job E0433).
 - **Fix (CI):** collapse nested `if` in `crates/config/src/ui_settings.rs` (`clippy::collapsible_if`).
 - **Fix (CI):** `deepseek-core` clippy — `too_many_arguments` on turn-loop host/phase fns, `collapsible_if` in `project_context`, `needless_borrow` / `should_implement_trait` allows.
+- **Fix (CI):** `deepseek-runtime-adapters` clippy — `double_must_use`, `collapsible_if`, `needless_question_mark`, `io_other_error`, `needless_borrow(s)`.
 
 ### Zagens website — blog UI polish
 

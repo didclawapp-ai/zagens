@@ -159,7 +159,6 @@ pub fn add_server_config(
 }
 
 /// Load a single server block from `mcp.json` (for edit UIs).
-#[must_use]
 pub fn get_server_entry(path: &Path, name: &str) -> Result<Option<McpServerConfig>> {
     let cfg = load_config(path)?;
     Ok(cfg.servers.get(name).cloned())

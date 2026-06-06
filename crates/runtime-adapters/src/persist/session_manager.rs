@@ -214,7 +214,7 @@ impl SessionManager {
                 &db.lock().unwrap(),
                 session,
             ))?;
-            return Ok(self.validated_session_path(&session.metadata.id)?);
+            return self.validated_session_path(&session.metadata.id);
         }
 
         let path = self.validated_session_path(&session.metadata.id)?;
@@ -925,7 +925,7 @@ fn sqlite_to_io<T>(r: anyhow::Result<T>) -> std::io::Result<T> {
         {
             std::io::Error::new(std::io::ErrorKind::InvalidInput, msg)
         } else {
-            std::io::Error::new(std::io::ErrorKind::Other, msg)
+            std::io::Error::other(msg)
         }
     })
 }

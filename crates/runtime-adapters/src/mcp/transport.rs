@@ -335,10 +335,11 @@ impl StreamableHttpTransport {
                     data.push_str(rest.strip_prefix(' ').unwrap_or(rest));
                 }
             }
-            if event_type == "message" && !data.is_empty() {
-                if let Ok(value) = serde_json::from_str::<serde_json::Value>(&data) {
-                    self.inbox.push_back(value);
-                }
+            if event_type == "message"
+                && !data.is_empty()
+                && let Ok(value) = serde_json::from_str::<serde_json::Value>(&data)
+            {
+                self.inbox.push_back(value);
             }
         }
     }

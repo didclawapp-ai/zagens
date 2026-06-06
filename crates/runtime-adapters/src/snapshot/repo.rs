@@ -160,7 +160,7 @@ impl SnapshotRepo {
             io::Error::new(io::ErrorKind::InvalidInput, "snapshot dir has no parent")
         })?;
 
-        init_snapshot_repo_if_needed(&snapshot_dir, &git_dir, &work_tree)?;
+        init_snapshot_repo_if_needed(snapshot_dir, &git_dir, &work_tree)?;
 
         write_builtin_excludes(&git_dir)?;
         Ok(Self { git_dir, work_tree })

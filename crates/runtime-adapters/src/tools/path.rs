@@ -5,7 +5,7 @@ use std::path::{Component, Path, PathBuf};
 /// Compare paths for prefix containment, normalizing Windows `\\?\` verbatim prefixes.
 #[must_use]
 pub fn path_has_prefix(path: &Path, prefix: &Path) -> bool {
-    strip_verbatim_prefix(path).starts_with(&strip_verbatim_prefix(prefix))
+    strip_verbatim_prefix(path).starts_with(strip_verbatim_prefix(prefix))
 }
 
 #[must_use]

@@ -17,6 +17,7 @@ pub enum AreaStatus {
 
 impl AreaStatus {
     #[must_use]
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(value: &str) -> Option<Self> {
         match value.trim().to_lowercase().as_str() {
             "pending" => Some(Self::Pending),
