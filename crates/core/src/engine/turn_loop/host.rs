@@ -161,6 +161,7 @@ pub trait TurnLoopHost: Send {
         mode: TurnLoopMode,
     ) -> bool;
 
+    #[allow(clippy::too_many_arguments)]
     async fn run_capacity_post_tool_checkpoint(
         &mut self,
         turn: &mut TurnContext,
@@ -204,6 +205,7 @@ pub trait TurnLoopHost: Send {
     ) -> ToolPlanApprovalMeta;
 
     /// L2: run parallel/sequential execution for planned tools (TUI: `tool_plans_exec`).
+    #[allow(clippy::too_many_arguments)]
     async fn execute_tool_plans(
         &mut self,
         mode: TurnLoopMode,

@@ -1098,7 +1098,7 @@ mod tests {
 
     #[test]
     fn estimate_tokens_is_available_for_future_budgeting() {
-        let messages = vec![make_message("user", "src/main.rs")];
+        let messages = [make_message("user", "src/main.rs")];
         assert!(!messages.is_empty());
     }
 

@@ -41,7 +41,7 @@ fn parse_tool_arguments(name: &str, raw: &str) -> Result<Value, FunctionCallErro
 pub fn tool_result_to_output(result: ToolResult) -> ToolOutput {
     let body = serde_json::from_str(&result.content)
         .ok()
-        .or_else(|| Some(Value::String(result.content)));
+        .or(Some(Value::String(result.content)));
     ToolOutput::Function {
         body,
         success: result.success,

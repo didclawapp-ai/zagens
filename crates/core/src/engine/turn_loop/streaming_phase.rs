@@ -27,6 +27,7 @@ use serde_json::json;
 use crate::chat::{ContentBlockStart, Delta, MessageRequest, StreamEvent};
 use crate::models::Usage;
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run_streaming_phase<H: TurnLoopHost>(
     host: &mut H,
     turn: &mut TurnContext,
@@ -46,8 +47,8 @@ pub async fn run_streaming_phase<H: TurnLoopHost>(
         None
     } else {
         Some(host.active_tools_for_step(
-            &tool_catalog,
-            &active_tool_names,
+            tool_catalog,
+            active_tool_names,
             force_update_plan_this_step,
         ))
     };

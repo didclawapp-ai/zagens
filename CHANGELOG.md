@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Fix (CI):** `cargo fmt --all` — `sidecar_binary_contract.rs` assert line-break, `skill_install.rs` use import, and workspace-wide rustfmt drift after main-repo push.
 - **Fix (CI):** add Unix-only `libc` dep to `deepseek-runtime-adapters` for `StdioTransport::shutdown` SIGTERM (`mcp/transport.rs`; fixes macOS Test job E0433).
 - **Fix (CI):** collapse nested `if` in `crates/config/src/ui_settings.rs` (`clippy::collapsible_if`).
+- **Fix (CI):** `deepseek-core` clippy — `too_many_arguments` on turn-loop host/phase fns, `collapsible_if` in `project_context`, `needless_borrow` / `should_implement_trait` allows.
 
 ### Zagens website — blog UI polish
 

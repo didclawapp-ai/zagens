@@ -312,7 +312,6 @@ fn normalize_parallel_tool_name(raw: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
 
     #[test]
     fn parallel_batch_requires_read_only_parallel_tools() {

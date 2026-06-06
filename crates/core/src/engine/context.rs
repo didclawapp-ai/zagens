@@ -393,7 +393,6 @@ pub fn count_oldest_messages_to_drain(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use deepseek_tools::ToolResult;
 
     #[test]
     fn context_budget_subtracts_output_and_headroom() {

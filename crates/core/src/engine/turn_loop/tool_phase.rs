@@ -23,6 +23,7 @@ use crate::engine::turn_loop::host::TurnLoopHost;
 use crate::error_taxonomy::ErrorEnvelope;
 use crate::turn::{TurnContext, TurnLoopMode, TurnToolCall};
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run_tool_execution_phase<H: TurnLoopHost>(
     host: &mut H,
     turn: &mut TurnContext,
