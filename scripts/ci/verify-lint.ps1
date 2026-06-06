@@ -16,6 +16,10 @@ Write-Host "==> Toolchain: $(rustc --version)"
 & (Join-Path $PSScriptRoot "ensure-web-ui-dist.ps1")
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+Write-Host "==> Pre-build runtime sidecar (desktop build.rs)"
+cargo build -p deepseek-runtime-server --locked
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
 Write-Host "==> cargo fmt --all -- --check"
 cargo fmt --all -- --check
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

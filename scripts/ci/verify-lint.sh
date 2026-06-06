@@ -17,6 +17,8 @@ fi
 
 echo "==> Toolchain: $(rustc --version)"
 bash scripts/ci/ensure-web-ui-dist.sh
+echo "==> Pre-build runtime sidecar (desktop build.rs)"
+cargo build -p deepseek-runtime-server --locked
 echo "==> cargo fmt --all -- --check"
 cargo fmt --all -- --check
 echo "==> cargo clippy --workspace --all-targets --all-features --locked -- -D warnings"

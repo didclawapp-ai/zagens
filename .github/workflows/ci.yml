@@ -51,6 +51,8 @@ jobs:
           cache-dependency-path: crates/desktop/web-ui/package-lock.json
       - name: Ensure web-ui dist (desktop clippy)
         run: bash scripts/ci/ensure-web-ui-dist.sh
+      - name: Pre-build runtime sidecar (required by desktop build.rs)
+        run: cargo build -p deepseek-runtime-server --locked
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Clippy (strict)

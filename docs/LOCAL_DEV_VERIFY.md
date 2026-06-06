@@ -90,8 +90,9 @@ pwsh scripts/ci/install-git-hooks.ps1
 
 1. 断言 `rustc` 版本与 `rust-toolchain.toml` 一致  
 2. 确保 `web-ui/dist` 存在（必要时构建）  
-3. `cargo fmt --all -- --check`  
-4. `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`  
+3. 预构建 `deepseek-runtime-server`（`crates/desktop/build.rs` 编译期需要 sidecar 二进制）  
+4. `cargo fmt --all -- --check`  
+5. `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`  
 
 ```bash
 bash scripts/ci/verify-lint.sh
