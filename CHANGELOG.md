@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Docs:** Updated [`docs/desktop/UPDATER.md`](docs/desktop/UPDATER.md); website ops docs live only in `zagens_website`.
 - **Cleanup:** Removed orphan `vendor/schemaui-0.12.0/` (stale lockfile only; `schemaui` comes from crates.io).
 - **Cleanup:** Stop tracking `.claude/*` session handoffs and `.trae/` (duplicate of [`project_rules.md`](project_rules.md)); keep [`.cursor/rules/`](.cursor/rules/) as the committed AI/coding conventions.
+- **Fix (CI):** Run version/OpenAPI scripts via `bash` (Windows checkout lacks `+x`); install Tauri Linux deps (`libwebkit2gtk-4.1-dev`, …) via `scripts/ci/install-linux-deps.sh`; re-sync OpenAPI + `runtime-api.ts` usage cache telemetry fields.
 
 ### Zagens website — blog UI polish
 

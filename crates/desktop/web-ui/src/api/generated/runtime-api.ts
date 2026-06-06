@@ -1061,7 +1061,10 @@ export type components = {
             /** @default healthy */
             readonly coherence_state: components["schemas"]["CoherenceState"];
             readonly scratchpad_run_id?: string | null;
+            /** @description Chronological scratchpad run ids for this thread (latest last). Powers multi-audit UI. */
+            readonly scratchpad_run_history?: readonly string[] | null;
             readonly checklist_snapshot?: unknown;
+            readonly plan_snapshot?: unknown;
         };
         readonly TurnItemRecord: {
             /**
@@ -1180,6 +1183,8 @@ export type components = {
             /** @default null */
             readonly scratchpad_run_id: string | null;
         };
+        /** @enum {string} */
+        readonly PromptDelivery: "steer" | "queue";
         /** StartTurnRequest */
         readonly StartTurnRequest: {
             readonly prompt: string;
@@ -1207,15 +1212,34 @@ export type components = {
              * @default null
              */
             readonly max_tokens: number | null;
+            /**
+             * @description `queue` admits while a turn is active and starts after it completes.
+             *     Omitted preserves legacy behaviour (error when a turn is already active).
+             * @default null
+             */
+            readonly delivery: components["schemas"]["PromptDelivery"] | null;
         };
         /** SteerTurnRequest */
         readonly SteerTurnRequest: {
             readonly prompt: string;
         };
+        readonly PromptAdmission: {
+            readonly id: string;
+            readonly thread_id: string;
+            /** Format: uint64 */
+            readonly admitted_seq: number;
+            readonly prompt: string;
+            readonly delivery: components["schemas"]["PromptDelivery"];
+            /** Format: date-time */
+            readonly time_created: string;
+            /** Format: uint64 */
+            readonly promoted_seq?: number | null;
+        };
         /** StartTurnResponse */
         readonly StartTurnResponse: {
             readonly thread: components["schemas"]["ThreadRecord"];
             readonly turn: components["schemas"]["TurnRecord"];
+            readonly queued?: components["schemas"]["PromptAdmission"] | null;
         };
         /** StreamTurnRequest */
         readonly StreamTurnRequest: {
@@ -1250,10 +1274,30 @@ export type components = {
             readonly output_tokens: number;
             /** Format: uint64 */
             readonly cached_tokens: number;
+            /**
+             * Format: uint64
+             * @description Sum of cache-miss input tokens (explicit or inferred per turn).
+             */
+            readonly miss_tokens: number;
             /** Format: uint64 */
             readonly reasoning_tokens: number;
             /** Format: double */
             readonly cost_usd: number;
+            /**
+             * Format: double
+             * @description Estimated USD if all input were billed at cache-miss rate.
+             */
+            readonly cost_usd_without_cache: number;
+            /**
+             * Format: double
+             * @description `cost_usd_without_cache - cost_usd` (floored at 0).
+             */
+            readonly cache_savings_usd: number;
+            /**
+             * Format: double
+             * @description `cached_tokens / input_tokens * 100` when `input_tokens > 0`.
+             */
+            readonly cache_hit_rate?: number | null;
             /** Format: uint64 */
             readonly turns: number;
         };
@@ -1266,9 +1310,17 @@ export type components = {
             /** Format: uint64 */
             readonly cached_tokens: number;
             /** Format: uint64 */
+            readonly miss_tokens: number;
+            /** Format: uint64 */
             readonly reasoning_tokens: number;
             /** Format: double */
             readonly cost_usd: number;
+            /** Format: double */
+            readonly cost_usd_without_cache: number;
+            /** Format: double */
+            readonly cache_savings_usd: number;
+            /** Format: double */
+            readonly cache_hit_rate?: number | null;
             /** Format: uint64 */
             readonly turns: number;
         };
@@ -1281,6 +1333,8 @@ export type components = {
             readonly group_by: string;
             readonly totals: components["schemas"]["UsageTotals"];
             readonly buckets: readonly components["schemas"]["UsageBucket"][];
+            /** @description True when any aggregated turn used a model/provider without cache telemetry. */
+            readonly cache_telemetry_incomplete: boolean;
         };
         /** ErrorBody */
         readonly ErrorBody: {

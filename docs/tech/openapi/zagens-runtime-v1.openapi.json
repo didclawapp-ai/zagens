@@ -372,7 +372,18 @@
               "null"
             ]
           },
-          "checklist_snapshot": true
+          "scratchpad_run_history": {
+            "description": "Chronological scratchpad run ids for this thread (latest last). Powers multi-audit UI.",
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "checklist_snapshot": true,
+          "plan_snapshot": true
         },
         "required": [
           "id",
@@ -762,6 +773,13 @@
           }
         }
       },
+      "PromptDelivery": {
+        "type": "string",
+        "enum": [
+          "steer",
+          "queue"
+        ]
+      },
       "StartTurnRequest": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "StartTurnRequest",
@@ -838,6 +856,18 @@
             "format": "uint32",
             "minimum": 0,
             "default": null
+          },
+          "delivery": {
+            "description": "`queue` admits while a turn is active and starts after it completes.\nOmitted preserves legacy behaviour (error when a turn is already active).",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PromptDelivery"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -857,6 +887,48 @@
           "prompt"
         ]
       },
+      "PromptAdmission": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "thread_id": {
+            "type": "string"
+          },
+          "admitted_seq": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "delivery": {
+            "$ref": "#/components/schemas/PromptDelivery"
+          },
+          "time_created": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "promoted_seq": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "id",
+          "thread_id",
+          "admitted_seq",
+          "prompt",
+          "delivery",
+          "time_created"
+        ]
+      },
       "StartTurnResponse": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "StartTurnResponse",
@@ -867,6 +939,16 @@
           },
           "turn": {
             "$ref": "#/components/schemas/TurnRecord"
+          },
+          "queued": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PromptAdmission"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -1007,6 +1089,7 @@
             "minimum": 0
           },
           "miss_tokens": {
+            "description": "Sum of cache-miss input tokens (explicit or inferred per turn).",
             "type": "integer",
             "format": "uint64",
             "minimum": 0
@@ -1021,14 +1104,17 @@
             "format": "double"
           },
           "cost_usd_without_cache": {
+            "description": "Estimated USD if all input were billed at cache-miss rate.",
             "type": "number",
             "format": "double"
           },
           "cache_savings_usd": {
+            "description": "`cost_usd_without_cache - cost_usd` (floored at 0).",
             "type": "number",
             "format": "double"
           },
           "cache_hit_rate": {
+            "description": "`cached_tokens / input_tokens * 100` when `input_tokens > 0`.",
             "type": [
               "number",
               "null"
@@ -1154,6 +1240,7 @@
             }
           },
           "cache_telemetry_incomplete": {
+            "description": "True when any aggregated turn used a model/provider without cache telemetry.",
             "type": "boolean"
           }
         },
