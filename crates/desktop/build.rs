@@ -10,6 +10,9 @@ fn main() {
     if let Err(e) = ensure_sidecar_binaries() {
         panic!("{e}");
     }
+    if let Err(e) = ensure_resource_stubs() {
+        panic!("{e}");
+    }
     tauri_build::build();
 }
 
@@ -59,4 +62,28 @@ fn ensure_sidecar_binaries() -> Result<(), String> {
          Fix: run `npm run bundle:prepare` in crates/desktop, or `cargo build -p deepseek-runtime-server` then rebuild desktop.",
         dest.display()
     ))
+}
+
+/// Create empty stub directories for Tauri resource paths that are absent in the
+/// source tree (they are gitignored and populated by `npm run bundle:prepare`
+/// before a production bundle build).  `tauri-build` only checks that each
+/// declared resource *path exists*; empty directories satisfy that check and
+/// allow `cargo test` / `cargo clippy` to succeed without the full release
+/// artifacts on disk.
+fn ensure_resource_stubs() -> Result<(), String> {
+    let manifest_dir =
+        PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").map_err(|e| e.to_string())?);
+
+    // Mirrors the `bundle.resources` entries in `tauri.conf.json`.
+    let stubs = ["binaries/python-standalone/python-install", "bundle-legal"];
+
+    for rel in stubs {
+        let path = manifest_dir.join(rel);
+        if !path.exists() {
+            fs::create_dir_all(&path)
+                .map_err(|e| format!("failed to create resource stub {}: {e}", path.display()))?;
+        }
+    }
+
+    Ok(())
 }

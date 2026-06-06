@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **CI lint:** Remove needless `return` statements in `policy_degraded_mode_notice()` (`crates/runtime-server/src/sandbox/mod.rs`) — resolves `clippy::needless_return` errors that broke CI on push.
 - **CI test (macOS/Windows):** Pre-build `deepseek-runtime-server` before `cargo test --workspace` in `.github/workflows/ci.yml`; `crates/desktop/build.rs` requires the sidecar binary in `target/debug/` at compile time, causing build failure on all non-Linux runners when the binary wasn't yet present.
+- **Desktop build.rs:** Add `ensure_resource_stubs()` — creates empty stub directories for gitignored Tauri resources (`binaries/python-standalone/python-install`, `bundle-legal/`) so `tauri-build` resource-path validation passes during `cargo test` / `cargo clippy` without the release artifacts on disk.
 - **CI lint (macOS):** Remove redundant top-level `#[cfg(unix)] use std::os::unix::process::CommandExt` from `crates/runtime-server/src/tools/shell/process.rs`; the trait is already imported locally inside `install_parent_death_signal` (Linux-only), making the file-level import unused and triggering `-D unused-imports`.
 
 ### Repo split — product vs website platform
