@@ -138,3 +138,6 @@ deliverables/
 website/
 scripts/website/
 docs/website/
+
+# Stale vendoring stub (deps resolve via crates.io / Cargo.lock)
+vendor/

@@ -344,7 +344,6 @@ zagens/
 ├── docs/                 # Documentation
 ├── assets/               # Screenshots & images
 ├── scripts/              # Build & release scripts
-├── vendor/               # Vendored dependencies
 ├── config.example.toml   # Annotated configuration reference
 ├── LICENSE               # Zagens proprietary license
 ├── NOTICE.md             # Third-party attributions
