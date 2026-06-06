@@ -8,6 +8,8 @@
 
 **版本 / 发布：** [VERSIONING.md](VERSIONING.md) — Zagens 独立 SemVer；当前对外版本 **`0.7.0`**（历史标签可能带 `-preview.n`）。
 
+**本地 Lint / 工具链：** [LOCAL_DEV_VERIFY.md](../LOCAL_DEV_VERIFY.md) — Rust 1.96 钉死、`verify-lint`、git hooks 与 CI 对应关系。
+
 ---
 
 ## 2026-05-30 — 抗幻觉工程哲学：Harness 是「把人类工程方法翻译给模型」（设计对话整理）

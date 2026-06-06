@@ -299,14 +299,7 @@ Release / installer build (Windows): from `crates/desktop`, run `npm run bundle:
 
 ## Development
 
-**Before push** (mirrors CI Lint; avoids remote-only failures):
-
-```bash
-rustup toolchain install 1.96.0   # once, if rust-toolchain.toml not active yet
-bash scripts/ci/verify-lint.sh      # fmt + clippy -D warnings
-# or full gate: bash scripts/ci/verify-workspace.sh   # lint + tests + lockfile
-pwsh scripts/ci/install-git-hooks.ps1   # optional: pre-commit fmt + pre-push lint
-```
+**Local verify (fmt/clippy before push):** see **[`docs/LOCAL_DEV_VERIFY.md`](docs/LOCAL_DEV_VERIFY.md)** — toolchain pin, `verify-lint` scripts, and optional git hooks (push 时自动跑，不必每次手动敲脚本).
 
 | Command | Description |
 |---------|-------------|
