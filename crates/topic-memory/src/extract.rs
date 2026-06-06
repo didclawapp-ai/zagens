@@ -48,7 +48,11 @@ pub fn detect_emotion(text: &str) -> EmotionMode {
     if trimmed.len() < 2 {
         return EmotionMode::Neutral;
     }
-    let mut scores = [(EmotionMode::Angry, 0u32), (EmotionMode::Happy, 0), (EmotionMode::Sad, 0)];
+    let mut scores = [
+        (EmotionMode::Angry, 0u32),
+        (EmotionMode::Happy, 0),
+        (EmotionMode::Sad, 0),
+    ];
     for (mode, patterns) in emotion_patterns() {
         for pat in *patterns {
             if let Ok(re) = Regex::new(pat) {

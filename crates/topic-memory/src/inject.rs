@@ -24,12 +24,7 @@ pub fn inject_memory_section(
     if let (Some(si), Some(ei)) = (si, ei) {
         if ei > si {
             let after_end = ei + markers.end.len();
-            return format!(
-                "{}{}{}",
-                &existing[..si],
-                section,
-                &existing[after_end..]
-            );
+            return format!("{}{}{}", &existing[..si], section, &existing[after_end..]);
         }
     }
     let trimmed = existing.trim_end();

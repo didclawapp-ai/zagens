@@ -6,8 +6,8 @@ use chrono::NaiveDate;
 
 use crate::extract::{detect_blocked_topics, detect_emotion, extract_topics};
 use crate::graph::{
-    BlockedPoint, CognitiveTrail, EmotionMode, PheromoneEdge, PheromoneGraph, PheromoneNode,
-    GRAPH_SCHEMA_VERSION,
+    BlockedPoint, CognitiveTrail, EmotionMode, GRAPH_SCHEMA_VERSION, PheromoneEdge, PheromoneGraph,
+    PheromoneNode,
 };
 
 const DECAY_RATE: f64 = 0.97;
@@ -49,7 +49,12 @@ pub fn empty_graph() -> PheromoneGraph {
     }
 }
 
-fn node_gain_multiplier(graph: &PheromoneGraph, emotion: EmotionMode, topic: &str, idx: usize) -> f64 {
+fn node_gain_multiplier(
+    graph: &PheromoneGraph,
+    emotion: EmotionMode,
+    topic: &str,
+    idx: usize,
+) -> f64 {
     match emotion {
         EmotionMode::Angry => {
             if idx == 0 {
@@ -92,17 +97,24 @@ fn apply_transitive_bridging(graph: &mut PheromoneGraph, today: &str) {
                 continue;
             }
             let bridge_key = format!("{a}→{c}");
-            graph.edges.entry(bridge_key).or_insert_with(|| PheromoneEdge {
-                weight: BRIDGE_INITIAL_WEIGHT,
-                last_seen: today.to_string(),
-            });
+            graph
+                .edges
+                .entry(bridge_key)
+                .or_insert_with(|| PheromoneEdge {
+                    weight: BRIDGE_INITIAL_WEIGHT,
+                    last_seen: today.to_string(),
+                });
         }
     }
 }
 
 /// Update graph after one conversation turn.
 #[must_use]
-pub fn update_graph(graph: &PheromoneGraph, user_text: &str, assistant_text: &str) -> PheromoneGraph {
+pub fn update_graph(
+    graph: &PheromoneGraph,
+    user_text: &str,
+    assistant_text: &str,
+) -> PheromoneGraph {
     let today = today_str();
     let mut g = graph.clone();
     let emotion = detect_emotion(user_text);
@@ -139,7 +151,11 @@ pub fn update_graph(graph: &PheromoneGraph, user_text: &str, assistant_text: &st
                     count: 1,
                     last_seen: today.clone(),
                     strength: gain,
-                    depth: if user_topics.contains(topic) { 2.0 } else { 1.0 },
+                    depth: if user_topics.contains(topic) {
+                        2.0
+                    } else {
+                        1.0
+                    },
                     blocked: None,
                     dormant: None,
                 },
@@ -161,7 +177,11 @@ pub fn update_graph(graph: &PheromoneGraph, user_text: &str, assistant_text: &st
                 }
                 EmotionMode::Happy | EmotionMode::Neutral => {
                     if let Some(e) = g.edges.get_mut(&key) {
-                        e.weight += if emotion == EmotionMode::Happy { 1.5 } else { 1.0 };
+                        e.weight += if emotion == EmotionMode::Happy {
+                            1.5
+                        } else {
+                            1.0
+                        };
                         e.last_seen = today.clone();
                     } else {
                         g.edges.insert(
@@ -183,7 +203,11 @@ pub fn update_graph(graph: &PheromoneGraph, user_text: &str, assistant_text: &st
         emotions.remove(0);
     }
 
-    let unique_user: Vec<String> = user_topics.into_iter().collect::<HashSet<_>>().into_iter().collect();
+    let unique_user: Vec<String> = user_topics
+        .into_iter()
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
     if unique_user.len() >= 2 {
         let trails = g.trails.get_or_insert_with(Vec::new);
         trails.push(CognitiveTrail {
@@ -203,7 +227,12 @@ pub fn update_graph(graph: &PheromoneGraph, user_text: &str, assistant_text: &st
         if !g.blocked_points.iter().any(|b| b.node == b_topic) {
             g.blocked_points.push(BlockedPoint {
                 node: b_topic.clone(),
-                context: user_text.chars().take(80).collect::<String>().trim().to_string(),
+                context: user_text
+                    .chars()
+                    .take(80)
+                    .collect::<String>()
+                    .trim()
+                    .to_string(),
                 since: today.clone(),
             });
             if let Some(n) = g.nodes.get_mut(&b_topic) {
@@ -257,7 +286,11 @@ pub fn generate_memory_section(
         .iter()
         .filter(|(_, n)| !n.dormant.unwrap_or(false) && n.strength >= 0.1)
         .collect();
-    hot_nodes.sort_by(|a, b| b.1.strength.partial_cmp(&a.1.strength).unwrap_or(std::cmp::Ordering::Equal));
+    hot_nodes.sort_by(|a, b| {
+        b.1.strength
+            .partial_cmp(&a.1.strength)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     hot_nodes.truncate(MAX_HOT_NODES);
 
     let mut hot_edges: Vec<_> = graph.edges.iter().collect();
@@ -360,10 +393,7 @@ pub fn generate_memory_section(
             };
             lines.push(String::new());
             lines.push("### Recent Mood Tendency".to_string());
-            lines.push(format!(
-                "- {label} across last {} turns",
-                emotions.len()
-            ));
+            lines.push(format!("- {label} across last {} turns", emotions.len()));
         }
     }
 

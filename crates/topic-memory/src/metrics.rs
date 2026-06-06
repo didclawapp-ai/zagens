@@ -51,7 +51,10 @@ pub fn record_turn_update(metrics: &mut TopicMemoryMetrics, user_topics: &[Strin
     metrics.turn_updates = metrics.turn_updates.saturating_add(1);
 
     if let Some(prev) = metrics.last_user_topics.as_ref() {
-        let overlap = user_topics.iter().any(|t| prev.iter().any(|p| p == t || p.contains(t) || t.contains(p)));
+        let overlap = user_topics.iter().any(|t| {
+            prev.iter()
+                .any(|p| p == t || p.contains(t) || t.contains(p))
+        });
         if overlap && !user_topics.is_empty() {
             metrics.repeat_topic_turns = metrics.repeat_topic_turns.saturating_add(1);
             metrics.clarification_rounds = metrics.clarification_rounds.saturating_add(1);

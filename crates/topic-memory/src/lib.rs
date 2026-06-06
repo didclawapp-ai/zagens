@@ -12,22 +12,22 @@ mod retrieve;
 mod stopwords;
 
 pub use engine::{
-    apply_decay, empty_graph, generate_memory_section, should_inject_memory, today_str,
-    update_graph, GenerateMemorySectionOptions, DEFAULT_INJECT_INTERVAL_RUNS,
+    DEFAULT_INJECT_INTERVAL_RUNS, GenerateMemorySectionOptions, apply_decay, empty_graph,
+    generate_memory_section, should_inject_memory, today_str, update_graph,
 };
 pub use extract::{detect_blocked_topics, detect_emotion, extract_topics};
 pub use graph::{
-    BlockedPoint, CognitiveTrail, EmotionMode, PheromoneEdge, PheromoneGraph, PheromoneNode,
-    GRAPH_SCHEMA_VERSION,
+    BlockedPoint, CognitiveTrail, EmotionMode, GRAPH_SCHEMA_VERSION, PheromoneEdge, PheromoneGraph,
+    PheromoneNode,
 };
-pub use inject::{inject_memory_section, MemorySectionMarkers, DEFAULT_MARKERS};
+pub use inject::{DEFAULT_MARKERS, MemorySectionMarkers, inject_memory_section};
 pub use metrics::{
-    compare_eval, eval_report, load_metrics, metrics_path_for_graph, record_inject,
-    record_turn_update, save_metrics, TopicMemoryEvalComparison, TopicMemoryEvalReport,
-    TopicMemoryMetrics,
+    TopicMemoryEvalComparison, TopicMemoryEvalReport, TopicMemoryMetrics, compare_eval,
+    eval_report, load_metrics, metrics_path_for_graph, record_inject, record_turn_update,
+    save_metrics,
 };
 pub use retrieve::{
-    induced_subgraph, retrieve_for_query, retrieve_k_hop_subgraph, DEFAULT_RETRIEVE_K_HOPS,
+    DEFAULT_RETRIEVE_K_HOPS, induced_subgraph, retrieve_for_query, retrieve_k_hop_subgraph,
 };
 
 use std::fs;

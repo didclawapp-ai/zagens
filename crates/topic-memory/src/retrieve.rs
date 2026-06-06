@@ -3,9 +3,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::extract::extract_topics;
-use crate::graph::{
-    BlockedPoint, CognitiveTrail, PheromoneGraph, GRAPH_SCHEMA_VERSION,
-};
+use crate::graph::{BlockedPoint, CognitiveTrail, GRAPH_SCHEMA_VERSION, PheromoneGraph};
 
 /// Default BFS depth from seed topics (UNDERLYING §2.3).
 pub const DEFAULT_RETRIEVE_K_HOPS: usize = 2;

@@ -10,9 +10,9 @@ pub fn path_has_prefix(path: &Path, prefix: &Path) -> bool {
 
 #[must_use]
 fn strip_verbatim_prefix(path: &Path) -> PathBuf {
-    let s = path.display().to_string();
     #[cfg(windows)]
     {
+        let s = path.display().to_string();
         if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
             return PathBuf::from(format!(r"\\{rest}"));
         }
