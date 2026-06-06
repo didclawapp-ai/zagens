@@ -7,9 +7,6 @@ use std::process::{Child, ChildStdin, Command};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-#[cfg(unix)]
-use std::os::unix::process::CommandExt;
-
 use super::types::{ShellJobDetail, ShellJobSnapshot, ShellResult, ShellStatus};
 use crate::sandbox::{ExecEnv, SandboxManager, SandboxType};
 use crate::tools::shell_output::truncate_with_meta;
