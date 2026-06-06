@@ -2654,11 +2654,13 @@ mod tests {
         global.approval_policy = Some("on-request".to_string());
         global.sandbox_mode = Some("workspace-write".to_string());
 
-        let mut project = ConfigToml::default();
-        project.allow_shell = Some(true);
-        project.approval_policy = Some("never".to_string());
-        project.sandbox_mode = Some("no".to_string());
-        project.model = Some("project-only-model".to_string());
+        let project = ConfigToml {
+            allow_shell: Some(true),
+            approval_policy: Some("never".to_string()),
+            sandbox_mode: Some("no".to_string()),
+            model: Some("project-only-model".to_string()),
+            ..Default::default()
+        };
 
         global.merge_project_overrides(project);
         assert_eq!(global.allow_shell, Some(false));

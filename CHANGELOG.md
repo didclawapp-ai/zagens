@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Fix (CI):** `cargo fmt` for `crates/topic-memory` (stopwords list); move Windows-only path strip under `#[cfg(windows)]` (fixes macOS `-D warnings` unused `s`).
 - **Fix (CI):** `cargo fmt --all` — `sidecar_binary_contract.rs` assert line-break, `skill_install.rs` use import, and workspace-wide rustfmt drift after main-repo push.
 - **Fix (CI):** add Unix-only `libc` dep to `deepseek-runtime-adapters` for `StdioTransport::shutdown` SIGTERM (`mcp/transport.rs`; fixes macOS Test job E0433).
+- **Fix (CI):** collapse nested `if` in `crates/config/src/ui_settings.rs` (`clippy::collapsible_if`).
 
 ### Zagens website — blog UI polish
 

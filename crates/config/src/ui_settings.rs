@@ -13,10 +13,10 @@ use crate::default_config_path;
 /// Resolve `settings.toml` beside the active config file (`~/.zagens/config.toml`
 /// by default, or sibling to `ZAGENS_CONFIG_PATH` / `DEEPSEEK_CONFIG_PATH`).
 pub fn settings_path() -> Result<PathBuf> {
-    if let Some(path) = env_config_path() {
-        if let Some(parent) = path.parent() {
-            return Ok(parent.join("settings.toml"));
-        }
+    if let Some(path) = env_config_path()
+        && let Some(parent) = path.parent()
+    {
+        return Ok(parent.join("settings.toml"));
     }
     Ok(default_config_path()?.with_file_name("settings.toml"))
 }
@@ -34,10 +34,10 @@ fn env_config_path() -> Option<PathBuf> {
 }
 
 fn expand_home_path(path: &str) -> PathBuf {
-    if let Some(rest) = path.strip_prefix("~/") {
-        if let Some(home) = dirs::home_dir() {
-            return home.join(rest);
-        }
+    if let Some(rest) = path.strip_prefix("~/")
+        && let Some(home) = dirs::home_dir()
+    {
+        return home.join(rest);
     }
     PathBuf::from(path)
 }
