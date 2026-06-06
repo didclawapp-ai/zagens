@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **CI lint:** Remove needless `return` statements in `policy_degraded_mode_notice()` (`crates/runtime-server/src/sandbox/mod.rs`) — resolves `clippy::needless_return` errors that broke CI on push.
+
 ### Repo split — product vs website platform
 
 - **Change:** Moved `website/` to private repo [zagens_website](https://github.com/jjlin0603-svg/zagens_website); product repo has **no** `website/` tree (see `.gitignore`). User docs SSOT: [`docs/user/`](docs/user/). Overview: [`docs/REPO_SPLIT.md`](docs/REPO_SPLIT.md).

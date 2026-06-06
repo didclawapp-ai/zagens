@@ -339,17 +339,17 @@ pub fn policy_degraded_mode_notice() -> Option<&'static str> {
         if seatbelt::is_available() {
             return None;
         }
-        return Some(
+        Some(
             "Degraded mode: sandbox-exec (Seatbelt) is unavailable; sandbox_mode declares policy only.",
-        );
+        )
     }
 
     #[cfg(target_os = "linux")]
     {
         let _ = landlock::is_available();
-        return Some(
+        Some(
             "Degraded mode: Landlock rules are not enforced yet; sandbox_mode declares policy only.",
-        );
+        )
     }
 
     #[cfg(target_os = "windows")]
