@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Change (CI):** Removed [`.github/workflows/website.yml`](.github/workflows/website.yml); product [`.github/workflows/release.yml`](.github/workflows/release.yml) dispatches `desktop-release` to website repo `sync-release.yml`.
 - **Docs:** Updated [`docs/desktop/UPDATER.md`](docs/desktop/UPDATER.md); website ops docs live only in `zagens_website`.
 - **Cleanup:** Removed orphan `vendor/schemaui-0.12.0/` (stale lockfile only; `schemaui` comes from crates.io).
+- **Cleanup:** Stop tracking `.claude/*` session handoffs and `.trae/` (duplicate of [`project_rules.md`](project_rules.md)); keep [`.cursor/rules/`](.cursor/rules/) as the committed AI/coding conventions.
 
 ### Zagens website — blog UI polish
 

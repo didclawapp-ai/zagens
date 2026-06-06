@@ -84,15 +84,16 @@ project_overhaul_prompt.md
 # Companion app (tracked separately)
 apps/
 
-# Claude Code runtime artifacts
-.claude/scheduled_tasks.lock
-.claude/worktrees/
+# Claude Code — session handoffs & local artifacts (not product source)
+.claude/*
+!.claude/instructions.md
+!.claude/skills/
+!.claude/skills/**
 .worktrees/
 .ace-tool/
 
-# Local-only Claude / ralph notes
-.claude/*.local.md
-.claude/*.local.json
+# Trae IDE — use root project_rules.md instead
+.trae/
 
 # Deploy keys (generate with scripts/website/new-deploy-key.ps1)
 secrets-local/
