@@ -125,7 +125,7 @@ foreach ($task in $tasks) {
         Write-Host "== [$runIndex] task=$($task.id) repeat=$r profile=$effectiveProfile ==" -ForegroundColor Cyan
 
         $port = Get-LhtHarnessRandomPort
-        $dataDir = Join-Path $env:TEMP "lht-harness-rt-$([guid]::NewGuid().ToString('N'))"
+        $dataDir = Join-Path (Get-LhtHarnessTempRoot) "lht-harness-rt-$([guid]::NewGuid().ToString('N'))"
         $stderrLog = Join-Path $runDir "stderr-$($task.id)-r$r.log"
         $stdoutLog = Join-Path $runDir "stdout-$($task.id)-r$r.log"
         $workspace = New-LhtHarnessEphemeralWorkspace -Prefix "lht-harness"

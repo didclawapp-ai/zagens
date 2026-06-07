@@ -49,10 +49,11 @@ foreach ($item in $profiles) {
     $profile = $item.Name
     $expected = $item.Expected
     $port = Get-LhtHarnessRandomPort
-    $dataDir = Join-Path $env:TEMP "lht-harness-smoke-$([guid]::NewGuid().ToString('N'))"
-    $configPath = Join-Path $env:TEMP "lht-harness-smoke-config-$profile.toml"
-    $stderrLog = Join-Path $env:TEMP "lht-harness-smoke-stderr-$profile.log"
-    $stdoutLog = Join-Path $env:TEMP "lht-harness-smoke-stdout-$profile.log"
+    $tempRoot = Get-LhtHarnessTempRoot
+    $dataDir = Join-Path $tempRoot "lht-harness-smoke-$([guid]::NewGuid().ToString('N'))"
+    $configPath = Join-Path $tempRoot "lht-harness-smoke-config-$profile.toml"
+    $stderrLog = Join-Path $tempRoot "lht-harness-smoke-stderr-$profile.log"
+    $stdoutLog = Join-Path $tempRoot "lht-harness-smoke-stdout-$profile.log"
 
     New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
     Merge-LhtHarnessConfig -UtilPy $utilPy -Profile $profile -OutPath $configPath | Out-Null

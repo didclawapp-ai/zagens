@@ -1,5 +1,10 @@
 # Shared helpers for LHT harness headless tests (lht-harness-smoke.ps1, lht-harness-run.ps1).
 
+function Get-LhtHarnessTempRoot {
+    # Linux/pwsh CI often has no $env:TEMP; GetTempPath() honors TMPDIR and falls back to /tmp.
+    return [System.IO.Path]::GetTempPath().TrimEnd('\', '/')
+}
+
 function Get-LhtHarnessRepoRoot {
     param([string]$ScriptRoot)
     return (Resolve-Path (Join-Path $ScriptRoot "..")).Path
@@ -167,7 +172,7 @@ function Get-LhtHarnessGitSha {
 
 function New-LhtHarnessEphemeralWorkspace {
     param([string]$Prefix = "lht-harness-ws")
-    $ws = Join-Path $env:TEMP "$Prefix-$([guid]::NewGuid().ToString('N'))"
+    $ws = Join-Path (Get-LhtHarnessTempRoot) "$Prefix-$([guid]::NewGuid().ToString('N'))"
     New-Item -ItemType Directory -Path $ws -Force | Out-Null
     return $ws
 }

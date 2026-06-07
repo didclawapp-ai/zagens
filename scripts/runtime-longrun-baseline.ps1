@@ -23,6 +23,8 @@ param(
 $ErrorActionPreference = "Stop"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $workspaceRoot = Resolve-Path "$scriptDir\.."
+# Linux/pwsh CI often has no $env:TEMP; .NET GetTempPath() honors TMPDIR and falls back to /tmp.
+$scriptTempRoot = [System.IO.Path]::GetTempPath().TrimEnd('\', '/')
 
 function Get-RandomPort {
     $listener = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Loopback, 0)
@@ -147,7 +149,7 @@ function Get-BaselineRssFromAdr {
 
 function Initialize-LargeOutputFixture {
   # Deterministic >=1 MB file for A1.6 large-tool exercise (R-015).
-  $ws = Join-Path $env:TEMP "deepseek-baseline-ws-$([guid]::NewGuid().ToString('N'))"
+  $ws = Join-Path $scriptTempRoot "deepseek-baseline-ws-$([guid]::NewGuid().ToString('N'))"
   New-Item -ItemType Directory -Path $ws -Force | Out-Null
   $fixtureName = "baseline_large_fixture.txt"
   $fixturePath = Join-Path $ws $fixtureName
@@ -253,7 +255,7 @@ if ($DryRun) {
     Write-Host "=== Dry run: synthetic disk read proxy (no HTTP/API) ===" -ForegroundColor Yellow
     $results = @()
     for ($run = 1; $run -le $Runs; $run++) {
-        $dataDir = Join-Path $env:TEMP "deepseek-baseline-dry-$([guid]::NewGuid().ToString('N'))"
+        $dataDir = Join-Path $scriptTempRoot "deepseek-baseline-dry-$([guid]::NewGuid().ToString('N'))"
         New-Item -ItemType Directory -Path $dataDir | Out-Null
         1..20 | ForEach-Object {
             $path = Join-Path $dataDir "thread_$_.json"
@@ -301,7 +303,7 @@ for ($run = 1; $run -le $Runs; $run++) {
     $port = if ($Port -gt 0) { $Port } else { Get-RandomPort }
     $token = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 32 | ForEach-Object { [char]$_ })
     $env:DEEPSEEK_RUNTIME_TOKEN = $token
-    $dataDir = Join-Path $env:TEMP "deepseek-baseline-$([guid]::NewGuid().ToString('N'))"
+    $dataDir = Join-Path $scriptTempRoot "deepseek-baseline-$([guid]::NewGuid().ToString('N'))"
 
     Write-Host "=== Run $run / $Runs : port=$port model=$resolvedModel ===" -ForegroundColor Cyan
 
@@ -309,8 +311,8 @@ for ($run = 1; $run -le $Runs; $run++) {
     $proc = Start-Process -FilePath $binary `
         -ArgumentList @("--port", $port, "--config", $configPath) `
         -PassThru -NoNewWindow `
-        -RedirectStandardOutput (Join-Path $env:TEMP "deepseek-baseline-stdout.log") `
-        -RedirectStandardError (Join-Path $env:TEMP "deepseek-baseline-stderr.log")
+        -RedirectStandardOutput (Join-Path $scriptTempRoot "deepseek-baseline-stdout.log") `
+        -RedirectStandardError (Join-Path $scriptTempRoot "deepseek-baseline-stderr.log")
 
     $fixture = $null
     try {
