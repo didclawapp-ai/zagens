@@ -118,9 +118,9 @@ fn unix_free_bytes(path: &Path) -> Result<u64, String> {
         return Err(format!("无法读取磁盘剩余空间（{}）", canonical.display()));
     }
     let stat = unsafe { stat.assume_init() };
-    // `f_bavail`/`f_frsize` width varies by platform (u64 on Linux, narrower on
-    // macOS); `u64::from` widens portably and satisfies clippy on every target.
-    let free = u64::from(stat.f_bavail) * u64::from(stat.f_frsize);
+    // Field width varies (u64 on Linux, narrower on macOS). Widen via u128 so we
+    // avoid both `as u64` (unnecessary_cast on Linux) and `u64::from` (useless_conversion).
+    let free = (stat.f_bavail as u128 * stat.f_frsize as u128) as u64;
     Ok(free)
 }
 

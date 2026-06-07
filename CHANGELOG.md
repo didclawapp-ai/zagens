@@ -31,7 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **CI lint (desktop, 1.96 strict clippy):** Fix `-D warnings` failures in `crates/desktop`: scope the `OnceLock` import into the `#[cfg(windows)]` `windows_shell_exe()` (unused on Linux) in `terminal.rs`; drop a needless `return` and use portable `u64::from(...)` instead of `as u64` casts (`unnecessary_cast` on Linux, but the `statvfs` fields are narrower on macOS) in `disk_guard.rs`; collapse a nested `if` into a `let`-chain in `sidecar.rs`.
+- **CI lint (desktop, 1.96 strict clippy):** Fix `-D warnings` failures in `crates/desktop`: scope the `OnceLock` import into the `#[cfg(windows)]` `windows_shell_exe()` (unused on Linux) in `terminal.rs`; drop a needless `return` and widen `statvfs` fields via `u128` multiply in `disk_guard.rs` (avoids `as u64` on Linux and `u64::from` useless-conversion on the same); collapse a nested `if` into a `let`-chain in `sidecar.rs`.
 - **CI lint:** Remove needless `return` statements in `policy_degraded_mode_notice()` (`crates/runtime-server/src/sandbox/mod.rs`) — resolves `clippy::needless_return` errors that broke CI on push.
 - **CI lint:** Pre-build `deepseek-runtime-server` before `cargo clippy --workspace` in `.github/workflows/ci.yml` and `scripts/ci/verify-lint.sh`; `crates/desktop/build.rs` requires the sidecar binary at compile time (same as the Test job fix below).
 - **CI:** Test job now `needs: lint` so fmt/clippy failures skip the three-platform test matrix and save CI minutes.
