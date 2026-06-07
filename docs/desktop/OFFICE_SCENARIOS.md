@@ -1,369 +1,369 @@
-# Zagens 办公场景地图
+# Zagens Office Scenario Map
 
-> **状态：** 产品备忘（2026-06-05，落地口径同步 2026-06-05）  
-> **Phase A 完成度：** L1/L2/L3 底座已落地；L4 共 **11** 个 bundled 技能 + **11** 张空态卡片 + P0 fixtures/oracle；剩余主攻读表保真稳定性与 P0 端到端跑绿。  
-> **本期范围外（不计入差距）：** STT/TTS 语音（Phase C）、ERP/CRM connector（Phase B）、`inbox/`/`data/` 工作区自动初始化（用户自建或复制 fixtures 即可）。  
-> **定位：** 在 LHT / CRAFT 等 **编码 harness** 之外，梳理 **Office 模式**可覆盖的真实工作场景、与现有能力对齐情况、以及跑通优先级。  
-> **核心主张（本版新增）：** 这 40+ 个场景不是 40+ 个独立功能，而是 **同一条流水线 × 四个正交维度** 的不同取值组合。统一架构见 §2.3 / §3；新增场景应退化为「填一份技能契约」，而非「写新引擎」。  
-> **相关：** [task-type-prompt-architecture.md](../task-type-prompt-architecture.md)、[COMPOSABLE_HARNESS.md](../harness/COMPOSABLE_HARNESS.md)（Office 迭代计划与 DEV_NOTES 见本地 `doc_Private/docs/`）
-
----
-
-## 1. 产品一句话
-
-Zagens 办公线不是「再做一个聊天写 Word」，而是：
-
-> **能读表、能联网、能交文件（DOCX / XLSX / PPTX / PDF）的本地桌面办公副驾** — 先给概况，再出可交付物；后续可加语音（STT → TTS 概况 → 确认 → 文档）。
-
-与 **Code 模式**分工：Office 裁掉 shell / patch / 子代理等代码向工具，保留 `read_office`、`write_office`、联网与技能（见 `office.md`）。
+> **Status:** Product memo (2026-06-05, landing criteria synced 2026-06-05)  
+> **Phase A completion:** L1/L2/L3 foundation landed; L4 has **11** bundled skills + **11** empty-state cards + P0 fixtures/oracle; remaining focus is read-table fidelity stability and P0 end-to-end green runs.  
+> **Out of scope this phase (not counted as gaps):** STT/TTS voice (Phase C), ERP/CRM connectors (Phase B), `inbox/`/`data/` workspace auto-initialization (users create or copy from fixtures).  
+> **Positioning:** Beyond coding harnesses like LHT / CRAFT, map **Office mode** real work scenarios, alignment with current capabilities, and run-through priorities.  
+> **Core thesis (new this version):** These 40+ scenarios are not 40+ independent features, but **the same pipeline × four orthogonal dimensions** with different value combinations. Unified architecture see §2.3 / §3; new scenarios should reduce to "fill one skill contract", not "write a new engine".  
+> **Related:** [task-type-prompt-architecture.md](../task-type-prompt-architecture.md), [COMPOSABLE_HARNESS.md](../harness/COMPOSABLE_HARNESS.md) (Office iteration plan and DEV_NOTES in local `doc_Private/docs/`)
 
 ---
 
-## 2. 场景分类（两种视角）
+## 1. Product One-Liner
 
-### 2.1 按「信息流向」
+Zagens Office line is not "another chat that writes Word", but:
 
-| 类型 | 含义 | 典型输出 | Zagens 主要能力 |
-|------|------|----------|-----------------|
-| **外察** | 看市场、竞品、政策、行情 | 调研简报 DOCX | `web_search`、`fetch_url`、`finance` |
-| **内聚** | 收各部门材料，给老板/主管一份总览 | 经营日报 / 周报 DOCX | `read_office` 多文件 + 摘要 + `write_office` |
-| **内业** | 车间、销售、财务用内部数据出表 | 生产简报、报价单 XLSX | `read_office` + `write_office`（XLSX 纯 Rust） |
-| **创作** | 从零写方案、合同、纪要 | DOCX / PPTX | `load_skill` + `write_office` |
-| **加工** | 翻译、合并、改一版 | 同格式或新文档 | `read_office` → 改 → `write_office` / `load_office_payload` |
-| **交付** | 找到文件、预览、改一列、发出去 | 体验层 | `deliverables/` 默认目录 + 高亮、PDF/HTML 右栏预览、Office 系统打开；一键导出 PDF 待做 |
+> **A local desktop office copilot that can read spreadsheets, search the web, and deliver files (DOCX / XLSX / PPTX / PDF)** — brief first, then deliverables; voice can be added later (STT → TTS briefing → confirm → document).
 
-### 2.2 按「角色 / 职能」
-
-见 §4 场景目录（按部门展开）。
-
-### 2.3 按「四个正交维度」（统一抽象 · 推荐作为架构一等公民）
-
-§2.1 / §2.2 是给人看的「目录视角」。但从**工程视角**看，§4 那一长串场景其实只是在四个**相互独立**的轴上取不同值。任何一个办公场景都能写成一组坐标 `(摄取, 处理, 输出, 交互)`：
-
-| 轴 | 含义 | 取值空间 | 对应 §2.1 / §4 的体现 |
-|----|------|----------|------------------------|
-| **① 摄取源 Ingest** | 数据从哪来 | `web`（联网）· `files`（`inbox/`,`data/`）· `dictation`（口述）· `vision`（`describe_image`，扫描件）· `connector`（ERP/CRM，**远期**） | 外察 / 内聚 / 内业 |
-| **② 处理意图 Transform** | 对数据做什么 | `summarize` · `aggregate` · `compare` · `compute` · `translate` · `draft` · `extract` | 汇总 / 对比 / 报价计算 / 翻译 / 起草 |
-| **③ 输出契约 Render** | 交付什么 | 格式 `docx/xlsx/pptx/pdf` + `sections`/`sheets` 结构 | §5 默认输出列 |
-| **④ 交互节奏 Loop** | 怎么来回 | `oneshot` · `brief_first`（先概况）· `confirm` · `iterable`（增量改）· `voice` | §3 流水线 + Phase C 语音 |
-
-**关键结论：** 「场景」不该是架构的一等公民，**四个轴才是**。一个场景 = 在这四轴上选定的一组坐标；统一架构只需把四轴各自做成可复用积木，新增场景就退化为**声明式配置**（见 §3 技能契约）。
-
-**用四轴重新解释文档里的几组对比：**
-
-- **老板日报 vs 车间晨报（§4.1）**：差异只在 `ingest`（多源 vs 单源）+ `render.sections`，流水线内核完全相同。
-- **P0-1 ~ P0-4 四条 demo（§6）**：恰好是四轴的四个代表性坐标（外察 / 内聚 / 内业读表 / 计算+迭代）——**跑通这 4 条 ≈ 验证四轴各自打通**，而非验证 4 个孤立功能。
-- **语音（Phase C）**：只是把 `loop` 从 `brief_first(文字)` 换成 `voice(STT/TTS)`，**不触碰摄取/处理/生成**。
+Division of labor with **Code mode**: Office trims shell / patch / sub-agent and other code-oriented tools, keeps `read_office`, `write_office`, web access, and skills (see `office.md`).
 
 ---
 
-## 3. 统一架构（所有场景共用）
+## 2. Scenario Taxonomy (Two Views)
 
-办公线收敛为 **4 层**：场景只在最上面一层（声明式配置）变化，下面三层固定复用。
+### 2.1 By Information Flow
+
+| Type | Meaning | Typical Output | Zagens Primary Capabilities |
+|------|---------|----------------|----------------------------|
+| **External scan** | Market, competitors, policy, quotes | Research brief DOCX | `web_search`, `fetch_url`, `finance` |
+| **Internal aggregation** | Collect department materials into one executive view | Operations daily/weekly DOCX | `read_office` multi-file + summary + `write_office` |
+| **Internal ops** | Shop floor, sales, finance tables from internal data | Production brief, quote XLSX | `read_office` + `write_office` (XLSX pure Rust) |
+| **Creation** | Draft proposals, contracts, minutes from scratch | DOCX / PPTX | `load_skill` + `write_office` |
+| **Processing** | Translate, merge, revise | Same or new format | `read_office` → edit → `write_office` / `load_office_payload` |
+| **Delivery** | Find file, preview, edit column, send out | Experience layer | `deliverables/` default dir + highlight, PDF/HTML right-panel preview, open with system app; one-click PDF export TBD |
+
+### 2.2 By Role / Function
+
+See §4 scenario catalog (expanded by department).
+
+### 2.3 By Four Orthogonal Dimensions (Unified Abstraction · Recommended as Architecture First-Class)
+
+§2.1 / §2.2 are human-facing "catalog views". From an **engineering view**, the long §4 list is just different values on four **mutually independent** axes. Any office scenario can be written as coordinates `(ingest, transform, render, loop)`:
+
+| Axis | Meaning | Value Space | §2.1 / §4 Manifestation |
+|------|---------|-------------|-------------------------|
+| **① Ingest** | Where data comes from | `web` (online) · `files` (`inbox/`,`data/`) · `dictation` (spoken) · `vision` (`describe_image`, scans) · `connector` (ERP/CRM, **future**) | External scan / aggregation / internal ops |
+| **② Transform** | What to do with data | `summarize` · `aggregate` · `compare` · `compute` · `translate` · `draft` · `extract` | Summary / comparison / quote calc / translation / drafting |
+| **③ Render** | What to deliver | Format `docx/xlsx/pptx/pdf` + `sections`/`sheets` structure | §5 default output column |
+| **④ Loop** | Interaction rhythm | `oneshot` · `brief_first` (brief first) · `confirm` · `iterable` (incremental edit) · `voice` | §3 pipeline + Phase C voice |
+
+**Key conclusion:** "Scenario" should not be architecture first-class; **the four axes are**. One scenario = one coordinate set on four axes; unified architecture only needs reusable blocks per axis; new scenarios reduce to **declarative config** (see §3 skill contract).
+
+**Re-explaining document comparisons with four axes:**
+
+- **Executive daily vs shop-floor morning report (§4.1):** Difference only in `ingest` (multi-source vs single-source) + `render.sections`; pipeline kernel identical.
+- **P0-1 ~ P0-4 four demos (§6):** Exactly four representative coordinates on four axes (external scan / aggregation / internal read-table / compute+iterable) — **running these 4 ≈ validating each axis**, not four isolated features.
+- **Voice (Phase C):** Only swaps `loop` from `brief_first(text)` to `voice(STT/TTS)`; **does not touch ingest/transform/render**.
+
+---
+
+## 3. Unified Architecture (Shared by All Scenarios)
+
+Office line converges to **4 layers**: scenarios vary only at the top (declarative config); bottom three layers fixed and reused.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ L4  场景层（声明式）= 一份 SKILL.md「技能契约」               │
-│     只声明四轴坐标：ingest + transform + render + loop + verify │
-│     ↑ 新增场景在这一层，零引擎改动（见 §3.2）                  │
+│ L4  Scenario layer (declarative) = one SKILL.md "contract"  │
+│     Declares four-axis coordinates: ingest+transform+render+loop+verify │
+│     ↑ New scenarios at this layer, zero engine changes (§3.2) │
 ├─────────────────────────────────────────────────────────────┤
-│ L3  流水线内核（固定 6 段，见 §3.1）                          │
-│     触发 → 摄取 → 概况 → 确认 → 生成 → 交付/迭代               │
+│ L3  Pipeline kernel (fixed 6 stages, §3.1)                  │
+│     Trigger → ingest → brief → confirm → generate → deliver/iterate │
 ├─────────────────────────────────────────────────────────────┤
-│ L2  能力原语（正交工具，已实现/在建）                          │
-│   摄取 read_office · web_search · fetch_url · finance          │
-│   视觉 describe_image（视觉桥接，扫描件 OCR 路径）              │
-│   生成 write_office(source 直喂) · load_office_payload(增量改) │
-│   交付 deliverables/ · 预览 · open_with_system_app             │
-│   P0 工程缺口 → office-mode-iteration-plan §三 能力差距矩阵    │
+│ L2  Capability primitives (orthogonal tools, shipped/in progress) │
+│   Ingest read_office · web_search · fetch_url · finance          │
+│   Vision describe_image (vision bridge, scan OCR path)              │
+│   Generate write_office(source direct) · load_office_payload(edit) │
+│   Deliver deliverables/ · preview · open_with_system_app             │
+│   P0 engineering gaps → office-mode-iteration-plan §3 capability matrix │
 ├─────────────────────────────────────────────────────────────┤
-│ L1  基座 TaskType=Office 隔离 · Python venv · 网络策略门控     │
+│ L1  Foundation TaskType=Office isolation · Python venv · network policy gate │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-> **现状提示：** L1/L2/L3 已落地（见 [office-mode-iteration-plan.md](../office-mode-iteration-plan.md) 推荐实施顺序 1–8）。**剩余工作量集中在 L4 场景补齐与验收**，以及 §8 所列 L2 细项（读表保真 golden、迭代修改产品化、企业模板）；扫描件 OCR **不走内置引擎**，统一经视觉桥接（§4.6）。
+> **Current note:** L1/L2/L3 landed (see [office-mode-iteration-plan.md](../../doc_Private/docs/office-mode-iteration-plan.md) recommended implementation order 1–8). **Remaining work concentrates on L4 scenario fill and acceptance**, plus §8 L2 items (read-table fidelity golden, iterative edit productization, enterprise templates); scan OCR **not built-in engine**, unified via vision bridge (§4.6).
 
-### 3.1 流水线内核（L3，6 段固定）
+### 3.1 Pipeline Kernel (L3, 6 Fixed Stages)
 
-**逻辑顺序（用户故事）：** 摄取 → 处理（模型推理）→ 概况 → 确认 → 生成 → 交付/迭代。  
-下列 6 段是**产品验收分段**，实现时不必做成硬状态机；模型可在单轮内交织「读 + 想 + 写」。
+**Logical order (user story):** ingest → transform (model reasoning) → brief → confirm → generate → deliver/iterate.  
+The 6 stages below are **product acceptance segments**; implementation need not be a hard state machine; model may interleave "read + think + write" in one turn.
 
 ```
-触发（任务卡片 / 打字 / 未来：语音 STT）
-  → Office 模式 session（独立 TaskType，与 Code 会话隔离）
-  → load_skill（可选，高频任务推荐）
-  → ① 摄取：read_office / web_search / fetch_url / 用户口述 / describe_image（扫描件）
-  → ② 处理：摘要 / 汇总 / 对比 / 计算 / 翻译 / 起草（prompt + 模型，非独立 runtime 算子）
-  → ④ 概况（可选）：对话摘要（未来：TTS 口播 30～60s）     ← Loop.brief_first
-  → ④ 确认（可选）：「生成正式文档？」                     ← Loop.confirm
-  → ③ 生成：write_office → deliverables/<title>.<ext>      ← Render
-  → ④ 交付/迭代：预览 / 外发 / load_office_payload         ← Loop.iterable
+Trigger (task card / typing / future: voice STT)
+  → Office mode session (independent TaskType, isolated from Code sessions)
+  → load_skill (optional, recommended for high-frequency tasks)
+  → ① Ingest: read_office / web_search / fetch_url / user dictation / describe_image (scans)
+  → ② Transform: summarize / aggregate / compare / compute / translate / draft (prompt + model, not independent runtime operator)
+  → ④ Brief (optional): conversation summary (future: TTS 30–60s)     ← Loop.brief_first
+  → ④ Confirm (optional): "Generate formal document?"                 ← Loop.confirm
+  → ③ Generate: write_office → deliverables/<title>.<ext>             ← Render
+  → ④ Deliver/iterate: preview / send / load_office_payload             ← Loop.iterable
 ```
 
-### 3.2 技能契约（L4，让新增场景 = 填表）
+### 3.2 Skill Contract (L4, New Scenario = Fill Form)
 
-把 §5 已有的 **11** 个 bundled 技能与附录 A 其余待建技能，统一成同一个声明 schema。每个 `office-*/SKILL.md` 只需按四轴 + 校验填写，**无需改引擎**。示例（P0-2 样板「老板经营日报」）：
+Unify the existing **11** bundled skills and appendix A pending skills into one declaration schema. Each `office-*/SKILL.md` only fills four axes + verification; **no engine changes**. Example (P0-2 template "Executive Operations Daily Brief"):
 
 ```yaml
 id: office-executive-daily-brief
-ingest:                       # 轴① 摄取源
+ingest:                       # Axis ① Ingest
   - kind: files
-    from: inbox/              # 多部门附件
+    from: inbox/              # multi-department attachments
     formats: [docx, xlsx, pdf]
-transform:                    # 轴② 处理意图（组合 L2 + 模型推理）
+transform:                    # Axis ② Transform (L2 + model reasoning)
   - summarize_per_source
   - aggregate
   - extract: pending_decisions
-render:                       # 轴③ 输出契约
+render:                       # Axis ③ Render
   format: docx
-  sections: [概况, 各部门要点, 风险, 待决事项, 附录]
-  out: deliverables/          # path 可省，默认即此
-loop:                         # 轴④ 交互节奏
-  brief_first: true           # 先文字/口播概况
+  sections: [Overview, Department Highlights, Risks, Pending Decisions, Appendix]
+  out: deliverables/          # path optional, default here
+loop:                         # Axis ④ Loop
+  brief_first: true           # text/voice brief first
   confirm_before_render: true
-  iterable: true              # 支持 load_office_payload 增量改
-verify:                       # 验收配置（见下「契约落地」）
+  iterable: true              # supports load_office_payload incremental edit
+verify:                       # acceptance config (see "contract landing" below)
   - sources_cited
-  - has_section: 待决事项
+  - has_section: Pending Decisions
 ```
 
-**契约字段说明：**
+**Contract field reference:**
 
-| 块 | 含义 | 运行时 |
-|----|------|--------|
-| `ingest` / `render` / `loop` | 四轴坐标 + 目录约定 | 由 SKILL 正文步骤 + 模型执行；引擎不解析 YAML |
-| `transform` | **技能指令语义**（汇总、对比、计算…） | **非**独立 runtime 算子；写在 SKILL 步骤里 |
-| `verify` | 演示 / 回归 oracle | **非**自动 gate；供人工验收或未来 headless 脚本 |
+| Block | Meaning | Runtime |
+|-------|---------|---------|
+| `ingest` / `render` / `loop` | Four-axis coordinates + directory conventions | SKILL body steps + model execution; engine does not parse YAML |
+| `transform` | **Skill instruction semantics** (aggregate, compare, compute…) | **Not** independent runtime operator; written in SKILL steps |
+| `verify` | Demo / regression oracle | **Not** auto gate; for manual acceptance or future headless scripts |
 
-**契约落地（三阶段，均不要求改引擎）：**
+**Contract landing (three phases, none require engine changes):**
 
-| 阶段 | 动作 |
-|------|------|
-| **1 — 约定层** | ✅ **11/11** — 全部 bundled `office-*/SKILL.md` 含 `## 技能契约` + YAML + 编号步骤（样板：`office-executive-daily-brief`） |
-| **2 — 校验层** | ❌ 待建 — 可选 `scripts/office-skill-lint.mjs`：检查契约字段、§6 验收项是否齐全 |
-| **3 — 回归层** | ⚠️ 部分 — `fixtures/harness/office-demo/` + `scripts/office-demo-oracle.ps1`（P0-2/3/4；P0-1 无 headless oracle） |
+| Phase | Action |
+|-------|--------|
+| **1 — Convention** | ✅ **11/11** — all bundled `office-*/SKILL.md` include `## Skill Contract` + YAML + numbered steps (template: `office-executive-daily-brief`) |
+| **2 — Lint** | ❌ TBD — optional `scripts/office-skill-lint.mjs`: check contract fields, §6 acceptance items complete |
+| **3 — Regression** | ⚠️ Partial — `fixtures/harness/office-demo/` + `scripts/office-demo-oracle.ps1` (P0-2/3/4; P0-1 no headless oracle) |
 
-> **与现有技能对齐：** 全部 11 个 bundled 技能已是「确认 → 摄取 → 处理 → 生成 → 增量改」结构（见 `office-weekly-report`）。契约把隐式约定**显式化**；P0 三条新技能与卡片已落地，见 §5 / §10。
+> **Alignment with existing skills:** All 11 bundled skills already follow "confirm → ingest → transform → generate → incremental edit" (see `office-weekly-report`). Contract **explicitizes** implicit conventions; P0 three new skills and cards landed, see §5 / §10.
 
-**目录约定（建议 demo / 企业工作区统一）：**
+**Directory conventions (recommended demo / enterprise workspace):**
 
-| 路径 | 用途 |
-|------|------|
-| `inbox/` | 各部门扔进来的原始附件（日报、表、纪要）；**用户自建**或从 `office-demo` fixtures 复制 |
-| `data/` | 结构化数据源（价目表、生产日报、主数据）；同上，**不自动初始化** |
-| `deliverables/` | Agent 输出（默认，技能可不填 `path`）；工作区创建时自动确保存在 |
-| `templates/` | 企业母版 / 价目表模板（未来） |
+| Path | Purpose |
+|------|---------|
+| `inbox/` | Raw attachments from departments (dailies, sheets, minutes); **user-created** or copied from `office-demo` fixtures |
+| `data/` | Structured data sources (price lists, production dailies, master data); same, **not auto-initialized** |
+| `deliverables/` | Agent output (default, skill may omit `path`); ensured on workspace create |
+| `templates/` | Enterprise master templates / price list templates (future) |
 
-**语音扩展（Phase C，本期范围外）：** 同一流水线，仅把「触发 + 概况」换成 STT / TTS；执行仍走 Office 工具面。见 `doc_Private/docs/desktop/DEV_NOTES.md` §入座 briefing。
+**Voice extension (Phase C, out of scope this phase):** Same pipeline, only swap "trigger + brief" for STT / TTS; execution still Office tool surface. See `doc_Private/docs/desktop/DEV_NOTES.md` §seating briefing.
 
-**与 LHT / CRAFT：** 办公单次任务通常 **不需要** LHT checklist；多文件长调研、跨天跟进可考虑轻量 checklist，但不作为办公线默认。
-
----
-
-## 4. 场景目录
-
-图例：**成熟度** — ✅ 技能/卡片可试 · ⚠️ 技能已有但端到端或读表保真待验证 · ❌ 技能待建或依赖企业模板 · 🔮 远期（本期范围外：语音、ERP/CRM connector）
-
-**四轴缩写（§2.3）：** `摄取|处理|输出|交互` — 例：`files,aggregate,docx,brief+confirm`
-
-### 4.1 管理层 / 决策
-
-| 场景 | 四轴（缩写） | 角色 | 典型说法 / 触发 | 输入 | 输出 | 技能 / 卡片 | 成熟度 |
-|------|--------------|------|-----------------|------|------|-------------|--------|
-| **经营日报汇总** | `files,aggregate,docx,brief+confirm` | 老板、高管 | 「汇总一下昨天的日报」 | `inbox/` 各部门 DOCX/摘要 | Executive brief DOCX | `office-executive-daily-brief` ✅ | ⚠️ |
-| **周报 / 月报** | `files+dictation,summarize,docx,iterable` | 主管 | 「写本周周报」 | 附件 + 口述 | DOCX | `office-weekly-report` ✅ | ✅ |
-| **项目汇报 PPT** | `files+dictation,draft,pptx,oneshot` | 项目负责人 | 「做一份项目汇报 PPT」 | 要点 + 材料 | PPTX | `office-project-report` ✅ | ✅ |
-| **月经营分析** | `files,compute+compare,xlsx+docx,iterable` | 财务+管理层 | 「根据上月销售表做经营分析」 | XLSX | DOCX + 图表 XLSX | `office-data-report` + 定制 | ⚠️ |
-| **决策备忘录** | `files+web,compare,docx,confirm` | 高管 | 「整理 A/B 方案供决策」 | 笔记 + 调研 | DOCX（选项对比） | 待建 `office-decision-memo` | ❌ |
-| **董事会 / 投资人简报** | `files,summarize+extract,pptx,brief` | CEO | 「压缩成 5 页投资人要点」 | 长材料 | PPTX / DOCX | 待建 | ❌ |
-
-**老板日报 vs 车间晨报：** 老板场景是 **多源汇总 + 待决事项**；车间场景是 **单一主题 + 结构化指标**（见 §4.4）。
+**vs LHT / CRAFT:** Office single tasks usually **do not need** LHT checklist; multi-file long research, cross-day follow-up may use light checklist, not Office default.
 
 ---
 
-### 4.2 市场 / 销售 / 商务
+## 4. Scenario Catalog
 
-| 场景 | 四轴（缩写） | 角色 | 典型说法 | 输入 | 输出 | 技能 | 成熟度 |
-|------|--------------|------|----------|------|------|------|--------|
-| **竞品 / 市场动态** | `web,summarize+compare,docx,oneshot` | 市场 | 「调研竞品 A/B 最近动态」 | 联网 | DOCX + 来源 | `office-competitive-analysis` ✅ | ✅ |
-| **市场日报 / 周报** | `web+files,summarize,docx,oneshot` | 市场 | 「今天行业有什么动静」 | 联网 + 可选内部笔记 | DOCX | `office-market-watch`（待建） | ⚠️ |
-| **活动 / 战役简报** | `web+dictation,draft,docx,confirm` | 市场 | 「写 Q3 推广方案大纲」 | 口述 + 调研 | DOCX | 待建 | ❌ |
-| **客户报价单** | `files,compute,xlsx,iterable` | 销售（小王） | 「按客户需求整理报价」 | 价目表 XLSX + 需求 | 报价 XLSX | `office-customer-quote` ✅ | ⚠️ |
-| **商务提案 / Proposal** | `files+dictation,draft,docx+pptx,confirm` | 销售 | 「给客户写方案书」 | 需求 + 模板 | DOCX / PPTX | 待建 | ❌ |
-| **销售日报** | `files,aggregate,docx+xlsx,oneshot` | 销售主管 | 「汇总今日销售跟进」 | CRM 导出 / 表 | DOCX / XLSX | 待建 | ❌ |
-| **合同初稿** | `dictation,draft,docx,iterable` | 商务 / 法务协助 | 「起草采购合同初稿」 | 条款要点 | DOCX | `office-contract-draft` ✅ | ✅ |
-| **招标应答提纲** | `files,extract+draft,docx,confirm` | 售前 | 「按招标文件列应答目录」 | PDF/ DOCX 招标 | DOCX 提纲 | 待建 | ❌ |
+Legend: **Maturity** — ✅ skill/card tryable · ⚠️ skill exists but E2E or read-table fidelity pending · ❌ skill TBD or needs enterprise template · 🔮 future (out of scope: voice, ERP/CRM connector)
 
----
+**Four-axis shorthand (§2.3):** `ingest|transform|render|loop` — e.g. `files,aggregate,docx,brief+confirm`
 
-### 4.3 生产 / 品质 / 供应链 / 运营
+### 4.1 Management / Decision
 
-| 场景 | 四轴（缩写） | 角色 | 典型说法 | 输入 | 输出 | 技能 | 成熟度 |
-|------|--------------|------|----------|------|------|------|--------|
-| **生产 + 品质晨报** | `files,summarize+aggregate,docx+xlsx,brief+confirm` | 生产/品质（小李） | 「汇报昨天生产现况和品质现况」 | 昨日 MES/Excel 导出 | 先概况 → DOCX/XLSX | `office-production-daily-report` ✅ | ⚠️ |
-| **异常 / 8D 报告** | `files,draft+extract,docx,confirm` | 品质 | 「整理这批不良品异常说明」 | 检验记录 | DOCX | 待建 | ❌ |
-| **排产 / 工单摘要** | `files,summarize,docx,oneshot` | 计划 | 「总结本周工单完成情况」 | XLSX | DOCX | 待建 | ❌ |
-| **供应商评估** | `files,compare,xlsx,iterable` | 采购 | 「对比三家供应商报价与交期」 | 多 XLSX | 对比表 XLSX | 待建 | ⚠️ |
-| **库存 / 周转简报** | `files,compute+compare,xlsx,iterable` | 仓储 | 「上周库存异动说明」 | 库存表 | XLSX 报表 | `office-data-report` 改 | ⚠️ |
-| **SOP / 作业指导书** | `files+dictation,draft,docx,iterable` | 工艺 | 「把这段流程写成 SOP」 | 口述 + 旧版 | DOCX | 待建 | ❌ |
+| Scenario | Four-axis (shorthand) | Role | Typical Prompt / Trigger | Input | Output | Skill / Card | Maturity |
+|----------|----------------------|------|--------------------------|-------|--------|--------------|----------|
+| **Operations daily rollup** | `files,aggregate,docx,brief+confirm` | Executive, leadership | "Summarize yesterday's dailies" | `inbox/` dept DOCX/summaries | Executive brief DOCX | `office-executive-daily-brief` ✅ | ⚠️ |
+| **Weekly / monthly report** | `files+dictation,summarize,docx,iterable` | Manager | "Write this week's weekly report" | Attachments + dictation | DOCX | `office-weekly-report` ✅ | ✅ |
+| **Project report PPT** | `files+dictation,draft,pptx,oneshot` | Project lead | "Make a project report PPT" | Bullet points + materials | PPTX | `office-project-report` ✅ | ✅ |
+| **Monthly operations analysis** | `files,compute+compare,xlsx+docx,iterable` | Finance + leadership | "Operations analysis from last month's sales sheet" | XLSX | DOCX + chart XLSX | `office-data-report` + custom | ⚠️ |
+| **Decision memo** | `files+web,compare,docx,confirm` | Executive | "Organize A/B options for decision" | Notes + research | DOCX (option comparison) | TBD `office-decision-memo` | ❌ |
+| **Board / investor brief** | `files,summarize+extract,pptx,brief` | CEO | "Compress to 5-page investor highlights" | Long materials | PPTX / DOCX | TBD | ❌ |
+
+**Executive daily vs shop-floor morning report:** Executive scenario is **multi-source rollup + pending decisions**; shop-floor is **single topic + structured metrics** (see §4.3).
 
 ---
 
-### 4.4 财务 / 行政 / HR
+### 4.2 Marketing / Sales / Business
 
-| 场景 | 角色 | 典型说法 | 输入 | 输出 | 技能 | 成熟度 |
-|------|------|----------|------|------|------|--------|
-| **费用 / 报销汇总** | 财务 | 「汇总本月报销分类」 | XLSX | XLSX + 摘要 DOCX | 待建 | ⚠️ |
-| **预算执行差异** | 财务 | 「实际 vs 预算差异说明」 | 两表 XLSX | DOCX + 表 | 待建 | ⚠️ |
-| **发票 / 对账清单** | 财务 | 「整理待付款清单」 | CSV/XLSX | XLSX | 待建 | ⚠️ |
-| **会议纪要** | 行政 | 「整理今天会议决议」 | 录音转写 / 笔记 | DOCX | `office-meeting-minutes` ✅ | ✅ |
-| **通知 / 公告** | 行政 | 「写全员放假通知」 | 口述 | DOCX | 通用 office | ✅ |
-| **招聘 JD** | HR | 「写 Java 工程师 JD」 | 岗位要点 | DOCX | 待建 | ❌ |
-| **面试纪要** | HR | 「整理候选人面试评价」 | 笔记 | DOCX | 待建 | ❌ |
-| **简历 / 求职信** | 个人 / HR | 「按岗位改简历」 | 旧简历 | DOCX | `office-resume` ✅ | ✅ |
-
----
-
-### 4.5 产品 / 研发 / 项目（偏办公，非 Code 模式）
-
-| 场景 | 角色 | 典型说法 | 输入 | 输出 | 技能 | 成熟度 |
-|------|------|----------|------|------|------|--------|
-| **发布说明** | 产品 | 「写版本发布说明」 | changelog | DOCX | `office-release-notes` ✅ | ✅ |
-| **PRD 提纲** | 产品 | 「把需求整理成 PRD 结构」 | 笔记 | DOCX | 待建 | ❌ |
-| **用户调研摘要** | 产品 | 「总结 5 份访谈」 | 多 DOCX | DOCX | 待建 | ⚠️ |
-| **竞品功能矩阵** | 产品 | 「做功能对比表」 | 联网 + 内部 | XLSX / DOCX | `office-competitive-analysis` 扩展 | ⚠️ |
-
-> **边界：** 改代码、跑测试、长程重构 → **Code 模式 + LHT/CRAFT**；Office 只交付 **文档 / 表 / 汇报**。
+| Scenario | Four-axis (shorthand) | Role | Typical Prompt | Input | Output | Skill | Maturity |
+|----------|----------------------|------|----------------|-------|--------|-------|----------|
+| **Competitor / market dynamics** | `web,summarize+compare,docx,oneshot` | Marketing | "Research competitor A/B recent moves" | Web | DOCX + sources | `office-competitive-analysis` ✅ | ✅ |
+| **Market daily / weekly** | `web+files,summarize,docx,oneshot` | Marketing | "What's moving in the industry today" | Web + optional internal notes | DOCX | `office-market-watch` (TBD) | ⚠️ |
+| **Campaign / battle brief** | `web+dictation,draft,docx,confirm` | Marketing | "Write Q3 promotion plan outline" | Dictation + research | DOCX | TBD | ❌ |
+| **Customer quote** | `files,compute,xlsx,iterable` | Sales | "Quote per customer requirements" | Price list XLSX + requirements | Quote XLSX | `office-customer-quote` ✅ | ⚠️ |
+| **Business proposal** | `files+dictation,draft,docx+pptx,confirm` | Sales | "Write proposal for customer" | Requirements + template | DOCX / PPTX | TBD | ❌ |
+| **Sales daily** | `files,aggregate,docx+xlsx,oneshot` | Sales manager | "Summarize today's sales follow-ups" | CRM export / sheet | DOCX / XLSX | TBD | ❌ |
+| **Contract first draft** | `dictation,draft,docx,iterable` | Business / legal assist | "Draft procurement contract first draft" | Clause bullet points | DOCX | `office-contract-draft` ✅ | ✅ |
+| **RFP response outline** | `files,extract+draft,docx,confirm` | Pre-sales | "Response outline per RFP document" | PDF/DOCX RFP | DOCX outline | TBD | ❌ |
 
 ---
 
-### 4.6 通用 / 跨职能
+### 4.3 Production / Quality / Supply Chain / Operations
 
-| 场景 | 说明 | 成熟度 |
-|------|------|--------|
-| **多文档合并** | 三份周报 → 一份月报 | ⚠️ 读表保真 + 多文件 |
-| **翻译 / 本地化** | 合同 / PPT 章节翻译 | ⚠️ |
-| **格式转换叙事** | 「把要点做成 PPT」 | ✅ `write_office` |
-| **邮件 / 消息草稿** | 对外回复、跟进邮件 | ✅ 对话即可，可选 DOCX |
-| **政策 / 法规摘要** | 联网 + 引用 | ⚠️ 来源规范 |
-| **数据可视化** | CSV → 图表 XLSX / PPTX | ✅ `write_office` `source` 直喂 CSV/TSV/XLSX |
-| **扫描件 OCR** | PDF 图片页 | ✅ **视觉桥接** — `read_office` 文本层为空时走 `describe_image`（不在 `read_office` 内置 OCR；见 [office-read-tool-plan.md](../office-read-tool-plan.md)） |
-
----
-
-## 5. 已落地技能与 UI 卡片（对照）
-
-共 **11** 个 bundled 技能，空态 **11** 张任务卡片（P0 三条置顶）。路径：`crates/runtime-server/assets/skills/office-*/SKILL.md`；卡片与 prefill：`crates/desktop/web-ui/src/components/OfficeEmptyState.tsx` + `i18n/locales/*.ts` → `officeEmpty`。
-
-| 技能名 | UI 卡片（zh-Hans） | 默认输出 | 批次 |
-|--------|-------------------|----------|------|
-| `office-executive-daily-brief` | 经营日报汇总 | DOCX | P0 |
-| `office-customer-quote` | 客户报价单 | XLSX | P0 |
-| `office-production-daily-report` | 生产品质晨报 | DOCX | P0 |
-| `office-weekly-report` | 周报 | DOCX | 首批 |
-| `office-meeting-minutes` | 会议纪要 | DOCX | 首批 |
-| `office-project-report` | 项目汇报 PPT | PPTX | 首批 |
-| `office-data-report` | 数据报表 | XLSX | 首批 |
-| `office-competitive-analysis` | 竞品分析 | DOCX | 首批 |
-| `office-contract-draft` | 合同初稿 | DOCX | 首批 |
-| `office-resume` | 简历 / 求职信 | DOCX | 首批 |
-| `office-release-notes` | 发布说明 | DOCX | 首批 |
+| Scenario | Four-axis (shorthand) | Role | Typical Prompt | Input | Output | Skill | Maturity |
+|----------|----------------------|------|----------------|-------|--------|-------|----------|
+| **Production + quality morning report** | `files,summarize+aggregate,docx+xlsx,brief+confirm` | Production/quality | "Report yesterday's production and quality status" | Yesterday MES/Excel export | Brief first → DOCX/XLSX | `office-production-daily-report` ✅ | ⚠️ |
+| **Incident / 8D report** | `files,draft+extract,docx,confirm` | Quality | "Document this batch defect incident" | Inspection records | DOCX | TBD | ❌ |
+| **Scheduling / work order summary** | `files,summarize,docx,oneshot` | Planning | "Summarize this week's work order completion" | XLSX | DOCX | TBD | ❌ |
+| **Supplier evaluation** | `files,compare,xlsx,iterable` | Procurement | "Compare three suppliers on price and lead time" | Multiple XLSX | Comparison XLSX | TBD | ⚠️ |
+| **Inventory / turnover brief** | `files,compute+compare,xlsx,iterable` | Warehouse | "Last week inventory movement explanation" | Inventory sheet | XLSX report | `office-data-report` variant | ⚠️ |
+| **SOP / work instruction** | `files+dictation,draft,docx,iterable` | Process engineering | "Write SOP for this process" | Dictation + old version | DOCX | TBD | ❌ |
 
 ---
 
-## 6. 优先跑通的「示范场景」（建议 P0）
+### 4.4 Finance / Admin / HR
 
-结合业务讨论，建议 **先跑通 4 条端到端 demo**（文字版，不依赖语音），证明 Office 线商业价值。这 4 条**刻意各取四轴的一个代表性坐标**——跑通 = 四轴各自打通，而非 4 个孤立功能（见 §2.3）：
-
-| 优先级 | 场景 | 主验证轴 | 技能 / 卡片 | 验收标准 | 落地状态 |
-|--------|------|----------|-------------|----------|----------|
-| **P0-1** | 市场竞品 / 行业动态 | ① `ingest=web` + 来源约束 | `office-competitive-analysis` ✅（`office-market-watch` 未建） | 联网 + 来源列表 + DOCX 进 `deliverables/` | ⚠️ 可试；无 headless oracle |
-| **P0-2** | 老板经营日报汇总 | ① `ingest=files(多源)` + ② `aggregate` | `office-executive-daily-brief` ✅ | `inbox/` 多附件 → 5 段结构 + 待决事项 | ✅ 技能+卡片+fixtures+oracle |
-| **P0-3** | 生产/品质晨报（小李） | ① `ingest=files` + ④ `brief_first` | `office-production-daily-report` ✅ | 读昨日 XLSX → 文字概况 → DOCX/XLSX | ⚠️ 技能链就绪；读表保真影响稳定性 |
-| **P0-4** | 客户报价单（小王） | ② `compute` + ④ `loop=iterable` | `office-customer-quote` ✅ | 价目表 + 需求 → 含税合计 XLSX，可增量改价 | ⚠️ 技能+fixtures+oracle；迭代改价 UX 待产品化 |
-
-**共用体验 P0（工程，已落地）：** 见 [office-mode-iteration-plan.md](../office-mode-iteration-plan.md) 实施顺序 1–8 — `read_office`（calamine）、默认 `deliverables/` + 高亮、PDF/HTML 右栏预览、Office 系统打开、`load_office_payload`、`write_office` `source` 直喂。
-
----
-
-## 7. 分阶段路线图
-
-### Phase A — 文字闭环（当前，~90%）
-
-- ✅ 11 技能 + 11 卡片 + P0 fixtures + oracle（P0-2/3/4）  
-- ✅ 不依赖 STT/TTS  
-- 目标：任意场景 **一句话 → 可下载文件**  
-- **剩余：** P0 端到端跑绿常态化、`office-skill-lint`、附录 A 余 5 技能、读表保真 golden
-
-### Phase B — 数据与迭代（远期，本期范围外部分见下）
-
-- `inbox/`、`data/` 目录约定 — 用户自建或复制 fixtures（**不自动初始化**）  
-- 🔮 MCP 接 ERP / CRM / 公告（可选，**本期不做**）  
-- ⚠️ `load_office_payload` 增量改报价 / 改报表 — 工具有，流程产品化待做  
-- 🔮 定时任务（background automation）做「每日竞品摘要」
-
-### Phase C — 语音（入座 briefing，本期范围外）
-
-- STT / TTS 触发与口播概况 — **本期不做**；架构上仅替换 `loop`，不触碰摄取/处理/生成  
-- 见 `doc_Private/docs/desktop/DEV_NOTES.md` §入座 briefing
+| Scenario | Role | Typical Prompt | Input | Output | Skill | Maturity |
+|----------|------|----------------|-------|--------|-------|----------|
+| **Expense / reimbursement rollup** | Finance | "Summarize this month's expense categories" | XLSX | XLSX + summary DOCX | TBD | ⚠️ |
+| **Budget variance** | Finance | "Actual vs budget variance explanation" | Two XLSX | DOCX + table | TBD | ⚠️ |
+| **Invoice / reconciliation list** | Finance | "Organize pending payment list" | CSV/XLSX | XLSX | TBD | ⚠️ |
+| **Meeting minutes** | Admin | "Organize today's meeting resolutions" | Transcript / notes | DOCX | `office-meeting-minutes` ✅ | ✅ |
+| **Notice / announcement** | Admin | "Write company-wide holiday notice" | Dictation | DOCX | Generic office | ✅ |
+| **Job description** | HR | "Write Java engineer JD" | Role bullet points | DOCX | TBD | ❌ |
+| **Interview notes** | HR | "Organize candidate interview evaluation" | Notes | DOCX | TBD | ❌ |
+| **Resume / cover letter** | Individual / HR | "Tailor resume to role" | Old resume | DOCX | `office-resume` ✅ | ✅ |
 
 ---
 
-## 8. 能力差距（办公线横切）
+### 4.5 Product / R&D / Project (Office-leaning, Not Code Mode)
 
-> **架构含义：** 下列缺口落在 **L2 能力原语**（§3）或 **L4 验收**，与具体场景解耦。补一次原语，所有用到该轴的场景同时受益。  
-> **本期不计入差距：** STT/TTS（Phase C）、ERP/CRM connector、`inbox/`/`data/` 自动初始化。
+| Scenario | Role | Typical Prompt | Input | Output | Skill | Maturity |
+|----------|------|----------------|-------|--------|-------|----------|
+| **Release notes** | Product | "Write version release notes" | changelog | DOCX | `office-release-notes` ✅ | ✅ |
+| **PRD outline** | Product | "Organize requirements into PRD structure" | Notes | DOCX | TBD | ❌ |
+| **User research summary** | Product | "Summarize 5 interview transcripts" | Multiple DOCX | DOCX | TBD | ⚠️ |
+| **Competitor feature matrix** | Product | "Build feature comparison table" | Web + internal | XLSX / DOCX | `office-competitive-analysis` extended | ⚠️ |
 
-| 缺口 | 影响场景 | 状态 | 参考 |
-|------|----------|------|------|
-| XLSX 读取保真（numFmt golden 等） | 生产、报价、财务、老板汇总 | ⚠️ `read_office`+calamine 已上线，稳定性待验证 | office-mode-iteration-plan §P0 R1 |
-| 迭代式修改产品化 | 报价改价、报表改列 | ⚠️ `load_office_payload` 工具有，UX/技能步骤待定型 | office-mode-iteration-plan §P0-4 |
-| 企业模板 | 报价、合同、简报 | ❌ `templates/` 仅约定 | §G |
-| 一键导出 PDF | 外发 | ❌ backlog | office-mode-iteration-plan §15 |
-| round-trip 手改文件 | 用户改过的 docx/xlsx 再改 | ❌ 仅 payload 缓存路径 | office-mode-iteration-plan §P0-4 进阶 |
-| 来源 / 幻觉约束 | 市场、竞品、政策 | ⚠️ `office-competitive-analysis` 技能已要求来源 | §11 |
-| 扫描件 OCR | 扫描 PDF、发票图片 | ✅ **视觉桥接** — `describe_image`；`read_office` 不内置 | office-read-tool-plan §OCR |
-| 生成后预览 / 高亮 | 全部 | ✅ 默认 `deliverables/` + 高亮；PDF/HTML 右栏；Office 系统打开 | office-mode-iteration-plan §F |
-| P0 端到端 oracle 常态化 | 四轴验证 | ⚠️ `office-demo-oracle.ps1` 有 P0-2/3/4 | §6 |
+> **Boundary:** Change code, run tests, long-horizon refactor → **Code mode + LHT/CRAFT**; Office only delivers **documents / sheets / reports**.
 
 ---
 
-## 9. 与商业化 / 潜力的关系
+### 4.6 General / Cross-Functional
 
-- **编码 harness（LHT/CRAFT）** → 开发者口碑、长程可靠性  
-- **办公场景地图（本文）** → 非开发者可理解、可演示、可行业化（制造业、商贸、市场团队）  
-- 商业化可沿 **「Skill 模板包 + 数据连接器 + 语音简报」** 展开，与 BYOK 不冲突  
+| Scenario | Description | Maturity |
+|----------|-------------|----------|
+| **Multi-document merge** | Three weeklies → one monthly | ⚠️ read-table fidelity + multi-file |
+| **Translation / localization** | Contract / PPT section translation | ⚠️ |
+| **Format conversion narrative** | "Turn bullet points into PPT" | ✅ `write_office` |
+| **Email / message draft** | External reply, follow-up email | ✅ conversation OK, optional DOCX |
+| **Policy / regulation summary** | Web + citations | ⚠️ source discipline |
+| **Data visualization** | CSV → chart XLSX / PPTX | ✅ `write_office` `source` direct CSV/TSV/XLSX |
+| **Scan OCR** | Scanned PDF, invoice images | ✅ **Vision bridge** — `read_office` empty text layer → `describe_image` (no built-in OCR in `read_office`; see [office-read-tool-plan.md](../../doc_Private/docs/office-read-tool-plan.md)) |
 
 ---
 
-## 10. 后续文档与实现入口
+## 5. Landed Skills and UI Cards (Cross-Reference)
 
-| 动作 | 落点 |
-|------|------|
-| 新建技能 | `crates/runtime-server/assets/skills/office-<name>/SKILL.md`（含 `## 技能契约`） |
-| **P0 样板技能** | [`office-executive-daily-brief`](../../crates/runtime-server/assets/skills/office-executive-daily-brief/SKILL.md)（契约 schema 参考） |
-| 任务卡片（11 张） | `OfficeEmptyState.tsx` + `web-ui/src/i18n/locales/*.ts` → `officeEmpty` |
-| Office 能力迭代 | [office-mode-iteration-plan.md](../office-mode-iteration-plan.md) |
+**11** bundled skills, **11** empty-state task cards (P0 three pinned top). Paths: `crates/runtime-server/assets/skills/office-*/SKILL.md`; cards and prefill: `crates/desktop/web-ui/src/components/OfficeEmptyState.tsx` + `i18n/locales/*.ts` → `officeEmpty`.
+
+| Skill | UI Card | Default Output | Batch |
+|-------|---------|----------------|-------|
+| `office-executive-daily-brief` | Executive Daily Brief Rollup | DOCX | P0 |
+| `office-customer-quote` | Customer Quote | XLSX | P0 |
+| `office-production-daily-report` | Production & Quality Morning Report | DOCX | P0 |
+| `office-weekly-report` | Weekly Report | DOCX | First batch |
+| `office-meeting-minutes` | Meeting Minutes | DOCX | First batch |
+| `office-project-report` | Project Report PPT | PPTX | First batch |
+| `office-data-report` | Data Report | XLSX | First batch |
+| `office-competitive-analysis` | Competitive Analysis | DOCX | First batch |
+| `office-contract-draft` | Contract First Draft | DOCX | First batch |
+| `office-resume` | Resume / Cover Letter | DOCX | First batch |
+| `office-release-notes` | Release Notes | DOCX | First batch |
+
+---
+
+## 6. Priority Demo Scenarios (Suggested P0)
+
+Combining business discussion, suggest **4 end-to-end demos first** (text version, no voice) to prove Office line business value. These 4 **deliberately pick one representative coordinate per axis** — green runs = each axis validated, not four isolated features (see §2.3):
+
+| Priority | Scenario | Primary Axis Validated | Skill / Card | Acceptance Criteria | Landing Status |
+|----------|----------|------------------------|--------------|---------------------|----------------|
+| **P0-1** | Market competitor / industry dynamics | ① `ingest=web` + source constraints | `office-competitive-analysis` ✅ (`office-market-watch` not built) | Web + source list + DOCX in `deliverables/` | ⚠️ tryable; no headless oracle |
+| **P0-2** | Executive operations daily rollup | ① `ingest=files(multi)` + ② `aggregate` | `office-executive-daily-brief` ✅ | `inbox/` multi-attach → 5-section structure + pending decisions | ✅ skill+card+fixtures+oracle |
+| **P0-3** | Production/quality morning report | ① `ingest=files` + ④ `brief_first` | `office-production-daily-report` ✅ | Read yesterday XLSX → text brief → DOCX/XLSX | ⚠️ skill chain ready; read-table fidelity affects stability |
+| **P0-4** | Customer quote | ② `compute` + ④ `loop=iterable` | `office-customer-quote` ✅ | Price list + requirements → tax-inclusive total XLSX, incremental price edit | ⚠️ skill+fixtures+oracle; iterative price UX TBD |
+
+**Shared experience P0 (engineering, landed):** See [office-mode-iteration-plan.md](../../doc_Private/docs/office-mode-iteration-plan.md) implementation order 1–8 — `read_office` (calamine), default `deliverables/` + highlight, PDF/HTML right-panel preview, open with system app, `load_office_payload`, `write_office` `source` direct feed.
+
+---
+
+## 7. Phased Roadmap
+
+### Phase A — Text Closed Loop (current, ~90%)
+
+- ✅ 11 skills + 11 cards + P0 fixtures + oracle (P0-2/3/4)  
+- ✅ No STT/TTS dependency  
+- Goal: any scenario **one sentence → downloadable file**  
+- **Remaining:** P0 E2E green runs routine, `office-skill-lint`, appendix A remaining 5 skills, read-table fidelity golden
+
+### Phase B — Data and Iteration (future, parts out of scope below)
+
+- `inbox/`, `data/` directory conventions — user-created or copy fixtures (**not auto-initialized**)  
+- 🔮 MCP to ERP / CRM / announcements (optional, **not this phase**)  
+- ⚠️ `load_office_payload` incremental quote/report edit — tool exists, flow productization TBD  
+- 🔮 Scheduled tasks (background automation) for "daily competitor digest"
+
+### Phase C — Voice (seating briefing, out of scope this phase)
+
+- STT / TTS trigger and spoken brief — **not this phase**; architecturally only replaces `loop`, does not touch ingest/transform/render  
+- See `doc_Private/docs/desktop/DEV_NOTES.md` §seating briefing
+
+---
+
+## 8. Capability Gaps (Office Line Cross-Cutting)
+
+> **Architecture meaning:** Gaps below land on **L2 capability primitives** (§3) or **L4 acceptance**, decoupled from specific scenarios. Fix one primitive, all scenarios using that axis benefit.  
+> **Not counted as gaps this phase:** STT/TTS (Phase C), ERP/CRM connector, `inbox/`/`data/` auto-init.
+
+| Gap | Affected Scenarios | Status | Reference |
+|-----|-------------------|--------|-----------|
+| XLSX read fidelity (numFmt golden etc.) | Production, quote, finance, executive rollup | ⚠️ `read_office`+calamine shipped, stability pending | office-mode-iteration-plan §P0 R1 |
+| Iterative edit productization | Quote price change, report column change | ⚠️ `load_office_payload` tool exists, UX/skill steps TBD | office-mode-iteration-plan §P0-4 |
+| Enterprise templates | Quote, contract, brief | ❌ `templates/` convention only | §G |
+| One-click PDF export | External send | ❌ backlog | office-mode-iteration-plan §15 |
+| Round-trip hand-edited files | User-edited docx/xlsx re-edit | ❌ payload cache path only | office-mode-iteration-plan §P0-4 advanced |
+| Source / hallucination constraints | Market, competitor, policy | ⚠️ `office-competitive-analysis` skill requires sources | §11 |
+| Scan OCR | Scanned PDF, invoice images | ✅ **Vision bridge** — `describe_image`; `read_office` not built-in | office-read-tool-plan §OCR |
+| Post-generate preview / highlight | All | ✅ default `deliverables/` + highlight; PDF/HTML right panel; open with system app | office-mode-iteration-plan §F |
+| P0 E2E oracle routine | Four-axis validation | ⚠️ `office-demo-oracle.ps1` has P0-2/3/4 | §6 |
+
+---
+
+## 9. Relation to Commercialization / Potential
+
+- **Coding harness (LHT/CRAFT)** → developer reputation, long-horizon reliability  
+- **Office scenario map (this doc)** → non-developer understandable, demoable, industry-packable (manufacturing, trade, marketing teams)  
+- Commercialization can expand along **"Skill template packs + data connectors + voice briefing"**, compatible with BYOK  
+
+---
+
+## 10. Follow-Up Docs and Implementation Entry Points
+
+| Action | Location |
+|--------|----------|
+| New skill | `crates/runtime-server/assets/skills/office-<name>/SKILL.md` (include `## Skill Contract`) |
+| **P0 template skill** | [`office-executive-daily-brief`](../../crates/runtime-server/assets/skills/office-executive-daily-brief/SKILL.md) (contract schema reference) |
+| Task cards (11) | `OfficeEmptyState.tsx` + `web-ui/src/i18n/locales/*.ts` → `officeEmpty` |
+| Office capability iteration | [office-mode-iteration-plan.md](../../doc_Private/docs/office-mode-iteration-plan.md) |
 | Demo fixtures | [`fixtures/harness/office-demo/`](../../fixtures/harness/office-demo/README.md) |
 | P0 oracle | [`scripts/office-demo-oracle.ps1`](../../scripts/office-demo-oracle.ps1) |
-| 契约 lint（待建） | `scripts/office-skill-lint.mjs`（可选） |
-| 语音（Phase C，范围外） | `doc_Private/docs/desktop/DEV_NOTES.md` §2026-05-18 入座 briefing |
+| Contract lint (TBD) | `scripts/office-skill-lint.mjs` (optional) |
+| Voice (Phase C, out of scope) | `doc_Private/docs/desktop/DEV_NOTES.md` §2026-05-18 seating briefing |
 
 ---
 
-## 附录 A：技能命名建议（含 P0 已建）
+## Appendix A: Suggested Skill Naming (Including P0 Built)
 
-| 技能 ID | 场景 | 状态 |
-|---------|------|------|
-| `office-executive-daily-brief` | 老板 / 高管经营日报 | ✅ P0-2 |
-| `office-production-daily-report` | 生产 + 品质晨报 | ✅ P0-3 |
-| `office-customer-quote` | 客户报价单 | ✅ P0-4 |
-| `office-market-watch` | 市场日报 / 行业动态 | ❌ 待建（P0-1 暂用 `office-competitive-analysis`） |
-| `office-sales-daily` | 销售日报 | ❌ 待建 |
-| `office-decision-memo` | 决策备忘录 | ❌ 待建 |
-| `office-incident-report` | 品质 / 运营异常报告 | ❌ 待建 |
-| `office-proposal` | 商务提案书 | ❌ 待建 |
+| Skill ID | Scenario | Status |
+|----------|----------|--------|
+| `office-executive-daily-brief` | Executive operations daily | ✅ P0-2 |
+| `office-production-daily-report` | Production + quality morning report | ✅ P0-3 |
+| `office-customer-quote` | Customer quote | ✅ P0-4 |
+| `office-market-watch` | Market daily / industry dynamics | ❌ TBD (P0-1 uses `office-competitive-analysis` for now) |
+| `office-sales-daily` | Sales daily | ❌ TBD |
+| `office-decision-memo` | Decision memo | ❌ TBD |
+| `office-incident-report` | Quality / operations incident report | ❌ TBD |
+| `office-proposal` | Business proposal | ❌ TBD |
 
-命名与现有 `office-*` 保持一致；描述行注明格式与默认 `deliverables/`。
+Naming consistent with existing `office-*`; description line notes format and default `deliverables/`.
 
-**编写方式：** 每个新技能按 §3.2 的**技能契约**填四轴 + `verify` 即可，不写新引擎逻辑。以 `office-executive-daily-brief` 为样板；P0 三条已按同结构落地，余 5 个按附录补齐。
+**Authoring:** Each new skill fills four axes + `verify` per §3.2 skill contract; no new engine logic. Use `office-executive-daily-brief` as template; P0 three landed same structure, remaining 5 per appendix.

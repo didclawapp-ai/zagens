@@ -43,6 +43,6 @@
 
 ## References
 
-- Roadmap: [RUNTIME_EVOLUTION_ROADMAP.md](./RUNTIME_EVOLUTION_ROADMAP.md) § A6
+- Maintainer roadmap: `doc_Private/docs/tech/RUNTIME_EVOLUTION_ROADMAP.md` § A6
 - Implementation: `crates/tui/src/sandbox/{mod,policy,seatbelt,landlock,windows}.rs`
 - Desktop settings: `crates/desktop/web-ui/src/components/SettingsPanel.tsx`

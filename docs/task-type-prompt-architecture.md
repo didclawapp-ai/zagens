@@ -1,50 +1,50 @@
-# TaskType 任务类型分层方案（办公 / 代码 二类 MVP）
+# TaskType Layering — Office / Code Two-Type MVP
 
-**状态**: **MVP 已落地**（`crates/tui/src/task_type.rs`、prompt overlay、Office 工具裁剪、Zagens Composer 切换）  
-**日期**: 2026-05-17（初稿，四类）· **2026-05-18**（收敛为二类，对齐当前工具与 prompt）  
-**基于**: [prompt-architecture.md](prompt-architecture.md)  
-**相关**: [prompt-hallucination-patch.md](prompt-hallucination-patch.md)、[TOOLS_PRINCIPLES.md](tech/TOOLS_PRINCIPLES.md)、`crates/tui/src/prompts/base.md`（检索三件套）
-
----
-
-## 1. 设计结论（已定稿）
-
-| 决策 | 内容 |
-|------|------|
-| **类型数量** | **两类**：`Office`（办公）、`Code`（代码）。不再单独设 Chat / Architecture 枚举。 |
-| **Office 范围** | 一般聊天 + 文档/表格/演示/PDF 等办公任务。 |
-| **Code 范围** | 编写/修改/调试 + 架构分析/设计评审/只读调研（见 §4 只读工作流）。 |
-| **与 AppMode 关系** | 正交叠加：`AppMode`（Agent / Plan / Yolo）管「怎么工作」；`TaskType` 管「干什么」。 |
-| **切换类型** | **必须新开 session**。不在同一会话内改 TaskType，保证 KV Cache 前缀稳定。 |
-| **维护** | 仅 2 个 task overlay 文件；`code.md` 宜极短或为空（Code = 现有全量行为）。 |
+**Status:** **MVP landed** (`crates/tui/src/task_type.rs`, prompt overlay, Office tool trimming, Zagens Composer switch)  
+**Date:** 2026-05-17 (first draft, four types) · **2026-05-18** (converged to two types, aligned with current tools and prompts)  
+**Based on:** [prompt-architecture.md](prompt-architecture.md)  
+**Related:** [prompt-hallucination-patch.md](prompt-hallucination-patch.md), [TOOLS_PRINCIPLES.md](tech/TOOLS_PRINCIPLES.md), `crates/tui/src/prompts/base.md` (retrieval triad)
 
 ---
 
-## 2. 背景与动机
+## 1. Design Conclusions (Finalized)
 
-当前几乎所有会话都走 **Code 全量** system prompt：CRAFT、LSP、符号索引、检索三件套、幻觉防控、完整 toolbox。对以下场景浪费 token 且干扰判断：
-
-| 场景 | 问题 |
-|------|------|
-| 办公 / 聊天 | 注入代码审查、LSP、`edit_file` 并行策略等，模型易「过度工程化」 |
-| 办公 | 不需要 `grep_files` / `exec_shell`，却出现在工具列表与说明里 |
-| 代码会话内的架构评审 | 若只靠 pick-rules 软约束，仍可能误调 `edit_file` |
-
-初稿曾拆四类（Chat / Office / Code / Architecture）。**产品收敛为二类**后：聊天并入 Office（prompt 区分「聊 vs 做文档」）；架构评审并入 Code（**只读靠 Explore 子代理 + 工作流**，见 §4）。
+| Decision | Content |
+|----------|---------|
+| **Type count** | **Two:** `Office` (office work), `Code` (programming). No separate Chat / Architecture enums. |
+| **Office scope** | General chat + document/spreadsheet/presentation/PDF office tasks. |
+| **Code scope** | Write/modify/debug + architecture analysis/design review/read-only research (see §4 read-only workflow). |
+| **Relationship to AppMode** | Orthogonal overlay: `AppMode` (Agent / Plan / Yolo) controls *how* to work; `TaskType` controls *what* to do. |
+| **Switching type** | **Must start a new session**. Do not change TaskType mid-session — keeps KV cache prefix stable. |
+| **Maintenance** | Only 2 task overlay files; `code.md` should be very short or empty (Code = existing full behavior). |
 
 ---
 
-## 3. TaskType 定义
+## 2. Background and Motivation
+
+Currently almost every session uses the **full Code** system prompt: CRAFT, LSP, symbol index, retrieval triad, hallucination guard, full toolbox. For these scenarios it wastes tokens and confuses judgment:
+
+| Scenario | Problem |
+|----------|---------|
+| Office / chat | Injects code review, LSP, `edit_file` parallel strategy, etc.; model tends to "over-engineer" |
+| Office | Does not need `grep_files` / `exec_shell`, yet they appear in tool list and instructions |
+| Architecture review within code session | pick-rules soft constraints alone may still trigger mistaken `edit_file` calls |
+
+The first draft split four types (Chat / Office / Code / Architecture). **Product converged to two:** chat merged into Office (prompt distinguishes "chat vs document work"); architecture review merged into Code (**read-only via Explore sub-agent + workflow**, see §4).
+
+---
+
+## 3. TaskType Definition
 
 ```rust
-/// 任务类型——控制 prompt overlay 与工具注册裁剪。
-/// Session 创建时固定；切换类型 = 新 session。
+/// Task type — controls prompt overlay and tool registry trimming.
+/// Fixed at session creation; switching type = new session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TaskType {
-    /// 聊天 + 办公文档。精简 prompt + 办公工具面子集。
+    /// Chat + office documents. Trimmed prompt + office tool subset.
     Office,
-    /// 编程与仓库内技术工作（含架构评审）。全量 prompt + 全 Agent 工具面。
+    /// Programming and in-repo technical work (including architecture review). Full prompt + full Agent tool surface.
     #[default]
     Code,
 }
@@ -59,17 +59,17 @@ impl TaskType {
 
     pub fn display_name(&self) -> &'static str {
         match self {
-            TaskType::Office => "办公",
-            TaskType::Code => "代码",
+            TaskType::Office => "Office",
+            TaskType::Code => "Code",
         }
     }
 
-    /// 是否注册代码向写工具（edit_file / apply_patch / exec_shell 等）
+    /// Whether to register code-oriented write tools (edit_file / apply_patch / exec_shell, etc.)
     pub fn uses_code_tool_surface(&self) -> bool {
         matches!(self, TaskType::Code)
     }
 
-    /// 是否注入完整 runtime 说明（CRAFT、LSP、符号索引、检索三件套等）
+    /// Whether to inject full runtime instructions (CRAFT, LSP, symbol index, retrieval triad, etc.)
     pub fn needs_full_code_prompt(&self) -> bool {
         matches!(self, TaskType::Code)
     }
@@ -78,133 +78,133 @@ impl TaskType {
 
 ---
 
-## 4. 两类差异总览
+## 4. Two-Type Difference Overview
 
-### 4.1 Token 预算（粗估，需实现后实测）
+### 4.1 Token Budget (rough estimate; measure after implementation)
 
-| TaskType | 现在（全量） | 目标 | 说明 |
-|----------|-------------|------|------|
-| Office | ~8500+ token | ~2000–3500 | 去掉 CRAFT/LSP/符号索引/代码 toolbox；保留人格、语言、办公说明 |
-| Code | ~8500+ token | ~8500+ | **不裁剪**（与当前 Agent 一致） |
+| TaskType | Current (full) | Target | Notes |
+|----------|----------------|--------|-------|
+| Office | ~8500+ tokens | ~2000–3500 | Remove CRAFT/LSP/symbol index/code toolbox; keep personality, language, office instructions |
+| Code | ~8500+ tokens | ~8500+ | **No trimming** (same as current Agent) |
 
-> `base.md` 已含检索三件套、Capability Claims 等，全量可能高于旧表中的 8500，以 `chars/3` 或 tokenizer 实测为准。
+> `base.md` already includes retrieval triad, Capability Claims, etc.; full count may exceed old 8500 table — use `chars/3` or tokenizer measurement.
 
-### 4.2 工具权限矩阵（与当前实现对齐）
+### 4.2 Tool Permission Matrix (aligned with current implementation)
 
-| 工具 | Office | Code |
+| Tool | Office | Code |
 |------|:------:|:----:|
 | `read_file` | ✅ | ✅ |
 | `list_dir` | ✅ | ✅ |
-| `file_search` | ✅（找附件/模板） | ✅ |
-| `glob_files` | ✅（按路径找文件） | ✅ |
+| `file_search` | ✅ (find attachments/templates) | ✅ |
+| `glob_files` | ✅ (find by path) | ✅ |
 | `write_office` | ✅ | ✅ |
-| `write_file` | ✅（非源码交付物时） | ✅ |
-| `grep_files` | ❌ | ✅（含 `output_mode`: content / files_with_matches / count） |
+| `write_file` | ✅ (non-source deliverables) | ✅ |
+| `grep_files` | ❌ | ✅ (incl. `output_mode`: content / files_with_matches / count) |
 | `edit_file` / `apply_patch` | ❌ | ✅ |
 | `exec_shell` | ❌ | ✅ |
-| `agent_spawn` | ❌（默认） | ✅ |
+| `agent_spawn` | ❌ (default) | ✅ |
 | `run_tests` / `diagnostics` / `git_*` | ❌ | ✅ |
-| `web_search` / `fetch_url` / `web.run` | 可选 ✅ | ✅ |
+| `web_search` / `fetch_url` / `web.run` | optional ✅ | ✅ |
 
-**硬边界**：Office 必须在 **`ToolRegistryBuilder` 层裁剪**，不能只靠 prompt 禁止。否则模型仍可调用 `edit_file`。
+**Hard boundary:** Office must trim at **`ToolRegistryBuilder` layer**, not prompt prohibition alone. Otherwise the model can still call `edit_file`.
 
-**禁止 Bash 搜索**：两类均通过 `grep_files` / `glob_files`；**禁止** `exec_shell` 跑 `grep`/`rg`（见 `base.md` 检索三件套）。
+**No Bash search:** Both types use `grep_files` / `glob_files`; **forbid** `exec_shell` running `grep`/`rg` (see `base.md` retrieval triad).
 
-### 4.3 Prompt 注入裁剪
+### 4.3 Prompt Injection Trimming
 
-| 块 | Office | Code |
-|----|:------:|:----:|
-| `compose_base_prompt_layer()`（base.md 核心） | ✅ 精简子集或完整 base 中非代码段 | ✅ 全量 |
+| Block | Office | Code |
+|-------|:------:|:----:|
+| `compose_base_prompt_layer()` (base.md core) | ✅ trimmed subset or non-code sections of full base | ✅ full |
 | personality + mode + approval | ✅ | ✅ |
 | `tasks/office.md` overlay | ✅ | ❌ |
-| `tasks/code.md` overlay | ❌ | ✅（宜空：Code = 默认） |
-| Environment / project context | ✅ 可选（办公常需路径） | ✅ |
-| instructions（pick-rules 等） | ❌ 或仅办公相关摘录 | ✅ |
-| Skills 目录 | ❌ | ✅ |
-| Context Management（Agent/Yolo） | 缩短版 | ✅ |
-| CRAFT / LSP / 符号索引 / 检索三件套 | ❌ | ✅ |
-| Epistemic / Capability Claims | 简短版 | ✅ 全量 |
+| `tasks/code.md` overlay | ❌ | ✅ (prefer empty: Code = default) |
+| Environment / project context | ✅ optional (office often needs paths) | ✅ |
+| instructions (pick-rules, etc.) | ❌ or office-only excerpts | ✅ |
+| Skills catalog | ❌ | ✅ |
+| Context Management (Agent/Yolo) | shortened | ✅ |
+| CRAFT / LSP / symbol index / retrieval triad | ❌ | ✅ |
+| Epistemic / Capability Claims | short version | ✅ full |
 
-### 4.4 Office 内：聊天 vs 做文档（同一 TaskType）
+### 4.4 Within Office: Chat vs Document Work (same TaskType)
 
-不拆第三个枚举，在 **`prompts/tasks/office.md`** 用行为规则区分：
+No third enum; distinguish in **`prompts/tasks/office.md`** via behavior rules:
 
-- **默认**：纯对话，**不调用工具**；简洁回答。
-- **用户要读文件 / 生成 xlsx·docx·pptx·pdf**：再用 `read_file` / `write_office` / `list_dir`。
-- **用户要改代码、跑命令、搜仓库**：提示切换到 **代码** 任务并 **新开 session**。
+- **Default:** Pure conversation — **no tool calls**; concise answers.
+- **User wants to read files / generate xlsx·docx·pptx·pdf:** Use `read_file` / `write_office` / `list_dir`.
+- **User wants code changes, run commands, search repo:** Prompt switch to **Code** task and **new session**.
 
-### 4.5 Code 内：架构评审 / 只读调研（原 Architecture 合并于此）
+### 4.5 Within Code: Architecture Review / Read-Only Research (former Architecture merged here)
 
-Code 会话**仍注册写工具**，评审类任务靠工作流降低误改风险：
+Code sessions **still register write tools**; review tasks reduce mistaken edits via workflow:
 
-1. **优先** `agent_spawn` + `type: Explore`（或 Review）：子代理只读工具面，结论回传主会话（上下文隔离，见 `subagent/mod.rs` `build_allowed_tools`）。
-2. **主会话**若自行检索：`glob_files` / `grep_files`（`output_mode: files_with_matches`）→ `read_file` 分段，遵循 `base.md` **检索三件套**。
-3. **未经明确授权不得** `edit_file` / `apply_patch` / `exec_shell` 改仓库；若用户要求改代码，视为实现任务而非评审。
-4. 产出：Mermaid、ADR 式结论、带路径/行号的发现；修改建议以 **diff 描述** 输出，不直接落盘。
+1. **Prefer** `agent_spawn` + `type: Explore` (or Review): sub-agent read-only tool surface, conclusions return to main session (context isolation, see `subagent/mod.rs` `build_allowed_tools`).
+2. **Main session** self-retrieval: `glob_files` / `grep_files` (`output_mode: files_with_matches`) → `read_file` in segments, follow `base.md` **retrieval triad**.
+3. **Without explicit authorization, do not** `edit_file` / `apply_patch` / `exec_shell` to modify repo; if user requests code changes, treat as implementation not review.
+4. Output: Mermaid, ADR-style conclusions, findings with paths/line numbers; change suggestions as **diff descriptions**, not direct writes.
 
-> 若未来误改率仍高，可再加 session 级 `read_only: bool`（非 MVP）。
+> If mistaken edit rate remains high, add session-level `read_only: bool` later (non-MVP).
 
 ---
 
-## 5. 新增文件
+## 5. New Files
 
 ```
 crates/tui/src/
-├── task_type.rs              # 枚举 + infer_task_type()
+├── task_type.rs              # enum + infer_task_type()
 └── prompts/tasks/
-    ├── office.md             # 办公 + 聊天规则（见 §5.1）
-    └── code.md               # 空或极短补充（Code = 现有全量）
+    ├── office.md             # office + chat rules (see §5.1)
+    └── code.md               # empty or very short supplement (Code = existing full)
 
-# 不再创建：chat.md、architecture.md（已并入二类）
+# No longer create: chat.md, architecture.md (merged into two types)
 ```
 
-### 5.1 `prompts/tasks/office.md` 骨架
+### 5.1 `prompts/tasks/office.md` skeleton
 
 ```markdown
-## Task: Office（办公）
+## Task: Office
 
-本 session 用于一般对话与办公文档，不是编程任务。
+This session is for general conversation and office documents, not programming.
 
-### 聊天（默认）
-- 不要调用工具，直接回答。
-- 保持简洁、对话式。
+### Chat (default)
+- Do not call tools; answer directly.
+- Keep concise and conversational.
 
-### 文档与文件
-- 生成 XLSX/DOCX/PPTX/PDF：使用 `write_office`。
-- 读取附件或确认路径：`read_file`、`list_dir`；按名找文件：`glob_files` 或 `file_search`。
-- 生成前确认路径与格式。
+### Documents and files
+- Generate XLSX/DOCX/PPTX/PDF: use `write_office`.
+- Read attachments or confirm paths: `read_file`, `list_dir`; find by name: `glob_files` or `file_search`.
+- Confirm path and format before generating.
 
-### 禁止
-- 不要调用 `grep_files`、`edit_file`、`apply_patch`、`exec_shell`、`agent_spawn`（除非产品后续明确开放）。
-- 不要用 Bash 运行 grep/rg。
-- 若用户要改代码、调试、架构深挖：请切换到 **代码** 任务并 **新建会话**。
+### Forbidden
+- Do not call `grep_files`, `edit_file`, `apply_patch`, `exec_shell`, `agent_spawn` (unless product explicitly opens later).
+- Do not run grep/rg via Bash.
+- If user wants code changes, debugging, deep architecture: switch to **Code** task and **new session**.
 ```
 
-### 5.2 `prompts/tasks/code.md` 骨架
+### 5.2 `prompts/tasks/code.md` skeleton
 
 ```markdown
-## Task: Code（代码）
+## Task: Code
 
-本 session 使用完整 Agent 工具与代码规范（与默认行为一致）。
-架构/评审类任务优先 `agent_spawn` Explore；详见 base.md「代码检索三件套」。
+This session uses full Agent tools and code conventions (same as default behavior).
+For architecture/review tasks prefer `agent_spawn` Explore; see base.md "code retrieval triad".
 ```
 
 ---
 
-## 6. 代码改动点（实现清单）
+## 6. Code Change Points (Implementation Checklist)
 
-命名与现有源码一致：`AppMode`、`ApprovalMode`（非初稿中的 `AgentMode` / `ApprovalPolicy`）。
+Naming matches existing source: `AppMode`, `ApprovalMode` (not first draft's `AgentMode` / `ApprovalPolicy`).
 
 ### T1 — `task_type.rs`
 
-- `TaskType` 枚举（§3）
-- `infer_task_type(workspace, first_message)` 规则：
-  1. 首条消息含 **修复/实现/edit/bugfix** 等 → **Code**（覆盖「分析」类关键词）
-  2. 工作区存在常见代码扩展名（顶层 + `src/` 浅扫）→ **Code**
-  3. 首条消息含办公关键词（文档/xlsx/pptx/…）且无强 Code 信号 → **Office**
-  4. 兜底 → **Office**（聊天向）或 **Code**（有仓库时倾向 Code）——**产品默认建议 `Code`**
+- `TaskType` enum (§3)
+- `infer_task_type(workspace, first_message)` rules:
+  1. First message contains **fix/implement/edit/bugfix** etc. → **Code** (overrides "analysis" keywords)
+  2. Workspace has common code extensions (top level + shallow `src/` scan) → **Code**
+  3. First message has office keywords (document/xlsx/pptx/…) without strong Code signal → **Office**
+  4. Fallback → **Office** (chat-oriented) or **Code** (prefer Code when repo present) — **product default suggests `Code`**
 
-### T2 — `prompts.rs` 嵌入 overlay
+### T2 — `prompts.rs` embed overlay
 
 ```rust
 const TASK_OFFICE: &str = include_str!("prompts/tasks/office.md");
@@ -218,200 +218,200 @@ fn task_overlay(task_type: TaskType) -> &'static str {
 }
 ```
 
-在 `compose_prompt_with_approval(..., task_type, ...)` 中，于 mode overlay **之后**追加 `task_overlay`。
+In `compose_prompt_with_approval(..., task_type, ...)`, append `task_overlay` **after** mode overlay.
 
-`system_prompt_for_mode_with_context_skills_session_and_approval(...)` 增加 `task_type: TaskType`，按 §4.3 跳过 Office 不需要的 runtime 块。
+`system_prompt_for_mode_with_context_skills_session_and_approval(...)` adds `task_type: TaskType`, skipping Office-unneeded runtime blocks per §4.3.
 
 ### T3 — Engine + Session
 
-- `Engine`（或 session 元数据）持有 `task_type: TaskType`
-- **创建 session** 时写入；`set_task_type` **仅用于新 session** 流程，不用于中途刷新
-- UI/CLI 切换类型 → 提示「将新建会话」→ `new_session(task_type)`
+- `Engine` (or session metadata) holds `task_type: TaskType`
+- Written at **session creation**; `set_task_type` **only for new session** flow, not mid-session refresh
+- UI/CLI type switch → prompt "will create new session" → `new_session(task_type)`
 
-### T4 — `ToolRegistryBuilder` 按 TaskType 分支
+### T4 — `ToolRegistryBuilder` branches on TaskType
 
-- `TaskType::Code` → 现有 `with_full_agent_surface`（不变）
-- `TaskType::Office` → 新函数，例如 `with_office_surface()`：`read_file`、`list_dir`、`file_search`、`glob_files`、`write_office`、`write_file`（可选）、`note`；**无** grep/edit/shell/subagent
+- `TaskType::Code` → existing `with_full_agent_surface` (unchanged)
+- `TaskType::Office` → new e.g. `with_office_surface()`: `read_file`, `list_dir`, `file_search`, `glob_files`, `write_office`, `write_file` (optional), `note`; **no** grep/edit/shell/subagent
 
 ### T5 — Desktop / TUI UI
 
-在 AppMode 旁增加任务类型：
+Add task type beside AppMode:
 
-| 选项 | 值 |
-|------|-----|
-| 自动 | 后端 `infer_task_type` |
-| 办公 | `office` |
-| 代码 | `code` |
+| Option | Value |
+|--------|-------|
+| Auto | backend `infer_task_type` |
+| Office | `office` |
+| Code | `code` |
 
-切换时：**新建 session**，不就地改 prompt。
+On switch: **new session**, do not mutate prompt in place.
 
-### T6 — 配置持久化（可选）
+### T6 — Config persistence (optional)
 
 ```toml
-# ~/.deepseek/config.toml 或 <workspace>/.deepseek/config.toml
+# ~/.deepseek/config.toml or <workspace>/.deepseek/config.toml
 [task]
 default_type = "code"   # office | code | auto
 ```
 
 ---
 
-## 7. 实施顺序（MVP）
+## 7. Implementation Order (MVP)
 
-| 批次 | 内容 | 收益 |
-|:----:|------|------|
-| **M1** | T1 + 单测 `infer_task_type` | 类型与规则可测 |
-| **M2** | T2 + `office.md` / `code.md` + Office prompt 裁剪 | Token 与说明分离 |
-| **M3** | T4 + T3（Engine/session 固定 task_type） | 工具硬边界 |
-| **M4** | T5 + T6 | 用户可见、可配置 |
+| Batch | Content | Benefit |
+|:-----:|---------|---------|
+| **M1** | T1 + unit tests for `infer_task_type` | Testable type and rules |
+| **M2** | T2 + `office.md` / `code.md` + Office prompt trimming | Token and instruction separation |
+| **M3** | T4 + T3 (Engine/session fixed task_type) | Hard tool boundary |
+| **M4** | T5 + T6 | User-visible, configurable |
 
-每批可独立 PR；M3 前 Office 仍可能通过工具列表误调写工具，宜 M2+M3 同发或紧接。
+Each batch can be independent PR; before M3 Office may still call write tools via tool list — prefer M2+M3 together or back-to-back.
 
 ---
 
 ## 8. KV Cache
 
-- **有利**：Office session 前缀显著变短，同类型连续对话 cache 命中更好。
-- **约束**：**禁止** session 中途切换 TaskType；切换 = 新 session（已接受）。
-- **与 AppMode**：同一 session 内 `AppMode` 也宜少变；TaskType 与 mode 均在 session 创建时确定。
+- **Benefit:** Office session prefix significantly shorter; same-type continuous dialogue improves cache hits.
+- **Constraint:** **Forbid** mid-session TaskType switch; switch = new session (accepted).
+- **With AppMode:** Same session should also minimize `AppMode` changes; TaskType and mode both fixed at session creation.
 
 ---
 
-## 9. 与初稿（四类）对照
+## 9. First Draft (Four Types) vs Two-Type Plan
 
-| 初稿类型 | 二类方案中的归属 |
-|----------|------------------|
-| Chat | `Office`（prompt：默认不调工具） |
-| Office | `Office`（工具 + 文档规则） |
-| Code | `Code`（全量） |
-| Architecture | `Code`（§4.5 Explore + 检索三件套；无独立枚举） |
-
----
-
-## 10. 注意事项
-
-1. **Office 聊天**可不注入完整 pick-rules / AGENTS.md；若用户问项目细节，可引导切换到 **代码** 新会话。  
-2. **架构评审**在 Code 下仍可能误写：MVP 依赖 Explore + prompt；监控误调 `edit_file` 再考虑 session `read_only`。  
-3. **自动推断**：关键词必有歧义；**含修复/实现意图 → Code**；UI 保留手动覆盖。  
-4. **Plan / Yolo**：TaskType 与 `AppMode` 叠加；Plan 会话仍以 `update_plan` 为主，Office 下是否允许 plan 工具需单独定一条规则（建议 Office 不注入 plan 长说明）。  
-5. **文档与代码同步**：实现后更新 [prompt-architecture.md](prompt-architecture.md) 增加 TaskType 层；[TOOLS_PRINCIPLES.md](tech/TOOLS_PRINCIPLES.md) §1.4 与工具表按 Office/Code 分列。
+| First draft type | Placement in two-type plan |
+|------------------|----------------------|
+| Chat | `Office` (prompt: default no tools) |
+| Office | `Office` (tools + document rules) |
+| Code | `Code` (full) |
+| Architecture | `Code` (§4.5 Explore + retrieval triad; no separate enum) |
 
 ---
 
-## 11. 验收标准（实现后）
+## 10. Notes
 
-- [ ] 新建 Office session：system prompt 不含 CRAFT/LSP/符号索引/代码检索三件套长文  
-- [ ] Office session：registry 无 `edit_file`、`grep_files`、`exec_shell`  
-- [ ] 新建 Code session：与当前 Agent 行为一致（全工具 + 全 prompt）  
-- [ ] UI 切换 Office ↔ Code：**创建新 session**，旧 session 不变  
-- [ ] `infer_task_type("分析并修复 login")` → `Code`  
-- [ ] `grep_files` / `glob_files` 仅在 Code（及 Explore 子代理）可用  
+1. **Office chat** may skip full pick-rules / AGENTS.md; if user asks project details, guide switch to **Code** new session.  
+2. **Architecture review** under Code may still mistakenly write: MVP relies on Explore + prompt; monitor mistaken `edit_file` before session `read_only`.  
+3. **Auto inference:** Keywords are ambiguous; **fix/implement intent → Code**; UI keeps manual override.  
+4. **Plan / Yolo:** TaskType stacks with `AppMode`; Plan sessions still mainly use `update_plan` — whether Plan tools allowed under Office needs a separate rule (suggest Office skips long plan instructions).  
+5. **Docs and code sync:** After implementation update [prompt-architecture.md](prompt-architecture.md) with TaskType layer; [TOOLS_PRINCIPLES.md](tech/TOOLS_PRINCIPLES.md) §1.4 and tool table split Office/Code columns.
 
 ---
 
-## 12. UI 安排（定稿建议）
+## 11. Acceptance Criteria (Post-Implementation)
 
-### 12.1 控件放哪
+- [ ] New Office session: system prompt excludes CRAFT/LSP/symbol index/code retrieval triad long text  
+- [ ] Office session: registry has no `edit_file`, `grep_files`, `exec_shell`  
+- [ ] New Code session: same as current Agent behavior (full tools + full prompt)  
+- [ ] UI switch Office ↔ Code: **creates new session**, old session unchanged  
+- [ ] `infer_task_type("分析并修复 login")` → `Code` (Chinese fix intent overrides analysis keywords)  
+- [ ] `grep_files` / `glob_files` only in Code (and Explore sub-agent)  
 
-**推荐**：与现有 **运行模式**（Plan / Agent / Yolo）并列，放在 **Composer 底栏** `Composer.tsx` 工具条内——紧挨 `runMode` 下拉左侧或右侧，使用同级 `composer-chip` 样式。
+---
+
+## 12. UI Layout (Final Recommendation)
+
+### 12.1 Control placement
+
+**Recommended:** Parallel to existing **run mode** (Plan / Agent / Yolo), in **Composer footer** `Composer.tsx` toolbar — left or right of `runMode` dropdown, same `composer-chip` style.
 
 ```text
-[ 自动批准 ] | [ Agent ▼ ] | [ 办公 ▼ ]  ……  模型 / 更多
-                  ↑ runMode      ↑ taskType（办公 | 代码 | 自动）
+[ Auto-approve ] | [ Agent ▼ ] | [ Office ▼ ]  ……  model / more
+                  ↑ runMode      ↑ taskType (Office | Code | Auto)
 ```
 
-**不推荐**单独占顶栏或设置页深处：任务类型是 **session 级** 决策，应在「发消息前」可见。
+**Not recommended:** Separate top bar or deep settings — task type is a **session-level** decision, visible before sending.
 
-**Session 列表**（侧栏）每条会话建议带小标签：`办公` / `代码`，避免打开错会话。
+**Session list** (sidebar): each session should show small tag: `Office` / `Code`, to avoid opening wrong session.
 
-### 12.2 切换交互（与「新 session」一致）
+### 12.2 Switch interaction (consistent with "new session")
 
-| 操作 | 行为 |
-|------|------|
-| 新建会话 | 使用当前选中的 TaskType（或「自动」→ `infer_task_type`） |
-| 在输入区改 TaskType | **弹窗**：「切换任务类型将新建会话，当前对话不会带入。」→ 确认后 `onNewSession(taskType)` |
-| 会话进行中 | TaskType **只读**（chip 可点但仅展示说明，或 disabled） |
+| Action | Behavior |
+|--------|----------|
+| New session | Use currently selected TaskType (or "Auto" → `infer_task_type`) |
+| Change TaskType in input area | **Modal:** "Switching task type will create a new session; current conversation will not carry over." → confirm → `onNewSession(taskType)` |
+| Session in progress | TaskType **read-only** (chip clickable for explanation only, or disabled) |
 
-不在同一会话内改类型，避免 KV cache 与工具面不一致。
+Do not change type mid-session — avoids KV cache and tool surface mismatch.
 
-### 12.3 Office 下界面是否变化
+### 12.3 UI changes under Office
 
-**建议：适度收敛，不做整套换肤。**
+**Recommendation:** Moderate convergence, not full reskin.
 
-原则：**隐藏「代码向、且 Office registry 没有」的入口**；保留文件预览、办公交付物、通用设置。
+Principle: **Hide code-oriented entries that Office registry lacks**; keep file preview, office deliverables, general settings.
 
-| 区域 | Code | Office |
+| Area | Code | Office |
 |------|:----:|:------:|
-| 主聊天区 | ✅ | ✅ |
-| Composer：TaskType | ✅ | ✅ |
-| Composer：Run mode（Plan/Agent/Yolo） | 三档 | **默认 Agent**；Plan/Yolo 可隐藏或灰显「代码会话专用」 |
-| Composer：自动批准 | Agent 常用 | **可默认开**（`write_office` 多为 Suggest，减少打断） |
-| Composer：路由 / 模型 | ✅ | ✅（可保留） |
-| 右侧：**工作台 → 文件** | ✅ | ✅；**默认打开 `deliverables/`**（§13） |
-| 右侧：**Checklist** | ✅ | 隐藏或仅在有数据时出现 |
-| 右侧：**子代理 (agents)** | ✅ | **隐藏** |
-| 右侧：**索引 (index)** | ✅ | **隐藏** |
-| 右侧：**Mermaid** | ✅ | **保留**（办公也常画流程/结构图） |
-| 右侧：任务与技能 / MCP / 系统 | 设置类 | 保留在「更多」或设置，不占主路径 |
+| Main chat | ✅ | ✅ |
+| Composer: TaskType | ✅ | ✅ |
+| Composer: Run mode (Plan/Agent/Yolo) | all three | **default Agent**; Plan/Yolo hidden or grayed "Code session only" |
+| Composer: auto-approve | common in Agent | **can default on** (`write_office` mostly Suggest, less interruption) |
+| Composer: routing / model | ✅ | ✅ (can keep) |
+| Right: **Workbench → Files** | ✅ | ✅; **default open `deliverables/`** (§13) |
+| Right: **Checklist** | ✅ | hidden or only when data exists |
+| Right: **Sub-agents (agents)** | ✅ | **hidden** |
+| Right: **Index** | ✅ | **hidden** |
+| Right: **Mermaid** | ✅ | **keep** (office also draws flow/structure) |
+| Right: tasks/skills / MCP / system | settings | keep under "more" or settings, not main path |
 
-**不必**删掉代码面板代码路径——用 `taskType === 'office'` 条件渲染即可；Code 会话恢复完整侧栏。
+**No need** to delete code panel paths — use `taskType === 'office'` conditional render; Code sessions restore full sidebar.
 
-**可选增强（非 MVP）**：Office 会话顶栏浅色条文案「办公模式 · 产出在 deliverables/」；Code 无条或显示「代码模式」。
+**Optional enhancement (non-MVP):** Office session top bar light strip "Office mode · output in deliverables/"; Code no strip or "Code mode".
 
-### 12.4 与 AppMode 的组合（Office session）
+### 12.4 AppMode combinations (Office session)
 
-| 组合 | 建议 |
-|------|------|
-| Office + Agent | **默认推荐** |
-| Office + Plan | 允许但弱化（办公很少先写 plan）；可不展示 Plan |
-| Office + Yolo | 不建议；隐藏或拒绝创建 |
+| Combination | Recommendation |
+|-------------|----------------|
+| Office + Agent | **default recommended** |
+| Office + Plan | allowed but weakened (office rarely plans first); may hide Plan |
+| Office + Yolo | not recommended; hide or block creation |
 
 ---
 
-## 13. Office 模式：生成文件放哪
+## 13. Office Mode: Where Generated Files Go
 
-### 13.1 原则
+### 13.1 Principles
 
-- 路径相对 **Composer 工作区根**（与 `write_office` / `read_file` 的 `context.resolve_path` 一致）。
-- **不要**默认写到 `.deepseek/`：仓库 `.gitignore` 已忽略 `.deepseek/`，用户不易在资源管理器/git 里看到交付物。
-- 用户明确指定路径时 **以用户为准**。
+- Paths relative to **Composer workspace root** (same as `write_office` / `read_file` `context.resolve_path`).
+- **Do not** default to `.deepseek/`: repo `.gitignore` ignores `.deepseek/`, users won't see deliverables in explorer/git easily.
+- When user specifies path explicitly, **user wins**.
 
-### 13.2 默认目录（推荐定稿）
+### 13.2 Default directory (recommended final)
 
 ```text
 <workspace>/
-  deliverables/          ← Office 默认产出根（可配置）
-    <可选子目录>/        ← 按会话或日期，见下
-      报告_2026-05-18.xlsx
-      方案初稿.pptx
+  deliverables/          ← Office default output root (configurable)
+    <optional subdir>/   ← by session or date, see below
+      report_2026-05-18.xlsx
+      draft_proposal.pptx
 ```
 
-| 项 | 建议值 |
-|----|--------|
-| 默认根目录 | `deliverables/` |
-| 子目录策略（MVP） | 不强制；prompt 写「默认 `deliverables/<简短英文名>.<ext>`」 |
-| 子目录策略（增强） | `deliverables/<YYYY-MM-DD>/` 或 `deliverables/<session-id 前 8 位>/` 防覆盖 |
+| Item | Recommended value |
+|------|-------------------|
+| Default root | `deliverables/` |
+| Subdir strategy (MVP) | not enforced; prompt says "default `deliverables/<short-english-name>.<ext>`" |
+| Subdir strategy (enhanced) | `deliverables/<YYYY-MM-DD>/` or `deliverables/<first 8 of session-id>/` to avoid overwrite |
 
-**config.toml（可选）**：
+**config.toml (optional):**
 
 ```toml
 [task]
 default_type = "code"
-office_output_dir = "deliverables"   # 相对 workspace
+office_output_dir = "deliverables"   # relative to workspace
 ```
 
-### 13.3 三处一致
+### 13.3 Three-way consistency
 
-1. **`prompts/tasks/office.md`**：`write_office` 未给 `path` 时 → `deliverables/...`  
-2. **`write_office` 工具**（可选）：`path` 缺省时拼 `office_output_dir` + 由 title  slug 的文件名（实现阶段再定）  
-3. **Zagens 右栏「文件」**：Office session 打开工作台时 **默认列出 `deliverables/`**（无则提示「首次生成后会出现在此」）
+1. **`prompts/tasks/office.md`:** when `write_office` has no `path` → `deliverables/...`  
+2. **`write_office` tool** (optional): when `path` missing, join `office_output_dir` + slug from title (define at implementation)  
+3. **Zagens right panel "Files":** Office session opens workbench **default listing `deliverables/`** (if missing, hint "appears here after first generation")
 
-### 13.4 非代码工作区
+### 13.4 Non-code workspaces
 
-用户把 Composer 工作区指到 `~/Documents/我的项目` 时，`deliverables/` 仍在该目录下，符合直觉。
+When Composer workspace points to `~/Documents/MyProject`, `deliverables/` still under that directory — intuitive.
 
-若在 **代码仓库** 内办公：建议在项目 `.gitignore` **不要**忽略 `deliverables/`（或提供模板 `.gitignore` 注释说明），是否提交由用户决定；与忽略 `.deepseek/` 区分开。
+When working **inside a code repo**: suggest project `.gitignore` **not** ignore `deliverables/` (or template comment); user decides commit; distinct from ignoring `.deepseek/`.
 
-### 13.5 待你确认的两点
+### 13.5 Two points pending confirmation
 
-1. 默认目录名用 **`deliverables`** 还是 **`documents` / `output`**？（推荐 `deliverables`，与 base.md 交付物 recap 用语一致。）  
-2. Office 是否要 **按日期分子文件夹**（避免同名覆盖）？MVP 可只做扁平 `deliverables/文件名.ext`。  
+1. Default directory name **`deliverables`** vs **`documents` / `output`**? (Recommend `deliverables`, consistent with base.md deliverable recap wording.)  
+2. Should Office **split subfolders by date** (avoid same-name overwrite)? MVP can use flat `deliverables/filename.ext`.  

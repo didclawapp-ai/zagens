@@ -1,82 +1,82 @@
-# KV 缓存（前缀缓存）观测指南
+# KV cache (prefix cache) observability guide
 
-| 字段 | 值 |
-|------|-----|
-| **读者** | Zagens / runtime 维护者、费用优化 |
-| **API 参考** | [DeepSeek 上下文硬盘缓存](https://api-docs.deepseek.com/zh-cn/guides/kv_cache) |
-| **相关代码** | `crates/runtime-orchestrator/src/pricing.rs`、`usage_aggregate.rs`；`GET /v1/usage` |
+| Field | Value |
+|-------|-------|
+| **Audience** | Zagens / runtime maintainers, cost optimization |
+| **API reference** | [DeepSeek context disk cache](https://api-docs.deepseek.com/guides/kv_cache) |
+| **Related code** | `crates/runtime-orchestrator/src/pricing.rs`, `usage_aggregate.rs`; `GET /v1/usage` |
 
-## 命中率怎么算
+## How hit rate is calculated
 
-每个 API 回合的 `usage` 可能包含：
+Each API turn's `usage` may include:
 
 - `prompt_cache_hit_tokens`
 - `prompt_cache_miss_tokens`
 - `input_tokens`
 
-**推荐口径**（与 compaction `/cache`、页脚 chip 一致）：
+**Recommended formula** (aligned with compaction `/cache` and footer chip):
 
 ```text
 cache_hit_rate = prompt_cache_hit_tokens / input_tokens × 100%
 ```
 
-分母用 `input_tokens`，不用 `hit + miss`（部分提供商只上报 hit 时会虚高到 100%）。
+Use `input_tokens` as the denominator, not `hit + miss` (some providers only report hits, which inflates to 100%).
 
-若未上报 `prompt_cache_miss_tokens`，聚合时用 `input_tokens − hit` 推算 miss（仅用于展示与「若无缓存」估价）。
+When `prompt_cache_miss_tokens` is absent, aggregate with `input_tokens − hit` as inferred miss (display and "without cache" estimate only).
 
-## 在哪里看
+## Where to view
 
-| 入口 | 说明 |
-|------|------|
-| **Zagens 用量面板** | 命中率 %、miss token、估算节省（USD） |
-| **Composer 页脚** | 上一轮完成后的 `cache XX%`（&lt;40% 警示色） |
-| **`GET /v1/usage`** | `totals.cache_hit_rate`、`miss_tokens`、`cache_savings_usd`、`cache_telemetry_incomplete` |
-| **`/cache`（CLI）** | 最近 N 轮逐轮 hit/miss（桌面 HTTP 对等 API 暂缓） |
+| Entry | Description |
+|-------|-------------|
+| **Zagens usage panel** | Hit rate %, miss tokens, estimated savings (USD) |
+| **Composer footer** | Last turn `cache XX%` (&lt;40% warning color) |
+| **`GET /v1/usage`** | `totals.cache_hit_rate`, `miss_tokens`, `cache_savings_usd`, `cache_telemetry_incomplete` |
+| **`/cache` (CLI)** | Per-turn hit/miss for last N turns (desktop HTTP parity deferred) |
 
-## 会话级 `cached_tokens / input_tokens` 的局限
+## Session-level `cached_tokens / input_tokens` limitation
 
-`GET /v1/usage` 对**每个 turn 的 `input_tokens` 求和**。同一 turn 内多轮 tool/API 时，每轮 `input_tokens` 都含完整前缀，因此：
+`GET /v1/usage` **sums `input_tokens` per turn**. When a turn has multiple tool/API rounds, each round's `input_tokens` includes the full prefix, so:
 
-- 会话级 `cache_hit_rate` 是**粗指标**，常略低于逐轮 `/cache`；
-- **计费**仍按每轮 `usage` 的 hit/miss 拆分（`pricing::calculate_turn_cost_from_usage`），与展示聚合无关。
+- Session-level `cache_hit_rate` is a **coarse metric**, often slightly below per-turn `/cache`;
+- **Billing** still uses per-round `usage` hit/miss split (`pricing::calculate_turn_cost_from_usage`), independent of display aggregation.
 
-精确排查前缀抖动请用逐轮遥测或日志 `target=compaction` 的 `cache_hit_pct`。
+For precise prefix jitter, use per-turn telemetry or log `target=compaction` `cache_hit_pct`.
 
-## 提供商与遥测
+## Providers and telemetry
 
-| 提供商 | `cache_telemetry_incomplete` |
-|--------|------------------------------|
-| DeepSeek / DeepSeek CN / NVIDIA NIM（DeepSeek 模型） | 通常 `false` |
-| OpenRouter、Ollama 等 | `true` — 成本按全 miss 估算，实际账单可能更低 |
+| Provider | `cache_telemetry_incomplete` |
+|----------|------------------------------|
+| DeepSeek / DeepSeek CN / NVIDIA NIM (DeepSeek models) | Usually `false` |
+| OpenRouter, Ollama, etc. | `true` — cost estimated as all miss; actual bill may be lower |
 
-用量面板在 `cache_telemetry_incomplete=true` 时会显示提示。
+Usage panel shows a notice when `cache_telemetry_incomplete=true`.
 
-## 子代理 / RLM
+## Sub-agents / RLM
 
-子回合的 `child_prompt_cache_*` 写在工具元数据中，**尚未** rollup 到 `GET /v1/usage` 会话总账。大 audit 场景主会话面板可能低估命中 token。
+Child-round `child_prompt_cache_*` is stored in tool metadata and is **not** rolled up to `GET /v1/usage` session totals. Large audit runs may under-report hit tokens on the main session panel.
 
-## 何时会打碎前缀（命中率骤降）
+## When prefix cache breaks (hit rate drops)
 
-- `/compact`、`.deepseek/handoff.md` 改写
-- 改写或重排历史 messages
-- 子代理新 session（冷启动）
-- 同一文件重复 Read（tool 结果信封变化）
+- `/compact`, `.deepseek/handoff.md` rewrite
+- Rewriting or reordering history messages
+- Sub-agent new session (cold start)
+- Re-reading the same file (tool result envelope changes)
 
-产品策略：静态内容在 system prompt（静→动分层）；工作集在 `<turn_meta>`（见 [`prompt-architecture.md`](../prompt-architecture.md)）。
+Product strategy: static content in system prompt (static→dynamic layering); working set in `<turn_meta>` (see [`prompt-architecture.md`](../prompt-architecture.md)).
 
-## 费用敏感度（V4-Pro，折扣期内示例）
+## Cost sensitivity (V4-Pro, example during discount window)
 
-| 命中率 | 输入侧相对全 miss |
-|--------|-------------------|
-| 80% | 约省 **79%** |
-| 50% | 约省 **50%** |
-| 40% | 页脚 chip 进入警示色 |
+| Hit rate | Input-side savings vs all miss |
+|----------|--------------------------------|
+| 80% | ~**79%** |
+| 50% | ~**50%** |
+| 40% | Footer chip enters warning color |
 
-折扣截止以 `pricing.rs` 中 `v4_pro_discount_ends_at` 为准（当前文档编写时为 2026-05-31 15:59 UTC）。
+Discount end date: `pricing.rs` `v4_pro_discount_ends_at` (was 2026-05-31 15:59 UTC when this doc was written).
 
-## 运维检查清单
+## Ops checklist
 
-1. 第 3 轮后平均命中率是否 **&gt; 70%**（`/cache` 建议）。
-2. 连续多轮 **&lt; 40%** 再考虑 `/compact`，勿为小幅省 token 频繁压缩。
-3. 确认模型走 DeepSeek 原生端点（有 hit/miss 字段）。
-4. 对比 `cost_usd` 与 `cost_usd_without_cache` 理解缓存带来的节省。
+1. After turn 3, is average hit rate **&gt; 70%** (`/cache` recommended)?
+2. Only consider `/compact` after **&lt; 40%** for several consecutive turns — do not compact frequently for small token savings.
+3. Confirm model uses native DeepSeek endpoint (hit/miss fields present).
+4. Compare `cost_usd` vs `cost_usd_without_cache` to understand cache savings.

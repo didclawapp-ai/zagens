@@ -1,7 +1,7 @@
-# D6 — `deepseek-runtime` sidecar (runtime-server crate)
+# D6 — `deepseek-runtime` Sidecar (runtime-server Crate)
 
 **Status:** Landed (phase A + A+ + **phase B** — 2026-05-26)  
-**Related:** [ARCHITECTURE_ASSESSMENT_2026-05-25.md](./ARCHITECTURE_ASSESSMENT_2026-05-25.md) §1 #5 · **[详细实施方案](./D6_IMPLEMENTATION_PLAN.md)** · **[Phase B ADR](./D6_PHASE_B_CLI_SUNSET.md)**
+**Related:** maintainer: `doc_Private/docs/tech/adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md` §1 #5 · maintainer: `doc_Private/docs/tech/adr/D6_IMPLEMENTATION_PLAN.md` · [Phase B ADR](./D6_PHASE_B_CLI_SUNSET.md)
 
 ## Context
 

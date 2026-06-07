@@ -1,34 +1,34 @@
-# 持久化布局（D7 SSOT）
+# Persistence layout (D7 SSOT)
 
-**Status:** Landed 2026-05-26 · [D7_PERSISTENCE_UNIFICATION.md](./adr/D7_PERSISTENCE_UNIFICATION.md)
+**Status:** Landed 2026-05-26 · maintainer detail: `doc_Private/docs/tech/adr/D7_PERSISTENCE_UNIFICATION.md`
 
-Zagens 与 **`deepseek-runtime`** sidecar 的生产数据路径。**非**物理单库：Sessions 与 Runtime threads 各用 SQLite（或 JSON 回退），由 **`runtime_thread_id`** 链接。
+Zagens and the **`deepseek-runtime`** sidecar production data paths. **Not** a single physical database: Sessions and Runtime threads each use SQLite (or JSON fallback), linked by **`runtime_thread_id`**.
 
-## 目录与文件
+## Directories and files
 
-| 轨 | 默认路径 | 主文件 | 环境变量 |
-|----|----------|--------|----------|
-| **Sessions** | `~/.deepseek/sessions/` | `sessions.db`（WAL）；回退 `{id}.json` | — |
-| **Runtime threads** | `~/.deepseek/tasks/runtime/` | `runtime.db`；回退 `threads/`、`events/*.jsonl` | `DEEPSEEK_RUNTIME_DIR` 覆盖 runtime 根；`DEEPSEEK_TASKS_DIR` 覆盖 tasks 根（默认 `~/.deepseek/tasks`） |
+| Track | Default path | Primary file | Environment variables |
+|-------|--------------|--------------|------------------------|
+| **Sessions** | `~/.deepseek/sessions/` | `sessions.db` (WAL); fallback `{id}.json` | — |
+| **Runtime threads** | `~/.deepseek/tasks/runtime/` | `runtime.db`; fallback `threads/`, `events/*.jsonl` | `DEEPSEEK_RUNTIME_DIR` overrides runtime root; `DEEPSEEK_TASKS_DIR` overrides tasks root (default `~/.deepseek/tasks`) |
 
-`DEEPSEEK_RUNTIME_DIR` 非空时作为 runtime store 根；否则为 `{tasks_dir}/runtime`，其中 `tasks_dir` = `DEEPSEEK_TASKS_DIR` 或 `~/.deepseek/tasks`。
+When `DEEPSEEK_RUNTIME_DIR` is set, it becomes the runtime store root; otherwise `{tasks_dir}/runtime`, where `tasks_dir` = `DEEPSEEK_TASKS_DIR` or `~/.deepseek/tasks`.
 
-**SSOT 叙事（D15）：** Thread + Event（`runtime.db`）为执行与回放权威；Session（`sessions.db`）为桌面侧栏 **投影**，经 `runtime_thread_id` 链接，不得独立增长无主 thread 的新会话。
+**SSOT narrative (D15):** Thread + Event (`runtime.db`) is authoritative for execution and replay; Session (`sessions.db`) is a **projection** for the desktop sidebar, linked via `runtime_thread_id`. Do not grow new sessions without a backing thread.
 
-## HTTP 契约（谁写谁读）
+## HTTP contract (who writes / who reads)
 
-| 操作 | 写入 | 读取 |
-|------|------|------|
-| 侧栏会话列表 | — | `GET /v1/sessions` → SessionManager |
-| 保存会话快照 | `POST /v1/threads/{id}/persist-session` | SessionManager（含 **`runtime_thread_id`**） |
-| 恢复会话 | `POST /v1/sessions/{id}/resume-thread` | 若 `runtime_thread_id` 且 runtime 有 events → **复用** thread；否则 create + seed |
-| 线程 / SSE | `POST /v1/threads`、`/turns`、events | RuntimeThreadStore |
+| Operation | Write | Read |
+|-----------|-------|------|
+| Sidebar session list | — | `GET /v1/sessions` → SessionManager |
+| Save session snapshot | `POST /v1/threads/{id}/persist-session` | SessionManager (includes **`runtime_thread_id`**) |
+| Resume session | `POST /v1/sessions/{id}/resume-thread` | If `runtime_thread_id` and runtime has events → **reuse** thread; else create + seed |
+| Thread / SSE | `POST /v1/threads`, `/turns`, events | RuntimeThreadStore |
 
-## 链接字段
+## Link field
 
-`SessionMetadata.runtime_thread_id`（SQLite 列 `runtime_thread_id`，D7 C1）指向 `ThreadRecord.id`。桌面 **replay 工具卡 / thinking** 依赖此链接；缺失时 resume 会 seed 新 thread。
+`SessionMetadata.runtime_thread_id` (SQLite column `runtime_thread_id`, D7 C1) points to `ThreadRecord.id`. Desktop **replay tool cards / thinking** depend on this link; missing link causes resume to seed a new thread.
 
-## 非 SSOT / 已移除
+## Non-SSOT / removed
 
-- **`crates/app-server`** — D7 已删除；生产 HTTP 仅 `runtime_api` / `deepseek-runtime`
-- **`deepseek-state` / `core::Runtime`** — D15 已删除；Zagens 唯一入口，无 CLI legacy 路径
+- **`crates/app-server`** — removed in D7; production HTTP is only `runtime_api` / `deepseek-runtime`
+- **`deepseek-state` / `core::Runtime`** — removed in D15; Zagens is the sole entry point, no CLI legacy path

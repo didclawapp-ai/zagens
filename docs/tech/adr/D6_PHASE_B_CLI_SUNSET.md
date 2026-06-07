@@ -1,54 +1,54 @@
-# D6 Phase B — 方案 B：Runtime 单 crate + CLI/TUI 退场
+# D6 Phase B — Option B: Single Runtime Crate + CLI/TUI Sunset
 
-> **Status:** Landed（2026-05-26）  
-> **Supersedes:** [D6_PHASE_B_SPIKE.md](./D6_PHASE_B_SPIKE.md) 中的 `agent-host` 分叉路径（改为单 crate 合并）  
-> **Related:** [D6_RUNTIME_SERVER.md](./D6_RUNTIME_SERVER.md) · [RUNTIME_ARCHITECTURE.md](../RUNTIME_ARCHITECTURE.md) · D6 实施计划见 `doc_Private/docs/tech/adr/D6_IMPLEMENTATION_PLAN.md`
-
----
-
-## 0. 决策
-
-**在未正式发布前，执行方案 B：**
-
-1. **删除** `crates/cli`（`deepseek` 分发器）与 ratatui 全屏 TUI（`crates/tui/src/tui/`、`commands/`）。
-2. **合并** 运行时宿主代码到 **`crates/runtime-server`**（lib + bin `deepseek-runtime`）。
-3. **删除** `crates/tui` crate（内容迁入 `runtime-server` 后）。
-4. **收缩** `deepseek-state`（CLI legacy；无引用则删）。
-5. Zagens **不变**：仍嵌入 `deepseek-runtime`，不链 runtime lib。
-
-**不再保留：** `deepseek-tui` binary、`deepseek serve --http` dev fallback（统一为 `deepseek-runtime`）、`delegate_to_tui` 子进程链。
+> **Status:** Landed (2026-05-26)  
+> **Supersedes:** `agent-host` fork path in maintainer: `doc_Private/docs/tech/adr/D6_PHASE_B_SPIKE.md` (replaced by single-crate merge)  
+> **Related:** [D6_RUNTIME_SERVER.md](./D6_RUNTIME_SERVER.md) · [RUNTIME_ARCHITECTURE.md](../RUNTIME_ARCHITECTURE.md) · D6 implementation plan: maintainer: `doc_Private/docs/tech/adr/D6_IMPLEMENTATION_PLAN.md`
 
 ---
 
-## 1. 动机
+## 0. Decision
 
-| 因素 | 说明 |
-|------|------|
-| **D6 Phase A+ 后** | sidecar 已瘦，但 **442 条** headless `dead_code` 警告 — 同一 lib 兼 HTTP + TUI |
-| **产品** | D12 Desktop-only；CLI/TUI 非用户面（DEV_NOTES D14 升级为 **移除**） |
-| **未发布** | 无外部脚本契约负担，适合一次性改 crate 边界 |
-| **9s 冷启动** | 部分来自 sidecar 体积/初始化；合并 + 启动路径优化可并行（§6） |
+**Before first public release, execute Option B:**
+
+1. **Delete** `crates/cli` (`deepseek` dispatcher) and the ratatui full-screen TUI (`crates/tui/src/tui/`, `commands/`).
+2. **Merge** runtime host code into **`crates/runtime-server`** (lib + bin `deepseek-runtime`).
+3. **Delete** `crates/tui` crate (after content moves to `runtime-server`).
+4. **Shrink** `deepseek-state` (CLI legacy; delete if zero references).
+5. Zagens **unchanged**: still embeds `deepseek-runtime`; does not link runtime lib.
+
+**No longer retained:** `deepseek-tui` binary, `deepseek serve --http` dev fallback (unified to `deepseek-runtime`), `delegate_to_tui` subprocess chain.
 
 ---
 
-## 2. 目标架构
+## 1. Motivation
+
+| Factor | Explanation |
+|--------|-------------|
+| **After D6 Phase A+** | Sidecar is slim, but **442** headless `dead_code` warnings — same lib serves HTTP + TUI |
+| **Product** | D12 Desktop-only; CLI/TUI not a user surface (DEV_NOTES D14 upgraded to **removal**) |
+| **Unreleased** | No external script contract burden; suitable for one-time crate boundary change |
+| **9s cold start** | Partly from sidecar size/init; merge + startup path optimization can run in parallel (§6) |
+
+---
+
+## 2. Target Architecture
 
 ```text
 crates/runtime-server/          # package: deepseek-runtime-server
-  lib: deepseek_runtime          # 原 tui lib 减 TUI 树
-  bin: deepseek-runtime          # 已有
+  lib: deepseek_runtime          # former tui lib minus TUI tree
+  bin: deepseek-runtime          # existing
 
-crates/core/                    # 不变
-crates/desktop/                 # 不变（仅 sidecar 路径/文档）
-crates/config, tools, mcp, …    # 不变
+crates/core/                    # unchanged
+crates/desktop/                 # unchanged (sidecar path/docs only)
+crates/config, tools, mcp, …    # unchanged
 
-删除:
+Deleted:
   crates/cli/
   crates/tui/
-  # crates/state/ — deepseek-core 仍有引用，按 B3.1 保留
+  # crates/state/ — deepseek-core still references; retained per B3.1
 ```
 
-**依赖方向（无环）：**
+**Dependency direction (acyclic):**
 
 ```text
 desktop → config, secrets
@@ -58,106 +58,106 @@ runtime-server (bin) → runtime-server (lib)
 
 ---
 
-## 3. PR 链（按序执行）
+## 3. PR Chain (execute in order)
 
-### B0 — 准备与 CLI 删除 ✅
+### B0 — Prep and CLI deletion ✅
 
-| 步骤 | 动作 |
-|------|------|
-| B0.1 | 本 ADR + CHANGELOG ✅ |
-| B0.2 | 从 workspace 移除 `crates/cli` ✅ |
-| B0.3 | 抽出 `transcript_isomorphism` ✅ |
-| B0.4 | 测试改用 `deepseek_core::approval::ApprovalMode` ✅ |
+| Step | Action |
+|------|--------|
+| B0.1 | This ADR + CHANGELOG ✅ |
+| B0.2 | Remove `crates/cli` from workspace ✅ |
+| B0.3 | Extract `transcript_isomorphism` ✅ |
+| B0.4 | Tests use `deepseek_core::approval::ApprovalMode` ✅ |
 
-### B1 — 剥离 TUI 树 ✅
+### B1 — Strip TUI tree ✅
 
-| 步骤 | 动作 |
-|------|------|
-| B1.1 | 删除 `src/tui/`、`src/commands/`、`src/main.rs` ✅ |
-| B1.2 | 删除 `config_ui`、`palette`、`deepseek_theme`、ratatui/crossterm/arboard 依赖 ✅ |
-| B1.3 | 清理 `lib.rs`；CLI helpers 保留于 `cli/{doctor,setup,pr_prompt}.rs` ✅ |
-| B1.4 | `export-runtime-openapi` bin 迁到 `runtime-server` ✅ |
+| Step | Action |
+|------|--------|
+| B1.1 | Delete `src/tui/`, `src/commands/`, `src/main.rs` ✅ |
+| B1.2 | Delete `config_ui`, `palette`, `deepseek_theme`, ratatui/crossterm/arboard deps ✅ |
+| B1.3 | Clean `lib.rs`; CLI helpers kept in `cli/{doctor,setup,pr_prompt}.rs` ✅ |
+| B1.4 | Move `export-runtime-openapi` bin to `runtime-server` ✅ |
 
-### B2 — 合并 crate ✅
+### B2 — Merge crate ✅
 
-| 步骤 | 动作 |
-|------|------|
-| B2.1 | `runtime-server/Cargo.toml` 合并原 `tui` 依赖；增 `[lib] name = deepseek_runtime` ✅ |
-| B2.2 | `tui/src/*` → `runtime-server/src/`（含 `assets/`、`tests/`） ✅ |
-| B2.3 | bin 调 `deepseek_runtime` lib ✅ |
-| B2.4 | 删除 `crates/tui/` ✅ |
-| B2.5 | CI/脚本 `-p deepseek-runtime-server`；`deepseek_tui` → `deepseek_runtime`（代码路径） ✅ |
+| Step | Action |
+|------|--------|
+| B2.1 | `runtime-server/Cargo.toml` merge former `tui` deps; add `[lib] name = deepseek_runtime` ✅ |
+| B2.2 | `tui/src/*` → `runtime-server/src/` (incl. `assets/`, `tests/`) ✅ |
+| B2.3 | bin calls `deepseek_runtime` lib ✅ |
+| B2.4 | Delete `crates/tui/` ✅ |
+| B2.5 | CI/scripts `-p deepseek-runtime-server`; `deepseek_tui` → `deepseek_runtime` (code paths) ✅ |
 
-### B3 — 清理与验收 ✅
+### B3 — Cleanup and acceptance ✅
 
-| 步骤 | 动作 |
-|------|------|
-| B3.1 | 删 `deepseek-state`（若零引用）→ **保留**：`deepseek-core` 仍编译依赖；**非** sidecar SSOT ✅ |
-| B3.2 | 更新 CI、OpenAPI 脚本、文档；`sidecar.rs` 可选识别磁盘遗留 `deepseek-tui` ✅ |
-| B3.3 | 验收命令（§5）；`RUSTFLAGS=-Dwarnings` 构建；Zagens 冒烟 ✅ |
+| Step | Action |
+|------|--------|
+| B3.1 | Delete `deepseek-state` (if zero refs) → **retained**: `deepseek-core` still compiles against it; **not** sidecar SSOT ✅ |
+| B3.2 | Update CI, OpenAPI scripts, docs; `sidecar.rs` may optionally detect legacy `deepseek-tui` on disk ✅ |
+| B3.3 | Acceptance commands (§5); `RUSTFLAGS=-Dwarnings` build; Zagens smoke ✅ |
 
-**人力：** 约 **2–3 周**（1 人）；每 PR 保持 `cargo test -p deepseek-runtime-server` 可回归。
-
----
-
-## 4. 非目标
-
-- 不改 `/v1/*` HTTP 契约语义  
-- 不合并 sidecar 进 Tauri 进程  
-- 不在本阶段做 P2 multi-sidecar  
+**Effort:** ~**2–3 weeks** (1 person); each PR keeps `cargo test -p deepseek-runtime-server` regressable.
 
 ---
 
-## 5. 验收
+## 4. Non-goals
+
+- Do not change `/v1/*` HTTP contract semantics  
+- Do not merge sidecar into Tauri process  
+- Do not do P2 multi-sidecar in this phase  
+
+---
+
+## 5. Acceptance
 
 ```bash
 cargo check --workspace
 cargo test -p deepseek-runtime-server --lib sidecar_contract_full_lifecycle
 cargo test -p deepseek-runtime-server --test sidecar_binary_contract
-cargo tree -p deepseek-runtime-server -i ratatui    # 无匹配
-cargo tree -p deepseek-runtime-server -i crossterm  # 无匹配
+cargo tree -p deepseek-runtime-server -i ratatui    # no match
+cargo tree -p deepseek-runtime-server -i crossterm  # no match
 ! test -d crates/cli
 ! test -d crates/tui
 ```
 
-- [x] workspace 无 `crates/cli`、`crates/tui`  
-- [x] `RUNTIME_ARCHITECTURE.md` 仅描述 `deepseek-runtime` 单 lib  
-- [x] Zagens `npm run bundle:prepare` + 冒烟通过  
+- [x] Workspace has no `crates/cli`, `crates/tui`  
+- [x] `RUNTIME_ARCHITECTURE.md` describes only `deepseek-runtime` single lib  
+- [x] Zagens `npm run bundle:prepare` + smoke pass  
 
 ---
 
-## 6. 冷启动 9s（并行优化，非 Phase B 阻塞）
+## 6. 9s Cold Start (parallel optimization, not Phase B blocker)
 
-**假设：** 从点击图标到 Web 主界面可交互 ≈ 9s（维护者手测，2026-05-26）。
+**Assumption:** From icon click to interactive Web main UI ≈ 9s (maintainer manual measure, 2026-05-26).
 
-Phase B **边际**收益：sidecar 二进制更小、少链无用 code path、去掉 dead_code 编译体积。
+Phase B **marginal** benefit: smaller sidecar binary, fewer unused code paths, reduced dead_code compile size.
 
-**更可能占大头的项（需 profiling）：**
+**Likely larger contributors (need profiling):**
 
-| 阶段 | 可能耗时 | 优化方向 |
-|------|----------|----------|
-| Tauri/WebView2 进程 + WebView 首屏 | 2–4s | release 构建、资源压缩、减少首屏 JS |
-| `initRuntimeConfig` 等 `get_runtime_port` | 阻塞至 `DS_PICK_READY` | sidecar 并行 spawn；skills 安装改后台 |
-| Sidecar `RuntimeThreadManager::open` + SQLite | 0.5–2s | WAL、延迟打开非关键 store |
-| React hydrate + 首屏 API | 1–3s | 骨架屏、defer 非关键 panel |
+| Phase | Possible duration | Optimization direction |
+|-------|-------------------|------------------------|
+| Tauri/WebView2 process + WebView first paint | 2–4s | release build, asset compression, reduce first-screen JS |
+| `initRuntimeConfig` etc. `get_runtime_port` | blocks until `DS_PICK_READY` | parallel sidecar spawn; skills install to background |
+| Sidecar `RuntimeThreadManager::open` + SQLite | 0.5–2s | WAL, lazy open non-critical stores |
+| React hydrate + first-screen API | 1–3s | skeleton screen, defer non-critical panels |
 
-**建议：** Phase B 与启动优化 **并行** — B 完成后对 `deepseek-runtime` 做 `tracing` 时间戳（已有 `[deepseek-runtime] bound … (+Duration)`），Desktop 侧记录 `DS_PICK_READY` → 首屏 ready。
-
----
-
-## 7. 风险
-
-| 风险 | 缓解 |
-|------|------|
-| 大 PR 回归面宽 | 严格按 B0→B3 拆分；每步契约测 |
-| `history_isomorphism` 与 TUI history 耦合 | B0.3 抽出 Message-only 模块 |
-| 内部脚本依赖 `deepseek` | 文档改为 `deepseek-runtime` + curl；无发布用户 |
-| MIT 上游命名 `deepseek-tui` | `NOTICE.md` / `third-party/` 保留归因 |
+**Recommendation:** Run Phase B **in parallel** with startup optimization — after B, add `tracing` timestamps to `deepseek-runtime` (existing `[deepseek-runtime] bound … (+Duration)`), Desktop side records `DS_PICK_READY` → first-screen ready.
 
 ---
 
-## 8. DEV_NOTES 修订
+## 7. Risks
 
-- **D14 CLI 定位** → **已移除**（2026-05-26，本 ADR）  
-- **D13 Sidecar** → 仅 `deepseek-runtime`；crate 名 `deepseek-runtime-server`  
-- ratatui TUI → **删除**（非 freeze）
+| Risk | Mitigation |
+|------|------------|
+| Large PR wide regression surface | Strict B0→B3 split; contract test each step |
+| `history_isomorphism` coupled to TUI history | B0.3 extract Message-only module |
+| Internal scripts depend on `deepseek` | Docs change to `deepseek-runtime` + curl; no released users |
+| MIT upstream naming `deepseek-tui` | `NOTICE.md` / `third-party/` retain attribution |
+
+---
+
+## 8. DEV_NOTES Revisions
+
+- **D14 CLI positioning** → **removed** (2026-05-26, this ADR)  
+- **D13 Sidecar** → `deepseek-runtime` only; crate name `deepseek-runtime-server`  
+- ratatui TUI → **deleted** (not freeze)

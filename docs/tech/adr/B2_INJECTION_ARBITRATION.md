@@ -1,7 +1,7 @@
 # B2.1 — Context injection arbitration (SSOT)
 
 **Status:** Accepted (2026-05-24)  
-**Related:** [RUNTIME_EVOLUTION_ROADMAP.md](../RUNTIME_EVOLUTION_ROADMAP.md) §9.2 B2.1, [topic-memory-rust-plan.md](../../topic-memory-rust-plan.md)
+**Related:** maintainer: `doc_Private/docs/tech/RUNTIME_EVOLUTION_ROADMAP.md` §9.2 B2.1 · maintainer: `doc_Private/docs/topic-memory-rust-plan.md`
 
 ## Problem
 
@@ -11,7 +11,7 @@ Multiple subsystems inject text into the model context:
 |--------|---------------|--------|
 | Tool results | `tool` role messages / `<tool_result>` | Engine turn loop |
 | CRAFT blackboard | Assignment / sub-agent prompt section | `tools/subagent` (`read_blackboard_section`) |
-| Topic memory graph | `<topic_memory>` in system prompt | `tui/topic_memory.rs` → `cycle_hooks::refresh_system_prompt` |
+| Topic memory graph | `<topic_memory>` in system prompt | `runtime-server` topic memory → `cycle_hooks::refresh_system_prompt` |
 | User memory | `<user_memory>` | `memory.rs` |
 | Compaction summary | Merged system prompt tail | `compaction` / `merge_compaction_summary` |
 
@@ -40,12 +40,12 @@ When context is assembled or trimmed, **higher rows win** over lower rows. Lower
 
 | Concern | Location |
 |---------|----------|
-| Topic block assembly | `crates/tui/src/topic_memory.rs` — `TopicMemoryRuntime::compose_block` |
-| System prompt merge | `crates/tui/src/core/engine/cycle_hooks.rs` — `refresh_system_prompt` |
-| Blackboard read | `crates/tui/src/tools/subagent/blackboard.rs` — `read_blackboard_section` |
-| Sub-agent prompt | `crates/tui/src/tools/subagent/mod.rs` — `build_assignment_prompt` |
-| Capacity trim | `crates/tui/src/core/engine/capacity_flow/interventions.rs` — `refresh_system_prompt_for_turn_mode_under_capacity` |
-| Arbitration flags | `crates/tui/src/topic_memory.rs` — `PromptInjectionArbitration` |
+| Topic block assembly | `crates/runtime-server/src/topic_memory.rs` — `TopicMemoryRuntime::compose_block` |
+| System prompt merge | `crates/runtime-server/src/core/engine/cycle_hooks.rs` — `refresh_system_prompt` |
+| Blackboard read | `crates/runtime-server/src/tools/subagent/blackboard.rs` — `read_blackboard_section` |
+| Sub-agent prompt | `crates/runtime-server/src/tools/subagent/mod.rs` — `build_assignment_prompt` |
+| Capacity trim | `crates/runtime-server/src/core/engine/capacity_flow/interventions.rs` — `refresh_system_prompt_for_turn_mode_under_capacity` |
+| Arbitration flags | `crates/runtime-server/src/topic_memory.rs` — `PromptInjectionArbitration` |
 | Constant (short) | `topic_memory::INJECTION_ARBITRATION` |
 
 ## Operational notes

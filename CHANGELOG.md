@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Docs — open-source prep:** Split `README.md` / `README.zh-CN.md`; added `SECURITY.md`, `CONTRIBUTING.md`; root `LOCAL_DEV_VERIFY.md`.
 - **Docs — SPEC-only `docs/`:** Non-design material → `doc_Private/`; harness fixtures → `fixtures/harness/`; `docs/README.md` indexes design specs only.
+- **Docs — English `docs/`:** All public design specs under `docs/` translated to English (architecture, API, LHT, CRAFT, prompts, ADRs).
 - **Tooling — local Linux lint (`scripts/ci/verify-lint-linux.ps1`):** Run the CI Lint job in a real Linux env (WSL preferred, Docker fallback with cached cargo/target volumes) from a Windows dev box, so `#[cfg(unix)]` / Linux-only clippy lints are caught **before** push instead of only on CI. Windows `cargo clippy` skips those branches entirely; `-Bootstrap` provisions apt deps + Node 20 + the pinned rust toolchain.
 
 ### Changed

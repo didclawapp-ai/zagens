@@ -1,53 +1,53 @@
-# D4 决策 — `app-server` 实验栈标记废弃
+# D4 Decision — `app-server` Experimental Stack Marked Deprecated
 
 **Status:** Removed (2026-05-26, D7 C5) — was deprecated 2026-05-26  
-**Supersedes:** 路线图 §4.2「D4 冻结 app-server」（2026-05-21）— 冻结升级为 **deprecated**  
-**Related:** [ARCHITECTURE_ASSESSMENT_2026-05-25.md](./ARCHITECTURE_ASSESSMENT_2026-05-25.md) §1 #6 · [RUNTIME_ARCHITECTURE.md](../RUNTIME_ARCHITECTURE.md) · [RUNTIME_EVOLUTION_ROADMAP.md](../RUNTIME_EVOLUTION_ROADMAP.md)
+**Supersedes:** maintainer: `doc_Private/docs/tech/RUNTIME_EVOLUTION_ROADMAP.md` §4.2 "D4 freeze app-server" (2026-05-21) — freeze upgraded to **deprecated**  
+**Related:** maintainer: `doc_Private/docs/tech/adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md` §1 #6 · [RUNTIME_ARCHITECTURE.md](../RUNTIME_ARCHITECTURE.md) · maintainer: `doc_Private/docs/tech/RUNTIME_EVOLUTION_ROADMAP.md`
 
-## 背景
+## Background
 
-仓库长期存在两条 HTTP 运行时路径：
+The repository long had two HTTP runtime paths:
 
-| 路径 | 用途 |
-|------|------|
-| **生产** | **`deepseek-runtime`** → `runtime_api` (`/v1/*`) → `Engine` |
-| **实验（已删）** | ~~`deepseek app-server`~~ → ~~`crates/app-server`~~ → ~~`deepseek-state`~~ |
+| Path | Purpose |
+|------|---------|
+| **Production** | **`deepseek-runtime`** → `runtime_api` (`/v1/*`) → `Engine` |
+| **Experimental (removed)** | ~~`deepseek app-server`~~ → ~~`crates/app-server`~~ → ~~`deepseek-state`~~ |
 
-Zagens / 桌面 **仅**使用生产路径。实验路径与 sidecar 持久化、鉴权、SSE 契约 **不互通**，造成认知与维护成本（Assessment §3.9）。
+Zagens / Desktop **only** uses the production path. The experimental path did not interoperate with sidecar persistence, auth, or SSE contracts, causing cognitive and maintenance cost (maintainer: `doc_Private/docs/tech/adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md` §3.9).
 
-M-series（D5）已闭合；下一结构优先项为 **D6 `runtime-server`**（从 sidecar 血统抽瘦 binary），**不是**扶正 `app-server`。
+M-series (D5) is closed; the next structural priority is **D6 `runtime-server`** (slim binary extracted from the sidecar lineage), **not** promoting `app-server`.
 
-## 决策
+## Decision
 
-**`crates/app-server` 及 `deepseek app-server` CLI 子命令标记为 deprecated。**
+**`crates/app-server` and the `deepseek app-server` CLI subcommand are marked deprecated.**
 
-- **不晋升**为第二套正式 HTTP 运行时。
-- **本阶段不删代码** — ~~crate、CLI 入口、依赖保留~~ **已删除（D7 C5）**。
-- **`deepseek-state`（`crates/state`）暂不整体废弃** — CLI `thread` 等仍可能读写 `StateStore`；D7 持久化统一时再迁移或收缩 scope。
+- **Not promoted** as a second official HTTP runtime.
+- **No code deletion in this phase** — ~~crate, CLI entry, dependencies retained~~ **removed (D7 C5)**.
+- **`deepseek-state` (`crates/state`) not wholesale deprecated yet** — CLI `thread` etc. may still read/write `StateStore`; migrate or shrink scope when D7 persistence is unified.
 
-## 生产路径
+## Production Path
 
-- Zagens / 桌面：**`deepseek-runtime`** sidecar + `runtime_api`（`crates/runtime-server`）
-- Headless / CI：同一 binary，HTTP + Bearer
-- ~~`deepseek-tui`~~、~~`deepseek` CLI~~：**已于 D6 Phase B 删除**（见 [D6_PHASE_B_CLI_SUNSET.md](./D6_PHASE_B_CLI_SUNSET.md)）
+- Zagens / Desktop: **`deepseek-runtime`** sidecar + `runtime_api` (`crates/runtime-server`)
+- Headless / CI: same binary, HTTP + Bearer
+- ~~`deepseek-tui`~~, ~~`deepseek` CLI~~: **removed in D6 Phase B** (see [D6_PHASE_B_CLI_SUNSET.md](./D6_PHASE_B_CLI_SUNSET.md))
 
-## 执行（2026-05-26）
+## Execution (2026-05-26)
 
-| 项 | 动作 |
-|----|------|
-| 文档 | 本 ADR；Assessment D4 ✅、§1 #6 勾选 |
-| CLI | `deepseek app-server` help 标注 DEPRECATED |
-| Crate | `deepseek-app-server` crate / `run` / `run_stdio` 文档 + `#[deprecated]` |
-| 禁止 | 不新增 app-server 端点、不扩展 turn/API、不让 desktop 依赖 |
+| Item | Action |
+|------|--------|
+| Docs | This ADR; maintainer: `doc_Private/docs/tech/adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md` D4 ✅, §1 #6 checked |
+| CLI | `deepseek app-server` help labeled DEPRECATED |
+| Crate | `deepseek-app-server` crate / `run` / `run_stdio` docs + `#[deprecated]` |
+| Prohibited | No new app-server endpoints, no turn/API extensions, no desktop dependency |
 
-## 后续移除（D7 C5 ✅）
+## Subsequent Removal (D7 C5 ✅)
 
-1. ~~确认无外部脚本依赖 `deepseek app-server`~~
-2. ~~删除 `crates/app-server`、CLI 子命令、workspace 依赖~~ — **done 2026-05-26**
-3. `StateStore` 收缩为 CLI legacy（`thread list --source state`）；生产 list 默认 `runtime.db`
+1. ~~Confirm no external scripts depend on `deepseek app-server`~~
+2. ~~Delete `crates/app-server`, CLI subcommand, workspace dependency~~ — **done 2026-05-26**
+3. `StateStore` shrunk to CLI legacy (`thread list --source state`); production list defaults to `runtime.db`
 
-## 验收
+## Acceptance
 
-- [x] 书面决策（本文件）
-- [x] Assessment §1 #6 可勾选
-- [x] 代码物理删除（D7 C5，2026-05-26）
+- [x] Written decision (this file)
+- [x] maintainer: `doc_Private/docs/tech/adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md` §1 #6 can be checked
+- [x] Code physically removed (D7 C5, 2026-05-26)

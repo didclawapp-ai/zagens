@@ -1,270 +1,270 @@
-# Prompt 增强 Patch — V4 幻觉防控
+# Prompt Enhancement Patch — V4 Hallucination Guard
 
-**日期**: 2026-05-18  
-**背景**: DeepSeek V4幻觉率评测数据（V4-Pro 94%，V4-Flash 96%）+ Zagens实际踩坑记录  
-**根因**: V4被训练成"不确定时倾向于大胆输出"，在能力声明、架构描述、自我行为复述三类场景下尤为突出  
-**目标**: 把"查询在回答之前"从软性原则变成有具体触发条件的硬性规则  
-**改动文件**: `crates/tui/src/prompts/base.md` + `crates/tui/src/prompts/subagent_output_format.md`  
-**状态**: 已落地（2026-05-18）；prompt 正文为英文，与现有 base/subagent 文件一致。  
-**验证**: 见文末 [验证记录](#验证记录并行-edit_file-对比测试2026-05-18)（旧包 A/B + 新包裸问 ×3）。  
+**Date:** 2026-05-18  
+**Background:** DeepSeek V4 hallucination rate benchmarks (V4-Pro 94%, V4-Flash 96%) + Zagens field incident log  
+**Root cause:** V4 is trained to "output boldly when uncertain" — especially in capability claims, architecture descriptions, and self-behavior narration  
+**Goal:** Turn "query before answer" from a soft principle into a hard rule with concrete trigger conditions  
+**Files changed:** `crates/tui/src/prompts/base.md` + `crates/tui/src/prompts/subagent_output_format.md`  
+**Status:** Landed (2026-05-18); prompt body is English, consistent with existing base/subagent files.  
+**Verification:** See [Verification record](#verification-record-parallel-edit_file-comparison-test-2026-05-18) at end (old package A/B + new package bare question ×3).
 
 ---
 
-## 改动一：base.md
+## Change 1: base.md
 
-### 插入位置
+### Insertion point
 
-`### Epistemic discipline (hallucination guard — V4)` 节末尾（当前base.md:129行之后），
-在 `### LSP Diagnostics` 节之前插入。
+End of `### Epistemic discipline (hallucination guard — V4)` section (after current base.md line ~129),  
+before `### LSP Diagnostics`.
 
-### 插入内容
+### Inserted content
 
 ```markdown
-### Capability Claims Rule（能力声明规则）
+### Capability Claims Rule
 
-**触发条件**：任何涉及"系统能做什么"、"工具行为是什么"、"引擎策略是什么"的陈述。
+**Trigger:** Any statement about "what the system can do", "how tools behave", or "what the engine policy is".
 
-**强制流程**：
+**Mandatory flow:**
 
-1. 停止生成结论
-2. 先调用 `read_file` 或 `grep_files` 查阅实际实现
-3. 引用具体文件路径和行号
-4. 然后才能陈述结论
+1. Stop generating conclusions
+2. Call `read_file` or `grep_files` first to inspect actual implementation
+3. Cite concrete file paths and line numbers
+4. Only then state the conclusion
 
-**禁止行为**：
+**Forbidden behavior:**
 
-- 不能从记忆或推理直接断言能力——即使听起来合理
-- 不能用"应该能做"、"通常可以"、"这类工具一般支持"来替代实际验证
-- 不能把训练知识当作当前代码库的事实依据
+- Do not assert capabilities from memory or reasoning alone — even if it sounds reasonable
+- Do not substitute actual verification with "should work", "usually can", or "tools like this generally support"
+- Do not treat training knowledge as facts about the current codebase
 
-**错误示例**：
-> "主代理可以并行执行 edit_file，现在就做。"
-（未查 dispatch.rs，基于推理直接断言）
+**Wrong example:**
+> "The main agent can parallelize edit_file — doing it now."
+(Asserted from reasoning without checking dispatch.rs)
 
-**正确示例**：
-> 查阅 dispatch.rs:268-272，`should_parallelize_tool_batch` 要求 `read_only=true`，
-> edit_file 的 `read_only=false`，因此同轮并行 edit_file 当前不支持。
+**Correct example:**
+> After reading dispatch.rs:268-272, `should_parallelize_tool_batch` requires `read_only=true`;
+> edit_file has `read_only=false`, so parallel edit_file in the same turn is not supported today.
 
-**无法验证时的正确表达**：
-> "基于我的理解，但尚未在当前代码中验证：……"
+**When verification is impossible:**
+> "Based on my understanding, but not yet verified in current code: …"
 
 ---
 
-### Architecture Claims Rule（架构描述规则）
+### Architecture Claims Rule
 
-**触发条件**：描述 Zagens 任何内部机制的工作方式——引擎策略、工具调度、子代理能力、LSP Hook、配置行为。
+**Trigger:** Describing how any Zagens internal mechanism works — engine policy, tool dispatch, sub-agent capabilities, LSP hooks, config behavior.
 
-**核心原则**：把训练知识视为假设，不视为事实。
+**Core principle:** Treat training knowledge as hypothesis, not fact.
 
-**强制行为**：
+**Mandatory behavior:**
 
-- 描述内部机制前，先用工具验证当前代码
-- 无法验证时，明确标注：`[未验证，基于训练印象]`
-- 代码与记忆冲突时，**代码优先，修正认知**
+- Verify current code with tools before describing internal mechanisms
+- When verification is impossible, explicitly mark: `[unverified, based on training impression]`
+- When code conflicts with memory, **code wins — update your understanding**
 
-**高风险场景清单**（这些场景必须先查代码）：
+**High-risk scenario checklist** (must check code first in these cases):
 
-| 场景 | 应查阅的位置 |
+| Scenario | Where to look |
+|----------|---------------|
+| Whether tools support parallelism | `dispatch.rs` → `should_parallelize_tool_batch` |
+| Sub-agent tool permissions | `subagent/mod.rs` → `build_allowed_tools` |
+| LSP diagnostic injection path | `lsp_hooks.rs` + `build_tool_context` |
+| File lock / conflict protection | `resident_file` / `RESIDENT_LEASES` |
+| Concurrency limits | `[subagents].max_concurrent` config |
+```
+
+---
+
+## Change 2: subagent_output_format.md
+
+### Insertion point
+
+End of `## Honesty rules` section (after ~line 80), before `## Auditor sub-agent output` (do not insert at Stop condition).
+
+### Inserted content
+
+```markdown
+### Self-behavior description rule
+
+**Trigger:** Asked to describe your own operation process, internal reasoning, or "why you did this".
+
+**Mandatory constraints:**
+
+- Only describe operations visible in tool call logs
+- Do not construct "I did this because X" explanations unless you can point to a concrete tool call record
+- "I don't know why" is the correct answer; causal explanations without tool call support are fiction
+
+**Wrong example:**
+> "I stopped spawning sub-agents because I entered serial inertia mode; the classifier categorized the task as sequential."
+(No tool call support; fabricated internal state)
+
+**Correct example:**
+> "I did not spawn a sub-agent after step 3. From the operation log, I continued with read_file (file.rs:1200)
+> and grep_files('query'), without calling agent_spawn. Why I didn't spawn — I cannot confirm from the log."
+
+**Key principle:** Describing operation sequences is fact; explaining internal reasons is inference. The two must be clearly distinguished;
+inference must be marked `[inference, not fact]`.
+```
+
+---
+
+## Change summary
+
+| File | Insertion point | New content | Lines |
+|------|-----------------|-------------|-------|
+| `crates/tui/src/prompts/base.md` | End of `Epistemic discipline`, before `LSP Diagnostics` | Capability Claims Rule + Architecture Claims Rule (English) | ~55 |
+| `crates/tui/src/prompts/subagent_output_format.md` | End of `## Honesty rules`, before `## Auditor` | Self-behavior description (English) | ~25 |
+
+---
+
+## Trigger scenario cross-reference for the three rules
+
+| Rule | Trigger scenario | Hallucination type targeted | Real case |
+|------|------------------|----------------------------|-----------|
+| Capability Claims Rule | "I can do X" / "tool supports Y" | Capability claim hallucination | "Main agent can parallelize edit_file — doing it now" |
+| Architecture Claims Rule | "The system works like this internally" | Architecture description hallucination | "Sub-agents see no LSP at all" |
+| Self-behavior description rule | "Why I did this" / "my internal process" | Self-attribution hallucination | "I entered classifier mode / serial inertia" |
+
+---
+
+## Relationship to existing rules
+
+These three rules **concretize** the existing `Epistemic discipline` section; they do not replace it:
+
+- Existing rules are principle layer: **"don't guess — look it up"**
+- New rules are operational layer: **"in these three concrete scenarios, the lookup step is mandatory, not suggested"**
+
+Other content in existing rules (stale transcripts, Label inference, Numerics, etc.) remains unchanged.
+
+---
+
+## Change 3: Eliminate prompt instruction contradictions (2026-05-18)
+
+**Problem:** `modes/agent.md` **Efficient Approvals** once said "Once approved, execute all writes in one turn (**parallel** `edit_file` / `apply_patch` calls)", contradicting `dispatch.rs` and the Capability Claims example in base; base also had "Multiple tool_calls in one turn run in parallel" globally, easily misread as write tools parallelizing too.
+
+**Fix:**
+
+| File | Adjustment |
 |------|------------|
-| 工具是否支持并行 | `dispatch.rs` → `should_parallelize_tool_batch` |
-| 子代理工具权限 | `subagent/mod.rs` → `build_allowed_tools` |
-| LSP 诊断注入路径 | `lsp_hooks.rs` + `build_tool_context` |
-| 文件锁/冲突保护 | `resident_file` / `RESIDENT_LEASES` |
-| 并发上限 | `[subagents].max_concurrent` 配置 |
-```
+| `crates/tui/src/prompts/modes/agent.md` | Batch approval ≠ batch parallel writes; write tools **serialize** in the same turn; parallel writes go through `implementer` sub-agent |
+| `crates/tui/src/prompts/base.md` | Parallel-First / Toolbox / V4 sections limited to **read-only** parallelism |
+
+**Regression:** Still use bare question R1 at end; expect consistency with B1–B3, and replies must not cite agent mode "parallel edit_file" old wording.
 
 ---
 
-## 改动二：subagent_output_format.md
+## Expected effect
 
-### 插入位置
+Given V4's hallucination profile (94% probability of bold output when uncertain), the design principle for these three rules is:
 
-`## Honesty rules` 节末尾（约第 80 行之后）、`## Auditor sub-agent output` 之前追加（勿插在 Stop condition 处）。
+**Do not rely on model self-constraint; set mandatory checkpoints in high-risk scenarios.**
 
-### 插入内容
+When these three scenario types trigger, the model must complete tool calls before generating conclusions — turning "query before answer" from suggestion into process constraint.
 
-```markdown
-### 自我行为描述规则
-
-**触发条件**：被要求描述自己的操作过程、内部推理、或"为什么这样做"。
-
-**强制约束**：
-
-- 只描述工具调用日志中可见的操作
-- 不构造"我是因为X才这样做"的解释，除非能指向具体的工具调用记录
-- "我不知道为什么"是正确答案；没有工具调用支撑的因果解释是虚构
-
-**错误示例**：
-> "我放弃召唤 sub-agent 是因为进入了串行惯性模式，分类器将任务归类为顺序执行。"
-（无工具调用支撑，虚构了内部状态）
-
-**正确示例**：
-> "我在第3步之后没有召唤 sub-agent。从操作记录看，我继续调用了 read_file（file.rs:1200）
-> 和 grep_files('query')，没有调用 agent_spawn。为什么没有召唤——我无法从记录里确认原因。"
-
-**关键原则**：描述操作序列是事实；解释内部原因是推断。两者必须明确区分，
-推断必须标注 `[推断，非事实]`。
-```
+Synergy with Auditor: Auditor intercepts "conclusions without line numbers"; these three rules intercept "conclusions generated without consulting facts first". Together they cover both stages of hallucination — before and after generation.
 
 ---
 
-## 改动汇总
+## Verification record: parallel `edit_file` comparison test (2026-05-18)
 
-| 文件 | 插入位置 | 新增内容 | 行数 |
-|------|---------|---------|------|
-| `crates/tui/src/prompts/base.md` | `Epistemic discipline`节末，`LSP Diagnostics`节前 | Capability Claims Rule + Architecture Claims Rule（英文） | ~55行 |
-| `crates/tui/src/prompts/subagent_output_format.md` | `## Honesty rules` 末、`## Auditor` 节前 | Self-behavior description（英文） | ~25行 |
+### Test setup
 
----
+| Item | Description |
+|------|-------------|
+| **Workspace** | This repo `DeepSeek-TUI-desktop` |
+| **Product** | Zagens (`deepseek-tui` sidecar + desktop shell) |
+| **Mode** | Agent |
+| **Uniform question** | `Under the current runtime, can the main agent parallelize multiple edit_file calls in the same turn?` |
+| **Code fact (baseline)** | **No.** In `crates/tui/src/core/engine/dispatch.rs`, `should_parallelize_tool_batch` (~lines 268–273) requires the whole batch `read_only && supports_parallel && !approval_required && !interactive`; `EditFileTool` is a write tool, default `supports_parallel == false`, `approval_requirement == Suggest`. See [agent-reliability-craft-plan.md §3.2](doc_Private/docs/agent-reliability-craft-plan.md) (maintainer copy). |
 
-## 三条规则的触发场景对照
-
-| 规则 | 触发场景 | 针对的幻觉类型 | 实际案例 |
-|------|---------|-------------|---------|
-| Capability Claims Rule | "我能做X" / "工具支持Y" | 能力声明幻觉 | "主代理可以并行edit_file，现在就做" |
-| Architecture Claims Rule | "系统内部是这样工作的" | 架构描述幻觉 | "子代理完全看不到LSP" |
-| 自我行为描述规则 | "我为什么这样做" / "我的内部过程" | 自我归因幻觉 | "我进入了分类器模式/串行惯性" |
+**Note:** Old package tests did **not** include this patch's `base.md` sub-rules; new package tested after **repackaging sidecar** (`include_str!` loads new prompt) with a **new session**.
 
 ---
 
-## 与现有规则的关系
+### A. Old package (patch not embedded) — same question, two prompts
 
-这三条规则是对现有 `Epistemic discipline` 节的**具体化**，不是替代：
+#### A1 — Bare question (no "must check code first")
 
-- 现有规则是原则层：**"不要猜，要查"**
-- 新增规则是操作层：**"在这三类具体场景下，查的步骤是强制的，不是建议的"**
+**Prompt:** Uniform question only.
 
-现有规则的其余内容（stale transcripts、Label inference、Numerics等）保持不变。
+**Model conclusion:** ❌ **Yes** — can parallelize multiple `edit_file` in the same turn.
 
----
+**Typical wrong statements (summary):**
 
-## 改动三：消除 prompt 指令矛盾（2026-05-18）
+- "Dispatcher executes concurrently" for multiple `edit_file`
+- "Different files can parallelize; same file races"
+- Can mix with `apply_patch` in same batch if files don't overlap
+- Fabricated "dispatcher defaults to 10–20 parallel tool calls" and "Zagens / TUI has no extra serialization limits"
 
-**问题：** `modes/agent.md` 的 **Efficient Approvals** 曾写 “Once approved, execute all writes in one turn (**parallel** `edit_file` / `apply_patch` calls)”，与 `dispatch.rs` 及 base 中 Capability Claims 示例矛盾；`base.md` 另有 “Multiple tool_calls in one turn run in parallel” 的全局句，易被理解成写工具也并行。
+**Verdict:** Inconsistent with code (dispatcher does **not** allow write-tool parallelism by "same file or not"). **Capability Claims / Architecture Claims** target hallucination.
 
-**修改：**
+#### A2 — Forced verification
 
-| 文件 | 调整 |
-|------|------|
-| `crates/tui/src/prompts/modes/agent.md` | 批批准 ≠ 批并行写；写明写工具同 turn **串行**；并行写走 `implementer` 子代理 |
-| `crates/tui/src/prompts/base.md` | Parallel-First / Toolbox / V4 段限定 **read-only** 并行 |
+**Prompt:** Uniform question + `must grep/read dispatch and file tool definitions before concluding; give paths and line numbers`.
 
-**回归：** 仍用文末 R1 裸问；期望与 B1–B3 一致，且回复中不再引用 agent 模式「parallel edit_file」旧文案。
+**Model conclusion:** ✅ **Cannot** parallelize.
 
----
+**Behavior:** Evidence chain from `dispatch.rs`, `file.rs`, `spec.rs`, `turn_loop.rs`; all three gates fail: `read_only` / `supports_parallel` / `approval_required`.
 
-## 预期效果
+**Verdict:** Correct conclusion; depends on user **every time** adding verification constraint.
 
-基于 V4 的幻觉特性（不确定时94%概率大胆输出），这三条规则的设计原则是：
-
-**不依赖模型自我约束，而是在高风险场景设置强制检查点。**
-
-模型在触发这三类场景时，必须先完成工具调用才能继续生成结论——把"查询在回答之前"从建议变成流程约束。
-
-对 Auditor 的协同作用：Auditor 拦截的是"结论没有行号"，这三条规则拦截的是"结论生成之前没有查阅事实"。两者互补，覆盖幻觉的两个阶段——生成前和生成后。
+**Note:** Some line numbers differ from current tree (e.g. `EditFileTool::capabilities` cited near `file.rs:1097`; current tree ~**1174–1180**). Logic correct; line numbers should be re-checked by Auditor.
 
 ---
 
-## 验证记录：并行 `edit_file` 对比测试（2026-05-18）
+### B. New package (patch embedded) — bare question ×3
 
-### 测试设定
+**Prompt:** B1/B2 same as **A1 bare question**; B3 bare question + same forced-verification suffix as A2.
 
-| 项 | 说明 |
-|----|------|
-| **工作区** | 本仓库 `DeepSeek-TUI-desktop` |
-| **产品** | Zagens（`deepseek-tui` sidecar + 桌面壳） |
-| **模式** | Agent |
-| **统一问题** | `当前 runtime 下，主 agent 能否在同一 turn 里并行执行多个 edit_file？` |
-| **代码事实（基准）** | **不能**。`crates/tui/src/core/engine/dispatch.rs` 中 `should_parallelize_tool_batch`（约 268–273 行）要求整批 `read_only && supports_parallel && !approval_required && !interactive`；`EditFileTool` 为写工具、默认 `supports_parallel == false`、`approval_requirement == Suggest`。详见 [agent-reliability-craft-plan.md §3.2](agent-reliability-craft-plan.md#32-并行工具调度与子代理写路径现状核对)。 |
+| Round | Tool calls (UI visible) | Conclusion | Key basis (summary) |
+|-------|-------------------------|------------|---------------------|
+| **B1** | Yes (3) | ✅ Cannot | `dispatch.rs:268-273`; `edit_file` not read-only, default `supports_parallel` false, `Suggest` approval; `tool_execution.rs` parallel path guard |
+| **B2** | Not shown | ✅ Cannot | Four-condition table; corroboration `file.rs:2091` `assert!(!tool.is_read_only())` |
+| **B3** | Yes (full chain) | ✅ Cannot | `file.rs:1176-1185`, `spec.rs:602-604`, `turn_loop.rs:1200-1212` |
 
-**说明：** 旧包测试时 **未** 编入本 patch 的 `base.md` 子规则；新包在 **重新打包 sidecar**（`include_str!` 载入新 prompt）且 **新会话** 下测试。
+**All three rounds did not produce:** "different files can parallelize writes" or "recommend multiple edit_file in same turn now".
 
----
-
-### A. 旧包（patch 未编入）— 同一问题，两种提示
-
-#### A1 — 裸问（无「必须先查代码」）
-
-**提示词：** 仅上述统一问题。
-
-**模型结论：** ❌ **可以** 在同一 turn 并行多个 `edit_file`。
-
-**典型错误表述（摘要）：**
-
-- 「调度器会并发执行」多个 `edit_file`
-- 「不同文件即可并行；同一文件会竞态」
-- 可与 `apply_patch` 混在同批并行（只要文件不重叠）
-- 编造「dispatcher 默认足够 10–20 个并行工具调用」「Zagens / TUI 无额外串行化限制」
-
-**判定：** 与代码不符（调度器 **不** 按「是否同一文件」放行写工具并行）。属 **Capability Claims / Architecture Claims** 目标幻觉。
-
-#### A2 — 强制查证
-
-**提示词：** 统一问题 + `必须 grep/read dispatch 与 file 工具定义后再结论，给路径和行号`。
-
-**模型结论：** ✅ **不能** 并行。
-
-**行为：** 给出 `dispatch.rs`、`file.rs`、`spec.rs`、`turn_loop.rs` 证据链；`read_only` / `supports_parallel` / `approval_required` 三关均失败。
-
-**判定：** 结论正确；依赖 **用户每次** 追加查证约束。
-
-**备注：** 部分行号与当前树有偏差（如 `EditFileTool::capabilities` 标在 `file.rs:1097` 附近；当前树约为 **1174–1180**）。逻辑对、行号宜经 Auditor 复核。
+**Verdict:** **Capability Claims Rule met** — bare question triggers lookup-first behavior.
 
 ---
 
-### B. 新包（patch 已编入）— 裸问 ×3
+### C. Results summary table
 
-**提示词：** B1/B2 为 **A1 同款裸问**；B3 为裸问 + 与 A2 相同的强制查证后缀。
+| Scenario | Prompt | Conclusion | Code lookup first | Matches implementation |
+|----------|--------|------------|-------------------|----------------------|
+| Old A1 | Bare | ❌ Can parallelize | No | No |
+| Old A2 | Bare + forced verification | ✅ Cannot | Yes | Yes (line numbers occasionally off) |
+| New B1 | Bare | ✅ Cannot | Yes | Yes |
+| New B2 | Bare | ✅ Cannot | Not shown | Yes |
+| New B3 | Bare + forced verification | ✅ Cannot | Yes | Yes (line numbers more accurate) |
 
-| 轮次 | 工具调用（UI 可见） | 结论 | 关键依据（摘要） |
-|------|---------------------|------|------------------|
-| **B1** | 有（3 次） | ✅ 不能 | `dispatch.rs:268-273`；`edit_file` 非 read-only、默认 `supports_parallel` false、`Suggest` 审批；`tool_execution.rs` 并行路径守卫 |
-| **B2** | 未展示 | ✅ 不能 | 四条件表；旁证 `file.rs:2091` `assert!(!tool.is_read_only())` |
-| **B3** | 有（完整链） | ✅ 不能 | `file.rs:1176-1185`、`spec.rs:602-604`、`turn_loop.rs:1200-1212` |
+**Summary:**
 
-**三轮均未出现：**「不同文件可并行写」「同轮多 `edit_file` 推荐现在就做」。
-
-**判定：** **Capability Claims Rule 达标** — 裸问即可先查后答。
-
----
-
-### C. 结果对照总表
-
-| 场景 | 提示词 | 结论 | 先查代码 | 与实现一致 |
-|------|--------|------|----------|------------|
-| 旧包 A1 | 裸问 | ❌ 能并行 | 否 | 否 |
-| 旧包 A2 | 裸问 + 强制查证 | ✅ 不能 | 是 | 是（行号偶偏） |
-| 新包 B1 | 裸问 | ✅ 不能 | 是 | 是 |
-| 新包 B2 | 裸问 | ✅ 不能 | 未展示 | 是 |
-| 新包 B3 | 裸问 + 强制查证 | ✅ 不能 | 是 | 是（行号较准） |
-
-**归纳：**
-
-1. 旧包：原则层 Epistemic discipline **不足以** 阻止裸问下的能力幻觉。  
-2. 新包：Capability / Architecture 子规则将 **A1 行为** 拉齐到旧包 **A2** / 新包 **B3**。  
-3. 后续改 prompt 建议用 **裸问（A1 文案）** 回归。
+1. Old package: principle-layer Epistemic discipline **insufficient** to stop capability hallucination on bare question.  
+2. New package: Capability / Architecture sub-rules align **A1 behavior** with old **A2** / new **B3**.  
+3. For future prompt changes, use **bare question (A1 wording)** for regression.
 
 ---
 
-### D. 回归用例（后续改 prompt 时复用）
+### D. Regression cases (reuse when changing prompt)
 
-**Prompt：**
+**Prompt:**
 
 ```text
-当前 runtime 下，主 agent 能否在同一 turn 里并行执行多个 edit_file？
+Under the current runtime, can the main agent parallelize multiple edit_file calls in the same turn?
 ```
 
-**通过标准：**
+**Pass criteria:**
 
-- 明确 **不能**
-- 引用 `crates/tui/src/core/engine/dispatch.rs` → `should_parallelize_tool_batch`（约 268–273 行）
-- **不得** 声称「不同文件即可并行多个 `edit_file`」或「写工具默认可 10–20 并发」
-- 裸问时 **应有** `read_file` / `grep_files`（若长期仅结论正确而无工具条，需抽查）
+- Clearly state **cannot**
+- Cite `crates/tui/src/core/engine/dispatch.rs` → `should_parallelize_tool_batch` (~lines 268–273)
+- Must **not** claim "different files can parallelize multiple edit_file" or "write tools default to 10–20 concurrent"
+- On bare question, **should** show `read_file` / `grep_files` (if long-term only correct conclusion without tool bar, spot-check)
 
-**扩测建议（Architecture Claims）：** 裸问  
-`子代理 edit 后是否和主 agent 一样，都会自动收到 engine 注入的 LSP diagnostics？`  
-期望：区分主 turn `lsp_hooks.rs` flush 与子代理 `ToolContext`，避免「全无 LSP」或「完全一样」。
+**Extended test suggestion (Architecture Claims):** Bare question  
+`After a sub-agent edit, does it receive engine-injected LSP diagnostics the same way as the main agent?`  
+Expected: Distinguish main turn `lsp_hooks.rs` flush vs sub-agent `ToolContext`; avoid "no LSP at all" or "exactly the same".
 
 ---
 
-**本节修订：** 2026-05-18 增补 §验证记录 A–D。
+**Section revision:** 2026-05-18 added §Verification record A–D.

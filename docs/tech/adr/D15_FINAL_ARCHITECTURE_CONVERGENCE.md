@@ -1,100 +1,100 @@
-# D15 — 架构收官实施计划（Desktop-only SSOT）
+# D15 — Final Architecture Convergence Plan (Desktop-only SSOT)
 
-> **类型：** 实施计划（收官阶段，非新功能主线）  
-> **状态：** Landed（2026-05-26）  
-> **前置（已 Landed）：** M1–M8 · D6 Phase B · D7 · D8 · D9/D10 · Zagens v0.5.0  
-> **产品意图：** 以 **Zagens Desktop** 为唯一用户入口，替换 upstream deepseek-tui 0.8.15 的 TUI/CLI；Sidecar 为内嵌运行时，非第二产品面  
-> **SSOT 架构图：** [RUNTIME_ARCHITECTURE.md](../RUNTIME_ARCHITECTURE.md)  
-> **与旧编号关系：** 本文 **D15** 指「架构收敛收官」；[ARCHITECTURE_ASSESSMENT_2026-05-25.md](./ARCHITECTURE_ASSESSMENT_2026-05-25.md) 中 **D11–D14**（metrics / 多 sidecar / Capability Manifest / MCP 池）为 **定型后的增强项**，不在本计划阻塞范围内
-
----
-
-## 0. 目标与完成定义
-
-### 0.1 要解决的问题
-
-多轮重构（Sidecar 验证 → Engine 进 core → D6 去 TUI → D7 持久化链接）后，代码仍保留 **TUI/CLI 时代的幽灵路径** 与 **双轨 mental model**，导致：
-
-- 新人仍按「TUI + Sidecar 并行」理解代码  
-- `deepseek-state` / `core::Runtime` 无生产调用却占编译图与认知  
-- Session 与 Thread 在 D7 已 **链接**，但 API/存储仍像两套主数据  
-- `runtime-server` 单 crate ~10 万行，阻碍长期稳定维护  
-
-### 0.2 D15 做什么 / 不做什么
-
-| 做 | 不做 |
-|----|------|
-| 删除 `state` crate 及 `core::lib.rs` legacy `Runtime` 链 | 重写 `/v1/*` HTTP 契约 |
-| 确认 D7 持久化叙事为 **Thread/Event SSOT**，Session 降为投影 | 每 workspace 独立 sidecar（旧 roadmap D12） |
-| 统一注释/命名（TUI → Runtime adapter / Sidecar） | Prometheus metrics（旧 roadmap D11） |
-| 加 CI 架构 gate，防止 legacy 反弹 | Capability Manifest 合并（旧 roadmap D13） |
-| 可选：拆 `runtime-server` 为 api / orchestrator / adapters | Desktop 内嵌 runtime（去 HTTP hop）— 留 v0.7+ |
-| 可选：Web UI `App.tsx` 状态机下沉 | 追 upstream TUI 新特性 |
-
-### 0.3 「架构统一完成」验收（Definition of Done）
-
-满足 **全部** 下列条件，可对外/对内宣布 **Desktop 已替换 TUI，架构 SSOT 确立**：
-
-1. **用户入口：** 文档与产品仅描述 Zagens Desktop；无 CLI/TUI 用户路径  
-2. **Legacy 零生产引用：** workspace 无 `deepseek-state`；`core` 无 `Runtime` / `ThreadManager` / `JobManager` / `ThreadMessageTurnPort`  
-3. **Turn 单路径：** 生产代码仅 `RuntimeThreadManager` → `core::Engine` → `EngineToolDispatch`  
-4. **持久化 SSOT：** Thread + Event 为权威；Session API 可读可写但 **不独立增长主数据**（见 §3）  
-5. **Desktop 边界：** `desktop` 不 path-depend `runtime-server` / `deepseek-tui`（已有测试，保持）  
-6. **契约：** OpenAPI 导出 + 至少一条 golden path 集成测（create thread → turn → SSE → approval）  
-7. **发布：** CHANGELOG 记录 D15；Zagens ≥ v0.5.x 稳定跑通主流程  
+> **Type:** Implementation plan (convergence phase, not new feature mainline)  
+> **Status:** Landed (2026-05-26)  
+> **Prerequisites (Landed):** M1–M8 · D6 Phase B · D7 · D8 · D9/D10 · Zagens v0.5.0  
+> **Product intent:** **Zagens Desktop** as sole user entry, replacing upstream deepseek-tui 0.8.15 TUI/CLI; Sidecar as embedded runtime, not a second product surface  
+> **SSOT architecture diagram:** [RUNTIME_ARCHITECTURE.md](../RUNTIME_ARCHITECTURE.md)  
+> **Relation to old numbering:** This **D15** means "architecture convergence finale"; **D11–D14** in maintainer: `doc_Private/docs/tech/adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md` (metrics / multi-sidecar / Capability Manifest / MCP pool) are **post-freeze enhancements**, not blocking this plan
 
 ---
 
-## 1. 当前基线（2026-05-26）
+## 0. Goals and Definition of Done
 
-### 1.1 已完成（不必重做）
+### 0.1 Problems to Solve
 
-| 里程碑 | 证据 |
-|--------|------|
-| TUI crate / ratatui 删除 | D6 Phase B；`cargo tree -i ratatui` 无匹配 |
-| Sidecar 二进制 | `deepseek-runtime` HTTP only |
-| Engine strangler | M1–M8；`core::engine::Engine` + Host traits |
-| Desktop 进程隔离 | `architecture_boundary.rs` |
-| D7 链接 | `sessions.db.runtime_thread_id` ↔ `runtime.db` |
-| OpenAPI + TS | D8；`export-runtime-openapi` + `generate:api-types` |
-| 产品发布 | `release(zagens): v0.5.0` |
+After multiple refactors (Sidecar validation → Engine into core → D6 TUI removal → D7 persistence linking), code still retains **TUI/CLI-era ghost paths** and **dual-track mental model**, causing:
 
-### 1.2 待收敛（D15 范围）
+- Newcomers still understand code as "TUI + Sidecar in parallel"  
+- `deepseek-state` / `core::Runtime` have no production callers but occupy compile graph and cognition  
+- Session and Thread are **linked** in D7, but API/storage still look like two primary datasets  
+- `runtime-server` single crate ~100k lines, hindering long-term stable maintenance  
 
-| 项 | 现状 | 目标 |
-|----|------|------|
-| `crates/state` | 仅 `core` 依赖；Sidecar 注释标明非 SSOT | **删除** |
-| `core/src/lib.rs` | ~1839 行；含 `Runtime`/`ThreadManager`/`JobManager` | **删除 legacy 块**；保留 re-export 或拆到 `core/src/legacy/` 后删 |
-| `ThreadMessageTurnPort` | 仅 `runtime_threads/tests.rs` 使用 | **删除** trait + `RuntimeThreadMessageTurnPort` |
-| Session vs Thread | D7 已链接；Sidebar 仍走 `/v1/sessions` | **Session = Thread 投影**（§3） |
-| 命名 | 大量 `deepseek-tui` / `Tui-side` 注释 | **批量替换** |
-| `sidecar.rs` | `legacy_tui` binary 分支 | **删除** |
-| `runtime-server` 体量 | ~103k 行 Rust | **Phase E 可选拆分** |
+### 0.2 What D15 Does / Does Not Do
 
-### 1.3 架构不变量（PR 审查用）
+| Do | Do not |
+|----|--------|
+| Delete `state` crate and `core::lib.rs` legacy `Runtime` chain | Rewrite `/v1/*` HTTP contract |
+| Confirm D7 persistence narrative as **Thread/Event SSOT**, Session demoted to projection | Per-workspace independent sidecar (old roadmap D12) |
+| Unify comments/naming (TUI → Runtime adapter / Sidecar) | Prometheus metrics (old roadmap D11) |
+| Add CI architecture gate to prevent legacy rebound | Capability Manifest merge (old roadmap D13) |
+| Optional: split `runtime-server` into api / orchestrator / adapters | Desktop embed runtime (remove HTTP hop) — defer v0.7+ |
+| Optional: Web UI `App.tsx` state machine extraction | Chase upstream TUI new features |
 
-合并后每条 PR 必须遵守：
+### 0.3 "Architecture Unified Complete" Acceptance (Definition of Done)
 
-1. 新代码 **不得** 依赖 `deepseek-state`  
-2. 新 Turn **不得** 绕过 `RuntimeThreadManager::start_turn`  
-3. Desktop WebView **不得** 持有 runtime Bearer（保持 Tauri proxy）  
-4. 新持久化 **不得** 引入第三套 SSOT  
-5. 新 `.rs`/`.tsx` 默认 **≤1000 行**（超限需 ADR 豁免）  
+When **all** conditions below are met, announce internally/externally **Desktop has replaced TUI, architecture SSOT established**:
+
+1. **User entry:** Docs and product describe only Zagens Desktop; no CLI/TUI user path  
+2. **Zero legacy production refs:** workspace has no `deepseek-state`; `core` has no `Runtime` / `ThreadManager` / `JobManager` / `ThreadMessageTurnPort`  
+3. **Single Turn path:** production code only `RuntimeThreadManager` → `core::Engine` → `EngineToolDispatch`  
+4. **Persistence SSOT:** Thread + Event authoritative; Session API readable/writable but **does not independently grow primary data** (see §3)  
+5. **Desktop boundary:** `desktop` does not path-depend `runtime-server` / `deepseek-tui` (existing tests, keep)  
+6. **Contract:** OpenAPI export + at least one golden-path integration test (create thread → turn → SSE → approval)  
+7. **Release:** CHANGELOG records D15; Zagens ≥ v0.5.x stable main flow  
 
 ---
 
-## 2. 目标架构（收官后）
+## 1. Current Baseline (2026-05-26)
+
+### 1.1 Completed (no redo)
+
+| Milestone | Evidence |
+|-----------|----------|
+| TUI crate / ratatui deleted | D6 Phase B; `cargo tree -i ratatui` no match |
+| Sidecar binary | `deepseek-runtime` HTTP only |
+| Engine strangler | M1–M8; `core::engine::Engine` + Host traits |
+| Desktop process isolation | `architecture_boundary.rs` |
+| D7 linking | `sessions.db.runtime_thread_id` ↔ `runtime.db` |
+| OpenAPI + TS | D8; `export-runtime-openapi` + `generate:api-types` |
+| Product release | `release(zagens): v0.5.0` |
+
+### 1.2 Pending Convergence (D15 scope)
+
+| Item | Current state | Target |
+|------|---------------|--------|
+| `crates/state` | Only `core` depends; Sidecar comments mark non-SSOT | **Delete** |
+| `core/src/lib.rs` | ~1839 lines; contains `Runtime`/`ThreadManager`/`JobManager` | **Delete legacy block**; keep re-export or split to `core/src/legacy/` then delete |
+| `ThreadMessageTurnPort` | Only used in `runtime_threads/tests.rs` | **Delete** trait + `RuntimeThreadMessageTurnPort` |
+| Session vs Thread | D7 linked; Sidebar still uses `/v1/sessions` | **Session = Thread projection** (§3) |
+| Naming | Many `deepseek-tui` / `Tui-side` comments | **Batch replace** |
+| `sidecar.rs` | `legacy_tui` binary branch | **Delete** |
+| `runtime-server` size | ~103k lines Rust | **Phase E optional split** |
+
+### 1.3 Architecture Invariants (for PR review)
+
+After merge, every PR must obey:
+
+1. New code **must not** depend on `deepseek-state`  
+2. New Turn **must not** bypass `RuntimeThreadManager::start_turn`  
+3. Desktop WebView **must not** hold runtime Bearer (keep Tauri proxy)  
+4. New persistence **must not** introduce a third SSOT  
+5. New `.rs`/`.tsx` default **≤1000 lines** (exceed requires ADR exemption)  
+
+---
+
+## 2. Target Architecture (Post-convergence)
 
 ```text
 ┌─────────────────────────────────────────────────────────────┐
-│  Zagens（唯一用户产品）                                        │
+│  Zagens (sole user product)                                  │
 │  crates/desktop + web-ui                                     │
 │  Tauri · Sidecar supervisor · runtime_proxy · PTY            │
 └──────────────────────────┬──────────────────────────────────┘
-                           │ localhost /v1/* + Bearer (Rust 注入)
+                           │ localhost /v1/* + Bearer (Rust injected)
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  deepseek-runtime（内嵌子进程，非用户 CLI）                     │
+│  deepseek-runtime (embedded subprocess, not user CLI)        │
 │  ┌─────────────┐  ┌──────────────────┐  ┌───────────────┐ │
 │  │ runtime-api │→ │ RuntimeThread    │→ │ core::Engine  │ │
 │  │ (HTTP/SSE)  │  │ Manager          │  │ + turn_loop   │ │
@@ -104,153 +104,153 @@
 │                    (threads/turns/events)   (adapters)    │
 └─────────────────────────────────────────────────────────────┘
 
-持久化 SSOT:
+Persistence SSOT:
   ~/.deepseek/tasks/runtime/runtime.db   ← Thread / Turn / Event
-  ~/.deepseek/sessions/sessions.db       ← Session 投影（含 runtime_thread_id）
+  ~/.deepseek/sessions/sessions.db       ← Session projection (incl. runtime_thread_id)
 
-已删除:
-  deepseek-state · core::Runtime · CLI/TUI 入口 · ThreadMessageTurnPort
+Deleted:
+  deepseek-state · core::Runtime · CLI/TUI entry · ThreadMessageTurnPort
 ```
 
 ---
 
-## 3. 阶段划分与 PR 链
+## 3. Phase Breakdown and PR Chain
 
-建议 **5 个阶段、8–12 个 PR**，总工期 **4–8 周**（按每周 2–3 个 refactor PR 估算）。  
-**规则：每个 PR 可独立合并；阶段内顺序不可颠倒。**
-
----
-
-### Phase A — 冻结与护栏（≈3 天，1 PR）
-
-**PR-A1：`chore(arch): D15 invariants + CI grep gates`**
-
-| 动作 | 细节 |
-|------|------|
-| 新增测试 | `crates/runtime-server/tests/architecture_invariants.rs` |
-| Gate 1 | `runtime-server` / `desktop` 生产代码无 `deepseek_state` / `StateStore` |
-| Gate 2 | `desktop/Cargo.toml` 无 `runtime-server` / `deepseek-tui` path dep（扩展现有 boundary test） |
-| Gate 3 | 可选：`scripts/check-architecture.sh` 供 CI 调用 |
-| 文档 | 本文 Status → In Progress；CHANGELOG `[Unreleased]` 增 D15 条目 |
-
-**退出标准：** CI 红则阻断；legacy 引用 **允许存在于 core/state**，但 **禁止新增**。
+Recommend **5 phases, 8–12 PRs**, total **4–8 weeks** (estimate 2–3 refactor PRs per week).  
+**Rule: each PR mergeable independently; order within phase must not be reversed.**
 
 ---
 
-### Phase B — 删除 legacy 编排层（≈1–2 周，2 PR）
+### Phase A — Freeze and Guardrails (~3 days, 1 PR)
 
-**PR-B1：`refactor(core): remove legacy Runtime and state dependency`**
+**PR-A1: `chore(arch): D15 invariants + CI grep gates`**
 
-| 删除/修改 | 路径 |
-|-----------|------|
-| 删除 crate | `crates/state/`（含 `parity_state` 测试 — 迁移必要断言到 runtime 测试） |
-| 大删 | `crates/core/src/lib.rs` 中 `JobManager`、`ThreadManager`、`Runtime` 及仅服务于它们的 ~1500 行 |
-| 删除 | `crates/core/src/thread_message_turn.rs` |
-| 修改 | `crates/core/Cargo.toml` — 移除 `deepseek-state` |
-| 修改 | 根 `Cargo.toml` workspace members — 移除 `state` |
-| 保留 | `core/src/engine/*`、`protocol` re-export 如需则从 `lib.rs` 精简 re-export |
+| Action | Detail |
+|--------|--------|
+| New test | `crates/runtime-server/tests/architecture_invariants.rs` |
+| Gate 1 | `runtime-server` / `desktop` production code has no `deepseek_state` / `StateStore` |
+| Gate 2 | `desktop/Cargo.toml` has no `runtime-server` / `deepseek-tui` path dep (extend existing boundary test) |
+| Gate 3 | Optional: `scripts/check-architecture.sh` for CI |
+| Docs | This doc Status → In Progress; CHANGELOG `[Unreleased]` add D15 entry |
 
-**PR-B2：`refactor(runtime): drop ThreadMessageTurnPort shim`**
+**Exit criteria:** CI red blocks merge; legacy refs **allowed in core/state**, but **no new additions**.
 
-| 删除 | `crates/runtime-server/src/runtime_threads/thread_message_turn_port.rs` |
-| 修改 | `runtime_threads/mod.rs` — 移除 `RuntimeThreadMessageTurnPort` export |
-| 修改 | `runtime_threads/tests.rs` — 删除 PR5 port 测试；保留 `start_turn` 直连测试 |
+---
 
-**验证：**
+### Phase B — Delete Legacy Orchestration Layer (~1–2 weeks, 2 PRs)
+
+**PR-B1: `refactor(core): remove legacy Runtime and state dependency`**
+
+| Delete/Modify | Path |
+|---------------|------|
+| Delete crate | `crates/state/` (incl. `parity_state` tests — migrate necessary assertions to runtime tests) |
+| Major delete | `JobManager`, `ThreadManager`, `Runtime` and ~1500 lines serving only them in `crates/core/src/lib.rs` |
+| Delete | `crates/core/src/thread_message_turn.rs` |
+| Modify | `crates/core/Cargo.toml` — remove `deepseek-state` |
+| Modify | Root `Cargo.toml` workspace members — remove `state` |
+| Keep | `core/src/engine/*`, `protocol` re-export if needed, slim re-export from `lib.rs` |
+
+**PR-B2: `refactor(runtime): drop ThreadMessageTurnPort shim`**
+
+| Delete | `crates/runtime-server/src/runtime_threads/thread_message_turn_port.rs` |
+| Modify | `runtime_threads/mod.rs` — remove `RuntimeThreadMessageTurnPort` export |
+| Modify | `runtime_threads/tests.rs` — delete PR5 port tests; keep `start_turn` direct tests |
+
+**Verification:**
 
 ```bash
 cargo check --workspace
 cargo test --workspace
 cargo clippy --workspace --all-targets --all-features
 rg 'deepseek-state|StateStore|ThreadMessageTurnPort|core::Runtime' crates/ --glob '!**/target/**'
-# 期望：0 生产匹配
+# Expected: 0 production matches
 ```
 
-**退出标准：** workspace 编译通过；无 `state` crate；grep 零生产命中。
+**Exit criteria:** workspace compiles; no `state` crate; grep zero production hits.
 
-**风险：** 若有隐藏测试依赖 `core::Runtime` — 改为 `RuntimeThreadManager` fixture。  
-**回滚：** 单 PR revert；不涉及数据 migration。
-
----
-
-### Phase C — 持久化 SSOT 确认（≈1–2 周，2–3 PR）
-
-D7 已落地 `runtime_thread_id` 链接；本阶段 **确认叙事与写路径一致**。
-
-**PR-C1：`docs+test(runtime): document Thread/Event as SSOT; session as projection`**
-
-| 动作 | 细节 |
-|------|------|
-| 更新 | `docs/tech/PERSISTENCE.md` — Thread/Event SSOT；Session 投影表 |
-| 测试 | Golden path：`create_thread` → `persist-session` → `list_sessions` → `resume` 重用同一 thread |
-| 审计 | 列出所有写 `SessionManager` 的路径；标注是否可改为写 Thread 后投影 |
-
-**PR-C2：`refactor(runtime): session writes derive from thread (no orphan sessions)`**
-
-| 动作 | 细节 |
-|------|------|
-| 修改 | `runtime_api/threads.rs` — create/update thread 时同步 session 投影 |
-| 修改 | `runtime_api/sessions.rs` — delete/resume 仅操作链接 thread |
-| 禁止 | 新建 **无** `runtime_thread_id` 的 session（API 层校验） |
-| 可选 | 一次性 migration：扫描 orphan session → 创建 thread 或标记 archived |
-
-**PR-C3（可选）：`feat(runtime): session list reads thread store directly`**
-
-| 动作 | 细节 |
-|------|------|
-| 优化 | `list_sessions` 优先 JOIN `runtime.db` metadata |
-| Desktop | 确认 Sidebar 在 sidecar restart 后仍一致（回归 `b04864d` 类 bug） |
-
-**退出标准：**
-
-- 任意 session 必有 `runtime_thread_id`（新数据）  
-- Event log 可 rebuild UI（已有 `rebuildMessagesFromThreadEvents`）  
-- 无「只写 session 不写 thread」的新代码路径  
-
-**风险：** 旧用户 orphan session — migration PR 需 dry-run 日志。  
-**回滚：** 保留 `runtime_thread_id` 列；回滚写路径逻辑即可。
+**Risk:** Hidden tests depend on `core::Runtime` — switch to `RuntimeThreadManager` fixture.  
+**Rollback:** Single PR revert; no data migration.
 
 ---
 
-### Phase D — 命名与 Sidecar 收尾（≈1 周，2 PR）
+### Phase C — Persistence SSOT Confirmation (~1–2 weeks, 2–3 PRs)
 
-**PR-D1：`refactor: TUI → Runtime adapter naming (comments + prompts)`**
+D7 already landed `runtime_thread_id` linking; this phase **confirms narrative matches write paths**.
 
-| 范围 | 示例 |
-|------|------|
-| `runtime-server/src/core/engine.rs` | 「Tui-side」→「Runtime adapter」 |
-| `core/src/engine/mod.rs` | 更新 stale「live in deepseek-tui」注释 |
-| `prompts.rs` | 确认 `CLIENT_IDENTITY_DS_PICK` 为 Desktop SSOT；删除或 gate `CLIENT_IDENTITY_TERMINAL` |
-| `config/src/lib.rs` | 「TUI-compatible」→「runtime-compatible config.toml」 |
+**PR-C1: `docs+test(runtime): document Thread/Event as SSOT; session as projection`**
 
-**PR-D2：`refactor(desktop): remove legacy_tui sidecar spawn paths`**
+| Action | Detail |
+|--------|--------|
+| Update | `docs/tech/PERSISTENCE.md` — Thread/Event SSOT; Session projection table |
+| Test | Golden path: `create_thread` → `persist-session` → `list_sessions` → `resume` reuses same thread |
+| Audit | List all paths writing `SessionManager`; mark whether can change to write Thread then project |
 
-| 修改 | `crates/desktop/src/sidecar.rs` |
-|------|--------------------------------|
-| 删除 | `legacy_tui` 分支、`deepseek-tui` candidate binary |
-| 保留 | `deepseek-runtime` + bundled `binaries/deepseek-runtime-*` |
-| 测试 | sidecar spawn 单路径集成测 |
+**PR-C2: `refactor(runtime): session writes derive from thread (no orphan sessions)`**
 
-**退出标准：** `rg 'deepseek-tui|ratatui|Tui-side' crates/ --glob '*.rs'` 仅剩 NOTICE/测试 fixture/历史 ADR。
+| Action | Detail |
+|--------|--------|
+| Modify | `runtime_api/threads.rs` — sync session projection on create/update thread |
+| Modify | `runtime_api/sessions.rs` — delete/resume only operate linked thread |
+| Prohibit | Create session **without** `runtime_thread_id` (API validation) |
+| Optional | One-time migration: scan orphan sessions → create thread or mark archived |
+
+**PR-C3 (optional): `feat(runtime): session list reads thread store directly`**
+
+| Action | Detail |
+|--------|--------|
+| Optimize | `list_sessions` prefer JOIN `runtime.db` metadata |
+| Desktop | Confirm Sidebar consistent after sidecar restart (regress `b04864d`-class bug) |
+
+**Exit criteria:**
+
+- Every session must have `runtime_thread_id` (new data)  
+- Event log can rebuild UI (existing `rebuildMessagesFromThreadEvents`)  
+- No new code path that "writes session only, not thread"  
+
+**Risk:** Old user orphan sessions — migration PR needs dry-run log.  
+**Rollback:** Keep `runtime_thread_id` column; rollback write-path logic only.
 
 ---
 
-### Phase E — 维护性（可选，v0.6+，3–5 PR）
+### Phase D — Naming and Sidecar Cleanup (~1 week, 2 PRs)
 
-**不阻塞 D15 DoD。** 架构统一宣布后可并行产品功能。  
-**详细拆分方案：** [D16_PHASE_E_MAINTAINABILITY.md](./D16_PHASE_E_MAINTAINABILITY.md)
+**PR-D1: `refactor: TUI → Runtime adapter naming (comments + prompts)`**
 
-| PR | 内容 | 优先级 |
-|----|------|--------|
-| E2 | `tools/subagent/mod.rs` 拆模块（mailbox/craft/spawn/wait…） | **高**（建议首选） |
-| E3 | `web-ui/App.tsx` 抽 `useRuntimeConnection` + `useTurnSession` 等 hooks | 中 |
-| E1 | 拆 `runtime-server` → `runtime-api` + `runtime-orchestrator` + `runtime-adapters` | 中 |
-| E4 | `api/client.ts` 按 domain 拆分 | 低 |
-| E5 | OpenAPI contract test in CI（export diff + smoke HTTP） | 高（建议尽早） |
+| Scope | Example |
+|-------|---------|
+| `runtime-server/src/core/engine.rs` | "Tui-side" → "Runtime adapter" |
+| `core/src/engine/mod.rs` | Update stale "live in deepseek-tui" comments |
+| `prompts.rs` | Confirm `CLIENT_IDENTITY_DS_PICK` is Desktop SSOT; delete or gate `CLIENT_IDENTITY_TERMINAL` |
+| `config/src/lib.rs` | "TUI-compatible" → "runtime-compatible config.toml" |
+
+**PR-D2: `refactor(desktop): remove legacy_tui sidecar spawn paths`**
+
+| Modify | `crates/desktop/src/sidecar.rs` |
+|--------|--------------------------------|
+| Delete | `legacy_tui` branch, `deepseek-tui` candidate binary |
+| Keep | `deepseek-runtime` + bundled `binaries/deepseek-runtime-*` |
+| Test | Single-path sidecar spawn integration test |
+
+**Exit criteria:** `rg 'deepseek-tui|ratatui|Tui-side' crates/ --glob '*.rs'` only NOTICE/test fixture/historical ADR remain.
 
 ---
 
-## 4. PR 顺序总览
+### Phase E — Maintainability (optional, v0.6+, 3–5 PRs)
+
+**Does not block D15 DoD.** After architecture unified announcement, product features can run in parallel.  
+**Detailed split plan:** [D16_PHASE_E_MAINTAINABILITY.md](./D16_PHASE_E_MAINTAINABILITY.md)
+
+| PR | Content | Priority |
+|----|---------|----------|
+| E2 | Split `tools/subagent/mod.rs` (mailbox/craft/spawn/wait…) | **High** (recommended first) |
+| E3 | Extract `useRuntimeConnection` + `useTurnSession` hooks from `web-ui/App.tsx` | Medium |
+| E1 | Split `runtime-server` → `runtime-api` + `runtime-orchestrator` + `runtime-adapters` | Medium |
+| E4 | Split `api/client.ts` by domain | Low |
+| E5 | OpenAPI contract test in CI (export diff + smoke HTTP) | High (recommend early) |
+
+---
+
+## 4. PR Order Overview
 
 ```text
 A1  CI gates + D15 doc
@@ -268,39 +268,39 @@ A1  CI gates + D15 doc
       └─ E*  optional maintainability (parallel)
 ```
 
-**建议合并策略：** B1+B2 可同周；C 依赖 B；D 可与 C 并行；E1 依赖 D15 DoD。
+**Suggested merge strategy:** B1+B2 same week; C depends on B; D parallel with C; E1 depends on D15 DoD.
 
 ---
 
-## 5. 验证矩阵
+## 5. Verification Matrix
 
-每个 Phase 合并前跑：
+Run before each Phase merge:
 
-| 命令 | 用途 |
-|------|------|
-| `cargo check --workspace` | 编译 |
-| `cargo test --workspace` | 单元 + 集成 |
-| `cargo clippy --workspace --all-targets --all-features` | lint |
-| `cargo tree -p deepseek-runtime-server -i ratatui` | 无 TUI |
-| `.\scripts\export-runtime-openapi.ps1` | OpenAPI 无意外 diff |
+| Command | Purpose |
+|---------|---------|
+| `cargo check --workspace` | Compile |
+| `cargo test --workspace` | Unit + integration |
+| `cargo clippy --workspace --all-targets --all-features` | Lint |
+| `cargo tree -p deepseek-runtime-server -i ratatui` | No TUI |
+| `.\scripts\export-runtime-openapi.ps1` | OpenAPI no unexpected diff |
 | `cd crates/desktop/web-ui && npm run build` | TS strict |
-| 手动 | Zagens 冷启动 → 对话 → 工具 → 审批 → 重启 sidecar → Sidebar 一致 |
+| Manual | Zagens cold start → chat → tools → approval → restart sidecar → Sidebar consistent |
 
 ---
 
-## 6. 风险与缓解
+## 6. Risks and Mitigation
 
-| 风险 | 缓解 |
-|------|------|
-| 删除 `state` 后遗漏测试引用 | B1 前全 workspace `rg StateStore`；CI gate |
-| Session migration 丢历史 | C2 migration dry-run + 备份 `sessions.db` |
-| 大 PR 难 review | 严格按 B1/B2 拆分；B1 只动 core/state |
-| 重构反弹 | Phase A CI gate + PR template 检查不变量 |
-| 与产品发版冲突 | D15 收官 PR 可与 Zagens v0.5.1 patch 同发 |
+| Risk | Mitigation |
+|------|------------|
+| Miss test refs after deleting `state` | Full workspace `rg StateStore` before B1; CI gate |
+| Session migration loses history | C2 migration dry-run + backup `sessions.db` |
+| Large PR hard to review | Strict B1/B2 split; B1 only touches core/state |
+| Refactor rebound | Phase A CI gate + PR template invariant check |
+| Product release conflict | D15 finale PR can ship with Zagens v0.5.1 patch |
 
 ---
 
-## 7. CHANGELOG 模板
+## 7. CHANGELOG Template
 
 ```markdown
 ### Architecture
@@ -309,24 +309,24 @@ A1  CI gates + D15 doc
 
 ---
 
-## 8. 新会话推荐开场白
+## 8. Recommended New-session Opener
 
 ```text
-执行 D15 架构收官。请先读 docs/tech/adr/D15_FINAL_ARCHITECTURE_CONVERGENCE.md。
-当前阶段：[A/B/C/D/E]。从 PR-__ 开始。不要 commit/push 除非我要求。中文回复。
+Execute D15 architecture finale. Read docs/tech/adr/D15_FINAL_ARCHITECTURE_CONVERGENCE.md first.
+Current phase: [A/B/C/D/E]. Start from PR-__. Do not commit/push unless I ask.
 ```
 
 ---
 
-## 9. 与后续 roadmap 的关系
+## 9. Relation to Subsequent Roadmap
 
-| 旧编号（ASSESSMENT §5） | 与 D15 关系 |
-|-------------------------|-------------|
-| D11 metrics | D15 完成后可选 |
-| D12 每 workspace 一 sidecar | **不在** Desktop-only 收官范围；需单独 ADR |
-| D13 Capability Manifest | D15 完成后；Harness 提案已挂接 |
-| D14 MCP 池稳定性 | 可与 E 阶段并行 |
+| Old numbering (maintainer: `doc_Private/docs/tech/adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md` §5) | Relation to D15 |
+|-------------------------------|-----------------|
+| D11 metrics | Optional after D15 complete |
+| D12 per-workspace sidecar | **Not** in Desktop-only finale scope; needs separate ADR |
+| D13 Capability Manifest | After D15; Harness proposal already attached |
+| D14 MCP pool stability | Can parallel Phase E |
 
 ---
 
-*维护：D15 DoD 全部勾选后，本文 Status 改为 **Landed**，并在 RUNTIME_ARCHITECTURE.md §剩余债 移除对应项。*
+*Maintenance: After D15 DoD all checked, change this doc Status to **Landed**, and remove corresponding items from RUNTIME_ARCHITECTURE.md § remaining debt.*
