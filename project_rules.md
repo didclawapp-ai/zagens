@@ -14,7 +14,7 @@ This document consolidates the same guidance as [`.cursor/rules/*.mdc`](.cursor/
 - **Desktop (Zagens):** `crates/desktop/`, maintainer notes in local `doc_Private/docs/desktop/DEV_NOTES.md` (not published).
 - **Versions:** Zagens uses its **own** SemVer (current **`0.7.0`**; historical releases may use **`0.x.y-preview.n`**), separate from the embedded runtime workspace line; see [`CHANGELOG.md`](CHANGELOG.md) header. Release policy (maintainer): `doc_Private/docs/desktop/VERSIONING.md`.
 - **Docs:** Public design specs: [`docs/README.md`](docs/README.md); harness fixtures: `fixtures/harness/`. Contributing: [`CONTRIBUTING.md`](CONTRIBUTING.md), [`LOCAL_DEV_VERIFY.md`](LOCAL_DEV_VERIFY.md).
-- **Changelog:** Record **every notable change** (features, fixes, docs, Zagens desktop, runtime, tooling) in [`CHANGELOG.md`](CHANGELOG.md)—typically under `[Unreleased]`, in the **same PR/commit** as the change when practical.
+- **Changelog:** Record **code- and behavior-related** changes only in [`CHANGELOG.md`](CHANGELOG.md)—features, fixes, security, API/runtime/desktop/tool behavior, CI/scripts that change verify/build semantics. **Skip by default:** doc moves, translations, README/LICENSE/CONTRIBUTING-only edits, repo migration, open-source hygiene—unless the maintainer explicitly asks. Same PR/commit under `[Unreleased]` when practical.
 
 When summarizing the project, **lead with Zagens** (this product), not upstream deepseek-tui / CodeWhale branding alone.
 

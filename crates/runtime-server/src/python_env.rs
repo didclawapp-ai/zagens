@@ -10,6 +10,10 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::Mutex;
+
+/// Serialize office venv creation across parallel tests / threads.
+static OFFICE_VENV_LOCK: Mutex<()> = Mutex::new(());
 
 /// Ordered candidate chains for Python discovery, per-platform.
 #[cfg(windows)]
@@ -20,6 +24,9 @@ const PYTHON_CANDIDATES: &[&[&str]] = &[&["python3"], &["python"]];
 /// Minimum Python version required for venv + office libs (3.8).
 const MIN_PYTHON_MAJOR: u16 = 3;
 const MIN_PYTHON_MINOR: u16 = 8;
+
+/// Office venv creation is unreliable on some CI images with Python 3.14+.
+const MAX_OFFICE_VENV_MINOR: u16 = 13;
 
 /// Office venv marker file — written after successful `pip install`.
 const OFFICE_VENV_MARKER: &str = ".requirements-installed-v2";
@@ -207,7 +214,35 @@ fn office_venv_python(venv_dir: &Path) -> PathBuf {
 ///
 /// Returns the path to the venv's Python interpreter, or an error string
 /// suitable for a `ToolResult`.
+fn find_python_for_office_venv() -> Option<(String, u16, u16)> {
+    #[cfg(target_os = "macos")]
+    {
+        for cmd in ["python3.13", "python3.12", "python3.11", "python3"] {
+            if let Some(ver) = probe_python(cmd, &[])
+                && ver.0 == MIN_PYTHON_MAJOR
+                && ver.1 >= MIN_PYTHON_MINOR
+                && ver.1 <= MAX_OFFICE_VENV_MINOR
+            {
+                return Some((cmd.to_string(), ver.0, ver.1));
+            }
+        }
+        return None;
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        find_python().filter(|(_, major, minor)| {
+            *major == MIN_PYTHON_MAJOR
+                && *minor >= MIN_PYTHON_MINOR
+                && *minor <= MAX_OFFICE_VENV_MINOR
+        })
+    }
+}
+
 pub fn ensure_office_venv() -> Result<PathBuf, String> {
+    let _guard = OFFICE_VENV_LOCK
+        .lock()
+        .map_err(|e| format!("office venv lock poisoned: {e}"))?;
+
     let venv_dir =
         office_venv_dir().ok_or_else(|| "无法确定 home 目录，无法创建 office venv".to_string())?;
 
@@ -222,7 +257,7 @@ pub fn ensure_office_venv() -> Result<PathBuf, String> {
 
     // Need to create venv — Python from PATH / `py` launcher (bundled was
     // already tried in `resolve_python_for_office`).
-    let (python_bin, major, minor) = find_python().ok_or_else(|| {
+    let (python_bin, major, minor) = find_python_for_office_venv().ok_or_else(|| {
         "未找到 Python ≥ 3.8。请安装 Python 后重试。\n\
              下载: https://www.python.org/downloads/\n\
              Windows 用户也可通过 `winget install Python.Python.3.12` 安装"

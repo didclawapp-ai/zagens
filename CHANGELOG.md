@@ -2,9 +2,13 @@
 
 All notable changes to **Zagens** and its embedded runtime will be documented in this file.
 
-**Update policy:** Record **every notable change** (features, fixes, docs, Zagens desktop, runtime, tooling) in this file—typically under `[Unreleased]`, in the **same PR/commit** as the change when practical. Cursor agents: see `.cursor/rules/zagens-repo.mdc` § Changelog.
+**Update policy:** Record **code- and behavior-related** changes only—typically under `[Unreleased]`, in the **same PR/commit** as the change when practical. Cursor agents: see `.cursor/rules/zagens-repo.mdc` § Changelog.
 
-**Licensing:** This repository is [MIT](LICENSE). Runtime lineage attribution: [third-party/deepseek-tui/LICENSE](third-party/deepseek-tui/LICENSE) and [NOTICE.md](NOTICE.md).
+**Record:** Features, bug fixes, security patches, breaking API/config/runtime behavior, desktop UI/runtime/tool execution changes, and CI/scripts when they change verify, build, or release **semantics**.
+
+**Do not record by default** (transactional / housekeeping): doc moves, translations, README or CONTRIBUTING-only edits, license or repo/org migration, open-source hygiene, screenshot swaps, maintainer runbooks—unless a maintainer **explicitly** asks to include an entry.
+
+**Licensing:** This repository is [MIT](LICENSE). See [NOTICE.md](NOTICE.md) for third-party attribution.
 
 **Zagens** (desktop app in `crates/desktop/`) has its **own** version line in
 **SemVer** (e.g. **`0.7.0`**). Public releases use `0.MINOR.PATCH` until **1.0.0 GA**
@@ -23,15 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Docs — open-source prep:** Split `README.md` / `README.zh-CN.md`; added `SECURITY.md`, `CONTRIBUTING.md`; root `LOCAL_DEV_VERIFY.md`.
-- **Docs — SPEC-only `docs/`:** Non-design material → `doc_Private/`; harness fixtures → `fixtures/harness/`; `docs/README.md` indexes design specs only.
-- **Docs — English `docs/`:** All public design specs under `docs/` translated to English (architecture, API, LHT, CRAFT, prompts, ADRs).
 - **Tooling — local Linux lint (`scripts/ci/verify-lint-linux.ps1`):** Run the CI Lint job in a real Linux env (WSL preferred, Docker fallback with cached cargo/target volumes) from a Windows dev box, so `#[cfg(unix)]` / Linux-only clippy lints are caught **before** push instead of only on CI. Windows `cargo clippy` skips those branches entirely; `-Bootstrap` provisions apt deps + Node 20 + the pinned rust toolchain.
 
 ### Changed
 
-- **License — full repository MIT:** Root `LICENSE`, `crates/desktop` crate metadata, `NOTICE.md`, `prepare-legal.mjs` (bundle `legal/zagens-LICENSE.txt`), and README/rules updated from proprietary to MIT.
-- **Docs — user docs SSOT moved to website repo:** Removed `docs/user/{en,zh-Hans}/` from the product repo; edit Markdown in [zagens_website `content/docs/`](https://github.com/jjlin0603-svg/zagens_website/tree/main/content/docs). `docs/user/README.md` is a pointer only. See [`docs/REPO_SPLIT.md`](docs/REPO_SPLIT.md).
 - **CI/Release hardening (`.github/workflows/`):** Pin the toolchain action to `dtolnay/rust-toolchain@1.96.0` (was `@stable`) across all jobs so clippy/rustfmt components match `rust-toolchain.toml` instead of relying on rustup auto-switch; add least-privilege `permissions: contents: read` (publish job keeps its `contents: write` override) and `concurrency` groups (CI cancels superseded ref runs except scheduled; Release never cancels in-flight); drop the unused `actions/setup-node` step from the CI `versions` job. **Release now gates on a `verify` job** (version drift + fmt + strict clippy + workspace tests) before building/publishing the Windows installer, so a tag on an unverified commit can't ship a broken release.
 
 ### Fixed
@@ -46,14 +45,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CI test (macOS/Windows):** Pre-build `deepseek-runtime-server` before `cargo test --workspace` in `.github/workflows/ci.yml`; `crates/desktop/build.rs` requires the sidecar binary in `target/debug/` at compile time, causing build failure on all non-Linux runners when the binary wasn't yet present.
 - **Desktop build.rs:** Add `ensure_resource_stubs()` — creates empty stub directories for gitignored Tauri resources (`binaries/python-standalone/python-install`, `bundle-legal/`) so `tauri-build` resource-path validation passes during `cargo test` / `cargo clippy` without the release artifacts on disk.
 - **CI lint (macOS):** Remove redundant top-level `#[cfg(unix)] use std::os::unix::process::CommandExt` from `crates/runtime-server/src/tools/shell/process.rs`; the trait is already imported locally inside `install_parent_death_signal` (Linux-only), making the file-level import unused and triggering `-D unused-imports`.
-
-### Repo split — product vs website platform
-
-- **Change:** Moved `website/` to private repo [zagens_website](https://github.com/jjlin0603-svg/zagens_website); product repo has **no** `website/` tree (see `.gitignore`). User docs SSOT: [`docs/user/`](docs/user/). Overview: [`docs/REPO_SPLIT.md`](docs/REPO_SPLIT.md).
-- **Change (CI):** Removed [`.github/workflows/website.yml`](.github/workflows/website.yml); product [`.github/workflows/release.yml`](.github/workflows/release.yml) dispatches `desktop-release` to website repo `sync-release.yml`.
-- **Docs:** Updated [`docs/desktop/UPDATER.md`](docs/desktop/UPDATER.md); website ops docs live only in `zagens_website`.
-- **Cleanup:** Removed orphan `vendor/schemaui-0.12.0/` (stale lockfile only; `schemaui` comes from crates.io).
-- **Cleanup:** Stop tracking `.claude/*` session handoffs and `.trae/` (duplicate of [`project_rules.md`](project_rules.md)); keep [`.cursor/rules/`](.cursor/rules/) as the committed AI/coding conventions.
 - **Fix (CI):** Run version/OpenAPI scripts via `bash` (Windows checkout lacks `+x`); install Tauri Linux deps (`libwebkit2gtk-4.1-dev`, …) via `scripts/ci/install-linux-deps.sh`; re-sync OpenAPI + `runtime-api.ts` usage cache telemetry fields.
 - **Fix (CI):** `cargo fmt` for `crates/topic-memory` (stopwords list); move Windows-only path strip under `#[cfg(windows)]` (fixes macOS `-D warnings` unused `s`).
 - **Fix (CI):** `cargo fmt --all` — `sidecar_binary_contract.rs` assert line-break, `skill_install.rs` use import, and workspace-wide rustfmt drift after main-repo push.
@@ -62,156 +53,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Fix (CI):** `deepseek-core` clippy — `too_many_arguments` on turn-loop host/phase fns, `collapsible_if` in `project_context`, `needless_borrow` / `should_implement_trait` allows.
 - **Fix (CI):** `deepseek-runtime-adapters` clippy — `double_must_use`, `collapsible_if`, `needless_question_mark`, `io_other_error`, `needless_borrow(s)`.
 - **Tooling:** Pin dev/CI Rust **1.96** via [`rust-toolchain.toml`](rust-toolchain.toml); add [`scripts/ci/verify-lint.sh`](scripts/ci/verify-lint.sh) / [`verify-workspace.sh`](scripts/ci/verify-workspace.sh) and optional git hooks ([`scripts/ci/install-git-hooks.sh`](scripts/ci/install-git-hooks.sh)) so fmt/clippy fail locally before push.
-- **Docs:** [`docs/LOCAL_DEV_VERIFY.md`](docs/LOCAL_DEV_VERIFY.md) — SSOT for local toolchain, verify scripts, git hooks, and CI Lint mapping.
 - **Fix (CI):** `topic-memory` + `runtime-orchestrator` clippy under Rust 1.96; lint job builds `web-ui/dist` when missing ([`scripts/ci/ensure-web-ui-dist.sh`](scripts/ci/ensure-web-ui-dist.sh)).
 
-### Zagens website — blog UI polish
-
-- **Blog list & post pages:** hero gradient header, featured card, tag chips, loading skeleton, prev/next navigation, TOC sidebar, and download/docs CTA — aligned with home/use-cases visual language.
-- **Blog content:** seed posts for LHT (DEMO3 Monkey interpreter field test) and CRAFT (HTTP error-handling refactor fix-loop) — EN + zh-Hans.
-
-### Zagens v0.7.0 — version bump & drop preview branding
+### Zagens v0.7.0 — version bump
 
 - **Release:** bump Zagens desktop to **0.7.0** (Cargo, Tauri, web-ui, updater manifest); MSI WiX `0.7.0`.
-- **Copy (官网 + docs + CMS DB):** remove product **预览版** / **Preview** badges and channel wording; seed upserts **0.7.0** release, retires `zagens-061-preview` blog posts; sync deploy/versioning meta docs.
-
-### Zagens website — remove affiliation disclaimers
-
-- **Copy (官网):** 全站移除「与 DeepSeek Inc. 无隶属关系」类表述 — 首页、页脚、使用条款、FAQ 文档、博客种子数据（中英文）。
-
-### Zagens website — faster locale switching
-
-- **Fix (官网):** language toggle keeps the current page path (`/docs/...` ↔ `/zh-Hans/docs/...`) instead of jumping home; site config + page content are cached and prefetched for instant EN ↔ 中文 swaps.
-
-### Zagens website — LHT feature badge copy
-
-- **Copy (官网):** homepage「长程任务」功能卡片徽章由「实验性」改为「试用版」（英文 Trial）；需 `website/backend` 下 `npm run db:seed` 同步 SQLite，`usePublicPage` 命中缓存后会后台刷新以免旧文案滞留。
-
-### Zagens website — header & footer UI refresh
-
-- **Enhancement (官网):** `SiteHeader` / `SiteFooter` visual polish — brand logo lockup, active nav states, mobile menu, download CTA in header, multi-column footer with product/legal groups and preview badge.
-
-### Zagens website — docs sidebar collapse on active branch
-
-- **Fix (官网):** doc nav chevron can collapse a section even when the current page is inside that branch (`docsNavCollapsed` overrides auto-expand).
-
-### Zagens website — expand CRAFT, audit scratchpad, sub-agents docs
-
-- **Content:** `code/{craft,audit-scratchpad,subagents}` (en/zh-Hans) rewritten — roles/verdicts/blackboard, scratchpad tools/UI badges, audit grid, CRAFT task cards, settings; aligned with desktop panels and runtime.
-
-### Zagens website — expand LHT settings doc to match desktop panel (full)
-
-- **Content:** `settings/lht` (en/zh-Hans) rewritten as panel-aligned reference — composer override flow, four sections field-by-field (ranges, defaults, disabled states), presets with `reinject_every_steps`, completion gates, macro loop timing, `config.toml` map, FAQ.
-
-### Zagens website — align product docs with shipped desktop (P8 audit)
-
-- **Content (官网文档):** +8 pages (`task-types`, `workspace/file-tree`, `office/deliverables`, `desktop/i18n` × en/zh-Hans); nav updated (remove duplicate LHT under Code, add new slugs).
-- **Content:** fix misalignments — ui-tour (Tasks/Usage/Agents, hidden automations), settings (skills entry, Vision bridge, LHT `settings.toml` path, sandbox `danger-full-access`, approval `auto`), tools (`load_office_payload`, network links), office (deliverables lifecycle, production skill vs SKILL.md, executive confirm flow), symbol index (`.deepseek/symbols.json`), FAQ config paths, getting-started v0.6.1-preview.1.
-
-### Zagens website — docs sidebar section expand/collapse
-
-- **Feature (官网):** documentation nav sections with children show a chevron toggle; default collapsed except the branch containing the active page.
-
-### Zagens website — docs nav: LHT settings under Settings
-
-- **Content (官网文档):** add `settings/lht` (en/zh); Settings sidebar lists **LHT settings**; `code/lht-settings` redirects to canonical page.
-
-### Zagens website — expand LHT settings doc to match desktop panel
-
-- **Content:** `settings/lht` rewritten — composer tri-state vs `[long_horizon]` panel, four preset overlays, harness / completion-gate / macro-loop fields with ranges; aligns with `LhtSettingsPanel` and `lht_presets.rs`.
-
-### Zagens website — P8-C advanced docs (code, settings, help)
-
-- **Content (官网文档):** +11 pages per locale — `code/{symbol-index,lht-settings,subagents,checklist}`, `settings/{routing,exec-policy,network,usage,topic-memory}`, `help/{smartscreen,privacy}`; expanded `faq`; nav adds Code/Settings/Help subtrees.
-
-### Zagens website — P8-B office skill guides (11 × bilingual)
-
-- **Content (官网文档):** +11 pages per locale under `office/skills/*` — one user guide per bundled Office skill; index and P0 overview cross-link skill + walkthrough pages; nav expands Built-in skills subtree.
-
-### Zagens website — P8-A3 docs content (desktop, tools, office skills)
-
-- **Content (官网文档):** +10 pages per locale — `office/skills`, `desktop/{tray,updates,approval-dialog}`, `tools/{files,git,shell,web,office-io,vision}`; nav tree adds Office skills, Agent tools, and Desktop sections.
-- **Docs:** [`P8_DOCS_CONTENT_PLAN.md`](docs/website/P8_DOCS_CONTENT_PLAN.md) — phase A complete (~39 pages / locale).
-
-### Zagens website — P8-A2 docs content (chat, code topics, settings)
-
-- **Content (官网文档):** +13 pages per locale — `chat/*`, `workspace/{diff,snapshots}`, `code/{lht,craft,audit-scratchpad}`, `settings/{api-key,approval,mcp,skills}`; nav tree expanded.
-
-### Zagens website — P8-A1 docs content (UI tour, workspace, P0 split)
-
-- **Content (官网文档):** +11 pages per locale — `ui-tour`, `workspace/{overview,preview,terminal}`, `office/{workspace,p0-competitive,p0-executive,p0-production,p0-quote}`; expanded getting-started/code-mode; P0 overview links to detail pages.
-- **Docs:** [`P8_DOCS_CONTENT_PLAN.md`](docs/website/P8_DOCS_CONTENT_PLAN.md) status → in progress (A1 done).
-
-### Zagens website — P8 docs content roadmap
-
-- **Docs:** [`docs/website/P8_DOCS_CONTENT_PLAN.md`](docs/website/P8_DOCS_CONTENT_PLAN.md) — phased plan to cover all user-facing features (~55 new pages per locale); P7 linked as prerequisite.
-
-### Zagens website — P7 docs CMS, TOC, search
-
-- **Feature (官网 CMS):** `DocArticle` model; `/admin/docs` list + Markdown editor (parent, sort order, publish).
-- **Feature (官网):** Public docs prefer published CMS rows, fallback to `content/docs/` files; `GET /api/public/docs/search`.
-- **Feature (官网):** In-page h2/h3 anchor TOC (desktop right rail) and sidebar full-text search.
-- **Docs:** [`docs/website/P7_IMPLEMENTATION.md`](docs/website/P7_IMPLEMENTATION.md).
-
-### Zagens website — product docs (left nav + Markdown)
-
-- **Feature (官网):** `/docs` and `/zh-Hans/docs` with sidebar tree navigation and Markdown articles served from `website/content/docs/` via `GET /api/public/docs/tree` and `GET /api/public/docs/:slug`.
-- **Content:** Initial en / zh-Hans pages (getting started, install, code mode, office scenarios, FAQ); header nav「文档 / Docs」.
-- **Deploy:** CI rsyncs `website/content/` to VPS alongside the API so runtime doc files are available.
-
-### Zagens website — P5 download page releases
-
-- **Feature (官网):** `GET /api/public/releases` lists version history; download page shows changelog, older releases (collapsible), and copy SHA-256 buttons.
-- **Change (官网 CMS):** Admin releases table shows changelog;「设为最新」confirms before rollback.
-- **Docs:** [`docs/website/P5_IMPLEMENTATION.md`](docs/website/P5_IMPLEMENTATION.md); download page seed copy (en / zh-Hans).
-
-### Zagens website — P4 installer VPS deploy + Nginx API cache
-
-- **Change (CI):** `release.yml` job `deploy-installers-vps` rsyncs `release-artifacts/` to VPS `download/` and upserts CMS via `release-meta.json` + `upsert-from-manifest.ts`; uploads CI artifact for the job.
-- **Change (CI):** `website.yml` packs office-demo zip each build; rsync includes `backend/scripts/`; frontend deploy no longer overwrites VPS `latest.json`/installer metadata from release.
-- **Change (nginx):** `zagens.conf.example` adds `proxy_cache` for `/api/public/` with ETag revalidation (`X-Cache-Status` header).
-- **Docs:** [`docs/website/P4_IMPLEMENTATION.md`](docs/website/P4_IMPLEMENTATION.md).
-
-### Zagens website — P3 ETag, prerender, release deploy hook
-
-- **Feature (官网 API):** Public JSON responses use weak `ETag` + `304 Not Modified`; SPA axios uses `Cache-Control: no-store` to avoid empty 304 bodies.
-- **Feature (官网 SEO):** Post-build `prerender-shells.mjs` writes per-route `index.html` with title/description/canonical (seed copy + blog slugs).
-- **Feature (官网 CMS):** Admin blog editor — Markdown tab + live preview (`marked` + DOMPurify).
-- **Change (CI):** `release.yml` job `trigger-website-deploy` dispatches `website.yml` on default branch after tag release.
-- **Fix (官网 CI):** rsync excludes only `Zagens_*.zip` / `Zagens_*.exe` so `office-demo-fixtures.zip` deploys with the site.
-- **Docs:** [`docs/website/P3_IMPLEMENTATION.md`](docs/website/P3_IMPLEMENTATION.md).
-
-### Zagens website — P2 CMS forms, cache, release CI
-
-- **Fix (官网 API):** Public page slug allowlist now includes `use-cases` (fixes 404 on `/api/public/pages/use-cases`).
-- **Feature (官网):** `Cache-Control` on `/api/public/*` (pages 120s, releases 300s, blog 60–120s).
-- **Feature (官网):** `PageSkeleton` loading state on public views; CMS **schema form editor** for all page slugs (form + JSON tabs).
-- **Feature (官网):** `npm run pack:office-demo` → `/download/office-demo-fixtures.zip`; use-cases page download button.
-- **Change (CI):** `release.yml` runs `gen-local-manifest.mjs` (`--artifact-dir release-artifacts`) — attaches OTA `latest.json` + checksums to GitHub Release.
-- **Change (website):** `gen-local-manifest` default bundle dir prefers `crates/desktop/target/...`; `--artifact-dir` flag for CI.
-- **Docs:** [`docs/website/P2_IMPLEMENTATION.md`](docs/website/P2_IMPLEMENTATION.md).
-
-### Zagens website — P1 use cases, SEO, blog
-
-- **Feature (官网):** Added `/use-cases` landing page — Code vs Office comparison and four P0 office demo workflows; CMS seed + nav link (en / zh-Hans).
-- **Feature (官网):** Per-page SEO via `@unhead/vue` (`usePageSeo`); build-time `scripts/gen-sitemap.mjs` → `frontend/public/sitemap.xml`; `robots.txt` updated.
-- **Feature (官网):** Blog posts render Markdown (`marked` + `DOMPurify`); seed ships two bilingual articles (0.6.1 preview notes, Office mode intro).
-- **Docs:** [`docs/website/P1_IMPLEMENTATION.md`](docs/website/P1_IMPLEMENTATION.md).
-
-### Zagens website — P0 cleanup & release pipeline
-
-- **Change (website):** Removed legacy Astro tree (`website/src/`, `website/public/`, astro/tailwind configs).
-- **Change (website):** Unified release scripts — `gen-local-manifest.mjs` / `sync-download-manifest.mjs` now write `frontend/public/download/latest.json` and upsert CMS `Release` via `backend/scripts/upsert-release.ts`; shared `scripts/paths.mjs`.
-- **Change (website):** Added `express-rate-limit` on admin login (10/15min) and `/api/admin/*` (200/15min).
-- **Docs:** [`docs/website/P0_IMPLEMENTATION.md`](docs/website/P0_IMPLEMENTATION.md); updated DEPLOY.md, UPDATER.md for new paths and `npm run release:local`.
-
-### Zagens website — Vue SPA + Express CMS
-
-- **Change (website):** Rebuilt `website/` from Astro static site to **Vue 3 SPA + Express API + SQLite** (LabelMakePro-style architecture). Public pages load content from `/api/public/*`; CMS at `/admin` manages pages, blog, releases, and site config.
-- **Change (website):** Added `website/frontend/` (Vue + Vite + Tailwind + Element Plus), `website/backend/` (Express + Prisma + SQLite file at `backend/data/`), seed script migrating existing i18n copy.
-- **Change (website):** Switched CMS datastore from PostgreSQL to **SQLite** — no Docker/DB server; production DB at `/opt/zagens-website/data/zagens.db`.
-- **Change (website):** Updated GitHub Actions workflow — rsync `frontend/dist` to VPS + deploy backend with PM2; Nginx example adds `/api` proxy.
-- **Docs:** Rewrote [`docs/website/DEPLOY.md`](docs/website/DEPLOY.md) for new stack.
 
 ### Docs — CMS 存量审计测试案例（CMS-AUDIT / CMS02）
 
@@ -286,7 +132,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Feature (tool approval):** Session-scoped approval cache wired into the engine; `write_file` / `edit_file` / `write_office` fingerprint by path; desktop dialog adds「本会话记住」→ `POST resolve-approval` `remember_for_session`.
 - **Fix (MCP):** SSE / Streamable HTTP clients honor `HTTP(S)_PROXY` and `NO_PROXY` (reqwest has no default proxy in this workspace).
 
-- **Fix (提示词 — 移除 DeepSeek TUI 遗留文案):** 系统 prompt 的 `CLIENT_IDENTITY_*`、自动路由/子代理路由分类器、遗留 `base.txt`、Office 模板 README 与默认 `AGENTS.md` 模板中不再出现 `DeepSeek TUI` / `deepseek-tui`；桌面会话身份仅指向 **Zagens**。Files: `runtime-server/src/prompts.rs`, `prompts/base.txt`, `auto_route.rs`, `tools/subagent/router.rs`, `assets/scripts/templates/README.md`, `core/src/project_context.rs`.
 
 ### Zagens desktop — 审计方格会话隔离
 
@@ -309,16 +154,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Docs (技能契约):** 现有 8 个 `office-*` 技能统一补 `## 技能契约` YAML 块（约定层，引擎不解析）。
 - **Docs (P0 fixtures):** `office-demo/data/` 价目表 CSV、客户需求、**生产日报_昨日.xlsx**（`scripts/gen-office-demo-fixtures.py` 可重生）。
 - **Tooling:** `scripts/office-demo-oracle.ps1` — P0-2 / P0-3 / P0-4 deliverables 验收 oracle。
-
-### Zagens website
-
-- **Fix (官网 CI rsync exit 12):** SSH 保活 + rsync `--timeout`/`--partial` + 失败自动重试 3 次，缓解 `Broken pipe` 断连。File: `.github/workflows/website.yml`, `docs/website/DEPLOY.md`.
-
-- **Fix (官网 CI rsync exit 23):** 部署 rsync 增加 `--no-perms --no-owner --no-group`，避免 `zagens-deploy` 无法 chmod `ubuntu` 属主站点目录。File: `.github/workflows/website.yml`, `docs/website/DEPLOY.md`.
-
-- **Fix (官网下载计数 404):** CI 在排除主 rsync 后增加 `rsync --ignore-existing` 补种 `download/stats.json`；`DownloadCount` 对 404 显示 0 次、其它错误隐藏组件。File: `.github/workflows/website.yml`, `DownloadCount.astro`.
-
-- **Feature (官网下载计数):** 首页与下载页展示累计下载次数（`DownloadCount` 拉取 `/download/stats.json`）；VPS 上由 Nginx `zagens-download.log` + `scripts/aggregate-download-stats.mjs` 聚合；CI rsync 排除 `download/stats.json` 以免覆盖服务器计数。Files: `website/src/components/DownloadCount.astro`, `website/public/download/stats.json`, `website/deploy/*`, `website.yml`.
 
 ### Docs
 
@@ -400,12 +235,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Fix (UI 文案 — 用户数据路径 ~/.deepseek → ~/.zagens):** MCP、会话、API Key、skills 等 i18n 四语言路径统一为 `~/.zagens/`；runtime MCP merge 错误提示同步。Files: `web-ui/src/i18n/locales/*`, `types/desktop.ts`, `api/client.ts`, `runtime-adapters/.../config_io.rs`。
 - **Fix (UI 文案 — 移除已 sunset 的 CLI/TUI 引用):** 设置/API Key、快照恢复、技能面板、系统设置等 i18n 四语言去掉「CLI/TUI 共用配置」「TUI /restore」「终端 TUI /skill install」等过时表述，改为 desktop + `~/.zagens` + runtime sidecar。Files: `web-ui/src/i18n/locales/{zh-Hans,en,ja,pt-BR}.ts`。
-
-### Zagens website
-
-- **Copy (官网):** 支持邮箱 `didclawapp@gmail.com`（Privacy/Terms/Footer/Download）；下载改为主站 `/download/` 托管，移除 GitHub Release 占位文案。Files: `website/src/i18n/*`, `website/src/data/{site,release}.json`, `website/src/views/*`, `Footer.astro`.
-
-- **Feature (官网 MVP — `website/`):** 新增 Astro 5 + Tailwind 静态站：首页、下载、安装指引（SmartScreen / zip Unblock）、Privacy/Terms 草案；en + zh-Hans 路由；`src/data/release.json` + `scripts/sync-download-manifest.mjs`（GitHub Release → 下载 URL / SHA-256 / `public/download/latest.json`）；品牌资产自 `crates/desktop/icons/` 与 `assets/screenshot.png`；CI [`.github/workflows/website.yml`](.github/workflows/website.yml) 构建后经 SSH/rsync 部署至自有 VPS（见 [`docs/website/DEPLOY.md`](docs/website/DEPLOY.md)）。见 [`website/README.md`](website/README.md)。
 
 ### Runtime
 
@@ -559,7 +388,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Shell open:** `open_in_shell` canonicalizes paths and rejects shell metacharacters (aligns with `open_with_system_app`).
 - **KV cache observability:** Usage dashboard shows hit rate %, miss tokens, and estimated cache savings (USD); composer footer shows last-turn `cache XX%` with red/yellow thresholds; warns when provider lacks cache telemetry. See [`docs/tech/KV_CACHE_OBSERVABILITY.md`](docs/tech/KV_CACHE_OBSERVABILITY.md).
 - **Build (Windows MSI):** Set `bundle.windows.wix.version` to numeric `0.6.0.1` so WiX accepts pre-release SemVer `0.6.0-preview.1`; document mapping in [`VERSIONING.md`](docs/desktop/VERSIONING.md) and CI check.
-- **Compliance:** Bundle embedded runtime MIT license into installed `legal/` folder (`deepseek-tui-runtime-LICENSE.txt`, `THIRD-PARTY-NOTICES.txt`); About panel notes install location.
 
 ### Runtime
 
@@ -611,7 +439,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Fix:** 模型路由面板 — 路由策略选项与 Composer 路由状态 chip 接入 i18n。
 - **Fix:** 空会话欢迎页与 Composer 任务类型/运行模式说明 — 接入 i18n。
 - **Fix:** 错误与提示文案 — 消息气泡、终端卡片、用量面板、任务面板、附件/视觉桥接错误、聊天渲染失败、完成通知等接入 i18n。
-- **Fix:** 关于页 — 移除运行时侧车说明；简介突出 DeepSeek V4 适配；新增主要技术栈（含 deepseek-tui 0.8.15）。
 - **Fix:** 补齐 `~/.zagens/` 迁移遗漏 — `automations`、`audit.log`、`topic-memory`、`office-py`、`execpolicy.toml`、`tui.toml`、skills cache、crash dumps 等用户级路径不再写入 `~/.deepseek/`（工作区 `.deepseek/` 仍保留 scratchpad/blackboard/项目 config）。
 - **Fix:** `prepare-python.mjs` — 校验 PBS 压缩包完整大小（对比 GitHub `Content-Length`），自动删除中断留下的残缺包并重下；下载进度日志；解压失败时清理部分目录避免下次误判。
 
@@ -621,7 +448,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Docs (D17 修订):** [`D17_ARCHITECTURE_FREEZE.md`](docs/tech/adr/D17_ARCHITECTURE_FREEZE.md) 与实现对齐 — Turn 链（orchestrator → `TurnEnginePort` → sidecar `dispatch_op` → `handle_deepseek_turn`）、SubAgent 锚点路径、`I1`/边界测试范围、`I7`/F2 去 ratatui 误述、OpenAPI 护栏（脚本 + `ci.yml`）、持久化默认路径与环境变量覆盖说明。
 - **Docs (D17 收尾):** D16 三 crate（`runtime-adapters` / `runtime-orchestrator` / `runtime-api`）`lib.rs` 文档更新 — 移除"待迁移"口吻，明确标注 D17 冻结；further extraction deferred by design。
 - **D17 (Landed):** Architecture Freeze v1 — 重构主线关闭；D16 Closed (Checkpoint)；明确 **不执行** E1 阶段 2 / E4 / runtime-server <500 行 KPI / Harness 分离。见 [`docs/tech/adr/D17_ARCHITECTURE_FREEZE.md`](docs/tech/adr/D17_ARCHITECTURE_FREEZE.md)。
-- **D17 F1/F2 (Landed):** stale `deepseek-tui` 生产注释清理（core/runtime-server shim/config）；headless `CLIENT_IDENTITY_HEADLESS` 替代 TUI 文案；`architecture_boundary` 补 `deepseek-core` 检查；`scripts/check-architecture-freeze.{ps1,sh}`。
 - **D15 (Landed):** Final architecture convergence — removed `deepseek-state` crate and legacy `core::Runtime` / `ThreadMessageTurnPort`; Zagens Desktop is the sole user entry; sidecar spawn unified to `deepseek-runtime` only. Session remains a projection of `RuntimeThreadStore` (D7 `runtime_thread_id` link). See [`docs/tech/adr/D15_FINAL_ARCHITECTURE_CONVERGENCE.md`](docs/tech/adr/D15_FINAL_ARCHITECTURE_CONVERGENCE.md).
 - **Docs (D16):** Phase E maintainability split plans — [`docs/tech/adr/D16_PHASE_E_MAINTAINABILITY.md`](docs/tech/adr/D16_PHASE_E_MAINTAINABILITY.md) (`runtime-server` crate、SubAgent、`App.tsx` hooks；不阻塞发布).
 - **D16 E2 (Landed):** Split `tools/subagent/mod.rs` (~4340 行) into focused modules — `mod.rs` ~82 行、`manager.rs` / `executor.rs` / `tools/*` / `parse.rs` / `router.rs` / `prompts.rs` 等；108 个 subagent 单元测试全绿。
@@ -653,7 +479,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Zagens web-ui:** add `lib/workspacePaths.ts` — `joinWorkspaceSegments` helper for native-style workspace path joins (display / Tauri `open_in_shell`).
 - **Docs / Harness 文档集：** 新建 [`docs/harness/`](docs/harness/README.md) — 迁入 [`Agent+Harness组合式编程方案.md`](docs/harness/Agent+Harness组合式编程方案.md)、[`HARNESS_INTEGRATION_PROPOSAL.md`](docs/harness/HARNESS_INTEGRATION_PROPOSAL.md)；新增 [`ANTHROPIC_MANAGED_AGENTS_AND_HARNESS.md`](docs/harness/ANTHROPIC_MANAGED_AGENTS_AND_HARNESS.md)（Managed Agents 时间线、官方 Engineering 文章、三模式与组合式方案对照）；`docs/tech/adr/HARNESS_INTEGRATION_PROPOSAL.md` 保留重定向 stub。
 - **Docs / Harness v1.3：** [`Agent+Harness组合式编程方案.md`](docs/harness/Agent+Harness组合式编程方案.md) 增补 **阶段六「自适应主动 Harness」**（§3.4 定义、Manifest 一等公民、§10 路线图阶段六）；[`README.md`](docs/harness/README.md) 演进假设表；归并提案 §3 映射「自适应主动」行。
-- **Docs：** [`docs/prompt-architecture.md`](docs/prompt-architecture.md) 对齐 D6（`crates/runtime-server` 路径、`task overlay`、Engine 模块拆分、`DEEPSEEK_CLIENT_SURFACE=zagens`）。
+- **Docs：** [`docs/prompt-architecture.md`](docs/prompt-architecture.md) 对齐 D6（`crates/runtime-server` 路径、`task overlay`、Engine 模块拆分）。
 - **Zagens desktop / 图标资产：** 新增 `crates/desktop/icons/svg/` — 5 种 SVG 变体及 `preview.html`；神经网络另含 `variants/` 下 6 种配色 + `preview-palettes.html` 对比页（基准：暖白 + 琥珀）。
 
 ### Fixed
@@ -662,9 +488,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Zagens desktop / Tauri IPC：** 修复控制台持续刷屏 `[TAURI] Couldn't find callback id …` — 续聊 turn 在桌面端改为单条 SSE（不再每 120ms 重注册 `listen`/`runtime_get_sse`）；`refreshApiKeyStatus` 与终端/ sidecar 事件订阅改为稳定依赖，避免每次渲染重复 `invoke`。
 - **Zagens desktop / API Key 面板：** 主模型区新增「删除 API KEY」（二次确认，清除系统密钥链与 config 明文）；精简面板说明文案；接入 i18n。
 - **Zagens desktop / 首次配置：** 首次启动（及 runtime sidecar 启动）自动创建 `~/.zagens/config.toml` 默认模板（不含 API Key）；`deepseek-config` 新增 `ConfigStore::ensure_default_on_disk` / `ConfigToml::first_run_defaults`；runtime `ensure_config_file_exists` 改为委托 config crate。
-- **Zagens desktop / 发布命名：** 主程序二进制 **`zagens.exe`**、sidecar **`zagens-runtime.exe`**（Tauri `externalBin`）；全局用户数据目录 **`~/.zagens/`**（与 deepseek-tui 的 `~/.deepseek/` 隔离）；首次启动可选从 legacy `~/.deepseek/config.toml` 迁移配置与 skills/MCP（不迁移 sessions/tasks 数据库）。
+- **Zagens desktop / 发布命名：** 主程序二进制 **`zagens.exe`**、sidecar **`zagens-runtime.exe`**（Tauri `externalBin`）；全局用户数据目录 **`~/.zagens/`**；首次启动可选从 legacy `~/.deepseek/config.toml` 迁移配置与 skills/MCP（不迁移 sessions/tasks 数据库）。
 - **Runtime / Scratchpad：** 新增 `scratchpad_init` 工具与 `POST /v1/threads/{id}/scratchpad/init` — 自动创建 `{workspace}/.deepseek/scratchpad/{run_id}/`（`inventory.json` + `notes.jsonl`）并绑定 thread；Zagens 审计面板空态支持一键初始化。
-- **Runtime / prompts：** `DEEPSEEK_CLIENT_SURFACE=zagens`（sidecar 实际值）现与遗留 `ds-pick` 一并识别，恢复 Zagens 客户端身份与 `## Environment` 的 `ui_shell: Zagens (desktop)`；此前仅匹配 `ds-pick` 时桌面会话误用 “DeepSeek TUI” 身份文案。
 - **Zagens desktop / CRAFT：** `GET /v1/blackboards` 支持 `?workspace=`（与 `/v1/workspace/browse` 一致）；AgentPanel 按当前 Composer 工作区拉取黑板，修复 D6 后 sidecar 默认 cwd（用户目录）与子 Agent 写入项目 `.deepseek/blackboards/` 不一致导致 CRAFT 任务列表为空。
 - **Runtime：** 移除已删除 `eval.rs` 的孤儿集成测 `eval_harness.rs`（D6 迁移遗留，阻塞 `cargo test -p deepseek-runtime-server`）。
 
@@ -808,14 +633,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Branding:** Product renamed from **DS Pick** to **Zagens** (tagline: *Desktop agent harness* / 桌面 Agent 控制台). User-visible strings, README, LICENSE, NOTICE, Tauri `productName` / `identifier` (`com.zagens.desktop`), default workspace `<Documents>/Zagens` with legacy `<Documents>/DS Pick` fallback; localStorage keys migrated (`zagens-locale`, `zagens:*` prefs). CI release tags: `zagens-v*` (preferred) and legacy `ds-pick-v*`.
 - **Docs:** [A2_A3_SIGNOFF.md](docs/tech/adr/A2_A3_SIGNOFF.md) — §12.1 #2（Turn 可观测）与 #3（错误分类）维护者签收（2026-05-25）；路线图 §7.2/§7.3/§12.1 勾选同步。
-- **Docs:** [RUNTIME_EVOLUTION_ROADMAP.md](docs/tech/RUNTIME_EVOLUTION_ROADMAP.md) §12.1/§12.5/§17 与代码二次对齐（2026-05-25）— B2/B-L3、`events_since_async`、门控闭合表述；[IMPLEMENTATION_SUMMARY](docs/tech/adr/IMPLEMENTATION_SUMMARY_2026-05-24.md) 同步；[TUI_DS_PICK_GAP.md](docs/desktop/TUI_DS_PICK_GAP.md) 审核表（托盘/导出/记忆地图 UI）。
 - **Docs:** [RUNTIME_ARCHITECTURE.md](docs/tech/RUNTIME_ARCHITECTURE.md) 与代码对齐（2026-05-25）— P2 core/tui 拆分、crate 依赖图、`runtime_api/`/`runtime_threads/` 模块路径、双持久化/双通道、Zagens sidecar 监督、D12 Desktop-only。
 - **Docs:** [RUNTIME_ARCHITECTURE.md](docs/tech/RUNTIME_ARCHITECTURE.md) 图表细化第二轮（2026-05-25）— §1 顶层系统总览拆为分层 subgraph（用户/桌面壳/sidecar/外部/持久化/CLI）并附"节点 ↔ 代码出处"映射表；§2 Sidecar 内部数据流细化（router→auth→stream/threads, manager 内 active/lifecycle/monitor/persist/broadcast 拆分）；§3 crate 依赖图与各 `Cargo.toml` 一一核对（含 `agent`/`execpolicy`/`hooks`/`protocol`/`state` 等所有真实边）；§5 双通道新增 mermaid 图 + `validate_runtime_path` 白名单 + SSE 取消 + sidecar 握手 `DS_PICK_READY`；§8 改为 sequenceDiagram 并补「Op 是 mpsc」「取消两层」要点；§9 关键模块索引扩到 16 条全 clickable 链接。
 - **Docs:** 新增 [ARCHITECTURE_ASSESSMENT_2026-05-25.md](docs/tech/adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md) — 架构现状评估 + "先定型再迭代功能" 决策快照：§1 给出 10 条定型 checklist（当前 3/10）作为解冻判定门槛；§3 列出 10 项技术债（高/中/低）；§5 把迭代方向（D1–D14）按 P0/P1/P2 分级并交叉引用现有 backlog ADR（M-series PR_M0、RUNTIME_UNIFICATION、STATESTORE_JSONL、LANDLOCK_ENFORCE）；§7 落地"功能冻结期 PR 准入红线"（禁止在 `crates/tui` 新建顶层文件、禁止给 `Engine` struct 加新字段、禁止新增 `/v1/*` 无 OpenAPI schema 的端点等）。[RUNTIME_ARCHITECTURE.md](docs/tech/RUNTIME_ARCHITECTURE.md) 与 [RUNTIME_EVOLUTION_ROADMAP.md](docs/tech/RUNTIME_EVOLUTION_ROADMAP.md) 头部新增反向引用。
 - **Docs:** [API_DESIGN.md](docs/tech/API_DESIGN.md)、[RUNTIME_EVOLUTION_ROADMAP.md](docs/tech/RUNTIME_EVOLUTION_ROADMAP.md) §3 交叉对齐（2026-05-25）— H06 代理认证、IPC ~41 条、模块路径、三文档互链。
-- **Project identity:** Zagens is **proprietary** ([LICENSE](LICENSE)); third-party runtime MIT license at [third-party/deepseek-tui/LICENSE](third-party/deepseek-tui/LICENSE) (not at repo root). See [NOTICE.md](NOTICE.md). Removed upstream npm/website, CLI Docker artifacts, CLI binary Release (`auto-tag.yml`, npm/crates release scripts), and `ci.yml` npm-wrapper job. **Release:** `.github/workflows/release.yml` builds **Zagens Windows installers** on `ds-pick-v*` tags only (macOS/Linux later). **Config samples:** [`.env.example`](.env.example) and [`config.example.toml`](config.example.toml) reframed for Zagens desktop + embedded sidecar (not upstream TUI/CLI).
 
 ### Added
 
@@ -881,7 +703,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Runtime (GAP F4):** `POST /v1/threads/{id}/edit-last-turn` — truncate last user turn on live engine session and start a new turn (TUI `/edit` parity).
 - **Zagens (GAP 8a):** Composer gear opens `ModelParamsDialog`; params persist in localStorage and pass through `startThreadTurn` / `POST /v1/stream`.
 - **Zagens (GAP F4):** Edit last user message from `MessageBubble` → dialog → `editLastThreadTurn` + SSE replay.
-- **Docs:** 路线图 §17.3 / `IMPLEMENTATION_SUMMARY` / `TUI_DS_PICK_GAP` 按 2026-05-24 代码审计更新（manager 已拆、F0–F3/路由/导出/托盘/智能粘贴已闭合）。
+- **Docs:** 路线图 §17.3 / `IMPLEMENTATION_SUMMARY` 按 2026-05-24 代码审计更新（manager 已拆、F0–F3/路由/导出/托盘/智能粘贴已闭合）。
 - **Docs:** G2 §10 B-L1 CRAFT 手测签收（2026-05-24）— §12.5 #1 闭环、AgentPanel、`craft.*` SSE；[G2_PR5_MANUAL_SMOKE_CHECKLIST.md](docs/tech/adr/G2_PR5_MANUAL_SMOKE_CHECKLIST.md) §10。
 - **Runtime (B-L1 / CRAFT):** Blackboard APIs bind to thread **workspace** (not sidecar `cwd`); `GET /v1/blackboards` + `GET /v1/blackboards/{id}`; subagent done sentinel includes `structured_verdict` only when present; Verifier failures写入黑板；`<deepseek:craft.fix_loop>` 程序化修复提示；SSE `craft.verdict` / `craft.board_updated`。
 - **Zagens (B-L3):** AgentPanel「CRAFT 任务」区域 — 轮询 `/v1/blackboards`，展示 explorer / 实现轮次 / reviewer 裁决 / verifier 摘要。
@@ -1148,11 +970,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Agent 可靠性/CRAFT/符号索引/V5 等规划与实施记录更新；部分旧版 brief 归档或移除。
 
-### Process
-
-- **Changelog 维护** — 写入 `.cursor/rules/zagens-repo.mdc` 与 `project_rules.md`（notable 变更需同步本文件）。
-- **Portable rules** — `project_rules.md` 聚合 `.cursor/rules/*.mdc`（原 `CURSOR_RULES.md` 更名）。
-
 ---
 
 ## [0.2.2] - 2026-05-11
@@ -1186,7 +1003,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Docs
 
-- `docs/desktop/DEV_NOTES.md`；[TUI vs Zagens 差距表](docs/desktop/TUI_DS_PICK_GAP.md) 初版。
 
 ---
 
@@ -1219,7 +1035,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Initial fork** — DeepSeek TUI desktop 工作区：共享 `deepseek` CLI/TUI/runtime crates 与 **Zagens**（`crates/desktop/`）骨架。
 - **Runtime API** — `/v1/...` 契约与 [docs/RUNTIME_API.md](docs/RUNTIME_API.md) 实施文档（Phase 1）。
 
 ### Changed

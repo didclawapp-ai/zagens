@@ -1026,13 +1026,10 @@ where
     }
 
     let ended_at = Utc::now();
-    let mut turn = mgr.store.load_turn(&turn_id)?;
-    turn.status = turn_status;
-    turn.ended_at = Some(ended_at);
-    turn.duration_ms = turn.started_at.map(|start| duration_ms(start, ended_at));
-    turn.usage = turn_usage;
-    turn.last_request_input_tokens = turn_last_request_input_tokens;
-    turn.error = turn_error;
+    let turn_status_for_save = turn_status;
+    let turn_usage_for_save = turn_usage;
+    let turn_last_request_input_tokens_for_save = turn_last_request_input_tokens;
+    let turn_error_for_save = turn_error;
 
     let mut thread = mgr.get_thread(&thread_id).await?;
     thread.latest_turn_id = Some(turn_id.clone());
@@ -1040,10 +1037,19 @@ where
 
     {
         let store = mgr.store.clone();
-        let turn_clone = turn.clone();
+        let turn_id_for_save = turn_id.clone();
         let thread_clone = thread.clone();
         tokio::task::spawn_blocking(move || -> Result<()> {
-            store.save_turn(&turn_clone)?;
+            // Reload immediately before save so concurrent steer_turn writes
+            // (steer_count, item_ids) are not overwritten by a stale snapshot.
+            let mut turn = store.load_turn(&turn_id_for_save)?;
+            turn.status = turn_status_for_save;
+            turn.ended_at = Some(ended_at);
+            turn.duration_ms = turn.started_at.map(|start| duration_ms(start, ended_at));
+            turn.usage = turn_usage_for_save;
+            turn.last_request_input_tokens = turn_last_request_input_tokens_for_save;
+            turn.error = turn_error_for_save;
+            store.save_turn(&turn)?;
             store.save_thread(&thread_clone)?;
             Ok(())
         })
@@ -1051,6 +1057,7 @@ where
         .map_err(|e| anyhow!("save turn completion panicked: {e}"))??;
     }
 
+    let turn = mgr.store.load_turn(&turn_id)?;
     mgr.emit_event(&thread_id, Some(&turn_id), None, "turn.completed", {
         let mut payload = json!({ "turn": turn.clone() });
         if let Some(ref summary) = turn_summary
