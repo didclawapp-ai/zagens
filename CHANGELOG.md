@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **CI/Release hardening (`.github/workflows/`):** Pin the toolchain action to `dtolnay/rust-toolchain@1.96.0` (was `@stable`) across all jobs so clippy/rustfmt components match `rust-toolchain.toml` instead of relying on rustup auto-switch; add least-privilege `permissions: contents: read` (publish job keeps its `contents: write` override) and `concurrency` groups (CI cancels superseded ref runs except scheduled; Release never cancels in-flight); drop the unused `actions/setup-node` step from the CI `versions` job. **Release now gates on a `verify` job** (version drift + fmt + strict clippy + workspace tests) before building/publishing the Windows installer, so a tag on an unverified commit can't ship a broken release.
+- **CD (`.github/workflows/cd.yml`):** Replace tag-triggered `release.yml` with a `workflow_run` pipeline — push `zagens-v*` / `ds-pick-v*` tag → CI full matrix on the tag → on success, build/sign Windows installers, publish GitHub Release, and `repository_dispatch` zagens.com sync. Removes duplicate ubuntu-only verify; adds tag↔manifest version gate. Manual `workflow_dispatch` still builds installers without publishing.
 
 ### Fixed
 

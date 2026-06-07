@@ -136,7 +136,7 @@ pwsh scripts/ci/verify-lint-linux.ps1 -Engine docker
 - **WSL**：需要 Ubuntu/Debian 发行版与 `rustup`（工具链按 `rust-toolchain.toml` 自动安装）；首次用 `-Bootstrap` 补 apt + Node 20。
 - **Docker**：需 Docker Desktop 运行；镜像用 `rust:<pinned>-bookworm`，cargo registry 与 `target` 走命名卷缓存，重复运行更快，且不污染 Windows 的 `target/`。
 
-> 提示：`release.yml` 的 `verify` 门禁同样跑在 ubuntu 上，是这层盲区的最终兜底；本脚本只是把它提前到推送前。
+> 提示：发版前 CI 会在 tag 上跑完整 Lint + Test 矩阵（见 `cd.yml` 的 `workflow_run` 门禁）；本脚本只是把 Linux clippy 盲区提前到推送前。
 
 ### 4.4 与 CI 的对应关系
 
@@ -164,7 +164,7 @@ flowchart LR
 2. **提交：** hook 自动 fmt 检查；失败则 `cargo fmt --all` 后重试。  
 3. **推送：** hook 自动 `verify-lint`；通过后再到 GitHub。  
 4. **大功能 / 合并前：** 主动跑 `verify-workspace`。  
-5. **改 OpenAPI / 发版：** 另见 CI 中的 OpenAPI drift 步骤与 [`scripts/export-runtime-openapi.ps1`](scripts/export-runtime-openapi.ps1)。
+5. **改 OpenAPI / 发版：** 另见 CI 中的 OpenAPI drift 步骤与 [`scripts/export-runtime-openapi.ps1`](scripts/export-runtime-openapi.ps1)。发版打 `zagens-v*` tag 后，CI 全绿会自动触发 [`.github/workflows/cd.yml`](.github/workflows/cd.yml) 构建安装包并同步官网。
 
 ---
 
@@ -214,7 +214,7 @@ cd crates/desktop/web-ui && npm ci && npm run build
 
 ## 8. 维护说明
 
-- 升级钉死版本：改 [`rust-toolchain.toml`](rust-toolchain.toml)，并在 CI lint job 的 toolchain 断言（`rustc --version | grep 1.96.0`）中同步。`verify-lint-linux.ps1` 与 `release.yml` 的 `verify` 也用 `rust-toolchain.toml` 的版本，无需单独改。  
+- 升级钉死版本：改 [`rust-toolchain.toml`](rust-toolchain.toml)，并在 CI lint job 的 toolchain 断言（`rustc --version | grep 1.96.0`）中同步。`verify-lint-linux.ps1` 与 `cd.yml` 构建 job 也用 `rust-toolchain.toml` 的版本，无需单独改。  
 - 新增 Lint 步骤：先改 `verify-lint.sh` / `.ps1`，再改 `.github/workflows/ci.yml`，最后更新本文档；跨平台 `cfg` 代码记得用 `verify-lint-linux.ps1` 自查。  
 - AI / 贡献者速查：[`project_rules.md`](project_rules.md)、[`.cursor/rules/rust-workspace.mdc`](.cursor/rules/rust-workspace.mdc)。
 
