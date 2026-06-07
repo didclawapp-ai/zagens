@@ -13,6 +13,7 @@
 | Resource | Link |
 |----------|------|
 | User guides | [zagens.com/docs](https://zagens.com/docs) |
+| Downloads | [zagens.com/download](https://zagens.com/download) · [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases) |
 | Design specs | [`docs/README.md`](docs/README.md) |
 | Contributing | [`CONTRIBUTING.md`](CONTRIBUTING.md) · [`LOCAL_DEV_VERIFY.md`](LOCAL_DEV_VERIFY.md) |
 | Security | [`SECURITY.md`](SECURITY.md) |
@@ -27,6 +28,7 @@
 |-------|----------------|
 | **Desktop + sidecar** | UI talks to a local **runtime sidecar** over HTTP/SSE. Shared `~/.zagens/config.toml`, sessions, and tools. |
 | **Code vs Office modes** | Different tool surfaces and prompts; switching task types starts a **new session** for stable model KV ([architecture](docs/task-type-prompt-architecture.md)). |
+| **Composable harness** | Long-horizon code tasks with layered completion gates (operator / model / toolchain); fixtures under [`fixtures/harness/`](fixtures/harness/) ([LHT spec](docs/harness/LONG_HORIZON_CODE_TASKS.md)). |
 | **CRAFT multi-agent** | Sub-agents with role-specific tools, structured fix-loop verdicts, and a **P1 blackboard** for handoffs ([CRAFT notes](docs/craft-v2-improvements.md)). |
 | **Symbol index** | Lazy per-workspace index (`.deepseek/symbols.json`) with call hints and desktop rebuild API. |
 | **Office in the loop** | `read_file` for Office/PDF; **`write_office`** for `.xlsx` (Rust) and `.docx` / `.pptx` / `.pdf` (bundled Python). |
@@ -130,8 +132,12 @@ Full diagram and boundaries: [`docs/tech/RUNTIME_ARCHITECTURE.md`](docs/tech/RUN
 
 ## Quick start
 
+**Pre-built installers:** Windows only for now — [zagens.com/download](https://zagens.com/download) or [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases). macOS/Linux builds are planned.
+
+**Build from source:**
+
 ```bash
-git clone https://github.com/zagens/zagens
+git clone https://github.com/didclawapp-ai/zagens.git
 cd zagens
 
 # Sidecar (build.rs copies into crates/desktop/binaries/)
@@ -143,7 +149,7 @@ cd .. && cargo tauri dev
 # API key: Zagens Settings, or ~/.zagens/config.toml
 ```
 
-**Release build (Windows):** from `crates/desktop`, run `npm run bundle:prepare` then `cargo tauri build`. CI release: push tag `zagens-vX.Y.Z`.
+**Release installer (Windows):** from `crates/desktop`, run `npm run bundle:prepare` then `cargo tauri build`. CI release: push tag `zagens-vX.Y.Z`.
 
 ---
 
@@ -159,6 +165,8 @@ See **[CONTRIBUTING.md](CONTRIBUTING.md)** and **[LOCAL_DEV_VERIFY.md](LOCAL_DEV
 | `cd crates/desktop/web-ui && npm run build` | Build web UI |
 | `cd crates/desktop && cargo tauri dev` | Launch Zagens in dev mode |
 
+Windows (PowerShell): `pwsh -File scripts/ci/verify-lint.ps1`
+
 ---
 
 ## Project structure
@@ -171,7 +179,8 @@ zagens/
 │   ├── core/             # Engine, turn loop
 │   ├── tools/            # Tool registry & execution
 │   └── …                 # agent, config, state, mcp, hooks, …
-├── docs/                 # Public contributor documentation
+├── docs/                 # Public design specifications (English)
+├── fixtures/harness/     # LHT / Office harness fixtures (executable assets)
 ├── third-party/          # Third-party license texts
 ├── config.example.toml   # Configuration reference
 └── Cargo.toml            # Workspace manifest

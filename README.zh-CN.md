@@ -13,6 +13,7 @@
 | 资源 | 链接 |
 |------|------|
 | 用户文档 | [zagens.com/docs](https://zagens.com/docs) |
+| 安装包 | [zagens.com/download](https://zagens.com/download) · [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases) |
 | 设计规格 | [`docs/README.md`](docs/README.md) |
 | 贡献指南 | [`CONTRIBUTING.md`](CONTRIBUTING.md) · [`LOCAL_DEV_VERIFY.md`](LOCAL_DEV_VERIFY.md) |
 | 安全策略 | [`SECURITY.md`](SECURITY.md) |
@@ -27,6 +28,7 @@
 |------|------|
 | **桌面 + Sidecar** | UI 通过本地 **runtime sidecar**（HTTP/SSE）通信；共用 `~/.zagens/config.toml`、会话与工具。 |
 | **Code / Office 分场景** | 不同工具面与提示词；切换任务类型会**新开会话**以保持 KV 稳定（[架构说明](docs/task-type-prompt-architecture.md)）。 |
+| **组合式 Harness** | 长程代码任务与分层完成门禁（操作者 / 模型 / 工具链）；夹具见 [`fixtures/harness/`](fixtures/harness/)（[LHT 规格](docs/harness/LONG_HORIZON_CODE_TASKS.md)）。 |
 | **CRAFT 多代理** | 角色化子代理、结构化 fix-loop 裁决、P1 黑板交接（[CRAFT 说明](docs/craft-v2-improvements.md)）。 |
 | **符号索引** | 懒加载 `.deepseek/symbols.json`，含桌面索引面板与重建 API。 |
 | **Office 流水线** | `read_file` / `write_office`（xlsx 用 Rust，docx/pptx/pdf 用捆绑 Python）。 |
@@ -130,8 +132,12 @@ HTTP 契约：[`docs/tech/API_DESIGN.md`](docs/tech/API_DESIGN.md)。配置样�
 
 ## 快速开始
 
+**预编译安装包：** 目前仅 Windows — [zagens.com/download](https://zagens.com/download) 或 [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases)。macOS / Linux 安装包规划中。
+
+**从源码构建：**
+
 ```bash
-git clone https://github.com/zagens/zagens
+git clone https://github.com/didclawapp-ai/zagens.git
 cd zagens
 
 # Sidecar（build.rs 会复制到 crates/desktop/binaries/）
@@ -159,6 +165,8 @@ cd .. && cargo tauri dev
 | `cd crates/desktop/web-ui && npm run build` | 构建 Web UI |
 | `cd crates/desktop && cargo tauri dev` | 开发模式启动 Zagens |
 
+Windows（PowerShell）：`pwsh -File scripts/ci/verify-lint.ps1`
+
 ---
 
 ## 项目结构
@@ -171,7 +179,8 @@ zagens/
 │   ├── core/             # 引擎与 turn loop
 │   ├── tools/            # 工具注册与执行
 │   └── …                 # agent、config、state、mcp、hooks 等
-├── docs/                 # 公开贡献者文档
+├── docs/                 # 公开设计规格（英文）
+├── fixtures/harness/     # LHT / Office harness 夹具（可执行资产）
 ├── third-party/          # 第三方许可证
 ├── config.example.toml   # 配置参考
 └── Cargo.toml            # Workspace 清单
