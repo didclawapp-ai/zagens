@@ -38,7 +38,7 @@ pub struct StdioTransport {
 /// before `kill_on_drop` fires SIGKILL. Tuned short so a hung MCP server
 /// can't stall TUI exit; well-behaved servers almost always exit within
 /// a few hundred ms.
-const STDIO_SHUTDOWN_GRACE: Duration = Duration::from_millis(2_000);
+pub(crate) const STDIO_SHUTDOWN_GRACE: Duration = Duration::from_millis(2_000);
 
 /// Best-effort SIGTERM. On Unix uses `libc::kill`; on Windows there's no
 /// equivalent so we let `kill_on_drop` (TerminateProcess) handle it via the

@@ -482,6 +482,10 @@ fn redact_body_preview_masks_api_key_param() {
 #[cfg(unix)]
 #[tokio::test]
 async fn stdio_transport_shutdown_terminates_child() {
+    use std::time::Duration;
+
+    use self::transport::{STDIO_SHUTDOWN_GRACE, StdioTransport};
+
     use tokio::process::Command as TokioCommand;
     let mut cmd = TokioCommand::new("cat");
     cmd.stdin(std::process::Stdio::piped())
