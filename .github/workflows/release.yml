@@ -43,6 +43,8 @@ jobs:
       - name: Install Linux system dependencies
         run: bash scripts/ci/install-linux-deps.sh
       - uses: Swatinem/rust-cache@v2
+      - name: Prefetch crate index (network retry)
+        run: bash scripts/ci/cargo-retry.sh fetch --locked
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -53,13 +55,13 @@ jobs:
       - name: Ensure web-ui dist (desktop clippy)
         run: bash scripts/ci/ensure-web-ui-dist.sh
       - name: Pre-build runtime sidecar (required by desktop build.rs)
-        run: cargo build -p deepseek-runtime-server --locked
+        run: bash scripts/ci/cargo-retry.sh build -p deepseek-runtime-server --locked
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Clippy (strict)
-        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+        run: bash scripts/ci/cargo-retry.sh clippy --workspace --all-targets --all-features --locked -- -D warnings
       - name: Run tests
-        run: cargo test --workspace --all-features --locked
+        run: bash scripts/ci/cargo-retry.sh test --workspace --all-features --locked
 
   build-windows:
     name: Windows installer
