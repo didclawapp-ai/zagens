@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **CI test (runtime-server, macOS):** Poll for `turn.completed` / steer events in thread contract tests instead of reading events immediately after `wait_turn_terminal` — the event is appended after the terminal save, which caused `turn_completed_event_includes_turn_summary` to flake on CI.
 - **CI lint (desktop, 1.96 strict clippy):** Fix `-D warnings` failures in `crates/desktop`: scope the `OnceLock` import into the `#[cfg(windows)]` `windows_shell_exe()` (unused on Linux) in `terminal.rs`; drop a needless `return` and widen `statvfs` fields via `u128` multiply in `disk_guard.rs` (avoids `as u64` on Linux and `u64::from` useless-conversion on the same); collapse a nested `if` into a `let`-chain in `sidecar.rs`.
 - **CI test (runtime-adapters, unix):** Import `StdioTransport`, `STDIO_SHUTDOWN_GRACE`, and `Duration` in `stdio_transport_shutdown_terminates_child` (`mcp/tests.inc.rs`); expose `STDIO_SHUTDOWN_GRACE` as `pub(crate)` — the test is `#[cfg(unix)]` only so Windows local lint never compiled it.
 - **CI test (macOS/Windows):** Run `ensure-web-ui-dist.sh` before `cargo test --workspace` on all Test matrix runners; `generate_context!()` requires `crates/desktop/web-ui/dist` (Lint job already built it on Linux only).

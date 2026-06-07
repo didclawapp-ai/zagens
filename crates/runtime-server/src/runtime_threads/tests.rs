@@ -162,6 +162,30 @@ async fn wait_for_terminal_turn(
     manager.wait_turn_terminal(turn_id, timeout).await
 }
 
+/// `wait_turn_terminal` only polls turn status; `turn.completed` is emitted after the
+/// terminal save (async JSONL/SQLite append). Poll events to avoid macOS/CI races.
+async fn wait_for_thread_event(
+    manager: &RuntimeThreadManager,
+    thread_id: &str,
+    event_name: &str,
+    timeout: Duration,
+) -> Result<RuntimeEventRecord> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        if let Some(ev) = manager
+            .events_since(thread_id, None)?
+            .into_iter()
+            .find(|ev| ev.event == event_name)
+        {
+            return Ok(ev);
+        }
+        if Instant::now() >= deadline {
+            bail!("Timed out waiting for {event_name} on thread {thread_id}");
+        }
+        sleep(Duration::from_millis(20)).await;
+    }
+}
+
 async fn wait_for_active_turn_cleared(
     manager: &RuntimeThreadManager,
     thread_id: &str,
@@ -1041,12 +1065,13 @@ async fn turn_completed_event_includes_turn_summary() -> Result<()> {
         )
         .await?;
     wait_for_terminal_turn(&manager, &turn.id, MOCK_ENGINE_TURN_TERMINAL_TIMEOUT).await?;
-
-    let events = manager.events_since(&thread.id, None)?;
-    let completed = events
-        .iter()
-        .find(|ev| ev.event == "turn.completed")
-        .context("missing turn.completed event")?;
+    let completed = wait_for_thread_event(
+        &manager,
+        &thread.id,
+        "turn.completed",
+        Duration::from_secs(2),
+    )
+    .await?;
     let summary = completed
         .payload
         .get("turn_summary")
@@ -2092,17 +2117,27 @@ async fn steer_turn_on_active_turn_records_item_and_event() -> Result<()> {
     assert_eq!(final_turn.status, RuntimeTurnStatus::Completed);
     assert_eq!(final_turn.steer_count, 1);
 
-    let events = manager.events_since(&thread.id, None)?;
-    assert!(events.iter().any(|ev| ev.event == "turn.steered"));
-    assert!(events.iter().any(|ev| {
-        ev.event == "item.completed"
-            && ev
-                .payload
-                .get("item")
-                .and_then(|item| item.get("detail"))
-                .and_then(Value::as_str)
-                == Some("add bullet list")
-    }));
+    let deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        let events = manager.events_since(&thread.id, None)?;
+        if events.iter().any(|ev| ev.event == "turn.steered")
+            && events.iter().any(|ev| {
+                ev.event == "item.completed"
+                    && ev
+                        .payload
+                        .get("item")
+                        .and_then(|item| item.get("detail"))
+                        .and_then(Value::as_str)
+                        == Some("add bullet list")
+            })
+        {
+            break;
+        }
+        if Instant::now() >= deadline {
+            bail!("Timed out waiting for steer events on thread {}", thread.id);
+        }
+        sleep(Duration::from_millis(20)).await;
+    }
     Ok(())
 }
 
