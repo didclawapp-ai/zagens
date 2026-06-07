@@ -18,7 +18,7 @@ mod auto_route;
 mod automation_manager;
 pub mod cli;
 mod client;
-mod command_safety;
+pub mod command_safety;
 mod compaction;
 mod config;
 mod context_snapshot;
