@@ -13,11 +13,11 @@
 | Resource | Link |
 |----------|------|
 | User guides | [zagens.com/docs](https://zagens.com/docs) |
-| Contributor docs | [`docs/README.md`](docs/README.md) |
-| Local dev & CI | [`docs/LOCAL_DEV_VERIFY.md`](docs/LOCAL_DEV_VERIFY.md) |
+| Design specs | [`docs/README.md`](docs/README.md) |
+| Contributing | [`CONTRIBUTING.md`](CONTRIBUTING.md) · [`LOCAL_DEV_VERIFY.md`](LOCAL_DEV_VERIFY.md) |
 | Security | [`SECURITY.md`](SECURITY.md) |
 
-> **Not affiliated with DeepSeek Inc.** Capabilities below reflect **Zagens v0.7.0**. Version policy: [`docs/desktop/VERSIONING.md`](docs/desktop/VERSIONING.md).
+> **Not affiliated with DeepSeek Inc.** Capabilities below reflect **Zagens v0.7.0**. See [CHANGELOG.md](CHANGELOG.md) for version history.
 
 ---
 
@@ -149,7 +149,7 @@ cd .. && cargo tauri dev
 
 ## Development
 
-See **[`docs/LOCAL_DEV_VERIFY.md`](docs/LOCAL_DEV_VERIFY.md)** for lint hooks and CI parity.
+See **[CONTRIBUTING.md](CONTRIBUTING.md)** and **[LOCAL_DEV_VERIFY.md](LOCAL_DEV_VERIFY.md)** for lint hooks and CI parity.
 
 | Command | Description |
 |---------|-------------|

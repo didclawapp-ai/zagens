@@ -141,7 +141,7 @@ verify:                       # 验收配置（见下「契约落地」）
 |------|------|
 | **1 — 约定层** | ✅ **11/11** — 全部 bundled `office-*/SKILL.md` 含 `## 技能契约` + YAML + 编号步骤（样板：`office-executive-daily-brief`） |
 | **2 — 校验层** | ❌ 待建 — 可选 `scripts/office-skill-lint.mjs`：检查契约字段、§6 验收项是否齐全 |
-| **3 — 回归层** | ⚠️ 部分 — `docs/harness/fixtures/office-demo/` + `scripts/office-demo-oracle.ps1`（P0-2/3/4；P0-1 无 headless oracle） |
+| **3 — 回归层** | ⚠️ 部分 — `fixtures/harness/office-demo/` + `scripts/office-demo-oracle.ps1`（P0-2/3/4；P0-1 无 headless oracle） |
 
 > **与现有技能对齐：** 全部 11 个 bundled 技能已是「确认 → 摄取 → 处理 → 生成 → 增量改」结构（见 `office-weekly-report`）。契约把隐式约定**显式化**；P0 三条新技能与卡片已落地，见 §5 / §10。
 
@@ -344,7 +344,7 @@ verify:                       # 验收配置（见下「契约落地」）
 | **P0 样板技能** | [`office-executive-daily-brief`](../../crates/runtime-server/assets/skills/office-executive-daily-brief/SKILL.md)（契约 schema 参考） |
 | 任务卡片（11 张） | `OfficeEmptyState.tsx` + `web-ui/src/i18n/locales/*.ts` → `officeEmpty` |
 | Office 能力迭代 | [office-mode-iteration-plan.md](../office-mode-iteration-plan.md) |
-| Demo fixtures | [`docs/harness/fixtures/office-demo/`](../harness/fixtures/office-demo/README.md) |
+| Demo fixtures | [`fixtures/harness/office-demo/`](../../fixtures/harness/office-demo/README.md) |
 | P0 oracle | [`scripts/office-demo-oracle.ps1`](../../scripts/office-demo-oracle.ps1) |
 | 契约 lint（待建） | `scripts/office-skill-lint.mjs`（可选） |
 | 语音（Phase C，范围外） | `doc_Private/docs/desktop/DEV_NOTES.md` §2026-05-18 入座 briefing |

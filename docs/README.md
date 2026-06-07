@@ -1,37 +1,31 @@
-# Zagens documentation (public)
+# Zagens design specifications (`docs/`)
 
-Technical docs for **contributors, integrators, and release maintainers**. End-user guides live on the website (see below).
+This directory contains **stable design specs** only — architecture, API contracts, feature specifications, and ADRs.
 
 | Audience | Location |
 |----------|----------|
-| End users | [zagens.com/docs](https://zagens.com/docs) — source in the website repo `content/docs/` |
-| Maintainer-only notes | Local `doc_Private/` (`.gitignore` — not in this repo) |
+| End users | [zagens.com/docs](https://zagens.com/docs) |
+| Contributing / local CI | [CONTRIBUTING.md](../CONTRIBUTING.md) · [LOCAL_DEV_VERIFY.md](../LOCAL_DEV_VERIFY.md) |
+| Maintainer notes (not published) | Local `doc_Private/` |
+
+Harness **fixtures** (TOML, demo data, oracle scripts) live under [`fixtures/harness/`](../fixtures/harness/) — executable assets, not prose docs.
 
 ---
 
-## Getting started
-
-| Doc | Description |
-|-----|-------------|
-| [LOCAL_DEV_VERIFY.md](./LOCAL_DEV_VERIFY.md) | Local lint, tests, pre-push hooks |
-| [REPO_SPLIT.md](./REPO_SPLIT.md) | Product repo vs website repo |
-| [user/README.md](./user/README.md) | User documentation pointer |
-
----
-
-## Architecture & runtime
+## Architecture & API
 
 | Doc | Description |
 |-----|-------------|
 | [tech/RUNTIME_ARCHITECTURE.md](./tech/RUNTIME_ARCHITECTURE.md) | Runtime + desktop boundaries |
 | [tech/API_DESIGN.md](./tech/API_DESIGN.md) | HTTP/SSE API design |
 | [tech/openapi/zagens-runtime-v1.openapi.json](./tech/openapi/zagens-runtime-v1.openapi.json) | OpenAPI contract (CI drift check) |
+| [ds_pick_prompt_architecture.svg](./ds_pick_prompt_architecture.svg) | Prompt stack diagram |
 | [tech/PERSISTENCE.md](./tech/PERSISTENCE.md) | Persistence model |
 | [tech/SANDBOX_CAPABILITY_MATRIX.md](./tech/SANDBOX_CAPABILITY_MATRIX.md) | Sandbox capability matrix |
 | [tech/TOOLS_PRINCIPLES.md](./tech/TOOLS_PRINCIPLES.md) | Tool design principles |
 | [tech/KV_CACHE_OBSERVABILITY.md](./tech/KV_CACHE_OBSERVABILITY.md) | KV cache observability |
 
-### ADRs (public subset)
+### ADRs (architecture decisions)
 
 | Doc | Description |
 |-----|-------------|
@@ -45,58 +39,33 @@ Technical docs for **contributors, integrators, and release maintainers**. End-u
 | [tech/adr/D9_D10_DESKTOP_UX.md](./tech/adr/D9_D10_DESKTOP_UX.md) | Desktop UX |
 | [tech/adr/RUNTIME_BASELINE.md](./tech/adr/RUNTIME_BASELINE.md) | Runtime baseline |
 | [tech/adr/V2_API_VERSIONING.md](./tech/adr/V2_API_VERSIONING.md) | API versioning |
-| [tech/adr/G2_GATE_ACCEPTANCE.md](./tech/adr/G2_GATE_ACCEPTANCE.md) | G2 gate acceptance |
 | [tech/adr/B2_INJECTION_ARBITRATION.md](./tech/adr/B2_INJECTION_ARBITRATION.md) | Injection arbitration |
-| [tech/adr/A2_A3_SIGNOFF.md](./tech/adr/A2_A3_SIGNOFF.md) | A2/A3 sign-off |
 
 ---
 
-## Desktop
+## Desktop product design
 
 | Doc | Description |
 |-----|-------------|
-| [desktop/VERSIONING.md](./desktop/VERSIONING.md) | Versioning policy |
-| [desktop/UPDATER.md](./desktop/UPDATER.md) | OTA updates & signing |
-| [desktop/I18N_PLAN.md](./desktop/I18N_PLAN.md) | Internationalization |
 | [desktop/PREVIEW_ARCHITECTURE.md](./desktop/PREVIEW_ARCHITECTURE.md) | Preview panel architecture |
-| [desktop/OFFICE_SCENARIOS.md](./desktop/OFFICE_SCENARIOS.md) | Office scenarios |
-| [desktop/SMARTSCREEN.md](./desktop/SMARTSCREEN.md) | Windows SmartScreen notes |
+| [desktop/OFFICE_SCENARIOS.md](./desktop/OFFICE_SCENARIOS.md) | Office scenario map (four-axis model) |
 
 ---
 
-## Harness & evaluation
+## Harness & agents (feature specs)
 
 | Doc | Description |
 |-----|-------------|
-| [harness/README.md](./harness/README.md) | Harness doc index |
-| [harness/LHT_TEST_SUITE.md](./harness/LHT_TEST_SUITE.md) | Long-horizon regression suite |
-| [harness/LHT_EVAL_INFRASTRUCTURE.md](./harness/LHT_EVAL_INFRASTRUCTURE.md) | L2 eval infrastructure |
-| [harness/LONG_HORIZON_CODE_TASKS.md](./harness/LONG_HORIZON_CODE_TASKS.md) | Long-horizon code task spec |
-| [harness/COMPOSABLE_HARNESS.md](./harness/COMPOSABLE_HARNESS.md) | Composable harness overview |
-| [harness/fixtures/](./harness/fixtures/) | Evaluation fixtures |
-| [harness/test-cases/](./harness/test-cases/) | Test case specs |
-
----
-
-## Prompts & task types
-
-| Doc | Description |
-|-----|-------------|
+| [harness/README.md](./harness/README.md) | Harness spec index |
+| [harness/LONG_HORIZON_CODE_TASKS.md](./harness/LONG_HORIZON_CODE_TASKS.md) | Long-horizon code tasks |
+| [harness/COMPOSABLE_HARNESS.md](./harness/COMPOSABLE_HARNESS.md) | Composable completion gates |
+| [craft-v2-improvements.md](./craft-v2-improvements.md) | CRAFT multi-agent |
 | [task-type-prompt-architecture.md](./task-type-prompt-architecture.md) | Code / Office task types |
 | [prompt-architecture.md](./prompt-architecture.md) | Prompt layering |
 | [prompt-hallucination-patch.md](./prompt-hallucination-patch.md) | Hallucination guardrails |
-| [craft-v2-improvements.md](./craft-v2-improvements.md) | CRAFT multi-agent |
 
 ---
 
-## Skills (doc copies)
+## Not in `docs/` (by design)
 
-| Path | Description |
-|------|-------------|
-| [skill/multi-search-engine/](./skill/multi-search-engine/) | Multi-search-engine skill (runtime copy: `crates/runtime-server/assets/skills/`) |
-
----
-
-## Moved out of `docs/` (private)
-
-Session handoffs, implementation plans, paper drafts, symbol-index iteration notes, topic-memory reference tree, and similar material → local **`doc_Private/docs/`**. Migration script: `scripts/ci/move-docs-to-private.ps1`.
+Release notes, eval runbooks, test-case lab notebooks, repo-split ops, and iteration plans → `doc_Private/docs/`. Migration: `scripts/ci/move-docs-to-private.ps1`, `scripts/ci/move-docs-spec-only.ps1`.

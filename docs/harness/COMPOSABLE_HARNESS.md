@@ -1,6 +1,6 @@
 # 组合式 Harness — 规格锚定的完成门禁（Composable Harness / Spec-Anchored Completion Gate）
 
-**状态:** 设计草案 **v0.7** + **P0/P1/P2 已实现** + **任务无关层2（§6.5）已实现** + **通用 stub/半成品门（§6.6）已实现**（面板见下 §11；MicroStack manifest 见 [`fixtures/microstack-completion-gate.toml`](./fixtures/microstack-completion-gate.toml)）。**enforce 来源**已落 `CompletionGateConfig::sanitized_for_source(trusted)` 防御性护栏。**§6.5 新增**两个**零 per-task 配置、一个全局开关覆盖所有任务**的层2来源：模型 `[verify:]` 主动复跑 + 工具链探测 build/test 门。**§0.1** 新增设计动机的外部研究锚定（grounding signal 质量×独立性）；**§3.1 / §6.7** 钉死「法官 vs 缺口枚举器」边界，为对抗式审核员（路线图 #2）立设计原则。**仍未做:** §6.7 对抗式审核员、内置 `coverage-gate` 子命令。
+**状态:** 设计草案 **v0.7** + **P0/P1/P2 已实现** + **任务无关层2（§6.5）已实现** + **通用 stub/半成品门（§6.6）已实现**（面板见下 §11；MicroStack manifest 见 [`fixtures/harness/microstack-completion-gate.toml`](../../fixtures/harness/microstack-completion-gate.toml)）。**enforce 来源**已落 `CompletionGateConfig::sanitized_for_source(trusted)` 防御性护栏。**§6.5 新增**两个**零 per-task 配置、一个全局开关覆盖所有任务**的层2来源：模型 `[verify:]` 主动复跑 + 工具链探测 build/test 门。**§0.1** 新增设计动机的外部研究锚定（grounding signal 质量×独立性）；**§3.1 / §6.7** 钉死「法官 vs 缺口枚举器」边界，为对抗式审核员（路线图 #2）立设计原则。**仍未做:** §6.7 对抗式审核员、内置 `coverage-gate` 子命令。
 **所属:** [`LHT_TEST_SUITE.md`](./LHT_TEST_SUITE.md) / [`LONG_HORIZON_CODE_TASKS.md`](./LONG_HORIZON_CODE_TASKS.md) / [`test-cases/microstack-framework.md`](./test-cases/microstack-framework.md)
 **一句话:** 在「模型自产任务图清零」之上，叠加一道**算子声明、harness 主动真跑、exit-code 裁决**的完成门禁 + 一道**纯机器交付物对账**，未达标即强制返工迭代，有界循环直到按 manifest 真完成或诚实记 `audit_unmet`。**全程无 LLM 当法官**——裁决只取决于退出码与路径/glob 命中。
 

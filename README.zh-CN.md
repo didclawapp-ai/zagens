@@ -13,11 +13,11 @@
 | 资源 | 链接 |
 |------|------|
 | 用户文档 | [zagens.com/docs](https://zagens.com/docs) |
-| 贡献者文档 | [`docs/README.md`](docs/README.md) |
-| 本地开发与 CI | [`docs/LOCAL_DEV_VERIFY.md`](docs/LOCAL_DEV_VERIFY.md) |
+| 设计规格 | [`docs/README.md`](docs/README.md) |
+| 贡献指南 | [`CONTRIBUTING.md`](CONTRIBUTING.md) · [`LOCAL_DEV_VERIFY.md`](LOCAL_DEV_VERIFY.md) |
 | 安全策略 | [`SECURITY.md`](SECURITY.md) |
 
-> **与 DeepSeek 公司无关联。** 以下功能以 **Zagens v0.7.0** 为准。版本规则：[`docs/desktop/VERSIONING.md`](docs/desktop/VERSIONING.md)。
+> **与 DeepSeek 公司无关联。** 以下功能以 **Zagens v0.7.0** 为准。版本历史见 [CHANGELOG.md](CHANGELOG.md)。
 
 ---
 
@@ -149,7 +149,7 @@ cd .. && cargo tauri dev
 
 ## 开发指南
 
-本地 Lint 与 pre-push hook 见 **[`docs/LOCAL_DEV_VERIFY.md`](docs/LOCAL_DEV_VERIFY.md)**。
+本地 Lint 与 pre-push hook 见 **[CONTRIBUTING.md](CONTRIBUTING.md)** 与 **[LOCAL_DEV_VERIFY.md](LOCAL_DEV_VERIFY.md)**。
 
 | 命令 | 说明 |
 |------|------|

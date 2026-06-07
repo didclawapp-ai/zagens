@@ -9,7 +9,7 @@ All notable changes to **Zagens** and its embedded runtime will be documented in
 **Zagens** (desktop app in `crates/desktop/`) has its **own** version line in
 **SemVer** (e.g. **`0.7.0`**). Public releases use `0.MINOR.PATCH` until **1.0.0 GA**
 (pre-release channels such as `-preview.N` may still appear on older tags). Display form
-**v** + manifest version (e.g. **v0.7.0**). Full policy: [`docs/desktop/VERSIONING.md`](docs/desktop/VERSIONING.md).
+**v** + manifest version (e.g. **v0.7.0**). Maintainer release policy: `doc_Private/docs/desktop/VERSIONING.md`.
 This line **does not** follow the embedded runtime workspace version in root
 `Cargo.toml` `[workspace.package] version`.
 
@@ -23,7 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Docs — open-source prep:** Split `README.md` / `README.zh-CN.md`; public `docs/README.md`, `docs/REPO_SPLIT.md`, `docs/harness/README.md`; added `SECURITY.md`.
+- **Docs — open-source prep:** Split `README.md` / `README.zh-CN.md`; added `SECURITY.md`, `CONTRIBUTING.md`; root `LOCAL_DEV_VERIFY.md`.
+- **Docs — SPEC-only `docs/`:** Non-design material → `doc_Private/`; harness fixtures → `fixtures/harness/`; `docs/README.md` indexes design specs only.
 - **Tooling — local Linux lint (`scripts/ci/verify-lint-linux.ps1`):** Run the CI Lint job in a real Linux env (WSL preferred, Docker fallback with cached cargo/target volumes) from a Windows dev box, so `#[cfg(unix)]` / Linux-only clippy lints are caught **before** push instead of only on CI. Windows `cargo clippy` skips those branches entirely; `-Bootstrap` provisions apt deps + Node 20 + the pinned rust toolchain.
 
 ### Changed

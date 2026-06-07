@@ -2,7 +2,7 @@ name: Zagens Release
 
 # Desktop installer releases only (Windows for now; macOS/Linux can be added later).
 # Push tag:  git tag zagens-v0.6.0-preview.1 && git push origin zagens-v0.6.0-preview.1
-# See docs/desktop/VERSIONING.md — pre-1.0 releases use 0.x.y-preview.n
+# Pre-1.0 Zagens SemVer — see CHANGELOG.md header; maintainer policy in doc_Private/docs/desktop/VERSIONING.md
 # Legacy:   ds-pick-v* tags still trigger this workflow
 # Manual:    Actions → Zagens Release → Run workflow
 #

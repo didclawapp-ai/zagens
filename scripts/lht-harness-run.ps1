@@ -1,7 +1,7 @@
 # LHT Harness L2 — headless end-to-end task run (prompt from TOML, oracle pass/fail)
 # Usage:
-#   .\scripts\lht-harness-run.ps1 -TaskId demo3-strict-smoke -TaskSpec docs\harness\fixtures\lht-harness-tasks.strict.toml -Profile harness_strict
-#   .\scripts\lht-harness-run.ps1 -TaskSpec docs\harness\fixtures\lht-eval-tasks.example.toml -Repeat 1
+#   .\scripts\lht-harness-run.ps1 -TaskId demo3-strict-smoke -TaskSpec fixtures\harness\lht-harness-tasks.strict.toml -Profile harness_strict
+#   .\scripts\lht-harness-run.ps1 -TaskSpec fixtures\harness\lht-eval-tasks.example.toml -Repeat 1
 #   .\scripts\lht-harness-run.ps1 -DryRun
 
 param(
@@ -25,7 +25,7 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Get-LhtHarnessRepoRoot -ScriptRoot $scriptDir
 
 if (-not $TaskSpec) {
-    $TaskSpec = Join-Path $repoRoot "docs\harness\fixtures\lht-eval-tasks.example.toml"
+    $TaskSpec = Join-Path $repoRoot "fixtures\harness\lht-eval-tasks.example.toml"
 }
 $TaskSpec = (Resolve-Path $TaskSpec).Path
 

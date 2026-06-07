@@ -1,6 +1,6 @@
 # Office 场景演示 fixtures
 
-> 配合 [OFFICE_SCENARIOS.md](../../desktop/OFFICE_SCENARIOS.md) §6 P0 与 bundled `office-*` 技能。
+> 配合 [OFFICE_SCENARIOS.md](../../../docs/desktop/OFFICE_SCENARIOS.md) §6 P0 与 bundled `office-*` 技能。
 
 ## 用法
 

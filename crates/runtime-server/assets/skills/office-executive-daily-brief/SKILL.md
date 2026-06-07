@@ -42,4 +42,4 @@ verify:
 
 ## 演示数据
 
-见 `docs/harness/fixtures/office-demo/inbox/`（复制到工作区 `inbox/` 后试用）。
+见 `fixtures/harness/office-demo/inbox/`（复制到工作区 `inbox/` 后试用）。

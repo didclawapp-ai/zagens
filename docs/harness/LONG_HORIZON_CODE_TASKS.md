@@ -1014,7 +1014,7 @@ craft_on_small_tasks = false         # bugfix / <N checklist 项跳过 CRAFT 段
 - [x] **integration′** — shim-aware + electron/ enforce + nudge  
 - [x] **P0-3+** — UI 有条件完成（不限 observe）  
 - [x] **toolchain′** — polyglot cargo build  
-- [x] **round2 fixture** — [`fixtures/lht-refactor-round2-checklist.md`](fixtures/lht-refactor-round2-checklist.md)  
+- [x] **round2 fixture** — `doc_Private/docs/harness/fixtures/lht-refactor-round2-checklist.md`（维护者本地）  
 
 ---
 
@@ -1038,7 +1038,7 @@ craft_on_small_tasks = false         # bugfix / <N checklist 项跳过 CRAFT 段
 |----|------|------|
 | P3-1 | **conversion_pct 数据驱动调参** | §4.9 埋点已有；积累后调 `max_nudges` / blocked |
 | P3-2 | **遥测跨 session 持久化** | 10 次/N 次通过率统计 |
-| P3-3 | **Headless 回归跑批** | [`LHT_TEST_SUITE.md`](./LHT_TEST_SUITE.md) · Cursor SDK / 脚本 + oracle |
+| P3-3 | **Headless 回归跑批** | `doc_Private/docs/harness/LHT_TEST_SUITE.md` · Cursor SDK / 脚本 + oracle |
 | P3-4 | **长 turn 压力场景集** | 35min+ refactor 进回归：续跑次数、cycle、manifest、step_limit |
 | P3-5 | **金矿 ① 设计评审前置 · ② 可追溯矩阵** | 见文首 backlog · [`PARALLEL_FRESH_GENERATION.md`](./PARALLEL_FRESH_GENERATION.md) P0.5/P1.5 |
 | P3-6 | **内置 `coverage-gate` 子命令** | COMPOSABLE §6.1 H2 · 跨平台覆盖率门 |
@@ -1217,7 +1217,7 @@ flowchart TB
 | 文档 | 用途 |
 |------|------|
 | [`COMPOSABLE_HARNESS.md`](./COMPOSABLE_HARNESS.md) | 层2/3 完成门禁 · macro 第四维 · §6.7 缺口枚举器 |
-| [`LHT_TEST_SUITE.md`](./LHT_TEST_SUITE.md) | DEMO2–5 回归 · 非确定性 · 跑批基建（§6 P3-3） |
+| `doc_Private/.../LHT_TEST_SUITE.md` | DEMO2–5 回归 · 非确定性 · 跑批基建（§6 P3-3） |
 | [`agent-reliability-craft-plan.md`](../agent-reliability-craft-plan.md) | CRAFT · Phase 4 质检段 |
 | **§6 产品迭代 P0–P3** | **2026-06 路线图 SSOT**（优先于 scattered backlog 行） |
 

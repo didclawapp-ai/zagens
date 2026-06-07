@@ -44,4 +44,4 @@ verify:
 
 ## 演示数据
 
-见 `docs/harness/fixtures/office-demo/data/生产日报_昨日.xlsx`（复制到工作区 `data/` 后试用）。
+见 `fixtures/harness/office-demo/data/生产日报_昨日.xlsx`（复制到工作区 `data/` 后试用）。

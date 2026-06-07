@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Security fixes are provided for the **current release line** of Zagens desktop (see [`docs/desktop/VERSIONING.md`](docs/desktop/VERSIONING.md) and [GitHub Releases](https://github.com/zagens/zagens/releases)). Older preview tags may not receive patches.
+Security fixes are provided for the **current release line** of Zagens desktop (see [CHANGELOG.md](CHANGELOG.md) and [GitHub Releases](https://github.com/zagens/zagens/releases)). Older preview tags may not receive patches.
 
 ## Reporting a vulnerability
 
