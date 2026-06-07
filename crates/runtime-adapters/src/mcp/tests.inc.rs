@@ -6,7 +6,7 @@ use self::diagnostics::{mask_url_secrets, redact_body_preview};
 #[test]
 fn test_mcp_config_defaults() {
     let config = McpConfig::default();
-    assert_eq!(config.timeouts.connect_timeout, 10);
+    assert_eq!(config.timeouts.connect_timeout, 30);
     assert_eq!(config.timeouts.execute_timeout, 60);
     assert_eq!(config.timeouts.read_timeout, 120);
     assert!(config.servers.is_empty());
