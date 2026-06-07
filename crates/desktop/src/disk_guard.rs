@@ -59,7 +59,7 @@ pub fn volume_free_bytes(path: &Path) -> Result<u64, String> {
     }
     #[cfg(unix)]
     {
-        return unix_free_bytes(path);
+        unix_free_bytes(path)
     }
     #[cfg(not(any(windows, unix)))]
     {
@@ -118,7 +118,9 @@ fn unix_free_bytes(path: &Path) -> Result<u64, String> {
         return Err(format!("无法读取磁盘剩余空间（{}）", canonical.display()));
     }
     let stat = unsafe { stat.assume_init() };
-    let free = stat.f_bavail as u64 * stat.f_frsize as u64;
+    // `f_bavail`/`f_frsize` width varies by platform (u64 on Linux, narrower on
+    // macOS); `u64::from` widens portably and satisfies clippy on every target.
+    let free = u64::from(stat.f_bavail) * u64::from(stat.f_frsize);
     Ok(free)
 }
 

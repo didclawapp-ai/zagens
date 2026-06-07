@@ -21,8 +21,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Tooling — local Linux lint (`scripts/ci/verify-lint-linux.ps1`):** Run the CI Lint job in a real Linux env (WSL preferred, Docker fallback with cached cargo/target volumes) from a Windows dev box, so `#[cfg(unix)]` / Linux-only clippy lints are caught **before** push instead of only on CI. Windows `cargo clippy` skips those branches entirely; `-Bootstrap` provisions apt deps + Node 20 + the pinned rust toolchain.
+
+### Changed
+
+- **CI/Release hardening (`.github/workflows/`):** Pin the toolchain action to `dtolnay/rust-toolchain@1.96.0` (was `@stable`) across all jobs so clippy/rustfmt components match `rust-toolchain.toml` instead of relying on rustup auto-switch; add least-privilege `permissions: contents: read` (publish job keeps its `contents: write` override) and `concurrency` groups (CI cancels superseded ref runs except scheduled; Release never cancels in-flight); drop the unused `actions/setup-node` step from the CI `versions` job. **Release now gates on a `verify` job** (version drift + fmt + strict clippy + workspace tests) before building/publishing the Windows installer, so a tag on an unverified commit can't ship a broken release.
+
 ### Fixed
 
+- **CI lint (desktop, 1.96 strict clippy):** Fix `-D warnings` failures in `crates/desktop`: scope the `OnceLock` import into the `#[cfg(windows)]` `windows_shell_exe()` (unused on Linux) in `terminal.rs`; drop a needless `return` and use portable `u64::from(...)` instead of `as u64` casts (`unnecessary_cast` on Linux, but the `statvfs` fields are narrower on macOS) in `disk_guard.rs`; collapse a nested `if` into a `let`-chain in `sidecar.rs`.
 - **CI lint:** Remove needless `return` statements in `policy_degraded_mode_notice()` (`crates/runtime-server/src/sandbox/mod.rs`) — resolves `clippy::needless_return` errors that broke CI on push.
 - **CI lint:** Pre-build `deepseek-runtime-server` before `cargo clippy --workspace` in `.github/workflows/ci.yml` and `scripts/ci/verify-lint.sh`; `crates/desktop/build.rs` requires the sidecar binary at compile time (same as the Test job fix below).
 - **CI:** Test job now `needs: lint` so fmt/clippy failures skip the three-platform test matrix and save CI minutes.

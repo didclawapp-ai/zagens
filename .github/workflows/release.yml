@@ -14,19 +14,63 @@ on:
     tags: ['zagens-v*', 'ds-pick-v*']
   workflow_dispatch:
 
+# Least-privilege default; the publish job opts into `contents: write` below.
+permissions:
+  contents: read
+
+# Never cancel an in-flight release — a half-published tag is worse than a
+# duplicate run. Serialize per ref instead.
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Gate the installer build on the same fmt/clippy/test checks as CI, so a
+  # tag pushed to an unverified commit can't ship a broken release.
+  verify:
+    name: Verify (fmt + clippy + tests)
+    runs-on: ubuntu-latest
+    env:
+      RUSTFLAGS: -Dwarnings
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: clippy, rustfmt
+      - name: Install Linux system dependencies
+        run: bash scripts/ci/install-linux-deps.sh
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: crates/desktop/web-ui/package-lock.json
+      - name: Check version drift
+        run: bash scripts/release/check-versions.sh
+      - name: Ensure web-ui dist (desktop clippy)
+        run: bash scripts/ci/ensure-web-ui-dist.sh
+      - name: Pre-build runtime sidecar (required by desktop build.rs)
+        run: cargo build -p deepseek-runtime-server --locked
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Clippy (strict)
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+      - name: Run tests
+        run: cargo test --workspace --all-features --locked
+
   build-windows:
     name: Windows installer
+    needs: verify
     runs-on: windows-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.96.0
         with:
           components: clippy, rustfmt
 

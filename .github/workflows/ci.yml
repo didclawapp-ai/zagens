@@ -8,6 +8,16 @@ on:
   schedule:
     - cron: '31 6 * * 1'
 
+# Least-privilege default token; no job here needs write access.
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same ref to save CI minutes. Don't cancel
+# scheduled runs (each weekly cron run is independent and worth keeping).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
+
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -Dwarnings
@@ -18,15 +28,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.96.0
         with:
           components: clippy, rustfmt
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
         run: bash scripts/ci/install-linux-deps.sh
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
       - name: Check version drift
         run: bash scripts/release/check-versions.sh
 
@@ -35,7 +42,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.96.0
         with:
           components: clippy, rustfmt
       - name: Assert pinned toolchain
@@ -67,7 +74,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.96.0
         with:
           components: clippy, rustfmt
       - name: Install Linux system dependencies
@@ -116,7 +123,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.96.0
         with:
           components: clippy, rustfmt
       - name: Install Linux system dependencies

@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 
 use portable_pty::{CommandBuilder, MasterPty, PtySize, native_pty_system};
 use serde::Serialize;
@@ -108,6 +108,7 @@ fn executable_on_path(name: &str) -> bool {
 
 #[cfg(windows)]
 fn windows_shell_exe() -> &'static str {
+    use std::sync::OnceLock;
     static SHELL: OnceLock<String> = OnceLock::new();
     SHELL.get_or_init(|| {
         if executable_on_path("pwsh.exe") {

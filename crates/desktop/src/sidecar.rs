@@ -399,21 +399,20 @@ fn kill_processes_listening_on_local_port(port: u16) -> Result<()> {
         if let Ok(out) = StdCommand::new("lsof")
             .args(["-n", "-P", &itcp, "-sTCP:LISTEN", "-t"])
             .output()
+            && out.status.success()
         {
-            if out.status.success() {
-                let pids: Vec<String> = String::from_utf8_lossy(&out.stdout)
-                    .lines()
-                    .map(str::trim)
-                    .filter(|l| !l.is_empty())
-                    .map(std::string::ToString::to_string)
-                    .collect();
-                for pid in &pids {
-                    let _ = StdCommand::new("kill").args(["-TERM", pid]).status();
-                }
-                if !pids.is_empty() {
-                    std::thread::sleep(Duration::from_millis(400));
-                    return Ok(());
-                }
+            let pids: Vec<String> = String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty())
+                .map(std::string::ToString::to_string)
+                .collect();
+            for pid in &pids {
+                let _ = StdCommand::new("kill").args(["-TERM", pid]).status();
+            }
+            if !pids.is_empty() {
+                std::thread::sleep(Duration::from_millis(400));
+                return Ok(());
             }
         }
         let _ = StdCommand::new("fuser")
