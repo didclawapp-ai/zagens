@@ -19,6 +19,16 @@ use crate::tools::spec::{ToolContext, ToolError};
 /// Maximum redirect hops we will follow before giving up.
 pub(crate) const MAX_REDIRECTS: usize = 5;
 
+/// Parse a URL host as an IP, accepting bracketed IPv6 literals (`[::1]`).
+fn parse_host_as_ip(host: &str) -> Option<std::net::IpAddr> {
+    let trimmed = host.trim();
+    let literal = trimmed
+        .strip_prefix('[')
+        .and_then(|rest| rest.strip_suffix(']'))
+        .unwrap_or(trimmed);
+    literal.parse().ok()
+}
+
 /// Return an error when the turn's cancellation token has fired.
 pub(crate) fn ensure_not_cancelled(cancel: Option<&CancellationToken>) -> Result<(), ToolError> {
     if cancel.is_some_and(CancellationToken::is_cancelled) {
@@ -88,7 +98,7 @@ pub(crate) async fn validate_url_ssrf(
             "requests to localhost are not allowed",
         ));
     }
-    if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+    if let Some(ip) = parse_host_as_ip(&host) {
         if is_restricted_ip(&ip) {
             return Err(ToolError::permission_denied(format!(
                 "IP {ip} is a restricted address (private/loopback/link-local)"

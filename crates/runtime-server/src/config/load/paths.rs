@@ -10,7 +10,7 @@ use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 // === Defaults ===
 
 pub(crate) fn default_config_path() -> Option<PathBuf> {
-    env_config_path().or_else(home_config_path)
+    resolve_load_config_path(None)
 }
 
 pub(crate) fn effective_home_dir() -> Option<PathBuf> {
@@ -45,7 +45,17 @@ pub(crate) fn effective_home_dir() -> Option<PathBuf> {
 }
 
 pub(crate) fn home_config_path() -> Option<PathBuf> {
-    deepseek_config::default_config_path().ok()
+    effective_home_dir().map(|home| {
+        home.join(deepseek_config::USER_DATA_DIR_NAME)
+            .join(deepseek_config::CONFIG_FILE_NAME)
+    })
+}
+
+pub(crate) fn legacy_home_config_path() -> Option<PathBuf> {
+    effective_home_dir().map(|home| {
+        home.join(deepseek_config::LEGACY_USER_DATA_DIR_NAME)
+            .join(deepseek_config::CONFIG_FILE_NAME)
+    })
 }
 
 #[must_use]
@@ -163,10 +173,24 @@ pub(crate) fn resolve_load_config_path(path: Option<PathBuf>) -> Option<PathBuf>
             return Some(home_path);
         }
 
+        if let Some(legacy_path) = legacy_home_config_path()
+            && legacy_path.exists()
+        {
+            return Some(legacy_path);
+        }
+
         return Some(path);
     }
 
-    home_config_path()
+    if let Some(home_path) = home_config_path()
+        && home_path.exists()
+    {
+        return Some(home_path);
+    }
+
+    legacy_home_config_path()
+        .filter(|p| p.exists())
+        .or(home_config_path())
 }
 
 /// Create an inspectable config file on first interactive launch.

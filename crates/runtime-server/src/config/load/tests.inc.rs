@@ -313,7 +313,7 @@ fn save_api_key_writes_config_file_under_cfg_test() -> Result<()> {
     let _guard = EnvGuard::new(&temp_root);
 
     let saved = save_api_key("test-key")?;
-    let expected = temp_root.join(".deepseek").join("config.toml");
+    let expected = temp_root.join(".zagens").join("config.toml");
     assert_eq!(saved, SavedCredential::ConfigFile(expected.clone()));
     assert_eq!(saved.describe(), expected.display().to_string());
 
@@ -380,12 +380,12 @@ fn workspace_trust_round_trips_through_global_config() -> Result<()> {
     assert!(!is_workspace_trusted(&workspace));
     let saved = save_workspace_trust(&workspace)?;
 
-    assert_eq!(saved, temp_root.join(".deepseek").join("config.toml"));
+    assert_eq!(saved, temp_root.join(".zagens").join("config.toml"));
     assert!(is_workspace_trusted(&workspace));
     assert!(is_workspace_trusted(&workspace));
     assert!(
-        !workspace.join(".deepseek").exists(),
-        "trust persistence must not create a project-local .deepseek directory"
+        !workspace.join(".zagens").exists(),
+        "trust persistence must not create a project-local .zagens directory"
     );
 
     let parsed: toml::Value = toml::from_str(&fs::read_to_string(saved)?)?;
@@ -711,6 +711,7 @@ fn test_load_uses_tilde_expanded_deepseek_config_path() -> Result<()> {
 
     // Safety: test-only environment mutation guarded by a global mutex.
     unsafe {
+        env::remove_var("ZAGENS_CONFIG_PATH");
         env::set_var("DEEPSEEK_CONFIG_PATH", "~/.custom-deepseek/config.toml");
     }
 

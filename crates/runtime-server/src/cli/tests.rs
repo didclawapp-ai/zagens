@@ -647,7 +647,7 @@ mod setup_helper_tests {
             "DEEPSEEK_BASE_URL",
             "DEEPSEEK_MODEL",
             "NVIDIA_API_KEY",
-            "NIM_BASE_URL",
+            "NVIDIA_NIM_BASE_URL",
             "RUST_LOG",
             "DEEPSEEK_APPROVAL_POLICY",
             "DEEPSEEK_SANDBOX_MODE",
@@ -813,9 +813,9 @@ mod pr_prompt_tests {
     #[test]
     fn format_pr_prompt_includes_title_url_branches_body_and_diff() {
         let prompt = format_pr_prompt(123, &sample_pr(), "diff --git a/x b/x\n+y");
-        assert!(prompt.contains("Review PR #123 鈥?Add cool feature"));
+        assert!(prompt.contains("Review PR #123 — Add cool feature"));
         assert!(prompt.contains("URL: https://github.com/example/repo/pull/123"));
-        assert!(prompt.contains("Branches: main 鈫?feat/cool"));
+        assert!(prompt.contains("Branches: main ← feat/cool"));
         assert!(prompt.contains("Closes #99."));
         assert!(prompt.contains("- bullet a"));
         assert!(prompt.contains("```diff"));
@@ -844,15 +844,16 @@ mod pr_prompt_tests {
     fn format_pr_prompt_truncates_oversize_diff_at_a_codepoint_boundary() {
         // 300 KiB of `X` bytes with a multibyte char near the cap.
         let mut diff = "X".repeat(190 * 1024);
-        diff.push_str(&"馃殌".repeat(5_000));
+        diff.push_str(&"\u{1f680}".repeat(5_000));
         let prompt = format_pr_prompt(1, &sample_pr(), &diff);
-        assert!(prompt.contains("[鈥iff truncated"));
+        let truncated_marker = "[\u{2026}diff truncated";
+        assert!(prompt.contains(truncated_marker));
         assert!(prompt.contains("at 200 KiB"));
-        // Ensure we didn't slice mid-codepoint 鈥?the result still
+        // Ensure we didn't slice mid-codepoint — the result still
         // round-trips as valid UTF-8 (it's a String, so this is by
         // construction; the test pins behaviour against silent panics
         // if the cut logic regresses).
-        assert!(prompt.contains("[… diff truncated]") || prompt.contains("truncated"));
+        assert!(prompt.contains(truncated_marker) || prompt.contains("truncated"));
     }
 
     #[test]

@@ -138,11 +138,14 @@ impl SubAgentManager {
     }
 
     pub(crate) fn load_state(&mut self) -> Result<()> {
-        if self.state_path.is_none() {
+        let Some(state_path) = self.state_path.as_ref() else {
             return Ok(());
-        }
-        let read_path =
-            workspace_meta_file_read(&self.workspace, &format!("state/{}", SUBAGENT_STATE_FILE));
+        };
+        let read_path = if state_path.exists() {
+            state_path.clone()
+        } else {
+            workspace_meta_file_read(&self.workspace, &format!("state/{}", SUBAGENT_STATE_FILE))
+        };
         if !read_path.exists() {
             return Ok(());
         }
