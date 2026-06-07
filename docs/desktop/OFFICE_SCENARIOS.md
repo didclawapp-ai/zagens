@@ -5,7 +5,7 @@
 > **本期范围外（不计入差距）：** STT/TTS 语音（Phase C）、ERP/CRM connector（Phase B）、`inbox/`/`data/` 工作区自动初始化（用户自建或复制 fixtures 即可）。  
 > **定位：** 在 LHT / CRAFT 等 **编码 harness** 之外，梳理 **Office 模式**可覆盖的真实工作场景、与现有能力对齐情况、以及跑通优先级。  
 > **核心主张（本版新增）：** 这 40+ 个场景不是 40+ 个独立功能，而是 **同一条流水线 × 四个正交维度** 的不同取值组合。统一架构见 §2.3 / §3；新增场景应退化为「填一份技能契约」，而非「写新引擎」。  
-> **相关：** [office-mode-iteration-plan.md](../office-mode-iteration-plan.md)、[task-type-prompt-architecture.md](../task-type-prompt-architecture.md)、[DEV_NOTES.md](DEV_NOTES.md) §「入座 briefing」、[HARNESS.md](HARNESS.md)
+> **相关：** [task-type-prompt-architecture.md](../task-type-prompt-architecture.md)、[HARNESS.md](HARNESS.md)（Office 迭代计划与 DEV_NOTES 见本地 `doc_Private/docs/`）
 
 ---
 
@@ -154,7 +154,7 @@ verify:                       # 验收配置（见下「契约落地」）
 | `deliverables/` | Agent 输出（默认，技能可不填 `path`）；工作区创建时自动确保存在 |
 | `templates/` | 企业母版 / 价目表模板（未来） |
 
-**语音扩展（Phase C，本期范围外）：** 同一流水线，仅把「触发 + 概况」换成 STT / TTS；执行仍走 Office 工具面。见 [DEV_NOTES.md](DEV_NOTES.md) §入座 briefing。
+**语音扩展（Phase C，本期范围外）：** 同一流水线，仅把「触发 + 概况」换成 STT / TTS；执行仍走 Office 工具面。见 `doc_Private/docs/desktop/DEV_NOTES.md` §入座 briefing。
 
 **与 LHT / CRAFT：** 办公单次任务通常 **不需要** LHT checklist；多文件长调研、跨天跟进可考虑轻量 checklist，但不作为办公线默认。
 
@@ -305,7 +305,7 @@ verify:                       # 验收配置（见下「契约落地」）
 ### Phase C — 语音（入座 briefing，本期范围外）
 
 - STT / TTS 触发与口播概况 — **本期不做**；架构上仅替换 `loop`，不触碰摄取/处理/生成  
-- 见 [DEV_NOTES.md](DEV_NOTES.md) §入座 briefing
+- 见 `doc_Private/docs/desktop/DEV_NOTES.md` §入座 briefing
 
 ---
 
@@ -347,7 +347,7 @@ verify:                       # 验收配置（见下「契约落地」）
 | Demo fixtures | [`docs/harness/fixtures/office-demo/`](../harness/fixtures/office-demo/README.md) |
 | P0 oracle | [`scripts/office-demo-oracle.ps1`](../../scripts/office-demo-oracle.ps1) |
 | 契约 lint（待建） | `scripts/office-skill-lint.mjs`（可选） |
-| 语音（Phase C，范围外） | [DEV_NOTES.md](DEV_NOTES.md) §2026-05-18 入座 briefing |
+| 语音（Phase C，范围外） | `doc_Private/docs/desktop/DEV_NOTES.md` §2026-05-18 入座 briefing |
 
 ---
 

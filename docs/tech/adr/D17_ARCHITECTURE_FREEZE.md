@@ -190,7 +190,7 @@ HTTP handler
 4. [API_DESIGN.md](../API_DESIGN.md) + [OpenAPI JSON](../openapi/zagens-runtime-v1.openapi.json)  
 5. [PERSISTENCE.md](../PERSISTENCE.md)  
 
-**不必再读：** D6 实施细节、D16 E1 阶段 2 计划、[SESSION_HANDOFF_D16](./SESSION_HANDOFF_D16_PHASE_E.md)（已归档）。
+**不必再读：** D6 实施细节（`doc_Private/`）、D16 E1 阶段 2 计划、SESSION_HANDOFF_D16（已归档至 `doc_Private/`）。
 
 ---
 
@@ -218,7 +218,7 @@ HTTP handler
 | [D15_FINAL_ARCHITECTURE_CONVERGENCE.md](./D15_FINAL_ARCHITECTURE_CONVERGENCE.md) | legacy 清除（已 Landed） |
 | [D16_PHASE_E_MAINTAINABILITY.md](./D16_PHASE_E_MAINTAINABILITY.md) | 维护性拆分（Closed Checkpoint） |
 | [ARCHITECTURE_ASSESSMENT_2026-05-25.md](./ARCHITECTURE_ASSESSMENT_2026-05-25.md) | 10/10 判定 + §7.1 红线 |
-| [SESSION_HANDOFF_D16_PHASE_E.md](./SESSION_HANDOFF_D16_PHASE_E.md) | 归档；勿再作活跃 handoff |
+| SESSION_HANDOFF_D16_PHASE_E | 归档于 `doc_Private/docs/tech/adr/` |
 
 ---
 

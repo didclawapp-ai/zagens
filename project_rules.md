@@ -11,7 +11,7 @@ This document consolidates the same guidance as [`.cursor/rules/*.mdc`](.cursor/
 **Cursor:** `alwaysApply: true`
 
 - **Root story:** [`README.md`](README.md) leads with **Zagens** (proprietary desktop app; tagline: *Desktop agent harness*). Third-party runtime MIT license at [`third-party/deepseek-tui/LICENSE`](third-party/deepseek-tui/LICENSE) — **not** at repo root. See [`NOTICE.md`](NOTICE.md).
-- **Desktop (Zagens):** `crates/desktop/`, product notes in [`docs/desktop/DEV_NOTES.md`](docs/desktop/DEV_NOTES.md).
+- **Desktop (Zagens):** `crates/desktop/`, maintainer notes in local `doc_Private/docs/desktop/DEV_NOTES.md` (not published).
 - **Versions:** Zagens uses its **own** SemVer (current **`0.7.0`**; historical releases may use **`0.x.y-preview.n`**), separate from the embedded runtime workspace line; see [`docs/desktop/VERSIONING.md`](docs/desktop/VERSIONING.md) and [`CHANGELOG.md`](CHANGELOG.md) header.
 - **Changelog:** Record **every notable change** (features, fixes, docs, Zagens desktop, runtime, tooling) in [`CHANGELOG.md`](CHANGELOG.md)—typically under `[Unreleased]`, in the **same PR/commit** as the change when practical.
 

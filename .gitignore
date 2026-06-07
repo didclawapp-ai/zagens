@@ -64,6 +64,7 @@ docs/*.pdf
 # Local dev scripts and temp files
 *.sh
 !scripts/**
+!docs/harness/**/scripts/**
 test.txt
 TODO*.md
 todo*.md
@@ -76,8 +77,10 @@ project_overhaul_prompt.md
 .codex/
 .context/
 
-# Local runtime state
+# Local runtime state (Zagens + legacy DeepSeek paths)
 .deepseek/
+**/.zagens/
+**/.deepseek/
 **/session_*.json
 *.db
 
@@ -103,12 +106,13 @@ crates/desktop/updater.key
 
 # Maintainer-internal design notes (trade-secret material, never published)
 .private/
+doc_Private/
 scripts/fix_composer_tab_order.py
 deepseek-session-ec1f5621.json
 deepseek-thread-thr_86a1.json
 
-#dcs memory
-.docs/topic-memory-graph-main/
+# Vendored topic-memory reference tree (prefer linking upstream repo when open-sourcing)
+docs/topic-memory-graph-main/
 deliverables/code-review-2026-05-28.md
 .zagens/.symbols_changes.json
 .zagens/.symbols_fingerprint

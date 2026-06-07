@@ -596,7 +596,7 @@ sequenceDiagram
 
 ## 10. 产品定位与架构稳定性
 
-自 **2026-05-24** 战略签收（[DEV_NOTES.md](../desktop/DEV_NOTES.md)）：
+自 **2026-05-24** 战略签收（维护者备忘 `doc_Private/docs/desktop/DEV_NOTES.md`）：
 
 - **D12 Desktop-only：** Zagens 为唯一用户产品壳；~~ratatui TUI~~ **已删除**（D6 Phase B，2026-05-26）。
 - **Sidecar 执行面：** 生产 binary 为 **`deepseek-runtime`**；HTTP handler + tools 在 **`runtime-server`**；编排核心在 **`runtime-orchestrator`**；MCP/persist 在 **`runtime-adapters`**；契约在 **`runtime-api`**。

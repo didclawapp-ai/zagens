@@ -3,8 +3,8 @@
 **状态:** **已实施**（Phase 1 / 2 / 2.x / 3 主体落地；**§6 产品迭代 P0 / P1 / P1′ 已落地**；**Phase 4 规格已定**）— 详见 §6 与下方总览  
 **日期:** 2026-05-28（创建）· 2026-05-29（实施状态更新）· 2026-06-01（Phase 4 宏观循环 + **产品迭代路线图** + **P0–P1′ 对齐修订**）  
 **范围:** 代码**生成**、**修复**、**重构**等多步执行任务 — Phase 4 规格含 **LHT↔CRAFT 组合式宏观循环**（见 §6 Phase 4）；**不含** 全库审计 scratchpad 主线  
-**上游:** [`Agent+Harness组合式编程方案.md`](./Agent+Harness组合式编程方案.md) §4、[`HARNESS_INTEGRATION_PROPOSAL.md`](./HARNESS_INTEGRATION_PROPOSAL.md) 名词映射  
-**相关:** [`../agent-reliability-craft-plan.md`](../agent-reliability-craft-plan.md)（审查向，互补）、[`../desktop/DEV_NOTES.md`](../desktop/DEV_NOTES.md) §5 L3、`crates/runtime-server/src/prompts/base.md`
+**上游:** 组合式 Harness 远景方案（维护者私有：`doc_Private/docs/harness/Agent+Harness组合式编程方案.md`）  
+**相关:** CRAFT 审查计划（`doc_Private/docs/agent-reliability-craft-plan.md`）、`crates/runtime-server/src/prompts/base.md`
 
 ### 实施状态总览（2026-06-01）
 

@@ -2,7 +2,7 @@
 
 > **Status:** Landed（2026-05-26）  
 > **Supersedes:** [D6_PHASE_B_SPIKE.md](./D6_PHASE_B_SPIKE.md) 中的 `agent-host` 分叉路径（改为单 crate 合并）  
-> **Related:** [D6_IMPLEMENTATION_PLAN.md](./D6_IMPLEMENTATION_PLAN.md) · [D6_RUNTIME_SERVER.md](./D6_RUNTIME_SERVER.md) · [RUNTIME_ARCHITECTURE.md](../RUNTIME_ARCHITECTURE.md) · [DEV_NOTES.md](../../desktop/DEV_NOTES.md)
+> **Related:** [D6_RUNTIME_SERVER.md](./D6_RUNTIME_SERVER.md) · [RUNTIME_ARCHITECTURE.md](../RUNTIME_ARCHITECTURE.md) · D6 实施计划见 `doc_Private/docs/tech/adr/D6_IMPLEMENTATION_PLAN.md`
 
 ---
 
