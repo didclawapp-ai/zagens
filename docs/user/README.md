@@ -1,14 +1,12 @@
-# User documentation (SSOT)
+# User documentation (moved)
 
-Product documentation served at [zagens.com/docs](https://zagens.com/docs).
+User-facing docs are maintained in the **website** repo, not here.
 
-| Locale | Path |
-|--------|------|
-| English | [`en/`](en/) |
-| 简体中文 | [`zh-Hans/`](zh-Hans/) |
+| | |
+|--|--|
+| **Edit** | [zagens_website `content/docs/`](https://github.com/jjlin0603-svg/zagens_website/tree/main/content/docs) |
+| **Live** | [zagens.com/docs](https://zagens.com/docs) |
 
-Navigation trees: `en/_nav.json`, `zh-Hans/_nav.json`.
-
-The private [zagens_website](https://github.com/jjlin0603-svg/zagens_website) repo syncs this directory to `content/docs/` before build/deploy (`npm run sync:docs`). Edit here in the product repo; do not treat the website copy as source of truth.
+Locales: `content/docs/en/`, `content/docs/zh-Hans/` — navigation in `_nav.json` per locale.
 
 See [REPO_SPLIT.md](../REPO_SPLIT.md).

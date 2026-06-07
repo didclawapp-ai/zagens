@@ -4,7 +4,7 @@ Zagens 采用**双仓库**结构，为后续开源本体 + 闭源平台服务做
 
 | 仓库 | 地址 | 许可 | 职责 |
 |------|------|------|------|
-| **产品本体** | [jjlin0603-svg/zagens](https://github.com/jjlin0603-svg/zagens)（本仓库） | 计划 MIT | Desktop、Runtime、Harness、`docs/user/` |
+| **产品本体** | [jjlin0603-svg/zagens](https://github.com/jjlin0603-svg/zagens)（本仓库） | 计划 MIT | Desktop、Runtime、Harness |
 | **官网平台** | [jjlin0603-svg/zagens_website](https://github.com/jjlin0603-svg/zagens_website) | 专有 | 官网 SPA、CMS、下载托管、未来计费/账号 |
 
 ## 目录映射
@@ -12,7 +12,7 @@ Zagens 采用**双仓库**结构，为后续开源本体 + 闭源平台服务做
 | 原 monorepo 路径 | 现归属 |
 |------------------|--------|
 | `crates/`、`docs/harness/`、`docs/desktop/` | 产品仓 |
-| `docs/user/` | 产品仓（用户文档 SSOT） |
+| `content/docs/` | 官网仓（用户文档 SSOT） |
 | 原 `website/`、`docs/website/`、`scripts/website/` | 官网仓（**不在产品仓**） |
 
 ## 本地开发
@@ -29,7 +29,6 @@ cargo tauri dev
 ```bash
 git clone https://github.com/jjlin0603-svg/zagens_website.git
 cd zagens_website
-npm run sync:docs -- --from ../zagens/docs/user
 npm run dev
 ```
 
@@ -53,13 +52,13 @@ npm run dev
 | Secret | 用途 |
 |--------|------|
 | `WEBSITE_DEPLOY_*` | VPS rsync 部署 |
-| `PRODUCT_REPO_READ_TOKEN` | 私有产品仓时拉取 `docs/user` 与 Release assets |
+| `PRODUCT_REPO_READ_TOKEN` | 私有产品仓时下载 Release 安装包（`sync-release.yml`） |
 
 ## 用户文档维护
 
-- **编辑位置：** 本仓库 `docs/user/{en,zh-Hans}/`
-- **官网展示：** 官网 CI 执行 `npm run sync:docs` 复制到 `content/docs/`
-- **导航：** `docs/user/<locale>/_nav.json`
+- **编辑位置：** 官网仓 `content/docs/{en,zh-Hans}/`
+- **导航：** `content/docs/<locale>/_nav.json`
+- **部署：** 提交并 push `zagens_website` 的 `main` 分支
 
 ## 迁移说明
 

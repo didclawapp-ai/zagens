@@ -21,7 +21,7 @@
 | **zagens** (this repo) | Desktop agent harness + embedded runtime |
 | [**zagens_website**](https://github.com/jjlin0603-svg/zagens_website) | Official site, CMS, downloads, future platform services (private) |
 
-User docs: [`docs/user/`](docs/user/). Split notes: [`docs/REPO_SPLIT.md`](docs/REPO_SPLIT.md).
+User docs: [zagens_website `content/docs/`](https://github.com/jjlin0603-svg/zagens_website/tree/main/content/docs). Split notes: [`docs/REPO_SPLIT.md`](docs/REPO_SPLIT.md).
 
 ---
 
@@ -412,7 +412,7 @@ Embedded agent runtime is **third-party MIT code** — [third-party/deepseek-tui
 | **zagens**（本仓库） | 桌面 Agent Harness + 嵌入式 runtime |
 | [**zagens_website**](https://github.com/jjlin0603-svg/zagens_website) | 官网、CMS、下载托管与未来平台服务（私有） |
 
-用户文档：[`docs/user/`](docs/user/)。拆分说明：[`docs/REPO_SPLIT.md`](docs/REPO_SPLIT.md)。
+用户文档：[zagens_website `content/docs/`](https://github.com/jjlin0603-svg/zagens_website/tree/main/content/docs)。拆分说明：[`docs/REPO_SPLIT.md`](docs/REPO_SPLIT.md)。
 
 ---
 
