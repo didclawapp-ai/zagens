@@ -22,27 +22,33 @@ function readWorkspaceRuntimeVersion() {
 
 export function prepareLegalBundle() {
   const runtimeVersion = readWorkspaceRuntimeVersion();
+  const zagensLicenseSrc = join(workspaceRoot, 'LICENSE');
   const runtimeLicenseSrc = join(workspaceRoot, 'third-party', 'deepseek-tui', 'LICENSE');
+  const zagensLicenseDest = join(outDir, 'zagens-LICENSE.txt');
   const runtimeLicenseDest = join(outDir, 'deepseek-tui-runtime-LICENSE.txt');
 
   mkdirSync(outDir, { recursive: true });
+  copyFileSync(zagensLicenseSrc, zagensLicenseDest);
   copyFileSync(runtimeLicenseSrc, runtimeLicenseDest);
 
-  const notices = `Zagens — Third-Party Notices
-================================
+  const notices = `Zagens — License & Third-Party Notices
+==========================================
 
-This folder ships with the Zagens desktop application. Zagens itself is
-proprietary; see the repository root LICENSE for the product terms.
+This folder ships with the Zagens desktop application.
 
-Embedded agent runtime (zagens-runtime sidecar)
-------------------------------------------------
-Lineage:  deepseek-tui / CodeWhale (third-party, MIT)
+Zagens (desktop shell + embedded runtime)
+-----------------------------------------
+License:  MIT — full text in zagens-LICENSE.txt
+Copyright (c) 2024-2026 Zagens Contributors
+
+Embedded agent runtime lineage (deepseek-tui / CodeWhale)
+---------------------------------------------------------
 Version:  ${runtimeVersion} (embedded Rust workspace crates)
 License:  MIT — full text in deepseek-tui-runtime-LICENSE.txt
+Copyright (c) 2024-2025 DeepSeek CLI Contributors
 
-Per the MIT License, the copyright and permission notice in
-deepseek-tui-runtime-LICENSE.txt must be retained in copies or
-substantial portions of the runtime components.
+Per the MIT License, the copyright and permission notices above must be
+retained in copies or substantial portions of the corresponding components.
 
 Other dependencies (Rust crates, npm packages, bundled Python, Tauri,
 React, etc.) are subject to their respective upstream licenses.

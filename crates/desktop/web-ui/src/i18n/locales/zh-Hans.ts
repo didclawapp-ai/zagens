@@ -246,7 +246,7 @@ const zhHans = {
     websiteLabel: '官网',
     thirdPartyTitle: '第三方许可证',
     thirdPartyLicenses:
-      '许可证全文随应用安装在可执行文件同目录的 legal/ 文件夹中，含 embedded deepseek-tui runtime（0.8.15）的 MIT 许可。',
+      'MIT 许可证全文随应用安装在可执行文件同目录的 legal/ 文件夹中（Zagens 与 embedded deepseek-tui runtime 谱系）。',
     techStackTitle: '主要技术栈',
     techStackDeepseekTui: 'deepseek-tui 0.8.15',
     techStackTauri: 'Tauri 2',

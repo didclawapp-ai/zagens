@@ -10,20 +10,20 @@ This document consolidates the same guidance as [`.cursor/rules/*.mdc`](.cursor/
 
 **Cursor:** `alwaysApply: true`
 
-- **Root story:** [`README.md`](README.md) leads with **Zagens** (proprietary desktop app; tagline: *Desktop agent harness*). Third-party runtime MIT license at [`third-party/deepseek-tui/LICENSE`](third-party/deepseek-tui/LICENSE) — **not** at repo root. See [`NOTICE.md`](NOTICE.md).
+- **Root story:** [`README.md`](README.md) (English) and [`README.zh-CN.md`](README.zh-CN.md) (中文) lead with **Zagens** (MIT-licensed desktop app; tagline: *Desktop agent harness*). License: [`LICENSE`](LICENSE). Runtime lineage attribution: [`NOTICE.md`](NOTICE.md), [`third-party/deepseek-tui/LICENSE`](third-party/deepseek-tui/LICENSE).
 - **Desktop (Zagens):** `crates/desktop/`, maintainer notes in local `doc_Private/docs/desktop/DEV_NOTES.md` (not published).
 - **Versions:** Zagens uses its **own** SemVer (current **`0.7.0`**; historical releases may use **`0.x.y-preview.n`**), separate from the embedded runtime workspace line; see [`docs/desktop/VERSIONING.md`](docs/desktop/VERSIONING.md) and [`CHANGELOG.md`](CHANGELOG.md) header.
 - **Changelog:** Record **every notable change** (features, fixes, docs, Zagens desktop, runtime, tooling) in [`CHANGELOG.md`](CHANGELOG.md)—typically under `[Unreleased]`, in the **same PR/commit** as the change when practical.
 
-When summarizing the project, **lead with Zagens** (proprietary desktop product), not upstream deepseek-tui / CodeWhale open-source branding.
+When summarizing the project, **lead with Zagens** (this product), not upstream deepseek-tui / CodeWhale branding alone.
 
 ### Runtime evolution (2026-05 — planning SSOT)
 
-- **Roadmap:** [`docs/tech/RUNTIME_EVOLUTION_ROADMAP.md`](docs/tech/RUNTIME_EVOLUTION_ROADMAP.md) (**v2.0-final**; §17 实施快照).
+- **Public architecture:** [`docs/tech/RUNTIME_ARCHITECTURE.md`](docs/tech/RUNTIME_ARCHITECTURE.md), [`docs/tech/adr/D17_ARCHITECTURE_FREEZE.md`](docs/tech/adr/D17_ARCHITECTURE_FREEZE.md). Full roadmap & session handoffs: local `doc_Private/docs/` (not published).
 - **Production path:** `deepseek-tui` → `runtime_api` `/v1/*` → `Engine`（`turn_loop` 主体在 `deepseek-core`；`Engine` struct 仍在 `tui`）。
 - **Do not** add product features on `app-server` / `core::Runtime` **queued** placeholder path; **do not** implement Agent turns inside the Zagens WebView.
-- **D10 桌面 freeze 已解除**（2026-05-24，[P2_D10_UNFREEZE_RECORD.md](docs/tech/adr/P2_D10_UNFREEZE_RECORD.md)）：新 GAP/契约扩展按路线图 §10；仍禁止 WebView 内嵌 Engine / 换 app-server sidecar。PR 触达 `crates/desktop` 或 `web-ui` 时说明是否符合 §10.6；超出范围可用 `freeze-exception` + 维护者 ack（路线图 §6.2 0.8）。
-- **Issue prefixes:** use `P2-debt` for Engine→core work; do not use ambiguous `Phase 2` (conflicts with DESKTOP_IMPLEMENTATION_PLAN UI phases).
+- **Desktop freeze:** lifted per D17; still **no** in-WebView Engine or app-server sidecar. PRs touching `crates/desktop` or `web-ui` should note API/contract impact.
+- **Issue prefixes:** use `P2-debt` for Engine→core work; avoid ambiguous `Phase 2` labels.
 
 ---
 

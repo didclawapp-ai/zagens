@@ -249,7 +249,7 @@ const ja: TranslationMap = {
     websiteLabel: '公式サイト',
     thirdPartyTitle: 'サードパーティライセンス',
     thirdPartyLicenses:
-      'ライセンス全文は実行ファイル横の legal/ フォルダに同梱されています（embedded deepseek-tui runtime 0.8.15 の MIT 表示を含む）。',
+      'MIT ライセンス全文は実行ファイル横の legal/ フォルダに同梱されています（Zagens と embedded deepseek-tui runtime 系譜）。',
     techStackTitle: '技術スタック',
     techStackDeepseekTui: 'deepseek-tui 0.8.15',
     techStackTauri: 'Tauri 2',

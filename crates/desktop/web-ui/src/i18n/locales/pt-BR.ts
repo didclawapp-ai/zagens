@@ -249,7 +249,7 @@ const ptBr: TranslationMap = {
     websiteLabel: 'Site',
     thirdPartyTitle: 'Licenças de terceiros',
     thirdPartyLicenses:
-      'Os textos de licença vêm com o app na pasta legal/ ao lado do executável, incluindo o aviso MIT do runtime embedded deepseek-tui (0.8.15).',
+      'Os textos de licença MIT vêm com o app na pasta legal/ ao lado do executável (Zagens + linhagem do runtime embedded deepseek-tui).',
     techStackTitle: 'Stack técnica',
     techStackDeepseekTui: 'deepseek-tui 0.8.15',
     techStackTauri: 'Tauri 2',

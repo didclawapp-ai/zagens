@@ -5,7 +5,7 @@
 > **本期范围外（不计入差距）：** STT/TTS 语音（Phase C）、ERP/CRM connector（Phase B）、`inbox/`/`data/` 工作区自动初始化（用户自建或复制 fixtures 即可）。  
 > **定位：** 在 LHT / CRAFT 等 **编码 harness** 之外，梳理 **Office 模式**可覆盖的真实工作场景、与现有能力对齐情况、以及跑通优先级。  
 > **核心主张（本版新增）：** 这 40+ 个场景不是 40+ 个独立功能，而是 **同一条流水线 × 四个正交维度** 的不同取值组合。统一架构见 §2.3 / §3；新增场景应退化为「填一份技能契约」，而非「写新引擎」。  
-> **相关：** [task-type-prompt-architecture.md](../task-type-prompt-architecture.md)、[HARNESS.md](HARNESS.md)（Office 迭代计划与 DEV_NOTES 见本地 `doc_Private/docs/`）
+> **相关：** [task-type-prompt-architecture.md](../task-type-prompt-architecture.md)、[COMPOSABLE_HARNESS.md](../harness/COMPOSABLE_HARNESS.md)（Office 迭代计划与 DEV_NOTES 见本地 `doc_Private/docs/`）
 
 ---
 

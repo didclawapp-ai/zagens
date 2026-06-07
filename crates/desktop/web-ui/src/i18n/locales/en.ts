@@ -249,7 +249,7 @@ const en: TranslationMap = {
     websiteLabel: 'Website',
     thirdPartyTitle: 'Third-party licenses',
     thirdPartyLicenses:
-      'License texts ship with the app in the legal/ folder next to the executable, including the MIT notice for the embedded deepseek-tui runtime (0.8.15).',
+      'MIT license texts ship with the app in the legal/ folder next to the executable (Zagens + embedded deepseek-tui runtime lineage).',
     techStackTitle: 'Tech stack',
     techStackDeepseekTui: 'deepseek-tui 0.8.15',
     techStackTauri: 'Tauri 2',

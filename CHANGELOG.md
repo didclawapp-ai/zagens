@@ -4,7 +4,7 @@ All notable changes to **Zagens** and its embedded runtime will be documented in
 
 **Update policy:** Record **every notable change** (features, fixes, docs, Zagens desktop, runtime, tooling) in this file—typically under `[Unreleased]`, in the **same PR/commit** as the change when practical. Cursor agents: see `.cursor/rules/zagens-repo.mdc` § Changelog.
 
-**Licensing:** Zagens (desktop app in `crates/desktop/`) is **proprietary** — see [LICENSE](LICENSE). Third-party runtime MIT license: [third-party/deepseek-tui/LICENSE](third-party/deepseek-tui/LICENSE) and [NOTICE.md](NOTICE.md).
+**Licensing:** This repository is [MIT](LICENSE). Runtime lineage attribution: [third-party/deepseek-tui/LICENSE](third-party/deepseek-tui/LICENSE) and [NOTICE.md](NOTICE.md).
 
 **Zagens** (desktop app in `crates/desktop/`) has its **own** version line in
 **SemVer** (e.g. **`0.7.0`**). Public releases use `0.MINOR.PATCH` until **1.0.0 GA**
@@ -23,10 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Docs — open-source prep:** Split `README.md` / `README.zh-CN.md`; public `docs/README.md`, `docs/REPO_SPLIT.md`, `docs/harness/README.md`; added `SECURITY.md`.
 - **Tooling — local Linux lint (`scripts/ci/verify-lint-linux.ps1`):** Run the CI Lint job in a real Linux env (WSL preferred, Docker fallback with cached cargo/target volumes) from a Windows dev box, so `#[cfg(unix)]` / Linux-only clippy lints are caught **before** push instead of only on CI. Windows `cargo clippy` skips those branches entirely; `-Bootstrap` provisions apt deps + Node 20 + the pinned rust toolchain.
 
 ### Changed
 
+- **License — full repository MIT:** Root `LICENSE`, `crates/desktop` crate metadata, `NOTICE.md`, `prepare-legal.mjs` (bundle `legal/zagens-LICENSE.txt`), and README/rules updated from proprietary to MIT.
 - **Docs — user docs SSOT moved to website repo:** Removed `docs/user/{en,zh-Hans}/` from the product repo; edit Markdown in [zagens_website `content/docs/`](https://github.com/jjlin0603-svg/zagens_website/tree/main/content/docs). `docs/user/README.md` is a pointer only. See [`docs/REPO_SPLIT.md`](docs/REPO_SPLIT.md).
 - **CI/Release hardening (`.github/workflows/`):** Pin the toolchain action to `dtolnay/rust-toolchain@1.96.0` (was `@stable`) across all jobs so clippy/rustfmt components match `rust-toolchain.toml` instead of relying on rustup auto-switch; add least-privilege `permissions: contents: read` (publish job keeps its `contents: write` override) and `concurrency` groups (CI cancels superseded ref runs except scheduled; Release never cancels in-flight); drop the unused `actions/setup-node` step from the CI `versions` job. **Release now gates on a `verify` job** (version drift + fmt + strict clippy + workspace tests) before building/publishing the Windows installer, so a tag on an unverified commit can't ship a broken release.
 

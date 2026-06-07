@@ -27,7 +27,7 @@ edition = "2024"
 # confusing E0658 from rustc. Dev/CI pin: rust-toolchain.toml (currently 1.96).
 rust-version = "1.88"
 license = "MIT"
-# Zagens is proprietary; upstream runtime MIT attribution lives in licenses/.
+# Full license text: LICENSE. Runtime lineage attribution: NOTICE.md, third-party/deepseek-tui/.
 
 [workspace.dependencies]
 anyhow = "1.0.100"

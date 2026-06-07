@@ -9,4 +9,4 @@ User-facing docs are maintained in the **website** repo, not here.
 
 Locales: `content/docs/en/`, `content/docs/zh-Hans/` — navigation in `_nav.json` per locale.
 
-See [REPO_SPLIT.md](../REPO_SPLIT.md).
+See [REPO_SPLIT.md](../REPO_SPLIT.md) and the full [docs index](../README.md).

@@ -5,11 +5,11 @@ alwaysApply: true
 
 # Zagens monorepo
 
-- **Root story:** [README.md](README.md) leads with **Zagens** (proprietary desktop app; tagline: *Desktop agent harness*). Third-party runtime MIT license: [third-party/deepseek-tui/LICENSE](third-party/deepseek-tui/LICENSE) — **not** at repo root. See [NOTICE.md](NOTICE.md).
+- **Root story:** [README.md](README.md) (English) and [README.zh-CN.md](README.zh-CN.md) (中文) lead with **Zagens** (MIT-licensed desktop app; tagline: *Desktop agent harness*). License: [LICENSE](LICENSE). Runtime lineage attribution: [NOTICE.md](NOTICE.md), [third-party/deepseek-tui/LICENSE](third-party/deepseek-tui/LICENSE).
 - **Desktop (Zagens):** `crates/desktop/`, maintainer notes in local `doc_Private/docs/desktop/DEV_NOTES.md` (not published).
 - **Authoritative agent instructions:** [AGENTS.md](AGENTS.md) when present — commands, stable Rust, DeepSeek API quirks.
 - **Versions:** Zagens (`crates/desktop`) uses its **own** SemVer (current public line **`0.7.0`**; older tags may use **`0.x.y-preview.n`**), separate from the embedded runtime workspace line; see [docs/desktop/VERSIONING.md](docs/desktop/VERSIONING.md) and [CHANGELOG.md](CHANGELOG.md) header.
 - **Changelog:** Record **every notable change** (features, fixes, docs, Zagens desktop, runtime, tooling) in [CHANGELOG.md](CHANGELOG.md)—typically under `[Unreleased]`, in the **same PR/commit** as the change when practical.
 - **Security / structure / TS rules:** `.cursor/rules/security-trust.mdc`, `code-organization.mdc`; web UI typing in `desktop-web-ui.mdc`. **Portable copy:** [project_rules.md](project_rules.md).
 
-When summarizing the project for users or models, **lead with Zagens** (proprietary desktop product), not upstream deepseek-tui / CodeWhale open-source branding.
+When summarizing the project for users or models, **lead with Zagens** (this product), not upstream deepseek-tui / CodeWhale branding alone.
