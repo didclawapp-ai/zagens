@@ -9,7 +9,12 @@ pub const OFFICE_OUTPUT_DIR_NAME: &str = "deliverables";
 
 /// User Documents folder (platform-specific via `dirs` crate).
 pub fn user_documents_dir() -> Result<PathBuf, String> {
-    dirs::document_dir()
+    if let Some(dir) = dirs::document_dir() {
+        return Ok(dir);
+    }
+    // Headless Linux / CI often lacks xdg-user-dirs; fall back to ~/Documents.
+    dirs::home_dir()
+        .map(|home| home.join("Documents"))
         .ok_or_else(|| "Cannot resolve the Documents directory on this system.".to_string())
 }
 
