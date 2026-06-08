@@ -1,10 +1,10 @@
 //! Import structured sub-agent findings into scratchpad notes.
 
-use deepseek_core::subagent::{
+use serde_json::json;
+use zagens_core::subagent::{
     AuditFindingItem, CompletionReason, ParseFailureReason, StructuredFindings, StructuredVerdict,
     SubAgentResult,
 };
-use serde_json::json;
 
 use crate::tools::spec::ToolError;
 
@@ -101,7 +101,7 @@ pub fn import_agent_findings(
 ) -> Result<Vec<NoteLine>, ToolError> {
     if !matches!(
         result.status,
-        deepseek_core::subagent::SubAgentStatus::Completed
+        zagens_core::subagent::SubAgentStatus::Completed
     ) {
         return Err(ToolError::invalid_input(format!(
             "agent '{}' status is {:?}; import only after completion",
@@ -337,11 +337,11 @@ mod import_gate_tests {
     use super::*;
     use crate::scratchpad::{ScratchpadStore, default_init_areas};
     use crate::tools::spec::ToolContext;
-    use deepseek_core::subagent::{
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use zagens_core::subagent::{
         CompletionReason, StructuredFindings, SubAgentAssignment, SubAgentResult, SubAgentStatus,
         SubAgentType,
     };
-    use std::sync::atomic::{AtomicU64, Ordering};
 
     static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 

@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 
 use crate::tools::spec::{ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec};
-use deepseek_core::subagent::{SubAgentResult, SubAgentStatus};
+use zagens_core::subagent::{SubAgentResult, SubAgentStatus};
 
 use super::super::constants::*;
 use super::super::executor::wait_for_agents;

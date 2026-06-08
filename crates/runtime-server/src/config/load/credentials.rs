@@ -22,7 +22,7 @@ pub enum SavedCredential {
     /// `keyring → env → config-file` resolution-order shadow that
     /// would otherwise let a stale OS-keyring entry from a previous
     /// install hide the freshly-entered key (#593). The `backend`
-    /// label is the value of [`deepseek_secrets::Secrets::backend_name`]
+    /// label is the value of [`zagens_secrets::Secrets::backend_name`]
     /// at write time so the toast text can name the actual backend
     /// (`"system keyring"`, `"file-based (~/.deepseek/secrets/)"`).
     KeyringAndConfigFile {
@@ -54,7 +54,7 @@ impl SavedCredential {
 /// Save the active provider's API key.
 ///
 /// **Dual-write strategy (#593):** writes to `~/.deepseek/config.toml`
-/// (always) and to the OS keyring via [`deepseek_secrets::Secrets`]
+/// (always) and to the OS keyring via [`zagens_secrets::Secrets`]
 /// (when a backend is reachable). The runtime resolves credentials in
 /// `keyring → env → config-file` order; writing to the config file
 /// alone — as v0.8.8 through v0.8.10 did — let a stale keyring entry
@@ -92,7 +92,7 @@ pub fn save_api_key(api_key: &str) -> Result<SavedCredential> {
     // cross-test contamination).
     #[cfg(not(test))]
     {
-        let secrets = deepseek_secrets::Secrets::auto_detect();
+        let secrets = zagens_secrets::Secrets::auto_detect();
         match secrets.set("deepseek", trimmed) {
             Ok(()) => {
                 let backend = secrets.backend_name().to_string();

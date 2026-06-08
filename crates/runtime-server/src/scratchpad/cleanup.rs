@@ -4,7 +4,7 @@ use std::fs;
 use std::path::Path;
 use std::time::SystemTime;
 
-use deepseek_config::{legacy_workspace_meta_dir, workspace_meta_dir};
+use zagens_config::{legacy_workspace_meta_dir, workspace_meta_dir};
 
 use crate::scratchpad::config::ScratchpadConfig;
 

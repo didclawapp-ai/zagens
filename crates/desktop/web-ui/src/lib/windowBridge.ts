@@ -7,13 +7,13 @@ export function getWindowLabel(): string {
 }
 
 export function workspaceStorageKey(label: string = windowLabel): string {
-  return `deepseek-desktop-workspace:${label}`;
+  return `zagens-desktop-workspace:${label}`;
 }
 
-const LEGACY_ACTIVE_SESSION_STORAGE_KEY = 'deepseek-desktop-active-session-id';
+const LEGACY_ACTIVE_SESSION_STORAGE_KEY = 'zagens-desktop-active-session-id';
 
 export function activeSessionStorageKey(label: string = windowLabel): string {
-  return `deepseek-desktop-active-session-id:${label}`;
+  return `zagens-desktop-active-session-id:${label}`;
 }
 
 export function loadStoredActiveSessionId(): string | null {

@@ -1,7 +1,7 @@
 //! Runtime context usage snapshots (TUI-aligned estimates for Zagens / HTTP API).
 //!
 //! The wire-shape `ThreadContextSnapshot` lives in
-//! [`deepseek_core::engine::context_snapshot`] since M1; this module keeps
+//! [`zagens_core::engine::context_snapshot`] since M1; this module keeps
 //! the tui-side `build_*` helper because it depends on the tui-only
 //! [`crate::compaction::should_compact`] working-set logic.
 
@@ -12,7 +12,7 @@ use crate::models::{
     LEGACY_DEEPSEEK_CONTEXT_WINDOW_TOKENS, Message, SystemPrompt, context_window_for_model,
 };
 
-pub use deepseek_core::engine::context_snapshot::ThreadContextSnapshot;
+pub use zagens_core::engine::context_snapshot::ThreadContextSnapshot;
 
 fn usage_percent_for(used: u32, window: u32) -> f64 {
     if window == 0 {

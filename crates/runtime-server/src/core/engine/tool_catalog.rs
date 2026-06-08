@@ -5,14 +5,14 @@
 use std::path::Path;
 use std::time::Duration;
 
-use deepseek_core::turn::TurnLoopMode;
 use serde_json::Value;
+use zagens_core::turn::TurnLoopMode;
 
 use crate::agent_surface::AppMode;
 use crate::models::Tool;
 use crate::tools::spec::{ToolError, ToolResult};
 
-pub use deepseek_core::engine::tool_catalog::{
+pub use zagens_core::engine::tool_catalog::{
     CODE_EXECUTION_TOOL_NAME, MULTI_TOOL_PARALLEL_NAME, REQUEST_USER_INPUT_NAME,
     TOOL_SEARCH_BM25_NAME, active_tools_for_step, apply_mcp_tool_deferral,
     apply_native_tool_deferral, build_model_tool_catalog as build_model_tool_catalog_for_mode,
@@ -51,7 +51,7 @@ pub(super) async fn execute_code_execution_tool(
     input: &Value,
     workspace: &Path,
 ) -> Result<ToolResult, ToolError> {
-    let code = deepseek_tools::required_str(input, "code")?;
+    let code = zagens_tools::required_str(input, "code")?;
     let python_bin = crate::python_env::find_python()
         .map(|(bin, _, _)| bin)
         .unwrap_or_else(|| "python3".to_string());

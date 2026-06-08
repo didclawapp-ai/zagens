@@ -1,4 +1,4 @@
-//! Streaming response state and guardrails (P2 PR4 → `deepseek-core`).
+//! Streaming response state and guardrails (P2 PR4 → `zagens-core`).
 
 use crate::chat::ToolCaller;
 

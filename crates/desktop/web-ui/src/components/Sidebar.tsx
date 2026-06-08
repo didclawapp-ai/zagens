@@ -46,7 +46,7 @@ interface Props {
   agentActivity?: InspectorNavActivity;
 }
 
-const SIDEBAR_WIDTH_KEY = 'deepseek-desktop-sidebar-width';
+const SIDEBAR_WIDTH_KEY = 'zagens-desktop-sidebar-width';
 const SIDEBAR_MIN_PX = 180;
 const SIDEBAR_DEFAULT_PX = 240;
 

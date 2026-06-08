@@ -4,8 +4,8 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 
 use anyhow::{Result, bail};
-use deepseek_core::approval::ApprovalMode;
-use deepseek_core::chat::LlmClient;
+use zagens_core::approval::ApprovalMode;
+use zagens_core::chat::LlmClient;
 
 use crate::agent_surface::AppMode;
 use crate::cli::auto_route_cli::resolve_cli_auto_route;

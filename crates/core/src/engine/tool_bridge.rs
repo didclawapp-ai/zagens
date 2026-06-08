@@ -1,8 +1,8 @@
 //! `ToolCall` ↔ registry/`ToolResult` conversions for `EngineToolDispatch` (P2 PR4).
 
-use deepseek_protocol::{ToolOutput, ToolPayload};
-use deepseek_tools::{FunctionCallError, ToolCall, ToolCallSource, ToolError, ToolResult};
 use serde_json::Value;
+use zagens_protocol::{ToolOutput, ToolPayload};
+use zagens_tools::{FunctionCallError, ToolCall, ToolCallSource, ToolError, ToolResult};
 
 /// Build a protocol `ToolCall` from the engine's `(name, JSON input)` shape.
 #[must_use]

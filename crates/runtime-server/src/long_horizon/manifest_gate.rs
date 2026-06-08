@@ -6,9 +6,9 @@ use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use deepseek_core::long_horizon::{CompletionGateVerifyEntry, ManifestShell};
 use serde::Serialize;
 use tokio_util::sync::CancellationToken;
+use zagens_core::long_horizon::{CompletionGateVerifyEntry, ManifestShell};
 
 use crate::command_safety::{SafetyLevel, analyze_command};
 use crate::tools::shell::{SharedShellManager, ShellStatus};
@@ -51,7 +51,7 @@ pub async fn run_optional_verify_cmd(
         argv: Vec::new(),
         shell: ManifestShell::Default,
         timeout_secs: DEFAULT_TIMEOUT_SECS,
-        source: deepseek_core::long_horizon::VerifySource::Operator,
+        source: zagens_core::long_horizon::VerifySource::Operator,
     };
     run_single_verify(workspace, &entry, exec).await
 }

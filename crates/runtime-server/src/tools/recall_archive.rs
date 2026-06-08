@@ -156,7 +156,7 @@ struct ArchivedDoc {
 }
 
 fn archive_root(session_id: &str) -> Result<PathBuf, std::io::Error> {
-    deepseek_config::user_data_path("sessions")
+    zagens_config::user_data_path("sessions")
         .map(|p| p.join(session_id).join("cycles"))
         .map_err(|e| {
             std::io::Error::new(

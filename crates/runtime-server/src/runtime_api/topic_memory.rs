@@ -2,11 +2,11 @@
 
 use axum::Json;
 use axum::extract::State;
-use deepseek_topic_memory::{
+use serde::Serialize;
+use zagens_topic_memory::{
     PheromoneGraph, TopicMemoryEvalReport, eval_report, load_graph, load_metrics,
     metrics_path_for_graph,
 };
-use serde::Serialize;
 
 use crate::topic_memory;
 
@@ -28,7 +28,7 @@ pub(crate) async fn get_topic_memory(
     let graph = if settings.enabled {
         load_graph(&graph_path)
     } else {
-        deepseek_topic_memory::empty_graph()
+        zagens_topic_memory::empty_graph()
     };
     let metrics_raw = load_metrics(&metrics_path_for_graph(&graph_path));
     Ok(Json(TopicMemoryResponse {

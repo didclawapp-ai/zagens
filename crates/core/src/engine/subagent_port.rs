@@ -46,7 +46,7 @@ impl std::error::Error for SubAgentSpawnError {}
 /// and use `spawn_general` / `list_with_cleanup` / `running_count`.
 #[deprecated(
     since = "0.8.16",
-    note = "use `deepseek_core::engine::hosts::SubAgentHost` instead; \
+    note = "use `zagens_core::engine::hosts::SubAgentHost` instead; \
             this alias will be removed in the next release"
 )]
 #[async_trait]

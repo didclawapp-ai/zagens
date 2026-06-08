@@ -1,8 +1,8 @@
-//! Shared error taxonomy — core types in `deepseek-core`; TUI `From` + stream guards.
+//! Shared error taxonomy — core types in `zagens-core`; TUI `From` + stream guards.
 
 use crate::llm_client::LlmError;
 
-pub use deepseek_core::error_taxonomy::{
+pub use zagens_core::error_taxonomy::{
     ErrorCategory, ErrorEnvelope, ErrorSeverity, classify_error_message,
 };
 
@@ -95,7 +95,7 @@ pub fn envelope_from_llm_error(value: LlmError) -> ErrorEnvelope {
 mod tests {
     use super::*;
 
-    /// Smoke: tui re-exports core classifier (full golden suite lives in `deepseek-core`).
+    /// Smoke: tui re-exports core classifier (full golden suite lives in `zagens-core`).
     #[test]
     fn reexport_classify_matches_core() {
         assert_eq!(

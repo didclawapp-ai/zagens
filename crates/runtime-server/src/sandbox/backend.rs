@@ -1,7 +1,7 @@
 //! Runtime-side re-export shim + factory for the external sandbox backend.
 //!
 //! The trait + output types live in
-//! [`deepseek_core::sandbox`](deepseek_core::sandbox) (moved by M3 — see
+//! [`zagens_core::sandbox`](zagens_core::sandbox) (moved by M3 — see
 //! [`PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE`](../../../../../docs/tech/adr/PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md)
 //! §3 row #26 / §6 M3 row). The factory `create_backend(&Config)` stays
 //! in this crate because it consumes runtime `Config` and constructs
@@ -15,7 +15,7 @@
 
 use anyhow::Result;
 
-pub use deepseek_core::sandbox::{SandboxBackend, SandboxKind, SandboxOutput};
+pub use zagens_core::sandbox::{SandboxBackend, SandboxKind, SandboxOutput};
 
 use crate::config::Config;
 

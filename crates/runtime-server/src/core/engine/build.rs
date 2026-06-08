@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
-use deepseek_core::engine::EngineHostBundle;
 use tokio::sync::{Mutex as AsyncMutex, mpsc};
+use zagens_core::engine::EngineHostBundle;
 
 use crate::agent_surface::AppMode;
 use crate::client::DeepSeekClient;
@@ -190,12 +190,12 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
     };
 
     let hosts = EngineHostBundle {
-        lsp: lsp_manager.clone() as Arc<dyn deepseek_core::engine::LspHost>,
+        lsp: lsp_manager.clone() as Arc<dyn zagens_core::engine::LspHost>,
         shell: Box::new(TuiShellHost::new(shell_manager)),
         sandbox: Box::new(TuiSandboxHost::new(sandbox_backend)),
-        seam: seam_manager.map(|mgr| Box::new(mgr) as Box<dyn deepseek_core::engine::SeamHost>),
+        seam: seam_manager.map(|mgr| Box::new(mgr) as Box<dyn zagens_core::engine::SeamHost>),
         workshop: workshop_vars.map(|vars| {
-            Box::new(TuiWorkshopHost(Some(vars))) as Box<dyn deepseek_core::engine::WorkshopHost>
+            Box::new(TuiWorkshopHost(Some(vars))) as Box<dyn zagens_core::engine::WorkshopHost>
         }),
         topic_memory: Box::new(topic_memory_runtime),
         capacity_controller,

@@ -13,7 +13,7 @@ use tokio::sync::{Mutex, Semaphore};
 use crate::runtime_threads::CreateThreadRequest;
 use crate::session_manager::SavedSession;
 
-use deepseek_runtime_api::{
+use zagens_runtime_api::{
     ApiError, ResumeSessionResponse, SessionDetailResponse, SessionsListResponse,
 };
 

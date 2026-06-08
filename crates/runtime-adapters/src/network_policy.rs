@@ -255,7 +255,7 @@ impl NetworkAuditor {
     #[must_use]
     pub fn default_path(enabled: bool) -> Option<Self> {
         Some(Self::new(
-            deepseek_config::user_data_path_or_relative("audit.log"),
+            zagens_config::user_data_path_or_relative("audit.log"),
             enabled,
         ))
     }

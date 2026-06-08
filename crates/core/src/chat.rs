@@ -1,7 +1,7 @@
 //! Chat / message types shared between the runtime core and the TUI shell.
 //!
 //! These are the wire-format types used to communicate with LLM APIs.
-//! They live in `deepseek-core` so both the TUI and future shells can depend
+//! They live in `zagens-core` so both the TUI and future shells can depend
 //! on them without pulling in TUI-specific code.
 
 use serde::{Deserialize, Serialize};

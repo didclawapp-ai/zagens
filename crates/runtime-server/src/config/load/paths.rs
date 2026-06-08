@@ -46,15 +46,15 @@ pub(crate) fn effective_home_dir() -> Option<PathBuf> {
 
 pub(crate) fn home_config_path() -> Option<PathBuf> {
     effective_home_dir().map(|home| {
-        home.join(deepseek_config::USER_DATA_DIR_NAME)
-            .join(deepseek_config::CONFIG_FILE_NAME)
+        home.join(zagens_config::USER_DATA_DIR_NAME)
+            .join(zagens_config::CONFIG_FILE_NAME)
     })
 }
 
 pub(crate) fn legacy_home_config_path() -> Option<PathBuf> {
     effective_home_dir().map(|home| {
-        home.join(deepseek_config::LEGACY_USER_DATA_DIR_NAME)
-            .join(deepseek_config::CONFIG_FILE_NAME)
+        home.join(zagens_config::LEGACY_USER_DATA_DIR_NAME)
+            .join(zagens_config::CONFIG_FILE_NAME)
     })
 }
 
@@ -195,9 +195,9 @@ pub(crate) fn resolve_load_config_path(path: Option<PathBuf>) -> Option<PathBuf>
 
 /// Create an inspectable config file on first interactive launch.
 ///
-/// Delegates to [`deepseek_config::ConfigStore::ensure_default_on_disk`].
+/// Delegates to [`zagens_config::ConfigStore::ensure_default_on_disk`].
 pub fn ensure_config_file_exists(path: Option<PathBuf>) -> Result<Option<PathBuf>> {
-    deepseek_config::ConfigStore::ensure_default_on_disk(path)
+    zagens_config::ConfigStore::ensure_default_on_disk(path)
 }
 
 pub(crate) fn default_managed_config_path() -> Option<PathBuf> {
@@ -207,7 +207,7 @@ pub(crate) fn default_managed_config_path() -> Option<PathBuf> {
     }
     #[cfg(not(unix))]
     {
-        deepseek_config::user_data_path("managed_config.toml").ok()
+        zagens_config::user_data_path("managed_config.toml").ok()
     }
 }
 
@@ -218,7 +218,7 @@ pub(crate) fn default_requirements_path() -> Option<PathBuf> {
     }
     #[cfg(not(unix))]
     {
-        deepseek_config::user_data_path("requirements.toml").ok()
+        zagens_config::user_data_path("requirements.toml").ok()
     }
 }
 
@@ -239,19 +239,19 @@ pub(crate) fn expand_path(path: &str) -> PathBuf {
 }
 
 pub(crate) fn default_skills_dir() -> Option<PathBuf> {
-    deepseek_config::user_data_path("skills").ok()
+    zagens_config::user_data_path("skills").ok()
 }
 
 pub(crate) fn default_mcp_config_path() -> Option<PathBuf> {
-    deepseek_config::user_data_path("mcp.json").ok()
+    zagens_config::user_data_path("mcp.json").ok()
 }
 
 pub(crate) fn default_notes_path() -> Option<PathBuf> {
-    deepseek_config::user_data_path("notes.txt").ok()
+    zagens_config::user_data_path("notes.txt").ok()
 }
 
 pub(crate) fn default_memory_path() -> Option<PathBuf> {
-    deepseek_config::user_data_path("memory.md").ok()
+    zagens_config::user_data_path("memory.md").ok()
 }
 pub fn ensure_parent_dir(path: &Path) -> Result<()> {
     if let Some(parent) = path.parent() {

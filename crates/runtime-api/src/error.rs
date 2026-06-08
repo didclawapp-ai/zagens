@@ -55,7 +55,7 @@ impl From<std::io::Error> for ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        use deepseek_core::error_taxonomy::ErrorEnvelope;
+        use zagens_core::error_taxonomy::ErrorEnvelope;
 
         let status_recoverable = matches!(
             self.status,

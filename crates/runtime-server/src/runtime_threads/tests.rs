@@ -7,9 +7,9 @@ use crate::core::engine::{MockApprovalEvent, MockEngineHandle, mock_engine_handl
 use crate::models::Usage;
 use std::path::{Path, PathBuf};
 
-use deepseek_runtime_orchestrator::runtime_threads::prompt_inbox::PromptDelivery;
+use zagens_runtime_orchestrator::runtime_threads::prompt_inbox::PromptDelivery;
 type TestApprovalDecision =
-    deepseek_core::engine::approval::ApprovalDecision<crate::sandbox::SandboxPolicy>;
+    zagens_core::engine::approval::ApprovalDecision<crate::sandbox::SandboxPolicy>;
 use crate::core::events::{Event as EngineEvent, TurnOutcomeStatus};
 use crate::core::ops::Op;
 use std::time::{Duration, Instant};
@@ -126,7 +126,7 @@ fn sample_item(turn_id: &str, item_id: &str, status: TurnItemLifecycleStatus) ->
 async fn recv_mock_approval(
     rx: &mut tokio::sync::mpsc::Receiver<TestApprovalDecision>,
 ) -> Option<MockApprovalEvent> {
-    use deepseek_core::engine::approval::ApprovalDecision;
+    use zagens_core::engine::approval::ApprovalDecision;
     match rx.recv().await? {
         ApprovalDecision::Approved {
             id,
@@ -614,7 +614,7 @@ async fn start_turn_passes_effective_auto_approve_to_engine() -> Result<()> {
 
 #[tokio::test]
 async fn start_turn_reads_never_approval_mode_from_config() -> Result<()> {
-    use deepseek_core::approval::ApprovalMode;
+    use zagens_core::approval::ApprovalMode;
 
     let dir = test_runtime_dir();
     let mut config = Config::default();

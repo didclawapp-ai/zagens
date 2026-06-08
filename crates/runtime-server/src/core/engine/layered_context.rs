@@ -1,7 +1,7 @@
 //! Pre-request layered context (Flash seam) checkpoint (#159).
 
 use super::*;
-use deepseek_core::engine::hosts::SeamHost;
+use zagens_core::engine::hosts::SeamHost;
 
 impl Engine {
     /// Run the pre-request layered-context checkpoint (#159). Checks whether

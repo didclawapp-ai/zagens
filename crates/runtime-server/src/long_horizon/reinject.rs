@@ -1,7 +1,7 @@
 //! Periodic objective re-injection from plan + checklist (LHT Phase 2 §4.7).
 
-use deepseek_core::chat::{ContentBlock, Message};
-use deepseek_core::long_horizon::LongHorizonConfig;
+use zagens_core::chat::{ContentBlock, Message};
+use zagens_core::long_horizon::LongHorizonConfig;
 
 use crate::tools::plan::PlanSnapshot;
 use crate::tools::todo::TodoListSnapshot;

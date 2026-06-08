@@ -8,10 +8,10 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::tools::spec::ToolContext;
-use deepseek_core::events::Event;
+use zagens_core::events::Event;
 
 use super::mailbox::Mailbox;
-use deepseek_core::subagent::{
+use zagens_core::subagent::{
     CompletionReason, ParseFailureReason, StructuredFindings, StructuredVerdict,
     SubAgentAssignment, SubAgentResult, SubAgentStatus, SubAgentType,
 };

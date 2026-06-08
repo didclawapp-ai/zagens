@@ -1,13 +1,13 @@
 //! Harness cycles API payload (LHT Phase 3a).
 
 use chrono::{DateTime, Utc};
-use deepseek_core::cycle::CycleBriefing;
 use serde::Serialize;
 use serde_json::{Value, json};
+use zagens_core::cycle::CycleBriefing;
 
 use crate::cycle_manager::CycleArchiveSummary;
 use crate::models::context_window_for_model;
-use deepseek_core::cycle::DEFAULT_CYCLE_THRESHOLD_TOKENS;
+use zagens_core::cycle::DEFAULT_CYCLE_THRESHOLD_TOKENS;
 
 use super::cycle_band::{LHT_WARNING_BAND_HIGH, LHT_WARNING_BAND_LOW};
 

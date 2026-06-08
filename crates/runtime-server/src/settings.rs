@@ -107,7 +107,7 @@ impl TuiPrefs {
             }
         }
 
-        Ok(deepseek_config::user_data_path_or_relative("tui.toml"))
+        Ok(zagens_config::user_data_path_or_relative("tui.toml"))
     }
 
     /// Load TUI preferences from `~/.deepseek/tui.toml`.
@@ -211,7 +211,7 @@ pub struct Settings {
     /// Default model to use
     pub default_model: Option<String>,
     /// Composer LHT tri-state override: `auto` | `strict` | `off`. Read live per
-    /// turn via [`deepseek_config::read_lht_composer_mode_setting`] in engine spawn;
+    /// turn via [`zagens_config::read_lht_composer_mode_setting`] in engine spawn;
     /// kept here so `Settings::save` does not drop the field.
     #[serde(default = "default_lht_composer_mode")]
     pub lht_composer_mode: String,
@@ -261,7 +261,7 @@ fn default_lht_composer_mode() -> String {
 impl Settings {
     /// Get the settings file path
     pub fn path() -> Result<PathBuf> {
-        deepseek_config::settings_path()
+        zagens_config::settings_path()
     }
 
     /// Load settings from disk, or return defaults if not found
@@ -293,7 +293,7 @@ impl Settings {
                 .to_string();
             s.default_model = s.default_model.as_deref().and_then(normalize_default_model);
             s.lht_composer_mode =
-                deepseek_config::LhtComposerMode::from_storage(&s.lht_composer_mode)
+                zagens_config::LhtComposerMode::from_storage(&s.lht_composer_mode)
                     .as_str()
                     .to_string();
             s
@@ -969,7 +969,7 @@ mod tests {
         let _g = config_path_test_guard();
         if let Some(home) = dirs::home_dir() {
             let expected = home
-                .join(deepseek_config::USER_DATA_DIR_NAME)
+                .join(zagens_config::USER_DATA_DIR_NAME)
                 .join("tui.toml");
             if std::env::var("DEEPSEEK_CONFIG_PATH").is_err()
                 && std::env::var("ZAGENS_CONFIG_PATH").is_err()

@@ -246,7 +246,7 @@ pub fn tool_result_bodies_from_messages(messages: &[Message]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use deepseek_core::context_partition::message_has_external_ref;
+    use zagens_core::context_partition::message_has_external_ref;
 
     fn msg(role: &str, text: &str) -> Message {
         Message {

@@ -168,8 +168,8 @@ pub(crate) fn init_plugins_dir(
 }
 
 pub(crate) fn deepseek_home_dir() -> PathBuf {
-    deepseek_config::user_data_root()
-        .unwrap_or_else(|_| PathBuf::from(deepseek_config::USER_DATA_DIR_NAME))
+    zagens_config::user_data_root()
+        .unwrap_or_else(|_| PathBuf::from(zagens_config::USER_DATA_DIR_NAME))
 }
 
 pub(crate) fn default_checkpoints_dir() -> PathBuf {
@@ -322,7 +322,7 @@ pub(crate) fn skills_count_for(dir: &Path) -> usize {
 }
 
 pub(crate) fn merge_project_config(config: &mut crate::config::Config, workspace: &Path) {
-    let path = deepseek_config::workspace_meta_file_read(workspace, "config.toml");
+    let path = zagens_config::workspace_meta_file_read(workspace, "config.toml");
     let raw = match std::fs::read_to_string(&path) {
         Ok(r) => r,
         Err(_) => return,

@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useT } from '../i18n';
 import { confirmDialog } from '../lib/confirmDialog';
 
-/** Defaults match `describe_image` / `DEFAULT_VISION_MODEL` (`deepseek-config`). */
+/** Defaults match `describe_image` / `DEFAULT_VISION_MODEL` (`zagens-config`). */
 const PLACEHOLDER_VISION_BASE = 'https://api.siliconflow.cn/v1';
 const PLACEHOLDER_VISION_MODEL = 'Qwen/Qwen3-VL-32B-Instruct';
 

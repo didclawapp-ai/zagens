@@ -1,17 +1,17 @@
 //! API request/response models for `DeepSeek` and OpenAI-compatible endpoints.
 //!
-//! Most types are now re-exported from `deepseek-core` (P2 PR3b).
+//! Most types are now re-exported from `zagens-core` (P2 PR3b).
 //! Only tui-specific helpers and tests remain in this file.
 
-// ── Re-exports from deepseek-core ─────────────────────────────────────
+// ── Re-exports from zagens-core ─────────────────────────────────────
 
-pub use deepseek_core::chat::{
+pub use zagens_core::chat::{
     CacheControl, ContentBlock, ContentBlockStart, DEEPSEEK_V4_CONTEXT_WINDOW_TOKENS, Delta,
     LEGACY_DEEPSEEK_CONTEXT_WINDOW_TOKENS, Message, MessageDelta, MessageRequest, MessageResponse,
     StreamEvent, SystemBlock, SystemPrompt, Tool, ToolCaller, compaction_threshold_for_model,
     context_window_for_model,
 };
-pub use deepseek_core::models::{ServerToolUsage, Usage};
+pub use zagens_core::models::{ServerToolUsage, Usage};
 
 // ── TUI-specific helpers ──────────────────────────────────────────────
 

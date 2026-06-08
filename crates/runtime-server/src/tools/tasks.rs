@@ -78,7 +78,7 @@ impl ToolSpec for TaskCreateTool {
     }
 
     async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
-        if let Some(msg) = deepseek_runtime_adapters::scratchpad_gates::check_task_create_audit_gate(
+        if let Some(msg) = zagens_runtime_adapters::scratchpad_gates::check_task_create_audit_gate(
             &context.workspace,
             context.audit_scratchpad_run_id.as_deref(),
         ) {

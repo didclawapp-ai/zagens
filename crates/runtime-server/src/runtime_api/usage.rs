@@ -113,7 +113,7 @@ pub(crate) async fn rebuild_symbol_index(
         )));
     }
     let ws_for_build = ws.clone();
-    let path = deepseek_config::workspace_meta_file_write(&ws, "symbols.json");
+    let path = zagens_config::workspace_meta_file_write(&ws, "symbols.json");
     let index = tokio::task::spawn_blocking(move || {
         crate::symbol_index::build_index(
             &ws_for_build,

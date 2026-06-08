@@ -39,13 +39,13 @@ fn max_session_file_size() -> u64 {
     }
     // 2. TOML [session] max_file_mb via Config struct
     if let Ok(config_str) =
-        std::fs::read_to_string(deepseek_config::default_config_path().unwrap_or_else(|_| {
+        std::fs::read_to_string(zagens_config::default_config_path().unwrap_or_else(|_| {
             dirs::home_dir()
                 .unwrap_or_default()
-                .join(deepseek_config::USER_DATA_DIR_NAME)
+                .join(zagens_config::USER_DATA_DIR_NAME)
                 .join("config.toml")
         }))
-        && let Ok(config) = toml::from_str::<deepseek_config::ConfigToml>(&config_str)
+        && let Ok(config) = toml::from_str::<zagens_config::ConfigToml>(&config_str)
     {
         let mb = config.session.as_ref().map(|s| s.max_file_mb).unwrap_or(5);
         return if mb > 0 { mb * 1024 * 1024 } else { u64::MAX };
@@ -586,7 +586,7 @@ fn find_git_root(path: &Path) -> Option<PathBuf> {
 
 /// Resolve the default session directory path (`~/.zagens/sessions`).
 pub fn default_sessions_dir() -> std::io::Result<PathBuf> {
-    deepseek_config::user_data_path("sessions").map_err(|e| {
+    zagens_config::user_data_path("sessions").map_err(|e| {
         std::io::Error::new(
             std::io::ErrorKind::NotFound,
             format!("Home directory not found: {e}"),

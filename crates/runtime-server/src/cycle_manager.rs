@@ -59,10 +59,10 @@ use crate::working_set::WorkingSet;
 /// JSONL header record emitted as the first line of an archived cycle file.
 const CYCLE_ARCHIVE_SCHEMA_VERSION: u32 = 1;
 
-// Re-exported from deepseek-core (P2 PR4).
-pub use deepseek_core::cycle::CycleConfig;
+// Re-exported from zagens-core (P2 PR4).
+pub use zagens_core::cycle::CycleConfig;
 #[cfg(test)]
-pub use deepseek_core::cycle::{
+pub use zagens_core::cycle::{
     DEFAULT_BRIEFING_MAX_TOKENS, DEFAULT_CYCLE_THRESHOLD_TOKENS, ModelCycleConfig,
 };
 
@@ -70,7 +70,7 @@ pub use deepseek_core::cycle::{
 /// configured token cap. Matches `compaction::estimate_tokens` (~4 chars/token).
 const APPROX_CHARS_PER_TOKEN: usize = 4;
 
-pub use deepseek_core::cycle::CycleBriefing;
+pub use zagens_core::cycle::CycleBriefing;
 
 /// Decide whether a cycle boundary should fire.
 ///
@@ -394,7 +394,7 @@ pub struct CycleArchiveHeader {
 
 /// Resolve the on-disk archive directory: `~/.zagens/sessions/<id>/cycles`.
 pub fn archive_dir_for(session_id: &str) -> Result<PathBuf> {
-    Ok(deepseek_config::user_data_path("sessions")?
+    Ok(zagens_config::user_data_path("sessions")?
         .join(session_id)
         .join("cycles"))
 }

@@ -12,11 +12,11 @@ use crate::tools::plan::PlanState;
 use crate::tools::spec::ToolError;
 use crate::tools::todo::TodoList;
 use crate::utils::write_panic_dump;
-use deepseek_core::events::Event;
+use zagens_core::events::Event;
 
 use super::blackboard::{read_blackboard_section, write_blackboard_partition};
 use super::mailbox::Mailbox;
-use deepseek_core::subagent::{
+use zagens_core::subagent::{
     CompletionReason, MailboxMessage, SubAgentAssignment, SubAgentResult, SubAgentStatus,
     SubAgentType,
 };

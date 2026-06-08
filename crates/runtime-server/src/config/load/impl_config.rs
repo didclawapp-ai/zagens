@@ -338,7 +338,7 @@ impl Config {
 
         // 2. Environment variables. Do not query platform credential stores
         // here; routine startup and doctor checks must stay prompt-free.
-        if let Some(value) = deepseek_secrets::env_for(slot)
+        if let Some(value) = zagens_secrets::env_for(slot)
             && !value.trim().is_empty()
         {
             return Ok(value);
@@ -583,7 +583,7 @@ impl Config {
     /// seeded entries, otherwise it would be shadowed for exactly those models.
     #[must_use]
     pub fn cycle_runtime_config(&self, model: &str) -> crate::cycle_manager::CycleConfig {
-        use deepseek_core::cycle::ModelCycleConfig;
+        use zagens_core::cycle::ModelCycleConfig;
 
         let mut cfg = crate::cycle_manager::CycleConfig::default();
         if let Some(t) = self.context.cycle_threshold {
@@ -706,11 +706,11 @@ impl Config {
 
     /// Long-horizon code task harness settings (LHT Phase 1).
     #[must_use]
-    pub fn long_horizon_config(&self) -> deepseek_core::long_horizon::LongHorizonConfig {
+    pub fn long_horizon_config(&self) -> zagens_core::long_horizon::LongHorizonConfig {
         let mut cfg = self
             .long_horizon
             .clone()
-            .map(deepseek_core::long_horizon::LongHorizonConfigToml::into_runtime)
+            .map(zagens_core::long_horizon::LongHorizonConfigToml::into_runtime)
             .unwrap_or_default();
         // §6.1/§6.4 (v0.4): the executable completion-gate manifest is only
         // trusted because this `Config` is loaded from a single global/explicit

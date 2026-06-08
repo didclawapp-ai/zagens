@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-pub use deepseek_core::user_input::UserInputRequest;
+pub use zagens_core::user_input::UserInputRequest;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserInputAnswer {
@@ -91,7 +91,7 @@ impl ToolSpec for RequestUserInputTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use deepseek_core::user_input::{UserInputOption, UserInputQuestion};
+    use zagens_core::user_input::{UserInputOption, UserInputQuestion};
 
     #[test]
     fn validates_request_shape() {

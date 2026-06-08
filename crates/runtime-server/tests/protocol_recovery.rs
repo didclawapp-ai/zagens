@@ -19,14 +19,14 @@
 
 use std::fs;
 
-use deepseek_core::engine::tool_parser;
+use zagens_core::engine::tool_parser;
 
 // `engine.rs` was decomposed into submodules under `core/engine/`. The
 // protocol-scrubbing strings the tests below assert on are now spread
 // across `engine.rs` and several `engine/*.rs` files. We compile-time
 // include each so a contributor moving a marker into a sibling submodule
 // does not silently break these regression checks.
-/// Protocol-scrubbing markers live in `deepseek-core` since P2 PR6a; TUI re-exports streaming.
+/// Protocol-scrubbing markers live in `zagens-core` since P2 PR6a; TUI re-exports streaming.
 const ENGINE_SOURCES: &[&str] = &[
     include_str!("../../core/src/engine/streaming.rs"),
     include_str!("../src/core/engine/streaming.rs"),
@@ -163,7 +163,7 @@ fn legacy_parser_has_marker_helper_for_legacy_shapes_only() {
 
 #[test]
 fn engine_source_file_still_exists_and_is_non_trivial() {
-    // P2 PR6: protocol markers may live in `deepseek-core` + decomposed `engine/*`.
+    // P2 PR6: protocol markers may live in `zagens-core` + decomposed `engine/*`.
     let total: u64 = ENGINE_SOURCES.iter().map(|s| s.len() as u64).sum();
     assert!(
         total > 10_000,

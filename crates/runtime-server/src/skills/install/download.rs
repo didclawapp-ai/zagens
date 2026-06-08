@@ -6,8 +6,8 @@ use anyhow::{Context, Result, bail};
 use flate2::read::GzDecoder;
 
 use crate::network_policy::NetworkPolicy;
-use deepseek_runtime_adapters::network_policy::{Decision, host_from_url};
-use deepseek_runtime_adapters::tools::host_policy_decision;
+use zagens_runtime_adapters::network_policy::{Decision, host_from_url};
+use zagens_runtime_adapters::tools::host_policy_decision;
 
 use super::registry::fetch_registry;
 use super::types::{

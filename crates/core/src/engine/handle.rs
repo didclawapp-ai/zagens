@@ -1,5 +1,5 @@
 //! Engine handle — outbound channel set used by the UI/runtime to drive the
-//! engine (M1 → `deepseek-core`).
+//! engine (M1 → `zagens-core`).
 //!
 //! The handle is generic over:
 //! - `P` — sandbox policy carried by `ApprovalDecision::RetryWithPolicy`
@@ -9,7 +9,7 @@
 //!   (the tui-side `UserInputResponse` plugs in here).
 //!
 //! The tui crate provides a type alias
-//! `EngineHandle = deepseek_core::engine::handle::EngineHandle<SandboxPolicy, UserInputResponse>`
+//! `EngineHandle = zagens_core::engine::handle::EngineHandle<SandboxPolicy, UserInputResponse>`
 //! so existing call sites keep working.
 
 use std::sync::{Arc, Mutex as StdMutex};

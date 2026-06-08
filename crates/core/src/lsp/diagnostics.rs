@@ -14,10 +14,10 @@
 //! Lines are 1-based. Columns are 1-based. We trim each diagnostic message
 //! to a single line so the block stays compact.
 //!
-//! Moved into `deepseek-core` by M3 (Engine-struct strangler step) so the
+//! Moved into `zagens-core` by M3 (Engine-struct strangler step) so the
 //! future core-side `Engine` struct can hold `Vec<DiagnosticBlock>` and
 //! drive `LspHost::diagnostics_for` without a tui dependency. The tui crate
-//! keeps a `pub use deepseek_core::lsp::diagnostics::*;` shim under
+//! keeps a `pub use zagens_core::lsp::diagnostics::*;` shim under
 //! `tui::lsp::diagnostics` so existing call sites (engine tests, the
 //! `render_blocks` consumers in `tools/spec.rs`, etc.) continue to work
 //! without import-path churn.

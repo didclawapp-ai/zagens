@@ -1,6 +1,6 @@
 //! Sidecar `RuntimeApiState` host trait impls (D16 E1-c phase 2).
 
-use deepseek_runtime_api::{RuntimeApiAuthState, RuntimeApiProbeState};
+use zagens_runtime_api::{RuntimeApiAuthState, RuntimeApiProbeState};
 
 use super::RuntimeApiState;
 

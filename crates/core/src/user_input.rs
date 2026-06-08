@@ -1,8 +1,8 @@
-//! Types for `request_user_input` tool payloads (P2 PR4 → `deepseek-core`).
+//! Types for `request_user_input` tool payloads (P2 PR4 → `zagens-core`).
 
-use deepseek_tools::ToolError;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use zagens_tools::ToolError;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserInputOption {

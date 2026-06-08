@@ -5,10 +5,10 @@ use std::time::Duration;
 
 use anyhow::Result;
 use async_trait::async_trait;
-use deepseek_protocol::{ToolKind, ToolOutput, ToolPayload};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::RwLock;
+use zagens_protocol::{ToolKind, ToolOutput, ToolPayload};
 
 /// Capabilities that a tool may have or require.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

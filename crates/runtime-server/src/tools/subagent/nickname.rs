@@ -1,6 +1,6 @@
 //! Task-oriented display labels for sub-agents (replaces decorative whale nicknames).
 
-use deepseek_core::subagent::{SubAgentAssignment, SubAgentType};
+use zagens_core::subagent::{SubAgentAssignment, SubAgentType};
 
 const MAX_NICKNAME_LEN: usize = 40;
 
@@ -159,7 +159,7 @@ fn parse_json_string_at(s: &str) -> Option<(String, usize)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use deepseek_core::subagent::SubAgentAssignment;
+    use zagens_core::subagent::SubAgentAssignment;
 
     fn derive_for_prompt(agent_type: &SubAgentType, prompt: &str, type_index: usize) -> String {
         let assignment = SubAgentAssignment::new(prompt.to_string(), None);

@@ -1,12 +1,12 @@
-//! Feature flags — re-exported from `deepseek-core` (P2 PR4).
+//! Feature flags — re-exported from `zagens-core` (P2 PR4).
 
-pub use deepseek_core::features::{Feature, Features, FeaturesToml, is_known_feature_key};
+pub use zagens_core::features::{Feature, Features, FeaturesToml, is_known_feature_key};
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use deepseek_core::features::{feature_from_key, render_feature_table};
     use std::collections::BTreeMap;
+    use zagens_core::features::{feature_from_key, render_feature_table};
 
     #[test]
     fn apply_map_toggles_known_features_and_ignores_unknown_keys() {

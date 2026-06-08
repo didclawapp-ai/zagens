@@ -33,7 +33,7 @@ pub fn snapshot_dir_with_home(workspace: &Path, home: Option<PathBuf>) -> PathBu
     let project_root = strip_worktree_suffix(&canonical);
     let project_hash = stable_hex(&project_root);
     let worktree_hash = stable_hex(&canonical);
-    home.join(deepseek_config::USER_DATA_DIR_NAME)
+    home.join(zagens_config::USER_DATA_DIR_NAME)
         .join("snapshots")
         .join(project_hash)
         .join(worktree_hash)

@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use deepseek_core::subagent::SubAgentResult;
+use zagens_core::subagent::SubAgentResult;
 
 use super::blackboard::{
     read_structured_findings_from_blackboard, read_structured_verdict_from_blackboard,

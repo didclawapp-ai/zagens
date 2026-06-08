@@ -6,9 +6,9 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use anyhow::{Context, Result, bail};
-use deepseek_secrets::SecretSource;
-pub use deepseek_secrets::Secrets;
 use serde::{Deserialize, Serialize};
+use zagens_secrets::SecretSource;
+pub use zagens_secrets::Secrets;
 
 #[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
@@ -1186,7 +1186,7 @@ impl ConfigToml {
     #[must_use]
     pub fn resolve_runtime_options(&self, cli: &CliRuntimeOverrides) -> ResolvedRuntimeOptions {
         let no_keyring = Secrets::new(std::sync::Arc::new(
-            deepseek_secrets::InMemoryKeyringStore::new(),
+            zagens_secrets::InMemoryKeyringStore::new(),
         ));
         self.resolve_runtime_options_with_secrets(cli, &no_keyring)
     }
@@ -1581,7 +1581,7 @@ impl ConfigStore {
 
 /// Process-wide default [`Secrets`] façade. The first caller wins; the
 /// lock is exposed so test or CLI code can install an explicit
-/// backend (e.g. an [`deepseek_secrets::InMemoryKeyringStore`]) before
+/// backend (e.g. an [`zagens_secrets::InMemoryKeyringStore`]) before
 /// any resolver runs.
 pub fn default_secrets() -> &'static Secrets {
     static SECRETS: OnceLock<Secrets> = OnceLock::new();
@@ -1593,7 +1593,7 @@ pub fn default_secrets() -> &'static Secrets {
         #[cfg(test)]
         {
             Secrets::new(std::sync::Arc::new(
-                deepseek_secrets::InMemoryKeyringStore::new(),
+                zagens_secrets::InMemoryKeyringStore::new(),
             ))
         }
         #[cfg(not(test))]
@@ -1826,7 +1826,7 @@ mod tests {
     }
 
     impl EnvGuard {
-        fn without_deepseek_runtime_overrides() -> Self {
+        fn without_zagens_runtime_overrides() -> Self {
             let guard = Self {
                 deepseek_api_key: env::var_os("DEEPSEEK_API_KEY"),
                 deepseek_base_url: env::var_os("DEEPSEEK_BASE_URL"),
@@ -1921,7 +1921,7 @@ mod tests {
     #[test]
     fn root_deepseek_fields_are_runtime_fallbacks() {
         let _lock = env_lock();
-        let _env = EnvGuard::without_deepseek_runtime_overrides();
+        let _env = EnvGuard::without_zagens_runtime_overrides();
         let config = ConfigToml {
             api_key: Some("root-key".to_string()),
             base_url: Some("https://api.deepseek.com".to_string()),
@@ -1938,9 +1938,9 @@ mod tests {
     }
 
     #[test]
-    fn deepseek_runtime_defaults_to_beta_endpoint() {
+    fn zagens_runtime_defaults_to_beta_endpoint() {
         let _lock = env_lock();
-        let _env = EnvGuard::without_deepseek_runtime_overrides();
+        let _env = EnvGuard::without_zagens_runtime_overrides();
         let config = ConfigToml::default();
 
         let resolved = config.resolve_runtime_options(&CliRuntimeOverrides::default());
@@ -1953,7 +1953,7 @@ mod tests {
     #[test]
     fn provider_specific_deepseek_fields_override_tui_compat_fields() {
         let _lock = env_lock();
-        let _env = EnvGuard::without_deepseek_runtime_overrides();
+        let _env = EnvGuard::without_zagens_runtime_overrides();
         let mut config = ConfigToml {
             api_key: Some("root-key".to_string()),
             base_url: Some("https://api.deepseek.com".to_string()),
@@ -1974,7 +1974,7 @@ mod tests {
     #[test]
     fn provider_http_headers_override_root_headers() {
         let _lock = env_lock();
-        let _env = EnvGuard::without_deepseek_runtime_overrides();
+        let _env = EnvGuard::without_zagens_runtime_overrides();
         let mut config = ConfigToml {
             api_key: Some("root-key".to_string()),
             base_url: Some("https://api.deepseek.com".to_string()),
@@ -2019,7 +2019,7 @@ mod tests {
     #[test]
     fn http_headers_env_overrides_config() {
         let _lock = env_lock();
-        let _env = EnvGuard::without_deepseek_runtime_overrides();
+        let _env = EnvGuard::without_zagens_runtime_overrides();
         let mut config = ConfigToml::default();
         config
             .http_headers
@@ -2043,7 +2043,7 @@ mod tests {
     #[test]
     fn nvidia_nim_provider_defaults_to_catalog_endpoint_and_model() {
         let _lock = env_lock();
-        let _env = EnvGuard::without_deepseek_runtime_overrides();
+        let _env = EnvGuard::without_zagens_runtime_overrides();
         let config = ConfigToml {
             provider: ProviderKind::NvidiaNim,
             ..ConfigToml::default()
@@ -2059,7 +2059,7 @@ mod tests {
     #[test]
     fn nvidia_nim_provider_uses_provider_specific_credentials() {
         let _lock = env_lock();
-        let _env = EnvGuard::without_deepseek_runtime_overrides();
+        let _env = EnvGuard::without_zagens_runtime_overrides();
         let mut config = ConfigToml {
             provider: ProviderKind::NvidiaNim,
             ..ConfigToml::default()
@@ -2079,7 +2079,7 @@ mod tests {
     #[test]
     fn nvidia_nim_provider_normalizes_flash_aliases() {
         let _lock = env_lock();
-        let _env = EnvGuard::without_deepseek_runtime_overrides();
+        let _env = EnvGuard::without_zagens_runtime_overrides();
         let cli = CliRuntimeOverrides {
             provider: Some(ProviderKind::NvidiaNim),
             model: Some("deepseek-v4-flash".to_string()),
@@ -2095,7 +2095,7 @@ mod tests {
     #[test]
     fn nvidia_nim_provider_uses_nvidia_env_credentials() {
         let _lock = env_lock();
-        let _env = EnvGuard::without_deepseek_runtime_overrides();
+        let _env = EnvGuard::without_zagens_runtime_overrides();
         // Safety: test-only environment mutation guarded by a module mutex.
         unsafe {
             env::set_var("DEEPSEEK_PROVIDER", "nvidia-nim");
@@ -2115,7 +2115,7 @@ mod tests {
     #[test]
     fn nvidia_nim_provider_accepts_short_nim_base_url_alias() {
         let _lock = env_lock();
-        let _env = EnvGuard::without_deepseek_runtime_overrides();
+        let _env = EnvGuard::without_zagens_runtime_overrides();
         // Safety: test-only environment mutation guarded by a module mutex.
         unsafe {
             env::set_var("DEEPSEEK_PROVIDER", "nvidia-nim");
@@ -2133,7 +2133,7 @@ mod tests {
     #[test]
     fn nvidia_nim_provider_can_fallback_to_deepseek_api_key_env() {
         let _lock = env_lock();
-        let _env = EnvGuard::without_deepseek_runtime_overrides();
+        let _env = EnvGuard::without_zagens_runtime_overrides();
         // Safety: test-only environment mutation guarded by a module mutex.
         unsafe {
             env::set_var("DEEPSEEK_PROVIDER", "nvidia-nim");
@@ -2184,7 +2184,7 @@ mod tests {
             .expect("clock")
             .as_nanos();
         let dir = std::env::temp_dir().join(format!(
-            "deepseek-config-perms-{}-{unique}",
+            "zagens-config-perms-{}-{unique}",
             std::process::id()
         ));
         fs::create_dir_all(&dir).expect("mkdir");
@@ -2236,7 +2236,7 @@ mod tests {
     #[test]
     fn openrouter_provider_defaults_to_canonical_endpoint_and_model() {
         let _lock = env_lock();
-        let _env = EnvGuard::without_deepseek_runtime_overrides();
+        let _env = EnvGuard::without_zagens_runtime_overrides();
         let config = ConfigToml {
             provider: ProviderKind::Openrouter,
             ..ConfigToml::default()
@@ -2252,7 +2252,7 @@ mod tests {
     #[test]
     fn novita_provider_defaults_to_canonical_endpoint_and_model() {
         let _lock = env_lock();
-        let _env = EnvGuard::without_deepseek_runtime_overrides();
+        let _env = EnvGuard::without_zagens_runtime_overrides();
         let config = ConfigToml {
             provider: ProviderKind::Novita,
             ..ConfigToml::default()
@@ -2268,7 +2268,7 @@ mod tests {
     #[test]
     fn fireworks_provider_defaults_to_canonical_endpoint_and_model() {
         let _lock = env_lock();
-        let _env = EnvGuard::without_deepseek_runtime_overrides();
+        let _env = EnvGuard::without_zagens_runtime_overrides();
         let config = ConfigToml {
             provider: ProviderKind::Fireworks,
             ..ConfigToml::default()
@@ -2284,7 +2284,7 @@ mod tests {
     #[test]
     fn sglang_provider_defaults_to_local_endpoint_and_model() {
         let _lock = env_lock();
-        let _env = EnvGuard::without_deepseek_runtime_overrides();
+        let _env = EnvGuard::without_zagens_runtime_overrides();
         let config = ConfigToml {
             provider: ProviderKind::Sglang,
             ..ConfigToml::default()
@@ -2300,7 +2300,7 @@ mod tests {
     #[test]
     fn vllm_provider_defaults_to_local_endpoint_and_model() {
         let _lock = env_lock();
-        let _env = EnvGuard::without_deepseek_runtime_overrides();
+        let _env = EnvGuard::without_zagens_runtime_overrides();
         let config = ConfigToml {
             provider: ProviderKind::Vllm,
             ..ConfigToml::default()
@@ -2316,7 +2316,7 @@ mod tests {
     #[test]
     fn ollama_provider_defaults_to_local_endpoint_and_small_model() {
         let _lock = env_lock();
-        let _env = EnvGuard::without_deepseek_runtime_overrides();
+        let _env = EnvGuard::without_zagens_runtime_overrides();
         let config = ConfigToml {
             provider: ProviderKind::Ollama,
             ..ConfigToml::default()
@@ -2333,7 +2333,7 @@ mod tests {
     #[test]
     fn ollama_provider_preserves_model_tags() {
         let _lock = env_lock();
-        let _env = EnvGuard::without_deepseek_runtime_overrides();
+        let _env = EnvGuard::without_zagens_runtime_overrides();
         let cli = CliRuntimeOverrides {
             provider: Some(ProviderKind::Ollama),
             model: Some("deepseek-coder-v2:16b".to_string()),
@@ -2349,7 +2349,7 @@ mod tests {
     #[test]
     fn ollama_env_overrides_provider_base_url_and_optional_key() {
         let _lock = env_lock();
-        let _env = EnvGuard::without_deepseek_runtime_overrides();
+        let _env = EnvGuard::without_zagens_runtime_overrides();
         // Safety: test-only environment mutation guarded by a module mutex.
         unsafe {
             env::set_var("DEEPSEEK_PROVIDER", "ollama-local");
@@ -2368,7 +2368,7 @@ mod tests {
     #[test]
     fn openrouter_env_api_key_falls_back_when_config_missing() {
         let _lock = env_lock();
-        let _env = EnvGuard::without_deepseek_runtime_overrides();
+        let _env = EnvGuard::without_zagens_runtime_overrides();
         // Safety: test-only environment mutation guarded by a module mutex.
         unsafe {
             env::set_var("DEEPSEEK_PROVIDER", "openrouter");
@@ -2386,7 +2386,7 @@ mod tests {
     #[test]
     fn novita_env_api_key_falls_back_when_config_missing() {
         let _lock = env_lock();
-        let _env = EnvGuard::without_deepseek_runtime_overrides();
+        let _env = EnvGuard::without_zagens_runtime_overrides();
         // Safety: test-only environment mutation guarded by a module mutex.
         unsafe {
             env::set_var("DEEPSEEK_PROVIDER", "novita");
@@ -2404,7 +2404,7 @@ mod tests {
     #[test]
     fn fireworks_env_api_key_falls_back_when_config_missing() {
         let _lock = env_lock();
-        let _env = EnvGuard::without_deepseek_runtime_overrides();
+        let _env = EnvGuard::without_zagens_runtime_overrides();
         // Safety: test-only environment mutation guarded by a module mutex.
         unsafe {
             env::set_var("DEEPSEEK_PROVIDER", "fireworks");
@@ -2422,7 +2422,7 @@ mod tests {
     #[test]
     fn openrouter_provider_normalizes_flash_aliases() {
         let _lock = env_lock();
-        let _env = EnvGuard::without_deepseek_runtime_overrides();
+        let _env = EnvGuard::without_zagens_runtime_overrides();
         let cli = CliRuntimeOverrides {
             provider: Some(ProviderKind::Openrouter),
             model: Some("deepseek-v4-flash".to_string()),
@@ -2438,7 +2438,7 @@ mod tests {
     #[test]
     fn novita_provider_normalizes_flash_aliases() {
         let _lock = env_lock();
-        let _env = EnvGuard::without_deepseek_runtime_overrides();
+        let _env = EnvGuard::without_zagens_runtime_overrides();
         let cli = CliRuntimeOverrides {
             provider: Some(ProviderKind::Novita),
             model: Some("deepseek-v4-flash".to_string()),
@@ -2454,7 +2454,7 @@ mod tests {
     #[test]
     fn sglang_provider_normalizes_flash_aliases() {
         let _lock = env_lock();
-        let _env = EnvGuard::without_deepseek_runtime_overrides();
+        let _env = EnvGuard::without_zagens_runtime_overrides();
         let cli = CliRuntimeOverrides {
             provider: Some(ProviderKind::Sglang),
             model: Some("deepseek-v4-flash".to_string()),
@@ -2470,7 +2470,7 @@ mod tests {
     #[test]
     fn vllm_provider_normalizes_flash_aliases() {
         let _lock = env_lock();
-        let _env = EnvGuard::without_deepseek_runtime_overrides();
+        let _env = EnvGuard::without_zagens_runtime_overrides();
         let cli = CliRuntimeOverrides {
             provider: Some(ProviderKind::Vllm),
             model: Some("deepseek-v4-flash".to_string()),
@@ -2486,7 +2486,7 @@ mod tests {
     #[test]
     fn openrouter_provider_specific_config_overrides_env() {
         let _lock = env_lock();
-        let _env = EnvGuard::without_deepseek_runtime_overrides();
+        let _env = EnvGuard::without_zagens_runtime_overrides();
         let mut config = ConfigToml {
             provider: ProviderKind::Openrouter,
             ..ConfigToml::default()
@@ -2502,13 +2502,13 @@ mod tests {
 
     #[test]
     fn config_file_resolves_above_env_and_keyring() {
-        use deepseek_secrets::KeyringStore;
+        use zagens_secrets::KeyringStore;
         let _lock = env_lock();
-        let _env = EnvGuard::without_deepseek_runtime_overrides();
+        let _env = EnvGuard::without_zagens_runtime_overrides();
         // Safety: env mutation guarded by env_lock().
         unsafe { std::env::set_var("DEEPSEEK_API_KEY", "env-key") };
 
-        let store = std::sync::Arc::new(deepseek_secrets::InMemoryKeyringStore::new());
+        let store = std::sync::Arc::new(zagens_secrets::InMemoryKeyringStore::new());
         store.set("deepseek", "ring-key").unwrap();
         let secrets = Secrets::new(store);
 
@@ -2530,12 +2530,12 @@ mod tests {
     #[test]
     fn env_resolves_when_config_file_and_keyring_empty() {
         let _lock = env_lock();
-        let _env = EnvGuard::without_deepseek_runtime_overrides();
+        let _env = EnvGuard::without_zagens_runtime_overrides();
         // Safety: env mutation guarded by env_lock().
         unsafe { std::env::set_var("DEEPSEEK_API_KEY", "env-key") };
 
         let secrets = Secrets::new(std::sync::Arc::new(
-            deepseek_secrets::InMemoryKeyringStore::new(),
+            zagens_secrets::InMemoryKeyringStore::new(),
         ));
         let config = ConfigToml::default();
 
@@ -2551,10 +2551,10 @@ mod tests {
     #[test]
     fn config_file_resolves_when_keyring_and_env_empty() {
         let _lock = env_lock();
-        let _env = EnvGuard::without_deepseek_runtime_overrides();
+        let _env = EnvGuard::without_zagens_runtime_overrides();
 
         let secrets = Secrets::new(std::sync::Arc::new(
-            deepseek_secrets::InMemoryKeyringStore::new(),
+            zagens_secrets::InMemoryKeyringStore::new(),
         ));
         let mut config = ConfigToml::default();
         config.providers.deepseek.api_key = Some("file-key".to_string());
@@ -2570,13 +2570,13 @@ mod tests {
 
     #[test]
     fn keyring_resolves_when_config_file_empty_even_if_env_is_set() {
-        use deepseek_secrets::KeyringStore;
+        use zagens_secrets::KeyringStore;
         let _lock = env_lock();
-        let _env = EnvGuard::without_deepseek_runtime_overrides();
+        let _env = EnvGuard::without_zagens_runtime_overrides();
         // Safety: env mutation guarded by env_lock().
         unsafe { std::env::set_var("DEEPSEEK_API_KEY", "stale-env-key") };
 
-        let store = std::sync::Arc::new(deepseek_secrets::InMemoryKeyringStore::new());
+        let store = std::sync::Arc::new(zagens_secrets::InMemoryKeyringStore::new());
         store.set("deepseek", "ring-key").unwrap();
         let secrets = Secrets::new(store);
 
@@ -2591,11 +2591,11 @@ mod tests {
 
     #[test]
     fn cli_flag_still_overrides_keyring() {
-        use deepseek_secrets::KeyringStore;
+        use zagens_secrets::KeyringStore;
         let _lock = env_lock();
-        let _env = EnvGuard::without_deepseek_runtime_overrides();
+        let _env = EnvGuard::without_zagens_runtime_overrides();
 
-        let store = std::sync::Arc::new(deepseek_secrets::InMemoryKeyringStore::new());
+        let store = std::sync::Arc::new(zagens_secrets::InMemoryKeyringStore::new());
         store.set("deepseek", "ring-key").unwrap();
         let secrets = Secrets::new(store);
 
@@ -2616,7 +2616,7 @@ mod tests {
             .unwrap()
             .as_nanos();
         let temp_root = std::env::temp_dir().join(format!(
-            "deepseek-config-first-run-{}-{}",
+            "zagens-config-first-run-{}-{}",
             std::process::id(),
             nanos
         ));

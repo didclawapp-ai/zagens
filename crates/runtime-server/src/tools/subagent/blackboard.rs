@@ -7,14 +7,14 @@
 
 use std::path::{Path, PathBuf};
 
-use deepseek_config::{
+use zagens_config::{
     legacy_workspace_meta_dir, workspace_meta_dir, workspace_meta_file_read,
     workspace_meta_file_write,
 };
 
 use serde_json::{Value, json};
 
-use deepseek_core::subagent::{StructuredFindings, StructuredVerdict, SubAgentType};
+use zagens_core::subagent::{StructuredFindings, StructuredVerdict, SubAgentType};
 
 use super::SubAgentResult;
 
@@ -298,7 +298,7 @@ pub fn read_structured_verdict_from_blackboard(
 pub fn read_reviewer_blocker_items(
     workspace: &Path,
     task_id: &str,
-) -> Vec<deepseek_core::subagent::VerdictItem> {
+) -> Vec<zagens_core::subagent::VerdictItem> {
     read_structured_verdict_from_blackboard(workspace, task_id, &SubAgentType::Review)
         .map(|v| v.items)
         .unwrap_or_default()

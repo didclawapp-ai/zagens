@@ -5,19 +5,19 @@ use context::{
     estimate_input_tokens_conservative, extract_compaction_summary_prompt,
     is_context_length_error_message, summarize_text, turn_response_headroom_tokens,
 };
-use deepseek_core::engine::SubAgentSpawnError;
-use deepseek_core::engine::ToolExecOutcome;
-use deepseek_core::engine::dispatch::{
+use zagens_core::engine::SubAgentSpawnError;
+use zagens_core::engine::ToolExecOutcome;
+use zagens_core::engine::dispatch::{
     caller_allowed_for_tool, caller_type_for_tool_use, format_tool_error,
     mcp_tool_approval_description,
 };
-use deepseek_core::engine::emit_tool_audit;
-use deepseek_core::engine::loop_guard::{AttemptDecision, LoopGuard, OutcomeDecision};
+use zagens_core::engine::emit_tool_audit;
+use zagens_core::engine::loop_guard::{AttemptDecision, LoopGuard, OutcomeDecision};
 #[cfg(test)]
-use deepseek_core::engine::{edited_paths_for_tool, parse_patch_paths};
+use zagens_core::engine::{edited_paths_for_tool, parse_patch_paths};
 #[cfg(test)]
-use deepseek_core::engine::streaming::TOOL_CALL_START_MARKERS;
-use deepseek_core::engine::streaming::{
+use zagens_core::engine::streaming::TOOL_CALL_START_MARKERS;
+use zagens_core::engine::streaming::{
     ContentBlockKind, FAKE_WRAPPER_NOTICE, MAX_STREAM_ERRORS_BEFORE_FAIL,
     MAX_TRANSPARENT_STREAM_RETRIES, STREAM_CHUNK_TIMEOUT_SECS, STREAM_MAX_CONTENT_BYTES,
     STREAM_MAX_DURATION_SECS, ToolUseState, contains_fake_tool_wrapper, filter_tool_call_delta,

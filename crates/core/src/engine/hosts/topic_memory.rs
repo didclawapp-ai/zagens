@@ -5,7 +5,7 @@
 //! future core-side `Engine` struct (M7) can hold `Box<dyn
 //! TopicMemoryHost>` without taking a tui dependency on
 //! `crates/tui/src/topic_memory.rs` (307 LOC) or transitively on the
-//! `deepseek-topic-memory` workspace crate (spike R9 — prefer
+//! `zagens-topic-memory` workspace crate (spike R9 — prefer
 //! adapter-tui-side option (a) over crate dep option (b)).
 //!
 //! ## Call-graph (R1)
@@ -21,7 +21,7 @@
 //! ## Why no `settings` parameter?
 //!
 //! `TopicMemorySettings` is a tui-side type wrapping
-//! `deepseek-topic-memory` defaults. Passing `&TopicMemorySettings`
+//! `zagens-topic-memory` defaults. Passing `&TopicMemorySettings`
 //! through the trait would force this core module to either depend on
 //! that crate (spike R9 option (b), rejected) or define a parallel
 //! settings struct (premature core-side leakage).

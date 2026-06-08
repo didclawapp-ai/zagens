@@ -35,7 +35,7 @@ pub use types::{
     ConnectionState, McpPrompt, McpPromptArgument, McpResource, McpResourceTemplate, McpTool,
 };
 
-use deepseek_core::engine::hosts::McpHost;
+use zagens_core::engine::hosts::McpHost;
 
 impl McpHost for McpPool {}
 

@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use deepseek_topic_memory::{
+use zagens_topic_memory::{
     DEFAULT_INJECT_INTERVAL_RUNS, DEFAULT_RETRIEVE_K_HOPS, GenerateMemorySectionOptions,
     TopicMemoryMetrics, apply_decay, as_system_block, extract_topics, generate_memory_section,
     load_graph, load_metrics, metrics_path_for_graph, record_inject, record_turn_update,
@@ -34,7 +34,7 @@ impl Default for TopicMemorySettings {
 /// Default storage directory: `~/.zagens/topic-memory/` (not beside `config.toml`).
 #[must_use]
 pub fn default_topic_memory_dir() -> PathBuf {
-    deepseek_config::user_data_path_or_relative("topic-memory")
+    zagens_config::user_data_path_or_relative("topic-memory")
 }
 
 #[must_use]
@@ -44,7 +44,7 @@ pub fn default_graph_path() -> PathBuf {
 
 /// Legacy path before the dedicated `topic-memory/` directory (same parent as `config.toml`).
 fn legacy_graph_path() -> PathBuf {
-    deepseek_config::legacy_user_data_root()
+    zagens_config::legacy_user_data_root()
         .unwrap_or_else(|_| PathBuf::from("."))
         .join("topic-memory.json")
 }
@@ -93,9 +93,9 @@ pub fn settings_from_config(cfg: &crate::config::Config) -> TopicMemorySettings 
 ///
 /// M5 (Engine-struct strangler): runtime now owns its
 /// [`TopicMemorySettings`] so the
-/// [`deepseek_core::engine::hosts::TopicMemoryHost`] trait can keep
+/// [`zagens_core::engine::hosts::TopicMemoryHost`] trait can keep
 /// settings out of the method signatures (spike R9 — avoid pulling
-/// tui types or `deepseek-topic-memory` into core trait surface).
+/// tui types or `zagens-topic-memory` into core trait surface).
 /// Settings are clone-owned at engine init; no hot-reload path
 /// exists today.
 #[derive(Debug, Default)]
@@ -112,7 +112,7 @@ impl TopicMemoryRuntime {
     /// Construct a runtime that owns the given settings. Engine
     /// initialization clones from `EngineConfig.topic_memory` and
     /// hands the owned value here so the
-    /// [`TopicMemoryHost`](deepseek_core::engine::hosts::TopicMemoryHost)
+    /// [`TopicMemoryHost`](zagens_core::engine::hosts::TopicMemoryHost)
     /// trait methods can read it via `&self`.
     #[must_use]
     pub fn new(settings: TopicMemorySettings) -> Self {
@@ -194,7 +194,7 @@ impl TopicMemoryRuntime {
         self.runs_since_last_inject = 0;
 
         let mut metrics = load_or_init_metrics(settings);
-        record_inject(&mut metrics, &deepseek_topic_memory::today_str());
+        record_inject(&mut metrics, &zagens_topic_memory::today_str());
         persist_metrics(settings, &metrics);
 
         as_system_block(&section, &settings.graph_path)
@@ -204,11 +204,11 @@ impl TopicMemoryRuntime {
 // ── M5 Engine-boundary trait impl ─────────────────────────────────────
 //
 // Bridges `TopicMemoryRuntime` (tui) onto the core
-// `deepseek_core::engine::hosts::TopicMemoryHost` trait. Both methods
+// `zagens_core::engine::hosts::TopicMemoryHost` trait. Both methods
 // delegate to the inherent methods above with `&self.settings` —
 // the trait surface is settings-free (spike R9 mitigation).
 
-impl deepseek_core::engine::hosts::TopicMemoryHost for TopicMemoryRuntime {
+impl zagens_core::engine::hosts::TopicMemoryHost for TopicMemoryRuntime {
     fn compose_block(&mut self, query_hint: Option<&str>) -> Option<String> {
         // Local clone of `settings` to side-step the `&mut self` +
         // `&self.settings` simultaneous borrow that compose_block's

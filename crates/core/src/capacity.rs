@@ -712,7 +712,7 @@ mod tests {
     /// Hot-path microbench for `compute_profile`. Run with:
     ///
     /// ```text
-    /// cargo test -p deepseek-core --release capacity::tests::bench_compute_profile -- --ignored --nocapture
+    /// cargo test -p zagens-core --release capacity::tests::bench_compute_profile -- --ignored --nocapture
     /// ```
     ///
     /// Establishes a baseline cost so we can detect regressions when the

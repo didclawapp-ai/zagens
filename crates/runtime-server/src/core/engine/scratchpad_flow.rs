@@ -10,14 +10,14 @@ use crate::scratchpad::{
 };
 
 // M5: `ScratchpadStepState` moved to
-// `deepseek_core::engine::scratchpad_state` (spike §3 row #28 + R12 —
+// `zagens_core::engine::scratchpad_state` (spike §3 row #28 + R12 —
 // the small state struct migrated; the heavy flow helpers in this
 // 484-LOC file stay tui-side). The re-export shim below keeps every
 // `use crate::core::engine::scratchpad_flow::ScratchpadStepState`
 // caller compiling unchanged (engine state, host_impl turn-loop
 // bookkeeping, message_handlers reset, tests).
-pub use deepseek_core::engine::ScratchpadStepState;
-pub use deepseek_runtime_adapters::scratchpad_gates::{
+pub use zagens_core::engine::ScratchpadStepState;
+pub use zagens_runtime_adapters::scratchpad_gates::{
     check_task_create_audit_gate, check_write_file_audit_report_gate, is_audit_deliverable_path,
 };
 
@@ -354,7 +354,7 @@ mod tests {
         let ws = dir.path().join("ws");
         std::fs::create_dir_all(&ws).expect("mkdir");
         let run_id = "gate-run";
-        let base = deepseek_config::workspace_meta_dir(&ws)
+        let base = zagens_config::workspace_meta_dir(&ws)
             .join("scratchpad")
             .join(run_id);
         std::fs::create_dir_all(&base).expect("mkdir run");

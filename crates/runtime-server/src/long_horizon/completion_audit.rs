@@ -2,9 +2,9 @@
 
 use std::path::Path;
 
-use deepseek_core::long_horizon::CompletionGateDeliverableEntry;
 use globset::{Glob, GlobSetBuilder};
 use serde::Serialize;
+use zagens_core::long_horizon::CompletionGateDeliverableEntry;
 
 use crate::path_guard::resolve_under_workspace;
 use crate::runtime_api::workspace::run_git;

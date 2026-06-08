@@ -47,8 +47,8 @@ pub use client::{LspTransport, StdioLspTransport};
 pub use diagnostics::{Diagnostic, DiagnosticBlock, Severity, render_blocks};
 pub use registry::Language;
 
-// Re-exported from deepseek-core (P2 PR4).
-pub use deepseek_core::lsp::LspConfig;
+// Re-exported from zagens-core (P2 PR4).
+pub use zagens_core::lsp::LspConfig;
 
 /// Resolve `(command, args)` for `lang`. User-supplied overrides take
 /// precedence over the built-in registry.
@@ -265,7 +265,7 @@ impl LspManager {
 /// core-side Engine struct can hold `Arc<dyn LspHost>` instead of
 /// `Arc<LspManager>`.
 #[async_trait::async_trait]
-impl deepseek_core::engine::hosts::LspHost for LspManager {
+impl zagens_core::engine::hosts::LspHost for LspManager {
     fn enabled(&self) -> bool {
         self.config.enabled
     }

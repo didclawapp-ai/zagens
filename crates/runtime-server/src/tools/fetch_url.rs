@@ -11,11 +11,11 @@ use super::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_u64,
 };
 use async_trait::async_trait;
-use deepseek_runtime_adapters::tools::is_http_url;
 use regex::Regex;
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::sync::OnceLock;
+use zagens_runtime_adapters::tools::is_http_url;
 
 const DEFAULT_MAX_BYTES: u64 = 1_000_000;
 const HARD_MAX_BYTES: u64 = 10 * 1024 * 1024;

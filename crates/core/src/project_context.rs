@@ -189,7 +189,7 @@ fn load_context_file(path: &Path) -> Result<String, ProjectContextError> {
     Ok(content)
 }
 
-use deepseek_config::{legacy_workspace_meta_dir, workspace_meta_dir};
+use zagens_config::{legacy_workspace_meta_dir, workspace_meta_dir};
 
 /// Check if this project is marked as trusted
 fn check_trust_status(workspace: &Path) -> bool {
@@ -316,7 +316,7 @@ fn default_config_path() -> Option<PathBuf> {
             return Some(expand_path(trimmed));
         }
     }
-    deepseek_config::default_config_path().ok()
+    zagens_config::default_config_path().ok()
 }
 
 fn expand_path(path: &str) -> PathBuf {

@@ -106,6 +106,6 @@ pub fn default_tasks_dir() -> PathBuf {
     {
         return PathBuf::from(path);
     }
-    deepseek_config::user_data_path("tasks")
-        .unwrap_or_else(|_| PathBuf::from(deepseek_config::USER_DATA_DIR_NAME).join("tasks"))
+    zagens_config::user_data_path("tasks")
+        .unwrap_or_else(|_| PathBuf::from(zagens_config::USER_DATA_DIR_NAME).join("tasks"))
 }

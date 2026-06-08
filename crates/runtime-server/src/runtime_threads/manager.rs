@@ -18,7 +18,7 @@ use super::{
     RuntimeApprovalDecision, RuntimeEnginePolicy, RuntimeThreadManagerConfig, RuntimeThreadStore,
     RuntimeUserInputResponse,
 };
-use deepseek_runtime_orchestrator::runtime_threads::manager::{
+use zagens_runtime_orchestrator::runtime_threads::manager::{
     RuntimeThreadManager as RuntimeThreadManagerCore, checklist_tool_needs_panel_push,
     scratchpad_tool_needs_panel_push,
 };
@@ -378,17 +378,13 @@ impl RuntimeThreadManager {
         });
         if lht.completion_gate.is_active() {
             let mode = match lht.completion_gate.mode {
-                deepseek_core::long_horizon::CompletionGateMode::Enforce => "enforce",
-                deepseek_core::long_horizon::CompletionGateMode::Observe => "observe",
+                zagens_core::long_horizon::CompletionGateMode::Enforce => "enforce",
+                zagens_core::long_horizon::CompletionGateMode::Observe => "observe",
             };
-            let generic_mode = |m: deepseek_core::long_horizon::GenericGateMode| match m {
-                deepseek_core::long_horizon::GenericGateMode::Enforce => {
-                    Some("enforce".to_string())
-                }
-                deepseek_core::long_horizon::GenericGateMode::Observe => {
-                    Some("observe".to_string())
-                }
-                deepseek_core::long_horizon::GenericGateMode::Off => None,
+            let generic_mode = |m: zagens_core::long_horizon::GenericGateMode| match m {
+                zagens_core::long_horizon::GenericGateMode::Enforce => Some("enforce".to_string()),
+                zagens_core::long_horizon::GenericGateMode::Observe => Some("observe".to_string()),
+                zagens_core::long_horizon::GenericGateMode::Off => None,
             };
             let replay = generic_mode(lht.completion_gate.auto_verify_replay);
             let toolchain = generic_mode(lht.completion_gate.toolchain_gate);

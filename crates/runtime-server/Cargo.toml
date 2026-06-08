@@ -4,6 +4,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
 description = "Zagens headless CLI + HTTP/SSE runtime sidecar (`zagens`, `zagens-runtime` binaries)"
 default-run = "zagens-runtime"
 
@@ -14,7 +18,7 @@ toml = ["schemaui/toml"]
 web = ["dep:schemaui", "schemaui/web", "json", "toml"]
 
 [lib]
-name = "deepseek_runtime"
+name = "zagens_runtime"
 path = "src/lib.rs"
 
 [[bin]]
@@ -31,15 +35,15 @@ path = "src/bin/export_runtime_openapi.rs"
 
 [dependencies]
 anyhow.workspace = true
-deepseek-runtime-adapters = { path = "../runtime-adapters", version = "0.8.15" }
-deepseek-runtime-api = { path = "../runtime-api", version = "0.8.15" }
-deepseek-runtime-orchestrator = { path = "../runtime-orchestrator", version = "0.8.15" }
-deepseek-config = { path = "../config", version = "0.8.15" }
-deepseek-core = { path = "../core", version = "0.8.15" }
-deepseek-topic-memory = { path = "../topic-memory", version = "0.8.15" }
-deepseek-secrets = { path = "../secrets", version = "0.8.15" }
-deepseek-protocol = { path = "../protocol", version = "0.8.15" }
-deepseek-tools = { path = "../tools", version = "0.8.15" }
+zagens-runtime-adapters = { path = "../runtime-adapters", version = "0.7.0" }
+zagens-runtime-api = { path = "../runtime-api", version = "0.7.0" }
+zagens-runtime-orchestrator = { path = "../runtime-orchestrator", version = "0.7.0" }
+zagens-config = { path = "../config", version = "0.7.0" }
+zagens-core = { path = "../core", version = "0.7.0" }
+zagens-topic-memory = { path = "../topic-memory", version = "0.7.0" }
+zagens-secrets = { path = "../secrets", version = "0.7.0" }
+zagens-protocol = { path = "../protocol", version = "0.7.0" }
+zagens-tools = { path = "../tools", version = "0.7.0" }
 schemaui = { version = "0.12.0", default-features = false, optional = true }
 async-stream = "0.3.6"
 async-trait.workspace = true

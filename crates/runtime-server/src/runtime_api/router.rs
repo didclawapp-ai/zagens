@@ -4,7 +4,7 @@ use axum::Router;
 use axum::middleware;
 use axum::routing::{get, post};
 
-use deepseek_runtime_api::{compose_router, require_runtime_token};
+use zagens_runtime_api::{compose_router, require_runtime_token};
 
 use super::stream;
 use super::{

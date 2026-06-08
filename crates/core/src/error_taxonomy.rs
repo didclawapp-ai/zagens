@@ -442,52 +442,52 @@ pub fn is_stream_failure_retryable(message: &str) -> bool {
     is_category_network_retryable(classify_error_message(message))
 }
 
-impl From<deepseek_tools::ToolError> for ErrorEnvelope {
-    fn from(value: deepseek_tools::ToolError) -> Self {
+impl From<zagens_tools::ToolError> for ErrorEnvelope {
+    fn from(value: zagens_tools::ToolError) -> Self {
         match value {
-            deepseek_tools::ToolError::InvalidInput { message } => Self::new(
+            zagens_tools::ToolError::InvalidInput { message } => Self::new(
                 ErrorCategory::InvalidInput,
                 ErrorSeverity::Error,
                 false,
                 "tool_invalid_input",
                 message,
             ),
-            deepseek_tools::ToolError::MissingField { field } => Self::new(
+            zagens_tools::ToolError::MissingField { field } => Self::new(
                 ErrorCategory::InvalidInput,
                 ErrorSeverity::Error,
                 false,
                 "tool_missing_field",
                 format!("Missing required field: {field}"),
             ),
-            deepseek_tools::ToolError::PathEscape { path } => Self::new(
+            zagens_tools::ToolError::PathEscape { path } => Self::new(
                 ErrorCategory::Authorization,
                 ErrorSeverity::Error,
                 false,
                 "tool_path_escape",
                 format!("Path escapes workspace: {}", path.display()),
             ),
-            deepseek_tools::ToolError::ExecutionFailed { message } => Self::new(
+            zagens_tools::ToolError::ExecutionFailed { message } => Self::new(
                 ErrorCategory::Tool,
                 ErrorSeverity::Error,
                 true,
                 "tool_execution_failed",
                 message,
             ),
-            deepseek_tools::ToolError::Timeout { seconds } => Self::new(
+            zagens_tools::ToolError::Timeout { seconds } => Self::new(
                 ErrorCategory::Timeout,
                 ErrorSeverity::Warning,
                 true,
                 "tool_timeout",
                 format!("Tool timed out after {seconds}s"),
             ),
-            deepseek_tools::ToolError::NotAvailable { message } => Self::new(
+            zagens_tools::ToolError::NotAvailable { message } => Self::new(
                 ErrorCategory::State,
                 ErrorSeverity::Error,
                 false,
                 "tool_not_available",
                 message,
             ),
-            deepseek_tools::ToolError::PermissionDenied { message } => Self::new(
+            zagens_tools::ToolError::PermissionDenied { message } => Self::new(
                 ErrorCategory::Authorization,
                 ErrorSeverity::Error,
                 false,
@@ -501,7 +501,7 @@ impl From<deepseek_tools::ToolError> for ErrorEnvelope {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use deepseek_tools::ToolError;
+    use zagens_tools::ToolError;
 
     // ── classify_error_message golden tests (A3 / R-007) ─────────────────
 

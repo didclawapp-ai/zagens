@@ -3,9 +3,9 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use deepseek_tools::{ToolError, ToolResult};
 use serde_json::Value;
 use tokio::sync::{RwLock, mpsc};
+use zagens_tools::{ToolError, ToolResult};
 
 use crate::events::Event;
 

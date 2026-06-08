@@ -6,10 +6,10 @@ use serde_json::Value;
 
 use crate::task::{TaskCounts, TaskRecord, TaskStatus, TaskSummary, TasksResponse};
 
-use deepseek_core::coherence::CoherenceState;
-use deepseek_core::models::{ServerToolUsage, Usage};
-use deepseek_runtime_adapters::persist::SessionMetadata;
-use deepseek_runtime_orchestrator::runtime_threads::{
+use zagens_core::coherence::CoherenceState;
+use zagens_core::models::{ServerToolUsage, Usage};
+use zagens_runtime_adapters::persist::SessionMetadata;
+use zagens_runtime_orchestrator::runtime_threads::{
     CreateThreadRequest, RoutingRule, RoutingRulesDoc, RuntimeTurnStatus, StartTurnRequest,
     SteerTurnRequest, ThreadDetail, ThreadRecord, TurnItemKind, TurnItemLifecycleStatus,
     TurnItemRecord, TurnRecord, UpdateThreadRequest, UsageAggregation, UsageBucket, UsageTotals,
@@ -83,7 +83,7 @@ pub struct StartTurnResponse {
     pub thread: ThreadRecord,
     pub turn: TurnRecord,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub queued: Option<deepseek_runtime_orchestrator::runtime_threads::PromptAdmission>,
+    pub queued: Option<zagens_runtime_orchestrator::runtime_threads::PromptAdmission>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

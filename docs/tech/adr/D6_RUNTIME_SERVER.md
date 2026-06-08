@@ -7,9 +7,9 @@
 
 Zagens desktop embeds a local HTTP sidecar. Before D6, the bundled binary was `deepseek-tui serve --http`, linking **ratatui**, crossterm, and the full CLI/TUI surface — contradicting the Desktop-only / sidecar-first architecture.
 
-M-series (D5) moved `Engine` + op loop into `deepseek-core`, removing the structural blocker for a headless runtime binary.
+M-series (D5) moved `Engine` + op loop into `zagens-core`, removing the structural blocker for a headless runtime binary.
 
-**Phase B (2026-05-26)** merged the runtime lib into a **single crate** (`crates/runtime-server`, lib `deepseek_runtime`) and **removed** `crates/cli`, `crates/tui`, and the ratatui TUI tree.
+**Phase B (2026-05-26)** merged the runtime lib into a **single crate** (`crates/runtime-server`, lib `zagens_runtime`) and **removed** `crates/cli`, `crates/tui`, and the ratatui TUI tree.
 
 ## Decision
 
@@ -22,10 +22,10 @@ M-series (D5) moved `Engine` + op loop into `deepseek-core`, removing the struct
 
 ### Phase B (2026-05-26)
 
-1. **`[lib] name = deepseek_runtime`** in `crates/runtime-server`; bin calls `deepseek_runtime::runtime_serve`.
+1. **`[lib] name = zagens_runtime`** in `crates/runtime-server`; bin calls `zagens_runtime::runtime_serve`.
 2. Move former `crates/tui/src/*` (minus TUI tree) into `crates/runtime-server/src/`.
 3. Delete **`crates/cli`** and **`crates/tui`**.
-4. **`deepseek-state`:** retain in workspace — `deepseek-core` still compiles against it; **not** sidecar HTTP SSOT.
+4. **`deepseek-state`:** retain in workspace — `zagens-core` still compiles against it; **not** sidecar HTTP SSOT.
 
 ## Acceptance
 
@@ -45,6 +45,6 @@ M-series (D5) moved `Engine` + op loop into `deepseek-core`, removing the struct
 
 ## Non-goals (defer)
 
-- Delete `deepseek-state` while `deepseek-core` still references it
+- Delete `deepseek-state` while `zagens-core` still references it
 - Merge sidecar into Tauri process
 - P2 multi-sidecar (D11–D14)

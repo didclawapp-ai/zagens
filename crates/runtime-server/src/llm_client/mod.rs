@@ -33,8 +33,8 @@ pub mod mock;
 
 // === LlmClient Trait ===
 
-/// Re-exported from `deepseek-core` (P2 PR3b).
-pub use deepseek_core::chat::{LlmClient, StreamEventBox};
+/// Re-exported from `zagens-core` (P2 PR3b).
+pub use zagens_core::chat::{LlmClient, StreamEventBox};
 
 /// Trait for clients that support configurable retry behavior
 #[allow(dead_code)] // Part of LLM provider interface, will be used by additional providers

@@ -6,7 +6,6 @@ use crate::tools::spec::{
     required_str,
 };
 use async_trait::async_trait;
-use deepseek_config::workspace_meta_file_read;
 use regex::Regex;
 use serde_json::{Value, json};
 use std::fs;
@@ -14,6 +13,7 @@ use std::io::{BufRead, BufReader, Read};
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::LazyLock;
+use zagens_config::workspace_meta_file_read;
 
 // === ReadFileTool ===
 

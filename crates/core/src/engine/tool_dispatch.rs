@@ -4,8 +4,8 @@
 //! depends on [`EngineToolDispatch`] instead of `crate::tools::*`.
 
 use async_trait::async_trait;
-use deepseek_protocol::ToolOutput;
-use deepseek_tools::{FunctionCallError, ToolCall};
+use zagens_protocol::ToolOutput;
+use zagens_tools::{FunctionCallError, ToolCall};
 
 /// Minimal tool surface required by `Engine` / `turn_loop`.
 #[async_trait]

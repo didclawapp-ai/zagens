@@ -24,13 +24,13 @@ mod tools;
 mod types;
 mod wait_timeout;
 
-#[cfg(test)]
-pub use deepseek_core::subagent::VerdictItem;
-#[cfg(test)]
-pub(crate) use deepseek_core::subagent::{MailboxMessage, StructuredVerdict, SubAgentAssignment};
-pub use deepseek_core::subagent::{SubAgentResult, SubAgentStatus, SubAgentType, VerdictLevel};
 #[allow(unused_imports)]
 pub use mailbox::{Mailbox, MailboxEnvelope, MailboxReceiver};
+#[cfg(test)]
+pub use zagens_core::subagent::VerdictItem;
+#[cfg(test)]
+pub(crate) use zagens_core::subagent::{MailboxMessage, StructuredVerdict, SubAgentAssignment};
+pub use zagens_core::subagent::{SubAgentResult, SubAgentStatus, SubAgentType, VerdictLevel};
 
 pub(crate) use executor::wait_for_result;
 pub use factory::{

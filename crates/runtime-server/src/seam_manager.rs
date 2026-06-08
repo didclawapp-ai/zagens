@@ -712,14 +712,14 @@ mod tests {
 // ── M5 Engine-boundary trait impl ─────────────────────────────────────
 //
 // Bridges `SeamManager` (tui) onto the core
-// `deepseek_core::engine::hosts::SeamHost` trait. Every method is a
+// `zagens_core::engine::hosts::SeamHost` trait. Every method is a
 // thin UFCS delegation to the existing inherent method above — M5
 // adds zero behavior, only the trait surface. Errors get widened from
 // the inherent `anyhow::Result<_>` to the trait's
 // `Result<_, SeamError>` via `.map_err(Into::into)`.
 
 #[async_trait::async_trait]
-impl deepseek_core::engine::hosts::SeamHost for SeamManager {
+impl zagens_core::engine::hosts::SeamHost for SeamManager {
     fn config_enabled(&self) -> bool {
         self.config.enabled
     }
@@ -752,7 +752,7 @@ impl deepseek_core::engine::hosts::SeamHost for SeamManager {
         end_idx: usize,
         workspace: Option<&std::path::Path>,
         pinned_indices: &[usize],
-    ) -> Result<String, deepseek_core::engine::hosts::SeamError> {
+    ) -> Result<String, zagens_core::engine::hosts::SeamError> {
         SeamManager::produce_soft_seam(
             self,
             messages,
@@ -773,7 +773,7 @@ impl deepseek_core::engine::hosts::SeamHost for SeamManager {
         level: u8,
         start_idx: usize,
         end_idx: usize,
-    ) -> Result<String, deepseek_core::engine::hosts::SeamError> {
+    ) -> Result<String, zagens_core::engine::hosts::SeamError> {
         SeamManager::recompact(self, existing_seams, recent, level, start_idx, end_idx)
             .await
             .map_err(Into::into)
@@ -787,7 +787,7 @@ impl deepseek_core::engine::hosts::SeamHost for SeamManager {
         &self,
         existing_seams: &[String],
         state_text: Option<&str>,
-    ) -> Result<String, deepseek_core::engine::hosts::SeamError> {
+    ) -> Result<String, zagens_core::engine::hosts::SeamError> {
         SeamManager::produce_flash_briefing(self, existing_seams, state_text)
             .await
             .map_err(Into::into)

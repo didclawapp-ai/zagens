@@ -1,16 +1,16 @@
 //! Partition-aware emergency message trim (A1-full).
 
-use deepseek_core::chat::SystemPrompt;
-use deepseek_core::context_partition::{SessionContextPartition, next_message_index_to_trim};
-use deepseek_core::engine::context::{
+use zagens_core::chat::SystemPrompt;
+use zagens_core::context_partition::{SessionContextPartition, next_message_index_to_trim};
+use zagens_core::engine::context::{
     MIN_RECENT_MESSAGES_TO_KEEP, count_oldest_messages_to_drain, estimate_input_tokens_conservative,
 };
 
 use crate::compaction::{KEEP_RECENT_MESSAGES, plan_compaction};
 use crate::core::engine::scratchpad_flow;
 use crate::models::Message as TuiMessage;
-use deepseek_core::working_set::WorkingSet;
 use std::path::Path;
+use zagens_core::working_set::WorkingSet;
 
 /// Build the session hot/cold partition using the same heuristics as compaction.
 #[must_use]
@@ -78,10 +78,10 @@ pub fn trim_messages_partition_aware(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use deepseek_core::chat::ContentBlock;
-    use deepseek_core::context_partition::message_has_external_ref;
-    use deepseek_core::working_set::WorkingSet;
     use tempfile::tempdir;
+    use zagens_core::chat::ContentBlock;
+    use zagens_core::context_partition::message_has_external_ref;
+    use zagens_core::working_set::WorkingSet;
 
     fn msg(role: &str, text: &str) -> TuiMessage {
         TuiMessage {
@@ -134,7 +134,7 @@ mod tests {
 
     #[test]
     fn trim_preserves_thinking_transcript_isomorphism() {
-        use deepseek_core::chat::ContentBlock;
+        use zagens_core::chat::ContentBlock;
 
         let dir = tempdir().expect("tempdir");
         let workspace = dir.path();

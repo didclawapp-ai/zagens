@@ -10,8 +10,8 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use deepseek_core::chat::{ContentBlock, Message};
-use deepseek_core::long_horizon::{
+use zagens_core::chat::{ContentBlock, Message};
+use zagens_core::long_horizon::{
     CompletionGateConfig, CompletionGateMode, CompletionGateVerifyEntry, VerifySource,
 };
 
@@ -139,7 +139,7 @@ async fn evaluate_completion_gate_inner(
     lang: &str,
     steps_remaining: u32,
     exec: Option<&CompletionGateExec<'_>>,
-    runtime_deliverables: &[deepseek_core::long_horizon::CompletionGateDeliverableEntry],
+    runtime_deliverables: &[zagens_core::long_horizon::CompletionGateDeliverableEntry],
 ) -> LhtGateOutcome {
     // Task-agnostic stub / incompleteness gate (§ stub gate). Runs first because
     // it is a cheap filesystem scan (no command exec): if the workspace still

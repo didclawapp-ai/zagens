@@ -29,8 +29,8 @@ fn desktop_cargo_toml_has_no_runtime_library_dependency() {
             line_no + 1
         );
         assert!(
-            !trimmed.contains("deepseek-core"),
-            "line {}: desktop must not depend on deepseek-core as a library (use sidecar binary)",
+            !trimmed.contains("zagens-core"),
+            "line {}: desktop must not depend on zagens-core as a library (use sidecar binary)",
             line_no + 1
         );
     }

@@ -5,8 +5,7 @@ use super::*;
 impl Engine {
     /// #383 `/edit` — drop the last user+assistant exchange, then re-send.
     pub(super) async fn handle_edit_last_turn(&mut self, new_message: String) {
-        let _ =
-            deepseek_core::session::truncate_before_last_user_message(&mut self.session.messages);
+        let _ = zagens_core::session::truncate_before_last_user_message(&mut self.session.messages);
         self.handle_send_message(
             new_message,
             AppMode::Agent,

@@ -96,7 +96,7 @@ impl ToolSpec for ScratchpadImportAgentTool {
                     .write()
                     .await
                     .get_result(agent_id)
-                    .map(|r| r.status == deepseek_core::subagent::SubAgentStatus::Running)
+                    .map(|r| r.status == zagens_core::subagent::SubAgentStatus::Running)
                     .unwrap_or(false);
                 if still_running {
                     return Err(ToolError::execution_failed(format!(

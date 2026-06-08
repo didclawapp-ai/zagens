@@ -4,8 +4,8 @@
 
 use std::collections::HashSet;
 
-use deepseek_tools::{ToolError, ToolResult, required_str};
 use serde_json::{Value, json};
+use zagens_tools::{ToolError, ToolResult, required_str};
 
 use crate::chat::Tool;
 use crate::turn::TurnLoopMode;

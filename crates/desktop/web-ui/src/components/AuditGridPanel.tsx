@@ -15,7 +15,7 @@ import AgentPanel from './AgentPanel';
 import type { AgentState } from '../types/agent';
 import type { RuntimeConnectionState } from '../api/client';
 
-const GRID_WIDTH_KEY = 'deepseek-desktop-audit-grid-width';
+const GRID_WIDTH_KEY = 'zagens-desktop-audit-grid-width';
 const GRID_MIN_PX = 400;
 const GRID_DEFAULT_PX = 560;
 

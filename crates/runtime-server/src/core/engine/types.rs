@@ -1,5 +1,5 @@
 //! Engine configuration — runtime-side **facade** over the lean core
-//! [`deepseek_core::engine::config::EngineConfig`].
+//! [`zagens_core::engine::config::EngineConfig`].
 //!
 //! The fields remain laid out flat here so existing callers
 //! (`runtime_threads/engine_spawn.rs`, tests, etc.) keep compiling. The
@@ -160,7 +160,7 @@ pub struct EngineConfig {
     /// Audit scratchpad engine hooks (Phase B).
     pub scratchpad: crate::scratchpad::ScratchpadConfig,
     /// Long-horizon code task harness (LHT Phase 1).
-    pub long_horizon: deepseek_core::long_horizon::LongHorizonConfig,
+    pub long_horizon: zagens_core::long_horizon::LongHorizonConfig,
     /// Test/dev override: skip `DeepSeekClient::new` and use this client instead.
     #[doc(hidden)]
     pub llm_client_override: Option<std::sync::Arc<dyn crate::llm_client::LlmClient>>,
@@ -196,7 +196,7 @@ impl Default for EngineConfig {
             network_policy: None,
             snapshots_enabled: true,
             snapshots_max_workspace_gb:
-                deepseek_runtime_adapters::snapshot::DEFAULT_SNAPSHOT_MAX_WORKSPACE_GB,
+                zagens_runtime_adapters::snapshot::DEFAULT_SNAPSHOT_MAX_WORKSPACE_GB,
             lsp_config: None,
             runtime_services: RuntimeToolServices::default(),
             subagent_model_overrides: HashMap::new(),
@@ -209,7 +209,7 @@ impl Default for EngineConfig {
             task_type: crate::task_type::TaskType::default(),
             workshop: None,
             scratchpad: crate::scratchpad::ScratchpadConfig::default(),
-            long_horizon: deepseek_core::long_horizon::LongHorizonConfig::default(),
+            long_horizon: zagens_core::long_horizon::LongHorizonConfig::default(),
             llm_client_override: None,
             search_provider: crate::config::SearchProvider::default(),
             search_api_key: None,
@@ -219,7 +219,7 @@ impl Default for EngineConfig {
 
 impl EngineConfig {
     /// Project the lean subset (25 core-friendly fields) into the core
-    /// [`deepseek_core::engine::config::EngineConfig`]. Allocates fresh
+    /// [`zagens_core::engine::config::EngineConfig`]. Allocates fresh
     /// `String` / `Vec` / `HashMap` clones; cheap relative to the
     /// per-turn work that follows.
     ///
@@ -228,8 +228,8 @@ impl EngineConfig {
     /// M7 will switch the entry point and immediately call `lean()` /
     /// `into_parts()` from the new `Engine::with_hosts(...)` builder.
     #[must_use]
-    pub fn lean(&self) -> deepseek_core::engine::config::EngineConfig {
-        deepseek_core::engine::config::EngineConfig {
+    pub fn lean(&self) -> zagens_core::engine::config::EngineConfig {
+        zagens_core::engine::config::EngineConfig {
             model: self.model.clone(),
             workspace: self.workspace.clone(),
             allow_shell: self.allow_shell,
@@ -281,8 +281,8 @@ impl EngineConfig {
     /// Consume the facade and produce `(lean, ext)` for the future
     /// core-side `Engine::with_hosts(lean, ext)` entry point (M7).
     #[must_use]
-    pub fn into_parts(self) -> (deepseek_core::engine::config::EngineConfig, EngineConfigExt) {
-        let lean = deepseek_core::engine::config::EngineConfig {
+    pub fn into_parts(self) -> (zagens_core::engine::config::EngineConfig, EngineConfigExt) {
+        let lean = zagens_core::engine::config::EngineConfig {
             model: self.model,
             workspace: self.workspace,
             allow_shell: self.allow_shell,
@@ -332,7 +332,7 @@ impl EngineConfig {
     /// `EngineConfig` from caller-supplied core + ext values.
     #[must_use]
     pub fn from_parts(
-        lean: deepseek_core::engine::config::EngineConfig,
+        lean: zagens_core::engine::config::EngineConfig,
         ext: EngineConfigExt,
     ) -> Self {
         Self {

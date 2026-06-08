@@ -5,7 +5,7 @@
 
 use serde_json::{Value, json};
 
-use deepseek_tools::{ToolError, ToolResult};
+use zagens_tools::{ToolError, ToolResult};
 
 use super::streaming::ToolUseState;
 use crate::chat::{Tool, ToolCaller};

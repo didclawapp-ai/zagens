@@ -30,7 +30,7 @@
 | **Code / Office 分场景** | 不同工具面与提示词；切换任务类型会**新开会话**以保持 KV 稳定（[架构说明](docs/task-type-prompt-architecture.md)）。 |
 | **组合式 Harness** | 长程代码任务与分层完成门禁（操作者 / 模型 / 工具链）；夹具见 [`fixtures/harness/`](fixtures/harness/)（[LHT 规格](docs/harness/LONG_HORIZON_CODE_TASKS.md)）。 |
 | **CRAFT 多代理** | 角色化子代理、结构化 fix-loop 裁决、P1 黑板交接（[CRAFT 说明](docs/craft-v2-improvements.md)）。 |
-| **符号索引** | 懒加载 `.deepseek/symbols.json`，含桌面索引面板与重建 API。 |
+| **符号索引** | 懒加载 `.zagens/symbols.json`，含桌面索引面板与重建 API。 |
 | **Office 流水线** | `read_file` / `write_office`（xlsx 用 Rust，docx/pptx/pdf 用捆绑 Python）。 |
 | **安全优先** | 分层执行策略、bash 词典、域名网络规则、桌面 HTTP 工具审批。 |
 | **桌面体验** | 托盘、完成通知、会话回放、diff 面板、Code 工作区 **PTY 终端**、Sidecar 健康探测与重启。 |
@@ -54,7 +54,7 @@
 
 ## Agent Runtime（Sidecar）
 
-嵌入式 **`deepseek-runtime`** 进程提供聊天、工具与设置能力：
+嵌入式 **`zagens-runtime`** 进程提供聊天、工具与设置能力：
 
 - **会话与线程** — SQLite 持久化、恢复/分叉、工作区快照
 - **MCP** — stdio 服务、按工具过滤

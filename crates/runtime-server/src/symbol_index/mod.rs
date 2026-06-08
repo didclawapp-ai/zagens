@@ -13,10 +13,6 @@
 
 mod extract;
 
-use deepseek_config::{
-    WORKSPACE_META_DIR_NAME, legacy_workspace_meta_dir, workspace_meta_dir,
-    workspace_meta_file_read, workspace_meta_file_write,
-};
 use extract::{
     extract_cpp_symbols, extract_go_symbols, extract_py_symbols, extract_sfc_symbols,
     extract_ts_symbols,
@@ -24,6 +20,10 @@ use extract::{
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use zagens_config::{
+    WORKSPACE_META_DIR_NAME, legacy_workspace_meta_dir, workspace_meta_dir,
+    workspace_meta_file_read, workspace_meta_file_write,
+};
 
 // ── Public types ──────────────────────────────────────────────
 

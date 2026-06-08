@@ -18,7 +18,7 @@ use std::time::Duration;
 use tokio::sync::{Mutex, mpsc, watch};
 use tokio_util::sync::CancellationToken;
 
-pub use deepseek_core::subagent::MailboxMessage;
+pub use zagens_core::subagent::MailboxMessage;
 
 /// One delivery: a sequence number plus the message. The sequence is
 /// monotonic across the entire mailbox (not per-agent) so a single ordering

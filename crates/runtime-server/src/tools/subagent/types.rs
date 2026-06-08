@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use deepseek_core::subagent::{
+use zagens_core::subagent::{
     CompletionReason, SubAgentAssignment, SubAgentResult, SubAgentStatus, SubAgentType,
 };
 

@@ -30,18 +30,18 @@ impl RuntimeThreadManager {
         // tri-state persists in `settings.toml` so it takes effect next turn
         // without a sidecar restart.
         let ui_settings = crate::settings::Settings::load().unwrap_or_default();
-        let composer_mode = deepseek_config::read_lht_composer_mode_setting()
-            .unwrap_or(deepseek_config::LhtComposerMode::Auto);
+        let composer_mode = zagens_config::read_lht_composer_mode_setting()
+            .unwrap_or(zagens_config::LhtComposerMode::Auto);
         let mut long_horizon = self.config.long_horizon_config();
         match composer_mode {
-            deepseek_config::LhtComposerMode::Strict => {
+            zagens_config::LhtComposerMode::Strict => {
                 long_horizon.enabled = true;
-                long_horizon.mode = deepseek_core::long_horizon::LhtMode::Strict;
+                long_horizon.mode = zagens_core::long_horizon::LhtMode::Strict;
             }
-            deepseek_config::LhtComposerMode::Off => {
+            zagens_config::LhtComposerMode::Off => {
                 long_horizon.enabled = false;
             }
-            deepseek_config::LhtComposerMode::Auto => {}
+            zagens_config::LhtComposerMode::Auto => {}
         }
         let store = self.store.clone();
         let thread_id_persist = thread.id.clone();

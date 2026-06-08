@@ -18,10 +18,10 @@ import { workspaceStorageKey } from './windowBridge';
 
 export type Theme = 'light' | 'dark';
 
-export const ACTIVE_INSPECTOR_STORAGE_KEY = 'deepseek-desktop-active-inspector';
-export const RIGHT_PANEL_COLLAPSED_STORAGE_KEY = 'deepseek-desktop-right-panel-collapsed';
-export const ROUTE_INTENT_STORAGE_KEY = 'deepseek-desktop-route-intent';
-export const TASK_TYPE_STORAGE_KEY = 'deepseek-desktop-task-type';
+export const ACTIVE_INSPECTOR_STORAGE_KEY = 'zagens-desktop-active-inspector';
+export const RIGHT_PANEL_COLLAPSED_STORAGE_KEY = 'zagens-desktop-right-panel-collapsed';
+export const ROUTE_INTENT_STORAGE_KEY = 'zagens-desktop-route-intent';
+export const TASK_TYPE_STORAGE_KEY = 'zagens-desktop-task-type';
 /** Whether the user has explicitly chosen a default task type (onboarding step 3). */
 export function hasTaskTypePreferenceStored(): boolean {
   try {
@@ -33,7 +33,7 @@ export function hasTaskTypePreferenceStored(): boolean {
 
 export function loadRunModePreference(): DesktopRunModeId {
   try {
-    return parseDesktopRunModeId(localStorage.getItem('deepseek-desktop-run-mode')) ?? 'agent';
+    return parseDesktopRunModeId(localStorage.getItem('zagens-desktop-run-mode')) ?? 'agent';
   } catch {
     return 'agent';
   }
@@ -44,7 +44,7 @@ export function loadComposerPrefs(windowLabel: string): {
   workspace: string;
 } {
   try {
-    const wm = parseDesktopModelId(localStorage.getItem('deepseek-desktop-model'));
+    const wm = parseDesktopModelId(localStorage.getItem('zagens-desktop-model'));
     const ws = normalizeWorkspaceForApi(
       localStorage.getItem(workspaceStorageKey(windowLabel))?.trim() ?? '',
     );
@@ -156,7 +156,7 @@ export function loadStoredRightPanelCollapsed(): boolean {
   return true;
 }
 
-const NOTIFY_METHOD_KEY = 'deepseek-desktop-notify-method';
+const NOTIFY_METHOD_KEY = 'zagens-desktop-notify-method';
 
 /**
  * Read the cached notify_method from localStorage.

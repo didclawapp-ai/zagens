@@ -40,7 +40,7 @@ impl TuiShellHost {
     }
 }
 
-impl deepseek_core::engine::hosts::ShellHost for TuiShellHost {}
+impl zagens_core::engine::hosts::ShellHost for TuiShellHost {}
 
 /// Create a new shared shell manager with default sandbox policy.
 pub fn new_shared_shell_manager(workspace: PathBuf) -> SharedShellManager {

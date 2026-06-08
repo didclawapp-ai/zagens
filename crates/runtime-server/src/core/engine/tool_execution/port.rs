@@ -3,16 +3,16 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use deepseek_core::engine::turn_loop::{McpPoolPort, TurnLoopToolExec, TurnLoopToolExecutor};
-use deepseek_tools::{ToolError, ToolResult};
 use serde_json::Value;
 use serde_json::json;
 use tokio::sync::Mutex as AsyncMutex;
+use zagens_core::engine::turn_loop::{McpPoolPort, TurnLoopToolExec, TurnLoopToolExecutor};
+use zagens_tools::{ToolError, ToolResult};
 
 use crate::mcp::McpPool;
 use crate::tools::ToolRegistry;
 use crate::tools::spec::ToolContext;
-use deepseek_core::engine::emit_tool_audit;
+use zagens_core::engine::emit_tool_audit;
 
 use super::super::Engine;
 

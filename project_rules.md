@@ -21,7 +21,7 @@ When summarizing the project, **lead with Zagens** (this product), not upstream 
 ### Runtime evolution (2026-05 — planning SSOT)
 
 - **Public architecture:** [`docs/tech/RUNTIME_ARCHITECTURE.md`](docs/tech/RUNTIME_ARCHITECTURE.md), [`docs/tech/adr/D17_ARCHITECTURE_FREEZE.md`](docs/tech/adr/D17_ARCHITECTURE_FREEZE.md). Full roadmap & session handoffs: local `doc_Private/docs/` (not published).
-- **Production path:** `deepseek-tui` → `runtime_api` `/v1/*` → `Engine`（`turn_loop` 主体在 `deepseek-core`；`Engine` struct 仍在 `tui`）。
+- **Production path:** `deepseek-tui` → `runtime_api` `/v1/*` → `Engine`（`turn_loop` 主体在 `zagens-core`；`Engine` struct 仍在 `tui`）。
 - **Do not** add product features on `app-server` / `core::Runtime` **queued** placeholder path; **do not** implement Agent turns inside the Zagens WebView.
 - **Desktop freeze:** lifted per D17; still **no** in-WebView Engine or app-server sidecar. PRs touching `crates/desktop` or `web-ui` should note API/contract impact.
 - **Issue prefixes:** use `P2-debt` for Engine→core work; avoid ambiguous `Phase 2` labels.

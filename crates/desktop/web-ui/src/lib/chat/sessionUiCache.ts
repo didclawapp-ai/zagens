@@ -16,8 +16,8 @@ export interface CachedUiMessage {
 }
 
 const MAX_CACHED_SESSIONS = 24;
-const STORAGE_KEY = 'deepseek-desktop-session-ui-v1';
-const STORAGE_META_KEY = 'deepseek-desktop-session-ui-meta-v1';
+const STORAGE_KEY = 'zagens-desktop-session-ui-v1';
+const STORAGE_META_KEY = 'zagens-desktop-session-ui-meta-v1';
 
 type CacheAccessMeta = {
   accessedAt: Record<string, number>;

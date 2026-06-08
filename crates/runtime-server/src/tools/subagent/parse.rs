@@ -5,7 +5,7 @@ use serde_json::Value;
 
 use crate::tools::spec::{ToolError, optional_bool};
 
-use deepseek_core::subagent::{SubAgentAssignment, SubAgentType};
+use zagens_core::subagent::{SubAgentAssignment, SubAgentType};
 
 use super::constants::VALID_SUBAGENT_TYPES;
 use super::runtime::SubAgentRuntime;

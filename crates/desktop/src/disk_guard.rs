@@ -1,9 +1,9 @@
 //! Free-space checks for user data (`~/.zagens`) and the active workspace volume.
 //! Used to pause in-flight turns before ENOSPC corrupts sessions or billing continues blindly.
 
-use deepseek_config::user_data_root;
 use serde::Serialize;
 use std::path::Path;
+use zagens_config::user_data_root;
 
 /// Below this: pause turns and show critical UI.
 pub const CRITICAL_FREE_BYTES: u64 = 100 * 1024 * 1024;

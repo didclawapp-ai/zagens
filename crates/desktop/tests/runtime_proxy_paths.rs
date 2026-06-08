@@ -1,7 +1,7 @@
 //! A+.5 — `runtime_proxy` path allowlist regression (integration crate tests).
 //!
 //! Unit tests on the real `validate_runtime_path` live in
-//! `src/runtime_proxy.rs` (`cargo test -p deepseek-desktop runtime_proxy`).
+//! `src/runtime_proxy.rs` (`cargo test -p zagens-desktop runtime_proxy`).
 //! This file keeps a mirror contract so `tests/` always runs under CI.
 
 fn validate_like_runtime_proxy(path: &str) -> Result<(), String> {

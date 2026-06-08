@@ -19,7 +19,7 @@ impl Engine {
         allow_shell: bool,
         trust_mode: bool,
         auto_approve: bool,
-        approval_mode: deepseek_core::approval::ApprovalMode,
+        approval_mode: zagens_core::approval::ApprovalMode,
         temperature: Option<f32>,
         top_p: Option<f32>,
         max_output_tokens: Option<u32>,
@@ -149,7 +149,7 @@ impl Engine {
         self.config.trust_mode = trust_mode;
         self.session.auto_approve = auto_approve;
         self.session.approval_mode = if auto_approve {
-            deepseek_core::approval::ApprovalMode::Auto
+            zagens_core::approval::ApprovalMode::Auto
         } else {
             approval_mode
         };
@@ -303,7 +303,7 @@ impl Engine {
                 // M5: dispatch through TopicMemoryHost — settings owned
                 // by the runtime (set at Engine::new from
                 // config.topic_memory).
-                use deepseek_core::engine::hosts::TopicMemoryHost;
+                use zagens_core::engine::hosts::TopicMemoryHost;
                 TopicMemoryHost::on_turn_complete(&mut *self.topic_memory, &user, &assistant);
             }
             self.maybe_advance_cycle(mode).await;

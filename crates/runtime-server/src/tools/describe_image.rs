@@ -7,7 +7,7 @@
 //!      → injected into the main conversation as a user message.
 //!
 //! Configuration (env vars, optional — defaults to SiliconFlow Qwen3-VL; see
-//! `deepseek_config::DEFAULT_VISION_MODEL`):
+//! `zagens_config::DEFAULT_VISION_MODEL`):
 //!   VISION_API_KEY  — Bearer token (required)
 //!   VISION_BASE_URL — OpenAI-compatible endpoint root
 //!                      (default: https://api.siliconflow.cn/v1)
@@ -17,11 +17,11 @@
 
 use async_trait::async_trait;
 use base64::Engine as _;
-use deepseek_config::{
-    DEFAULT_VISION_MODEL, vision_should_check_degenerate_ocr_template, vision_user_prompt_for_model,
-};
 use serde_json::Value;
 use std::error::Error;
+use zagens_config::{
+    DEFAULT_VISION_MODEL, vision_should_check_degenerate_ocr_template, vision_user_prompt_for_model,
+};
 
 use super::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
@@ -173,7 +173,7 @@ impl ToolSpec for DescribeImageTool {
 
 /// Read `[vision]` section from the TUI config file (if present).
 fn load_vision_from_config() -> (Option<String>, Option<String>, Option<String>) {
-    let path = deepseek_config::default_config_path()
+    let path = zagens_config::default_config_path()
         .ok()
         .filter(|p| p.exists());
     let path = match path {

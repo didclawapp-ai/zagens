@@ -1,9 +1,9 @@
 //! CRAFT B-L1 helpers: fix-loop hints, runtime events, sentinel parsing.
 
-use deepseek_core::events::Event;
-use deepseek_core::subagent::{SubAgentResult, SubAgentType, VerdictLevel};
 use serde_json::{Map, Value, json};
 use tokio::sync::mpsc;
+use zagens_core::events::Event;
+use zagens_core::subagent::{SubAgentResult, SubAgentType, VerdictLevel};
 
 /// Blackboard partition key written for a CRAFT role.
 pub fn blackboard_partition_key(agent_type: &SubAgentType) -> Option<&'static str> {
@@ -117,7 +117,7 @@ pub fn verdict_level_str(level: &VerdictLevel) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use deepseek_core::subagent::{
+    use zagens_core::subagent::{
         StructuredVerdict, SubAgentAssignment, SubAgentStatus, VerdictItem,
     };
 

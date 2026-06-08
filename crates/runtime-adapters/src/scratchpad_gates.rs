@@ -132,7 +132,7 @@ mod tests {
         let ws = dir.path().join("ws");
         std::fs::create_dir_all(&ws).expect("mkdir");
         let run_id = "gate-task";
-        let base = deepseek_config::workspace_meta_dir(&ws)
+        let base = zagens_config::workspace_meta_dir(&ws)
             .join("scratchpad")
             .join(run_id);
         std::fs::create_dir_all(&base).expect("mkdir run");
@@ -166,7 +166,7 @@ mod tests {
         let ws = dir.path().join("ws");
         std::fs::create_dir_all(&ws).expect("mkdir");
         let run_id = "gate-write";
-        let base = deepseek_config::workspace_meta_dir(&ws)
+        let base = zagens_config::workspace_meta_dir(&ws)
             .join("scratchpad")
             .join(run_id);
         std::fs::create_dir_all(&base).expect("mkdir run");

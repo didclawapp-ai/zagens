@@ -11,7 +11,6 @@ mod prompt;
 mod prune;
 mod tokens;
 
-pub use deepseek_core::compaction::{CompactionConfig, MINIMUM_AUTO_COMPACTION_TOKENS};
 pub use execute::{CompactionResult, compact_messages, compact_messages_safe};
 pub use plan::{CompactionPlan, plan_compaction};
 pub use prompt::merge_system_prompts;
@@ -20,6 +19,7 @@ pub use tokens::{
     estimate_input_tokens_conservative, estimate_text_tokens_deepseek, estimate_tokens,
     should_compact,
 };
+pub use zagens_core::compaction::{CompactionConfig, MINIMUM_AUTO_COMPACTION_TOKENS};
 
 pub const KEEP_RECENT_MESSAGES: usize = 4;
 pub(crate) const RECENT_WORKING_SET_WINDOW: usize = 12;

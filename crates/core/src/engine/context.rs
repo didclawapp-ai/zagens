@@ -1,6 +1,6 @@
 //! Context budgeting and prompt-shaping helpers for the engine (P2 PR4).
 
-use deepseek_tools::ToolResult;
+use zagens_tools::ToolResult;
 
 use crate::chat::{ContentBlock, Message, SystemPrompt, context_window_for_model};
 

@@ -19,7 +19,7 @@ default-members = ["crates/runtime-server"]
 resolver = "2"
 
 [workspace.package]
-version = "0.8.15"
+version = "0.7.0"
 edition = "2024"
 # Rust 1.88 stabilized `let_chains` in `if`/`while` conditions, which the
 # codebase relies on extensively. Cargo enforces this so users on older
@@ -27,6 +27,9 @@ edition = "2024"
 # confusing E0658 from rustc. Dev/CI pin: rust-toolchain.toml (currently 1.96).
 rust-version = "1.88"
 license = "MIT"
+repository = "https://github.com/didclawapp-ai/zagens"
+homepage = "https://github.com/didclawapp-ai/zagens"
+readme = "README.md"
 # Full license text: LICENSE. Runtime lineage attribution: NOTICE.md, third-party/deepseek-tui/.
 
 [workspace.dependencies]

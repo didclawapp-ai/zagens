@@ -4,7 +4,14 @@
 //! 后续按域（auth / vision / settings / terminal 等）**按需**再拆。见
 //! [`ARCHITECTURE_ASSESSMENT_2026-05-25.md`](../../../docs/tech/adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md) §5.1「D1 — 已闭合」。
 
-use deepseek_config::{
+use ignore::WalkBuilder;
+use serde::{Deserialize, Serialize};
+use std::error::Error;
+use std::path::{Component, Path, PathBuf};
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::Notify;
+use zagens_config::{
     CompactionToml, CompletionGateConfigToml, ConfigStore, ConfigToml, DEFAULT_VISION_MODEL,
     LhtPresetId, LongHorizonConfigToml, MacroLoopConfigToml, WORKSPACE_META_DIR_NAME,
     apply_lht_preset as apply_lht_preset_overlay, compaction_threshold_tokens_for_model,
@@ -13,13 +20,6 @@ use deepseek_config::{
     workspace_meta_dir, workspace_meta_dir_read, workspace_meta_file_read,
     workspace_meta_file_write,
 };
-use ignore::WalkBuilder;
-use serde::{Deserialize, Serialize};
-use std::error::Error;
-use std::path::{Component, Path, PathBuf};
-use std::sync::Arc;
-use std::time::Duration;
-use tokio::sync::Notify;
 
 /// reqwest 顶层 `Display` 常为笼统的「error sending request」，展开 `source()` 链便于跨机排查。
 fn chain_transport_error_cn<E: Error + Send + Sync>(prefix: &str, err: &E) -> String {
@@ -130,7 +130,7 @@ pub struct ApiKeyStatus {
 
 #[tauri::command]
 pub fn get_api_key_status() -> Result<ApiKeyStatus, String> {
-    let secrets = deepseek_secrets::Secrets::auto_detect();
+    let secrets = zagens_secrets::Secrets::auto_detect();
     let configured = secrets.resolve("deepseek").is_some();
     Ok(ApiKeyStatus { configured })
 }
@@ -143,7 +143,7 @@ pub fn save_deepseek_api_key(key: String, ctx: tauri::State<'_, AppContext>) -> 
     }
 
     // Write to OS keyring first — if this fails we do NOT clear config.toml
-    let secrets = deepseek_secrets::Secrets::auto_detect();
+    let secrets = zagens_secrets::Secrets::auto_detect();
     secrets
         .set("deepseek", &key)
         .map_err(|e| format!("无法保存到系统密钥链: {e}"))?;
@@ -167,7 +167,7 @@ pub fn save_deepseek_api_key(key: String, ctx: tauri::State<'_, AppContext>) -> 
 
 #[tauri::command]
 pub fn clear_deepseek_api_key(ctx: tauri::State<'_, AppContext>) -> Result<(), String> {
-    let secrets = deepseek_secrets::Secrets::auto_detect();
+    let secrets = zagens_secrets::Secrets::auto_detect();
     secrets
         .delete("deepseek")
         .map_err(|e| format!("无法从系统密钥链删除: {e}"))?;
@@ -190,7 +190,7 @@ pub struct VisionBridgeStatus {
 
 #[tauri::command]
 pub fn get_vision_bridge_status() -> Result<VisionBridgeStatus, String> {
-    let secrets = deepseek_secrets::Secrets::auto_detect();
+    let secrets = zagens_secrets::Secrets::auto_detect();
     let configured = secrets.resolve("vision").is_some();
     let store = ConfigStore::load(None).map_err(|e| e.to_string())?;
     let v = store.config.vision.as_ref();
@@ -215,7 +215,7 @@ pub fn save_vision_bridge(
     let key_trim = api_key.trim();
     if key_trim.is_empty() {
         // If no new key is provided, check keyring for existing one
-        let secrets = deepseek_secrets::Secrets::auto_detect();
+        let secrets = zagens_secrets::Secrets::auto_detect();
         if secrets.resolve("vision").is_none() {
             return Err(
                 "请填写视觉桥接 API Key；密钥保存后不会回显。修改端点或模型时也需要重新输入密钥。"
@@ -223,7 +223,7 @@ pub fn save_vision_bridge(
             );
         }
     } else {
-        let secrets = deepseek_secrets::Secrets::auto_detect();
+        let secrets = zagens_secrets::Secrets::auto_detect();
         secrets
             .set("vision", key_trim)
             .map_err(|e| format!("无法保存视觉桥接密钥到系统密钥链: {e}"))?;
@@ -259,7 +259,7 @@ pub fn clear_vision_bridge(ctx: tauri::State<'_, AppContext>) -> Result<(), Stri
     store.config.vision = None;
     store.save().map_err(|e| e.to_string())?;
     // Also clear from keyring
-    let secrets = deepseek_secrets::Secrets::auto_detect();
+    let secrets = zagens_secrets::Secrets::auto_detect();
     secrets.delete("vision").ok();
     ctx.sidecar_restart.notify_one();
     Ok(())
@@ -328,7 +328,7 @@ pub async fn vision_transcribe_image(data_url: String) -> Result<String, String>
         .as_ref()
         .ok_or_else(|| "未配置视觉桥接：请在 设置 → API Key 中保存视觉桥接密钥".to_string())?;
     // Key from OS keyring first, then config.toml fallback (legacy plaintext)
-    let secrets = deepseek_secrets::Secrets::auto_detect();
+    let secrets = zagens_secrets::Secrets::auto_detect();
     let api_key = secrets
         .resolve("vision")
         .or_else(|| {
@@ -464,9 +464,9 @@ pub async fn vision_transcribe_image(data_url: String) -> Result<String, String>
 #[cfg(test)]
 mod save_config_tests {
     use super::*;
-    use deepseek_config::VisionConfigToml;
     use std::io::Write;
     use uuid::Uuid;
+    use zagens_config::VisionConfigToml;
 
     fn temp_config_path() -> PathBuf {
         std::env::temp_dir().join(format!("ds-pick-cfg-test-{}.toml", Uuid::new_v4()))
@@ -528,18 +528,18 @@ model = "deepseek-ai/DeepSeek-OCR"
 
 #[tauri::command]
 pub async fn get_locale() -> Result<String, String> {
-    deepseek_config::read_locale_setting().map_err(|e| e.to_string())
+    zagens_config::read_locale_setting().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn set_app_locale(locale: String) -> Result<(), String> {
-    deepseek_config::write_locale_setting(&locale).map_err(|e| e.to_string())
+    zagens_config::write_locale_setting(&locale).map_err(|e| e.to_string())
 }
 
 /// Read the composer LHT tri-state (`auto` | `strict` | `off`).
 #[tauri::command]
 pub async fn get_lht_composer_mode() -> Result<String, String> {
-    Ok(deepseek_config::read_lht_composer_mode_setting()
+    Ok(zagens_config::read_lht_composer_mode_setting()
         .map_err(|e| e.to_string())?
         .as_str()
         .to_string())
@@ -548,22 +548,22 @@ pub async fn get_lht_composer_mode() -> Result<String, String> {
 /// Persist the composer LHT tri-state. Takes effect on the next turn without restart.
 #[tauri::command]
 pub fn set_lht_composer_mode(mode: String) -> Result<(), String> {
-    deepseek_config::write_lht_composer_mode_setting(
-        deepseek_config::LhtComposerMode::from_storage(&mode),
-    )
+    zagens_config::write_lht_composer_mode_setting(zagens_config::LhtComposerMode::from_storage(
+        &mode,
+    ))
     .map_err(|e| e.to_string())
 }
 
 /// Legacy: read strict flag (`true` only when mode is strict).
 #[tauri::command]
 pub async fn get_lht_strict() -> Result<bool, String> {
-    deepseek_config::read_lht_strict_setting().map_err(|e| e.to_string())
+    zagens_config::read_lht_strict_setting().map_err(|e| e.to_string())
 }
 
 /// Legacy: `true` → strict; `false` → auto (not off).
 #[tauri::command]
 pub fn set_lht_strict(enabled: bool) -> Result<(), String> {
-    deepseek_config::write_lht_strict_setting(enabled).map_err(|e| e.to_string())
+    zagens_config::write_lht_strict_setting(enabled).map_err(|e| e.to_string())
 }
 
 // ---------------------------------------------------------------------------

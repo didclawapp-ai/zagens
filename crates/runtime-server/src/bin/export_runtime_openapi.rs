@@ -5,7 +5,7 @@ use std::fs;
 use std::path::PathBuf;
 
 fn main() {
-    let json = deepseek_runtime::runtime_api::openapi::export_openapi_json();
+    let json = zagens_runtime::runtime_api::openapi::export_openapi_json();
     let out = env::args().nth(1).map(PathBuf::from).unwrap_or_else(|| {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../docs/tech/openapi/zagens-runtime-v1.openapi.json")

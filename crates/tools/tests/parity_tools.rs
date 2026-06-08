@@ -1,11 +1,9 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use deepseek_protocol::{ToolKind, ToolOutput, ToolPayload};
-use deepseek_tools::{
-    ToolCall, ToolCallSource, ToolHandler, ToolInvocation, ToolRegistry, ToolSpec,
-};
 use serde_json::json;
+use zagens_protocol::{ToolKind, ToolOutput, ToolPayload};
+use zagens_tools::{ToolCall, ToolCallSource, ToolHandler, ToolInvocation, ToolRegistry, ToolSpec};
 
 struct EchoHandler;
 
@@ -22,7 +20,7 @@ impl ToolHandler for EchoHandler {
     async fn handle(
         &self,
         invocation: ToolInvocation,
-    ) -> std::result::Result<ToolOutput, deepseek_tools::FunctionCallError> {
+    ) -> std::result::Result<ToolOutput, zagens_tools::FunctionCallError> {
         Ok(ToolOutput::Function {
             body: Some(json!({
                 "tool": invocation.tool_name,

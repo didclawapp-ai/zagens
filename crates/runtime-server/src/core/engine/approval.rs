@@ -1,10 +1,10 @@
-//! Approval + user-input handshake — TUI shell over `deepseek-core::engine::approval`.
+//! Approval + user-input handshake — TUI shell over `zagens-core::engine::approval`.
 
 use crate::core::events::Event;
 use crate::tools::approval_cache::{ApprovalCacheStatus, ApprovalKey};
 use crate::tools::user_input::{UserInputRequest, UserInputResponse};
 
-use deepseek_core::engine::approval::{
+use zagens_core::engine::approval::{
     ApprovalDecision as CoreApprovalDecision, ApprovalResult as CoreApprovalResult,
     UserInputDecision as CoreUserInputDecision, recv_user_input_for_tool,
 };

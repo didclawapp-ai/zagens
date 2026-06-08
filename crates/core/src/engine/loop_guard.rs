@@ -1,4 +1,4 @@
-//! Pure-data guardrails for repeated tool-call loops (P2 PR4 → `deepseek-core`).
+//! Pure-data guardrails for repeated tool-call loops (P2 PR4 → `zagens-core`).
 
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;

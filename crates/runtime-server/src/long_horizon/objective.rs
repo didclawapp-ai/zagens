@@ -1,7 +1,7 @@
 //! Objective derivation for LHT nudge messages (§4.5).
 
-use deepseek_core::chat::{ContentBlock, Message};
-use deepseek_core::engine::context::summarize_text;
+use zagens_core::chat::{ContentBlock, Message};
+use zagens_core::engine::context::summarize_text;
 
 use crate::tools::plan::{PlanSnapshot, StepStatus};
 use crate::tools::todo::{TodoListSnapshot, TodoStatus};

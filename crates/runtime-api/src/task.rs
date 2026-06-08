@@ -3,9 +3,9 @@
 use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
-use deepseek_runtime_adapters::json_schema_util::path_as_string;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use zagens_runtime_adapters::json_schema_util::path_as_string;
 
 const TIMELINE_SUMMARY_LIMIT: usize = 240;
 

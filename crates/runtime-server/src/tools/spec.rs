@@ -18,12 +18,12 @@ use crate::lsp::LspManager;
 use crate::network_policy::NetworkPolicyDecider;
 use crate::sandbox::backend::SandboxBackend;
 use crate::tools::shell::{SharedShellManager, new_shared_shell_manager};
-use deepseek_runtime_adapters::tools::path::normalize_path;
-pub use deepseek_runtime_adapters::tools::path::path_has_prefix;
-pub use deepseek_runtime_adapters::tools::{
+use zagens_runtime_adapters::tools::path::normalize_path;
+pub use zagens_runtime_adapters::tools::path::path_has_prefix;
+pub use zagens_runtime_adapters::tools::{
     RuntimeToolHostWire, ToolAutomationHost, ToolProgressEmit, ToolShellEnvHost, ToolTaskHost,
 };
-pub use deepseek_tools::{
+pub use zagens_tools::{
     ApprovalRequirement, ToolCapability, ToolError, ToolResult, optional_bool, optional_str,
     optional_u64, required_str, required_u64,
 };
@@ -153,8 +153,8 @@ impl ToolContext {
     pub fn new(workspace: impl Into<PathBuf>) -> Self {
         let workspace = workspace.into();
         let shell_manager = new_shared_shell_manager(workspace.clone());
-        let notes_path = deepseek_config::workspace_meta_file_read(&workspace, "notes.md");
-        let mcp_config_path = deepseek_config::workspace_meta_file_read(&workspace, "mcp.json");
+        let notes_path = zagens_config::workspace_meta_file_read(&workspace, "notes.md");
+        let mcp_config_path = zagens_config::workspace_meta_file_read(&workspace, "mcp.json");
         Self {
             workspace,
             shell_manager,

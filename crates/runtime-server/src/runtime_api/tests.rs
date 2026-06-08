@@ -207,7 +207,7 @@ async fn spawn_test_server() -> Result<
         tokio::task::JoinHandle<()>,
     )>,
 > {
-    let root = std::env::temp_dir().join(format!("deepseek-runtime-api-{}", Uuid::new_v4()));
+    let root = std::env::temp_dir().join(format!("zagens-runtime-api-{}", Uuid::new_v4()));
     let sessions_dir = root.join("sessions");
     spawn_test_server_with_root(root, sessions_dir).await
 }
@@ -355,7 +355,7 @@ async fn health_and_tasks_endpoints_work() -> Result<()> {
 
 #[tokio::test]
 async fn runtime_token_guard_protects_v1_routes() -> Result<()> {
-    let root = std::env::temp_dir().join(format!("deepseek-runtime-api-{}", Uuid::new_v4()));
+    let root = std::env::temp_dir().join(format!("zagens-runtime-api-{}", Uuid::new_v4()));
     let sessions_dir = root.join("sessions");
     let token = "local-test-token".to_string();
     let Some((addr, _runtime_threads, handle)) =

@@ -21,7 +21,7 @@ pub struct EngineRuntimeExt {
     pub long_horizon_state: LongHorizonSessionState,
     pub turn_app_mode: crate::agent_surface::AppMode,
     /// Per-turn LHT mode override from the UI toggle (`None` = use config default).
-    pub turn_lht_mode: Option<deepseek_core::long_horizon::LhtMode>,
+    pub turn_lht_mode: Option<zagens_core::long_horizon::LhtMode>,
     pub lsp_manager: Arc<LspManager>,
     pub shell_manager: SharedShellManager,
     pub workshop_vars: Option<Arc<AsyncMutex<WorkshopVariables>>>,

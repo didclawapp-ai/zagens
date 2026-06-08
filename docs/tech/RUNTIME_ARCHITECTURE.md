@@ -19,10 +19,10 @@
 
 | Layer | Repo location | Responsibility |
 |-------|---------------|----------------|
-| **L1 bottom — core** | `deepseek-core` (`Engine` struct, `op_loop`, `turn_loop`, Session, `TurnEnginePort`) | Agent turn logic; **no** HTTP / MCP / tool host |
-| **L1 bottom — orchestrator** | `deepseek-runtime-orchestrator` (`RuntimeThreadManager` core, `turn_lifecycle`, `monitor`, `persist`, `thread_store_sqlite`) | Thread/Turn orchestration, event persistence, SQLite thread store |
-| **L1 bottom — adapters** | `deepseek-runtime-adapters` (MCP, `persist/session_manager`, snapshot, tool host ports and pure helpers) | Platform adapters; re-exported via `runtime-server` to keep `crate::` paths stable |
-| **L1 bottom — sidecar host** | **`deepseek_runtime` lib** (`crates/runtime-server`: `runtime_api` handlers, `runtime_serve`, tools/*, Engine shim, `platform_dispatch`) | HTTP gateway + tool/MCP/LSP host + orchestrator/adapters assembly; **~100k LOC, accepted as sidecar monolith per D17** |
+| **L1 bottom — core** | `zagens-core` (`Engine` struct, `op_loop`, `turn_loop`, Session, `TurnEnginePort`) | Agent turn logic; **no** HTTP / MCP / tool host |
+| **L1 bottom — orchestrator** | `zagens-runtime-orchestrator` (`RuntimeThreadManager` core, `turn_lifecycle`, `monitor`, `persist`, `thread_store_sqlite`) | Thread/Turn orchestration, event persistence, SQLite thread store |
+| **L1 bottom — adapters** | `zagens-runtime-adapters` (MCP, `persist/session_manager`, snapshot, tool host ports and pure helpers) | Platform adapters; re-exported via `runtime-server` to keep `crate::` paths stable |
+| **L1 bottom — sidecar host** | **`zagens_runtime` lib** (`crates/runtime-server`: `runtime_api` handlers, `runtime_serve`, tools/*, Engine shim, `platform_dispatch`) | HTTP gateway + tool/MCP/LSP host + orchestrator/adapters assembly; **~100k LOC, accepted as sidecar monolith per D17** |
 | **L1 production binary** | **`deepseek-runtime`** (`crates/runtime-server` bin) — **no** ratatui / CLI | Zagens embeds sidecar; see [D6_RUNTIME_SERVER.md](./adr/D6_RUNTIME_SERVER.md) |
 | **L2 contract** | `runtime-api` (OpenAPI / wire / auth), `runtime_proxy`, Tauri IPC (`commands.rs`) | Desktop **fusion surface**; Bearer never enters WebView |
 | **L3 shell** | **Zagens** `crates/desktop` (sole user product) | Consumes L2 only; **does not** embed L1 |
@@ -62,7 +62,7 @@ flowchart TB
         HOST["Sidecar host runtime-server<br/>HTTP handlers · Tool impl · Engine wiring"]
         ORCH["Orchestration runtime-orchestrator<br/>Thread mgmt · Turn lifecycle · Event monitor & persist"]
         ADPT["Adapters runtime-adapters<br/>MCP pool · Session persist · Tool host ports"]
-        CORE["Engine deepseek-core<br/>Engine message loop · Turn logic · Tool planning"]
+        CORE["Engine zagens-core<br/>Engine message loop · Turn logic · Tool planning"]
     end
 
     subgraph external["External Services"]
@@ -153,7 +153,7 @@ flowchart TB
         RTO["runtime-orchestrator<br/>manager · turn_lifecycle<br/>monitor · persist"]
         RTAD["runtime-adapters<br/>MCP · session_manager<br/>tool host ports"]
         ENG_SHIM["core/engine.rs<br/>~130 LOC shim<br/>platform_dispatch · build_engine"]
-        ENG_C["deepseek-core/engine<br/>Engine struct + op_loop<br/>EngineHandle · Op channel"]
+        ENG_C["zagens-core/engine<br/>Engine struct + op_loop<br/>EngineHandle · Op channel"]
         TURN["core/engine/turn_loop<br/>handle_deepseek_turn · TurnEnginePort"]
         LLM_C["client/ · llm_client/<br/>HTTP/SSE → LLM"]
         TOOLS_R["tools/* · shell · subagent<br/>todo · plan · lsp"]
@@ -169,7 +169,7 @@ flowchart TB
         SESS[("sessions/<br/>sessions.db")]
         RT_DIR[("tasks/runtime/<br/>threads · turns · items · events + runtime.db")]
         LOGS[("logs/<br/>sidecar.log · supervisor.log")]
-        KEYS[("OS Keyring<br/>(deepseek-secrets)")]
+        KEYS[("OS Keyring<br/>(zagens-secrets)")]
     end
 
     U1 --> WEB
@@ -226,7 +226,7 @@ flowchart TB
 | Tauri IPC handlers | [`crates/desktop/src/commands.rs`](../../crates/desktop/src/commands.rs) | Keys/settings/platform/symbol index/export etc. 30+ commands |
 | HTTP proxy (Bearer injection) | [`crates/desktop/src/runtime_proxy.rs`](../../crates/desktop/src/runtime_proxy.rs) | `runtime_http` / `runtime_post_stream` / `runtime_get_sse` + path whitelist |
 | Sidecar supervision | [`crates/desktop/src/sidecar.rs`](../../crates/desktop/src/sidecar.rs) | spawn **`deepseek-runtime`**; `DS_PICK_READY` line protocol; no `deepseek-tui` binary branch; HTTP probe fallback when old sidecar lacks ready line |
-| HTTP entry (lib) | [`crates/runtime-server/src/runtime_serve/http.rs`](../../crates/runtime-server/src/runtime_serve/http.rs) | `deepseek_runtime::run_http_server` / `RuntimeApiOptions` (crate root re-export) |
+| HTTP entry (lib) | [`crates/runtime-server/src/runtime_serve/http.rs`](../../crates/runtime-server/src/runtime_serve/http.rs) | `zagens_runtime::run_http_server` / `RuntimeApiOptions` (crate root re-export) |
 | OpenAPI / shared wire types | [`crates/runtime-api/`](../../crates/runtime-api/) | `compose_router`, `ApiError`, OpenAPI `paths`/`schemas` (incl. [`task.rs`](../../crates/runtime-api/src/task.rs)); handlers remain in `runtime-server` |
 | Route table | [`crates/runtime-server/src/runtime_api/router.rs`](../../crates/runtime-server/src/runtime_api/router.rs) | All `/v1/*` routes centrally registered; `/health` `/internal/probe` skip auth |
 | Thread management (wrapper → core) | [`crates/runtime-server/src/runtime_threads/manager.rs`](../../crates/runtime-server/src/runtime_threads/manager.rs) → [`orchestrator/.../manager.rs`](../../crates/runtime-orchestrator/src/runtime_threads/manager.rs) | Sidecar injects policy/engine; core logic in orchestrator |
@@ -242,7 +242,7 @@ flowchart TB
 
 ---
 
-## 2. Sidecar Internal Data Flow (`deepseek-runtime` / `deepseek_runtime` lib)
+## 2. Sidecar Internal Data Flow (`deepseek-runtime` / `zagens_runtime` lib)
 
 ```mermaid
 flowchart LR
@@ -262,7 +262,7 @@ flowchart LR
     SESS_M["session_manager<br/>(runtime-adapters/persist)"]
     BCAST(("broadcast::Sender<br/>RuntimeEventRecord"))
 
-    PORT["deepseek_core::engine<br/>TurnEnginePort + StartTurnParams"]
+    PORT["zagens_core::engine<br/>TurnEnginePort + StartTurnParams"]
     ENG["core/engine/runtime.rs<br/>Engine + op_loop · EngineHandle"]
     ENG_SHIM["runtime-server/core/engine.rs<br/>platform_dispatch · build_engine"]
     OP_EXT["EnginePlatformExt<br/>(platform_dispatch)"]
@@ -309,9 +309,9 @@ flowchart LR
 HTTP handler
   → RuntimeThreadManager::start_turn (sidecar thin wrapper)
   → runtime-orchestrator::turn_lifecycle::start_turn
-  → TurnEnginePort::start_turn (deepseek-core: EngineHandle → Op::SendMessage)
+  → TurnEnginePort::start_turn (zagens-core: EngineHandle → Op::SendMessage)
   → runtime-server: EnginePlatformExt::dispatch_op → handle_send_message (host glue)
-  → deepseek-core::handle_deepseek_turn (turn / streaming / tool planning & results)
+  → zagens-core::handle_deepseek_turn (turn / streaming / tool planning & results)
 ```
 
 **Path summary:** HTTP request → sidecar `RuntimeThreadManager::start_turn` delegates to orchestrator → `TurnEnginePort` (core) validates → sends `Op::SendMessage` to `EngineHandle` (same-process mpsc) → `Engine::run()` (core `op_loop`) dispatches platform ops via `EnginePlatformExt` → runtime `platform_dispatch` wiring → `handle_deepseek_turn` (core) → events via `broadcast` feed both SSE and orchestrator `monitor.rs` persistence.
@@ -323,7 +323,7 @@ HTTP handler
 | `Engine` struct, `Engine::run()` op loop, `EngineHandle`, `Op` channel | [`crates/core/src/engine/`](../../crates/core/src/engine/) | M-series M7/M8 ✅ |
 | `handle_deepseek_turn`, Session types, `TurnEnginePort` | [`crates/core/src/engine/turn_loop/`](../../crates/core/src/engine/turn_loop/) | core library layer |
 | Runtime newtype shim + `build_engine` + `platform_dispatch` | [`crates/runtime-server/src/core/engine.rs`](../../crates/runtime-server/src/core/engine.rs) + submodules | ~130 LOC entry + engine-flow orchestration |
-| Production sidecar binary + lib | [`crates/runtime-server/`](../../crates/runtime-server/) | **`deepseek-runtime`** bin + **`deepseek_runtime`** lib — handlers, tools, Engine host |
+| Production sidecar binary + lib | [`crates/runtime-server/`](../../crates/runtime-server/) | **`deepseek-runtime`** bin + **`zagens_runtime`** lib — handlers, tools, Engine host |
 | Thread/Turn orchestration core | [`crates/runtime-orchestrator/src/runtime_threads/`](../../crates/runtime-orchestrator/src/runtime_threads/) | manager, turn_lifecycle, monitor, persist, thread_store_sqlite |
 | Sidecar thin wrapper | [`crates/runtime-server/src/runtime_threads/`](../../crates/runtime-server/src/runtime_threads/) | manager/turn_lifecycle/monitor_host/engine_spawn inject policy and engine |
 | MCP / Session / tool host ports | [`crates/runtime-adapters/`](../../crates/runtime-adapters/) | Re-exported via `runtime-server` lib; **tools/* package remains in runtime-server** (E1 phase 2 paused) |
@@ -336,21 +336,21 @@ HTTP handler
 
 ```mermaid
 flowchart BT
-    DESK["deepseek-desktop<br/>(crates/desktop)"]
-    RT["zagens-cli<br/>(crates/runtime-server)<br/>lib: deepseek_runtime<br/>bin: deepseek-runtime"]
-    RTAPI["deepseek-runtime-api<br/>(crates/runtime-api)"]
-    RTO["deepseek-runtime-orchestrator<br/>(crates/runtime-orchestrator)"]
-    RTAD["deepseek-runtime-adapters<br/>(crates/runtime-adapters)"]
-    CORE["deepseek-core<br/>(crates/core)"]
-    TM["deepseek-topic-memory"]
-    PROTO["deepseek-protocol"]
-    CFG["deepseek-config"]
-    SEC["deepseek-secrets"]
-    TOOLS["deepseek-tools"]
-    AGENT["deepseek-agent"]
+    DESK["zagens-desktop<br/>(crates/desktop)"]
+    RT["zagens-cli<br/>(crates/runtime-server)<br/>lib: zagens_runtime<br/>bin: deepseek-runtime"]
+    RTAPI["zagens-runtime-api<br/>(crates/runtime-api)"]
+    RTO["zagens-runtime-orchestrator<br/>(crates/runtime-orchestrator)"]
+    RTAD["zagens-runtime-adapters<br/>(crates/runtime-adapters)"]
+    CORE["zagens-core<br/>(crates/core)"]
+    TM["zagens-topic-memory"]
+    PROTO["zagens-protocol"]
+    CFG["zagens-config"]
+    SEC["zagens-secrets"]
+    TOOLS["zagens-tools"]
+    AGENT["zagens-agent"]
     EXEC["deepseek-execpolicy"]
-    HOOKS["deepseek-hooks"]
-    MCP["deepseek-mcp"]
+    HOOKS["zagens-hooks"]
+    MCP["zagens-mcp"]
 
     DESK --> CFG
     DESK --> SEC
@@ -384,24 +384,24 @@ flowchart BT
 
 | Crate | Path | Role |
 |-------|------|------|
-| **deepseek-desktop** | `crates/desktop/` | Zagens Tauri shell; **only** depends on `config` + `secrets` + Tauri/reqwest/portable-pty |
+| **zagens-desktop** | `crates/desktop/` | Zagens Tauri shell; **only** depends on `config` + `secrets` + Tauri/reqwest/portable-pty |
 | **zagens-cli** | `crates/runtime-server/` | Production sidecar **lib + bin**: HTTP handlers, tools/*, Engine shim, orchestrator/adapters assembly |
-| **deepseek-runtime-api** | `crates/runtime-api/` | HTTP contract layer: OpenAPI export, `ApiError`, auth/health/cors, shared wire types (incl. task) |
-| **deepseek-runtime-orchestrator** | `crates/runtime-orchestrator/` | Turn orchestration core: `RuntimeThreadManager`, `turn_lifecycle`, `monitor`, `persist`, `thread_store_sqlite` |
-| **deepseek-runtime-adapters** | `crates/runtime-adapters/` | Platform adapters: MCP, persist/session, snapshot, tool host ports and pure helpers |
-| **deepseek-core** | `crates/core/` | `Engine` + `op_loop` + `turn_loop` / Session / `TurnEnginePort` / tool catalog |
+| **zagens-runtime-api** | `crates/runtime-api/` | HTTP contract layer: OpenAPI export, `ApiError`, auth/health/cors, shared wire types (incl. task) |
+| **zagens-runtime-orchestrator** | `crates/runtime-orchestrator/` | Turn orchestration core: `RuntimeThreadManager`, `turn_lifecycle`, `monitor`, `persist`, `thread_store_sqlite` |
+| **zagens-runtime-adapters** | `crates/runtime-adapters/` | Platform adapters: MCP, persist/session, snapshot, tool host ports and pure helpers |
+| **zagens-core** | `crates/core/` | `Engine` + `op_loop` + `turn_loop` / Session / `TurnEnginePort` / tool catalog |
 | ~~**deepseek-app-server**~~ | — | **Deleted** (D7 C5); see [D4_APPSERVER_DEPRECATED.md](./adr/D4_APPSERVER_DEPRECATED.md) |
 | ~~**deepseek-tui** / ~~**deepseek CLI**~~ | — | **Deleted** (D6 Phase B); see [D6_PHASE_B_CLI_SUNSET.md](./adr/D6_PHASE_B_CLI_SUNSET.md) |
 | ~~**deepseek-state**~~ | — | **Deleted** (D15); see [D15_FINAL_ARCHITECTURE_CONVERGENCE.md](./adr/D15_FINAL_ARCHITECTURE_CONVERGENCE.md) |
-| **deepseek-topic-memory** | `crates/topic-memory/` | B2 topic memory + `/v1/topic-memory` |
+| **zagens-topic-memory** | `crates/topic-memory/` | B2 topic memory + `/v1/topic-memory` |
 
 **Key facts (verified against each `Cargo.toml`):**
 
-- `deepseek-desktop` **only** depends on `deepseek-config` + `deepseek-secrets` (plus Tauri/reqwest/portable-pty/sha2/dirs), **does not** directly depend on `core`, `runtime-server`, `runtime-api`, etc. — all Agent capabilities come via embedded **`deepseek-runtime`** child process + HTTP/IPC ([`architecture_boundary.rs`](../../crates/desktop/tests/architecture_boundary.rs)).
-- Sidecar stack is **four crates cooperating**: `runtime-server` (host) → `runtime-api` + `runtime-orchestrator` + `runtime-adapters` → `deepseek-core`.
-- `runtime-orchestrator` depends on `runtime-adapters` and `deepseek-core`; `runtime-api` depends on orchestrator + adapters (shared wire types and router assembly).
+- `zagens-desktop` **only** depends on `zagens-config` + `zagens-secrets` (plus Tauri/reqwest/portable-pty/sha2/dirs), **does not** directly depend on `core`, `runtime-server`, `runtime-api`, etc. — all Agent capabilities come via embedded **`deepseek-runtime`** child process + HTTP/IPC ([`architecture_boundary.rs`](../../crates/desktop/tests/architecture_boundary.rs)).
+- Sidecar stack is **four crates cooperating**: `runtime-server` (host) → `runtime-api` + `runtime-orchestrator` + `runtime-adapters` → `zagens-core`.
+- `runtime-orchestrator` depends on `runtime-adapters` and `zagens-core`; `runtime-api` depends on orchestrator + adapters (shared wire types and router assembly).
 - `zagens-cli` has **no** ratatui/crossterm (D6 Phase B ✅).
-- `deepseek_runtime` lib exposes HTTP assembly entry: `run_http_server` / `RuntimeApiOptions` (crate root re-export; impl in `runtime_serve/http.rs`).
+- `zagens_runtime` lib exposes HTTP assembly entry: `run_http_server` / `RuntimeApiOptions` (crate root re-export; impl in `runtime_serve/http.rs`).
 - `Engine` struct + `Engine::run()` in core; runtime keeps ~130 LOC shim + tool/MCP/LSP host implementation.
 - **`runtime-server` lib ~100k LOC, `client.ts` monolith** — accepted per D17, no longer an architecture KPI.
 
@@ -435,7 +435,7 @@ flowchart LR
         IPC["invoke handlers (commands.rs)"]
         RP["runtime_proxy.rs"]
         SC["sidecar.rs (Supervisor)"]
-        KR["deepseek-secrets<br/>OS Keyring"]
+        KR["zagens-secrets<br/>OS Keyring"]
     end
 
     subgraph child["Child process deepseek-runtime"]

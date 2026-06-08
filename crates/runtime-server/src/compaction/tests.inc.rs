@@ -50,7 +50,7 @@ fn msg(role: &str, text: &str) -> Message {
     #[test]
     fn anchor_summary_section_parses_anchor_file_into_bullets() {
         let tmpdir = tempfile::TempDir::new().unwrap();
-        let meta_dir = deepseek_config::workspace_meta_dir(tmpdir.path());
+        let meta_dir = zagens_config::workspace_meta_dir(tmpdir.path());
         std::fs::create_dir_all(&meta_dir).unwrap();
         std::fs::write(
             meta_dir.join("anchors.md"),
@@ -426,7 +426,7 @@ fn msg(role: &str, text: &str) -> Message {
 
     #[test]
     fn plan_compaction_context_partition_hot_cold() {
-        use deepseek_core::context_partition::{MessageContextTier, message_has_external_ref};
+        use zagens_core::context_partition::{MessageContextTier, message_has_external_ref};
 
         let messages = vec![
             msg("user", "summarize me"),
@@ -449,7 +449,7 @@ fn msg(role: &str, text: &str) -> Message {
     /// A1-MVP.2 — working-set pins survive LLM compaction (pin not summarized away).
     #[tokio::test]
     async fn compact_messages_preserves_working_set_pinned_message() {
-        use deepseek_core::working_set::WorkingSet;
+        use zagens_core::working_set::WorkingSet;
         use tempfile::tempdir;
 
         use crate::llm_client::mock::MockLlmClient;

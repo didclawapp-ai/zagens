@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use deepseek_runtime_adapters::tools::{ToolAutomationHost, ToolShellEnvHost, ToolTaskHost};
 use serde_json::Value;
+use zagens_runtime_adapters::tools::{ToolAutomationHost, ToolShellEnvHost, ToolTaskHost};
 
 use crate::automation_manager::SharedAutomationManager;
 use crate::hooks::{HookContext, HookExecutor};

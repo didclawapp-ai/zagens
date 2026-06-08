@@ -1077,7 +1077,7 @@ async fn pre_request_refresh_skips_compaction_below_normal_threshold() {
     let before_len = engine.session.messages.len();
     let turn = TurnContext::new(10);
     let applied = engine
-        .run_capacity_pre_request_checkpoint(&turn, None, deepseek_core::turn::TurnLoopMode::Agent)
+        .run_capacity_pre_request_checkpoint(&turn, None, zagens_core::turn::TurnLoopMode::Agent)
         .await;
     let after = engine.estimated_input_tokens();
 
@@ -1124,7 +1124,7 @@ async fn pre_request_refresh_invoked_when_medium_risk() {
     let before = engine.estimated_input_tokens();
     let turn = TurnContext::new(10);
     let applied = engine
-        .run_capacity_pre_request_checkpoint(&turn, None, deepseek_core::turn::TurnLoopMode::Agent)
+        .run_capacity_pre_request_checkpoint(&turn, None, zagens_core::turn::TurnLoopMode::Agent)
         .await;
     let after = engine.estimated_input_tokens();
 
@@ -1177,7 +1177,7 @@ async fn post_tool_replay_invoked_when_high_non_severe_risk() {
     let restarted = engine
         .run_capacity_post_tool_checkpoint(
             &turn,
-            deepseek_core::turn::TurnLoopMode::Agent,
+            zagens_core::turn::TurnLoopMode::Agent,
             Some(&registry),
             Arc::new(RwLock::new(())),
             None,
@@ -1241,7 +1241,7 @@ async fn error_escalation_triggers_replan_when_severe_or_repeated_failures() {
     let restarted = engine
         .run_capacity_error_escalation_checkpoint(
             &turn,
-            deepseek_core::turn::TurnLoopMode::Agent,
+            zagens_core::turn::TurnLoopMode::Agent,
             2,
             2,
             &[],
@@ -1306,7 +1306,7 @@ async fn capacity_disabled_by_default_keeps_messages_intact() {
     let restarted = engine
         .run_capacity_error_escalation_checkpoint(
             &turn,
-            deepseek_core::turn::TurnLoopMode::Agent,
+            zagens_core::turn::TurnLoopMode::Agent,
             2,
             2,
             &[],
@@ -1349,7 +1349,7 @@ async fn controller_disabled_keeps_behavior_unchanged() {
     let before_len = engine.session.messages.len();
     let turn = TurnContext::new(10);
     let applied = engine
-        .run_capacity_pre_request_checkpoint(&turn, None, deepseek_core::turn::TurnLoopMode::Agent)
+        .run_capacity_pre_request_checkpoint(&turn, None, zagens_core::turn::TurnLoopMode::Agent)
         .await;
     let after = engine.estimated_input_tokens();
     let after_len = engine.session.messages.len();
@@ -1776,7 +1776,7 @@ fn stream_retry_respects_cancellation() {
 
 #[test]
 fn stream_retry_invalid_input_is_not_retryable() {
-    use deepseek_core::error_taxonomy::is_stream_failure_retryable;
+    use zagens_core::error_taxonomy::is_stream_failure_retryable;
 
     assert!(!is_stream_failure_retryable(
         "Missing reasoning_content field on assistant message with tool_calls"
@@ -2051,13 +2051,13 @@ async fn post_edit_hook_skips_unknown_tool_names() {
 
 #[test]
 fn mcp_pool_handle_implements_core_mcp_port() {
-    fn assert_port<T: deepseek_core::engine::McpPoolPort + Send + Sync + 'static>() {}
+    fn assert_port<T: zagens_core::engine::McpPoolPort + Send + Sync + 'static>() {}
     assert_port::<super::tool_execution::McpPoolHandle>();
 }
 
 #[test]
 fn engine_implements_turn_loop_tool_executor() {
-    fn assert_executor<T: deepseek_core::engine::TurnLoopToolExecutor + Send + Sync>() {}
+    fn assert_executor<T: zagens_core::engine::TurnLoopToolExecutor + Send + Sync>() {}
     assert_executor::<super::Engine>();
 }
 
@@ -2068,7 +2068,7 @@ async fn engine_llm_client_override_runs_mock_turn() {
 
     use crate::llm_client::mock::{MockLlmClient, canned};
     use crate::models::Usage;
-    use deepseek_core::approval::ApprovalMode;
+    use zagens_core::approval::ApprovalMode;
 
     let turn = vec![
         canned::message_start("msg_1"),
@@ -2092,7 +2092,7 @@ async fn engine_llm_client_override_runs_mock_turn() {
     handle
         .send(Op::SendMessage {
             content: "hello".into(),
-            mode: deepseek_core::turn::TurnLoopMode::Agent,
+            mode: zagens_core::turn::TurnLoopMode::Agent,
             model: "deepseek-v4-pro".into(),
             goal_objective: None,
             reasoning_effort: Some("high".into()),
@@ -2223,8 +2223,8 @@ async fn engine_mock_parallel_readonly_tools_complete_turn() {
     use std::sync::Arc;
 
     use crate::llm_client::mock::{MockLlmClient, canned};
-    use deepseek_core::approval::ApprovalMode;
     use tempfile::tempdir;
+    use zagens_core::approval::ApprovalMode;
 
     let workspace = tempdir().expect("temp workspace");
     let path_json = serde_json::to_string(workspace.path()).expect("path json");
@@ -2258,7 +2258,7 @@ async fn engine_mock_parallel_readonly_tools_complete_turn() {
     handle
         .send(Op::SendMessage {
             content: "list workspace twice".into(),
-            mode: deepseek_core::turn::TurnLoopMode::Agent,
+            mode: zagens_core::turn::TurnLoopMode::Agent,
             model: "deepseek-v4-pro".into(),
             goal_objective: None,
             reasoning_effort: Some("high".into()),
@@ -2377,7 +2377,7 @@ async fn engine_mock_capacity_pre_request_observes_mock_and_emits_decision() {
     use std::time::Duration;
 
     use crate::llm_client::mock::{MockLlmClient, canned};
-    use deepseek_core::approval::ApprovalMode;
+    use zagens_core::approval::ApprovalMode;
 
     let capacity = CapacityControllerConfig {
         enabled: true,
@@ -2428,7 +2428,7 @@ async fn engine_mock_capacity_pre_request_observes_mock_and_emits_decision() {
     handle
         .send(Op::SendMessage {
             content: "continue".into(),
-            mode: deepseek_core::turn::TurnLoopMode::Agent,
+            mode: zagens_core::turn::TurnLoopMode::Agent,
             model: "deepseek-v3.2-128k".into(),
             goal_objective: None,
             reasoning_effort: Some("high".into()),

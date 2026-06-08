@@ -195,7 +195,7 @@ fn provider_capability_report(config: &Config) -> serde_json::Value {
 async fn test_api_connectivity(config: &Config) -> Result<String> {
     use crate::client::DeepSeekClient;
     use crate::models::{ContentBlock, Message, MessageRequest};
-    use deepseek_core::chat::LlmClient;
+    use zagens_core::chat::LlmClient;
 
     let client = DeepSeekClient::new(config)?;
     let model = client.model().to_string();

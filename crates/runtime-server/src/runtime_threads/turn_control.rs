@@ -10,7 +10,7 @@ impl RuntimeThreadManager {
         thread_id: &str,
         req: CompactThreadRequest,
     ) -> Result<TurnRecord> {
-        deepseek_runtime_orchestrator::runtime_threads::turn_control::compact_thread(
+        zagens_runtime_orchestrator::runtime_threads::turn_control::compact_thread(
             self, self, thread_id, req,
         )
         .await

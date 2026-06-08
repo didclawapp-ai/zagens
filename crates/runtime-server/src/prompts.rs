@@ -11,9 +11,9 @@ use crate::agent_surface::AppMode;
 use crate::models::SystemPrompt;
 use crate::project_context::{ProjectContext, load_project_context_with_parents};
 use crate::task_type::TaskType;
-use deepseek_config::workspace_meta_file_read;
-use deepseek_core::approval::ApprovalMode;
 use std::path::{Path, PathBuf};
+use zagens_config::workspace_meta_file_read;
+use zagens_core::approval::ApprovalMode;
 
 #[derive(Debug, Clone, Copy)]
 pub struct PromptSessionContext<'a> {

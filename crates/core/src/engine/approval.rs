@@ -1,11 +1,11 @@
-//! Tool-approval and user-input handshake for the agent loop (P2 PR4 → `deepseek-core`).
+//! Tool-approval and user-input handshake for the agent loop (P2 PR4 → `zagens-core`).
 //!
 //! TUI/Desktop supply policy type `P` (e.g. `SandboxPolicy`) and user response type `R`
 //! (e.g. `UserInputResponse`). Event emission for `request_user_input` stays in the L2 shell.
 
-use deepseek_tools::ToolError;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
+use zagens_tools::ToolError;
 
 #[derive(Debug, Clone)]
 pub enum ApprovalDecision<P> {

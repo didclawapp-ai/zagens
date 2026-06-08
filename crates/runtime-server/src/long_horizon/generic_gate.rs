@@ -20,7 +20,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use deepseek_core::long_horizon::{
+use zagens_core::long_horizon::{
     CompletionGateVerifyEntry, GenericGateMode, ManifestShell, VerifySource,
 };
 

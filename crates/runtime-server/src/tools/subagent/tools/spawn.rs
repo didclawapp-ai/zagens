@@ -9,7 +9,7 @@ use crate::config::{MAX_SUBAGENT_STEP_TIMEOUT_SECS, MIN_SUBAGENT_STEP_TIMEOUT_SE
 use crate::tools::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_u64,
 };
-use deepseek_core::subagent::{SubAgentStatus, SubAgentType};
+use zagens_core::subagent::{SubAgentStatus, SubAgentType};
 
 use super::super::deprecation::wrap_with_deprecation_notice;
 use super::super::factory::SharedSubAgentManager;

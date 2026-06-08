@@ -1,6 +1,6 @@
 //! D6 Phase A+ — spawn the real `deepseek-runtime` binary and run the sidecar contract.
 //!
-//! Complements `deepseek_runtime::runtime_api::tests::sidecar_contract_full_lifecycle` (in-process axum).
+//! Complements `zagens_runtime::runtime_api::tests::sidecar_contract_full_lifecycle` (in-process axum).
 
 use std::path::PathBuf;
 use std::process::Stdio;

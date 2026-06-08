@@ -1,15 +1,19 @@
 [package]
-name = "deepseek-tools"
+name = "zagens-tools"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "Tool invocation lifecycle, schema validation, and scheduler parallelism for DeepSeek workspace architecture"
+
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+description = "Tool invocation lifecycle, schema validation, and scheduler parallelism for Zagens agent runtime"
 
 [dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
-deepseek-protocol = { path = "../protocol", version = "0.8.15" }
+zagens-protocol = { path = "../protocol", version = "0.7.0" }
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true

@@ -1,6 +1,6 @@
 import type { ModelParams } from '../components/ModelParamsDialog';
 
-export const MODEL_PARAMS_STORAGE_KEY = 'deepseek-desktop-model-params';
+export const MODEL_PARAMS_STORAGE_KEY = 'zagens-desktop-model-params';
 
 /**
  * DeepSeek V4 (`v4-flash` / `v4-pro`) official max output length is **384K**

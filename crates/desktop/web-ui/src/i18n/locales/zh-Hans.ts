@@ -248,7 +248,7 @@ const zhHans = {
     thirdPartyLicenses:
       'MIT 许可证全文随应用安装在可执行文件同目录的 legal/ 文件夹中（Zagens 与 embedded deepseek-tui runtime 谱系）。',
     techStackTitle: '主要技术栈',
-    techStackDeepseekTui: 'deepseek-tui 0.8.15',
+    techStackDeepseekTui: 'Zagens runtime 0.7.0',
     techStackTauri: 'Tauri 2',
     techStackReact: 'React 18',
     updateTitle: '应用更新',

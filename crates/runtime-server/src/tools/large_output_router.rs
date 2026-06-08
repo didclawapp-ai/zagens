@@ -19,8 +19,8 @@ use crate::tools::spec::ToolResult;
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
-// Re-exported from deepseek-core (P2 PR4g).
-pub use deepseek_core::workshop::WorkshopConfig;
+// Re-exported from zagens-core (P2 PR4g).
+pub use zagens_core::workshop::WorkshopConfig;
 
 /// Approximate characters-per-token ratio used for the heuristic estimate.
 /// We intentionally choose a conservative value (3 chars/token) so we err
@@ -86,7 +86,7 @@ pub fn should_persist_large_output_for_namespace(namespace: &str) -> bool {
 pub fn large_output_dir(session_id: &str) -> PathBuf {
     let sessions_base = std::env::var_os(LARGE_OUTPUT_ROOT_ENV)
         .map(PathBuf::from)
-        .unwrap_or_else(|| deepseek_config::user_data_path_or_relative("sessions"));
+        .unwrap_or_else(|| zagens_config::user_data_path_or_relative("sessions"));
     sessions_base.join(session_id).join("large_outputs")
 }
 
@@ -619,8 +619,8 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 /// Newtype wrapping the optional shared workshop variable store for
-/// the [`deepseek_core::engine::hosts::WorkshopHost`] marker trait.
+/// the [`zagens_core::engine::hosts::WorkshopHost`] marker trait.
 /// `None` when no `[workshop]` table is configured.
 pub struct TuiWorkshopHost(pub Option<Arc<Mutex<WorkshopVariables>>>);
 
-impl deepseek_core::engine::hosts::WorkshopHost for TuiWorkshopHost {}
+impl zagens_core::engine::hosts::WorkshopHost for TuiWorkshopHost {}

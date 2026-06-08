@@ -1,7 +1,7 @@
 //! Completion gate observability events (§6.4 / P0 minimal probe).
 
-use deepseek_core::long_horizon::{CompletionGateVerifyEntry, VerifySource};
 use serde::Serialize;
+use zagens_core::long_horizon::{CompletionGateVerifyEntry, VerifySource};
 
 use super::completion_audit::CompletionAuditResult;
 use super::manifest_gate::ManifestGateResult;
@@ -103,11 +103,11 @@ impl CompletionGateEvent {
         out: &mut Vec<Self>,
         verify_count: u32,
         deliverable_count: u32,
-        mode: deepseek_core::long_horizon::CompletionGateMode,
+        mode: zagens_core::long_horizon::CompletionGateMode,
     ) {
         let mode_str = match mode {
-            deepseek_core::long_horizon::CompletionGateMode::Enforce => "enforce",
-            deepseek_core::long_horizon::CompletionGateMode::Observe => "observe",
+            zagens_core::long_horizon::CompletionGateMode::Enforce => "enforce",
+            zagens_core::long_horizon::CompletionGateMode::Observe => "observe",
         };
         out.push(Self::ManifestGateStart {
             verify_count,

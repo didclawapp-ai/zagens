@@ -4,24 +4,24 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use deepseek_core::chat::{ContentBlock, LlmClient, Message, Tool};
-use deepseek_core::engine::TurnLoopHost;
-use deepseek_core::engine::context::estimate_input_tokens_conservative;
-use deepseek_core::engine::dispatch::{
-    mcp_tool_approval_description, mcp_tool_is_parallel_safe, mcp_tool_is_read_only,
-};
-use deepseek_core::engine::hosts::McpHost;
-use deepseek_core::engine::streaming::ToolUseState;
-use deepseek_core::engine::tool_catalog::{CODE_EXECUTION_TOOL_NAME, is_tool_search_tool};
-use deepseek_core::engine::turn_loop::control::TurnLoopControl;
-use deepseek_core::engine::turn_loop::exec::{
-    ToolExecOutcome, ToolExecutionPlan, ToolPlanApprovalMeta,
-};
-use deepseek_core::engine::turn_loop::{TurnLoopToolRegistry, build_edit_file_approval_desc};
-use deepseek_core::turn::{TurnContext, TurnLoopMode};
-use deepseek_tools::{ToolError, ToolResult};
 use serde_json::Value;
 use tokio::sync::{Mutex as AsyncMutex, RwLock, mpsc};
+use zagens_core::chat::{ContentBlock, LlmClient, Message, Tool};
+use zagens_core::engine::TurnLoopHost;
+use zagens_core::engine::context::estimate_input_tokens_conservative;
+use zagens_core::engine::dispatch::{
+    mcp_tool_approval_description, mcp_tool_is_parallel_safe, mcp_tool_is_read_only,
+};
+use zagens_core::engine::hosts::McpHost;
+use zagens_core::engine::streaming::ToolUseState;
+use zagens_core::engine::tool_catalog::{CODE_EXECUTION_TOOL_NAME, is_tool_search_tool};
+use zagens_core::engine::turn_loop::control::TurnLoopControl;
+use zagens_core::engine::turn_loop::exec::{
+    ToolExecOutcome, ToolExecutionPlan, ToolPlanApprovalMeta,
+};
+use zagens_core::engine::turn_loop::{TurnLoopToolRegistry, build_edit_file_approval_desc};
+use zagens_core::turn::{TurnContext, TurnLoopMode};
+use zagens_tools::{ToolError, ToolResult};
 
 use super::super::scratchpad_flow;
 use super::super::tool_catalog::execute_code_execution_tool;
@@ -33,7 +33,7 @@ use crate::core::turn::pre_tool_snapshot;
 use crate::mcp::McpPool;
 use crate::tools::ToolRegistry;
 use crate::tools::spec::ApprovalRequirement;
-use deepseek_core::engine::tool_catalog::{
+use zagens_core::engine::tool_catalog::{
     active_tools_for_step, ensure_advanced_tooling, execute_tool_search, initial_active_tools,
     maybe_activate_requested_deferred_tool,
 };
@@ -46,11 +46,11 @@ impl TurnLoopHost for Engine {
     type ToolRegistry = ToolRegistry;
     type McpPool = McpPool;
 
-    fn session_mut(&mut self) -> &mut deepseek_core::session::Session {
+    fn session_mut(&mut self) -> &mut zagens_core::session::Session {
         &mut self.session
     }
 
-    fn compaction_config(&self) -> &deepseek_core::compaction::CompactionConfig {
+    fn compaction_config(&self) -> &zagens_core::compaction::CompactionConfig {
         &self.config.compaction
     }
 
@@ -62,7 +62,7 @@ impl TurnLoopHost for Engine {
         self.config.strict_tool_mode
     }
 
-    fn scratchpad_config(&self) -> &deepseek_core::scratchpad::ScratchpadConfig {
+    fn scratchpad_config(&self) -> &zagens_core::scratchpad::ScratchpadConfig {
         &self.config.scratchpad
     }
 
@@ -296,7 +296,7 @@ impl TurnLoopHost for Engine {
         mode: TurnLoopMode,
         step_error_count: usize,
         consecutive_tool_error_steps: u32,
-        error_categories: &[deepseek_core::error_taxonomy::ErrorCategory],
+        error_categories: &[zagens_core::error_taxonomy::ErrorCategory],
     ) -> bool {
         self.turn_loop_capacity_error_escalation(
             turn,
@@ -703,7 +703,7 @@ impl TurnLoopHost for Engine {
         if self.scratchpad_run_id.is_none() {
             return;
         }
-        deepseek_core::engine::tool_catalog::activate_audit_subagent_tools(
+        zagens_core::engine::tool_catalog::activate_audit_subagent_tools(
             catalog,
             mode,
             self.scratchpad_run_id.as_deref(),
@@ -759,7 +759,7 @@ impl TurnLoopHost for Engine {
     }
 
     fn effective_reasoning_effort_for_request(&mut self) -> Option<String> {
-        deepseek_core::engine::turn_loop::resolve_auto_effort(
+        zagens_core::engine::turn_loop::resolve_auto_effort(
             self.session.reasoning_effort.as_deref(),
             &self.session.messages,
             |is_subagent, last_msg| {
@@ -932,12 +932,12 @@ pub(crate) fn turn_loop_to_app_mode(mode: TurnLoopMode) -> AppMode {
 #[cfg(test)]
 mod m4_drift_guard {
     use super::*;
-    use deepseek_core::engine::dispatch::is_mcp_tool_name;
+    use zagens_core::engine::dispatch::is_mcp_tool_name;
 
     /// M4 cross-verify: the tui-side inherent `McpPool::is_mcp_tool`
     /// (in `crates/tui/src/mcp.rs:1498` — frozen per spike §6 M4
     /// "zero changes to mcp.rs body") and the core-side free function
-    /// `deepseek_core::engine::dispatch::is_mcp_tool_name` must
+    /// `zagens_core::engine::dispatch::is_mcp_tool_name` must
     /// produce identical output on every name in a curated set.
     ///
     /// If either definition gains a new prefix / matched literal,

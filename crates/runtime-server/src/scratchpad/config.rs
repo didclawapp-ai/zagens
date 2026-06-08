@@ -1,3 +1,3 @@
-//! Scratchpad runtime configuration — re-exported from `deepseek-core` (P2 PR4g).
+//! Scratchpad runtime configuration — re-exported from `zagens-core` (P2 PR4g).
 
-pub use deepseek_core::scratchpad::{ScratchpadConfig, ScratchpadConfigToml};
+pub use zagens_core::scratchpad::{ScratchpadConfig, ScratchpadConfigToml};

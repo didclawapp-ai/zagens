@@ -1,4 +1,4 @@
-//! Streaming request + SSE processing for one turn step (P2 PR6 — `deepseek-core::engine::turn_loop`).
+//! Streaming request + SSE processing for one turn step (P2 PR6 — `zagens-core::engine::turn_loop`).
 
 use std::collections::HashSet;
 use std::time::{Duration, Instant};

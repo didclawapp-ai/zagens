@@ -2,7 +2,7 @@
 //!
 //! M3 renamed the trait from `SubAgentSpawnPort` → `SubAgentHost` (still
 //! available via a `#[deprecated]` alias in
-//! `deepseek_core::engine::subagent_port`) and extended the surface with
+//! `zagens_core::engine::subagent_port`) and extended the surface with
 //! `running_count` (used by `no_tool_uses.rs`) and the clearer
 //! `list_with_cleanup` method name. The orchestration logic is unchanged —
 //! the trait still impls on `Engine` itself because the spawn path touches
@@ -13,9 +13,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use deepseek_core::engine::hosts::SubAgentHost;
-use deepseek_core::engine::{SubAgentSpawnError, SubAgentSpawnOutcome};
-use deepseek_core::subagent::SubAgentResult;
+use zagens_core::engine::hosts::SubAgentHost;
+use zagens_core::engine::{SubAgentSpawnError, SubAgentSpawnOutcome};
+use zagens_core::subagent::SubAgentResult;
 
 use crate::agent_surface::AppMode;
 
@@ -120,7 +120,7 @@ impl Engine {
         prompt: &str,
     ) -> Result<SubAgentSpawnOutcome, SubAgentSpawnError> {
         use crate::tools::subagent::{SubAgentRuntime, SubAgentSpawnOptions, SubAgentType};
-        use deepseek_core::subagent::SubAgentAssignment;
+        use zagens_core::subagent::SubAgentAssignment;
 
         let Some(client) = self.deepseek_client.clone() else {
             let message = self
@@ -184,7 +184,7 @@ impl Engine {
 
     pub(in crate::core::engine) async fn handle_spawn_subagent_op(&self, prompt: &str) {
         use crate::core::events::Event;
-        use deepseek_core::error_taxonomy::ErrorEnvelope;
+        use zagens_core::error_taxonomy::ErrorEnvelope;
 
         match self.spawn_general_subagent(prompt).await {
             Ok(outcome) => {

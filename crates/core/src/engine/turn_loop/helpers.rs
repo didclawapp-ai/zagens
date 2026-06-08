@@ -1,4 +1,4 @@
-//! Pure turn-loop helpers (P2 PR4 → `deepseek-core`).
+//! Pure turn-loop helpers (P2 PR4 → `zagens-core`).
 
 use crate::chat::{ContentBlock, Message};
 use crate::session::Session;

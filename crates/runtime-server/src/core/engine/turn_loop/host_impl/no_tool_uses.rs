@@ -2,11 +2,11 @@
 
 use std::sync::Arc;
 
-use deepseek_core::chat::{ContentBlock, Message};
-use deepseek_core::engine::TurnLoopHost;
-use deepseek_core::engine::context::summarize_text;
-use deepseek_core::engine::turn_loop::control::TurnLoopControl;
-use deepseek_core::turn::{TurnContext, TurnOutcomeStatus};
+use zagens_core::chat::{ContentBlock, Message};
+use zagens_core::engine::TurnLoopHost;
+use zagens_core::engine::context::summarize_text;
+use zagens_core::engine::turn_loop::control::TurnLoopControl;
+use zagens_core::turn::{TurnContext, TurnOutcomeStatus};
 
 use super::super::Engine;
 use crate::core::events::Event;
@@ -40,7 +40,7 @@ impl Engine {
                     Ok(outcome) => {
                         let lh = &mut self.runtime_ext_mut().long_horizon_state;
                         lh.macro_craft_agent_id = Some(outcome.agent_id.clone());
-                        lh.macro_phase = deepseek_core::long_horizon::MacroPhase::Craft;
+                        lh.macro_phase = zagens_core::long_horizon::MacroPhase::Craft;
                         let cycle = lh.macro_cycles_used;
                         let _ = self
                             .tx_event

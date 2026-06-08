@@ -82,7 +82,7 @@ impl ToolSpec for WriteFileTool {
             .ok()
             .and_then(|g| g.clone());
         if let Some(block_msg) =
-            deepseek_runtime_adapters::scratchpad_gates::check_write_file_audit_report_gate(
+            zagens_runtime_adapters::scratchpad_gates::check_write_file_audit_report_gate(
                 &context.workspace,
                 bound_run.as_deref(),
                 &scratchpad_cfg,

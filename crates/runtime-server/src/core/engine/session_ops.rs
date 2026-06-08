@@ -11,7 +11,7 @@ use super::Engine;
 
 impl Engine {
     pub(in crate::core::engine) fn set_runtime_model(&mut self, model: String) {
-        deepseek_core::session::apply_model_selection(
+        zagens_core::session::apply_model_selection(
             &mut self.0.session,
             &mut self.0.config.model,
             model,
@@ -59,7 +59,7 @@ impl Engine {
         model: String,
         workspace: PathBuf,
     ) {
-        deepseek_core::session::apply_sync_session_payload(
+        zagens_core::session::apply_sync_session_payload(
             &mut self.0.session,
             &mut self.0.config.workspace,
             &mut self.0.config.model,

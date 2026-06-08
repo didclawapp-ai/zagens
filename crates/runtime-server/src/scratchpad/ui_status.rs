@@ -4,7 +4,7 @@ use std::path::Path;
 
 use serde_json::{Value, json};
 
-use deepseek_runtime_orchestrator::runtime_threads::types::ThreadRecord;
+use zagens_runtime_orchestrator::runtime_threads::types::ThreadRecord;
 
 /// Count checklist items from a `checklist_write` snapshot JSON.
 #[must_use]
@@ -129,8 +129,8 @@ mod tests {
     use serde_json::json;
     use std::path::PathBuf;
 
-    use deepseek_core::coherence::CoherenceState;
-    use deepseek_runtime_orchestrator::runtime_threads::types::ThreadRecord;
+    use zagens_core::coherence::CoherenceState;
+    use zagens_runtime_orchestrator::runtime_threads::types::ThreadRecord;
 
     #[test]
     fn thread_scratchpad_history_backfills_from_active_run() {

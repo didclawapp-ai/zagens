@@ -1,17 +1,17 @@
-//! Bridges the sidecar `ToolRegistry` to `deepseek-core::engine::EngineToolDispatch` (P2 PR4).
+//! Bridges the sidecar `ToolRegistry` to `zagens-core::engine::EngineToolDispatch` (P2 PR4).
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use deepseek_core::engine::{
+use zagens_core::engine::{
     EngineToolDispatch, tool_call_input, tool_name_is_mutating, tool_result_to_output,
 };
-use deepseek_protocol::ToolOutput;
-use deepseek_tools::{FunctionCallError, ToolCall};
+use zagens_protocol::ToolOutput;
+use zagens_tools::{FunctionCallError, ToolCall};
 
 use crate::tools::ToolRegistry;
 
-pub(crate) use deepseek_core::engine::{
+pub(crate) use zagens_core::engine::{
     function_call_to_tool_error, tool_output_to_result, value_to_tool_call,
 };
 
@@ -71,7 +71,7 @@ impl EngineToolDispatch for RegistryToolDispatch<'_> {
             .await
             .map_err(|err| FunctionCallError::ExecutionFailed {
                 name: name.clone(),
-                error: deepseek_core::engine::dispatch::format_tool_error(&err, &name),
+                error: zagens_core::engine::dispatch::format_tool_error(&err, &name),
             })?;
         Ok(tool_result_to_output(result))
     }

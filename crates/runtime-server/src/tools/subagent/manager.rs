@@ -8,10 +8,10 @@ use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::utils::spawn_supervised;
-use deepseek_config::workspace_meta_file_read;
-use deepseek_core::events::Event;
+use zagens_config::workspace_meta_file_read;
+use zagens_core::events::Event;
 
-use deepseek_core::subagent::{
+use zagens_core::subagent::{
     CompletionReason, SubAgentAssignment, SubAgentResult, SubAgentStatus, SubAgentType,
 };
 

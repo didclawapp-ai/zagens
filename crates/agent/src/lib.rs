@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use deepseek_config::ProviderKind;
 use serde::{Deserialize, Serialize};
+use zagens_config::ProviderKind;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelInfo {

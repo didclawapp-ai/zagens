@@ -35,7 +35,7 @@
 
 ```text
 crates/runtime-server/          # package: zagens-cli
-  lib: deepseek_runtime          # former tui lib minus TUI tree
+  lib: zagens_runtime          # former tui lib minus TUI tree
   bin: deepseek-runtime          # existing
 
 crates/core/                    # unchanged
@@ -45,7 +45,7 @@ crates/config, tools, mcp, …    # unchanged
 Deleted:
   crates/cli/
   crates/tui/
-  # crates/state/ — deepseek-core still references; retained per B3.1
+  # crates/state/ — zagens-core still references; retained per B3.1
 ```
 
 **Dependency direction (acyclic):**
@@ -67,7 +67,7 @@ runtime-server (bin) → runtime-server (lib)
 | B0.1 | This ADR + CHANGELOG ✅ |
 | B0.2 | Remove `crates/cli` from workspace ✅ |
 | B0.3 | Extract `transcript_isomorphism` ✅ |
-| B0.4 | Tests use `deepseek_core::approval::ApprovalMode` ✅ |
+| B0.4 | Tests use `zagens_core::approval::ApprovalMode` ✅ |
 
 ### B1 — Strip TUI tree ✅
 
@@ -82,17 +82,17 @@ runtime-server (bin) → runtime-server (lib)
 
 | Step | Action |
 |------|--------|
-| B2.1 | `runtime-server/Cargo.toml` merge former `tui` deps; add `[lib] name = deepseek_runtime` ✅ |
+| B2.1 | `runtime-server/Cargo.toml` merge former `tui` deps; add `[lib] name = zagens_runtime` ✅ |
 | B2.2 | `tui/src/*` → `runtime-server/src/` (incl. `assets/`, `tests/`) ✅ |
-| B2.3 | bin calls `deepseek_runtime` lib ✅ |
+| B2.3 | bin calls `zagens_runtime` lib ✅ |
 | B2.4 | Delete `crates/tui/` ✅ |
-| B2.5 | CI/scripts `-p zagens-cli`; `deepseek_tui` → `deepseek_runtime` (code paths) ✅ |
+| B2.5 | CI/scripts `-p zagens-cli`; `deepseek_tui` → `zagens_runtime` (code paths) ✅ |
 
 ### B3 — Cleanup and acceptance ✅
 
 | Step | Action |
 |------|--------|
-| B3.1 | Delete `deepseek-state` (if zero refs) → **retained**: `deepseek-core` still compiles against it; **not** sidecar SSOT ✅ |
+| B3.1 | Delete `deepseek-state` (if zero refs) → **retained**: `zagens-core` still compiles against it; **not** sidecar SSOT ✅ |
 | B3.2 | Update CI, OpenAPI scripts, docs; `sidecar.rs` may optionally detect legacy `deepseek-tui` on disk ✅ |
 | B3.3 | Acceptance commands (§5); `RUSTFLAGS=-Dwarnings` build; Zagens smoke ✅ |
 

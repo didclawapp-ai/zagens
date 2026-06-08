@@ -31,11 +31,11 @@ pub(crate) const STUCK_IDLE_BUFFER: Duration = Duration::from_secs(60);
 pub(crate) const DEFAULT_SUBAGENT_HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(300);
 
 pub(crate) fn compute_stuck_suspected(
-    status: &deepseek_core::subagent::SubAgentStatus,
+    status: &zagens_core::subagent::SubAgentStatus,
     step_timeout: Duration,
     idle: Duration,
 ) -> bool {
-    use deepseek_core::subagent::SubAgentStatus;
+    use zagens_core::subagent::SubAgentStatus;
     if status != &SubAgentStatus::Running {
         return false;
     }

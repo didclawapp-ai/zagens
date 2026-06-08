@@ -76,7 +76,7 @@ mod project_config_tests {
     /// root so the merge function can find it.
     fn workspace_with_project_config(body: &str) -> tempfile::TempDir {
         let tmp = tempdir().expect("tempdir");
-        let project_dir = deepseek_config::workspace_meta_dir(tmp.path());
+        let project_dir = zagens_config::workspace_meta_dir(tmp.path());
         fs::create_dir_all(&project_dir).expect("mkdir .zagens");
         fs::write(project_dir.join("config.toml"), body).expect("write project config");
         tmp

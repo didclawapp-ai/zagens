@@ -9,7 +9,7 @@
 //! inspect it without a tui dependency.
 //!
 //! The tui-side `crates/tui/src/core/engine/scratchpad_flow.rs` keeps
-//! a `pub use deepseek_core::engine::ScratchpadStepState;` re-export
+//! a `pub use zagens_core::engine::ScratchpadStepState;` re-export
 //! shim so every existing
 //! `use crate::core::engine::scratchpad_flow::ScratchpadStepState`
 //! caller (engine state, `host_impl/mod.rs` turn-loop bookkeeping,

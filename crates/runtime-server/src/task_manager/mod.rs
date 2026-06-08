@@ -19,13 +19,13 @@ mod persist;
 mod tests;
 
 pub use config::TaskManagerConfig;
-pub use deepseek_runtime_api::task::{
-    CURRENT_TASK_SCHEMA_VERSION, NewTaskRequest, TaskArtifactRef, TaskAttemptRecord,
-    TaskChecklistState, TaskCounts, TaskGateRecord, TaskGithubEvent, TaskRecord, TaskStatus,
-    TaskSummary, TaskTimelineEntry, TaskToolCallSummary, TaskToolStatus,
-};
 #[cfg(test)]
 pub(crate) use executor::{
     EngineTaskExecutor, ExecutionTask, TaskExecutionEvent, TaskExecutionResult, TaskExecutor,
 };
 pub use manager::{SharedTaskManager, TaskManager};
+pub use zagens_runtime_api::task::{
+    CURRENT_TASK_SCHEMA_VERSION, NewTaskRequest, TaskArtifactRef, TaskAttemptRecord,
+    TaskChecklistState, TaskCounts, TaskGateRecord, TaskGithubEvent, TaskRecord, TaskStatus,
+    TaskSummary, TaskTimelineEntry, TaskToolCallSummary, TaskToolStatus,
+};

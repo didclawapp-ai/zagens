@@ -4,16 +4,16 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Instant;
 
-use deepseek_core::chat::Tool;
-use deepseek_core::engine::dispatch::caller_type_for_tool_use;
-use deepseek_core::engine::emit_tool_audit;
-use deepseek_core::engine::turn_loop::{ToolExecOutcome, ToolExecutionPlan};
-use deepseek_core::turn::TurnLoopMode;
-use deepseek_tools::{ToolError, ToolResult};
 use futures_util::StreamExt;
 use futures_util::stream::FuturesUnordered;
 use serde_json::json;
 use tokio::sync::{Mutex as AsyncMutex, RwLock};
+use zagens_core::chat::Tool;
+use zagens_core::engine::dispatch::caller_type_for_tool_use;
+use zagens_core::engine::emit_tool_audit;
+use zagens_core::engine::turn_loop::{ToolExecOutcome, ToolExecutionPlan};
+use zagens_core::turn::TurnLoopMode;
+use zagens_tools::{ToolError, ToolResult};
 
 use super::super::approval::ApprovalResult;
 use super::super::dispatch::should_parallelize_tool_batch;
@@ -28,7 +28,7 @@ use super::Engine;
 use crate::core::events::Event;
 use crate::mcp::McpPool;
 use crate::tools::user_input::UserInputRequest;
-use deepseek_core::engine::turn_loop::TurnLoopToolExec;
+use zagens_core::engine::turn_loop::TurnLoopToolExec;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn execute_tool_plans(

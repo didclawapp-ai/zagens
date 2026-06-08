@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use crate::models::{ContentBlock, Message, SystemPrompt};
-use deepseek_core::compaction::CompactionConfig;
+use zagens_core::compaction::CompactionConfig;
 
 use super::plan::plan_compaction;
 use super::{KEEP_RECENT_MESSAGES, MIN_SUMMARIZE_MESSAGES};

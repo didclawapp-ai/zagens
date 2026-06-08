@@ -1,11 +1,15 @@
 [package]
-name = "deepseek-agent"
+name = "zagens-agent"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "Model/provider registry and fallback strategy for DeepSeek workspace architecture"
+
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+description = "Model/provider registry and fallback strategy for Zagens agent runtime"
 
 [dependencies]
-deepseek-config = { path = "../config", version = "0.8.15" }
+zagens-config = { path = "../config", version = "0.7.0" }
 serde.workspace = true

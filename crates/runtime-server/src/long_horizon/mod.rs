@@ -48,12 +48,10 @@ pub use task_graph::{
 
 use std::path::Path;
 
-use deepseek_core::chat::{ContentBlock, Message};
-use deepseek_core::long_horizon::{
-    CompletionGateMode, GenericGateMode, LhtMode, LongHorizonConfig,
-};
-use deepseek_core::scratchpad::ScratchpadConfig;
-use deepseek_core::task_type::TaskType;
+use zagens_core::chat::{ContentBlock, Message};
+use zagens_core::long_horizon::{CompletionGateMode, GenericGateMode, LhtMode, LongHorizonConfig};
+use zagens_core::scratchpad::ScratchpadConfig;
+use zagens_core::task_type::TaskType;
 
 use crate::agent_surface::AppMode;
 use crate::tools::plan::SharedPlanState;
@@ -149,9 +147,9 @@ fn evaluate_plan_bootstrap(
 /// gates raised to `enforce` (P0-1): top-level `mode`, `stub_gate`, and the
 /// task-agnostic layer-2 sources `auto_verify_replay` / `toolchain_gate`.
 fn strict_completion_gate(
-    base: &deepseek_core::long_horizon::CompletionGateConfig,
+    base: &zagens_core::long_horizon::CompletionGateConfig,
     mode: LhtMode,
-) -> deepseek_core::long_horizon::CompletionGateConfig {
+) -> zagens_core::long_horizon::CompletionGateConfig {
     let mut gate = base.clone();
     if mode.is_strict() {
         if gate.mode != CompletionGateMode::Enforce {
@@ -600,7 +598,7 @@ mod plan_bootstrap_tests {
 
     #[test]
     fn strict_completion_gate_raises_modes() {
-        use deepseek_core::long_horizon::{
+        use zagens_core::long_horizon::{
             CompletionGateConfig, CompletionGateMode, GenericGateMode,
         };
         let mut base = CompletionGateConfig::default();

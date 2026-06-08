@@ -1,11 +1,16 @@
 [package]
-name = "deepseek-desktop"
-# Zagens is versioned independently of the workspace (CLI/TUI) line — see CHANGELOG.md.
+name = "zagens-desktop"
+# Aligned with workspace runtime line at 0.7.0 — see CHANGELOG.md.
 version = "0.7.0"
 edition.workspace = true
 description = "Zagens — Desktop agent harness (Tauri shell + embedded runtime sidecar)"
 license.workspace = true
 rust-version.workspace = true
+
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+publish = false
 
 [[bin]]
 name = "zagens"
@@ -15,8 +20,8 @@ path = "src/main.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-deepseek-config = { path = "../config", version = "0.8.15" }
-deepseek-secrets = { path = "../secrets", version = "0.8.15" }
+zagens-config = { path = "../config", version = "0.7.0" }
+zagens-secrets = { path = "../secrets", version = "0.7.0" }
 toml.workspace = true
 anyhow.workspace = true
 chrono.workspace = true

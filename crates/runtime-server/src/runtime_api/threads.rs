@@ -20,7 +20,7 @@ use crate::runtime_threads::{
 use crate::session_manager::{SavedSession, create_saved_session_with_mode, update_session};
 use crate::snapshot::SnapshotRepo;
 
-use deepseek_runtime_api::{StartTurnResponse, ThreadSummary};
+use zagens_runtime_api::{StartTurnResponse, ThreadSummary};
 
 use super::{ApiError, RuntimeApiState, map_thread_err, truncate_text};
 

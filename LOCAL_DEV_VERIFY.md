@@ -190,7 +190,7 @@ Hook 会回退到 `pwsh scripts/ci/verify-lint.ps1`。若两者都不可用，�
 
 **否。** 本文档与脚本仅适用于 **Zagens 产品仓**（本仓库）。官网在独立仓 `zagens_website`，不参与此 Rust workspace Lint。
 
-### `deepseek-desktop` / Tauri 报 `frontendDist` 不存在
+### `zagens-desktop` / Tauri 报 `frontendDist` 不存在
 
 先构建 web-ui，或让 `verify-lint` 自动构建：
 

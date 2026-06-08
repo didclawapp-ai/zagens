@@ -30,7 +30,7 @@
 | **Code vs Office modes** | Different tool surfaces and prompts; switching task types starts a **new session** for stable model KV ([architecture](docs/task-type-prompt-architecture.md)). |
 | **Composable harness** | Long-horizon code tasks with layered completion gates (operator / model / toolchain); fixtures under [`fixtures/harness/`](fixtures/harness/) ([LHT spec](docs/harness/LONG_HORIZON_CODE_TASKS.md)). |
 | **CRAFT multi-agent** | Sub-agents with role-specific tools, structured fix-loop verdicts, and a **P1 blackboard** for handoffs ([CRAFT notes](docs/craft-v2-improvements.md)). |
-| **Symbol index** | Lazy per-workspace index (`.deepseek/symbols.json`) with call hints and desktop rebuild API. |
+| **Symbol index** | Lazy per-workspace index (`.zagens/symbols.json`) with call hints and desktop rebuild API. |
 | **Office in the loop** | `read_file` for Office/PDF; **`write_office`** for `.xlsx` (Rust) and `.docx` / `.pptx` / `.pdf` (bundled Python). |
 | **Safety-first execution** | Layered exec policy, bash arity dictionary, network rules, path canonicalization, HTTP tool approval in the UI. |
 | **Desktop-native shell** | System tray, notifications, session replay, diff panel, **embedded PTY** in Code workspaces, sidecar health probes. |
@@ -54,7 +54,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 
 ## Agent runtime (sidecar)
 
-The embedded **`deepseek-runtime`** process powers chat, tools, and settings:
+The embedded **`zagens-runtime`** process powers chat, tools, and settings:
 
 - **Sessions & threads** — SQLite persistence, resume/fork, workspace snapshots
 - **MCP** — stdio servers, per-tool filters

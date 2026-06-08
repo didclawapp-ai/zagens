@@ -5,7 +5,7 @@
 # Checks performed:
 #   1. No `crates/*/Cargo.toml` carries a literal `version = "x.y.z"`; every
 #      crate must inherit `version.workspace = true` (except Zagens desktop).
-#   2. Internal `deepseek-*` path dependency pins match the workspace version.
+#   2. Internal `zagens-*` path dependency pins match the workspace version.
 #   3. `Cargo.lock` is in sync with the manifests (`cargo metadata --locked`
 #      fails if not).
 #   4. Zagens desktop version matches across Cargo.toml, tauri.conf.json,
@@ -27,11 +27,11 @@ fi
 # 2) Internal path dependency pins.
 workspace_version="$(grep -E '^version = "' Cargo.toml | head -n1 | sed -E 's/^version = "([^"]+)".*/\1/')"
 internal_dep_drift="$(
-  grep -nE 'deepseek-[a-z-]+[[:space:]]*=[[:space:]]*\{[^}]*version[[:space:]]*=[[:space:]]*"' crates/*/Cargo.toml \
+  grep -nE 'zagens-[a-z-]+[[:space:]]*=[[:space:]]*\{[^}]*version[[:space:]]*=[[:space:]]*"' crates/*/Cargo.toml \
     | grep -v "version[[:space:]]*=[[:space:]]*\"${workspace_version}\"" || true
 )"
 if [[ -n "${internal_dep_drift}" ]]; then
-  echo "::error::Internal deepseek-* path dependency versions must match workspace version ${workspace_version}:" >&2
+  echo "::error::Internal zagens-* path dependency versions must match workspace version ${workspace_version}:" >&2
   echo "${internal_dep_drift}" >&2
   fail=1
 fi

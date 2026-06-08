@@ -1340,227 +1340,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "deepseek-agent"
-version = "0.8.15"
-dependencies = [
- "deepseek-config",
- "serde",
-]
-
-[[package]]
-name = "deepseek-config"
-version = "0.8.15"
-dependencies = [
- "anyhow",
- "deepseek-secrets",
- "dirs",
- "serde",
- "toml 0.9.11+spec-1.1.0",
- "tracing",
-]
-
-[[package]]
-name = "deepseek-core"
-version = "0.8.15"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "deepseek-config",
- "deepseek-protocol",
- "deepseek-tools",
- "dirs",
- "futures-util",
- "ignore",
- "regex",
- "schemars 1.2.1",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.17",
- "tokio",
- "tokio-util",
- "toml 0.9.11+spec-1.1.0",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "deepseek-desktop"
-version = "0.7.0"
-dependencies = [
- "anyhow",
- "base64 0.22.1",
- "chrono",
- "deepseek-config",
- "deepseek-secrets",
- "dirs",
- "futures-util",
- "ignore",
- "libc",
- "open",
- "portable-pty",
- "reqwest",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tauri",
- "tauri-build",
- "tauri-plugin-clipboard-manager",
- "tauri-plugin-dialog",
- "tauri-plugin-notification",
- "tauri-plugin-os",
- "tauri-plugin-process",
- "tauri-plugin-shell",
- "tauri-plugin-single-instance",
- "tauri-plugin-updater",
- "tokio",
- "toml 0.9.11+spec-1.1.0",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "deepseek-hooks"
-version = "0.8.15"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "deepseek-protocol",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "deepseek-mcp"
-version = "0.8.15"
-dependencies = [
- "anyhow",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "deepseek-protocol"
-version = "0.8.15"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "deepseek-runtime-adapters"
-version = "0.8.15"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "deepseek-config",
- "deepseek-core",
- "deepseek-protocol",
- "dirs",
- "futures-util",
- "ignore",
- "libc",
- "reqwest",
- "rusqlite",
- "schemars 1.2.1",
- "serde",
- "serde_json",
- "similar",
- "tempfile",
- "thiserror 2.0.17",
- "tokio",
- "tokio-util",
- "toml 0.9.11+spec-1.1.0",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "deepseek-runtime-api"
-version = "0.8.15"
-dependencies = [
- "axum",
- "chrono",
- "deepseek-core",
- "deepseek-protocol",
- "deepseek-runtime-adapters",
- "deepseek-runtime-orchestrator",
- "pretty_assertions",
- "schemars 1.2.1",
- "serde",
- "serde_json",
- "tower-http",
- "tracing",
-]
-
-[[package]]
-name = "deepseek-runtime-orchestrator"
-version = "0.8.15"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "deepseek-core",
- "deepseek-protocol",
- "deepseek-runtime-adapters",
- "deepseek-tools",
- "futures-util",
- "pretty_assertions",
- "rusqlite",
- "schemars 1.2.1",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tokio-util",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "deepseek-secrets"
-version = "0.8.15"
-dependencies = [
- "dirs",
- "keyring",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.17",
- "tracing",
-]
-
-[[package]]
-name = "deepseek-tools"
-version = "0.8.15"
-dependencies = [
- "anyhow",
- "async-trait",
- "deepseek-protocol",
- "serde",
- "serde_json",
- "tokio",
- "uuid",
-]
-
-[[package]]
-name = "deepseek-topic-memory"
-version = "0.8.15"
-dependencies = [
- "chrono",
- "once_cell",
- "regex",
- "serde",
- "serde_json",
- "tempfile",
-]
-
-[[package]]
 name = "deflate64"
 version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8397,8 +8176,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "zagens-agent"
+version = "0.7.0"
+dependencies = [
+ "serde",
+ "zagens-config",
+]
+
+[[package]]
 name = "zagens-cli"
-version = "0.8.15"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -8410,15 +8197,6 @@ dependencies = [
  "clap",
  "clap_complete",
  "colored",
- "deepseek-config",
- "deepseek-core",
- "deepseek-protocol",
- "deepseek-runtime-adapters",
- "deepseek-runtime-api",
- "deepseek-runtime-orchestrator",
- "deepseek-secrets",
- "deepseek-tools",
- "deepseek-topic-memory",
  "dirs",
  "dotenvy",
  "encoding_rs",
@@ -8464,8 +8242,230 @@ dependencies = [
  "wait-timeout",
  "windows 0.60.0",
  "wiremock",
+ "zagens-config",
+ "zagens-core",
+ "zagens-protocol",
+ "zagens-runtime-adapters",
+ "zagens-runtime-api",
+ "zagens-runtime-orchestrator",
+ "zagens-secrets",
+ "zagens-tools",
+ "zagens-topic-memory",
  "zeroize",
  "zip 2.4.2",
+]
+
+[[package]]
+name = "zagens-config"
+version = "0.7.0"
+dependencies = [
+ "anyhow",
+ "dirs",
+ "serde",
+ "toml 0.9.11+spec-1.1.0",
+ "tracing",
+ "zagens-secrets",
+]
+
+[[package]]
+name = "zagens-core"
+version = "0.7.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "dirs",
+ "futures-util",
+ "ignore",
+ "regex",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.17",
+ "tokio",
+ "tokio-util",
+ "toml 0.9.11+spec-1.1.0",
+ "tracing",
+ "uuid",
+ "zagens-config",
+ "zagens-protocol",
+ "zagens-tools",
+]
+
+[[package]]
+name = "zagens-desktop"
+version = "0.7.0"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "chrono",
+ "dirs",
+ "futures-util",
+ "ignore",
+ "libc",
+ "open",
+ "portable-pty",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-clipboard-manager",
+ "tauri-plugin-dialog",
+ "tauri-plugin-notification",
+ "tauri-plugin-os",
+ "tauri-plugin-process",
+ "tauri-plugin-shell",
+ "tauri-plugin-single-instance",
+ "tauri-plugin-updater",
+ "tokio",
+ "toml 0.9.11+spec-1.1.0",
+ "tracing",
+ "uuid",
+ "zagens-config",
+ "zagens-secrets",
+]
+
+[[package]]
+name = "zagens-hooks"
+version = "0.7.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "zagens-protocol",
+]
+
+[[package]]
+name = "zagens-mcp"
+version = "0.7.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "zagens-protocol"
+version = "0.7.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "zagens-runtime-adapters"
+version = "0.7.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "dirs",
+ "futures-util",
+ "ignore",
+ "libc",
+ "reqwest",
+ "rusqlite",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+ "similar",
+ "tempfile",
+ "thiserror 2.0.17",
+ "tokio",
+ "tokio-util",
+ "toml 0.9.11+spec-1.1.0",
+ "tracing",
+ "uuid",
+ "zagens-config",
+ "zagens-core",
+ "zagens-protocol",
+]
+
+[[package]]
+name = "zagens-runtime-api"
+version = "0.7.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "pretty_assertions",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+ "tower-http",
+ "tracing",
+ "zagens-core",
+ "zagens-protocol",
+ "zagens-runtime-adapters",
+ "zagens-runtime-orchestrator",
+]
+
+[[package]]
+name = "zagens-runtime-orchestrator"
+version = "0.7.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "futures-util",
+ "pretty_assertions",
+ "rusqlite",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "uuid",
+ "zagens-core",
+ "zagens-protocol",
+ "zagens-runtime-adapters",
+ "zagens-tools",
+]
+
+[[package]]
+name = "zagens-secrets"
+version = "0.7.0"
+dependencies = [
+ "dirs",
+ "keyring",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.17",
+ "tracing",
+]
+
+[[package]]
+name = "zagens-tools"
+version = "0.7.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "serde",
+ "serde_json",
+ "tokio",
+ "uuid",
+ "zagens-protocol",
+]
+
+[[package]]
+name = "zagens-topic-memory"
+version = "0.7.0"
+dependencies = [
+ "chrono",
+ "once_cell",
+ "regex",
+ "serde",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]

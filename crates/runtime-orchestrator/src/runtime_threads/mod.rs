@@ -94,7 +94,7 @@ pub enum ThreadListFilter {
 #[derive(Debug, Clone, Serialize, Deserialize, Default, JsonSchema)]
 pub struct CreateThreadRequest {
     pub model: Option<String>,
-    #[schemars(schema_with = "deepseek_runtime_adapters::json_schema_util::path_as_string")]
+    #[schemars(schema_with = "zagens_runtime_adapters::json_schema_util::path_as_string")]
     pub workspace: Option<PathBuf>,
     pub mode: Option<String>,
     pub allow_shell: Option<bool>,

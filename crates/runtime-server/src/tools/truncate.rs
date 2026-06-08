@@ -66,7 +66,7 @@ pub const SPILLOVER_MAX_AGE: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 /// degrade gracefully rather than fail the tool call.
 #[must_use]
 pub fn spillover_root() -> Option<PathBuf> {
-    deepseek_config::user_data_path(SPILLOVER_DIR_NAME).ok()
+    zagens_config::user_data_path(SPILLOVER_DIR_NAME).ok()
 }
 
 /// Resolve the spillover-file path for a tool call id. Sanitises the

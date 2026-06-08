@@ -1,7 +1,7 @@
 //! Session and turn loop boundaries (P2 PR2–PR4).
 //!
 //! `Session` and related state live here. The live `Engine` / `turn_loop`
-//! implementation is in `deepseek-core`; the sidecar provides host adapters.
+//! implementation is in `zagens-core`; the sidecar provides host adapters.
 //!
 //! **PR3:** `StartTurnParams` + `TurnEnginePort` — `RuntimeThreadManager::start_turn`
 //! validates and delegates through core before sending `Op::SendMessage`.

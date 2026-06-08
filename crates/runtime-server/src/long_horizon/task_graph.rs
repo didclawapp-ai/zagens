@@ -1,9 +1,9 @@
 //! HTTP / SSE task-graph JSON (LHT Phase 2).
 
-use deepseek_core::chat::Message;
-use deepseek_core::long_horizon::LongHorizonConfig;
 use serde::Serialize;
 use serde_json::{Value, json};
+use zagens_core::chat::Message;
+use zagens_core::long_horizon::LongHorizonConfig;
 
 use crate::tools::plan::{PlanSnapshot, StepStatus};
 use crate::tools::todo::{TodoListSnapshot, TodoStatus};
@@ -95,10 +95,10 @@ pub fn build_task_graph_response(
                     let mut cache = super::completion_gate_panel::CompletionGatePanelCache {
                         active: true,
                         mode: Some(match lht.completion_gate.mode {
-                            deepseek_core::long_horizon::CompletionGateMode::Enforce => {
+                            zagens_core::long_horizon::CompletionGateMode::Enforce => {
                                 "enforce".to_string()
                             }
-                            deepseek_core::long_horizon::CompletionGateMode::Observe => {
+                            zagens_core::long_horizon::CompletionGateMode::Observe => {
                                 "observe".to_string()
                             }
                         }),

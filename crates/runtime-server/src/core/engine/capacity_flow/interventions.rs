@@ -7,7 +7,7 @@ use tokio::sync::{Mutex as AsyncMutex, RwLock};
 use crate::compaction::{compact_messages_safe, should_compact};
 use crate::mcp::McpPool;
 use crate::models::{ContentBlock, Message};
-use deepseek_core::turn::TurnLoopMode;
+use zagens_core::turn::TurnLoopMode;
 
 use super::super::tool_catalog::REQUEST_USER_INPUT_NAME;
 use super::super::*;

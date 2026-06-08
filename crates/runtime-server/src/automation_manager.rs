@@ -796,7 +796,7 @@ pub fn default_automations_dir() -> PathBuf {
             }
         }
     }
-    deepseek_config::user_data_path_or_relative("automations")
+    zagens_config::user_data_path_or_relative("automations")
 }
 
 pub type SharedAutomationManager = Arc<Mutex<AutomationManager>>;

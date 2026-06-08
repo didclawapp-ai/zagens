@@ -1,9 +1,13 @@
 [package]
-name = "deepseek-topic-memory"
+name = "zagens-topic-memory"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
 description = "Topic memory graph (pheromone-style) for conversation context injection"
 
 [dependencies]

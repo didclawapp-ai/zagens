@@ -56,7 +56,7 @@ Maintainer paused mid D16 E1 deep split; assessment found **continuing full pack
     (Thread/Turn orchestration)       (MCP · persist · tool host ports)
                └──────────────┬───────────────┘
                               ▼
-                    deepseek-core (Engine · turn_loop · hosts)
+                    zagens-core (Engine · turn_loop · hosts)
 
 Persistence SSOT (defaults; override via `DEEPSEEK_RUNTIME_DIR` / `DEEPSEEK_TASKS_DIR` etc., see orchestrator/task code):
   ~/.deepseek/tasks/runtime/runtime.db  ← Thread / Turn / Event
@@ -69,9 +69,9 @@ Persistence SSOT (defaults; override via `DEEPSEEK_RUNTIME_DIR` / `DEEPSEEK_TASK
 HTTP handler
   → RuntimeThreadManager::start_turn (sidecar thin delegate)
   → runtime-orchestrator::turn_lifecycle::start_turn
-  → TurnEnginePort::start_turn (deepseek-core: `EngineHandle` → Op::SendMessage)
+  → TurnEnginePort::start_turn (zagens-core: `EngineHandle` → Op::SendMessage)
   → runtime-server: EnginePlatformExt::dispatch_op → handle_send_message (host glue)
-  → deepseek-core::handle_deepseek_turn (turn / streaming / tool planning and results)
+  → zagens-core::handle_deepseek_turn (turn / streaming / tool planning and results)
 ```
 
 In other words: **orchestration entry** always at `RuntimeThreadManager::start_turn`; **host L2 (sidecar `Engine`) cannot be bypassed** before entering core's `handle_deepseek_turn`. No second production path "direct to core turn".
@@ -84,7 +84,7 @@ In other words: **orchestration entry** always at `RuntimeThreadManager::start_t
 
 | Sub-item | Cutoff status | Acceptance anchor |
 |----------|---------------|-------------------|
-| **E2** SubAgent module split | **Landed** | `crates/runtime-server/src/tools/subagent/mod.rs` ~82 lines (impl); `deepseek-core` side `subagent` types/re-export only (thin layer); 108 SubAgent-related unit tests |
+| **E2** SubAgent module split | **Landed** | `crates/runtime-server/src/tools/subagent/mod.rs` ~82 lines (impl); `zagens-core` side `subagent` types/re-export only (thin layer); 108 SubAgent-related unit tests |
 | **E3** App.tsx hooks | **Landed** | `App.tsx` ~772 lines; `AppShell` + hooks |
 | **E5** OpenAPI contract CI | **Landed** | `scripts/check-openapi-contract.{ps1,sh}`; CI Ubuntu: `export-runtime-openapi` + `generate:api-types` diff gate; `sidecar_contract_*` |
 | **E1-a phase 1** adapters skeleton | **Landed** | `runtime-adapters`: MCP, persist, network_gate, tool host ports |
@@ -152,7 +152,7 @@ Before merging any PR touching `desktop` / `runtime-server` / `core` boundaries:
 
 | # | Rule |
 |---|------|
-| I1 | `desktop` **must not** path-depend `runtime-server` / `deepseek-core` (**code review must check** `Cargo.toml`) |
+| I1 | `desktop` **must not** path-depend `runtime-server` / `zagens-core` (**code review must check** `Cargo.toml`) |
 | I2 | WebView **must not** hold runtime Bearer; via `runtime_proxy` |
 | I3 | New `/v1/*` **must** OpenAPI + TS regen + contract test |
 | I4 | **Must not** add fields to `Engine` struct |
@@ -164,7 +164,7 @@ Before merging any PR touching `desktop` / `runtime-server` / `core` boundaries:
 Existing CI / script guardrails:
 
 - `crates/runtime-server/tests/architecture_invariants.rs` (D15: `deepseek_state` / legacy port etc.)
-- `crates/desktop/tests/architecture_boundary.rs` (**automated**: forbid `../runtime-server`, `../core`, `deepseek-core`, forbid `deepseek-tui` **lib** path-dep)
+- `crates/desktop/tests/architecture_boundary.rs` (**automated**: forbid `../runtime-server`, `../core`, `zagens-core`, forbid `deepseek-tui` **lib** path-dep)
 - OpenAPI: `scripts/check-openapi-contract.{ps1,sh}`; **CI** (`ci.yml` Ubuntu) also `git diff` gate on `zagens-runtime-v1.openapi.json` and `runtime-api.ts` (D8 / D16 E5)
 
 ---
@@ -177,7 +177,7 @@ Existing CI / script guardrails:
 | Thread/Turn lifecycle | `runtime-orchestrator` |
 | MCP / persist / network policy | `runtime-adapters` |
 | Tool impl / LLM / prompts | `runtime-server` (host) |
-| Engine / turn logic | `deepseek-core` + host trait |
+| Engine / turn logic | `zagens-core` + host trait |
 | Desktop UI / OS integration | `desktop` + `web-ui` |
 
 ---

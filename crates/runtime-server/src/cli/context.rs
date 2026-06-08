@@ -43,7 +43,7 @@ pub fn default_config_path() -> PathBuf {
         .ok()
         .map(PathBuf::from)
         .unwrap_or_else(|| {
-            deepseek_config::user_data_path("config.toml")
+            zagens_config::user_data_path("config.toml")
                 .unwrap_or_else(|_| PathBuf::from("config.toml"))
         })
 }

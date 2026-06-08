@@ -1,5 +1,5 @@
 //! Engine configuration — **lean** subset that depends only on core types
-//! (M2 strangler step of the `Engine` struct → `deepseek-core` migration).
+//! (M2 strangler step of the `Engine` struct → `zagens-core` migration).
 //!
 //! See [`PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE`](../../../../docs/tech/adr/PR_M0_ENGINE_STRUCT_TO_CORE_SPIKE.md)
 //! §3 row #1 and §5 R2 for the design rationale. The tui crate keeps a fat
@@ -45,7 +45,7 @@ pub struct EngineConfig {
     /// Loaded in declared order from the user's
     /// `instructions = [...]` config (or the per-project override). The
     /// caller is responsible for `expand_path`-style `~` substitution
-    /// before constructing this list — `deepseek-core` does no disk I/O
+    /// before constructing this list — `zagens-core` does no disk I/O
     /// on these paths.
     pub instructions: Vec<PathBuf>,
     /// Maximum number of assistant steps before stopping.

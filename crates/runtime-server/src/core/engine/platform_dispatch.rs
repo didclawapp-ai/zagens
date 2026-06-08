@@ -1,9 +1,9 @@
 //! Tui [`EnginePlatformExt`] — op-loop dispatch (M8).
 
 use async_trait::async_trait;
-use deepseek_core::engine::Engine as CoreEngine;
-use deepseek_core::engine::op::Op;
-use deepseek_core::engine::platform_ext::EnginePlatformExt;
+use zagens_core::engine::Engine as CoreEngine;
+use zagens_core::engine::op::Op;
+use zagens_core::engine::platform_ext::EnginePlatformExt;
 
 use crate::agent_surface::AppMode;
 use crate::context_snapshot::ThreadContextSnapshot;

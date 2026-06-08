@@ -103,7 +103,7 @@ impl Engine {
         // M5: calls go through the `SeamHost` trait — same call shape,
         // explicit UFCS to keep the trait import obvious at the seam.
         let briefing_text = if let Some(ref seam_mgr) = self.seam {
-            use deepseek_core::engine::hosts::SeamHost;
+            use zagens_core::engine::hosts::SeamHost;
             let seams =
                 SeamHost::collect_seam_texts(seam_mgr.as_ref(), &self.session.messages).await;
             let state_text = {
@@ -243,7 +243,7 @@ impl Engine {
         self.session.cycle_briefings.push(briefing.clone());
         // Reset seam tracking for the new cycle. M5: trait dispatch.
         if let Some(ref seam_mgr) = self.seam {
-            use deepseek_core::engine::hosts::SeamHost;
+            use zagens_core::engine::hosts::SeamHost;
             SeamHost::reset(seam_mgr.as_ref()).await;
         }
         // Drop any compaction summary 鈥?that path is incompatible with the
@@ -313,7 +313,7 @@ impl Engine {
         } else {
             // M5: dispatch through TopicMemoryHost — runtime owns its
             // settings (set at Engine::new from config.topic_memory).
-            use deepseek_core::engine::hosts::TopicMemoryHost;
+            use zagens_core::engine::hosts::TopicMemoryHost;
             TopicMemoryHost::compose_block(&mut *self.topic_memory, query_hint.as_deref())
         };
         let base = prompts::system_prompt_for_mode_with_context_skills_session_and_approval(

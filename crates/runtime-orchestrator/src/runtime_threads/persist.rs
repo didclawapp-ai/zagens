@@ -743,7 +743,7 @@ pub(super) fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<
             .with_context(|| format!("Failed to create directory {}", parent.display()))?;
     }
     let payload = serde_json::to_string_pretty(value)?;
-    deepseek_runtime_adapters::util::write_atomic(path, payload.as_bytes())
+    zagens_runtime_adapters::util::write_atomic(path, payload.as_bytes())
         .with_context(|| format!("Failed to write {}", path.display()))
 }
 

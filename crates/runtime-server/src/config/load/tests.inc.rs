@@ -13,8 +13,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 struct EnvGuard {
     home: Option<OsString>,
     userprofile: Option<OsString>,
-    deepseek_config_path: Option<OsString>,
     zagens_config_path: Option<OsString>,
+    legacy_config_path: Option<OsString>,
     deepseek_provider: Option<OsString>,
     deepseek_api_key: Option<OsString>,
     deepseek_base_url: Option<OsString>,
@@ -51,7 +51,7 @@ impl EnvGuard {
         let config_str = OsString::from(config_path.as_os_str());
         let home_prev = env::var_os("HOME");
         let userprofile_prev = env::var_os("USERPROFILE");
-        let deepseek_config_prev = env::var_os("DEEPSEEK_CONFIG_PATH");
+        let legacy_config_prev = env::var_os("DEEPSEEK_CONFIG_PATH");
         let zagens_config_prev = env::var_os("ZAGENS_CONFIG_PATH");
         let deepseek_provider_prev = env::var_os("DEEPSEEK_PROVIDER");
         let api_key_prev = env::var_os("DEEPSEEK_API_KEY");
@@ -117,8 +117,8 @@ impl EnvGuard {
         Self {
             home: home_prev,
             userprofile: userprofile_prev,
-            deepseek_config_path: deepseek_config_prev,
             zagens_config_path: zagens_config_prev,
+            legacy_config_path: legacy_config_prev,
             deepseek_provider: deepseek_provider_prev,
             deepseek_api_key: api_key_prev,
             deepseek_base_url: base_url_prev,
@@ -156,7 +156,7 @@ impl Drop for EnvGuard {
         unsafe {
             Self::restore_var("HOME", self.home.take());
             Self::restore_var("USERPROFILE", self.userprofile.take());
-            Self::restore_var("DEEPSEEK_CONFIG_PATH", self.deepseek_config_path.take());
+            Self::restore_var("DEEPSEEK_CONFIG_PATH", self.legacy_config_path.take());
             Self::restore_var("ZAGENS_CONFIG_PATH", self.zagens_config_path.take());
             Self::restore_var("DEEPSEEK_PROVIDER", self.deepseek_provider.take());
             Self::restore_var("DEEPSEEK_API_KEY", self.deepseek_api_key.take());
@@ -691,7 +691,7 @@ fn test_tilde_expansion_in_paths() -> Result<()> {
 }
 
 #[test]
-fn test_load_uses_tilde_expanded_deepseek_config_path() -> Result<()> {
+fn test_load_uses_tilde_expanded_zagens_config_path() -> Result<()> {
     let _lock = lock_test_env();
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)

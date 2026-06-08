@@ -68,11 +68,11 @@ mod working_set;
 mod workspace_trust;
 
 // D16 E1-a — adapters crate (MCP / persist / snapshot); re-export for stable `crate::` paths.
-pub use deepseek_runtime_adapters::persist::{
+pub use zagens_runtime_adapters::persist::{
     ContextReference, SavedSession, SessionContextReference, SessionManager, SessionMetadata,
     context_reference, session_manager, session_store_sqlite,
 };
-pub use deepseek_runtime_adapters::{json_schema_util, mcp, network_policy, persist, snapshot};
-pub use deepseek_runtime_orchestrator::pricing;
+pub use zagens_runtime_adapters::{json_schema_util, mcp, network_policy, persist, snapshot};
+pub use zagens_runtime_orchestrator::pricing;
 // D16 E1-d — stable lib entry for in-proc / test hosts (see RUNTIME_ARCHITECTURE §1).
 pub use runtime_serve::{RuntimeApiOptions, run_http_server};

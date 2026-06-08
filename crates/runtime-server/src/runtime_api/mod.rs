@@ -60,7 +60,7 @@ pub use router::build_router;
 pub(crate) use sessions::ResumeTaskTracker;
 
 #[cfg(test)]
-pub(crate) use deepseek_runtime_api::cors_layer;
+pub(crate) use zagens_runtime_api::cors_layer;
 
 #[derive(Clone)]
 pub struct RuntimeApiState {
@@ -124,7 +124,7 @@ pub(crate) fn truncate_text(text: &str, max_chars: usize) -> String {
     format!("{truncated}...")
 }
 
-pub(crate) use deepseek_runtime_api::ApiError;
+pub(crate) use zagens_runtime_api::ApiError;
 
 pub(crate) fn map_thread_err(err: anyhow::Error) -> ApiError {
     let message = err.to_string();

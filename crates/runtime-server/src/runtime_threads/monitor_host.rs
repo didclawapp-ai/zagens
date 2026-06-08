@@ -3,11 +3,11 @@
 use std::path::PathBuf;
 
 use async_trait::async_trait;
-use deepseek_tools::{ToolError, ToolResult};
 use serde_json::Value;
+use zagens_tools::{ToolError, ToolResult};
 
 use super::manager::RuntimeThreadManager;
-use deepseek_runtime_orchestrator::runtime_threads::{
+use zagens_runtime_orchestrator::runtime_threads::{
     RuntimeThreadMonitorHost, checklist_tool_needs_panel_push, scratchpad_tool_needs_panel_push,
 };
 

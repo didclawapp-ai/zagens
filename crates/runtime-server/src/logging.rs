@@ -66,9 +66,9 @@ mod tests {
         assert!(log_value_enables_verbose("debug"));
         assert!(log_value_enables_verbose("deepseek_cli=debug"));
         assert!(log_value_enables_verbose(
-            "warn,deepseek_runtime::client=trace"
+            "warn,zagens_runtime::client=trace"
         ));
         assert!(!log_value_enables_verbose("warn"));
-        assert!(!log_value_enables_verbose("deepseek_runtime=off"));
+        assert!(!log_value_enables_verbose("zagens_runtime=off"));
     }
 }

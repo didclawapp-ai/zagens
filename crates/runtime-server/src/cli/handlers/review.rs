@@ -6,7 +6,7 @@ use std::path::Path;
 use anyhow::{Result, bail};
 use tempfile::NamedTempFile;
 
-use deepseek_core::chat::LlmClient;
+use zagens_core::chat::LlmClient;
 
 use crate::cli::args::{ApplyArgs, ReviewArgs};
 use crate::cli::auto_route_cli::resolve_cli_auto_route;

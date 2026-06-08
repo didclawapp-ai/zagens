@@ -3,8 +3,8 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex as StdMutex};
 
-use deepseek_runtime_adapters::tools::{RuntimeToolHostWire, ToolAutomationHost, ToolTaskHost};
-use deepseek_runtime_orchestrator::runtime_threads::types::ThreadRecord;
+use zagens_runtime_adapters::tools::{RuntimeToolHostWire, ToolAutomationHost, ToolTaskHost};
+use zagens_runtime_orchestrator::runtime_threads::types::ThreadRecord;
 
 use crate::automation_manager::SharedAutomationManager;
 use crate::task_manager::SharedTaskManager;

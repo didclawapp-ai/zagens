@@ -2,8 +2,8 @@
 
 use std::path::Path;
 
-// Re-exported from deepseek-core (P2 PR4).
-pub use deepseek_core::task_type::TaskType;
+// Re-exported from zagens-core (P2 PR4).
+pub use zagens_core::task_type::TaskType;
 
 /// Resolve UI / API value (`auto` | `office` | `code`) to a concrete [`TaskType`].
 #[must_use]

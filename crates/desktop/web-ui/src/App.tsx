@@ -505,7 +505,7 @@ export default function App() {
 
   useEffect(() => {
     try {
-      localStorage.setItem('deepseek-desktop-model', selectedModel);
+      localStorage.setItem('zagens-desktop-model', selectedModel);
     } catch {
       /* ignore */
     }
@@ -543,7 +543,7 @@ export default function App() {
 
   useEffect(() => {
     try {
-      localStorage.setItem('deepseek-desktop-run-mode', runMode);
+      localStorage.setItem('zagens-desktop-run-mode', runMode);
     } catch {
       /* ignore */
     }

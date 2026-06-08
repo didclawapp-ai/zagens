@@ -3,8 +3,8 @@
 use std::path::PathBuf;
 
 use async_trait::async_trait;
-use deepseek_tools::{ToolError, ToolResult};
 use serde_json::Value;
+use zagens_tools::{ToolError, ToolResult};
 
 /// Host port for Zagens panel SSE, artifact refs, and sandbox elevation policy.
 #[async_trait]

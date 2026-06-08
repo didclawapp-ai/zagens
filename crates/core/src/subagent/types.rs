@@ -1,4 +1,4 @@
-//! Sub-agent snapshot types shared with engine events (P2 PR4 → `deepseek-core`).
+//! Sub-agent snapshot types shared with engine events (P2 PR4 → `zagens-core`).
 
 use serde::{Deserialize, Serialize};
 

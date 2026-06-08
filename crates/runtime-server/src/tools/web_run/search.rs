@@ -7,10 +7,10 @@ use super::html::{
 use super::types::{ImageResultEntry, SearchEntry, WebLink, WebPage};
 use crate::network_policy::NetworkPolicyDecider;
 use crate::tools::spec::{ToolContext, ToolError};
-use deepseek_runtime_adapters::tools::check_host_policy;
 use serde::Deserialize;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
+use zagens_runtime_adapters::tools::check_host_policy;
 
 const DUCKDUCKGO_HOST: &str = "html.duckduckgo.com";
 const BING_HOST: &str = "www.bing.com";

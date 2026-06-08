@@ -1,4 +1,4 @@
-//! Operations submitted by the UI/runtime layer to the engine (M1 → `deepseek-core`).
+//! Operations submitted by the UI/runtime layer to the engine (M1 → `zagens-core`).
 //!
 //! These operations flow from the TUI/HTTP runtime to the engine via a
 //! channel, allowing the shell to stay responsive while the engine processes

@@ -1,8 +1,8 @@
-//! Tool planning + outcome aggregation for one turn step (P2 PR6b — `deepseek-core`).
+//! Tool planning + outcome aggregation for one turn step (P2 PR6b — `zagens-core`).
 
-use deepseek_tools::{ToolError, ToolResult};
 use serde_json::json;
 use std::collections::HashSet;
+use zagens_tools::{ToolError, ToolResult};
 
 use crate::chat::{ContentBlock, Message, Tool};
 use crate::engine::context::compact_tool_result_for_context;

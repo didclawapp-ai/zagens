@@ -12,7 +12,7 @@ impl RuntimeThreadManager {
         thread_id: &str,
         req: StartTurnRequest,
     ) -> Result<StartTurnOutcome> {
-        deepseek_runtime_orchestrator::runtime_threads::turn_lifecycle::start_turn(
+        zagens_runtime_orchestrator::runtime_threads::turn_lifecycle::start_turn(
             self, self, thread_id, req,
         )
         .await
@@ -23,7 +23,7 @@ impl RuntimeThreadManager {
         thread_id: &str,
         req: EditLastTurnRequest,
     ) -> Result<StartTurnOutcome> {
-        deepseek_runtime_orchestrator::runtime_threads::turn_lifecycle::edit_last_turn(
+        zagens_runtime_orchestrator::runtime_threads::turn_lifecycle::edit_last_turn(
             self, self, thread_id, req,
         )
         .await

@@ -289,7 +289,7 @@ pub(crate) fn write_panic_dump(
     location: &std::panic::Location<'_>,
     message: &str,
 ) -> std::io::Result<()> {
-    let crash_dir = deepseek_config::user_data_path_or_relative("crashes");
+    let crash_dir = zagens_config::user_data_path_or_relative("crashes");
     write_panic_dump_to(&crash_dir, name, location, message)
 }
 

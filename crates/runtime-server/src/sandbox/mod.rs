@@ -68,7 +68,7 @@ impl TuiSandboxHost {
     }
 }
 
-impl deepseek_core::engine::hosts::SandboxHost for TuiSandboxHost {
+impl zagens_core::engine::hosts::SandboxHost for TuiSandboxHost {
     fn backend(&self) -> Option<&Arc<dyn SandboxBackend>> {
         self.0.as_ref()
     }

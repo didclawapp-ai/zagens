@@ -2,9 +2,9 @@
 
 use std::collections::{HashMap, HashSet};
 
-use deepseek_core::long_horizon::{LongHorizonConfig, MacroPhase};
 use regex::Regex;
 use std::sync::LazyLock;
+use zagens_core::long_horizon::{LongHorizonConfig, MacroPhase};
 
 use super::graph::CodeTaskGraph;
 use crate::tools::plan::StepStatus;
@@ -937,7 +937,7 @@ mod tests {
         let cfg = LongHorizonConfig::default();
         let cfg = LongHorizonConfig {
             enabled: true,
-            mode: deepseek_core::long_horizon::LhtMode::Auto,
+            mode: zagens_core::long_horizon::LhtMode::Auto,
             max_nudges_per_item: 5,
             blocked_nudges_without_progress: 3,
             reinject_every_steps: cfg.reinject_every_steps,
@@ -986,7 +986,7 @@ mod tests {
         let cfg = LongHorizonConfig::default();
         let cfg = LongHorizonConfig {
             enabled: true,
-            mode: deepseek_core::long_horizon::LhtMode::Auto,
+            mode: zagens_core::long_horizon::LhtMode::Auto,
             max_nudges_per_item: 5,
             blocked_nudges_without_progress: 3,
             reinject_every_steps: cfg.reinject_every_steps,
@@ -1020,7 +1020,7 @@ mod tests {
         let defaults = LongHorizonConfig::default();
         let cfg = LongHorizonConfig {
             enabled: true,
-            mode: deepseek_core::long_horizon::LhtMode::Auto,
+            mode: zagens_core::long_horizon::LhtMode::Auto,
             max_nudges_per_item: 100,
             blocked_nudges_without_progress: 3,
             reinject_every_steps: 0,

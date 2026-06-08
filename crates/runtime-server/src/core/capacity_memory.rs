@@ -55,11 +55,11 @@ fn capacity_memory_dirs() -> Vec<PathBuf> {
     }
 
     let mut dirs = Vec::new();
-    dirs.push(deepseek_config::user_data_path_or_relative("memory"));
+    dirs.push(zagens_config::user_data_path_or_relative("memory"));
 
     let cwd = std::env::current_dir()
         .unwrap_or_else(|_| PathBuf::from("."))
-        .join(deepseek_config::USER_DATA_DIR_NAME)
+        .join(zagens_config::USER_DATA_DIR_NAME)
         .join("memory");
     dirs.push(cwd);
 

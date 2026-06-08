@@ -4,7 +4,7 @@
 async fn main() -> anyhow::Result<()> {
     use anyhow::Context;
     use clap::Parser;
-    use deepseek_runtime::cli::{Cli, configure_windows_console_utf8, dispatch};
+    use zagens_runtime::cli::{Cli, configure_windows_console_utf8, dispatch};
 
     dotenvy::dotenv().ok();
     configure_windows_console_utf8();

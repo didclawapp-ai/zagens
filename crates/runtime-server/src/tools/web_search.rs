@@ -26,12 +26,12 @@ use crate::config::SearchProvider;
 use crate::network_policy::NetworkPolicyDecider;
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose};
-use deepseek_runtime_adapters::tools::check_host_policy;
 use regex::Regex;
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::sync::OnceLock;
 use std::time::Duration;
+use zagens_runtime_adapters::tools::check_host_policy;
 
 const DUCKDUCKGO_HOST: &str = "html.duckduckgo.com";
 const BING_HOST: &str = "www.bing.com";

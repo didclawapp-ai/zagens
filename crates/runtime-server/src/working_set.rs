@@ -1,3 +1,3 @@
-//! Re-export working-set tracking from `deepseek-core` (P2 PR2).
+//! Re-export working-set tracking from `zagens-core` (P2 PR2).
 
-pub use deepseek_core::working_set::*;
+pub use zagens_core::working_set::*;

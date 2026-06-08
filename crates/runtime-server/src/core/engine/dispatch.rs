@@ -1,6 +1,6 @@
 //! Tool dispatch — plan/execute helpers for the per-turn tool batch (P2 PR4).
 //!
-//! Policy and JSON parsing live in `deepseek-core::engine::dispatch`; this
+//! Policy and JSON parsing live in `zagens-core::engine::dispatch`; this
 //! module keeps TUI-only types (`ToolExecutionPlan`, lock guards) and
 //! `arg_repair` integration.
 
@@ -9,16 +9,16 @@ use serde_json::Value;
 use crate::agent_surface::AppMode;
 use crate::tools::spec::{ToolError, ToolResult};
 
-use deepseek_core::engine::dispatch::{self, ToolParallelPlanFlags};
-use deepseek_core::engine::streaming::ToolUseState;
+use zagens_core::engine::dispatch::{self, ToolParallelPlanFlags};
+use zagens_core::engine::streaming::ToolUseState;
 
-pub use deepseek_core::engine::dispatch::{
+pub use zagens_core::engine::dispatch::{
     mcp_tool_is_parallel_safe, mcp_tool_is_read_only, parse_parallel_tool_calls,
 };
 
 // === Types (stay in tui until Engine moves to core) ===================
 
-pub use deepseek_core::engine::turn_loop::ToolExecutionPlan;
+pub use zagens_core::engine::turn_loop::ToolExecutionPlan;
 
 #[derive(Debug, serde::Serialize)]
 pub(super) struct ParallelToolResultEntry {

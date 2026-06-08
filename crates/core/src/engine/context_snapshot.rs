@@ -1,4 +1,4 @@
-//! Thread-level context usage snapshot — pure data type (M1 → `deepseek-core`).
+//! Thread-level context usage snapshot — pure data type (M1 → `zagens-core`).
 //!
 //! The companion `build_thread_context_snapshot` helper still lives in
 //! `crates/tui/src/context_snapshot.rs` because it depends on the tui-only

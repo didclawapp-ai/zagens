@@ -6,5 +6,5 @@
 async fn main() {
     dotenvy::dotenv().ok();
     let args = std::env::args();
-    deepseek_runtime::runtime_serve::run_from_args(args).await;
+    zagens_runtime::runtime_serve::run_from_args(args).await;
 }

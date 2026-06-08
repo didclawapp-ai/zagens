@@ -58,8 +58,8 @@ export type WorkspaceTabId = 'restore' | 'files' | 'rules' | 'terminal' | 'diff'
 
 type Theme = 'light' | 'dark';
 
-const WORKSPACE_TAB_KEY = 'deepseek-desktop-right-workspace-tab';
-const PANEL_WIDTH_KEY = 'deepseek-desktop-right-panel-width';
+const WORKSPACE_TAB_KEY = 'zagens-desktop-right-workspace-tab';
+const PANEL_WIDTH_KEY = 'zagens-desktop-right-panel-width';
 const PANEL_MIN_PX = 260;
 const PANEL_DEFAULT_PX = 320;
 

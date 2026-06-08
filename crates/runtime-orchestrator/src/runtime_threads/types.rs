@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::models::Usage;
-use deepseek_core::coherence::CoherenceState;
+use zagens_core::coherence::CoherenceState;
 
 use super::CURRENT_RUNTIME_SCHEMA_VERSION;
 
@@ -17,9 +17,7 @@ const fn default_runtime_schema_version() -> u32 {
 }
 
 pub fn default_thread_task_type() -> String {
-    deepseek_core::task_type::TaskType::Code
-        .as_str()
-        .to_string()
+    zagens_core::task_type::TaskType::Code.as_str().to_string()
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
@@ -65,7 +63,7 @@ pub struct ThreadRecord {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub model: String,
-    #[schemars(schema_with = "deepseek_runtime_adapters::json_schema_util::path_as_string")]
+    #[schemars(schema_with = "zagens_runtime_adapters::json_schema_util::path_as_string")]
     pub workspace: PathBuf,
     pub mode: String,
     pub allow_shell: bool,
@@ -165,7 +163,7 @@ pub struct TurnItemRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<Value>,
     #[serde(default)]
-    #[schemars(schema_with = "deepseek_runtime_adapters::json_schema_util::path_vec_as_strings")]
+    #[schemars(schema_with = "zagens_runtime_adapters::json_schema_util::path_vec_as_strings")]
     pub artifact_refs: Vec<PathBuf>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub started_at: Option<DateTime<Utc>>,

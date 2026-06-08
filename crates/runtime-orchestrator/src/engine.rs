@@ -3,7 +3,7 @@
 //! Concrete `SandboxPolicy` and `UserInputResponse` types are wired in
 //! `zagens-cli` when constructing `RuntimeThreadManager<P, R>`.
 
-pub use deepseek_core::engine::handle::EngineHandle;
-pub use deepseek_core::engine::op::Op;
-pub use deepseek_core::events::{Event, TurnSummary};
-pub use deepseek_core::turn::TurnOutcomeStatus;
+pub use zagens_core::engine::handle::EngineHandle;
+pub use zagens_core::engine::op::Op;
+pub use zagens_core::events::{Event, TurnSummary};
+pub use zagens_core::turn::TurnOutcomeStatus;

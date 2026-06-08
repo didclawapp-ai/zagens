@@ -5,8 +5,8 @@ use std::sync::Arc;
 use tokio::sync::{Mutex as AsyncMutex, RwLock};
 
 use crate::mcp::McpPool;
-use deepseek_core::engine::turn_loop::should_run_capacity_error_escalation;
-use deepseek_core::turn::TurnLoopMode;
+use zagens_core::engine::turn_loop::should_run_capacity_error_escalation;
+use zagens_core::turn::TurnLoopMode;
 
 use super::super::*;
 

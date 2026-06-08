@@ -66,7 +66,7 @@ fn sidecar_spawn_cwd() -> Option<PathBuf> {
 /// Path to the sidecar stderr log file. Created under `~/.zagens/logs/` on
 /// first spawn — the parent directory is ensured before opening the file (#H4).
 fn sidecar_stderr_log_path() -> Option<PathBuf> {
-    let log_dir = deepseek_config::user_data_path("logs").ok()?;
+    let log_dir = zagens_config::user_data_path("logs").ok()?;
     std::fs::create_dir_all(&log_dir).ok()?;
     Some(log_dir.join("sidecar.log"))
 }
@@ -74,7 +74,7 @@ fn sidecar_stderr_log_path() -> Option<PathBuf> {
 /// Zagens parent process (Tauri) supervisor events — same folder as `sidecar.log`, so GUI users
 /// without a console still get restart / health-check reasons on disk.
 fn supervisor_log_path() -> Option<PathBuf> {
-    let log_dir = deepseek_config::user_data_path("logs").ok()?;
+    let log_dir = zagens_config::user_data_path("logs").ok()?;
     std::fs::create_dir_all(&log_dir).ok()?;
     Some(log_dir.join("supervisor.log"))
 }
@@ -177,7 +177,7 @@ fn spawn_sidecar(app: &AppHandle, runtime_bin: &str, port: u16, token: &str) -> 
 
     // Pull the DeepSeek API key from OS keyring so it never sits in config.toml
     // or any other file plaintext. The sidecar picks it up via DEEPSEEK_API_KEY.
-    let secrets = deepseek_secrets::Secrets::auto_detect();
+    let secrets = zagens_secrets::Secrets::auto_detect();
     if let Some(api_key) = secrets.resolve("deepseek") {
         std_cmd.env("DEEPSEEK_API_KEY", api_key);
     }
@@ -436,14 +436,14 @@ async fn wait_loopback_listen_port_free(port: u16, label: &'static str) {
         if available {
             if elapsed > 0 {
                 supervisor_log(format!(
-                    "deepseek-desktop: loopback:{port} released after {elapsed}ms ({label})"
+                    "zagens-desktop: loopback:{port} released after {elapsed}ms ({label})"
                 ));
             }
             return;
         }
         if elapsed >= PORT_FREE_MAX_WAIT_MS {
             supervisor_log(format!(
-                "deepseek-desktop: warning — loopback:{port} still busy after {PORT_FREE_MAX_WAIT_MS}ms ({label}); spawn may fail (EADDRINUSE / 10048)"
+                "zagens-desktop: warning — loopback:{port} still busy after {PORT_FREE_MAX_WAIT_MS}ms ({label}); spawn may fail (EADDRINUSE / 10048)"
             ));
             return;
         }

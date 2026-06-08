@@ -1,6 +1,6 @@
 //! Merge LHT open-task summary into `.zagens/handoff.md` on cycle advance (Phase 3b).
 
-use deepseek_config::workspace_meta_file_write;
+use zagens_config::workspace_meta_file_write;
 
 use std::io;
 use std::path::Path;

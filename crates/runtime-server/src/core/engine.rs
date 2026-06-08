@@ -1,6 +1,6 @@
 //! Runtime adapter Engine wiring (M7 strangler shim).
 //!
-//! The struct, channels, and `Engine::with_hosts` live in `deepseek-core`;
+//! The struct, channels, and `Engine::with_hosts` live in `zagens-core`;
 //! this module provides the sidecar builder and host injection.
 
 #![allow(
@@ -8,9 +8,9 @@
     reason = "prelude_uses imports consumed by engine submodules via `super::*`"
 )]
 
-pub use deepseek_core::engine::EngineHostBundle;
 pub use handle::EngineHandle;
 pub use types::EngineConfig;
+pub use zagens_core::engine::EngineHostBundle;
 
 use crate::config::Config;
 use crate::utils::spawn_supervised;
@@ -60,7 +60,7 @@ include!("engine/prelude_uses.rs");
 /// Sandbox/user-input–specialized core engine (M7).
 #[repr(transparent)]
 pub struct Engine(
-    pub(crate)  deepseek_core::engine::Engine<
+    pub(crate)  zagens_core::engine::Engine<
         crate::sandbox::SandboxPolicy,
         crate::tools::user_input::UserInputResponse,
     >,
@@ -68,7 +68,7 @@ pub struct Engine(
 
 /// Reborrow the runtime adapter over a core engine reference (M8 op dispatch).
 pub(in crate::core::engine) fn engine_from_core(
-    core: &mut deepseek_core::engine::Engine<
+    core: &mut zagens_core::engine::Engine<
         crate::sandbox::SandboxPolicy,
         crate::tools::user_input::UserInputResponse,
     >,
@@ -78,7 +78,7 @@ pub(in crate::core::engine) fn engine_from_core(
 }
 
 impl std::ops::Deref for Engine {
-    type Target = deepseek_core::engine::Engine<
+    type Target = zagens_core::engine::Engine<
         crate::sandbox::SandboxPolicy,
         crate::tools::user_input::UserInputResponse,
     >;
@@ -96,14 +96,14 @@ impl std::ops::DerefMut for Engine {
 
 impl Engine {
     pub(crate) fn with_hosts(
-        config: deepseek_core::engine::config::EngineConfig,
+        config: zagens_core::engine::config::EngineConfig,
         session: crate::core::session::Session,
         hosts: EngineHostBundle<
             crate::sandbox::SandboxPolicy,
             crate::tools::user_input::UserInputResponse,
         >,
     ) -> (Self, EngineHandle) {
-        let (inner, handle) = deepseek_core::engine::Engine::with_hosts(config, session, hosts);
+        let (inner, handle) = zagens_core::engine::Engine::with_hosts(config, session, hosts);
         (Self(inner), handle)
     }
 

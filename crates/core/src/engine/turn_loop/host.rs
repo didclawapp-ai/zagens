@@ -1,12 +1,12 @@
-//! `TurnLoopHost` port for migrating `handle_deepseek_turn` into `deepseek-core` (P2 PR4).
+//! `TurnLoopHost` port for migrating `handle_deepseek_turn` into `zagens-core` (P2 PR4).
 
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use deepseek_tools::{ToolError, ToolResult};
 use serde_json::Value;
+use zagens_tools::{ToolError, ToolResult};
 
 use tokio::sync::{Mutex as AsyncMutex, RwLock, mpsc};
 use tokio_util::sync::CancellationToken;
@@ -46,7 +46,7 @@ pub trait TurnLoopToolRegistry: Send + Sync {}
 /// impl will be removed in the next release.
 #[deprecated(
     since = "0.8.16",
-    note = "use `deepseek_core::engine::hosts::McpHost` instead; \
+    note = "use `zagens_core::engine::hosts::McpHost` instead; \
             this alias will be removed in the next release"
 )]
 pub trait TurnLoopMcpPool: Send + Sync {}

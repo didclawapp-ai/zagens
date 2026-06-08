@@ -3,7 +3,7 @@
 use serde::Serialize;
 use serde_json::Value;
 
-use deepseek_core::long_horizon::MacroPhase;
+use zagens_core::long_horizon::MacroPhase;
 
 use super::nudge::LongHorizonSessionState;
 

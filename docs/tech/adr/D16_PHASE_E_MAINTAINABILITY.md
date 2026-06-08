@@ -45,7 +45,7 @@ After D15 complete, architecture SSOT is established, but these **monolithic fil
 
 ### 1.1 Current State
 
-**Single crate:** `crates/runtime-server/` (package `zagens-cli`, lib `deepseek_runtime`, bin `deepseek-runtime`)
+**Single crate:** `crates/runtime-server/` (package `zagens-cli`, lib `zagens_runtime`, bin `deepseek-runtime`)
 
 `src/lib.rs` registers 60+ top-level modules, including but not limited to:
 
@@ -88,13 +88,13 @@ After D15 complete, architecture SSOT is established, but these **monolithic fil
 
 ```text
 crates/
-├── runtime-api/              # package: deepseek-runtime-api
+├── runtime-api/              # package: zagens-runtime-api
 │   └── HTTP/SSE thin gateway: auth, router, openapi, stream
 │
-├── runtime-orchestrator/     # package: deepseek-runtime-orchestrator
+├── runtime-orchestrator/     # package: zagens-runtime-orchestrator
 │   └── RuntimeThreadManager, task/automation wiring, approval suspend bridge
 │
-├── runtime-adapters/         # package: deepseek-runtime-adapters
+├── runtime-adapters/         # package: zagens-runtime-adapters
 │   └── tools/, mcp/, persist, session, llm_client, compaction…
 │
 └── runtime-server/           # package: zagens-cli (thin shell)
@@ -109,21 +109,21 @@ runtime-server
   → runtime-api, runtime-orchestrator, runtime-adapters
 
 runtime-api
-  → runtime-orchestrator, deepseek-protocol
+  → runtime-orchestrator, zagens-protocol
 
 runtime-orchestrator
-  → deepseek-core, runtime-adapters, deepseek-protocol
+  → zagens-core, runtime-adapters, zagens-protocol
 
 runtime-adapters
-  → deepseek-core, deepseek-tools, deepseek-mcp, deepseek-config, …
+  → zagens-core, zagens-tools, zagens-mcp, zagens-config, …
 
-deepseek-core
+zagens-core
   → protocol, config (does not depend on runtime-api / adapters)
 ```
 
 **Red lines (consistent with D15):**
 
-- `deepseek-desktop` **still does not** path-depend any runtime crate  
+- `zagens-desktop` **still does not** path-depend any runtime crate  
 - `/v1/*` paths and OpenAPI **unchanged**  
 - `export-runtime-openapi` diff should be empty before/after crate split (unless contract intentionally changed)
 

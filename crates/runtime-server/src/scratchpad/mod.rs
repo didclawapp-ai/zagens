@@ -1,6 +1,6 @@
 //! Audit scratchpad store (`.zagens/scratchpad/{run_id}/`).
 
-use deepseek_config::{workspace_meta_dir_read, workspace_meta_rel};
+use zagens_config::{workspace_meta_dir_read, workspace_meta_rel};
 
 pub mod auditor;
 pub mod checklist_sync;
@@ -609,9 +609,9 @@ mod tests {
     use crate::scratchpad::config::ScratchpadConfig;
     use crate::scratchpad::schema::AreaStatus;
     use crate::tools::spec::ToolContext;
-    use deepseek_config::workspace_meta_dir;
     use serde_json::json;
     use std::sync::atomic::{AtomicU64, Ordering};
+    use zagens_config::workspace_meta_dir;
 
     static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 

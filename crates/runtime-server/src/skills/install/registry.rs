@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::network_policy::NetworkPolicy;
-use deepseek_runtime_adapters::network_policy::host_from_url;
-use deepseek_runtime_adapters::tools::{NetworkGateError, check_host_with_policy};
+use zagens_runtime_adapters::network_policy::host_from_url;
+use zagens_runtime_adapters::tools::{NetworkGateError, check_host_with_policy};
 
 use super::download::stage_tarball;
 use super::types::{

@@ -2,7 +2,7 @@
 //! 2026-05-25).
 //!
 //! The full `CapacityController` body now lives in
-//! [`deepseek_core::capacity`] after the M6 strangler step (spike §3
+//! [`zagens_core::capacity`] after the M6 strangler step (spike §3
 //! row #20 + R10 — single atomic move, delete tui copy in same PR).
 //! This file keeps only:
 //!
@@ -16,12 +16,12 @@
 //!     the core `CapacityControllerConfig`. Stays tui-side because
 //!     `crate::config::Config` cannot cross the layering boundary.
 
-pub use deepseek_core::capacity::{
+pub use zagens_core::capacity::{
     CapacityController, CapacityControllerConfig, CapacityDecision, CapacityObservationInput,
     CapacitySnapshot, GuardrailAction, RiskBand,
 };
 
-/// Build effective capacity config from app config (free fn — struct lives in deepseek-core).
+/// Build effective capacity config from app config (free fn — struct lives in zagens-core).
 #[must_use]
 pub fn capacity_config_from_app(config: &crate::config::Config) -> CapacityControllerConfig {
     let mut out = CapacityControllerConfig::default();

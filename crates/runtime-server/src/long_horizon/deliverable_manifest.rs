@@ -2,9 +2,9 @@
 
 use std::path::{Path, PathBuf};
 
-use deepseek_config::{CompletionGateDeliverableToml, workspace_meta_dir_read};
-use deepseek_core::long_horizon::CompletionGateDeliverableEntry;
 use serde::Deserialize;
+use zagens_config::{CompletionGateDeliverableToml, workspace_meta_dir_read};
+use zagens_core::long_horizon::CompletionGateDeliverableEntry;
 
 #[derive(Debug, Deserialize)]
 struct DeliverableOverlayToml {

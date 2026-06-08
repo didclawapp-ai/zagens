@@ -12,7 +12,6 @@ mod workspace_defaults;
 
 use std::sync::Arc;
 
-use deepseek_config::ConfigStore;
 use tauri::{
     Manager, WindowEvent,
     menu::{MenuBuilder, MenuItemBuilder},
@@ -20,6 +19,7 @@ use tauri::{
 };
 use tokio::sync::Notify;
 use window_registry::WindowRegistry;
+use zagens_config::ConfigStore;
 
 fn focus_last_or_main(app: &tauri::AppHandle) {
     let registry = app.state::<WindowRegistry>();

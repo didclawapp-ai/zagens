@@ -4,10 +4,10 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use chrono::Utc;
-use deepseek_protocol::EventFrame;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::io::AsyncWriteExt;
+use zagens_protocol::EventFrame;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]

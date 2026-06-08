@@ -9,8 +9,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use deepseek_core::scratchpad::ScratchpadConfig;
 use serde_json::Value;
+use zagens_core::scratchpad::ScratchpadConfig;
 
 /// Streams incremental tool output to the engine/UI without pulling `Event`
 /// into adapters (avoids cycles with orchestrator event types).

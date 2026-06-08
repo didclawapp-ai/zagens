@@ -2,9 +2,9 @@
 
 use std::sync::Arc;
 
-use deepseek_core::engine::{tool_progress_opening_line, tool_progress_phase_line};
+use zagens_core::engine::{tool_progress_opening_line, tool_progress_phase_line};
 
-use deepseek_core::engine::EngineToolDispatch;
+use zagens_core::engine::EngineToolDispatch;
 
 use super::super::*;
 use super::progress::{ChannelToolProgress, emit_tool_progress};

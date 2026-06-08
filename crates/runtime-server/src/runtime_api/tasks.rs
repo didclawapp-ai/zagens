@@ -6,7 +6,7 @@ use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 
 use crate::config::DEFAULT_TEXT_MODEL;
-use deepseek_runtime_api::task::{NewTaskRequest, TaskRecord, TasksResponse};
+use zagens_runtime_api::task::{NewTaskRequest, TaskRecord, TasksResponse};
 
 use super::{ApiError, RuntimeApiState};
 

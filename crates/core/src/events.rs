@@ -1,4 +1,4 @@
-//! Events emitted by the engine to the UI (P2 PR4 → `deepseek-core`).
+//! Events emitted by the engine to the UI (P2 PR4 → `zagens-core`).
 
 use std::path::PathBuf;
 
@@ -13,7 +13,7 @@ use crate::models::Usage;
 use crate::subagent::{MailboxMessage, SubAgentResult};
 use crate::turn::TurnOutcomeStatus;
 use crate::user_input::UserInputRequest;
-use deepseek_tools::{ToolError, ToolResult};
+use zagens_tools::{ToolError, ToolResult};
 
 /// Events emitted by the engine to update the UI.
 #[derive(Debug, Clone)]

@@ -7,7 +7,7 @@ use super::types::{
     FindMatch, FindResult, PageViewResult, ResponseLength, ScreenshotResult, WebPage,
 };
 use crate::tools::spec::{ToolContext, ToolError};
-use deepseek_runtime_adapters::tools::check_url_policy;
+use zagens_runtime_adapters::tools::check_url_policy;
 
 /// Hard cap on a fetched page/PDF body (C6). `web_run` has no per-call
 /// `max_bytes`, so this bounds memory for an unbounded / huge response while

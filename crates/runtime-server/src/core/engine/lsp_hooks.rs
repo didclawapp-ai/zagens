@@ -3,15 +3,15 @@
 //! The turn loop only needs to ask "did a successful edit produce diagnostics?"
 //! This module owns the synthetic diagnostic message injection so the top-level
 //! engine module stays focused on session orchestration. Path extraction lives
-//! in `deepseek-core::engine::lsp_edit_paths`.
+//! in `zagens-core::engine::lsp_edit_paths`.
 //!
 //! M3 routes the two call sites through the
-//! [`LspHost`](deepseek_core::engine::hosts::LspHost) trait so the future
+//! [`LspHost`](zagens_core::engine::hosts::LspHost) trait so the future
 //! core-side Engine struct can hold `Arc<dyn LspHost>` instead of
 //! `Arc<LspManager>`.
 
-use deepseek_core::engine::edited_paths_for_tool;
-use deepseek_core::engine::hosts::LspHost;
+use zagens_core::engine::edited_paths_for_tool;
+use zagens_core::engine::hosts::LspHost;
 
 use super::*;
 

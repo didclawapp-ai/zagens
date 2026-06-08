@@ -369,7 +369,7 @@ impl Secrets {
                     "OS keyring unavailable ({err}); falling back to file-backed secret store"
                 );
                 let path = FileKeyringStore::default_path()
-                    .unwrap_or_else(|_| PathBuf::from(".deepseek-secrets.json"));
+                    .unwrap_or_else(|_| PathBuf::from(".zagens-secrets.json"));
                 Self::new(Arc::new(FileKeyringStore::new(path)))
             }
         }

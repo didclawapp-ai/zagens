@@ -195,7 +195,7 @@ pub fn resolve_python_for_office() -> Result<PathBuf, String> {
 
 /// Resolve the office venv root directory (`~/.zagens/office-py/`).
 pub fn office_venv_dir() -> Option<PathBuf> {
-    deepseek_config::user_data_path("office-py").ok()
+    zagens_config::user_data_path("office-py").ok()
 }
 
 /// Path to the venv's Python interpreter (platform-aware).

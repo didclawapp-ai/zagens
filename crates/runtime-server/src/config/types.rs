@@ -139,7 +139,7 @@ fn default_snapshot_max_age_days() -> u64 {
 }
 
 fn default_snapshot_max_workspace_gb() -> f64 {
-    deepseek_runtime_adapters::snapshot::DEFAULT_SNAPSHOT_MAX_WORKSPACE_GB
+    zagens_runtime_adapters::snapshot::DEFAULT_SNAPSHOT_MAX_WORKSPACE_GB
 }
 
 /// Workspace side-git snapshot configuration (#137).
@@ -651,7 +651,7 @@ pub struct Config {
 
     /// Long-horizon code task harness (LHT Phase 1).
     #[serde(default)]
-    pub long_horizon: Option<deepseek_core::long_horizon::LongHorizonConfigToml>,
+    pub long_horizon: Option<zagens_core::long_horizon::LongHorizonConfigToml>,
 
     /// Automatic context compaction (`[compaction]` table).
     #[serde(default)]
@@ -702,7 +702,7 @@ impl SkillsConfig {
     }
 }
 
-/// `[network]` table — mirrors `deepseek_config::NetworkPolicyToml` so the live
+/// `[network]` table — mirrors `zagens_config::NetworkPolicyToml` so the live
 /// TUI runtime can construct a [`crate::network_policy::NetworkPolicy`]
 /// without reaching into the workspace config crate. See `config.example.toml`
 /// for documentation.

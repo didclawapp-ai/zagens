@@ -1,16 +1,20 @@
 [package]
-name = "deepseek-hooks"
+name = "zagens-hooks"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "Hook dispatch and notifications parity for DeepSeek workspace architecture"
+
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+description = "Hook dispatch and notifications parity for Zagens agent runtime"
 
 [dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
-deepseek-protocol = { path = "../protocol", version = "0.8.15" }
+zagens-protocol = { path = "../protocol", version = "0.7.0" }
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true

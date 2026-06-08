@@ -6,7 +6,7 @@ use crate::tools::plan::SharedPlanState;
 use crate::tools::registry::{ToolRegistry, ToolRegistryBuilder};
 use crate::tools::todo::SharedTodoList;
 
-use deepseek_core::subagent::{SubAgentResult, SubAgentStatus, SubAgentType};
+use zagens_core::subagent::{SubAgentResult, SubAgentStatus, SubAgentType};
 
 use super::runtime::SubAgentRuntime;
 

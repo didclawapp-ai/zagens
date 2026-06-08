@@ -759,7 +759,7 @@ async fn send_input_rejects_finished_task_handle() {
 
 #[tokio::test]
 async fn resume_clears_structured_output() {
-    use deepseek_core::subagent::{AuditFindingItem, StructuredFindings};
+    use zagens_core::subagent::{AuditFindingItem, StructuredFindings};
 
     let manager = new_shared_subagent_manager(
         PathBuf::from("."),
@@ -1265,7 +1265,7 @@ fn subagent_failed_sentinel_format_is_well_formed() {
 
 #[test]
 fn completion_reason_for_successful_exit_distinguishes_natural_break_and_step_limit() {
-    use deepseek_core::subagent::CompletionReason;
+    use zagens_core::subagent::CompletionReason;
 
     assert_eq!(
         completion_reason_for_successful_exit(true),
@@ -1279,7 +1279,7 @@ fn completion_reason_for_successful_exit_distinguishes_natural_break_and_step_li
 
 #[test]
 fn subagent_done_sentinel_includes_completion_reason() {
-    use deepseek_core::subagent::CompletionReason;
+    use zagens_core::subagent::CompletionReason;
 
     let mut res = make_snapshot(SubAgentStatus::Completed);
     res.completion_reason = Some(CompletionReason::StepLimitReached);
@@ -1293,7 +1293,7 @@ fn subagent_done_sentinel_includes_completion_reason() {
 
 #[test]
 fn subagent_failed_sentinel_includes_step_api_timeout_reason() {
-    use deepseek_core::subagent::CompletionReason;
+    use zagens_core::subagent::CompletionReason;
 
     let err = "API call timed out after 600s (per-step cap). Child stopped";
     let sentinel = subagent_failed_sentinel("agent_timeout", err);
@@ -1312,7 +1312,7 @@ fn subagent_failed_sentinel_includes_step_api_timeout_reason() {
 fn compute_stuck_suspected_flags_running_agent_past_step_timeout() {
     use std::time::Duration;
 
-    use deepseek_core::subagent::SubAgentStatus;
+    use zagens_core::subagent::SubAgentStatus;
 
     assert!(!super::constants::compute_stuck_suspected(
         &SubAgentStatus::Running,
@@ -1335,8 +1335,8 @@ fn compute_stuck_suspected_flags_running_agent_past_step_timeout() {
 async fn heartbeat_maintenance_cancels_idle_running_agent() {
     use std::time::{Duration, Instant};
 
-    use deepseek_core::subagent::SubAgentStatus;
     use tokio::sync::mpsc;
+    use zagens_core::subagent::SubAgentStatus;
 
     let mut manager = SubAgentManager::new(PathBuf::from("."), 2)
         .with_heartbeat_timeout(Duration::from_millis(1));
@@ -2056,7 +2056,7 @@ fn step_tool_budget_is_eighty_percent_of_step_timeout() {
 
 #[test]
 fn persist_round_trip_preserves_completion_reason_and_blackboard_task_id() {
-    use deepseek_core::subagent::CompletionReason;
+    use zagens_core::subagent::CompletionReason;
 
     let dir = tempdir().expect("tempdir");
     let state_path = dir.path().join(SUBAGENT_STATE_FILE);
@@ -2098,7 +2098,7 @@ fn persist_round_trip_preserves_completion_reason_and_blackboard_task_id() {
 
 #[test]
 fn get_result_with_fallback_reads_structured_findings_from_blackboard() {
-    use deepseek_core::subagent::{AuditFindingItem, StructuredFindings};
+    use zagens_core::subagent::{AuditFindingItem, StructuredFindings};
 
     let dir = tempdir().expect("tempdir");
     let ws = dir.path().to_path_buf();
@@ -2159,7 +2159,7 @@ fn get_result_with_fallback_reads_structured_findings_from_blackboard() {
 
 #[test]
 fn get_result_with_fallback_records_parse_failure_from_prose() {
-    use deepseek_core::subagent::ParseFailureReason;
+    use zagens_core::subagent::ParseFailureReason;
 
     let dir = tempdir().expect("tempdir");
     let ws = dir.path().to_path_buf();

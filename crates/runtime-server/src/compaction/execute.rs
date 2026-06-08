@@ -8,7 +8,7 @@ use crate::models::{
     CacheControl, ContentBlock, Message, MessageRequest, SystemBlock, SystemPrompt,
     context_window_for_model,
 };
-use deepseek_core::compaction::CompactionConfig;
+use zagens_core::compaction::CompactionConfig;
 
 use super::plan::plan_compaction;
 use super::prune::{prune_tool_results, tail_chars, truncate_chars};
@@ -184,7 +184,7 @@ pub(crate) fn read_workspace_anchors(workspace: Option<&Path>) -> Vec<String> {
         return Vec::new();
     };
 
-    let anchors_path = deepseek_config::workspace_meta_file_read(ws, "anchors.md");
+    let anchors_path = zagens_config::workspace_meta_file_read(ws, "anchors.md");
     let Ok(content) = std::fs::read_to_string(anchors_path) else {
         return Vec::new();
     };

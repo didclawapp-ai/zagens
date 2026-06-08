@@ -2,8 +2,8 @@
 
 use std::path::{Path, PathBuf};
 
-use deepseek_config::{workspace_meta_dir_read, workspace_meta_rel};
 use serde_json::Value;
+use zagens_config::{workspace_meta_dir_read, workspace_meta_rel};
 
 use crate::scratchpad::schema::{Inventory, NoteLine, parse_note_line};
 

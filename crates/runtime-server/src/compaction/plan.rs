@@ -22,8 +22,8 @@ impl CompactionPlan {
         &self,
         messages: &[Message],
         keep_recent: usize,
-    ) -> deepseek_core::context_partition::SessionContextPartition {
-        deepseek_core::context_partition::classify_session_messages(
+    ) -> zagens_core::context_partition::SessionContextPartition {
+        zagens_core::context_partition::classify_session_messages(
             messages,
             keep_recent,
             &self.pinned_indices,

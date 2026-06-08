@@ -8,7 +8,7 @@ echo "==> architecture_invariants (runtime-server)"
 cargo test -p zagens-cli --test architecture_invariants --locked
 
 echo "==> architecture_boundary (desktop)"
-cargo test -p deepseek-desktop --test architecture_boundary --locked
+cargo test -p zagens-desktop --test architecture_boundary --locked
 
 echo "==> OpenAPI contract"
 "$ROOT/scripts/check-openapi-contract.sh"

@@ -2,8 +2,8 @@
 
 use std::time::Instant;
 
-use deepseek_tools::{ToolError, ToolResult};
 use serde_json::Value;
+use zagens_tools::{ToolError, ToolResult};
 
 use crate::chat::ToolCaller;
 

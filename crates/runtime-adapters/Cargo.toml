@@ -1,22 +1,26 @@
 [package]
-name = "deepseek-runtime-adapters"
+name = "zagens-runtime-adapters"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "Runtime tool/MCP/persist adapters for DeepSeek sidecar (D16 E1-a)"
+
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+description = "Runtime tool/MCP/persist adapters for Zagens sidecar (D16 E1-a)"
 
 [lib]
-name = "deepseek_runtime_adapters"
+name = "zagens_runtime_adapters"
 path = "src/lib.rs"
 
 [dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
-deepseek-config = { path = "../config", version = "0.8.15" }
-deepseek-core = { path = "../core", version = "0.8.15" }
-deepseek-protocol = { path = "../protocol", version = "0.8.15" }
+zagens-config = { path = "../config", version = "0.7.0" }
+zagens-core = { path = "../core", version = "0.7.0" }
+zagens-protocol = { path = "../protocol", version = "0.7.0" }
 dirs.workspace = true
 futures-util = "0.3.31"
 reqwest = { workspace = true, features = ["blocking", "stream", "multipart", "http2"] }

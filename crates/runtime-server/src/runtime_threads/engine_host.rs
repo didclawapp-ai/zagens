@@ -2,12 +2,12 @@
 
 use anyhow::Result;
 use async_trait::async_trait;
-use deepseek_core::engine::StartTurnParams;
+use zagens_core::engine::StartTurnParams;
 
 use super::manager::parse_mode;
 use super::{RuntimeThreadManager, StartTurnRequest};
-use deepseek_runtime_orchestrator::runtime_threads::RuntimeThreadHost;
-use deepseek_runtime_orchestrator::runtime_threads::types::ThreadRecord;
+use zagens_runtime_orchestrator::runtime_threads::RuntimeThreadHost;
+use zagens_runtime_orchestrator::runtime_threads::types::ThreadRecord;
 
 #[async_trait]
 impl RuntimeThreadHost<super::RuntimeEnginePolicy, super::RuntimeUserInputResponse>
@@ -17,7 +17,7 @@ impl RuntimeThreadHost<super::RuntimeEnginePolicy, super::RuntimeUserInputRespon
         &self,
         thread: &ThreadRecord,
     ) -> Result<
-        deepseek_core::engine::handle::EngineHandle<
+        zagens_core::engine::handle::EngineHandle<
             super::RuntimeEnginePolicy,
             super::RuntimeUserInputResponse,
         >,
@@ -56,13 +56,13 @@ impl RuntimeThreadHost<super::RuntimeEnginePolicy, super::RuntimeUserInputRespon
         let trust_mode = req.trust_mode.unwrap_or(thread.trust_mode);
         let auto_approve = req.auto_approve.unwrap_or(thread.auto_approve);
         let approval_mode = if auto_approve {
-            deepseek_core::approval::ApprovalMode::Auto
+            zagens_core::approval::ApprovalMode::Auto
         } else {
             self.config
                 .approval_policy
                 .as_deref()
-                .and_then(deepseek_core::approval::ApprovalMode::from_config_value)
-                .unwrap_or(deepseek_core::approval::ApprovalMode::Suggest)
+                .and_then(zagens_core::approval::ApprovalMode::from_config_value)
+                .unwrap_or(zagens_core::approval::ApprovalMode::Suggest)
         };
 
         Ok(StartTurnParams {
@@ -86,12 +86,12 @@ impl RuntimeThreadHost<super::RuntimeEnginePolicy, super::RuntimeUserInputRespon
         &self,
         thread_id: String,
         turn_id: String,
-        engine: deepseek_core::engine::handle::EngineHandle<
+        engine: zagens_core::engine::handle::EngineHandle<
             super::RuntimeEnginePolicy,
             super::RuntimeUserInputResponse,
         >,
     ) -> Result<()> {
-        deepseek_runtime_orchestrator::runtime_threads::monitor_turn(
+        zagens_runtime_orchestrator::runtime_threads::monitor_turn(
             self, self, thread_id, turn_id, engine,
         )
         .await
@@ -103,7 +103,6 @@ impl RuntimeThreadManager {
         &self,
         thread: &ThreadRecord,
     ) -> Result<crate::core::engine::EngineHandle> {
-        deepseek_runtime_orchestrator::runtime_threads::ensure_engine_loaded(self, self, thread)
-            .await
+        zagens_runtime_orchestrator::runtime_threads::ensure_engine_loaded(self, self, thread).await
     }
 }

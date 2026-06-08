@@ -251,7 +251,7 @@ const ja: TranslationMap = {
     thirdPartyLicenses:
       'MIT ライセンス全文は実行ファイル横の legal/ フォルダに同梱されています（Zagens と embedded deepseek-tui runtime 系譜）。',
     techStackTitle: '技術スタック',
-    techStackDeepseekTui: 'deepseek-tui 0.8.15',
+    techStackDeepseekTui: 'Zagens runtime 0.7.0',
     techStackTauri: 'Tauri 2',
     techStackReact: 'React 18',
     updateTitle: 'アプリの更新',

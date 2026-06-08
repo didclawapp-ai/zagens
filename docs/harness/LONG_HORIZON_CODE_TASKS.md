@@ -1367,7 +1367,7 @@ if self.maybe_inject_incomplete_lht_continue(turn).await {
 }
 ```
 
-If `TurnContext` lacks `continue_without_step_bump`, Step 7 adds `steps_remaining()` in `deepseek-core/src/turn.rs` + caller skips `next_step` (minimal diff).
+If `TurnContext` lacks `continue_without_step_bump`, Step 7 adds `steps_remaining()` in `zagens-core/src/turn.rs` + caller skips `next_step` (minimal diff).
 
 **Step 6 snapshot read pattern (recommended):**
 

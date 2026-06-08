@@ -1,4 +1,4 @@
-//! Tool progress copy and optional JSONL audit logging (P2 PR4 → `deepseek-core`).
+//! Tool progress copy and optional JSONL audit logging (P2 PR4 → `zagens-core`).
 
 use std::fs::OpenOptions;
 use std::io::Write;

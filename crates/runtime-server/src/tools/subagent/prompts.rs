@@ -1,4 +1,4 @@
-use deepseek_core::subagent::{
+use zagens_core::subagent::{
     ParseFailureReason, StructuredFindings, StructuredVerdict, SubAgentAssignment, SubAgentType,
     VerdictItem, VerdictLevel,
 };
@@ -288,7 +288,7 @@ fn extract_balanced_object(s: &str) -> Option<(&str, usize)> {
     None
 }
 
-fn extract_items_from_truncated(json: &str) -> Vec<deepseek_core::subagent::AuditFindingItem> {
+fn extract_items_from_truncated(json: &str) -> Vec<zagens_core::subagent::AuditFindingItem> {
     let items_key = "\"items\"";
     let Some(idx) = json.find(items_key) else {
         return Vec::new();
@@ -310,8 +310,7 @@ fn extract_items_from_truncated(json: &str) -> Vec<deepseek_core::subagent::Audi
         let Some((obj_str, consumed)) = extract_balanced_object(slice) else {
             break;
         };
-        if let Ok(item) = serde_json::from_str::<deepseek_core::subagent::AuditFindingItem>(obj_str)
-        {
+        if let Ok(item) = serde_json::from_str::<zagens_core::subagent::AuditFindingItem>(obj_str) {
             items.push(item);
         }
         slice = &slice[consumed..];

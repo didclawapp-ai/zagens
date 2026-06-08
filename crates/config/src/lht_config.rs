@@ -1,6 +1,6 @@
 //! `[long_horizon]` / `[long_horizon.completion_gate]` on-disk schema for Zagens config.toml.
 //!
-//! Mirrors `deepseek_core::long_horizon` for serde I/O without a core dependency cycle.
+//! Mirrors `zagens_core::long_horizon` for serde I/O without a core dependency cycle.
 
 use serde::{Deserialize, Serialize};
 

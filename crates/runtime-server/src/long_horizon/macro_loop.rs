@@ -2,9 +2,9 @@
 
 use std::path::Path;
 
-use deepseek_core::chat::{ContentBlock, Message};
-use deepseek_core::long_horizon::{AutoEnterCraft, LhtMode, MacroLoopConfig, MacroPhase};
-use deepseek_core::subagent::VerdictItem;
+use zagens_core::chat::{ContentBlock, Message};
+use zagens_core::long_horizon::{AutoEnterCraft, LhtMode, MacroLoopConfig, MacroPhase};
+use zagens_core::subagent::VerdictItem;
 
 use crate::tools::subagent::blackboard;
 use crate::tools::todo::{TodoItem, TodoListSnapshot, TodoStatus};
@@ -427,7 +427,7 @@ pub fn macro_outcome_to_gate(outcome: MacroLoopOutcome) -> LhtGateOutcome {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use deepseek_core::subagent::VerdictItem;
+    use zagens_core::subagent::VerdictItem;
 
     fn sample_blocker() -> VerdictItem {
         VerdictItem {
@@ -480,7 +480,7 @@ mod tests {
 
     #[test]
     fn auto_enter_craft_trigger_matrix() {
-        use deepseek_core::long_horizon::AutoEnterCraft;
+        use zagens_core::long_horizon::AutoEnterCraft;
 
         assert!(should_auto_enter_craft(
             AutoEnterCraft::OnMicroPass,

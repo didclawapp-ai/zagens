@@ -10,7 +10,6 @@ use super::spec::{
 };
 use super::workspace_walk::{collect_workspace_files, is_probably_binary};
 use async_trait::async_trait;
-use deepseek_config::workspace_meta_file_read;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -19,6 +18,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
+use zagens_config::workspace_meta_file_read;
 
 /// Wall-clock cap for the blocking file scan (C6 / audit §3 P0).
 const GREP_TIMEOUT_SECS: u64 = 120;

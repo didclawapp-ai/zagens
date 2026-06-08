@@ -11,8 +11,8 @@
 
 use std::time::Duration;
 
-use deepseek_runtime_adapters::tools::{check_url_policy, is_http_url, is_restricted_ip};
 use tokio_util::sync::CancellationToken;
+use zagens_runtime_adapters::tools::{check_url_policy, is_http_url, is_restricted_ip};
 
 use crate::tools::spec::{ToolContext, ToolError};
 

@@ -40,5 +40,5 @@ fn append_event(event: &str, details: Value) -> anyhow::Result<()> {
 }
 
 fn default_audit_path() -> anyhow::Result<PathBuf> {
-    Ok(deepseek_config::user_data_path_or_relative("audit.log"))
+    Ok(zagens_config::user_data_path_or_relative("audit.log"))
 }

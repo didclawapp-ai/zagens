@@ -2,9 +2,9 @@
 
 use std::sync::Arc;
 
-use deepseek_core::chat::LlmClient;
-use deepseek_core::turn::{TurnContext, TurnLoopMode};
 use tokio::sync::{Mutex as AsyncMutex, RwLock};
+use zagens_core::chat::LlmClient;
+use zagens_core::turn::{TurnContext, TurnLoopMode};
 
 use super::super::Engine;
 use crate::mcp::McpPool;
@@ -50,7 +50,7 @@ impl Engine {
         mode: TurnLoopMode,
         step_error_count: usize,
         consecutive_tool_error_steps: u32,
-        error_categories: &[deepseek_core::error_taxonomy::ErrorCategory],
+        error_categories: &[zagens_core::error_taxonomy::ErrorCategory],
     ) -> bool {
         Self::run_capacity_error_escalation_checkpoint(
             self,

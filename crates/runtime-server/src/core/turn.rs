@@ -13,7 +13,7 @@
 //! `/restore N` and the `revert_turn` tool both consume these
 //! snapshots.
 
-pub use deepseek_core::turn::{TurnContext, TurnToolCall};
+pub use zagens_core::turn::{TurnContext, TurnToolCall};
 
 use crate::snapshot::SnapshotRepo;
 use std::path::Path;
