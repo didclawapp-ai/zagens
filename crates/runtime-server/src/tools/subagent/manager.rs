@@ -751,10 +751,10 @@ impl SubAgentManager {
         self.agents
             .values()
             .filter(|agent| {
-                if let Some(tid) = thread_filter {
-                    if agent.parent_thread_id.as_deref() != Some(tid) {
-                        return false;
-                    }
+                if let Some(tid) = thread_filter
+                    && agent.parent_thread_id.as_deref() != Some(tid)
+                {
+                    return false;
                 }
                 if include_archived {
                     return true;
