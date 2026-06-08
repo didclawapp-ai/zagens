@@ -1,20 +1,17 @@
 name: CD
 
-# Continuous deployment: Windows installer → GitHub Release → zagens.com sync.
+# Continuous deployment: Windows installer + CLI binaries → GitHub Release.
 #
 # Flow (tag release):
 #   1. git tag zagens-v0.7.0 && git push origin zagens-v0.7.0
 #   2. CI runs the full verify matrix on the tag (see ci.yml tag triggers)
 #   3. This workflow starts after CI succeeds (workflow_run)
-#   4. Build/sign/publish installers; dispatch website repo sync-release
+#   4. Build/sign/publish installers and CLI binaries to GitHub Releases
 #
 # Manual smoke build (no publish): Actions → CD → Run workflow (any branch).
 #
 # Required secrets:
 #   TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD
-#   WEBSITE_REPO_DISPATCH_TOKEN (PAT with repo scope on zagens_website)
-#
-# Website sync: https://github.com/jjlin0603-svg/zagens_website
 
 on:
   workflow_run:
@@ -182,10 +179,6 @@ jobs:
             `.sha256` checksums are attached when the CLI matrix job succeeds.
             Install via Scoop or download the archive for your target triple.
 
-            OTA `latest.json` and zagens.com `/download/` are updated by the
-            [zagens_website](https://github.com/jjlin0603-svg/zagens_website) repo
-            after this release is published.
-
             See [SMARTSCREEN.md](https://github.com/${{ github.repository }}/blob/${{ needs.gate.outputs.sha }}/docs/desktop/SMARTSCREEN.md) for
             details, and [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/${{ needs.gate.outputs.sha }}/CHANGELOG.md) for release notes.
 
@@ -249,17 +242,3 @@ jobs:
         with:
           tag_name: ${{ needs.gate.outputs.tag }}
           files: cli-release-artifacts/**/*
-
-  notify-website-release:
-    name: Sync installers to zagens.com
-    needs: [gate, build-windows]
-    if: needs.gate.outputs.tag != ''
-    runs-on: ubuntu-latest
-    steps:
-      - name: Dispatch website sync-release workflow
-        uses: peter-evans/repository-dispatch@ff45666b9427631e3450c54a1bcbee4d9ff4d7c0 # v3
-        with:
-          token: ${{ secrets.WEBSITE_REPO_DISPATCH_TOKEN }}
-          repository: jjlin0603-svg/zagens_website
-          event-type: desktop-release
-          client-payload: '{"tag": "${{ needs.gate.outputs.tag }}"}'
