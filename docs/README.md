@@ -19,7 +19,7 @@ Harness **fixtures** (TOML, demo data, oracle scripts) live under [`fixtures/har
 | [tech/RUNTIME_ARCHITECTURE.md](./tech/RUNTIME_ARCHITECTURE.md) | Runtime + desktop boundaries |
 | [tech/API_DESIGN.md](./tech/API_DESIGN.md) | HTTP/SSE API design |
 | [tech/openapi/zagens-runtime-v1.openapi.json](./tech/openapi/zagens-runtime-v1.openapi.json) | OpenAPI contract (CI drift check) |
-| [ds_pick_prompt_architecture.svg](./ds_pick_prompt_architecture.svg) | Prompt stack diagram |
+| [prompt-architecture-diagram.svg](./prompt-architecture-diagram.svg) | Prompt stack diagram |
 | [tech/PERSISTENCE.md](./tech/PERSISTENCE.md) | Persistence model |
 | [tech/SANDBOX_CAPABILITY_MATRIX.md](./tech/SANDBOX_CAPABILITY_MATRIX.md) | Sandbox capability matrix |
 | [tech/TOOLS_PRINCIPLES.md](./tech/TOOLS_PRINCIPLES.md) | Tool design principles |
@@ -62,7 +62,6 @@ Harness **fixtures** (TOML, demo data, oracle scripts) live under [`fixtures/har
 | [craft-v2-improvements.md](./craft-v2-improvements.md) | CRAFT multi-agent |
 | [task-type-prompt-architecture.md](./task-type-prompt-architecture.md) | Code / Office task types |
 | [prompt-architecture.md](./prompt-architecture.md) | Prompt layering |
-| [prompt-hallucination-patch.md](./prompt-hallucination-patch.md) | Hallucination guardrails |
 
 ---
 

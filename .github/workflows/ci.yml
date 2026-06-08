@@ -28,7 +28,10 @@ jobs:
     name: Version drift
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # Third-party actions are pinned to commit SHAs (Dependabot keeps them
+      # fresh). dtolnay/rust-toolchain stays on the @1.96.0 version branch: the
+      # ref name itself selects the toolchain, so SHA-pinning would defeat it.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: dtolnay/rust-toolchain@1.96.0
         with:
           components: clippy, rustfmt
@@ -42,7 +45,7 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: dtolnay/rust-toolchain@1.96.0
         with:
           components: clippy, rustfmt
@@ -51,10 +54,10 @@ jobs:
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
         run: bash scripts/ci/install-linux-deps.sh
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2.9.1
       - name: Prefetch crate index (network retry)
         run: bash scripts/ci/cargo-retry.sh fetch --locked
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
           cache: npm
@@ -76,17 +79,17 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: dtolnay/rust-toolchain@1.96.0
         with:
           components: clippy, rustfmt
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
         run: bash scripts/ci/install-linux-deps.sh
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2.9.1
       - name: Prefetch crate index (network retry)
         run: bash scripts/ci/cargo-retry.sh fetch --locked
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
           cache: npm
@@ -128,14 +131,14 @@ jobs:
     if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: dtolnay/rust-toolchain@1.96.0
         with:
           components: clippy, rustfmt
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
         run: bash scripts/ci/install-linux-deps.sh
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2.9.1
       - name: Prefetch crate index (network retry)
         run: bash scripts/ci/cargo-retry.sh fetch --locked
       - name: Build docs

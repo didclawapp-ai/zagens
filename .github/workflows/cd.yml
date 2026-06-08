@@ -62,7 +62,7 @@ jobs:
             echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: ${{ steps.meta.outputs.sha }}
 
@@ -99,17 +99,17 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: ${{ needs.gate.outputs.sha }}
 
       - uses: dtolnay/rust-toolchain@1.96.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2.9.1
 
       - name: Install Tauri CLI
         run: cargo install tauri-cli --version "^2" --locked
@@ -149,7 +149,7 @@ jobs:
           Get-ChildItem ../../release-artifacts
 
       - name: Upload release artifacts (CI)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: release-artifacts-${{ needs.gate.outputs.tag || github.run_id }}
           path: release-artifacts/
@@ -157,7 +157,7 @@ jobs:
 
       - name: Publish GitHub Release
         if: needs.gate.outputs.tag != ''
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ needs.gate.outputs.tag }}
           target_commitish: ${{ needs.gate.outputs.sha }}
@@ -189,7 +189,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Dispatch website sync-release workflow
-        uses: peter-evans/repository-dispatch@v3
+        uses: peter-evans/repository-dispatch@ff45666b9427631e3450c54a1bcbee4d9ff4d7c0 # v3
         with:
           token: ${{ secrets.WEBSITE_REPO_DISPATCH_TOKEN }}
           repository: jjlin0603-svg/zagens_website

@@ -6,7 +6,7 @@ This document describes the **dual-channel integration API** of the **Zagens des
 
 **OpenAPI 3.1 (D8):** Checked-in contract [`openapi/zagens-runtime-v1.openapi.json`](./openapi/zagens-runtime-v1.openapi.json); exported by `export-runtime-openapi` from Rust `schemars` + path table; `web-ui` TS generated via `openapi-typescript` (see [`adr/D8_OPENAPI_TS_GENERATION.md`](./adr/D8_OPENAPI_TS_GENERATION.md)). Legacy `RUNTIME_API.md` has been removed. Runtime architecture diagrams: [RUNTIME_ARCHITECTURE.md](./RUNTIME_ARCHITECTURE.md).
 
-**Agent behavior:** The runtime prompt loaded by the same sidecar includes [hallucination-control sub-rules](../prompt-hallucination-patch.md) (Capability / Architecture Claims). Regression shows Zagens hallucination rate on bare “capability/architecture” questions is significantly lower than an unpatched release TUI; **SSE diagrams and capability claims in this document are illustrative only** — integrate against code and `streamNormalize.ts`.
+**Agent behavior:** The runtime prompt loaded by the same sidecar includes hallucination-control sub-rules (Capability / Architecture Claims) in `crates/runtime-server/src/prompts/base.md`. **SSE diagrams and capability claims in this document are illustrative only** — integrate against code and `streamNormalize.ts`.
 
 > **Only production HTTP runtime:** Zagens and headless scripts use `crates/runtime-server/src/runtime_api/` (`/v1/*`); binary is **`deepseek-runtime`**. ~~`crates/app-server`~~ **removed in D7**; ~~`deepseek-tui` / `deepseek serve`~~ **removed in D6 Phase B** (see [`adr/D4_APPSERVER_DEPRECATED.md`](./adr/D4_APPSERVER_DEPRECATED.md) · [`adr/D6_PHASE_B_CLI_SUNSET.md`](./adr/D6_PHASE_B_CLI_SUNSET.md)).
 
@@ -763,7 +763,7 @@ WebView                          Sidecar
 | SSE normalization | `crates/desktop/web-ui/src/api/streamNormalize.ts` | wire `event` → UI events |
 | Runtime HTTP routes | `crates/runtime-server/src/runtime_api/router.rs` | `build_router` |
 | Protocol types | `crates/protocol/src/` | Shared DTOs (if any) |
-| Agent prompt (sidecar) | `crates/runtime-server/src/prompts/base.md` etc. | Includes hallucination-control sub-rules; see [prompt-hallucination-patch.md](../prompt-hallucination-patch.md) |
+| Agent prompt (sidecar) | `crates/runtime-server/src/prompts/base.md` etc. | Includes hallucination-control sub-rules (Capability / Architecture Claims) |
 
 > `crates/app-server/` is for other monorepo entry points; **Zagens desktop path does not use this crate**. Line counts are approximate at time of writing; verify in repo.
 
@@ -776,7 +776,7 @@ WebView                          Sidecar
 | [RUNTIME_ARCHITECTURE.md](./RUNTIME_ARCHITECTURE.md) | Three-layer model, crate deps, dual persistence diagrams |
 | [TOOLS_PRINCIPLES.md](./TOOLS_PRINCIPLES.md) | Tool system architecture and execution flow |
 | [RUNTIME_EVOLUTION_ROADMAP.md](./RUNTIME_EVOLUTION_ROADMAP.md) | Evolution roadmap SSOT §3 current snapshot |
-| [prompt-hallucination-patch.md](../prompt-hallucination-patch.md) | V4 capability/architecture claim control, Zagens vs official TUI 0.8.39 regression |
+| `crates/runtime-server/src/prompts/base.md` | Hallucination-control sub-rules (Capability / Architecture claims) |
 | Regression tests (maintainer) | `doc_Private/docs/tui/REGRESSION_TESTS.md` — hallucination control and parallel scheduling regression cases |
 | [craft-v2-improvements.md](../craft-v2-improvements.md) · [TOOLS_PRINCIPLES.md](./TOOLS_PRINCIPLES.md) §3.7 | CRAFT improvements; sub-agent write path |
 

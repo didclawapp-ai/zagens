@@ -3,7 +3,7 @@
 **Status:** **MVP landed** (`crates/tui/src/task_type.rs`, prompt overlay, Office tool trimming, Zagens Composer switch)  
 **Date:** 2026-05-17 (first draft, four types) · **2026-05-18** (converged to two types, aligned with current tools and prompts)  
 **Based on:** [prompt-architecture.md](prompt-architecture.md)  
-**Related:** [prompt-hallucination-patch.md](prompt-hallucination-patch.md), [TOOLS_PRINCIPLES.md](tech/TOOLS_PRINCIPLES.md), `crates/tui/src/prompts/base.md` (retrieval triad)
+**Related:** [TOOLS_PRINCIPLES.md](tech/TOOLS_PRINCIPLES.md), `crates/runtime-server/src/prompts/base.md` (retrieval triad)
 
 ---
 

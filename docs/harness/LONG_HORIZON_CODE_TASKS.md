@@ -1222,7 +1222,7 @@ Context pressure
 | [`craft-v2-improvements.md`](../craft-v2-improvements.md) | CRAFT v2 reliability improvements |
 | [`prompt-architecture.md`](../prompt-architecture.md) | Prompt stack overview |
 | [`task-type-prompt-architecture.md`](../task-type-prompt-architecture.md) | Code task type prompts · checklist discipline |
-| [`prompt-hallucination-patch.md`](../prompt-hallucination-patch.md) | Hallucination guard patches |
+| `crates/runtime-server/src/prompts/base.md` | Hallucination guard sub-rules (Capability / Architecture claims) |
 | `doc_Private/.../LHT_TEST_SUITE.md` | DEMO2–5 regression · non-determinism · batch infrastructure (§6 P3-3) |
 | `doc_Private/.../agent-reliability-craft-plan.md` | CRAFT · Phase 4 QA segment (maintainer-only) |
 | **§6 product iteration P0–P3** | **2026-06 roadmap SSOT** (takes priority over scattered backlog lines) |
