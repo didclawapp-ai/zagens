@@ -3,6 +3,7 @@
 //! Complements `deepseek_runtime::runtime_api::tests::sidecar_contract_full_lifecycle` (in-process axum).
 
 use std::path::PathBuf;
+use std::process::Stdio;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -169,6 +170,66 @@ async fn sidecar_binary_contract_full_lifecycle() -> Result<()> {
     let _ = child.kill().await;
     let _ = child.wait().await;
 
+    let _ = std::fs::remove_dir_all(&root);
+    Ok(())
+}
+
+/// Desktop `sidecar.rs` spawn argv (flat flags + dual CORS origins + workspace).
+#[tokio::test]
+async fn desktop_sidecar_spawn_argv_contract() -> Result<()> {
+    let token = Uuid::new_v4().to_string();
+    let root = std::env::temp_dir().join(format!("zagens-desktop-sidecar-{}", Uuid::new_v4()));
+    std::fs::create_dir_all(&root).context("create temp root")?;
+    let runtime_dir = root.join("runtime");
+    std::fs::create_dir_all(&runtime_dir).context("create runtime dir")?;
+    let config_path = root.join("config.toml");
+    write_test_config(&config_path)?;
+
+    let bin = env!("CARGO_BIN_EXE_zagens-runtime");
+
+    let mut child = Command::new(bin)
+        .args([
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "0",
+            "--cors-origin",
+            "http://tauri.localhost",
+            "--cors-origin",
+            "https://tauri.localhost",
+            "--config",
+            config_path.to_str().context("config path utf8")?,
+            "--workspace",
+            root.to_str().context("workspace path utf8")?,
+            "--auth-token",
+            &token,
+        ])
+        .env("DEEPSEEK_RUNTIME_TOKEN", &token)
+        .env("DEEPSEEK_RUNTIME_DIR", &runtime_dir)
+        .env(
+            "DEEPSEEK_TASKS_DIR",
+            root.join("tasks").to_str().context("tasks dir utf8")?,
+        )
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .context("spawn zagens-runtime with desktop argv")?;
+
+    let (port, _token_fp) = wait_for_ready(&mut child).await?;
+    let client = reqwest::Client::new();
+    let health: serde_json::Value = client
+        .get(format!("http://127.0.0.1:{port}/health"))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    assert_eq!(health["status"], "ok");
+
+    let _ = child.kill().await;
+    let _ = child.wait().await;
     let _ = std::fs::remove_dir_all(&root);
     Ok(())
 }

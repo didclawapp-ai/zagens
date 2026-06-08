@@ -120,7 +120,7 @@ const ptBr: TranslationMap = {
     deleteConfirm: 'Excluir esta sessão?',
     deleteSessionTitle: 'Excluir sessão',
     apiKeyNotConfigured: 'API Key não configurada',
-    runtimeConnectionTitle: 'Status da conexão com o runtime local deepseek (127.0.0.1)',
+    runtimeConnectionTitle: 'Status da conexão com o zagens-runtime local (127.0.0.1)',
     about: 'Sobre',
   },
   rightPanel: {

@@ -261,7 +261,7 @@ mod tests {
     #[test]
     fn summarize_output_surfaces_tail_test_result() {
         let body = "\
-Compiling deepseek-runtime-server v0.8.15
+Compiling zagens-cli v0.8.15
    Compiling foo v1.0
 running 1687 tests
 test a ... ok

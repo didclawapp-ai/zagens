@@ -141,7 +141,7 @@ git clone https://github.com/didclawapp-ai/zagens.git
 cd zagens
 
 # Sidecar (build.rs copies into crates/desktop/binaries/)
-cargo build -p deepseek-runtime-server
+cargo build -p zagens-cli
 
 cd crates/desktop/web-ui && npm install
 cd .. && cargo tauri dev
@@ -150,6 +150,36 @@ cd .. && cargo tauri dev
 ```
 
 **Release installer (Windows):** from `crates/desktop`, run `npm run bundle:prepare` then `cargo tauri build`. CI release: push tag `zagens-vX.Y.Z`.
+
+### Headless CLI (`zagens`)
+
+Scriptable, no-GUI entry point for the same agent runtime (CI, Linux servers, terminal workflows). **`zagens-runtime`** remains the desktop sidecar binary; **`zagens`** adds subcommands.
+
+```bash
+# From crates.io (when published)
+cargo install zagens-cli --bin zagens --locked
+
+# From source
+cargo build -p zagens-cli --release --bin zagens --bin zagens-runtime
+
+# Diagnostics & setup
+zagens doctor
+zagens doctor --json
+zagens setup --status
+
+# One-shot tasks
+zagens exec 'summarize src/' --json
+zagens exec 'refactor auth module' --auto   # agent + tools
+
+# Git workflows
+git diff | zagens review --staged
+git diff > change.patch && zagens apply change.patch
+
+# Local HTTP (same engine as desktop sidecar)
+zagens serve --http --port 7878
+```
+
+Release CLI binaries (with SHA-256 sidecars): `bash scripts/release/build-cli-binaries.sh`. Scoop manifest template: [`packaging/scoop/zagens.json`](packaging/scoop/zagens.json).
 
 ---
 

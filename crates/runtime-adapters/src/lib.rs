@@ -1,9 +1,9 @@
 //! Runtime adapters — MCP, session persist, snapshots (D16 E1-a, D17 frozen).
 //!
-//! Extracted from `deepseek-runtime-server` as part of the D16 sidecar crate
+//! Extracted from `zagens-cli` as part of the D16 sidecar crate
 //! split.  Further migration of engine, tools, and route handlers is **deferred
 //! by design** (D17 Architecture Freeze) — those remain internal co-located
-//! units in `deepseek-runtime-server`, not candidates for crate extraction.
+//! units in `zagens-cli`, not candidates for crate extraction.
 //! This crate is the stable boundary for MCP connectors, persistence adapters,
 //! scratchpad gates, snapshots, and network policy.
 

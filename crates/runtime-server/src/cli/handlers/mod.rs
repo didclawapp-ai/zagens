@@ -1,0 +1,9 @@
+pub mod completions;
+pub mod doctor;
+pub mod exec;
+pub mod login;
+pub mod mcp;
+pub mod models;
+pub mod review;
+pub mod serve;
+pub mod setup;

@@ -1,6 +1,6 @@
 //! Ensures `binaries/zagens-runtime-<target>` exists before `tauri-build` validates `externalBin`.
 //! Developers: run `npm run bundle:prepare` in this folder for a release sidecar, or build
-//! `zagens-runtime` once (`cargo build -p deepseek-runtime-server`) so we can copy from `../../target`.
+//! `zagens-runtime` once (`cargo build -p zagens-cli`) so we can copy from `../../target`.
 
 use std::fs;
 use std::path::PathBuf;
@@ -59,7 +59,7 @@ fn ensure_sidecar_binaries() -> Result<(), String> {
 
     Err(format!(
         "missing Tauri sidecar binary at {}\n\
-         Fix: run `npm run bundle:prepare` in crates/desktop, or `cargo build -p deepseek-runtime-server` then rebuild desktop.",
+         Fix: run `npm run bundle:prepare` in crates/desktop, or `cargo build -p zagens-cli` then rebuild desktop.",
         dest.display()
     ))
 }

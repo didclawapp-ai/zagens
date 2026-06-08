@@ -1,6 +1,6 @@
 # Prompt System Architecture
 
-This document describes the complete prompt system architecture for **Zagens desktop** (via sidecar-launched `deepseek-runtime-server`) using Mermaid diagrams. Function and module names match source code; **line numbers are approximate anchors** — use symbol search for authoritative locations.
+This document describes the complete prompt system architecture for **Zagens desktop** (via sidecar-launched `zagens-cli`) using Mermaid diagrams. Function and module names match source code; **line numbers are approximate anchors** — use symbol search for authoritative locations.
 
 **Source root (after D6 Phase B):** `crates/runtime-server/src/` — main entry `prompts.rs`, layered Markdown in `prompts/`, sub-agents in `tools/subagent/mod.rs`. Historical path `crates/tui/src/prompts/` has been removed.
 
@@ -263,10 +263,10 @@ flowchart TD
     subgraph DESKTOP["Zagens Tauri App"]
         SIDECAR["spawn_sidecar()<br/>crates/desktop/src/sidecar.rs"]
         ENV["env: DEEPSEEK_CLIENT_SURFACE=zagens"]
-        SERVE["deepseek-runtime-server<br/>HTTP sidecar"]
+        SERVE["zagens-cli<br/>HTTP sidecar"]
     end
 
-    subgraph RUNTIME["Runtime (deepseek-runtime-server)"]
+    subgraph RUNTIME["Runtime (zagens-cli)"]
         DETECT["client_identity_line_from_env()<br/>prompts.rs"]
         SWITCH{"surface == zagens<br/>or ds-pick (legacy)?"}
         ID_ZAGENS["CLIENT_IDENTITY_DS_PICK copy<br/>'assisting inside Zagens...'"]

@@ -70,7 +70,7 @@ pub fn build_openapi_value_with(extra_schemas: &[(&str, SchemaExportFn)]) -> Val
         "info": {
             "title": "Zagens Runtime HTTP API",
             "version": "1.0.0",
-            "description": "Local sidecar (`deepseek-runtime`) HTTP/SSE surface consumed by Zagens desktop web-ui. SSOT routes: `crates/runtime-api/src/openapi/paths.rs`."
+            "description": "Local sidecar (`zagens-runtime`) HTTP/SSE surface consumed by Zagens desktop web-ui. SSOT routes: `crates/runtime-api/src/openapi/paths.rs`."
         },
         "servers": [{ "url": "http://127.0.0.1:7878" }],
         "components": {

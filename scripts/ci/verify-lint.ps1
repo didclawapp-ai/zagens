@@ -17,7 +17,7 @@ Write-Host "==> Toolchain: $(rustc --version)"
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host "==> Pre-build runtime sidecar (desktop build.rs)"
-cargo build -p deepseek-runtime-server --locked
+cargo build -p zagens-cli --locked
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host "==> cargo fmt --all -- --check"

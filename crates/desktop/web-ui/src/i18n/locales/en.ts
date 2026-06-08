@@ -120,7 +120,7 @@ const en: TranslationMap = {
     deleteConfirm: 'Delete this session?',
     deleteSessionTitle: 'Delete session',
     apiKeyNotConfigured: 'API Key not configured',
-    runtimeConnectionTitle: 'Connection status with the local deepseek runtime (127.0.0.1)',
+    runtimeConnectionTitle: 'Connection status with the local zagens-runtime (127.0.0.1)',
     about: 'About',
   },
   rightPanel: {

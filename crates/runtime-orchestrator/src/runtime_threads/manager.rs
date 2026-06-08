@@ -1,7 +1,7 @@
 //! Generic runtime thread manager core (D16 E1-b phase 2).
 //!
 //! Sidecar-specific `Config`, task/automation managers, and scratchpad UI hooks
-//! live in `deepseek-runtime-server` as a wrapper around this type.
+//! live in `zagens-cli` as a wrapper around this type.
 
 use std::collections::HashMap;
 use std::fs;

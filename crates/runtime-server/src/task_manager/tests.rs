@@ -150,7 +150,7 @@ async fn record_tool_metadata_updates_explicit_task() -> Result<()> {
                     "gate": {
                         "id": "gate_test",
                         "gate": "test",
-                        "command": "cargo test -p deepseek-runtime-server --lib",
+                        "command": "cargo test -p zagens-cli --lib",
                         "cwd": ".",
                         "exit_code": 0,
                         "status": "passed",

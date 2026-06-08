@@ -337,7 +337,7 @@ HTTP handler
 ```mermaid
 flowchart BT
     DESK["deepseek-desktop<br/>(crates/desktop)"]
-    RT["deepseek-runtime-server<br/>(crates/runtime-server)<br/>lib: deepseek_runtime<br/>bin: deepseek-runtime"]
+    RT["zagens-cli<br/>(crates/runtime-server)<br/>lib: deepseek_runtime<br/>bin: deepseek-runtime"]
     RTAPI["deepseek-runtime-api<br/>(crates/runtime-api)"]
     RTO["deepseek-runtime-orchestrator<br/>(crates/runtime-orchestrator)"]
     RTAD["deepseek-runtime-adapters<br/>(crates/runtime-adapters)"]
@@ -385,7 +385,7 @@ flowchart BT
 | Crate | Path | Role |
 |-------|------|------|
 | **deepseek-desktop** | `crates/desktop/` | Zagens Tauri shell; **only** depends on `config` + `secrets` + Tauri/reqwest/portable-pty |
-| **deepseek-runtime-server** | `crates/runtime-server/` | Production sidecar **lib + bin**: HTTP handlers, tools/*, Engine shim, orchestrator/adapters assembly |
+| **zagens-cli** | `crates/runtime-server/` | Production sidecar **lib + bin**: HTTP handlers, tools/*, Engine shim, orchestrator/adapters assembly |
 | **deepseek-runtime-api** | `crates/runtime-api/` | HTTP contract layer: OpenAPI export, `ApiError`, auth/health/cors, shared wire types (incl. task) |
 | **deepseek-runtime-orchestrator** | `crates/runtime-orchestrator/` | Turn orchestration core: `RuntimeThreadManager`, `turn_lifecycle`, `monitor`, `persist`, `thread_store_sqlite` |
 | **deepseek-runtime-adapters** | `crates/runtime-adapters/` | Platform adapters: MCP, persist/session, snapshot, tool host ports and pure helpers |
@@ -400,7 +400,7 @@ flowchart BT
 - `deepseek-desktop` **only** depends on `deepseek-config` + `deepseek-secrets` (plus Tauri/reqwest/portable-pty/sha2/dirs), **does not** directly depend on `core`, `runtime-server`, `runtime-api`, etc. — all Agent capabilities come via embedded **`deepseek-runtime`** child process + HTTP/IPC ([`architecture_boundary.rs`](../../crates/desktop/tests/architecture_boundary.rs)).
 - Sidecar stack is **four crates cooperating**: `runtime-server` (host) → `runtime-api` + `runtime-orchestrator` + `runtime-adapters` → `deepseek-core`.
 - `runtime-orchestrator` depends on `runtime-adapters` and `deepseek-core`; `runtime-api` depends on orchestrator + adapters (shared wire types and router assembly).
-- `deepseek-runtime-server` has **no** ratatui/crossterm (D6 Phase B ✅).
+- `zagens-cli` has **no** ratatui/crossterm (D6 Phase B ✅).
 - `deepseek_runtime` lib exposes HTTP assembly entry: `run_http_server` / `RuntimeApiOptions` (crate root re-export; impl in `runtime_serve/http.rs`).
 - `Engine` struct + `Engine::run()` in core; runtime keeps ~130 LOC shim + tool/MCP/LSP host implementation.
 - **`runtime-server` lib ~100k LOC, `client.ts` monolith** — accepted per D17, no longer an architecture KPI.

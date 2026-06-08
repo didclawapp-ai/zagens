@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 echo "==> export-runtime-openapi"
-cargo run -p deepseek-runtime-server --locked --bin export-runtime-openapi
+cargo run -p zagens-cli --locked --bin export-runtime-openapi
 
 echo "==> generate:api-types"
 cd crates/desktop/web-ui

@@ -4,7 +4,7 @@ $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 
 Write-Host "==> export-runtime-openapi"
-cargo run -p deepseek-runtime-server --locked --bin export-runtime-openapi
+cargo run -p zagens-cli --locked --bin export-runtime-openapi
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host "==> generate:api-types"

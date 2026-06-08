@@ -4,7 +4,7 @@ $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 
 Write-Host "==> architecture_invariants (runtime-server)"
-cargo test -p deepseek-runtime-server --test architecture_invariants --locked
+cargo test -p zagens-cli --test architecture_invariants --locked
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host "==> architecture_boundary (desktop)"

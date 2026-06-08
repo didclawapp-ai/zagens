@@ -118,7 +118,7 @@ const zhHans = {
     deleteConfirm: '确定删除此会话？',
     deleteSessionTitle: '删除会话',
     apiKeyNotConfigured: '未配置 API Key',
-    runtimeConnectionTitle: '与本地 deepseek-runtime 运行时 (127.0.0.1) 的连接状态',
+    runtimeConnectionTitle: '与本地 zagens-runtime 运行时 (127.0.0.1) 的连接状态',
     about: '关于',
   },
   rightPanel: {

@@ -15,7 +15,7 @@ M-series (D5) moved `Engine` + op loop into `deepseek-core`, removing the struct
 
 ### Phase A (2026-05-26)
 
-1. Add workspace crate **`deepseek-runtime-server`** with binary **`deepseek-runtime`**.
+1. Add workspace crate **`zagens-cli`** with binary **`deepseek-runtime`**.
 2. Sidecar build **without** ratatui / crossterm link.
 3. Shared types in neutral modules (`agent_surface`, `auto_route`, `context_reference`).
 4. Zagens **`externalBin`** → **`deepseek-runtime-*`**.
@@ -31,7 +31,7 @@ M-series (D5) moved `Engine` + op loop into `deepseek-core`, removing the struct
 
 ### Phase A
 
-- [x] `cargo check -p deepseek-runtime-server` green; `cargo tree -p deepseek-runtime-server -i ratatui` → **no match**
+- [x] `cargo check -p zagens-cli` green; `cargo tree -p zagens-cli -i ratatui` → **no match**
 - [x] Desktop `build.rs` / `prepare-bundle.mjs` / `sidecar.rs` prefer `deepseek-runtime`
 - [x] Binary contract test + CI — [`sidecar_binary_contract.rs`](../../../crates/runtime-server/tests/sidecar_binary_contract.rs)
 

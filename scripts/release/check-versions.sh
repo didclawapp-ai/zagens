@@ -38,7 +38,7 @@ fi
 
 # 3) Cargo.lock in sync.
 if ! cargo metadata --locked --format-version 1 --no-deps >/dev/null 2>&1; then
-  echo "::error::Cargo.lock is out of sync with the manifests. Run 'cargo update -p deepseek-runtime-server' or 'cargo build' and commit the result." >&2
+  echo "::error::Cargo.lock is out of sync with the manifests. Run 'cargo update -p zagens-cli' or 'cargo build' and commit the result." >&2
   fail=1
 fi
 

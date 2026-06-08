@@ -258,7 +258,7 @@ Public endpoints (no auth):
 ```json
 {
   "status": "ok",
-  "service": "deepseek-runtime-api",
+  "service": "zagens-runtime-api",
   "mode": "local",
   "event_schema_version": 2
 }

@@ -281,7 +281,7 @@ Run before each Phase merge:
 | `cargo check --workspace` | Compile |
 | `cargo test --workspace` | Unit + integration |
 | `cargo clippy --workspace --all-targets --all-features` | Lint |
-| `cargo tree -p deepseek-runtime-server -i ratatui` | No TUI |
+| `cargo tree -p zagens-cli -i ratatui` | No TUI |
 | `.\scripts\export-runtime-openapi.ps1` | OpenAPI no unexpected diff |
 | `cd crates/desktop/web-ui && npm run build` | TS strict |
 | Manual | Zagens cold start → chat → tools → approval → restart sidecar → Sidebar consistent |

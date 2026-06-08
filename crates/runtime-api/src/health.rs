@@ -28,7 +28,7 @@ pub struct InternalProbeResponse {
 pub async fn health() -> Json<HealthResponse> {
     Json(HealthResponse {
         status: "ok",
-        service: "deepseek-runtime-api",
+        service: "zagens-runtime-api",
         mode: "local",
         event_schema_version: CURRENT_EVENT_SCHEMA_VERSION,
     })

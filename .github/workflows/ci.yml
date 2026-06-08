@@ -65,7 +65,9 @@ jobs:
       - name: Ensure web-ui dist (desktop clippy)
         run: bash scripts/ci/ensure-web-ui-dist.sh
       - name: Pre-build runtime sidecar (required by desktop build.rs)
-        run: bash scripts/ci/cargo-retry.sh build -p deepseek-runtime-server --locked
+        run: bash scripts/ci/cargo-retry.sh build -p zagens-cli --locked
+      - name: Pre-build headless CLI binary
+        run: bash scripts/ci/cargo-retry.sh build -p zagens-cli --bin zagens --locked
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Clippy (strict)
@@ -97,15 +99,26 @@ jobs:
       - name: Ensure web-ui dist (desktop tests)
         run: bash scripts/ci/ensure-web-ui-dist.sh
       - name: Pre-build runtime sidecar (required by desktop build.rs)
-        run: bash scripts/ci/cargo-retry.sh build -p deepseek-runtime-server --locked
+        run: bash scripts/ci/cargo-retry.sh build -p zagens-cli --locked
+      - name: Pre-build headless CLI binary
+        run: bash scripts/ci/cargo-retry.sh build -p zagens-cli --bin zagens --locked
       - name: Run tests
         run: bash scripts/ci/cargo-retry.sh test --workspace --all-features --locked
       - name: Runtime sidecar contract (A+.4 / R-009)
         if: matrix.os == 'ubuntu-latest'
-        run: cargo test -p deepseek-runtime-server --lib sidecar_contract_full_lifecycle --locked
+        run: cargo test -p zagens-cli --lib sidecar_contract_full_lifecycle --locked
       - name: Runtime sidecar binary contract (D6 Phase A+)
         if: matrix.os == 'ubuntu-latest'
-        run: cargo test -p deepseek-runtime-server --test sidecar_binary_contract --locked
+        run: cargo test -p zagens-cli --test sidecar_binary_contract --locked
+      - name: Headless CLI binary contract
+        if: matrix.os == 'ubuntu-latest'
+        run: cargo test -p zagens-cli --test zagens_cli_contract --locked
+      - name: Headless CLI exec mock integration
+        if: matrix.os == 'ubuntu-latest'
+        run: cargo test -p zagens-cli --lib exec_agent_json_e2e_with_mock_llm --locked
+      - name: Headless CLI release build smoke
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/ci/cargo-retry.sh build -p zagens-cli --release --locked --bin zagens --bin zagens-runtime
       - name: R-015 baseline dry-run (A1.6 disk proxy)
         if: matrix.os == 'ubuntu-latest'
         shell: pwsh
@@ -115,7 +128,7 @@ jobs:
       - name: OpenAPI contract (D8 / D16 E5)
         if: matrix.os == 'ubuntu-latest'
         run: |
-          cargo run -p deepseek-runtime-server --locked --bin export-runtime-openapi
+          cargo run -p zagens-cli --locked --bin export-runtime-openapi
           git diff --exit-code -- docs/tech/openapi/zagens-runtime-v1.openapi.json
       - name: OpenAPI TS types drift (D8 / D16 E5)
         if: matrix.os == 'ubuntu-latest'

@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 echo "==> architecture_invariants (runtime-server)"
-cargo test -p deepseek-runtime-server --test architecture_invariants --locked
+cargo test -p zagens-cli --test architecture_invariants --locked
 
 echo "==> architecture_boundary (desktop)"
 cargo test -p deepseek-desktop --test architecture_boundary --locked

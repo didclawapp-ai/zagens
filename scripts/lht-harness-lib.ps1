@@ -121,12 +121,12 @@ function Get-LhtHarnessRuntimeBinary {
         if (Test-Path $path) { return $path }
     }
     if ($SkipBuild) {
-        throw "Runtime binary not found (zagens-runtime / deepseek-runtime). Build with: cargo build -p deepseek-runtime-server --release"
+        throw "Runtime binary not found (zagens-runtime / deepseek-runtime). Build with: cargo build -p zagens-cli --release"
     }
     Write-Host "Building zagens-runtime (release)..." -ForegroundColor DarkGray
     Push-Location $RepoRoot
     try {
-        cargo build -p deepseek-runtime-server --release
+        cargo build -p zagens-cli --release
         if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
     } finally {
         Pop-Location

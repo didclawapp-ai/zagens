@@ -3,7 +3,7 @@
   "info": {
     "title": "Zagens Runtime HTTP API",
     "version": "1.0.0",
-    "description": "Local sidecar (`deepseek-runtime`) HTTP/SSE surface consumed by Zagens desktop web-ui. SSOT routes: `crates/runtime-api/src/openapi/paths.rs`."
+    "description": "Local sidecar (`zagens-runtime`) HTTP/SSE surface consumed by Zagens desktop web-ui. SSOT routes: `crates/runtime-api/src/openapi/paths.rs`."
   },
   "servers": [
     {

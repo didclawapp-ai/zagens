@@ -66,9 +66,9 @@ const INSTRUCTIONS_FILE_MAX_BYTES: usize = 100 * 1024;
 pub(crate) const CLIENT_SURFACE_ZAGENS: &str = "zagens";
 pub(crate) const CLIENT_SURFACE_DS_PICK: &str = "ds-pick";
 
-const CLIENT_IDENTITY_HEADLESS: &str = "You are assisting inside the **deepseek-runtime** HTTP sidecar (headless agent runtime on loopback). When the user asks what software hosts this conversation, answer **deepseek-runtime**. Don't try to spawn another runtime process unless the user explicitly asks.";
+const CLIENT_IDENTITY_HEADLESS: &str = "You are assisting inside the **Zagens** headless runtime (`zagens` CLI / `zagens-runtime` HTTP sidecar on loopback). When the user asks what software hosts this conversation, answer **Zagens**. Don't try to spawn another runtime process unless the user explicitly asks.";
 
-const CLIENT_IDENTITY_DS_PICK: &str = "You are assisting inside **Zagens**, the DeepSeek desktop app (Tauri shell with an embedded chat UI). This session is hosted by Zagens, which connects to the local `deepseek-runtime` sidecar on the loopback interface. When the user asks what software this conversation uses, answer **Zagens**. Don't try to spawn another `deepseek-runtime` process unless the user explicitly asks.";
+const CLIENT_IDENTITY_DS_PICK: &str = "You are assisting inside **Zagens**, the desktop app (Tauri shell with an embedded chat UI). This session is hosted by Zagens, which connects to the local `zagens-runtime` sidecar on the loopback interface. When the user asks what software this conversation uses, answer **Zagens**. Don't try to spawn another `zagens-runtime` process unless the user explicitly asks.";
 
 fn is_zagens_client_surface(client_surface: &str) -> bool {
     client_surface.eq_ignore_ascii_case(CLIENT_SURFACE_ZAGENS)
@@ -700,7 +700,7 @@ mod tests {
             assert!(!line.to_ascii_lowercase().contains("deepseek tui"));
             assert!(!line.contains("deepseek-tui"));
         }
-        assert!(super::client_identity_line(None).contains("deepseek-runtime"));
+        assert!(super::client_identity_line(None).contains("Zagens"));
         assert!(super::client_identity_line(Some("ds-pick")).contains("Zagens"));
         assert!(super::client_identity_line(Some("DS-PICK")).contains("Zagens"));
         assert!(super::client_identity_line(Some("zagens")).contains("Zagens"));

@@ -133,9 +133,10 @@ jobs:
         shell: pwsh
         working-directory: crates/desktop
         run: |
-          $bundle = "target/release/bundle"
+          # Cargo workspace target dir is at repo root, not crates/desktop/
+          $bundle = "../../target/release/bundle"
           if (-not (Test-Path $bundle)) {
-            Write-Error "Missing bundle dir: $bundle"
+            Write-Error "Missing bundle dir: $bundle (cwd: $(Get-Location))"
           }
           New-Item -ItemType Directory -Force -Path ../../release-artifacts | Out-Null
           Get-ChildItem -Path $bundle -Recurse -File |
@@ -175,12 +176,79 @@ jobs:
             extract → run the installer** for a prompt-free install. Verify the
             download with the matching `.sha256` file.
 
+            ## Headless CLI (`zagens`)
+
+            Cross-platform CLI binaries (`zagens`, `zagens-runtime`) and matching
+            `.sha256` checksums are attached when the CLI matrix job succeeds.
+            Install via Scoop or download the archive for your target triple.
+
             OTA `latest.json` and zagens.com `/download/` are updated by the
             [zagens_website](https://github.com/jjlin0603-svg/zagens_website) repo
             after this release is published.
 
             See [SMARTSCREEN.md](https://github.com/${{ github.repository }}/blob/${{ needs.gate.outputs.sha }}/docs/desktop/SMARTSCREEN.md) for
             details, and [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/${{ needs.gate.outputs.sha }}/CHANGELOG.md) for release notes.
+
+  build-cli:
+    name: CLI binaries (${{ matrix.label }})
+    needs: gate
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux-gnu
+          - os: macos-latest
+            label: macos
+          - os: windows-latest
+            label: windows-msvc
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ needs.gate.outputs.sha }}
+
+      - uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: bash scripts/ci/install-linux-deps.sh
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2.9.1
+
+      - name: Build release CLI binaries
+        shell: bash
+        run: bash scripts/release/build-cli-binaries.sh release-cli-artifacts
+
+      - name: Upload CLI artifacts (CI)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: cli-artifacts-${{ matrix.label }}-${{ needs.gate.outputs.tag || github.run_id }}
+          path: release-cli-artifacts/
+          retention-days: 14
+
+  publish-cli-release:
+    name: Attach CLI binaries to release
+    needs: [gate, build-cli]
+    if: needs.gate.outputs.tag != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@fa0a81b294aae406fe1470e6438a7f566678875a # v4
+        with:
+          pattern: cli-artifacts-*-${{ needs.gate.outputs.tag }}
+          path: cli-release-artifacts
+          merge-multiple: true
+
+      - name: List CLI release files
+        run: find cli-release-artifacts -type f | sort
+
+      - name: Upload CLI binaries to GitHub Release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: ${{ needs.gate.outputs.tag }}
+          files: cli-release-artifacts/**/*
 
   notify-website-release:
     name: Sync installers to zagens.com

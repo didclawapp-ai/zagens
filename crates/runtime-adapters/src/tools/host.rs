@@ -1,7 +1,7 @@
 //! Tool host ports wired by the sidecar at engine spawn (D16 E1-a3+).
 //!
 //! Durable manager handles (`TaskManager`, `AutomationManager`, …) stay in
-//! `deepseek-runtime-server`; tools call through these ports so `tools/`
+//! `zagens-cli`; tools call through these ports so `tools/`
 //! can migrate to this crate incrementally.
 
 use std::collections::HashMap;

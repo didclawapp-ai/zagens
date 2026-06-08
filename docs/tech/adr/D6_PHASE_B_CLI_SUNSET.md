@@ -34,7 +34,7 @@
 ## 2. Target Architecture
 
 ```text
-crates/runtime-server/          # package: deepseek-runtime-server
+crates/runtime-server/          # package: zagens-cli
   lib: deepseek_runtime          # former tui lib minus TUI tree
   bin: deepseek-runtime          # existing
 
@@ -86,7 +86,7 @@ runtime-server (bin) → runtime-server (lib)
 | B2.2 | `tui/src/*` → `runtime-server/src/` (incl. `assets/`, `tests/`) ✅ |
 | B2.3 | bin calls `deepseek_runtime` lib ✅ |
 | B2.4 | Delete `crates/tui/` ✅ |
-| B2.5 | CI/scripts `-p deepseek-runtime-server`; `deepseek_tui` → `deepseek_runtime` (code paths) ✅ |
+| B2.5 | CI/scripts `-p zagens-cli`; `deepseek_tui` → `deepseek_runtime` (code paths) ✅ |
 
 ### B3 — Cleanup and acceptance ✅
 
@@ -96,7 +96,7 @@ runtime-server (bin) → runtime-server (lib)
 | B3.2 | Update CI, OpenAPI scripts, docs; `sidecar.rs` may optionally detect legacy `deepseek-tui` on disk ✅ |
 | B3.3 | Acceptance commands (§5); `RUSTFLAGS=-Dwarnings` build; Zagens smoke ✅ |
 
-**Effort:** ~**2–3 weeks** (1 person); each PR keeps `cargo test -p deepseek-runtime-server` regressable.
+**Effort:** ~**2–3 weeks** (1 person); each PR keeps `cargo test -p zagens-cli` regressable.
 
 ---
 
@@ -112,10 +112,10 @@ runtime-server (bin) → runtime-server (lib)
 
 ```bash
 cargo check --workspace
-cargo test -p deepseek-runtime-server --lib sidecar_contract_full_lifecycle
-cargo test -p deepseek-runtime-server --test sidecar_binary_contract
-cargo tree -p deepseek-runtime-server -i ratatui    # no match
-cargo tree -p deepseek-runtime-server -i crossterm  # no match
+cargo test -p zagens-cli --lib sidecar_contract_full_lifecycle
+cargo test -p zagens-cli --test sidecar_binary_contract
+cargo tree -p zagens-cli -i ratatui    # no match
+cargo tree -p zagens-cli -i crossterm  # no match
 ! test -d crates/cli
 ! test -d crates/tui
 ```
@@ -159,5 +159,5 @@ Phase B **marginal** benefit: smaller sidecar binary, fewer unused code paths, r
 ## 8. DEV_NOTES Revisions
 
 - **D14 CLI positioning** → **removed** (2026-05-26, this ADR)  
-- **D13 Sidecar** → `deepseek-runtime` only; crate name `deepseek-runtime-server`  
+- **D13 Sidecar** → `deepseek-runtime` only; crate name `zagens-cli`  
 - ratatui TUI → **deleted** (not freeze)

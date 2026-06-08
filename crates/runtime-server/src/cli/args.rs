@@ -10,11 +10,11 @@ use crate::config::Config;
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "deepseek",
+    name = "zagens",
     author,
     version,
-    about = "DeepSeek TUI/CLI for DeepSeek models",
-    long_about = "Terminal-native TUI and CLI for DeepSeek models.\n\nRun 'deepseek' to start.\n\nNot affiliated with DeepSeek Inc."
+    about = "Zagens headless CLI for DeepSeek agent runtime",
+    long_about = "Scriptable CLI for the Zagens agent runtime.\n\nRun `zagens exec '…'` for one-shot tasks, `zagens doctor` for diagnostics, or `zagens serve --http` for the local API.\n\nNot affiliated with DeepSeek Inc."
 )]
 pub struct Cli {
     /// Subcommand to run
@@ -37,19 +37,19 @@ pub struct Cli {
     pub max_subagents: Option<usize>,
 
     /// Path to config file
-    #[arg(long)]
+    #[arg(long, global = true)]
     pub config: Option<PathBuf>,
 
     /// Enable verbose logging
-    #[arg(short, long)]
+    #[arg(short, long, global = true)]
     pub verbose: bool,
 
     /// Config profile name
-    #[arg(long)]
+    #[arg(long, global = true)]
     pub profile: Option<String>,
 
     /// Workspace directory for file operations
-    #[arg(short, long)]
+    #[arg(short, long, global = true)]
     pub workspace: Option<PathBuf>,
 
     /// Resume a previous session by ID or prefix
@@ -82,7 +82,7 @@ pub struct Cli {
     pub fresh: bool,
 
     /// Skip loading project-level config from $WORKSPACE/.zagens/config.toml
-    #[arg(long = "no-project-config")]
+    #[arg(long = "no-project-config", global = true)]
     pub no_project_config: bool,
 }
 

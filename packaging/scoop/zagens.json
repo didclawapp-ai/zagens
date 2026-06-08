@@ -1,0 +1,19 @@
+{
+    "version": "0.8.15.0",
+    "description": "Headless CLI for the Zagens agent runtime (scriptable / CI)",
+    "homepage": "https://zagens.com",
+    "license": "MIT",
+    "url": "https://github.com/didclawapp-ai/zagens/releases",
+    "notes": "Install: cargo install zagens-cli --bin zagens. Or download zagens-<target> from GitHub Releases.",
+    "bin": "zagens.exe",
+    "checkver": {
+        "github": "https://github.com/didclawapp-ai/zagens"
+    },
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/didclawapp-ai/zagens/releases/download/zagens-v$version/zagens-x86_64-pc-windows-msvc.exe"
+            }
+        }
+    }
+}

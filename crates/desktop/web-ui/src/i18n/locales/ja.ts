@@ -120,7 +120,7 @@ const ja: TranslationMap = {
     deleteConfirm: 'このセッションを削除しますか？',
     deleteSessionTitle: 'セッションを削除',
     apiKeyNotConfigured: 'API Key が未設定です',
-    runtimeConnectionTitle: 'ローカル deepseek runtime との接続状態 (127.0.0.1)',
+    runtimeConnectionTitle: 'ローカル zagens-runtime との接続状態 (127.0.0.1)',
     about: '情報',
   },
   rightPanel: {

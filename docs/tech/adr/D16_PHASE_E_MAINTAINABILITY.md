@@ -45,7 +45,7 @@ After D15 complete, architecture SSOT is established, but these **monolithic fil
 
 ### 1.1 Current State
 
-**Single crate:** `crates/runtime-server/` (package `deepseek-runtime-server`, lib `deepseek_runtime`, bin `deepseek-runtime`)
+**Single crate:** `crates/runtime-server/` (package `zagens-cli`, lib `deepseek_runtime`, bin `deepseek-runtime`)
 
 `src/lib.rs` registers 60+ top-level modules, including but not limited to:
 
@@ -97,7 +97,7 @@ crates/
 ├── runtime-adapters/         # package: deepseek-runtime-adapters
 │   └── tools/, mcp/, persist, session, llm_client, compaction…
 │
-└── runtime-server/           # package: deepseek-runtime-server (thin shell)
+└── runtime-server/           # package: zagens-cli (thin shell)
     ├── lib: re-export + DI assembly only (target <500 lines)
     └── bin: deepseek-runtime (main unchanged)
 ```
@@ -200,7 +200,7 @@ subagent/
 | E2-b | Extract each Tool file (spawn / wait / delegate / list_close / assign_send / result) |
 | E2-c | Extract `router.rs`; slim `mod.rs` to <300 lines |
 
-**Verification:** `cargo test -p deepseek-runtime-server subagent` all green; CRAFT blackboard / AgentPanel manual smoke.
+**Verification:** `cargo test -p zagens-cli subagent` all green; CRAFT blackboard / AgentPanel manual smoke.
 
 **Effort estimate:** 1–2 weeks.
 

@@ -873,3 +873,55 @@ mod pr_prompt_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod apply_cli_tests {
+    use std::process::Command;
+
+    use crate::cli::args::ApplyArgs;
+    use crate::cli::handlers::review::run_apply;
+    use tempfile::tempdir;
+
+    #[test]
+    fn apply_cli_applies_unified_diff_in_git_repo() {
+        let dir = tempdir().expect("tempdir");
+        let root = dir.path();
+        let git = |args: &[&str]| {
+            let status = Command::new("git")
+                .args(args)
+                .current_dir(root)
+                .status()
+                .expect("git command");
+            assert!(status.success(), "git {:?} failed", args);
+        };
+        git(&["init"]);
+        git(&["config", "user.email", "test@example.com"]);
+        git(&["config", "user.name", "Test"]);
+        git(&["config", "core.autocrlf", "false"]);
+        std::fs::write(root.join("hello.txt"), "before\n").expect("write file");
+        git(&["add", "hello.txt"]);
+        git(&["commit", "-m", "init"]);
+
+        std::fs::write(root.join("hello.txt"), "after\n").expect("write modified");
+        let diff = Command::new("git")
+            .args(["diff", "hello.txt"])
+            .current_dir(root)
+            .output()
+            .expect("git diff");
+        assert!(diff.status.success());
+        std::fs::write(root.join("hello.txt"), "before\n").expect("restore before");
+        let patch_path = root.join("change.patch");
+        std::fs::write(&patch_path, &diff.stdout).expect("write patch");
+
+        run_apply(
+            root,
+            ApplyArgs {
+                patch_file: Some(patch_path),
+            },
+        )
+        .expect("apply patch");
+
+        let contents = std::fs::read_to_string(root.join("hello.txt")).expect("read hello.txt");
+        assert_eq!(contents, "after\n");
+    }
+}

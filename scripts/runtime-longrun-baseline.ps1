@@ -286,7 +286,7 @@ foreach ($name in @("zagens-runtime.exe", "deepseek-runtime.exe")) {
 if (-not $binary) {
     Write-Host "Building zagens-runtime (release)..."
     Push-Location $workspaceRoot
-    cargo build -p deepseek-runtime-server --release
+    cargo build -p zagens-cli --release
     Pop-Location
     if ($LASTEXITCODE -ne 0) { throw "Build failed" }
     foreach ($name in @("zagens-runtime.exe", "deepseek-runtime.exe")) {

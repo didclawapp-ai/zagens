@@ -26,7 +26,7 @@ console.log('[bundle] Building web-ui…');
 execSync('npm run build', { cwd: webUi, stdio: 'inherit' });
 
 console.log('[bundle] Building zagens-runtime (release)…');
-execSync('cargo build --release -p deepseek-runtime-server', {
+execSync('cargo build --release -p zagens-cli', {
   cwd: workspaceRoot,
   stdio: 'inherit',
 });

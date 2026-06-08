@@ -1,6 +1,6 @@
 //! Minimal `settings.toml` access for the Zagens desktop shell.
 //!
-//! Full schema lives in `deepseek-runtime-server`; here we only need a stable
+//! Full schema lives in `zagens-cli`; here we only need a stable
 //! path and read/write of the `locale` field that drives model output language.
 
 use std::fs;

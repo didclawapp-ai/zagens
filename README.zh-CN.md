@@ -141,7 +141,7 @@ git clone https://github.com/didclawapp-ai/zagens.git
 cd zagens
 
 # Sidecar（build.rs 会复制到 crates/desktop/binaries/）
-cargo build -p deepseek-runtime-server
+cargo build -p zagens-cli
 
 cd crates/desktop/web-ui && npm install
 cd .. && cargo tauri dev
@@ -150,6 +150,35 @@ cd .. && cargo tauri dev
 ```
 
 **发布安装包（Windows）：** 在 `crates/desktop` 执行 `npm run bundle:prepare`，再 `cargo tauri build`。CI 发布：推送标签 `zagens-vX.Y.Z`。
+
+### Headless CLI（`zagens`）
+
+无 GUI、可脚本化的 agent 运行时入口（CI、Linux 服务器、终端工作流）。桌面仍嵌入 **`zagens-runtime`** sidecar；**`zagens`** 提供子命令。
+
+```bash
+# 从 crates.io 安装（发布后）
+cargo install zagens-cli --bin zagens --locked
+
+# 从源码构建
+cargo build -p zagens-cli --release --bin zagens --bin zagens-runtime
+
+# 诊断与初始化
+zagens doctor
+zagens setup --status
+
+# 一次性任务
+zagens exec '总结 src/ 变更' --json
+zagens exec '重构 auth 模块' --auto   # agent + 工具
+
+# Git 工作流
+git diff | zagens review --staged
+zagens apply change.patch
+
+# 本地 HTTP（与桌面 sidecar 同引擎）
+zagens serve --http --port 7878
+```
+
+发布用 CLI 二进制（含 SHA-256）：`bash scripts/release/build-cli-binaries.sh`。Scoop 模板：[`packaging/scoop/zagens.json`](packaging/scoop/zagens.json)。
 
 ---
 

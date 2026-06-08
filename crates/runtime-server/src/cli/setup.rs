@@ -391,3 +391,151 @@ pub(crate) fn merge_project_config(config: &mut crate::config::Config, workspace
         config.instructions = Some(entries);
     }
 }
+
+pub(crate) fn default_tools_dir() -> PathBuf {
+    deepseek_home_dir().join("tools")
+}
+
+pub(crate) fn default_plugins_dir() -> PathBuf {
+    deepseek_home_dir().join("plugins")
+}
+
+pub(crate) fn count_dir_entries(dir: &Path) -> usize {
+    std::fs::read_dir(dir)
+        .map(|rd| rd.flatten().count())
+        .unwrap_or(0)
+}
+
+pub(crate) fn run_setup(
+    config: &crate::config::Config,
+    workspace: &Path,
+    args: crate::cli::args::SetupArgs,
+) -> Result<()> {
+    use colored::Colorize;
+
+    if args.status {
+        return run_setup_status(config, workspace);
+    }
+    if args.clean {
+        return run_setup_clean(&default_checkpoints_dir(), args.force);
+    }
+
+    let any_explicit = args.mcp || args.skills || args.tools || args.plugins;
+    let run_mcp = args.mcp || args.all || !any_explicit;
+    let run_skills = args.skills || args.all || !any_explicit;
+    let run_tools = args.tools || args.all;
+    let run_plugins = args.plugins || args.all;
+
+    println!("{}", "Zagens Setup".bold());
+    println!("Workspace: {}", crate::utils::display_path(workspace));
+
+    if run_mcp {
+        let mcp_path = config.mcp_config_path();
+        let status = init_mcp_config(&mcp_path, args.force)?;
+        report_write_status("MCP config", &mcp_path, status);
+        println!("    Next: edit the file, then run `zagens mcp list` or `zagens mcp tools`.");
+    }
+
+    if run_skills {
+        let skills_dir = if args.local {
+            workspace.join("skills")
+        } else {
+            config.skills_dir()
+        };
+        let (skill_path, status) = init_skills_dir(&skills_dir, args.force)?;
+        report_write_status("Example skill", &skill_path, status);
+        println!(
+            "    Skills dir: {}",
+            crate::utils::display_path(&skills_dir)
+        );
+    }
+
+    if run_tools {
+        let tools_dir = default_tools_dir();
+        let (_, readme_status, example_status) = init_tools_dir(&tools_dir, args.force)?;
+        report_write_status("Tools README", &tools_dir.join("README.md"), readme_status);
+        report_write_status(
+            "Tools example",
+            &tools_dir.join("example.sh"),
+            example_status,
+        );
+    }
+
+    if run_plugins {
+        let plugins_dir = default_plugins_dir();
+        let (_, example_path, readme_status, example_status) =
+            init_plugins_dir(&plugins_dir, args.force)?;
+        report_write_status(
+            "Plugins README",
+            &plugins_dir.join("README.md"),
+            readme_status,
+        );
+        report_write_status("Plugin example", &example_path, example_status);
+    }
+
+    Ok(())
+}
+
+fn report_write_status(label: &str, path: &Path, status: WriteStatus) {
+    match status {
+        WriteStatus::Created => println!("  ✓ Created {label} at {}", path.display()),
+        WriteStatus::Overwritten => println!("  ✓ Overwrote {label} at {}", path.display()),
+        WriteStatus::SkippedExists => println!("  · {label} already exists at {}", path.display()),
+    }
+}
+
+pub(crate) fn run_setup_status(config: &crate::config::Config, workspace: &Path) -> Result<()> {
+    use colored::Colorize;
+
+    println!("{}", "Zagens Status".bold());
+    println!("workspace: {}", workspace.display());
+
+    match resolve_api_key_source(config) {
+        ApiKeySource::Env => println!("  ✓ api_key: set via DEEPSEEK_API_KEY"),
+        ApiKeySource::Keyring => println!("  ✓ api_key: set via OS keyring"),
+        ApiKeySource::Config => println!("  ✓ api_key: set via config"),
+        ApiKeySource::Missing => {
+            println!("  ✗ api_key: missing (run `zagens login` or set DEEPSEEK_API_KEY)");
+        }
+    }
+    println!("  · base_url: {}", config.deepseek_base_url());
+    println!(
+        "  · default_model: {}",
+        config
+            .default_text_model
+            .clone()
+            .unwrap_or_else(|| config.default_model())
+    );
+    println!("  · {}", dotenv_status_line(workspace));
+
+    let mcp_path = config.mcp_config_path();
+    println!(
+        "  · mcp_config: {} ({})",
+        mcp_path.display(),
+        if mcp_path.exists() {
+            "present"
+        } else {
+            "missing"
+        }
+    );
+
+    let skills_dir = config.skills_dir();
+    println!(
+        "  · skills: {} ({} discovered)",
+        skills_dir.display(),
+        skills_count_for(&skills_dir)
+    );
+
+    let tools_dir = default_tools_dir();
+    println!(
+        "  · tools: {} ({} entries)",
+        tools_dir.display(),
+        if tools_dir.exists() {
+            count_dir_entries(&tools_dir)
+        } else {
+            0
+        }
+    );
+
+    Ok(())
+}

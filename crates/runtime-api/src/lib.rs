@@ -1,6 +1,6 @@
 //! Runtime HTTP/SSE API types and OpenAPI export (D16 E1-c, D17 frozen).
 //!
-//! Route handlers remain in `deepseek-runtime-server` **by design** (D17
+//! Route handlers remain in `zagens-cli` **by design** (D17
 //! Architecture Freeze).  The engine→tools→route-handler closure forms an
 //! internally co-located unit; further extraction would force artificial
 //! trait hierarchies with a single implementation each.  This crate is the

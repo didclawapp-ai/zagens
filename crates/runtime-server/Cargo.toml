@@ -1,10 +1,10 @@
 [package]
-name = "deepseek-runtime-server"
+name = "zagens-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "HTTP/SSE runtime sidecar for Zagens (lib + zagens-runtime binary)"
+description = "Zagens headless CLI + HTTP/SSE runtime sidecar (`zagens`, `zagens-runtime` binaries)"
 default-run = "zagens-runtime"
 
 [features]
@@ -20,6 +20,10 @@ path = "src/lib.rs"
 [[bin]]
 name = "zagens-runtime"
 path = "src/main.rs"
+
+[[bin]]
+name = "zagens"
+path = "src/bin/zagens.rs"
 
 [[bin]]
 name = "export-runtime-openapi"
