@@ -2,6 +2,10 @@
 # Shared apt packages for Zagens CI on Ubuntu (runtime + Tauri desktop build).
 set -euo pipefail
 
+if [ -f scripts/ci/free-github-disk.sh ]; then
+  bash scripts/ci/free-github-disk.sh
+fi
+
 for i in 1 2 3 4 5; do
   sudo apt-get update && break
   echo "apt-get update failed (attempt $i); retrying in 15s"
