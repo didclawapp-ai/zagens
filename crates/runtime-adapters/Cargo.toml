@@ -18,7 +18,7 @@ deepseek-config = { path = "../config", version = "0.8.15" }
 deepseek-core = { path = "../core", version = "0.8.15" }
 deepseek-protocol = { path = "../protocol", version = "0.8.15" }
 dirs.workspace = true
-futures-util = "0.3.31"
+futures-util = "0.3.32"
 reqwest = { workspace = true, features = ["blocking", "stream", "multipart", "http2"] }
 rusqlite.workspace = true
 schemars = { version = "1.2.1", features = ["derive", "preserve_order", "chrono04"] }
@@ -26,7 +26,7 @@ serde.workspace = true
 serde_json = { workspace = true, features = ["preserve_order"] }
 similar = "2"
 ignore = "0.4"
-tempfile = "3.16"
+tempfile = "3.25"
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util = { version = "0.7.16", features = ["io"] }
@@ -35,7 +35,7 @@ tracing.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-tempfile = "3.16"
+tempfile = "3.25"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 libc = "0.2"

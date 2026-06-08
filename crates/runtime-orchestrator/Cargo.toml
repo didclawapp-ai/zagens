@@ -18,7 +18,7 @@ deepseek-core = { path = "../core", version = "0.8.15" }
 deepseek-protocol = { path = "../protocol", version = "0.8.15" }
 deepseek-runtime-adapters = { path = "../runtime-adapters", version = "0.8.15" }
 deepseek-tools = { path = "../tools", version = "0.8.15" }
-futures-util = "0.3.31"
+futures-util = "0.3.32"
 rusqlite.workspace = true
 schemars = { version = "1.2.1", features = ["derive", "preserve_order", "chrono04"] }
 serde.workspace = true
@@ -30,7 +30,7 @@ uuid.workspace = true
 
 [dev-dependencies]
 pretty_assertions = "1.4"
-tempfile = "3.16"
+tempfile = "3.25"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [lints.rust]

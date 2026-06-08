@@ -30,21 +30,21 @@ license = "MIT"
 # Full license text: LICENSE. Runtime lineage attribution: NOTICE.md, third-party/deepseek-tui/.
 
 [workspace.dependencies]
-anyhow = "1.0.100"
+anyhow = "1.0.102"
 async-trait = "0.1.89"
-axum = { version = "0.8.5", features = ["json"] }
-chrono = { version = "0.4.43", features = ["serde"] }
-clap = { version = "4.5.54", features = ["derive"] }
-clap_complete = "4.5"
+axum = { version = "0.8.9", features = ["json"] }
+chrono = { version = "0.4.45", features = ["serde"] }
+clap = { version = "4.5.60", features = ["derive"] }
+clap_complete = "4.6"
 dirs = "6.0.0"
-reqwest = { version = "0.13.1", default-features = false, features = ["json", "rustls"] }
+reqwest = { version = "0.13.4", default-features = false, features = ["json", "rustls"] }
 rusqlite = { version = "0.32.1", features = ["bundled"] }
 serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.149"
+serde_json = "1.0.150"
 thiserror = "2.0"
-tokio = { version = "1.49.0", features = ["full"] }
+tokio = { version = "1.50.0", features = ["full"] }
 toml = "0.9.7"
 sha2 = "0.10"
 tower-http = { version = "0.6", features = ["cors"] }
 tracing = "0.1"
-uuid = { version = "1.11", features = ["v4"] }
+uuid = { version = "1.23", features = ["v4"] }

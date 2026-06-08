@@ -40,19 +40,19 @@ deepseek-topic-memory = { path = "../topic-memory", version = "0.8.15" }
 deepseek-secrets = { path = "../secrets", version = "0.8.15" }
 deepseek-protocol = { path = "../protocol", version = "0.8.15" }
 deepseek-tools = { path = "../tools", version = "0.8.15" }
-schemaui = { version = "0.12.0", default-features = false, optional = true }
+schemaui = { version = "0.12.2", default-features = false, optional = true }
 async-stream = "0.3.6"
 async-trait.workspace = true
 base64 = "0.22.1"
 axum.workspace = true
 clap.workspace = true
 clap_complete.workspace = true
-colored = "3.0.0"
+colored = "3.1.1"
 dotenvy = "0.15.7"
 dirs.workspace = true
 fd-lock = "4.0.4"
-futures-util = "0.3.31"
-regex = "1.11"
+futures-util = "0.3.32"
+regex = "1.12"
 reqwest = { workspace = true, features = ["blocking", "stream", "multipart", "http2"] }
 similar = "2"
 rustyline = "15.0.0"
@@ -66,10 +66,10 @@ toml.workspace = true
 tokio.workspace = true
 tokio-util = { version = "0.7.16", features = ["io"] }
 unicode-width = "0.2"
-unicode-segmentation = "1.12"
+unicode-segmentation = "1.13"
 uuid.workspace = true
 chrono.workspace = true
-tempfile = "3.16"
+tempfile = "3.25"
 thiserror.workspace = true
 tracing.workspace = true
 tower-http.workspace = true
