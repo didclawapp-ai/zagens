@@ -47,10 +47,12 @@ pub async fn run_exec(ctx: &CliContext, opts: ExecOptions) -> Result<()> {
             &opts.prompt,
             ctx.workspace.clone(),
             max_subagents,
-            true,
-            true,
-            opts.json_output,
-            None,
+            ExecAgentRunOptions {
+                auto_approve: true,
+                trust_mode: true,
+                json_output: opts.json_output,
+                llm_client_override: None,
+            },
         )
         .await
     } else if opts.json_output {
@@ -146,17 +148,27 @@ async fn run_one_shot_json(config: &Config, model: &str, prompt: &str) -> Result
     Ok(())
 }
 
+struct ExecAgentRunOptions {
+    auto_approve: bool,
+    trust_mode: bool,
+    json_output: bool,
+    llm_client_override: Option<std::sync::Arc<dyn LlmClient>>,
+}
+
 async fn run_exec_agent(
     config: &Config,
     model: &str,
     prompt: &str,
     workspace: PathBuf,
     max_subagents: usize,
-    auto_approve: bool,
-    trust_mode: bool,
-    json_output: bool,
-    llm_client_override: Option<std::sync::Arc<dyn LlmClient>>,
+    run: ExecAgentRunOptions,
 ) -> Result<()> {
+    let ExecAgentRunOptions {
+        auto_approve,
+        trust_mode,
+        json_output,
+        llm_client_override,
+    } = run;
     let route = resolve_cli_auto_route(config, model, prompt).await;
     let auto_model = route.auto_model;
     let effective_model = route.model;
@@ -462,10 +474,12 @@ mod tests {
             "hello mock",
             workspace,
             1,
-            true,
-            true,
-            true,
-            Some(mock.clone()),
+            ExecAgentRunOptions {
+                auto_approve: true,
+                trust_mode: true,
+                json_output: true,
+                llm_client_override: Some(mock.clone()),
+            },
         )
         .await
         .expect("exec agent with mock LLM");
