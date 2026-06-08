@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **CI / deps:** Remove GitHub Dependabot; dependency and Actions pin updates are manual during release maintenance (CodeWhale-aligned policy).
+
 ## [0.7.1] - 2026-06-08
 
 ### Fixed

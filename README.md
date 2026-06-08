@@ -13,12 +13,12 @@
 | Resource | Link |
 |----------|------|
 | User guides | [zagens.com/docs](https://zagens.com/docs) |
-| Downloads | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases) (tag **`zagens-v0.7.0`**) · [zagens.com/download](https://zagens.com/download) |
+| Downloads | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases) (latest **`zagens-v0.7.1`**) · [zagens.com/download](https://zagens.com/download) |
 | Design specs | [`docs/README.md`](docs/README.md) |
 | Contributing | [`CONTRIBUTING.md`](CONTRIBUTING.md) · [`LOCAL_DEV_VERIFY.md`](LOCAL_DEV_VERIFY.md) |
 | Security | [`SECURITY.md`](SECURITY.md) |
 
-> **Not affiliated with DeepSeek Inc.** Capabilities below reflect **Zagens v0.7.0**. See [CHANGELOG.md](CHANGELOG.md) for version history.
+> **Not affiliated with DeepSeek Inc.** Capabilities below reflect **Zagens v0.7.1**. See [CHANGELOG.md](CHANGELOG.md) for version history.
 
 ---
 
@@ -37,7 +37,7 @@
 
 ---
 
-## Desktop UI (v0.7.0)
+## Desktop UI (v0.7.1)
 
 | Area | Shipped |
 |------|---------|
@@ -126,13 +126,13 @@ Full diagram and boundaries: [`docs/tech/RUNTIME_ARCHITECTURE.md`](docs/tech/RUN
 - **Python** 3.8+ (office docs, code execution, RLM)
 - **[Tauri CLI 2](https://v2.tauri.app/start/prerequisites/)** — `cargo install tauri-cli --version "^2"`
 
-**Versions:** Zagens desktop **v0.7.0**; embedded runtime crates **0.8.15** (root `Cargo.toml`).
+**Versions:** Zagens desktop **v0.7.1**; runtime workspace **0.7.1** (root `Cargo.toml`).
 
 ---
 
 ## Quick start
 
-**Pre-built installers:** Windows — [GitHub Releases `zagens-v0.7.0`](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.7.0) (installer zip + CLI binaries). Unblock the zip per [SMARTSCREEN.md](docs/desktop/SMARTSCREEN.md). macOS/Linux CLI ship in the same release; desktop packages for those platforms are planned.
+**Pre-built installers:** Windows — [GitHub Releases `zagens-v0.7.1`](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.7.1) (installer zip + CLI binaries). Unblock the zip per [SMARTSCREEN.md](docs/desktop/SMARTSCREEN.md). macOS/Linux CLI ship in the same release; desktop packages for those platforms are planned.
 
 **Build from source:**
 
@@ -156,13 +156,18 @@ cd .. && cargo tauri dev
 Scriptable, no-GUI entry point for the same agent runtime (CI, Linux servers, terminal workflows). **`zagens-runtime`** remains the desktop sidecar binary; **`zagens`** adds subcommands.
 
 ```bash
-# From crates.io (when published)
-cargo install zagens-cli --bin zagens --locked
+# Prebuilt CLI (Linux / macOS / Windows): GitHub Releases
+# https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.7.1
+
+# From crates.io (official registry install)
+cargo install zagens-cli --version 0.7.1 --bin zagens --locked
+# Same crate also installs `zagens-runtime` (desktop sidecar binary).
 
 # From source
 cargo build -p zagens-cli --release --bin zagens --bin zagens-runtime
 
 # Diagnostics & setup
+zagens --version
 zagens doctor
 zagens doctor --json
 zagens setup --status

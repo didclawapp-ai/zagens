@@ -13,12 +13,12 @@
 | 资源 | 链接 |
 |------|------|
 | 用户文档 | [zagens.com/docs](https://zagens.com/docs) |
-| 安装包 | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases)（标签 **`zagens-v0.7.0`**）· [zagens.com/download](https://zagens.com/download) |
+| 安装包 | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases)（最新 **`zagens-v0.7.1`**）· [zagens.com/download](https://zagens.com/download) |
 | 设计规格 | [`docs/README.md`](docs/README.md) |
 | 贡献指南 | [`CONTRIBUTING.md`](CONTRIBUTING.md) · [`LOCAL_DEV_VERIFY.md`](LOCAL_DEV_VERIFY.md) |
 | 安全策略 | [`SECURITY.md`](SECURITY.md) |
 
-> **与 DeepSeek 公司无关联。** 以下功能以 **Zagens v0.7.0** 为准。版本历史见 [CHANGELOG.md](CHANGELOG.md)。
+> **与 DeepSeek 公司无关联。** 以下功能以 **Zagens v0.7.1** 为准。版本历史见 [CHANGELOG.md](CHANGELOG.md)。
 
 ---
 
@@ -37,7 +37,7 @@
 
 ---
 
-## 桌面端（v0.7.0）
+## 桌面端（v0.7.1）
 
 | 区域 | 已具备 |
 |------|--------|
@@ -126,13 +126,13 @@ HTTP 契约：[`docs/tech/API_DESIGN.md`](docs/tech/API_DESIGN.md)。配置样�
 - **Python** 3.8+（Office 文档、代码执行、RLM）
 - **[Tauri CLI 2](https://v2.tauri.app/start/prerequisites/)** — `cargo install tauri-cli --version "^2"`
 
-**版本：** Zagens 桌面 **v0.7.0**；嵌入式 runtime **0.8.15**（根 `Cargo.toml`）。
+**版本：** Zagens 桌面 **v0.7.1**；runtime workspace **0.7.1**（根 `Cargo.toml`）。
 
 ---
 
 ## 快速开始
 
-**预编译安装包：** Windows — [GitHub Releases `zagens-v0.7.0`](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.7.0)（安装包 zip + CLI 二进制）。解除 SmartScreen 锁定见 [SMARTSCREEN.md](docs/desktop/SMARTSCREEN.md)。macOS / Linux CLI 同次 Release 提供；桌面安装包规划中。
+**预编译安装包：** Windows — [GitHub Releases `zagens-v0.7.1`](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.7.1)（安装包 zip + CLI 二进制）。解除 SmartScreen 锁定见 [SMARTSCREEN.md](docs/desktop/SMARTSCREEN.md)。macOS / Linux CLI 同次 Release 提供；桌面安装包规划中。
 
 **从源码构建：**
 
@@ -156,13 +156,18 @@ cd .. && cargo tauri dev
 无 GUI、可脚本化的 agent 运行时入口（CI、Linux 服务器、终端工作流）。桌面仍嵌入 **`zagens-runtime`** sidecar；**`zagens`** 提供子命令。
 
 ```bash
-# 从 crates.io 安装（发布后）
-cargo install zagens-cli --bin zagens --locked
+# 预编译 CLI（Linux / macOS / Windows）：GitHub Releases
+# https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.7.1
+
+# 从 crates.io 安装（官方 registry）
+cargo install zagens-cli --version 0.7.1 --bin zagens --locked
+# 同一 crate 也会安装 `zagens-runtime`（桌面 sidecar 二进制）。
 
 # 从源码构建
 cargo build -p zagens-cli --release --bin zagens --bin zagens-runtime
 
 # 诊断与初始化
+zagens --version
 zagens doctor
 zagens setup --status
 
