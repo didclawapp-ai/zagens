@@ -60,6 +60,18 @@ function parsePollRow(raw: Record<string, unknown>): SubagentPollRow | null {
   };
 }
 
+/** Keep rows whose persisted `parent_thread_id` matches the active thread. */
+export function filterSubagentRowsForThread(
+  rows: SubagentPollRow[],
+  threadId: string | null | undefined,
+): SubagentPollRow[] {
+  const tid = threadId?.trim();
+  if (!tid) {
+    return [];
+  }
+  return rows.filter((row) => row.ownerThreadId === tid);
+}
+
 /** Read `{workspace}/.zagens/state/subagents.v1.json` (legacy `.deepseek/` fallback). */
 export async function fetchSubagentStateFromDisk(
   workspaceRoot: string,

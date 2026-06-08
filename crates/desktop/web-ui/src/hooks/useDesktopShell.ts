@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import { ensureDefaultComposerWorkspace } from '../lib/appPreferences';
+import { ensureDefaultComposerWorkspace, hydrateDesktopShellPrefs } from '../lib/appPreferences';
+import type { DesktopTaskTypePreference } from '../types/desktop';
 import { toast } from '../lib/toast';
 import { fetchAppUpdateStatus } from '../lib/appUpdate';
 import { getWindowLabel, workspaceStorageKey } from '../lib/windowBridge';
@@ -8,12 +9,16 @@ export type UseDesktopShellParams = {
   t: (key: string, params?: Record<string, string>) => string;
   selectedWorkspace: string;
   setSelectedWorkspace: Dispatch<SetStateAction<string>>;
+  setTaskTypePreference?: Dispatch<SetStateAction<DesktopTaskTypePreference>>;
 };
 
 export type UseDesktopShellResult = {
   desktopHost: boolean;
   /** Tauri present but shell IPC failed (e.g. disk full on user-data volume). */
   shellInitFailed: boolean;
+  /** Disk-backed onboarding prefs loaded (avoid flashing wizard before read). */
+  shellPrefsReady: boolean;
+  onboardingComplete: boolean;
   desktopApiKeyConfigured: boolean | null;
   platform: string;
   refreshApiKeyStatus: () => void;
@@ -23,9 +28,12 @@ export function useDesktopShell({
   t,
   selectedWorkspace,
   setSelectedWorkspace,
+  setTaskTypePreference,
 }: UseDesktopShellParams): UseDesktopShellResult {
   const [desktopHost, setDesktopHost] = useState(false);
   const [shellInitFailed, setShellInitFailed] = useState(false);
+  const [shellPrefsReady, setShellPrefsReady] = useState(false);
+  const [onboardingComplete, setOnboardingComplete] = useState(false);
   const [desktopApiKeyConfigured, setDesktopApiKeyConfigured] = useState<boolean | null>(null);
   const [platform, setPlatform] = useState('unknown');
   const selectedWorkspaceRef = useRef(selectedWorkspace);
@@ -42,6 +50,10 @@ export function useDesktopShell({
       setDesktopApiKeyConfigured(s.configured);
       const info = await invoke<{ os: string; arch: string; version: string }>('get_platform_info');
       setPlatform(info.os);
+      const prefs = await hydrateDesktopShellPrefs();
+      setOnboardingComplete(prefs.onboardingComplete);
+      setTaskTypePreference?.(prefs.taskType);
+      setShellPrefsReady(true);
       await ensureDefaultComposerWorkspace(
         localStorage.getItem(workspaceStorageKey(getWindowLabel()))?.trim() ??
           selectedWorkspaceRef.current,
@@ -50,9 +62,11 @@ export function useDesktopShell({
     } catch {
       setDesktopHost(false);
       setDesktopApiKeyConfigured(null);
+      setShellPrefsReady(false);
+      setOnboardingComplete(false);
       setShellInitFailed(inTauri);
     }
-  }, [setSelectedWorkspace]);
+  }, [setSelectedWorkspace, setTaskTypePreference]);
 
   const refreshApiKeyStatus = useCallback(() => {
     void runRefreshApiKeyStatus();
@@ -86,6 +100,8 @@ export function useDesktopShell({
   return {
     desktopHost,
     shellInitFailed,
+    shellPrefsReady,
+    onboardingComplete,
     desktopApiKeyConfigured,
     platform,
     refreshApiKeyStatus,

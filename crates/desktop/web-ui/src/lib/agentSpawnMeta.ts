@@ -145,6 +145,8 @@ export function mergeAgentMeta(
 export interface AgentListRowMeta {
   id: string;
   status: string;
+  /** Parent runtime thread (`parent_thread_id` from runtime / disk). */
+  ownerThreadId?: string;
   objective?: string;
   agentType?: string;
   role?: string;
@@ -185,10 +187,12 @@ export function parseAgentListRow(raw: Record<string, unknown>): AgentListRowMet
       : undefined;
   const idleMs = Number(raw.idle_ms ?? 0);
   const stuckSuspected = raw.stuck_suspected === true;
+  const ownerThreadId = pickString(raw, ['parent_thread_id', 'parentThreadId']);
 
   return {
     id,
     status: normalizeListStatus(raw.status),
+    ...(ownerThreadId ? { ownerThreadId } : {}),
     ...(objective ? { objective } : {}),
     ...(agentType ? { agentType } : {}),
     ...(role ? { role } : {}),

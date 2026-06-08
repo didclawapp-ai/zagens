@@ -153,6 +153,9 @@ pub struct SubAgentResult {
     /// Scratchpad run this agent was spawned against (audit isolation).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scratchpad_run_id: Option<String>,
+    /// Parent runtime thread that spawned this sub-agent (UI / `agent_list` isolation).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_thread_id: Option<String>,
     /// Latest execution progress line (also emitted as `agent.progress`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub progress_status: Option<String>,

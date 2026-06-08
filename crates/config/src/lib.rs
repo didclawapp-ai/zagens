@@ -33,8 +33,10 @@ pub use paths::{
 };
 pub use ui_settings::{
     LhtComposerMode, normalize_configured_locale, read_lht_composer_mode_setting,
-    read_lht_strict_setting, read_locale_setting, settings_path, write_lht_composer_mode_setting,
-    write_lht_strict_setting, write_locale_setting,
+    read_lht_strict_setting, read_locale_setting, read_onboarding_complete_setting,
+    read_task_type_preference_setting, settings_path, write_lht_composer_mode_setting,
+    write_lht_strict_setting, write_locale_setting, write_onboarding_complete_setting,
+    write_task_type_preference_setting,
 };
 
 pub const CONFIG_FILE_NAME: &str = "config.toml";

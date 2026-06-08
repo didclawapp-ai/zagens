@@ -124,6 +124,8 @@ pub(crate) struct PersistedSubAgent {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) scratchpad_run_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) parent_thread_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) progress_status: Option<String>,
     #[serde(default = "default_persisted_max_steps")]
     pub(crate) max_steps: u32,

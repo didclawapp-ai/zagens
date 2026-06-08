@@ -3,6 +3,8 @@ export type AgentStatus = 'spawned' | 'running' | 'completed' | 'interrupted';
 
 export interface AgentState {
   agentId: string;
+  /** Parent runtime thread that spawned this sub-agent (UI session isolation). */
+  ownerThreadId?: string;
   status: AgentStatus;
   /** Task prompt / objective from `agent_spawn` or `agent.list`. */
   objective?: string;

@@ -37,6 +37,7 @@ fn make_snapshot(status: SubAgentStatus) -> SubAgentResult {
         step_timeout_ms: 600_000,
         structured_findings_parse_failure: None,
         scratchpad_run_id: None,
+        parent_thread_id: None,
         progress_status: None,
         stuck_suspected: false,
         idle_ms: 0,
@@ -1751,7 +1752,7 @@ fn list_filtered_drops_prior_session_terminals_by_default() {
         "boot_old_session",
     );
 
-    let listed = manager.list_filtered(false);
+    let listed = manager.list_filtered(false, None);
     let ids: Vec<&str> = listed.iter().map(|s| s.agent_id.as_str()).collect();
     assert!(ids.contains(&"current_running"), "{ids:?}");
     assert!(
@@ -1798,7 +1799,7 @@ fn list_filtered_with_include_archived_returns_everything() {
         "boot_old",
     );
 
-    let listed = manager.list_filtered(true);
+    let listed = manager.list_filtered(true, None);
     assert_eq!(listed.len(), 3, "{listed:?}");
     let prior = listed.iter().find(|s| s.agent_id == "prior_done").unwrap();
     assert!(prior.from_prior_session);
@@ -1817,13 +1818,13 @@ fn agents_with_empty_boot_id_classify_as_prior_session() {
     let mut manager = SubAgentManager::new(PathBuf::from("."), 5);
     insert_prior_session_agent(&mut manager, "legacy", SubAgentStatus::Completed, "");
 
-    let listed_default = manager.list_filtered(false);
+    let listed_default = manager.list_filtered(false, None);
     assert!(
         listed_default.iter().all(|s| s.agent_id != "legacy"),
         "legacy completed agents are hidden by default"
     );
 
-    let listed_archived = manager.list_filtered(true);
+    let listed_archived = manager.list_filtered(true, None);
     let legacy = listed_archived
         .iter()
         .find(|s| s.agent_id == "legacy")
@@ -1859,12 +1860,12 @@ fn persist_round_trip_preserves_session_boot_id() {
     reader.load_state().expect("reload should succeed");
     assert_ne!(reader.session_boot_id(), original_boot);
 
-    let listed_default = reader.list_filtered(false);
+    let listed_default = reader.list_filtered(false, None);
     assert!(
         !listed_default.iter().any(|s| s.agent_id == "agent_persist"),
         "completed prior-session agent hidden after reload: {listed_default:?}"
     );
-    let listed_all = reader.list_filtered(true);
+    let listed_all = reader.list_filtered(true, None);
     let snap = listed_all
         .iter()
         .find(|s| s.agent_id == "agent_persist")
@@ -2225,6 +2226,73 @@ fn persist_round_trip_preserves_scratchpad_run_id() {
     reader.load_state().expect("reload");
     let agent = reader.agents.get("agent_run").expect("agent present");
     assert_eq!(agent.scratchpad_run_id.as_deref(), Some("audit-run-a"));
+}
+
+#[test]
+fn persist_round_trip_preserves_parent_thread_id() {
+    let dir = tempdir().expect("tempdir");
+    let state_path = dir.path().join(SUBAGENT_STATE_FILE);
+
+    {
+        let mut writer =
+            SubAgentManager::new(dir.path().to_path_buf(), 2).with_state_path(state_path.clone());
+        let (input_tx, _input_rx) = mpsc::unbounded_channel();
+        let mut agent = SubAgent::new(
+            SubAgentType::Explore,
+            "prompt".to_string(),
+            make_assignment(),
+            "deepseek-v4-flash".to_string(),
+            None,
+            None,
+            STEP_API_TIMEOUT,
+            DEFAULT_MAX_STEPS,
+            input_tx,
+            writer.session_boot_id().to_string(),
+        );
+        agent.id = "agent_thr".to_string();
+        agent.status = SubAgentStatus::Completed;
+        agent.parent_thread_id = Some("thr_abc123".to_string());
+        writer.agents.insert(agent.id.clone(), agent);
+        writer.persist_state().expect("persist");
+    }
+
+    let mut reader = SubAgentManager::new(dir.path().to_path_buf(), 2).with_state_path(state_path);
+    reader.load_state().expect("reload");
+    let agent = reader.agents.get("agent_thr").expect("agent present");
+    assert_eq!(agent.parent_thread_id.as_deref(), Some("thr_abc123"));
+}
+
+#[test]
+fn list_filtered_scopes_to_parent_thread_when_set() {
+    let mut manager = SubAgentManager::new(PathBuf::from("."), 5);
+    let current_boot = manager.session_boot_id().to_string();
+    insert_prior_session_agent(
+        &mut manager,
+        "thr_a_agent",
+        SubAgentStatus::Completed,
+        &current_boot,
+    );
+    insert_prior_session_agent(
+        &mut manager,
+        "thr_b_agent",
+        SubAgentStatus::Completed,
+        &current_boot,
+    );
+    manager
+        .agents
+        .get_mut("thr_a_agent")
+        .expect("a")
+        .parent_thread_id = Some("thr_a".to_string());
+    manager
+        .agents
+        .get_mut("thr_b_agent")
+        .expect("b")
+        .parent_thread_id = Some("thr_b".to_string());
+
+    let listed = manager.list_filtered(false, Some("thr_a"));
+    let ids: Vec<&str> = listed.iter().map(|s| s.agent_id.as_str()).collect();
+    assert_eq!(ids, vec!["thr_a_agent"]);
+    assert_eq!(listed[0].parent_thread_id.as_deref(), Some("thr_a"));
 }
 
 #[test]

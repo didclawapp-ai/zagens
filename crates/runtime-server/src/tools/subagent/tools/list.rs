@@ -47,14 +47,15 @@ impl ToolSpec for AgentListTool {
         vec![ToolCapability::ReadOnly]
     }
 
-    async fn execute(&self, input: Value, _context: &ToolContext) -> Result<ToolResult, ToolError> {
+    async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
         let include_archived = input
             .get("include_archived")
             .and_then(Value::as_bool)
             .unwrap_or(false);
+        let parent_thread_id = context.runtime.wire.active_thread_id.as_deref();
         let mut manager = self.manager.write().await;
         manager.cleanup(COMPLETED_AGENT_RETENTION);
-        let results = manager.list_filtered(include_archived);
+        let results = manager.list_filtered(include_archived, parent_thread_id);
         ToolResult::json(&results).map_err(|e| ToolError::execution_failed(e.to_string()))
     }
 }

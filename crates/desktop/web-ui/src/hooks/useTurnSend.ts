@@ -131,6 +131,7 @@ export type UseTurnSendParams = {
   /** Called after each tool finishes (office deliverable hook, etc.). */
   onToolCompleted?: (toolName: string, success: boolean, output: string) => void;
   cancelCleanupRef: MutableRefObject<(() => void) | null>;
+  userStopRequestedRef: MutableRefObject<boolean>;
   handleCancelStream: () => void;
   streamingRef: MutableRefObject<boolean>;
   /** When user-data or workspace volume is critically low. */
@@ -185,6 +186,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
     showApprovalIfOwned,
     onToolCompleted,
     cancelCleanupRef,
+    userStopRequestedRef,
     handleCancelStream,
     streamingRef,
     storagePauseTurns,
@@ -239,6 +241,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
         return;
       }
 
+      userStopRequestedRef.current = false;
       setPendingComposerStream(true);
       const streamKey = resumedThreadIdRef.current ?? '__pending__';
       streamControllersRef.current.get(streamKey)?.abort();
@@ -368,6 +371,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
         const completeStreamUi = () => {
           if (finished) return;
           finished = true;
+          userStopRequestedRef.current = false;
           liveStreamDeliverRef.current = null;
           streamSessionRef.current = null;
           streamRecoveryContextRef.current = null;
@@ -408,11 +412,14 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
         };
 
         const finishOnce = (options?: { force?: boolean }) => {
-          if (finished || finishPending) return;
-          if (options?.force) {
+          if (finished) return;
+          const forceStop = options?.force === true || userStopRequestedRef.current;
+          if (forceStop) {
+            finishPending = false;
             completeStreamUi();
             return;
           }
+          if (finishPending) return;
           const { threadId, turnId } = threadTurnRef.current;
           if (!threadId) {
             completeStreamUi();
@@ -889,6 +896,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
       onAgentSpawnToolCompleted,
       applyAgentStreamEvent,
       showApprovalIfOwned,
+      userStopRequestedRef,
       t,
     ],
   );

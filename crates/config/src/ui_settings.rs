@@ -258,6 +258,84 @@ fn ensure_parent(path: &Path) -> Result<()> {
     Ok(())
 }
 
+fn load_settings_doc() -> Result<(PathBuf, toml::Value)> {
+    let path = settings_path()?;
+    if !path.exists() {
+        return Ok((path, toml::Value::Table(toml::map::Map::new())));
+    }
+    let content = fs::read_to_string(&path)
+        .with_context(|| format!("Failed to read settings from {}", path.display()))?;
+    let doc: toml::Value = toml::from_str(&content)
+        .with_context(|| format!("Failed to parse settings from {}", path.display()))?;
+    Ok((path, doc))
+}
+
+fn write_settings_doc(path: &Path, doc: &toml::Value) -> Result<()> {
+    ensure_parent(path)?;
+    let serialized = toml::to_string_pretty(doc).context("Failed to serialize settings")?;
+    fs::write(path, serialized)
+        .with_context(|| format!("Failed to write settings to {}", path.display()))?;
+    Ok(())
+}
+
+fn normalize_task_type_preference(raw: &str) -> Option<&'static str> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "auto" => Some("auto"),
+        "code" => Some("code"),
+        "office" => Some("office"),
+        _ => None,
+    }
+}
+
+/// Whether the desktop onboarding wizard (API key + default mode) was completed.
+pub fn read_onboarding_complete_setting() -> Result<bool> {
+    let (_path, doc) = load_settings_doc()?;
+    Ok(doc
+        .get("onboarding_complete")
+        .and_then(toml::Value::as_bool)
+        .unwrap_or(false))
+}
+
+/// Mark onboarding complete after the user finishes the first-run wizard.
+pub fn write_onboarding_complete_setting(complete: bool) -> Result<()> {
+    let (path, mut doc) = load_settings_doc()?;
+    let table = doc
+        .as_table_mut()
+        .context("settings.toml root must be a table")?;
+    table.insert(
+        "onboarding_complete".to_string(),
+        toml::Value::Boolean(complete),
+    );
+    write_settings_doc(&path, &doc)
+}
+
+/// Read the persisted default task type (`auto` / `code` / `office`).
+pub fn read_task_type_preference_setting() -> Result<Option<String>> {
+    let (_path, doc) = load_settings_doc()?;
+    Ok(doc
+        .get("task_type_preference")
+        .and_then(toml::Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .and_then(|raw| normalize_task_type_preference(raw).map(str::to_string)))
+}
+
+/// Persist the desktop default task type preference.
+pub fn write_task_type_preference_setting(value: &str) -> Result<()> {
+    let Some(normalized) = normalize_task_type_preference(value) else {
+        bail!("invalid task_type_preference '{value}'. Expected: auto, code, office.");
+    };
+    let (path, mut doc) = load_settings_doc()?;
+    let table = doc
+        .as_table_mut()
+        .context("settings.toml root must be a table")?;
+    table.insert(
+        "task_type_preference".to_string(),
+        toml::Value::String(normalized.to_string()),
+    );
+    write_settings_doc(&path, &doc)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -269,6 +347,33 @@ mod tests {
         assert_eq!(normalize_configured_locale("zh-CN"), Some("zh-Hans"));
         assert_eq!(normalize_configured_locale("pt"), Some("pt-BR"));
         assert_eq!(normalize_configured_locale("ar"), None);
+    }
+
+    #[test]
+    fn task_type_preference_round_trip() {
+        let dir =
+            std::env::temp_dir().join(format!("zagens-ui-settings-test-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let prev = std::env::var("ZAGENS_CONFIG_PATH").ok();
+        // SAFETY: test-only env override; restored before return.
+        unsafe {
+            std::env::set_var("ZAGENS_CONFIG_PATH", dir.join("config.toml"));
+        }
+        write_task_type_preference_setting("office").expect("write");
+        assert_eq!(
+            read_task_type_preference_setting().expect("read"),
+            Some("office".to_string())
+        );
+        write_onboarding_complete_setting(true).expect("write onboarding");
+        assert!(read_onboarding_complete_setting().expect("read onboarding"));
+        // SAFETY: restores prior process env for other tests.
+        unsafe {
+            match prev {
+                Some(v) => std::env::set_var("ZAGENS_CONFIG_PATH", v),
+                None => std::env::remove_var("ZAGENS_CONFIG_PATH"),
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

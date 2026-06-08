@@ -18,9 +18,9 @@ path = "src/lib.rs"
 anyhow.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
-zagens-config = { path = "../config", version = "0.7.0" }
-zagens-core = { path = "../core", version = "0.7.0" }
-zagens-protocol = { path = "../protocol", version = "0.7.0" }
+zagens-config = { path = "../config", version = "0.7.1" }
+zagens-core = { path = "../core", version = "0.7.1" }
+zagens-protocol = { path = "../protocol", version = "0.7.1" }
 dirs.workspace = true
 futures-util = "0.3.31"
 reqwest = { workspace = true, features = ["blocking", "stream", "multipart", "http2"] }

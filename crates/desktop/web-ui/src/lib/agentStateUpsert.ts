@@ -32,6 +32,7 @@ export function metaFromSpawn(meta: AgentSpawnMeta | null | undefined): Partial<
 
 export function metaFromListRow(row: AgentListRowMeta): Partial<AgentState> {
   return {
+    ...(row.ownerThreadId ? { ownerThreadId: row.ownerThreadId } : {}),
     ...(row.objective ? { objective: row.objective } : {}),
     ...(row.agentType ? { agentType: row.agentType } : {}),
     ...(row.role ? { role: row.role } : {}),
@@ -74,6 +75,9 @@ export function upsertAgentInList(
   }
   if (patch.spawnedAt !== undefined) {
     merged = { ...merged, spawnedAt: patch.spawnedAt };
+  }
+  if (patch.ownerThreadId !== undefined) {
+    merged = { ...merged, ownerThreadId: patch.ownerThreadId };
   }
   if (idx >= 0) {
     const next = [...prev];

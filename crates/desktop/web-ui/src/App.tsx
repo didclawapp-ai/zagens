@@ -53,7 +53,6 @@ import {
   ACTIVE_INSPECTOR_STORAGE_KEY,
   applyTheme,
   ensureDefaultComposerWorkspace,
-  hasTaskTypePreferenceStored,
   loadComposerPrefs,
   loadRouteIntentPreference,
   loadRunModePreference,
@@ -154,6 +153,7 @@ export default function App() {
     streamControllersRef,
     threadTurnRef,
     streamSessionRef,
+    userStopRequestedRef,
     abortThreadStream,
     handleCancelStream,
   } = useTurnStream({
@@ -193,12 +193,20 @@ export default function App() {
     streaming,
   });
 
-  const { desktopHost, shellInitFailed, desktopApiKeyConfigured, platform, refreshApiKeyStatus } =
-    useDesktopShell({
-      t,
-      selectedWorkspace,
-      setSelectedWorkspace,
-    });
+  const {
+    desktopHost,
+    shellInitFailed,
+    shellPrefsReady,
+    onboardingComplete,
+    desktopApiKeyConfigured,
+    platform,
+    refreshApiKeyStatus,
+  } = useDesktopShell({
+    t,
+    selectedWorkspace,
+    setSelectedWorkspace,
+    setTaskTypePreference,
+  });
 
   const { snapshot: storageSnapshot, pauseTurns: storagePauseTurns, level: storageLevel } =
     useStoragePressure({
@@ -211,8 +219,8 @@ export default function App() {
     });
 
   useEffect(() => {
-    if (desktopHost) setStartupOverlayOpen(true);
-  }, [desktopHost]);
+    if (desktopHost && shellPrefsReady) setStartupOverlayOpen(true);
+  }, [desktopHost, shellPrefsReady]);
 
   const {
     approval,
@@ -244,6 +252,7 @@ export default function App() {
     narrativeSpawnSuspected,
   } = useAgentPanelState({
     messages,
+    resumedThreadId,
     workspaceRoot: selectedWorkspace,
     streaming,
     runtimeConn,
@@ -336,6 +345,7 @@ export default function App() {
     applyAgentStreamEvent,
     showApprovalIfOwned,
     cancelCleanupRef,
+    userStopRequestedRef,
     handleCancelStream,
     storagePauseTurns,
     onToolCompleted: (toolName, success, output) => {
@@ -733,12 +743,12 @@ export default function App() {
 
   return (
     <>
-      {desktopHost && startupOverlayOpen && (
+      {desktopHost && shellPrefsReady && startupOverlayOpen && (
         <OnboardingOverlay
           runtimeConn={runtimeConn}
           apiKeyConfigured={desktopApiKeyConfigured}
           needsKeyStep={desktopApiKeyConfigured === false}
-          needsModeStep={!hasTaskTypePreferenceStored()}
+          needsModeStep={!onboardingComplete}
           refreshApiKeyStatus={refreshApiKeyStatus}
           taskTypePreference={taskTypePreference}
           onTaskTypePreferenceChange={handleTaskTypePreferenceChange}

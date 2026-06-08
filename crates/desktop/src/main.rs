@@ -209,6 +209,8 @@ fn main() {
             commands::set_lht_composer_mode,
             commands::get_lht_strict,
             commands::set_lht_strict,
+            commands::get_desktop_shell_prefs,
+            commands::save_desktop_shell_prefs,
             commands::get_api_key_status,
             commands::save_deepseek_api_key,
             commands::clear_deepseek_api_key,

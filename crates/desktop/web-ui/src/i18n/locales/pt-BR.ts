@@ -251,7 +251,7 @@ const ptBr: TranslationMap = {
     thirdPartyLicenses:
       'Os textos de licença MIT vêm com o app na pasta legal/ ao lado do executável (Zagens + linhagem do runtime embedded deepseek-tui).',
     techStackTitle: 'Stack técnica',
-    techStackDeepseekTui: 'Zagens runtime 0.7.0',
+    techStackDeepseekTui: 'Zagens runtime 0.7.1',
     techStackTauri: 'Tauri 2',
     techStackReact: 'React 18',
     updateTitle: 'Atualização do app',

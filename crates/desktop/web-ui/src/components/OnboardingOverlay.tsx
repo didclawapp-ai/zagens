@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useT } from '../i18n';
 import type { RuntimeConnectionState } from '../api/client';
 import type { DesktopTaskTypePreference } from '../types/desktop';
-import { persistTaskTypePreference } from '../lib/appPreferences';
+import { persistOnboardingComplete, persistTaskTypePreference } from '../lib/appPreferences';
 
 const DEEPSEEK_API_KEYS_URL = 'https://platform.deepseek.com/api_keys';
 
@@ -262,7 +262,7 @@ export default function OnboardingOverlay({
                 <button
                   type="button"
                   onClick={() => {
-                    persistTaskTypePreference(taskTypePreference);
+                    persistOnboardingComplete(taskTypePreference);
                     onComplete();
                   }}
                   className="px-4 py-2 rounded-lg bg-accent text-accent-text hover:bg-accent-hover text-sm font-medium transition-colors"

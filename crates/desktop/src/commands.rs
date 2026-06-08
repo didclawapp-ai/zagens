@@ -566,6 +566,37 @@ pub fn set_lht_strict(enabled: bool) -> Result<(), String> {
     zagens_config::write_lht_strict_setting(enabled).map_err(|e| e.to_string())
 }
 
+#[derive(Debug, Serialize)]
+pub struct DesktopShellPrefs {
+    pub onboarding_complete: bool,
+    pub task_type_preference: String,
+}
+
+/// Read desktop shell prefs persisted in `settings.toml` (survives WebView storage resets).
+#[tauri::command]
+pub fn get_desktop_shell_prefs() -> Result<DesktopShellPrefs, String> {
+    let onboarding_complete =
+        zagens_config::read_onboarding_complete_setting().map_err(|e| e.to_string())?;
+    let task_type_preference = zagens_config::read_task_type_preference_setting()
+        .map_err(|e| e.to_string())?
+        .unwrap_or_else(|| "auto".to_string());
+    Ok(DesktopShellPrefs {
+        onboarding_complete,
+        task_type_preference,
+    })
+}
+
+/// Persist onboarding completion and default task type to `settings.toml`.
+#[tauri::command]
+pub fn save_desktop_shell_prefs(
+    onboarding_complete: bool,
+    task_type_preference: String,
+) -> Result<(), String> {
+    zagens_config::write_task_type_preference_setting(&task_type_preference)
+        .map_err(|e| e.to_string())?;
+    zagens_config::write_onboarding_complete_setting(onboarding_complete).map_err(|e| e.to_string())
+}
+
 // ---------------------------------------------------------------------------
 // Binary file reader — used by the preview system for images, PDFs, and
 // Office documents.  The runtime API (`/v1/threads/:id/workspace/file`)

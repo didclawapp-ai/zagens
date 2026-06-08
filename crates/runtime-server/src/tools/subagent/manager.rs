@@ -120,6 +120,7 @@ impl SubAgentManager {
                 completion_reason: agent.completion_reason.clone(),
                 blackboard_task_id: agent.blackboard_task_id.clone(),
                 scratchpad_run_id: agent.scratchpad_run_id.clone(),
+                parent_thread_id: agent.parent_thread_id.clone(),
             });
         }
         agents.sort_by(|a, b| a.id.cmp(&b.id));
@@ -209,6 +210,7 @@ impl SubAgentManager {
                 session_boot_id: persisted.session_boot_id,
                 blackboard_task_id: persisted.blackboard_task_id,
                 scratchpad_run_id: persisted.scratchpad_run_id,
+                parent_thread_id: persisted.parent_thread_id,
                 input_tx: None,
                 task_handle: None,
             };
@@ -345,6 +347,13 @@ impl SubAgentManager {
         );
         let agent_id = agent.id.clone();
         let started_at = agent.started_at;
+        let parent_thread_id = runtime
+            .context
+            .runtime
+            .wire
+            .active_thread_id
+            .clone()
+            .filter(|s| !s.trim().is_empty());
 
         if let Some(event_tx) = runtime.event_tx.clone() {
             let _ = event_tx.try_send(Event::AgentSpawned {
@@ -374,6 +383,7 @@ impl SubAgentManager {
         agent.task_handle = Some(handle);
         agent.blackboard_task_id = options.task_id.clone();
         agent.scratchpad_run_id = options.scratchpad_run_id.clone();
+        agent.parent_thread_id = parent_thread_id;
         self.agents.insert(agent_id.clone(), agent);
         self.persist_state_best_effort();
 
@@ -731,11 +741,21 @@ impl SubAgentManager {
     /// `include_archived = true` returns everything, with the
     /// `from_prior_session` flag on each `SubAgentResult` so the model
     /// can tell active and archived apart at a glance.
-    pub fn list_filtered(&mut self, include_archived: bool) -> Vec<SubAgentResult> {
+    pub fn list_filtered(
+        &mut self,
+        include_archived: bool,
+        parent_thread_id: Option<&str>,
+    ) -> Vec<SubAgentResult> {
         self.ensure_consistency();
+        let thread_filter = parent_thread_id.map(str::trim).filter(|s| !s.is_empty());
         self.agents
             .values()
             .filter(|agent| {
+                if let Some(tid) = thread_filter {
+                    if agent.parent_thread_id.as_deref() != Some(tid) {
+                        return false;
+                    }
+                }
                 if include_archived {
                     return true;
                 }

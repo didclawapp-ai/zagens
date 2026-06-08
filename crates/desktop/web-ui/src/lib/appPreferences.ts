@@ -22,6 +22,20 @@ export const ACTIVE_INSPECTOR_STORAGE_KEY = 'zagens-desktop-active-inspector';
 export const RIGHT_PANEL_COLLAPSED_STORAGE_KEY = 'zagens-desktop-right-panel-collapsed';
 export const ROUTE_INTENT_STORAGE_KEY = 'zagens-desktop-route-intent';
 export const TASK_TYPE_STORAGE_KEY = 'zagens-desktop-task-type';
+
+let cachedOnboardingComplete = false;
+let shellPrefsHydrated = false;
+
+/** Whether shell prefs were loaded from disk (Tauri) this session. */
+export function isShellPrefsHydrated(): boolean {
+  return shellPrefsHydrated;
+}
+
+/** Whether onboarding wizard was completed (disk + localStorage). */
+export function isOnboardingComplete(): boolean {
+  return cachedOnboardingComplete || hasTaskTypePreferenceStored();
+}
+
 /** Whether the user has explicitly chosen a default task type (onboarding step 3). */
 export function hasTaskTypePreferenceStored(): boolean {
   try {
@@ -29,6 +43,35 @@ export function hasTaskTypePreferenceStored(): boolean {
   } catch {
     return true;
   }
+}
+
+/** Load onboarding prefs from `~/.zagens/settings.toml` (desktop) with localStorage fallback. */
+export async function hydrateDesktopShellPrefs(): Promise<{
+  onboardingComplete: boolean;
+  taskType: DesktopTaskTypePreference;
+}> {
+  const localTaskType = loadTaskTypePreference();
+  const localComplete = hasTaskTypePreferenceStored();
+  try {
+    if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const prefs = await invoke<{
+        onboarding_complete: boolean;
+        task_type_preference: string;
+      }>('get_desktop_shell_prefs');
+      const taskType =
+        parseDesktopTaskTypePreference(prefs.task_type_preference) ?? localTaskType;
+      cachedOnboardingComplete = prefs.onboarding_complete || localComplete;
+      persistTaskTypePreference(taskType);
+      shellPrefsHydrated = true;
+      return { onboardingComplete: cachedOnboardingComplete, taskType };
+    }
+  } catch {
+    /* fall through */
+  }
+  cachedOnboardingComplete = localComplete;
+  shellPrefsHydrated = true;
+  return { onboardingComplete: cachedOnboardingComplete, taskType: localTaskType };
 }
 
 export function loadRunModePreference(): DesktopRunModeId {
@@ -97,6 +140,25 @@ export function persistTaskTypePreference(value: DesktopTaskTypePreference): voi
   } catch {
     /* ignore */
   }
+}
+
+/** Mark onboarding complete and mirror prefs to `settings.toml` on desktop. */
+export function persistOnboardingComplete(taskType: DesktopTaskTypePreference): void {
+  persistTaskTypePreference(taskType);
+  cachedOnboardingComplete = true;
+  void (async () => {
+    try {
+      if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('save_desktop_shell_prefs', {
+          onboarding_complete: true,
+          task_type_preference: taskType,
+        });
+      }
+    } catch {
+      /* ignore */
+    }
+  })();
 }
 
 export function loadRouteIntentPreference(): DesktopRouteIntentOption {

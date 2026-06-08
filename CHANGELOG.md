@@ -10,7 +10,7 @@ All notable changes to **Zagens** and its embedded runtime will be documented in
 
 **Licensing:** This repository is [MIT](LICENSE). See [NOTICE.md](NOTICE.md) for third-party attribution.
 
-**Zagens** (desktop app in `crates/desktop/`) and the runtime workspace share **`0.7.0`** as of the internal crate rename (2026-06-08). Desktop still carries an independent literal in `crates/desktop/Cargo.toml` checked by `check-versions.sh` against Tauri/npm/About. Public releases use `0.MINOR.PATCH` until **1.0.0 GA**. Display form **v** + manifest version (e.g. **v0.7.0**).
+**Zagens** (desktop app in `crates/desktop/`) and the runtime workspace share **`0.7.1`**. Desktop still carries an independent literal in `crates/desktop/Cargo.toml` checked by `check-versions.sh` against Tauri/npm/About. Public releases use `0.MINOR.PATCH` until **1.0.0 GA**. Display form **v** + manifest version (e.g. **v0.7.1**).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -20,14 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-
-- **Branding / crates.io prep:** Rename all internal workspace crates from `deepseek-*` to **`zagens-*`** (package + lib names, e.g. `zagens-core`, `zagens_runtime`); `deepseek-desktop` → **`zagens-desktop`** (`publish = false`). Workspace runtime version aligned to **`0.7.0`** (same as Zagens desktop). Upstream deepseek-tui lineage unchanged (`NOTICE.md`).
-- **Release scripts:** Add `scripts/release/pre-publish-check.sh` (CI-aligned gates + leaf crate dry-runs) and `scripts/release/publish-crates.sh` (ordered `--dry-run` / `--publish` for the `zagens-*` chain). Workspace `[package]` metadata: `repository`, `homepage`, `readme`.
+## [0.7.1] - 2026-06-08
 
 ### Fixed
 
-- **CD:** Correct `actions/download-artifact` commit SHA (Attach CLI to Release); prefetch + `cargo-retry.sh` for CLI release builds; retry `cargo tauri build` on Windows when NSIS/WiX downloads flake (504).
+- **Desktop onboarding:** Persist first-run completion and default task type to `~/.zagens/settings.toml` (not only WebView `localStorage`); returning users see the startup splash only, not the mode wizard every launch.
+- **Desktop stop button:** First click on「停止」now reliably ends the turn (no second click required).
+- **Sub-agent panel:** Scope sub-agent history by parent runtime thread (`parent_thread_id` persisted + UI hydration on thread switch).
 
 ## [0.7.0] - 2026-06-08
 

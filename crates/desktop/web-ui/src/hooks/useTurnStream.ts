@@ -41,6 +41,8 @@ export type UseTurnStreamResult = {
   streamControllersRef: MutableRefObject<Map<string, AbortController>>;
   threadTurnRef: MutableRefObject<{ threadId: string; turnId: string }>;
   streamSessionRef: MutableRefObject<StreamSessionControl | null>;
+  /** Set synchronously on user Stop — `finishOnce` must not re-lock while interrupt is in flight. */
+  userStopRequestedRef: MutableRefObject<boolean>;
   abortThreadStream: (threadId: string | null | undefined) => void;
   handleCancelStream: () => void;
 };
@@ -67,6 +69,7 @@ export function useTurnStream({
     turnId: '',
   });
   const streamSessionRef = useRef<StreamSessionControl | null>(null);
+  const userStopRequestedRef = useRef(false);
 
   useEffect(() => {
     streamingRef.current = streaming;
@@ -88,12 +91,23 @@ export function useTurnStream({
   onCancelSideEffectsRef.current = onCancelSideEffects;
 
   const handleCancelStream = useCallback(() => {
+    userStopRequestedRef.current = true;
     cancelCleanupRef?.current?.();
+
     const { threadId, turnId } = threadTurnRef.current;
     const streamControl =
       (threadId ? streamControllersRef.current.get(threadId) : undefined) ??
       streamControllersRef.current.get('__pending__') ??
       undefined;
+
+    // Tear down local UI immediately (D9 layer 2 may still be winding down).
+    const session = streamSessionRef.current;
+    if (session) {
+      session.markInterrupted();
+      session.finishOnce({ force: true });
+    } else {
+      abortThreadStream(threadId || resumedThreadId);
+    }
 
     void (async () => {
       let resolvedTurnId = turnId;
@@ -106,7 +120,7 @@ export function useTurnStream({
             threadTurnRef.current = { threadId, turnId: latest };
           }
         } catch {
-          /* best-effort — still tear down local UI */
+          /* best-effort — local UI already stopped */
         }
       }
 
@@ -119,18 +133,16 @@ export function useTurnStream({
         }
       }
 
-      const session = streamSessionRef.current;
-      if (session) {
-        session.markInterrupted();
-        session.finishOnce({ force: true });
-      } else {
-        setStreamingThreadIds(new Set());
-        setPendingComposerStream(false);
-      }
-
       onCancelSideEffectsRef.current();
     })();
-  }, [cancelCleanupRef, streamControllersRef, t, threadTurnRef]);
+  }, [
+    abortThreadStream,
+    cancelCleanupRef,
+    resumedThreadId,
+    streamControllersRef,
+    t,
+    threadTurnRef,
+  ]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -155,6 +167,7 @@ export function useTurnStream({
     streamControllersRef,
     threadTurnRef,
     streamSessionRef,
+    userStopRequestedRef,
     abortThreadStream,
     handleCancelStream,
   };
