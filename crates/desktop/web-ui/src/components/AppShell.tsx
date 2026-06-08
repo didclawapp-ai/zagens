@@ -146,6 +146,8 @@ export type AppShellProps = {
   onSystemSettingsSaved: (settings: SystemSettings) => void;
   onRouteIntentChange: (intent: DesktopRouteIntentOption) => void;
   refreshApiKeyStatus: () => void;
+  onOpenTasks?: (taskId?: string) => void;
+  highlightTaskId?: string | null;
 };
 
 export default function AppShell({
@@ -254,6 +256,8 @@ export default function AppShell({
   onSystemSettingsSaved,
   onRouteIntentChange,
   refreshApiKeyStatus,
+  onOpenTasks,
+  highlightTaskId = null,
 }: AppShellProps) {
   const { t } = useT();
 
@@ -450,6 +454,8 @@ export default function AppShell({
             onSystemSettingsSaved={onSystemSettingsSaved}
             routeIntent={routeIntent}
             onRouteIntentChange={onRouteIntentChange}
+            onOpenTasks={onOpenTasks}
+            highlightTaskId={highlightTaskId}
           />
         )}
         {auditGridVisible && resumedThreadId && (

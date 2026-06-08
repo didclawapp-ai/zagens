@@ -22,6 +22,7 @@ export type UseDesktopShellResult = {
   desktopApiKeyConfigured: boolean | null;
   platform: string;
   refreshApiKeyStatus: () => void;
+  markOnboardingComplete: (taskType?: DesktopTaskTypePreference) => void;
 };
 
 export function useDesktopShell({
@@ -72,6 +73,16 @@ export function useDesktopShell({
     void runRefreshApiKeyStatus();
   }, [runRefreshApiKeyStatus]);
 
+  const markOnboardingComplete = useCallback(
+    (taskType?: DesktopTaskTypePreference) => {
+      setOnboardingComplete(true);
+      if (taskType !== undefined) {
+        setTaskTypePreference?.(taskType);
+      }
+    },
+    [setTaskTypePreference],
+  );
+
   useEffect(() => {
     void runRefreshApiKeyStatus();
   }, [runRefreshApiKeyStatus]);
@@ -105,5 +116,6 @@ export function useDesktopShell({
     desktopApiKeyConfigured,
     platform,
     refreshApiKeyStatus,
+    markOnboardingComplete,
   };
 }

@@ -73,6 +73,7 @@ pub(crate) async fn run_subagent_task(task: SubAgentTask) {
 
     let agent_type_for_blackboard = task.agent_type.clone();
     let agent_id = task.agent_id.clone();
+    let hook_executor = task.runtime.hook_executor.clone();
     let run_result = std::panic::AssertUnwindSafe(run_subagent(
         &task.manager_handle,
         &task.runtime,
@@ -116,6 +117,23 @@ pub(crate) async fn run_subagent_task(task: SubAgentTask) {
             let reason = completion_reason_for_error(err);
             manager.update_failed_with_reason(&agent_id, err.to_string(), reason);
         }
+    }
+
+    if let Some(executor) = hook_executor.as_ref() {
+        let (status, summary) = match &result {
+            Ok(res) => (
+                subagent_status_name(&res.status).to_string(),
+                summarize_subagent_result(res),
+            ),
+            Err(err) => ("failed".to_string(), format!("Failed: {err}")),
+        };
+        executor.fire_subagent_end(
+            &executor.base_context(),
+            &agent_id,
+            agent_type_for_blackboard.as_str(),
+            &status,
+            &summary,
+        );
     }
 
     // CRAFT P1: write structured output to blackboard

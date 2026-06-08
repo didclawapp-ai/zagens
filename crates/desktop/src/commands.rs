@@ -13,7 +13,8 @@ use std::time::Duration;
 use tokio::sync::Notify;
 use zagens_config::{
     CompactionToml, CompletionGateConfigToml, ConfigStore, ConfigToml, DEFAULT_VISION_MODEL,
-    LhtPresetId, LongHorizonConfigToml, MacroLoopConfigToml, WORKSPACE_META_DIR_NAME,
+    HookConditionToml, HookEventToml, HookToml, HooksConfigToml, LhtPresetId,
+    LongHorizonConfigToml, MacroLoopConfigToml, WORKSPACE_META_DIR_NAME,
     apply_lht_preset as apply_lht_preset_overlay, compaction_threshold_tokens_for_model,
     legacy_workspace_meta_dir, lht_product_defaults, normalize_gate_mode, normalize_lht_mode,
     resolve_lht, vision_should_check_degenerate_ocr_template, vision_user_prompt_for_model,
@@ -1500,6 +1501,302 @@ pub fn save_lht_settings(
     });
 
     tracing::info!("save_lht_settings: writing config");
+    store.save().map_err(|e| e.to_string())?;
+    ctx.sidecar_restart.notify_one();
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Hooks settings — desktop panel for `[hooks]` / `[[hooks.hooks]]`
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HookConditionSettings {
+    #[serde(rename = "type")]
+    pub condition_type: String,
+    #[serde(default)]
+    pub value: Option<String>,
+    #[serde(default)]
+    pub conditions: Option<Vec<HookConditionSettings>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HookEntrySettings {
+    pub event: String,
+    pub command: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default = "default_hook_timeout_ui")]
+    pub timeout_secs: u64,
+    #[serde(default)]
+    pub background: bool,
+    #[serde(default = "default_continue_on_error_ui")]
+    pub continue_on_error: bool,
+    #[serde(default)]
+    pub condition: Option<HookConditionSettings>,
+}
+
+fn default_hook_timeout_ui() -> u64 {
+    30
+}
+
+fn default_continue_on_error_ui() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HooksSettings {
+    pub enabled: bool,
+    pub default_timeout_secs: Option<u64>,
+    pub working_dir: Option<String>,
+    pub hooks: Vec<HookEntrySettings>,
+}
+
+fn hook_event_to_str(event: HookEventToml) -> &'static str {
+    match event {
+        HookEventToml::SessionStart => "session_start",
+        HookEventToml::SessionEnd => "session_end",
+        HookEventToml::MessageSubmit => "message_submit",
+        HookEventToml::ToolCallBefore => "tool_call_before",
+        HookEventToml::ToolCallAfter => "tool_call_after",
+        HookEventToml::ModeChange => "mode_change",
+        HookEventToml::OnError => "on_error",
+        HookEventToml::ShellEnv => "shell_env",
+        HookEventToml::PreCompact => "pre_compact",
+        HookEventToml::PostCompact => "post_compact",
+        HookEventToml::SubagentStart => "subagent_start",
+        HookEventToml::SubagentEnd => "subagent_end",
+    }
+}
+
+fn hook_event_from_str(raw: &str) -> Result<HookEventToml, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "session_start" => Ok(HookEventToml::SessionStart),
+        "session_end" => Ok(HookEventToml::SessionEnd),
+        "message_submit" => Ok(HookEventToml::MessageSubmit),
+        "tool_call_before" => Ok(HookEventToml::ToolCallBefore),
+        "tool_call_after" => Ok(HookEventToml::ToolCallAfter),
+        "mode_change" => Ok(HookEventToml::ModeChange),
+        "on_error" => Ok(HookEventToml::OnError),
+        "shell_env" => Ok(HookEventToml::ShellEnv),
+        "pre_compact" => Ok(HookEventToml::PreCompact),
+        "post_compact" => Ok(HookEventToml::PostCompact),
+        "subagent_start" => Ok(HookEventToml::SubagentStart),
+        "subagent_end" => Ok(HookEventToml::SubagentEnd),
+        "before_shell" => Ok(HookEventToml::ToolCallBefore),
+        "after_shell" => Ok(HookEventToml::ToolCallAfter),
+        "before_file_edit" => Ok(HookEventToml::ToolCallBefore),
+        "after_file_edit" => Ok(HookEventToml::ToolCallAfter),
+        "stop" => Ok(HookEventToml::SessionEnd),
+        other => Err(format!("unknown hook event: {other}")),
+    }
+}
+
+fn hook_condition_to_settings(cond: &HookConditionToml) -> HookConditionSettings {
+    match cond {
+        HookConditionToml::Always => HookConditionSettings {
+            condition_type: "always".to_string(),
+            value: None,
+            conditions: None,
+        },
+        HookConditionToml::ToolName { name } => HookConditionSettings {
+            condition_type: "tool_name".to_string(),
+            value: Some(name.clone()),
+            conditions: None,
+        },
+        HookConditionToml::ToolNameRegex { pattern } => HookConditionSettings {
+            condition_type: "tool_name_regex".to_string(),
+            value: Some(pattern.clone()),
+            conditions: None,
+        },
+        HookConditionToml::ToolCategory { category } => HookConditionSettings {
+            condition_type: "tool_category".to_string(),
+            value: Some(category.clone()),
+            conditions: None,
+        },
+        HookConditionToml::Mode { mode } => HookConditionSettings {
+            condition_type: "mode".to_string(),
+            value: Some(mode.clone()),
+            conditions: None,
+        },
+        HookConditionToml::ExitCode { code } => HookConditionSettings {
+            condition_type: "exit_code".to_string(),
+            value: Some(code.to_string()),
+            conditions: None,
+        },
+        HookConditionToml::All { conditions } => HookConditionSettings {
+            condition_type: "all".to_string(),
+            value: None,
+            conditions: Some(conditions.iter().map(hook_condition_to_settings).collect()),
+        },
+        HookConditionToml::Any { conditions } => HookConditionSettings {
+            condition_type: "any".to_string(),
+            value: None,
+            conditions: Some(conditions.iter().map(hook_condition_to_settings).collect()),
+        },
+    }
+}
+
+fn hook_condition_from_settings_inner(
+    settings: &HookConditionSettings,
+) -> Result<HookConditionToml, String> {
+    let value = settings
+        .value
+        .as_ref()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty());
+    match settings.condition_type.as_str() {
+        "always" => Ok(HookConditionToml::Always),
+        "all" => {
+            let subs = settings
+                .conditions
+                .as_ref()
+                .filter(|c| !c.is_empty())
+                .ok_or_else(|| "all condition requires sub-conditions".to_string())?;
+            Ok(HookConditionToml::All {
+                conditions: subs
+                    .iter()
+                    .map(hook_condition_from_settings_inner)
+                    .collect::<Result<_, _>>()?,
+            })
+        }
+        "any" => {
+            let subs = settings
+                .conditions
+                .as_ref()
+                .filter(|c| !c.is_empty())
+                .ok_or_else(|| "any condition requires sub-conditions".to_string())?;
+            Ok(HookConditionToml::Any {
+                conditions: subs
+                    .iter()
+                    .map(hook_condition_from_settings_inner)
+                    .collect::<Result<_, _>>()?,
+            })
+        }
+        "tool_name" => {
+            let name = value.ok_or_else(|| "tool_name condition requires a value".to_string())?;
+            Ok(HookConditionToml::ToolName { name })
+        }
+        "tool_name_regex" => {
+            let pattern =
+                value.ok_or_else(|| "tool_name_regex condition requires a pattern".to_string())?;
+            Ok(HookConditionToml::ToolNameRegex { pattern })
+        }
+        "tool_category" => {
+            let category =
+                value.ok_or_else(|| "tool_category condition requires a value".to_string())?;
+            Ok(HookConditionToml::ToolCategory { category })
+        }
+        "mode" => {
+            let mode = value.ok_or_else(|| "mode condition requires a value".to_string())?;
+            Ok(HookConditionToml::Mode { mode })
+        }
+        "exit_code" => {
+            let raw = value.ok_or_else(|| "exit_code condition requires a value".to_string())?;
+            let code: i32 = raw
+                .parse()
+                .map_err(|_| format!("invalid exit_code: {raw}"))?;
+            Ok(HookConditionToml::ExitCode { code })
+        }
+        other => Err(format!("unknown hook condition type: {other}")),
+    }
+}
+
+fn hook_condition_from_settings(
+    settings: &HookConditionSettings,
+) -> Result<Option<HookConditionToml>, String> {
+    match settings.condition_type.as_str() {
+        "always" => Ok(None),
+        other if other.is_empty() => Ok(None),
+        _ => hook_condition_from_settings_inner(settings).map(Some),
+    }
+}
+
+fn hooks_settings_from_config(cfg: &ConfigToml) -> HooksSettings {
+    let hooks_cfg = cfg.hooks.clone().unwrap_or_default();
+    HooksSettings {
+        enabled: hooks_cfg.enabled,
+        default_timeout_secs: hooks_cfg.default_timeout_secs,
+        working_dir: hooks_cfg
+            .working_dir
+            .as_ref()
+            .map(|p| p.display().to_string()),
+        hooks: hooks_cfg
+            .hooks
+            .into_iter()
+            .map(|h| HookEntrySettings {
+                event: hook_event_to_str(h.event).to_string(),
+                command: h.command,
+                name: h.name,
+                timeout_secs: h.timeout_secs,
+                background: h.background,
+                continue_on_error: h.continue_on_error,
+                condition: h.condition.as_ref().map(hook_condition_to_settings),
+            })
+            .collect(),
+    }
+}
+
+#[tauri::command]
+pub fn get_hooks_settings() -> Result<HooksSettings, String> {
+    let store = ConfigStore::load(None).map_err(|e| e.to_string())?;
+    Ok(hooks_settings_from_config(&store.config))
+}
+
+#[tauri::command]
+pub fn save_hooks_settings(
+    settings: HooksSettings,
+    ctx: tauri::State<'_, AppContext>,
+) -> Result<(), String> {
+    let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
+    let mut hooks = Vec::with_capacity(settings.hooks.len());
+    for entry in settings.hooks {
+        let command = entry.command.trim();
+        if command.is_empty() {
+            continue;
+        }
+        hooks.push(HookToml {
+            event: hook_event_from_str(&entry.event)?,
+            command: command.to_string(),
+            condition: entry
+                .condition
+                .as_ref()
+                .map(hook_condition_from_settings)
+                .transpose()?
+                .flatten(),
+            timeout_secs: entry.timeout_secs.max(1),
+            background: entry.background,
+            continue_on_error: entry.continue_on_error,
+            name: entry
+                .name
+                .as_ref()
+                .map(|n| n.trim().to_string())
+                .filter(|n| !n.is_empty()),
+        });
+    }
+
+    let working_dir = settings
+        .working_dir
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from);
+
+    let audit_jsonl = store
+        .config
+        .hooks
+        .as_ref()
+        .and_then(|h| h.audit_jsonl.clone());
+
+    store.config.hooks = Some(HooksConfigToml {
+        enabled: settings.enabled,
+        default_timeout_secs: settings.default_timeout_secs.filter(|&v| v > 0),
+        working_dir,
+        audit_jsonl,
+        hooks,
+    });
+
+    tracing::info!("save_hooks_settings: writing config");
     store.save().map_err(|e| e.to_string())?;
     ctx.sidecar_restart.notify_one();
     Ok(())

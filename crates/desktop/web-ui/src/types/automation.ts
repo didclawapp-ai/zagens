@@ -56,12 +56,9 @@ export interface TasksResponse {
 }
 
 /** Automation record from GET /v1/automations */
-export type AutomationStatus =
-  | 'active'
-  | 'paused'
-  | 'completed'
-  | 'failed'
-  | 'canceled';
+export type AutomationStatus = 'active' | 'paused';
+
+export type AutomationTriggerKind = 'prompt' | 'task';
 
 export interface AutomationRecord {
   schema_version: number;
@@ -70,6 +67,12 @@ export interface AutomationRecord {
   prompt: string;
   rrule: string;
   cwds: string[];
+  trigger_kind?: AutomationTriggerKind;
+  model?: string | null;
+  mode?: string | null;
+  allow_shell?: boolean | null;
+  trust_mode?: boolean | null;
+  auto_approve?: boolean | null;
   status: AutomationStatus;
   created_at: string;
   updated_at: string;
@@ -133,4 +136,55 @@ export interface CreateTaskRequest {
   allow_shell?: boolean;
   trust_mode?: boolean;
   auto_approve?: boolean;
+}
+
+/** Body for POST /v1/automations */
+export interface CreateAutomationRequest {
+  name: string;
+  prompt: string;
+  rrule: string;
+  cwds?: string[];
+  trigger_kind?: AutomationTriggerKind;
+  model?: string;
+  mode?: string;
+  allow_shell?: boolean;
+  trust_mode?: boolean;
+  auto_approve?: boolean;
+  status?: AutomationStatus;
+}
+
+/** Body for PATCH /v1/automations/:id */
+export interface UpdateAutomationRequest {
+  name?: string;
+  prompt?: string;
+  rrule?: string;
+  cwds?: string[];
+  trigger_kind?: AutomationTriggerKind;
+  model?: string;
+  mode?: string;
+  allow_shell?: boolean;
+  trust_mode?: boolean;
+  auto_approve?: boolean;
+  status?: AutomationStatus;
+}
+
+export type AutomationRunStatus =
+  | 'queued'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'canceled';
+
+export interface AutomationRunRecord {
+  id: string;
+  automation_id: string;
+  scheduled_for: string;
+  status: AutomationRunStatus;
+  created_at: string;
+  started_at: string | null;
+  ended_at: string | null;
+  task_id: string | null;
+  thread_id: string | null;
+  turn_id: string | null;
+  error: string | null;
 }

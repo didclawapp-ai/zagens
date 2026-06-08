@@ -20,7 +20,7 @@ interface Props {
   refreshApiKeyStatus: () => void;
   taskTypePreference: DesktopTaskTypePreference;
   onTaskTypePreferenceChange: (value: DesktopTaskTypePreference) => void;
-  onComplete: () => void;
+  onComplete: (taskType?: DesktopTaskTypePreference) => void;
 }
 
 const MODE_OPTIONS: DesktopTaskTypePreference[] = ['auto', 'code', 'office'];
@@ -261,13 +261,24 @@ export default function OnboardingOverlay({
               <div className="flex items-center justify-end pt-2">
                 <button
                   type="button"
+                  disabled={saveBusy}
                   onClick={() => {
-                    persistOnboardingComplete(taskTypePreference);
-                    onComplete();
+                    void (async () => {
+                      setError(null);
+                      setSaveBusy(true);
+                      try {
+                        await persistOnboardingComplete(taskTypePreference);
+                        onComplete(taskTypePreference);
+                      } catch (err) {
+                        setError(err instanceof Error ? err.message : String(err));
+                      } finally {
+                        setSaveBusy(false);
+                      }
+                    })();
                   }}
-                  className="px-4 py-2 rounded-lg bg-accent text-accent-text hover:bg-accent-hover text-sm font-medium transition-colors"
+                  className="px-4 py-2 rounded-lg bg-accent text-accent-text hover:bg-accent-hover disabled:opacity-50 text-sm font-medium transition-colors"
                 >
-                  {t('onboarding.finish')}
+                  {saveBusy ? t('common.saving') : t('onboarding.finish')}
                 </button>
               </div>
             </div>

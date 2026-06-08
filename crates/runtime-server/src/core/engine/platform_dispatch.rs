@@ -8,6 +8,7 @@ use zagens_core::engine::platform_ext::EnginePlatformExt;
 use crate::agent_surface::AppMode;
 use crate::context_snapshot::ThreadContextSnapshot;
 use crate::core::events::Event;
+use crate::hooks::HookEvent;
 use tokio::sync::oneshot;
 
 use super::Engine;
@@ -138,6 +139,13 @@ impl EnginePlatformExt<crate::sandbox::SandboxPolicy, crate::tools::user_input::
             crate::tools::user_input::UserInputResponse,
         >,
     ) {
+        if self
+            .hook_executor
+            .has_hooks_for_event(HookEvent::SessionEnd)
+        {
+            let ctx = self.hook_executor.base_context();
+            self.hook_executor.execute(HookEvent::SessionEnd, &ctx);
+        }
         if let Some(pool) = self.mcp_pool.as_ref() {
             let mut guard = pool.lock().await;
             guard.shutdown_all().await;
@@ -151,7 +159,12 @@ impl Engine {
         let _ = self.tx_event.send(Event::AgentList { agents }).await;
     }
 
-    pub(in crate::core::engine) async fn handle_change_mode_op(&self, mode: AppMode) {
+    pub(in crate::core::engine) async fn handle_change_mode_op(&mut self, mode: AppMode) {
+        let previous = self.runtime_ext().turn_app_mode;
+        if previous != mode {
+            self.fire_mode_change(previous, mode);
+            self.runtime_ext_mut().turn_app_mode = mode;
+        }
         let _ = self
             .tx_event
             .send(Event::status(format!("Mode changed to: {mode:?}")))

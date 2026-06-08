@@ -16,14 +16,14 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::Read;
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 use wait_timeout::ChildExt;
 
 /// Events that can trigger hook execution
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum HookEvent {
     /// Triggered when a new session starts
     SessionStart,
@@ -46,6 +46,14 @@ pub enum HookEvent {
     /// fail or time out are logged but do *not* abort the shell call; they
     /// simply contribute no env vars.
     ShellEnv,
+    /// Triggered immediately before context compaction (manual or auto).
+    PreCompact,
+    /// Triggered after context compaction completes successfully.
+    PostCompact,
+    /// Triggered when a sub-agent task is about to start (can block spawn).
+    SubagentStart,
+    /// Triggered when a sub-agent task reaches a terminal state.
+    SubagentEnd,
 }
 
 impl HookEvent {
@@ -61,6 +69,10 @@ impl HookEvent {
             HookEvent::ModeChange => "mode_change",
             HookEvent::OnError => "on_error",
             HookEvent::ShellEnv => "shell_env",
+            HookEvent::PreCompact => "pre_compact",
+            HookEvent::PostCompact => "post_compact",
+            HookEvent::SubagentStart => "subagent_start",
+            HookEvent::SubagentEnd => "subagent_end",
         }
     }
 }
@@ -77,6 +89,11 @@ pub enum HookCondition {
     ToolName {
         /// Tool name to match (e.g., "`exec_shell`", "`write_file`")
         name: String,
+    },
+    /// Only run when tool name matches a regex pattern
+    ToolNameRegex {
+        /// Rust regex syntax (e.g. `exec_.*`, `write_file|edit_file`)
+        pattern: String,
     },
     /// Only run for specific tool categories
     ToolCategory {
@@ -100,7 +117,7 @@ pub enum HookCondition {
 }
 
 /// A single hook definition
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct Hook {
     /// The event that triggers this hook
     pub event: HookEvent,
@@ -109,23 +126,18 @@ pub struct Hook {
     pub command: String,
 
     /// Optional condition for when this hook should run
-    #[serde(default)]
     pub condition: Option<HookCondition>,
 
     /// Timeout in seconds (default: 30)
-    #[serde(default = "default_timeout")]
     pub timeout_secs: u64,
 
     /// Run in background (don't wait for completion)
-    #[serde(default)]
     pub background: bool,
 
     /// Continue if this hook fails (default: true)
-    #[serde(default = "default_continue_on_error")]
     pub continue_on_error: bool,
 
     /// Optional name for logging/debugging
-    #[serde(default)]
     pub name: Option<String>,
 }
 
@@ -181,7 +193,8 @@ impl Hook {
 }
 
 /// Configuration for hooks (loaded from config.toml)
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
 pub struct HooksConfig {
     /// List of hooks to execute
     #[serde(default)]
@@ -198,6 +211,10 @@ pub struct HooksConfig {
     /// Working directory for hook execution (default: workspace)
     #[serde(default)]
     pub working_dir: Option<PathBuf>,
+
+    /// Optional JSONL audit log for hook executions (one JSON object per line).
+    #[serde(default)]
+    pub audit_jsonl: Option<PathBuf>,
 }
 
 fn default_enabled() -> bool {
@@ -220,8 +237,9 @@ impl HooksConfig {
     }
 }
 
-/// Context passed to hooks via environment variables
-#[derive(Debug, Clone, Default)]
+/// Context passed to hooks via environment variables and stdin JSON.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub struct HookContext {
     /// Tool name (for ToolCallBefore/After)
     pub tool_name: Option<String>,
@@ -251,6 +269,18 @@ pub struct HookContext {
     pub total_tokens: Option<u32>,
     /// Session cost in USD
     pub session_cost: Option<f64>,
+    /// Sub-agent id (for `SubagentStart` / `SubagentEnd`)
+    pub subagent_id: Option<String>,
+    /// Sub-agent type slug (e.g. `explore`, `general`)
+    pub subagent_type: Option<String>,
+    /// Terminal sub-agent status (e.g. `completed`, `failed`)
+    pub subagent_status: Option<String>,
+    /// Whether compaction was manual (`true`) or automatic (`false`)
+    pub compaction_manual: Option<bool>,
+    /// Message count before compaction (when available)
+    pub compaction_messages_before: Option<usize>,
+    /// Message count after compaction (when available)
+    pub compaction_messages_after: Option<usize>,
 }
 
 impl HookContext {
@@ -328,6 +358,33 @@ impl HookContext {
         self
     }
 
+    pub fn with_subagent_id(mut self, id: &str) -> Self {
+        self.subagent_id = Some(id.to_string());
+        self
+    }
+
+    pub fn with_subagent_type(mut self, agent_type: &str) -> Self {
+        self.subagent_type = Some(agent_type.to_string());
+        self
+    }
+
+    pub fn with_subagent_status(mut self, status: &str) -> Self {
+        self.subagent_status = Some(status.to_string());
+        self
+    }
+
+    pub fn with_compaction_stats(
+        mut self,
+        manual: bool,
+        messages_before: usize,
+        messages_after: usize,
+    ) -> Self {
+        self.compaction_manual = Some(manual);
+        self.compaction_messages_before = Some(messages_before);
+        self.compaction_messages_after = Some(messages_after);
+        self
+    }
+
     /// Convert to environment variables
     pub fn to_env_vars(&self) -> HashMap<String, String> {
         let mut env = HashMap::new();
@@ -398,8 +455,58 @@ impl HookContext {
         if let Some(cost) = self.session_cost {
             env.insert("DEEPSEEK_SESSION_COST".to_string(), format!("{cost:.6}"));
         }
+        if let Some(ref id) = self.subagent_id {
+            env.insert("DEEPSEEK_SUBAGENT_ID".to_string(), id.clone());
+        }
+        if let Some(ref agent_type) = self.subagent_type {
+            env.insert("DEEPSEEK_SUBAGENT_TYPE".to_string(), agent_type.clone());
+        }
+        if let Some(ref status) = self.subagent_status {
+            env.insert("DEEPSEEK_SUBAGENT_STATUS".to_string(), status.clone());
+        }
+        if let Some(manual) = self.compaction_manual {
+            env.insert("DEEPSEEK_COMPACTION_MANUAL".to_string(), manual.to_string());
+        }
+        if let Some(before) = self.compaction_messages_before {
+            env.insert(
+                "DEEPSEEK_COMPACTION_MESSAGES_BEFORE".to_string(),
+                before.to_string(),
+            );
+        }
+        if let Some(after) = self.compaction_messages_after {
+            env.insert(
+                "DEEPSEEK_COMPACTION_MESSAGES_AFTER".to_string(),
+                after.to_string(),
+            );
+        }
 
         env
+    }
+
+    /// JSON payload written to hook stdin (`{"event":"…","context":{…}}`).
+    pub fn to_invoke_json(&self, event: HookEvent) -> String {
+        #[derive(Serialize)]
+        struct Payload<'a> {
+            event: &'static str,
+            context: &'a HookContext,
+        }
+        let ctx = self.for_json_payload();
+        serde_json::to_string(&Payload {
+            event: event.as_str(),
+            context: &ctx,
+        })
+        .unwrap_or_else(|_| "{}".to_string())
+    }
+
+    pub(crate) fn for_json_payload(&self) -> HookContext {
+        let mut ctx = self.clone();
+        if let Some(ref message) = ctx.message {
+            ctx.message = Some(truncate_hook_text(message, 5000));
+        }
+        if let Some(ref result) = ctx.tool_result {
+            ctx.tool_result = Some(truncate_hook_text(result, 10000));
+        }
+        ctx
     }
 }
 
@@ -421,6 +528,104 @@ pub struct HookResult {
     pub duration: Duration,
     /// Error message if execution failed
     pub error: Option<String>,
+}
+
+/// Cursor-style deny: exit code 2, or stdout JSON `{"decision":"deny"}` /
+/// `{"allow":false}` with optional `reason` / `message`.
+fn truncate_hook_text(text: &str, max_bytes: usize) -> String {
+    if text.len() <= max_bytes {
+        return text.to_string();
+    }
+    let safe_end = text
+        .char_indices()
+        .take_while(|(i, _)| *i < max_bytes)
+        .last()
+        .map(|(i, c)| i + c.len_utf8())
+        .unwrap_or(0);
+    format!("{}...[truncated]", &text[..safe_end])
+}
+
+fn parse_hook_deny_stdout(stdout: &str) -> Option<String> {
+    let trimmed = stdout.trim();
+    if trimmed.is_empty() || !trimmed.starts_with('{') {
+        return None;
+    }
+    let value: serde_json::Value = serde_json::from_str(trimmed).ok()?;
+    let obj = value.as_object()?;
+    if obj.get("decision").and_then(|v| v.as_str()) == Some("deny") {
+        return obj
+            .get("reason")
+            .or_else(|| obj.get("message"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| Some("hook denied".to_string()));
+    }
+    if obj.get("allow").and_then(|v| v.as_bool()) == Some(false) {
+        return obj
+            .get("reason")
+            .or_else(|| obj.get("message"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| Some("hook denied".to_string()));
+    }
+    None
+}
+
+fn apply_stdout_deny(result: &mut HookResult) {
+    if let Some(reason) = parse_hook_deny_stdout(&result.stdout) {
+        result.success = false;
+        if result.error.is_none() {
+            result.error = Some(reason);
+        }
+    }
+}
+
+fn hook_blocks_strict(result: &HookResult, hook: &Hook) -> bool {
+    if parse_hook_deny_stdout(&result.stdout).is_some() {
+        return true;
+    }
+    if result.exit_code == Some(2) {
+        return true;
+    }
+    !result.success && !hook.continue_on_error
+}
+
+fn hook_block_detail(result: &HookResult) -> String {
+    result
+        .error
+        .clone()
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            let stderr = result.stderr.trim();
+            if stderr.is_empty() {
+                None
+            } else {
+                Some(stderr.to_string())
+            }
+        })
+        .unwrap_or_else(|| format!("exit code {:?}", result.exit_code))
+}
+
+/// Parse optional tool-input override from a `tool_call_before` hook stdout JSON.
+pub fn parse_hook_updated_tool_input(stdout: &str) -> Option<serde_json::Value> {
+    let trimmed = stdout.trim();
+    if trimmed.is_empty() || !trimmed.starts_with('{') {
+        return None;
+    }
+    let value: serde_json::Value = serde_json::from_str(trimmed).ok()?;
+    let obj = value.as_object()?;
+    for key in ["updatedInput", "updated_input", "toolInput", "tool_input"] {
+        if let Some(v) = obj.get(key).filter(|v| !v.is_null()) {
+            return Some(v.clone());
+        }
+    }
+    None
+}
+
+/// Outcome of a blocking hook chain (message submit / tool call before).
+#[derive(Debug, Clone, Default)]
+pub struct HookBlockingOutcome {
+    pub updated_tool_input: Option<serde_json::Value>,
 }
 
 /// Executor for running hooks
@@ -452,11 +657,27 @@ impl HookExecutor {
     pub fn new(config: HooksConfig, default_working_dir: PathBuf) -> Self {
         // Generate a session ID
         let session_id = format!("sess_{}", &uuid::Uuid::new_v4().to_string()[..8]);
+        Self::with_session(config, default_working_dir, session_id)
+    }
+
+    /// Create a `HookExecutor` bound to a stable session / thread id.
+    pub fn with_session(
+        config: HooksConfig,
+        default_working_dir: PathBuf,
+        session_id: impl Into<String>,
+    ) -> Self {
         Self {
             config,
             default_working_dir,
-            session_id,
+            session_id: session_id.into(),
         }
+    }
+
+    /// Baseline context fields shared across hook events for this executor.
+    pub fn base_context(&self) -> HookContext {
+        HookContext::new()
+            .with_session_id(&self.session_id)
+            .with_workspace(self.default_working_dir.clone())
     }
 
     /// Create a disabled `HookExecutor` (no hooks will run)
@@ -490,6 +711,130 @@ impl HookExecutor {
         &self.session_id
     }
 
+    /// Fire `subagent_start` hooks; returns `Err` when a hook blocks spawn.
+    pub fn fire_subagent_start(
+        &self,
+        context: &HookContext,
+        agent_id: &str,
+        agent_type: &str,
+        prompt: &str,
+    ) -> Result<(), String> {
+        if !self.has_hooks_for_event(HookEvent::SubagentStart) {
+            return Ok(());
+        }
+        let ctx = context
+            .clone()
+            .with_subagent_id(agent_id)
+            .with_subagent_type(agent_type)
+            .with_message(prompt);
+        self.execute_blocking(HookEvent::SubagentStart, &ctx)
+            .map(|_| ())
+    }
+
+    /// Fire `subagent_end` hooks after a sub-agent reaches a terminal state.
+    pub fn fire_subagent_end(
+        &self,
+        context: &HookContext,
+        agent_id: &str,
+        agent_type: &str,
+        status: &str,
+        summary: &str,
+    ) {
+        if !self.has_hooks_for_event(HookEvent::SubagentEnd) {
+            return;
+        }
+        let ctx = context
+            .clone()
+            .with_subagent_id(agent_id)
+            .with_subagent_type(agent_type)
+            .with_subagent_status(status)
+            .with_message(summary);
+        self.execute(HookEvent::SubagentEnd, &ctx);
+    }
+
+    /// Fire `post_compact` hooks after a successful compaction.
+    pub fn fire_post_compact(
+        &self,
+        context: &HookContext,
+        manual: bool,
+        messages_before: usize,
+        messages_after: usize,
+    ) {
+        if !self.has_hooks_for_event(HookEvent::PostCompact) {
+            return;
+        }
+        let ctx = context
+            .clone()
+            .with_compaction_stats(manual, messages_before, messages_after);
+        self.execute(HookEvent::PostCompact, &ctx);
+    }
+
+    fn maybe_audit_hook(
+        &self,
+        event: HookEvent,
+        hook: &Hook,
+        context: &HookContext,
+        result: &HookResult,
+    ) {
+        let Some(path) = self.config.audit_jsonl.as_ref() else {
+            return;
+        };
+        let line = match serde_json::to_string(&serde_json::json!({
+            "at": chrono::Utc::now().to_rfc3339(),
+            "event": event.as_str(),
+            "hook": hook.name,
+            "command": hook.command,
+            "session_id": self.session_id,
+            "success": result.success,
+            "exit_code": result.exit_code,
+            "duration_ms": result.duration.as_millis(),
+            "denied": hook_blocks_strict(result, hook),
+            "context": context.for_json_payload(),
+        })) {
+            Ok(s) => s,
+            Err(err) => {
+                tracing::warn!(target: "hooks", error = %err, "failed to encode hook audit entry");
+                return;
+            }
+        };
+        if let Some(parent) = path.parent() {
+            if let Err(err) = std::fs::create_dir_all(parent) {
+                tracing::warn!(
+                    target: "hooks",
+                    path = %parent.display(),
+                    error = %err,
+                    "failed to create hook audit directory"
+                );
+                return;
+            }
+        }
+        use std::io::Write;
+        match std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+        {
+            Ok(mut file) => {
+                if let Err(err) = writeln!(file, "{line}") {
+                    tracing::warn!(
+                        target: "hooks",
+                        path = %path.display(),
+                        error = %err,
+                        "failed to append hook audit entry"
+                    );
+                }
+            }
+            Err(err) => {
+                tracing::warn!(
+                    target: "hooks",
+                    path = %path.display(),
+                    error = %err,
+                    "failed to open hook audit log"
+                );
+            }
+        }
+    }
+
     /// Cheap pre-check: are there any enabled hooks for this event?
     /// Lets call sites avoid building a [`HookContext`] (which allocates
     /// for `workspace`, `model`, `session_id`, …) on every tool call
@@ -519,13 +864,13 @@ impl HookExecutor {
         if hooks.is_empty() {
             return merged;
         }
-        let env_vars = context.to_env_vars();
+        let env_vars = self.env_for_event(HookEvent::ShellEnv, context);
         for hook in hooks {
             if !self.matches_condition(hook, context) {
                 continue;
             }
             // ShellEnv hooks must be synchronous — their stdout is the contract.
-            let result = self.execute_sync(hook, &env_vars);
+            let result = self.execute_sync(hook, HookEvent::ShellEnv, context, &env_vars);
             if !result.success {
                 tracing::warn!(
                     target: "hooks",
@@ -571,7 +916,7 @@ impl HookExecutor {
             // tool dispatch even for users with zero hooks configured.
             return Vec::new();
         }
-        let env_vars = context.to_env_vars();
+        let env_vars = self.env_for_event(event, context);
         let mut results = Vec::new();
 
         for hook in hooks {
@@ -580,9 +925,9 @@ impl HookExecutor {
             }
 
             let result = if hook.background {
-                self.execute_background(hook, &env_vars)
+                self.execute_background(hook, event, &env_vars)
             } else {
-                self.execute_sync(hook, &env_vars)
+                self.execute_sync(hook, event, context, &env_vars)
             };
 
             // Log failures via tracing so operators tailing
@@ -614,6 +959,91 @@ impl HookExecutor {
         results
     }
 
+    /// Execute hooks for an event; return `Err` when a hook fails with
+    /// `continue_on_error = false` (used to block message submit / tool calls).
+    pub fn execute_blocking(
+        &self,
+        event: HookEvent,
+        context: &HookContext,
+    ) -> Result<Vec<HookResult>, String> {
+        self.execute_blocking_with_outcome(event, context)
+            .map(|(results, _)| results)
+    }
+
+    /// Like [`Self::execute_blocking`], but also surfaces stdout JSON tool-input
+    /// overrides from `tool_call_before` hooks.
+    pub fn execute_blocking_with_outcome(
+        &self,
+        event: HookEvent,
+        context: &HookContext,
+    ) -> Result<(Vec<HookResult>, HookBlockingOutcome), String> {
+        if !self.config.enabled {
+            return Ok((Vec::new(), HookBlockingOutcome::default()));
+        }
+
+        let hooks = self.config.hooks_for_event(event);
+        if hooks.is_empty() {
+            return Ok((Vec::new(), HookBlockingOutcome::default()));
+        }
+
+        let env_vars = self.env_for_event(event, context);
+        let mut results = Vec::new();
+        let mut outcome = HookBlockingOutcome::default();
+
+        for hook in hooks {
+            if !self.matches_condition(hook, context) {
+                continue;
+            }
+
+            let result = if hook.background {
+                self.execute_background(hook, event, &env_vars)
+            } else {
+                self.execute_sync(hook, event, context, &env_vars)
+            };
+
+            if event == HookEvent::ToolCallBefore
+                && let Some(updated) = parse_hook_updated_tool_input(&result.stdout)
+            {
+                outcome.updated_tool_input = Some(updated);
+            }
+
+            if !result.success {
+                let label = result.name.as_deref().unwrap_or("(unnamed)");
+                tracing::warn!(
+                    target: "hooks",
+                    hook = label,
+                    event = event.as_str(),
+                    exit_code = ?result.exit_code,
+                    duration_ms = result.duration.as_millis() as u64,
+                    error = result.error.as_deref().unwrap_or(""),
+                    stderr_head = %result.stderr.lines().next().unwrap_or(""),
+                    "hook failed (blocking)"
+                );
+            }
+
+            results.push(result);
+            if hook_blocks_strict(results.last().expect("just pushed"), hook) {
+                let last = results.last().expect("just pushed");
+                let label = last.name.as_deref().unwrap_or("(unnamed)");
+                return Err(format!(
+                    "Hook '{label}' blocked: {}",
+                    hook_block_detail(last)
+                ));
+            }
+        }
+
+        Ok((results, outcome))
+    }
+
+    fn env_for_event(&self, event: HookEvent, context: &HookContext) -> HashMap<String, String> {
+        let mut env_vars = context.to_env_vars();
+        env_vars.insert(
+            "DEEPSEEK_HOOK_EVENT".to_string(),
+            event.as_str().to_string(),
+        );
+        env_vars
+    }
+
     /// Check if a hook's condition matches the context
     #[allow(clippy::only_used_in_recursion)]
     fn matches_condition(&self, hook: &Hook, context: &HookContext) -> bool {
@@ -621,6 +1051,21 @@ impl HookExecutor {
             None | Some(HookCondition::Always) => true,
             Some(HookCondition::ToolName { name }) => {
                 context.tool_name.as_ref().is_some_and(|n| n == name)
+            }
+            Some(HookCondition::ToolNameRegex { pattern }) => {
+                let Ok(re) = regex::Regex::new(pattern) else {
+                    tracing::warn!(
+                        target: "hooks",
+                        pattern = pattern.as_str(),
+                        "invalid tool_name_regex hook condition"
+                    );
+                    return false;
+                };
+                context.tool_name.as_ref().is_some_and(|n| re.is_match(n))
+                    || context
+                        .subagent_type
+                        .as_ref()
+                        .is_some_and(|t| re.is_match(t))
             }
             Some(HookCondition::ToolCategory { category }) => {
                 // Map tool names to categories
@@ -659,7 +1104,13 @@ impl HookExecutor {
     }
 
     /// Execute a hook synchronously
-    fn execute_sync(&self, hook: &Hook, env_vars: &HashMap<String, String>) -> HookResult {
+    fn execute_sync(
+        &self,
+        hook: &Hook,
+        event: HookEvent,
+        context: &HookContext,
+        env_vars: &HashMap<String, String>,
+    ) -> HookResult {
         let started = Instant::now();
         let working_dir = self
             .config
@@ -672,10 +1123,12 @@ impl HookExecutor {
             .default_timeout_secs
             .unwrap_or(hook.timeout_secs);
         let timeout = Duration::from_secs(timeout_secs);
+        let stdin_payload = context.to_invoke_json(event);
 
         let mut child = match Self::build_shell_command(&hook.command)
             .current_dir(&working_dir)
             .envs(env_vars)
+            .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -694,13 +1147,17 @@ impl HookExecutor {
             }
         };
 
+        if let Some(mut stdin) = child.stdin.take() {
+            let _ = stdin.write_all(stdin_payload.as_bytes());
+        }
+
         fn read_pipe(mut pipe: impl Read) -> String {
             let mut buf = String::new();
             let _ = pipe.read_to_string(&mut buf);
             buf
         }
 
-        match child.wait_timeout(timeout) {
+        let mut result = match child.wait_timeout(timeout) {
             Ok(Some(status)) => HookResult {
                 name: hook.name.clone(),
                 success: status.success(),
@@ -732,11 +1189,26 @@ impl HookExecutor {
                 duration: started.elapsed(),
                 error: Some(format!("Failed to wait for hook: {e}")),
             },
+        };
+
+        apply_stdout_deny(&mut result);
+        if result.exit_code == Some(2) && result.error.is_none() {
+            result.error = Some(
+                parse_hook_deny_stdout(&result.stdout)
+                    .unwrap_or_else(|| "hook denied (exit 2)".to_string()),
+            );
         }
+        self.maybe_audit_hook(event, hook, context, &result);
+        result
     }
 
     /// Execute a hook in the background (non-blocking)
-    fn execute_background(&self, hook: &Hook, env_vars: &HashMap<String, String>) -> HookResult {
+    fn execute_background(
+        &self,
+        hook: &Hook,
+        _event: HookEvent,
+        env_vars: &HashMap<String, String>,
+    ) -> HookResult {
         let started = Instant::now();
         let working_dir = self
             .config
@@ -856,6 +1328,29 @@ NOEQUAL line dropped
         assert_eq!(HookEvent::SessionStart.as_str(), "session_start");
         assert_eq!(HookEvent::ToolCallAfter.as_str(), "tool_call_after");
         assert_eq!(HookEvent::ModeChange.as_str(), "mode_change");
+        assert_eq!(HookEvent::PostCompact.as_str(), "post_compact");
+        assert_eq!(HookEvent::SubagentStart.as_str(), "subagent_start");
+    }
+
+    #[test]
+    fn test_hook_context_subagent_env_vars() {
+        let ctx = HookContext::new()
+            .with_subagent_id("agent_1")
+            .with_subagent_type("explore")
+            .with_subagent_status("completed");
+        let env = ctx.to_env_vars();
+        assert_eq!(
+            env.get("DEEPSEEK_SUBAGENT_ID"),
+            Some(&"agent_1".to_string())
+        );
+        assert_eq!(
+            env.get("DEEPSEEK_SUBAGENT_TYPE"),
+            Some(&"explore".to_string())
+        );
+        assert_eq!(
+            env.get("DEEPSEEK_SUBAGENT_STATUS"),
+            Some(&"completed".to_string())
+        );
     }
 
     #[test]
@@ -977,8 +1472,9 @@ NOEQUAL line dropped
         let hook = Hook::new(HookEvent::SessionStart, command).with_timeout(1);
         let executor = HookExecutor::new(HooksConfig::default(), PathBuf::from("."));
         let env_vars = HashMap::new();
+        let context = HookContext::new();
 
-        let result = executor.execute_sync(&hook, &env_vars);
+        let result = executor.execute_sync(&hook, HookEvent::SessionStart, &context, &env_vars);
         assert!(!result.success);
         assert!(
             result
@@ -1048,5 +1544,72 @@ NOEQUAL line dropped
         assert!(!executor.has_hooks_for_event(HookEvent::ToolCallAfter));
         assert!(!executor.has_hooks_for_event(HookEvent::OnError));
         assert!(!executor.has_hooks_for_event(HookEvent::ModeChange));
+    }
+
+    #[test]
+    fn parse_hook_updated_tool_input_reads_common_keys() {
+        let stdout = r#"{"decision":"allow","updatedInput":{"path":"foo.txt"}}"#;
+        let updated = super::parse_hook_updated_tool_input(stdout).unwrap();
+        assert_eq!(
+            updated.get("path").and_then(|v| v.as_str()),
+            Some("foo.txt")
+        );
+    }
+
+    #[test]
+    fn parse_hook_deny_stdout_recognizes_decision_and_allow_false() {
+        assert_eq!(
+            super::parse_hook_deny_stdout(r#"{"decision":"deny","reason":"nope"}"#),
+            Some("nope".to_string())
+        );
+        assert_eq!(
+            super::parse_hook_deny_stdout(r#"{"allow":false,"message":"blocked"}"#),
+            Some("blocked".to_string())
+        );
+        assert!(super::parse_hook_deny_stdout("KEY=VALUE").is_none());
+    }
+
+    #[test]
+    fn test_hook_condition_tool_name_regex() {
+        let hook = Hook::new(HookEvent::ToolCallBefore, "echo test").with_condition(
+            HookCondition::ToolNameRegex {
+                pattern: r"write_.*|edit_file".to_string(),
+            },
+        );
+        let executor = HookExecutor::disabled();
+        assert!(
+            executor.matches_condition(&hook, &HookContext::new().with_tool_name("write_file"))
+        );
+        assert!(executor.matches_condition(&hook, &HookContext::new().with_tool_name("edit_file")));
+        assert!(
+            !executor.matches_condition(&hook, &HookContext::new().with_tool_name("read_file"))
+        );
+    }
+
+    #[test]
+    fn execute_blocking_honors_stdout_deny_json() {
+        let command = if cfg!(windows) {
+            r#"Write-Output '{"decision":"deny","reason":"policy"}'"#
+        } else {
+            r#"echo '{"decision":"deny","reason":"policy"}'"#
+        };
+        let config = HooksConfig {
+            enabled: true,
+            hooks: vec![Hook {
+                event: HookEvent::MessageSubmit,
+                command: command.to_string(),
+                condition: None,
+                timeout_secs: 5,
+                background: false,
+                continue_on_error: true,
+                name: Some("deny-json".to_string()),
+            }],
+            ..Default::default()
+        };
+        let executor = HookExecutor::new(config, PathBuf::from("."));
+        let err = executor
+            .execute_blocking(HookEvent::MessageSubmit, &HookContext::new())
+            .expect_err("stdout deny must block even when continue_on_error=true");
+        assert!(err.contains("policy"), "unexpected: {err}");
     }
 }

@@ -430,6 +430,8 @@ type SettingsTab =
   | 'topic-memory'
   | 'system'
   | 'lht-settings'
+  | 'hooks'
+  | 'schedule'
   | 'index'
   | 'about';
 
@@ -471,6 +473,8 @@ function SettingsAccordion({
     { tab: 'index', label: t('panels.index'), show: !officeSession },
     { tab: 'system', label: t('panels.system'), show: true },
     { tab: 'lht-settings', label: t('panels.lhtSettings'), show: !officeSession },
+    { tab: 'hooks', label: t('sidebar.hooks'), show: desktopHost },
+    { tab: 'schedule', label: t('sidebar.schedule'), show: !officeSession },
     { tab: 'about', label: t('sidebar.about'), show: true },
   ];
 
@@ -496,7 +500,7 @@ function SettingsAccordion({
       </button>
 
       <div
-        className={`overflow-hidden transition-[max-height] duration-200 ${open ? 'max-h-80' : 'max-h-0'}`}
+        className={`overflow-hidden transition-[max-height] duration-200 ${open ? 'max-h-96' : 'max-h-0'}`}
       >
         <div className="flex flex-col gap-0.5 pt-0.5 pb-1">
           {subItems

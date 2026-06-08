@@ -290,10 +290,18 @@ fn normalize_task_type_preference(raw: &str) -> Option<&'static str> {
 /// Whether the desktop onboarding wizard (API key + default mode) was completed.
 pub fn read_onboarding_complete_setting() -> Result<bool> {
     let (_path, doc) = load_settings_doc()?;
-    Ok(doc
+    if doc
         .get("onboarding_complete")
         .and_then(toml::Value::as_bool)
-        .unwrap_or(false))
+        .unwrap_or(false)
+    {
+        return Ok(true);
+    }
+    // Older builds persisted task type without flipping onboarding_complete.
+    if doc.get("task_type_preference").is_some() {
+        return Ok(true);
+    }
+    Ok(false)
 }
 
 /// Mark onboarding complete after the user finishes the first-run wizard.
@@ -366,6 +374,14 @@ mod tests {
         );
         write_onboarding_complete_setting(true).expect("write onboarding");
         assert!(read_onboarding_complete_setting().expect("read onboarding"));
+        let (_path, mut doc) = load_settings_doc().expect("load");
+        let table = doc.as_table_mut().expect("table");
+        table.remove("onboarding_complete");
+        write_settings_doc(&settings_path().expect("path"), &doc).expect("write");
+        assert!(
+            read_onboarding_complete_setting().expect("legacy task type"),
+            "task_type_preference alone should imply onboarding complete"
+        );
         // SAFETY: restores prior process env for other tests.
         unsafe {
             match prev {

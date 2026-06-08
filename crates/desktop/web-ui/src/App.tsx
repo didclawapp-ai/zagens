@@ -201,6 +201,7 @@ export default function App() {
     desktopApiKeyConfigured,
     platform,
     refreshApiKeyStatus,
+    markOnboardingComplete,
   } = useDesktopShell({
     t,
     selectedWorkspace,
@@ -219,8 +220,11 @@ export default function App() {
     });
 
   useEffect(() => {
-    if (desktopHost && shellPrefsReady) setStartupOverlayOpen(true);
-  }, [desktopHost, shellPrefsReady]);
+    if (!desktopHost || !shellPrefsReady) return;
+    const needsSetup =
+      !onboardingComplete || desktopApiKeyConfigured === false;
+    setStartupOverlayOpen(needsSetup);
+  }, [desktopHost, shellPrefsReady, onboardingComplete, desktopApiKeyConfigured]);
 
   const {
     approval,
@@ -271,6 +275,7 @@ export default function App() {
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(() =>
     loadStoredRightPanelCollapsed(),
   );
+  const [highlightTaskId, setHighlightTaskId] = useState<string | null>(null);
   const [auditGridDismissed, setAuditGridDismissed] = useState(false);
 
   const {
@@ -694,6 +699,20 @@ export default function App() {
     setActiveInspector('routing');
   }, []);
 
+  const handleOpenTasks = useCallback((taskId?: string) => {
+    if (taskId) {
+      setHighlightTaskId(taskId);
+    }
+    setActiveInspector('tasks');
+    setRightPanelCollapsed(false);
+  }, []);
+
+  useEffect(() => {
+    if (!highlightTaskId) return;
+    const timer = window.setTimeout(() => setHighlightTaskId(null), 12_000);
+    return () => window.clearTimeout(timer);
+  }, [highlightTaskId]);
+
   const handleEnableTrust = useCallback(async () => {
     if (!resumedThreadId) return;
     try {
@@ -752,7 +771,10 @@ export default function App() {
           refreshApiKeyStatus={refreshApiKeyStatus}
           taskTypePreference={taskTypePreference}
           onTaskTypePreferenceChange={handleTaskTypePreferenceChange}
-          onComplete={() => setStartupOverlayOpen(false)}
+          onComplete={(taskType) => {
+            if (taskType) markOnboardingComplete(taskType);
+            setStartupOverlayOpen(false);
+          }}
         />
       )}
       <AppShell
@@ -876,6 +898,8 @@ export default function App() {
       onSystemSettingsSaved={handleSystemSettingsSaved}
       onRouteIntentChange={setRouteIntent}
       refreshApiKeyStatus={refreshApiKeyStatus}
+      onOpenTasks={handleOpenTasks}
+      highlightTaskId={highlightTaskId}
       />
     </>
   );

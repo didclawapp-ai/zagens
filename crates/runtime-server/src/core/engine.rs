@@ -28,6 +28,7 @@ mod dispatch;
 mod edit_turn_ops;
 mod engine_helpers;
 mod handle;
+mod hook_dispatch;
 mod layered_context;
 mod loop_guard;
 mod lsp_hooks;

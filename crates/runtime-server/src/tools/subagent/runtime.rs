@@ -7,6 +7,7 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
+use crate::hooks::HookExecutor;
 use crate::tools::spec::ToolContext;
 use zagens_core::events::Event;
 
@@ -81,6 +82,8 @@ pub struct SubAgentRuntime {
     /// Defaults to [`STEP_API_TIMEOUT`] (120 s). Increase for review/audit
     /// workloads where a single step may read many files.
     pub step_timeout: Duration,
+    /// Lifecycle hook executor propagated from the parent engine (optional).
+    pub hook_executor: Option<Arc<HookExecutor>>,
 }
 
 impl SubAgentRuntime {
@@ -114,6 +117,7 @@ impl SubAgentRuntime {
             mailbox: None,
             parent_completion_tx: None,
             step_timeout: STEP_API_TIMEOUT,
+            hook_executor: None,
         }
     }
 
@@ -165,6 +169,13 @@ impl SubAgentRuntime {
     #[must_use]
     pub fn with_step_timeout(mut self, timeout: Duration) -> Self {
         self.step_timeout = timeout;
+        self
+    }
+
+    /// Attach the parent engine's hook executor for sub-agent lifecycle hooks.
+    #[must_use]
+    pub fn with_hook_executor(mut self, executor: Arc<HookExecutor>) -> Self {
+        self.hook_executor = Some(executor);
         self
     }
 
@@ -240,6 +251,7 @@ impl SubAgentRuntime {
             mailbox: self.mailbox.clone(),
             parent_completion_tx: self.parent_completion_tx.clone(),
             step_timeout: self.step_timeout,
+            hook_executor: self.hook_executor.clone(),
         }
     }
 

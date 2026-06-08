@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   fetchTasks,
   fetchSkills,
@@ -75,12 +75,14 @@ export default function AutomationPanel({
   streaming = false,
   runtimeSessionEstablished = false,
   variant = 'both',
+  highlightTaskId = null,
 }: {
   runtimeConn: RuntimeConnectionState;
   streaming?: boolean;
   runtimeSessionEstablished?: boolean;
   /** U2: split Task vs Skills into separate inspector views. */
   variant?: AutomationPanelVariant;
+  highlightTaskId?: string | null;
 }) {
   const { t } = useT();
   const runtimeReady = isRuntimeApiAvailable(runtimeConn, {
@@ -288,7 +290,12 @@ export default function AutomationPanel({
             {showCreateTask && (
               <CreateTaskForm onSubmit={handleCreateTask} submitting={creating} errorText={createError} />
             )}
-            <TasksList tasks={tasks} onCancel={handleCancelTask} cancelingId={cancelingId} />
+            <TasksList
+              tasks={tasks}
+              onCancel={handleCancelTask}
+              cancelingId={cancelingId}
+              highlightTaskId={highlightTaskId}
+            />
           </>
         )}
         {activeTab === 'skills' && (
@@ -446,12 +453,21 @@ function TasksList({
   tasks,
   onCancel,
   cancelingId,
+  highlightTaskId = null,
 }: {
   tasks: TaskSummary[];
   onCancel: (id: string) => void;
   cancelingId: string | null;
+  highlightTaskId?: string | null;
 }) {
   const { t } = useT();
+  const highlightRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!highlightTaskId || !highlightRef.current) return;
+    highlightRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [highlightTaskId, tasks]);
+
   if (tasks.length === 0) {
     return (
       <p className="text-xs text-t-text-muted text-center py-6">
@@ -461,8 +477,16 @@ function TasksList({
   }
   return (
     <div className="space-y-2">
-      {tasks.map((task) => (
-        <div key={task.id} className="rounded-lg border border-card-border bg-canvas-alt p-3">
+      {tasks.map((task) => {
+        const highlighted = highlightTaskId != null && task.id === highlightTaskId;
+        return (
+        <div
+          key={task.id}
+          ref={highlighted ? highlightRef : undefined}
+          className={`rounded-lg border bg-canvas-alt p-3 transition-colors ${
+            highlighted ? 'border-accent ring-2 ring-accent/30' : 'border-card-border'
+          }`}
+        >
           <div className="flex items-center gap-2">
             <span className="font-mono text-[10px] text-t-text-muted shrink-0">{task.id.slice(0, 10)}</span>
             <span className="text-xs text-t-text truncate flex-1 min-w-0">{task.prompt_summary}</span>
@@ -485,7 +509,8 @@ function TasksList({
             {task.duration_ms != null && ` · ${(task.duration_ms / 1000).toFixed(1)}s`}
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

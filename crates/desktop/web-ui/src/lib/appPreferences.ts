@@ -63,6 +63,17 @@ export async function hydrateDesktopShellPrefs(): Promise<{
         parseDesktopTaskTypePreference(prefs.task_type_preference) ?? localTaskType;
       cachedOnboardingComplete = prefs.onboarding_complete || localComplete;
       persistTaskTypePreference(taskType);
+      if (localComplete && !prefs.onboarding_complete) {
+        try {
+          await invoke('save_desktop_shell_prefs', {
+            onboarding_complete: true,
+            task_type_preference: taskType,
+          });
+          cachedOnboardingComplete = true;
+        } catch {
+          /* keep local fallback */
+        }
+      }
       shellPrefsHydrated = true;
       return { onboardingComplete: cachedOnboardingComplete, taskType };
     }
@@ -143,22 +154,18 @@ export function persistTaskTypePreference(value: DesktopTaskTypePreference): voi
 }
 
 /** Mark onboarding complete and mirror prefs to `settings.toml` on desktop. */
-export function persistOnboardingComplete(taskType: DesktopTaskTypePreference): void {
+export async function persistOnboardingComplete(
+  taskType: DesktopTaskTypePreference,
+): Promise<void> {
   persistTaskTypePreference(taskType);
   cachedOnboardingComplete = true;
-  void (async () => {
-    try {
-      if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
-        const { invoke } = await import('@tauri-apps/api/core');
-        await invoke('save_desktop_shell_prefs', {
-          onboarding_complete: true,
-          task_type_preference: taskType,
-        });
-      }
-    } catch {
-      /* ignore */
-    }
-  })();
+  if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('save_desktop_shell_prefs', {
+      onboarding_complete: true,
+      task_type_preference: taskType,
+    });
+  }
 }
 
 export function loadRouteIntentPreference(): DesktopRouteIntentOption {
@@ -191,6 +198,8 @@ export function loadStoredInspector(): RightPanelView {
       s === 'agents' ||
       s === 'routing' ||
       s === 'lht-settings' ||
+      s === 'hooks' ||
+      s === 'schedule' ||
       s === 'index' ||
       s === 'checklist' ||
       s === 'audit' ||

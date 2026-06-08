@@ -17,6 +17,7 @@ use zagens_tools::{ToolError, ToolResult};
 
 use super::super::approval::ApprovalResult;
 use super::super::dispatch::should_parallelize_tool_batch;
+use super::super::hook_dispatch::fire_tool_call_after_with_executor;
 use super::super::tool_catalog::{
     CODE_EXECUTION_TOOL_NAME, MULTI_TOOL_PARALLEL_NAME, REQUEST_USER_INPUT_NAME,
     execute_code_execution_tool, execute_tool_search, is_tool_search_tool,
@@ -25,6 +26,7 @@ use super::super::tool_execution::{
     apply_tool_spillover_audit, detached_execute_with_lock, execute_plan_on_engine,
 };
 use super::Engine;
+use crate::agent_surface::AppMode;
 use crate::core::events::Event;
 use crate::mcp::McpPool;
 use crate::tools::user_input::UserInputRequest;
@@ -41,6 +43,7 @@ pub(super) async fn execute_tool_plans(
     mcp_pool: Option<Arc<AsyncMutex<McpPool>>>,
     tool_exec_lock: Arc<RwLock<()>>,
 ) -> Vec<ToolExecOutcome> {
+    let app_mode = engine.runtime_ext().turn_app_mode;
     let parallel_allowed = should_parallelize_tool_batch(&plans);
     if parallel_allowed && plans.len() > 1 {
         let _ = engine
@@ -96,11 +99,40 @@ pub(super) async fn execute_tool_plans(
                 });
                 continue;
             }
+            let mut effective_input = plan.input.clone();
+            match engine.fire_tool_call_before(app_mode, &plan.name, &effective_input) {
+                Err(blocked) => {
+                    let result = Err(ToolError::execution_failed(blocked));
+                    let _ = engine
+                        .tx_event
+                        .send(Event::ToolCallComplete {
+                            id: plan.id.clone(),
+                            name: plan.name.clone(),
+                            result: result.clone(),
+                        })
+                        .await;
+                    outcomes[plan.index] = Some(ToolExecOutcome {
+                        index: plan.index,
+                        id: plan.id,
+                        name: plan.name,
+                        input: effective_input,
+                        started_at: Instant::now(),
+                        result,
+                    });
+                    continue;
+                }
+                Ok(Some(updated)) => effective_input = updated,
+                Ok(None) => {}
+            }
             let registry = tool_registry;
             let lock = tool_exec_lock.clone();
             let mcp_pool = mcp_pool.clone();
             let tx_event = engine.tx_event.clone();
+            let hook_executor = Arc::clone(&engine.runtime_ext().hook_executor);
+            let hook_ctx = engine.hook_context(app_mode);
             let started_at = Instant::now();
+            let plan_name = plan.name.clone();
+            let plan_id = plan.id.clone();
 
             tool_tasks.push(async move {
                 let exec = TurnLoopToolExec {
@@ -111,31 +143,39 @@ pub(super) async fn execute_tool_plans(
                     exec,
                     plan.supports_parallel,
                     plan.interactive,
-                    plan.name.clone(),
-                    plan.input.clone(),
+                    plan_name.clone(),
+                    effective_input.clone(),
                     registry,
                     mcp_pool,
-                    Some(plan.id.clone()),
+                    Some(plan_id.clone()),
                 )
                 .await;
 
                 if let Ok(ref mut tool_result) = result {
-                    apply_tool_spillover_audit(tool_result, &plan.id, &plan.name);
+                    apply_tool_spillover_audit(tool_result, &plan_id, &plan_name);
                 }
+
+                fire_tool_call_after_with_executor(
+                    &hook_executor,
+                    hook_ctx,
+                    &plan_name,
+                    &effective_input,
+                    &result,
+                );
 
                 let _ = tx_event
                     .send(Event::ToolCallComplete {
-                        id: plan.id.clone(),
-                        name: plan.name.clone(),
+                        id: plan_id.clone(),
+                        name: plan_name.clone(),
                         result: result.clone(),
                     })
                     .await;
 
                 ToolExecOutcome {
                     index: plan.index,
-                    id: plan.id,
-                    name: plan.name,
-                    input: plan.input,
+                    id: plan_id,
+                    name: plan_name,
+                    input: effective_input,
                     started_at,
                     result,
                 }
@@ -150,7 +190,7 @@ pub(super) async fn execute_tool_plans(
         for plan in plans {
             let tool_id = plan.id.clone();
             let tool_name = plan.name.clone();
-            let tool_input = plan.input.clone();
+            let mut tool_input = plan.input.clone();
             let tool_caller = plan.caller.clone();
 
             if let Some(result) = plan.guard_result.clone() {
@@ -405,6 +445,31 @@ pub(super) async fn execute_tool_plans(
             }
 
             let started_at = Instant::now();
+            match engine.fire_tool_call_before(app_mode, &tool_name, &tool_input) {
+                Err(blocked) => {
+                    let result = Err(ToolError::execution_failed(blocked));
+                    let _ = engine
+                        .tx_event
+                        .send(Event::ToolCallComplete {
+                            id: tool_id.clone(),
+                            name: tool_name.clone(),
+                            result: result.clone(),
+                        })
+                        .await;
+                    engine.fire_tool_call_after(app_mode, &tool_name, &tool_input, &result);
+                    outcomes[plan.index] = Some(ToolExecOutcome {
+                        index: plan.index,
+                        id: tool_id,
+                        name: tool_name,
+                        input: tool_input,
+                        started_at,
+                        result,
+                    });
+                    continue;
+                }
+                Ok(Some(updated)) => tool_input = updated,
+                Ok(None) => {}
+            }
             let mut result = if let Some(result_override) = result_override {
                 result_override
             } else {
@@ -425,6 +490,8 @@ pub(super) async fn execute_tool_plans(
                 )
                 .await
             };
+
+            engine.fire_tool_call_after(app_mode, &tool_name, &tool_input, &result);
 
             // #500: spill outsized tool outputs to disk before the
             // result fans out to the model context and the UI cell.

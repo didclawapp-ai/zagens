@@ -13,10 +13,12 @@ pub use zagens_secrets::Secrets;
 #[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 
+mod hooks_config;
 mod lht_config;
 mod lht_presets;
 mod paths;
 mod ui_settings;
+pub use hooks_config::{HookConditionToml, HookEventToml, HookToml, HooksConfigToml};
 pub use lht_config::{
     CompletionGateConfigToml, CompletionGateDeliverableToml, CompletionGateVerifyToml,
     LongHorizonConfigToml, MacroLoopConfigToml, normalize_gate_mode, normalize_lht_mode,
@@ -300,6 +302,9 @@ pub struct ConfigToml {
     /// Long-horizon code task harness (`[long_horizon]`).
     #[serde(default)]
     pub long_horizon: Option<LongHorizonConfigToml>,
+    /// Lifecycle shell hooks (`[hooks]` / `[[hooks.hooks]]`).
+    #[serde(default)]
+    pub hooks: Option<HooksConfigToml>,
     #[serde(flatten)]
     pub extras: BTreeMap<String, toml::Value>,
 }

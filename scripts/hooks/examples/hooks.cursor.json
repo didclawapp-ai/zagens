@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      { "command": "scripts/hooks/echo_context.sh", "name": "smoke-session-start" }
+    ],
+    "beforeShellExecution": [
+      {
+        "command": "scripts/hooks/deny_tool.sh",
+        "matcher": "curl",
+        "failClosed": false,
+        "name": "smoke-shell-gate"
+      }
+    ],
+    "subagentStart": [
+      {
+        "command": "scripts/hooks/subagent_echo.sh",
+        "matcher": "explore|generalPurpose",
+        "name": "smoke-subagent-start"
+      }
+    ]
+  }
+}

@@ -195,6 +195,7 @@ impl TurnLoopHost for Engine {
             .send(Event::status("Auto-compacting context...".to_string()))
             .await;
         let auto_messages_before = self.session.messages.len();
+        self.fire_pre_compact(self.runtime_ext().turn_app_mode, false);
         match compact_messages_safe(
             client,
             &self.session.messages,
@@ -231,6 +232,12 @@ impl TurnLoopHost for Engine {
                         Some(auto_messages_after),
                     )
                     .await;
+                    self.fire_post_compact(
+                        self.runtime_ext().turn_app_mode,
+                        false,
+                        auto_messages_before,
+                        auto_messages_after,
+                    );
                     let _ = self.tx_event.send(Event::status(status)).await;
                 } else {
                     let message = "Auto-compaction skipped: empty result".to_string();

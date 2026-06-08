@@ -43,6 +43,7 @@ impl Engine {
             .pinned_message_indices(&self.session.messages, &self.session.workspace);
         let compaction_paths = self.session.working_set.top_paths(24);
         let messages_before = self.session.messages.len();
+        self.fire_pre_compact(self.runtime_ext().turn_app_mode, true);
         let mut turn_status = TurnOutcomeStatus::Completed;
         let mut turn_error = None;
 
@@ -81,6 +82,12 @@ impl Engine {
                         Some(messages_after),
                     )
                     .await;
+                    self.fire_post_compact(
+                        self.runtime_ext().turn_app_mode,
+                        true,
+                        messages_before,
+                        messages_after,
+                    );
                 } else {
                     let message = "Compaction skipped: produced empty result".to_string();
                     self.emit_compaction_failed(id, false, message.clone())

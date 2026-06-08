@@ -508,9 +508,24 @@ default_text_model = "deepseek-ai/deepseek-v4-pro"
 # Hooks run shell commands on lifecycle events (session start/end, tool calls, etc.).
 # Configure as `[[hooks.hooks]]` under a `[hooks]` table.
 #
-# Available events: session_start, session_end, message_submit,
-# tool_call_before, tool_call_after, mode_change, on_error, shell_env.
+# Protocol (P1):
+# - Each sync hook receives JSON on stdin: `{"event":"…","context":{…}}`
+# - Blocking events (`message_submit`, `tool_call_before`): exit code 2 or stdout
+#   `{"decision":"deny","reason":"…"}` / `{"allow":false}` stops the action
+# - Env vars (`DEEPSEEK_*`) are still set for shell scripts
 #
+# Project-local hooks (appended after global hooks):
+#   {workspace}/.zagens/hooks.toml
+#   {workspace}/.zagens/hooks.json
+#   {workspace}/.cursor/hooks.json   (Cursor-compatible format)
+# Event aliases (Cursor-compatible): `beforeShell`, `afterShell`, `beforeFileEdit`,
+# `preCompact`, `postCompact`, `subagentStart`, `subagentStop`, `stop`, etc.
+#
+# Available events: session_start, session_end, message_submit,
+# tool_call_before, tool_call_after, mode_change, on_error, shell_env,
+# pre_compact, post_compact, subagent_start, subagent_end.
+#
+# Optional audit log: `audit_jsonl = "/path/to/hooks-audit.jsonl"` under `[hooks]`.
 # `shell_env` (#456) is special: the hook runs immediately before each
 # `exec_shell` invocation and its stdout is parsed as `KEY=VALUE\n` lines.
 # Those vars are merged into the spawned process environment (later hooks
@@ -536,6 +551,7 @@ default_text_model = "deepseek-ai/deepseek-v4-pro"
 # command = "aws-vault export my-profile --format=env"
 # # Optionally limit to specific tool names / categories:
 # # condition = { type = "tool_category", category = "shell" }
+# # condition = { type = "tool_name_regex", pattern = "exec_.*" }
 
 # ─────────────────────────────────────────────────────────────────────────────────
 # Runtime API (embedded sidecar HTTP/SSE — Zagens desktop)

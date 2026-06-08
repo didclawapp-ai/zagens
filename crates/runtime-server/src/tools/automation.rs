@@ -37,7 +37,7 @@ impl ToolSpec for AutomationCreateTool {
     }
 
     fn description(&self) -> &'static str {
-        "Create a durable scheduled automation. Creation requires approval and recurrence is constrained to supported HOURLY/WEEKLY RRULE forms. Runs enqueue normal durable tasks."
+        "Create a durable scheduled automation. Creation requires approval and recurrence is constrained to supported MINUTELY/HOURLY/DAILY/WEEKLY/MONTHLY/ONCE RRULE forms. Runs enqueue normal durable tasks."
     }
 
     fn input_schema(&self) -> Value {
@@ -48,9 +48,20 @@ impl ToolSpec for AutomationCreateTool {
                 "prompt": { "type": "string" },
                 "rrule": {
                     "type": "string",
-                    "description": "Supported: FREQ=HOURLY;INTERVAL=N[;BYDAY=MO,TU] or FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=30"
+                    "description": "Supported: FREQ=MINUTELY;INTERVAL=N[;BYDAY=MO,TU] | FREQ=HOURLY;INTERVAL=N[;BYDAY=MO,TU] | FREQ=DAILY;BYHOUR=9;BYMINUTE=30[;INTERVAL=N] | FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=30 | FREQ=MONTHLY;BYMONTHDAY=1;BYHOUR=9;BYMINUTE=30[;INTERVAL=N] | FREQ=ONCE;DTSTART=2026-06-10T09:00:00"
                 },
                 "cwds": { "type": "array", "items": { "type": "string" } },
+                "trigger_kind": {
+                    "type": "string",
+                    "enum": ["prompt", "task"],
+                    "default": "prompt",
+                    "description": "prompt = conservative task defaults; task = use model/mode/shell/trust fields"
+                },
+                "model": { "type": "string" },
+                "mode": { "type": "string", "enum": ["agent", "plan", "yolo"] },
+                "allow_shell": { "type": "boolean" },
+                "trust_mode": { "type": "boolean" },
+                "auto_approve": { "type": "boolean" },
                 "paused": { "type": "boolean", "default": false }
             },
             "required": ["name", "prompt", "rrule"],
@@ -73,6 +84,12 @@ impl ToolSpec for AutomationCreateTool {
             "prompt": required_str(&input, "prompt")?,
             "rrule": required_str(&input, "rrule")?,
             "cwds": string_array(&input, "cwds")?.into_iter().map(PathBuf::from).collect::<Vec<_>>(),
+            "trigger_kind": optional_str(&input, "trigger_kind").unwrap_or("prompt"),
+            "model": optional_str(&input, "model").map(ToString::to_string),
+            "mode": optional_str(&input, "mode").map(ToString::to_string),
+            "allow_shell": input.get("allow_shell").and_then(Value::as_bool),
+            "trust_mode": input.get("trust_mode").and_then(Value::as_bool),
+            "auto_approve": input.get("auto_approve").and_then(Value::as_bool),
             "status": if input.get("paused").and_then(Value::as_bool).unwrap_or(false) {
                 AutomationStatus::Paused
             } else {
@@ -181,6 +198,12 @@ impl ToolSpec for AutomationUpdateTool {
                 "prompt": { "type": "string" },
                 "rrule": { "type": "string" },
                 "cwds": { "type": "array", "items": { "type": "string" } },
+                "trigger_kind": { "type": "string", "enum": ["prompt", "task"] },
+                "model": { "type": "string" },
+                "mode": { "type": "string", "enum": ["agent", "plan", "yolo"] },
+                "allow_shell": { "type": "boolean" },
+                "trust_mode": { "type": "boolean" },
+                "auto_approve": { "type": "boolean" },
                 "status": { "type": "string", "enum": ["active", "paused"] }
             },
             "required": ["automation_id"],
@@ -211,6 +234,15 @@ impl ToolSpec for AutomationUpdateTool {
             } else {
                 None::<Vec<PathBuf>>
             },
+            "trigger_kind": optional_str(&input, "trigger_kind").map(|value| match value {
+                "task" => "task",
+                _ => "prompt",
+            }),
+            "model": optional_str(&input, "model").map(ToString::to_string),
+            "mode": optional_str(&input, "mode").map(ToString::to_string),
+            "allow_shell": input.get("allow_shell").and_then(Value::as_bool),
+            "trust_mode": input.get("trust_mode").and_then(Value::as_bool),
+            "auto_approve": input.get("auto_approve").and_then(Value::as_bool),
             "status": status,
         });
         let automation = host

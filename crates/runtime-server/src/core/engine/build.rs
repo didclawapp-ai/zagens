@@ -12,6 +12,7 @@ use crate::prompts;
 use crate::sandbox::TuiSandboxHost;
 use crate::seam_manager::{SeamConfig, SeamManager};
 use crate::tools::approval_cache::ApprovalCache;
+use crate::tools::host_impl::HookShellEnvHost;
 use crate::tools::large_output_router::TuiWorkshopHost;
 use crate::tools::shell::{TuiShellHost, new_shared_shell_manager};
 use crate::tools::subagent::{new_shared_subagent_manager, spawn_subagent_maintenance_task};
@@ -23,7 +24,9 @@ use super::runtime_ext::EngineRuntimeExt;
 use super::types::EngineConfig;
 use crate::core::capacity::CapacityController;
 use crate::core::session::Session;
+use crate::hooks::HookExecutor;
 use crate::long_horizon::LongHorizonSessionState;
+use zagens_runtime_adapters::tools::ToolShellEnvHost;
 
 fn env_only_api_key_recovery_hint(api_config: &Config) -> Option<String> {
     if !crate::config::active_provider_uses_env_only_api_key(api_config) {
@@ -52,7 +55,7 @@ fn env_only_api_key_recovery_hint(api_config: &Config) -> Option<String> {
 
 /// Build a core [`Engine`] plus handle from tui configuration.
 pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, EngineHandle) {
-    let config_ext = config.ext();
+    let mut config_ext = config.ext();
     let lean = config.lean();
 
     let (deepseek_client, deepseek_client_error) =
@@ -173,6 +176,17 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
     let (tx_subagent_completion, rx_subagent_completion) = mpsc::unbounded_channel();
     let rx_subagent_completion = Arc::new(AsyncMutex::new(rx_subagent_completion));
 
+    let hook_executor = Arc::new(HookExecutor::with_session(
+        crate::hooks_load::merge_hooks_configs(
+            api_config.hooks_config(),
+            crate::hooks_load::load_workspace_hooks(&lean.workspace),
+        ),
+        lean.workspace.clone(),
+        session.id.clone(),
+    ));
+    config_ext.runtime_services.shell_env =
+        Some(Arc::new(HookShellEnvHost(Arc::clone(&hook_executor))) as Arc<dyn ToolShellEnvHost>);
+
     let runtime_ext = EngineRuntimeExt {
         config_ext,
         long_horizon_state: LongHorizonSessionState::default(),
@@ -187,6 +201,8 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
         tx_subagent_completion,
         rx_subagent_completion: rx_subagent_completion.clone(),
         sandbox_init_warning,
+        hook_executor,
+        session_hooks_started: false,
     };
 
     let hosts = EngineHostBundle {

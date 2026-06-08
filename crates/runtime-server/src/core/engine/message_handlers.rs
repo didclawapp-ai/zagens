@@ -49,6 +49,27 @@ impl Engine {
             .on_new_user_message();
         self.sync_scratchpad_run_id_from_wire();
 
+        self.maybe_fire_session_start(mode);
+        if let Err(blocked) = self.fire_message_submit(mode, &content) {
+            let _ = self
+                .tx_event
+                .send(Event::error(ErrorEnvelope::fatal(blocked.clone())))
+                .await;
+            let _ = self
+                .tx_event
+                .send(Event::TurnComplete {
+                    usage: turn.usage.clone(),
+                    last_request_input_tokens: self.session.last_api_input_tokens,
+                    status: TurnOutcomeStatus::Failed,
+                    error: Some(blocked.clone()),
+                    step_count: 0,
+                    tool_names: vec![],
+                    end_reason: Some(blocked),
+                })
+                .await;
+            return;
+        }
+
         // Snapshot the workspace BEFORE we touch a single tool. Run the git
         // work on the blocking pool so the async runtime stays responsive;
         // failure is non-fatal (the helper logs at WARN).
@@ -83,6 +104,7 @@ impl Engine {
                 .as_deref()
                 .map(|err| format!("Failed to send message: {err}"))
                 .unwrap_or_else(|| "Failed to send message: API client not configured".to_string());
+            self.fire_on_error(mode, &message);
             let _ = self
                 .tx_event
                 .send(Event::error(ErrorEnvelope::fatal_auth(message.clone())))
@@ -232,7 +254,8 @@ impl Engine {
                         .with_step_timeout(self.config.subagent_step_timeout)
                         .with_parent_completion_tx(
                             self.runtime_ext().tx_subagent_completion.clone(),
-                        );
+                        )
+                        .with_hook_executor(Arc::clone(&self.runtime_ext().hook_executor));
                         if let Some((mailbox, cancel_token)) = mailbox_for_runtime.as_ref() {
                             rt = rt
                                 .with_mailbox(mailbox.clone())
@@ -327,6 +350,11 @@ impl Engine {
         tool_names.dedup();
         let summary = TurnSummary::new(turn.step, tool_names.clone(), end_reason.clone());
         summary.log_turn_complete(&turn.id, status, None);
+        if matches!(status, TurnOutcomeStatus::Failed)
+            && let Some(ref err) = error
+        {
+            self.fire_on_error(mode, err);
+        }
         let _ = self
             .tx_event
             .send(Event::TurnComplete {

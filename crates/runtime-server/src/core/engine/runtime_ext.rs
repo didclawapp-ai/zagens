@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use tokio::sync::{Mutex as AsyncMutex, mpsc};
 
+use crate::hooks::HookExecutor;
 use crate::lsp::LspManager;
 use crate::mcp::McpPool;
 use crate::tools::approval_cache::ApprovalCache;
@@ -34,4 +35,8 @@ pub struct EngineRuntimeExt {
     pub rx_subagent_completion: Arc<AsyncMutex<mpsc::UnboundedReceiver<SubAgentCompletion>>>,
     /// Emitted once via `Event::status` when the engine first handles user traffic.
     pub sandbox_init_warning: Option<String>,
+    /// Config-driven lifecycle hooks (`[[hooks.hooks]]` in config.toml).
+    pub hook_executor: Arc<HookExecutor>,
+    /// Whether `SessionStart` has already fired for this engine instance.
+    pub session_hooks_started: bool,
 }

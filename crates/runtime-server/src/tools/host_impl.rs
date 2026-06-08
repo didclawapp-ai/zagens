@@ -9,7 +9,7 @@ use serde_json::Value;
 use zagens_runtime_adapters::tools::{ToolAutomationHost, ToolShellEnvHost, ToolTaskHost};
 
 use crate::automation_manager::SharedAutomationManager;
-use crate::hooks::{HookContext, HookExecutor};
+use crate::hooks::HookExecutor;
 use crate::task_manager::{NewTaskRequest, SharedTaskManager, TaskRecord};
 
 /// Bridges `HookExecutor` to the adapter `ToolShellEnvHost` port.
@@ -17,7 +17,9 @@ pub struct HookShellEnvHost(pub Arc<HookExecutor>);
 
 impl ToolShellEnvHost for HookShellEnvHost {
     fn collect_shell_env(&self, tool_name: &str, tool_args: &Value) -> HashMap<String, String> {
-        let hook_ctx = HookContext::new()
+        let hook_ctx = self
+            .0
+            .base_context()
             .with_tool_name(tool_name)
             .with_tool_args(tool_args);
         self.0.collect_shell_env(&hook_ctx)

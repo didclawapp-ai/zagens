@@ -12,6 +12,8 @@ import ChecklistPanel from './ChecklistPanel';
 import MermaidPanel from './MermaidPanel';
 import SettingsPanel from './SettingsPanel';
 import LhtSettingsPanel from './LhtSettingsPanel';
+import HooksPanel from './HooksPanel';
+import ScheduledAutomationsPanel from './ScheduledAutomationsPanel';
 import IndexPanel from './IndexPanel';
 import TerminalPanel from './terminal/TerminalPanel';
 import DiffPanel from './diff/DiffPanel';
@@ -41,6 +43,8 @@ export type RightPanelView =
   | 'settings'
   | 'system'
   | 'lht-settings'
+  | 'hooks'
+  | 'schedule'
   | 'mcp'
   | 'usage'
   | 'tasks'
@@ -135,6 +139,10 @@ interface Props {
   onSystemSettingsSaved?: (settings: import('../api/client').SystemSettings) => void;
   /** Parent bump refreshes workspace file list (e.g. after write_office). */
   filesRefreshNonce?: number;
+  /** Open tasks panel; optional task id to highlight. */
+  onOpenTasks?: (taskId?: string) => void;
+  /** Highlight a task row in the tasks panel. */
+  highlightTaskId?: string | null;
 }
 
 const PANEL_TITLE_KEYS: Record<RightPanelView, TranslationKey> = {
@@ -143,6 +151,8 @@ const PANEL_TITLE_KEYS: Record<RightPanelView, TranslationKey> = {
   settings: 'panels.settings',
   system: 'panels.system',
   'lht-settings': 'panels.lhtSettings',
+  hooks: 'panels.hooks',
+  schedule: 'panels.schedule',
   mcp: 'panels.mcp',
   usage: 'panels.usage',
   tasks: 'panels.tasks',
@@ -208,6 +218,8 @@ export default function RightPanel({
   officeSession = false,
   onSystemSettingsSaved,
   filesRefreshNonce: filesRefreshNonceProp = 0,
+  onOpenTasks,
+  highlightTaskId = null,
   subagentActiveCount = 0,
   narrativeSpawnSuspected = false,
 }: Props) {
@@ -866,6 +878,7 @@ export default function RightPanel({
             runtimeConn={runtimeConn}
             streaming={streaming}
             runtimeSessionEstablished={runtimeSessionEstablished}
+            highlightTaskId={highlightTaskId}
           />
         )}
 
@@ -958,6 +971,19 @@ export default function RightPanel({
 
         {view === 'lht-settings' && (
           <LhtSettingsPanel desktopHost={desktopHost} streaming={streaming} />
+        )}
+
+        {view === 'hooks' && (
+          <HooksPanel desktopHost={desktopHost} streaming={streaming} />
+        )}
+
+        {view === 'schedule' && (
+          <ScheduledAutomationsPanel
+            runtimeConn={runtimeConn}
+            streaming={streaming}
+            runtimeSessionEstablished={runtimeSessionEstablished}
+            onOpenTasks={onOpenTasks}
+          />
         )}
 
         {view === 'about' && <AboutPanel />}

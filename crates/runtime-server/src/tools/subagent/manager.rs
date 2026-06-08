@@ -355,6 +355,17 @@ impl SubAgentManager {
             .clone()
             .filter(|s| !s.trim().is_empty());
 
+        if let Some(executor) = runtime.hook_executor.as_ref() {
+            executor
+                .fire_subagent_start(
+                    &executor.base_context(),
+                    &agent_id,
+                    agent_type.as_str(),
+                    &prompt,
+                )
+                .map_err(|err| anyhow!(err))?;
+        }
+
         if let Some(event_tx) = runtime.event_tx.clone() {
             let _ = event_tx.try_send(Event::AgentSpawned {
                 id: agent_id.clone(),

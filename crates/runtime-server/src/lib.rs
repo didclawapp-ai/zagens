@@ -29,6 +29,7 @@ mod error_taxonomy;
 mod execpolicy;
 mod features;
 mod hooks;
+mod hooks_load;
 mod llm_client;
 mod localization;
 mod logging;

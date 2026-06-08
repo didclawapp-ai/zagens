@@ -15,9 +15,12 @@ import type {
   TaskSummary,
   TasksResponse,
   AutomationRecord,
+  AutomationRunRecord,
   TaskRecord,
   SkillsApiResponse,
   CreateTaskRequest,
+  CreateAutomationRequest,
+  UpdateAutomationRequest,
   CreateSkillRequest,
   ImportSkillLocalRequest,
   InstallSkillRemoteRequest,
@@ -1007,6 +1010,65 @@ export async function fetchAutomations(): Promise<AutomationRecord[]> {
   return fetchJson<AutomationRecord[]>('/v1/automations');
 }
 
+export async function createAutomation(body: CreateAutomationRequest): Promise<AutomationRecord> {
+  return postJson<AutomationRecord>('/v1/automations', body);
+}
+
+export async function updateAutomation(
+  id: string,
+  body: UpdateAutomationRequest,
+): Promise<AutomationRecord> {
+  const res = await fetchResponseWithBackoff(
+    () =>
+      runtimeRequest(`/v1/automations/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      }),
+    `PATCH /v1/automations/${id}`,
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`HTTP ${res.status}: ${text}`);
+  }
+  return res.json() as Promise<AutomationRecord>;
+}
+
+export async function deleteAutomation(id: string): Promise<AutomationRecord> {
+  const res = await fetchResponseWithBackoff(
+    () =>
+      runtimeRequest(`/v1/automations/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      }),
+    `DELETE /v1/automations/${id}`,
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`HTTP ${res.status}: ${text}`);
+  }
+  return res.json() as Promise<AutomationRecord>;
+}
+
+export async function runAutomation(id: string): Promise<AutomationRunRecord> {
+  return postJson<AutomationRunRecord>(`/v1/automations/${encodeURIComponent(id)}/run`, {});
+}
+
+export async function pauseAutomation(id: string): Promise<AutomationRecord> {
+  return postJson<AutomationRecord>(`/v1/automations/${encodeURIComponent(id)}/pause`, {});
+}
+
+export async function resumeAutomation(id: string): Promise<AutomationRecord> {
+  return postJson<AutomationRecord>(`/v1/automations/${encodeURIComponent(id)}/resume`, {});
+}
+
+export async function fetchAutomationRuns(
+  id: string,
+  limit = 20,
+): Promise<AutomationRunRecord[]> {
+  return fetchJson<AutomationRunRecord[]>(
+    `/v1/automations/${encodeURIComponent(id)}/runs?limit=${limit}`,
+  );
+}
+
 export async function fetchSkills(): Promise<SkillsApiResponse> {
   return fetchJson<SkillsApiResponse>('/v1/skills');
 }
@@ -1684,6 +1746,39 @@ export async function fetchLhtSettings(): Promise<LhtSettings> {
 export async function saveLhtSettings(settings: LhtSettings): Promise<void> {
   const { invoke } = await import('@tauri-apps/api/core');
   await invoke('save_lht_settings', { settings });
+}
+
+export interface HookConditionSettings {
+  type: string;
+  value?: string | null;
+  conditions?: HookConditionSettings[] | null;
+}
+
+export interface HookEntrySettings {
+  event: string;
+  command: string;
+  name?: string | null;
+  timeout_secs: number;
+  background: boolean;
+  continue_on_error: boolean;
+  condition?: HookConditionSettings | null;
+}
+
+export interface HooksSettings {
+  enabled: boolean;
+  default_timeout_secs: number | null;
+  working_dir: string | null;
+  hooks: HookEntrySettings[];
+}
+
+export async function fetchHooksSettings(): Promise<HooksSettings> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  return invoke<HooksSettings>('get_hooks_settings');
+}
+
+export async function saveHooksSettings(settings: HooksSettings): Promise<void> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  await invoke('save_hooks_settings', { settings });
 }
 
 export type LhtPresetId = 'code-default' | 'long-refactor' | 'long-fix' | 'craft-audit';

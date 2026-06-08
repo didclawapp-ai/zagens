@@ -20,7 +20,7 @@ use uuid::Uuid;
 use crate::task_manager::{NewTaskRequest, SharedTaskManager, TaskStatus};
 use crate::utils::spawn_supervised;
 
-const CURRENT_AUTOMATION_SCHEMA_VERSION: u32 = 1;
+const CURRENT_AUTOMATION_SCHEMA_VERSION: u32 = 2;
 const CURRENT_RUN_SCHEMA_VERSION: u32 = 1;
 
 const fn default_automation_schema_version() -> u32 {
@@ -48,6 +48,16 @@ pub enum AutomationRunStatus {
     Canceled,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AutomationTriggerKind {
+    /// Enqueue a background task with conservative defaults (agent, no shell).
+    #[default]
+    Prompt,
+    /// Enqueue a background task using stored model/mode/workspace/shell/trust flags.
+    Task,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AutomationRecord {
     #[serde(default = "default_automation_schema_version")]
@@ -58,6 +68,18 @@ pub struct AutomationRecord {
     pub rrule: String,
     #[serde(default)]
     pub cwds: Vec<PathBuf>,
+    #[serde(default)]
+    pub trigger_kind: AutomationTriggerKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allow_shell: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trust_mode: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_approve: Option<bool>,
     pub status: AutomationStatus,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -98,6 +120,18 @@ pub struct CreateAutomationRequest {
     #[serde(default)]
     pub cwds: Vec<PathBuf>,
     #[serde(default)]
+    pub trigger_kind: AutomationTriggerKind,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub mode: Option<String>,
+    #[serde(default)]
+    pub allow_shell: Option<bool>,
+    #[serde(default)]
+    pub trust_mode: Option<bool>,
+    #[serde(default)]
+    pub auto_approve: Option<bool>,
+    #[serde(default)]
     pub status: Option<AutomationStatus>,
 }
 
@@ -107,25 +141,53 @@ pub struct UpdateAutomationRequest {
     pub prompt: Option<String>,
     pub rrule: Option<String>,
     pub cwds: Option<Vec<PathBuf>>,
+    pub trigger_kind: Option<AutomationTriggerKind>,
+    pub model: Option<String>,
+    pub mode: Option<String>,
+    pub allow_shell: Option<bool>,
+    pub trust_mode: Option<bool>,
+    pub auto_approve: Option<bool>,
     pub status: Option<AutomationStatus>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AutomationFrequency {
+    Minutely,
     Hourly,
+    Daily,
     Weekly,
+    Monthly,
+    Once,
 }
 
 #[derive(Debug, Clone)]
 pub enum AutomationSchedule {
+    Minutely {
+        interval_minutes: u32,
+        byday: Option<Vec<Weekday>>,
+    },
     Hourly {
         interval_hours: u32,
         byday: Option<Vec<Weekday>>,
+    },
+    Daily {
+        interval_days: u32,
+        byhour: u32,
+        byminute: u32,
     },
     Weekly {
         byday: Vec<Weekday>,
         byhour: u32,
         byminute: u32,
+    },
+    Monthly {
+        interval_months: u32,
+        bymonthday: u32,
+        byhour: u32,
+        byminute: u32,
+    },
+    Once {
+        at: DateTime<Utc>,
     },
 }
 
@@ -144,13 +206,42 @@ impl AutomationSchedule {
         }
 
         let freq = match parts.get("FREQ").map(String::as_str) {
+            Some("MINUTELY") => AutomationFrequency::Minutely,
             Some("HOURLY") => AutomationFrequency::Hourly,
+            Some("DAILY") => AutomationFrequency::Daily,
             Some("WEEKLY") => AutomationFrequency::Weekly,
-            Some(other) => bail!("Unsupported RRULE FREQ '{other}'. Supported: HOURLY and WEEKLY"),
+            Some("MONTHLY") => AutomationFrequency::Monthly,
+            Some("ONCE") => AutomationFrequency::Once,
+            Some(other) => bail!(
+                "Unsupported RRULE FREQ '{other}'. Supported: MINUTELY, HOURLY, DAILY, WEEKLY, MONTHLY, ONCE"
+            ),
             None => bail!("RRULE must include FREQ"),
         };
 
         match freq {
+            AutomationFrequency::Minutely => {
+                for key in parts.keys() {
+                    if key != "FREQ" && key != "INTERVAL" && key != "BYDAY" {
+                        bail!(
+                            "Unsupported RRULE field '{key}' for MINUTELY. Allowed: FREQ,INTERVAL,BYDAY"
+                        );
+                    }
+                }
+                let interval_minutes = parts
+                    .get("INTERVAL")
+                    .map(|v| v.parse::<u32>())
+                    .transpose()
+                    .context("Failed to parse INTERVAL")?
+                    .unwrap_or(1);
+                if interval_minutes == 0 {
+                    bail!("INTERVAL must be >= 1 for MINUTELY schedules");
+                }
+                let byday = parts.get("BYDAY").map(|v| parse_byday(v)).transpose()?;
+                Ok(Self::Minutely {
+                    interval_minutes,
+                    byday,
+                })
+            }
             AutomationFrequency::Hourly => {
                 for key in parts.keys() {
                     if key != "FREQ" && key != "INTERVAL" && key != "BYDAY" {
@@ -175,6 +266,40 @@ impl AutomationSchedule {
                 Ok(Self::Hourly {
                     interval_hours,
                     byday,
+                })
+            }
+            AutomationFrequency::Daily => {
+                for key in parts.keys() {
+                    if key != "FREQ" && key != "INTERVAL" && key != "BYHOUR" && key != "BYMINUTE" {
+                        bail!(
+                            "Unsupported RRULE field '{key}' for DAILY. Allowed: FREQ,INTERVAL,BYHOUR,BYMINUTE"
+                        );
+                    }
+                }
+                let interval_days = parts
+                    .get("INTERVAL")
+                    .map(|v| v.parse::<u32>())
+                    .transpose()
+                    .context("Failed to parse INTERVAL")?
+                    .unwrap_or(1);
+                if interval_days == 0 {
+                    bail!("INTERVAL must be >= 1 for DAILY schedules");
+                }
+                let byhour = parts
+                    .get("BYHOUR")
+                    .ok_or_else(|| anyhow::anyhow!("DAILY schedules require BYHOUR"))?
+                    .parse::<u32>()
+                    .context("Failed to parse BYHOUR")?;
+                let byminute = parts
+                    .get("BYMINUTE")
+                    .ok_or_else(|| anyhow::anyhow!("DAILY schedules require BYMINUTE"))?
+                    .parse::<u32>()
+                    .context("Failed to parse BYMINUTE")?;
+                validate_hm(byhour, byminute)?;
+                Ok(Self::Daily {
+                    interval_days,
+                    byhour,
+                    byminute,
                 })
             }
             AutomationFrequency::Weekly => {
@@ -216,12 +341,105 @@ impl AutomationSchedule {
                     byminute,
                 })
             }
+            AutomationFrequency::Monthly => {
+                for key in parts.keys() {
+                    if key != "FREQ"
+                        && key != "INTERVAL"
+                        && key != "BYMONTHDAY"
+                        && key != "BYHOUR"
+                        && key != "BYMINUTE"
+                    {
+                        bail!(
+                            "Unsupported RRULE field '{key}' for MONTHLY. Allowed: FREQ,INTERVAL,BYMONTHDAY,BYHOUR,BYMINUTE"
+                        );
+                    }
+                }
+                let interval_months = parts
+                    .get("INTERVAL")
+                    .map(|v| v.parse::<u32>())
+                    .transpose()
+                    .context("Failed to parse INTERVAL")?
+                    .unwrap_or(1);
+                if interval_months == 0 {
+                    bail!("INTERVAL must be >= 1 for MONTHLY schedules");
+                }
+                let bymonthday = parts
+                    .get("BYMONTHDAY")
+                    .ok_or_else(|| anyhow::anyhow!("MONTHLY schedules require BYMONTHDAY"))?
+                    .parse::<u32>()
+                    .context("Failed to parse BYMONTHDAY")?;
+                if !(1..=31).contains(&bymonthday) {
+                    bail!("BYMONTHDAY must be between 1 and 31");
+                }
+                let byhour = parts
+                    .get("BYHOUR")
+                    .ok_or_else(|| anyhow::anyhow!("MONTHLY schedules require BYHOUR"))?
+                    .parse::<u32>()
+                    .context("Failed to parse BYHOUR")?;
+                let byminute = parts
+                    .get("BYMINUTE")
+                    .ok_or_else(|| anyhow::anyhow!("MONTHLY schedules require BYMINUTE"))?
+                    .parse::<u32>()
+                    .context("Failed to parse BYMINUTE")?;
+                validate_hm(byhour, byminute)?;
+                Ok(Self::Monthly {
+                    interval_months,
+                    bymonthday,
+                    byhour,
+                    byminute,
+                })
+            }
+            AutomationFrequency::Once => {
+                for key in parts.keys() {
+                    if key != "FREQ" && key != "DTSTART" {
+                        bail!("Unsupported RRULE field '{key}' for ONCE. Allowed: FREQ,DTSTART");
+                    }
+                }
+                let dtstart = parts
+                    .get("DTSTART")
+                    .ok_or_else(|| anyhow::anyhow!("ONCE schedules require DTSTART"))?;
+                let at = parse_dtstart(dtstart)?;
+                Ok(Self::Once { at })
+            }
         }
+    }
+
+    /// Returns the next fire time after `after`, or `None` when the schedule is exhausted (ONCE).
+    pub fn next_after_opt(&self, after: DateTime<Utc>) -> Result<Option<DateTime<Utc>>> {
+        match self.next_after(after) {
+            Ok(dt) => Ok(Some(dt)),
+            Err(err) if err.to_string().contains("ONCE schedule exhausted") => Ok(None),
+            Err(err) => Err(err),
+        }
+    }
+
+    pub fn is_once(&self) -> bool {
+        matches!(self, Self::Once { .. })
     }
 
     pub fn next_after(&self, after: DateTime<Utc>) -> Result<DateTime<Utc>> {
         let local_after = after.with_timezone(&Local);
         match self {
+            Self::Minutely {
+                interval_minutes,
+                byday,
+            } => {
+                let mut candidate = local_after + Duration::minutes(i64::from(*interval_minutes))
+                    - Duration::seconds(i64::from(local_after.second()))
+                    - Duration::nanoseconds(i64::from(local_after.nanosecond()));
+
+                if let Some(days) = byday {
+                    for _ in 0..(24 * 60 * 14) {
+                        if days.contains(&candidate.weekday()) {
+                            return Ok(candidate.with_timezone(&Utc));
+                        }
+                        candidate += Duration::minutes(i64::from(*interval_minutes));
+                    }
+                    bail!("Unable to compute next MINUTELY run for BYDAY filter");
+                }
+
+                Ok(candidate.with_timezone(&Utc))
+            }
             Self::Hourly {
                 interval_hours,
                 byday,
@@ -242,6 +460,11 @@ impl AutomationSchedule {
 
                 Ok(candidate.with_timezone(&Utc))
             }
+            Self::Daily {
+                interval_days,
+                byhour,
+                byminute,
+            } => next_daily(local_after, *interval_days, *byhour, *byminute),
             Self::Weekly {
                 byday,
                 byhour,
@@ -252,16 +475,32 @@ impl AutomationSchedule {
                     if !byday.contains(&date.weekday()) {
                         continue;
                     }
-                    let Some(candidate_naive) = date.and_hms_opt(*byhour, *byminute, 0) else {
-                        continue;
-                    };
-                    if let Some(candidate) = resolve_local_datetime(candidate_naive)
-                        && candidate > local_after
+                    if let Some(candidate) =
+                        local_datetime_on_date(date, *byhour, *byminute, &local_after)
                     {
                         return Ok(candidate.with_timezone(&Utc));
                     }
                 }
                 bail!("Unable to compute next WEEKLY run");
+            }
+            Self::Monthly {
+                interval_months,
+                bymonthday,
+                byhour,
+                byminute,
+            } => next_monthly(
+                local_after,
+                *interval_months,
+                *bymonthday,
+                *byhour,
+                *byminute,
+            ),
+            Self::Once { at } => {
+                if *at > after {
+                    Ok(*at)
+                } else {
+                    bail!("ONCE schedule exhausted");
+                }
             }
         }
     }
@@ -273,6 +512,143 @@ fn resolve_local_datetime(naive: chrono::NaiveDateTime) -> Option<DateTime<Local
         .single()
         .or_else(|| Local.from_local_datetime(&naive).earliest())
         .or_else(|| Local.from_local_datetime(&naive).latest())
+}
+
+fn validate_hm(byhour: u32, byminute: u32) -> Result<()> {
+    if byhour > 23 {
+        bail!("BYHOUR must be between 0 and 23");
+    }
+    if byminute > 59 {
+        bail!("BYMINUTE must be between 0 and 59");
+    }
+    Ok(())
+}
+
+fn parse_dtstart(value: &str) -> Result<DateTime<Utc>> {
+    if let Ok(dt) = DateTime::parse_from_rfc3339(value) {
+        return Ok(dt.with_timezone(&Utc));
+    }
+    if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S") {
+        let local = resolve_local_datetime(naive)
+            .with_context(|| format!("Ambiguous local DTSTART '{value}'"))?;
+        return Ok(local.with_timezone(&Utc));
+    }
+    if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(value, "%Y%m%dT%H%M%S") {
+        let local = resolve_local_datetime(naive)
+            .with_context(|| format!("Ambiguous local DTSTART '{value}'"))?;
+        return Ok(local.with_timezone(&Utc));
+    }
+    bail!("Failed to parse DTSTART '{value}'. Use ISO-8601, e.g. 2026-06-10T09:00:00")
+}
+
+fn local_datetime_on_date(
+    date: chrono::NaiveDate,
+    byhour: u32,
+    byminute: u32,
+    after: &DateTime<Local>,
+) -> Option<DateTime<Local>> {
+    let naive = date.and_hms_opt(byhour, byminute, 0)?;
+    let candidate = resolve_local_datetime(naive)?;
+    if candidate > *after {
+        Some(candidate)
+    } else {
+        None
+    }
+}
+
+fn next_daily(
+    local_after: DateTime<Local>,
+    interval_days: u32,
+    byhour: u32,
+    byminute: u32,
+) -> Result<DateTime<Utc>> {
+    let interval = i64::from(interval_days.max(1));
+    let mut date = local_after.date_naive();
+
+    if let Some(naive) = date.and_hms_opt(byhour, byminute, 0) {
+        if let Some(candidate) = resolve_local_datetime(naive) {
+            if candidate > local_after {
+                return Ok(candidate.with_timezone(&Utc));
+            }
+        }
+    }
+
+    date += Duration::days(interval);
+    for _ in 0..400 {
+        if let Some(naive) = date.and_hms_opt(byhour, byminute, 0) {
+            if let Some(candidate) = resolve_local_datetime(naive) {
+                return Ok(candidate.with_timezone(&Utc));
+            }
+        }
+        date += Duration::days(interval);
+    }
+    bail!("Unable to compute next DAILY run");
+}
+
+fn month_day_clamped(year: i32, month: u32, bymonthday: u32) -> chrono::NaiveDate {
+    let days_in = chrono::NaiveDate::from_ymd_opt(year, month, 1)
+        .map(|d| {
+            if month == 12 {
+                chrono::NaiveDate::from_ymd_opt(year + 1, 1, 1)
+            } else {
+                chrono::NaiveDate::from_ymd_opt(year, month + 1, 1)
+            }
+            .map(|next| (next - d).num_days() as u32)
+            .unwrap_or(28)
+        })
+        .unwrap_or(28);
+    let day = bymonthday.min(days_in);
+    chrono::NaiveDate::from_ymd_opt(year, month, day).expect("valid month day")
+}
+
+fn advance_month(year: i32, month: u32, interval_months: u32) -> (i32, u32) {
+    let total = i64::from(month - 1) + i64::from(interval_months.max(1));
+    let new_year = year + (total / 12) as i32;
+    let new_month = (total % 12 + 1) as u32;
+    (new_year, new_month)
+}
+
+fn next_monthly(
+    local_after: DateTime<Local>,
+    interval_months: u32,
+    bymonthday: u32,
+    byhour: u32,
+    byminute: u32,
+) -> Result<DateTime<Utc>> {
+    let interval = interval_months.max(1);
+    let mut year = local_after.year();
+    let mut month = local_after.month();
+
+    for _ in 0..240 {
+        let date = month_day_clamped(year, month, bymonthday);
+        if let Some(candidate) = local_datetime_on_date(date, byhour, byminute, &local_after) {
+            return Ok(candidate.with_timezone(&Utc));
+        }
+        (year, month) = advance_month(year, month, interval);
+    }
+    bail!("Unable to compute next MONTHLY run");
+}
+
+fn active_next_run_at(
+    schedule: &AutomationSchedule,
+    now: DateTime<Utc>,
+) -> Result<Option<DateTime<Utc>>> {
+    schedule.next_after_opt(now)
+}
+
+fn apply_next_run_after_fire(
+    automation: &mut AutomationRecord,
+    schedule: &AutomationSchedule,
+    due_at: DateTime<Utc>,
+) -> Result<()> {
+    match schedule.next_after_opt(due_at)? {
+        Some(next) => automation.next_run_at = Some(next),
+        None => {
+            automation.next_run_at = None;
+            automation.status = AutomationStatus::Paused;
+        }
+    }
+    Ok(())
 }
 
 fn parse_byday(value: &str) -> Result<Vec<Weekday>> {
@@ -338,7 +714,11 @@ impl AutomationManager {
         let now = Utc::now();
         let status = req.status.unwrap_or(AutomationStatus::Active);
         let next_run_at = if matches!(status, AutomationStatus::Active) {
-            Some(schedule.next_after(now)?)
+            let next = active_next_run_at(&schedule, now)?;
+            if next.is_none() {
+                bail!("ONCE schedule DTSTART must be in the future");
+            }
+            next
         } else {
             None
         };
@@ -350,6 +730,12 @@ impl AutomationManager {
             prompt: req.prompt.trim().to_string(),
             rrule: req.rrule.trim().to_ascii_uppercase(),
             cwds: req.cwds,
+            trigger_kind: req.trigger_kind,
+            model: normalize_optional_string(req.model),
+            mode: normalize_optional_string(req.mode),
+            allow_shell: req.allow_shell,
+            trust_mode: req.trust_mode,
+            auto_approve: req.auto_approve,
             status,
             created_at: now,
             updated_at: now,
@@ -433,11 +819,32 @@ impl AutomationManager {
             existing.rrule = normalized;
             if matches!(existing.status, AutomationStatus::Active) {
                 let schedule = AutomationSchedule::parse_rrule(&existing.rrule)?;
-                existing.next_run_at = Some(schedule.next_after(Utc::now())?);
+                existing.next_run_at = active_next_run_at(&schedule, Utc::now())?;
+                if existing.next_run_at.is_none() {
+                    existing.status = AutomationStatus::Paused;
+                }
             }
         }
         if let Some(cwds) = req.cwds {
             existing.cwds = cwds;
+        }
+        if let Some(trigger_kind) = req.trigger_kind {
+            existing.trigger_kind = trigger_kind;
+        }
+        if req.model.is_some() {
+            existing.model = normalize_optional_string(req.model);
+        }
+        if req.mode.is_some() {
+            existing.mode = normalize_optional_string(req.mode);
+        }
+        if let Some(v) = req.allow_shell {
+            existing.allow_shell = Some(v);
+        }
+        if let Some(v) = req.trust_mode {
+            existing.trust_mode = Some(v);
+        }
+        if let Some(v) = req.auto_approve {
+            existing.auto_approve = Some(v);
         }
         if let Some(status) = req.status {
             existing.status = status;
@@ -445,7 +852,10 @@ impl AutomationManager {
                 existing.next_run_at = None;
             } else {
                 let schedule = AutomationSchedule::parse_rrule(&existing.rrule)?;
-                existing.next_run_at = Some(schedule.next_after(Utc::now())?);
+                existing.next_run_at = active_next_run_at(&schedule, Utc::now())?;
+                if existing.next_run_at.is_none() {
+                    bail!("Cannot resume: ONCE schedule has already passed or exhausted");
+                }
             }
         }
 
@@ -542,17 +952,7 @@ impl AutomationManager {
         run: &mut AutomationRunRecord,
         task_manager: &SharedTaskManager,
     ) -> Result<()> {
-        let workspace = automation.cwds.first().cloned();
-
-        let new_task = NewTaskRequest {
-            prompt: automation.prompt.clone(),
-            model: None,
-            workspace,
-            mode: Some("agent".to_string()),
-            allow_shell: Some(false),
-            trust_mode: Some(false),
-            auto_approve: Some(true),
-        };
+        let new_task = task_request_for_automation(automation);
 
         match task_manager.add_task(new_task).await {
             Ok(task) => {
@@ -624,7 +1024,15 @@ impl AutomationManager {
 
             let schedule = AutomationSchedule::parse_rrule(&automation.rrule)?;
             if automation.next_run_at.is_none() {
-                automation.next_run_at = Some(schedule.next_after(now)?);
+                match active_next_run_at(&schedule, now)? {
+                    Some(next) => automation.next_run_at = Some(next),
+                    None => {
+                        automation.status = AutomationStatus::Paused;
+                        automation.updated_at = now;
+                        self.save_automation(automation)?;
+                        continue;
+                    }
+                }
                 automation.updated_at = now;
                 self.save_automation(automation)?;
                 continue;
@@ -643,7 +1051,7 @@ impl AutomationManager {
                 .any(|run| run.scheduled_for == due_at);
 
             if existing_for_slot {
-                automation.next_run_at = Some(schedule.next_after(due_at)?);
+                apply_next_run_after_fire(automation, &schedule, due_at)?;
                 automation.updated_at = now;
                 self.save_automation(automation)?;
                 continue;
@@ -669,7 +1077,7 @@ impl AutomationManager {
             self.save_run(&run)?;
 
             automation.updated_at = now;
-            automation.next_run_at = Some(schedule.next_after(due_at)?);
+            apply_next_run_after_fire(automation, &schedule, due_at)?;
             self.save_automation(automation)?;
         }
 
@@ -756,6 +1164,41 @@ impl AutomationManager {
         }
 
         Ok(())
+    }
+}
+
+fn normalize_optional_string(value: Option<String>) -> Option<String> {
+    value
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// Build the durable task payload for a scheduled automation run.
+#[must_use]
+pub fn task_request_for_automation(automation: &AutomationRecord) -> NewTaskRequest {
+    let workspace = automation.cwds.first().cloned();
+    match automation.trigger_kind {
+        AutomationTriggerKind::Task => NewTaskRequest {
+            prompt: automation.prompt.clone(),
+            model: automation.model.clone(),
+            workspace,
+            mode: automation
+                .mode
+                .clone()
+                .or_else(|| Some("agent".to_string())),
+            allow_shell: automation.allow_shell,
+            trust_mode: automation.trust_mode,
+            auto_approve: automation.auto_approve.or(Some(true)),
+        },
+        AutomationTriggerKind::Prompt => NewTaskRequest {
+            prompt: automation.prompt.clone(),
+            model: None,
+            workspace,
+            mode: Some("agent".to_string()),
+            allow_shell: Some(false),
+            trust_mode: Some(false),
+            auto_approve: Some(true),
+        },
     }
 }
 
@@ -852,6 +1295,7 @@ pub fn spawn_scheduler(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
     #[test]
     fn parses_hourly_rrule() {
@@ -889,10 +1333,159 @@ mod tests {
     }
 
     #[test]
+    fn parses_minutely_rrule() {
+        let parsed = AutomationSchedule::parse_rrule("FREQ=MINUTELY;INTERVAL=15;BYDAY=MO,FR")
+            .expect("parse");
+        match parsed {
+            AutomationSchedule::Minutely {
+                interval_minutes,
+                byday,
+            } => {
+                assert_eq!(interval_minutes, 15);
+                assert_eq!(byday.expect("byday").len(), 2);
+            }
+            _ => panic!("expected minutely"),
+        }
+    }
+
+    #[test]
+    fn parses_daily_rrule() {
+        let parsed =
+            AutomationSchedule::parse_rrule("FREQ=DAILY;BYHOUR=8;BYMINUTE=15").expect("parse");
+        match parsed {
+            AutomationSchedule::Daily {
+                interval_days,
+                byhour,
+                byminute,
+            } => {
+                assert_eq!(interval_days, 1);
+                assert_eq!(byhour, 8);
+                assert_eq!(byminute, 15);
+            }
+            _ => panic!("expected daily"),
+        }
+    }
+
+    #[test]
+    fn parses_monthly_rrule() {
+        let parsed = AutomationSchedule::parse_rrule(
+            "FREQ=MONTHLY;INTERVAL=2;BYMONTHDAY=15;BYHOUR=10;BYMINUTE=0",
+        )
+        .expect("parse");
+        match parsed {
+            AutomationSchedule::Monthly {
+                interval_months,
+                bymonthday,
+                byhour,
+                byminute,
+            } => {
+                assert_eq!(interval_months, 2);
+                assert_eq!(bymonthday, 15);
+                assert_eq!(byhour, 10);
+                assert_eq!(byminute, 0);
+            }
+            _ => panic!("expected monthly"),
+        }
+    }
+
+    #[test]
+    fn parses_once_rrule() {
+        let parsed = AutomationSchedule::parse_rrule("FREQ=ONCE;DTSTART=2030-06-10T09:00:00")
+            .expect("parse");
+        match parsed {
+            AutomationSchedule::Once { at } => {
+                assert!(at.year() >= 2030);
+            }
+            _ => panic!("expected once"),
+        }
+    }
+
+    #[test]
+    fn once_schedule_exhausted_after_fire() {
+        let schedule = AutomationSchedule::Once {
+            at: Utc.with_ymd_and_hms(2020, 1, 1, 9, 0, 0).unwrap(),
+        };
+        let after = Utc.with_ymd_and_hms(2020, 1, 1, 10, 0, 0).unwrap();
+        assert!(schedule.next_after_opt(after).expect("ok").is_none());
+    }
+
+    #[test]
+    fn daily_next_after_finds_future_slot() {
+        let schedule = AutomationSchedule::Daily {
+            interval_days: 1,
+            byhour: 9,
+            byminute: 0,
+        };
+        let after = Utc.with_ymd_and_hms(2026, 6, 8, 10, 0, 0).unwrap();
+        let next = schedule.next_after(after).expect("next");
+        assert!(next > after);
+    }
+
+    #[test]
     fn rejects_invalid_rrule_fields() {
         let err =
             AutomationSchedule::parse_rrule("FREQ=WEEKLY;BYSECOND=5").expect_err("should fail");
         assert!(err.to_string().contains("Unsupported RRULE field"));
+    }
+
+    #[test]
+    fn task_request_prompt_mode_uses_conservative_defaults() {
+        let automation = AutomationRecord {
+            schema_version: CURRENT_AUTOMATION_SCHEMA_VERSION,
+            id: "a1".to_string(),
+            name: "n".to_string(),
+            prompt: "do work".to_string(),
+            rrule: "FREQ=HOURLY".to_string(),
+            cwds: Vec::new(),
+            trigger_kind: AutomationTriggerKind::Prompt,
+            model: Some("ignored".to_string()),
+            mode: Some("yolo".to_string()),
+            allow_shell: Some(true),
+            trust_mode: Some(true),
+            auto_approve: Some(false),
+            status: AutomationStatus::Active,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            next_run_at: None,
+            last_run_at: None,
+        };
+        let req = task_request_for_automation(&automation);
+        assert_eq!(req.prompt, "do work");
+        assert!(req.model.is_none());
+        assert_eq!(req.mode.as_deref(), Some("agent"));
+        assert_eq!(req.allow_shell, Some(false));
+        assert_eq!(req.trust_mode, Some(false));
+        assert_eq!(req.auto_approve, Some(true));
+    }
+
+    #[test]
+    fn task_request_task_mode_uses_stored_fields() {
+        let automation = AutomationRecord {
+            schema_version: CURRENT_AUTOMATION_SCHEMA_VERSION,
+            id: "a2".to_string(),
+            name: "n".to_string(),
+            prompt: "audit repo".to_string(),
+            rrule: "FREQ=HOURLY".to_string(),
+            cwds: vec![PathBuf::from("/tmp/ws")],
+            trigger_kind: AutomationTriggerKind::Task,
+            model: Some("deepseek-v4-pro".to_string()),
+            mode: Some("yolo".to_string()),
+            allow_shell: Some(true),
+            trust_mode: Some(true),
+            auto_approve: Some(false),
+            status: AutomationStatus::Active,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            next_run_at: None,
+            last_run_at: None,
+        };
+        let req = task_request_for_automation(&automation);
+        assert_eq!(req.model.as_deref(), Some("deepseek-v4-pro"));
+        assert_eq!(req.mode.as_deref(), Some("yolo"));
+        assert_eq!(req.workspace.as_deref(), Some(Path::new("/tmp/ws")));
+        assert_eq!(req.allow_shell, Some(true));
+        assert_eq!(req.trust_mode, Some(true));
+        assert_eq!(req.auto_approve, Some(false));
     }
 
     #[test]
@@ -906,6 +1499,12 @@ mod tests {
                 prompt: "prompt".to_string(),
                 rrule: "FREQ=HOURLY;INTERVAL=1".to_string(),
                 cwds: Vec::new(),
+                trigger_kind: AutomationTriggerKind::Prompt,
+                model: None,
+                mode: None,
+                allow_shell: None,
+                trust_mode: None,
+                auto_approve: None,
                 status: Some(AutomationStatus::Active),
             })
             .expect("create");

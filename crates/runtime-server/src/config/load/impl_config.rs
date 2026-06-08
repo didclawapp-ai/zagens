@@ -674,7 +674,7 @@ impl Config {
 
     /// Get hooks configuration, returning default if not configured.
     pub fn hooks_config(&self) -> HooksConfig {
-        self.hooks.clone().unwrap_or_default()
+        self.hooks.clone().unwrap_or_default().normalized()
     }
 
     /// Resolve the notifications configuration with defaults applied.
