@@ -9,7 +9,7 @@ OUT="${1:-release-cli-artifacts}"
 mkdir -p "$OUT"
 
 echo "Building release CLI binaries..."
-cargo build -p zagens-cli --release --locked --bin zagens --bin zagens-runtime
+bash scripts/ci/cargo-retry.sh build -p zagens-cli --release --locked --bin zagens --bin zagens-runtime
 
 TRIPLE="$(rustc -vV | sed -n 's/^host: //p')"
 EXT=""

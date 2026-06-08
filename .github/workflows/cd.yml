@@ -209,6 +209,10 @@ jobs:
 
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2.9.1
 
+      - name: Prefetch crate index (network retry)
+        shell: bash
+        run: bash scripts/ci/cargo-retry.sh fetch --locked
+
       - name: Build release CLI binaries
         shell: bash
         run: bash scripts/release/build-cli-binaries.sh release-cli-artifacts
@@ -228,7 +232,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@fa0a81b294aae406fe1470e6438a7f566678875a # v4
+      - uses: actions/download-artifact@fa0a91b294aae406fe1470e6438a7f566678875a # v4.1.8
         with:
           pattern: cli-artifacts-*-${{ needs.gate.outputs.tag }}
           path: cli-release-artifacts

@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **CD:** Correct `actions/download-artifact` commit SHA (Attach CLI to Release); prefetch + `cargo-retry.sh` for CLI release builds.
+
 ## [0.7.0] - 2026-06-08
 
 First public open-source release on [GitHub](https://github.com/didclawapp-ai/zagens) (MIT).
