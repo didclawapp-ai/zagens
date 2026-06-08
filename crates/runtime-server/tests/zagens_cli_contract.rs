@@ -1,6 +1,6 @@
 //! Headless `zagens` CLI binary contract tests (Headless CLI Phase 3).
 
-use std::path::PathBuf;
+use std::path::Path;
 use std::process::Stdio;
 use std::time::Duration;
 
@@ -33,7 +33,7 @@ async fn wait_for_ready(child: &mut Child) -> Result<u16> {
     Ok(port)
 }
 
-fn write_test_config(path: &PathBuf) -> Result<()> {
+fn write_test_config(path: &Path) -> Result<()> {
     std::fs::write(
         path,
         r#"
@@ -44,7 +44,7 @@ enabled = false
     .context("write test config.toml")
 }
 
-fn test_env(root: &PathBuf, runtime_dir: &PathBuf, config_path: &PathBuf) -> Vec<(String, String)> {
+fn test_env(root: &Path, runtime_dir: &Path, config_path: &Path) -> Vec<(String, String)> {
     vec![
         (
             "DEEPSEEK_RUNTIME_DIR".into(),
