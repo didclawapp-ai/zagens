@@ -27,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **CD:** Correct `actions/download-artifact` commit SHA (Attach CLI to Release); prefetch + `cargo-retry.sh` for CLI release builds.
+- **CD:** Correct `actions/download-artifact` commit SHA (Attach CLI to Release); prefetch + `cargo-retry.sh` for CLI release builds; retry `cargo tauri build` on Windows when NSIS/WiX downloads flake (504).
 
 ## [0.7.0] - 2026-06-08
 

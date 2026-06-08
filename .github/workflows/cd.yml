@@ -117,10 +117,21 @@ jobs:
 
       - name: Build Zagens (Windows)
         working-directory: crates/desktop
+        shell: pwsh
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: cargo tauri build
+        run: |
+          $max = 3
+          for ($i = 1; $i -le $max; $i++) {
+            cargo tauri build
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            if ($i -lt $max) {
+              Write-Host "::warning::cargo tauri build failed (attempt $i/$max); retrying in 45s..."
+              Start-Sleep -Seconds 45
+            }
+          }
+          exit 1
 
       - name: Package installers (zip + SHA-256)
         working-directory: crates/desktop
@@ -232,7 +243,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@fa0a91b294aae406fe1470e6438a7f566678875a # v4.1.8
+      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
           pattern: cli-artifacts-*-${{ needs.gate.outputs.tag }}
           path: cli-release-artifacts
