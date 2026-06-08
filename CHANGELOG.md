@@ -25,6 +25,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-06-08
+
+First public open-source release on [GitHub](https://github.com/didclawapp-ai/zagens) (MIT).
+
+### Highlights
+
+- **Zagens desktop (Windows)** — Tauri 2 agent harness for code and office workspaces (sidecar, LHT/CRAFT, Office tools, embedded terminal).
+- **Headless CLI (`zagens`)** — scriptable `exec`, `review`, `apply`, `doctor`, `setup`, `serve --http`, MCP helpers; crate **`zagens-cli`**, sidecar binary **`zagens-runtime`** unchanged for desktop embed.
+- **GitHub Release `zagens-v0.7.0`** — Windows installer (zip + SHA-256) and cross-platform CLI binaries when CD succeeds. Install from source until assets appear: [LOCAL_DEV_VERIFY.md](LOCAL_DEV_VERIFY.md).
+
 ### Added
 
 - **Headless CLI (`zagens`):** New scriptable binary in `crates/runtime-server` (`src/bin/zagens.rs`) with MVP commands — `exec`, `review`, `apply`, `doctor`, `setup`, `login`/`logout`, `models`, `mcp list`/`tools`, `completions`, `serve --http`. Desktop sidecar binary **`zagens-runtime`** and `main.rs` unchanged. Install: `cargo install zagens-cli --bin zagens` or `cargo build -p zagens-cli --bin zagens`. Docs: README § Headless CLI; Scoop template `packaging/scoop/zagens.json`.
@@ -34,10 +44,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Brand / crates.io:** Rename runtime package `deepseek-runtime-server` → **`zagens-cli`** (`cargo install zagens-cli --bin zagens`). `/health` service id → `zagens-runtime-api`; desktop i18n and headless prompts use `zagens-runtime` / **Zagens**. Future full-screen TUI binary: **`zagens-tui`**.
 
-- **CI/Release hardening (`.github/workflows/`):**** Pin the toolchain action to `dtolnay/rust-toolchain@1.96.0` (was `@stable`) across all jobs so clippy/rustfmt components match `rust-toolchain.toml` instead of relying on rustup auto-switch; add least-privilege `permissions: contents: read` (publish job keeps its `contents: write` override) and `concurrency` groups (CI cancels superseded ref runs except scheduled; Release never cancels in-flight); drop the unused `actions/setup-node` step from the CI `versions` job. **Release now gates on a `verify` job** (version drift + fmt + strict clippy + workspace tests) before building/publishing the Windows installer, so a tag on an unverified commit can't ship a broken release.
-- **CD (`.github/workflows/cd.yml`):** Replace tag-triggered `release.yml` with a `workflow_run` pipeline — push `zagens-v*` / `ds-pick-v*` tag → CI full matrix on the tag → on success, build/sign Windows installers, publish GitHub Release, and `repository_dispatch` zagens.com sync. Removes duplicate ubuntu-only verify; adds tag↔manifest version gate. Manual `workflow_dispatch` still builds installers without publishing.
+- **Open source:** Public GitHub repository (`didclawapp-ai/zagens`, MIT); user docs on [zagens.com/docs](https://zagens.com/docs); internal maintainer docs stay local-only (`doc_Private/`).
+
+- **CI/Release hardening (`.github/workflows/`):** Pin the toolchain action to `dtolnay/rust-toolchain@1.96.0` (was `@stable`) across all jobs so clippy/rustfmt components match `rust-toolchain.toml` instead of relying on rustup auto-switch; add least-privilege `permissions: contents: read` (publish job keeps its `contents: write` override) and `concurrency` groups (CI cancels superseded ref runs except scheduled; Release never cancels in-flight); drop the unused `actions/setup-node` step from the CI `versions` job. **Release now gates on a `verify` job** (version drift + fmt + strict clippy + workspace tests) before building/publishing the Windows installer, so a tag on an unverified commit can't ship a broken release.
+- **CD (`.github/workflows/cd.yml`):** Tag `zagens-v*` → CI full matrix → build Windows installer + CLI binaries → **GitHub Releases only** (removed zagens.com sync). Manual `workflow_dispatch` builds artifacts without publishing.
 
 ### Fixed
+
+- **CI (Ubuntu release build):** Reclaim GHA disk (free preinstalled packages, drop `target/debug` before release smoke) — fixes `No space left on device` during `cargo build --release`.
+- **CI (Windows):** Run `zagens-cli` lib tests only in the matrix job; keep spawn/binary contract tests on `ubuntu-latest` — avoids 40+ minute flakes under full workspace load.
+- **CI (Linux link):** Add 4G swap on Ubuntu runners for `zagens-runtime` lld link OOM (`Bus error`).
 
 - **CI (crates.io flakes):** Add `scripts/ci/cargo-retry.sh` and use it for `cargo fetch`/build/clippy/test in CI and Release verify — mitigates transient `curl 56` / connection-reset failures when downloading crates on GH Actions (especially `windows-latest`).
 - **CI lint (desktop manifest):** Drop redundant `license-file` from `crates/desktop/Cargo.toml`; use `license.workspace = true` (MIT SPDX) so Cargo stops warning on every job.
@@ -61,10 +77,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Fix (CI):** `deepseek-runtime-adapters` clippy — `double_must_use`, `collapsible_if`, `needless_question_mark`, `io_other_error`, `needless_borrow(s)`.
 - **Tooling:** Pin dev/CI Rust **1.96** via [`rust-toolchain.toml`](rust-toolchain.toml); add [`scripts/ci/verify-lint.sh`](scripts/ci/verify-lint.sh) / [`verify-workspace.sh`](scripts/ci/verify-workspace.sh) and optional git hooks ([`scripts/ci/install-git-hooks.sh`](scripts/ci/install-git-hooks.sh)) so fmt/clippy fail locally before push.
 - **Fix (CI):** `topic-memory` + `runtime-orchestrator` clippy under Rust 1.96; lint job builds `web-ui/dist` when missing ([`scripts/ci/ensure-web-ui-dist.sh`](scripts/ci/ensure-web-ui-dist.sh)).
-
-### Zagens v0.7.0 — version bump
-
-- **Release:** bump Zagens desktop to **0.7.0** (Cargo, Tauri, web-ui, updater manifest); MSI WiX `0.7.0`.
 
 ### Docs — CMS 存量审计测试案例（CMS-AUDIT / CMS02）
 

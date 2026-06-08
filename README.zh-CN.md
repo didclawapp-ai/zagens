@@ -13,7 +13,7 @@
 | 资源 | 链接 |
 |------|------|
 | 用户文档 | [zagens.com/docs](https://zagens.com/docs) |
-| 安装包 | [zagens.com/download](https://zagens.com/download) · [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases) |
+| 安装包 | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases)（标签 **`zagens-v0.7.0`**）· [zagens.com/download](https://zagens.com/download) |
 | 设计规格 | [`docs/README.md`](docs/README.md) |
 | 贡献指南 | [`CONTRIBUTING.md`](CONTRIBUTING.md) · [`LOCAL_DEV_VERIFY.md`](LOCAL_DEV_VERIFY.md) |
 | 安全策略 | [`SECURITY.md`](SECURITY.md) |
@@ -132,7 +132,7 @@ HTTP 契约：[`docs/tech/API_DESIGN.md`](docs/tech/API_DESIGN.md)。配置样�
 
 ## 快速开始
 
-**预编译安装包：** 目前仅 Windows — [zagens.com/download](https://zagens.com/download) 或 [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases)。macOS / Linux 安装包规划中。
+**预编译安装包：** Windows — [GitHub Releases `zagens-v0.7.0`](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.7.0)（安装包 zip + CLI 二进制）。解除 SmartScreen 锁定见 [SMARTSCREEN.md](docs/desktop/SMARTSCREEN.md)。macOS / Linux CLI 同次 Release 提供；桌面安装包规划中。
 
 **从源码构建：**
 

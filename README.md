@@ -13,7 +13,7 @@
 | Resource | Link |
 |----------|------|
 | User guides | [zagens.com/docs](https://zagens.com/docs) |
-| Downloads | [zagens.com/download](https://zagens.com/download) · [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases) |
+| Downloads | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases) (tag **`zagens-v0.7.0`**) · [zagens.com/download](https://zagens.com/download) |
 | Design specs | [`docs/README.md`](docs/README.md) |
 | Contributing | [`CONTRIBUTING.md`](CONTRIBUTING.md) · [`LOCAL_DEV_VERIFY.md`](LOCAL_DEV_VERIFY.md) |
 | Security | [`SECURITY.md`](SECURITY.md) |
@@ -132,7 +132,7 @@ Full diagram and boundaries: [`docs/tech/RUNTIME_ARCHITECTURE.md`](docs/tech/RUN
 
 ## Quick start
 
-**Pre-built installers:** Windows only for now — [zagens.com/download](https://zagens.com/download) or [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases). macOS/Linux builds are planned.
+**Pre-built installers:** Windows — [GitHub Releases `zagens-v0.7.0`](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.7.0) (installer zip + CLI binaries). Unblock the zip per [SMARTSCREEN.md](docs/desktop/SMARTSCREEN.md). macOS/Linux CLI ship in the same release; desktop packages for those platforms are planned.
 
 **Build from source:**
 
