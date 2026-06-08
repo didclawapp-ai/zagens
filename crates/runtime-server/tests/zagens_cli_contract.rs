@@ -18,6 +18,7 @@ async fn wait_for_ready(child: &mut Child) -> Result<u16> {
 
     let (port, _) = timeout(READY_TIMEOUT, async {
         while let Some(line) = lines.next_line().await? {
+            let line = line.trim_end_matches('\r');
             if let Some(json_str) = line.strip_prefix("DS_PICK_READY ") {
                 let v: serde_json::Value =
                     serde_json::from_str(json_str).context("parse DS_PICK_READY JSON")?;
@@ -142,6 +143,8 @@ async fn zagens_exec_json_one_shot_uses_mock_api() -> Result<()> {
 
     let root = std::env::temp_dir().join(format!("zagens-exec-{}", Uuid::new_v4()));
     std::fs::create_dir_all(&root).context("create temp root")?;
+    let runtime_dir = root.join("runtime");
+    std::fs::create_dir_all(&runtime_dir).context("create runtime dir")?;
     let config_path = root.join("config.toml");
     write_test_config(&config_path)?;
 
@@ -157,6 +160,7 @@ async fn zagens_exec_json_one_shot_uses_mock_api() -> Result<()> {
         ])
         .env("DEEPSEEK_API_KEY", "test-key")
         .env("DEEPSEEK_BASE_URL", server.uri())
+        .envs(test_env(&root, &runtime_dir, &config_path))
         .output()
         .await
         .context("run zagens exec --json")?;
