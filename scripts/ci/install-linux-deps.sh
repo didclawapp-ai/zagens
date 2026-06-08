@@ -20,3 +20,14 @@ sudo apt-get install -y \
   libxdo-dev \
   pkg-config \
   wget
+
+# Large runtime binaries (zagens-runtime / zagens) can OOM the default GHA
+# runner during lld link, surfacing as "signal 7 [Bus error]".
+if [ "${GITHUB_ACTIONS:-}" = "true" ] && ! swapon --show 2>/dev/null | grep -q .; then
+  echo "Adding 4G swap for Rust link jobs..."
+  sudo fallocate -l 4G /swapfile 2>/dev/null || sudo dd if=/dev/zero of=/swapfile bs=1M count=4096 status=progress
+  sudo chmod 600 /swapfile
+  sudo mkswap /swapfile
+  sudo swapon /swapfile
+  swapon --show
+fi

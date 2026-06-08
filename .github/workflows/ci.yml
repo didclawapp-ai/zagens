@@ -65,9 +65,7 @@ jobs:
       - name: Ensure web-ui dist (desktop clippy)
         run: bash scripts/ci/ensure-web-ui-dist.sh
       - name: Pre-build runtime sidecar (required by desktop build.rs)
-        run: bash scripts/ci/cargo-retry.sh build -p zagens-cli --locked
-      - name: Pre-build headless CLI binary
-        run: bash scripts/ci/cargo-retry.sh build -p zagens-cli --bin zagens --locked
+        run: bash scripts/ci/cargo-retry.sh build -p zagens-cli --bin zagens-runtime --locked
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Clippy (strict)
@@ -99,9 +97,7 @@ jobs:
       - name: Ensure web-ui dist (desktop tests)
         run: bash scripts/ci/ensure-web-ui-dist.sh
       - name: Pre-build runtime sidecar (required by desktop build.rs)
-        run: bash scripts/ci/cargo-retry.sh build -p zagens-cli --locked
-      - name: Pre-build headless CLI binary
-        run: bash scripts/ci/cargo-retry.sh build -p zagens-cli --bin zagens --locked
+        run: bash scripts/ci/cargo-retry.sh build -p zagens-cli --bin zagens-runtime --locked
       - name: Run tests
         run: bash scripts/ci/cargo-retry.sh test --workspace --all-features --locked
       - name: Runtime sidecar contract (A+.4 / R-009)
