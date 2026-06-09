@@ -44,6 +44,7 @@ pub struct WindowsExecPlan {
 pub struct SpawnStdio {
     pub capture_stdout: bool,
     pub capture_stderr: bool,
+    pub stdin_open: bool,
     pub stdin_data: Option<String>,
 }
 

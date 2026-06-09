@@ -15,10 +15,6 @@ name = "zagens-sandbox-poc-deny-read"
 path = "src/bin/poc_deny_read.rs"
 required-features = []
 
-[[example]]
-name = "t4_probe"
-path = "examples/t4_probe.rs"
-
 [features]
 default = []
 windows-impl = []

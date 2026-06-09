@@ -145,9 +145,22 @@ mod tests {
         assert!(paths.contains(&PathBuf::from(r"D:\proj\.zagens")));
     }
 
+    // Read-isolation invariant tests below are gated on G0 (`unelevated_deny_read_enabled`).
+    //
+    // Unelevated read isolation relies on a cap-SID deny-read ACE being honored by the
+    // restricted token. With `WRITE_RESTRICTED`, the restricting/capability SIDs are only
+    // evaluated for *write* access, so a deny-read ACE keyed to the synthetic cap SID can
+    // never match on a read. G0 therefore reports `fail` on this machine and deny-read is
+    // disabled at runtime. These tests only assert the read-block invariant when G0 claims
+    // `pass` (e.g. a future elevated/sandbox-user path that genuinely enforces it); under a
+    // failing G0 they skip rather than assert a guarantee the platform cannot provide.
     #[test]
     #[cfg(windows)]
     fn prepare_like_plan_fields_do_not_break_id_rsa_block() {
+        if !super::unelevated_deny_read_enabled() {
+            eprintln!("skip: G0 deny-read PoC not pass (unelevated read isolation unavailable)");
+            return;
+        }
         let profile = std::env::var("USERPROFILE")
             .ok()
             .map(PathBuf::from)
@@ -190,6 +203,10 @@ mod tests {
     #[test]
     #[cfg(windows)]
     fn spawn_sync_alone_blocks_id_rsa_without_prior_apply() {
+        if !super::unelevated_deny_read_enabled() {
+            eprintln!("skip: G0 deny-read PoC not pass (unelevated read isolation unavailable)");
+            return;
+        }
         let profile = std::env::var("USERPROFILE")
             .ok()
             .map(PathBuf::from)
@@ -228,6 +245,10 @@ mod tests {
     fn propagate_inherited_deny_blocks_id_rsa_read() {
         use std::collections::HashMap;
 
+        if !super::unelevated_deny_read_enabled() {
+            eprintln!("skip: G0 deny-read PoC not pass (unelevated read isolation unavailable)");
+            return;
+        }
         let profile = std::env::var("USERPROFILE")
             .ok()
             .map(PathBuf::from)

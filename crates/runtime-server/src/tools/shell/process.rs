@@ -163,9 +163,13 @@ impl ShellChild {
             ShellChild::Process(child) => kill_child_process_group(child),
             ShellChild::Pty(child) => child.kill(),
             #[cfg(windows)]
-            ShellChild::WindowsSandbox(child) => child
-                .kill()
-                .map_err(|err| std::io::Error::other(err.to_string())),
+            ShellChild::WindowsSandbox(child) => {
+                // `ManagedProcess::kill` already walks the tree via `taskkill /T`
+                // (Codex `exec-server` pattern) before reaping the direct child.
+                child
+                    .kill()
+                    .map_err(|err| std::io::Error::other(err.to_string()))
+            }
         }
     }
 }
@@ -390,6 +394,19 @@ impl BackgroundShell {
             }
             if close {
                 self.stdin = None;
+            }
+            return Ok(());
+        }
+
+        #[cfg(windows)]
+        if let Some(ShellChild::WindowsSandbox(child)) = self.child.as_mut() {
+            if !input.is_empty() {
+                child
+                    .write_stdin(input.as_bytes())
+                    .context("Failed to write to Windows sandbox stdin")?;
+            }
+            if close {
+                child.close_stdin();
             }
             return Ok(());
         }

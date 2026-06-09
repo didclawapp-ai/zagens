@@ -89,6 +89,7 @@ mod imp {
             zagens_windows_sandbox::SpawnStdio {
                 capture_stdout: true,
                 capture_stderr: true,
+                stdin_open: true,
                 stdin_data: stdin_data.map(str::to_string),
             },
         )?;

@@ -11,7 +11,7 @@ use windows_sys::Win32::Foundation::{
     SetHandleInformation,
 };
 use windows_sys::Win32::Storage::FileSystem::{ReadFile, WriteFile};
-use windows_sys::Win32::System::Console::{GetStdHandle, STD_INPUT_HANDLE};
+use windows_sys::Win32::System::Console::{GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE};
 use windows_sys::Win32::System::JobObjects::{
     AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
     JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
@@ -19,7 +19,7 @@ use windows_sys::Win32::System::JobObjects::{
 };
 use windows_sys::Win32::System::Pipes::CreatePipe;
 use windows_sys::Win32::System::Threading::{
-    CREATE_UNICODE_ENVIRONMENT, CreateProcessAsUserW, GetExitCodeProcess, INFINITE,
+    CREATE_UNICODE_ENVIRONMENT, CreateProcessAsUserW, GetExitCodeProcess, GetProcessId, INFINITE,
     PROCESS_INFORMATION, STARTF_USESTDHANDLES, STARTUPINFOW, TerminateProcess, WaitForSingleObject,
 };
 
@@ -35,6 +35,8 @@ pub struct CapturedOutput {
 pub struct SpawnStdio {
     pub capture_stdout: bool,
     pub capture_stderr: bool,
+    /// Keep stdin pipe open for later writes (background `write_stdin`).
+    pub stdin_open: bool,
     pub stdin_data: Option<String>,
 }
 
@@ -72,6 +74,29 @@ impl ManagedProcess {
 
     pub fn process_handle(&self) -> HANDLE {
         self.process
+    }
+
+    pub fn process_id(&self) -> u32 {
+        if self.process == 0 {
+            return 0;
+        }
+        unsafe { GetProcessId(self.process) }
+    }
+
+    pub fn write_stdin(&mut self, data: &[u8]) -> Result<()> {
+        if self.stdin_write == 0 {
+            return Err(anyhow!("stdin pipe is not open"));
+        }
+        unsafe { write_pipe(self.stdin_write, data) }
+    }
+
+    pub fn close_stdin(&mut self) {
+        if self.stdin_write != 0 {
+            unsafe {
+                CloseHandle(self.stdin_write);
+            }
+            self.stdin_write = 0;
+        }
     }
 
     pub fn stdout_read_handle(&self) -> HANDLE {
@@ -117,12 +142,16 @@ impl ManagedProcess {
     }
 
     pub fn kill(&mut self) -> Result<()> {
+        let pid = self.process_id();
+        if pid != 0 {
+            kill_process_tree_best_effort(pid);
+        }
         unsafe {
             if self.process != 0 {
                 let _ = TerminateProcess(self.process, 1);
             }
-            Ok(())
         }
+        Ok(())
     }
 }
 
@@ -169,7 +198,7 @@ pub fn spawn_with_stdio(
         {
             return Err(anyhow!("CreatePipe(stderr) failed: {}", GetLastError()));
         }
-        if stdio.stdin_data.is_some()
+        if (stdio.stdin_open || stdio.stdin_data.is_some())
             && CreatePipe(&mut stdin_r, &mut stdin_w, std::ptr::null_mut(), 0) == 0
         {
             return Err(anyhow!("CreatePipe(stdin) failed: {}", GetLastError()));
@@ -201,12 +230,12 @@ pub fn spawn_with_stdio(
         si.hStdOutput = if stdout_w != 0 {
             stdout_w
         } else {
-            GetStdHandle(STD_INPUT_HANDLE)
+            GetStdHandle(windows_sys::Win32::System::Console::STD_OUTPUT_HANDLE)
         };
         si.hStdError = if stderr_w != 0 {
             stderr_w
         } else {
-            GetStdHandle(STD_INPUT_HANDLE)
+            GetStdHandle(STD_ERROR_HANDLE)
         };
         let desktop = to_wide("Winsta0\\Default");
         si.lpDesktop = desktop.as_ptr() as *mut u16;
@@ -255,8 +284,10 @@ pub fn spawn_with_stdio(
         if let Some(input) = &stdio.stdin_data {
             if stdin_w != 0 {
                 write_pipe(stdin_w, input.as_bytes())?;
-                CloseHandle(stdin_w);
-                stdin_w = 0;
+                if !stdio.stdin_open {
+                    CloseHandle(stdin_w);
+                    stdin_w = 0;
+                }
             }
         }
 
@@ -294,6 +325,7 @@ pub fn run_as_user(
         SpawnStdio {
             capture_stdout: true,
             capture_stderr: true,
+            stdin_open: false,
             stdin_data: None,
         },
     )?;
@@ -343,6 +375,16 @@ fn make_env_block(env: &HashMap<String, String>) -> Vec<u16> {
     w
 }
 
+fn kill_process_tree_best_effort(pid: u32) {
+    use std::process::Stdio;
+    let _ = std::process::Command::new("taskkill")
+        .args(["/T", "/F", "/PID", &pid.to_string()])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+}
+
 fn quote_arg(arg: &str) -> String {
     if arg.is_empty() || arg.chars().any(|c| c.is_whitespace() || c == '"') {
         let mut q = String::from("\"");
@@ -361,6 +403,12 @@ fn quote_arg(arg: &str) -> String {
 }
 
 fn argv_to_command_line(argv: &[String]) -> String {
+    // `cmd /C <tail>`: `<tail>` is already a full user command from `plan.rs`
+    // (`type "C:\…"`, redirects, etc.). Re-quoting the tail breaks parsing.
+    if argv.len() == 3 && argv[0].eq_ignore_ascii_case("cmd") && argv[1].eq_ignore_ascii_case("/C")
+    {
+        return format!("{} {} {}", quote_arg(&argv[0]), argv[1], argv[2]);
+    }
     argv.iter()
         .map(|a| quote_arg(a))
         .collect::<Vec<_>>()

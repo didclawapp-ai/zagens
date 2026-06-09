@@ -30,27 +30,28 @@ pub fn ensure_unelevated_acls(plan: &WindowsExecPlan) -> Result<()> {
         .map(PathBuf::from)
         .context("USERPROFILE not set")?;
 
+    // Apply workspace ACLs on every spawn: parallel integration tests each use a
+    // fresh temp workspace, but the session singleton is process-wide. Skipping
+    // setup after the first spawn left later workspaces without cap-SID grants.
+    apply_workspace_acls(&plan.writable_roots, &plan.protected_write_paths, &cap_sid)?;
+
+    crate::teardown::persist_tracked_workspace_paths(
+        &home,
+        &plan.writable_roots,
+        &plan.protected_write_paths,
+    )?;
+
     let mut session = UNELEVATED_SESSION
         .lock()
         .map_err(|_| anyhow::anyhow!("unelevated session lock poisoned"))?;
 
-    let needs_workspace_setup = session
-        .as_ref()
-        .is_none_or(|existing| existing.cap_sid != caps.workspace);
-
-    if needs_workspace_setup {
-        apply_workspace_acls(&plan.writable_roots, &plan.protected_write_paths, &cap_sid)?;
-
-        crate::teardown::persist_tracked_workspace_paths(
-            &home,
-            &plan.writable_roots,
-            &plan.protected_write_paths,
-        )?;
-
+    if session.is_none() {
         *session = Some(UnelevatedSession {
             cap_sid: caps.workspace.clone(),
             deny_read_paths: Vec::new(),
         });
+    } else if let Some(existing) = session.as_mut() {
+        existing.cap_sid = caps.workspace.clone();
     }
 
     // Deny-read must run on every enforced spawn: directory ACEs do not
@@ -89,6 +90,7 @@ pub fn spawn_sync(
         SpawnStdio {
             capture_stdout: true,
             capture_stderr: true,
+            stdin_open: false,
             stdin_data: stdin_data.map(str::to_string),
         },
     )?;

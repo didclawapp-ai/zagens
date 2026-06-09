@@ -178,6 +178,27 @@ async fn exec_shell_foreground_blocks_id_rsa_read_when_g0_passes() {
     );
     let tool = ExecShellTool;
 
+    // Anti-false-positive control: a `type` with an identical command shape against a
+    // readable workspace file MUST return content. A previous bug double-quoted the
+    // `cmd /C` tail, so every `type "C:\..."` failed with a CMD syntax error and looked
+    // "blocked" even though deny-read never fired. This control proves the command shape
+    // works, so an empty id_rsa read below is a genuine block, not a parse error.
+    let control = workspace.join("g1_control.txt");
+    std::fs::write(&control, "g1-control-ok").expect("write control file");
+    let control_result = tool
+        .execute(
+            json!({ "command": format!(r"type {}", control.display()) }),
+            &ctx,
+        )
+        .await
+        .expect("control execute");
+    let _ = std::fs::remove_file(&control);
+    assert!(
+        control_result.content.contains("g1-control-ok"),
+        "control `type` must read a workspace file (command shape is valid): {}",
+        control_result.content
+    );
+
     for command in [
         format!("type {}", id_rsa.display()),
         format!(r"C:\Windows\System32\more.com {}", id_rsa.display()),
@@ -198,6 +219,83 @@ async fn exec_shell_foreground_blocks_id_rsa_read_when_g0_passes() {
             "expected enforced spawn for `{command}`"
         );
     }
+}
+
+/// G1 fifth-round: workspace-write with runtime canonical workspace (`\\?\F:\…`).
+#[cfg(windows)]
+#[tokio::test]
+async fn g1_smoke_workspace_write_with_canonical_cwd() {
+    let workspace = std::path::PathBuf::from(r"F:\DeepSeek-TUI-desktop");
+    if !workspace.is_dir() {
+        eprintln!("skip: workspace missing at {}", workspace.display());
+        return;
+    }
+    let workspace = workspace.canonicalize().expect("canonicalize workspace");
+    assert!(
+        workspace.display().to_string().starts_with(r"\\?\"),
+        "expected verbatim canonical workspace for G1 T2 probe, got {}",
+        workspace.display()
+    );
+
+    let policy = crate::sandbox::SandboxPolicy::WorkspaceWrite {
+        writable_roots: vec![workspace.clone()],
+        network_access: false,
+        exclude_tmpdir: false,
+        exclude_slash_tmp: false,
+    };
+    let ctx = ToolContext::new(workspace.clone()).with_elevated_sandbox_policy(policy);
+    let tool = ExecShellTool;
+
+    let probe_path = workspace.join("g1_probe.txt");
+    let _ = std::fs::remove_file(&probe_path);
+
+    // T2a — absolute redirect target (Agent probe form).
+    let write = tool
+        .execute(
+            json!({ "command": r"echo t2-ok > F:\DeepSeek-TUI-desktop\g1_probe.txt" }),
+            &ctx,
+        )
+        .await
+        .expect("T2a execute");
+    assert!(write.success, "T2a write failed: {}", write.content);
+    let write_meta = write.metadata.as_ref().expect("T2a metadata");
+    assert_eq!(
+        write_meta.get("sandbox_enforced").and_then(Value::as_bool),
+        Some(true)
+    );
+    let stderr = write_meta
+        .get("stderr_summary")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    assert!(
+        !stderr.contains("UNC paths are not supported"),
+        "T2a stderr must not contain UNC CWD warning: {stderr}"
+    );
+
+    // T2b
+    let read = tool
+        .execute(
+            json!({ "command": r"type F:\DeepSeek-TUI-desktop\g1_probe.txt" }),
+            &ctx,
+        )
+        .await
+        .expect("T2b execute");
+    assert!(
+        read.content.contains("t2-ok"),
+        "T2b read failed: {}",
+        read.content
+    );
+    let read_meta = read.metadata.as_ref().expect("T2b metadata");
+    let read_stderr = read_meta
+        .get("stderr_summary")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    assert!(
+        !read_stderr.contains("UNC paths are not supported"),
+        "T2b stderr must not contain UNC CWD warning: {read_stderr}"
+    );
+
+    let _ = std::fs::remove_file(&probe_path);
 }
 
 #[test]

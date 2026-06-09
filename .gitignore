@@ -146,3 +146,6 @@ docs/website/
 
 # Stale vendoring stub (deps resolve via crates.io / Cargo.lock)
 vendor/
+
+codex-main/
+c/
