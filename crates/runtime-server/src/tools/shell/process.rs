@@ -29,6 +29,9 @@ pub(in crate::tools::shell) enum ShellChild {
     Pty(Box<dyn portable_pty::Child + Send>),
     #[cfg(windows)]
     WindowsSandbox(zagens_windows_sandbox::ManagedProcess),
+    /// Elevated sandbox child driven over runner IPC (no process HANDLE).
+    #[cfg(windows)]
+    ElevatedWindowsSandbox(zagens_windows_sandbox::ElevatedChild),
 }
 
 #[cfg(unix)]
@@ -134,6 +137,16 @@ impl ShellChild {
                         success: code == 0,
                     })
                 }),
+            #[cfg(windows)]
+            ShellChild::ElevatedWindowsSandbox(child) => child
+                .try_wait()
+                .map_err(|err| std::io::Error::other(err.to_string()))
+                .map(|status| {
+                    status.map(|code| ShellExitStatus {
+                        code: i32::try_from(code).ok(),
+                        success: code == 0,
+                    })
+                }),
         }
     }
 
@@ -151,6 +164,16 @@ impl ShellChild {
                     success: output.exit_code == 0,
                 })
             }
+            #[cfg(windows)]
+            ShellChild::ElevatedWindowsSandbox(child) => {
+                let code = child
+                    .wait(None)
+                    .map_err(|err| std::io::Error::other(err.to_string()))?;
+                Ok(ShellExitStatus {
+                    code: i32::try_from(code).ok(),
+                    success: code == 0,
+                })
+            }
         }
     }
 
@@ -166,6 +189,14 @@ impl ShellChild {
             ShellChild::WindowsSandbox(child) => {
                 // `ManagedProcess::kill` already walks the tree via `taskkill /T`
                 // (Codex `exec-server` pattern) before reaping the direct child.
+                child
+                    .kill()
+                    .map_err(|err| std::io::Error::other(err.to_string()))
+            }
+            #[cfg(windows)]
+            ShellChild::ElevatedWindowsSandbox(child) => {
+                // Sends a Terminate frame; the runner kills the child tree
+                // (job object KILL_ON_JOB_CLOSE backstops a dead runner).
                 child
                     .kill()
                     .map_err(|err| std::io::Error::other(err.to_string()))
@@ -411,6 +442,19 @@ impl BackgroundShell {
             return Ok(());
         }
 
+        #[cfg(windows)]
+        if let Some(ShellChild::ElevatedWindowsSandbox(child)) = self.child.as_mut() {
+            if !input.is_empty() {
+                child
+                    .write_stdin(input.as_bytes())
+                    .context("Failed to write to elevated sandbox stdin")?;
+            }
+            if close {
+                child.close_stdin();
+            }
+            return Ok(());
+        }
+
         if input.is_empty() && close {
             return Ok(());
         }
@@ -515,6 +559,7 @@ impl BackgroundShell {
                 None
             },
             sandbox_denied: self.sandbox_denied(),
+            sandbox_denial_code: None,
             sandbox_enforced: self.sandbox_enforced,
         }
     }

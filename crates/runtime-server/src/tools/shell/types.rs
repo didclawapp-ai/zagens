@@ -52,6 +52,10 @@ pub struct ShellResult {
     /// Whether the command was blocked by sandbox restrictions.
     #[serde(default)]
     pub sandbox_denied: bool,
+    /// Structured Win32 denial code from the Windows sandbox runner
+    /// (e.g. `5` = `ERROR_ACCESS_DENIED`), when the spawn itself was denied.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sandbox_denial_code: Option<u32>,
 }
 
 /// Compact, UI-oriented view of a tracked background shell job.

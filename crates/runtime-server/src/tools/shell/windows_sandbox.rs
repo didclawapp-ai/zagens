@@ -29,8 +29,25 @@ mod imp {
         let sandboxed = exec_env.is_sandboxed();
         let sandbox_enforced = exec_env.is_enforced();
 
-        let output = zagens_windows_sandbox::spawn_sync(plan, stdin_data, Some(timeout))
-            .with_context(|| format!("Windows sandbox spawn failed: {original_command}"))?;
+        let output = match zagens_windows_sandbox::spawn_sync(plan, stdin_data, Some(timeout)) {
+            Ok(output) => output,
+            Err(err) => {
+                // PR-2.13: a spawn-level denial (CreateProcessAsUserW /
+                // CreateProcessWithLogonW / runner) carries a structured Win32
+                // code. Surface it as a denied ShellResult so the elevation
+                // flow can react, instead of an opaque tool error.
+                if let Some(code) = zagens_windows_sandbox::extract_spawn_denial_code(&err) {
+                    return Ok(denied_spawn_result(
+                        exec_env,
+                        started,
+                        code,
+                        &format!("{err:#}"),
+                    ));
+                }
+                return Err(err)
+                    .with_context(|| format!("Windows sandbox spawn failed: {original_command}"));
+            }
+        };
 
         let timed_out = started.elapsed() >= timeout && output.exit_code != 0;
         let exit_code = i32::try_from(output.exit_code).unwrap_or(-1);
@@ -65,7 +82,37 @@ mod imp {
                 None
             },
             sandbox_denied,
+            sandbox_denial_code: None,
         })
+    }
+
+    /// ShellResult for a spawn that the sandbox denied before the child ran.
+    fn denied_spawn_result(
+        exec_env: &ExecEnv,
+        started: Instant,
+        win32_code: u32,
+        message: &str,
+    ) -> ShellResult {
+        let (stderr, stderr_meta) = truncate_with_meta(message);
+        ShellResult {
+            task_id: None,
+            status: ShellStatus::Failed,
+            exit_code: Some(i32::try_from(win32_code).unwrap_or(-1)),
+            stdout: String::new(),
+            stderr,
+            duration_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+            stdout_len: 0,
+            stderr_len: stderr_meta.original_len,
+            stdout_omitted: 0,
+            stderr_omitted: stderr_meta.omitted,
+            stdout_truncated: false,
+            stderr_truncated: stderr_meta.truncated,
+            sandboxed: exec_env.is_sandboxed(),
+            sandbox_enforced: exec_env.is_enforced(),
+            sandbox_type: Some(exec_env.sandbox_type.to_string()),
+            sandbox_denied: true,
+            sandbox_denial_code: Some(win32_code),
+        }
     }
 
     pub fn spawn_background(
@@ -83,6 +130,13 @@ mod imp {
             .windows_plan
             .as_ref()
             .context("missing WindowsExecPlan for enforced spawn")?;
+
+        if matches!(
+            plan.mode,
+            zagens_windows_sandbox::WindowsSandboxMode::Elevated
+        ) {
+            return spawn_background_elevated(plan, stdout_buffer, stderr_buffer, stdin_data);
+        }
 
         let mut managed = zagens_windows_sandbox::spawn(
             plan,
@@ -103,6 +157,41 @@ mod imp {
             None,
             Some(stdout_thread),
             Some(stderr_thread),
+        ))
+    }
+
+    /// Elevated background spawn: child output arrives as runner IPC frames,
+    /// pumped into the shared buffers by a single decoder thread.
+    fn spawn_background_elevated(
+        plan: &zagens_windows_sandbox::WindowsExecPlan,
+        stdout_buffer: Arc<Mutex<Vec<u8>>>,
+        stderr_buffer: Arc<Mutex<Vec<u8>>>,
+        stdin_data: Option<&str>,
+    ) -> Result<(
+        ShellChild,
+        Option<StdinWriter>,
+        Option<JoinHandle<()>>,
+        Option<JoinHandle<()>>,
+    )> {
+        let mut child = zagens_windows_sandbox::spawn_background_elevated(plan, stdin_data)?;
+        let pump = child.start_output_pump(
+            move |chunk| {
+                if let Ok(mut guard) = stdout_buffer.lock() {
+                    guard.extend_from_slice(chunk);
+                }
+            },
+            move |chunk| {
+                if let Ok(mut guard) = stderr_buffer.lock() {
+                    guard.extend_from_slice(chunk);
+                }
+            },
+        )?;
+
+        Ok((
+            ShellChild::ElevatedWindowsSandbox(child),
+            None,
+            Some(pump),
+            None,
         ))
     }
 }

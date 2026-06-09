@@ -37,6 +37,12 @@ const WRITE_DENY_MASK: u32 =
 const WRITE_GRANT_MASK: u32 =
     FILE_GENERIC_READ | FILE_GENERIC_EXECUTE | FILE_GENERIC_WRITE | DELETE;
 
+const READ_GRANT_MASK: u32 = FILE_GENERIC_READ | FILE_GENERIC_EXECUTE;
+
+const ACCESS_ALLOWED_ACE_TYPE: u8 = 0;
+const GENERIC_WRITE_MASK: u32 = 0x4000_0000;
+const GENERIC_ALL_MASK: u32 = 0x1000_0000;
+
 unsafe fn dacl_has_read_deny_for_sid(
     p_dacl: *mut ACL,
     psid: *mut c_void,
@@ -168,6 +174,92 @@ pub fn apply_grant_write_ace(path: &Path, psid: *mut c_void) -> Result<bool> {
     unsafe { add_grant_ace(path, psid, WRITE_GRANT_MASK) }
 }
 
+/// Grants read + execute (inheritable) to `psid` on `path`.
+pub fn apply_grant_read_ace(path: &Path, psid: *mut c_void) -> Result<bool> {
+    if !path.exists() {
+        return Ok(false);
+    }
+    unsafe { modify_dacl_with_inheritance(path, psid, READ_GRANT_MASK, GRANT_ACCESS, true) }
+}
+
+/// Grants read + execute on `path` itself only (no inheritance) — used for the
+/// profile root so the sandbox account can list it without inheriting an allow
+/// ACE into excluded subdirectories.
+pub fn apply_grant_read_ace_no_inherit(path: &Path, psid: *mut c_void) -> Result<bool> {
+    if !path.exists() {
+        return Ok(false);
+    }
+    unsafe { modify_dacl_with_inheritance(path, psid, READ_GRANT_MASK, GRANT_ACCESS, false) }
+}
+
+/// Returns true when `path`'s DACL contains an allow ACE for `psid` granting
+/// any write-capable bit (used by the Everyone-writable audit scan).
+pub fn has_allow_write_ace(path: &Path, psid: *mut c_void) -> bool {
+    unsafe {
+        let mut p_sd: *mut c_void = std::ptr::null_mut();
+        let mut p_dacl: *mut ACL = std::ptr::null_mut();
+        if GetNamedSecurityInfoW(
+            to_wide(path).as_ptr(),
+            1,
+            DACL_SECURITY_INFORMATION,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            &mut p_dacl,
+            std::ptr::null_mut(),
+            &mut p_sd,
+        ) != ERROR_SUCCESS
+        {
+            if !p_sd.is_null() {
+                LocalFree(p_sd as HLOCAL);
+            }
+            return false;
+        }
+        let found = dacl_has_allow_write_for_sid(p_dacl, psid);
+        if !p_sd.is_null() {
+            LocalFree(p_sd as HLOCAL);
+        }
+        found
+    }
+}
+
+unsafe fn dacl_has_allow_write_for_sid(p_dacl: *mut ACL, psid: *mut c_void) -> bool {
+    // A NULL DACL grants everyone full control.
+    if p_dacl.is_null() {
+        return true;
+    }
+    let mut info: ACL_SIZE_INFORMATION = std::mem::zeroed();
+    if GetAclInformation(
+        p_dacl as *const ACL,
+        &mut info as *mut _ as *mut c_void,
+        std::mem::size_of::<ACL_SIZE_INFORMATION>() as u32,
+        AclSizeInformation,
+    ) == 0
+    {
+        return false;
+    }
+    let write_mask = FILE_WRITE_DATA | FILE_GENERIC_WRITE | GENERIC_WRITE_MASK | GENERIC_ALL_MASK;
+    for i in 0..info.AceCount {
+        let mut p_ace: *mut c_void = std::ptr::null_mut();
+        if GetAce(p_dacl as *const ACL, i, &mut p_ace) == 0 {
+            continue;
+        }
+        let hdr = &*(p_ace as *const ACE_HEADER);
+        if hdr.AceType != ACCESS_ALLOWED_ACE_TYPE || (hdr.AceFlags & INHERIT_ONLY_ACE) != 0 {
+            continue;
+        }
+        // ACCESS_ALLOWED_ACE has the same header+mask+SidStart layout as
+        // ACCESS_DENIED_ACE, so the SID offset arithmetic is shared.
+        let ace = &*(p_ace as *const ACCESS_DENIED_ACE);
+        let sid_ptr = (p_ace as usize
+            + std::mem::size_of::<ACE_HEADER>()
+            + std::mem::size_of::<u32>()) as *mut c_void;
+        if EqualSid(sid_ptr, psid) != 0 && (ace.Mask & write_mask) != 0 {
+            return true;
+        }
+    }
+    false
+}
+
 unsafe fn add_grant_ace(path: &Path, psid: *mut c_void, mask: u32) -> Result<bool> {
     modify_dacl(path, psid, mask, GRANT_ACCESS)
 }
@@ -177,6 +269,16 @@ unsafe fn add_deny_ace(path: &Path, psid: *mut c_void, mask: u32) -> Result<bool
 }
 
 unsafe fn modify_dacl(path: &Path, psid: *mut c_void, mask: u32, mode: u32) -> Result<bool> {
+    modify_dacl_with_inheritance(path, psid, mask, mode, true)
+}
+
+unsafe fn modify_dacl_with_inheritance(
+    path: &Path,
+    psid: *mut c_void,
+    mask: u32,
+    mode: u32,
+    inherit: bool,
+) -> Result<bool> {
     let mut p_sd: *mut c_void = std::ptr::null_mut();
     let mut p_dacl: *mut ACL = std::ptr::null_mut();
     let code = GetNamedSecurityInfoW(
@@ -202,7 +304,11 @@ unsafe fn modify_dacl(path: &Path, psid: *mut c_void, mask: u32, mode: u32) -> R
     let mut explicit: EXPLICIT_ACCESS_W = std::mem::zeroed();
     explicit.grfAccessPermissions = mask;
     explicit.grfAccessMode = mode as i32;
-    explicit.grfInheritance = CONTAINER_INHERIT_ACE | OBJECT_INHERIT_ACE;
+    explicit.grfInheritance = if inherit {
+        CONTAINER_INHERIT_ACE | OBJECT_INHERIT_ACE
+    } else {
+        0
+    };
     explicit.Trustee = trustee;
     let mut p_new_dacl: *mut ACL = std::ptr::null_mut();
     let mut added = false;

@@ -249,6 +249,7 @@ impl ToolSpec for ExecShellTool {
                         sandbox_enforced: true,
                         sandbox_type: Some("opensandbox".to_string()),
                         sandbox_denied: false,
+                        sandbox_denial_code: None,
                     }
                 }
                 Err(e) => {
@@ -415,6 +416,7 @@ impl ToolSpec for ExecShellTool {
                     "sandbox_enforced": result.sandbox_enforced,
                     "sandbox_type": result.sandbox_type,
                     "sandbox_denied": result.sandbox_denied,
+                    "sandbox_denial_code": result.sandbox_denial_code,
                     "task_id": result.task_id,
                     "stdout_len": result.stdout_len,
                     "stderr_len": result.stderr_len,

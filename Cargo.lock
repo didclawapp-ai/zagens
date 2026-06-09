@@ -8476,6 +8476,7 @@ name = "zagens-windows-sandbox"
 version = "0.7.3"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "chrono",
  "dirs-next",
  "once_cell",

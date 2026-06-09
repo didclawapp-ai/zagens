@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 use wait_timeout::ChildExt;
+use zagens_config::WindowsSandboxModeToml;
 
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
@@ -75,6 +76,11 @@ impl ShellManager {
             sandbox_policy: policy,
             foreground_background_requested: false,
         }
+    }
+
+    /// Set the Windows native sandbox mode for future commands.
+    pub fn set_windows_sandbox_mode(&mut self, mode: WindowsSandboxModeToml) {
+        self.sandbox_manager.set_windows_sandbox_mode(mode);
     }
 
     /// Set the sandbox policy for future commands.
@@ -380,6 +386,7 @@ impl ShellManager {
                     None
                 },
                 sandbox_denied,
+                sandbox_denial_code: None,
             })
         } else {
             // Timeout - kill the whole process tree (C1: grandchildren spawned
@@ -416,6 +423,7 @@ impl ShellManager {
                     None
                 },
                 sandbox_denied: false,
+                sandbox_denial_code: None,
             })
         }
     }
@@ -482,6 +490,7 @@ impl ShellManager {
                     None
                 },
                 sandbox_denied: false,
+                sandbox_denial_code: None,
             })
         } else {
             // C1: kill the whole tree, not just the direct child.
@@ -509,6 +518,7 @@ impl ShellManager {
                     None
                 },
                 sandbox_denied: false,
+                sandbox_denial_code: None,
             })
         }
     }
@@ -598,6 +608,7 @@ impl ShellManager {
                     None
                 },
                 sandbox_denied: false,
+                sandbox_denial_code: None,
                 sandbox_enforced,
             });
         }
@@ -730,6 +741,7 @@ impl ShellManager {
                 None
             },
             sandbox_denied: false,
+            sandbox_denial_code: None,
             sandbox_enforced,
         })
     }
@@ -837,6 +849,7 @@ impl ShellManager {
                 None
             },
             sandbox_denied: shell.sandbox_denied(),
+            sandbox_denial_code: None,
             sandbox_enforced: shell.sandbox_enforced,
         };
 

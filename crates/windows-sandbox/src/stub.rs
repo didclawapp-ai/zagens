@@ -15,6 +15,7 @@ pub struct UnelevatedDenyReadPocResult {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WindowsSandboxMode {
     Unelevated,
+    Elevated,
 }
 
 #[derive(Debug, Clone)]
@@ -26,6 +27,7 @@ pub struct PlanInput {
     pub writable_roots: Vec<PathBuf>,
     pub protected_write_paths: Vec<PathBuf>,
     pub network_allowed: bool,
+    pub mode: WindowsSandboxMode,
 }
 
 #[derive(Debug, Clone)]
@@ -65,6 +67,14 @@ pub fn zagens_home() -> PathBuf {
     dirs_next::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join(".zagens")
+}
+
+pub fn sandbox_setup_is_complete(_home: &std::path::Path) -> bool {
+    false
+}
+
+pub fn run_elevated_provisioning_setup_default(_real_user: &str) -> Result<()> {
+    bail!("windows sandbox is only available on Windows")
 }
 
 pub fn is_enforcement_available() -> bool {

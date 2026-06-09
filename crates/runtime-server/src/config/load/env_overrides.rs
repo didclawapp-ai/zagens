@@ -176,6 +176,11 @@ pub(crate) fn apply_env_overrides(config: &mut Config) {
     if let Ok(value) = std::env::var("DEEPSEEK_SANDBOX_MODE") {
         config.sandbox_mode = Some(value);
     }
+    if let Ok(value) = std::env::var("DEEPSEEK_WINDOWS_SANDBOX")
+        && let Ok(mode) = crate::config::parse_windows_sandbox_mode(&value)
+    {
+        config.windows.get_or_insert_with(Default::default).sandbox = Some(mode);
+    }
     if let Ok(value) = std::env::var("DEEPSEEK_SANDBOX_BACKEND") {
         config.sandbox_backend = Some(value);
     }

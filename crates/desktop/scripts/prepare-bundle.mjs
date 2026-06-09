@@ -43,6 +43,25 @@ if (!existsSync(src)) {
 copyFileSync(src, dest);
 console.log(`[bundle] Sidecar ready: ${dest}`);
 
+if (process.platform === 'win32') {
+  console.log('[bundle] Building Windows sandbox helpers (release)…');
+  execSync(
+    'cargo build --release -p zagens-windows-sandbox --bin zagens-sandbox-setup --bin zagens-command-runner',
+    { cwd: workspaceRoot, stdio: 'inherit' },
+  );
+  const resourcesDir = join(binariesDir, 'zagens-resources');
+  mkdirSync(resourcesDir, { recursive: true });
+  for (const name of ['zagens-sandbox-setup.exe', 'zagens-command-runner.exe']) {
+    const helperSrc = join(workspaceRoot, 'target', 'release', name);
+    const helperDest = join(resourcesDir, name);
+    if (!existsSync(helperSrc)) {
+      throw new Error(`Missing sandbox helper binary: ${helperSrc}`);
+    }
+    copyFileSync(helperSrc, helperDest);
+    console.log(`[bundle] Sandbox helper ready: ${helperDest}`);
+  }
+}
+
 // Stage third-party license texts (MIT compliance for embedded runtime).
 const { prepareLegalBundle } = await import('./prepare-legal.mjs');
 prepareLegalBundle();

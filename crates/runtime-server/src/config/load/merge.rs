@@ -114,6 +114,7 @@ pub(crate) fn merge_config(base: Config, override_cfg: Config) -> Config {
         scratchpad: override_cfg.scratchpad.or(base.scratchpad),
         long_horizon: override_cfg.long_horizon.or(base.long_horizon),
         compaction: override_cfg.compaction.or(base.compaction),
+        windows: override_cfg.windows.or(base.windows),
     }
 }
 

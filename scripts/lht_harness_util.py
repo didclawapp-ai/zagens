@@ -33,7 +33,16 @@ def repo_root() -> Path:
 
 
 def profiles_dir() -> Path:
-    return repo_root() / "docs" / "harness" / "fixtures" / "lht-eval-arms"
+    """Harness profile TOMLs (migrated docs/harness/fixtures → fixtures/harness)."""
+    root = repo_root()
+    for rel in (
+        "fixtures/harness/lht-eval-arms",
+        "docs/harness/fixtures/lht-eval-arms",
+    ):
+        path = root / rel
+        if path.is_dir():
+            return path
+    return root / "fixtures/harness/lht-eval-arms"
 
 
 def resolve_profile_path(profile: str) -> Path:

@@ -43,6 +43,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use zagens_config::WindowsSandboxModeToml;
+
 pub use policy::SandboxPolicy;
 
 use self::backend::SandboxBackend;
@@ -392,6 +394,9 @@ pub struct SandboxManager {
     /// Force a specific sandbox type (for testing).
     #[allow(dead_code)]
     forced_sandbox: Option<SandboxType>,
+
+    /// Windows native sandbox mode from `[windows] sandbox` config.
+    windows_sandbox_mode: WindowsSandboxModeToml,
 }
 
 impl SandboxManager {
@@ -400,7 +405,18 @@ impl SandboxManager {
         Self {
             sandbox_available: None,
             forced_sandbox: None,
+            windows_sandbox_mode: WindowsSandboxModeToml::Unelevated,
         }
+    }
+
+    /// Set the Windows native sandbox mode (`[windows] sandbox`).
+    pub fn set_windows_sandbox_mode(&mut self, mode: WindowsSandboxModeToml) {
+        self.windows_sandbox_mode = mode;
+    }
+
+    #[must_use]
+    pub fn windows_sandbox_mode(&self) -> WindowsSandboxModeToml {
+        self.windows_sandbox_mode
     }
 
     /// Check if sandboxing is available.
@@ -448,7 +464,7 @@ impl SandboxManager {
             SandboxType::LinuxLandlock => Self::prepare_landlock(spec),
 
             #[cfg(target_os = "windows")]
-            SandboxType::Windows => Self::prepare_windows(spec),
+            SandboxType::Windows => self.prepare_windows(spec),
         }
     }
 
@@ -546,7 +562,7 @@ impl SandboxManager {
 
     /// Prepare a Windows-sandboxed execution environment (unelevated MVP).
     #[cfg(target_os = "windows")]
-    fn prepare_windows(spec: &CommandSpec) -> ExecEnv {
+    fn prepare_windows(&self, spec: &CommandSpec) -> ExecEnv {
         let mut command = vec![spec.program.clone()];
         command.extend(spec.args.clone());
 
@@ -562,6 +578,8 @@ impl SandboxManager {
             protected.extend(zagens_windows_sandbox::protected_subdirs_for_root(root));
         }
 
+        let plan_mode = Self::resolve_windows_plan_mode(self.windows_sandbox_mode);
+
         match zagens_windows_sandbox::plan_exec(zagens_windows_sandbox::PlanInput {
             program: spec.program.clone(),
             args: spec.args.clone(),
@@ -570,6 +588,7 @@ impl SandboxManager {
             writable_roots: roots,
             protected_write_paths: protected,
             network_allowed: spec.sandbox_policy.has_network_access(),
+            mode: plan_mode,
         }) {
             Ok(plan) => ExecEnv {
                 command: plan.argv.clone(),
@@ -603,6 +622,29 @@ impl SandboxManager {
                 };
                 mark_sandbox_policy_unenforced(&mut exec);
                 exec
+            }
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    fn resolve_windows_plan_mode(
+        configured: WindowsSandboxModeToml,
+    ) -> zagens_windows_sandbox::WindowsSandboxMode {
+        use zagens_windows_sandbox::WindowsSandboxMode;
+
+        match configured {
+            WindowsSandboxModeToml::Unelevated => WindowsSandboxMode::Unelevated,
+            WindowsSandboxModeToml::Elevated => {
+                let home = zagens_windows_sandbox::zagens_home();
+                if zagens_windows_sandbox::sandbox_setup_is_complete(&home) {
+                    WindowsSandboxMode::Elevated
+                } else {
+                    tracing::warn!(
+                        target: "sandbox",
+                        "windows.sandbox=elevated but setup is incomplete; falling back to unelevated"
+                    );
+                    WindowsSandboxMode::Unelevated
+                }
             }
         }
     }

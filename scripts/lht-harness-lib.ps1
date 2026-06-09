@@ -177,6 +177,26 @@ function New-LhtHarnessEphemeralWorkspace {
     return $ws
 }
 
+function Resolve-LhtHarnessFixturePath {
+    param(
+        [string]$RepoRoot,
+        [string]$RelativeOrAbsolute
+    )
+    if ([string]::IsNullOrWhiteSpace($RelativeOrAbsolute)) { return $null }
+    if ([System.IO.Path]::IsPathRooted($RelativeOrAbsolute)) {
+        return $RelativeOrAbsolute
+    }
+    $norm = ($RelativeOrAbsolute -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+    $candidates = @(
+        (Join-Path $RepoRoot $norm),
+        (Join-Path $RepoRoot (($norm -replace '^docs\\harness\\fixtures\\', 'fixtures\harness\')))
+    )
+    foreach ($c in $candidates) {
+        if (Test-Path $c) { return $c }
+    }
+    return $candidates[0]
+}
+
 function Copy-LhtHarnessWorkspaceSeed {
     param(
         [string]$RepoRoot,
@@ -184,10 +204,7 @@ function Copy-LhtHarnessWorkspaceSeed {
         [string]$SeedRelativeOrAbsolute
     )
     if ([string]::IsNullOrWhiteSpace($SeedRelativeOrAbsolute)) { return }
-    $seedPath = $SeedRelativeOrAbsolute
-    if (-not [System.IO.Path]::IsPathRooted($seedPath)) {
-        $seedPath = Join-Path $RepoRoot ($SeedRelativeOrAbsolute -replace '/', '\')
-    }
+    $seedPath = Resolve-LhtHarnessFixturePath -RepoRoot $RepoRoot -RelativeOrAbsolute $SeedRelativeOrAbsolute
     if (-not (Test-Path $seedPath)) {
         throw "workspace_seed not found: $seedPath"
     }

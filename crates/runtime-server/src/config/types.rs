@@ -656,6 +656,10 @@ pub struct Config {
     /// Automatic context compaction (`[compaction]` table).
     #[serde(default)]
     pub compaction: Option<CompactionConfigToml>,
+
+    /// Windows native sandbox (`[windows]` table).
+    #[serde(default)]
+    pub windows: Option<zagens_config::WindowsConfigToml>,
 }
 
 /// `[runtime_api]` table — knobs for the local HTTP/SSE daemon.

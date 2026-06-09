@@ -12,6 +12,26 @@ pub fn zagens_home_from_env() -> PathBuf {
         .join(".zagens")
 }
 
+pub fn zagens_home() -> PathBuf {
+    zagens_home_from_env()
+}
+
+pub fn sandbox_bin_dir(zagens_home: &Path) -> PathBuf {
+    zagens_home.join(".sandbox-bin")
+}
+
+pub fn sandbox_secrets_dir(zagens_home: &Path) -> PathBuf {
+    zagens_home.join(".sandbox-secrets")
+}
+
+pub fn setup_marker_path(zagens_home: &Path) -> PathBuf {
+    sandbox_dir(zagens_home).join("setup_marker.json")
+}
+
+pub fn sandbox_users_path(zagens_home: &Path) -> PathBuf {
+    sandbox_secrets_dir(zagens_home).join("sandbox_users.json")
+}
+
 pub fn sandbox_dir(zagens_home: &Path) -> PathBuf {
     zagens_home.join(".sandbox")
 }

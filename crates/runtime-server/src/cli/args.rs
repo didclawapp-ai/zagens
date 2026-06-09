@@ -457,6 +457,8 @@ pub enum SandboxCommand {
         #[arg(long)]
         keep_logs: bool,
     },
+    /// Elevated Windows sandbox setup (UAC; creates sandbox users + marker)
+    Setup,
     /// Run a command with sandboxing
     Run {
         /// Sandbox policy (danger-full-access, read-only, external-sandbox, workspace-write)

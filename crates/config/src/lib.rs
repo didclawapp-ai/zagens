@@ -19,6 +19,7 @@ mod lht_config;
 mod lht_presets;
 mod paths;
 mod ui_settings;
+mod windows;
 pub use hooks_config::{HookConditionToml, HookEventToml, HookToml, HooksConfigToml};
 pub use lht_config::{
     CompletionGateConfigToml, CompletionGateDeliverableToml, CompletionGateVerifyToml,
@@ -41,6 +42,7 @@ pub use ui_settings::{
     write_lht_strict_setting, write_locale_setting, write_onboarding_complete_setting,
     write_task_type_preference_setting,
 };
+pub use windows::{WindowsConfigToml, WindowsSandboxModeToml};
 
 pub const CONFIG_FILE_NAME: &str = "config.toml";
 
@@ -306,6 +308,9 @@ pub struct ConfigToml {
     /// Lifecycle shell hooks (`[hooks]` / `[[hooks.hooks]]`).
     #[serde(default)]
     pub hooks: Option<HooksConfigToml>,
+    /// Windows native sandbox (`[windows]` table).
+    #[serde(default)]
+    pub windows: Option<WindowsConfigToml>,
     #[serde(flatten)]
     pub extras: BTreeMap<String, toml::Value>,
 }

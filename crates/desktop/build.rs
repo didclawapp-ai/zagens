@@ -13,6 +13,10 @@ fn main() {
     if let Err(e) = ensure_resource_stubs() {
         panic!("{e}");
     }
+    #[cfg(windows)]
+    if let Err(e) = ensure_sandbox_helper_stubs() {
+        panic!("{e}");
+    }
     tauri_build::build();
 }
 
@@ -75,7 +79,11 @@ fn ensure_resource_stubs() -> Result<(), String> {
         PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").map_err(|e| e.to_string())?);
 
     // Mirrors the `bundle.resources` entries in `tauri.conf.json`.
-    let stubs = ["binaries/python-standalone/python-install", "bundle-legal"];
+    let stubs = [
+        "binaries/python-standalone/python-install",
+        "bundle-legal",
+        "binaries/zagens-resources",
+    ];
 
     for rel in stubs {
         let path = manifest_dir.join(rel);
@@ -85,5 +93,41 @@ fn ensure_resource_stubs() -> Result<(), String> {
         }
     }
 
+    Ok(())
+}
+
+/// Best-effort copy of sandbox helpers into the dev resource stub dir so
+/// `cargo build -p zagens-desktop` works without a full `bundle:prepare`.
+#[cfg(windows)]
+fn ensure_sandbox_helper_stubs() -> Result<(), String> {
+    let manifest_dir =
+        PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").map_err(|e| e.to_string())?);
+    let profile = std::env::var("PROFILE").unwrap_or_else(|_| "debug".into());
+    let resources_dir = manifest_dir.join("binaries/zagens-resources");
+    fs::create_dir_all(&resources_dir).map_err(|e| e.to_string())?;
+
+    for name in ["zagens-sandbox-setup.exe", "zagens-command-runner.exe"] {
+        let dest = resources_dir.join(name);
+        if dest.is_file() {
+            continue;
+        }
+        let candidates = [
+            manifest_dir.join("../../target").join(&profile).join(name),
+            manifest_dir.join("../../target/release").join(name),
+            manifest_dir.join("../../target/debug").join(name),
+        ];
+        for src in candidates {
+            if src.is_file() {
+                fs::copy(&src, &dest).map_err(|e| {
+                    format!(
+                        "failed to copy sandbox helper from {} to {}: {e}",
+                        src.display(),
+                        dest.display()
+                    )
+                })?;
+                break;
+            }
+        }
+    }
     Ok(())
 }

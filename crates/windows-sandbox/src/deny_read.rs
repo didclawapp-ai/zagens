@@ -10,7 +10,7 @@ use crate::acl::{
 use crate::paths::{poc_result_file, zagens_home_from_env};
 use crate::token::LocalSid;
 
-const USERPROFILE_SENSITIVE_DIRS: &[&str] = &[
+pub(crate) const USERPROFILE_SENSITIVE_DIRS: &[&str] = &[
     ".ssh",
     ".gnupg",
     ".aws",
@@ -189,6 +189,7 @@ mod tests {
             writable_roots: vec![canonical.clone(), workspace.clone()],
             protected_write_paths: protected,
             network_allowed: false,
+            mode: crate::plan::WindowsSandboxMode::Unelevated,
         })
         .expect("plan");
         let out = crate::spawn_sync(&plan, None, Some(std::time::Duration::from_secs(15)))
@@ -224,6 +225,7 @@ mod tests {
             writable_roots: vec![PathBuf::from(r"F:\DeepSeek-TUI-desktop")],
             protected_write_paths: vec![],
             network_allowed: false,
+            mode: crate::plan::WindowsSandboxMode::Unelevated,
         })
         .expect("plan");
         assert!(
@@ -298,6 +300,7 @@ mod tests {
             writable_roots: vec![PathBuf::from(r"F:\DeepSeek-TUI-desktop")],
             protected_write_paths: vec![],
             network_allowed: false,
+            mode: crate::plan::WindowsSandboxMode::Unelevated,
         })
         .expect("plan");
         let spawn_out = crate::spawn_sync(&plan, None, Some(std::time::Duration::from_secs(15)))

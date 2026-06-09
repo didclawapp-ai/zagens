@@ -31,6 +31,36 @@ pub struct CapturedOutput {
     pub stderr: String,
 }
 
+/// Structured spawn-denial error (PR-2.13): carries the raw Win32 error code
+/// from a failed `CreateProcessAsUserW` / logon call so callers can surface
+/// `sandbox_denial_code` instead of parsing stderr heuristically.
+#[derive(Debug)]
+pub struct SpawnDenial {
+    pub win32_code: u32,
+    pub api: &'static str,
+}
+
+impl std::fmt::Display for SpawnDenial {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} failed with Win32 error {}: {}",
+            self.api,
+            self.win32_code,
+            crate::winutil::format_last_error(self.win32_code as i32)
+        )
+    }
+}
+
+impl std::error::Error for SpawnDenial {}
+
+/// Extract the Win32 denial code from an error chain, if present.
+pub fn extract_spawn_denial_code(err: &anyhow::Error) -> Option<u32> {
+    err.chain()
+        .find_map(|cause| cause.downcast_ref::<SpawnDenial>())
+        .map(|denial| denial.win32_code)
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct SpawnStdio {
     pub capture_stdout: bool,
@@ -276,7 +306,10 @@ pub fn spawn_with_stdio(
                     CloseHandle(h);
                 }
             }
-            return Err(anyhow!("CreateProcessAsUserW failed: {err}"));
+            return Err(anyhow::Error::new(SpawnDenial {
+                win32_code: err,
+                api: "CreateProcessAsUserW",
+            }));
         }
 
         CloseHandle(pi.hThread);
@@ -413,6 +446,35 @@ fn argv_to_command_line(argv: &[String]) -> String {
         .map(|a| quote_arg(a))
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+/// Reads a HANDLE until EOF and invokes `on_chunk` for each read.
+pub fn read_handle_loop<F>(handle: HANDLE, mut on_chunk: F) -> std::thread::JoinHandle<()>
+where
+    F: FnMut(&[u8]) + Send + 'static,
+{
+    std::thread::spawn(move || {
+        let mut buf = [0u8; 8192];
+        loop {
+            let mut read_bytes: u32 = 0;
+            let ok = unsafe {
+                ReadFile(
+                    handle,
+                    buf.as_mut_ptr(),
+                    buf.len() as u32,
+                    &mut read_bytes,
+                    std::ptr::null_mut(),
+                )
+            };
+            if ok == 0 || read_bytes == 0 {
+                break;
+            }
+            on_chunk(&buf[..read_bytes as usize]);
+        }
+        unsafe {
+            CloseHandle(handle);
+        }
+    })
 }
 
 unsafe fn read_pipe(h: HANDLE) -> Result<String> {

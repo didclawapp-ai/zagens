@@ -13,6 +13,7 @@ use crate::env::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WindowsSandboxMode {
     Unelevated,
+    Elevated,
 }
 
 #[derive(Debug, Clone)]
@@ -24,6 +25,7 @@ pub struct PlanInput {
     pub writable_roots: Vec<PathBuf>,
     pub protected_write_paths: Vec<PathBuf>,
     pub network_allowed: bool,
+    pub mode: WindowsSandboxMode,
 }
 
 #[derive(Debug, Clone)]
@@ -39,6 +41,38 @@ pub struct WindowsExecPlan {
 }
 
 pub fn plan_exec(input: PlanInput) -> Result<WindowsExecPlan> {
+    if input.mode == WindowsSandboxMode::Elevated {
+        if !crate::setup::sandbox_setup_is_complete(&crate::paths::zagens_home_from_env()) {
+            anyhow::bail!(
+                "elevated Windows sandbox requires completed setup; run `deepseek sandbox setup` first"
+            );
+        }
+
+        let argv = native_shell_argv(&input.program, &input.args);
+        let mut env = input.env;
+        inherit_path_env(&mut env);
+        inherit_windows_process_locator_env(&mut env);
+        env.insert(
+            "DEEPSEEK_SANDBOX".to_string(),
+            "windows:elevated".to_string(),
+        );
+        env.insert("DEEPSEEK_SANDBOX_ENFORCED".to_string(), "1".to_string());
+
+        let writable_roots = canonicalize_paths(&input.writable_roots);
+        let protected_write_paths = canonicalize_paths(&input.protected_write_paths);
+
+        return Ok(WindowsExecPlan {
+            mode: input.mode,
+            argv,
+            cwd: normalize_plan_cwd(&input.cwd, &writable_roots),
+            env,
+            writable_roots,
+            protected_write_paths,
+            apply_deny_read: false,
+            network_allowed: input.network_allowed,
+        });
+    }
+
     let apply_deny_read = unelevated_deny_read_enabled();
 
     // Command shape:
@@ -73,7 +107,7 @@ pub fn plan_exec(input: PlanInput) -> Result<WindowsExecPlan> {
     let protected_write_paths = canonicalize_paths(&input.protected_write_paths);
 
     Ok(WindowsExecPlan {
-        mode: WindowsSandboxMode::Unelevated,
+        mode: input.mode,
         argv,
         cwd: normalize_plan_cwd(&input.cwd, &writable_roots),
         env,
@@ -261,6 +295,7 @@ mod tests {
             writable_roots: vec![PathBuf::from(r"F:\DeepSeek-TUI-desktop")],
             protected_write_paths: vec![],
             network_allowed: false,
+            mode: WindowsSandboxMode::Unelevated,
         })
         .expect("plan");
         assert_eq!(plan.cwd, PathBuf::from(r"F:\DeepSeek-TUI-desktop"));
@@ -391,6 +426,7 @@ mod tests {
             writable_roots: vec![PathBuf::from(r"F:\DeepSeek-TUI-desktop")],
             protected_write_paths: vec![],
             network_allowed: false,
+            mode: WindowsSandboxMode::Unelevated,
         })
         .expect("plan");
         assert_eq!(plan.argv.first().map(String::as_str), Some("powershell"));
