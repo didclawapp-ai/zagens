@@ -141,6 +141,7 @@ interface Props {
   filesRefreshNonce?: number;
   /** Open tasks panel; optional task id to highlight. */
   onOpenTasks?: (taskId?: string) => void;
+  onOpenTaskThread?: (threadId: string) => void;
   /** Highlight a task row in the tasks panel. */
   highlightTaskId?: string | null;
 }
@@ -219,6 +220,7 @@ export default function RightPanel({
   onSystemSettingsSaved,
   filesRefreshNonce: filesRefreshNonceProp = 0,
   onOpenTasks,
+  onOpenTaskThread,
   highlightTaskId = null,
   subagentActiveCount = 0,
   narrativeSpawnSuspected = false,
@@ -879,6 +881,7 @@ export default function RightPanel({
             streaming={streaming}
             runtimeSessionEstablished={runtimeSessionEstablished}
             highlightTaskId={highlightTaskId}
+            onOpenTaskThread={onOpenTaskThread}
           />
         )}
 

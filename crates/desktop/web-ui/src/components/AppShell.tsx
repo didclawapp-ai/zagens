@@ -147,6 +147,7 @@ export type AppShellProps = {
   onRouteIntentChange: (intent: DesktopRouteIntentOption) => void;
   refreshApiKeyStatus: () => void;
   onOpenTasks?: (taskId?: string) => void;
+  onOpenTaskThread?: (threadId: string) => void;
   highlightTaskId?: string | null;
 };
 
@@ -257,6 +258,7 @@ export default function AppShell({
   onRouteIntentChange,
   refreshApiKeyStatus,
   onOpenTasks,
+  onOpenTaskThread,
   highlightTaskId = null,
 }: AppShellProps) {
   const { t } = useT();
@@ -455,6 +457,7 @@ export default function AppShell({
             routeIntent={routeIntent}
             onRouteIntentChange={onRouteIntentChange}
             onOpenTasks={onOpenTasks}
+            onOpenTaskThread={onOpenTaskThread}
             highlightTaskId={highlightTaskId}
           />
         )}

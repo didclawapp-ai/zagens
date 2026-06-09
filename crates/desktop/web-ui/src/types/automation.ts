@@ -4,6 +4,24 @@ export function isTerminalTaskStatus(status: TaskStatus): boolean {
   return status === 'completed' || status === 'failed' || status === 'canceled';
 }
 
+export interface TaskTimelineEntry {
+  timestamp: string;
+  kind: string;
+  summary: string;
+  detail_path?: string | null;
+}
+
+export interface TaskToolCallSummary {
+  id: string;
+  name: string;
+  status: string;
+  started_at: string;
+  ended_at?: string | null;
+  duration_ms?: number | null;
+  input_summary?: string | null;
+  output_summary?: string | null;
+}
+
 /** Task record from GET /v1/tasks/:id (detail) */
 export interface TaskRecord {
   schema_version: number;
@@ -21,8 +39,12 @@ export interface TaskRecord {
   ended_at: string | null;
   duration_ms: number | null;
   result_summary: string | null;
+  result_detail_path?: string | null;
   error: string | null;
   thread_id: string | null;
+  turn_id?: string | null;
+  timeline?: TaskTimelineEntry[];
+  tool_calls?: TaskToolCallSummary[];
 }
 
 /** Lightweight task summary from GET /v1/tasks (list) */

@@ -994,6 +994,10 @@ export async function fetchTasks(): Promise<TaskSummary[]> {
   return res.tasks;
 }
 
+export async function fetchTask(taskId: string): Promise<TaskRecord> {
+  return fetchJson<TaskRecord>(`/v1/tasks/${encodeURIComponent(taskId)}`);
+}
+
 export async function createTask(body: CreateTaskRequest): Promise<TaskRecord> {
   return postJson<TaskRecord>('/v1/tasks', body);
 }

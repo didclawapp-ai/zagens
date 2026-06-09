@@ -360,7 +360,7 @@ export default function App() {
     },
   });
 
-  const { handleSelectSession, handleNewSession } = useSessionNavigation({
+  const { handleSelectSession, handleNewSession, handleOpenThreadById } = useSessionNavigation({
     t,
     selectedModel,
     activeSessionIdRef,
@@ -707,6 +707,16 @@ export default function App() {
     setRightPanelCollapsed(false);
   }, []);
 
+  const handleOpenTaskThread = useCallback(
+    (threadId: string) => {
+      void (async () => {
+        await handleOpenThreadById(threadId);
+        setRightPanelCollapsed(true);
+      })();
+    },
+    [handleOpenThreadById],
+  );
+
   useEffect(() => {
     if (!highlightTaskId) return;
     const timer = window.setTimeout(() => setHighlightTaskId(null), 12_000);
@@ -899,6 +909,7 @@ export default function App() {
       onRouteIntentChange={setRouteIntent}
       refreshApiKeyStatus={refreshApiKeyStatus}
       onOpenTasks={handleOpenTasks}
+      onOpenTaskThread={handleOpenTaskThread}
       highlightTaskId={highlightTaskId}
       />
     </>

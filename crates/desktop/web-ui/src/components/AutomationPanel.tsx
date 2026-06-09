@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import {
   fetchTasks,
   fetchSkills,
@@ -17,6 +17,7 @@ import { isRuntimeApiAvailable } from '../lib/runtimeReachable';
 import { confirmDialog } from '../lib/confirmDialog';
 import { markTasksSeen } from '../lib/inspectorUnread';
 import { toast } from '../lib/toast';
+import TaskListItem from './TaskListItem';
 
 /** 定时自动化（GET /v1/automations）暂不展示 — 见 docs/desktop/TUI_DS_PICK_GAP.md */
 type TabId = 'tasks' | 'skills';
@@ -29,44 +30,11 @@ function tabBtn(active: boolean) {
   }`;
 }
 
-const TASK_STATUS_COLOR: Record<string, string> = {
-  queued: 'text-t-text-muted',
-  pending: 'text-t-text-muted',
-  running: 'text-amber-text',
-  paused: 'text-t-text-muted',
-  completed: 'text-success',
-  failed: 'text-t-error',
-  canceled: 'text-t-text-muted',
-};
-
 const MODE_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'agent', label: 'Agent' },
   { value: 'plan', label: 'Plan' },
   { value: 'yolo', label: 'YOLO' },
 ];
-
-function taskStatusLabel(
-  t: ReturnType<typeof useT>['t'],
-  status: string,
-): string {
-  const key = `automation.${status}` as 'automation.queued';
-  if (
-    status === 'queued' ||
-    status === 'pending' ||
-    status === 'running' ||
-    status === 'paused' ||
-    status === 'completed' ||
-    status === 'failed' ||
-    status === 'canceled'
-  ) {
-    return t(key);
-  }
-  return status;
-}
-
-function canCancelTask(status: string): boolean {
-  return status === 'queued' || status === 'running' || status === 'pending' || status === 'paused';
-}
 
 export type AutomationPanelVariant = 'tasks' | 'skills' | 'both';
 
@@ -76,6 +44,7 @@ export default function AutomationPanel({
   runtimeSessionEstablished = false,
   variant = 'both',
   highlightTaskId = null,
+  onOpenTaskThread,
 }: {
   runtimeConn: RuntimeConnectionState;
   streaming?: boolean;
@@ -83,6 +52,8 @@ export default function AutomationPanel({
   /** U2: split Task vs Skills into separate inspector views. */
   variant?: AutomationPanelVariant;
   highlightTaskId?: string | null;
+  /** Load the task's runtime thread into the main chat. */
+  onOpenTaskThread?: (threadId: string) => void;
 }) {
   const { t } = useT();
   const runtimeReady = isRuntimeApiAvailable(runtimeConn, {
@@ -136,6 +107,22 @@ export default function AutomationPanel({
       reload();
     }
   }, [runtimeReady, reload]);
+
+  useEffect(() => {
+    if (!runtimeReady) {
+      return;
+    }
+    const hasActive = tasks.some(
+      (task) => task.status === 'queued' || task.status === 'running',
+    );
+    if (!hasActive) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      void reload();
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [runtimeReady, reload, tasks]);
 
   const handleCreateTask = async (req: CreateTaskRequest) => {
     setCreating(true);
@@ -295,6 +282,7 @@ export default function AutomationPanel({
               onCancel={handleCancelTask}
               cancelingId={cancelingId}
               highlightTaskId={highlightTaskId}
+              onOpenTaskThread={onOpenTaskThread}
             />
           </>
         )}
@@ -454,19 +442,22 @@ function TasksList({
   onCancel,
   cancelingId,
   highlightTaskId = null,
+  onOpenTaskThread,
 }: {
   tasks: TaskSummary[];
   onCancel: (id: string) => void;
   cancelingId: string | null;
   highlightTaskId?: string | null;
+  onOpenTaskThread?: (threadId: string) => void;
 }) {
   const { t } = useT();
-  const highlightRef = useRef<HTMLDivElement | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(highlightTaskId);
 
   useEffect(() => {
-    if (!highlightTaskId || !highlightRef.current) return;
-    highlightRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  }, [highlightTaskId, tasks]);
+    if (highlightTaskId) {
+      setExpandedId(highlightTaskId);
+    }
+  }, [highlightTaskId]);
 
   if (tasks.length === 0) {
     return (
@@ -477,40 +468,20 @@ function TasksList({
   }
   return (
     <div className="space-y-2">
-      {tasks.map((task) => {
-        const highlighted = highlightTaskId != null && task.id === highlightTaskId;
-        return (
-        <div
+      {tasks.map((task) => (
+        <TaskListItem
           key={task.id}
-          ref={highlighted ? highlightRef : undefined}
-          className={`rounded-lg border bg-canvas-alt p-3 transition-colors ${
-            highlighted ? 'border-accent ring-2 ring-accent/30' : 'border-card-border'
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-[10px] text-t-text-muted shrink-0">{task.id.slice(0, 10)}</span>
-            <span className="text-xs text-t-text truncate flex-1 min-w-0">{task.prompt_summary}</span>
-            <span className={`text-[10px] font-medium shrink-0 ${TASK_STATUS_COLOR[task.status] ?? 'text-t-text-muted'}`}>
-              {taskStatusLabel(t, task.status)}
-            </span>
-            {canCancelTask(task.status) && (
-              <button
-                type="button"
-                onClick={() => onCancel(task.id)}
-                disabled={cancelingId === task.id}
-                className="shrink-0 text-[10px] text-t-error hover:underline disabled:opacity-50"
-              >
-                {cancelingId === task.id ? t('automation.canceling') : t('automation.cancel')}
-              </button>
-            )}
-          </div>
-          <div className="mt-1 text-[10px] text-t-text-muted">
-            {task.model} · {task.mode}
-            {task.duration_ms != null && ` · ${(task.duration_ms / 1000).toFixed(1)}s`}
-          </div>
-        </div>
-        );
-      })}
+          task={task}
+          highlighted={highlightTaskId != null && task.id === highlightTaskId}
+          expanded={expandedId === task.id}
+          onToggleExpand={() =>
+            setExpandedId((current) => (current === task.id ? null : task.id))
+          }
+          onCancel={onCancel}
+          cancelingId={cancelingId}
+          onOpenTaskThread={onOpenTaskThread}
+        />
+      ))}
     </div>
   );
 }

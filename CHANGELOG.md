@@ -20,6 +20,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Tasks panel:** expandable task cards load `GET /v1/tasks/:id` to show prompt, Agent reply summary, execution timeline, tool calls, and errors; **Open full conversation in chat** loads the task's runtime thread into the main composer. Running tasks auto-refresh while expanded.
+
+### Fixed
+
+- **LHT panel (task timer):** the 长程任务 stopwatch again ticks for the full incomplete task (including `exec_shell` / `cargo clippy` gaps between composer streaming chunks), not only while `pollFast`/「生成中」; still freezes at 100% and accumulates across reinject rounds on the same thread.
+
 ## [0.7.2] - 2026-06-09
 
 ### Added

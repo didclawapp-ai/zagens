@@ -722,17 +722,17 @@ export default function LongHorizonPanel({ threadId, pollFast = false }: Props) 
   const [cycles, setCycles] = useState<HarnessCycles | null>(null);
   const [context, setContext] = useState<ThreadContextSnapshot | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
-  /** Accumulated ms from ended session segments (same thread, no per-round reset). */
+  /** Accumulated ms from frozen segments (same thread, no per-round reset at 100%). */
   const frozenMsRef = useRef(0);
-  /** Start of the current in-progress segment (`pollFast` / streaming). */
+  /** Start of the current ticking segment (while completion < 100%). */
   const segmentStartRef = useRef<number | null>(null);
 
   const taskActive =
     !!graph && (graph.phases.length > 0 || graph.checklist.length > 0);
   const taskCompleted = !!graph && graph.completion_pct >= 100;
   const conditionalComplete = !!graph && isConditionalComplete(graph);
-  /** Composer turn still streaming — aligns with footer「生成中」. */
-  const sessionInProgress = pollFast && taskActive;
+  /** Incomplete LHT task — stopwatch ticks (includes tool exec between model chunks). */
+  const sessionInProgress = taskActive && !taskCompleted;
 
   const fetchGraph = useCallback(async () => {
     if (!threadId) {
@@ -788,34 +788,42 @@ export default function LongHorizonPanel({ threadId, pollFast = false }: Props) 
     setElapsedMs(0);
   }, [threadId]);
 
-  // Client-side stopwatch: ticks while the composer turn is in progress
-  // (`pollFast` ← streaming /「生成中」), not while checklist % alone says complete.
-  // Freezes when the turn ends; accumulates across LHT reinject rounds without
-  // resetting at 100%. Only resets when `threadId` changes.
+  // Client-side stopwatch: ticks while the task graph is present and completion < 100%.
+  // Includes tool execution (e.g. cargo clippy) between streaming chunks — not only
+  // composer streaming time. Freezes on 100%; accumulates across LHT reinject rounds
+  // without resetting at 100%. Only resets when `threadId` changes.
   useEffect(() => {
-    if (!taskActive) return;
-
-    if (pollFast) {
-      if (segmentStartRef.current === null) {
-        segmentStartRef.current = Date.now();
+    const freezeSegment = () => {
+      if (segmentStartRef.current !== null) {
+        frozenMsRef.current += Date.now() - segmentStartRef.current;
+        segmentStartRef.current = null;
+        setElapsedMs(frozenMsRef.current);
       }
-      const tick = () => {
-        const segment = segmentStartRef.current
-          ? Date.now() - segmentStartRef.current
-          : 0;
-        setElapsedMs(frozenMsRef.current + segment);
-      };
-      tick();
-      const id = window.setInterval(tick, 1000);
-      return () => window.clearInterval(id);
+    };
+
+    if (!taskActive) {
+      freezeSegment();
+      return;
     }
 
-    if (segmentStartRef.current !== null) {
-      frozenMsRef.current += Date.now() - segmentStartRef.current;
-      segmentStartRef.current = null;
-      setElapsedMs(frozenMsRef.current);
+    if (taskCompleted) {
+      freezeSegment();
+      return;
     }
-  }, [pollFast, taskActive, threadId]);
+
+    if (segmentStartRef.current === null) {
+      segmentStartRef.current = Date.now();
+    }
+    const tick = () => {
+      const segment = segmentStartRef.current
+        ? Date.now() - segmentStartRef.current
+        : 0;
+      setElapsedMs(frozenMsRef.current + segment);
+    };
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [taskActive, taskCompleted, threadId]);
 
   useEffect(() => {
     const onPush = (ev: Event) => {

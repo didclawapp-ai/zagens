@@ -70,6 +70,7 @@ export type UseSessionNavigationParams = {
 export type UseSessionNavigationResult = {
   handleSelectSession: (sessionId: string) => Promise<void>;
   handleNewSession: () => void;
+  handleOpenThreadById: (threadId: string) => Promise<void>;
 };
 
 export function useSessionNavigation({
@@ -274,6 +275,128 @@ export function useSessionNavigation({
     ],
   );
 
+  const handleOpenThreadById = useCallback(
+    async (threadId: string) => {
+      const trimmed = threadId.trim();
+      if (!trimmed) {
+        return;
+      }
+      const gen = ++selectSessionGenerationRef.current;
+      selectSessionAbortRef.current?.abort();
+      const selectAbort = new AbortController();
+      selectSessionAbortRef.current = selectAbort;
+
+      const outgoingSessionId = activeSessionIdRef.current;
+      if (outgoingSessionId && messagesRef.current.length > 0) {
+        cacheSessionUiMessages(
+          sessionUiCacheRef.current,
+          outgoingSessionId,
+          messagesRef.current,
+        );
+      }
+      const outgoingThreadId = resumedThreadIdRef.current;
+      if (outgoingThreadId) {
+        void persistThreadSession(outgoingThreadId, outgoingSessionId).catch(() => {});
+      }
+      const outgoingSnapshot = threadContextSnapshotRef.current;
+      if (outgoingThreadId && outgoingSnapshot) {
+        threadContextCacheRef.current.set(outgoingThreadId, outgoingSnapshot);
+      }
+      if (outgoingThreadId) {
+        abortThreadStream(outgoingThreadId);
+      }
+
+      toast.dismissAll();
+      resetAgentPanel();
+      setActiveSessionId(null);
+      clearStoredActiveSessionId();
+      setResumedThreadId(trimmed);
+      resumedThreadIdRef.current = trimmed;
+      setLockedThreadTaskType(null);
+      setThreadTrustMode(false);
+      setPanelPreview(null);
+      resetTurnPersistState();
+      setMessages([]);
+      setRuntimeSessionEstablished(true);
+      restoreThreadContextFromCache(trimmed);
+      threadTurnRef.current = { threadId: trimmed, turnId: '' };
+
+      try {
+        const fromThread = await rebuildMessagesFromThreadEvents(trimmed, {
+          signal: selectAbort.signal,
+        });
+        if (gen !== selectSessionGenerationRef.current) {
+          return;
+        }
+        if (fromThread.length > 0) {
+          setMessages(fromThread);
+        }
+        const threadDetail = await getThreadDetail(trimmed);
+        if (gen !== selectSessionGenerationRef.current) {
+          return;
+        }
+        setThreadDetailForContext(threadDetail);
+        const turns = threadDetail.turns ?? [];
+        const lastTurn = turns.length > 0 ? turns[turns.length - 1] : undefined;
+        const lastOut = lastTurn?.usage?.output_tokens;
+        setLastTurnOutputTokens(
+          lastOut != null && Number.isFinite(lastOut) && lastOut > 0 ? lastOut : null,
+        );
+        setLastCacheHitPercent(usageRecordCacheHitPercent(lastTurn?.usage ?? null));
+        setContextWindowTokens(
+          contextWindowTokensForModel(threadDetail.thread.model ?? selectedModel),
+        );
+        setSelectedWorkspace(threadDetail.thread.workspace);
+        setThreadTrustMode(Boolean(threadDetail.thread.trust_mode));
+        void registerWindowThread(trimmed);
+        if (gen === selectSessionGenerationRef.current) {
+          void refreshThreadContext(trimmed);
+        }
+      } catch (e) {
+        if (gen !== selectSessionGenerationRef.current) {
+          return;
+        }
+        const err = e as Error & { status?: number };
+        if (err.status === 401) {
+          notifyRuntimeTransient(t('banner.unauthorized401'));
+        } else {
+          toast.error(t('automation.openInChatFailed', { message: err.message }));
+        }
+        reconcileRuntimeAfterFetchFailure();
+      }
+    },
+    [
+      activeSessionIdRef,
+      resumedThreadIdRef,
+      threadTurnRef,
+      threadContextSnapshotRef,
+      threadContextCacheRef,
+      messagesRef,
+      sessionUiCacheRef,
+      abortThreadStream,
+      resetTurnPersistState,
+      resetAgentPanel,
+      setMessages,
+      setActiveSessionId,
+      setResumedThreadId,
+      setRuntimeSessionEstablished,
+      setThreadTrustMode,
+      setPanelPreview,
+      setThreadDetailForContext,
+      setLastTurnOutputTokens,
+      setLastCacheHitPercent,
+      setContextWindowTokens,
+      setSelectedWorkspace,
+      setLockedThreadTaskType,
+      refreshThreadContext,
+      restoreThreadContextFromCache,
+      reconcileRuntimeAfterFetchFailure,
+      notifyRuntimeTransient,
+      selectedModel,
+      t,
+    ],
+  );
+
   const handleNewSession = useCallback(() => {
     abortThreadStream(resumedThreadIdRef.current);
     selectSessionAbortRef.current?.abort();
@@ -316,5 +439,6 @@ export function useSessionNavigation({
   return {
     handleSelectSession,
     handleNewSession,
+    handleOpenThreadById,
   };
 }
