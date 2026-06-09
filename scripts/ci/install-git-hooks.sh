@@ -6,7 +6,7 @@ repo_root="$(git rev-parse --show-toplevel)"
 hooks_src="${repo_root}/scripts/ci/hooks"
 hooks_dst="${repo_root}/.git/hooks"
 
-for name in pre-commit pre-push; do
+for name in pre-commit pre-push prepare-commit-msg; do
   cp "${hooks_src}/${name}" "${hooks_dst}/${name}"
   chmod +x "${hooks_dst}/${name}"
   echo "installed ${hooks_dst}/${name}"

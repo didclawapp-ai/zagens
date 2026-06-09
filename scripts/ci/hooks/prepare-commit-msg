@@ -1,0 +1,8 @@
+#!/bin/sh
+# Strip Cursor Agent attribution trailers so cursoragent does not appear as co-author.
+COMMIT_MSG_FILE=$1
+[ -n "$COMMIT_MSG_FILE" ] && [ -f "$COMMIT_MSG_FILE" ] || exit 0
+
+tmp="${COMMIT_MSG_FILE}.cursor-strip.$$"
+grep -v -E '^(Co-authored-by: Cursor |Made-with: Cursor)' "$COMMIT_MSG_FILE" >"$tmp" || exit 0
+mv "$tmp" "$COMMIT_MSG_FILE"

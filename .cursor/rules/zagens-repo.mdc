@@ -14,3 +14,9 @@ alwaysApply: true
 - **Security / structure / TS rules:** `.cursor/rules/security-trust.mdc`, `code-organization.mdc`; web UI typing in `desktop-web-ui.mdc`. **Portable copy:** [project_rules.md](project_rules.md).
 
 When summarizing the project for users or models, **lead with Zagens** (this product), not upstream deepseek-tui / CodeWhale branding alone.
+
+## Git commits (maintainers & agents)
+
+- **No Cursor attribution:** Never add `Co-authored-by: Cursor`, `Made-with: Cursor`, or `git commit --trailer` for Cursor to commit messages or PR bodies.
+- Use plain `git commit -m "..."` (or `-m` subject + `-m` body). Author is the human maintainer only.
+- Repo hook `prepare-commit-msg` strips any Cursor trailers that slip through; reinstall via `bash scripts/ci/install-git-hooks.sh`.

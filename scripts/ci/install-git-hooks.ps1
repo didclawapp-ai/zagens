@@ -4,7 +4,7 @@ $repoRoot = git rev-parse --show-toplevel
 $hooksSrc = Join-Path $repoRoot "scripts\ci\hooks"
 $hooksDst = Join-Path $repoRoot ".git\hooks"
 
-foreach ($name in @("pre-commit", "pre-push")) {
+foreach ($name in @("pre-commit", "pre-push", "prepare-commit-msg")) {
     $src = Join-Path $hooksSrc $name
     $dst = Join-Path $hooksDst $name
     Copy-Item -Force $src $dst
