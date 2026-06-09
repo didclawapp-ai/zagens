@@ -12,11 +12,6 @@ use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE};
 use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, FILE_GENERIC_READ, FILE_GENERIC_WRITE, OPEN_EXISTING,
 };
-use windows_sys::Win32::System::JobObjects::{
-    AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
-    JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
-    SetInformationJobObject,
-};
 use windows_sys::Win32::System::Threading::TerminateProcess;
 
 use zagens_windows_sandbox::{
@@ -107,25 +102,6 @@ fn read_spawn_request(reader: &mut File) -> Result<SpawnRequest> {
     }
 }
 
-unsafe fn create_job_kill_on_close() -> Result<HANDLE> {
-    let h_job = OwnedWinHandle::new(CreateJobObjectW(std::ptr::null_mut(), std::ptr::null()));
-    if h_job.0 == 0 {
-        anyhow::bail!("CreateJobObjectW failed");
-    }
-    let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
-    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-    let ok = SetInformationJobObject(
-        h_job.0,
-        JobObjectExtendedLimitInformation,
-        &mut limits as *mut _ as *mut _,
-        std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
-    );
-    if ok == 0 {
-        anyhow::bail!("SetInformationJobObject failed");
-    }
-    Ok(h_job.into_raw())
-}
-
 pub fn main() -> Result<()> {
     let mut pipe_in = None;
     let mut pipe_out = None;
@@ -212,17 +188,8 @@ pub fn main() -> Result<()> {
         }
     };
 
+    // `spawn_with_stdio` already assigns the child to a kill-on-close job object.
     let child = Arc::new(Mutex::new(child));
-    if let Some(job) = unsafe { create_job_kill_on_close().ok() } {
-        let process_handle = child
-            .lock()
-            .map_err(|_| anyhow::anyhow!("child lock poisoned"))?
-            .process_handle();
-        unsafe {
-            let _ = AssignProcessToJobObject(job, process_handle);
-            CloseHandle(job);
-        }
-    }
 
     let process_id = child
         .lock()
@@ -337,6 +304,12 @@ pub fn main() -> Result<()> {
             }
         };
 
+        // Drain stdout/stderr before Exit so the parent receives all Output
+        // frames. Do not join the stdin thread here: it blocks on read_frame
+        // until the parent closes its pipe write end after handling Exit.
+        let _ = out_thread.join();
+        let _ = err_thread.join();
+
         let exit_msg = FramedMessage {
             version: IPC_PROTOCOL_VERSION,
             message: Message::Exit {
@@ -353,7 +326,5 @@ pub fn main() -> Result<()> {
     }
 
     let _ = input_thread.join();
-    let _ = out_thread.join();
-    let _ = err_thread.join();
     Ok(())
 }

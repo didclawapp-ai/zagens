@@ -69,19 +69,34 @@ pub(crate) fn resolve_helper_for_launch(
 }
 
 pub(crate) fn bundled_executable_path_for_exe(exe: &Path, file_name: &str) -> Option<PathBuf> {
-    let dir = exe.parent()?;
-    let direct = dir.join(file_name);
-    if direct.is_file() {
-        return Some(direct);
-    }
-
-    for resources_dir in resource_search_dirs(dir) {
-        let candidate = resources_dir.join(file_name);
-        if candidate.is_file() {
-            return Some(candidate);
+    let mut best: Option<(PathBuf, std::time::SystemTime)> = None;
+    let mut dir = exe.parent();
+    for _ in 0..5 {
+        let Some(current) = dir else { break };
+        for candidate in std::iter::once(current.join(file_name)).chain(
+            resource_search_dirs(current)
+                .into_iter()
+                .map(|d| d.join(file_name)),
+        ) {
+            if !candidate.is_file() {
+                continue;
+            }
+            let modified = std::fs::metadata(&candidate)
+                .ok()
+                .and_then(|m| m.modified().ok());
+            let replace = match (&best, modified) {
+                (None, Some(ts)) => true,
+                (Some((_, prev)), Some(ts)) => ts > *prev,
+                (None, None) => true,
+                _ => false,
+            };
+            if replace {
+                best = Some((candidate, modified.unwrap_or(std::time::UNIX_EPOCH)));
+            }
         }
+        dir = current.parent();
     }
-    None
+    best.map(|(path, _)| path)
 }
 
 fn resource_search_dirs(exe_dir: &Path) -> Vec<PathBuf> {
@@ -106,6 +121,29 @@ fn legacy_lookup(kind: HelperExecutable) -> PathBuf {
     PathBuf::from(kind.file_name())
 }
 
+fn find_materialized_helper_in_sandbox_bin(
+    kind: HelperExecutable,
+    zagens_home: &Path,
+) -> Option<PathBuf> {
+    let bin_dir = sandbox_bin_dir(zagens_home);
+    let Ok(entries) = std::fs::read_dir(&bin_dir) else {
+        return None;
+    };
+    let prefix = kind.file_name().trim_end_matches(".exe");
+    let mut matches: Vec<PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.is_file()
+                && p.file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.starts_with(prefix) && n.ends_with(".exe"))
+        })
+        .collect();
+    matches.sort();
+    matches.pop()
+}
+
 fn copy_helper_if_needed(
     kind: HelperExecutable,
     zagens_home: &Path,
@@ -118,6 +156,13 @@ fn copy_helper_if_needed(
 
     let source = sibling_source_path(kind)?;
     let destination = helper_destination_for_source(kind, zagens_home, &source)?;
+    if let Some(existing) = find_materialized_helper_in_sandbox_bin(kind, zagens_home)
+        && existing == destination
+        && destination_is_fresh(&source, &existing).unwrap_or(false)
+    {
+        store_helper_path(cache_key, existing.clone());
+        return Ok(existing);
+    }
     let outcome = copy_from_source_if_needed(&source, &destination)?;
     log_note(
         &format!(

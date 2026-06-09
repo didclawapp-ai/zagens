@@ -44,6 +44,8 @@ mod poc;
 #[cfg(windows)]
 mod process;
 #[cfg(windows)]
+mod process_startup;
+#[cfg(windows)]
 mod setup;
 #[cfg(windows)]
 mod setup_error;

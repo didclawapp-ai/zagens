@@ -11,7 +11,7 @@ use windows_sys::Win32::Foundation::{
     SetHandleInformation,
 };
 use windows_sys::Win32::Storage::FileSystem::{ReadFile, WriteFile};
-use windows_sys::Win32::System::Console::{GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE};
+use windows_sys::Win32::System::Console::{GetStdHandle, STD_ERROR_HANDLE};
 use windows_sys::Win32::System::JobObjects::{
     AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
     JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
@@ -20,9 +20,10 @@ use windows_sys::Win32::System::JobObjects::{
 use windows_sys::Win32::System::Pipes::CreatePipe;
 use windows_sys::Win32::System::Threading::{
     CREATE_UNICODE_ENVIRONMENT, CreateProcessAsUserW, GetExitCodeProcess, GetProcessId, INFINITE,
-    PROCESS_INFORMATION, STARTF_USESTDHANDLES, STARTUPINFOW, TerminateProcess, WaitForSingleObject,
+    PROCESS_INFORMATION, TerminateProcess, WaitForSingleObject,
 };
 
+use crate::process_startup::StartupWithHandleList;
 use crate::winutil::to_wide;
 
 pub struct CapturedOutput {
@@ -228,10 +229,22 @@ pub fn spawn_with_stdio(
         {
             return Err(anyhow!("CreatePipe(stderr) failed: {}", GetLastError()));
         }
-        if (stdio.stdin_open || stdio.stdin_data.is_some())
-            && CreatePipe(&mut stdin_r, &mut stdin_w, std::ptr::null_mut(), 0) == 0
+        let needs_stdin_pipe = stdio.stdin_open || stdio.stdin_data.is_some();
+        if needs_stdin_pipe && CreatePipe(&mut stdin_r, &mut stdin_w, std::ptr::null_mut(), 0) == 0
         {
             return Err(anyhow!("CreatePipe(stdin) failed: {}", GetLastError()));
+        }
+        // Restricted-token spawns require real inheritable stdio handles in the
+        // PROC_THREAD_ATTRIBUTE_HANDLE_LIST. A console-less runner's
+        // GetStdHandle(STD_INPUT_HANDLE) is invalid and breaks child stdio.
+        if !needs_stdin_pipe
+            && (stdio.capture_stdout || stdio.capture_stderr)
+            && CreatePipe(&mut stdin_r, &mut stdin_w, std::ptr::null_mut(), 0) == 0
+        {
+            return Err(anyhow!(
+                "CreatePipe(stdin fallback) failed: {}",
+                GetLastError()
+            ));
         }
 
         for h in [stdout_w, stderr_w, stdin_r] {
@@ -249,26 +262,20 @@ pub fn spawn_with_stdio(
         };
         let cwd_wide = to_wide(cwd);
 
-        let mut si: STARTUPINFOW = std::mem::zeroed();
-        si.cb = std::mem::size_of::<STARTUPINFOW>() as u32;
-        si.dwFlags = STARTF_USESTDHANDLES;
-        si.hStdInput = if stdin_r != 0 {
-            stdin_r
-        } else {
-            GetStdHandle(STD_INPUT_HANDLE)
-        };
-        si.hStdOutput = if stdout_w != 0 {
+        let h_stdin = stdin_r;
+        let h_stdout = if stdout_w != 0 {
             stdout_w
         } else {
             GetStdHandle(windows_sys::Win32::System::Console::STD_OUTPUT_HANDLE)
         };
-        si.hStdError = if stderr_w != 0 {
+        let h_stderr = if stderr_w != 0 {
             stderr_w
         } else {
             GetStdHandle(STD_ERROR_HANDLE)
         };
         let desktop = to_wide("Winsta0\\Default");
-        si.lpDesktop = desktop.as_ptr() as *mut u16;
+        let startup =
+            StartupWithHandleList::new(h_stdin, h_stdout, h_stderr, desktop.as_ptr() as *mut u16)?;
 
         let env_ptr = env_block
             .as_ref()
@@ -282,10 +289,10 @@ pub fn spawn_with_stdio(
             std::ptr::null_mut(),
             std::ptr::null_mut(),
             1,
-            CREATE_UNICODE_ENVIRONMENT,
+            startup.creation_flags(CREATE_UNICODE_ENVIRONMENT),
             env_ptr,
             cwd_wide.as_ptr(),
-            &si,
+            startup.startup_info_ptr(),
             &mut pi,
         );
 
@@ -297,6 +304,10 @@ pub fn spawn_with_stdio(
         }
         if stdin_r != 0 {
             CloseHandle(stdin_r);
+        }
+        if !needs_stdin_pipe && stdin_w != 0 {
+            CloseHandle(stdin_w);
+            stdin_w = 0;
         }
 
         if ok == 0 {
