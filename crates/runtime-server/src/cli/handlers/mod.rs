@@ -5,5 +5,6 @@ pub mod login;
 pub mod mcp;
 pub mod models;
 pub mod review;
+pub mod sandbox;
 pub mod serve;
 pub mod setup;

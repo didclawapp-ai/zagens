@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Windows unelevated sandbox (G1 / T4):** enforced `exec_shell` spawns via `cmd /C` + restricted token (aligned with G0 deny-read PoC). Pre-existing sensitive files (e.g. `.ssh/id_rsa` with explicit `Administrators:(F)`) now **re-enable DACL inheritance** from the parent directory instead of adding a non-effective explicit cap-SID deny ACE. Teardown revokes directory ACEs and resets propagated files. **`plan_exec` now quotes bare `C:\…` path tokens** in the `cmd /C` payload so probes like `type C:\Users\…\.ssh\id_rsa` match G0 PoC quoting and cap deny-read blocks pre-existing key files. **`plan_exec` strips `\\?\` verbatim prefixes from spawn CWD** so `cmd.exe` uses the real workspace directory (fixes UNC CWD fallback to `C:\Windows` and broken workspace writes); path hardening skips redirect targets and executable paths.
+
 ## [0.7.3] - 2026-06-09
 
 ### Added

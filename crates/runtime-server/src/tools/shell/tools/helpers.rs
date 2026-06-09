@@ -178,6 +178,7 @@ pub(super) fn build_shell_delta_tool_result(delta: ShellDeltaResult) -> ToolResu
             "status": format!("{:?}", result.status),
             "duration_ms": result.duration_ms,
             "sandboxed": result.sandboxed,
+            "sandbox_enforced": result.sandbox_enforced,
             "sandbox_type": result.sandbox_type,
             "sandbox_denied": result.sandbox_denied,
             "task_id": result.task_id,

@@ -27,6 +27,8 @@ pub(in crate::tools::shell) fn prepend_sandbox_enforcement_warning(
 pub(in crate::tools::shell) enum ShellChild {
     Process(Child),
     Pty(Box<dyn portable_pty::Child + Send>),
+    #[cfg(windows)]
+    WindowsSandbox(zagens_windows_sandbox::ManagedProcess),
 }
 
 #[cfg(unix)]
@@ -122,6 +124,16 @@ impl ShellChild {
             ShellChild::Pty(child) => child
                 .try_wait()
                 .map(|status| status.map(ShellExitStatus::from_pty)),
+            #[cfg(windows)]
+            ShellChild::WindowsSandbox(child) => child
+                .try_wait()
+                .map_err(|err| std::io::Error::other(err.to_string()))
+                .map(|status| {
+                    status.map(|code| ShellExitStatus {
+                        code: i32::try_from(code).ok(),
+                        success: code == 0,
+                    })
+                }),
         }
     }
 
@@ -129,6 +141,16 @@ impl ShellChild {
         match self {
             ShellChild::Process(child) => child.wait().map(ShellExitStatus::from_std),
             ShellChild::Pty(child) => child.wait().map(ShellExitStatus::from_pty),
+            #[cfg(windows)]
+            ShellChild::WindowsSandbox(child) => {
+                let output = child
+                    .wait(None)
+                    .map_err(|err| std::io::Error::other(err.to_string()))?;
+                Ok(ShellExitStatus {
+                    code: i32::try_from(output.exit_code).ok(),
+                    success: output.exit_code == 0,
+                })
+            }
         }
     }
 
@@ -140,6 +162,10 @@ impl ShellChild {
             // grandchildren don't survive as orphans holding ports (C1).
             ShellChild::Process(child) => kill_child_process_group(child),
             ShellChild::Pty(child) => child.kill(),
+            #[cfg(windows)]
+            ShellChild::WindowsSandbox(child) => child
+                .kill()
+                .map_err(|err| std::io::Error::other(err.to_string())),
         }
     }
 }
@@ -192,6 +218,16 @@ pub(in crate::tools::shell) fn kill_child_process_group(child: &mut Child) -> st
     // …then reap the direct child so its handle / exit status is updated even
     // if taskkill missed it (already exited, race, etc.).
     child.kill()
+}
+
+#[cfg(windows)]
+pub(in crate::tools::shell) fn spawn_reader_thread_from_handle(
+    handle: windows_sys::Win32::Foundation::HANDLE,
+    buffer: Arc<Mutex<Vec<u8>>>,
+) -> std::thread::JoinHandle<()> {
+    use std::os::windows::io::{FromRawHandle, RawHandle};
+    let reader = unsafe { std::fs::File::from_raw_handle(handle as RawHandle) };
+    spawn_reader_thread(reader, buffer)
 }
 
 pub(in crate::tools::shell) fn spawn_reader_thread<R: Read + Send + 'static>(
@@ -273,6 +309,7 @@ pub struct BackgroundShell {
     pub exit_code: Option<i32>,
     pub started_at: Instant,
     pub sandbox_type: SandboxType,
+    pub sandbox_enforced: bool,
     pub linked_task_id: Option<String>,
     pub(in crate::tools::shell) stdout_buffer: Arc<Mutex<Vec<u8>>>,
     pub(in crate::tools::shell) stderr_buffer: Option<Arc<Mutex<Vec<u8>>>>,
@@ -461,6 +498,7 @@ impl BackgroundShell {
                 None
             },
             sandbox_denied: self.sandbox_denied(),
+            sandbox_enforced: self.sandbox_enforced,
         }
     }
 

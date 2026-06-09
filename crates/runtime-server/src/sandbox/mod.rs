@@ -272,6 +272,13 @@ pub struct ExecEnv {
 
     /// The original policy (for reference).
     pub policy: SandboxPolicy,
+
+    /// Whether OS-level isolation is actively enforced for this execution.
+    pub enforced: bool,
+
+    /// Windows native sandbox plan (when `enforced` on Windows).
+    #[cfg(target_os = "windows")]
+    pub windows_plan: Option<zagens_windows_sandbox::WindowsExecPlan>,
 }
 
 impl ExecEnv {
@@ -294,6 +301,11 @@ impl ExecEnv {
     /// Check if this execution is sandboxed.
     pub fn is_sandboxed(&self) -> bool {
         !matches!(self.sandbox_type, SandboxType::None)
+    }
+
+    /// Whether OS-level sandbox restrictions are enforced (not policy-declaration-only).
+    pub fn is_enforced(&self) -> bool {
+        self.enforced
     }
 }
 
@@ -354,7 +366,9 @@ pub fn policy_degraded_mode_notice() -> Option<&'static str> {
 
     #[cfg(target_os = "windows")]
     {
-        let _ = windows::is_available();
+        if zagens_windows_sandbox::is_enforcement_available() {
+            return None;
+        }
         Some(
             "Degraded mode: Windows sandbox is not enforced yet; sandbox_mode declares policy only.",
         )
@@ -450,6 +464,9 @@ impl SandboxManager {
             timeout: spec.timeout,
             sandbox_type: SandboxType::None,
             policy: spec.sandbox_policy.clone(),
+            enforced: false,
+            #[cfg(target_os = "windows")]
+            windows_plan: None,
         }
     }
 
@@ -479,6 +496,7 @@ impl SandboxManager {
             timeout: spec.timeout,
             sandbox_type: SandboxType::MacosSeatbelt,
             policy: spec.sandbox_policy.clone(),
+            enforced: true,
         }
     }
 
@@ -520,44 +538,73 @@ impl SandboxManager {
             timeout: spec.timeout,
             sandbox_type: SandboxType::LinuxLandlock,
             policy: spec.sandbox_policy.clone(),
+            enforced: false,
         };
         mark_sandbox_policy_unenforced(&mut exec);
         exec
     }
 
-    /// Prepare a Windows-sandboxed execution environment.
-    ///
-    /// **⚠️ SECURITY NOTICE**: This function currently does **not** apply any
-    /// Windows sandbox isolation. It only sets environment markers
-    /// (`DEEPSEEK_SANDBOX` and optionally `DEEPSEEK_SANDBOX_BLOCK_NETWORK`).
-    /// The command will execute with **full system access** — the Windows
-    /// sandbox is not yet enforced. Full Windows sandboxing requires a helper
-    /// process or Windows Sandbox / AppContainer integration.
+    /// Prepare a Windows-sandboxed execution environment (unelevated MVP).
     #[cfg(target_os = "windows")]
     fn prepare_windows(spec: &CommandSpec) -> ExecEnv {
         let mut command = vec![spec.program.clone()];
         command.extend(spec.args.clone());
 
-        let mut env = spec.env.clone();
-        let kind = windows::select_best_kind(&spec.sandbox_policy, &spec.cwd);
-        env.insert("DEEPSEEK_SANDBOX".to_string(), format!("windows:{kind}"));
-        if !spec.sandbox_policy.has_network_access() {
-            env.insert(
-                "DEEPSEEK_SANDBOX_BLOCK_NETWORK".to_string(),
-                "1".to_string(),
-            );
+        let writable = spec.sandbox_policy.get_writable_roots(&spec.cwd);
+        let mut roots: Vec<PathBuf> = writable.iter().map(|entry| entry.root.clone()).collect();
+        roots = zagens_windows_sandbox::filter_ssh_config_dependency_roots(&roots);
+
+        let mut protected = Vec::new();
+        for entry in &writable {
+            protected.extend(entry.read_only_subpaths.clone());
+        }
+        for root in &roots {
+            protected.extend(zagens_windows_sandbox::protected_subdirs_for_root(root));
         }
 
-        let mut exec = ExecEnv {
-            command,
+        match zagens_windows_sandbox::plan_exec(zagens_windows_sandbox::PlanInput {
+            program: spec.program.clone(),
+            args: spec.args.clone(),
             cwd: spec.cwd.clone(),
-            env,
-            timeout: spec.timeout,
-            sandbox_type: SandboxType::Windows,
-            policy: spec.sandbox_policy.clone(),
-        };
-        mark_sandbox_policy_unenforced(&mut exec);
-        exec
+            env: spec.env.clone(),
+            writable_roots: roots,
+            protected_write_paths: protected,
+            network_allowed: spec.sandbox_policy.has_network_access(),
+        }) {
+            Ok(plan) => ExecEnv {
+                command: plan.argv.clone(),
+                cwd: plan.cwd.clone(),
+                env: plan.env.clone(),
+                timeout: spec.timeout,
+                sandbox_type: SandboxType::Windows,
+                policy: spec.sandbox_policy.clone(),
+                enforced: true,
+                windows_plan: Some(plan),
+            },
+            Err(err) => {
+                tracing::warn!(
+                    target: "sandbox",
+                    "Windows sandbox plan failed; falling back to degraded mode: {err:#}"
+                );
+                let mut env = spec.env.clone();
+                env.insert(
+                    "DEEPSEEK_SANDBOX".to_string(),
+                    "windows:unelevated".to_string(),
+                );
+                let mut exec = ExecEnv {
+                    command,
+                    cwd: spec.cwd.clone(),
+                    env,
+                    timeout: spec.timeout,
+                    sandbox_type: SandboxType::Windows,
+                    policy: spec.sandbox_policy.clone(),
+                    enforced: false,
+                    windows_plan: None,
+                };
+                mark_sandbox_policy_unenforced(&mut exec);
+                exec
+            }
+        }
     }
 
     pub(crate) fn noop_sandbox_warning(sandbox_type: SandboxType) -> Option<&'static str> {
@@ -665,6 +712,9 @@ impl ExecEnv {
     /// Warning when the selected sandbox type does not yet isolate the process (H12).
     #[must_use]
     pub fn sandbox_enforcement_warning(&self) -> Option<&'static str> {
+        if self.enforced {
+            return None;
+        }
         SandboxManager::noop_sandbox_warning(self.sandbox_type)
     }
 }
@@ -778,6 +828,9 @@ mod tests {
             timeout: Duration::from_secs(30),
             sandbox_type: SandboxType::None,
             policy: SandboxPolicy::default(),
+            enforced: false,
+            #[cfg(target_os = "windows")]
+            windows_plan: None,
         };
 
         assert_eq!(env.program(), "sandbox-exec");

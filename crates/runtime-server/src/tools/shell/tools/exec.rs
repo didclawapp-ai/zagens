@@ -246,6 +246,7 @@ impl ToolSpec for ExecShellTool {
                         stdout_truncated: stdout_meta.truncated,
                         stderr_truncated: stderr_meta.truncated,
                         sandboxed: true,
+                        sandbox_enforced: true,
                         sandbox_type: Some("opensandbox".to_string()),
                         sandbox_denied: false,
                     }
@@ -276,6 +277,7 @@ impl ToolSpec for ExecShellTool {
                 "status": format!("{:?}", result.status),
                 "duration_ms": result.duration_ms,
                 "sandboxed": true,
+                "sandbox_enforced": true,
                 "sandbox_type": "opensandbox",
                 "sandbox_denied": false,
                 "task_id": result.task_id,
@@ -410,6 +412,7 @@ impl ToolSpec for ExecShellTool {
                     "status": format!("{:?}", result.status),
                     "duration_ms": result.duration_ms,
                     "sandboxed": result.sandboxed,
+                    "sandbox_enforced": result.sandbox_enforced,
                     "sandbox_type": result.sandbox_type,
                     "sandbox_denied": result.sandbox_denied,
                     "task_id": result.task_id,

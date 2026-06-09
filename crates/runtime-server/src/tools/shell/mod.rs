@@ -15,6 +15,8 @@ mod manager;
 mod process;
 mod tools;
 mod types;
+#[cfg(windows)]
+mod windows_sandbox;
 
 pub use host::{SharedShellManager, TuiShellHost, new_shared_shell_manager};
 pub use tools::{ExecShellTool, NoteTool, ShellCancelTool, ShellInteractTool, ShellWaitTool};

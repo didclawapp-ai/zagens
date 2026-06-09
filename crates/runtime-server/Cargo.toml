@@ -44,6 +44,7 @@ zagens-topic-memory = { path = "../topic-memory", version = "0.7.3" }
 zagens-secrets = { path = "../secrets", version = "0.7.3" }
 zagens-protocol = { path = "../protocol", version = "0.7.3" }
 zagens-tools = { path = "../tools", version = "0.7.3" }
+zagens-windows-sandbox = { path = "../windows-sandbox", version = "0.7.3" }
 schemaui = { version = "0.12.0", default-features = false, optional = true }
 async-stream = "0.3.6"
 async-trait.workspace = true
@@ -114,6 +115,7 @@ libc = "0.2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.60", features = ["Win32_Foundation", "Win32_System_Console", "Win32_UI_WindowsAndMessaging", "Win32_System_Diagnostics_Debug"] }
+windows-sys = { version = "0.52", features = ["Win32_Foundation"] }
 
 [lints.rust]
 # Runtime lib retains tools/MCP/config helpers not all reachable from the sidecar binary alone.

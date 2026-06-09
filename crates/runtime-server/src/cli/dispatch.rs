@@ -30,10 +30,10 @@ pub async fn run(cli: Cli) -> Result<()> {
         | Commands::Eval(_)
         | Commands::Execpolicy(_)
         | Commands::Features(_)
-        | Commands::Sandbox(_)
         | Commands::Resume { .. }
         | Commands::Fork { .. } => {
             bail!("This subcommand is not available in headless CLI yet — see TUI方案.md")
         }
+        Commands::Sandbox(args) => handlers::sandbox::run(args.command),
     }
 }

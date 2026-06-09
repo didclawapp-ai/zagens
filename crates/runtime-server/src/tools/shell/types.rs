@@ -43,6 +43,9 @@ pub struct ShellResult {
     /// Whether the command was executed in a sandbox.
     #[serde(default)]
     pub sandboxed: bool,
+    /// Whether OS-level sandbox policy was enforced (false on Win/Linux degraded paths).
+    #[serde(default)]
+    pub sandbox_enforced: bool,
     /// Type of sandbox used (if any).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sandbox_type: Option<String>,

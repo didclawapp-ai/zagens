@@ -8241,6 +8241,7 @@ dependencies = [
  "uuid",
  "wait-timeout",
  "windows 0.60.0",
+ "windows-sys 0.52.0",
  "wiremock",
  "zagens-config",
  "zagens-core",
@@ -8251,6 +8252,7 @@ dependencies = [
  "zagens-secrets",
  "zagens-tools",
  "zagens-topic-memory",
+ "zagens-windows-sandbox",
  "zeroize",
  "zip 2.4.2",
 ]
@@ -8467,6 +8469,21 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+]
+
+[[package]]
+name = "zagens-windows-sandbox"
+version = "0.7.3"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "dirs-next",
+ "once_cell",
+ "rand 0.8.6",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

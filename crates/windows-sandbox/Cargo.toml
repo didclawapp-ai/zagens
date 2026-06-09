@@ -1,0 +1,52 @@
+[package]
+name = "zagens-windows-sandbox"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Windows native sandbox (restricted token + ACL + WFP) for Zagens exec_shell"
+
+[lib]
+name = "zagens_windows_sandbox"
+path = "src/lib.rs"
+
+[[bin]]
+name = "zagens-sandbox-poc-deny-read"
+path = "src/bin/poc_deny_read.rs"
+required-features = []
+
+[[example]]
+name = "t4_probe"
+path = "examples/t4_probe.rs"
+
+[features]
+default = []
+windows-impl = []
+
+[dependencies]
+anyhow.workspace = true
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+once_cell = "1.19"
+rand = { version = "0.8", default-features = false, features = ["std", "small_rng"] }
+dirs-next = "2.0"
+
+[target.'cfg(windows)'.dependencies.windows-sys]
+version = "0.52"
+features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Console",
+    "Win32_System_IO",
+    "Win32_System_Threading",
+    "Win32_System_Pipes",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_JobObjects",
+]
+
+[dev-dependencies]
+tempfile = "3"
+

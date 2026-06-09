@@ -43,6 +43,163 @@ fn echo_stdin_command() -> String {
     }
 }
 
+#[cfg(windows)]
+#[test]
+fn prepare_windows_plan_blocks_id_rsa_via_spawn_sync() {
+    use crate::sandbox::{CommandSpec, SandboxManager, SandboxPolicy};
+    use std::time::Duration;
+    use zagens_windows_sandbox::unelevated_deny_read_enabled;
+
+    if !unelevated_deny_read_enabled() {
+        return;
+    }
+    let profile = std::env::var("USERPROFILE")
+        .ok()
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from(r"C:\Users\Administrator"));
+    let id_rsa = profile.join(".ssh").join("id_rsa");
+    if !id_rsa.is_file() {
+        return;
+    }
+    let workspace = std::path::PathBuf::from(r"F:\DeepSeek-TUI-desktop");
+    if !workspace.is_dir() {
+        return;
+    }
+    let command = format!("type {}", id_rsa.display());
+    let policy = SandboxPolicy::WorkspaceWrite {
+        writable_roots: vec![workspace.clone()],
+        network_access: false,
+        exclude_tmpdir: false,
+        exclude_slash_tmp: false,
+    };
+    let spec = CommandSpec::shell(&command, workspace, Duration::from_secs(15)).with_policy(policy);
+    let exec_env = SandboxManager::new().prepare(&spec);
+    assert!(
+        exec_env.is_enforced(),
+        "expected enforced prepare_windows plan"
+    );
+    let plan = exec_env.windows_plan.as_ref().expect("windows plan");
+    let out = zagens_windows_sandbox::spawn_sync(plan, None, Some(Duration::from_secs(15)))
+        .expect("spawn_sync");
+    assert!(
+        !out.stdout.contains("BEGIN OPENSSH PRIVATE KEY"),
+        "prepare_windows plan leaked via spawn_sync (argv={:?})",
+        plan.argv
+    );
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn shell_manager_sync_vs_background_id_rsa_isolation() {
+    use zagens_windows_sandbox::unelevated_deny_read_enabled;
+
+    if !unelevated_deny_read_enabled() {
+        return;
+    }
+    let profile = std::env::var("USERPROFILE")
+        .ok()
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from(r"C:\Users\Administrator"));
+    let id_rsa = profile.join(".ssh").join("id_rsa");
+    if !id_rsa.is_file() {
+        return;
+    }
+    let workspace = std::path::PathBuf::from(r"F:\DeepSeek-TUI-desktop");
+    if !workspace.is_dir() {
+        return;
+    }
+    let policy = crate::sandbox::SandboxPolicy::WorkspaceWrite {
+        writable_roots: vec![workspace.clone()],
+        network_access: false,
+        exclude_tmpdir: false,
+        exclude_slash_tmp: false,
+    };
+    let command = format!("type {}", id_rsa.display());
+
+    let mut sync_manager = ShellManager::with_sandbox(workspace.clone(), policy.clone());
+    let sync = sync_manager
+        .execute(&command, None, 15_000, false)
+        .expect("sync execute");
+    assert!(
+        !sync.stdout.contains("BEGIN OPENSSH PRIVATE KEY"),
+        "sync path leaked: {}",
+        sync.stdout
+    );
+    assert!(sync.sandbox_enforced);
+
+    let mut bg_manager = ShellManager::with_sandbox(workspace, policy);
+    let started = bg_manager
+        .execute(&command, None, 15_000, true)
+        .expect("bg start");
+    let task_id = started.task_id.expect("task id");
+    let bg = bg_manager
+        .get_output(&task_id, true, 15_000)
+        .expect("bg output");
+    assert!(
+        !bg.stdout.contains("BEGIN OPENSSH PRIVATE KEY"),
+        "background path leaked: {}",
+        bg.stdout
+    );
+    assert!(bg.sandbox_enforced);
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn exec_shell_foreground_blocks_id_rsa_read_when_g0_passes() {
+    use zagens_windows_sandbox::unelevated_deny_read_enabled;
+
+    if !unelevated_deny_read_enabled() {
+        eprintln!("skip: G0 deny-read PoC not pass");
+        return;
+    }
+    let profile = std::env::var("USERPROFILE")
+        .ok()
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from(r"C:\Users\Administrator"));
+    let id_rsa = profile.join(".ssh").join("id_rsa");
+    if !id_rsa.is_file() {
+        eprintln!("skip: no id_rsa at {}", id_rsa.display());
+        return;
+    }
+
+    let workspace = std::path::PathBuf::from(r"F:\DeepSeek-TUI-desktop");
+    if !workspace.is_dir() {
+        eprintln!("skip: workspace missing at {}", workspace.display());
+        return;
+    }
+
+    let ctx = ToolContext::new(workspace.clone()).with_elevated_sandbox_policy(
+        crate::sandbox::SandboxPolicy::WorkspaceWrite {
+            writable_roots: vec![workspace.clone()],
+            network_access: false,
+            exclude_tmpdir: false,
+            exclude_slash_tmp: false,
+        },
+    );
+    let tool = ExecShellTool;
+
+    for command in [
+        format!("type {}", id_rsa.display()),
+        format!(r"C:\Windows\System32\more.com {}", id_rsa.display()),
+    ] {
+        let result = tool
+            .execute(json!({ "command": command }), &ctx)
+            .await
+            .expect("execute");
+        assert!(
+            !result.content.contains("BEGIN OPENSSH PRIVATE KEY"),
+            "exec_shell must not leak id_rsa for `{command}`: {}",
+            result.content
+        );
+        let meta = result.metadata.as_ref().expect("metadata");
+        assert_eq!(
+            meta.get("sandbox_enforced").and_then(Value::as_bool),
+            Some(true),
+            "expected enforced spawn for `{command}`"
+        );
+    }
+}
+
 #[test]
 fn test_sync_execution() {
     let tmp = tempdir().expect("tempdir");

@@ -268,10 +268,21 @@ impl ShellManager {
         stdin_data: Option<&str>,
         exec_env: &ExecEnv,
     ) -> Result<ShellResult> {
+        #[cfg(windows)]
+        if exec_env.is_enforced() {
+            return super::windows_sandbox::execute_sync(
+                original_command,
+                exec_env,
+                timeout_ms,
+                stdin_data,
+            );
+        }
+
         let started = Instant::now();
         let timeout = Duration::from_millis(timeout_ms);
         let sandbox_type = exec_env.sandbox_type;
         let sandboxed = exec_env.is_sandboxed();
+        let sandbox_enforced = exec_env.is_enforced();
 
         // Build the command from ExecEnv
         let program = exec_env.program();
@@ -362,6 +373,7 @@ impl ShellManager {
                 stdout_truncated: stdout_meta.truncated,
                 stderr_truncated: stderr_meta.truncated,
                 sandboxed,
+                sandbox_enforced,
                 sandbox_type: if sandboxed {
                     Some(sandbox_type.to_string())
                 } else {
@@ -397,6 +409,7 @@ impl ShellManager {
                 stdout_truncated: stdout_meta.truncated,
                 stderr_truncated: stderr_meta.truncated,
                 sandboxed,
+                sandbox_enforced,
                 sandbox_type: if sandboxed {
                     Some(sandbox_type.to_string())
                 } else {
@@ -418,6 +431,7 @@ impl ShellManager {
         let timeout = Duration::from_millis(timeout_ms);
         let sandbox_type = exec_env.sandbox_type;
         let sandboxed = exec_env.is_sandboxed();
+        let sandbox_enforced = exec_env.is_enforced();
 
         let program = exec_env.program();
         let args = exec_env.args();
@@ -461,6 +475,7 @@ impl ShellManager {
                 stdout_truncated: false,
                 stderr_truncated: false,
                 sandboxed,
+                sandbox_enforced,
                 sandbox_type: if sandboxed {
                     Some(sandbox_type.to_string())
                 } else {
@@ -487,6 +502,7 @@ impl ShellManager {
                 stdout_truncated: false,
                 stderr_truncated: false,
                 sandboxed,
+                sandbox_enforced,
                 sandbox_type: if sandboxed {
                     Some(sandbox_type.to_string())
                 } else {
@@ -510,6 +526,7 @@ impl ShellManager {
         let started = Instant::now();
         let sandbox_type = exec_env.sandbox_type;
         let sandboxed = exec_env.is_sandboxed();
+        let sandbox_enforced = exec_env.is_enforced();
 
         // Build the command from ExecEnv
         let program = exec_env.program();
@@ -521,6 +538,69 @@ impl ShellManager {
         } else {
             Some(Arc::new(Mutex::new(Vec::new())))
         };
+
+        #[cfg(windows)]
+        if exec_env.is_enforced() && !tty {
+            let stderr_buffer = stderr_buffer
+                .clone()
+                .context("background stderr buffer missing")?;
+            let (child, stdin, stdout_thread, stderr_thread) =
+                super::windows_sandbox::spawn_background(
+                    exec_env,
+                    Arc::clone(&stdout_buffer),
+                    Arc::clone(&stderr_buffer),
+                    stdin_data,
+                )?;
+
+            let mut bg_shell = BackgroundShell {
+                id: task_id.clone(),
+                command: original_command.to_string(),
+                working_dir: working_dir.to_path_buf(),
+                status: ShellStatus::Running,
+                exit_code: None,
+                started_at: started,
+                sandbox_type,
+                sandbox_enforced,
+                linked_task_id: None,
+                stdout_buffer,
+                stderr_buffer: Some(stderr_buffer),
+                stdout_cursor: 0,
+                stderr_cursor: 0,
+                stdin,
+                child: Some(child),
+                stdout_thread,
+                stderr_thread,
+            };
+
+            if let Some(input) = stdin_data {
+                bg_shell.write_stdin(input, false)?;
+            }
+
+            self.processes.insert(task_id.clone(), bg_shell);
+
+            return Ok(ShellResult {
+                task_id: Some(task_id),
+                status: ShellStatus::Running,
+                exit_code: None,
+                stdout: String::new(),
+                stderr: String::new(),
+                duration_ms: 0,
+                stdout_len: 0,
+                stderr_len: 0,
+                stdout_omitted: 0,
+                stderr_omitted: 0,
+                stdout_truncated: false,
+                stderr_truncated: false,
+                sandboxed,
+                sandbox_type: if sandboxed {
+                    Some(sandbox_type.to_string())
+                } else {
+                    None
+                },
+                sandbox_denied: false,
+                sandbox_enforced,
+            });
+        }
 
         let (child, stdin, stdout_thread, stderr_thread) = if tty {
             let pty_system = native_pty_system();
@@ -612,6 +692,7 @@ impl ShellManager {
             exit_code: None,
             started_at: started,
             sandbox_type,
+            sandbox_enforced,
             linked_task_id: None,
             stdout_buffer,
             stderr_buffer,
@@ -649,6 +730,7 @@ impl ShellManager {
                 None
             },
             sandbox_denied: false,
+            sandbox_enforced,
         })
     }
 
@@ -755,6 +837,7 @@ impl ShellManager {
                 None
             },
             sandbox_denied: shell.sandbox_denied(),
+            sandbox_enforced: shell.sandbox_enforced,
         };
 
         Ok(ShellDeltaResult {

@@ -446,6 +446,17 @@ pub struct SandboxArgs {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum SandboxCommand {
+    /// Gate G0 PoC subcommands (Windows only)
+    Poc {
+        #[command(subcommand)]
+        command: SandboxPocCommand,
+    },
+    /// Remove unelevated sandbox ACL state (Phase 1; no WFP/users)
+    Teardown {
+        /// Keep cap_sid file and sandbox logs
+        #[arg(long)]
+        keep_logs: bool,
+    },
     /// Run a command with sandboxing
     Run {
         /// Sandbox policy (danger-full-access, read-only, external-sandbox, workspace-write)
@@ -473,4 +484,10 @@ pub enum SandboxCommand {
         #[arg(required = true, trailing_var_arg = true)]
         command: Vec<String>,
     },
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum SandboxPocCommand {
+    /// Verify unelevated deny-read isolation; writes ~/.zagens/.sandbox/unelevated_deny_read_poc.json
+    DenyRead,
 }
