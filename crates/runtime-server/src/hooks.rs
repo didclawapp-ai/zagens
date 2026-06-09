@@ -128,8 +128,9 @@ pub struct Hook {
     /// Optional condition for when this hook should run
     pub condition: Option<HookCondition>,
 
-    /// Timeout in seconds (default: 30)
-    pub timeout_secs: u64,
+    /// Per-hook timeout in seconds. `None` means "use `HooksConfig::default_timeout_secs`
+    /// if set, otherwise fall back to the built-in 30 s default".
+    pub timeout_secs: Option<u64>,
 
     /// Run in background (don't wait for completion)
     pub background: bool,
@@ -156,7 +157,7 @@ impl Hook {
             event,
             command: command.to_string(),
             condition: None,
-            timeout_secs: 30,
+            timeout_secs: None,
             background: false,
             continue_on_error: true,
             name: None,
@@ -173,7 +174,7 @@ impl Hook {
     /// Builder: set timeout
     #[allow(dead_code)] // Public builder API, used in tests
     pub fn with_timeout(mut self, secs: u64) -> Self {
-        self.timeout_secs = secs;
+        self.timeout_secs = Some(secs);
         self
     }
 
@@ -925,7 +926,7 @@ impl HookExecutor {
             }
 
             let result = if hook.background {
-                self.execute_background(hook, event, &env_vars)
+                self.execute_background(hook, event, context, &env_vars)
             } else {
                 self.execute_sync(hook, event, context, &env_vars)
             };
@@ -995,8 +996,18 @@ impl HookExecutor {
                 continue;
             }
 
+            // Blocking events (message_submit, tool_call_before, etc.) must always run
+            // synchronously so they can deny or modify the operation. A hook marked
+            // `background = true` is silently promoted to sync; background semantics
+            // only make sense for fire-and-forget events (session_start, post_compact…).
             let result = if hook.background {
-                self.execute_background(hook, event, &env_vars)
+                tracing::debug!(
+                    target: "hooks",
+                    hook = hook.name.as_deref().unwrap_or("(unnamed)"),
+                    event = event.as_str(),
+                    "background=true ignored in blocking event chain; running synchronously"
+                );
+                self.execute_sync(hook, event, context, &env_vars)
             } else {
                 self.execute_sync(hook, event, context, &env_vars)
             };
@@ -1118,10 +1129,11 @@ impl HookExecutor {
             .clone()
             .unwrap_or_else(|| self.default_working_dir.clone());
 
-        let timeout_secs = self
-            .config
-            .default_timeout_secs
-            .unwrap_or(hook.timeout_secs);
+        // Per-hook timeout takes priority; fall back to global default, then built-in 30 s.
+        let timeout_secs = hook
+            .timeout_secs
+            .or(self.config.default_timeout_secs)
+            .unwrap_or(30);
         let timeout = Duration::from_secs(timeout_secs);
         let stdin_payload = context.to_invoke_json(event);
 
@@ -1202,11 +1214,15 @@ impl HookExecutor {
         result
     }
 
-    /// Execute a hook in the background (non-blocking)
+    /// Execute a hook in the background (non-blocking, fire-and-forget).
+    ///
+    /// The spawned thread passes the full context JSON on stdin and enforces the
+    /// resolved timeout — if the process exceeds it the child is killed.
     fn execute_background(
         &self,
         hook: &Hook,
-        _event: HookEvent,
+        event: HookEvent,
+        context: &HookContext,
         env_vars: &HashMap<String, String>,
     ) -> HookResult {
         let started = Instant::now();
@@ -1216,19 +1232,65 @@ impl HookExecutor {
             .clone()
             .unwrap_or_else(|| self.default_working_dir.clone());
 
+        let timeout_secs = hook
+            .timeout_secs
+            .or(self.config.default_timeout_secs)
+            .unwrap_or(30);
+        let stdin_payload = context.to_invoke_json(event);
         let cmd = hook.command.clone();
         let env = env_vars.clone();
         let wd = working_dir.clone();
+        let hook_name = hook.name.clone();
 
-        // Spawn in a detached thread
         std::thread::spawn(move || {
-            let _ = HookExecutor::build_shell_command(&cmd)
+            let timeout = Duration::from_secs(timeout_secs);
+            let mut child = match HookExecutor::build_shell_command(&cmd)
                 .current_dir(&wd)
                 .envs(&env)
-                .output();
+                .stdin(Stdio::piped())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+            {
+                Ok(c) => c,
+                Err(e) => {
+                    tracing::warn!(
+                        target: "hooks",
+                        hook = ?hook_name,
+                        "background hook failed to spawn: {e}"
+                    );
+                    return;
+                }
+            };
+            if let Some(mut stdin) = child.stdin.take() {
+                let _ = stdin.write_all(stdin_payload.as_bytes());
+            }
+            match child.wait_timeout(timeout) {
+                Ok(None) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    tracing::warn!(
+                        target: "hooks",
+                        hook = ?hook_name,
+                        "background hook timed out after {timeout_secs}s"
+                    );
+                }
+                Ok(Some(status)) if !status.success() => {
+                    tracing::warn!(
+                        target: "hooks",
+                        hook = ?hook_name,
+                        exit_code = ?status.code(),
+                        "background hook exited with non-zero status"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(target: "hooks", hook = ?hook_name, "background hook wait error: {e}");
+                }
+                Ok(_) => {}
+            }
         });
 
-        // Return immediately with success (background execution is fire-and-forget)
+        // Return immediately — background execution is fire-and-forget from the caller's perspective.
         HookResult {
             name: hook.name.clone(),
             success: true,
@@ -1454,7 +1516,7 @@ NOEQUAL line dropped
             });
 
         assert_eq!(hook.name, Some("notify_tool".to_string()));
-        assert_eq!(hook.timeout_secs, 60);
+        assert_eq!(hook.timeout_secs, Some(60));
         assert!(hook.background);
         assert!(matches!(
             hook.condition,

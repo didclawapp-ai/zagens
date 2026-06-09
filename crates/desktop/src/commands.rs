@@ -1728,7 +1728,7 @@ fn hooks_settings_from_config(cfg: &ConfigToml) -> HooksSettings {
                 event: hook_event_to_str(h.event).to_string(),
                 command: h.command,
                 name: h.name,
-                timeout_secs: h.timeout_secs,
+                timeout_secs: h.timeout_secs.unwrap_or(30),
                 background: h.background,
                 continue_on_error: h.continue_on_error,
                 condition: h.condition.as_ref().map(hook_condition_to_settings),
@@ -1764,7 +1764,12 @@ pub fn save_hooks_settings(
                 .map(hook_condition_from_settings)
                 .transpose()?
                 .flatten(),
-            timeout_secs: entry.timeout_secs.max(1),
+            // Only persist a non-default timeout so `default_timeout_secs` can still apply.
+            timeout_secs: if entry.timeout_secs == 30 {
+                None
+            } else {
+                Some(entry.timeout_secs.max(1))
+            },
             background: entry.background,
             continue_on_error: entry.continue_on_error,
             name: entry

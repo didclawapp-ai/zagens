@@ -261,7 +261,7 @@ fn cursor_entry_to_hook(event_raw: &str, entry: CursorHookEntry) -> Option<Hook>
         event,
         command: entry.command,
         condition,
-        timeout_secs: entry.timeout.unwrap_or(30),
+        timeout_secs: entry.timeout,
         background: false,
         continue_on_error: !entry.fail_closed.unwrap_or(false),
         name: entry.name,
@@ -416,7 +416,7 @@ impl<'de> Visitor<'de> for HookDeserializeVisitor {
             event,
             command,
             condition,
-            timeout_secs: timeout_secs.unwrap_or(30),
+            timeout_secs,
             background: background.unwrap_or(false),
             continue_on_error: continue_on_error.unwrap_or(true),
             name: name.unwrap_or(None),
@@ -444,8 +444,8 @@ impl Serialize for Hook {
         if let Some(ref condition) = self.condition {
             state.serialize_field("condition", condition)?;
         }
-        if self.timeout_secs != 30 {
-            state.serialize_field("timeout_secs", &self.timeout_secs)?;
+        if let Some(t) = self.timeout_secs {
+            state.serialize_field("timeout_secs", &t)?;
         }
         if self.background {
             state.serialize_field("background", &self.background)?;

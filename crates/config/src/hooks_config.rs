@@ -57,18 +57,15 @@ pub struct HookToml {
     pub command: String,
     #[serde(default)]
     pub condition: Option<HookConditionToml>,
-    #[serde(default = "default_hook_timeout")]
-    pub timeout_secs: u64,
+    /// Per-hook timeout. `None` means "use the global `default_timeout_secs`, or 30 s".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeout_secs: Option<u64>,
     #[serde(default)]
     pub background: bool,
     #[serde(default = "default_continue_on_error")]
     pub continue_on_error: bool,
     #[serde(default)]
     pub name: Option<String>,
-}
-
-fn default_hook_timeout() -> u64 {
-    30
 }
 
 fn default_continue_on_error() -> bool {
