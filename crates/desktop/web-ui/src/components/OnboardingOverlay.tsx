@@ -258,6 +258,7 @@ export default function OnboardingOverlay({
                   );
                 })}
               </div>
+              {error && <p className="text-xs text-error-text">{error}</p>}
               <div className="flex items-center justify-end pt-2">
                 <button
                   type="button"

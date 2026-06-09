@@ -23,6 +23,53 @@ export const RIGHT_PANEL_COLLAPSED_STORAGE_KEY = 'zagens-desktop-right-panel-col
 export const ROUTE_INTENT_STORAGE_KEY = 'zagens-desktop-route-intent';
 export const TASK_TYPE_STORAGE_KEY = 'zagens-desktop-task-type';
 
+/**
+ * One-time migration: copy values from `deepseek-desktop-*` keys (renamed in v0.7.1)
+ * to the new `zagens-desktop-*` keys, then remove the old ones.
+ * Safe to call repeatedly — each key is only migrated once.
+ */
+function migrateDeepseekLocalStorageKeys(): void {
+  const renames: [string, string][] = [
+    ['deepseek-desktop-task-type', TASK_TYPE_STORAGE_KEY],
+    ['deepseek-desktop-active-inspector', ACTIVE_INSPECTOR_STORAGE_KEY],
+    ['deepseek-desktop-right-panel-collapsed', RIGHT_PANEL_COLLAPSED_STORAGE_KEY],
+    ['deepseek-desktop-route-intent', ROUTE_INTENT_STORAGE_KEY],
+    ['deepseek-desktop-run-mode', 'zagens-desktop-run-mode'],
+    ['deepseek-desktop-model', 'zagens-desktop-model'],
+    ['deepseek-desktop-notify-method', 'zagens-desktop-notify-method'],
+  ];
+  try {
+    for (const [oldKey, newKey] of renames) {
+      const oldVal = localStorage.getItem(oldKey);
+      if (oldVal !== null && localStorage.getItem(newKey) === null) {
+        localStorage.setItem(newKey, oldVal);
+      }
+      if (oldVal !== null) {
+        localStorage.removeItem(oldKey);
+      }
+    }
+    // Workspace keys are per-window-label: migrate any deepseek-desktop-workspace:* entries.
+    const workspacePrefix = 'deepseek-desktop-workspace:';
+    const newWorkspacePrefix = 'zagens-desktop-workspace:';
+    const keysToMigrate: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k?.startsWith(workspacePrefix)) keysToMigrate.push(k);
+    }
+    for (const oldKey of keysToMigrate) {
+      const label = oldKey.slice(workspacePrefix.length);
+      const newKey = `${newWorkspacePrefix}${label}`;
+      const oldVal = localStorage.getItem(oldKey);
+      if (oldVal !== null && localStorage.getItem(newKey) === null) {
+        localStorage.setItem(newKey, oldVal);
+      }
+      localStorage.removeItem(oldKey);
+    }
+  } catch {
+    /* ignore — localStorage may be unavailable in some contexts */
+  }
+}
+
 let cachedOnboardingComplete = false;
 let shellPrefsHydrated = false;
 
@@ -50,6 +97,7 @@ export async function hydrateDesktopShellPrefs(): Promise<{
   onboardingComplete: boolean;
   taskType: DesktopTaskTypePreference;
 }> {
+  migrateDeepseekLocalStorageKeys();
   const localTaskType = loadTaskTypePreference();
   const localComplete = hasTaskTypePreferenceStored();
   try {
@@ -153,18 +201,24 @@ export function persistTaskTypePreference(value: DesktopTaskTypePreference): voi
   }
 }
 
-/** Mark onboarding complete and mirror prefs to `settings.toml` on desktop. */
+/** Mark onboarding complete and mirror prefs to `settings.toml` on desktop.
+ *  The localStorage write is the primary store; the Tauri disk write is best-effort
+ *  so that a transient IPC failure never blocks the onboarding from completing. */
 export async function persistOnboardingComplete(
   taskType: DesktopTaskTypePreference,
 ): Promise<void> {
   persistTaskTypePreference(taskType);
   cachedOnboardingComplete = true;
   if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
-    const { invoke } = await import('@tauri-apps/api/core');
-    await invoke('save_desktop_shell_prefs', {
-      onboarding_complete: true,
-      task_type_preference: taskType,
-    });
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('save_desktop_shell_prefs', {
+        onboarding_complete: true,
+        task_type_preference: taskType,
+      });
+    } catch {
+      /* localStorage fallback is sufficient; disk sync retried on next launch via migration */
+    }
   }
 }
 
