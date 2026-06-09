@@ -700,6 +700,7 @@ const ja: TranslationMap = {
       'Hook は stdin で JSON（event + context）を受け取ります。stdout {"decision":"deny"} / exit 2 で message_submit / tool_call_before / subagent_start をブロック；{"updatedInput":{…}} で引数を上書き。beforeShell や Cursor sessionStart 等のエイリアスに対応。',
     save: '保存',
     saving: '保存中…',
+    saveSuccess: '保存しました',
     events: {
       session_start: 'セッション開始',
       session_end: 'セッション終了',

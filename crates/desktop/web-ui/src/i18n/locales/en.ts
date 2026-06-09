@@ -700,6 +700,7 @@ const en: TranslationMap = {
       'Hooks receive JSON on stdin (event + context). stdout {"decision":"deny"} or exit 2 blocks message_submit / tool_call_before / subagent_start; stdout {"updatedInput":{…}} rewrites tool args. Aliases like beforeShell and Cursor sessionStart are supported.',
     save: 'Save',
     saving: 'Saving…',
+    saveSuccess: 'Saved',
     events: {
       session_start: 'Session start',
       session_end: 'Session end',

@@ -1569,26 +1569,66 @@ fn hook_event_to_str(event: HookEventToml) -> &'static str {
     }
 }
 
-fn hook_event_from_str(raw: &str) -> Result<HookEventToml, String> {
-    match raw.trim().to_ascii_lowercase().as_str() {
-        "session_start" => Ok(HookEventToml::SessionStart),
-        "session_end" => Ok(HookEventToml::SessionEnd),
-        "message_submit" => Ok(HookEventToml::MessageSubmit),
-        "tool_call_before" => Ok(HookEventToml::ToolCallBefore),
-        "tool_call_after" => Ok(HookEventToml::ToolCallAfter),
-        "mode_change" => Ok(HookEventToml::ModeChange),
-        "on_error" => Ok(HookEventToml::OnError),
-        "shell_env" => Ok(HookEventToml::ShellEnv),
-        "pre_compact" => Ok(HookEventToml::PreCompact),
-        "post_compact" => Ok(HookEventToml::PostCompact),
-        "subagent_start" => Ok(HookEventToml::SubagentStart),
-        "subagent_end" => Ok(HookEventToml::SubagentEnd),
-        "before_shell" => Ok(HookEventToml::ToolCallBefore),
-        "after_shell" => Ok(HookEventToml::ToolCallAfter),
-        "before_file_edit" => Ok(HookEventToml::ToolCallBefore),
-        "after_file_edit" => Ok(HookEventToml::ToolCallAfter),
-        "stop" => Ok(HookEventToml::SessionEnd),
+/// Returns `(canonical event, optional implicit condition)`.
+/// Cursor-style aliases (before_shell, after_shell, before_file_edit, after_file_edit) carry
+/// an implicit tool-name filter that must be AND-ed with the user-supplied condition so that
+/// the saved config.toml matches the runtime hooks_load.rs alias expansion.
+fn hook_event_from_str(raw: &str) -> Result<(HookEventToml, Option<HookConditionToml>), String> {
+    let key = raw.trim().to_ascii_lowercase();
+    match key.as_str() {
+        "session_start" => Ok((HookEventToml::SessionStart, None)),
+        "session_end" | "stop" => Ok((HookEventToml::SessionEnd, None)),
+        "message_submit" => Ok((HookEventToml::MessageSubmit, None)),
+        "tool_call_before" => Ok((HookEventToml::ToolCallBefore, None)),
+        "tool_call_after" => Ok((HookEventToml::ToolCallAfter, None)),
+        "mode_change" => Ok((HookEventToml::ModeChange, None)),
+        "on_error" => Ok((HookEventToml::OnError, None)),
+        "shell_env" => Ok((HookEventToml::ShellEnv, None)),
+        "pre_compact" => Ok((HookEventToml::PreCompact, None)),
+        "post_compact" => Ok((HookEventToml::PostCompact, None)),
+        "subagent_start" => Ok((HookEventToml::SubagentStart, None)),
+        "subagent_end" => Ok((HookEventToml::SubagentEnd, None)),
+        "before_shell" => Ok((
+            HookEventToml::ToolCallBefore,
+            Some(HookConditionToml::ToolName {
+                name: "exec_shell".to_string(),
+            }),
+        )),
+        "after_shell" => Ok((
+            HookEventToml::ToolCallAfter,
+            Some(HookConditionToml::ToolName {
+                name: "exec_shell".to_string(),
+            }),
+        )),
+        "before_file_edit" => Ok((
+            HookEventToml::ToolCallBefore,
+            Some(HookConditionToml::ToolCategory {
+                category: "file_write".to_string(),
+            }),
+        )),
+        "after_file_edit" => Ok((
+            HookEventToml::ToolCallAfter,
+            Some(HookConditionToml::ToolCategory {
+                category: "file_write".to_string(),
+            }),
+        )),
         other => Err(format!("unknown hook event: {other}")),
+    }
+}
+
+/// Merge `implicit` condition into `existing` using AND semantics (mirrors hooks_load.rs).
+fn merge_implicit_condition_toml(
+    existing: &mut Option<HookConditionToml>,
+    implicit: Option<HookConditionToml>,
+) {
+    let Some(implicit) = implicit else { return };
+    match existing.take() {
+        None => *existing = Some(implicit),
+        Some(current) => {
+            *existing = Some(HookConditionToml::All {
+                conditions: vec![implicit, current],
+            });
+        }
     }
 }
 
@@ -1755,15 +1795,18 @@ pub fn save_hooks_settings(
         if command.is_empty() {
             continue;
         }
+        let (event_toml, implicit_cond) = hook_event_from_str(&entry.event)?;
+        let mut condition = entry
+            .condition
+            .as_ref()
+            .map(hook_condition_from_settings)
+            .transpose()?
+            .flatten();
+        merge_implicit_condition_toml(&mut condition, implicit_cond);
         hooks.push(HookToml {
-            event: hook_event_from_str(&entry.event)?,
+            event: event_toml,
             command: command.to_string(),
-            condition: entry
-                .condition
-                .as_ref()
-                .map(hook_condition_from_settings)
-                .transpose()?
-                .flatten(),
+            condition,
             // Only persist a non-default timeout so `default_timeout_secs` can still apply.
             timeout_secs: if entry.timeout_secs == 30 {
                 None

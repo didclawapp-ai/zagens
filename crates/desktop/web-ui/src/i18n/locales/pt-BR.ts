@@ -701,6 +701,7 @@ const ptBr: TranslationMap = {
       'Hooks recebem JSON no stdin (event + context). stdout {"decision":"deny"} ou exit 2 bloqueia message_submit / tool_call_before / subagent_start; {"updatedInput":{…}} reescreve args. Aliases como beforeShell e Cursor sessionStart são suportados.',
     save: 'Salvar',
     saving: 'Salvando…',
+    saveSuccess: 'Salvo',
     events: {
       session_start: 'Início da sessão',
       session_end: 'Fim da sessão',

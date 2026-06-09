@@ -691,6 +691,7 @@ const zhHans = {
       'Hook 从 stdin 接收 JSON（event + context）。stdout {"decision":"deny"} 或 exit 2 可阻断 message_submit / tool_call_before / subagent_start；stdout {"updatedInput":{…}} 可改写工具参数。支持 beforeShell、Cursor sessionStart 等别名。',
     save: '保存',
     saving: '保存中…',
+    saveSuccess: '已保存',
     events: {
       session_start: '会话开始',
       session_end: '会话结束',

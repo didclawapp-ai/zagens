@@ -69,7 +69,7 @@ Operations available in UI and API:
 | **Pause** | Stops future fires; `next_run_at` cleared |
 | **Resume** | Recomputes `next_run_at` from RRULE |
 | **Edit** | Updates name, prompt, schedule, trigger kind, Task options |
-| **Delete** | Removes automation definition (run history under its id remains until manually cleaned) |
+| **Delete** | Removes automation definition **and its complete run history** |
 
 **Run history** lists recent runs with status, timestamps, and linked `task_id`. The desktop panel can jump to the Tasks panel and highlight the task when a run completed with a task id.
 
@@ -77,7 +77,7 @@ Operations available in UI and API:
 
 | Data | Path |
 |------|------|
-| Automation definitions | `~/.zagens/automations/{id}.json` |
+| Automation definitions | `~/.zagens/automations/automations/{id}.json` |
 | Run records | `~/.zagens/automations/runs/{automation_id}/{run_id}.json` |
 
 Override directory with `ZAGENS_AUTOMATIONS_DIR` or `DEEPSEEK_AUTOMATIONS_DIR`.

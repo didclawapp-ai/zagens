@@ -156,7 +156,16 @@ pub(in crate::core::engine) fn fire_tool_call_after_with_executor(
         return;
     }
     let (output, success, exit_code) = match result {
-        Ok(tool_result) => (tool_result.content.clone(), tool_result.success, None),
+        Ok(tool_result) => {
+            // Extract exit_code from structured metadata when available (e.g. exec_shell).
+            let exit_code = tool_result
+                .metadata
+                .as_ref()
+                .and_then(|m| m.get("exit_code"))
+                .and_then(|v| v.as_i64())
+                .map(|c| c as i32);
+            (tool_result.content.clone(), tool_result.success, exit_code)
+        }
         Err(err) => (err.to_string(), false, None),
     };
     let ctx = ctx

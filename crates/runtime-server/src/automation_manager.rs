@@ -636,19 +636,42 @@ fn active_next_run_at(
     schedule.next_after_opt(now)
 }
 
+/// Advance `next_run_at` past `due_at`, skipping any already-elapsed slots so
+/// that a sidecar that was offline for a while catches up in a single tick
+/// rather than one missed slot per tick.
+///
+/// At most `MAX_CATCHUP_STEPS` slots are skipped to avoid burning through an
+/// entire repeat-count in one tick (e.g. a MINUTELY rule offline for 1 hour).
+const MAX_CATCHUP_STEPS: usize = 20;
+
 fn apply_next_run_after_fire(
     automation: &mut AutomationRecord,
     schedule: &AutomationSchedule,
     due_at: DateTime<Utc>,
 ) -> Result<()> {
-    match schedule.next_after_opt(due_at)? {
-        Some(next) => automation.next_run_at = Some(next),
-        None => {
-            automation.next_run_at = None;
-            automation.status = AutomationStatus::Paused;
+    let now = Utc::now();
+    let mut cursor = due_at;
+    let mut steps = 0;
+    loop {
+        match schedule.next_after_opt(cursor)? {
+            Some(next) => {
+                // If the next slot is still in the past (missed while offline),
+                // keep advancing — up to the cap.
+                if next <= now && steps < MAX_CATCHUP_STEPS {
+                    cursor = next;
+                    steps += 1;
+                } else {
+                    automation.next_run_at = Some(next);
+                    return Ok(());
+                }
+            }
+            None => {
+                automation.next_run_at = None;
+                automation.status = AutomationStatus::Paused;
+                return Ok(());
+            }
         }
     }
-    Ok(())
 }
 
 fn parse_byday(value: &str) -> Result<Vec<Weekday>> {
@@ -777,16 +800,39 @@ impl AutomationManager {
             if path.extension().is_none_or(|ext| ext != "json") {
                 continue;
             }
-            let raw = fs::read_to_string(&path)
-                .with_context(|| format!("Failed to read {}", path.display()))?;
-            let record: AutomationRecord = serde_json::from_str(&raw)
-                .with_context(|| format!("Failed to parse {}", path.display()))?;
+            let raw = match fs::read_to_string(&path) {
+                Ok(r) => r,
+                Err(e) => {
+                    tracing::warn!(
+                        target: "automations",
+                        path = %path.display(),
+                        error = %e,
+                        "skipping unreadable automation file"
+                    );
+                    continue;
+                }
+            };
+            let record: AutomationRecord = match serde_json::from_str(&raw) {
+                Ok(r) => r,
+                Err(e) => {
+                    tracing::warn!(
+                        target: "automations",
+                        path = %path.display(),
+                        error = %e,
+                        "skipping malformed automation JSON"
+                    );
+                    continue;
+                }
+            };
             if record.schema_version > CURRENT_AUTOMATION_SCHEMA_VERSION {
-                bail!(
-                    "Automation schema v{} is newer than supported v{}",
-                    record.schema_version,
-                    CURRENT_AUTOMATION_SCHEMA_VERSION
+                tracing::warn!(
+                    target: "automations",
+                    path = %path.display(),
+                    schema_version = record.schema_version,
+                    supported = CURRENT_AUTOMATION_SCHEMA_VERSION,
+                    "skipping automation with unsupported schema version"
                 );
+                continue;
             }
             out.push(record);
         }
@@ -1100,7 +1146,20 @@ impl AutomationManager {
                 };
                 let task = match task_manager.get_task(&task_id).await {
                     Ok(task) => task,
-                    Err(_) => continue,
+                    Err(_) => {
+                        // Task no longer exists (e.g. sidecar restarted and lost in-memory
+                        // task state). Mark the run as failed so it doesn't stay "running"
+                        // indefinitely.
+                        run.status = AutomationRunStatus::Failed;
+                        run.ended_at = Some(Utc::now());
+                        run.error = Some("Task lost after sidecar restart".to_string());
+                        self.save_run(&run)?;
+                        let mut updated_automation = self.get_automation(&automation.id)?;
+                        updated_automation.last_run_at = run.ended_at;
+                        updated_automation.updated_at = Utc::now();
+                        self.save_automation(&updated_automation)?;
+                        continue;
+                    }
                 };
 
                 run.thread_id = task.thread_id.clone();

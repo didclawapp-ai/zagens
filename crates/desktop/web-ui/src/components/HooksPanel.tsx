@@ -209,6 +209,9 @@ export default function HooksPanel({ desktopHost, streaming = false }: Props) {
   const [settings, setSettings] = useState<HooksSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
   useEffect(() => {
     if (!desktopHost) {
@@ -226,9 +229,14 @@ export default function HooksPanel({ desktopHost, streaming = false }: Props) {
               condition: normalizeCondition(h.condition),
             })),
           });
+          setLoadError(null);
         }
       })
-      .catch(() => {})
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setLoadError(err instanceof Error ? err.message : String(err));
+        }
+      })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
@@ -266,8 +274,14 @@ export default function HooksPanel({ desktopHost, streaming = false }: Props) {
       return;
     }
     setSaving(true);
+    setSaveError(null);
+    setSaveSuccess(false);
     try {
       await saveHooksSettings(settings);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (err: unknown) {
+      setSaveError(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
     }
@@ -291,7 +305,9 @@ export default function HooksPanel({ desktopHost, streaming = false }: Props) {
 
   if (!settings) {
     return (
-      <div className="p-4 text-xs text-t-text-muted text-center">{t('hooks.loadFailedGeneric')}</div>
+      <div className="p-4 text-xs text-error-text text-center">
+        {loadError ?? t('hooks.loadFailedGeneric')}
+      </div>
     );
   }
 
@@ -454,12 +470,22 @@ export default function HooksPanel({ desktopHost, streaming = false }: Props) {
         <p className="text-[10px] text-t-text-muted leading-relaxed">{t('hooks.protocolHint')}</p>
       </div>
 
-      <div className="shrink-0 border-t border-divider px-4 py-3 flex justify-end">
+      <div className="shrink-0 border-t border-divider px-4 py-3 flex items-center justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          {saveError && (
+            <p className="text-xs text-error-text truncate" title={saveError}>
+              {saveError}
+            </p>
+          )}
+          {saveSuccess && !saveError && (
+            <p className="text-xs text-emerald-500">{t('hooks.saveSuccess')}</p>
+          )}
+        </div>
         <button
           type="button"
           onClick={() => void handleSave()}
           disabled={saving}
-          className="px-4 py-2 text-xs font-medium rounded-lg bg-accent text-white hover:opacity-90 disabled:opacity-40"
+          className="shrink-0 px-4 py-2 text-xs font-medium rounded-lg bg-accent text-white hover:opacity-90 disabled:opacity-40"
         >
           {saving ? t('hooks.saving') : t('hooks.save')}
         </button>
