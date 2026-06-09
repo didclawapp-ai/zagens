@@ -374,6 +374,11 @@ impl HookContext {
         self
     }
 
+    pub fn with_compaction_manual(mut self, manual: bool) -> Self {
+        self.compaction_manual = Some(manual);
+        self
+    }
+
     pub fn with_compaction_stats(
         mut self,
         manual: bool,

@@ -420,6 +420,9 @@ export default function HooksPanel({ desktopHost, streaming = false }: Props) {
                     className={`${inputCls} resize-y min-h-[48px]`}
                     placeholder={t('hooks.commandPlaceholder')}
                   />
+                  {!hook.command.trim() && (
+                    <span className="text-[10px] text-amber-500">{t('hooks.emptyCommandWarning')}</span>
+                  )}
                 </label>
                 <HookConditionEditor
                   condition={normalizeCondition(hook.condition)}

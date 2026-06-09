@@ -252,7 +252,7 @@ const zhHans = {
     thirdPartyLicenses:
       'MIT 许可证全文随应用安装在可执行文件同目录的 legal/ 文件夹中（Zagens 与 embedded deepseek-tui runtime 谱系）。',
     techStackTitle: '主要技术栈',
-    techStackDeepseekTui: 'Zagens runtime 0.7.1',
+    techStackDeepseekTui: 'Zagens runtime 0.7.2',
     techStackTauri: 'Tauri 2',
     techStackReact: 'React 18',
     updateTitle: '应用更新',
@@ -692,6 +692,7 @@ const zhHans = {
     save: '保存',
     saving: '保存中…',
     saveSuccess: '已保存',
+    emptyCommandWarning: '命令为空，保存后此 Hook 将被跳过。',
     events: {
       session_start: '会话开始',
       session_end: '会话结束',

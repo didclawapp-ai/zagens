@@ -255,7 +255,7 @@ const en: TranslationMap = {
     thirdPartyLicenses:
       'MIT license texts ship with the app in the legal/ folder next to the executable (Zagens + embedded deepseek-tui runtime lineage).',
     techStackTitle: 'Tech stack',
-    techStackDeepseekTui: 'Zagens runtime 0.7.1',
+    techStackDeepseekTui: 'Zagens runtime 0.7.2',
     techStackTauri: 'Tauri 2',
     techStackReact: 'React 18',
     updateTitle: 'App update',
@@ -701,6 +701,7 @@ const en: TranslationMap = {
     save: 'Save',
     saving: 'Saving…',
     saveSuccess: 'Saved',
+    emptyCommandWarning: 'Command is empty — this hook will be skipped on save.',
     events: {
       session_start: 'Session start',
       session_end: 'Session end',

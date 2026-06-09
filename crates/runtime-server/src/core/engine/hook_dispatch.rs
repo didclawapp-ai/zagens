@@ -106,9 +106,7 @@ impl Engine {
         if !executor.has_hooks_for_event(HookEvent::PreCompact) {
             return;
         }
-        let ctx = self
-            .hook_context(mode)
-            .with_message(if manual { "manual" } else { "auto" });
+        let ctx = self.hook_context(mode).with_compaction_manual(manual);
         executor.execute(HookEvent::PreCompact, &ctx);
     }
 

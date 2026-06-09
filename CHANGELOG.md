@@ -10,7 +10,7 @@ All notable changes to **Zagens** and its embedded runtime will be documented in
 
 **Licensing:** This repository is [MIT](LICENSE). See [NOTICE.md](NOTICE.md) for third-party attribution.
 
-**Zagens** (desktop app in `crates/desktop/`) and the runtime workspace share **`0.7.1`**. Desktop still carries an independent literal in `crates/desktop/Cargo.toml` checked by `check-versions.sh` against Tauri/npm/About. Public releases use `0.MINOR.PATCH` until **1.0.0 GA**. Display form **v** + manifest version (e.g. **v0.7.1**).
+**Zagens** (desktop app in `crates/desktop/`) and the runtime workspace share **`0.7.2`**. Desktop still carries an independent literal in `crates/desktop/Cargo.toml` checked by `check-versions.sh` against Tauri/npm/About. Public releases use `0.MINOR.PATCH` until **1.0.0 GA**. Display form **v** + manifest version (e.g. **v0.7.2**).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -20,9 +20,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
+## [0.7.2] - 2026-06-09
 
-- **CI / deps:** Remove GitHub Dependabot; dependency and Actions pin updates are manual during release maintenance (CodeWhale-aligned policy).
+### Added
+
+- **Desktop settings — Hooks & scheduled tasks:** Lifecycle hooks panel (`config.toml` `[hooks]`) and RRULE-based scheduled automations UI under Settings; sidecar scheduler and hook execution wired for session/tool/subagent events.
+
+### Fixed
+
+- **Hooks execution (P0):** Per-hook timeout now takes priority over `default_timeout_secs`; background hooks receive JSON stdin and enforce timeout; blocking events ignore `background=true` so deny/modify can work.
+- **Hooks & automations (P1/P2):** `tool_call_after` exit-code conditions; scheduler batch catch-up after downtime; orphan automation runs marked failed on sidecar restart; `before_shell` alias implicit conditions preserved via IPC; HooksPanel load/save feedback.
+- **Hooks polish:** `pre_compact` sets `compaction_manual`; subagent start/end hooks receive model id; empty hook command warning in UI; remove dead code in `run_now`.
+- **Desktop onboarding:** Persist first-run completion across restarts; migrate legacy `deepseek-desktop-*` localStorage keys to `zagens-desktop-*`.
 
 ## [0.7.1] - 2026-06-08
 

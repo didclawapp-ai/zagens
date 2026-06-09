@@ -128,7 +128,7 @@ pub(crate) async fn run_subagent_task(task: SubAgentTask) {
             Err(err) => ("failed".to_string(), format!("Failed: {err}")),
         };
         executor.fire_subagent_end(
-            &executor.base_context(),
+            &executor.base_context().with_model(&task.runtime.model),
             &agent_id,
             agent_type_for_blackboard.as_str(),
             &status,

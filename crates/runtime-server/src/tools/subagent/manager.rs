@@ -358,7 +358,7 @@ impl SubAgentManager {
         if let Some(executor) = runtime.hook_executor.as_ref() {
             executor
                 .fire_subagent_start(
-                    &executor.base_context(),
+                    &executor.base_context().with_model(&runtime.model),
                     &agent_id,
                     agent_type.as_str(),
                     &prompt,

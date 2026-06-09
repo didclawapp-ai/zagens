@@ -255,7 +255,7 @@ const ptBr: TranslationMap = {
     thirdPartyLicenses:
       'Os textos de licença MIT vêm com o app na pasta legal/ ao lado do executável (Zagens + linhagem do runtime embedded deepseek-tui).',
     techStackTitle: 'Stack técnica',
-    techStackDeepseekTui: 'Zagens runtime 0.7.1',
+    techStackDeepseekTui: 'Zagens runtime 0.7.2',
     techStackTauri: 'Tauri 2',
     techStackReact: 'React 18',
     updateTitle: 'Atualização do app',
@@ -702,6 +702,7 @@ const ptBr: TranslationMap = {
     save: 'Salvar',
     saving: 'Salvando…',
     saveSuccess: 'Salvo',
+    emptyCommandWarning: 'Comando vazio — este hook será ignorado ao salvar.',
     events: {
       session_start: 'Início da sessão',
       session_end: 'Fim da sessão',

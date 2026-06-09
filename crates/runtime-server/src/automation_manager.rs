@@ -1046,14 +1046,6 @@ impl AutomationManager {
         self.save_run(&run)?;
 
         automation.updated_at = Utc::now();
-        if matches!(
-            run.status,
-            AutomationRunStatus::Completed
-                | AutomationRunStatus::Failed
-                | AutomationRunStatus::Canceled
-        ) {
-            automation.last_run_at = run.ended_at.or(Some(Utc::now()));
-        }
         self.save_automation(&automation)?;
 
         Ok(run)
