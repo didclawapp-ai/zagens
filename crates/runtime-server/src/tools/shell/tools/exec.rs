@@ -118,7 +118,15 @@ impl ToolSpec for ExecShellTool {
             && let Some(policy) = load_default_policy()
                 .map_err(|e| ToolError::execution_failed(format!("execpolicy load failed: {e}")))?
         {
-            let decision = policy.evaluate(command);
+            let mut decision = policy.evaluate(command);
+            if matches!(decision, ExecPolicyDecision::Allow)
+                && let Some(reason) = crate::command_safety::execpolicy_allow_target_paths_escape(
+                    command,
+                    &context.workspace.to_string_lossy(),
+                )
+            {
+                decision = ExecPolicyDecision::Deny(reason);
+            }
             execpolicy_decision = Some(decision.clone());
             if let ExecPolicyDecision::Deny(reason) = decision {
                 return Ok(ToolResult {
@@ -207,7 +215,13 @@ impl ToolSpec for ExecShellTool {
             }
 
             let started = std::time::Instant::now();
-            let backend_result = backend.exec(command, &extra_env).await;
+            let backend_result = backend
+                .exec(
+                    command,
+                    &extra_env,
+                    working_dir.as_deref().map(std::path::Path::new),
+                )
+                .await;
 
             let result = match backend_result {
                 Ok(output) => {

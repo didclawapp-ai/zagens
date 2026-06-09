@@ -156,16 +156,23 @@ export default function SettingsPanel({
 
             <label className="block space-y-1">
               <span className={labelCls}>{t('settings.defaultModel')}</span>
-              <select
+              <input
+                type="text"
+                list="settings-model-suggestions"
                 className={selectCls}
                 value={settings.default_model}
                 onChange={(e) => update('default_model', e.target.value)}
-              >
-                <option value="deepseek-v4-pro">DeepSeek V4 Pro</option>
-                <option value="deepseek-v4-flash">DeepSeek V4 Flash</option>
-                <option value="deepseek-chat">DeepSeek Chat</option>
-                <option value="deepseek-reasoner">DeepSeek Reasoner</option>
-              </select>
+                placeholder={t('settings.defaultModelPlaceholder')}
+              />
+              <datalist id="settings-model-suggestions">
+                {(settings.available_models?.length
+                  ? settings.available_models
+                  : ['deepseek-v4-pro', 'deepseek-v4-flash']
+                ).map((m) => (
+                  <option key={m} value={m} />
+                ))}
+              </datalist>
+              <p className={descCls}>{t('settings.defaultModelHint')}</p>
             </label>
 
             <label className="block space-y-1">

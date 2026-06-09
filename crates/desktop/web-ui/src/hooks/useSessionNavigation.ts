@@ -31,13 +31,13 @@ import {
   clearStoredActiveSessionId,
 } from '../lib/windowBridge';
 import { usageRecordCacheHitPercent } from '../lib/cacheUsage';
-import type { DesktopModelId, DesktopTaskTypeResolved } from '../types/desktop';
+import type { ComposerModelId, DesktopTaskTypeResolved } from '../types/desktop';
 
 type NavMessage = CachedUiMessage;
 
 export type UseSessionNavigationParams = {
   t: (key: string, params?: Record<string, string>) => string;
-  selectedModel: DesktopModelId;
+  selectedModel: ComposerModelId;
   activeSessionIdRef: MutableRefObject<string | null>;
   resumedThreadIdRef: MutableRefObject<string | null>;
   threadTurnRef: MutableRefObject<{ threadId: string; turnId: string }>;

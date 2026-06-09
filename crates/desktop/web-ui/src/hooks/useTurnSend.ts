@@ -51,7 +51,7 @@ import { toast } from '../lib/toast';
 import { registerWindowThread } from '../lib/windowBridge';
 import {
   resolveRouteIntentForApi,
-  type DesktopModelId,
+  type ComposerModelId,
   type DesktopRouteIntentOption,
   type DesktopRunModeId,
   type DesktopTaskTypePreference,
@@ -100,7 +100,7 @@ export type UseTurnSendParams = {
   runMode: DesktopRunModeId;
   autoApprove: boolean;
   routeIntent: DesktopRouteIntentOption;
-  selectedModel: DesktopModelId;
+  selectedModel: ComposerModelId;
   selectedWorkspace: string;
   taskTypePreference: DesktopTaskTypePreference;
   modelParams: ModelParams;

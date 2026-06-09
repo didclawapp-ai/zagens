@@ -803,16 +803,16 @@ impl HookExecutor {
                 return;
             }
         };
-        if let Some(parent) = path.parent() {
-            if let Err(err) = std::fs::create_dir_all(parent) {
-                tracing::warn!(
-                    target: "hooks",
-                    path = %parent.display(),
-                    error = %err,
-                    "failed to create hook audit directory"
-                );
-                return;
-            }
+        if let Some(parent) = path.parent()
+            && let Err(err) = std::fs::create_dir_all(parent)
+        {
+            tracing::warn!(
+                target: "hooks",
+                path = %parent.display(),
+                error = %err,
+                "failed to create hook audit directory"
+            );
+            return;
         }
         use std::io::Write;
         match std::fs::OpenOptions::new()
@@ -1666,7 +1666,7 @@ NOEQUAL line dropped
                 event: HookEvent::MessageSubmit,
                 command: command.to_string(),
                 condition: None,
-                timeout_secs: 5,
+                timeout_secs: Some(5),
                 background: false,
                 continue_on_error: true,
                 name: Some("deny-json".to_string()),

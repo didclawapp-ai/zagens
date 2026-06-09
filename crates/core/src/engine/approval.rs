@@ -33,9 +33,12 @@ pub enum UserInputDecision<R> {
 }
 
 /// Result of awaiting tool approval from the user.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ApprovalResult<P> {
-    Approved,
+    Approved {
+        cache_key: Option<String>,
+        remember_for_session: bool,
+    },
     Denied,
     RetryWithPolicy(P),
 }
@@ -65,10 +68,13 @@ where
                 match decision {
                     ApprovalDecision::Approved {
                         id,
-                        cache_key: _,
-                        remember_for_session: _,
+                        cache_key,
+                        remember_for_session,
                     } if id == tool_id => {
-                        return Ok(ApprovalResult::Approved);
+                        return Ok(ApprovalResult::Approved {
+                            cache_key,
+                            remember_for_session,
+                        });
                     }
                     ApprovalDecision::Denied { id } if id == tool_id => {
                         return Ok(ApprovalResult::Denied);
@@ -147,7 +153,10 @@ mod tests {
         .unwrap();
         assert!(matches!(
             task.await.unwrap().unwrap(),
-            ApprovalResult::Approved
+            ApprovalResult::Approved {
+                cache_key: None,
+                remember_for_session: false,
+            }
         ));
     }
 

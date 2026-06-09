@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::fmt;
 use std::fs;
 #[cfg(unix)]
 use std::io::Write;
@@ -220,7 +221,7 @@ impl ProvidersToml {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Clone, Serialize, Deserialize, Default)]
 pub struct ConfigToml {
     /// Runtime-compatible DeepSeek API key. Kept at the root so desktop
     /// sidecar and headless hosts can share a single config file.
@@ -307,6 +308,53 @@ pub struct ConfigToml {
     pub hooks: Option<HooksConfigToml>,
     #[serde(flatten)]
     pub extras: BTreeMap<String, toml::Value>,
+}
+
+impl fmt::Debug for ConfigToml {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ConfigToml")
+            .field("api_key", &self.api_key.as_ref().map(|s| redact_secret(s)))
+            .field("base_url", &self.base_url)
+            .field("http_headers", &self.http_headers)
+            .field("default_text_model", &self.default_text_model)
+            .field("provider", &self.provider)
+            .field("model", &self.model)
+            .field("auth_mode", &self.auth_mode)
+            .field(
+                "chatgpt_access_token",
+                &self.chatgpt_access_token.as_ref().map(|s| redact_secret(s)),
+            )
+            .field(
+                "device_code_session",
+                &self.device_code_session.as_ref().map(|s| redact_secret(s)),
+            )
+            .field("output_mode", &self.output_mode)
+            .field("log_level", &self.log_level)
+            .field("telemetry", &self.telemetry)
+            .field("approval_policy", &self.approval_policy)
+            .field("sandbox_mode", &self.sandbox_mode)
+            .field("providers", &DebugProviders(&self.providers))
+            .field("network", &self.network)
+            .field("skills", &self.skills)
+            .field("snapshots", &self.snapshots)
+            .field("lsp", &self.lsp)
+            .field("vision", &self.vision.as_ref().map(DebugVision))
+            .field("reasoning_effort", &self.reasoning_effort)
+            .field("cost_currency", &self.cost_currency)
+            .field("allow_shell", &self.allow_shell)
+            .field("max_subagents", &self.max_subagents)
+            .field("features", &self.features)
+            .field("subagents", &self.subagents)
+            .field("memory", &self.memory)
+            .field("topic_memory", &self.topic_memory)
+            .field("notifications", &self.notifications)
+            .field("session", &self.session)
+            .field("compaction", &self.compaction)
+            .field("long_horizon", &self.long_horizon)
+            .field("hooks", &self.hooks)
+            .field("extras", &self.extras)
+            .finish()
+    }
 }
 
 /// Header prepended to the first-run `config.toml` (not part of the serde schema).
@@ -715,74 +763,106 @@ impl ConfigToml {
     pub fn get_value(&self, key: &str) -> Option<String> {
         match key {
             "provider" => Some(self.provider.as_str().to_string()),
-            "api_key" => self.api_key.clone(),
+            "api_key" => self.api_key.as_deref().map(redact_secret),
             "base_url" => self.base_url.clone(),
             "http_headers" => serialize_http_headers(&self.http_headers),
             "default_text_model" => self.default_text_model.clone(),
             "model" => self.model.clone(),
             "auth.mode" => self.auth_mode.clone(),
-            "auth.chatgpt_access_token" => self.chatgpt_access_token.clone(),
-            "auth.device_code_session" => self.device_code_session.clone(),
+            "auth.chatgpt_access_token" => self.chatgpt_access_token.as_deref().map(redact_secret),
+            "auth.device_code_session" => self.device_code_session.as_deref().map(redact_secret),
             "output_mode" => self.output_mode.clone(),
             "log_level" => self.log_level.clone(),
             "telemetry" => self.telemetry.map(|v| v.to_string()),
             "approval_policy" => self.approval_policy.clone(),
             "sandbox_mode" => self.sandbox_mode.clone(),
-            "providers.deepseek.api_key" => self.providers.deepseek.api_key.clone(),
+            "providers.deepseek.api_key" => self
+                .providers
+                .deepseek
+                .api_key
+                .as_deref()
+                .map(redact_secret),
             "providers.deepseek.base_url" => self.providers.deepseek.base_url.clone(),
             "providers.deepseek.model" => self.providers.deepseek.model.clone(),
             "providers.deepseek.http_headers" => {
                 serialize_http_headers(&self.providers.deepseek.http_headers)
             }
-            "providers.nvidia_nim.api_key" => self.providers.nvidia_nim.api_key.clone(),
+            "providers.nvidia_nim.api_key" => self
+                .providers
+                .nvidia_nim
+                .api_key
+                .as_deref()
+                .map(redact_secret),
             "providers.nvidia_nim.base_url" => self.providers.nvidia_nim.base_url.clone(),
             "providers.nvidia_nim.model" => self.providers.nvidia_nim.model.clone(),
             "providers.nvidia_nim.http_headers" => {
                 serialize_http_headers(&self.providers.nvidia_nim.http_headers)
             }
-            "providers.openai.api_key" => self.providers.openai.api_key.clone(),
+            "providers.openai.api_key" => {
+                self.providers.openai.api_key.as_deref().map(redact_secret)
+            }
             "providers.openai.base_url" => self.providers.openai.base_url.clone(),
             "providers.openai.model" => self.providers.openai.model.clone(),
             "providers.openai.http_headers" => {
                 serialize_http_headers(&self.providers.openai.http_headers)
             }
-            "providers.openrouter.api_key" => self.providers.openrouter.api_key.clone(),
+            "providers.openrouter.api_key" => self
+                .providers
+                .openrouter
+                .api_key
+                .as_deref()
+                .map(redact_secret),
             "providers.openrouter.base_url" => self.providers.openrouter.base_url.clone(),
             "providers.openrouter.model" => self.providers.openrouter.model.clone(),
             "providers.openrouter.http_headers" => {
                 serialize_http_headers(&self.providers.openrouter.http_headers)
             }
-            "providers.novita.api_key" => self.providers.novita.api_key.clone(),
+            "providers.novita.api_key" => {
+                self.providers.novita.api_key.as_deref().map(redact_secret)
+            }
             "providers.novita.base_url" => self.providers.novita.base_url.clone(),
             "providers.novita.model" => self.providers.novita.model.clone(),
             "providers.novita.http_headers" => {
                 serialize_http_headers(&self.providers.novita.http_headers)
             }
-            "providers.fireworks.api_key" => self.providers.fireworks.api_key.clone(),
+            "providers.fireworks.api_key" => self
+                .providers
+                .fireworks
+                .api_key
+                .as_deref()
+                .map(redact_secret),
             "providers.fireworks.base_url" => self.providers.fireworks.base_url.clone(),
             "providers.fireworks.model" => self.providers.fireworks.model.clone(),
             "providers.fireworks.http_headers" => {
                 serialize_http_headers(&self.providers.fireworks.http_headers)
             }
-            "providers.sglang.api_key" => self.providers.sglang.api_key.clone(),
+            "providers.sglang.api_key" => {
+                self.providers.sglang.api_key.as_deref().map(redact_secret)
+            }
             "providers.sglang.base_url" => self.providers.sglang.base_url.clone(),
             "providers.sglang.model" => self.providers.sglang.model.clone(),
             "providers.sglang.http_headers" => {
                 serialize_http_headers(&self.providers.sglang.http_headers)
             }
-            "providers.vllm.api_key" => self.providers.vllm.api_key.clone(),
+            "providers.vllm.api_key" => self.providers.vllm.api_key.as_deref().map(redact_secret),
             "providers.vllm.base_url" => self.providers.vllm.base_url.clone(),
             "providers.vllm.model" => self.providers.vllm.model.clone(),
             "providers.vllm.http_headers" => {
                 serialize_http_headers(&self.providers.vllm.http_headers)
             }
-            "providers.ollama.api_key" => self.providers.ollama.api_key.clone(),
+            "providers.ollama.api_key" => {
+                self.providers.ollama.api_key.as_deref().map(redact_secret)
+            }
             "providers.ollama.base_url" => self.providers.ollama.base_url.clone(),
             "providers.ollama.model" => self.providers.ollama.model.clone(),
             "providers.ollama.http_headers" => {
                 serialize_http_headers(&self.providers.ollama.http_headers)
             }
-            "vision.api_key" => self.vision.as_ref().and_then(|v| v.api_key.clone()),
+            "vision.api_key" => self
+                .vision
+                .as_ref()
+                .and_then(|v| v.api_key.as_deref())
+                .map(redact_secret),
             "vision.base_url" => self.vision.as_ref().and_then(|v| v.base_url.clone()),
             "vision.model" => self.vision.as_ref().and_then(|v| v.model.clone()),
             _ => self.extras.get(key).map(toml::Value::to_string),
@@ -1177,6 +1257,27 @@ impl ConfigToml {
         }
         if let Some(v) = serialize_http_headers(&self.providers.ollama.http_headers) {
             out.insert("providers.ollama.http_headers".to_string(), v);
+        }
+        if let Some(v) = self
+            .vision
+            .as_ref()
+            .and_then(|vision| vision.api_key.as_ref())
+        {
+            out.insert("vision.api_key".to_string(), redact_secret(v));
+        }
+        if let Some(v) = self
+            .vision
+            .as_ref()
+            .and_then(|vision| vision.base_url.as_ref())
+        {
+            out.insert("vision.base_url".to_string(), v.clone());
+        }
+        if let Some(v) = self
+            .vision
+            .as_ref()
+            .and_then(|vision| vision.model.as_ref())
+        {
+            out.insert("vision.model".to_string(), v.clone());
         }
 
         for (k, v) in &self.extras {
@@ -1676,6 +1777,57 @@ fn redact_secret(secret: &str) -> String {
     format!("{}***{}", &secret[..4], &secret[secret.len() - 4..])
 }
 
+struct DebugProviders<'a>(&'a ProvidersToml);
+
+impl fmt::Debug for DebugProviders<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ProvidersToml")
+            .field("deepseek", &debug_provider_config(&self.0.deepseek))
+            .field("nvidia_nim", &debug_provider_config(&self.0.nvidia_nim))
+            .field("openai", &debug_provider_config(&self.0.openai))
+            .field("openrouter", &debug_provider_config(&self.0.openrouter))
+            .field("novita", &debug_provider_config(&self.0.novita))
+            .field("fireworks", &debug_provider_config(&self.0.fireworks))
+            .field("sglang", &debug_provider_config(&self.0.sglang))
+            .field("vllm", &debug_provider_config(&self.0.vllm))
+            .field("ollama", &debug_provider_config(&self.0.ollama))
+            .finish()
+    }
+}
+
+fn debug_provider_config(provider: &ProviderConfigToml) -> impl fmt::Debug + '_ {
+    struct Dbg<'a>(&'a ProviderConfigToml);
+    impl fmt::Debug for Dbg<'_> {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.debug_struct("ProviderConfigToml")
+                .field(
+                    "api_key",
+                    &self.0.api_key.as_ref().map(|s| redact_secret(s)),
+                )
+                .field("base_url", &self.0.base_url)
+                .field("model", &self.0.model)
+                .field("http_headers", &self.0.http_headers)
+                .finish()
+        }
+    }
+    Dbg(provider)
+}
+
+struct DebugVision<'a>(&'a VisionConfigToml);
+
+impl fmt::Debug for DebugVision<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("VisionConfigToml")
+            .field(
+                "api_key",
+                &self.0.api_key.as_ref().map(|s| redact_secret(s)),
+            )
+            .field("base_url", &self.0.base_url)
+            .field("model", &self.0.model)
+            .finish()
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 struct EnvRuntimeOverrides {
     provider: Option<ProviderKind>,
@@ -2152,6 +2304,19 @@ mod tests {
 
         assert_eq!(resolved.provider, ProviderKind::NvidiaNim);
         assert_eq!(resolved.api_key.as_deref(), Some("deepseek-compat-key"));
+    }
+
+    #[test]
+    fn get_value_redacts_api_key() {
+        let config = ConfigToml {
+            api_key: Some("sk-deepseek-secret-key".to_string()),
+            ..ConfigToml::default()
+        };
+
+        let value = config.get_value("api_key").expect("api_key");
+
+        assert!(value.contains("***"));
+        assert!(!value.contains("sk-deepseek-secret-key"));
     }
 
     #[test]

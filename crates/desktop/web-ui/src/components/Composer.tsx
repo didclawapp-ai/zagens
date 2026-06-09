@@ -8,7 +8,7 @@ import {
 import { createPortal } from 'react-dom';
 import { useT } from '../i18n';
 import type {
-  DesktopModelId,
+  ComposerModelId,
   DesktopRouteIntentOption,
   DesktopRunModeId,
   DesktopTaskTypePreference,
@@ -21,10 +21,14 @@ import {
 import type { TranslationKey } from '../i18n/keys';
 import {
   composerRoutingStatusLabel,
-  DESKTOP_MODEL_LABELS,
-  DESKTOP_MODEL_SHORT_LABELS,
   DESKTOP_RUN_MODE_LABELS,
 } from '../types/desktop';
+import {
+  composerModelLabel,
+  composerModelShortLabel,
+  isPresetComposerModel,
+  normalizeComposerModel,
+} from '../lib/composerModels';
 import { runModesForSession } from '../lib/taskTypeSession';
 import LhtModeToggle from './LhtModeToggle';
 import { clipboardHtmlToPlainText } from '../lib/sanitizeHtml';
@@ -427,8 +431,10 @@ interface Props {
   threadExportEnabled: boolean;
   onExportSessionJson: () => void;
   onExportThreadJson: () => void;
-  model: DesktopModelId;
-  onModelChange: (model: DesktopModelId) => void;
+  model: ComposerModelId;
+  onModelChange: (model: ComposerModelId) => void;
+  /** Presets + models from config.toml + current selection. */
+  modelOptions: string[];
   /** Opens ModelParamsDialog (temperature / top_p / max_tokens). */
   onOpenModelParams?: () => void;
   workspace: string;
@@ -479,6 +485,7 @@ export default function Composer({
   onExportThreadJson,
   model,
   onModelChange,
+  modelOptions,
   onOpenModelParams,
   workspace,
   onWorkspaceChange,
@@ -501,6 +508,7 @@ export default function Composer({
   const [attachments, setAttachments] = useState<AttachedFile[]>([]);
   const [transcribing, setTranscribing] = useState(false);
   const [modelOpen, setModelOpen] = useState(false);
+  const [customModelDraft, setCustomModelDraft] = useState('');
   const [runModeOpen, setRunModeOpen] = useState(false);
   const [taskTypeOpen, setTaskTypeOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
@@ -834,12 +842,25 @@ export default function Composer({
       : t(TASK_TYPE_HINT_KEYS[taskTypePreference]);
 
   const selectModel = useCallback(
-    (m: DesktopModelId) => {
-      onModelChange(m);
+    (m: string) => {
+      const normalized = normalizeComposerModel(m);
+      if (!normalized) return;
+      onModelChange(normalized);
+      setCustomModelDraft(normalized);
       setModelOpen(false);
     },
     [onModelChange],
   );
+
+  const applyCustomModel = useCallback(() => {
+    selectModel(customModelDraft);
+  }, [customModelDraft, selectModel]);
+
+  useEffect(() => {
+    if (modelOpen) {
+      setCustomModelDraft(model);
+    }
+  }, [modelOpen, model]);
 
   const pickDirectory = useCallback(async () => {
     setWorkspacePickError(null);
@@ -953,7 +974,7 @@ export default function Composer({
           <p className="mb-3 text-[11px] leading-snug text-amber-text">{workspacePickError}</p>
         )}
         {resumedThreadActive && (
-          <p className="mb-3 text-[11px] leading-snug text-t-text-secondary" dangerouslySetInnerHTML={{ __html: t('composer.threadWorkspaceNotice') }} />
+          <p className="mb-3 text-[11px] leading-snug text-t-text-secondary">{t('composer.threadWorkspaceNotice')}</p>
         )}
         <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-t-text-muted">
           {t('composer.manualPath')}
@@ -1004,8 +1025,8 @@ export default function Composer({
         })
       : '';
   const modelPickerTitle = routingActive
-    ? `${DESKTOP_MODEL_LABELS[model]} — ${t('composer.modelFallback')}`
-    : DESKTOP_MODEL_LABELS[model];
+    ? `${composerModelLabel(model)} — ${t('composer.modelFallback')}`
+    : composerModelLabel(model);
 
   return (
     <>
@@ -1130,7 +1151,7 @@ export default function Composer({
                 aria-haspopup="listbox"
                 title={modelPickerTitle}
               >
-                {DESKTOP_MODEL_SHORT_LABELS[model]}
+                {composerModelShortLabel(model)}
                 <svg
                   viewBox="0 0 24 24"
                   style={{ width: 12, height: 12 }}
@@ -1141,42 +1162,74 @@ export default function Composer({
               </button>
               {modelOpen && (
                 <div
-                  className="absolute bottom-full left-0 z-[10040] mb-1 w-48 rounded-lg border border-card-border bg-card p-1.5 shadow-lg ring-1 ring-black/[0.06] dark:ring-white/[0.08]"
+                  className="absolute bottom-full left-0 z-[10040] mb-1 w-72 max-w-[min(18rem,calc(100vw-2rem))] rounded-lg border border-card-border bg-card p-1.5 shadow-lg ring-1 ring-black/[0.06] dark:ring-white/[0.08]"
                   role="listbox"
                   aria-label={t('composer.selectModel')}
                 >
-                  {(Object.entries(DESKTOP_MODEL_LABELS) as [DesktopModelId, string][]).map(
-                    ([id, label]) => (
+                  {modelOptions.map((id) => (
+                    <button
+                      key={id}
+                      type="button"
+                      role="option"
+                      aria-selected={id === model}
+                      onClick={() => selectModel(id)}
+                      className={`flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${
+                        id === model
+                          ? 'bg-accent-soft text-accent font-medium'
+                          : 'text-t-text hover:bg-hover'
+                      }`}
+                    >
+                      <span className="min-w-0 truncate" title={id}>
+                        {composerModelLabel(id)}
+                        {!isPresetComposerModel(id) ? (
+                          <span className="ml-1 text-[10px] font-normal text-t-text-muted">
+                            ({t('composer.modelFromConfig')})
+                          </span>
+                        ) : null}
+                      </span>
+                      {id === model && (
+                        <svg
+                          viewBox="0 0 24 24"
+                          style={{
+                            width: 14,
+                            height: 14,
+                            stroke: 'currentColor',
+                            fill: 'none',
+                            strokeWidth: 2,
+                          }}
+                        >
+                          <path d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </button>
+                  ))}
+                  <div className="mt-1 border-t border-divider pt-1.5 px-1">
+                    <label className="block text-[10px] font-medium text-t-text-muted mb-1">
+                      {t('composer.customModel')}
+                    </label>
+                    <div className="flex gap-1">
+                      <input
+                        type="text"
+                        value={customModelDraft}
+                        onChange={(e) => setCustomModelDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            applyCustomModel();
+                          }
+                        }}
+                        placeholder={t('composer.customModelPlaceholder')}
+                        className="min-w-0 flex-1 rounded-md border border-input-border bg-input-bg px-2 py-1.5 text-xs text-t-text outline-none focus:border-accent"
+                      />
                       <button
-                        key={id}
                         type="button"
-                        role="option"
-                        aria-selected={id === model}
-                        onClick={() => selectModel(id)}
-                        className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm transition-colors ${
-                          id === model
-                            ? 'bg-accent-soft text-accent font-medium'
-                            : 'text-t-text hover:bg-hover'
-                        }`}
+                        onClick={applyCustomModel}
+                        className="shrink-0 rounded-md bg-accent px-2 py-1.5 text-xs font-medium text-accent-text hover:opacity-90"
                       >
-                        <span>{label}</span>
-                        {id === model && (
-                          <svg
-                            viewBox="0 0 24 24"
-                            style={{
-                              width: 14,
-                              height: 14,
-                              stroke: 'currentColor',
-                              fill: 'none',
-                              strokeWidth: 2,
-                            }}
-                          >
-                            <path d="M5 13l4 4L19 7" />
-                          </svg>
-                        )}
+                        {t('composer.customModelApply')}
                       </button>
-                    ),
-                  )}
+                    </div>
+                  </div>
                 </div>
               )}
             </div>

@@ -8177,7 +8177,7 @@ dependencies = [
 
 [[package]]
 name = "zagens-agent"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "serde",
  "zagens-config",
@@ -8185,7 +8185,7 @@ dependencies = [
 
 [[package]]
 name = "zagens-cli"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -8257,7 +8257,7 @@ dependencies = [
 
 [[package]]
 name = "zagens-config"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "anyhow",
  "dirs",
@@ -8269,7 +8269,7 @@ dependencies = [
 
 [[package]]
 name = "zagens-core"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8295,7 +8295,7 @@ dependencies = [
 
 [[package]]
 name = "zagens-desktop"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -8330,7 +8330,7 @@ dependencies = [
 
 [[package]]
 name = "zagens-hooks"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8339,12 +8339,13 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tracing",
  "zagens-protocol",
 ]
 
 [[package]]
 name = "zagens-mcp"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "anyhow",
  "serde",
@@ -8353,7 +8354,7 @@ dependencies = [
 
 [[package]]
 name = "zagens-protocol"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "serde",
  "serde_json",
@@ -8361,7 +8362,7 @@ dependencies = [
 
 [[package]]
 name = "zagens-runtime-adapters"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8390,7 +8391,7 @@ dependencies = [
 
 [[package]]
 name = "zagens-runtime-api"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "axum",
  "chrono",
@@ -8408,7 +8409,7 @@ dependencies = [
 
 [[package]]
 name = "zagens-runtime-orchestrator"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8432,7 +8433,7 @@ dependencies = [
 
 [[package]]
 name = "zagens-secrets"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "dirs",
  "keyring",
@@ -8445,7 +8446,7 @@ dependencies = [
 
 [[package]]
 name = "zagens-tools"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8458,7 +8459,7 @@ dependencies = [
 
 [[package]]
 name = "zagens-topic-memory"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "chrono",
  "once_cell",

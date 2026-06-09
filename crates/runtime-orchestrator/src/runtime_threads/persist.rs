@@ -422,7 +422,7 @@ impl RuntimeThreadStore {
             let mut out = Vec::new();
             for id in ids {
                 if let Some(admission) =
-                    crate::thread_store_sqlite::find_session_input_sqlite(&db.lock().unwrap(), &id)
+                    crate::thread_store_sqlite::find_session_input_sqlite(&conn, &id)
                         .map_err(|e| anyhow!("list_pending_session_inputs: {e}"))?
                 {
                     out.push(admission);

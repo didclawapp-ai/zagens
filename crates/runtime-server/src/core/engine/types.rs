@@ -78,6 +78,8 @@ pub struct EngineConfig {
     pub workspace: PathBuf,
     /// Allow shell tool execution when true.
     pub allow_shell: bool,
+    /// User-configured sandbox mode (`"read-only"`, `"workspace-write"`, etc.).
+    pub sandbox_mode: Option<String>,
     /// Enable trust mode (skip approvals) when true.
     pub trust_mode: bool,
     /// Path to the notes file used by the notes tool.
@@ -176,6 +178,7 @@ impl Default for EngineConfig {
             model: DEFAULT_TEXT_MODEL.to_string(),
             workspace: PathBuf::from("."),
             allow_shell: true,
+            sandbox_mode: None,
             trust_mode: false,
             notes_path: PathBuf::from("notes.txt"),
             mcp_config_path: PathBuf::from("mcp.json"),
@@ -233,6 +236,7 @@ impl EngineConfig {
             model: self.model.clone(),
             workspace: self.workspace.clone(),
             allow_shell: self.allow_shell,
+            sandbox_mode: self.sandbox_mode.clone(),
             trust_mode: self.trust_mode,
             notes_path: self.notes_path.clone(),
             mcp_config_path: self.mcp_config_path.clone(),
@@ -286,6 +290,7 @@ impl EngineConfig {
             model: self.model,
             workspace: self.workspace,
             allow_shell: self.allow_shell,
+            sandbox_mode: self.sandbox_mode,
             trust_mode: self.trust_mode,
             notes_path: self.notes_path,
             mcp_config_path: self.mcp_config_path,
@@ -339,6 +344,7 @@ impl EngineConfig {
             model: lean.model,
             workspace: lean.workspace,
             allow_shell: lean.allow_shell,
+            sandbox_mode: lean.sandbox_mode,
             trust_mode: lean.trust_mode,
             notes_path: lean.notes_path,
             mcp_config_path: lean.mcp_config_path,

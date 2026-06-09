@@ -13,6 +13,14 @@ use zagens_core::compaction::CompactionConfig;
 use super::plan::plan_compaction;
 use super::prune::{prune_tool_results, tail_chars, truncate_chars};
 use super::tokens::{estimate_tokens, should_compact};
+/// Escape `<`, `>`, and `&` in LLM-generated text so it cannot break out of
+/// XML-style containment tags in the system prompt.
+fn xml_escape_inline(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
 use super::{
     CACHE_ALIGNED_SUMMARY_CONTEXT_BUDGET_PERCENT, KEEP_RECENT_MESSAGES,
     LARGE_CONTEXT_SUMMARY_INPUT_HEAD_CHARS, LARGE_CONTEXT_SUMMARY_INPUT_MAX_CHARS,
@@ -254,16 +262,21 @@ pub async fn compact_messages(
 
     let anchors_section = anchor_summary_section(workspace);
 
+    // Sanitize LLM-generated text before embedding in system prompt to prevent
+    // prompt injection via the model's own summary output.
+    let summary_safe = xml_escape_inline(&summary);
+    let workflow_safe = xml_escape_inline(&workflow_context);
+
     // Build new message list with enhanced summary as system block
     let summary_block = SystemBlock {
         block_type: "text".to_string(),
         text: format!(
             "{anchors_section}\
              ## 📋 Conversation Summary (Auto-Generated)\n\n\
-             {summary}\n\n\
+             <compaction_summary>\n{summary_safe}\n</compaction_summary>\n\n\
              ---\n\n\
              ## 🔍 Workflow Context\n\n\
-             {workflow_context}\n\n\
+             <workflow_context>\n{workflow_safe}\n</workflow_context>\n\n\
              ---\n\n\
              ## 💡 What to Do Next\n\n\
              You have just resumed from a context compaction. The conversation above was summarized to save space. \

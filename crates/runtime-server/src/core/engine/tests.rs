@@ -2512,5 +2512,8 @@ async fn approve_tool_call_handle_reaches_approval_channel() {
         .await
         .expect("approval timeout")
         .expect("approval task");
-    assert!(matches!(result, super::approval::ApprovalResult::Approved));
+    assert!(matches!(
+        result,
+        super::approval::ApprovalResult::Approved { .. }
+    ));
 }

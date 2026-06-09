@@ -4,92 +4,127 @@
 
 # Zagens — 桌面 Agent 控制台
 
-中文 | **[English](README.md)**
+**[English](README.md)** · **[日本語](README.ja.md)** · **[Português (BR)](README.pt-BR.md)** | 中文
 
-**Zagens** 是面向代码与办公工作区的**桌面 Agent 控制台**——基于 [Tauri 2](https://tauri.app/) 的独立产品，通过嵌入式 agent sidecar 连接 [DeepSeek](https://deepseek.com/) 及其他 OpenAI 兼容提供商：系统托盘、完成通知、工作区预览、会话回放、Code 工作区嵌入式终端。
+长程 Agent 任务容易**半途停下或过早「声称完成」**；写代码和改 Office 往往**各用一套工具**；本地执行还需要**回放、审批和可审计性**——而不只是多开一个聊天窗口。
 
-> **许可：** [MIT](LICENSE)。Runtime 谱系归属说明见 [NOTICE.md](NOTICE.md) 与 [third-party/deepseek-tui/](third-party/deepseek-tui/)。
+**Zagens** 是跑在你机器上的**桌面 Agent 控制台**：Code 与 Office 工作区共用本地 **runtime sidecar**，支持按轮 **会话回放**、长程任务的**分层完成门禁**，以及托盘、通知、嵌入式终端等桌面原生能力。使用自备 API Key 连接 [DeepSeek](https://deepseek.com/) 或其他 OpenAI 兼容提供商。
+
+> **作者语：** 不要相信 AI Agent 能做任何事情，它是有边界的；我们能做的，就是拓展这种边界。
+
+> **许可：** [MIT](LICENSE)。Runtime 谱系：[NOTICE.md](NOTICE.md) · [third-party/deepseek-tui/](third-party/deepseek-tui/)。**与 DeepSeek 公司无关联。** 以下以 **Zagens v0.7.3** 为准 — 见 [CHANGELOG.md](CHANGELOG.md)。
 
 | 资源 | 链接 |
 |------|------|
 | 用户文档 | [zagens.com/docs](https://zagens.com/docs) |
-| 安装包 | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases)（最新 **`zagens-v0.7.1`**）· [zagens.com/download](https://zagens.com/download) |
+| 安装包 | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases)（最新 **`zagens-v0.7.3`**）· [zagens.com/download](https://zagens.com/download) |
 | 设计规格 | [`docs/README.md`](docs/README.md) |
 | 贡献指南 | [`CONTRIBUTING.md`](CONTRIBUTING.md) · [`LOCAL_DEV_VERIFY.md`](LOCAL_DEV_VERIFY.md) |
 | 安全策略 | [`SECURITY.md`](SECURITY.md) |
 
-> **与 DeepSeek 公司无关联。** 以下功能以 **Zagens v0.7.1** 为准。版本历史见 [CHANGELOG.md](CHANGELOG.md)。
+---
+
+## 适合谁 / 不太适合谁
+
+| 更适合 | 不太适合 |
+|--------|----------|
+| 想要**独立桌面 Harness**（不绑死某一 IDE 插件）的开发者 | 托管 SaaS、包月模型、零配置云端 |
+| 做**长程代码重构**或**Office 交付物**、希望同一工作流的人 | 纯聊天、无工具、无工作区、无回放 |
+| 在意**本地 sidecar**、MCP/技能、UI 内**执行审批**的用户 | 完全自主、无护栏的 YOLO Agent |
+| 当前 **Windows 桌面**用户；macOS/Linux 可用 **CLI** 或源码构建 | 零安装的移动端 / 纯浏览器体验 |
 
 ---
 
-## 项目特色
+## 三条差异化
 
-| 方向 | 说明 |
+**1. Harness，不是聊天壳** — 长程代码任务用**可组合完成门禁**（操作者 / 模型 / 工具链分层），而不是「模型说做完了就算完」。规格：[LHT](docs/harness/LONG_HORIZON_CODE_TASKS.md) · 夹具：[`fixtures/harness/`](fixtures/harness/)。
+
+**2. 桌面原生控制面** — [Tauri 2](https://tauri.app/) UI + 本机 loopback **sidecar**（`zagens-runtime`）：托盘、通知、diff、**会话回放**、Code 工作区 **PTY**、HTTP 工具审批。与无 GUI 的 **`zagens`** CLI 同一引擎。
+
+**3. Code + Office，一套 runtime** — **Code / Office** 任务类型共享配置与工具面，但提示词与工具集不同；切换类型会**新开会话**以保持 KV 稳定（[架构说明](docs/task-type-prompt-architecture.md)）。Office：`read_file` / **`write_office`**（xlsx 用 Rust；docx/pptx/pdf 用捆绑 Python）。
+
+另有：**CRAFT 多代理**（子代理、fix-loop 裁决、P1 黑板 — [说明](docs/craft-v2-improvements.md)）、懒加载**符号索引**（`.zagens/symbols.json`）、MCP、技能、Hooks、定时任务。
+
+---
+
+## 我们重点解决什么问题
+
+| 痛点 | Zagens 的做法 |
+|------|----------------|
+| Agent 中途停手或过早标记完成 | **分层完成门禁** + 长程任务面板（[组合式 Harness](docs/harness/COMPOSABLE_HARNESS.md)） |
+| IDE 插件与终端 Agent 会话割裂 | 统一 **sidecar** + SQLite 线程、分叉/恢复、**回放**、工作区快照 |
+| 表格与文档在编码 Agent 流程之外 | **Office 模式** + `write_office` + 桌面预览 |
+| 本地跑工具又不能盲信 | 执行策略、网络规则、路径规范化、审批 UI、运行时 Token 不进 WebView（[沙箱矩阵](docs/tech/SANDBOX_CAPABILITY_MATRIX.md)） |
+
+---
+
+## 当前已具备（v0.7.3）
+
+**桌面：** 多会话聊天（流式/停止/思考流）、文件树与预览与 diff、PTY 终端（Code）、子代理面板、任务/技能 UI、MCP 与路由规则、用量图表、keyring 存 Key、中/英/日/葡 UI。
+
+**Runtime：** 线程、MCP、技能（`~/.zagens/skills`）、生命周期 Hooks、多提供商路由、视觉（`describe_image`）。
+
+**工具（代表）：** 文件（`read_file`、`write_file`、`edit_file` …）、git、`exec_shell`、`write_office`、可选 `web_search` / `fetch_url`、记忆工具。完整列表：`crates/runtime-server/src/tools/` · [CHANGELOG.md](CHANGELOG.md)。
+
+---
+
+## 已知限制（使用前请了解）
+
+我们更愿意写清边界，而不是堆功能清单。
+
+| 主题 | 现状 |
 |------|------|
-| **桌面 + Sidecar** | UI 通过本地 **runtime sidecar**（HTTP/SSE）通信；共用 `~/.zagens/config.toml`、会话与工具。 |
-| **Code / Office 分场景** | 不同工具面与提示词；切换任务类型会**新开会话**以保持 KV 稳定（[架构说明](docs/task-type-prompt-architecture.md)）。 |
-| **组合式 Harness** | 长程代码任务与分层完成门禁（操作者 / 模型 / 工具链）；夹具见 [`fixtures/harness/`](fixtures/harness/)（[LHT 规格](docs/harness/LONG_HORIZON_CODE_TASKS.md)）。 |
-| **CRAFT 多代理** | 角色化子代理、结构化 fix-loop 裁决、P1 黑板交接（[CRAFT 说明](docs/craft-v2-improvements.md)）。 |
-| **符号索引** | 懒加载 `.zagens/symbols.json`，含桌面索引面板与重建 API。 |
-| **Office 流水线** | `read_file` / `write_office`（xlsx 用 Rust，docx/pptx/pdf 用捆绑 Python）。 |
-| **安全优先** | 分层执行策略、bash 词典、域名网络规则、桌面 HTTP 工具审批。 |
-| **桌面体验** | 托盘、完成通知、会话回放、diff 面板、Code 工作区 **PTY 终端**、Sidecar 健康探测与重启。 |
+| **桌面安装包** | **Windows** 安装包见 [Releases](https://github.com/didclawapp-ai/zagens/releases)。**macOS / Linux 桌面包** — 规划中。三平台 **CLI** 已发。 |
+| **OS 级沙箱** | **macOS Seatbelt** — 在 `sandbox-exec` 可用时强制执行。**Linux / Windows** — 策略已声明，**尚未 OS 级强制**（degraded 模式；非 macOS 桌面 UI 会提示）。详见 [`SANDBOX_CAPABILITY_MATRIX.md`](docs/tech/SANDBOX_CAPABILITY_MATRIX.md)。 |
+| **模型与 Key** | 需自备 API Key；连接 DeepSeek 等 OpenAI 兼容端点 — **我们不托管模型**。 |
+| **长程与多代理** | 门禁与 CRAFT **可用且在持续演进**，边界场景与新门禁类型在活跃开发中。 |
+| **Office 深度** | 核心读写路径已有；企业连接器、语音及部分场景模板为**后续方向**（[Office 场景](docs/desktop/OFFICE_SCENARIOS.md)）。 |
+
+安全问题请走 [`SECURITY.md`](SECURITY.md)。
 
 ---
 
-## 桌面端（v0.7.1）
+## 我们在往哪走
 
-| 区域 | 已具备 |
-|------|--------|
-| **聊天** | 多会话侧栏、流式/停止/思考流、上下文条、会话导出 |
-| **工作区** | 文件树、预览、diff2html、快照恢复、**xterm.js PTY**（Code 模式） |
-| **回放** | 按轮次回放工具调用 |
-| **代理** | 子代理面板（SSE）；清单侧栏 |
-| **任务与技能** | 后台任务 + 技能创建/导入 UI |
-| **设置** | MCP、路由规则、用量图表、keyring 存 API Key、中/英/日/葡 UI |
+公开设计规格见 [`docs/`](docs/README.md)。方向包括：
 
-完整发版记录见 [CHANGELOG.md](CHANGELOG.md)。
+- **平台对齐** — macOS/Linux 桌面安装包；Linux/Windows 更强 OS 沙箱。
+- **可信长任务** — 更严完成门禁、Harness 夹具、可回放的操作者工作流。
+- **Office 工作流** — 更丰富的场景覆盖，且不脱离统一 runtime。
+- **安全加固** — 见 [CHANGELOG](CHANGELOG.md) 与 [SECURITY.md](SECURITY.md)。
 
 ---
 
-## Agent Runtime（Sidecar）
+## 快速开始
 
-嵌入式 **`zagens-runtime`** 进程提供聊天、工具与设置能力：
+**预编译（Windows）：** [GitHub Releases `zagens-v0.7.3`](https://github.com/didclawapp-ai/zagens/releases) — 安装 zip + CLI。SmartScreen：[SMARTSCREEN.md](docs/desktop/SMARTSCREEN.md)。
 
-- **会话与线程** — SQLite 持久化、恢复/分叉、工作区快照
-- **MCP** — stdio 服务、按工具过滤
-- **技能** — `~/.zagens/skills`、桌面导入/安装 API
-- **Hooks** — 生命周期 shell 命令（stdout / JSONL / webhook）
-- **多提供商** — 配置、profile、`routing_rules.json`
-- **视觉** — 可配置端点的 `describe_image`
+**从源码构建：**
 
-HTTP 契约：[`docs/tech/API_DESIGN.md`](docs/tech/API_DESIGN.md)。配置样例：[config.example.toml](config.example.toml)。
+```bash
+git clone https://github.com/didclawapp-ai/zagens.git
+cd zagens
 
-### 代表性工具
+cargo build -p zagens-cli          # sidecar 复制到 crates/desktop/binaries/
 
-| 类别 | 工具 |
-|------|------|
-| **文件** | `read_file`、`write_file`、`edit_file`、`apply_patch`、`glob_files`、`grep_files` |
-| **仓库** | `git_status`、`git_diff`、`git_log` 等 |
-| **Shell** | `exec_shell`、后台任务、可选外部沙箱 |
-| **Office** | `write_office`、`read_file` 读 Office/PDF |
-| **网络** | `web_search`、`fetch_url`（启用时） |
-| **记忆** | `remember`、`note`、可选用户记忆 |
+cd crates/desktop/web-ui && npm install
+cd .. && cargo tauri dev
 
-实现路径：`crates/runtime-server/src/tools/`。
+# API Key：Zagens 设置，或 ~/.zagens/config.toml
+```
 
----
+**无 GUI CLI**（与桌面同引擎）：
 
-## 安全与沙箱
+```bash
+cargo install zagens-cli --version 0.7.3 --bin zagens --locked
 
-| 模式 | 说明 |
-|------|------|
-| `read-only` | 不允许 Shell 执行和文件写入 |
-| `workspace-write` | Shell 和写入仅限工作区目录 |
-| `danger-full-access` | 完整文件系统访问（请谨慎） |
-| `external-sandbox` | 将 `exec_shell` 路由到 OpenSandbox 兼容 API |
+zagens doctor
+zagens exec '总结 src/ 变更' --json
+zagens exec '重构 auth 模块' --auto
+zagens serve --http --port 7878
+```
 
-审批策略（`on-request` / `untrusted` / `never`）、按域名网络规则、路径规范化、运行时 Token 隔离（不进 WebView）、OS keyring 存凭据。详见 [`docs/tech/SANDBOX_CAPABILITY_MATRIX.md`](docs/tech/SANDBOX_CAPABILITY_MATRIX.md)。
+预编译 CLI 与 SHA-256：[Releases](https://github.com/didclawapp-ai/zagens/releases)。配置样例：[config.example.toml](config.example.toml)。
 
 ---
 
@@ -115,125 +150,47 @@ HTTP 契约：[`docs/tech/API_DESIGN.md`](docs/tech/API_DESIGN.md)。配置样�
 └──────────────────────────────────────────────────────────────┘
 ```
 
-完整边界说明：[`docs/tech/RUNTIME_ARCHITECTURE.md`](docs/tech/RUNTIME_ARCHITECTURE.md)。
+完整边界：[`docs/tech/RUNTIME_ARCHITECTURE.md`](docs/tech/RUNTIME_ARCHITECTURE.md) · HTTP 契约：[`docs/tech/API_DESIGN.md`](docs/tech/API_DESIGN.md)。
+
+### 安全模式（`sandbox_mode`）
+
+| 模式 | 说明 |
+|------|------|
+| `read-only` | 不允许 Shell 执行和文件写入 |
+| `workspace-write` | Shell 与写入限于工作区（推荐默认） |
+| `danger-full-access` | 完整文件系统访问 — 请谨慎 |
+| `external-sandbox` | 将 `exec_shell` 路由到 OpenSandbox 兼容 API |
+
+审批策略（`on-request` / `untrusted` / `never`）、按域名网络规则、OS keyring 存凭据。运行时 Token **不会**进入 WebView。
 
 ---
 
-## 环境要求
+## 开发
 
-- **Rust** 1.88+（MSRV）；开发/CI 固定 **1.96** — [`rust-toolchain.toml`](rust-toolchain.toml)
-- **Node.js** 建议 20 LTS（仅 web-ui 时 18+ 可能可用）
-- **Python** 3.8+（Office 文档、代码执行、RLM）
-- **[Tauri CLI 2](https://v2.tauri.app/start/prerequisites/)** — `cargo install tauri-cli --version "^2"`
+**环境：** Rust 1.88+（MSRV；CI 固定 **1.96**）、Node.js 20 LTS、Python 3.8+、[Tauri CLI 2](https://v2.tauri.app/start/prerequisites/)。
 
-**版本：** Zagens 桌面 **v0.7.1**；runtime workspace **0.7.1**（根 `Cargo.toml`）。
-
----
-
-## 快速开始
-
-**预编译安装包：** Windows — [GitHub Releases `zagens-v0.7.1`](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.7.1)（安装包 zip + CLI 二进制）。解除 SmartScreen 锁定见 [SMARTSCREEN.md](docs/desktop/SMARTSCREEN.md)。macOS / Linux CLI 同次 Release 提供；桌面安装包规划中。
-
-**从源码构建：**
-
-```bash
-git clone https://github.com/didclawapp-ai/zagens.git
-cd zagens
-
-# Sidecar（build.rs 会复制到 crates/desktop/binaries/）
-cargo build -p zagens-cli
-
-cd crates/desktop/web-ui && npm install
-cd .. && cargo tauri dev
-
-# API Key：Zagens 设置，或 ~/.zagens/config.toml
-```
-
-**发布安装包（Windows）：** 在 `crates/desktop` 执行 `npm run bundle:prepare`，再 `cargo tauri build`。CI 发布：推送标签 `zagens-vX.Y.Z`。
-
-### Headless CLI（`zagens`）
-
-无 GUI、可脚本化的 agent 运行时入口（CI、Linux 服务器、终端工作流）。桌面仍嵌入 **`zagens-runtime`** sidecar；**`zagens`** 提供子命令。
-
-```bash
-# 预编译 CLI（Linux / macOS / Windows）：GitHub Releases
-# https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.7.1
-
-# 从 crates.io 安装（官方 registry）
-cargo install zagens-cli --version 0.7.1 --bin zagens --locked
-# 同一 crate 也会安装 `zagens-runtime`（桌面 sidecar 二进制）。
-
-# 从源码构建
-cargo build -p zagens-cli --release --bin zagens --bin zagens-runtime
-
-# 诊断与初始化
-zagens --version
-zagens doctor
-zagens setup --status
-
-# 一次性任务
-zagens exec '总结 src/ 变更' --json
-zagens exec '重构 auth 模块' --auto   # agent + 工具
-
-# Git 工作流
-git diff | zagens review --staged
-zagens apply change.patch
-
-# 本地 HTTP（与桌面 sidecar 同引擎）
-zagens serve --http --port 7878
-```
-
-发布用 CLI 二进制（含 SHA-256）：`bash scripts/release/build-cli-binaries.sh`。Scoop 模板：[`packaging/scoop/zagens.json`](packaging/scoop/zagens.json)。
-
----
-
-## 开发指南
-
-本地 Lint 与 pre-push hook 见 **[CONTRIBUTING.md](CONTRIBUTING.md)** 与 **[LOCAL_DEV_VERIFY.md](LOCAL_DEV_VERIFY.md)**。
+见 **[CONTRIBUTING.md](CONTRIBUTING.md)** 与 **[LOCAL_DEV_VERIFY.md](LOCAL_DEV_VERIFY.md)**。
 
 | 命令 | 说明 |
-|------|------|
-| `bash scripts/ci/verify-lint.sh` | CI Lint 镜像（fmt + 严格 clippy） |
+|------|-------------|
+| `bash scripts/ci/verify-lint.sh` | CI Lint 镜像 |
 | `bash scripts/ci/verify-workspace.sh` | Lint + 全 workspace 测试 |
 | `cargo test --workspace --all-features` | 运行全部测试 |
-| `cd crates/desktop/web-ui && npm run build` | 构建 Web UI |
-| `cd crates/desktop && cargo tauri dev` | 开发模式启动 Zagens |
+| `cd crates/desktop && cargo tauri dev` | 开发模式启动桌面 |
 
-Windows（PowerShell）：`pwsh -File scripts/ci/verify-lint.ps1`
-
----
-
-## 项目结构
+Windows：`pwsh -File scripts/ci/verify-lint.ps1`
 
 ```
 zagens/
-├── crates/
-│   ├── desktop/          # Tauri 应用（web-ui + Rust 外壳）
-│   ├── runtime-server/   # Sidecar HTTP/SSE runtime
-│   ├── core/             # 引擎与 turn loop
-│   ├── tools/            # 工具注册与执行
-│   └── …                 # agent、config、state、mcp、hooks 等
-├── docs/                 # 公开设计规格（英文）
-├── fixtures/harness/     # LHT / Office harness 夹具（可执行资产）
-├── third-party/          # 第三方许可证
-├── config.example.toml   # 配置参考
-└── Cargo.toml            # Workspace 清单
+├── crates/desktop/       # Tauri 应用
+├── crates/runtime-server/ # Sidecar HTTP/SSE
+├── docs/                 # 公开设计规格
+├── fixtures/harness/     # LHT / Office 夹具
+└── config.example.toml
 ```
-
----
-
-## 配置
-
-在 **Zagens → 设置** 或 `~/.zagens/config.toml` 中配置 API Key（参见 [config.example.toml](config.example.toml)）。
-
-主要配置段：`provider` / `[providers.*]`、`default_text_model`、`reasoning_effort`、`sandbox_mode`、`approval_policy`、`[network]`、`[hooks]`、`[context]`、`[features]`。
-
-运行时 Token 在启动时生成，经 Tauri Sidecar 环境变量注入 — **不会**进入 WebView。
 
 ---
 
 ## 许可
 
-[MIT](LICENSE) — Copyright (c) 2024-2026 Zagens Contributors。
-
-嵌入式 runtime 谱系额外归属说明：[NOTICE.md](NOTICE.md) 与 [third-party/deepseek-tui/LICENSE](third-party/deepseek-tui/LICENSE)。
+[MIT](LICENSE) — Copyright (c) 2024-2026 Zagens Contributors。额外归属：[NOTICE.md](NOTICE.md) · [third-party/deepseek-tui/LICENSE](third-party/deepseek-tui/LICENSE)。

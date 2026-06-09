@@ -196,6 +196,7 @@ async fn run_exec_agent(
         model: effective_model.clone(),
         workspace: workspace.clone(),
         allow_shell: auto_approve || config.allow_shell(),
+        sandbox_mode: config.sandbox_mode.clone(),
         trust_mode,
         notes_path: config.notes_path(),
         mcp_config_path: config.mcp_config_path(),

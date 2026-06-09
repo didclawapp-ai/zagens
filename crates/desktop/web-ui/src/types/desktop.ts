@@ -63,14 +63,26 @@ export function resolveRouteIntentForApi(
   return opt;
 }
 
-export type DesktopModelId = 'deepseek-v4-pro' | 'deepseek-v4-flash';
+/** Runtime model id sent on thread/stream turns (any provider-specific string). */
+export type ComposerModelId = string;
 
-export const DESKTOP_MODEL_LABELS: Record<DesktopModelId, string> = {
+/** @deprecated Use `ComposerModelId`; kept for gradual migration. */
+export type DesktopModelId = ComposerModelId;
+
+export {
+  composerModelLabel as desktopModelLabel,
+  composerModelShortLabel as desktopModelShortLabel,
+  DESKTOP_MODEL_PRESET_IDS,
+} from '../lib/composerModels';
+
+/** @deprecated Use `composerModelLabel` from `lib/composerModels`. */
+export const DESKTOP_MODEL_LABELS: Record<string, string> = {
   'deepseek-v4-pro': 'DeepSeek V4 Pro',
   'deepseek-v4-flash': 'DeepSeek V4 Flash',
 };
 
-export const DESKTOP_MODEL_SHORT_LABELS: Record<DesktopModelId, string> = {
+/** @deprecated Use `composerModelShortLabel` from `lib/composerModels`. */
+export const DESKTOP_MODEL_SHORT_LABELS: Record<string, string> = {
   'deepseek-v4-pro': 'V4 Pro',
   'deepseek-v4-flash': 'V4 Flash',
 };
@@ -88,7 +100,8 @@ export function composerRoutingStatusLabel(
   return t('routing.statusFixed', { intent: opt });
 }
 
-export function parseDesktopModelId(raw: unknown): DesktopModelId | undefined {
-  if (raw === 'deepseek-v4-pro' || raw === 'deepseek-v4-flash') return raw;
-  return undefined;
+export function parseDesktopModelId(raw: unknown): ComposerModelId | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }

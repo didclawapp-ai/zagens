@@ -102,6 +102,35 @@ impl SandboxPolicy {
         }
     }
 
+    /// Parse a sandbox policy from a user-facing config string (e.g. `"read-only"`,
+    /// `"workspace-write"`, `"danger-full-access"`).
+    pub fn parse_from_config(s: &str) -> Option<Self> {
+        match s {
+            "read-only" => Some(SandboxPolicy::ReadOnly),
+            "workspace-write" => Some(SandboxPolicy::WorkspaceWrite {
+                writable_roots: vec![],
+                network_access: false,
+                exclude_tmpdir: false,
+                exclude_slash_tmp: false,
+            }),
+            "external-sandbox" => Some(SandboxPolicy::ExternalSandbox {
+                network_access: false,
+            }),
+            "danger-full-access" => Some(SandboxPolicy::DangerFullAccess),
+            _ => None,
+        }
+    }
+
+    /// Ordinal for restriction level — higher = more restrictive.
+    pub fn restriction_level(&self) -> u8 {
+        match self {
+            SandboxPolicy::DangerFullAccess => 0,
+            SandboxPolicy::ExternalSandbox { .. } => 1,
+            SandboxPolicy::WorkspaceWrite { .. } => 2,
+            SandboxPolicy::ReadOnly => 3,
+        }
+    }
+
     /// Returns true if the policy allows reading any file on the filesystem.
     pub fn has_full_disk_read_access() -> bool {
         // All current policies allow full disk read access

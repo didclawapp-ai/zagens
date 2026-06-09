@@ -1,6 +1,6 @@
 # Zagens design specifications (`docs/`)
 
-This directory contains **stable design specs** only — architecture, API contracts, feature specifications, and ADRs. **Language:** English (中文 README: [README.zh-CN.md](../README.zh-CN.md)).
+This directory contains **stable design specs** only — architecture, API contracts, feature specifications, and ADRs. **Language:** English (localized root READMEs: [中文](../README.zh-CN.md) · [日本語](../README.ja.md) · [Português (BR)](../README.pt-BR.md)).
 
 | Audience | Location |
 |----------|----------|

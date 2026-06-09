@@ -245,36 +245,46 @@ where
 
     pub async fn fork_thread(&self, id: &str) -> Result<ThreadRecord> {
         let source = self.get_thread(id).await?;
-        let mut forked = source.clone();
-        let now = Utc::now();
-        forked.id = format!("thr_{}", &Uuid::new_v4().to_string()[..8]);
-        forked.created_at = now;
-        forked.updated_at = now;
-        forked.latest_turn_id = None;
-        forked.archived = false;
-        self.store.save_thread(&forked)?;
+        let source_id = source.id.clone();
+        let source_id_for_event = source_id.clone();
+        let store = self.store.clone();
 
-        let source_turns = self.store.list_turns_for_thread(&source.id)?;
-        for source_turn in source_turns {
-            let mut cloned_turn = source_turn.clone();
-            cloned_turn.id = format!("turn_{}", &Uuid::new_v4().to_string()[..8]);
-            cloned_turn.thread_id = forked.id.clone();
-            cloned_turn.item_ids.clear();
-            self.store.save_turn(&cloned_turn)?;
-
-            let items = self.store.list_items_for_turn(&source_turn.id)?;
-            for item in items {
-                let mut cloned_item = item.clone();
-                cloned_item.id = format!("item_{}", &Uuid::new_v4().to_string()[..8]);
-                cloned_item.turn_id = cloned_turn.id.clone();
-                self.store.save_item(&cloned_item)?;
-                cloned_turn.item_ids.push(cloned_item.id.clone());
-            }
-            self.store.save_turn(&cloned_turn)?;
-            forked.latest_turn_id = Some(cloned_turn.id.clone());
+        let forked = tokio::task::spawn_blocking(move || -> Result<ThreadRecord> {
+            let mut forked = source.clone();
+            let now = Utc::now();
+            forked.id = format!("thr_{}", &Uuid::new_v4().to_string()[..8]);
+            forked.created_at = now;
             forked.updated_at = now;
-            self.store.save_thread(&forked)?;
-        }
+            forked.latest_turn_id = None;
+            forked.archived = false;
+            store.save_thread(&forked)?;
+
+            let source_turns = store.list_turns_for_thread(&source_id)?;
+            for source_turn in source_turns {
+                let mut cloned_turn = source_turn.clone();
+                cloned_turn.id = format!("turn_{}", &Uuid::new_v4().to_string()[..8]);
+                cloned_turn.thread_id = forked.id.clone();
+                cloned_turn.item_ids.clear();
+                store.save_turn(&cloned_turn)?;
+
+                let items = store.list_items_for_turn(&source_turn.id)?;
+                for item in items {
+                    let mut cloned_item = item.clone();
+                    cloned_item.id = format!("item_{}", &Uuid::new_v4().to_string()[..8]);
+                    cloned_item.turn_id = cloned_turn.id.clone();
+                    store.save_item(&cloned_item)?;
+                    cloned_turn.item_ids.push(cloned_item.id.clone());
+                }
+                store.save_turn(&cloned_turn)?;
+                forked.latest_turn_id = Some(cloned_turn.id.clone());
+                forked.updated_at = now;
+                store.save_thread(&forked)?;
+            }
+
+            Ok(forked)
+        })
+        .await
+        .map_err(|e| anyhow!("fork_thread blocking task: {e}"))??;
 
         self.emit_event(
             &forked.id,
@@ -283,7 +293,7 @@ where
             "thread.forked",
             json!({
                 "thread": forked,
-                "source_thread_id": source.id,
+                "source_thread_id": source_id_for_event,
             }),
         )
         .await?;
@@ -296,63 +306,75 @@ where
         depth_from_tail: usize,
     ) -> Result<(ThreadRecord, Option<String>)> {
         let source = self.get_thread(id).await?;
-        let source_turns = self.store.list_turns_for_thread(&source.id)?;
+        let source_id = source.id.clone();
+        let source_id_for_event = source_id.clone();
+        let store = self.store.clone();
 
-        let mut user_turn_indices: Vec<usize> = Vec::new();
-        for (idx, turn) in source_turns.iter().enumerate().rev() {
-            let items = self.store.list_items_for_turn(&turn.id)?;
-            if items
-                .iter()
-                .any(|item| item.kind == TurnItemKind::UserMessage)
-            {
-                user_turn_indices.push(idx);
-            }
-        }
-        if depth_from_tail >= user_turn_indices.len() {
-            bail!(
-                "fork_at_user_message: depth {} exceeds {} user turn(s)",
-                depth_from_tail,
-                user_turn_indices.len()
-            );
-        }
-        let target_turn_idx = user_turn_indices[depth_from_tail];
-        let target_turn_id = source_turns[target_turn_idx].id.clone();
+        let (forked, original_user_text, target_turn_id) = tokio::task::spawn_blocking(
+            move || -> Result<(ThreadRecord, Option<String>, String)> {
+                let source_turns = store.list_turns_for_thread(&source_id)?;
 
-        let target_items = self.store.list_items_for_turn(&target_turn_id)?;
-        let original_user_text = target_items
-            .iter()
-            .find(|item| item.kind == TurnItemKind::UserMessage)
-            .and_then(|item| item.detail.clone());
+                let mut user_turn_indices: Vec<usize> = Vec::new();
+                for (idx, turn) in source_turns.iter().enumerate().rev() {
+                    let items = store.list_items_for_turn(&turn.id)?;
+                    if items
+                        .iter()
+                        .any(|item| item.kind == TurnItemKind::UserMessage)
+                    {
+                        user_turn_indices.push(idx);
+                    }
+                }
+                if depth_from_tail >= user_turn_indices.len() {
+                    bail!(
+                        "fork_at_user_message: depth {} exceeds {} user turn(s)",
+                        depth_from_tail,
+                        user_turn_indices.len()
+                    );
+                }
+                let target_turn_idx = user_turn_indices[depth_from_tail];
+                let target_turn_id = source_turns[target_turn_idx].id.clone();
 
-        let mut forked = source.clone();
-        let now = Utc::now();
-        forked.id = format!("thr_{}", &Uuid::new_v4().to_string()[..8]);
-        forked.created_at = now;
-        forked.updated_at = now;
-        forked.latest_turn_id = None;
-        forked.archived = false;
-        self.store.save_thread(&forked)?;
+                let target_items = store.list_items_for_turn(&target_turn_id)?;
+                let original_user_text = target_items
+                    .iter()
+                    .find(|item| item.kind == TurnItemKind::UserMessage)
+                    .and_then(|item| item.detail.clone());
 
-        for source_turn in source_turns.iter().take(target_turn_idx) {
-            let mut cloned_turn = source_turn.clone();
-            cloned_turn.id = format!("turn_{}", &Uuid::new_v4().to_string()[..8]);
-            cloned_turn.thread_id = forked.id.clone();
-            cloned_turn.item_ids.clear();
-            self.store.save_turn(&cloned_turn)?;
+                let mut forked = source.clone();
+                let now = Utc::now();
+                forked.id = format!("thr_{}", &Uuid::new_v4().to_string()[..8]);
+                forked.created_at = now;
+                forked.updated_at = now;
+                forked.latest_turn_id = None;
+                forked.archived = false;
+                store.save_thread(&forked)?;
 
-            let items = self.store.list_items_for_turn(&source_turn.id)?;
-            for item in items {
-                let mut cloned_item = item.clone();
-                cloned_item.id = format!("item_{}", &Uuid::new_v4().to_string()[..8]);
-                cloned_item.turn_id = cloned_turn.id.clone();
-                self.store.save_item(&cloned_item)?;
-                cloned_turn.item_ids.push(cloned_item.id.clone());
-            }
-            self.store.save_turn(&cloned_turn)?;
-            forked.latest_turn_id = Some(cloned_turn.id.clone());
-            forked.updated_at = now;
-            self.store.save_thread(&forked)?;
-        }
+                for source_turn in source_turns.iter().take(target_turn_idx) {
+                    let mut cloned_turn = source_turn.clone();
+                    cloned_turn.id = format!("turn_{}", &Uuid::new_v4().to_string()[..8]);
+                    cloned_turn.thread_id = forked.id.clone();
+                    cloned_turn.item_ids.clear();
+                    store.save_turn(&cloned_turn)?;
+
+                    let items = store.list_items_for_turn(&source_turn.id)?;
+                    for item in items {
+                        let mut cloned_item = item.clone();
+                        cloned_item.id = format!("item_{}", &Uuid::new_v4().to_string()[..8]);
+                        cloned_item.turn_id = cloned_turn.id.clone();
+                        store.save_item(&cloned_item)?;
+                        cloned_turn.item_ids.push(cloned_item.id.clone());
+                    }
+                    store.save_turn(&cloned_turn)?;
+                    forked.latest_turn_id = Some(cloned_turn.id.clone());
+                    forked.updated_at = now;
+                    store.save_thread(&forked)?;
+                }
+
+                Ok((forked, original_user_text, target_turn_id))
+            },
+        )
+        .await
+        .map_err(|e| anyhow!("fork_at_user_message blocking task: {e}"))??;
 
         self.emit_event(
             &forked.id,
@@ -361,7 +383,7 @@ where
             "thread.forked",
             json!({
                 "thread": forked,
-                "source_thread_id": source.id,
+                "source_thread_id": source_id_for_event,
                 "backtrack_depth_from_tail": depth_from_tail,
                 "dropped_turn_id": target_turn_id,
             }),

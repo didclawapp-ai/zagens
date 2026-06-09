@@ -22,6 +22,9 @@ struct SandboxRunRequest {
     cmd: String,
     /// Environment variables to set in the sandbox.
     env: HashMap<String, String>,
+    /// Working directory (optional).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cwd: Option<String>,
 }
 
 /// Response body from the OpenSandbox `/v1/sandbox/run` endpoint.
@@ -75,10 +78,16 @@ impl OpenSandboxBackend {
 
 #[async_trait]
 impl SandboxBackend for OpenSandboxBackend {
-    async fn exec(&self, cmd: &str, env: &HashMap<String, String>) -> Result<SandboxOutput> {
+    async fn exec(
+        &self,
+        cmd: &str,
+        env: &HashMap<String, String>,
+        cwd: Option<&std::path::Path>,
+    ) -> Result<SandboxOutput> {
         let request_body = SandboxRunRequest {
             cmd: cmd.to_string(),
             env: env.clone(),
+            cwd: cwd.map(|p| p.to_string_lossy().to_string()),
         };
 
         let mut req = self.client.post(self.run_url()).json(&request_body);

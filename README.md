@@ -4,92 +4,127 @@
 
 # Zagens
 
-**[中文](README.zh-CN.md)** | English
+**[中文](README.zh-CN.md)** · **[日本語](README.ja.md)** · **[Português (BR)](README.pt-BR.md)** | English
 
-**Zagens** is a **desktop agent harness** for code and office workspaces — a standalone product built with [Tauri 2](https://tauri.app/). It connects to [DeepSeek](https://deepseek.com/) and other OpenAI-compatible providers through an embedded agent sidecar: system tray, turn notifications, workspace previews, session replay, and an embedded terminal in Code workspaces.
+Long-horizon agent work tends to **stall or “claim done” too early**. Code and office files often live in **separate tools**. Local agents need **replay, approval, and auditability** — not just another chat window.
 
-> **License:** [MIT](LICENSE). Runtime lineage attribution: [NOTICE.md](NOTICE.md) and [third-party/deepseek-tui/](third-party/deepseek-tui/).
+**Zagens** is a **desktop agent harness** that runs on your machine: one local **runtime sidecar** for Code and Office workspaces, turn-by-turn **session replay**, layered **completion gates** for long tasks, and desktop-native shell (tray, notifications, embedded terminal). Connect [DeepSeek](https://deepseek.com/) or any OpenAI-compatible provider with your own API key.
+
+> **From the authors:** Don’t believe an AI agent can do anything — it has boundaries. What we can do is expand those boundaries.
+
+> **License:** [MIT](LICENSE). Runtime lineage: [NOTICE.md](NOTICE.md) · [third-party/deepseek-tui/](third-party/deepseek-tui/). **Not affiliated with DeepSeek Inc.** Capabilities below reflect **Zagens v0.7.3** — see [CHANGELOG.md](CHANGELOG.md).
 
 | Resource | Link |
 |----------|------|
 | User guides | [zagens.com/docs](https://zagens.com/docs) |
-| Downloads | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases) (latest **`zagens-v0.7.1`**) · [zagens.com/download](https://zagens.com/download) |
+| Downloads | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases) (latest **`zagens-v0.7.3`**) · [zagens.com/download](https://zagens.com/download) |
 | Design specs | [`docs/README.md`](docs/README.md) |
 | Contributing | [`CONTRIBUTING.md`](CONTRIBUTING.md) · [`LOCAL_DEV_VERIFY.md`](LOCAL_DEV_VERIFY.md) |
 | Security | [`SECURITY.md`](SECURITY.md) |
 
-> **Not affiliated with DeepSeek Inc.** Capabilities below reflect **Zagens v0.7.1**. See [CHANGELOG.md](CHANGELOG.md) for version history.
+---
+
+## Who Zagens is for
+
+| Good fit | Less fit |
+|----------|----------|
+| Developers who want a **standalone desktop harness** (not locked into one IDE extension) | A hosted SaaS with managed models and billing |
+| Teams working on **long code refactors** or **Office deliverables** in the same workflow | “Chat only” — no tools, no workspace, no replay |
+| People who care about **local sidecar architecture**, MCP/skills, and **exec approval** in the UI | Fully autonomous YOLO agents with no guardrails |
+| Windows desktop users today; macOS/Linux via **CLI** or source build | Zero-setup mobile or browser-only experience |
 
 ---
 
-## What makes Zagens different
+## Three things that define Zagens
 
-| Theme | What you get |
-|-------|----------------|
-| **Desktop + sidecar** | UI talks to a local **runtime sidecar** over HTTP/SSE. Shared `~/.zagens/config.toml`, sessions, and tools. |
-| **Code vs Office modes** | Different tool surfaces and prompts; switching task types starts a **new session** for stable model KV ([architecture](docs/task-type-prompt-architecture.md)). |
-| **Composable harness** | Long-horizon code tasks with layered completion gates (operator / model / toolchain); fixtures under [`fixtures/harness/`](fixtures/harness/) ([LHT spec](docs/harness/LONG_HORIZON_CODE_TASKS.md)). |
-| **CRAFT multi-agent** | Sub-agents with role-specific tools, structured fix-loop verdicts, and a **P1 blackboard** for handoffs ([CRAFT notes](docs/craft-v2-improvements.md)). |
-| **Symbol index** | Lazy per-workspace index (`.zagens/symbols.json`) with call hints and desktop rebuild API. |
-| **Office in the loop** | `read_file` for Office/PDF; **`write_office`** for `.xlsx` (Rust) and `.docx` / `.pptx` / `.pdf` (bundled Python). |
-| **Safety-first execution** | Layered exec policy, bash arity dictionary, network rules, path canonicalization, HTTP tool approval in the UI. |
-| **Desktop-native shell** | System tray, notifications, session replay, diff panel, **embedded PTY** in Code workspaces, sidecar health probes. |
+**1. Harness, not a chat shell** — Long-horizon code tasks use **composable completion gates** (operator / model / toolchain layers), not “the model said it’s finished.” Spec: [LHT](docs/harness/LONG_HORIZON_CODE_TASKS.md) · fixtures: [`fixtures/harness/`](fixtures/harness/).
+
+**2. Desktop-native control plane** — [Tauri 2](https://tauri.app/) UI over a loopback **sidecar** (`zagens-runtime`): system tray, notifications, diff panel, **session replay**, embedded **PTY** in Code workspaces, HTTP tool approval. Same engine as the headless **`zagens`** CLI.
+
+**3. Code + Office, one runtime** — **Code** and **Office** task types share tools and config but use different tool surfaces and prompts; switching types starts a **new session** for stable model KV ([architecture](docs/task-type-prompt-architecture.md)). Office: `read_file` / **`write_office`** (xlsx via Rust; docx/pptx/pdf via bundled Python).
+
+Also shipped: **CRAFT multi-agent** (sub-agents, fix-loop verdicts, P1 blackboard — [notes](docs/craft-v2-improvements.md)), lazy **symbol index** (`.zagens/symbols.json`), MCP, skills, hooks, scheduled tasks.
 
 ---
 
-## Desktop UI (v0.7.1)
+## Problems we focus on
 
-| Area | Shipped |
-|------|---------|
-| **Chat** | Multi-session sidebar, streaming + stop, thinking stream, context bar, session export |
-| **Workspace** | File tree, previews, diff2html, snapshot restore, **xterm.js PTY** (Code mode) |
-| **Replay** | Turn-by-turn tool call replay |
-| **Agents** | Sub-agent panel (SSE); checklist sidebar |
-| **Tasks & skills** | Background tasks + skill UI |
-| **Settings** | MCP, routing rules, usage charts, API key via keyring, zh-Hans / en / ja / pt-BR UI |
-
-See [CHANGELOG.md](CHANGELOG.md) for the full release history.
+| Pain | How Zagens approaches it |
+|------|---------------------------|
+| Agent stops mid-task or marks work complete prematurely | Layered **completion gates** + long-horizon task panel ([composable harness](docs/harness/COMPOSABLE_HARNESS.md)) |
+| IDE plugins vs terminal agents don’t share one session story | Single **sidecar** + SQLite threads, fork/resume, **replay**, workspace snapshots |
+| Spreadsheets and docs are outside the coding agent loop | **Office mode** with `write_office` and file previews in the desktop shell |
+| Running tools locally without blind trust | Exec policy, network rules, path canonicalization, approval UI, runtime token kept out of the WebView ([sandbox matrix](docs/tech/SANDBOX_CAPABILITY_MATRIX.md)) |
 
 ---
 
-## Agent runtime (sidecar)
+## Shipped today (v0.7.3)
 
-The embedded **`zagens-runtime`** process powers chat, tools, and settings:
+**Desktop:** multi-session chat (stream/stop/thinking), file tree + previews + diff, PTY terminal (Code), sub-agent panel, tasks/skills UI, MCP + routing rules, usage charts, keyring API key, UI in zh-Hans / en / ja / pt-BR.
 
-- **Sessions & threads** — SQLite persistence, resume/fork, workspace snapshots
-- **MCP** — stdio servers, per-tool filters
-- **Skills** — `~/.zagens/skills`, desktop import/install APIs
-- **Hooks** — lifecycle shell commands with stdout / JSONL / webhook sinks
-- **Providers** — multi-provider config, profiles, routing rules
-- **Vision** — `describe_image` via configurable vision endpoints
+**Runtime:** threads, MCP, skills (`~/.zagens/skills`), lifecycle hooks, multi-provider routing, vision (`describe_image`).
 
-HTTP contract: [`docs/tech/API_DESIGN.md`](docs/tech/API_DESIGN.md). Annotated config: [config.example.toml](config.example.toml).
-
-### Representative tools
-
-| Category | Tools |
-|----------|-------|
-| **Files** | `read_file`, `write_file`, `edit_file`, `apply_patch`, `glob_files`, `grep_files` |
-| **Repo** | `git_status`, `git_diff`, `git_log`, … |
-| **Shell** | `exec_shell`, background tasks, optional external sandbox |
-| **Office** | `write_office`, Office/PDF via `read_file` |
-| **Web** | `web_search`, `fetch_url` (when enabled) |
-| **Memory** | `remember`, `note`, opt-in user memory |
-
-Implementation: `crates/runtime-server/src/tools/`.
+**Tools (representative):** files (`read_file`, `write_file`, `edit_file`, …), git, `exec_shell`, `write_office`, optional `web_search` / `fetch_url`, memory tools. Full list: `crates/runtime-server/src/tools/` · [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
-## Security & sandbox
+## Known limits (read before you rely on us)
 
-| Mode | Description |
-|------|-------------|
-| `read-only` | No shell execution or file writes |
-| `workspace-write` | Shell and writes within the workspace only |
-| `danger-full-access` | Full filesystem access (use with caution) |
-| `external-sandbox` | Route `exec_shell` through an OpenSandbox-compatible API |
+We prefer honest scope over marketing checklists.
 
-Approval policies (`on-request` / `untrusted` / `never`), per-domain network rules, path canonicalization, runtime token isolation (never in WebView), and OS keyring for credentials. Details in [`docs/tech/SANDBOX_CAPABILITY_MATRIX.md`](docs/tech/SANDBOX_CAPABILITY_MATRIX.md).
+| Topic | Status |
+|-------|--------|
+| **Desktop installers** | **Windows** installer on [Releases](https://github.com/didclawapp-ai/zagens/releases). **macOS / Linux desktop packages** — planned. CLI binaries for all three platforms ship today. |
+| **OS sandbox enforcement** | **macOS Seatbelt** — enforced when `sandbox-exec` is available. **Linux / Windows** — policy is declared but **not OS-enforced yet** (degraded mode; UI warns on non-macOS). Details: [`SANDBOX_CAPABILITY_MATRIX.md`](docs/tech/SANDBOX_CAPABILITY_MATRIX.md). |
+| **Providers** | You bring API keys; we connect to DeepSeek and other OpenAI-compatible endpoints — we do not host models. |
+| **Long-horizon & multi-agent** | Gates and CRAFT are **production-usable but still evolving**; edge cases and new gate types land in active development. |
+| **Office depth** | Core read/write paths work; enterprise connectors, voice, and some scenario templates are **future** ([Office scenarios](docs/desktop/OFFICE_SCENARIOS.md)). |
+
+Report security issues via [`SECURITY.md`](SECURITY.md).
+
+---
+
+## Where we’re headed
+
+Public design specs live under [`docs/`](docs/README.md). Directionally:
+
+- **Platform parity** — desktop installers and stronger OS-level sandbox on Linux/Windows.
+- **Trustworthy long tasks** — tighter completion gates, harness fixtures, and replay-friendly operator workflows.
+- **Office workflows** — richer scenario coverage without splitting away from the shared runtime.
+- **Hardening** — security and exec-policy improvements tracked in [CHANGELOG](CHANGELOG.md) and [SECURITY.md](SECURITY.md).
+
+---
+
+## Quick start
+
+**Pre-built (Windows):** [GitHub Releases `zagens-v0.7.3`](https://github.com/didclawapp-ai/zagens/releases) — installer zip + CLI. Unblock SmartScreen: [SMARTSCREEN.md](docs/desktop/SMARTSCREEN.md).
+
+**From source:**
+
+```bash
+git clone https://github.com/didclawapp-ai/zagens.git
+cd zagens
+
+cargo build -p zagens-cli          # sidecar copied into crates/desktop/binaries/
+
+cd crates/desktop/web-ui && npm install
+cd .. && cargo tauri dev
+
+# API key: Zagens Settings, or ~/.zagens/config.toml
+```
+
+**Headless CLI** (same runtime as desktop):
+
+```bash
+cargo install zagens-cli --version 0.7.3 --bin zagens --locked
+
+zagens doctor
+zagens exec 'summarize src/' --json
+zagens exec 'refactor auth module' --auto
+zagens serve --http --port 7878
+```
+
+Prebuilt CLI + SHA-256 sidecars: [Releases](https://github.com/didclawapp-ai/zagens/releases). Config reference: [config.example.toml](config.example.toml).
 
 ---
 
@@ -115,126 +150,47 @@ Approval policies (`on-request` / `untrusted` / `never`), per-domain network rul
 └──────────────────────────────────────────────────────────────┘
 ```
 
-Full diagram and boundaries: [`docs/tech/RUNTIME_ARCHITECTURE.md`](docs/tech/RUNTIME_ARCHITECTURE.md).
+Full boundaries: [`docs/tech/RUNTIME_ARCHITECTURE.md`](docs/tech/RUNTIME_ARCHITECTURE.md) · HTTP contract: [`docs/tech/API_DESIGN.md`](docs/tech/API_DESIGN.md).
 
----
+### Security modes (`sandbox_mode`)
 
-## Prerequisites
+| Mode | Description |
+|------|-------------|
+| `read-only` | No shell execution or file writes |
+| `workspace-write` | Shell and writes within the workspace (recommended default) |
+| `danger-full-access` | Full filesystem access — use with caution |
+| `external-sandbox` | Route `exec_shell` through an OpenSandbox-compatible API |
 
-- **Rust** 1.88+ (MSRV); dev/CI pin **1.96** — [`rust-toolchain.toml`](rust-toolchain.toml)
-- **Node.js** 20 LTS (18+ may work for web-ui only)
-- **Python** 3.8+ (office docs, code execution, RLM)
-- **[Tauri CLI 2](https://v2.tauri.app/start/prerequisites/)** — `cargo install tauri-cli --version "^2"`
-
-**Versions:** Zagens desktop **v0.7.1**; runtime workspace **0.7.1** (root `Cargo.toml`).
-
----
-
-## Quick start
-
-**Pre-built installers:** Windows — [GitHub Releases `zagens-v0.7.1`](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.7.1) (installer zip + CLI binaries). Unblock the zip per [SMARTSCREEN.md](docs/desktop/SMARTSCREEN.md). macOS/Linux CLI ship in the same release; desktop packages for those platforms are planned.
-
-**Build from source:**
-
-```bash
-git clone https://github.com/didclawapp-ai/zagens.git
-cd zagens
-
-# Sidecar (build.rs copies into crates/desktop/binaries/)
-cargo build -p zagens-cli
-
-cd crates/desktop/web-ui && npm install
-cd .. && cargo tauri dev
-
-# API key: Zagens Settings, or ~/.zagens/config.toml
-```
-
-**Release installer (Windows):** from `crates/desktop`, run `npm run bundle:prepare` then `cargo tauri build`. CI release: push tag `zagens-vX.Y.Z`.
-
-### Headless CLI (`zagens`)
-
-Scriptable, no-GUI entry point for the same agent runtime (CI, Linux servers, terminal workflows). **`zagens-runtime`** remains the desktop sidecar binary; **`zagens`** adds subcommands.
-
-```bash
-# Prebuilt CLI (Linux / macOS / Windows): GitHub Releases
-# https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.7.1
-
-# From crates.io (official registry install)
-cargo install zagens-cli --version 0.7.1 --bin zagens --locked
-# Same crate also installs `zagens-runtime` (desktop sidecar binary).
-
-# From source
-cargo build -p zagens-cli --release --bin zagens --bin zagens-runtime
-
-# Diagnostics & setup
-zagens --version
-zagens doctor
-zagens doctor --json
-zagens setup --status
-
-# One-shot tasks
-zagens exec 'summarize src/' --json
-zagens exec 'refactor auth module' --auto   # agent + tools
-
-# Git workflows
-git diff | zagens review --staged
-git diff > change.patch && zagens apply change.patch
-
-# Local HTTP (same engine as desktop sidecar)
-zagens serve --http --port 7878
-```
-
-Release CLI binaries (with SHA-256 sidecars): `bash scripts/release/build-cli-binaries.sh`. Scoop manifest template: [`packaging/scoop/zagens.json`](packaging/scoop/zagens.json).
+Approval policies (`on-request` / `untrusted` / `never`), per-domain network rules, OS keyring for credentials. Runtime token never enters the WebView.
 
 ---
 
 ## Development
 
-See **[CONTRIBUTING.md](CONTRIBUTING.md)** and **[LOCAL_DEV_VERIFY.md](LOCAL_DEV_VERIFY.md)** for lint hooks and CI parity.
+**Prerequisites:** Rust 1.88+ (MSRV; CI pins **1.96**), Node.js 20 LTS, Python 3.8+, [Tauri CLI 2](https://v2.tauri.app/start/prerequisites/).
+
+See **[CONTRIBUTING.md](CONTRIBUTING.md)** and **[LOCAL_DEV_VERIFY.md](LOCAL_DEV_VERIFY.md)**.
 
 | Command | Description |
 |---------|-------------|
-| `bash scripts/ci/verify-lint.sh` | CI lint mirror (fmt + strict clippy) |
+| `bash scripts/ci/verify-lint.sh` | CI lint mirror |
 | `bash scripts/ci/verify-workspace.sh` | Lint + full workspace tests |
 | `cargo test --workspace --all-features` | Run all tests |
-| `cd crates/desktop/web-ui && npm run build` | Build web UI |
-| `cd crates/desktop && cargo tauri dev` | Launch Zagens in dev mode |
+| `cd crates/desktop && cargo tauri dev` | Launch desktop in dev mode |
 
-Windows (PowerShell): `pwsh -File scripts/ci/verify-lint.ps1`
-
----
-
-## Project structure
+Windows: `pwsh -File scripts/ci/verify-lint.ps1`
 
 ```
 zagens/
-├── crates/
-│   ├── desktop/          # Tauri app (web-ui + Rust shell)
-│   ├── runtime-server/   # Sidecar HTTP/SSE runtime
-│   ├── core/             # Engine, turn loop
-│   ├── tools/            # Tool registry & execution
-│   └── …                 # agent, config, state, mcp, hooks, …
-├── docs/                 # Public design specifications (English)
-├── fixtures/harness/     # LHT / Office harness fixtures (executable assets)
-├── third-party/          # Third-party license texts
-├── config.example.toml   # Configuration reference
-└── Cargo.toml            # Workspace manifest
+├── crates/desktop/       # Tauri app
+├── crates/runtime-server/ # Sidecar HTTP/SSE
+├── docs/                 # Public design specs
+├── fixtures/harness/     # LHT / Office harness fixtures
+└── config.example.toml
 ```
-
----
-
-## Configuration
-
-Set your API key in **Zagens → Settings** or `~/.zagens/config.toml` ([config.example.toml](config.example.toml)).
-
-Key sections: `provider` / `[providers.*]`, `default_text_model`, `reasoning_effort`, `sandbox_mode`, `approval_policy`, `[network]`, `[hooks]`, `[context]`, `[features]`.
-
-The runtime token is generated at startup and injected via the Tauri sidecar environment — it never reaches the WebView.
 
 ---
 
 ## License
 
-[MIT](LICENSE) — Copyright (c) 2024-2026 Zagens Contributors.
-
-Additional attribution for the embedded runtime lineage: [NOTICE.md](NOTICE.md) and [third-party/deepseek-tui/LICENSE](third-party/deepseek-tui/LICENSE).
+[MIT](LICENSE) — Copyright (c) 2024-2026 Zagens Contributors. Additional attribution: [NOTICE.md](NOTICE.md) · [third-party/deepseek-tui/LICENSE](third-party/deepseek-tui/LICENSE).

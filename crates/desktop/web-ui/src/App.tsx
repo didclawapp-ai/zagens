@@ -39,13 +39,17 @@ import { useTurnStream } from './hooks/useTurnStream';
 import { useTurnSend, type TurnChatMessage } from './hooks/useTurnSend';
 import { parseWriteOfficeOutputPath } from './lib/officeDeliverable';
 import {
-  type DesktopModelId,
+  type ComposerModelId,
   type DesktopRouteIntentOption,
   type DesktopRunModeId,
   type DesktopTaskTypePreference,
   type DesktopTaskTypeResolved,
   parseDesktopTaskTypeResolved,
 } from './types/desktop';
+import {
+  mergeComposerModelOptions,
+} from './lib/composerModels';
+import { fetchSystemSettings, type SystemSettings } from './api/client';
 import {
   applyOfficeDefaultWorkspace,
 } from './lib/defaultWorkspace';
@@ -77,7 +81,9 @@ export default function App() {
   const [theme, setTheme] = useState<Theme>(loadTheme);
   const [windowLabel, setWindowLabel] = useState('dev');
   const [showAllSessions, setShowAllSessions] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<DesktopModelId>(() => loadComposerPrefs(getWindowLabel()).model);
+  const [selectedModel, setSelectedModel] = useState<ComposerModelId>(() => loadComposerPrefs(getWindowLabel()).model);
+  const [configuredModels, setConfiguredModels] = useState<string[]>([]);
+  const composerModelOptions = mergeComposerModelOptions(configuredModels, selectedModel);
   const [selectedWorkspace, setSelectedWorkspace] = useState(() => loadComposerPrefs(getWindowLabel()).workspace);
   const [messages, setMessages] = useState<TurnChatMessage[]>([]);
   const [activeInspector, setActiveInspector] = useState<RightPanelView>(() => loadStoredInspector());
@@ -245,6 +251,32 @@ export default function App() {
     desktopHost,
     runModeRef,
   });
+
+  const handleSystemSettingsSavedWithModels = useCallback(
+    (settings: SystemSettings) => {
+      handleSystemSettingsSaved(settings);
+      setConfiguredModels(settings.available_models ?? []);
+      const next = settings.default_model.trim();
+      if (next) {
+        setSelectedModel(next);
+      }
+    },
+    [handleSystemSettingsSaved],
+  );
+
+  useEffect(() => {
+    if (!desktopHost) return;
+    let cancelled = false;
+    fetchSystemSettings()
+      .then((settings) => {
+        if (cancelled) return;
+        setConfiguredModels(settings.available_models ?? []);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [desktopHost]);
 
   const {
     agentStates,
@@ -849,6 +881,7 @@ export default function App() {
       onExportThreadJson={() => void handleExportThreadJson()}
       selectedModel={selectedModel}
       onModelChange={setSelectedModel}
+      composerModelOptions={composerModelOptions}
       onComposerWorkspaceChange={handleComposerWorkspaceChange}
       resumedThreadId={resumedThreadId}
       contextUsagePct={contextUsagePct}
@@ -905,7 +938,7 @@ export default function App() {
       narrativeSpawnSuspected={narrativeSpawnSuspected}
       onRequestMermaid={() => setActiveInspector('mermaid')}
       onRequestDiff={handleRequestDiffPanel}
-      onSystemSettingsSaved={handleSystemSettingsSaved}
+      onSystemSettingsSaved={handleSystemSettingsSavedWithModels}
       onRouteIntentChange={setRouteIntent}
       refreshApiKeyStatus={refreshApiKeyStatus}
       onOpenTasks={handleOpenTasks}

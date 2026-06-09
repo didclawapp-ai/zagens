@@ -167,6 +167,8 @@ fn is_harness_infra_path(workspace: &Path, path: &Path) -> bool {
     let rel = rel.to_string_lossy().replace('\\', "/");
     const SKIP_PREFIXES: &[&str] = &[
         "crates/runtime-server/src/long_horizon/",
+        "crates/desktop/binaries/",
+        "crates/desktop/web-ui/src/i18n/locales/",
         "third-party/",
         ".cursor/",
     ];

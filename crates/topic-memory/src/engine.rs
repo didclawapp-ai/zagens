@@ -276,6 +276,20 @@ pub struct GenerateMemorySectionOptions<'a> {
     pub attribution: Option<&'a str>,
 }
 
+/// Escape user-derived text before embedding in a Markdown inline context
+/// (inside `**…**`, `: …`, etc.) to prevent prompt injection via markdown
+/// metacharacters.
+fn sanitize_markdown_inline(s: &str) -> String {
+    s.chars()
+        .map(|c| match c {
+            '*' | '_' | '`' | '|' | '[' | ']' | '<' | '>' | '#' | '~' | '{' | '}' | '/' => {
+                format!("\\{c}")
+            }
+            other => other.to_string(),
+        })
+        .collect()
+}
+
 /// Markdown section for system prompt injection.
 #[must_use]
 pub fn generate_memory_section(
@@ -320,7 +334,8 @@ pub fn generate_memory_section(
             let bar_len = (n.strength * 5.0).round() as usize;
             let bar = "█".repeat(bar_len);
             lines.push(format!(
-                "- **{topic}** {bar} (depth {}, {} mentions)",
+                "- **{}** {bar} (depth {}, {} mentions)",
+                sanitize_markdown_inline(topic),
                 n.depth.round() as i32,
                 n.count
             ));
@@ -341,7 +356,11 @@ pub fn generate_memory_section(
         lines.push("### Knowledge Boundaries (user indicated uncertainty)".to_string());
         for b in active_blocked {
             let ctx: String = b.context.chars().take(60).collect();
-            lines.push(format!("- **{}**: {ctx}…", b.node));
+            lines.push(format!(
+                "- **{}**: {}…",
+                sanitize_markdown_inline(&b.node),
+                sanitize_markdown_inline(&ctx)
+            ));
         }
     }
 
@@ -359,7 +378,9 @@ pub fn generate_memory_section(
                 };
                 lines.push(format!(
                     "- {icon} **{}** → **{}** _({})_",
-                    tr.entry, tr.exit, tr.date
+                    sanitize_markdown_inline(&tr.entry),
+                    sanitize_markdown_inline(&tr.exit),
+                    tr.date
                 ));
             }
         }

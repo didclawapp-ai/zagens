@@ -281,6 +281,8 @@ where
     }
 
     fn recover_interrupted_state(&self) -> Result<()> {
+        // Runs synchronously during `open()` before the Tokio runtime is available;
+        // SQLite recovery must complete before serving thread APIs.
         let now = Utc::now();
         let incomplete = self.store.list_incomplete_turns()?;
         let mut by_thread: HashMap<String, Vec<TurnRecord>> = HashMap::new();

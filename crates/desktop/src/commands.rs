@@ -881,11 +881,7 @@ pub fn read_workspace_binary_at_root(
     workspace_root: String,
     relative_path: String,
 ) -> Result<BinaryFileResponse, String> {
-    let trimmed = workspace_root.trim();
-    if trimmed.is_empty() {
-        return Err("工作区路径不能为空".to_string());
-    }
-    let root = PathBuf::from(trimmed);
+    let root = user_scoped_workspace_root(&workspace_root)?;
     let path = resolve_under_workspace(&root, &relative_path)?;
     read_binary_file_at(&path)
 }
@@ -1146,6 +1142,41 @@ pub struct SystemSettings {
     pub compaction_threshold_tokens: usize,
     /// Model-derived default threshold (80% window) for UI hints — read-only on save.
     pub compaction_threshold_default: usize,
+    /// Distinct model ids from config.toml (default + per-provider); read-only on save.
+    #[serde(default)]
+    pub available_models: Vec<String>,
+}
+
+fn push_model_option(
+    out: &mut Vec<String>,
+    seen: &mut std::collections::HashSet<String>,
+    raw: Option<&str>,
+) {
+    let Some(raw) = raw.map(str::trim).filter(|s| !s.is_empty()) else {
+        return;
+    };
+    let key = raw.to_ascii_lowercase();
+    if seen.insert(key) {
+        out.push(raw.to_string());
+    }
+}
+
+fn collect_configured_models(cfg: &zagens_config::ConfigToml) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    push_model_option(&mut out, &mut seen, cfg.default_text_model.as_deref());
+    push_model_option(&mut out, &mut seen, cfg.model.as_deref());
+    let providers = &cfg.providers;
+    push_model_option(&mut out, &mut seen, providers.deepseek.model.as_deref());
+    push_model_option(&mut out, &mut seen, providers.nvidia_nim.model.as_deref());
+    push_model_option(&mut out, &mut seen, providers.openai.model.as_deref());
+    push_model_option(&mut out, &mut seen, providers.openrouter.model.as_deref());
+    push_model_option(&mut out, &mut seen, providers.novita.model.as_deref());
+    push_model_option(&mut out, &mut seen, providers.fireworks.model.as_deref());
+    push_model_option(&mut out, &mut seen, providers.sglang.model.as_deref());
+    push_model_option(&mut out, &mut seen, providers.vllm.model.as_deref());
+    push_model_option(&mut out, &mut seen, providers.ollama.model.as_deref());
+    out
 }
 
 #[tauri::command]
@@ -1242,6 +1273,7 @@ pub fn get_system_settings() -> Result<SystemSettings, String> {
             .and_then(|c| c.token_threshold)
             .unwrap_or(threshold_default),
         compaction_threshold_default: threshold_default,
+        available_models: collect_configured_models(cfg),
     })
 }
 
@@ -1747,7 +1779,7 @@ fn hook_condition_from_settings(
 ) -> Result<Option<HookConditionToml>, String> {
     match settings.condition_type.as_str() {
         "always" => Ok(None),
-        other if other.is_empty() => Ok(None),
+        "" => Ok(None),
         _ => hook_condition_from_settings_inner(settings).map(Some),
     }
 }
@@ -1888,6 +1920,27 @@ fn workspace_root_canonical(raw: &str) -> Result<PathBuf, String> {
     Ok(base)
 }
 
+/// Restrict IPC workspace roots to paths under the user's home or documents folder.
+fn user_scoped_workspace_root(raw: &str) -> Result<PathBuf, String> {
+    let base = workspace_root_canonical(raw)?;
+    let allowed_roots: Vec<PathBuf> = [dirs::home_dir(), dirs::document_dir()]
+        .into_iter()
+        .flatten()
+        .filter_map(|path| path.canonicalize().ok())
+        .collect();
+    if allowed_roots.is_empty() {
+        return Err("无法解析用户目录".to_string());
+    }
+    if allowed_roots
+        .iter()
+        .any(|allowed| base.starts_with(allowed))
+    {
+        Ok(base)
+    } else {
+        Err("工作区必须在用户主目录或文档目录下".to_string())
+    }
+}
+
 fn pick_rules_path_under_workspace(base: &Path) -> PathBuf {
     workspace_meta_file_read(base, "pick-rules.md")
 }
@@ -1895,7 +1948,7 @@ fn pick_rules_path_under_workspace(base: &Path) -> PathBuf {
 /// Read Zagens project rules for a workspace. Returns empty string if the file is missing.
 #[tauri::command]
 pub fn read_pick_rules(workspace_root: String) -> Result<String, String> {
-    let base = workspace_root_canonical(&workspace_root)?;
+    let base = user_scoped_workspace_root(&workspace_root)?;
     let path = pick_rules_path_under_workspace(&base);
     if !path.is_file() {
         return Ok(String::new());
@@ -1906,7 +1959,7 @@ pub fn read_pick_rules(workspace_root: String) -> Result<String, String> {
 /// Write Zagens project rules. Creates `.zagens/` when needed.
 #[tauri::command]
 pub fn save_pick_rules(workspace_root: String, content: String) -> Result<(), String> {
-    let base = workspace_root_canonical(&workspace_root)?;
+    let base = user_scoped_workspace_root(&workspace_root)?;
     let meta = workspace_meta_dir(&base);
     std::fs::create_dir_all(&meta)
         .map_err(|e| format!("创建 {WORKSPACE_META_DIR_NAME} 目录失败: {e}"))?;

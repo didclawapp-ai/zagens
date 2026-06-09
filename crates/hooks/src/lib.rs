@@ -164,7 +164,9 @@ impl HookDispatcher {
 
     pub async fn emit(&self, event: HookEvent) {
         for sink in &self.sinks {
-            let _ = sink.emit(&event).await;
+            if let Err(e) = sink.emit(&event).await {
+                tracing::warn!(error = %e, "hooks sink emit failed");
+            }
         }
     }
 }

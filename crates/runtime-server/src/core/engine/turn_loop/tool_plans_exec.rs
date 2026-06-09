@@ -381,7 +381,7 @@ pub(super) async fn execute_tool_plans(
                         .await;
 
                     match engine.await_tool_approval(&tool_id).await {
-                        Ok(ApprovalResult::Approved) => {
+                        Ok(ApprovalResult::Approved { .. }) => {
                             emit_tool_audit(json!({
                                 "event": "tool.approval_decision",
                                 "tool_id": tool_id.clone(),

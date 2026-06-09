@@ -651,6 +651,14 @@ impl SandboxManager {
 fn mark_sandbox_policy_unenforced(exec: &mut ExecEnv) {
     exec.env
         .insert("DEEPSEEK_SANDBOX_UNENFORCED".to_string(), "1".to_string());
+    // The command-level warning (ExecEnv::sandbox_enforcement_warning) is
+    // also emitted per-execution. This log makes the degraded posture visible
+    // in the runtime log for operators.
+    tracing::warn!(
+        target: "sandbox",
+        "OS sandbox isolation is NOT enforced on this platform; command runs with full user privileges. {}",
+        policy_degraded_mode_notice().unwrap_or("")
+    );
 }
 
 impl ExecEnv {

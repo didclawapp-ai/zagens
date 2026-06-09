@@ -10,7 +10,7 @@ This document consolidates the same guidance as [`.cursor/rules/*.mdc`](.cursor/
 
 **Cursor:** `alwaysApply: true`
 
-- **Root story:** [`README.md`](README.md) (English) and [`README.zh-CN.md`](README.zh-CN.md) (中文) lead with **Zagens** (MIT-licensed desktop app; tagline: *Desktop agent harness*). License: [`LICENSE`](LICENSE). Runtime lineage attribution: [`NOTICE.md`](NOTICE.md), [`third-party/deepseek-tui/LICENSE`](third-party/deepseek-tui/LICENSE).
+- **Root story:** [`README.md`](README.md) (English), [`README.zh-CN.md`](README.zh-CN.md) (中文), [`README.ja.md`](README.ja.md) (日本語), and [`README.pt-BR.md`](README.pt-BR.md) (Português) lead with **Zagens** (MIT-licensed desktop app; tagline: *Desktop agent harness*). License: [`LICENSE`](LICENSE). Runtime lineage attribution: [`NOTICE.md`](NOTICE.md), [`third-party/deepseek-tui/LICENSE`](third-party/deepseek-tui/LICENSE).
 - **Desktop (Zagens):** `crates/desktop/`, maintainer notes in local `doc_Private/docs/desktop/DEV_NOTES.md` (not published).
 - **Versions:** Zagens uses its **own** SemVer (current **`0.7.0`**; historical releases may use **`0.x.y-preview.n`**), separate from the embedded runtime workspace line; see [`CHANGELOG.md`](CHANGELOG.md) header. Release policy (maintainer): `doc_Private/docs/desktop/VERSIONING.md`.
 - **Docs:** Public design specs: [`docs/README.md`](docs/README.md); harness fixtures: `fixtures/harness/`. Contributing: [`CONTRIBUTING.md`](CONTRIBUTING.md), [`LOCAL_DEV_VERIFY.md`](LOCAL_DEV_VERIFY.md).

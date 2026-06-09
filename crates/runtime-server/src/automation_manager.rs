@@ -565,20 +565,19 @@ fn next_daily(
     let interval = i64::from(interval_days.max(1));
     let mut date = local_after.date_naive();
 
-    if let Some(naive) = date.and_hms_opt(byhour, byminute, 0) {
-        if let Some(candidate) = resolve_local_datetime(naive) {
-            if candidate > local_after {
-                return Ok(candidate.with_timezone(&Utc));
-            }
-        }
+    if let Some(naive) = date.and_hms_opt(byhour, byminute, 0)
+        && let Some(candidate) = resolve_local_datetime(naive)
+        && candidate > local_after
+    {
+        return Ok(candidate.with_timezone(&Utc));
     }
 
     date += Duration::days(interval);
     for _ in 0..400 {
-        if let Some(naive) = date.and_hms_opt(byhour, byminute, 0) {
-            if let Some(candidate) = resolve_local_datetime(naive) {
-                return Ok(candidate.with_timezone(&Utc));
-            }
+        if let Some(naive) = date.and_hms_opt(byhour, byminute, 0)
+            && let Some(candidate) = resolve_local_datetime(naive)
+        {
+            return Ok(candidate.with_timezone(&Utc));
         }
         date += Duration::days(interval);
     }

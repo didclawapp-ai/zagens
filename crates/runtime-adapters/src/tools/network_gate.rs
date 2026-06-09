@@ -119,6 +119,18 @@ pub fn is_restricted_ip(ip: &IpAddr) -> bool {
             if let Some(v4) = v6.to_ipv4_mapped() {
                 return is_restricted_ip(&IpAddr::V4(v4));
             }
+            // IPv4-compatible IPv6 (`::/96`, e.g. `::127.0.0.1`) — deprecated
+            // but still parseable; extract the embedded IPv4 and recurse.
+            // Skip `::1` (IPv6 loopback) which has all-zero first 12 octets
+            // but is NOT an IPv4-compatible address.
+            if !v6.is_loopback() {
+                let octets = v6.octets();
+                if octets[..12] == [0u8; 12] {
+                    return is_restricted_ip(&IpAddr::V4(std::net::Ipv4Addr::new(
+                        octets[12], octets[13], octets[14], octets[15],
+                    )));
+                }
+            }
             v6.is_loopback()
                 || v6.is_multicast()
                 || matches!(v6.segments(), [0xfc00..=0xfdff, ..])
@@ -179,6 +191,13 @@ mod tests {
     fn restricted_ip_detects_ipv4_mapped_private() {
         assert!(is_restricted_ip(&"::ffff:10.0.0.1".parse().unwrap()));
         assert!(is_restricted_ip(&"::ffff:169.254.169.254".parse().unwrap()));
+    }
+
+    #[test]
+    fn restricted_ip_detects_ipv4_compatible_private() {
+        assert!(is_restricted_ip(&"::127.0.0.1".parse().unwrap()));
+        assert!(is_restricted_ip(&"::10.0.0.1".parse().unwrap()));
+        assert!(is_restricted_ip(&"::169.254.169.254".parse().unwrap()));
     }
 
     #[test]

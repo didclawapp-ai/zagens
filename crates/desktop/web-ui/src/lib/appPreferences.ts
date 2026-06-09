@@ -1,14 +1,17 @@
 import type { RightPanelView } from '../components/RightPanel';
 import {
-  type DesktopModelId,
+  type ComposerModelId,
   type DesktopRouteIntentOption,
   type DesktopRunModeId,
   type DesktopTaskTypePreference,
-  parseDesktopModelId,
   parseDesktopRouteIntentOption,
   parseDesktopRunModeId,
   parseDesktopTaskTypePreference,
 } from '../types/desktop';
+import {
+  DEFAULT_COMPOSER_MODEL,
+  normalizeComposerModel,
+} from './composerModels';
 import {
   fetchDefaultComposerWorkspace,
   isUnsafeComposerWorkspace,
@@ -142,21 +145,21 @@ export function loadRunModePreference(): DesktopRunModeId {
 }
 
 export function loadComposerPrefs(windowLabel: string): {
-  model: DesktopModelId;
+  model: ComposerModelId;
   workspace: string;
 } {
   try {
-    const wm = parseDesktopModelId(localStorage.getItem('zagens-desktop-model'));
+    const wm = normalizeComposerModel(localStorage.getItem('zagens-desktop-model'));
     const ws = normalizeWorkspaceForApi(
       localStorage.getItem(workspaceStorageKey(windowLabel))?.trim() ?? '',
     );
     const workspace = ws.length > 0 && !isUnsafeComposerWorkspace(ws) ? ws : '';
     return {
-      model: wm ?? 'deepseek-v4-pro',
+      model: wm ?? DEFAULT_COMPOSER_MODEL,
       workspace,
     };
   } catch {
-    return { model: 'deepseek-v4-pro', workspace: '' };
+    return { model: DEFAULT_COMPOSER_MODEL, workspace: '' };
   }
 }
 

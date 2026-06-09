@@ -823,6 +823,39 @@ pub fn path_escapes_workspace(path: &str, workspace: &str) -> bool {
     false
 }
 
+/// Sensitive CLI flags that can redirect build tools outside the workspace.
+const EXECPOLICY_PATH_FLAGS: &[&str] = &["--manifest-path", "--config"];
+
+fn extract_command_flag_value(command: &str, flag: &str) -> Option<String> {
+    let eq_prefix = format!("{flag}=");
+    for (i, token) in command.split_whitespace().enumerate() {
+        if token == flag {
+            return command.split_whitespace().nth(i + 1).map(str::to_string);
+        }
+        if let Some(value) = token.strip_prefix(&eq_prefix)
+            && !value.is_empty()
+        {
+            return Some(value.to_string());
+        }
+    }
+    None
+}
+
+/// When execpolicy prefix-allows a command, reject path flags that escape workspace.
+pub fn execpolicy_allow_target_paths_escape(command: &str, workspace: &str) -> Option<String> {
+    for flag in EXECPOLICY_PATH_FLAGS {
+        let Some(path) = extract_command_flag_value(command, flag) else {
+            continue;
+        };
+        if path_escapes_workspace(&path, workspace) {
+            return Some(format!(
+                "execpolicy allow matched but {flag} targets path outside workspace: {path}"
+            ));
+        }
+    }
+    None
+}
+
 fn normalize_safety_path(path: &str) -> String {
     path.trim().replace('\\', "/").to_lowercase()
 }
@@ -1056,6 +1089,23 @@ mod tests {
         assert_eq!(
             analyze_command("git push --force").level,
             SafetyLevel::RequiresApproval
+        );
+    }
+
+    #[test]
+    fn execpolicy_allow_rejects_manifest_path_outside_workspace() {
+        let reason = execpolicy_allow_target_paths_escape(
+            "cargo check --manifest-path /etc/passwd/Cargo.toml",
+            "/home/user/project",
+        )
+        .expect("reason");
+        assert!(reason.contains("--manifest-path"));
+        assert!(
+            execpolicy_allow_target_paths_escape(
+                "cargo check --manifest-path src/Cargo.toml",
+                "/home/user/project",
+            )
+            .is_none()
         );
     }
 

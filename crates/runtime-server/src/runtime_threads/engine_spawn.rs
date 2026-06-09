@@ -57,6 +57,7 @@ impl RuntimeThreadManager {
             model: thread.model.clone(),
             workspace: thread.workspace.clone(),
             allow_shell: thread.allow_shell,
+            sandbox_mode: self.config.sandbox_mode.clone(),
             trust_mode: thread.trust_mode,
             notes_path: self.config.notes_path(),
             mcp_config_path: self.config.mcp_config_path(),

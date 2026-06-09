@@ -70,7 +70,12 @@ pub trait SandboxBackend: Send + Sync {
     ///
     /// `cmd` is the full shell command string (e.g. `"ls -la"`).
     /// `env` contains additional environment variables to set.
-    async fn exec(&self, cmd: &str, env: &HashMap<String, String>) -> Result<SandboxOutput>;
+    async fn exec(
+        &self,
+        cmd: &str,
+        env: &HashMap<String, String>,
+        cwd: Option<&std::path::Path>,
+    ) -> Result<SandboxOutput>;
 }
 
 #[cfg(test)]

@@ -1678,6 +1678,8 @@ export interface SystemSettings {
   auto_compact: boolean;
   compaction_threshold_tokens: number;
   compaction_threshold_default: number;
+  /** Model ids discovered in config.toml (read-only; ignored on save). */
+  available_models?: string[];
 }
 
 export type { ThreadContextSnapshot } from '../lib/contextUsage';

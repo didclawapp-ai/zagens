@@ -14,8 +14,9 @@ description = "Hook dispatch and notifications parity for Zagens agent runtime"
 anyhow.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
-zagens-protocol = { path = "../protocol", version = "0.7.2" }
+zagens-protocol = { path = "../protocol", version = "0.7.3" }
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
+tracing.workspace = true

@@ -10,7 +10,7 @@ All notable changes to **Zagens** and its embedded runtime will be documented in
 
 **Licensing:** This repository is [MIT](LICENSE). See [NOTICE.md](NOTICE.md) for third-party attribution.
 
-**Zagens** (desktop app in `crates/desktop/`) and the runtime workspace share **`0.7.2`**. Desktop still carries an independent literal in `crates/desktop/Cargo.toml` checked by `check-versions.sh` against Tauri/npm/About. Public releases use `0.MINOR.PATCH` until **1.0.0 GA**. Display form **v** + manifest version (e.g. **v0.7.2**).
+**Zagens** (desktop app in `crates/desktop/`) and the runtime workspace share **`0.7.3`**. Desktop still carries an independent literal in `crates/desktop/Cargo.toml` checked by `check-versions.sh` against Tauri/npm/About. Public releases use `0.MINOR.PATCH` until **1.0.0 GA**. Display form **v** + manifest version (e.g. **v0.7.3**).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -20,9 +20,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-06-09
+
 ### Added
 
 - **Tasks panel:** expandable task cards load `GET /v1/tasks/:id` to show prompt, Agent reply summary, execution timeline, tool calls, and errors; **Open full conversation in chat** loads the task's runtime thread into the main composer. Running tasks auto-refresh while expanded.
+- **Desktop Composer model picker:** reads model IDs from `config.toml` (`available_models` / `default_text_model`), supports custom provider model strings; Settings default model is a free-text field synced on save.
+
+### Changed
+
+- **Desktop Composer presets:** removed legacy `deepseek-chat` / `deepseek-reasoner` from the model picker (DeepSeek V4 Pro / Flash only); runtime still normalizes those IDs when present in config or API payloads.
+
+### Security
+
+- **P0-1 Deadlock fix** (`runtime-orchestrator`): `list_pending_session_inputs` re-locked `std::sync::Mutex` while guard alive causing guaranteed deadlock on SQLite backends.
+- **P0-2 Topic memory injection fix**: User-derived text in `blocked_points.context` now markdown-escaped before system prompt injection.
+- **P0-3 Compaction injection fix**: LLM-generated summary/workflow text now XML-escaped and wrapped in containment tags before system prompt injection.
+- **P0-4 SSRF fix**: IPv4-compatible IPv6 addresses (`::127.0.0.1`) now blocked by `is_restricted_ip` alongside IPv4-mapped.
+- **P1-5 Sandbox degraded notice**: `mark_sandbox_policy_unenforced` now emits `tracing::warn!` with the degraded-mode notice so operators see it in logs.
+- **P1-7 Config API key redaction**: `ConfigToml::get_value()` and `list_values()` redact all API key fields (root, per-provider, vision) via `redact_secret()`; manual `Debug` impl redacts secrets in logs.
+- **P1-8 Thread fork I/O**: `fork_thread` / `fork_at_user_message` SQLite work runs on `spawn_blocking` so async workers are not blocked.
+- **P2-10 ExecPolicy path flags**: prefix-allowed commands with `--manifest-path` / `--config` outside the workspace are denied after allow matching.
+- **P2-10 Hooks error observability**: `HookDispatcher::emit` logs sink failures at `tracing::warn!` instead of silently discarding errors.
+- **P2-11 Approval cache fields**: `ApprovalResult::Approved` carries `cache_key` / `remember_for_session` through `zagens-core::await_tool_approval`.
+- **P1-6 sandbox_mode wiring**: User-configured `sandbox_mode` (`read-only`, `workspace-write`, etc.) now feeds into `SandboxPolicy` via the tool context; the stricter of the user setting and AppMode default is used (YOLO still grants DangerFullAccess).
+- **P2-9 SandboxBackend cwd**: `SandboxBackend::exec` trait now accepts `cwd: Option<&Path>`; external sandbox backend passes the user-requested working directory.
+- **P2-13 Desktop hardening**: `openExternalUrl` blocks non-`http/https/mailto` schemes; `Composer` dropped `dangerouslySetInnerHTML`; IPC `read_workspace_binary_at_root` / pick-rules paths must stay under the user home or documents directory.
+- **P2-12 Deprecation**: `crates/agent` now has a README marking it deprecated/legacy.
 
 ### Fixed
 

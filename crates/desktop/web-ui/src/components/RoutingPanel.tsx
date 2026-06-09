@@ -26,7 +26,7 @@ const ROUTE_INTENT_HINT_KEYS: Record<DesktopRouteIntentOption, TranslationKey> =
 };
 
 const PRESET_INTENTS = ['plan', 'agent', 'yolo', 'code', 'chat', 'research'];
-const PRESET_MODELS = ['deepseek-v4-pro', 'deepseek-v4-flash'];
+import { DESKTOP_MODEL_PRESET_IDS } from '../lib/composerModels';
 
 interface Props {
   runtimeConn: RuntimeConnectionState;
@@ -197,17 +197,19 @@ export default function RoutingPanel({
               ))}
             </datalist>
             <span className="text-[10px] text-t-text-muted">→</span>
-            <select
+            <input
+              type="text"
+              list="routing-model-list"
               value={newModel}
               onChange={(e) => setNewModel(e.target.value)}
-              className="px-2 py-1.5 text-xs rounded bg-input-bg border border-input-border text-t-text"
-            >
-              {PRESET_MODELS.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
+              placeholder={t('routing.modelPlaceholder')}
+              className="min-w-[8rem] flex-1 px-2 py-1.5 text-xs rounded bg-input-bg border border-input-border text-t-text outline-none focus:border-accent"
+            />
+            <datalist id="routing-model-list">
+              {DESKTOP_MODEL_PRESET_IDS.map((m) => (
+                <option key={m} value={m} />
               ))}
-            </select>
+            </datalist>
             <button
               type="button"
               onClick={addRule}

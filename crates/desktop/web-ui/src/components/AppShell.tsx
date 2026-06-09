@@ -19,7 +19,7 @@ import type { TurnChatMessage } from '../hooks/useTurnSend';
 import type { ThreadContextSnapshot } from '../lib/contextUsage';
 import type { AgentState } from '../types/agent';
 import type {
-  DesktopModelId,
+  ComposerModelId,
   DesktopRouteIntentOption,
   DesktopRunModeId,
   DesktopTaskTypePreference,
@@ -91,8 +91,9 @@ export type AppShellProps = {
   onOpenRouting: () => void;
   onExportSessionJson: () => void;
   onExportThreadJson: () => void;
-  selectedModel: DesktopModelId;
-  onModelChange: (model: DesktopModelId) => void;
+  selectedModel: ComposerModelId;
+  onModelChange: (model: ComposerModelId) => void;
+  composerModelOptions: string[];
   onComposerWorkspaceChange: (next: string) => Promise<void>;
   resumedThreadId: string | null;
   contextUsagePct: number;
@@ -208,6 +209,7 @@ export default function AppShell({
   onExportThreadJson,
   selectedModel,
   onModelChange,
+  composerModelOptions,
   onComposerWorkspaceChange,
   resumedThreadId,
   contextUsagePct,
@@ -375,6 +377,7 @@ export default function AppShell({
               onExportThreadJson={() => void onExportThreadJson()}
               model={selectedModel}
               onModelChange={onModelChange}
+              modelOptions={composerModelOptions}
               onOpenModelParams={() => onModelParamsOpenChange(true)}
               workspace={selectedWorkspace}
               onWorkspaceChange={onComposerWorkspaceChange}

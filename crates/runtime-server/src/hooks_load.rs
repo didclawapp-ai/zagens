@@ -409,7 +409,6 @@ impl<'de> Visitor<'de> for HookDeserializeVisitor {
         let event_raw = event_raw.ok_or_else(|| de::Error::missing_field("event"))?;
         let command = command.ok_or_else(|| de::Error::missing_field("command"))?;
         let (event, implicit) = parse_hook_event_name(&event_raw).map_err(de::Error::custom)?;
-        let mut condition = condition;
         merge_implicit_condition(&mut condition, implicit);
 
         Ok(Hook {
