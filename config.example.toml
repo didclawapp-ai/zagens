@@ -620,6 +620,18 @@ default_text_model = "deepseek-ai/deepseek-v4-pro"
 #   OpenRouter  : https://openrouter.ai/api/v1
 
 # ─────────────────────────────────────────────────────────────────────────────────
+# Windows native sandbox (~/.zagens/config.toml; Windows only at runtime)
+# ─────────────────────────────────────────────────────────────────────────────────
+# First-time desktop users: Settings → Sandbox onboarding wizard sets sandbox_initialized.
+# Elevated path requires one-time UAC provisioning: `zagens sandbox setup` (or wizard).
+# See docs/tech/SANDBOX_CAPABILITY_MATRIX.md for elevated vs unelevated semantics.
+#
+# [windows]
+# sandbox = "elevated"              # "elevated" (recommended) | "unelevated"
+# sandbox_private_desktop = true    # optional isolated desktop for sandbox children
+# sandbox_initialized = true        # set by desktop wizard; omit on fresh install
+
+# ─────────────────────────────────────────────────────────────────────────────────
 # Requirements (admin constraints) example file
 # ─────────────────────────────────────────────────────────────────────────────────
 # allowed_approval_policies = ["on-request", "untrusted", "never"]

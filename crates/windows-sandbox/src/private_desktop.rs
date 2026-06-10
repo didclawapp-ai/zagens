@@ -19,7 +19,6 @@ static SESSION_DESKTOP: OnceCell<Mutex<PrivateDesktop>> = OnceCell::new();
 
 struct PrivateDesktop {
     handle: HANDLE,
-    full_name: String,
     wide_name: Vec<u16>,
 }
 
@@ -65,13 +64,8 @@ fn ensure_private_desktop() -> Result<&'static Mutex<PrivateDesktop>> {
                 GetLastError()
             }));
         }
-        let full_name = format!(r"Winsta0\{name}");
-        let wide_name = to_wide(&full_name);
-        Ok(Mutex::new(PrivateDesktop {
-            handle,
-            full_name,
-            wide_name,
-        }))
+        let wide_name = to_wide(&format!(r"Winsta0\{name}"));
+        Ok(Mutex::new(PrivateDesktop { handle, wide_name }))
     })
 }
 

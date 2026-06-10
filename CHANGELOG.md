@@ -26,7 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Windows sandbox enterprise requirements (PR-3.6):** optional `requirements.toml` fields `allowed_windows_sandbox_modes` and `require_windows_sandbox_setup` constrain native Windows sandbox posture at config load; example at `fixtures/harness/windows-enterprise-requirements.toml`.
 - **Gate G2 probes:** `g2_acceptance` adds `conpty_echo` and `add_read_dir` (14/14 when setup complete).
 - **Desktop sandbox settings panel:** sidebar **Sandbox** menu (separate from System settings) with global `sandbox_mode`, Windows `[windows] sandbox` / private-desktop knobs, and Linux/macOS status tabs for cross-platform management.
+- **Desktop Windows sandbox first-run wizard:** fresh Windows installs show an onboarding-only Sandbox page (elevated provisioning with UAC, or unelevated without admin) before the full settings UI; persists `[windows] sandbox_initialized` and applies default `workspace-write` + private-desktop policy.
 - **`diagnostics` / `exec_shell` Windows posture:** report configured vs effective sandbox mode (`elevated` / `unelevated`), setup status, and `DEEPSEEK_SANDBOX` marker; `exec_shell` metadata includes `windows_sandbox_mode`.
+- **Sandbox settings status accuracy:** platform overview now reports configured vs effective Windows backend separately; elevated-without-setup shows “setup required” instead of “enforced”.
 
 ### Fixed
 
@@ -39,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Windows elevated sandbox — setup refresh (PR-2.8):** `run_setup_refresh` re-runs the elevated provisioning helper only when on-disk artifacts are missing or carry a stale `SETUP_VERSION` (or when forced).
 - **Windows elevated sandbox — background spawn:** new `ElevatedChild` drives a command-runner IPC session as a background job (frame pump → shared output buffers, `write_stdin`/`CloseStdin`/`Terminate` over the pipe); `exec_shell` background mode now works under `[windows] sandbox = "elevated"` via `ShellChild::ElevatedWindowsSandbox`.
 - **Windows sandbox — structured denial codes (PR-2.13):** spawn-level denials (`CreateProcessAsUserW`, `CreateProcessWithLogonW`, runner-side failures) carry the raw Win32 error (e.g. `5` `ERROR_ACCESS_DENIED`, `1385` logon type) as a typed `SpawnDenial`; the runner forwards it over IPC (`ErrorPayload.win32_code`) and `exec_shell` surfaces it as `ShellResult.sandbox_denial_code` in tool metadata instead of relying on stderr heuristics alone.
+- **Windows elevated sandbox — runner bootstrap CWD (Win32 267) + helper path (Win32 5):** `CreateProcessWithLogonW` for `zagens-command-runner.exe` uses `%SystemRoot%` as the runner process CWD (not the agent workspace under grant-excluded `~/.zagens`). The command-runner is materialized under `%ProgramData%\\Zagens\\.sandbox-bin` so sandbox users can execute it; setup helper remains under `~/.zagens/.sandbox-bin`.
 
 ### Fixed
 

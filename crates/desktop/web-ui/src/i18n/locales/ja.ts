@@ -1085,6 +1085,25 @@ const ja: TranslationMap = {
       'このホストでは Seatbelt が利用できません。sandbox-exec があるまで sandbox_mode はポリシー宣言のみです。',
     macosNote:
       'macOS は sandbox_mode から生成した Seatbelt プロファイルを使用します。高度な Seatbelt 設定は今後追加予定です。',
+    onboardingTitle: 'サンドボックスは未初期化です',
+    onboardingDesc:
+      'Agent モードには OS レベルの分離が必要です。初回セットアップ方法を選んでください。完了後はここでグローバルポリシーと Windows バックエンドを調整できます。',
+    onboardingElevated: 'デフォルト sandbox を初期化（推奨、管理者権限が必要）',
+    onboardingElevatedDesc:
+      'offline/online sandbox ユーザーを作成し WFP ネットワークブロックを設定します。UAC が表示され、完了後 Elevated モードが有効になります。',
+    onboardingUnelevated: '非 elevated sandbox を使用（管理者不要）',
+    onboardingUnelevatedDesc:
+      'sandbox ユーザーの provisioning をスキップし、best-effort の書き込み分離とネットワーク制限を使用します。',
+    onboardingInProgress: '初期化中です。お待ちください…',
+    statusNeedsSetup: '初期化が必要',
+    configuredBackend: '設定',
+    effectiveBackend: '実効',
+    backendAuto: '自動',
+    backendElevated: 'Elevated',
+    backendUnelevated: 'Unelevated',
+    backendNone: 'なし',
+    windowsNeedsSetupDetail:
+      'Elevated が設定されていますが provisioning が未完了です。初期化を再実行するか、設定で Elevated を保存して setup を実行してください。',
   },
   indexPanel: {
     _section: 'Symbol Index',

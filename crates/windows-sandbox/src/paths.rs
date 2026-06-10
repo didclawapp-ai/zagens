@@ -20,6 +20,17 @@ pub fn sandbox_bin_dir(zagens_home: &Path) -> PathBuf {
     zagens_home.join(".sandbox-bin")
 }
 
+/// Machine-wide helper directory for binaries the elevated sandbox users must execute.
+///
+/// Kept outside the real user's `~/.zagens` tree (grant-excluded from profile read
+/// grants) so `CreateProcessWithLogonW` can load `zagens-command-runner.exe`.
+pub fn shared_sandbox_bin_dir() -> PathBuf {
+    let base = std::env::var_os("ProgramData")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(r"C:\ProgramData"));
+    base.join("Zagens").join(".sandbox-bin")
+}
+
 pub fn sandbox_secrets_dir(zagens_home: &Path) -> PathBuf {
     zagens_home.join(".sandbox-secrets")
 }

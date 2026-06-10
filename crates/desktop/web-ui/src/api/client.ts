@@ -1708,7 +1708,9 @@ export interface SandboxPlatformStatus {
   enforced: boolean;
   backend_available: boolean;
   backend: string;
+  configured_backend: string;
   setup_complete: boolean | null;
+  sandbox_initialized: boolean | null;
 }
 
 export interface SandboxPlatformsOverview {
@@ -1718,9 +1720,24 @@ export interface SandboxPlatformsOverview {
   macos: SandboxPlatformStatus;
 }
 
+export interface SandboxOnboardingState {
+  initialized: boolean;
+  show_wizard: boolean;
+}
+
 export async function fetchSandboxSettings(): Promise<SandboxSettings> {
   const { invoke } = await import('@tauri-apps/api/core');
   return invoke<SandboxSettings>('get_sandbox_settings');
+}
+
+export async function fetchSandboxOnboardingState(): Promise<SandboxOnboardingState> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  return invoke<SandboxOnboardingState>('get_sandbox_onboarding_state');
+}
+
+export async function initializeWindowsSandbox(mode: 'elevated' | 'unelevated'): Promise<SandboxSettings> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  return invoke<SandboxSettings>('initialize_windows_sandbox', { mode });
 }
 
 export async function saveSandboxSettings(settings: SandboxSettings): Promise<void> {

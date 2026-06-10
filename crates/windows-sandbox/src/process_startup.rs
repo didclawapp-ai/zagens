@@ -17,7 +17,8 @@ use windows_sys::Win32::System::Threading::{
 /// `CreateProcessAsUserW` under a restricted token.
 pub struct StartupWithHandleList {
     pub siex: STARTUPINFOEXW,
-    attr_storage: Vec<u8>,
+    /// Keeps the attribute list buffer alive for `lpAttributeList`.
+    _attr_storage: Vec<u8>,
     /// Keeps the handle array alive for the attribute list pointer.
     _handles: Vec<HANDLE>,
 }
@@ -90,7 +91,7 @@ impl StartupWithHandleList {
                 StartupInfo: si,
                 lpAttributeList: attr_list,
             },
-            attr_storage,
+            _attr_storage: attr_storage,
             _handles: handles,
         })
     }

@@ -122,6 +122,7 @@ mod tests {
             windows: Some(WindowsConfigToml {
                 sandbox: Some(WindowsSandboxModeToml::Elevated),
                 sandbox_private_desktop: None,
+                sandbox_initialized: None,
             }),
             ..Default::default()
         };
@@ -137,6 +138,7 @@ mod tests {
             windows: Some(WindowsConfigToml {
                 sandbox: Some(WindowsSandboxModeToml::Unelevated),
                 sandbox_private_desktop: None,
+                sandbox_initialized: None,
             }),
             ..Default::default()
         };

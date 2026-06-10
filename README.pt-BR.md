@@ -75,7 +75,7 @@ Preferimos escopo honesto a checklist de marketing.
 | Tópico | Status |
 |--------|--------|
 | **Instaladores desktop** | **Windows** em [Releases](https://github.com/didclawapp-ai/zagens/releases). **Pacotes desktop macOS / Linux** — planejados. **CLI** nas três plataformas já disponível. |
-| **Sandbox no OS** | **macOS Seatbelt** — aplicado quando `sandbox-exec` existe. **Linux / Windows** — política declarada, **ainda sem enforcement no OS** (modo degraded; UI avisa fora do macOS). Detalhes: [`SANDBOX_CAPABILITY_MATRIX.md`](docs/tech/SANDBOX_CAPABILITY_MATRIX.md). |
+| **Sandbox no OS** | **macOS Seatbelt** — aplicado quando `sandbox-exec` existe. **Windows** — sandbox nativo implementado (`elevated` recomendado após `zagens sandbox setup`; `unelevated`: isolamento de escrita no workspace). Configurações → **Sandbox** assistente na primeira execução. **Linux** — política declarada, **sem enforcement no OS** (degraded). Detalhes: [`SANDBOX_CAPABILITY_MATRIX.md`](docs/tech/SANDBOX_CAPABILITY_MATRIX.md). |
 | **Provedores** | Você traz API keys; conectamos DeepSeek e endpoints OpenAI-compatíveis — **não hospedamos modelos**. |
 | **Longo prazo & multi-agent** | Portões e CRAFT **usáveis em produção, ainda evoluindo**; edge cases e novos tipos de portão em desenvolvimento. |
 | **Profundidade Office** | Leitura/escrita core ok; conectores enterprise, voz e alguns templates de cenário são **futuro** ([cenários Office](docs/desktop/OFFICE_SCENARIOS.md)). |
@@ -88,7 +88,7 @@ Reporte segurança via [`SECURITY.md`](SECURITY.md).
 
 Specs públicas em [`docs/`](docs/README.md). Direção:
 
-- **Paridade de plataforma** — instaladores desktop e sandbox OS mais forte em Linux/Windows.
+- **Paridade de plataforma** — instaladores desktop macOS/Linux; sandbox nativo **Linux** (Landlock/bwrap). Sandbox nativo Windows entregue na 0.7.x.
 - **Tarefas longas confiáveis** — portões mais rígidos, fixtures de harness, fluxos de operador com replay.
 - **Fluxos Office** — mais cenários sem separar do runtime compartilhado.
 - **Endurecimento** — melhorias de segurança e exec policy em [CHANGELOG](CHANGELOG.md) e [SECURITY.md](SECURITY.md).

@@ -11,6 +11,7 @@ use crate::elevated::runner_pipe::create_named_pipe;
 use crate::elevated::runner_pipe::pipe_pair;
 use crate::helpers::find_runner_exe;
 use crate::identity_creds::SandboxCreds;
+use crate::plan::cmd_spawn_cwd;
 use crate::winutil::quote_windows_arg;
 use crate::winutil::to_wide;
 use anyhow::Context;
@@ -19,7 +20,7 @@ use std::ffi::c_void;
 use std::fs::File;
 use std::os::windows::io::AsRawHandle;
 use std::os::windows::io::FromRawHandle;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::ptr;
 use std::sync::mpsc;
 use std::thread;
@@ -231,9 +232,22 @@ fn connect_pipe_with_timeout(
     result
 }
 
+/// CWD for `CreateProcessWithLogonW` when launching the command-runner.
+///
+/// The runner is started with an absolute image path; its process CWD must be a
+/// directory the sandbox user can always use. The real command CWD travels in
+/// the IPC [`SpawnRequest`] (`spawn_request.cwd`) and must not be reused here:
+/// agent workspaces under the real user's profile (including `~/.zagens/…`) are
+/// grant-excluded for sandbox users and trigger Win32 **267** (invalid directory).
+pub(crate) fn runner_launch_cwd() -> PathBuf {
+    std::env::var_os("SystemRoot")
+        .map(PathBuf::from)
+        .map(|root| cmd_spawn_cwd(&root))
+        .unwrap_or_else(|| PathBuf::from(r"C:\Windows"))
+}
+
 pub(crate) fn spawn_runner_transport(
     zagens_home: &Path,
-    cwd: &Path,
     sandbox_creds: &SandboxCreds,
     log_dir: Option<&Path>,
     spawn_request: SpawnRequest,
@@ -257,7 +271,8 @@ pub(crate) fn spawn_runner_transport(
     );
     let mut cmdline_vec = to_wide(&runner_full_cmd);
     let exe_w = to_wide(&runner_cmdline);
-    let cwd_w = to_wide(cwd);
+    let runner_cwd = runner_launch_cwd();
+    let cwd_w = to_wide(&runner_cwd);
     let user_w = to_wide(&sandbox_creds.username);
     let domain_w = to_wide(".");
     let password_w = to_wide(&sandbox_creds.password);
@@ -411,5 +426,21 @@ fn wait_for_complete_frame(pipe_read: &File, timeout: Duration) -> Result<()> {
         }
 
         std::thread::sleep(RUNNER_SPAWN_READY_POLL_INTERVAL);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn runner_launch_cwd_uses_system_root_not_agent_workspace() {
+        let cwd = runner_launch_cwd();
+        let s = cwd.to_string_lossy();
+        assert!(
+            !s.contains(".zagens"),
+            "runner bootstrap CWD must not depend on agent metadata paths: {s}"
+        );
+        assert!(cwd.is_absolute(), "expected absolute path, got {s}");
     }
 }

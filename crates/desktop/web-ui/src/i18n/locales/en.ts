@@ -1085,6 +1085,25 @@ const en: TranslationMap = {
       'Seatbelt is unavailable on this host. sandbox_mode declares policy only until sandbox-exec is present.',
     macosNote:
       'macOS uses Seatbelt profiles generated from sandbox_mode. Advanced Seatbelt knobs will be added in a future release.',
+    onboardingTitle: 'Sandbox not initialized',
+    onboardingDesc:
+      'Agent mode needs OS-level isolation. Choose how to complete first-time setup; after that you can adjust global policy and Windows backend options here.',
+    onboardingElevated: 'Initialize default sandbox (recommended, requires Administrator)',
+    onboardingElevatedDesc:
+      'Creates offline/online sandbox users and WFP network blocks. A UAC prompt appears; when complete, Elevated mode is enabled.',
+    onboardingUnelevated: 'Use non-elevated sandbox (no Administrator)',
+    onboardingUnelevatedDesc:
+      'Skips sandbox user provisioning and uses best-effort write isolation and network limits. Good for quick trials or when elevation is unavailable.',
+    onboardingInProgress: 'Initializing, please wait…',
+    statusNeedsSetup: 'Setup required',
+    configuredBackend: 'Configured',
+    effectiveBackend: 'Effective',
+    backendAuto: 'Auto',
+    backendElevated: 'Elevated',
+    backendUnelevated: 'Unelevated',
+    backendNone: 'None',
+    windowsNeedsSetupDetail:
+      'Elevated is configured but elevated provisioning is incomplete. Re-run initialization or save Elevated in settings to trigger setup.',
   },
   indexPanel: {
     _section: 'Symbol Index',

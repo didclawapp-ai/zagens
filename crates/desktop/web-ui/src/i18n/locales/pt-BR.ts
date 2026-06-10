@@ -1086,6 +1086,25 @@ const ptBr: TranslationMap = {
       'Seatbelt indisponível neste host. sandbox_mode declara apenas política até sandbox-exec existir.',
     macosNote:
       'macOS usa perfis Seatbelt gerados a partir de sandbox_mode. Opções avançadas de Seatbelt serão adicionadas futuramente.',
+    onboardingTitle: 'Sandbox não inicializado',
+    onboardingDesc:
+      'O modo Agent precisa de isolamento em nível de SO. Escolha como concluir a configuração inicial; depois você pode ajustar a política global e as opções do backend Windows aqui.',
+    onboardingElevated: 'Inicializar sandbox padrão (recomendado, requer Administrador)',
+    onboardingElevatedDesc:
+      'Cria usuários sandbox offline/online e blocos de rede WFP. Um prompt UAC aparece; ao concluir, o modo Elevated é habilitado.',
+    onboardingUnelevated: 'Usar sandbox não elevado (sem Administrador)',
+    onboardingUnelevatedDesc:
+      'Pula o provisioning de usuários sandbox e usa isolamento de escrita e limites de rede best-effort.',
+    onboardingInProgress: 'Inicializando, aguarde…',
+    statusNeedsSetup: 'Setup necessário',
+    configuredBackend: 'Configurado',
+    effectiveBackend: 'Efetivo',
+    backendAuto: 'Auto',
+    backendElevated: 'Elevated',
+    backendUnelevated: 'Unelevated',
+    backendNone: 'Nenhum',
+    windowsNeedsSetupDetail:
+      'Elevated está configurado, mas o provisioning elevado está incompleto. Execute a inicialização novamente ou salve Elevated nas configurações para disparar o setup.',
   },
   indexPanel: {
     _section: 'Índice de símbolos',

@@ -44,7 +44,8 @@ pub const DEFAULT_CONPTY_COLS: u16 = 80;
 
 struct ConPtyAttributeList {
     siex: STARTUPINFOEXW,
-    attr_storage: Vec<u8>,
+    /// Keeps the attribute list buffer alive for `lpAttributeList`.
+    _attr_storage: Vec<u8>,
     hpc: HPCON,
 }
 
@@ -107,7 +108,7 @@ impl ConPtyAttributeList {
                 StartupInfo: si,
                 lpAttributeList: attr_list,
             },
-            attr_storage,
+            _attr_storage: attr_storage,
             hpc,
         })
     }

@@ -293,7 +293,7 @@ Source: `crates/runtime-server/src/tools/shell.rs` (~2560 lines)
 **Security layers:**
 
 1. **ExecPolicy engine:** optional command safety analysis (`crates/execpolicy/`), user policy file pre-check
-2. **Sandbox:** macOS Seatbelt / Windows Job Object (`crates/runtime-server/src/sandbox/`)
+2. **Sandbox:** macOS Seatbelt / Windows native sandbox (`crates/windows-sandbox/` + `runtime-server/src/sandbox/`)
 3. **Timeout enforcement:** `wait_timeout` kill
 4. **Output truncation:** `shell_output::truncate_with_meta` — stdout/stderr truncated to safe length, original byte count preserved
 
@@ -616,11 +616,11 @@ Sandbox capability matrix: [SANDBOX_CAPABILITY_MATRIX.md](./SANDBOX_CAPABILITY_M
 
 > **Note:** `ToolContext::sandbox_policy` is `spec::SandboxPolicy`, currently only `None` (default no sandbox). Actual sandbox enum is `crate::sandbox::SandboxPolicy`, injected by Shell at execute time. Different semantics: `spec::SandboxPolicy` = tool context layer; `crate::sandbox::SandboxPolicy` = process isolation layer.
 
-Sandbox module `crates/runtime-server/src/sandbox/`:
+Sandbox module `crates/runtime-server/src/sandbox/` (Windows enforcement in `crates/windows-sandbox/`):
 
 - **macOS:** Seatbelt (`sandbox-exec`) — filesystem, network, process spawn limits
-- **Windows:** Job Object — process resource limits
-- **Linux:** planned seccomp/landlock
+- **Windows:** Native sandbox — **unelevated:** restricted token + cap-SID workspace ACL (write isolation; no profile read isolation). **Elevated (recommended):** dedicated sandbox users + grant-exclusion/deny-read + WFP per-SID network block + command-runner IPC (sync, background, ConPTY). Setup: `zagens sandbox setup`. See [`SANDBOX_CAPABILITY_MATRIX.md`](./SANDBOX_CAPABILITY_MATRIX.md).
+- **Linux:** planned seccomp/landlock — currently env marker only (`DEEPSEEK_SANDBOX_UNENFORCED`)
 
 ### 4.5 Network Policy
 

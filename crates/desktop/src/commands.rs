@@ -106,19 +106,16 @@ pub struct WindowsSandboxStatus {
 pub fn get_windows_sandbox_status() -> Result<WindowsSandboxStatus, String> {
     #[cfg(windows)]
     {
+        let store = ConfigStore::load(None).map_err(|e| e.to_string())?;
         let home = zagens_windows_sandbox::zagens_home();
         let setup_complete = zagens_windows_sandbox::sandbox_setup_is_complete(&home);
         let unelevated_ready = zagens_windows_sandbox::is_enforcement_available();
-        let effective_mode = if setup_complete {
-            "elevated".to_string()
-        } else if unelevated_ready {
-            "unelevated".to_string()
-        } else {
-            "none".to_string()
-        };
+        let configured = windows_configured_sandbox_label(&store.config);
+        let effective_mode =
+            windows_effective_sandbox_backend(configured, setup_complete, unelevated_ready);
         Ok(WindowsSandboxStatus {
             setup_complete,
-            enforced: setup_complete || unelevated_ready,
+            enforced: effective_mode != "none",
             effective_mode,
         })
     }
@@ -133,9 +130,13 @@ pub fn get_windows_sandbox_status() -> Result<WindowsSandboxStatus, String> {
 pub struct SandboxPlatformStatus {
     pub enforced: bool,
     pub backend_available: bool,
-    /// Windows: `elevated` | `unelevated` | `none`. macOS: `seatbelt` | `none`. Linux: `landlock` | `none`.
+    /// Effective runtime backend (`elevated` | `unelevated` | `none`, etc.).
     pub backend: String,
+    /// Config file selection (`auto` | `elevated` | `unelevated` on Windows).
+    pub configured_backend: String,
     pub setup_complete: Option<bool>,
+    /// Windows first-run wizard completed (host-only).
+    pub sandbox_initialized: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -144,6 +145,93 @@ pub struct SandboxPlatformsOverview {
     pub windows: SandboxPlatformStatus,
     pub linux: SandboxPlatformStatus,
     pub macos: SandboxPlatformStatus,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SandboxOnboardingState {
+    /// User completed first-run sandbox onboarding on this host.
+    pub initialized: bool,
+    /// When true, Settings UI shows the onboarding wizard instead of full controls.
+    pub show_wizard: bool,
+}
+
+fn windows_configured_sandbox_label(cfg: &ConfigToml) -> &'static str {
+    match cfg.windows.as_ref().and_then(|w| w.sandbox) {
+        Some(WindowsSandboxModeToml::Elevated) => "elevated",
+        Some(WindowsSandboxModeToml::Unelevated) => "unelevated",
+        None => "auto",
+    }
+}
+
+fn windows_sandbox_onboarding_initialized(cfg: &ConfigToml) -> bool {
+    if cfg.windows.as_ref().and_then(|w| w.sandbox_initialized) == Some(true) {
+        return true;
+    }
+    #[cfg(windows)]
+    {
+        let home = zagens_windows_sandbox::zagens_home();
+        if zagens_windows_sandbox::sandbox_setup_is_complete(&home) {
+            return true;
+        }
+    }
+    cfg.windows.as_ref().and_then(|w| w.sandbox).is_some()
+}
+
+#[cfg(windows)]
+fn windows_effective_sandbox_backend(
+    configured: &str,
+    setup_complete: bool,
+    unelevated_ready: bool,
+) -> String {
+    match configured {
+        "unelevated" => {
+            if unelevated_ready {
+                "unelevated".into()
+            } else {
+                "none".into()
+            }
+        }
+        "elevated" => {
+            if setup_complete {
+                "elevated".into()
+            } else if unelevated_ready {
+                "unelevated".into()
+            } else {
+                "none".into()
+            }
+        }
+        _ => {
+            if setup_complete {
+                "elevated".into()
+            } else if unelevated_ready {
+                "unelevated".into()
+            } else {
+                "none".into()
+            }
+        }
+    }
+}
+
+#[cfg(windows)]
+fn format_windows_setup_error(failure: &zagens_windows_sandbox::SetupFailure) -> String {
+    if failure.code == zagens_windows_sandbox::SetupErrorCode::OrchestratorHelperLaunchCanceled {
+        "Windows sandbox setup was canceled (UAC prompt dismissed).".into()
+    } else {
+        format!(
+            "Windows sandbox setup failed ({}): {}",
+            failure.code.as_str(),
+            failure.message
+        )
+    }
+}
+
+#[cfg(windows)]
+fn map_windows_setup_error(err: anyhow::Error) -> String {
+    if let Some(failure) = zagens_windows_sandbox::extract_setup_failure(&err) {
+        format_windows_setup_error(failure)
+    } else {
+        err.to_string()
+    }
 }
 
 fn linux_landlock_probe() -> bool {
@@ -181,6 +269,7 @@ fn macos_seatbelt_probe() -> bool {
 #[tauri::command]
 pub fn get_sandbox_platforms_overview() -> Result<SandboxPlatformsOverview, String> {
     let host_os = std::env::consts::OS.to_string();
+    let config = ConfigStore::load(None).map(|store| store.config).ok();
 
     let windows = {
         #[cfg(windows)]
@@ -188,18 +277,27 @@ pub fn get_sandbox_platforms_overview() -> Result<SandboxPlatformsOverview, Stri
             let home = zagens_windows_sandbox::zagens_home();
             let setup_complete = zagens_windows_sandbox::sandbox_setup_is_complete(&home);
             let unelevated_ready = zagens_windows_sandbox::is_enforcement_available();
-            let backend = if setup_complete {
-                "elevated".to_string()
-            } else if unelevated_ready {
-                "unelevated".to_string()
-            } else {
-                "none".to_string()
-            };
+            let configured_backend = config
+                .as_ref()
+                .map(windows_configured_sandbox_label)
+                .unwrap_or("auto")
+                .to_string();
+            let backend = windows_effective_sandbox_backend(
+                configured_backend.as_str(),
+                setup_complete,
+                unelevated_ready,
+            );
+            let initialized = config
+                .as_ref()
+                .map(windows_sandbox_onboarding_initialized)
+                .unwrap_or(false);
             SandboxPlatformStatus {
-                enforced: setup_complete || unelevated_ready,
+                enforced: backend != "none",
                 backend_available: setup_complete || unelevated_ready,
                 backend,
+                configured_backend,
                 setup_complete: Some(setup_complete),
+                sandbox_initialized: Some(initialized),
             }
         }
         #[cfg(not(windows))]
@@ -208,7 +306,9 @@ pub fn get_sandbox_platforms_overview() -> Result<SandboxPlatformsOverview, Stri
                 enforced: false,
                 backend_available: false,
                 backend: "none".into(),
+                configured_backend: "n/a".into(),
                 setup_complete: None,
+                sandbox_initialized: None,
             }
         }
     };
@@ -222,7 +322,9 @@ pub fn get_sandbox_platforms_overview() -> Result<SandboxPlatformsOverview, Stri
         } else {
             "none".into()
         },
+        configured_backend: "n/a".into(),
         setup_complete: None,
+        sandbox_initialized: None,
     };
 
     let seatbelt = macos_seatbelt_probe();
@@ -234,7 +336,9 @@ pub fn get_sandbox_platforms_overview() -> Result<SandboxPlatformsOverview, Stri
         } else {
             "none".into()
         },
+        configured_backend: "n/a".into(),
         setup_complete: None,
+        sandbox_initialized: None,
     };
 
     Ok(SandboxPlatformsOverview {
@@ -280,6 +384,75 @@ fn sandbox_settings_from_config(cfg: &ConfigToml) -> SandboxSettings {
 }
 
 #[tauri::command]
+pub fn get_sandbox_onboarding_state() -> Result<SandboxOnboardingState, String> {
+    let store = ConfigStore::load(None).map_err(|e| e.to_string())?;
+    let host_os = std::env::consts::OS;
+    let initialized = if host_os == "windows" {
+        windows_sandbox_onboarding_initialized(&store.config)
+    } else {
+        true
+    };
+    Ok(SandboxOnboardingState {
+        initialized,
+        show_wizard: host_os == "windows" && !initialized,
+    })
+}
+
+#[tauri::command]
+pub async fn initialize_windows_sandbox(
+    mode: String,
+    ctx: tauri::State<'_, AppContext>,
+) -> Result<SandboxSettings, String> {
+    #[cfg(not(windows))]
+    {
+        let _ = (mode, ctx);
+        return Err("Windows sandbox initialization is only available on Windows".into());
+    }
+
+    #[cfg(windows)]
+    {
+        let mode = mode.trim().to_ascii_lowercase();
+        if mode == "elevated" {
+            let real_user = std::env::var("USERNAME").map_err(|e| e.to_string())?;
+            let setup_result = tokio::task::spawn_blocking(move || {
+                zagens_windows_sandbox::run_elevated_provisioning_setup_default(&real_user)
+            })
+            .await
+            .map_err(|e| format!("Windows sandbox setup task failed: {e}"))?;
+            setup_result.map_err(map_windows_setup_error)?;
+
+            let home = zagens_windows_sandbox::zagens_home();
+            if !zagens_windows_sandbox::sandbox_setup_is_complete(&home) {
+                return Err(
+                    "Windows sandbox setup finished but setup marker is still missing.".into(),
+                );
+            }
+        } else if mode != "unelevated" {
+            return Err(format!(
+                "Invalid initialize mode '{mode}': expected elevated or unelevated."
+            ));
+        }
+
+        let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
+        let cfg = &mut store.config;
+        cfg.sandbox_mode = Some("workspace-write".into());
+        let windows = cfg.windows.get_or_insert_with(WindowsConfigToml::default);
+        windows.sandbox = Some(if mode == "elevated" {
+            WindowsSandboxModeToml::Elevated
+        } else {
+            WindowsSandboxModeToml::Unelevated
+        });
+        windows.sandbox_initialized = Some(true);
+        windows.sandbox_private_desktop = Some(true);
+
+        tracing::info!(target: "sandbox", mode = %mode, "initialize_windows_sandbox: writing config");
+        store.save().map_err(|e| e.to_string())?;
+        ctx.sidecar_restart.notify_one();
+        Ok(sandbox_settings_from_config(&store.config))
+    }
+}
+
+#[tauri::command]
 pub fn get_sandbox_settings() -> Result<SandboxSettings, String> {
     let store = ConfigStore::load(None).map_err(|e| e.to_string())?;
     Ok(sandbox_settings_from_config(&store.config))
@@ -312,6 +485,10 @@ pub fn save_sandbox_settings(
         }
     };
     windows.sandbox_private_desktop = Some(settings.windows_private_desktop);
+    #[cfg(windows)]
+    {
+        windows.sandbox_initialized = Some(true);
+    }
 
     tracing::info!("save_sandbox_settings: writing config");
     store.save().map_err(|e| e.to_string())?;

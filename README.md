@@ -75,7 +75,7 @@ We prefer honest scope over marketing checklists.
 | Topic | Status |
 |-------|--------|
 | **Desktop installers** | **Windows** installer on [Releases](https://github.com/didclawapp-ai/zagens/releases). **macOS / Linux desktop packages** — planned. CLI binaries for all three platforms ship today. |
-| **OS sandbox enforcement** | **macOS Seatbelt** — enforced when `sandbox-exec` is available. **Linux / Windows** — policy is declared but **not OS-enforced yet** (degraded mode; UI warns on non-macOS). Details: [`SANDBOX_CAPABILITY_MATRIX.md`](docs/tech/SANDBOX_CAPABILITY_MATRIX.md). |
+| **OS sandbox enforcement** | **macOS Seatbelt** — enforced when `sandbox-exec` is available. **Windows** — native sandbox enforced after setup (`elevated` recommended: profile read isolation + WFP; `unelevated` fallback: workspace write isolation only). Settings → **Sandbox** first-run wizard. **Linux** — policy declared, **not OS-enforced yet** (degraded). Details: [`SANDBOX_CAPABILITY_MATRIX.md`](docs/tech/SANDBOX_CAPABILITY_MATRIX.md). |
 | **Providers** | You bring API keys; we connect to DeepSeek and other OpenAI-compatible endpoints — we do not host models. |
 | **Long-horizon & multi-agent** | Gates and CRAFT are **production-usable but still evolving**; edge cases and new gate types land in active development. |
 | **Office depth** | Core read/write paths work; enterprise connectors, voice, and some scenario templates are **future** ([Office scenarios](docs/desktop/OFFICE_SCENARIOS.md)). |
@@ -88,7 +88,7 @@ Report security issues via [`SECURITY.md`](SECURITY.md).
 
 Public design specs live under [`docs/`](docs/README.md). Directionally:
 
-- **Platform parity** — desktop installers and stronger OS-level sandbox on Linux/Windows.
+- **Platform parity** — macOS/Linux desktop installers; **Linux** native sandbox (Landlock/bwrap). Windows native sandbox shipped in 0.7.x.
 - **Trustworthy long tasks** — tighter completion gates, harness fixtures, and replay-friendly operator workflows.
 - **Office workflows** — richer scenario coverage without splitting away from the shared runtime.
 - **Hardening** — security and exec-policy improvements tracked in [CHANGELOG](CHANGELOG.md) and [SECURITY.md](SECURITY.md).

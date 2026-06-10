@@ -14,9 +14,9 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use zagens_windows_sandbox::{
-    PlanInput, WindowsSandboxMode, add_session_read_dir, extract_spawn_denial_code, plan_exec,
-    protected_subdirs_for_root, sandbox_setup_is_complete, spawn_background_elevated, spawn_sync,
-    zagens_home_from_env,
+    PlanInput, WindowsSandboxMode, add_session_read_dir, extract_spawn_denial_code,
+    path_traverses_excluded_profile_meta, plan_exec, protected_subdirs_for_root,
+    sandbox_setup_is_complete, spawn_background_elevated, spawn_sync, zagens_home_from_env,
 };
 
 #[derive(Debug, Serialize)]
@@ -36,8 +36,15 @@ fn main() -> anyhow::Result<()> {
     }
 
     let profile = std::env::var("USERPROFILE").unwrap_or_else(|_| r"C:\Users\Administrator".into());
-    // Sandbox users cannot use the real user's %TEMP% as spawn CWD (Win32 267).
-    let workspace = home.join(format!("g2-workspace-{}", std::process::id()));
+    // Workspace must not live under grant-excluded profile dirs (e.g. ~/.zagens).
+    let workspace = if path_traverses_excluded_profile_meta(&home) {
+        PathBuf::from(&profile)
+            .join("Documents")
+            .join("Zagens")
+            .join(format!("g2-workspace-{}", std::process::id()))
+    } else {
+        home.join(format!("g2-workspace-{}", std::process::id()))
+    };
     std::fs::create_dir_all(&workspace)?;
 
     let mut results = Vec::new();

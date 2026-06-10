@@ -75,7 +75,7 @@
 | 主题 | 现状 |
 |------|------|
 | **桌面安装包** | **Windows** 安装包见 [Releases](https://github.com/didclawapp-ai/zagens/releases)。**macOS / Linux 桌面包** — 规划中。三平台 **CLI** 已发。 |
-| **OS 级沙箱** | **macOS Seatbelt** — 在 `sandbox-exec` 可用时强制执行。**Linux / Windows** — 策略已声明，**尚未 OS 级强制**（degraded 模式；非 macOS 桌面 UI 会提示）。详见 [`SANDBOX_CAPABILITY_MATRIX.md`](docs/tech/SANDBOX_CAPABILITY_MATRIX.md)。 |
+| **OS 级沙箱** | **macOS Seatbelt** — 在 `sandbox-exec` 可用时强制执行。**Windows** — 原生沙箱已实现（`elevated` 推荐：`zagens sandbox setup` 后强制隔离；`unelevated` 为工作区写隔离）。设置 → **Sandbox** 首次引导。**Linux** — 策略已声明，**尚未 OS 级强制**（degraded）。详见 [`SANDBOX_CAPABILITY_MATRIX.md`](docs/tech/SANDBOX_CAPABILITY_MATRIX.md)。 |
 | **模型与 Key** | 需自备 API Key；连接 DeepSeek 等 OpenAI 兼容端点 — **我们不托管模型**。 |
 | **长程与多代理** | 门禁与 CRAFT **可用且在持续演进**，边界场景与新门禁类型在活跃开发中。 |
 | **Office 深度** | 核心读写路径已有；企业连接器、语音及部分场景模板为**后续方向**（[Office 场景](docs/desktop/OFFICE_SCENARIOS.md)）。 |
@@ -88,7 +88,7 @@
 
 公开设计规格见 [`docs/`](docs/README.md)。方向包括：
 
-- **平台对齐** — macOS/Linux 桌面安装包；Linux/Windows 更强 OS 沙箱。
+- **平台对齐** — macOS/Linux 桌面安装包；**Linux** 原生沙箱（Landlock/bwrap）。Windows 原生沙箱已在 0.7.x 落地。
 - **可信长任务** — 更严完成门禁、Harness 夹具、可回放的操作者工作流。
 - **Office 工作流** — 更丰富的场景覆盖，且不脱离统一 runtime。
 - **安全加固** — 见 [CHANGELOG](CHANGELOG.md) 与 [SECURITY.md](SECURITY.md)。

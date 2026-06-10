@@ -10,7 +10,7 @@ use std::time::UNIX_EPOCH;
 use anyhow::{Context, Result, anyhow};
 
 use crate::logging::log_note;
-use crate::paths::sandbox_bin_dir;
+use crate::paths::{sandbox_bin_dir, shared_sandbox_bin_dir};
 
 pub(crate) const RESOURCES_DIRNAME: &str = "zagens-resources";
 
@@ -85,7 +85,7 @@ pub(crate) fn bundled_executable_path_for_exe(exe: &Path, file_name: &str) -> Op
                 .ok()
                 .and_then(|m| m.modified().ok());
             let replace = match (&best, modified) {
-                (None, Some(ts)) => true,
+                (None, Some(_)) => true,
                 (Some((_, prev)), Some(ts)) => ts > *prev,
                 (None, None) => true,
                 _ => false,
@@ -121,11 +121,18 @@ fn legacy_lookup(kind: HelperExecutable) -> PathBuf {
     PathBuf::from(kind.file_name())
 }
 
+fn helper_destination_dir(kind: HelperExecutable, zagens_home: &Path) -> PathBuf {
+    match kind {
+        HelperExecutable::CommandRunner => shared_sandbox_bin_dir(),
+        HelperExecutable::Setup => sandbox_bin_dir(zagens_home),
+    }
+}
+
 fn find_materialized_helper_in_sandbox_bin(
     kind: HelperExecutable,
     zagens_home: &Path,
 ) -> Option<PathBuf> {
-    let bin_dir = sandbox_bin_dir(zagens_home);
+    let bin_dir = helper_destination_dir(kind, zagens_home);
     let Ok(entries) = std::fs::read_dir(&bin_dir) else {
         return None;
     };
@@ -208,7 +215,7 @@ fn helper_destination_for_source(
     source: &Path,
 ) -> Result<PathBuf> {
     let suffix = helper_version_suffix(source)?;
-    Ok(sandbox_bin_dir(zagens_home).join(materialized_file_name(kind, &suffix)))
+    Ok(helper_destination_dir(kind, zagens_home).join(materialized_file_name(kind, &suffix)))
 }
 
 fn materialized_file_name(kind: HelperExecutable, suffix: &str) -> String {

@@ -1072,6 +1072,23 @@ const zhHans = {
     macosEnforced: '本机已启用 macOS Seatbelt（sandbox-exec）。',
     macosDegraded: '本机无 Seatbelt。sandbox_mode 仅作策略声明，需系统存在 sandbox-exec。',
     macosNote: 'macOS 使用由 sandbox_mode 生成的 Seatbelt 配置。高级 Seatbelt 选项将在后续版本加入。',
+    onboardingTitle: '沙箱尚未初始化',
+    onboardingDesc:
+      'Agent 模式需要 OS 级隔离。请选择一种方式完成首次设置；完成后可在此调整全局策略与 Windows 后端选项。',
+    onboardingElevated: '初始化默认沙箱（推荐，需管理员）',
+    onboardingElevatedDesc: '创建离线/在线沙箱用户并配置 WFP 网络阻断。会弹出 UAC 提示，完成后启用 Elevated 模式。',
+    onboardingUnelevated: '使用非提升沙箱（无需管理员）',
+    onboardingUnelevatedDesc: '不创建沙箱用户，使用尽力而为的写隔离与网络限制。适合快速试用或无法提权的场景。',
+    onboardingInProgress: '正在初始化，请稍候…',
+    statusNeedsSetup: '需完成初始化',
+    configuredBackend: '配置',
+    effectiveBackend: '生效',
+    backendAuto: '自动',
+    backendElevated: 'Elevated',
+    backendUnelevated: 'Unelevated',
+    backendNone: '无',
+    windowsNeedsSetupDetail:
+      '已配置 Elevated，但提升沙箱尚未 provisioning。请重新运行初始化，或在设置中保存 Elevated 以触发 setup。',
   },
   indexPanel: {
     _section: '符号索引',

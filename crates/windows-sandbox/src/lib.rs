@@ -97,8 +97,8 @@ pub use elevated::{
 #[cfg(windows)]
 pub use grant_read::{
     GrantReadReport, PROFILE_GRANT_TIME_BUDGET, SANDBOX_USERS_GROUP, add_session_read_dir,
-    apply_profile_read_grants, revoke_read_grants, sandbox_users_group_sid,
-    userprofile_root_exclusions,
+    apply_profile_read_grants, path_traverses_excluded_profile_meta, revoke_read_grants,
+    sandbox_users_group_sid, userprofile_root_exclusions,
 };
 #[cfg(windows)]
 pub use hide_users::{hide_newly_created_users, unhide_removed_users};

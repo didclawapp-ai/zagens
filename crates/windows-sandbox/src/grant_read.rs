@@ -11,7 +11,7 @@
 //! Applied grants are tracked in `.sandbox/system_read_grants.json` so
 //! teardown (design §8.5 step 3) can revoke exactly what setup added.
 
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
@@ -207,6 +207,37 @@ pub fn add_session_read_dir(home: &Path, path: &Path) -> Result<PathBuf> {
         persist_tracked_read_grants(home, &tracked)?;
     }
     Ok(canonical)
+}
+
+/// True when any path segment is a grant-excluded profile entry (`.zagens`, `.ssh`, …).
+pub fn path_traverses_excluded_profile_meta(path: &Path) -> bool {
+    path.components().any(|component| {
+        matches!(component, Component::Normal(name) if is_userprofile_root_exclusion(&name.to_string_lossy()))
+    })
+}
+
+/// Grants sandbox users read access to elevated workspace roots before runner spawn.
+///
+/// Required so the command-runner can use the workspace as `CreateProcessAsUserW` CWD.
+pub fn ensure_elevated_workspace_read_granted(home: &Path, roots: &[PathBuf]) -> Result<()> {
+    if !crate::setup::sandbox_setup_is_complete(home) {
+        return Ok(());
+    }
+    for root in roots {
+        if path_traverses_excluded_profile_meta(root) {
+            anyhow::bail!(
+                "elevated sandbox workspace `{}` is under a grant-excluded profile directory (.zagens, .ssh, …); choose a workspace outside those paths",
+                root.display()
+            );
+        }
+        if !root.exists() {
+            std::fs::create_dir_all(root).map_err(|err| {
+                anyhow::anyhow!("create workspace root {}: {err}", root.display())
+            })?;
+        }
+        add_session_read_dir(home, root)?;
+    }
+    Ok(())
 }
 
 /// Revokes every tracked read grant for the sandbox users group and removes

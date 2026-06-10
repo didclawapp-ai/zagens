@@ -9,6 +9,7 @@ use anyhow::{Context, Result};
 use crate::cap::load_or_create_cap_sids;
 use crate::elevated::ipc::SpawnRequest;
 use crate::elevated::runner_client::spawn_runner_transport;
+use crate::grant_read::ensure_elevated_workspace_read_granted;
 use crate::identity_creds::require_sandbox_creds;
 use crate::paths::{sandbox_dir, zagens_home_from_env};
 use crate::plan::WindowsExecPlan;
@@ -26,6 +27,7 @@ pub(crate) fn start_runner_session(
     let caps = load_or_create_cap_sids(&home)?;
     let cap_sid = LocalSid::from_string(&caps.workspace)?;
     apply_workspace_acls(&plan.writable_roots, &plan.protected_write_paths, &cap_sid)?;
+    ensure_elevated_workspace_read_granted(&home, &plan.writable_roots)?;
 
     let sandbox_creds = require_sandbox_creds(&home, plan.network_allowed)?;
     let logs_base = sandbox_dir(&home);
@@ -43,7 +45,6 @@ pub(crate) fn start_runner_session(
 
     let transport = spawn_runner_transport(
         &home,
-        &plan.cwd,
         &sandbox_creds,
         Some(logs_base.as_path()),
         spawn_request,

@@ -1,6 +1,5 @@
 //! Minimal elevated spawn debug (admin + completed setup required).
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use zagens_windows_sandbox::{
@@ -13,7 +12,14 @@ fn main() -> anyhow::Result<()> {
     if !sandbox_setup_is_complete(&home) {
         anyhow::bail!("setup incomplete");
     }
-    let workspace = home.join(format!("g2-debug-{}", std::process::id()));
+    let workspace = std::env::var("USERPROFILE")
+        .map(|profile| {
+            std::path::PathBuf::from(profile)
+                .join("Documents")
+                .join("Zagens")
+                .join(format!("g2-debug-{}", std::process::id()))
+        })
+        .unwrap_or_else(|_| home.join(format!("g2-debug-{}", std::process::id())));
     std::fs::create_dir_all(&workspace)?;
 
     // Unelevated baseline (same process, restricted token).

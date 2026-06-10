@@ -75,7 +75,7 @@
 | 項目 | 状態 |
 |------|------|
 | **デスクトップインストーラ** | **Windows** は [Releases](https://github.com/didclawapp-ai/zagens/releases)。**macOS / Linux デスクトップパッケージ** — 計画中。3 プラットフォーム **CLI** は提供済み。 |
-| **OS サンドボックス強制** | **macOS Seatbelt** — `sandbox-exec` 利用時に強制。**Linux / Windows** — ポリシーは宣言されるが **OS レベル未強制**（degraded；非 macOS UI で警告）。詳細: [`SANDBOX_CAPABILITY_MATRIX.md`](docs/tech/SANDBOX_CAPABILITY_MATRIX.md)。 |
+| **OS サンドボックス強制** | **macOS Seatbelt** — `sandbox-exec` 利用時に強制。**Windows** — ネイティブサンドボックス実装済み（`elevated` 推奨：`zagens sandbox setup` 後に強制；`unelevated` は workspace 書き込み隔離のみ）。設定 → **Sandbox** 初回ウィザード。**Linux** — ポリシー宣言のみ、**OS 未強制**（degraded）。詳細: [`SANDBOX_CAPABILITY_MATRIX.md`](docs/tech/SANDBOX_CAPABILITY_MATRIX.md)。 |
 | **プロバイダ** | API キーはユーザー提供。DeepSeek 等 OpenAI 互換に接続 — **モデルはホストしません**。 |
 | **長時間 & マルチエージェント** | ゲートと CRAFT は**利用可能だが進化中**；エッジケースと新ゲート種別を開発中。 |
 | **Office の深さ** | コア読み書きは動作；エンタープライズコネクタ、音声、一部シナリオテンプレは**将来**（[Office シナリオ](docs/desktop/OFFICE_SCENARIOS.md)）。 |
@@ -88,7 +88,7 @@
 
 公開設計仕様: [`docs/`](docs/README.md)。方向性:
 
-- **プラットフォーム parity** — デスクトップインストーラ、Linux/Windows の OS サンドボックス強化。
+- **プラットフォーム parity** — macOS/Linux デスクトップインストーラ；**Linux** ネイティブサンドボックス（Landlock/bwrap）。Windows ネイティブサンドボックスは 0.7.x で提供済み。
 - **信頼できる長時間タスク** — より厳密な完了ゲート、Harness フィクスチャ、リプレイ可能なオペレータワークフロー。
 - **Office ワークフロー** — 共有 runtime から分離せずシナリオを拡充。
 - **ハードニング** — [CHANGELOG](CHANGELOG.md) と [SECURITY.md](SECURITY.md) で追跡。

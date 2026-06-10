@@ -26,6 +26,9 @@ pub struct WindowsConfigToml {
     /// Defaults to `true`. Set to `false` to launch the sandboxed child on
     /// `Winsta0\\Default` instead of a private desktop (Phase 3).
     pub sandbox_private_desktop: Option<bool>,
+    /// Set by the desktop first-run sandbox wizard (or legacy migration heuristics).
+    /// When `false`/unset on a fresh install, the Settings UI shows onboarding only.
+    pub sandbox_initialized: Option<bool>,
 }
 
 #[cfg(test)]
@@ -36,5 +39,11 @@ mod tests {
     fn parses_windows_sandbox_toml() {
         let cfg: WindowsConfigToml = toml::from_str(r#"sandbox = "unelevated""#).unwrap();
         assert_eq!(cfg.sandbox, Some(WindowsSandboxModeToml::Unelevated));
+    }
+
+    #[test]
+    fn parses_windows_sandbox_initialized_toml() {
+        let cfg: WindowsConfigToml = toml::from_str(r#"sandbox_initialized = true"#).unwrap();
+        assert_eq!(cfg.sandbox_initialized, Some(true));
     }
 }

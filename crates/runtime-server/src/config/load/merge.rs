@@ -332,6 +332,7 @@ allowed_windows_sandbox_modes = ["elevated"]
         config.windows = Some(zagens_config::WindowsConfigToml {
             sandbox: Some(zagens_config::WindowsSandboxModeToml::Unelevated),
             sandbox_private_desktop: None,
+            sandbox_initialized: None,
         });
         let err = apply_requirements(&mut config).unwrap_err();
         assert!(err.to_string().contains("windows sandbox mode"));
