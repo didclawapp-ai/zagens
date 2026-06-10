@@ -26,6 +26,8 @@ pub struct PlanInput {
     pub protected_write_paths: Vec<PathBuf>,
     pub network_allowed: bool,
     pub mode: WindowsSandboxMode,
+    pub private_desktop: bool,
+    pub tty: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -38,6 +40,8 @@ pub struct WindowsExecPlan {
     pub protected_write_paths: Vec<PathBuf>,
     pub apply_deny_read: bool,
     pub network_allowed: bool,
+    pub private_desktop: bool,
+    pub tty: bool,
 }
 
 pub fn plan_exec(input: PlanInput) -> Result<WindowsExecPlan> {
@@ -70,6 +74,8 @@ pub fn plan_exec(input: PlanInput) -> Result<WindowsExecPlan> {
             protected_write_paths,
             apply_deny_read: false,
             network_allowed: input.network_allowed,
+            private_desktop: input.private_desktop,
+            tty: input.tty,
         });
     }
 
@@ -115,6 +121,8 @@ pub fn plan_exec(input: PlanInput) -> Result<WindowsExecPlan> {
         protected_write_paths,
         apply_deny_read,
         network_allowed: input.network_allowed,
+        private_desktop: input.private_desktop,
+        tty: input.tty,
     })
 }
 
@@ -296,6 +304,8 @@ mod tests {
             protected_write_paths: vec![],
             network_allowed: false,
             mode: WindowsSandboxMode::Unelevated,
+            private_desktop: false,
+            tty: false,
         })
         .expect("plan");
         assert_eq!(plan.cwd, PathBuf::from(r"F:\DeepSeek-TUI-desktop"));
@@ -427,6 +437,8 @@ mod tests {
             protected_write_paths: vec![],
             network_allowed: false,
             mode: WindowsSandboxMode::Unelevated,
+            private_desktop: false,
+            tty: false,
         })
         .expect("plan");
         assert_eq!(plan.argv.first().map(String::as_str), Some("powershell"));

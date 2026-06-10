@@ -345,6 +345,7 @@ pub struct BackgroundShell {
     pub started_at: Instant,
     pub sandbox_type: SandboxType,
     pub sandbox_enforced: bool,
+    pub windows_sandbox_mode: Option<String>,
     pub linked_task_id: Option<String>,
     pub(in crate::tools::shell) stdout_buffer: Arc<Mutex<Vec<u8>>>,
     pub(in crate::tools::shell) stderr_buffer: Option<Arc<Mutex<Vec<u8>>>>,
@@ -561,6 +562,7 @@ impl BackgroundShell {
             sandbox_denied: self.sandbox_denied(),
             sandbox_denial_code: None,
             sandbox_enforced: self.sandbox_enforced,
+            windows_sandbox_mode: self.windows_sandbox_mode.clone(),
         }
     }
 

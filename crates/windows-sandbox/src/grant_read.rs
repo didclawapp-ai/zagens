@@ -21,6 +21,10 @@ use crate::acl::{apply_grant_read_ace, apply_grant_read_ace_no_inherit, revoke_a
 use crate::deny_read::USERPROFILE_SENSITIVE_DIRS;
 use crate::paths::sandbox_dir;
 use crate::token::LocalSid;
+use crate::winutil::{resolve_sid, string_from_sid_bytes};
+
+/// Local group created during elevated setup; receives session read grants.
+pub const SANDBOX_USERS_GROUP: &str = "ZagensSandboxUsers";
 
 /// Workspace/agent metadata directories excluded from profile read grants in
 /// addition to the credential directories shared with the unelevated deny list.
@@ -162,6 +166,47 @@ where
 
     persist_tracked_read_grants(home, &granted_paths)?;
     Ok(report)
+}
+
+/// Resolves the sandbox users group SID after elevated setup.
+pub fn sandbox_users_group_sid() -> Result<LocalSid> {
+    let sid_bytes = resolve_sid(SANDBOX_USERS_GROUP)?;
+    let sid_string = string_from_sid_bytes(&sid_bytes)
+        .map_err(|err| anyhow::anyhow!("group SID stringify failed: {err}"))?;
+    LocalSid::from_string(&sid_string)
+}
+
+/// Grants read (+execute) on an additional path for elevated sandbox users and
+/// persists it for teardown (PR-3.3 session read-dir).
+pub fn add_session_read_dir(home: &Path, path: &Path) -> Result<PathBuf> {
+    if !crate::setup::sandbox_setup_is_complete(home) {
+        anyhow::bail!(
+            "elevated sandbox setup is required before add-read-dir; run `zagens sandbox setup`"
+        );
+    }
+    let canonical = std::fs::canonicalize(path)
+        .map_err(|err| anyhow::anyhow!("canonicalize {}: {err}", path.display()))?;
+    if !canonical.exists() {
+        anyhow::bail!("path does not exist: {}", canonical.display());
+    }
+    if let Some(name) = canonical.file_name().and_then(|n| n.to_str()) {
+        if is_userprofile_root_exclusion(name) {
+            anyhow::bail!(
+                "refusing to grant read on excluded profile entry `{name}` ({})",
+                canonical.display()
+            );
+        }
+    }
+
+    let group_sid = sandbox_users_group_sid()?;
+    apply_grant_read_ace(&canonical, group_sid.as_ptr())?;
+
+    let mut tracked = load_tracked_read_grants(home);
+    if !tracked.iter().any(|p| p == &canonical) {
+        tracked.push(canonical.clone());
+        persist_tracked_read_grants(home, &tracked)?;
+    }
+    Ok(canonical)
 }
 
 /// Revokes every tracked read grant for the sandbox users group and removes

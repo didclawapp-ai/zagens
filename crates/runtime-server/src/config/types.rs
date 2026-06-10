@@ -855,6 +855,12 @@ pub(crate) struct RequirementsFile {
     pub(crate) allowed_approval_policies: Vec<String>,
     #[serde(default)]
     pub(crate) allowed_sandbox_modes: Vec<String>,
+    /// When non-empty, restricts `[windows] sandbox` (elevated / unelevated). Windows only.
+    #[serde(default)]
+    pub(crate) allowed_windows_sandbox_modes: Vec<String>,
+    /// When true, refuse startup if elevated Windows sandbox is configured but setup is incomplete.
+    #[serde(default)]
+    pub(crate) require_windows_sandbox_setup: bool,
 }
 
 fn debug_redact_secret(value: &Option<String>) -> &'static str {

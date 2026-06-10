@@ -22,7 +22,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`[windows] sandbox` config (PR-1.10):** `config.toml` accepts `[windows] sandbox = "unelevated" | "elevated"` (also `DEEPSEEK_WINDOWS_SANDBOX` env). Runtime `SandboxManager` reads the effective mode; elevated without completed setup falls back to unelevated with a warning.
+- **Windows sandbox Phase 3 (PR-3.1 / PR-3.2 / PR-3.3):** ConPTY (`CreatePseudoConsole`) spawn through the elevated command-runner for interactive `exec_shell` (`tty: true`) under enforced sandbox; optional `[windows] sandbox_private_desktop = true` isolates child processes on a session desktop; CLI `zagens sandbox add-read-dir <path>` grants additional read paths for elevated sandbox users (tracked for teardown).
+- **Windows sandbox enterprise requirements (PR-3.6):** optional `requirements.toml` fields `allowed_windows_sandbox_modes` and `require_windows_sandbox_setup` constrain native Windows sandbox posture at config load; example at `fixtures/harness/windows-enterprise-requirements.toml`.
+- **Gate G2 probes:** `g2_acceptance` adds `conpty_echo` and `add_read_dir` (14/14 when setup complete).
+- **Desktop sandbox settings panel:** sidebar **Sandbox** menu (separate from System settings) with global `sandbox_mode`, Windows `[windows] sandbox` / private-desktop knobs, and Linux/macOS status tabs for cross-platform management.
+- **`diagnostics` / `exec_shell` Windows posture:** report configured vs effective sandbox mode (`elevated` / `unelevated`), setup status, and `DEEPSEEK_SANDBOX` marker; `exec_shell` metadata includes `windows_sandbox_mode`.
+
+### Fixed
+
+- **Windows ConPTY IPC deadlock (PR-3.1):** command-runner now closes the pseudo console after child exit so stdout pumps EOF and the parent receives the `Exit` frame (fixes hung `spawn_sync` / G2 `conpty_echo`). `config.toml` accepts `[windows] sandbox = "unelevated" | "elevated"` (also `DEEPSEEK_WINDOWS_SANDBOX` env). Runtime `SandboxManager` reads the effective mode; elevated without completed setup falls back to unelevated with a warning.
 - **Windows elevated sandbox setup — Phase 2 foundation (PR-2.1 / PR-2.2 / PR-2.10 partial):** new `zagens-sandbox-setup.exe` helper (UAC via `ShellExecuteExW runas`), creates `ZagensSandboxOffline`/`ZagensSandboxOnline` local users + DPAPI-protected secrets + `setup_marker.json`, hides users from Winlogon welcome screen. CLI: `deepseek sandbox setup`.
 - **Windows elevated sandbox — WFP + command-runner MVP (PR-2.3 / PR-2.6 partial):** persistent per-SID outbound block filters for the offline sandbox user (installed during setup provisioning); new `zagens-command-runner.exe` with framed pipe IPC; elevated sync spawn via `CreateProcessWithLogonW` → restricted-token child. `plan_exec` + top-level `spawn_sync` dispatch elevated mode when setup is complete. Elevated background spawn, grant-read ACL, and default elevated mode remain follow-ups (PR-2.4 / PR-2.12).
 - **Windows sandbox helper bundling (PR-2.11):** desktop `bundle:prepare` builds and stages `zagens-sandbox-setup.exe` + `zagens-command-runner.exe` under `zagens-resources/`; runtime materializes helpers into `~/.zagens/.sandbox-bin` on first use.

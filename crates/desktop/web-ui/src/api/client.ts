@@ -1695,6 +1695,44 @@ export async function saveSystemSettings(settings: SystemSettings): Promise<void
   await invoke('save_system_settings', { settings });
 }
 
+// ========== Sandbox Settings (Desktop Tauri) ==========
+
+export interface SandboxSettings {
+  sandbox_mode: string;
+  /** `auto` | `elevated` | `unelevated` */
+  windows_sandbox: string;
+  windows_private_desktop: boolean;
+}
+
+export interface SandboxPlatformStatus {
+  enforced: boolean;
+  backend_available: boolean;
+  backend: string;
+  setup_complete: boolean | null;
+}
+
+export interface SandboxPlatformsOverview {
+  host_os: string;
+  windows: SandboxPlatformStatus;
+  linux: SandboxPlatformStatus;
+  macos: SandboxPlatformStatus;
+}
+
+export async function fetchSandboxSettings(): Promise<SandboxSettings> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  return invoke<SandboxSettings>('get_sandbox_settings');
+}
+
+export async function saveSandboxSettings(settings: SandboxSettings): Promise<void> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  await invoke('save_sandbox_settings', { settings });
+}
+
+export async function fetchSandboxPlatformsOverview(): Promise<SandboxPlatformsOverview> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  return invoke<SandboxPlatformsOverview>('get_sandbox_platforms_overview');
+}
+
 export type OfficeEnvironmentStatus = {
   bundled_python?: string | null;
   office_venv_ready?: boolean;

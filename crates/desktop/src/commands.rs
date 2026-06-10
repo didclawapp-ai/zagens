@@ -14,12 +14,12 @@ use tokio::sync::Notify;
 use zagens_config::{
     CompactionToml, CompletionGateConfigToml, ConfigStore, ConfigToml, DEFAULT_VISION_MODEL,
     HookConditionToml, HookEventToml, HookToml, HooksConfigToml, LhtPresetId,
-    LongHorizonConfigToml, MacroLoopConfigToml, WORKSPACE_META_DIR_NAME,
-    apply_lht_preset as apply_lht_preset_overlay, compaction_threshold_tokens_for_model,
-    legacy_workspace_meta_dir, lht_product_defaults, normalize_gate_mode, normalize_lht_mode,
-    resolve_lht, vision_should_check_degenerate_ocr_template, vision_user_prompt_for_model,
-    workspace_meta_dir, workspace_meta_dir_read, workspace_meta_file_read,
-    workspace_meta_file_write,
+    LongHorizonConfigToml, MacroLoopConfigToml, WORKSPACE_META_DIR_NAME, WindowsConfigToml,
+    WindowsSandboxModeToml, apply_lht_preset as apply_lht_preset_overlay,
+    compaction_threshold_tokens_for_model, legacy_workspace_meta_dir, lht_product_defaults,
+    normalize_gate_mode, normalize_lht_mode, resolve_lht,
+    vision_should_check_degenerate_ocr_template, vision_user_prompt_for_model, workspace_meta_dir,
+    workspace_meta_dir_read, workspace_meta_file_read, workspace_meta_file_write,
 };
 
 /// reqwest 顶层 `Display` 常为笼统的「error sending request」，展开 `source()` 链便于跨机排查。
@@ -126,6 +126,197 @@ pub fn get_windows_sandbox_status() -> Result<WindowsSandboxStatus, String> {
     {
         Err("Windows sandbox status is only available on Windows".to_string())
     }
+}
+
+/// Per-platform sandbox posture for the Sandbox settings panel (cross-host overview).
+#[derive(Debug, Serialize)]
+pub struct SandboxPlatformStatus {
+    pub enforced: bool,
+    pub backend_available: bool,
+    /// Windows: `elevated` | `unelevated` | `none`. macOS: `seatbelt` | `none`. Linux: `landlock` | `none`.
+    pub backend: String,
+    pub setup_complete: Option<bool>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SandboxPlatformsOverview {
+    pub host_os: String,
+    pub windows: SandboxPlatformStatus,
+    pub linux: SandboxPlatformStatus,
+    pub macos: SandboxPlatformStatus,
+}
+
+fn linux_landlock_probe() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        const LANDLOCK_CREATE_RULESET_VERSION: u32 = 1;
+        // Safety: null ruleset pointer is ABI version probe only.
+        unsafe {
+            let result = libc::syscall(
+                libc::SYS_landlock_create_ruleset,
+                std::ptr::null::<libc::c_void>(),
+                0usize,
+                LANDLOCK_CREATE_RULESET_VERSION,
+            );
+            result >= 0
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        false
+    }
+}
+
+fn macos_seatbelt_probe() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        Path::new("/usr/bin/sandbox-exec").exists()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
+    }
+}
+
+#[tauri::command]
+pub fn get_sandbox_platforms_overview() -> Result<SandboxPlatformsOverview, String> {
+    let host_os = std::env::consts::OS.to_string();
+
+    let windows = {
+        #[cfg(windows)]
+        {
+            let home = zagens_windows_sandbox::zagens_home();
+            let setup_complete = zagens_windows_sandbox::sandbox_setup_is_complete(&home);
+            let unelevated_ready = zagens_windows_sandbox::is_enforcement_available();
+            let backend = if setup_complete {
+                "elevated".to_string()
+            } else if unelevated_ready {
+                "unelevated".to_string()
+            } else {
+                "none".to_string()
+            };
+            SandboxPlatformStatus {
+                enforced: setup_complete || unelevated_ready,
+                backend_available: setup_complete || unelevated_ready,
+                backend,
+                setup_complete: Some(setup_complete),
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            SandboxPlatformStatus {
+                enforced: false,
+                backend_available: false,
+                backend: "none".into(),
+                setup_complete: None,
+            }
+        }
+    };
+
+    let landlock = linux_landlock_probe();
+    let linux = SandboxPlatformStatus {
+        enforced: false,
+        backend_available: landlock,
+        backend: if landlock {
+            "landlock".into()
+        } else {
+            "none".into()
+        },
+        setup_complete: None,
+    };
+
+    let seatbelt = macos_seatbelt_probe();
+    let macos = SandboxPlatformStatus {
+        enforced: seatbelt,
+        backend_available: seatbelt,
+        backend: if seatbelt {
+            "seatbelt".into()
+        } else {
+            "none".into()
+        },
+        setup_complete: None,
+    };
+
+    Ok(SandboxPlatformsOverview {
+        host_os,
+        windows,
+        linux,
+        macos,
+    })
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SandboxSettings {
+    pub sandbox_mode: String,
+    /// `auto` | `elevated` | `unelevated` — `auto` clears explicit `[windows] sandbox`.
+    pub windows_sandbox: String,
+    pub windows_private_desktop: bool,
+}
+
+fn sandbox_settings_from_config(cfg: &ConfigToml) -> SandboxSettings {
+    let windows_sandbox = cfg
+        .windows
+        .as_ref()
+        .and_then(|w| w.sandbox)
+        .map(|m| match m {
+            WindowsSandboxModeToml::Elevated => "elevated",
+            WindowsSandboxModeToml::Unelevated => "unelevated",
+        })
+        .unwrap_or("auto")
+        .to_string();
+    SandboxSettings {
+        sandbox_mode: cfg
+            .sandbox_mode
+            .clone()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "workspace-write".into()),
+        windows_sandbox,
+        windows_private_desktop: cfg
+            .windows
+            .as_ref()
+            .and_then(|w| w.sandbox_private_desktop)
+            .unwrap_or(false),
+    }
+}
+
+#[tauri::command]
+pub fn get_sandbox_settings() -> Result<SandboxSettings, String> {
+    let store = ConfigStore::load(None).map_err(|e| e.to_string())?;
+    Ok(sandbox_settings_from_config(&store.config))
+}
+
+#[tauri::command]
+pub fn save_sandbox_settings(
+    settings: SandboxSettings,
+    ctx: tauri::State<'_, AppContext>,
+) -> Result<(), String> {
+    let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
+    let cfg = &mut store.config;
+
+    cfg.sandbox_mode = Some(settings.sandbox_mode);
+
+    let windows = cfg.windows.get_or_insert_with(WindowsConfigToml::default);
+    windows.sandbox = match settings
+        .windows_sandbox
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "auto" | "" => None,
+        "elevated" => Some(WindowsSandboxModeToml::Elevated),
+        "unelevated" => Some(WindowsSandboxModeToml::Unelevated),
+        other => {
+            return Err(format!(
+                "Invalid windows_sandbox '{other}': expected auto, elevated, or unelevated."
+            ));
+        }
+    };
+    windows.sandbox_private_desktop = Some(settings.windows_private_desktop);
+
+    tracing::info!("save_sandbox_settings: writing config");
+    store.save().map_err(|e| e.to_string())?;
+    ctx.sidecar_restart.notify_one();
+    Ok(())
 }
 
 #[tauri::command]

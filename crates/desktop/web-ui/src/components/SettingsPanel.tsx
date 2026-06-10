@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { useT, LOCALE_LABELS } from '../i18n';
 import type { Locale } from '../i18n';
 import type { RuntimeConnectionState } from '../api/client';
@@ -42,11 +41,6 @@ export default function SettingsPanel({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [officeEnv, setOfficeEnv] = useState<OfficeEnvironmentStatus | null>(null);
-  const [winSandbox, setWinSandbox] = useState<{
-    setup_complete: boolean;
-    enforced: boolean;
-    effective_mode: string;
-  } | null>(null);
 
   useEffect(() => {
     if (!desktopHost) {
@@ -82,26 +76,6 @@ export default function SettingsPanel({
       cancelled = true;
     };
   }, [runtimeConn]);
-
-  useEffect(() => {
-    if (!desktopHost || platform !== 'windows') {
-      setWinSandbox(null);
-      return;
-    }
-    let cancelled = false;
-    invoke<{ setup_complete: boolean; enforced: boolean; effective_mode: string }>(
-      'get_windows_sandbox_status',
-    )
-      .then((status) => {
-        if (!cancelled) setWinSandbox(status);
-      })
-      .catch(() => {
-        if (!cancelled) setWinSandbox(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [desktopHost, platform]);
 
   const handleSave = useCallback(async () => {
     if (!settings || !desktopHost) return;
@@ -250,32 +224,6 @@ export default function SettingsPanel({
                 />
               </label>
             ))}
-
-            <label className="block space-y-1">
-              <span className={labelCls}>{t('settings.sandboxMode')}</span>
-              <select
-                className={selectCls}
-                value={settings.sandbox_mode}
-                onChange={(e) => update('sandbox_mode', e.target.value)}
-              >
-                <option value="workspace-write">{t('settings.sandboxWorkspace')}</option>
-                <option value="read-only">{t('settings.sandboxReadOnly')}</option>
-                <option value="full-access">{t('settings.sandboxFullAccess')}</option>
-              </select>
-              {platform === 'darwin' ? null : platform === 'windows' && winSandbox?.enforced ? (
-                <p className="text-[11px] text-t-text-muted mt-0.5">
-                  {t(
-                    winSandbox.effective_mode === 'elevated'
-                      ? 'settings.sandboxElevatedEnforced'
-                      : 'settings.sandboxUnelevatedEnforced',
-                  )}
-                </p>
-              ) : platform === 'windows' ? (
-                <p className="text-[11px] text-amber-600 mt-0.5">{t('settings.sandboxSetupRequired')}</p>
-              ) : (
-                <p className="text-[11px] text-t-text-muted mt-0.5">{t('settings.sandboxDegradedMode')}</p>
-              )}
-            </label>
 
             <label className="block space-y-1">
               <span className={labelCls}>{t('settings.approvalPolicy')}</span>

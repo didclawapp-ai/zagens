@@ -7,6 +7,8 @@ use crate::features::FeaturesToml;
 
 use super::super::types::{Config, ConfigFile, RequirementsFile, *};
 use super::paths::{default_managed_config_path, default_requirements_path, expand_path};
+use crate::config::resolve_windows_sandbox_mode;
+use zagens_config::WindowsSandboxModeToml;
 
 pub(crate) fn apply_profile(config: ConfigFile, profile: Option<&str>) -> Result<Config> {
     if let Some(profile_name) = profile {
@@ -225,6 +227,44 @@ pub(crate) fn apply_requirements(config: &mut Config) -> Result<()> {
         }
     }
 
+    if !requirements.allowed_windows_sandbox_modes.is_empty() {
+        #[cfg(windows)]
+        {
+            let mode = resolve_windows_sandbox_mode(config);
+            let mode_str = match mode {
+                WindowsSandboxModeToml::Elevated => "elevated",
+                WindowsSandboxModeToml::Unelevated => "unelevated",
+            };
+            if !requirements
+                .allowed_windows_sandbox_modes
+                .iter()
+                .any(|m| m.eq_ignore_ascii_case(mode_str))
+            {
+                anyhow::bail!(
+                    "windows sandbox mode '{mode_str}' is not allowed by requirements ({})",
+                    requirements.allowed_windows_sandbox_modes.join(", ")
+                );
+            }
+        }
+    }
+
+    if requirements.require_windows_sandbox_setup {
+        #[cfg(windows)]
+        {
+            let mode = resolve_windows_sandbox_mode(config);
+            if mode == WindowsSandboxModeToml::Elevated {
+                let home = zagens_windows_sandbox::zagens_home();
+                if !zagens_windows_sandbox::sandbox_setup_is_complete(&home) {
+                    anyhow::bail!(
+                        "requirements require completed Windows elevated sandbox setup; \
+                         run `zagens sandbox setup` (home: {})",
+                        home.display()
+                    );
+                }
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -242,5 +282,59 @@ pub(crate) fn merge_features(
         }
         (Some(base), None) => Some(base),
         (None, Some(override_cfg)) => Some(override_cfg),
+    }
+}
+
+#[cfg(test)]
+mod requirements_tests {
+    use super::*;
+    use std::fs;
+
+    fn write_requirements(dir: &std::path::Path, body: &str) -> std::path::PathBuf {
+        let path = dir.join("requirements.toml");
+        fs::write(&path, body).expect("write requirements");
+        path
+    }
+
+    #[test]
+    fn apply_requirements_rejects_disallowed_sandbox_mode() {
+        let dir = std::env::temp_dir().join(format!("zagens-req-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("mkdir");
+        let path = write_requirements(
+            &dir,
+            r#"
+allowed_sandbox_modes = ["read-only"]
+"#,
+        );
+        let mut config = Config::default();
+        config.requirements_path = Some(path.to_string_lossy().into());
+        config.sandbox_mode = Some("workspace-write".into());
+        let err = apply_requirements(&mut config).unwrap_err();
+        assert!(err.to_string().contains("not allowed by requirements"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn apply_requirements_windows_mode_allowlist() {
+        let dir = std::env::temp_dir().join(format!("zagens-req-win-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("mkdir");
+        let path = write_requirements(
+            &dir,
+            r#"
+allowed_windows_sandbox_modes = ["elevated"]
+"#,
+        );
+        let mut config = Config::default();
+        config.requirements_path = Some(path.to_string_lossy().into());
+        config.windows = Some(zagens_config::WindowsConfigToml {
+            sandbox: Some(zagens_config::WindowsSandboxModeToml::Unelevated),
+            sandbox_private_desktop: None,
+        });
+        let err = apply_requirements(&mut config).unwrap_err();
+        assert!(err.to_string().contains("windows sandbox mode"));
+        let _ = fs::remove_dir_all(&dir);
     }
 }

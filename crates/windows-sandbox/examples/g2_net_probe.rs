@@ -16,6 +16,8 @@ fn elevated(workspace: &std::path::PathBuf, cmd: &str, net: bool) -> anyhow::Res
         protected_write_paths: vec![],
         network_allowed: net,
         mode: WindowsSandboxMode::Elevated,
+        private_desktop: false,
+        tty: false,
     })?;
     let out = spawn_sync(&plan, None, Some(Duration::from_secs(30)))?;
     println!(

@@ -36,8 +36,9 @@ pub(crate) fn start_runner_session(
         env: plan.env.clone(),
         cap_sids: vec![caps.workspace.clone()],
         timeout_ms: timeout.map(|d| d.as_millis() as u64),
-        tty: false,
+        tty: plan.tty,
         stdin_open,
+        private_desktop: plan.private_desktop,
     };
 
     let transport = spawn_runner_transport(

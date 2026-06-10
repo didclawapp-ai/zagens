@@ -16,9 +16,10 @@ use windows_sys::Win32::System::Threading::TerminateProcess;
 
 use zagens_windows_sandbox::{
     ErrorPayload, ExitPayload, FramedMessage, IPC_PROTOCOL_VERSION, Message, OutputPayload,
-    OutputStream, SpawnReady, SpawnRequest, SpawnStdio, create_restricted_token_with_capabilities,
-    decode_bytes, encode_bytes, extract_spawn_denial_code, read_frame, read_handle_loop,
-    spawn_with_stdio, to_wide, write_frame,
+    OutputStream, SpawnOptions, SpawnReady, SpawnRequest, SpawnStdio,
+    create_restricted_token_with_capabilities, decode_bytes, encode_bytes,
+    extract_spawn_denial_code, read_frame, read_handle_loop, spawn_with_stdio, to_wide,
+    write_frame,
 };
 
 struct OwnedWinHandle(HANDLE);
@@ -134,12 +135,6 @@ pub fn main() -> Result<()> {
         }
     };
 
-    if req.tty {
-        let err = anyhow::anyhow!("runner: tty mode is not supported in this build");
-        let _ = send_error(&pipe_write, "spawn_failed", err.to_string(), None);
-        return Err(err);
-    }
-
     let cap_refs: Vec<&str> = req.cap_sids.iter().map(String::as_str).collect();
     if cap_refs.is_empty() {
         let err = anyhow::anyhow!("runner: empty capability SID list");
@@ -162,6 +157,11 @@ pub fn main() -> Result<()> {
         }
     };
 
+    let spawn_opts = SpawnOptions {
+        private_desktop: req.private_desktop,
+        tty: req.tty,
+        ..SpawnOptions::default()
+    };
     let child = match spawn_with_stdio(
         token.handle(),
         &req.command,
@@ -169,10 +169,11 @@ pub fn main() -> Result<()> {
         &req.env,
         SpawnStdio {
             capture_stdout: true,
-            capture_stderr: true,
+            capture_stderr: !req.tty,
             stdin_open: req.stdin_open,
             stdin_data: None,
         },
+        spawn_opts,
     ) {
         Ok(v) => v,
         Err(err) => {
@@ -224,21 +225,25 @@ pub fn main() -> Result<()> {
             let _ = write_frame(&mut *guard, &msg);
         }
     });
-    let writer_err = Arc::clone(&pipe_write);
-    let err_thread = read_handle_loop(stderr_h, move |chunk| {
-        let msg = FramedMessage {
-            version: IPC_PROTOCOL_VERSION,
-            message: Message::Output {
-                payload: OutputPayload {
-                    data_b64: encode_bytes(chunk),
-                    stream: OutputStream::Stderr,
+    let err_thread = if stderr_h != 0 {
+        let writer_err = Arc::clone(&pipe_write);
+        Some(read_handle_loop(stderr_h, move |chunk| {
+            let msg = FramedMessage {
+                version: IPC_PROTOCOL_VERSION,
+                message: Message::Output {
+                    payload: OutputPayload {
+                        data_b64: encode_bytes(chunk),
+                        stream: OutputStream::Stderr,
+                    },
                 },
-            },
-        };
-        if let Ok(mut guard) = writer_err.lock() {
-            let _ = write_frame(&mut *guard, &msg);
-        }
-    });
+            };
+            if let Ok(mut guard) = writer_err.lock() {
+                let _ = write_frame(&mut *guard, &msg);
+            }
+        }))
+    } else {
+        None
+    };
 
     let child_for_input = Arc::clone(&child);
     let input_thread = std::thread::spawn(move || {
@@ -265,6 +270,11 @@ pub fn main() -> Result<()> {
                         let _ = guard.kill();
                     }
                     break;
+                }
+                Message::Resize { payload } => {
+                    if let Ok(guard) = child_for_input.lock() {
+                        let _ = guard.resize_conpty(payload.rows, payload.cols);
+                    }
                 }
                 _ => {}
             }
@@ -294,6 +304,9 @@ pub fn main() -> Result<()> {
                             unsafe {
                                 let _ = TerminateProcess(process_handle, 1);
                             }
+                            if let Ok(mut guard) = child.lock() {
+                                guard.finalize_conpty_after_exit();
+                            }
                             std::thread::sleep(Duration::from_millis(50));
                             continue;
                         }
@@ -304,11 +317,17 @@ pub fn main() -> Result<()> {
             }
         };
 
+        if let Ok(mut guard) = child.lock() {
+            guard.finalize_conpty_after_exit();
+        }
+
         // Drain stdout/stderr before Exit so the parent receives all Output
         // frames. Do not join the stdin thread here: it blocks on read_frame
         // until the parent closes its pipe write end after handling Exit.
         let _ = out_thread.join();
-        let _ = err_thread.join();
+        if let Some(err_thread) = err_thread {
+            let _ = err_thread.join();
+        }
 
         let exit_msg = FramedMessage {
             version: IPC_PROTOCOL_VERSION,

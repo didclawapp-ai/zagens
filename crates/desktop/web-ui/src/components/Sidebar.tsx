@@ -429,6 +429,7 @@ type SettingsTab =
   | 'routing'
   | 'topic-memory'
   | 'system'
+  | 'sandbox'
   | 'lht-settings'
   | 'hooks'
   | 'schedule'
@@ -457,13 +458,6 @@ function SettingsAccordion({
   const { t } = useT();
   const [open, setOpen] = useState(false);
 
-  const isSubActive = (tab: SettingsTab) => activeInspector === tab;
-
-  const handleSubClick = (tab: SettingsTab) => {
-    setOpen(true);
-    onInspectorChange(tab);
-  };
-
   const subItems: { tab: SettingsTab; label: string; show: boolean }[] = [
     { tab: 'api-key', label: t('sidebar.apiKey'), show: desktopHost },
     { tab: 'mcp', label: t('panels.mcp'), show: true },
@@ -472,11 +466,25 @@ function SettingsAccordion({
     { tab: 'topic-memory', label: t('sidebar.topicMemory'), show: !officeSession },
     { tab: 'index', label: t('panels.index'), show: !officeSession },
     { tab: 'system', label: t('panels.system'), show: true },
+    { tab: 'sandbox', label: t('panels.sandbox'), show: true },
     { tab: 'lht-settings', label: t('panels.lhtSettings'), show: !officeSession },
     { tab: 'hooks', label: t('sidebar.hooks'), show: desktopHost },
     { tab: 'schedule', label: t('sidebar.schedule'), show: !officeSession },
     { tab: 'about', label: t('sidebar.about'), show: true },
   ];
+
+  useEffect(() => {
+    if (subItems.some(({ tab }) => activeInspector === tab)) {
+      setOpen(true);
+    }
+  }, [activeInspector, officeSession, desktopHost, t]);
+
+  const isSubActive = (tab: SettingsTab) => activeInspector === tab;
+
+  const handleSubClick = (tab: SettingsTab) => {
+    setOpen(true);
+    onInspectorChange(tab);
+  };
 
   return (
     <>

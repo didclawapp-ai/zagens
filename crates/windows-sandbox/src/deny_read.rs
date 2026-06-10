@@ -190,6 +190,8 @@ mod tests {
             protected_write_paths: protected,
             network_allowed: false,
             mode: crate::plan::WindowsSandboxMode::Unelevated,
+            private_desktop: false,
+            tty: false,
         })
         .expect("plan");
         let out = crate::spawn_sync(&plan, None, Some(std::time::Duration::from_secs(15)))
@@ -226,6 +228,8 @@ mod tests {
             protected_write_paths: vec![],
             network_allowed: false,
             mode: crate::plan::WindowsSandboxMode::Unelevated,
+            private_desktop: false,
+            tty: false,
         })
         .expect("plan");
         assert!(
@@ -301,6 +305,8 @@ mod tests {
             protected_write_paths: vec![],
             network_allowed: false,
             mode: crate::plan::WindowsSandboxMode::Unelevated,
+            private_desktop: false,
+            tty: false,
         })
         .expect("plan");
         let spawn_out = crate::spawn_sync(&plan, None, Some(std::time::Duration::from_secs(15)))

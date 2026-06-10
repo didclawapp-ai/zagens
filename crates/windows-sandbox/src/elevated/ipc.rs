@@ -64,6 +64,8 @@ pub struct SpawnRequest {
     pub tty: bool,
     #[serde(default)]
     pub stdin_open: bool,
+    #[serde(default)]
+    pub private_desktop: bool,
 }
 
 /// Ack from runner after it spawns the child process.
@@ -205,6 +207,7 @@ mod tests {
                     timeout_ms: Some(1000),
                     tty: false,
                     stdin_open: false,
+                    private_desktop: false,
                 }),
             },
         };

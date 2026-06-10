@@ -13,6 +13,7 @@
 mod host;
 mod manager;
 mod process;
+mod sandbox_meta;
 mod tools;
 mod types;
 #[cfg(windows)]

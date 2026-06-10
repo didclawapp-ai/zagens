@@ -248,6 +248,8 @@ export function loadStoredInspector(): RightPanelView {
       s === 'workspace' ||
       s === 'api-key' ||
       s === 'settings' ||
+      s === 'system' ||
+      s === 'sandbox' ||
       s === 'mcp' ||
       s === 'usage' ||
       s === 'tasks' ||

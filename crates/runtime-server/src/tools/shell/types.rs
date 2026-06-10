@@ -56,6 +56,9 @@ pub struct ShellResult {
     /// (e.g. `5` = `ERROR_ACCESS_DENIED`), when the spawn itself was denied.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sandbox_denial_code: Option<u32>,
+    /// Windows native path: `elevated` or `unelevated` (when `sandbox_type` is windows).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub windows_sandbox_mode: Option<String>,
 }
 
 /// Compact, UI-oriented view of a tracked background shell job.

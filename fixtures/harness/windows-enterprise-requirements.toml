@@ -1,0 +1,11 @@
+# Example enterprise requirements overlay for Windows elevated sandbox (PR-3.6).
+# Install path: managed `requirements_path` or platform default (see config.example.toml).
+
+allowed_approval_policies = ["on-request", "never"]
+allowed_sandbox_modes = ["read-only", "workspace-write"]
+
+# Restrict native Windows sandbox to elevated path only (ignores unconfigured default).
+allowed_windows_sandbox_modes = ["elevated"]
+
+# Fail config load when elevated mode is effective but `zagens sandbox setup` is incomplete.
+require_windows_sandbox_setup = true

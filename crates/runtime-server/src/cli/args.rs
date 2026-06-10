@@ -459,6 +459,11 @@ pub enum SandboxCommand {
     },
     /// Elevated Windows sandbox setup (UAC; creates sandbox users + marker)
     Setup,
+    /// Grant an additional read path for elevated sandbox users (PR-3.3)
+    AddReadDir {
+        /// Directory or file to grant read (+execute) access
+        path: PathBuf,
+    },
     /// Run a command with sandboxing
     Run {
         /// Sandbox policy (danger-full-access, read-only, external-sandbox, workspace-write)

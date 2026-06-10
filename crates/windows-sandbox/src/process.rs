@@ -11,7 +11,7 @@ use windows_sys::Win32::Foundation::{
     SetHandleInformation,
 };
 use windows_sys::Win32::Storage::FileSystem::{ReadFile, WriteFile};
-use windows_sys::Win32::System::Console::{GetStdHandle, STD_ERROR_HANDLE};
+use windows_sys::Win32::System::Console::{GetStdHandle, HPCON, STD_ERROR_HANDLE};
 use windows_sys::Win32::System::JobObjects::{
     AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
     JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
@@ -63,6 +63,14 @@ pub fn extract_spawn_denial_code(err: &anyhow::Error) -> Option<u32> {
 }
 
 #[derive(Debug, Clone, Default)]
+pub struct SpawnOptions {
+    pub private_desktop: bool,
+    pub tty: bool,
+    pub conpty_rows: u16,
+    pub conpty_cols: u16,
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct SpawnStdio {
     pub capture_stdout: bool,
     pub capture_stderr: bool,
@@ -77,9 +85,46 @@ pub struct ManagedProcess {
     stdout_read: HANDLE,
     stderr_read: HANDLE,
     stdin_write: HANDLE,
+    conpty: HPCON,
 }
 
 impl ManagedProcess {
+    pub(crate) fn from_spawn_handles(
+        process: HANDLE,
+        job: HANDLE,
+        stdout_read: HANDLE,
+        stderr_read: HANDLE,
+        stdin_write: HANDLE,
+        conpty: HPCON,
+    ) -> Self {
+        Self {
+            process,
+            job,
+            stdout_read,
+            stderr_read,
+            stdin_write,
+            conpty,
+        }
+    }
+
+    pub fn resize_conpty(&self, rows: u16, cols: u16) -> Result<()> {
+        if self.conpty == 0 {
+            anyhow::bail!("process is not attached to a ConPTY");
+        }
+        crate::conpty::resize_conpty(self.conpty, rows, cols)
+    }
+
+    /// Close the pseudo console after the child exits so ConPTY output pipes EOF
+    /// and the runner can drain IPC before sending `Exit`.
+    pub fn finalize_conpty_after_exit(&mut self) {
+        if self.conpty != 0 {
+            unsafe {
+                windows_sys::Win32::System::Console::ClosePseudoConsole(self.conpty);
+            }
+            self.conpty = 0;
+        }
+    }
+
     pub fn detach_output_readers(&mut self) -> (HANDLE, HANDLE) {
         let readers = (self.stdout_read, self.stderr_read);
         self.stdout_read = 0;
@@ -189,6 +234,9 @@ impl ManagedProcess {
 impl Drop for ManagedProcess {
     fn drop(&mut self) {
         unsafe {
+            if self.conpty != 0 {
+                windows_sys::Win32::System::Console::ClosePseudoConsole(self.conpty);
+            }
             for h in [
                 self.process,
                 self.job,
@@ -210,7 +258,32 @@ pub fn spawn_with_stdio(
     cwd: &Path,
     env: &HashMap<String, String>,
     stdio: SpawnStdio,
+    opts: SpawnOptions,
 ) -> Result<ManagedProcess> {
+    if opts.tty {
+        let (process, hpc) = crate::conpty::spawn_with_conpty(
+            token,
+            argv,
+            cwd,
+            env,
+            if opts.conpty_rows == 0 {
+                crate::conpty::DEFAULT_CONPTY_ROWS
+            } else {
+                opts.conpty_rows
+            },
+            if opts.conpty_cols == 0 {
+                crate::conpty::DEFAULT_CONPTY_COLS
+            } else {
+                opts.conpty_cols
+            },
+            opts.private_desktop,
+        )?;
+        let mut process = process;
+        // `spawn_with_conpty` returns hpc for resize; attach before ConPtyAttributeList drops.
+        process.conpty = hpc;
+        return Ok(process);
+    }
+
     unsafe {
         let mut stdout_r: HANDLE = 0;
         let mut stdout_w: HANDLE = 0;
@@ -273,7 +346,7 @@ pub fn spawn_with_stdio(
         } else {
             GetStdHandle(STD_ERROR_HANDLE)
         };
-        let desktop = to_wide("Winsta0\\Default");
+        let desktop = crate::private_desktop::desktop_wide_name(opts.private_desktop)?;
         let startup =
             StartupWithHandleList::new(h_stdin, h_stdout, h_stderr, desktop.as_ptr() as *mut u16)?;
 
@@ -351,6 +424,7 @@ pub fn spawn_with_stdio(
             stdout_read: stdout_r,
             stderr_read: stderr_r,
             stdin_write: stdin_w,
+            conpty: 0,
         })
     }
 }
@@ -372,6 +446,7 @@ pub fn run_as_user(
             stdin_open: false,
             stdin_data: None,
         },
+        SpawnOptions::default(),
     )?;
     let mut process = process;
     process.wait(None)
@@ -400,7 +475,7 @@ unsafe fn create_kill_on_close_job() -> Result<HANDLE> {
     Ok(job)
 }
 
-fn make_env_block(env: &HashMap<String, String>) -> Vec<u16> {
+pub(crate) fn make_env_block(env: &HashMap<String, String>) -> Vec<u16> {
     let mut items: Vec<(String, String)> =
         env.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
     items.sort_by(|a, b| {
@@ -446,7 +521,7 @@ fn quote_arg(arg: &str) -> String {
     }
 }
 
-fn argv_to_command_line(argv: &[String]) -> String {
+pub(crate) fn argv_to_command_line(argv: &[String]) -> String {
     // `cmd /C <tail>`: `<tail>` is already a full user command from `plan.rs`
     // (`type "C:\…"`, redirects, etc.). Re-quoting the tail breaks parsing.
     if argv.len() == 3 && argv[0].eq_ignore_ascii_case("cmd") && argv[1].eq_ignore_ascii_case("/C")

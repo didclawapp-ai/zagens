@@ -83,6 +83,10 @@ impl ShellManager {
         self.sandbox_manager.set_windows_sandbox_mode(mode);
     }
 
+    pub fn set_windows_private_desktop(&mut self, enabled: bool) {
+        self.sandbox_manager.set_windows_private_desktop(enabled);
+    }
+
     /// Set the sandbox policy for future commands.
     #[allow(dead_code)]
     pub fn set_sandbox_policy(&mut self, policy: ExecutionSandboxPolicy) {
@@ -289,6 +293,7 @@ impl ShellManager {
         let sandbox_type = exec_env.sandbox_type;
         let sandboxed = exec_env.is_sandboxed();
         let sandbox_enforced = exec_env.is_enforced();
+        let windows_sandbox_mode = super::sandbox_meta::windows_sandbox_mode_from_env(exec_env);
 
         // Build the command from ExecEnv
         let program = exec_env.program();
@@ -387,6 +392,7 @@ impl ShellManager {
                 },
                 sandbox_denied,
                 sandbox_denial_code: None,
+                windows_sandbox_mode: windows_sandbox_mode.clone(),
             })
         } else {
             // Timeout - kill the whole process tree (C1: grandchildren spawned
@@ -424,6 +430,7 @@ impl ShellManager {
                 },
                 sandbox_denied: false,
                 sandbox_denial_code: None,
+                windows_sandbox_mode: windows_sandbox_mode.clone(),
             })
         }
     }
@@ -440,6 +447,7 @@ impl ShellManager {
         let sandbox_type = exec_env.sandbox_type;
         let sandboxed = exec_env.is_sandboxed();
         let sandbox_enforced = exec_env.is_enforced();
+        let windows_sandbox_mode = super::sandbox_meta::windows_sandbox_mode_from_env(exec_env);
 
         let program = exec_env.program();
         let args = exec_env.args();
@@ -491,6 +499,7 @@ impl ShellManager {
                 },
                 sandbox_denied: false,
                 sandbox_denial_code: None,
+                windows_sandbox_mode: windows_sandbox_mode.clone(),
             })
         } else {
             // C1: kill the whole tree, not just the direct child.
@@ -519,6 +528,7 @@ impl ShellManager {
                 },
                 sandbox_denied: false,
                 sandbox_denial_code: None,
+                windows_sandbox_mode: windows_sandbox_mode.clone(),
             })
         }
     }
@@ -537,6 +547,7 @@ impl ShellManager {
         let sandbox_type = exec_env.sandbox_type;
         let sandboxed = exec_env.is_sandboxed();
         let sandbox_enforced = exec_env.is_enforced();
+        let windows_sandbox_mode = super::sandbox_meta::windows_sandbox_mode_from_env(exec_env);
 
         // Build the command from ExecEnv
         let program = exec_env.program();
@@ -550,16 +561,19 @@ impl ShellManager {
         };
 
         #[cfg(windows)]
-        if exec_env.is_enforced() && !tty {
-            let stderr_buffer = stderr_buffer
-                .clone()
-                .context("background stderr buffer missing")?;
+        if exec_env.is_enforced() {
+            let stderr_buf = if tty {
+                Arc::new(Mutex::new(Vec::new()))
+            } else {
+                stderr_buffer.context("background stderr buffer missing")?
+            };
             let (child, stdin, stdout_thread, stderr_thread) =
                 super::windows_sandbox::spawn_background(
                     exec_env,
                     Arc::clone(&stdout_buffer),
-                    Arc::clone(&stderr_buffer),
+                    Arc::clone(&stderr_buf),
                     stdin_data,
+                    tty,
                 )?;
 
             let mut bg_shell = BackgroundShell {
@@ -571,9 +585,10 @@ impl ShellManager {
                 started_at: started,
                 sandbox_type,
                 sandbox_enforced,
+                windows_sandbox_mode: windows_sandbox_mode.clone(),
                 linked_task_id: None,
                 stdout_buffer,
-                stderr_buffer: Some(stderr_buffer),
+                stderr_buffer: if tty { None } else { Some(stderr_buf) },
                 stdout_cursor: 0,
                 stderr_cursor: 0,
                 stdin,
@@ -610,6 +625,7 @@ impl ShellManager {
                 sandbox_denied: false,
                 sandbox_denial_code: None,
                 sandbox_enforced,
+                windows_sandbox_mode: windows_sandbox_mode.clone(),
             });
         }
 
@@ -704,6 +720,7 @@ impl ShellManager {
             started_at: started,
             sandbox_type,
             sandbox_enforced,
+            windows_sandbox_mode: windows_sandbox_mode.clone(),
             linked_task_id: None,
             stdout_buffer,
             stderr_buffer,
@@ -743,6 +760,7 @@ impl ShellManager {
             sandbox_denied: false,
             sandbox_denial_code: None,
             sandbox_enforced,
+            windows_sandbox_mode: windows_sandbox_mode.clone(),
         })
     }
 
@@ -851,6 +869,7 @@ impl ShellManager {
             sandbox_denied: shell.sandbox_denied(),
             sandbox_denial_code: None,
             sandbox_enforced: shell.sandbox_enforced,
+            windows_sandbox_mode: shell.windows_sandbox_mode.clone(),
         };
 
         Ok(ShellDeltaResult {

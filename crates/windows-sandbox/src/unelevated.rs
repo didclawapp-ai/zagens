@@ -10,7 +10,7 @@ use crate::cap::load_or_create_cap_sids;
 use crate::deny_read::{apply_deny_read_acls, plan_deny_read_acl_paths};
 use crate::paths::zagens_home_from_env;
 use crate::plan::WindowsExecPlan;
-use crate::process::{CapturedOutput, ManagedProcess, SpawnStdio, spawn_with_stdio};
+use crate::process::{CapturedOutput, ManagedProcess, SpawnOptions, SpawnStdio, spawn_with_stdio};
 use crate::token::{LocalSid, create_restricted_token_with_capabilities};
 use crate::workspace_acl::apply_workspace_acls;
 
@@ -77,7 +77,18 @@ pub fn spawn(plan: &WindowsExecPlan, stdio: SpawnStdio) -> Result<ManagedProcess
     let caps = load_or_create_cap_sids(&home)?;
     let token = create_restricted_token_with_capabilities(&[&caps.workspace])?;
 
-    spawn_with_stdio(token.handle(), &plan.argv, &plan.cwd, &plan.env, stdio)
+    spawn_with_stdio(
+        token.handle(),
+        &plan.argv,
+        &plan.cwd,
+        &plan.env,
+        stdio,
+        SpawnOptions {
+            private_desktop: plan.private_desktop,
+            tty: plan.tty,
+            ..SpawnOptions::default()
+        },
+    )
 }
 
 pub fn spawn_sync(

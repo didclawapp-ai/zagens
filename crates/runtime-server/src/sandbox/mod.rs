@@ -403,6 +403,9 @@ pub struct SandboxManager {
 
     /// Windows native sandbox mode from `[windows] sandbox` config.
     windows_sandbox_mode: WindowsSandboxModeToml,
+
+    /// Optional isolated desktop for sandbox children (`[windows] sandbox_private_desktop`).
+    windows_private_desktop: bool,
 }
 
 impl SandboxManager {
@@ -412,12 +415,22 @@ impl SandboxManager {
             sandbox_available: None,
             forced_sandbox: None,
             windows_sandbox_mode: WindowsSandboxModeToml::Unelevated,
+            windows_private_desktop: false,
         }
     }
 
     /// Set the Windows native sandbox mode (`[windows] sandbox`).
     pub fn set_windows_sandbox_mode(&mut self, mode: WindowsSandboxModeToml) {
         self.windows_sandbox_mode = mode;
+    }
+
+    pub fn set_windows_private_desktop(&mut self, enabled: bool) {
+        self.windows_private_desktop = enabled;
+    }
+
+    #[must_use]
+    pub fn windows_private_desktop(&self) -> bool {
+        self.windows_private_desktop
     }
 
     #[must_use]
@@ -595,6 +608,8 @@ impl SandboxManager {
             protected_write_paths: protected,
             network_allowed: spec.sandbox_policy.has_network_access(),
             mode: plan_mode,
+            private_desktop: self.windows_private_desktop,
+            tty: false,
         }) {
             Ok(plan) => ExecEnv {
                 command: plan.argv.clone(),
@@ -638,20 +653,9 @@ impl SandboxManager {
     ) -> zagens_windows_sandbox::WindowsSandboxMode {
         use zagens_windows_sandbox::WindowsSandboxMode;
 
-        match configured {
+        match crate::config::effective_windows_sandbox_execution_mode(configured) {
             WindowsSandboxModeToml::Unelevated => WindowsSandboxMode::Unelevated,
-            WindowsSandboxModeToml::Elevated => {
-                let home = zagens_windows_sandbox::zagens_home();
-                if zagens_windows_sandbox::sandbox_setup_is_complete(&home) {
-                    WindowsSandboxMode::Elevated
-                } else {
-                    tracing::warn!(
-                        target: "sandbox",
-                        "windows.sandbox=elevated but setup is incomplete; falling back to unelevated"
-                    );
-                    WindowsSandboxMode::Unelevated
-                }
-            }
+            WindowsSandboxModeToml::Elevated => WindowsSandboxMode::Elevated,
         }
     }
 

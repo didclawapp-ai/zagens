@@ -7,8 +7,8 @@ use zagens_core::engine::EngineHostBundle;
 
 use crate::agent_surface::AppMode;
 use crate::client::DeepSeekClient;
-use crate::config::resolve_windows_sandbox_mode;
 use crate::config::{ApiProvider, Config};
+use crate::config::{resolve_windows_sandbox_mode, resolve_windows_sandbox_private_desktop};
 use crate::prompts;
 use crate::sandbox::TuiSandboxHost;
 use crate::seam_manager::{SeamConfig, SeamManager};
@@ -114,6 +114,7 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
         .unwrap_or_else(|| new_shared_shell_manager(lean.workspace.clone()));
     if let Ok(mut guard) = shell_manager.lock() {
         guard.set_windows_sandbox_mode(resolve_windows_sandbox_mode(api_config));
+        guard.set_windows_private_desktop(resolve_windows_sandbox_private_desktop(api_config));
     }
     let capacity_controller = CapacityController::new(lean.capacity.clone());
 

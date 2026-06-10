@@ -10,6 +10,7 @@ mod imp {
 
     use crate::sandbox::{ExecEnv, SandboxManager};
     use crate::tools::shell::process::{ShellChild, StdinWriter, spawn_reader_thread_from_handle};
+    use crate::tools::shell::sandbox_meta;
     use crate::tools::shell::types::{ShellResult, ShellStatus};
     use crate::tools::shell_output::truncate_with_meta;
 
@@ -83,6 +84,7 @@ mod imp {
             },
             sandbox_denied,
             sandbox_denial_code: None,
+            windows_sandbox_mode: sandbox_meta::windows_sandbox_mode_from_env(exec_env),
         })
     }
 
@@ -112,6 +114,7 @@ mod imp {
             sandbox_type: Some(exec_env.sandbox_type.to_string()),
             sandbox_denied: true,
             sandbox_denial_code: Some(win32_code),
+            windows_sandbox_mode: sandbox_meta::windows_sandbox_mode_from_env(exec_env),
         }
     }
 
@@ -120,29 +123,34 @@ mod imp {
         stdout_buffer: Arc<Mutex<Vec<u8>>>,
         stderr_buffer: Arc<Mutex<Vec<u8>>>,
         stdin_data: Option<&str>,
+        tty: bool,
     ) -> Result<(
         ShellChild,
         Option<StdinWriter>,
         Option<JoinHandle<()>>,
         Option<JoinHandle<()>>,
     )> {
-        let plan = exec_env
+        let mut plan = exec_env
             .windows_plan
             .as_ref()
-            .context("missing WindowsExecPlan for enforced spawn")?;
+            .context("missing WindowsExecPlan for enforced spawn")?
+            .clone();
+        if tty {
+            plan.tty = true;
+        }
 
         if matches!(
             plan.mode,
             zagens_windows_sandbox::WindowsSandboxMode::Elevated
         ) {
-            return spawn_background_elevated(plan, stdout_buffer, stderr_buffer, stdin_data);
+            return spawn_background_elevated(&plan, stdout_buffer, stderr_buffer, stdin_data);
         }
 
         let mut managed = zagens_windows_sandbox::spawn(
-            plan,
+            &plan,
             zagens_windows_sandbox::SpawnStdio {
                 capture_stdout: true,
-                capture_stderr: true,
+                capture_stderr: !tty,
                 stdin_open: true,
                 stdin_data: stdin_data.map(str::to_string),
             },
@@ -150,13 +158,20 @@ mod imp {
 
         let (stdout_handle, stderr_handle) = managed.detach_output_readers();
         let stdout_thread = spawn_reader_thread_from_handle(stdout_handle, stdout_buffer);
-        let stderr_thread = spawn_reader_thread_from_handle(stderr_handle, stderr_buffer);
+        let stderr_thread = if stderr_handle != 0 {
+            Some(spawn_reader_thread_from_handle(
+                stderr_handle,
+                stderr_buffer,
+            ))
+        } else {
+            None
+        };
 
         Ok((
             ShellChild::WindowsSandbox(managed),
             None,
             Some(stdout_thread),
-            Some(stderr_thread),
+            stderr_thread,
         ))
     }
 

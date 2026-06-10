@@ -7,6 +7,7 @@ pub fn run(command: SandboxCommand) -> Result<()> {
         SandboxCommand::Poc { command } => run_poc(command),
         SandboxCommand::Teardown { keep_logs } => run_teardown(keep_logs),
         SandboxCommand::Setup => run_setup(),
+        SandboxCommand::AddReadDir { path } => run_add_read_dir(path),
         SandboxCommand::Run { .. } => {
             anyhow::bail!("sandbox run is not available in headless CLI yet — see TUI方案.md")
         }
@@ -66,4 +67,20 @@ fn run_setup() -> Result<()> {
          Set `[windows] sandbox = \"elevated\"` in config.toml to use the elevated path."
     );
     Ok(())
+}
+
+#[cfg(windows)]
+fn run_add_read_dir(path: std::path::PathBuf) -> Result<()> {
+    let home = zagens_windows_sandbox::zagens_home_from_env();
+    let granted = zagens_windows_sandbox::add_session_read_dir(&home, &path)?;
+    println!(
+        "Granted read access for elevated sandbox users: {}",
+        granted.display()
+    );
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn run_add_read_dir(_path: std::path::PathBuf) -> Result<()> {
+    anyhow::bail!("sandbox add-read-dir is only supported on Windows")
 }

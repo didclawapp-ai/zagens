@@ -25,11 +25,14 @@
 | Outbound network | **Blocked** (WFP per-SID; loopback permitted) | **Unrestricted** — no host allowlist |
 | DNS resolution side channel | System Dnscache may still resolve names; data connections blocked | N/A |
 | Background `exec_shell` | Yes (runner IPC) | Yes |
+| Interactive `exec_shell` (`tty: true`) | Yes (ConPTY via runner) | Yes |
+| Session read-dir CLI | `zagens sandbox add-read-dir` | Same |
+| Optional private desktop | `[windows] sandbox_private_desktop = true` | Same |
 | Setup / teardown | `zagens sandbox setup` / `teardown` (Admin/UAC) | Same |
 
 Default mode when `[windows] sandbox` is unset: **elevated** if setup is complete, else **unelevated** (PR-2.12).
 
-Acceptance probes (maintainer): `cargo run --example g2_acceptance -p zagens-windows-sandbox` (12 checks).
+Acceptance probes (maintainer): `cargo run --example g2_acceptance -p zagens-windows-sandbox` (**14** checks incl. ConPTY + add-read-dir).
 
 ## Policy modes (`sandbox_mode` / `SandboxPolicy`)
 
@@ -58,7 +61,7 @@ Acceptance probes (maintainer): `cargo run --example g2_acceptance -p zagens-win
 ## Backlog
 
 - Linux: Landlock/bwrap helper — see `doc_Private/docs/tech/LINUX_SANDBOX_DESIGN.md`.
-- Windows Phase 3: ConPTY interactive sandbox (PR-3.1), optional private desktop (PR-3.2).
+- Windows Phase 3: enterprise `requirements.toml` Windows fields — see `fixtures/harness/windows-enterprise-requirements.toml`.
 - Optional: unify degraded copy across TUI status line and desktop toast.
 
 ## References

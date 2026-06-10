@@ -28,6 +28,8 @@ pub struct PlanInput {
     pub protected_write_paths: Vec<PathBuf>,
     pub network_allowed: bool,
     pub mode: WindowsSandboxMode,
+    pub private_desktop: bool,
+    pub tty: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -40,6 +42,16 @@ pub struct WindowsExecPlan {
     pub protected_write_paths: Vec<PathBuf>,
     pub apply_deny_read: bool,
     pub network_allowed: bool,
+    pub private_desktop: bool,
+    pub tty: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SpawnOptions {
+    pub private_desktop: bool,
+    pub tty: bool,
+    pub conpty_rows: u16,
+    pub conpty_cols: u16,
 }
 
 #[derive(Debug, Clone, Default)]

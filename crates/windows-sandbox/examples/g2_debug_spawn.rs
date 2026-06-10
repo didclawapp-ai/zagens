@@ -26,6 +26,8 @@ fn main() -> anyhow::Result<()> {
         protected_write_paths: vec![],
         network_allowed: false,
         mode: WindowsSandboxMode::Unelevated,
+        private_desktop: false,
+        tty: false,
     })?;
     let t0 = Instant::now();
     let unelev_out = spawn_sync(&unelev, None, Some(Duration::from_secs(30)))?;
@@ -47,6 +49,8 @@ fn main() -> anyhow::Result<()> {
         protected_write_paths: vec![],
         network_allowed: false,
         mode: WindowsSandboxMode::Elevated,
+        private_desktop: false,
+        tty: false,
     })?;
     let t1 = Instant::now();
     let elev_out = spawn_sync(&elevated, None, Some(Duration::from_secs(30)))?;
@@ -68,6 +72,8 @@ fn main() -> anyhow::Result<()> {
         protected_write_paths: vec![],
         network_allowed: false,
         mode: WindowsSandboxMode::Elevated,
+        private_desktop: false,
+        tty: false,
     })?;
     let t2 = Instant::now();
     let ping_out = spawn_sync(&ping, None, Some(Duration::from_secs(30)))?;
@@ -92,6 +98,8 @@ fn main() -> anyhow::Result<()> {
         protected_write_paths: vec![],
         network_allowed: false,
         mode: WindowsSandboxMode::Elevated,
+        private_desktop: false,
+        tty: false,
     })?;
     let write_out = spawn_sync(&write, None, Some(Duration::from_secs(30)))?;
     let file_body = std::fs::read_to_string(&smoke).unwrap_or_default();

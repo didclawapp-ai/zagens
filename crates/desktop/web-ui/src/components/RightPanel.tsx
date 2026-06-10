@@ -11,6 +11,7 @@ import RoutingPanel from './RoutingPanel';
 import ChecklistPanel from './ChecklistPanel';
 import MermaidPanel from './MermaidPanel';
 import SettingsPanel from './SettingsPanel';
+import SandboxSettingsPanel from './SandboxSettingsPanel';
 import LhtSettingsPanel from './LhtSettingsPanel';
 import HooksPanel from './HooksPanel';
 import ScheduledAutomationsPanel from './ScheduledAutomationsPanel';
@@ -42,6 +43,7 @@ export type RightPanelView =
   | 'api-key'
   | 'settings'
   | 'system'
+  | 'sandbox'
   | 'lht-settings'
   | 'hooks'
   | 'schedule'
@@ -151,6 +153,7 @@ const PANEL_TITLE_KEYS: Record<RightPanelView, TranslationKey> = {
   'api-key': 'panels.apiKey',
   settings: 'panels.settings',
   system: 'panels.system',
+  sandbox: 'panels.sandbox',
   'lht-settings': 'panels.lhtSettings',
   hooks: 'panels.hooks',
   schedule: 'panels.schedule',
@@ -970,6 +973,10 @@ export default function RightPanel({
             streaming={streaming}
             onSettingsSaved={onSystemSettingsSaved}
           />
+        )}
+
+        {view === 'sandbox' && (
+          <SandboxSettingsPanel desktopHost={desktopHost} platform={platform} streaming={streaming} />
         )}
 
         {view === 'lht-settings' && (

@@ -624,6 +624,9 @@ default_text_model = "deepseek-ai/deepseek-v4-pro"
 # ─────────────────────────────────────────────────────────────────────────────────
 # allowed_approval_policies = ["on-request", "untrusted", "never"]
 # allowed_sandbox_modes = ["read-only", "workspace-write"]
+# Windows native sandbox (PR-3.6; Windows only; see fixtures/harness/windows-enterprise-requirements.toml):
+# allowed_windows_sandbox_modes = ["elevated"]
+# require_windows_sandbox_setup = true
 
 # ─────────────────────────────────────────────────────────────────────────────────
 # Audit scratchpad (full-repo review external memory, Phase B)

@@ -13,6 +13,8 @@ fn probe(cwd: &str) -> anyhow::Result<()> {
         protected_write_paths: vec![],
         network_allowed: false,
         mode: zagens_windows_sandbox::WindowsSandboxMode::Unelevated,
+        private_desktop: false,
+        tty: false,
     };
     let plan = zagens_windows_sandbox::plan_exec(input)?;
     let out = zagens_windows_sandbox::spawn_sync(&plan, None, Some(Duration::from_secs(15)))?;

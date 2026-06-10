@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use zagens_windows_sandbox::{
-    PlanInput, WindowsSandboxMode, extract_spawn_denial_code, plan_exec,
+    PlanInput, WindowsSandboxMode, add_session_read_dir, extract_spawn_denial_code, plan_exec,
     protected_subdirs_for_root, sandbox_setup_is_complete, spawn_background_elevated, spawn_sync,
     zagens_home_from_env,
 };
@@ -171,6 +171,8 @@ fn main() -> anyhow::Result<()> {
     results.push(probe_bg_spawn_stdout(&workspace));
     results.push(probe_bg_write_stdin(&workspace));
     results.push(probe_bg_kill(&workspace));
+    results.push(probe_conpty_echo(&workspace));
+    results.push(probe_add_read_dir(&workspace, &home));
 
     // --- structured spawn denial (PR-2.13) ---
     results.push(probe_spawn_denial_code(&workspace));
@@ -226,6 +228,8 @@ fn elevated_plan(
         protected_write_paths: protected_subdirs_for_root(workspace),
         network_allowed,
         mode: WindowsSandboxMode::Elevated,
+        private_desktop: false,
+        tty: false,
     })
 }
 
@@ -420,6 +424,95 @@ fn probe_bg_kill(workspace: &PathBuf) -> ProbeResult {
     }
 }
 
+/// ConPTY path (PR-3.1): elevated runner spawns with `CreatePseudoConsole`.
+fn probe_conpty_echo(workspace: &PathBuf) -> ProbeResult {
+    let id = "conpty_echo";
+    let mut plan = match elevated_plan(workspace, "cmd", vec!["/C", "echo g2-conpty-ok"], false) {
+        Ok(plan) => plan,
+        Err(err) => {
+            return ProbeResult {
+                id,
+                pass: false,
+                detail: format!("plan error: {err:#}"),
+            };
+        }
+    };
+    plan.tty = true;
+    match spawn_background_elevated(&plan, None) {
+        Ok(mut child) => {
+            let stdout = Arc::new(Mutex::new(Vec::new()));
+            let out_buf = Arc::clone(&stdout);
+            if let Err(err) = child.start_output_pump(
+                move |chunk| {
+                    if let Ok(mut guard) = out_buf.lock() {
+                        guard.extend_from_slice(chunk);
+                    }
+                },
+                |_| {},
+            ) {
+                return ProbeResult {
+                    id,
+                    pass: false,
+                    detail: format!("pump error: {err:#}"),
+                };
+            }
+            let exit = match child.wait(Some(Duration::from_secs(45))) {
+                Ok(code) => code,
+                Err(err) => {
+                    return ProbeResult {
+                        id,
+                        pass: false,
+                        detail: format!("wait error: {err:#}"),
+                    };
+                }
+            };
+            let stdout_bytes = stdout.lock().map(|g| g.clone()).unwrap_or_default();
+            let stdout = String::from_utf8_lossy(&stdout_bytes);
+            ProbeResult {
+                id,
+                pass: exit == 0 && stdout.contains("g2-conpty-ok"),
+                detail: format!("exit={exit} stdout={stdout:?}"),
+            }
+        }
+        Err(err) => ProbeResult {
+            id,
+            pass: false,
+            detail: format!("spawn error: {err:#}"),
+        },
+    }
+}
+
+/// Session read-dir grant (PR-3.3): ACL + state file update.
+fn probe_add_read_dir(workspace: &PathBuf, home: &std::path::Path) -> ProbeResult {
+    let id = "add_read_dir";
+    let target = workspace.join("read-grant-probe");
+    if let Err(err) = std::fs::create_dir_all(&target) {
+        return ProbeResult {
+            id,
+            pass: false,
+            detail: format!("mkdir error: {err}"),
+        };
+    }
+    match add_session_read_dir(home, &target) {
+        Ok(granted) => {
+            let state = home.join(".sandbox").join("system_read_grants.json");
+            let state_ok = std::fs::read_to_string(&state)
+                .map(|txt| txt.contains("read-grant-probe"))
+                .unwrap_or(false);
+            ProbeResult {
+                id,
+                pass: state_ok,
+                detail: format!("granted={} state_ok={state_ok}", granted.display()),
+            }
+        }
+        Err(err) => ProbeResult {
+            id,
+            pass: false,
+            detail: format!("add_session_read_dir error: {err:#}"),
+        },
+    }
+}
+
 fn probe_spawn_denial_code(workspace: &PathBuf) -> ProbeResult {
     let id = "spawn_denial_code";
     let fake_exe = workspace.join("g2-not-an-exe.txt");
@@ -441,6 +534,8 @@ fn probe_spawn_denial_code(workspace: &PathBuf) -> ProbeResult {
         // on a non-executable path (runner IPC / PR-2.13), not from logon lockout.
         network_allowed: true,
         mode: WindowsSandboxMode::Elevated,
+        private_desktop: false,
+        tty: false,
     }) {
         Ok(plan) => plan,
         Err(err) => {

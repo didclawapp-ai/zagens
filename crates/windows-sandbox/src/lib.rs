@@ -14,6 +14,8 @@ mod audit;
 #[cfg(windows)]
 mod cap;
 #[cfg(windows)]
+mod conpty;
+#[cfg(windows)]
 mod deny_read;
 #[cfg(windows)]
 mod deny_read_state;
@@ -41,6 +43,8 @@ mod paths;
 mod plan;
 #[cfg(windows)]
 mod poc;
+#[cfg(windows)]
+mod private_desktop;
 #[cfg(windows)]
 mod process;
 #[cfg(windows)]
@@ -92,7 +96,8 @@ pub use elevated::{
 };
 #[cfg(windows)]
 pub use grant_read::{
-    GrantReadReport, PROFILE_GRANT_TIME_BUDGET, apply_profile_read_grants, revoke_read_grants,
+    GrantReadReport, PROFILE_GRANT_TIME_BUDGET, SANDBOX_USERS_GROUP, add_session_read_dir,
+    apply_profile_read_grants, revoke_read_grants, sandbox_users_group_sid,
     userprofile_root_exclusions,
 };
 #[cfg(windows)]
@@ -112,7 +117,8 @@ pub use plan::{
 pub use poc::{UnelevatedDenyReadPocResult, run_unelevated_deny_read_poc, write_poc_result};
 #[cfg(windows)]
 pub use process::{
-    CapturedOutput, ManagedProcess, SpawnDenial, SpawnStdio, extract_spawn_denial_code,
+    CapturedOutput, ManagedProcess, SpawnDenial, SpawnOptions, SpawnStdio,
+    extract_spawn_denial_code,
 };
 #[cfg(windows)]
 pub use process::{read_handle_loop, spawn_with_stdio};
