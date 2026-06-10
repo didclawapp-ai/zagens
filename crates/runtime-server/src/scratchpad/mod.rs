@@ -25,7 +25,7 @@ pub use checklist_sync::checklist_inventory_warning;
 pub use config::{ScratchpadConfig, ScratchpadConfigToml};
 pub use coverage::{
     CoverageGateOutcome, area_meets_deferred_quality, build_l0_status_line, compute_coverage_stats,
-    coverage_gate, resume_area_id_from_inventory,
+    coverage_gate, format_p2_defer_workflow_hint, pending_area_ids, resume_area_id_from_inventory,
 };
 pub use schema::{
     AreaStatus, Inventory, NoteLine, is_high_severity, is_open_finding, is_verified_finding,
@@ -394,9 +394,12 @@ impl ScratchpadStore {
         if status == AreaStatus::Deferred && config.require_deferred_meta {
             let notes = self.read_notes()?;
             if !area_meets_deferred_quality(area_id, &notes) {
+                let inventory = self.read_inventory()?;
+                let pending = pending_area_ids(&inventory);
+                let workflow = format_p2_defer_workflow_hint(&pending, 6);
                 return Err(ToolError::invalid_input(format!(
-                    "area '{area_id}' area quality: deferred requires at least one kind=meta note with non-empty claim; \
-                     call scratchpad_append first, then scratchpad_set_area(deferred)"
+                    "area '{area_id}': deferred requires scratchpad_append(kind=meta, area_id=\"{area_id}\", \
+                     claim=<non-empty defer reason>) before scratchpad_set_area(deferred). {workflow}"
                 )));
             }
         }
@@ -561,6 +564,9 @@ fn build_contract_hints(
     if areas_pending > 0 && notes_total > 0 {
         hints.push(
             "P2 blocked: every pending area needs scratchpad_set_area(done|deferred) before write_file audit report",
+        );
+        hints.push(
+            "defer rule: ONE area per step — scratchpad_append(meta) then scratchpad_set_area(deferred); never batch multiple deferred calls",
         );
     }
     if areas_pending > 0 && notes_total > 0 && areas_done + areas_deferred == 0 {

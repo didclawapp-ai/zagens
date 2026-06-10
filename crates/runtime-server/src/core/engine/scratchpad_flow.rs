@@ -297,19 +297,35 @@ pub fn maybe_continue_incomplete_audit(
     let stats = compute_coverage_stats(&inventory, &notes, config);
     let run_id = store.run_id();
     let l0 = build_l0_status_line(run_id, &stats, &resume_area_id_from_inventory(&inventory));
-    let pending = inventory
+    let pending_ids: Vec<String> = inventory
         .areas
         .iter()
         .filter(|a| a.status == AreaStatus::Pending)
-        .count();
+        .map(|a| a.id.clone())
+        .collect();
+    let pending = pending_ids.len();
+    let pending_list = pending_ids
+        .iter()
+        .take(8)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(", ");
+    let pending_suffix = if pending_ids.len() > 8 {
+        format!(" … +{} more", pending_ids.len() - 8)
+    } else {
+        String::new()
+    };
+    let defer_workflow = crate::scratchpad::format_p2_defer_workflow_hint(&pending_ids, 6);
 
     let text = format!(
         "Audit scratchpad P2 incomplete — do **not** end this turn with prose-only output.\n\
          [{l0}]\n\
-         Required before the report: (1) `scratchpad_import_agent` for any completed explore agents, \
-         (2) `scratchpad_set_area` for all {pending} pending area(s) → `done` or `deferred` (meta note for deferred), \
+         Pending areas ({pending}): [{pending_list}{pending_suffix}]\n\
+         {defer_workflow}\n\
+         Required before the report: (1) `scratchpad_import_agent` for completed explore agents, \
+         (2) close each pending area with `done` (finding/cleared notes) OR the defer workflow above — **max one defer per model step**, \
          (3) sync `checklist_update` with inventory, \
-         (4) `write_file` the audit report (verified findings only). \
+         (4) `write_file` the audit report (verified findings only), OR `_global` meta `partial_closeout` if user approved partial report. \
          Call `scratchpad_status` now and continue with tools."
     );
     Some(Message {

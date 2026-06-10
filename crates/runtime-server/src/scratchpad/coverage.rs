@@ -167,6 +167,40 @@ pub fn build_l0_status_line(run_id: &str, stats: &CoverageStats, resume_area_id:
     )
 }
 
+/// Pending inventory rows (status `pending`), in inventory order.
+#[must_use]
+pub fn pending_area_ids(inventory: &Inventory) -> Vec<String> {
+    inventory
+        .areas
+        .iter()
+        .filter(|a| a.status == AreaStatus::Pending)
+        .map(|a| a.id.clone())
+        .collect()
+}
+
+/// Actionable P2 defer workflow text for models (one area per step).
+#[must_use]
+pub fn format_p2_defer_workflow_hint(pending_ids: &[String], max_list: usize) -> String {
+    let listed = pending_ids
+        .iter()
+        .take(max_list)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(", ");
+    let suffix = if pending_ids.len() > max_list {
+        format!(" … +{} more", pending_ids.len() - max_list)
+    } else {
+        String::new()
+    };
+    format!(
+        "P2 defer workflow (ONE area per model step — never batch scratchpad_set_area(deferred)): \
+         (1) scratchpad_append {{area_id, kind:meta, claim:<defer reason>}}, \
+         (2) scratchpad_set_area {{area_id, status:deferred}}. \
+         Pending ({}) e.g. [{listed}{suffix}]",
+        pending_ids.len()
+    )
+}
+
 #[must_use]
 pub fn resume_area_id_from_inventory(inventory: &Inventory) -> String {
     inventory
@@ -343,6 +377,42 @@ mod tests {
             scope: None,
             areas,
         }
+    }
+
+    #[test]
+    fn pending_area_ids_lists_pending_only() {
+        let inv = inv_with_areas(vec![
+            InventoryArea {
+                id: "done-a".into(),
+                path: "p".into(),
+                status: AreaStatus::Done,
+                notes: String::new(),
+            },
+            InventoryArea {
+                id: "pend-b".into(),
+                path: "p".into(),
+                status: AreaStatus::Pending,
+                notes: String::new(),
+            },
+            InventoryArea {
+                id: "pend-c".into(),
+                path: "p".into(),
+                status: AreaStatus::Pending,
+                notes: String::new(),
+            },
+        ]);
+        assert_eq!(
+            pending_area_ids(&inv),
+            vec!["pend-b".to_string(), "pend-c".to_string()]
+        );
+    }
+
+    #[test]
+    fn format_p2_defer_workflow_hint_lists_pending() {
+        let hint = format_p2_defer_workflow_hint(&["area-x".into(), "area-y".into()], 6);
+        assert!(hint.contains("ONE area per model step"));
+        assert!(hint.contains("area-x"));
+        assert!(hint.contains("area-y"));
     }
 
     #[test]

@@ -305,7 +305,7 @@ mod tests {
 
     #[test]
     fn materialized_name_includes_version_suffix() {
-        let name = materialized_file_name(HelperExecutable::CommandRunner, "0.7.3");
-        assert_eq!(name, "zagens-command-runner-0.7.3.exe");
+        let name = materialized_file_name(HelperExecutable::CommandRunner, "0.7.4");
+        assert_eq!(name, "zagens-command-runner-0.7.4.exe");
     }
 }

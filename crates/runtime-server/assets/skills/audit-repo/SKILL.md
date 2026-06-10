@@ -122,6 +122,8 @@ scratchpad_init({ "template": "workspace_audit", "scope": "…" })
 
 `done` without findings → `kind=cleared` before `scratchpad_set_area(done)`.
 
+**Defer many pending areas:** never batch `scratchpad_set_area(deferred)` in one step. Per area, in **separate** model steps: `scratchpad_append` (`kind=meta`, non-empty defer `claim`) → `scratchpad_set_area(deferred)` for that `area_id` only.
+
 ## P2 — Synthesize (finding-first report)
 
 **Pre-flight:** inventory closed; `reviewed_ratio` ≥ 40% OR `_global` `partial_closeout`; Auditor for HIGH/BLOCKER per `base.md`.

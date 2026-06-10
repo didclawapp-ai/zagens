@@ -15,7 +15,7 @@ use crate::engine::loop_guard::{AttemptDecision, LoopGuard, OutcomeDecision};
 use crate::engine::streaming::ToolUseState;
 use crate::engine::tool_catalog::{
     CODE_EXECUTION_TOOL_NAME, REQUEST_USER_INPUT_NAME, is_audit_scratchpad_bind_tool,
-    is_tool_search_tool, missing_tool_error_message,
+    is_tool_search_tool, missing_tool_error_message, scratchpad_defer_set_area_batch_error,
 };
 use crate::engine::turn_loop::control::TurnLoopToolPhaseOutcome;
 use crate::engine::turn_loop::exec::ToolExecutionPlan;
@@ -37,6 +37,14 @@ pub async fn run_tool_execution_phase<H: TurnLoopHost>(
 ) -> TurnLoopToolPhaseOutcome {
     let tool_exec_lock = host.tool_exec_lock();
     let mcp_pool = host.ensure_mcp_pool_for_tools(tool_uses).await;
+
+    let defer_set_area_batch_count = tool_uses
+        .iter()
+        .filter(|tool| {
+            tool.name == "scratchpad_set_area"
+                && tool.input.get("status").and_then(serde_json::Value::as_str) == Some("deferred")
+        })
+        .count();
 
     let mut plans: Vec<ToolExecutionPlan> = Vec::with_capacity(tool_uses.len());
     for (index, tool) in tool_uses.iter_mut().enumerate() {
@@ -122,6 +130,14 @@ pub async fn run_tool_execution_phase<H: TurnLoopHost>(
             approval_description = meta.approval_description;
             supports_parallel = meta.supports_parallel;
             read_only = meta.read_only;
+        }
+
+        if blocked_error.is_none()
+            && tool_name == "scratchpad_set_area"
+            && tool_input.get("status").and_then(serde_json::Value::as_str) == Some("deferred")
+            && let Some(err) = scratchpad_defer_set_area_batch_error(defer_set_area_batch_count)
+        {
+            blocked_error = Some(err);
         }
 
         if blocked_error.is_none()

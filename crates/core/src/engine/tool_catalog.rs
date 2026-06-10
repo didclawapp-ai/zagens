@@ -115,6 +115,21 @@ pub fn apply_native_tool_deferral(
     }
 }
 
+/// Block batched `scratchpad_set_area(status=deferred)` — P2 requires append(meta) then
+/// set_area for **one** pending area per model step.
+#[must_use]
+pub fn scratchpad_defer_set_area_batch_error(batch_count: usize) -> Option<ToolError> {
+    if batch_count <= 1 {
+        return None;
+    }
+    Some(ToolError::invalid_input(format!(
+        "P2 workflow: do not issue {batch_count} scratchpad_set_area(deferred) calls in one step. \
+         For each pending area, in separate steps: (1) scratchpad_append with kind=meta and a non-empty \
+         claim (defer reason), (2) scratchpad_set_area(deferred) for that single area_id. \
+         Call scratchpad_status for pending_area_ids; repeat one area at a time."
+    )))
+}
+
 /// Scratchpad tools that bind or mutate the active audit run (mid-turn eager-load hook).
 #[must_use]
 pub fn is_audit_scratchpad_bind_tool(name: &str) -> bool {
@@ -478,6 +493,15 @@ pub fn execute_tool_search(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scratchpad_defer_batch_blocked_when_count_gt_one() {
+        assert!(scratchpad_defer_set_area_batch_error(1).is_none());
+        let err = scratchpad_defer_set_area_batch_error(19).expect("blocked");
+        let msg = err.to_string();
+        assert!(msg.contains("do not issue 19"));
+        assert!(msg.contains("one area at a time"));
+    }
 
     #[test]
     fn deferral_keeps_shell_eager_in_agent_mode() {

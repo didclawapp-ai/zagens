@@ -35,16 +35,16 @@ path = "src/bin/export_runtime_openapi.rs"
 
 [dependencies]
 anyhow.workspace = true
-zagens-runtime-adapters = { path = "../runtime-adapters", version = "0.7.3" }
-zagens-runtime-api = { path = "../runtime-api", version = "0.7.3" }
-zagens-runtime-orchestrator = { path = "../runtime-orchestrator", version = "0.7.3" }
-zagens-config = { path = "../config", version = "0.7.3" }
-zagens-core = { path = "../core", version = "0.7.3" }
-zagens-topic-memory = { path = "../topic-memory", version = "0.7.3" }
-zagens-secrets = { path = "../secrets", version = "0.7.3" }
-zagens-protocol = { path = "../protocol", version = "0.7.3" }
-zagens-tools = { path = "../tools", version = "0.7.3" }
-zagens-windows-sandbox = { path = "../windows-sandbox", version = "0.7.3" }
+zagens-runtime-adapters = { path = "../runtime-adapters", version = "0.7.4" }
+zagens-runtime-api = { path = "../runtime-api", version = "0.7.4" }
+zagens-runtime-orchestrator = { path = "../runtime-orchestrator", version = "0.7.4" }
+zagens-config = { path = "../config", version = "0.7.4" }
+zagens-core = { path = "../core", version = "0.7.4" }
+zagens-topic-memory = { path = "../topic-memory", version = "0.7.4" }
+zagens-secrets = { path = "../secrets", version = "0.7.4" }
+zagens-protocol = { path = "../protocol", version = "0.7.4" }
+zagens-tools = { path = "../tools", version = "0.7.4" }
+zagens-windows-sandbox = { path = "../windows-sandbox", version = "0.7.4" }
 schemaui = { version = "0.12.0", default-features = false, optional = true }
 async-stream = "0.3.6"
 async-trait.workspace = true

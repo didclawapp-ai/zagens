@@ -257,7 +257,7 @@ const en: TranslationMap = {
     thirdPartyLicenses:
       'MIT license texts ship with the app in the legal/ folder next to the executable (Zagens + embedded deepseek-tui runtime lineage).',
     techStackTitle: 'Tech stack',
-    techStackDeepseekTui: 'Zagens runtime 0.7.3',
+    techStackDeepseekTui: 'Zagens runtime 0.7.4',
     techStackTauri: 'Tauri 2',
     techStackReact: 'React 18',
     updateTitle: 'App update',
