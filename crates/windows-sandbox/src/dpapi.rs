@@ -15,14 +15,14 @@ fn make_blob(data: &[u8]) -> CRYPT_INTEGER_BLOB {
 }
 
 pub fn protect(data: &[u8]) -> Result<Vec<u8>> {
-    let mut in_blob = make_blob(data);
+    let in_blob = make_blob(data);
     let mut out_blob = CRYPT_INTEGER_BLOB {
         cbData: 0,
         pbData: std::ptr::null_mut(),
     };
     let ok = unsafe {
         CryptProtectData(
-            &mut in_blob,
+            &in_blob,
             std::ptr::null(),
             std::ptr::null(),
             std::ptr::null_mut(),
@@ -47,14 +47,14 @@ pub fn protect(data: &[u8]) -> Result<Vec<u8>> {
 }
 
 pub fn unprotect(blob: &[u8]) -> Result<Vec<u8>> {
-    let mut in_blob = make_blob(blob);
+    let in_blob = make_blob(blob);
     let mut out_blob = CRYPT_INTEGER_BLOB {
         cbData: 0,
         pbData: std::ptr::null_mut(),
     };
     let ok = unsafe {
         CryptUnprotectData(
-            &mut in_blob,
+            &in_blob,
             std::ptr::null_mut(),
             std::ptr::null(),
             std::ptr::null_mut(),

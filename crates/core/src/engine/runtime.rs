@@ -27,7 +27,9 @@ use crate::session::Session;
 pub struct Engine<P, R> {
     pub config: EngineConfig,
     /// Tui-only extension config + concrete subsystem handles (type-erased).
-    pub ext: Box<dyn crate::engine::platform_ext::EnginePlatformExt<P, R>>,
+    /// Wrapped in `Option` so the op loop can [`Option::take`] it during dispatch
+    /// without aliasing `&mut self`.
+    pub ext: Option<Box<dyn crate::engine::platform_ext::EnginePlatformExt<P, R>>>,
     pub deepseek_client: Option<Arc<dyn LlmClient>>,
     pub deepseek_client_error: Option<String>,
     pub api_key_env_only_recovery: Option<String>,

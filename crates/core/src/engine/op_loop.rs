@@ -1,7 +1,6 @@
 //! Core engine event loop (`Op` dispatch).
 
 use crate::engine::op::Op;
-use crate::engine::platform_ext::EnginePlatformExt;
 use crate::engine::runtime::Engine;
 use crate::session;
 
@@ -26,12 +25,11 @@ where
     }
 
     async fn on_shutdown(engine: &mut Self) {
-        let ext_ptr = engine.ext.as_mut() as *mut dyn EnginePlatformExt<P, R>;
-        let engine_ptr = engine as *mut Self;
-        // SAFETY: `ext` and the rest of `Engine` are disjoint fields.
-        unsafe {
-            (&mut *ext_ptr).on_shutdown(&mut *engine_ptr).await;
-        }
+        let Some(mut ext) = engine.ext.take() else {
+            return;
+        };
+        ext.on_shutdown().await;
+        engine.ext = Some(ext);
     }
 
     async fn handle_core_op(engine: &mut Self, op: Op) -> bool {
@@ -66,12 +64,11 @@ where
                 true
             }
             other => {
-                let ext_ptr = engine.ext.as_mut() as *mut dyn EnginePlatformExt<P, R>;
-                let engine_ptr = engine as *mut Self;
-                // SAFETY: `ext` and the rest of `Engine` are disjoint fields.
-                unsafe {
-                    (&mut *ext_ptr).dispatch_op(&mut *engine_ptr, other).await;
-                }
+                let Some(mut ext) = engine.ext.take() else {
+                    return true;
+                };
+                ext.dispatch_op(engine, other).await;
+                engine.ext = Some(ext);
                 true
             }
         }

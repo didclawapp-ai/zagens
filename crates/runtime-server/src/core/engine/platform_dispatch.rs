@@ -132,13 +132,7 @@ impl EnginePlatformExt<crate::sandbox::SandboxPolicy, crate::tools::user_input::
         }
     }
 
-    async fn on_shutdown(
-        &mut self,
-        _core: &mut CoreEngine<
-            crate::sandbox::SandboxPolicy,
-            crate::tools::user_input::UserInputResponse,
-        >,
-    ) {
+    async fn on_shutdown(&mut self) {
         if self
             .hook_executor
             .has_hooks_for_event(HookEvent::SessionEnd)

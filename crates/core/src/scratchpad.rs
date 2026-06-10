@@ -23,6 +23,9 @@ pub struct ScratchpadConfig {
     pub require_deferred_meta: bool,
     /// L0 lists deferred areas when `reviewed_ratio` is below this (default 0.70).
     pub coverage_reviewed_warn_ratio: f64,
+    /// Hard block `write_file` to audit deliverables when `reviewed_ratio` is below this (default 0.40).
+    pub coverage_reviewed_hard_ratio: f64,
+    pub coverage_reviewed_hard_block_enabled: bool,
     /// Phase C2: prepend scratchpad verified `note_id` table to Auditor spawn.
     pub auditor_from_scratchpad: bool,
     /// Phase C2: include all MEDIUM in track A when count ≥ this (default 3).
@@ -63,6 +66,8 @@ impl Default for ScratchpadConfig {
             coverage_count_deferred_as_accounted: true,
             require_deferred_meta: true,
             coverage_reviewed_warn_ratio: 0.70,
+            coverage_reviewed_hard_ratio: 0.40,
+            coverage_reviewed_hard_block_enabled: true,
             auditor_from_scratchpad: true,
             auditor_include_medium_min: 3,
         }
@@ -98,6 +103,10 @@ pub struct ScratchpadConfigToml {
     pub require_deferred_meta: Option<bool>,
     #[serde(default)]
     pub coverage_reviewed_warn_ratio: Option<f64>,
+    #[serde(default)]
+    pub coverage_reviewed_hard_ratio: Option<f64>,
+    #[serde(default)]
+    pub coverage_reviewed_hard_block_enabled: Option<bool>,
     #[serde(default)]
     pub auditor_from_scratchpad: Option<bool>,
     #[serde(default)]
@@ -140,6 +149,12 @@ impl ScratchpadConfigToml {
             coverage_reviewed_warn_ratio: self
                 .coverage_reviewed_warn_ratio
                 .unwrap_or(defaults.coverage_reviewed_warn_ratio),
+            coverage_reviewed_hard_ratio: self
+                .coverage_reviewed_hard_ratio
+                .unwrap_or(defaults.coverage_reviewed_hard_ratio),
+            coverage_reviewed_hard_block_enabled: self
+                .coverage_reviewed_hard_block_enabled
+                .unwrap_or(defaults.coverage_reviewed_hard_block_enabled),
             auditor_from_scratchpad: self
                 .auditor_from_scratchpad
                 .unwrap_or(defaults.auditor_from_scratchpad),

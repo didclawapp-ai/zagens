@@ -15,5 +15,5 @@ pub trait EnginePlatformExt<P, R>: Send + Sync {
     async fn dispatch_op(&mut self, engine: &mut Engine<P, R>, op: Op);
 
     /// Shutdown hook after the op receiver closes (e.g. MCP pool teardown).
-    async fn on_shutdown(&mut self, engine: &mut Engine<P, R>);
+    async fn on_shutdown(&mut self);
 }

@@ -10,6 +10,8 @@ use serde_json::{Value, json};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct McpServerConfig {
     pub name: String,
+    /// Legacy field ignored by the in-memory stdio bridge (no process spawn).
+    #[serde(default)]
     pub command: String,
     #[serde(default)]
     pub args: Vec<String>,
@@ -17,6 +19,33 @@ pub struct McpServerConfig {
     pub env: HashMap<String, String>,
     #[serde(default = "default_true")]
     pub enabled: bool,
+}
+
+/// The stdio MCP bridge never spawns subprocesses; reject remote registration of
+/// executable fields so a future spawn hook cannot become an RCE surface.
+fn reject_stdio_process_spawn_fields(config: &McpServerConfig) -> Result<(), JsonRpcError> {
+    if !config.command.trim().is_empty() {
+        return Err(JsonRpcError::invalid_params(
+            "server.command is not supported by the in-memory stdio MCP bridge; omit command, args, and env",
+        ));
+    }
+    if !config.args.is_empty() {
+        return Err(JsonRpcError::invalid_params(
+            "server.args is not supported by the in-memory stdio MCP bridge; omit command, args, and env",
+        ));
+    }
+    if !config.env.is_empty() {
+        return Err(JsonRpcError::invalid_params(
+            "server.env is not supported by the in-memory stdio MCP bridge; omit command, args, and env",
+        ));
+    }
+    Ok(())
+}
+
+fn strip_stdio_process_spawn_fields(config: &mut McpServerConfig) {
+    config.command.clear();
+    config.args.clear();
+    config.env.clear();
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -513,7 +542,8 @@ fn build_stdio_state(initial_definitions: Vec<McpServerDefinition>) -> StdioMcpS
     let mut definitions = HashMap::new();
     let mut running = HashMap::new();
 
-    for definition in initial_definitions {
+    for mut definition in initial_definitions {
+        strip_stdio_process_spawn_fields(&mut definition.config);
         let name = definition.config.name.clone();
         let should_start = definition.config.enabled;
         definitions.insert(name.clone(), definition.clone());
@@ -611,8 +641,6 @@ fn lifecycle_snapshot(state: &StdioMcpState) -> Value {
                 "name": name,
                 "enabled": definition.config.enabled,
                 "running": is_running,
-                "command": definition.config.command.clone(),
-                "args": definition.config.args.clone(),
             })
         })
         .collect();
@@ -754,21 +782,24 @@ fn dispatch_stdio_request(
                     "server.name must not be empty",
                 ));
             }
+            reject_stdio_process_spawn_fields(&parsed.server)?;
 
             if state.definitions.contains_key(&name) {
                 let _ = state.manager.unregister_server(&name);
             }
+            let mut config = parsed.server.clone();
+            strip_stdio_process_spawn_fields(&mut config);
+            let should_run = parsed.start && config.enabled;
             state.definitions.insert(
                 name.clone(),
                 McpServerDefinition {
-                    config: parsed.server.clone(),
+                    config: config.clone(),
                     filter: parsed.filter.clone(),
                 },
             );
-            let should_run = parsed.start && parsed.server.enabled;
             if should_run {
                 state.manager.register_server(
-                    parsed.server.clone(),
+                    config,
                     parsed.filter.clone(),
                     default_stdio_client(&name),
                 );
@@ -895,6 +926,49 @@ impl JsonRpcError {
             code: -32603,
             message: message.into(),
             data: None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reject_stdio_register_with_command() {
+        let cfg = McpServerConfig {
+            name: "evil".to_string(),
+            command: "cmd.exe".to_string(),
+            ..Default::default()
+        };
+        let err = reject_stdio_process_spawn_fields(&cfg).expect_err("command must be rejected");
+        assert_eq!(err.code, -32602);
+    }
+
+    #[test]
+    fn strip_spawn_fields_clears_legacy_config() {
+        let mut cfg = McpServerConfig {
+            name: "legacy".to_string(),
+            command: "npx".to_string(),
+            args: vec!["-y".to_string(), "pkg".to_string()],
+            env: HashMap::from([("FOO".to_string(), "bar".to_string())]),
+            enabled: true,
+        };
+        strip_stdio_process_spawn_fields(&mut cfg);
+        assert!(cfg.command.is_empty());
+        assert!(cfg.args.is_empty());
+        assert!(cfg.env.is_empty());
+    }
+}
+
+impl Default for McpServerConfig {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            command: String::new(),
+            args: Vec::new(),
+            env: HashMap::new(),
+            enabled: true,
         }
     }
 }

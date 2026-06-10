@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Security (audit follow-up):** core engine op loop drops `unsafe` pointer aliasing by temporarily taking `ext` out of `Engine` during platform dispatch; stdio MCP `server/register` rejects `command`/`args`/`env` and lifecycle snapshots no longer echo executable fields.
+
 ### Added
 
 - **Windows sandbox Phase 3 (PR-3.1 / PR-3.2 / PR-3.3):** ConPTY (`CreatePseudoConsole`) spawn through the elevated command-runner for interactive `exec_shell` (`tty: true`) under enforced sandbox; optional `[windows] sandbox_private_desktop = true` isolates child processes on a session desktop; CLI `zagens sandbox add-read-dir <path>` grants additional read paths for elevated sandbox users (tracked for teardown).

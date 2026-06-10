@@ -53,7 +53,7 @@ where
 
         let engine = Self {
             config,
-            ext,
+            ext: Some(ext),
             deepseek_client,
             deepseek_client_error,
             api_key_env_only_recovery,

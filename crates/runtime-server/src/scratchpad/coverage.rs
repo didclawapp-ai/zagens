@@ -242,6 +242,36 @@ pub fn format_quality_gate_block_reason(
     reason
 }
 
+/// User-approved partial close-out (`_global` meta) bypasses the reviewed-ratio hard gate.
+#[must_use]
+pub fn partial_closeout_approved(notes: &[NoteLine]) -> bool {
+    notes.iter().any(|n| {
+        n.area_id == "_global"
+            && n.kind == "meta"
+            && n.claim.as_ref().is_some_and(|c| {
+                let lower = c.to_lowercase();
+                lower.contains("partial_closeout")
+                    || lower.contains("部分收口")
+                    || lower.contains("partial audit close")
+            })
+    })
+}
+
+#[must_use]
+pub fn format_reviewed_gate_block_reason(
+    stats: &CoverageStats,
+    config: &ScratchpadConfig,
+) -> String {
+    format!(
+        "reviewed_ratio {:.0}% is below hard threshold {:.0}% ({} of {} areas actually examined with finding/cleared; deferred-only does not count). \
+         Continue P1 on more areas, or append `_global` meta with `partial_closeout` / `部分收口` if the user explicitly approved a partial report.",
+        stats.reviewed_ratio * 100.0,
+        config.coverage_reviewed_hard_ratio * 100.0,
+        stats.areas_reviewed,
+        stats.areas_total,
+    )
+}
+
 #[must_use]
 pub fn coverage_gate(
     inventory: &Inventory,
@@ -257,6 +287,14 @@ pub fn coverage_gate(
     if stats.accounted_ratio < config.coverage_hard_ratio && config.coverage_hard_block_enabled {
         let gaps = areas_failing_quality_gate(inventory, notes, config);
         let reason = format_quality_gate_block_reason(&stats, &gaps, config);
+        return CoverageGateOutcome::Block { stats, reason };
+    }
+
+    if config.coverage_reviewed_hard_block_enabled
+        && stats.reviewed_ratio < config.coverage_reviewed_hard_ratio
+        && !partial_closeout_approved(notes)
+    {
+        let reason = format_reviewed_gate_block_reason(&stats, config);
         return CoverageGateOutcome::Block { stats, reason };
     }
 
@@ -397,5 +435,46 @@ mod tests {
         } else {
             panic!("expected block for meta-only done area");
         }
+    }
+
+    #[test]
+    fn coverage_gate_blocks_mass_defer_despite_full_accounted() {
+        let mut areas = Vec::new();
+        for i in 0..9 {
+            areas.push(InventoryArea {
+                id: format!("done-{i}"),
+                path: "p".into(),
+                status: AreaStatus::Done,
+                notes: String::new(),
+            });
+        }
+        for i in 0..28 {
+            areas.push(InventoryArea {
+                id: format!("def-{i}"),
+                path: "p".into(),
+                status: AreaStatus::Deferred,
+                notes: String::new(),
+            });
+        }
+        let inv = inv_with_areas(areas);
+        let mut notes = Vec::new();
+        for i in 0..9 {
+            notes.push(parse_note_line(
+                &json!({"id":format!("f-{i}"),"area_id":format!("done-{i}"),"kind":"finding","status":"verified"}),
+                i + 1,
+            ));
+        }
+        for i in 0..28 {
+            notes.push(parse_note_line(
+                &json!({"id":format!("m-{i}"),"area_id":format!("def-{i}"),"kind":"meta","claim":"deferred: session limit"}),
+                100 + i,
+            ));
+        }
+        let cfg = ScratchpadConfig::default();
+        let stats = compute_coverage_stats(&inv, &notes, &cfg);
+        assert!((stats.accounted_ratio - 1.0).abs() < f64::EPSILON);
+        assert!(stats.reviewed_ratio < 0.40);
+        let outcome = coverage_gate(&inv, &notes, &cfg);
+        assert!(matches!(outcome, CoverageGateOutcome::Block { .. }));
     }
 }

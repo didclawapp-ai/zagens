@@ -575,6 +575,12 @@ fn build_contract_hints(
             hints.push(
                 "P2 blocked: accounted_ratio below 60% — done areas need kind=finding or kind=cleared (meta-only does not count); see areas_failing_quality_gate",
             );
+        } else if config.coverage_reviewed_hard_block_enabled
+            && coverage.reviewed_ratio < config.coverage_reviewed_hard_ratio
+        {
+            hints.push(
+                "P2 blocked: reviewed_ratio below 40% — deferred areas do not count; continue P1 or append _global meta partial_closeout if user approved partial report",
+            );
         } else {
             hints
                 .push("inventory closed — synthesize report from verified findings via write_file");

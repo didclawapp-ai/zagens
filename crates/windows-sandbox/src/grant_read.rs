@@ -189,13 +189,13 @@ pub fn add_session_read_dir(home: &Path, path: &Path) -> Result<PathBuf> {
     if !canonical.exists() {
         anyhow::bail!("path does not exist: {}", canonical.display());
     }
-    if let Some(name) = canonical.file_name().and_then(|n| n.to_str()) {
-        if is_userprofile_root_exclusion(name) {
-            anyhow::bail!(
-                "refusing to grant read on excluded profile entry `{name}` ({})",
-                canonical.display()
-            );
-        }
+    if let Some(name) = canonical.file_name().and_then(|n| n.to_str())
+        && is_userprofile_root_exclusion(name)
+    {
+        anyhow::bail!(
+            "refusing to grant read on excluded profile entry `{name}` ({})",
+            canonical.display()
+        );
     }
 
     let group_sid = sandbox_users_group_sid()?;

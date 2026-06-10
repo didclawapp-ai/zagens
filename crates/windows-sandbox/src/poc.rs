@@ -52,7 +52,7 @@ pub fn run_unelevated_deny_read_poc() -> Result<UnelevatedDenyReadPocResult> {
     let probe = pick_probe_file(&ssh_dir);
     let probe_display = probe.display().to_string();
 
-    let _deny_added = apply_deny_read_acls(&[ssh_dir.clone()], &cap_sid)?;
+    apply_deny_read_acls(std::slice::from_ref(&ssh_dir), &cap_sid)?;
 
     let token = create_restricted_token_with_capabilities(&[&caps.workspace])?;
 

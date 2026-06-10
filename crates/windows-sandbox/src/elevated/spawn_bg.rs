@@ -71,12 +71,12 @@ impl ElevatedChild {
             .name("zagens-elevated-pump".to_string())
             .spawn(move || {
                 let set_exit = |code: u32, timed_out: bool, denial: Option<u32>| {
-                    if let Ok(mut guard) = state.lock() {
-                        if guard.exit_code.is_none() {
-                            guard.exit_code = Some(code);
-                            guard.timed_out = timed_out;
-                            guard.denial_code = denial;
-                        }
+                    if let Ok(mut guard) = state.lock()
+                        && guard.exit_code.is_none()
+                    {
+                        guard.exit_code = Some(code);
+                        guard.timed_out = timed_out;
+                        guard.denial_code = denial;
                     }
                 };
                 loop {
@@ -135,10 +135,10 @@ impl ElevatedChild {
             if let Some(code) = self.try_wait()? {
                 return Ok(code);
             }
-            if let Some(deadline) = deadline {
-                if Instant::now() >= deadline {
-                    let _ = self.kill();
-                }
+            if let Some(deadline) = deadline
+                && Instant::now() >= deadline
+            {
+                let _ = self.kill();
             }
             std::thread::sleep(Duration::from_millis(25));
         }

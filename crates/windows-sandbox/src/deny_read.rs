@@ -269,7 +269,7 @@ mod tests {
             .expect("cap sid");
         let cap_sid = crate::token::LocalSid::from_string(&caps.workspace).expect("cap sid parse");
 
-        apply_deny_read_acls(&[ssh_dir.clone()], &cap_sid).expect("apply deny read");
+        apply_deny_read_acls(std::slice::from_ref(&ssh_dir), &cap_sid).expect("apply deny read");
 
         assert!(
             has_inherited_deny_read_ace(&id_rsa, cap_sid.as_ptr()),

@@ -7,6 +7,8 @@ use super::types::EngineConfigExt;
 impl Engine {
     pub(in crate::core::engine) fn runtime_ext(&self) -> &EngineRuntimeExt {
         self.ext
+            .as_ref()
+            .expect("tui builder stores EngineRuntimeExt in Engine::ext")
             .as_any()
             .downcast_ref()
             .expect("tui builder stores EngineRuntimeExt in Engine::ext")
@@ -14,6 +16,8 @@ impl Engine {
 
     pub(in crate::core::engine) fn runtime_ext_mut(&mut self) -> &mut EngineRuntimeExt {
         self.ext
+            .as_mut()
+            .expect("tui builder stores EngineRuntimeExt in Engine::ext")
             .as_any_mut()
             .downcast_mut()
             .expect("tui builder stores EngineRuntimeExt in Engine::ext")

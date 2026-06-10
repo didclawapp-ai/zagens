@@ -1,194 +1,266 @@
 ---
 name: audit-repo
-description: Full-repository code audit with structured scratchpad (inventory.json + notes.jsonl). Use for 全库评审, repo-wide audit, exhaustive code review of the whole tree—not single-file or PR-only reviews.
+description: Full-repo audit (scratchpad + verified findings, finding-first report). Security, correctness, tests, release, and maintainability — not security alone. Runtime requires reviewed_ratio ≥ 40% before write_file unless partial_closeout approved.
 metadata:
   short-description: Full-repo audit scratchpad workflow
 ---
 
 # Full-repository audit (scratchpad)
 
-Use this skill when the user wants an **exhaustive, code-level review** of a large tree. Pair with `base.md` § Full-repository code review mode (verification, Auditor, caller-trace).
+Use this skill for **repo-wide code audit**. Pair with `base.md` § Full-repository code review mode (verification, Auditor, caller-trace).
 
-**Do not use** for one module, a single PR, or a quick skim—use the normal lightweight workflow.
+**Do not use** for one module, a single PR, or a quick skim.
+
+**Priority:** **verified findings first**, then coverage honesty. Optional `[D1]`–`[D10]` tags on `claim` when helpful — not required on every line.
+
+## Read-only audit (mandatory — parent and children)
+
+Full-repo audit is **review and report only**. You are **not** the implementer for this session.
+
+| Allowed | Forbidden during P0–P3 |
+|---------|-------------------------|
+| `read_file`, `grep_files`, `list_dir`, `git_*`, `scratchpad_*`, `agent_spawn` (explore/auditor), `write_file` **only** to audit deliverable paths | `edit_file`, `apply_patch`, `write_file` to `src/**`, `web-ui/**`, `Cargo.toml`, config, `.env`, etc. |
+| `run_tests` / `exec_shell` (e.g. `cargo check`, `cargo test`, `cargo clippy`) **to observe** exit code + stderr | **Fixing** failing tests, clippy, or build errors — no “repair then re-run” loop |
+| Record failures as **findings** or baseline bullets | Spawning `implementer` / “fixing before publish” unless the user **explicitly** asks to fix issues in a **new** task |
+
+**Verification commands:** run **at most one** scoped check if needed (e.g. `cargo check -p zagens-core`), capture exit code — then **stop**. Do **not** run full-workspace `cargo clippy` + per-crate test matrix + fix loop unless the user asked for a CI audit task.
+
+**Explore/Review sub-agents** are already tool-capped read-only; the **parent** must follow the same rule.
+
+**Secrets in reports:** never paste live API keys, tokens, or private key material — redact (`sk-…`, `mk-…` → `sk-***redacted***`). Cite `file:line` only.
+
+**Stop after P2:** once the audit deliverable is `write_file`’d, **end the turn** — do not continue fixing code or re-running clippy in the same audit session.
+
+## Coverage dimensions (guidance — not a checkbox form)
+
+Areas slice by **path**; dimensions slice by **concern**. You do **not** need all 10 dimensions closed — but **D1, D2, D6 must be examined** in every full-repo run (grep + read_file in the relevant paths).
+
+| ID | Dimension | Must-hit paths (grep/read) |
+|----|-----------|----------------------------|
+| **D1** | Trust & security | `desktop/`, `runtime-server/src/tools/`, `windows-sandbox/`, `secrets/` |
+| **D2** | Correctness & concurrency | `core/src/engine/`, `runtime-orchestrator/` |
+| **D6** | Release & signing | `updater.key`, `tauri.conf.json`, `*.pub`, signing config |
+| D3–D5, D7–D10 | Architecture, tests, supply chain, maintainability, observability, cross-platform, docs | Cover when areas are `done`; one-line defer in report is OK |
+
+**Severity** (per `base.md`): use **BLOCKER/CRITICAL** only for indefensible exposures. Do **not** label HIGH findings as "阻塞级" in prose unless severity is BLOCKER/CRITICAL. P0 actions may reference HIGH items — keep counts consistent.
+
+## Regression probes (P0 — before area spawns)
+
+Run these **every** full-repo audit; append hits as verified findings or `kind=cleared`:
+
+| Probe | Command / action |
+|-------|------------------|
+| Signing key in tree | `grep_files` / `file_search`: `updater.key`, `*.pem`, private key filenames under `crates/desktop/` |
+| Hardcoded API keys | `grep_files`: `api_key`, `API_KEY`, `mk-`, `sk-` in `crates/` |
+| `trust_mode` from client | `grep_files`: `trust_mode` in `runtime-api`, `stream.rs`, `spec.rs` |
+| LoopGuard concurrency | `read_file`: `core/src/engine/loop_guard.rs` if engine area in scope |
+| Baseline (3 bullets) | Zero-test crates (grep `#[test]` per crate); `deny.toml` / `cargo-deny` exists?; files **>1000** lines (top 5) — append as `_global` `kind=meta` or report §基线指标 |
+
+## Runtime gates (know before P2)
+
+| Gate | Rule |
+|------|------|
+| `accounted_ratio` | ≥ 60% — each `done` needs `finding` or `cleared`; each `deferred` needs `meta` reason |
+| **`reviewed_ratio`** | **≥ 40%** — only **`done`** areas with `finding`/`cleared` count; **mass `deferred` does not substitute for review** |
+| Partial report | If user explicitly approves partial close-out: `scratchpad_append({ kind:"meta", area_id:"_global", claim:"partial_closeout: …" })` then title must include **「部分审核」** |
+
+If `write_file` to audit deliverables is blocked, call `scratchpad_status` — do not fake a full-repo report in chat only.
 
 ## External memory (mandatory)
 
-Reasoning is ephemeral. Durable facts live only under:
+`.deepseek/scratchpad/{run_id}/` — `inventory.json` + `notes.jsonl`
 
-`.deepseek/scratchpad/{run_id}/`
+**Phase B tools:** `scratchpad_init`, `scratchpad_status`, `scratchpad_append`, `scratchpad_list_notes`, `scratchpad_set_area`, `scratchpad_import_agent`, `scratchpad_verify_note`.
 
-| File | Role |
-|------|------|
-| `inventory.json` | Area inventory (`areas[].id`, `path`, `status`) — machine-readable audit coverage |
-| `notes.jsonl` | One JSON object per line (append-only) |
-
-**Not the same as the sidebar 清单:** Zagens **Checklist** panel shows only **`checklist_write`** data. `inventory.json` alone does **not** populate the sidebar.
-
-### `run_id` (pick one)
-
-1. `thread_id` if known (HTTP thread / user message)
-2. else `task_id` if using CRAFT `agent_spawn`
-3. else UTC folder name `YYYY-MM-DD-HHmmss`
-
-**Phase B tools (required):** `scratchpad_init`, `scratchpad_status`, `scratchpad_append`, `scratchpad_list_notes`, `scratchpad_set_area`, `scratchpad_import_agent`, `scratchpad_verify_note`. Pass `run_id` or rely on `thread_id` / bound `scratchpad_run_id`.
-
-**Sidebar visibility (required):** `checklist_write`, `checklist_update` (and `checklist_list` when you need ids).
-
-After `scratchpad_init` succeeds you may **`agent_spawn` in the same turn** — runtime syncs the bound run and eager-loads sub-agent tools without a separate `tool_search` step.
-
-**Order:** import or append ≥1 note → verify HIGH/BLOCKER → `scratchpad_set_area(done)` (runtime rejects `done` with open HIGH/BLOCKER or zero notes).
+**Sidebar:** `checklist_write` / `checklist_update` — one row per inventory area (`{area_id}: {path}`).
 
 `write_file` is **fallback only** when scratchpad tools truly fail.
 
-## P0 — Inventory (`inventory.json`) + sidebar checklist
-
-**Preferred:** auto-generate from workspace members (includes `runtime-server`, desktop web-ui, all `Cargo.toml` members):
+## P0 — Inventory + checklist
 
 ```
 scratchpad_init({ "template": "workspace_audit", "scope": "…" })
 ```
 
-Manual rows remain supported via `areas[]`. Granularity: one row = one check-complete unit (~crate first-level subdir), **10–40 rows**, **≤ ~20 source files** per row.
+- **10–40 areas**, ≤ ~20 source files per row — **do not over-split** (avoid 35+ rows that force mass defer).
+- Run **Regression probes** + 3 baseline bullets (above).
+- `scratchpad_append` `{"kind":"meta","area_id":"_global","claim":"inventory_version 1, N areas"}`.
+- **`checklist_write`** one todo per area (same turn).
 
-After building inventory, append:
+## P1 — Examine (sub-agent pipeline)
 
-`{"kind":"meta","area_id":"_global","claim":"inventory_version 1, N areas"}`
+- **`agent_spawn(type=explore)`**, `task_id` = `run_id`.
+- **`step_timeout_ms` by file count:**
 
-### Sidebar checklist (mandatory — same turn as init)
-
-Immediately after `scratchpad_init`, call **`checklist_write`** with **one todo per inventory area**:
-
-```
-checklist_write({
-  "todos": [
-    { "content": "area-core: crates/core", "status": "pending" },
-    { "content": "area-runtime-server: crates/runtime-server", "status": "pending" }
-  ]
-})
-```
-
-Rules:
-
-- **`content`** — `{area_id}: {path}` so rows stay aligned with `inventory.json` (checklist ids are auto-assigned integers).
-- **Exactly one `in_progress`** at a time (mark the area you are examining now).
-- **Keep dual tracks aligned** whenever inventory status changes:
-
-| `inventory.json` | `checklist_write` / `checklist_update` |
-|------------------|----------------------------------------|
-| `pending` | `pending` |
-| `in_progress` | `in_progress` |
-| `done` | `completed` |
-| `deferred` | `completed` (append reason in `content`, e.g. `area-x: path (deferred: out of scope)`) |
-
-- Prefer **`checklist_update({ id, status })`** when only one area moves; full **`checklist_write`** only when adding/removing rows or reordering.
-- After spawn batches, update checklist for areas whose explore agents finished import + `scratchpad_set_area`.
-
-## P1 — Examine (structured sub-agent pipeline)
-
-### Parallel areas
-
-- **Use `agent_spawn(type=explore)`** with `task_id` = `run_id` (blackboard only).
-- **`step_timeout_ms` by inventory file count** (count source files under the area path before spawn):
-
-| Area source files | `step_timeout_ms` |
-|-------------------|-------------------|
+| Files in area | `step_timeout_ms` |
+|---------------|-------------------|
 | ≤10 | 600000 |
 | 11–20 | 900000 |
 | 21–40 | 1200000 |
-| >40, or path is `crates/runtime-server/src/tools` | 1800000 |
+| >40 or `runtime-server/src/tools` | 1800000 |
 
-- Assignment MUST include the inventory **`area_id`** and **`path`** so the child emits matching `<!-- audit-findings -->`.
-- **Copy exact `areas[].id` from inventory** — do not invent IDs like `area-core-engine-part1` when inventory says `area-core-part1`. Wrong IDs block import unless you pass `scratchpad_import_agent({ area_id: "<inventory id>" })` or `area_path` matches inventory.
-- Before spawning an area batch, mark those areas **`in_progress`** in both scratchpad (if needed) and **`checklist_update`**.
+- Assignment: exact **`area_id`**, **`path`**, dimensions to stress (from table), `file`+`line` + caller-trace for security claims.
+- Join: `agent_wait` → import → verify HIGH/BLOCKER → `scratchpad_set_area(done|deferred)`.
+- **Outlier rule:** cancel + defer agents stuck past `2× median` duration.
+- **`StepLimitReached` ≠ done** — re-spawn narrower scope.
+- **Prefer `done` over `deferred`** until `reviewed_ratio` would pass 40% gate.
 
-### Join (mandatory — do not hand-copy prose)
-
-1. `agent_wait` / `agent_result(block)` — **omit `timeout_ms`** to use adaptive wait (`step_timeout_ms × remaining steps`, clamped). Explicit `timeout_ms` still overrides when you need a hard cap. On **`timed_out`**, **`agent_cancel`** stuck agents and import completed ones — do not block the parent turn with prose-only steps while agents are Running.
-2. Poll with `agent_list`; import each **Completed + NaturalBreak** agent — do **not** require zero Running before P2 when closing out a partial audit.
-3. **Outlier join (mandatory when batch >1):** After the first `agent_wait` or when most agents have finished (~200s typical for explore), call `agent_list`. Compute median `duration_ms` among **Completed** agents in this batch (`M`). For each agent still **`Running`** with `duration_ms > max(2×M, 300000)` **or** `stuck_suspected: true` on the snapshot: **`agent_cancel`** → **`scratchpad_import_agent`** if partial output exists → **`scratchpad_append({ kind: "meta", area_id, claim: "deferred: sub-agent outlier (<reason>)" })`** + **`scratchpad_set_area({ area_id, status: "deferred" })`**. Do not wait for NaturalBreak on outliers — proceed with partial close-out.
-4. For each completed explore agent:
-   - Check sentinel / `agent_result` **`completion_reason`**: only treat as fully done when **`NaturalBreak`**. **`StepLimitReached`** means the child hit the step cap — re-spawn a narrower scope or raise limits; **do not** `scratchpad_set_area(done)` on step-limit alone.
-   - `scratchpad_import_agent({ agent_id, area_id? })` — imports `structured_findings` as **`status=open`**, `source=agent:{id}`. Pass **`area_id`** when the child used a wrong id; runtime also remaps by **`area_path`** when it matches an inventory row.
-5. For each imported **HIGH/BLOCKER** (and MEDIUM you will report):
-   - `read_file` / `grep_files` (caller-trace for security claims).
-   - `scratchpad_verify_note({ note_id })` — promotes to **`verified`** (append-only supersede).
-6. `scratchpad_set_area({ area_id, status: "done" })` — **blocked** while open HIGH/BLOCKER remain; prefer **`completion_reason=NaturalBreak`** plus imported findings (or explicit “no findings” in prose).
-7. **`checklist_update`** the matching row to **`completed`** (same turn as step 6).
-
-**Do not use `task_create`** for per-area audits during bound scratchpad (E5). Use **`agent_spawn`** only.
-
-### Sub-agent output contract
-
-Explore agents MUST end with:
+### Sub-agent output
 
 ```
 <!-- audit-findings -->
-{
-  "area_id": "area-runtime-server-tools",
-  "area_path": "crates/runtime-server/src/tools",
-  "items": [
-    {
-      "kind": "finding",
-      "severity": "HIGH",
-      "file": "crates/…/file.rs",
-      "line": 120,
-      "line_end": 145,
-      "claim": "One falsifiable sentence",
-      "evidence": "read_file:… / grep_files: callers …"
-    }
-  ],
-  "summary": "…"
-}
+{ "area_id", "area_path", "items": [{ "severity", "file", "line", "claim", "evidence" }], "summary" }
 ```
 
-They also emit `<!-- craft-verdict -->` for CRAFT blackboard compatibility (runtime maps audit-findings → verdict when needed).
-
-### `notes.jsonl` line schema
+### `notes.jsonl`
 
 | Field | Rule |
 |-------|------|
-| `area_id` | Must match `inventory.json` `areas[].id` |
-| `kind` | `finding` \| `todo` \| `cleared` \| `meta` |
-| `status` | `open` \| `verified` \| `deferred` — **report uses verified only** |
-| HIGH/BLOCKER | `file` + `line` required; prefer `line_end` |
-| `source` | `agent:{id}` until parent verifies; then superseding `verified` row with `source=main` |
-| `supersedes` | Append-only severity upgrade or verification of prior `note_id` |
+| `kind` | `finding` \| `cleared` \| `meta` \| `todo` (todo not in report) |
+| `status` | Report uses **`verified`** findings only |
+| HIGH/BLOCKER | `file` + `line` required |
 
-**C1 quality gate (P2 write_file):**
+`done` without findings → `kind=cleared` before `scratchpad_set_area(done)`.
 
-| Inventory status | Counts toward `accounted_ratio` when |
-|------------------|--------------------------------------|
-| `done` | ≥1 `kind=finding` **or** `kind=cleared` ( **`meta` alone does not count** ) |
-| `deferred` | ≥1 `kind=meta` with non-empty `claim` (defer reason) |
+## P2 — Synthesize (finding-first report)
 
-When an area has **no actionable findings**, append `kind=cleared` (e.g. `"claim":"no findings in scope"`) **before** `scratchpad_set_area(done)`. Do **not** use only a `meta` summary for `done` — that leaves the area out of the 60% hard gate and blocks report writes.
+**Pre-flight:** inventory closed; `reviewed_ratio` ≥ 40% OR `_global` `partial_closeout`; Auditor for HIGH/BLOCKER per `base.md`.
 
-`todo` / `open` must **not** appear in the final report.
+**Paths:** `deliverables/*audit*`, `doc/*audit*`, `CODE_AUDIT*.md`
 
-## P2 — Synthesize
+### Report template
 
-1. Every area **`done`** or **`deferred`** (with meta reason) — required before `write_file` to audit deliverables (`deliverables/*audit*`, `doc/*audit*`, `CODE_AUDIT*.md`).
-2. Collect `kind=finding` + `status=verified`, not superseded.
-3. Draft report from those lines only (cite `note_id` or `file:line`).
-4. **Same turn:** after inventory closes, **`write_file` the report in the same turn** — do not end with prose-only summary. Runtime injects a continue nudge when scratchpad is active but P2 gates fail.
+Title: `# Zagens 全库代码审核报告` — add **`（部分审核）`** when `reviewed_ratio` < 50% or `partial_closeout`.
 
-**Runtime dual-track warnings:** When checklist shows completed rows but inventory has no matching `done`/`deferred`, `checklist_write` / `checklist_update` append `WARNING checklist_inventory_mismatch`. `scratchpad_status` includes `contract_hints` — treat as blocking guidance.
+**Line numbers (mandatory):** every finding uses repo-relative **`位置`** = `path:line` or `path:line-line_end` (per `audit_rules/rust.md` — no “around line”). **`证据`** = one `read_file`/`grep_files` excerpt (≤3 lines, secrets redacted). Parent re-checks HIGH/BLOCKER `位置` before `write_file`.
 
-### Partial audit / closing out (avoid deadlocks)
+```markdown
+# Zagens 全库代码审核报告
 
-When you cannot finish all areas in one session:
+**审核日期:** YYYY-MM-DD
+**版本:** {crate version}
+**实审覆盖:** X done / N areas（reviewed_ratio …%）
 
-1. Import all completed agents (use `area_id` override or path remap if needed).
-2. For each remaining **`pending`** area: `scratchpad_append({ kind: "meta", area_id, claim: "deferred: <reason>" })` then `scratchpad_set_area({ area_id, status: "deferred" })`. **`deferred` defaults `require_min_notes=0`** but still needs the **meta** note when `require_deferred_meta` is on.
-3. Only then `write_file` the report; state **coverage gaps** explicitly in the report body.
+---
 
-**Do not** end a turn with prose-only output while sub-agents are still **Running** — the parent turn waits for completions.
+## 执行摘要
 
-**Do not** end a turn with prose-only output when scratchpad inventory is still open — runtime will inject a P2 continue message; call `scratchpad_status`, close areas, then `write_file`.
+| 严重级别 | 数量 | 状态分布 |
+|---------|------|----------|
+| HIGH | n | open m / fixed k / deferred d |
+| MEDIUM | n | … |
+| LOW | n | … |
+
+- **实审覆盖:** X done / N areas（reviewed_ratio …%）— 与 deferred 数量分开写
+- **裁决:** Request changes / Approve with backlog — **不要**写 LHT「full gate」话术
+
+---
+
+## 回归探针（P0）
+
+| 探针 | 结果 | 备注 |
+|------|------|------|
+| `updater.key` / 私钥入库 | cleared / finding | grep 路径 |
+| `sk-` / `mk-` / `api_key=` 硬编码于 `crates/` | cleared / finding | 不含 `.env` 即 cleared 仅限源码树 |
+| `trust_mode` 客户端可控 | cleared / finding | `runtime-api` |
+| LoopGuard 并发 | cleared / finding | `loop_guard.rs` |
+| （可选）其他 D6 路径 | … | |
+
+---
+
+## 基线指标
+
+- 规模、测试分布、**deny.toml / cargo-deny**、**>1000 行文件 Top 5**
+- 与 finding 矛盾时以探针/finding 为准（勿写「无硬编码密钥」同时又报 `.env` key）
+
+---
+
+## BLOCKER / CRITICAL
+（无则写「无」）
+
+## HIGH
+
+### H-01: {标题}
+
+| 字段 | 内容 |
+|------|------|
+| **状态** | `open` \| `fixed` \| `deferred`（fixed 可注 commit/日期） |
+| **位置** | `crates/foo/bar.rs:42` 或 `crates/foo/bar.rs:120-145` |
+| **发现项** | 一句话结论 |
+| **证据** | 摘录：`fn foo()` / `unsafe { … }` / grep 命中（密钥 → `sk-***redacted***`） |
+| **影响** | 用户/安全/正确性影响 |
+| **建议** | 可执行修复方向 |
+| **note_id** | scratchpad note id（可选） |
+
+（每条 HIGH 重复上表；MEDIUM 可用下表压缩。）
+
+## MEDIUM
+
+| ID | 状态 | 位置 | 发现项 | 建议 |
+|----|------|------|--------|------|
+| M-01 | open | `path:line` | … | … |
+
+## LOW
+
+| ID | 状态 | 位置 | 发现项 |
+|----|------|------|--------|
+| L-01 | open | `path:line` | … |
+
+> LOW 表为**全部** LOW 条目；若只列代表性子集，标题须写「LOW（节选）」并说明省略数量。
+
+---
+
+## 亮点与已验证无问题
+`kind=cleared` + 正向探针（SSRF、路径 canonicalize 等），每项附 **`位置`** 或模块路径。
+
+---
+
+## 各 Area 审核摘要
+
+| area_id | status | 主要发现 |
+|---------|--------|----------|
+
+> 完整 inventory 见 scratchpad `inventory.json`（N 行）；上表可为合并视图，须脚注说明。
+
+---
+
+## 未覆盖与 Deferred
+逐条 `area_id` + reason；无则写「无」。
+
+---
+
+## Verification summary
+
+| 检查项 | 结果 |
+|--------|------|
+| HIGH 位置复核 | H-01 `path:line` ✅ / ❌ |
+| 回归探针 | 见上表 |
+| 降级项 | 无 / 列表 |
+| 子代理 | N 成功 / 超时 / 失败 |
+
+---
+
+## 建议优先级
+
+### P0（发布前）
+| 引用 | 状态 | 行动 |
+
+### P1 / P2
+…
+```
+
+**Same turn:** `write_file` after gates pass — no prose-only finale. **Then stop** — do not fix findings or re-run clippy/tests in the same audit thread.
+
+### Partial close-out
+
+1. User explicitly requests partial report / 部分收口.
+2. `scratchpad_append({ kind:"meta", area_id:"_global", claim:"partial_closeout: user approved …" })`.
+3. Defer remaining areas with per-area `meta` reason.
+4. Report title **（部分审核）** + honest §未覆盖.
 
 ## P3 — Verify
 
-`agent_spawn(type=auditor)` for HIGH/BLOCKER per `base.md`. Auditor reads scratchpad note ids (track A) and prose consistency (track B).
+`agent_spawn(type=auditor)` for HIGH/BLOCKER. Prose claims must map to scratchpad `note_id`.
 
 ## Reference
 

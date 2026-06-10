@@ -129,7 +129,8 @@ mod tests {
         let everyone = LocalSid::from_string(EVERYONE_SID).expect("everyone sid");
         crate::acl::apply_grant_write_ace(&dir, everyone.as_ptr()).expect("grant Everyone write");
 
-        let report = scan_everyone_writable(&[dir.clone()], Duration::from_secs(30)).expect("scan");
+        let report = scan_everyone_writable(std::slice::from_ref(&dir), Duration::from_secs(30))
+            .expect("scan");
         assert!(
             report.everyone_writable.contains(&dir),
             "Everyone-writable dir must be reported: {report:?}"
@@ -145,7 +146,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("mk clean dir");
 
-        let report = scan_everyone_writable(&[dir.clone()], Duration::from_secs(30)).expect("scan");
+        let report = scan_everyone_writable(std::slice::from_ref(&dir), Duration::from_secs(30))
+            .expect("scan");
         assert!(
             !report.everyone_writable.contains(&dir),
             "clean temp dir reported as Everyone-writable: {report:?}"
