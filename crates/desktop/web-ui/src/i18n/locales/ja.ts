@@ -1008,6 +1008,14 @@ const ja: TranslationMap = {
     subagentStepTimeout: 'Sub-agent step timeout',
     subagentStepTimeoutDesc:
       'sub-agent LLM API 呼び出しあたりの最大秒数。既定 600、範囲 120–1800。全库 audit では audit-repo 分档に従い step_timeout_ms を明示。[subagents] step_timeout_secs として config.toml に保存。',
+    craftModelOverrides: 'CRAFT ロール別モデル',
+    craftModelOverridesDesc:
+      'CRAFT 子エージェント（Review / Implementer / Verifier / Auditor）のモデル上書き。空欄は親セッションのモデルを継承。config.toml の [subagents] に保存。',
+    craftModelInherit: '親モデルを継承',
+    craftModelReview: 'Review',
+    craftModelImplementer: 'Implementer',
+    craftModelVerifier: 'Verifier',
+    craftModelAuditor: 'Auditor',
     lspDiag: 'LSP Diagnostics',
     lspDiagDesc: 'モデル context 用にエディター LSP diagnostics を注入',
     userMemory: 'User Memory',

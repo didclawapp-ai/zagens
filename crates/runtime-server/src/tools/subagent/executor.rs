@@ -188,7 +188,11 @@ pub(crate) async fn run_subagent_task(task: SubAgentTask) {
     let payload = match &result {
         Ok(res) => {
             let mut payload = format!("{summary}\n{sentinel}");
-            if let Some(hint) = craft::craft_fix_loop_hint(res, task.task_id.as_deref()) {
+            if let Some(hint) = craft::craft_fix_loop_hint(
+                res,
+                task.task_id.as_deref(),
+                Some(task.runtime.context.workspace.as_path()),
+            ) {
                 payload.push('\n');
                 payload.push_str(&hint);
             }

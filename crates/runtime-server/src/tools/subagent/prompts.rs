@@ -324,7 +324,72 @@ fn extract_items_from_truncated(json: &str) -> Vec<zagens_core::subagent::AuditF
 
 /// Parse a `<!-- craft-verdict -->` JSON fence from the agent's final text output.
 pub(crate) fn parse_structured_verdict(text: &str) -> Option<StructuredVerdict> {
-    parse_json_fence_after_marker(text, "<!-- craft-verdict -->").ok()
+    const MARKER: &str = "<!-- craft-verdict -->";
+    match parse_json_fence_after_marker(text, MARKER) {
+        Ok(verdict) => Some(verdict),
+        Err(ParseFailureReason::Truncated) => {
+            let after_marker = text.find(MARKER).map(|idx| &text[idx + MARKER.len()..])?;
+            let brace_start = after_marker.find('{')?;
+            salvage_structured_verdict(&after_marker[brace_start..])
+        }
+        _ => None,
+    }
+}
+
+fn salvage_structured_verdict(partial_json: &str) -> Option<StructuredVerdict> {
+    let verdict = parse_verdict_level_field(partial_json)?;
+    let items = extract_verdict_items_from_truncated(partial_json);
+    let summary = extract_json_string_field(partial_json, "summary");
+    Some(StructuredVerdict {
+        verdict,
+        items,
+        summary,
+    })
+}
+
+fn parse_verdict_level_field(json: &str) -> Option<VerdictLevel> {
+    let raw = extract_json_string_field(json, "verdict")?;
+    match raw.trim().to_ascii_uppercase().as_str() {
+        "PASS" => Some(VerdictLevel::Pass),
+        "BLOCKER" => Some(VerdictLevel::Blocker),
+        "MAJOR" => Some(VerdictLevel::Major),
+        "FAIL" => Some(VerdictLevel::Fail),
+        _ => None,
+    }
+}
+
+fn extract_verdict_items_from_truncated(json: &str) -> Vec<zagens_core::subagent::VerdictItem> {
+    let items_key = "\"items\"";
+    let Some(idx) = json.find(items_key) else {
+        return Vec::new();
+    };
+    let after = &json[idx + items_key.len()..];
+    let Some(bracket) = after.find('[') else {
+        return Vec::new();
+    };
+    let mut slice = &after[bracket + 1..];
+    let mut items = Vec::new();
+    loop {
+        slice = slice.trim_start();
+        if slice.starts_with(']') || slice.is_empty() {
+            break;
+        }
+        if !slice.starts_with('{') {
+            break;
+        }
+        let Some((obj_str, consumed)) = extract_balanced_object(slice) else {
+            break;
+        };
+        if let Ok(item) = serde_json::from_str::<zagens_core::subagent::VerdictItem>(obj_str) {
+            items.push(item);
+        }
+        slice = &slice[consumed..];
+        slice = slice.trim_start();
+        if slice.starts_with(',') {
+            slice = &slice[1..];
+        }
+    }
+    items
 }
 
 fn parse_json_fence_after_marker<T: serde::de::DeserializeOwned>(
@@ -468,5 +533,27 @@ mod parse_tests {
             parse_structured_findings_result(text),
             Err(ParseFailureReason::InvalidJson(_))
         ));
+    }
+
+    #[test]
+    fn parse_structured_verdict_salvages_truncated_items() {
+        let text = r#"<!-- craft-verdict -->
+{
+  "verdict": "BLOCKER",
+  "items": [{
+    "severity": "BLOCKER",
+    "file": "src/lib.rs",
+    "line": 10,
+    "description": "first"
+  }, {
+    "severity": "BLOCKER",
+    "file": "src/other.rs",
+    "line": 20,
+    "description": "truncated mid-
+"#;
+        let verdict = parse_structured_verdict(text).expect("salvaged");
+        assert_eq!(verdict.verdict, VerdictLevel::Blocker);
+        assert_eq!(verdict.items.len(), 1);
+        assert_eq!(verdict.items[0].description, "first");
     }
 }

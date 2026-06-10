@@ -22,10 +22,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Fix (engine op loop):** Restore disjoint-field platform dispatch so `Engine::ext` stays populated during `dispatch_op` — fixes `Failed to start turn: channel closed` after the security `Option::take` refactor panicked in `runtime_ext_mut()`.
+- **CRAFT blackboard:** Implementer partition now writes `{ "rounds": [...] }` (not a bare array) so Review/Verifier blackboard injection works; `changes` entries use `{ file, intent }` with `git diff --name-only HEAD` merged into each round; legacy bare-array boards still read correctly.
+- **CRAFT fix-loop:** Runtime circuit breaker after 3 Implementer rounds per `task_id` emits `<deepseek:craft.fix_loop_exhausted>` (`escalate_user`) instead of another spawn hint.
+- **CRAFT blackboard cache:** mtime-keyed in-process read-through cache for `.zagens/blackboards/*.json` (invalidated on write).
+- **CRAFT verdict parse:** `<!-- craft-verdict -->` truncated JSON now salvages complete `items` like audit-findings.
+- **CRAFT spawn:** `agent_spawn` without `task_id` for Explore/Implementer/Review/Verifier returns `craft_notice` metadata.
 - **Security (audit follow-up):** core engine op loop drops `unsafe` pointer aliasing by temporarily taking `ext` out of `Engine` during platform dispatch; stdio MCP `server/register` rejects `command`/`args`/`env` and lifecycle snapshots no longer echo executable fields.
 
 ### Added
 
+- **CRAFT sub-agent models:** `[subagents]` accepts `implementer_model`, `verifier_model`, and `auditor_model` (wired into `subagent_model_overrides` like `review_model`); Zagens **Settings → Security** exposes optional per-role model dropdowns.
 - **Windows sandbox Phase 3 (PR-3.1 / PR-3.2 / PR-3.3):** ConPTY (`CreatePseudoConsole`) spawn through the elevated command-runner for interactive `exec_shell` (`tty: true`) under enforced sandbox; optional `[windows] sandbox_private_desktop = true` isolates child processes on a session desktop; CLI `zagens sandbox add-read-dir <path>` grants additional read paths for elevated sandbox users (tracked for teardown).
 - **Windows sandbox enterprise requirements (PR-3.6):** optional `requirements.toml` fields `allowed_windows_sandbox_modes` and `require_windows_sandbox_setup` constrain native Windows sandbox posture at config load; example at `fixtures/harness/windows-enterprise-requirements.toml`.
 - **Gate G2 probes:** `g2_acceptance` adds `conpty_echo` and `add_read_dir` (14/14 when setup complete).

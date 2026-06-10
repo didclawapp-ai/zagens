@@ -1008,6 +1008,14 @@ const en: TranslationMap = {
     subagentStepTimeout: 'Sub-agent step timeout',
     subagentStepTimeoutDesc:
       'Max seconds per sub-agent LLM API call. Default 600; range 120–1800. For repo audits, pass explicit step_timeout_ms per audit-repo tier; saved as [subagents] step_timeout_secs in config.toml.',
+    craftModelOverrides: 'CRAFT role models',
+    craftModelOverridesDesc:
+      'Optional per-role model overrides for CRAFT sub-agents (Review / Implementer / Verifier / Auditor). Empty inherits the parent session model. Saved under [subagents] in config.toml.',
+    craftModelInherit: 'Inherit parent model',
+    craftModelReview: 'Review',
+    craftModelImplementer: 'Implementer',
+    craftModelVerifier: 'Verifier',
+    craftModelAuditor: 'Auditor',
     lspDiag: 'LSP Diagnostics',
     lspDiagDesc: 'Inject editor LSP diagnostics for model context',
     userMemory: 'User Memory',

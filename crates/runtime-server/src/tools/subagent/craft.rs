@@ -1,9 +1,16 @@
 //! CRAFT B-L1 helpers: fix-loop hints, runtime events, sentinel parsing.
 
+use std::path::Path;
+
 use serde_json::{Map, Value, json};
 use tokio::sync::mpsc;
 use zagens_core::events::Event;
 use zagens_core::subagent::{SubAgentResult, SubAgentType, VerdictLevel};
+
+use super::blackboard::implementer_round_count;
+
+/// Maximum Implementer fix attempts per CRAFT `task_id` before escalation.
+pub const MAX_CRAFT_FIX_LOOPS_PER_TASK: u32 = 3;
 
 /// Blackboard partition key written for a CRAFT role.
 pub fn blackboard_partition_key(agent_type: &SubAgentType) -> Option<&'static str> {
@@ -32,7 +39,15 @@ pub fn fix_loop_retry_role(source: &SubAgentType) -> Option<&'static str> {
 }
 
 /// Programmatic fix-loop hint injected into the parent transcript (B1.4).
-pub fn craft_fix_loop_hint(res: &SubAgentResult, task_id: Option<&str>) -> Option<String> {
+///
+/// When `workspace` is provided and Implementer rounds for `task_id` have reached
+/// [`MAX_CRAFT_FIX_LOOPS_PER_TASK`], returns an exhaustion sentinel instead of
+/// another spawn hint.
+pub fn craft_fix_loop_hint(
+    res: &SubAgentResult,
+    task_id: Option<&str>,
+    workspace: Option<&Path>,
+) -> Option<String> {
     let task_id = task_id?;
     let verdict = res.structured_verdict.as_ref()?;
     if !fix_loop_required(&verdict.verdict) {
@@ -40,6 +55,25 @@ pub fn craft_fix_loop_hint(res: &SubAgentResult, task_id: Option<&str>) -> Optio
     }
     let retry_role = fix_loop_retry_role(&res.agent_type)?;
 
+    if let Some(ws) = workspace
+        && implementer_round_count(ws, task_id) >= MAX_CRAFT_FIX_LOOPS_PER_TASK
+    {
+        return Some(craft_fix_loop_exhausted_sentinel(
+            res, task_id, retry_role, verdict,
+        ));
+    }
+
+    Some(craft_fix_loop_spawn_sentinel(
+        res, task_id, retry_role, verdict,
+    ))
+}
+
+fn craft_fix_loop_spawn_sentinel(
+    res: &SubAgentResult,
+    task_id: &str,
+    retry_role: &str,
+    verdict: &zagens_core::subagent::StructuredVerdict,
+) -> String {
     let mut payload = Map::new();
     payload.insert("action".into(), json!("spawn_implementer"));
     payload.insert("task_id".into(), json!(task_id));
@@ -58,9 +92,36 @@ pub fn craft_fix_loop_hint(res: &SubAgentResult, task_id: Option<&str>) -> Optio
     }
 
     let payload = Value::Object(payload);
-    Some(format!(
-        "<deepseek:craft.fix_loop>{payload}</deepseek:craft.fix_loop>"
-    ))
+    format!("<deepseek:craft.fix_loop>{payload}</deepseek:craft.fix_loop>")
+}
+
+fn craft_fix_loop_exhausted_sentinel(
+    res: &SubAgentResult,
+    task_id: &str,
+    retry_role: &str,
+    verdict: &zagens_core::subagent::StructuredVerdict,
+) -> String {
+    let mut payload = Map::new();
+    payload.insert("action".into(), json!("escalate_user"));
+    payload.insert("reason".into(), json!("max_fix_loops"));
+    payload.insert("task_id".into(), json!(task_id));
+    payload.insert("source_agent_type".into(), json!(res.agent_type.as_str()));
+    payload.insert("retry_role".into(), json!(retry_role));
+    payload.insert("max_rounds".into(), json!(MAX_CRAFT_FIX_LOOPS_PER_TASK));
+    if let Ok(v) = serde_json::to_value(&verdict.verdict) {
+        payload.insert("verdict".into(), v);
+    }
+    if !verdict.items.is_empty()
+        && let Ok(items) = serde_json::to_value(&verdict.items)
+    {
+        payload.insert("items".into(), items);
+    }
+    if let Some(summary) = verdict.summary.as_deref().filter(|s| !s.is_empty()) {
+        payload.insert("summary".into(), json!(summary));
+    }
+
+    let payload = Value::Object(payload);
+    format!("<deepseek:craft.fix_loop_exhausted>{payload}</deepseek:craft.fix_loop_exhausted>")
 }
 
 /// Parse JSON payload from a `<deepseek:subagent.done>…</deepseek:subagent.done>` line.
@@ -161,7 +222,7 @@ mod tests {
     #[test]
     fn fix_loop_hint_for_review_blocker() {
         let res = sample_result(VerdictLevel::Blocker, SubAgentType::Review);
-        let hint = craft_fix_loop_hint(&res, Some("task-1")).expect("hint");
+        let hint = craft_fix_loop_hint(&res, Some("task-1"), None).expect("hint");
         assert!(hint.contains("<deepseek:craft.fix_loop>"));
         assert!(hint.contains("\"task_id\":\"task-1\""));
         assert!(hint.contains("\"retry_role\":\"review\""));
@@ -170,12 +231,43 @@ mod tests {
     #[test]
     fn fix_loop_hint_skips_pass() {
         let res = sample_result(VerdictLevel::Pass, SubAgentType::Review);
-        assert!(craft_fix_loop_hint(&res, Some("task-1")).is_none());
+        assert!(craft_fix_loop_hint(&res, Some("task-1"), None).is_none());
     }
 
     #[test]
     fn fix_loop_hint_requires_task_id() {
         let res = sample_result(VerdictLevel::Fail, SubAgentType::Verifier);
-        assert!(craft_fix_loop_hint(&res, None).is_none());
+        assert!(craft_fix_loop_hint(&res, None, None).is_none());
+    }
+
+    #[test]
+    fn fix_loop_hint_exhausted_after_max_rounds() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let ws = dir.path();
+        let task_id = "exhaust-task";
+        let board_path = ws.join(".zagens/blackboards/exhaust-task.json");
+        std::fs::create_dir_all(board_path.parent().expect("parent")).expect("mkdir");
+        let board = json!({
+            "schema_version": 1,
+            "task_id": task_id,
+            "implementer": {
+                "rounds": [
+                    { "round": 1, "changes": [] },
+                    { "round": 2, "changes": [] },
+                    { "round": 3, "changes": [] }
+                ]
+            }
+        });
+        std::fs::write(
+            &board_path,
+            serde_json::to_string_pretty(&board).expect("json"),
+        )
+        .expect("write");
+
+        let res = sample_result(VerdictLevel::Blocker, SubAgentType::Review);
+        let hint = craft_fix_loop_hint(&res, Some(task_id), Some(ws)).expect("exhausted sentinel");
+        assert!(hint.contains("<deepseek:craft.fix_loop_exhausted>"));
+        assert!(hint.contains("\"action\":\"escalate_user\""));
+        assert!(hint.contains("\"max_rounds\":3"));
     }
 }

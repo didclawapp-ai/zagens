@@ -473,6 +473,12 @@ pub struct SubagentsConfig {
     #[serde(default)]
     pub review_model: Option<String>,
     #[serde(default)]
+    pub implementer_model: Option<String>,
+    #[serde(default)]
+    pub verifier_model: Option<String>,
+    #[serde(default)]
+    pub auditor_model: Option<String>,
+    #[serde(default)]
     pub custom_model: Option<String>,
     #[serde(default)]
     pub models: Option<HashMap<String, String>>,

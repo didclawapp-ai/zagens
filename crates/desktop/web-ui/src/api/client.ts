@@ -1665,6 +1665,11 @@ export interface SystemSettings {
   max_subagents: number;
   /** Per-step sub-agent LLM API timeout (seconds), `[subagents] step_timeout_secs`. */
   subagent_step_timeout_secs: number;
+  /** CRAFT role overrides (`[subagents]`); empty inherits parent session model. */
+  subagent_review_model: string;
+  subagent_implementer_model: string;
+  subagent_verifier_model: string;
+  subagent_auditor_model: string;
   web_search: boolean;
   subagents_enabled: boolean;
   exec_policy: boolean;

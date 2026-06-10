@@ -274,6 +274,35 @@ export default function SettingsPanel({
                 </span>
               </div>
             </label>
+
+            <div className="space-y-2 pt-1">
+              <p className={labelCls}>{t('settings.craftModelOverrides')}</p>
+              <p className={descCls}>{t('settings.craftModelOverridesDesc')}</p>
+              {(
+                [
+                  ['subagent_review_model', 'craftModelReview'] as const,
+                  ['subagent_implementer_model', 'craftModelImplementer'] as const,
+                  ['subagent_verifier_model', 'craftModelVerifier'] as const,
+                  ['subagent_auditor_model', 'craftModelAuditor'] as const,
+                ] as const
+              ).map(([key, i18nKey]) => (
+                <label key={key} className="block space-y-1">
+                  <span className="text-xs text-t-text-muted">{t(`settings.${i18nKey}` as any)}</span>
+                  <select
+                    className={selectCls}
+                    value={settings[key]}
+                    onChange={(e) => update(key, e.target.value)}
+                  >
+                    <option value="">{t('settings.craftModelInherit')}</option>
+                    {(settings.available_models ?? []).map((model) => (
+                      <option key={model} value={model}>
+                        {model}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+            </div>
           </section>
 
           <section className="space-y-3">

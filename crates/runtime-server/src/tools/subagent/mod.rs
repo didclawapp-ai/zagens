@@ -3,6 +3,7 @@
 //! Sub-agent spawning system.
 
 pub mod blackboard;
+mod blackboard_cache;
 pub mod craft;
 pub mod mailbox;
 

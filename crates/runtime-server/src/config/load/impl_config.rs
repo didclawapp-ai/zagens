@@ -651,6 +651,12 @@ impl Config {
         insert("awaiter", &cfg.awaiter_model);
         insert("plan", &cfg.awaiter_model);
         insert("review", &cfg.review_model);
+        insert("implementer", &cfg.implementer_model);
+        insert("implement", &cfg.implementer_model);
+        insert("verifier", &cfg.verifier_model);
+        insert("verify", &cfg.verifier_model);
+        insert("auditor", &cfg.auditor_model);
+        insert("audit", &cfg.auditor_model);
         insert("custom", &cfg.custom_model);
 
         if let Some(models) = cfg.models.as_ref() {

@@ -5,7 +5,9 @@
 //! task reads the board at spawn time. No live reload — the snapshot is taken
 //! once and injected into the child's assignment prompt.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use zagens_config::{
     legacy_workspace_meta_dir, workspace_meta_dir, workspace_meta_file_read,
@@ -17,6 +19,7 @@ use serde_json::{Value, json};
 use zagens_core::subagent::{StructuredFindings, StructuredVerdict, SubAgentType};
 
 use super::SubAgentResult;
+use super::blackboard_cache;
 
 // ── Path helpers ──────────────────────────────────────────────
 
@@ -128,7 +131,7 @@ pub fn read_blackboard_section(
 /// Returns `None` when the file doesn't exist or is unparseable.
 pub fn read_blackboard_raw(workspace: &Path, task_id: &str) -> Option<Value> {
     let path = blackboard_path_read(workspace, task_id).ok()?;
-    let raw = std::fs::read_to_string(&path).ok()?;
+    let raw = blackboard_cache::read_cached(&path)?;
     serde_json::from_str(&raw).ok()
 }
 
@@ -259,6 +262,7 @@ pub fn write_blackboard_partition(
     let tmp_path = path.with_extension("tmp");
     let _ = std::fs::write(&tmp_path, &payload);
     let _ = std::fs::rename(&tmp_path, &path);
+    blackboard_cache::invalidate(&path);
 }
 
 /// Read structured audit findings written by an Explore agent.
@@ -374,8 +378,41 @@ fn format_verifier_failures(board: &Value) -> Option<String> {
     Some(lines.join("\n"))
 }
 
+/// Count completed Implementer rounds for a CRAFT task (fix-loop circuit breaker).
+#[must_use]
+pub fn implementer_round_count(workspace: &Path, task_id: &str) -> u32 {
+    read_blackboard_raw(workspace, task_id)
+        .and_then(|board| board.get("implementer").cloned())
+        .and_then(|part| implementer_rounds_slice(&part).map(<[_]>::len))
+        .map(|n| n as u32)
+        .unwrap_or(0)
+}
+
+/// Read implementer `rounds` from partition value (supports legacy bare-array writes).
+fn implementer_rounds_slice(implementer: &Value) -> Option<&[Value]> {
+    if let Some(rounds) = implementer.get("rounds").and_then(|v| v.as_array()) {
+        return Some(rounds.as_slice());
+    }
+    implementer.as_array().map(|a| a.as_slice())
+}
+
+fn format_change_line(change: &Value) -> Option<String> {
+    if let Some(file) = change.as_str().filter(|s| !s.is_empty()) {
+        return Some(format!("- `{file}`"));
+    }
+    let file = change.get("file").and_then(|v| v.as_str()).unwrap_or("?");
+    let intent = change
+        .get("intent")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty());
+    Some(match intent {
+        Some(intent) => format!("- `{file}` — {intent}"),
+        None => format!("- `{file}`"),
+    })
+}
+
 fn format_implementer_changes(board: &Value) -> Option<String> {
-    let rounds = board.get("implementer")?.get("rounds")?.as_array()?;
+    let rounds = implementer_rounds_slice(board.get("implementer")?)?;
     if rounds.is_empty() {
         return None;
     }
@@ -383,9 +420,9 @@ fn format_implementer_changes(board: &Value) -> Option<String> {
     for round in rounds {
         let changes = round.get("changes")?.as_array()?;
         for c in changes {
-            let file = c.get("file").and_then(|v| v.as_str()).unwrap_or("?");
-            let intent = c.get("intent").and_then(|v| v.as_str()).unwrap_or("?");
-            lines.push(format!("- `{file}` — {intent}"));
+            if let Some(line) = format_change_line(c) {
+                lines.push(line);
+            }
         }
     }
     // Append factual symbol index change record (not model-narrated).
@@ -594,6 +631,7 @@ fn merge_board_partition(
     let tmp_path = path.with_extension("tmp");
     let _ = std::fs::write(&tmp_path, &payload);
     let _ = std::fs::rename(&tmp_path, &path);
+    blackboard_cache::invalidate(&path);
 }
 
 fn format_scratchpad_mirror(board: &Value) -> Option<String> {
@@ -919,6 +957,57 @@ mod tests {
 
         let _ = std::fs::remove_file(blackboard_path_write(&ws, task_id).expect("valid task id"));
     }
+
+    #[test]
+    fn test_implementer_rounds_injected_for_review() {
+        let ws = test_workspace();
+        let task_id = "test-impl-rounds";
+        let _ = std::fs::remove_file(blackboard_path_write(&ws, task_id).expect("valid task id"));
+
+        let implementer_result = SubAgentResult {
+            agent_id: "i1".into(),
+            agent_type: SAT::Implementer,
+            assignment: SubAgentAssignment::new("fix".into(), None),
+            model: "deepseek-v4-flash".into(),
+            nickname: None,
+            status: SubAgentStatus::Completed,
+            result: Some("CHANGES\nModified: crates/foo/src/lib.rs — add null check\n".into()),
+            steps_taken: 1,
+            duration_ms: 100,
+            from_prior_session: false,
+            structured_verdict: None,
+            structured_findings: None,
+            completion_reason: None,
+            max_steps: 100,
+            step_timeout_ms: 600_000,
+            structured_findings_parse_failure: None,
+            scratchpad_run_id: None,
+            parent_thread_id: None,
+            progress_status: None,
+            stuck_suspected: false,
+            idle_ms: 0,
+        };
+        write_blackboard_partition(&ws, task_id, &SAT::Implementer, &implementer_result);
+
+        let raw = read_blackboard_raw(&ws, task_id).expect("board");
+        let rounds = raw["implementer"]["rounds"]
+            .as_array()
+            .expect("implementer.rounds array");
+        assert_eq!(rounds.len(), 1);
+        assert_eq!(rounds[0]["round"], 1);
+        let changes = rounds[0]["changes"].as_array().expect("changes");
+        assert_eq!(changes[0]["file"], "crates/foo/src/lib.rs");
+        assert_eq!(changes[0]["intent"], "add null check");
+
+        let section = read_blackboard_section(&ws, task_id, &SAT::Review)
+            .expect("reviewer should see implementer changes");
+        assert!(section.contains("### Implementer changes"), "{section}");
+        assert!(section.contains("crates/foo/src/lib.rs"), "{section}");
+        assert!(section.contains("add null check"), "{section}");
+        assert_eq!(implementer_round_count(&ws, task_id), 1);
+
+        let _ = std::fs::remove_file(blackboard_path_write(&ws, task_id).expect("valid task id"));
+    }
 }
 
 fn extract_files_examined(result: &SubAgentResult) -> Value {
@@ -970,35 +1059,96 @@ fn extract_coverage_confidence(result: &SubAgentResult) -> Value {
     json!("unknown")
 }
 
+fn load_existing_implementer_rounds(existing_raw: &str) -> Vec<Value> {
+    if existing_raw.trim().is_empty() {
+        return Vec::new();
+    }
+    let Ok(board) = serde_json::from_str::<Value>(existing_raw) else {
+        return Vec::new();
+    };
+    let Some(implementer) = board.get("implementer") else {
+        return Vec::new();
+    };
+    implementer_rounds_slice(implementer)
+        .map(<[Value]>::to_vec)
+        .unwrap_or_default()
+}
+
+fn read_last_reviewer_verdict(existing_raw: &str) -> Value {
+    serde_json::from_str::<Value>(existing_raw)
+        .ok()
+        .and_then(|board| board.get("reviewer").cloned())
+        .and_then(|reviewer| reviewer.get("verdict").cloned())
+        .unwrap_or(Value::Null)
+}
+
 fn build_implementer_rounds(
     result: &SubAgentResult,
     existing_raw: &str,
     workspace: &Path,
 ) -> Value {
-    // Read existing rounds, append a new one
-    let mut existing_rounds: Vec<Value> = if existing_raw.trim().is_empty() {
-        Vec::new()
-    } else {
-        serde_json::from_str::<Value>(existing_raw)
-            .ok()
-            .and_then(|v| v.get("implementer").cloned())
-            .and_then(|v| v.get("rounds").cloned())
-            .and_then(|v| v.as_array().cloned())
-            .unwrap_or_default()
-    };
-
+    let mut existing_rounds = load_existing_implementer_rounds(existing_raw);
     let round_num = existing_rounds.len() + 1;
-    let changes = extract_changes_from_result(result);
+    let changes = collect_implementer_changes(workspace, result);
     let symbol_changes = read_symbol_changes(workspace);
+    let reviewer_verdict = read_last_reviewer_verdict(existing_raw);
 
     let new_round = json!({
         "round": round_num,
         "changes": changes,
         "symbol_changes": symbol_changes,
+        "reviewer_verdict": reviewer_verdict,
     });
 
     existing_rounds.push(new_round);
-    json!(existing_rounds)
+    json!({ "rounds": existing_rounds })
+}
+
+fn git_diff_name_only(workspace: &Path) -> Vec<String> {
+    let Ok(output) = Command::new("git")
+        .args(["diff", "--name-only", "HEAD"])
+        .current_dir(workspace)
+        .output()
+    else {
+        return Vec::new();
+    };
+    if !output.status.success() {
+        return Vec::new();
+    }
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+fn collect_implementer_changes(workspace: &Path, result: &SubAgentResult) -> Value {
+    let mut entries: Vec<(String, String)> = Vec::new();
+    let mut seen = HashSet::new();
+
+    for path in git_diff_name_only(workspace) {
+        if seen.insert(path.clone()) {
+            entries.push((path, "git diff".into()));
+        }
+    }
+
+    for (path, intent) in parse_changes_from_result_text(result) {
+        if seen.insert(path.clone()) {
+            entries.push((path, intent));
+        } else if let Some(entry) = entries.iter_mut().find(|(p, _)| *p == path)
+            && entry.1 == "git diff"
+            && intent != "git diff"
+        {
+            entry.1 = intent;
+        }
+    }
+
+    let items: Vec<Value> = entries
+        .into_iter()
+        .map(|(file, intent)| json!({ "file": file, "intent": intent }))
+        .collect();
+    json!(items)
 }
 
 fn read_symbol_changes(workspace: &Path) -> Value {
@@ -1009,31 +1159,42 @@ fn read_symbol_changes(workspace: &Path) -> Value {
         .unwrap_or(json!(null))
 }
 
-fn extract_changes_from_result(result: &SubAgentResult) -> Value {
-    // Extract changed files from result text (look for path-like references)
+fn parse_changes_from_result_text(result: &SubAgentResult) -> Vec<(String, String)> {
     let text = result.result.as_deref().unwrap_or("");
-    let re = regex::Regex::new(r"(?m)^\s*(?:Modified|Changed|Added|Edited):\s*(.+)$").ok();
-    let mut files: Vec<Value> = Vec::new();
-    if let Some(re) = re {
+    let mut out = Vec::new();
+    let mut seen = HashSet::new();
+
+    if let Ok(re) = regex::Regex::new(
+        r"(?m)^\s*(?:Modified|Changed|Added|Edited):\s*(.+?)(?:\s*[—–-]\s*(.+))?\s*$",
+    ) {
         for cap in re.captures_iter(text) {
-            if let Some(m) = cap.get(1) {
-                files.push(json!(m.as_str().trim()));
+            let path = cap.get(1).map(|m| m.as_str().trim().to_string());
+            let intent = cap
+                .get(2)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "reported in agent output".into());
+            if let Some(path) = path.filter(|p| !p.is_empty())
+                && seen.insert(path.clone())
+            {
+                out.push((path, intent));
             }
         }
     }
-    if files.is_empty() {
-        // Fallback: look for file paths in the result
-        let path_re = regex::Regex::new(r"`(crates/\S+\.(?:rs|toml|ts|tsx|js|json|md))`").ok();
-        if let Some(re) = path_re {
-            for cap in re.captures_iter(text) {
-                if let Some(m) = cap.get(1) {
-                    let path = m.as_str().to_string();
-                    if !files.iter().any(|v| v.as_str() == Some(&path)) {
-                        files.push(json!(path));
-                    }
+
+    if out.is_empty()
+        && let Ok(path_re) =
+            regex::Regex::new(r"`((?:crates|src|web-ui)/\S+\.(?:rs|toml|ts|tsx|js|json|md))`")
+    {
+        for cap in path_re.captures_iter(text) {
+            if let Some(m) = cap.get(1) {
+                let path = m.as_str().to_string();
+                if seen.insert(path.clone()) {
+                    out.push((path, "reported in agent output".into()));
                 }
             }
         }
     }
-    json!(files)
+
+    out
 }

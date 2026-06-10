@@ -1516,6 +1516,31 @@ pub async fn export_thread_json(
 // system settings — 桌面系统设置面板读写 config.toml（双轨同步）
 // ---------------------------------------------------------------------------
 
+fn subagent_extra_string(
+    subagents: Option<&zagens_config::SubagentsConfigToml>,
+    key: &str,
+) -> String {
+    subagents
+        .and_then(|s| s.extras.get(key))
+        .and_then(|v| v.as_str().map(str::to_string))
+        .unwrap_or_default()
+}
+
+fn set_subagent_extra_string(
+    subagents: &mut zagens_config::SubagentsConfigToml,
+    key: &str,
+    value: &str,
+) {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        subagents.extras.remove(key);
+    } else {
+        subagents
+            .extras
+            .insert(key.to_string(), toml::Value::String(trimmed.to_string()));
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SystemSettings {
     pub default_model: String,
@@ -1527,6 +1552,15 @@ pub struct SystemSettings {
     pub max_subagents: usize,
     /// Per-step sub-agent LLM API timeout (seconds), from `[subagents] step_timeout_secs`.
     pub subagent_step_timeout_secs: u64,
+    /// CRAFT role model overrides (`[subagents]` table, empty = inherit parent model).
+    #[serde(default)]
+    pub subagent_review_model: String,
+    #[serde(default)]
+    pub subagent_implementer_model: String,
+    #[serde(default)]
+    pub subagent_verifier_model: String,
+    #[serde(default)]
+    pub subagent_auditor_model: String,
     pub web_search: bool,
     pub subagents_enabled: bool,
     pub exec_policy: bool,
@@ -1629,6 +1663,13 @@ pub fn get_system_settings() -> Result<SystemSettings, String> {
             .and_then(|s| s.step_timeout_secs)
             .unwrap_or(600)
             .clamp(120, 1800),
+        subagent_review_model: subagent_extra_string(cfg.subagents.as_ref(), "review_model"),
+        subagent_implementer_model: subagent_extra_string(
+            cfg.subagents.as_ref(),
+            "implementer_model",
+        ),
+        subagent_verifier_model: subagent_extra_string(cfg.subagents.as_ref(), "verifier_model"),
+        subagent_auditor_model: subagent_extra_string(cfg.subagents.as_ref(), "auditor_model"),
         web_search: cfg
             .features
             .as_ref()
@@ -1704,6 +1745,18 @@ pub fn save_system_settings(
     }
     let subagents = cfg.subagents.get_or_insert_with(Default::default);
     subagents.step_timeout_secs = Some(settings.subagent_step_timeout_secs.clamp(120, 1800));
+    set_subagent_extra_string(subagents, "review_model", &settings.subagent_review_model);
+    set_subagent_extra_string(
+        subagents,
+        "implementer_model",
+        &settings.subagent_implementer_model,
+    );
+    set_subagent_extra_string(
+        subagents,
+        "verifier_model",
+        &settings.subagent_verifier_model,
+    );
+    set_subagent_extra_string(subagents, "auditor_model", &settings.subagent_auditor_model);
 
     // features：使用 get_or_insert_with 而非 take() ——
     // 避免丢弃 config.toml 中已有的其他 features 字段

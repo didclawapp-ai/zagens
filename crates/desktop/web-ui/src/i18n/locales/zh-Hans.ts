@@ -999,6 +999,14 @@ const zhHans = {
     subagentStepTimeout: '子代理单步超时',
     subagentStepTimeoutDesc:
       '每次子代理调用模型的最长时间（秒）。默认 600；范围 120–1800。全仓审计 spawn 时按 audit-repo 分档显式传 step_timeout_ms；写入 config.toml 的 [subagents] step_timeout_secs。',
+    craftModelOverrides: 'CRAFT 角色模型',
+    craftModelOverridesDesc:
+      '为 CRAFT 子代理（Review / Implementer / Verifier / Auditor）单独指定模型；留空则继承主会话模型。写入 config.toml 的 [subagents] 表。',
+    craftModelInherit: '继承主模型',
+    craftModelReview: 'Review（审查）',
+    craftModelImplementer: 'Implementer（实现）',
+    craftModelVerifier: 'Verifier（验证）',
+    craftModelAuditor: 'Auditor（审计）',
     lspDiag: 'LSP 诊断',
     lspDiagDesc: '注入编辑器 LSP 诊断信息供模型参考',
     userMemory: '用户记忆',

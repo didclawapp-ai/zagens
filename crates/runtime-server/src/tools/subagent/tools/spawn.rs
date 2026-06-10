@@ -320,6 +320,9 @@ impl ToolSpec for AgentSpawnTool {
         let scratchpad_run_id =
             crate::scratchpad::try_resolve_run_id(&self.runtime.context, explicit_run);
 
+        let craft_agent_type = spawn_request.agent_type.clone();
+        let craft_task_id = spawn_request.task_id.clone();
+
         let spawn_result = manager.spawn_background_with_assignment_options(
             Arc::clone(&self.manager),
             child_runtime,
@@ -377,6 +380,29 @@ impl ToolSpec for AgentSpawnTool {
         if self.name == "spawn_agent" {
             tool_result = wrap_with_deprecation_notice(tool_result, "spawn_agent", "agent_spawn");
         }
+        if craft_blackboard_recommends_task_id(&craft_agent_type) && craft_task_id.is_none() {
+            let notice = "CRAFT: pass `task_id` on agent_spawn for Explore/Implementer/Review/Verifier \
+                          so the blackboard and fix-loop sentinels work; without it fix-loop hints are suppressed.";
+            tool_result.metadata = Some(match tool_result.metadata.take() {
+                Some(mut meta) => {
+                    if let Some(obj) = meta.as_object_mut() {
+                        obj.insert("craft_notice".into(), json!(notice));
+                    }
+                    meta
+                }
+                None => json!({ "craft_notice": notice }),
+            });
+        }
         Ok(tool_result)
     }
+}
+
+fn craft_blackboard_recommends_task_id(agent_type: &SubAgentType) -> bool {
+    matches!(
+        agent_type,
+        SubAgentType::Explore
+            | SubAgentType::Implementer
+            | SubAgentType::Review
+            | SubAgentType::Verifier
+    )
 }

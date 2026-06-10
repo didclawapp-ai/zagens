@@ -1009,6 +1009,14 @@ const ptBr: TranslationMap = {
     subagentStepTimeout: 'Timeout de passo do subagente',
     subagentStepTimeoutDesc:
       'Máximo de segundos por chamada de API LLM do subagente. Padrão 600; intervalo 120–1800. Em auditorias de repo, passe step_timeout_ms explícito por tier do audit-repo; salvo como [subagents] step_timeout_secs em config.toml.',
+    craftModelOverrides: 'Modelos CRAFT por papel',
+    craftModelOverridesDesc:
+      'Substituições opcionais de modelo para subagentes CRAFT (Review / Implementer / Verifier / Auditor). Vazio herda o modelo da sessão pai. Salvo em [subagents] no config.toml.',
+    craftModelInherit: 'Herdar modelo pai',
+    craftModelReview: 'Review',
+    craftModelImplementer: 'Implementer',
+    craftModelVerifier: 'Verifier',
+    craftModelAuditor: 'Auditor',
     lspDiag: 'Diagnósticos LSP',
     lspDiagDesc: 'Injetar diagnósticos LSP do editor no contexto do modelo',
     userMemory: 'Memória do usuário',
