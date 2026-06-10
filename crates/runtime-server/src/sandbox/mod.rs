@@ -368,8 +368,14 @@ pub fn policy_degraded_mode_notice() -> Option<&'static str> {
 
     #[cfg(target_os = "windows")]
     {
-        if zagens_windows_sandbox::is_enforcement_available() {
+        let home = zagens_windows_sandbox::zagens_home();
+        if zagens_windows_sandbox::sandbox_setup_is_complete(&home) {
             return None;
+        }
+        if zagens_windows_sandbox::is_enforcement_available() {
+            return Some(
+                "Degraded mode: elevated sandbox setup is not complete; using unelevated write isolation only (no profile read isolation). Run `zagens sandbox setup`.",
+            );
         }
         Some(
             "Degraded mode: Windows sandbox is not enforced yet; sandbox_mode declares policy only.",

@@ -9,11 +9,13 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use zagens_windows_sandbox::{
-    PlanInput, WindowsSandboxMode, plan_exec, sandbox_setup_is_complete, spawn_sync,
+    PlanInput, WindowsSandboxMode, extract_spawn_denial_code, plan_exec,
+    protected_subdirs_for_root, sandbox_setup_is_complete, spawn_background_elevated, spawn_sync,
     zagens_home_from_env,
 };
 
@@ -165,6 +167,14 @@ fn main() -> anyhow::Result<()> {
         |out| format!("exit={} stdout_len={}", out.exit_code, out.stdout.len()),
     ));
 
+    // --- elevated background spawn (IPC runner path) ---
+    results.push(probe_bg_spawn_stdout(&workspace));
+    results.push(probe_bg_write_stdin(&workspace));
+    results.push(probe_bg_kill(&workspace));
+
+    // --- structured spawn denial (PR-2.13) ---
+    results.push(probe_spawn_denial_code(&workspace));
+
     let report_path = home.join(".sandbox").join("g2_acceptance_report.json");
     std::fs::create_dir_all(home.join(".sandbox"))?;
     let pass_count = results.iter().filter(|r| r.pass).count();
@@ -197,17 +207,269 @@ fn elevated_cmd(
     command: &str,
     network_allowed: bool,
 ) -> anyhow::Result<zagens_windows_sandbox::CapturedOutput> {
-    let plan = plan_exec(PlanInput {
-        program: "cmd".into(),
-        args: vec!["/C".into(), command.into()],
+    let plan = elevated_plan(workspace, "cmd", vec!["/C", command], network_allowed)?;
+    spawn_sync(&plan, None, Some(Duration::from_secs(30)))
+}
+
+fn elevated_plan(
+    workspace: &PathBuf,
+    program: &str,
+    args: Vec<&str>,
+    network_allowed: bool,
+) -> anyhow::Result<zagens_windows_sandbox::WindowsExecPlan> {
+    plan_exec(PlanInput {
+        program: program.into(),
+        args: args.into_iter().map(str::to_string).collect(),
         cwd: workspace.clone(),
         env: HashMap::new(),
         writable_roots: vec![workspace.clone()],
-        protected_write_paths: zagens_windows_sandbox::protected_subdirs_for_root(workspace),
+        protected_write_paths: protected_subdirs_for_root(workspace),
         network_allowed,
         mode: WindowsSandboxMode::Elevated,
-    })?;
-    spawn_sync(&plan, None, Some(Duration::from_secs(30)))
+    })
+}
+
+fn probe_bg_spawn_stdout(workspace: &PathBuf) -> ProbeResult {
+    let id = "bg_spawn_stdout";
+    let plan = match elevated_plan(workspace, "cmd", vec!["/C", "echo bg-spawn-ok"], false) {
+        Ok(plan) => plan,
+        Err(err) => {
+            return ProbeResult {
+                id,
+                pass: false,
+                detail: format!("plan error: {err:#}"),
+            };
+        }
+    };
+    match spawn_background_elevated(&plan, None) {
+        Ok(mut child) => {
+            let stdout = Arc::new(Mutex::new(Vec::new()));
+            let stderr = Arc::new(Mutex::new(Vec::new()));
+            let out_buf = Arc::clone(&stdout);
+            let err_buf = Arc::clone(&stderr);
+            if let Err(err) = child.start_output_pump(
+                move |chunk| {
+                    if let Ok(mut guard) = out_buf.lock() {
+                        guard.extend_from_slice(chunk);
+                    }
+                },
+                move |chunk| {
+                    if let Ok(mut guard) = err_buf.lock() {
+                        guard.extend_from_slice(chunk);
+                    }
+                },
+            ) {
+                return ProbeResult {
+                    id,
+                    pass: false,
+                    detail: format!("pump error: {err:#}"),
+                };
+            }
+            let exit = match child.wait(Some(Duration::from_secs(30))) {
+                Ok(code) => code,
+                Err(err) => {
+                    return ProbeResult {
+                        id,
+                        pass: false,
+                        detail: format!("wait error: {err:#}"),
+                    };
+                }
+            };
+            let stdout_bytes = stdout.lock().map(|g| g.clone()).unwrap_or_default();
+            let stdout = String::from_utf8_lossy(&stdout_bytes);
+            ProbeResult {
+                id,
+                pass: exit == 0 && stdout.contains("bg-spawn-ok"),
+                detail: format!("exit={exit} stdout={stdout:?}"),
+            }
+        }
+        Err(err) => ProbeResult {
+            id,
+            pass: false,
+            detail: format!("spawn error: {err:#}"),
+        },
+    }
+}
+
+fn probe_bg_write_stdin(workspace: &PathBuf) -> ProbeResult {
+    let id = "bg_write_stdin";
+    let plan = match elevated_plan(workspace, "cmd", vec!["/C", "more"], false) {
+        Ok(plan) => plan,
+        Err(err) => {
+            return ProbeResult {
+                id,
+                pass: false,
+                detail: format!("plan error: {err:#}"),
+            };
+        }
+    };
+    match spawn_background_elevated(&plan, None) {
+        Ok(mut child) => {
+            let stdout = Arc::new(Mutex::new(Vec::new()));
+            let out_buf = Arc::clone(&stdout);
+            if let Err(err) = child.start_output_pump(
+                move |chunk| {
+                    if let Ok(mut guard) = out_buf.lock() {
+                        guard.extend_from_slice(chunk);
+                    }
+                },
+                |_| {},
+            ) {
+                return ProbeResult {
+                    id,
+                    pass: false,
+                    detail: format!("pump error: {err:#}"),
+                };
+            }
+            std::thread::sleep(Duration::from_millis(300));
+            if let Err(err) = child.write_stdin(b"g2-stdin-line\n") {
+                return ProbeResult {
+                    id,
+                    pass: false,
+                    detail: format!("write_stdin error: {err:#}"),
+                };
+            }
+            child.close_stdin();
+            let exit = match child.wait(Some(Duration::from_secs(30))) {
+                Ok(code) => code,
+                Err(err) => {
+                    return ProbeResult {
+                        id,
+                        pass: false,
+                        detail: format!("wait error: {err:#}"),
+                    };
+                }
+            };
+            let stdout_bytes = stdout.lock().map(|g| g.clone()).unwrap_or_default();
+            let stdout = String::from_utf8_lossy(&stdout_bytes);
+            ProbeResult {
+                id,
+                pass: exit == 0 && stdout.contains("g2-stdin-line"),
+                detail: format!("exit={exit} stdout={stdout:?}"),
+            }
+        }
+        Err(err) => ProbeResult {
+            id,
+            pass: false,
+            detail: format!("spawn error: {err:#}"),
+        },
+    }
+}
+
+fn probe_bg_kill(workspace: &PathBuf) -> ProbeResult {
+    let id = "bg_kill";
+    let plan = match elevated_plan(
+        workspace,
+        "powershell",
+        vec!["-NoProfile", "-Command", "Start-Sleep -Seconds 60"],
+        false,
+    ) {
+        Ok(plan) => plan,
+        Err(err) => {
+            return ProbeResult {
+                id,
+                pass: false,
+                detail: format!("plan error: {err:#}"),
+            };
+        }
+    };
+    match spawn_background_elevated(&plan, None) {
+        Ok(mut child) => {
+            if let Err(err) = child.start_output_pump(|_| {}, |_| {}) {
+                return ProbeResult {
+                    id,
+                    pass: false,
+                    detail: format!("pump error: {err:#}"),
+                };
+            }
+            std::thread::sleep(Duration::from_millis(500));
+            let still_running = child.try_wait().ok().flatten().is_none();
+            let started = Instant::now();
+            if let Err(err) = child.kill() {
+                return ProbeResult {
+                    id,
+                    pass: false,
+                    detail: format!("kill error: {err:#}"),
+                };
+            }
+            let exit = match child.wait(Some(Duration::from_secs(15))) {
+                Ok(code) => code,
+                Err(err) => {
+                    return ProbeResult {
+                        id,
+                        pass: false,
+                        detail: format!("wait after kill error: {err:#}"),
+                    };
+                }
+            };
+            let elapsed = started.elapsed();
+            ProbeResult {
+                id,
+                pass: still_running && elapsed < Duration::from_secs(10) && exit != 0,
+                detail: format!(
+                    "still_running={still_running} exit={exit} kill_elapsed_ms={}",
+                    elapsed.as_millis()
+                ),
+            }
+        }
+        Err(err) => ProbeResult {
+            id,
+            pass: false,
+            detail: format!("spawn error: {err:#}"),
+        },
+    }
+}
+
+fn probe_spawn_denial_code(workspace: &PathBuf) -> ProbeResult {
+    let id = "spawn_denial_code";
+    let fake_exe = workspace.join("g2-not-an-exe.txt");
+    if let Err(err) = std::fs::write(&fake_exe, "not executable") {
+        return ProbeResult {
+            id,
+            pass: false,
+            detail: format!("fixture write error: {err}"),
+        };
+    }
+    let plan = match plan_exec(PlanInput {
+        program: fake_exe.to_string_lossy().into(),
+        args: vec![],
+        cwd: workspace.clone(),
+        env: HashMap::new(),
+        writable_roots: vec![workspace.clone()],
+        protected_write_paths: protected_subdirs_for_root(workspace),
+        // Online user so logon succeeds; denial must come from CreateProcessAsUserW
+        // on a non-executable path (runner IPC / PR-2.13), not from logon lockout.
+        network_allowed: true,
+        mode: WindowsSandboxMode::Elevated,
+    }) {
+        Ok(plan) => plan,
+        Err(err) => {
+            return ProbeResult {
+                id,
+                pass: false,
+                detail: format!("plan error: {err:#}"),
+            };
+        }
+    };
+    match spawn_sync(&plan, None, Some(Duration::from_secs(15))) {
+        Ok(out) => ProbeResult {
+            id,
+            pass: false,
+            detail: format!(
+                "expected spawn denial, got exit={} stdout={:?}",
+                out.exit_code,
+                tail(&out.stdout, 80)
+            ),
+        },
+        Err(err) => {
+            let code = extract_spawn_denial_code(&err);
+            ProbeResult {
+                id,
+                pass: code.is_some(),
+                detail: format!("denial_code={code:?} err={err:#}"),
+            }
+        }
+    }
 }
 
 fn run_probe<F, G>(

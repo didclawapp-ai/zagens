@@ -56,6 +56,8 @@ mod ssh_config_dependencies;
 #[cfg(windows)]
 mod teardown;
 #[cfg(windows)]
+mod teardown_verify;
+#[cfg(windows)]
 mod token;
 #[cfg(windows)]
 mod unelevated;
@@ -133,7 +135,11 @@ pub use ssh_config_dependencies::filter_ssh_config_dependency_roots;
 #[cfg(windows)]
 pub use teardown::{TeardownReport, teardown_unelevated};
 #[cfg(windows)]
+pub use teardown_verify::{ElevatedTeardownResidualReport, inspect_elevated_teardown_residuals};
+#[cfg(windows)]
 pub use token::{LocalSid, create_restricted_token_with_capabilities};
+#[cfg(windows)]
+pub use wfp::zagens_wfp_namespace_present;
 #[cfg(windows)]
 pub use winutil::{resolve_sid, string_from_sid_bytes, to_wide};
 

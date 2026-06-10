@@ -990,6 +990,12 @@ const ja: TranslationMap = {
     sandboxNotEnforced: 'このプラットフォームでは Sandbox 分離はまだ強制されていません。この設定はポリシー宣言のみを制御します。',
     sandboxDegradedMode:
       'Degraded mode: このプラットフォームでは OS sandbox 分離が完全には強制されていません。sandbox_mode はポリシー宣言のみ。プラットフォーム backend 提供まで shell は通常のユーザー権限で実行されます。',
+    sandboxElevatedEnforced:
+      'Windows elevated sandbox が有効: ワークスペース書き込み分離、プロファイル読み取り分離（offline ユーザー）、ネットワーク off 時は WFP による outbound ブロック。network 有効時は online ユーザーで outbound 制限なし。',
+    sandboxUnelevatedEnforced:
+      'Windows unelevated sandbox: ワークスペース書き込み分離と best-effort ネットワーク制限。このパスではプロファイル読み取り分離はありません。',
+    sandboxSetupRequired:
+      'elevated sandbox を有効にするには `zagens sandbox setup`（管理者）を実行してください。',
     approvalPolicy: 'Approval Policy',
     approvalOnRequest: 'On Request',
     approvalUntrusted: 'Untrusted Only',

@@ -981,6 +981,12 @@ const zhHans = {
     sandboxNotEnforced: '当前平台沙箱隔离尚未完全生效；此选项控制策略声明，实际执行依赖后续版本。',
     sandboxDegradedMode:
       '降级模式：当前平台尚未强制 OS 级沙箱隔离。sandbox_mode 仅作策略声明，命令仍以普通用户权限执行，完整隔离待后续版本提供。',
+    sandboxElevatedEnforced:
+      'Windows 提升沙箱已生效：工作区写隔离、profile 读隔离（offline 用户）、禁网时 WFP 出站阻断。开启 network 时使用 online 用户，出站不受 host 级限制。',
+    sandboxUnelevatedEnforced:
+      'Windows 非提升沙箱：工作区写隔离与尽力而为的网络限制；此路径不提供 profile 读隔离。',
+    sandboxSetupRequired:
+      '请运行 `zagens sandbox setup`（需管理员）以启用提升沙箱（读隔离 + 强网络阻断）。',
     approvalPolicy: '审批策略',
     approvalOnRequest: '按需审批',
     approvalUntrusted: '仅不受信任',

@@ -202,6 +202,7 @@ fn main() {
             runtime_proxy::runtime_get_sse,
             runtime_proxy::runtime_cancel_sse,
             commands::get_platform_info,
+            commands::get_windows_sandbox_status,
             commands::get_os_theme,
             commands::get_locale,
             commands::set_app_locale,

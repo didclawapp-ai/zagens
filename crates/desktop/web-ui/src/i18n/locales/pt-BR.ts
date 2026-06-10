@@ -991,6 +991,12 @@ const ptBr: TranslationMap = {
     sandboxNotEnforced: 'O isolamento sandbox ainda não é aplicado nesta plataforma; esta configuração controla apenas a declaração de política.',
     sandboxDegradedMode:
       'Modo degradado: o isolamento sandbox do SO não é totalmente aplicado nesta plataforma. sandbox_mode declara apenas política; o shell roda com privilégios normais do usuário até os backends de plataforma estarem disponíveis.',
+    sandboxElevatedEnforced:
+      'Sandbox Windows elevated ativo: isolamento de escrita no workspace, isolamento de leitura do perfil (usuário offline) e bloqueio WFP de saída com rede desligada. Com network ligada, o usuário online tem saída irrestrita.',
+    sandboxUnelevatedEnforced:
+      'Sandbox Windows unelevated: isolamento de escrita no workspace e restrições de rede best-effort. Isolamento de leitura do perfil não está disponível neste caminho.',
+    sandboxSetupRequired:
+      'Execute `zagens sandbox setup` (Admin) para habilitar o sandbox elevated com isolamento de leitura e bloqueio forte de rede.',
     approvalPolicy: 'Política de aprovação',
     approvalOnRequest: 'Sob solicitação',
     approvalUntrusted: 'Somente não confiáveis',

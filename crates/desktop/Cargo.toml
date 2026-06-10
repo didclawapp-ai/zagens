@@ -49,6 +49,9 @@ portable-pty = "0.8"
 open = "5.3"
 tauri-plugin-updater = "2"
 
+[target.'cfg(windows)'.dependencies]
+zagens-windows-sandbox = { path = "../windows-sandbox", version = "0.7.3" }
+
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 

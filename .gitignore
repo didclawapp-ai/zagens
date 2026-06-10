@@ -84,6 +84,10 @@ project_overhaul_prompt.md
 **/session_*.json
 *.db
 
+# Windows sandbox G2 harness — local provisioned ZAGENS_HOME trees (never commit)
+.g2-home/
+.g2-teardown-home/
+
 # Companion app (tracked separately)
 apps/
 

@@ -93,6 +93,41 @@ pub struct PlatformInfo {
     pub version: String,
 }
 
+/// Windows native sandbox posture for Settings UI (Phase 3 / PR-3.4).
+#[derive(Debug, Serialize)]
+pub struct WindowsSandboxStatus {
+    pub setup_complete: bool,
+    pub enforced: bool,
+    /// `elevated` | `unelevated` | `none`
+    pub effective_mode: String,
+}
+
+#[tauri::command]
+pub fn get_windows_sandbox_status() -> Result<WindowsSandboxStatus, String> {
+    #[cfg(windows)]
+    {
+        let home = zagens_windows_sandbox::zagens_home();
+        let setup_complete = zagens_windows_sandbox::sandbox_setup_is_complete(&home);
+        let unelevated_ready = zagens_windows_sandbox::is_enforcement_available();
+        let effective_mode = if setup_complete {
+            "elevated".to_string()
+        } else if unelevated_ready {
+            "unelevated".to_string()
+        } else {
+            "none".to_string()
+        };
+        Ok(WindowsSandboxStatus {
+            setup_complete,
+            enforced: setup_complete || unelevated_ready,
+            effective_mode,
+        })
+    }
+    #[cfg(not(windows))]
+    {
+        Err("Windows sandbox status is only available on Windows".to_string())
+    }
+}
+
 #[tauri::command]
 pub async fn get_runtime_port(ctx: tauri::State<'_, AppContext>) -> Result<u16, String> {
     // Block the IPC call (not the runtime) until the supervisor publishes the real port.

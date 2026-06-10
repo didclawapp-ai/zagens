@@ -990,6 +990,12 @@ const en: TranslationMap = {
     sandboxNotEnforced: 'Sandbox isolation is not yet enforced on this platform; this setting controls policy declaration only.',
     sandboxDegradedMode:
       'Degraded mode: OS sandbox isolation is not fully enforced on this platform. sandbox_mode declares policy only; shell runs with normal user privileges until platform backends ship.',
+    sandboxElevatedEnforced:
+      'Windows elevated sandbox is active: workspace write isolation, profile read isolation (offline user), and WFP outbound block when network is off. Online network mode allows full outbound access.',
+    sandboxUnelevatedEnforced:
+      'Windows unelevated sandbox: workspace write isolation and best-effort network restrictions. Profile read isolation is not available on this path.',
+    sandboxSetupRequired:
+      'Run `zagens sandbox setup` (Admin) to enable elevated sandbox with read isolation and strong network block.',
     approvalPolicy: 'Approval Policy',
     approvalOnRequest: 'On Request',
     approvalUntrusted: 'Untrusted Only',

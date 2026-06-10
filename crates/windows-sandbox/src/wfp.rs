@@ -15,6 +15,7 @@ use windows_sys::Win32::Foundation::HANDLE;
 use windows_sys::Win32::Foundation::HLOCAL;
 use windows_sys::Win32::Foundation::LocalFree;
 use windows_sys::Win32::NetworkManagement::WindowsFilteringPlatform::FWP_ACTION_BLOCK;
+use windows_sys::Win32::NetworkManagement::WindowsFilteringPlatform::FWP_ACTION_PERMIT;
 use windows_sys::Win32::NetworkManagement::WindowsFilteringPlatform::FWP_ACTRL_MATCH_FILTER;
 use windows_sys::Win32::NetworkManagement::WindowsFilteringPlatform::FWP_BYTE_BLOB;
 use windows_sys::Win32::NetworkManagement::WindowsFilteringPlatform::FWP_CONDITION_VALUE0;
@@ -24,11 +25,17 @@ use windows_sys::Win32::NetworkManagement::WindowsFilteringPlatform::FWP_MATCH_E
 use windows_sys::Win32::NetworkManagement::WindowsFilteringPlatform::FWP_SECURITY_DESCRIPTOR_TYPE;
 use windows_sys::Win32::NetworkManagement::WindowsFilteringPlatform::FWP_UINT8;
 use windows_sys::Win32::NetworkManagement::WindowsFilteringPlatform::FWP_UINT16;
+use windows_sys::Win32::NetworkManagement::WindowsFilteringPlatform::FWP_V4_ADDR_AND_MASK;
+use windows_sys::Win32::NetworkManagement::WindowsFilteringPlatform::FWP_V4_ADDR_MASK;
+use windows_sys::Win32::NetworkManagement::WindowsFilteringPlatform::FWP_V6_ADDR_AND_MASK;
+use windows_sys::Win32::NetworkManagement::WindowsFilteringPlatform::FWP_V6_ADDR_MASK;
 use windows_sys::Win32::NetworkManagement::WindowsFilteringPlatform::FWP_VALUE0;
+use windows_sys::Win32::NetworkManagement::WindowsFilteringPlatform::FWP_VALUE0_0;
 use windows_sys::Win32::NetworkManagement::WindowsFilteringPlatform::FWPM_ACTION0;
 use windows_sys::Win32::NetworkManagement::WindowsFilteringPlatform::FWPM_ACTION0_0;
 use windows_sys::Win32::NetworkManagement::WindowsFilteringPlatform::FWPM_CONDITION_ALE_USER_ID;
 use windows_sys::Win32::NetworkManagement::WindowsFilteringPlatform::FWPM_CONDITION_IP_PROTOCOL;
+use windows_sys::Win32::NetworkManagement::WindowsFilteringPlatform::FWPM_CONDITION_IP_REMOTE_ADDRESS;
 use windows_sys::Win32::NetworkManagement::WindowsFilteringPlatform::FWPM_CONDITION_IP_REMOTE_PORT;
 use windows_sys::Win32::NetworkManagement::WindowsFilteringPlatform::FWPM_DISPLAY_DATA0;
 use windows_sys::Win32::NetworkManagement::WindowsFilteringPlatform::FWPM_FILTER_CONDITION0;
@@ -44,8 +51,10 @@ use windows_sys::Win32::NetworkManagement::WindowsFilteringPlatform::FwpmEngineC
 use windows_sys::Win32::NetworkManagement::WindowsFilteringPlatform::FwpmEngineOpen0;
 use windows_sys::Win32::NetworkManagement::WindowsFilteringPlatform::FwpmFilterAdd0;
 use windows_sys::Win32::NetworkManagement::WindowsFilteringPlatform::FwpmFilterDeleteByKey0;
+use windows_sys::Win32::NetworkManagement::WindowsFilteringPlatform::FwpmFreeMemory0;
 use windows_sys::Win32::NetworkManagement::WindowsFilteringPlatform::FwpmProviderAdd0;
 use windows_sys::Win32::NetworkManagement::WindowsFilteringPlatform::FwpmProviderDeleteByKey0;
+use windows_sys::Win32::NetworkManagement::WindowsFilteringPlatform::FwpmProviderGetByKey0;
 use windows_sys::Win32::NetworkManagement::WindowsFilteringPlatform::FwpmSubLayerAdd0;
 use windows_sys::Win32::NetworkManagement::WindowsFilteringPlatform::FwpmSubLayerDeleteByKey0;
 use windows_sys::Win32::NetworkManagement::WindowsFilteringPlatform::FwpmTransactionAbort0;
@@ -62,7 +71,19 @@ use windows_sys::core::GUID;
 
 use filter_specs::ConditionSpec;
 use filter_specs::FILTER_SPECS;
+use filter_specs::FilterAction;
 use filter_specs::FilterSpec;
+
+/// 127.0.0.0/8 — WFP v4 address conditions use host byte order.
+static LOOPBACK_V4: FWP_V4_ADDR_AND_MASK = FWP_V4_ADDR_AND_MASK {
+    addr: 0x7f00_0000,
+    mask: 0xff00_0000,
+};
+/// ::1/128.
+static LOOPBACK_V6: FWP_V6_ADDR_AND_MASK = FWP_V6_ADDR_AND_MASK {
+    addr: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+    prefixLength: 128,
+};
 
 const SESSION_NAME: &str = "Zagens Windows Sandbox WFP";
 const PROVIDER_NAME: &str = "Zagens Windows Sandbox WFP";
@@ -130,6 +151,33 @@ pub fn remove_wfp_filters() -> Result<usize> {
 
     transaction.commit()?;
     Ok(removed_filter_count)
+}
+
+/// Returns true when the persistent Zagens WFP provider is still registered.
+///
+/// Used by teardown acceptance to confirm the elevated helper removed filters,
+/// sublayer, and provider (design §8.5 step 1).
+pub fn zagens_wfp_namespace_present() -> Result<bool> {
+    let engine = Engine::open()?;
+    let mut provider: *mut FWPM_PROVIDER0 = null_mut();
+    let result = unsafe { FwpmProviderGetByKey0(engine.handle, &PROVIDER_KEY, &mut provider) };
+    match result {
+        0 => {
+            if !provider.is_null() {
+                unsafe {
+                    FwpmFreeMemory0(&mut provider as *mut *mut FWPM_PROVIDER0 as *mut *mut _);
+                }
+            }
+            Ok(true)
+        }
+        code if code == FWP_E_PROVIDER_NOT_FOUND as u32 || code == FWP_E_NOT_FOUND as u32 => {
+            Ok(false)
+        }
+        code => Err(anyhow::anyhow!(
+            "FwpmProviderGetByKey0 failed: {}",
+            format_error_code(code)
+        )),
+    }
 }
 
 /// Owns an open WFP engine handle and closes it on drop.
@@ -301,7 +349,7 @@ fn ensure_sublayer(engine: HANDLE) -> Result<()> {
     ensure_success_or(result, "FwpmSubLayerAdd0", &[FWP_E_ALREADY_EXISTS as u32])
 }
 
-/// Adds one blocking WFP filter from the static filter spec list.
+/// Adds one WFP filter (block or permit) from the static filter spec list.
 fn add_filter(
     engine: HANDLE,
     spec: &FilterSpec,
@@ -311,6 +359,17 @@ fn add_filter(
     let filter_description = to_wide(OsStr::new(spec.description));
     let mut filter_conditions = build_conditions(spec.conditions, user_condition);
     let provider_key = PROVIDER_KEY;
+    let action_type = match spec.action {
+        FilterAction::Block => FWP_ACTION_BLOCK,
+        FilterAction::Permit => FWP_ACTION_PERMIT,
+    };
+    let weight = match spec.weight {
+        Some(bucket) => FWP_VALUE0 {
+            r#type: FWP_UINT8,
+            Anonymous: FWP_VALUE0_0 { uint8: bucket },
+        },
+        None => empty_value(),
+    };
     let filter = FWPM_FILTER0 {
         filterKey: spec.key,
         displayData: FWPM_DISPLAY_DATA0 {
@@ -322,11 +381,11 @@ fn add_filter(
         providerData: empty_blob(),
         layerKey: spec.layer_key,
         subLayerKey: SUBLAYER_KEY,
-        weight: empty_value(),
+        weight,
         numFilterConditions: filter_conditions.len() as u32,
         filterCondition: filter_conditions.as_mut_ptr(),
         action: FWPM_ACTION0 {
-            r#type: FWP_ACTION_BLOCK,
+            r#type: action_type,
             Anonymous: FWPM_ACTION0_0 {
                 filterType: zero_guid(),
             },
@@ -374,6 +433,26 @@ fn build_conditions(
                 conditionValue: FWP_CONDITION_VALUE0 {
                     r#type: FWP_UINT16,
                     Anonymous: FWP_CONDITION_VALUE0_0 { uint16: *port },
+                },
+            },
+            ConditionSpec::RemoteLoopbackV4 => FWPM_FILTER_CONDITION0 {
+                fieldKey: FWPM_CONDITION_IP_REMOTE_ADDRESS,
+                matchType: FWP_MATCH_EQUAL,
+                conditionValue: FWP_CONDITION_VALUE0 {
+                    r#type: FWP_V4_ADDR_MASK,
+                    Anonymous: FWP_CONDITION_VALUE0_0 {
+                        v4AddrMask: &LOOPBACK_V4 as *const _ as *mut _,
+                    },
+                },
+            },
+            ConditionSpec::RemoteLoopbackV6 => FWPM_FILTER_CONDITION0 {
+                fieldKey: FWPM_CONDITION_IP_REMOTE_ADDRESS,
+                matchType: FWP_MATCH_EQUAL,
+                conditionValue: FWP_CONDITION_VALUE0 {
+                    r#type: FWP_V6_ADDR_MASK,
+                    Anonymous: FWP_CONDITION_VALUE0_0 {
+                        v6AddrMask: &LOOPBACK_V6 as *const _ as *mut _,
+                    },
                 },
             },
         })
