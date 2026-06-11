@@ -10,7 +10,7 @@ All notable changes to **Zagens** and its embedded runtime will be documented in
 
 **Licensing:** This repository is [MIT](LICENSE). See [NOTICE.md](NOTICE.md) for third-party attribution.
 
-**Zagens** (desktop app in `crates/desktop/`) and the runtime workspace share **`0.7.4`**. Desktop still carries an independent literal in `crates/desktop/Cargo.toml` checked by `check-versions.sh` against Tauri/npm/About. Public releases use `0.MINOR.PATCH` until **1.0.0 GA**. Display form **v** + manifest version (e.g. **v0.7.4**).
+**Zagens** (desktop app in `crates/desktop/`) and the runtime workspace share **`0.7.5`**. Desktop still carries an independent literal in `crates/desktop/Cargo.toml` checked by `check-versions.sh` against Tauri/npm/About. Public releases use `0.MINOR.PATCH` until **1.0.0 GA**. Display form **v** + manifest version (e.g. **v0.7.5**).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **CI PR-first:** Remote CI runs on pull requests and release tags only — not on merges to `master` / `main`. Local pre-push still uses `scripts/ci/ci-push-gate.sh` to skip lint for docs-only or `[skip ci]` landings.
+
+## [0.7.5] - 2026-06-11
+
+### Fixed
+
+- **CLI (Linux CI):** Gate `zagens sandbox` handlers and Windows-only config re-exports with `#[cfg(windows)]` so `zagens-cli` builds on Ubuntu with `-D warnings`.
 
 ## [0.7.4] - 2026-06-11
 
