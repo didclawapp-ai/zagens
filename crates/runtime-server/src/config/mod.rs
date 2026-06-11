@@ -43,8 +43,12 @@ mod windows_sandbox;
 pub use load::*;
 pub use providers::*;
 pub use types::*;
+#[cfg(windows)]
 pub use windows_sandbox::{
     effective_windows_sandbox_execution_label, effective_windows_sandbox_execution_mode,
-    exec_shell_sandbox_env_marker, parse_windows_sandbox_mode, resolve_windows_sandbox_mode,
-    resolve_windows_sandbox_private_desktop, windows_sandbox_configured_label,
+    exec_shell_sandbox_env_marker, windows_sandbox_configured_label,
+};
+pub use windows_sandbox::{
+    parse_windows_sandbox_mode, resolve_windows_sandbox_mode,
+    resolve_windows_sandbox_private_desktop,
 };

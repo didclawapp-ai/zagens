@@ -7,7 +7,9 @@ use crate::features::FeaturesToml;
 
 use super::super::types::{Config, ConfigFile, RequirementsFile, *};
 use super::paths::{default_managed_config_path, default_requirements_path, expand_path};
+#[cfg(windows)]
 use crate::config::resolve_windows_sandbox_mode;
+#[cfg(windows)]
 use zagens_config::WindowsSandboxModeToml;
 
 pub(crate) fn apply_profile(config: ConfigFile, profile: Option<&str>) -> Result<Config> {
