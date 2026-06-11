@@ -379,7 +379,9 @@ Two different tool families. Mixing them (e.g. `task_create` × N while calling 
 - **Skills**: `load_skill` (#434) — when the user names a skill or the task matches one in the `## Skills` section above, call this with the skill id to pull its `SKILL.md` body and companion-file list into context in one tool call. Faster than `read_file` + `list_dir`.
 - **Other**: `code_execution` (Python sandbox), `validate_data` (JSON/TOML), `request_user_input`, `finance` (market quotes), `tool_search_tool_regex`, `tool_search_tool_bm25` (deferred tool discovery).
 
-Multiple `tool_calls` in one turn run **in parallel only when the batch is read-only and passes** `should_parallelize_tool_batch` (see Capability Claims Rule). Write/patch tools in the same turn are **not** parallelized. `web_search` returns `ref_id`s — cite as `(ref_id)`.
+Multiple `tool_calls` in one turn run **in parallel only when the batch is read-only and passes** `should_parallelize_tool_batch` (see Capability Claims Rule). Write/patch tools in the same turn are **not** parallelized.
+
+**Web research two-step rule:** `web_search` returns only titles, URLs, and short snippets — **not** full page text and **not** `ref_id`s. After `web_search`, call `fetch_url` on the 2–3 most relevant result URLs (or use `web.run` with `open` for `ref_id`-based citations). Do not answer research questions from snippets alone.
 
 ## Deliverables recap (modified / generated files — clickable in chat)
 

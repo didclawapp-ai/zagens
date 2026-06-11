@@ -69,9 +69,9 @@ impl ResponseLength {
 
     pub(in crate::tools::web_run) fn view_lines(self) -> usize {
         match self {
-            Self::Short => 40,
-            Self::Medium => 80,
-            Self::Long => 160,
+            Self::Short => 60,
+            Self::Medium => 120,
+            Self::Long => 200,
         }
     }
 
@@ -85,9 +85,9 @@ impl ResponseLength {
 
     pub(in crate::tools::web_run) fn max_results(self) -> usize {
         match self {
-            Self::Short => 5,
-            Self::Medium => 8,
-            Self::Long => 10,
+            Self::Short => 6,
+            Self::Medium => 10,
+            Self::Long => 12,
         }
     }
 

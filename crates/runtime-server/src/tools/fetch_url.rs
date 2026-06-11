@@ -11,10 +11,8 @@ use super::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_u64,
 };
 use async_trait::async_trait;
-use regex::Regex;
 use serde::Serialize;
 use serde_json::{Value, json};
-use std::sync::OnceLock;
 use zagens_runtime_adapters::tools::is_http_url;
 
 const DEFAULT_MAX_BYTES: u64 = 1_000_000;
@@ -22,24 +20,6 @@ const HARD_MAX_BYTES: u64 = 10 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS: u64 = 15_000;
 const HARD_MAX_TIMEOUT_MS: u64 = 60_000;
 const USER_AGENT: &str = "Mozilla/5.0 (compatible; ds-pick-runtime/0.8)";
-
-static SCRIPT_RE: OnceLock<Regex> = OnceLock::new();
-static STYLE_RE: OnceLock<Regex> = OnceLock::new();
-static TAG_RE: OnceLock<Regex> = OnceLock::new();
-static WHITESPACE_RE: OnceLock<Regex> = OnceLock::new();
-
-fn script_re() -> &'static Regex {
-    SCRIPT_RE.get_or_init(|| Regex::new(r"(?is)<script[^>]*>.*?</script>").expect("script re"))
-}
-fn style_re() -> &'static Regex {
-    STYLE_RE.get_or_init(|| Regex::new(r"(?is)<style[^>]*>.*?</style>").expect("style re"))
-}
-fn tag_re() -> &'static Regex {
-    TAG_RE.get_or_init(|| Regex::new(r"<[^>]+>").expect("tag re"))
-}
-fn whitespace_re() -> &'static Regex {
-    WHITESPACE_RE.get_or_init(|| Regex::new(r"\s+").expect("ws re"))
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Format {
@@ -84,7 +64,7 @@ impl ToolSpec for FetchUrlTool {
     }
 
     fn description(&self) -> &'static str {
-        "Fetch a known URL directly (HTTP GET) and return its content. Use this when the user gives a URL or you already know the canonical link — it's faster and more reliable than web_search for known pages."
+        "Fetch a URL directly (HTTP GET) and return readable page content. Use after `web_search` on the 2–3 most relevant result URLs to read full text — `web_search` snippets alone are not enough for research answers. Also use when the user supplies a known link."
     }
 
     fn input_schema(&self) -> Value {
@@ -183,7 +163,7 @@ impl ToolSpec for FetchUrlTool {
             Format::Raw => body_text,
             Format::Text | Format::Markdown => {
                 if content_type.contains("text/html") || body_text.contains("<html") {
-                    html_to_text(&body_text)
+                    crate::tools::html_page_text::html_to_readable_text(&body_text)
                 } else {
                     body_text
                 }
@@ -216,32 +196,6 @@ impl ToolSpec for FetchUrlTool {
     }
 }
 
-/// Strip `<script>` / `<style>` blocks, drop remaining tags, and collapse
-/// whitespace. Good enough for "let the model read this page" — not a full
-/// HTML-to-Markdown converter.
-fn html_to_text(html: &str) -> String {
-    let no_script = script_re().replace_all(html, "");
-    let no_style = style_re().replace_all(&no_script, "");
-    let no_tags = tag_re().replace_all(&no_style, " ");
-    let decoded = decode_entities(&no_tags);
-    whitespace_re()
-        .replace_all(&decoded, " ")
-        .trim()
-        .to_string()
-}
-
-/// Decode the handful of HTML entities we expect to hit in stripped text.
-/// Pulling in `html-escape` for the long tail isn't worth the dep weight.
-fn decode_entities(s: &str) -> String {
-    s.replace("&amp;", "&")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&#39;", "'")
-        .replace("&apos;", "'")
-        .replace("&nbsp;", " ")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -250,27 +204,6 @@ mod tests {
 
     fn ctx() -> ToolContext {
         ToolContext::new(PathBuf::from("."))
-    }
-
-    #[test]
-    fn html_to_text_strips_scripts_styles_and_tags() {
-        let html = r#"
-            <html>
-              <head>
-                <style>body { color: red; }</style>
-                <script>alert("nope");</script>
-              </head>
-              <body>
-                <h1>Hello &amp; welcome</h1>
-                <p>This is <b>important</b>.</p>
-              </body>
-            </html>
-        "#;
-        let text = html_to_text(html);
-        assert!(text.contains("Hello & welcome"));
-        assert!(text.contains("This is important"));
-        assert!(!text.contains("alert"));
-        assert!(!text.contains("color: red"));
     }
 
     #[test]

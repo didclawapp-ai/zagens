@@ -1257,6 +1257,9 @@ const ja: TranslationMap = {
     attachTitleImageBridged: ' · vision bridge 済み',
     attachTitleNotEmbedded: ' · テキストとして埋め込みなし',
     attachTitleTruncated: ' · 128 KB に切り詰め（送信時）',
+    urlHeader: '[参照リンク]（本文が必要なら fetch_url を使用）',
+    displayUrl: '（Web リンク）',
+    attachTitleUrl: ' · Web リンク',
   },
   chat: {
     editTitle: '最後のメッセージを編集',

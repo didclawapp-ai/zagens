@@ -5,30 +5,22 @@ description: "Multi search engine integration with 16 engines (7 CN + 9 Global).
 
 # Multi Search Engine
 
-Integration of 16 search engines for web crawling without API keys.
+Integration of 16 search engines for web research without API keys. Uses Zagens `fetch_url` (not `web_fetch`).
 
 ## Workflow
 
-1. **Preparation**: AI Agent initializes an empty in-memory cookie store. Cookies are only acquired dynamically during search operations when access is denied
+1. **Prefer structured tools first**: Use `web_search` (or `web.run` with `search_query`) when a single backend is enough. Load this skill when you need multi-engine coverage or CN-specific sources (Baidu, Sogou WeChat, etc.).
 
-2. **Language Evaluation**: Detect the language attribute of the search query. If the query is in Chinese, use Domestic search engines (Baidu, Bing CN, Bing INT, 360, Sogou, WeChat, Shenma). If the query is non-Chinese, use International search engines (Google, Google HK, DuckDuckGo, Yahoo, Startpage, Brave, Ecosia, Qwant, WolframAlpha). Select engines based on query relevance and availability.
+2. **Language routing**: Chinese queries → domestic engines (Baidu, Bing CN/INT, 360, Sogou, WeChat, Shenma). Non-Chinese → international engines (Google, DDG, Brave, Startpage, …). Pick 2–3 engines per task, not all 16.
 
-3. **Controlled Search**: Use web_fetch to execute search requests with rate limiting:
-   - Add 1-2 second delay between requests to respect server load
-   - Batch requests in groups of 3-4 engines with sequential execution between batches
-   - Include standard browser headers to identify as legitimate user agent
-   - If access is denied (403/429), fetch engine homepage to obtain fresh session cookies
+3. **Controlled search**: Call `fetch_url` on engine search URLs with rate limiting:
+   - 1–2 second gap between requests
+   - Batch 2–3 engines per round
+   - On 403/429, try `cn.bing.com` or another engine instead of retry loops
 
-4. **Cookie Management**: 
-   - Cookies are stored ONLY in memory during runtime
-   - Cookies are acquired on-demand when search requests fail
-   - No cookies are read from or written to config.json or any file
-   - Cookies are cleared after search session completes
-   - Only session cookies from search engine domains are captured
+4. **Mandatory second hop**: Search result pages are HTML noise — **always** `fetch_url` the 2–3 most relevant result URLs from any engine before writing conclusions. Snippets alone are not evidence.
 
-5. **Retry Mechanism**: If a search fails due to cookie/session issues, retry once with freshly acquired cookies after a 2-second delay
-
-6. **Result Aggregation**: Consolidate successful results from search engines, organize and summarize them to output a core search report
+5. **Result aggregation**: Merge titles/URLs across engines, dedupe, then fetch top pages for full text.
 
 ## Search Engines
 
@@ -54,28 +46,14 @@ Integration of 16 search engines for web crawling without API keys.
 
 ## Quick Examples
 
-```javascript
-// Basic search
-web_fetch({"url": "https://www.google.com/search?q=python+tutorial"})
-
-// Site-specific
-web_fetch({"url": "https://www.google.com/search?q=site:github.com+react"})
-
-// File type
-web_fetch({"url": "https://www.google.com/search?q=machine+learning+filetype:pdf"})
-
-// Time filter (past week)
-web_fetch({"url": "https://www.google.com/search?q=ai+news&tbs=qdr:w"})
-
-// Privacy search
-web_fetch({"url": "https://duckduckgo.com/html/?q=privacy+tools"})
-
-// DuckDuckGo Bangs
-web_fetch({"url": "https://duckduckgo.com/html/?q=!gh+tensorflow"})
-
-// Knowledge calculation
-web_fetch({"url": "https://www.wolframalpha.com/input?i=100+USD+to+CNY"})
+```json
+{"url": "https://cn.bing.com/search?q=python+tutorial&ensearch=0"}
+{"url": "https://www.baidu.com/s?wd=竞品分析"}
+{"url": "https://wx.sogou.com/weixin?type=2&query=机器之心"}
+{"url": "https://duckduckgo.com/html/?q=privacy+tools"}
 ```
+
+Use the `fetch_url` tool with each URL. After identifying result links, fetch those pages too.
 
 ## Advanced Operators
 
@@ -87,7 +65,7 @@ web_fetch({"url": "https://www.wolframalpha.com/input?i=100+USD+to+CNY"})
 | `-` | `python -snake` | Exclude term |
 | `OR` | `cat OR dog` | Either term |
 
-## Time Filters
+## Time Filters (Google-style)
 
 | Parameter | Description |
 |-----------|-------------|
@@ -97,58 +75,17 @@ web_fetch({"url": "https://www.wolframalpha.com/input?i=100+USD+to+CNY"})
 | `tbs=qdr:m` | Past month |
 | `tbs=qdr:y` | Past year |
 
-## Privacy Engines
-
-- **DuckDuckGo**: No tracking
-- **Startpage**: Google results + privacy
-- **Brave**: Independent index
-- **Qwant**: EU GDPR compliant
-
-## Bangs Shortcuts (DuckDuckGo)
-
-| Bang | Destination |
-|------|-------------|
-| `!g` | Google |
-| `!gh` | GitHub |
-| `!so` | Stack Overflow |
-| `!w` | Wikipedia |
-| `!yt` | YouTube |
-
-## WolframAlpha Queries
-
-- Math: `integrate x^2 dx`
-- Conversion: `100 USD to CNY`
-- Stocks: `AAPL stock`
-- Weather: `weather in Beijing`
-
 ## Documentation
 
 - `references/advanced-search.md` - Domestic search guide
 - `references/international-search.md` - International search guide
-- `CHANGELOG.md` - Version history
+
+## Limitations (Zagens runtime)
+
+- `fetch_url` is stateless — no cookie jar between calls; Baidu/Google may return 403 or captcha pages.
+- Prefer `cn.bing.com` and Sogou when domestic engines block.
+- Configure `[search] provider = "metaso"` in config.toml for a more reliable default `web_search` backend.
 
 ## License
 
 MIT
-
-## Security & Privacy Notice
-
-### Cookie Handling
-- **Purpose**: Cookies are used ONLY to maintain search session state when access is denied (403/429 errors)
-- **Storage**: Cookies are kept STRICTLY in memory during runtime - NEVER persisted to disk or config files
-- **Acquisition**: Cookies are acquired on-demand from search engine homepages only when search requests fail
-- **Scope**: Only session cookies from the specific search engine domain are captured
-- **Lifecycle**: Cookies are cleared immediately after the search session completes
-- **No Pre-configuration**: No cookies are loaded from config.json or any external file at startup
-- **No API Keys**: This tool uses standard web search URLs, no authentication required
-
-### Crawling Ethics
-- **Rate Limiting**: Implement reasonable delays between requests (recommend 1-2 seconds)
-- **Respect robots.txt**: Honor search engine crawling policies
-- **Terms of Service**: Users are responsible for complying with search engine ToS
-- **Purpose**: Designed for legitimate search aggregation, not mass data scraping
-
-### Data Handling
-- **No Personal Data**: Tool does not collect or transmit user personal information
-- **Local Execution**: All operations run locally, no external data transmission
-- **Session Isolation**: Cookies are session-specific and cleared after use

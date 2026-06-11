@@ -1258,6 +1258,9 @@ const ptBr: TranslationMap = {
     attachTitleImageBridged: ' · vision bridge aplicado',
     attachTitleNotEmbedded: ' · não embutido como texto',
     attachTitleTruncated: ' · truncado para 128 KB (ao enviar)',
+    urlHeader: '[URLs de referência] (use fetch_url quando precisar do conteúdo)',
+    displayUrl: ' (link web)',
+    attachTitleUrl: ' · link web',
   },
   chat: {
     editTitle: 'Editar última mensagem',

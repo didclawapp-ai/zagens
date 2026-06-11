@@ -11,6 +11,7 @@
     "test:f3": "tsx src/lib/a11y/rovingTabList.selfcheck.ts",
     "test:i18n-locale": "tsx src/i18n/localeDetect.selfcheck.ts",
     "test:chat-format": "tsx src/lib/chat/formatAssistantContent.selfcheck.ts && tsx src/lib/chat/summarizeToolCalls.selfcheck.ts",
+    "test:composer-url": "tsx src/lib/composerUrlAttachment.selfcheck.ts",
     "build:analyze": "tsc -b && vite build --mode analyze",
     "preview": "vite preview"
   },

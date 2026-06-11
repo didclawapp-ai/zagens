@@ -5,9 +5,12 @@ use super::html::{
     is_duckduckgo_challenge, parse_bing_results, parse_duckduckgo_results, url_encode,
 };
 use super::types::{ImageResultEntry, SearchEntry, WebLink, WebPage};
+use crate::config::SearchProvider;
 use crate::network_policy::NetworkPolicyDecider;
-use crate::tools::spec::{ToolContext, ToolError};
+use crate::tools::spec::{ToolContext, ToolError, ToolSpec};
+use crate::tools::web_search::WebSearchTool;
 use serde::Deserialize;
+use serde_json::json;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 use zagens_runtime_adapters::tools::check_host_policy;
@@ -21,6 +24,78 @@ fn check_policy(decider: Option<&NetworkPolicyDecider>, host: &str) -> Result<()
         .map_err(|e| ToolError::permission_denied(e.denial_message()))
 }
 
+fn domain_filter(
+    mut results: Vec<SearchEntry>,
+    domains: &[String],
+) -> (Vec<SearchEntry>, Option<String>) {
+    if domains.is_empty() {
+        return (results, None);
+    }
+    let before = results.len();
+    results.retain(|entry| domain_matches(&entry.url, domains));
+    let warning =
+        (before != results.len()).then(|| "Filtered search results by domain list".to_string());
+    (results, warning)
+}
+
+async fn run_search_via_configured_provider(
+    query: &str,
+    max_results: usize,
+    timeout_ms: u64,
+    domains: &[String],
+    context: &ToolContext,
+) -> Result<(Vec<SearchEntry>, String, Option<String>), ToolError> {
+    let tool = WebSearchTool;
+    let input = json!({
+        "query": query,
+        "max_results": max_results,
+        "timeout_ms": timeout_ms,
+    });
+    let result = tool.execute(input, context).await?;
+    if !result.success {
+        return Err(ToolError::execution_failed(result.content));
+    }
+    let parsed: serde_json::Value = serde_json::from_str(&result.content).map_err(|e| {
+        ToolError::execution_failed(format!("Failed to parse web_search response: {e}"))
+    })?;
+    let source = parsed
+        .get("source")
+        .and_then(|v| v.as_str())
+        .unwrap_or("web_search")
+        .to_string();
+    let results: Vec<SearchEntry> = parsed
+        .get("results")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|item| {
+                    Some(SearchEntry {
+                        title: item.get("title")?.as_str()?.to_string(),
+                        url: item.get("url")?.as_str()?.to_string(),
+                        snippet: item
+                            .get("snippet")
+                            .and_then(|s| s.as_str())
+                            .map(|s| s.to_string()),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let (results, domain_warning) = domain_filter(results, domains);
+    let message_warning = parsed
+        .get("message")
+        .and_then(|v| v.as_str())
+        .filter(|m| !m.is_empty() && !m.starts_with("Found "))
+        .map(|s| s.to_string());
+    let warning = match (domain_warning, message_warning) {
+        (Some(d), Some(m)) => Some(format!("{d}; {m}")),
+        (Some(d), None) => Some(d),
+        (None, Some(m)) => Some(m),
+        (None, None) => None,
+    };
+    Ok((results, source, warning))
+}
+
 pub(in crate::tools::web_run) async fn run_search(
     query: &str,
     max_results: usize,
@@ -28,6 +103,20 @@ pub(in crate::tools::web_run) async fn run_search(
     domains: &[String],
     context: &ToolContext,
 ) -> Result<(Vec<SearchEntry>, String, Option<String>), ToolError> {
+    if !matches!(
+        context.search_provider,
+        SearchProvider::DuckDuckGo | SearchProvider::Bing
+    ) {
+        return run_search_via_configured_provider(
+            query,
+            max_results,
+            timeout_ms,
+            domains,
+            context,
+        )
+        .await;
+    }
+
     let decider = context.network_policy.as_ref();
     check_policy(decider, DUCKDUCKGO_HOST)?;
     crate::tools::ssrf::ensure_not_cancelled(context.cancel_token.as_ref())?;
@@ -167,13 +256,11 @@ pub(in crate::tools::web_run) async fn run_search(
         }
     }
 
-    if !domains.is_empty() {
-        let before = results.len();
-        results.retain(|entry| domain_matches(&entry.url, domains));
-        if before != results.len() {
-            warnings.push("Filtered search results by domain list".to_string());
-        }
+    let (filtered, domain_warning) = domain_filter(results, domains);
+    if let Some(w) = domain_warning {
+        warnings.push(w);
     }
+    results = filtered;
 
     Ok((
         results,

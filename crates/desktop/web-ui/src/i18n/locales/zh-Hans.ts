@@ -1241,6 +1241,9 @@ const zhHans = {
     attachTitleImageBridged: ' · 发送前经视觉桥接',
     attachTitleNotEmbedded: ' · 不按文本嵌入',
     attachTitleTruncated: ' · 已截断至 128 KB（发送模型时）',
+    urlHeader: '[参考链接]（需要正文时请用 fetch_url）',
+    displayUrl: '（网页链接）',
+    attachTitleUrl: ' · 网页链接',
   },
   chat: {
     editTitle: '编辑上一条消息',

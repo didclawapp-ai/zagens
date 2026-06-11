@@ -21,7 +21,8 @@ impl ToolSpec for WebRunTool {
     }
 
     fn description(&self) -> &'static str {
-        "Browse the web (search/open/click/find/screenshot/image_query) and return structured results with ref_ids for citations."
+        "Browse the web (search/open/click/find/screenshot/image_query) and return structured results with ref_ids for citations. \
+        Use `open` after `search_query` to read full page text — search snippets alone are not enough for research answers."
     }
 
     fn input_schema(&self) -> Value {

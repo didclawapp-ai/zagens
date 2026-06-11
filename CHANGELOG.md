@@ -22,10 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Web tools (research quality):** `web_search` default/max results 8/15; Tavily `search_depth: advanced`; `fetch_url` uses block-aware HTML extraction; `web.run` shows more lines per `open`, honors `[search] provider` for `search_query` (metaso/tavily/etc.), and tool/prompt text enforces search-then-`fetch_url` two-step. Bundled `multi-search-engine` skill aligned to `fetch_url`.
 - **CI PR-first:** Remote CI runs on pull requests and release tags only — not on merges to `master` / `main`. Local pre-push still uses `scripts/ci/ci-push-gate.sh` to skip lint for docs-only or `[skip ci]` landings.
 
 ### Added
 
+- **Desktop (Composer):** Pasting a lone http(s) URL (including GitHub rich-link copies) adds a Cursor-style link chip above the input instead of dumping page title text; referenced URLs are sent to the model with a `fetch_url` hint.
 - **Desktop (preview):** Markdown file preview renders embedded ` ```mermaid ` ` fences inline (same engine as the Mermaid panel).
 
 ### Fixed

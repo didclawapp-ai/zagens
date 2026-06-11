@@ -113,8 +113,8 @@ fn get_bearer_token_re() -> &'static Regex {
     })
 }
 
-const DEFAULT_MAX_RESULTS: usize = 5;
-const MAX_RESULTS: usize = 10;
+const DEFAULT_MAX_RESULTS: usize = 8;
+const MAX_RESULTS: usize = 15;
 const DEFAULT_TIMEOUT_MS: u64 = 15_000;
 const USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15";
 
@@ -143,11 +143,11 @@ impl ToolSpec for WebSearchTool {
     }
 
     fn description(&self) -> &'static str {
-        "Search the web and return ranked results with URLs and snippets. \
+        "Search the web and return ranked results with URLs and short snippets only — not full page text. \
+        After searching, call `fetch_url` on the 2–3 most relevant URLs before answering research questions. \
         Default backend is DuckDuckGo with Bing fallback; set \
         `[search] provider = \"bing\" | \"tavily\" | \"bocha\" | \"metaso\" | \"baidu\" | \"volcengine\"` \
-        in config.toml to switch backends. Use this instead of scraping search engines with \
-        `curl` in `exec_shell`. For a known canonical URL, prefer `fetch_url` directly."
+        in config.toml to switch backends. For a known canonical URL, use `fetch_url` directly."
     }
 
     fn input_schema(&self) -> Value {
@@ -176,7 +176,7 @@ impl ToolSpec for WebSearchTool {
                 },
                 "max_results": {
                     "type": "integer",
-                    "description": "Maximum number of results to return (default: 5, max: 10)"
+                    "description": "Maximum number of results to return (default: 8, max: 15)"
                 },
                 "timeout_ms": {
                     "type": "integer",
@@ -488,7 +488,7 @@ impl WebSearchTool {
         let payload = json!({
             "api_key": api_key,
             "query": query,
-            "search_depth": "basic",
+            "search_depth": "advanced",
             "max_results": max_results,
         });
 

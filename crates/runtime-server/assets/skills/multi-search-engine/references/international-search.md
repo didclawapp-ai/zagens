@@ -62,34 +62,34 @@
 
 ```javascript
 // 1. 搜索GitHub上的Python机器学习项目
-web_fetch({"url": "https://www.google.com/search?q=site:github.com+python+machine+learning"})
+fetch_url({"url": "https://www.google.com/search?q=site:github.com+python+machine+learning"})
 
 // 2. 搜索2024年的PDF格式机器学习教程
-web_fetch({"url": "https://www.google.com/search?q=machine+learning+tutorial+filetype:pdf&tbs=cdr:1,cd_min:1/1/2024"})
+fetch_url({"url": "https://www.google.com/search?q=machine+learning+tutorial+filetype:pdf&tbs=cdr:1,cd_min:1/1/2024"})
 
 // 3. 搜索标题包含"tutorial"的Python相关页面
-web_fetch({"url": "https://www.google.com/search?q=intitle:tutorial+python"})
+fetch_url({"url": "https://www.google.com/search?q=intitle:tutorial+python"})
 
 // 4. 搜索过去一周的新闻
-web_fetch({"url": "https://www.google.com/search?q=AI+breakthrough&tbs=qdr:w&tbm=nws"})
+fetch_url({"url": "https://www.google.com/search?q=AI+breakthrough&tbs=qdr:w&tbm=nws"})
 
 // 5. 搜索中文内容（界面英文，结果中文）
-web_fetch({"url": "https://www.google.com/search?q=人工智能&lr=lang_zh-CN&hl=en"})
+fetch_url({"url": "https://www.google.com/search?q=人工智能&lr=lang_zh-CN&hl=en"})
 
 // 6. 搜索特定价格范围的笔记本电脑
-web_fetch({"url": "https://www.google.com/search?q=laptop+%241000..%242000+best+rating"})
+fetch_url({"url": "https://www.google.com/search?q=laptop+%241000..%242000+best+rating"})
 
 // 7. 搜索排除Wikipedia的结果
-web_fetch({"url": "https://www.google.com/search?q=python+programming+-wikipedia"})
+fetch_url({"url": "https://www.google.com/search?q=python+programming+-wikipedia"})
 
 // 8. 搜索学术文献
-web_fetch({"url": "https://scholar.google.com/scholar?q=deep+learning+optimization"})
+fetch_url({"url": "https://scholar.google.com/scholar?q=deep+learning+optimization"})
 
 // 9. 搜索缓存页面（查看已删除内容）
-web_fetch({"url": "https://webcache.googleusercontent.com/search?q=cache:example.com"})
+fetch_url({"url": "https://webcache.googleusercontent.com/search?q=cache:example.com"})
 
 // 10. 搜索相关网站
-web_fetch({"url": "https://www.google.com/search?q=related:stackoverflow.com"})
+fetch_url({"url": "https://www.google.com/search?q=related:stackoverflow.com"})
 ```
 
 ---
@@ -173,34 +173,34 @@ web_fetch({"url": "https://www.google.com/search?q=related:stackoverflow.com"})
 
 ```javascript
 // 1. 使用Bang跳转到Google搜索
-web_fetch({"url": "https://duckduckgo.com/html/?q=!g+machine+learning"})
+fetch_url({"url": "https://duckduckgo.com/html/?q=!g+machine+learning"})
 
 // 2. 直接搜索GitHub上的项目
-web_fetch({"url": "https://duckduckgo.com/html/?q=!gh+react"})
+fetch_url({"url": "https://duckduckgo.com/html/?q=!gh+react"})
 
 // 3. 查找Stack Overflow答案
-web_fetch({"url": "https://duckduckgo.com/html/?q=!so+python+list+comprehension"})
+fetch_url({"url": "https://duckduckgo.com/html/?q=!so+python+list+comprehension"})
 
 // 4. 生成密码
-web_fetch({"url": "https://duckduckgo.com/?q=password+16"})
+fetch_url({"url": "https://duckduckgo.com/?q=password+16"})
 
 // 5. Base64编码
-web_fetch({"url": "https://duckduckgo.com/?q=base64+hello+world"})
+fetch_url({"url": "https://duckduckgo.com/?q=base64+hello+world"})
 
 // 6. 颜色代码转换
-web_fetch({"url": "https://duckduckgo.com/?q=%23FF5733"})
+fetch_url({"url": "https://duckduckgo.com/?q=%23FF5733"})
 
 // 7. 搜索YouTube视频
-web_fetch({"url": "https://duckduckgo.com/html/?q=!yt+python+tutorial"})
+fetch_url({"url": "https://duckduckgo.com/html/?q=!yt+python+tutorial"})
 
 // 8. 查看Wikipedia
-web_fetch({"url": "https://duckduckgo.com/html/?q=!w+artificial+intelligence"})
+fetch_url({"url": "https://duckduckgo.com/html/?q=!w+artificial+intelligence"})
 
 // 9. 亚马逊商品搜索
-web_fetch({"url": "https://duckduckgo.com/html/?q=!a+laptop"})
+fetch_url({"url": "https://duckduckgo.com/html/?q=!a+laptop"})
 
 // 10. 生成二维码
-web_fetch({"url": "https://duckduckgo.com/?q=qr+https://github.com"})
+fetch_url({"url": "https://duckduckgo.com/?q=qr+https://github.com"})
 ```
 
 ---
@@ -244,19 +244,19 @@ $boost,site=docs.python.org  // 提升Python文档
 
 ```javascript
 // 1. 本周科技新闻
-web_fetch({"url": "https://search.brave.com/search?q=technology&tf=pw&source=news"})
+fetch_url({"url": "https://search.brave.com/search?q=technology&tf=pw&source=news"})
 
 // 2. 本月AI发展
-web_fetch({"url": "https://search.brave.com/search?q=artificial+intelligence&tf=pm"})
+fetch_url({"url": "https://search.brave.com/search?q=artificial+intelligence&tf=pm"})
 
 // 3. 图片搜索
-web_fetch({"url": "https://search.brave.com/search?q=machine+learning&source=images"})
+fetch_url({"url": "https://search.brave.com/search?q=machine+learning&source=images"})
 
 // 4. 视频教程
-web_fetch({"url": "https://search.brave.com/search?q=python+tutorial&source=videos"})
+fetch_url({"url": "https://search.brave.com/search?q=python+tutorial&source=videos"})
 
 // 5. 使用独立索引搜索
-web_fetch({"url": "https://search.brave.com/search?q=privacy+tools"})
+fetch_url({"url": "https://search.brave.com/search?q=privacy+tools"})
 ```
 
 ---
@@ -285,34 +285,34 @@ web_fetch({"url": "https://search.brave.com/search?q=privacy+tools"})
 
 ```javascript
 // 1. 计算积分
-web_fetch({"url": "https://www.wolframalpha.com/input?i=integrate+sin%28x%29+from+0+to+pi"})
+fetch_url({"url": "https://www.wolframalpha.com/input?i=integrate+sin%28x%29+from+0+to+pi"})
 
 // 2. 解方程
-web_fetch({"url": "https://www.wolframalpha.com/input?i=solve+x%5E2-5x%2B6%3D0"})
+fetch_url({"url": "https://www.wolframalpha.com/input?i=solve+x%5E2-5x%2B6%3D0"})
 
 // 3. 货币实时汇率
-web_fetch({"url": "https://www.wolframalpha.com/input?i=100+USD+to+CNY"})
+fetch_url({"url": "https://www.wolframalpha.com/input?i=100+USD+to+CNY"})
 
 // 4. 股票实时数据
-web_fetch({"url": "https://www.wolframalpha.com/input?i=Apple+stock+price"})
+fetch_url({"url": "https://www.wolframalpha.com/input?i=Apple+stock+price"})
 
 // 5. 城市天气
-web_fetch({"url": "https://www.wolframalpha.com/input?i=weather+in+Shanghai+tomorrow"})
+fetch_url({"url": "https://www.wolframalpha.com/input?i=weather+in+Shanghai+tomorrow"})
 
 // 6. 国家统计信息
-web_fetch({"url": "https://www.wolframalpha.com/input?i=GDP+of+China+vs+USA"})
+fetch_url({"url": "https://www.wolframalpha.com/input?i=GDP+of+China+vs+USA"})
 
 // 7. 化学计算
-web_fetch({"url": "https://www.wolframalpha.com/input?i=molar+mass+of+H2SO4"})
+fetch_url({"url": "https://www.wolframalpha.com/input?i=molar+mass+of+H2SO4"})
 
 // 8. 物理常数
-web_fetch({"url": "https://www.wolframalpha.com/input?i=speed+of+light"})
+fetch_url({"url": "https://www.wolframalpha.com/input?i=speed+of+light"})
 
 // 9. 营养信息
-web_fetch({"url": "https://www.wolframalpha.com/input?i=calories+in+banana"})
+fetch_url({"url": "https://www.wolframalpha.com/input?i=calories+in+banana"})
 
 // 10. 历史日期
-web_fetch({"url": "https://www.wolframalpha.com/input?i=events+on+July+20+1969"})
+fetch_url({"url": "https://www.wolframalpha.com/input?i=events+on+July+20+1969"})
 ```
 
 ---
@@ -347,16 +347,16 @@ web_fetch({"url": "https://www.wolframalpha.com/input?i=events+on+July+20+1969"}
 
 ```javascript
 // 1. 隐私搜索
-web_fetch({"url": "https://www.startpage.com/sp/search?query=privacy+tools"})
+fetch_url({"url": "https://www.startpage.com/sp/search?query=privacy+tools"})
 
 // 2. 图片隐私搜索
-web_fetch({"url": "https://www.startpage.com/sp/search?query=nature&cat=images"})
+fetch_url({"url": "https://www.startpage.com/sp/search?query=nature&cat=images"})
 
 // 3. 本周新闻（隐私模式）
-web_fetch({"url": "https://www.startpage.com/sp/search?query=tech+news&time=week&cat=news"})
+fetch_url({"url": "https://www.startpage.com/sp/search?query=tech+news&time=week&cat=news"})
 
 // 4. 英文结果搜索
-web_fetch({"url": "https://www.startpage.com/sp/search?query=machine+learning&language=english"})
+fetch_url({"url": "https://www.startpage.com/sp/search?query=machine+learning&language=english"})
 ```
 
 ---
@@ -366,19 +366,19 @@ web_fetch({"url": "https://www.startpage.com/sp/search?query=machine+learning&la
 ### Yahoo
 
 ```javascript
-web_fetch({"url": "https://search.yahoo.com/search?p={keyword}"})
+fetch_url({"url": "https://search.yahoo.com/search?p={keyword}"})
 ```
 
 ### Ecosia（环保搜索）
 
 ```javascript
-web_fetch({"url": "https://www.ecosia.org/search?q={keyword}"})
+fetch_url({"url": "https://www.ecosia.org/search?q={keyword}"})
 ```
 
 ### Qwant（欧盟隐私搜索）
 
 ```javascript
-web_fetch({"url": "https://www.qwant.com/?q={keyword}"})
+fetch_url({"url": "https://www.qwant.com/?q={keyword}"})
 ```
 
 ---

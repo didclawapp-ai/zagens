@@ -39,7 +39,9 @@ Model notes: DeepSeek V4 models emit *thinking tokens* (`ContentBlock::Thinking`
 - **Recursive LM (long inputs / parallel reasoning)**: `rlm` — load a file/string as `context` in a Python REPL, sub-agent writes Python that calls `llm_query`/`llm_query_batched`/`rlm_query` to chunk, compare, critique, and synthesize; returns the synthesized answer. Read-only.
 - **Other**: `code_execution` (Python sandbox), `validate_data` (JSON/TOML), `request_user_input`, `finance` (market quotes), `tool_search_tool_regex`, `tool_search_tool_bm25` (deferred tool discovery).
 
-Multiple `tool_calls` in one turn run in parallel. `web_search` returns `ref_id`s — cite as `(ref_id)`.
+Multiple `tool_calls` in one turn run in parallel.
+
+Web research two-step rule: `web_search` returns only titles, URLs, and short snippets — not full page text and not `ref_id`s. After `web_search`, call `fetch_url` on the 2–3 most relevant URLs (or use `web.run` with `open` for `ref_id` citations). Do not answer research questions from snippets alone.
 
 ## Output formatting
 

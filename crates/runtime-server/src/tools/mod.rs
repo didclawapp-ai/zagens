@@ -19,6 +19,7 @@ pub mod git_history;
 pub mod github;
 pub mod glob_files;
 pub mod host_impl;
+pub(crate) mod html_page_text;
 pub mod large_output_router;
 pub mod office_common;
 pub mod office_payload;

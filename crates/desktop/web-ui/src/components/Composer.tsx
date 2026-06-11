@@ -31,6 +31,10 @@ import LhtModeToggle from './LhtModeToggle';
 import { ComposerContextMeter } from './composer/ComposerContextMeter';
 import { IconArrowUp, IconBolt } from './icons/FlatIcons';
 import { clipboardHtmlToPlainText } from '../lib/sanitizeHtml';
+import {
+  extractPastedUrl,
+  urlAttachmentFromPaste,
+} from '../lib/composerUrlAttachment';
 import { composerAutoApproveToggleEnabled, approvalPolicySettingsKey } from '../lib/approvalPolicy';
 import { toast } from '../lib/toast';
 
@@ -84,9 +88,11 @@ interface AttachedFile {
   inlined: boolean;
   omitReason?: string;
   /** Image attachments: transcribed via vision bridge before sending to the main model. */
-  kind?: 'text' | 'image';
+  kind?: 'text' | 'image' | 'url';
   /** data:image/...;base64,... when `kind === 'image'` and within size limits. */
   imageDataUrl?: string;
+  /** Canonical http(s) URL when `kind === 'url'`. */
+  url?: string;
 }
 
 function shortenPath(p: string, currentDirLabel: string): string {
@@ -325,7 +331,8 @@ function toCdata(payload: string): string {
 /** Model-facing prompt: user text + note for omitted files + inlined XML excerpts. */
 function buildApiPrompt(userText: string, files: AttachedFile[], t: TranslateFn): string {
   const trimmedUser = userText.trim();
-  const fileStack = files.filter((f) => f.kind !== 'image');
+  const urlAtts = files.filter((f): f is AttachedFile & { kind: 'url'; url: string } => f.kind === 'url' && Boolean(f.url));
+  const fileStack = files.filter((f) => f.kind !== 'image' && f.kind !== 'url');
   const inlined = fileStack.filter((f) => f.inlined);
   const omitted = fileStack.filter((f) => !f.inlined);
 
@@ -333,6 +340,11 @@ function buildApiPrompt(userText: string, files: AttachedFile[], t: TranslateFn)
 
   if (trimmedUser) {
     parts.push(trimmedUser);
+  }
+
+  if (urlAtts.length > 0) {
+    const lines = urlAtts.map((f) => `- ${f.url}`);
+    parts.push([t('composerAttachment.urlHeader'), ...lines].join('\n'));
   }
 
   if (omitted.length > 0) {
@@ -377,6 +389,9 @@ function buildDisplayContent(userText: string, files: AttachedFile[], t: Transla
   if (files.length > 0) {
     const attLines = files.map((f) => {
       const sz = formatSize(f.size);
+      if (f.kind === 'url') {
+        return `• ${f.name}${t('composerAttachment.displayUrl')}`;
+      }
       if (f.kind === 'image') {
         if (f.imageDataUrl) {
           return `• ${f.name} · ${sz}${t('composerAttachment.displayImageBridged')}`;
@@ -781,7 +796,16 @@ export default function Composer({
       return;
     }
 
-    const html = e.clipboardData.getData('text/html');
+    const plain = cd.getData('text/plain');
+    const html = cd.getData('text/html');
+    const pastedUrl = extractPastedUrl(plain, html);
+    if (pastedUrl) {
+      e.preventDefault();
+      toast.dismissByTag(COMPOSER_ERROR_TAG);
+      addUrlAttachment(pastedUrl);
+      return;
+    }
+
     if (html) {
       e.preventDefault();
 
@@ -940,6 +964,15 @@ export default function Composer({
     setAttachments((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
+  const addUrlAttachment = useCallback((rawUrl: string) => {
+    const att = urlAttachmentFromPaste(rawUrl);
+    setAttachments((prev) => {
+      if (prev.length >= MAX_ATTACHMENTS) return prev;
+      if (prev.some((a) => a.kind === 'url' && a.url === att.url)) return prev;
+      return [...prev, att];
+    });
+  }, []);
+
   const workspacePopover =
     workspaceOpen &&
     typeof document !== 'undefined' &&
@@ -1060,8 +1093,16 @@ export default function Composer({
               {attachments.map((f, i) => (
                 <span
                   key={`${f.name}-${i}`}
-                  className="inline-flex items-center gap-1 rounded-md border border-card-border bg-canvas-alt px-2 py-1 text-[11px] text-t-text-secondary"
-                  title={`${f.name} · ${formatSize(f.size)}${f.kind === 'image' ? t('composerAttachment.attachTitleImageBridged') : ''}${!f.inlined && f.kind !== 'image' ? t('composerAttachment.attachTitleNotEmbedded') : ''}${f.truncated ? t('composerAttachment.attachTitleTruncated') : ''}${f.omitReason ? `\n${f.omitReason}` : ''}`}
+                  className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] ${
+                    f.kind === 'url'
+                      ? 'border-accent/30 bg-accent/10 text-accent'
+                      : 'border-card-border bg-canvas-alt text-t-text-secondary'
+                  }`}
+                  title={
+                    f.kind === 'url'
+                      ? `${f.url ?? f.name}${t('composerAttachment.attachTitleUrl')}`
+                      : `${f.name} · ${formatSize(f.size)}${f.kind === 'image' ? t('composerAttachment.attachTitleImageBridged') : ''}${!f.inlined && f.kind !== 'image' ? t('composerAttachment.attachTitleNotEmbedded') : ''}${f.truncated ? t('composerAttachment.attachTitleTruncated') : ''}${f.omitReason ? `\n${f.omitReason}` : ''}`
+                  }
                 >
                   {f.kind === 'image' && f.imageDataUrl ? (
                     <img
@@ -1069,6 +1110,11 @@ export default function Composer({
                       alt=""
                       className="h-7 w-7 shrink-0 rounded border border-card-border object-cover"
                     />
+                  ) : f.kind === 'url' ? (
+                    <svg viewBox="0 0 24 24" className="size-3 shrink-0 stroke-current" style={{ fill: 'none', strokeWidth: 1.8 }}>
+                      <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" strokeLinecap="round" />
+                      <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" strokeLinecap="round" />
+                    </svg>
                   ) : (
                     <svg viewBox="0 0 24 24" className="size-3 stroke-current" style={{ fill: 'none', strokeWidth: 1.6 }}>
                       <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
@@ -1081,12 +1127,14 @@ export default function Composer({
                       {t('composer.invalid')}
                     </span>
                   )}
-                  {f.kind !== 'image' && !f.inlined && (
+                  {f.kind !== 'image' && f.kind !== 'url' && !f.inlined && (
                     <span className="text-[10px] text-amber-text" title={f.omitReason}>
                       {t('composer.onlyReference')}
                     </span>
                   )}
-                  {f.kind !== 'image' && f.inlined && f.truncated && <span className="text-amber-text">⧉</span>}
+                  {f.kind !== 'image' && f.kind !== 'url' && f.inlined && f.truncated && (
+                    <span className="text-amber-text">⧉</span>
+                  )}
                   <button
                     type="button"
                     onClick={() => removeAttachment(i)}

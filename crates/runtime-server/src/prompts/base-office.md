@@ -35,9 +35,9 @@ Before any judgment, evaluation, or recommendation:
 
 | Tool | Use when |
 |------|----------|
-| `web_search` | News, policies, competitors, facts not in the workspace |
-| `fetch_url` | User gave a URL; fetch readable page text |
-| `web.run` | Deeper page fetch when search snippets are not enough |
+| `web_search` | News, policies, competitors, facts not in the workspace (snippets only — follow with `fetch_url` on top hits) |
+| `fetch_url` | User gave a URL, or follow-up after `web_search` to read full page text |
+| `web.run` | Search + open in one call; returns `ref_id`s for citations |
 | `finance` | Stock / index / crypto quotes (`ticker` or `symbol`) |
 
 Cite sources briefly. You may fold findings into `write_office` deliverables (tables, report PDF/DOCX).

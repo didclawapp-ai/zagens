@@ -1257,6 +1257,9 @@ const en: TranslationMap = {
     attachTitleImageBridged: ' · vision-bridged',
     attachTitleNotEmbedded: ' · not embedded as text',
     attachTitleTruncated: ' · truncated to 128 KB (when sent)',
+    urlHeader: '[Referenced URLs] (use fetch_url when you need page content)',
+    displayUrl: ' (web link)',
+    attachTitleUrl: ' · web link',
   },
   chat: {
     editTitle: 'Edit last message',

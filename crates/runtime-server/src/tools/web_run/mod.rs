@@ -13,7 +13,7 @@ mod types;
 
 pub use tool::WebRunTool;
 
-pub(crate) const MAX_RESULTS: usize = 10;
+pub(crate) const MAX_RESULTS: usize = 15;
 pub(crate) const DEFAULT_TIMEOUT_MS: u64 = 15_000;
 pub(crate) const DEFAULT_OPEN_TIMEOUT_MS: u64 = 20_000;
 pub(crate) const MAX_WEB_RUN_SESSIONS: usize = 64;

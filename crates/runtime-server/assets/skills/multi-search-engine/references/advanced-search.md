@@ -14,16 +14,16 @@
 
 ```javascript
 // 1. 基础搜索
-web_fetch({"url": "https://www.baidu.com/s?wd=Python教程"})
+fetch_url({"url": "https://www.baidu.com/s?wd=Python教程"})
 
 // 2. 站内搜索
-web_fetch({"url": "https://www.baidu.com/s?wd=site:github.com+python"})
+fetch_url({"url": "https://www.baidu.com/s?wd=site:github.com+python"})
 
 // 3. 文件类型搜索
-web_fetch({"url": "https://www.baidu.com/s?wd=机器学习+filetype:pdf"})
+fetch_url({"url": "https://www.baidu.com/s?wd=机器学习+filetype:pdf"})
 
 // 4. 学术搜索
-web_fetch({"url": "https://xueshu.baidu.com/s?wd=深度学习+图像识别"})
+fetch_url({"url": "https://xueshu.baidu.com/s?wd=深度学习+图像识别"})
 ```
 
 ---
@@ -42,13 +42,13 @@ web_fetch({"url": "https://xueshu.baidu.com/s?wd=深度学习+图像识别"})
 
 ```javascript
 // 1. 中文搜索结果
-web_fetch({"url": "https://cn.bing.com/search?q=人工智能技术&ensearch=0"})
+fetch_url({"url": "https://cn.bing.com/search?q=人工智能技术&ensearch=0"})
 
 // 2. 英文搜索结果（使用中国服务器）
-web_fetch({"url": "https://cn.bing.com/search?q=artificial+intelligence&ensearch=1"})
+fetch_url({"url": "https://cn.bing.com/search?q=artificial+intelligence&ensearch=1"})
 
 // 3. 学术搜索
-web_fetch({"url": "https://cn.bing.com/academic/search?q=机器学习算法"})
+fetch_url({"url": "https://cn.bing.com/academic/search?q=机器学习算法"})
 ```
 
 ---
@@ -66,10 +66,10 @@ web_fetch({"url": "https://cn.bing.com/academic/search?q=机器学习算法"})
 
 ```javascript
 // 1. 基础搜索
-web_fetch({"url": "https://www.so.com/s?q=网络安全"})
+fetch_url({"url": "https://www.so.com/s?q=网络安全"})
 
 // 2. 站内搜索
-web_fetch({"url": "https://www.so.com/s?q=site:zhihu.com+python"})
+fetch_url({"url": "https://www.so.com/s?q=site:zhihu.com+python"})
 ```
 
 ---
@@ -88,16 +88,16 @@ web_fetch({"url": "https://www.so.com/s?q=site:zhihu.com+python"})
 
 ```javascript
 // 1. 网页搜索
-web_fetch({"url": "https://sogou.com/web?query=python教程"})
+fetch_url({"url": "https://sogou.com/web?query=python教程"})
 
 // 2. 微信公众号文章搜索
-web_fetch({"url": "https://wx.sogou.com/weixin?type=2&query=Python编程"})
+fetch_url({"url": "https://wx.sogou.com/weixin?type=2&query=Python编程"})
 
 // 3. 搜索特定公众号
-web_fetch({"url": "https://wx.sogou.com/weixin?type=2&query=公众号:机器之心"})
+fetch_url({"url": "https://wx.sogou.com/weixin?type=2&query=公众号:机器之心"})
 
 // 4. 知乎内容搜索
-web_fetch({"url": "https://www.sogou.com/web?query=site:zhihu.com+机器学习"})
+fetch_url({"url": "https://www.sogou.com/web?query=site:zhihu.com+机器学习"})
 ```
 
 ---
@@ -115,10 +115,10 @@ web_fetch({"url": "https://www.sogou.com/web?query=site:zhihu.com+机器学习"}
 
 ```javascript
 // 1. 移动端搜索
-web_fetch({"url": "https://m.sm.cn/s?q=python入门教程"})
+fetch_url({"url": "https://m.sm.cn/s?q=python入门教程"})
 
 // 2. 移动网站点搜索
-web_fetch({"url": "https://m.sm.cn/s?q=site:zhuanlan.zhihu.com+AI"})
+fetch_url({"url": "https://m.sm.cn/s?q=site:zhuanlan.zhihu.com+AI"})
 ```
 
 ---
