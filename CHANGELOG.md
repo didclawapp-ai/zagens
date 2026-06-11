@@ -20,27 +20,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.4] - 2026-06-11
+
 ### Added
 
 - **Session restore UX:** Chat shows restore progress, data source (cache / thread replay / session archive), degraded-session warning, and a **Reload** action to retry thread event replay.
+- **CRAFT sub-agent models:** `[subagents]` accepts `implementer_model`, `verifier_model`, and `auditor_model` (wired like `review_model`); Zagens **Settings → Security** exposes optional per-role model dropdowns.
+- **Windows sandbox Phase 2 (elevated):** `zagens-sandbox-setup.exe` + `zagens-command-runner.exe` helpers; offline/online sandbox users; WFP outbound blocks; grant-read / deny-read profile ACLs; DPAPI secrets; full teardown; elevated sync/background `exec_shell` via IPC; structured `sandbox_denial_code` metadata; helper bundling via `bundle:prepare`.
+- **Windows sandbox Phase 3:** ConPTY interactive `exec_shell` (`tty: true`) through elevated command-runner; optional `[windows] sandbox_private_desktop`; CLI `zagens sandbox add-read-dir`; enterprise `requirements.toml` knobs; Gate **G2** acceptance probes (`conpty_echo`, `add_read_dir`, background IPC, teardown verify — 14/14 when setup complete).
+- **Desktop sandbox UX:** sidebar **Sandbox** settings panel; Windows first-run onboarding wizard (`sandbox_initialized`); `diagnostics` / `exec_shell` report configured vs effective Windows sandbox mode.
+
+### Changed
+
+- **Desktop chat UX:** Transcript uses lightweight meta bars for reasoning/tools (collapsed by default), tool-call aggregation labels, improved assistant paragraph breaks and typography, minimal new-session empty state, and composer/sidebar spacing alignment.
 
 ### Fixed
 
 - **Session tool persistence:** `reconstruct_messages_for_store` now embeds `tool_use` / `tool_result` blocks in session JSON; `seed_thread_from_messages` recreates tool turn items and emits replay events so resumed threads restore tool cards without localStorage.
 - **Desktop session restore:** Prefer thread/cache snapshots over fragmented session JSON when picking chat history after restart (richness scoring).
 - **Audit scratchpad P2:** Block batched `scratchpad_set_area(deferred)` in one model step; enrich defer prerequisite errors and P2 continue nudges with pending `area_id` list and one-area-per-step workflow (fixes CRAFT audit sessions stalling on mass defer failures).
-
-## [0.7.4] - 2026-06-10
-
-### Added
-
-- **CRAFT sub-agent models:** `[subagents]` accepts `implementer_model`, `verifier_model`, and `auditor_model` (wired like `review_model`); Zagens **Settings → Security** exposes optional per-role model dropdowns.
-- **Windows sandbox Phase 2 (elevated):** `zagens-sandbox-setup.exe` + `zagens-command-runner.exe` helpers; offline/online sandbox users; WFP outbound blocks; grant-read / deny-read profile ACLs; DPAPI secrets; full teardown; elevated sync/background `exec_shell` via IPC; structured `sandbox_denial_code` metadata; helper bundling via `bundle:prepare`.
-- **Windows sandbox Phase 3:** ConPTY interactive `exec_shell` (`tty: true`) through elevated command-runner; optional `[windows] sandbox_private_desktop`; CLI `zagens sandbox add-read-dir`; enterprise `requirements.toml` knobs; Gate **G2** acceptance probes (`conpty_echo`, `add_read_dir`, background IPC, teardown verify — 14/14 when setup complete).
-- **Desktop sandbox UX:** sidebar **Sandbox** settings panel; Windows first-run onboarding wizard (`sandbox_initialized`); `diagnostics` / `exec_shell` report configured vs effective Windows sandbox mode.
-
-### Fixed
-
 - **Engine op loop:** Restore disjoint-field platform dispatch so `Engine::ext` stays populated during `dispatch_op` — fixes `Failed to start turn: channel closed` after a security refactor left `runtime_ext_mut()` with an empty `ext` slot.
 - **CRAFT blackboard:** Implementer partition writes `{ "rounds": [...] }` (not a bare array); `changes` use `{ file, intent }` with `git diff --name-only HEAD`; legacy bare-array boards still read correctly.
 - **CRAFT fix-loop:** Circuit breaker after 3 Implementer rounds per `task_id` emits `<deepseek:craft.fix_loop_exhausted>` (`escalate_user`).
