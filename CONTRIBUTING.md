@@ -19,6 +19,41 @@ Windows: `pwsh -File scripts/ci/verify-lint.ps1`
 
 Optional hooks (once per clone): `bash scripts/ci/install-git-hooks.sh`
 
+## Push without full CI (maintainers)
+
+Routine doc edits and small landings should not burn CI minutes on every `git push`.
+The shared gate is [`scripts/ci/ci-push-gate.sh`](scripts/ci/ci-push-gate.sh) (remote + local pre-push).
+
+| Push kind | Remote CI | CD (Release) | Local pre-push lint |
+|-----------|-----------|--------------|---------------------|
+| **Release tag** `zagens-v*` / `ds-pick-v*` | Full matrix | Yes (after CI green) | Full `verify-lint` |
+| **Pull request** | Full matrix | No | N/A |
+| **Docs / housekeeping only** on `master` / `main` | Skipped | No | Skipped |
+| **Code change** on `master` / `main` | Full matrix | No | Full `verify-lint` |
+| **`[skip ci]` or `[ci skip]`** in commit message | Skipped | No (unless tag) | Skipped |
+
+**Housekeeping paths** (no code CI when *all* changed files match): `*.md`, `docs/`, `doc_Private/`, `deliverables/`, `assets/`, `producthunt/`, `.cursor/`, root policy files (`LICENSE`, `NOTICE.md`, …).
+
+**Examples:**
+
+```bash
+# README / CHANGELOG / docs only — auto-skipped
+git commit -m "docs(readme): clarify DeepSeek V4 positioning"
+git push origin master
+
+# Land WIP on master without remote CI (use sparingly; run verify before release)
+git commit -m "chore: sync maintainer notes [skip ci]"
+git push origin master
+
+# Release — always full CI + CD
+git tag -a zagens-v0.7.5 -m "Zagens v0.7.5"
+git push origin zagens-v0.7.5
+```
+
+Emergency local bypass (does not affect remote): `SKIP_VERIFY=1 git push`.
+
+Before a release tag, run `bash scripts/ci/verify-workspace.sh` even if recent pushes used `[skip ci]`.
+
 ## Security
 
 See [SECURITY.md](SECURITY.md) for vulnerability reporting — please do not file public issues for security bugs.

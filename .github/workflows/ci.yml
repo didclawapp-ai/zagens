@@ -1,5 +1,10 @@
 name: CI
 
+# Branch pushes skip the heavy matrix when the push gate sees docs/housekeeping-only
+# diffs or a [skip ci] / [ci skip] commit marker. Release tags and PRs always run
+# full CI; CD still attaches only to successful tag CI (see cd.yml).
+# Maintainer docs: CONTRIBUTING.md § "Push without full CI".
+
 on:
   push:
     branches: [master, main]
@@ -8,6 +13,7 @@ on:
     branches: [master, main]
   schedule:
     - cron: '31 6 * * 1'
+  workflow_dispatch:
 
 # Least-privilege default token; no job here needs write access.
 permissions:
@@ -25,8 +31,41 @@ env:
   RUSTFLAGS: -Dwarnings
 
 jobs:
+  gate:
+    name: Push gate
+    runs-on: ubuntu-latest
+    outputs:
+      run_full: ${{ steps.gate.outputs.run_full }}
+      reason: ${{ steps.gate.outputs.reason }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - name: Decide CI scope
+        id: gate
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        run: bash scripts/ci/ci-push-gate.sh
+
+  skip_note:
+    name: CI skipped (docs / [skip ci])
+    needs: gate
+    if: needs.gate.outputs.run_full != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "Heavy CI skipped for this push."
+          echo "Reason: ${{ needs.gate.outputs.reason }}"
+          echo "Release tags and pull requests always run the full matrix."
+
   versions:
     name: Version drift
+    needs: gate
+    if: needs.gate.outputs.run_full == 'true'
     runs-on: ubuntu-latest
     steps:
       # Third-party actions are pinned to commit SHAs; bump pins manually during
@@ -44,6 +83,8 @@ jobs:
 
   lint:
     name: Lint
+    needs: gate
+    if: needs.gate.outputs.run_full == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4

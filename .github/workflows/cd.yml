@@ -4,7 +4,7 @@ name: CD
 #
 # Flow (tag release):
 #   1. git tag zagens-v0.7.0 && git push origin zagens-v0.7.0
-#   2. CI runs the full verify matrix on the tag (see ci.yml tag triggers)
+#   2. CI always runs the full verify matrix on the tag (never skipped by push gate)
 #   3. This workflow starts after CI succeeds (workflow_run)
 #   4. Build/sign/publish installers and CLI binaries to GitHub Releases
 #

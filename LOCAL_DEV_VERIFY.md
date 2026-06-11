@@ -25,7 +25,7 @@
 | 层级 | 何时运行 | 检查内容 | 你需要做什么 |
 |------|----------|----------|--------------|
 | **日常编译** | `cargo build` / `cargo test` | 能编过、测试过 | 正常开发即可 |
-| **Git hooks** | `git commit` / `git push` | commit：fmt；push：完整 `verify-lint` | 克隆后执行一次 `install-git-hooks` |
+| **Git hooks** | `git commit` / `git push` | commit：fmt；push：按 [`ci-push-gate.sh`](scripts/ci/ci-push-gate.sh) 决定是否跑 `verify-lint` | 克隆后执行一次 `install-git-hooks` |
 | **手动脚本** | 大改前、发版前、没装 hook 的机器 | 同 CI 或更严（含 test） | 主动跑 `verify-lint` / `verify-workspace` |
 
 **结论：** 装好 hook 后，`git push` 会自动跑 Lint 镜像；**不需要**每次推送前记得敲脚本。手动脚本用于提前发现问题，或 hook 未安装的环境。
@@ -73,7 +73,9 @@ pwsh scripts/ci/install-git-hooks.ps1
 安装后：
 
 - **pre-commit** → `cargo fmt --all -- --check`
-- **pre-push** → `scripts/ci/verify-lint`（与 CI Lint 一致）
+- **pre-push** → [`ci-push-gate.sh`](scripts/ci/ci-push-gate.sh) 判断；仅代码变更时跑 `verify-lint`（与 CI Lint 一致）
+
+仅文档 / `[skip ci]` 推送会自动跳过本地 lint 与远程 CI 重矩阵。详见 [CONTRIBUTING.md — Push without full CI](CONTRIBUTING.md#push-without-full-ci-maintainers)。
 
 紧急跳过（不推荐）：`SKIP_VERIFY=1 git push`
 

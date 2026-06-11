@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **CI push gate:** Branch pushes skip the heavy CI matrix for docs/housekeeping-only diffs or `[skip ci]` / `[ci skip]` commit markers; release tags and PRs always run full CI. Local pre-push hook uses the same gate (`scripts/ci/ci-push-gate.sh`).
+
 ## [0.7.4] - 2026-06-11
 
 ### Added
