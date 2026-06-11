@@ -62,7 +62,7 @@ else
 fi
 
 echo "==> Leaf crate publish dry-runs (no internal path deps on other zagens-* crates)"
-leaf_crates=(zagens-protocol zagens-secrets zagens-topic-memory)
+leaf_crates=(zagens-protocol zagens-secrets zagens-topic-memory zagens-windows-sandbox)
 for pkg in "${leaf_crates[@]}"; do
   echo "    dry-run ${pkg}"
   cargo publish -p "${pkg}" --dry-run --allow-dirty

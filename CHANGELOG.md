@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **CI PR-first:** Remote CI runs on pull requests and release tags only — not on merges to `master` / `main`. Local pre-push still uses `scripts/ci/ci-push-gate.sh` to skip lint for docs-only or `[skip ci]` landings.
 
+### Fixed
+
+- **Release (crates.io):** Include `zagens-windows-sandbox` in `publish-crates.sh` before `zagens-cli`; add workspace `repository`/`homepage`/`readme` to its manifest; pre-publish leaf dry-run covers it; post-publish verify uses workspace version.
+
 ## [0.7.5] - 2026-06-11
 
 ### Fixed

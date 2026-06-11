@@ -25,6 +25,7 @@ CRATES=(
   zagens-runtime-adapters
   zagens-runtime-orchestrator
   zagens-runtime-api
+  zagens-windows-sandbox
   zagens-cli
 )
 
@@ -120,9 +121,10 @@ done
 
 echo ""
 if [[ "${mode}" == "--publish" ]]; then
+  ws_ver="$(grep '^version = ' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')"
   echo "OK: publish chain complete."
   echo "Verify in a clean environment:"
-  echo "  cargo install zagens-cli --version 0.7.0 --bin zagens --locked"
+  echo "  cargo install zagens-cli --version ${ws_ver} --bin zagens --locked"
   echo "  zagens --version && zagens doctor"
 else
   echo "OK: dry-run chain complete."
