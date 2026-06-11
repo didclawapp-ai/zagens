@@ -20,6 +20,7 @@ fn run_poc(command: SandboxPocCommand) -> Result<()> {
     }
 }
 
+#[cfg(windows)]
 fn run_poc_deny_read() -> Result<()> {
     let result = zagens_windows_sandbox::run_unelevated_deny_read_poc()?;
     let path = zagens_windows_sandbox::write_poc_result(&result)?;
@@ -37,6 +38,12 @@ fn run_poc_deny_read() -> Result<()> {
     Ok(())
 }
 
+#[cfg(not(windows))]
+fn run_poc_deny_read() -> Result<()> {
+    anyhow::bail!("sandbox poc deny-read is only supported on Windows")
+}
+
+#[cfg(windows)]
 fn run_teardown(keep_logs: bool) -> Result<()> {
     let report = zagens_windows_sandbox::teardown_unelevated(keep_logs)?;
     println!(
@@ -57,6 +64,12 @@ fn run_teardown(keep_logs: bool) -> Result<()> {
     Ok(())
 }
 
+#[cfg(not(windows))]
+fn run_teardown(_keep_logs: bool) -> Result<()> {
+    anyhow::bail!("sandbox teardown is only supported on Windows")
+}
+
+#[cfg(windows)]
 fn run_setup() -> Result<()> {
     let real_user = std::env::var("USERNAME")
         .or_else(|_| std::env::var("USER"))
@@ -67,6 +80,11 @@ fn run_setup() -> Result<()> {
          Set `[windows] sandbox = \"elevated\"` in config.toml to use the elevated path."
     );
     Ok(())
+}
+
+#[cfg(not(windows))]
+fn run_setup() -> Result<()> {
+    anyhow::bail!("sandbox setup is only supported on Windows")
 }
 
 #[cfg(windows)]
