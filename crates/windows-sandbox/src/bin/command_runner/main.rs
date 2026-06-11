@@ -4,7 +4,7 @@ mod win;
 fn main() -> anyhow::Result<()> {
     #[cfg(windows)]
     {
-        return win::main();
+        win::main()
     }
     #[cfg(not(windows))]
     {

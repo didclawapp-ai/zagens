@@ -212,7 +212,7 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn elevated_cmd(
-    workspace: &PathBuf,
+    workspace: &std::path::Path,
     command: &str,
     network_allowed: bool,
 ) -> anyhow::Result<zagens_windows_sandbox::CapturedOutput> {
@@ -221,7 +221,7 @@ fn elevated_cmd(
 }
 
 fn elevated_plan(
-    workspace: &PathBuf,
+    workspace: &std::path::Path,
     program: &str,
     args: Vec<&str>,
     network_allowed: bool,
@@ -229,9 +229,9 @@ fn elevated_plan(
     plan_exec(PlanInput {
         program: program.into(),
         args: args.into_iter().map(str::to_string).collect(),
-        cwd: workspace.clone(),
+        cwd: workspace.to_path_buf(),
         env: HashMap::new(),
-        writable_roots: vec![workspace.clone()],
+        writable_roots: vec![workspace.to_path_buf()],
         protected_write_paths: protected_subdirs_for_root(workspace),
         network_allowed,
         mode: WindowsSandboxMode::Elevated,
@@ -240,7 +240,7 @@ fn elevated_plan(
     })
 }
 
-fn probe_bg_spawn_stdout(workspace: &PathBuf) -> ProbeResult {
+fn probe_bg_spawn_stdout(workspace: &std::path::Path) -> ProbeResult {
     let id = "bg_spawn_stdout";
     let plan = match elevated_plan(workspace, "cmd", vec!["/C", "echo bg-spawn-ok"], false) {
         Ok(plan) => plan,
@@ -302,7 +302,7 @@ fn probe_bg_spawn_stdout(workspace: &PathBuf) -> ProbeResult {
     }
 }
 
-fn probe_bg_write_stdin(workspace: &PathBuf) -> ProbeResult {
+fn probe_bg_write_stdin(workspace: &std::path::Path) -> ProbeResult {
     let id = "bg_write_stdin";
     let plan = match elevated_plan(workspace, "cmd", vec!["/C", "more"], false) {
         Ok(plan) => plan,
@@ -367,7 +367,7 @@ fn probe_bg_write_stdin(workspace: &PathBuf) -> ProbeResult {
     }
 }
 
-fn probe_bg_kill(workspace: &PathBuf) -> ProbeResult {
+fn probe_bg_kill(workspace: &std::path::Path) -> ProbeResult {
     let id = "bg_kill";
     let plan = match elevated_plan(
         workspace,
@@ -432,7 +432,7 @@ fn probe_bg_kill(workspace: &PathBuf) -> ProbeResult {
 }
 
 /// ConPTY path (PR-3.1): elevated runner spawns with `CreatePseudoConsole`.
-fn probe_conpty_echo(workspace: &PathBuf) -> ProbeResult {
+fn probe_conpty_echo(workspace: &std::path::Path) -> ProbeResult {
     let id = "conpty_echo";
     let mut plan = match elevated_plan(workspace, "cmd", vec!["/C", "echo g2-conpty-ok"], false) {
         Ok(plan) => plan,
@@ -490,7 +490,7 @@ fn probe_conpty_echo(workspace: &PathBuf) -> ProbeResult {
 }
 
 /// Session read-dir grant (PR-3.3): ACL + state file update.
-fn probe_add_read_dir(workspace: &PathBuf, home: &std::path::Path) -> ProbeResult {
+fn probe_add_read_dir(workspace: &std::path::Path, home: &std::path::Path) -> ProbeResult {
     let id = "add_read_dir";
     let target = workspace.join("read-grant-probe");
     if let Err(err) = std::fs::create_dir_all(&target) {
@@ -520,7 +520,7 @@ fn probe_add_read_dir(workspace: &PathBuf, home: &std::path::Path) -> ProbeResul
     }
 }
 
-fn probe_spawn_denial_code(workspace: &PathBuf) -> ProbeResult {
+fn probe_spawn_denial_code(workspace: &std::path::Path) -> ProbeResult {
     let id = "spawn_denial_code";
     let fake_exe = workspace.join("g2-not-an-exe.txt");
     if let Err(err) = std::fs::write(&fake_exe, "not executable") {
@@ -533,9 +533,9 @@ fn probe_spawn_denial_code(workspace: &PathBuf) -> ProbeResult {
     let plan = match plan_exec(PlanInput {
         program: fake_exe.to_string_lossy().into(),
         args: vec![],
-        cwd: workspace.clone(),
+        cwd: workspace.to_path_buf(),
         env: HashMap::new(),
-        writable_roots: vec![workspace.clone()],
+        writable_roots: vec![workspace.to_path_buf()],
         protected_write_paths: protected_subdirs_for_root(workspace),
         // Online user so logon succeeds; denial must come from CreateProcessAsUserW
         // on a non-executable path (runner IPC / PR-2.13), not from logon lockout.

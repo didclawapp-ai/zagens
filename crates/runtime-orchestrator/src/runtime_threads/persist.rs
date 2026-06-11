@@ -721,6 +721,7 @@ pub(super) fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::ContentBlock;
     use crate::runtime_threads::CURRENT_EVENT_SCHEMA_VERSION;
     use crate::runtime_threads::RuntimeTurnStatus;
     use crate::runtime_threads::types::{

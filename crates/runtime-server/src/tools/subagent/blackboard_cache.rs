@@ -23,10 +23,10 @@ pub(crate) fn read_cached(path: &Path) -> Option<String> {
     let mtime = std::fs::metadata(path).ok()?.modified().ok()?;
     let mut guard = cache_map();
     let map = guard.get_or_insert_with(HashMap::new);
-    if let Some(entry) = map.get(path) {
-        if entry.mtime == mtime {
-            return Some(entry.raw.clone());
-        }
+    if let Some(entry) = map.get(path)
+        && entry.mtime == mtime
+    {
+        return Some(entry.raw.clone());
     }
     let raw = std::fs::read_to_string(path).ok()?;
     if map.len() >= MAX_CACHE_ENTRIES {

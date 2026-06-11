@@ -168,7 +168,7 @@ fn probe_sandbox_posture(context: &ToolContext) -> Option<SandboxPosture> {
         let setup_complete = zagens_windows_sandbox::sandbox_setup_is_complete(
             &zagens_windows_sandbox::zagens_home(),
         );
-        return Some(SandboxPosture {
+        Some(SandboxPosture {
             sandbox_mode,
             shell_network_access,
             windows_sandbox_configured: Some(
@@ -179,7 +179,7 @@ fn probe_sandbox_posture(context: &ToolContext) -> Option<SandboxPosture> {
             exec_shell_env_marker: Some(
                 crate::config::exec_shell_sandbox_env_marker(configured).to_string(),
             ),
-        });
+        })
     }
 
     #[cfg(not(windows))]

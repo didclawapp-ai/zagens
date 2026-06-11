@@ -64,7 +64,7 @@ fn ensure_private_desktop() -> Result<&'static Mutex<PrivateDesktop>> {
                 GetLastError()
             }));
         }
-        let wide_name = to_wide(&format!(r"Winsta0\{name}"));
+        let wide_name = to_wide(format!(r"Winsta0\{name}"));
         Ok(Mutex::new(PrivateDesktop { handle, wide_name }))
     })
 }

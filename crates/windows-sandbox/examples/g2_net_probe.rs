@@ -6,13 +6,13 @@ use zagens_windows_sandbox::{
     PlanInput, WindowsSandboxMode, plan_exec, spawn_sync, zagens_home_from_env,
 };
 
-fn elevated(workspace: &std::path::PathBuf, cmd: &str, net: bool) -> anyhow::Result<()> {
+fn elevated(workspace: &std::path::Path, cmd: &str, net: bool) -> anyhow::Result<()> {
     let plan = plan_exec(PlanInput {
         program: "cmd".into(),
         args: vec!["/C".into(), cmd.into()],
-        cwd: workspace.clone(),
+        cwd: workspace.to_path_buf(),
         env: HashMap::new(),
-        writable_roots: vec![workspace.clone()],
+        writable_roots: vec![workspace.to_path_buf()],
         protected_write_paths: vec![],
         network_allowed: net,
         mode: WindowsSandboxMode::Elevated,

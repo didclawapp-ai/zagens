@@ -398,13 +398,13 @@ pub fn spawn_with_stdio(
 
         CloseHandle(pi.hThread);
 
-        if let Some(input) = &stdio.stdin_data {
-            if stdin_w != 0 {
-                write_pipe(stdin_w, input.as_bytes())?;
-                if !stdio.stdin_open {
-                    CloseHandle(stdin_w);
-                    stdin_w = 0;
-                }
+        if let Some(input) = &stdio.stdin_data
+            && stdin_w != 0
+        {
+            write_pipe(stdin_w, input.as_bytes())?;
+            if !stdio.stdin_open {
+                CloseHandle(stdin_w);
+                stdin_w = 0;
             }
         }
 

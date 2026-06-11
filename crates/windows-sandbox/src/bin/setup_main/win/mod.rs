@@ -34,18 +34,18 @@ struct Payload {
 
 pub fn main() -> Result<()> {
     let ret = real_main();
-    if let Err(e) = &ret {
-        if let Ok(home) = std::env::var("ZAGENS_HOME").or_else(|_| std::env::var("DEEPSEEK_HOME")) {
-            let sbx_dir = sandbox_dir(std::path::Path::new(&home));
-            let _ = std::fs::create_dir_all(&sbx_dir);
-            if let Some(mut f) = log_writer(&sbx_dir) {
-                let _ = writeln!(
-                    f,
-                    "[{}] top-level error: {}",
-                    chrono::Utc::now().to_rfc3339(),
-                    e
-                );
-            }
+    if let Err(e) = &ret
+        && let Ok(home) = std::env::var("ZAGENS_HOME").or_else(|_| std::env::var("DEEPSEEK_HOME"))
+    {
+        let sbx_dir = sandbox_dir(std::path::Path::new(&home));
+        let _ = std::fs::create_dir_all(&sbx_dir);
+        if let Some(mut f) = log_writer(&sbx_dir) {
+            let _ = writeln!(
+                f,
+                "[{}] top-level error: {}",
+                chrono::Utc::now().to_rfc3339(),
+                e
+            );
         }
     }
     ret

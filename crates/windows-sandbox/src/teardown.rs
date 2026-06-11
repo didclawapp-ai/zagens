@@ -66,10 +66,10 @@ impl TrackedWorkspacePaths {
 
 fn load_tracked_workspace_paths(home: &std::path::Path) -> TrackedWorkspacePaths {
     let path = sandbox_dir(home).join("unelevated_workspace_paths.json");
-    if let Ok(txt) = std::fs::read_to_string(&path) {
-        if let Some(parsed) = TrackedWorkspacePaths::from_json(&txt) {
-            return parsed;
-        }
+    if let Ok(txt) = std::fs::read_to_string(&path)
+        && let Some(parsed) = TrackedWorkspacePaths::from_json(&txt)
+    {
+        return parsed;
     }
     TrackedWorkspacePaths {
         roots: Vec::new(),
@@ -94,10 +94,10 @@ pub fn persist_tracked_deny_read_paths(home: &std::path::Path, paths: &[PathBuf]
 
 fn load_tracked_deny_read_paths(home: &std::path::Path) -> Vec<PathBuf> {
     let path = sandbox_dir(home).join("unelevated_deny_read_paths.json");
-    if let Ok(txt) = std::fs::read_to_string(&path) {
-        if let Ok(parsed) = serde_json::from_str::<TrackedDenyReadPaths>(&txt) {
-            return parsed.paths;
-        }
+    if let Ok(txt) = std::fs::read_to_string(&path)
+        && let Ok(parsed) = serde_json::from_str::<TrackedDenyReadPaths>(&txt)
+    {
+        return parsed.paths;
     }
     Vec::new()
 }

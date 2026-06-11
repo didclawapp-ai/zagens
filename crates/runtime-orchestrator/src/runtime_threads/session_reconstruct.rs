@@ -46,12 +46,11 @@ fn tool_input_from_item(item: &TurnItemRecord) -> Value {
     if let Some(input) = item.metadata.as_ref().and_then(|m| m.get("tool_input")) {
         return input.clone();
     }
-    if let Some(detail) = item.detail.as_deref() {
-        if let Ok(v) = serde_json::from_str::<Value>(detail)
-            && v.is_object()
-        {
-            return v;
-        }
+    if let Some(detail) = item.detail.as_deref()
+        && let Ok(v) = serde_json::from_str::<Value>(detail)
+        && v.is_object()
+    {
+        return v;
     }
     json!({})
 }

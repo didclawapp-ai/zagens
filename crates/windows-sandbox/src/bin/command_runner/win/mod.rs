@@ -254,10 +254,10 @@ pub fn main() -> Result<()> {
             };
             match msg.message {
                 Message::Stdin { payload } => {
-                    if let Ok(bytes) = decode_bytes(&payload.data_b64) {
-                        if let Ok(mut guard) = child_for_input.lock() {
-                            let _ = guard.write_stdin(&bytes);
-                        }
+                    if let Ok(bytes) = decode_bytes(&payload.data_b64)
+                        && let Ok(mut guard) = child_for_input.lock()
+                    {
+                        let _ = guard.write_stdin(&bytes);
                     }
                 }
                 Message::CloseStdin { .. } => {
@@ -298,18 +298,18 @@ pub fn main() -> Result<()> {
                 Some(code) => code,
                 None => {
                     drop(guard);
-                    if let Some(deadline) = deadline {
-                        if Instant::now() >= deadline {
-                            timed_out = true;
-                            unsafe {
-                                let _ = TerminateProcess(process_handle, 1);
-                            }
-                            if let Ok(mut guard) = child.lock() {
-                                guard.finalize_conpty_after_exit();
-                            }
-                            std::thread::sleep(Duration::from_millis(50));
-                            continue;
+                    if let Some(deadline) = deadline
+                        && Instant::now() >= deadline
+                    {
+                        timed_out = true;
+                        unsafe {
+                            let _ = TerminateProcess(process_handle, 1);
                         }
+                        if let Ok(mut guard) = child.lock() {
+                            guard.finalize_conpty_after_exit();
+                        }
+                        std::thread::sleep(Duration::from_millis(50));
+                        continue;
                     }
                     std::thread::sleep(Duration::from_millis(50));
                     continue;

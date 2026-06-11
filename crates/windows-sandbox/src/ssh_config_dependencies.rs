@@ -41,12 +41,7 @@ fn collect_ssh_dependency_paths(config: &Path, depth: usize) -> Vec<PathBuf> {
             continue;
         }
         let lower = line.to_ascii_lowercase();
-        if lower.starts_with("include ") {
-            let pattern = line.split_whitespace().nth(1).unwrap_or("");
-            if !pattern.is_empty() {
-                out.push(base.join(pattern));
-            }
-        } else if lower.starts_with("identityfile ") {
+        if lower.starts_with("include ") || lower.starts_with("identityfile ") {
             let path = line.split_whitespace().nth(1).unwrap_or("");
             if !path.is_empty() {
                 out.push(base.join(path));

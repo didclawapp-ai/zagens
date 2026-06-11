@@ -930,6 +930,18 @@ impl JsonRpcError {
     }
 }
 
+impl Default for McpServerConfig {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            command: String::new(),
+            args: Vec::new(),
+            env: HashMap::new(),
+            enabled: true,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -958,17 +970,5 @@ mod tests {
         assert!(cfg.command.is_empty());
         assert!(cfg.args.is_empty());
         assert!(cfg.env.is_empty());
-    }
-}
-
-impl Default for McpServerConfig {
-    fn default() -> Self {
-        Self {
-            name: String::new(),
-            command: String::new(),
-            args: Vec::new(),
-            env: HashMap::new(),
-            enabled: true,
-        }
     }
 }

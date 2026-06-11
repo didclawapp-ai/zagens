@@ -14,6 +14,13 @@ mod imp {
     use crate::tools::shell::types::{ShellResult, ShellStatus};
     use crate::tools::shell_output::truncate_with_meta;
 
+    type SpawnBackgroundHandles = (
+        ShellChild,
+        Option<StdinWriter>,
+        Option<JoinHandle<()>>,
+        Option<JoinHandle<()>>,
+    );
+
     pub fn execute_sync(
         original_command: &str,
         exec_env: &ExecEnv,
@@ -124,12 +131,7 @@ mod imp {
         stderr_buffer: Arc<Mutex<Vec<u8>>>,
         stdin_data: Option<&str>,
         tty: bool,
-    ) -> Result<(
-        ShellChild,
-        Option<StdinWriter>,
-        Option<JoinHandle<()>>,
-        Option<JoinHandle<()>>,
-    )> {
+    ) -> Result<SpawnBackgroundHandles> {
         let mut plan = exec_env
             .windows_plan
             .as_ref()
@@ -182,12 +184,7 @@ mod imp {
         stdout_buffer: Arc<Mutex<Vec<u8>>>,
         stderr_buffer: Arc<Mutex<Vec<u8>>>,
         stdin_data: Option<&str>,
-    ) -> Result<(
-        ShellChild,
-        Option<StdinWriter>,
-        Option<JoinHandle<()>>,
-        Option<JoinHandle<()>>,
-    )> {
+    ) -> Result<SpawnBackgroundHandles> {
         let mut child = zagens_windows_sandbox::spawn_background_elevated(plan, stdin_data)?;
         let pump = child.start_output_pump(
             move |chunk| {
