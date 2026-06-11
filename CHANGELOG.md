@@ -22,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **CI push gate:** Branch pushes skip the heavy CI matrix for docs/housekeeping-only diffs or `[skip ci]` / `[ci skip]` commit markers; release tags and PRs always run full CI. Local pre-push hook uses the same gate (`scripts/ci/ci-push-gate.sh`).
+- **CI PR-first:** Remote CI runs on pull requests and release tags only — not on merges to `master` / `main`. Local pre-push still uses `scripts/ci/ci-push-gate.sh` to skip lint for docs-only or `[skip ci]` landings.
 
 ## [0.7.4] - 2026-06-11
 

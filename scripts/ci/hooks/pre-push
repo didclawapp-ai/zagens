@@ -1,7 +1,7 @@
 #!/bin/sh
 # Lint gate before push (mirrors CI Lint when the push gate requires full CI).
 # Skip local lint: SKIP_VERIFY=1 git push
-# Skip via gate (docs-only diff or [skip ci] in commit): automatic — see ci-push-gate.sh
+# Skip via gate (docs-only or [skip ci]): automatic — remote CI is PR/tag-only; see ci-push-gate.sh
 set -e
 if [ "${SKIP_VERIFY:-}" = "1" ]; then
   echo "pre-push: SKIP_VERIFY=1, skipping verify-lint"

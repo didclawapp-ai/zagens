@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
-# Decide whether a push needs the full CI matrix (and local pre-push lint).
+# Local pre-push lint gate (remote CI is PR-first — see .github/workflows/ci.yml).
 #
-# Remote: sourced from .github/workflows/ci.yml (gate job).
-# Local:  scripts/ci/ci-push-gate.sh --local  → exit 0 = skip, exit 1 = run full lint
+#   scripts/ci/ci-push-gate.sh --local  → exit 0 = skip verify-lint, exit 1 = run full lint
 #
-# Skip heavy CI on branch pushes when:
+# Skip local lint when:
 #   - commit message contains [skip ci] or [ci skip], or
-#   - every changed file is docs / housekeeping only (see is_housekeeping_path).
+#   - every changed file vs upstream is docs / housekeeping only.
 #
-# Always run full CI for: release tags, pull_request, schedule, workflow_dispatch,
-# and any push that touches code, CI scripts, or workflows.
+# Remote CI runs on: pull_request, release tags, schedule, workflow_dispatch — not on
+# direct pushes to master/main (merge should land via PR after CI green).
 set -euo pipefail
 
 reason=code_changes
@@ -56,10 +55,6 @@ all_paths_housekeeping() {
 }
 
 commit_message() {
-  if [[ -n "${COMMIT_MESSAGE:-}" ]]; then
-    printf '%s' "$COMMIT_MESSAGE"
-    return
-  fi
   git log -1 --format=%B 2>/dev/null || true
 }
 
@@ -67,16 +62,6 @@ message_requests_skip() {
   local msg
   msg="$(commit_message)"
   grep -qiE '\[(skip ci|ci skip)\]' <<<"$msg"
-}
-
-changed_files_for_push() {
-  local before="${GITHUB_EVENT_BEFORE:-}"
-  local head="${GITHUB_SHA:-HEAD}"
-  if [[ -n "$before" && "$before" != "0000000000000000000000000000000000000000" ]]; then
-    git diff --name-only "$before" "$head"
-    return
-  fi
-  git show --name-only --format= "$head"
 }
 
 changed_files_local() {
@@ -96,22 +81,7 @@ changed_files_local() {
   git show --name-only --format= HEAD
 }
 
-decide() {
-  local event="${GITHUB_EVENT_NAME:-local}"
-  local ref="${GITHUB_REF:-}"
-
-  if [[ "$ref" == refs/tags/zagens-v* || "$ref" == refs/tags/ds-pick-v* ]]; then
-    reason=release_tag
-    run_full=true
-    return
-  fi
-
-  if [[ "$event" == "pull_request" || "$event" == "schedule" || "$event" == "workflow_dispatch" ]]; then
-    reason="$event"
-    run_full=true
-    return
-  fi
-
+decide_local() {
   if message_requests_skip; then
     reason=skip_ci_marker
     run_full=false
@@ -119,12 +89,7 @@ decide() {
   fi
 
   local files
-  if [[ "${1:-}" == --local ]]; then
-    files="$(changed_files_local)"
-  else
-    files="$(changed_files_for_push)"
-  fi
-
+  files="$(changed_files_local)"
   if all_paths_housekeeping <<<"$files"; then
     reason=docs_only
     run_full=false
@@ -135,12 +100,15 @@ decide() {
   run_full=true
 }
 
-decide "${1:-}"
+if [[ "${1:-}" != --local ]]; then
+  echo "ci-push-gate: remote branch pushes do not trigger CI; use --local for pre-push hook" >&2
+  exit 2
+fi
+
+decide_local
 emit "$run_full"
 
-if [[ "${1:-}" == --local ]]; then
-  if [[ "$run_full" == "true" ]]; then
-    exit 1
-  fi
-  exit 0
+if [[ "$run_full" == "true" ]]; then
+  exit 1
 fi
+exit 0

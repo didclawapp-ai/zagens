@@ -19,40 +19,44 @@ Windows: `pwsh -File scripts/ci/verify-lint.ps1`
 
 Optional hooks (once per clone): `bash scripts/ci/install-git-hooks.sh`
 
-## Push without full CI (maintainers)
+## CI when you push (PR-first)
 
-Routine doc edits and small landings should not burn CI minutes on every `git push`.
-The shared gate is [`scripts/ci/ci-push-gate.sh`](scripts/ci/ci-push-gate.sh) (remote + local pre-push).
+This repo follows the usual open-source layout: **CI runs on pull requests**, not on every
+merge push to `master` / `main`. Release tags still run the full matrix and trigger CD.
 
-| Push kind | Remote CI | CD (Release) | Local pre-push lint |
-|-----------|-----------|--------------|---------------------|
+| Event | Remote CI | CD (Release) | Local pre-push lint |
+|-------|-----------|--------------|---------------------|
+| **Pull request** → `master` / `main` | Full matrix | No | N/A |
+| **Merge / push** to `master` / `main` | **None** (already checked on the PR) | No | See below |
 | **Release tag** `zagens-v*` / `ds-pick-v*` | Full matrix | Yes (after CI green) | Full `verify-lint` |
-| **Pull request** | Full matrix | No | N/A |
-| **Docs / housekeeping only** on `master` / `main` | Skipped | No | Skipped |
-| **Code change** on `master` / `main` | Full matrix | No | Full `verify-lint` |
-| **`[skip ci]` or `[ci skip]`** in commit message | Skipped | No (unless tag) | Skipped |
+| **Weekly schedule** / **workflow_dispatch** | Full matrix | No | N/A |
 
-**Housekeeping paths** (no code CI when *all* changed files match): `*.md`, `docs/`, `doc_Private/`, `deliverables/`, `assets/`, `producthunt/`, `.cursor/`, root policy files (`LICENSE`, `NOTICE.md`, …).
-
-**Examples:**
+**Contributor flow:**
 
 ```bash
-# README / CHANGELOG / docs only — auto-skipped
-git commit -m "docs(readme): clarify DeepSeek V4 positioning"
+git checkout -b feat/my-change
+# … edit …
+bash scripts/ci/verify-lint.sh    # optional but recommended before opening PR
+git push -u origin feat/my-change
+gh pr create                      # CI runs on the PR
+```
+
+**Maintainer direct push to `master`** (doc hotfix, merge button, etc.) does **not** start
+GitHub Actions. Local pre-push still uses [`scripts/ci/ci-push-gate.sh`](scripts/ci/ci-push-gate.sh):
+docs/housekeeping-only diffs or `[skip ci]` skip `verify-lint`; code changes run lint locally.
+
+```bash
+# Doc-only hotfix — no remote CI, local lint skipped
+git commit -m "docs(readme): …"
 git push origin master
 
-# Land WIP on master without remote CI (use sparingly; run verify before release)
-git commit -m "chore: sync maintainer notes [skip ci]"
-git push origin master
-
-# Release — always full CI + CD
+# Release — always remote CI + CD
 git tag -a zagens-v0.7.5 -m "Zagens v0.7.5"
 git push origin zagens-v0.7.5
 ```
 
-Emergency local bypass (does not affect remote): `SKIP_VERIFY=1 git push`.
-
-Before a release tag, run `bash scripts/ci/verify-workspace.sh` even if recent pushes used `[skip ci]`.
+Before tagging, run `bash scripts/ci/verify-workspace.sh` if changes did not go through a PR.
+Emergency local bypass: `SKIP_VERIFY=1 git push`.
 
 ## Security
 

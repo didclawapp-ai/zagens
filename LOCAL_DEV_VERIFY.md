@@ -75,7 +75,7 @@ pwsh scripts/ci/install-git-hooks.ps1
 - **pre-commit** → `cargo fmt --all -- --check`
 - **pre-push** → [`ci-push-gate.sh`](scripts/ci/ci-push-gate.sh) 判断；仅代码变更时跑 `verify-lint`（与 CI Lint 一致）
 
-仅文档 / `[skip ci]` 推送会自动跳过本地 lint 与远程 CI 重矩阵。详见 [CONTRIBUTING.md — Push without full CI](CONTRIBUTING.md#push-without-full-ci-maintainers)。
+远程 CI 仅在 **Pull Request** 与 **发版标签** 上运行；合并到 `master` 不会重复跑 Actions。本地 pre-push 仍用 gate 决定是否跑 lint。详见 [CONTRIBUTING.md — CI when you push](CONTRIBUTING.md#ci-when-you-push-pr-first)。
 
 紧急跳过（不推荐）：`SKIP_VERIFY=1 git push`
 
