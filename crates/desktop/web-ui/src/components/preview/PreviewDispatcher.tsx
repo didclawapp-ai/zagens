@@ -15,9 +15,10 @@ import {
 
 export function PreviewDispatcher({
   state,
+  theme,
   onOpenWorkspaceRelativePath,
 }: RendererProps) {
-  const common = { state, onOpenWorkspaceRelativePath };
+  const common = { state, theme, onOpenWorkspaceRelativePath };
   switch (state.fileType) {
     case FileType.Markdown:
       return <MarkdownRenderer {...common} />;

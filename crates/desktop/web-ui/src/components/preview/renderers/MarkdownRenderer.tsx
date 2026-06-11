@@ -18,6 +18,9 @@ import markdown from 'highlight.js/lib/languages/markdown';
 
 import 'highlight.js/styles/github.css';
 
+import { applyMermaidFenceRule } from '../../../lib/markdownMermaidFence';
+import { renderMermaidBlocksInContainer } from '../../../lib/mermaidRuntime';
+import type { Theme } from '../../../lib/appPreferences';
 import type { RendererProps } from '../types';
 
 // ---- hljs setup (minimal — code blocks inside markdown) --------------------
@@ -73,6 +76,18 @@ const md = new MarkdownIt({
   },
 });
 
+applyMermaidFenceRule(md);
+
+function resolvePreviewTheme(theme?: Theme): Theme {
+  if (theme) {
+    return theme;
+  }
+  if (typeof document !== 'undefined' && document.documentElement.classList.contains('dark')) {
+    return 'dark';
+  }
+  return 'light';
+}
+
 /** Relative paths in Markdown links; blocks javascript:/data: and keeps repo-relative hrefs. */
 const URI_ALLOW =
   /^(?:(?:https?|ftp|mailto|tel):|(?![a-z][a-z0-9+.-]*:)(?:[\w./-]+))$/i;
@@ -102,6 +117,9 @@ interface CodeBlockEntry {
 function attachCopyButtons(container: HTMLElement): void {
   const pres = container.querySelectorAll('pre');
   for (const pre of pres) {
+    if (pre.classList.contains('ds-mermaid-source')) {
+      continue;
+    }
     // Skip if already wrapped
     if (
       pre.parentElement &&
@@ -152,10 +170,11 @@ function attachCopyButtons(container: HTMLElement): void {
 
 // ---- component -------------------------------------------------------------
 
-export function MarkdownRenderer({ state, onOpenWorkspaceRelativePath }: RendererProps) {
+export function MarkdownRenderer({ state, theme, onOpenWorkspaceRelativePath }: RendererProps) {
   const { content } = state;
   const [rendered, setRendered] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
+  const previewTheme = resolvePreviewTheme(theme);
 
   const renderSafe = useCallback((raw: string) => {
     if (!raw) return '';
@@ -174,6 +193,22 @@ export function MarkdownRenderer({ state, onOpenWorkspaceRelativePath }: Rendere
       attachCopyButtons(containerRef.current);
     }
   }, [rendered]);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || !rendered) {
+      return;
+    }
+    let cancelled = false;
+    void renderMermaidBlocksInContainer(el, previewTheme).then(() => {
+      if (cancelled) {
+        return;
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [rendered, previewTheme]);
 
   const onClickCapture = useCallback(
     (e: MouseEvent<HTMLDivElement>) => {
@@ -259,7 +294,8 @@ export function MarkdownRenderer({ state, onOpenWorkspaceRelativePath }: Rendere
           [&_pre_code.hljs]:rounded-lg [&_pre_code.hljs]:p-4 [&_code.hljs]:bg-transparent [&_code.hljs]:p-0 [&_code.hljs]:text-sm
           [&_table]:my-4 [&_table]:w-full [&_table]:border-collapse [&_table]:text-sm
           [&_th]:border [&_th]:border-divider [&_th]:bg-canvas-alt/50 [&_th]:px-3 [&_th]:py-2 [&_th]:align-top
-          [&_td]:border [&_td]:border-divider [&_td]:px-3 [&_td]:py-2 [&_td]:align-top"
+          [&_td]:border [&_td]:border-divider [&_td]:px-3 [&_td]:py-2 [&_td]:align-top
+          [&_.ds-mermaid-mount_svg]:mx-auto [&_.ds-mermaid-mount_svg]:block [&_.ds-mermaid-mount_svg]:max-w-full"
         onClickCapture={onClickCapture}
         dangerouslySetInnerHTML={{ __html: rendered }}
       />

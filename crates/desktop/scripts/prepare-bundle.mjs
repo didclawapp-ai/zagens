@@ -22,6 +22,28 @@ function rustcHostTriple() {
   return m[1];
 }
 
+/** `npm run build` needs devDependencies (tsc, vite). Skip them when NODE_ENV=production. */
+function ensureWebUiDevDependencies() {
+  const tscBin = join(
+    webUi,
+    'node_modules',
+    '.bin',
+    process.platform === 'win32' ? 'tsc.cmd' : 'tsc',
+  );
+  if (existsSync(tscBin)) {
+    return;
+  }
+  console.log(
+    '[bundle] web-ui devDependencies missing (often NODE_ENV=production) — npm install --include=dev…',
+  );
+  execSync('npm install --include=dev', {
+    cwd: webUi,
+    stdio: 'inherit',
+    env: { ...process.env, NODE_ENV: 'development' },
+  });
+}
+
+ensureWebUiDevDependencies();
 console.log('[bundle] Building web-ui…');
 execSync('npm run build', { cwd: webUi, stdio: 'inherit' });
 

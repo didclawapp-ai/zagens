@@ -47,6 +47,8 @@ export interface PreviewState {
 /** Every renderer receives the full PreviewState and decides what to render. */
 export interface RendererProps {
   state: PreviewState;
+  /** App theme — used by Markdown preview for inline Mermaid diagrams. */
+  theme?: 'light' | 'dark';
   /**
    * Open another workspace file in the preview overlay (Markdown relative links).
    * If unset, relative links may still default-navigate the webview and reset the app.

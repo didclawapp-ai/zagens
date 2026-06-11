@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useMemo, useCallback, useLayoutEffect } from 'react';
-import mermaid from 'mermaid';
-import { sanitizeHtmlForDisplay } from '../lib/sanitizeHtml';
+import { ensureMermaidInitialized, renderMermaidToSvg } from '../lib/mermaidRuntime';
+import { sanitizeMermaidSvg } from '../lib/sanitizeHtml';
 
 interface Message {
   id: string;
@@ -145,9 +145,6 @@ function triggerDownload(dataUrl: string, filename: string) {
   document.body.removeChild(a);
 }
 
-const MERMAID_THEME_DEFAULT = 'default' as const;
-const MERMAID_THEME_DARK = 'dark' as const;
-
 // ── DiagramViewport — CSS transform zoom + pointer pan ───────────
 
 function DiagramViewport({
@@ -285,7 +282,7 @@ function DiagramViewport({
         style={{
           transform: `translate(${pan.x}px, ${pan.y}px)`,
         }}
-        dangerouslySetInnerHTML={{ __html: sanitizeHtmlForDisplay(scaledSvg) }}
+        dangerouslySetInnerHTML={{ __html: sanitizeMermaidSvg(scaledSvg) }}
       />
     </div>
   );
@@ -325,11 +322,7 @@ export default function MermaidPanel({ messages, theme, onDetected }: Props) {
   }, [blocks, onDetected]);
 
   useEffect(() => {
-    mermaid.initialize({
-      startOnLoad: false,
-      theme: theme === 'dark' ? MERMAID_THEME_DARK : MERMAID_THEME_DEFAULT,
-      securityLevel: 'strict',
-    });
+    ensureMermaidInitialized(theme);
     setRenderMap({});
   }, [theme]);
 
@@ -353,9 +346,10 @@ export default function MermaidPanel({ messages, theme, onDetected }: Props) {
           continue;
         }
         try {
-          const { svg } = await mermaid.render(
-            `mermaid-svg-${block.digest}`,
+          const svg = await renderMermaidToSvg(
             block.code,
+            `mermaid-svg-${block.digest}`,
+            theme,
           );
           if (!cancelled) {
             next[block.digest] = { svg };

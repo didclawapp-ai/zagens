@@ -24,8 +24,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **CI PR-first:** Remote CI runs on pull requests and release tags only — not on merges to `master` / `main`. Local pre-push still uses `scripts/ci/ci-push-gate.sh` to skip lint for docs-only or `[skip ci]` landings.
 
+### Added
+
+- **Desktop (preview):** Markdown file preview renders embedded ` ```mermaid ` ` fences inline (same engine as the Mermaid panel).
+
 ### Fixed
 
+- **Desktop (build):** `bundle:prepare` installs web-ui devDependencies when `NODE_ENV=production` omitted `tsc`/`vite` (fixes `'tsc' 不是内部或外部命令` on Windows).
+- **Desktop (Mermaid):** Preserve `foreignObject` label HTML when sanitizing rendered SVG so mindmap (and similar) node text is visible again after DOMPurify 3.1.7+.
 - **Release (crates.io):** Include `zagens-windows-sandbox` in `publish-crates.sh` before `zagens-cli`; add workspace `repository`/`homepage`/`readme` to its manifest; pre-publish leaf dry-run covers it; post-publish verify uses workspace version.
 
 ## [0.7.5] - 2026-06-11
