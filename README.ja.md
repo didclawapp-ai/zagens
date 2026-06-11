@@ -8,16 +8,16 @@
 
 長時間の Agent 作業は**途中で止まったり、早すぎる「完了」宣言**をしがちです。コードと Office ファイルは**別ツール**に分かれがちです。ローカル Agent には、チャット窓だけでなく**リプレイ・承認・監査可能性**が必要です。
 
-**Zagens** はマシン上で動く**デスクトップ Agent ハーネス**です。Code / Office ワークスペースで共通のローカル **runtime sidecar**、ターン単位の**セッションリプレイ**、長時間タスク向けの**段階的完了ゲート**、トレイ・通知・組み込みターミナルなどのデスクトップネイティブ機能を備えます。API キーはご自身で用意し、[DeepSeek](https://deepseek.com/) や OpenAI 互換プロバイダーに接続します。
+**Zagens** は **[DeepSeek V4](https://deepseek.com/) エコシステム**向けに設計した**デスクトップ Agent ハーネス**です。DeepSeek API・推論ストリーム・ツール呼び出しに最適化され、既定で DeepSeek Pro / Flash を利用できます。Code / Office ワークスペースで共通のローカル **runtime sidecar**、ターン単位の**セッションリプレイ**、長時間タスク向けの**段階的完了ゲート**、トレイ・通知・組み込みターミナルなどのデスクトップネイティブ機能を備えます（OpenAI 互換エンドポイントもフォールバックとして利用可能）。
 
 > **作者より：** AI Agent が何でもできるわけではない — 境界がある。私たちにできるのは、その境界を広げることだ。
 
-> **ライセンス:** [MIT](LICENSE)。Runtime 系譜: [NOTICE.md](NOTICE.md) · [third-party/deepseek-tui/](third-party/deepseek-tui/)。**DeepSeek Inc. とは無関係です。** 以下は **Zagens v0.7.3** 時点 — [CHANGELOG.md](CHANGELOG.md) を参照。
+> **ライセンス:** [MIT](LICENSE)。Runtime 系譜: [NOTICE.md](NOTICE.md) · [third-party/deepseek-tui/](third-party/deepseek-tui/)。以下は **Zagens v0.7.4** 時点 — [CHANGELOG.md](CHANGELOG.md) を参照。
 
 | リソース | リンク |
 |----------|--------|
 | ユーザーガイド | [zagens.com/docs](https://zagens.com/docs) |
-| ダウンロード | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases)（最新 **`zagens-v0.7.3`**）· [zagens.com/download](https://zagens.com/download) |
+| ダウンロード | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases)（最新 **`zagens-v0.7.4`**）· [zagens.com/download](https://zagens.com/download) |
 | 設計仕様 | [`docs/README.md`](docs/README.md) |
 | コントリビューション | [`CONTRIBUTING.md`](CONTRIBUTING.md) · [`LOCAL_DEV_VERIFY.md`](LOCAL_DEV_VERIFY.md) |
 | セキュリティ | [`SECURITY.md`](SECURITY.md) |
@@ -28,10 +28,11 @@
 
 | 向いている | 向いていない |
 |------------|--------------|
-| **独立したデスクトップ Harness**（特定 IDE 拡張に縛られない）を求める開発者 | モデル・課金込みのホスト型 SaaS |
-| **長期コードリファクタ**や **Office 成果物**を同一ワークフローで扱うチーム | ツール・ワークスペース・リプレイのない「チャットのみ」 |
-| **ローカル sidecar**、MCP/スキル、UI 内**実行承認**を重視する人 | ガードレールなしの完全自律 YOLO Agent |
-| 現時点では **Windows デスクトップ**；macOS/Linux は **CLI** またはソースビルド | セットアップ不要のモバイル / ブラウザのみ |
+| **DeepSeek ヘビーユーザー** — DeepSeek API / V4 で日々コーディング Agent を回し、公式 TUI より強いデスクトップ Harness を求める人 | モデル・課金込みのホスト型 SaaS |
+| **独立したデスクトップ Harness**（特定 IDE 拡張に縛られない）を求める開発者 | ツール・ワークスペース・リプレイのない「チャットのみ」 |
+| **長期コードリファクタ**や **Office 成果物**を同一ワークフローで扱うチーム | ガードレールなしの完全自律 YOLO Agent |
+| **ローカル sidecar**、MCP/スキル、UI 内**実行承認**を重視する人 | セットアップ不要のモバイル / ブラウザのみ |
+| 現時点では **Windows デスクトップ**；macOS/Linux は **CLI** またはソースビルド | ローカル実行なしの Web コパイロットだけで足りるチーム |
 
 ---
 
@@ -58,7 +59,7 @@
 
 ---
 
-## 現時点で提供（v0.7.3）
+## 現時点で提供（v0.7.4）
 
 **デスクトップ:** マルチセッションチャット（ストリーム/停止/思考）、ファイルツリー・プレビュー・diff、PTY ターミナル（Code）、サブエージェントパネル、タスク/スキル UI、MCP + ルーティング、使用量チャート、keyring API キー、UI: 簡体中文 / en / ja / pt-BR。
 
@@ -76,7 +77,7 @@
 |------|------|
 | **デスクトップインストーラ** | **Windows** は [Releases](https://github.com/didclawapp-ai/zagens/releases)。**macOS / Linux デスクトップパッケージ** — 計画中。3 プラットフォーム **CLI** は提供済み。 |
 | **OS サンドボックス強制** | **macOS Seatbelt** — `sandbox-exec` 利用時に強制。**Windows** — ネイティブサンドボックス実装済み（`elevated` 推奨：`zagens sandbox setup` 後に強制；`unelevated` は workspace 書き込み隔離のみ）。設定 → **Sandbox** 初回ウィザード。**Linux** — ポリシー宣言のみ、**OS 未強制**（degraded）。詳細: [`SANDBOX_CAPABILITY_MATRIX.md`](docs/tech/SANDBOX_CAPABILITY_MATRIX.md)。 |
-| **プロバイダ** | API キーはユーザー提供。DeepSeek 等 OpenAI 互換に接続 — **モデルはホストしません**。 |
+| **プロバイダ** | **DeepSeek V4**（Pro / Flash）向けに最適化。API キーはユーザー提供。OpenAI 互換エンドポイントも利用可 — **モデルはホストしません**。 |
 | **長時間 & マルチエージェント** | ゲートと CRAFT は**利用可能だが進化中**；エッジケースと新ゲート種別を開発中。 |
 | **Office の深さ** | コア読み書きは動作；エンタープライズコネクタ、音声、一部シナリオテンプレは**将来**（[Office シナリオ](docs/desktop/OFFICE_SCENARIOS.md)）。 |
 

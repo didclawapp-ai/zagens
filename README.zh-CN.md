@@ -8,16 +8,16 @@
 
 长程 Agent 任务容易**半途停下或过早「声称完成」**；写代码和改 Office 往往**各用一套工具**；本地执行还需要**回放、审批和可审计性**——而不只是多开一个聊天窗口。
 
-**Zagens** 是跑在你机器上的**桌面 Agent 控制台**：Code 与 Office 工作区共用本地 **runtime sidecar**，支持按轮 **会话回放**、长程任务的**分层完成门禁**，以及托盘、通知、嵌入式终端等桌面原生能力。使用自备 API Key 连接 [DeepSeek](https://deepseek.com/) 或其他 OpenAI 兼容提供商。
+**Zagens** 是专为 **[DeepSeek V4](https://deepseek.com/) 生态**打造的**桌面 Agent 控制台**：针对 DeepSeek API、推理链与工具调用深度适配，默认开箱即用 DeepSeek Pro / Flash。Code 与 Office 工作区共用本地 **runtime sidecar**，支持按轮 **会话回放**、长程任务的**分层完成门禁**，以及托盘、通知、嵌入式终端等桌面原生能力（亦支持其他 OpenAI 兼容端点作为备选）。
 
 > **作者语：** 不要相信 AI Agent 能做任何事情，它是有边界的；我们能做的，就是拓展这种边界。
 
-> **许可：** [MIT](LICENSE)。Runtime 谱系：[NOTICE.md](NOTICE.md) · [third-party/deepseek-tui/](third-party/deepseek-tui/)。**与 DeepSeek 公司无关联。** 以下以 **Zagens v0.7.3** 为准 — 见 [CHANGELOG.md](CHANGELOG.md)。
+> **许可：** [MIT](LICENSE)。Runtime 谱系：[NOTICE.md](NOTICE.md) · [third-party/deepseek-tui/](third-party/deepseek-tui/)。以下以 **Zagens v0.7.4** 为准 — 见 [CHANGELOG.md](CHANGELOG.md)。
 
 | 资源 | 链接 |
 |------|------|
 | 用户文档 | [zagens.com/docs](https://zagens.com/docs) |
-| 安装包 | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases)（最新 **`zagens-v0.7.3`**）· [zagens.com/download](https://zagens.com/download) |
+| 安装包 | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases)（最新 **`zagens-v0.7.4`**）· [zagens.com/download](https://zagens.com/download) |
 | 设计规格 | [`docs/README.md`](docs/README.md) |
 | 贡献指南 | [`CONTRIBUTING.md`](CONTRIBUTING.md) · [`LOCAL_DEV_VERIFY.md`](LOCAL_DEV_VERIFY.md) |
 | 安全策略 | [`SECURITY.md`](SECURITY.md) |
@@ -28,10 +28,11 @@
 
 | 更适合 | 不太适合 |
 |--------|----------|
-| 想要**独立桌面 Harness**（不绑死某一 IDE 插件）的开发者 | 托管 SaaS、包月模型、零配置云端 |
-| 做**长程代码重构**或**Office 交付物**、希望同一工作流的人 | 纯聊天、无工具、无工作区、无回放 |
-| 在意**本地 sidecar**、MCP/技能、UI 内**执行审批**的用户 | 完全自主、无护栏的 YOLO Agent |
-| 当前 **Windows 桌面**用户；macOS/Linux 可用 **CLI** 或源码构建 | 零安装的移动端 / 纯浏览器体验 |
+| **DeepSeek 深度用户** — 日常用 DeepSeek API / V4 做编码与 Agent 工作流，想要比官方 TUI 更强的桌面 Harness | 托管 SaaS、包月模型、零配置云端 |
+| 想要**独立桌面 Harness**（不绑死某一 IDE 插件）的开发者 | 纯聊天、无工具、无工作区、无回放 |
+| 做**长程代码重构**或**Office 交付物**、希望同一工作流的人 | 完全自主、无护栏的 YOLO Agent |
+| 在意**本地 sidecar**、MCP/技能、UI 内**执行审批**的用户 | 零安装的移动端 / 纯浏览器体验 |
+| 当前 **Windows 桌面**用户；macOS/Linux 可用 **CLI** 或源码构建 | 只需网页 Copilot、不需要本地执行能力的团队 |
 
 ---
 
@@ -58,7 +59,7 @@
 
 ---
 
-## 当前已具备（v0.7.3）
+## 当前已具备（v0.7.4）
 
 **桌面：** 多会话聊天（流式/停止/思考流）、文件树与预览与 diff、PTY 终端（Code）、子代理面板、任务/技能 UI、MCP 与路由规则、用量图表、keyring 存 Key、中/英/日/葡 UI。
 
@@ -76,7 +77,7 @@
 |------|------|
 | **桌面安装包** | **Windows** 安装包见 [Releases](https://github.com/didclawapp-ai/zagens/releases)。**macOS / Linux 桌面包** — 规划中。三平台 **CLI** 已发。 |
 | **OS 级沙箱** | **macOS Seatbelt** — 在 `sandbox-exec` 可用时强制执行。**Windows** — 原生沙箱已实现（`elevated` 推荐：`zagens sandbox setup` 后强制隔离；`unelevated` 为工作区写隔离）。设置 → **Sandbox** 首次引导。**Linux** — 策略已声明，**尚未 OS 级强制**（degraded）。详见 [`SANDBOX_CAPABILITY_MATRIX.md`](docs/tech/SANDBOX_CAPABILITY_MATRIX.md)。 |
-| **模型与 Key** | 需自备 API Key；连接 DeepSeek 等 OpenAI 兼容端点 — **我们不托管模型**。 |
+| **模型与 Key** | 面向 **DeepSeek V4**（Pro / Flash）深度优化；需自备 API Key。亦支持其他 OpenAI 兼容端点 — **我们不托管模型**。 |
 | **长程与多代理** | 门禁与 CRAFT **可用且在持续演进**，边界场景与新门禁类型在活跃开发中。 |
 | **Office 深度** | 核心读写路径已有；企业连接器、语音及部分场景模板为**后续方向**（[Office 场景](docs/desktop/OFFICE_SCENARIOS.md)）。 |
 

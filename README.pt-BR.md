@@ -8,16 +8,16 @@
 
 Tarefas longas de Agent tendem a **parar no meio ou marcar “concluído” cedo demais**. Código e arquivos Office costumam ficar em **ferramentas separadas**. Agents locais precisam de **replay, aprovação e auditabilidade** — não só mais uma janela de chat.
 
-**Zagens** é um **console de Agent desktop** na sua máquina: um **runtime sidecar** local para workspaces Code e Office, **replay de sessão** turno a turno, **portões de conclusão** em camadas para tarefas longas e shell nativo (bandeja, notificações, terminal embutido). Use sua própria API key para [DeepSeek](https://deepseek.com/) ou qualquer provedor compatível com OpenAI.
+**Zagens** é um **console de Agent desktop** feito para o **ecossistema [DeepSeek V4](https://deepseek.com/)**: otimizado para API DeepSeek, fluxos de raciocínio e chamadas de ferramentas (DeepSeek Pro / Flash por padrão). Um **runtime sidecar** local para workspaces Code e Office, **replay de sessão** turno a turno, **portões de conclusão** em camadas e shell nativo (bandeja, notificações, terminal embutido). Endpoints OpenAI-compatíveis seguem disponíveis como alternativa.
 
 > **Nota dos autores:** Não acredite que um Agent de IA pode fazer qualquer coisa — ele tem limites. O que podemos fazer é ampliar esses limites.
 
-> **Licença:** [MIT](LICENSE). Linhagem do runtime: [NOTICE.md](NOTICE.md) · [third-party/deepseek-tui/](third-party/deepseek-tui/). **Sem vínculo com a DeepSeek Inc.** Capacidades abaixo refletem **Zagens v0.7.3** — veja [CHANGELOG.md](CHANGELOG.md).
+> **Licença:** [MIT](LICENSE). Linhagem do runtime: [NOTICE.md](NOTICE.md) · [third-party/deepseek-tui/](third-party/deepseek-tui/). Capacidades abaixo refletem **Zagens v0.7.4** — veja [CHANGELOG.md](CHANGELOG.md).
 
 | Recurso | Link |
 |---------|------|
 | Guias do usuário | [zagens.com/docs](https://zagens.com/docs) |
-| Downloads | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases) (último **`zagens-v0.7.3`**) · [zagens.com/download](https://zagens.com/download) |
+| Downloads | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases) (último **`zagens-v0.7.4`**) · [zagens.com/download](https://zagens.com/download) |
 | Especificações | [`docs/README.md`](docs/README.md) |
 | Contribuição | [`CONTRIBUTING.md`](CONTRIBUTING.md) · [`LOCAL_DEV_VERIFY.md`](LOCAL_DEV_VERIFY.md) |
 | Segurança | [`SECURITY.md`](SECURITY.md) |
@@ -28,10 +28,11 @@ Tarefas longas de Agent tendem a **parar no meio ou marcar “concluído” cedo
 
 | Combina bem | Combina menos |
 |-------------|---------------|
-| Devs que querem um **harness desktop independente** (sem ficar preso a uma extensão de IDE) | SaaS hospedado com modelos e cobrança inclusos |
-| Times em **refactors longos** ou **entregas Office** no mesmo fluxo | Só chat — sem ferramentas, workspace ou replay |
-| Quem valoriza **sidecar local**, MCP/skills e **aprovação de exec** na UI | Agents YOLO totalmente autônomos, sem guardrails |
-| Usuários **Windows desktop** hoje; macOS/Linux via **CLI** ou build da fonte | Experiência mobile ou só navegador, zero setup |
+| **Usuários avançados de DeepSeek** — fluxos diários com API DeepSeek / V4 que querem um harness desktop além do TUI oficial | SaaS hospedado com modelos e cobrança inclusos |
+| Devs que querem um **harness desktop independente** (sem ficar preso a uma extensão de IDE) | Só chat — sem ferramentas, workspace ou replay |
+| Times em **refactors longos** ou **entregas Office** no mesmo fluxo | Agents YOLO totalmente autônomos, sem guardrails |
+| Quem valoriza **sidecar local**, MCP/skills e **aprovação de exec** na UI | Experiência mobile ou só navegador, zero setup |
+| Usuários **Windows desktop** hoje; macOS/Linux via **CLI** ou build da fonte | Times que só querem copiloto web sem execução local |
 
 ---
 
@@ -58,7 +59,7 @@ Também: **CRAFT multi-agent** (sub-agents, vereditos fix-loop, blackboard P1 �
 
 ---
 
-## Disponível hoje (v0.7.3)
+## Disponível hoje (v0.7.4)
 
 **Desktop:** chat multi-sessão (stream/parar/pensamento), árvore + previews + diff, terminal PTY (Code), painel de sub-agents, UI de tasks/skills, MCP + roteamento, gráficos de uso, API key no keyring, UI em zh-Hans / en / ja / pt-BR.
 
@@ -76,7 +77,7 @@ Preferimos escopo honesto a checklist de marketing.
 |--------|--------|
 | **Instaladores desktop** | **Windows** em [Releases](https://github.com/didclawapp-ai/zagens/releases). **Pacotes desktop macOS / Linux** — planejados. **CLI** nas três plataformas já disponível. |
 | **Sandbox no OS** | **macOS Seatbelt** — aplicado quando `sandbox-exec` existe. **Windows** — sandbox nativo implementado (`elevated` recomendado após `zagens sandbox setup`; `unelevated`: isolamento de escrita no workspace). Configurações → **Sandbox** assistente na primeira execução. **Linux** — política declarada, **sem enforcement no OS** (degraded). Detalhes: [`SANDBOX_CAPABILITY_MATRIX.md`](docs/tech/SANDBOX_CAPABILITY_MATRIX.md). |
-| **Provedores** | Você traz API keys; conectamos DeepSeek e endpoints OpenAI-compatíveis — **não hospedamos modelos**. |
+| **Provedores** | Otimizado para **DeepSeek V4** (Pro / Flash); você traz API keys. Endpoints OpenAI-compatíveis também — **não hospedamos modelos**. |
 | **Longo prazo & multi-agent** | Portões e CRAFT **usáveis em produção, ainda evoluindo**; edge cases e novos tipos de portão em desenvolvimento. |
 | **Profundidade Office** | Leitura/escrita core ok; conectores enterprise, voz e alguns templates de cenário são **futuro** ([cenários Office](docs/desktop/OFFICE_SCENARIOS.md)). |
 

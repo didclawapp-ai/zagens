@@ -8,16 +8,16 @@
 
 Long-horizon agent work tends to **stall or “claim done” too early**. Code and office files often live in **separate tools**. Local agents need **replay, approval, and auditability** — not just another chat window.
 
-**Zagens** is a **desktop agent harness** that runs on your machine: one local **runtime sidecar** for Code and Office workspaces, turn-by-turn **session replay**, layered **completion gates** for long tasks, and desktop-native shell (tray, notifications, embedded terminal). Connect [DeepSeek](https://deepseek.com/) or any OpenAI-compatible provider with your own API key.
+**Zagens** is a **desktop agent harness** built for the **[DeepSeek V4](https://deepseek.com/) ecosystem**: tuned for DeepSeek API, reasoning streams, and tool calling out of the box (DeepSeek Pro / Flash by default). One local **runtime sidecar** for Code and Office workspaces, turn-by-turn **session replay**, layered **completion gates** for long tasks, and desktop-native shell (tray, notifications, embedded terminal). Other OpenAI-compatible endpoints remain supported as a fallback.
 
 > **From the authors:** Don’t believe an AI agent can do anything — it has boundaries. What we can do is expand those boundaries.
 
-> **License:** [MIT](LICENSE). Runtime lineage: [NOTICE.md](NOTICE.md) · [third-party/deepseek-tui/](third-party/deepseek-tui/). **Not affiliated with DeepSeek Inc.** Capabilities below reflect **Zagens v0.7.3** — see [CHANGELOG.md](CHANGELOG.md).
+> **License:** [MIT](LICENSE). Runtime lineage: [NOTICE.md](NOTICE.md) · [third-party/deepseek-tui/](third-party/deepseek-tui/). Capabilities below reflect **Zagens v0.7.4** — see [CHANGELOG.md](CHANGELOG.md).
 
 | Resource | Link |
 |----------|------|
 | User guides | [zagens.com/docs](https://zagens.com/docs) |
-| Downloads | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases) (latest **`zagens-v0.7.3`**) · [zagens.com/download](https://zagens.com/download) |
+| Downloads | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases) (latest **`zagens-v0.7.4`**) · [zagens.com/download](https://zagens.com/download) |
 | Design specs | [`docs/README.md`](docs/README.md) |
 | Contributing | [`CONTRIBUTING.md`](CONTRIBUTING.md) · [`LOCAL_DEV_VERIFY.md`](LOCAL_DEV_VERIFY.md) |
 | Security | [`SECURITY.md`](SECURITY.md) |
@@ -28,10 +28,11 @@ Long-horizon agent work tends to **stall or “claim done” too early**. Code a
 
 | Good fit | Less fit |
 |----------|----------|
-| Developers who want a **standalone desktop harness** (not locked into one IDE extension) | A hosted SaaS with managed models and billing |
-| Teams working on **long code refactors** or **Office deliverables** in the same workflow | “Chat only” — no tools, no workspace, no replay |
-| People who care about **local sidecar architecture**, MCP/skills, and **exec approval** in the UI | Fully autonomous YOLO agents with no guardrails |
-| Windows desktop users today; macOS/Linux via **CLI** or source build | Zero-setup mobile or browser-only experience |
+| **DeepSeek power users** — daily DeepSeek API / V4 coding and agent workflows who want a desktop harness beyond the official TUI | A hosted SaaS with managed models and billing |
+| Developers who want a **standalone desktop harness** (not locked into one IDE extension) | “Chat only” — no tools, no workspace, no replay |
+| Teams working on **long code refactors** or **Office deliverables** in the same workflow | Fully autonomous YOLO agents with no guardrails |
+| People who care about **local sidecar architecture**, MCP/skills, and **exec approval** in the UI | Zero-setup mobile or browser-only experience |
+| Windows desktop users today; macOS/Linux via **CLI** or source build | Teams that only want a web copilot with no local execution |
 
 ---
 
@@ -58,7 +59,7 @@ Also shipped: **CRAFT multi-agent** (sub-agents, fix-loop verdicts, P1 blackboar
 
 ---
 
-## Shipped today (v0.7.3)
+## Shipped today (v0.7.4)
 
 **Desktop:** multi-session chat (stream/stop/thinking), file tree + previews + diff, PTY terminal (Code), sub-agent panel, tasks/skills UI, MCP + routing rules, usage charts, keyring API key, UI in zh-Hans / en / ja / pt-BR.
 
@@ -76,7 +77,7 @@ We prefer honest scope over marketing checklists.
 |-------|--------|
 | **Desktop installers** | **Windows** installer on [Releases](https://github.com/didclawapp-ai/zagens/releases). **macOS / Linux desktop packages** — planned. CLI binaries for all three platforms ship today. |
 | **OS sandbox enforcement** | **macOS Seatbelt** — enforced when `sandbox-exec` is available. **Windows** — native sandbox enforced after setup (`elevated` recommended: profile read isolation + WFP; `unelevated` fallback: workspace write isolation only). Settings → **Sandbox** first-run wizard. **Linux** — policy declared, **not OS-enforced yet** (degraded). Details: [`SANDBOX_CAPABILITY_MATRIX.md`](docs/tech/SANDBOX_CAPABILITY_MATRIX.md). |
-| **Providers** | You bring API keys; we connect to DeepSeek and other OpenAI-compatible endpoints — we do not host models. |
+| **Providers** | Optimized for **DeepSeek V4** (Pro / Flash); you bring API keys. Other OpenAI-compatible endpoints supported — we do not host models. |
 | **Long-horizon & multi-agent** | Gates and CRAFT are **production-usable but still evolving**; edge cases and new gate types land in active development. |
 | **Office depth** | Core read/write paths work; enterprise connectors, voice, and some scenario templates are **future** ([Office scenarios](docs/desktop/OFFICE_SCENARIOS.md)). |
 
