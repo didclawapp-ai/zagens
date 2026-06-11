@@ -71,11 +71,7 @@ function readStoredSidebarWidth(): number {
 }
 
 const navBtn = (active: boolean) =>
-  `w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
-    active
-      ? 'bg-hover-strong font-medium text-accent'
-      : 'text-t-text hover:bg-hover'
-  }`;
+  `sidebar-nav-item w-full text-left ${active ? 'sidebar-nav-item--active' : ''}`;
 
 export default function Sidebar({
   sessions,
@@ -184,7 +180,9 @@ export default function Sidebar({
             height={24}
           />
           <div className="min-w-0">
-            <span className="block truncate text-base font-semibold text-accent">{t('app.title')}</span>
+            <span className="block truncate text-[15px] font-semibold tracking-tight text-t-text">
+              {t('app.title')}
+            </span>
             <span className="block truncate text-[10px] leading-tight text-t-text-muted">{t('app.subtitle')}</span>
           </div>
         </div>
@@ -326,16 +324,12 @@ export default function Sidebar({
           return (
             <div
               key={s.id}
-              className={`flex items-center gap-1 rounded-lg group ${
-                isActive ? 'bg-msg-user' : 'hover:bg-hover'
-              }`}
+              className={`session-row group ${isActive ? 'session-row--active' : ''}`}
             >
               <button
                 type="button"
                 onClick={() => onSelectSession?.(s.id)}
-                className={`flex-1 min-w-0 px-3 py-2 text-sm text-left truncate ${
-                  isActive ? 'font-medium text-t-text' : 'text-t-text'
-                }`}
+                className="session-row-btn flex-1 min-w-0 truncate"
               >
                 {s.name || s.id.slice(0, 8)}
               </button>

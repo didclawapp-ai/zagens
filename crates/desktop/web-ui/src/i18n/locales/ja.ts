@@ -8,6 +8,48 @@ const ja: TranslationMap = {
     heroTagline: 'AI コーディングアシスタント',
     emptyPrompt: '下の入力欄から会話を始めましょう',
   },
+  chatRestore: {
+    loading: 'セッションを復元しています…',
+    sourceLabel: '復元元: {{source}}',
+    sourceCache: 'ローカルキャッシュ',
+    sourceThread: 'スレッドイベント再生',
+    sourceSession: 'セッションアーカイブ',
+    toolsMayBeIncomplete: 'ツール出力が不完全な場合があります',
+    retry: '再読み込み',
+  },
+  chatEmpty: {
+    title: 'ここから始める',
+    subtitle: 'やりたいことを書いてください。エージェントがコードを読み、編集し、コマンドを実行して報告します。',
+    hint: 'スターターカードを選ぶか、下に直接入力',
+    cards: {
+      exploreCodebase: {
+        title: 'コードベースを把握',
+        hint: '構成・エントリ・主要モジュール',
+      },
+      implementFeature: {
+        title: '機能を実装',
+        hint: '先に読んでから小さく進める',
+      },
+      fixBug: {
+        title: 'バグを修正',
+        hint: '再現・原因・最小修正',
+      },
+      writeTests: {
+        title: 'テストを追加',
+        hint: '変更に沿ったテスト',
+      },
+    },
+    prefill: {
+      exploreCodebase:
+        'まずこのリポジトリの構成を把握してください：主要 crate/ディレクトリ、エントリ、タスクに関係するモジュール。短いリストで — まだコードは編集しないで。',
+      implementFeature:
+        '機能を実装したいです（詳細は次のメッセージで）。関連コードを読み、3〜5 ステップの計画を出してから小さく実行し、各ステップ後に簡潔に報告してください。',
+      fixBug:
+        'バグに遭遇しました（症状とエラーは次で）。原因を特定し、修正案を出してから適用し、検証方法を説明してください。',
+      writeTests:
+        '最近の変更または指定モジュールのテストを追加：既存のテスト構成を説明し、必要最小限のケースを書き、関連テストコマンドを実行してください。',
+    },
+  },
   officeEmpty: {
     title: 'Office モード',
     subtitle: '文書の作成・整理・納品',
@@ -286,6 +328,7 @@ const ja: TranslationMap = {
     contextTooltip: '{{pct}}% · ~{{used}} / {{max}} context tokens（トランスクリプトから推定）',
     contextTooltipRuntime: '{{pct}}% · ~{{used}} / {{max}} context tokens（runtime 推定）',
     contextCompactHint: '自動コンパクト閾値: {{threshold}} tokens',
+    contextMeterAria: 'コンテキスト使用量 {{pct}}%',
     lastApiInputTokens: 'API {{count}}',
     lastApiInputTokensTitle: '直近の API リクエスト入力 tokens（プロバイダー値）: {{count}}',
     lastTurnTokens: '↓ {{count}}',
@@ -329,6 +372,8 @@ const ja: TranslationMap = {
     confirm: '確定',
     autoApprove: 'ツール呼び出しを自動承認',
     autoApproveShort: '自動承認',
+    autoApproveAria: 'ツール呼び出しを自動承認',
+    autoApproveLockedAria: '承認ポリシー: {{policy}}',
     approvalFromSettings: '承認: {{policy}}',
     approvalFromSettingsHint:
       '設定 → Approval policy で変更できます。ツールの自動承認チェックボックスを有効にするには Auto-approve を選択してください。',
@@ -393,6 +438,7 @@ const ja: TranslationMap = {
     threadWorkspaceError: 'スレッドは再開されましたが、ワークスペースの読み込みに失敗しました: {{errMsg}}',
     unauthorized401: '未認可 (401): デスクトップシェル経由で sidecar を起動するか、正しい runtime token を提供してください。',
     loadSessionFailed: 'セッションの読み込みに失敗しました: {{message}}',
+    sessionRestoreRetryFailed: 'スレッドからメッセージを再読み込みできませんでした。',
     deleteSessionFailed: 'セッションの削除に失敗しました: {{message}}',
     workspaceEmpty: 'ワークスペースを空にすることはできません',
     activeTurnBlocking: 'アクティブなターンが進行中です。ワークスペースを切り替えできません。生成を停止するか、ターンの完了を待ってください。',
@@ -1176,6 +1222,9 @@ const ja: TranslationMap = {
     toolCallsDefault: 'Tool calls',
     toolCallsWithName: '{{name}} 他 {{count}} 件',
     toolCallsHeadMore: '{{head}} 他 {{count}} 件',
+    toolGroupReads: '{{count}} 件を読み取り',
+    toolGroupWrites: '{{count}} 件を書き込み',
+    toolGroupShell: 'シェルコマンド {{count}} 件',
   },
   terminalCard: {
     runningEmpty: '実行中 — ターミナル出力はまだありません（成功時に出力しない Python スクリプトが多いです）。',

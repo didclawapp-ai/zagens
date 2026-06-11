@@ -266,7 +266,11 @@ where
                     status: TurnItemLifecycleStatus::InProgress,
                     summary,
                     detail: Some(serde_json::to_string(&input).unwrap_or_default()),
-                    metadata: None,
+                    metadata: Some(json!({
+                        "tool_name": name,
+                        "tool_input": input,
+                        "engine_tool_id": id,
+                    })),
                     artifact_refs: Vec::new(),
                     started_at: Some(Utc::now()),
                     ended_at: None,
@@ -306,6 +310,7 @@ where
                     let item = mgr
                         .update_and_save_item_blocking(&item_id, |item| {
                             let now = Utc::now();
+                            let preserved = item.metadata.clone();
                             item.ended_at = Some(now);
                             match &result {
                                 Ok(output) => {
@@ -319,7 +324,21 @@ where
                                         SUMMARY_LIMIT,
                                     );
                                     item.detail = Some(output.content.clone());
-                                    item.metadata = output.metadata.clone();
+                                    let mut meta = output.metadata.clone().unwrap_or_else(|| {
+                                        preserved.clone().unwrap_or_else(|| json!({}))
+                                    });
+                                    if let Some(obj) = meta.as_object_mut() {
+                                        if let Some(prev) = preserved.as_ref() {
+                                            for key in ["tool_name", "tool_input", "engine_tool_id"]
+                                            {
+                                                if let Some(v) = prev.get(key) {
+                                                    obj.entry(key).or_insert(v.clone());
+                                                }
+                                            }
+                                        }
+                                        obj.entry("tool_name").or_insert(json!(name));
+                                    }
+                                    item.metadata = Some(meta);
                                     item.artifact_refs = artifact_refs.clone();
                                 }
                                 Err(err) => {
@@ -329,6 +348,13 @@ where
                                         SUMMARY_LIMIT,
                                     );
                                     item.detail = Some(err.to_string());
+                                    if item.metadata.is_none() {
+                                        item.metadata = preserved.or_else(|| {
+                                            Some(json!({
+                                                "tool_name": name,
+                                            }))
+                                        });
+                                    }
                                 }
                             }
                         })

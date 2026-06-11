@@ -392,7 +392,14 @@ export default function App() {
     },
   });
 
-  const { handleSelectSession, handleNewSession, handleOpenThreadById } = useSessionNavigation({
+  const {
+    handleSelectSession,
+    handleNewSession,
+    handleOpenThreadById,
+    sessionRestoreLoading,
+    sessionRestoreSource,
+    retrySessionRestore,
+  } = useSessionNavigation({
     t,
     selectedModel,
     activeSessionIdRef,
@@ -905,6 +912,9 @@ export default function App() {
         setComposerPrefill({ text: text.trim(), nonce: Date.now() })
       }
       messages={messages}
+      sessionRestoreLoading={sessionRestoreLoading}
+      sessionRestoreSource={sessionRestoreSource}
+      onRetrySessionRestore={retrySessionRestore}
       agentStates={agentStates}
       onChatOpenWorkspacePath={(rel) => void handleChatOpenWorkspacePath(rel)}
       onRevealWorkspacePath={revealWorkspaceFileInDirectory}

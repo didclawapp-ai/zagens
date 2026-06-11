@@ -19,10 +19,7 @@ import {
   formatWorkspaceMention,
 } from '../lib/composerWorkspaceMention';
 import type { TranslationKey } from '../i18n/keys';
-import {
-  composerRoutingStatusLabel,
-  DESKTOP_RUN_MODE_LABELS,
-} from '../types/desktop';
+import { DESKTOP_RUN_MODE_LABELS } from '../types/desktop';
 import {
   composerModelLabel,
   composerModelShortLabel,
@@ -31,9 +28,10 @@ import {
 } from '../lib/composerModels';
 import { runModesForSession } from '../lib/taskTypeSession';
 import LhtModeToggle from './LhtModeToggle';
+import { ComposerContextMeter } from './composer/ComposerContextMeter';
+import { IconArrowUp, IconBolt } from './icons/FlatIcons';
 import { clipboardHtmlToPlainText } from '../lib/sanitizeHtml';
 import { composerAutoApproveToggleEnabled, approvalPolicySettingsKey } from '../lib/approvalPolicy';
-import { cacheHitPercentTextClass } from '../lib/cacheUsage';
 import { toast } from '../lib/toast';
 
 const COMPOSER_ERROR_TAG = 'composer-error';
@@ -1000,7 +998,6 @@ export default function Composer({
       document.body,
     );
 
-  const routingStatus = composerRoutingStatusLabel(t, routeIntent, runMode);
   const routingActive = routeIntent !== 'off';
   const availableRunModes = runModesForSession(officeSession);
   const runModePickerDisabled = availableRunModes.length <= 1;
@@ -1024,15 +1021,34 @@ export default function Composer({
           count: lastApiInputTokens.toLocaleString(),
         })
       : '';
+  const contextMeterTooltip = [
+    t(contextTooltipKey, {
+      pct: ctxPct.toFixed(1),
+      used: Math.round(contextUsedTokens).toLocaleString(),
+      max: contextWindowTokens.toLocaleString(),
+    }),
+    lastApiTooltip,
+    lastTurnOutputTokens != null && lastTurnOutputTokens > 0
+      ? `${t('composer.lastTurnTokensTitle')}: ${t('composer.lastTurnTokens', {
+          count: lastTurnOutputTokens.toLocaleString(),
+        })}`
+      : '',
+    lastCacheHitPercent != null
+      ? `${t('composer.lastCacheHitTitle')}: ${lastCacheHitPercent.toFixed(0)}%`
+      : '',
+    contextTooltipExtra,
+  ]
+    .filter(Boolean)
+    .join('\n');
   const modelPickerTitle = routingActive
     ? `${composerModelLabel(model)} — ${t('composer.modelFallback')}`
     : composerModelLabel(model);
 
   return (
     <>
-      <div className="shrink-0 px-4 py-3">
+      <div className="composer-dock shrink-0 px-4 py-3">
         <div className="mx-auto max-w-3xl">
-          <div className="card flex flex-col overflow-visible">
+          <div className="composer-shell flex flex-col overflow-visible">
             <div className="order-2 flex flex-col">
           {officeSession ? (
             <p className="px-3 pt-2 pb-1 text-[10px] text-t-text-muted border-b border-divider/40">
@@ -1098,8 +1114,8 @@ export default function Composer({
             placeholder={t('composer.placeholder')}
             disabled={disabled || transcribing}
             rows={2}
-            className="w-full resize-none border-none bg-transparent px-4 py-3 text-sm text-t-text placeholder-t-text-muted focus:outline-none disabled:opacity-50"
-            style={{ minHeight: '56px', lineHeight: 1.5 }}
+            className="composer-input w-full resize-none border-none bg-transparent px-4 py-3 text-[15px] text-t-text placeholder-t-text-muted focus:outline-none disabled:opacity-50"
+            style={{ minHeight: '52px', lineHeight: 1.55 }}
           />
           <div
             className="flex items-center gap-1.5 bg-canvas-alt/30 px-2.5 py-2"
@@ -1250,139 +1266,75 @@ export default function Composer({
                 </svg>
               </button>
             ) : null}
-            <div
-              className="flex shrink-0 items-center gap-1.5"
-              title={`${t(contextTooltipKey, {
-                pct: ctxPct.toFixed(1),
-                used: Math.round(contextUsedTokens).toLocaleString(),
-                max: contextWindowTokens.toLocaleString(),
-              })}${lastApiTooltip ? `\n${lastApiTooltip}` : ''}${contextTooltipExtra ? `\n${contextTooltipExtra}` : ''}`}
-            >
-              <div className="composer-ctx-bar" aria-hidden>
-                <div
-                  className={`composer-ctx-fill ${ctxFillClass}`}
-                  style={{ width: `${Math.min(100, ctxPct)}%` }}
-                />
-              </div>
-              <span className="text-[11px] tabular-nums text-t-text-muted">
-                ~{ctxPct.toFixed(1)}%
-              </span>
-              {lastApiInputTokens != null && lastApiInputTokens > 0 ? (
-                <span
-                  className="text-[10px] tabular-nums text-t-text-muted/80"
-                  title={lastApiTooltip}
-                >
-                  {t('composer.lastApiInputTokens', {
-                    count: lastApiInputTokens.toLocaleString(),
-                  })}
-                </span>
-              ) : null}
-              {lastTurnOutputTokens != null && lastTurnOutputTokens > 0 ? (
-                <span
-                  className="text-[10px] tabular-nums text-t-text-muted/80"
-                  title={t('composer.lastTurnTokensTitle')}
-                >
-                  {t('composer.lastTurnTokens', { count: lastTurnOutputTokens.toLocaleString() })}
-                </span>
-              ) : null}
-              {lastCacheHitPercent != null ? (
-                <span
-                  className={`text-[10px] tabular-nums font-medium ${cacheHitPercentTextClass(lastCacheHitPercent)}`}
-                  title={t('composer.lastCacheHitTitle')}
-                >
-                  {t('composer.lastCacheHit', { pct: lastCacheHitPercent.toFixed(0) })}
-                </span>
-              ) : null}
-              {lhtChip && !officeSession ? (
-                <span
-                  className={`composer-chip max-w-[8rem] truncate px-2 py-0 text-[10px] ${
-                    lhtChip.kind === 'blocked'
-                      ? 'text-amber-700 dark:text-amber-300'
-                      : lhtChip.kind === 'warning'
-                        ? 'text-amber-600 dark:text-amber-400'
-                        : 'text-t-text-muted'
-                  }`}
-                  title={
-                    lhtChip.kind === 'continue'
-                      ? t('composer.lhtContinueTitle')
-                      : lhtChip.kind === 'blocked'
-                        ? lhtChip.reason === 'max_nudges_without_progress'
-                          ? t('composer.lhtBlockedNoProgressTitle')
-                          : t('composer.lhtBlockedTitle')
-                        : t('composer.lhtWarningTitle')
-                  }
-                >
-                  {lhtChip.kind === 'continue'
-                    ? t('composer.lhtContinue', { detail: lhtChip.detail ?? '' })
-                    : lhtChip.kind === 'blocked'
-                      ? t('composer.lhtBlocked', { detail: lhtChip.detail ?? '' })
-                      : t('composer.lhtWarning', { detail: lhtChip.detail ?? '' })}
-                </span>
-              ) : null}
-            </div>
+            <ComposerContextMeter
+              percent={ctxPct}
+              level={ctxFillClass}
+              tooltip={contextMeterTooltip}
+              ariaLabel={t('composer.contextMeterAria', { pct: String(Math.round(ctxPct)) })}
+            />
             <button
               type="button"
               onClick={() => void handleSend()}
               disabled={disabled || transcribing || (!text.trim() && attachments.length === 0)}
-              className="composer-send-pill"
+              className="composer-send-btn"
               title={transcribing ? t('composer.transcribing') : t('composer.send')}
               aria-label={transcribing ? t('composer.transcribing') : t('composer.sendAria')}
             >
-              {t('composer.send')}
-              <svg viewBox="0 0 24 24">
-                <path d="M12 19V5M12 5l-6 6M12 5l6 6" />
-              </svg>
+              <IconArrowUp />
             </button>
             {disabled && onCancel ? (
               <button
                 type="button"
                 onClick={onCancel}
-                className="flex-shrink-0 rounded-lg bg-hover-strong px-4 py-2 text-sm font-medium text-t-text transition-colors hover:bg-hover"
+                className="composer-icon-btn composer-stop-btn"
                 aria-label={t('composer.stopAria')}
+                title={t('composer.stop')}
               >
-                {t('composer.stop')}
+                <svg viewBox="0 0 24 24" aria-hidden>
+                  <rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor" stroke="none" />
+                </svg>
               </button>
             ) : null}
           </div>
           </div>
             <div
-              className="order-1 flex min-h-10 flex-wrap items-center gap-2 bg-canvas-alt/35 px-3 py-2 text-xs"
+              className="composer-options-bar order-1 flex min-h-9 flex-wrap items-center gap-1.5 bg-canvas-alt/35 px-2.5 py-1.5 text-xs"
               role="toolbar"
               aria-label={t('a11y.composerOptionsToolbar')}
             >
             {showAutoApprove ? (
               autoApproveToggleEnabled ? (
-                <label className="inline-flex cursor-pointer select-none items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={autoApprove}
-                    onChange={(e) => onAutoApproveChange(e.target.checked)}
-                    disabled={disabled}
-                    className="rounded border-input-border bg-input-bg text-accent focus:ring-accent"
-                  />
-                  <span className="hidden sm:inline">{t('composer.autoApprove')}</span>
-                  <span className="sm:hidden">{t('composer.autoApproveShort')}</span>
-                </label>
-              ) : (
-                <span
-                  className="max-w-[16rem] truncate leading-snug text-t-text-muted"
-                  title={t('composer.approvalFromSettingsHint')}
+                <button
+                  type="button"
+                  className={`composer-icon-btn ${autoApprove ? 'composer-icon-btn--active' : ''}`}
+                  disabled={disabled}
+                  aria-pressed={autoApprove}
+                  title={t('composer.autoApprove')}
+                  aria-label={t('composer.autoApproveAria')}
+                  onClick={() => onAutoApproveChange(!autoApprove)}
                 >
-                  {t('composer.approvalFromSettings', {
+                  <IconBolt />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="composer-icon-btn"
+                  disabled
+                  title={`${t('composer.approvalFromSettings', {
+                    policy: t(
+                      `settings.${approvalPolicySettingsKey(approvalPolicy)}` as 'settings.approvalOnRequest',
+                    ),
+                  })}\n${t('composer.approvalFromSettingsHint')}`}
+                  aria-label={t('composer.autoApproveLockedAria', {
                     policy: t(
                       `settings.${approvalPolicySettingsKey(approvalPolicy)}` as 'settings.approvalOnRequest',
                     ),
                   })}
-                </span>
+                >
+                  <IconBolt />
+                </button>
               )
-            ) : (
-              <span className="max-w-[14rem] truncate leading-snug text-t-text-muted" title={runMode === 'plan' ? t('composer.planModeHint') : t('composer.yoloModeHint')}>
-                {runMode === 'plan'
-                  ? t('composer.planModeHint')
-                  : t('composer.yoloModeHint')}
-              </span>
-            )}
-            <div className="hidden h-4 w-px shrink-0 bg-divider sm:block" aria-hidden />
+            ) : null}
             <div className="relative" ref={runModeMenuRef}>
               <button
                 type="button"
@@ -1480,17 +1432,33 @@ export default function Composer({
               )}
             </div>
             {!officeSession ? <LhtModeToggle disabled={disabled} /> : null}
-            <div className="min-w-[0.5rem] flex-1" />
-            {routingStatus && onOpenRouting && !officeSession ? (
-              <button
-                type="button"
-                onClick={onOpenRouting}
-                className="composer-chip max-w-[10rem] truncate text-accent"
-                title={t('composer.openRouting')}
+            {lhtChip && !officeSession ? (
+              <span
+                className={`composer-chip max-w-[8rem] truncate px-2 py-0 text-[10px] ${
+                  lhtChip.kind === 'blocked'
+                    ? 'text-amber-700 dark:text-amber-300'
+                    : lhtChip.kind === 'warning'
+                      ? 'text-amber-600 dark:text-amber-400'
+                      : 'text-t-text-muted'
+                }`}
+                title={
+                  lhtChip.kind === 'continue'
+                    ? t('composer.lhtContinueTitle')
+                    : lhtChip.kind === 'blocked'
+                      ? lhtChip.reason === 'max_nudges_without_progress'
+                        ? t('composer.lhtBlockedNoProgressTitle')
+                        : t('composer.lhtBlockedTitle')
+                      : t('composer.lhtWarningTitle')
+                }
               >
-                {routingStatus}
-              </button>
+                {lhtChip.kind === 'continue'
+                  ? t('composer.lhtContinue', { detail: lhtChip.detail ?? '' })
+                  : lhtChip.kind === 'blocked'
+                    ? t('composer.lhtBlocked', { detail: lhtChip.detail ?? '' })
+                    : t('composer.lhtWarning', { detail: lhtChip.detail ?? '' })}
+              </span>
             ) : null}
+            <div className="min-w-[0.5rem] flex-1" />
             <div className="relative" ref={moreMenuRef}>
               <button
                 type="button"

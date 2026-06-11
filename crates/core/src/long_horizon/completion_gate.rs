@@ -134,11 +134,12 @@ pub struct CompletionGateConfig {
     /// gate at `graph_complete` (zero per-task config).
     pub toolchain_gate: GenericGateMode,
     /// Task-agnostic: scan the workspace for high-signal "intentionally
-    /// unfinished" stub markers (`todo!()` / `unimplemented!()` /
-    /// `NotImplementedError` / "not implemented" throws) at `graph_complete`.
-    /// Catches the "compiles but feature is a stub" false-completion without any
-    /// per-task manifest. `observe` records counts; `enforce` blocks until the
-    /// stubs are gone (bounded by `max_manifest_rounds`). Zero per-task config.
+    /// unfinished" markers (Rust's `todo!` / `unimplemented!` macros,
+    /// Python's `NotImplemented` error type, "not yet implemented"
+    /// exception patterns) at `graph_complete`. Catches the "compiles but
+    /// feature is a stub" false-completion without any per-task manifest.
+    /// `observe` records counts; `enforce` blocks until the stubs are gone
+    /// (bounded by `max_manifest_rounds`). Zero per-task config.
     pub stub_gate: GenericGateMode,
 }
 

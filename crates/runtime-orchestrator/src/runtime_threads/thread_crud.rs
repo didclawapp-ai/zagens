@@ -400,11 +400,14 @@ where
         let mut thread = self.get_thread(thread_id).await?;
         let now = Utc::now();
 
-        let mut user_buf: Vec<String> = Vec::new();
-        let mut pending_pairs: Vec<(String, Option<String>)> = Vec::new();
-
-        for msg in messages {
-            let text = msg
+        let mut turns: Vec<(String, Vec<ContentBlock>)> = Vec::new();
+        let mut idx = 0usize;
+        while idx < messages.len() {
+            if messages[idx].role != "user" {
+                idx += 1;
+                continue;
+            }
+            let user_text = messages[idx]
                 .content
                 .iter()
                 .filter_map(|block| match block {
@@ -413,65 +416,85 @@ where
                 })
                 .collect::<Vec<_>>()
                 .join("\n");
-            if text.trim().is_empty() {
+            idx += 1;
+            let mut assistant_blocks: Vec<ContentBlock> = Vec::new();
+            while idx < messages.len() && messages[idx].role == "assistant" {
+                assistant_blocks.extend(messages[idx].content.clone());
+                idx += 1;
+            }
+            if user_text.trim().is_empty() && assistant_blocks.is_empty() {
                 continue;
             }
-            if msg.role == "user" {
-                user_buf.push(text);
-            } else if msg.role == "assistant" {
-                let user_text = if user_buf.is_empty() {
-                    String::new()
-                } else {
-                    std::mem::take(&mut user_buf).join("\n")
-                };
-                pending_pairs.push((user_text, Some(text)));
-            }
-        }
-        if !user_buf.is_empty() {
-            let user_text = std::mem::take(&mut user_buf).join("\n");
-            pending_pairs.push((user_text, None));
+            turns.push((user_text, assistant_blocks));
         }
 
-        for (user_text, assistant_text) in pending_pairs {
+        for (user_text, assistant_blocks) in turns {
             let turn_id = format!("turn_{}", &Uuid::new_v4().to_string()[..8]);
             let summary = super::summarize_text(&user_text, SUMMARY_LIMIT);
             let mut item_ids = Vec::new();
 
-            if !user_text.is_empty() {
-                let item_id = format!("item_{}", &Uuid::new_v4().to_string()[..8]);
-                self.store.save_item(&TurnItemRecord {
-                    schema_version: super::CURRENT_RUNTIME_SCHEMA_VERSION,
-                    id: item_id.clone(),
-                    turn_id: turn_id.clone(),
-                    kind: TurnItemKind::UserMessage,
-                    status: TurnItemLifecycleStatus::Completed,
-                    summary: summary.clone(),
-                    detail: Some(user_text),
-                    metadata: None,
-                    artifact_refs: Vec::new(),
-                    started_at: Some(now),
-                    ended_at: Some(now),
-                })?;
+            if !user_text.trim().is_empty() {
+                let item = Self::seed_user_item(&turn_id, &user_text, now);
+                let item_id = item.id.clone();
+                self.store.save_item(&item)?;
+                self.emit_seed_item_completed(thread_id, &turn_id, &item, None)
+                    .await?;
                 item_ids.push(item_id);
             }
 
-            if let Some(assistant_text) = assistant_text {
-                let asst_summary = super::summarize_text(&assistant_text, SUMMARY_LIMIT);
-                let item_id = format!("item_{}", &Uuid::new_v4().to_string()[..8]);
-                self.store.save_item(&TurnItemRecord {
-                    schema_version: super::CURRENT_RUNTIME_SCHEMA_VERSION,
-                    id: item_id.clone(),
-                    turn_id: turn_id.clone(),
-                    kind: TurnItemKind::AgentMessage,
-                    status: TurnItemLifecycleStatus::Completed,
-                    summary: asst_summary,
-                    detail: Some(assistant_text),
-                    metadata: None,
-                    artifact_refs: Vec::new(),
-                    started_at: Some(now),
-                    ended_at: Some(now),
-                })?;
-                item_ids.push(item_id);
+            let mut block_idx = 0usize;
+            while block_idx < assistant_blocks.len() {
+                match &assistant_blocks[block_idx] {
+                    ContentBlock::Text { text, .. } => {
+                        let trimmed = text.trim();
+                        if !trimmed.is_empty() {
+                            let item = Self::seed_agent_item(&turn_id, trimmed, now);
+                            let item_id = item.id.clone();
+                            self.store.save_item(&item)?;
+                            self.emit_seed_item_completed(thread_id, &turn_id, &item, None)
+                                .await?;
+                            item_ids.push(item_id);
+                        }
+                        block_idx += 1;
+                    }
+                    ContentBlock::ToolUse {
+                        id, name, input, ..
+                    } => {
+                        let tool_result = assistant_blocks.get(block_idx + 1);
+                        let (output, is_error) = match tool_result {
+                            Some(ContentBlock::ToolResult {
+                                content, is_error, ..
+                            }) => (content.clone(), is_error.unwrap_or(false)),
+                            _ => (String::new(), false),
+                        };
+                        let item =
+                            Self::seed_tool_item(&turn_id, id, name, input, &output, is_error, now);
+                        let item_id = item.id.clone();
+                        self.store.save_item(&item)?;
+                        let tool_payload = json!({
+                            "id": id,
+                            "name": name,
+                            "input": input,
+                        });
+                        self.emit_seed_item_started(thread_id, &turn_id, &item, &tool_payload)
+                            .await?;
+                        self.emit_seed_item_completed(
+                            thread_id,
+                            &turn_id,
+                            &item,
+                            Some(tool_payload),
+                        )
+                        .await?;
+                        item_ids.push(item_id);
+                        block_idx += if tool_result.is_some() { 2 } else { 1 };
+                    }
+                    ContentBlock::ToolResult { .. } => {
+                        block_idx += 1;
+                    }
+                    _ => {
+                        block_idx += 1;
+                    }
+                }
             }
 
             self.store.save_turn(&TurnRecord {
@@ -504,6 +527,136 @@ where
             json!({ "thread": thread, "reason": "session_resume" }),
         )
         .await?;
+        Ok(())
+    }
+
+    fn seed_user_item(turn_id: &str, text: &str, now: DateTime<Utc>) -> TurnItemRecord {
+        let item_id = format!("item_{}", &Uuid::new_v4().to_string()[..8]);
+        TurnItemRecord {
+            schema_version: super::CURRENT_RUNTIME_SCHEMA_VERSION,
+            id: item_id,
+            turn_id: turn_id.to_string(),
+            kind: TurnItemKind::UserMessage,
+            status: TurnItemLifecycleStatus::Completed,
+            summary: super::summarize_text(text, SUMMARY_LIMIT),
+            detail: Some(text.to_string()),
+            metadata: None,
+            artifact_refs: Vec::new(),
+            started_at: Some(now),
+            ended_at: Some(now),
+        }
+    }
+
+    fn seed_agent_item(turn_id: &str, text: &str, now: DateTime<Utc>) -> TurnItemRecord {
+        let item_id = format!("item_{}", &Uuid::new_v4().to_string()[..8]);
+        TurnItemRecord {
+            schema_version: super::CURRENT_RUNTIME_SCHEMA_VERSION,
+            id: item_id,
+            turn_id: turn_id.to_string(),
+            kind: TurnItemKind::AgentMessage,
+            status: TurnItemLifecycleStatus::Completed,
+            summary: super::summarize_text(text, SUMMARY_LIMIT),
+            detail: Some(text.to_string()),
+            metadata: None,
+            artifact_refs: Vec::new(),
+            started_at: Some(now),
+            ended_at: Some(now),
+        }
+    }
+
+    fn seed_tool_item(
+        turn_id: &str,
+        tool_use_id: &str,
+        name: &str,
+        input: &Value,
+        output: &str,
+        is_error: bool,
+        now: DateTime<Utc>,
+    ) -> TurnItemRecord {
+        let item_id = format!("item_{}", &Uuid::new_v4().to_string()[..8]);
+        let status = if is_error {
+            TurnItemLifecycleStatus::Failed
+        } else {
+            TurnItemLifecycleStatus::Completed
+        };
+        TurnItemRecord {
+            schema_version: super::CURRENT_RUNTIME_SCHEMA_VERSION,
+            id: item_id,
+            turn_id: turn_id.to_string(),
+            kind: super::session_reconstruct::tool_item_kind_for_seed(name),
+            status,
+            summary: super::summarize_text(&format!("{name}: {output}"), SUMMARY_LIMIT),
+            detail: Some(output.to_string()),
+            metadata: Some(json!({
+                "tool_name": name,
+                "tool_input": input,
+                "engine_tool_id": tool_use_id,
+            })),
+            artifact_refs: Vec::new(),
+            started_at: Some(now),
+            ended_at: Some(now),
+        }
+    }
+
+    fn seed_item_kind_str(kind: TurnItemKind) -> &'static str {
+        match kind {
+            TurnItemKind::UserMessage => "user_message",
+            TurnItemKind::AgentMessage => "agent_message",
+            TurnItemKind::ToolCall => "tool_call",
+            TurnItemKind::FileChange => "file_change",
+            TurnItemKind::CommandExecution => "command_execution",
+            TurnItemKind::ContextCompaction => "context_compaction",
+            TurnItemKind::Status => "status",
+            TurnItemKind::Error => "error",
+        }
+    }
+
+    async fn emit_seed_item_started(
+        &self,
+        thread_id: &str,
+        turn_id: &str,
+        item: &TurnItemRecord,
+        tool: &Value,
+    ) -> Result<()> {
+        let _ = self
+            .emit_event(
+                thread_id,
+                Some(turn_id),
+                Some(&item.id),
+                "item.started",
+                json!({ "item": item, "tool": tool }),
+            )
+            .await?;
+        Ok(())
+    }
+
+    async fn emit_seed_item_completed(
+        &self,
+        thread_id: &str,
+        turn_id: &str,
+        item: &TurnItemRecord,
+        tool: Option<Value>,
+    ) -> Result<()> {
+        let kind = Self::seed_item_kind_str(item.kind);
+        let mut payload = json!({
+            "item": {
+                "id": item.id,
+                "kind": kind,
+                "detail": item.detail,
+                "summary": item.summary,
+            }
+        });
+        if let Some(tool) = tool {
+            payload["tool"] = tool;
+        }
+        let event = if item.status == TurnItemLifecycleStatus::Failed {
+            "item.failed"
+        } else {
+            "item.completed"
+        };
+        let _ = self
+            .emit_event(thread_id, Some(turn_id), Some(&item.id), event, payload)
+            .await?;
         Ok(())
     }
 }

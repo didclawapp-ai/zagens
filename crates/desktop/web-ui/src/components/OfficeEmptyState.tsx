@@ -25,15 +25,17 @@ export function OfficeEmptyState({ onPick }: Props) {
 
   return (
     <div className="flex min-h-[min(60vh,28rem)] flex-col items-center justify-center px-2 py-6">
-      <h1 className="font-display text-3xl font-bold text-accent">{t('officeEmpty.title')}</h1>
-      <p className="mt-2 text-lg text-t-text-secondary">{t('officeEmpty.subtitle')}</p>
+      <p className="font-display text-[1.75rem] font-semibold tracking-tight text-t-text">
+        {t('officeEmpty.title')}
+      </p>
+      <p className="mt-3 text-[15px] leading-relaxed text-t-text-secondary">{t('officeEmpty.subtitle')}</p>
       <p className="mt-1 max-w-lg text-sm text-t-text-muted">{t('officeEmpty.hint')}</p>
       <div className="mt-6 grid w-full max-w-3xl gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {CARD_IDS.map((id) => (
           <button
             key={id}
             type="button"
-            className="rounded-xl border border-divider bg-card/80 px-4 py-3 text-left transition hover:border-accent/40 hover:bg-accent/5"
+            className="chat-empty-card"
             onClick={() => onPick(t(`officeEmpty.prefill.${id}`))}
           >
             <span className="block text-sm font-semibold text-t-text">

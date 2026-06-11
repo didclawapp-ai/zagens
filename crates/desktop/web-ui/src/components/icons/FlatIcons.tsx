@@ -98,6 +98,57 @@ export function IconChevronUp({ className }: { className?: string }) {
   );
 }
 
+export function IconSparkle({ className }: { className?: string }) {
+  return (
+    <Icon className={className}>
+      <path d="M12 3l1.2 3.8L17 8l-3.8 1.2L12 13l-1.2-3.8L7 8l3.8-1.2L12 3z" />
+      <path d="M5 14l.8 2.5L8 17l-2.2.7L5 20l-.8-2.3L2 17l2.2-.5L5 14z" />
+    </Icon>
+  );
+}
+
+export function IconWrench({ className }: { className?: string }) {
+  return (
+    <Icon className={className}>
+      <path d="M14.7 6.3a4 4 0 00-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 005.4-5.4l-2.1 2.1-1.4-1.4 2.1-2.1z" />
+    </Icon>
+  );
+}
+
+export function IconPencil({ className }: { className?: string }) {
+  return (
+    <Icon className={className}>
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z" />
+    </Icon>
+  );
+}
+
+export function IconBolt({ className }: { className?: string }) {
+  return (
+    <Icon className={className}>
+      <path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" />
+    </Icon>
+  );
+}
+
+export function IconArrowUp({ className }: { className?: string }) {
+  return (
+    <Icon className={className}>
+      <path d="M12 19V5M12 5l-6 6M12 5l6 6" />
+    </Icon>
+  );
+}
+
+export function IconUndo({ className }: { className?: string }) {
+  return (
+    <Icon className={className}>
+      <path d="M9 14L4 9l5-5" />
+      <path d="M4 9h10.5a5.5 5.5 0 010 11H11" />
+    </Icon>
+  );
+}
+
 export function IconRefresh({ className }: { className?: string }) {
   return (
     <Icon className={className}>

@@ -29,7 +29,7 @@ export function ToolCard({ tool, copyTitle }: { tool: ToolCardModel; copyTitle?:
 
   return (
     <div
-      className="rounded-lg border border-card-border bg-canvas-alt p-2.5 text-xs"
+      className="rounded-md border border-card-border/70 bg-transparent p-2.5 text-xs"
       role="region"
       aria-label={t('a11y.toolRegion', { name: tool.name, status: tool.status })}
       aria-busy={tool.status === 'running'}

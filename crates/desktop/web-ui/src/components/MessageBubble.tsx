@@ -5,8 +5,10 @@ import TerminalCard from './TerminalCard';
 import DiffCard from './DiffCard';
 import { AgentSpawnInline } from './AgentSpawnInline';
 import { extractUnifiedDiff, parseFileNameFromToolInput } from '../lib/diff/diffEntries';
-import CopyTextButton from './CopyTextButton';
+import { MessageMetaBar } from './chat/MessageMetaBar';
+import { IconCopy, IconPencil, IconRefresh, IconSparkle, IconUndo, IconWrench } from './icons/FlatIcons';
 import { formatToolsForCopy } from '../lib/formatToolCopy';
+import { summarizeToolCalls } from '../lib/chat/summarizeToolCalls';
 import { parseAgentIdFromSpawnOutput } from '../lib/chat/toolOutput';
 import { isAgentSpawnToolName } from '../lib/agentSpawnMeta';
 import type { AgentState } from '../types/agent';
@@ -57,12 +59,22 @@ export function MessageBubble({
     !(message.tools && message.tools.length > 0);
   const showReasoningBlock = Boolean(message.thinking) || likelyInReasoningPhase;
 
-  const [reasoningExpanded, setReasoningExpanded] = useState(true);
-  const [toolsExpanded, setToolsExpanded] = useState(false);
+  const defaultReasoningExpanded =
+    Boolean(message.isStreaming) &&
+    (Boolean(message.thinking?.trim()) || likelyInReasoningPhase);
+  /** Tools stay collapsed by default — user expands manually (Codex-style). */
+  const defaultToolsExpanded = false;
+
+  const [reasoningExpanded, setReasoningExpanded] = useState(defaultReasoningExpanded);
+  const [toolsExpanded, setToolsExpanded] = useState(defaultToolsExpanded);
   const toolsSummaryLabel = summarizeToolCalls(message.tools ?? [], t);
 
   const runningToolCount =
     message.tools?.filter((t) => t.status === 'running').length ?? 0;
+
+  /** User manually toggled meta sections — don't fight their choice during streaming. */
+  const userToggledReasoningRef = useRef(false);
+  const userToggledToolsRef = useRef(false);
 
   const reasoningScrollRef = useRef<HTMLDivElement>(null);
   const bodyScrollRef = useRef<HTMLDivElement>(null);
@@ -88,7 +100,38 @@ export function MessageBubble({
     }
     setBodyScrollMode(message.isStreaming ? 'streaming' : 'open');
     setBodyMaxPx(null);
-  }, [message.id, isAssistant]);
+  }, [message.id, isAssistant, message.isStreaming]);
+
+  useEffect(() => {
+    userToggledReasoningRef.current = false;
+    userToggledToolsRef.current = false;
+    setReasoningExpanded(defaultReasoningExpanded);
+    setToolsExpanded(defaultToolsExpanded);
+  }, [message.id]);
+
+  useEffect(() => {
+    if (!isAssistant || !message.isStreaming) {
+      return;
+    }
+    if (
+      !userToggledReasoningRef.current &&
+      (Boolean(message.thinking?.trim()) || likelyInReasoningPhase)
+    ) {
+      setReasoningExpanded(true);
+    }
+  }, [isAssistant, message.isStreaming, message.thinking, likelyInReasoningPhase]);
+
+  useEffect(() => {
+    if (!isAssistant || message.isStreaming) {
+      return;
+    }
+    if (prevStreamingRef.current) {
+      setReasoningExpanded(false);
+      setToolsExpanded(false);
+      userToggledReasoningRef.current = false;
+      userToggledToolsRef.current = false;
+    }
+  }, [message.isStreaming, isAssistant]);
 
   useEffect(() => {
     const now = Boolean(message.isStreaming);
@@ -205,100 +248,78 @@ export function MessageBubble({
     };
   }, [bodyScrollMode, message.content, bodyMaxPx]);
 
+  const reasoningHint =
+    message.isStreaming && !message.thinking?.trim()
+      ? t('message.reasoningStreaming')
+      : message.thinking?.trim()
+        ? t('message.reasoningCollapsed')
+        : likelyInReasoningPhase
+          ? t('message.reasoningStreaming')
+          : t('message.reasoningCollapsed');
+
+  const toolsHint =
+    runningToolCount > 0
+      ? t('message.toolsRunning', { count: String(runningToolCount) })
+      : t('message.toolsCollapsed');
+
   return (
-    <div className={`my-3 flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+    <div className={`flex ${isUser ? 'my-3 justify-end' : 'my-5 justify-start'}`}>
       <div
-        className={`rounded-xl px-4 py-3 ${
+        className={
           isUser
-            ? 'max-w-[80%] bg-msg-user text-msg-user-text rounded-br-sm border border-msg-user-border shadow-sm'
-            : 'w-full min-w-0 bg-msg-assistant text-t-text rounded-bl-sm border border-msg-assistant-border shadow-sm'
-        }`}
+            ? 'message-bubble message-bubble--user max-w-[min(85%,42rem)] px-4 py-2.5 text-t-text'
+            : 'message-bubble message-bubble--assistant w-full min-w-0 text-t-text'
+        }
       >
         {showReasoningBlock && (
-          <div className="mb-2 overflow-hidden rounded-lg bg-accent-soft text-xs">
-            <button
-              type="button"
-              onClick={() => setReasoningExpanded((v) => !v)}
-              className="flex w-full items-center gap-2 px-2.5 py-2 text-left font-medium text-accent transition-colors hover:bg-accent-soft/80"
-              aria-expanded={reasoningExpanded}
+          <MessageMetaBar
+            icon={<IconSparkle className="size-3.5" />}
+            label={t('message.reasoning')}
+            hint={reasoningHint}
+            expanded={reasoningExpanded}
+            onToggle={() => {
+              userToggledReasoningRef.current = true;
+              setReasoningExpanded((v) => !v);
+            }}
+            copyText={reasoningCopyText}
+            copyTitle={t('chatMarkdown.copyReasoning')}
+            copyDisabled={!reasoningCopyText}
+          >
+            <div
+              ref={reasoningScrollRef}
+              onScroll={onReasoningScroll}
+              className="max-h-[40vh] overflow-y-auto whitespace-pre-wrap"
             >
-              <span className="w-4 shrink-0 select-none text-[10px] text-t-text-muted">
-                {reasoningExpanded ? '▼' : '▶'}
-              </span>
-              <span className="text-base leading-none">💭</span>
-              <span>{t('message.reasoning')}</span>
-              <CopyTextButton
-                getText={() => reasoningCopyText}
-                title={t('chatMarkdown.copyReasoning')}
-                disabled={!reasoningCopyText}
-                className="ml-1"
-              />
-              {!reasoningExpanded && (
-                <span className="ml-auto truncate text-[11px] font-normal text-t-text-muted">
-                  {message.isStreaming && !message.thinking?.trim()
-                    ? t('message.reasoningStreaming')
-                    : message.thinking?.trim()
-                      ? t('message.reasoningCollapsed')
-                      : likelyInReasoningPhase
-                        ? t('message.reasoningStreaming')
-                        : t('message.reasoningCollapsed')}
-                </span>
-              )}
-            </button>
-            {reasoningExpanded && (
-              <div
-                ref={reasoningScrollRef}
-                onScroll={onReasoningScroll}
-                className="max-h-[48vh] overflow-y-auto border-t border-card-border px-2.5 pb-2.5 pt-0 leading-relaxed text-t-text-secondary whitespace-pre-wrap"
-              >
-                {message.thinking ||
-                  (message.isStreaming ? t('message.reasoningStreamingPlaceholder') : '')}
-              </div>
-            )}
-          </div>
+              {message.thinking ||
+                (message.isStreaming ? t('message.reasoningStreamingPlaceholder') : '')}
+            </div>
+          </MessageMetaBar>
         )}
         {!isUser && message.tools && message.tools.length > 0 && (
-          <div className="mb-2 overflow-hidden rounded-lg border border-card-border bg-canvas-alt text-xs">
-            <button
-              type="button"
-              onClick={() => setToolsExpanded((v) => !v)}
-              className="flex w-full items-center gap-2 px-2.5 py-2 text-left font-medium text-t-text transition-colors hover:bg-hover/50"
-              aria-expanded={toolsExpanded}
-            >
-              <span className="w-4 shrink-0 select-none text-[10px] text-t-text-muted">
-                {toolsExpanded ? '▼' : '▶'}
-              </span>
-              <span className="text-base leading-none">🔧</span>
-              <span className="min-w-0 truncate font-mono text-[11px] sm:text-xs sm:font-sans">
-                {toolsSummaryLabel}
-              </span>
-              <CopyTextButton
-                getText={() => toolsCopyText}
-                title={t('chatMarkdown.copyTools')}
-                disabled={!toolsCopyText}
-                className="ml-1"
-              />
-              {!toolsExpanded && (
-                <span className="ml-auto truncate text-[11px] font-normal text-t-text-muted">
-                  {runningToolCount > 0
-                    ? t('message.toolsRunning', { count: String(runningToolCount) })
-                    : t('message.toolsCollapsed')}
-                </span>
-              )}
-            </button>
-            {toolsExpanded && (
-              <div className="space-y-1.5 border-t border-divider px-2.5 pb-2.5 pt-2">
-                {message.tools.map((tool) => (
-                  <div key={tool.id} className="tool-stream-item">
-                    {renderToolCard(tool, onOpenDiffInPanel, t('chatMarkdown.copyTool'), agentStates)}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <MessageMetaBar
+            icon={<IconWrench className="size-3.5" />}
+            label={toolsSummaryLabel}
+            hint={toolsHint}
+            expanded={toolsExpanded}
+            onToggle={() => {
+              userToggledToolsRef.current = true;
+              setToolsExpanded((v) => !v);
+            }}
+            copyText={toolsCopyText}
+            copyTitle={t('chatMarkdown.copyTools')}
+            copyDisabled={!toolsCopyText}
+          >
+            <div className="space-y-1.5">
+              {message.tools.map((tool) => (
+                <div key={tool.id} className="tool-stream-item">
+                  {renderToolCard(tool, onOpenDiffInPanel, t('chatMarkdown.copyTool'), agentStates)}
+                </div>
+              ))}
+            </div>
+          </MessageMetaBar>
         )}
         {isUser && (
-          <div className="flex justify-end gap-0.5 mb-1 opacity-0 hover:opacity-100 transition-opacity">
+          <div className="message-user-actions mb-1 flex justify-end gap-0.5">
             <button
               type="button"
               onClick={async () => {
@@ -308,39 +329,43 @@ export function MessageBubble({
                   /* clipboard write failed */
                 }
               }}
-              className="text-[10px] text-t-text-muted hover:text-t-text px-2 py-0.5 rounded"
+              className="message-user-action"
               title={t('message.copyMessage')}
             >
-              📋 {t('message.copyAction')}
+              <IconCopy className="size-3.5" />
+              <span>{t('message.copyAction')}</span>
             </button>
             {onRetryMessage && (
               <button
                 type="button"
                 onClick={() => onRetryMessage(message.content)}
-                className="text-[10px] text-t-text-muted hover:text-accent px-2 py-0.5 rounded"
+                className="message-user-action"
                 title={t('message.retryMessage')}
               >
-                🔄 {t('message.retryAction')}
+                <IconRefresh className="size-3.5" />
+                <span>{t('message.retryAction')}</span>
               </button>
             )}
             {onEditMessage && (
               <button
                 type="button"
                 onClick={() => onEditMessage(message.id, message.content)}
-                className="text-[10px] text-t-text-muted hover:text-accent px-2 py-0.5 rounded"
+                className="message-user-action"
                 title={t('chat.editTitle')}
               >
-                ✎ {t('chat.editTitle')}
+                <IconPencil className="size-3.5" />
+                <span>{t('chat.editTitle')}</span>
               </button>
             )}
             {backtrackEnabled && onBacktrackFromMessage && (
               <button
                 type="button"
                 onClick={() => onBacktrackFromMessage(message.id, message.content)}
-                className="text-[10px] text-t-text-muted hover:text-accent px-2 py-0.5 rounded"
+                className="message-user-action"
                 title={t('chat.backtrackTitle')}
               >
-                ↩ {t('chat.backtrackAction')}
+                <IconUndo className="size-3.5" />
+                <span>{t('chat.backtrackAction')}</span>
               </button>
             )}
           </div>
@@ -350,7 +375,7 @@ export function MessageBubble({
           onScroll={bodyScrollMode === 'streaming' ? onBodyScroll : undefined}
           onTransitionEnd={onBodyTransitionEnd}
           style={bodyMaxPx != null ? { maxHeight: bodyMaxPx } : undefined}
-          className={`text-sm leading-relaxed break-words ${isUser ? 'text-msg-user-text' : ''} ${
+          className={`break-words ${isUser ? 'text-sm leading-relaxed text-t-text' : ''} ${
             bodyScrollMode === 'streaming' ? 'message-body-scroll--streaming' : ''
           } ${bodyScrollMode === 'expanding' ? 'message-body-scroll--expanding' : ''}${
             bodyHasSectionAbove && bodyScrollMode !== 'open'
@@ -455,29 +480,3 @@ function tryParseCommand(input: string): string | undefined {
     return undefined;
   }
 }
-
-/** Collapsed tools header: show actual tool name(s) instead of generic label. */
-function summarizeToolCalls(
-  tools: ToolCardModel[],
-  t: (key: string, params?: Record<string, string>) => string,
-): string {
-  if (tools.length === 0) return t('message.toolCallsDefault');
-
-  const running = tools.filter((tool) => tool.status === 'running');
-  if (running.length === 1) {
-    const name = running[0].name;
-    return tools.length === 1 ? name : t('message.toolCallsWithName', { name, count: String(tools.length) });
-  }
-
-  const uniqueNames = [...new Set(tools.map((tool) => tool.name))];
-  if (uniqueNames.length === 1) {
-    return tools.length === 1 ? uniqueNames[0] : `${uniqueNames[0]} ×${tools.length}`;
-  }
-
-  const head = uniqueNames.slice(0, 2).join(' · ');
-  if (uniqueNames.length > 2 || tools.length > 2) {
-    return t('message.toolCallsHeadMore', { head, count: String(tools.length) });
-  }
-  return head;
-}
-

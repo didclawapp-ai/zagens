@@ -69,7 +69,16 @@ export interface SessionInfo {
 
 export interface SessionDetailMessage {
   role: string;
-  content: Array<{ type: string; text?: string }>;
+  content: Array<{
+    type: string;
+    text?: string;
+    id?: string;
+    name?: string;
+    input?: unknown;
+    tool_use_id?: string;
+    content?: string;
+    is_error?: boolean;
+  }>;
 }
 
 export interface SessionDetail {

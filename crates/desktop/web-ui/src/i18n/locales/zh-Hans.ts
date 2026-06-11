@@ -6,6 +6,48 @@ const zhHans = {
     heroTagline: '你的 AI 编码助手',
     emptyPrompt: '在下方输入问题开始对话',
   },
+  chatRestore: {
+    loading: '正在恢复会话…',
+    sourceLabel: '恢复来源：{{source}}',
+    sourceCache: '本地缓存',
+    sourceThread: '线程事件回放',
+    sourceSession: '会话存档',
+    toolsMayBeIncomplete: '工具输出可能不完整',
+    retry: '重新加载',
+  },
+  chatEmpty: {
+    title: '从这里开始',
+    subtitle: '描述你想做的事，Agent 会读代码、改文件、跑命令并汇报结果。',
+    hint: '选一个示例快速开始，或在下方直接输入',
+    cards: {
+      exploreCodebase: {
+        title: '摸清代码库结构',
+        hint: '梳理目录、入口与关键模块',
+      },
+      implementFeature: {
+        title: '按方案实现功能',
+        hint: '先读现有代码，再小步提交改动',
+      },
+      fixBug: {
+        title: '定位并修复问题',
+        hint: '复现路径、根因与最小修复',
+      },
+      writeTests: {
+        title: '补充测试覆盖',
+        hint: '针对改动点写可维护的测试',
+      },
+    },
+    prefill: {
+      exploreCodebase:
+        '先帮我摸清这个仓库的结构：主要 crate/目录、入口文件、以及和当前任务最相关的模块。用简短列表总结，不要改代码。',
+      implementFeature:
+        '我想实现一个功能（我会在下一条消息补充细节）。请先阅读相关代码，给出 3～5 步实施计划，再按计划小步改动并在每步后简要说明。',
+      fixBug:
+        '我遇到一个 bug（我会在下一条消息补充现象与报错）。请先定位根因，给出修复方案，确认后再改代码并说明验证方式。',
+      writeTests:
+        '请为最近改动或我指定的模块补充测试：先说明现有测试布局，再写最小必要的用例，并运行相关测试命令确认通过。',
+    },
+  },
   officeEmpty: {
     title: '办公模式',
     subtitle: '撰写、整理与交付文档',
@@ -283,6 +325,7 @@ const zhHans = {
     contextTooltip: '{{pct}}% · 约 {{used}} / {{max}} 上下文 token（按对话内容估算）',
     contextTooltipRuntime: '{{pct}}% · 约 {{used}} / {{max}} 上下文 token（Runtime 估算）',
     contextCompactHint: '自动压缩阈值：{{threshold}} token',
+    contextMeterAria: '上下文用量 {{pct}}%',
     lastApiInputTokens: 'API {{count}}',
     lastApiInputTokensTitle: '上一轮 API 请求的 input token（提供商返回）：{{count}}',
     lastTurnTokens: '↓ {{count}}',
@@ -324,6 +367,8 @@ const zhHans = {
     confirm: '确定',
     autoApprove: '自动批准工具调用',
     autoApproveShort: '自动批准',
+    autoApproveAria: '自动批准工具调用',
+    autoApproveLockedAria: '审批策略：{{policy}}',
     approvalFromSettings: '审批：{{policy}}',
     approvalFromSettingsHint: '在系统设置 → 审批策略 中修改；选「自动批准」后可在此勾选工具自动批准。',
     moreMenu: '更多',
@@ -387,6 +432,7 @@ const zhHans = {
     threadWorkspaceError: '已恢复运行时线程，但读取线程工作区失败：{{errMsg}}',
     unauthorized401: '未授权 (401)：请使用桌面壳启动 sidecar 或提供正确的运行时 token。',
     loadSessionFailed: '加载会话失败：{{message}}',
+    sessionRestoreRetryFailed: '无法从线程重新加载消息，请稍后重试。',
     deleteSessionFailed: '删除会话失败：{{message}}',
     workspaceEmpty: '工作区不能为空',
     activeTurnBlocking: '当前线程有进行中的回合，暂无法切换工作区。请先停止生成或等待该回合结束后再试。',
@@ -1146,7 +1192,7 @@ const zhHans = {
     noDataInRange: '所选范围内无用量数据。',
   },
   message: {
-    reasoning: 'Reasoning',
+    reasoning: '推理',
     reasoningStreaming: '推理中…',
     reasoningCollapsed: '已收起，点击展开',
     reasoningStreamingPlaceholder: '推理中…（内容流式到达后会显示在这里）',
@@ -1160,6 +1206,9 @@ const zhHans = {
     toolCallsDefault: '工具调用',
     toolCallsWithName: '{{name}} 等 {{count}} 项',
     toolCallsHeadMore: '{{head}} 等 {{count}} 项',
+    toolGroupReads: '探索 {{count}} 次读取',
+    toolGroupWrites: '写入 {{count}} 项',
+    toolGroupShell: '执行 {{count}} 条命令',
   },
   terminalCard: {
     runningEmpty: '正在执行，尚未收到终端输出…（不少 Python 脚本成功时也不打印任何内容）',

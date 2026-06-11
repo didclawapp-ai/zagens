@@ -21,7 +21,7 @@ use serde::Serialize;
 use serde_json::Value;
 use tokio::sync::Mutex;
 
-use crate::models::{ContentBlock, Message};
+use crate::models::Message;
 
 use super::prompt_inbox::PromptAdmission;
 use super::types::*;
@@ -690,36 +690,7 @@ pub fn reconstruct_messages_for_store(
     store: &RuntimeThreadStore,
     turns: &[TurnRecord],
 ) -> Result<Vec<Message>> {
-    let mut messages = Vec::new();
-    for turn in turns {
-        let items = store.list_items_for_turn(&turn.id)?;
-        for item in items {
-            match item.kind {
-                TurnItemKind::UserMessage => {
-                    let text = item.detail.unwrap_or(item.summary);
-                    messages.push(Message {
-                        role: "user".to_string(),
-                        content: vec![ContentBlock::Text {
-                            text,
-                            cache_control: None,
-                        }],
-                    });
-                }
-                TurnItemKind::AgentMessage => {
-                    let text = item.detail.unwrap_or(item.summary);
-                    messages.push(Message {
-                        role: "assistant".to_string(),
-                        content: vec![ContentBlock::Text {
-                            text,
-                            cache_control: None,
-                        }],
-                    });
-                }
-                _ => {}
-            }
-        }
-    }
-    Ok(messages)
+    super::session_reconstruct::reconstruct_messages_for_store(store, turns)
 }
 
 fn append_event_jsonl_blocking(path: &Path, record: &RuntimeEventRecord) -> Result<()> {

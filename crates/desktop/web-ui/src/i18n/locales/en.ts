@@ -8,6 +8,48 @@ const en: TranslationMap = {
     heroTagline: 'Your AI coding assistant',
     emptyPrompt: 'Start a conversation below',
   },
+  chatRestore: {
+    loading: 'Restoring session…',
+    sourceLabel: 'Restored from: {{source}}',
+    sourceCache: 'local cache',
+    sourceThread: 'thread event replay',
+    sourceSession: 'session archive',
+    toolsMayBeIncomplete: 'Tool output may be incomplete',
+    retry: 'Reload',
+  },
+  chatEmpty: {
+    title: 'Start here',
+    subtitle: 'Describe what you want done — the agent reads code, edits files, runs commands, and reports back.',
+    hint: 'Pick a starter card or type below',
+    cards: {
+      exploreCodebase: {
+        title: 'Map the codebase',
+        hint: 'Layout, entry points, key modules',
+      },
+      implementFeature: {
+        title: 'Implement a feature',
+        hint: 'Read first, then ship in small steps',
+      },
+      fixBug: {
+        title: 'Find and fix a bug',
+        hint: 'Repro, root cause, minimal fix',
+      },
+      writeTests: {
+        title: 'Add test coverage',
+        hint: 'Tests aligned with your changes',
+      },
+    },
+    prefill: {
+      exploreCodebase:
+        'Map this repository first: main crates/directories, entry files, and modules most relevant to my task. Summarize in a short list — do not edit code yet.',
+      implementFeature:
+        'I want to implement a feature (I will add details next). Read the relevant code, propose a 3–5 step plan, then execute in small steps with a brief note after each.',
+      fixBug:
+        'I hit a bug (I will add symptoms and errors next). Find the root cause, propose a fix, then apply it and explain how to verify.',
+      writeTests:
+        'Add tests for recent changes or a module I will specify: explain the existing test layout, add the smallest useful cases, and run the relevant test command.',
+    },
+  },
   officeEmpty: {
     title: 'Office mode',
     subtitle: 'Draft, refine, and deliver documents',
@@ -286,6 +328,7 @@ const en: TranslationMap = {
     contextTooltip: '{{pct}}% · ~{{used}} / {{max}} context tokens (estimated from transcript)',
     contextTooltipRuntime: '{{pct}}% · ~{{used}} / {{max}} context tokens (runtime estimate)',
     contextCompactHint: 'Auto-compact threshold: {{threshold}} tokens',
+    contextMeterAria: 'Context usage {{pct}}%',
     lastApiInputTokens: 'API {{count}}',
     lastApiInputTokensTitle: 'Last API request input tokens (from provider): {{count}}',
     lastTurnTokens: '↓ {{count}}',
@@ -329,6 +372,8 @@ const en: TranslationMap = {
     confirm: 'Confirm',
     autoApprove: 'Auto-approve tool calls',
     autoApproveShort: 'Auto-approve',
+    autoApproveAria: 'Auto-approve tool calls',
+    autoApproveLockedAria: 'Approval policy: {{policy}}',
     approvalFromSettings: 'Approval: {{policy}}',
     approvalFromSettingsHint:
       'Change under Settings → Approval policy. Choose Auto-approve to enable the tool auto-approve checkbox.',
@@ -393,6 +438,7 @@ const en: TranslationMap = {
     threadWorkspaceError: 'Thread resumed but reading workspace failed: {{errMsg}}',
     unauthorized401: 'Unauthorized (401): launch sidecar via the desktop shell or provide the correct runtime token.',
     loadSessionFailed: 'Failed to load session: {{message}}',
+    sessionRestoreRetryFailed: 'Could not reload messages from the thread. Try again later.',
     deleteSessionFailed: 'Failed to delete session: {{message}}',
     workspaceEmpty: 'Workspace cannot be empty',
     activeTurnBlocking: 'An active turn is in progress; cannot switch workspace. Stop generation or wait for the turn to finish.',
@@ -1176,6 +1222,9 @@ const en: TranslationMap = {
     toolCallsDefault: 'Tool calls',
     toolCallsWithName: '{{name}} and {{count}} more',
     toolCallsHeadMore: '{{head}} and {{count}} more',
+    toolGroupReads: 'Explored {{count}} reads',
+    toolGroupWrites: '{{count}} writes',
+    toolGroupShell: '{{count}} shell commands',
   },
   terminalCard: {
     runningEmpty: 'Running — no terminal output yet (many Python scripts print nothing on success).',

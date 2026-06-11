@@ -6,6 +6,7 @@ import WorkspaceLinkContextMenu, {
 } from './chat/WorkspaceLinkContextMenu';
 import { useT } from '../i18n';
 import { enhanceChatCodeBlocks } from '../lib/enhanceChatCodeBlocks';
+import { enhanceAssistantParagraphBreaks } from '../lib/chat/formatAssistantContent';
 import { chatMarkdownIt } from '../lib/markdownChatCore';
 import {
   CHAT_MARKDOWN_ALLOWED_URI,
@@ -121,13 +122,15 @@ export function ChatMarkdown({
     () =>
       [
         'chat-md-wrap break-words',
-        variant === 'user' ? 'chat-md-wrap--user prose prose-sm max-w-none' : 'prose prose-base max-w-none',
+        variant === 'user'
+          ? 'chat-md-wrap--user prose prose-sm max-w-none'
+          : 'chat-md-wrap--assistant prose prose-base max-w-none',
         'font-display',
         'prose-headings:font-display prose-headings:font-semibold prose-headings:tracking-tight',
         variant === 'user' ? 'prose-headings:my-2' : 'prose-headings:my-3',
         variant === 'user'
           ? 'prose-p:my-1.5 prose-p:leading-relaxed'
-          : 'prose-p:my-2 prose-p:leading-[1.65]',
+          : 'prose-p:my-2.5 prose-p:leading-[1.72]',
         'prose-code:font-mono prose-code:text-[0.9em] prose-code:px-1 prose-code:py-0.5 prose-code:rounded',
         'prose-pre:my-2 prose-pre:p-0 prose-pre:bg-transparent prose-pre:border-0',
         variant === 'user' ? 'prose-ul:my-2 prose-ol:my-2' : 'prose-ul:my-3 prose-ol:my-3',
@@ -162,11 +165,20 @@ export function ChatMarkdown({
   const streamingPlainClassName = useMemo(
     () =>
       [
-        'chat-md-wrap break-words font-display text-sm leading-relaxed',
-        variant === 'user' ? 'text-msg-user-text' : 'text-t-text',
+        'chat-md-wrap break-words font-display',
+        variant === 'user'
+          ? 'text-sm leading-relaxed text-msg-user-text'
+          : 'chat-md-wrap--assistant text-[15px] leading-[1.72] text-t-text',
       ].join(' '),
     [variant],
   );
+
+  const renderContent = useMemo(() => {
+    if (!content) {
+      return '';
+    }
+    return variant === 'assistant' ? enhanceAssistantParagraphBreaks(content) : content;
+  }, [content, variant]);
 
   useEffect(() => {
     if (!content) {
@@ -176,11 +188,11 @@ export function ChatMarkdown({
     if (isStreaming) {
       return;
     }
-    const raw = chatMarkdownIt.render(content);
+    const raw = chatMarkdownIt.render(renderContent);
     const safe = sanitizeChatMarkdown(raw);
     const enhanced = enhanceWorkspacePathTargets(safe);
     setHtml(sanitizeChatMarkdown(enhanced));
-  }, [content, isStreaming]);
+  }, [content, isStreaming, renderContent]);
 
   useEffect(() => {
     enhanceChatCodeBlocks(containerRef.current, {
@@ -253,7 +265,7 @@ export function ChatMarkdown({
   if (isStreaming) {
     return (
       <div ref={containerRef} className={streamingPlainClassName}>
-        <div className="whitespace-pre-wrap break-words">{content}</div>
+        <div className="whitespace-pre-wrap break-words">{renderContent}</div>
       </div>
     );
   }

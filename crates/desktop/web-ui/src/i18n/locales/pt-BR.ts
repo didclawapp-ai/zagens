@@ -8,6 +8,48 @@ const ptBr: TranslationMap = {
     heroTagline: 'Seu assistente de código com IA',
     emptyPrompt: 'Comece uma conversa abaixo',
   },
+  chatRestore: {
+    loading: 'Restaurando sessão…',
+    sourceLabel: 'Restaurado de: {{source}}',
+    sourceCache: 'cache local',
+    sourceThread: 'replay de eventos do thread',
+    sourceSession: 'arquivo da sessão',
+    toolsMayBeIncomplete: 'A saída das ferramentas pode estar incompleta',
+    retry: 'Recarregar',
+  },
+  chatEmpty: {
+    title: 'Comece aqui',
+    subtitle: 'Descreva o que você quer — o agente lê código, edita arquivos, executa comandos e reporta o resultado.',
+    hint: 'Escolha um cartão inicial ou digite abaixo',
+    cards: {
+      exploreCodebase: {
+        title: 'Mapear o repositório',
+        hint: 'Layout, entradas, módulos-chave',
+      },
+      implementFeature: {
+        title: 'Implementar recurso',
+        hint: 'Ler primeiro, entregar em passos pequenos',
+      },
+      fixBug: {
+        title: 'Encontrar e corrigir bug',
+        hint: 'Repro, causa, correção mínima',
+      },
+      writeTests: {
+        title: 'Adicionar testes',
+        hint: 'Cobertura alinhada às mudanças',
+      },
+    },
+    prefill: {
+      exploreCodebase:
+        'Mapeie este repositório primeiro: crates/diretórios principais, entradas e módulos relevantes. Resuma em lista curta — ainda sem editar código.',
+      implementFeature:
+        'Quero implementar um recurso (detalhes na próxima mensagem). Leia o código relevante, proponha um plano de 3–5 passos e execute em passos pequenos com nota breve após cada um.',
+      fixBug:
+        'Encontrei um bug (sintomas e erros na próxima mensagem). Encontre a causa, proponha correção, aplique e explique como verificar.',
+      writeTests:
+        'Adicione testes para mudanças recentes ou um módulo que eu indicar: explique o layout de testes existente, escreva o mínimo útil e rode o comando de teste relevante.',
+    },
+  },
   officeEmpty: {
     title: 'Modo escritório',
     subtitle: 'Redigir, organizar e entregar documentos',
@@ -286,6 +328,7 @@ const ptBr: TranslationMap = {
     contextTooltip: '{{pct}}% · ~{{used}} / {{max}} tokens de contexto (estimativa da transcrição)',
     contextTooltipRuntime: '{{pct}}% · ~{{used}} / {{max}} tokens de contexto (estimativa do runtime)',
     contextCompactHint: 'Limite de compactação automática: {{threshold}} tokens',
+    contextMeterAria: 'Uso de contexto {{pct}}%',
     lastApiInputTokens: 'API {{count}}',
     lastApiInputTokensTitle: 'Tokens de entrada da última requisição à API (do provedor): {{count}}',
     lastTurnTokens: '↓ {{count}}',
@@ -330,6 +373,8 @@ const ptBr: TranslationMap = {
     confirm: 'Confirmar',
     autoApprove: 'Aprovar chamadas de ferramentas automaticamente',
     autoApproveShort: 'Aprovar automaticamente',
+    autoApproveAria: 'Aprovar chamadas de ferramentas automaticamente',
+    autoApproveLockedAria: 'Política de aprovação: {{policy}}',
     approvalFromSettings: 'Aprovação: {{policy}}',
     approvalFromSettingsHint:
       'Altere em Configurações → Política de aprovação. Escolha Aprovar automaticamente para habilitar a caixa de aprovação automática de ferramentas.',
@@ -394,6 +439,7 @@ const ptBr: TranslationMap = {
     threadWorkspaceError: 'Thread retomado, mas falha ao ler o workspace: {{errMsg}}',
     unauthorized401: 'Não autorizado (401): inicie o sidecar pelo shell desktop ou forneça o token de runtime correto.',
     loadSessionFailed: 'Falha ao carregar sessão: {{message}}',
+    sessionRestoreRetryFailed: 'Não foi possível recarregar as mensagens do thread.',
     deleteSessionFailed: 'Falha ao excluir sessão: {{message}}',
     workspaceEmpty: 'O workspace não pode ficar vazio',
     activeTurnBlocking: 'Há um turno ativo em andamento; não é possível trocar o workspace. Pare a geração ou aguarde o término do turno.',
@@ -1177,6 +1223,9 @@ const ptBr: TranslationMap = {
     toolCallsDefault: 'Chamadas de ferramenta',
     toolCallsWithName: '{{name}} e mais {{count}}',
     toolCallsHeadMore: '{{head}} e mais {{count}}',
+    toolGroupReads: 'Explorou {{count}} leituras',
+    toolGroupWrites: '{{count}} gravações',
+    toolGroupShell: '{{count}} comandos shell',
   },
   terminalCard: {
     runningEmpty: 'Em execução — ainda sem saída de terminal (muitos scripts Python não imprimem nada em caso de sucesso).',

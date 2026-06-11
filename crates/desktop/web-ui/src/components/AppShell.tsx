@@ -1,5 +1,6 @@
 import { useT } from '../i18n';
 import ChatView from './ChatView';
+import type { SessionRestoreSource } from '../hooks/useSessionNavigation';
 import ChatActionDialogs from './ChatActionDialogs';
 import Composer, { type ComposerOutboundMessage } from './Composer';
 import ModelParamsDialog, { type ModelParams } from './ModelParamsDialog';
@@ -111,6 +112,9 @@ export type AppShellProps = {
   composerPrefill?: { text: string; nonce: number };
   onOfficeQuickStart?: (prefill: string) => void;
   messages: TurnChatMessage[];
+  sessionRestoreLoading?: boolean;
+  sessionRestoreSource?: SessionRestoreSource;
+  onRetrySessionRestore?: () => void;
   agentStates: AgentState[];
   onChatOpenWorkspacePath: (relPath: string) => void;
   onRevealWorkspacePath: (relPath: string) => void;
@@ -223,6 +227,9 @@ export default function AppShell({
   composerPrefill,
   onOfficeQuickStart,
   messages,
+  sessionRestoreLoading = false,
+  sessionRestoreSource = null,
+  onRetrySessionRestore,
   agentStates,
   onChatOpenWorkspacePath,
   onRevealWorkspacePath,
@@ -415,6 +422,9 @@ export default function AppShell({
               onBacktrackFromMessage={onBacktrackFromMessage}
               officeSession={officeSession}
               onOfficeQuickStart={officeSession ? onOfficeQuickStart : undefined}
+              sessionRestoreLoading={sessionRestoreLoading}
+              sessionRestoreSource={sessionRestoreSource}
+              onRetrySessionRestore={onRetrySessionRestore}
             />
           </section>
         </main>

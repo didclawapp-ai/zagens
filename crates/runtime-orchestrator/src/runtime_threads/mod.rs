@@ -18,6 +18,7 @@ pub mod monitor_persist;
 pub mod persist;
 pub mod prompt_inbox;
 pub mod routing;
+pub mod session_reconstruct;
 pub mod task_port;
 pub mod thread_crud;
 pub mod turn_control;

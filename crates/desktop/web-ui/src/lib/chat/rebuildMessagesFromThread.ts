@@ -5,6 +5,7 @@ import {
   stringifyToolInput,
   toolOutputString,
 } from './toolOutput';
+import { mergeAgentMessageSegment } from './formatAssistantContent';
 import {
   nextUiMessageId,
   resetUiMessageIdCounter,
@@ -19,6 +20,8 @@ interface HistoryState {
   assistantThinking: string;
   tools: UiToolCall[];
   currentToolId: string | null;
+  /** After an agent_message segment ends, insert a paragraph break before the next delta. */
+  pendingParagraphBreak: boolean;
 }
 
 function flushAssistant(state: HistoryState): void {
@@ -44,6 +47,7 @@ function flushAssistant(state: HistoryState): void {
   state.assistantThinking = '';
   state.tools = [];
   state.currentToolId = null;
+  state.pendingParagraphBreak = false;
 }
 
 function ensureAssistant(state: HistoryState): void {
@@ -85,6 +89,12 @@ function applyNormalized(state: HistoryState, norm: ReturnType<typeof normalizeD
       break;
     case 'message_delta':
       ensureAssistant(state);
+      if (state.pendingParagraphBreak && state.assistantContent.trim()) {
+        if (!state.assistantContent.endsWith('\n\n')) {
+          state.assistantContent += state.assistantContent.endsWith('\n') ? '\n' : '\n\n';
+        }
+        state.pendingParagraphBreak = false;
+      }
       state.assistantContent += norm.content;
       break;
     case 'tool_started':
@@ -178,12 +188,21 @@ function applyRawRecord(state: HistoryState, ev: { event: string; data: string }
     return;
   }
 
-  if (kind === 'agent_message') {
-    ensureAssistant(state);
-    if (detail.trim()) {
-      state.assistantContent = detail;
+  if (kind === 'thinking') {
+    const text = (detail || summary).trim();
+    if (text) {
+      ensureAssistant(state);
+      state.assistantThinking = mergeAgentMessageSegment(state.assistantThinking, text);
     }
-    flushAssistant(state);
+    return;
+  }
+
+  if (kind === 'agent_message') {
+    const text = (detail || summary).trim();
+    if (text) {
+      state.assistantContent = mergeAgentMessageSegment(state.assistantContent, text);
+    }
+    state.pendingParagraphBreak = true;
     return;
   }
 
@@ -225,6 +244,27 @@ function applyEvent(state: HistoryState, ev: { event: string; data: string }): v
   applyNormalized(state, norm);
 }
 
+/** Synchronous rebuild from raw SSE/event records (tests + self-check). */
+export function rebuildMessagesFromEventRecords(
+  events: Array<{ event: string; data: string }>,
+): UiMessage[] {
+  resetUiMessageIdCounter();
+  const state: HistoryState = {
+    messages: [],
+    currentAssistantId: null,
+    assistantContent: '',
+    assistantThinking: '',
+    tools: [],
+    currentToolId: null,
+    pendingParagraphBreak: false,
+  };
+  for (const ev of events) {
+    applyEvent(state, ev);
+  }
+  flushAssistant(state);
+  return state.messages;
+}
+
 /**
  * Rebuild chat UI messages (including tool cards) from persisted runtime thread events.
  * Authoritative for tool output; session JSON only stores text/thinking blocks today.
@@ -241,6 +281,7 @@ export async function rebuildMessagesFromThreadEvents(
     assistantThinking: '',
     tools: [],
     currentToolId: null,
+    pendingParagraphBreak: false,
   };
 
   await replayThreadEvents(

@@ -183,24 +183,38 @@ pub(crate) async fn resume_session_thread(
     // replay tool cards and thinking after app restart (instead of seeding a blank thread).
     if let Some(ref stored_tid) = session.metadata.runtime_thread_id {
         let stored_tid = stored_tid.trim();
-        if !stored_tid.is_empty() && state.runtime_threads.load_thread_sync(stored_tid).is_ok() {
-            let has_events = state
-                .runtime_threads
-                .events_since_async(stored_tid, Some(0))
-                .await
-                .map(|events| !events.is_empty())
-                .unwrap_or(false);
-            if has_events {
-                eprintln!("[resume-session] reusing runtime thread {stored_tid} (events present)");
-                return Ok((
-                    StatusCode::OK,
-                    Json(ResumeSessionResponse {
-                        thread_id: stored_tid.to_string(),
-                        session_id: id,
-                        message_count: session.messages.len(),
-                        state: "ready".to_string(),
-                    }),
-                ));
+        if !stored_tid.is_empty() {
+            match state.runtime_threads.load_thread_sync(stored_tid) {
+                Ok(_) => {
+                    let has_events = state
+                        .runtime_threads
+                        .events_since_async(stored_tid, Some(0))
+                        .await
+                        .map(|events| !events.is_empty())
+                        .unwrap_or(false);
+                    if has_events {
+                        eprintln!(
+                            "[resume-session] reusing runtime thread {stored_tid} (events present)"
+                        );
+                        return Ok((
+                            StatusCode::OK,
+                            Json(ResumeSessionResponse {
+                                thread_id: stored_tid.to_string(),
+                                session_id: id,
+                                message_count: session.messages.len(),
+                                state: "ready".to_string(),
+                            }),
+                        ));
+                    }
+                    eprintln!(
+                        "[resume-session] linked thread {stored_tid} has no events — seeding new thread"
+                    );
+                }
+                Err(e) => {
+                    eprintln!(
+                        "[resume-session] linked thread {stored_tid} not on disk ({e}) — seeding new thread"
+                    );
+                }
             }
         }
     }
@@ -336,6 +350,29 @@ fn session_to_detail(session: SavedSession) -> SessionDetailResponse {
                     }
                     crate::models::ContentBlock::Thinking { thinking, .. } => {
                         json!({ "type": "thinking", "text": thinking })
+                    }
+                    crate::models::ContentBlock::ToolUse {
+                        id, name, input, ..
+                    } => {
+                        json!({
+                            "type": "tool_use",
+                            "id": id,
+                            "name": name,
+                            "input": input,
+                        })
+                    }
+                    crate::models::ContentBlock::ToolResult {
+                        tool_use_id,
+                        content,
+                        is_error,
+                        ..
+                    } => {
+                        json!({
+                            "type": "tool_result",
+                            "tool_use_id": tool_use_id,
+                            "content": content,
+                            "is_error": is_error,
+                        })
                     }
                     _ => json!({ "type": "other" }),
                 })

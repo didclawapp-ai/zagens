@@ -1,6 +1,7 @@
 import {
   useCallback,
   useRef,
+  useState,
   type Dispatch,
   type MutableRefObject,
   type SetStateAction,
@@ -12,7 +13,11 @@ import {
   resumeSessionThread,
 } from '../api/client';
 import { rebuildMessagesFromThreadEvents } from '../lib/chat/rebuildMessagesFromThread';
-import { pickBestSessionMessages } from '../lib/chat/sessionMessagePick';
+import {
+  pickBestSessionMessagesWithSource,
+  snapshotHasAssistantMeta,
+  type SessionMessageCandidate,
+} from '../lib/chat/sessionMessagePick';
 import {
   cacheSessionUiMessages,
   getCachedSessionUiMessages,
@@ -67,10 +72,15 @@ export type UseSessionNavigationParams = {
   resetAgentPanel: () => void;
 };
 
+export type SessionRestoreSource = SessionMessageCandidate['source'] | null;
+
 export type UseSessionNavigationResult = {
   handleSelectSession: (sessionId: string) => Promise<void>;
   handleNewSession: () => void;
   handleOpenThreadById: (threadId: string) => Promise<void>;
+  sessionRestoreLoading: boolean;
+  sessionRestoreSource: SessionRestoreSource;
+  retrySessionRestore: () => Promise<void>;
 };
 
 export function useSessionNavigation({
@@ -106,6 +116,39 @@ export function useSessionNavigation({
 }: UseSessionNavigationParams): UseSessionNavigationResult {
   const selectSessionGenerationRef = useRef(0);
   const selectSessionAbortRef = useRef<AbortController | null>(null);
+  const [sessionRestoreLoading, setSessionRestoreLoading] = useState(false);
+  const [sessionRestoreSource, setSessionRestoreSource] =
+    useState<SessionRestoreSource>(null);
+
+  const retrySessionRestore = useCallback(async () => {
+    const threadId = resumedThreadIdRef.current;
+    const sessionId = activeSessionIdRef.current;
+    if (!threadId) {
+      return;
+    }
+    setSessionRestoreLoading(true);
+    try {
+      const fromThread = await rebuildMessagesFromThreadEvents(threadId);
+      if (fromThread.length > 0) {
+        setMessages(fromThread);
+        setSessionRestoreSource('thread');
+        if (sessionId) {
+          cacheSessionUiMessages(sessionUiCacheRef.current, sessionId, fromThread);
+        }
+      }
+    } catch {
+      notifyRuntimeTransient(t('banner.sessionRestoreRetryFailed'));
+    } finally {
+      setSessionRestoreLoading(false);
+    }
+  }, [
+    activeSessionIdRef,
+    resumedThreadIdRef,
+    sessionUiCacheRef,
+    setMessages,
+    notifyRuntimeTransient,
+    t,
+  ]);
 
   const handleSelectSession = useCallback(
     async (sessionId: string) => {
@@ -143,6 +186,8 @@ export function useSessionNavigation({
       setThreadTrustMode(false);
       setPanelPreview(null);
       resetTurnPersistState();
+      setSessionRestoreLoading(true);
+      setSessionRestoreSource(null);
 
       const cachedUi = getCachedSessionUiMessages(sessionUiCacheRef.current, sessionId);
       if (cachedUi?.length) {
@@ -162,16 +207,17 @@ export function useSessionNavigation({
           return;
         }
         const sessionFallback = mapSessionDetailToMessages(detail);
-        const restoreCandidates: Parameters<typeof pickBestSessionMessages>[0] = [];
+        const restoreCandidates: SessionMessageCandidate[] = [];
         if (cachedUi?.length) {
           restoreCandidates.push({ source: 'cache', messages: cachedUi });
         }
         if (sessionFallback.length > 0) {
           restoreCandidates.push({ source: 'session', messages: sessionFallback });
         }
-        const provisional = pickBestSessionMessages(restoreCandidates);
-        if (provisional.length > 0) {
-          setMessages(provisional);
+        const provisional = pickBestSessionMessagesWithSource(restoreCandidates);
+        if (provisional.messages.length > 0) {
+          setMessages(provisional.messages);
+          setSessionRestoreSource(provisional.source);
         }
         resumedThreadIdRef.current = resumed.thread_id;
         setResumedThreadId(resumed.thread_id);
@@ -193,10 +239,20 @@ export function useSessionNavigation({
         if (gen !== selectSessionGenerationRef.current) {
           return;
         }
-        const restored = pickBestSessionMessages(restoreCandidates);
-        if (restored.length > 0) {
-          setMessages(restored);
-          cacheSessionUiMessages(sessionUiCacheRef.current, sessionId, restored);
+        let picked = pickBestSessionMessagesWithSource(restoreCandidates);
+        const threadCandidate = restoreCandidates.find((c) => c.source === 'thread');
+        if (
+          threadCandidate &&
+          threadCandidate.messages.length > 0 &&
+          snapshotHasAssistantMeta(threadCandidate.messages) &&
+          !snapshotHasAssistantMeta(picked.messages)
+        ) {
+          picked = { messages: threadCandidate.messages, source: 'thread' };
+        }
+        if (picked.messages.length > 0) {
+          setMessages(picked.messages);
+          setSessionRestoreSource(picked.source);
+          cacheSessionUiMessages(sessionUiCacheRef.current, sessionId, picked.messages);
         }
         threadTurnRef.current = { threadId: resumed.thread_id, turnId: '' };
         try {
@@ -243,6 +299,10 @@ export function useSessionNavigation({
           toast.error(t('banner.loadSessionFailed', { message: err.message }));
         }
         reconcileRuntimeAfterFetchFailure();
+      } finally {
+        if (gen === selectSessionGenerationRef.current) {
+          setSessionRestoreLoading(false);
+        }
       }
     },
     [
@@ -416,6 +476,8 @@ export function useSessionNavigation({
     threadTurnRef.current = { threadId: '', turnId: '' };
     resetTurnPersistState();
     clearApproval();
+    setSessionRestoreLoading(false);
+    setSessionRestoreSource(null);
   }, [
     abortThreadStream,
     clearApproval,
@@ -440,5 +502,8 @@ export function useSessionNavigation({
     handleSelectSession,
     handleNewSession,
     handleOpenThreadById,
+    sessionRestoreLoading,
+    sessionRestoreSource,
+    retrySessionRestore,
   };
 }

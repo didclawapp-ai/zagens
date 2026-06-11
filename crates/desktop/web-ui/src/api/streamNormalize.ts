@@ -264,6 +264,11 @@ export function normalizeDesktopStreamEvent(
       return null;
     }
     const kind = String(item.kind ?? '');
+    if (kind === 'thinking') {
+      const text =
+        (item.detail as string | undefined) ?? (item.summary as string | undefined) ?? '';
+      return text ? { kind: 'thinking_delta', content: text } : null;
+    }
     if (kind === 'tool_call' || kind === 'file_change' || kind === 'command_execution') {
       const tool = inner.tool as Record<string, unknown> | undefined;
       return {
