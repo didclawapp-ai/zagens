@@ -357,6 +357,14 @@ pub struct SandboxSettings {
     pub windows_private_desktop: bool,
 }
 
+fn normalize_sandbox_mode(mode: &str) -> String {
+    match mode.trim().to_ascii_lowercase().as_str() {
+        // Legacy UI value before 0.7.x aligned with runtime `danger-full-access`.
+        "full-access" => "danger-full-access".into(),
+        other => other.into(),
+    }
+}
+
 fn sandbox_settings_from_config(cfg: &ConfigToml) -> SandboxSettings {
     let windows_sandbox = cfg
         .windows
@@ -369,11 +377,12 @@ fn sandbox_settings_from_config(cfg: &ConfigToml) -> SandboxSettings {
         .unwrap_or("auto")
         .to_string();
     SandboxSettings {
-        sandbox_mode: cfg
-            .sandbox_mode
-            .clone()
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| "workspace-write".into()),
+        sandbox_mode: normalize_sandbox_mode(
+            cfg.sandbox_mode
+                .as_deref()
+                .filter(|s| !s.is_empty())
+                .unwrap_or("workspace-write"),
+        ),
         windows_sandbox,
         windows_private_desktop: cfg
             .windows
@@ -466,7 +475,7 @@ pub fn save_sandbox_settings(
     let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
     let cfg = &mut store.config;
 
-    cfg.sandbox_mode = Some(settings.sandbox_mode);
+    cfg.sandbox_mode = Some(normalize_sandbox_mode(&settings.sandbox_mode));
 
     let windows = cfg.windows.get_or_insert_with(WindowsConfigToml::default);
     windows.sandbox = match settings

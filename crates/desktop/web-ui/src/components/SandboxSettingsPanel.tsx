@@ -287,7 +287,7 @@ export default function SandboxSettingsPanel({ desktopHost, platform, streaming 
               >
                 <option value="workspace-write">{t('settings.sandboxWorkspace')}</option>
                 <option value="read-only">{t('settings.sandboxReadOnly')}</option>
-                <option value="full-access">{t('settings.sandboxFullAccess')}</option>
+                <option value="danger-full-access">{t('settings.sandboxFullAccess')}</option>
               </select>
             </label>
           </section>
