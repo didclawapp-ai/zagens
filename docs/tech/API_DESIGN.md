@@ -1,6 +1,6 @@
 # Zagens API Design
 
-> **Zagens shell version:** 0.5.0 (`crates/desktop/Cargo.toml`) | **Document revision:** 2026-05-26 | **Authoritative implementation:** `commands.rs`, `runtime_proxy.rs`, `runtime_api/router.rs` `build_router`, `web-ui/src/api/client.ts`
+> **Zagens shell version:** 0.7.5 (`crates/desktop/Cargo.toml`) | **Document revision:** 2026-06-12 | **Authoritative implementation:** `commands.rs`, `runtime_proxy.rs`, `runtime_api/router.rs` `build_router`, `web-ui/src/api/client.ts`
 
 This document describes the **dual-channel integration API** of the **Zagens desktop shell**. Protocol types live in `crates/protocol/`; the HTTP routing SSOT is `crates/runtime-server/src/runtime_api/router.rs` (sidecar: **`deepseek-runtime`**).
 
@@ -26,12 +26,12 @@ Zagens uses a **dual-channel API** architecture: the WebView frontend and Rust b
 │  │  Channel A:         │    │  commands.rs           │     │
 │  │  Tauri invoke() ────┼───►│  runtime_proxy.rs      │     │
 │  │  (native bridge,    │    │  sidecar.rs            │     │
-│  │   ~41 commands)     │    │  main.rs               │     │
+│  │   ~64 commands)     │    │  main.rs               │     │
 │  │                     │    │  ┌──────────────────┐  │     │
 │  │  Channel B:         │    │  │  Sidecar Process │  │     │
 │  │  via proxy or dev   │    │  │  deepseek-runtime│  │     │
 │  │  fetch (127.0.0.1)  │───►│  │  (HTTP + SSE)    │  │     │
-│  │  56 HTTP routes*    │    │  └──────────────────┘  │     │
+│  │  73 HTTP routes*    │    │  └──────────────────┘  │     │
 │  └─────────────────────┘    └────────────────────────┘     │
 └────────────────────────────────────────────────────────────┘
 ```
@@ -41,7 +41,7 @@ Zagens uses a **dual-channel API** architecture: the WebView frontend and Rust b
 | **A — Tauri IPC** | `invoke()` → Rust `#[tauri::command]` | System-level ops: secrets, settings, binary I/O, **runtime HTTP/SSE proxy (H06)**, terminal, multi-window |
 | **B — Runtime HTTP** | Under Tauri via `runtime_proxy`; Vite dev connects directly to `http://127.0.0.1:{port}` | Agent runtime: chat threads, sessions, streaming, MCP, tasks, usage |
 
-\* §8 “Channel B” table counts **56 rows** by **method + path**; this differs from “resource group” counts.
+\* §8 “Channel B” table counts **73 rows** by **method + path** (including `/health` and `/internal/probe`); verify against `runtime_api/router.rs` + `runtime-api/src/router.rs`.
 
 **vs CLI / `app-server`:** Zagens **does not** start `crates/app-server`; the desktop only spawns the bundled `deepseek-runtime` sidecar; the HTTP surface is `runtime_api/`. `app-server` is for other entry points (if any), not the Zagens data path.
 
@@ -63,7 +63,8 @@ Zagens uses a **dual-channel API** architecture: the WebView frontend and Rust b
 | `runtime_cancel_sse` | — | `()` | Cancel in-flight `runtime_get_sse` |
 | `get_platform_info` | — | `PlatformInfo` | `{ os, arch, version }` — `version` is **Zagens shell** SemVer (`CARGO_PKG_VERSION`), not OS version |
 | `get_os_theme` | — | `String` | **Placeholder:** currently fixed `"dark"`; system theme API not read |
-| `get_locale` | — | `String` | **Placeholder:** currently fixed `"zh-CN"`; system locale not read |
+| `get_locale` | — | `String` | Read persisted app locale from `~/.deepseek/config.toml` (`zagens-config`) |
+| `set_app_locale` | `locale: String` | `()` | Persist app locale to config |
 | `restart_sidecar` | — | `()` | Trigger sidecar restart (reload config.toml) |
 
 #### 2.1.1 Cancel / Interrupt Two-Layer Contract (D9)
@@ -91,7 +92,7 @@ Runtime narrative and broadcast details: [RUNTIME_ARCHITECTURE.md](./RUNTIME_ARC
 
 **SSE filtering:** Non-owner windows must ignore live `GET …/events` / `runtime_get_sse` increments (`filterThreadStreamEvents` + `windowOwnsThreadForStream` TTL cache). Same for `approval.required`. Historical replay (session load) is not limited.
 
-> **`get_runtime_token` removed (2026-05-20 H06 security follow-up):** Bearer no longer enters WebView; Tauri production path always goes through `runtime_proxy`. Full IPC list: `crates/desktop/src/main.rs` `generate_handler!` (~**41** commands as of 2026-05-25, including terminal and multi-window).
+> **`get_runtime_token` removed (2026-05-20 H06 security follow-up):** Bearer no longer enters WebView; Tauri production path always goes through `runtime_proxy`. Full IPC list: `crates/desktop/src/main.rs` `generate_handler!` (**64** commands as of 2026-06-12, including sandbox, LHT, hooks, terminal, multi-window, and app updater).
 
 ### 2.2 API Key Management
 
@@ -99,6 +100,7 @@ Runtime narrative and broadcast details: [RUNTIME_ARCHITECTURE.md](./RUNTIME_ARC
 |---------|------------|--------|-------------|
 | `get_api_key_status` | — | `ApiKeyStatus { configured }` | Check if DeepSeek API Key is stored in OS keychain |
 | `save_deepseek_api_key` | `key: String` | `()` | Write to OS keychain → clear plaintext in config.toml → restart sidecar |
+| `clear_deepseek_api_key` | — | `()` | Remove key from keychain → restart sidecar |
 | `get_vision_bridge_status` | — | `VisionBridgeStatus { configured, base_url, model }` | Vision transcription bridge status |
 | `save_vision_bridge` | `api_key, base_url, model` | `()` | Save vision bridge config → restart sidecar |
 | `clear_vision_bridge` | — | `()` | Clear vision bridge config → restart sidecar |
@@ -124,6 +126,7 @@ Runtime narrative and broadcast details: [RUNTIME_ARCHITECTURE.md](./RUNTIME_ARC
 
 | `open_in_shell` | `path: String` | `()` | Open path in system terminal |
 | `open_with_system_app` | `path: String` | `()` | Open file with system default app |
+| `open_external_url` | `url: String` | `()` | Open HTTPS/HTTP URL in system browser |
 | `export_thread_json` | `thread_id: String` | save dialog | Export thread conversation as JSON |
 | `export_session_json` | `session_id: String` | save dialog | Export session record as JSON |
 
@@ -153,6 +156,56 @@ snapshots_enabled: bool     notify_method: string           session_file_mb: num
 | `rebuild_symbol_index` | `workspace: String` | `()` | HTTP `POST /v1/symbol-index/rebuild?workspace=…` (**query**, no JSON body) |
 | `get_symbol_index_info` | `workspace: String` | `SymbolIndexInfo` | **IPC only:** read `.deepseek/symbols.json` (status/size/count, stale detection) |
 | `delete_symbol_index` | `workspace: String` | `()` | Delete workspace `.deepseek/symbols.json` and related index files |
+
+### 2.6 Sandbox (Windows native + cross-platform overview)
+
+See [SANDBOX_CAPABILITY_MATRIX.md](./SANDBOX_CAPABILITY_MATRIX.md). Desktop Settings → **Sandbox** uses these IPC commands; runtime enforcement is in the sidecar (`crates/runtime-server/src/sandbox/`).
+
+| Command | Parameters | Return | Description |
+|---------|------------|--------|-------------|
+| `get_windows_sandbox_status` | — | `WindowsSandboxStatus` | Windows-only: setup complete, backend (`elevated` / `unelevated`), configured mode |
+| `get_sandbox_platforms_overview` | — | `SandboxPlatformsOverview` | Per-OS sandbox posture for Settings panel |
+| `get_sandbox_onboarding_state` | — | `SandboxOnboardingState` | First-run onboarding completion |
+| `get_sandbox_settings` | — | `SandboxSettings` | Read `sandbox_mode`, `[windows] sandbox`, private desktop flag |
+| `save_sandbox_settings` | `settings: SandboxSettings` | `()` | Write sandbox section → restart sidecar |
+| `initialize_windows_sandbox` | `mode: String` | `SandboxSettings` | Windows UAC setup (`elevated` / `unelevated`); writes config markers |
+
+### 2.7 Long-Horizon Tasks (LHT) & Desktop Shell
+
+| Command | Parameters | Return | Description |
+|---------|------------|--------|-------------|
+| `get_lht_composer_mode` | — | `String` | Composer tri-state: `auto` \| `strict` \| `off` |
+| `set_lht_composer_mode` | `mode: String` | `()` | Persist composer LHT mode |
+| `get_lht_strict` | — | `bool` | Strict harness gate flag |
+| `set_lht_strict` | `strict: bool` | `()` | Persist strict flag |
+| `get_lht_settings` | — | `LhtSettings` | Full LHT config block |
+| `save_lht_settings` | `settings: LhtSettings` | `()` | Write LHT settings → restart sidecar |
+| `apply_lht_preset` | `preset_id: String` | `()` | Apply named LHT preset from `zagens-config` |
+| `get_desktop_shell_prefs` | — | `DesktopShellPrefs` | Desktop-only UI prefs (not sidecar system settings) |
+| `save_desktop_shell_prefs` | `prefs: DesktopShellPrefs` | `()` | Persist desktop shell prefs |
+| `default_composer_workspace` | — | `String` | Default workspace path for new composer sessions |
+
+### 2.8 Lifecycle Hooks
+
+| Command | Parameters | Return | Description |
+|---------|------------|--------|-------------|
+| `get_hooks_settings` | — | `HooksSettings` | Read `[hooks]` from config (see [desktop/HOOKS.md](../desktop/HOOKS.md)) |
+| `save_hooks_settings` | `settings: HooksSettings` | `()` | Write hooks config → restart sidecar |
+
+### 2.9 Embedded Terminal & Multi-Window
+
+| Command | Category |
+|---------|----------|
+| `spawn_terminal` / `write_terminal` / `resize_terminal` / `kill_terminal` | Embedded PTY (`terminal.rs`) |
+| `get_window_label` / `get_window_workspace` / `create_agent_window` / `list_agent_windows` / `focus_agent_window` / `register_window_thread` / `thread_owned_by_window` / `close_current_window` | Multi-window Agent windows (`window_registry.rs`) |
+
+### 2.10 Storage & App Updates
+
+| Command | Parameters | Return | Description |
+|---------|------------|--------|-------------|
+| `get_storage_pressure` | `workspace_root?: String` | `StoragePressureSnapshot` | Disk guard / workspace size hints for UI warnings |
+| `get_update_status` | — | `UpdateStatus` | Tauri updater: available version, download state |
+| `install_app_update` | — | `()` | Install downloaded app update and relaunch |
 
 ---
 
@@ -274,7 +327,7 @@ Public endpoints (no auth):
   "pid": 12345,
   "started_at_ms": 1710000000000,
   "token_fingerprint": "...",
-  "version": "0.8.15"
+  "version": "0.7.5"
 }
 ```
 
@@ -342,6 +395,13 @@ Public endpoints (no auth):
 | PATCH | `/v1/threads/{id}` | Update thread properties |
 | POST | `/v1/threads/{id}/resume` | Resume thread |
 | POST | `/v1/threads/{id}/fork` | Fork thread |
+| POST | `/v1/threads/{id}/fork-at-user-message` | Fork at a specific user message |
+| POST | `/v1/threads/{id}/edit-last-turn` | Edit and replay from last user turn |
+| GET | `/v1/threads/{id}/context` | Thread context summary (tokens, compaction hints) |
+| GET | `/v1/threads/{id}/harness/task-graph` | LHT harness task graph snapshot |
+| GET | `/v1/threads/{id}/harness/cycles` | LHT harness cycle status |
+| GET | `/v1/threads/{id}/scratchpad/status` | Scratchpad agent status |
+| POST | `/v1/threads/{id}/scratchpad/init` | Initialize scratchpad for thread |
 | POST | `/v1/threads/{id}/compact` | Compact thread context |
 | POST | `/v1/threads/{id}/turns` | Start a turn on this thread |
 | POST | `/v1/threads/{id}/turns/{turn_id}/steer` | Steer conversation direction |
@@ -406,6 +466,7 @@ Public endpoints (no auth):
 | GET | `/v1/workspace/browse` | List any workspace directory (`?workspace=&path=`) |
 | GET | `/v1/workspace/file` | Read any workspace file (`?workspace=&path=`) |
 | GET | `/v1/workspace/status` | Workspace status |
+| GET | `/v1/office/environment` | Office tooling environment probe (Python, bundled scripts) |
 
 **`GET ../workspace/browse` response:**
 
@@ -437,6 +498,7 @@ Public endpoints (no auth):
 |--------|------|-------------|
 | GET | `/v1/tasks` | List all tasks |
 | POST | `/v1/tasks` | Create task |
+| POST | `/v1/tasks/clear` | Clear completed/cancelled tasks |
 | GET | `/v1/tasks/{id}` | Task detail |
 | POST | `/v1/tasks/{id}/cancel` | Cancel task |
 | GET | `/v1/resume-tasks/{thread_id}` | Resume task for thread |
@@ -447,6 +509,16 @@ Public endpoints (no auth):
 |--------|------|-------------|
 | GET | `/v1/skills` | List all skills |
 | POST | `/v1/skills` | Create skill |
+| POST | `/v1/skills/import` | Import skill from local path/archive |
+| POST | `/v1/skills/install` | Install skill from remote URL/registry |
+
+#### 3.3.6a Blackboards & Topic Memory
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/v1/blackboards` | List CRAFT blackboards |
+| GET | `/v1/blackboards/{id}` | Blackboard detail |
+| GET | `/v1/topic-memory` | B2 topic memory snapshot |
 
 #### 3.3.7 Automations
 
@@ -473,6 +545,9 @@ Public endpoints (no auth):
 | DELETE | `/v1/apps/mcp/servers/{name}` | Delete MCP server |
 | GET | `/v1/apps/mcp/tools` | List MCP tools (`?server=`) |
 | POST | `/v1/apps/mcp/config/merge` | Merge MCP config JSON into `mcp.json` |
+| POST | `/v1/apps/mcp/reload` | Reload MCP pool from disk config |
+| GET | `/v1/apps/mcp/discover` | Discover MCP servers (stdio/SSE probe) |
+| GET | `/v1/apps/mcp/calls` | List recent MCP tool call records |
 
 **`POST /v1/apps/mcp/servers` request body:**
 
@@ -652,41 +727,21 @@ WebView                          Sidecar
 
 ### Channel A: Tauri IPC
 
-> Full list: `crates/desktop/src/main.rs` `generate_handler!` (~**41** commands as of 2026-05-25). Subset below; **excludes** removed `get_runtime_token`.
+> Full list: `crates/desktop/src/main.rs` `generate_handler!` (**64** commands as of 2026-06-12). **Excludes** removed `get_runtime_token`. Grouped by category (order differs from registration):
 
-| # | Command | Category |
-|---|---------|----------|
-| 1 | `get_runtime_port` | Runtime connection |
-| 2 | `runtime_http` | Runtime proxy (REST) |
-| 3 | `runtime_post_stream` | Runtime proxy (POST SSE) |
-| 4 | `runtime_get_sse` | Runtime proxy (GET SSE) |
-| 5 | `runtime_cancel_sse` | Runtime proxy |
-| 6 | `get_platform_info` | Runtime connection |
-| 7 | `get_os_theme` | Runtime connection |
-| 8 | `get_locale` | Runtime connection |
-| 9 | `restart_sidecar` | Runtime connection |
-| 10 | `get_api_key_status` | Key management |
-| 11 | `save_deepseek_api_key` | Key management |
-| 12 | `get_vision_bridge_status` | Key management |
-| 13 | `save_vision_bridge` | Key management |
-| 14 | `clear_vision_bridge` | Key management |
-| 15 | `vision_transcribe_image` | Key management |
-| 16 | `read_thread_workspace_binary` | File ops |
-| 17 | `read_workspace_binary_at_root` | File ops |
-| 18 | `open_in_shell` | File ops |
-| 19 | `open_with_system_app` | File ops |
-| 20 | `export_thread_json` | File ops |
-| 21 | `export_session_json` | File ops |
-| 22 | `get_system_settings` | System settings |
-| 23 | `save_system_settings` | System settings |
-| 24 | `default_composer_workspace` | System settings |
-| 25 | `read_pick_rules` | Project rules |
-| 26 | `save_pick_rules` | Project rules |
-| 27 | `rebuild_symbol_index` | Symbol index |
-| 28 | `get_symbol_index_info` | Symbol index |
-| 29 | `delete_symbol_index` | Symbol index |
-| 30–33 | `spawn_terminal` / `write_terminal` / `resize_terminal` / `kill_terminal` | Embedded terminal |
-| 34–41 | `get_window_label` … `close_current_window` | Multi-window / Agent window |
+| Category | Commands |
+|----------|----------|
+| Runtime proxy | `get_runtime_port`, `runtime_http`, `runtime_post_stream`, `runtime_get_sse`, `runtime_cancel_sse` |
+| Platform / locale | `get_platform_info`, `get_os_theme`, `get_locale`, `set_app_locale`, `restart_sidecar` |
+| Sandbox | `get_windows_sandbox_status`, `get_sandbox_platforms_overview`, `get_sandbox_onboarding_state`, `get_sandbox_settings`, `save_sandbox_settings`, `initialize_windows_sandbox` |
+| API key / vision | `get_api_key_status`, `save_deepseek_api_key`, `clear_deepseek_api_key`, `get_vision_bridge_status`, `save_vision_bridge`, `clear_vision_bridge`, `vision_transcribe_image` |
+| File / export | `read_thread_workspace_binary`, `read_workspace_binary_at_root`, `open_in_shell`, `open_with_system_app`, `open_external_url`, `export_thread_json`, `export_session_json` |
+| System / LHT / hooks | `get_system_settings`, `save_system_settings`, `get_lht_*`, `set_lht_*`, `apply_lht_preset`, `get_hooks_settings`, `save_hooks_settings`, `get_desktop_shell_prefs`, `save_desktop_shell_prefs`, `default_composer_workspace` |
+| Rules / symbol index | `read_pick_rules`, `save_pick_rules`, `rebuild_symbol_index`, `get_symbol_index_info`, `delete_symbol_index` |
+| Storage | `get_storage_pressure` |
+| Terminal | `spawn_terminal`, `write_terminal`, `resize_terminal`, `kill_terminal` |
+| Multi-window | `get_window_label`, `get_window_workspace`, `create_agent_window`, `list_agent_windows`, `focus_agent_window`, `register_window_thread`, `thread_owned_by_window`, `close_current_window` |
+| App updater | `get_update_status`, `install_app_update` |
 
 ### Channel B: Runtime HTTP
 
@@ -706,48 +761,65 @@ WebView                          Sidecar
 | 12 | PATCH | `/v1/threads/{id}` | Threads |
 | 13 | POST | `/v1/threads/{id}/resume` | Threads |
 | 14 | POST | `/v1/threads/{id}/fork` | Threads |
-| 15 | POST | `/v1/threads/{id}/compact` | Threads |
-| 16 | POST | `/v1/threads/{id}/turns` | Threads |
-| 17 | POST | `/v1/threads/{id}/turns/{turn_id}/steer` | Threads |
-| 18 | POST | `/v1/threads/{id}/turns/{turn_id}/resolve-approval` | Threads |
-| 19 | POST | `/v1/threads/{id}/turns/{turn_id}/interrupt` | Threads |
-| 20 | GET | `/v1/threads/{id}/checklist` | Threads |
-| 21 | GET | `/v1/threads/{id}/events` | Threads (SSE) |
-| 22 | POST | `/v1/threads/{id}/persist-session` | Threads |
-| 23 | GET | `/v1/threads/{id}/snapshots` | Threads |
-| 24 | POST | `/v1/threads/{id}/snapshots/restore` | Threads |
-| 25 | GET | `/v1/threads/{id}/workspace/browse` | Workspace browse |
-| 26 | GET | `/v1/threads/{id}/workspace/file` | Workspace browse |
-| 27 | GET | `/v1/workspace/browse` | Workspace browse |
-| 28 | GET | `/v1/workspace/file` | Workspace browse |
-| 29 | GET | `/v1/workspace/status` | Workspace browse |
-| 30 | GET | `/v1/tasks` | Tasks |
-| 31 | POST | `/v1/tasks` | Tasks |
-| 32 | GET | `/v1/tasks/{id}` | Tasks |
-| 33 | POST | `/v1/tasks/{id}/cancel` | Tasks |
-| 34 | GET | `/v1/resume-tasks/{thread_id}` | Tasks |
-| 35 | GET | `/v1/skills` | Skills |
-| 36 | POST | `/v1/skills` | Skills |
-| 37 | GET | `/v1/automations` | Automations |
-| 38 | POST | `/v1/automations` | Automations |
-| 39 | GET | `/v1/automations/{id}` | Automations |
-| 40 | PATCH | `/v1/automations/{id}` | Automations |
-| 41 | DELETE | `/v1/automations/{id}` | Automations |
-| 42 | POST | `/v1/automations/{id}/run` | Automations |
-| 43 | POST | `/v1/automations/{id}/pause` | Automations |
-| 44 | POST | `/v1/automations/{id}/resume` | Automations |
-| 45 | GET | `/v1/automations/{id}/runs` | Automations |
-| 46 | GET | `/v1/apps/mcp/servers` | MCP |
-| 47 | POST | `/v1/apps/mcp/servers` | MCP |
-| 48 | GET | `/v1/apps/mcp/servers/{name}` | MCP |
-| 49 | PUT | `/v1/apps/mcp/servers/{name}` | MCP |
-| 50 | DELETE | `/v1/apps/mcp/servers/{name}` | MCP |
-| 51 | GET | `/v1/apps/mcp/tools` | MCP |
-| 52 | POST | `/v1/apps/mcp/config/merge` | MCP |
-| 53 | GET | `/v1/apps/routing/rules` | Routing |
-| 54 | PUT | `/v1/apps/routing/rules` | Routing |
-| 55 | GET | `/v1/usage` | Usage |
-| 56 | POST | `/v1/symbol-index/rebuild` | Symbol index |
+| 15 | POST | `/v1/threads/{id}/fork-at-user-message` | Threads |
+| 16 | POST | `/v1/threads/{id}/edit-last-turn` | Threads |
+| 17 | GET | `/v1/threads/{id}/context` | Threads |
+| 18 | GET | `/v1/threads/{id}/harness/task-graph` | Threads (LHT) |
+| 19 | GET | `/v1/threads/{id}/harness/cycles` | Threads (LHT) |
+| 20 | GET | `/v1/threads/{id}/scratchpad/status` | Threads (scratchpad) |
+| 21 | POST | `/v1/threads/{id}/scratchpad/init` | Threads (scratchpad) |
+| 22 | POST | `/v1/threads/{id}/compact` | Threads |
+| 23 | POST | `/v1/threads/{id}/turns` | Threads |
+| 24 | POST | `/v1/threads/{id}/turns/{turn_id}/steer` | Threads |
+| 25 | POST | `/v1/threads/{id}/turns/{turn_id}/resolve-approval` | Threads |
+| 26 | POST | `/v1/threads/{id}/turns/{turn_id}/interrupt` | Threads |
+| 27 | GET | `/v1/threads/{id}/checklist` | Threads |
+| 28 | GET | `/v1/threads/{id}/events` | Threads (SSE) |
+| 29 | POST | `/v1/threads/{id}/persist-session` | Threads |
+| 30 | GET | `/v1/threads/{id}/snapshots` | Threads |
+| 31 | POST | `/v1/threads/{id}/snapshots/restore` | Threads |
+| 32 | GET | `/v1/threads/{id}/workspace/browse` | Workspace browse |
+| 33 | GET | `/v1/threads/{id}/workspace/file` | Workspace browse |
+| 34 | GET | `/v1/workspace/browse` | Workspace browse |
+| 35 | GET | `/v1/workspace/file` | Workspace browse |
+| 36 | GET | `/v1/workspace/status` | Workspace browse |
+| 37 | GET | `/v1/office/environment` | Office environment |
+| 38 | GET | `/v1/tasks` | Tasks |
+| 39 | POST | `/v1/tasks` | Tasks |
+| 40 | POST | `/v1/tasks/clear` | Tasks |
+| 41 | GET | `/v1/tasks/{id}` | Tasks |
+| 42 | POST | `/v1/tasks/{id}/cancel` | Tasks |
+| 43 | GET | `/v1/resume-tasks/{thread_id}` | Tasks |
+| 44 | GET | `/v1/blackboards` | Blackboards |
+| 45 | GET | `/v1/blackboards/{id}` | Blackboards |
+| 46 | GET | `/v1/topic-memory` | Topic memory |
+| 47 | GET | `/v1/skills` | Skills |
+| 48 | POST | `/v1/skills` | Skills |
+| 49 | POST | `/v1/skills/import` | Skills |
+| 50 | POST | `/v1/skills/install` | Skills |
+| 51 | GET | `/v1/automations` | Automations |
+| 52 | POST | `/v1/automations` | Automations |
+| 53 | GET | `/v1/automations/{id}` | Automations |
+| 54 | PATCH | `/v1/automations/{id}` | Automations |
+| 55 | DELETE | `/v1/automations/{id}` | Automations |
+| 56 | POST | `/v1/automations/{id}/run` | Automations |
+| 57 | POST | `/v1/automations/{id}/pause` | Automations |
+| 58 | POST | `/v1/automations/{id}/resume` | Automations |
+| 59 | GET | `/v1/automations/{id}/runs` | Automations |
+| 60 | GET | `/v1/apps/mcp/servers` | MCP |
+| 61 | POST | `/v1/apps/mcp/servers` | MCP |
+| 62 | GET | `/v1/apps/mcp/servers/{name}` | MCP |
+| 63 | PUT | `/v1/apps/mcp/servers/{name}` | MCP |
+| 64 | DELETE | `/v1/apps/mcp/servers/{name}` | MCP |
+| 65 | GET | `/v1/apps/mcp/tools` | MCP |
+| 66 | POST | `/v1/apps/mcp/config/merge` | MCP |
+| 67 | POST | `/v1/apps/mcp/reload` | MCP |
+| 68 | GET | `/v1/apps/mcp/discover` | MCP |
+| 69 | GET | `/v1/apps/mcp/calls` | MCP |
+| 70 | GET | `/v1/apps/routing/rules` | Routing |
+| 71 | PUT | `/v1/apps/routing/rules` | Routing |
+| 72 | GET | `/v1/usage` | Usage |
+| 73 | POST | `/v1/symbol-index/rebuild` | Symbol index |
 
 ---
 
@@ -755,7 +827,7 @@ WebView                          Sidecar
 
 | Component | File | Description |
 |-----------|------|-------------|
-| Tauri command registration | `crates/desktop/src/main.rs` | `generate_handler!` — ~**41** IPC commands |
+| Tauri command registration | `crates/desktop/src/main.rs` | `generate_handler!` — **64** IPC commands |
 | Tauri command impl | `crates/desktop/src/commands.rs` | Keys, settings, binary preview, symbol index IPC |
 | Runtime HTTP proxy | `crates/desktop/src/runtime_proxy.rs` | H06 — Bearer injection, SSE forwarding |
 | Sidecar process mgmt | `crates/desktop/src/sidecar.rs` | spawn `deepseek-runtime`, health check, restart |
@@ -774,8 +846,9 @@ WebView                          Sidecar
 | Document | Content |
 |----------|---------|
 | [RUNTIME_ARCHITECTURE.md](./RUNTIME_ARCHITECTURE.md) | Three-layer model, crate deps, dual persistence diagrams |
+| [SANDBOX_CAPABILITY_MATRIX.md](./SANDBOX_CAPABILITY_MATRIX.md) | Sandbox backends (incl. Windows native) |
 | [TOOLS_PRINCIPLES.md](./TOOLS_PRINCIPLES.md) | Tool system architecture and execution flow |
-| [RUNTIME_EVOLUTION_ROADMAP.md](./RUNTIME_EVOLUTION_ROADMAP.md) | Evolution roadmap SSOT §3 current snapshot |
+| Maintainer: `doc_Private/docs/tech/RUNTIME_EVOLUTION_ROADMAP.md` | Evolution roadmap §3 current snapshot |
 | `crates/runtime-server/src/prompts/base.md` | Hallucination-control sub-rules (Capability / Architecture claims) |
 | Regression tests (maintainer) | `doc_Private/docs/tui/REGRESSION_TESTS.md` — hallucination control and parallel scheduling regression cases |
 | [craft-v2-improvements.md](../craft-v2-improvements.md) · [TOOLS_PRINCIPLES.md](./TOOLS_PRINCIPLES.md) §3.7 | CRAFT improvements; sub-agent write path |
@@ -786,6 +859,7 @@ WebView                          Sidecar
 
 | Date | Notes |
 |------|-------|
+| 2026-06-12 | Align with **0.7.5**: 64 IPC (sandbox, LHT, hooks, updater), 73 HTTP routes (harness, scratchpad, blackboards, topic-memory, MCP reload/discover/calls, office environment) |
 | 2026-05-26 | D6 Phase B: sidecar path → `crates/runtime-server`; remove `deepseek-tui` / CLI production narrative |
 | 2026-05-25 | Align with code: Zagens 0.4.3, `runtime_api/router.rs`, H06 proxy auth (remove `get_runtime_token`), IPC ~41, `DEEPSEEK_CLIENT_SURFACE=zagens` |
 | 2026-05-18 | Code review fixes: health/probe, BinaryFileResponse, SSE event names, symbol-index query, auth header, 25 IPC / 56 HTTP, app-server boundary |

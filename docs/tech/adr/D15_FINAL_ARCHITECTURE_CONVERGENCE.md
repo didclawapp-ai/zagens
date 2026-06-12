@@ -2,7 +2,7 @@
 
 > **Type:** Implementation plan (convergence phase, not new feature mainline)  
 > **Status:** Landed (2026-05-26)  
-> **Prerequisites (Landed):** M1–M8 · D6 Phase B · D7 · D8 · D9/D10 · Zagens v0.5.0  
+> **Prerequisites (Landed):** M1–M8 · D6 Phase B · D7 · D8 · D9/D10 · Zagens v0.7.x workspace line  
 > **Product intent:** **Zagens Desktop** as sole user entry, replacing upstream deepseek-tui 0.8.15 TUI/CLI; Sidecar as embedded runtime, not a second product surface  
 > **SSOT architecture diagram:** [RUNTIME_ARCHITECTURE.md](../RUNTIME_ARCHITECTURE.md)  
 > **Relation to old numbering:** This **D15** means "architecture convergence finale"; **D11–D14** in maintainer: `doc_Private/docs/tech/adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md` (metrics / multi-sidecar / Capability Manifest / MCP pool) are **post-freeze enhancements**, not blocking this plan

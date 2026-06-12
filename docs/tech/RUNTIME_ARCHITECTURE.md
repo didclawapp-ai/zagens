@@ -1,15 +1,13 @@
 # Runtime Architecture (SSOT Diagrams)
 
-> **Narrative & scheduling:** [RUNTIME_EVOLUTION_ROADMAP.md](./RUNTIME_EVOLUTION_ROADMAP.md) (**v2.0-final**; gates **A → A+ → P2 → F** closed; **§3 current snapshot**)  
 > **HTTP / IPC contract:** [API_DESIGN.md](./API_DESIGN.md)  
-> **Architecture assessment / finalization:** [adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md](./adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md) (**§1 = 10/10 architecture finalized**)  
 > **Architecture freeze (execution deadline):** [adr/D17_ARCHITECTURE_FREEZE.md](./adr/D17_ARCHITECTURE_FREEZE.md) — **Architecture Freeze v1** (2026-05-27)  
-> **Architecture boundary analysis:** [ARCHITECTURE_BOUNDARY_ANALYSIS.md](./ARCHITECTURE_BOUNDARY_ANALYSIS.md) — channel count, hard/soft limits, scenario evaluation  
 > **OpenAPI / TS types:** [openapi/zagens-runtime-v1.openapi.json](./openapi/zagens-runtime-v1.openapi.json) · [adr/D8_OPENAPI_TS_GENERATION.md](./adr/D8_OPENAPI_TS_GENERATION.md)  
-> **Post-implementation snapshot:** [adr/IMPLEMENTATION_SUMMARY_2026-05-24.md](./adr/IMPLEMENTATION_SUMMARY_2026-05-24.md)  
+> **Sandbox matrix:** [SANDBOX_CAPABILITY_MATRIX.md](./SANDBOX_CAPABILITY_MATRIX.md) — Windows native sandbox (`zagens-windows-sandbox`)  
 > **D6 Phase B:** [adr/D6_PHASE_B_CLI_SUNSET.md](./adr/D6_PHASE_B_CLI_SUNSET.md) — production binary is **`deepseek-runtime`**; CLI + ratatui TUI removed  
 > **D16 maintainability split:** [adr/D16_PHASE_E_MAINTAINABILITY.md](./adr/D16_PHASE_E_MAINTAINABILITY.md) — **Closed (Checkpoint)**  
-> **Last updated:** 2026-05-27 (aligned with **D16 Checkpoint + D17 Freeze** code: `runtime-api` / `runtime-orchestrator` / `runtime-adapters` three-crate skeleton + `runtime-server` HTTP host)
+> **Maintainer-only narrative / assessment:** `doc_Private/docs/tech/` (`RUNTIME_EVOLUTION_ROADMAP.md`, `ARCHITECTURE_BOUNDARY_ANALYSIS.md`, `adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md`, etc.)  
+> **Last updated:** 2026-06-12 (aligned with workspace **0.7.5**: `runtime-api` / `runtime-orchestrator` / `runtime-adapters` + `runtime-server` HTTP host; desktop adds Windows sandbox IPC)
 
 > **How to read this document:** §1 is the **top-level system overview** (§1.1 conceptual diagram + §1.2 code-path detail diagram); §2 is **Sidecar internal data flow** (HTTP → Manager → Engine → turn_loop, including orchestrator core); §5 is **L2 dual-channel** (Tauri IPC vs Runtime HTTP/SSE); §8 is a **typical send-message sequence diagram**. Remaining sections are side notes (crate deps, persistence, supervision, module index). All source file paths on diagram nodes can be verified directly against the code.
 
@@ -133,7 +131,7 @@ flowchart TB
         U3["Scripts / CI / Headless<br/>(HTTP + Bearer)"]
     end
 
-    subgraph desktop_pkg["crates/desktop  (Zagens v0.5.0, Tauri 2)"]
+    subgraph desktop_pkg["crates/desktop  (Zagens v0.7.5, Tauri 2)"]
         WEB["web-ui (React + Vite)<br/>AppShell · Composer · RightPanel<br/>api/client.ts"]
         TAURI["Tauri Shell<br/>main.rs · WindowRegistry · Tray"]
         CMDS["commands.rs<br/>get_runtime_port · API Key · Vision<br/>System settings · Symbol index · Terminal PTY"]
@@ -236,7 +234,7 @@ flowchart TB
 | Session persistence | [`crates/runtime-adapters/src/persist/session_manager.rs`](../../crates/runtime-adapters/src/persist/session_manager.rs) | Re-exported via `runtime-server` lib as `crate::session_manager` |
 | Web client | [`crates/desktop/web-ui/src/api/client.ts`](../../crates/desktop/web-ui/src/api/client.ts) | `useTauriRuntimeProxy`; D10 `filterThreadStreamEvents`; D9 `turnControl.ts` |
 
-**Version line:** runtime workspace **0.8.15** (Rust 1.88+); Zagens desktop **0.5.0** (independent SemVer).  
+**Version line:** runtime workspace **0.7.5** (Rust 1.88+; dev/CI pin in `rust-toolchain.toml`); Zagens desktop **0.7.5** (same workspace SemVer line).  
 **~~CLI / TUI~~ removed (D6 Phase B):** ~~`crates/cli`~~, ~~`crates/tui`~~, ~~ratatui TUI~~; headless / CI use HTTP directly against **`deepseek-runtime`**.  
 **~~Experimental path~~ removed (D7 C5):** ~~`deepseek app-server`~~ / ~~`crates/app-server`~~ — see [`adr/D4_APPSERVER_DEPRECATED.md`](./adr/D4_APPSERVER_DEPRECATED.md).
 
@@ -351,9 +349,11 @@ flowchart BT
     EXEC["deepseek-execpolicy"]
     HOOKS["zagens-hooks"]
     MCP["zagens-mcp"]
+    WSB["zagens-windows-sandbox<br/>(Windows only)"]
 
     DESK --> CFG
     DESK --> SEC
+    DESK -. "Windows cfg" .-> WSB
 
     RT --> RTAPI
     RT --> RTO
@@ -364,6 +364,7 @@ flowchart BT
     RT --> PROTO
     RT --> TOOLS
     RT --> TM
+    RT -. "Windows cfg" .-> WSB
     RTO --> RTAD
     RTO --> CORE
     RTAPI --> RTAD
@@ -384,7 +385,8 @@ flowchart BT
 
 | Crate | Path | Role |
 |-------|------|------|
-| **zagens-desktop** | `crates/desktop/` | Zagens Tauri shell; **only** depends on `config` + `secrets` + Tauri/reqwest/portable-pty |
+| **zagens-desktop** | `crates/desktop/` | Zagens Tauri shell; depends on `config` + `secrets` + Tauri/reqwest/portable-pty; **Windows:** `zagens-windows-sandbox` for Settings sandbox IPC (no `core` / `runtime-server` lib) |
+| **zagens-windows-sandbox** | `crates/windows-sandbox/` | Windows restricted-token sandbox (elevated/unelevated); used by desktop Settings and runtime `exec_shell` |
 | **zagens-cli** | `crates/runtime-server/` | Production sidecar **lib + bin**: HTTP handlers, tools/*, Engine shim, orchestrator/adapters assembly |
 | **zagens-runtime-api** | `crates/runtime-api/` | HTTP contract layer: OpenAPI export, `ApiError`, auth/health/cors, shared wire types (incl. task) |
 | **zagens-runtime-orchestrator** | `crates/runtime-orchestrator/` | Turn orchestration core: `RuntimeThreadManager`, `turn_lifecycle`, `monitor`, `persist`, `thread_store_sqlite` |
@@ -397,7 +399,7 @@ flowchart BT
 
 **Key facts (verified against each `Cargo.toml`):**
 
-- `zagens-desktop` **only** depends on `zagens-config` + `zagens-secrets` (plus Tauri/reqwest/portable-pty/sha2/dirs), **does not** directly depend on `core`, `runtime-server`, `runtime-api`, etc. — all Agent capabilities come via embedded **`deepseek-runtime`** child process + HTTP/IPC ([`architecture_boundary.rs`](../../crates/desktop/tests/architecture_boundary.rs)).
+- `zagens-desktop` depends on `zagens-config` + `zagens-secrets` (plus Tauri/reqwest/portable-pty/sha2/dirs); on **Windows** also `zagens-windows-sandbox` for native sandbox setup/status IPC. It **does not** directly depend on `core`, `runtime-server`, `runtime-api`, etc. — all Agent capabilities come via embedded **`deepseek-runtime`** child process + HTTP/IPC ([`architecture_boundary.rs`](../../crates/desktop/tests/architecture_boundary.rs)).
 - Sidecar stack is **four crates cooperating**: `runtime-server` (host) → `runtime-api` + `runtime-orchestrator` + `runtime-adapters` → `zagens-core`.
 - `runtime-orchestrator` depends on `runtime-adapters` and `zagens-core`; `runtime-api` depends on orchestrator + adapters (shared wire types and router assembly).
 - `zagens-cli` has **no** ratatui/crossterm (D6 Phase B ✅).
@@ -464,7 +466,7 @@ flowchart LR
 
 | Channel | Mechanism | Typical use | Code reference |
 |---------|-----------|-------------|----------------|
-| **A — Tauri IPC** | `invoke()` → `#[tauri::command]` | Port/token, secrets, settings, symbol index, platform/system/terminal PTY, binary file read, sidecar restart, multi-window | [`crates/desktop/src/commands.rs`](../../crates/desktop/src/commands.rs), [`window_registry.rs`](../../crates/desktop/src/window_registry.rs), [`terminal.rs`](../../crates/desktop/src/terminal.rs) |
+| **A — Tauri IPC** | `invoke()` → `#[tauri::command]` | Port/token, secrets, settings, **Windows sandbox**, LHT/hooks, symbol index, platform/system/terminal PTY, binary file read, sidecar restart, multi-window, app updater | [`crates/desktop/src/commands.rs`](../../crates/desktop/src/commands.rs), [`window_registry.rs`](../../crates/desktop/src/window_registry.rs), [`terminal.rs`](../../crates/desktop/src/terminal.rs) |
 | **B — Runtime HTTP/SSE** | `runtime_proxy.rs` forward + Bearer injection | Chat, threads, SSE, MCP, tasks, usage, automations, skills | [`crates/desktop/src/runtime_proxy.rs`](../../crates/desktop/src/runtime_proxy.rs); client [`web-ui/src/api/client.ts`](../../crates/desktop/web-ui/src/api/client.ts) · [`turnControl.ts`](../../crates/desktop/web-ui/src/api/turnControl.ts) |
 
 **Security constraints (H06) + desktop UX (D9/D10):**
@@ -590,6 +592,8 @@ sequenceDiagram
 | Architecture freeze local check (D17 F2) | [`scripts/check-architecture-freeze.{sh,ps1}`](../../scripts/check-architecture-freeze.sh) |
 | Sidecar contract test (lib / in-proc) | [`crates/runtime-server/src/runtime_api/tests.rs`](../../crates/runtime-server/src/runtime_api/tests.rs) · `sidecar_contract_full_lifecycle` |
 | Sidecar contract test (binary / D6 A+) | [`crates/runtime-server/tests/sidecar_binary_contract.rs`](../../crates/runtime-server/tests/sidecar_binary_contract.rs) · CI ubuntu |
+| Windows native sandbox | [`crates/windows-sandbox/`](../../crates/windows-sandbox/) · desktop IPC in [`commands.rs`](../../crates/desktop/src/commands.rs) · runtime [`sandbox/mod.rs`](../../crates/runtime-server/src/sandbox/mod.rs) |
+| App updater (Tauri) | [`crates/desktop/src/update.rs`](../../crates/desktop/src/update.rs) |
 | Sidecar architecture invariants | [`crates/runtime-server/tests/architecture_invariants.rs`](../../crates/runtime-server/tests/architecture_invariants.rs) |
 
 ---
@@ -601,8 +605,8 @@ Since **2026-05-24** strategic sign-off (maintainer notes, not published):
 - **D12 Desktop-only:** Zagens is the sole user product shell; ~~ratatui TUI~~ **deleted** (D6 Phase B, 2026-05-26).
 - **Sidecar execution surface:** production binary is **`deepseek-runtime`**; HTTP handlers + tools in **`runtime-server`**; orchestration core in **`runtime-orchestrator`**; MCP/persist in **`runtime-adapters`**; contract in **`runtime-api`**.
 - **D6 closed (2026-05-26):** Phase A (no ratatui link) + Phase A+ (binary contract tests) + **Phase B** (delete CLI/TUI, single sidecar binary) — [D6_PHASE_B_CLI_SUNSET.md](./adr/D6_PHASE_B_CLI_SUNSET.md).
-- **Architecture finalized (2026-05-26):** [ARCHITECTURE_ASSESSMENT §1 = 10/10](./adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md) — M-series, D6–D8, D7, D1 all closed; **product features can proceed normally**, still must obey Assessment §7.1 red lines (`/v1/*` must have OpenAPI, `desktop` must not link `core`/runtime lib, etc.).
-- **D10 unfrozen (2026-05-24):** post-P2 desktop GAP thaw; see [P2_D10_UNFREEZE_RECORD.md](./adr/P2_D10_UNFREEZE_RECORD.md).
+- **Architecture finalized (2026-05-26):** maintainer `doc_Private/docs/tech/adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md` §1 = 10/10 — M-series, D6–D8, D7, D1 all closed; **product features can proceed normally**, still must obey Assessment §7.1 red lines (`/v1/*` must have OpenAPI, `desktop` must not link `core`/runtime lib, etc.).
+- **D10 unfrozen (2026-05-24):** post-P2 desktop GAP thaw; maintainer record in `doc_Private/docs/tech/adr/P2_D10_UNFREEZE_RECORD.md`.
 - **D15 architecture finale (2026-05-26):** deleted `deepseek-state` and `core::Runtime`; sidecar is only `deepseek-runtime` — [D15_FINAL_ARCHITECTURE_CONVERGENCE.md](./adr/D15_FINAL_ARCHITECTURE_CONVERGENCE.md).
 - **D16 maintainability split (Closed Checkpoint, 2026-05-27):** E2/E3/E5 + E1 phase 1 Landed; E1 phase 2 (full tools package migrate to adapters) / E4 **will not execute** — [D16_PHASE_E_MAINTAINABILITY.md](./adr/D16_PHASE_E_MAINTAINABILITY.md).
 - **D17 Architecture Freeze v1 (2026-05-27):** refactor mainline closed; turn path frozen; `architecture_boundary` + `check-architecture-freeze` — [D17_ARCHITECTURE_FREEZE.md](./adr/D17_ARCHITECTURE_FREEZE.md).
