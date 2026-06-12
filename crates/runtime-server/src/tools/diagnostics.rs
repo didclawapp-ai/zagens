@@ -37,6 +37,12 @@ struct SandboxPosture {
     /// `DEEPSEEK_SANDBOX` env value injected into sandboxed shell children.
     #[serde(skip_serializing_if = "Option::is_none")]
     exec_shell_env_marker: Option<String>,
+    /// Parent env inheritance for the next `exec_shell` (`all` / `core` / `none`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    exec_shell_env_inherit: Option<String>,
+    /// Whether the parent process currently exposes MSVC/SDK linker env (`LIB`, `INCLUDE`, …).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    exec_shell_parent_toolchain_env: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -160,6 +166,13 @@ fn probe_sandbox_posture(context: &ToolContext) -> Option<SandboxPosture> {
 
     let config = crate::config::Config::load(None, None).ok()?;
     let sandbox_mode = config.sandbox_mode.clone();
+    let exec_shell_env_inherit = Some(
+        crate::shell_environment::default_exec_shell_inherit()
+            .as_str()
+            .to_string(),
+    );
+    let exec_shell_parent_toolchain_env =
+        Some(crate::shell_environment::parent_has_toolchain_env());
 
     #[cfg(windows)]
     {
@@ -168,7 +181,7 @@ fn probe_sandbox_posture(context: &ToolContext) -> Option<SandboxPosture> {
         let setup_complete = zagens_windows_sandbox::sandbox_setup_is_complete(
             &zagens_windows_sandbox::zagens_home(),
         );
-        Some(SandboxPosture {
+        return Some(SandboxPosture {
             sandbox_mode,
             shell_network_access,
             windows_sandbox_configured: Some(
@@ -179,7 +192,9 @@ fn probe_sandbox_posture(context: &ToolContext) -> Option<SandboxPosture> {
             exec_shell_env_marker: Some(
                 crate::config::exec_shell_sandbox_env_marker(configured).to_string(),
             ),
-        })
+            exec_shell_env_inherit,
+            exec_shell_parent_toolchain_env,
+        });
     }
 
     #[cfg(not(windows))]
@@ -190,6 +205,8 @@ fn probe_sandbox_posture(context: &ToolContext) -> Option<SandboxPosture> {
         windows_sandbox_effective: None,
         windows_setup_complete: None,
         exec_shell_env_marker: None,
+        exec_shell_env_inherit,
+        exec_shell_parent_toolchain_env,
     })
 }
 

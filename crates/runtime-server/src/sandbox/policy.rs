@@ -170,6 +170,7 @@ impl SandboxPolicy {
     /// - Any explicitly specified `writable_roots`
     /// - /tmp (unless excluded)
     /// - TMPDIR (unless excluded)
+    /// - On Windows: `%TEMP%` and `%TMP%` (unless `exclude_tmpdir`)
     ///
     /// For policies with full write access, returns an empty vec since
     /// there's no need to enumerate specific paths.
@@ -209,6 +210,11 @@ impl SandboxPolicy {
                     roots.push(canonical);
                 }
 
+                #[cfg(windows)]
+                if !exclude_tmpdir {
+                    roots.extend(windows_temp_env_roots());
+                }
+
                 // Convert to WritableRoot with read-only subpaths
                 roots
                     .into_iter()
@@ -232,6 +238,15 @@ impl SandboxPolicy {
             }
         }
     }
+}
+
+#[cfg(windows)]
+fn windows_temp_env_roots() -> Vec<PathBuf> {
+    ["TEMP", "TMP"]
+        .into_iter()
+        .filter_map(|key| std::env::var_os(key).map(PathBuf::from))
+        .filter(|path| path.is_absolute())
+        .collect()
 }
 
 /// A directory tree where writes are allowed, with optional read-only subpaths.
@@ -349,5 +364,25 @@ mod tests {
 
         let parsed: SandboxPolicy = serde_json::from_str(&json).unwrap();
         assert_eq!(policy, parsed);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn workspace_write_includes_windows_temp_env_roots() {
+        let cwd = std::env::temp_dir().join("zagens-policy-test-cwd");
+        let _ = std::fs::create_dir_all(&cwd);
+        let policy = SandboxPolicy::default();
+        let roots: Vec<PathBuf> = policy
+            .get_writable_roots(&cwd)
+            .into_iter()
+            .map(|entry| entry.root)
+            .collect();
+        if let Ok(temp) = std::env::var("TEMP") {
+            let temp = PathBuf::from(temp);
+            assert!(
+                roots.iter().any(|root| root == &temp),
+                "expected TEMP root {temp:?} in {roots:?}"
+            );
+        }
     }
 }

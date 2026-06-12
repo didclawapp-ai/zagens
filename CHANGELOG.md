@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Runtime (Windows exec_shell):** Sandboxed shell children inherit the parent process environment by default (Codex-aligned `inherit: all`, with secret-name filtering), so MSVC/SDK vars (`LIB`, `INCLUDE`, …) reach `cargo build` when the Zagens parent has them. `workspace-write` now treats `%TEMP%` / `%TMP%` as writable roots on Windows. `diagnostics` reports `exec_shell_env_inherit` and whether the parent exposes toolchain env.
 - **Web tools (research quality):** `web_search` default/max results 8/15; Tavily `search_depth: advanced`; `fetch_url` uses block-aware HTML extraction; `web.run` shows more lines per `open`, honors `[search] provider` for `search_query` (metaso/tavily/etc.), and tool/prompt text enforces search-then-`fetch_url` two-step. Bundled `multi-search-engine` skill aligned to `fetch_url`.
 - **CI PR-first:** Remote CI runs on pull requests and release tags only — not on merges to `master` / `main`. Local pre-push still uses `scripts/ci/ci-push-gate.sh` to skip lint for docs-only or `[skip ci]` landings.
 - **Desktop (chat):** Chat bubbles no longer render Mermaid inline — ` ```mermaid ` ` blocks display as fenced code; use the right-panel Mermaid tab for diagram preview.

@@ -55,6 +55,7 @@ mod schema_migration;
 mod scratchpad;
 mod seam_manager;
 mod settings;
+mod shell_environment;
 pub mod skills;
 mod symbol_index;
 mod task_manager;
