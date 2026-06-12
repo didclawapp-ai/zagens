@@ -388,8 +388,16 @@ fn body_style(kind: TranscriptLineKind, live: bool) -> Style {
     }
 }
 
-fn code_surface() -> Style {
-    Style::default().fg(p::foreground()).bg(p::code_bg())
+fn table_line_style(text: &str) -> Style {
+    let trimmed = text.trim();
+    if !trimmed.is_empty()
+        && trimmed
+            .chars()
+            .all(|ch| matches!(ch, '+' | '-' | '|' | ' '))
+    {
+        return shell_main().fg(p::dim());
+    }
+    body_style(TranscriptLineKind::Assistant, false)
 }
 
 /// Build a transcript line with a bright role tag and contrasting body text.
@@ -399,7 +407,7 @@ pub fn transcript_line(kind: TranscriptLineKind, text: &str, live: bool) -> Line
     }
 
     if kind == TranscriptLineKind::Assistant && super::markdown_table::is_table_render_line(text) {
-        return Line::from(Span::styled(text.to_string(), code_surface()));
+        return Line::from(Span::styled(text.to_string(), table_line_style(text)));
     }
 
     if let Some(rest) = text.strip_prefix(USER_TAG) {
@@ -470,7 +478,8 @@ mod tests {
         let think = transcript_line(TranscriptLineKind::Thinking, "THK> reasoning done", false);
         let tool = transcript_line(TranscriptLineKind::ToolChain, "tool + read_file: ok", false);
         let ai = transcript_line(TranscriptLineKind::Assistant, "AI> hello", false);
-        let table = transcript_line(TranscriptLineKind::Assistant, "| a | b |", false);
+        let table_rule = transcript_line(TranscriptLineKind::Assistant, "+---+---+", false);
+        let table_row = transcript_line(TranscriptLineKind::Assistant, "| a | b |", false);
 
         assert_eq!(tag_fg(&user), Some(p::user_prompt()));
         assert_eq!(body_fg(&user), Some(p::user_text()));
@@ -480,8 +489,11 @@ mod tests {
         assert_eq!(body_fg(&tool), Some(p::tool_call()));
         assert_eq!(tag_fg(&ai), Some(p::agent_reply()));
         assert_eq!(body_fg(&ai), Some(p::agent_reply()));
-        assert_eq!(body_fg(&table), Some(p::foreground()));
-        assert_eq!(body_bg(&table), Some(p::code_bg()));
+        assert_eq!(body_fg(&table_rule), Some(p::dim()));
+        assert_eq!(body_bg(&table_rule), Some(p::bg()));
+        assert_eq!(body_fg(&table_row), Some(p::agent_reply()));
+        assert_eq!(body_bg(&table_row), Some(p::bg()));
+        assert_ne!(body_bg(&table_row), Some(p::code_bg()));
     }
 
     #[test]

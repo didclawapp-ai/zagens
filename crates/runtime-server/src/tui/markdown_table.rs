@@ -4,7 +4,7 @@ use super::display_format::display_width;
 
 const MIN_COL_WIDTH: usize = 2;
 /// Blank rows inserted between markdown table data rows (not border rules).
-const TABLE_DATA_ROW_GAP_LINES: usize = 1;
+const TABLE_DATA_ROW_GAP_LINES: usize = 0;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AssistantBlock {
@@ -238,7 +238,7 @@ mod tests {
     }
 
     #[test]
-    fn formats_table_with_row_gaps() {
+    fn formats_table_without_extra_row_gaps() {
         let rows = vec![
             vec!["项目".to_string(), "数值".to_string()],
             vec!["天气".to_string(), "晴".to_string()],
@@ -254,10 +254,10 @@ mod tests {
             .position(|l| l.contains("温度"))
             .expect("temp row");
         assert!(
-            lines[weather_idx + 1..temp_idx]
+            !lines[weather_idx + 1..temp_idx]
                 .iter()
                 .any(|l| l.trim().is_empty()),
-            "expected blank row between table data rows"
+            "expected no blank row between table data rows"
         );
     }
 
