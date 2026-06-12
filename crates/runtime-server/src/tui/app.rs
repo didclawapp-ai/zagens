@@ -1,8 +1,10 @@
 //! TUI application state (Phase 2).
 
+use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::time::Instant;
 
+use super::composer_editor::{ComposerEditor, PromptHistory};
 use super::composer_paste::{normalize_paste_text, read_clipboard_text};
 use super::composer_slash::{SlashCommandState, composer_is_slash_command, render_palette};
 use super::display_format::{
@@ -29,8 +31,10 @@ use crate::core::events::Event;
 pub struct AppState {
     pub layout: LayoutEngine,
     pub transcript: TranscriptState,
-    pub composer: String,
+    pub composer: ComposerEditor,
     pub composer_focus: bool,
+    pub prompt_history: PromptHistory,
+    pub prompt_queue: VecDeque<String>,
     pub thread_id: String,
     pub workspace_display: String,
     pub workspace: PathBuf,
@@ -83,8 +87,10 @@ impl AppState {
         let mut state = Self {
             layout: LayoutEngine::new(inline_mode, layout_prefs),
             transcript,
-            composer: String::new(),
+            composer: ComposerEditor::default(),
             composer_focus: true,
+            prompt_history: PromptHistory::default(),
+            prompt_queue: VecDeque::new(),
             thread_id: host.thread_id().to_string(),
             workspace_display: host.workspace_display(),
             workspace: host.thread.workspace.clone(),
@@ -263,8 +269,14 @@ impl AppState {
     }
 
     fn inspector_detail_line_count(&self, workspace: &std::path::Path) -> usize {
+        if let Some(body) = &self.inspector_ui.file_preview_body {
+            return body.len() + 1;
+        }
         if let Some(rel) = self.inspector_ui.file_preview_rel.as_deref() {
             return read_text_preview(workspace, rel).len() + 1;
+        }
+        if let Some(body) = &self.inspector_ui.diff_detail_body {
+            return body.len() + 1;
         }
         if let Some(path) = self.inspector_ui.diff_detail_path.as_deref() {
             return git_diff_patch(workspace, self.inspector_ui.diff_staged, path, 400).len() + 1;
@@ -289,6 +301,8 @@ impl AppState {
                         .clamp_file_cursor(self.inspector.file_tree.line_count());
                 } else {
                     self.inspector_ui.file_preview_rel = Some(line.rel.clone());
+                    self.inspector_ui.file_preview_body =
+                        Some(read_text_preview(workspace, &line.rel));
                     self.inspector_ui.scroll = 0;
                 }
             }
@@ -302,6 +316,12 @@ impl AppState {
                     .entry_path(self.inspector_ui.diff_cursor)
                 {
                     self.inspector_ui.diff_detail_path = Some(path.to_string());
+                    self.inspector_ui.diff_detail_body = Some(git_diff_patch(
+                        workspace,
+                        self.inspector_ui.diff_staged,
+                        path,
+                        400,
+                    ));
                     self.inspector_ui.scroll = 0;
                 }
             }
@@ -404,6 +424,7 @@ impl AppState {
                 tool_name: tool_name.clone(),
                 description: description.clone(),
                 approval_key: approval_key.clone(),
+                show_detail: false,
             });
         }
         if let Event::AgentSpawned { id, .. } = &event {
@@ -446,7 +467,7 @@ impl AppState {
     }
 
     pub fn transcript_render(
-        &self,
+        &mut self,
         max_lines: usize,
         max_cols: usize,
     ) -> Vec<ratatui::text::Line<'static>> {
@@ -458,7 +479,6 @@ impl AppState {
             && self.layout.focus == FocusRegion::Chat
             && !self.approval_open()
             && !self.show_help
-            && !self.transcript.is_live_activity()
     }
 
     pub fn composer_render(
@@ -473,9 +493,9 @@ impl AppState {
 
         if self.composer.is_empty() {
             let hint_body = if self.transcript.is_live_activity() {
-                " waiting for reply...  Ctrl+C interrupt  Esc scroll  Up/Down history"
+                " waiting for reply...  Ctrl+C interrupt  Esc scroll  type to queue next message"
             } else {
-                " type prompt...  / commands  /model  Ctrl+V paste  Enter send  Shift+Enter newline  Esc scroll"
+                " type prompt...  / commands  Up/Down history  Ctrl+V paste  Enter send"
             };
             let hint_style = if self.composer_focus {
                 theme::composer_idle()
@@ -506,6 +526,7 @@ impl AppState {
 
         let wrapped: Vec<String> = self
             .composer
+            .text()
             .lines()
             .flat_map(|line| {
                 super::display_format::wrap_display_line(
@@ -619,15 +640,14 @@ impl AppState {
     }
 
     pub fn can_send_prompt(&self) -> bool {
-        !self.transcript.is_live_activity()
-            && !self.approval_open()
-            && !self.composer.trim().is_empty()
-            && !composer_is_slash_command(&self.composer)
+        !self.approval_open()
+            && !self.composer.text().trim().is_empty()
+            && !composer_is_slash_command(self.composer.text())
     }
 
     pub fn sync_slash_palette(&mut self) {
         self.slash.sync(
-            &self.composer,
+            self.composer.text(),
             self.composer_focus && self.layout.focus == FocusRegion::Chat,
             &self.model_catalog,
         );
@@ -639,7 +659,7 @@ impl AppState {
         max_rows: usize,
     ) -> Vec<ratatui::text::Line<'static>> {
         render_palette(
-            &self.composer,
+            self.composer.text(),
             self.slash.selected,
             width,
             max_rows,
@@ -652,7 +672,6 @@ impl AppState {
     fn composer_editable(&self) -> bool {
         !self.approval_open()
             && !self.show_help
-            && !self.transcript.is_live_activity()
             && self.layout.focus == FocusRegion::Chat
             && self.composer_focus
     }
@@ -665,7 +684,8 @@ impl AppState {
         if text.is_empty() {
             return;
         }
-        self.composer.push_str(&text);
+        self.composer.insert_str(&text);
+        self.prompt_history.reset_browse();
         self.sync_slash_palette();
     }
 
@@ -687,29 +707,35 @@ impl AppState {
         if ch == '\n' || ch == '\r' {
             return;
         }
-        self.composer.push(ch);
+        self.composer.insert_char(ch);
+        self.prompt_history.reset_browse();
         self.sync_slash_palette();
     }
 
     pub fn handle_newline(&mut self) {
         if self.composer_editable() {
-            self.composer.push('\n');
+            self.composer.insert_char('\n');
+            self.prompt_history.reset_browse();
         }
     }
 
     pub fn handle_backspace(&mut self) {
-        if self.layout.focus == FocusRegion::Chat && self.composer_focus && !self.approval_open() {
-            self.composer.pop();
+        if !self.composer_editable() {
+            return;
+        }
+        if self.composer.delete_backward() {
+            self.prompt_history.reset_browse();
             self.sync_slash_palette();
         }
     }
 
     pub fn take_composer_prompt(&mut self) -> Option<String> {
-        let text = self.composer.trim().to_string();
+        let text = self.composer.text().trim().to_string();
         if text.is_empty() {
             return None;
         }
         self.composer.clear();
+        self.prompt_history.reset_browse();
         self.slash.close();
         Some(text)
     }
@@ -817,6 +843,52 @@ fn truncate_footer_workspace(text: &str, max_chars: usize) -> String {
 mod tests {
     use super::*;
 
+    fn test_app_state(composer_text: &str) -> AppState {
+        let mut composer = ComposerEditor::default();
+        if !composer_text.is_empty() {
+            composer.insert_str(composer_text);
+        }
+        AppState {
+            layout: LayoutEngine::new(false, TuiLayoutPrefs::default()),
+            transcript: TranscriptState::default(),
+            composer,
+            composer_focus: true,
+            prompt_history: PromptHistory::default(),
+            prompt_queue: VecDeque::new(),
+            thread_id: "t1".to_string(),
+            workspace_display: String::new(),
+            workspace: PathBuf::from("."),
+            model_display: "m".to_string(),
+            model_catalog: Vec::new(),
+            run_mode_display: "Agent".to_string(),
+            task_type_display: "Code".to_string(),
+            lht_mode_display: "LHT Auto".to_string(),
+            approval_display: "OnRequest".to_string(),
+            approval_toggle_enabled: true,
+            harness_line: String::new(),
+            blocked_line: None,
+            context_pct: None,
+            sessions: SessionList::default(),
+            inspector: InspectorCache::default(),
+            inspector_ui: InspectorInteraction::default(),
+            task_graph: None,
+            lht_pane_expanded: false,
+            lht_auto_opened: false,
+            lht_ui: LhtPaneUi::default(),
+            right_subfocus: RightSubfocus::Inspector,
+            right_panel_height: 20,
+            right_inspector_height: 20,
+            right_lht_height: 0,
+            agents: Vec::new(),
+            pending_approval: None,
+            show_help: false,
+            terminal_resized: false,
+            cursor_blink_since: Instant::now(),
+            next_poll: Instant::now(),
+            slash: SlashCommandState::default(),
+        }
+    }
+
     #[test]
     fn run_mode_labels_match_desktop() {
         assert_eq!(format_run_mode_label("agent", false), "Agent");
@@ -833,43 +905,7 @@ mod tests {
 
     #[test]
     fn composer_cjk_uses_single_span_without_width_overflow() {
-        let app = AppState {
-            layout: LayoutEngine::new(false, TuiLayoutPrefs::default()),
-            transcript: TranscriptState::default(),
-            composer: "你好世界".to_string(),
-            composer_focus: true,
-            thread_id: "t1".to_string(),
-            workspace_display: String::new(),
-            workspace: PathBuf::from("."),
-            model_display: "m".to_string(),
-            model_catalog: Vec::new(),
-            run_mode_display: "Agent".to_string(),
-            task_type_display: "Code".to_string(),
-            lht_mode_display: "LHT Auto".to_string(),
-            approval_display: "OnRequest".to_string(),
-            approval_toggle_enabled: true,
-            harness_line: String::new(),
-            blocked_line: None,
-            context_pct: None,
-            sessions: SessionList::default(),
-            inspector: InspectorCache::default(),
-            inspector_ui: InspectorInteraction::default(),
-            task_graph: None,
-            lht_pane_expanded: false,
-            lht_auto_opened: false,
-            lht_ui: LhtPaneUi::default(),
-            right_subfocus: RightSubfocus::Inspector,
-            right_panel_height: 20,
-            right_inspector_height: 20,
-            right_lht_height: 0,
-            agents: Vec::new(),
-            pending_approval: None,
-            show_help: false,
-            terminal_resized: false,
-            cursor_blink_since: Instant::now(),
-            next_poll: Instant::now(),
-            slash: SlashCommandState::default(),
-        };
+        let app = test_app_state("你好世界");
         let lines = app.composer_render(4, 30);
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0].spans.len(), 2);
@@ -880,43 +916,7 @@ mod tests {
 
     #[test]
     fn composer_empty_shows_blink_caret_line_when_focused() {
-        let app = AppState {
-            layout: LayoutEngine::new(false, TuiLayoutPrefs::default()),
-            transcript: TranscriptState::default(),
-            composer: String::new(),
-            composer_focus: true,
-            thread_id: "t1".to_string(),
-            workspace_display: String::new(),
-            workspace: PathBuf::from("."),
-            model_display: "m".to_string(),
-            model_catalog: Vec::new(),
-            run_mode_display: "Agent".to_string(),
-            task_type_display: "Code".to_string(),
-            lht_mode_display: "LHT Auto".to_string(),
-            approval_display: "OnRequest".to_string(),
-            approval_toggle_enabled: true,
-            harness_line: String::new(),
-            blocked_line: None,
-            context_pct: None,
-            sessions: SessionList::default(),
-            inspector: InspectorCache::default(),
-            inspector_ui: InspectorInteraction::default(),
-            task_graph: None,
-            lht_pane_expanded: false,
-            lht_auto_opened: false,
-            lht_ui: LhtPaneUi::default(),
-            right_subfocus: RightSubfocus::Inspector,
-            right_panel_height: 20,
-            right_inspector_height: 20,
-            right_lht_height: 0,
-            agents: Vec::new(),
-            pending_approval: None,
-            show_help: false,
-            terminal_resized: false,
-            cursor_blink_since: Instant::now(),
-            next_poll: Instant::now(),
-            slash: SlashCommandState::default(),
-        };
+        let app = test_app_state("");
         assert!(app.composer_shows_cursor());
         let lines = app.composer_render(4, 80);
         assert_eq!(lines.len(), 2);

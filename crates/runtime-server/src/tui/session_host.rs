@@ -2,7 +2,6 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow, bail};
 use chrono::Utc;
@@ -104,13 +103,14 @@ pub struct TuiSessionHost {
     /// Global approval policy (`config.toml` → `approval_policy`), same as desktop Settings.
     pub approval_policy: String,
     workspace_filter: std::path::PathBuf,
+    workspace_filter_canon: std::path::PathBuf,
     last_event_seq: u64,
     event_rx: broadcast::Receiver<RuntimeEventRecord>,
 }
 
 impl TuiSessionHost {
-    pub async fn open(ctx: &CliContext, cli: &Cli) -> Result<Self> {
-        inject_desktop_api_key(&ctx.config);
+    pub async fn open(ctx: &mut CliContext, cli: &Cli) -> Result<Self> {
+        inject_desktop_api_key(&mut ctx.config);
         let task_cfg = TaskManagerConfig::from_runtime(
             &ctx.config,
             ctx.workspace.clone(),
@@ -139,13 +139,17 @@ impl TuiSessionHost {
             .unwrap_or("on-request")
             .to_string();
         let auto_approve = effective_auto_approve(cli.yolo, &thread, &approval_policy);
+        let workspace_filter = ctx.workspace.clone();
+        let workspace_filter_canon =
+            std::fs::canonicalize(&workspace_filter).unwrap_or_else(|_| workspace_filter.clone());
         let mut host = Self {
             manager,
             thread,
             yolo: cli.yolo,
             auto_approve,
             approval_policy,
-            workspace_filter: ctx.workspace.clone(),
+            workspace_filter,
+            workspace_filter_canon,
             last_event_seq: 0,
             event_rx,
         };
@@ -242,10 +246,6 @@ impl TuiSessionHost {
         let next = approval_policy::next_policy(&self.approval_policy);
         approval_policy::persist_to_config(next)?;
         self.approval_policy = next.to_string();
-        {
-            let manager = Arc::make_mut(&mut self.manager);
-            manager.config.approval_policy = Some(next.to_string());
-        }
         self.auto_approve = effective_auto_approve(self.yolo, &self.thread, &self.approval_policy);
         self.thread = self
             .manager
@@ -333,14 +333,13 @@ impl TuiSessionHost {
             .manager
             .list_threads(ThreadListFilter::ActiveOnly, None)
             .await?;
-        let workspace_canon = std::fs::canonicalize(&self.workspace_filter)
-            .unwrap_or_else(|_| self.workspace_filter.clone());
+        let workspace_canon = &self.workspace_filter_canon;
         let mut out: Vec<_> = threads
             .into_iter()
             .filter(|t| {
                 let tw =
                     std::fs::canonicalize(&t.workspace).unwrap_or_else(|_| t.workspace.clone());
-                tw == workspace_canon
+                tw == *workspace_canon
             })
             .collect();
         out.sort_by_key(|t| std::cmp::Reverse(t.updated_at));
@@ -359,6 +358,8 @@ impl TuiSessionHost {
 
     pub async fn switch_workspace(&mut self, workspace: PathBuf) -> Result<()> {
         self.workspace_filter = workspace.clone();
+        self.workspace_filter_canon =
+            std::fs::canonicalize(&workspace).unwrap_or_else(|_| workspace.clone());
         let thread = match resolve_latest(&self.manager, &workspace).await {
             Ok(thread) => thread,
             Err(_) => {
@@ -402,26 +403,31 @@ impl TuiSessionHost {
     /// Receive runtime thread events (broadcast + store catch-up). Does not read `engine.rx_event`.
     pub async fn recv_runtime_ui_delta(&mut self) -> RuntimeUiDelta {
         let mut delta = RuntimeUiDelta::empty();
-        tokio::select! {
-            result = self.event_rx.recv() => {
-                match result {
-                    Ok(record) => {
-                        ingest_record(
-                            &record,
-                            &self.thread.id,
-                            &mut self.last_event_seq,
-                            &mut delta.events,
-                            &mut delta.checklist,
-                            &mut delta.task_graph,
-                        );
-                    }
-                    Err(broadcast::error::RecvError::Lagged(_)) => {
-                        delta = self.catch_up_ui_delta().await;
-                    }
-                    Err(broadcast::error::RecvError::Closed) => {}
-                }
+        match self.event_rx.recv().await {
+            Ok(record) => {
+                ingest_record(
+                    &record,
+                    &self.thread.id,
+                    &mut self.last_event_seq,
+                    &mut delta.events,
+                    &mut delta.checklist,
+                    &mut delta.task_graph,
+                );
             }
-            _ = tokio::time::sleep(Duration::from_millis(50)) => {}
+            Err(broadcast::error::RecvError::Lagged(_)) => {
+                delta = self.catch_up_ui_delta().await;
+            }
+            Err(broadcast::error::RecvError::Closed) => {}
+        }
+        while let Ok(record) = self.event_rx.try_recv() {
+            ingest_record(
+                &record,
+                &self.thread.id,
+                &mut self.last_event_seq,
+                &mut delta.events,
+                &mut delta.checklist,
+                &mut delta.task_graph,
+            );
         }
         delta
     }
@@ -460,10 +466,6 @@ impl TuiSessionHost {
         self.sync_event_cursor();
     }
 
-    async fn catch_up_events(&mut self) -> Vec<Event> {
-        self.catch_up_ui_delta().await.events
-    }
-
     pub fn fetch_checklist(&self) -> Option<ChecklistSnapshot> {
         self.manager
             .get_thread_checklist(&self.thread.id)
@@ -493,7 +495,7 @@ impl TuiSessionHost {
 }
 
 /// Align TUI with desktop: read keyring secret into config for this process.
-fn inject_desktop_api_key(config: &crate::config::Config) {
+fn inject_desktop_api_key(config: &mut crate::config::Config) {
     if config
         .api_key
         .as_ref()
@@ -503,8 +505,7 @@ fn inject_desktop_api_key(config: &crate::config::Config) {
     }
     let secrets = zagens_secrets::Secrets::auto_detect();
     if let Some(key) = secrets.resolve("deepseek") {
-        // SAFETY: called once during TUI startup before other threads read the env.
-        unsafe { std::env::set_var("DEEPSEEK_API_KEY", key) };
+        config.api_key = Some(key);
     }
 }
 

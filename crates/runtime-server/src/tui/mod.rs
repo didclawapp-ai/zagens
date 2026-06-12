@@ -3,12 +3,14 @@
 mod activity_strip;
 mod app;
 mod approval_policy;
+mod composer_editor;
 mod composer_paste;
 mod composer_slash;
 mod display_format;
 mod draw;
 mod focus;
 mod harness;
+mod input_thread;
 mod inspector;
 mod layout;
 mod left_rail;
@@ -27,7 +29,7 @@ mod transcript_filter;
 mod transcript_history;
 mod transcript_turn;
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{Result, bail};
 use crossterm::event::{Event, KeyCode, KeyModifiers};
@@ -35,9 +37,10 @@ use crossterm::event::{Event, KeyCode, KeyModifiers};
 use self::app::AppState;
 use self::composer_slash::SlashAction;
 use self::focus::FocusRegion;
+use self::input_thread::TerminalInput;
 use self::layout::{InspectorTab, TuiLayoutPrefs};
 use self::session_host::TuiSessionHost;
-use self::terminal::{TuiTerminal, is_ctrl_c, is_key_press, poll_event};
+use self::terminal::{TuiTerminal, is_ctrl_c, is_key_press};
 use crate::cli::args::Cli;
 use crate::cli::context::load_cli_context;
 
@@ -50,7 +53,7 @@ pub async fn run_tui(cli: Cli) -> Result<()> {
     }
 
     let mut ctx = load_cli_context(&cli)?;
-    let mut host = TuiSessionHost::open(&ctx, &cli).await?;
+    let mut host = TuiSessionHost::open(&mut ctx, &cli).await?;
     let resumed = cli.resume.is_some() || cli.continue_session || !cli.fresh;
     let initial_prompt = cli.prompt.clone();
 
@@ -63,8 +66,15 @@ pub async fn run_tui(cli: Cli) -> Result<()> {
     app.schedule_next_poll();
 
     let mut tui = TuiTerminal::new(inline_mode, mouse_capture)?;
+    let mut input = TerminalInput::spawn();
     let mut ctrl_c_streak = 0u8;
+    let mut ctrl_c_last: Option<Instant> = None;
     let mut dirty = true;
+    let mut anim_tick = tokio::time::interval(Duration::from_millis(120));
+    anim_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let mut poll_wake = tokio::time::interval(Duration::from_secs(5));
+    poll_wake.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    poll_wake.reset();
 
     if let Some(prompt) = initial_prompt.filter(|p| !p.trim().is_empty()) {
         submit_prompt(&host, &mut app, &prompt).await?;
@@ -92,18 +102,10 @@ pub async fn run_tui(cli: Cli) -> Result<()> {
                 } else {
                     0
                 };
-                draw::draw(frame, &app, &regions, &split);
+                draw::draw(frame, &mut app, &regions, &split);
             })?;
             dirty = false;
         }
-
-        let poll_sleep = if app.transcript.is_live_activity() {
-            Duration::from_millis(120)
-        } else if app.poll_due() {
-            Duration::from_millis(0)
-        } else {
-            Duration::from_millis(50)
-        };
 
         tokio::select! {
             delta = host.recv_runtime_ui_delta() => {
@@ -120,6 +122,7 @@ pub async fn run_tui(cli: Cli) -> Result<()> {
                 }
                 if was_streaming && !app.transcript.streaming {
                     app.refresh_workspace_inspector(&host);
+                    drain_prompt_queue(&host, &mut app).await?;
                 }
                 let poll_ran = app.poll_due();
                 if poll_ran {
@@ -134,22 +137,26 @@ pub async fn run_tui(cli: Cli) -> Result<()> {
                     dirty = true;
                 }
             }
-            input = tokio::task::spawn_blocking(move || poll_event(poll_sleep)) => {
-                let event = input??;
-                if let Some(event) = event {
+            maybe_event = input.recv() => {
+                if let Some(event) = maybe_event {
                     if handle_input_event(
                         &event,
                         &mut ctx,
                         &mut host,
                         &mut app,
                         &mut ctrl_c_streak,
+                        &mut ctrl_c_last,
                     ).await? {
                         break;
                     }
                     dirty = true;
-                } else if app.transcript.is_live_activity() || app.composer_shows_cursor() {
-                    dirty = true;
-                } else if app.poll_due() {
+                }
+            }
+            _ = anim_tick.tick(), if app.transcript.is_live_activity() || app.composer_shows_cursor() => {
+                dirty = true;
+            }
+            _ = poll_wake.tick() => {
+                if app.poll_due() {
                     app.refresh_panels(&host).await;
                     app.refresh_sessions(&host).await;
                     dirty = true;
@@ -170,6 +177,7 @@ async fn handle_input_event(
     host: &mut TuiSessionHost,
     app: &mut AppState,
     ctrl_c_streak: &mut u8,
+    ctrl_c_last: &mut Option<Instant>,
 ) -> Result<bool> {
     match event {
         Event::Resize(width, _) => {
@@ -201,7 +209,13 @@ async fn handle_input_event(
                 return Ok(true);
             }
             if is_ctrl_c(event) {
+                let now = Instant::now();
+                if ctrl_c_last.is_some_and(|t| now.duration_since(t) > Duration::from_millis(1500))
+                {
+                    *ctrl_c_streak = 0;
+                }
                 *ctrl_c_streak = ctrl_c_streak.saturating_add(1);
+                *ctrl_c_last = Some(now);
                 if *ctrl_c_streak >= 2 {
                     return Ok(true);
                 }
@@ -211,6 +225,7 @@ async fn handle_input_event(
                 return Ok(false);
             }
             *ctrl_c_streak = 0;
+            *ctrl_c_last = None;
 
             match key.code {
                 KeyCode::Char('?') => {
@@ -249,7 +264,7 @@ async fn handle_input_event(
                 KeyCode::Char('o')
                     if app.layout.focus == FocusRegion::Chat && !app.composer_focus =>
                 {
-                    app.transcript.toggle_last_tool_expand();
+                    app.transcript.toggle_last_turn_tools();
                 }
                 KeyCode::Char(n @ '1'..='4')
                     if app.layout.focus == FocusRegion::Left
@@ -312,7 +327,7 @@ async fn handle_input_event(
                         if key.modifiers.contains(KeyModifiers::SHIFT) {
                             app.handle_newline();
                         } else if app.slash.open
-                            || composer_slash::composer_is_slash_command(&app.composer)
+                            || composer_slash::composer_is_slash_command(app.composer.text())
                         {
                             if handle_slash_enter(ctx, host, app).await? {
                                 return Ok(false);
@@ -323,22 +338,70 @@ async fn handle_input_event(
                             submit_prompt(host, app, &prompt).await?;
                         }
                     } else {
-                        app.transcript.toggle_last_tool_expand();
+                        app.transcript.toggle_last_turn_detail();
                     }
+                }
+                KeyCode::Left if app.layout.focus == FocusRegion::Chat && app.composer_focus => {
+                    if key.modifiers.contains(KeyModifiers::CONTROL) {
+                        app.composer.move_word_left();
+                    } else {
+                        app.composer.move_left();
+                    }
+                }
+                KeyCode::Right if app.layout.focus == FocusRegion::Chat && app.composer_focus => {
+                    app.composer.move_right();
+                }
+                KeyCode::Home if app.layout.focus == FocusRegion::Chat && app.composer_focus => {
+                    app.composer.move_home();
+                }
+                KeyCode::End if app.layout.focus == FocusRegion::Chat && app.composer_focus => {
+                    app.composer.move_end();
+                }
+                KeyCode::Char('w')
+                    if key.modifiers.contains(KeyModifiers::CONTROL)
+                        && app.layout.focus == FocusRegion::Chat
+                        && app.composer_focus =>
+                {
+                    app.composer.delete_word_backward();
+                    app.sync_slash_palette();
+                }
+                KeyCode::Char('u')
+                    if key.modifiers.contains(KeyModifiers::CONTROL)
+                        && app.layout.focus == FocusRegion::Chat
+                        && app.composer_focus =>
+                {
+                    app.composer.delete_to_start();
+                    app.sync_slash_palette();
                 }
                 KeyCode::Up
                     if app.layout.focus == FocusRegion::Chat
                         && app.composer_focus
                         && app.slash.open =>
                 {
-                    app.slash.move_up(&app.composer, &app.model_catalog);
+                    app.slash.move_up(app.composer.text(), &app.model_catalog);
                 }
                 KeyCode::Down
                     if app.layout.focus == FocusRegion::Chat
                         && app.composer_focus
                         && app.slash.open =>
                 {
-                    app.slash.move_down(&app.composer, &app.model_catalog);
+                    app.slash.move_down(app.composer.text(), &app.model_catalog);
+                }
+                KeyCode::Up
+                    if app.layout.focus == FocusRegion::Chat
+                        && app.composer_focus
+                        && !app.slash.open =>
+                {
+                    app.prompt_history.browse_up(&mut app.composer);
+                    app.sync_slash_palette();
+                }
+                KeyCode::Down
+                    if app.layout.focus == FocusRegion::Chat
+                        && app.composer_focus
+                        && !app.slash.open =>
+                {
+                    app.prompt_history.browse_down(&mut app.composer);
+                    app.sync_slash_palette();
                 }
                 KeyCode::Up if app.layout.focus == FocusRegion::Chat => {
                     enter_transcript_scroll_if_needed(app);
@@ -368,6 +431,10 @@ async fn handle_input_event(
                     app.paste_from_clipboard();
                 }
                 KeyCode::Backspace => app.handle_backspace(),
+                KeyCode::Delete if app.layout.focus == FocusRegion::Chat && app.composer_focus => {
+                    app.composer.delete_forward();
+                    app.sync_slash_palette();
+                }
                 KeyCode::Char(ch) => app.handle_char(ch),
                 _ => {}
             }
@@ -450,10 +517,12 @@ async fn handle_approval_key(
         }
         KeyCode::Char('a') => {
             host.approve_tool(&pending.id, true).await?;
-            host.auto_approve = true;
-            host.thread.auto_approve = true;
-            app.sync_thread_meta(host);
             app.clear_approval();
+        }
+        KeyCode::Char('v') => {
+            if let Some(p) = app.pending_approval.as_mut() {
+                p.show_detail = !p.show_detail;
+            }
         }
         KeyCode::Char('n') | KeyCode::Esc => {
             host.deny_tool(&pending.id).await?;
@@ -470,26 +539,30 @@ async fn handle_slash_enter(
     app: &mut AppState,
 ) -> Result<bool> {
     let current_ws = host.thread.workspace.clone();
-    if composer_slash::lht_picker_active(&app.composer)
+    if composer_slash::lht_picker_active(app.composer.text())
         && app.slash.open
-        && let Some(mode) = composer_slash::selected_lht_mode(&app.composer, app.slash.selected)
+        && let Some(mode) =
+            composer_slash::selected_lht_mode(app.composer.text(), app.slash.selected)
     {
         app.composer.clear();
         app.slash.close();
         execute_slash_action(ctx, host, app, SlashAction::SetLhtMode(mode)).await?;
         return Ok(true);
     }
-    if composer_slash::model_picker_active(&app.composer)
+    if composer_slash::model_picker_active(app.composer.text())
         && app.slash.open
-        && let Some(model) =
-            composer_slash::selected_model(&app.composer, app.slash.selected, &app.model_catalog)
+        && let Some(model) = composer_slash::selected_model(
+            app.composer.text(),
+            app.slash.selected,
+            &app.model_catalog,
+        )
     {
         app.composer.clear();
         app.slash.close();
         execute_slash_action(ctx, host, app, SlashAction::SwitchModel(model)).await?;
         return Ok(true);
     }
-    if let Some(action) = composer_slash::try_parse_action(&app.composer, &current_ws) {
+    if let Some(action) = composer_slash::try_parse_action(app.composer.text(), &current_ws) {
         app.composer.clear();
         app.slash.close();
         execute_slash_action(ctx, host, app, action).await?;
@@ -497,9 +570,10 @@ async fn handle_slash_enter(
     }
 
     if app.slash.open {
-        if let Some(cmd) = composer_slash::selected_command(&app.composer, app.slash.selected) {
+        if let Some(cmd) = composer_slash::selected_command(app.composer.text(), app.slash.selected)
+        {
             if cmd.takes_arg {
-                composer_slash::apply_palette_selection(&mut app.composer, cmd);
+                composer_slash::apply_palette_selection(app.composer.text_mut(), cmd);
                 app.sync_slash_palette();
             } else {
                 app.composer.clear();
@@ -583,13 +657,36 @@ fn apply_lht_mode_change(app: &mut AppState, mode: zagens_config::LhtComposerMod
 }
 
 async fn submit_prompt(host: &TuiSessionHost, app: &mut AppState, prompt: &str) -> Result<()> {
-    if app.transcript.is_live_activity() {
+    let prompt = prompt.trim();
+    if prompt.is_empty() {
         return Ok(());
     }
+    if app.transcript.is_live_activity() {
+        app.prompt_queue.push_back(prompt.to_string());
+        app.push_system_line(format!(
+            "Queued message ({}) — sends when the current turn finishes",
+            app.prompt_queue.len()
+        ));
+        return Ok(());
+    }
+    app.prompt_history.push_sent(prompt);
     app.push_user_message(prompt.to_string());
     app.transcript.streaming = true;
     app.blocked_line = None;
     host.send_prompt(prompt).await?;
+    Ok(())
+}
+
+async fn drain_prompt_queue(host: &TuiSessionHost, app: &mut AppState) -> Result<()> {
+    while !app.transcript.is_live_activity() {
+        let Some(next) = app.prompt_queue.pop_front() else {
+            break;
+        };
+        submit_prompt(host, app, &next).await?;
+        if app.transcript.is_live_activity() {
+            break;
+        }
+    }
     Ok(())
 }
 
@@ -600,5 +697,5 @@ fn resolve_mouse_capture(cli: &Cli) -> bool {
     if cli.no_mouse_capture {
         return false;
     }
-    !cfg!(windows)
+    false
 }

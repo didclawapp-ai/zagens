@@ -27,6 +27,10 @@ pub struct TranscriptTurn {
     pub content_streaming: bool,
     pub harness: Vec<String>,
     pub open: bool,
+    /// Collapsed tool-chain summary for this turn (desktop MessageMetaBar default).
+    pub tools_collapsed: bool,
+    /// Show full THK body instead of preview when not streaming.
+    pub thinking_expanded: bool,
 }
 
 impl TranscriptTurn {
@@ -39,6 +43,8 @@ impl TranscriptTurn {
             content_streaming: false,
             harness: Vec::new(),
             open: true,
+            tools_collapsed: true,
+            thinking_expanded: false,
         }
     }
 

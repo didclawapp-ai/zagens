@@ -209,7 +209,7 @@ fn inset_content_area(area: Rect) -> Rect {
 
 pub fn draw(
     frame: &mut Frame<'_>,
-    app: &AppState,
+    app: &mut AppState,
     regions: &LayoutRegions,
     right: &RightPaneRegions,
 ) {
@@ -217,9 +217,8 @@ pub fn draw(
     frame.render_widget(Clear, frame.area());
     frame.render_widget(Block::default().style(theme::shell_main()), frame.area());
 
-    let layout = &app.layout;
+    let focus = app.layout.focus;
     let workspace = &app.workspace_display;
-    let focus = layout.focus;
     let border_focus = theme::border_focus();
     let border_idle = theme::border_idle();
     let border_focus_sidebar = theme::border_focus_sidebar();
@@ -264,7 +263,7 @@ pub fn draw(
         let session_height = regions.left.height.saturating_sub(10) as usize;
         let mut lines = app.sessions.render_styled_lines(session_height.max(4));
         lines.push(super::left_rail::SessionList::inspector_tab_line(
-            layout.prefs.inspector_tab(),
+            app.layout.prefs.inspector_tab(),
         ));
         let block = Block::default()
             .borders(Borders::ALL)
@@ -299,7 +298,7 @@ pub fn draw(
     };
 
     paint_area(frame, regions.center, theme::shell_main());
-    let center = split_center_column(regions.center, live_activity, layout.composer_lines);
+    let center = split_center_column(regions.center, live_activity, app.layout.composer_lines);
 
     let transcript_block = Block::default()
         .borders(Borders::TOP)
@@ -410,7 +409,7 @@ pub fn draw(
     draw_faint_divider(frame, center.after_footer_div);
 
     if regions.right_visible {
-        let tab = layout.prefs.inspector_tab();
+        let tab = app.layout.prefs.inspector_tab();
         let inspector_height = right.inspector.height.saturating_sub(2) as usize;
         let inspector_focused = focus == FocusRegion::Right
             && (!app.lht_pane_visible()

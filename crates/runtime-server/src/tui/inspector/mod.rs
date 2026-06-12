@@ -72,6 +72,15 @@ impl InspectorCache {
         workspace: &Path,
     ) -> Vec<Line<'static>> {
         if tab == InspectorTab::Files {
+            if let Some(body) = ui.file_preview_body.as_ref() {
+                let rel = ui.file_preview_rel.as_deref().unwrap_or("");
+                return render_detail_lines(
+                    &format!("preview: {rel} | Esc back"),
+                    body.clone(),
+                    height,
+                    ui.scroll,
+                );
+            }
             if let Some(rel) = ui.file_preview_rel.as_deref() {
                 return render_detail_lines(
                     &format!("preview: {rel} | Esc back"),
@@ -98,11 +107,11 @@ impl InspectorCache {
         }
 
         if tab == InspectorTab::Diff {
-            if let Some(path) = ui.diff_detail_path.as_deref() {
-                let body = git_diff_patch(workspace, ui.diff_staged, path, 400);
+            if let Some(body) = ui.diff_detail_body.as_ref() {
+                let path = ui.diff_detail_path.as_deref().unwrap_or("");
                 return render_detail_lines(
                     &format!("diff: {path} | Esc back"),
-                    body,
+                    body.clone(),
                     height,
                     ui.scroll,
                 );

@@ -35,7 +35,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **TUI (`zagens-tui`):** Single-column vertical pane borders (no adjacent double strips); vertical borders drawn only via end-of-frame repair (removed redundant center-column side block).
+- **TUI (`zagens-tui`):** Input handling — dedicated blocking reader thread (fixes dropped keys during streaming); idle loop no longer polls at ~20–40 Hz.
+- **TUI (`zagens-tui`):** Transcript scroll clamp (no blank screen when scrolled past top); per-turn tool collapse; THK block Enter to expand/collapse.
+- **TUI (`zagens-tui`):** Session “Allow session” approval no longer escalates to full `trust_mode` / YOLO; API key from keyring injected into config (not `set_var`).
+- **TUI (`zagens-tui`):** Mouse capture off by default (until scroll handlers exist); double Ctrl+C requires two presses within 1.5s.
+- **TUI (`zagens-tui`):** Inspector file/diff detail cached on open; workspace thread list reuses canonical path.
+
+### Added
+
+- **TUI (`zagens-tui`):** Composer cursor editing (Left/Right/Home/End, Ctrl+W/U), prompt history (Up/Down), streaming prompt queue, approval `[v]` detail toggle.
+
 - **TUI (`zagens-tui`):** Brighter idle/focus pane borders (`#555555` / `#777777`) and explicit black background on horizontal dividers for clearer layout on non-OLED terminals.
 - **TUI (`zagens-tui`):** Composer top border follows chat focus like Transcript; help overlay no longer skips border repair; terminal resize clears the backing buffer to drop edge ghost cells.
 - **Zagens (desktop sandbox settings):** Sandbox panel「完全访问」option wrote invalid `sandbox_mode = "full-access"`, crashing the sidecar on restart (`expected danger-full-access`); UI now uses `danger-full-access` and desktop normalizes legacy `full-access` on load/save.

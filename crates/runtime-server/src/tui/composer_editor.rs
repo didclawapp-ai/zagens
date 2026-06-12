@@ -1,0 +1,278 @@
+//! Multi-line composer with cursor editing and prompt history browse.
+
+use std::collections::VecDeque;
+use std::ops::{Deref, DerefMut};
+
+const HISTORY_CAP: usize = 100;
+
+/// Editable prompt buffer (`cursor` is a UTF-8 byte index on a char boundary).
+#[derive(Debug, Clone, Default)]
+pub struct ComposerEditor {
+    text: String,
+    cursor: usize,
+}
+
+impl ComposerEditor {
+    pub fn is_empty(&self) -> bool {
+        self.text.is_empty()
+    }
+
+    pub fn clear(&mut self) {
+        self.text.clear();
+        self.cursor = 0;
+    }
+
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+
+    pub fn text_mut(&mut self) -> &mut String {
+        &mut self.text
+    }
+
+    pub fn cursor(&self) -> usize {
+        self.cursor
+    }
+
+    pub fn insert_char(&mut self, ch: char) {
+        if ch == '\r' {
+            return;
+        }
+        self.text.insert(self.cursor, ch);
+        self.cursor += ch.len_utf8();
+    }
+
+    pub fn insert_str(&mut self, s: &str) {
+        if s.is_empty() {
+            return;
+        }
+        self.text.insert_str(self.cursor, s);
+        self.cursor += s.len();
+    }
+
+    pub fn delete_backward(&mut self) -> bool {
+        if self.cursor == 0 {
+            return false;
+        }
+        let prev = prev_char_boundary(&self.text, self.cursor);
+        self.text.drain(prev..self.cursor);
+        self.cursor = prev;
+        true
+    }
+
+    pub fn delete_forward(&mut self) -> bool {
+        if self.cursor >= self.text.len() {
+            return false;
+        }
+        let next = next_char_boundary(&self.text, self.cursor);
+        self.text.drain(self.cursor..next);
+        true
+    }
+
+    pub fn move_left(&mut self) {
+        if self.cursor > 0 {
+            self.cursor = prev_char_boundary(&self.text, self.cursor);
+        }
+    }
+
+    pub fn move_right(&mut self) {
+        if self.cursor < self.text.len() {
+            self.cursor = next_char_boundary(&self.text, self.cursor);
+        }
+    }
+
+    pub fn move_home(&mut self) {
+        self.cursor = 0;
+    }
+
+    pub fn move_end(&mut self) {
+        self.cursor = self.text.len();
+    }
+
+    pub fn move_word_left(&mut self) {
+        if self.cursor == 0 {
+            return;
+        }
+        let before = &self.text[..self.cursor];
+        let trimmed = before.trim_end();
+        if trimmed.len() == before.len() {
+            if let Some(i) = trimmed
+                .char_indices()
+                .rev()
+                .skip_while(|(_, c)| c.is_whitespace())
+                .find(|(_, c)| c.is_whitespace())
+                .map(|(i, _)| i + 1)
+            {
+                self.cursor = i;
+            } else {
+                self.cursor = 0;
+            }
+        } else {
+            self.cursor = trimmed.len();
+        }
+    }
+
+    pub fn delete_word_backward(&mut self) {
+        if self.cursor == 0 {
+            return;
+        }
+        let start = {
+            let before = &self.text[..self.cursor];
+            let trimmed = before.trim_end();
+            if trimmed.len() == before.len() {
+                trimmed
+                    .char_indices()
+                    .rev()
+                    .skip_while(|(_, c)| c.is_whitespace())
+                    .find(|(_, c)| c.is_whitespace())
+                    .map(|(i, c)| i + c.len_utf8())
+                    .unwrap_or(0)
+            } else {
+                trimmed.len()
+            }
+        };
+        self.text.drain(start..self.cursor);
+        self.cursor = start;
+    }
+
+    pub fn delete_to_start(&mut self) {
+        self.text.drain(0..self.cursor);
+        self.cursor = 0;
+    }
+
+    /// Replace buffer (e.g. history browse) and place cursor at end.
+    pub fn set_text(&mut self, text: String) {
+        self.cursor = text.len();
+        self.text = text;
+    }
+}
+
+impl Deref for ComposerEditor {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        &self.text
+    }
+}
+
+impl DerefMut for ComposerEditor {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.text
+    }
+}
+
+fn prev_char_boundary(s: &str, pos: usize) -> usize {
+    s[..pos]
+        .char_indices()
+        .next_back()
+        .map(|(i, _)| i)
+        .unwrap_or(0)
+}
+
+fn next_char_boundary(s: &str, pos: usize) -> usize {
+    s[pos..]
+        .char_indices()
+        .nth(1)
+        .map(|(i, _)| pos + i)
+        .unwrap_or_else(|| s.len())
+}
+
+/// Ring buffer of sent prompts (newest last).
+#[derive(Debug, Clone, Default)]
+pub struct PromptHistory {
+    entries: VecDeque<String>,
+    browse: Option<usize>,
+    draft: Option<String>,
+}
+
+impl PromptHistory {
+    pub fn push_sent(&mut self, prompt: &str) {
+        let prompt = prompt.trim();
+        if prompt.is_empty() {
+            return;
+        }
+        if self.entries.back().is_some_and(|last| last == prompt) {
+            return;
+        }
+        self.entries.push_back(prompt.to_string());
+        while self.entries.len() > HISTORY_CAP {
+            self.entries.pop_front();
+        }
+        self.browse = None;
+        self.draft = None;
+    }
+
+    pub fn browsing(&self) -> bool {
+        self.browse.is_some()
+    }
+
+    pub fn browse_up(&mut self, current: &mut ComposerEditor) -> bool {
+        if self.entries.is_empty() {
+            return false;
+        }
+        if self.browse.is_none() {
+            self.draft = Some(current.text().to_string());
+        }
+        let idx = self.browse.unwrap_or(self.entries.len()).saturating_sub(1);
+        if idx >= self.entries.len() {
+            return false;
+        }
+        self.browse = Some(idx);
+        current.set_text(self.entries[idx].clone());
+        true
+    }
+
+    pub fn browse_down(&mut self, current: &mut ComposerEditor) -> bool {
+        let Some(idx) = self.browse else {
+            return false;
+        };
+        if idx + 1 >= self.entries.len() {
+            self.browse = None;
+            if let Some(draft) = self.draft.take() {
+                current.set_text(draft);
+            } else {
+                current.clear();
+            }
+            return true;
+        }
+        let next = idx + 1;
+        self.browse = Some(next);
+        current.set_text(self.entries[next].clone());
+        true
+    }
+
+    pub fn reset_browse(&mut self) {
+        self.browse = None;
+        self.draft = None;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn insert_and_delete_at_cursor() {
+        let mut ed = ComposerEditor::default();
+        ed.insert_char('a');
+        ed.insert_char('b');
+        ed.move_left();
+        ed.insert_char('X');
+        assert_eq!(ed.text(), "aXb");
+        assert!(ed.delete_forward());
+        assert_eq!(ed.text(), "aX");
+    }
+
+    #[test]
+    fn history_browse_restores_draft() {
+        let mut h = PromptHistory::default();
+        h.push_sent("first");
+        h.push_sent("second");
+        let mut ed = ComposerEditor::default();
+        ed.insert_str("draft");
+        assert!(h.browse_up(&mut ed));
+        assert_eq!(ed.text(), "second");
+        assert!(h.browse_down(&mut ed));
+        assert_eq!(ed.text(), "draft");
+    }
+}

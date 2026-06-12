@@ -53,7 +53,7 @@ pub enum TranscriptItem {
     System { text: String },
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct TranscriptState {
     pub items: Vec<TranscriptItem>,
     pub streaming: bool,
@@ -65,17 +65,30 @@ pub struct TranscriptState {
     pub tool_chain_anim_since: Option<Instant>,
     /// Anchor for marquee animation during any live turn phase (THK / tools / AI).
     live_activity_since: Option<Instant>,
-    /// Collapsed tool-chain header (desktop MessageMetaBar default).
-    pub tools_collapsed: bool,
     /// True while a user turn is open until `TurnComplete` or interrupt.
     pub open_turn: bool,
+    render_epoch: u64,
+    wrap_cache: Option<WrappedLayoutCache>,
+}
+
+#[derive(Clone)]
+struct WrappedLayoutCache {
+    max_cols: usize,
+    epoch: u64,
+    lines: Vec<LogicalLine>,
 }
 
 impl TranscriptState {
+    fn bump_render(&mut self) {
+        self.render_epoch = self.render_epoch.wrapping_add(1);
+        self.wrap_cache = None;
+    }
+
     pub fn begin_turn(&mut self, user: String) {
         if self.open_turn {
             return;
         }
+        self.bump_render();
         self.items
             .push(TranscriptItem::Turn(TranscriptTurn::new(user)));
         self.open_turn = true;
@@ -231,11 +244,72 @@ impl TranscriptState {
         }
     }
 
-    pub fn toggle_last_tool_expand(&mut self) {
-        self.tools_collapsed = !self.tools_collapsed;
+    pub fn toggle_last_turn_tools(&mut self) {
+        self.bump_render();
+        if let Some(TranscriptItem::Turn(turn)) = self.items.last_mut() {
+            turn.tools_collapsed = !turn.tools_collapsed;
+        }
     }
 
-    pub fn render_styled_lines(&self, max_lines: usize, max_cols: usize) -> Vec<Line<'static>> {
+    pub fn toggle_last_turn_detail(&mut self) {
+        self.bump_render();
+        let Some(TranscriptItem::Turn(turn)) = self.items.last_mut() else {
+            return;
+        };
+        if !turn.tools.is_empty() && turn.tools_collapsed {
+            turn.tools_collapsed = false;
+            return;
+        }
+        if !turn.thinking.streaming && !turn.thinking.text.trim().is_empty() {
+            turn.thinking_expanded = !turn.thinking_expanded;
+            return;
+        }
+        if let Some(tool) = turn.tools.last_mut() {
+            tool.expanded = !tool.expanded;
+        }
+    }
+
+    pub fn render_styled_lines(&mut self, max_lines: usize, max_cols: usize) -> Vec<Line<'static>> {
+        let wrapped = self.wrapped_physical_lines(max_cols);
+
+        if wrapped.is_empty() {
+            return vec![styled_line(
+                TranscriptLineKind::Meta,
+                "Transcript empty — type a prompt in Composer and press Enter.",
+                false,
+            )];
+        }
+
+        let max = max_lines.max(4);
+        let max_scroll = wrapped.len().saturating_sub(max);
+        if self.scroll_offset > max_scroll {
+            self.scroll_offset = max_scroll;
+        }
+        let window = if wrapped.len() <= max {
+            wrapped
+        } else {
+            let end = wrapped.len().saturating_sub(self.scroll_offset);
+            let start = end.saturating_sub(max);
+            wrapped[start..end].to_vec()
+        };
+
+        let spacer_needed = max.saturating_sub(window.len());
+        window
+            .into_iter()
+            .map(|entry| styled_line(entry.kind, &entry.text, entry.thinking_live))
+            .chain(std::iter::repeat_n(
+                styled_line(TranscriptLineKind::Spacer, "", false),
+                spacer_needed,
+            ))
+            .collect()
+    }
+
+    fn wrapped_physical_lines(&mut self, max_cols: usize) -> Vec<LogicalLine> {
+        if let Some(cache) = &self.wrap_cache {
+            if cache.max_cols == max_cols && cache.epoch == self.render_epoch {
+                return cache.lines.clone();
+            }
+        }
         let logical = dedupe_consecutive_tool_lines(self.flatten_logical_lines());
         let mut wrapped: Vec<LogicalLine> = Vec::new();
         for entry in logical {
@@ -267,33 +341,12 @@ impl TranscriptState {
                 });
             }
         }
-
-        if wrapped.is_empty() {
-            return vec![styled_line(
-                TranscriptLineKind::Meta,
-                "Transcript empty — type a prompt in Composer and press Enter.",
-                false,
-            )];
-        }
-
-        let max = max_lines.max(4);
-        let window = if wrapped.len() <= max {
-            wrapped
-        } else {
-            let end = wrapped.len().saturating_sub(self.scroll_offset);
-            let start = end.saturating_sub(max);
-            wrapped[start..end].to_vec()
-        };
-
-        let spacer_needed = max.saturating_sub(window.len());
-        window
-            .into_iter()
-            .map(|entry| styled_line(entry.kind, &entry.text, entry.thinking_live))
-            .chain(std::iter::repeat_n(
-                styled_line(TranscriptLineKind::Spacer, "", false),
-                spacer_needed,
-            ))
-            .collect()
+        self.wrap_cache = Some(WrappedLayoutCache {
+            max_cols,
+            epoch: self.render_epoch,
+            lines: wrapped.clone(),
+        });
+        wrapped
     }
 
     fn flatten_logical_lines(&self) -> Vec<LogicalLine> {
@@ -329,13 +382,14 @@ fn append_turn_lines(lines: &mut Vec<LogicalLine>, turn: &TranscriptTurn, state:
             &turn.thinking.text,
             turn.thinking.char_count,
             turn.thinking.streaming,
+            turn.thinking_expanded,
             state.thinking_anim_since,
         ));
     }
 
     if !turn.tools.is_empty() {
         push_section_gap(&mut section_idx);
-        if state.tools_collapsed {
+        if turn.tools_collapsed {
             lines.extend(logical_lines_for_tools_summary(
                 &turn.tools,
                 state.tool_chain_anim_since,
@@ -375,6 +429,7 @@ fn logical_lines_for_merged_thinking(
     text: &str,
     char_count: usize,
     streaming: bool,
+    expanded: bool,
     anim_since: Option<Instant>,
 ) -> Vec<LogicalLine> {
     let header = if streaming {
@@ -382,6 +437,9 @@ fn logical_lines_for_merged_thinking(
             "{THINK_TAG}{}",
             thinking_status_line(char_count, anim_since)
         )
+    } else if expanded {
+        let count = super::transcript_filter::format_compact_count(char_count);
+        format!("{THINK_TAG}推理 · {count} · 已展开，Enter 收起")
     } else {
         let count = super::transcript_filter::format_compact_count(char_count);
         format!("{THINK_TAG}推理 · {count} · 已收起，Enter 展开")
@@ -392,6 +450,19 @@ fn logical_lines_for_merged_thinking(
         streaming,
     )];
     if streaming || text.trim().is_empty() {
+        return out;
+    }
+    if expanded {
+        for line in text.lines().take(64) {
+            if line.trim().is_empty() {
+                continue;
+            }
+            out.push(LogicalLine::plain(
+                TranscriptLineKind::Thinking,
+                format!("     {line}"),
+                false,
+            ));
+        }
         return out;
     }
     let preview: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -685,6 +756,7 @@ fn styled_line(kind: TranscriptLineKind, text: &str, thinking_live: bool) -> Lin
 }
 
 pub fn apply_event(state: &mut TranscriptState, event: Event) {
+    state.bump_render();
     match event {
         Event::MessageStarted { .. } => {
             state.finish_thinking();
@@ -976,7 +1048,7 @@ mod tests {
         }
     }
 
-    fn render_joined(state: &TranscriptState, max_lines: usize, max_cols: usize) -> String {
+    fn render_joined(state: &mut TranscriptState, max_lines: usize, max_cols: usize) -> String {
         state
             .render_styled_lines(max_lines, max_cols)
             .iter()
@@ -1058,7 +1130,7 @@ mod tests {
         assert!(state.is_tools_active());
         assert!(state.is_live_activity());
         assert!(state.tool_chain_anim_since.is_some());
-        let joined = render_joined(&state, 20, 80);
+        let joined = render_joined(&mut state, 20, 80);
         assert!(joined.contains("tool |") || joined.contains("tool /"));
         assert!(joined.contains("read_file"));
     }
@@ -1166,7 +1238,7 @@ mod tests {
             "| 类别 | 模块 |\n|------|------|\n| 运行时核心 | runtime-server |".to_string();
         turn.open = false;
         push_closed_turn(&mut state, turn);
-        let joined = render_joined(&state, 30, 100);
+        let joined = render_joined(&mut state, 30, 100);
         assert!(
             joined.contains("+"),
             "expected table top border, got:\n{joined}"
@@ -1182,7 +1254,7 @@ mod tests {
         turn.content = "**代码工作**\n- item one\n- item two".to_string();
         turn.open = false;
         push_closed_turn(&mut state, turn);
-        let joined = render_joined(&state, 40, 80);
+        let joined = render_joined(&mut state, 40, 80);
         let lines: Vec<&str> = joined.lines().collect();
         let header_row = lines
             .iter()
@@ -1215,7 +1287,7 @@ mod tests {
         turn.content = "first paragraph\n\nsecond paragraph".to_string();
         turn.open = false;
         push_closed_turn(&mut state, turn);
-        let joined = render_joined(&state, 40, 80);
+        let joined = render_joined(&mut state, 40, 80);
         let lines: Vec<&str> = joined.lines().filter(|l| !l.trim().is_empty()).collect();
         let first = lines
             .iter()
@@ -1239,7 +1311,7 @@ mod tests {
         turn.content = "hello".to_string();
         turn.open = false;
         push_closed_turn(&mut state, turn);
-        let joined = render_joined(&state, 40, 80);
+        let joined = render_joined(&mut state, 40, 80);
         let content_lines: Vec<&str> = joined
             .lines()
             .filter(|line| !line.trim().is_empty())
@@ -1283,10 +1355,10 @@ mod tests {
         turn.open = false;
         push_closed_turn(&mut state, turn);
 
-        let joined = render_joined(&state, 40, 80);
+        let joined = render_joined(&mut state, 40, 80);
         let user_pos = joined.find("you>").expect("user");
         let think_pos = joined.find("THK>").expect("thinking");
-        let tool_pos = joined.find("tool +").expect("tool");
+        let tool_pos = joined.find("tool ").expect("tool");
         let ai_pos = joined.find("AI>").expect("assistant");
         assert!(user_pos < think_pos);
         assert!(think_pos < tool_pos);
@@ -1344,7 +1416,7 @@ mod tests {
             },
         );
 
-        let joined = render_joined(&state, 50, 100);
+        let joined = render_joined(&mut state, 50, 100);
         let think_count = joined.matches("THK>").count();
         let ai_count = joined.matches("AI>").count();
         assert_eq!(

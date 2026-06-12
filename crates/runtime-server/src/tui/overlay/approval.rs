@@ -11,6 +11,7 @@ pub struct PendingApproval {
     pub tool_name: String,
     pub description: String,
     pub approval_key: String,
+    pub show_detail: bool,
 }
 
 pub fn draw_approval(frame: &mut Frame<'_>, pending: &PendingApproval) {
@@ -21,10 +22,17 @@ pub fn draw_approval(frame: &mut Frame<'_>, pending: &PendingApproval) {
         .border_style(theme::approval_border())
         .style(theme::overlay_panel())
         .title(" Approval required ");
-    let body = format!(
-        "Tool: {}\n\n{}\n\n[y] Allow   [n] Deny   [a] Allow session\n[Esc] Deny",
-        pending.tool_name, pending.description
-    );
+    let body = if pending.show_detail {
+        format!(
+            "Tool: {}\nKey: {}\n\n{}\n\n[y] Allow   [n] Deny   [a] Allow session   [v] Summary\n[Esc] Deny",
+            pending.tool_name, pending.approval_key, pending.description
+        )
+    } else {
+        format!(
+            "Tool: {}\n\n{}\n\n[y] Allow   [n] Deny   [a] Allow session   [v] Detail\n[Esc] Deny",
+            pending.tool_name, pending.description
+        )
+    };
     frame.render_widget(
         Paragraph::new(body)
             .block(block)

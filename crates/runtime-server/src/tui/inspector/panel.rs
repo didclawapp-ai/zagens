@@ -10,6 +10,9 @@ pub struct InspectorInteraction {
     pub file_preview_rel: Option<String>,
     /// Relative path when viewing a diff patch (Diff tab).
     pub diff_detail_path: Option<String>,
+    /// Cached preview/diff body lines (populated on Enter into detail).
+    pub file_preview_body: Option<Vec<String>>,
+    pub diff_detail_body: Option<Vec<String>>,
     pub agents_cursor: usize,
     pub mcp_cursor: usize,
     /// Expanded MCP server name.
@@ -25,6 +28,8 @@ impl InspectorInteraction {
         self.mcp_cursor = 0;
         self.file_preview_rel = None;
         self.diff_detail_path = None;
+        self.file_preview_body = None;
+        self.diff_detail_body = None;
         self.mcp_expanded = None;
     }
 
@@ -35,6 +40,8 @@ impl InspectorInteraction {
     pub fn clear_detail_views(&mut self) {
         self.file_preview_rel = None;
         self.diff_detail_path = None;
+        self.file_preview_body = None;
+        self.diff_detail_body = None;
         self.scroll = 0;
     }
 
