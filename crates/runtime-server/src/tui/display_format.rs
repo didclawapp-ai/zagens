@@ -39,11 +39,13 @@ pub fn summarize_status_message(message: &str) -> Option<String> {
         return Some(format!("harness: {label}"));
     }
     let lowered = msg.to_ascii_lowercase();
-    if lowered.contains("executing tools sequentially") {
-        return Some("status: running tools".to_string());
-    }
-    if lowered.contains("tool call") && lowered.contains("running") {
-        return Some("status: tool running".to_string());
+    // Redundant when tool rows are already visible in the transcript.
+    if lowered.contains("executing tools sequentially")
+        || (lowered.contains("tool call") && lowered.contains("running"))
+        || lowered.contains("auto-loaded deferred tool")
+        || lowered.contains("deferred tool")
+    {
+        return None;
     }
     if msg.len() > 100 {
         return Some(format!("status: {}…", truncate_chars(msg, 96)));
@@ -108,6 +110,132 @@ pub fn wrap_display_line(line: &str, max_cols: usize) -> Vec<String> {
         return wrap_by_words(line, max_cols);
     }
     chunk_chars(line, max_cols)
+}
+
+const TRANSCRIPT_INDENT_4: &str = "    ";
+const TRANSCRIPT_INDENT_5: &str = "     ";
+
+/// Wrap transcript role lines with hanging indent so continuation rows stay aligned
+/// and never exceed `max_cols` (avoids terminal soft-wrap / row overlap while streaming).
+pub fn wrap_transcript_line(line: &str, max_cols: usize) -> Vec<String> {
+    if let Some(body) = line.strip_prefix("AI> ") {
+        return wrap_with_hanging("AI> ", TRANSCRIPT_INDENT_4, body, max_cols);
+    }
+    if let Some(body) = line.strip_prefix("you> ") {
+        return wrap_with_hanging("you> ", TRANSCRIPT_INDENT_4, body, max_cols);
+    }
+    if let Some(body) = line.strip_prefix("THK> ") {
+        return wrap_with_hanging("THK> ", TRANSCRIPT_INDENT_5, body, max_cols);
+    }
+    if let Some(body) = line.strip_prefix("tool ") {
+        return wrap_with_hanging("tool ", TRANSCRIPT_INDENT_4, body, max_cols);
+    }
+    if let Some(body) = line.strip_prefix("-- ") {
+        return wrap_with_hanging("-- ", TRANSCRIPT_INDENT_4, body, max_cols);
+    }
+    if let Some(body) = line.strip_prefix(TRANSCRIPT_INDENT_5) {
+        return wrap_with_hanging(TRANSCRIPT_INDENT_5, TRANSCRIPT_INDENT_5, body, max_cols);
+    }
+    if let Some(body) = line.strip_prefix(TRANSCRIPT_INDENT_4) {
+        return wrap_with_hanging(TRANSCRIPT_INDENT_4, TRANSCRIPT_INDENT_4, body, max_cols);
+    }
+    wrap_display_line(line, max_cols)
+}
+
+fn wrap_with_hanging(head: &str, cont: &str, body: &str, max_cols: usize) -> Vec<String> {
+    let max_cols = max_cols.max(8);
+    if body.is_empty() {
+        return vec![head.to_string()];
+    }
+    if display_width(head) >= max_cols {
+        return vec![truncate_display_width(&format!("{head}{body}"), max_cols)];
+    }
+
+    let mut out = Vec::new();
+    let mut rest = body;
+    let mut first = true;
+    while !rest.is_empty() {
+        let prefix = if first { head } else { cont };
+        let budget = max_cols.saturating_sub(display_width(prefix));
+        if budget == 0 {
+            break;
+        }
+        let (segment, remaining) = take_wrapped_segment(rest, budget);
+        if segment.is_empty() {
+            break;
+        }
+        out.push(format!("{prefix}{segment}"));
+        rest = remaining;
+        first = false;
+    }
+    if out.is_empty() {
+        out.push(head.to_string());
+    }
+    out
+}
+
+fn take_wrapped_segment(text: &str, budget: usize) -> (String, &str) {
+    if budget == 0 {
+        return (String::new(), text);
+    }
+    if display_width(text) <= budget {
+        return (text.to_string(), "");
+    }
+
+    let start = text.len() - text.trim_start().len();
+    let mut remaining = &text[start..];
+    let mut out = String::new();
+
+    if remaining.contains(' ') {
+        while !remaining.is_empty() {
+            remaining = remaining.trim_start();
+            if remaining.is_empty() {
+                break;
+            }
+            let word_end = remaining
+                .find(char::is_whitespace)
+                .unwrap_or(remaining.len());
+            let word = &remaining[..word_end];
+            let add = if out.is_empty() {
+                display_width(word)
+            } else {
+                1 + display_width(word)
+            };
+            if display_width(&out) + add > budget {
+                break;
+            }
+            if !out.is_empty() {
+                out.push(' ');
+            }
+            out.push_str(word);
+            remaining = &remaining[word_end..];
+        }
+    }
+
+    if out.is_empty() {
+        return take_chars_width(remaining.trim_start(), budget);
+    }
+
+    let consumed = text.len() - remaining.len();
+    (out, text[consumed..].trim_start())
+}
+
+fn take_chars_width(text: &str, budget: usize) -> (String, &str) {
+    let mut out = String::new();
+    let mut width = 0usize;
+    for (byte_idx, ch) in text.char_indices() {
+        let cw = char_width(ch);
+        if width + cw > budget && !out.is_empty() {
+            return (out, &text[byte_idx..]);
+        }
+        if cw > budget && out.is_empty() {
+            out.push(ch);
+            return (out, &text[byte_idx + ch.len_utf8()..]);
+        }
+        out.push(ch);
+        width += cw;
+    }
+    (out, "")
 }
 
 pub fn display_width(text: &str) -> usize {
@@ -244,9 +372,12 @@ mod tests {
     }
 
     #[test]
-    fn shortens_tool_execution_status() {
-        let line = summarize_status_message("Executing tools sequentially...").expect("line");
-        assert_eq!(line, "status: running tools");
+    fn skips_redundant_tool_execution_status() {
+        assert!(summarize_status_message("Executing tools sequentially...").is_none());
+        assert!(
+            summarize_status_message("Auto-loaded deferred tool 'web_search' after model request.")
+                .is_none()
+        );
     }
 
     #[test]
@@ -293,6 +424,18 @@ mod tests {
     fn pad_line_fills_to_display_width() {
         let padded = pad_line_display_width("hi", 10);
         assert_eq!(display_width(&padded), 10);
+    }
+
+    #[test]
+    fn wraps_cjk_assistant_with_hanging_indent() {
+        let line = "AI> 加载审计上下文存在上一段会话上次审讯记录已经清楚了现在制定计划";
+        let wrapped = wrap_transcript_line(line, 24);
+        assert!(wrapped.len() >= 2);
+        assert!(wrapped.iter().all(|l| display_width(l) <= 24));
+        assert!(wrapped[0].starts_with("AI> "));
+        for cont in wrapped.iter().skip(1) {
+            assert!(cont.starts_with(TRANSCRIPT_INDENT_4));
+        }
     }
 
     #[test]

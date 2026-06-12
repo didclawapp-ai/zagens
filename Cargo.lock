@@ -8360,6 +8360,7 @@ name = "zagens-cli"
 version = "0.7.5"
 dependencies = [
  "anyhow",
+ "arboard",
  "async-stream",
  "async-trait",
  "axum",

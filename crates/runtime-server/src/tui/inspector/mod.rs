@@ -12,6 +12,7 @@ use crate::config::Config;
 
 use super::harness::ChecklistSnapshot;
 use super::layout::InspectorTab;
+use super::theme;
 
 pub use agents::AgentEntry;
 
@@ -25,6 +26,37 @@ pub struct InspectorCache {
 }
 
 impl InspectorCache {
+    pub fn render_styled(
+        &self,
+        tab: InspectorTab,
+        height: usize,
+    ) -> Vec<ratatui::text::Line<'static>> {
+        use ratatui::text::{Line, Span};
+
+        match tab {
+            InspectorTab::Checklist => {
+                return checklist::render_styled_panel(self.checklist.as_ref(), height);
+            }
+            InspectorTab::Agents => {
+                return agents::render_panel(&self.agents, height)
+                    .into_iter()
+                    .map(|s| Line::from(Span::styled(s, theme::sidebar_item(false))))
+                    .collect();
+            }
+            _ => {}
+        }
+        let lines = match tab {
+            InspectorTab::Files => &self.files,
+            InspectorTab::Diff => &self.diff,
+            InspectorTab::Mcp => &self.mcp,
+            InspectorTab::Checklist | InspectorTab::Agents => unreachable!(),
+        };
+        clip_lines(lines, height.max(4))
+            .into_iter()
+            .map(|s| Line::from(Span::styled(s, theme::sidebar_item(false))))
+            .collect()
+    }
+
     pub fn render(&self, tab: InspectorTab, height: usize) -> Vec<String> {
         let lines = match tab {
             InspectorTab::Files => &self.files,

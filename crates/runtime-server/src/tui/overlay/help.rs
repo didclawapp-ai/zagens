@@ -3,6 +3,8 @@
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
+use super::super::theme;
+
 pub const HELP_LINES: &str = r#"Zagens TUI — shortcuts
 
 Focus
@@ -18,11 +20,14 @@ Left rail (sessions)
 Chat
   Tab                 Input → scroll transcript → side columns
   Shift+Tab           Reverse focus order
-  Esc                 Toggle input / transcript scroll
+  Esc                 Toggle input / scroll (cancel / menu when typing /)
   Enter               Send prompt (input mode)
+  Ctrl+V              Paste from clipboard
+  /commands           Slash menu — ↑↓ select · Enter run
+  /model <id>         Switch text model (alias /m)
   ↑ / ↓ / j / k       Scroll transcript (auto-enter scroll mode)
   PgUp / PgDn         Scroll transcript (auto-enter scroll mode)
-  Ctrl+A              Toggle approve Ask ↔ Auto (footer)
+  Ctrl+A              Cycle approval policy (4 modes, saved to config)
   o                   Expand/collapse last tool block
 
 Approval modal
@@ -47,8 +52,15 @@ pub fn draw_help(frame: &mut Frame<'_>) {
     frame.render_widget(Clear, area);
     let block = Block::default()
         .borders(Borders::ALL)
+        .border_style(theme::border_focus())
+        .style(theme::overlay_panel())
         .title(" Help (? to close) ");
-    frame.render_widget(Paragraph::new(HELP_LINES).block(block), area);
+    frame.render_widget(
+        Paragraph::new(HELP_LINES)
+            .block(block)
+            .style(theme::approval_body()),
+        area,
+    );
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {

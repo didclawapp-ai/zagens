@@ -1,6 +1,11 @@
 //! Left rail session list (Phase 2).
 
+use ratatui::text::{Line, Span};
+
 use crate::runtime_threads::ThreadRecord;
+
+use super::layout::InspectorTab;
+use super::theme;
 
 #[derive(Debug, Clone)]
 pub struct SessionEntry {
@@ -50,6 +55,66 @@ impl SessionList {
         if self.selected + 1 < self.entries.len() {
             self.selected += 1;
         }
+    }
+
+    pub fn render_styled_lines(&self, height: usize) -> Vec<Line<'static>> {
+        let mut lines = Vec::new();
+        lines.push(Line::from(Span::styled(
+            "Sessions",
+            theme::sidebar_heading(),
+        )));
+        if self.entries.is_empty() {
+            lines.push(Line::from(Span::styled(
+                "(no sessions)",
+                theme::sidebar_hint(),
+            )));
+        } else {
+            let visible = height.max(6);
+            let start = self.entries.len().saturating_sub(visible);
+            for (i, entry) in self.entries.iter().enumerate().skip(start) {
+                let selected = i == self.selected;
+                let mark = if selected { ">" } else { " " };
+                let active = if entry.id.len() > 12 {
+                    format!("{}…", &entry.id[..12])
+                } else {
+                    entry.id.clone()
+                };
+                let text = format!(
+                    "{mark} {active}  {label} ({updated})",
+                    label = truncate(&entry.label, 20),
+                    updated = entry.updated_hint
+                );
+                lines.push(Line::from(Span::styled(
+                    text,
+                    theme::sidebar_item(selected),
+                )));
+            }
+        }
+
+        lines.push(Line::from(Span::raw("")));
+        lines.push(Line::from(Span::styled(
+            "Inspector",
+            theme::sidebar_heading(),
+        )));
+        lines.push(Line::from(Span::styled(
+            "j/k Enter Ctrl+N",
+            theme::sidebar_hint(),
+        )));
+        lines
+    }
+
+    pub fn inspector_tab_line(active: InspectorTab) -> Line<'static> {
+        let spans: Vec<Span> = InspectorTab::ALL
+            .iter()
+            .enumerate()
+            .flat_map(|(i, tab)| {
+                let is_active = *tab == active;
+                let mark = if is_active { ">" } else { " " };
+                let label = format!("{mark}{}{} ", i + 1, tab.label());
+                vec![Span::styled(label, theme::sidebar_tab(is_active))]
+            })
+            .collect();
+        Line::from(spans)
     }
 
     pub fn render_lines(&self, height: usize) -> Vec<String> {

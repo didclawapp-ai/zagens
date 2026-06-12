@@ -54,3 +54,4 @@ tracing = "0.1"
 uuid = { version = "1.11", features = ["v4"] }
 ratatui = "0.29.0"
 crossterm = "0.28.1"
+arboard = "3.4.1"

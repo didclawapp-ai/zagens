@@ -2,6 +2,8 @@
 
 use std::time::Instant;
 
+use super::composer_paste::{normalize_paste_text, read_clipboard_text};
+use super::composer_slash::{SlashCommandState, composer_is_slash_command, render_palette};
 use super::display_format::{
     composer_cursor_blink_on, display_width, pad_line_display_width, truncate_display_width,
 };
@@ -26,6 +28,7 @@ pub struct AppState {
     pub thread_id: String,
     pub workspace_display: String,
     pub model_display: String,
+    pub model_catalog: Vec<String>,
     pub run_mode_display: String,
     pub task_type_display: String,
     pub approval_display: String,
@@ -41,6 +44,7 @@ pub struct AppState {
     pub checklist_auto_opened: bool,
     pub cursor_blink_since: Instant,
     next_poll: Instant,
+    pub slash: SlashCommandState,
 }
 
 impl AppState {
@@ -68,6 +72,7 @@ impl AppState {
             thread_id: host.thread_id().to_string(),
             workspace_display: host.workspace_display(),
             model_display: String::new(),
+            model_catalog: Vec::new(),
             run_mode_display: String::new(),
             task_type_display: String::new(),
             approval_display: String::new(),
@@ -83,6 +88,7 @@ impl AppState {
             checklist_auto_opened: checklist.is_some(),
             cursor_blink_since: Instant::now(),
             next_poll: Instant::now(),
+            slash: SlashCommandState::default(),
         };
         state.sync_thread_meta(host);
         state
@@ -90,6 +96,7 @@ impl AppState {
 
     pub fn sync_thread_meta(&mut self, host: &TuiSessionHost) {
         self.model_display = host.thread.model.clone();
+        self.model_catalog = host.model_catalog();
         self.run_mode_display = format_run_mode_label(&host.thread.mode, host.yolo);
         self.task_type_display = format_task_type_label(&host.thread.task_type);
         self.workspace_display = host.workspace_display();
@@ -160,7 +167,7 @@ impl AppState {
     }
 
     pub fn push_user_message(&mut self, text: String) {
-        self.transcript.push_user(text);
+        self.transcript.begin_turn(text);
     }
 
     pub fn transcript_render(
@@ -186,35 +193,38 @@ impl AppState {
     ) -> Vec<ratatui::text::Line<'static>> {
         use ratatui::text::{Line, Span};
 
-        let hint_style = theme::hint();
-        let text_style = if self.composer_focus {
-            theme::composer_input()
-        } else {
-            theme::composer_idle()
-        };
         let show_cursor = self.composer_shows_cursor();
         let cursor_on = show_cursor && composer_cursor_blink_on(self.cursor_blink_since);
 
         if self.composer.is_empty() {
-            let hint = if self.transcript.is_live_activity() {
-                "> waiting for reply...  Ctrl+C interrupt  Esc scroll  Up/Down history"
+            let hint_body = if self.transcript.is_live_activity() {
+                " waiting for reply...  Ctrl+C interrupt  Esc scroll  Up/Down history"
             } else {
-                "> type prompt...  Enter send  Shift+Enter newline  Esc scroll  Up/Down history"
+                " type prompt...  / commands  /model  Ctrl+V paste  Enter send  Shift+Enter newline  Esc scroll"
             };
-            let mut lines = vec![Line::from(Span::styled(
-                pad_line_display_width(hint, max_cols),
-                hint_style,
-            ))];
+            let hint_style = if self.composer_focus {
+                theme::composer_idle()
+            } else {
+                theme::hint()
+            };
+            let body_padded = pad_line_display_width(
+                hint_body,
+                max_cols.saturating_sub(display_width(COMPOSER_PROMPT)),
+            );
+            let mut lines = vec![Line::from(vec![
+                Span::styled(COMPOSER_PROMPT.to_string(), theme::composer_prompt()),
+                Span::styled(body_padded, hint_style),
+            ])];
             if show_cursor {
                 let caret = if cursor_on {
                     format!("{COMPOSER_PROMPT}-")
                 } else {
                     format!("{COMPOSER_PROMPT} ")
                 };
-                lines.push(Line::from(Span::styled(
-                    pad_line_display_width(&caret, max_cols),
-                    text_style,
-                )));
+                lines.push(theme::composer_line(
+                    &pad_line_display_width(&caret, max_cols),
+                    self.composer_focus,
+                ));
             }
             return lines;
         }
@@ -243,7 +253,7 @@ impl AppState {
                     content.push('-');
                 }
                 let padded = pad_line_display_width(&content, max_cols);
-                Line::from(Span::styled(padded, text_style))
+                theme::composer_line(&padded, self.composer_focus)
             })
             .collect()
     }
@@ -330,26 +340,76 @@ impl AppState {
         !self.transcript.is_live_activity()
             && !self.approval_open()
             && !self.composer.trim().is_empty()
+            && !composer_is_slash_command(&self.composer)
+    }
+
+    pub fn sync_slash_palette(&mut self) {
+        self.slash.sync(
+            &self.composer,
+            self.composer_focus && self.layout.focus == FocusRegion::Chat,
+            &self.model_catalog,
+        );
+    }
+
+    pub fn slash_palette_lines(
+        &self,
+        width: usize,
+        max_rows: usize,
+    ) -> Vec<ratatui::text::Line<'static>> {
+        render_palette(
+            &self.composer,
+            self.slash.selected,
+            width,
+            max_rows,
+            &self.model_catalog,
+            &self.model_display,
+        )
+    }
+
+    fn composer_editable(&self) -> bool {
+        !self.approval_open()
+            && !self.show_help
+            && !self.transcript.is_live_activity()
+            && self.layout.focus == FocusRegion::Chat
+            && self.composer_focus
+    }
+
+    pub fn handle_composer_paste(&mut self, raw: &str) {
+        if !self.composer_editable() {
+            return;
+        }
+        let text = normalize_paste_text(raw);
+        if text.is_empty() {
+            return;
+        }
+        self.composer.push_str(&text);
+        self.sync_slash_palette();
+    }
+
+    pub fn paste_from_clipboard(&mut self) -> bool {
+        if !self.composer_editable() {
+            return false;
+        }
+        let Some(raw) = read_clipboard_text() else {
+            return false;
+        };
+        self.handle_composer_paste(&raw);
+        true
     }
 
     pub fn handle_char(&mut self, ch: char) {
-        if self.approval_open() || self.show_help || self.transcript.is_live_activity() {
-            return;
-        }
-        if self.layout.focus != FocusRegion::Chat || !self.composer_focus {
+        if !self.composer_editable() {
             return;
         }
         if ch == '\n' || ch == '\r' {
             return;
         }
         self.composer.push(ch);
+        self.sync_slash_palette();
     }
 
     pub fn handle_newline(&mut self) {
-        if self.approval_open() || self.show_help || self.transcript.is_live_activity() {
-            return;
-        }
-        if self.layout.focus == FocusRegion::Chat && self.composer_focus {
+        if self.composer_editable() {
             self.composer.push('\n');
         }
     }
@@ -357,6 +417,7 @@ impl AppState {
     pub fn handle_backspace(&mut self) {
         if self.layout.focus == FocusRegion::Chat && self.composer_focus && !self.approval_open() {
             self.composer.pop();
+            self.sync_slash_palette();
         }
     }
 
@@ -366,7 +427,12 @@ impl AppState {
             return None;
         }
         self.composer.clear();
+        self.slash.close();
         Some(text)
+    }
+
+    pub fn push_system_line(&mut self, text: String) {
+        self.transcript.items.push(TranscriptItem::System { text });
     }
 
     pub fn seed_resume_banner(&mut self) {
@@ -481,9 +547,10 @@ mod tests {
             thread_id: "t1".to_string(),
             workspace_display: String::new(),
             model_display: "m".to_string(),
+            model_catalog: Vec::new(),
             run_mode_display: "Agent".to_string(),
             task_type_display: "Code".to_string(),
-            approval_display: "Ask".to_string(),
+            approval_display: "OnRequest".to_string(),
             approval_toggle_enabled: true,
             harness_line: String::new(),
             blocked_line: None,
@@ -496,10 +563,11 @@ mod tests {
             checklist_auto_opened: false,
             cursor_blink_since: Instant::now(),
             next_poll: Instant::now(),
+            slash: SlashCommandState::default(),
         };
         let lines = app.composer_render(4, 30);
         assert_eq!(lines.len(), 1);
-        assert_eq!(lines[0].spans.len(), 1);
+        assert_eq!(lines[0].spans.len(), 2);
         let text: String = lines[0].spans.iter().map(|s| s.content.as_ref()).collect();
         assert!(display_width(&text) <= 30);
         assert!(text.contains('你'));
@@ -515,9 +583,10 @@ mod tests {
             thread_id: "t1".to_string(),
             workspace_display: String::new(),
             model_display: "m".to_string(),
+            model_catalog: Vec::new(),
             run_mode_display: "Agent".to_string(),
             task_type_display: "Code".to_string(),
-            approval_display: "Ask".to_string(),
+            approval_display: "OnRequest".to_string(),
             approval_toggle_enabled: true,
             harness_line: String::new(),
             blocked_line: None,
@@ -530,6 +599,7 @@ mod tests {
             checklist_auto_opened: false,
             cursor_blink_since: Instant::now(),
             next_poll: Instant::now(),
+            slash: SlashCommandState::default(),
         };
         assert!(app.composer_shows_cursor());
         let lines = app.composer_render(4, 80);

@@ -109,6 +109,38 @@ pub(crate) fn save_workspace_trust(workspace: &Path) -> Result<PathBuf> {
     Ok(config_path)
 }
 
+pub fn save_approval_policy(policy: &str) -> Result<PathBuf> {
+    let policy = policy.trim().to_ascii_lowercase();
+    if !matches!(
+        policy.as_str(),
+        "on-request" | "untrusted" | "never" | "auto"
+    ) {
+        anyhow::bail!(
+            "Invalid approval_policy '{policy}': expected on-request, untrusted, never, or auto."
+        );
+    }
+    let config_path = default_config_path()
+        .context("Failed to resolve config path: home directory not found.")?;
+    ensure_parent_dir(&config_path)?;
+
+    let mut doc = if config_path.exists() {
+        let raw = fs::read_to_string(&config_path)?;
+        toml::from_str::<toml::Value>(&raw)
+            .with_context(|| format!("Failed to parse config at {}", config_path.display()))?
+    } else {
+        toml::Value::Table(toml::value::Table::new())
+    };
+
+    doc.as_table_mut()
+        .context("Config root must be a TOML table.")?
+        .insert("approval_policy".to_string(), toml::Value::String(policy));
+
+    let serialized = toml::to_string_pretty(&doc).context("failed to serialize updated config")?;
+    write_config_file_secure(&config_path, &serialized)
+        .with_context(|| format!("Failed to write config to {}", config_path.display()))?;
+    Ok(config_path)
+}
+
 pub(crate) fn workspace_trust_level_from_doc<'a>(
     doc: &'a toml::Value,
     workspace: &Path,

@@ -22,10 +22,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **TUI (`zagens-tui`):** Composer `Ctrl+V` pastes from the system clipboard (also handles terminal `Paste` events); help and input hint updated.
+- **TUI (`zagens-tui`):** Composer `/model` (alias `/m`) switches the session text model with picker UI; persists via thread `model` field.
+- **TUI (`zagens-tui`):** Activity marquee (1 row between Transcript and Composer) while the model is running — shows THK / tools / AI phase with animated rail.
+- **TUI (`zagens-tui`):** Footer approval policy matches desktop Settings — four modes (`OnRequest`, `Untrusted`, `Never`, `Auto`); `Ctrl+A` cycles and persists to `config.toml`.
 - **TUI (`zagens-tui`):** Optional `tui` feature and `zagens-tui` binary — full-screen three-column shell with in-process `RuntimeThreadManager` (`TuiSessionHost`), broadcast runtime event mapping (no `engine.rx_event` contention), Transcript (streaming, tools, thinking, harness lines, Markdown pipe-table grids), Composer (taller input, footer chips for model/mode/task/approve, blinking caret), approval modal, left-rail sessions, right-rail inspector tabs (files/diff/checklist/agents/MCP), harness checklist poll, high-contrast `theme.rs`, and 39+ `tui::` unit tests.
 
 ### Changed
 
+- **TUI (`zagens-tui`):** Dracula palette now paints `#282a36` / `#1e1f29` backgrounds (not bare terminal clear), agent reply body uses `#50fa7b`, sidebar/checklist/Composer prompt split match maintainer color sheet (`TUI方案.md` §6.10).
+- **TUI (`zagens-tui`):** Fix streaming transcript overlap — CJK assistant lines use hanging indent + single-span render + Dracula background fill so terminal soft-wrap does not cross rows under tool `+` column.
 - **Runtime (Windows exec_shell):** Sandboxed shell children inherit the parent process environment by default (Codex-aligned `inherit: all`, with secret-name filtering), so MSVC/SDK vars (`LIB`, `INCLUDE`, …) reach `cargo build` when the Zagens parent has them. `workspace-write` now treats `%TEMP%` / `%TMP%` as writable roots on Windows. `diagnostics` reports `exec_shell_env_inherit` and whether the parent exposes toolchain env.
 - **Web tools (research quality):** `web_search` default/max results 8/15; Tavily `search_depth: advanced`; `fetch_url` uses block-aware HTML extraction; `web.run` shows more lines per `open`, honors `[search] provider` for `search_query` (metaso/tavily/etc.), and tool/prompt text enforces search-then-`fetch_url` two-step. Bundled `multi-search-engine` skill aligned to `fetch_url`.
 - **CI PR-first:** Remote CI runs on pull requests and release tags only — not on merges to `master` / `main`. Local pre-push still uses `scripts/ci/ci-push-gate.sh` to skip lint for docs-only or `[skip ci]` landings.

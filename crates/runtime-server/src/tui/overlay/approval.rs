@@ -3,6 +3,8 @@
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
+use super::super::theme;
+
 #[derive(Debug, Clone)]
 pub struct PendingApproval {
     pub id: String,
@@ -16,7 +18,8 @@ pub fn draw_approval(frame: &mut Frame<'_>, pending: &PendingApproval) {
     frame.render_widget(Clear, area);
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Yellow))
+        .border_style(theme::approval_border())
+        .style(theme::overlay_panel())
         .title(" Approval required ");
     let body = format!(
         "Tool: {}\n\n{}\n\n[y] Allow   [n] Deny   [a] Allow session\n[Esc] Deny",
@@ -26,7 +29,7 @@ pub fn draw_approval(frame: &mut Frame<'_>, pending: &PendingApproval) {
         Paragraph::new(body)
             .block(block)
             .wrap(Wrap { trim: false })
-            .style(Style::default().fg(Color::White)),
+            .style(theme::approval_body()),
         area,
     );
 }

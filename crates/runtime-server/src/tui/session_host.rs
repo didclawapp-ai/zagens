@@ -1,6 +1,6 @@
 //! In-process thread/engine lifecycle for the TUI (RuntimeThreadManager).
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -21,19 +21,25 @@ use crate::runtime_threads::{
 };
 use crate::task_manager::TaskManagerConfig;
 use crate::task_type::TaskType;
-use zagens_core::approval::ApprovalMode;
 
+use super::approval_policy::{self, policy_cyclable, policy_display_label};
 use super::harness::{ChecklistSnapshot, parse_checklist_json};
 use super::transcript::{TranscriptItem, seed_from_messages};
 
 const HISTORY_REPLAY_LIMIT: usize = 20;
 
+fn effective_auto_approve(yolo: bool, thread: &ThreadRecord, policy: &str) -> bool {
+    yolo || thread.auto_approve || approval_policy::auto_approve_for_turn(policy, false)
+}
+
 pub struct TuiSessionHost {
     pub manager: SharedRuntimeThreadManager,
     pub thread: ThreadRecord,
     pub yolo: bool,
-    /// Session-level auto-approve for tool calls (Composer footer toggle).
+    /// Effective `auto_approve` for the next turn (policy, YOLO, or session remember).
     pub auto_approve: bool,
+    /// Global approval policy (`config.toml` → `approval_policy`), same as desktop Settings.
+    pub approval_policy: String,
     workspace_filter: std::path::PathBuf,
     last_event_seq: u64,
     event_rx: broadcast::Receiver<RuntimeEventRecord>,
@@ -60,12 +66,20 @@ impl TuiSessionHost {
         manager.resume_thread(&thread.id).await?;
 
         let event_rx = manager.subscribe_events();
-        let auto_approve = cli.yolo || thread.auto_approve;
+        let approval_policy = manager
+            .config
+            .approval_policy
+            .as_deref()
+            .map(approval_policy::normalize_policy)
+            .unwrap_or("on-request")
+            .to_string();
+        let auto_approve = effective_auto_approve(cli.yolo, &thread, &approval_policy);
         let mut host = Self {
             manager,
             thread,
             yolo: cli.yolo,
             auto_approve,
+            approval_policy,
             workspace_filter: ctx.workspace.clone(),
             last_event_seq: 0,
             event_rx,
@@ -100,7 +114,7 @@ impl TuiSessionHost {
             bail!("prompt is empty");
         }
         let mode = if self.yolo { "yolo" } else { "agent" };
-        let auto = self.auto_approve || self.yolo;
+        let auto = effective_auto_approve(self.yolo, &self.thread, &self.approval_policy);
         let req = StartTurnRequest {
             prompt: prompt.to_string(),
             mode: Some(mode.to_string()),
@@ -149,34 +163,25 @@ impl TuiSessionHost {
     }
 
     pub fn approval_footer_meta(&self) -> (String, bool) {
-        let policy = self
-            .config()
-            .approval_policy
-            .as_deref()
-            .unwrap_or("on-request");
         if self.yolo {
             return ("Auto".to_string(), false);
         }
-        if matches!(
-            ApprovalMode::from_config_value(policy),
-            Some(ApprovalMode::Never)
-        ) {
-            return ("Never".to_string(), false);
-        }
-        let label = if self.auto_approve {
-            "Auto".to_string()
-        } else {
-            "Ask".to_string()
-        };
-        (label, true)
+        let label = policy_display_label(&self.approval_policy).to_string();
+        (label, policy_cyclable(self.yolo))
     }
 
-    pub async fn toggle_auto_approve(&mut self) -> Result<bool> {
-        let (_, enabled) = self.approval_footer_meta();
-        if !enabled {
-            return Ok(self.auto_approve);
+    pub async fn cycle_approval_policy(&mut self) -> Result<String> {
+        if !policy_cyclable(self.yolo) {
+            return Ok(self.approval_policy.clone());
         }
-        self.auto_approve = !self.auto_approve;
+        let next = approval_policy::next_policy(&self.approval_policy);
+        approval_policy::persist_to_config(next)?;
+        self.approval_policy = next.to_string();
+        {
+            let manager = Arc::make_mut(&mut self.manager);
+            manager.config.approval_policy = Some(next.to_string());
+        }
+        self.auto_approve = effective_auto_approve(self.yolo, &self.thread, &self.approval_policy);
         self.thread = self
             .manager
             .update_thread(
@@ -187,7 +192,48 @@ impl TuiSessionHost {
                 },
             )
             .await?;
-        Ok(self.auto_approve)
+        Ok(self.approval_policy.clone())
+    }
+
+    pub async fn switch_model(&mut self, model: String) -> Result<ThreadRecord> {
+        let model = model.trim().to_string();
+        if model.is_empty() {
+            bail!("model id is empty");
+        }
+        self.thread = self
+            .manager
+            .update_thread(
+                &self.thread.id,
+                UpdateThreadRequest {
+                    model: Some(model),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        Ok(self.thread.clone())
+    }
+
+    pub fn model_catalog(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut push = |m: &str| {
+            let m = m.trim();
+            if m.is_empty() {
+                return;
+            }
+            if out.iter().any(|x: &String| x.eq_ignore_ascii_case(m)) {
+                return;
+            }
+            out.push(m.to_string());
+        };
+        push("auto");
+        push(&self.thread.model);
+        if let Some(m) = self.config().default_text_model.as_deref() {
+            push(m);
+        }
+        for m in crate::config::COMMON_DEEPSEEK_MODELS {
+            push(m);
+        }
+        out
     }
 
     pub async fn deny_tool(&self, id: &str) -> Result<()> {
@@ -234,7 +280,31 @@ impl TuiSessionHost {
         let thread = ensure_tui_code_task_type(&self.manager, thread).await?;
         self.manager.resume_thread(&thread.id).await?;
         self.thread = thread;
-        self.auto_approve = self.yolo || self.thread.auto_approve;
+        self.auto_approve = effective_auto_approve(self.yolo, &self.thread, &self.approval_policy);
+        self.resubscribe_events();
+        Ok(())
+    }
+
+    pub async fn switch_workspace(&mut self, workspace: PathBuf) -> Result<()> {
+        self.workspace_filter = workspace.clone();
+        let thread = match resolve_latest(&self.manager, &workspace).await {
+            Ok(thread) => thread,
+            Err(_) => {
+                let mode = if self.yolo { "yolo" } else { "agent" };
+                self.manager
+                    .create_thread(tui_create_thread_request(
+                        workspace.clone(),
+                        mode,
+                        self.yolo,
+                        self.yolo || self.manager.config.allow_shell(),
+                    ))
+                    .await?
+            }
+        };
+        let thread = ensure_tui_code_task_type(&self.manager, thread).await?;
+        self.manager.resume_thread(&thread.id).await?;
+        self.thread = thread;
+        self.auto_approve = effective_auto_approve(self.yolo, &self.thread, &self.approval_policy);
         self.resubscribe_events();
         Ok(())
     }
@@ -252,7 +322,7 @@ impl TuiSessionHost {
             .await?;
         self.manager.resume_thread(&thread.id).await?;
         self.thread = thread;
-        self.auto_approve = self.yolo || self.thread.auto_approve;
+        self.auto_approve = effective_auto_approve(self.yolo, &self.thread, &self.approval_policy);
         self.resubscribe_events();
         Ok(())
     }

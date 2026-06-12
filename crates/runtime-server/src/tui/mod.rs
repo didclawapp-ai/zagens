@@ -1,6 +1,10 @@
 //! Full-screen terminal UI (`zagens-tui`).
 
+mod activity_strip;
 mod app;
+mod approval_policy;
+mod composer_paste;
+mod composer_slash;
 mod display_format;
 mod draw;
 mod focus;
@@ -18,6 +22,7 @@ mod terminal;
 mod theme;
 mod transcript;
 mod transcript_filter;
+mod transcript_turn;
 
 use std::time::Duration;
 
@@ -25,6 +30,7 @@ use anyhow::{Result, bail};
 use crossterm::event::{Event, KeyCode, KeyModifiers};
 
 use self::app::AppState;
+use self::composer_slash::SlashAction;
 use self::focus::FocusRegion;
 use self::layout::{InspectorTab, TuiLayoutPrefs};
 use self::session_host::TuiSessionHost;
@@ -40,7 +46,7 @@ pub async fn run_tui(cli: Cli) -> Result<()> {
         );
     }
 
-    let ctx = load_cli_context(&cli)?;
+    let mut ctx = load_cli_context(&cli)?;
     let mut host = TuiSessionHost::open(&ctx, &cli).await?;
     let resumed = cli.resume.is_some() || cli.continue_session;
     let initial_prompt = cli.prompt.clone();
@@ -95,7 +101,7 @@ pub async fn run_tui(cli: Cli) -> Result<()> {
                 if let Some(event) = event {
                     if handle_input_event(
                         &event,
-                        &ctx,
+                        &mut ctx,
                         &mut host,
                         &mut app,
                         &mut ctrl_c_streak,
@@ -121,7 +127,7 @@ pub async fn run_tui(cli: Cli) -> Result<()> {
 
 async fn handle_input_event(
     event: &Event,
-    ctx: &crate::cli::context::CliContext,
+    ctx: &mut crate::cli::context::CliContext,
     host: &mut TuiSessionHost,
     app: &mut AppState,
     ctrl_c_streak: &mut u8,
@@ -129,6 +135,9 @@ async fn handle_input_event(
     match event {
         Event::Resize(width, _) => {
             app.layout.apply_auto_collapse(*width);
+        }
+        Event::Paste(text) => {
+            app.handle_composer_paste(text);
         }
         Event::Key(key) => {
             if !is_key_press(key) {
@@ -156,7 +165,7 @@ async fn handle_input_event(
                     return Ok(true);
                 }
                 host.interrupt_turn().await?;
-                app.transcript.streaming = false;
+                app.transcript.close_open_turn();
                 app.blocked_line = None;
                 return Ok(false);
             }
@@ -197,7 +206,12 @@ async fn handle_input_event(
                     }
                 }
                 KeyCode::Esc if app.layout.focus == FocusRegion::Chat => {
-                    app.composer_focus = !app.composer_focus;
+                    if app.composer_focus && app.slash.open {
+                        app.composer.clear();
+                        app.slash.close();
+                    } else {
+                        app.composer_focus = !app.composer_focus;
+                    }
                 }
                 KeyCode::Enter if app.layout.focus == FocusRegion::Left => {
                     if let Some(id) = app.sessions.selected_id() {
@@ -211,6 +225,12 @@ async fn handle_input_event(
                     if app.composer_focus {
                         if key.modifiers.contains(KeyModifiers::SHIFT) {
                             app.handle_newline();
+                        } else if app.slash.open
+                            || composer_slash::composer_is_slash_command(&app.composer)
+                        {
+                            if handle_slash_enter(ctx, host, app).await? {
+                                return Ok(false);
+                            }
                         } else if app.can_send_prompt() {
                             if let Some(prompt) = app.take_composer_prompt() {
                                 submit_prompt(host, app, &prompt).await?;
@@ -219,6 +239,20 @@ async fn handle_input_event(
                     } else {
                         app.transcript.toggle_last_tool_expand();
                     }
+                }
+                KeyCode::Up
+                    if app.layout.focus == FocusRegion::Chat
+                        && app.composer_focus
+                        && app.slash.open =>
+                {
+                    app.slash.move_up(&app.composer, &app.model_catalog);
+                }
+                KeyCode::Down
+                    if app.layout.focus == FocusRegion::Chat
+                        && app.composer_focus
+                        && app.slash.open =>
+                {
+                    app.slash.move_down(&app.composer, &app.model_catalog);
                 }
                 KeyCode::Up if app.layout.focus == FocusRegion::Chat => {
                     enter_transcript_scroll_if_needed(app);
@@ -241,8 +275,11 @@ async fn handle_input_event(
                         && app.layout.focus == FocusRegion::Chat
                         && app.approval_toggle_enabled =>
                 {
-                    host.toggle_auto_approve().await?;
+                    host.cycle_approval_policy().await?;
                     app.sync_thread_meta(host);
+                }
+                KeyCode::Char('v') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    app.paste_from_clipboard();
                 }
                 KeyCode::Backspace => app.handle_backspace(),
                 KeyCode::Char(ch) => app.handle_char(ch),
@@ -304,7 +341,7 @@ fn handle_k(app: &mut AppState) {
 
 async fn handle_approval_key(
     key: crossterm::event::KeyEvent,
-    host: &TuiSessionHost,
+    host: &mut TuiSessionHost,
     app: &mut AppState,
     pending: &overlay::PendingApproval,
 ) -> Result<bool> {
@@ -315,6 +352,9 @@ async fn handle_approval_key(
         }
         KeyCode::Char('a') => {
             host.approve_tool(&pending.id, true).await?;
+            host.auto_approve = true;
+            host.thread.auto_approve = true;
+            app.sync_thread_meta(host);
             app.clear_approval();
         }
         KeyCode::Char('n') | KeyCode::Esc => {
@@ -326,8 +366,94 @@ async fn handle_approval_key(
     Ok(false)
 }
 
+async fn handle_slash_enter(
+    ctx: &mut crate::cli::context::CliContext,
+    host: &mut TuiSessionHost,
+    app: &mut AppState,
+) -> Result<bool> {
+    let current_ws = host.thread.workspace.clone();
+    if composer_slash::model_picker_active(&app.composer) && app.slash.open {
+        if let Some(model) =
+            composer_slash::selected_model(&app.composer, app.slash.selected, &app.model_catalog)
+        {
+            app.composer.clear();
+            app.slash.close();
+            execute_slash_action(ctx, host, app, SlashAction::SwitchModel(model)).await?;
+            return Ok(true);
+        }
+    }
+    if let Some(action) = composer_slash::try_parse_action(&app.composer, &current_ws) {
+        app.composer.clear();
+        app.slash.close();
+        execute_slash_action(ctx, host, app, action).await?;
+        return Ok(true);
+    }
+
+    if app.slash.open {
+        if let Some(cmd) = composer_slash::selected_command(&app.composer, app.slash.selected) {
+            if cmd.takes_arg {
+                composer_slash::apply_palette_selection(&mut app.composer, cmd);
+                app.sync_slash_palette();
+            } else {
+                app.composer.clear();
+                app.slash.close();
+                let action = match cmd.action {
+                    composer_slash::SlashActionKind::New => SlashAction::NewSession,
+                    composer_slash::SlashActionKind::Help => SlashAction::ShowHelp,
+                    composer_slash::SlashActionKind::Clear => SlashAction::ClearComposer,
+                    composer_slash::SlashActionKind::Workspace
+                    | composer_slash::SlashActionKind::Model => {
+                        return Ok(true);
+                    }
+                };
+                execute_slash_action(ctx, host, app, action).await?;
+            }
+        }
+        return Ok(true);
+    }
+    Ok(false)
+}
+
+async fn execute_slash_action(
+    ctx: &mut crate::cli::context::CliContext,
+    host: &mut TuiSessionHost,
+    app: &mut AppState,
+    action: SlashAction,
+) -> Result<()> {
+    match action {
+        SlashAction::SwitchModel(model) => {
+            if app.transcript.is_live_activity() {
+                app.push_system_line("model: wait for current turn to finish".to_string());
+            } else {
+                host.switch_model(model.clone()).await?;
+                app.sync_thread_meta(host);
+                app.push_system_line(format!("model: {model}"));
+            }
+        }
+        SlashAction::SwitchWorkspace(path) => {
+            host.switch_workspace(path.clone()).await?;
+            ctx.workspace = path.clone();
+            app.reload_after_thread_switch(host).await;
+            app.push_system_line(format!(
+                "workspace: {}",
+                crate::cli::context::display_path(&path)
+            ));
+        }
+        SlashAction::NewSession => {
+            host.new_session(ctx).await?;
+            app.reload_after_thread_switch(host).await;
+            app.push_system_line("new session".to_string());
+        }
+        SlashAction::ShowHelp => {
+            app.show_help = true;
+        }
+        SlashAction::ClearComposer => {}
+    }
+    Ok(())
+}
+
 async fn submit_prompt(host: &TuiSessionHost, app: &mut AppState, prompt: &str) -> Result<()> {
-    if app.transcript.streaming {
+    if app.transcript.is_live_activity() {
         return Ok(());
     }
     app.push_user_message(prompt.to_string());

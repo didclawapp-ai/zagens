@@ -16,7 +16,7 @@ default = ["json", "toml"]
 json = ["schemaui/json"]
 toml = ["schemaui/toml"]
 web = ["dep:schemaui", "schemaui/web", "json", "toml"]
-tui = ["dep:ratatui", "dep:crossterm"]
+tui = ["dep:ratatui", "dep:crossterm", "dep:arboard"]
 
 [lib]
 name = "zagens_runtime"
@@ -105,6 +105,7 @@ rust_xlsxwriter = "0.81"
 calamine = { version = "0.35", features = ["dates"] }
 ratatui = { workspace = true, optional = true }
 crossterm = { workspace = true, optional = true }
+arboard = { workspace = true, optional = true }
 
 [dev-dependencies]
 anyhow.workspace = true
