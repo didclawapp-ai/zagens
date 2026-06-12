@@ -23,9 +23,9 @@ export function applyMermaidFenceRule(md: MarkdownIt): void {
 
     const escaped = escapeHtmlText(token.content);
     return (
-      '<div class="ds-mermaid-block my-4 rounded-lg border border-card-border bg-canvas-alt/30 overflow-x-auto">' +
+      '<div class="ds-mermaid-block not-prose my-4 rounded-lg border border-card-border bg-canvas-alt/30 overflow-visible">' +
       `<pre class="ds-mermaid-source" hidden aria-hidden="true">${escaped}</pre>` +
-      '<div class="ds-mermaid-mount flex items-center justify-center min-h-[4rem] p-4 text-xs text-t-text-muted">渲染中…</div>' +
+      '<div class="ds-mermaid-mount min-h-[4rem] p-2" aria-busy="true"></div>' +
       '</div>\n'
     );
   };

@@ -853,6 +853,14 @@ html {
     background: var(--color-hover);
   }
 
+  /* Mermaid iframe preview — avoid CSS max-width on SVG (breaks foreignObject layout in WebView2) */
+  .ds-mermaid-mount .ds-mermaid-iframe {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    background: transparent;
+  }
+
   /* User bubble: prose defaults are light-theme grays — force theme token (see ChatMarkdown). */
   .chat-md-wrap.chat-md-wrap--user {
     --tw-prose-body: var(--color-msg-user-text);

@@ -48,6 +48,7 @@ Harness **fixtures** (TOML, demo data, oracle scripts) live under [`fixtures/har
 | Doc | Description |
 |-----|-------------|
 | [desktop/PREVIEW_ARCHITECTURE.md](./desktop/PREVIEW_ARCHITECTURE.md) | Preview panel architecture |
+| [desktop/MERMAID_PREVIEW_TOLERANCE.md](./desktop/MERMAID_PREVIEW_TOLERANCE.md) | Mermaid → WebView2 tolerance layer (markdown preview) |
 | [desktop/OFFICE_SCENARIOS.md](./desktop/OFFICE_SCENARIOS.md) | Office scenario map (four-axis model) |
 | [desktop/SCHEDULED_TASKS.md](./desktop/SCHEDULED_TASKS.md) | Scheduled tasks (RRULE automations → background Tasks) |
 | [desktop/HOOKS.md](./desktop/HOOKS.md) | Lifecycle shell hooks (config, Cursor JSON, protocol) |

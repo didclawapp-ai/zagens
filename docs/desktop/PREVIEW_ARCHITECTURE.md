@@ -26,7 +26,7 @@
 
 | Format | Renderer | Notes |
 |--------|----------|-------|
-| Markdown (`.md` / `.mdx`, etc.) | `MarkdownRenderer` | markdown-it + DOMPurify |
+| Markdown (`.md` / `.mdx`, etc.) | `MarkdownRenderer` | markdown-it + DOMPurify; embedded ` ```mermaid ` ` → [MERMAID_PREVIEW_TOLERANCE.md](./MERMAID_PREVIEW_TOLERANCE.md) |
 | Code / text with `language_hint` | `CodeRenderer` | highlight.js |
 | Plain text / unknown | `TextRenderer` | HTML escape |
 | Images | `ImageRenderer` | `data:{mime};base64,...` |

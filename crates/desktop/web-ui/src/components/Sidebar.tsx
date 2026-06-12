@@ -502,7 +502,7 @@ function SettingsAccordion({
       </button>
 
       <div
-        className={`overflow-hidden transition-[max-height] duration-200 ${open ? 'max-h-96' : 'max-h-0'}`}
+        className={`overflow-hidden transition-[max-height] duration-200 ${open ? 'max-h-[32rem] overflow-y-auto' : 'max-h-0'}`}
       >
         <div className="flex flex-col gap-0.5 pt-0.5 pb-1">
           {subItems

@@ -24,16 +24,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Web tools (research quality):** `web_search` default/max results 8/15; Tavily `search_depth: advanced`; `fetch_url` uses block-aware HTML extraction; `web.run` shows more lines per `open`, honors `[search] provider` for `search_query` (metaso/tavily/etc.), and tool/prompt text enforces search-then-`fetch_url` two-step. Bundled `multi-search-engine` skill aligned to `fetch_url`.
 - **CI PR-first:** Remote CI runs on pull requests and release tags only — not on merges to `master` / `main`. Local pre-push still uses `scripts/ci/ci-push-gate.sh` to skip lint for docs-only or `[skip ci]` landings.
+- **Desktop (chat):** Chat bubbles no longer render Mermaid inline — ` ```mermaid ` ` blocks display as fenced code; use the right-panel Mermaid tab for diagram preview.
+- **Desktop (Mermaid preview):** Workspace Markdown preview and Mermaid panel use trusted rendering (Cursor-like direct SVG mount, no DOMPurify on diagram output); lightweight SVG threat scan blocks preview until the user opts in. Chat Markdown and diff output still use DOMPurify.
 
 ### Added
 
 - **Desktop (Composer):** Pasting a lone http(s) URL (including GitHub rich-link copies) adds a Cursor-style link chip above the input instead of dumping page title text; referenced URLs are sent to the model with a `fetch_url` hint.
 - **Desktop (preview):** Markdown file preview renders embedded ` ```mermaid ` ` fences inline (same engine as the Mermaid panel).
+- **Desktop (Mermaid):** `npm run test:mermaid` self-check covers digest, `<br/>` normalization, fence plugin, and SVG sanitization.
 
 ### Fixed
 
 - **Desktop (build):** `bundle:prepare` installs web-ui devDependencies when `NODE_ENV=production` omitted `tsc`/`vite` (fixes `'tsc' 不是内部或外部命令` on Windows).
 - **Desktop (Mermaid):** Preserve `foreignObject` label HTML when sanitizing rendered SVG so mindmap (and similar) node text is visible again after DOMPurify 3.1.7+.
+- **Desktop (Mermaid preview):** Render flowcharts with SVG-native labels (`htmlLabels: false`) so Tauri WebView2 no longer shows black rectangles over complex diagrams.
+- **Desktop (Mermaid preview):** Match Cursor/GitHub with `htmlLabels: true`; promote `fill`/`stroke` to SVG attributes, inline edge `stroke`, and transparent `foreignObject` label backgrounds for WebView2; Markdown preview mounts diagrams in an isolated iframe at native viewBox size (fixes `foreignObject` label overlap and missing connectors in `RUNTIME_ARCHITECTURE.md`).
+- **Desktop (Mermaid preview):** Scale Markdown preview diagrams to fit pane width (uniform iframe transform) and inline `foreignObject` label text colors so light nodes show dark text and classDef nodes show white text in WebView2.
+- **Desktop (Mermaid preview):** Fit Markdown preview iframe height via SVG `width`/`height` + `viewBox` (replaces `transform: scale`, which clipped diagrams in WebView2).
+- **Desktop (Mermaid preview):** Sync `foreignObject` HTML font size to diagram fit scale and restore edge-label `labelBkg` backgrounds so light node text and connector labels (e.g. `spawn + DS_PICK_READY`) render in WebView2.
+- **Desktop (Mermaid preview):** Fit Markdown diagrams with uniform CSS `zoom` so node boxes, subgraph titles, and `foreignObject` labels scale together (fixes bottom-clipped light-node text in WebView2).
+- **Desktop (Mermaid preview):** Force `-webkit-text-fill-color` on `foreignObject` labels and transparent foreignObject backgrounds so light-node, subgraph, and edge text are visible in WebView2 (theme `fill:` no longer paints white invisible glyphs).
+- **Desktop (Mermaid preview):** Derive label text color from node shape `fill` luminance for unclassed `node default` syntax (e.g. §1.1 `U1`/`U2`) instead of requiring doc-side `classDef`.
+- **Desktop (Mermaid):** Full i18n for panel + inline render paths (en / zh-Hans / ja / pt-BR); inline error retry button; theme-change re-render; empty fence placeholder (no flash); Mermaid panel resize debounce retained.
 - **Release (crates.io):** Include `zagens-windows-sandbox` in `publish-crates.sh` before `zagens-cli`; add workspace `repository`/`homepage`/`readme` to its manifest; pre-publish leaf dry-run covers it; post-publish verify uses workspace version.
 
 ## [0.7.5] - 2026-06-11

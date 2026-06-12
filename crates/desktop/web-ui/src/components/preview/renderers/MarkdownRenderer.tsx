@@ -3,9 +3,10 @@
 // Extracted from the original `MarkdownPreview.tsx` (which now re-exports).
 // ---------------------------------------------------------------------------
 
-import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import MarkdownIt from 'markdown-it';
 import DOMPurify from 'dompurify';
+import { useT } from '../../../i18n';
 import { resolveMarkdownLinkToWorkspaceRel } from '../../../lib/resolveMarkdownWorkspaceLink';
 import hljs from 'highlight.js/lib/core';
 import plaintext from 'highlight.js/lib/languages/plaintext';
@@ -171,10 +172,24 @@ function attachCopyButtons(container: HTMLElement): void {
 // ---- component -------------------------------------------------------------
 
 export function MarkdownRenderer({ state, theme, onOpenWorkspaceRelativePath }: RendererProps) {
+  const { t } = useT();
   const { content } = state;
   const [rendered, setRendered] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
   const previewTheme = resolvePreviewTheme(theme);
+
+  const mermaidLabels = useMemo(
+    () => ({
+      rendering: t('mermaid.rendering'),
+      renderError: (msg: string) => t('mermaid.renderError', { message: msg }),
+      retry: t('mermaid.retry'),
+      retrying: t('mermaid.retrying'),
+      securityBlocked: t('mermaid.securityBlocked'),
+      suspiciousContent: (reason: string) => t('mermaid.suspiciousContent', { reason }),
+      renderAnyway: t('mermaid.renderAnyway'),
+    }),
+    [t],
+  );
 
   const renderSafe = useCallback((raw: string) => {
     if (!raw) return '';
@@ -200,7 +215,7 @@ export function MarkdownRenderer({ state, theme, onOpenWorkspaceRelativePath }: 
       return;
     }
     let cancelled = false;
-    void renderMermaidBlocksInContainer(el, previewTheme).then(() => {
+    void renderMermaidBlocksInContainer(el, previewTheme, mermaidLabels).then(() => {
       if (cancelled) {
         return;
       }
@@ -208,7 +223,7 @@ export function MarkdownRenderer({ state, theme, onOpenWorkspaceRelativePath }: 
     return () => {
       cancelled = true;
     };
-  }, [rendered, previewTheme]);
+  }, [rendered, previewTheme, mermaidLabels]);
 
   const onClickCapture = useCallback(
     (e: MouseEvent<HTMLDivElement>) => {
@@ -295,7 +310,7 @@ export function MarkdownRenderer({ state, theme, onOpenWorkspaceRelativePath }: 
           [&_table]:my-4 [&_table]:w-full [&_table]:border-collapse [&_table]:text-sm
           [&_th]:border [&_th]:border-divider [&_th]:bg-canvas-alt/50 [&_th]:px-3 [&_th]:py-2 [&_th]:align-top
           [&_td]:border [&_td]:border-divider [&_td]:px-3 [&_td]:py-2 [&_td]:align-top
-          [&_.ds-mermaid-mount_svg]:mx-auto [&_.ds-mermaid-mount_svg]:block [&_.ds-mermaid-mount_svg]:max-w-full"
+          [&_.ds-mermaid-mount_.ds-mermaid-iframe]:block [&_.ds-mermaid-mount_.ds-mermaid-iframe]:w-full"
         onClickCapture={onClickCapture}
         dangerouslySetInnerHTML={{ __html: rendered }}
       />

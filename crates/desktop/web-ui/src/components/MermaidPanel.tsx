@@ -1,6 +1,8 @@
 import { useEffect, useState, useRef, useMemo, useCallback, useLayoutEffect } from 'react';
 import { ensureMermaidInitialized, renderMermaidToSvg } from '../lib/mermaidRuntime';
-import { sanitizeMermaidSvg } from '../lib/sanitizeHtml';
+import { mountMermaidSvgInline } from '../lib/mermaidSvgPostProcess';
+import { isMermaidSvgThreatError } from '../lib/mermaidSvgSecurity';
+import { useT } from '../i18n';
 
 interface Message {
   id: string;
@@ -14,6 +16,12 @@ interface MermaidBlock {
   sourceMessageId: string;
 }
 
+interface MermaidRenderEntry {
+  svg: string;
+  error?: string;
+  threatBlocked?: { reason: string };
+}
+
 interface Props {
   messages: Message[];
   theme: 'light' | 'dark';
@@ -24,6 +32,7 @@ const ZOOM_MIN = 25;
 const ZOOM_MAX = 300;
 const ZOOM_STEP = 10;
 const ZOOM_DEFAULT = 100;
+const RESIZE_DEBOUNCE_MS = 150;
 
 function clampZoom(v: number): number {
   return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, v));
@@ -161,17 +170,26 @@ function DiagramViewport({
   viewResetKey: number;
 }) {
   const viewportRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const panRef = useRef({ x: 0, y: 0 });
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const dragRef = useRef<{ px: number; py: number; ox: number; oy: number } | null>(null);
   const [dragging, setDragging] = useState(false);
   const fitKeyRef = useRef('');
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { w: svgW, h: svgH } = useMemo(() => parseSvgDimensions(svg), [svg]);
   const scaledSvg = useMemo(() => applySvgZoom(svg, zoom), [svg, zoom]);
-  const scale = zoom / 100;
 
   panRef.current = pan;
+
+  useLayoutEffect(() => {
+    const el = contentRef.current;
+    if (!el) {
+      return;
+    }
+    mountMermaidSvgInline(el, scaledSvg);
+  }, [scaledSvg]);
 
   const centerAtZoom = useCallback(
     (zoomPct: number) => {
@@ -210,13 +228,24 @@ function DiagramViewport({
       const key = `${digest}:${viewResetKey}`;
       if (fitKeyRef.current === key) return;
       fitKeyRef.current = key;
-      fitToViewport();
+      // Debounce resize refits to avoid jitter during panel drag
+      if (debounceRef.current != null) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => {
+        debounceRef.current = null;
+        fitToViewport();
+      }, RESIZE_DEBOUNCE_MS);
     };
     tryFit();
     if (typeof ResizeObserver === 'undefined') return;
     const ro = new ResizeObserver(tryFit);
     ro.observe(el);
-    return () => ro.disconnect();
+    return () => {
+      ro.disconnect();
+      if (debounceRef.current != null) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+      }
+    };
   }, [digest, viewResetKey, svg, fitToViewport]);
 
   useEffect(() => {
@@ -278,24 +307,28 @@ function DiagramViewport({
       aria-label="Mermaid diagram viewport"
     >
       <div
+        ref={contentRef}
         className="absolute left-0 top-0 [&_svg]:block"
         style={{
           transform: `translate(${pan.x}px, ${pan.y}px)`,
         }}
-        dangerouslySetInnerHTML={{ __html: sanitizeMermaidSvg(scaledSvg) }}
       />
     </div>
   );
 }
 
 export default function MermaidPanel({ messages, theme, onDetected }: Props) {
-  const [renderMap, setRenderMap] = useState<Record<string, { svg: string; error?: string }>>({});
+  const { t } = useT();
+  const [renderMap, setRenderMap] = useState<Record<string, MermaidRenderEntry>>({});
   const [busy, setBusy] = useState(false);
   const firedRef = useRef(false);
   const [zoomMap, setZoomMap] = useState<Record<string, number>>({});
   const [activeTab, setActiveTab] = useState(0);
   const [fullscreenBlock, setFullscreenBlock] = useState<string | null>(null);
   const [viewResetKey, setViewResetKey] = useState(0);
+  const [confirmedThreats, setConfirmedThreats] = useState<Set<string>>(() => new Set());
+  // Track blocks currently being retried after error
+  const [retrying, setRetrying] = useState<Set<string>>(new Set());
 
   const blocks = useMemo(() => extractMermaidBlocks(messages), [messages]);
 
@@ -324,7 +357,61 @@ export default function MermaidPanel({ messages, theme, onDetected }: Props) {
   useEffect(() => {
     ensureMermaidInitialized(theme);
     setRenderMap({});
+    setConfirmedThreats(new Set());
   }, [theme]);
+
+  const retryBlock = useCallback(async (digest: string, code: string) => {
+    setRetrying((prev) => new Set(prev).add(digest));
+    try {
+      const svg = await renderMermaidToSvg(code, `mermaid-svg-${digest}`, theme, {
+        trust: 'trusted',
+      });
+      setRenderMap((prev) => {
+        const next = { ...prev };
+        next[digest] = { svg };
+        return next;
+      });
+      setConfirmedThreats((prev) => {
+        if (!prev.has(digest)) {
+          return prev;
+        }
+        const next = new Set(prev);
+        next.delete(digest);
+        return next;
+      });
+    } catch (e) {
+      if (isMermaidSvgThreatError(e)) {
+        setRenderMap((prev) => ({
+          ...prev,
+          [digest]: { svg: e.svg, threatBlocked: { reason: e.reason } },
+        }));
+        setConfirmedThreats((prev) => {
+          const next = new Set(prev);
+          next.delete(digest);
+          return next;
+        });
+      } else {
+        setRenderMap((prev) => {
+          const next = { ...prev };
+          next[digest] = {
+            svg: '',
+            error: (e as Error).message || String(e),
+          };
+          return next;
+        });
+      }
+    } finally {
+      setRetrying((prev) => {
+        const next = new Set(prev);
+        next.delete(digest);
+        return next;
+      });
+    }
+  }, [theme]);
+
+  const confirmThreatRender = useCallback((digest: string) => {
+    setConfirmedThreats((prev) => new Set(prev).add(digest));
+  }, []);
 
   useEffect(() => {
     if (blocks.length === 0) {
@@ -337,7 +424,7 @@ export default function MermaidPanel({ messages, theme, onDetected }: Props) {
     setBusy(true);
 
     const renderAll = async () => {
-      const next: Record<string, { svg: string; error?: string }> = {};
+      const next: Record<string, MermaidRenderEntry> = {};
       for (const block of blocks) {
         if (cancelled) return;
         const existing = renderMap[block.digest];
@@ -350,16 +437,24 @@ export default function MermaidPanel({ messages, theme, onDetected }: Props) {
             block.code,
             `mermaid-svg-${block.digest}`,
             theme,
+            { trust: 'trusted' },
           );
           if (!cancelled) {
             next[block.digest] = { svg };
           }
         } catch (e) {
           if (!cancelled) {
-            next[block.digest] = {
-              svg: '',
-              error: (e as Error).message || String(e),
-            };
+            if (isMermaidSvgThreatError(e)) {
+              next[block.digest] = {
+                svg: e.svg,
+                threatBlocked: { reason: e.reason },
+              };
+            } else {
+              next[block.digest] = {
+                svg: '',
+                error: (e as Error).message || String(e),
+              };
+            }
           }
         }
       }
@@ -426,7 +521,7 @@ export default function MermaidPanel({ messages, theme, onDetected }: Props) {
         <svg className="w-4 h-4 animate-spin text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <circle cx="12" cy="12" r="10" strokeDasharray="32" />
         </svg>
-        渲染图表中…
+        {t('mermaid.loadingDiagrams')}
       </div>
     );
   }
@@ -436,7 +531,7 @@ export default function MermaidPanel({ messages, theme, onDetected }: Props) {
   if (blocks.length === 0) {
     return (
       <div className="p-4 text-sm text-t-text-muted">
-        暂未检测到 Mermaid 图表 — 模型尚未输出 mermaid 代码块
+        {t('mermaid.noDiagrams')}
       </div>
     );
   }
@@ -464,7 +559,7 @@ export default function MermaidPanel({ messages, theme, onDetected }: Props) {
         className="px-1.5 py-0.5 rounded text-[10px] text-t-text-muted hover:text-t-text hover:bg-hover transition-colors"
         onClick={() => zoomOut(digest, zoom)}
         disabled={zoom <= ZOOM_MIN}
-        title="缩小"
+        title={t('mermaid.zoomOut')}
       >
         −
       </button>
@@ -473,7 +568,7 @@ export default function MermaidPanel({ messages, theme, onDetected }: Props) {
         className="px-1.5 py-0.5 rounded text-[10px] text-t-text-muted hover:text-t-text hover:bg-hover transition-colors"
         onClick={() => zoomIn(digest, zoom)}
         disabled={zoom >= ZOOM_MAX}
-        title="放大"
+        title={t('mermaid.zoomIn')}
       >
         +
       </button>
@@ -481,7 +576,7 @@ export default function MermaidPanel({ messages, theme, onDetected }: Props) {
         type="button"
         className="px-1.5 py-0.5 rounded text-[10px] text-t-text-muted hover:text-t-text hover:bg-hover transition-colors"
         onClick={() => resetZoom(digest)}
-        title="重置视图"
+        title={t('mermaid.resetView')}
       >
         ↺
       </button>
@@ -489,12 +584,12 @@ export default function MermaidPanel({ messages, theme, onDetected }: Props) {
         type="button"
         className="px-1.5 py-0.5 rounded text-[10px] text-t-text-muted hover:text-t-text hover:bg-hover transition-colors"
         onClick={fitToWindow}
-        title="适应窗口"
+        title={t('mermaid.fitToWindow')}
       >
         ⊡
       </button>
       <span className="hidden sm:inline text-[10px] text-t-text-muted ml-0.5">
-        滚轮缩放 · 拖拽平移
+        {t('mermaid.wheelZoomHint')}
       </span>
       <div className="flex-1 min-w-1" />
       {!isFullscreen && (
@@ -502,7 +597,7 @@ export default function MermaidPanel({ messages, theme, onDetected }: Props) {
           type="button"
           className="px-2 py-0.5 rounded text-[10px] text-t-text-muted hover:text-accent hover:bg-hover transition-colors flex items-center gap-1"
           onClick={() => setFullscreenBlock(digest)}
-          title="全屏查看"
+          title={t('mermaid.fullscreen')}
         >
           <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <polyline points="15,3 21,3 21,9" />
@@ -510,43 +605,85 @@ export default function MermaidPanel({ messages, theme, onDetected }: Props) {
             <line x1="21" y1="3" x2="14" y2="10" />
             <line x1="3" y1="21" x2="10" y2="14" />
           </svg>
-          全屏
+          {t('mermaid.fullscreen')}
         </button>
       )}
       <button
         type="button"
         className="px-2 py-0.5 rounded text-[10px] text-t-text-muted hover:text-accent hover:bg-hover transition-colors flex items-center gap-1"
         onClick={() => handleExport(digest, svgText, idx)}
-        title="导出为 PNG"
+        title={t('mermaid.exportPng')}
       >
         <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
           <polyline points="7,10 12,15 17,10" />
           <line x1="12" y1="15" x2="12" y2="3" />
         </svg>
-        导出
+        {t('mermaid.exportPng')}
       </button>
     </div>
   );
 
-  const renderDiagramError = (entry: { svg: string; error?: string }, block: MermaidBlock) => (
-    <div className="rounded-lg border border-red-500/30 bg-red-500/10">
-      <div className="px-3 py-2 text-xs text-red-300/90 font-medium">
-        Mermaid 语法错误
-      </div>
-      <pre className="px-3 py-2 text-[11px] text-t-text-muted whitespace-pre-wrap max-h-24 overflow-y-auto border-t border-red-500/20">
-        {entry.error}
-      </pre>
-      <details className="px-3 py-2 border-t border-red-500/20">
-        <summary className="text-[11px] text-t-text-muted cursor-pointer hover:text-t-text">
-          查看原始代码
-        </summary>
-        <pre className="mt-2 text-[11px] text-t-text-muted whitespace-pre-wrap overflow-x-auto max-h-32">
-          {block.code}
+  const renderDiagramError = (entry: MermaidRenderEntry, block: MermaidBlock) => {
+    const isRetrying = retrying.has(block.digest);
+    return (
+      <div className="rounded-lg border border-red-500/30 bg-red-500/10">
+        <div className="px-3 py-2 text-xs text-red-300/90 font-medium flex items-center justify-between">
+          <span>{t('mermaid.syntaxError')}</span>
+          <button
+            type="button"
+            className="px-2 py-0.5 rounded text-[10px] text-red-300/80 hover:text-red-200 hover:bg-red-500/20 transition-colors disabled:opacity-50"
+            disabled={isRetrying}
+            onClick={() => retryBlock(block.digest, block.code)}
+          >
+            {isRetrying ? t('mermaid.retrying') : t('mermaid.retry')}
+          </button>
+        </div>
+        <pre className="px-3 py-2 text-[11px] text-t-text-muted whitespace-pre-wrap max-h-24 overflow-y-auto border-t border-red-500/20">
+          {entry.error}
         </pre>
-      </details>
-    </div>
-  );
+        <details className="px-3 py-2 border-t border-red-500/20">
+          <summary className="text-[11px] text-t-text-muted cursor-pointer hover:text-t-text">
+            {t('mermaid.viewSource')}
+          </summary>
+          <pre className="mt-2 text-[11px] text-t-text-muted whitespace-pre-wrap overflow-x-auto max-h-32">
+            {block.code}
+          </pre>
+        </details>
+      </div>
+    );
+  };
+
+  const renderDiagramThreatBlocked = (entry: MermaidRenderEntry, block: MermaidBlock) => {
+    const reason = entry.threatBlocked?.reason ?? 'unknown';
+    return (
+      <div className="rounded-lg border border-amber-500/30 bg-amber-500/10">
+        <div className="px-3 py-2 text-xs text-amber-200/90 font-medium">
+          {t('mermaid.securityBlocked')}
+        </div>
+        <p className="px-3 pb-2 text-[11px] text-amber-100/80">
+          {t('mermaid.suspiciousContent', { reason })}
+        </p>
+        <div className="px-3 pb-3 flex gap-2 border-t border-amber-500/20 pt-2">
+          <button
+            type="button"
+            className="px-2 py-0.5 rounded text-[10px] font-medium text-amber-100 border border-amber-500/40 hover:bg-amber-500/20 transition-colors"
+            onClick={() => confirmThreatRender(block.digest)}
+          >
+            {t('mermaid.renderAnyway')}
+          </button>
+        </div>
+        <details className="px-3 py-2 border-t border-amber-500/20">
+          <summary className="text-[11px] text-t-text-muted cursor-pointer hover:text-t-text">
+            {t('mermaid.viewSource')}
+          </summary>
+          <pre className="mt-2 text-[11px] text-t-text-muted whitespace-pre-wrap overflow-x-auto max-h-32">
+            {block.code}
+          </pre>
+        </details>
+      </div>
+    );
+  };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -555,8 +692,10 @@ export default function MermaidPanel({ messages, theme, onDetected }: Props) {
         <div className="flex items-center overflow-x-auto border-b border-divider shrink-0 px-1">
           {blocks.map((block, idx) => {
             const isActive = idx === safeActive;
-            const hasError = renderMap[block.digest]?.error != null;
-            const isRendered = renderMap[block.digest] != null && !hasError;
+            const entry = renderMap[block.digest];
+            const hasError = entry?.error != null;
+            const hasThreat = entry?.threatBlocked != null && !confirmedThreats.has(block.digest);
+            const isRendered = entry != null && !hasError && !hasThreat && entry.svg.length > 0;
             return (
               <button
                 key={block.digest}
@@ -569,10 +708,10 @@ export default function MermaidPanel({ messages, theme, onDetected }: Props) {
                   }
                 `}
                 onClick={() => setActiveTab(idx)}
-                title={hasError ? '渲染错误' : undefined}
+                title={hasError ? t('mermaid.syntaxError') : hasThreat ? t('mermaid.securityBlocked') : undefined}
               >
                 <span className="flex items-center gap-1.5">
-                  {!isRendered && !hasError && (
+                  {!isRendered && !hasError && !hasThreat && (
                     <svg className="w-3 h-3 animate-spin text-t-text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <circle cx="12" cy="12" r="10" strokeDasharray="32" />
                     </svg>
@@ -584,12 +723,19 @@ export default function MermaidPanel({ messages, theme, onDetected }: Props) {
                       <line x1="9" y1="9" x2="15" y2="15" />
                     </svg>
                   )}
+                  {hasThreat && (
+                    <svg className="w-3 h-3 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M12 9v4" />
+                      <path d="M12 17h.01" />
+                      <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                    </svg>
+                  )}
                   {isRendered && (
                     <svg className="w-3 h-3 text-green-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <polyline points="20,6 9,17 4,12" />
                     </svg>
                   )}
-                  图表 {idx + 1}
+                  {t('mermaid.diagramN', { n: String(idx + 1) })}
                 </span>
               </button>
             );
@@ -603,7 +749,11 @@ export default function MermaidPanel({ messages, theme, onDetected }: Props) {
       {/* Active tab content */}
       {activeBlock && activeEntry && (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          {activeEntry.error ? (
+          {activeEntry.threatBlocked && !confirmedThreats.has(activeBlock.digest) ? (
+            <div className="p-4 overflow-y-auto">
+              {renderDiagramThreatBlocked(activeEntry, activeBlock)}
+            </div>
+          ) : activeEntry.error ? (
             <div className="p-4 overflow-y-auto">
               {renderDiagramError(activeEntry, activeBlock)}
             </div>
@@ -626,13 +776,14 @@ export default function MermaidPanel({ messages, theme, onDetected }: Props) {
       {activeBlock && !activeEntry && (
         <div className="p-4">
           <div className="rounded-lg border border-divider p-3 text-xs text-t-text-muted">
-            渲染中…
+            {t('mermaid.rendering')}
           </div>
         </div>
       )}
 
       {/* Fullscreen modal */}
-      {fullscreenBlock && renderMap[fullscreenBlock] && !renderMap[fullscreenBlock]?.error && (() => {
+      {fullscreenBlock && renderMap[fullscreenBlock] && !renderMap[fullscreenBlock]?.error
+        && !(renderMap[fullscreenBlock]?.threatBlocked && !confirmedThreats.has(fullscreenBlock)) && (() => {
         const fsEntry = renderMap[fullscreenBlock];
         const fsBlockIdx = blocks.findIndex(b => b.digest === fullscreenBlock);
         const fsZoom = zoomMap[fullscreenBlock] ?? ZOOM_DEFAULT;
@@ -644,20 +795,20 @@ export default function MermaidPanel({ messages, theme, onDetected }: Props) {
             {/* Fullscreen toolbar */}
             <div className="flex items-center shrink-0" style={{ backgroundColor: theme === 'dark' ? '#1e1e1e' : '#f5f5f5' }}>
               <span className="ml-3 text-xs text-t-text-muted tabular-nums">
-                图表 {fsBlockIdx + 1} / {blocks.length}
+                {t('mermaid.diagramOf', { n: String(fsBlockIdx + 1), total: String(blocks.length) })}
               </span>
               {renderToolbar(fullscreenBlock, fsEntry.svg, fsBlockIdx, fsZoom, true)}
               <button
                 type="button"
                 className="px-3 py-2 text-xs text-t-text-muted hover:text-t-text hover:bg-hover transition-colors flex items-center gap-1 border-l border-divider"
                 onClick={() => setFullscreenBlock(null)}
-                title="退出全屏 (Esc)"
+                title="Esc"
               >
                 <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <line x1="18" y1="6" x2="6" y2="18" />
                   <line x1="6" y1="6" x2="18" y2="18" />
                 </svg>
-                关闭
+                {t('mermaid.close')}
               </button>
             </div>
             {/* Fullscreen diagram */}
@@ -681,7 +832,7 @@ export default function MermaidPanel({ messages, theme, onDetected }: Props) {
                         className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center text-t-text-muted hover:text-t-text hover:bg-hover/30 transition-colors"
                         style={{ backgroundColor: theme === 'dark' ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.5)' }}
                         onClick={() => setFullscreenBlock(blocks[prevIdx].digest)}
-                        title={`图表 ${prevIdx + 1}`}
+                        title={t('mermaid.diagramN', { n: String(prevIdx + 1) })}
                       >
                         <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                           <polyline points="15,18 9,12 15,6" />
@@ -700,7 +851,7 @@ export default function MermaidPanel({ messages, theme, onDetected }: Props) {
                         className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center text-t-text-muted hover:text-t-text hover:bg-hover/30 transition-colors"
                         style={{ backgroundColor: theme === 'dark' ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.5)' }}
                         onClick={() => setFullscreenBlock(blocks[nextIdx].digest)}
-                        title={`图表 ${nextIdx + 1}`}
+                        title={t('mermaid.diagramN', { n: String(nextIdx + 1) })}
                       >
                         <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                           <polyline points="9,18 15,12 9,6" />
