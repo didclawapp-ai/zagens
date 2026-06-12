@@ -16,6 +16,7 @@ default = ["json", "toml"]
 json = ["schemaui/json"]
 toml = ["schemaui/toml"]
 web = ["dep:schemaui", "schemaui/web", "json", "toml"]
+tui = ["dep:ratatui", "dep:crossterm"]
 
 [lib]
 name = "zagens_runtime"
@@ -28,6 +29,11 @@ path = "src/main.rs"
 [[bin]]
 name = "zagens"
 path = "src/bin/zagens.rs"
+
+[[bin]]
+name = "zagens-tui"
+path = "src/bin/zagens-tui.rs"
+required-features = ["tui"]
 
 [[bin]]
 name = "export-runtime-openapi"
@@ -97,6 +103,8 @@ encoding_rs = "0.8"
 zip = "2.2"
 rust_xlsxwriter = "0.81"
 calamine = { version = "0.35", features = ["dates"] }
+ratatui = { workspace = true, optional = true }
+crossterm = { workspace = true, optional = true }
 
 [dev-dependencies]
 anyhow.workspace = true

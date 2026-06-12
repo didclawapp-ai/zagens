@@ -65,6 +65,8 @@ mod test_support;
 mod tools;
 mod topic_memory;
 mod transcript_isomorphism;
+#[cfg(feature = "tui")]
+pub mod tui;
 mod utils;
 mod working_set;
 mod workspace_trust;

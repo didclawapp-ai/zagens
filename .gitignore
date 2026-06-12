@@ -63,6 +63,9 @@ docs/*.pdf
 # Note: Cargo.lock is intentionally NOT ignored for reproducible builds
 
 # Local dev scripts and temp files
+.tmp-*
+_tmp/
+crates/desktop/web-ui/scripts/
 *.sh
 !scripts/**
 !docs/harness/**/scripts/**

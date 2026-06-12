@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **TUI (`zagens-tui`):** Optional `tui` feature and `zagens-tui` binary — full-screen three-column shell with in-process `RuntimeThreadManager` (`TuiSessionHost`), broadcast runtime event mapping (no `engine.rx_event` contention), Transcript (streaming, tools, thinking, harness lines, Markdown pipe-table grids), Composer (taller input, footer chips for model/mode/task/approve, blinking caret), approval modal, left-rail sessions, right-rail inspector tabs (files/diff/checklist/agents/MCP), harness checklist poll, high-contrast `theme.rs`, and 39+ `tui::` unit tests.
+
 ### Changed
 
 - **Runtime (Windows exec_shell):** Sandboxed shell children inherit the parent process environment by default (Codex-aligned `inherit: all`, with secret-name filtering), so MSVC/SDK vars (`LIB`, `INCLUDE`, …) reach `cargo build` when the Zagens parent has them. `workspace-write` now treats `%TEMP%` / `%TMP%` as writable roots on Windows. `diagnostics` reports `exec_shell_env_inherit` and whether the parent exposes toolchain env.

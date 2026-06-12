@@ -6,7 +6,7 @@ use anyhow::{Result, anyhow};
 
 use crate::mcp::McpConfig;
 
-pub(crate) fn load_mcp_config(path: &Path) -> Result<McpConfig> {
+pub fn load_mcp_config(path: &Path) -> Result<McpConfig> {
     if !path.exists() {
         return Ok(McpConfig::default());
     }

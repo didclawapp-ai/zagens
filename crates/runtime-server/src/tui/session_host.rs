@@ -1,0 +1,474 @@
+//! In-process thread/engine lifecycle for the TUI (RuntimeThreadManager).
+
+use std::path::Path;
+use std::sync::Arc;
+use std::time::Duration;
+
+use anyhow::{Context, Result, anyhow, bail};
+use chrono::Utc;
+use tokio::sync::broadcast;
+
+use crate::cli::args::Cli;
+use crate::cli::context::CliContext;
+use crate::core::engine::EngineHandle;
+use crate::core::events::Event;
+use crate::runtime_threads::event_coalesce::coalesce_delta_events;
+use crate::runtime_threads::persist::reconstruct_messages_for_store;
+use crate::runtime_threads::{
+    CreateThreadRequest, RuntimeEventRecord, RuntimeThreadManager, RuntimeThreadManagerConfig,
+    SharedRuntimeThreadManager, StartTurnRequest, ThreadListFilter, ThreadRecord,
+    UpdateThreadRequest,
+};
+use crate::task_manager::TaskManagerConfig;
+use crate::task_type::TaskType;
+use zagens_core::approval::ApprovalMode;
+
+use super::harness::{ChecklistSnapshot, parse_checklist_json};
+use super::transcript::{TranscriptItem, seed_from_messages};
+
+const HISTORY_REPLAY_LIMIT: usize = 20;
+
+pub struct TuiSessionHost {
+    pub manager: SharedRuntimeThreadManager,
+    pub thread: ThreadRecord,
+    pub yolo: bool,
+    /// Session-level auto-approve for tool calls (Composer footer toggle).
+    pub auto_approve: bool,
+    workspace_filter: std::path::PathBuf,
+    last_event_seq: u64,
+    event_rx: broadcast::Receiver<RuntimeEventRecord>,
+}
+
+impl TuiSessionHost {
+    pub async fn open(ctx: &CliContext, cli: &Cli) -> Result<Self> {
+        inject_desktop_api_key(&ctx.config);
+        let task_cfg = TaskManagerConfig::from_runtime(
+            &ctx.config,
+            ctx.workspace.clone(),
+            ctx.config.default_text_model.clone(),
+            None,
+        );
+        let manager_cfg = RuntimeThreadManagerConfig::from_task_data_dir(task_cfg.data_dir.clone());
+        let manager = Arc::new(RuntimeThreadManager::open(
+            ctx.config.clone(),
+            ctx.workspace.clone(),
+            manager_cfg,
+        )?);
+
+        let thread = resolve_thread(&manager, ctx, cli).await?;
+        let thread = ensure_tui_code_task_type(&manager, thread).await?;
+        manager.resume_thread(&thread.id).await?;
+
+        let event_rx = manager.subscribe_events();
+        let auto_approve = cli.yolo || thread.auto_approve;
+        let mut host = Self {
+            manager,
+            thread,
+            yolo: cli.yolo,
+            auto_approve,
+            workspace_filter: ctx.workspace.clone(),
+            last_event_seq: 0,
+            event_rx,
+        };
+        host.sync_event_cursor();
+        Ok(host)
+    }
+
+    pub fn thread_id(&self) -> &str {
+        &self.thread.id
+    }
+
+    pub fn workspace_display(&self) -> String {
+        crate::cli::context::display_path(&self.thread.workspace)
+    }
+
+    pub fn config(&self) -> &crate::config::Config {
+        &self.manager.config
+    }
+
+    pub async fn engine_handle(&self) -> Option<EngineHandle> {
+        let active = self.manager.active.lock().await;
+        active
+            .engines
+            .get(&self.thread.id)
+            .map(|state| state.engine.clone())
+    }
+
+    pub async fn send_prompt(&self, prompt: &str) -> Result<()> {
+        let prompt = prompt.trim();
+        if prompt.is_empty() {
+            bail!("prompt is empty");
+        }
+        let mode = if self.yolo { "yolo" } else { "agent" };
+        let auto = self.auto_approve || self.yolo;
+        let req = StartTurnRequest {
+            prompt: prompt.to_string(),
+            mode: Some(mode.to_string()),
+            auto_approve: Some(auto),
+            allow_shell: Some(self.yolo || auto || self.manager.config.allow_shell()),
+            trust_mode: Some(self.yolo || auto),
+            ..Default::default()
+        };
+        self.manager
+            .start_turn(&self.thread.id, req)
+            .await
+            .context("start_turn failed")?;
+        Ok(())
+    }
+
+    pub async fn interrupt_turn(&self) -> Result<()> {
+        if let Some(handle) = self.engine_handle().await {
+            handle.cancel();
+        }
+        let turn_id = {
+            let active = self.manager.active.lock().await;
+            active
+                .engines
+                .get(&self.thread.id)
+                .and_then(|state| state.active_turn.as_ref().map(|t| t.turn_id.clone()))
+        };
+        if let Some(turn_id) = turn_id {
+            let _ = self.manager.interrupt_turn(&self.thread.id, &turn_id).await;
+        }
+        Ok(())
+    }
+
+    pub async fn approve_tool(&self, id: &str, remember_session: bool) -> Result<()> {
+        let handle = self
+            .engine_handle()
+            .await
+            .context("no engine for approval")?;
+        if remember_session {
+            handle
+                .approve_tool_call_with_options(id, None, true)
+                .await?;
+        } else {
+            handle.approve_tool_call(id).await?;
+        }
+        Ok(())
+    }
+
+    pub fn approval_footer_meta(&self) -> (String, bool) {
+        let policy = self
+            .config()
+            .approval_policy
+            .as_deref()
+            .unwrap_or("on-request");
+        if self.yolo {
+            return ("Auto".to_string(), false);
+        }
+        if matches!(
+            ApprovalMode::from_config_value(policy),
+            Some(ApprovalMode::Never)
+        ) {
+            return ("Never".to_string(), false);
+        }
+        let label = if self.auto_approve {
+            "Auto".to_string()
+        } else {
+            "Ask".to_string()
+        };
+        (label, true)
+    }
+
+    pub async fn toggle_auto_approve(&mut self) -> Result<bool> {
+        let (_, enabled) = self.approval_footer_meta();
+        if !enabled {
+            return Ok(self.auto_approve);
+        }
+        self.auto_approve = !self.auto_approve;
+        self.thread = self
+            .manager
+            .update_thread(
+                &self.thread.id,
+                UpdateThreadRequest {
+                    auto_approve: Some(self.auto_approve),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        Ok(self.auto_approve)
+    }
+
+    pub async fn deny_tool(&self, id: &str) -> Result<()> {
+        let handle = self
+            .engine_handle()
+            .await
+            .context("no engine for approval")?;
+        handle.deny_tool_call(id).await?;
+        Ok(())
+    }
+
+    pub fn load_history(&self) -> Result<Vec<TranscriptItem>> {
+        let turns = self
+            .manager
+            .store
+            .list_turns_for_thread(&self.thread.id)
+            .context("list turns")?;
+        let messages = reconstruct_messages_for_store(&self.manager.store, &turns)
+            .context("reconstruct messages")?;
+        Ok(seed_from_messages(&messages, HISTORY_REPLAY_LIMIT))
+    }
+
+    pub async fn list_workspace_threads(&self) -> Result<Vec<ThreadRecord>> {
+        let threads = self
+            .manager
+            .list_threads(ThreadListFilter::ActiveOnly, None)
+            .await?;
+        let workspace_canon = std::fs::canonicalize(&self.workspace_filter)
+            .unwrap_or_else(|_| self.workspace_filter.clone());
+        let mut out: Vec<_> = threads
+            .into_iter()
+            .filter(|t| {
+                let tw =
+                    std::fs::canonicalize(&t.workspace).unwrap_or_else(|_| t.workspace.clone());
+                tw == workspace_canon
+            })
+            .collect();
+        out.sort_by_key(|t| std::cmp::Reverse(t.updated_at));
+        Ok(out)
+    }
+
+    pub async fn switch_thread(&mut self, thread_id: &str) -> Result<()> {
+        let thread = self.manager.get_thread(thread_id).await?;
+        let thread = ensure_tui_code_task_type(&self.manager, thread).await?;
+        self.manager.resume_thread(&thread.id).await?;
+        self.thread = thread;
+        self.auto_approve = self.yolo || self.thread.auto_approve;
+        self.resubscribe_events();
+        Ok(())
+    }
+
+    pub async fn new_session(&mut self, ctx: &CliContext) -> Result<()> {
+        let mode = if self.yolo { "yolo" } else { "agent" };
+        let thread = self
+            .manager
+            .create_thread(tui_create_thread_request(
+                ctx.workspace.clone(),
+                mode,
+                self.yolo,
+                self.yolo || ctx.config.allow_shell(),
+            ))
+            .await?;
+        self.manager.resume_thread(&thread.id).await?;
+        self.thread = thread;
+        self.auto_approve = self.yolo || self.thread.auto_approve;
+        self.resubscribe_events();
+        Ok(())
+    }
+
+    /// Receive runtime thread events (broadcast + store catch-up). Does not read `engine.rx_event`.
+    pub async fn recv_runtime_events(&mut self) -> Vec<Event> {
+        let mut out = Vec::new();
+        tokio::select! {
+            result = self.event_rx.recv() => {
+                match result {
+                    Ok(record) => {
+                        if record.thread_id == self.thread.id && record.seq > self.last_event_seq {
+                            self.last_event_seq = record.seq;
+                            if let Some(ev) = super::runtime_events::map_record(&record) {
+                                out.push(ev);
+                            }
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(_)) => {
+                        out.extend(self.catch_up_events().await);
+                    }
+                    Err(broadcast::error::RecvError::Closed) => {}
+                }
+            }
+            _ = tokio::time::sleep(Duration::from_millis(50)) => {}
+        }
+        out
+    }
+
+    fn sync_event_cursor(&mut self) {
+        self.last_event_seq = self
+            .manager
+            .events_since(&self.thread.id, None)
+            .ok()
+            .and_then(|events| events.last().map(|e| e.seq))
+            .unwrap_or(0);
+    }
+
+    fn resubscribe_events(&mut self) {
+        self.event_rx = self.manager.subscribe_events();
+        self.sync_event_cursor();
+    }
+
+    async fn catch_up_events(&mut self) -> Vec<Event> {
+        let events = self
+            .manager
+            .events_since_async(&self.thread.id, Some(self.last_event_seq))
+            .await
+            .unwrap_or_default();
+        let mut out = Vec::new();
+        for record in coalesce_delta_events(events) {
+            if record.thread_id != self.thread.id || record.seq <= self.last_event_seq {
+                continue;
+            }
+            self.last_event_seq = record.seq;
+            if let Some(ev) = super::runtime_events::map_record(&record) {
+                out.push(ev);
+            }
+        }
+        out
+    }
+
+    pub fn fetch_checklist(&self) -> Option<ChecklistSnapshot> {
+        self.manager
+            .get_thread_checklist(&self.thread.id)
+            .and_then(|json| parse_checklist_json(&json))
+    }
+
+    pub async fn fetch_context_pct(&self) -> Option<u8> {
+        let snapshot = self
+            .manager
+            .get_thread_context(&self.thread.id)
+            .await
+            .ok()?;
+        let pct = snapshot
+            .last_api_usage_percent
+            .unwrap_or(snapshot.usage_percent);
+        Some(pct.round().clamp(0.0, 100.0) as u8)
+    }
+}
+
+/// Align TUI with desktop: read keyring secret into config for this process.
+fn inject_desktop_api_key(config: &crate::config::Config) {
+    if config
+        .api_key
+        .as_ref()
+        .is_some_and(|k| !k.trim().is_empty())
+    {
+        return;
+    }
+    let secrets = zagens_secrets::Secrets::auto_detect();
+    if let Some(key) = secrets.resolve("deepseek") {
+        // SAFETY: called once during TUI startup before other threads read the env.
+        unsafe { std::env::set_var("DEEPSEEK_API_KEY", key) };
+    }
+}
+
+async fn resolve_thread(
+    manager: &RuntimeThreadManager,
+    ctx: &CliContext,
+    cli: &Cli,
+) -> Result<ThreadRecord> {
+    if let Some(ref id) = cli.resume {
+        return resolve_by_prefix(manager, id).await;
+    }
+    if cli.continue_session {
+        match resolve_latest(manager, &ctx.workspace).await {
+            Ok(thread) => return Ok(thread),
+            Err(err) => {
+                eprintln!("zagens-tui: {err:#}; starting a new session");
+            }
+        }
+    }
+    create_new_thread(manager, ctx, cli).await
+}
+
+async fn create_new_thread(
+    manager: &RuntimeThreadManager,
+    ctx: &CliContext,
+    cli: &Cli,
+) -> Result<ThreadRecord> {
+    let mode = if cli.yolo { "yolo" } else { "agent" };
+    manager
+        .create_thread(tui_create_thread_request(
+            ctx.workspace.clone(),
+            mode,
+            cli.yolo,
+            cli.yolo || ctx.config.allow_shell(),
+        ))
+        .await
+}
+
+/// TUI targets code/agent workflows; office task type is not used.
+fn tui_create_thread_request(
+    workspace: std::path::PathBuf,
+    mode: &str,
+    yolo: bool,
+    allow_shell: bool,
+) -> CreateThreadRequest {
+    CreateThreadRequest {
+        workspace: Some(workspace),
+        mode: Some(mode.to_string()),
+        auto_approve: Some(yolo),
+        allow_shell: Some(allow_shell),
+        trust_mode: Some(yolo),
+        task_type: Some(TaskType::Code.as_str().to_string()),
+        ..Default::default()
+    }
+}
+
+/// Resume/continue may load legacy `office` threads — normalize to code for TUI.
+async fn ensure_tui_code_task_type(
+    manager: &RuntimeThreadManager,
+    thread: ThreadRecord,
+) -> Result<ThreadRecord> {
+    if thread.task_type == TaskType::Code.as_str() {
+        return Ok(thread);
+    }
+    let mut updated = thread;
+    updated.task_type = TaskType::Code.as_str().to_string();
+    updated.updated_at = Utc::now();
+    {
+        let store = manager.store.clone();
+        let copy = updated.clone();
+        tokio::task::spawn_blocking(move || store.save_thread(&copy))
+            .await
+            .map_err(|e| anyhow!("save thread panicked: {e}"))??;
+    }
+    {
+        let mut active = manager.active.lock().await;
+        active.engines.remove(&updated.id);
+    }
+    Ok(updated)
+}
+
+async fn resolve_by_prefix(manager: &RuntimeThreadManager, needle: &str) -> Result<ThreadRecord> {
+    let needle = needle.trim();
+    if needle.is_empty() {
+        bail!("--resume requires a thread id or prefix");
+    }
+    if let Ok(thread) = manager.get_thread(needle).await {
+        return Ok(thread);
+    }
+    let threads = manager
+        .list_threads(ThreadListFilter::ActiveOnly, None)
+        .await?;
+    let matches: Vec<_> = threads
+        .into_iter()
+        .filter(|t| t.id.starts_with(needle))
+        .collect();
+    match matches.len() {
+        0 => bail!("no thread matches prefix `{needle}`"),
+        1 => Ok(matches.into_iter().next().expect("one match")),
+        n => bail!("thread prefix `{needle}` is ambiguous ({n} matches)"),
+    }
+}
+
+async fn resolve_latest(manager: &RuntimeThreadManager, workspace: &Path) -> Result<ThreadRecord> {
+    let threads = manager
+        .list_threads(ThreadListFilter::ActiveOnly, None)
+        .await?;
+    let workspace_canon =
+        std::fs::canonicalize(workspace).unwrap_or_else(|_| workspace.to_path_buf());
+    let mut candidates: Vec<_> = threads
+        .into_iter()
+        .filter(|t| {
+            let tw = std::fs::canonicalize(&t.workspace).unwrap_or_else(|_| t.workspace.clone());
+            tw == workspace_canon
+        })
+        .collect();
+    if candidates.is_empty() {
+        bail!(
+            "no saved session in {}",
+            crate::cli::context::display_path(workspace)
+        );
+    }
+    candidates.sort_by_key(|t| std::cmp::Reverse(t.updated_at));
+    Ok(candidates.remove(0))
+}
