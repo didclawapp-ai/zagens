@@ -6,7 +6,7 @@ use super::super::harness::{ChecklistSnapshot, ChecklistStatus};
 use super::super::theme;
 
 pub fn render_panel(snapshot: Option<&ChecklistSnapshot>, height: usize) -> Vec<String> {
-    render_styled_panel(snapshot, height)
+    render_styled_panel(snapshot, height, 0)
         .into_iter()
         .map(|line| {
             line.spans
@@ -20,9 +20,10 @@ pub fn render_panel(snapshot: Option<&ChecklistSnapshot>, height: usize) -> Vec<
 pub fn render_styled_panel(
     snapshot: Option<&ChecklistSnapshot>,
     height: usize,
+    scroll: usize,
 ) -> Vec<Line<'static>> {
     match snapshot {
-        Some(snap) => styled_checklist(snap, height),
+        Some(snap) => styled_checklist(snap, height, scroll),
         None => vec![
             Line::from(Span::styled("No checklist yet.", theme::sidebar_hint())),
             Line::from(Span::styled(
@@ -33,7 +34,14 @@ pub fn render_styled_panel(
     }
 }
 
-fn styled_checklist(snapshot: &ChecklistSnapshot, height: usize) -> Vec<Line<'static>> {
+pub fn line_count(snapshot: Option<&ChecklistSnapshot>) -> usize {
+    match snapshot {
+        Some(snap) => 2 + snap.items.len(),
+        None => 2,
+    }
+}
+
+fn styled_checklist(snapshot: &ChecklistSnapshot, height: usize, scroll: usize) -> Vec<Line<'static>> {
     let completed = snapshot
         .items
         .iter()
@@ -60,9 +68,12 @@ fn styled_checklist(snapshot: &ChecklistSnapshot, height: usize) -> Vec<Line<'st
     )]));
 
     for item in &snapshot.items {
+        let active = snapshot.in_progress_id.is_some_and(|id| id == item.id)
+            || item.status == ChecklistStatus::InProgress;
         let (mark, style) = match item.status {
             ChecklistStatus::Completed => ("[x]", theme::checklist_done()),
-            ChecklistStatus::InProgress => ("[>]", theme::checklist_in_progress()),
+            ChecklistStatus::InProgress => ("[>]", theme::checklist_in_progress_active()),
+            ChecklistStatus::Pending if active => ("[>]", theme::checklist_in_progress_active()),
             ChecklistStatus::Pending => ("[ ]", theme::checklist_pending()),
         };
         let content = truncate_line(&item.content, 48);
@@ -72,11 +83,10 @@ fn styled_checklist(snapshot: &ChecklistSnapshot, height: usize) -> Vec<Line<'st
         ]));
     }
 
-    if lines.len() > height.max(4) {
-        let skip = lines.len() - height.max(4);
-        lines.drain(1..skip + 1);
-    }
-    lines
+    let visible = height.max(4);
+    let max_scroll = lines.len().saturating_sub(visible);
+    let start = scroll.min(max_scroll);
+    lines.into_iter().skip(start).take(visible).collect()
 }
 
 fn truncate_line(text: &str, max: usize) -> String {

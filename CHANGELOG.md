@@ -23,14 +23,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **TUI (`zagens-tui`):** Composer `Ctrl+V` pastes from the system clipboard (also handles terminal `Paste` events); help and input hint updated.
+- **TUI (`zagens-tui`):** Composer `/lht` switches LHT composer mode (`auto` / `strict` / `off`, empty cycles) with picker UI; persists to `settings.toml` and shows current mode in the footer chip (applies on next turn).
+- **TUI (`zagens-tui`):** Launch restores the last focused session in the current workspace (model, transcript, LHT state) via `tui-layout.toml` + thread store; use `--fresh` for a new session.
+- **TUI (`zagens-tui`):** Right-rail inspector depth — Files file preview, Diff per-file patch, MCP tool expand, Agents cursor nav (`Enter`/`Esc`/`j`/`k`).
 - **TUI (`zagens-tui`):** Composer `/model` (alias `/m`) switches the session text model with picker UI; persists via thread `model` field.
 - **TUI (`zagens-tui`):** Activity marquee (1 row between Transcript and Composer) while the model is running — shows THK / tools / AI phase with animated rail.
 - **TUI (`zagens-tui`):** Footer approval policy matches desktop Settings — four modes (`OnRequest`, `Untrusted`, `Never`, `Auto`); `Ctrl+A` cycles and persists to `config.toml`.
 - **TUI (`zagens-tui`):** Optional `tui` feature and `zagens-tui` binary — full-screen three-column shell with in-process `RuntimeThreadManager` (`TuiSessionHost`), broadcast runtime event mapping (no `engine.rx_event` contention), Transcript (streaming, tools, thinking, harness lines, Markdown pipe-table grids), Composer (taller input, footer chips for model/mode/task/approve, blinking caret), approval modal, left-rail sessions, right-rail inspector tabs (files/diff/checklist/agents/MCP), harness checklist poll, high-contrast `theme.rs`, and 39+ `tui::` unit tests.
+- **TUI (`zagens-tui`):** Right-rail inspector — `j`/`k` scroll (Files tab: move + expand target), `1`–`4` tab switch while right column focused, `Enter` toggles directory expand, `s` toggles staged vs worktree Diff; Files/Diff refresh on harness poll and turn end.
+- **TUI (`zagens-tui`):** Right-rail **LHT lower pane** — splits inspector (Files/Diff/Agents/MCP) from collapsible LHT panel (objective · plan phases · checklist · blocked/nudge; no completion gate); auto-expands on `panel.checklist` / `harness.task_graph`; `l` toggle · `i` focus upper inspector.
+
+### Fixed
+
+- **TUI (`zagens-tui`):** Composer, LHT, and inspector panes no longer show ghost characters from prior frames — each redraw clears the pane and pads lines to full width/height.
+- **TUI (`zagens-tui`):** Fix center column side-border block painting over Transcript/Composer (input area invisible after divider layout change).
+- **TUI (`zagens-tui`):** Tab into the right column now focuses the upper inspector pane (LHT auto-expand no longer steals subfocus); use `l` to expand LHT with lower-pane focus or `i` to return to inspector.
+- **TUI (`zagens-tui`):** Checklist panel updates immediately on `panel.checklist` / `harness.task_graph` runtime events, auto-expands LHT lower pane, and polls during streaming on the event loop.
 
 ### Changed
 
-- **TUI (`zagens-tui`):** Dracula palette now paints `#282a36` / `#1e1f29` backgrounds (not bare terminal clear), agent reply body uses `#50fa7b`, sidebar/checklist/Composer prompt split match maintainer color sheet (`TUI方案.md` §6.10).
+- **TUI (`zagens-tui`):** Pure-black shell (`#000000`) with faint pane borders; transcript section spacers removed; center column uses horizontal rules between Transcript, activity marquee, Composer input, and footer chips; readable text inset `CENTER_CONTENT_PAD` from side borders.
+- **TUI (`zagens-tui`):** Agent reply body uses `#50fa7b`; semantic Dracula tokens for roles/tools/THK; sidebar shares pure-black shell with faint borders (`TUI方案.md` §6.10 maintainer copy).
 - **TUI (`zagens-tui`):** Fix streaming transcript overlap — CJK assistant lines use hanging indent + single-span render + Dracula background fill so terminal soft-wrap does not cross rows under tool `+` column.
 - **Runtime (Windows exec_shell):** Sandboxed shell children inherit the parent process environment by default (Codex-aligned `inherit: all`, with secret-name filtering), so MSVC/SDK vars (`LIB`, `INCLUDE`, …) reach `cargo build` when the Zagens parent has them. `workspace-write` now treats `%TEMP%` / `%TMP%` as writable roots on Windows. `diagnostics` reports `exec_shell_env_inherit` and whether the parent exposes toolchain env.
 - **Web tools (research quality):** `web_search` default/max results 8/15; Tavily `search_depth: advanced`; `fetch_url` uses block-aware HTML extraction; `web.run` shows more lines per `open`, honors `[search] provider` for `search_query` (metaso/tavily/etc.), and tool/prompt text enforces search-then-`fetch_url` two-step. Bundled `multi-search-engine` skill aligned to `fetch_url`.

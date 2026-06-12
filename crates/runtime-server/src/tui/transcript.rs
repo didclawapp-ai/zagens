@@ -20,7 +20,7 @@ const TOOL_DETAIL_MAX: usize = 2048;
 /// Blank rows between conversation turns (user prompt → next user prompt).
 const TURN_GAP_LINES: usize = 2;
 /// Blank rows between sections inside one turn (user / THK / tools / AI).
-const SECTION_GAP_LINES: usize = 1;
+const SECTION_GAP_LINES: usize = 0;
 const THINKING_PREVIEW_MAX: usize = 120;
 
 /// Visual category for transcript coloring.
@@ -1163,14 +1163,30 @@ mod tests {
     }
 
     #[test]
-    fn render_applies_section_gap_inside_turn() {
+    fn render_omits_section_gap_inside_turn() {
         let mut state = TranscriptState::default();
         let mut turn = TranscriptTurn::new("hi".to_string());
         turn.content = "hello".to_string();
         turn.open = false;
         push_closed_turn(&mut state, turn);
-        let lines = state.render_styled_lines(40, 80);
-        assert!(lines.len() >= 2 + SECTION_GAP_LINES);
+        let joined = render_joined(&state, 40, 80);
+        let content_lines: Vec<&str> = joined
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .collect();
+        let user_idx = content_lines
+            .iter()
+            .position(|line| line.contains("you>"))
+            .expect("user line");
+        let ai_idx = content_lines
+            .iter()
+            .position(|line| line.contains("AI>"))
+            .expect("assistant line");
+        assert_eq!(
+            ai_idx,
+            user_idx + 1,
+            "expected no blank spacer between user and assistant sections"
+        );
     }
 
     #[test]

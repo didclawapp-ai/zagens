@@ -45,6 +45,17 @@ struct RawChecklistItem {
 
 pub fn parse_checklist_json(raw: &str) -> Option<ChecklistSnapshot> {
     let parsed: RawChecklist = serde_json::from_str(raw).ok()?;
+    snapshot_from_raw(parsed)
+}
+
+/// Parse `panel.checklist` runtime payload (`{ "checklist": { items, … } }`).
+pub fn parse_checklist_panel_payload(payload: &serde_json::Value) -> Option<ChecklistSnapshot> {
+    let checklist = payload.get("checklist")?;
+    let parsed: RawChecklist = serde_json::from_value(checklist.clone()).ok()?;
+    snapshot_from_raw(parsed)
+}
+
+fn snapshot_from_raw(parsed: RawChecklist) -> Option<ChecklistSnapshot> {
     if parsed.items.is_empty() {
         return None;
     }
@@ -81,7 +92,7 @@ pub fn parse_checklist_json(raw: &str) -> Option<ChecklistSnapshot> {
     })
 }
 
-fn parse_status(raw: &str) -> ChecklistStatus {
+pub(crate) fn parse_status(raw: &str) -> ChecklistStatus {
     match raw.trim().to_ascii_lowercase().as_str() {
         "completed" | "done" => ChecklistStatus::Completed,
         "in_progress" | "in-progress" | "active" => ChecklistStatus::InProgress,
@@ -158,6 +169,22 @@ fn truncate_line(text: &str, max: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_panel_checklist_payload() {
+        let payload = serde_json::json!({
+            "checklist": {
+                "items": [
+                    {"id": 1, "content": "a", "status": "completed"},
+                    {"id": 2, "content": "b", "status": "pending"}
+                ],
+                "completion_pct": 50
+            }
+        });
+        let snap = parse_checklist_panel_payload(&payload).expect("parse");
+        assert_eq!(snap.items.len(), 2);
+        assert_eq!(snap.completion_pct, 50);
+    }
 
     #[test]
     fn parse_checklist_and_title_bar() {

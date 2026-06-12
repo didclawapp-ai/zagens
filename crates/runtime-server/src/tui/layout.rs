@@ -12,34 +12,41 @@ const MIN_CENTER_COLS: u16 = 40;
 const LEFT_MAX: u16 = 32;
 const LEFT_MIN: u16 = 24;
 const RIGHT_MAX: u16 = 40;
-const RIGHT_MIN: u16 = 28;
+const RIGHT_MIN: u16 = 20;
+/// User-resizable upper bound (still capped by terminal width − center min).
+const RIGHT_ABS_MAX: u16 = 72;
+/// Columns added/removed per `-` / `=` press while the right rail is focused.
+pub const RIGHT_WIDTH_STEP: i16 = 2;
+const LEFT_RATIO: f32 = 0.22;
+const RIGHT_RATIO: f32 = 0.30;
 
 /// Status chips row inside the Composer block (model, mode, task type, …).
 pub const COMPOSER_FOOTER_ROWS: u16 = 1;
+
+/// Faint horizontal rules above and below the composer footer chips.
+pub const COMPOSER_FOOTER_DIVIDER_ROWS: u16 = 1;
+
+/// Blank columns inset from center column side borders before text (each side).
+pub const CENTER_CONTENT_PAD: u16 = 1;
+
+/// Minimum rows for the upper inspector pane when LHT lower pane is visible.
+pub const RIGHT_INSPECTOR_MIN_ROWS: u16 = 5;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InspectorTab {
     Files,
     Diff,
-    Checklist,
     Agents,
     Mcp,
 }
 
 impl InspectorTab {
-    pub const ALL: [Self; 5] = [
-        Self::Files,
-        Self::Diff,
-        Self::Checklist,
-        Self::Agents,
-        Self::Mcp,
-    ];
+    pub const ALL: [Self; 4] = [Self::Files, Self::Diff, Self::Agents, Self::Mcp];
 
     pub fn label(self) -> &'static str {
         match self {
             Self::Files => "Files",
             Self::Diff => "Diff",
-            Self::Checklist => "Checklist",
             Self::Agents => "Agents",
             Self::Mcp => "MCP",
         }
@@ -49,9 +56,8 @@ impl InspectorTab {
         match n {
             1 => Some(Self::Files),
             2 => Some(Self::Diff),
-            3 => Some(Self::Checklist),
-            4 => Some(Self::Agents),
-            5 => Some(Self::Mcp),
+            3 => Some(Self::Agents),
+            4 => Some(Self::Mcp),
             _ => None,
         }
     }
@@ -65,6 +71,12 @@ pub struct TuiLayoutPrefs {
     pub right_collapsed: bool,
     #[serde(default = "default_inspector")]
     pub active_inspector: String,
+    /// Last focused thread in TUI; restored on launch (unless `--fresh`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_thread_id: Option<String>,
+    /// Right rail width in terminal columns (`None` = 30% default).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub right_width: Option<u16>,
 }
 
 fn default_inspector() -> String {
@@ -77,6 +89,8 @@ impl Default for TuiLayoutPrefs {
             left_collapsed: false,
             right_collapsed: false,
             active_inspector: default_inspector(),
+            last_thread_id: None,
+            right_width: None,
         }
     }
 }
@@ -110,9 +124,9 @@ impl TuiLayoutPrefs {
     pub fn inspector_tab(&self) -> InspectorTab {
         match self.active_inspector.as_str() {
             "diff" => InspectorTab::Diff,
-            "checklist" => InspectorTab::Checklist,
             "agents" => InspectorTab::Agents,
             "mcp" => InspectorTab::Mcp,
+            "checklist" => InspectorTab::Files,
             _ => InspectorTab::Files,
         }
     }
@@ -121,12 +135,18 @@ impl TuiLayoutPrefs {
         self.active_inspector = match tab {
             InspectorTab::Files => "files",
             InspectorTab::Diff => "diff",
-            InspectorTab::Checklist => "checklist",
             InspectorTab::Agents => "agents",
             InspectorTab::Mcp => "mcp",
         }
         .to_string();
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct RightPaneRegions {
+    pub inspector: Rect,
+    pub lht: Rect,
+    pub lht_visible: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -144,6 +164,8 @@ pub struct LayoutEngine {
     pub inline_mode: bool,
     pub focus: FocusRegion,
     pub composer_lines: u16,
+    /// Updated each frame for width adjustment clamping.
+    pub last_terminal_width: u16,
 }
 
 impl LayoutEngine {
@@ -153,7 +175,51 @@ impl LayoutEngine {
             inline_mode,
             focus: FocusRegion::Chat,
             composer_lines: if inline_mode { 6 } else { 9 },
+            last_terminal_width: 120,
         }
+    }
+
+    /// Narrow/widen the right rail when focused (`-` / `=`). Persists via `prefs.right_width`.
+    pub fn adjust_right_width(&mut self, delta: i16) -> bool {
+        if !self.right_rail_available() {
+            return false;
+        }
+        let delta = if delta < 0 {
+            -RIGHT_WIDTH_STEP
+        } else {
+            RIGHT_WIDTH_STEP
+        };
+        let total = self
+            .last_terminal_width
+            .max(MIN_CENTER_COLS + RIGHT_MIN + 4);
+        let left_w = self.effective_left_width(total);
+        let current = self.effective_right_width(total, left_w);
+        let bounds = right_width_bounds(total, left_w, self.left_rail_available());
+        let next = (i32::from(current) + i32::from(delta))
+            .clamp(i32::from(RIGHT_MIN), i32::from(bounds)) as u16;
+        if next == current {
+            return false;
+        }
+        self.prefs.right_width = Some(next);
+        true
+    }
+
+    fn effective_left_width(&self, total: u16) -> u16 {
+        if !self.left_rail_available() {
+            return 0;
+        }
+        column_width(total, LEFT_RATIO, LEFT_MIN, LEFT_MAX)
+    }
+
+    fn effective_right_width(&self, total: u16, left_w: u16) -> u16 {
+        if !self.right_rail_available() {
+            return 0;
+        }
+        let bounds = right_width_bounds(total, left_w, self.left_rail_available());
+        if let Some(stored) = self.prefs.right_width {
+            return stored.clamp(RIGHT_MIN, bounds);
+        }
+        column_width(total, RIGHT_RATIO, RIGHT_MIN, RIGHT_MAX.min(bounds))
     }
 
     pub fn toggle_left(&mut self) {
@@ -239,12 +305,12 @@ impl LayoutEngine {
         let right_visible = !self.prefs.right_collapsed;
 
         let left_w = if left_visible {
-            column_width(area.width, 0.22, LEFT_MIN, LEFT_MAX)
+            self.effective_left_width(area.width)
         } else {
             0
         };
         let right_w = if right_visible {
-            column_width(area.width, 0.30, RIGHT_MIN, RIGHT_MAX)
+            self.effective_right_width(area.width, left_w)
         } else {
             0
         };
@@ -307,6 +373,29 @@ impl LayoutEngine {
         }
     }
 
+    /// Split the right rail into upper inspector + optional lower LHT pane.
+    pub fn split_right_pane(&self, right: Rect, lht_visible: bool) -> RightPaneRegions {
+        if !lht_visible || right.height < RIGHT_INSPECTOR_MIN_ROWS + 6 {
+            return RightPaneRegions {
+                inspector: right,
+                lht: Rect::default(),
+                lht_visible: false,
+            };
+        }
+        let rows = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Min(RIGHT_INSPECTOR_MIN_ROWS),
+                Constraint::Min(6),
+            ])
+            .split(right);
+        RightPaneRegions {
+            inspector: rows[0],
+            lht: rows[1],
+            lht_visible: true,
+        }
+    }
+
     pub fn center_panes(&self, center: Rect) -> (Rect, Rect) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
@@ -320,6 +409,15 @@ fn column_width(total: u16, ratio: f32, min: u16, max: u16) -> u16 {
     let w = ((total as f32) * ratio).round() as u16;
     w.clamp(min, max)
         .min(total.saturating_sub(MIN_CENTER_COLS + 4))
+}
+
+fn right_width_bounds(total: u16, left_w: u16, left_visible: bool) -> u16 {
+    let left = if left_visible { left_w } else { 0 };
+    total
+        .saturating_sub(MIN_CENTER_COLS)
+        .saturating_sub(left)
+        .saturating_sub(2)
+        .clamp(RIGHT_MIN, RIGHT_ABS_MAX)
 }
 
 #[cfg(test)]
@@ -353,5 +451,38 @@ mod tests {
         assert!(regions.left_visible);
         assert!(regions.right_visible);
         assert!(regions.center.width >= MIN_CENTER_COLS);
+    }
+
+    #[test]
+    fn split_right_pane_reserves_lht_section() {
+        let engine = LayoutEngine::new(false, TuiLayoutPrefs::default());
+        let right = Rect::new(0, 0, 32, 30);
+        let split = engine.split_right_pane(right, true);
+        assert!(split.lht_visible);
+        assert!(split.inspector.height + split.lht.height <= right.height);
+    }
+
+    #[test]
+    fn adjust_right_width_persists_and_clamps() {
+        let mut engine = LayoutEngine::new(false, TuiLayoutPrefs::default());
+        engine.last_terminal_width = 160;
+        assert!(engine.adjust_right_width(1));
+        assert_eq!(engine.prefs.right_width, Some(42));
+        let bounds = right_width_bounds(160, engine.effective_left_width(160), true);
+        engine.prefs.right_width = Some(bounds.saturating_sub(2));
+        assert!(engine.adjust_right_width(1));
+        assert_eq!(engine.prefs.right_width, Some(bounds));
+        assert!(!engine.adjust_right_width(1));
+    }
+
+    #[test]
+    fn stored_right_width_applied_in_regions() {
+        let mut prefs = TuiLayoutPrefs::default();
+        prefs.right_width = Some(50);
+        let mut engine = LayoutEngine::new(false, prefs);
+        engine.last_terminal_width = 160;
+        let regions = engine.regions(Rect::new(0, 0, 160, 40));
+        assert!(regions.right_visible);
+        assert_eq!(regions.right.width, 50);
     }
 }

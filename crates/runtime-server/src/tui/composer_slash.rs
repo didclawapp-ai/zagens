@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
+use zagens_config::LhtComposerMode;
 
 use super::theme;
 
@@ -11,6 +12,8 @@ use super::theme;
 pub enum SlashAction {
     SwitchWorkspace(PathBuf),
     SwitchModel(String),
+    SetLhtMode(LhtComposerMode),
+    CycleLhtMode,
     NewSession,
     ShowHelp,
     ClearComposer,
@@ -28,6 +31,7 @@ pub struct SlashCommandDef {
 pub(crate) enum SlashActionKind {
     Workspace,
     Model,
+    Lht,
     New,
     Help,
     Clear,
@@ -38,6 +42,7 @@ enum SlashPickerMode {
     #[default]
     Commands,
     Models,
+    LhtModes,
 }
 
 const COMMANDS: &[SlashCommandDef] = &[
@@ -64,6 +69,12 @@ const COMMANDS: &[SlashCommandDef] = &[
         description: "Switch model (alias)",
         takes_arg: true,
         action: SlashActionKind::Model,
+    },
+    SlashCommandDef {
+        name: "lht",
+        description: "LHT mode: auto / strict / off (empty cycles)",
+        takes_arg: true,
+        action: SlashActionKind::Lht,
     },
     SlashCommandDef {
         name: "new",
@@ -96,6 +107,17 @@ impl SlashCommandState {
     pub fn sync(&mut self, composer: &str, composer_focus: bool, model_catalog: &[String]) {
         if !composer_focus || !composer.starts_with('/') || composer.contains('\n') {
             self.close();
+            return;
+        }
+        if lht_picker_active(composer) {
+            self.open = true;
+            self.mode = SlashPickerMode::LhtModes;
+            let count = filter_lht_modes(composer).len();
+            if count == 0 {
+                self.selected = 0;
+            } else if self.selected >= count {
+                self.selected = count - 1;
+            }
             return;
         }
         if model_picker_active(composer) {
@@ -132,6 +154,7 @@ impl SlashCommandState {
             return;
         }
         let count = match self.mode {
+            SlashPickerMode::LhtModes => filter_lht_modes(composer).len(),
             SlashPickerMode::Models => filter_models(composer, model_catalog).len(),
             SlashPickerMode::Commands => filter_commands(composer).len(),
         };
@@ -155,6 +178,52 @@ pub fn filter_commands(composer: &str) -> Vec<&'static SlashCommandDef> {
         .iter()
         .filter(|cmd| query.is_empty() || cmd.name.starts_with(&query))
         .collect()
+}
+
+const LHT_MODES: &[LhtComposerMode] = &[
+    LhtComposerMode::Auto,
+    LhtComposerMode::Strict,
+    LhtComposerMode::Off,
+];
+
+pub fn filter_lht_modes(composer: &str) -> Vec<LhtComposerMode> {
+    let arg = lht_arg(composer).unwrap_or("");
+    let query = arg.trim().to_ascii_lowercase();
+    LHT_MODES
+        .iter()
+        .copied()
+        .filter(|mode| {
+            query.is_empty() || mode.as_str().starts_with(&query) || mode.as_str().contains(&query)
+        })
+        .collect()
+}
+
+pub fn lht_picker_active(composer: &str) -> bool {
+    split_command_line(composer)
+        .map(|(name, _)| is_lht_command(name))
+        .unwrap_or(false)
+}
+
+fn is_lht_command(name: &str) -> bool {
+    name.eq_ignore_ascii_case("lht")
+}
+
+fn lht_arg(composer: &str) -> Option<&str> {
+    let (name, arg) = split_command_line(composer)?;
+    if is_lht_command(name) {
+        Some(arg)
+    } else {
+        None
+    }
+}
+
+fn parse_lht_arg(arg: &str) -> Option<LhtComposerMode> {
+    match arg.trim().to_ascii_lowercase().as_str() {
+        "auto" => Some(LhtComposerMode::Auto),
+        "strict" => Some(LhtComposerMode::Strict),
+        "off" => Some(LhtComposerMode::Off),
+        _ => None,
+    }
 }
 
 pub fn filter_models(composer: &str, catalog: &[String]) -> Vec<String> {
@@ -238,6 +307,13 @@ pub fn try_parse_action(composer: &str, current_workspace: &Path) -> Option<Slas
             }
             Some(SlashAction::SwitchModel(arg.trim().to_string()))
         }
+        SlashActionKind::Lht => {
+            if arg.is_empty() {
+                Some(SlashAction::CycleLhtMode)
+            } else {
+                parse_lht_arg(arg).map(SlashAction::SetLhtMode)
+            }
+        }
         SlashActionKind::New => Some(SlashAction::NewSession),
         SlashActionKind::Help => Some(SlashAction::ShowHelp),
         SlashActionKind::Clear => Some(SlashAction::ClearComposer),
@@ -256,6 +332,10 @@ pub fn selected_command(composer: &str, selected: usize) -> Option<&'static Slas
     filter_commands(composer).into_iter().nth(selected)
 }
 
+pub fn selected_lht_mode(composer: &str, selected: usize) -> Option<LhtComposerMode> {
+    filter_lht_modes(composer).into_iter().nth(selected)
+}
+
 pub fn selected_model(composer: &str, selected: usize, catalog: &[String]) -> Option<String> {
     filter_models(composer, catalog).into_iter().nth(selected)
 }
@@ -267,7 +347,11 @@ pub fn render_palette(
     max_rows: usize,
     model_catalog: &[String],
     current_model: &str,
+    current_lht_mode: LhtComposerMode,
 ) -> Vec<Line<'static>> {
+    if lht_picker_active(composer) {
+        return render_lht_palette(composer, selected, width, max_rows, current_lht_mode);
+    }
     if model_picker_active(composer) {
         return render_model_palette(
             composer,
@@ -372,6 +456,55 @@ fn render_model_palette(
     lines
 }
 
+fn render_lht_palette(
+    composer: &str,
+    selected: usize,
+    width: usize,
+    max_rows: usize,
+    current_mode: LhtComposerMode,
+) -> Vec<Line<'static>> {
+    let matches = filter_lht_modes(composer);
+    if matches.is_empty() {
+        return vec![Line::from(Span::styled(
+            pad(width, " (no matching LHT modes)"),
+            theme::hint(),
+        ))];
+    }
+
+    let mut lines = Vec::new();
+    lines.push(Line::from(Span::styled(
+        pad(
+            width,
+            " LHT — ↑↓ select · Enter apply · empty /lht cycles · Esc cancel",
+        ),
+        theme::hint(),
+    )));
+
+    let visible = max_rows.saturating_sub(1).max(1);
+    let start = if selected >= visible {
+        selected + 1 - visible
+    } else {
+        0
+    };
+    for (idx, mode) in matches.iter().enumerate().skip(start).take(visible) {
+        let mark = if idx == selected { ">" } else { " " };
+        let active = *mode == current_mode;
+        let suffix = if active { "  (current)" } else { "" };
+        let label = format!("{mark} {}{suffix}", mode.as_str());
+        let style = if idx == selected {
+            Style::default()
+                .fg(theme::footer_lht())
+                .add_modifier(Modifier::BOLD)
+        } else if active {
+            Style::default().fg(theme::footer_lht())
+        } else {
+            theme::hint()
+        };
+        lines.push(Line::from(Span::styled(pad(width, &label), style)));
+    }
+    lines
+}
+
 fn pad(width: usize, text: &str) -> String {
     super::display_format::pad_line_display_width(text, width.max(8))
 }
@@ -440,6 +573,30 @@ mod tests {
     #[test]
     fn incomplete_model_returns_none() {
         assert!(try_parse_action("/model", Path::new(".")).is_none());
+    }
+
+    #[test]
+    fn filter_lht_command() {
+        let matches = filter_commands("/lht");
+        assert!(matches.iter().any(|c| c.name == "lht"));
+    }
+
+    #[test]
+    fn parse_lht_cycle_when_empty() {
+        let action = try_parse_action("/lht", Path::new(".")).expect("action");
+        assert_eq!(action, SlashAction::CycleLhtMode);
+    }
+
+    #[test]
+    fn parse_lht_strict() {
+        let action = try_parse_action("/lht strict", Path::new(".")).expect("action");
+        assert_eq!(action, SlashAction::SetLhtMode(LhtComposerMode::Strict));
+    }
+
+    #[test]
+    fn lht_picker_filters_modes() {
+        let hits = filter_lht_modes("/lht st");
+        assert_eq!(hits, vec![LhtComposerMode::Strict]);
     }
 
     #[test]

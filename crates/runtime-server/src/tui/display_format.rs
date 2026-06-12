@@ -2,6 +2,9 @@
 
 use std::time::Instant;
 
+use ratatui::style::Style;
+use ratatui::text::{Line, Span};
+
 use super::transcript_filter::{format_compact_count, should_skip_harness_label};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
@@ -254,6 +257,52 @@ pub fn pad_line_display_width(line: &str, width: usize) -> String {
     out
 }
 
+/// Pad a styled line to `width` display columns (append spaces with `pad_style`).
+pub fn pad_styled_line(line: Line<'static>, width: usize, pad_style: Style) -> Line<'static> {
+    if width == 0 {
+        return line;
+    }
+    if line.spans.len() == 1 {
+        let span = &line.spans[0];
+        let padded = pad_line_display_width(span.content.as_ref(), width);
+        return Line::from(Span::styled(padded, span.style));
+    }
+    let plain: String = line
+        .spans
+        .iter()
+        .map(|span| span.content.as_ref())
+        .collect();
+    if display_width(&plain) >= width {
+        return line;
+    }
+    let pad = pad_line_display_width("", width.saturating_sub(display_width(&plain)));
+    let mut spans = line.spans;
+    spans.push(Span::styled(pad, pad_style));
+    Line::from(spans)
+}
+
+/// Pad each line to `width` and extend with blank rows to `height` (clears ghost cells).
+pub fn fill_styled_lines(
+    lines: Vec<Line<'static>>,
+    height: usize,
+    width: usize,
+    blank_style: Style,
+) -> Vec<Line<'static>> {
+    let height = height.max(1);
+    let mut out: Vec<Line<'static>> = lines
+        .into_iter()
+        .take(height)
+        .map(|line| pad_styled_line(line, width, blank_style))
+        .collect();
+    while out.len() < height {
+        out.push(Line::from(Span::styled(
+            pad_line_display_width("", width),
+            blank_style,
+        )));
+    }
+    out
+}
+
 /// Truncate to fit display columns (CJK-safe); appends `…` when trimmed.
 pub fn truncate_display_width(text: &str, max_width: usize) -> String {
     if max_width == 0 {
@@ -424,6 +473,15 @@ mod tests {
     fn pad_line_fills_to_display_width() {
         let padded = pad_line_display_width("hi", 10);
         assert_eq!(display_width(&padded), 10);
+    }
+
+    #[test]
+    fn fill_styled_lines_pads_width_and_height() {
+        let blank = Style::default();
+        let lines = fill_styled_lines(vec![Line::from("hi")], 3, 10, blank);
+        assert_eq!(lines.len(), 3);
+        assert_eq!(lines[0].spans[0].content.as_ref(), "hi        ");
+        assert_eq!(display_width(lines[1].spans[0].content.as_ref()), 10);
     }
 
     #[test]

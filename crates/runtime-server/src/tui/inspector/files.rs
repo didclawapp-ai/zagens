@@ -1,9 +1,10 @@
-//! Workspace file tree (depth 2–3).
+//! Interactive workspace file tree for the Files inspector tab.
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const MAX_LINES: usize = 80;
+const MAX_VISIBLE: usize = 512;
 const SKIP_DIRS: &[&str] = &[
     ".git",
     "node_modules",
@@ -14,45 +15,177 @@ const SKIP_DIRS: &[&str] = &[
     "build",
 ];
 
-pub fn list_workspace(workspace: &Path, max_depth: u32) -> Vec<String> {
-    let mut lines = Vec::new();
-    lines.push(format!("{}", display(workspace)));
-    walk(workspace, workspace, 0, max_depth, &mut lines);
-    if lines.len() > MAX_LINES {
-        lines.truncate(MAX_LINES);
-        lines.push("…".to_string());
-    }
-    lines
+#[derive(Debug, Clone)]
+pub struct FileTreeLine {
+    pub rel: String,
+    pub depth: u32,
+    pub is_dir: bool,
+    pub label: String,
 }
 
-fn walk(root: &Path, dir: &Path, depth: u32, max_depth: u32, lines: &mut Vec<String>) {
-    if depth >= max_depth || lines.len() >= MAX_LINES {
+#[derive(Debug, Clone, Default)]
+pub struct FileTreeState {
+    root_display: String,
+    lines: Vec<FileTreeLine>,
+    expanded: BTreeSet<String>,
+}
+
+impl FileTreeState {
+    pub fn rescan(&mut self, workspace: &Path) {
+        self.root_display = crate::utils::display_path(workspace);
+        if self.expanded.is_empty() {
+            self.expanded.insert(String::new());
+        }
+        self.rebuild_lines(workspace);
+    }
+
+    pub fn line_count(&self) -> usize {
+        self.lines.len()
+    }
+
+    pub fn line_at(&self, cursor: usize) -> Option<&FileTreeLine> {
+        self.lines.get(cursor)
+    }
+
+    pub fn toggle_cursor(&mut self, cursor: usize, workspace: &Path) {
+        let Some(line) = self.lines.get(cursor) else {
+            return;
+        };
+        if !line.is_dir {
+            return;
+        }
+        let key = line.rel.clone();
+        if self.expanded.contains(&key) {
+            self.expanded.remove(&key);
+        } else {
+            self.expanded.insert(key);
+        }
+        self.rebuild_lines(workspace);
+    }
+
+    pub fn render_lines(&self, cursor: usize, scroll: usize, height: usize) -> Vec<(String, bool)> {
+        let visible = height.max(4);
+        let start = scroll.min(self.lines.len().saturating_sub(1));
+        self.lines
+            .iter()
+            .enumerate()
+            .skip(start)
+            .take(visible)
+            .map(|(idx, line)| {
+                let marker = if line.is_dir {
+                    if self.expanded.contains(&line.rel) {
+                        "v"
+                    } else {
+                        ">"
+                    }
+                } else {
+                    " "
+                };
+                let indent = "  ".repeat(line.depth as usize);
+                let prefix = if idx == cursor { ">" } else { " " };
+                let text = format!(
+                    "{prefix}{indent}{marker} {}{}",
+                    line.label,
+                    dir_suffix(line.is_dir)
+                );
+                (text, idx == cursor)
+            })
+            .collect()
+    }
+
+    fn rebuild_lines(&mut self, workspace: &Path) {
+        let mut lines = Vec::new();
+        lines.push(FileTreeLine {
+            rel: String::new(),
+            depth: 0,
+            is_dir: true,
+            label: self.root_display.clone(),
+        });
+        if self.expanded.contains("") {
+            append_dir(workspace, workspace, "", 1, &self.expanded, &mut lines);
+        }
+        if lines.len() > MAX_VISIBLE {
+            lines.truncate(MAX_VISIBLE);
+            lines.push(FileTreeLine {
+                rel: String::new(),
+                depth: 1,
+                is_dir: false,
+                label: "…".to_string(),
+            });
+        }
+        self.lines = lines;
+    }
+}
+
+fn dir_suffix(is_dir: bool) -> &'static str {
+    if is_dir { "/" } else { "" }
+}
+
+fn append_dir(
+    workspace: &Path,
+    dir: &Path,
+    rel: &str,
+    depth: u32,
+    expanded: &BTreeSet<String>,
+    lines: &mut Vec<FileTreeLine>,
+) {
+    if lines.len() >= MAX_VISIBLE {
         return;
     }
     let Ok(entries) = fs::read_dir(dir) else {
         return;
     };
-    let mut names: Vec<PathBuf> = entries.filter_map(|e| e.ok().map(|e| e.path())).collect();
-    names.sort();
-    for path in names {
-        if lines.len() >= MAX_LINES {
+    let mut paths: Vec<PathBuf> = entries.filter_map(|e| e.ok().map(|e| e.path())).collect();
+    paths.sort();
+    for path in paths {
+        if lines.len() >= MAX_VISIBLE {
             break;
         }
         let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("?");
-        if path.is_dir() {
-            if SKIP_DIRS.contains(&name) {
-                continue;
-            }
-            let indent = "  ".repeat(depth as usize + 1);
-            lines.push(format!("{indent}{name}/"));
-            walk(root, &path, depth + 1, max_depth, lines);
+        if path.is_dir() && SKIP_DIRS.contains(&name) {
+            continue;
+        }
+        let child_rel = if rel.is_empty() {
+            name.to_string()
         } else {
-            let indent = "  ".repeat(depth as usize + 1);
-            lines.push(format!("{indent}{name}"));
+            format!("{rel}/{name}")
+        };
+        let is_dir = path.is_dir();
+        lines.push(FileTreeLine {
+            rel: child_rel.clone(),
+            depth,
+            is_dir,
+            label: name.to_string(),
+        });
+        if is_dir && expanded.contains(&child_rel) {
+            append_dir(workspace, &path, &child_rel, depth + 1, expanded, lines);
         }
     }
 }
 
-fn display(path: &Path) -> String {
-    crate::utils::display_path(path)
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn expand_dir_reveals_children() {
+        let tmp = TempDir::new().expect("tempdir");
+        fs::write(tmp.path().join("a.txt"), "x").expect("write");
+        fs::create_dir(tmp.path().join("src")).expect("mkdir");
+        fs::write(tmp.path().join("src/lib.rs"), "x").expect("write");
+
+        let mut tree = FileTreeState::default();
+        tree.rescan(tmp.path());
+        assert!(tree.line_count() >= 2);
+
+        let src_idx = tree
+            .lines
+            .iter()
+            .position(|l| l.label == "src")
+            .expect("src dir");
+        tree.toggle_cursor(src_idx, tmp.path());
+        assert!(tree.lines.iter().any(|l| l.label == "lib.rs"));
+    }
 }

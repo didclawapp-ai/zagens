@@ -30,8 +30,8 @@ pub mod palette {
     pub const DIM: &str = "#6272a4";
 
     // §6.10.2 侧边栏
-    pub const SIDEBAR_BG: &str = "#1e1f29";
-    pub const SIDEBAR_ACTIVE: &str = "#343746";
+    pub const SIDEBAR_BG: &str = "#000000";
+    pub const SIDEBAR_ACTIVE: &str = "#1a1a1a";
     pub const BADGE: &str = "#bd93f9";
     pub const ITEM_TEXT: &str = "#f8f8f2";
 
@@ -42,10 +42,13 @@ pub mod palette {
     pub const PROGRESS_FILL: &str = "#50fa7b";
 
     // §6.10.4 背景 / 表面
-    pub const BG: &str = "#282a36";
+    pub const BG: &str = "#000000";
     pub const FOREGROUND: &str = "#f8f8f2";
-    pub const CODE_BG: &str = "#44475a";
-    pub const TAG_BG: &str = "#44475a";
+    pub const CODE_BG: &str = "#141414";
+    pub const TAG_BG: &str = "#141414";
+    /// Faint pane borders on black shell.
+    pub const BORDER_IDLE: &str = "#2a2a2a";
+    pub const BORDER_FOCUS: &str = "#454545";
 
     const fn rgb(r: u8, g: u8, b: u8) -> Color {
         Color::Rgb(r, g, b)
@@ -76,10 +79,10 @@ pub mod palette {
         rgb(0x62, 0x72, 0xa4)
     }
     pub fn sidebar_bg() -> Color {
-        rgb(0x1e, 0x1f, 0x29)
+        rgb(0x00, 0x00, 0x00)
     }
     pub fn sidebar_active() -> Color {
-        rgb(0x34, 0x37, 0x46)
+        rgb(0x1a, 0x1a, 0x1a)
     }
     pub fn badge() -> Color {
         rgb(0xbd, 0x93, 0xf9)
@@ -88,16 +91,22 @@ pub mod palette {
         rgb(0xf8, 0xf8, 0xf2)
     }
     pub fn bg() -> Color {
-        rgb(0x28, 0x2a, 0x36)
+        rgb(0x00, 0x00, 0x00)
     }
     pub fn foreground() -> Color {
         rgb(0xf8, 0xf8, 0xf2)
     }
     pub fn code_bg() -> Color {
-        rgb(0x44, 0x47, 0x5a)
+        rgb(0x14, 0x14, 0x14)
     }
     pub fn tag_bg() -> Color {
-        rgb(0x44, 0x47, 0x5a)
+        rgb(0x14, 0x14, 0x14)
+    }
+    pub fn border_idle() -> Color {
+        rgb(0x2a, 0x2a, 0x2a)
+    }
+    pub fn border_focus() -> Color {
+        rgb(0x45, 0x45, 0x45)
     }
 }
 
@@ -111,12 +120,12 @@ pub enum ActivityPhase {
     Other,
 }
 
-/// Full-frame / chat column surface (`#282a36`).
+/// Full-frame / chat column surface (pure black).
 pub fn shell_main() -> Style {
     Style::default().fg(p::foreground()).bg(p::bg())
 }
 
-/// Left / right rail surface (`#1e1f29`).
+/// Left / right rail surface (same black shell).
 pub fn shell_sidebar() -> Style {
     Style::default().fg(p::item_text()).bg(p::sidebar_bg())
 }
@@ -160,25 +169,19 @@ pub fn overlay_panel() -> Style {
 }
 
 pub fn border_focus() -> Style {
-    Style::default()
-        .fg(p::user_prompt())
-        .bg(p::bg())
-        .add_modifier(Modifier::BOLD)
+    Style::default().fg(p::border_focus()).bg(p::bg())
 }
 
 pub fn border_idle() -> Style {
-    Style::default().fg(p::dim()).bg(p::bg())
+    Style::default().fg(p::border_idle()).bg(p::bg())
 }
 
 pub fn border_focus_sidebar() -> Style {
-    Style::default()
-        .fg(p::user_prompt())
-        .bg(p::sidebar_bg())
-        .add_modifier(Modifier::BOLD)
+    Style::default().fg(p::border_focus()).bg(p::sidebar_bg())
 }
 
 pub fn border_idle_sidebar() -> Style {
-    Style::default().fg(p::dim()).bg(p::sidebar_bg())
+    Style::default().fg(p::border_idle()).bg(p::sidebar_bg())
 }
 
 pub fn title_bar() -> Style {
@@ -233,7 +236,7 @@ pub fn composer_line(prompt_and_body: &str, focused: bool) -> Line<'static> {
 }
 
 pub fn footer_separator() -> Style {
-    Style::default().fg(p::dim()).bg(p::bg())
+    Style::default().fg(p::border_idle()).bg(p::bg())
 }
 
 pub fn footer_chip(color: Color) -> Style {
@@ -253,6 +256,10 @@ pub fn footer_mode() -> Color {
 
 pub fn footer_task() -> Color {
     p::agent_reply()
+}
+
+pub fn footer_lht() -> Color {
+    p::tool_call()
 }
 
 pub fn footer_workspace() -> Style {
@@ -325,6 +332,13 @@ pub fn checklist_in_progress() -> Style {
     Style::default()
         .fg(p::thinking())
         .bg(p::sidebar_bg())
+        .add_modifier(Modifier::BOLD)
+}
+
+pub fn checklist_in_progress_active() -> Style {
+    Style::default()
+        .fg(p::thinking())
+        .bg(p::sidebar_active())
         .add_modifier(Modifier::BOLD)
 }
 

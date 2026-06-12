@@ -25,3 +25,10 @@ impl FocusRegion {
         }
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RightSubfocus {
+    #[default]
+    Inspector,
+    Lht,
+}

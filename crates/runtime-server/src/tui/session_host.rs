@@ -23,10 +23,75 @@ use crate::task_manager::TaskManagerConfig;
 use crate::task_type::TaskType;
 
 use super::approval_policy::{self, policy_cyclable, policy_display_label};
-use super::harness::{ChecklistSnapshot, parse_checklist_json};
+use super::harness::{ChecklistSnapshot, parse_checklist_json, parse_checklist_panel_payload};
+use super::task_graph::{
+    TaskGraphSnapshot, parse_task_graph_panel_payload, parse_task_graph_value,
+};
 use super::transcript::{TranscriptItem, seed_from_messages};
 
 const HISTORY_REPLAY_LIMIT: usize = 20;
+
+/// Runtime thread events plus immediate panel payloads for the TUI.
+pub struct RuntimeUiDelta {
+    pub events: Vec<Event>,
+    /// Latest checklist from a `panel.checklist` event in this batch.
+    pub checklist: Option<ChecklistSnapshot>,
+    /// Latest task graph from `harness.task_graph` in this batch.
+    pub task_graph: Option<TaskGraphSnapshot>,
+}
+
+impl RuntimeUiDelta {
+    fn empty() -> Self {
+        Self {
+            events: Vec::new(),
+            checklist: None,
+            task_graph: None,
+        }
+    }
+}
+
+fn checklist_from_record(record: &RuntimeEventRecord) -> Option<ChecklistSnapshot> {
+    if record.event != "panel.checklist" {
+        return None;
+    }
+    parse_checklist_panel_payload(&record.payload).or_else(|| {
+        record
+            .payload
+            .get("checklist")
+            .and_then(|v| serde_json::to_string(v).ok())
+            .and_then(|json| parse_checklist_json(&json))
+    })
+}
+
+fn task_graph_from_record(record: &RuntimeEventRecord) -> Option<TaskGraphSnapshot> {
+    if record.event != "harness.task_graph" {
+        return None;
+    }
+    parse_task_graph_panel_payload(&record.payload)
+}
+
+fn ingest_record(
+    record: &RuntimeEventRecord,
+    thread_id: &str,
+    last_event_seq: &mut u64,
+    events: &mut Vec<Event>,
+    checklist: &mut Option<ChecklistSnapshot>,
+    task_graph: &mut Option<TaskGraphSnapshot>,
+) {
+    if record.thread_id != thread_id || record.seq <= *last_event_seq {
+        return;
+    }
+    *last_event_seq = record.seq;
+    if let Some(snap) = checklist_from_record(record) {
+        *checklist = Some(snap);
+    }
+    if let Some(graph) = task_graph_from_record(record) {
+        *task_graph = Some(graph);
+    }
+    if let Some(ev) = super::runtime_events::map_record(record) {
+        events.push(ev);
+    }
+}
 
 fn effective_auto_approve(yolo: bool, thread: &ThreadRecord, policy: &str) -> bool {
     yolo || thread.auto_approve || approval_policy::auto_approve_for_turn(policy, false)
@@ -61,7 +126,9 @@ impl TuiSessionHost {
             manager_cfg,
         )?);
 
-        let thread = resolve_thread(&manager, ctx, cli).await?;
+        let layout_prefs = super::layout::TuiLayoutPrefs::load();
+        let thread =
+            resolve_thread(&manager, ctx, cli, layout_prefs.last_thread_id.as_deref()).await?;
         let thread = ensure_tui_code_task_type(&manager, thread).await?;
         manager.resume_thread(&thread.id).await?;
 
@@ -328,28 +395,50 @@ impl TuiSessionHost {
     }
 
     /// Receive runtime thread events (broadcast + store catch-up). Does not read `engine.rx_event`.
-    pub async fn recv_runtime_events(&mut self) -> Vec<Event> {
-        let mut out = Vec::new();
+    pub async fn recv_runtime_ui_delta(&mut self) -> RuntimeUiDelta {
+        let mut delta = RuntimeUiDelta::empty();
         tokio::select! {
             result = self.event_rx.recv() => {
                 match result {
                     Ok(record) => {
-                        if record.thread_id == self.thread.id && record.seq > self.last_event_seq {
-                            self.last_event_seq = record.seq;
-                            if let Some(ev) = super::runtime_events::map_record(&record) {
-                                out.push(ev);
-                            }
-                        }
+                        ingest_record(
+                            &record,
+                            &self.thread.id,
+                            &mut self.last_event_seq,
+                            &mut delta.events,
+                            &mut delta.checklist,
+                            &mut delta.task_graph,
+                        );
                     }
                     Err(broadcast::error::RecvError::Lagged(_)) => {
-                        out.extend(self.catch_up_events().await);
+                        delta = self.catch_up_ui_delta().await;
                     }
                     Err(broadcast::error::RecvError::Closed) => {}
                 }
             }
             _ = tokio::time::sleep(Duration::from_millis(50)) => {}
         }
-        out
+        delta
+    }
+
+    async fn catch_up_ui_delta(&mut self) -> RuntimeUiDelta {
+        let records = self
+            .manager
+            .events_since_async(&self.thread.id, Some(self.last_event_seq))
+            .await
+            .unwrap_or_default();
+        let mut delta = RuntimeUiDelta::empty();
+        for record in coalesce_delta_events(records) {
+            ingest_record(
+                &record,
+                &self.thread.id,
+                &mut self.last_event_seq,
+                &mut delta.events,
+                &mut delta.checklist,
+                &mut delta.task_graph,
+            );
+        }
+        delta
     }
 
     fn sync_event_cursor(&mut self) {
@@ -367,28 +456,22 @@ impl TuiSessionHost {
     }
 
     async fn catch_up_events(&mut self) -> Vec<Event> {
-        let events = self
-            .manager
-            .events_since_async(&self.thread.id, Some(self.last_event_seq))
-            .await
-            .unwrap_or_default();
-        let mut out = Vec::new();
-        for record in coalesce_delta_events(events) {
-            if record.thread_id != self.thread.id || record.seq <= self.last_event_seq {
-                continue;
-            }
-            self.last_event_seq = record.seq;
-            if let Some(ev) = super::runtime_events::map_record(&record) {
-                out.push(ev);
-            }
-        }
-        out
+        self.catch_up_ui_delta().await.events
     }
 
     pub fn fetch_checklist(&self) -> Option<ChecklistSnapshot> {
         self.manager
             .get_thread_checklist(&self.thread.id)
             .and_then(|json| parse_checklist_json(&json))
+    }
+
+    pub async fn fetch_task_graph(&self) -> Option<TaskGraphSnapshot> {
+        let value = self
+            .manager
+            .get_thread_harness_task_graph(&self.thread.id)
+            .await
+            .ok()?;
+        parse_task_graph_value(&value)
     }
 
     pub async fn fetch_context_pct(&self) -> Option<u8> {
@@ -424,19 +507,34 @@ async fn resolve_thread(
     manager: &RuntimeThreadManager,
     ctx: &CliContext,
     cli: &Cli,
+    last_thread_id: Option<&str>,
 ) -> Result<ThreadRecord> {
     if let Some(ref id) = cli.resume {
         return resolve_by_prefix(manager, id).await;
     }
-    if cli.continue_session {
-        match resolve_latest(manager, &ctx.workspace).await {
-            Ok(thread) => return Ok(thread),
-            Err(err) => {
-                eprintln!("zagens-tui: {err:#}; starting a new session");
+    if cli.fresh {
+        return create_new_thread(manager, ctx, cli).await;
+    }
+    if let Some(id) = last_thread_id.filter(|s| !s.trim().is_empty()) {
+        if let Ok(thread) = manager.get_thread(id).await {
+            let workspace_canon =
+                std::fs::canonicalize(&ctx.workspace).unwrap_or_else(|_| ctx.workspace.clone());
+            let tw = std::fs::canonicalize(&thread.workspace)
+                .unwrap_or_else(|_| thread.workspace.clone());
+            if tw == workspace_canon {
+                return Ok(thread);
             }
         }
     }
-    create_new_thread(manager, ctx, cli).await
+    match resolve_latest(manager, &ctx.workspace).await {
+        Ok(thread) => Ok(thread),
+        Err(err) => {
+            if cli.continue_session {
+                eprintln!("zagens-tui: {err:#}; starting a new session");
+            }
+            create_new_thread(manager, ctx, cli).await
+        }
+    }
 }
 
 async fn create_new_thread(

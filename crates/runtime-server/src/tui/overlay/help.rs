@@ -8,7 +8,7 @@ use super::super::theme;
 pub const HELP_LINES: &str = r#"Zagens TUI — shortcuts
 
 Focus
-  Tab / Shift+Tab     Rotate Left · Chat · Right
+  Tab / Shift+Tab     Rotate Left · Chat · Right (Right lands on upper inspector)
   [ / ]               Collapse left / right rail
 
 Left rail (sessions)
@@ -16,6 +16,18 @@ Left rail (sessions)
   Enter               Switch session
   Ctrl+N              New session
   1-5                 Inspector tab shortcut
+
+Right rail (inspector + LHT)
+  Tab                 Focus right column
+  1-4                 Files / Diff / Agents / MCP
+  j / k               Scroll (LHT pane when expanded + focused)
+  Enter               Files: preview / expand dir · Diff: patch · MCP: tools
+  Esc                 Back from preview / diff detail
+  - / =               Narrow / widen right rail (saved to tui-layout.toml)
+  l                   Toggle LHT lower pane
+  i                   Focus upper inspector (when LHT visible)
+  Enter               Files: expand/collapse directory
+  s                   Diff: toggle staged vs worktree
 
 Chat
   Tab                 Input → scroll transcript → side columns
@@ -25,6 +37,7 @@ Chat
   Ctrl+V              Paste from clipboard
   /commands           Slash menu — ↑↓ select · Enter run
   /model <id>         Switch text model (alias /m)
+  /lht [auto|strict|off]  LHT composer mode (empty cycles)
   ↑ / ↓ / j / k       Scroll transcript (auto-enter scroll mode)
   PgUp / PgDn         Scroll transcript (auto-enter scroll mode)
   Ctrl+A              Cycle approval policy (4 modes, saved to config)
@@ -40,6 +53,9 @@ Global
   Ctrl+C twice        Quit
   Ctrl+Q              Quit
   ?                   Toggle this help
+
+Launch (CLI)
+  --fresh             New session; default resumes last session in workspace
 
 Terminal font (recommended)
   Windows Terminal    Cascadia Mono, JetBrains Mono, Consolas

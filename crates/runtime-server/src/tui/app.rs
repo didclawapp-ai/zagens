@@ -1,5 +1,6 @@
 //! TUI application state (Phase 2).
 
+use std::path::PathBuf;
 use std::time::Instant;
 
 use super::composer_paste::{normalize_paste_text, read_clipboard_text};
@@ -9,14 +10,19 @@ use super::display_format::{
 };
 use super::theme::{self, COMPOSER_PROMPT};
 
-use super::focus::FocusRegion;
-use super::harness::{blocked_suffix, title_bar_harness_line};
-use super::inspector::{AgentEntry, InspectorCache};
+use super::focus::{FocusRegion, RightSubfocus};
+use super::harness::{ChecklistSnapshot, blocked_suffix};
+use super::inspector::{
+    AgentEntry, InspectorCache, InspectorInteraction, LhtPaneUi, agents_line_count, git_diff_patch,
+    lht_line_count, read_text_preview,
+};
 use super::layout::{InspectorTab, LayoutEngine, TuiLayoutPrefs};
 use super::left_rail::SessionList;
+use super::lht_mode::{format_lht_mode_label, load_lht_composer_mode};
 use super::overlay::PendingApproval;
 use super::poll::poll_interval;
 use super::session_host::TuiSessionHost;
+use super::task_graph::{TaskGraphSnapshot, title_bar_harness_line_from_graph};
 use super::transcript::{TranscriptItem, TranscriptState, apply_event};
 use crate::core::events::Event;
 
@@ -27,10 +33,12 @@ pub struct AppState {
     pub composer_focus: bool,
     pub thread_id: String,
     pub workspace_display: String,
+    pub workspace: PathBuf,
     pub model_display: String,
     pub model_catalog: Vec<String>,
     pub run_mode_display: String,
     pub task_type_display: String,
+    pub lht_mode_display: String,
     pub approval_display: String,
     pub approval_toggle_enabled: bool,
     pub harness_line: String,
@@ -38,10 +46,18 @@ pub struct AppState {
     pub context_pct: Option<u8>,
     pub sessions: SessionList,
     pub inspector: InspectorCache,
+    pub inspector_ui: InspectorInteraction,
+    pub task_graph: Option<TaskGraphSnapshot>,
+    pub lht_pane_expanded: bool,
+    pub lht_auto_opened: bool,
+    pub lht_ui: LhtPaneUi,
+    pub right_subfocus: RightSubfocus,
+    pub right_panel_height: usize,
+    pub right_inspector_height: usize,
+    pub right_lht_height: usize,
     pub agents: Vec<AgentEntry>,
     pub pending_approval: Option<PendingApproval>,
     pub show_help: bool,
-    pub checklist_auto_opened: bool,
     pub cursor_blink_since: Instant,
     next_poll: Instant,
     pub slash: SlashCommandState,
@@ -61,8 +77,6 @@ impl AppState {
         inspector.refresh_static(&host.thread.workspace, host.config());
         let threads = host.list_workspace_threads().await.unwrap_or_default();
         let sessions = SessionList::from_threads(threads, host.thread_id());
-        let checklist = host.fetch_checklist();
-        inspector.checklist = checklist.clone();
 
         let mut state = Self {
             layout: LayoutEngine::new(inline_mode, layout_prefs),
@@ -71,27 +85,276 @@ impl AppState {
             composer_focus: true,
             thread_id: host.thread_id().to_string(),
             workspace_display: host.workspace_display(),
+            workspace: host.thread.workspace.clone(),
             model_display: String::new(),
             model_catalog: Vec::new(),
             run_mode_display: String::new(),
             task_type_display: String::new(),
+            lht_mode_display: String::new(),
             approval_display: String::new(),
             approval_toggle_enabled: false,
-            harness_line: title_bar_harness_line(checklist.as_ref()),
+            harness_line: title_bar_harness_line_from_graph(None),
             blocked_line: None,
             context_pct: None,
             sessions,
             inspector,
+            inspector_ui: InspectorInteraction::default(),
+            task_graph: None,
+            lht_pane_expanded: false,
+            lht_auto_opened: false,
+            lht_ui: LhtPaneUi::default(),
+            right_subfocus: RightSubfocus::Inspector,
+            right_panel_height: 20,
+            right_inspector_height: 20,
+            right_lht_height: 0,
             agents: Vec::new(),
             pending_approval: None,
             show_help: false,
-            checklist_auto_opened: checklist.is_some(),
             cursor_blink_since: Instant::now(),
             next_poll: Instant::now(),
             slash: SlashCommandState::default(),
         };
         state.sync_thread_meta(host);
+        state.sync_lht_mode();
+        if let Some(graph) = host.fetch_task_graph().await {
+            state.apply_task_graph_snapshot(graph);
+        } else if let Some(checklist) = host.fetch_checklist() {
+            state.merge_checklist_snapshot(checklist);
+        }
         state
+    }
+
+    pub fn lht_pane_visible(&self) -> bool {
+        self.lht_pane_expanded && self.task_graph.as_ref().is_some_and(|g| g.has_activity())
+    }
+
+    pub fn toggle_lht_pane(&mut self) {
+        if !self.task_graph.as_ref().is_some_and(|g| g.has_activity()) {
+            return;
+        }
+        self.lht_pane_expanded = !self.lht_pane_expanded;
+        if self.lht_pane_expanded {
+            self.right_subfocus = RightSubfocus::Lht;
+            self.lht_ui.reset();
+        }
+    }
+
+    pub fn focus_inspector_upper(&mut self) {
+        self.right_subfocus = RightSubfocus::Inspector;
+    }
+
+    pub fn lht_scroll_up(&mut self) {
+        self.lht_ui.scroll_up(1);
+    }
+
+    pub fn lht_scroll_down(&mut self) {
+        let total = lht_line_count(self.task_graph.as_ref());
+        let visible = self.right_lht_height.max(4);
+        let max_scroll = total.saturating_sub(visible);
+        self.lht_ui.scroll_down(max_scroll, 1);
+    }
+
+    pub fn right_rail_scroll_up(&mut self, workspace: &std::path::Path) {
+        if self.lht_pane_visible() && self.right_subfocus == RightSubfocus::Lht {
+            self.lht_scroll_up();
+        } else {
+            self.inspector_scroll_up(workspace);
+        }
+    }
+
+    pub fn right_rail_scroll_down(&mut self, workspace: &std::path::Path) {
+        if self.lht_pane_visible() && self.right_subfocus == RightSubfocus::Lht {
+            self.lht_scroll_down();
+        } else {
+            self.inspector_scroll_down(workspace);
+        }
+    }
+
+    pub fn apply_task_graph_snapshot(&mut self, graph: TaskGraphSnapshot) {
+        if graph.has_activity() {
+            if !self.lht_auto_opened {
+                self.lht_pane_expanded = true;
+                self.lht_auto_opened = true;
+            }
+        } else {
+            self.lht_pane_expanded = false;
+        }
+        self.harness_line = title_bar_harness_line_from_graph(Some(&graph));
+        self.task_graph = Some(graph);
+    }
+
+    pub fn merge_checklist_snapshot(&mut self, checklist: ChecklistSnapshot) {
+        if let Some(graph) = &mut self.task_graph {
+            graph.merge_checklist(checklist);
+            let graph = graph.clone();
+            self.apply_task_graph_snapshot(graph);
+        } else {
+            self.apply_task_graph_snapshot(TaskGraphSnapshot::from_checklist(checklist));
+        }
+    }
+
+    pub fn refresh_task_graph_from_host(&mut self, host: &TuiSessionHost) {
+        if let Some(checklist) = host.fetch_checklist() {
+            self.merge_checklist_snapshot(checklist);
+        }
+    }
+
+    pub fn inspector_panel_height(&self) -> usize {
+        if self.lht_pane_visible() {
+            self.right_inspector_height
+        } else {
+            self.right_panel_height
+        }
+    }
+
+    pub fn switch_inspector_tab(&mut self, tab: InspectorTab) {
+        if self.layout.prefs.inspector_tab() != tab {
+            self.inspector_ui.reset_for_tab();
+        }
+        self.layout.prefs.set_inspector_tab(tab);
+    }
+
+    pub fn inspector_scroll_up(&mut self, _workspace: &std::path::Path) {
+        if self.inspector_ui.in_detail_view() {
+            self.inspector_ui.scroll_up(1);
+            return;
+        }
+        let tab = self.layout.prefs.inspector_tab();
+        let visible = self.inspector_panel_height().max(4);
+        match tab {
+            InspectorTab::Files => self.inspector_ui.file_move_up(),
+            InspectorTab::Diff => self.inspector_ui.diff_move_up(),
+            InspectorTab::Agents => self.inspector_ui.agents_move_up(),
+            InspectorTab::Mcp => self.inspector_ui.mcp_move_up(),
+        }
+        let _ = visible;
+    }
+
+    pub fn inspector_scroll_down(&mut self, workspace: &std::path::Path) {
+        let visible = self.inspector_panel_height().max(4);
+        if self.inspector_ui.in_detail_view() {
+            let total = self.inspector_detail_line_count(workspace);
+            let max_scroll = total.saturating_sub(visible);
+            self.inspector_ui.scroll_down(max_scroll, 1);
+            return;
+        }
+        let tab = self.layout.prefs.inspector_tab();
+        match tab {
+            InspectorTab::Files => {
+                let count = self.inspector.file_tree.line_count();
+                self.inspector_ui.file_move_down(count, visible);
+            }
+            InspectorTab::Diff => {
+                let count = self.inspector.diff.line_count();
+                self.inspector_ui.diff_move_down(count, visible);
+            }
+            InspectorTab::Agents => {
+                let count = agents_line_count(&self.inspector.agents);
+                self.inspector_ui.agents_move_down(count, visible);
+            }
+            InspectorTab::Mcp => {
+                let count = self.inspector.mcp.servers.len().max(1);
+                self.inspector_ui.mcp_move_down(count, visible);
+            }
+        }
+    }
+
+    fn inspector_detail_line_count(&self, workspace: &std::path::Path) -> usize {
+        if let Some(rel) = self.inspector_ui.file_preview_rel.as_deref() {
+            return read_text_preview(workspace, rel).len() + 1;
+        }
+        if let Some(path) = self.inspector_ui.diff_detail_path.as_deref() {
+            return git_diff_patch(workspace, self.inspector_ui.diff_staged, path, 400).len() + 1;
+        }
+        0
+    }
+
+    pub fn inspector_activate(&mut self, workspace: &std::path::Path) {
+        if self.inspector_ui.in_detail_view() {
+            return;
+        }
+        let tab = self.layout.prefs.inspector_tab();
+        match tab {
+            InspectorTab::Files => {
+                let cursor = self.inspector_ui.file_cursor;
+                let Some(line) = self.inspector.file_tree.line_at(cursor) else {
+                    return;
+                };
+                if line.is_dir {
+                    self.inspector.file_tree.toggle_cursor(cursor, workspace);
+                    self.inspector_ui
+                        .clamp_file_cursor(self.inspector.file_tree.line_count());
+                } else {
+                    self.inspector_ui.file_preview_rel = Some(line.rel.clone());
+                    self.inspector_ui.scroll = 0;
+                }
+            }
+            InspectorTab::Diff => {
+                if self.inspector.diff.entries.is_empty() {
+                    return;
+                }
+                if let Some(path) = self
+                    .inspector
+                    .diff
+                    .entry_path(self.inspector_ui.diff_cursor)
+                {
+                    self.inspector_ui.diff_detail_path = Some(path.to_string());
+                    self.inspector_ui.scroll = 0;
+                }
+            }
+            InspectorTab::Mcp => {
+                let Some(server) = self.inspector.mcp.servers.get(self.inspector_ui.mcp_cursor)
+                else {
+                    return;
+                };
+                if self.inspector_ui.mcp_expanded.as_deref() == Some(server.name.as_str()) {
+                    self.inspector_ui.mcp_expanded = None;
+                } else {
+                    self.inspector_ui.mcp_expanded = Some(server.name.clone());
+                }
+                self.inspector_ui.scroll = 0;
+            }
+            InspectorTab::Agents => {}
+        }
+    }
+
+    pub fn inspector_back(&mut self) {
+        if self.inspector_ui.in_detail_view() {
+            self.inspector_ui.clear_detail_views();
+        } else if self.inspector_ui.mcp_expanded.is_some() {
+            self.inspector_ui.mcp_expanded = None;
+            self.inspector_ui.scroll = 0;
+        }
+    }
+
+    pub fn toggle_inspector_file_entry(&mut self, workspace: &std::path::Path) {
+        self.inspector_activate(workspace);
+    }
+
+    pub fn toggle_diff_staged(&mut self, workspace: &std::path::Path) {
+        self.inspector_ui.diff_staged = !self.inspector_ui.diff_staged;
+        self.inspector_ui.diff_detail_path = None;
+        self.inspector
+            .refresh_diff_only(workspace, self.inspector_ui.diff_staged);
+        self.inspector_ui.scroll = 0;
+        self.inspector_ui
+            .clamp_diff_cursor(self.inspector.diff.line_count());
+    }
+
+    pub fn refresh_workspace_inspector(&mut self, host: &TuiSessionHost) {
+        self.inspector.refresh_files_diff(
+            &host.thread.workspace,
+            host.config(),
+            self.inspector_ui.diff_staged,
+        );
+        self.inspector_ui
+            .clamp_file_cursor(self.inspector.file_tree.line_count());
+        self.inspector_ui
+            .clamp_diff_cursor(self.inspector.diff.line_count());
+        self.inspector_ui
+            .clamp_agents_cursor(agents_line_count(&self.inspector.agents));
+        self.inspector_ui
+            .clamp_mcp_cursor(self.inspector.mcp.servers.len().max(1));
     }
 
     pub fn sync_thread_meta(&mut self, host: &TuiSessionHost) {
@@ -100,9 +363,18 @@ impl AppState {
         self.run_mode_display = format_run_mode_label(&host.thread.mode, host.yolo);
         self.task_type_display = format_task_type_label(&host.thread.task_type);
         self.workspace_display = host.workspace_display();
+        self.workspace = host.thread.workspace.clone();
         let (approval, toggle) = host.approval_footer_meta();
         self.approval_display = approval;
         self.approval_toggle_enabled = toggle;
+    }
+
+    pub fn sync_lht_mode(&mut self) {
+        self.lht_mode_display = format_lht_mode_label(load_lht_composer_mode());
+    }
+
+    pub fn current_lht_composer_mode(&self) -> zagens_config::LhtComposerMode {
+        load_lht_composer_mode()
     }
 
     pub fn title_status_line(&self) -> String {
@@ -279,6 +551,11 @@ impl AppState {
                 self.task_type_display.clone(),
                 theme::footer_chip(theme::footer_task()),
             ),
+            sep.clone(),
+            chip(
+                self.lht_mode_display.clone(),
+                theme::footer_chip(theme::footer_lht()),
+            ),
         ];
 
         if !self.workspace_display.is_empty() {
@@ -321,15 +598,17 @@ impl AppState {
             .iter()
             .map(|s| s.content.as_ref())
             .collect::<String>();
+        let pad_style = theme::shell_main();
         if super::display_format::display_width(&plain) <= max_cols {
-            return line;
+            return super::display_format::pad_styled_line(line, max_cols, pad_style);
         }
 
         let compact = format!(
-            "{} · {} · {} · approve:{}",
+            "{} · {} · {} · {} · approve:{}",
             self.model_display,
             self.run_mode_display,
             self.task_type_display,
+            self.lht_mode_display,
             self.approval_display
         );
         let padded = super::display_format::pad_line_display_width(&compact, max_cols);
@@ -363,6 +642,7 @@ impl AppState {
             max_rows,
             &self.model_catalog,
             &self.model_display,
+            self.current_lht_composer_mode(),
         )
     }
 
@@ -448,6 +728,8 @@ impl AppState {
 
     pub async fn reload_after_thread_switch(&mut self, host: &TuiSessionHost) {
         self.thread_id = host.thread_id().to_string();
+        self.workspace = host.thread.workspace.clone();
+        self.layout.prefs.last_thread_id = Some(self.thread_id.clone());
         self.sync_thread_meta(host);
         self.transcript = TranscriptState::default();
         if let Ok(history) = host.load_history() {
@@ -456,8 +738,14 @@ impl AppState {
         self.agents.clear();
         self.pending_approval = None;
         self.blocked_line = None;
+        self.task_graph = None;
+        self.lht_pane_expanded = false;
+        self.lht_auto_opened = false;
+        self.lht_ui.reset();
+        self.harness_line = title_bar_harness_line_from_graph(None);
         self.inspector
             .refresh_static(&host.thread.workspace, host.config());
+        self.inspector_ui.reset_for_tab();
         self.refresh_panels(host).await;
         let threads = host.list_workspace_threads().await.unwrap_or_default();
         self.sessions = SessionList::from_threads(threads, host.thread_id());
@@ -472,15 +760,18 @@ impl AppState {
     }
 
     pub async fn refresh_panels(&mut self, host: &TuiSessionHost) {
-        let checklist = host.fetch_checklist();
-        if checklist.is_some() && !self.checklist_auto_opened {
-            self.layout.prefs.set_inspector_tab(InspectorTab::Checklist);
-            self.checklist_auto_opened = true;
+        if let Some(graph) = host.fetch_task_graph().await {
+            self.apply_task_graph_snapshot(graph);
+        } else if let Some(checklist) = host.fetch_checklist() {
+            self.merge_checklist_snapshot(checklist);
+        } else {
+            self.task_graph = None;
+            self.lht_pane_expanded = false;
+            self.harness_line = title_bar_harness_line_from_graph(None);
         }
-        self.inspector.checklist = checklist.clone();
-        self.harness_line = title_bar_harness_line(checklist.as_ref());
         self.context_pct = host.fetch_context_pct().await;
         self.inspector.agents = self.agents.clone();
+        self.refresh_workspace_inspector(host);
         self.schedule_next_poll();
     }
 
@@ -546,10 +837,12 @@ mod tests {
             composer_focus: true,
             thread_id: "t1".to_string(),
             workspace_display: String::new(),
+            workspace: PathBuf::from("."),
             model_display: "m".to_string(),
             model_catalog: Vec::new(),
             run_mode_display: "Agent".to_string(),
             task_type_display: "Code".to_string(),
+            lht_mode_display: "LHT Auto".to_string(),
             approval_display: "OnRequest".to_string(),
             approval_toggle_enabled: true,
             harness_line: String::new(),
@@ -557,10 +850,18 @@ mod tests {
             context_pct: None,
             sessions: SessionList::default(),
             inspector: InspectorCache::default(),
+            inspector_ui: InspectorInteraction::default(),
+            task_graph: None,
+            lht_pane_expanded: false,
+            lht_auto_opened: false,
+            lht_ui: LhtPaneUi::default(),
+            right_subfocus: RightSubfocus::Inspector,
+            right_panel_height: 20,
+            right_inspector_height: 20,
+            right_lht_height: 0,
             agents: Vec::new(),
             pending_approval: None,
             show_help: false,
-            checklist_auto_opened: false,
             cursor_blink_since: Instant::now(),
             next_poll: Instant::now(),
             slash: SlashCommandState::default(),
@@ -582,10 +883,12 @@ mod tests {
             composer_focus: true,
             thread_id: "t1".to_string(),
             workspace_display: String::new(),
+            workspace: PathBuf::from("."),
             model_display: "m".to_string(),
             model_catalog: Vec::new(),
             run_mode_display: "Agent".to_string(),
             task_type_display: "Code".to_string(),
+            lht_mode_display: "LHT Auto".to_string(),
             approval_display: "OnRequest".to_string(),
             approval_toggle_enabled: true,
             harness_line: String::new(),
@@ -593,10 +896,18 @@ mod tests {
             context_pct: None,
             sessions: SessionList::default(),
             inspector: InspectorCache::default(),
+            inspector_ui: InspectorInteraction::default(),
+            task_graph: None,
+            lht_pane_expanded: false,
+            lht_auto_opened: false,
+            lht_ui: LhtPaneUi::default(),
+            right_subfocus: RightSubfocus::Inspector,
+            right_panel_height: 20,
+            right_inspector_height: 20,
+            right_lht_height: 0,
             agents: Vec::new(),
             pending_approval: None,
             show_help: false,
-            checklist_auto_opened: false,
             cursor_blink_since: Instant::now(),
             next_poll: Instant::now(),
             slash: SlashCommandState::default(),

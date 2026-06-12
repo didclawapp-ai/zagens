@@ -12,12 +12,14 @@ mod harness;
 mod inspector;
 mod layout;
 mod left_rail;
+mod lht_mode;
 mod markdown_table;
 mod overlay;
 mod poll;
 mod runtime_events;
 mod session_host;
 mod stderr_log;
+mod task_graph;
 mod terminal;
 mod theme;
 mod transcript;
@@ -48,7 +50,7 @@ pub async fn run_tui(cli: Cli) -> Result<()> {
 
     let mut ctx = load_cli_context(&cli)?;
     let mut host = TuiSessionHost::open(&ctx, &cli).await?;
-    let resumed = cli.resume.is_some() || cli.continue_session;
+    let resumed = cli.resume.is_some() || cli.continue_session || !cli.fresh;
     let initial_prompt = cli.prompt.clone();
 
     let inline_mode = cli.no_alt_screen;
@@ -72,9 +74,20 @@ pub async fn run_tui(cli: Cli) -> Result<()> {
         if dirty {
             tui.terminal.draw(|frame| {
                 let area = frame.area();
+                app.layout.last_terminal_width = area.width;
                 app.layout.apply_auto_collapse(area.width);
                 let regions = app.layout.regions(area);
-                draw::draw(frame, &app, &regions);
+                app.right_panel_height = regions.right.height.saturating_sub(2) as usize;
+                let split = app
+                    .layout
+                    .split_right_pane(regions.right, app.lht_pane_visible());
+                app.right_inspector_height = split.inspector.height.saturating_sub(2) as usize;
+                app.right_lht_height = if split.lht_visible {
+                    split.lht.height.saturating_sub(2) as usize
+                } else {
+                    0
+                };
+                draw::draw(frame, &app, &regions, &split);
             })?;
             dirty = false;
         }
@@ -88,11 +101,31 @@ pub async fn run_tui(cli: Cli) -> Result<()> {
         };
 
         tokio::select! {
-            runtime_events = host.recv_runtime_events() => {
-                if !runtime_events.is_empty() {
-                    for event in runtime_events {
-                        app.apply_engine_event(event);
-                    }
+            delta = host.recv_runtime_ui_delta() => {
+                let was_streaming = app.transcript.streaming;
+                let had_events = !delta.events.is_empty();
+                let had_checklist = delta.checklist.is_some() || delta.task_graph.is_some();
+                for event in delta.events {
+                    app.apply_engine_event(event);
+                }
+                if let Some(graph) = delta.task_graph {
+                    app.apply_task_graph_snapshot(graph);
+                } else if let Some(checklist) = delta.checklist {
+                    app.merge_checklist_snapshot(checklist);
+                }
+                if was_streaming && !app.transcript.streaming {
+                    app.refresh_workspace_inspector(&host);
+                }
+                let poll_ran = app.poll_due();
+                if poll_ran {
+                    app.refresh_panels(&host).await;
+                    app.refresh_sessions(&host).await;
+                }
+                if had_events
+                    || had_checklist
+                    || was_streaming != app.transcript.streaming
+                    || poll_ran
+                {
                     dirty = true;
                 }
             }
@@ -120,6 +153,7 @@ pub async fn run_tui(cli: Cli) -> Result<()> {
         }
     }
 
+    app.layout.prefs.last_thread_id = Some(host.thread_id().to_string());
     app.layout.prefs.save().ok();
     tui.shutdown()?;
     Ok(())
@@ -134,6 +168,7 @@ async fn handle_input_event(
 ) -> Result<bool> {
     match event {
         Event::Resize(width, _) => {
+            app.layout.last_terminal_width = *width;
             app.layout.apply_auto_collapse(*width);
         }
         Event::Paste(text) => {
@@ -187,6 +222,16 @@ async fn handle_input_event(
                     host.new_session(ctx).await?;
                     app.reload_after_thread_switch(host).await;
                 }
+                KeyCode::Char('j')
+                    if app.layout.focus == FocusRegion::Chat && app.composer_focus =>
+                {
+                    app.handle_char('j');
+                }
+                KeyCode::Char('k')
+                    if app.layout.focus == FocusRegion::Chat && app.composer_focus =>
+                {
+                    app.handle_char('k');
+                }
                 KeyCode::Char('j') => {
                     enter_transcript_scroll_if_needed(app);
                     handle_j(app);
@@ -200,10 +245,45 @@ async fn handle_input_event(
                 {
                     app.transcript.toggle_last_tool_expand();
                 }
-                KeyCode::Char(n @ '1'..='5') if app.layout.focus == FocusRegion::Left => {
+                KeyCode::Char(n @ '1'..='4')
+                    if app.layout.focus == FocusRegion::Left
+                        || app.layout.focus == FocusRegion::Right =>
+                {
                     if let Some(tab) = InspectorTab::from_index(n as u8 - b'0') {
-                        app.layout.prefs.set_inspector_tab(tab);
+                        app.switch_inspector_tab(tab);
+                        app.focus_inspector_upper();
                     }
+                }
+                KeyCode::Char('l') if app.layout.focus == FocusRegion::Right => {
+                    app.toggle_lht_pane();
+                }
+                KeyCode::Char('i') if app.layout.focus == FocusRegion::Right => {
+                    app.focus_inspector_upper();
+                }
+                KeyCode::Enter if app.layout.focus == FocusRegion::Right => {
+                    app.inspector_activate(&host.thread.workspace);
+                }
+                KeyCode::Esc if app.layout.focus == FocusRegion::Right => {
+                    if app.inspector_ui.in_detail_view() || app.inspector_ui.mcp_expanded.is_some()
+                    {
+                        app.inspector_back();
+                    }
+                }
+                KeyCode::Char('s')
+                    if app.layout.focus == FocusRegion::Right
+                        && app.layout.prefs.inspector_tab() == InspectorTab::Diff =>
+                {
+                    app.toggle_diff_staged(&host.thread.workspace);
+                }
+                KeyCode::Char('-') | KeyCode::Char('_')
+                    if app.layout.focus == FocusRegion::Right =>
+                {
+                    app.layout.adjust_right_width(-2);
+                }
+                KeyCode::Char('=') | KeyCode::Char('+')
+                    if app.layout.focus == FocusRegion::Right =>
+                {
+                    app.layout.adjust_right_width(2);
                 }
                 KeyCode::Esc if app.layout.focus == FocusRegion::Chat => {
                     if app.composer_focus && app.slash.open {
@@ -313,11 +393,15 @@ fn handle_tab_focus(app: &mut AppState, shift: bool) {
             return;
         }
     }
+    let prev_focus = app.layout.focus;
     app.layout.focus = if shift {
         app.layout.focus_prev_visible()
     } else {
         app.layout.focus_next_visible()
     };
+    if app.layout.focus == FocusRegion::Right && prev_focus != FocusRegion::Right {
+        app.focus_inspector_upper();
+    }
     if app.layout.focus == FocusRegion::Chat {
         app.composer_focus = !shift;
     }
@@ -327,6 +411,10 @@ fn handle_j(app: &mut AppState) {
     match app.layout.focus {
         FocusRegion::Left => app.sessions.move_down(),
         FocusRegion::Chat if !app.composer_focus => app.transcript.scroll_up(1),
+        FocusRegion::Right => {
+            let ws = app.workspace.clone();
+            app.right_rail_scroll_down(&ws);
+        }
         _ => {}
     }
 }
@@ -335,6 +423,10 @@ fn handle_k(app: &mut AppState) {
     match app.layout.focus {
         FocusRegion::Left => app.sessions.move_up(),
         FocusRegion::Chat if !app.composer_focus => app.transcript.scroll_down(1),
+        FocusRegion::Right => {
+            let ws = app.workspace.clone();
+            app.right_rail_scroll_up(&ws);
+        }
         _ => {}
     }
 }
@@ -372,6 +464,14 @@ async fn handle_slash_enter(
     app: &mut AppState,
 ) -> Result<bool> {
     let current_ws = host.thread.workspace.clone();
+    if composer_slash::lht_picker_active(&app.composer) && app.slash.open {
+        if let Some(mode) = composer_slash::selected_lht_mode(&app.composer, app.slash.selected) {
+            app.composer.clear();
+            app.slash.close();
+            execute_slash_action(ctx, host, app, SlashAction::SetLhtMode(mode)).await?;
+            return Ok(true);
+        }
+    }
     if composer_slash::model_picker_active(&app.composer) && app.slash.open {
         if let Some(model) =
             composer_slash::selected_model(&app.composer, app.slash.selected, &app.model_catalog)
@@ -402,7 +502,8 @@ async fn handle_slash_enter(
                     composer_slash::SlashActionKind::Help => SlashAction::ShowHelp,
                     composer_slash::SlashActionKind::Clear => SlashAction::ClearComposer,
                     composer_slash::SlashActionKind::Workspace
-                    | composer_slash::SlashActionKind::Model => {
+                    | composer_slash::SlashActionKind::Model
+                    | composer_slash::SlashActionKind::Lht => {
                         return Ok(true);
                     }
                 };
@@ -439,6 +540,13 @@ async fn execute_slash_action(
                 crate::cli::context::display_path(&path)
             ));
         }
+        SlashAction::SetLhtMode(mode) => {
+            apply_lht_mode_change(app, mode);
+        }
+        SlashAction::CycleLhtMode => {
+            let next = lht_mode::load_lht_composer_mode().cycle();
+            apply_lht_mode_change(app, next);
+        }
         SlashAction::NewSession => {
             host.new_session(ctx).await?;
             app.reload_after_thread_switch(host).await;
@@ -450,6 +558,21 @@ async fn execute_slash_action(
         SlashAction::ClearComposer => {}
     }
     Ok(())
+}
+
+fn apply_lht_mode_change(app: &mut AppState, mode: zagens_config::LhtComposerMode) {
+    match lht_mode::persist_lht_composer_mode(mode) {
+        Ok(()) => {
+            app.sync_lht_mode();
+            app.push_system_line(format!(
+                "lht: {} (applies on next turn)",
+                lht_mode::format_lht_mode_label(mode)
+            ));
+        }
+        Err(err) => {
+            app.push_system_line(format!("lht: failed to save settings — {err}"));
+        }
+    }
 }
 
 async fn submit_prompt(host: &TuiSessionHost, app: &mut AppState, prompt: &str) -> Result<()> {
