@@ -121,14 +121,14 @@ fn summarize_json_result(name: &str, value: &Value, raw: &str) -> String {
 }
 
 fn summarize_text_search(content: &str) -> String {
-    if let Ok(value) = serde_json::from_str::<Value>(content) {
-        if let Some(results) = value.get("results").and_then(Value::as_array) {
-            let n = results.len();
-            if let Some(query) = value.get("query").and_then(|v| v.as_str()) {
-                return truncate_plain(&format!("{n} results · «{query}»"), SUMMARY_MAX);
-            }
-            return format!("{n} results");
+    if let Ok(value) = serde_json::from_str::<Value>(content)
+        && let Some(results) = value.get("results").and_then(Value::as_array)
+    {
+        let n = results.len();
+        if let Some(query) = value.get("query").and_then(|v| v.as_str()) {
+            return truncate_plain(&format!("{n} results · «{query}»"), SUMMARY_MAX);
         }
+        return format!("{n} results");
     }
     summarize_generic_body(content)
 }

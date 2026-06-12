@@ -3,8 +3,6 @@
 use super::display_format::display_width;
 
 const MIN_COL_WIDTH: usize = 2;
-/// Blank rows inserted between markdown table data rows (not border rules).
-const TABLE_DATA_ROW_GAP_LINES: usize = 0;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AssistantBlock {
@@ -60,10 +58,6 @@ pub fn format_table(rows: &[Vec<String>], max_cols: usize) -> Vec<String> {
         out.push(format_row(row, &widths, col_count));
         if idx == 0 {
             out.push(rule.clone());
-        } else if TABLE_DATA_ROW_GAP_LINES > 0 && idx + 1 < rows.len() {
-            for _ in 0..TABLE_DATA_ROW_GAP_LINES {
-                out.push(String::new());
-            }
         }
     }
     out.push(rule);

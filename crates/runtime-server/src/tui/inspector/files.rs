@@ -102,7 +102,7 @@ impl FileTreeState {
             label: self.root_display.clone(),
         });
         if self.expanded.contains("") {
-            append_dir(workspace, workspace, "", 1, &self.expanded, &mut lines);
+            append_dir(workspace, "", 1, &self.expanded, &mut lines);
         }
         if lines.len() > MAX_VISIBLE {
             lines.truncate(MAX_VISIBLE);
@@ -122,7 +122,6 @@ fn dir_suffix(is_dir: bool) -> &'static str {
 }
 
 fn append_dir(
-    workspace: &Path,
     dir: &Path,
     rel: &str,
     depth: u32,
@@ -158,7 +157,7 @@ fn append_dir(
             label: name.to_string(),
         });
         if is_dir && expanded.contains(&child_rel) {
-            append_dir(workspace, &path, &child_rel, depth + 1, expanded, lines);
+            append_dir(&path, &child_rel, depth + 1, expanded, lines);
         }
     }
 }

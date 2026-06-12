@@ -9,21 +9,11 @@ pub struct DiffEntry {
     pub summary: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct DiffPanelState {
     pub header: String,
     pub entries: Vec<DiffEntry>,
     pub error: Option<String>,
-}
-
-impl Default for DiffPanelState {
-    fn default() -> Self {
-        Self {
-            header: String::new(),
-            entries: Vec::new(),
-            error: None,
-        }
-    }
 }
 
 impl DiffPanelState {

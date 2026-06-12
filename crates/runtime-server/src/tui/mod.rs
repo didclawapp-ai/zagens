@@ -300,11 +300,11 @@ async fn handle_input_event(
                     }
                 }
                 KeyCode::Enter if app.layout.focus == FocusRegion::Left => {
-                    if let Some(id) = app.sessions.selected_id() {
-                        if id != app.thread_id {
-                            host.switch_thread(id).await?;
-                            app.reload_after_thread_switch(host).await;
-                        }
+                    if let Some(id) = app.sessions.selected_id()
+                        && id != app.thread_id
+                    {
+                        host.switch_thread(id).await?;
+                        app.reload_after_thread_switch(host).await;
                     }
                 }
                 KeyCode::Enter if app.layout.focus == FocusRegion::Chat => {
@@ -317,10 +317,10 @@ async fn handle_input_event(
                             if handle_slash_enter(ctx, host, app).await? {
                                 return Ok(false);
                             }
-                        } else if app.can_send_prompt() {
-                            if let Some(prompt) = app.take_composer_prompt() {
-                                submit_prompt(host, app, &prompt).await?;
-                            }
+                        } else if app.can_send_prompt()
+                            && let Some(prompt) = app.take_composer_prompt()
+                        {
+                            submit_prompt(host, app, &prompt).await?;
                         }
                     } else {
                         app.transcript.toggle_last_tool_expand();
@@ -470,23 +470,24 @@ async fn handle_slash_enter(
     app: &mut AppState,
 ) -> Result<bool> {
     let current_ws = host.thread.workspace.clone();
-    if composer_slash::lht_picker_active(&app.composer) && app.slash.open {
-        if let Some(mode) = composer_slash::selected_lht_mode(&app.composer, app.slash.selected) {
-            app.composer.clear();
-            app.slash.close();
-            execute_slash_action(ctx, host, app, SlashAction::SetLhtMode(mode)).await?;
-            return Ok(true);
-        }
+    if composer_slash::lht_picker_active(&app.composer)
+        && app.slash.open
+        && let Some(mode) = composer_slash::selected_lht_mode(&app.composer, app.slash.selected)
+    {
+        app.composer.clear();
+        app.slash.close();
+        execute_slash_action(ctx, host, app, SlashAction::SetLhtMode(mode)).await?;
+        return Ok(true);
     }
-    if composer_slash::model_picker_active(&app.composer) && app.slash.open {
-        if let Some(model) =
+    if composer_slash::model_picker_active(&app.composer)
+        && app.slash.open
+        && let Some(model) =
             composer_slash::selected_model(&app.composer, app.slash.selected, &app.model_catalog)
-        {
-            app.composer.clear();
-            app.slash.close();
-            execute_slash_action(ctx, host, app, SlashAction::SwitchModel(model)).await?;
-            return Ok(true);
-        }
+    {
+        app.composer.clear();
+        app.slash.close();
+        execute_slash_action(ctx, host, app, SlashAction::SwitchModel(model)).await?;
+        return Ok(true);
     }
     if let Some(action) = composer_slash::try_parse_action(&app.composer, &current_ws) {
         app.composer.clear();

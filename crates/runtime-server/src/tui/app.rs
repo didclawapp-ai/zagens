@@ -422,10 +422,10 @@ impl AppState {
                 });
             }
         }
-        if let Event::AgentComplete { id, .. } = &event {
-            if let Some(entry) = self.agents.iter_mut().find(|a| a.id == *id) {
-                entry.status = "done".to_string();
-            }
+        if let Event::AgentComplete { id, .. } = &event
+            && let Some(entry) = self.agents.iter_mut().find(|a| a.id == *id)
+        {
+            entry.status = "done".to_string();
         }
 
         apply_event(&mut self.transcript, event);
@@ -800,7 +800,7 @@ fn format_task_type_label(task_type: &str) -> String {
         "office" => "Office".to_string(),
         "code" => "Code".to_string(),
         "auto" => "Auto".to_string(),
-        other if other.is_empty() => "Code".to_string(),
+        "" => "Code".to_string(),
         other => other.to_string(),
     }
 }

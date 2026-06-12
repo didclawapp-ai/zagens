@@ -289,10 +289,10 @@ impl TranscriptState {
         window
             .into_iter()
             .map(|entry| styled_line(entry.kind, &entry.text, entry.thinking_live))
-            .chain(
-                std::iter::repeat(styled_line(TranscriptLineKind::Spacer, "", false))
-                    .take(spacer_needed),
-            )
+            .chain(std::iter::repeat_n(
+                styled_line(TranscriptLineKind::Spacer, "", false),
+                spacer_needed,
+            ))
             .collect()
     }
 
@@ -315,19 +315,16 @@ impl TranscriptState {
 
 fn append_turn_lines(lines: &mut Vec<LogicalLine>, turn: &TranscriptTurn, state: &TranscriptState) {
     let mut section_idx = 0usize;
-    let push_section_gap = |lines: &mut Vec<LogicalLine>, section_idx: &mut usize| {
-        if *section_idx > 0 && SECTION_GAP_LINES > 0 {
-            lines.push(LogicalLine::section_spacer());
-        }
+    let push_section_gap = |section_idx: &mut usize| {
         *section_idx += 1;
     };
 
-    push_section_gap(lines, &mut section_idx);
+    push_section_gap(&mut section_idx);
     lines.extend(logical_lines_for_user(&turn.user));
 
     let has_thinking = turn.thinking.streaming || !turn.thinking.text.trim().is_empty();
     if has_thinking {
-        push_section_gap(lines, &mut section_idx);
+        push_section_gap(&mut section_idx);
         lines.extend(logical_lines_for_merged_thinking(
             &turn.thinking.text,
             turn.thinking.char_count,
@@ -337,7 +334,7 @@ fn append_turn_lines(lines: &mut Vec<LogicalLine>, turn: &TranscriptTurn, state:
     }
 
     if !turn.tools.is_empty() {
-        push_section_gap(lines, &mut section_idx);
+        push_section_gap(&mut section_idx);
         if state.tools_collapsed {
             lines.extend(logical_lines_for_tools_summary(
                 &turn.tools,
@@ -356,7 +353,7 @@ fn append_turn_lines(lines: &mut Vec<LogicalLine>, turn: &TranscriptTurn, state:
     }
 
     if turn.content_streaming || !turn.content.trim().is_empty() {
-        push_section_gap(lines, &mut section_idx);
+        push_section_gap(&mut section_idx);
         lines.extend(logical_lines_for_assistant(
             &turn.content,
             turn.content_streaming,
@@ -364,7 +361,7 @@ fn append_turn_lines(lines: &mut Vec<LogicalLine>, turn: &TranscriptTurn, state:
     }
 
     if !turn.harness.is_empty() {
-        push_section_gap(lines, &mut section_idx);
+        push_section_gap(&mut section_idx);
         for line in &turn.harness {
             if is_transcript_noise_harness(line) {
                 continue;
@@ -548,9 +545,6 @@ fn logical_lines_for_assistant(text: &str, streaming: bool) -> Vec<LogicalLine> 
     let blocks = super::markdown_table::split_assistant_blocks(text);
     let mut first_assistant_line = true;
     for (block_idx, block) in blocks.iter().enumerate() {
-        if block_idx > 0 && SECTION_GAP_LINES > 0 {
-            out.push(LogicalLine::section_spacer());
-        }
         match block {
             super::markdown_table::AssistantBlock::Table(rows) => {
                 out.push(LogicalLine::table(
@@ -569,9 +563,6 @@ fn logical_lines_for_assistant(text: &str, streaming: bool) -> Vec<LogicalLine> 
                 for (i, line) in prose_lines.iter().enumerate() {
                     if line.trim().is_empty() {
                         continue;
-                    }
-                    if i > 0 && PROSE_LINE_GAP_LINES > 0 {
-                        out.push(LogicalLine::prose_line_spacer());
                     }
                     let prefix = if first_assistant_line && i == 0 {
                         AI_TAG

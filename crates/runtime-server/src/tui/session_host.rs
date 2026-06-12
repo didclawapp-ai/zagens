@@ -520,15 +520,15 @@ async fn resolve_thread(
     if cli.fresh {
         return create_new_thread(manager, ctx, cli).await;
     }
-    if let Some(id) = last_thread_id.filter(|s| !s.trim().is_empty()) {
-        if let Ok(thread) = manager.get_thread(id).await {
-            let workspace_canon =
-                std::fs::canonicalize(&ctx.workspace).unwrap_or_else(|_| ctx.workspace.clone());
-            let tw = std::fs::canonicalize(&thread.workspace)
-                .unwrap_or_else(|_| thread.workspace.clone());
-            if tw == workspace_canon {
-                return Ok(thread);
-            }
+    if let Some(id) = last_thread_id.filter(|s| !s.trim().is_empty())
+        && let Ok(thread) = manager.get_thread(id).await
+    {
+        let workspace_canon =
+            std::fs::canonicalize(&ctx.workspace).unwrap_or_else(|_| ctx.workspace.clone());
+        let tw =
+            std::fs::canonicalize(&thread.workspace).unwrap_or_else(|_| thread.workspace.clone());
+        if tw == workspace_canon {
+            return Ok(thread);
         }
     }
     match resolve_latest(manager, &ctx.workspace).await {

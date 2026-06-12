@@ -10,28 +10,19 @@ pub struct McpServerEntry {
     pub tools: Vec<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct McpPanelState {
     pub header: String,
     pub servers: Vec<McpServerEntry>,
 }
 
-impl Default for McpPanelState {
-    fn default() -> Self {
-        Self {
-            header: String::new(),
-            servers: Vec::new(),
-        }
-    }
-}
-
 impl McpPanelState {
     pub fn line_count(&self, expanded: Option<&str>) -> usize {
         let mut n = self.servers.len().max(1);
-        if let Some(name) = expanded {
-            if let Some(server) = self.servers.iter().find(|s| s.name == name) {
-                n += server.tools.len().max(1);
-            }
+        if let Some(name) = expanded
+            && let Some(server) = self.servers.iter().find(|s| s.name == name)
+        {
+            n += server.tools.len().max(1);
         }
         n
     }

@@ -66,7 +66,7 @@ const THINKING_SPINNER_MS: u64 = 120;
 pub const COMPOSER_CURSOR_BLINK_MS: u64 = 530;
 
 pub fn composer_cursor_blink_on(since: Instant) -> bool {
-    (since.elapsed().as_millis() as u64 / COMPOSER_CURSOR_BLINK_MS) % 2 == 0
+    (since.elapsed().as_millis() as u64 / COMPOSER_CURSOR_BLINK_MS).is_multiple_of(2)
 }
 
 pub fn thinking_spinner_frame_at(since: Instant) -> &'static str {
