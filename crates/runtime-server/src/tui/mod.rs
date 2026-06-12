@@ -24,6 +24,7 @@ mod terminal;
 mod theme;
 mod transcript;
 mod transcript_filter;
+mod transcript_history;
 mod transcript_turn;
 
 use std::time::Duration;

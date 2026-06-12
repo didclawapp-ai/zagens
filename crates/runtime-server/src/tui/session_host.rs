@@ -13,7 +13,6 @@ use crate::cli::context::CliContext;
 use crate::core::engine::EngineHandle;
 use crate::core::events::Event;
 use crate::runtime_threads::event_coalesce::coalesce_delta_events;
-use crate::runtime_threads::persist::reconstruct_messages_for_store;
 use crate::runtime_threads::{
     CreateThreadRequest, RuntimeEventRecord, RuntimeThreadManager, RuntimeThreadManagerConfig,
     SharedRuntimeThreadManager, StartTurnRequest, ThreadListFilter, ThreadRecord,
@@ -27,9 +26,8 @@ use super::harness::{ChecklistSnapshot, parse_checklist_json, parse_checklist_pa
 use super::task_graph::{
     TaskGraphSnapshot, parse_task_graph_panel_payload, parse_task_graph_value,
 };
-use super::transcript::{TranscriptItem, seed_from_messages};
-
-const HISTORY_REPLAY_LIMIT: usize = 20;
+use super::transcript::TranscriptItem;
+use super::transcript_history::{default_history_turn_limit, seed_from_thread_store};
 
 /// Runtime thread events plus immediate panel payloads for the TUI.
 pub struct RuntimeUiDelta {
@@ -318,9 +316,16 @@ impl TuiSessionHost {
             .store
             .list_turns_for_thread(&self.thread.id)
             .context("list turns")?;
-        let messages = reconstruct_messages_for_store(&self.manager.store, &turns)
-            .context("reconstruct messages")?;
-        Ok(seed_from_messages(&messages, HISTORY_REPLAY_LIMIT))
+        let events = self
+            .manager
+            .events_since(&self.thread.id, None)
+            .unwrap_or_default();
+        Ok(seed_from_thread_store(
+            &self.manager.store,
+            &turns,
+            &events,
+            default_history_turn_limit(),
+        ))
     }
 
     pub async fn list_workspace_threads(&self) -> Result<Vec<ThreadRecord>> {

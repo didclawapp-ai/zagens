@@ -20,7 +20,9 @@ const TOOL_DETAIL_MAX: usize = 2048;
 /// Blank rows between conversation turns (user prompt → next user prompt).
 const TURN_GAP_LINES: usize = 2;
 /// Blank rows between sections inside one turn (user / THK / tools / AI).
-const SECTION_GAP_LINES: usize = 0;
+const SECTION_GAP_LINES: usize = 1;
+/// Blank rows between consecutive `\n`-separated lines in one assistant prose block (lists, headers).
+const PROSE_LINE_GAP_LINES: usize = 1;
 const THINKING_PREVIEW_MAX: usize = 120;
 
 /// Visual category for transcript coloring.
@@ -490,6 +492,16 @@ impl LogicalLine {
         }
     }
 
+    fn prose_line_spacer() -> Self {
+        Self {
+            kind: TranscriptLineKind::Spacer,
+            text: String::new(),
+            table_rows: None,
+            thinking_live: false,
+            gap_lines: PROSE_LINE_GAP_LINES,
+        }
+    }
+
     fn plain(kind: TranscriptLineKind, text: String, thinking_live: bool) -> Self {
         Self {
             kind,
@@ -551,6 +563,9 @@ fn logical_lines_for_assistant(text: &str, streaming: bool) -> Vec<LogicalLine> 
                 let prose_lines: Vec<&str> = prose.lines().collect();
                 let line_count = prose_lines.len();
                 for (i, line) in prose_lines.iter().enumerate() {
+                    if i > 0 && PROSE_LINE_GAP_LINES > 0 {
+                        out.push(LogicalLine::prose_line_spacer());
+                    }
                     let prefix = if first_assistant_line && i == 0 {
                         AI_TAG
                     } else {
@@ -928,7 +943,7 @@ pub fn seed_from_messages(
     items
 }
 
-fn probe_noise_line(text: &str) -> bool {
+pub(crate) fn probe_noise_line(text: &str) -> bool {
     let t = text.trim();
     t.starts_with("[thinking-probe]")
         || t.starts_with("[lht-probe]")
@@ -936,7 +951,7 @@ fn probe_noise_line(text: &str) -> bool {
         || t.contains("deltas=") && t.contains("flushes=") && t.contains("thread=thr_")
 }
 
-fn truncate_detail(text: &str) -> String {
+pub(crate) fn truncate_detail(text: &str) -> String {
     if text.chars().count() <= TOOL_DETAIL_MAX {
         text.to_string()
     } else {
@@ -1163,29 +1178,62 @@ mod tests {
     }
 
     #[test]
-    fn render_omits_section_gap_inside_turn() {
+    fn render_uses_prose_line_gap_in_assistant_lists() {
+        let mut state = TranscriptState::default();
+        let mut turn = TranscriptTurn::new("list".to_string());
+        turn.content = "**代码工作**\n- item one\n- item two".to_string();
+        turn.open = false;
+        push_closed_turn(&mut state, turn);
+        let joined = render_joined(&state, 40, 80);
+        let lines: Vec<&str> = joined.lines().collect();
+        let header_row = lines
+            .iter()
+            .position(|l| l.contains("代码工作"))
+            .expect("header");
+        let first_item = lines
+            .iter()
+            .position(|l| l.contains("item one"))
+            .expect("item one");
+        let second_item = lines
+            .iter()
+            .position(|l| l.contains("item two"))
+            .expect("item two");
+        assert!(
+            lines
+                .get(header_row + 1)
+                .is_some_and(|l| l.trim().is_empty()),
+            "expected blank row between header and first list item"
+        );
+        assert!(
+            lines[first_item + 1..second_item]
+                .iter()
+                .any(|l| l.trim().is_empty()),
+            "expected blank row between list items"
+        );
+    }
+
+    #[test]
+    fn render_uses_section_gap_inside_turn() {
         let mut state = TranscriptState::default();
         let mut turn = TranscriptTurn::new("hi".to_string());
         turn.content = "hello".to_string();
         turn.open = false;
         push_closed_turn(&mut state, turn);
         let joined = render_joined(&state, 40, 80);
-        let content_lines: Vec<&str> = joined
-            .lines()
-            .filter(|line| !line.trim().is_empty())
-            .collect();
-        let user_idx = content_lines
+        let lines: Vec<&str> = joined.lines().collect();
+        let user_row = lines
             .iter()
             .position(|line| line.contains("you>"))
-            .expect("user line");
-        let ai_idx = content_lines
+            .expect("user");
+        let ai_row = lines
             .iter()
             .position(|line| line.contains("AI>"))
-            .expect("assistant line");
-        assert_eq!(
-            ai_idx,
-            user_idx + 1,
-            "expected no blank spacer between user and assistant sections"
+            .expect("ai");
+        assert!(
+            lines[user_row + 1..ai_row]
+                .iter()
+                .any(|line| line.trim().is_empty()),
+            "expected one blank row between user and assistant sections"
         );
     }
 

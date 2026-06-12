@@ -247,9 +247,12 @@ pub fn display_width(text: &str) -> usize {
 
 /// Pad a line to `width` display columns so shorter redraws erase prior frame tails.
 pub fn pad_line_display_width(line: &str, width: usize) -> String {
+    if width == 0 {
+        return String::new();
+    }
     let w = display_width(line);
-    if w >= width {
-        return line.to_string();
+    if w > width {
+        return truncate_display_width(line, width);
     }
     let mut out = String::with_capacity(line.len() + (width - w));
     out.push_str(line);
@@ -262,23 +265,34 @@ pub fn pad_styled_line(line: Line<'static>, width: usize, pad_style: Style) -> L
     if width == 0 {
         return line;
     }
-    if line.spans.len() == 1 {
-        let span = &line.spans[0];
-        let padded = pad_line_display_width(span.content.as_ref(), width);
-        return Line::from(Span::styled(padded, span.style));
-    }
     let plain: String = line
         .spans
         .iter()
         .map(|span| span.content.as_ref())
         .collect();
-    if display_width(&plain) >= width {
-        return line;
+    let w = display_width(&plain);
+    if w > width {
+        let truncated = truncate_display_width(&plain, width);
+        let style = line
+            .spans
+            .iter()
+            .find(|s| !s.content.is_empty())
+            .map(|s| s.style)
+            .unwrap_or(pad_style);
+        return Line::from(Span::styled(truncated, style));
     }
-    let pad = pad_line_display_width("", width.saturating_sub(display_width(&plain)));
-    let mut spans = line.spans;
-    spans.push(Span::styled(pad, pad_style));
-    Line::from(spans)
+    if line.spans.len() == 1 {
+        let span = &line.spans[0];
+        let padded = pad_line_display_width(span.content.as_ref(), width);
+        return Line::from(Span::styled(padded, span.style));
+    }
+    if w < width {
+        let pad = pad_line_display_width("", width.saturating_sub(w));
+        let mut spans = line.spans;
+        spans.push(Span::styled(pad, pad_style));
+        return Line::from(spans);
+    }
+    line
 }
 
 /// Pad each line to `width` and extend with blank rows to `height` (clears ghost cells).
@@ -473,6 +487,24 @@ mod tests {
     fn pad_line_fills_to_display_width() {
         let padded = pad_line_display_width("hi", 10);
         assert_eq!(display_width(&padded), 10);
+    }
+
+    #[test]
+    fn pad_line_truncates_when_wider_than_area() {
+        let line = "你好世界测试数据";
+        let padded = pad_line_display_width(line, 8);
+        assert!(display_width(&padded) <= 8);
+    }
+
+    #[test]
+    fn pad_styled_line_truncates_multi_span_overflow() {
+        let line = Line::from(vec![
+            Span::raw("[x] "),
+            Span::raw("run_fetch_url_with_a_very_long_label"),
+        ]);
+        let padded = pad_styled_line(line, 20, Style::default());
+        let plain: String = padded.spans.iter().map(|s| s.content.as_ref()).collect();
+        assert!(display_width(&plain) <= 20);
     }
 
     #[test]

@@ -118,6 +118,79 @@ fn draw_faint_divider(frame: &mut Frame<'_>, area: Rect) {
     );
 }
 
+/// Repaint a one-column vertical border strip (fixes breaks when pane text bleeds sideways).
+fn paint_vertical_border_strip(frame: &mut Frame<'_>, area: Rect, side: Borders, style: Style) {
+    if area.width == 0 || area.height == 0 {
+        return;
+    }
+    frame.render_widget(Block::default().borders(side).border_style(style), area);
+}
+
+fn repair_column_borders(
+    frame: &mut Frame<'_>,
+    regions: &LayoutRegions,
+    left_style: Style,
+    center_style: Style,
+    right_style: Style,
+) {
+    if regions.left_visible && regions.left.width > 0 {
+        paint_vertical_border_strip(
+            frame,
+            Rect {
+                x: regions
+                    .left
+                    .x
+                    .saturating_add(regions.left.width.saturating_sub(1)),
+                y: regions.left.y,
+                width: 1,
+                height: regions.left.height,
+            },
+            Borders::RIGHT,
+            left_style,
+        );
+    }
+    if regions.center.width > 1 {
+        paint_vertical_border_strip(
+            frame,
+            Rect {
+                x: regions.center.x,
+                y: regions.center.y,
+                width: 1,
+                height: regions.center.height,
+            },
+            Borders::LEFT,
+            center_style,
+        );
+        paint_vertical_border_strip(
+            frame,
+            Rect {
+                x: regions
+                    .center
+                    .x
+                    .saturating_add(regions.center.width.saturating_sub(1)),
+                y: regions.center.y,
+                width: 1,
+                height: regions.center.height,
+            },
+            Borders::RIGHT,
+            center_style,
+        );
+    }
+    if regions.right_visible && regions.right.width > 0 {
+        paint_vertical_border_strip(
+            frame,
+            Rect {
+                x: regions.right.x,
+                y: regions.right.y,
+                width: 1,
+                height: regions.right.height,
+            },
+            Borders::LEFT,
+            right_style,
+        );
+    }
+}
+
 fn inset_content_area(area: Rect) -> Rect {
     let pad = CENTER_CONTENT_PAD;
     if area.width <= pad.saturating_mul(2) {
@@ -377,11 +450,6 @@ pub fn draw(
             } else {
                 " LHT "
             };
-            let lht_lines = render_lht_styled(
-                app.task_graph.as_ref(),
-                lht_height.max(4),
-                app.lht_ui.scroll,
-            );
             let lht_block = Block::default()
                 .borders(Borders::LEFT | Borders::BOTTOM | Borders::RIGHT)
                 .border_style(if lht_focused {
@@ -391,6 +459,13 @@ pub fn draw(
                 })
                 .style(theme::shell_sidebar())
                 .title(lht_title);
+            let lht_inner = lht_block.inner(right.lht);
+            let lht_lines = render_lht_styled(
+                app.task_graph.as_ref(),
+                lht_height.max(4),
+                app.lht_ui.scroll,
+                lht_inner.width.max(1) as usize,
+            );
             let filled = fill_block_lines(lht_lines, right.lht, &lht_block, theme::shell_sidebar());
             paint_area(frame, right.lht, theme::shell_sidebar());
             frame.render_widget(
@@ -404,6 +479,8 @@ pub fn draw(
 
     if app.show_help {
         draw_help(frame);
+    } else {
+        repair_column_borders(frame, regions, left_style, center_border, right_style);
     }
     if let Some(pending) = &app.pending_approval {
         draw_approval(frame, pending);

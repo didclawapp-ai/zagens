@@ -2,6 +2,7 @@
 
 use ratatui::text::{Line, Span};
 
+use super::super::display_format::{display_width, truncate_display_width};
 use super::super::harness::ChecklistStatus;
 use super::super::task_graph::{PhaseStatus, TaskGraphSnapshot};
 use super::super::theme;
@@ -33,7 +34,9 @@ pub fn render_styled_panel(
     graph: Option<&TaskGraphSnapshot>,
     height: usize,
     scroll: usize,
+    max_cols: usize,
 ) -> Vec<Line<'static>> {
+    let max_cols = max_cols.max(8);
     let Some(graph) = graph.filter(|g| g.has_activity()) else {
         return vec![Line::from(Span::styled(
             "No LHT activity.",
@@ -46,7 +49,7 @@ pub fn render_styled_panel(
 
     if !graph.objective.is_empty() {
         lines.push(Line::from(Span::styled(
-            truncate(&graph.objective, 56),
+            truncate_display(&graph.objective, max_cols),
             theme::sidebar_item(false),
         )));
     }
@@ -100,7 +103,10 @@ pub fn render_styled_panel(
             let (mark, style) = phase_style(phase.status, dim);
             lines.push(Line::from(vec![
                 Span::styled(format!("{mark} "), style),
-                Span::styled(truncate(&phase.step, 48), style),
+                Span::styled(
+                    truncate_display(&phase.step, max_cols.saturating_sub(4)),
+                    style,
+                ),
             ]));
         }
     }
@@ -123,7 +129,10 @@ pub fn render_styled_panel(
             };
             lines.push(Line::from(vec![
                 Span::styled(format!("{mark} "), style),
-                Span::styled(truncate(&item.content, 48), style),
+                Span::styled(
+                    truncate_display(&item.content, max_cols.saturating_sub(4)),
+                    style,
+                ),
             ]));
         }
     }
@@ -145,11 +154,12 @@ fn phase_style(status: PhaseStatus, dim: bool) -> (&'static str, ratatui::style:
     }
 }
 
-fn truncate(text: &str, max: usize) -> String {
-    if text.chars().count() <= max {
-        text.to_string()
-    } else {
-        let cut: String = text.chars().take(max.saturating_sub(1)).collect();
-        format!("{cut}…")
+fn truncate_display(text: &str, max_cols: usize) -> String {
+    if max_cols == 0 {
+        return String::new();
     }
+    if display_width(text) <= max_cols {
+        return text.to_string();
+    }
+    truncate_display_width(text, max_cols)
 }

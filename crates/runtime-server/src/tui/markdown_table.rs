@@ -3,6 +3,8 @@
 use super::display_format::display_width;
 
 const MIN_COL_WIDTH: usize = 2;
+/// Blank rows inserted between markdown table data rows (not border rules).
+const TABLE_DATA_ROW_GAP_LINES: usize = 1;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AssistantBlock {
@@ -58,6 +60,10 @@ pub fn format_table(rows: &[Vec<String>], max_cols: usize) -> Vec<String> {
         out.push(format_row(row, &widths, col_count));
         if idx == 0 {
             out.push(rule.clone());
+        } else if TABLE_DATA_ROW_GAP_LINES > 0 && idx + 1 < rows.len() {
+            for _ in 0..TABLE_DATA_ROW_GAP_LINES {
+                out.push(String::new());
+            }
         }
     }
     out.push(rule);
@@ -229,6 +235,30 @@ mod tests {
                 .any(|l| l.contains("类别") && l.contains("模块"))
         );
         assert!(lines.last().is_some_and(|l| l.starts_with('+')));
+    }
+
+    #[test]
+    fn formats_table_with_row_gaps() {
+        let rows = vec![
+            vec!["项目".to_string(), "数值".to_string()],
+            vec!["天气".to_string(), "晴".to_string()],
+            vec!["温度".to_string(), "30°C".to_string()],
+        ];
+        let lines = format_table(&rows, 80);
+        let weather_idx = lines
+            .iter()
+            .position(|l| l.contains("天气"))
+            .expect("weather row");
+        let temp_idx = lines
+            .iter()
+            .position(|l| l.contains("温度"))
+            .expect("temp row");
+        assert!(
+            lines[weather_idx + 1..temp_idx]
+                .iter()
+                .any(|l| l.trim().is_empty()),
+            "expected blank row between table data rows"
+        );
     }
 
     #[test]

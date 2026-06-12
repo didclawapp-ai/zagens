@@ -35,6 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Zagens (desktop sandbox settings):** Sandbox panel「完全访问」option wrote invalid `sandbox_mode = "full-access"`, crashing the sidecar on restart (`expected danger-full-access`); UI now uses `danger-full-access` and desktop normalizes legacy `full-access` on load/save.
+- **TUI (`zagens-tui`):** Transcript spacing — one blank row between turn sections (user / THK / tools / AI), between consecutive assistant list/prose lines, and between markdown table data rows (borders unchanged).
+- **TUI (`zagens-tui`):** Fix intermittent broken vertical pane borders — clamp line padding to pane width (CJK-safe), LHT checklist uses display-width truncation, repaint border strips after each frame.
 - **TUI (`zagens-tui`):** Composer, LHT, and inspector panes no longer show ghost characters from prior frames — each redraw clears the pane and pads lines to full width/height.
 - **TUI (`zagens-tui`):** Fix center column side-border block painting over Transcript/Composer (input area invisible after divider layout change).
 - **TUI (`zagens-tui`):** Tab into the right column now focuses the upper inspector pane (LHT auto-expand no longer steals subfocus); use `l` to expand LHT with lower-pane focus or `i` to return to inspector.
