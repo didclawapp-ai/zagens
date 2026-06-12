@@ -109,11 +109,12 @@ fn draw_faint_divider(frame: &mut Frame<'_>, area: Rect) {
     if area.width == 0 || area.height == 0 {
         return;
     }
-    paint_area(frame, area, theme::shell_main());
+    frame.render_widget(Clear, area);
     frame.render_widget(
         Block::default()
             .borders(Borders::TOP)
-            .border_style(theme::border_idle()),
+            .border_style(theme::border_idle())
+            .style(theme::shell_main()),
         area,
     );
 }
@@ -126,6 +127,7 @@ fn paint_vertical_border_strip(frame: &mut Frame<'_>, area: Rect, side: Borders,
     frame.render_widget(Block::default().borders(side).border_style(style), area);
 }
 
+/// Repaint vertical pane borders — one column per boundary (no double strips).
 fn repair_column_borders(
     frame: &mut Frame<'_>,
     regions: &LayoutRegions,
@@ -133,7 +135,7 @@ fn repair_column_borders(
     center_style: Style,
     right_style: Style,
 ) {
-    if regions.left_visible && regions.left.width > 0 {
+    if regions.left_visible && regions.center.width > 0 {
         paint_vertical_border_strip(
             frame,
             Rect {
@@ -148,8 +150,7 @@ fn repair_column_borders(
             Borders::RIGHT,
             left_style,
         );
-    }
-    if regions.center.width > 1 {
+    } else if regions.center.width > 1 {
         paint_vertical_border_strip(
             frame,
             Rect {
@@ -161,6 +162,21 @@ fn repair_column_borders(
             Borders::LEFT,
             center_style,
         );
+    }
+
+    if regions.right_visible && regions.center.width > 0 {
+        paint_vertical_border_strip(
+            frame,
+            Rect {
+                x: regions.right.x,
+                y: regions.right.y,
+                width: 1,
+                height: regions.right.height,
+            },
+            Borders::LEFT,
+            right_style,
+        );
+    } else if regions.center.width > 1 {
         paint_vertical_border_strip(
             frame,
             Rect {
@@ -174,19 +190,6 @@ fn repair_column_borders(
             },
             Borders::RIGHT,
             center_style,
-        );
-    }
-    if regions.right_visible && regions.right.width > 0 {
-        paint_vertical_border_strip(
-            frame,
-            Rect {
-                x: regions.right.x,
-                y: regions.right.y,
-                width: 1,
-                height: regions.right.height,
-            },
-            Borders::LEFT,
-            right_style,
         );
     }
 }
@@ -210,7 +213,8 @@ pub fn draw(
     regions: &LayoutRegions,
     right: &RightPaneRegions,
 ) {
-    // Paint black shell background.
+    // Clear + paint black shell (shrunk terminals drop cells outside the new area).
+    frame.render_widget(Clear, frame.area());
     frame.render_widget(Block::default().style(theme::shell_main()), frame.area());
 
     let layout = &app.layout;
@@ -294,15 +298,8 @@ pub fn draw(
         border_idle
     };
 
-    let center_block = Block::default()
-        .borders(Borders::LEFT | Borders::RIGHT)
-        .border_style(center_border)
-        .style(theme::shell_main());
-    let center_inner = center_block.inner(regions.center);
     paint_area(frame, regions.center, theme::shell_main());
-    // Draw side borders first; rendering this block after content would paint over the column.
-    frame.render_widget(center_block, regions.center);
-    let center = split_center_column(center_inner, live_activity, layout.composer_lines);
+    let center = split_center_column(regions.center, live_activity, layout.composer_lines);
 
     let transcript_block = Block::default()
         .borders(Borders::TOP)
@@ -350,7 +347,14 @@ pub fn draw(
     } else {
         " Composer (scroll) "
     };
+    let composer_border = if chat_focused && app.composer_focus {
+        border_focus
+    } else {
+        border_idle
+    };
     let composer_block = Block::default()
+        .borders(Borders::TOP)
+        .border_style(composer_border)
         .title(composer_title)
         .style(theme::shell_main());
     let composer_area = inset_content_area(center.composer_input);
@@ -477,10 +481,9 @@ pub fn draw(
         }
     }
 
+    repair_column_borders(frame, regions, left_style, center_border, right_style);
     if app.show_help {
         draw_help(frame);
-    } else {
-        repair_column_borders(frame, regions, left_style, center_border, right_style);
     }
     if let Some(pending) = &app.pending_approval {
         draw_approval(frame, pending);

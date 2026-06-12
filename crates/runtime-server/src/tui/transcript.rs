@@ -285,10 +285,14 @@ impl TranscriptState {
             wrapped[start..end].to_vec()
         };
 
+        let spacer_needed = max.saturating_sub(window.len());
         window
             .into_iter()
             .map(|entry| styled_line(entry.kind, &entry.text, entry.thinking_live))
-            .chain(std::iter::repeat(styled_line(TranscriptLineKind::Spacer, "", false)).take(max))
+            .chain(
+                std::iter::repeat(styled_line(TranscriptLineKind::Spacer, "", false))
+                    .take(spacer_needed),
+            )
             .collect()
     }
 

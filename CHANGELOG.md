@@ -35,6 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **TUI (`zagens-tui`):** Single-column vertical pane borders (no adjacent double strips); vertical borders drawn only via end-of-frame repair (removed redundant center-column side block).
+- **TUI (`zagens-tui`):** Brighter idle/focus pane borders (`#555555` / `#777777`) and explicit black background on horizontal dividers for clearer layout on non-OLED terminals.
+- **TUI (`zagens-tui`):** Composer top border follows chat focus like Transcript; help overlay no longer skips border repair; terminal resize clears the backing buffer to drop edge ghost cells.
 - **Zagens (desktop sandbox settings):** Sandbox panel「完全访问」option wrote invalid `sandbox_mode = "full-access"`, crashing the sidecar on restart (`expected danger-full-access`); UI now uses `danger-full-access` and desktop normalizes legacy `full-access` on load/save.
 - **TUI (`zagens-tui`):** Transcript layout stays compact — no extra blank rows between list lines, turn sections, or table data rows; markdown empty lines in prose are skipped.
 - **TUI (`zagens-tui`):** Markdown ASCII tables render without `#1e1e1e` cell background — border rules use dim foreground, data rows match assistant text (fixes disconnected grid lines on black shell).

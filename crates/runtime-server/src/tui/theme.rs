@@ -46,9 +46,9 @@ pub mod palette {
     pub const FOREGROUND: &str = "#f8f8f2";
     pub const CODE_BG: &str = "#1e1e1e";
     pub const TAG_BG: &str = "#141414";
-    /// Faint pane borders on black shell.
-    pub const BORDER_IDLE: &str = "#3a3a3a";
-    pub const BORDER_FOCUS: &str = "#454545";
+    /// Faint pane borders on black shell (~4:1 idle / ~5.5:1 focus vs #000).
+    pub const BORDER_IDLE: &str = "#555555";
+    pub const BORDER_FOCUS: &str = "#777777";
 
     const fn rgb(r: u8, g: u8, b: u8) -> Color {
         Color::Rgb(r, g, b)
@@ -103,10 +103,10 @@ pub mod palette {
         rgb(0x14, 0x14, 0x14)
     }
     pub fn border_idle() -> Color {
-        rgb(0x3a, 0x3a, 0x3a)
+        rgb(0x55, 0x55, 0x55)
     }
     pub fn border_focus() -> Color {
-        rgb(0x45, 0x45, 0x45)
+        rgb(0x77, 0x77, 0x77)
     }
 }
 

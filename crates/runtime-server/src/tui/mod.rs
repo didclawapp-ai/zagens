@@ -73,6 +73,10 @@ pub async fn run_tui(cli: Cli) -> Result<()> {
 
     loop {
         if dirty {
+            if app.terminal_resized {
+                tui.terminal.clear()?;
+                app.terminal_resized = false;
+            }
             tui.terminal.draw(|frame| {
                 let area = frame.area();
                 app.layout.last_terminal_width = area.width;
@@ -171,6 +175,7 @@ async fn handle_input_event(
         Event::Resize(width, _) => {
             app.layout.last_terminal_width = *width;
             app.layout.apply_auto_collapse(*width);
+            app.terminal_resized = true;
         }
         Event::Paste(text) => {
             app.handle_composer_paste(text);
