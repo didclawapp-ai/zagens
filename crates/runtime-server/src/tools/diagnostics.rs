@@ -11,6 +11,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use super::misc_inputs::diagnostics_input_schema;
 use super::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
 };
@@ -64,6 +65,28 @@ struct DiagnosticsOutput {
     /// `~/.deepseek/workspace-trust.json`). See issue #29.
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     trusted_external_paths: Vec<String>,
+    /// Kernel-v2 M3 shadow counters when `[tools] policy = "shadow"`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    policy_shadow: Option<PolicyShadowDiagnostics>,
+    /// Kernel-v2 M4 shadow counters when `[tools] scheduler = "shadow"`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    scheduler_shadow: Option<SchedulerShadowDiagnostics>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SchedulerShadowDiagnostics {
+    tools_scheduler: String,
+    comparisons: u64,
+    diffs: u64,
+    diff_rate_pct: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PolicyShadowDiagnostics {
+    tools_policy: String,
+    comparisons: u64,
+    diffs: u64,
+    diff_rate_pct: f64,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -84,11 +107,7 @@ impl ToolSpec for DiagnosticsTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {},
-            "additionalProperties": false
-        })
+        diagnostics_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
@@ -133,6 +152,8 @@ impl ToolSpec for DiagnosticsTool {
             .map(|p| p.display().to_string())
             .collect();
         let sandbox_posture = probe_sandbox_posture(context);
+        let policy_shadow = probe_policy_shadow();
+        let scheduler_shadow = probe_scheduler_shadow();
         let diagnostics = DiagnosticsOutput {
             workspace_root,
             current_dir,
@@ -146,6 +167,8 @@ impl ToolSpec for DiagnosticsTool {
             rustc_version,
             cargo_version,
             trusted_external_paths,
+            policy_shadow,
+            scheduler_shadow,
         };
 
         ToolResult::json(&diagnostics).map_err(|e| ToolError::execution_failed(e.to_string()))
@@ -159,6 +182,46 @@ fn shell_network_access(context: &ToolContext) -> bool {
         .elevated_sandbox_policy
         .as_ref()
         .is_some_and(|policy| policy.has_network_access())
+}
+
+fn probe_policy_shadow() -> Option<PolicyShadowDiagnostics> {
+    let config = crate::config::Config::load(None, None).ok()?;
+    let mode = config.tools_policy_mode();
+    if mode != crate::config::ToolsPolicyMode::Shadow {
+        return None;
+    }
+    let stats = zagens_tools::policy_shadow_stats();
+    let diff_rate_pct = if stats.comparisons == 0 {
+        0.0
+    } else {
+        (stats.diffs as f64 / stats.comparisons as f64) * 100.0
+    };
+    Some(PolicyShadowDiagnostics {
+        tools_policy: mode.as_str().to_string(),
+        comparisons: stats.comparisons,
+        diffs: stats.diffs,
+        diff_rate_pct,
+    })
+}
+
+fn probe_scheduler_shadow() -> Option<SchedulerShadowDiagnostics> {
+    let config = crate::config::Config::load(None, None).ok()?;
+    let mode = config.tools_scheduler_mode();
+    if mode != crate::config::ToolsSchedulerMode::Shadow {
+        return None;
+    }
+    let stats = zagens_tools::scheduler_shadow_stats();
+    let diff_rate_pct = if stats.comparisons == 0 {
+        0.0
+    } else {
+        (stats.diffs as f64 / stats.comparisons as f64) * 100.0
+    };
+    Some(SchedulerShadowDiagnostics {
+        tools_scheduler: mode.as_str().to_string(),
+        comparisons: stats.comparisons,
+        diffs: stats.diffs,
+        diff_rate_pct,
+    })
 }
 
 fn probe_sandbox_posture(context: &ToolContext) -> Option<SandboxPosture> {

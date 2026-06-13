@@ -11,6 +11,7 @@
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
+use super::misc_inputs::revert_turn_input_schema;
 use super::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_u64,
 };
@@ -39,18 +40,7 @@ impl ToolSpec for RevertTurnTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "turn_offset": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": MAX_OFFSET,
-                    "description": "How many turns back to revert (default 1)."
-                }
-            },
-            "additionalProperties": false
-        })
+        revert_turn_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

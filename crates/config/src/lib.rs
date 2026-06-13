@@ -94,6 +94,21 @@ pub enum ProviderKind {
 }
 
 impl ProviderKind {
+    /// All facade provider kinds. Kept in sync with the runtime's
+    /// `ApiProvider` enum by the kernel-v2 M0.5 drift tests
+    /// (`crates/runtime-server/src/config/providers.rs`).
+    pub const ALL: &'static [Self] = &[
+        Self::Deepseek,
+        Self::NvidiaNim,
+        Self::Openai,
+        Self::Openrouter,
+        Self::Novita,
+        Self::Fireworks,
+        Self::Sglang,
+        Self::Vllm,
+        Self::Ollama,
+    ];
+
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {

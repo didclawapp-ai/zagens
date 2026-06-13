@@ -6,6 +6,7 @@ pub enum ApiProvider {
     Deepseek,
     DeepseekCN,
     NvidiaNim,
+    Openai,
     Openrouter,
     Novita,
     Fireworks,
@@ -23,6 +24,7 @@ impl ApiProvider {
                 Some(Self::DeepseekCN)
             }
             "nvidia" | "nvidia-nim" | "nvidia_nim" | "nim" => Some(Self::NvidiaNim),
+            "openai" | "open-ai" | "openai-compatible" => Some(Self::Openai),
             "openrouter" | "open_router" => Some(Self::Openrouter),
             "novita" => Some(Self::Novita),
             "fireworks" | "fireworks-ai" => Some(Self::Fireworks),
@@ -39,6 +41,7 @@ impl ApiProvider {
             Self::Deepseek => "deepseek",
             Self::DeepseekCN => "deepseek-cn",
             Self::NvidiaNim => "nvidia-nim",
+            Self::Openai => "openai",
             Self::Openrouter => "openrouter",
             Self::Novita => "novita",
             Self::Fireworks => "fireworks",
@@ -55,6 +58,7 @@ impl ApiProvider {
             Self::Deepseek => "DeepSeek",
             Self::DeepseekCN => "DeepSeek (中国)",
             Self::NvidiaNim => "NVIDIA NIM",
+            Self::Openai => "OpenAI",
             Self::Openrouter => "OpenRouter",
             Self::Novita => "Novita AI",
             Self::Fireworks => "Fireworks AI",
@@ -71,6 +75,7 @@ impl ApiProvider {
             Self::Deepseek,
             Self::DeepseekCN,
             Self::NvidiaNim,
+            Self::Openai,
             Self::Openrouter,
             Self::Novita,
             Self::Fireworks,
@@ -226,4 +231,59 @@ pub fn normalize_model_name(model: &str) -> Option<String> {
     }
 
     None
+}
+
+#[cfg(test)]
+mod provider_drift_tests {
+    //! Kernel-v2 M0.5: keep the facade `ProviderKind` and the runtime
+    //! `ApiProvider` enums from drifting apart. A new variant added on one
+    //! side without the other will fail here instead of silently falling
+    //! back to DeepSeek defaults at runtime.
+
+    use super::ApiProvider;
+    use zagens_config::ProviderKind;
+
+    /// Every facade provider kind must parse into a runtime `ApiProvider`
+    /// with the same canonical string. This is the bug class M0.5 fixes:
+    /// `provider = "openai"` previously parsed to `None` and silently fell
+    /// back to DeepSeek base URL / credentials.
+    #[test]
+    fn every_facade_provider_kind_parses_into_runtime_api_provider() {
+        for kind in ProviderKind::ALL {
+            let name = kind.as_str();
+            let api = ApiProvider::parse(name).unwrap_or_else(|| {
+                panic!("facade ProviderKind '{name}' has no runtime ApiProvider mapping")
+            });
+            assert_eq!(
+                api.as_str(),
+                name,
+                "canonical string mismatch for facade provider '{name}'"
+            );
+        }
+    }
+
+    /// Every runtime provider must map back to a facade kind, except
+    /// `deepseek-cn` which is a runtime-only regional endpoint alias of
+    /// `deepseek` (the facade exposes a single DeepSeek entry).
+    #[test]
+    fn every_runtime_api_provider_maps_back_to_facade_kind() {
+        for api in ApiProvider::all() {
+            if *api == ApiProvider::DeepseekCN {
+                continue;
+            }
+            let name = api.as_str();
+            assert!(
+                ProviderKind::ALL.iter().any(|kind| kind.as_str() == name),
+                "runtime ApiProvider '{name}' has no facade ProviderKind counterpart"
+            );
+        }
+    }
+
+    /// `parse` must round-trip the canonical string of every variant.
+    #[test]
+    fn api_provider_parse_round_trips_canonical_strings() {
+        for api in ApiProvider::all() {
+            assert_eq!(ApiProvider::parse(api.as_str()), Some(*api));
+        }
+    }
 }

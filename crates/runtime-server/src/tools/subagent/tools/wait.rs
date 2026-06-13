@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
+use crate::tools::subagent_inputs::agent_wait_input_schema;
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::{Value, json};
@@ -41,37 +42,7 @@ impl ToolSpec for AgentWaitTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "ids": {
-                    "type": "array",
-                    "items": { "type": "string" },
-                    "description": "Agent IDs to wait on. When omitted, waits on all currently running sub-agents."
-                },
-                "agent_ids": {
-                    "type": "array",
-                    "items": { "type": "string" },
-                    "description": "Alias for ids"
-                },
-                "agent_id": {
-                    "type": "string",
-                    "description": "Single agent ID"
-                },
-                "id": {
-                    "type": "string",
-                    "description": "Alias for agent_id"
-                },
-                "wait_mode": {
-                    "type": "string",
-                    "description": "Wait behavior: any (default) or all"
-                },
-                "timeout_ms": {
-                    "type": "integer",
-                    "description": "Max wait time in milliseconds. When omitted, defaults adaptively from the agent's step_timeout_ms and remaining steps (clamped 10000-3600000). Explicit values override."
-                }
-            }
-        })
+        agent_wait_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

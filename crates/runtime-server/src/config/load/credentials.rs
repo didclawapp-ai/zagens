@@ -249,6 +249,7 @@ pub fn active_provider_has_env_api_key(config: &Config) -> bool {
             std::env::var("NVIDIA_API_KEY").is_ok_and(|k| !k.trim().is_empty())
                 || std::env::var("NVIDIA_NIM_API_KEY").is_ok_and(|k| !k.trim().is_empty())
         }
+        ApiProvider::Openai => std::env::var("OPENAI_API_KEY").is_ok_and(|k| !k.trim().is_empty()),
         ApiProvider::Openrouter => {
             std::env::var("OPENROUTER_API_KEY").is_ok_and(|k| !k.trim().is_empty())
         }
@@ -275,6 +276,7 @@ pub fn has_api_key_for(config: &Config, provider: ApiProvider) -> bool {
     let env_var = match provider {
         ApiProvider::Deepseek | ApiProvider::DeepseekCN => "DEEPSEEK_API_KEY",
         ApiProvider::NvidiaNim => "NVIDIA_API_KEY",
+        ApiProvider::Openai => "OPENAI_API_KEY",
         ApiProvider::Openrouter => "OPENROUTER_API_KEY",
         ApiProvider::Novita => "NOVITA_API_KEY",
         ApiProvider::Fireworks => "FIREWORKS_API_KEY",
@@ -342,6 +344,7 @@ pub fn save_api_key_for(provider: ApiProvider, api_key: &str) -> Result<PathBuf>
             ));
         }
         ApiProvider::NvidiaNim => "providers.nvidia_nim",
+        ApiProvider::Openai => "providers.openai",
         ApiProvider::Openrouter => "providers.openrouter",
         ApiProvider::Novita => "providers.novita",
         ApiProvider::Fireworks => "providers.fireworks",
@@ -375,6 +378,7 @@ pub fn save_api_key_for(provider: ApiProvider, api_key: &str) -> Result<PathBuf>
             ));
         }
         ApiProvider::NvidiaNim => "nvidia_nim",
+        ApiProvider::Openai => "openai",
         ApiProvider::Openrouter => "openrouter",
         ApiProvider::Novita => "novita",
         ApiProvider::Fireworks => "fireworks",

@@ -13,6 +13,7 @@
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
+use super::misc_inputs::remember_input_schema;
 use super::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, required_str,
 };
@@ -37,16 +38,7 @@ impl ToolSpec for RememberTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "note": {
-                    "type": "string",
-                    "description": "The single-sentence durable note to remember."
-                }
-            },
-            "required": ["note"]
-        })
+        remember_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

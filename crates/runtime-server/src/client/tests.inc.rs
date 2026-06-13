@@ -6,7 +6,7 @@ use serde_json::Value;
 use crate::config::ApiProvider;
 use self::api_parse::{apply_reasoning_effort, parse_models_response, parse_usage};
 use self::chat::{
-    build_chat_messages, build_chat_messages_for_request, count_reasoning_replay_chars,
+    build_chat_messages, count_reasoning_replay_chars,
     parse_chat_message, parse_sse_chunk, sanitize_thinking_mode_messages, tool_to_chat,
 };
 use self::http::{api_url, force_http1_from_env};

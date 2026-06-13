@@ -1,0 +1,17 @@
+{
+  "type": "object",
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "description": "Scratchpad run directory name. Defaults to active thread_id or task_id when that directory exists."
+    },
+    "note_id": {
+      "type": "string",
+      "description": "notes.jsonl id (e.g. note-012)"
+    }
+  },
+  "required": [
+    "note_id"
+  ],
+  "additionalProperties": false
+}

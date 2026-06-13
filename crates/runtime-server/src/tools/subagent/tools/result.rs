@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use crate::tools::subagent_inputs::agent_result_input_schema;
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::{Value, json};
@@ -39,27 +40,7 @@ impl ToolSpec for AgentResultTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "agent_id": {
-                    "type": "string",
-                    "description": "ID returned by agent_spawn"
-                },
-                "id": {
-                    "type": "string",
-                    "description": "Alias for agent_id"
-                },
-                "block": {
-                    "type": "boolean",
-                    "description": "Wait for completion (default: false)"
-                },
-                "timeout_ms": {
-                    "type": "integer",
-                    "description": "Max wait time in milliseconds when block=true. When omitted, defaults adaptively from the agent's step_timeout_ms and remaining steps (clamped 1000-3600000). Explicit values override."
-                }
-            }
-        })
+        agent_result_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

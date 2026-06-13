@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "properties": {
+    "automation_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "automation_id"
+  ],
+  "additionalProperties": false
+}

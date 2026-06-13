@@ -15,7 +15,8 @@ use crate::models::Tool;
 
 use super::schema_sanitize;
 use super::spec::{
-    ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
+    ApprovalRequirement, FootprintProvenance, ToolCapability, ToolContext, ToolError, ToolManifest,
+    ToolResult, ToolSpec,
 };
 
 // === Types ===
@@ -1026,6 +1027,15 @@ impl ToolSpec for McpToolAdapter {
         !keep_loaded
     }
 
+    fn manifest(&self) -> ToolManifest {
+        ToolManifest::derive_conservative(
+            self.name(),
+            &self.capabilities(),
+            zagens_core::engine::tool_writes_state(self.name()),
+            FootprintProvenance::McpSelfDeclared,
+        )
+    }
+
     async fn execute(&self, input: Value, _context: &ToolContext) -> Result<ToolResult, ToolError> {
         let mut pool = self.pool.lock().await;
         let result = pool
@@ -1047,9 +1057,12 @@ mod tests {
     use tempfile::tempdir;
 
     use crate::tools::ToolRegistryBuilder;
+    use crate::tools::plan::new_shared_plan_state;
     use crate::tools::spec::{
         ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, required_str,
     };
+    use crate::tools::todo::new_shared_todo_list;
+    use zagens_tools::FootprintProvenance;
 
     use super::ToolRegistry;
 
@@ -1472,5 +1485,60 @@ mod tests {
             .build(ctx);
 
         assert!(registry.contains("finance"));
+    }
+
+    /// Kernel-v2 M2: every built-in on the agent surface exposes a conservative manifest.
+    #[test]
+    fn agent_surface_tools_expose_conservative_builtin_manifest() {
+        let tmp = tempdir().expect("tempdir");
+        let ctx = ToolContext::new(tmp.path().to_path_buf());
+
+        let registry = ToolRegistryBuilder::new()
+            .with_agent_tools(true)
+            .with_todo_tool(new_shared_todo_list())
+            .with_plan_tool(new_shared_plan_state())
+            .with_review_tool(None, "test-model".into())
+            .with_rlm_tool(None, "test-model".into())
+            .with_recall_archive_tool()
+            .with_scratchpad_tools()
+            .build(ctx);
+
+        for tool in registry.all() {
+            let name = tool.name();
+            let manifest = tool.manifest();
+            assert_eq!(manifest.name, name);
+            assert_eq!(manifest.provenance, FootprintProvenance::BuiltIn);
+            if zagens_core::engine::tool_writes_state(name) {
+                assert!(
+                    manifest.footprint.writes_workspace_state(),
+                    "manifest must declare workspace writes when M1 union says so for {name}"
+                );
+            }
+        }
+        assert!(
+            registry.len() >= 70,
+            "expected agent surface minus sub-agent family, got {}",
+            registry.len()
+        );
+    }
+
+    #[test]
+    fn mcp_tool_adapter_manifest_is_self_declared() {
+        use crate::mcp::{McpConfig, McpPool};
+        use zagens_runtime_adapters::mcp::McpTool;
+
+        let pool = Arc::new(tokio::sync::Mutex::new(McpPool::new(McpConfig::default())));
+        let adapter = super::McpToolAdapter {
+            name: "custom_mcp_tool".to_string(),
+            tool: McpTool {
+                name: "custom_mcp_tool".to_string(),
+                description: Some("test".into()),
+                input_schema: json!({"type": "object"}),
+            },
+            pool,
+        };
+        let manifest = adapter.manifest();
+        assert_eq!(manifest.name, "custom_mcp_tool");
+        assert_eq!(manifest.provenance, FootprintProvenance::McpSelfDeclared);
     }
 }

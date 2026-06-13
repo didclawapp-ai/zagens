@@ -10,6 +10,26 @@ use serde_json::Value;
 use tokio::sync::RwLock;
 use zagens_protocol::{ToolKind, ToolOutput, ToolPayload};
 
+mod dag_scheduler;
+mod policy_engine;
+mod resource_locks;
+mod tool_manifest;
+
+pub use dag_scheduler::{
+    DagPlanView, ScheduleResource, SchedulerShadowStats, build_execution_waves,
+    record_scheduler_shadow_diff, scheduler_shadow_stats, wave_parallel_eligible,
+};
+pub use policy_engine::{
+    ApprovalNeed, ParallelResourceKey, PolicyDecision, PolicyEngine, PolicyInput, PolicyPlanMeta,
+    PolicySessionMode, PolicyShadowStats, SandboxClass, policy_shadow_stats,
+    record_policy_shadow_diff,
+};
+pub use resource_locks::{ResourceLockMode, resource_lock_order, resource_lock_targets};
+pub use tool_manifest::{
+    Footprint, FootprintProvenance, ResourceSet, SpawnClass, ToolManifest,
+    derive_conservative_footprint,
+};
+
 /// Capabilities that a tool may have or require.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ToolCapability {

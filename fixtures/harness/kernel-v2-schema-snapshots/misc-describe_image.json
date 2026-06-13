@@ -1,0 +1,16 @@
+{
+  "type": "object",
+  "properties": {
+    "path": {
+      "type": "string",
+      "description": "Path to the image file. Supported: png, jpg, jpeg, gif, bmp, webp."
+    },
+    "prompt": {
+      "type": "string",
+      "description": "Optional custom prompt for the vision model."
+    }
+  },
+  "required": [
+    "path"
+  ]
+}

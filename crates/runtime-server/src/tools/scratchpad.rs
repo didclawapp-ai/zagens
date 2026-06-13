@@ -1,5 +1,10 @@
 //! Audit scratchpad tools (`scratchpad_status`, `scratchpad_append`, …).
 
+use crate::tools::scratchpad_inputs::{
+    scratchpad_append_input_schema, scratchpad_init_input_schema,
+    scratchpad_list_notes_input_schema, scratchpad_set_area_input_schema,
+    scratchpad_status_input_schema, scratchpad_verify_note_input_schema,
+};
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
@@ -21,21 +26,6 @@ use crate::tools::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
     optional_str, required_str,
 };
-
-fn run_id_property() -> Value {
-    json!({
-        "type": "string",
-        "description": "Scratchpad run directory name. Defaults to active thread_id or task_id when that directory exists."
-    })
-}
-
-fn run_id_property_for_init() -> Value {
-    json!({
-        "type": "string",
-        "description": "Scratchpad run directory name. Defaults to active thread_id or task_id (creates the directory if missing)."
-    })
-}
-
 #[derive(Debug, Default)]
 pub struct ScratchpadInitTool;
 
@@ -50,36 +40,7 @@ impl ToolSpec for ScratchpadInitTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "run_id": run_id_property_for_init(),
-                "scope": {
-                    "type": "string",
-                    "description": "Optional human-readable audit scope stored in inventory.json"
-                },
-                "areas": {
-                    "type": "array",
-                    "description": "Inventory rows (default: one pending area for workspace root)",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "id": { "type": "string" },
-                            "path": { "type": "string" },
-                            "notes": { "type": "string" }
-                        },
-                        "required": ["id", "path"],
-                        "additionalProperties": false
-                    }
-                },
-                "template": {
-                    "type": "string",
-                    "enum": ["workspace_audit"],
-                    "description": "When set to workspace_audit, auto-build inventory from workspace Cargo.toml members (includes runtime-server, desktop web-ui areas). Ignores default single-row inventory."
-                }
-            },
-            "additionalProperties": false
-        })
+        scratchpad_init_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
@@ -129,13 +90,7 @@ impl ToolSpec for ScratchpadStatusTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "run_id": run_id_property()
-            },
-            "additionalProperties": false
-        })
+        scratchpad_status_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
@@ -171,34 +126,7 @@ impl ToolSpec for ScratchpadAppendTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "run_id": run_id_property(),
-                "line": {
-                    "type": "object",
-                    "description": "One notes.jsonl row (runtime adds id, ts).",
-                    "properties": {
-                        "area_id": { "type": "string" },
-                        "area": { "type": "string" },
-                        "kind": { "type": "string", "enum": ["finding", "todo", "cleared", "meta"] },
-                        "severity": { "type": "string" },
-                        "title": { "type": "string" },
-                        "file": { "type": "string" },
-                        "line": { "type": "integer" },
-                        "line_end": { "type": "integer" },
-                        "claim": { "type": "string" },
-                        "evidence": { "type": "string" },
-                        "status": { "type": "string" },
-                        "source": { "type": "string" },
-                        "supersedes": { "type": "string" }
-                    },
-                    "additionalProperties": false
-                }
-            },
-            "required": ["line"],
-            "additionalProperties": false
-        })
+        scratchpad_append_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
@@ -242,24 +170,7 @@ impl ToolSpec for ScratchpadListNotesTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "run_id": run_id_property(),
-                "area_id": {
-                    "type": "string",
-                    "description": "Inventory area id to filter on"
-                },
-                "limit": {
-                    "type": "integer",
-                    "description": "Max notes to return (default 20)",
-                    "minimum": 1,
-                    "maximum": 100
-                }
-            },
-            "required": ["area_id"],
-            "additionalProperties": false
-        })
+        scratchpad_list_notes_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
@@ -302,29 +213,7 @@ impl ToolSpec for ScratchpadSetAreaTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "run_id": run_id_property(),
-                "area_id": { "type": "string" },
-                "status": {
-                    "type": "string",
-                    "enum": ["in_progress", "done", "deferred", "pending"]
-                },
-                "notes": {
-                    "type": "string",
-                    "description": "Optional human remark on the inventory row (not used for gates)"
-                },
-                "require_min_notes": {
-                    "type": "integer",
-                    "description": "Minimum notes.jsonl lines for this area_id. Default: 1 for done, 0 for deferred/pending/in_progress",
-                    "minimum": 0,
-                    "maximum": 50
-                }
-            },
-            "required": ["area_id", "status"],
-            "additionalProperties": false
-        })
+        scratchpad_set_area_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
@@ -395,18 +284,7 @@ impl ToolSpec for ScratchpadVerifyNoteTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "run_id": run_id_property(),
-                "note_id": {
-                    "type": "string",
-                    "description": "notes.jsonl id (e.g. note-012)"
-                }
-            },
-            "required": ["note_id"],
-            "additionalProperties": false
-        })
+        scratchpad_verify_note_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

@@ -23,6 +23,7 @@ use zagens_config::{
     DEFAULT_VISION_MODEL, vision_should_check_degenerate_ocr_template, vision_user_prompt_for_model,
 };
 
+use super::misc_inputs::describe_image_input_schema;
 use super::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
     optional_str, required_str,
@@ -68,20 +69,7 @@ impl ToolSpec for DescribeImageTool {
     }
 
     fn input_schema(&self) -> Value {
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Path to the image file. Supported: png, jpg, jpeg, gif, bmp, webp."
-                },
-                "prompt": {
-                    "type": "string",
-                    "description": "Optional custom prompt for the vision model."
-                }
-            },
-            "required": ["path"]
-        })
+        describe_image_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

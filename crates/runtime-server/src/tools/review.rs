@@ -12,6 +12,7 @@ use serde_json::{Value, json};
 use crate::models::{ContentBlock, Message, MessageRequest, SystemPrompt, Usage};
 use crate::utils::truncate_with_ellipsis;
 
+use super::misc_inputs::review_input_schema;
 use super::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
     optional_bool, optional_str, optional_u64, required_str,
@@ -151,32 +152,7 @@ impl ToolSpec for ReviewTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "target": {
-                    "type": "string",
-                    "description": "File path, PR URL, or the literal 'diff'/'staged' for git diff review."
-                },
-                "kind": {
-                    "type": "string",
-                    "description": "Optional explicit target type: file, diff, or pr."
-                },
-                "base": {
-                    "type": "string",
-                    "description": "Optional git base ref when using diff target (e.g. origin/main)."
-                },
-                "staged": {
-                    "type": "boolean",
-                    "description": "Review staged changes when using diff target (default: false)."
-                },
-                "max_chars": {
-                    "type": "integer",
-                    "description": "Maximum characters to include from the source (default: 200000)."
-                }
-            },
-            "required": ["target"]
-        })
+        review_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

@@ -24,8 +24,8 @@ pub use zagens_runtime_adapters::tools::{
     RuntimeToolHostWire, ToolAutomationHost, ToolProgressEmit, ToolShellEnvHost, ToolTaskHost,
 };
 pub use zagens_tools::{
-    ApprovalRequirement, ToolCapability, ToolError, ToolResult, optional_bool, optional_str,
-    optional_u64, required_str, required_u64,
+    ApprovalRequirement, FootprintProvenance, ToolCapability, ToolError, ToolManifest, ToolResult,
+    optional_bool, optional_str, optional_u64, required_str, required_u64,
 };
 
 /// Optional durable runtime services made available to model-visible tools.
@@ -606,6 +606,19 @@ pub trait ToolSpec: Send + Sync {
 
     /// Execute the tool with the given input and context.
     async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError>;
+
+    /// Declared resource footprint for policy / scheduling (kernel-v2 M2).
+    ///
+    /// Default: conservative derivation from capabilities + M1
+    /// `tool_writes_state`. Override per tool family when refining footprints.
+    fn manifest(&self) -> ToolManifest {
+        ToolManifest::derive_conservative(
+            self.name(),
+            &self.capabilities(),
+            zagens_core::engine::tool_writes_state(self.name()),
+            FootprintProvenance::BuiltIn,
+        )
+    }
 }
 
 // === Unit Tests ===

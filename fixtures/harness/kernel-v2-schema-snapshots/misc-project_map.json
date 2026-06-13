@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "properties": {
+    "max_depth": {
+      "type": "integer",
+      "description": "Maximum depth for the tree view (default: 3)."
+    }
+  }
+}

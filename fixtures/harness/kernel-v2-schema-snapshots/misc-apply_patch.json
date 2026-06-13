@@ -1,0 +1,52 @@
+{
+  "type": "object",
+  "properties": {
+    "path": {
+      "type": "string",
+      "description": "Path to the file to patch (relative to workspace)"
+    },
+    "patch": {
+      "type": "string",
+      "description": "Unified diff patch content"
+    },
+    "changes": {
+      "type": "array",
+      "description": "Optional full file replacements (path + content).",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "content"
+        ]
+      }
+    },
+    "fuzz": {
+      "type": "integer",
+      "description": "Maximum fuzz factor for fuzzy matching (default: 3, max: 50)"
+    },
+    "create_if_missing": {
+      "type": "boolean",
+      "description": "Create the file if it doesn't exist (for new file patches)"
+    }
+  },
+  "oneOf": [
+    {
+      "required": [
+        "patch"
+      ]
+    },
+    {
+      "required": [
+        "changes"
+      ]
+    }
+  ]
+}

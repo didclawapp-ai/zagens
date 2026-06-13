@@ -39,4 +39,10 @@ pub struct EngineRuntimeExt {
     pub hook_executor: Arc<HookExecutor>,
     /// Whether `SessionStart` has already fired for this engine instance.
     pub session_hooks_started: bool,
+    /// Kernel-v2 M3: legacy / shadow / engine policy mode.
+    pub tools_policy: crate::config::ToolsPolicyMode,
+    /// Kernel-v2 M4: legacy / dag batch scheduler.
+    pub tools_scheduler: crate::config::ToolsSchedulerMode,
+    /// Per-resource lock slots for DAG fine-grained execution.
+    pub resource_lock_registry: Arc<crate::tools::resource_locks::ResourceLockRegistry>,
 }

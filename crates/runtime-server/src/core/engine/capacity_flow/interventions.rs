@@ -168,6 +168,7 @@ impl Engine {
             mcp_pool.clone(),
             None,
             None,
+            None,
         )
         .await;
 

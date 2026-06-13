@@ -1,0 +1,24 @@
+{
+  "type": "object",
+  "properties": {
+    "path": {
+      "type": "string",
+      "description": "Optional path to a file within the workspace."
+    },
+    "content": {
+      "type": "string",
+      "description": "Optional inline content to validate."
+    },
+    "format": {
+      "type": "string",
+      "default": "auto",
+      "enum": [
+        "auto",
+        "json",
+        "toml"
+      ],
+      "description": "Validation format. 'auto' infers from extension then falls back to trying both."
+    }
+  },
+  "additionalProperties": false
+}

@@ -85,6 +85,22 @@ pub async fn run_streaming_phase<H: TurnLoopHost>(
         }
     };
 
+    if let Some(fp) = host.model_request_fingerprint(&request) {
+        tracing::debug!(
+            target = "kv_cache",
+            static_prefix_sha256 = %fp.static_prefix_sha256,
+            full_prefix_sha256 = %fp.full_prefix_sha256,
+            "model request prefix fingerprint"
+        );
+        let _ = host
+            .tx_event()
+            .send(Event::ModelRequestPrepared {
+                static_prefix_sha256: fp.static_prefix_sha256,
+                full_prefix_sha256: fp.full_prefix_sha256,
+            })
+            .await;
+    }
+
     // Stream the response. Keep the request around (cloned into the
     // first call) so we can resend it on a transparent retry below
     // when the wire dies before any content was streamed (#103).

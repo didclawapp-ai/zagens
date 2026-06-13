@@ -1,6 +1,7 @@
 //! `load_office_payload` — retrieve cached write_office JSON for iterative edits.
 
 use super::office_common::{load_office_payload_file, workspace_rel_path};
+use super::office_inputs::load_office_payload_input_schema;
 use super::spec::{ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, required_str};
 use async_trait::async_trait;
 use serde_json::{Value, json};
@@ -19,16 +20,7 @@ impl ToolSpec for LoadOfficePayloadTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Path to the office file (e.g. deliverables/report.pptx)"
-                }
-            },
-            "required": ["path"]
-        })
+        load_office_payload_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

@@ -64,6 +64,15 @@ Child-round `child_prompt_cache_*` is stored in tool metadata and is **not** rol
 
 Product strategy: static content in system prompt (static→dynamic layering); working set in `<turn_meta>` (see [`prompt-architecture.md`](../prompt-architecture.md)).
 
+## Static-prefix fingerprint (kernel-v2 M5)
+
+Each model step emits `turn.prefix_fingerprint` with `static_prefix_sha256` (system
+static layer + tool catalog) and `full_prefix_sha256` (includes wire messages /
+turn meta). Compare fingerprint timestamps with hit-rate drops — a changed
+`static_prefix_sha256` within one turn indicates prompt or tool-catalog jitter.
+Local gate: `scripts/kernel_v2_prefix_ci.py`; live corpus:
+`kernel_v2_corpus_report.py --assert-prefix-stability`.
+
 ## Cost sensitivity (V4-Pro, example during discount window)
 
 | Hit rate | Input-side savings vs all miss |

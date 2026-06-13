@@ -1,0 +1,13 @@
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Agent id to resume"
+    },
+    "agent_id": {
+      "type": "string",
+      "description": "Alias for id"
+    }
+  }
+}

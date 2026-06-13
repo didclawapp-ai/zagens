@@ -5,10 +5,11 @@
 
 use std::time::Duration;
 
+use super::web_inputs::finance_input_schema;
 use async_trait::async_trait;
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use super::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
@@ -190,36 +191,7 @@ impl ToolSpec for FinanceTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "ticker": {
-                    "type": "string",
-                    "description": "Ticker symbol to look up (for example: AAPL, SPY, BTC)."
-                },
-                "symbol": {
-                    "type": "string",
-                    "description": "Alias for ticker."
-                },
-                "type": {
-                    "type": "string",
-                    "description": "Optional asset type hint such as equity, fund, crypto, or index."
-                },
-                "market": {
-                    "type": "string",
-                    "description": "Optional market hint retained for compatibility with finance-style tool calls."
-                },
-                "timeout_ms": {
-                    "type": "integer",
-                    "description": "Request timeout in milliseconds (default: 10000, max: 60000)."
-                }
-            },
-            "anyOf": [
-                { "required": ["ticker"] },
-                { "required": ["symbol"] }
-            ],
-            "additionalProperties": false
-        })
+        finance_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
@@ -619,6 +591,7 @@ struct ChartErrorBody {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
     use tempfile::tempdir;
     use wiremock::matchers::{method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};

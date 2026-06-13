@@ -8,6 +8,9 @@ use std::path::{Path, PathBuf};
 use std::process::Output;
 
 use super::git::git_pathspec_arg;
+use crate::tools::git_inputs::{
+    git_blame_input_schema, git_log_input_schema, git_show_input_schema,
+};
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
@@ -39,35 +42,7 @@ impl ToolSpec for GitLogTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Optional subdirectory or file path to scope history to."
-                },
-                "max_count": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": MAX_LOG_MAX_COUNT,
-                    "default": DEFAULT_LOG_MAX_COUNT,
-                    "description": "Maximum number of commits to return."
-                },
-                "author": {
-                    "type": "string",
-                    "description": "Optional git author filter (same semantics as `git log --author`)."
-                },
-                "since": {
-                    "type": "string",
-                    "description": "Optional lower date bound, e.g. '2 weeks ago' or ISO date."
-                },
-                "until": {
-                    "type": "string",
-                    "description": "Optional upper date bound, e.g. 'yesterday' or ISO date."
-                }
-            },
-            "additionalProperties": false
-        })
+        git_log_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
@@ -156,38 +131,7 @@ impl ToolSpec for GitShowTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "rev": {
-                    "type": "string",
-                    "description": "Revision to show (commit SHA, tag, branch, or ref expression)."
-                },
-                "path": {
-                    "type": "string",
-                    "description": "Optional subdirectory or file path to scope output."
-                },
-                "patch": {
-                    "type": "boolean",
-                    "default": true,
-                    "description": "Include patch hunks (default true)."
-                },
-                "stat": {
-                    "type": "boolean",
-                    "default": true,
-                    "description": "Include --stat summary (default true)."
-                },
-                "unified": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": MAX_UNIFIED,
-                    "default": DEFAULT_UNIFIED,
-                    "description": "Context lines for patch output when patch=true."
-                }
-            },
-            "required": ["rev"],
-            "additionalProperties": false
-        })
+        git_show_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
@@ -273,39 +217,7 @@ impl ToolSpec for GitBlameTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Path to a tracked file within the workspace."
-                },
-                "rev": {
-                    "type": "string",
-                    "description": "Optional revision to blame against (default: HEAD)."
-                },
-                "start_line": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "default": DEFAULT_BLAME_START_LINE,
-                    "description": "First line to include in blame output."
-                },
-                "max_lines": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": MAX_BLAME_MAX_LINES,
-                    "default": DEFAULT_BLAME_MAX_LINES,
-                    "description": "Maximum number of lines to include."
-                },
-                "porcelain": {
-                    "type": "boolean",
-                    "default": false,
-                    "description": "When true, emit `--line-porcelain` output."
-                }
-            },
-            "required": ["path"],
-            "additionalProperties": false
-        })
+        git_blame_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

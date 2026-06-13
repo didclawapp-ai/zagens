@@ -1,0 +1,27 @@
+{
+  "type": "object",
+  "properties": {
+    "tool_uses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "recipient_name": {
+            "type": "string"
+          },
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        },
+        "required": [
+          "recipient_name",
+          "parameters"
+        ]
+      }
+    }
+  },
+  "required": [
+    "tool_uses"
+  ]
+}

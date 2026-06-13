@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "properties": {
+    "note": {
+      "type": "string",
+      "description": "The single-sentence durable note to remember."
+    }
+  },
+  "required": [
+    "note"
+  ]
+}

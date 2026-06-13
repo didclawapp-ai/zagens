@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "properties": {
+    "content": {
+      "type": "string",
+      "description": "The task description"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "in_progress",
+        "completed"
+      ],
+      "description": "Task status (default: pending)"
+    }
+  },
+  "required": [
+    "content"
+  ]
+}

@@ -77,6 +77,7 @@ impl Engine {
                     mcp_pool,
                     None,
                     None,
+                    None,
                 )
                 .await;
                 (tool_name, result)

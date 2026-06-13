@@ -1,6 +1,7 @@
 //! write_file tool and shared edit/write helpers.
 
 use super::read::detect_and_decode;
+use super::schemas::write_file_input_schema;
 use super::{DIFF_MAX_INPUT_BYTES, MAX_WRITE_SIZE, WRITE_PREVIEW_LINES};
 use crate::tools::diff_format::make_unified_diff;
 use crate::tools::spec::{
@@ -8,7 +9,7 @@ use crate::tools::spec::{
     lsp_diagnostics_for_paths, required_str,
 };
 use async_trait::async_trait;
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::fs;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -27,20 +28,7 @@ impl ToolSpec for WriteFileTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Path to the file"
-                },
-                "content": {
-                    "type": "string",
-                    "description": "Content to write"
-                }
-            },
-            "required": ["path", "content"]
-        })
+        write_file_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

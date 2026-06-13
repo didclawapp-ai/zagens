@@ -1,0 +1,65 @@
+{
+  "type": "object",
+  "properties": {
+    "number": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "acceptance_criteria": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "evidence": {
+      "type": "object",
+      "properties": {
+        "files_changed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tests_run": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "commits": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "final_status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "files_changed",
+        "tests_run",
+        "final_status"
+      ],
+      "additionalProperties": false
+    },
+    "comment": {
+      "type": "string"
+    },
+    "allow_dirty": {
+      "type": "boolean",
+      "default": false
+    },
+    "dry_run": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "number",
+    "acceptance_criteria",
+    "evidence"
+  ],
+  "additionalProperties": false
+}

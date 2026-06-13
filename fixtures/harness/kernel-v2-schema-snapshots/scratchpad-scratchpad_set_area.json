@@ -1,0 +1,36 @@
+{
+  "type": "object",
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "description": "Scratchpad run directory name. Defaults to active thread_id or task_id when that directory exists."
+    },
+    "area_id": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "in_progress",
+        "done",
+        "deferred",
+        "pending"
+      ]
+    },
+    "notes": {
+      "type": "string",
+      "description": "Optional human remark on the inventory row (not used for gates)"
+    },
+    "require_min_notes": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 50,
+      "description": "Minimum notes.jsonl lines for this area_id. Default: 1 for done, 0 for deferred/pending/in_progress"
+    }
+  },
+  "required": [
+    "area_id",
+    "status"
+  ],
+  "additionalProperties": false
+}

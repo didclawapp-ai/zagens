@@ -1,0 +1,34 @@
+{
+  "type": "object",
+  "properties": {
+    "gate": {
+      "type": "string",
+      "enum": [
+        "fmt",
+        "check",
+        "clippy",
+        "test",
+        "custom"
+      ],
+      "description": "Gate category."
+    },
+    "command": {
+      "type": "string",
+      "description": "Command to run."
+    },
+    "cwd": {
+      "type": "string",
+      "description": "Optional working directory within the workspace."
+    },
+    "timeout_ms": {
+      "type": "integer",
+      "minimum": 1000,
+      "maximum": 600000
+    }
+  },
+  "required": [
+    "gate",
+    "command"
+  ],
+  "additionalProperties": false
+}

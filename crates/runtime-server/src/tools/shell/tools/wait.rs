@@ -7,6 +7,7 @@ use super::helpers::{
     build_shell_delta_tool_result, emit_shell_delta_streams, required_task_id,
     wait_for_shell_delta_cancellable,
 };
+use crate::tools::shell_inputs::{shell_interact_input_schema, shell_wait_input_schema};
 use crate::tools::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
     optional_bool, optional_u64,
@@ -44,24 +45,7 @@ impl ToolSpec for ShellWaitTool {
     }
 
     fn input_schema(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "task_id": {
-                    "type": "string",
-                    "description": "Task ID returned by exec_shell"
-                },
-                "timeout_ms": {
-                    "type": "integer",
-                    "description": "Timeout in milliseconds (default: 5000)"
-                },
-                "wait": {
-                    "type": "boolean",
-                    "description": "Wait for completion before returning (default: true)"
-                }
-            },
-            "required": ["task_id"]
-        })
+        shell_wait_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
@@ -126,36 +110,7 @@ impl ToolSpec for ShellInteractTool {
     }
 
     fn input_schema(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "task_id": {
-                    "type": "string",
-                    "description": "Task ID returned by exec_shell"
-                },
-                "input": {
-                    "type": "string",
-                    "description": "Input to send to the task's stdin"
-                },
-                "stdin": {
-                    "type": "string",
-                    "description": "Alias for input"
-                },
-                "data": {
-                    "type": "string",
-                    "description": "Alias for input"
-                },
-                "timeout_ms": {
-                    "type": "integer",
-                    "description": "Wait for output after sending input (default: 1000)"
-                },
-                "close_stdin": {
-                    "type": "boolean",
-                    "description": "Close stdin after sending input"
-                }
-            },
-            "required": ["task_id"]
-        })
+        shell_interact_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

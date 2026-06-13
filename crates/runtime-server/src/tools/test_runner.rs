@@ -9,6 +9,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use super::misc_inputs::run_tests_input_schema;
 use super::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
     optional_bool, optional_str, optional_u64,
@@ -44,24 +45,7 @@ impl ToolSpec for RunTestsTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "args": {
-                    "type": "string",
-                    "description": "Optional extra arguments to pass to `cargo test` (shell-style)."
-                },
-                "all_features": {
-                    "type": "boolean",
-                    "description": "When true, include `--all-features`."
-                },
-                "timeout_ms": {
-                    "type": "integer",
-                    "description": "Wall-clock timeout in milliseconds before the test run is killed (default 600,000; max 1,800,000)."
-                }
-            },
-            "additionalProperties": false
-        })
+        run_tests_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

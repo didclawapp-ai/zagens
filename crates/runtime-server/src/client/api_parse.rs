@@ -39,7 +39,7 @@ pub(super) fn parse_models_response(payload: &str) -> Result<Vec<AvailableModel>
     Ok(models)
 }
 
-pub(super) fn system_to_instructions(system: Option<SystemPrompt>) -> Option<String> {
+pub(crate) fn system_to_instructions(system: Option<SystemPrompt>) -> Option<String> {
     match system {
         Some(SystemPrompt::Text(text)) => Some(text),
         Some(SystemPrompt::Blocks(blocks)) => {
@@ -78,7 +78,9 @@ pub(super) fn apply_reasoning_effort(
             | ApiProvider::Vllm => {
                 body["thinking"] = json!({ "type": "disabled" });
             }
-            ApiProvider::Ollama => {}
+            // OpenAI rejects unknown request arguments (`thinking`) and only
+            // some model families accept `reasoning_effort`; send nothing.
+            ApiProvider::Openai | ApiProvider::Ollama => {}
             ApiProvider::NvidiaNim => {
                 body["chat_template_kwargs"] = json!({
                     "thinking": false,
@@ -96,7 +98,7 @@ pub(super) fn apply_reasoning_effort(
                 body["reasoning_effort"] = json!("high");
                 body["thinking"] = json!({ "type": "enabled" });
             }
-            ApiProvider::Ollama => {}
+            ApiProvider::Openai | ApiProvider::Ollama => {}
             ApiProvider::NvidiaNim => {
                 body["chat_template_kwargs"] = json!({
                     "thinking": true,
@@ -115,7 +117,7 @@ pub(super) fn apply_reasoning_effort(
                 body["reasoning_effort"] = json!("max");
                 body["thinking"] = json!({ "type": "enabled" });
             }
-            ApiProvider::Ollama => {}
+            ApiProvider::Openai | ApiProvider::Ollama => {}
             ApiProvider::NvidiaNim => {
                 body["chat_template_kwargs"] = json!({
                     "thinking": true,

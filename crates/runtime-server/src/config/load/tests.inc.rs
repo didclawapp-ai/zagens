@@ -1464,6 +1464,64 @@ fn fireworks_provider_uses_canonical_defaults() -> Result<()> {
     Ok(())
 }
 
+/// Kernel-v2 M0.5 regression: `provider = "openai"` previously failed to
+/// parse and silently fell back to DeepSeek defaults (base URL + key).
+#[test]
+fn openai_provider_uses_canonical_defaults() -> Result<()> {
+    let _lock = lock_test_env();
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let temp_root = env::temp_dir().join(format!(
+        "deepseek-tui-openai-defaults-{}-{}",
+        std::process::id(),
+        nanos
+    ));
+    fs::create_dir_all(&temp_root)?;
+    let _guard = EnvGuard::new(&temp_root);
+
+    let config = Config {
+        provider: Some("openai".to_string()),
+        ..Default::default()
+    };
+    config.validate()?;
+    assert_eq!(config.api_provider(), ApiProvider::Openai);
+    assert_eq!(config.default_model(), DEFAULT_OPENAI_MODEL);
+    assert_eq!(config.deepseek_base_url(), DEFAULT_OPENAI_BASE_URL);
+    Ok(())
+}
+
+/// OpenAI model identifiers are free-form: the configured model must pass
+/// through untouched instead of being DeepSeek-normalized away.
+#[test]
+fn openai_provider_keeps_free_form_model_names() -> Result<()> {
+    let _lock = lock_test_env();
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let temp_root = env::temp_dir().join(format!(
+        "deepseek-tui-openai-model-{}-{}",
+        std::process::id(),
+        nanos
+    ));
+    fs::create_dir_all(&temp_root)?;
+    let _guard = EnvGuard::new(&temp_root);
+
+    let mut providers = ProvidersConfig::default();
+    providers.openai.model = Some("o4-mini".to_string());
+    providers.openai.base_url = Some("https://example.com/v1".to_string());
+    let config = Config {
+        provider: Some("openai".to_string()),
+        providers: Some(providers),
+        ..Default::default()
+    };
+    assert_eq!(config.default_model(), "o4-mini");
+    assert_eq!(config.deepseek_base_url(), "https://example.com/v1");
+    Ok(())
+}
+
 #[test]
 fn sglang_provider_works_without_api_key() -> Result<()> {
     let _lock = lock_test_env();

@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "properties": {
+    "path": {
+      "type": "string",
+      "description": "Optional subdirectory or file to scope the diff to (must be within the workspace)."
+    },
+    "cached": {
+      "type": "boolean",
+      "description": "When true, diff staged changes (`--cached`)."
+    },
+    "unified": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 50,
+      "default": 3,
+      "description": "Number of context lines to include around changes."
+    }
+  },
+  "additionalProperties": false
+}

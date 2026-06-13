@@ -5,6 +5,7 @@ use super::helpers::execute_foreground_via_background;
 use crate::command_safety::{SafetyLevel, analyze_command};
 use crate::execpolicy::{ExecPolicyDecision, load_default_policy};
 use crate::features::Feature;
+use crate::tools::shell_inputs::exec_shell_input_schema;
 use crate::tools::shell_output::{summarize_output, truncate_with_meta};
 use crate::tools::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
@@ -30,40 +31,7 @@ impl ToolSpec for ExecShellTool {
     }
 
     fn input_schema(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "command": {
-                    "type": "string",
-                    "description": "The shell command to execute"
-                },
-                "timeout_ms": {
-                    "type": "integer",
-                    "description": "Timeout in milliseconds (default: 120000, min: 1000, max: 600000)"
-                },
-                "background": {
-                    "type": "boolean",
-                    "description": "Run in background and return task_id (default: false). Prefer true for commands that may run for minutes; poll with exec_shell_wait or task_shell_wait."
-                },
-                "interactive": {
-                    "type": "boolean",
-                    "description": "Run interactively with terminal IO (default: false)"
-                },
-                "stdin": {
-                    "type": "string",
-                    "description": "Optional stdin data to send before waiting (non-interactive only)"
-                },
-                "cwd": {
-                    "type": "string",
-                    "description": "Optional working directory for the command"
-                },
-                "tty": {
-                    "type": "boolean",
-                    "description": "Allocate a pseudo-terminal for interactive programs (implies background)"
-                }
-            },
-            "required": ["command"]
-        })
+        exec_shell_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

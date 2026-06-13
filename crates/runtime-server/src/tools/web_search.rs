@@ -22,6 +22,7 @@
 use super::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_u64,
 };
+use super::web_inputs::web_search_input_schema;
 use crate::config::SearchProvider;
 use crate::network_policy::NetworkPolicyDecider;
 use async_trait::async_trait;
@@ -151,39 +152,7 @@ impl ToolSpec for WebSearchTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "Search query. Compatibility aliases: q, or search_query[0].q."
-                },
-                "q": {
-                    "type": "string",
-                    "description": "Search query."
-                },
-                "search_query": {
-                    "type": "array",
-                    "description": "Array form for advanced queries: [{\"q\":\"...\", \"max_results\": 5}]",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "q": { "type": "string" },
-                            "query": { "type": "string" },
-                            "max_results": { "type": "integer" }
-                        }
-                    }
-                },
-                "max_results": {
-                    "type": "integer",
-                    "description": "Maximum number of results to return (default: 8, max: 15)"
-                },
-                "timeout_ms": {
-                    "type": "integer",
-                    "description": "Timeout in milliseconds (default: 15000, max: 60000)"
-                }
-            }
-        })
+        web_search_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

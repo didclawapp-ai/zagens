@@ -1,6 +1,7 @@
+use crate::tools::subagent_inputs::delegate_to_agent_input_schema;
 use anyhow::Result;
 use async_trait::async_trait;
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::tools::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
@@ -36,55 +37,7 @@ impl ToolSpec for DelegateToAgentTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "agent_name": {
-                    "type": "string",
-                    "description": "Name/type alias for the agent (general, explore, plan, review, implementer, verifier, worker, explorer, awaiter, builder, validator, tester)"
-                },
-                "type": {
-                    "type": "string",
-                    "description": "Alias for agent_name"
-                },
-                "agent_type": {
-                    "type": "string",
-                    "description": "Alias for agent_name"
-                },
-                "role": {
-                    "type": "string",
-                    "description": "Role alias: worker, explorer, awaiter, default"
-                },
-                "agent_role": {
-                    "type": "string",
-                    "description": "Alias for role"
-                },
-                "objective": {
-                    "type": "string",
-                    "description": "The goal or task description for the agent"
-                },
-                "prompt": {
-                    "type": "string",
-                    "description": "Alias for objective"
-                },
-                "message": {
-                    "type": "string",
-                    "description": "Alias for objective"
-                },
-                "items": {
-                    "type": "array",
-                    "description": "Structured input items (text, mention, skill, local_image, image)",
-                    "items": {
-                        "type": "object"
-                    }
-                },
-                "allowed_tools": {
-                    "type": "array",
-                    "items": { "type": "string" },
-                    "description": "Explicit tool allowlist (required for custom type)"
-                }
-            }
-        })
+        delegate_to_agent_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

@@ -1,0 +1,17 @@
+{
+  "type": "object",
+  "properties": {
+    "path": {
+      "type": "string",
+      "description": "Path to the file"
+    },
+    "content": {
+      "type": "string",
+      "description": "Content to write"
+    }
+  },
+  "required": [
+    "path",
+    "content"
+  ]
+}

@@ -39,10 +39,14 @@ function Invoke-LhtHarnessRest {
         Method      = $Method
         Headers     = $headers
         TimeoutSec  = $TimeoutSec
-        ContentType = "application/json"
+        ContentType = "application/json; charset=utf-8"
     }
     if ($null -ne $Body) {
-        $params["Body"] = ($Body | ConvertTo-Json -Depth 20 -Compress)
+        # PS 5.1 Invoke-RestMethod defaults can mangle non-ASCII JSON on Windows
+        # (Rust sidecar rejects the body as "invalid unicode code point"). Send
+        # explicit UTF-8 bytes instead of a .NET string body.
+        $jsonBody = ($Body | ConvertTo-Json -Depth 20 -Compress)
+        $params["Body"] = [System.Text.Encoding]::UTF8.GetBytes($jsonBody)
     }
     return Invoke-RestMethod @params
 }

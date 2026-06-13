@@ -11,7 +11,7 @@ use zagens_tools::{ToolError, ToolResult};
 use tokio::sync::{Mutex as AsyncMutex, RwLock, mpsc};
 use tokio_util::sync::CancellationToken;
 
-use crate::chat::{LlmClient, Message, Tool};
+use crate::chat::{LlmClient, Message, MessageRequest, Tool};
 use crate::compaction::CompactionConfig;
 use crate::error_taxonomy::ErrorCategory;
 use crate::events::Event;
@@ -203,6 +203,14 @@ pub trait TurnLoopHost: Send {
         tool_input: &Value,
         registry: Option<&Self::ToolRegistry>,
     ) -> ToolPlanApprovalMeta;
+
+    /// L2: KV prefix fingerprint for one model request (M5). Default: none.
+    fn model_request_fingerprint(
+        &self,
+        _request: &MessageRequest,
+    ) -> Option<crate::engine::RequestFingerprint> {
+        None
+    }
 
     /// L2: run parallel/sequential execution for planned tools (TUI: `tool_plans_exec`).
     #[allow(clippy::too_many_arguments)]

@@ -12,6 +12,7 @@ use chrono::{DateTime, SecondsFormat, Utc};
 use serde_json::{Value, json};
 
 use super::file::sniff_encoding_label;
+use super::misc_inputs::file_info_input_schema;
 use super::spec::{ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, required_str};
 
 const LINE_COUNT_SIZE_LIMIT: u64 = 10 * 1024 * 1024;
@@ -31,16 +32,7 @@ impl ToolSpec for FileInfoTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Path to the file (relative to workspace or absolute)"
-                }
-            },
-            "required": ["path"]
-        })
+        file_info_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

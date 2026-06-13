@@ -1,0 +1,38 @@
+{
+  "type": "object",
+  "properties": {
+    "ticker": {
+      "type": "string",
+      "description": "Ticker symbol to look up (for example: AAPL, SPY, BTC)."
+    },
+    "symbol": {
+      "type": "string",
+      "description": "Alias for ticker."
+    },
+    "type": {
+      "type": "string",
+      "description": "Optional asset type hint such as equity, fund, crypto, or index."
+    },
+    "market": {
+      "type": "string",
+      "description": "Optional market hint retained for compatibility with finance-style tool calls."
+    },
+    "timeout_ms": {
+      "type": "integer",
+      "description": "Request timeout in milliseconds (default: 10000, max: 60000)."
+    }
+  },
+  "anyOf": [
+    {
+      "required": [
+        "ticker"
+      ]
+    },
+    {
+      "required": [
+        "symbol"
+      ]
+    }
+  ],
+  "additionalProperties": false
+}

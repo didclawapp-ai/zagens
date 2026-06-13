@@ -1,5 +1,6 @@
 //! Import structured sub-agent output into audit scratchpad.
 
+use crate::tools::scratchpad_inputs::scratchpad_import_agent_input_schema;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
@@ -39,33 +40,7 @@ impl ToolSpec for ScratchpadImportAgentTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "run_id": {
-                    "type": "string",
-                    "description": "Scratchpad run id (defaults to active thread/task scratchpad)"
-                },
-                "agent_id": {
-                    "type": "string",
-                    "description": "Sub-agent id from agent_spawn"
-                },
-                "area_id": {
-                    "type": "string",
-                    "description": "Inventory area_id to import under. Use when the child emitted a mismatched area_id; must exist in inventory. When omitted, runtime also tries structured_findings.area_path against inventory paths."
-                },
-                "block": {
-                    "type": "boolean",
-                    "description": "Wait for agent completion before import (default true)"
-                },
-                "timeout_ms": {
-                    "type": "integer",
-                    "description": "Max wait when block=true (default 30000, max 3600000)"
-                }
-            },
-            "required": ["agent_id"],
-            "additionalProperties": false
-        })
+        scratchpad_import_agent_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

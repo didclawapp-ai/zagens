@@ -1,0 +1,60 @@
+{
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "prompt": {
+      "type": "string"
+    },
+    "rrule": {
+      "type": "string",
+      "description": "Supported: FREQ=MINUTELY;INTERVAL=N[;BYDAY=MO,TU] | FREQ=HOURLY;INTERVAL=N[;BYDAY=MO,TU] | FREQ=DAILY;BYHOUR=9;BYMINUTE=30[;INTERVAL=N] | FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=30 | FREQ=MONTHLY;BYMONTHDAY=1;BYHOUR=9;BYMINUTE=30[;INTERVAL=N] | FREQ=ONCE;DTSTART=2026-06-10T09:00:00"
+    },
+    "cwds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "trigger_kind": {
+      "type": "string",
+      "default": "prompt",
+      "enum": [
+        "prompt",
+        "task"
+      ],
+      "description": "prompt = conservative task defaults; task = use model/mode/shell/trust fields"
+    },
+    "model": {
+      "type": "string"
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "agent",
+        "plan",
+        "yolo"
+      ]
+    },
+    "allow_shell": {
+      "type": "boolean"
+    },
+    "trust_mode": {
+      "type": "boolean"
+    },
+    "auto_approve": {
+      "type": "boolean"
+    },
+    "paused": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "name",
+    "prompt",
+    "rrule"
+  ],
+  "additionalProperties": false
+}

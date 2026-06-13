@@ -7,9 +7,10 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use serde_json::{Value, json};
+use serde_json::Value;
 use thiserror::Error;
 
+use super::misc_inputs::fim_edit_input_schema;
 use super::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
     optional_u64, required_str,
@@ -67,28 +68,7 @@ impl ToolSpec for FimEditTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Path to the file to edit (relative to workspace)"
-                },
-                "prefix_anchor": {
-                    "type": "string",
-                    "description": "Text anchor marking the end of the prefix. Everything up to and including this anchor is kept as-is before the generated middle."
-                },
-                "suffix_anchor": {
-                    "type": "string",
-                    "description": "Text anchor marking the start of the suffix. Everything from this anchor onward is kept as-is after the generated middle."
-                },
-                "max_tokens": {
-                    "type": "integer",
-                    "description": "Maximum tokens to generate (default: 1024)"
-                }
-            },
-            "required": ["path", "prefix_anchor", "suffix_anchor"]
-        })
+        fim_edit_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

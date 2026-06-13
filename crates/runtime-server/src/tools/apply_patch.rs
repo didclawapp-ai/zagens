@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use thiserror::Error;
 
+use super::misc_inputs::apply_patch_input_schema;
 use super::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
     lsp_diagnostics_for_paths, optional_bool, optional_str, optional_u64, required_str,
@@ -164,43 +165,7 @@ impl ToolSpec for ApplyPatchTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Path to the file to patch (relative to workspace)"
-                },
-                "patch": {
-                    "type": "string",
-                    "description": "Unified diff patch content"
-                },
-                "changes": {
-                    "type": "array",
-                    "description": "Optional full file replacements (path + content).",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "path": { "type": "string" },
-                            "content": { "type": "string" }
-                        },
-                        "required": ["path", "content"]
-                    }
-                },
-                "fuzz": {
-                    "type": "integer",
-                    "description": "Maximum fuzz factor for fuzzy matching (default: 3, max: 50)"
-                },
-                "create_if_missing": {
-                    "type": "boolean",
-                    "description": "Create the file if it doesn't exist (for new file patches)"
-                }
-            },
-            "oneOf": [
-                { "required": ["patch"] },
-                { "required": ["changes"] }
-            ]
-        })
+        apply_patch_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

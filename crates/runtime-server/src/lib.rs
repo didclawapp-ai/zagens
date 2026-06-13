@@ -45,6 +45,7 @@ mod project_doc;
 mod prompts;
 mod python_env;
 pub mod repl;
+mod request_fingerprint;
 mod retry_status;
 pub mod rlm;
 pub mod runtime_api;

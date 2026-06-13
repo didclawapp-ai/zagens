@@ -1,0 +1,28 @@
+{
+  "type": "object",
+  "properties": {
+    "target": {
+      "type": "string",
+      "description": "File path, PR URL, or the literal 'diff'/'staged' for git diff review."
+    },
+    "kind": {
+      "type": "string",
+      "description": "Optional explicit target type: file, diff, or pr."
+    },
+    "base": {
+      "type": "string",
+      "description": "Optional git base ref when using diff target (e.g. origin/main)."
+    },
+    "staged": {
+      "type": "boolean",
+      "description": "Review staged changes when using diff target (default: false)."
+    },
+    "max_chars": {
+      "type": "integer",
+      "description": "Maximum characters to include from the source (default: 200000)."
+    }
+  },
+  "required": [
+    "target"
+  ]
+}

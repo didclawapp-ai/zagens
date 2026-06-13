@@ -1,6 +1,7 @@
 //! edit_file tool (search/replace and line operations).
 
 use super::DIFF_MAX_INPUT_BYTES;
+use super::schemas::edit_file_input_schema;
 use super::write::{
     find_match_line_numbers, jsx_balance_warning, make_compact_change, normalize_line_endings,
 };
@@ -10,7 +11,7 @@ use crate::tools::spec::{
     lsp_diagnostics_for_paths, optional_bool, optional_str, optional_u64, required_str,
 };
 use async_trait::async_trait;
-use serde_json::{Value, json};
+use serde_json::Value;
 
 fn edit_unified_diff(display: &str, before: &str, after: &str) -> String {
     if before.len() > DIFF_MAX_INPUT_BYTES || after.len() > DIFF_MAX_INPUT_BYTES {
@@ -60,58 +61,7 @@ impl ToolSpec for EditFileTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Path to the file"
-                },
-                "search": {
-                    "type": "string",
-                    "description": "Text to search for"
-                },
-                "replace": {
-                    "type": "string",
-                    "description": "Replacement text (this field is named 'replace' — NOT 'new_str'/'new_string'/'replacement')."
-                },
-                "start_line": {
-                    "type": "integer",
-                    "description": "Limit the search range to start at this 1-based line (inclusive). Use with end_line for precision."
-                },
-                "end_line": {
-                    "type": "integer",
-                    "description": "Limit the search range to end at this 1-based line (inclusive)."
-                },
-                "replace_mode": {
-                    "type": "string",
-                    "enum": ["first", "all"],
-                    "description": "[search_replace mode] When there are multiple matches: 'first' replaces only the first, 'all' replaces all (requires explicit choice)."
-                },
-                "operation": {
-                    "type": "string",
-                    "enum": ["search_replace", "insert_after", "delete_lines", "replace_line"],
-                    "description": "Edit operation. Default 'search_replace'. Other modes use line numbers instead of search strings."
-                },
-                "text": {
-                    "type": "string",
-                    "description": "[insert_after / replace_line mode] The text to insert or use as replacement."
-                },
-                "after_line": {
-                    "type": "integer",
-                    "description": "[insert_after mode] Insert text after this line number (1-based). 0 = at the beginning of the file."
-                },
-                "line": {
-                    "type": "integer",
-                    "description": "[replace_line mode] The line number to replace (1-based)."
-                },
-                "dry_run": {
-                    "type": "boolean",
-                    "description": "[delete_lines mode] If true, preview what would be deleted without modifying the file. Returns the lines that would be removed."
-                }
-            },
-            "required": ["path"]
-        })
+        edit_file_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

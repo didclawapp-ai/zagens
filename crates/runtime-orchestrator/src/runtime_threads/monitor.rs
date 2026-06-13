@@ -134,6 +134,24 @@ where
                 )
                 .await?;
             }
+            EngineEvent::ModelRequestPrepared {
+                static_prefix_sha256,
+                full_prefix_sha256,
+            } => {
+                mgr.emit_event(
+                    &thread_id,
+                    Some(&turn_id),
+                    None,
+                    "turn.prefix_fingerprint",
+                    json!({
+                        "request_fingerprint": {
+                            "static_prefix_sha256": static_prefix_sha256,
+                            "full_prefix_sha256": full_prefix_sha256,
+                        }
+                    }),
+                )
+                .await?;
+            }
             EngineEvent::ThinkingStarted { .. } => {
                 thinking_stream_item_id =
                     Some(format!("item_{}", &Uuid::new_v4().to_string()[..8]));

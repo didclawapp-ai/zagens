@@ -1,0 +1,45 @@
+{
+  "type": "object",
+  "properties": {
+    "agent_id": {
+      "type": "string",
+      "description": "Agent id returned by agent_spawn"
+    },
+    "id": {
+      "type": "string",
+      "description": "Alias for agent_id"
+    },
+    "objective": {
+      "type": "string",
+      "description": "Updated assignment objective"
+    },
+    "role": {
+      "type": "string",
+      "description": "Updated role alias: worker, explorer, awaiter, default"
+    },
+    "agent_role": {
+      "type": "string",
+      "description": "Alias for role"
+    },
+    "message": {
+      "type": "string",
+      "description": "Optional coordinator note to send to the agent"
+    },
+    "input": {
+      "type": "string",
+      "description": "Alias for message"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {}
+      },
+      "description": "Structured input items (text, mention, skill, local_image, image)"
+    },
+    "interrupt": {
+      "type": "boolean",
+      "description": "Prioritize this assignment update in the agent inbox (default: true)"
+    }
+  }
+}

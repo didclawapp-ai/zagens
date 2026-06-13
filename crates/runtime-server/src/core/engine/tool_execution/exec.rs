@@ -23,11 +23,19 @@ impl Engine {
         mcp_pool: Option<Arc<AsyncMutex<McpPool>>>,
         context_override: Option<crate::tools::ToolContext>,
         tool_progress_id: Option<String>,
+        lock_ctx: Option<crate::tools::resource_locks::FineGrainedLockContext>,
     ) -> Result<ToolResult, ToolError> {
-        let _guard = if supports_parallel {
-            ToolExecGuard::Read(lock.read().await)
+        let _guard = if let Some(ctx) = &lock_ctx {
+            ctx.registry
+                .acquire(&lock, &ctx.reads, &ctx.writes, true, supports_parallel)
+                .await
         } else {
-            ToolExecGuard::Write(lock.write().await)
+            crate::tools::resource_locks::ResourceLockRegistry::acquire_global(
+                &lock,
+                supports_parallel,
+                !supports_parallel,
+            )
+            .await
         };
 
         let _terminal = InteractiveTerminalGuard::engage(tx_event.clone(), interactive).await;

@@ -1,6 +1,7 @@
+use crate::tools::subagent_inputs::agent_cancel_input_schema;
 use anyhow::Result;
 use async_trait::async_trait;
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::tools::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, required_str,
@@ -31,16 +32,7 @@ impl ToolSpec for AgentCancelTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "agent_id": {
-                    "type": "string",
-                    "description": "ID returned by agent_spawn"
-                }
-            },
-            "required": ["agent_id"]
-        })
+        agent_cancel_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

@@ -1,6 +1,7 @@
+use crate::tools::subagent_inputs::agent_assign_input_schema;
 use anyhow::Result;
 use async_trait::async_trait;
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::tools::spec::{ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec};
 
@@ -33,50 +34,7 @@ impl ToolSpec for AgentAssignTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "agent_id": {
-                    "type": "string",
-                    "description": "Agent id returned by agent_spawn"
-                },
-                "id": {
-                    "type": "string",
-                    "description": "Alias for agent_id"
-                },
-                "objective": {
-                    "type": "string",
-                    "description": "Updated assignment objective"
-                },
-                "role": {
-                    "type": "string",
-                    "description": "Updated role alias: worker, explorer, awaiter, default"
-                },
-                "agent_role": {
-                    "type": "string",
-                    "description": "Alias for role"
-                },
-                "message": {
-                    "type": "string",
-                    "description": "Optional coordinator note to send to the agent"
-                },
-                "input": {
-                    "type": "string",
-                    "description": "Alias for message"
-                },
-                "items": {
-                    "type": "array",
-                    "description": "Structured input items (text, mention, skill, local_image, image)",
-                    "items": {
-                        "type": "object"
-                    }
-                },
-                "interrupt": {
-                    "type": "boolean",
-                    "description": "Prioritize this assignment update in the agent inbox (default: true)"
-                }
-            }
-        })
+        agent_assign_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

@@ -38,6 +38,7 @@ fn env_only_api_key_recovery_hint(api_config: &Config) -> Option<String> {
     let env_var = match provider {
         ApiProvider::Deepseek | ApiProvider::DeepseekCN => "DEEPSEEK_API_KEY",
         ApiProvider::NvidiaNim => "NVIDIA_API_KEY/NVIDIA_NIM_API_KEY",
+        ApiProvider::Openai => "OPENAI_API_KEY",
         ApiProvider::Openrouter => "OPENROUTER_API_KEY",
         ApiProvider::Novita => "NOVITA_API_KEY",
         ApiProvider::Fireworks => "FIREWORKS_API_KEY",
@@ -115,6 +116,7 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
     if let Ok(mut guard) = shell_manager.lock() {
         guard.set_windows_sandbox_mode(resolve_windows_sandbox_mode(api_config));
         guard.set_windows_private_desktop(resolve_windows_sandbox_private_desktop(api_config));
+        guard.set_prefer_bwrap(api_config.prefer_bwrap.unwrap_or(false));
     }
     let capacity_controller = CapacityController::new(lean.capacity.clone());
 
@@ -208,6 +210,9 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
         sandbox_init_warning,
         hook_executor,
         session_hooks_started: false,
+        tools_policy: api_config.tools_policy_mode(),
+        tools_scheduler: api_config.tools_scheduler_mode(),
+        resource_lock_registry: Arc::new(crate::tools::resource_locks::ResourceLockRegistry::new()),
     };
 
     let hosts = EngineHostBundle {

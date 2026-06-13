@@ -4,6 +4,7 @@ Executable assets for LHT evaluation and Office scenario demos — **not** prose
 
 | Path | Purpose |
 |------|---------|
+| [kernel-v2-corpus/](./kernel-v2-corpus/) | Kernel v2 golden corpus: batch-shape latency scenarios (M0.1) |
 | [office-demo/](./office-demo/) | Office P0 scenario sample data |
 | [strict-task-seed/](./strict-task-seed/) | Minimal Go seed for strict harness smoke |
 | `lht-*.toml` / `*.json` | Harness task manifests and eval profiles |

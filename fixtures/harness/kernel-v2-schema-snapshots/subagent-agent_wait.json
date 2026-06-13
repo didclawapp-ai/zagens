@@ -1,0 +1,35 @@
+{
+  "type": "object",
+  "properties": {
+    "ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Agent IDs to wait on. When omitted, waits on all currently running sub-agents."
+    },
+    "agent_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Alias for ids"
+    },
+    "agent_id": {
+      "type": "string",
+      "description": "Single agent ID"
+    },
+    "id": {
+      "type": "string",
+      "description": "Alias for agent_id"
+    },
+    "wait_mode": {
+      "type": "string",
+      "description": "Wait behavior: any (default) or all"
+    },
+    "timeout_ms": {
+      "type": "integer",
+      "description": "Max wait time in milliseconds. When omitted, defaults adaptively from the agent's step_timeout_ms and remaining steps (clamped 10000-3600000). Explicit values override."
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "type": "object",
+  "properties": {
+    "agent_id": {
+      "type": "string",
+      "description": "ID returned by agent_spawn"
+    },
+    "id": {
+      "type": "string",
+      "description": "Alias for agent_id"
+    },
+    "message": {
+      "type": "string",
+      "description": "Message to deliver to the agent"
+    },
+    "input": {
+      "type": "string",
+      "description": "Alias for message"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {}
+      },
+      "description": "Structured input items (text, mention, skill, local_image, image)"
+    },
+    "interrupt": {
+      "type": "boolean",
+      "description": "Prioritize this message over pending inputs"
+    }
+  }
+}

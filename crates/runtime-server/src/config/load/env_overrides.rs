@@ -99,6 +99,7 @@ pub(crate) fn apply_env_overrides(config: &mut Config) {
             ApiProvider::Deepseek => &mut providers.deepseek,
             ApiProvider::DeepseekCN => &mut providers.deepseek_cn,
             ApiProvider::NvidiaNim => &mut providers.nvidia_nim,
+            ApiProvider::Openai => &mut providers.openai,
             ApiProvider::Openrouter => &mut providers.openrouter,
             ApiProvider::Novita => &mut providers.novita,
             ApiProvider::Fireworks => &mut providers.fireworks,
@@ -120,6 +121,16 @@ pub(crate) fn apply_env_overrides(config: &mut Config) {
             .ollama
             .base_url = Some(value);
     }
+    if matches!(config.api_provider(), ApiProvider::Openai)
+        && let Ok(value) = std::env::var("OPENAI_BASE_URL")
+        && !value.trim().is_empty()
+    {
+        config
+            .providers
+            .get_or_insert_with(ProvidersConfig::default)
+            .openai
+            .base_url = Some(value);
+    }
     if matches!(config.api_provider(), ApiProvider::Sglang)
         && let Ok(value) = std::env::var("SGLANG_MODEL")
     {
@@ -132,6 +143,11 @@ pub(crate) fn apply_env_overrides(config: &mut Config) {
     }
     if matches!(config.api_provider(), ApiProvider::Ollama)
         && let Ok(value) = std::env::var("OLLAMA_MODEL")
+    {
+        config.default_text_model = Some(value);
+    }
+    if matches!(config.api_provider(), ApiProvider::Openai)
+        && let Ok(value) = std::env::var("OPENAI_MODEL")
     {
         config.default_text_model = Some(value);
     }

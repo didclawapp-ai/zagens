@@ -6,8 +6,9 @@ use crate::utils::{
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::Serialize;
-use serde_json::{Value, json};
+use serde_json::Value;
 
+use super::misc_inputs::project_map_input_schema;
 use super::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_u64,
 };
@@ -34,15 +35,7 @@ impl ToolSpec for ProjectMapTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "max_depth": {
-                    "type": "integer",
-                    "description": "Maximum depth for the tree view (default: 3)."
-                }
-            }
-        })
+        project_map_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

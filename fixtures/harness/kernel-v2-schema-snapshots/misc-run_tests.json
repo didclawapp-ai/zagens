@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "properties": {
+    "args": {
+      "type": "string",
+      "description": "Optional extra arguments to pass to `cargo test` (shell-style)."
+    },
+    "all_features": {
+      "type": "boolean",
+      "description": "When true, include `--all-features`."
+    },
+    "timeout_ms": {
+      "type": "integer",
+      "description": "Wall-clock timeout in milliseconds before the test run is killed (default 600,000; max 1,800,000)."
+    }
+  },
+  "additionalProperties": false
+}

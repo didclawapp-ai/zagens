@@ -1,5 +1,6 @@
 //! list_dir tool.
 
+use super::schemas::list_dir_input_schema;
 use crate::tools::spec::{
     ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_str, optional_u64,
 };
@@ -24,24 +25,7 @@ impl ToolSpec for ListDirTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Relative path (default: .)"
-                },
-                "limit": {
-                    "type": "integer",
-                    "description": "Maximum entries to return (default: 1000, max: 10000). Directories are listed first, then files, each sorted by name."
-                },
-                "offset": {
-                    "type": "integer",
-                    "description": "Skip this many entries after sorting (default: 0). Use with limit to paginate large directories."
-                }
-            },
-            "required": []
-        })
+        list_dir_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

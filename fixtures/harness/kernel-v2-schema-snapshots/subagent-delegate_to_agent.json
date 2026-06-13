@@ -1,0 +1,52 @@
+{
+  "type": "object",
+  "properties": {
+    "agent_name": {
+      "type": "string",
+      "description": "Name/type alias for the agent (general, explore, plan, review, implementer, verifier, worker, explorer, awaiter, builder, validator, tester)"
+    },
+    "type": {
+      "type": "string",
+      "description": "Alias for agent_name"
+    },
+    "agent_type": {
+      "type": "string",
+      "description": "Alias for agent_name"
+    },
+    "role": {
+      "type": "string",
+      "description": "Role alias: worker, explorer, awaiter, default"
+    },
+    "agent_role": {
+      "type": "string",
+      "description": "Alias for role"
+    },
+    "objective": {
+      "type": "string",
+      "description": "The goal or task description for the agent"
+    },
+    "prompt": {
+      "type": "string",
+      "description": "Alias for objective"
+    },
+    "message": {
+      "type": "string",
+      "description": "Alias for objective"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {}
+      },
+      "description": "Structured input items (text, mention, skill, local_image, image)"
+    },
+    "allowed_tools": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Explicit tool allowlist (required for custom type)"
+    }
+  }
+}

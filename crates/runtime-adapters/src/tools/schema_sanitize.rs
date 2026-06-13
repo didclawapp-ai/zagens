@@ -67,11 +67,11 @@ fn prune_dangling_required(schema: &mut Value) {
     let Some(obj) = schema.as_object_mut() else {
         return;
     };
-    let known_keys: Vec<String> = obj
-        .get("properties")
-        .and_then(|v| v.as_object())
-        .map(|props| props.keys().cloned().collect())
-        .unwrap_or_default();
+    let Some(props) = obj.get("properties").and_then(|v| v.as_object()) else {
+        // Constraint-only subschemas (e.g. finance anyOf `{ "required": ["ticker"] }`).
+        return;
+    };
+    let known_keys: Vec<String> = props.keys().cloned().collect();
     let Some(required) = obj.get_mut("required").and_then(|v| v.as_array_mut()) else {
         return;
     };

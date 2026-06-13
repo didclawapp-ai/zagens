@@ -1,0 +1,10 @@
+{
+  "type": "object",
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "description": "Task id; defaults to active task."
+    }
+  },
+  "additionalProperties": false
+}

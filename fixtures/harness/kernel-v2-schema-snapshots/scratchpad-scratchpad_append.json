@@ -1,0 +1,65 @@
+{
+  "type": "object",
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "description": "Scratchpad run directory name. Defaults to active thread_id or task_id when that directory exists."
+    },
+    "line": {
+      "type": "object",
+      "properties": {
+        "area_id": {
+          "type": "string"
+        },
+        "area": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "finding",
+            "todo",
+            "cleared",
+            "meta"
+          ]
+        },
+        "severity": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "file": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer"
+        },
+        "line_end": {
+          "type": "integer"
+        },
+        "claim": {
+          "type": "string"
+        },
+        "evidence": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "supersedes": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "description": "One notes.jsonl row (runtime adds id, ts)."
+    }
+  },
+  "required": [
+    "line"
+  ],
+  "additionalProperties": false
+}

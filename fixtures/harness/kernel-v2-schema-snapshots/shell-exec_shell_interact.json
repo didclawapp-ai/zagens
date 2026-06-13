@@ -1,0 +1,32 @@
+{
+  "type": "object",
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "description": "Task ID returned by exec_shell"
+    },
+    "input": {
+      "type": "string",
+      "description": "Input to send to the task's stdin"
+    },
+    "stdin": {
+      "type": "string",
+      "description": "Alias for input"
+    },
+    "data": {
+      "type": "string",
+      "description": "Alias for input"
+    },
+    "timeout_ms": {
+      "type": "integer",
+      "description": "Wait for output after sending input (default: 1000)"
+    },
+    "close_stdin": {
+      "type": "boolean",
+      "description": "Close stdin after sending input"
+    }
+  },
+  "required": [
+    "task_id"
+  ]
+}

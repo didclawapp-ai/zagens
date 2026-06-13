@@ -1,0 +1,13 @@
+{
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Skill id (the `name` field from the SKILL.md frontmatter, also shown in the `## Skills` listing)."
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "additionalProperties": false
+}

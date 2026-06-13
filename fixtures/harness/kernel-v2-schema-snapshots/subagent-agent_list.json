@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "properties": {
+    "include_archived": {
+      "type": "boolean",
+      "description": "When true, include agents from prior sessions in the listing. Default false."
+    }
+  }
+}

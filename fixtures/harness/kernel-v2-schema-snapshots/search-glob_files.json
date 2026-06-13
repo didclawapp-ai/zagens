@@ -1,0 +1,24 @@
+{
+  "type": "object",
+  "properties": {
+    "pattern": {
+      "type": "string",
+      "description": "Glob pattern relative to path (e.g. '**/*.rs', 'src/**/*login*.tsx'). Use forward slashes."
+    },
+    "path": {
+      "type": "string",
+      "description": "Base directory (relative to workspace, default: .)"
+    },
+    "limit": {
+      "type": "integer",
+      "description": "Maximum files to return (default: 100, max: 100)"
+    },
+    "respect_gitignore": {
+      "type": "boolean",
+      "description": "Honor .gitignore when true (default: true)"
+    }
+  },
+  "required": [
+    "pattern"
+  ]
+}

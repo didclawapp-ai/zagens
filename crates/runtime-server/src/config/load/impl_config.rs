@@ -14,9 +14,9 @@ use super::super::{
     DEFAULT_FIREWORKS_BASE_URL, DEFAULT_FIREWORKS_MODEL, DEFAULT_MAX_SUBAGENTS,
     DEFAULT_NOVITA_BASE_URL, DEFAULT_NOVITA_MODEL, DEFAULT_NVIDIA_NIM_BASE_URL,
     DEFAULT_NVIDIA_NIM_MODEL, DEFAULT_OLLAMA_BASE_URL, DEFAULT_OLLAMA_MODEL,
-    DEFAULT_OPENROUTER_BASE_URL, DEFAULT_OPENROUTER_MODEL, DEFAULT_SGLANG_BASE_URL,
-    DEFAULT_SGLANG_MODEL, DEFAULT_TEXT_MODEL, DEFAULT_VLLM_BASE_URL, DEFAULT_VLLM_MODEL,
-    MAX_SUBAGENTS,
+    DEFAULT_OPENAI_BASE_URL, DEFAULT_OPENAI_MODEL, DEFAULT_OPENROUTER_BASE_URL,
+    DEFAULT_OPENROUTER_MODEL, DEFAULT_SGLANG_BASE_URL, DEFAULT_SGLANG_MODEL, DEFAULT_TEXT_MODEL,
+    DEFAULT_VLLM_BASE_URL, DEFAULT_VLLM_MODEL, MAX_SUBAGENTS,
 };
 use super::env_overrides::apply_env_overrides;
 use super::merge::{apply_managed_overrides, apply_profile, apply_requirements};
@@ -70,7 +70,7 @@ impl Config {
             && ApiProvider::parse(provider).is_none()
         {
             anyhow::bail!(
-                "Invalid provider '{provider}': expected deepseek, deepseek-cn, nvidia-nim, openrouter, novita, fireworks, sglang, vllm, or ollama."
+                "Invalid provider '{provider}': expected deepseek, deepseek-cn, nvidia-nim, openai, openrouter, novita, fireworks, sglang, vllm, or ollama."
             );
         }
         if let Some(ref key) = self.api_key
@@ -113,6 +113,26 @@ impl Config {
             ) {
                 anyhow::bail!(
                     "Invalid sandbox_mode '{mode}': expected read-only, workspace-write, danger-full-access, or external-sandbox."
+                );
+            }
+        }
+        if let Some(tools) = &self.tools
+            && let Some(policy) = tools.policy.as_deref()
+        {
+            let normalized = policy.trim().to_ascii_lowercase();
+            if !matches!(normalized.as_str(), "legacy" | "shadow" | "engine") {
+                anyhow::bail!(
+                    "Invalid tools.policy '{policy}': expected legacy, shadow, or engine."
+                );
+            }
+        }
+        if let Some(tools) = &self.tools
+            && let Some(scheduler) = tools.scheduler.as_deref()
+        {
+            let normalized = scheduler.trim().to_ascii_lowercase();
+            if !matches!(normalized.as_str(), "legacy" | "shadow" | "dag") {
+                anyhow::bail!(
+                    "Invalid tools.scheduler '{scheduler}': expected legacy, shadow, or dag."
                 );
             }
         }
@@ -185,6 +205,7 @@ impl Config {
             ApiProvider::Deepseek => &providers.deepseek,
             ApiProvider::DeepseekCN => &providers.deepseek_cn,
             ApiProvider::NvidiaNim => &providers.nvidia_nim,
+            ApiProvider::Openai => &providers.openai,
             ApiProvider::Openrouter => &providers.openrouter,
             ApiProvider::Novita => &providers.novita,
             ApiProvider::Fireworks => &providers.fireworks,
@@ -218,7 +239,9 @@ impl Config {
             .provider_config()
             .and_then(|provider| provider.model.as_deref())
         {
-            if matches!(provider, ApiProvider::Ollama) {
+            // Ollama and OpenAI model names are free-form (not DeepSeek IDs);
+            // pass them through without DeepSeek normalization.
+            if matches!(provider, ApiProvider::Ollama | ApiProvider::Openai) {
                 return model.trim().to_string();
             }
             if let Some(normalized) = normalize_model_for_provider(provider, model) {
@@ -226,7 +249,7 @@ impl Config {
             }
         }
         if let Some(model) = self.default_text_model.as_deref()
-            && matches!(provider, ApiProvider::Ollama)
+            && matches!(provider, ApiProvider::Ollama | ApiProvider::Openai)
         {
             return model.trim().to_string();
         }
@@ -244,6 +267,7 @@ impl Config {
         match provider {
             ApiProvider::Deepseek | ApiProvider::DeepseekCN => DEFAULT_TEXT_MODEL,
             ApiProvider::NvidiaNim => DEFAULT_NVIDIA_NIM_MODEL,
+            ApiProvider::Openai => DEFAULT_OPENAI_MODEL,
             ApiProvider::Openrouter => DEFAULT_OPENROUTER_MODEL,
             ApiProvider::Novita => DEFAULT_NOVITA_MODEL,
             ApiProvider::Fireworks => DEFAULT_FIREWORKS_MODEL,
@@ -272,7 +296,8 @@ impl Config {
                 .as_ref()
                 .filter(|base| base.contains("integrate.api.nvidia.com"))
                 .cloned(),
-            ApiProvider::Openrouter
+            ApiProvider::Openai
+            | ApiProvider::Openrouter
             | ApiProvider::Novita
             | ApiProvider::Fireworks
             | ApiProvider::Sglang
@@ -284,6 +309,7 @@ impl Config {
                 ApiProvider::Deepseek => DEFAULT_DEEPSEEK_BASE_URL,
                 ApiProvider::DeepseekCN => DEFAULT_DEEPSEEKCN_BASE_URL,
                 ApiProvider::NvidiaNim => DEFAULT_NVIDIA_NIM_BASE_URL,
+                ApiProvider::Openai => DEFAULT_OPENAI_BASE_URL,
                 ApiProvider::Openrouter => DEFAULT_OPENROUTER_BASE_URL,
                 ApiProvider::Novita => DEFAULT_NOVITA_BASE_URL,
                 ApiProvider::Fireworks => DEFAULT_FIREWORKS_BASE_URL,
@@ -309,6 +335,7 @@ impl Config {
         let slot = match provider {
             ApiProvider::Deepseek | ApiProvider::DeepseekCN => "deepseek",
             ApiProvider::NvidiaNim => "nvidia-nim",
+            ApiProvider::Openai => "openai",
             ApiProvider::Openrouter => "openrouter",
             ApiProvider::Novita => "novita",
             ApiProvider::Fireworks => "fireworks",
@@ -362,6 +389,10 @@ impl Config {
                 "NVIDIA NIM API key not found. Run 'deepseek auth set --provider nvidia-nim', \
                  set NVIDIA_API_KEY/NVIDIA_NIM_API_KEY, or save api_key in ~/.deepseek/config.toml \
                  with provider = \"nvidia-nim\"."
+            ),
+            ApiProvider::Openai => anyhow::bail!(
+                "OpenAI API key not found. Run 'deepseek auth set --provider openai', \
+                 set OPENAI_API_KEY, or add [providers.openai] api_key in ~/.deepseek/config.toml."
             ),
             ApiProvider::Openrouter => anyhow::bail!(
                 "OpenRouter API key not found. Run 'deepseek auth set --provider openrouter', \
@@ -727,6 +758,20 @@ impl Config {
         // untrusted enforce manifest from auto-executing commands.
         cfg.completion_gate = cfg.completion_gate.sanitized_for_source(true);
         cfg
+    }
+
+    /// Resolved kernel-v2 tool policy mode (`[tools] policy`, default `legacy`).
+    #[must_use]
+    pub fn tools_policy_mode(&self) -> crate::config::ToolsPolicyMode {
+        crate::config::ToolsPolicyMode::parse(self.tools.as_ref().and_then(|t| t.policy.as_deref()))
+    }
+
+    /// Resolved kernel-v2 batch scheduler mode (`[tools] scheduler`, default `legacy`).
+    #[must_use]
+    pub fn tools_scheduler_mode(&self) -> crate::config::ToolsSchedulerMode {
+        crate::config::ToolsSchedulerMode::parse(
+            self.tools.as_ref().and_then(|t| t.scheduler.as_deref()),
+        )
     }
 
     /// Resolve enabled features from defaults and config entries.

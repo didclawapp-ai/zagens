@@ -1,0 +1,39 @@
+{
+  "type": "object",
+  "properties": {
+    "query": {
+      "type": "string",
+      "description": "Search query. Compatibility aliases: q, or search_query[0].q."
+    },
+    "q": {
+      "type": "string",
+      "description": "Search query."
+    },
+    "search_query": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "q": {
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          },
+          "max_results": {
+            "type": "integer"
+          }
+        }
+      },
+      "description": "Array form for advanced queries: [{\"q\":\"...\", \"max_results\": 5}]"
+    },
+    "max_results": {
+      "type": "integer",
+      "description": "Maximum number of results to return (default: 8, max: 15)"
+    },
+    "timeout_ms": {
+      "type": "integer",
+      "description": "Timeout in milliseconds (default: 15000, max: 60000)"
+    }
+  }
+}

@@ -1,6 +1,7 @@
+use crate::tools::subagent_inputs::agent_close_input_schema;
 use anyhow::Result;
 use async_trait::async_trait;
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::tools::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
@@ -32,19 +33,7 @@ impl ToolSpec for AgentCloseTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "id": {
-                    "type": "string",
-                    "description": "Agent id returned by agent_spawn"
-                },
-                "agent_id": {
-                    "type": "string",
-                    "description": "Alias for id"
-                }
-            }
-        })
+        agent_close_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

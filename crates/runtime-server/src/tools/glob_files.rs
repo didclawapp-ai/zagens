@@ -8,6 +8,7 @@ use globset::{Glob, GlobSet, GlobSetBuilder};
 use serde::Serialize;
 use serde_json::{Value, json};
 
+use super::search_inputs::glob_files_input_schema;
 use super::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
     optional_bool, optional_str, optional_u64, required_str,
@@ -62,28 +63,7 @@ impl ToolSpec for GlobFilesTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "pattern": {
-                    "type": "string",
-                    "description": "Glob pattern relative to path (e.g. '**/*.rs', 'src/**/*login*.tsx'). Use forward slashes."
-                },
-                "path": {
-                    "type": "string",
-                    "description": "Base directory (relative to workspace, default: .)"
-                },
-                "limit": {
-                    "type": "integer",
-                    "description": "Maximum files to return (default: 100, max: 100)"
-                },
-                "respect_gitignore": {
-                    "type": "boolean",
-                    "description": "Honor .gitignore when true (default: true)"
-                }
-            },
-            "required": ["pattern"]
-        })
+        glob_files_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

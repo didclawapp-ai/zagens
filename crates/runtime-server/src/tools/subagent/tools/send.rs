@@ -1,6 +1,7 @@
+use crate::tools::subagent_inputs::agent_send_input_input_schema;
 use anyhow::Result;
 use async_trait::async_trait;
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::tools::spec::{
     ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_bool,
@@ -34,38 +35,7 @@ impl ToolSpec for AgentSendInputTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "agent_id": {
-                    "type": "string",
-                    "description": "ID returned by agent_spawn"
-                },
-                "id": {
-                    "type": "string",
-                    "description": "Alias for agent_id"
-                },
-                "message": {
-                    "type": "string",
-                    "description": "Message to deliver to the agent"
-                },
-                "input": {
-                    "type": "string",
-                    "description": "Alias for message"
-                },
-                "items": {
-                    "type": "array",
-                    "description": "Structured input items (text, mention, skill, local_image, image)",
-                    "items": {
-                        "type": "object"
-                    }
-                },
-                "interrupt": {
-                    "type": "boolean",
-                    "description": "Prioritize this message over pending inputs"
-                }
-            }
-        })
+        agent_send_input_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

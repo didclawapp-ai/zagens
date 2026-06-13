@@ -1,0 +1,44 @@
+{
+  "type": "object",
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "description": "Scratchpad run directory name. Defaults to active thread_id or task_id (creates the directory if missing)."
+    },
+    "scope": {
+      "type": "string",
+      "description": "Optional human-readable audit scope stored in inventory.json"
+    },
+    "areas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "path"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Inventory rows (default: one pending area for workspace root)"
+    },
+    "template": {
+      "type": "string",
+      "enum": [
+        "workspace_audit"
+      ],
+      "description": "When set to workspace_audit, auto-build inventory from workspace Cargo.toml members (includes runtime-server, desktop web-ui areas). Ignores default single-row inventory."
+    }
+  },
+  "additionalProperties": false
+}

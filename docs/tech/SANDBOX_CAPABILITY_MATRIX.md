@@ -8,7 +8,8 @@
 |----------|---------|----------------------------------|----------------------------|-------------|
 | **macOS** | Seatbelt (`sandbox-exec`) | Yes | **Yes** when `sandbox-exec` is present | None |
 | **macOS** | — | Yes | **No** if `sandbox-exec` missing | Degraded mode (startup + optional elevation UI) |
-| **Linux** | Landlock (planned) | Yes | **No** — env marker only (`DEEPSEEK_SANDBOX_UNENFORCED`) | Degraded mode + per-command stderr prefix |
+| **Linux** | Bubblewrap (`prefer_bwrap = true`, bwrap installed) | Yes | **Yes** — read-only root + writable workspace roots, `--unshare-all` (net shared back per policy) | None |
+| **Linux** | Landlock (planned, default) | Yes | **No** — env marker only (`DEEPSEEK_SANDBOX_UNENFORCED`) | Degraded mode + per-command stderr prefix |
 | **Windows** | **Elevated** (recommended) | Yes | **Yes** when `zagens sandbox setup` completed | Settings → enforced; Online user has full outbound network (§13.7) |
 | **Windows** | **Unelevated** (fallback) | Yes | **Yes** — write isolation + weak network env | No profile read isolation (G0 Fail); Settings note |
 | **Windows** | — | Yes | **No** — before setup / uninitialized install | First-run onboarding wizard + setup CTA |

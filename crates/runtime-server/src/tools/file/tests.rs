@@ -621,9 +621,11 @@ fn test_input_schemas() {
     let list_schema = ListDirTool.input_schema();
     let required = list_schema
         .get("required")
-        .and_then(|value| value.as_array())
-        .expect("list schema should include required array");
-    assert!(required.is_empty()); // path is optional
+        .and_then(|value| value.as_array());
+    assert!(
+        required.is_none_or(|items| items.is_empty()),
+        "list_dir path is optional — no required fields"
+    );
 }
 
 #[tokio::test]
@@ -847,4 +849,59 @@ async fn test_edit_file_preserves_utf16le_bom() {
     let (decoded, label, _via) = detect_and_decode(&written);
     assert_eq!(decoded, "alpha gamma");
     assert_eq!(label, "utf-16le");
+}
+
+// === Kernel-v2 M2 schema snapshot gate (file tool family) ===
+
+use crate::tools::schema_sanitize;
+
+fn model_visible_input_schema(tool: &dyn ToolSpec) -> Value {
+    let mut schema = tool.input_schema();
+    schema_sanitize::sanitize(&mut schema);
+    schema
+}
+
+const FILE_SCHEMA_SNAPSHOT_DIR: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../fixtures/harness/kernel-v2-schema-snapshots"
+);
+
+#[test]
+#[ignore = "bootstrap kernel-v2 file-tool schema snapshot fixtures"]
+fn dump_file_tool_schemas_for_snapshot_bootstrap() {
+    let tools: [(&str, &dyn ToolSpec); 4] = [
+        ("read_file", &ReadFileTool),
+        ("write_file", &WriteFileTool),
+        ("edit_file", &EditFileTool),
+        ("list_dir", &ListDirTool),
+    ];
+    for (name, tool) in tools {
+        let schema = model_visible_input_schema(tool);
+        let pretty = serde_json::to_string_pretty(&schema).expect("serialize");
+        println!("=== {name} ===\n{pretty}\n");
+    }
+}
+
+#[test]
+fn file_tool_model_visible_schemas_match_snapshots() {
+    let tools: [(&str, &dyn ToolSpec); 4] = [
+        ("read_file", &ReadFileTool),
+        ("write_file", &WriteFileTool),
+        ("edit_file", &EditFileTool),
+        ("list_dir", &ListDirTool),
+    ];
+    for (name, tool) in tools {
+        assert_eq!(tool.name(), name);
+        let schema = model_visible_input_schema(tool);
+        let path = format!("{FILE_SCHEMA_SNAPSHOT_DIR}/file-{name}.json");
+        let expected: Value = serde_json::from_str(
+            &std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("missing snapshot {path}: {e}")),
+        )
+        .expect("parse snapshot JSON");
+        assert_eq!(
+            schema, expected,
+            "model-visible schema drift for {name} — update fixture only after explicit KV-cache review"
+        );
+    }
 }

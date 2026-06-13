@@ -1,0 +1,7 @@
+[package]
+name = "minilang"
+version = "0.1.0"
+edition = "2021"
+description = "Tiny interpreter used as a fixed benchmark corpus workspace (never built by the harness)"
+
+[dependencies]

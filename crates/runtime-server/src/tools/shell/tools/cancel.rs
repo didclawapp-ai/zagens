@@ -1,6 +1,7 @@
 //! `exec_shell_cancel` ToolSpec.
 
 use super::helpers::required_task_id;
+use crate::tools::shell_inputs::shell_cancel_input_schema;
 use crate::tools::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
     optional_bool,
@@ -21,23 +22,7 @@ impl ToolSpec for ShellCancelTool {
     }
 
     fn input_schema(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "task_id": {
-                    "type": "string",
-                    "description": "Task ID returned by exec_shell or task_shell_start"
-                },
-                "id": {
-                    "type": "string",
-                    "description": "Alias for task_id"
-                },
-                "all": {
-                    "type": "boolean",
-                    "description": "Cancel all currently running background shell tasks"
-                }
-            }
-        })
+        shell_cancel_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

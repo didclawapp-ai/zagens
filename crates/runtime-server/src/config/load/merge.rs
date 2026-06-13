@@ -62,6 +62,7 @@ pub(crate) fn merge_config(base: Config, override_cfg: Config) -> Config {
         allow_shell: override_cfg.allow_shell.or(base.allow_shell),
         approval_policy: override_cfg.approval_policy.or(base.approval_policy),
         sandbox_mode: override_cfg.sandbox_mode.or(base.sandbox_mode),
+        prefer_bwrap: override_cfg.prefer_bwrap.or(base.prefer_bwrap),
         sandbox_backend: override_cfg.sandbox_backend.or(base.sandbox_backend),
         sandbox_url: override_cfg.sandbox_url.or(base.sandbox_url),
         sandbox_api_key: override_cfg.sandbox_api_key.or(base.sandbox_api_key),
@@ -119,6 +120,22 @@ pub(crate) fn merge_config(base: Config, override_cfg: Config) -> Config {
         long_horizon: override_cfg.long_horizon.or(base.long_horizon),
         compaction: override_cfg.compaction.or(base.compaction),
         windows: override_cfg.windows.or(base.windows),
+        tools: merge_tools_config(base.tools, override_cfg.tools),
+    }
+}
+
+fn merge_tools_config(
+    base: Option<ToolsConfigToml>,
+    override_cfg: Option<ToolsConfigToml>,
+) -> Option<ToolsConfigToml> {
+    match (base, override_cfg) {
+        (None, None) => None,
+        (Some(b), None) => Some(b),
+        (None, Some(o)) => Some(o),
+        (Some(b), Some(o)) => Some(ToolsConfigToml {
+            policy: o.policy.or(b.policy),
+            scheduler: o.scheduler.or(b.scheduler),
+        }),
     }
 }
 
@@ -146,6 +163,7 @@ pub(crate) fn merge_providers(
             deepseek: merge_provider_config(base.deepseek, override_cfg.deepseek),
             deepseek_cn: merge_provider_config(base.deepseek_cn, override_cfg.deepseek_cn),
             nvidia_nim: merge_provider_config(base.nvidia_nim, override_cfg.nvidia_nim),
+            openai: merge_provider_config(base.openai, override_cfg.openai),
             openrouter: merge_provider_config(base.openrouter, override_cfg.openrouter),
             novita: merge_provider_config(base.novita, override_cfg.novita),
             fireworks: merge_provider_config(base.fireworks, override_cfg.fireworks),

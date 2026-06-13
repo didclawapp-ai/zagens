@@ -555,6 +555,11 @@ pub struct Config {
     pub allow_shell: Option<bool>,
     pub approval_policy: Option<String>,
     pub sandbox_mode: Option<String>,
+    /// Linux: prefer the Bubblewrap (bwrap) sandbox backend when installed
+    /// (kernel-v2 M0.4). Opt-in; default false. No effect on other platforms
+    /// or when bwrap is missing (Landlock declare-only fallback applies).
+    #[serde(default)]
+    pub prefer_bwrap: Option<bool>,
     /// External sandbox backend: `"none"` or `"opensandbox"`.
     /// When set, exec_shell routes commands through the backend's HTTP API
     /// instead of spawning a local process.
@@ -666,6 +671,84 @@ pub struct Config {
     /// Windows native sandbox (`[windows]` table).
     #[serde(default)]
     pub windows: Option<zagens_config::WindowsConfigToml>,
+
+    /// Tool-plane kernel-v2 knobs (`[tools]` table).
+    #[serde(default)]
+    pub tools: Option<ToolsConfigToml>,
+}
+
+/// `[tools]` table — kernel-v2 tool plane kill switches.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct ToolsConfigToml {
+    /// Policy engine mode: `"legacy"` (default), `"shadow"`, or `"engine"`.
+    #[serde(default)]
+    pub policy: Option<String>,
+    /// Batch scheduler: `"legacy"` (default), `"shadow"`, or `"dag"`.
+    #[serde(default)]
+    pub scheduler: Option<String>,
+}
+
+/// Resolved `tools.policy` mode (kernel-v2 M3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ToolsPolicyMode {
+    #[default]
+    Legacy,
+    Shadow,
+    Engine,
+}
+
+impl ToolsPolicyMode {
+    #[must_use]
+    pub fn parse(value: Option<&str>) -> Self {
+        match value.map(str::trim).map(str::to_ascii_lowercase).as_deref() {
+            Some("shadow") => Self::Shadow,
+            Some("engine") => Self::Engine,
+            _ => Self::Legacy,
+        }
+    }
+
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Legacy => "legacy",
+            Self::Shadow => "shadow",
+            Self::Engine => "engine",
+        }
+    }
+}
+
+/// Resolved `tools.scheduler` mode (kernel-v2 M4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ToolsSchedulerMode {
+    #[default]
+    Legacy,
+    Shadow,
+    Dag,
+}
+
+impl ToolsSchedulerMode {
+    #[must_use]
+    pub fn parse(value: Option<&str>) -> Self {
+        match value.map(str::trim).map(str::to_ascii_lowercase).as_deref() {
+            Some("shadow") => Self::Shadow,
+            Some("dag") => Self::Dag,
+            _ => Self::Legacy,
+        }
+    }
+
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Legacy => "legacy",
+            Self::Shadow => "shadow",
+            Self::Dag => "dag",
+        }
+    }
+
+    #[must_use]
+    pub fn uses_dag_groups(self) -> bool {
+        matches!(self, Self::Dag)
+    }
 }
 
 /// `[runtime_api]` table — knobs for the local HTTP/SSE daemon.
@@ -834,6 +917,8 @@ pub struct ProvidersConfig {
     pub deepseek_cn: ProviderConfig,
     #[serde(default)]
     pub nvidia_nim: ProviderConfig,
+    #[serde(default)]
+    pub openai: ProviderConfig,
     #[serde(default)]
     pub openrouter: ProviderConfig,
     #[serde(default)]

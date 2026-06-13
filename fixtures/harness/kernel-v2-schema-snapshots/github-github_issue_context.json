@@ -1,0 +1,17 @@
+{
+  "type": "object",
+  "properties": {
+    "number": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "include_comments": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "number"
+  ],
+  "additionalProperties": false
+}

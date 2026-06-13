@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
+use crate::tools::subagent_inputs::agent_resume_input_schema;
 use anyhow::Result;
 use async_trait::async_trait;
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::tools::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
@@ -35,19 +36,7 @@ impl ToolSpec for AgentResumeTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "id": {
-                    "type": "string",
-                    "description": "Agent id to resume"
-                },
-                "agent_id": {
-                    "type": "string",
-                    "description": "Alias for id"
-                }
-            }
-        })
+        agent_resume_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

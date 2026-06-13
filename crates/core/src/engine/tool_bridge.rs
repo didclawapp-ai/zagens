@@ -92,17 +92,10 @@ pub fn function_call_to_tool_error(err: FunctionCallError, tool_name: &str) -> T
     }
 }
 
-/// Heuristic mutating-tool list aligned with engine parallel-batch policy.
+/// Whether the tool may mutate workspace state (parallel batch / approval policy).
 #[must_use]
 pub fn tool_name_is_mutating(name: &str) -> bool {
-    let lower = name.to_ascii_lowercase();
-    lower.contains("write")
-        || lower.contains("edit")
-        || lower.contains("patch")
-        || lower.contains("delete")
-        || lower == "exec_shell"
-        || lower == "exec_shell_wait"
-        || lower == "exec_shell_interact"
+    crate::engine::tool_effects::tool_writes_state(name)
 }
 
 #[cfg(test)]

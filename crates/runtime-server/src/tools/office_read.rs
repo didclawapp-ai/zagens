@@ -15,6 +15,7 @@ use std::sync::LazyLock;
 
 use super::file::read_pdf;
 use super::file::{DEFAULT_LIMIT, MAX_FILE_SIZE, MAX_LIMIT};
+use super::office_inputs::read_office_input_schema;
 use super::spec::{
     ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_str, optional_u64,
     required_str,
@@ -55,32 +56,7 @@ impl ToolSpec for ReadOfficeTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Path to the file (relative to workspace or absolute)"
-                },
-                "sheet": {
-                    "type": "string",
-                    "description": "XLSX/ODS: sheet name or 0-based index (default: first sheet). Lists all sheet names in metadata when omitted."
-                },
-                "pages": {
-                    "type": "string",
-                    "description": "PDF only: page range, e.g. \"1-5\" or \"10\""
-                },
-                "start_row": {
-                    "type": "integer",
-                    "description": "XLSX/CSV: first data row to read (1-based, default: 1)"
-                },
-                "limit": {
-                    "type": "integer",
-                    "description": "XLSX/CSV: maximum rows to return (default: 2000, max: 5000)"
-                }
-            },
-            "required": ["path"]
-        })
+        read_office_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

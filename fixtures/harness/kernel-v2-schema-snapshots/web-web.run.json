@@ -1,0 +1,143 @@
+{
+  "type": "object",
+  "properties": {
+    "search_query": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "q": {
+            "type": "string"
+          },
+          "recency": {
+            "type": "integer"
+          },
+          "max_results": {
+            "type": "integer"
+          },
+          "timeout_ms": {
+            "type": "integer"
+          },
+          "domains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "q"
+        ]
+      }
+    },
+    "image_query": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "q": {
+            "type": "string"
+          },
+          "recency": {
+            "type": "integer"
+          },
+          "max_results": {
+            "type": "integer"
+          },
+          "timeout_ms": {
+            "type": "integer"
+          },
+          "domains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "q"
+        ]
+      }
+    },
+    "open": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "ref_id": {
+            "type": "string"
+          },
+          "lineno": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ref_id"
+        ]
+      }
+    },
+    "click": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "ref_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ref_id",
+          "id"
+        ]
+      }
+    },
+    "find": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "ref_id": {
+            "type": "string"
+          },
+          "pattern": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref_id",
+          "pattern"
+        ]
+      }
+    },
+    "screenshot": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "ref_id": {
+            "type": "string"
+          },
+          "pageno": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ref_id",
+          "pageno"
+        ]
+      }
+    },
+    "response_length": {
+      "type": "string",
+      "enum": [
+        "short",
+        "medium",
+        "long"
+      ],
+      "description": "Controls result verbosity"
+    }
+  }
+}

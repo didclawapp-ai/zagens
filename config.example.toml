@@ -20,7 +20,7 @@
 # this file — switching providers in Zagens Settings (or `provider = "..."` here)
 # does not require re-entering keys. Top-level `api_key` / `base_url` are still
 # read as DeepSeek defaults when `[providers.deepseek]` is absent.
-provider = "deepseek" # deepseek | nvidia-nim | openrouter | novita | fireworks | sglang | vllm | ollama
+provider = "deepseek" # deepseek | nvidia-nim | openai | openrouter | novita | fireworks | sglang | vllm | ollama
 api_key = "YOUR_DEEPSEEK_API_KEY" # must be non-empty
 base_url = "https://api.deepseek.com/beta"
 # base_url = "https://api.deepseeki.com"         # China users
@@ -109,6 +109,23 @@ memory_path = "~/.zagens/memory.md"
 allow_shell = false
 approval_policy = "on-request" # auto | on-request | untrusted | suggest | never
 sandbox_mode = "workspace-write" # read-only | workspace-write | danger-full-access | external-sandbox
+
+# Linux only: prefer the Bubblewrap (bwrap) backend for enforced filesystem
+# isolation (read-only root + writable workspace roots, kernel-v2 M0.4).
+# Requires `bubblewrap` installed (apt/dnf/pacman). Default false; when bwrap
+# is missing this is a no-op and the Landlock declare-only fallback applies.
+# prefer_bwrap = true
+
+# Kernel-v2 tool policy engine (M3). Default `legacy` keeps existing heuristics.
+# `shadow` runs PolicyEngine in parallel and logs diffs (no behavior change).
+# `engine` switches approval / parallel flags to manifest-driven policy.
+# Tier-1 bake: run `policy = "shadow"` for 2 calendar weeks; monitor via
+# `diagnostics` tool (`policy_shadow.diff_rate_pct`) or GET /v1/runtime/kernel-shadow
+# (or corpus `kernel_v2_shadow_bake_report.py`). Flip default to `engine` only after
+# diff_rate stays < 0.1% for the full period.
+# [tools]
+# policy = "legacy" # legacy | shadow | engine
+# scheduler = "legacy" # legacy | shadow | dag
 
 # ─────────────────────────────────────────────────────────────────────────────────
 # External Sandbox Backend (pluggable remote execution)

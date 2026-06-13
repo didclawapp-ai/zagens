@@ -7,8 +7,9 @@ use super::workspace_walk::configure_workspace_walk;
 use async_trait::async_trait;
 use ignore::WalkBuilder;
 use serde::Serialize;
-use serde_json::{Value, json};
+use serde_json::Value;
 
+use super::search_inputs::file_search_input_schema;
 use super::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
     optional_bool, optional_str, optional_u64, required_str,
@@ -47,33 +48,7 @@ impl ToolSpec for FileSearchTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "Search query (file name or path fragment)."
-                },
-                "path": {
-                    "type": "string",
-                    "description": "Optional base path to search (relative to workspace)."
-                },
-                "limit": {
-                    "type": "integer",
-                    "description": "Maximum number of results to return (default: 20)."
-                },
-                "extensions": {
-                    "type": "array",
-                    "items": { "type": "string" },
-                    "description": "Optional list of file extensions to include (e.g. [\"rs\", \"md\"])."
-                },
-                "respect_gitignore": {
-                    "type": "boolean",
-                    "description": "Honor .gitignore when true (default: true). Set false to search ignored paths (like grep_files)."
-                }
-            },
-            "required": ["query"]
-        })
+        file_search_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
@@ -287,6 +262,7 @@ fn compare_match(a: &FileSearchMatch, b: &FileSearchMatch) -> Ordering {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
     use tempfile::tempdir;
 
     #[tokio::test]

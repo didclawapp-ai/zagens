@@ -19,6 +19,7 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 
 use crate::rlm::turn::{RlmTermination, run_rlm_turn_with_root};
+use crate::tools::misc_inputs::rlm_input_schema;
 use crate::tools::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
 };
@@ -79,28 +80,7 @@ impl ToolSpec for RlmTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "required": ["task"],
-            "properties": {
-                "task": {
-                    "type": "string",
-                    "description": "What to do with the input (e.g. \"Summarize the security model\", \"Extract all API endpoints\", \"Categorize each row by sentiment\"). The sub-agent uses this as its objective."
-                },
-                "file_path": {
-                    "type": "string",
-                    "description": "Workspace-relative path to a file to load as PROMPT. Preferred — keeps the long input out of your context. Mutually exclusive with `content`."
-                },
-                "content": {
-                    "type": "string",
-                    "description": "Inline content to load as PROMPT. Use only when the input isn't a file you can point at. Capped at 200k chars."
-                },
-                "max_depth": {
-                    "type": "integer",
-                    "description": "Recursion budget for `sub_rlm()` calls. 0 disables recursion; default 1 matches paper experiments."
-                }
-            }
-        })
+        rlm_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

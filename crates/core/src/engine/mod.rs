@@ -19,15 +19,18 @@ pub mod lsp_edit_paths;
 pub mod op;
 pub mod op_loop;
 pub mod platform_ext;
+pub mod request_fingerprint;
 pub mod runtime;
 pub mod runtime_new;
 pub mod scratchpad_state;
 pub mod start_turn;
 pub mod streaming;
 pub mod subagent_port;
+pub mod token_estimate;
 pub mod tool_bridge;
 pub mod tool_catalog;
 mod tool_dispatch;
+pub mod tool_effects;
 pub mod tool_parser;
 pub mod tool_progress;
 pub mod turn_loop;
@@ -62,6 +65,7 @@ pub use hosts::{
 pub use loop_guard::{AttemptDecision, LoopGuard, OutcomeDecision};
 pub use lsp_edit_paths::{edited_paths_for_tool, parse_patch_paths};
 pub use op::Op;
+pub use request_fingerprint::{RequestFingerprint, compute_request_fingerprint, sha256_hex};
 pub use runtime::Engine;
 pub use scratchpad_state::ScratchpadStepState;
 pub use start_turn::StartTurnParams;
@@ -86,6 +90,7 @@ pub use tool_catalog::{
     maybe_activate_requested_deferred_tool, missing_tool_error_message, should_default_defer_tool,
 };
 pub use tool_dispatch::EngineToolDispatch;
+pub use tool_effects::tool_writes_state;
 pub use tool_progress::{emit_tool_audit, tool_progress_opening_line, tool_progress_phase_line};
 pub use turn_loop::{
     McpPoolPort, ToolExecOutcome, ToolExecutionPlan, ToolPlanApprovalMeta, TurnLoopConfigView,

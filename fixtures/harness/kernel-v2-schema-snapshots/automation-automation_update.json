@@ -1,0 +1,61 @@
+{
+  "type": "object",
+  "properties": {
+    "automation_id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "prompt": {
+      "type": "string"
+    },
+    "rrule": {
+      "type": "string"
+    },
+    "cwds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "trigger_kind": {
+      "type": "string",
+      "enum": [
+        "prompt",
+        "task"
+      ]
+    },
+    "model": {
+      "type": "string"
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "agent",
+        "plan",
+        "yolo"
+      ]
+    },
+    "allow_shell": {
+      "type": "boolean"
+    },
+    "trust_mode": {
+      "type": "boolean"
+    },
+    "auto_approve": {
+      "type": "boolean"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "paused"
+      ]
+    }
+  },
+  "required": [
+    "automation_id"
+  ],
+  "additionalProperties": false
+}

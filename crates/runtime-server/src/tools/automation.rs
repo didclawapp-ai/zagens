@@ -6,6 +6,10 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 
 use crate::automation_manager::AutomationStatus;
+use crate::tools::automation_inputs::{
+    automation_create_input_schema, automation_id_input_schema, automation_list_input_schema,
+    automation_update_input_schema,
+};
 use crate::tools::spec::{
     ApprovalRequirement, ToolAutomationHost, ToolCapability, ToolContext, ToolError, ToolResult,
     ToolSpec, optional_str, optional_u64, required_str,
@@ -41,32 +45,7 @@ impl ToolSpec for AutomationCreateTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "name": { "type": "string" },
-                "prompt": { "type": "string" },
-                "rrule": {
-                    "type": "string",
-                    "description": "Supported: FREQ=MINUTELY;INTERVAL=N[;BYDAY=MO,TU] | FREQ=HOURLY;INTERVAL=N[;BYDAY=MO,TU] | FREQ=DAILY;BYHOUR=9;BYMINUTE=30[;INTERVAL=N] | FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=30 | FREQ=MONTHLY;BYMONTHDAY=1;BYHOUR=9;BYMINUTE=30[;INTERVAL=N] | FREQ=ONCE;DTSTART=2026-06-10T09:00:00"
-                },
-                "cwds": { "type": "array", "items": { "type": "string" } },
-                "trigger_kind": {
-                    "type": "string",
-                    "enum": ["prompt", "task"],
-                    "default": "prompt",
-                    "description": "prompt = conservative task defaults; task = use model/mode/shell/trust fields"
-                },
-                "model": { "type": "string" },
-                "mode": { "type": "string", "enum": ["agent", "plan", "yolo"] },
-                "allow_shell": { "type": "boolean" },
-                "trust_mode": { "type": "boolean" },
-                "auto_approve": { "type": "boolean" },
-                "paused": { "type": "boolean", "default": false }
-            },
-            "required": ["name", "prompt", "rrule"],
-            "additionalProperties": false
-        })
+        automation_create_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
@@ -115,13 +94,7 @@ impl ToolSpec for AutomationListTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "limit": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 }
-            },
-            "additionalProperties": false
-        })
+        automation_list_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
@@ -152,7 +125,7 @@ impl ToolSpec for AutomationReadTool {
     }
 
     fn input_schema(&self) -> Value {
-        automation_id_schema(true)
+        automation_id_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
@@ -190,25 +163,7 @@ impl ToolSpec for AutomationUpdateTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "automation_id": { "type": "string" },
-                "name": { "type": "string" },
-                "prompt": { "type": "string" },
-                "rrule": { "type": "string" },
-                "cwds": { "type": "array", "items": { "type": "string" } },
-                "trigger_kind": { "type": "string", "enum": ["prompt", "task"] },
-                "model": { "type": "string" },
-                "mode": { "type": "string", "enum": ["agent", "plan", "yolo"] },
-                "allow_shell": { "type": "boolean" },
-                "trust_mode": { "type": "boolean" },
-                "auto_approve": { "type": "boolean" },
-                "status": { "type": "string", "enum": ["active", "paused"] }
-            },
-            "required": ["automation_id"],
-            "additionalProperties": false
-        })
+        automation_update_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
@@ -264,7 +219,7 @@ macro_rules! write_automation_tool {
                 $desc
             }
             fn input_schema(&self) -> Value {
-                automation_id_schema(true)
+                automation_id_input_schema()
             }
             fn capabilities(&self) -> Vec<ToolCapability> {
                 vec![ToolCapability::RequiresApproval]
@@ -319,7 +274,7 @@ impl ToolSpec for AutomationRunTool {
     }
 
     fn input_schema(&self) -> Value {
-        automation_id_schema(true)
+        automation_id_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
@@ -340,20 +295,6 @@ impl ToolSpec for AutomationRunTool {
     }
 }
 
-fn automation_id_schema(require_id: bool) -> Value {
-    let mut schema = json!({
-        "type": "object",
-        "properties": {
-            "automation_id": { "type": "string" }
-        },
-        "additionalProperties": false
-    });
-    if require_id {
-        schema["required"] = json!(["automation_id"]);
-    }
-    schema
-}
-
 fn string_array(input: &Value, field: &str) -> Result<Vec<String>, ToolError> {
     Ok(input
         .get(field)
@@ -366,17 +307,4 @@ fn string_array(input: &Value, field: &str) -> Result<Vec<String>, ToolError> {
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::tools::spec::ToolSpec;
-
-    #[test]
-    fn create_schema_exposes_rrule() {
-        let schema = AutomationCreateTool.input_schema();
-        assert!(schema["properties"]["rrule"].is_object());
-        assert_eq!(schema["required"][0], "name");
-    }
 }

@@ -1,0 +1,86 @@
+{
+  "type": "object",
+  "properties": {
+    "prompt": {
+      "type": "string",
+      "description": "Task description for the sub-agent"
+    },
+    "message": {
+      "type": "string",
+      "description": "Alias for prompt"
+    },
+    "objective": {
+      "type": "string",
+      "description": "Alias for prompt"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {}
+      },
+      "description": "Structured input items (text, mention, skill, local_image, image)"
+    },
+    "type": {
+      "type": "string",
+      "description": "Sub-agent type: general, explore, plan, review, implementer, verifier, custom. See docs/SUBAGENTS.md for posture per role."
+    },
+    "agent_type": {
+      "type": "string",
+      "description": "Alias for type"
+    },
+    "agent_name": {
+      "type": "string",
+      "description": "Alias for type"
+    },
+    "role": {
+      "type": "string",
+      "description": "Role alias: worker, explorer, awaiter, default"
+    },
+    "agent_role": {
+      "type": "string",
+      "description": "Alias for role"
+    },
+    "allowed_tools": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Explicit tool allowlist (required for custom type). Default behavior is full registry inheritance from the parent."
+    },
+    "model": {
+      "type": "string",
+      "description": "Optional DeepSeek model id for this child. Explicit model wins over role/type defaults; omit to inherit."
+    },
+    "cwd": {
+      "type": "string",
+      "description": "Optional working directory for the child. Must be inside the parent's workspace (use a relative path or an absolute path under the workspace root). Used for the parallel-worktree pattern: parent runs `git worktree add .worktrees/feature-x ...` then spawns the child with `cwd: \".worktrees/feature-x\"`."
+    },
+    "resident_file": {
+      "type": "string",
+      "description": "Optional file path for cache-aware resident mode. When set, the child's system prefix is augmented with the full contents of this file so DeepSeek's prefix cache stays warm across follow-up send_input calls. Only one agent may hold a resident lease on a given file at a time — a second spawn with the same path receives a conflict warning in the result."
+    },
+    "task_id": {
+      "type": "string",
+      "description": "Optional CRAFT work-package id (blackboard filename under `.deepseek/blackboards/{task_id}.json`). Same string may equal audit `run_id`. This is NOT `task_create` / TaskManager — do not call `task_create` just to set this field."
+    },
+    "nickname": {
+      "type": "string",
+      "description": "Optional short display label in the agent panel (e.g. BE-Services). When omitted, runtime derives a label from area_id / audit task title / task_id / cwd."
+    },
+    "display_name": {
+      "type": "string",
+      "description": "Alias for nickname"
+    },
+    "scratchpad_run_id": {
+      "type": "string",
+      "description": "Optional audit scratchpad run_id. For type=auditor, runtime builds track A from verified notes and track B from prompt (prose draft). Defaults to the active thread scratchpad_run_id when set."
+    },
+    "step_timeout_ms": {
+      "type": "integer",
+      "minimum": 120000,
+      "maximum": 1800000,
+      "description": "Per-step LLM API timeout in ms. Omitted → [subagents] step_timeout_secs from config.toml / Zagens settings (default 600000). Range 120000–1800000. Full-repo audit: set per inventory file count (audit-repo skill tier table). On step timeout the child fails — parent must re-spawn or shrink scope, not treat as done."
+    }
+  }
+}

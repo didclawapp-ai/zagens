@@ -29,11 +29,110 @@ use super::Engine;
 use crate::agent_surface::AppMode;
 use crate::core::events::Event;
 use crate::mcp::McpPool;
+use crate::tools::resource_locks::FineGrainedLockContext;
+use crate::tools::schedule_bridge::{self, ScheduleContext};
 use crate::tools::user_input::UserInputRequest;
 use zagens_core::engine::turn_loop::TurnLoopToolExec;
 
+fn schedule_context(engine: &Engine) -> ScheduleContext {
+    let sandbox_enforced = engine
+        .runtime_ext()
+        .shell_manager
+        .lock()
+        .map(|m| m.probe_sandbox_enforced())
+        .unwrap_or(false);
+    ScheduleContext { sandbox_enforced }
+}
+
+fn fine_grained_lock_ctx(
+    registry: Arc<crate::tools::resource_locks::ResourceLockRegistry>,
+    plan: &ToolExecutionPlan,
+    ctx: &ScheduleContext,
+) -> FineGrainedLockContext {
+    let view = schedule_bridge::dag_plan_view(plan, ctx);
+    FineGrainedLockContext {
+        registry,
+        reads: view.reads,
+        writes: view.writes,
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn execute_tool_plans(
+    engine: &mut Engine,
+    mode: TurnLoopMode,
+    plans: Vec<ToolExecutionPlan>,
+    tool_catalog: &[Tool],
+    active_tool_names: &mut HashSet<String>,
+    tool_registry: Option<&crate::tools::ToolRegistry>,
+    mcp_pool: Option<Arc<AsyncMutex<McpPool>>>,
+    tool_exec_lock: Arc<RwLock<()>>,
+) -> Vec<ToolExecOutcome> {
+    let scheduler = engine.runtime_ext().tools_scheduler;
+    let ctx = schedule_context(engine);
+    let fine_grained_locks = scheduler.uses_dag_groups();
+    let lock_registry = if fine_grained_locks {
+        Some(Arc::clone(&engine.runtime_ext().resource_lock_registry))
+    } else {
+        None
+    };
+    let groups = schedule_bridge::resolve_execution_groups(scheduler, &plans, &ctx);
+    if scheduler.uses_dag_groups() && groups.len() > 1 {
+        let _ = engine
+            .tx_event
+            .send(Event::status(format!(
+                "DAG scheduler: {} execution wave(s) for {} tool(s)",
+                groups.len(),
+                plans.len()
+            )))
+            .await;
+    }
+
+    let mut outcomes: Vec<Option<ToolExecOutcome>> = Vec::with_capacity(plans.len());
+    outcomes.resize_with(plans.len(), || None);
+
+    for group in groups {
+        let subgroups = if scheduler.uses_dag_groups() {
+            schedule_bridge::split_wave_execution_subgroups(&plans, &group, &ctx)
+        } else {
+            vec![group.clone()]
+        };
+        for subgroup in subgroups {
+            let batch: Vec<ToolExecutionPlan> =
+                subgroup.iter().map(|&i| plans[i].clone()).collect();
+            let parallel_override = if scheduler.uses_dag_groups() {
+                Some(schedule_bridge::wave_parallel_allowed(
+                    &plans, &subgroup, &ctx,
+                ))
+            } else {
+                None
+            };
+            let batch_outcomes = execute_tool_plans_batch(
+                engine,
+                mode,
+                batch,
+                tool_catalog,
+                active_tool_names,
+                tool_registry,
+                mcp_pool.clone(),
+                tool_exec_lock.clone(),
+                parallel_override,
+                fine_grained_locks,
+                lock_registry.clone(),
+                ctx,
+            )
+            .await;
+            for outcome in batch_outcomes {
+                let idx = outcome.index;
+                outcomes[idx] = Some(outcome);
+            }
+        }
+    }
+    outcomes.into_iter().flatten().collect()
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn execute_tool_plans_batch(
     engine: &mut Engine,
     _mode: TurnLoopMode,
     plans: Vec<ToolExecutionPlan>,
@@ -42,9 +141,14 @@ pub(super) async fn execute_tool_plans(
     tool_registry: Option<&crate::tools::ToolRegistry>,
     mcp_pool: Option<Arc<AsyncMutex<McpPool>>>,
     tool_exec_lock: Arc<RwLock<()>>,
+    parallel_override: Option<bool>,
+    fine_grained_locks: bool,
+    lock_registry: Option<Arc<crate::tools::resource_locks::ResourceLockRegistry>>,
+    schedule_ctx: ScheduleContext,
 ) -> Vec<ToolExecOutcome> {
     let app_mode = engine.runtime_ext().turn_app_mode;
-    let parallel_allowed = should_parallelize_tool_batch(&plans);
+    let parallel_allowed =
+        parallel_override.unwrap_or_else(|| should_parallelize_tool_batch(&plans));
     if parallel_allowed && plans.len() > 1 {
         let _ = engine
             .tx_event
@@ -67,6 +171,7 @@ pub(super) async fn execute_tool_plans(
 
     if parallel_allowed {
         let mut tool_tasks = FuturesUnordered::new();
+        let wave_parallel = parallel_override == Some(true);
         for plan in plans {
             if let Some(result) = plan.guard_result.clone() {
                 let result = Ok(result);
@@ -133,6 +238,14 @@ pub(super) async fn execute_tool_plans(
             let started_at = Instant::now();
             let plan_name = plan.name.clone();
             let plan_id = plan.id.clone();
+            let use_parallel_lock = plan.supports_parallel || wave_parallel;
+            let lock_ctx = if fine_grained_locks {
+                lock_registry.as_ref().map(|registry| {
+                    fine_grained_lock_ctx(Arc::clone(registry), &plan, &schedule_ctx)
+                })
+            } else {
+                None
+            };
 
             tool_tasks.push(async move {
                 let exec = TurnLoopToolExec {
@@ -141,13 +254,14 @@ pub(super) async fn execute_tool_plans(
                 };
                 let mut result = detached_execute_with_lock(
                     exec,
-                    plan.supports_parallel,
+                    use_parallel_lock,
                     plan.interactive,
                     plan_name.clone(),
                     effective_input.clone(),
                     registry,
                     mcp_pool,
                     Some(plan_id.clone()),
+                    lock_ctx,
                 )
                 .await;
 
@@ -473,6 +587,13 @@ pub(super) async fn execute_tool_plans(
             let mut result = if let Some(result_override) = result_override {
                 result_override
             } else {
+                let lock_ctx = if fine_grained_locks {
+                    lock_registry.as_ref().map(|registry| {
+                        fine_grained_lock_ctx(Arc::clone(registry), &plan, &schedule_ctx)
+                    })
+                } else {
+                    None
+                };
                 let exec = TurnLoopToolExec {
                     lock: tool_exec_lock.clone(),
                     tx_event: engine.tx_event.clone(),
@@ -487,6 +608,7 @@ pub(super) async fn execute_tool_plans(
                     mcp_pool.clone(),
                     context_override,
                     Some(tool_id.clone()),
+                    lock_ctx,
                 )
                 .await
             };

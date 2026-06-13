@@ -33,6 +33,9 @@ pub mod policy;
 pub mod seatbelt;
 
 #[cfg(target_os = "linux")]
+pub mod bwrap;
+
+#[cfg(target_os = "linux")]
 pub mod landlock;
 
 #[cfg(target_os = "windows")]
@@ -232,6 +235,10 @@ pub enum SandboxType {
     #[cfg(target_os = "linux")]
     LinuxLandlock,
 
+    /// Linux Bubblewrap (bwrap) sandboxing — opt-in via `prefer_bwrap` (M0.4).
+    #[cfg(target_os = "linux")]
+    LinuxBwrap,
+
     /// Windows sandboxing (Windows Sandbox/AppContainer/Restricted token).
     #[cfg(target_os = "windows")]
     Windows,
@@ -245,6 +252,8 @@ impl std::fmt::Display for SandboxType {
             SandboxType::MacosSeatbelt => write!(f, "macos-seatbelt"),
             #[cfg(target_os = "linux")]
             SandboxType::LinuxLandlock => write!(f, "linux-landlock"),
+            #[cfg(target_os = "linux")]
+            SandboxType::LinuxBwrap => write!(f, "linux-bwrap"),
             #[cfg(target_os = "windows")]
             SandboxType::Windows => write!(f, "windows-sandbox"),
         }
@@ -362,7 +371,7 @@ pub fn policy_degraded_mode_notice() -> Option<&'static str> {
     {
         let _ = landlock::is_available();
         Some(
-            "Degraded mode: Landlock rules are not enforced yet; sandbox_mode declares policy only.",
+            "Degraded mode: Landlock rules are not enforced yet; sandbox_mode declares policy only. Install bubblewrap and set `prefer_bwrap = true` for enforced isolation.",
         )
     }
 
@@ -406,6 +415,11 @@ pub struct SandboxManager {
 
     /// Optional isolated desktop for sandbox children (`[windows] sandbox_private_desktop`).
     windows_private_desktop: bool,
+
+    /// Prefer the Bubblewrap backend on Linux (`prefer_bwrap` config, M0.4).
+    /// Only takes effect when bwrap is installed; otherwise the Landlock
+    /// declare-only fallback applies unchanged.
+    prefer_bwrap: bool,
 }
 
 impl SandboxManager {
@@ -416,7 +430,18 @@ impl SandboxManager {
             forced_sandbox: None,
             windows_sandbox_mode: WindowsSandboxModeToml::Unelevated,
             windows_private_desktop: false,
+            prefer_bwrap: false,
         }
+    }
+
+    /// Enable/disable the Bubblewrap backend preference (`prefer_bwrap`).
+    pub fn set_prefer_bwrap(&mut self, prefer: bool) {
+        self.prefer_bwrap = prefer;
+    }
+
+    #[must_use]
+    pub fn prefer_bwrap(&self) -> bool {
+        self.prefer_bwrap
     }
 
     /// Set the Windows native sandbox mode (`[windows] sandbox`).
@@ -461,6 +486,12 @@ impl SandboxManager {
             return forced;
         }
 
+        // Linux: opt-in bwrap takes precedence when installed (M0.4).
+        #[cfg(target_os = "linux")]
+        if self.prefer_bwrap && bwrap::is_available() {
+            return SandboxType::LinuxBwrap;
+        }
+
         // Use platform default
         get_platform_sandbox().unwrap_or(SandboxType::None)
     }
@@ -481,6 +512,9 @@ impl SandboxManager {
 
             #[cfg(target_os = "linux")]
             SandboxType::LinuxLandlock => Self::prepare_landlock(spec),
+
+            #[cfg(target_os = "linux")]
+            SandboxType::LinuxBwrap => Self::prepare_bwrap(spec),
 
             #[cfg(target_os = "windows")]
             SandboxType::Windows => self.prepare_windows(spec),
@@ -577,6 +611,30 @@ impl SandboxManager {
         };
         mark_sandbox_policy_unenforced(&mut exec);
         exec
+    }
+
+    /// Prepare a Bubblewrap-sandboxed execution environment (Linux, M0.4).
+    ///
+    /// Unlike [`Self::prepare_landlock`], this path is **enforced**: the
+    /// kernel mount namespace gives a read-only root view with write access
+    /// limited to the policy's writable roots.
+    #[cfg(target_os = "linux")]
+    fn prepare_bwrap(spec: &CommandSpec) -> ExecEnv {
+        let command =
+            bwrap::build_bwrap_command(&spec.sandbox_policy, &spec.cwd, &spec.program, &spec.args);
+
+        let mut env = spec.env.clone();
+        env.insert("DEEPSEEK_SANDBOX".to_string(), "bwrap".to_string());
+
+        ExecEnv {
+            command,
+            cwd: spec.cwd.clone(),
+            env,
+            timeout: spec.timeout,
+            sandbox_type: SandboxType::LinuxBwrap,
+            policy: spec.sandbox_policy.clone(),
+            enforced: true,
+        }
     }
 
     /// Prepare a Windows-sandboxed execution environment (unelevated MVP).
@@ -687,6 +745,9 @@ impl SandboxManager {
             #[cfg(target_os = "linux")]
             SandboxType::LinuxLandlock => landlock::detect_denial(exit_code, stderr),
 
+            #[cfg(target_os = "linux")]
+            SandboxType::LinuxBwrap => bwrap::detect_denial(exit_code, stderr),
+
             #[cfg(target_os = "windows")]
             SandboxType::Windows => windows::detect_denial(exit_code, stderr),
         }
@@ -722,6 +783,22 @@ impl SandboxManager {
                 } else {
                     format!(
                         "Landlock blocked operation: {}",
+                        stderr.lines().next().unwrap_or("unknown")
+                    )
+                }
+            }
+
+            #[cfg(target_os = "linux")]
+            SandboxType::LinuxBwrap => {
+                if stderr.contains("Read-only file system") {
+                    "Sandbox blocked write access (bwrap read-only root). The command tried to write outside the policy's writable roots.".to_string()
+                } else if stderr.contains("Network is unreachable")
+                    || stderr.contains("Temporary failure in name resolution")
+                {
+                    "Sandbox blocked network access (bwrap). Enable network_access in sandbox policy if needed.".to_string()
+                } else {
+                    format!(
+                        "Sandbox (bwrap) blocked operation: {}",
                         stderr.lines().next().unwrap_or("unknown")
                     )
                 }

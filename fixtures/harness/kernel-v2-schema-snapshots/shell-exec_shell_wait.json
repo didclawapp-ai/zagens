@@ -1,0 +1,20 @@
+{
+  "type": "object",
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "description": "Task ID returned by exec_shell"
+    },
+    "timeout_ms": {
+      "type": "integer",
+      "description": "Timeout in milliseconds (default: 5000)"
+    },
+    "wait": {
+      "type": "boolean",
+      "description": "Wait for completion before returning (default: true)"
+    }
+  },
+  "required": [
+    "task_id"
+  ]
+}

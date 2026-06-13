@@ -1,0 +1,17 @@
+{
+  "type": "object",
+  "properties": {
+    "number": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "include_diff": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "number"
+  ],
+  "additionalProperties": false
+}

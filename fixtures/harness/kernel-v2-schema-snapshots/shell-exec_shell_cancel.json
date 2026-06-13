@@ -1,0 +1,17 @@
+{
+  "type": "object",
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "description": "Task ID returned by exec_shell or task_shell_start"
+    },
+    "id": {
+      "type": "string",
+      "description": "Alias for task_id"
+    },
+    "all": {
+      "type": "boolean",
+      "description": "Cancel all currently running background shell tasks"
+    }
+  }
+}

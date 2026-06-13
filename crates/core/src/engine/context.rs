@@ -284,26 +284,19 @@ pub fn extract_compaction_summary_prompt(prompt: Option<SystemPrompt>) -> Option
     }
 }
 
-fn estimate_text_tokens_conservative(text: &str) -> usize {
-    text.chars().count().div_ceil(3)
-}
-
 fn estimate_block_tokens_conservative(block: &ContentBlock) -> usize {
+    use super::token_estimate::estimate_text_tokens;
     match block {
-        ContentBlock::Text { text, .. } => estimate_text_tokens_conservative(text),
-        ContentBlock::Thinking { thinking } => estimate_text_tokens_conservative(thinking),
-        ContentBlock::ToolUse { input, .. } => {
-            estimate_text_tokens_conservative(&input.to_string())
-        }
-        ContentBlock::ToolResult { content, .. } => estimate_text_tokens_conservative(content),
-        ContentBlock::ServerToolUse { input, .. } => {
-            estimate_text_tokens_conservative(&input.to_string())
-        }
+        ContentBlock::Text { text, .. } => estimate_text_tokens(text),
+        ContentBlock::Thinking { thinking } => estimate_text_tokens(thinking),
+        ContentBlock::ToolUse { input, .. } => estimate_text_tokens(&input.to_string()),
+        ContentBlock::ToolResult { content, .. } => estimate_text_tokens(content),
+        ContentBlock::ServerToolUse { input, .. } => estimate_text_tokens(&input.to_string()),
         ContentBlock::ToolSearchToolResult { content, .. } => {
-            estimate_text_tokens_conservative(&content.to_string())
+            estimate_text_tokens(&content.to_string())
         }
         ContentBlock::CodeExecutionToolResult { content, .. } => {
-            estimate_text_tokens_conservative(&content.to_string())
+            estimate_text_tokens(&content.to_string())
         }
     }
 }
@@ -317,11 +310,12 @@ fn estimate_messages_tokens_conservative(messages: &[Message]) -> usize {
 }
 
 fn estimate_system_tokens_conservative(system: Option<&SystemPrompt>) -> usize {
+    use super::token_estimate::estimate_text_tokens;
     match system {
-        Some(SystemPrompt::Text(text)) => estimate_text_tokens_conservative(text),
+        Some(SystemPrompt::Text(text)) => estimate_text_tokens(text),
         Some(SystemPrompt::Blocks(blocks)) => blocks
             .iter()
-            .map(|block| estimate_text_tokens_conservative(&block.text))
+            .map(|block| estimate_text_tokens(&block.text))
             .sum(),
         None => 0,
     }

@@ -10,9 +10,10 @@
 use super::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_u64,
 };
+use super::web_inputs::fetch_url_input_schema;
 use async_trait::async_trait;
 use serde::Serialize;
-use serde_json::{Value, json};
+use serde_json::Value;
 use zagens_runtime_adapters::tools::is_http_url;
 
 const DEFAULT_MAX_BYTES: u64 = 1_000_000;
@@ -68,29 +69,7 @@ impl ToolSpec for FetchUrlTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "url": {
-                    "type": "string",
-                    "description": "Absolute HTTP/HTTPS URL to fetch."
-                },
-                "format": {
-                    "type": "string",
-                    "enum": ["text", "markdown", "raw"],
-                    "description": "Post-processing for the response body. `markdown` (default) and `text` strip HTML tags to readable text; `raw` returns the body bytes as-is."
-                },
-                "max_bytes": {
-                    "type": "integer",
-                    "description": "Truncate response body after this many bytes (default 1,000,000; hard max 10,485,760)."
-                },
-                "timeout_ms": {
-                    "type": "integer",
-                    "description": "Request timeout in milliseconds (default 15,000; max 60,000)."
-                }
-            },
-            "required": ["url"]
-        })
+        fetch_url_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
@@ -200,6 +179,7 @@ impl ToolSpec for FetchUrlTool {
 mod tests {
     use super::*;
     use crate::tools::spec::ToolContext;
+    use serde_json::json;
     use std::path::PathBuf;
 
     fn ctx() -> ToolContext {

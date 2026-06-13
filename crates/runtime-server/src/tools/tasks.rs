@@ -19,6 +19,12 @@ use crate::tools::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
     ToolTaskHost, optional_bool, optional_str, optional_u64, required_str,
 };
+use crate::tools::task_inputs::{
+    pr_attempt_list_input_schema, pr_attempt_preflight_input_schema, pr_attempt_read_input_schema,
+    pr_attempt_record_input_schema, task_cancel_input_schema, task_create_input_schema,
+    task_gate_run_input_schema, task_list_input_schema, task_read_input_schema,
+    task_shell_start_input_schema, task_shell_wait_input_schema,
+};
 
 const MAX_SUMMARY_CHARS: usize = 900;
 const DEFAULT_GATE_TIMEOUT_MS: u64 = 120_000;
@@ -53,20 +59,7 @@ impl ToolSpec for TaskCreateTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "prompt": { "type": "string", "description": "Work prompt for the durable task." },
-                "model": { "type": "string" },
-                "workspace": { "type": "string", "description": "Workspace path; defaults to current workspace." },
-                "mode": { "type": "string", "enum": ["agent", "plan", "yolo"] },
-                "allow_shell": { "type": "boolean" },
-                "trust_mode": { "type": "boolean" },
-                "auto_approve": { "type": "boolean" }
-            },
-            "required": ["prompt"],
-            "additionalProperties": false
-        })
+        task_create_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
@@ -122,13 +115,7 @@ impl ToolSpec for TaskListTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "limit": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 }
-            },
-            "additionalProperties": false
-        })
+        task_list_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
@@ -169,14 +156,7 @@ impl ToolSpec for TaskReadTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "task_id": { "type": "string", "description": "Full task id or unambiguous prefix." }
-            },
-            "required": ["task_id"],
-            "additionalProperties": false
-        })
+        task_read_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
@@ -209,14 +189,7 @@ impl ToolSpec for TaskCancelTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "task_id": { "type": "string", "description": "Full task id or unambiguous prefix." }
-            },
-            "required": ["task_id"],
-            "additionalProperties": false
-        })
+        task_cancel_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
@@ -249,21 +222,7 @@ impl ToolSpec for TaskGateRunTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "gate": {
-                    "type": "string",
-                    "enum": ["fmt", "check", "clippy", "test", "custom"],
-                    "description": "Gate category."
-                },
-                "command": { "type": "string", "description": "Command to run." },
-                "cwd": { "type": "string", "description": "Optional working directory within the workspace." },
-                "timeout_ms": { "type": "integer", "minimum": 1000, "maximum": 600000 }
-            },
-            "required": ["gate", "command"],
-            "additionalProperties": false
-        })
+        task_gate_run_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
@@ -406,18 +365,7 @@ impl ToolSpec for TaskShellStartTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "command": { "type": "string" },
-                "cwd": { "type": "string", "description": "Optional working directory within the workspace." },
-                "timeout_ms": { "type": "integer", "minimum": 1000, "maximum": 600000 },
-                "stdin": { "type": "string" },
-                "tty": { "type": "boolean" }
-            },
-            "required": ["command"],
-            "additionalProperties": false
-        })
+        task_shell_start_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
@@ -468,18 +416,7 @@ impl ToolSpec for TaskShellWaitTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "task_id": { "type": "string", "description": "Background shell task id returned by task_shell_start or exec_shell." },
-                "wait": { "type": "boolean", "default": false },
-                "timeout_ms": { "type": "integer", "minimum": 1000, "maximum": 600000 },
-                "gate": { "type": "string", "enum": ["fmt", "check", "clippy", "test", "custom"] },
-                "command": { "type": "string", "description": "Original command, used when recording gate evidence." }
-            },
-            "required": ["task_id"],
-            "additionalProperties": false
-        })
+        task_shell_wait_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
@@ -567,19 +504,7 @@ impl ToolSpec for PrAttemptRecordTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "task_id": { "type": "string", "description": "Task to attach to; defaults to active task." },
-                "attempt_group_id": { "type": "string" },
-                "attempt_index": { "type": "integer", "minimum": 1 },
-                "attempt_count": { "type": "integer", "minimum": 1 },
-                "summary": { "type": "string" },
-                "verification": { "type": "array", "items": { "type": "string" } }
-            },
-            "required": ["summary"],
-            "additionalProperties": false
-        })
+        pr_attempt_record_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
@@ -666,7 +591,7 @@ impl ToolSpec for PrAttemptListTool {
     }
 
     fn input_schema(&self) -> Value {
-        task_id_schema()
+        pr_attempt_list_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
@@ -691,15 +616,7 @@ impl ToolSpec for PrAttemptReadTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "task_id": { "type": "string", "description": "Task id; defaults to active task." },
-                "attempt_id": { "type": "string" }
-            },
-            "required": ["attempt_id"],
-            "additionalProperties": false
-        })
+        pr_attempt_read_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
@@ -729,15 +646,7 @@ impl ToolSpec for PrAttemptPreflightTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "task_id": { "type": "string", "description": "Task id; defaults to active task." },
-                "attempt_id": { "type": "string" }
-            },
-            "required": ["attempt_id"],
-            "additionalProperties": false
-        })
+        pr_attempt_preflight_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
@@ -925,16 +834,6 @@ fn task_id_from_input_or_context(
         .ok_or_else(|| {
             ToolError::invalid_input("task_id is required when no durable task is active")
         })
-}
-
-fn task_id_schema() -> Value {
-    json!({
-        "type": "object",
-        "properties": {
-            "task_id": { "type": "string", "description": "Task id; defaults to active task." }
-        },
-        "additionalProperties": false
-    })
 }
 
 fn git_output(workspace: &Path, args: &[&str]) -> Result<String, ToolError> {

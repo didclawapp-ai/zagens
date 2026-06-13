@@ -6,6 +6,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::tools::git_inputs::{git_diff_input_schema, git_status_input_schema};
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
@@ -34,16 +35,7 @@ impl ToolSpec for GitStatusTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Optional subdirectory or file to scope the status to (must be within the workspace)."
-                }
-            },
-            "additionalProperties": false
-        })
+        git_status_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
@@ -113,27 +105,7 @@ impl ToolSpec for GitDiffTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Optional subdirectory or file to scope the diff to (must be within the workspace)."
-                },
-                "cached": {
-                    "type": "boolean",
-                    "description": "When true, diff staged changes (`--cached`)."
-                },
-                "unified": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": MAX_UNIFIED,
-                    "default": DEFAULT_UNIFIED,
-                    "description": "Number of context lines to include around changes."
-                }
-            },
-            "additionalProperties": false
-        })
+        git_diff_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

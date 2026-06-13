@@ -401,7 +401,7 @@ pub(super) fn build_chat_messages(
     )
 }
 
-pub(super) fn build_chat_messages_for_request(request: &MessageRequest) -> Vec<Value> {
+pub(crate) fn build_chat_messages_for_request(request: &MessageRequest) -> Vec<Value> {
     build_chat_messages_with_reasoning(
         request.system.as_ref(),
         &request.messages,

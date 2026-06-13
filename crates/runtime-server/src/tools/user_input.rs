@@ -1,11 +1,12 @@
 //! Tool and types for requesting user input via the TUI.
 
+use super::misc_inputs::request_user_input_input_schema;
 use super::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 pub use zagens_core::user_input::UserInputRequest;
 
@@ -34,39 +35,7 @@ impl ToolSpec for RequestUserInputTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "questions": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "header": { "type": "string" },
-                            "id": { "type": "string" },
-                            "question": { "type": "string" },
-                            "options": {
-                                "type": "array",
-                                "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "label": { "type": "string" },
-                                        "description": { "type": "string" }
-                                    },
-                                    "required": ["label", "description"]
-                                },
-                                "minItems": 2,
-                                "maxItems": 3
-                            }
-                        },
-                        "required": ["header", "id", "question", "options"]
-                    },
-                    "minItems": 1,
-                    "maxItems": 3
-                }
-            },
-            "required": ["questions"]
-        })
+        request_user_input_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

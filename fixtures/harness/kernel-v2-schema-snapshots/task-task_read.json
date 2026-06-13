@@ -1,0 +1,13 @@
+{
+  "type": "object",
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "description": "Full task id or unambiguous prefix."
+    }
+  },
+  "required": [
+    "task_id"
+  ],
+  "additionalProperties": false
+}

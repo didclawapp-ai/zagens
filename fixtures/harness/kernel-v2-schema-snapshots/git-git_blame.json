@@ -1,0 +1,35 @@
+{
+  "type": "object",
+  "properties": {
+    "path": {
+      "type": "string",
+      "description": "Path to a tracked file within the workspace."
+    },
+    "rev": {
+      "type": "string",
+      "description": "Optional revision to blame against (default: HEAD)."
+    },
+    "start_line": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 1,
+      "description": "First line to include in blame output."
+    },
+    "max_lines": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2000,
+      "default": 200,
+      "description": "Maximum number of lines to include."
+    },
+    "porcelain": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, emit `--line-porcelain` output."
+    }
+  },
+  "required": [
+    "path"
+  ],
+  "additionalProperties": false
+}

@@ -86,14 +86,9 @@ impl LoopGuard {
 
     /// Whether a tool's success means the workspace materially changed, so the
     /// identical-call counter should be cleared (see [`Self::note_state_changed`]).
-    /// Deliberately limited to file-mutating tools: a repeated `exec_shell` with
-    /// no intervening edit is still a loop and must keep tripping the block.
     #[must_use]
     pub fn is_state_mutating_tool(tool: &str) -> bool {
-        matches!(
-            tool,
-            "write_file" | "edit_file" | "apply_patch" | "create_dirs"
-        )
+        crate::engine::tool_effects::tool_writes_state(tool)
     }
 }
 
@@ -308,16 +303,17 @@ mod tests {
     }
 
     #[test]
-    fn only_file_mutating_tools_count_as_state_changes() {
+    fn unified_writes_state_predicate_covers_file_and_shell_mutators() {
         assert!(LoopGuard::is_state_mutating_tool("write_file"));
         assert!(LoopGuard::is_state_mutating_tool("edit_file"));
         assert!(LoopGuard::is_state_mutating_tool("apply_patch"));
         assert!(LoopGuard::is_state_mutating_tool("create_dirs"));
-        // Read/exec tools must NOT reset the block — repeating them with no edit
-        // in between is exactly the loop the guard exists to stop.
-        assert!(!LoopGuard::is_state_mutating_tool("exec_shell"));
+        // M1 union: shell tools that may mutate workspace reset identical-call counts.
+        assert!(LoopGuard::is_state_mutating_tool("exec_shell"));
+        assert!(LoopGuard::is_state_mutating_tool("exec_shell_wait"));
         assert!(!LoopGuard::is_state_mutating_tool("read_file"));
         assert!(!LoopGuard::is_state_mutating_tool("grep_files"));
+        assert!(!LoopGuard::is_state_mutating_tool("exec_shell_cancel"));
     }
 
     #[test]

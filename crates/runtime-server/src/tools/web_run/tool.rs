@@ -9,8 +9,9 @@ use crate::tools::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
     optional_u64, required_str,
 };
+use crate::tools::web_inputs::web_run_input_schema;
 use async_trait::async_trait;
-use serde_json::{Value, json};
+use serde_json::Value;
 
 pub struct WebRunTool;
 
@@ -26,88 +27,7 @@ impl ToolSpec for WebRunTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "search_query": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "q": { "type": "string" },
-                            "recency": { "type": "integer" },
-                            "max_results": { "type": "integer" },
-                            "timeout_ms": { "type": "integer" },
-                            "domains": { "type": "array", "items": { "type": "string" } }
-                        },
-                        "required": ["q"]
-                    }
-                },
-                "image_query": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "q": { "type": "string" },
-                            "recency": { "type": "integer" },
-                            "max_results": { "type": "integer" },
-                            "timeout_ms": { "type": "integer" },
-                            "domains": { "type": "array", "items": { "type": "string" } }
-                        },
-                        "required": ["q"]
-                    }
-                },
-                "open": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "ref_id": { "type": "string" },
-                            "lineno": { "type": "integer" }
-                        },
-                        "required": ["ref_id"]
-                    }
-                },
-                "click": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "ref_id": { "type": "string" },
-                            "id": { "type": "integer" }
-                        },
-                        "required": ["ref_id", "id"]
-                    }
-                },
-                "find": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "ref_id": { "type": "string" },
-                            "pattern": { "type": "string" }
-                        },
-                        "required": ["ref_id", "pattern"]
-                    }
-                },
-                "screenshot": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "ref_id": { "type": "string" },
-                            "pageno": { "type": "integer" }
-                        },
-                        "required": ["ref_id", "pageno"]
-                    }
-                },
-                "response_length": {
-                    "type": "string",
-                    "enum": ["short", "medium", "long"],
-                    "description": "Controls result verbosity"
-                }
-            }
-        })
+        web_run_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

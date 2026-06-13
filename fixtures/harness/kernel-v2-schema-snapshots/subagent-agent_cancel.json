@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "properties": {
+    "agent_id": {
+      "type": "string",
+      "description": "ID returned by agent_spawn"
+    }
+  },
+  "required": [
+    "agent_id"
+  ]
+}

@@ -9,6 +9,10 @@ use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::task_manager::{TaskArtifactRef, TaskGithubEvent};
+use crate::tools::github_inputs::{
+    github_close_issue_input_schema, github_comment_input_schema,
+    github_issue_context_input_schema, github_pr_context_input_schema,
+};
 use crate::tools::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
     optional_bool, optional_str, required_str, required_u64,
@@ -34,15 +38,7 @@ impl ToolSpec for GithubIssueContextTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "number": { "type": "integer", "minimum": 1 },
-                "include_comments": { "type": "boolean", "default": true }
-            },
-            "required": ["number"],
-            "additionalProperties": false
-        })
+        github_issue_context_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
@@ -89,15 +85,7 @@ impl ToolSpec for GithubPrContextTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "number": { "type": "integer", "minimum": 1 },
-                "include_diff": { "type": "boolean", "default": false }
-            },
-            "required": ["number"],
-            "additionalProperties": false
-        })
+        github_pr_context_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
@@ -158,18 +146,7 @@ impl ToolSpec for GithubCommentTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "target": { "type": "string", "enum": ["issue", "pr"] },
-                "number": { "type": "integer", "minimum": 1 },
-                "body": { "type": "string" },
-                "evidence": { "type": "object" },
-                "dry_run": { "type": "boolean", "default": false }
-            },
-            "required": ["target", "number", "body", "evidence"],
-            "additionalProperties": false
-        })
+        github_comment_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
@@ -219,28 +196,7 @@ impl ToolSpec for GithubCloseIssueTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "number": { "type": "integer", "minimum": 1 },
-                "acceptance_criteria": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
-                "evidence": {
-                    "type": "object",
-                    "properties": {
-                        "files_changed": { "type": "array", "items": { "type": "string" } },
-                        "tests_run": { "type": "array", "items": { "type": "string" } },
-                        "commits": { "type": "array", "items": { "type": "string" } },
-                        "final_status": { "type": "string" }
-                    },
-                    "required": ["files_changed", "tests_run", "final_status"]
-                },
-                "comment": { "type": "string" },
-                "allow_dirty": { "type": "boolean", "default": false },
-                "dry_run": { "type": "boolean", "default": false }
-            },
-            "required": ["number", "acceptance_criteria", "evidence"],
-            "additionalProperties": false
-        })
+        github_close_issue_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

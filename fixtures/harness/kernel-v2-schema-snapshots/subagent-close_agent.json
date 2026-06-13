@@ -1,0 +1,13 @@
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Agent id returned by agent_spawn"
+    },
+    "agent_id": {
+      "type": "string",
+      "description": "Alias for id"
+    }
+  }
+}

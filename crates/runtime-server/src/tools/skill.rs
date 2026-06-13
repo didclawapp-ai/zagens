@@ -29,6 +29,7 @@ use serde_json::{Value, json};
 
 use crate::skills::{Skill, discover_in_workspace, skills_directories};
 
+use super::misc_inputs::load_skill_input_schema;
 use super::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
 };
@@ -47,17 +48,7 @@ impl ToolSpec for LoadSkillTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "description": "Skill id (the `name` field from the SKILL.md frontmatter, also shown in the `## Skills` listing)."
-                }
-            },
-            "required": ["name"],
-            "additionalProperties": false
-        })
+        load_skill_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

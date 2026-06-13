@@ -2,6 +2,9 @@ use std::path::Path;
 
 use crate::models::{ContentBlock, Message, SystemPrompt};
 use zagens_core::compaction::CompactionConfig;
+// M0.3: single text→token calibration entry; the DeepSeek-ratio estimator
+// that used to live here is now an internal detail of this function.
+use zagens_core::engine::token_estimate::estimate_text_tokens;
 
 use super::plan::plan_compaction;
 use super::{KEEP_RECENT_MESSAGES, MIN_SUMMARIZE_MESSAGES};
@@ -11,57 +14,22 @@ pub(crate) fn estimate_tokens_for_message(message: &Message, include_thinking: b
         .content
         .iter()
         .map(|c| match c {
-            ContentBlock::Text { text, .. } => estimate_text_tokens_deepseek(text),
+            ContentBlock::Text { text, .. } => estimate_text_tokens(text),
             // Historical reasoning blocks are UI/session metadata for DeepSeek.
             // Only current-turn tool-call reasoning is sent back to the API.
             ContentBlock::Thinking { thinking } if include_thinking => {
-                estimate_text_tokens_deepseek(thinking)
+                estimate_text_tokens(thinking)
             }
             ContentBlock::Thinking { .. } => 0,
             ContentBlock::ToolUse { input, .. } => serde_json::to_string(input)
-                .map(|s| estimate_text_tokens_deepseek(&s))
+                .map(|s| estimate_text_tokens(&s))
                 .unwrap_or(100),
-            ContentBlock::ToolResult { content, .. } => estimate_text_tokens_deepseek(content),
+            ContentBlock::ToolResult { content, .. } => estimate_text_tokens(content),
             ContentBlock::ServerToolUse { .. }
             | ContentBlock::ToolSearchToolResult { .. }
             | ContentBlock::CodeExecutionToolResult { .. } => 0,
         })
         .sum::<usize>()
-}
-
-/// DeepSeek API doc heuristic: ~0.3 token/ASCII char, ~0.6 token/CJK char.
-/// <https://api-docs.deepseek.com/zh-cn/quick_start/token_usage>
-#[must_use]
-pub fn estimate_text_tokens_deepseek(text: &str) -> usize {
-    let (cjk, other) = count_cjk_and_other_chars(text);
-    other
-        .saturating_mul(3)
-        .div_ceil(10)
-        .saturating_add(cjk.saturating_mul(6).div_ceil(10))
-}
-
-pub(crate) fn count_cjk_and_other_chars(text: &str) -> (usize, usize) {
-    let mut cjk = 0usize;
-    let mut other = 0usize;
-    for ch in text.chars() {
-        if is_cjk_char(ch) {
-            cjk += 1;
-        } else {
-            other += 1;
-        }
-    }
-    (cjk, other)
-}
-
-pub(crate) fn is_cjk_char(ch: char) -> bool {
-    matches!(
-        ch,
-        '\u{4e00}'..='\u{9fff}'
-            | '\u{3400}'..='\u{4dbf}'
-            | '\u{3000}'..='\u{303f}'
-            | '\u{ff00}'..='\u{ffef}'
-            | '\u{2e80}'..='\u{2fdf}'
-    )
 }
 
 pub fn estimate_tokens(messages: &[Message]) -> usize {
@@ -81,17 +49,12 @@ pub(crate) fn message_has_tool_use(message: &Message) -> bool {
         .any(|block| matches!(block, ContentBlock::ToolUse { .. }))
 }
 
-pub(crate) fn estimate_text_tokens_conservative(text: &str) -> usize {
-    // Align with DeepSeek doc ratios, then round up one char-worth of budget.
-    estimate_text_tokens_deepseek(text).saturating_add(1)
-}
-
 pub(crate) fn estimate_system_tokens_conservative(system: Option<&SystemPrompt>) -> usize {
     match system {
-        Some(SystemPrompt::Text(text)) => estimate_text_tokens_conservative(text),
+        Some(SystemPrompt::Text(text)) => estimate_text_tokens(text),
         Some(SystemPrompt::Blocks(blocks)) => blocks
             .iter()
-            .map(|block| estimate_text_tokens_conservative(&block.text))
+            .map(|block| estimate_text_tokens(&block.text))
             .sum(),
         None => 0,
     }

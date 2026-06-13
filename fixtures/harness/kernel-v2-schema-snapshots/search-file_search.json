@@ -1,0 +1,31 @@
+{
+  "type": "object",
+  "properties": {
+    "query": {
+      "type": "string",
+      "description": "Search query (file name or path fragment)."
+    },
+    "path": {
+      "type": "string",
+      "description": "Optional base path to search (relative to workspace)."
+    },
+    "limit": {
+      "type": "integer",
+      "description": "Maximum number of results to return (default: 20)."
+    },
+    "extensions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Optional list of file extensions to include (e.g. [\"rs\", \"md\"])."
+    },
+    "respect_gitignore": {
+      "type": "boolean",
+      "description": "Honor .gitignore when true (default: true). Set false to search ignored paths (like grep_files)."
+    }
+  },
+  "required": [
+    "query"
+  ]
+}

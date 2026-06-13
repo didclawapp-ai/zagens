@@ -333,6 +333,58 @@ fn msg(role: &str, text: &str) -> Message {
     }
 
     #[test]
+    fn unified_calibration_core_and_compaction_agree() {
+        // M0.3 acceptance: UI usage / capacity ratio (core estimator) and the
+        // compaction threshold (this module's estimator) must read the same
+        // number for the same content now that both walk the single
+        // `estimate_text_tokens` entry. Thinking blocks are excluded here:
+        // the two walkers intentionally differ on historical reasoning
+        // (DeepSeek replay semantics), which is message-shape semantics, not
+        // text calibration.
+        let messages = vec![
+            Message {
+                role: "user".to_string(),
+                content: vec![ContentBlock::Text {
+                    text: "Summarize the design doc, 中英混排内容若干。".to_string(),
+                    cache_control: None,
+                }],
+            },
+            Message {
+                role: "assistant".to_string(),
+                content: vec![ContentBlock::ToolUse {
+                    id: "tool-1".to_string(),
+                    name: "read_file".to_string(),
+                    input: serde_json::json!({"path": "docs/design.md"}),
+                    caller: None,
+                }],
+            },
+            Message {
+                role: "user".to_string(),
+                content: vec![ContentBlock::ToolResult {
+                    tool_use_id: "tool-1".to_string(),
+                    content: "# design\n架构说明 body ".repeat(40),
+                    is_error: None,
+                    content_blocks: None,
+                }],
+            },
+        ];
+        for system in [
+            None,
+            Some(SystemPrompt::Text("static prompt 静态层内容".to_string())),
+        ] {
+            assert_eq!(
+                zagens_core::engine::estimate_input_tokens_conservative(
+                    &messages,
+                    system.as_ref()
+                ),
+                estimate_input_tokens_conservative(&messages, system.as_ref()),
+                "core and compaction estimators diverged (system={:?})",
+                system.is_some()
+            );
+        }
+    }
+
+    #[test]
     fn should_compact_respects_enabled_flag() {
         let config = CompactionConfig {
             enabled: false,

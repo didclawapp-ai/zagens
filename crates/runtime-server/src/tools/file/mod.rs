@@ -6,6 +6,7 @@
 mod edit;
 mod list_dir;
 mod read;
+mod schemas;
 mod write;
 
 pub use edit::EditFileTool;

@@ -3,6 +3,10 @@
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+use crate::tools::todo_plan_inputs::{
+    checklist_add_input_schema, checklist_list_input_schema, checklist_update_input_schema,
+    checklist_write_input_schema,
+};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -234,21 +238,7 @@ impl ToolSpec for TodoAddTool {
     }
 
     fn input_schema(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "content": {
-                    "type": "string",
-                    "description": "The task description"
-                },
-                "status": {
-                    "type": "string",
-                    "enum": ["pending", "in_progress", "completed"],
-                    "description": "Task status (default: pending)"
-                }
-            },
-            "required": ["content"]
-        })
+        checklist_add_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
@@ -326,21 +316,7 @@ impl ToolSpec for TodoUpdateTool {
     }
 
     fn input_schema(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "id": {
-                    "type": "integer",
-                    "description": "Todo item id"
-                },
-                "status": {
-                    "type": "string",
-                    "enum": ["pending", "in_progress", "completed"],
-                    "description": "New status"
-                }
-            },
-            "required": ["id", "status"]
-        })
+        checklist_update_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
@@ -426,10 +402,7 @@ impl ToolSpec for TodoListTool {
     }
 
     fn input_schema(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {}
-        })
+        checklist_list_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
@@ -472,31 +445,7 @@ impl ToolSpec for TodoWriteTool {
     }
 
     fn input_schema(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "todos": {
-                    "type": "array",
-                    "description": "The complete list of todo items. This replaces the existing list.",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "content": {
-                                "type": "string",
-                                "description": "The task description"
-                            },
-                            "status": {
-                                "type": "string",
-                                "enum": ["pending", "in_progress", "completed"],
-                                "description": "Task status"
-                            }
-                        },
-                        "required": ["content", "status"]
-                    }
-                }
-            },
-            "required": ["todos"]
-        })
+        checklist_write_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

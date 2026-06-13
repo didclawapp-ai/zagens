@@ -9,17 +9,13 @@ use tokio::sync::{Mutex as AsyncMutex, RwLock, mpsc};
 use zagens_core::chat::{ContentBlock, LlmClient, Message, Tool};
 use zagens_core::engine::TurnLoopHost;
 use zagens_core::engine::context::estimate_input_tokens_conservative;
-use zagens_core::engine::dispatch::{
-    mcp_tool_approval_description, mcp_tool_is_parallel_safe, mcp_tool_is_read_only,
-};
 use zagens_core::engine::hosts::McpHost;
 use zagens_core::engine::streaming::ToolUseState;
-use zagens_core::engine::tool_catalog::{CODE_EXECUTION_TOOL_NAME, is_tool_search_tool};
+use zagens_core::engine::turn_loop::TurnLoopToolRegistry;
 use zagens_core::engine::turn_loop::control::TurnLoopControl;
 use zagens_core::engine::turn_loop::exec::{
     ToolExecOutcome, ToolExecutionPlan, ToolPlanApprovalMeta,
 };
-use zagens_core::engine::turn_loop::{TurnLoopToolRegistry, build_edit_file_approval_desc};
 use zagens_core::turn::{TurnContext, TurnLoopMode};
 use zagens_tools::{ToolError, ToolResult};
 
@@ -32,7 +28,6 @@ use crate::core::events::Event;
 use crate::core::turn::pre_tool_snapshot;
 use crate::mcp::McpPool;
 use crate::tools::ToolRegistry;
-use crate::tools::spec::ApprovalRequirement;
 use zagens_core::engine::tool_catalog::{
     active_tools_for_step, ensure_advanced_tooling, execute_tool_search, initial_active_tools,
     maybe_activate_requested_deferred_tool,
@@ -825,51 +820,28 @@ impl TurnLoopHost for Engine {
         tool_input: &serde_json::Value,
         registry: Option<&Self::ToolRegistry>,
     ) -> ToolPlanApprovalMeta {
-        if McpPool::is_mcp_tool(tool_name) {
-            return ToolPlanApprovalMeta {
-                read_only: mcp_tool_is_read_only(tool_name),
-                supports_parallel: mcp_tool_is_parallel_safe(tool_name),
-                approval_required: !mcp_tool_is_read_only(tool_name),
-                approval_description: mcp_tool_approval_description(tool_name),
-            };
-        }
-        if let Some(registry) = registry
-            && let Some(spec) = registry.get(tool_name)
-        {
-            return ToolPlanApprovalMeta {
-                approval_required: spec.approval_requirement() != ApprovalRequirement::Auto,
-                approval_description: if tool_name == "edit_file" {
-                    build_edit_file_approval_desc(tool_input)
-                } else {
-                    spec.description().to_string()
-                },
-                supports_parallel: spec.supports_parallel(),
-                read_only: spec.is_read_only(),
-            };
-        }
-        if tool_name == CODE_EXECUTION_TOOL_NAME {
-            return ToolPlanApprovalMeta {
-                approval_required: true,
-                approval_description: "Run model-provided Python code in local execution sandbox"
-                    .to_string(),
-                supports_parallel: false,
-                read_only: false,
-            };
-        }
-        if is_tool_search_tool(tool_name) {
-            return ToolPlanApprovalMeta {
-                approval_required: false,
-                approval_description: "Search tool catalog".to_string(),
-                supports_parallel: false,
-                read_only: true,
-            };
-        }
-        ToolPlanApprovalMeta {
-            approval_required: false,
-            approval_description: String::new(),
-            supports_parallel: false,
-            read_only: false,
-        }
+        let turn_mode = match self.runtime_ext().turn_app_mode {
+            AppMode::Agent => TurnLoopMode::Agent,
+            AppMode::Plan => TurnLoopMode::Plan,
+            AppMode::Yolo => TurnLoopMode::Yolo,
+        };
+        crate::tools::policy_bridge::resolve_tool_plan_approval_meta(
+            self.runtime_ext().tools_policy,
+            turn_mode,
+            self.session.trust_mode,
+            tool_name,
+            tool_input,
+            registry,
+        )
+    }
+
+    fn model_request_fingerprint(
+        &self,
+        request: &zagens_core::chat::MessageRequest,
+    ) -> Option<zagens_core::engine::RequestFingerprint> {
+        Some(crate::request_fingerprint::fingerprint_message_request(
+            request,
+        ))
     }
 
     async fn execute_tool_plans(

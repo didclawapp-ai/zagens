@@ -21,6 +21,7 @@ use async_trait::async_trait;
 use serde::Serialize;
 use serde_json::{Value, json};
 
+use super::misc_inputs::recall_archive_input_schema;
 use super::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
     optional_u64, required_str,
@@ -61,24 +62,7 @@ impl ToolSpec for RecallArchiveTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "Search query. Tokenized and BM25-scored against archived messages."
-                },
-                "cycle": {
-                    "type": "integer",
-                    "description": "Optional: limit to a specific prior cycle number."
-                },
-                "max_results": {
-                    "type": "integer",
-                    "description": "Maximum hits to return (default 3, hard-capped at 10)."
-                }
-            },
-            "required": ["query"]
-        })
+        recall_archive_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

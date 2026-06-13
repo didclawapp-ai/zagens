@@ -1,0 +1,29 @@
+{
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string",
+      "description": "Absolute HTTP/HTTPS URL to fetch."
+    },
+    "format": {
+      "type": "string",
+      "enum": [
+        "text",
+        "markdown",
+        "raw"
+      ],
+      "description": "Post-processing for the response body. `markdown` (default) and `text` strip HTML tags to readable text; `raw` returns the body bytes as-is."
+    },
+    "max_bytes": {
+      "type": "integer",
+      "description": "Truncate response body after this many bytes (default 1,000,000; hard max 10,485,760)."
+    },
+    "timeout_ms": {
+      "type": "integer",
+      "description": "Request timeout in milliseconds (default 15,000; max 60,000)."
+    }
+  },
+  "required": [
+    "url"
+  ]
+}

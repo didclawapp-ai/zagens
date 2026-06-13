@@ -62,6 +62,7 @@ impl TurnLoopToolExecutor for Engine {
             None,
             None,
             tool_progress_id,
+            None,
         )
         .await
     }
@@ -86,6 +87,7 @@ pub async fn detached_execute_with_lock(
     registry: Option<&ToolRegistry>,
     mcp_pool: Option<Arc<AsyncMutex<McpPool>>>,
     tool_progress_id: Option<String>,
+    lock_ctx: Option<crate::tools::resource_locks::FineGrainedLockContext>,
 ) -> Result<ToolResult, ToolError> {
     if McpPool::is_mcp_tool(&tool_name) {
         let Some(pool) = mcp_pool else {
@@ -107,6 +109,7 @@ pub async fn detached_execute_with_lock(
         mcp_pool,
         None,
         tool_progress_id,
+        lock_ctx,
     )
     .await
 }
@@ -123,6 +126,7 @@ pub async fn execute_plan_on_engine(
     mcp_pool: Option<Arc<AsyncMutex<McpPool>>>,
     context_override: Option<ToolContext>,
     tool_progress_id: Option<String>,
+    lock_ctx: Option<crate::tools::resource_locks::FineGrainedLockContext>,
 ) -> Result<ToolResult, ToolError> {
     if McpPool::is_mcp_tool(&tool_name) {
         let Some(pool) = mcp_pool else {
@@ -144,6 +148,7 @@ pub async fn execute_plan_on_engine(
         mcp_pool,
         context_override,
         tool_progress_id,
+        lock_ctx,
     )
     .await
 }

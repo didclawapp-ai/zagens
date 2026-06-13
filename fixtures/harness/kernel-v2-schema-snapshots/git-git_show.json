@@ -1,0 +1,34 @@
+{
+  "type": "object",
+  "properties": {
+    "rev": {
+      "type": "string",
+      "description": "Revision to show (commit SHA, tag, branch, or ref expression)."
+    },
+    "path": {
+      "type": "string",
+      "description": "Optional subdirectory or file path to scope output."
+    },
+    "patch": {
+      "type": "boolean",
+      "default": true,
+      "description": "Include patch hunks (default true)."
+    },
+    "stat": {
+      "type": "boolean",
+      "default": true,
+      "description": "Include --stat summary (default true)."
+    },
+    "unified": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 50,
+      "default": 3,
+      "description": "Context lines for patch output when patch=true."
+    }
+  },
+  "required": [
+    "rev"
+  ],
+  "additionalProperties": false
+}

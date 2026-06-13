@@ -61,6 +61,11 @@ pub enum Event {
     TurnStarted {
         turn_id: String,
     },
+    /// Prefix-cache fingerprint for one model API request (kernel-v2 M5).
+    ModelRequestPrepared {
+        static_prefix_sha256: String,
+        full_prefix_sha256: String,
+    },
     TurnComplete {
         usage: Usage,
         last_request_input_tokens: Option<u32>,

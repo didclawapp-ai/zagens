@@ -4,6 +4,7 @@
 //! `.gitignore` / `.ignore` by default, skips common vendor/build dirs, and
 //! skips binary files (NUL sniff). Results are BM25-ranked for agent consumption.
 
+use super::search_inputs::grep_files_input_schema;
 use super::spec::{
     ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_bool, optional_str,
     optional_u64, required_str,
@@ -94,59 +95,7 @@ impl ToolSpec for GrepFilesTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "pattern": {
-                    "type": "string",
-                    "description": "Regular expression pattern to search for"
-                },
-                "path": {
-                    "type": "string",
-                    "description": "Directory or file to search (relative to workspace, default: .)"
-                },
-                "include": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Glob patterns for files to include (e.g., ['*.rs', '*.ts'])"
-                },
-                "exclude": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Glob patterns for files to exclude (e.g., ['*.min.js', 'node_modules/*'])"
-                },
-                "context_lines": {
-                    "type": "integer",
-                    "description": "Number of context lines before and after each match (default: 2)"
-                },
-                "case_insensitive": {
-                    "type": "boolean",
-                    "description": "Whether to perform case-insensitive matching (default: false)"
-                },
-                "max_results": {
-                    "type": "integer",
-                    "description": "Maximum number of results to return (default: 100)"
-                },
-                "symbol_index": {
-                    "type": "boolean",
-                    "description": "Also query the symbol index for definitions matching the pattern (default: false). Symbol line numbers may drift for macro-expanded code."
-                },
-                "symbol_kind": {
-                    "type": "string",
-                    "description": "Filter symbol hits by kind, e.g. \"fn\", \"struct\", \"interface\", \"type\", \"enum\", \"const\", \"trait\", \"trait_fn\", \"impl_fn\", \"class\", \"method\"."
-                },
-                "respect_gitignore": {
-                    "type": "boolean",
-                    "description": "When true (default), honor .gitignore / .ignore and parent ignore files; also skips target/, node_modules/, etc. Set false to search ignored paths (like rg -uuu)."
-                },
-                "output_mode": {
-                    "type": "string",
-                    "enum": ["content", "files_with_matches", "count"],
-                    "description": "content: matching lines with context (default). files_with_matches: file paths only (saves tokens). count: per-file match counts."
-                }
-            },
-            "required": ["pattern"]
-        })
+        grep_files_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

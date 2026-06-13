@@ -1,0 +1,10 @@
+{
+  "type": "object",
+  "properties": {
+    "path": {
+      "type": "string",
+      "description": "Optional subdirectory or file to scope the status to (must be within the workspace)."
+    }
+  },
+  "additionalProperties": false
+}

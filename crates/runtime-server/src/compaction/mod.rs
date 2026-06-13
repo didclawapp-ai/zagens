@@ -15,10 +15,7 @@ pub use execute::{CompactionResult, compact_messages, compact_messages_safe};
 pub use plan::{CompactionPlan, plan_compaction};
 pub use prompt::merge_system_prompts;
 pub use prune::prune_tool_results;
-pub use tokens::{
-    estimate_input_tokens_conservative, estimate_text_tokens_deepseek, estimate_tokens,
-    should_compact,
-};
+pub use tokens::{estimate_input_tokens_conservative, estimate_tokens, should_compact};
 pub use zagens_core::compaction::{CompactionConfig, MINIMUM_AUTO_COMPACTION_TOKENS};
 
 pub const KEEP_RECENT_MESSAGES: usize = 4;

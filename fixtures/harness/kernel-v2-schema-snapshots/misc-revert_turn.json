@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "properties": {
+    "turn_offset": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 50,
+      "description": "How many turns back to revert (default 1)."
+    }
+  },
+  "additionalProperties": false
+}

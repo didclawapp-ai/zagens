@@ -87,6 +87,24 @@ impl ShellManager {
         self.sandbox_manager.set_windows_private_desktop(enabled);
     }
 
+    /// Prefer the Linux Bubblewrap backend for future commands (`prefer_bwrap`, M0.4).
+    pub fn set_prefer_bwrap(&mut self, prefer: bool) {
+        self.sandbox_manager.set_prefer_bwrap(prefer);
+    }
+
+    /// Whether the configured sandbox path is OS-enforced (§8.1.1 DAG scheduling probe).
+    #[must_use]
+    pub fn probe_sandbox_enforced(&self) -> bool {
+        use std::time::Duration;
+        let spec = CommandSpec::shell(
+            "true",
+            self.default_workspace.clone(),
+            Duration::from_secs(1),
+        )
+        .with_policy(self.sandbox_policy.clone());
+        self.sandbox_manager.prepare(&spec).is_enforced()
+    }
+
     /// Set the sandbox policy for future commands.
     #[allow(dead_code)]
     pub fn set_sandbox_policy(&mut self, policy: ExecutionSandboxPolicy) {

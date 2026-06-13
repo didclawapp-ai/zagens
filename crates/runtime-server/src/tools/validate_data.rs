@@ -8,6 +8,7 @@ use std::fs;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
+use super::misc_inputs::validate_data_input_schema;
 use super::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_str,
 };
@@ -55,26 +56,7 @@ impl ToolSpec for ValidateDataTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Optional path to a file within the workspace."
-                },
-                "content": {
-                    "type": "string",
-                    "description": "Optional inline content to validate."
-                },
-                "format": {
-                    "type": "string",
-                    "enum": ["auto", "json", "toml"],
-                    "default": "auto",
-                    "description": "Validation format. 'auto' infers from extension then falls back to trying both."
-                }
-            },
-            "additionalProperties": false
-        })
+        validate_data_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

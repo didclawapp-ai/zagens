@@ -1,0 +1,17 @@
+{
+  "type": "object",
+  "properties": {
+    "path": {
+      "type": "string",
+      "description": "Relative path (default: .)"
+    },
+    "limit": {
+      "type": "integer",
+      "description": "Maximum entries to return (default: 1000, max: 10000). Directories are listed first, then files, each sorted by name."
+    },
+    "offset": {
+      "type": "integer",
+      "description": "Skip this many entries after sorting (default: 0). Use with limit to paginate large directories."
+    }
+  }
+}

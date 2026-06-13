@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 
+use crate::tools::todo_plan_inputs::update_plan_input_schema;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -336,35 +337,7 @@ impl ToolSpec for UpdatePlanTool {
     }
 
     fn input_schema(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "explanation": {
-                    "type": "string",
-                    "description": "Optional high-level explanation of the plan or approach"
-                },
-                "plan": {
-                    "type": "array",
-                    "description": "List of plan steps",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "step": {
-                                "type": "string",
-                                "description": "Description of the step"
-                            },
-                            "status": {
-                                "type": "string",
-                                "enum": ["pending", "in_progress", "completed"],
-                                "description": "Step status"
-                            }
-                        },
-                        "required": ["step", "status"]
-                    }
-                }
-            },
-            "required": ["plan"]
-        })
+        update_plan_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

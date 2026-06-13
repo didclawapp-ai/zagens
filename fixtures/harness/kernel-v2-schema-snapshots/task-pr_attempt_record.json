@@ -1,0 +1,33 @@
+{
+  "type": "object",
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "description": "Task to attach to; defaults to active task."
+    },
+    "attempt_group_id": {
+      "type": "string"
+    },
+    "attempt_index": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "attempt_count": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "summary": {
+      "type": "string"
+    },
+    "verification": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "summary"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,38 @@
+{
+  "type": "object",
+  "properties": {
+    "explanation": {
+      "type": "string",
+      "description": "Optional high-level explanation of the plan or approach"
+    },
+    "plan": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "step": {
+            "type": "string",
+            "description": "Description of the step"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "in_progress",
+              "completed"
+            ],
+            "description": "Step status"
+          }
+        },
+        "required": [
+          "step",
+          "status"
+        ]
+      },
+      "description": "List of plan steps"
+    }
+  },
+  "required": [
+    "plan"
+  ]
+}

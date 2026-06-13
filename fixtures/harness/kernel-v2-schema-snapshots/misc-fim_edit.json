@@ -1,0 +1,26 @@
+{
+  "type": "object",
+  "properties": {
+    "path": {
+      "type": "string",
+      "description": "Path to the file to edit (relative to workspace)"
+    },
+    "prefix_anchor": {
+      "type": "string",
+      "description": "Text anchor marking the end of the prefix. Everything up to and including this anchor is kept as-is before the generated middle."
+    },
+    "suffix_anchor": {
+      "type": "string",
+      "description": "Text anchor marking the start of the suffix. Everything from this anchor onward is kept as-is after the generated middle."
+    },
+    "max_tokens": {
+      "type": "integer",
+      "description": "Maximum tokens to generate (default: 1024)"
+    }
+  },
+  "required": [
+    "path",
+    "prefix_anchor",
+    "suffix_anchor"
+  ]
+}

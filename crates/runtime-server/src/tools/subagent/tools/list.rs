@@ -1,6 +1,7 @@
+use crate::tools::subagent_inputs::agent_list_input_schema;
 use anyhow::Result;
 use async_trait::async_trait;
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::tools::spec::{ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec};
 
@@ -32,15 +33,7 @@ impl ToolSpec for AgentListTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "include_archived": {
-                    "type": "boolean",
-                    "description": "When true, include agents from prior sessions in the listing. Default false."
-                }
-            }
-        })
+        agent_list_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

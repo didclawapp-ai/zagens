@@ -8,11 +8,12 @@
 //! around so the engine compatibility dispatcher and historical sessions
 //! still resolve it cleanly.
 
+use super::misc_inputs::multi_tool_use_parallel_input_schema;
 use super::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
 };
 use async_trait::async_trait;
-use serde_json::{Value, json};
+use serde_json::Value;
 
 #[allow(dead_code)]
 pub struct MultiToolUseParallelTool;
@@ -28,23 +29,7 @@ impl ToolSpec for MultiToolUseParallelTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "tool_uses": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "recipient_name": { "type": "string" },
-                            "parameters": { "type": "object" }
-                        },
-                        "required": ["recipient_name", "parameters"]
-                    }
-                }
-            },
-            "required": ["tool_uses"]
-        })
+        multi_tool_use_parallel_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {

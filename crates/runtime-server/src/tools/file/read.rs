@@ -1,5 +1,6 @@
 //! read_file tool and format-specific readers.
 
+use super::schemas::read_file_input_schema;
 use super::{DEFAULT_LIMIT, FILE_SIZE_LINE_COUNT_LIMIT, MAX_FILE_SIZE, MAX_LIMIT};
 use crate::tools::spec::{
     ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_str, optional_u64,
@@ -31,32 +32,7 @@ impl ToolSpec for ReadFileTool {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Path to the file (relative to workspace or absolute)"
-                },
-                "start_line": {
-                    "type": "integer",
-                    "description": "First line to read (1-based, default: 1). Preferred over \"offset\"."
-                },
-                "offset": {
-                    "type": "integer",
-                    "description": "Alias for start_line (1-based, default: 1). Ignored when \"start_line\" is also set."
-                },
-                "limit": {
-                    "type": "integer",
-                    "description": "Maximum lines to read (default: 2000, max: 5000)"
-                },
-                "pages": {
-                    "type": "string",
-                    "description": "PDF only: page range to extract, e.g. \"1-5\" or \"10\". Ignored for non-PDF files."
-                }
-            },
-            "required": ["path"]
-        })
+        read_file_input_schema()
     }
 
     fn capabilities(&self) -> Vec<ToolCapability> {
