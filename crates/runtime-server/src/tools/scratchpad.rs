@@ -209,7 +209,7 @@ impl ToolSpec for ScratchpadSetAreaTool {
     }
 
     fn description(&self) -> &'static str {
-        "Update one inventory area status. status=done defaults require_min_notes=1; status=deferred defaults require_min_notes=0 (still needs kind=meta when require_deferred_meta is enabled)."
+        "Update one inventory area status. status=done defaults require_min_notes=1; status=deferred defaults require_min_notes=0 (still needs kind=meta when require_deferred_meta is enabled). Non-empty `notes` satisfies require_min_notes via an implicit meta append when notes.jsonl is empty."
     }
 
     fn input_schema(&self) -> Value {

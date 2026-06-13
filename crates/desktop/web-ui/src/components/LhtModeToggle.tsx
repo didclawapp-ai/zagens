@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useT } from '../i18n';
 
+export const LHT_COMPOSER_MODE_CHANGED_EVENT = 'zagens-lht-composer-mode-changed';
+
 /**
  * Composer top-bar tri-state LHT override: auto → strict → off → auto.
  * Persisted to `settings.toml` as `lht_composer_mode`; read live by engine
@@ -45,6 +47,9 @@ async function writeRuntimeMode(mode: LhtComposerMode): Promise<void> {
   try {
     const { invoke } = await import('@tauri-apps/api/core');
     await invoke('set_lht_composer_mode', { mode });
+    window.dispatchEvent(
+      new CustomEvent(LHT_COMPOSER_MODE_CHANGED_EVENT, { detail: mode }),
+    );
   } catch {
     /* browser dev */
   }

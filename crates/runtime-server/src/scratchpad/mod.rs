@@ -381,7 +381,20 @@ impl ScratchpadStore {
         }
 
         if matches!(status, AreaStatus::Done | AreaStatus::Deferred) && require_min_notes > 0 {
-            let count = self.count_notes_for_area(area_id)?;
+            let mut count = self.count_notes_for_area(area_id)?;
+            if count < require_min_notes
+                && let Some(text) = area_notes
+                && !text.trim().is_empty()
+            {
+                // Models often pass a summary in `notes` without scratchpad_append;
+                // coalesce into notes.jsonl so batch set_area(done) does not fail the turn.
+                self.append_note(json!({
+                    "area_id": area_id,
+                    "kind": "meta",
+                    "claim": text.trim(),
+                }))?;
+                count = self.count_notes_for_area(area_id)?;
+            }
             if count < require_min_notes {
                 return Err(ToolError::invalid_input(format!(
                     "area '{area_id}' has {count} note(s) but require_min_notes={require_min_notes}; \
@@ -681,6 +694,24 @@ mod tests {
         store
             .set_area_status("area-a", AreaStatus::Done, None, 1, &cfg)
             .expect("done ok");
+    }
+
+    #[test]
+    fn set_done_coalesces_notes_param_without_prior_append() {
+        let (_dir, ctx) = temp_workspace();
+        write_fixture(&ctx, "test-run-coalesce");
+        let store = ScratchpadStore::open(&ctx, "test-run-coalesce").expect("open");
+        let cfg = ScratchpadConfig::default();
+        store
+            .set_area_status(
+                "area-a",
+                AreaStatus::Done,
+                Some("Sub-agent summary: absdiff size check missing (HIGH)"),
+                1,
+                &cfg,
+            )
+            .expect("done with coalesced note");
+        assert_eq!(store.count_notes_for_area("area-a").expect("count"), 1);
     }
 
     #[test]

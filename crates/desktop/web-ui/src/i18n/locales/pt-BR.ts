@@ -1359,7 +1359,7 @@ const ptBr: TranslationMap = {
     intro:
       'Grava [long_horizon] em ~/.zagens/config.toml. Tri-estado do Composer (LHT / LHT·estrito / LHT·off) sobrescreve campos no próximo turno.',
     composerOverrideOff:
-      'Composer em LHT·off — harness desligado; Ativar e Modo padrão abaixo não valem neste turno.',
+      'Composer em LHT·off — settings e config.toml sincronizados; harness permanece off até reativar em Configurações ou mudar para estrito.',
     composerOverrideStrict:
       'Composer em LHT·estrito — sobrescreve Modo padrão e força sub-portões enforce.',
     sectionPresets: 'Predefinições harness',

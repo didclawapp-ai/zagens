@@ -1358,7 +1358,7 @@ const ja: TranslationMap = {
     intro:
       '~/.zagens/config.toml の [long_horizon] を編集。Composer 三態（LHT / LHT·厳格 / LHT·オフ）は次ターンで一部を上書き、再起動不要。',
     composerOverrideOff:
-      'Composer は LHT·オフ — harness 無効。下の「有効化」「デフォルトモード」はこの turn では適用されません。',
+      'Composer は LHT·オフ — settings と config.toml を同期して無効化。設定で再有効化するか厳格に切るまで harness はオフ。',
     composerOverrideStrict:
       'Composer は LHT·厳格 — 下の「デフォルトモード」を上書きし enforce 子門を強制。',
     sectionPresets: 'Harness プリセット',

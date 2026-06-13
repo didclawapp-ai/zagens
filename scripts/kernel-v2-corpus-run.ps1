@@ -43,8 +43,16 @@ if (-not $DryRun -and -not $env:DEEPSEEK_API_KEY) {
     if ($key) { $env:DEEPSEEK_API_KEY = $key }
 }
 if (-not $DryRun -and -not $env:DEEPSEEK_API_KEY) {
-    Write-Error "DEEPSEEK_API_KEY is not set. Export it or pass -DryRun."
-    exit 1
+    $baseCfg = Join-Path $env:USERPROFILE ".zagens\config.toml"
+    if (-not (Test-Path $baseCfg)) {
+        $baseCfg = Join-Path $env:USERPROFILE ".deepseek\config.toml"
+    }
+    if (Test-Path $baseCfg) {
+        Write-Host "DEEPSEEK_API_KEY not in env; continuing — runtime may resolve API key from OS keyring via merged config." -ForegroundColor DarkYellow
+    } else {
+        Write-Error "DEEPSEEK_API_KEY is not set. Export it, add to .env, or pass -DryRun."
+        exit 1
+    }
 }
 
 $utilPy = Get-LhtHarnessUtilPy -RepoRoot $repoRoot
@@ -87,7 +95,10 @@ if ($ToolsScheduler) {
     if ($sched -notin @("legacy", "shadow", "dag")) {
         throw "Invalid -ToolsScheduler '$ToolsScheduler' (expected legacy, shadow, or dag)"
     }
-    Add-Content -Path $configPath -Value "`n[tools]`nscheduler = `"$sched`""
+    if (-not (Select-String -Path $configPath -Pattern '^\[tools\]' -Quiet)) {
+        Add-Content -Path $configPath -Value "`n[tools]"
+    }
+    Add-Content -Path $configPath -Value "scheduler = `"$sched`""
 }
 if ($ToolsPolicy) {
     $pol = $ToolsPolicy.Trim().ToLower()

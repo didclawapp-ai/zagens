@@ -233,6 +233,8 @@ pub fn write_lht_composer_mode_setting(mode: LhtComposerMode) -> Result<()> {
     let serialized = toml::to_string_pretty(&doc).context("Failed to serialize settings")?;
     fs::write(&path, serialized)
         .with_context(|| format!("Failed to write settings to {}", path.display()))?;
+
+    crate::lht_config::sync_long_horizon_with_composer_mode(mode.as_str())?;
     Ok(())
 }
 

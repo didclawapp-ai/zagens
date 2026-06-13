@@ -1342,7 +1342,7 @@ const zhHans = {
     intro:
       '写入 ~/.zagens/config.toml 的 [long_horizon]。Composer 顶栏三态（LHT / LHT·严格 / LHT·关）在下一 turn 覆盖下方部分项，无需重启 sidecar。',
     composerOverrideOff:
-      'Composer 当前为 LHT·关 — runtime harness 已硬关闭，下方「启用」与「默认模式」在此 turn 不生效。',
+      'Composer 当前为 LHT·关 — 已同步关闭 settings 与 config.toml；除非在设置中重新启用或切到严格，harness 保持关闭。',
     composerOverrideStrict:
       'Composer 当前为 LHT·严格 — 覆盖下方「默认模式」并强制 enforce 子门。',
     sectionPresets: 'Harness 预置',

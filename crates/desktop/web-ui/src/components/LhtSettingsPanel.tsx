@@ -5,12 +5,12 @@ import {
   fetchLhtComposerMode,
   fetchLhtSettings,
   saveLhtSettings,
-  type LhtComposerMode,
   type LhtGateMode,
   type LhtPresetId,
   type LhtSettings,
 } from '../api/client';
 import { confirmDialog } from '../lib/confirmDialog';
+import { LHT_COMPOSER_MODE_CHANGED_EVENT, type LhtComposerMode } from './LhtModeToggle';
 
 interface Props {
   desktopHost: boolean;
@@ -53,6 +53,21 @@ export default function LhtSettingsPanel({ desktopHost, streaming = false }: Pro
     return () => {
       cancelled = true;
     };
+  }, [desktopHost]);
+
+  useEffect(() => {
+    if (!desktopHost) return;
+    const onComposerModeChanged = (event: Event) => {
+      const detail = (event as CustomEvent<LhtComposerMode>).detail;
+      if (detail === 'strict' || detail === 'off' || detail === 'auto') {
+        setComposerMode(detail);
+      }
+      void fetchLhtSettings()
+        .then((s) => setSettings(s))
+        .catch(() => {});
+    };
+    window.addEventListener(LHT_COMPOSER_MODE_CHANGED_EVENT, onComposerModeChanged);
+    return () => window.removeEventListener(LHT_COMPOSER_MODE_CHANGED_EVENT, onComposerModeChanged);
   }, [desktopHost]);
 
   const update = useCallback(<K extends keyof LhtSettings>(key: K, value: LhtSettings[K]) => {

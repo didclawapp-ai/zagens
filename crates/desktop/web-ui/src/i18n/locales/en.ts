@@ -1358,7 +1358,7 @@ const en: TranslationMap = {
     intro:
       'Writes ~/.zagens/config.toml [long_horizon]. Composer tri-state (LHT / LHT·strict / LHT·off) overrides some fields on the next turn without restart.',
     composerOverrideOff:
-      'Composer is LHT·off — runtime harness is hard-disabled; Enable and Default mode below do not apply this turn.',
+      'Composer is LHT·off — settings and config.toml are synced off; harness stays disabled until you re-enable in Settings or cycle to strict.',
     composerOverrideStrict:
       'Composer is LHT·strict — overrides Default mode below and forces enforce sub-gates.',
     sectionPresets: 'Harness presets',

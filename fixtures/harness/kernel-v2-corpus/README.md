@@ -67,6 +67,25 @@ The compare script also prints `pure_read tool_step p50` and `tool_phase p50`
 .\scripts\kernel-v2-corpus-run.ps1 -RunLabel m3-shadow -ToolsPolicy shadow
 ```
 
+### Mode matrix smoke (all policy/scheduler combinations)
+
+One fast scenario per combination (`read-three-files` by default); uses
+isolated merged configs (does not edit `~/.zagens/config.toml`):
+
+```powershell
+.\scripts\kernel-v2-mode-smoke.ps1
+.\scripts\kernel-v2-mode-smoke.ps1 -TaskId shell-git-status
+.\scripts\kernel-v2-mode-smoke.ps1 -Modes "policy-engine,full-v2" -TaskId write-append-readme
+```
+
+Modes: `legacy-legacy`, `policy-shadow`, `policy-engine`, `sched-shadow`,
+`sched-dag`, `full-v2`. Summary prints turn status and shadow diff counts.
+
+**Tier-1 closure (2026-06-13):** M0–M5 engineering delivery + accelerated gates
+signed off; defaults remain `policy=legacy`, `scheduler=legacy`. G milestone
+(delete legacy, flip defaults) is follow-up. Maintainer plan:
+`doc_Private/docs/tech/AGENT_KERNEL_V2_TIER1_PLAN.md`.
+
 Each scenario run probes `GET /v1/runtime/kernel-shadow` before the sidecar stops;
 counters are copied into `runs.jsonl` (`policy_shadow` / `scheduler_shadow`).
 
