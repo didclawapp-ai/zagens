@@ -63,8 +63,15 @@ impl FileTreeState {
         self.rebuild_lines(workspace);
     }
 
-    pub fn render_lines(&self, cursor: usize, scroll: usize, height: usize) -> Vec<(String, bool)> {
+    pub fn render_lines(
+        &self,
+        cursor: usize,
+        scroll: usize,
+        height: usize,
+        max_cols: usize,
+    ) -> Vec<(String, bool)> {
         let visible = height.max(4);
+        let max_cols = max_cols.max(8);
         let start = scroll.min(self.lines.len().saturating_sub(1));
         self.lines
             .iter()
@@ -72,22 +79,21 @@ impl FileTreeState {
             .skip(start)
             .take(visible)
             .map(|(idx, line)| {
+                // Cursor is shown via row highlight (no leading prefix column), so text
+                // sits right after the pane border. Dir chevron + space aligns file names
+                // with directory names at the same depth.
                 let marker = if line.is_dir {
                     if self.expanded.contains(&line.rel) {
-                        "v"
+                        "v "
                     } else {
-                        ">"
+                        "> "
                     }
                 } else {
-                    " "
+                    "- "
                 };
                 let indent = "  ".repeat(line.depth as usize);
-                let prefix = if idx == cursor { ">" } else { " " };
-                let text = format!(
-                    "{prefix}{indent}{marker} {}{}",
-                    line.label,
-                    dir_suffix(line.is_dir)
-                );
+                let raw = format!("{indent}{marker}{}{}", line.label, dir_suffix(line.is_dir));
+                let text = super::super::display_format::truncate_display_width(&raw, max_cols);
                 (text, idx == cursor)
             })
             .collect()
@@ -186,5 +192,21 @@ mod tests {
             .expect("src dir");
         tree.toggle_cursor(src_idx, tmp.path());
         assert!(tree.lines.iter().any(|l| l.label == "lib.rs"));
+    }
+
+    #[test]
+    fn render_lines_truncates_to_max_cols() {
+        let mut tree = FileTreeState::default();
+        tree.lines.push(FileTreeLine {
+            rel: "libzagens_runtime_adapters.rlib".into(),
+            depth: 2,
+            is_dir: false,
+            label: "libzagens_runtime_adapters.rlib".into(),
+        });
+        let (text, _) = tree.render_lines(0, 0, 8, 24).remove(0);
+        assert!(
+            crate::tui::display_format::display_width(&text) <= 24,
+            "line wider than pane: {text:?}"
+        );
     }
 }

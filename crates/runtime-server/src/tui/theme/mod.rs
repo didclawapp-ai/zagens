@@ -1,12 +1,22 @@
 //! Dracula-aligned TUI palette (24-bit RGB where supported).
 //!
-//! **Authoritative spec:** `doc_Private/docs/TUI方案.md` §6.10 — do not change token
-//! assignments without updating that section and the maintainer color sheet.
+//! **Authoritative spec:** `doc_Private/docs/TUI方案.md` §6.10 — semantic token
+//! assignments live in [`palette`]; panel backgrounds are theme-specific in [`surfaces`].
+
+mod palette;
+mod surfaces;
+
+pub use palette::*;
+pub use surfaces::{
+    ThemeLayout, TuiTheme, TuiThemeId, current, current_id, install, pane_chrome_rows,
+};
 
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 
 use super::transcript::TranscriptLineKind;
+
+use palette as p;
 
 /// Role prefix width for assistant continuation indent.
 pub const AI_TAG: &str = "AI> ";
@@ -15,102 +25,168 @@ pub const THINK_TAG: &str = "THK> ";
 pub const TOOL_TAG: &str = "tool ";
 pub const COMPOSER_PROMPT: &str = "> ";
 
-/// Canonical hex tokens — mirror §6.10 table (also used in tests/docs).
-pub mod palette {
-    use ratatui::style::Color;
+/// Layout region for surface-aware styling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TuiPanel {
+    Title,
+    Left,
+    Transcript,
+    Activity,
+    Composer,
+    Status,
+    Inspector,
+    Lht,
+}
 
-    // §6.10.1 核心语义
-    pub const USER_PROMPT: &str = "#8be9fd";
-    pub const USER_TEXT: &str = "#f8f8f2";
-    pub const AGENT_REPLY: &str = "#50fa7b";
-    pub const THINKING: &str = "#f1fa8c";
-    pub const WARNING: &str = "#ffb86c";
-    pub const ERROR: &str = "#ff5555";
-    pub const TOOL_CALL: &str = "#bd93f9";
-    pub const DIM: &str = "#6272a4";
-
-    // §6.10.2 侧边栏
-    pub const SIDEBAR_BG: &str = "#000000";
-    pub const SIDEBAR_ACTIVE: &str = "#222222";
-    pub const BADGE: &str = "#bd93f9";
-    pub const ITEM_TEXT: &str = "#f8f8f2";
-
-    // §6.10.3 Checklist
-    pub const CHECKLIST_DONE: &str = "#50fa7b";
-    pub const CHECKLIST_IN_PROGRESS: &str = "#f1fa8c";
-    pub const CHECKLIST_PENDING: &str = "#6272a4";
-    pub const PROGRESS_FILL: &str = "#50fa7b";
-
-    // §6.10.4 背景 / 表面
-    pub const BG: &str = "#000000";
-    pub const FOREGROUND: &str = "#f8f8f2";
-    pub const CODE_BG: &str = "#1e1e1e";
-    pub const TAG_BG: &str = "#141414";
-    /// Faint pane borders on black shell (~4:1 idle / ~5.5:1 focus vs #000).
-    pub const BORDER_IDLE: &str = "#555555";
-    pub const BORDER_FOCUS: &str = "#777777";
-
-    const fn rgb(r: u8, g: u8, b: u8) -> Color {
-        Color::Rgb(r, g, b)
+impl TuiPanel {
+    #[must_use]
+    pub fn surface_style(self, focused: bool) -> Style {
+        let theme = current();
+        let bg = if focused {
+            theme.surfaces.active_for(self)
+        } else {
+            theme.surfaces.surface_for(self)
+        };
+        Style::default().fg(p::foreground()).bg(bg)
     }
 
-    pub fn user_prompt() -> Color {
-        rgb(0x8b, 0xe9, 0xfd)
-    }
-    pub fn user_text() -> Color {
-        rgb(0xf8, 0xf8, 0xf2)
-    }
-    pub fn agent_reply() -> Color {
-        rgb(0x50, 0xfa, 0x7b)
-    }
-    pub fn thinking() -> Color {
-        rgb(0xf1, 0xfa, 0x8c)
-    }
-    pub fn warning() -> Color {
-        rgb(0xff, 0xb8, 0x6c)
-    }
-    pub fn error() -> Color {
-        rgb(0xff, 0x55, 0x55)
-    }
-    pub fn tool_call() -> Color {
-        rgb(0xbd, 0x93, 0xf9)
-    }
-    pub fn dim() -> Color {
-        rgb(0x62, 0x72, 0xa4)
-    }
-    pub fn sidebar_bg() -> Color {
-        rgb(0x00, 0x00, 0x00)
-    }
-    pub fn sidebar_active() -> Color {
-        rgb(0x22, 0x22, 0x22)
-    }
-    pub fn badge() -> Color {
-        rgb(0xbd, 0x93, 0xf9)
-    }
-    pub fn item_text() -> Color {
-        rgb(0xf8, 0xf8, 0xf2)
-    }
-    pub fn bg() -> Color {
-        rgb(0x00, 0x00, 0x00)
-    }
-    pub fn foreground() -> Color {
-        rgb(0xf8, 0xf8, 0xf2)
-    }
-    pub fn code_bg() -> Color {
-        rgb(0x1e, 0x1e, 0x1e)
-    }
-    pub fn tag_bg() -> Color {
-        rgb(0x14, 0x14, 0x14)
-    }
-    pub fn border_idle() -> Color {
-        rgb(0x55, 0x55, 0x55)
-    }
-    pub fn border_focus() -> Color {
-        rgb(0x77, 0x77, 0x77)
+    #[must_use]
+    pub fn surface_color(self, focused: bool) -> Color {
+        self.surface_style(focused).bg.unwrap_or(p::bg())
     }
 }
 
-use palette as p;
+/// Panel-scoped style helpers (preferred over legacy `sidebar_*` / `shell_*`).
+#[derive(Debug, Clone, Copy)]
+pub struct PanelStyles {
+    panel: TuiPanel,
+}
+
+#[must_use]
+pub fn panel(panel: TuiPanel) -> PanelStyles {
+    PanelStyles { panel }
+}
+
+impl PanelStyles {
+    #[must_use]
+    pub fn surface(self, focused: bool) -> Style {
+        self.panel.surface_style(focused)
+    }
+
+    #[must_use]
+    pub fn heading(self) -> Style {
+        self.surface(false)
+            .fg(p::foreground())
+            .add_modifier(Modifier::BOLD)
+    }
+
+    #[must_use]
+    pub fn item(self, selected: bool) -> Style {
+        let theme = current();
+        let bg = if selected {
+            theme.surfaces.active_for(self.panel)
+        } else {
+            theme.surfaces.surface_for(self.panel)
+        };
+        Style::default().fg(p::item_text()).bg(bg)
+    }
+
+    #[must_use]
+    pub fn hint(self) -> Style {
+        self.surface(false).fg(p::dim())
+    }
+
+    #[must_use]
+    pub fn tab(self, active: bool) -> Style {
+        if active {
+            self.surface(false)
+                .fg(p::user_prompt())
+                .add_modifier(Modifier::BOLD)
+        } else {
+            self.hint()
+        }
+    }
+
+    #[must_use]
+    pub fn checklist_header(self) -> Style {
+        self.heading()
+    }
+
+    #[must_use]
+    pub fn checklist_done(self) -> Style {
+        self.surface(false).fg(p::agent_reply())
+    }
+
+    #[must_use]
+    pub fn checklist_in_progress(self) -> Style {
+        self.surface(false)
+            .fg(p::thinking())
+            .add_modifier(Modifier::BOLD)
+    }
+
+    #[must_use]
+    pub fn checklist_in_progress_active(self) -> Style {
+        self.item(true)
+            .fg(p::thinking())
+            .add_modifier(Modifier::BOLD)
+    }
+
+    #[must_use]
+    pub fn checklist_pending(self) -> Style {
+        self.surface(false).fg(p::dim())
+    }
+
+    #[must_use]
+    pub fn composer_prompt(self) -> Style {
+        self.surface(true)
+            .fg(p::user_prompt())
+            .add_modifier(Modifier::BOLD)
+    }
+
+    #[must_use]
+    pub fn composer_input(self) -> Style {
+        self.surface(true)
+            .fg(p::user_text())
+            .add_modifier(Modifier::BOLD)
+    }
+
+    #[must_use]
+    pub fn composer_idle(self) -> Style {
+        self.surface(false).fg(p::dim())
+    }
+
+    #[must_use]
+    pub fn footer_separator(self) -> Style {
+        self.surface(false).fg(p::border_idle())
+    }
+
+    #[must_use]
+    pub fn footer_chip(self, color: Color) -> Style {
+        self.surface(false).fg(color).add_modifier(Modifier::BOLD)
+    }
+
+    #[must_use]
+    pub fn footer_muted(self) -> Style {
+        self.surface(false).fg(p::dim())
+    }
+
+    #[must_use]
+    pub fn footer_workspace(self) -> Style {
+        self.footer_muted()
+    }
+
+    #[must_use]
+    pub fn footer_context(self) -> Style {
+        self.surface(false).fg(p::tool_call())
+    }
+
+    #[must_use]
+    pub fn palette_selection(self) -> Style {
+        self.surface(true)
+            .fg(p::user_prompt())
+            .add_modifier(Modifier::BOLD)
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActivityPhase {
@@ -120,48 +196,44 @@ pub enum ActivityPhase {
     Other,
 }
 
-/// Full-frame / chat column surface (pure black).
-pub fn shell_main() -> Style {
-    Style::default().fg(p::foreground()).bg(p::bg())
+/// Initialize theme from persisted layout prefs (`tui-layout.toml` → `tui_theme`).
+pub fn install_from_prefs(theme_key: Option<&str>) {
+    let id = TuiThemeId::from_storage(theme_key);
+    install(TuiTheme::resolve(id));
 }
 
-/// Left / right rail surface (same black shell).
+pub fn warning() -> Color {
+    p::warning()
+}
+
+// ── Legacy helpers (delegate to default panels) ─────────────────────────────
+
+pub fn shell_main() -> Style {
+    panel(TuiPanel::Transcript).surface(false)
+}
+
 pub fn shell_sidebar() -> Style {
-    Style::default().fg(p::item_text()).bg(p::sidebar_bg())
+    panel(TuiPanel::Left).surface(false)
 }
 
 pub fn sidebar_heading() -> Style {
-    Style::default()
-        .fg(p::foreground())
-        .bg(p::sidebar_bg())
-        .add_modifier(Modifier::BOLD)
+    panel(TuiPanel::Left).heading()
 }
 
 pub fn sidebar_item(selected: bool) -> Style {
-    if selected {
-        Style::default().fg(p::item_text()).bg(p::sidebar_active())
-    } else {
-        Style::default().fg(p::item_text()).bg(p::sidebar_bg())
-    }
+    panel(TuiPanel::Left).item(selected)
 }
 
 pub fn sidebar_item_muted() -> Style {
-    Style::default().fg(p::dim()).bg(p::sidebar_bg())
+    panel(TuiPanel::Left).hint()
 }
 
 pub fn sidebar_tab(active: bool) -> Style {
-    if active {
-        Style::default()
-            .fg(p::user_prompt())
-            .bg(p::sidebar_bg())
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(p::dim()).bg(p::sidebar_bg())
-    }
+    panel(TuiPanel::Left).tab(active)
 }
 
 pub fn sidebar_hint() -> Style {
-    Style::default().fg(p::dim()).bg(p::sidebar_bg())
+    panel(TuiPanel::Left).hint()
 }
 
 pub fn overlay_panel() -> Style {
@@ -169,66 +241,65 @@ pub fn overlay_panel() -> Style {
 }
 
 pub fn border_focus() -> Style {
-    Style::default().fg(p::border_focus()).bg(p::bg())
+    Style::default()
+        .fg(p::border_focus())
+        .bg(TuiPanel::Transcript.surface_color(false))
 }
 
 pub fn border_idle() -> Style {
-    Style::default().fg(p::border_idle()).bg(p::bg())
+    Style::default()
+        .fg(p::border_idle())
+        .bg(TuiPanel::Transcript.surface_color(false))
 }
 
 pub fn border_focus_sidebar() -> Style {
-    Style::default().fg(p::border_focus()).bg(p::sidebar_bg())
+    Style::default()
+        .fg(p::border_focus())
+        .bg(TuiPanel::Left.surface_color(false))
 }
 
 pub fn border_idle_sidebar() -> Style {
-    Style::default().fg(p::border_idle()).bg(p::sidebar_bg())
+    Style::default()
+        .fg(p::border_idle())
+        .bg(TuiPanel::Left.surface_color(false))
 }
 
 pub fn title_bar() -> Style {
-    Style::default()
-        .fg(p::foreground())
-        .bg(p::bg())
+    panel(TuiPanel::Title)
+        .surface(false)
         .add_modifier(Modifier::BOLD)
 }
 
 pub fn hint() -> Style {
-    Style::default().fg(p::dim()).bg(p::bg())
+    panel(TuiPanel::Composer).hint()
 }
 
 pub fn composer_prompt() -> Style {
-    Style::default()
-        .fg(p::user_prompt())
-        .bg(p::bg())
-        .add_modifier(Modifier::BOLD)
+    panel(TuiPanel::Composer).composer_prompt()
 }
 
 pub fn composer_input() -> Style {
-    Style::default()
-        .fg(p::user_text())
-        .bg(p::bg())
-        .add_modifier(Modifier::BOLD)
+    panel(TuiPanel::Composer).composer_input()
 }
 
 pub fn composer_idle() -> Style {
-    Style::default().fg(p::dim()).bg(p::bg())
+    panel(TuiPanel::Composer).composer_idle()
 }
 
 pub fn composer_cursor() -> Style {
-    Style::default()
-        .fg(p::user_prompt())
-        .bg(p::bg())
-        .add_modifier(Modifier::BOLD)
+    composer_prompt()
 }
 
 pub fn composer_line(prompt_and_body: &str, focused: bool) -> Line<'static> {
+    let styles = panel(TuiPanel::Composer);
     let body_style = if focused {
-        composer_input()
+        styles.composer_input()
     } else {
-        composer_idle()
+        styles.composer_idle()
     };
     if let Some(body) = prompt_and_body.strip_prefix(COMPOSER_PROMPT) {
         return Line::from(vec![
-            Span::styled(COMPOSER_PROMPT.to_string(), composer_prompt()),
+            Span::styled(COMPOSER_PROMPT.to_string(), styles.composer_prompt()),
             Span::styled(body.to_string(), body_style),
         ]);
     }
@@ -236,14 +307,11 @@ pub fn composer_line(prompt_and_body: &str, focused: bool) -> Line<'static> {
 }
 
 pub fn footer_separator() -> Style {
-    Style::default().fg(p::border_idle()).bg(p::bg())
+    panel(TuiPanel::Status).footer_separator()
 }
 
 pub fn footer_chip(color: Color) -> Style {
-    Style::default()
-        .fg(color)
-        .bg(p::bg())
-        .add_modifier(Modifier::BOLD)
+    panel(TuiPanel::Status).footer_chip(color)
 }
 
 pub fn footer_model() -> Color {
@@ -263,22 +331,19 @@ pub fn footer_lht() -> Color {
 }
 
 pub fn footer_workspace() -> Style {
-    Style::default().fg(p::dim()).bg(p::bg())
+    panel(TuiPanel::Status).footer_workspace()
 }
 
 pub fn footer_context() -> Style {
-    Style::default().fg(p::tool_call()).bg(p::bg())
+    panel(TuiPanel::Status).footer_context()
 }
 
 pub fn footer_muted() -> Style {
-    Style::default().fg(p::dim()).bg(p::bg())
+    panel(TuiPanel::Status).footer_muted()
 }
 
 pub fn palette_selection() -> Style {
-    Style::default()
-        .fg(p::user_prompt())
-        .bg(p::bg())
-        .add_modifier(Modifier::BOLD)
+    panel(TuiPanel::Composer).palette_selection()
 }
 
 pub fn activity_phase_color(phase: ActivityPhase) -> Color {
@@ -293,9 +358,9 @@ pub fn activity_phase_color(phase: ActivityPhase) -> Color {
 pub fn activity_strip_line(text: &str, phase: ActivityPhase) -> Line<'static> {
     Line::from(Span::styled(
         text.to_string(),
-        Style::default()
+        panel(TuiPanel::Activity)
+            .surface(false)
             .fg(activity_phase_color(phase))
-            .bg(p::bg())
             .add_modifier(Modifier::BOLD),
     ))
 }
@@ -318,32 +383,23 @@ pub fn approval_body() -> Style {
 }
 
 pub fn checklist_header() -> Style {
-    Style::default()
-        .fg(p::foreground())
-        .bg(p::sidebar_bg())
-        .add_modifier(Modifier::BOLD)
+    panel(TuiPanel::Inspector).checklist_header()
 }
 
 pub fn checklist_done() -> Style {
-    Style::default().fg(p::agent_reply()).bg(p::sidebar_bg())
+    panel(TuiPanel::Inspector).checklist_done()
 }
 
 pub fn checklist_in_progress() -> Style {
-    Style::default()
-        .fg(p::thinking())
-        .bg(p::sidebar_bg())
-        .add_modifier(Modifier::BOLD)
+    panel(TuiPanel::Inspector).checklist_in_progress()
 }
 
 pub fn checklist_in_progress_active() -> Style {
-    Style::default()
-        .fg(p::thinking())
-        .bg(p::sidebar_active())
-        .add_modifier(Modifier::BOLD)
+    panel(TuiPanel::Inspector).checklist_in_progress_active()
 }
 
 pub fn checklist_pending() -> Style {
-    Style::default().fg(p::dim()).bg(p::sidebar_bg())
+    panel(TuiPanel::Inspector).checklist_pending()
 }
 
 fn role_style(kind: TranscriptLineKind, live: bool) -> Style {
@@ -357,7 +413,9 @@ fn role_style(kind: TranscriptLineKind, live: bool) -> Style {
         } else {
             Modifier::empty()
         }),
+        TranscriptLineKind::ToolError => base.fg(p::warning()).add_modifier(Modifier::BOLD),
         TranscriptLineKind::System => base.fg(p::error()).add_modifier(Modifier::BOLD),
+        TranscriptLineKind::Notice => base.fg(p::dim()),
         TranscriptLineKind::Meta => base.fg(p::dim()),
         TranscriptLineKind::Spacer => shell_main(),
     }
@@ -382,7 +440,9 @@ fn body_style(kind: TranscriptLineKind, live: bool) -> Style {
                 base.fg(p::tool_call())
             }
         }
+        TranscriptLineKind::ToolError => base.fg(p::warning()).add_modifier(Modifier::BOLD),
         TranscriptLineKind::System => base.fg(p::error()).add_modifier(Modifier::BOLD),
+        TranscriptLineKind::Notice => base.fg(p::dim()),
         TranscriptLineKind::Meta => base.fg(p::dim()),
         TranscriptLineKind::Spacer => shell_main(),
     }
@@ -442,11 +502,11 @@ pub fn transcript_line(kind: TranscriptLineKind, text: &str, live: bool) -> Line
 }
 
 fn tagged_line(tag: &str, body: &str, kind: TranscriptLineKind, live: bool) -> Line<'static> {
-    // Assistant / tool tag and body share the same token — one span avoids
-    // Windows terminal width overflow when tag+body are split (streaming overlap).
     if matches!(
         kind,
-        TranscriptLineKind::Assistant | TranscriptLineKind::ToolChain
+        TranscriptLineKind::Assistant
+            | TranscriptLineKind::ToolChain
+            | TranscriptLineKind::ToolError
     ) {
         return Line::from(Span::styled(format!("{tag}{body}"), body_style(kind, live)));
     }
@@ -472,8 +532,13 @@ mod tests {
         line.spans.last().and_then(|s| s.style.bg)
     }
 
+    fn setup() {
+        install(TuiTheme::default_theme());
+    }
+
     #[test]
     fn transcript_roles_use_palette_tokens() {
+        setup();
         let user = transcript_line(TranscriptLineKind::User, "you> hi", false);
         let think = transcript_line(TranscriptLineKind::Thinking, "THK> reasoning done", false);
         let tool = transcript_line(TranscriptLineKind::ToolChain, "tool + read_file: ok", false);
@@ -497,7 +562,20 @@ mod tests {
     }
 
     #[test]
-    fn shell_main_uses_dracula_bg() {
-        assert_eq!(shell_main().bg, Some(p::bg()));
+    fn shell_main_uses_transcript_surface() {
+        setup();
+        assert_eq!(
+            shell_main().bg,
+            Some(TuiTheme::default_theme().surfaces.transcript)
+        );
+    }
+
+    #[test]
+    fn cool_blue_left_differs_from_transcript() {
+        setup();
+        assert_ne!(
+            panel(TuiPanel::Left).surface(false).bg,
+            panel(TuiPanel::Transcript).surface(false).bg
+        );
     }
 }

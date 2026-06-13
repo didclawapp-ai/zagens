@@ -19,10 +19,9 @@ use crate::core::events::{Event, TurnOutcomeStatus};
 const TOOL_DETAIL_MAX: usize = 2048;
 /// Blank rows between conversation turns (user prompt → next user prompt).
 const TURN_GAP_LINES: usize = 2;
-/// Blank rows between sections inside one turn (user / THK / tools / AI).
-const SECTION_GAP_LINES: usize = 0;
-/// Blank rows between consecutive `\n`-separated lines in one assistant prose block (lists, headers).
-const PROSE_LINE_GAP_LINES: usize = 0;
+/// Blank row between the user prompt and the agent's response (THK / tools / AI) in one turn.
+/// Sections inside the agent block stay packed.
+const USER_RESPONSE_GAP_LINES: usize = 1;
 const THINKING_PREVIEW_MAX: usize = 120;
 
 /// Visual category for transcript coloring.
@@ -33,8 +32,22 @@ pub(crate) enum TranscriptLineKind {
     Assistant,
     Thinking,
     ToolChain,
+    /// A finished tool call that failed (success == Some(false)) — warning tint.
+    ToolError,
+    /// Hard error / failed turn — red.
     System,
+    /// Benign informational system line (model switch, new session, resume …) — muted.
+    Notice,
     Meta,
+}
+
+/// Severity for `TranscriptItem::System` lines so info notices are not painted as errors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SystemLevel {
+    /// Informational (model/workspace switch, new session, resume banner, queued …).
+    Info,
+    /// Engine error or failed turn.
+    Error,
 }
 
 #[derive(Clone)]
@@ -50,7 +63,25 @@ struct LogicalLine {
 #[derive(Debug, Clone, PartialEq)]
 pub enum TranscriptItem {
     Turn(TranscriptTurn),
-    System { text: String },
+    System { text: String, level: SystemLevel },
+}
+
+impl TranscriptItem {
+    /// Informational system line (muted), e.g. model/workspace switch or resume banner.
+    pub fn info(text: String) -> Self {
+        TranscriptItem::System {
+            text,
+            level: SystemLevel::Info,
+        }
+    }
+
+    /// Error system line (red), e.g. engine error or failed turn.
+    pub fn error(text: String) -> Self {
+        TranscriptItem::System {
+            text,
+            level: SystemLevel::Error,
+        }
+    }
 }
 
 #[derive(Clone, Default)]
@@ -357,8 +388,8 @@ impl TranscriptState {
             }
             match item {
                 TranscriptItem::Turn(turn) => append_turn_lines(&mut lines, turn, self),
-                TranscriptItem::System { text } => {
-                    lines.extend(logical_lines_for_system(text));
+                TranscriptItem::System { text, level } => {
+                    lines.extend(logical_lines_for_system(text, *level));
                 }
             }
         }
@@ -367,17 +398,25 @@ impl TranscriptState {
 }
 
 fn append_turn_lines(lines: &mut Vec<LogicalLine>, turn: &TranscriptTurn, state: &TranscriptState) {
-    let mut section_idx = 0usize;
-    let push_section_gap = |section_idx: &mut usize| {
-        *section_idx += 1;
-    };
-
-    push_section_gap(&mut section_idx);
     lines.extend(logical_lines_for_user(&turn.user));
 
     let has_thinking = turn.thinking.streaming || !turn.thinking.text.trim().is_empty();
+    let has_agent_section = has_thinking
+        || !turn.tools.is_empty()
+        || turn.content_streaming
+        || !turn.content.trim().is_empty()
+        || turn
+            .harness
+            .iter()
+            .any(|line| !is_transcript_noise_harness(line));
+
+    // One blank row separates the user prompt from the agent's work (THK / tools / AI).
+    // Sections inside the agent block stay packed.
+    if !turn.user.trim().is_empty() && has_agent_section {
+        lines.push(LogicalLine::user_response_spacer());
+    }
+
     if has_thinking {
-        push_section_gap(&mut section_idx);
         lines.extend(logical_lines_for_merged_thinking(
             &turn.thinking.text,
             turn.thinking.char_count,
@@ -388,7 +427,6 @@ fn append_turn_lines(lines: &mut Vec<LogicalLine>, turn: &TranscriptTurn, state:
     }
 
     if !turn.tools.is_empty() {
-        push_section_gap(&mut section_idx);
         if turn.tools_collapsed {
             lines.extend(logical_lines_for_tools_summary(
                 &turn.tools,
@@ -407,7 +445,6 @@ fn append_turn_lines(lines: &mut Vec<LogicalLine>, turn: &TranscriptTurn, state:
     }
 
     if turn.content_streaming || !turn.content.trim().is_empty() {
-        push_section_gap(&mut section_idx);
         lines.extend(logical_lines_for_assistant(
             &turn.content,
             turn.content_streaming,
@@ -415,7 +452,6 @@ fn append_turn_lines(lines: &mut Vec<LogicalLine>, turn: &TranscriptTurn, state:
     }
 
     if !turn.harness.is_empty() {
-        push_section_gap(&mut section_idx);
         for line in &turn.harness {
             if is_transcript_noise_harness(line) {
                 continue;
@@ -554,23 +590,25 @@ impl LogicalLine {
         }
     }
 
-    fn section_spacer() -> Self {
+    /// Single blank row between the user prompt and the agent's response block.
+    fn user_response_spacer() -> Self {
         Self {
             kind: TranscriptLineKind::Spacer,
             text: String::new(),
             table_rows: None,
             thinking_live: false,
-            gap_lines: SECTION_GAP_LINES,
+            gap_lines: USER_RESPONSE_GAP_LINES,
         }
     }
 
-    fn prose_line_spacer() -> Self {
+    /// Single blank row between paragraphs (`\n\n`) inside one assistant block.
+    fn prose_paragraph_spacer() -> Self {
         Self {
             kind: TranscriptLineKind::Spacer,
             text: String::new(),
             table_rows: None,
             thinking_live: false,
-            gap_lines: PROSE_LINE_GAP_LINES,
+            gap_lines: 1,
         }
     }
 
@@ -631,28 +669,34 @@ fn logical_lines_for_assistant(text: &str, streaming: bool) -> Vec<LogicalLine> 
                 }
                 let prose_lines: Vec<&str> = prose.lines().collect();
                 let line_count = prose_lines.len();
+                let mut pending_blank = false;
                 for (i, line) in prose_lines.iter().enumerate() {
                     if line.trim().is_empty() {
+                        // Collapse runs of blank source lines into one paragraph break;
+                        // skip leading blanks (nothing emitted yet).
+                        if !out.is_empty() {
+                            pending_blank = true;
+                        }
                         continue;
                     }
-                    let prefix = if first_assistant_line && i == 0 {
-                        AI_TAG
-                    } else {
-                        "    "
-                    };
+                    let prefix = if first_assistant_line { AI_TAG } else { "    " };
                     let tail = if streaming && block_idx + 1 == blocks.len() && i + 1 == line_count
                     {
                         suffix
                     } else {
                         ""
                     };
+                    if pending_blank {
+                        out.push(LogicalLine::prose_paragraph_spacer());
+                        pending_blank = false;
+                    }
                     out.push(LogicalLine::plain(
                         TranscriptLineKind::Assistant,
                         format!("{prefix}{line}{tail}"),
                         false,
                     ));
+                    first_assistant_line = false;
                 }
-                first_assistant_line = false;
             }
         }
     }
@@ -683,8 +727,13 @@ fn logical_lines_for_tool(tool: &TurnTool, anim_since: Option<Instant>) -> Vec<L
         };
         (mark.to_string(), false)
     };
+    let header_kind = if tool.success == Some(false) {
+        TranscriptLineKind::ToolError
+    } else {
+        TranscriptLineKind::ToolChain
+    };
     let mut out = vec![LogicalLine::plain(
-        TranscriptLineKind::ToolChain,
+        header_kind,
         format!("{TOOL_TAG}{mark} {}: {}", tool.name, tool.summary),
         live,
     )];
@@ -700,9 +749,13 @@ fn logical_lines_for_tool(tool: &TurnTool, anim_since: Option<Instant>) -> Vec<L
     out
 }
 
-fn logical_lines_for_system(text: &str) -> Vec<LogicalLine> {
+fn logical_lines_for_system(text: &str, level: SystemLevel) -> Vec<LogicalLine> {
+    let kind = match level {
+        SystemLevel::Info => TranscriptLineKind::Notice,
+        SystemLevel::Error => TranscriptLineKind::System,
+    };
     text.lines()
-        .map(|line| LogicalLine::plain(TranscriptLineKind::System, format!("-- {line}"), false))
+        .map(|line| LogicalLine::plain(kind, format!("-- {line}"), false))
         .collect()
 }
 
@@ -719,7 +772,7 @@ fn push_harness_line(state: &mut TranscriptState, text: String) {
     if let Some(turn) = state.active_turn_mut() {
         turn.harness.push(text);
     } else {
-        state.items.push(TranscriptItem::System { text });
+        state.items.push(TranscriptItem::info(text));
     }
 }
 
@@ -866,15 +919,13 @@ pub fn apply_event(state: &mut TranscriptState, event: Event) {
             }
             if matches!(status, TurnOutcomeStatus::Failed) || error.is_some() {
                 let msg = error.unwrap_or_else(|| format!("turn {status:?}"));
-                state.items.push(TranscriptItem::System { text: msg });
+                state.items.push(TranscriptItem::error(msg));
             }
             state.close_open_turn();
         }
         Event::Error { envelope, .. } => {
             state.streaming = false;
-            state.items.push(TranscriptItem::System {
-                text: envelope.message,
-            });
+            state.items.push(TranscriptItem::error(envelope.message));
             state.close_open_turn();
         }
         Event::Status { message } => {
@@ -1002,7 +1053,7 @@ pub fn seed_from_messages(
                     items.push(TranscriptItem::Turn(turn));
                 }
             }
-            _ => items.push(TranscriptItem::System { text }),
+            _ => items.push(TranscriptItem::info(text)),
         }
     }
     if let Some(user) = pending_user {
@@ -1281,14 +1332,14 @@ mod tests {
     }
 
     #[test]
-    fn render_skips_markdown_blank_lines_in_prose() {
+    fn render_keeps_single_blank_row_between_paragraphs() {
         let mut state = TranscriptState::default();
         let mut turn = TranscriptTurn::new("para".to_string());
-        turn.content = "first paragraph\n\nsecond paragraph".to_string();
+        turn.content = "first paragraph\n\n\nsecond paragraph".to_string();
         turn.open = false;
         push_closed_turn(&mut state, turn);
         let joined = render_joined(&mut state, 40, 80);
-        let lines: Vec<&str> = joined.lines().filter(|l| !l.trim().is_empty()).collect();
+        let lines: Vec<&str> = joined.lines().collect();
         let first = lines
             .iter()
             .position(|l| l.contains("first paragraph"))
@@ -1299,8 +1350,8 @@ mod tests {
             .expect("second");
         assert_eq!(
             second,
-            first + 1,
-            "expected no blank row between paragraphs"
+            first + 2,
+            "expected exactly one blank row separating paragraphs (multiple blanks collapse to one)"
         );
     }
 
@@ -1446,7 +1497,7 @@ mod tests {
         );
         assert!(matches!(
             &state.items[0],
-            TranscriptItem::System { text } if text.contains("cycle 1→2")
+            TranscriptItem::System { text, .. } if text.contains("cycle 1→2")
         ));
     }
 

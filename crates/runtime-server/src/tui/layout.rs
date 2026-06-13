@@ -7,6 +7,7 @@ use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use serde::{Deserialize, Serialize};
 
 use super::focus::FocusRegion;
+use super::theme;
 
 const MIN_CENTER_COLS: u16 = 40;
 const LEFT_MAX: u16 = 32;
@@ -28,6 +29,9 @@ pub const COMPOSER_FOOTER_DIVIDER_ROWS: u16 = 1;
 
 /// Blank columns inset from center column side borders before text (each side).
 pub const CENTER_CONTENT_PAD: u16 = 1;
+
+/// Black separator column between panels in borderless themes (avoids seam bleed on Windows).
+pub const BORDERLESS_GUTTER_COLS: u16 = 1;
 
 /// Minimum rows for the upper inspector pane when LHT lower pane is visible.
 pub const RIGHT_INSPECTOR_MIN_ROWS: u16 = 5;
@@ -77,6 +81,9 @@ pub struct TuiLayoutPrefs {
     /// Right rail width in terminal columns (`None` = 30% default).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub right_width: Option<u16>,
+    /// TUI surface theme (`cool-blue`, `gray-scale`, `classic`, …). Default: cool-blue.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tui_theme: Option<String>,
 }
 
 fn default_inspector() -> String {
@@ -91,6 +98,7 @@ impl Default for TuiLayoutPrefs {
             active_inspector: default_inspector(),
             last_thread_id: None,
             right_width: None,
+            tui_theme: None,
         }
     }
 }
@@ -155,8 +163,21 @@ pub struct LayoutRegions {
     pub left: Rect,
     pub center: Rect,
     pub right: Rect,
+    /// 1-col black gutter between left and center (borderless only).
+    pub gutter_left: Rect,
+    /// 1-col black gutter between center and right (borderless only).
+    pub gutter_right: Rect,
     pub left_visible: bool,
     pub right_visible: bool,
+}
+
+/// Vertical stack inside the center column (transcript → activity? → composer → status).
+#[derive(Debug, Clone)]
+pub struct CenterColumnRegions {
+    pub transcript: Rect,
+    pub activity: Option<Rect>,
+    pub composer: Rect,
+    pub status: Rect,
 }
 
 pub struct LayoutEngine {
@@ -296,6 +317,8 @@ impl LayoutEngine {
                 left: Rect::default(),
                 center: body,
                 right: Rect::default(),
+                gutter_left: Rect::default(),
+                gutter_right: Rect::default(),
                 left_visible: false,
                 right_visible: false,
             };
@@ -314,10 +337,22 @@ impl LayoutEngine {
         } else {
             0
         };
+        let borderless = theme::current().borderless();
+        let gutter = if borderless {
+            BORDERLESS_GUTTER_COLS
+        } else {
+            0
+        };
+        let gutter_total = if borderless {
+            (u16::from(left_visible) + u16::from(right_visible)) * gutter
+        } else {
+            0
+        };
         let center_w = area
             .width
             .saturating_sub(left_w)
             .saturating_sub(right_w)
+            .saturating_sub(gutter_total)
             .saturating_sub(4);
 
         let (left_w, right_w, left_visible, right_visible) = if center_w < MIN_CENTER_COLS {
@@ -333,9 +368,15 @@ impl LayoutEngine {
         let mut h_constraints = Vec::new();
         if left_visible {
             h_constraints.push(Constraint::Length(left_w));
+            if gutter > 0 {
+                h_constraints.push(Constraint::Length(gutter));
+            }
         }
         h_constraints.push(Constraint::Min(MIN_CENTER_COLS));
         if right_visible {
+            if gutter > 0 {
+                h_constraints.push(Constraint::Length(gutter));
+            }
             h_constraints.push(Constraint::Length(right_w));
         }
 
@@ -352,10 +393,24 @@ impl LayoutEngine {
         } else {
             Rect::default()
         };
+        let gutter_left = if left_visible && gutter > 0 {
+            let r = cols[idx];
+            idx += 1;
+            r
+        } else {
+            Rect::default()
+        };
         let center = {
             let r = cols[idx];
             idx += 1;
             r
+        };
+        let gutter_right = if right_visible && gutter > 0 {
+            let r = cols[idx];
+            idx += 1;
+            r
+        } else {
+            Rect::default()
         };
         let right = if right_visible {
             cols.get(idx).copied().unwrap_or_default()
@@ -368,6 +423,8 @@ impl LayoutEngine {
             left,
             center,
             right,
+            gutter_left,
+            gutter_right,
             left_visible,
             right_visible,
         }
@@ -395,13 +452,58 @@ impl LayoutEngine {
             lht_visible: true,
         }
     }
+}
 
-    pub fn center_panes(&self, center: Rect) -> (Rect, Rect) {
-        let rows = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Min(8), Constraint::Length(self.composer_lines)])
-            .split(center);
-        (rows[0], rows[1])
+/// Split the center column into transcript, optional activity strip, composer, and status.
+pub fn split_center_column(
+    area: Rect,
+    live_activity: bool,
+    composer_lines: u16,
+) -> CenterColumnRegions {
+    let chrome_rows = super::theme::pane_chrome_rows();
+    let footer_rows = COMPOSER_FOOTER_ROWS.saturating_add(chrome_rows);
+    let activity_rows = if live_activity {
+        1_u16.saturating_add(chrome_rows)
+    } else {
+        0
+    };
+    let input_rows = composer_lines
+        .saturating_sub(footer_rows)
+        .saturating_sub(activity_rows)
+        .max(chrome_rows.saturating_add(1));
+
+    let mut constraints: Vec<Constraint> = vec![Constraint::Min(8)];
+    if live_activity {
+        constraints.push(Constraint::Length(activity_rows));
+    }
+    constraints.extend([
+        Constraint::Length(input_rows),
+        Constraint::Length(footer_rows),
+    ]);
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(constraints)
+        .split(area);
+
+    let mut idx = 0usize;
+    let transcript = rows[idx];
+    idx += 1;
+    let activity = if live_activity {
+        let act = rows[idx];
+        idx += 1;
+        Some(act)
+    } else {
+        None
+    };
+    let composer = rows[idx];
+    idx += 1;
+    let status = rows[idx];
+
+    CenterColumnRegions {
+        transcript,
+        activity,
+        composer,
+        status,
     }
 }
 
@@ -473,6 +575,41 @@ mod tests {
         assert!(engine.adjust_right_width(1));
         assert_eq!(engine.prefs.right_width, Some(bounds));
         assert!(!engine.adjust_right_width(1));
+    }
+
+    #[test]
+    fn split_center_live_activity_fits_small_center() {
+        crate::tui::theme::install(crate::tui::theme::TuiTheme::default_theme());
+        let area = Rect::new(0, 0, 60, 14);
+        let center = split_center_column(area, true, 9);
+        assert!(center.transcript.height > 0);
+        assert!(center.composer.height > 0);
+        assert!(center.status.height > 0);
+        assert!(center.activity.is_some());
+    }
+
+    #[test]
+    fn borderless_layout_inserts_gutters() {
+        crate::tui::theme::install(crate::tui::theme::TuiTheme::default_theme());
+        let engine = LayoutEngine::new(false, TuiLayoutPrefs::default());
+        let regions = engine.regions(Rect::new(0, 0, 140, 40));
+        assert!(regions.left_visible);
+        assert!(regions.right_visible);
+        assert_eq!(regions.gutter_left.width, BORDERLESS_GUTTER_COLS);
+        assert_eq!(regions.gutter_right.width, BORDERLESS_GUTTER_COLS);
+        assert_eq!(regions.left.x + regions.left.width, regions.gutter_left.x);
+        assert_eq!(
+            regions.gutter_left.x + regions.gutter_left.width,
+            regions.center.x
+        );
+        assert_eq!(
+            regions.center.x + regions.center.width,
+            regions.gutter_right.x
+        );
+        assert_eq!(
+            regions.gutter_right.x + regions.gutter_right.width,
+            regions.right.x
+        );
     }
 
     #[test]

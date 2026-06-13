@@ -15,8 +15,11 @@ use ratatui::text::{Line, Span};
 
 use crate::config::Config;
 
+use super::display_format::{display_width, truncate_display_width};
 use super::layout::InspectorTab;
-use super::theme;
+use super::theme::{self, TuiPanel};
+
+const INSPECTOR: TuiPanel = TuiPanel::Inspector;
 
 pub use agents::{AgentEntry, line_count as agents_line_count};
 pub use diff::{DiffPanelState, git_diff_patch, load_diff_panel};
@@ -68,63 +71,88 @@ impl InspectorCache {
         &self,
         tab: InspectorTab,
         height: usize,
+        max_cols: usize,
         ui: &InspectorInteraction,
         workspace: &Path,
     ) -> Vec<Line<'static>> {
+        let max_cols = max_cols.max(8);
         if tab == InspectorTab::Files {
             if let Some(body) = ui.file_preview_body.as_ref() {
                 let rel = ui.file_preview_rel.as_deref().unwrap_or("");
-                return render_detail_lines(
-                    &format!("preview: {rel} | Esc back"),
-                    body.clone(),
-                    height,
-                    ui.scroll,
+                return clip_sidebar_lines(
+                    render_detail_lines(
+                        &format!("preview: {rel} | Esc back"),
+                        body.clone(),
+                        height,
+                        ui.scroll,
+                    ),
+                    max_cols,
                 );
             }
             if let Some(rel) = ui.file_preview_rel.as_deref() {
-                return render_detail_lines(
-                    &format!("preview: {rel} | Esc back"),
-                    read_text_preview(workspace, rel),
-                    height,
-                    ui.scroll,
+                return clip_sidebar_lines(
+                    render_detail_lines(
+                        &format!("preview: {rel} | Esc back"),
+                        read_text_preview(workspace, rel),
+                        height,
+                        ui.scroll,
+                    ),
+                    max_cols,
                 );
             }
-            return self
-                .file_tree
-                .render_lines(ui.file_cursor, ui.scroll, height)
-                .into_iter()
-                .map(|(text, selected)| {
-                    Line::from(Span::styled(
-                        text,
-                        if selected {
-                            theme::sidebar_item(true)
-                        } else {
-                            theme::sidebar_item(false)
-                        },
-                    ))
-                })
-                .collect();
+            return clip_sidebar_lines(
+                self.file_tree
+                    .render_lines(ui.file_cursor, ui.scroll, height, max_cols)
+                    .into_iter()
+                    .map(|(text, selected)| {
+                        Line::from(Span::styled(
+                            text,
+                            if selected {
+                                theme::panel(INSPECTOR).item(true)
+                            } else {
+                                theme::panel(INSPECTOR).item(false)
+                            },
+                        ))
+                    })
+                    .collect(),
+                max_cols,
+            );
         }
 
         if tab == InspectorTab::Diff {
             if let Some(body) = ui.diff_detail_body.as_ref() {
                 let path = ui.diff_detail_path.as_deref().unwrap_or("");
-                return render_detail_lines(
-                    &format!("diff: {path} | Esc back"),
-                    body.clone(),
-                    height,
-                    ui.scroll,
+                return clip_sidebar_lines(
+                    render_detail_lines(
+                        &format!("diff: {path} | Esc back"),
+                        body.clone(),
+                        height,
+                        ui.scroll,
+                    ),
+                    max_cols,
                 );
             }
-            return render_diff_list(&self.diff, height, ui);
+            return clip_sidebar_lines(
+                render_diff_list(&self.diff, height, ui, max_cols),
+                max_cols,
+            );
         }
 
         if tab == InspectorTab::Agents {
-            return agents::render_styled_panel(&self.agents, height, ui.scroll, ui.agents_cursor);
+            return clip_sidebar_lines(
+                agents::render_styled_panel(
+                    &self.agents,
+                    height,
+                    ui.scroll,
+                    ui.agents_cursor,
+                    max_cols,
+                ),
+                max_cols,
+            );
         }
 
         if tab == InspectorTab::Mcp {
-            return render_mcp_list(&self.mcp, height, ui);
+            return clip_sidebar_lines(render_mcp_list(&self.mcp, height, ui, max_cols), max_cols);
         }
 
         Vec::new()
@@ -140,31 +168,37 @@ fn render_diff_list(
     panel: &DiffPanelState,
     height: usize,
     ui: &InspectorInteraction,
+    max_cols: usize,
 ) -> Vec<Line<'static>> {
     let visible = height.max(4);
+    let path_budget = max_cols.saturating_sub(14).max(8);
     let mut lines: Vec<Line<'static>> = vec![Line::from(Span::styled(
-        panel.header.clone(),
-        theme::sidebar_hint(),
+        sidebar_plain(&panel.header, max_cols),
+        theme::panel(INSPECTOR).hint(),
     ))];
     if let Some(err) = &panel.error {
         lines.push(Line::from(Span::styled(
-            err.clone(),
-            theme::sidebar_item(false),
+            sidebar_plain(err, max_cols),
+            theme::panel(INSPECTOR).item(false),
         )));
         return clip_lines(lines, visible, ui.scroll);
     }
     if panel.entries.is_empty() {
-        lines.push(Line::from(Span::styled("(clean)", theme::sidebar_hint())));
+        lines.push(Line::from(Span::styled(
+            "(clean)",
+            theme::panel(INSPECTOR).hint(),
+        )));
         return clip_lines(lines, visible, ui.scroll);
     }
     for (idx, entry) in panel.entries.iter().enumerate() {
         let mark = if idx == ui.diff_cursor { ">" } else { " " };
+        let path = sidebar_plain(&entry.path, path_budget);
         lines.push(Line::from(Span::styled(
-            format!("{mark} {:<8} {}", entry.summary, entry.path),
+            format!("{mark} {:<8} {path}", entry.summary),
             if idx == ui.diff_cursor {
-                theme::sidebar_item(true)
+                theme::panel(INSPECTOR).item(true)
             } else {
-                theme::sidebar_item(false)
+                theme::panel(INSPECTOR).item(false)
             },
         )));
     }
@@ -175,16 +209,17 @@ fn render_mcp_list(
     panel: &McpPanelState,
     height: usize,
     ui: &InspectorInteraction,
+    max_cols: usize,
 ) -> Vec<Line<'static>> {
     let visible = height.max(4);
     let mut lines: Vec<Line<'static>> = vec![Line::from(Span::styled(
-        panel.header.clone(),
-        theme::sidebar_hint(),
+        sidebar_plain(&panel.header, max_cols),
+        theme::panel(INSPECTOR).hint(),
     ))];
     if panel.servers.is_empty() {
         lines.push(Line::from(Span::styled(
             "(no servers configured)",
-            theme::sidebar_hint(),
+            theme::panel(INSPECTOR).hint(),
         )));
         return clip_lines(lines, visible, ui.scroll);
     }
@@ -193,29 +228,32 @@ fn render_mcp_list(
         let mark = if idx == ui.mcp_cursor { ">" } else { " " };
         let chevron = if expanded { "v" } else { ">" };
         lines.push(Line::from(Span::styled(
-            format!(
-                "{mark} {chevron} {} ({}, tools:{})",
-                server.name,
-                server.transport,
-                server.tools.len()
+            sidebar_plain(
+                &format!(
+                    "{mark} {chevron} {} ({}, tools:{})",
+                    server.name,
+                    server.transport,
+                    server.tools.len()
+                ),
+                max_cols,
             ),
             if idx == ui.mcp_cursor {
-                theme::sidebar_item(true)
+                theme::panel(INSPECTOR).item(true)
             } else {
-                theme::sidebar_item(false)
+                theme::panel(INSPECTOR).item(false)
             },
         )));
         if expanded {
             if server.tools.is_empty() {
                 lines.push(Line::from(Span::styled(
-                    "    (no tools)",
-                    theme::sidebar_hint(),
+                    sidebar_plain("    (no tools)", max_cols),
+                    theme::panel(INSPECTOR).hint(),
                 )));
             } else {
                 for tool in &server.tools {
                     lines.push(Line::from(Span::styled(
-                        format!("    · {tool}"),
-                        theme::sidebar_item(false),
+                        sidebar_plain(&format!("    · {tool}"), max_cols),
+                        theme::panel(INSPECTOR).item(false),
                     )));
                 }
             }
@@ -238,9 +276,54 @@ fn render_detail_lines(
             .add_modifier(Modifier::BOLD),
     ))];
     for line in body {
-        lines.push(Line::from(Span::styled(line, theme::sidebar_item(false))));
+        lines.push(Line::from(Span::styled(
+            line,
+            theme::panel(INSPECTOR).item(false),
+        )));
     }
     clip_lines(lines, visible, scroll)
+}
+
+fn sidebar_plain(text: &str, max_cols: usize) -> String {
+    if display_width(text) <= max_cols {
+        text.to_string()
+    } else {
+        truncate_display_width(text, max_cols)
+    }
+}
+
+fn clip_sidebar_lines(lines: Vec<Line<'static>>, max_cols: usize) -> Vec<Line<'static>> {
+    lines
+        .into_iter()
+        .map(|line| clip_sidebar_line(line, max_cols))
+        .collect()
+}
+
+fn clip_sidebar_line(line: Line<'static>, max_cols: usize) -> Line<'static> {
+    if line.spans.is_empty() {
+        return line;
+    }
+    if line.spans.len() == 1 {
+        let span = &line.spans[0];
+        return Line::from(Span::styled(
+            sidebar_plain(span.content.as_ref(), max_cols),
+            span.style,
+        ));
+    }
+    let plain: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+    if display_width(&plain) <= max_cols {
+        return line;
+    }
+    let style = line
+        .spans
+        .iter()
+        .find(|s| !s.content.is_empty())
+        .map(|s| s.style)
+        .unwrap_or_else(|| theme::panel(INSPECTOR).surface(false));
+    Line::from(Span::styled(
+        truncate_display_width(&plain, max_cols),
+        style,
+    ))
 }
 
 fn clip_lines(lines: Vec<Line<'static>>, max: usize, scroll: usize) -> Vec<Line<'static>> {
@@ -264,7 +347,7 @@ mod tests {
             error: None,
         };
         let ui = InspectorInteraction::default();
-        let lines = render_diff_list(&panel, 8, &ui);
+        let lines = render_diff_list(&panel, 8, &ui, 40);
         assert!(
             lines
                 .iter()

@@ -2,7 +2,9 @@
 
 use ratatui::text::{Line, Span};
 
-use super::super::theme;
+use super::super::theme::{self, TuiPanel};
+
+const INSPECTOR: TuiPanel = TuiPanel::Inspector;
 
 #[derive(Debug, Clone, Default)]
 pub struct AgentEntry {
@@ -19,11 +21,13 @@ pub fn render_styled_panel(
     height: usize,
     scroll: usize,
     cursor: usize,
+    max_cols: usize,
 ) -> Vec<Line<'static>> {
+    let max_cols = max_cols.max(8);
     let lines: Vec<Line<'static>> = if agents.is_empty() {
         vec![Line::from(Span::styled(
             "(no subagents this turn)",
-            theme::sidebar_hint(),
+            theme::panel(INSPECTOR).hint(),
         ))]
     } else {
         agents
@@ -31,12 +35,16 @@ pub fn render_styled_panel(
             .enumerate()
             .map(|(idx, a)| {
                 let mark = if idx == cursor { ">" } else { " " };
+                let text = super::super::display_format::truncate_display_width(
+                    &format!("{mark} {}  {}", a.id, a.status),
+                    max_cols,
+                );
                 Line::from(Span::styled(
-                    format!("{mark} {}  {}", a.id, a.status),
+                    text,
                     if idx == cursor {
-                        theme::sidebar_item(true)
+                        theme::panel(INSPECTOR).item(true)
                     } else {
-                        theme::sidebar_item(false)
+                        theme::panel(INSPECTOR).item(false)
                     },
                 ))
             })

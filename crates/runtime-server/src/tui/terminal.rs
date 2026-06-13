@@ -11,7 +11,7 @@ use crossterm::event::{
     KeyModifiers,
 };
 use crossterm::terminal::{
-    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+    self, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
 use ratatui::prelude::*;
 
@@ -75,6 +75,29 @@ impl TuiTerminal {
         self.terminal.show_cursor()?;
         self.guard.leave()
     }
+}
+
+/// Sync layout with the live terminal size and drain queued resize events.
+///
+/// On Windows the first `Resize` may arrive only after the next input event; without
+/// this pass the initial paint can leave stale cells until the user interacts.
+pub fn sync_terminal_geometry(
+    terminal: &mut Terminal<CrosstermBackend<Stdout>>,
+    layout: &mut super::layout::LayoutEngine,
+) -> Result<()> {
+    let (cols, rows) = terminal::size()?;
+    layout.last_terminal_width = cols;
+    layout.apply_auto_collapse(cols);
+    terminal.resize(ratatui::layout::Rect::new(0, 0, cols, rows))?;
+
+    while event::poll(Duration::ZERO)? {
+        if let Event::Resize(w, h) = event::read()? {
+            layout.last_terminal_width = w;
+            layout.apply_auto_collapse(w);
+            terminal.resize(ratatui::layout::Rect::new(0, 0, w, h))?;
+        }
+    }
+    Ok(())
 }
 
 pub fn poll_event(timeout: Duration) -> Result<Option<Event>> {

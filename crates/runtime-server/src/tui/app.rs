@@ -10,7 +10,7 @@ use super::composer_slash::{SlashCommandState, composer_is_slash_command, render
 use super::display_format::{
     composer_cursor_blink_on, display_width, pad_line_display_width, truncate_display_width,
 };
-use super::theme::{self, COMPOSER_PROMPT};
+use super::theme::{self, COMPOSER_PROMPT, TuiTheme, TuiThemeId};
 
 use super::focus::{FocusRegion, RightSubfocus};
 use super::harness::{ChecklistSnapshot, blocked_suffix};
@@ -75,6 +75,7 @@ impl AppState {
         inline_mode: bool,
         host: &TuiSessionHost,
     ) -> Self {
+        theme::install_from_prefs(layout_prefs.tui_theme.as_deref());
         let mut transcript = TranscriptState::default();
         if let Ok(history) = host.load_history() {
             transcript.items = history;
@@ -150,6 +151,20 @@ impl AppState {
 
     pub fn focus_inspector_upper(&mut self) {
         self.right_subfocus = RightSubfocus::Inspector;
+    }
+
+    /// Switch TUI surface theme and persist to `tui-layout.toml`.
+    pub fn apply_tui_theme(&mut self, id: TuiThemeId) {
+        theme::install(TuiTheme::resolve(id));
+        self.layout.prefs.tui_theme = Some(id.as_str().to_string());
+        let _ = self.layout.prefs.save();
+    }
+
+    /// Cycle through registered themes (reserved for future keybinding / settings UI).
+    pub fn cycle_tui_theme(&mut self) -> TuiThemeId {
+        let next = theme::current_id().cycle();
+        self.apply_tui_theme(next);
+        next
     }
 
     pub fn lht_scroll_up(&mut self) {
@@ -741,16 +756,14 @@ impl AppState {
     }
 
     pub fn push_system_line(&mut self, text: String) {
-        self.transcript.items.push(TranscriptItem::System { text });
+        self.transcript.items.push(TranscriptItem::info(text));
     }
 
     pub fn seed_resume_banner(&mut self) {
         if !self.transcript.items.is_empty() {
             self.transcript.items.insert(
                 0,
-                TranscriptItem::System {
-                    text: format!("resumed thread {}", self.thread_id),
-                },
+                TranscriptItem::info(format!("resumed thread {}", self.thread_id)),
             );
         }
     }
@@ -840,53 +853,66 @@ fn truncate_footer_workspace(text: &str, max_chars: usize) -> String {
 }
 
 #[cfg(test)]
+pub(crate) fn live_activity_app_state_for_draw() -> AppState {
+    let mut state = test_app_state_for_draw("");
+    state.transcript.begin_turn("hello".into());
+    state.transcript.streaming = true;
+    state
+}
+
+#[cfg(test)]
+fn test_app_state_for_draw(composer_text: &str) -> AppState {
+    let mut composer = ComposerEditor::default();
+    if !composer_text.is_empty() {
+        composer.insert_str(composer_text);
+    }
+    AppState {
+        layout: LayoutEngine::new(false, TuiLayoutPrefs::default()),
+        transcript: TranscriptState::default(),
+        composer,
+        composer_focus: true,
+        prompt_history: PromptHistory::default(),
+        prompt_queue: VecDeque::new(),
+        thread_id: "t1".to_string(),
+        workspace_display: String::new(),
+        workspace: PathBuf::from("."),
+        model_display: "m".to_string(),
+        model_catalog: Vec::new(),
+        run_mode_display: "Agent".to_string(),
+        task_type_display: "Code".to_string(),
+        lht_mode_display: "LHT Auto".to_string(),
+        approval_display: "OnRequest".to_string(),
+        approval_toggle_enabled: true,
+        harness_line: String::new(),
+        blocked_line: None,
+        context_pct: None,
+        sessions: SessionList::default(),
+        inspector: InspectorCache::default(),
+        inspector_ui: InspectorInteraction::default(),
+        task_graph: None,
+        lht_pane_expanded: false,
+        lht_auto_opened: false,
+        lht_ui: LhtPaneUi::default(),
+        right_subfocus: RightSubfocus::Inspector,
+        right_panel_height: 20,
+        right_inspector_height: 20,
+        right_lht_height: 0,
+        agents: Vec::new(),
+        pending_approval: None,
+        show_help: false,
+        terminal_resized: false,
+        cursor_blink_since: Instant::now(),
+        next_poll: Instant::now(),
+        slash: SlashCommandState::default(),
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
     fn test_app_state(composer_text: &str) -> AppState {
-        let mut composer = ComposerEditor::default();
-        if !composer_text.is_empty() {
-            composer.insert_str(composer_text);
-        }
-        AppState {
-            layout: LayoutEngine::new(false, TuiLayoutPrefs::default()),
-            transcript: TranscriptState::default(),
-            composer,
-            composer_focus: true,
-            prompt_history: PromptHistory::default(),
-            prompt_queue: VecDeque::new(),
-            thread_id: "t1".to_string(),
-            workspace_display: String::new(),
-            workspace: PathBuf::from("."),
-            model_display: "m".to_string(),
-            model_catalog: Vec::new(),
-            run_mode_display: "Agent".to_string(),
-            task_type_display: "Code".to_string(),
-            lht_mode_display: "LHT Auto".to_string(),
-            approval_display: "OnRequest".to_string(),
-            approval_toggle_enabled: true,
-            harness_line: String::new(),
-            blocked_line: None,
-            context_pct: None,
-            sessions: SessionList::default(),
-            inspector: InspectorCache::default(),
-            inspector_ui: InspectorInteraction::default(),
-            task_graph: None,
-            lht_pane_expanded: false,
-            lht_auto_opened: false,
-            lht_ui: LhtPaneUi::default(),
-            right_subfocus: RightSubfocus::Inspector,
-            right_panel_height: 20,
-            right_inspector_height: 20,
-            right_lht_height: 0,
-            agents: Vec::new(),
-            pending_approval: None,
-            show_help: false,
-            terminal_resized: false,
-            cursor_blink_since: Instant::now(),
-            next_poll: Instant::now(),
-            slash: SlashCommandState::default(),
-        }
+        test_app_state_for_draw(composer_text)
     }
 
     #[test]

@@ -3,7 +3,9 @@
 use ratatui::text::{Line, Span};
 
 use super::super::harness::{ChecklistSnapshot, ChecklistStatus};
-use super::super::theme;
+use super::super::theme::{self, TuiPanel};
+
+const INSPECTOR: TuiPanel = TuiPanel::Inspector;
 
 pub fn render_panel(snapshot: Option<&ChecklistSnapshot>, height: usize) -> Vec<String> {
     render_styled_panel(snapshot, height, 0)
@@ -25,10 +27,10 @@ pub fn render_styled_panel(
     match snapshot {
         Some(snap) => styled_checklist(snap, height, scroll),
         None => vec![
-            Line::from(Span::styled("No checklist yet.", theme::sidebar_hint())),
+            Line::from(Span::styled("No checklist yet.", theme::panel(INSPECTOR).hint())),
             Line::from(Span::styled(
                 "Prompt the agent to use checklist_write.",
-                theme::sidebar_hint(),
+                theme::panel(INSPECTOR).hint(),
             )),
         ],
     }
@@ -53,7 +55,10 @@ fn styled_checklist(snapshot: &ChecklistSnapshot, height: usize, scroll: usize) 
         completed,
         snapshot.items.len()
     );
-    let mut lines = vec![Line::from(Span::styled(header, theme::checklist_header()))];
+    let mut lines = vec![Line::from(Span::styled(
+        header,
+        theme::panel(INSPECTOR).checklist_header(),
+    ))];
 
     let bar_width = 20usize;
     let filled = (snapshot.completion_pct as usize * bar_width / 100).min(bar_width);
@@ -64,17 +69,17 @@ fn styled_checklist(snapshot: &ChecklistSnapshot, height: usize, scroll: usize) 
     );
     lines.push(Line::from(vec![Span::styled(
         progress,
-        theme::checklist_done(),
+        theme::panel(INSPECTOR).checklist_done(),
     )]));
 
     for item in &snapshot.items {
         let active = snapshot.in_progress_id.is_some_and(|id| id == item.id)
             || item.status == ChecklistStatus::InProgress;
         let (mark, style) = match item.status {
-            ChecklistStatus::Completed => ("[x]", theme::checklist_done()),
-            ChecklistStatus::InProgress => ("[>]", theme::checklist_in_progress_active()),
-            ChecklistStatus::Pending if active => ("[>]", theme::checklist_in_progress_active()),
-            ChecklistStatus::Pending => ("[ ]", theme::checklist_pending()),
+            ChecklistStatus::Completed => ("[x]", theme::panel(INSPECTOR).checklist_done()),
+            ChecklistStatus::InProgress => ("[>]", theme::panel(INSPECTOR).checklist_in_progress_active()),
+            ChecklistStatus::Pending if active => ("[>]", theme::panel(INSPECTOR).checklist_in_progress_active()),
+            ChecklistStatus::Pending => ("[ ]", theme::panel(INSPECTOR).checklist_pending()),
         };
         let content = truncate_line(&item.content, 48);
         lines.push(Line::from(vec![

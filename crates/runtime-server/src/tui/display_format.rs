@@ -2,6 +2,8 @@
 
 use std::time::Instant;
 
+use ratatui::buffer::Buffer;
+use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
@@ -260,6 +262,35 @@ pub fn pad_line_display_width(line: &str, width: usize) -> String {
     out
 }
 
+/// Style used to paint row background before spans (full-width fill).
+fn row_paint_style(line: &Line<'_>, blank_style: Style) -> Style {
+    if line.spans.is_empty() {
+        return blank_style;
+    }
+    if line.spans.len() == 1 {
+        let style = line.spans[0].style;
+        if style.bg.is_some() {
+            return style;
+        }
+    }
+    let first_bg = line.spans[0].style.bg;
+    if first_bg.is_some() && line.spans.iter().all(|s| s.style.bg == first_bg) {
+        return line.spans[0].style;
+    }
+    blank_style
+}
+
+/// Trailing pad style: extend explicit row backgrounds across the full pane width.
+fn trailing_pad_style(line: &Line<'_>, pad_style: Style) -> Style {
+    if line.spans.len() == 1 {
+        let style = line.spans[0].style;
+        if style.bg.is_some() {
+            return style;
+        }
+    }
+    pad_style
+}
+
 /// Pad a styled line to `width` display columns (append spaces with `pad_style`).
 pub fn pad_styled_line(line: Line<'static>, width: usize, pad_style: Style) -> Line<'static> {
     if width == 0 {
@@ -281,15 +312,23 @@ pub fn pad_styled_line(line: Line<'static>, width: usize, pad_style: Style) -> L
             .unwrap_or(pad_style);
         return Line::from(Span::styled(truncated, style));
     }
+    let row_pad = trailing_pad_style(&line, pad_style);
     if line.spans.len() == 1 {
         let span = &line.spans[0];
-        let padded = pad_line_display_width(span.content.as_ref(), width);
-        return Line::from(Span::styled(padded, span.style));
+        let content = span.content.as_ref();
+        if w < width {
+            let pad = pad_line_display_width("", width.saturating_sub(w));
+            return Line::from(vec![
+                Span::styled(content.to_string(), span.style),
+                Span::styled(pad, row_pad),
+            ]);
+        }
+        return line;
     }
     if w < width {
         let pad = pad_line_display_width("", width.saturating_sub(w));
         let mut spans = line.spans;
-        spans.push(Span::styled(pad, pad_style));
+        spans.push(Span::styled(pad, row_pad));
         return Line::from(spans);
     }
     line
@@ -317,6 +356,62 @@ pub fn fill_styled_lines(
     out
 }
 
+/// Paint styled lines cell-by-cell (sidebar panes).
+///
+/// `Paragraph` can leave stale terminal cells on Windows when rows start with spaces;
+/// writing every cell each frame prevents ghost `|` artifacts until the first keypress.
+pub fn paint_styled_lines_in_area(
+    buf: &mut Buffer,
+    area: Rect,
+    lines: &[Line<'static>],
+    blank_style: Style,
+) {
+    let area = area.intersection(buf.area);
+    if area.width == 0 || area.height == 0 {
+        return;
+    }
+    let width = area.width as usize;
+    let height = area.height as usize;
+    let filled = fill_styled_lines(lines.to_vec(), height, width, blank_style);
+
+    for (row, line) in filled.iter().enumerate().take(height) {
+        let y = area.y + row as u16;
+        let row_style = row_paint_style(line, blank_style);
+        for col in 0..width {
+            let cell = &mut buf[(area.x + col as u16, y)];
+            cell.set_char(' ');
+            cell.set_style(row_style);
+        }
+        let mut col = 0usize;
+        'spans: for span in &line.spans {
+            for ch in span.content.chars() {
+                if col >= width {
+                    break 'spans;
+                }
+                let ch_width = char_width(ch);
+                if ch_width == 0 {
+                    continue;
+                }
+                if col + ch_width > width {
+                    break 'spans;
+                }
+                buf[(area.x + col as u16, y)]
+                    .set_char(ch)
+                    .set_style(span.style);
+                col += ch_width;
+            }
+        }
+    }
+    for row in filled.len()..height {
+        let y = area.y + row as u16;
+        for col in 0..width {
+            buf[(area.x + col as u16, y)]
+                .set_char(' ')
+                .set_style(blank_style);
+        }
+    }
+}
+
 /// Truncate to fit display columns (CJK-safe); appends `…` when trimmed.
 pub fn truncate_display_width(text: &str, max_width: usize) -> String {
     if max_width == 0 {
@@ -332,6 +427,9 @@ pub fn truncate_display_width(text: &str, max_width: usize) -> String {
     let mut w = 0usize;
     for ch in text.chars() {
         let cw = char_width(ch);
+        if cw == 0 {
+            continue;
+        }
         if w + cw > max_width.saturating_sub(1) {
             break;
         }
@@ -508,12 +606,53 @@ mod tests {
     }
 
     #[test]
+    fn pad_styled_line_single_span_extends_row_background() {
+        use ratatui::style::Color;
+        let text_style = Style::default().bg(Color::Red);
+        let pad_style = Style::default().bg(Color::Blue);
+        let line = Line::from(Span::styled("hi", text_style));
+        let padded = pad_styled_line(line, 6, pad_style);
+        assert_eq!(padded.spans.len(), 2);
+        assert_eq!(padded.spans[0].content.as_ref(), "hi");
+        assert_eq!(padded.spans[0].style, text_style);
+        assert_eq!(padded.spans[1].style, text_style);
+        assert_eq!(display_width(padded.spans[1].content.as_ref()), 4);
+    }
+
+    #[test]
+    fn pad_styled_line_single_span_without_bg_uses_pad_style() {
+        use ratatui::style::Color;
+        let text_style = Style::default().fg(Color::Red);
+        let pad_style = Style::default().bg(Color::Blue);
+        let line = Line::from(Span::styled("hi", text_style));
+        let padded = pad_styled_line(line, 6, pad_style);
+        assert_eq!(padded.spans[1].style, pad_style);
+    }
+
+    #[test]
     fn fill_styled_lines_pads_width_and_height() {
         let blank = Style::default();
         let lines = fill_styled_lines(vec![Line::from("hi")], 3, 10, blank);
         assert_eq!(lines.len(), 3);
-        assert_eq!(lines[0].spans[0].content.as_ref(), "hi        ");
+        assert_eq!(lines[0].spans[0].content.as_ref(), "hi");
+        assert_eq!(display_width(lines[0].spans[1].content.as_ref()), 8);
         assert_eq!(display_width(lines[1].spans[0].content.as_ref()), 10);
+    }
+
+    #[test]
+    fn paint_styled_lines_in_area_writes_leading_spaces() {
+        let area = Rect::new(0, 0, 8, 1);
+        let mut buf = Buffer::empty(area);
+        let style = Style::default().bg(ratatui::style::Color::Black);
+        paint_styled_lines_in_area(
+            &mut buf,
+            area,
+            &[Line::from(Span::styled("  file", style))],
+            style,
+        );
+        assert_eq!(buf[(0, 0)].symbol(), " ");
+        assert_eq!(buf[(1, 0)].symbol(), " ");
+        assert_eq!(buf[(2, 0)].symbol(), "f");
     }
 
     #[test]

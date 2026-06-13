@@ -66,6 +66,12 @@ pub async fn run_tui(cli: Cli) -> Result<()> {
     app.schedule_next_poll();
 
     let mut tui = TuiTerminal::new(inline_mode, mouse_capture)?;
+    terminal::sync_terminal_geometry(&mut tui.terminal, &mut app.layout)?;
+    app.terminal_resized = true;
+    let mut boot_paints_remaining = 1u8;
+    /// Full terminal clear cadence (CodeWhale-style) — works around Windows diff stale cells.
+    const PERIODIC_TERMINAL_CLEAR_EVERY: u64 = 40;
+    let mut draws_since_terminal_clear = 0u64;
     let mut input = TerminalInput::spawn();
     let mut ctrl_c_streak = 0u8;
     let mut ctrl_c_last: Option<Instant> = None;
@@ -77,15 +83,17 @@ pub async fn run_tui(cli: Cli) -> Result<()> {
     poll_wake.reset();
 
     if let Some(prompt) = initial_prompt.filter(|p| !p.trim().is_empty()) {
-        submit_prompt(&host, &mut app, &prompt).await?;
+        submit_prompt(&host, &mut app, &prompt).await;
         dirty = true;
     }
 
     loop {
         if dirty {
-            if app.terminal_resized {
+            let periodic_clear = draws_since_terminal_clear >= PERIODIC_TERMINAL_CLEAR_EVERY;
+            if app.terminal_resized || boot_paints_remaining > 0 || periodic_clear {
                 tui.terminal.clear()?;
                 app.terminal_resized = false;
+                draws_since_terminal_clear = 0;
             }
             tui.terminal.draw(|frame| {
                 let area = frame.area();
@@ -104,6 +112,15 @@ pub async fn run_tui(cli: Cli) -> Result<()> {
                 };
                 draw::draw(frame, &mut app, &regions, &split);
             })?;
+            draws_since_terminal_clear = draws_since_terminal_clear.saturating_add(1);
+            if boot_paints_remaining > 0 {
+                boot_paints_remaining -= 1;
+                if boot_paints_remaining > 0 {
+                    app.terminal_resized = true;
+                }
+                dirty = true;
+                continue;
+            }
             dirty = false;
         }
 
@@ -122,7 +139,7 @@ pub async fn run_tui(cli: Cli) -> Result<()> {
                 }
                 if was_streaming && !app.transcript.streaming {
                     app.refresh_workspace_inspector(&host);
-                    drain_prompt_queue(&host, &mut app).await?;
+                    drain_prompt_queue(&host, &mut app).await;
                 }
                 let poll_ran = app.poll_due();
                 if poll_ran {
@@ -335,7 +352,7 @@ async fn handle_input_event(
                         } else if app.can_send_prompt()
                             && let Some(prompt) = app.take_composer_prompt()
                         {
-                            submit_prompt(host, app, &prompt).await?;
+                            submit_prompt(host, app, &prompt).await;
                         }
                     } else {
                         app.transcript.toggle_last_turn_detail();
@@ -656,10 +673,10 @@ fn apply_lht_mode_change(app: &mut AppState, mode: zagens_config::LhtComposerMod
     }
 }
 
-async fn submit_prompt(host: &TuiSessionHost, app: &mut AppState, prompt: &str) -> Result<()> {
+async fn submit_prompt(host: &TuiSessionHost, app: &mut AppState, prompt: &str) {
     let prompt = prompt.trim();
     if prompt.is_empty() {
-        return Ok(());
+        return;
     }
     if app.transcript.is_live_activity() {
         app.prompt_queue.push_back(prompt.to_string());
@@ -667,27 +684,29 @@ async fn submit_prompt(host: &TuiSessionHost, app: &mut AppState, prompt: &str) 
             "Queued message ({}) — sends when the current turn finishes",
             app.prompt_queue.len()
         ));
-        return Ok(());
+        return;
     }
     app.prompt_history.push_sent(prompt);
     app.push_user_message(prompt.to_string());
     app.transcript.streaming = true;
     app.blocked_line = None;
-    host.send_prompt(prompt).await?;
-    Ok(())
+    if let Err(err) = host.send_prompt(prompt).await {
+        app.transcript.streaming = false;
+        app.transcript.close_open_turn();
+        app.push_system_line(format!("Failed to start turn: {err:#}"));
+    }
 }
 
-async fn drain_prompt_queue(host: &TuiSessionHost, app: &mut AppState) -> Result<()> {
+async fn drain_prompt_queue(host: &TuiSessionHost, app: &mut AppState) {
     while !app.transcript.is_live_activity() {
         let Some(next) = app.prompt_queue.pop_front() else {
             break;
         };
-        submit_prompt(host, app, &next).await?;
+        submit_prompt(host, app, &next).await;
         if app.transcript.is_live_activity() {
             break;
         }
     }
-    Ok(())
 }
 
 fn resolve_mouse_capture(cli: &Cli) -> bool {

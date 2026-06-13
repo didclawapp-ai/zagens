@@ -5,7 +5,9 @@ use ratatui::text::{Line, Span};
 use super::super::display_format::{display_width, truncate_display_width};
 use super::super::harness::ChecklistStatus;
 use super::super::task_graph::{PhaseStatus, TaskGraphSnapshot};
-use super::super::theme;
+use super::super::theme::{self, TuiPanel};
+
+const LHT: TuiPanel = TuiPanel::Lht;
 
 pub fn line_count(graph: Option<&TaskGraphSnapshot>) -> usize {
     let Some(graph) = graph else {
@@ -40,17 +42,20 @@ pub fn render_styled_panel(
     let Some(graph) = graph.filter(|g| g.has_activity()) else {
         return vec![Line::from(Span::styled(
             "No LHT activity.",
-            theme::sidebar_hint(),
+            theme::panel(LHT).hint(),
         ))];
     };
 
     let mut lines = Vec::new();
-    lines.push(Line::from(Span::styled("LHT", theme::checklist_header())));
+    lines.push(Line::from(Span::styled(
+        "LHT",
+        theme::panel(LHT).checklist_header(),
+    )));
 
     if !graph.objective.is_empty() {
         lines.push(Line::from(Span::styled(
             truncate_display(&graph.objective, max_cols),
-            theme::sidebar_item(false),
+            theme::panel(LHT).item(false),
         )));
     }
 
@@ -63,20 +68,23 @@ pub fn render_styled_panel(
         "-".repeat(bar_width.saturating_sub(filled)),
         graph.open_items
     );
-    lines.push(Line::from(Span::styled(progress, theme::checklist_done())));
+    lines.push(Line::from(Span::styled(
+        progress,
+        theme::panel(LHT).checklist_done(),
+    )));
 
     if graph.lht_blocked || graph.nudge_count > 0 {
         let mut badges = Vec::new();
         if graph.lht_blocked {
             badges.push(Span::styled(
                 " blocked ",
-                theme::shell_sidebar().fg(theme::palette::warning()),
+                theme::panel(LHT).surface(false).fg(theme::warning()),
             ));
         }
         if graph.nudge_count > 0 {
             badges.push(Span::styled(
                 format!(" nudge:{} ", graph.nudge_count),
-                theme::sidebar_hint(),
+                theme::panel(LHT).hint(),
             ));
         }
         lines.push(Line::from(badges));
@@ -96,7 +104,7 @@ pub fn render_styled_panel(
         };
         lines.push(Line::from(Span::styled(
             plan_title,
-            theme::sidebar_heading(),
+            theme::panel(LHT).heading(),
         )));
         for phase in &graph.phases {
             let dim = plan_outline && phase.status != PhaseStatus::Completed;
@@ -114,18 +122,20 @@ pub fn render_styled_panel(
     if !graph.checklist.is_empty() {
         lines.push(Line::from(Span::styled(
             "Checklist",
-            theme::sidebar_heading(),
+            theme::panel(LHT).heading(),
         )));
         for item in &graph.checklist {
             let active = graph.in_progress_id.is_some_and(|id| id == item.id)
                 || item.status == ChecklistStatus::InProgress;
             let (mark, style) = match item.status {
-                ChecklistStatus::Completed => ("[x]", theme::checklist_done()),
-                ChecklistStatus::InProgress => ("[>]", theme::checklist_in_progress_active()),
-                ChecklistStatus::Pending if active => {
-                    ("[>]", theme::checklist_in_progress_active())
+                ChecklistStatus::Completed => ("[x]", theme::panel(LHT).checklist_done()),
+                ChecklistStatus::InProgress => {
+                    ("[>]", theme::panel(LHT).checklist_in_progress_active())
                 }
-                ChecklistStatus::Pending => ("[ ]", theme::checklist_pending()),
+                ChecklistStatus::Pending if active => {
+                    ("[>]", theme::panel(LHT).checklist_in_progress_active())
+                }
+                ChecklistStatus::Pending => ("[ ]", theme::panel(LHT).checklist_pending()),
             };
             lines.push(Line::from(vec![
                 Span::styled(format!("{mark} "), style),
@@ -145,12 +155,12 @@ pub fn render_styled_panel(
 
 fn phase_style(status: PhaseStatus, dim: bool) -> (&'static str, ratatui::style::Style) {
     if dim {
-        return ("[ ]", theme::sidebar_hint());
+        return ("[ ]", theme::panel(LHT).hint());
     }
     match status {
-        PhaseStatus::Completed => ("[x]", theme::checklist_done()),
-        PhaseStatus::InProgress => ("[>]", theme::checklist_in_progress_active()),
-        PhaseStatus::Pending => ("[ ]", theme::checklist_pending()),
+        PhaseStatus::Completed => ("[x]", theme::panel(LHT).checklist_done()),
+        PhaseStatus::InProgress => ("[>]", theme::panel(LHT).checklist_in_progress_active()),
+        PhaseStatus::Pending => ("[ ]", theme::panel(LHT).checklist_pending()),
     }
 }
 
