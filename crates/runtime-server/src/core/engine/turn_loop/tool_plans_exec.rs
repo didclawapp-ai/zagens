@@ -1,6 +1,6 @@
 //! Parallel + sequential tool plan execution (P2 PR6b — TUI L2; called from `TurnLoopHost::execute_tool_plans`).
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -168,6 +168,14 @@ async fn execute_tool_plans_batch(
 
     let mut outcomes: Vec<Option<ToolExecOutcome>> = Vec::with_capacity(plans.len());
     outcomes.resize_with(plans.len(), || None);
+    // `plan.index` is global within the full tool batch; this vec is batch-local.
+    let batch_local_index: HashMap<usize, usize> = plans
+        .iter()
+        .enumerate()
+        .map(|(local, plan)| (plan.index, local))
+        .collect();
+    let local_slot =
+        |global: usize| -> usize { batch_local_index.get(&global).copied().unwrap_or(global) };
 
     if parallel_allowed {
         let mut tool_tasks = FuturesUnordered::new();
@@ -183,7 +191,7 @@ async fn execute_tool_plans_batch(
                         result: result.clone(),
                     })
                     .await;
-                outcomes[plan.index] = Some(ToolExecOutcome {
+                outcomes[local_slot(plan.index)] = Some(ToolExecOutcome {
                     index: plan.index,
                     id: plan.id,
                     name: plan.name,
@@ -194,7 +202,7 @@ async fn execute_tool_plans_batch(
                 continue;
             }
             if let Some(err) = plan.blocked_error.clone() {
-                outcomes[plan.index] = Some(ToolExecOutcome {
+                outcomes[local_slot(plan.index)] = Some(ToolExecOutcome {
                     index: plan.index,
                     id: plan.id,
                     name: plan.name,
@@ -216,7 +224,7 @@ async fn execute_tool_plans_batch(
                             result: result.clone(),
                         })
                         .await;
-                    outcomes[plan.index] = Some(ToolExecOutcome {
+                    outcomes[local_slot(plan.index)] = Some(ToolExecOutcome {
                         index: plan.index,
                         id: plan.id,
                         name: plan.name,
@@ -297,8 +305,8 @@ async fn execute_tool_plans_batch(
         }
 
         while let Some(outcome) = tool_tasks.next().await {
-            let index = outcome.index;
-            outcomes[index] = Some(outcome);
+            let slot = local_slot(outcome.index);
+            outcomes[slot] = Some(outcome);
         }
     } else {
         for plan in plans {
@@ -317,7 +325,7 @@ async fn execute_tool_plans_batch(
                         result: result.clone(),
                     })
                     .await;
-                outcomes[plan.index] = Some(ToolExecOutcome {
+                outcomes[local_slot(plan.index)] = Some(ToolExecOutcome {
                     index: plan.index,
                     id: tool_id,
                     name: tool_name,
@@ -338,7 +346,7 @@ async fn execute_tool_plans_batch(
                         result: result.clone(),
                     })
                     .await;
-                outcomes[plan.index] = Some(ToolExecOutcome {
+                outcomes[local_slot(plan.index)] = Some(ToolExecOutcome {
                     index: plan.index,
                     id: tool_id,
                     name: tool_name,
@@ -368,7 +376,7 @@ async fn execute_tool_plans_batch(
                     })
                     .await;
 
-                outcomes[plan.index] = Some(ToolExecOutcome {
+                outcomes[local_slot(plan.index)] = Some(ToolExecOutcome {
                     index: plan.index,
                     id: tool_id,
                     name: tool_name,
@@ -393,7 +401,7 @@ async fn execute_tool_plans_batch(
                     })
                     .await;
 
-                outcomes[plan.index] = Some(ToolExecOutcome {
+                outcomes[local_slot(plan.index)] = Some(ToolExecOutcome {
                     index: plan.index,
                     id: tool_id,
                     name: tool_name,
@@ -418,7 +426,7 @@ async fn execute_tool_plans_batch(
                     })
                     .await;
 
-                outcomes[plan.index] = Some(ToolExecOutcome {
+                outcomes[local_slot(plan.index)] = Some(ToolExecOutcome {
                     index: plan.index,
                     id: tool_id,
                     name: tool_name,
@@ -453,7 +461,7 @@ async fn execute_tool_plans_batch(
                     })
                     .await;
 
-                outcomes[plan.index] = Some(ToolExecOutcome {
+                outcomes[local_slot(plan.index)] = Some(ToolExecOutcome {
                     index: plan.index,
                     id: tool_id,
                     name: tool_name,
@@ -571,7 +579,7 @@ async fn execute_tool_plans_batch(
                         })
                         .await;
                     engine.fire_tool_call_after(app_mode, &tool_name, &tool_input, &result);
-                    outcomes[plan.index] = Some(ToolExecOutcome {
+                    outcomes[local_slot(plan.index)] = Some(ToolExecOutcome {
                         index: plan.index,
                         id: tool_id,
                         name: tool_name,
@@ -635,7 +643,7 @@ async fn execute_tool_plans_batch(
                 })
                 .await;
 
-            outcomes[plan.index] = Some(ToolExecOutcome {
+            outcomes[local_slot(plan.index)] = Some(ToolExecOutcome {
                 index: plan.index,
                 id: tool_id,
                 name: tool_name,

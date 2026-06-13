@@ -35,6 +35,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Runtime (tool execution):** Fix sidecar panic in `tool_plans_exec` when a sub-batch runs one tool whose global index is not zero (`index out of bounds: len is 1 but the index is 1`). The worker crash aborted the turn mid-batch (e.g. `read_file` stuck in progress) and follow-up prompts failed with `Failed to start turn: channel closed`. — benign system lines (model/workspace switch, new session, resume banner, queued messages, harness notices) now render muted instead of error-red; only real engine errors / failed turns stay red. Failed tool calls render with a warning tint (distinct from running/successful tool rows).
+- **TUI (`zagens-tui`):** Center-column framing — Transcript/Composer borders and the faint dividers now all span the full column width (text stays inset by `CENTER_CONTENT_PAD`), so horizontal rules align and meet the side borders instead of appearing broken; the column reads as an enclosed pane (top border + full-width bottom rule + shared side borders).
+- **TUI (`zagens-tui`):** Center-column dividers — removed the redundant double horizontal rule above the Composer (its titled top border is now the single separator); when a turn is live, one faint rule sits above the activity strip.
+- **TUI (`zagens-tui`):** Right rail — added the missing horizontal divider between the upper Inspector pane and the lower LHT pane (LHT pane now fully boxed).
+- **TUI (`zagens-tui`):** Transcript vertical rhythm — one blank row separates the user prompt from the agent's response block (THK / tools / AI); paragraph breaks (`\n\n`) inside assistant output are preserved as a single blank row (collapsing multiple blanks) instead of being stripped, while list items and section internals stay packed.
 - **TUI (`zagens-tui`):** Input handling — dedicated blocking reader thread (fixes dropped keys during streaming); idle loop no longer polls at ~20–40 Hz.
 - **TUI (`zagens-tui`):** Transcript scroll clamp (no blank screen when scrolled past top); per-turn tool collapse; THK block Enter to expand/collapse.
 - **TUI (`zagens-tui`):** Session “Allow session” approval no longer escalates to full `trust_mode` / YOLO; API key from keyring injected into config (not `set_var`).
