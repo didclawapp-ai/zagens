@@ -69,9 +69,6 @@ pub async fn run_tui(cli: Cli) -> Result<()> {
     terminal::sync_terminal_geometry(&mut tui.terminal, &mut app.layout)?;
     app.terminal_resized = true;
     let mut boot_paints_remaining = 1u8;
-    /// Full terminal clear cadence (CodeWhale-style) — works around Windows diff stale cells.
-    const PERIODIC_TERMINAL_CLEAR_EVERY: u64 = 40;
-    let mut draws_since_terminal_clear = 0u64;
     let mut input = TerminalInput::spawn();
     let mut ctrl_c_streak = 0u8;
     let mut ctrl_c_last: Option<Instant> = None;
@@ -89,11 +86,9 @@ pub async fn run_tui(cli: Cli) -> Result<()> {
 
     loop {
         if dirty {
-            let periodic_clear = draws_since_terminal_clear >= PERIODIC_TERMINAL_CLEAR_EVERY;
-            if app.terminal_resized || boot_paints_remaining > 0 || periodic_clear {
+            if app.terminal_resized || boot_paints_remaining > 0 {
                 tui.terminal.clear()?;
                 app.terminal_resized = false;
-                draws_since_terminal_clear = 0;
             }
             tui.terminal.draw(|frame| {
                 let area = frame.area();
@@ -112,7 +107,6 @@ pub async fn run_tui(cli: Cli) -> Result<()> {
                 };
                 draw::draw(frame, &mut app, &regions, &split);
             })?;
-            draws_since_terminal_clear = draws_since_terminal_clear.saturating_add(1);
             if boot_paints_remaining > 0 {
                 boot_paints_remaining -= 1;
                 if boot_paints_remaining > 0 {
@@ -325,6 +319,10 @@ async fn handle_input_event(
                 }
                 KeyCode::Esc if app.layout.focus == FocusRegion::Chat => {
                     if app.composer_focus && app.slash.open {
+                        // Restore theme if the /theme picker was open in preview mode.
+                        if let Some(original) = app.theme_picker_original.take() {
+                            theme::install(theme::TuiTheme::resolve(original));
+                        }
                         app.composer.clear();
                         app.slash.close();
                     } else {
@@ -396,6 +394,7 @@ async fn handle_input_event(
                         && app.slash.open =>
                 {
                     app.slash.move_up(app.composer.text(), &app.model_catalog);
+                    preview_theme_selection(app);
                 }
                 KeyCode::Down
                     if app.layout.focus == FocusRegion::Chat
@@ -403,6 +402,7 @@ async fn handle_input_event(
                         && app.slash.open =>
                 {
                     app.slash.move_down(app.composer.text(), &app.model_catalog);
+                    preview_theme_selection(app);
                 }
                 KeyCode::Up
                     if app.layout.focus == FocusRegion::Chat
@@ -556,6 +556,18 @@ async fn handle_slash_enter(
     app: &mut AppState,
 ) -> Result<bool> {
     let current_ws = host.thread.workspace.clone();
+    if composer_slash::theme_picker_active(app.composer.text())
+        && app.slash.open
+        && let Some(theme_id) =
+            composer_slash::selected_theme(app.composer.text(), app.slash.selected)
+    {
+        app.composer.clear();
+        app.slash.close();
+        // Theme is already applied via preview; just persist the choice.
+        app.theme_picker_original = None;
+        execute_slash_action(ctx, host, app, SlashAction::SwitchTheme(theme_id)).await?;
+        return Ok(true);
+    }
     if composer_slash::lht_picker_active(app.composer.text())
         && app.slash.open
         && let Some(mode) =
@@ -601,7 +613,8 @@ async fn handle_slash_enter(
                     composer_slash::SlashActionKind::Clear => SlashAction::ClearComposer,
                     composer_slash::SlashActionKind::Workspace
                     | composer_slash::SlashActionKind::Model
-                    | composer_slash::SlashActionKind::Lht => {
+                    | composer_slash::SlashActionKind::Lht
+                    | composer_slash::SlashActionKind::Theme => {
                         return Ok(true);
                     }
                 };
@@ -645,6 +658,13 @@ async fn execute_slash_action(
             let next = lht_mode::load_lht_composer_mode().cycle();
             apply_lht_mode_change(app, next);
         }
+        SlashAction::SwitchTheme(id) => {
+            apply_theme_change(app, id);
+        }
+        SlashAction::CycleTheme => {
+            let next = theme::current_id().cycle();
+            apply_theme_change(app, next);
+        }
         SlashAction::NewSession => {
             host.new_session(ctx).await?;
             app.reload_after_thread_switch(host).await;
@@ -670,6 +690,27 @@ fn apply_lht_mode_change(app: &mut AppState, mode: zagens_config::LhtComposerMod
         Err(err) => {
             app.push_system_line(format!("lht: failed to save settings — {err}"));
         }
+    }
+}
+
+fn apply_theme_change(app: &mut AppState, id: theme::TuiThemeId) {
+    theme::install(theme::TuiTheme::resolve(id));
+    app.layout.prefs.tui_theme = Some(id.as_str().to_string());
+    app.push_system_line(format!("theme: {}", id.label()));
+}
+
+/// Called after each Up/Down move while the /theme picker is open.
+/// Saves the original theme (first time) and applies the highlighted theme for live preview.
+fn preview_theme_selection(app: &mut AppState) {
+    if !composer_slash::theme_picker_active(app.composer.text()) || !app.slash.open {
+        return;
+    }
+    // Record the theme that was active before the picker opened (only once).
+    if app.theme_picker_original.is_none() {
+        app.theme_picker_original = Some(theme::current_id());
+    }
+    if let Some(id) = composer_slash::selected_theme(app.composer.text(), app.slash.selected) {
+        theme::install(theme::TuiTheme::resolve(id));
     }
 }
 

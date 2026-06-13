@@ -67,6 +67,8 @@ pub struct AppState {
     pub cursor_blink_since: Instant,
     next_poll: Instant,
     pub slash: SlashCommandState,
+    /// Theme saved when the /theme picker opened; restored on Esc.
+    pub theme_picker_original: Option<TuiThemeId>,
 }
 
 impl AppState {
@@ -123,6 +125,7 @@ impl AppState {
             cursor_blink_since: Instant::now(),
             next_poll: Instant::now(),
             slash: SlashCommandState::default(),
+            theme_picker_original: None,
         };
         state.sync_thread_meta(host);
         state.sync_lht_mode();
@@ -904,6 +907,7 @@ fn test_app_state_for_draw(composer_text: &str) -> AppState {
         cursor_blink_since: Instant::now(),
         next_poll: Instant::now(),
         slash: SlashCommandState::default(),
+        theme_picker_original: None,
     }
 }
 

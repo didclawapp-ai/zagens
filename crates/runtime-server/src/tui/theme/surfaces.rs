@@ -2,6 +2,82 @@
 
 use ratatui::style::Color;
 
+/// Per-theme accent colors for the four transcript roles shown in the center column.
+/// Body text, dim hints, checklist marks, etc. remain shared across all themes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ThemePalette {
+    /// "you>" tag and user message body.
+    pub user_prompt: Color,
+    /// "AI>" tag and assistant reply body.
+    pub agent_reply: Color,
+    /// "THK>" tag and live/expanded thinking body.
+    pub thinking: Color,
+    /// "tool " tag and tool-chain body.
+    pub tool_call: Color,
+}
+
+impl ThemePalette {
+    /// Dracula original — used by Classic and as the fallback.
+    pub const fn dracula() -> Self {
+        Self {
+            user_prompt: Color::Rgb(0x8b, 0xe9, 0xfd), // cyan
+            agent_reply: Color::Rgb(0x50, 0xfa, 0x7b), // green
+            thinking: Color::Rgb(0xf1, 0xfa, 0x8c),    // yellow
+            tool_call: Color::Rgb(0xbd, 0x93, 0xf9),   // purple
+        }
+    }
+
+    /// CoolBlue — GitHub-style blues + amber warmth to counter the cool bg.
+    pub const fn cool_blue() -> Self {
+        Self {
+            user_prompt: Color::Rgb(0x79, 0xc0, 0xff), // GitHub blue
+            agent_reply: Color::Rgb(0x7e, 0xe7, 0x87), // GitHub green
+            thinking: Color::Rgb(0xe3, 0xb3, 0x41),    // amber — warms up the blue
+            tool_call: Color::Rgb(0xd2, 0xa8, 0xff),   // soft lavender
+        }
+    }
+
+    /// GrayScale — Nord-inspired muted pastels, easy on the eye.
+    pub const fn gray_scale() -> Self {
+        Self {
+            user_prompt: Color::Rgb(0x88, 0xc0, 0xd0), // Nord frost
+            agent_reply: Color::Rgb(0xa3, 0xbe, 0x8c), // Nord sage
+            thinking: Color::Rgb(0xeb, 0xcb, 0x8b),    // Nord amber
+            tool_call: Color::Rgb(0xb4, 0x8e, 0xad),   // Nord mauve
+        }
+    }
+
+    /// Charcoal — Catppuccin Mocha palette, warm mid-tones.
+    pub const fn charcoal() -> Self {
+        Self {
+            user_prompt: Color::Rgb(0x89, 0xb4, 0xfa), // Catppuccin blue
+            agent_reply: Color::Rgb(0xa6, 0xe3, 0xa1), // Catppuccin green
+            thinking: Color::Rgb(0xf9, 0xe2, 0xaf),    // Catppuccin yellow
+            tool_call: Color::Rgb(0xcb, 0xa6, 0xf7),   // Catppuccin mauve
+        }
+    }
+
+    /// DraculaTint — purple-gray bg calls for pink + orange twist on the classic.
+    pub const fn dracula_tint() -> Self {
+        Self {
+            user_prompt: Color::Rgb(0x8b, 0xe9, 0xfd), // keep cyan — complements purple
+            agent_reply: Color::Rgb(0x50, 0xfa, 0x7b), // keep green
+            thinking: Color::Rgb(0xff, 0xb8, 0x6c), // Dracula orange — more vivid than yellow on purple
+            tool_call: Color::Rgb(0xff, 0x79, 0xc6), // Dracula pink — suits purple bg
+        }
+    }
+
+    /// HighContrast — maximum punch, one shade brighter than Dracula on each hue.
+    pub const fn high_contrast() -> Self {
+        Self {
+            user_prompt: Color::Rgb(0x00, 0xd7, 0xff), // bright cyan
+            agent_reply: Color::Rgb(0x00, 0xff, 0x87), // bright mint
+            thinking: Color::Rgb(0xff, 0xff, 0x5f),    // bright yellow
+            tool_call: Color::Rgb(0xaf, 0x87, 0xff),   // bright violet
+        }
+    }
+}
+
 /// Persisted / selectable TUI color layout. Semantic Dracula tokens stay shared in [`super::palette`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TuiThemeId {
@@ -131,6 +207,8 @@ pub struct TuiTheme {
     pub id: TuiThemeId,
     pub layout: ThemeLayout,
     pub surfaces: PanelSurfaces,
+    /// Per-theme accent colors for the four transcript roles.
+    pub palette: ThemePalette,
 }
 
 impl TuiTheme {
@@ -141,18 +219,43 @@ impl TuiTheme {
 
     #[must_use]
     pub fn resolve(id: TuiThemeId) -> Self {
-        let (layout, surfaces) = match id {
-            TuiThemeId::Classic => (ThemeLayout::Bordered, classic_surfaces()),
-            TuiThemeId::CoolBlue => (ThemeLayout::Borderless, cool_blue_surfaces()),
-            TuiThemeId::GrayScale => (ThemeLayout::Borderless, gray_scale_surfaces()),
-            TuiThemeId::Charcoal => (ThemeLayout::Borderless, charcoal_surfaces()),
-            TuiThemeId::DraculaTint => (ThemeLayout::Borderless, dracula_tint_surfaces()),
-            TuiThemeId::HighContrast => (ThemeLayout::Borderless, high_contrast_surfaces()),
+        let (layout, surfaces, palette) = match id {
+            TuiThemeId::Classic => (
+                ThemeLayout::Bordered,
+                classic_surfaces(),
+                ThemePalette::dracula(),
+            ),
+            TuiThemeId::CoolBlue => (
+                ThemeLayout::Borderless,
+                cool_blue_surfaces(),
+                ThemePalette::cool_blue(),
+            ),
+            TuiThemeId::GrayScale => (
+                ThemeLayout::Borderless,
+                gray_scale_surfaces(),
+                ThemePalette::gray_scale(),
+            ),
+            TuiThemeId::Charcoal => (
+                ThemeLayout::Borderless,
+                charcoal_surfaces(),
+                ThemePalette::charcoal(),
+            ),
+            TuiThemeId::DraculaTint => (
+                ThemeLayout::Borderless,
+                dracula_tint_surfaces(),
+                ThemePalette::dracula_tint(),
+            ),
+            TuiThemeId::HighContrast => (
+                ThemeLayout::Borderless,
+                high_contrast_surfaces(),
+                ThemePalette::high_contrast(),
+            ),
         };
         Self {
             id,
             layout,
             surfaces,
+            palette,
         }
     }
 

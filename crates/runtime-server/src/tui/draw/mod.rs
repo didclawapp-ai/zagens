@@ -6,7 +6,6 @@ mod pane;
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Clear, Paragraph};
 
-use super::activity_strip;
 use super::app::AppState;
 use super::focus::FocusRegion;
 use super::inspector::render_lht_styled;
@@ -150,7 +149,10 @@ fn draw_center_column(
     styles: Option<&BorderStyles>,
 ) {
     let live_activity = app.transcript.is_live_activity();
-    let center = split_center_column(regions.center, live_activity, app.layout.composer_lines);
+    // Activity strip removed: transcript THK/tool lines already convey the same state.
+    // Pass false so no row is reserved for the strip; live_activity is kept for the
+    // composer title ("waiting") and hint text only.
+    let center = split_center_column(regions.center, false, app.layout.composer_lines);
     let chat_focused = app.layout.focus == FocusRegion::Chat;
     let section = BorderPlan::for_center_section();
     let borderless = theme::current().borderless();
@@ -173,21 +175,6 @@ fn draw_center_column(
         app.transcript_render(transcript_h.max(4), transcript_w.max(20)),
         true,
     );
-
-    if let Some(strip_area) = center.activity {
-        let (strip_w, _) = pane::inset_line_budget(strip_area, section);
-        let strip_line = activity_strip::render_activity_strip(&app.transcript, strip_w as u16);
-        paint_pane(
-            frame,
-            strip_area,
-            " Activity ",
-            section,
-            pane_border_style(styles, TuiPanel::Activity, false),
-            theme::panel(TuiPanel::Activity).surface(false),
-            vec![strip_line],
-            true,
-        );
-    }
 
     let composer_focused = chat_focused && app.composer_focus;
     let composer_title = if live_activity {

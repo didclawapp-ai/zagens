@@ -184,9 +184,19 @@ fn paint_left_center_rule(buf: &mut Buffer, regions: &LayoutRegions, styles: &Di
             .left
             .x
             .saturating_add(regions.left.width.saturating_sub(1));
+        let last = regions.left.height.saturating_sub(1);
         for row in 0..regions.left.height {
+            // Use corner glyphs at top/bottom to close the left panel's horizontal border edges
+            // instead of overwriting them with │, which would look like the divider "runs out".
+            let sym = if row == 0 {
+                "┐"
+            } else if row == last {
+                "┘"
+            } else {
+                "│"
+            };
             buf[(x, regions.left.y + row)]
-                .set_symbol("│")
+                .set_symbol(sym)
                 .set_style(styles.left_center);
         }
         return;
@@ -194,10 +204,19 @@ fn paint_left_center_rule(buf: &mut Buffer, regions: &LayoutRegions, styles: &Di
     if regions.center.width == 0 || regions.center.height == 0 {
         return;
     }
+    // Fallback: no left panel; paint the outer-left edge of the center column.
     let x = regions.center.x;
+    let last = regions.center.height.saturating_sub(1);
     for row in 0..regions.center.height {
+        let sym = if row == 0 {
+            "┌"
+        } else if row == last {
+            "└"
+        } else {
+            "│"
+        };
         buf[(x, regions.center.y + row)]
-            .set_symbol("│")
+            .set_symbol(sym)
             .set_style(styles.center_outer);
     }
 }
@@ -205,9 +224,18 @@ fn paint_left_center_rule(buf: &mut Buffer, regions: &LayoutRegions, styles: &Di
 fn paint_center_right_rule(buf: &mut Buffer, regions: &LayoutRegions, styles: &DividerStyles) {
     if regions.right_visible && regions.right.width > 0 && regions.right.height > 0 {
         let x = regions.right.x;
+        let last = regions.right.height.saturating_sub(1);
         for row in 0..regions.right.height {
+            // Use corner glyphs at top/bottom to open the right panel's horizontal border edges.
+            let sym = if row == 0 {
+                "┌"
+            } else if row == last {
+                "└"
+            } else {
+                "│"
+            };
             buf[(x, regions.right.y + row)]
-                .set_symbol("│")
+                .set_symbol(sym)
                 .set_style(styles.center_right);
         }
         return;
@@ -215,13 +243,22 @@ fn paint_center_right_rule(buf: &mut Buffer, regions: &LayoutRegions, styles: &D
     if regions.center.width < 2 || regions.center.height == 0 {
         return;
     }
+    // Fallback: no right panel; paint the outer-right edge of the center column.
     let x = regions
         .center
         .x
         .saturating_add(regions.center.width.saturating_sub(1));
+    let last = regions.center.height.saturating_sub(1);
     for row in 0..regions.center.height {
+        let sym = if row == 0 {
+            "┐"
+        } else if row == last {
+            "┘"
+        } else {
+            "│"
+        };
         buf[(x, regions.center.y + row)]
-            .set_symbol("│")
+            .set_symbol(sym)
             .set_style(styles.center_outer);
     }
 }
@@ -257,7 +294,14 @@ mod tests {
                 center_outer: style,
             },
         );
-        assert_eq!(buf[(27, 1)].symbol(), "│");
-        assert_eq!(buf[(89, 1)].symbol(), "│");
+        // Top corners use proper box-drawing corner glyphs.
+        assert_eq!(buf[(27, 1)].symbol(), "┐");
+        assert_eq!(buf[(89, 1)].symbol(), "┌");
+        // Mid-body rows use plain vertical bar.
+        assert_eq!(buf[(27, 10)].symbol(), "│");
+        assert_eq!(buf[(89, 10)].symbol(), "│");
+        // Bottom corners use closing corner glyphs.
+        assert_eq!(buf[(27, 20)].symbol(), "┘");
+        assert_eq!(buf[(89, 20)].symbol(), "└");
     }
 }

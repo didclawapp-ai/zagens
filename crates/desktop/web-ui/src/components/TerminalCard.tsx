@@ -1,11 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
-import { Terminal } from '@xterm/xterm';
-import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { useT } from '../i18n';
+import { useXterm } from '../lib/terminal/useXterm';
 import { xtermThemeForAppDarkMode } from '../lib/terminal/xtermTheme';
 
 export type TerminalToolStatus = 'running' | 'done' | 'error';
+
+/**
+ * Initial row count for read-only terminal cards.
+ * xterm pre-allocates this many rows; actual scrollback is unlimited.
+ * 12 rows ≈ 168 px at font-size 11 — enough to show short command output
+ * without excessive blank space for silent commands.
+ */
+const TERMINAL_CARD_ROWS = 12;
 
 interface Props {
   /** Output text — re-renders the terminal when it changes */
@@ -36,7 +43,7 @@ function useDocumentDarkClass(): boolean {
 /**
  * Normalize captured shell output for read-only xterm display.
  * In light UI, strip SGR/OSC — PowerShell and Windows consoles often emit pale / true-color
- * sequences that were meant for dark terminals and read as “empty” on our light theme.
+ * sequences that were meant for dark terminals and read as "empty" on our light theme.
  */
 function prepareTerminalOutput(text: string, lightUi: boolean): string {
   let s = text
@@ -53,86 +60,74 @@ function prepareTerminalOutput(text: string, lightUi: boolean): string {
   return s;
 }
 
-/** Whether there is any visible text after normalizing; strip ANSI so “empty” colored output still counts. */
+/** Whether there is any visible text after normalizing; strip ANSI so "empty" colored output still counts. */
 function hasTerminalText(output: string): boolean {
   const plain = prepareTerminalOutput(output, true);
   return plain.trim().length > 0;
 }
 
-/** Only mounted when there is something to show — avoids xterm’s fixed min-height slab for silent commands (common with `python …`). */
+/** Only mounted when there is something to show — avoids xterm's fixed min-height slab for silent commands (common with `python …`). */
 function TerminalXtermView({ output }: { output: string }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const termRef = useRef<Terminal | null>(null);
-  const fitRef = useRef<FitAddon | null>(null);
+  const isDark = useDocumentDarkClass();
+  const lightUi = !isDark;
+
   const writtenLenRef = useRef(0);
   const outputRef = useRef(output);
   outputRef.current = output;
-  const isDark = useDocumentDarkClass();
+  const lightUiRef = useRef(lightUi);
+  lightUiRef.current = lightUi;
 
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    writtenLenRef.current = 0;
-    const term = new Terminal({
-      cursorBlink: false,
-      disableStdin: true,
-      convertEol: true,
-      fontSize: 11,
-      fontFamily: "var(--font-mono)",
+  const { termRef, containerRef } = useXterm(
+    {
       theme: xtermThemeForAppDarkMode(isDark),
-      rows: 12,
-    });
+      fontSize: 11,
+      rows: TERMINAL_CARD_ROWS,
+      disableStdin: true,
+    },
+    {
+      onReady: (term, fit) => {
+        writtenLenRef.current = 0;
 
-    const fit = new FitAddon();
-    term.loadAddon(fit);
-    term.open(container);
+        const repaint = () => {
+          if (!containerRef.current || containerRef.current.clientWidth < 2) return;
+          try { fit.fit(); } catch { /* narrow layout */ }
+          term.clear();
+          const prepared = prepareTerminalOutput(outputRef.current, lightUiRef.current);
+          term.write(prepared);
+          writtenLenRef.current = prepared.length;
+        };
 
-    const lightUi = !isDark;
-    const repaint = () => {
-      if (container.clientWidth < 2 || container.clientHeight < 2) return;
-      try {
-        fit.fit();
-      } catch {
-        /* narrow flex layouts may throw until width stabilizes */
-      }
-      term.clear();
-      const prepared = prepareTerminalOutput(outputRef.current, lightUi);
-      term.write(prepared);
-      writtenLenRef.current = prepared.length;
-    };
+        repaint();
+        // t1: catch layouts that resolve after the first synchronous paint
+        //     (e.g. chat bubble flex expanding to final width).
+        // t2: catch Tauri/Windows WebView second-pass compositing delay.
+        const t1 = window.setTimeout(repaint, 50);
+        const t2 = window.setTimeout(repaint, 250);
 
-    repaint();
-    const t1 = window.setTimeout(repaint, 50);
-    const t2 = window.setTimeout(repaint, 250);
-
-    let roRaf = 0;
-    const ro = new ResizeObserver(() => {
-      cancelAnimationFrame(roRaf);
-      roRaf = window.requestAnimationFrame(repaint);
-    });
-    ro.observe(container);
-
-    termRef.current = term;
-    fitRef.current = fit;
-
-    return () => {
-      window.clearTimeout(t1);
-      window.clearTimeout(t2);
-      cancelAnimationFrame(roRaf);
-      ro.disconnect();
-      term.dispose();
-      termRef.current = null;
-      fitRef.current = null;
-      writtenLenRef.current = 0;
-    };
-  }, [isDark]);
+        return () => {
+          window.clearTimeout(t1);
+          window.clearTimeout(t2);
+          writtenLenRef.current = 0;
+        };
+      },
+      onResize: (fitSafe) => {
+        // On resize: re-fit then clear+rewrite to avoid wrapping artifacts.
+        fitSafe();
+        const term = termRef.current;
+        if (!term) return;
+        term.clear();
+        const prepared = prepareTerminalOutput(outputRef.current, lightUiRef.current);
+        term.write(prepared);
+        writtenLenRef.current = prepared.length;
+      },
+    },
+    [isDark],
+  );
 
   /** Append `tool.progress` chunks without clearing the terminal each frame (F1a). */
   useEffect(() => {
     const term = termRef.current;
     if (!term) return;
-    const lightUi = !isDark;
     const prepared = prepareTerminalOutput(output, lightUi);
     if (prepared.length < writtenLenRef.current) {
       term.clear();
@@ -144,7 +139,7 @@ function TerminalXtermView({ output }: { output: string }) {
       term.write(prepared.slice(writtenLenRef.current));
       writtenLenRef.current = prepared.length;
     }
-  }, [output, isDark]);
+  }, [output, lightUi, termRef]);
 
   return (
     <div ref={containerRef} className="terminal-container w-full min-w-0 px-1 min-h-[8rem]" />

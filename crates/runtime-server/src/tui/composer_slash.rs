@@ -14,6 +14,8 @@ pub enum SlashAction {
     SwitchModel(String),
     SetLhtMode(LhtComposerMode),
     CycleLhtMode,
+    SwitchTheme(super::theme::TuiThemeId),
+    CycleTheme,
     NewSession,
     ShowHelp,
     ClearComposer,
@@ -32,6 +34,7 @@ pub(crate) enum SlashActionKind {
     Workspace,
     Model,
     Lht,
+    Theme,
     New,
     Help,
     Clear,
@@ -43,6 +46,7 @@ enum SlashPickerMode {
     Commands,
     Models,
     LhtModes,
+    Themes,
 }
 
 const COMMANDS: &[SlashCommandDef] = &[
@@ -75,6 +79,12 @@ const COMMANDS: &[SlashCommandDef] = &[
         description: "LHT mode: auto / strict / off (empty cycles)",
         takes_arg: true,
         action: SlashActionKind::Lht,
+    },
+    SlashCommandDef {
+        name: "theme",
+        description: "Switch TUI color theme (empty cycles)",
+        takes_arg: true,
+        action: SlashActionKind::Theme,
     },
     SlashCommandDef {
         name: "new",
@@ -120,6 +130,17 @@ impl SlashCommandState {
             }
             return;
         }
+        if theme_picker_active(composer) {
+            self.open = true;
+            self.mode = SlashPickerMode::Themes;
+            let count = filter_themes(composer).len();
+            if count == 0 {
+                self.selected = 0;
+            } else if self.selected >= count {
+                self.selected = count - 1;
+            }
+            return;
+        }
         if model_picker_active(composer) {
             self.open = true;
             self.mode = SlashPickerMode::Models;
@@ -155,6 +176,7 @@ impl SlashCommandState {
         }
         let count = match self.mode {
             SlashPickerMode::LhtModes => filter_lht_modes(composer).len(),
+            SlashPickerMode::Themes => filter_themes(composer).len(),
             SlashPickerMode::Models => filter_models(composer, model_catalog).len(),
             SlashPickerMode::Commands => filter_commands(composer).len(),
         };
@@ -224,6 +246,53 @@ fn parse_lht_arg(arg: &str) -> Option<LhtComposerMode> {
         "off" => Some(LhtComposerMode::Off),
         _ => None,
     }
+}
+
+// ── Theme picker ─────────────────────────────────────────────────────────────
+
+pub fn theme_picker_active(composer: &str) -> bool {
+    split_command_line(composer)
+        .map(|(name, _)| is_theme_command(name))
+        .unwrap_or(false)
+}
+
+fn is_theme_command(name: &str) -> bool {
+    name.eq_ignore_ascii_case("theme")
+}
+
+fn theme_arg(composer: &str) -> Option<&str> {
+    let (name, arg) = split_command_line(composer)?;
+    if is_theme_command(name) {
+        Some(arg)
+    } else {
+        None
+    }
+}
+
+fn parse_theme_arg(arg: &str) -> Option<super::theme::TuiThemeId> {
+    let lower = arg.trim().to_ascii_lowercase().replace('_', "-");
+    super::theme::TuiThemeId::ALL
+        .iter()
+        .copied()
+        .find(|id| id.as_str() == lower.as_str())
+}
+
+pub fn filter_themes(composer: &str) -> Vec<super::theme::TuiThemeId> {
+    let arg = theme_arg(composer).unwrap_or("");
+    let query = arg.trim().to_ascii_lowercase().replace('_', "-");
+    super::theme::TuiThemeId::ALL
+        .iter()
+        .copied()
+        .filter(|id| {
+            query.is_empty()
+                || id.as_str().contains(query.as_str())
+                || id.label().to_ascii_lowercase().contains(query.as_str())
+        })
+        .collect()
+}
+
+pub fn selected_theme(composer: &str, selected: usize) -> Option<super::theme::TuiThemeId> {
+    filter_themes(composer).into_iter().nth(selected)
 }
 
 pub fn filter_models(composer: &str, catalog: &[String]) -> Vec<String> {
@@ -314,6 +383,13 @@ pub fn try_parse_action(composer: &str, current_workspace: &Path) -> Option<Slas
                 parse_lht_arg(arg).map(SlashAction::SetLhtMode)
             }
         }
+        SlashActionKind::Theme => {
+            if arg.is_empty() {
+                Some(SlashAction::CycleTheme)
+            } else {
+                parse_theme_arg(arg).map(SlashAction::SwitchTheme)
+            }
+        }
         SlashActionKind::New => Some(SlashAction::NewSession),
         SlashActionKind::Help => Some(SlashAction::ShowHelp),
         SlashActionKind::Clear => Some(SlashAction::ClearComposer),
@@ -351,6 +427,9 @@ pub fn render_palette(
 ) -> Vec<Line<'static>> {
     if lht_picker_active(composer) {
         return render_lht_palette(composer, selected, width, max_rows, current_lht_mode);
+    }
+    if theme_picker_active(composer) {
+        return render_theme_palette(composer, selected, width, max_rows);
     }
     if model_picker_active(composer) {
         return render_model_palette(
@@ -497,6 +576,59 @@ fn render_lht_palette(
                 .add_modifier(Modifier::BOLD)
         } else if active {
             Style::default().fg(theme::footer_lht())
+        } else {
+            theme::hint()
+        };
+        lines.push(Line::from(Span::styled(pad(width, &label), style)));
+    }
+    lines
+}
+
+fn render_theme_palette(
+    composer: &str,
+    selected: usize,
+    width: usize,
+    max_rows: usize,
+) -> Vec<Line<'static>> {
+    let matches = filter_themes(composer);
+    if matches.is_empty() {
+        return vec![Line::from(Span::styled(
+            pad(width, " (no matching themes)"),
+            theme::hint(),
+        ))];
+    }
+
+    let current_id = super::theme::current_id();
+    let mut lines = Vec::new();
+    lines.push(Line::from(Span::styled(
+        pad(
+            width,
+            " Theme — ↑↓ select · Enter apply · empty /theme cycles · Esc cancel",
+        ),
+        theme::hint(),
+    )));
+
+    let visible = max_rows.saturating_sub(1).max(1);
+    let start = if selected >= visible {
+        selected + 1 - visible
+    } else {
+        0
+    };
+    for (idx, id) in matches.iter().enumerate().skip(start).take(visible) {
+        let mark = if idx == selected { ">" } else { " " };
+        let active = *id == current_id;
+        let suffix = if active { "  (current)" } else { "" };
+        let label = format!("{mark} {}{suffix}", id.label());
+        let style = if idx == selected {
+            Style::default()
+                .fg(theme::footer_context()
+                    .fg
+                    .unwrap_or(ratatui::style::Color::Cyan))
+                .add_modifier(Modifier::BOLD)
+        } else if active {
+            Style::default().fg(theme::footer_context()
+                .fg
+                .unwrap_or(ratatui::style::Color::Cyan))
         } else {
             theme::hint()
         };

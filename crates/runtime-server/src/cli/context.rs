@@ -15,9 +15,38 @@ pub struct CliContext {
 }
 
 pub fn resolve_workspace(cli: &Cli) -> PathBuf {
-    cli.workspace
-        .clone()
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
+    if let Some(w) = &cli.workspace {
+        return w.clone();
+    }
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    // When the binary is run from a build output directory (e.g. `target/debug/`),
+    // walk up to find the real project root so the file tree shows source code instead
+    // of build artifacts.
+    escape_build_dir(&cwd).unwrap_or(cwd)
+}
+
+/// If `path` is inside a `target/` build directory, return the nearest ancestor
+/// that contains a project root marker (`Cargo.toml`, `.git`, `package.json`).
+/// Returns `None` when the path does not appear to be inside a build directory.
+fn escape_build_dir(path: &Path) -> Option<PathBuf> {
+    let in_target = path.components().any(|c| c.as_os_str() == "target");
+    if !in_target {
+        return None;
+    }
+    let mut candidate = path.to_path_buf();
+    loop {
+        let parent = candidate.parent()?;
+        if parent == candidate {
+            return None;
+        }
+        let looks_like_root = parent.join("Cargo.toml").exists()
+            || parent.join(".git").exists()
+            || parent.join("package.json").exists();
+        if looks_like_root {
+            return Some(parent.to_path_buf());
+        }
+        candidate = parent.to_path_buf();
+    }
 }
 
 pub fn load_cli_context(cli: &Cli) -> Result<CliContext> {

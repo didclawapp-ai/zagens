@@ -38,6 +38,7 @@ Chat
   /commands           Slash menu — ↑↓ select · Enter run
   /model <id>         Switch text model (alias /m)
   /lht [auto|strict|off]  LHT composer mode (empty cycles)
+  /theme [name]       Switch TUI color theme (empty cycles)
   ↑ / ↓ / j / k       Scroll transcript (auto-enter scroll mode)
   PgUp / PgDn         Scroll transcript (auto-enter scroll mode)
   Ctrl+A              Cycle approval policy (4 modes, saved to config)

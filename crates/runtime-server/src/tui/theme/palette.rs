@@ -13,10 +13,7 @@ pub const TOOL_CALL: &str = "#bd93f9";
 pub const DIM: &str = "#6272a4";
 
 // §6.10.2 侧边栏 (legacy hex — surfaces override panel bg at runtime)
-pub const SIDEBAR_BG: &str = "#000000";
 pub const SIDEBAR_ACTIVE: &str = "#222222";
-pub const BADGE: &str = "#bd93f9";
-pub const ITEM_TEXT: &str = "#f8f8f2";
 
 // §6.10.3 Checklist
 pub const CHECKLIST_DONE: &str = "#50fa7b";
@@ -59,15 +56,6 @@ pub fn tool_call() -> Color {
 }
 pub fn dim() -> Color {
     rgb(0x62, 0x72, 0xa4)
-}
-pub fn sidebar_bg() -> Color {
-    rgb(0x00, 0x00, 0x00)
-}
-pub fn sidebar_active() -> Color {
-    rgb(0x22, 0x22, 0x22)
-}
-pub fn badge() -> Color {
-    rgb(0xbd, 0x93, 0xf9)
 }
 pub fn item_text() -> Color {
     rgb(0xf8, 0xf8, 0xf2)

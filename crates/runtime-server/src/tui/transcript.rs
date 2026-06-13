@@ -22,6 +22,10 @@ const TURN_GAP_LINES: usize = 2;
 /// Blank row between the user prompt and the agent's response (THK / tools / AI) in one turn.
 /// Sections inside the agent block stay packed.
 const USER_RESPONSE_GAP_LINES: usize = 1;
+/// Blank row inserted after a collapsed/expanded thinking block, before the AI reply.
+const THINKING_GAP_LINES: usize = 1;
+/// How many lines of live thinking text to show while the model is still streaming its reasoning.
+const THINKING_LIVE_LINES: usize = 3;
 const THINKING_PREVIEW_MAX: usize = 120;
 
 /// Visual category for transcript coloring.
@@ -424,6 +428,13 @@ fn append_turn_lines(lines: &mut Vec<LogicalLine>, turn: &TranscriptTurn, state:
             turn.thinking_expanded,
             state.thinking_anim_since,
         ));
+        // Add a visual gap after the thinking block so it doesn't run directly into
+        // tool calls or the AI reply line.
+        let has_content_after =
+            !turn.tools.is_empty() || turn.content_streaming || !turn.content.trim().is_empty();
+        if !turn.thinking.streaming && has_content_after {
+            lines.push(LogicalLine::thinking_gap_spacer());
+        }
     }
 
     if !turn.tools.is_empty() {
@@ -441,6 +452,11 @@ fn append_turn_lines(lines: &mut Vec<LogicalLine>, turn: &TranscriptTurn, state:
                 };
                 lines.extend(logical_lines_for_tool(tool, anim));
             }
+        }
+        // Gap after tools block so the AI reply doesn't run directly into the last tool line.
+        let has_ai_content = turn.content_streaming || !turn.content.trim().is_empty();
+        if has_ai_content {
+            lines.push(LogicalLine::thinking_gap_spacer());
         }
     }
 
@@ -485,7 +501,29 @@ fn logical_lines_for_merged_thinking(
         header,
         streaming,
     )];
-    if streaming || text.trim().is_empty() {
+    if streaming {
+        // While streaming: show the last THINKING_LIVE_LINES non-empty lines so the user
+        // can read what the model is reasoning about in real-time.  Each ThinkingDelta
+        // event bumps render_epoch → cache is cleared → this window slides forward.
+        if !text.trim().is_empty() {
+            let live: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
+            let start = live.len().saturating_sub(THINKING_LIVE_LINES);
+            for line in &live[start..] {
+                let trimmed = line.trim();
+                let preview =
+                    super::transcript_filter::truncate_plain(trimmed, THINKING_PREVIEW_MAX);
+                if !preview.is_empty() {
+                    out.push(LogicalLine::plain(
+                        TranscriptLineKind::Thinking,
+                        format!("     {preview}"),
+                        true, // thinking_live = true → bright color during streaming
+                    ));
+                }
+            }
+        }
+        return out;
+    }
+    if text.trim().is_empty() {
         return out;
     }
     if expanded {
@@ -609,6 +647,17 @@ impl LogicalLine {
             table_rows: None,
             thinking_live: false,
             gap_lines: 1,
+        }
+    }
+
+    /// Blank row after a thinking block, before tool calls or AI reply.
+    fn thinking_gap_spacer() -> Self {
+        Self {
+            kind: TranscriptLineKind::Spacer,
+            text: String::new(),
+            table_rows: None,
+            thinking_live: false,
+            gap_lines: THINKING_GAP_LINES,
         }
     }
 

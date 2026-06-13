@@ -1,25 +1,34 @@
-//! One-row marquee between Transcript and Composer while the model is active.
+//! One-row activity indicator between Transcript and Composer while the model is active.
+//!
+//! Design: braille spinner (1 char, rotates) · phase label · trailing dim ─ fill.
+//! Only the spinner character animates; the rest of the row is stable, keeping the
+//! eye on the label rather than the entire width scrolling.
 
-use ratatui::text::Line;
+use ratatui::style::{Modifier, Style};
+use ratatui::text::{Line, Span};
 
-use super::display_format::{display_width, pad_line_display_width, truncate_display_width};
-use super::theme::{self, ActivityPhase};
-use super::transcript::TranscriptState;
+use super::display_format::{display_width, truncate_display_width};
+use super::theme::{self, ActivityPhase, TuiPanel};
 
-/// Narrow ASCII rail tile (display width 2): `-}`.
-const MARQUEE_TILE: [char; 2] = ['-', '}'];
-const MARQUEE_MS: u64 = 80;
+/// Braille "clock" spinner — 10 frames, each 1 cell wide.
+const SPINNER_FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+/// How many milliseconds per spinner frame.
+const SPINNER_MS: u64 = 80;
+/// Dim separator character used to fill the trailing space.
+const TRAIL_CHAR: &str = "─";
 
-pub fn render_activity_strip(state: &TranscriptState, width: u16) -> Line<'static> {
+pub fn render_activity_strip(
+    state: &super::transcript::TranscriptState,
+    width: u16,
+) -> Line<'static> {
     let label = state.activity_banner_label();
     let since = state.activity_anim_since();
-    let tick = since.elapsed().as_millis() as u64 / MARQUEE_MS;
-    let text = marquee_text(&label, width as usize, tick);
+    let tick = since.elapsed().as_millis() as u64 / SPINNER_MS;
     let phase = activity_phase(state);
-    theme::activity_strip_line(&text, phase)
+    build_strip_line(&label, width as usize, tick, phase)
 }
 
-fn activity_phase(state: &TranscriptState) -> ActivityPhase {
+fn activity_phase(state: &super::transcript::TranscriptState) -> ActivityPhase {
     if state.is_thinking() {
         ActivityPhase::Thinking
     } else if state.is_tools_active() {
@@ -31,59 +40,54 @@ fn activity_phase(state: &TranscriptState) -> ActivityPhase {
     }
 }
 
-fn marquee_text(label: &str, width: usize, tick: u64) -> String {
+/// Build the activity strip as a multi-span Line:
+///   [spinner] [space] [label] [trailing ─ fill]
+///
+/// Only the spinner frame index changes each tick, so the label is stable.
+fn build_strip_line(label: &str, width: usize, tick: u64, phase: ActivityPhase) -> Line<'static> {
     let width = width.max(8);
-    let inner_label = truncate_display_width(label, width.saturating_sub(4));
-    let center = format!(" {inner_label} ");
-    let center_w = display_width(&center);
-    if center_w >= width {
-        return fit_line(&center, width);
-    }
 
-    let rail_total = width - center_w;
-    let left_w = rail_total / 2;
-    let right_w = rail_total - left_w;
-    let offset = tick as usize;
+    let spinner = SPINNER_FRAMES[tick as usize % SPINNER_FRAMES.len()];
+    // " ⠹ " — 1 leading space + 1 spinner char + 1 trailing space = 3 display cols
+    let prefix = format!(" {spinner} ");
+    let prefix_w = 3usize;
 
-    let mut out = String::with_capacity(width);
-    out.push_str(&rail_segment(left_w, offset));
-    out.push_str(&center);
-    out.push_str(&rail_segment(right_w, offset + left_w));
-    fit_line(&out, width)
-}
+    // Reserve 1 col minimum for trailing fill, so the right edge is always visible.
+    let label_max = width.saturating_sub(prefix_w + 2);
+    let label_trimmed = truncate_display_width(label, label_max).to_string();
+    let label_w = display_width(&label_trimmed);
 
-fn rail_segment(target_width: usize, offset: usize) -> String {
-    if target_width == 0 {
-        return String::new();
-    }
-    let mut out = String::with_capacity(target_width);
-    let mut used = 0usize;
-    let mut idx = offset % MARQUEE_TILE.len();
-    while used < target_width {
-        let ch = MARQUEE_TILE[idx];
-        let cw = char_display_width(ch);
-        if used + cw > target_width {
-            break;
-        }
-        out.push(ch);
-        used += cw;
-        idx = (idx + 1) % MARQUEE_TILE.len();
-    }
-    out
-}
-
-fn char_display_width(ch: char) -> usize {
-    unicode_width::UnicodeWidthChar::width(ch)
-        .unwrap_or(0)
-        .max(1)
-}
-
-fn fit_line(line: &str, width: usize) -> String {
-    if display_width(line) <= width {
-        pad_line_display_width(line, width)
+    // Trailing fill: " " + one or more TRAIL_CHAR up to the right edge.
+    let fill_start_w = prefix_w + label_w + 1; // +1 for leading space before fill
+    let fill_char_w = width.saturating_sub(fill_start_w);
+    let trail = if fill_char_w > 0 {
+        format!(" {}", TRAIL_CHAR.repeat(fill_char_w))
     } else {
-        pad_line_display_width(&truncate_display_width(line, width), width)
-    }
+        String::new()
+    };
+
+    let phase_color = theme::activity_phase_color(phase);
+    let surface = theme::panel(TuiPanel::Activity).surface(false);
+    let bg = surface.bg.unwrap_or(ratatui::style::Color::Reset);
+    let dim_color = theme::panel(TuiPanel::Activity)
+        .hint()
+        .fg
+        .unwrap_or(ratatui::style::Color::DarkGray);
+
+    Line::from(vec![
+        // Spinner: bold + phase color → catches the eye without noisy motion
+        Span::styled(
+            prefix,
+            Style::default()
+                .fg(phase_color)
+                .bg(bg)
+                .add_modifier(Modifier::BOLD),
+        ),
+        // Label: same phase color, normal weight
+        Span::styled(label_trimmed, Style::default().fg(phase_color).bg(bg)),
+        // Trailing ─ fill: dim, gives the row visual weight without scrolling
+        Span::styled(trail, Style::default().fg(dim_color).bg(bg)),
+    ])
 }
 
 #[cfg(test)]
@@ -92,35 +96,45 @@ mod tests {
     use crate::core::events::Event;
     use crate::tui::transcript::{TranscriptState, apply_event};
 
-    #[test]
-    fn marquee_fits_width() {
-        let text = marquee_text("推理中 · THK", 40, 0);
-        assert_eq!(display_width(&text), 40);
+    fn strip_plain(label: &str, width: usize, tick: u64) -> String {
+        let line = build_strip_line(label, width, tick, ActivityPhase::Thinking);
+        line.spans.iter().map(|s| s.content.as_ref()).collect()
     }
 
     #[test]
-    fn marquee_fits_narrow_width() {
-        let text = marquee_text("生成回复 · AI", 24, 0);
-        assert!(display_width(&text) <= 24);
-        assert!(text.contains('-') || text.contains('}'));
+    fn strip_fits_width() {
+        crate::tui::theme::install(crate::tui::theme::TuiTheme::default_theme());
+        let text = strip_plain("推理中 · THK", 40, 0);
+        assert!(display_width(&text) <= 40, "width={}", display_width(&text));
     }
 
     #[test]
-    fn marquee_animates_with_tick() {
-        let a = marquee_text("tools", 30, 0);
-        let b = marquee_text("tools", 30, 3);
-        assert_ne!(a, b);
+    fn strip_fits_narrow_width() {
+        crate::tui::theme::install(crate::tui::theme::TuiTheme::default_theme());
+        let text = strip_plain("生成回复 · AI", 18, 0);
+        assert!(display_width(&text) <= 18, "width={}", display_width(&text));
     }
 
     #[test]
-    fn marquee_uses_ascii_rail_not_wide_dots() {
-        let text = marquee_text("生成回复 · AI", 48, 0);
-        assert!(!text.contains('●'));
-        assert!(text.contains('-'));
+    fn spinner_rotates_between_ticks() {
+        crate::tui::theme::install(crate::tui::theme::TuiTheme::default_theme());
+        let a = strip_plain("tools", 30, 0);
+        let b = strip_plain("tools", 30, 3);
+        // Spinner char changes → leading prefix differs.
+        assert_ne!(&a[..4], &b[..4]);
+    }
+
+    #[test]
+    fn strip_contains_no_marquee_chars() {
+        crate::tui::theme::install(crate::tui::theme::TuiTheme::default_theme());
+        let text = strip_plain("生成回复 · AI", 48, 0);
+        assert!(!text.contains('}'), "old marquee tile should not appear");
+        assert!(!text.contains('●'), "old dot style should not appear");
     }
 
     #[test]
     fn strip_label_reflects_thinking() {
+        crate::tui::theme::install(crate::tui::theme::TuiTheme::default_theme());
         let mut state = TranscriptState::default();
         state.begin_turn("test".into());
         apply_event(

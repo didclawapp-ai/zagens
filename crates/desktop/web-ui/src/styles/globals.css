@@ -1094,7 +1094,7 @@ html {
   .terminal-panel-xterm .xterm-viewport {
     overflow-y: auto;
     scrollbar-width: thin;
-    scrollbar-color: rgba(228, 224, 220, 0.18) transparent;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
   }
 
   .terminal-panel-xterm .xterm-viewport::-webkit-scrollbar {
@@ -1105,15 +1105,39 @@ html {
     min-height: 2.5rem;
     border: 2px solid transparent;
     border-radius: 999px;
-    background-color: rgba(228, 224, 220, 0.18);
+    background-color: var(--scrollbar-thumb);
     background-clip: padding-box;
   }
 
   .terminal-panel-xterm .xterm-viewport::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(228, 224, 220, 0.32);
+    background-color: var(--scrollbar-thumb-hover);
   }
 
   .terminal-panel-xterm .xterm-viewport::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  /* Read-only tool output in chat (TerminalCard) */
+  .terminal-container .xterm-viewport {
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+
+  .terminal-container .xterm-viewport::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .terminal-container .xterm-viewport::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background-color: var(--scrollbar-thumb);
+  }
+
+  .terminal-container .xterm-viewport::-webkit-scrollbar-thumb:hover {
+    background-color: var(--scrollbar-thumb-hover);
+  }
+
+  .terminal-container .xterm-viewport::-webkit-scrollbar-track {
     background: transparent;
   }
 }

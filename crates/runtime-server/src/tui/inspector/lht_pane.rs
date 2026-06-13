@@ -16,7 +16,7 @@ pub fn line_count(graph: Option<&TaskGraphSnapshot>) -> usize {
     if !graph.has_activity() {
         return 1;
     }
-    let mut n = 3; // header + progress + spacer
+    let mut n = 2; // progress bar + spacer
     if !graph.objective.is_empty() {
         n += 1;
     }
@@ -24,10 +24,12 @@ pub fn line_count(graph: Option<&TaskGraphSnapshot>) -> usize {
         n += 1;
     }
     if !graph.phases.is_empty() {
-        n += 1 + graph.phases.len();
+        // heading + each item + blank line after each item except the last
+        n += 1 + graph.phases.len() * 2 - 1;
     }
     if !graph.checklist.is_empty() {
-        n += 1 + graph.checklist.len();
+        // heading + each item + blank line after each item except the last
+        n += 1 + graph.checklist.len() * 2 - 1;
     }
     n
 }
@@ -40,17 +42,14 @@ pub fn render_styled_panel(
 ) -> Vec<Line<'static>> {
     let max_cols = max_cols.max(8);
     let Some(graph) = graph.filter(|g| g.has_activity()) else {
+        // "No activity." avoids repeating "LHT" when the pane title already says "LHT".
         return vec![Line::from(Span::styled(
-            "No LHT activity.",
+            "No activity.",
             theme::panel(LHT).hint(),
         ))];
     };
 
     let mut lines = Vec::new();
-    lines.push(Line::from(Span::styled(
-        "LHT",
-        theme::panel(LHT).checklist_header(),
-    )));
 
     if !graph.objective.is_empty() {
         lines.push(Line::from(Span::styled(
@@ -106,7 +105,7 @@ pub fn render_styled_panel(
             plan_title,
             theme::panel(LHT).heading(),
         )));
-        for phase in &graph.phases {
+        for (i, phase) in graph.phases.iter().enumerate() {
             let dim = plan_outline && phase.status != PhaseStatus::Completed;
             let (mark, style) = phase_style(phase.status, dim);
             lines.push(Line::from(vec![
@@ -116,6 +115,10 @@ pub fn render_styled_panel(
                     style,
                 ),
             ]));
+            // Blank line between items (not after the last one).
+            if i + 1 < graph.phases.len() {
+                lines.push(Line::from(Span::raw("")));
+            }
         }
     }
 
@@ -124,7 +127,7 @@ pub fn render_styled_panel(
             "Checklist",
             theme::panel(LHT).heading(),
         )));
-        for item in &graph.checklist {
+        for (i, item) in graph.checklist.iter().enumerate() {
             let active = graph.in_progress_id.is_some_and(|id| id == item.id)
                 || item.status == ChecklistStatus::InProgress;
             let (mark, style) = match item.status {
@@ -144,6 +147,10 @@ pub fn render_styled_panel(
                     style,
                 ),
             ]));
+            // Blank line between items (not after the last one).
+            if i + 1 < graph.checklist.len() {
+                lines.push(Line::from(Span::raw("")));
+            }
         }
     }
 

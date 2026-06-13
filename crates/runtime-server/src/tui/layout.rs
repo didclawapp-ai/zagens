@@ -432,7 +432,11 @@ impl LayoutEngine {
 
     /// Split the right rail into upper inspector + optional lower LHT pane.
     pub fn split_right_pane(&self, right: Rect, lht_visible: bool) -> RightPaneRegions {
-        if !lht_visible || right.height < RIGHT_INSPECTOR_MIN_ROWS + 6 {
+        // In borderless mode, reserve 1 row as a visual gap before the LHT title so it
+        // doesn't crowd the inspector content directly above it.
+        let gap: u16 = if theme::current().borderless() { 1 } else { 0 };
+        let min_height = RIGHT_INSPECTOR_MIN_ROWS + 6 + gap;
+        if !lht_visible || right.height < min_height {
             return RightPaneRegions {
                 inspector: right,
                 lht: Rect::default(),
@@ -443,12 +447,23 @@ impl LayoutEngine {
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Min(RIGHT_INSPECTOR_MIN_ROWS),
-                Constraint::Min(6),
+                Constraint::Min(6 + gap),
             ])
             .split(right);
+        // Shift the LHT area down by `gap` rows; that top gap row retains root bg and
+        // acts as a blank separator between the two sub-panes.
+        let lht = if gap > 0 {
+            Rect {
+                y: rows[1].y + gap,
+                height: rows[1].height.saturating_sub(gap),
+                ..rows[1]
+            }
+        } else {
+            rows[1]
+        };
         RightPaneRegions {
             inspector: rows[0],
-            lht: rows[1],
+            lht,
             lht_visible: true,
         }
     }

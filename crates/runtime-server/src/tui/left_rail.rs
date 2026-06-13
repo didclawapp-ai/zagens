@@ -176,6 +176,8 @@ fn clip_spans_to_width(spans: Vec<Span<'static>>, max_cols: usize) -> Line<'stat
 }
 
 /// Compact row: `>5ec4ef0 t… 06-13` — short id, date only, label truncated to fit.
+/// When no custom title is set (label == id), shows as much of the full id as fits
+/// instead of repeating the truncated id prefix as both id_part and label.
 fn format_session_line(
     mark: &str,
     id: &str,
@@ -183,9 +185,22 @@ fn format_session_line(
     updated: &str,
     max_cols: usize,
 ) -> String {
-    let id_part = truncate_display_width(id.strip_prefix("mr_").unwrap_or(id), SESSION_ID_MAX);
+    let bare_id = id.strip_prefix("mr_").unwrap_or(id);
     let suffix = format!(" {updated}");
     let suffix_w = display_width(&suffix);
+    let mark_w = display_width(mark);
+
+    // When no custom title is set the label equals the id — avoid showing it twice.
+    let has_title = label != id;
+    if !has_title {
+        // Use all available width for the id.
+        let id_budget = max_cols.saturating_sub(mark_w + suffix_w);
+        let id_part = truncate_display_width(bare_id, id_budget);
+        let row = format!("{mark}{id_part}{suffix}");
+        return truncate_display_width(&row, max_cols);
+    }
+
+    let id_part = truncate_display_width(bare_id, SESSION_ID_MAX);
     let prefix = format!("{mark}{id_part}");
     let prefix = if display_width(&prefix) + 1 + suffix_w <= max_cols {
         format!("{prefix} ")
@@ -216,6 +231,22 @@ mod tests {
             "06-13",
             clip_width(28),
         );
+        assert!(
+            display_width(&line) <= clip_width(28),
+            "line too wide ({}) for {} cols: {line:?}",
+            display_width(&line),
+            clip_width(28),
+        );
+    }
+
+    #[test]
+    fn session_line_no_title_shows_id_once() {
+        // When no custom title is set, label == id — the id must not appear twice.
+        let id = "thr_b3820950";
+        let line = format_session_line(">", id, id, "06-12", clip_width(28));
+        // The line must not contain "thr_b3" twice (abbreviated + full).
+        let count = line.matches("thr_b3").count();
+        assert_eq!(count, 1, "id should appear only once: {line:?}");
         assert!(
             display_width(&line) <= clip_width(28),
             "line too wide ({}) for {} cols: {line:?}",

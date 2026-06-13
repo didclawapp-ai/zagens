@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
-import { Terminal } from '@xterm/xterm';
-import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
+import { useT } from '../../i18n';
+import { useXterm } from '../../lib/terminal/useXterm';
 import { subscribeCurrentWebviewEvent } from '../../lib/tauriListen';
 import { integratedTerminalTheme } from '../../lib/terminal/xtermTheme';
 import { resizeTerminal, writeTerminal, type TerminalDataEvent, type TerminalExitEvent } from '../../lib/terminal/ptyApi';
@@ -15,10 +15,6 @@ interface Props {
   active: boolean;
 }
 
-function containerHasLayout(el: HTMLElement | null): boolean {
-  return el != null && el.clientWidth >= 2 && el.clientHeight >= 2;
-}
-
 export default function InteractiveTerminalView({
   sessionId,
   outputBuffer,
@@ -26,10 +22,10 @@ export default function InteractiveTerminalView({
   onExit,
   active,
 }: Props) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const termRef = useRef<Terminal | null>(null);
-  const fitRef = useRef<FitAddon | null>(null);
-  const disposedRef = useRef(false);
+  const { t } = useT();
+  const tRef = useRef(t);
+  tRef.current = t;
+
   const activeRef = useRef(active);
   activeRef.current = active;
   const bufferRef = useRef(outputBuffer);
@@ -38,123 +34,95 @@ export default function InteractiveTerminalView({
   onOutputRef.current = onOutput;
   const onExitRef = useRef(onExit);
   onExitRef.current = onExit;
+  const sessionIdRef = useRef(sessionId);
+  sessionIdRef.current = sessionId;
 
+  const { containerRef, termRef, fitRef } = useXterm(
+    { theme: integratedTerminalTheme, fontSize: 12, cursorBlink: true },
+    {
+      onReady: (term, fit, fitSafe) => {
+        if (bufferRef.current) {
+          term.write(bufferRef.current);
+        }
+
+        const dataSub = term.onData((data) => {
+          void writeTerminal(sessionIdRef.current, data).catch(() => {
+            term.write(`\r\n\x1b[31m${tRef.current('terminalInteractive.writeFailed')}\x1b[0m\r\n`);
+          });
+        });
+
+        const unlistenData = subscribeCurrentWebviewEvent<TerminalDataEvent>('terminal-data', (payload) => {
+          if (payload.id !== sessionIdRef.current) return;
+          onOutputRef.current(sessionIdRef.current, payload.data);
+          term.write(payload.data);
+        });
+
+        const unlistenExit = subscribeCurrentWebviewEvent<TerminalExitEvent>('terminal-exit', (payload) => {
+          if (payload.id !== sessionIdRef.current) return;
+          onExitRef.current(sessionIdRef.current, payload.code);
+          const code = payload.code;
+          const line =
+            code != null && code !== 0
+              ? `\r\n\x1b[90m${tRef.current('terminalInteractive.processExited', { code: String(code) })}\x1b[0m\r\n`
+              : `\r\n\x1b[90m${tRef.current('terminalInteractive.processEnded')}\x1b[0m\r\n`;
+          term.write(line);
+        });
+
+        // Sync PTY size after initial layout stabilises.
+        const syncSize = () => {
+          if (!activeRef.current) return;
+          try {
+            fit.fit();
+            const dims = fit.proposeDimensions();
+            if (dims?.cols && dims?.rows) {
+              void resizeTerminal(sessionIdRef.current, dims.cols, dims.rows).catch(() => {});
+            }
+          } catch {
+            /* ignore */
+          }
+        };
+        // Piggyback on the hook's own fitSafe for resize observer; run syncSize
+        // once after mount to push initial cols/rows to the PTY backend.
+        const t = window.setTimeout(syncSize, 100);
+
+        return () => {
+          window.clearTimeout(t);
+          dataSub.dispose();
+          unlistenData();
+          unlistenExit();
+        };
+      },
+    },
+    [sessionId],
+  );
+
+  // Re-fit and focus when the panel tab becomes active.
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    disposedRef.current = false;
-
-    const term = new Terminal({
-      cursorBlink: true,
-      convertEol: true,
-      fontSize: 12,
-      fontFamily: 'var(--font-mono)',
-      theme: integratedTerminalTheme,
-    });
-    const fit = new FitAddon();
-    term.loadAddon(fit);
-    term.open(container);
-
-    const fitSafe = () => {
-      if (disposedRef.current || !activeRef.current) return;
-      if (!containerHasLayout(container)) return;
+    if (!active) return;
+    const timer = window.setTimeout(() => {
+      const fit = fitRef.current;
+      const term = termRef.current;
+      const container = containerRef.current;
+      if (!fit || !term || !container || container.clientWidth < 2) return;
       try {
         fit.fit();
         const dims = fit.proposeDimensions();
         if (dims?.cols && dims?.rows) {
           void resizeTerminal(sessionId, dims.cols, dims.rows).catch(() => {});
         }
-      } catch {
-        /* layout not ready or terminal tearing down */
-      }
-    };
-
-    if (bufferRef.current) {
-      term.write(bufferRef.current);
-    }
-
-    const dataSub = term.onData((data) => {
-      if (disposedRef.current) return;
-      void writeTerminal(sessionId, data).catch(() => {
-        if (!disposedRef.current) {
-          term.write('\r\n\x1b[31m[终端写入失败]\x1b[0m\r\n');
-        }
-      });
-    });
-
-    const unlistenData = subscribeCurrentWebviewEvent<TerminalDataEvent>('terminal-data', (payload) => {
-      if (disposedRef.current || payload.id !== sessionId) return;
-      onOutputRef.current(sessionId, payload.data);
-      term.write(payload.data);
-    });
-
-    const unlistenExit = subscribeCurrentWebviewEvent<TerminalExitEvent>('terminal-exit', (payload) => {
-      if (disposedRef.current || payload.id !== sessionId) return;
-      onExitRef.current(sessionId, payload.code);
-      const code = payload.code;
-      const line =
-        code != null && code !== 0
-          ? `\r\n\x1b[90m[进程已退出，代码 ${code}]\x1b[0m\r\n`
-          : '\r\n\x1b[90m[进程已结束]\x1b[0m\r\n';
-      term.write(line);
-    });
-
-    let roRaf = 0;
-    const ro = new ResizeObserver(() => {
-      if (!activeRef.current) return;
-      cancelAnimationFrame(roRaf);
-      roRaf = window.requestAnimationFrame(fitSafe);
-    });
-    ro.observe(container);
-
-    const initialFit = window.setTimeout(fitSafe, 0);
-    const delayedFit = window.setTimeout(fitSafe, 80);
-
-    termRef.current = term;
-    fitRef.current = fit;
-
-    return () => {
-      disposedRef.current = true;
-      window.clearTimeout(initialFit);
-      window.clearTimeout(delayedFit);
-      dataSub.dispose();
-      unlistenData();
-      unlistenExit();
-      cancelAnimationFrame(roRaf);
-      ro.disconnect();
-      term.dispose();
-      termRef.current = null;
-      fitRef.current = null;
-    };
-  }, [sessionId]);
-
-  useEffect(() => {
-    if (!active) return;
-    const t = window.setTimeout(() => {
-      if (disposedRef.current) return;
-      const container = containerRef.current;
-      if (!containerHasLayout(container)) return;
-      try {
-        fitRef.current?.fit();
-        const dims = fitRef.current?.proposeDimensions();
-        if (dims?.cols && dims?.rows) {
-          void resizeTerminal(sessionId, dims.cols, dims.rows).catch(() => {});
-        }
-        termRef.current?.focus();
+        term.focus();
       } catch {
         /* ignore */
       }
     }, 50);
-    return () => window.clearTimeout(t);
-  }, [active, sessionId]);
+    return () => window.clearTimeout(timer);
+  }, [active, sessionId, fitRef, termRef, containerRef]);
 
   return (
     <div
       ref={containerRef}
       className="terminal-panel-xterm h-full w-full min-h-0 min-w-0 px-1 py-1"
-      role="tabpanel"
-      aria-label="Terminal"
+      aria-label={t('terminal.tab')}
     />
   );
 }

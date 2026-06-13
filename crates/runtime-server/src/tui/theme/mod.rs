@@ -7,9 +7,7 @@ mod palette;
 mod surfaces;
 
 pub use palette::*;
-pub use surfaces::{
-    ThemeLayout, TuiTheme, TuiThemeId, current, current_id, install, pane_chrome_rows,
-};
+pub use surfaces::{TuiTheme, TuiThemeId, current, current_id, install, pane_chrome_rows};
 
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -100,7 +98,7 @@ impl PanelStyles {
     pub fn tab(self, active: bool) -> Style {
         if active {
             self.surface(false)
-                .fg(p::user_prompt())
+                .fg(current().palette.user_prompt)
                 .add_modifier(Modifier::BOLD)
         } else {
             self.hint()
@@ -114,20 +112,20 @@ impl PanelStyles {
 
     #[must_use]
     pub fn checklist_done(self) -> Style {
-        self.surface(false).fg(p::agent_reply())
+        self.surface(false).fg(current().palette.agent_reply)
     }
 
     #[must_use]
     pub fn checklist_in_progress(self) -> Style {
         self.surface(false)
-            .fg(p::thinking())
+            .fg(current().palette.thinking)
             .add_modifier(Modifier::BOLD)
     }
 
     #[must_use]
     pub fn checklist_in_progress_active(self) -> Style {
         self.item(true)
-            .fg(p::thinking())
+            .fg(current().palette.thinking)
             .add_modifier(Modifier::BOLD)
     }
 
@@ -139,7 +137,7 @@ impl PanelStyles {
     #[must_use]
     pub fn composer_prompt(self) -> Style {
         self.surface(true)
-            .fg(p::user_prompt())
+            .fg(current().palette.user_prompt)
             .add_modifier(Modifier::BOLD)
     }
 
@@ -177,13 +175,13 @@ impl PanelStyles {
 
     #[must_use]
     pub fn footer_context(self) -> Style {
-        self.surface(false).fg(p::tool_call())
+        self.surface(false).fg(current().palette.tool_call)
     }
 
     #[must_use]
     pub fn palette_selection(self) -> Style {
         self.surface(true)
-            .fg(p::user_prompt())
+            .fg(current().palette.user_prompt)
             .add_modifier(Modifier::BOLD)
     }
 }
@@ -315,7 +313,7 @@ pub fn footer_chip(color: Color) -> Style {
 }
 
 pub fn footer_model() -> Color {
-    p::user_prompt()
+    current().palette.user_prompt
 }
 
 pub fn footer_mode() -> Color {
@@ -323,11 +321,11 @@ pub fn footer_mode() -> Color {
 }
 
 pub fn footer_task() -> Color {
-    p::agent_reply()
+    current().palette.agent_reply
 }
 
 pub fn footer_lht() -> Color {
-    p::tool_call()
+    current().palette.tool_call
 }
 
 pub fn footer_workspace() -> Style {
@@ -347,10 +345,11 @@ pub fn palette_selection() -> Style {
 }
 
 pub fn activity_phase_color(phase: ActivityPhase) -> Color {
+    let pal = current().palette;
     match phase {
-        ActivityPhase::Thinking => p::thinking(),
-        ActivityPhase::Tools => p::tool_call(),
-        ActivityPhase::Streaming => p::agent_reply(),
+        ActivityPhase::Thinking => pal.thinking,
+        ActivityPhase::Tools => pal.tool_call,
+        ActivityPhase::Streaming => pal.agent_reply,
         ActivityPhase::Other => p::dim(),
     }
 }
@@ -404,11 +403,12 @@ pub fn checklist_pending() -> Style {
 
 fn role_style(kind: TranscriptLineKind, live: bool) -> Style {
     let base = shell_main();
+    let pal = current().palette;
     match kind {
-        TranscriptLineKind::User => base.fg(p::user_prompt()).add_modifier(Modifier::BOLD),
-        TranscriptLineKind::Assistant => base.fg(p::agent_reply()).add_modifier(Modifier::BOLD),
-        TranscriptLineKind::Thinking => base.fg(p::thinking()).add_modifier(Modifier::BOLD),
-        TranscriptLineKind::ToolChain => base.fg(p::tool_call()).add_modifier(if live {
+        TranscriptLineKind::User => base.fg(pal.user_prompt).add_modifier(Modifier::BOLD),
+        TranscriptLineKind::Assistant => base.fg(pal.agent_reply).add_modifier(Modifier::BOLD),
+        TranscriptLineKind::Thinking => base.fg(pal.thinking).add_modifier(Modifier::BOLD),
+        TranscriptLineKind::ToolChain => base.fg(pal.tool_call).add_modifier(if live {
             Modifier::BOLD
         } else {
             Modifier::empty()
@@ -423,21 +423,22 @@ fn role_style(kind: TranscriptLineKind, live: bool) -> Style {
 
 fn body_style(kind: TranscriptLineKind, live: bool) -> Style {
     let base = shell_main();
+    let pal = current().palette;
     match kind {
         TranscriptLineKind::User => base.fg(p::user_text()),
-        TranscriptLineKind::Assistant => base.fg(p::agent_reply()),
+        TranscriptLineKind::Assistant => base.fg(pal.agent_reply),
         TranscriptLineKind::Thinking => {
             if live {
-                base.fg(p::thinking())
+                base.fg(pal.thinking)
             } else {
                 base.fg(p::dim())
             }
         }
         TranscriptLineKind::ToolChain => {
             if live {
-                base.fg(p::tool_call()).add_modifier(Modifier::BOLD)
+                base.fg(pal.tool_call).add_modifier(Modifier::BOLD)
             } else {
-                base.fg(p::tool_call())
+                base.fg(pal.tool_call)
             }
         }
         TranscriptLineKind::ToolError => base.fg(p::warning()).add_modifier(Modifier::BOLD),
@@ -546,17 +547,17 @@ mod tests {
         let table_rule = transcript_line(TranscriptLineKind::Assistant, "+---+---+", false);
         let table_row = transcript_line(TranscriptLineKind::Assistant, "| a | b |", false);
 
-        assert_eq!(tag_fg(&user), Some(p::user_prompt()));
+        assert_eq!(tag_fg(&user), Some(current().palette.user_prompt));
         assert_eq!(body_fg(&user), Some(p::user_text()));
-        assert_eq!(tag_fg(&think), Some(p::thinking()));
+        assert_eq!(tag_fg(&think), Some(current().palette.thinking));
         assert_eq!(body_fg(&think), Some(p::dim()));
-        assert_eq!(tag_fg(&tool), Some(p::tool_call()));
-        assert_eq!(body_fg(&tool), Some(p::tool_call()));
-        assert_eq!(tag_fg(&ai), Some(p::agent_reply()));
-        assert_eq!(body_fg(&ai), Some(p::agent_reply()));
+        assert_eq!(tag_fg(&tool), Some(current().palette.tool_call));
+        assert_eq!(body_fg(&tool), Some(current().palette.tool_call));
+        assert_eq!(tag_fg(&ai), Some(current().palette.agent_reply));
+        assert_eq!(body_fg(&ai), Some(current().palette.agent_reply));
         assert_eq!(body_fg(&table_rule), Some(p::dim()));
         assert_eq!(body_bg(&table_rule), Some(p::bg()));
-        assert_eq!(body_fg(&table_row), Some(p::agent_reply()));
+        assert_eq!(body_fg(&table_row), Some(current().palette.agent_reply));
         assert_eq!(body_bg(&table_row), Some(p::bg()));
         assert_ne!(body_bg(&table_row), Some(p::code_bg()));
     }

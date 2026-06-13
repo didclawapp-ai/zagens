@@ -4,7 +4,8 @@ import { handleTabListKeyDown } from '../../lib/a11y/rovingTabList';
 import { killTerminal, spawnTerminal } from '../../lib/terminal/ptyApi';
 import InteractiveTerminalView from './InteractiveTerminalView';
 
-const MAX_SESSIONS = 6;
+/** Must match MAX_SESSIONS_PER_WINDOW in crates/desktop/src/terminal.rs */
+const MAX_SESSIONS = 4;
 const DEFAULT_COLS = 80;
 const DEFAULT_ROWS = 24;
 
