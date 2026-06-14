@@ -172,6 +172,9 @@ pub struct LongHorizonSessionState {
     /// Layer-2 manifest failures captured when CRAFT is entered after
     /// `audit_unmet` — merged into the remediation nudge alongside CRAFT gaps.
     pub macro_pending_manifest_hints: Vec<String>,
+    /// §6.7 adversarial audit rounds used this session (bounded by
+    /// `adversarial_audit.max_audit_rounds`).
+    pub adversarial_audit_rounds: u32,
 }
 
 /// In-memory nudge effectiveness counters (§4.9 — evidence for tuning, not yet
@@ -946,6 +949,7 @@ mod tests {
             max_auto_continue_rounds: cfg.max_auto_continue_rounds,
             completion_gate: cfg.completion_gate,
             macro_loop: cfg.macro_loop,
+            adversarial_audit: cfg.adversarial_audit,
         };
         for _ in 0..3 {
             assert!(matches!(
@@ -995,6 +999,7 @@ mod tests {
             max_auto_continue_rounds: cfg.max_auto_continue_rounds,
             completion_gate: cfg.completion_gate,
             macro_loop: cfg.macro_loop,
+            adversarial_audit: cfg.adversarial_audit,
         };
         let mut nudges = 0;
         for _ in 0..20 {
@@ -1029,6 +1034,7 @@ mod tests {
             max_auto_continue_rounds: defaults.max_auto_continue_rounds,
             completion_gate: defaults.completion_gate,
             macro_loop: defaults.macro_loop,
+            adversarial_audit: defaults.adversarial_audit,
         };
         // Two no-progress nudges (streak = 2), then a progress turn resets it.
         let _ = tracker.prepare_nudge(Some(1), &cfg, false);

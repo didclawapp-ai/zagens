@@ -170,6 +170,8 @@ impl Engine {
 
         let lht_mode_override = self.runtime_ext().turn_lht_mode;
         let thread_id = self.session.id.clone();
+        let lht_client = self.deepseek_client.clone();
+        let lht_model = self.session.model.clone();
         let input = crate::long_horizon::LongHorizonContinueInput {
             config: &lh_config,
             lht_mode_override,
@@ -187,6 +189,8 @@ impl Engine {
             already_injected_this_turn: false,
             steps_remaining,
             gate_exec: Some(gate_exec),
+            llm_client: lht_client,
+            llm_model: &lht_model,
         };
 
         let gate = crate::long_horizon::maybe_continue_incomplete_code_task(input).await;
@@ -217,6 +221,22 @@ impl Engine {
 
         let msg = match gate {
             crate::long_horizon::LhtGateOutcome::Nudge(msg) => msg,
+            crate::long_horizon::LhtGateOutcome::NudgeAdversarialGaps(msg) => {
+                // §6.7 enforce: gap candidates reinjected as checklist items.
+                Engine::add_session_message(self, msg).await;
+                self.long_horizon_continue_injected_this_turn = true;
+                let audit_round = self
+                    .runtime_ext()
+                    .long_horizon_state
+                    .adversarial_audit_rounds;
+                let _ = self
+                    .tx_event
+                    .send(Event::status(format!(
+                        "long_horizon.adversarial_audit: {{\"enforce\":true,\"reinject\":true,\"audit_round\":{audit_round}}}"
+                    )))
+                    .await;
+                return true;
+            }
             crate::long_horizon::LhtGateOutcome::NudgeManifestFailed(msg)
             | crate::long_horizon::LhtGateOutcome::NudgeDeliverablesMissing(msg) => {
                 Engine::add_session_message(self, msg).await;

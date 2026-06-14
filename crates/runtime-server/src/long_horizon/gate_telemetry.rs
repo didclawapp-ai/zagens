@@ -39,6 +39,10 @@ pub enum CompletionGateEvent {
     IntegrationGate {
         payload_json: String,
     },
+    /// §6.7: adversarial read-only auditor result (agent-independent grounding signal).
+    AdversarialAudit {
+        payload_json: String,
+    },
 }
 
 #[derive(Serialize)]
@@ -90,6 +94,9 @@ impl CompletionGateEvent {
             }
             Self::IntegrationGate { payload_json } => {
                 format!("long_horizon.integration_gate: {payload_json}")
+            }
+            Self::AdversarialAudit { payload_json } => {
+                format!("long_horizon.adversarial_audit: {payload_json}")
             }
         }
     }

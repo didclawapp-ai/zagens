@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Zagens TUI — 背景分区方案预览</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --fg: #f8f8f2;
+      --dim: #6272a4;
+      --user: #8be9fd;
+      --agent: #50fa7b;
+      --think: #f1fa8c;
+      --tool: #bd93f9;
+      --title-bg: #000;
+      --title-fg: #f8f8f2;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      background: #0a0a0a;
+      color: var(--fg);
+      min-height: 100vh;
+      padding: 20px 24px 32px;
+    }
+
+    h1 {
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      margin-bottom: 6px;
+    }
+
+    .intro {
+      font-size: 12px;
+      color: var(--dim);
+      line-height: 1.55;
+      max-width: 920px;
+      margin-bottom: 18px;
+    }
+
+    .scheme-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .scheme-bar button {
+      font-family: inherit;
+      font-size: 11px;
+      padding: 6px 12px;
+      border: 1px solid #333;
+      background: #141414;
+      color: var(--fg);
+      cursor: pointer;
+      border-radius: 2px;
+    }
+
+    .scheme-bar button:hover { border-color: #555; }
+    .scheme-bar button.active {
+      background: #222;
+      border-color: #777;
+      color: #fff;
+    }
+
+    .layout-wrap {
+      display: grid;
+      grid-template-columns: 1fr 280px;
+      gap: 20px;
+      align-items: start;
+    }
+
+    @media (max-width: 1100px) {
+      .layout-wrap { grid-template-columns: 1fr; }
+    }
+
+    /* ── Mock TUI shell (no panel borders) ── */
+    .tui {
+      width: 100%;
+      max-width: 980px;
+      height: 520px;
+      display: flex;
+      flex-direction: column;
+      font-size: 11px;
+      line-height: 1.45;
+      overflow: hidden;
+    }
+
+    .tui-title {
+      flex: 0 0 22px;
+      display: flex;
+      align-items: center;
+      padding: 0 8px;
+      font-size: 10px;
+      color: var(--dim);
+      white-space: nowrap;
+      overflow: hidden;
+    }
+
+    .tui-body {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 148px 1fr 168px;
+      min-height: 0;
+    }
+
+    .pane {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .pane-label {
+      flex: 0 0 auto;
+      padding: 4px 8px 2px;
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--dim);
+      opacity: 0.85;
+    }
+
+    .pane-body {
+      flex: 1;
+      padding: 4px 8px 8px;
+      overflow: hidden;
+    }
+
+    .center-stack {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .center-stack > .pane { flex: 1; min-height: 0; }
+    .center-stack > .pane.activity { flex: 0 0 28px; }
+    .center-stack > .pane.composer { flex: 0 0 72px; }
+    .center-stack > .pane.status { flex: 0 0 26px; }
+
+    .right-stack {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      height: 100%;
+    }
+
+    .right-stack > .pane.inspector { flex: 1; min-height: 0; }
+    .right-stack > .pane.lht { flex: 0 0 38%; min-height: 0; }
+
+    .line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .line.dim { color: var(--dim); }
+    .line.user { color: var(--user); }
+    .line.agent { color: var(--agent); }
+    .line.think { color: var(--think); }
+    .line.tool { color: var(--tool); }
+    .line.active { background: rgba(255,255,255,0.06); margin: 0 -8px; padding: 0 8px; }
+
+    .composer-prompt { color: var(--user); }
+    .composer-input { color: var(--dim); }
+
+    /* ── Legend panel ── */
+    .legend {
+      background: #111;
+      border: 1px solid #2a2a2a;
+      padding: 14px 16px;
+      font-size: 11px;
+    }
+
+    .legend h2 {
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+
+    .legend .scheme-name {
+      color: var(--agent);
+      margin-bottom: 8px;
+      font-size: 12px;
+    }
+
+    .legend .note {
+      color: var(--dim);
+      font-size: 10px;
+      line-height: 1.5;
+      margin-bottom: 12px;
+    }
+
+    .swatches { list-style: none; }
+    .swatches li {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+      font-size: 10px;
+    }
+
+    .swatch {
+      width: 28px;
+      height: 18px;
+      flex-shrink: 0;
+      border-radius: 1px;
+    }
+
+    .swatches .name { color: var(--fg); min-width: 88px; }
+    .swatches .hex { color: var(--dim); font-size: 9px; }
+
+    .compare-hint {
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px solid #2a2a2a;
+      font-size: 10px;
+      color: var(--dim);
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <h1>Zagens TUI — 纯背景分区（无分割线）方案预览</h1>
+  <p class="intro">
+    模拟终端三栏布局：左栏 / 会话+输入 / 右栏上下。各区域<strong>不使用边框线</strong>，仅靠背景色区分。
+    语义色（用户青、Agent 绿等）保持现有 Dracula 配色。点击方案按钮切换对比。
+  </p>
+
+  <div class="scheme-bar" id="schemeBar"></div>
+
+  <div class="layout-wrap">
+    <div class="tui" id="tui">
+      <div class="tui-title" id="elTitle">Zagens TUI | workspace | idle</div>
+      <div class="tui-body">
+        <div class="pane left" id="elLeft">
+          <div class="pane-label">Left</div>
+          <div class="pane-body">
+            <div class="line dim">Sessions</div>
+            <div class="line active">&gt; thr_a1b2…  refactor</div>
+            <div class="line">  thr_c3d4…  demo</div>
+            <div class="line">  thr_e5f6…  docs</div>
+            <div class="line dim" style="margin-top:8px">1Files 2Diff 3Agents</div>
+          </div>
+        </div>
+        <div class="center-stack">
+          <div class="pane transcript" id="elTranscript">
+            <div class="pane-label">Transcript</div>
+            <div class="pane-body">
+              <div class="line user">you&gt; 帮我梳理 harness 结构</div>
+              <div class="line agent">AI&gt; 可以分三层：runtime / desktop / fixtures</div>
+              <div class="line think">THK&gt; planning checklist…</div>
+              <div class="line tool">tool read_file crates/…</div>
+            </div>
+          </div>
+          <div class="pane activity" id="elActivity">
+            <div class="pane-body" style="padding-top:6px">
+              <div class="line think">| tools running (2) — read_file</div>
+            </div>
+          </div>
+          <div class="pane composer" id="elComposer">
+            <div class="pane-label">Composer</div>
+            <div class="pane-body">
+              <div class="line"><span class="composer-prompt">&gt; </span><span class="composer-input">type prompt…</span></div>
+            </div>
+          </div>
+          <div class="pane status" id="elStatus">
+            <div class="pane-body" style="padding-top:4px">
+              <div class="line dim">deepseek-chat | agent | code | approve: ask</div>
+            </div>
+          </div>
+        </div>
+        <div class="right-stack">
+          <div class="pane inspector" id="elInspector">
+            <div class="pane-label">Files</div>
+            <div class="pane-body">
+              <div class="line">v F:\project\src</div>
+              <div class="line">  - lib.rs</div>
+              <div class="line">&gt; crates/</div>
+            </div>
+          </div>
+          <div class="pane lht" id="elLht">
+            <div class="pane-label">LHT</div>
+            <div class="pane-body">
+              <div class="line dim">Plan · 2/5</div>
+              <div class="line">[x] read context</div>
+              <div class="line">[ ] apply patch</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <aside class="legend" id="legend">
+      <h2>当前方案</h2>
+      <div class="scheme-name" id="legendName">—</div>
+      <p class="note" id="legendNote">—</p>
+      <ul class="swatches" id="swatchList"></ul>
+      <p class="compare-hint">
+        建议：侧栏与主区对比度约 1.15–1.35 倍（不要太亮，避免抢会话内容）。
+        输入栏比会话区略浅/略深 1 档即可识别焦点区。
+      </p>
+    </aside>
+  </div>
+
+  <script>
+    const SCHEMES = {
+      A: {
+        name: "A · 极简灰阶（低对比）",
+        note: "最接近「无框纯黑终端」：侧栏仅比主区深/浅半档，适合减少视觉噪音。",
+        title: "#000000",
+        left: "#111111",
+        transcript: "#000000",
+        activity: "#000000",
+        composer: "#0a0a0a",
+        status: "#050505",
+        inspector: "#121212",
+        lht: "#0a0a0a",
+      },
+      B: {
+        name: "B · 冷灰蓝侧栏",
+        note: "左栏带轻微蓝灰（你提到的暗蓝方向），会话区保持纯黑，右栏中性灰。",
+        title: "#000000",
+        left: "#121820",
+        transcript: "#000000",
+        activity: "#000000",
+        composer: "#080b0f",
+        status: "#050608",
+        inspector: "#141820",
+        lht: "#0c1018",
+      },
+      C: {
+        name: "C · 分层 charcoal",
+        note: "侧栏 #161616，会话 #000，输入区 #121212 稍亮，Status 再压暗 — 层次清晰。",
+        title: "#000000",
+        left: "#161616",
+        transcript: "#000000",
+        activity: "#000000",
+        composer: "#121212",
+        status: "#080808",
+        inspector: "#181818",
+        lht: "#101010",
+      },
+      D: {
+        name: "D · Dracula 延伸（紫灰侧栏）",
+        note: "侧栏带极淡紫灰（呼应 tool #bd93f9），主会话仍纯黑，偏品牌感。",
+        title: "#000000",
+        left: "#15131a",
+        transcript: "#000000",
+        activity: "#000000",
+        composer: "#0e0c12",
+        status: "#08070a",
+        inspector: "#17141f",
+        lht: "#0f0d14",
+      },
+      E: {
+        name: "E · 高对比分区（最明显）",
+        note: "对比最强、最易辨认区域；侧栏明显更亮，适合宽屏或演示，长时间可能略累眼。",
+        title: "#000000",
+        left: "#1e1e1e",
+        transcript: "#000000",
+        activity: "#000000",
+        composer: "#141414",
+        status: "#0a0a0a",
+        inspector: "#222222",
+        lht: "#161616",
+      },
+    };
+
+    const els = {
+      title: document.getElementById("elTitle"),
+      left: document.getElementById("elLeft"),
+      transcript: document.getElementById("elTranscript"),
+      activity: document.getElementById("elActivity"),
+      composer: document.getElementById("elComposer"),
+      status: document.getElementById("elStatus"),
+      inspector: document.getElementById("elInspector"),
+      lht: document.getElementById("elLht"),
+    };
+
+    const SWATCH_KEYS = [
+      ["title", "Title 顶栏"],
+      ["left", "Left 左栏"],
+      ["transcript", "Transcript 会话"],
+      ["activity", "Activity 跑马灯"],
+      ["composer", "Composer 输入"],
+      ["status", "Status 状态条"],
+      ["inspector", "Inspector 右上"],
+      ["lht", "LHT 右下"],
+    ];
+
+    function applyScheme(key) {
+      const s = SCHEMES[key];
+      els.title.style.background = s.title;
+      els.left.style.background = s.left;
+      els.transcript.style.background = s.transcript;
+      els.activity.style.background = s.activity;
+      els.composer.style.background = s.composer;
+      els.status.style.background = s.status;
+      els.inspector.style.background = s.inspector;
+      els.lht.style.background = s.lht;
+
+      document.getElementById("legendName").textContent = s.name;
+      document.getElementById("legendNote").textContent = s.note;
+
+      const list = document.getElementById("swatchList");
+      list.innerHTML = "";
+      for (const [k, label] of SWATCH_KEYS) {
+        const li = document.createElement("li");
+        li.innerHTML =
+          '<span class="swatch" style="background:' + s[k] + '"></span>' +
+          '<span class="name">' + label + "</span>" +
+          '<span class="hex">' + s[k] + "</span>";
+        list.appendChild(li);
+      }
+
+      document.querySelectorAll(".scheme-bar button").forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.scheme === key);
+      });
+      localStorage.setItem("zagens-tui-bg-demo", key);
+    }
+
+    const bar = document.getElementById("schemeBar");
+    Object.keys(SCHEMES).forEach((key) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.dataset.scheme = key;
+      btn.textContent = SCHEMES[key].name;
+      btn.addEventListener("click", () => applyScheme(key));
+      bar.appendChild(btn);
+    });
+
+    applyScheme(localStorage.getItem("zagens-tui-bg-demo") || "B");
+  </script>
+</body>
+</html>

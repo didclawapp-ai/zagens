@@ -1,5 +1,6 @@
 //! Long-horizon code task (LHT) harness — Phase 1 forced continue.
 
+pub(crate) mod adversarial_audit;
 mod checkpoint;
 mod completion_audit;
 mod completion_gate_flow;
@@ -47,8 +48,9 @@ pub use task_graph::{
 };
 
 use std::path::Path;
+use std::sync::Arc;
 
-use zagens_core::chat::{ContentBlock, Message};
+use zagens_core::chat::{ContentBlock, LlmClient, Message};
 use zagens_core::long_horizon::{CompletionGateMode, GenericGateMode, LhtMode, LongHorizonConfig};
 use zagens_core::scratchpad::ScratchpadConfig;
 use zagens_core::task_type::TaskType;
@@ -79,6 +81,11 @@ pub struct LongHorizonContinueInput<'a> {
     pub steps_remaining: u32,
     /// Shell execution for layer-2 manifest oracle (§6.4). `None` skips active exec.
     pub gate_exec: Option<CompletionGateExec<'a>>,
+    /// LLM client for §6.7 adversarial audit (single read-only `create_message`
+    /// call). `None` skips the audit even when enabled in config.
+    pub llm_client: Option<Arc<dyn LlmClient>>,
+    /// Model name to use for the adversarial audit call.
+    pub llm_model: &'a str,
 }
 
 /// When audit scratchpad is active and incomplete, audit continue owns the path.
@@ -232,6 +239,8 @@ pub enum LhtGateOutcome {
         remaining_blockers: Vec<String>,
         macro_cycles_used: u32,
     },
+    /// §6.7: adversarial audit found gaps in enforce mode — reinject nudge.
+    NudgeAdversarialGaps(Message),
     Skip(&'static str),
 }
 
@@ -422,7 +431,46 @@ pub async fn maybe_continue_incomplete_code_task(
                 },
                 macro_loop::MacroTrigger::MicroPass,
             );
-            return macro_loop::macro_outcome_to_gate(macro_outcome);
+            let macro_gate = macro_loop::macro_outcome_to_gate(macro_outcome);
+            if !matches!(macro_gate, LhtGateOutcome::Skip(_)) {
+                return macro_gate;
+            }
+            // §6.7 adversarial audit: only runs when macro loop is inactive and
+            // machine gates are green.  No release/veto power — observe mode just
+            // emits telemetry; enforce mode adds gap candidates as checklist items.
+            if input.config.adversarial_audit.enabled {
+                if let Some(client) = input.llm_client.as_deref() {
+                    if let Some(audit_result) = adversarial_audit::run_adversarial_audit(
+                        &input.config.adversarial_audit,
+                        input.session,
+                        client,
+                        input.llm_model,
+                        input.workspace,
+                        &checklist,
+                        input.lang,
+                    )
+                    .await
+                    {
+                        use serde_json;
+                        let payload_json = serde_json::to_string(&audit_result).unwrap_or_default();
+                        input.session.pending_gate_events.push(
+                            gate_telemetry::CompletionGateEvent::AdversarialAudit { payload_json },
+                        );
+                        if !audit_result.was_bounded
+                            && !audit_result.gap_candidates.is_empty()
+                            && input.config.adversarial_audit.mode
+                                == zagens_core::long_horizon::CompletionGateMode::Enforce
+                        {
+                            let msg = adversarial_audit::build_gap_reinject_message(
+                                &audit_result.gap_candidates,
+                                input.lang,
+                            );
+                            return LhtGateOutcome::NudgeAdversarialGaps(msg);
+                        }
+                    }
+                }
+            }
+            return LhtGateOutcome::Skip("graph_complete");
         }
         if let LhtGateOutcome::AuditUnmet { reason, .. } = &gate_outcome {
             nudge::capture_manifest_gate_hints(input.session);

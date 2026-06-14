@@ -9,7 +9,68 @@ pub use completion_gate::{
     CompletionGateMode, CompletionGateVerifyEntry, GenericGateMode, ManifestShell, VerifySource,
 };
 
-/// LHT enforcement mode (user-facing toggle).
+/// §6.7 Adversarial read-only auditor configuration (agent-independent grounding signal).
+///
+/// Designed per §3.1 "gap enumerator" constraint: no release/veto power, output
+/// never directly enters `graph_complete` judgment. Widens machine-grounding surface
+/// by surfacing gaps that regex-based stub gate cannot catch (e.g. bodies that are
+/// `return Ok(())` with no `todo!()` marker).
+#[derive(Debug, Clone)]
+pub struct AdversarialAuditConfig {
+    /// Enable the adversarial auditor (default: false — opt-in).
+    pub enabled: bool,
+    /// Maximum audit rounds per LHT session (default 1).  Prevents unbounded
+    /// token spend in a single session.
+    pub max_audit_rounds: u32,
+    /// Token budget for the auditor's single `create_message` call (default 1500).
+    pub max_tokens: u32,
+    /// When `Enforce`: gap candidates are added as pending checklist items and
+    /// trigger a reinject nudge.  When `Observe` (default): only emit telemetry.
+    pub mode: CompletionGateMode,
+}
+
+impl Default for AdversarialAuditConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            max_audit_rounds: 1,
+            max_tokens: 1500,
+            mode: CompletionGateMode::Observe,
+        }
+    }
+}
+
+/// Deserializable `[long_horizon.adversarial_audit]` table for TOML.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct AdversarialAuditConfigToml {
+    #[serde(default)]
+    pub enabled: Option<bool>,
+    #[serde(default)]
+    pub max_audit_rounds: Option<u32>,
+    #[serde(default)]
+    pub max_tokens: Option<u32>,
+    /// `"observe"` (default) | `"enforce"`.
+    #[serde(default)]
+    pub mode: Option<String>,
+}
+
+impl AdversarialAuditConfigToml {
+    #[must_use]
+    pub fn into_runtime(self) -> AdversarialAuditConfig {
+        let defaults = AdversarialAuditConfig::default();
+        AdversarialAuditConfig {
+            enabled: self.enabled.unwrap_or(defaults.enabled),
+            max_audit_rounds: self.max_audit_rounds.unwrap_or(defaults.max_audit_rounds),
+            max_tokens: self.max_tokens.unwrap_or(defaults.max_tokens),
+            mode: self
+                .mode
+                .as_deref()
+                .map(CompletionGateMode::from_str_lossy)
+                .unwrap_or(defaults.mode),
+        }
+    }
+}
+
 ///
 /// - `Auto` (default): the harness only engages once the model authors a
 ///   plan/checklist — an **empty** task graph is skipped, so the model is free
@@ -189,6 +250,8 @@ pub struct LongHorizonConfig {
     pub completion_gate: CompletionGateConfig,
     /// Phase 4: bounded LHT implement ↔ CRAFT review ↔ remediation macro loop.
     pub macro_loop: MacroLoopConfig,
+    /// §6.7: Adversarial read-only auditor — agent-independent gap enumerator.
+    pub adversarial_audit: AdversarialAuditConfig,
 }
 
 impl Default for LongHorizonConfig {
@@ -204,6 +267,7 @@ impl Default for LongHorizonConfig {
             max_auto_continue_rounds: 16,
             completion_gate: CompletionGateConfig::default(),
             macro_loop: MacroLoopConfig::default(),
+            adversarial_audit: AdversarialAuditConfig::default(),
         }
     }
 }
@@ -232,6 +296,8 @@ pub struct LongHorizonConfigToml {
     pub completion_gate: Option<CompletionGateConfigToml>,
     #[serde(default)]
     pub macro_loop: Option<MacroLoopConfigToml>,
+    #[serde(default)]
+    pub adversarial_audit: Option<AdversarialAuditConfigToml>,
 }
 
 impl LongHorizonConfigToml {
@@ -262,6 +328,10 @@ impl LongHorizonConfigToml {
             macro_loop: self
                 .macro_loop
                 .map(MacroLoopConfigToml::into_runtime)
+                .unwrap_or_default(),
+            adversarial_audit: self
+                .adversarial_audit
+                .map(AdversarialAuditConfigToml::into_runtime)
                 .unwrap_or_default(),
         }
     }
