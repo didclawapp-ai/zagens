@@ -121,6 +121,43 @@ impl Engine {
         )
     }
 
+    /// **P2-D caller contract:** Before invoking the LLM-backed compaction or
+    /// partition-aware message drain, callers SHOULD first attempt
+    /// `compile_with_budget_override` on the registered `ContextCompiler`.
+    ///
+    /// When the compiler has sources registered (mode ≥ Shadow + sources > 0),
+    /// the budget solver can evict Volatile and shrink SemiStatic Elastic sources
+    /// without touching session messages at all.  Only when the solver returns
+    /// `Err(CompileError::Overflow)` should callers fall through to the LLM
+    /// compaction step or cycle handoff.
+    ///
+    /// This stub is the designated call site — wired to the real compiler once
+    /// all three overflow paths have been migrated (P2-Switch).
+    #[allow(dead_code)]
+    pub(super) fn try_budget_recompile(
+        &self,
+        budget: u32,
+    ) -> Option<zagens_core::engine::CompiledContext> {
+        use zagens_core::engine::{
+            BudgetOverride, ContextCompiler, ContextCompilerMode, ContextProjection,
+        };
+        // Guard: compiler must be in Shadow or V2 mode AND have sources registered.
+        // In P2-D the compiler is still shadow-only; once P2-Switch promotes it to
+        // V2, this call will also drive request assembly.
+        let _ = (
+            budget,
+            ContextCompiler::new(),
+            ContextCompilerMode::Shadow,
+            BudgetOverride {
+                source_id: zagens_core::engine::SourceId("stub"),
+                new_budget: zagens_core::engine::BudgetPolicy::Fixed(0),
+            },
+        );
+        let _proj = ContextProjection::from_session(&self.session, 0);
+        // No sources registered yet — always return None (fall through to legacy path).
+        None
+    }
+
     pub(super) async fn recover_context_overflow(
         &mut self,
         client: &dyn crate::llm_client::LlmClient,
@@ -132,6 +169,14 @@ impl Engine {
         else {
             return false;
         };
+
+        // P2-D: attempt compiler budget solver first.  When sources are
+        // registered this avoids any LLM call.  Currently returns None
+        // (no sources) and falls through to the existing compaction path.
+        if let Some(_recompiled) = self.try_budget_recompile(target_budget as u32) {
+            // TODO(P2-Switch): when compiler drives request assembly, apply
+            // `_recompiled` directly and skip the LLM compaction step below.
+        }
 
         let id = format!("compact_{}", &uuid::Uuid::new_v4().to_string()[..8]);
         let start_message = format!("Emergency context compaction started ({reason})");

@@ -67,6 +67,10 @@ impl Engine {
     /// set / handoff.md). Returns `true` when the swap happened (caller can
     /// retry the request) and `false` when the briefing turn failed (caller
     /// falls back to the original hard failure).
+    ///
+    /// **P2-D:** `try_budget_recompile` is the designated first step before
+    /// calling `perform_cycle_advance`.  Wired via `context_recovery.rs`;
+    /// this comment tracks the call site for P2-Switch migration.
     pub(super) async fn force_cycle_handoff_for_overflow(&mut self, mode: AppMode) -> bool {
         self.perform_cycle_advance(mode, "context overflow").await
     }

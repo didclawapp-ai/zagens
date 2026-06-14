@@ -51,8 +51,9 @@ pub use context::{
     is_context_length_error_message, summarize_text, turn_response_headroom_tokens,
 };
 pub use context_compiler::{
-    BudgetPolicy, CompiledContext, ContextCompiler, ContextCompilerMode, ContextLayer,
-    ContextProjection, ContextSource, RenderFn, RenderedBlock, SourceContribution, SourceId,
+    BudgetOverride, BudgetPolicy, CompileError, CompiledContext, ContextCompiler,
+    ContextCompilerMode, ContextLayer, ContextProjection, ContextSource, RenderFn, RenderedBlock,
+    SourceContribution, SourceId,
 };
 pub use context_snapshot::ThreadContextSnapshot;
 pub use dispatch::{
