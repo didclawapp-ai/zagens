@@ -70,10 +70,25 @@ pub fn record_context_compiler_shadow_diff(static_diff: bool, full_diff: bool) {
 /// moved into render closures without lifetime issues.  The values are
 /// captured once at `model_request_fingerprint` time and represent exactly
 /// what the legacy rendering path already produced.
+///
+/// **Source → field mapping:**
+///
+/// | ContextSource id   | Field                    | Notes                                    |
+/// |--------------------|--------------------------|------------------------------------------|
+/// | `system.static`    | `static_base_text`       | Block 0 text up to COMPACT_TEMPLATE      |
+/// | `memory.compaction`| `compaction_text`        | Block 0 after COMPACT_TEMPLATE + blocks 1+ joined |
+/// | `memory.cycle`     | `cycle_briefings_text`   | Rendered cycle briefing text (→ messages)|
+/// | `working_set`      | `working_set_text`       | `<turn_meta>` block                      |
 #[derive(Debug, Clone, Default)]
 pub struct ContextCompilerStateSnapshot {
-    /// Full system prompt text (static base + COMPACT_TEMPLATE + dynamic sections).
-    pub full_system_text: String,
+    /// System prompt text up to and including COMPACT_TEMPLATE (static portion of block 0).
+    pub static_base_text: String,
+    /// System prompt text after COMPACT_TEMPLATE in block 0 plus any compaction summary
+    /// blocks (joined with `"\n\n---\n\n"` to match `system_to_instructions` output).
+    pub compaction_text: String,
+    /// Pre-rendered cycle briefing text (goes into messages at runtime, registered here for
+    /// token-budget accounting in `compile_with_budget_override`).
+    pub cycle_briefings_text: String,
     /// Working-set turn-meta block text (pre-rendered by existing path).
     pub working_set_text: String,
     /// Current step index within the turn (0-based).
@@ -84,26 +99,39 @@ impl ContextCompilerStateSnapshot {
     /// Build a snapshot from live session state.
     #[must_use]
     pub fn from_session(session: &Session, step_idx: u32) -> Self {
-        let full_system_text = session
-            .system_prompt
-            .as_ref()
-            .and_then(|sp| match sp {
-                crate::models::SystemPrompt::Text(t) => Some(t.clone()),
-                crate::models::SystemPrompt::Blocks(blocks) => {
-                    let text = blocks
-                        .iter()
-                        .map(|b| b.text.as_str())
-                        .collect::<Vec<_>>()
-                        .join("\n\n");
-                    if text.is_empty() { None } else { Some(text) }
-                }
-            })
-            .unwrap_or_default();
+        let tpl = crate::prompts::COMPACT_TEMPLATE;
+
+        // Flatten the full system prompt text (same as `system_to_instructions`).
+        let full_text: String = match session.system_prompt.as_ref() {
+            None => String::new(),
+            Some(crate::models::SystemPrompt::Text(t)) => t.clone(),
+            Some(crate::models::SystemPrompt::Blocks(blocks)) => blocks
+                .iter()
+                .map(|b| b.text.as_str())
+                .collect::<Vec<_>>()
+                .join("\n\n---\n\n"),
+        };
+
+        // Split at COMPACT_TEMPLATE boundary.
+        let (static_base_text, compaction_text) = if let Some(pos) = full_text.find(tpl) {
+            let split = pos + tpl.len();
+            (
+                full_text[..split].to_string(),
+                full_text[split..].to_string(),
+            )
+        } else {
+            (full_text, String::new())
+        };
+
+        // Render cycle briefings for token accounting.
+        let cycle_briefings_text = render_cycle_briefings(&session.cycle_briefings);
 
         let working_set_text = working_set_turn_meta(session, &session.workspace);
 
         Self {
-            full_system_text,
+            static_base_text,
+            compaction_text,
+            cycle_briefings_text,
             working_set_text,
             step_idx,
         }
@@ -116,38 +144,21 @@ impl ContextCompilerStateSnapshot {
 ///
 /// **P2-Switch source map:**
 ///
-/// | source id         | layer        | priority | render closure                          |
-/// |-------------------|--------------|----------|-----------------------------------------|
-/// | `system.static`   | StaticPrefix | 255      | system prompt up to COMPACT_TEMPLATE    |
-/// | `system.dynamic`  | SemiStatic   | 200      | system prompt after COMPACT_TEMPLATE    |
-/// | `working_set`     | Volatile     | 160      | `<turn_meta>` block                     |
+/// | source id          | layer        | priority | budget                          |
+/// |--------------------|--------------|----------|---------------------------------|
+/// | `system.static`    | StaticPrefix | 255      | Fixed(8192) — hard reserve      |
+/// | `memory.compaction`| SemiStatic   | 200      | Elastic { min:0, max:4000 }     |
+/// | `memory.cycle`     | SemiStatic   | 170      | Elastic { min:0, max:3000 }     |
+/// | `working_set`      | Volatile     | 160      | Elastic { min:0, max:1500 }     |
 ///
-/// `tools.catalog` is JSON-bytes and is handled separately in the fingerprint
-/// assembler (not a text RenderedBlock).  `scratchpad.reminder` and `steer`
-/// are injected into messages (Volatile layer, wired in P2-Switch message-path).
+/// `tools.catalog` is JSON-bytes handled separately in the fingerprint
+/// assembler.  `scratchpad.reminder` and `steer` are wired in a later PR.
 #[must_use]
 pub fn build_compiler_from_snapshot(snapshot: &ContextCompilerStateSnapshot) -> ContextCompiler {
-    let full_text = snapshot.full_system_text.clone();
+    let static_text = snapshot.static_base_text.clone();
+    let compaction_text = snapshot.compaction_text.clone();
+    let cycle_text = snapshot.cycle_briefings_text.clone();
     let working_set_text = snapshot.working_set_text.clone();
-
-    // Derive static / dynamic split at the COMPACT_TEMPLATE boundary.
-    let static_text: String = {
-        let tpl = crate::prompts::COMPACT_TEMPLATE;
-        if let Some(pos) = full_text.find(tpl) {
-            full_text[..pos + tpl.len()].to_string()
-        } else {
-            full_text.clone()
-        }
-    };
-
-    let dynamic_text: String = {
-        let tpl = crate::prompts::COMPACT_TEMPLATE;
-        if let Some(pos) = full_text.find(tpl) {
-            full_text[pos + tpl.len()..].to_string()
-        } else {
-            String::new()
-        }
-    };
 
     ContextCompiler::new()
         .register(ContextSource {
@@ -164,15 +175,28 @@ pub fn build_compiler_from_snapshot(snapshot: &ContextCompilerStateSnapshot) -> 
             }),
         })
         .register(ContextSource {
-            id: SourceId("system.dynamic"),
+            id: SourceId("memory.compaction"),
             layer: ContextLayer::SemiStatic,
             priority: 200,
-            budget: BudgetPolicy::Elastic { min: 0, max: 8192 },
+            budget: BudgetPolicy::Elastic { min: 0, max: 4000 },
             render: Arc::new(move |_| {
-                if dynamic_text.is_empty() {
+                if compaction_text.is_empty() {
                     vec![]
                 } else {
-                    vec![RenderedBlock::new(dynamic_text.clone())]
+                    vec![RenderedBlock::new(compaction_text.clone())]
+                }
+            }),
+        })
+        .register(ContextSource {
+            id: SourceId("memory.cycle"),
+            layer: ContextLayer::SemiStatic,
+            priority: 170,
+            budget: BudgetPolicy::Elastic { min: 0, max: 3000 },
+            render: Arc::new(move |_| {
+                if cycle_text.is_empty() {
+                    vec![]
+                } else {
+                    vec![RenderedBlock::new(cycle_text.clone())]
                 }
             }),
         })
@@ -265,13 +289,40 @@ fn compute_compiler_fingerprint_from_snapshot(
 
     let ctx = compiler.compile(&proj);
 
-    // Assemble system text from compiler blocks (StaticPrefix + SemiStatic).
-    let compiler_system_text: String = ctx
-        .blocks
+    // Assemble system text from compiler blocks.
+    // StaticPrefix blocks → static_system_text (up to and including COMPACT_TEMPLATE).
+    // SemiStatic blocks → compaction/cycle text (after COMPACT_TEMPLATE).
+    // These two together must equal the full system text from the legacy path.
+    let static_system_text: String = ctx
+        .contributions
         .iter()
-        .map(|b| b.text.as_str())
+        .zip(ctx.blocks.iter())
+        .filter(|(c, _)| {
+            matches!(
+                compiler_source_layer(c.source_id.0),
+                ContextLayer::StaticPrefix
+            )
+        })
+        .map(|(_, b)| b.text.as_str())
         .collect::<Vec<_>>()
         .join("");
+
+    let semistatic_text: String = ctx
+        .contributions
+        .iter()
+        .zip(ctx.blocks.iter())
+        .filter(|(c, _)| {
+            matches!(
+                compiler_source_layer(c.source_id.0),
+                ContextLayer::SemiStatic
+            )
+        })
+        .map(|(_, b)| b.text.as_str())
+        .collect::<Vec<_>>()
+        .join("");
+
+    // Combine static + semistatic to reproduce the full system text.
+    let compiler_system_text = format!("{static_system_text}{semistatic_text}");
 
     // For tools and messages, fall back to existing request data.
     // (Volatile / message-layer sources wired in P2-Switch message-path PR.)
@@ -343,19 +394,16 @@ fn compute_compiler_fingerprint(
     fingerprint_message_request(request)
 }
 
-/// Map a source id string to its `ContextLayer` for fingerprint partitioning.
-#[allow(dead_code)]
+/// Remove the `#[allow(dead_code)]` since this is now used in fingerprint assembly.
 fn compiler_source_layer(id: &str) -> ContextLayer {
     match id {
         "system.static" | "tools.catalog" => ContextLayer::StaticPrefix,
-        "system.dynamic" | "memory.compaction" | "memory.topic" | "memory.cycle" => {
-            ContextLayer::SemiStatic
-        }
+        "memory.compaction" | "memory.topic" | "memory.cycle" => ContextLayer::SemiStatic,
         _ => ContextLayer::Volatile,
     }
 }
 
-// ── Session helper ────────────────────────────────────────────────────────────
+// ── Session helpers ───────────────────────────────────────────────────────────
 
 /// Extract a summary string for the working_set / turn_meta source from a
 /// `Session` — used by the `working_set` source's render closure.
@@ -371,6 +419,26 @@ pub fn working_set_turn_meta(session: &Session, workspace: &std::path::Path) -> 
         Some(ws) => format!("Current local date: {today}\n{ws}"),
         None => format!("Current local date: {today}"),
     }
+}
+
+/// Render cycle briefings as a single string for token-budget accounting.
+///
+/// Cycle briefings are injected as messages at runtime; this helper produces
+/// the combined text so the budget solver can estimate their token footprint.
+pub fn render_cycle_briefings(briefings: &[zagens_core::cycle::CycleBriefing]) -> String {
+    briefings
+        .iter()
+        .filter(|b| !b.briefing_text.trim().is_empty())
+        .map(|b| {
+            format!(
+                "[CYCLE BRIEFING — cycle {} at {}]\n{}",
+                b.cycle,
+                b.timestamp.to_rfc3339(),
+                b.briefing_text.trim()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n")
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -421,11 +489,11 @@ mod tests {
             ContextLayer::StaticPrefix
         );
         assert_eq!(
-            compiler_source_layer("system.dynamic"),
+            compiler_source_layer("memory.compaction"),
             ContextLayer::SemiStatic
         );
         assert_eq!(
-            compiler_source_layer("memory.compaction"),
+            compiler_source_layer("memory.cycle"),
             ContextLayer::SemiStatic
         );
         assert_eq!(compiler_source_layer("messages"), ContextLayer::Volatile);
@@ -434,19 +502,19 @@ mod tests {
 
     #[test]
     fn build_compiler_from_snapshot_registers_expected_sources() {
+        let marker = crate::prompts::COMPACT_TEMPLATE;
         let snapshot = ContextCompilerStateSnapshot {
-            full_system_text: format!(
-                "static base\n\n{}after-marker",
-                crate::prompts::COMPACT_TEMPLATE
-            ),
+            static_base_text: format!("static base\n\n{marker}"),
+            compaction_text: "after-marker".into(),
+            cycle_briefings_text: String::new(),
             working_set_text: "Current local date: 2099-01-01".into(),
             step_idx: 0,
         };
         let compiler = build_compiler_from_snapshot(&snapshot);
         assert_eq!(
             compiler.source_count(),
-            3,
-            "system.static + system.dynamic + working_set"
+            4,
+            "system.static + memory.compaction + memory.cycle + working_set"
         );
     }
 
@@ -454,11 +522,12 @@ mod tests {
     fn snapshot_static_text_matches_marker_boundary() {
         let marker = crate::prompts::COMPACT_TEMPLATE;
         let base = "base content";
-        let extra = "dynamic section";
-        let full = format!("{base}\n\n{marker}{extra}");
+        let extra = "compaction content";
 
         let snapshot = ContextCompilerStateSnapshot {
-            full_system_text: full.clone(),
+            static_base_text: format!("{base}\n\n{marker}"),
+            compaction_text: extra.to_string(),
+            cycle_briefings_text: String::new(),
             working_set_text: String::new(),
             step_idx: 0,
         };
@@ -467,28 +536,92 @@ mod tests {
         let proj = ContextProjection::from_session(&proxy.session, 0);
         let ctx = compiler.compile(&proj);
 
-        // Static source (system.static) renders text up to and including marker.
         let static_src = ctx
             .contributions
             .iter()
             .find(|c| c.source_id.0 == "system.static")
             .expect("system.static source missing");
-        // Dynamic source (system.dynamic) renders text after marker.
-        let dynamic_src = ctx
+        let compaction_src = ctx
             .contributions
             .iter()
-            .find(|c| c.source_id.0 == "system.dynamic");
+            .find(|c| c.source_id.0 == "memory.compaction");
+
         assert!(
             static_src.token_count > 0,
             "system.static must produce tokens"
         );
-        // When there is dynamic content, system.dynamic should produce tokens.
         if !extra.is_empty() {
-            let dyn_count = dynamic_src.map(|c| c.token_count).unwrap_or(0);
+            let comp_count = compaction_src.map(|c| c.token_count).unwrap_or(0);
             assert!(
-                dyn_count > 0,
-                "system.dynamic must produce tokens for dynamic content"
+                comp_count > 0,
+                "memory.compaction must produce tokens for dynamic content"
             );
         }
+    }
+
+    #[test]
+    fn render_cycle_briefings_empty_when_no_briefings() {
+        let text = render_cycle_briefings(&[]);
+        assert!(text.is_empty());
+    }
+
+    #[test]
+    fn render_cycle_briefings_includes_cycle_number_and_text() {
+        use chrono::Utc;
+        use zagens_core::cycle::CycleBriefing;
+
+        let briefings = vec![
+            CycleBriefing {
+                cycle: 1,
+                timestamp: Utc::now(),
+                briefing_text: "Decisions: chose A.".into(),
+                token_estimate: 10,
+            },
+            CycleBriefing {
+                cycle: 2,
+                timestamp: Utc::now(),
+                briefing_text: "Completed phase 1.".into(),
+                token_estimate: 12,
+            },
+        ];
+        let text = render_cycle_briefings(&briefings);
+        assert!(text.contains("cycle 1"), "must reference cycle 1");
+        assert!(text.contains("cycle 2"), "must reference cycle 2");
+        assert!(text.contains("Decisions: chose A."));
+        assert!(text.contains("Completed phase 1."));
+    }
+
+    #[test]
+    fn snapshot_from_session_splits_at_compact_template() {
+        use std::path::PathBuf;
+        use zagens_core::approval::ApprovalMode;
+
+        let marker = crate::prompts::COMPACT_TEMPLATE;
+        let workspace = PathBuf::from("/tmp");
+        let mut session = Session::new(
+            "test-model".into(),
+            workspace.clone(),
+            false,
+            false,
+            PathBuf::from("/tmp/notes.txt"),
+            PathBuf::from("/tmp/mcp.json"),
+        );
+        let full_text = format!("base text\n\n{marker}\nvolatile section");
+        session.system_prompt = Some(crate::models::SystemPrompt::Text(full_text.clone()));
+
+        let snapshot = ContextCompilerStateSnapshot::from_session(&session, 0);
+        // static_base_text should contain the marker
+        assert!(
+            snapshot.static_base_text.contains(marker),
+            "static_base_text must include COMPACT_TEMPLATE"
+        );
+        // compaction_text should be everything after the marker
+        assert_eq!(
+            snapshot.compaction_text, "\nvolatile section",
+            "compaction_text must be text after COMPACT_TEMPLATE"
+        );
+        // Reassembling should reproduce the full text
+        let reassembled = format!("{}{}", snapshot.static_base_text, snapshot.compaction_text);
+        assert_eq!(reassembled, full_text);
     }
 }
