@@ -22,6 +22,14 @@ pub async fn run(cli: Cli) -> Result<()> {
         Commands::Exec(args) => handlers::exec::run(&cli, &ctx, args).await,
         Commands::Review(args) => handlers::review::run_review(&ctx, args).await,
         Commands::Apply(args) => handlers::review::run_apply(&ctx.workspace, args),
+        Commands::CoverageGate(args) => {
+            let code = handlers::coverage_gate::run(args)?;
+            std::process::exit(if code == std::process::ExitCode::SUCCESS {
+                0
+            } else {
+                1
+            });
+        }
         Commands::Serve(args) => handlers::serve::run_serve(&cli, args).await,
         Commands::Mcp { command } => handlers::mcp::run_mcp(&ctx, command).await,
         Commands::Sessions { .. }

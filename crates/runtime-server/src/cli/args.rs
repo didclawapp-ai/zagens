@@ -143,6 +143,8 @@ pub enum Commands {
     Apply(ApplyArgs),
     /// Run the offline evaluation harness (no network/LLM calls)
     Eval(EvalArgs),
+    /// Layer-2 cross-platform completion gate check (replaces PowerShell scripts)
+    CoverageGate(CoverageGateArgs),
     /// Manage MCP servers
     Mcp {
         #[command(subcommand)]
@@ -497,4 +499,27 @@ pub enum SandboxCommand {
 pub enum SandboxPocCommand {
     /// Verify unelevated deny-read isolation; writes ~/.zagens/.sandbox/unelevated_deny_read_poc.json
     DenyRead,
+}
+
+/// Arguments for `zagens coverage-gate`
+#[derive(Args, Debug, Clone)]
+pub struct CoverageGateArgs {
+    /// Workspace directory (default: current directory)
+    #[arg(short, long)]
+    pub workspace: Option<std::path::PathBuf>,
+    /// Require all todo-list items to be marked completed
+    #[arg(long, default_value_t = true)]
+    pub require_checklist_complete: bool,
+    /// Run `cargo test` to verify test suite passes (slow; off by default)
+    #[arg(long = "run-tests", default_value_t = false)]
+    pub run_tests: bool,
+    /// Emit machine-readable JSON output instead of human-readable text
+    #[arg(long, default_value_t = false)]
+    pub json: bool,
+    /// Task ID to check in the CRAFT blackboard (optional; checks latest if omitted)
+    #[arg(long)]
+    pub task_id: Option<String>,
+    /// Exit 0 even when gate fails (report-only mode)
+    #[arg(long, default_value_t = false)]
+    pub no_fail: bool,
 }

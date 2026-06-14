@@ -1,4 +1,5 @@
 pub mod completions;
+pub mod coverage_gate;
 pub mod doctor;
 pub mod exec;
 pub mod login;
