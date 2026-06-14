@@ -68,15 +68,20 @@ pub(crate) fn summary_input_limits_for_model(model: &str) -> SummaryInputLimits 
 }
 
 pub struct CompactionResult {
-    /// Compacted messages
+    /// Compacted messages (pinned subset — same semantics as before P2-C).
     pub messages: Vec<Message>,
-    /// Summary system prompt
+    /// Summary system prompt.
     pub summary_prompt: Option<SystemPrompt>,
-    /// Messages that were removed from the active window
+    /// Messages that were removed from the active window.
     #[allow(dead_code)]
     pub removed_messages: Vec<Message>,
-    /// Number of retries used before success
+    /// Number of retries used before success.
     pub retries_used: u32,
+    /// Phase 2-C: artifact recording the compaction event for reversibility.
+    ///
+    /// `None` when compaction was skipped (e.g. prune-only, empty summarize
+    /// list, or when the session/turn IDs are unavailable).
+    pub artifact: Option<zagens_core::compaction::CompactionArtifact>,
 }
 
 /// Check if an error is transient and worth retrying. Categories that map to
@@ -110,6 +115,11 @@ pub async fn compact_messages_safe(
     external_pins: Option<&[usize]>,
     external_working_set_paths: Option<&[String]>,
 ) -> Result<CompactionResult> {
+    // Session-ID placeholder for artifact: empty string when not available
+    // at this call site.  Callers that have a session ID should use
+    // `compact_messages_safe_with_session` (added in a follow-up) to populate
+    // the field.  For now, the artifact is still recorded; the session_id
+    // field will be filled in by the host_impl caller.
     const MAX_RETRIES: u32 = 3;
     const BASE_DELAY_MS: u64 = 1000;
 
@@ -139,6 +149,7 @@ pub async fn compact_messages_safe(
                 summary_prompt: None,
                 removed_messages: Vec::new(),
                 retries_used: 0,
+                artifact: None,
             });
         }
         &pruned_messages
@@ -165,12 +176,13 @@ pub async fn compact_messages_safe(
         )
         .await
         {
-            Ok((msgs, prompt, removed)) => {
+            Ok((msgs, prompt, removed, artifact)) => {
                 return Ok(CompactionResult {
                     messages: msgs,
                     summary_prompt: prompt,
                     removed_messages: removed,
                     retries_used: attempt,
+                    artifact,
                 });
             }
             Err(e) => {
@@ -232,9 +244,14 @@ pub async fn compact_messages(
     workspace: Option<&Path>,
     external_pins: Option<&[usize]>,
     external_working_set_paths: Option<&[String]>,
-) -> Result<(Vec<Message>, Option<SystemPrompt>, Vec<Message>)> {
+) -> Result<(
+    Vec<Message>,
+    Option<SystemPrompt>,
+    Vec<Message>,
+    Option<zagens_core::compaction::CompactionArtifact>,
+)> {
     if messages.is_empty() {
-        return Ok((Vec::new(), None, Vec::new()));
+        return Ok((Vec::new(), None, Vec::new(), None));
     }
 
     let plan = plan_compaction(
@@ -245,7 +262,7 @@ pub async fn compact_messages(
         external_working_set_paths,
     );
     if plan.summarize_indices.is_empty() {
-        return Ok((messages.to_vec(), None, Vec::new()));
+        return Ok((messages.to_vec(), None, Vec::new(), None));
     }
 
     let to_summarize: Vec<Message> = plan
@@ -294,16 +311,54 @@ pub async fn compact_messages(
         },
     };
 
-    let pinned_messages = messages
+    let pinned_messages: Vec<Message> = messages
         .iter()
         .enumerate()
         .filter_map(|(idx, msg)| plan.pinned_indices.contains(&idx).then_some(msg.clone()))
         .collect();
 
+    // ── P2-C artifact ──────────────────────────────────────────────────────
+    // Determine the replaced range: the contiguous span of summarize_indices.
+    // `plan.summarize_indices` is sorted ascending by plan_compaction.
+    let artifact = if !plan.summarize_indices.is_empty() {
+        use zagens_core::engine::token_estimate::TokenEstimator;
+        let replaced_start = plan.summarize_indices[0];
+        let replaced_end = plan.summarize_indices[plan.summarize_indices.len() - 1] + 1;
+
+        // Serialize the original messages for reversibility.
+        let replaced_messages_json =
+            serde_json::to_string(&to_summarize).unwrap_or_else(|_| "[]".to_string());
+
+        let est = TokenEstimator;
+        let original_tokens: u32 = to_summarize
+            .iter()
+            .map(|m| est.estimate_message(m, false) as u32)
+            .sum();
+        let summary_tokens = est.estimate_text(&summary) as u32;
+
+        Some(zagens_core::compaction::CompactionArtifact {
+            id: uuid::Uuid::new_v4().to_string(),
+            session_id: String::new(), // filled in by the caller (host_impl)
+            created_at_ms: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as i64)
+                .unwrap_or(0),
+            replaced_start,
+            replaced_end,
+            replaced_messages_json,
+            summary: summary.clone(),
+            original_tokens,
+            summary_tokens,
+        })
+    } else {
+        None
+    };
+
     Ok((
         pinned_messages,
         Some(SystemPrompt::Blocks(vec![summary_block])),
         to_summarize,
+        artifact,
     ))
 }
 

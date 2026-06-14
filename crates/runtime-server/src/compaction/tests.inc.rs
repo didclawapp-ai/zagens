@@ -555,7 +555,7 @@ fn msg(role: &str, text: &str) -> Message {
             ..Default::default()
         };
 
-        let (pinned_messages, summary_prompt, removed) = compact_messages(
+        let (pinned_messages, summary_prompt, removed, _artifact) = compact_messages(
             &mock,
             &messages,
             &config,

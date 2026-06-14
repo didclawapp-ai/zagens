@@ -83,6 +83,10 @@ pub fn open_sqlite_session_db(
 
     ensure_sessions_runtime_thread_id_column(&db)?;
 
+    // P2-C: additive migration — ensure compaction artifacts table exists.
+    // Older binaries that don't call this function simply ignore the new table.
+    crate::persist::compaction_artifact_store::ensure_compaction_artifacts_table(&db)?;
+
     // Check if migration is needed
     let needs_migration: bool = db
         .query_row("SELECT value FROM _meta WHERE key = 'version'", [], |row| {
