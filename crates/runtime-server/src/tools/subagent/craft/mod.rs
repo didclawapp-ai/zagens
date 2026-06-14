@@ -1,6 +1,7 @@
 //! CRAFT B-L1 helpers: fix-loop hints, runtime events, sentinel parsing.
 
 pub mod ab_metrics;
+pub mod lsp_post_hook;
 
 use std::path::Path;
 

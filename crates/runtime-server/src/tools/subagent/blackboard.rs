@@ -100,10 +100,22 @@ pub fn read_blackboard_section(
             if let Some(s) = format_implementer_changes(&board) {
                 sections.push(s);
             }
+            // C6(LSP): include cargo check diagnostics if available
+            if let Some(s) =
+                crate::tools::subagent::craft::lsp_post_hook::format_lsp_diagnostics(&board)
+            {
+                sections.push(s);
+            }
         }
         SubAgentType::Verifier => {
             // Verifier needs implementer changes (to know what to test)
             if let Some(s) = format_implementer_changes(&board) {
+                sections.push(s);
+            }
+            // C6(LSP): include cargo check diagnostics for verifier context
+            if let Some(s) =
+                crate::tools::subagent::craft::lsp_post_hook::format_lsp_diagnostics(&board)
+            {
                 sections.push(s);
             }
         }

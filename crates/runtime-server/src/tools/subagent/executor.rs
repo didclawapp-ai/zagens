@@ -323,6 +323,24 @@ pub(crate) async fn run_subagent_task(task: SubAgentTask) {
         });
     }
 
+    // C6(LSP): post-edit diagnostics — after a successful Implementer turn,
+    // run cargo check and write structured diagnostics to the blackboard so
+    // the next Reviewer sees them without having to re-run the check.
+    // Runs only when the C8 gate did NOT fire a new implementer (i.e. the
+    // gate passed), detected by checking that we are NOT in the middle of a
+    // gate-fail spawn (fix_round <= cap means the code compiled cleanly
+    // enough to reach here).
+    if let (Ok(res), Some(task_id)) = (&result, task.task_id.as_deref()) {
+        if res.agent_type == SubAgentType::Implementer {
+            let workspace = task.runtime.context.workspace.clone();
+            let task_id = task_id.to_string();
+            tokio::spawn(async move {
+                craft::lsp_post_hook::write_lsp_diagnostics_to_blackboard(&workspace, &task_id)
+                    .await;
+            });
+        }
+    }
+
     // C9: A/B metrics — append a record when a CRAFT task reaches a terminal
     // verdict (Verifier PASS, or max fix-rounds exhausted on any role).
     if let (Ok(res), Some(task_id)) = (&result, task.task_id.as_deref()) {
