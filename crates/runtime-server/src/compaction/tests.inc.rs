@@ -1330,6 +1330,7 @@ fn msg(role: &str, text: &str) -> Message {
             summary_prompt: None,
             removed_messages: vec![],
             retries_used: 2,
+            artifact: None,
         };
 
         assert_eq!(result.retries_used, 2);
