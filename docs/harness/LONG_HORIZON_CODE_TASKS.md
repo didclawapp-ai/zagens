@@ -1,7 +1,7 @@
 # Long-Horizon Code Tasks Harness Design
 
-**Status:** **Implemented** (Phase 1 / 2 / 2.x / 3 substantially shipped; **§6 product iteration P0 / P1 / P1′ shipped**; **Phase 4 spec finalized**) — see §6 and overview below  
-**Date:** 2026-05-28 (created) · 2026-05-29 (implementation status update) · 2026-06-01 (Phase 4 macro loop + **product iteration roadmap** + **P0–P1′ alignment revision**)  
+**Status:** **Implemented** (Phase 1 / 2 / 2.x / 3 substantially shipped; **§6 product iteration P0 / P1 / P1′ shipped**; **Phase 4 shipped** — macro loop + auto_continue fix + 4e regression infra) — see §6 and overview below  
+**Date:** 2026-05-28 (created) · 2026-05-29 (implementation status update) · 2026-06-01 (Phase 4 macro loop + **product iteration roadmap** + **P0–P1′ alignment revision**) · 2026-06-14 (L8: Phase 4 complete — 4e arm, auto_continue, CRAFT batch-A C9/C6/L3/L7)  
 **Scope:** Multi-step code tasks — **generation**, **fixing**, **refactoring** — Phase 4 spec includes **LHT↔CRAFT composable macro loop** (see §6 Phase 4); **excludes** full-repo audit scratchpad as the main line  
 **Upstream:** Composable Harness vision (maintainer-only: `doc_Private/docs/harness/Agent+Harness组合式编程方案.md`)  
 **Related:** CRAFT review plan (`doc_Private/docs/agent-reliability-craft-plan.md`), [`craft-v2-improvements.md`](../craft-v2-improvements.md), `crates/runtime-server/src/prompts/base.md`
@@ -15,7 +15,7 @@
 | **2** | Task-graph API + Cycle integration + handoff + lower-left panel | ✅ Shipped | `harness/task-graph` · `cycles`, `LongHorizonPanel`, `[verify:]`, warning-band cycle |
 | **2.x** | Objective progress signals (git) + nudge telemetry | ✅ Shipped this cycle | `progress.rs`, `progress_via_git`, `telemetry`, `nudge_outcome` events (§4.8 / §4.9) |
 | **3** | In-cell tabs + Context threshold line + Handoff + sidecar recovery | ✅ Substantially shipped | `LongHorizonPanel` tabs, `.zagens/handoff.md` auto block |
-| **4** | **LHT↔CRAFT composable macro loop** (implementation segment ↔ QA segment alternation) | 📋 Spec finalized | §6 Phase 4; upstream [`COMPOSABLE_HARNESS.md`](./COMPOSABLE_HARNESS.md) §3.1 / §6.7 |
+| **4** | **LHT↔CRAFT composable macro loop** (implementation segment ↔ QA segment alternation) | ✅ Shipped | `macro_loop.rs` / `spawn_macro_craft_review` / `auto_continue` (L8) / Desktop panel |
 | **P0** | Stricter trust + mismatch false-green | ✅ Shipped | §6 · P0a/P0b (`strict_completion_gate`, mismatch nudge, conditional UI completion) |
 | **P1** | Large refactor checklist / manifest / toolchain / cross-layer acceptance | ✅ Shipped | §6 · P1a–P1d |
 | **P1′** | ~80% path hardening (shim / electron enforce / lib.rs IPC / cargo build) | ✅ Shipped | §6 · P1′ implementation checklist |
@@ -918,7 +918,7 @@ craft_on_small_tasks = false         # bugfix / <N checklist items skip CRAFT se
 - [x] **4b CRAFT segment** — spawn review/verifier + blackboard write; `spawn_macro_craft_review` in `subagent_spawn.rs`; `emit_craft_events` reuse  
 - [x] **4c LHT remediation segment** — synthetic nudge + `macro_phase=remediation`; `maybe_auto_continue_incomplete_lht` + `build_auto_continue_message`; `max_auto_continue_rounds` guard  
 - [x] **4d Desktop** — `macro_loop` settings in `LhtSettingsPanel.tsx`; `LongHorizonPanel.tsx` macro nodes (`MacroLoopSummary`, `macro_phase`/`macro_craft_*`/`macro_unmet`); i18n  
-- [ ] **4e Regression** — label_rust-class migration: baseline "LHT only" vs "LHT+1 macro round" gap count / Rust LOC / verify hit rate  
+- [x] **4e Regression** — `long-refactor` preset `auto_continue = true` (L8 fix); `fixtures/harness/lht-eval-arms/lht_long_refactor.toml` baseline arm; A/B comparison methodology in `CRAFT_AB_RUNBOOK.md`; 35-min stress job in `harness-regression.yml` runs both `lht_strict.toml` and `lht_long_refactor.toml` arms
 
 **Non-blocking:** Before Phase 4 lands, user can **manually** trigger CRAFT sub-agent in same thread, then steer "only fix blockers" — equivalent to Phase 4 automation but no orchestrator.
 

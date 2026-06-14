@@ -63,7 +63,11 @@ pub fn apply_lht_preset(base: &mut LongHorizonConfigToml, preset: LhtPresetId) {
                 blocked_nudges_without_progress: Some(3),
                 reinject_every_steps: Some(5),
                 progress_via_git: Some(true),
-                auto_continue: Some(false),
+                // auto_continue must be true for macro loop: the remediation
+                // segment re-injects when the model stalls on open checklist
+                // items. Without this, LHT→CRAFT→LHT macro cycles can stall
+                // silently on the remediation leg.
+                auto_continue: Some(true),
                 max_auto_continue_rounds: Some(16),
                 completion_gate: gate,
                 macro_loop: Some(MacroLoopConfigToml {

@@ -1,0 +1,32 @@
+# Harness eval arm: long-refactor preset (macro loop enabled)
+# L8 4e regression baseline — compare against lht_strict.toml (no macro loop)
+# to quantify gap-count / verify-hit-rate improvement from Phase 4.
+#
+# Used by: scripts/ci/harness-regression.sh --with-longrun
+# See: doc_Private/docs/harness/CRAFT_AB_RUNBOOK.md §5
+
+[long_horizon]
+enabled = true
+mode = "strict"
+max_nudges_per_item = 5
+blocked_nudges_without_progress = 3
+# Must be true for macro loop: remediation segment uses auto_continue
+# to re-inject when model stalls on open checklist items.
+auto_continue = true
+max_auto_continue_rounds = 16
+
+[long_horizon.completion_gate]
+auto_verify_replay = "enforce"
+toolchain_gate = "enforce"
+stub_gate = "enforce"
+max_manifest_rounds = 5
+max_audit_rounds = 5
+max_infra_strikes = 3
+
+[long_horizon.macro_loop]
+enabled = true
+max_macro_cycles = 3
+max_craft_rounds_per_cycle = 2
+auto_enter_craft = "on_graph_complete"
+craft_on_small_tasks = false
+min_checklist_items_for_craft = 3
