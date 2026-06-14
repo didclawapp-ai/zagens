@@ -1027,7 +1027,7 @@ One **Electron→Tauri · strict LHT · ~35min** long turn harness-side conclusi
 | ID | Improvement | Relationship | Status |
 |----|-------------|--------------|--------|
 | P2-1 | **Phase 4 orchestrator landing** (§6 Phase 4.7 4a–4d) | LHT → CRAFT → LHT bounded loop | ✅ shipped |
-| P2-2 | **§6.7 adversarial reviewer** (gap enumerator, not judge) | [`COMPOSABLE_HARNESS.md`](./COMPOSABLE_HARNESS.md) · blockers→checklist | 🔲 pending implementation |
+| P2-2 | **§6.7 adversarial reviewer** (gap enumerator, not judge) | [`COMPOSABLE_HARNESS.md`](./COMPOSABLE_HARNESS.md) · blockers→checklist | ✅ shipped (opt-in `[long_horizon.adversarial_audit]`) |
 | P2-3 | **`auto_continue` aligned with strict preset** | `maybe_auto_continue_incomplete_lht`; `long-refactor` preset can set `auto_continue=true` (document risks) | ✅ shipped (opt-in, default off) |
 
 **Implementation checklist:** P2-1 ✅; COMPOSABLE §6.7 adversarial auditor as separate pending item.

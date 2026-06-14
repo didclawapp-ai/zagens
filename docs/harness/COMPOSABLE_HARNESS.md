@@ -1,6 +1,6 @@
 # Composable Harness — Spec-Anchored Completion Gate
 
-**Status:** Design draft **v0.7** + **P0/P1/P2 implemented** + **task-agnostic Layer 2 (§6.5) implemented** + **generic stub/incomplete gate (§6.6) implemented** (panel see §11 below; MicroStack manifest at [`fixtures/harness/microstack-completion-gate.toml`](../../fixtures/harness/microstack-completion-gate.toml)). **enforce source** landed via `CompletionGateConfig::sanitized_for_source(trusted)` defensive guard. **§6.5 adds** two **zero per-task config, one global switch covering all tasks** Layer 2 sources: model `[verify:]` proactive replay + toolchain-detected build/test gates. **§0.1** adds external research grounding for design motivation (grounding signal quality × independence); **§3.1 / §6.7** nail down the "judge vs gap enumerator" boundary, establishing design principles for the adversarial auditor. **Phase 4 macro loop (§4 macro fourth dimension): ✅ shipped** (4a–4d orchestrator, CRAFT spawn, `auto_continue`, Desktop panel). **Still TODO:** §6.7 adversarial auditor (L2 gap enumerator), built-in `coverage-gate` subcommand, 4e regression baseline.
+**Status:** Design draft **v0.7** + **P0/P1/P2 implemented** + **task-agnostic Layer 2 (§6.5) implemented** + **generic stub/incomplete gate (§6.6) implemented** (panel see §11 below; MicroStack manifest at [`fixtures/harness/microstack-completion-gate.toml`](../../fixtures/harness/microstack-completion-gate.toml)). **enforce source** landed via `CompletionGateConfig::sanitized_for_source(trusted)` defensive guard. **§6.5 adds** two **zero per-task config, one global switch covering all tasks** Layer 2 sources: model `[verify:]` proactive replay + toolchain-detected build/test gates. **§0.1** adds external research grounding for design motivation (grounding signal quality × independence); **§3.1 / §6.7** nail down the "judge vs gap enumerator" boundary, establishing design principles for the adversarial auditor. **Phase 4 macro loop (§4 macro fourth dimension): ✅ shipped** (4a–4d orchestrator, CRAFT spawn, `auto_continue`, Desktop panel). **§6.7 adversarial auditor: ✅ shipped** (opt-in, `[long_horizon.adversarial_audit]`). **Still TODO:** built-in `coverage-gate` subcommand, 4e regression baseline.
 **Part of:** [`LHT_TEST_SUITE.md`](./LHT_TEST_SUITE.md) / [`LONG_HORIZON_CODE_TASKS.md`](./LONG_HORIZON_CODE_TASKS.md) / [`test-cases/microstack-framework.md`](./test-cases/microstack-framework.md)
 **One-liner:** On top of "model self-produced task graph cleared to zero", add a **operator-declared, harness-actively-runs, exit-code adjudicated** completion gate + a **pure machine deliverable reconciliation** layer; if not met, force rework iterations in a bounded loop until manifest-true completion or honest `audit_unmet`. **No LLM as judge anywhere** — adjudication depends only on exit codes and path/glob hits.
 
@@ -310,7 +310,17 @@ Implementation: `crates/runtime-server/src/long_horizon/generic_gate.rs` (extrac
 
 ---
 
-## 6.7 Adversarial Read-Only Auditor (**Pending · Roadmap #2 · Agent-Independent Grounding Signal**)
+## 6.7 Adversarial Read-Only Auditor (**✅ Shipped · Agent-Independent Grounding Signal**)
+
+**Status:** Implemented in `crates/runtime-server/src/long_horizon/adversarial_audit.rs`.
+Config: `[long_horizon.adversarial_audit]` `enabled = false` (opt-in), `mode = "observe"` (default) | `"enforce"`, `max_audit_rounds = 1`, `max_tokens = 1500`.
+Telemetry: `long_horizon.adversarial_audit` status node.
+Default off — enable per session or in `~/.zagens/config.toml`:
+```toml
+[long_horizon.adversarial_audit]
+enabled = true
+mode = "observe"   # "enforce" adds gaps as checklist items + reinjects
+```
 
 **Positioning (§0.1 class 2 independence "agent-independent" + §3.1 boundary):** stub gate (§6.6) is "rule-independent", but regex cannot cover gaps like "function body only `return Ok(())` placeholder with no marker" or "whole module never in checklist" — needs **another agent** to find. This is paper's "evaluation signal **independence** relative to model" — but **must** implement per §3.1 as **gap enumerator**, not judge.
 
