@@ -320,3 +320,146 @@ mod tests {
         assert!(hint.contains("\"max_rounds\":3"));
     }
 }
+
+// ── C8: Pre-review executable spec gate ──────────────────────────────────────
+//
+// After Implementer completes, before the Reviewer is spawned, run a quick
+// fmt / clippy / test-compile check against the workspace. If any step fails
+// we capture the output, write a synthetic gate-fail verdict to the blackboard,
+// and the C1 auto-spawn hook will trigger a new Implementer round with a prompt
+// describing the failures.
+//
+// Design constraints:
+// • `cargo fmt --check` — fast, pure formatting (< 5 s)
+// • `cargo clippy --message-format=short -- -D warnings` — lint
+// • `cargo test --no-run` — compile correctness without running tests (fast)
+// • Each step captures stderr/stdout capped at 200 lines to keep prompts short.
+// • The gate is a best-effort check: on any spawn_blocking failure we skip it
+//   and let the normal Reviewer judge the work.
+
+/// Result of the pre-review gate checks.
+#[derive(Debug)]
+pub struct PreReviewGateResult {
+    /// Human-readable failures (non-empty = gate failed).
+    pub failures: Vec<String>,
+}
+
+impl PreReviewGateResult {
+    pub fn passed(&self) -> bool {
+        self.failures.is_empty()
+    }
+}
+
+/// Run fmt / clippy / test-compile checks synchronously (called inside
+/// `tokio::task::spawn_blocking`).
+fn run_gate_checks_sync(workspace: &Path) -> PreReviewGateResult {
+    use std::process::Command;
+    let mut failures = Vec::new();
+
+    // ── 1. cargo fmt --check ──────────────────────────────────────────────
+    let fmt = Command::new("cargo")
+        .args(["fmt", "--check"])
+        .current_dir(workspace)
+        .output();
+    match fmt {
+        Ok(out) if !out.status.success() => {
+            let lines = String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .chain(String::from_utf8_lossy(&out.stderr).lines())
+                .take(40)
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+                .join("\n");
+            failures.push(format!("**cargo fmt --check failed**\n```\n{lines}\n```"));
+        }
+        Err(e) => {
+            // cargo not available in PATH — skip gracefully
+            tracing::debug!("pre-review gate: cargo fmt not available: {e}");
+        }
+        _ => {}
+    }
+
+    // ── 2. cargo clippy ───────────────────────────────────────────────────
+    let clippy = Command::new("cargo")
+        .args(["clippy", "--message-format=short", "--", "-D", "warnings"])
+        .current_dir(workspace)
+        .output();
+    match clippy {
+        Ok(out) if !out.status.success() => {
+            let lines = String::from_utf8_lossy(&out.stderr)
+                .lines()
+                .take(60)
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+                .join("\n");
+            failures.push(format!(
+                "**cargo clippy -D warnings failed**\n```\n{lines}\n```"
+            ));
+        }
+        Err(e) => {
+            tracing::debug!("pre-review gate: cargo clippy not available: {e}");
+        }
+        _ => {}
+    }
+
+    // ── 3. cargo test --no-run (compile-test only) ────────────────────────
+    let test_compile = Command::new("cargo")
+        .args(["test", "--no-run", "--message-format=short"])
+        .current_dir(workspace)
+        .output();
+    match test_compile {
+        Ok(out) if !out.status.success() => {
+            let lines = String::from_utf8_lossy(&out.stderr)
+                .lines()
+                .take(80)
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+                .join("\n");
+            failures.push(format!("**cargo test --no-run failed**\n```\n{lines}\n```"));
+        }
+        Err(e) => {
+            tracing::debug!("pre-review gate: cargo test not available: {e}");
+        }
+        _ => {}
+    }
+
+    PreReviewGateResult { failures }
+}
+
+/// Run the pre-review gate asynchronously. Returns `None` when the gate is
+/// skipped (spawn_blocking failure), otherwise `Some(PreReviewGateResult)`.
+pub async fn run_pre_review_gate(workspace: &Path) -> Option<PreReviewGateResult> {
+    let ws = workspace.to_path_buf();
+    tokio::task::spawn_blocking(move || run_gate_checks_sync(&ws))
+        .await
+        .ok()
+}
+
+/// Build the prompt given to the auto-spawned Implementer when the pre-review
+/// gate fails. `task_id` and `fix_round` mirror the fix-loop convention.
+#[must_use]
+pub fn build_gate_fail_implementer_prompt(
+    gate: &PreReviewGateResult,
+    task_id: &str,
+    fix_round: u32,
+) -> String {
+    let failures_text = gate
+        .failures
+        .iter()
+        .enumerate()
+        .map(|(i, f)| format!("### Failure {}\n{f}", i + 1))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+
+    format!(
+        "## CRAFT pre-review gate failure — round {fix_round} (task `{task_id}`)\n\
+         \n\
+         Automated fmt / clippy / compile checks failed before the Reviewer could\n\
+         evaluate your changes. Please fix all issues below so the gate passes.\n\
+         \n\
+         {failures_text}\n\
+         \n\
+         After fixing, ensure `cargo fmt`, `cargo clippy -- -D warnings`, and\n\
+         `cargo test --no-run` all succeed locally before closing your turn."
+    )
+}

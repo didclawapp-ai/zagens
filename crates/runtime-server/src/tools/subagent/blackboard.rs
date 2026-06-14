@@ -201,34 +201,56 @@ pub fn write_blackboard_partition(
             )
         }
         SubAgentType::Review => {
+            // C4: track rounds[] like implementer so reviewer.rounds is populated.
+            // Latest `verdict` / `blockers` / `structured_verdict` keys kept at
+            // top-level for backwards-compatible readers.
+            let verdict_val = result
+                .structured_verdict
+                .as_ref()
+                .map(|v| serde_json::to_value(&v.verdict).unwrap_or(json!("PASS")))
+                .unwrap_or(json!("PASS"));
+            let blockers_val: Value = result
+                .structured_verdict
+                .as_ref()
+                .map(|v| serde_json::to_value(&v.items).unwrap_or(json!([])))
+                .unwrap_or(json!([]));
             let mut partition = json!({
-                "verdict": result.structured_verdict.as_ref()
-                    .map(|v| serde_json::to_value(&v.verdict).unwrap_or(json!("PASS")))
-                    .unwrap_or(json!("PASS")),
-                "blockers": result.structured_verdict.as_ref()
-                    .map(|v| &v.items)
-                    .unwrap_or(&vec![]),
+                "verdict": verdict_val,
+                "blockers": blockers_val,
             });
-            if let Some(verdict) = &result.structured_verdict
+            if let Some(sv) = &result.structured_verdict
                 && let Value::Object(ref mut map) = partition
             {
                 map.insert(
                     "structured_verdict".to_string(),
-                    serde_json::to_value(verdict).unwrap_or(Value::Null),
+                    serde_json::to_value(sv).unwrap_or(Value::Null),
                 );
+            }
+            // Append round record
+            if let Value::Object(ref mut map) = partition {
+                let rounds = build_reviewer_rounds(result, &existing_raw);
+                map.insert("rounds".to_string(), rounds);
             }
             ("reviewer", partition)
         }
-        SubAgentType::Verifier => (
-            "verifier",
-            json!({
-                "verdict": result.structured_verdict.as_ref()
-                    .map(|v| serde_json::to_value(&v.verdict).unwrap_or(json!("PASS")))
-                    .unwrap_or(json!("PASS")),
-                "failures": build_verifier_failures(result),
-                "summary": extract_verifier_summary(result),
-            }),
-        ),
+        SubAgentType::Verifier => {
+            // C4: track rounds[] for verifier symmetry.
+            let verdict_val = result
+                .structured_verdict
+                .as_ref()
+                .map(|v| serde_json::to_value(&v.verdict).unwrap_or(json!("PASS")))
+                .unwrap_or(json!("PASS"));
+            let rounds = build_verifier_rounds(result, &existing_raw);
+            (
+                "verifier",
+                json!({
+                    "verdict": verdict_val,
+                    "failures": build_verifier_failures(result),
+                    "summary": extract_verifier_summary(result),
+                    "rounds": rounds,
+                }),
+            )
+        }
         SubAgentType::Auditor => (
             "auditor",
             json!({
@@ -384,6 +406,32 @@ pub fn implementer_round_count(workspace: &Path, task_id: &str) -> u32 {
     read_blackboard_raw(workspace, task_id)
         .and_then(|board| board.get("implementer").cloned())
         .and_then(|part| implementer_rounds_slice(&part).map(<[_]>::len))
+        .map(|n| n as u32)
+        .unwrap_or(0)
+}
+
+/// Count how many Reviewer rounds have been written to the blackboard.
+pub fn reviewer_round_count(workspace: &Path, task_id: &str) -> u32 {
+    read_blackboard_raw(workspace, task_id)
+        .and_then(|board| board.get("reviewer").cloned())
+        .and_then(|part| {
+            part.get("rounds")
+                .and_then(|v| v.as_array())
+                .map(|a| a.len())
+        })
+        .map(|n| n as u32)
+        .unwrap_or(0)
+}
+
+/// Count how many Verifier rounds have been written to the blackboard.
+pub fn verifier_round_count(workspace: &Path, task_id: &str) -> u32 {
+    read_blackboard_raw(workspace, task_id)
+        .and_then(|board| board.get("verifier").cloned())
+        .and_then(|part| {
+            part.get("rounds")
+                .and_then(|v| v.as_array())
+                .map(|a| a.len())
+        })
         .map(|n| n as u32)
         .unwrap_or(0)
 }
@@ -1008,7 +1056,97 @@ mod tests {
 
         let _ = std::fs::remove_file(blackboard_path_write(&ws, task_id).expect("valid task id"));
     }
-}
+
+    #[test]
+    fn test_reviewer_and_verifier_round_count() {
+        use zagens_core::subagent::{StructuredVerdict, VerdictLevel};
+
+        let ws = test_workspace();
+        let task_id = "test-reviewer-rounds";
+        let _ = std::fs::remove_file(blackboard_path_write(&ws, task_id).expect("valid task id"));
+
+        assert_eq!(reviewer_round_count(&ws, task_id), 0, "no board yet");
+        assert_eq!(verifier_round_count(&ws, task_id), 0, "no board yet");
+
+        let review_result = SubAgentResult {
+            agent_id: "r1".into(),
+            agent_type: SAT::Review,
+            assignment: SubAgentAssignment::new("review".into(), None),
+            model: "deepseek-v4-flash".into(),
+            nickname: None,
+            status: SubAgentStatus::Completed,
+            result: Some("VERDICT: PASS".into()),
+            steps_taken: 1,
+            duration_ms: 100,
+            from_prior_session: false,
+            structured_verdict: Some(StructuredVerdict {
+                verdict: VerdictLevel::Pass,
+                items: vec![],
+                summary: Some("looks good".into()),
+            }),
+            structured_findings: None,
+            completion_reason: None,
+            max_steps: 100,
+            step_timeout_ms: 600_000,
+            structured_findings_parse_failure: None,
+            scratchpad_run_id: None,
+            parent_thread_id: None,
+            progress_status: None,
+            stuck_suspected: false,
+            idle_ms: 0,
+        };
+        write_blackboard_partition(&ws, task_id, &SAT::Review, &review_result);
+        assert_eq!(reviewer_round_count(&ws, task_id), 1, "after first review");
+
+        // Second reviewer round
+        write_blackboard_partition(&ws, task_id, &SAT::Review, &review_result);
+        assert_eq!(reviewer_round_count(&ws, task_id), 2, "after second review");
+
+        let verifier_result = SubAgentResult {
+            agent_id: "v1".into(),
+            agent_type: SAT::Verifier,
+            assignment: SubAgentAssignment::new("verify".into(), None),
+            model: "deepseek-v4-flash".into(),
+            nickname: None,
+            status: SubAgentStatus::Completed,
+            result: Some("VERDICT: PASS".into()),
+            steps_taken: 1,
+            duration_ms: 100,
+            from_prior_session: false,
+            structured_verdict: Some(StructuredVerdict {
+                verdict: VerdictLevel::Pass,
+                items: vec![],
+                summary: None,
+            }),
+            structured_findings: None,
+            completion_reason: None,
+            max_steps: 100,
+            step_timeout_ms: 600_000,
+            structured_findings_parse_failure: None,
+            scratchpad_run_id: None,
+            parent_thread_id: None,
+            progress_status: None,
+            stuck_suspected: false,
+            idle_ms: 0,
+        };
+        write_blackboard_partition(&ws, task_id, &SAT::Verifier, &verifier_result);
+        assert_eq!(verifier_round_count(&ws, task_id), 1, "after first verify");
+        assert_eq!(
+            reviewer_round_count(&ws, task_id),
+            2,
+            "reviewer count unchanged"
+        );
+
+        // Verify round data written
+        let raw = read_blackboard_raw(&ws, task_id).expect("board");
+        assert_eq!(raw["reviewer"]["rounds"].as_array().unwrap().len(), 2);
+        assert_eq!(raw["reviewer"]["rounds"][0]["round"], 1);
+        assert_eq!(raw["reviewer"]["rounds"][1]["round"], 2);
+        assert_eq!(raw["verifier"]["rounds"][0]["round"], 1);
+
+        let _ = std::fs::remove_file(blackboard_path_write(&ws, task_id).expect("valid task id"));
+    }
+} // end mod tests
 
 fn extract_files_examined(result: &SubAgentResult) -> Value {
     // Parse "## Coverage Report" section from result text
@@ -1102,6 +1240,83 @@ fn build_implementer_rounds(
 
     existing_rounds.push(new_round);
     json!({ "rounds": existing_rounds })
+}
+
+/// Accumulate reviewer `rounds[]`. Each round captures the verdict and
+/// which implementer round the reviewer was evaluating.
+fn build_reviewer_rounds(result: &SubAgentResult, existing_raw: &str) -> Value {
+    let mut existing: Vec<Value> = serde_json::from_str::<Value>(existing_raw)
+        .ok()
+        .and_then(|b| b.get("reviewer").and_then(|r| r.get("rounds")).cloned())
+        .and_then(|v| v.as_array().cloned())
+        .unwrap_or_default();
+
+    let round_num = existing.len() + 1;
+    // Which implementer round is this review evaluating?
+    let impl_round = serde_json::from_str::<Value>(existing_raw)
+        .ok()
+        .and_then(|b| b.get("implementer").cloned())
+        .and_then(|p| implementer_rounds_slice(&p).map(|s| s.len() as u32))
+        .unwrap_or(0);
+
+    let verdict_str = result
+        .structured_verdict
+        .as_ref()
+        .map(|v| super::craft::verdict_level_str(&v.verdict))
+        .unwrap_or("PASS");
+    let summary = result
+        .structured_verdict
+        .as_ref()
+        .and_then(|v| v.summary.as_deref())
+        .unwrap_or("");
+    let blockers_count = result
+        .structured_verdict
+        .as_ref()
+        .map(|v| v.items.len())
+        .unwrap_or(0);
+
+    existing.push(json!({
+        "round": round_num,
+        "verdict": verdict_str,
+        "blockers_count": blockers_count,
+        "summary": summary,
+        "evaluated_implementer_round": impl_round,
+    }));
+    Value::Array(existing)
+}
+
+/// Accumulate verifier `rounds[]`. Symmetric with reviewer rounds.
+fn build_verifier_rounds(result: &SubAgentResult, existing_raw: &str) -> Value {
+    let mut existing: Vec<Value> = serde_json::from_str::<Value>(existing_raw)
+        .ok()
+        .and_then(|b| b.get("verifier").and_then(|r| r.get("rounds")).cloned())
+        .and_then(|v| v.as_array().cloned())
+        .unwrap_or_default();
+
+    let round_num = existing.len() + 1;
+    let impl_round = serde_json::from_str::<Value>(existing_raw)
+        .ok()
+        .and_then(|b| b.get("implementer").cloned())
+        .and_then(|p| implementer_rounds_slice(&p).map(|s| s.len() as u32))
+        .unwrap_or(0);
+
+    let verdict_str = result
+        .structured_verdict
+        .as_ref()
+        .map(|v| super::craft::verdict_level_str(&v.verdict))
+        .unwrap_or("PASS");
+    let failures_count = build_verifier_failures(result)
+        .as_array()
+        .map(|a| a.len())
+        .unwrap_or(0);
+
+    existing.push(json!({
+        "round": round_num,
+        "verdict": verdict_str,
+        "failures_count": failures_count,
+        "evaluated_implementer_round": impl_round,
+    }));
+    Value::Array(existing)
 }
 
 fn git_diff_name_only(workspace: &Path) -> Vec<String> {

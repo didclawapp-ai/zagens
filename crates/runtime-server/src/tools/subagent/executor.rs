@@ -257,6 +257,61 @@ pub(crate) async fn run_subagent_task(task: SubAgentTask) {
         }
     }
 
+    // C8: pre-review executable spec gate — after Implementer completes
+    // successfully, run fmt/clippy/test-compile. If any check fails, spawn a
+    // new Implementer (same cap as C1) rather than letting a broken state
+    // proceed to the Reviewer. This eliminates the "model ships broken code
+    // then reviewer flags style/lint issues" cycle described in §5.5.
+    if let (Ok(res), Some(task_id)) = (&result, task.task_id.as_deref()) {
+        if res.agent_type == SubAgentType::Implementer {
+            let workspace = task.runtime.context.workspace.as_path();
+            let fix_round = super::blackboard::implementer_round_count(workspace, task_id) + 1;
+            if fix_round <= craft::MAX_CRAFT_FIX_LOOPS_PER_TASK {
+                if let Some(gate) = craft::run_pre_review_gate(workspace).await {
+                    if !gate.passed() {
+                        let prompt =
+                            craft::build_gate_fail_implementer_prompt(&gate, task_id, fix_round);
+                        let gate_runtime = task.runtime.background_runtime();
+                        let assignment =
+                            zagens_core::subagent::SubAgentAssignment::new(prompt.clone(), None);
+                        let options = super::types::SubAgentSpawnOptions {
+                            task_id: Some(task_id.to_string()),
+                            nickname: Some(format!("gate-fix round {fix_round}")),
+                            ..Default::default()
+                        };
+                        {
+                            let mut mgr = task.manager_handle.write().await;
+                            let _ = mgr.spawn_background_with_assignment_options(
+                                Arc::clone(&task.manager_handle),
+                                gate_runtime,
+                                SubAgentType::Implementer,
+                                prompt,
+                                assignment,
+                                None,
+                                options,
+                            );
+                        }
+                        if let Some(ref event_tx) = task.runtime.event_tx {
+                            let failures_summary = gate
+                                .failures
+                                .iter()
+                                .map(|f| f.lines().next().unwrap_or("failure"))
+                                .collect::<Vec<_>>()
+                                .join("; ");
+                            let _ = event_tx.try_send(Event::status(format!(
+                                "craft.pre_review_gate_fail: \
+                                 {{\"task_id\":\"{task_id}\",\"fix_round\":{fix_round},\
+                                 \"failures_count\":{},\"summary\":\"{}\"}}",
+                                gate.failures.len(),
+                                failures_summary.replace('"', "'"),
+                            )));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     if let Some(event_tx) = task.runtime.event_tx {
         let _ = event_tx.try_send(Event::AgentComplete {
             id: agent_id,
