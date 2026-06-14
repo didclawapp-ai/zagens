@@ -22,6 +22,7 @@ use crate::task_type::TaskType;
 
 use super::approval_policy::{self, policy_cyclable, policy_display_label};
 use super::harness::{ChecklistSnapshot, parse_checklist_json, parse_checklist_panel_payload};
+use super::left_rail::SessionList;
 use super::task_graph::{
     TaskGraphSnapshot, parse_task_graph_panel_payload, parse_task_graph_value,
 };
@@ -344,6 +345,30 @@ impl TuiSessionHost {
             .collect();
         out.sort_by_key(|t| std::cmp::Reverse(t.updated_at));
         Ok(out)
+    }
+
+    /// Left-rail session rows with display names (thread title or latest turn summary).
+    pub async fn workspace_session_list(&self, active_id: &str) -> SessionList {
+        let threads = self.list_workspace_threads().await.unwrap_or_default();
+        let mut turn_summaries = std::collections::HashMap::new();
+        for thread in &threads {
+            if thread
+                .title
+                .as_ref()
+                .is_none_or(|title| title.trim().is_empty())
+            {
+                if let Ok(turns) = self.manager.store.list_turns_for_thread(&thread.id) {
+                    if let Some(summary) = turns
+                        .last()
+                        .map(|turn| turn.input_summary.as_str())
+                        .filter(|summary| !summary.trim().is_empty())
+                    {
+                        turn_summaries.insert(thread.id.clone(), summary.to_string());
+                    }
+                }
+            }
+        }
+        SessionList::from_threads_with_summaries(threads, active_id, &turn_summaries)
     }
 
     pub async fn switch_thread(&mut self, thread_id: &str) -> Result<()> {

@@ -296,6 +296,43 @@ impl TranscriptState {
         }
     }
 
+    pub fn toggle_last_turn_harness(&mut self) {
+        self.bump_render();
+        if let Some(TranscriptItem::Turn(turn)) = self.items.last_mut() {
+            turn.harness_collapsed = !turn.harness_collapsed;
+        }
+    }
+
+    pub fn last_turn_has_harness(&self) -> bool {
+        self.items
+            .last()
+            .and_then(|item| match item {
+                TranscriptItem::Turn(turn) => Some(!visible_harness_lines(turn).is_empty()),
+                _ => None,
+            })
+            .unwrap_or(false)
+    }
+
+    /// All non-noise harness log lines across the transcript (Activity tab feed).
+    pub fn harness_events(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        for item in &self.items {
+            let TranscriptItem::Turn(turn) = item else {
+                continue;
+            };
+            for line in &turn.harness {
+                if !is_transcript_noise_harness(line) {
+                    out.push(line.clone());
+                }
+            }
+        }
+        out
+    }
+
+    pub fn harness_event_count(&self) -> usize {
+        self.harness_events().len()
+    }
+
     pub fn toggle_last_turn_detail(&mut self) {
         self.bump_render();
         let Some(TranscriptItem::Turn(turn)) = self.items.last_mut() else {
@@ -303,6 +340,10 @@ impl TranscriptState {
         };
         if !turn.tools.is_empty() && turn.tools_collapsed {
             turn.tools_collapsed = false;
+            return;
+        }
+        if visible_harness_lines(turn).len() > 0 && turn.harness_collapsed {
+            turn.harness_collapsed = false;
             return;
         }
         if !turn.thinking.streaming && !turn.thinking.text.trim().is_empty() {
@@ -501,12 +542,67 @@ fn append_turn_lines(lines: &mut Vec<LogicalLine>, turn: &TranscriptTurn, state:
     }
 
     if !turn.harness.is_empty() {
-        for line in &turn.harness {
-            if is_transcript_noise_harness(line) {
-                continue;
+        let visible = visible_harness_lines(turn);
+        if turn.harness_collapsed {
+            if !visible.is_empty() {
+                lines.extend(logical_lines_for_harness_summary(&visible));
             }
-            lines.extend(logical_lines_for_harness(line));
+        } else {
+            for line in &visible {
+                lines.extend(logical_lines_for_harness(line));
+            }
         }
+    }
+}
+
+fn visible_harness_lines(turn: &TranscriptTurn) -> Vec<String> {
+    turn.harness
+        .iter()
+        .filter(|line| !is_transcript_noise_harness(line))
+        .cloned()
+        .collect()
+}
+
+fn logical_lines_for_harness_summary(lines: &[String]) -> Vec<LogicalLine> {
+    let summary = summarize_harness_lines(lines);
+    vec![LogicalLine::plain(
+        TranscriptLineKind::Meta,
+        format!("Harness · {summary} · Enter 展开"),
+        false,
+    )]
+}
+
+fn summarize_harness_lines(lines: &[String]) -> String {
+    let n = lines.len();
+    if n == 0 {
+        return "0 events".to_string();
+    }
+    let mut parts = Vec::new();
+    let sub = lines
+        .iter()
+        .filter(|l| l.to_ascii_lowercase().contains("subagent"))
+        .count();
+    if sub > 0 {
+        parts.push(format!("{sub} subagent"));
+    }
+    let craft = lines
+        .iter()
+        .filter(|l| l.to_ascii_lowercase().contains("craft review"))
+        .count();
+    if craft > 0 {
+        parts.push(format!("{craft} craft"));
+    }
+    let gate = lines
+        .iter()
+        .filter(|l| l.to_ascii_lowercase().contains("harness:"))
+        .count();
+    if gate > 0 {
+        parts.push(format!("{gate} gate"));
+    }
+    if parts.is_empty() {
+        format!("{n} events")
+    } else {
+        format!("{n} events ({})", parts.join(", "))
     }
 }
 

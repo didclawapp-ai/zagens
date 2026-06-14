@@ -160,6 +160,7 @@ fn build_turn_item(
         harness: extras.map(|e| e.harness.clone()).unwrap_or_default(),
         open: false,
         tools_collapsed: true,
+        harness_collapsed: true,
         thinking_expanded: false,
     };
     Some(TranscriptItem::Turn(turn))

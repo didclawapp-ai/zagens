@@ -1,5 +1,7 @@
 //! Left rail session list (Phase 2).
 
+use std::collections::HashMap;
+
 use ratatui::text::{Line, Span};
 
 use crate::runtime_threads::ThreadRecord;
@@ -11,7 +13,6 @@ use super::theme::{self, TuiPanel};
 const LEFT: TuiPanel = TuiPanel::Left;
 /// Keep text inset from the pane's right edge (borderless layout has no divider buffer).
 const LEFT_RAIL_TEXT_MARGIN: usize = 2;
-const SESSION_ID_MAX: usize = 7;
 
 /// Usable text columns inside the left pane (caller passes `block.inner().width`).
 pub fn clip_width(pane_inner_cols: usize) -> usize {
@@ -31,15 +32,38 @@ pub struct SessionList {
     pub selected: usize,
 }
 
+/// Display label for a session row (matches `/v1/threads/summary` title logic).
+pub fn resolve_session_label(thread: &ThreadRecord, latest_turn_summary: Option<&str>) -> String {
+    thread
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(ToOwned::to_owned)
+        .or_else(|| {
+            latest_turn_summary
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(ToOwned::to_owned)
+        })
+        .unwrap_or_else(|| "New Session".to_string())
+}
+
 impl SessionList {
     pub fn from_threads(threads: Vec<ThreadRecord>, active_id: &str) -> Self {
+        Self::from_threads_with_summaries(threads, active_id, &HashMap::new())
+    }
+
+    pub fn from_threads_with_summaries(
+        threads: Vec<ThreadRecord>,
+        active_id: &str,
+        turn_summaries: &HashMap<String, String>,
+    ) -> Self {
         let entries: Vec<SessionEntry> = threads
             .into_iter()
             .map(|t| {
-                let label = t
-                    .title
-                    .filter(|s| !s.trim().is_empty())
-                    .unwrap_or_else(|| t.id.clone());
+                let summary = turn_summaries.get(&t.id).map(String::as_str);
+                let label = resolve_session_label(&t, summary);
                 let updated_hint = t.updated_at.format("%m-%d").to_string();
                 SessionEntry {
                     id: t.id,
@@ -190,9 +214,7 @@ fn clip_spans_to_width(spans: Vec<Span<'static>>, max_cols: usize) -> Line<'stat
     styled_clip(&plain, max_cols, style)
 }
 
-/// Compact row: `>5ec4ef0 t… 06-13` — short id, date only, label truncated to fit.
-/// When no custom title is set (label == id), shows as much of the full id as fits
-/// instead of repeating the truncated id prefix as both id_part and label.
+/// Compact row: `>refactor harness… 06-13` — session name + date; thread id is omitted.
 fn format_session_line(
     mark: &str,
     id: &str,
@@ -200,36 +222,22 @@ fn format_session_line(
     updated: &str,
     max_cols: usize,
 ) -> String {
-    let bare_id = id.strip_prefix("mr_").unwrap_or(id);
     let suffix = format!(" {updated}");
     let suffix_w = display_width(&suffix);
     let mark_w = display_width(mark);
 
-    // When no custom title is set the label equals the id — avoid showing it twice.
-    let has_title = label != id;
-    if !has_title {
-        // Use all available width for the id.
+    // Legacy fallback when callers still pass the thread id as the label.
+    if label == id {
+        let bare_id = id.strip_prefix("thr_").unwrap_or(id);
         let id_budget = max_cols.saturating_sub(mark_w + suffix_w);
         let id_part = truncate_display_width(bare_id, id_budget);
         let row = format!("{mark}{id_part}{suffix}");
         return truncate_display_width(&row, max_cols);
     }
 
-    let id_part = truncate_display_width(bare_id, SESSION_ID_MAX);
-    let prefix = format!("{mark}{id_part}");
-    let prefix = if display_width(&prefix) + 1 + suffix_w <= max_cols {
-        format!("{prefix} ")
-    } else {
-        prefix
-    };
-    let prefix_w = display_width(&prefix);
-    let label_budget = max_cols.saturating_sub(prefix_w).saturating_sub(suffix_w);
-    let label_part = if label_budget <= 1 {
-        String::new()
-    } else {
-        truncate_display_width(label, label_budget)
-    };
-    truncate_display_width(&format!("{prefix}{label_part}{suffix}"), max_cols)
+    let label_budget = max_cols.saturating_sub(mark_w + suffix_w);
+    let label_part = truncate_display_width(label, label_budget);
+    truncate_display_width(&format!("{mark}{label_part}{suffix}"), max_cols)
 }
 
 #[cfg(test)]
@@ -241,7 +249,7 @@ mod tests {
         // 28-col pane → 26 usable after margin.
         let line = format_session_line(
             ">",
-            "mr_5ec4ef0c9abc",
+            "thr_5ec4ef0c9abc",
             "refactor harness layout",
             "06-13",
             clip_width(28),
@@ -252,22 +260,71 @@ mod tests {
             display_width(&line),
             clip_width(28),
         );
+        assert!(
+            line.contains("refactor"),
+            "session name should be visible: {line:?}"
+        );
+        assert!(
+            !line.contains("5ec4ef0"),
+            "thread id should be hidden when a name exists: {line:?}"
+        );
     }
 
     #[test]
-    fn session_line_no_title_shows_id_once() {
-        // When no custom title is set, label == id — the id must not appear twice.
+    fn session_line_legacy_id_label_shows_id_once() {
         let id = "thr_b3820950";
         let line = format_session_line(">", id, id, "06-12", clip_width(28));
-        // The line must not contain "thr_b3" twice (abbreviated + full).
-        let count = line.matches("thr_b3").count();
-        assert_eq!(count, 1, "id should appear only once: {line:?}");
+        assert!(
+            line.contains("b3820950"),
+            "legacy id-only rows should still show the id: {line:?}"
+        );
         assert!(
             display_width(&line) <= clip_width(28),
             "line too wide ({}) for {} cols: {line:?}",
             display_width(&line),
             clip_width(28),
         );
+    }
+
+    #[test]
+    fn resolve_session_label_prefers_title_then_turn_summary() {
+        use chrono::Utc;
+
+        let now = Utc::now();
+        let mut thread = ThreadRecord {
+            schema_version: 1,
+            id: "thr_test".to_string(),
+            created_at: now,
+            updated_at: now,
+            model: "deepseek-chat".to_string(),
+            workspace: std::path::PathBuf::from("."),
+            mode: "agent".to_string(),
+            allow_shell: false,
+            trust_mode: false,
+            auto_approve: false,
+            latest_turn_id: None,
+            latest_response_bookmark: None,
+            archived: false,
+            system_prompt: None,
+            task_id: None,
+            title: Some("  Custom title  ".to_string()),
+            task_type: "code".to_string(),
+            coherence_state: Default::default(),
+            scratchpad_run_id: None,
+            scratchpad_run_history: None,
+            checklist_snapshot: None,
+            plan_snapshot: None,
+        };
+        assert_eq!(
+            resolve_session_label(&thread, Some("turn summary")),
+            "Custom title"
+        );
+        thread.title = None;
+        assert_eq!(
+            resolve_session_label(&thread, Some("turn summary")),
+            "turn summary"
+        );
+        assert_eq!(resolve_session_label(&thread, None), "New Session");
     }
 
     #[test]

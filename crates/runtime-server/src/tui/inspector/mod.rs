@@ -1,5 +1,6 @@
 //! Right-rail inspector panels (Phase 2).
 
+mod activity;
 mod agents;
 mod diff;
 mod files;
@@ -22,6 +23,9 @@ use super::theme::{self, TuiPanel};
 
 const INSPECTOR: TuiPanel = TuiPanel::Inspector;
 
+pub use activity::{
+    line_count as activity_line_count, render_styled_panel as render_activity_styled,
+};
 pub use agents::{AgentEntry, line_count as agents_line_count};
 pub use diff::{DiffPanelState, git_diff_patch, load_diff_panel};
 pub use files::FileTreeState;
@@ -49,7 +53,12 @@ impl InspectorCache {
         self.diff = load_diff_panel(workspace, diff_staged);
     }
 
-    pub fn scrollable_line_count(&self, tab: InspectorTab, ui: &InspectorInteraction) -> usize {
+    pub fn scrollable_line_count(
+        &self,
+        tab: InspectorTab,
+        ui: &InspectorInteraction,
+        activity_events: &[String],
+    ) -> usize {
         match tab {
             InspectorTab::Files => {
                 if ui.file_preview_rel.is_some() {
@@ -65,6 +74,7 @@ impl InspectorCache {
             }
             InspectorTab::Agents => agents::line_count(&self.agents),
             InspectorTab::Mcp => self.mcp.line_count(ui.mcp_expanded.as_deref()),
+            InspectorTab::Activity => activity_line_count(activity_events),
         }
     }
 
@@ -75,6 +85,7 @@ impl InspectorCache {
         max_cols: usize,
         ui: &InspectorInteraction,
         workspace: &Path,
+        activity_events: &[String],
     ) -> Vec<Line<'static>> {
         let max_cols = max_cols.max(8);
         if tab == InspectorTab::Files {
@@ -157,6 +168,13 @@ impl InspectorCache {
 
         if tab == InspectorTab::Mcp {
             return clip_sidebar_lines(render_mcp_list(&self.mcp, height, ui, max_cols), max_cols);
+        }
+
+        if tab == InspectorTab::Activity {
+            return clip_sidebar_lines(
+                render_activity_styled(activity_events, height, ui.scroll, max_cols),
+                max_cols,
+            );
         }
 
         Vec::new()

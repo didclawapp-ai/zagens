@@ -281,17 +281,17 @@ async fn handle_input_event(
                 KeyCode::Char('o')
                     if app.layout.focus == FocusRegion::Chat && !app.composer_focus =>
                 {
-                    // If there is a mermaid diagram in the transcript, open it in the
-                    // browser.  Otherwise fall back to toggling tool-chain details.
                     if let Some(src) = app.transcript.last_mermaid_src() {
                         if let Some(url) = mermaid_live_url(src) {
                             let _ = open_url(&url);
                         }
+                    } else if app.transcript.last_turn_has_harness() {
+                        app.transcript.toggle_last_turn_harness();
                     } else {
                         app.transcript.toggle_last_turn_tools();
                     }
                 }
-                KeyCode::Char(n @ '1'..='4')
+                KeyCode::Char(n @ '1'..='5')
                     if app.layout.focus == FocusRegion::Left
                         || app.layout.focus == FocusRegion::Right =>
                 {
@@ -652,12 +652,33 @@ async fn handle_slash_enter(
         return Ok(true);
     }
 
+    if let Some((name, arg)) = composer_slash::split_command_line(app.composer.text())
+        && !arg.is_empty()
+        && composer_slash::is_workspace_command(name)
+    {
+        match composer_slash::resolve_workspace_path(arg, &current_ws) {
+            Ok(path) => {
+                app.composer.clear();
+                app.slash.close();
+                execute_slash_action(ctx, host, app, SlashAction::SwitchWorkspace(path)).await?;
+            }
+            Err(err) => {
+                app.push_system_line(format!("workspace: {err:#}"));
+            }
+        }
+        return Ok(true);
+    }
+
     if app.slash.open {
         if let Some(cmd) = composer_slash::selected_command(app.composer.text(), app.slash.selected)
         {
             if cmd.takes_arg {
-                composer_slash::apply_palette_selection(app.composer.text_mut(), cmd);
-                app.sync_slash_palette();
+                let arg_empty = composer_slash::split_command_line(app.composer.text())
+                    .is_none_or(|(_, arg)| arg.is_empty());
+                if arg_empty {
+                    composer_slash::apply_palette_selection(&mut app.composer, cmd);
+                    app.sync_slash_palette();
+                }
             } else {
                 app.composer.clear();
                 app.slash.close();

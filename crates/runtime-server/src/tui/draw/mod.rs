@@ -117,23 +117,13 @@ fn border_styles(app: &AppState, regions: &LayoutRegions) -> BorderStyles {
 
 fn draw_title_bar(frame: &mut Frame<'_>, app: &AppState, regions: &LayoutRegions) {
     let fold_hint = format!(
-        " [{}]L {} [[]]R ",
+        " | [{}]L {} [[]]R ",
         if regions.left_visible { "v" } else { "^" },
         if regions.right_visible { "v" } else { "^" }
     );
-    let stream = if app.transcript.is_thinking() {
-        "thinking"
-    } else if app.transcript.is_tools_active() {
-        "tools"
-    } else if app.transcript.streaming {
-        "streaming"
-    } else {
-        "idle"
-    };
-    let workspace_short = truncate_middle(&app.workspace_display, 28);
-    let status_short = truncate_middle(&app.title_status_line(), 48);
+    let workspace_short = truncate_middle(&app.workspace_display, 48);
     let title_text = pad_title_line(
-        &format!(" Zagens TUI | {workspace_short} | {status_short}{fold_hint}| {stream} "),
+        &format!(" Zagens TUI | {workspace_short}{fold_hint}"),
         regions.title.width as usize,
     );
     frame.render_widget(
@@ -282,7 +272,7 @@ fn draw_left_rail(
 
 fn draw_right_rail(
     frame: &mut Frame<'_>,
-    app: &AppState,
+    app: &mut AppState,
     regions: &LayoutRegions,
     right: &RightPaneRegions,
     styles: Option<&BorderStyles>,
@@ -308,12 +298,17 @@ fn draw_right_rail(
         },
     );
     let (inspector_w, inspector_h) = pane::line_budget(right.inspector, plan);
+    if app.layout.prefs.inspector_tab() == InspectorTab::Activity {
+        app.sync_activity_scroll_tail();
+    }
+    let activity_events = app.transcript.harness_events();
     let lines = app.inspector.render_styled(
         tab,
         inspector_h,
         inspector_w,
         &app.inspector_ui,
         &app.workspace,
+        &activity_events,
     );
     paint_pane(
         frame,
@@ -366,6 +361,7 @@ fn inspector_title(tab: InspectorTab, focused: bool) -> String {
         InspectorTab::Diff => "j/k nav Enter patch s staged Esc",
         InspectorTab::Agents => "j/k nav",
         InspectorTab::Mcp => "j/k nav Enter tools",
+        InspectorTab::Activity => "j/k scroll log",
     };
     format!(" {} | {hint} ", tab.label())
 }

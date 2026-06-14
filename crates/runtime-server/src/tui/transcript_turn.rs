@@ -29,6 +29,8 @@ pub struct TranscriptTurn {
     pub open: bool,
     /// Collapsed tool-chain summary for this turn (desktop MessageMetaBar default).
     pub tools_collapsed: bool,
+    /// Collapsed harness log (subagent / CRAFT / gate events) — detail in Activity tab.
+    pub harness_collapsed: bool,
     /// Show full THK body instead of preview when not streaming.
     pub thinking_expanded: bool,
 }
@@ -44,6 +46,7 @@ impl TranscriptTurn {
             harness: Vec::new(),
             open: true,
             tools_collapsed: true,
+            harness_collapsed: true,
             thinking_expanded: false,
         }
     }

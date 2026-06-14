@@ -6,6 +6,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use zagens_config::LhtComposerMode;
 
+use super::composer_editor::ComposerEditor;
 use super::theme;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -116,6 +117,11 @@ pub struct SlashCommandState {
 impl SlashCommandState {
     pub fn sync(&mut self, composer: &str, composer_focus: bool, model_catalog: &[String]) {
         if !composer_focus || !composer.starts_with('/') || composer.contains('\n') {
+            self.close();
+            return;
+        }
+        // Freeform path entry — close the command palette so typing/paste work normally.
+        if workspace_arg_active(composer) {
             self.close();
             return;
         }
@@ -315,6 +321,17 @@ pub fn model_picker_active(composer: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// `/workspace` or `/cd` with optional path — not the command palette (freeform arg).
+pub fn workspace_arg_active(composer: &str) -> bool {
+    split_command_line(composer)
+        .map(|(name, _)| is_workspace_command(name))
+        .unwrap_or(false)
+}
+
+pub(crate) fn is_workspace_command(name: &str) -> bool {
+    matches!(name.to_ascii_lowercase().as_str(), "workspace" | "cd")
+}
+
 fn is_model_command(name: &str) -> bool {
     matches!(name.to_ascii_lowercase().as_str(), "model" | "m")
 }
@@ -337,7 +354,7 @@ fn slash_query(composer: &str) -> String {
         .to_ascii_lowercase()
 }
 
-fn split_command_line(composer: &str) -> Option<(&str, &str)> {
+pub(crate) fn split_command_line(composer: &str) -> Option<(&str, &str)> {
     let line = composer.trim();
     if !line.starts_with('/') {
         return None;
@@ -396,11 +413,12 @@ pub fn try_parse_action(composer: &str, current_workspace: &Path) -> Option<Slas
     }
 }
 
-pub fn apply_palette_selection(composer: &mut String, cmd: &SlashCommandDef) {
+pub fn apply_palette_selection(composer: &mut ComposerEditor, cmd: &SlashCommandDef) {
+    composer.clear();
     if cmd.takes_arg {
-        *composer = format!("/{} ", cmd.name);
+        composer.insert_str(&format!("/{} ", cmd.name));
     } else {
-        *composer = format!("/{}", cmd.name);
+        composer.insert_str(&format!("/{}", cmd.name));
     }
 }
 
@@ -740,5 +758,32 @@ mod tests {
         ];
         let hits = filter_models("/model flash", &catalog);
         assert_eq!(hits, vec!["deepseek-v4-flash".to_string()]);
+    }
+
+    #[test]
+    fn workspace_arg_active_after_command_selected() {
+        assert!(workspace_arg_active("/workspace "));
+        assert!(workspace_arg_active("/workspace F:\\repo"));
+        assert!(workspace_arg_active("/cd ../other"));
+        assert!(!workspace_arg_active("/wor"));
+        assert!(!workspace_arg_active("/model "));
+    }
+
+    #[test]
+    fn apply_palette_selection_moves_cursor_to_end() {
+        let mut editor = ComposerEditor::default();
+        editor.insert_str("/wor");
+        editor.move_home();
+        apply_palette_selection(
+            &mut editor,
+            &SlashCommandDef {
+                name: "workspace",
+                description: "",
+                takes_arg: true,
+                action: SlashActionKind::Workspace,
+            },
+        );
+        assert_eq!(editor.text(), "/workspace ");
+        assert_eq!(editor.cursor(), editor.text().len());
     }
 }

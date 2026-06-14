@@ -15,8 +15,8 @@ use super::theme::{self, COMPOSER_PROMPT, TuiTheme, TuiThemeId};
 use super::focus::{FocusRegion, RightSubfocus};
 use super::harness::{ChecklistSnapshot, blocked_suffix};
 use super::inspector::{
-    AgentEntry, InspectorCache, InspectorInteraction, LhtPaneUi, agents_line_count, git_diff_patch,
-    lht_line_count, read_text_preview,
+    AgentEntry, InspectorCache, InspectorInteraction, LhtPaneUi, activity_line_count,
+    agents_line_count, git_diff_patch, lht_line_count, read_text_preview,
 };
 use super::layout::{InspectorTab, LayoutEngine, TuiLayoutPrefs};
 use super::left_rail::SessionList;
@@ -54,6 +54,8 @@ pub struct AppState {
     pub task_graph: Option<TaskGraphSnapshot>,
     pub lht_pane_expanded: bool,
     pub lht_auto_opened: bool,
+    /// Activity tab log sticks to newest events until the user scrolls up.
+    pub activity_follow_tail: bool,
     pub lht_ui: LhtPaneUi,
     pub right_subfocus: RightSubfocus,
     pub right_panel_height: usize,
@@ -84,8 +86,7 @@ impl AppState {
         }
         let mut inspector = InspectorCache::default();
         inspector.refresh_static(&host.thread.workspace, host.config());
-        let threads = host.list_workspace_threads().await.unwrap_or_default();
-        let sessions = SessionList::from_threads(threads, host.thread_id());
+        let sessions = host.workspace_session_list(host.thread_id()).await;
 
         let mut state = Self {
             layout: LayoutEngine::new(inline_mode, layout_prefs),
@@ -113,6 +114,7 @@ impl AppState {
             task_graph: None,
             lht_pane_expanded: false,
             lht_auto_opened: false,
+            activity_follow_tail: true,
             lht_ui: LhtPaneUi::default(),
             right_subfocus: RightSubfocus::Inspector,
             right_panel_height: 20,
@@ -241,18 +243,45 @@ impl AppState {
         self.layout.prefs.set_inspector_tab(tab);
     }
 
+    pub fn auto_open_activity_panel(&mut self) {
+        if self.layout.prefs.right_collapsed {
+            self.layout.prefs.right_collapsed = false;
+        }
+        if self.layout.prefs.inspector_tab() != InspectorTab::Activity {
+            self.switch_inspector_tab(InspectorTab::Activity);
+        }
+        self.activity_follow_tail = true;
+        self.sync_activity_scroll_tail();
+    }
+
+    pub(crate) fn sync_activity_scroll_tail(&mut self) {
+        if !self.activity_follow_tail {
+            return;
+        }
+        let events = self.transcript.harness_events();
+        let visible = self.inspector_panel_height().max(4);
+        let total = activity_line_count(&events);
+        self.inspector_ui.scroll = total.saturating_sub(visible);
+    }
+
     pub fn inspector_scroll_up(&mut self, _workspace: &std::path::Path) {
         if self.inspector_ui.in_detail_view() {
             self.inspector_ui.scroll_up(1);
             return;
         }
         let tab = self.layout.prefs.inspector_tab();
+        if tab == InspectorTab::Activity {
+            self.activity_follow_tail = false;
+            self.inspector_ui.scroll_up(1);
+            return;
+        }
         let visible = self.inspector_panel_height().max(4);
         match tab {
             InspectorTab::Files => self.inspector_ui.file_move_up(),
             InspectorTab::Diff => self.inspector_ui.diff_move_up(),
             InspectorTab::Agents => self.inspector_ui.agents_move_up(),
             InspectorTab::Mcp => self.inspector_ui.mcp_move_up(),
+            InspectorTab::Activity => {}
         }
         let _ = visible;
     }
@@ -282,6 +311,13 @@ impl AppState {
             InspectorTab::Mcp => {
                 let count = self.inspector.mcp.servers.len().max(1);
                 self.inspector_ui.mcp_move_down(count, visible);
+            }
+            InspectorTab::Activity => {
+                let count = activity_line_count(&self.transcript.harness_events());
+                self.inspector_ui.scroll_down(count, visible);
+                if self.inspector_ui.scroll + visible >= count {
+                    self.activity_follow_tail = true;
+                }
             }
         }
     }
@@ -366,6 +402,7 @@ impl AppState {
                     self.inspector_ui.scroll = 0;
                 }
             }
+            InspectorTab::Activity => {}
         }
     }
 
@@ -428,18 +465,123 @@ impl AppState {
         load_lht_composer_mode()
     }
 
-    pub fn title_status_line(&self) -> String {
-        let mut parts = vec![self.thread_id.clone(), self.harness_line.clone()];
+    pub fn footer_activity_tag(&self) -> &'static str {
+        if self.transcript.is_thinking() {
+            "think"
+        } else if self.transcript.is_tools_active() {
+            "tools"
+        } else if self.transcript.streaming {
+            "stream"
+        } else if self.transcript.is_live_activity() {
+            "wait"
+        } else if self.composer_focus {
+            "edit"
+        } else {
+            "scroll"
+        }
+    }
+
+    pub fn composer_footer_line(&self, max_cols: usize) -> ratatui::text::Line<'static> {
+        use ratatui::text::{Line, Span};
+
+        let chip = |text: String, style: ratatui::style::Style| Span::styled(text, style);
+        let sep = Span::styled(" | ", theme::footer_separator());
+
+        let mut spans = vec![
+            chip(
+                self.model_display.clone(),
+                theme::footer_chip(theme::footer_model()),
+            ),
+            sep.clone(),
+            chip(
+                self.run_mode_display.clone(),
+                theme::footer_chip(theme::footer_mode()),
+            ),
+            sep.clone(),
+            chip(
+                self.task_type_display.clone(),
+                theme::footer_chip(theme::footer_task()),
+            ),
+            sep.clone(),
+            chip(
+                self.lht_mode_display.clone(),
+                theme::footer_chip(theme::footer_lht()),
+            ),
+        ];
+
+        if !self.harness_line.is_empty() && self.harness_line != "LHT -" {
+            spans.push(sep.clone());
+            spans.push(chip(
+                self.harness_line.clone(),
+                theme::footer_chip(theme::footer_lht()),
+            ));
+        }
+
         if let Some(pct) = self.context_pct {
-            parts.push(format!("ctx {pct}%"));
+            spans.push(sep.clone());
+            spans.push(Span::styled(format!("ctx {pct}%"), theme::footer_context()));
         }
+
+        spans.push(sep.clone());
+        let approval_label = if self.approval_toggle_enabled {
+            format!("approve: {} ^A", self.approval_display)
+        } else {
+            format!("approve: {}", self.approval_display)
+        };
+        spans.push(chip(
+            approval_label,
+            theme::footer_chip(theme::approval_color(&self.approval_display)),
+        ));
+
         if let Some(blocked) = &self.blocked_line {
-            parts.push(blocked.clone());
+            spans.push(sep.clone());
+            spans.push(Span::styled(
+                blocked.clone(),
+                theme::footer_chip(theme::approval_color("blocked")),
+            ));
         }
-        parts.join(" · ")
+
+        spans.push(sep);
+        spans.push(Span::styled(
+            format!("[{}]", self.footer_activity_tag()),
+            theme::footer_muted(),
+        ));
+
+        let line = Line::from(spans);
+        let plain = line
+            .spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect::<String>();
+        let pad_style = theme::shell_main();
+        if super::display_format::display_width(&plain) <= max_cols {
+            return super::display_format::pad_styled_line(line, max_cols, pad_style);
+        }
+
+        let mut compact_parts = vec![
+            self.model_display.clone(),
+            self.run_mode_display.clone(),
+            self.task_type_display.clone(),
+            self.lht_mode_display.clone(),
+        ];
+        if !self.harness_line.is_empty() && self.harness_line != "LHT -" {
+            compact_parts.push(self.harness_line.clone());
+        }
+        if let Some(pct) = self.context_pct {
+            compact_parts.push(format!("ctx {pct}%"));
+        }
+        compact_parts.push(format!("approve:{}", self.approval_display));
+        if let Some(blocked) = &self.blocked_line {
+            compact_parts.push(blocked.clone());
+        }
+        compact_parts.push(format!("[{}]", self.footer_activity_tag()));
+        let compact = compact_parts.join(" · ");
+        let padded = super::display_format::pad_line_display_width(&compact, max_cols);
+        Line::from(Span::styled(padded, theme::footer_muted()))
     }
 
     pub fn apply_engine_event(&mut self, event: Event) {
+        let prev_harness = self.transcript.harness_event_count();
         if let Event::ApprovalRequired {
             id,
             tool_name,
@@ -480,6 +622,11 @@ impl AppState {
         apply_event(&mut self.transcript, event);
         self.blocked_line = blocked_suffix(self.transcript.end_reason.as_deref());
         self.inspector.agents = self.agents.clone();
+        if self.transcript.harness_event_count() > prev_harness {
+            self.auto_open_activity_panel();
+        } else if self.layout.prefs.inspector_tab() == InspectorTab::Activity {
+            self.sync_activity_scroll_tail();
+        }
     }
 
     pub fn clear_approval(&mut self) {
@@ -580,91 +727,6 @@ impl AppState {
                 theme::composer_line(&padded, self.composer_focus)
             })
             .collect()
-    }
-
-    pub fn composer_footer_line(&self, max_cols: usize) -> ratatui::text::Line<'static> {
-        use ratatui::text::{Line, Span};
-
-        let chip = |text: String, style: ratatui::style::Style| Span::styled(text, style);
-        let sep = Span::styled(" | ", theme::footer_separator());
-
-        let mut spans = vec![
-            chip(
-                self.model_display.clone(),
-                theme::footer_chip(theme::footer_model()),
-            ),
-            sep.clone(),
-            chip(
-                self.run_mode_display.clone(),
-                theme::footer_chip(theme::footer_mode()),
-            ),
-            sep.clone(),
-            chip(
-                self.task_type_display.clone(),
-                theme::footer_chip(theme::footer_task()),
-            ),
-            sep.clone(),
-            chip(
-                self.lht_mode_display.clone(),
-                theme::footer_chip(theme::footer_lht()),
-            ),
-        ];
-
-        if !self.workspace_display.is_empty() {
-            spans.push(sep.clone());
-            spans.push(Span::styled(
-                truncate_footer_workspace(&self.workspace_display, max_cols / 3),
-                theme::footer_workspace(),
-            ));
-        }
-
-        if let Some(pct) = self.context_pct {
-            spans.push(sep.clone());
-            spans.push(Span::styled(format!("ctx {pct}%"), theme::footer_context()));
-        }
-
-        spans.push(sep.clone());
-        let approval_label = if self.approval_toggle_enabled {
-            format!("approve: {} ^A", self.approval_display)
-        } else {
-            format!("approve: {}", self.approval_display)
-        };
-        spans.push(chip(
-            approval_label,
-            theme::footer_chip(theme::approval_color(&self.approval_display)),
-        ));
-
-        let focus = if self.transcript.is_live_activity() {
-            "wait"
-        } else if self.composer_focus {
-            "edit"
-        } else {
-            "scroll"
-        };
-        spans.push(sep);
-        spans.push(Span::styled(format!("[{focus}]"), theme::footer_muted()));
-
-        let line = Line::from(spans);
-        let plain = line
-            .spans
-            .iter()
-            .map(|s| s.content.as_ref())
-            .collect::<String>();
-        let pad_style = theme::shell_main();
-        if super::display_format::display_width(&plain) <= max_cols {
-            return super::display_format::pad_styled_line(line, max_cols, pad_style);
-        }
-
-        let compact = format!(
-            "{} · {} · {} · {} · approve:{}",
-            self.model_display,
-            self.run_mode_display,
-            self.task_type_display,
-            self.lht_mode_display,
-            self.approval_display
-        );
-        let padded = super::display_format::pad_line_display_width(&compact, max_cols);
-        Line::from(Span::styled(padded, theme::footer_muted()))
     }
 
     pub fn can_send_prompt(&self) -> bool {
@@ -799,14 +861,14 @@ impl AppState {
         self.task_graph = None;
         self.lht_pane_expanded = false;
         self.lht_auto_opened = false;
+        self.activity_follow_tail = true;
         self.lht_ui.reset();
         self.harness_line = title_bar_harness_line_from_graph(None);
         self.inspector
             .refresh_static(&host.thread.workspace, host.config());
         self.inspector_ui.reset_for_tab();
         self.refresh_panels(host).await;
-        let threads = host.list_workspace_threads().await.unwrap_or_default();
-        self.sessions = SessionList::from_threads(threads, host.thread_id());
+        self.sessions = host.workspace_session_list(host.thread_id()).await;
     }
 
     pub fn poll_due(&self) -> bool {
@@ -834,9 +896,7 @@ impl AppState {
     }
 
     pub async fn refresh_sessions(&mut self, host: &TuiSessionHost) {
-        if let Ok(threads) = host.list_workspace_threads().await {
-            self.sessions = SessionList::from_threads(threads, host.thread_id());
-        }
+        self.sessions = host.workspace_session_list(host.thread_id()).await;
     }
 }
 
@@ -858,14 +918,6 @@ fn format_task_type_label(task_type: &str) -> String {
         "" => "Code".to_string(),
         other => other.to_string(),
     }
-}
-
-fn truncate_footer_workspace(text: &str, max_chars: usize) -> String {
-    if max_chars < 4 || text.chars().count() <= max_chars {
-        return text.to_string();
-    }
-    let head = max_chars.saturating_sub(1);
-    format!("{}…", text.chars().take(head).collect::<String>())
 }
 
 #[cfg(test)]
@@ -908,6 +960,7 @@ fn test_app_state_for_draw(composer_text: &str) -> AppState {
         task_graph: None,
         lht_pane_expanded: false,
         lht_auto_opened: false,
+        activity_follow_tail: true,
         lht_ui: LhtPaneUi::default(),
         right_subfocus: RightSubfocus::Inspector,
         right_panel_height: 20,

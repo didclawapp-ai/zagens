@@ -18,7 +18,7 @@ Left rail (sessions)
 
 Right rail (inspector + LHT)
   Tab                 Focus right column
-  1-4                 Files / Diff / Agents / MCP
+  1-5                 Files / Diff / Agents / MCP / Activity
   j / k               Scroll inspector (or LHT pane when focused)
   Enter               Files: expand dir / preview file / Diff: patch / MCP: tools
   Esc                 Back from detail view
