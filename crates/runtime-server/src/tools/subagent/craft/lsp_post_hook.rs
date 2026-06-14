@@ -33,7 +33,6 @@ use std::path::Path;
 use std::process::Command;
 
 use serde_json::{Value, json};
-use zagens_config::workspace_meta_file_write;
 
 /// Maximum diagnostic lines stored in the blackboard.
 const MAX_DIAG_LINES: usize = 50;
@@ -149,7 +148,6 @@ pub async fn write_lsp_diagnostics_to_blackboard(workspace: &Path, task_id: &str
         "task_id": task_id,
     }));
 
-    let ws = workspace.to_path_buf();
     let (updated_board, was_run) = run_and_merge_lsp_diag(workspace, board).await;
 
     if !was_run {
