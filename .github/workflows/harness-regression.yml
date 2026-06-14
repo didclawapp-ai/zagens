@@ -1,0 +1,115 @@
+name: Harness regression
+
+# Nightly headless regression batch + weekly 35 min stress test.
+# Deliberately NOT in ci.yml to keep PR checks fast — harness runs are
+# scheduled or manually triggered only.
+#
+# Jobs:
+#   regression  — mock-LLM safe harness tests + coverage-gate (Ubuntu, ~5 min)
+#   stress      — R-015 longrun baseline 3 × 50 turns, needs API key (~35 min)
+
+on:
+  schedule:
+    # Daily regression at 02:17 UTC (low-traffic window)
+    - cron: '17 2 * * *'
+    # Weekly full stress test on Monday at 03:00 UTC
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+    inputs:
+      with_longrun:
+        description: 'Also run R-015 35-min stress test (needs API key secret)'
+        required: false
+        default: 'false'
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: harness-regression-${{ github.ref }}
+  cancel-in-progress: false  # never cancel a running stress test
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  RUSTFLAGS: -Dwarnings
+
+jobs:
+  regression:
+    name: Headless regression
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: clippy, rustfmt
+      - name: Install Linux system dependencies
+        run: bash scripts/ci/install-linux-deps.sh
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2.9.1
+      - name: Prefetch crate index (network retry)
+        run: bash scripts/ci/cargo-retry.sh fetch --locked
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: crates/desktop/web-ui/package-lock.json
+      - name: Ensure web-ui dist
+        run: bash scripts/ci/ensure-web-ui-dist.sh
+      - name: Pre-build runtime sidecar
+        run: bash scripts/ci/cargo-retry.sh build -p zagens-cli --bin zagens-runtime --locked
+      - name: Run harness regression
+        run: bash scripts/ci/harness-regression.sh
+      - name: Upload coverage-gate JSON report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: coverage-gate-report
+          path: .zagens/craft-ab-metrics.jsonl
+          if-no-files-found: ignore
+          retention-days: 14
+
+  stress:
+    name: 35-min stress test
+    runs-on: ubuntu-latest
+    # Only run on Monday's weekly cron or when explicitly requested via dispatch
+    if: >
+      (github.event_name == 'schedule' && startsWith(github.event.schedule, '0 3')) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.with_longrun == 'true')
+    env:
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: clippy, rustfmt
+      - name: Install Linux system dependencies
+        run: bash scripts/ci/install-linux-deps.sh
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2.9.1
+      - name: Prefetch crate index (network retry)
+        run: bash scripts/ci/cargo-retry.sh fetch --locked
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: crates/desktop/web-ui/package-lock.json
+      - name: Ensure web-ui dist
+        run: bash scripts/ci/ensure-web-ui-dist.sh
+      - name: Build release binary
+        run: bash scripts/ci/cargo-retry.sh build -p zagens-cli --release --locked --bin zagens --bin zagens-runtime
+      - name: Install PowerShell (for baseline script)
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q powershell
+      - name: R-015 longrun baseline (3 × 50 turns, ~35 min)
+        timeout-minutes: 60
+        run: pwsh -File scripts/runtime-longrun-baseline.ps1 -Runs 3 -Gate
+      - name: Coverage gate post-stress
+        run: ./target/release/zagens coverage-gate --no-fail --json
+      - name: Upload stress test report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: stress-test-report
+          path: .zagens/craft-ab-metrics.jsonl
+          if-no-files-found: ignore
+          retention-days: 30

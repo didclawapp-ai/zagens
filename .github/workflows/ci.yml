@@ -136,6 +136,9 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         shell: pwsh
         run: ./scripts/runtime-longrun-baseline.ps1 -DryRun -Runs 3
+      - name: L3 coverage-gate report (L7 harness regression smoke)
+        if: matrix.os == 'ubuntu-latest'
+        run: ./target/release/zagens coverage-gate --no-fail --json || true
       - name: Lockfile drift guard
         run: git diff --exit-code -- Cargo.lock
       - name: OpenAPI contract (D8 / D16 E5)
