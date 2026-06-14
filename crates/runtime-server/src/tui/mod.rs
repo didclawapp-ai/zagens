@@ -3,6 +3,7 @@
 mod activity_strip;
 mod app;
 mod approval_policy;
+mod automation;
 mod composer_editor;
 mod composer_paste;
 mod composer_slash;
@@ -80,6 +81,25 @@ pub async fn run_tui(cli: Cli) -> Result<()> {
     poll_wake.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     poll_wake.reset();
 
+    // Channel for RunShell automation actions: output arrives here from background
+    // threads and is drained in the biased select! branch without blocking the loop.
+    let (shell_tx, mut shell_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+
+    // Fire SessionStart rules after TUI is up so push_system_line() is visible.
+    if !resumed {
+        let fired = app.automation_engine.notify_session_start();
+        let ctx = automation::EventContext {
+            session_id: host.thread_id().to_string(),
+            ..Default::default()
+        };
+        for result in fired {
+            for action in result.actions {
+                fire_automation_action(&host, &mut app, action, &ctx, &shell_tx).await;
+            }
+        }
+        dirty = true;
+    }
+
     if let Some(prompt) = initial_prompt.filter(|p| !p.trim().is_empty()) {
         submit_prompt(&host, &mut app, &prompt).await;
         dirty = true;
@@ -119,13 +139,50 @@ pub async fn run_tui(cli: Cli) -> Result<()> {
             dirty = false;
         }
 
+        // `biased;` guarantees branches are polled in declaration order.
+        // Input is first — this ensures keyboard events (Tab, Esc, …) are processed
+        // immediately even when the model is streaming heavily.
         tokio::select! {
+            biased;
+
+            // 1. Keyboard / mouse input — highest priority.
+            maybe_event = input.recv() => {
+                if let Some(event) = maybe_event {
+                    if handle_input_event(
+                        &event,
+                        &mut ctx,
+                        &mut host,
+                        &mut app,
+                        &mut ctrl_c_streak,
+                        &mut ctrl_c_last,
+                        &shell_tx,
+                    ).await? {
+                        break;
+                    }
+                    dirty = true;
+                }
+            }
+            // 2. RunShell output arriving from background tasks.
+            Some(msg) = shell_rx.recv() => {
+                app.push_system_line(msg);
+                dirty = true;
+            }
+            // 3. Streaming / runtime events.
             delta = host.recv_runtime_ui_delta() => {
                 let was_streaming = app.transcript.streaming;
                 let had_events = !delta.events.is_empty();
                 let had_checklist = delta.checklist.is_some() || delta.task_graph.is_some();
+                let mut hook_results: Vec<automation::FiredResult> = Vec::new();
                 for event in delta.events {
+                    hook_results.extend(app.automation_engine.check_engine_event(&event));
                     app.apply_engine_event(event);
+                }
+                let session_id = app.thread_id.clone();
+                for mut fired in hook_results {
+                    fired.ctx.session_id = session_id.clone();
+                    for action in fired.actions {
+                        fire_automation_action(&host, &mut app, action, &fired.ctx, &shell_tx).await;
+                    }
                 }
                 if let Some(graph) = delta.task_graph {
                     app.apply_task_graph_snapshot(graph);
@@ -148,25 +205,37 @@ pub async fn run_tui(cli: Cli) -> Result<()> {
                 {
                     dirty = true;
                 }
-            }
-            maybe_event = input.recv() => {
-                if let Some(event) = maybe_event {
-                    if handle_input_event(
-                        &event,
-                        &mut ctx,
-                        &mut host,
-                        &mut app,
-                        &mut ctrl_c_streak,
-                        &mut ctrl_c_last,
-                    ).await? {
-                        break;
+                // After processing a potentially large delta batch (e.g. thinking tokens),
+                // drain all buffered keyboard events so the user never experiences a
+                // noticeable input delay even when thinking produces large token batches.
+                let mut drain_quit = false;
+                loop {
+                    match input.try_recv() {
+                        Some(event) => {
+                            match handle_input_event(
+                                &event,
+                                &mut ctx,
+                                &mut host,
+                                &mut app,
+                                &mut ctrl_c_streak,
+                                &mut ctrl_c_last,
+                                &shell_tx,
+                            ).await {
+                                Ok(true) => { drain_quit = true; break; }
+                                Ok(false) => { dirty = true; }
+                                Err(e) => return Err(e),
+                            }
+                        }
+                        None => break,
                     }
-                    dirty = true;
                 }
+                if drain_quit { break; }
             }
+            // 4. Animation tick (streaming indicator / cursor blink).
             _ = anim_tick.tick(), if app.transcript.is_live_activity() || app.composer_shows_cursor() => {
                 dirty = true;
             }
+            // 5. Background poll (sessions / panels refresh).
             _ = poll_wake.tick() => {
                 if app.poll_due() {
                     app.refresh_panels(&host).await;
@@ -174,6 +243,39 @@ pub async fn run_tui(cli: Cli) -> Result<()> {
                     dirty = true;
                 }
             }
+            // 6. Automation timer triggers — lowest priority.
+            _ = tokio::time::sleep_until(app.automation_engine.next_wake_tokio()) => {
+                let fired = app.automation_engine.poll_due();
+                if !fired.is_empty() {
+                    let session_id = app.thread_id.clone();
+                    for mut result in fired {
+                        result.ctx.session_id = session_id.clone();
+                        for action in result.actions {
+                            fire_automation_action(&host, &mut app, action, &result.ctx, &shell_tx).await;
+                        }
+                    }
+                    dirty = true;
+                }
+            }
+        }
+
+        // ── Editor request ─────────────────────────────────────────────────
+        // Pause the TUI, open $EDITOR / notepad, reload config, then resume.
+        if let Some(path) = app.editor_request.take() {
+            tui.shutdown()?;
+            match open_in_editor(&path) {
+                Ok(()) => {}
+                Err(err) => {
+                    eprintln!("[automation] editor error: {err}");
+                }
+            }
+            let new_config = automation::AutomationConfig::load();
+            app.automation_engine.update_config(new_config);
+            tui = TuiTerminal::new(inline_mode, mouse_capture)?;
+            terminal::sync_terminal_geometry(&mut tui.terminal, &mut app.layout)?;
+            app.terminal_resized = true;
+            dirty = true;
+            app.push_system_line("automation: config reloaded from disk".to_string());
         }
     }
 
@@ -190,6 +292,7 @@ async fn handle_input_event(
     app: &mut AppState,
     ctrl_c_streak: &mut u8,
     ctrl_c_last: &mut Option<Instant>,
+    shell_tx: &tokio::sync::mpsc::UnboundedSender<String>,
 ) -> Result<bool> {
     match event {
         Event::Resize(width, _) => {
@@ -209,6 +312,8 @@ async fn handle_input_event(
             if !is_key_press(key) {
                 return Ok(false);
             }
+            // Keep idle-trigger timers fresh on every keystroke.
+            app.automation_engine.notify_activity();
             if app.show_help && key.code == KeyCode::Char('?') {
                 app.show_help = false;
                 return Ok(false);
@@ -216,6 +321,11 @@ async fn handle_input_event(
             if app.show_help {
                 app.show_help = false;
                 return Ok(false);
+            }
+
+            // Automation overlay — intercept all keys while open.
+            if app.show_automation {
+                return handle_automation_key(*key, host, app).await;
             }
 
             if let Some(pending) = app.pending_approval.clone() {
@@ -358,7 +468,7 @@ async fn handle_input_event(
                         } else if app.slash.open
                             || composer_slash::composer_is_slash_command(app.composer.text())
                         {
-                            if handle_slash_enter(ctx, host, app).await? {
+                            if handle_slash_enter(ctx, host, app, shell_tx).await? {
                                 return Ok(false);
                             }
                         } else if app.can_send_prompt()
@@ -604,10 +714,341 @@ async fn handle_approval_key(
     Ok(false)
 }
 
+// ── Automation overlay key handler ─────────────────────────────────────────
+
+async fn handle_automation_key(
+    key: crossterm::event::KeyEvent,
+    host: &mut TuiSessionHost,
+    app: &mut AppState,
+) -> Result<bool> {
+    let _ = host;
+
+    if app.automation_ui.edit_mode {
+        // ── Edit mode ──────────────────────────────────────────────────────
+        match key.code {
+            KeyCode::Esc => {
+                app.automation_ui.cancel_edit();
+            }
+            KeyCode::Enter => {
+                save_automation_edit(app);
+            }
+            KeyCode::Tab => {
+                app.automation_ui.next_field();
+            }
+            KeyCode::BackTab => {
+                app.automation_ui.prev_field();
+            }
+            KeyCode::Left => {
+                if !app.automation_ui.edit_field.is_text_input() {
+                    app.automation_ui.cycle_selector(false);
+                }
+            }
+            KeyCode::Right => {
+                if !app.automation_ui.edit_field.is_text_input() {
+                    app.automation_ui.cycle_selector(true);
+                }
+            }
+            KeyCode::Up => {
+                if !app.automation_ui.edit_field.is_text_input() {
+                    app.automation_ui.cycle_selector(false);
+                }
+            }
+            KeyCode::Down => {
+                if !app.automation_ui.edit_field.is_text_input() {
+                    app.automation_ui.cycle_selector(true);
+                }
+            }
+            KeyCode::Backspace => {
+                app.automation_ui.backspace();
+            }
+            KeyCode::Char(ch) => {
+                app.automation_ui.input_char(ch);
+            }
+            _ => {}
+        }
+    } else {
+        // ── List mode ──────────────────────────────────────────────────────
+        let len = app.automation_engine.config.rules.len();
+        match key.code {
+            KeyCode::Esc => {
+                app.show_automation = false;
+            }
+            KeyCode::Char('j') | KeyCode::Down => {
+                app.automation_ui.move_down(len);
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                app.automation_ui.move_up();
+            }
+            KeyCode::Char(' ') => {
+                toggle_automation_rule(app);
+            }
+            KeyCode::Char('n') => {
+                app.automation_ui.start_new();
+            }
+            KeyCode::Enter => {
+                let idx = app.automation_ui.list_selected;
+                if let Some(rule) = app.automation_engine.config.rules.get(idx) {
+                    let rule = rule.clone();
+                    app.automation_ui.start_edit(&rule);
+                }
+            }
+            KeyCode::Char('d') | KeyCode::Delete => {
+                delete_automation_rule(app);
+            }
+            // Open the TOML config file in $EDITOR / notepad.
+            KeyCode::Char('e') => {
+                if let Some(path) = automation::AutomationConfig::path() {
+                    // Ensure the file exists before opening.
+                    if !path.exists() {
+                        let _ = automation::AutomationConfig::default().save();
+                    }
+                    app.editor_request = Some(path);
+                    app.show_automation = false;
+                } else {
+                    app.push_system_line("automation: could not resolve config path".to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(false)
+}
+
+fn save_automation_edit(app: &mut AppState) {
+    let editing_id = app.automation_ui.editing_id;
+    let built_rule_for_new;
+    let built_rule_for_update;
+
+    if let Some(id) = editing_id {
+        built_rule_for_update = app.automation_ui.build_rule(id);
+        built_rule_for_new = None;
+    } else {
+        let id = app.automation_engine.config.alloc_id();
+        built_rule_for_new = app.automation_ui.build_rule(id);
+        built_rule_for_update = None;
+    }
+
+    if let Some(id) = editing_id {
+        if let Some(rule) = built_rule_for_update {
+            if let Some(existing) = app
+                .automation_engine
+                .config
+                .rules
+                .iter_mut()
+                .find(|r| r.id == id)
+            {
+                existing.name = rule.name;
+                existing.trigger = rule.trigger;
+                // Preserve extra actions the user may have added via direct TOML
+                // editing; only overwrite the first (primary) action.
+                if !rule.actions.is_empty() {
+                    if existing.actions.is_empty() {
+                        existing.actions = rule.actions;
+                    } else {
+                        existing.actions[0] = rule.actions.into_iter().next().unwrap();
+                    }
+                }
+            }
+        }
+    } else if let Some(rule) = built_rule_for_new {
+        app.automation_engine.config.rules.push(rule);
+    }
+
+    app.automation_engine.save();
+    app.automation_engine
+        .reset_timers(std::time::Instant::now());
+    app.automation_ui.edit_mode = false;
+    let len = app.automation_engine.config.rules.len();
+    app.automation_ui.clamp_selection(len);
+}
+
+fn toggle_automation_rule(app: &mut AppState) {
+    let idx = app.automation_ui.list_selected;
+    if let Some(rule) = app.automation_engine.config.rules.get_mut(idx) {
+        rule.enabled = !rule.enabled;
+    }
+    app.automation_engine.save();
+    app.automation_engine
+        .reset_timers(std::time::Instant::now());
+}
+
+fn delete_automation_rule(app: &mut AppState) {
+    let idx = app.automation_ui.list_selected;
+    if idx < app.automation_engine.config.rules.len() {
+        app.automation_engine.config.rules.remove(idx);
+    }
+    app.automation_engine.save();
+    app.automation_engine
+        .reset_timers(std::time::Instant::now());
+    let len = app.automation_engine.config.rules.len();
+    app.automation_ui.clamp_selection(len);
+}
+
+/// Fire a single automation action with an optional event context for template substitution.
+async fn fire_automation_action(
+    host: &TuiSessionHost,
+    app: &mut AppState,
+    action: automation::ActionKind,
+    ctx: &automation::EventContext,
+    shell_tx: &tokio::sync::mpsc::UnboundedSender<String>,
+) {
+    match action {
+        automation::ActionKind::SendPrompt { text } => {
+            let resolved = ctx.apply(&text);
+            submit_prompt(host, app, &resolved).await;
+        }
+        automation::ActionKind::SlashRun { cmd } => {
+            let resolved = ctx.apply(&cmd);
+            let with_slash = if resolved.starts_with('/') {
+                resolved.clone()
+            } else {
+                format!("/{resolved}")
+            };
+            let ws = app.workspace.clone();
+            if let Some(slash_action) = composer_slash::try_parse_action(&with_slash, &ws) {
+                app.push_system_line(format!("[auto] {with_slash}"));
+                let _ = execute_slash_noop(app, slash_action);
+            } else {
+                app.push_system_line(format!("[auto] slash '{with_slash}' — not dispatched (needs host context, use SendPrompt instead)"));
+            }
+        }
+        automation::ActionKind::RunShell { cmd } => {
+            let resolved = ctx.apply(&cmd);
+            app.push_system_line(format!("[auto] $ {resolved}"));
+            // Fire-and-forget: run in a thread-pool thread, send output back
+            // via the shell_tx channel without blocking the TUI event loop.
+            let tool_name_s = ctx.tool_name.clone().unwrap_or_default();
+            let session_id_s = ctx.session_id.clone();
+            let error_msg_s = ctx.error_message.clone().unwrap_or_default();
+            let tx = shell_tx.clone();
+            tokio::task::spawn_blocking(move || {
+                match run_shell_cmd_sync(&resolved, &tool_name_s, &session_id_s, &error_msg_s) {
+                    Ok(out) if !out.is_empty() => {
+                        let _ = tx.send(format!("[auto output] {out}"));
+                    }
+                    Err(err) => {
+                        let _ = tx.send(format!("[auto error] {err}"));
+                    }
+                    _ => {}
+                }
+            });
+            // Note: we do NOT await the handle — the task runs in the background.
+        }
+        automation::ActionKind::Notify { message } => {
+            let resolved = ctx.apply(&message);
+            app.push_system_line(format!("[notify] {resolved}"));
+        }
+    }
+}
+
+/// Dispatch slash actions that do not require live `host`/`ctx` access.
+/// Returns `true` if the action was handled, `false` if it needs host context.
+fn execute_slash_noop(app: &mut AppState, action: SlashAction) -> bool {
+    match action {
+        SlashAction::ShowHelp => {
+            app.show_help = true;
+            true
+        }
+        SlashAction::ShowAutomation => {
+            app.show_automation = true;
+            app.automation_ui.edit_mode = false;
+            let len = app.automation_engine.config.rules.len();
+            app.automation_ui.clamp_selection(len);
+            true
+        }
+        SlashAction::SwitchTheme(id) => {
+            apply_theme_change(app, id);
+            true
+        }
+        SlashAction::CycleTheme => {
+            let next = theme::current_id().cycle();
+            apply_theme_change(app, next);
+            true
+        }
+        SlashAction::SetLhtMode(mode) => {
+            apply_lht_mode_change(app, mode);
+            true
+        }
+        SlashAction::CycleLhtMode => {
+            let next = lht_mode::load_lht_composer_mode().cycle();
+            apply_lht_mode_change(app, next);
+            true
+        }
+        SlashAction::ClearComposer => {
+            app.composer.clear();
+            true
+        }
+        // These need host context — caller should use SendPrompt or RunShell instead.
+        SlashAction::NewSession | SlashAction::SwitchModel(_) | SlashAction::SwitchWorkspace(_) => {
+            false
+        }
+    }
+}
+
+/// Spawn a shell command in a blocking context and return trimmed output (≤ 500 chars).
+/// Has an implicit OS timeout via the process itself; callers should wrap in
+/// `tokio::task::spawn_blocking` + `tokio::time::timeout` for hard bounds.
+fn run_shell_cmd_sync(
+    cmd: &str,
+    tool_name: &str,
+    session_id: &str,
+    error_msg: &str,
+) -> std::io::Result<String> {
+    #[cfg(target_os = "windows")]
+    let child = std::process::Command::new("cmd")
+        .args(["/c", cmd])
+        .env("ZAGENS_TOOL_NAME", tool_name)
+        .env("ZAGENS_SESSION_ID", session_id)
+        .env("ZAGENS_ERROR_MSG", error_msg)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()?;
+
+    #[cfg(not(target_os = "windows"))]
+    let child = std::process::Command::new("sh")
+        .args(["-c", cmd])
+        .env("ZAGENS_TOOL_NAME", tool_name)
+        .env("ZAGENS_SESSION_ID", session_id)
+        .env("ZAGENS_ERROR_MSG", error_msg)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()?;
+
+    let output = child.wait_with_output()?;
+    let raw = if output.stdout.is_empty() {
+        output.stderr
+    } else {
+        output.stdout
+    };
+    let text = String::from_utf8_lossy(&raw);
+    let trimmed = text.trim();
+    if trimmed.len() > 500 {
+        Ok(format!("{}…", &trimmed[..500]))
+    } else {
+        Ok(trimmed.to_string())
+    }
+}
+
+/// Open a file path in the user's `$EDITOR` (Unix) or `notepad` / `$EDITOR` (Windows)
+/// and block until the editor exits.
+fn open_in_editor(path: &std::path::Path) -> Result<()> {
+    #[cfg(target_os = "windows")]
+    let editor = std::env::var("EDITOR").unwrap_or_else(|_| "notepad".to_string());
+    #[cfg(not(target_os = "windows"))]
+    let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
+
+    std::process::Command::new(&editor)
+        .arg(path)
+        .status()
+        .map_err(|e| anyhow::anyhow!("failed to launch editor '{editor}': {e}"))?;
+    Ok(())
+}
+
 async fn handle_slash_enter(
     ctx: &mut crate::cli::context::CliContext,
     host: &mut TuiSessionHost,
     app: &mut AppState,
+    shell_tx: &tokio::sync::mpsc::UnboundedSender<String>,
 ) -> Result<bool> {
     let current_ws = host.thread.workspace.clone();
     if composer_slash::theme_picker_active(app.composer.text())
@@ -619,7 +1060,7 @@ async fn handle_slash_enter(
         app.slash.close();
         // Theme is already applied via preview; just persist the choice.
         app.theme_picker_original = None;
-        execute_slash_action(ctx, host, app, SlashAction::SwitchTheme(theme_id)).await?;
+        execute_slash_action(ctx, host, app, SlashAction::SwitchTheme(theme_id), shell_tx).await?;
         return Ok(true);
     }
     if composer_slash::lht_picker_active(app.composer.text())
@@ -629,7 +1070,7 @@ async fn handle_slash_enter(
     {
         app.composer.clear();
         app.slash.close();
-        execute_slash_action(ctx, host, app, SlashAction::SetLhtMode(mode)).await?;
+        execute_slash_action(ctx, host, app, SlashAction::SetLhtMode(mode), shell_tx).await?;
         return Ok(true);
     }
     if composer_slash::model_picker_active(app.composer.text())
@@ -642,13 +1083,13 @@ async fn handle_slash_enter(
     {
         app.composer.clear();
         app.slash.close();
-        execute_slash_action(ctx, host, app, SlashAction::SwitchModel(model)).await?;
+        execute_slash_action(ctx, host, app, SlashAction::SwitchModel(model), shell_tx).await?;
         return Ok(true);
     }
     if let Some(action) = composer_slash::try_parse_action(app.composer.text(), &current_ws) {
         app.composer.clear();
         app.slash.close();
-        execute_slash_action(ctx, host, app, action).await?;
+        execute_slash_action(ctx, host, app, action, shell_tx).await?;
         return Ok(true);
     }
 
@@ -660,7 +1101,8 @@ async fn handle_slash_enter(
             Ok(path) => {
                 app.composer.clear();
                 app.slash.close();
-                execute_slash_action(ctx, host, app, SlashAction::SwitchWorkspace(path)).await?;
+                execute_slash_action(ctx, host, app, SlashAction::SwitchWorkspace(path), shell_tx)
+                    .await?;
             }
             Err(err) => {
                 app.push_system_line(format!("workspace: {err:#}"));
@@ -685,6 +1127,7 @@ async fn handle_slash_enter(
                 let action = match cmd.action {
                     composer_slash::SlashActionKind::New => SlashAction::NewSession,
                     composer_slash::SlashActionKind::Help => SlashAction::ShowHelp,
+                    composer_slash::SlashActionKind::Automation => SlashAction::ShowAutomation,
                     composer_slash::SlashActionKind::Clear => SlashAction::ClearComposer,
                     composer_slash::SlashActionKind::Workspace
                     | composer_slash::SlashActionKind::Model
@@ -693,7 +1136,7 @@ async fn handle_slash_enter(
                         return Ok(true);
                     }
                 };
-                execute_slash_action(ctx, host, app, action).await?;
+                execute_slash_action(ctx, host, app, action, shell_tx).await?;
             }
         }
         return Ok(true);
@@ -706,6 +1149,7 @@ async fn execute_slash_action(
     host: &mut TuiSessionHost,
     app: &mut AppState,
     action: SlashAction,
+    shell_tx: &tokio::sync::mpsc::UnboundedSender<String>,
 ) -> Result<()> {
     match action {
         SlashAction::SwitchModel(model) => {
@@ -743,10 +1187,27 @@ async fn execute_slash_action(
         SlashAction::NewSession => {
             host.new_session(ctx).await?;
             app.reload_after_thread_switch(host).await;
+            let fired = app.automation_engine.notify_session_start();
+            let session_id = app.thread_id.clone();
+            let event_ctx = automation::EventContext {
+                session_id,
+                ..Default::default()
+            };
+            for result in fired {
+                for action in result.actions {
+                    fire_automation_action(&host, &mut *app, action, &event_ctx, shell_tx).await;
+                }
+            }
             app.push_system_line("new session".to_string());
         }
         SlashAction::ShowHelp => {
             app.show_help = true;
+        }
+        SlashAction::ShowAutomation => {
+            app.show_automation = true;
+            app.automation_ui.edit_mode = false;
+            let len = app.automation_engine.config.rules.len();
+            app.automation_ui.clamp_selection(len);
         }
         SlashAction::ClearComposer => {}
     }

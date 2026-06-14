@@ -10,7 +10,7 @@ use super::app::AppState;
 use super::focus::FocusRegion;
 use super::inspector::render_lht_styled;
 use super::layout::{InspectorTab, LayoutRegions, RightPaneRegions, split_center_column};
-use super::overlay::{draw_approval, draw_help};
+use super::overlay::{draw_approval, draw_automation, draw_help};
 use super::theme::{self, TuiPanel};
 
 use chrome::{
@@ -73,6 +73,9 @@ pub fn draw(
     }
     if let Some(pending) = &app.pending_approval {
         draw_approval(frame, pending);
+    }
+    if app.show_automation {
+        draw_automation(frame, &app.automation_engine.config, &app.automation_ui);
     }
 }
 

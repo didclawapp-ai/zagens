@@ -35,6 +35,15 @@ impl TerminalInput {
     pub async fn recv(&mut self) -> Option<Event> {
         self.rx.as_mut()?.recv().await
     }
+
+    /// Non-blocking: returns `Some(event)` if one is buffered, `None` otherwise.
+    pub fn try_recv(&mut self) -> Option<Event> {
+        use tokio::sync::mpsc::error::TryRecvError;
+        match self.rx.as_mut()?.try_recv() {
+            Ok(event) => Some(event),
+            Err(TryRecvError::Empty) | Err(TryRecvError::Disconnected) => None,
+        }
+    }
 }
 
 impl Drop for TerminalInput {

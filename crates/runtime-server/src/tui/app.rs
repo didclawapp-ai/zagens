@@ -12,6 +12,7 @@ use super::display_format::{
 };
 use super::theme::{self, COMPOSER_PROMPT, TuiTheme, TuiThemeId};
 
+use super::automation::{AutomationConfig, AutomationEngine};
 use super::focus::{FocusRegion, RightSubfocus};
 use super::harness::{ChecklistSnapshot, blocked_suffix};
 use super::inspector::{
@@ -21,7 +22,7 @@ use super::inspector::{
 use super::layout::{InspectorTab, LayoutEngine, TuiLayoutPrefs};
 use super::left_rail::SessionList;
 use super::lht_mode::{format_lht_mode_label, load_lht_composer_mode};
-use super::overlay::PendingApproval;
+use super::overlay::{AutomationUiState, PendingApproval};
 use super::poll::poll_interval;
 use super::session_host::TuiSessionHost;
 use super::task_graph::{TaskGraphSnapshot, title_bar_harness_line_from_graph};
@@ -64,6 +65,15 @@ pub struct AppState {
     pub agents: Vec<AgentEntry>,
     pub pending_approval: Option<PendingApproval>,
     pub show_help: bool,
+    /// Whether the automation settings overlay is open.
+    pub show_automation: bool,
+    /// UI state for the automation overlay (list selection, edit form buffers).
+    pub automation_ui: AutomationUiState,
+    /// Runtime engine that drives timer and idle triggers.
+    pub automation_engine: AutomationEngine,
+    /// When set, the main loop will pause the TUI, open this file in `$EDITOR`
+    /// (or `notepad` on Windows), then reload the automation config.
+    pub editor_request: Option<PathBuf>,
     /// Set on terminal resize; next draw clears the backing buffer (shrunk-area ghosts).
     pub terminal_resized: bool,
     pub cursor_blink_since: Instant,
@@ -123,6 +133,10 @@ impl AppState {
             agents: Vec::new(),
             pending_approval: None,
             show_help: false,
+            show_automation: false,
+            automation_ui: AutomationUiState::default(),
+            automation_engine: AutomationEngine::new(AutomationConfig::load()),
+            editor_request: None,
             terminal_resized: false,
             cursor_blink_since: Instant::now(),
             next_poll: Instant::now(),
@@ -969,6 +983,10 @@ fn test_app_state_for_draw(composer_text: &str) -> AppState {
         agents: Vec::new(),
         pending_approval: None,
         show_help: false,
+        show_automation: false,
+        automation_ui: AutomationUiState::default(),
+        automation_engine: AutomationEngine::new(AutomationConfig::default()),
+        editor_request: None,
         terminal_resized: false,
         cursor_blink_since: Instant::now(),
         next_poll: Instant::now(),

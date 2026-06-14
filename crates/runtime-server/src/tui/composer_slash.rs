@@ -19,6 +19,7 @@ pub enum SlashAction {
     CycleTheme,
     NewSession,
     ShowHelp,
+    ShowAutomation,
     ClearComposer,
 }
 
@@ -38,6 +39,7 @@ pub(crate) enum SlashActionKind {
     Theme,
     New,
     Help,
+    Automation,
     Clear,
 }
 
@@ -98,6 +100,12 @@ const COMMANDS: &[SlashCommandDef] = &[
         description: "Show keyboard shortcuts",
         takes_arg: false,
         action: SlashActionKind::Help,
+    },
+    SlashCommandDef {
+        name: "auto",
+        description: "Automation rules: hooks, timers, triggers",
+        takes_arg: false,
+        action: SlashActionKind::Automation,
     },
     SlashCommandDef {
         name: "clear",
@@ -409,6 +417,7 @@ pub fn try_parse_action(composer: &str, current_workspace: &Path) -> Option<Slas
         }
         SlashActionKind::New => Some(SlashAction::NewSession),
         SlashActionKind::Help => Some(SlashAction::ShowHelp),
+        SlashActionKind::Automation => Some(SlashAction::ShowAutomation),
         SlashActionKind::Clear => Some(SlashAction::ClearComposer),
     }
 }
