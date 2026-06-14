@@ -686,6 +686,14 @@ pub struct ToolsConfigToml {
     /// Batch scheduler: `"legacy"` (default), `"shadow"`, or `"dag"`.
     #[serde(default)]
     pub scheduler: Option<String>,
+    /// Context compiler mode: `"legacy"` (default), `"shadow"`, or `"v2"`.
+    ///
+    /// - `legacy`:  existing injection-point code controls the request.
+    /// - `shadow`:  `ContextCompiler` runs in parallel; diffs are logged.
+    ///   Gate: `static_prefix_sha256` diff rate < 0.1% for 2 calendar weeks.
+    /// - `v2`:      `ContextCompiler` controls the request (Phase 2-Switch).
+    #[serde(default)]
+    pub compiler: Option<String>,
 }
 
 /// Resolved `tools.policy` mode (kernel-v2 M3).

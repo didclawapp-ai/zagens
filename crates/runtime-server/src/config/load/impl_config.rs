@@ -774,6 +774,14 @@ impl Config {
         )
     }
 
+    /// Resolved kernel-v2 context compiler mode (`[tools] compiler`, default `legacy`).
+    #[must_use]
+    pub fn context_compiler_mode(&self) -> zagens_core::engine::ContextCompilerMode {
+        zagens_core::engine::ContextCompilerMode::parse(
+            self.tools.as_ref().and_then(|t| t.compiler.as_deref()),
+        )
+    }
+
     /// Resolve enabled features from defaults and config entries.
     #[must_use]
     pub fn features(&self) -> Features {

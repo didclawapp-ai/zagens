@@ -9,6 +9,7 @@
 pub mod approval;
 pub mod config;
 pub mod context;
+pub mod context_compiler;
 pub mod context_snapshot;
 pub mod dispatch;
 pub mod handle;
@@ -49,6 +50,10 @@ pub use context::{
     estimate_input_tokens_conservative, extract_compaction_summary_prompt,
     is_context_length_error_message, summarize_text, turn_response_headroom_tokens,
 };
+pub use context_compiler::{
+    BudgetPolicy, CompiledContext, ContextCompiler, ContextCompilerMode, ContextLayer,
+    ContextProjection, ContextSource, RenderFn, RenderedBlock, SourceContribution, SourceId,
+};
 pub use context_snapshot::ThreadContextSnapshot;
 pub use dispatch::{
     ToolParallelPlanFlags, caller_allowed_for_tool, caller_type_for_tool_use, final_tool_input,
@@ -78,6 +83,9 @@ pub use streaming::{
 #[allow(deprecated)]
 pub use subagent_port::SubAgentSpawnPort;
 pub use subagent_port::{SubAgentSpawnError, SubAgentSpawnOutcome};
+pub use token_estimate::{
+    MESSAGE_FRAMING_TOKENS, SESSION_FRAMING_TOKENS, TokenEstimator, estimate_text_tokens,
+};
 pub use tool_bridge::{
     function_call_to_tool_error, tool_call_input, tool_name_is_mutating, tool_output_to_result,
     tool_result_to_output, value_to_tool_call,

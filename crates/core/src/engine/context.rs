@@ -2,7 +2,8 @@
 
 use zagens_tools::ToolResult;
 
-use crate::chat::{ContentBlock, Message, SystemPrompt, context_window_for_model};
+use crate::chat::{Message, SystemPrompt, context_window_for_model};
+use crate::engine::token_estimate::TokenEstimator;
 
 /// Max output tokens requested for normal agent turns.
 pub const TURN_MAX_OUTPUT_TOKENS: u32 = 262_144;
@@ -284,56 +285,17 @@ pub fn extract_compaction_summary_prompt(prompt: Option<SystemPrompt>) -> Option
     }
 }
 
-fn estimate_block_tokens_conservative(block: &ContentBlock) -> usize {
-    use super::token_estimate::estimate_text_tokens;
-    match block {
-        ContentBlock::Text { text, .. } => estimate_text_tokens(text),
-        ContentBlock::Thinking { thinking } => estimate_text_tokens(thinking),
-        ContentBlock::ToolUse { input, .. } => estimate_text_tokens(&input.to_string()),
-        ContentBlock::ToolResult { content, .. } => estimate_text_tokens(content),
-        ContentBlock::ServerToolUse { input, .. } => estimate_text_tokens(&input.to_string()),
-        ContentBlock::ToolSearchToolResult { content, .. } => {
-            estimate_text_tokens(&content.to_string())
-        }
-        ContentBlock::CodeExecutionToolResult { content, .. } => {
-            estimate_text_tokens(&content.to_string())
-        }
-    }
-}
-
-fn estimate_messages_tokens_conservative(messages: &[Message]) -> usize {
-    messages
-        .iter()
-        .flat_map(|message| message.content.iter())
-        .map(estimate_block_tokens_conservative)
-        .sum()
-}
-
-fn estimate_system_tokens_conservative(system: Option<&SystemPrompt>) -> usize {
-    use super::token_estimate::estimate_text_tokens;
-    match system {
-        Some(SystemPrompt::Text(text)) => estimate_text_tokens(text),
-        Some(SystemPrompt::Blocks(blocks)) => blocks
-            .iter()
-            .map(|block| estimate_text_tokens(&block.text))
-            .sum(),
-        None => 0,
-    }
-}
-
+/// Conservative full-request input token estimate.
+///
+/// Delegates to [`TokenEstimator`] (P2-B canonical path).  Formula:
+/// `ceil(raw_message_tokens × 1.5) + system_tokens + framing`.
+/// Thinking blocks are always counted (conservative capacity estimate).
 #[must_use]
 pub fn estimate_input_tokens_conservative(
     messages: &[Message],
     system: Option<&SystemPrompt>,
 ) -> usize {
-    let message_tokens = estimate_messages_tokens_conservative(messages)
-        .saturating_mul(3)
-        .div_ceil(2);
-    let system_tokens = estimate_system_tokens_conservative(system);
-    let framing_overhead = messages.len().saturating_mul(12).saturating_add(48);
-    message_tokens
-        .saturating_add(system_tokens)
-        .saturating_add(framing_overhead)
+    TokenEstimator.estimate_request_input(messages, system, true)
 }
 
 #[must_use]

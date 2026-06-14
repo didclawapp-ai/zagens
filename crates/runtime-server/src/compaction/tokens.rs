@@ -2,29 +2,44 @@ use std::path::Path;
 
 use crate::models::{ContentBlock, Message, SystemPrompt};
 use zagens_core::compaction::CompactionConfig;
-// M0.3: single text→token calibration entry; the DeepSeek-ratio estimator
-// that used to live here is now an internal detail of this function.
-use zagens_core::engine::token_estimate::estimate_text_tokens;
+// P2-B: delegate to the canonical TokenEstimator (single calibration authority).
+// All text-level counts go through it; framing formula also sourced here.
+use zagens_core::engine::token_estimate::TokenEstimator;
 
 use super::plan::plan_compaction;
 use super::{KEEP_RECENT_MESSAGES, MIN_SUMMARIZE_MESSAGES};
 
+/// Whether a message's reasoning is replayed at inference time.
+///
+/// DeepSeek API rule: `reasoning_content` is only replayed for messages that
+/// contain `ToolUse` blocks.  Compaction token accounting uses this to match
+/// actual API billing semantics.
+pub(crate) fn message_has_tool_use(message: &Message) -> bool {
+    message
+        .content
+        .iter()
+        .any(|block| matches!(block, ContentBlock::ToolUse { .. }))
+}
+
+/// Token estimate for one message.
+///
+/// `include_thinking`: when `true`, `Thinking` block tokens are counted.
+/// Server-side blocks (`ServerToolUse`, `ToolSearchToolResult`,
+/// `CodeExecutionToolResult`) are excluded — they are never sent back to the
+/// API and their token cost is zero from the API's perspective.
 pub(crate) fn estimate_tokens_for_message(message: &Message, include_thinking: bool) -> usize {
+    let est = TokenEstimator;
     message
         .content
         .iter()
         .map(|c| match c {
-            ContentBlock::Text { text, .. } => estimate_text_tokens(text),
-            // Historical reasoning blocks are UI/session metadata for DeepSeek.
-            // Only current-turn tool-call reasoning is sent back to the API.
-            ContentBlock::Thinking { thinking } if include_thinking => {
-                estimate_text_tokens(thinking)
-            }
+            ContentBlock::Text { text, .. } => est.estimate_text(text),
+            ContentBlock::Thinking { thinking } if include_thinking => est.estimate_text(thinking),
             ContentBlock::Thinking { .. } => 0,
-            ContentBlock::ToolUse { input, .. } => serde_json::to_string(input)
-                .map(|s| estimate_text_tokens(&s))
-                .unwrap_or(100),
-            ContentBlock::ToolResult { content, .. } => estimate_text_tokens(content),
+            // ToolUse input is a serde_json::Value; Display produces compact JSON.
+            ContentBlock::ToolUse { input, .. } => est.estimate_text(&input.to_string()),
+            ContentBlock::ToolResult { content, .. } => est.estimate_text(content),
+            // Server-side blocks are not sent to the API; cost is zero.
             ContentBlock::ServerToolUse { .. }
             | ContentBlock::ToolSearchToolResult { .. }
             | ContentBlock::CodeExecutionToolResult { .. } => 0,
@@ -33,45 +48,28 @@ pub(crate) fn estimate_tokens_for_message(message: &Message, include_thinking: b
 }
 
 pub fn estimate_tokens(messages: &[Message]) -> usize {
-    // Rough estimate: ~4 chars per token. DeepSeek thinking-mode rule: any
-    // assistant message with tool_calls keeps its reasoning_content forever
-    // (replayed in all subsequent requests). Final text-only answers drop it.
+    // Selective thinking: only messages with tool_use replay their reasoning.
     messages
         .iter()
-        .map(|message| estimate_tokens_for_message(message, message_has_tool_use(message)))
+        .map(|m| estimate_tokens_for_message(m, message_has_tool_use(m)))
         .sum()
 }
 
-pub(crate) fn message_has_tool_use(message: &Message) -> bool {
-    message
-        .content
-        .iter()
-        .any(|block| matches!(block, ContentBlock::ToolUse { .. }))
-}
-
 pub(crate) fn estimate_system_tokens_conservative(system: Option<&SystemPrompt>) -> usize {
-    match system {
-        Some(SystemPrompt::Text(text)) => estimate_text_tokens(text),
-        Some(SystemPrompt::Blocks(blocks)) => blocks
-            .iter()
-            .map(|block| estimate_text_tokens(&block.text))
-            .sum(),
-        None => 0,
-    }
+    TokenEstimator.estimate_system(system)
 }
 
 /// Conservative estimate for full request input tokens (messages + system + framing).
+///
+/// Delegates to [`TokenEstimator::estimate_request_input_with_selective_thinking`]
+/// (P2-B canonical path) so framing formula and multiplier are consistent with
+/// the context-trim path (`core/engine/context.rs`) and the compiler budget solver.
 #[must_use]
 pub fn estimate_input_tokens_conservative(
     messages: &[Message],
     system: Option<&SystemPrompt>,
 ) -> usize {
-    let message_tokens = estimate_tokens(messages).saturating_mul(3).div_ceil(2);
-    let system_tokens = estimate_system_tokens_conservative(system);
-    let framing_overhead = messages.len().saturating_mul(12).saturating_add(48);
-    message_tokens
-        .saturating_add(system_tokens)
-        .saturating_add(framing_overhead)
+    TokenEstimator.estimate_request_input_with_selective_thinking(messages, system)
 }
 
 pub fn should_compact(

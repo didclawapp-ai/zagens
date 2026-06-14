@@ -839,9 +839,20 @@ impl TurnLoopHost for Engine {
         &self,
         request: &zagens_core::chat::MessageRequest,
     ) -> Option<zagens_core::engine::RequestFingerprint> {
-        Some(crate::request_fingerprint::fingerprint_message_request(
-            request,
-        ))
+        let fp = crate::request_fingerprint::fingerprint_message_request(request);
+
+        // Kernel-v2 Phase 2-A: shadow compare when `[tools] compiler = "shadow"`.
+        if let Ok(config) = crate::config::Config::load(None, None) {
+            if config.context_compiler_mode() == zagens_core::engine::ContextCompilerMode::Shadow {
+                crate::context_compiler_shadow::shadow_compare(
+                    request,
+                    &fp.static_prefix_sha256,
+                    &fp.full_prefix_sha256,
+                );
+            }
+        }
+
+        Some(fp)
     }
 
     async fn execute_tool_plans(

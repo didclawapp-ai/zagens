@@ -21,6 +21,7 @@ mod client;
 pub mod command_safety;
 mod compaction;
 mod config;
+mod context_compiler_shadow;
 mod context_snapshot;
 mod core;
 mod cost_status;

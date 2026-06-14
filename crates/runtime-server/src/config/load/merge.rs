@@ -135,6 +135,7 @@ fn merge_tools_config(
         (Some(b), Some(o)) => Some(ToolsConfigToml {
             policy: o.policy.or(b.policy),
             scheduler: o.scheduler.or(b.scheduler),
+            compiler: o.compiler.or(b.compiler),
         }),
     }
 }
