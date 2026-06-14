@@ -207,6 +207,56 @@ pub(crate) async fn run_subagent_task(task: SubAgentTask) {
     // grandchildren spawned recursively inside its children.
     emit_parent_completion(&task.runtime, &agent_id, &payload);
 
+    // C1: fix-loop Rust post-hook — auto-spawn Implementer when a CRAFT
+    // Review/Verifier completes with BLOCKER/FAIL and the fix-round cap
+    // has not been reached yet. Closes the "靠模型自觉" gap: the harness
+    // triggers remediation without waiting for the parent model to parse
+    // the `<deepseek:craft.fix_loop>` sentinel and decide to act.
+    if let (Ok(res), Some(task_id)) = (&result, task.task_id.as_deref()) {
+        if let Some(verdict) = res.structured_verdict.as_ref()
+            && craft::fix_loop_required(&verdict.verdict)
+            && craft::fix_loop_retry_role(&res.agent_type).is_some()
+        {
+            let workspace = task.runtime.context.workspace.as_path();
+            let fix_round = super::blackboard::implementer_round_count(workspace, task_id) + 1;
+            if fix_round <= craft::MAX_CRAFT_FIX_LOOPS_PER_TASK {
+                let prompt = craft::build_fix_loop_implementer_prompt(
+                    verdict,
+                    res.agent_type.as_str(),
+                    task_id,
+                    fix_round,
+                );
+                let implementer_runtime = task.runtime.background_runtime();
+                let assignment =
+                    zagens_core::subagent::SubAgentAssignment::new(prompt.clone(), None);
+                let options = super::types::SubAgentSpawnOptions {
+                    task_id: Some(task_id.to_string()),
+                    nickname: Some(format!("auto-fix round {fix_round}")),
+                    ..Default::default()
+                };
+                {
+                    let mut mgr = task.manager_handle.write().await;
+                    let _ = mgr.spawn_background_with_assignment_options(
+                        Arc::clone(&task.manager_handle),
+                        implementer_runtime,
+                        SubAgentType::Implementer,
+                        prompt,
+                        assignment,
+                        None,
+                        options,
+                    );
+                }
+                if let Some(ref event_tx) = task.runtime.event_tx {
+                    let _ = event_tx.try_send(Event::status(format!(
+                        "craft.fix_loop_auto_spawn: {{\"task_id\":\"{task_id}\",\"fix_round\":{fix_round},\"verdict\":\"{}\",\"source_role\":\"{}\"}}",
+                        craft::verdict_level_str(&verdict.verdict),
+                        res.agent_type.as_str(),
+                    )));
+                }
+            }
+        }
+    }
+
     if let Some(event_tx) = task.runtime.event_tx {
         let _ = event_tx.try_send(Event::AgentComplete {
             id: agent_id,

@@ -124,7 +124,56 @@ fn craft_fix_loop_exhausted_sentinel(
     format!("<deepseek:craft.fix_loop_exhausted>{payload}</deepseek:craft.fix_loop_exhausted>")
 }
 
-/// Parse JSON payload from a `<deepseek:subagent.done>…</deepseek:subagent.done>` line.
+/// Build the prompt for an auto-spawned Implementer fix-loop subagent.
+///
+/// Called from the executor post-hook (C1) when a Review or Verifier
+/// finishes with BLOCKER/FAIL and `implementer_round_count` has not yet
+/// reached [`MAX_CRAFT_FIX_LOOPS_PER_TASK`].
+#[must_use]
+pub fn build_fix_loop_implementer_prompt(
+    verdict: &zagens_core::subagent::StructuredVerdict,
+    source_role: &str,
+    task_id: &str,
+    fix_round: u32,
+) -> String {
+    let level = verdict_level_str(&verdict.verdict);
+    let summary = verdict.summary.as_deref().unwrap_or("(no summary)");
+
+    let mut items_text = String::new();
+    for (i, item) in verdict.items.iter().enumerate() {
+        let loc = if let Some(l) = item.line {
+            format!("{}:{}", item.file, l)
+        } else {
+            item.file.clone()
+        };
+        let sev = item.severity.as_str();
+        let desc = item.description.trim();
+        let suggestion = item
+            .suggestion
+            .as_deref()
+            .map(|s| format!(" Suggestion: {s}"))
+            .unwrap_or_default();
+        items_text.push_str(&format!(
+            "{}. [{sev}] `{loc}` — {desc}{suggestion}\n",
+            i + 1,
+        ));
+    }
+
+    format!(
+        "## CRAFT auto fix-loop — round {fix_round} (task `{task_id}`)\n\
+         \n\
+         The {source_role} identified **{level}** issues that block acceptance.\n\
+         Summary: {summary}\n\
+         \n\
+         ### Issues to fix\n\
+         {items_text}\n\
+         Please fix all issues listed above. After fixing, run any relevant\n\
+         `[verify: cmd]` commands mentioned in the issues to confirm they pass.\n\
+         Do not modify unrelated code. After completing fixes, close your turn\n\
+         so the next CRAFT review round can evaluate your changes."
+    )
+}
+
 pub fn parse_subagent_done_sentinel(payload: &str) -> Option<Value> {
     let marker = "<deepseek:subagent.done>";
     let end = "</deepseek:subagent.done>";
