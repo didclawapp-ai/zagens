@@ -322,6 +322,43 @@ pub(crate) async fn run_subagent_task(task: SubAgentTask) {
             result: payload,
         });
     }
+
+    // C9: A/B metrics — append a record when a CRAFT task reaches a terminal
+    // verdict (Verifier PASS, or max fix-rounds exhausted on any role).
+    if let (Ok(res), Some(task_id)) = (&result, task.task_id.as_deref()) {
+        let is_terminal = matches!(res.agent_type, SubAgentType::Verifier)
+            || (matches!(res.agent_type, SubAgentType::Review)
+                && res
+                    .structured_verdict
+                    .as_ref()
+                    .map(|v| {
+                        v.verdict == zagens_core::subagent::VerdictLevel::Pass
+                            || super::blackboard::reviewer_round_count(
+                                &task.runtime.context.workspace,
+                                task_id,
+                            ) >= craft::MAX_CRAFT_FIX_LOOPS_PER_TASK
+                    })
+                    .unwrap_or(false));
+
+        if is_terminal {
+            let workspace = &task.runtime.context.workspace;
+            let terminal_verdict = res
+                .structured_verdict
+                .as_ref()
+                .map(|v| craft::verdict_level_str(&v.verdict))
+                .unwrap_or("UNKNOWN");
+            let record = craft::ab_metrics::CraftAbRecord::from_blackboard(
+                workspace,
+                task_id,
+                terminal_verdict,
+                0, // evidence_downgrades — counted at C3 gate, not persisted here
+                0, // gate_fails — counted at C8 gate, not persisted here
+                res.duration_ms,
+                "",
+            );
+            record.append_to_file(workspace);
+        }
+    }
 }
 
 /// Apply C3 Reviewer evidence gate: if a Review subagent produced a BLOCKER
