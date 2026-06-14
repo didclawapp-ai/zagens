@@ -12,7 +12,9 @@
 | [`scripts/ci/verify-lint-linux.ps1`](scripts/ci/verify-lint-linux.ps1) | 在 WSL/Docker 里跑 Linux 版 Lint（**仅手动**，覆盖 `#[cfg(unix)]` 盲区） |
 | [`scripts/ci/verify-workspace.sh`](scripts/ci/verify-workspace.sh) | Lint + 全 workspace 测试 + lockfile 漂移 |
 | [`scripts/ci/install-git-hooks.sh`](scripts/ci/install-git-hooks.sh) | 安装 pre-commit / pre-push |
-| [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | 远程 CI 定义 |
+| [`scripts/ci/harness-regression.sh`](scripts/ci/harness-regression.sh) | Headless 回归套件（lib 测试 + CLI 契约 + mock LLM E2E + coverage-gate）；`--with-longrun` 启用 35min+ 压测 |
+| [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | 远程 CI 定义（含 `coverage-gate --no-fail` 报告步骤） |
+| [`.github/workflows/harness-regression.yml`](.github/workflows/harness-regression.yml) | 定时回归：daily（mock 安全）+ weekly stress（需 `DEEPSEEK_API_KEY`） |
 
 根 `Cargo.toml` 里的 `rust-version = "1.88"` 是 **MSRV**（下游兼容下限）；**贡献者与 CI 实际使用** `rust-toolchain.toml` 中的版本。
 
@@ -27,6 +29,8 @@
 | **日常编译** | `cargo build` / `cargo test` | 能编过、测试过 | 正常开发即可 |
 | **Git hooks** | `git commit` / `git push` | commit：fmt；push：按 [`ci-push-gate.sh`](scripts/ci/ci-push-gate.sh) 决定是否跑 `verify-lint` | 克隆后执行一次 `install-git-hooks` |
 | **手动脚本** | 大改前、发版前、没装 hook 的机器 | 同 CI 或更严（含 test） | 主动跑 `verify-lint` / `verify-workspace` |
+| **Coverage gate** | CRAFT 任务收尾、发版前快检 | fmt/clippy/compile（可选 test）+ checklist + CRAFT verdict | `zagens coverage-gate [--run-tests] [--json]` |
+| **Harness 回归** | PR 合并前手动验证 / CI 每日自动 | lib 测试 + CLI 契约 + mock LLM E2E + gate | `bash scripts/ci/harness-regression.sh`（加 `--with-longrun` 跑 35min+ 压测） |
 
 **结论：** 装好 hook 后，`git push` 会自动跑 Lint 镜像；**不需要**每次推送前记得敲脚本。手动脚本用于提前发现问题，或 hook 未安装的环境。
 

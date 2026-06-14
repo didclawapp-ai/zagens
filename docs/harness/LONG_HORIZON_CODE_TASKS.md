@@ -262,7 +262,7 @@ After `StructuredState.to_system_block()` **and before** archive, merge derived 
 | LHT advanced gates | ✅ [`LhtSettingsPanel.tsx`](../../crates/desktop/web-ui/src/components/LhtSettingsPanel.tsx) (sidebar) | `get/save_lht_settings` → completion sub-gates |
 | Workspace deliverable override | ✅ Optional `{workspace}/.zagens/lht-deliverables.toml` | `merge_runtime_deliverables` |
 
-**Still missing / follow-up:** §6.7 adversarial gap enumerator (independent adversarial auditor subagent, P2-2); 4e regression baseline (Phase 4); cross-session telemetry persistence (P3).
+**Still missing / follow-up:** cross-session telemetry persistence (P3-2, V2 Phase 3); traceability matrix (P3-5, product track). ~~§6.7 adversarial gap enumerator~~ ✅ shipped (P2-2). ~~4e regression baseline~~ ✅ shipped (`lht_long_refactor.toml`). ~~P3-3/P3-4 headless regression + stress CI~~ ✅ shipped. ~~P3-6 coverage-gate~~ ✅ shipped.
 
 **Gap in one sentence:** The right-side **2×2 Harness grid** ([`AuditGridPanel.tsx`](../../crates/desktop/web-ui/src/components/AuditGridPanel.tsx)) already hosts checklist / audit / sub-agents; the **bottom-left reserved cell** is the LHT visualization landing point — symmetric with audit, no separate top-level panel.
 
@@ -1040,10 +1040,10 @@ One **Electron→Tauri · strict LHT · ~35min** long turn harness-side conclusi
 |----|-------------|-------|
 | P3-1 | **conversion_pct data-driven tuning** | §4.9 instrumentation exists; tune `max_nudges` / blocked after accumulation |
 | P3-2 | **Cross-session telemetry persistence** | 10-run/N-run pass rate statistics |
-| P3-3 | **Headless regression batch** | `doc_Private/docs/harness/LHT_TEST_SUITE.md` · Cursor SDK / scripts + oracle |
-| P3-4 | **Long-turn stress scenario set** | 35min+ refactor in regression: continue count, cycle, manifest, step_limit |
+| P3-3 | **Headless regression batch** | ✅ **Shipped** — `scripts/ci/harness-regression.sh` + `.github/workflows/harness-regression.yml` daily/weekly |
+| P3-4 | **Long-turn stress scenario set** | ✅ **Shipped** — `harness-regression.yml` `stress` job: 35min+ `--with-longrun` weekly schedule |
 | P3-5 | **Gold mine ① design review upfront · ② traceability matrix** | See header backlog · [`PARALLEL_FRESH_GENERATION.md`](./PARALLEL_FRESH_GENERATION.md) P0.5/P1.5 |
-| P3-6 | **Built-in `coverage-gate` subcommand** | COMPOSABLE §6.1 H2 · cross-platform coverage gate |
+| P3-6 | **Built-in `coverage-gate` subcommand** | ✅ **Shipped** — `zagens coverage-gate` CLI (fmt/clippy/test + checklist + CRAFT verdict); COMPOSABLE §6.1 H2 |
 
 ---
 
