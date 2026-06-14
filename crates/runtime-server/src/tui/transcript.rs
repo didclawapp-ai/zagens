@@ -62,6 +62,9 @@ struct LogicalLine {
     thinking_live: bool,
     /// When `kind == Spacer`, how many blank rows to emit.
     gap_lines: usize,
+    /// Language tag for code-fence lines (e.g. `"mermaid"`, `"rust"`, `""`).
+    /// `None` means this is not a code-block line.
+    code_lang: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -104,6 +107,8 @@ pub struct TranscriptState {
     pub open_turn: bool,
     render_epoch: u64,
     wrap_cache: Option<WrappedLayoutCache>,
+    /// Source of the most recently seen mermaid code block (for browser-open).
+    last_mermaid_src: Option<String>,
 }
 
 #[derive(Clone)]
@@ -163,6 +168,11 @@ impl TranscriptState {
 
     pub fn scroll_down(&mut self, lines: usize) {
         self.scroll_offset = self.scroll_offset.saturating_sub(lines);
+    }
+
+    /// Source code of the most recently seen mermaid code block, if any.
+    pub fn last_mermaid_src(&self) -> Option<&str> {
+        self.last_mermaid_src.as_deref()
     }
 
     pub fn is_thinking(&self) -> bool {
@@ -310,8 +320,9 @@ impl TranscriptState {
         if wrapped.is_empty() {
             return vec![styled_line(
                 TranscriptLineKind::Meta,
-                "Transcript empty — type a prompt in Composer and press Enter.",
+                "Transcript empty - type a prompt in Composer and press Enter.",
                 false,
+                None,
             )];
         }
 
@@ -331,9 +342,16 @@ impl TranscriptState {
         let spacer_needed = max.saturating_sub(window.len());
         window
             .into_iter()
-            .map(|entry| styled_line(entry.kind, &entry.text, entry.thinking_live))
+            .map(|entry| {
+                styled_line(
+                    entry.kind,
+                    &entry.text,
+                    entry.thinking_live,
+                    entry.code_lang.as_deref(),
+                )
+            })
             .chain(std::iter::repeat_n(
-                styled_line(TranscriptLineKind::Spacer, "", false),
+                styled_line(TranscriptLineKind::Spacer, "", false, None),
                 spacer_needed,
             ))
             .collect()
@@ -357,8 +375,22 @@ impl TranscriptState {
                         table_rows: None,
                         thinking_live: false,
                         gap_lines: 1,
+                        code_lang: None,
                     });
                 }
+                continue;
+            }
+            // Code-block lines: truncate rather than word-wrap.
+            if let Some(lang) = entry.code_lang.clone() {
+                let sanitized = sanitize_terminal_text(&entry.text);
+                wrapped.push(LogicalLine {
+                    kind: entry.kind,
+                    text: pad_line_display_width(&sanitized, max_cols),
+                    table_rows: None,
+                    thinking_live: false,
+                    gap_lines: 0,
+                    code_lang: Some(lang),
+                });
                 continue;
             }
             let physical_lines = if let Some(rows) = &entry.table_rows {
@@ -373,6 +405,7 @@ impl TranscriptState {
                     table_rows: None,
                     thinking_live: entry.thinking_live,
                     gap_lines: 0,
+                    code_lang: None,
                 });
             }
         }
@@ -625,6 +658,7 @@ impl LogicalLine {
             table_rows: None,
             thinking_live: false,
             gap_lines: TURN_GAP_LINES,
+            code_lang: None,
         }
     }
 
@@ -636,6 +670,7 @@ impl LogicalLine {
             table_rows: None,
             thinking_live: false,
             gap_lines: USER_RESPONSE_GAP_LINES,
+            code_lang: None,
         }
     }
 
@@ -647,6 +682,7 @@ impl LogicalLine {
             table_rows: None,
             thinking_live: false,
             gap_lines: 1,
+            code_lang: None,
         }
     }
 
@@ -658,6 +694,7 @@ impl LogicalLine {
             table_rows: None,
             thinking_live: false,
             gap_lines: THINKING_GAP_LINES,
+            code_lang: None,
         }
     }
 
@@ -668,6 +705,7 @@ impl LogicalLine {
             table_rows: None,
             thinking_live,
             gap_lines: 0,
+            code_lang: None,
         }
     }
 
@@ -678,6 +716,18 @@ impl LogicalLine {
             table_rows: Some(rows),
             thinking_live,
             gap_lines: 0,
+            code_lang: None,
+        }
+    }
+
+    fn code_line(kind: TranscriptLineKind, text: String, lang: String) -> Self {
+        Self {
+            kind,
+            text,
+            table_rows: None,
+            thinking_live: false,
+            gap_lines: 0,
+            code_lang: Some(lang),
         }
     }
 }
@@ -711,6 +761,33 @@ fn logical_lines_for_assistant(text: &str, streaming: bool) -> Vec<LogicalLine> 
                     false,
                 ));
                 first_assistant_line = false;
+            }
+            super::markdown_table::AssistantBlock::Code { lang, lines } => {
+                // Header line: "    [lang]" or "    [code]" for unnamed fences.
+                let label = if lang.is_empty() {
+                    "code"
+                } else {
+                    lang.as_str()
+                };
+                let prefix = if first_assistant_line { AI_TAG } else { "    " };
+                // Use the AI tag prefix for the very first block, but keep the header
+                // dim — its kind is Assistant so the tag is rendered; the code_lang
+                // field signals the renderer to use the fence-header style.
+                out.push(LogicalLine::code_line(
+                    TranscriptLineKind::Assistant,
+                    format!("{prefix}[{label}]"),
+                    format!("__header__{lang}"),
+                ));
+                first_assistant_line = false;
+                for line in lines {
+                    out.push(LogicalLine::code_line(
+                        TranscriptLineKind::Assistant,
+                        format!("    {line}"),
+                        lang.clone(),
+                    ));
+                }
+                // Trailing spacer so prose after the block gets a blank line.
+                out.push(LogicalLine::prose_paragraph_spacer());
             }
             super::markdown_table::AssistantBlock::Prose(prose) => {
                 if prose.trim().is_empty() {
@@ -853,8 +930,13 @@ fn harness_line_kind(text: &str) -> TranscriptLineKind {
     }
 }
 
-fn styled_line(kind: TranscriptLineKind, text: &str, thinking_live: bool) -> Line<'static> {
-    theme::transcript_line(kind, text, thinking_live)
+fn styled_line(
+    kind: TranscriptLineKind,
+    text: &str,
+    thinking_live: bool,
+    code_lang: Option<&str>,
+) -> Line<'static> {
+    theme::transcript_line(kind, text, thinking_live, code_lang)
 }
 
 pub fn apply_event(state: &mut TranscriptState, event: Event) {
@@ -889,6 +971,8 @@ pub fn apply_event(state: &mut TranscriptState, event: Event) {
         Event::MessageComplete { .. } => {
             if let Some(turn) = state.active_turn_mut() {
                 turn.content_streaming = false;
+                // Update last_mermaid_src from completed message content.
+                state.last_mermaid_src = extract_last_mermaid(&turn.content.clone());
             }
         }
         Event::ThinkingStarted { .. } => {
@@ -986,7 +1070,7 @@ pub fn apply_event(state: &mut TranscriptState, event: Event) {
             state.status_message = Some(format!("approval required: {tool_name}"));
         }
         Event::CycleAdvanced { from, to, .. } => {
-            push_harness_line(state, format!("harness: cycle {from}→{to}"));
+            push_harness_line(state, format!("harness: cycle {from}->{to}"));
         }
         Event::CraftVerdict { verdict, .. } => {
             push_harness_line(state, format!("craft review: {verdict}"));
@@ -1340,7 +1424,7 @@ mod tests {
         push_closed_turn(&mut state, turn);
         let joined = render_joined(&mut state, 30, 100);
         assert!(
-            joined.contains("+"),
+            joined.contains("┌"),
             "expected table top border, got:\n{joined}"
         );
         assert!(joined.contains("类别"));
@@ -1546,7 +1630,7 @@ mod tests {
         );
         assert!(matches!(
             &state.items[0],
-            TranscriptItem::System { text, .. } if text.contains("cycle 1→2")
+            TranscriptItem::System { text, .. } if text.contains("cycle 1->2")
         ));
     }
 
@@ -1558,4 +1642,18 @@ mod tests {
         assert_eq!(state.items.len(), 1);
         assert_eq!(active_turn(&state).user, "first");
     }
+}
+
+/// Extract the source of the last mermaid code block from an assistant message.
+pub(crate) fn extract_last_mermaid(content: &str) -> Option<String> {
+    let mut last: Option<String> = None;
+    let blocks = super::markdown_table::split_assistant_blocks(content);
+    for block in blocks {
+        if let super::markdown_table::AssistantBlock::Code { lang, lines } = block {
+            if lang.eq_ignore_ascii_case("mermaid") {
+                last = Some(lines.join("\n"));
+            }
+        }
+    }
+    last
 }

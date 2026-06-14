@@ -10,8 +10,9 @@ mod display_format;
 mod draw;
 mod focus;
 mod harness;
+mod inline_markdown;
 mod input_thread;
-mod inspector;
+pub(crate) mod inspector;
 mod layout;
 mod left_rail;
 mod lht_mode;
@@ -32,7 +33,7 @@ mod transcript_turn;
 use std::time::{Duration, Instant};
 
 use anyhow::{Result, bail};
-use crossterm::event::{Event, KeyCode, KeyModifiers};
+use crossterm::event::{Event, KeyCode, KeyModifiers, MouseEventKind};
 
 use self::app::AppState;
 use self::composer_slash::SlashAction;
@@ -199,6 +200,11 @@ async fn handle_input_event(
         Event::Paste(text) => {
             app.handle_composer_paste(text);
         }
+        Event::Mouse(mouse) => match mouse.kind {
+            MouseEventKind::ScrollUp => handle_mouse_scroll(app, mouse.column, 3, true),
+            MouseEventKind::ScrollDown => handle_mouse_scroll(app, mouse.column, 3, false),
+            _ => {}
+        },
         Event::Key(key) => {
             if !is_key_press(key) {
                 return Ok(false);
@@ -275,7 +281,15 @@ async fn handle_input_event(
                 KeyCode::Char('o')
                     if app.layout.focus == FocusRegion::Chat && !app.composer_focus =>
                 {
-                    app.transcript.toggle_last_turn_tools();
+                    // If there is a mermaid diagram in the transcript, open it in the
+                    // browser.  Otherwise fall back to toggling tool-chain details.
+                    if let Some(src) = app.transcript.last_mermaid_src() {
+                        if let Some(url) = mermaid_live_url(src) {
+                            let _ = open_url(&url);
+                        }
+                    } else {
+                        app.transcript.toggle_last_turn_tools();
+                    }
                 }
                 KeyCode::Char(n @ '1'..='4')
                     if app.layout.focus == FocusRegion::Left
@@ -409,16 +423,22 @@ async fn handle_input_event(
                         && app.composer_focus
                         && !app.slash.open =>
                 {
-                    app.prompt_history.browse_up(&mut app.composer);
-                    app.sync_slash_palette();
+                    // Multi-line: move cursor up within text; fall back to history at first line.
+                    if !app.composer.move_up_line() {
+                        app.prompt_history.browse_up(&mut app.composer);
+                        app.sync_slash_palette();
+                    }
                 }
                 KeyCode::Down
                     if app.layout.focus == FocusRegion::Chat
                         && app.composer_focus
                         && !app.slash.open =>
                 {
-                    app.prompt_history.browse_down(&mut app.composer);
-                    app.sync_slash_palette();
+                    // Multi-line: move cursor down within text; fall back to history at last line.
+                    if !app.composer.move_down_line() {
+                        app.prompt_history.browse_down(&mut app.composer);
+                        app.sync_slash_palette();
+                    }
                 }
                 KeyCode::Up if app.layout.focus == FocusRegion::Chat => {
                     enter_transcript_scroll_if_needed(app);
@@ -518,6 +538,40 @@ fn handle_k(app: &mut AppState) {
             app.right_rail_scroll_up(&ws);
         }
         _ => {}
+    }
+}
+
+/// Route a mouse-wheel scroll to whichever pane contains column `x`.
+/// `up=true` means wheel-up (scroll toward older/top content).
+/// `lines` is how many lines to scroll per tick.
+fn handle_mouse_scroll(app: &mut AppState, x: u16, lines: usize, up: bool) {
+    let total = app.layout.last_terminal_width;
+    let left_w = app.layout.left_width();
+    let right_w = app.layout.right_width();
+
+    if left_w > 0 && x < left_w {
+        // Left rail — session list: 1 session per tick to avoid skipping entries.
+        if up {
+            app.sessions.move_up();
+        } else {
+            app.sessions.move_down();
+        }
+    } else if right_w > 0 && x + right_w >= total {
+        // Right rail — file tree / inspector: 1 line per tick so sub-directory
+        // items don't jump when the tree is expanded.
+        let ws = app.workspace.clone();
+        if up {
+            app.right_rail_scroll_up(&ws);
+        } else {
+            app.right_rail_scroll_down(&ws);
+        }
+    } else {
+        // Center column — transcript: 3 lines per tick for comfortable reading.
+        if up {
+            app.transcript.scroll_up(lines);
+        } else {
+            app.transcript.scroll_down(lines);
+        }
     }
 }
 
@@ -751,11 +805,47 @@ async fn drain_prompt_queue(host: &TuiSessionHost, app: &mut AppState) {
 }
 
 fn resolve_mouse_capture(cli: &Cli) -> bool {
-    if cli.mouse_capture {
-        return true;
-    }
+    // Mouse capture is ON by default so scroll-wheel works out of the box.
+    // Pass --no-mouse-capture to disable (e.g. when copying text with the mouse).
     if cli.no_mouse_capture {
         return false;
     }
-    false
+    true
+}
+
+// ── Mermaid browser-open helpers ──────────────────────────────────────────
+
+/// Build a `mermaid.live` URL that pre-loads the given mermaid source.
+///
+/// Uses the `#base64:` state format (legacy, no pako required) where the
+/// payload is a JSON object `{"code":"...","mermaid":{"theme":"default"}}`.
+fn mermaid_live_url(src: &str) -> Option<String> {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    let json = format!(
+        r#"{{"code":{code},"mermaid":{{"theme":"default"}}}}"#,
+        code = serde_json::to_string(src).ok()?
+    );
+    let encoded = STANDARD.encode(json.as_bytes());
+    Some(format!("https://mermaid.live/edit#base64:{encoded}"))
+}
+
+/// Open a URL in the default system browser.
+/// Returns an error only if spawning the OS command fails; browser errors are
+/// silently ignored because we cannot read them back in a TUI context.
+fn open_url(url: &str) -> std::io::Result<()> {
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/c", "start", "", url])
+            .spawn()?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open").arg(url).spawn()?;
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        std::process::Command::new("xdg-open").arg(url).spawn()?;
+    }
+    Ok(())
 }

@@ -96,9 +96,9 @@ pub fn tool_chain_status_line(
         .map(thinking_spinner_frame_at)
         .unwrap_or_else(|| thinking_spinner_frame(0));
     if pending <= 1 {
-        format!("{spin} tool running — {focus_name}")
+        format!("{spin} tool running | {focus_name}")
     } else {
-        format!("{spin} tools running ({pending}) — {focus_name}")
+        format!("{spin} tools running ({pending}) | {focus_name}")
     }
 }
 
@@ -570,7 +570,7 @@ mod tests {
         let since = Instant::now() - std::time::Duration::from_millis(THINKING_SPINNER_MS * 2);
         let line = tool_chain_status_line(2, "read_file", Some(since));
         assert!(line.starts_with("- tools running (2)"));
-        assert!(line.contains("read_file"));
+        assert!(line.contains("| read_file"));
     }
 
     #[test]

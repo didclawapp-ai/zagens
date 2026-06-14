@@ -84,7 +84,7 @@ fn collect_turn_extras(events: &[RuntimeEventRecord]) -> HashMap<String, TurnRep
         };
         match event {
             Event::CycleAdvanced { from, to, .. } => {
-                entry.harness.push(format!("harness: cycle {from}→{to}"));
+                entry.harness.push(format!("harness: cycle {from}->{to}"));
             }
             Event::CraftVerdict { verdict, .. } => {
                 entry.harness.push(format!("craft review: {verdict}"));

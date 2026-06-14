@@ -355,7 +355,17 @@ impl AppState {
                 }
                 self.inspector_ui.scroll = 0;
             }
-            InspectorTab::Agents => {}
+            InspectorTab::Agents => {
+                let cursor = self.inspector_ui.agents_cursor;
+                if cursor < self.inspector.agents.len() {
+                    if self.inspector_ui.agents_expanded == Some(cursor) {
+                        self.inspector_ui.agents_expanded = None;
+                    } else {
+                        self.inspector_ui.agents_expanded = Some(cursor);
+                    }
+                    self.inspector_ui.scroll = 0;
+                }
+            }
         }
     }
 
@@ -772,6 +782,9 @@ impl AppState {
     }
 
     pub async fn reload_after_thread_switch(&mut self, host: &TuiSessionHost) {
+        // Force a full terminal.clear() on the next draw so stale cells from
+        // ambiguous-width Unicode characters don't linger after the switch.
+        self.terminal_resized = true;
         self.thread_id = host.thread_id().to_string();
         self.workspace = host.thread.workspace.clone();
         self.layout.prefs.last_thread_id = Some(self.thread_id.clone());

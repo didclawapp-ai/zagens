@@ -7,21 +7,32 @@ const SUMMARY_MAX: usize = 88;
 const URL_MAX: usize = 64;
 
 /// Remove ANSI escapes and glyphs that break terminal width (emoji, U+FFFD, zero-width).
+///
+/// Zero-width characters (width = 0 or None) are **dropped** rather than replaced with
+/// a space. Replacing them with spaces inserts visible whitespace between letters when
+/// the AI returns thinking text that contains embedded zero-width Unicode (e.g. U+200B
+/// ZERO WIDTH SPACE, U+200C/D non-joiners), which causes English words to render as
+/// isolated letters separated by gaps.
 pub fn sanitize_terminal_text(text: &str) -> String {
     strip_ansi_escapes(text)
         .chars()
-        .map(sanitize_char)
+        .filter_map(sanitize_char)
         .collect()
 }
 
-fn sanitize_char(ch: char) -> char {
+fn sanitize_char(ch: char) -> Option<char> {
     if ch == '\u{FFFD}' {
-        return ' ';
+        // Replacement character: keep as visible space placeholder.
+        return Some(' ');
     }
     match UnicodeWidthChar::width(ch) {
-        None | Some(0) => ' ',
-        Some(w) if w > 2 => ' ',
-        _ => ch,
+        // Zero-width / invisible chars (e.g. U+200B, U+FEFF, combining marks that
+        // have no width): remove entirely so they don't inject phantom spaces.
+        None | Some(0) => None,
+        // Pathologically wide characters (width > 2): substitute a single space
+        // so they don't blow out column accounting.
+        Some(w) if w > 2 => Some(' '),
+        _ => Some(ch),
     }
 }
 
@@ -248,6 +259,27 @@ mod tests {
     fn sanitize_strips_replacement_char() {
         let s = sanitize_terminal_text("晴\u{FFFD}天");
         assert!(!s.contains('\u{FFFD}'));
+        // U+FFFD is replaced by a visible space placeholder.
+        assert_eq!(s, "晴 天");
+    }
+
+    #[test]
+    fn sanitize_drops_zero_width_chars_not_spaces() {
+        // Zero-width space (U+200B) between English letters should be dropped,
+        // NOT replaced with a visible space — otherwise "was" renders as "w a s".
+        let input = "w\u{200B}a\u{200B}s";
+        let s = sanitize_terminal_text(input);
+        assert_eq!(
+            s, "was",
+            "zero-width chars must be removed, not replaced with spaces"
+        );
+    }
+
+    #[test]
+    fn sanitize_drops_zero_width_nonjoiner() {
+        let input = "re\u{200C}think\u{200C}s";
+        let s = sanitize_terminal_text(input);
+        assert_eq!(s, "rethinks");
     }
 
     #[test]

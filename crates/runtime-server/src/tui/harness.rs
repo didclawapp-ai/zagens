@@ -102,10 +102,10 @@ pub(crate) fn parse_status(raw: &str) -> ChecklistStatus {
 
 pub fn title_bar_harness_line(snapshot: Option<&ChecklistSnapshot>) -> String {
     let Some(snap) = snapshot else {
-        return "LHT —".to_string();
+        return "LHT -".to_string();
     };
     if snap.items.is_empty() {
-        return "LHT —".to_string();
+        return "LHT -".to_string();
     }
     let total = snap.items.len();
     let completed = snap

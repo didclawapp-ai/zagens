@@ -187,7 +187,7 @@ fn parse_phase_status(raw: &str) -> PhaseStatus {
 
 pub fn title_bar_harness_line_from_graph(graph: Option<&TaskGraphSnapshot>) -> String {
     let Some(graph) = graph else {
-        return "LHT —".to_string();
+        return "LHT -".to_string();
     };
     if !graph.checklist.is_empty() {
         let total = graph.checklist.len();
@@ -208,7 +208,7 @@ pub fn title_bar_harness_line_from_graph(graph: Option<&TaskGraphSnapshot>) -> S
             .count();
         return format!("LHT {completed}/{total} · open:{}", total - completed);
     }
-    "LHT —".to_string()
+    "LHT -".to_string()
 }
 
 #[cfg(test)]

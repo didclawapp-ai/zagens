@@ -243,6 +243,17 @@ impl LayoutEngine {
         column_width(total, RIGHT_RATIO, RIGHT_MIN, RIGHT_MAX.min(bounds))
     }
 
+    /// Pixel column width of the left rail (0 when collapsed / inline).
+    pub fn left_width(&self) -> u16 {
+        self.effective_left_width(self.last_terminal_width)
+    }
+
+    /// Pixel column width of the right rail (0 when collapsed / inline).
+    pub fn right_width(&self) -> u16 {
+        let left_w = self.effective_left_width(self.last_terminal_width);
+        self.effective_right_width(self.last_terminal_width, left_w)
+    }
+
     pub fn toggle_left(&mut self) {
         self.prefs.left_collapsed = !self.prefs.left_collapsed;
     }

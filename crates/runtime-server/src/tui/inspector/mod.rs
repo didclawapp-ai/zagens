@@ -7,6 +7,7 @@ mod lht_pane;
 mod mcp;
 mod panel;
 mod preview;
+pub(crate) mod syntax;
 
 use std::path::Path;
 
@@ -80,22 +81,24 @@ impl InspectorCache {
             if let Some(body) = ui.file_preview_body.as_ref() {
                 let rel = ui.file_preview_rel.as_deref().unwrap_or("");
                 return clip_sidebar_lines(
-                    render_detail_lines(
+                    render_detail_lines_highlighted(
                         &format!("preview: {rel} | Esc back"),
                         body.clone(),
                         height,
                         ui.scroll,
+                        rel,
                     ),
                     max_cols,
                 );
             }
             if let Some(rel) = ui.file_preview_rel.as_deref() {
                 return clip_sidebar_lines(
-                    render_detail_lines(
+                    render_detail_lines_highlighted(
                         &format!("preview: {rel} | Esc back"),
                         read_text_preview(workspace, rel),
                         height,
                         ui.scroll,
+                        rel,
                     ),
                     max_cols,
                 );
@@ -145,6 +148,7 @@ impl InspectorCache {
                     height,
                     ui.scroll,
                     ui.agents_cursor,
+                    ui.agents_expanded,
                     max_cols,
                 ),
                 max_cols,
@@ -268,6 +272,26 @@ fn render_detail_lines(
     height: usize,
     scroll: usize,
 ) -> Vec<Line<'static>> {
+    render_detail_lines_inner(title, body, height, scroll, None)
+}
+
+fn render_detail_lines_highlighted(
+    title: &str,
+    body: Vec<String>,
+    height: usize,
+    scroll: usize,
+    path: &str,
+) -> Vec<Line<'static>> {
+    render_detail_lines_inner(title, body, height, scroll, Some(path))
+}
+
+fn render_detail_lines_inner(
+    title: &str,
+    body: Vec<String>,
+    height: usize,
+    scroll: usize,
+    highlight_path: Option<&str>,
+) -> Vec<Line<'static>> {
     let visible = height.max(4);
     let mut lines = vec![Line::from(Span::styled(
         title.to_string(),
@@ -275,11 +299,43 @@ fn render_detail_lines(
             .fg(theme::footer_lht())
             .add_modifier(Modifier::BOLD),
     ))];
-    for line in body {
-        lines.push(Line::from(Span::styled(
-            line,
-            theme::panel(INSPECTOR).item(false),
-        )));
+    let lang = highlight_path
+        .map(syntax::Lang::from_path)
+        .unwrap_or(syntax::Lang::Plain);
+    let base_style = theme::panel(INSPECTOR).item(false);
+    let gutter_style = base_style.fg(ratatui::style::Color::Rgb(0x44, 0x47, 0x5a)); // dim
+
+    // Width of line-number column: number of digits in total line count + separator " │ "
+    let num_width = body.len().max(1).ilog10() as usize + 1;
+    let gutter_total = num_width + 2; // e.g. "42 " (num + space + separator char)
+
+    let show_gutter = !matches!(lang, syntax::Lang::Plain);
+
+    for (idx, line) in body.into_iter().enumerate() {
+        let lineno = idx + 1;
+        let mut spans: Vec<Span<'static>> = Vec::new();
+
+        if show_gutter {
+            let num_str = format!("{lineno:>num_width$}");
+            spans.push(Span::styled(num_str, gutter_style));
+            spans.push(Span::styled(" \u{2502}".to_string(), gutter_style)); // " │"
+            spans.push(Span::styled(" ".to_string(), base_style));
+            let _ = gutter_total; // suppress unused warning
+        }
+
+        let code_spans = if matches!(lang, syntax::Lang::Plain) {
+            vec![Span::styled(line, base_style)]
+        } else {
+            syntax::highlight_line(&line, lang)
+                .into_iter()
+                .map(|s| {
+                    let patched = base_style.patch(s.style);
+                    Span::styled(s.content, patched)
+                })
+                .collect()
+        };
+        spans.extend(code_spans);
+        lines.push(Line::from(spans));
     }
     clip_lines(lines, visible, scroll)
 }
@@ -303,27 +359,43 @@ fn clip_sidebar_line(line: Line<'static>, max_cols: usize) -> Line<'static> {
     if line.spans.is_empty() {
         return line;
     }
+    // Fast path: total width fits.
+    let total_w: usize = line
+        .spans
+        .iter()
+        .map(|s| display_width(s.content.as_ref()))
+        .sum();
+    if total_w <= max_cols {
+        return line;
+    }
     if line.spans.len() == 1 {
         let span = &line.spans[0];
         return Line::from(Span::styled(
-            sidebar_plain(span.content.as_ref(), max_cols),
+            truncate_display_width(span.content.as_ref(), max_cols),
             span.style,
         ));
     }
-    let plain: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
-    if display_width(&plain) <= max_cols {
-        return line;
+    // Multi-span: accumulate spans until we reach max_cols, then clip the last
+    // partial span.  This preserves each span's individual style (gutter stays
+    // dim, code content keeps its highlight colour — avoids the old bug where
+    // the whole line was painted with the dim gutter colour).
+    let mut result: Vec<Span<'static>> = Vec::with_capacity(line.spans.len());
+    let mut remaining = max_cols;
+    for span in line.spans {
+        if remaining == 0 {
+            break;
+        }
+        let w = display_width(span.content.as_ref());
+        if w <= remaining {
+            remaining -= w;
+            result.push(span);
+        } else {
+            let clipped = truncate_display_width(span.content.as_ref(), remaining);
+            result.push(Span::styled(clipped, span.style));
+            remaining = 0;
+        }
     }
-    let style = line
-        .spans
-        .iter()
-        .find(|s| !s.content.is_empty())
-        .map(|s| s.style)
-        .unwrap_or_else(|| theme::panel(INSPECTOR).surface(false));
-    Line::from(Span::styled(
-        truncate_display_width(&plain, max_cols),
-        style,
-    ))
+    Line::from(result)
 }
 
 fn clip_lines(lines: Vec<Line<'static>>, max: usize, scroll: usize) -> Vec<Line<'static>> {

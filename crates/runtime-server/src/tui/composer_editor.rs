@@ -89,6 +89,70 @@ impl ComposerEditor {
         self.cursor = self.text.len();
     }
 
+    /// Returns `true` if the cursor sits on the first line.
+    pub fn on_first_line(&self) -> bool {
+        !self.text[..self.cursor].contains('\n')
+    }
+
+    /// Returns `true` if the cursor sits on the last line.
+    pub fn on_last_line(&self) -> bool {
+        !self.text[self.cursor..].contains('\n')
+    }
+
+    /// Move cursor up one line, preserving column (byte offset from line start).
+    /// Returns `false` when already on the first line.
+    pub fn move_up_line(&mut self) -> bool {
+        let before = &self.text[..self.cursor];
+        let Some(cur_nl) = before.rfind('\n') else {
+            return false;
+        };
+        let cur_line_start = cur_nl + 1;
+        let col = self.cursor - cur_line_start;
+
+        let prev_line_end = cur_nl;
+        let prev_line_start = self.text[..prev_line_end]
+            .rfind('\n')
+            .map(|i| i + 1)
+            .unwrap_or(0);
+        let prev_line_len = prev_line_end - prev_line_start;
+
+        let mut new = prev_line_start + col.min(prev_line_len);
+        while new > prev_line_start && !self.text.is_char_boundary(new) {
+            new -= 1;
+        }
+        self.cursor = new;
+        true
+    }
+
+    /// Move cursor down one line, preserving column (byte offset from line start).
+    /// Returns `false` when already on the last line.
+    pub fn move_down_line(&mut self) -> bool {
+        let rest = &self.text[self.cursor..];
+        let Some(nl_rel) = rest.find('\n') else {
+            return false;
+        };
+        let next_line_start = self.cursor + nl_rel + 1;
+
+        let cur_line_start = self.text[..self.cursor]
+            .rfind('\n')
+            .map(|i| i + 1)
+            .unwrap_or(0);
+        let col = self.cursor - cur_line_start;
+
+        let next_line_end = self.text[next_line_start..]
+            .find('\n')
+            .map(|i| next_line_start + i)
+            .unwrap_or(self.text.len());
+        let next_line_len = next_line_end - next_line_start;
+
+        let mut new = next_line_start + col.min(next_line_len);
+        while new > next_line_start && !self.text.is_char_boundary(new) {
+            new -= 1;
+        }
+        self.cursor = new;
+        true
+    }
+
     pub fn move_word_left(&mut self) {
         if self.cursor == 0 {
             return;
@@ -261,6 +325,39 @@ mod tests {
         assert_eq!(ed.text(), "aXb");
         assert!(ed.delete_forward());
         assert_eq!(ed.text(), "aX");
+    }
+
+    #[test]
+    fn move_up_down_multiline() {
+        let mut ed = ComposerEditor::default();
+        ed.insert_str("hello\nworld\nfoo");
+        // cursor at end of "foo" (col 3 on line 2)
+        assert!(ed.on_last_line());
+        assert!(!ed.on_first_line());
+
+        assert!(ed.move_up_line()); // should land on "world" at col 3
+        assert_eq!(&ed.text()[..ed.cursor()], "hello\nwor");
+
+        assert!(ed.move_up_line()); // should land on "hello" at col 3
+        assert_eq!(&ed.text()[..ed.cursor()], "hel");
+        assert!(ed.on_first_line());
+        assert!(!ed.move_up_line()); // already on first line
+
+        assert!(ed.move_down_line()); // back to "world" col 3
+        assert_eq!(&ed.text()[..ed.cursor()], "hello\nwor");
+
+        assert!(ed.move_down_line()); // back to "foo" col 3
+        assert!(ed.on_last_line());
+        assert!(!ed.move_down_line()); // already on last line
+    }
+
+    #[test]
+    fn move_up_clamps_short_line() {
+        let mut ed = ComposerEditor::default();
+        ed.insert_str("hi\nworld");
+        // cursor at end of "world" (col 5), but "hi" has only 2 chars
+        assert!(ed.move_up_line());
+        assert_eq!(&ed.text()[..ed.cursor()], "hi"); // clamped to end of "hi"
     }
 
     #[test]

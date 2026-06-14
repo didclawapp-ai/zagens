@@ -14,6 +14,8 @@ pub struct InspectorInteraction {
     pub file_preview_body: Option<Vec<String>>,
     pub diff_detail_body: Option<Vec<String>>,
     pub agents_cursor: usize,
+    /// Index of the agent row currently expanded to show full status detail.
+    pub agents_expanded: Option<usize>,
     pub mcp_cursor: usize,
     /// Expanded MCP server name.
     pub mcp_expanded: Option<String>,
@@ -25,6 +27,7 @@ impl InspectorInteraction {
         self.file_cursor = 0;
         self.diff_cursor = 0;
         self.agents_cursor = 0;
+        self.agents_expanded = None;
         self.mcp_cursor = 0;
         self.file_preview_rel = None;
         self.diff_detail_path = None;

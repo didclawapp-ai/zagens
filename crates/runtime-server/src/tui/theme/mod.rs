@@ -12,6 +12,7 @@ pub use surfaces::{TuiTheme, TuiThemeId, current, current_id, install, pane_chro
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 
+use super::inline_markdown::inline_spans;
 use super::transcript::TranscriptLineKind;
 
 use palette as p;
@@ -449,25 +450,105 @@ fn body_style(kind: TranscriptLineKind, live: bool) -> Style {
     }
 }
 
+/// Style for inline code spans (`` `code` ``).
+pub fn code_inline() -> Style {
+    shell_main().fg(p::tool_call()).bg(p::code_bg())
+}
+
 fn table_line_style(text: &str) -> Style {
     let trimmed = text.trim();
-    if !trimmed.is_empty()
-        && trimmed
-            .chars()
-            .all(|ch| matches!(ch, '+' | '-' | '|' | ' '))
-    {
+    // Box-drawing border lines (┌ ├ └) or legacy ASCII (+) get dim style.
+    let is_border = !trimmed.is_empty()
+        && (trimmed.starts_with('┌')
+            || trimmed.starts_with('├')
+            || trimmed.starts_with('└')
+            || trimmed.chars().all(|ch| matches!(ch, '+' | '-' | ' ')));
+    if is_border {
         return shell_main().fg(p::dim());
     }
     body_style(TranscriptLineKind::Assistant, false)
 }
 
+/// Render a data row that uses ASCII `|` separators as multiple spans:
+/// the `|` characters get dim style, cell content keeps body style.
+/// ASCII `|` is 1-column wide (unambiguous), so multi-span is safe here.
+fn table_data_row_line(text: &str, content_style: Style) -> Line<'static> {
+    let sep_style = shell_main().fg(p::dim());
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    let clean = super::markdown_table::strip_inline_markers(text);
+    let mut buf = String::new();
+    for ch in clean.chars() {
+        if ch == '|' {
+            if !buf.is_empty() {
+                spans.push(Span::styled(buf.clone(), content_style));
+                buf.clear();
+            }
+            spans.push(Span::styled("|".to_string(), sep_style));
+        } else {
+            buf.push(ch);
+        }
+    }
+    if !buf.is_empty() {
+        spans.push(Span::styled(buf, content_style));
+    }
+    Line::from(spans)
+}
+
 /// Build a transcript line with a bright role tag and contrasting body text.
-pub fn transcript_line(kind: TranscriptLineKind, text: &str, live: bool) -> Line<'static> {
+///
+/// For `Assistant` continuation lines (4-space indent), this also:
+/// - Detects Markdown headings (`# `, `## `, `### `) and renders them bold+bright.
+/// - Detects list items (`- `, `* `, `+ `) and replaces the marker with `•`.
+/// - Applies inline Markdown parsing (`**bold**`, `` `code` ``, `*italic*`).
+pub fn transcript_line(
+    kind: TranscriptLineKind,
+    text: &str,
+    live: bool,
+    code_lang: Option<&str>,
+) -> Line<'static> {
     if kind == TranscriptLineKind::Spacer {
         return Line::from(Span::styled(text.to_string(), shell_main()));
     }
 
+    // ── Code-block lines (inside ``` fences) ──────────────────────────────
+    if let Some(lang) = code_lang {
+        let base = shell_main();
+        // Header line "__header__<lang>": render as styled label
+        if let Some(actual_lang) = lang.strip_prefix("__header__") {
+            let label_style = base.fg(p::dim()).add_modifier(Modifier::BOLD);
+            // For mermaid, append an "o:open" hint in a different colour.
+            if actual_lang.eq_ignore_ascii_case("mermaid") {
+                let hint_style = base.fg(p::dim());
+                // text is "    [mermaid]" — append hint after the bracket
+                let content = text.trim_end_matches(']');
+                return Line::from(vec![
+                    Span::styled(content.to_string(), label_style),
+                    Span::styled(" o:open]".to_string(), hint_style),
+                ]);
+            }
+            return Line::from(Span::styled(text.to_string(), label_style));
+        }
+        // Content line: syntax highlight using inspector syntax module.
+        let syn_lang = super::inspector::syntax::Lang::from_path(&format!("file.{lang}"));
+        let indent = "    ";
+        let raw = text.strip_prefix(indent).unwrap_or(text);
+        let mut spans: Vec<Span<'static>> = vec![Span::styled(indent.to_string(), base)];
+        spans.extend(super::inspector::syntax::highlight_line(raw, syn_lang));
+        return Line::from(spans);
+    }
+
     if kind == TranscriptLineKind::Assistant && super::markdown_table::is_table_render_line(text) {
+        // Header rows use Unicode │ (single span to avoid ambiguous-width artefacts).
+        if text.trim_start().starts_with('│') {
+            let clean = super::markdown_table::strip_inline_markers(text);
+            return Line::from(Span::styled(clean, body_style(kind, live)));
+        }
+        // Data rows use ASCII | separator — safe to split into multiple spans because
+        // ASCII | is unambiguously 1-column wide.
+        if text.trim_start().starts_with('|') {
+            return table_data_row_line(text, body_style(kind, live));
+        }
+        // Border lines (┌ ├ └ or +) get dim style.
         return Line::from(Span::styled(text.to_string(), table_line_style(text)));
     }
 
@@ -475,7 +556,14 @@ pub fn transcript_line(kind: TranscriptLineKind, text: &str, live: bool) -> Line
         return tagged_line(USER_TAG, rest, kind, live);
     }
     if let Some(rest) = text.strip_prefix(AI_TAG) {
-        return tagged_line(AI_TAG, rest, kind, live);
+        // First assistant line: apply inline markdown to the body after the tag.
+        let base = body_style(kind, live);
+        let tag_style = role_style(kind, live);
+        let mut spans = vec![Span::styled(AI_TAG.to_string(), tag_style)];
+        if !rest.is_empty() {
+            spans.extend(inline_spans(rest, base, code_inline()));
+        }
+        return Line::from(spans);
     }
     if let Some(rest) = text.strip_prefix(THINK_TAG) {
         return tagged_line(THINK_TAG, rest, kind, live);
@@ -495,11 +583,62 @@ pub fn transcript_line(kind: TranscriptLineKind, text: &str, live: bool) -> Line
             body_style(TranscriptLineKind::Thinking, live),
         ));
     }
-    if text.starts_with("    ") {
-        return Line::from(Span::styled(text.to_string(), body_style(kind, live)));
+
+    // ── Assistant continuation lines (4-space indent) ──────────────────────────
+    if kind == TranscriptLineKind::Assistant && text.starts_with("    ") {
+        let prefix = "    ";
+        let content = &text[4..];
+        let base = body_style(kind, live);
+        let indent = Span::styled(prefix.to_string(), base);
+
+        // Heading: # / ## / ###
+        for (marker, level) in [("### ", 3u8), ("## ", 2), ("# ", 1)] {
+            if let Some(heading) = content.strip_prefix(marker) {
+                let heading_style = heading_style(level);
+                let mut spans = vec![indent];
+                spans.push(Span::styled(marker.to_string(), heading_style));
+                spans.extend(inline_spans(heading, heading_style, code_inline()));
+                return Line::from(spans);
+            }
+        }
+
+        // Bullet list: - / * / +
+        for bullet_marker in ["- ", "* ", "+ "] {
+            if let Some(item) = content.strip_prefix(bullet_marker) {
+                let mut spans = vec![
+                    indent,
+                    Span::styled("• ".to_string(), base.add_modifier(Modifier::BOLD)),
+                ];
+                spans.extend(inline_spans(item, base, code_inline()));
+                return Line::from(spans);
+            }
+        }
+
+        // Horizontal rule
+        if content.trim() == "---" || content.trim() == "***" || content.trim() == "___" {
+            let rule = "─".repeat(40);
+            return Line::from(Span::styled(rule, shell_main().fg(p::dim())));
+        }
+
+        // Plain continuation: apply inline markdown
+        let mut spans = vec![indent];
+        spans.extend(inline_spans(content, base, code_inline()));
+        return Line::from(spans);
     }
 
     Line::from(Span::styled(text.to_string(), body_style(kind, live)))
+}
+
+fn heading_style(level: u8) -> Style {
+    let pal = current().palette;
+    let base = shell_main();
+    match level {
+        1 => base
+            .fg(pal.agent_reply)
+            .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+        2 => base.fg(pal.agent_reply).add_modifier(Modifier::BOLD),
+        _ => base.fg(p::foreground()).add_modifier(Modifier::BOLD),
+    }
 }
 
 fn tagged_line(tag: &str, body: &str, kind: TranscriptLineKind, live: bool) -> Line<'static> {
@@ -540,12 +679,22 @@ mod tests {
     #[test]
     fn transcript_roles_use_palette_tokens() {
         setup();
-        let user = transcript_line(TranscriptLineKind::User, "you> hi", false);
-        let think = transcript_line(TranscriptLineKind::Thinking, "THK> reasoning done", false);
-        let tool = transcript_line(TranscriptLineKind::ToolChain, "tool + read_file: ok", false);
-        let ai = transcript_line(TranscriptLineKind::Assistant, "AI> hello", false);
-        let table_rule = transcript_line(TranscriptLineKind::Assistant, "+---+---+", false);
-        let table_row = transcript_line(TranscriptLineKind::Assistant, "| a | b |", false);
+        let user = transcript_line(TranscriptLineKind::User, "you> hi", false, None);
+        let think = transcript_line(
+            TranscriptLineKind::Thinking,
+            "THK> reasoning done",
+            false,
+            None,
+        );
+        let tool = transcript_line(
+            TranscriptLineKind::ToolChain,
+            "tool + read_file: ok",
+            false,
+            None,
+        );
+        let ai = transcript_line(TranscriptLineKind::Assistant, "AI> hello", false, None);
+        let table_rule = transcript_line(TranscriptLineKind::Assistant, "+---+---+", false, None);
+        let table_row = transcript_line(TranscriptLineKind::Assistant, "| a | b |", false, None);
 
         assert_eq!(tag_fg(&user), Some(current().palette.user_prompt));
         assert_eq!(body_fg(&user), Some(p::user_text()));
@@ -557,8 +706,11 @@ mod tests {
         assert_eq!(body_fg(&ai), Some(current().palette.agent_reply));
         assert_eq!(body_fg(&table_rule), Some(p::dim()));
         assert_eq!(body_bg(&table_rule), Some(p::bg()));
-        assert_eq!(body_fg(&table_row), Some(current().palette.agent_reply));
-        assert_eq!(body_bg(&table_row), Some(p::bg()));
+        // table_data_row_line emits multi-span: [|dim, content, |dim, content, |dim …]
+        // The last span is the trailing dim "|"; the first content span (index 1) carries
+        // the body colour.
+        let row_content_fg = table_row.spans.get(1).and_then(|s| s.style.fg);
+        assert_eq!(row_content_fg, Some(current().palette.agent_reply));
         assert_ne!(body_bg(&table_row), Some(p::code_bg()));
     }
 

@@ -460,7 +460,7 @@ fn render_command_palette(
 
     let mut lines = Vec::new();
     lines.push(Line::from(Span::styled(
-        pad(width, " Commands — ↑↓ select · Enter confirm · Esc cancel"),
+        pad(width, " Commands | ^v select  Enter confirm  Esc cancel"),
         theme::hint(),
     )));
 
@@ -506,7 +506,7 @@ fn render_model_palette(
 
     let mut lines = Vec::new();
     lines.push(Line::from(Span::styled(
-        pad(width, " Models — ↑↓ select · Enter apply · Esc cancel"),
+        pad(width, " Models | ^v select  Enter apply  Esc cancel"),
         theme::hint(),
     )));
 
@@ -554,7 +554,7 @@ fn render_lht_palette(
     lines.push(Line::from(Span::styled(
         pad(
             width,
-            " LHT — ↑↓ select · Enter apply · empty /lht cycles · Esc cancel",
+            " LHT | ^v select  Enter apply  empty /lht cycles  Esc cancel",
         ),
         theme::hint(),
     )));
@@ -603,7 +603,7 @@ fn render_theme_palette(
     lines.push(Line::from(Span::styled(
         pad(
             width,
-            " Theme — ↑↓ select · Enter apply · empty /theme cycles · Esc cancel",
+            " Theme | ^v select  Enter apply  empty /theme cycles  Esc cancel",
         ),
         theme::hint(),
     )));

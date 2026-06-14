@@ -84,7 +84,14 @@ impl SessionList {
             ));
         } else {
             let visible = height.max(6);
-            let start = self.entries.len().saturating_sub(visible);
+            // Scroll so that `selected` is always visible, centered where possible.
+            let start = if self.entries.len() <= visible {
+                0
+            } else {
+                let max_start = self.entries.len() - visible;
+                let ideal = self.selected.saturating_sub(visible / 2);
+                ideal.min(max_start)
+            };
             for (i, entry) in self.entries.iter().enumerate().skip(start) {
                 let selected = i == self.selected;
                 let mark = if selected { ">" } else { " " };
@@ -140,21 +147,29 @@ impl SessionList {
         if self.entries.is_empty() {
             return vec!["(no sessions)".to_string()];
         }
-        let mut lines = Vec::new();
-        for (i, entry) in self.entries.iter().enumerate() {
-            let mark = if i == self.selected { ">" } else { " " };
-            lines.push(format!(
-                "{mark} {}  {} ({})",
-                truncate_display_width(&entry.id, 12),
-                truncate_display_width(&entry.label, 20),
-                entry.updated_hint
-            ));
-        }
-        if lines.len() > height.max(6) {
-            let skip = lines.len() - height.max(6);
-            lines.drain(0..skip);
-        }
-        lines
+        let visible = height.max(6);
+        let start = if self.entries.len() <= visible {
+            0
+        } else {
+            let max_start = self.entries.len() - visible;
+            let ideal = self.selected.saturating_sub(visible / 2);
+            ideal.min(max_start)
+        };
+        self.entries
+            .iter()
+            .enumerate()
+            .skip(start)
+            .take(visible)
+            .map(|(i, entry)| {
+                let mark = if i == self.selected { ">" } else { " " };
+                format!(
+                    "{mark} {}  {} ({})",
+                    truncate_display_width(&entry.id, 12),
+                    truncate_display_width(&entry.label, 20),
+                    entry.updated_hint
+                )
+            })
+            .collect()
     }
 }
 
