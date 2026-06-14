@@ -137,6 +137,10 @@ pub(crate) async fn run_subagent_task(task: SubAgentTask) {
     }
 
     // CRAFT P1: write structured output to blackboard
+    // C3 evidence gate: apply before the blackboard write so the corrected
+    // verdict is persisted and is what C1 reads.
+    let result = apply_reviewer_evidence_gate(result, task.runtime.event_tx.as_ref());
+
     let partition = craft::blackboard_partition_key(&agent_type_for_blackboard);
     if let (Some(tid), Ok(res)) = (task.task_id.as_deref(), &result) {
         write_blackboard_partition(
@@ -318,6 +322,36 @@ pub(crate) async fn run_subagent_task(task: SubAgentTask) {
             result: payload,
         });
     }
+}
+
+/// Apply C3 Reviewer evidence gate: if a Review subagent produced a BLOCKER
+/// verdict with no command evidence in any item, downgrade to MAJOR and emit
+/// a telemetry event. Mutates the `SubAgentResult` inside the `Ok` arm.
+fn apply_reviewer_evidence_gate(
+    mut result: anyhow::Result<SubAgentResult>,
+    event_tx: Option<&tokio::sync::mpsc::Sender<Event>>,
+) -> anyhow::Result<SubAgentResult> {
+    let Ok(ref mut res) = result else {
+        return result;
+    };
+    if res.agent_type != SubAgentType::Review {
+        return result;
+    }
+    let Some(sv) = res.structured_verdict.take() else {
+        return result;
+    };
+    let (new_sv, downgraded) = craft::enforce_reviewer_evidence_gate(sv);
+    res.structured_verdict = Some(new_sv);
+    if downgraded {
+        if let Some(tx) = event_tx {
+            let _ = tx.try_send(Event::status(
+                "craft.reviewer_evidence_downgrade: \
+                 {\"reason\":\"no_verify_cmd\",\"from\":\"BLOCKER\",\"to\":\"MAJOR\"}"
+                    .to_string(),
+            ));
+        }
+    }
+    result
 }
 
 /// Notify the engine's parent turn loop that a direct child finished

@@ -321,7 +321,163 @@ mod tests {
     }
 }
 
-// ── C8: Pre-review executable spec gate ──────────────────────────────────────
+// ── C3: Reviewer evidence gate ────────────────────────────────────────────────
+//
+// A Reviewer may issue a BLOCKER verdict without ever running a verification
+// command, producing "opinion-only" blockers that trigger C1 auto-spawns
+// unnecessarily. This gate requires that at least one BLOCKER-severity
+// VerdictItem carry a `[verify: cmd]` marker or a recognisable shell command
+// in its `suggestion` field. If none do, the verdict is downgraded from
+// BLOCKER → MAJOR so the C1 auto-spawn hook does not fire.
+//
+// This is a **one-way** downgrade: MAJOR/PASS/FAIL are never changed here.
+// The Verifier has inherent evidence (actual test runs) so it is exempt.
+
+/// Return `true` when `item.suggestion` contains a `[verify: ...]` pattern
+/// or an inline shell command token that indicates actual verification work.
+fn has_command_evidence(item: &zagens_core::subagent::VerdictItem) -> bool {
+    let Some(suggestion) = item.suggestion.as_deref() else {
+        return false;
+    };
+    if suggestion.contains("[verify:") {
+        return true;
+    }
+    // Common shell/cargo tokens used as inline evidence
+    let tokens = [
+        "cargo ", "rg ", "grep ", "diff ", "git diff", "git log", "pytest", "python ", "make ",
+        "npm ", "node ", "bash ",
+    ];
+    tokens.iter().any(|t| suggestion.contains(t))
+}
+
+/// Apply the Reviewer evidence gate.
+///
+/// If `verdict.verdict == BLOCKER` and **no** item has command evidence,
+/// downgrade to `MAJOR` and return `(new_verdict, true)`. Otherwise return
+/// `(verdict_unchanged, false)`.
+pub fn enforce_reviewer_evidence_gate(
+    mut verdict: zagens_core::subagent::StructuredVerdict,
+) -> (zagens_core::subagent::StructuredVerdict, bool) {
+    use zagens_core::subagent::VerdictLevel;
+    if verdict.verdict != VerdictLevel::Blocker {
+        return (verdict, false);
+    }
+    let any_evidence = verdict.items.iter().any(has_command_evidence);
+    if any_evidence {
+        return (verdict, false);
+    }
+    // No command evidence — downgrade
+    verdict.verdict = VerdictLevel::Major;
+    if let Some(ref mut summary) = verdict.summary {
+        summary.insert_str(
+            0,
+            "[evidence-gate: downgraded BLOCKER→MAJOR — no `[verify: cmd]` evidence found] ",
+        );
+    } else {
+        verdict.summary = Some(
+            "[evidence-gate: downgraded BLOCKER→MAJOR — no `[verify: cmd]` evidence found]"
+                .to_string(),
+        );
+    }
+    (verdict, true)
+}
+
+#[cfg(test)]
+mod evidence_gate_tests {
+    use zagens_core::subagent::{StructuredVerdict, VerdictItem, VerdictLevel};
+
+    use super::enforce_reviewer_evidence_gate;
+
+    fn item(severity: &str, suggestion: Option<&str>) -> VerdictItem {
+        VerdictItem {
+            severity: severity.to_string(),
+            file: "src/lib.rs".to_string(),
+            line: None,
+            description: "test item".to_string(),
+            rule: None,
+            suggestion: suggestion.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn blocker_without_evidence_is_downgraded() {
+        let sv = StructuredVerdict {
+            verdict: VerdictLevel::Blocker,
+            items: vec![item("BLOCKER", None)],
+            summary: Some("bad code".to_string()),
+        };
+        let (out, changed) = enforce_reviewer_evidence_gate(sv);
+        assert!(changed);
+        assert_eq!(out.verdict, VerdictLevel::Major);
+        assert!(out.summary.as_deref().unwrap().contains("evidence-gate"));
+    }
+
+    #[test]
+    fn blocker_with_verify_marker_passes() {
+        let sv = StructuredVerdict {
+            verdict: VerdictLevel::Blocker,
+            items: vec![item(
+                "BLOCKER",
+                Some("Run `[verify: cargo test]` to reproduce"),
+            )],
+            summary: None,
+        };
+        let (out, changed) = enforce_reviewer_evidence_gate(sv);
+        assert!(!changed);
+        assert_eq!(out.verdict, VerdictLevel::Blocker);
+    }
+
+    #[test]
+    fn blocker_with_cargo_suggestion_passes() {
+        let sv = StructuredVerdict {
+            verdict: VerdictLevel::Blocker,
+            items: vec![item("BLOCKER", Some("cargo test -- broken_test"))],
+            summary: None,
+        };
+        let (out, changed) = enforce_reviewer_evidence_gate(sv);
+        assert!(!changed);
+        assert_eq!(out.verdict, VerdictLevel::Blocker);
+    }
+
+    #[test]
+    fn major_verdict_unchanged() {
+        let sv = StructuredVerdict {
+            verdict: VerdictLevel::Major,
+            items: vec![item("MAJOR", None)],
+            summary: None,
+        };
+        let (out, changed) = enforce_reviewer_evidence_gate(sv);
+        assert!(!changed);
+        assert_eq!(out.verdict, VerdictLevel::Major);
+    }
+
+    #[test]
+    fn pass_verdict_unchanged() {
+        let sv = StructuredVerdict {
+            verdict: VerdictLevel::Pass,
+            items: vec![],
+            summary: None,
+        };
+        let (out, changed) = enforce_reviewer_evidence_gate(sv);
+        assert!(!changed);
+        assert_eq!(out.verdict, VerdictLevel::Pass);
+    }
+
+    #[test]
+    fn mixed_items_any_evidence_keeps_blocker() {
+        let sv = StructuredVerdict {
+            verdict: VerdictLevel::Blocker,
+            items: vec![
+                item("BLOCKER", None),                                  // no evidence
+                item("BLOCKER", Some("rg 'todo!' src/ to find stubs")), // has evidence
+            ],
+            summary: None,
+        };
+        let (out, changed) = enforce_reviewer_evidence_gate(sv);
+        assert!(!changed, "one item with evidence is sufficient");
+        assert_eq!(out.verdict, VerdictLevel::Blocker);
+    }
+}
 //
 // After Implementer completes, before the Reviewer is spawned, run a quick
 // fmt / clippy / test-compile check against the workspace. If any step fails
