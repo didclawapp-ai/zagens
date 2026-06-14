@@ -116,11 +116,24 @@ mod tests {
     use crate::config::Config;
 
     #[test]
-    fn kernel_shadow_omits_counters_when_not_in_shadow_mode() {
+    fn kernel_shadow_omits_all_blocks_when_no_shadow_mode() {
+        // Default config: policy=Engine, scheduler=Shadow, compiler=V2.
+        // - policy_shadow: None (Engine is default, not Shadow)
+        // - scheduler_shadow: Some (Shadow IS the scheduler default — M4 bake active)
+        // - context_compiler_shadow: None (V2 is default; shadow block only when compiler=shadow)
         let config = Config::default();
         let resp = collect_kernel_shadow_stats(&config);
-        assert!(resp.policy_shadow.is_none());
-        assert!(resp.scheduler_shadow.is_none());
-        assert!(resp.context_compiler_shadow.is_none());
+        assert!(
+            resp.policy_shadow.is_none(),
+            "policy shadow absent (engine is default)"
+        );
+        assert!(
+            resp.scheduler_shadow.is_some(),
+            "scheduler shadow present (shadow is the M4 bake default)"
+        );
+        assert!(
+            resp.context_compiler_shadow.is_none(),
+            "context_compiler shadow absent (v2 is default)"
+        );
     }
 }

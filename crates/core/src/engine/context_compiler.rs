@@ -101,6 +101,21 @@ impl RenderedBlock {
             layer_override: None,
         }
     }
+
+    /// Budget-accounting placeholder: no renderable text, but reserves
+    /// `token_count` tokens in the budget solver.
+    ///
+    /// Used for sources whose actual bytes are assembled outside the compiler
+    /// (e.g. `tools.catalog`). The budget solver uses `token_count` directly
+    /// when `text` is empty.
+    #[must_use]
+    pub fn placeholder(token_count: u32) -> Self {
+        Self {
+            text: String::new(),
+            token_count,
+            layer_override: None,
+        }
+    }
 }
 
 // ── SourceContribution ────────────────────────────────────────────────────────
@@ -262,13 +277,17 @@ impl std::error::Error for CompileError {}
 /// Mirrors the `ToolsPolicyMode` / `ToolsSchedulerMode` pattern.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ContextCompilerMode {
-    /// Existing injection-point code runs unmodified (default).
-    #[default]
+    /// Kill-switch: existing injection-point code runs unmodified.
+    /// Set `[context] compiler = "legacy"` in config.toml to restore pre-Phase-2 behaviour.
     Legacy,
     /// ContextCompiler runs in parallel; fingerprint diffs are logged but the
-    /// existing path still controls the request.  Gate: diff rate < 0.1%.
+    /// existing path still controls the request.
+    /// Set `[context] compiler = "shadow"` to re-enter the observation period.
     Shadow,
-    /// ContextCompiler controls the request; legacy injection code removed.
+    /// ContextCompiler controls the request (default).
+    /// Diff rate held at 0% in bake; legacy injection code no longer called for
+    /// system-prompt assembly.
+    #[default]
     V2,
 }
 
@@ -277,9 +296,11 @@ impl ContextCompilerMode {
     #[must_use]
     pub fn parse(value: Option<&str>) -> Self {
         match value.map(str::trim).map(str::to_ascii_lowercase).as_deref() {
+            Some("legacy") => Self::Legacy,
             Some("shadow") => Self::Shadow,
             Some("v2") => Self::V2,
-            _ => Self::Legacy,
+            // Unknown / missing values → V2 (same as code default).
+            _ => Self::V2,
         }
     }
 
@@ -370,7 +391,13 @@ impl ContextCompiler {
             .map(|blocks| {
                 blocks
                     .iter()
-                    .map(|b| self.token_estimator.estimate_text(&b.text) as u32)
+                    .map(|b| {
+                        if b.text.is_empty() {
+                            b.token_count
+                        } else {
+                            self.token_estimator.estimate_text(&b.text) as u32
+                        }
+                    })
                     .sum()
             })
             .collect();
@@ -414,12 +441,20 @@ impl ContextCompiler {
             sorted.iter().map(|s| (s.render)(projection)).collect();
 
         // Compute canonical token counts.
+        // Placeholder blocks (empty text, non-zero token_count) use their stored count;
+        // all other blocks are estimated from text content.
         let source_tokens: Vec<u32> = blocks_per_source
             .iter()
             .map(|blocks| {
                 blocks
                     .iter()
-                    .map(|b| self.token_estimator.estimate_text(&b.text) as u32)
+                    .map(|b| {
+                        if b.text.is_empty() {
+                            b.token_count
+                        } else {
+                            self.token_estimator.estimate_text(&b.text) as u32
+                        }
+                    })
                     .sum()
             })
             .collect();
@@ -596,19 +631,20 @@ mod tests {
 
     #[test]
     fn context_compiler_mode_parse_roundtrip() {
+        // Default (None / unknown) → V2 since P2-Switch (2026-06-14).
+        // Legacy and Shadow are retained as explicit config values.
         for (input, expected) in [
             (Some("shadow"), ContextCompilerMode::Shadow),
             (Some("v2"), ContextCompilerMode::V2),
             (Some("legacy"), ContextCompilerMode::Legacy),
-            (None, ContextCompilerMode::Legacy),
+            (None, ContextCompilerMode::V2),
             (Some("SHADOW"), ContextCompilerMode::Shadow),
-            (Some("unknown"), ContextCompilerMode::Legacy),
+            (Some("unknown"), ContextCompilerMode::V2),
         ] {
             let mode = ContextCompilerMode::parse(input);
             assert_eq!(mode, expected, "input={input:?}");
-            if expected != ContextCompilerMode::Legacy || input == Some("legacy") {
-                assert_eq!(ContextCompilerMode::parse(Some(mode.as_str())), mode);
-            }
+            // Round-trip: parse(mode.as_str()) == mode for all explicit values.
+            assert_eq!(ContextCompilerMode::parse(Some(mode.as_str())), mode);
         }
     }
 
@@ -806,5 +842,64 @@ mod tests {
             "compile_with_budget_override took {}ms (must be < 10ms)",
             elapsed.as_millis()
         );
+    }
+
+    #[test]
+    fn placeholder_block_token_count_used_by_budget_solver() {
+        // Budget placeholder (empty text, non-zero token_count) should be
+        // counted by the budget solver, not estimated as 0 from empty text.
+        let compiler = ContextCompiler::new()
+            .register(ContextSource {
+                id: SourceId("tools.catalog"),
+                layer: ContextLayer::StaticPrefix,
+                priority: 254,
+                budget: BudgetPolicy::Fixed(500),
+                render: Arc::new(|_| vec![RenderedBlock::placeholder(500)]),
+            })
+            .register(ContextSource {
+                id: SourceId("volatile.low"),
+                layer: ContextLayer::Volatile,
+                priority: 10,
+                budget: BudgetPolicy::Elastic { min: 0, max: 200 },
+                render: Arc::new(|_| {
+                    vec![RenderedBlock::new("x".repeat(200 * 3))] // ~200 tokens
+                }),
+            });
+
+        let session = test_session();
+        let proj = ContextProjection::from_session(&session, 0);
+        let ctx = compiler.compile(&proj);
+
+        let catalog = ctx
+            .contributions
+            .iter()
+            .find(|c| c.source_id.0 == "tools.catalog");
+        assert_eq!(
+            catalog.map(|c| c.token_count).unwrap_or(0),
+            500,
+            "placeholder token_count must be 500, not 0"
+        );
+
+        // Budget solver: total = 500 + ~200; if budget = 600, volatile should be evicted.
+        // (budget=400 would fail because Fixed(500) > 400; Fixed sources cannot be evicted.)
+        let result = compiler.compile_with_budget_override(&proj, 600, &[]);
+        assert!(
+            result.is_ok(),
+            "budget solve should succeed: evict volatile to fit under 600"
+        );
+        let ctx2 = result.unwrap();
+        let has_volatile = ctx2
+            .contributions
+            .iter()
+            .any(|c| c.source_id.0 == "volatile.low");
+        assert!(
+            !has_volatile,
+            "volatile.low should be evicted when total > 600"
+        );
+        let has_catalog = ctx2
+            .contributions
+            .iter()
+            .any(|c| c.source_id.0 == "tools.catalog");
+        assert!(has_catalog, "tools.catalog (Fixed) must survive eviction");
     }
 }

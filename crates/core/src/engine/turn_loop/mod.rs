@@ -19,6 +19,6 @@ pub use helpers::{
 #[allow(deprecated)]
 pub use host::TurnLoopMcpPool;
 pub use host::TurnLoopToolRegistry;
-pub use host::{TurnLoopConfigView, TurnLoopHost};
+pub use host::{CompilerRequestContext, TurnLoopConfigView, TurnLoopHost};
 pub use run::handle_deepseek_turn;
 pub use tool_exec::{McpPoolPort, TurnLoopToolExec, TurnLoopToolExecutor};

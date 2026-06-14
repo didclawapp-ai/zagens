@@ -697,11 +697,17 @@ pub struct ToolsConfigToml {
 }
 
 /// Resolved `tools.policy` mode (kernel-v2 M3).
+///
+/// Default is `Engine` since M3 bake (2026-06-14).
+/// `Legacy` remains as a kill-switch (`[tools] policy = "legacy"` in config.toml).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ToolsPolicyMode {
-    #[default]
+    /// Kill-switch: restore pre-M3 heuristic approval/parallelism judgements.
     Legacy,
+    /// Shadow: engine runs alongside legacy; diffs are logged but legacy controls.
     Shadow,
+    /// Engine controls approval, parallelism and sandbox decisions (default).
+    #[default]
     Engine,
 }
 
@@ -709,9 +715,10 @@ impl ToolsPolicyMode {
     #[must_use]
     pub fn parse(value: Option<&str>) -> Self {
         match value.map(str::trim).map(str::to_ascii_lowercase).as_deref() {
+            Some("legacy") => Self::Legacy,
             Some("shadow") => Self::Shadow,
-            Some("engine") => Self::Engine,
-            _ => Self::Legacy,
+            // Unknown / missing values → Engine (same as code default).
+            _ => Self::Engine,
         }
     }
 
@@ -728,9 +735,14 @@ impl ToolsPolicyMode {
 /// Resolved `tools.scheduler` mode (kernel-v2 M4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ToolsSchedulerMode {
-    #[default]
+    /// Kill-switch: restore pre-M4 batch heuristics (all-parallel or all-serial).
+    /// Set `[tools] scheduler = "legacy"` in config.toml.
     Legacy,
+    /// DAG scheduler runs in parallel with legacy; group diffs are logged but
+    /// legacy execution order controls (default — M4 bake period).
+    #[default]
     Shadow,
+    /// DAG scheduler controls execution waves (resource-dependency parallelism).
     Dag,
 }
 
@@ -738,9 +750,11 @@ impl ToolsSchedulerMode {
     #[must_use]
     pub fn parse(value: Option<&str>) -> Self {
         match value.map(str::trim).map(str::to_ascii_lowercase).as_deref() {
+            Some("legacy") => Self::Legacy,
             Some("shadow") => Self::Shadow,
             Some("dag") => Self::Dag,
-            _ => Self::Legacy,
+            // Unknown / missing values → Shadow (same as code default).
+            _ => Self::Shadow,
         }
     }
 

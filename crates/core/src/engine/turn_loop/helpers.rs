@@ -11,17 +11,44 @@ pub fn messages_with_turn_metadata(
     session: &Session,
     workspace_for_summary: &Path,
 ) -> Vec<Message> {
-    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-    let working_set_summary = session
-        .working_set
-        .summary_block(workspace_for_summary)
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty());
+    messages_with_turn_metadata_inner(session, workspace_for_summary, None)
+}
 
-    let summary = if let Some(working_set_summary) = working_set_summary {
-        format!("Current local date: {today}\n{working_set_summary}")
+/// Like [`messages_with_turn_metadata`] but accepts a pre-compiled `turn_meta_text` override.
+///
+/// When `turn_meta_override` is `Some(text)`, that text is used as the inner content of the
+/// `<turn_meta>` block instead of computing from `session.working_set`.  This is the V2
+/// ContextCompiler path; `None` falls back to the legacy session-computed path.
+pub fn messages_with_turn_metadata_compiled(
+    session: &Session,
+    workspace_for_summary: &Path,
+    turn_meta_override: Option<&str>,
+) -> Vec<Message> {
+    messages_with_turn_metadata_inner(session, workspace_for_summary, turn_meta_override)
+}
+
+fn messages_with_turn_metadata_inner(
+    session: &Session,
+    workspace_for_summary: &Path,
+    turn_meta_override: Option<&str>,
+) -> Vec<Message> {
+    let summary = if let Some(override_text) = turn_meta_override {
+        // V2 path: use compiler-provided text directly.
+        override_text.to_string()
     } else {
-        format!("Current local date: {today}")
+        // Legacy path: compute from session.
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let working_set_summary = session
+            .working_set
+            .summary_block(workspace_for_summary)
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+
+        if let Some(working_set_summary) = working_set_summary {
+            format!("Current local date: {today}\n{working_set_summary}")
+        } else {
+            format!("Current local date: {today}")
+        }
     };
 
     let mut messages = session.messages.clone();

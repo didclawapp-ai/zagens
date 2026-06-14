@@ -73,12 +73,15 @@ pub fn record_context_compiler_shadow_diff(static_diff: bool, full_diff: bool) {
 ///
 /// **Source → field mapping:**
 ///
-/// | ContextSource id   | Field                    | Notes                                    |
-/// |--------------------|--------------------------|------------------------------------------|
-/// | `system.static`    | `static_base_text`       | Block 0 text up to COMPACT_TEMPLATE      |
-/// | `memory.compaction`| `compaction_text`        | Block 0 after COMPACT_TEMPLATE + blocks 1+ joined |
-/// | `memory.cycle`     | `cycle_briefings_text`   | Rendered cycle briefing text (→ messages)|
-/// | `working_set`      | `working_set_text`       | `<turn_meta>` block                      |
+/// | ContextSource id       | Field                      | Notes                                            |
+/// |------------------------|----------------------------|--------------------------------------------------|
+/// | `system.static`        | `static_base_text`         | Block 0 text up to COMPACT_TEMPLATE              |
+/// | `memory.compaction`    | `compaction_text`          | Block 0 after COMPACT_TEMPLATE + blocks 1+ joined|
+/// | `memory.cycle`         | `cycle_briefings_text`     | Rendered cycle briefing text (→ messages)        |
+/// | `working_set`          | `working_set_text`         | `<turn_meta>` block                              |
+/// | `tools.catalog`        | `tool_catalog_est_tokens`  | Placeholder budget (actual JSON assembled later) |
+/// | `scratchpad.reminder`  | — (rendered empty)         | Volatile; actual text injected by legacy path    |
+/// | `steer`                | — (rendered empty)         | Volatile; arrives via channel, unknown at snapshot|
 #[derive(Debug, Clone, Default)]
 pub struct ContextCompilerStateSnapshot {
     /// System prompt text up to and including COMPACT_TEMPLATE (static portion of block 0).
@@ -91,9 +94,23 @@ pub struct ContextCompilerStateSnapshot {
     pub cycle_briefings_text: String,
     /// Working-set turn-meta block text (pre-rendered by existing path).
     pub working_set_text: String,
+    /// Estimated token count for the tool catalog (StaticPrefix budget placeholder).
+    ///
+    /// Default: [`TOOL_CATALOG_BUDGET_TOKENS`].
+    /// When active tools are available (e.g. via `context_compiler_system_prompt`'s
+    /// `active_tools` param), the caller should override this with the serialized
+    /// JSON token estimate for accurate budget accounting.
+    pub tool_catalog_est_tokens: u32,
     /// Current step index within the turn (0-based).
     pub step_idx: u32,
 }
+
+/// Default tool-catalog token budget (StaticPrefix placeholder).
+///
+/// Approximates the token cost of the full built-in tool catalog (~50–80 tools,
+/// ~200–250 tokens each).  Replaced with exact counts in the P2-message-path PR
+/// when the active-tools list is threaded into the snapshot.
+pub const TOOL_CATALOG_BUDGET_TOKENS: u32 = 12_000;
 
 impl ContextCompilerStateSnapshot {
     /// Build a snapshot from live session state.
@@ -133,6 +150,7 @@ impl ContextCompilerStateSnapshot {
             compaction_text,
             cycle_briefings_text,
             working_set_text,
+            tool_catalog_est_tokens: TOOL_CATALOG_BUDGET_TOKENS,
             step_idx,
         }
     }
@@ -142,23 +160,29 @@ impl ContextCompilerStateSnapshot {
 
 /// Build a `ContextCompiler` with all registered sources from a state snapshot.
 ///
-/// **P2-Switch source map:**
+/// **Full source map (post P2-missing-sources PR):**
 ///
-/// | source id          | layer        | priority | budget                          |
-/// |--------------------|--------------|----------|---------------------------------|
-/// | `system.static`    | StaticPrefix | 255      | Fixed(8192) — hard reserve      |
-/// | `memory.compaction`| SemiStatic   | 200      | Elastic { min:0, max:4000 }     |
-/// | `memory.cycle`     | SemiStatic   | 170      | Elastic { min:0, max:3000 }     |
-/// | `working_set`      | Volatile     | 160      | Elastic { min:0, max:1500 }     |
+/// | source id             | layer        | priority | budget                          |
+/// |-----------------------|--------------|----------|---------------------------------|
+/// | `system.static`       | StaticPrefix | 255      | Fixed(8192) — hard reserve      |
+/// | `tools.catalog`       | StaticPrefix | 254      | Fixed(12000) — placeholder      |
+/// | `memory.compaction`   | SemiStatic   | 200      | Elastic { min:0, max:4000 }     |
+/// | `memory.cycle`        | SemiStatic   | 170      | Elastic { min:0, max:3000 }     |
+/// | `working_set`         | Volatile     | 160      | Elastic { min:0, max:1500 }     |
+/// | `scratchpad.reminder` | Volatile     | 140      | Elastic { min:0, max:800 }      |
+/// | `steer`               | Volatile     | 100      | Elastic { min:0, max:2000 }     |
 ///
-/// `tools.catalog` is JSON-bytes handled separately in the fingerprint
-/// assembler.  `scratchpad.reminder` and `steer` are wired in a later PR.
+/// `tools.catalog` renders a budget placeholder — actual JSON bytes are assembled
+/// in `streaming_phase` and threaded into the fingerprint separately.  Actual
+/// `scratchpad.reminder` and `steer` renders are still injected by the legacy path;
+/// these registrations provide budget-accounting entries only.
 #[must_use]
 pub fn build_compiler_from_snapshot(snapshot: &ContextCompilerStateSnapshot) -> ContextCompiler {
     let static_text = snapshot.static_base_text.clone();
     let compaction_text = snapshot.compaction_text.clone();
     let cycle_text = snapshot.cycle_briefings_text.clone();
     let working_set_text = snapshot.working_set_text.clone();
+    let tool_catalog_tokens = snapshot.tool_catalog_est_tokens;
 
     ContextCompiler::new()
         .register(ContextSource {
@@ -172,6 +196,17 @@ pub fn build_compiler_from_snapshot(snapshot: &ContextCompilerStateSnapshot) -> 
                 } else {
                     vec![RenderedBlock::new(static_text.clone())]
                 }
+            }),
+        })
+        .register(ContextSource {
+            id: SourceId("tools.catalog"),
+            layer: ContextLayer::StaticPrefix,
+            priority: 254,
+            budget: BudgetPolicy::Fixed(tool_catalog_tokens),
+            render: Arc::new(move |_| {
+                // Actual catalog JSON is assembled in streaming_phase outside the compiler.
+                // Return a placeholder block so the budget solver reserves the right amount.
+                vec![RenderedBlock::placeholder(tool_catalog_tokens)]
             }),
         })
         .register(ContextSource {
@@ -213,6 +248,23 @@ pub fn build_compiler_from_snapshot(snapshot: &ContextCompilerStateSnapshot) -> 
                 }
             }),
         })
+        .register(ContextSource {
+            id: SourceId("scratchpad.reminder"),
+            layer: ContextLayer::Volatile,
+            priority: 140,
+            budget: BudgetPolicy::Elastic { min: 0, max: 800 },
+            // Actual reminder message is injected by legacy `maybe_inject_scratchpad_reminder`.
+            // Cannot be pre-rendered at snapshot time (depends on scratchpad runtime state).
+            render: Arc::new(|_| vec![]),
+        })
+        .register(ContextSource {
+            id: SourceId("steer"),
+            layer: ContextLayer::Volatile,
+            priority: 100,
+            budget: BudgetPolicy::Elastic { min: 0, max: 2000 },
+            // Steer text arrives mid-turn via channel — unknown at snapshot time.
+            render: Arc::new(|_| vec![]),
+        })
 }
 
 // ── Shadow comparison entry point ─────────────────────────────────────────────
@@ -244,6 +296,20 @@ pub fn shadow_compare(
 /// The compiler independently assembles the system text from registered sources
 /// and computes the fingerprint.  The static-prefix diff is fully independent;
 /// the full-prefix diff uses tools and messages from the existing request.
+/// Assemble the system prompt text for V2 mode from a state snapshot.
+///
+/// Combines `static_base_text` (StaticPrefix layer) and `compaction_text`
+/// (SemiStatic layer) to reproduce the full system-prompt string.  Cycle
+/// briefings and working-set turn-meta go into messages, not the system field.
+///
+/// In V2 mode, `streaming_phase` calls this instead of reading
+/// `session.system_prompt` directly, delegating all system-text assembly to
+/// the `ContextCompiler` source graph.
+#[must_use]
+pub fn assemble_system_text_for_v2(snapshot: &ContextCompilerStateSnapshot) -> String {
+    format!("{}{}", snapshot.static_base_text, snapshot.compaction_text)
+}
+
 pub fn shadow_compare_with_snapshot(
     request: &MessageRequest,
     snapshot: &ContextCompilerStateSnapshot,
@@ -508,13 +574,14 @@ mod tests {
             compaction_text: "after-marker".into(),
             cycle_briefings_text: String::new(),
             working_set_text: "Current local date: 2099-01-01".into(),
+            tool_catalog_est_tokens: TOOL_CATALOG_BUDGET_TOKENS,
             step_idx: 0,
         };
         let compiler = build_compiler_from_snapshot(&snapshot);
         assert_eq!(
             compiler.source_count(),
-            4,
-            "system.static + memory.compaction + memory.cycle + working_set"
+            7,
+            "system.static + tools.catalog + memory.compaction + memory.cycle + working_set + scratchpad.reminder + steer"
         );
     }
 
@@ -529,6 +596,7 @@ mod tests {
             compaction_text: extra.to_string(),
             cycle_briefings_text: String::new(),
             working_set_text: String::new(),
+            tool_catalog_est_tokens: TOOL_CATALOG_BUDGET_TOKENS,
             step_idx: 0,
         };
         let compiler = build_compiler_from_snapshot(&snapshot);
@@ -594,7 +662,6 @@ mod tests {
     #[test]
     fn snapshot_from_session_splits_at_compact_template() {
         use std::path::PathBuf;
-        use zagens_core::approval::ApprovalMode;
 
         let marker = crate::prompts::COMPACT_TEMPLATE;
         let workspace = PathBuf::from("/tmp");

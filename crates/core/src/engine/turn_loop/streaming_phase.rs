@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
 use super::control::{TurnLoopControl, TurnLoopStreamingPhaseOutcome};
-use super::helpers::messages_with_turn_metadata;
+use super::helpers::{messages_with_turn_metadata, messages_with_turn_metadata_compiled};
 use super::host::TurnLoopHost;
 use crate::chat::{ContentBlock, LlmClient, Message, Tool};
 use crate::engine::context::{
@@ -57,15 +57,29 @@ pub async fn run_streaming_phase<H: TurnLoopHost>(
     let effective_reasoning_effort = host.effective_reasoning_effort_for_request();
     let workspace = host.workspace().to_path_buf();
     let strict_tool_mode = host.strict_tool_mode();
+    // Phase 2 P2-message-path: V2 mode builds both system prompt and turn_meta from
+    // ContextCompiler snapshot (single snapshot per step).  Shadow/Legacy return None.
+    let compiler_ctx = host.compiler_request_context(active_tools.as_deref());
     let request = {
         let session = host.session_mut();
+        let messages = match compiler_ctx
+            .as_ref()
+            .and_then(|c| c.turn_meta_text.as_deref())
+        {
+            Some(turn_meta) => {
+                messages_with_turn_metadata_compiled(session, &workspace, Some(turn_meta))
+            }
+            None => messages_with_turn_metadata(session, &workspace),
+        };
         MessageRequest {
             model: session.model.clone(),
-            messages: messages_with_turn_metadata(session, &workspace),
+            messages,
             max_tokens: session
                 .max_output_tokens
                 .unwrap_or_else(|| effective_max_output_tokens(&session.model)),
-            system: session.system_prompt.clone(),
+            system: compiler_ctx
+                .and_then(|c| c.system_prompt)
+                .or_else(|| session.system_prompt.clone()),
             tools: active_tools.clone(),
             tool_choice: if active_tools.is_some() {
                 if strict_tool_mode {

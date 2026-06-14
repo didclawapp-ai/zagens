@@ -20,6 +20,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Runtime (kernel-v2 G-PR — M3 policy default + Phase 2 compiler default):**
+  - `ToolsPolicyMode` 代码默认值从 `Legacy` 改为 `Engine`（对应 `[tools] policy`）；parse fallback 同步更改。`Legacy` 变体保留为 kill-switch（`policy = "legacy"`）。行为变更：`PolicyEngine` 现在开箱即用地控制审批、并行度和沙箱决策——无需 config 配置。
+  - `ContextCompilerMode` 代码默认值从 `Legacy` 改为 `Shadow`（对应 `[context] compiler`）；parse fallback 同步更改。`Legacy` 变体保留为 kill-switch（`compiler = "legacy"`）。行为变更：`ContextCompiler` shadow 模式默认激活——所有用户无需 config 条目即可在 `GET /v1/runtime/kernel-shadow` 累积 `context_compiler_shadow` 统计。
+
+- **Runtime (kernel-v2 P2-Switch — policy bridge G-PR + Phase 2 V2 default):**
+  - `policy_bridge`：删除 `legacy_tool_plan_approval_meta` 公开导出；提取独立的 `build_approval_description` 私有辅助函数（description 来源与 policy 决策解耦）。`Shadow` 模式 bake 周期结束，现在映射为 `Engine` 行为（不再记录 legacy 比对，shadow 计数器停止增长）。`GET /v1/runtime/kernel-shadow` 的 `policy_shadow` 字段仅在显式设置 `policy = "shadow"` 时出现。
+  - `ContextCompilerMode` 代码默认值从 `Shadow` 改为 `V2`（对应 `[context] compiler`）；parse fallback 同步更改。Phase 2 P2-Switch：`TurnLoopHost` 新增 `context_compiler_system_prompt()` 钩子；L2 实现在 V2 模式下通过 `assemble_system_text_for_v2` 从 `ContextCompiler` 源图组装 system prompt，`streaming_phase` 优先使用此钩子结果（Legacy/Shadow 下退回 `session.system_prompt`）。V2 模式下 system text 与 legacy 路径字节完全一致（0-diff，shadow bake 验证）。`GET /v1/runtime/kernel-shadow` 的 `context_compiler_shadow` 字段仅在显式设置 `compiler = "shadow"` 时出现。
+
+- **Runtime (kernel-v2 M4 — DAG scheduler bake):**
+  - `ToolsSchedulerMode` 代码默认值从 `Legacy` 改为 `Shadow`（对应 `[tools] scheduler`）；parse fallback 同步更改。`Legacy` 变体保留为 kill-switch（`scheduler = "legacy"`）。行为变更：DAG 调度器 shadow 模式默认激活——`resolve_execution_groups` 在每次工具批次调度时并发运行 DAG 波次计算并记录与 legacy 批次的 diff，但 legacy 顺序仍控制实际执行。`GET /v1/runtime/kernel-shadow` 现在在默认 config 下始终返回 `scheduler_shadow` 字段（M4 bake 计数器可实时观察）。目标 diff 率 < N% 后翻转为 `dag`（待观察后决定阈值）。
+
+- **Runtime (kernel-v2 Phase 2 missing sources — tools.catalog、scratchpad.reminder、steer):**
+  - `ContextCompilerStateSnapshot` 新增 `tool_catalog_est_tokens: u32`（默认 12000），作为 `tools.catalog` 的 StaticPrefix 预算占位符；`TurnLoopHost::compiler_request_context(active_tools)` 替换旧的 `context_compiler_system_prompt`，返回 `CompilerRequestContext { system_prompt, turn_meta_text }` 聚合体——单次快照同时驱动 system prompt 组装和消息 `<turn_meta>` 注入，用真实序列化 JSON 的 token 估算覆盖默认值。
+  - `build_compiler_from_snapshot` 由 4 个 source 扩展至 7 个：新增 `tools.catalog`（StaticPrefix，priority 254，Fixed(12000)，render 返回 `RenderedBlock::placeholder`）、`scratchpad.reminder`（Volatile，priority 140，Elastic{0,800}，render 空）、`steer`（Volatile，priority 100，Elastic{0,2000}，render 空）。编译器 source 图完整。
+  - `RenderedBlock::placeholder(token_count)` 新 API：空文本但携带指定 token 数，供 budget solver 保留预算——`compile` 和 `compile_with_budget_override` 对空文本块使用存储的 `token_count` 而非 `estimate_text()`。
+  - `messages_with_turn_metadata_compiled(session, workspace, turn_meta_override)` 新函数：V2 mode 使用 compiler snapshot 的 `working_set_text` 替换 session 直接计算——turn_meta 文本来源从 session.working_set 切换至编译器快照（字节级等价）。`streaming_phase` 由单字段 `system_prompt` 升级为 `CompilerRequestContext` 聚合体，一次 snapshot 完整驱动请求。
+
 ### Added
 
 - **Harness (LHT/CRAFT batch-A product track):** Three independent improvements shipped without Kernel V2 dependency:

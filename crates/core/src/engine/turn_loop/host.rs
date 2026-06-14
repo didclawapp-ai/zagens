@@ -23,6 +23,24 @@ use super::control::TurnLoopControl;
 use super::exec::{ToolExecOutcome, ToolExecutionPlan, ToolPlanApprovalMeta};
 use crate::engine::streaming::ToolUseState;
 
+/// The resolved output of `ContextCompiler` for one request.
+///
+/// Built once per request step in V2 mode; the turn loop consumes both fields
+/// so a single snapshot drive both system-prompt assembly and message injection.
+#[derive(Debug, Clone, Default)]
+pub struct CompilerRequestContext {
+    /// Compiler-assembled system prompt (replaces `session.system_prompt` in V2).
+    ///
+    /// `None` → fall back to the legacy `session.system_prompt`.
+    pub system_prompt: Option<crate::chat::SystemPrompt>,
+
+    /// Inner text for the `<turn_meta>` block in messages (without the XML wrapper).
+    ///
+    /// When `Some`, `messages_with_turn_metadata` uses this instead of computing
+    /// from `session.working_set` directly.  `None` → legacy path.
+    pub turn_meta_text: Option<String>,
+}
+
 /// Config slices the turn loop reads each step (avoids pulling full `EngineConfig` into core yet).
 #[derive(Debug, Clone, Copy)]
 pub struct TurnLoopConfigView<'a> {
@@ -209,6 +227,20 @@ pub trait TurnLoopHost: Send {
         &self,
         _request: &MessageRequest,
     ) -> Option<crate::engine::RequestFingerprint> {
+        None
+    }
+
+    /// L2 (Phase 2 / P2-Switch): return the system prompt assembled by
+    /// `ContextCompiler` when `[context] compiler = "v2"`.
+    ///
+    /// Returns `None` in `Legacy` and `Shadow` modes, in which case
+    /// `streaming_phase` falls back to `session.system_prompt`.  The default
+    /// implementation always returns `None` (all non-L2 hosts).
+    fn compiler_request_context(
+        &self,
+        active_tools: Option<&[Tool]>,
+    ) -> Option<CompilerRequestContext> {
+        let _ = active_tools;
         None
     }
 

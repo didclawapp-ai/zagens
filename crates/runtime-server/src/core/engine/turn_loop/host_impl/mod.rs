@@ -864,6 +864,54 @@ impl TurnLoopHost for Engine {
         Some(fp)
     }
 
+    fn compiler_request_context(
+        &self,
+        active_tools: Option<&[zagens_core::chat::Tool]>,
+    ) -> Option<zagens_core::engine::turn_loop::CompilerRequestContext> {
+        use zagens_core::engine::ContextCompilerMode;
+        use zagens_core::engine::token_estimate::estimate_text_tokens;
+        use zagens_core::engine::turn_loop::CompilerRequestContext;
+
+        let Ok(config) = crate::config::Config::load(None, None) else {
+            return None;
+        };
+        if config.context_compiler_mode() != ContextCompilerMode::V2 {
+            return None;
+        }
+
+        let mut snapshot =
+            crate::context_compiler_shadow::ContextCompilerStateSnapshot::from_session(
+                &self.session,
+                0,
+            );
+
+        // Replace placeholder estimate with the actual serialized tool catalog size.
+        if let Some(tools) = active_tools {
+            let json = serde_json::to_string(tools).unwrap_or_default();
+            snapshot.tool_catalog_est_tokens = estimate_text_tokens(&json) as u32;
+        }
+
+        let system_text = crate::context_compiler_shadow::assemble_system_text_for_v2(&snapshot);
+        let system_prompt = if system_text.is_empty() {
+            None
+        } else {
+            Some(zagens_core::chat::SystemPrompt::Text(system_text))
+        };
+
+        // V2 message path: turn_meta_text comes from the compiler snapshot
+        // (byte-identical to the legacy working_set_turn_meta computation).
+        let turn_meta_text = if snapshot.working_set_text.is_empty() {
+            None
+        } else {
+            Some(snapshot.working_set_text.clone())
+        };
+
+        Some(CompilerRequestContext {
+            system_prompt,
+            turn_meta_text,
+        })
+    }
+
     async fn execute_tool_plans(
         &mut self,
         mode: TurnLoopMode,
