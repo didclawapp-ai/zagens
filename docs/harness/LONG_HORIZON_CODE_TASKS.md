@@ -68,7 +68,7 @@ Root cause (aligned with composable design §4.1): attention decay on the initia
 | **Audit scratchpad** | Full-repo / broad **review** | inventory area closed + P2 gate | ✅ `maybe_continue_incomplete_audit` |
 | **CRAFT** | Review → fix **closed loop** | review/verifier structured verdict | ✅ `<deepseek:craft.fix_loop>` |
 | **LHT (this design)** | **Write** code: generate / fix bugs / refactor | checklist + plan **not all completed** + completion/stub gates (Composable) | ✅ continue / verify / completion gates |
-| **LHT + CRAFT macro loop (Phase 4)** | Large refactor **multi-round closure** (~80%→~90%+) | LHT segment checklist cleared + machine gates green → CRAFT enumerates gaps → remediation segment | 📋 Spec finalized, orchestration not landed |
+| **LHT + CRAFT macro loop (Phase 4)** | Large refactor **multi-round closure** (~80%→~90%+) | LHT segment checklist cleared + machine gates green → CRAFT enumerates gaps → remediation segment | ✅ Shipped: `macro_loop.rs` / `spawn_macro_craft_review` / `auto_continue` / Desktop panel |
 
 **No duplicate construction:**
 
@@ -262,7 +262,7 @@ After `StructuredState.to_system_block()` **and before** archive, merge derived 
 | LHT advanced gates | ✅ [`LhtSettingsPanel.tsx`](../../crates/desktop/web-ui/src/components/LhtSettingsPanel.tsx) (sidebar) | `get/save_lht_settings` → completion sub-gates |
 | Workspace deliverable override | ✅ Optional `{workspace}/.zagens/lht-deliverables.toml` | `merge_runtime_deliverables` |
 
-**Still missing / follow-up:** macro segment panel nodes (Phase 4); cross-session telemetry persistence (P3).
+**Still missing / follow-up:** §6.7 adversarial gap enumerator (independent adversarial auditor subagent, P2-2); 4e regression baseline (Phase 4); cross-session telemetry persistence (P3).
 
 **Gap in one sentence:** The right-side **2×2 Harness grid** ([`AuditGridPanel.tsx`](../../crates/desktop/web-ui/src/components/AuditGridPanel.tsx)) already hosts checklist / audit / sub-agents; the **bottom-left reserved cell** is the LHT visualization landing point — symmetric with audit, no separate top-level panel.
 
@@ -802,7 +802,7 @@ Presets only change config + prompt overlay pointer, no new binary.
 - Sidecar supervisor architecture hardening (see [`SIDECAR_SUPERVISOR_HARDENING_PLAN.md`](../desktop/SIDECAR_SUPERVISOR_HARDENING_PLAN.md) — v1 shipped, not LHT-specific)  
 - [x] Handoff Report carries incomplete checklist + current cycle # (cross-day resume — cycle advance writes handoff)
 
-### Phase 4 — LHT↔CRAFT composable macro loop (P2, spec finalized, not started)
+### Phase 4 — LHT↔CRAFT composable macro loop (✅ shipped, ~2026-06)
 
 **Motivation (2026-06 design conversation + label_rust empirical):** A single LHT long turn (strict + Composable layers 2/3) realistically caps at ~**70–80%** feature coverage — main path runs, edges and under-decomposed items still leak. To reach **85–90%+**, need **macro multi-round**: after implementation segment finishes, enter QA segment, **write gaps back to checklist**, then open remediation segment; not relying only on in-turn `continue_injected`.
 
@@ -912,12 +912,12 @@ craft_on_small_tasks = false         # bugfix / <N checklist items skip CRAFT se
 
 `LongHorizonPanel`: Nodes stream distinguishes micro (existing) vs macro segment; optional Composer chip "review round / remediation round".
 
-#### 4.7 Implementation checklist (Phase 4 — not started)
+#### 4.7 Implementation checklist (Phase 4)
 
-- [ ] **4a Orchestrator** — `macro_loop` config; micro pass → trigger CRAFT segment; blockers→checklist pure function + unit tests  
-- [ ] **4b CRAFT segment** — spawn review/verifier + blackboard write; reuse `craft.rs` / `emit_craft_events`  
-- [ ] **4c LHT remediation segment** — synthetic nudge + `macro_phase=remediation`; document order with `continue_injected` / completion gates  
-- [ ] **4d Desktop** — presets, `macro_loop` settings (advanced, toml-only OK); panel macro nodes + i18n  
+- [x] **4a Orchestrator** — `macro_loop` config; micro pass → trigger CRAFT segment; `blockers_to_checklist` pure function + unit tests (`long_horizon/macro_loop.rs`, `evaluate_macro_loop`, `on_craft_review_complete`, `try_resume_pending_macro_remediation`)  
+- [x] **4b CRAFT segment** — spawn review/verifier + blackboard write; `spawn_macro_craft_review` in `subagent_spawn.rs`; `emit_craft_events` reuse  
+- [x] **4c LHT remediation segment** — synthetic nudge + `macro_phase=remediation`; `maybe_auto_continue_incomplete_lht` + `build_auto_continue_message`; `max_auto_continue_rounds` guard  
+- [x] **4d Desktop** — `macro_loop` settings in `LhtSettingsPanel.tsx`; `LongHorizonPanel.tsx` macro nodes (`MacroLoopSummary`, `macro_phase`/`macro_craft_*`/`macro_unmet`); i18n  
 - [ ] **4e Regression** — label_rust-class migration: baseline "LHT only" vs "LHT+1 macro round" gap count / Rust LOC / verify hit rate  
 
 **Non-blocking:** Before Phase 4 lands, user can **manually** trigger CRAFT sub-agent in same thread, then steer "only fix blockers" — equivalent to Phase 4 automation but no orchestrator.
@@ -1024,13 +1024,13 @@ One **Electron→Tauri · strict LHT · ~35min** long turn harness-side conclusi
 
 **Problem:** Single LHT turn even with P0+P1 realistically still ~80–85%; **systemic misses** (architecture-level, off-checklist) need **QA segment**.
 
-| ID | Improvement | Relationship |
-|----|-------------|--------------|
-| P2-1 | **Phase 4 orchestrator landing** (§6 Phase 4.7 4a–4e) | LHT → CRAFT → LHT bounded loop |
-| P2-2 | **§6.7 adversarial reviewer** (gap enumerator, not judge) | [`COMPOSABLE_HARNESS.md`](./COMPOSABLE_HARNESS.md) · blockers→checklist |
-| P2-3 | **`auto_continue` aligned with strict preset** | Unattended multi-phase: `long-refactor` can default `auto_continue=true` (document risks) |
+| ID | Improvement | Relationship | Status |
+|----|-------------|--------------|--------|
+| P2-1 | **Phase 4 orchestrator landing** (§6 Phase 4.7 4a–4d) | LHT → CRAFT → LHT bounded loop | ✅ shipped |
+| P2-2 | **§6.7 adversarial reviewer** (gap enumerator, not judge) | [`COMPOSABLE_HARNESS.md`](./COMPOSABLE_HARNESS.md) · blockers→checklist | 🔲 pending implementation |
+| P2-3 | **`auto_continue` aligned with strict preset** | `maybe_auto_continue_incomplete_lht`; `long-refactor` preset can set `auto_continue=true` (document risks) | ✅ shipped (opt-in, default off) |
 
-**Implementation checklist:** Merge §6 Phase 4.7; COMPOSABLE §6.7 as separate item.
+**Implementation checklist:** P2-1 ✅; COMPOSABLE §6.7 adversarial auditor as separate pending item.
 
 ---
 
