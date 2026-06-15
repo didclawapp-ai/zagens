@@ -77,6 +77,14 @@ impl KernelV3EffectShadow {
         if let Some(summary) = verify_step_memory_plane_replay_anchor(turn_events, step_idx) {
             diffs.push(summary);
         }
+        if let Some(summary) =
+            zagens_core::engine::turn_loop::memory_plane_query_replay_policy::verify_step_query_memory_anchor(
+                turn_events,
+                step_idx,
+            )
+        {
+            diffs.push(summary);
+        }
         if let Some(summary) = verify_step_compaction_replay_anchor(turn_events, step_idx) {
             diffs.push(summary);
         }

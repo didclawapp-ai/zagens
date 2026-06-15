@@ -2393,6 +2393,20 @@ pub fn plan_v3_step_effects(token_budget: u32, tool_call_ids: &[String]) -> Vec<
     effects
 }
 
+/// Pre-`CallModel` memory queries for the v3 live path (mirrors `ReplayTurnMachine` on `ModelRequestIssued`).
+#[must_use]
+pub fn plan_v3_pre_call_model_effects(
+    projection: &TurnKernelProjection,
+    episodic_hints: Option<
+        crate::engine::turn_loop::memory_plane_episodic_policy::MemoryPlaneEpisodicHints,
+    >,
+) -> Vec<Effect> {
+    crate::engine::turn_loop::memory_plane_query_policy::query_memory_effects_before_model_call(
+        projection,
+        episodic_hints,
+    )
+}
+
 /// Pre-`ExecuteBatch` approval effects derived from `ToolCallPlanned` policy metadata.
 #[must_use]
 pub fn request_approval_effects_from_step_events(step_events: &[KernelEvent]) -> Vec<Effect> {

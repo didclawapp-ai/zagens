@@ -15,7 +15,8 @@ use zagens_core::engine::turn_loop::control::{
 use zagens_core::engine::turn_loop::v3_step::{V3StepOutcome, execute_batch_call_ids};
 use zagens_core::engine::turn_loop::{TurnLoopHost, streaming_phase, tool_phase};
 use zagens_core::engine::turn_machine::{
-    Effect, events_for_step, notify_lsp_effects_from_step_events, plan_v3_step_effects,
+    Effect, TurnKernelProjection, events_for_step, notify_lsp_effects_from_step_events,
+    plan_v3_pre_call_model_effects, plan_v3_step_effects,
 };
 use zagens_core::turn::{TurnContext, TurnLoopMode};
 
@@ -107,6 +108,41 @@ impl<'a> EffectInterpreter<'a> {
             tools: None,
             execute_batch_ran: false,
         };
+
+        let turn_events = self
+            .engine
+            .runtime_ext()
+            .kernel_projection_shadow
+            .turn_events()
+            .to_vec();
+        let projection = TurnKernelProjection::from_events(&turn_events);
+        let episodic_hints =
+            zagens_core::engine::turn_loop::memory_plane_episodic_policy::MemoryPlaneEpisodicHints {
+                topic_memory_enabled: self
+                    .engine
+                    .runtime_ext()
+                    .config_ext
+                    .topic_memory
+                    .enabled,
+            };
+        let pre_call = plan_v3_pre_call_model_effects(&projection, Some(episodic_hints));
+        if !pre_call.is_empty() {
+            tracing::info!(
+                target: "kernel_v3",
+                turn_id = %ctx.turn.id,
+                step = ctx.turn.step,
+                query_count = pre_call.len(),
+                "v3 step: QueryMemory (pre-CallModel)"
+            );
+            for effect in pre_call {
+                let outcome = self.interpret_v3_step_effect(effect, &mut ctx).await;
+                debug_assert_eq!(
+                    outcome,
+                    InterpretOutcome::Executed,
+                    "QueryMemory must execute"
+                );
+            }
+        }
 
         let call_outcomes = self
             .interpret_all(vec![Effect::CallModel { token_budget }], Some(&mut ctx))
@@ -329,6 +365,10 @@ impl<'a> EffectInterpreter<'a> {
             Effect::NotifyLsp { tool_name } => {
                 let _ = tool_name;
                 self.engine.flush_pending_lsp_diagnostics().await;
+                InterpretOutcome::Executed
+            }
+            Effect::QueryMemory { layer, query_key } => {
+                self.engine.run_query_memory_effect(layer, &query_key).await;
                 InterpretOutcome::Executed
             }
             _ => self.interpret(effect).await,

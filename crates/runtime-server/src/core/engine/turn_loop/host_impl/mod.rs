@@ -131,6 +131,7 @@ impl KernelTurnHost for Engine {
                     notify_lsp = counts.notify_lsp,
                     request_approval = counts.request_approval,
                     sleep = counts.sleep,
+                    query_memory = counts.query_memory,
                     "v3 turn effect replay counts"
                 );
             }

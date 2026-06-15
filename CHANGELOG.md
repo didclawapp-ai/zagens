@@ -291,6 +291,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `memory_plane_episodic_policy.rs`: reserved `QUERY_TOPIC_EPISODIC` + live hints for TopicMemory reads.
   - `memory_plane_query_replay_policy.rs`: query log vs replay/projection coherence checks wired into `verify_turn_replay_coherence`.
 
+- **Runtime (kernel-v2 Phase 3b batch 8f — v3 live QueryMemory before CallModel):**
+  - `EffectInterpreter::run_v3_turn_step` runs `plan_v3_pre_call_model_effects` before `CallModel` (projection from kernel shadow + TopicMemory config hints).
+  - `query_key_has_projection_material` compiler substrate gate; `verify_step_query_memory_anchor` in v3 effect shadow.
+
 ### Removed
 
 - **Runtime (kernel-v2 Phase 2 legacy cleanup — G-PR):** Legacy and Shadow context injection paths removed; `ContextCompiler` V2 is now the sole request-assembly path:

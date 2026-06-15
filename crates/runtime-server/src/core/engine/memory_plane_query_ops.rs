@@ -1,9 +1,11 @@
 //! v3 memory-plane read queries — routes [`Effect::QueryMemory`] through the interpreter.
 
 use zagens_core::engine::kernel_event::KernelEvent;
-use zagens_core::engine::turn_loop::memory_plane_compiler_policy::compiler_source_for_query_key;
+use zagens_core::engine::turn_loop::memory_plane_compiler_policy::{
+    compiler_source_for_query_key, query_key_has_projection_material,
+};
 use zagens_core::engine::turn_loop::memory_plane_query_policy::MemoryPlaneQueryLayer;
-use zagens_core::engine::turn_machine::emit_kernel_event;
+use zagens_core::engine::turn_machine::{TurnKernelProjection, emit_kernel_event};
 
 use super::*;
 
@@ -21,6 +23,10 @@ impl Engine {
             .unwrap_or_else(|| "effect-interpreter".to_string());
         let step_idx = ext.kernel_active_step;
         let compiler_source = compiler_source_for_query_key(query_key);
+        let projection = TurnKernelProjection::from_events(
+            self.runtime_ext().kernel_projection_shadow.turn_events(),
+        );
+        let material_present = query_key_has_projection_material(&projection, query_key);
 
         if self.effect_replay_anchor_only() {
             tracing::info!(
@@ -28,6 +34,7 @@ impl Engine {
                 layer = layer.as_str(),
                 query_key,
                 compiler_source,
+                material_present,
                 "replay anchor-only: skipping QueryMemory IO"
             );
             return;
@@ -42,6 +49,7 @@ impl Engine {
             layer = layer.as_str(),
             query_key,
             compiler_source,
+            material_present,
             "v3 memory-plane: QueryMemory (compiler source mapped)"
         );
         emit_kernel_event(
