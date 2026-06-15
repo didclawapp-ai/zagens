@@ -853,6 +853,49 @@ pub fn verify_session_message_coverage(
     build_session_message_coverage(session_message_count, stats).and_then(|c| c.summary)
 }
 
+/// Verify internal consistency between timeline anchors and aggregated message stats.
+#[must_use]
+pub fn verify_message_timeline_coherence(
+    stats: &ThreadMessageReplayStats,
+    timeline: &[ThreadMessageTimelineEntry],
+) -> Option<String> {
+    let timeline_len = timeline.len();
+    if timeline_len as u32 != stats.model_message_count {
+        return Some(format!(
+            "timeline entries ({timeline_len}) != model_message_count ({})",
+            stats.model_message_count
+        ));
+    }
+    for entry in timeline {
+        if entry.block_count == 0 {
+            return Some(format!(
+                "turn {} step {} has block_count 0",
+                entry.turn_id, entry.step_idx
+            ));
+        }
+    }
+    None
+}
+
+/// Verify session message depth can host every timeline anchor (no body rebuild).
+#[must_use]
+pub fn verify_message_timeline_vs_session(
+    session_message_count: usize,
+    timeline: &[ThreadMessageTimelineEntry],
+) -> Option<String> {
+    if timeline.is_empty() {
+        return None;
+    }
+    let min_messages = timeline.len();
+    if session_message_count < min_messages {
+        Some(format!(
+            "session messages ({session_message_count}) below timeline anchors ({min_messages})"
+        ))
+    } else {
+        None
+    }
+}
+
 /// Build thread replay report and the latest non-empty turn projection (resume substrate).
 #[must_use]
 pub fn replay_thread_projection(
@@ -1381,6 +1424,20 @@ mod tests {
         assert_eq!(timeline.len(), 1);
         assert_eq!(timeline[0].step_idx, 1);
         assert_eq!(timeline[0].block_count, 2);
+    }
+
+    #[test]
+    fn verify_message_timeline_coherence_on_pure_read_fixture() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/harness/kernel-v3-replay/pure_read.json");
+        let raw = std::fs::read_to_string(&path).expect("read fixture");
+        let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
+        let turn_events = [("t1".into(), events)];
+        let stats = replay_thread_message_stats(&turn_events);
+        let timeline = replay_thread_message_timeline(&turn_events);
+        assert!(verify_message_timeline_coherence(&stats, &timeline).is_none());
+        assert!(verify_message_timeline_vs_session(2, &timeline).is_none());
+        assert!(verify_message_timeline_vs_session(0, &timeline).is_some());
     }
 
     #[test]

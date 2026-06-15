@@ -6,10 +6,12 @@ use serde::{Deserialize, Serialize};
 
 use zagens_core::engine::turn_machine::{
     ThreadReplayProjection, build_session_message_coverage, replay_thread_projection,
-    replay_turn_projection, verify_turn_replay_coherence,
+    replay_turn_projection, verify_message_timeline_coherence, verify_message_timeline_vs_session,
+    verify_turn_replay_coherence,
 };
 
 use crate::core::engine::kernel_message_coverage_shadow::record_message_coverage_check;
+use crate::core::engine::kernel_message_timeline_shadow::record_timeline_coherence_check;
 use zagens_runtime_adapters::persist::KernelEventWriter;
 use zagens_runtime_api::ResumeSessionKernelReplay;
 
@@ -198,6 +200,28 @@ pub(crate) fn log_session_message_coverage(
     session_message_count: usize,
     projection: &ThreadReplayProjection,
 ) {
+    let timeline_ok =
+        verify_message_timeline_coherence(&projection.message_stats, &projection.message_timeline)
+            .is_none();
+    record_timeline_coherence_check(timeline_ok);
+    if let Some(summary) =
+        verify_message_timeline_coherence(&projection.message_stats, &projection.message_timeline)
+    {
+        eprintln!(
+            "[resume-session] kernel message timeline coherence diff (thread {}): {summary}",
+            projection.report.thread_id
+        );
+    }
+    if let Some(summary) =
+        verify_message_timeline_vs_session(session_message_count, &projection.message_timeline)
+    {
+        record_timeline_coherence_check(false);
+        eprintln!(
+            "[resume-session] kernel message timeline vs session diff (thread {}): {summary}",
+            projection.report.thread_id
+        );
+    }
+
     let Some(coverage) =
         build_session_message_coverage(session_message_count, &projection.message_stats)
     else {
@@ -240,6 +264,11 @@ pub(crate) async fn get_kernel_thread_replay(
     })
     .await
     .map_err(|e| ApiError::internal(format!("kernel thread replay task panicked: {e}")))??;
+
+    let timeline_ok =
+        verify_message_timeline_coherence(&projection.message_stats, &projection.message_timeline)
+            .is_none();
+    record_timeline_coherence_check(timeline_ok);
 
     let report = projection.report;
     let turns = report

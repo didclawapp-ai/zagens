@@ -400,12 +400,4 @@ pub trait TurnLoopHost: KernelTurnHost + Send {
     ) -> Option<super::v3_step::V3StepOutcome> {
         None
     }
-
-    /// Turn-end kernel shadow: projection-only default; runtime overrides for full replay pipeline.
-    async fn finish_kernel_turn_shadow(
-        &mut self,
-        live: &crate::engine::turn_machine::LiveTurnSnapshot,
-    ) {
-        self.finish_kernel_projection_shadow(live);
-    }
 }

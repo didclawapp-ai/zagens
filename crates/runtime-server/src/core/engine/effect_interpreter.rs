@@ -105,16 +105,20 @@ impl<'a> EffectInterpreter<'a> {
             execute_batch_ran: false,
         };
 
-        let call_outcome = self
-            .interpret_v3_step_effect(Effect::CallModel { token_budget }, &mut ctx)
+        let call_outcomes = self
+            .interpret_all(vec![Effect::CallModel { token_budget }], Some(&mut ctx))
             .await;
-        debug_assert_eq!(call_outcome, InterpretOutcome::Executed);
+        debug_assert_eq!(
+            call_outcomes.first(),
+            Some(&InterpretOutcome::Executed),
+            "CallModel must execute"
+        );
 
-        let stream = ctx
+        let stream_ref = ctx
             .stream
-            .take()
+            .as_ref()
             .expect("CallModel effect must populate stream outcome");
-        let call_ids = execute_batch_call_ids(&stream.tool_uses);
+        let call_ids = execute_batch_call_ids(&stream_ref.tool_uses);
         zagens_core::engine::turn_loop::v3_driver::log_v3_step_effect_plan(
             &ctx.turn.id,
             ctx.turn.step,
@@ -128,21 +132,24 @@ impl<'a> EffectInterpreter<'a> {
             "v3 step plan must begin with CallModel"
         );
 
-        let mut plan_outcomes = vec![call_outcome];
-        for effect in plan.into_iter().skip(1) {
-            plan_outcomes.push(self.interpret_v3_step_effect(effect, &mut ctx).await);
+        if plan.len() > 1 {
+            let execute_outcomes = self
+                .interpret_all(plan.into_iter().skip(1).collect(), Some(&mut ctx))
+                .await;
+            if !call_ids.is_empty() {
+                debug_assert!(
+                    execute_outcomes
+                        .iter()
+                        .all(|o| *o == InterpretOutcome::Executed),
+                    "ExecuteBatch plan tail must execute"
+                );
+            }
         }
 
-        if !call_ids.is_empty() {
-            debug_assert!(
-                plan_outcomes
-                    .iter()
-                    .skip(1)
-                    .all(|o| *o == InterpretOutcome::Executed),
-                "ExecuteBatch plan tail must execute"
-            );
-        }
-
+        let stream = ctx
+            .stream
+            .take()
+            .expect("CallModel effect must populate stream outcome");
         let tools = ctx.tools.take().unwrap_or_default();
         V3StepOutcome { stream, tools }
     }
@@ -310,11 +317,20 @@ impl<'a> EffectInterpreter<'a> {
         }
     }
 
-    /// Interpret a batch of stateless effects in order.
-    pub async fn interpret_all(&mut self, effects: Vec<Effect>) -> Vec<InterpretOutcome> {
+    /// Interpret effects in order. When `v3_ctx` is set, routes `CallModel` /
+    /// `ExecuteBatch` through the v3 step IO path; otherwise uses stateless `interpret`.
+    pub async fn interpret_all(
+        &mut self,
+        effects: Vec<Effect>,
+        mut v3_ctx: Option<&mut V3StepInterpretContext<'_>>,
+    ) -> Vec<InterpretOutcome> {
         let mut out = Vec::with_capacity(effects.len());
         for effect in effects {
-            out.push(self.interpret(effect).await);
+            let outcome = match v3_ctx {
+                Some(ref mut ctx) => self.interpret_v3_step_effect(effect, ctx).await,
+                None => self.interpret(effect).await,
+            };
+            out.push(outcome);
         }
         out
     }

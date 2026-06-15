@@ -3,12 +3,15 @@
 //! Phase 3b batch 6: long-term seam — `TurnLoopHost` shrinks to runtime IO;
 //! kernel projection/replay lives here until `EffectInterpreter` owns the loop.
 
+use async_trait::async_trait;
+
 use crate::engine::kernel_event::KernelEvent;
 use crate::engine::kernel_mode::KernelMachineMode;
 use crate::engine::turn_machine::{KernelEventSink, LiveTurnSnapshot};
 use crate::turn::TurnContext;
 
 /// Kernel event double-write + shadow/replay hooks (Phase 3a–3b).
+#[async_trait]
 pub trait KernelTurnHost {
     fn kernel_machine_mode(&self) -> KernelMachineMode {
         KernelMachineMode::Legacy
@@ -26,8 +29,12 @@ pub trait KernelTurnHost {
         Vec::new()
     }
 
-    /// Projection-only turn-end compare (runtime engines extend via [`TurnLoopHost::finish_kernel_turn_shadow`]).
     fn finish_kernel_projection_shadow(&mut self, _live: &LiveTurnSnapshot) {}
+
+    /// Turn-end kernel shadow pipeline (projection + replay shadows; runtime overrides).
+    async fn finish_kernel_turn_shadow(&mut self, live: &LiveTurnSnapshot) {
+        self.finish_kernel_projection_shadow(live);
+    }
 
     fn sync_kernel_turn_frame(&mut self, _turn: &TurnContext) {}
 

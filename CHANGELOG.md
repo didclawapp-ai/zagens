@@ -120,6 +120,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `kernel_message_coverage_shadow` records session-vs-log coverage checks at resume / thread replay.
   - `GET /v1/runtime/kernel-shadow` adds `message_coverage_shadow` when `[kernel] machine = "shadow"` or `"v3"`.
   - `KernelResumeHints.kernel_model_message_count` restored from thread projection on engine load.
+- **Runtime (kernel-v2 Phase 3b batch 6k — interpret_all v3 driver + timeline shadow):**
+  - `EffectInterpreter::interpret_all` routes `CallModel` / `ExecuteBatch` when v3 step context is provided; `run_v3_turn_step` uses plan tail + `interpret_all` instead of a manual effect loop.
+  - `verify_message_timeline_coherence` / `verify_message_timeline_vs_session` validate log anchors vs stats and session depth.
+  - `kernel_message_timeline_shadow` + `GET /v1/runtime/kernel-shadow` `message_timeline_shadow` when `[kernel] machine = shadow | v3`.
+  - `finish_kernel_turn_shadow` moved to `KernelTurnHost` (default on trait); runtime `Engine` override retains full replay pipeline.
 
 ### Removed
 

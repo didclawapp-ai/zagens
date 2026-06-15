@@ -35,6 +35,7 @@ pub(crate) mod kernel_effect_shadow;
 pub(crate) mod kernel_guard_shadow;
 pub(crate) mod kernel_memory_shadow;
 pub(crate) mod kernel_message_coverage_shadow;
+pub(crate) mod kernel_message_timeline_shadow;
 pub(crate) mod kernel_projection_shadow;
 pub(crate) mod kernel_replay_shadow;
 mod kernel_resume;

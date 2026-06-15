@@ -130,7 +130,8 @@ pub use turn_machine::{
     outcome_from_status, plan_v3_step_effects, replay_effect_counts, replay_step_effects,
     replay_thread_message_stats, replay_thread_message_timeline, replay_thread_projection,
     replay_turn_effects, replay_turn_projection, verify_effect_replay_chain,
-    verify_guard_projection_chain, verify_memory_projection_chain, verify_session_message_coverage,
-    verify_step_effect_parity, verify_turn_replay_coherence,
+    verify_guard_projection_chain, verify_memory_projection_chain,
+    verify_message_timeline_coherence, verify_message_timeline_vs_session,
+    verify_session_message_coverage, verify_step_effect_parity, verify_turn_replay_coherence,
 };
 pub use turn_port::TurnEnginePort;
