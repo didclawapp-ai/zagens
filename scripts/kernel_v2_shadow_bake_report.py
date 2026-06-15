@@ -94,8 +94,36 @@ def print_block(title: str, agg: dict[str, Any] | None, gate_pct: float) -> bool
     return True
 
 
+def aggregate_shadow_by_shape(
+    runs: list[dict[str, Any]], field: str, batch_shape: str
+) -> dict[str, Any] | None:
+    shaped = [r for r in runs if r.get("batch_shape") == batch_shape]
+    return aggregate_shadow(shaped, field)
+
+
+def print_scheduler_write_gate(all_runs: list[dict[str, Any]]) -> bool:
+    """M4 safety gate: write-shape scenarios must have zero scheduler diffs.
+
+    A diff in a write scenario means DAG would have ordered write tools
+    differently than legacy — potential write-race risk.
+    """
+    write_agg = aggregate_shadow_by_shape(all_runs, "scheduler_shadow", "write")
+    print("\nScheduler shadow (M4) — write-shape gate (diffs must be 0):")
+    if not write_agg:
+        print("  (no write-shape scheduler_shadow data — run corpus with write scenarios)")
+        return True
+    print(f"  write scenarios with data: {write_agg['scenarios_with_data']}")
+    print(f"  write comparisons: {write_agg['comparisons']}")
+    print(f"  write diffs:       {write_agg['diffs']}")
+    ok = write_agg["diffs"] == 0
+    print(f"  gate (diffs == 0): {'PASS' if ok else 'FAIL  ← write-shape diff detected — investigate before flipping to dag'}")
+    return ok
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Kernel v2 shadow bake report")
+    parser = argparse.ArgumentParser(
+        description="Kernel v2 shadow bake report (M3 policy + M4 scheduler)"
+    )
     parser.add_argument(
         "paths",
         nargs="+",
@@ -104,13 +132,13 @@ def main() -> int:
     parser.add_argument(
         "--gate",
         action="store_true",
-        help="Exit 1 if policy shadow diff_rate_pct >= 0.1%%",
+        help="Exit 1 if M3 policy diff_rate_pct >= gate-pct OR M4 write-shape diffs > 0",
     )
     parser.add_argument(
         "--gate-pct",
         type=float,
         default=0.1,
-        help="M3 bake gate threshold (default 0.1%%)",
+        help="M3 policy bake gate threshold (default 0.1%%)",
     )
     args = parser.parse_args()
 
@@ -125,25 +153,42 @@ def main() -> int:
         print(f"== {d} ({len(rows)} scenario runs) ==")
         for row in rows:
             sid = row.get("scenario_id", "?")
+            shape = row.get("batch_shape", "?")
             ps = row.get("policy_shadow")
+            ss = row.get("scheduler_shadow")
             if isinstance(ps, dict) and ps.get("comparisons"):
                 print(
-                    f"  {sid}: policy comparisons={ps.get('comparisons')} "
+                    f"  {sid} [{shape}]: policy comparisons={ps.get('comparisons')} "
                     f"diffs={ps.get('diffs')} rate={ps.get('diff_rate_pct')}%"
+                )
+            if isinstance(ss, dict) and ss.get("comparisons"):
+                print(
+                    f"  {sid} [{shape}]: sched  comparisons={ss.get('comparisons')} "
+                    f"diffs={ss.get('diffs')} rate={ss.get('diff_rate_pct')}%"
                 )
         all_runs.extend(rows)
 
     gate_pct = args.gate_pct if args.gate else 0.0
     policy_ok = print_block("Policy shadow (M3)", aggregate_shadow(all_runs, "policy_shadow"), gate_pct)
-    sched_ok = print_block(
-        "Scheduler shadow (M4)",
-        aggregate_shadow(all_runs, "scheduler_shadow"),
-        0.0,
-    )
+
+    # M4 overall summary (informational — read-shape diffs are expected/benign)
+    print_block("Scheduler shadow (M4) — all shapes", aggregate_shadow(all_runs, "scheduler_shadow"), 0.0)
+
+    # M4 per-shape breakdown
+    for shape in ("pure_read", "shell_degradable", "write"):
+        agg = aggregate_shadow_by_shape(all_runs, "scheduler_shadow", shape)
+        if agg and agg["comparisons"] > 0:
+            print(
+                f"  [{shape}] comparisons={agg['comparisons']} diffs={agg['diffs']}"
+                f" rate={agg['diff_rate_pct']:.4f}%"
+            )
+
+    # M4 safety gate: write-shape diffs must be zero
+    write_ok = print_scheduler_write_gate(all_runs)
 
     if args.gate and not policy_ok:
         return 1
-    if args.gate and not sched_ok:
+    if args.gate and not write_ok:
         return 1
     return 0
 

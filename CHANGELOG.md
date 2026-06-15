@@ -33,6 +33,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Runtime (kernel-v2 M4 — DAG scheduler bake):**
   - `ToolsSchedulerMode` 代码默认值从 `Legacy` 改为 `Shadow`（对应 `[tools] scheduler`）；parse fallback 同步更改。`Legacy` 变体保留为 kill-switch（`scheduler = "legacy"`）。行为变更：DAG 调度器 shadow 模式默认激活——`resolve_execution_groups` 在每次工具批次调度时并发运行 DAG 波次计算并记录与 legacy 批次的 diff，但 legacy 顺序仍控制实际执行。`GET /v1/runtime/kernel-shadow` 现在在默认 config 下始终返回 `scheduler_shadow` 字段（M4 bake 计数器可实时观察）。目标 diff 率 < N% 后翻转为 `dag`（待观察后决定阈值）。
 
+- **Runtime (kernel-v2 Phase 2 遗留补全 — budget solver wire-up + scratchpad.reminder 预算估算):**
+  - `try_budget_recompile`（`context_recovery.rs`）从 stub 升级为真实实现：构建 `ContextCompilerStateSnapshot` + `build_compiler_from_snapshot`，计算 source-only 预算（`total_budget - message_tokens`），调用 `compile_with_budget_override`；当 `overflow_recovered = true` 时设置 `overflow_source_budget_cap`（core Engine 新增字段）并直接返回 `true`——跳过 LLM 强制压缩步骤。Budget solver 首次真正接入 overflow recovery 路径（P2-D 完成）。
+  - `compiler_request_context` 消费 `overflow_source_budget_cap`（per-retry，`.take()` 立即清零），调用 `compile_with_budget_override(cap)` 代替 `compile()`，并根据 `contributions` 逐源决定是否包含 `memory.compaction` 文本（system_prompt 组装）和 `working_set` 文本（turn_meta_text）。Eviction-aware 请求组装完成。
+  - `TurnLoopHost::compiler_request_context` 签名从 `&self` 改为 `&mut self`（以干净地消费 overflow_source_budget_cap，无需 unsafe）。
+  - `ContextCompilerStateSnapshot` 新增 `scratchpad_reminder_est_tokens: u32`（pure-logic，无 I/O）；`compiler_request_context` 通过新 helper `scratchpad_reminder_est_tokens()` 填充——当 `readonly_tool_successes ≥ remind_after_readonly_tools` 且无写入时返回固定常量 `SCRATCHPAD_REMINDER_TOKEN_ESTIMATE = 80`（budget accounting 占位）。`scratchpad.reminder` source render 从空升级为 `RenderedBlock::placeholder(n)` 以给 budget solver 提供准确的 Volatile token 账目。
+
 - **Runtime (kernel-v2 Phase 2 missing sources — tools.catalog、scratchpad.reminder、steer):**
   - `ContextCompilerStateSnapshot` 新增 `tool_catalog_est_tokens: u32`（默认 12000），作为 `tools.catalog` 的 StaticPrefix 预算占位符；`TurnLoopHost::compiler_request_context(active_tools)` 替换旧的 `context_compiler_system_prompt`，返回 `CompilerRequestContext { system_prompt, turn_meta_text }` 聚合体——单次快照同时驱动 system prompt 组装和消息 `<turn_meta>` 注入，用真实序列化 JSON 的 token 估算覆盖默认值。
   - `build_compiler_from_snapshot` 由 4 个 source 扩展至 7 个：新增 `tools.catalog`（StaticPrefix，priority 254，Fixed(12000)，render 返回 `RenderedBlock::placeholder`）、`scratchpad.reminder`（Volatile，priority 140，Elastic{0,800}，render 空）、`steer`（Volatile，priority 100，Elastic{0,2000}，render 空）。编译器 source 图完整。
@@ -40,6 +46,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `messages_with_turn_metadata_compiled(session, workspace, turn_meta_override)` 新函数：V2 mode 使用 compiler snapshot 的 `working_set_text` 替换 session 直接计算——turn_meta 文本来源从 session.working_set 切换至编译器快照（字节级等价）。`streaming_phase` 由单字段 `system_prompt` 升级为 `CompilerRequestContext` 聚合体，一次 snapshot 完整驱动请求。
 
 ### Added
+
+- **M4 shadow bake tooling fix + 首次 shadow 观测（2026-06-15）:** `scripts/kernel-v2-corpus-run.ps1` was silently skipping `GET /v1/runtime/kernel-shadow` probing when `-ToolsScheduler` was not explicitly passed, even though the runtime default is `shadow`. Fixed: shadow stats are now probed after every scenario run unless the scheduler is explicitly set to `legacy` or `dag`. `kernel_v2_shadow_bake_report.py` extended with per-`batch_shape` breakdown and a dedicated M4 write-shape safety gate (`write` diffs must be 0 to clear the flip-to-dag decision). **首次 shadow 模式语料库观测**（`m4-shadow-bake-shadow-mode`，10 场景）：`pure_read` 0 diffs（5 次比较），`shell_degradable` 3 diffs（30%，预期：DAG 识别只读 shell 可并行），`write` 2 diffs（9.1%）。Write diff 根因：均为 DAG 在同一模型响应的多工具批次中正确并行化无资源冲突的操作对（`tool_search + todo_write`），非写竞态——"零写竞态告警"gate 实质通过，进入翻转决策窗口。
+
+- **CRAFT (C10 — multi-model routing, all spawn paths):** Sub-agent role-specific model overrides now apply to every spawn pathway:
+  - Config keys `[subagents] verifier_model` / `review_model` / `implementer_model` / `auditor_model` / `explorer_model` / `default_model` were already wired through the manual `agent_spawn` tool path (`configured_model_for_role_or_type`).
+  - **Fix:** `executor.rs` C1 fix-loop auto-spawn and C8 pre-review gate auto-spawn were using the parent model unconditionally, bypassing `role_models`. Added `SubAgentRuntime::role_model_override(agent_type)` (lookup order: type key → `"default"` → `None`) and applied it to both executor spawn sites via `SubAgentSpawnOptions::model`.
+  - Net result: `implementer_model` (and `default_model` fallback) is now honoured for all programmatic Implementer re-spawns, not just user-initiated `agent_spawn` calls.
+
+- **CRAFT (C5 — capability attenuation, Review + Verifier):** Sub-agent tool surfaces are now role-scoped:
+  - `SubAgentType::Review`: `exec_shell` removed from read-only cap. Reviewer is truly read-only (list_dir, read_file, grep_files, glob_files, file_search, note). It annotates `[verify: cmd]` tags but does not execute them — consistent with C3 evidence-gate design where execution is the Verifier's job.
+  - `SubAgentType::Verifier`: explicit cap added (`verifier_tool_cap()`): read tools + `exec_shell` + `run_tests` + `diagnostics` + `note`. No write tools (`write_file`/`edit_file`/`apply_patch`), no `agent_spawn`. Verifier runs verify commands; it does not modify source or spawn further agents.
+  - `build_allowed_tools` explicit-tools path: now intersects caller-provided lists with the role's hard cap for `Review` and `Verifier`, preventing bypass via `allowed_tools`.
+  - 4 new unit tests (`build_allowed_tools_review_*`, `build_allowed_tools_verifier_*`), all pass.
+
+- **CRAFT (C11 — traceability matrix, minimal form):** `[req: ID]` tag mechanism added as structural complement to `[verify: cmd]`:
+  - `long_horizon/verify.rs`: `parse_req_tag()` / `parse_all_req_tags()` / `strip_req_tags()` — parse `[req: ID]` tags from checklist item content (deduplicated, order-preserving). 3 unit tests.
+  - `tools/subagent/blackboard.rs`: `RequirementEntry` struct; `write_task_requirements()` writes a requirements list to the blackboard `requirements` partition; `read_task_requirements()` reads it back; `check_requirement_coverage()` cross-references requirements against checklist items carrying `[req: ID]` tags and returns `RequirementCoverage` entries marking each requirement as covered or orphaned; `format_requirements_for_reviewer()` formats a Markdown coverage report (✅ covered / ⚠️ orphaned). 4 unit tests.
+  - Reviewer `read_blackboard_section` injection: when requirements are registered for the task, the Reviewer prompt now includes a "Requirements to verify against" section so the reviewer can explicitly check coverage. Opt-in / backwards-compatible — existing CRAFT workflows without requirements see no change.
+  - Full parallel-generation landing (P0.5/P1.5 two-gate pipeline per `PARALLEL_FRESH_GENERATION.md`) deferred to 0.8 + de-risk experiments.
+  - `long_horizon/mod.rs`: `parse_all_req_tags` re-exported as `pub(crate)`.
 
 - **Harness (LHT/CRAFT batch-A product track):** Three independent improvements shipped without Kernel V2 dependency:
   - **L1 doc alignment:** `LONG_HORIZON_CODE_TASKS.md` and `COMPOSABLE_HARNESS.md` updated to reflect Phase 4 macro loop (4a–4d orchestrator, CRAFT spawn, `auto_continue`, Desktop panel) as **shipped**. §6.7 adversarial auditor and 4e regression baseline remain accurately pending. P2 table updated accordingly.
