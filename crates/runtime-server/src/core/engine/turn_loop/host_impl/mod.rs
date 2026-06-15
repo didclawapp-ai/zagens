@@ -42,6 +42,8 @@ mod no_tool_uses;
 
 #[async_trait]
 impl KernelTurnHost for Engine {
+    type V3ToolRegistry = ToolRegistry;
+
     fn kernel_machine_mode(&self) -> zagens_core::engine::KernelMachineMode {
         self.runtime_ext().kernel_machine_mode
     }
@@ -155,6 +157,43 @@ impl KernelTurnHost for Engine {
             }
         }
         let _ = do_full_shadow;
+    }
+
+    async fn try_run_v3_turn_step(
+        &mut self,
+        turn: &mut TurnContext,
+        client: &dyn LlmClient,
+        mode: TurnLoopMode,
+        tool_catalog: &mut [Tool],
+        active_tool_names: &mut HashSet<String>,
+        force_update_plan_first: bool,
+        stream_retry_attempts: &mut u32,
+        context_recovery_attempts: &mut u8,
+        length_continuations: &mut u32,
+        turn_error: &mut Option<String>,
+        loop_guard: &mut zagens_core::engine::loop_guard::LoopGuard,
+        consecutive_tool_error_steps: u32,
+        tool_registry: Option<&Self::V3ToolRegistry>,
+    ) -> Option<zagens_core::engine::turn_loop::v3_step::V3StepOutcome> {
+        Some(
+            super::super::engine_v3_step::run_v3_turn_step(
+                self,
+                turn,
+                client,
+                mode,
+                tool_catalog,
+                active_tool_names,
+                force_update_plan_first,
+                stream_retry_attempts,
+                context_recovery_attempts,
+                length_continuations,
+                turn_error,
+                loop_guard,
+                consecutive_tool_error_steps,
+                tool_registry,
+            )
+            .await,
+        )
     }
 }
 
@@ -1127,43 +1166,6 @@ impl TurnLoopHost for Engine {
             consecutive_tool_error_steps,
         )
         .await
-    }
-
-    async fn try_run_v3_turn_step(
-        &mut self,
-        turn: &mut TurnContext,
-        client: &dyn LlmClient,
-        mode: TurnLoopMode,
-        tool_catalog: &mut [Tool],
-        active_tool_names: &mut HashSet<String>,
-        force_update_plan_first: bool,
-        stream_retry_attempts: &mut u32,
-        context_recovery_attempts: &mut u8,
-        length_continuations: &mut u32,
-        turn_error: &mut Option<String>,
-        loop_guard: &mut zagens_core::engine::loop_guard::LoopGuard,
-        consecutive_tool_error_steps: u32,
-        tool_registry: Option<&Self::ToolRegistry>,
-    ) -> Option<zagens_core::engine::turn_loop::v3_step::V3StepOutcome> {
-        Some(
-            super::super::engine_v3_step::run_v3_turn_step(
-                self,
-                turn,
-                client,
-                mode,
-                tool_catalog,
-                active_tool_names,
-                force_update_plan_first,
-                stream_retry_attempts,
-                context_recovery_attempts,
-                length_continuations,
-                turn_error,
-                loop_guard,
-                consecutive_tool_error_steps,
-                tool_registry,
-            )
-            .await,
-        )
     }
 }
 

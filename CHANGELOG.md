@@ -125,6 +125,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `verify_message_timeline_coherence` / `verify_message_timeline_vs_session` validate log anchors vs stats and session depth.
   - `kernel_message_timeline_shadow` + `GET /v1/runtime/kernel-shadow` `message_timeline_shadow` when `[kernel] machine = shadow | v3`.
   - `finish_kernel_turn_shadow` moved to `KernelTurnHost` (default on trait); runtime `Engine` override retains full replay pipeline.
+- **Runtime (kernel-v2 Phase 3b batch 6l — timeline coverage + KernelTurnHost v3 step):**
+  - `SessionMessageTimelineCoverage` + `build_session_message_timeline_coverage()` unify coverage, timeline coherence, and request-count checks.
+  - `verify_timeline_vs_request_count()` guards timeline anchors vs `ModelRequestIssued` counts.
+  - Thread replay API adds `message_timeline_coverage` when `?session_message_count=N`; resume `kernel_replay` adds `message_timeline_ok` / `message_timeline_summary`.
+  - `try_run_v3_turn_step` moved from `TurnLoopHost` to `KernelTurnHost` (`V3ToolRegistry` associated type); `TurnLoopHost` shrinks to runtime IO.
 
 ### Removed
 

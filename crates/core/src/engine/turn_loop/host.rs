@@ -74,7 +74,7 @@ pub trait TurnLoopMcpPool: Send + Sync {}
 impl<T: crate::engine::hosts::McpHost + ?Sized> TurnLoopMcpPool for T {}
 
 #[async_trait]
-pub trait TurnLoopHost: KernelTurnHost + Send {
+pub trait TurnLoopHost: KernelTurnHost<V3ToolRegistry = Self::ToolRegistry> + Send {
     type ToolRegistry: TurnLoopToolRegistry;
     type McpPool: crate::engine::hosts::McpHost;
 
@@ -379,25 +379,4 @@ pub trait TurnLoopHost: KernelTurnHost + Send {
     ) -> TurnLoopControl;
 
     fn pre_tool_snapshot(&self, workspace: &Path, tool_id: &str);
-
-    /// Optional v3 turn step via runtime [`EffectInterpreter`] (default: `None` → core fallback).
-    #[allow(clippy::too_many_arguments)]
-    async fn try_run_v3_turn_step(
-        &mut self,
-        _turn: &mut TurnContext,
-        _client: &dyn LlmClient,
-        _mode: TurnLoopMode,
-        _tool_catalog: &mut [Tool],
-        _active_tool_names: &mut HashSet<String>,
-        _force_update_plan_first: bool,
-        _stream_retry_attempts: &mut u32,
-        _context_recovery_attempts: &mut u8,
-        _length_continuations: &mut u32,
-        _turn_error: &mut Option<String>,
-        _loop_guard: &mut crate::engine::loop_guard::LoopGuard,
-        _consecutive_tool_error_steps: u32,
-        _tool_registry: Option<&Self::ToolRegistry>,
-    ) -> Option<super::v3_step::V3StepOutcome> {
-        None
-    }
 }

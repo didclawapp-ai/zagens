@@ -5,9 +5,9 @@ use axum::extract::{Path, Query, State};
 use serde::{Deserialize, Serialize};
 
 use zagens_core::engine::turn_machine::{
-    ThreadReplayProjection, build_session_message_coverage, replay_thread_projection,
-    replay_turn_projection, verify_message_timeline_coherence, verify_message_timeline_vs_session,
-    verify_turn_replay_coherence,
+    ThreadReplayProjection, build_session_message_coverage,
+    build_session_message_timeline_coverage, replay_thread_projection, replay_turn_projection,
+    verify_message_timeline_coherence, verify_turn_replay_coherence,
 };
 
 use crate::core::engine::kernel_message_coverage_shadow::record_message_coverage_check;
@@ -74,6 +74,21 @@ pub(crate) struct KernelThreadMessageCoverage {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub(crate) struct KernelThreadMessageTimelineCoverage {
+    session_message_count: usize,
+    kernel_model_message_count: u32,
+    timeline_anchor_count: usize,
+    model_request_count: u32,
+    coherence_ok: bool,
+    coverage_ok: bool,
+    timeline_vs_session_ok: bool,
+    timeline_vs_requests_ok: bool,
+    overall_ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    summary: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub(crate) struct KernelThreadLatestProjection {
     turn_id: String,
     step_idx: u32,
@@ -95,6 +110,8 @@ pub(crate) struct KernelThreadReplayResponse {
     message_timeline: Vec<KernelThreadMessageTimelineEntry>,
     #[serde(skip_serializing_if = "Option::is_none")]
     message_coverage: Option<KernelThreadMessageCoverage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message_timeline_coverage: Option<KernelThreadMessageTimelineCoverage>,
     turns: Vec<KernelThreadTurnReplayEntry>,
 }
 
@@ -174,10 +191,23 @@ pub(crate) fn resume_session_kernel_replay_summary(
         return None;
     }
     if let Some(count) = session_message_count {
-        log_session_message_coverage(count, &projection);
+        log_session_message_plane_checks(count, &projection);
     }
-    let coverage = session_message_count
-        .and_then(|count| build_session_message_coverage(count, &projection.message_stats));
+    let plane_coverage = session_message_count
+        .and_then(|count| build_session_message_timeline_coverage(count, &projection));
+    let coverage = plane_coverage
+        .as_ref()
+        .map(|cov| KernelThreadMessageCoverage {
+            session_message_count: cov.session_message_count,
+            kernel_model_message_count: cov.kernel_model_message_count,
+            coverage_ok: cov.coverage_ok,
+            summary: if cov.coverage_ok {
+                None
+            } else {
+                build_session_message_coverage(cov.session_message_count, &projection.message_stats)
+                    .and_then(|c| c.summary)
+            },
+        });
     let report = projection.report;
     Some(ResumeSessionKernelReplay {
         turn_count: report.turn_count,
@@ -190,9 +220,33 @@ pub(crate) fn resume_session_kernel_replay_summary(
         active_tool_count: Some(projection.latest_projection.active_tool_names.len() as u32),
         model_message_count: Some(projection.message_stats.model_message_count),
         tool_call_planned_count: Some(projection.message_stats.tool_call_planned_count),
-        message_coverage_ok: coverage.as_ref().map(|c| c.coverage_ok),
+        message_coverage_ok: plane_coverage.as_ref().map(|c| c.coverage_ok),
         message_coverage_summary: coverage.and_then(|c| c.summary),
+        message_timeline_ok: plane_coverage.as_ref().map(|c| c.overall_ok),
+        message_timeline_summary: plane_coverage.and_then(|c| c.summary),
     })
+}
+
+/// Log session JSON vs kernel log message-plane checks (coverage + timeline).
+pub(crate) fn log_session_message_plane_checks(
+    session_message_count: usize,
+    projection: &ThreadReplayProjection,
+) {
+    let Some(cov) = build_session_message_timeline_coverage(session_message_count, projection)
+    else {
+        return;
+    };
+    record_timeline_coherence_check(cov.coherence_ok && cov.timeline_vs_requests_ok);
+    record_message_coverage_check(cov.coverage_ok);
+    if !cov.timeline_vs_session_ok {
+        record_timeline_coherence_check(false);
+    }
+    if let Some(summary) = cov.summary {
+        eprintln!(
+            "[resume-session] kernel message plane diff (thread {}): {summary}",
+            projection.report.thread_id
+        );
+    }
 }
 
 /// Log when session JSON row count looks thinner than kernel model_message events.
@@ -200,40 +254,7 @@ pub(crate) fn log_session_message_coverage(
     session_message_count: usize,
     projection: &ThreadReplayProjection,
 ) {
-    let timeline_ok =
-        verify_message_timeline_coherence(&projection.message_stats, &projection.message_timeline)
-            .is_none();
-    record_timeline_coherence_check(timeline_ok);
-    if let Some(summary) =
-        verify_message_timeline_coherence(&projection.message_stats, &projection.message_timeline)
-    {
-        eprintln!(
-            "[resume-session] kernel message timeline coherence diff (thread {}): {summary}",
-            projection.report.thread_id
-        );
-    }
-    if let Some(summary) =
-        verify_message_timeline_vs_session(session_message_count, &projection.message_timeline)
-    {
-        record_timeline_coherence_check(false);
-        eprintln!(
-            "[resume-session] kernel message timeline vs session diff (thread {}): {summary}",
-            projection.report.thread_id
-        );
-    }
-
-    let Some(coverage) =
-        build_session_message_coverage(session_message_count, &projection.message_stats)
-    else {
-        return;
-    };
-    record_message_coverage_check(coverage.coverage_ok);
-    if let Some(summary) = coverage.summary {
-        eprintln!(
-            "[resume-session] kernel message coverage diff (thread {}): {summary}",
-            projection.report.thread_id
-        );
-    }
+    log_session_message_plane_checks(session_message_count, projection);
 }
 
 pub(crate) async fn get_kernel_turn_replay(
@@ -269,6 +290,10 @@ pub(crate) async fn get_kernel_thread_replay(
         verify_message_timeline_coherence(&projection.message_stats, &projection.message_timeline)
             .is_none();
     record_timeline_coherence_check(timeline_ok);
+
+    let plane_coverage = query
+        .session_message_count
+        .and_then(|count| build_session_message_timeline_coverage(count, &projection));
 
     let report = projection.report;
     let turns = report
@@ -312,18 +337,35 @@ pub(crate) async fn get_kernel_thread_replay(
             block_count: entry.block_count,
         })
         .collect();
-    let message_coverage = query
-        .session_message_count
-        .and_then(|count| build_session_message_coverage(count, &projection.message_stats))
-        .map(|cov| {
-            record_message_coverage_check(cov.coverage_ok);
-            KernelThreadMessageCoverage {
-                session_message_count: cov.session_message_count,
-                kernel_model_message_count: cov.kernel_model_message_count,
-                coverage_ok: cov.coverage_ok,
-                summary: cov.summary,
-            }
-        });
+    let message_coverage = plane_coverage.as_ref().map(|cov| {
+        record_message_coverage_check(cov.coverage_ok);
+        record_timeline_coherence_check(
+            cov.coherence_ok && cov.timeline_vs_session_ok && cov.timeline_vs_requests_ok,
+        );
+        KernelThreadMessageCoverage {
+            session_message_count: cov.session_message_count,
+            kernel_model_message_count: cov.kernel_model_message_count,
+            coverage_ok: cov.coverage_ok,
+            summary: if cov.coverage_ok {
+                None
+            } else {
+                build_session_message_coverage(cov.session_message_count, &projection.message_stats)
+                    .and_then(|c| c.summary)
+            },
+        }
+    });
+    let message_timeline_coverage = plane_coverage.map(|cov| KernelThreadMessageTimelineCoverage {
+        session_message_count: cov.session_message_count,
+        kernel_model_message_count: cov.kernel_model_message_count,
+        timeline_anchor_count: cov.timeline_anchor_count,
+        model_request_count: cov.model_request_count,
+        coherence_ok: cov.coherence_ok,
+        coverage_ok: cov.coverage_ok,
+        timeline_vs_session_ok: cov.timeline_vs_session_ok,
+        timeline_vs_requests_ok: cov.timeline_vs_requests_ok,
+        overall_ok: cov.overall_ok,
+        summary: cov.summary,
+    });
 
     Ok(Json(KernelThreadReplayResponse {
         thread_id: report.thread_id,
@@ -335,6 +377,7 @@ pub(crate) async fn get_kernel_thread_replay(
         message_stats,
         message_timeline,
         message_coverage,
+        message_timeline_coverage,
         turns,
     }))
 }

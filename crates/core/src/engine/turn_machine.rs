@@ -896,6 +896,90 @@ pub fn verify_message_timeline_vs_session(
     }
 }
 
+/// Structured session + timeline + kernel log message-plane checks (observability).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionMessageTimelineCoverage {
+    pub session_message_count: usize,
+    pub kernel_model_message_count: u32,
+    pub timeline_anchor_count: usize,
+    pub model_request_count: u32,
+    pub coherence_ok: bool,
+    pub coverage_ok: bool,
+    pub timeline_vs_session_ok: bool,
+    pub timeline_vs_requests_ok: bool,
+    pub overall_ok: bool,
+    pub summary: Option<String>,
+}
+
+/// Verify timeline anchors do not exceed model request count on the thread.
+#[must_use]
+pub fn verify_timeline_vs_request_count(
+    stats: &ThreadMessageReplayStats,
+    timeline: &[ThreadMessageTimelineEntry],
+) -> Option<String> {
+    let anchors = timeline.len() as u32;
+    if anchors > stats.model_request_count {
+        Some(format!(
+            "timeline anchors ({anchors}) exceed model_request_count ({})",
+            stats.model_request_count
+        ))
+    } else {
+        None
+    }
+}
+
+/// Build unified session / timeline / kernel log message-plane coverage report.
+#[must_use]
+pub fn build_session_message_timeline_coverage(
+    session_message_count: usize,
+    projection: &ThreadReplayProjection,
+) -> Option<SessionMessageTimelineCoverage> {
+    let stats = &projection.message_stats;
+    let timeline = &projection.message_timeline;
+    if stats.model_message_count == 0 && timeline.is_empty() {
+        return None;
+    }
+    let coherence_ok = verify_message_timeline_coherence(stats, timeline).is_none();
+    let coverage = build_session_message_coverage(session_message_count, stats);
+    let coverage_ok = coverage.as_ref().map(|c| c.coverage_ok).unwrap_or(true);
+    let timeline_vs_session_ok =
+        verify_message_timeline_vs_session(session_message_count, timeline).is_none();
+    let timeline_vs_requests_ok = verify_timeline_vs_request_count(stats, timeline).is_none();
+    let overall_ok =
+        coherence_ok && coverage_ok && timeline_vs_session_ok && timeline_vs_requests_ok;
+
+    let mut summaries = Vec::new();
+    if let Some(s) = verify_message_timeline_coherence(stats, timeline) {
+        summaries.push(s);
+    }
+    if let Some(s) = coverage.and_then(|c| c.summary) {
+        summaries.push(s);
+    }
+    if let Some(s) = verify_message_timeline_vs_session(session_message_count, timeline) {
+        summaries.push(s);
+    }
+    if let Some(s) = verify_timeline_vs_request_count(stats, timeline) {
+        summaries.push(s);
+    }
+
+    Some(SessionMessageTimelineCoverage {
+        session_message_count,
+        kernel_model_message_count: stats.model_message_count,
+        timeline_anchor_count: timeline.len(),
+        model_request_count: stats.model_request_count,
+        coherence_ok,
+        coverage_ok,
+        timeline_vs_session_ok,
+        timeline_vs_requests_ok,
+        overall_ok,
+        summary: if summaries.is_empty() {
+            None
+        } else {
+            Some(summaries.join("; "))
+        },
+    })
+}
+
 /// Build thread replay report and the latest non-empty turn projection (resume substrate).
 #[must_use]
 pub fn replay_thread_projection(
@@ -1438,6 +1522,21 @@ mod tests {
         assert!(verify_message_timeline_coherence(&stats, &timeline).is_none());
         assert!(verify_message_timeline_vs_session(2, &timeline).is_none());
         assert!(verify_message_timeline_vs_session(0, &timeline).is_some());
+        assert!(verify_timeline_vs_request_count(&stats, &timeline).is_none());
+    }
+
+    #[test]
+    fn build_session_message_timeline_coverage_on_pure_read_fixture() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/harness/kernel-v3-replay/pure_read.json");
+        let raw = std::fs::read_to_string(&path).expect("read fixture");
+        let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
+        let projection = replay_thread_projection("t1", &[("t1".into(), events)]);
+        let cov = build_session_message_timeline_coverage(3, &projection).expect("coverage");
+        assert!(cov.overall_ok);
+        assert!(cov.coherence_ok);
+        assert!(cov.timeline_vs_requests_ok);
+        assert_eq!(cov.timeline_anchor_count, 1);
     }
 
     #[test]
