@@ -15,6 +15,7 @@ pub mod memory_plane_projection_policy;
 pub mod memory_plane_query_policy;
 pub mod memory_plane_query_replay_policy;
 pub mod memory_plane_working_policy;
+pub mod memory_plane_wrapup_policy;
 pub mod run;
 pub mod streaming_phase;
 pub mod tool_exec;

@@ -1,0 +1,95 @@
+[
+  {
+    "event_type": "turn_started",
+    "turn_id": "golden-memory-plane-query-001",
+    "mode": "agent",
+    "input_text": "Continue audit with topic memory",
+    "max_steps": 8
+  },
+  {
+    "event_type": "model_request_issued",
+    "turn_id": "golden-memory-plane-query-001",
+    "step_idx": 1,
+    "request_fp": {
+      "static_prefix_sha256": "tm111111",
+      "full_prefix_sha256": "tm222222"
+    },
+    "token_budget": 8192
+  },
+  {
+    "event_type": "model_message",
+    "turn_id": "golden-memory-plane-query-001",
+    "step_idx": 1,
+    "usage": {
+      "input_tokens": 900,
+      "output_tokens": 40
+    },
+    "block_count": 1
+  },
+  {
+    "event_type": "tool_call_planned",
+    "turn_id": "golden-memory-plane-query-001",
+    "step_idx": 1,
+    "call_id": "call-list-1",
+    "tool_name": "list_dir",
+    "input_json": "{\"path\":\"src/\"}",
+    "decision": {
+      "approval_required": false,
+      "parallel_eligible": true,
+      "read_only": true
+    }
+  },
+  {
+    "event_type": "tool_call_started",
+    "turn_id": "golden-memory-plane-query-001",
+    "call_id": "call-list-1",
+    "wave_idx": 0
+  },
+  {
+    "event_type": "tool_call_finished",
+    "turn_id": "golden-memory-plane-query-001",
+    "call_id": "call-list-1",
+    "tool_name": "list_dir",
+    "outcome": "success",
+    "duration_ms": 22,
+    "wrote_state": false
+  },
+  {
+    "event_type": "topic_memory_injected",
+    "turn_id": "golden-memory-plane-query-001",
+    "step_idx": 2,
+    "block_token_est": 96
+  },
+  {
+    "event_type": "model_request_issued",
+    "turn_id": "golden-memory-plane-query-001",
+    "step_idx": 2,
+    "request_fp": {
+      "static_prefix_sha256": "tm333333",
+      "full_prefix_sha256": "tm444444"
+    },
+    "token_budget": 8192
+  },
+  {
+    "event_type": "memory_plane_queried",
+    "turn_id": "golden-memory-plane-query-001",
+    "step_idx": 2,
+    "layer": "working",
+    "query_key": "working_set",
+    "compiler_source": "working_set"
+  },
+  {
+    "event_type": "memory_plane_queried",
+    "turn_id": "golden-memory-plane-query-001",
+    "step_idx": 2,
+    "layer": "episodic",
+    "query_key": "topic_episodic",
+    "compiler_source": "topic_memory"
+  },
+  {
+    "event_type": "turn_ended",
+    "turn_id": "golden-memory-plane-query-001",
+    "outcome": "completed",
+    "total_steps": 2
+  }
+]

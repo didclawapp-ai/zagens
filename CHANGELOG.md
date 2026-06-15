@@ -299,6 +299,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `KernelEvent::TopicMemoryInjected` double-write from `refresh_system_prompt` when `<topic_memory>` block is composed.
   - Episodic layer replay from `topic_memory_injection_count`; `kernel_memory_query_sources` per-step compiler trace in `compiler_request_context`.
 
+- **Runtime (kernel-v2 Phase 3b batch 8h — Memory Plane batch-4 wrap-up):**
+  - Golden fixture `memory_plane_query.json` (WorkingSet + TopicMemory queries + `MemoryPlaneQueried` anchors).
+  - `memory_plane_wrapup_policy.rs` batch-4 gate; `kernel_memory_shadow` uses unified coherence check.
+  - Compiler force-include + overflow budget overrides for queried `working_set` / `memory.compaction` sources.
+
 ### Removed
 
 - **Runtime (kernel-v2 Phase 2 legacy cleanup — G-PR):** Legacy and Shadow context injection paths removed; `ContextCompiler` V2 is now the sole request-assembly path:

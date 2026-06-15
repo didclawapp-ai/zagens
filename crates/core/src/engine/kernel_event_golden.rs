@@ -25,6 +25,7 @@ mod tests {
         "capacity_checkpoint.json",
         "manual_compaction.json",
         "deferred_activation.json",
+        "memory_plane_query.json",
     ];
 
     fn fixture_path(name: &str) -> PathBuf {
@@ -207,6 +208,27 @@ mod tests {
         );
         let p = TurnKernelProjection::from_events(&events);
         assert_eq!(p.working_set_path_touch_count, 1);
+    }
+
+    #[test]
+    fn golden_memory_plane_query_fixture_batch4() {
+        let events = load_fixture("memory_plane_query.json");
+        assert!(
+            crate::engine::turn_loop::memory_plane_wrapup_policy::verify_memory_plane_batch4_coherence(
+                &events
+            )
+            .is_none(),
+            "memory_plane_query.json batch4 coherence failed"
+        );
+        let counts = crate::engine::turn_machine::replay_effect_counts(&events);
+        assert_eq!(counts.query_memory, 2);
+        assert_eq!(counts.call_model, 2);
+        assert!(
+            crate::engine::turn_loop::memory_plane_query_replay_policy::verify_step_query_memory_anchor(
+                &events, 2
+            )
+            .is_none()
+        );
     }
 
     #[test]

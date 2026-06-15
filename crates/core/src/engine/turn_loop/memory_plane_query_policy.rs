@@ -49,12 +49,10 @@ pub fn query_memory_effects_before_model_call(
             query_key: QUERY_WORKING_SET.into(),
         });
     }
-    if let Some(hints) = episodic_hints {
-        out.extend(episodic_query_effects_before_model_call(
-            projection,
-            Some(hints),
-        ));
-    }
+    out.extend(episodic_query_effects_before_model_call(
+        projection,
+        episodic_hints,
+    ));
     out
 }
 

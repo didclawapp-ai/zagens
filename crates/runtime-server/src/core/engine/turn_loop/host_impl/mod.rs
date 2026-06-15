@@ -950,13 +950,18 @@ impl TurnLoopHost for Engine {
         // Consume the cap first (before borrowing `self.session`) so the mutable
         // borrow of `self.0` does not alias the immutable borrow via `proj`.
         let overflow_budget_cap = self.0.overflow_source_budget_cap.take();
+        let queried_sources = self.runtime_ext().kernel_memory_query_sources.clone();
 
         let compiler = crate::context_compiler_shadow::build_compiler_from_snapshot(&snapshot);
         let proj = ContextProjection::from_session(&self.session, snapshot.step_idx);
+        let query_overrides =
+            zagens_core::engine::turn_loop::memory_plane_compiler_policy::compiler_budget_overrides_for_queried_sources(
+                &queried_sources,
+            );
 
         let compiled = if let Some(budget_cap) = overflow_budget_cap {
             // Applies for exactly one request retry; cap was already consumed above.
-            match compiler.compile_with_budget_override(&proj, budget_cap, &[]) {
+            match compiler.compile_with_budget_override(&proj, budget_cap, &query_overrides) {
                 Ok(ctx) => ctx,
                 Err(_) => compiler.compile(&proj),
             }
@@ -965,14 +970,22 @@ impl TurnLoopHost for Engine {
         };
 
         // Determine which sources survived compilation (for eviction-aware assembly).
-        let has_compaction = compiled
+        let mut has_compaction = compiled
             .contributions
             .iter()
             .any(|c| c.source_id.0 == "memory.compaction" && c.token_count > 0);
-        let has_working_set = compiled
+        let mut has_working_set = compiled
             .contributions
             .iter()
             .any(|c| c.source_id.0 == "working_set" && c.token_count > 0);
+
+        (has_compaction, has_working_set) = zagens_core::engine::turn_loop::memory_plane_compiler_policy::resolved_compiler_includes_for_queried_sources(
+            &queried_sources,
+            has_compaction,
+            has_working_set,
+            !snapshot.compaction_text.is_empty(),
+            !snapshot.working_set_text.is_empty(),
+        );
 
         // system_prompt: static base always included; compaction text only if not evicted.
         let system_text = if has_compaction {

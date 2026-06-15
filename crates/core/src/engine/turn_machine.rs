@@ -676,6 +676,7 @@ pub fn verify_memory_projection_chain(events: &[KernelEvent]) -> Option<String> 
     let mut reminder_injected = 0u32;
     let mut compaction_artifacts = 0u32;
     let mut cycle_briefings = 0u32;
+    let mut topic_memory_injections = 0u32;
 
     for event in events {
         match event {
@@ -683,6 +684,7 @@ pub fn verify_memory_projection_chain(events: &[KernelEvent]) -> Option<String> 
             KernelEvent::ScratchpadReminderInjected { .. } => reminder_injected += 1,
             KernelEvent::CompactionArtifactCreated { .. } => compaction_artifacts += 1,
             KernelEvent::CycleBriefingInjected { .. } => cycle_briefings += 1,
+            KernelEvent::TopicMemoryInjected { .. } => topic_memory_injections += 1,
             _ => {}
         }
     }
@@ -710,6 +712,12 @@ pub fn verify_memory_projection_chain(events: &[KernelEvent]) -> Option<String> 
         diffs.push(format!(
             "cycle_briefing_count proj={} events={cycle_briefings}",
             projection.cycle_briefing_count
+        ));
+    }
+    if projection.topic_memory_injection_count != topic_memory_injections {
+        diffs.push(format!(
+            "topic_memory_injection_count proj={} events={topic_memory_injections}",
+            projection.topic_memory_injection_count
         ));
     }
     if let Some(summary) =

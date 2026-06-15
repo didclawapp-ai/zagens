@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use tracing::warn;
 use zagens_core::engine::kernel_event::KernelEvent;
-use zagens_core::engine::turn_machine::verify_memory_projection_chain;
+use zagens_core::engine::turn_loop::memory_plane_wrapup_policy::verify_memory_plane_batch4_coherence;
 
 #[derive(Debug, Default)]
 pub struct KernelMemoryShadowStats {
@@ -47,7 +47,7 @@ impl KernelMemoryShadow {
             return;
         }
         self.stats.record_comparison();
-        if let Some(summary) = verify_memory_projection_chain(events) {
+        if let Some(summary) = verify_memory_plane_batch4_coherence(events) {
             self.stats.record_diff();
             warn!(
                 target: "kernel_memory_shadow",
