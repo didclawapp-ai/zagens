@@ -136,6 +136,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `build_session_message_timeline_coverage()` adds `plane_depth_ok` / `estimated_min_session_messages`.
   - Thread replay API exposes `message_plane_index`; resume `kernel_replay` adds request count + plane depth hints.
   - v3 step shadow verifies per-step `ModelMessage` anchors alongside effect parity.
+- **Runtime (kernel-v2 Phase 3b batch 6n — session role index vs kernel log):**
+  - `SessionMessageRoleIndex` + `build_session_message_role_index()` count assistant / tool-result rows in session JSON.
+  - `KernelMessageRoleEstimate` + `verify_session_role_index()` compare session role counts to kernel log lower bounds.
+  - `build_session_message_timeline_coverage()` adds `role_index_ok` and kernel min assistant/tool-result fields.
+  - Session resume builds role index from loaded messages; thread replay API accepts optional `session_assistant_count` / `session_tool_result_count`.
+  - `kernel_message_role_shadow` + `GET /v1/runtime/kernel-shadow` `message_role_shadow` when `[kernel] machine = shadow | v3`.
+  - Resume `kernel_replay` adds `message_role_index_ok` / `message_role_index_summary`.
 
 ### Removed
 

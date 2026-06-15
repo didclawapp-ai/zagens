@@ -5,12 +5,14 @@ use axum::extract::{Path, Query, State};
 use serde::{Deserialize, Serialize};
 
 use zagens_core::engine::turn_machine::{
-    ThreadReplayProjection, build_session_message_coverage,
-    build_session_message_timeline_coverage, replay_thread_projection, replay_turn_projection,
-    verify_message_timeline_coherence, verify_turn_replay_coherence,
+    SessionMessageRoleIndex, ThreadReplayProjection, build_session_message_coverage,
+    build_session_message_role_index, build_session_message_timeline_coverage,
+    replay_thread_projection, replay_turn_projection, verify_message_timeline_coherence,
+    verify_turn_replay_coherence,
 };
 
 use crate::core::engine::kernel_message_coverage_shadow::record_message_coverage_check;
+use crate::core::engine::kernel_message_role_shadow::record_message_role_index_check;
 use crate::core::engine::kernel_message_timeline_shadow::record_timeline_coherence_check;
 use zagens_runtime_adapters::persist::KernelEventWriter;
 use zagens_runtime_api::ResumeSessionKernelReplay;
@@ -85,6 +87,13 @@ pub(crate) struct KernelThreadMessageTimelineCoverage {
     timeline_vs_requests_ok: bool,
     estimated_min_session_messages: u32,
     plane_depth_ok: bool,
+    role_index_ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    session_assistant_count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    session_tool_result_count: Option<u32>,
+    kernel_min_assistant_messages: u32,
+    kernel_min_tool_result_messages: u32,
     overall_ok: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     summary: Option<String>,
@@ -131,6 +140,36 @@ pub(crate) struct KernelThreadReplayResponse {
 pub(crate) struct KernelThreadReplayQuery {
     /// Optional session JSON message count for coverage comparison (observability).
     pub session_message_count: Option<usize>,
+    /// Optional session assistant row count (`?session_assistant_count=N`).
+    pub session_assistant_count: Option<usize>,
+    /// Optional session tool-result row count (`?session_tool_result_count=N`).
+    pub session_tool_result_count: Option<usize>,
+}
+
+fn role_index_for_replay(
+    messages: Option<&[zagens_core::chat::Message]>,
+    query: &KernelThreadReplayQuery,
+) -> Option<SessionMessageRoleIndex> {
+    if let Some(messages) = messages {
+        return Some(build_session_message_role_index(messages));
+    }
+    if query.session_assistant_count.is_none() && query.session_tool_result_count.is_none() {
+        return None;
+    }
+    Some(SessionMessageRoleIndex {
+        user_message_count: 0,
+        assistant_message_count: query.session_assistant_count.unwrap_or(0) as u32,
+        tool_result_message_count: query.session_tool_result_count.unwrap_or(0) as u32,
+        total_message_count: query.session_message_count.unwrap_or(0) as u32,
+    })
+}
+
+fn timeline_coverage_for_projection(
+    session_message_count: usize,
+    projection: &ThreadReplayProjection,
+    role_index: Option<&SessionMessageRoleIndex>,
+) -> Option<zagens_core::engine::turn_machine::SessionMessageTimelineCoverage> {
+    build_session_message_timeline_coverage(session_message_count, projection, role_index)
 }
 
 fn turn_replay_response(
@@ -196,17 +235,21 @@ pub(crate) fn collect_thread_kernel_replay(
 pub(crate) fn resume_session_kernel_replay_summary(
     manager: &RuntimeThreadManager,
     thread_id: &str,
-    session_message_count: Option<usize>,
+    session_messages: Option<&[zagens_core::chat::Message]>,
 ) -> Option<ResumeSessionKernelReplay> {
     let projection = collect_thread_kernel_replay(manager, thread_id).ok()?;
     if projection.report.turns_with_events == 0 {
         return None;
     }
-    if let Some(count) = session_message_count {
-        log_session_message_plane_checks(count, &projection);
+    let role_index = session_messages.map(build_session_message_role_index);
+    if let Some(messages) = session_messages {
+        log_session_message_plane_checks(messages.len(), &projection, role_index.as_ref());
     }
-    let plane_coverage = session_message_count
-        .and_then(|count| build_session_message_timeline_coverage(count, &projection));
+    let plane_coverage = session_messages
+        .map(|messages| messages.len())
+        .and_then(|count| {
+            timeline_coverage_for_projection(count, &projection, role_index.as_ref())
+        });
     let coverage = plane_coverage
         .as_ref()
         .map(|cov| KernelThreadMessageCoverage {
@@ -235,13 +278,18 @@ pub(crate) fn resume_session_kernel_replay_summary(
         message_coverage_ok: plane_coverage.as_ref().map(|c| c.coverage_ok),
         message_coverage_summary: coverage.and_then(|c| c.summary),
         message_timeline_ok: plane_coverage.as_ref().map(|c| c.overall_ok),
-        message_timeline_summary: plane_coverage.and_then(|c| c.summary),
+        message_timeline_summary: plane_coverage.as_ref().and_then(|c| c.summary.clone()),
         kernel_model_request_count: Some(projection.message_stats.model_request_count),
         kernel_estimated_min_session_messages: Some(
             projection
                 .message_plane_index
                 .estimated_min_session_messages,
         ),
+        message_role_index_ok: plane_coverage.as_ref().map(|c| c.role_index_ok),
+        message_role_index_summary: plane_coverage
+            .as_ref()
+            .filter(|c| !c.role_index_ok)
+            .and_then(|c| c.summary.clone()),
     })
 }
 
@@ -249,14 +297,18 @@ pub(crate) fn resume_session_kernel_replay_summary(
 pub(crate) fn log_session_message_plane_checks(
     session_message_count: usize,
     projection: &ThreadReplayProjection,
+    role_index: Option<&SessionMessageRoleIndex>,
 ) {
-    let Some(cov) = build_session_message_timeline_coverage(session_message_count, projection)
+    let Some(cov) = timeline_coverage_for_projection(session_message_count, projection, role_index)
     else {
         return;
     };
     record_timeline_coherence_check(cov.coherence_ok && cov.timeline_vs_requests_ok);
     record_message_coverage_check(cov.coverage_ok);
-    if !cov.timeline_vs_session_ok || !cov.plane_depth_ok {
+    if let Some(role_ok) = role_index.map(|_| cov.role_index_ok) {
+        record_message_role_index_check(role_ok);
+    }
+    if !cov.timeline_vs_session_ok || !cov.plane_depth_ok || !cov.role_index_ok {
         record_timeline_coherence_check(false);
     }
     if let Some(summary) = cov.summary {
@@ -271,8 +323,9 @@ pub(crate) fn log_session_message_plane_checks(
 pub(crate) fn log_session_message_coverage(
     session_message_count: usize,
     projection: &ThreadReplayProjection,
+    role_index: Option<&SessionMessageRoleIndex>,
 ) {
-    log_session_message_plane_checks(session_message_count, projection);
+    log_session_message_plane_checks(session_message_count, projection, role_index);
 }
 
 pub(crate) async fn get_kernel_turn_replay(
@@ -309,9 +362,10 @@ pub(crate) async fn get_kernel_thread_replay(
             .is_none();
     record_timeline_coherence_check(timeline_ok);
 
-    let plane_coverage = query
-        .session_message_count
-        .and_then(|count| build_session_message_timeline_coverage(count, &projection));
+    let role_index = role_index_for_replay(None, &query);
+    let plane_coverage = query.session_message_count.and_then(|count| {
+        timeline_coverage_for_projection(count, &projection, role_index.as_ref())
+    });
 
     let report = projection.report;
     let turns = report
@@ -370,7 +424,8 @@ pub(crate) async fn get_kernel_thread_replay(
             cov.coherence_ok
                 && cov.timeline_vs_session_ok
                 && cov.timeline_vs_requests_ok
-                && cov.plane_depth_ok,
+                && cov.plane_depth_ok
+                && cov.role_index_ok,
         );
         KernelThreadMessageCoverage {
             session_message_count: cov.session_message_count,
@@ -395,6 +450,11 @@ pub(crate) async fn get_kernel_thread_replay(
         timeline_vs_requests_ok: cov.timeline_vs_requests_ok,
         estimated_min_session_messages: cov.estimated_min_session_messages,
         plane_depth_ok: cov.plane_depth_ok,
+        role_index_ok: cov.role_index_ok,
+        session_assistant_count: cov.session_assistant_count,
+        session_tool_result_count: cov.session_tool_result_count,
+        kernel_min_assistant_messages: cov.kernel_min_assistant_messages,
+        kernel_min_tool_result_messages: cov.kernel_min_tool_result_messages,
         overall_ok: cov.overall_ok,
         summary: cov.summary,
     });

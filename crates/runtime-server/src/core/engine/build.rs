@@ -32,6 +32,9 @@ use crate::core::capacity::CapacityController;
 use crate::core::engine::kernel_message_coverage_shadow::{
     KernelMessageCoverageShadowStats, register_global_message_coverage_shadow_stats,
 };
+use crate::core::engine::kernel_message_role_shadow::{
+    KernelMessageRoleShadowStats, register_global_message_role_shadow_stats,
+};
 use crate::core::engine::kernel_message_timeline_shadow::{
     KernelMessageTimelineShadowStats, register_global_message_timeline_shadow_stats,
 };
@@ -250,6 +253,9 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
         ));
         register_global_message_timeline_shadow_stats(std::sync::Arc::new(
             KernelMessageTimelineShadowStats::default(),
+        ));
+        register_global_message_role_shadow_stats(std::sync::Arc::new(
+            KernelMessageRoleShadowStats::default(),
         ));
     }
     if kernel_event_writer.is_some() && kernel_machine_mode.uses_v3_turn_loop() {

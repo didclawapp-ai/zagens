@@ -204,7 +204,7 @@ pub(crate) async fn resume_session_thread(
                             super::kernel_replay::resume_session_kernel_replay_summary(
                                 state.runtime_threads.as_ref(),
                                 stored_tid,
-                                Some(session.messages.len()),
+                                Some(&session.messages),
                             );
                         return Ok((
                             StatusCode::OK,

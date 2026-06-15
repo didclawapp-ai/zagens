@@ -58,6 +58,10 @@ pub struct ResumeSessionKernelReplay {
     pub kernel_model_request_count: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub kernel_estimated_min_session_messages: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_role_index_ok: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_role_index_summary: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

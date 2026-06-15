@@ -16,6 +16,7 @@ use std::collections::HashSet;
 
 use tokio::sync::mpsc;
 
+use crate::chat::{ContentBlock, Message};
 use crate::engine::kernel_event::{CapacityAction, KernelEvent, TurnOutcome};
 use crate::models::Usage;
 use crate::turn::{TurnLoopMode, TurnOutcomeStatus};
@@ -793,6 +794,93 @@ pub fn replay_thread_message_plane_index(
     }
 }
 
+/// Role-indexed session message counts (observability; no body rebuild).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct SessionMessageRoleIndex {
+    pub user_message_count: u32,
+    pub assistant_message_count: u32,
+    pub tool_result_message_count: u32,
+    pub total_message_count: u32,
+}
+
+/// Kernel-log lower bounds for role-indexed session rows (assistant + tool results).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct KernelMessageRoleEstimate {
+    pub min_assistant_messages: u32,
+    pub min_tool_result_messages: u32,
+    pub min_steer_user_messages: u32,
+}
+
+/// Build role-indexed counts from session JSON messages.
+#[must_use]
+pub fn build_session_message_role_index(messages: &[Message]) -> SessionMessageRoleIndex {
+    let mut user_message_count = 0u32;
+    let mut assistant_message_count = 0u32;
+    let mut tool_result_message_count = 0u32;
+    for msg in messages {
+        match msg.role.as_str() {
+            "user" => {
+                user_message_count += 1;
+                if message_has_tool_result(msg) {
+                    tool_result_message_count += 1;
+                }
+            }
+            "assistant" => assistant_message_count += 1,
+            _ => {}
+        }
+    }
+    SessionMessageRoleIndex {
+        user_message_count,
+        assistant_message_count,
+        tool_result_message_count,
+        total_message_count: messages.len() as u32,
+    }
+}
+
+fn message_has_tool_result(msg: &Message) -> bool {
+    msg.content
+        .iter()
+        .any(|block| matches!(block, ContentBlock::ToolResult { .. }))
+}
+
+/// Build kernel-log role lower bounds from aggregated thread stats.
+#[must_use]
+pub fn replay_kernel_message_role_estimate(
+    stats: &ThreadMessageReplayStats,
+) -> KernelMessageRoleEstimate {
+    KernelMessageRoleEstimate {
+        min_assistant_messages: stats.model_message_count,
+        min_tool_result_messages: stats.tool_call_planned_count,
+        min_steer_user_messages: stats.steer_injection_count,
+    }
+}
+
+/// Verify session role counts can host kernel-log assistant + tool-result rows.
+#[must_use]
+pub fn verify_session_role_index(
+    session: &SessionMessageRoleIndex,
+    kernel: &KernelMessageRoleEstimate,
+) -> Option<String> {
+    let mut issues = Vec::new();
+    if session.assistant_message_count < kernel.min_assistant_messages {
+        issues.push(format!(
+            "session assistant messages ({}) below kernel model_message events ({})",
+            session.assistant_message_count, kernel.min_assistant_messages
+        ));
+    }
+    if session.tool_result_message_count < kernel.min_tool_result_messages {
+        issues.push(format!(
+            "session tool_result messages ({}) below kernel tool_call_planned events ({})",
+            session.tool_result_message_count, kernel.min_tool_result_messages
+        ));
+    }
+    if issues.is_empty() {
+        None
+    } else {
+        Some(issues.join("; "))
+    }
+}
+
 /// Verify session JSON depth can host the kernel log message-plane estimate.
 #[must_use]
 pub fn verify_session_message_plane_depth(
@@ -984,6 +1072,11 @@ pub struct SessionMessageTimelineCoverage {
     pub timeline_vs_session_ok: bool,
     pub timeline_vs_requests_ok: bool,
     pub plane_depth_ok: bool,
+    pub role_index_ok: bool,
+    pub session_assistant_count: Option<u32>,
+    pub session_tool_result_count: Option<u32>,
+    pub kernel_min_assistant_messages: u32,
+    pub kernel_min_tool_result_messages: u32,
     pub overall_ok: bool,
     pub summary: Option<String>,
 }
@@ -1010,6 +1103,7 @@ pub fn verify_timeline_vs_request_count(
 pub fn build_session_message_timeline_coverage(
     session_message_count: usize,
     projection: &ThreadReplayProjection,
+    role_index: Option<&SessionMessageRoleIndex>,
 ) -> Option<SessionMessageTimelineCoverage> {
     let stats = &projection.message_stats;
     let timeline = &projection.message_timeline;
@@ -1017,6 +1111,7 @@ pub fn build_session_message_timeline_coverage(
         return None;
     }
     let plane_index = replay_thread_message_plane_index(stats);
+    let role_estimate = replay_kernel_message_role_estimate(stats);
     let coherence_ok = verify_message_timeline_coherence(stats, timeline).is_none();
     let coverage = build_session_message_coverage(session_message_count, stats);
     let coverage_ok = coverage.as_ref().map(|c| c.coverage_ok).unwrap_or(true);
@@ -1025,11 +1120,15 @@ pub fn build_session_message_timeline_coverage(
     let timeline_vs_requests_ok = verify_timeline_vs_request_count(stats, timeline).is_none();
     let plane_depth_ok =
         verify_session_message_plane_depth(session_message_count, &plane_index).is_none();
+    let role_index_ok = role_index
+        .map(|idx| verify_session_role_index(idx, &role_estimate).is_none())
+        .unwrap_or(true);
     let overall_ok = coherence_ok
         && coverage_ok
         && timeline_vs_session_ok
         && timeline_vs_requests_ok
-        && plane_depth_ok;
+        && plane_depth_ok
+        && role_index_ok;
 
     let mut summaries = Vec::new();
     if let Some(s) = verify_message_timeline_coherence(stats, timeline) {
@@ -1047,6 +1146,11 @@ pub fn build_session_message_timeline_coverage(
     if let Some(s) = verify_session_message_plane_depth(session_message_count, &plane_index) {
         summaries.push(s);
     }
+    if let Some(idx) = role_index {
+        if let Some(s) = verify_session_role_index(idx, &role_estimate) {
+            summaries.push(s);
+        }
+    }
 
     Some(SessionMessageTimelineCoverage {
         session_message_count,
@@ -1059,6 +1163,11 @@ pub fn build_session_message_timeline_coverage(
         timeline_vs_session_ok,
         timeline_vs_requests_ok,
         plane_depth_ok,
+        role_index_ok,
+        session_assistant_count: role_index.map(|idx| idx.assistant_message_count),
+        session_tool_result_count: role_index.map(|idx| idx.tool_result_message_count),
+        kernel_min_assistant_messages: role_estimate.min_assistant_messages,
+        kernel_min_tool_result_messages: role_estimate.min_tool_result_messages,
         overall_ok,
         summary: if summaries.is_empty() {
             None
@@ -1632,7 +1741,7 @@ mod tests {
         let raw = std::fs::read_to_string(&path).expect("read fixture");
         let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
         let projection = replay_thread_projection("t1", &[("t1".into(), events.clone())]);
-        let cov = build_session_message_timeline_coverage(3, &projection).expect("coverage");
+        let cov = build_session_message_timeline_coverage(3, &projection, None).expect("coverage");
         assert!(cov.overall_ok);
         assert!(cov.plane_depth_ok);
         assert_eq!(cov.estimated_min_session_messages, 2);
@@ -1654,6 +1763,68 @@ mod tests {
         let projection = replay_thread_projection("t1", &[("t1".into(), events)]);
         assert!(verify_session_message_plane_depth(2, &projection.message_plane_index).is_none());
         assert!(verify_session_message_plane_depth(1, &projection.message_plane_index).is_some());
+    }
+
+    #[test]
+    fn verify_session_role_index_on_pure_read_fixture() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/harness/kernel-v3-replay/pure_read.json");
+        let raw = std::fs::read_to_string(&path).expect("read fixture");
+        let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
+        let projection = replay_thread_projection("t1", &[("t1".into(), events)]);
+        let kernel = replay_kernel_message_role_estimate(&projection.message_stats);
+        let role_index = SessionMessageRoleIndex {
+            user_message_count: 2,
+            assistant_message_count: 1,
+            tool_result_message_count: 1,
+            total_message_count: 3,
+        };
+        assert!(verify_session_role_index(&role_index, &kernel).is_none());
+        let thin = SessionMessageRoleIndex {
+            assistant_message_count: 0,
+            tool_result_message_count: 0,
+            ..role_index
+        };
+        assert!(verify_session_role_index(&thin, &kernel).is_some());
+        let cov = build_session_message_timeline_coverage(3, &projection, Some(&role_index))
+            .expect("coverage");
+        assert!(cov.role_index_ok);
+        assert!(cov.overall_ok);
+    }
+
+    #[test]
+    fn build_session_message_role_index_counts_tool_results() {
+        use crate::chat::{ContentBlock, Message};
+        let messages = [
+            Message {
+                role: "user".to_string(),
+                content: vec![ContentBlock::Text {
+                    text: "hi".into(),
+                    cache_control: None,
+                }],
+            },
+            Message {
+                role: "assistant".to_string(),
+                content: vec![ContentBlock::Text {
+                    text: "ok".into(),
+                    cache_control: None,
+                }],
+            },
+            Message {
+                role: "user".to_string(),
+                content: vec![ContentBlock::ToolResult {
+                    tool_use_id: "t1".into(),
+                    content: "done".into(),
+                    is_error: None,
+                    content_blocks: None,
+                }],
+            },
+        ];
+        let idx = build_session_message_role_index(&messages);
+        assert_eq!(idx.user_message_count, 2);
+        assert_eq!(idx.assistant_message_count, 1);
+        assert_eq!(idx.tool_result_message_count, 1);
+        assert_eq!(idx.total_message_count, 3);
     }
 
     #[test]
