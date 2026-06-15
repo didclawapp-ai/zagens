@@ -129,6 +129,8 @@ impl KernelTurnHost for Engine {
                     inject_steer = counts.inject_steer,
                     run_compaction = counts.run_compaction,
                     notify_lsp = counts.notify_lsp,
+                    request_approval = counts.request_approval,
+                    sleep = counts.sleep,
                     "v3 turn effect replay counts"
                 );
             }

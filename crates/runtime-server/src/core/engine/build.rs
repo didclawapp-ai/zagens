@@ -60,6 +60,9 @@ use crate::core::engine::kernel_message_timeline_shadow::{
 use crate::core::engine::kernel_notify_lsp_anchor_shadow::{
     KernelNotifyLspAnchorShadowStats, register_global_notify_lsp_anchor_shadow_stats,
 };
+use crate::core::engine::kernel_request_approval_anchor_shadow::{
+    KernelRequestApprovalAnchorShadowStats, register_global_request_approval_anchor_shadow_stats,
+};
 use crate::core::engine::kernel_resume_replay_anchor_shadow::{
     KernelResumeReplayAnchorShadowStats, register_global_resume_replay_anchor_shadow_stats,
 };
@@ -303,6 +306,9 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
         register_global_notify_lsp_anchor_shadow_stats(std::sync::Arc::new(
             KernelNotifyLspAnchorShadowStats::default(),
         ));
+        register_global_request_approval_anchor_shadow_stats(std::sync::Arc::new(
+            KernelRequestApprovalAnchorShadowStats::default(),
+        ));
         register_global_resume_replay_anchor_shadow_stats(std::sync::Arc::new(
             KernelResumeReplayAnchorShadowStats::default(),
         ));
@@ -350,6 +356,7 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
         kernel_pending_inject_steer_kind: None,
         kernel_cycle_advance_ok: None,
         kernel_effect_replay_anchor_only: false,
+        kernel_v3_approval_outcomes: std::collections::HashMap::new(),
     };
 
     let hosts = EngineHostBundle {

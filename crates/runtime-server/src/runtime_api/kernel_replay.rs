@@ -22,6 +22,7 @@ use crate::core::engine::kernel_message_memory_plane_shadow::record_message_memo
 use crate::core::engine::kernel_message_role_shadow::record_message_role_index_check;
 use crate::core::engine::kernel_message_timeline_shadow::record_timeline_coherence_check;
 use crate::core::engine::kernel_notify_lsp_anchor_shadow::record_notify_lsp_anchor_check;
+use crate::core::engine::kernel_request_approval_anchor_shadow::record_request_approval_anchor_check;
 use zagens_runtime_adapters::persist::KernelEventWriter;
 use zagens_runtime_api::ResumeSessionKernelReplay;
 
@@ -138,6 +139,7 @@ pub(crate) struct KernelThreadMessageTimelineCoverage {
     #[serde(skip_serializing_if = "Option::is_none")]
     session_compaction_artifact_count: Option<u32>,
     continuation_anchor_ok: bool,
+    request_approval_anchor_ok: bool,
     notify_lsp_anchor_ok: bool,
     memory_plane_replay_anchor_ok: bool,
     compaction_replay_anchor_ok: bool,
@@ -186,6 +188,10 @@ pub(crate) struct KernelThreadReplayResponse {
     continuation_anchor_ok: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     continuation_anchor_summary: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    request_approval_anchor_ok: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    request_approval_anchor_summary: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     notify_lsp_anchor_ok: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -406,6 +412,13 @@ pub(crate) fn resume_session_kernel_replay_summary(
             .as_ref()
             .filter(|c| !c.continuation_anchor_ok)
             .and_then(|c| c.summary.clone()),
+        message_request_approval_anchor_ok: plane_coverage
+            .as_ref()
+            .map(|c| c.request_approval_anchor_ok),
+        message_request_approval_anchor_summary: plane_coverage
+            .as_ref()
+            .filter(|c| !c.request_approval_anchor_ok)
+            .and_then(|c| c.summary.clone()),
         message_notify_lsp_anchor_ok: plane_coverage.as_ref().map(|c| c.notify_lsp_anchor_ok),
         message_notify_lsp_anchor_summary: plane_coverage
             .as_ref()
@@ -475,6 +488,7 @@ pub(crate) fn log_session_message_plane_checks(
         record_continuation_anchor_check(cov.continuation_anchor_ok);
     }
     if projection.message_stats.tool_call_planned_count > 0 {
+        record_request_approval_anchor_check(cov.request_approval_anchor_ok);
         record_notify_lsp_anchor_check(cov.notify_lsp_anchor_ok);
     }
     let has_memory_plane_injection = projection.message_stats.scratchpad_summary_count > 0
@@ -495,6 +509,7 @@ pub(crate) fn log_session_message_plane_checks(
         || !cov.compaction_depth_ok
         || !cov.compaction_artifact_ok
         || !cov.continuation_anchor_ok
+        || !cov.request_approval_anchor_ok
         || !cov.notify_lsp_anchor_ok
         || !cov.memory_plane_replay_anchor_ok
         || !cov.compaction_replay_anchor_ok
@@ -653,6 +668,7 @@ pub(crate) async fn get_kernel_thread_replay(
                 && cov.compaction_depth_ok
                 && cov.compaction_artifact_ok
                 && cov.continuation_anchor_ok
+                && cov.request_approval_anchor_ok
                 && cov.notify_lsp_anchor_ok
                 && cov.memory_plane_replay_anchor_ok
                 && cov.compaction_replay_anchor_ok,
@@ -695,6 +711,7 @@ pub(crate) async fn get_kernel_thread_replay(
         compaction_artifact_ok: cov.compaction_artifact_ok,
         session_compaction_artifact_count: cov.session_compaction_artifact_count,
         continuation_anchor_ok: cov.continuation_anchor_ok,
+        request_approval_anchor_ok: cov.request_approval_anchor_ok,
         notify_lsp_anchor_ok: cov.notify_lsp_anchor_ok,
         memory_plane_replay_anchor_ok: cov.memory_plane_replay_anchor_ok,
         compaction_replay_anchor_ok: cov.compaction_replay_anchor_ok,
@@ -708,6 +725,7 @@ pub(crate) async fn get_kernel_thread_replay(
         record_continuation_anchor_check(projection.continuation_anchor_ok);
     }
     if projection.message_stats.tool_call_planned_count > 0 {
+        record_request_approval_anchor_check(projection.request_approval_anchor_ok);
         record_notify_lsp_anchor_check(projection.notify_lsp_anchor_ok);
     }
     let has_memory_plane_injection = projection.message_stats.scratchpad_summary_count > 0
@@ -743,6 +761,18 @@ pub(crate) async fn get_kernel_thread_replay(
         },
         continuation_anchor_summary: if has_continuation && !projection.continuation_anchor_ok {
             projection.continuation_anchor_summary.clone()
+        } else {
+            None
+        },
+        request_approval_anchor_ok: if projection.message_stats.tool_call_planned_count > 0 {
+            Some(projection.request_approval_anchor_ok)
+        } else {
+            None
+        },
+        request_approval_anchor_summary: if projection.message_stats.tool_call_planned_count > 0
+            && !projection.request_approval_anchor_ok
+        {
+            projection.request_approval_anchor_summary.clone()
         } else {
             None
         },

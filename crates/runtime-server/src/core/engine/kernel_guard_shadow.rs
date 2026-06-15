@@ -4,6 +4,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use tracing::warn;
 use zagens_core::engine::kernel_event::KernelEvent;
+use zagens_core::engine::turn_loop::capacity_replay_policy::verify_capacity_checkpoint_field_coherence;
+use zagens_core::engine::turn_loop::loop_guard_replay_policy::verify_loop_guard_replay_coherence;
 use zagens_core::engine::turn_machine::verify_guard_projection_chain;
 
 #[derive(Debug, Default)]
@@ -47,14 +49,25 @@ impl KernelGuardShadow {
             return;
         }
         self.stats.record_comparison();
+        let mut summaries = Vec::new();
         if let Some(summary) = verify_guard_projection_chain(events) {
-            self.stats.record_diff();
-            warn!(
-                target: "kernel_guard_shadow",
-                summary,
-                "guard projection shadow diff"
-            );
+            summaries.push(summary);
         }
+        if let Some(summary) = verify_loop_guard_replay_coherence(events) {
+            summaries.push(summary);
+        }
+        if let Some(summary) = verify_capacity_checkpoint_field_coherence(events) {
+            summaries.push(summary);
+        }
+        if summaries.is_empty() {
+            return;
+        }
+        self.stats.record_diff();
+        warn!(
+            target: "kernel_guard_shadow",
+            summary = summaries.join("; "),
+            "guard projection shadow diff"
+        );
     }
 }
 

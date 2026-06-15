@@ -93,10 +93,12 @@ pub struct TurnKernelProjection {
     // ── Continuation counters ────────────────────────────────────────────────
     pub step_limit_continuations: u32,
     pub loop_guard_continuations: u32,
+    pub loop_guard_triggered_count: u32,
     pub cycle_handoff_attempts: u32,
 
     // ── Capacity ─────────────────────────────────────────────────────────────
     pub last_capacity_action: Option<CapacityAction>,
+    pub capacity_checkpoint_count: u32,
 
     // ── Termination ─────────────────────────────────────────────────────────
     pub outcome: Option<TurnOutcome>,
@@ -190,8 +192,13 @@ impl TurnKernelProjection {
                 self.steer_injection_count += 1;
             }
 
+            KernelEvent::LoopGuardTriggered { .. } => {
+                self.loop_guard_triggered_count += 1;
+            }
+
             KernelEvent::CapacityCheckpoint { action, .. } => {
                 self.last_capacity_action = Some(action.clone());
+                self.capacity_checkpoint_count += 1;
             }
 
             KernelEvent::StepLimitContinuation { .. } => {
@@ -402,7 +409,18 @@ impl TurnMachine for ReplayTurnMachine {
                     text: String::new(),
                 });
             }
-            KernelEvent::ToolCallPlanned { call_id, .. } => {
+            KernelEvent::ToolCallPlanned {
+                call_id,
+                tool_name,
+                decision,
+                ..
+            } => {
+                if decision.approval_required {
+                    out.effects.push(Effect::RequestApproval {
+                        call_id: call_id.clone(),
+                        description: tool_name.clone(),
+                    });
+                }
                 out.effects.push(Effect::ExecuteBatch {
                     call_ids: vec![call_id.clone()],
                 });
@@ -417,6 +435,15 @@ impl TurnMachine for ReplayTurnMachine {
                         tool_name: tool_name.clone(),
                     });
                 }
+            }
+            KernelEvent::CapacityCheckpoint {
+                action,
+                cooldown_blocked: true,
+                ..
+            } if matches!(action, CapacityAction::Continue) => {
+                out.effects.push(Effect::Sleep {
+                    millis: capacity_cooldown_backoff_millis(),
+                });
             }
             KernelEvent::CapacityCheckpoint { action, .. } => {
                 if matches!(action, CapacityAction::Trim | CapacityAction::Handoff) {
@@ -512,25 +539,34 @@ pub fn verify_effect_replay_chain(events: &[KernelEvent]) -> Option<String> {
 /// Verify LHT / guard continuation counters match the event log projection.
 #[must_use]
 pub fn verify_guard_projection_chain(events: &[KernelEvent]) -> Option<String> {
-    let projection = TurnKernelProjection::from_events(events);
-    let mut step_limit = 0u32;
-    let mut loop_guard = 0u32;
-    let mut cycle_handoffs = 0u32;
-    let mut capacity_checkpoints = 0u32;
+    use crate::engine::turn_loop::guard_projection_policy::{
+        count_capacity_checkpoints, count_loop_guard_triggered, last_capacity_checkpoint_action,
+    };
 
-    for event in events {
-        match event {
-            KernelEvent::StepLimitContinuation { .. } => step_limit += 1,
-            KernelEvent::LoopGuardContinuation { .. } => loop_guard += 1,
-            KernelEvent::ContextOverflowRecovered {
-                strategy: crate::engine::kernel_event::OverflowStrategy::CycleHandoff,
-                ..
-            }
-            | KernelEvent::CycleAdvanced { .. } => cycle_handoffs += 1,
-            KernelEvent::CapacityCheckpoint { .. } => capacity_checkpoints += 1,
-            _ => {}
-        }
-    }
+    let projection = TurnKernelProjection::from_events(events);
+    let step_limit = events
+        .iter()
+        .filter(|event| matches!(event, KernelEvent::StepLimitContinuation { .. }))
+        .count() as u32;
+    let loop_guard = events
+        .iter()
+        .filter(|event| matches!(event, KernelEvent::LoopGuardContinuation { .. }))
+        .count() as u32;
+    let loop_guard_triggered = count_loop_guard_triggered(events);
+    let cycle_handoffs = events
+        .iter()
+        .filter(|event| {
+            matches!(
+                event,
+                KernelEvent::ContextOverflowRecovered {
+                    strategy: crate::engine::kernel_event::OverflowStrategy::CycleHandoff,
+                    ..
+                } | KernelEvent::CycleAdvanced { .. }
+            )
+        })
+        .count() as u32;
+    let capacity_checkpoints = count_capacity_checkpoints(events);
+    let last_capacity = last_capacity_checkpoint_action(events);
 
     let mut diffs = Vec::new();
     if projection.step_limit_continuations != step_limit {
@@ -545,16 +581,38 @@ pub fn verify_guard_projection_chain(events: &[KernelEvent]) -> Option<String> {
             projection.loop_guard_continuations
         ));
     }
+    if projection.loop_guard_triggered_count != loop_guard_triggered {
+        diffs.push(format!(
+            "loop_guard_triggered_count proj={} events={loop_guard_triggered}",
+            projection.loop_guard_triggered_count
+        ));
+    }
     if projection.cycle_handoff_attempts != cycle_handoffs {
         diffs.push(format!(
             "cycle_handoff_attempts proj={} events={cycle_handoffs}",
             projection.cycle_handoff_attempts
         ));
     }
+    if projection.capacity_checkpoint_count != capacity_checkpoints {
+        diffs.push(format!(
+            "capacity_checkpoint_count proj={} events={capacity_checkpoints}",
+            projection.capacity_checkpoint_count
+        ));
+    }
     if capacity_checkpoints > 0 && projection.last_capacity_action.is_none() {
         diffs.push(
             "capacity checkpoints present but projection last_capacity_action is None".into(),
         );
+    }
+    if let (Some(proj_last), Some(log_last)) = (
+        projection.last_capacity_action.as_ref(),
+        last_capacity.as_ref(),
+    ) {
+        if proj_last != log_last {
+            diffs.push(format!(
+                "last_capacity_action proj={proj_last:?} log={log_last:?}"
+            ));
+        }
     }
     if diffs.is_empty() {
         None
@@ -658,6 +716,23 @@ pub fn verify_turn_replay_coherence(
     if let Some(summary) = verify_guard_projection_chain(events) {
         diffs.push(format!("guard: {summary}"));
     }
+    if let Some(summary) =
+        crate::engine::turn_loop::loop_guard_replay_policy::verify_loop_guard_replay_coherence(
+            events,
+        )
+    {
+        diffs.push(format!("loop_guard_replay: {summary}"));
+    }
+    if let Some(summary) =
+        crate::engine::turn_loop::capacity_replay_policy::verify_capacity_checkpoint_field_coherence(
+            events,
+        )
+    {
+        diffs.push(format!("capacity_fields: {summary}"));
+    }
+    if let Some(summary) = verify_capacity_effect_replay_coherence(events) {
+        diffs.push(format!("capacity_replay: {summary}"));
+    }
     if let Some(summary) = verify_memory_projection_chain(events) {
         diffs.push(format!("memory: {summary}"));
     }
@@ -756,6 +831,8 @@ pub struct ThreadReplayProjection {
     /// Continuation steps replay `InjectSteer` in their step effect chain.
     pub continuation_anchor_ok: bool,
     pub continuation_anchor_summary: Option<String>,
+    pub request_approval_anchor_ok: bool,
+    pub request_approval_anchor_summary: Option<String>,
     pub notify_lsp_anchor_ok: bool,
     pub notify_lsp_anchor_summary: Option<String>,
     /// Scratchpad / reminder / cycle-briefing events replay `InjectSteer` in the effect chain.
@@ -1272,6 +1349,45 @@ pub fn verify_thread_continuation_anchors(
     }
 }
 
+/// Whether a planned tool call requires user approval (from kernel log policy metadata).
+#[must_use]
+pub fn is_approval_required_planned_event(event: &KernelEvent) -> bool {
+    matches!(
+        event,
+        KernelEvent::ToolCallPlanned {
+            decision,
+            ..
+        } if decision.approval_required
+    )
+}
+
+/// Verify steps replay a `RequestApproval` effect per approval-required `ToolCallPlanned`.
+#[must_use]
+pub fn verify_step_request_approval_anchor(
+    turn_events: &[KernelEvent],
+    step_idx: u32,
+) -> Option<String> {
+    let step_events = events_for_step(turn_events, step_idx);
+    let expected = step_events
+        .iter()
+        .filter(|event| is_approval_required_planned_event(event))
+        .count();
+    if expected == 0 {
+        return None;
+    }
+    let approval_effects = replay_step_effects(turn_events, step_idx)
+        .iter()
+        .filter(|effect| matches!(effect, Effect::RequestApproval { .. }))
+        .count();
+    if approval_effects >= expected {
+        None
+    } else {
+        Some(format!(
+            "step {step_idx} expected {expected} RequestApproval replay effects, found {approval_effects}"
+        ))
+    }
+}
+
 /// Verify edit-tool steps replay a `NotifyLsp` effect per state-writing tool finish.
 #[must_use]
 pub fn verify_step_notify_lsp_anchor(turn_events: &[KernelEvent], step_idx: u32) -> Option<String> {
@@ -1500,6 +1616,32 @@ pub fn verify_step_compaction_replay_anchor(
     }
 }
 
+/// Verify approval-required steps across a thread replay `RequestApproval` in their effect chain.
+#[must_use]
+pub fn verify_thread_request_approval_anchors(
+    turn_events: &[(String, Vec<KernelEvent>)],
+) -> Option<String> {
+    let mut issues = Vec::new();
+    for (_, events) in turn_events {
+        let mut step_indices = std::collections::BTreeSet::new();
+        for event in events {
+            if let KernelEvent::ModelRequestIssued { step_idx, .. } = event {
+                step_indices.insert(*step_idx);
+            }
+        }
+        for step_idx in step_indices {
+            if let Some(summary) = verify_step_request_approval_anchor(events, step_idx) {
+                issues.push(summary);
+            }
+        }
+    }
+    if issues.is_empty() {
+        None
+    } else {
+        Some(issues.join("; "))
+    }
+}
+
 /// Verify edit-tool steps across a thread replay `NotifyLsp` in their step effect chain.
 #[must_use]
 pub fn verify_thread_notify_lsp_anchors(
@@ -1699,6 +1841,7 @@ pub struct SessionMessageTimelineCoverage {
     pub compaction_artifact_ok: bool,
     pub session_compaction_artifact_count: Option<u32>,
     pub continuation_anchor_ok: bool,
+    pub request_approval_anchor_ok: bool,
     pub notify_lsp_anchor_ok: bool,
     pub memory_plane_replay_anchor_ok: bool,
     pub compaction_replay_anchor_ok: bool,
@@ -1773,6 +1916,7 @@ pub fn build_session_message_timeline_coverage(
         })
         .unwrap_or(true);
     let continuation_anchor_ok = projection.continuation_anchor_ok;
+    let request_approval_anchor_ok = projection.request_approval_anchor_ok;
     let notify_lsp_anchor_ok = projection.notify_lsp_anchor_ok;
     let memory_plane_replay_anchor_ok = projection.memory_plane_replay_anchor_ok;
     let compaction_replay_anchor_ok = projection.compaction_replay_anchor_ok;
@@ -1786,6 +1930,7 @@ pub fn build_session_message_timeline_coverage(
         && compaction_depth_ok
         && compaction_artifact_ok
         && continuation_anchor_ok
+        && request_approval_anchor_ok
         && notify_lsp_anchor_ok
         && memory_plane_replay_anchor_ok
         && compaction_replay_anchor_ok;
@@ -1832,6 +1977,11 @@ pub fn build_session_message_timeline_coverage(
             summaries.push(s);
         }
     }
+    if !request_approval_anchor_ok {
+        if let Some(s) = projection.request_approval_anchor_summary.clone() {
+            summaries.push(s);
+        }
+    }
     if !notify_lsp_anchor_ok {
         if let Some(s) = projection.notify_lsp_anchor_summary.clone() {
             summaries.push(s);
@@ -1874,6 +2024,7 @@ pub fn build_session_message_timeline_coverage(
         compaction_artifact_ok,
         session_compaction_artifact_count: session_compaction.map(|s| s.len() as u32),
         continuation_anchor_ok,
+        request_approval_anchor_ok,
         notify_lsp_anchor_ok,
         memory_plane_replay_anchor_ok,
         compaction_replay_anchor_ok,
@@ -1900,6 +2051,8 @@ pub fn replay_thread_projection(
     let compaction_index = replay_thread_compaction_index(&compaction_timeline);
     let continuation_anchor_summary = verify_thread_continuation_anchors(turn_events);
     let continuation_anchor_ok = continuation_anchor_summary.is_none();
+    let request_approval_anchor_summary = verify_thread_request_approval_anchors(turn_events);
+    let request_approval_anchor_ok = request_approval_anchor_summary.is_none();
     let notify_lsp_anchor_summary = verify_thread_notify_lsp_anchors(turn_events);
     let notify_lsp_anchor_ok = notify_lsp_anchor_summary.is_none();
     let memory_plane_replay_anchor_summary = verify_thread_memory_plane_replay_anchors(turn_events);
@@ -1929,6 +2082,8 @@ pub fn replay_thread_projection(
         compaction_index,
         continuation_anchor_ok,
         continuation_anchor_summary,
+        request_approval_anchor_ok,
+        request_approval_anchor_summary,
         notify_lsp_anchor_ok,
         notify_lsp_anchor_summary,
         memory_plane_replay_anchor_ok,
@@ -2031,9 +2186,11 @@ pub fn replay_turn_effects(events: &[KernelEvent]) -> Vec<Effect> {
 pub struct ReplayEffectCounts {
     pub call_model: u32,
     pub execute_batch: u32,
+    pub request_approval: u32,
     pub inject_steer: u32,
     pub run_compaction: u32,
     pub notify_lsp: u32,
+    pub sleep: u32,
 }
 
 impl ReplayEffectCounts {
@@ -2064,10 +2221,11 @@ pub fn replay_effect_counts(events: &[KernelEvent]) -> ReplayEffectCounts {
         match effect {
             Effect::CallModel { .. } => counts.call_model += 1,
             Effect::ExecuteBatch { .. } => counts.execute_batch += 1,
+            Effect::RequestApproval { .. } => counts.request_approval += 1,
             Effect::InjectSteer { .. } => counts.inject_steer += 1,
             Effect::RunCompaction => counts.run_compaction += 1,
             Effect::NotifyLsp { .. } => counts.notify_lsp += 1,
-            _ => {}
+            Effect::Sleep { .. } => counts.sleep += 1,
         }
     }
     counts
@@ -2083,9 +2241,11 @@ pub fn replay_thread_effect_counts(
         let counts = replay_effect_counts(events);
         total.call_model += counts.call_model;
         total.execute_batch += counts.execute_batch;
+        total.request_approval += counts.request_approval;
         total.inject_steer += counts.inject_steer;
         total.run_compaction += counts.run_compaction;
         total.notify_lsp += counts.notify_lsp;
+        total.sleep += counts.sleep;
     }
     total
 }
@@ -2129,6 +2289,108 @@ pub fn plan_v3_step_effects(token_budget: u32, tool_call_ids: &[String]) -> Vec<
         });
     }
     effects
+}
+
+/// Pre-`ExecuteBatch` approval effects derived from `ToolCallPlanned` policy metadata.
+#[must_use]
+pub fn request_approval_effects_from_step_events(step_events: &[KernelEvent]) -> Vec<Effect> {
+    step_events
+        .iter()
+        .filter_map(|event| {
+            let KernelEvent::ToolCallPlanned {
+                call_id,
+                tool_name,
+                decision,
+                ..
+            } = event
+            else {
+                return None;
+            };
+            if decision.approval_required {
+                Some(Effect::RequestApproval {
+                    call_id: call_id.clone(),
+                    description: tool_name.clone(),
+                })
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Verify capacity checkpoint replay effects (`Sleep` / `RunCompaction`) per step.
+#[must_use]
+pub fn verify_capacity_effect_replay_coherence(turn_events: &[KernelEvent]) -> Option<String> {
+    let mut step_indices = std::collections::BTreeSet::new();
+    for event in turn_events {
+        match event {
+            KernelEvent::ModelRequestIssued { step_idx, .. }
+            | KernelEvent::CapacityCheckpoint { step_idx, .. } => {
+                step_indices.insert(*step_idx);
+            }
+            _ => {}
+        }
+    }
+    let mut issues = Vec::new();
+    for step_idx in step_indices {
+        if let Some(summary) = verify_step_capacity_sleep_anchor(turn_events, step_idx) {
+            issues.push(summary);
+        }
+        if let Some(summary) = verify_step_compaction_replay_anchor(turn_events, step_idx) {
+            issues.push(summary);
+        }
+    }
+    if issues.is_empty() {
+        None
+    } else {
+        Some(issues.join("; "))
+    }
+}
+
+/// Symbolic back-off duration for capacity cooldown replay anchors (deterministic).
+#[must_use]
+pub const fn capacity_cooldown_backoff_millis() -> u64 {
+    100
+}
+
+/// Whether a checkpoint records a cooldown-suppressed guardrail (`Continue` + blocked).
+#[must_use]
+pub fn is_capacity_cooldown_blocked_checkpoint(event: &KernelEvent) -> bool {
+    matches!(
+        event,
+        KernelEvent::CapacityCheckpoint {
+            action: CapacityAction::Continue,
+            cooldown_blocked: true,
+            ..
+        }
+    )
+}
+
+/// Verify steps replay a `Sleep` effect per cooldown-blocked capacity checkpoint.
+#[must_use]
+pub fn verify_step_capacity_sleep_anchor(
+    turn_events: &[KernelEvent],
+    step_idx: u32,
+) -> Option<String> {
+    let step_events = events_for_step(turn_events, step_idx);
+    let expected = step_events
+        .iter()
+        .filter(|event| is_capacity_cooldown_blocked_checkpoint(event))
+        .count();
+    if expected == 0 {
+        return None;
+    }
+    let sleep_effects = replay_step_effects(turn_events, step_idx)
+        .iter()
+        .filter(|effect| matches!(effect, Effect::Sleep { .. }))
+        .count();
+    if sleep_effects >= expected {
+        None
+    } else {
+        Some(format!(
+            "step {step_idx} expected {expected} Sleep replay effects, found {sleep_effects}"
+        ))
+    }
 }
 
 /// Post-`ExecuteBatch` notify-LSP tail derived from observed `ToolCallFinished` events.
@@ -2884,6 +3146,82 @@ mod tests {
         assert!(matches!(step_limit[0], Effect::InjectSteer { ref text } if text.is_empty()));
         let loop_guard = continuation_inject_steer_effects_for_step(&events, 22);
         assert_eq!(loop_guard.len(), 1);
+    }
+
+    #[test]
+    fn verify_step_capacity_sleep_anchor_on_cooldown_checkpoint() {
+        use crate::engine::kernel_event::{
+            CapacityAction, CapacityCheckpointKind, KernelEvent, TurnOutcome,
+        };
+        use crate::turn::TurnLoopMode;
+
+        let events = vec![
+            KernelEvent::TurnStarted {
+                turn_id: "t-cap".into(),
+                mode: TurnLoopMode::Agent,
+                input_text: "x".into(),
+                max_steps: 5,
+            },
+            KernelEvent::ModelRequestIssued {
+                turn_id: "t-cap".into(),
+                step_idx: 1,
+                request_fp: crate::engine::request_fingerprint::RequestFingerprint {
+                    static_prefix_sha256: "a".into(),
+                    full_prefix_sha256: "b".into(),
+                },
+                token_budget: 8192,
+            },
+            KernelEvent::CapacityCheckpoint {
+                turn_id: "t-cap".into(),
+                step_idx: 1,
+                kind: CapacityCheckpointKind::PreRequest,
+                tokens_used: 9000,
+                token_budget: 12000,
+                action: CapacityAction::Continue,
+                cooldown_blocked: true,
+            },
+            KernelEvent::TurnEnded {
+                turn_id: "t-cap".into(),
+                outcome: TurnOutcome::Completed,
+                total_steps: 1,
+            },
+        ];
+        assert!(verify_step_capacity_sleep_anchor(&events, 1).is_none());
+        let sleep_effects: Vec<_> = replay_step_effects(&events, 1)
+            .into_iter()
+            .filter(|e| matches!(e, Effect::Sleep { .. }))
+            .collect();
+        assert_eq!(sleep_effects.len(), 1);
+        assert!(matches!(
+            sleep_effects[0],
+            Effect::Sleep { millis } if millis == capacity_cooldown_backoff_millis()
+        ));
+    }
+
+    #[test]
+    fn verify_step_request_approval_anchor_on_write_batch_fixture() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/harness/kernel-v3-replay/write_batch.json");
+        let raw = std::fs::read_to_string(&path).expect("read fixture");
+        let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
+        assert!(verify_step_request_approval_anchor(&events, 1).is_none());
+        let projection = replay_thread_projection("t1", &[("t1".into(), events.clone())]);
+        assert!(projection.request_approval_anchor_ok);
+        let step_events = events_for_step(&events, 1);
+        let approval_tail = request_approval_effects_from_step_events(&step_events);
+        assert_eq!(approval_tail.len(), 1);
+        assert!(matches!(
+            approval_tail[0],
+            Effect::RequestApproval {
+                ref call_id,
+                ..
+            } if call_id == "call-write-1"
+        ));
+        let replay_approval: Vec<_> = replay_step_effects(&events, 1)
+            .into_iter()
+            .filter(|e| matches!(e, Effect::RequestApproval { .. }))
+            .collect();
+        assert_eq!(approval_tail.len(), replay_approval.len());
     }
 
     #[test]

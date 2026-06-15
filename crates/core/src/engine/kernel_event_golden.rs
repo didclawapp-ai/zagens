@@ -71,6 +71,30 @@ mod tests {
     }
 
     #[test]
+    fn golden_loop_guard_replay_coherence() {
+        let events = load_fixture("loop_guard.json");
+        assert!(
+            crate::engine::turn_loop::loop_guard_replay_policy::verify_loop_guard_replay_coherence(
+                &events
+            )
+            .is_none(),
+            "loop guard replay mismatch in loop_guard.json"
+        );
+    }
+
+    #[test]
+    fn golden_guard_projection_loop_guard() {
+        let events = load_fixture("loop_guard.json");
+        let p = TurnKernelProjection::from_events(&events);
+        assert_eq!(p.loop_guard_triggered_count, 1);
+        assert_eq!(p.loop_guard_continuations, 1);
+        assert!(
+            verify_guard_projection_chain(&events).is_none(),
+            "guard projection mismatch in loop_guard.json"
+        );
+    }
+
+    #[test]
     fn golden_guard_projection_lht_continue() {
         let events = load_fixture("lht_continue.json");
         assert!(
@@ -91,9 +115,26 @@ mod tests {
     }
 
     #[test]
+    fn golden_capacity_replay_coherence() {
+        let events = load_fixture("capacity_checkpoint.json");
+        assert!(
+            crate::engine::turn_loop::capacity_replay_policy::verify_capacity_checkpoint_field_coherence(
+                &events
+            )
+            .is_none(),
+            "capacity field coherence mismatch in capacity_checkpoint.json"
+        );
+        assert!(
+            crate::engine::turn_machine::verify_capacity_effect_replay_coherence(&events).is_none(),
+            "capacity effect replay mismatch in capacity_checkpoint.json"
+        );
+    }
+
+    #[test]
     fn golden_capacity_checkpoint_projection() {
         let events = load_fixture("capacity_checkpoint.json");
         let p = TurnKernelProjection::from_events(&events);
+        assert_eq!(p.capacity_checkpoint_count, 2);
         assert_eq!(
             p.last_capacity_action,
             Some(crate::engine::kernel_event::CapacityAction::Trim)

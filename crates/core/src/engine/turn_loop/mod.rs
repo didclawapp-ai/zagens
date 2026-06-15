@@ -1,10 +1,13 @@
 //! Turn loop (P2 PR4/PR6): [`handle_deepseek_turn`], streaming + tool planning/outcomes in core; tool execution L2 in tui (`tool_plans_exec`).
 
 pub mod capacity_policy;
+pub mod capacity_replay_policy;
 pub mod control;
 pub mod exec;
+pub mod guard_projection_policy;
 pub mod helpers;
 pub mod host;
+pub mod loop_guard_replay_policy;
 pub mod run;
 pub mod streaming_phase;
 pub mod tool_exec;

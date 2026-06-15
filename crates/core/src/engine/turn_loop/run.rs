@@ -282,7 +282,11 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
             }
         }
 
-        host.flush_pending_lsp_diagnostics().await;
+        // v3 routes LSP drain through `Effect::NotifyLsp` after each tool batch (batch 6t);
+        // pre-step flush is redundant and would double-inject if blocks were still pending.
+        if !host.kernel_machine_mode().uses_v3_turn_loop() {
+            host.flush_pending_lsp_diagnostics().await;
+        }
         host.layered_context_checkpoint().await;
 
         let stream_span = tracing::info_span!(

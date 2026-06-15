@@ -16,6 +16,7 @@ use zagens_core::turn::TurnLoopMode;
 use zagens_tools::{ToolError, ToolResult};
 
 use super::super::approval::ApprovalResult;
+use super::super::approval_ops::V3ApprovalStepOutcome;
 use super::super::dispatch::should_parallelize_tool_batch;
 use super::super::hook_dispatch::fire_tool_call_after_with_executor;
 use super::super::tool_catalog::{
@@ -476,7 +477,34 @@ async fn execute_tool_plans_batch(
             let (result_override, context_override): (
                 Option<Result<ToolResult, ToolError>>,
                 Option<crate::tools::ToolContext>,
-            ) = if plan.approval_required {
+            ) = if plan.approval_required && engine.routes_tool_approval_via_v3_effect() {
+                if engine.approval_cache_hit(&tool_name, &tool_input) {
+                    emit_tool_audit(json!({
+                        "event": "tool.approval_cache_hit",
+                        "tool_id": tool_id.clone(),
+                        "tool_name": tool_name.clone(),
+                    }));
+                    (None, None)
+                } else if let Some(outcome) = engine.v3_approval_outcome_for(&tool_id) {
+                    match outcome {
+                        V3ApprovalStepOutcome::Approved => (None, None),
+                        V3ApprovalStepOutcome::Denied => (
+                            Some(Err(ToolError::permission_denied(format!(
+                                "Tool '{tool_name}' denied by user"
+                            )))),
+                            None,
+                        ),
+                        V3ApprovalStepOutcome::RetryWithPolicy(policy) => {
+                            let elevated_context = tool_registry
+                                .map(|r| r.context().clone().with_elevated_sandbox_policy(policy));
+                            (None, elevated_context)
+                        }
+                        V3ApprovalStepOutcome::Error(err) => (Some(Err(err)), None),
+                    }
+                } else {
+                    (None, None)
+                }
+            } else if plan.approval_required {
                 if engine.approval_cache_hit(&tool_name, &tool_input) {
                     emit_tool_audit(json!({
                         "event": "tool.approval_cache_hit",

@@ -11,6 +11,7 @@ mod interventions;
 mod observation;
 mod persistence;
 mod replay;
+mod v3_routing;
 
 use crate::agent_surface::AppMode;
 use zagens_core::turn::TurnLoopMode;

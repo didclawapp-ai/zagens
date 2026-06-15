@@ -1,4 +1,7 @@
 //! Phase 3b batch 6g — v3 turn loop driver helpers.
+//!
+//! Capacity trim/handoff/cooldown/replay routing lives in
+//! `capacity_flow::v3_routing` (batch 7d).
 
 use crate::engine::kernel_mode::KernelMachineMode;
 use crate::engine::turn_machine::plan_v3_step_effects;
@@ -18,7 +21,8 @@ pub fn log_v3_turn_start<H: TurnLoopHost>(host: &H, turn_id: &str) {
 
 /// Log the planned effect chain for a v3 step (observability before IO).
 ///
-/// `NotifyLsp` effects are appended after `ExecuteBatch` once tool outcomes are known.
+/// `NotifyLsp` effects run after `ExecuteBatch` (effect interpreter or core fallback);
+/// the turn loop skips the legacy pre-step `flush_pending_lsp_diagnostics` in v3 mode.
 pub fn log_v3_step_effect_plan(turn_id: &str, step: u32, token_budget: u32, call_ids: &[String]) {
     let plan = plan_v3_step_effects(token_budget, call_ids);
     tracing::debug!(

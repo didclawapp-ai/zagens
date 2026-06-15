@@ -105,6 +105,7 @@ impl Engine {
                 tokens_used,
                 token_budget,
                 action: kernel_action.clone(),
+                cooldown_blocked: decision.cooldown_blocked,
             },
         );
         let _ = self
@@ -138,6 +139,9 @@ impl Engine {
             ),
         )
         .await;
+        if decision.cooldown_blocked {
+            self.route_capacity_cooldown_sleep().await;
+        }
     }
 
     pub(in crate::core::engine) async fn emit_capacity_intervention(

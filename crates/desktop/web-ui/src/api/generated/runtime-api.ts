@@ -1031,11 +1031,15 @@ export type components = {
             /** Format: uint32 */
             readonly execute_batch: number;
             /** Format: uint32 */
+            readonly request_approval: number;
+            /** Format: uint32 */
             readonly inject_steer: number;
             /** Format: uint32 */
             readonly run_compaction: number;
             /** Format: uint32 */
             readonly notify_lsp: number;
+            /** Format: uint32 */
+            readonly sleep: number;
         };
         readonly ResumeSessionKernelReplay: {
             /** Format: uint */
@@ -1076,6 +1080,8 @@ export type components = {
             readonly message_continuation_anchor_summary?: string | null;
             readonly message_notify_lsp_anchor_ok?: boolean | null;
             readonly message_notify_lsp_anchor_summary?: string | null;
+            readonly message_request_approval_anchor_ok?: boolean | null;
+            readonly message_request_approval_anchor_summary?: string | null;
             readonly message_memory_plane_replay_anchor_ok?: boolean | null;
             readonly message_memory_plane_replay_anchor_summary?: string | null;
             readonly message_compaction_replay_anchor_ok?: boolean | null;

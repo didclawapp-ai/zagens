@@ -273,6 +273,11 @@
             "format": "uint32",
             "minimum": 0
           },
+          "request_approval": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
           "inject_steer": {
             "type": "integer",
             "format": "uint32",
@@ -287,14 +292,21 @@
             "type": "integer",
             "format": "uint32",
             "minimum": 0
+          },
+          "sleep": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
           }
         },
         "required": [
           "call_model",
           "execute_batch",
+          "request_approval",
           "inject_steer",
           "run_compaction",
-          "notify_lsp"
+          "notify_lsp",
+          "sleep"
         ]
       },
       "ResumeSessionKernelReplay": {
@@ -471,6 +483,18 @@
             ]
           },
           "message_notify_lsp_anchor_summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message_request_approval_anchor_ok": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "message_request_approval_anchor_summary": {
             "type": [
               "string",
               "null"

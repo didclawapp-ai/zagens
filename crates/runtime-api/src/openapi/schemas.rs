@@ -84,6 +84,10 @@ pub struct ResumeSessionKernelReplay {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message_notify_lsp_anchor_summary: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_request_approval_anchor_ok: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_request_approval_anchor_summary: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub message_memory_plane_replay_anchor_ok: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message_memory_plane_replay_anchor_summary: Option<String>,

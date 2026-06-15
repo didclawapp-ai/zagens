@@ -311,6 +311,9 @@ pub enum KernelEvent {
         tokens_used: u32,
         token_budget: u32,
         action: CapacityAction,
+        /// When true, a proposed guardrail was suppressed by cooldown (replay → `Effect::Sleep`).
+        #[serde(default)]
+        cooldown_blocked: bool,
     },
 
     // ── LHT / Cycle continuation ─────────────────────────────────────────────
@@ -483,6 +486,7 @@ mod tests {
             tokens_used: 8000,
             token_budget: 32000,
             action: CapacityAction::Continue,
+            cooldown_blocked: false,
         };
         let json = serde_json::to_string(&ev).expect("serialize");
         let _back: KernelEvent = serde_json::from_str(&json).expect("deserialize");
@@ -750,6 +754,7 @@ mod tests {
                 tokens_used: 5000,
                 token_budget: 32000,
                 action: CapacityAction::Continue,
+                cooldown_blocked: false,
             },
             KernelEvent::CapacityCheckpoint {
                 turn_id: tid.clone(),
@@ -758,6 +763,7 @@ mod tests {
                 tokens_used: 28000,
                 token_budget: 32000,
                 action: CapacityAction::Trim,
+                cooldown_blocked: false,
             },
         ];
         let last_action = events

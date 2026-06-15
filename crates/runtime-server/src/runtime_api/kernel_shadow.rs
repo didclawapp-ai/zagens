@@ -20,6 +20,7 @@ use crate::core::engine::kernel_message_timeline_shadow::kernel_message_timeline
 use crate::core::engine::kernel_notify_lsp_anchor_shadow::kernel_notify_lsp_anchor_shadow_stats;
 use crate::core::engine::kernel_projection_shadow::kernel_projection_shadow_stats;
 use crate::core::engine::kernel_replay_shadow::kernel_replay_shadow_stats;
+use crate::core::engine::kernel_request_approval_anchor_shadow::kernel_request_approval_anchor_shadow_stats;
 use crate::core::engine::kernel_resume_replay_anchor_shadow::{
     kernel_resume_replay_anchor_alignment_stats, kernel_resume_replay_anchor_shadow_stats,
 };
@@ -53,9 +54,11 @@ pub(crate) struct V3ReplayEffectCountsBlock {
     last_turn_id: Option<String>,
     call_model: u32,
     execute_batch: u32,
+    request_approval: u32,
     inject_steer: u32,
     run_compaction: u32,
     notify_lsp: u32,
+    sleep: u32,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -105,6 +108,8 @@ pub(crate) struct KernelShadowResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     notify_lsp_anchor_shadow: Option<ShadowCounterBlock>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    request_approval_anchor_shadow: Option<ShadowCounterBlock>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     memory_plane_replay_anchor_shadow: Option<ShadowCounterBlock>,
     #[serde(skip_serializing_if = "Option::is_none")]
     compaction_replay_anchor_shadow: Option<ShadowCounterBlock>,
@@ -137,6 +142,7 @@ pub(crate) fn collect_kernel_shadow_stats(config: &crate::config::Config) -> Ker
     let compaction_artifact_shadow = probe_compaction_artifact_shadow(config);
     let continuation_anchor_shadow = probe_continuation_anchor_shadow(config);
     let notify_lsp_anchor_shadow = probe_notify_lsp_anchor_shadow(config);
+    let request_approval_anchor_shadow = probe_request_approval_anchor_shadow(config);
     let memory_plane_replay_anchor_shadow = probe_memory_plane_replay_anchor_shadow(config);
     let compaction_replay_anchor_shadow = probe_compaction_replay_anchor_shadow(config);
     let v3_replay_effect_counts = probe_v3_replay_effect_counts(config);
@@ -158,6 +164,7 @@ pub(crate) fn collect_kernel_shadow_stats(config: &crate::config::Config) -> Ker
         compaction_artifact_shadow,
         continuation_anchor_shadow,
         notify_lsp_anchor_shadow,
+        request_approval_anchor_shadow,
         memory_plane_replay_anchor_shadow,
         compaction_replay_anchor_shadow,
         v3_replay_effect_counts,
@@ -317,9 +324,11 @@ fn probe_v3_replay_effect_counts(
         last_turn_id: last.turn_id,
         call_model: last.counts.call_model,
         execute_batch: last.counts.execute_batch,
+        request_approval: last.counts.request_approval,
         inject_steer: last.counts.inject_steer,
         run_compaction: last.counts.run_compaction,
         notify_lsp: last.counts.notify_lsp,
+        sleep: last.counts.sleep,
     })
 }
 
@@ -477,6 +486,25 @@ fn probe_notify_lsp_anchor_shadow(config: &crate::config::Config) -> Option<Shad
         return None;
     }
     let (comparisons, diffs) = kernel_notify_lsp_anchor_shadow_stats();
+    if comparisons == 0 && diffs == 0 {
+        return None;
+    }
+    Some(ShadowCounterBlock {
+        mode: mode.as_str().to_string(),
+        comparisons,
+        diffs,
+        diff_rate_pct: shadow_diff_rate_pct(comparisons, diffs),
+    })
+}
+
+fn probe_request_approval_anchor_shadow(
+    config: &crate::config::Config,
+) -> Option<ShadowCounterBlock> {
+    let mode = config.kernel_machine_mode();
+    if !mode.uses_replay_verification() {
+        return None;
+    }
+    let (comparisons, diffs) = kernel_request_approval_anchor_shadow_stats();
     if comparisons == 0 && diffs == 0 {
         return None;
     }

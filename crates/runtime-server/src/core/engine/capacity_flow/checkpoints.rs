@@ -10,6 +10,7 @@ use zagens_core::engine::turn_loop::should_run_capacity_error_escalation;
 use zagens_core::turn::{TurnContext, TurnLoopMode};
 
 use super::super::*;
+use super::v3_routing::CapacityDispatchContext;
 
 impl Engine {
     pub(in crate::core::engine) async fn run_capacity_pre_request_checkpoint(
@@ -32,12 +33,18 @@ impl Engine {
         )
         .await;
 
-        if decision.action != GuardrailAction::TargetedContextRefresh {
-            return false;
-        }
-
-        self.route_capacity_trim_refresh(turn, client, mode, snapshot.as_ref())
-            .await
+        self.dispatch_capacity_decision(CapacityDispatchContext {
+            turn,
+            mode,
+            snapshot: snapshot.as_ref(),
+            decision: &decision,
+            client,
+            tool_registry: None,
+            tool_exec_lock: None,
+            mcp_pool: None,
+            handoff_reason: "capacity_handoff",
+        })
+        .await
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -65,31 +72,18 @@ impl Engine {
         )
         .await;
 
-        match decision.action {
-            GuardrailAction::VerifyWithToolReplay => {
-                let _ = self
-                    .apply_verify_with_tool_replay(
-                        turn,
-                        mode,
-                        snapshot.as_ref(),
-                        tool_registry,
-                        tool_exec_lock,
-                        mcp_pool,
-                    )
-                    .await;
-                false
-            }
-            GuardrailAction::VerifyAndReplan => {
-                self.route_capacity_handoff_replan(
-                    turn,
-                    mode,
-                    snapshot.as_ref(),
-                    "high_risk_post_tool",
-                )
-                .await
-            }
-            GuardrailAction::NoIntervention | GuardrailAction::TargetedContextRefresh => false,
-        }
+        self.dispatch_capacity_decision(CapacityDispatchContext {
+            turn,
+            mode,
+            snapshot: snapshot.as_ref(),
+            decision: &decision,
+            client: None,
+            tool_registry,
+            tool_exec_lock: Some(tool_exec_lock),
+            mcp_pool,
+            handoff_reason: "high_risk_post_tool",
+        })
+        .await
     }
 
     pub(in crate::core::engine) async fn run_capacity_error_escalation_checkpoint(
@@ -140,22 +134,24 @@ impl Engine {
         )
         .await;
 
-        if decision.action != GuardrailAction::VerifyAndReplan {
-            return false;
-        }
-
         let category_labels: Vec<String> = error_categories.iter().map(|c| c.to_string()).collect();
-        self.route_capacity_handoff_replan(
+        let handoff_reason = format!(
+            "error_escalation: step_errors={}, consecutive_steps={}, categories={}",
+            step_error_count,
+            consecutive_tool_error_steps,
+            category_labels.join(",")
+        );
+        self.dispatch_capacity_decision(CapacityDispatchContext {
             turn,
             mode,
-            Some(&forced),
-            &format!(
-                "error_escalation: step_errors={}, consecutive_steps={}, categories={}",
-                step_error_count,
-                consecutive_tool_error_steps,
-                category_labels.join(",")
-            ),
-        )
+            snapshot: Some(&forced),
+            decision: &decision,
+            client: None,
+            tool_registry: None,
+            tool_exec_lock: None,
+            mcp_pool: None,
+            handoff_reason: &handoff_reason,
+        })
         .await
     }
 }

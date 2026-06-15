@@ -83,6 +83,7 @@ impl<'a> EffectInterpreter<'a> {
     where
         Engine: TurnLoopHost,
     {
+        self.engine.clear_v3_approval_outcomes();
         let model = self.engine.session_mut().model.clone();
         let token_budget = context_input_budget(&model, TURN_MAX_OUTPUT_TOKENS)
             .map(|b| b.min(u32::MAX as usize) as u32)
@@ -127,6 +128,50 @@ impl<'a> EffectInterpreter<'a> {
             token_budget,
             &call_ids,
         );
+
+        let tool_registry = ctx.tool_registry;
+        let approval_plan: Vec<(String, String)> = stream_ref
+            .tool_uses
+            .iter()
+            .filter_map(|tool_use| {
+                let meta = self.engine.tool_plan_approval_meta(
+                    &tool_use.name,
+                    &tool_use.input,
+                    tool_registry,
+                );
+                if !meta.approval_required
+                    || self
+                        .engine
+                        .approval_cache_hit(&tool_use.name, &tool_use.input)
+                {
+                    return None;
+                }
+                Some((tool_use.id.clone(), meta.approval_description))
+            })
+            .collect();
+        for (call_id, description) in approval_plan {
+            tracing::info!(
+                target: "kernel_v3",
+                turn_id = %ctx.turn.id,
+                step = ctx.turn.step,
+                call_id = %call_id,
+                "v3 step: RequestApproval (pre-ExecuteBatch)"
+            );
+            let outcome = self
+                .interpret_v3_step_effect(
+                    Effect::RequestApproval {
+                        call_id,
+                        description,
+                    },
+                    &mut ctx,
+                )
+                .await;
+            debug_assert_eq!(
+                outcome,
+                InterpretOutcome::Executed,
+                "RequestApproval must execute"
+            );
+        }
 
         let plan = plan_v3_step_effects(token_budget, &call_ids);
         debug_assert!(
@@ -258,6 +303,29 @@ impl<'a> EffectInterpreter<'a> {
                     .await;
                 InterpretOutcome::Executed
             }
+            Effect::RequestApproval {
+                call_id,
+                description,
+            } => {
+                let Some(stream) = ctx.stream.as_ref() else {
+                    return InterpretOutcome::NotImplemented;
+                };
+                let Some(tool_use) = stream.tool_uses.iter().find(|t| t.id == call_id) else {
+                    return InterpretOutcome::NotImplemented;
+                };
+                let _ = self
+                    .engine
+                    .run_request_approval_effect(
+                        &ctx.turn.id,
+                        &call_id,
+                        &tool_use.name,
+                        &tool_use.input,
+                        &description,
+                        tool_use.caller.as_ref(),
+                    )
+                    .await;
+                InterpretOutcome::Executed
+            }
             Effect::NotifyLsp { tool_name } => {
                 let _ = tool_name;
                 self.engine.flush_pending_lsp_diagnostics().await;
@@ -341,7 +409,13 @@ impl<'a> EffectInterpreter<'a> {
             Effect::CallModel { .. } | Effect::ExecuteBatch { .. } => {
                 InterpretOutcome::NotImplemented
             }
-            Effect::RequestApproval { .. } => InterpretOutcome::NotImplemented,
+            Effect::RequestApproval { .. } => {
+                if self.engine.effect_replay_anchor_only() {
+                    InterpretOutcome::Executed
+                } else {
+                    InterpretOutcome::NotImplemented
+                }
+            }
             Effect::InjectSteer { text } => {
                 let ext = self.engine.runtime_ext();
                 let turn_id = ext
@@ -363,7 +437,10 @@ impl<'a> EffectInterpreter<'a> {
                 self.engine.flush_pending_lsp_diagnostics().await;
                 InterpretOutcome::Executed
             }
-            Effect::Sleep { .. } => InterpretOutcome::NotImplemented,
+            Effect::Sleep { millis } => {
+                self.engine.run_sleep_effect(millis).await;
+                InterpretOutcome::Executed
+            }
             _ => InterpretOutcome::NotImplemented,
         }
     }

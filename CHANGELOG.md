@@ -236,6 +236,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `ReplayEffectCounts::anchor_effect_total` + `KernelResumeHints.expected_anchor_effect_count`; resume compares interpreted anchors vs `replay_thread_effect_counts`.
   - `resume_replay_anchor_shadow` adds `anchor_alignment_checks` / `anchor_alignment_diffs`; `ResumeSessionKernelReplay.replay_anchor_effect_count` on resume API.
 
+- **Runtime (kernel-v2 Phase 3b batch 6zh — RequestApproval effect + replay anchors):**
+  - `ReplayTurnMachine` maps `ToolCallPlanned` with `decision.approval_required` → `RequestApproval` before `ExecuteBatch`.
+  - `approval_ops.rs`: v3 routes approval handshake through `EffectInterpreter::RequestApproval` (pre-`ExecuteBatch`); legacy `tool_plans_exec` path unchanged.
+  - `verify_step_request_approval_anchor()` / `verify_thread_request_approval_anchors()`; thread replay / resume expose `request_approval_anchor_ok`.
+  - `kernel_request_approval_anchor_shadow` + `GET /v1/runtime/kernel-shadow` `request_approval_anchor_shadow`; `ReplayEffectCounts.request_approval`.
+
+- **Runtime (kernel-v2 Phase 3b batch 6zi — v3 skip pre-step LSP flush):**
+  - `turn_loop/run.rs` skips per-step `flush_pending_lsp_diagnostics()` when `[kernel] machine = v3`; LSP drain is owned by post-`ExecuteBatch` `NotifyLsp` (6t).
+  - Legacy / shadow paths unchanged (pre-step flush before `CallModel`).
+
+- **Runtime (kernel-v2 Phase 3b batch 6zj — Sleep effect + capacity cooldown replay):**
+  - `CapacityCheckpoint.cooldown_blocked` logged on kernel events; `ReplayTurnMachine` maps blocked `Continue` checkpoints → `Effect::Sleep`.
+  - `sleep_ops.rs`: v3 routes cooldown back-off through `EffectInterpreter::Sleep` (`capacity_cooldown_backoff_millis()` symbolic delay).
+  - `verify_step_capacity_sleep_anchor()` + v3 step shadow check; `ReplayEffectCounts.sleep`.
+
+- **Runtime (kernel-v2 Phase 3b batch 7a — guard/capacity projection depth):**
+  - `TurnKernelProjection` tracks `loop_guard_triggered_count` + `capacity_checkpoint_count`; `guard_projection_policy.rs` pure replay counters.
+  - `verify_guard_projection_chain()` cross-checks trigger/continuation/capacity depth vs log (batch 3 substrate).
+  - Golden `loop_guard.json` / `capacity_checkpoint.json` guard projection tests.
+
+- **Runtime (kernel-v2 Phase 3b batch 7b — LoopGuard replay simulation):**
+  - `loop_guard_replay_policy.rs`: re-simulate `LoopGuard` from `ToolCallPlanned` / `ToolCallFinished` / `LoopGuardContinuation` events.
+  - `verify_loop_guard_replay_coherence()` cross-checks `LoopGuardTriggered` anchors vs simulation; wired into `verify_turn_replay_coherence` + `kernel_guard_shadow`.
+
+- **Runtime (kernel-v2 Phase 3b batch 7c — capacity checkpoint replay coherence):**
+  - `capacity_replay_policy.rs`: `cooldown_blocked` / `action` field invariants + per-step kind histogram.
+  - `verify_capacity_effect_replay_coherence()` aligns `Sleep` / `RunCompaction` replay anchors with checkpoint rows; wired into `verify_turn_replay_coherence` + `kernel_guard_shadow`.
+
+- **Runtime (kernel-v2 Phase 3b batch 7d — v3 capacity checkpoint effect routing):**
+  - `capacity_flow/v3_routing.rs`: unified `dispatch_capacity_decision` routes trim/handoff/replay/cooldown through v3 effect plan (`RunCompaction` / `Sleep`) or legacy IO.
+  - `run_capacity_*_checkpoint` delegates interventions to dispatcher; post-tool `TargetedContextRefresh` now routes trim; tool replay gains v3 anchor-only gating.
+
 ### Removed
 
 - **Runtime (kernel-v2 Phase 2 legacy cleanup — G-PR):** Legacy and Shadow context injection paths removed; `ContextCompiler` V2 is now the sole request-assembly path:

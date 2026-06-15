@@ -87,4 +87,7 @@ pub struct EngineRuntimeExt {
     pub kernel_cycle_advance_ok: Option<bool>,
     /// When true, `RunCompaction` / cycle-advance effects record anchors only (no IO).
     pub kernel_effect_replay_anchor_only: bool,
+    /// Per-call v3 approval outcomes stashed before `ExecuteBatch` (cleared each v3 step).
+    pub kernel_v3_approval_outcomes:
+        std::collections::HashMap<String, super::approval_ops::V3ApprovalStepOutcome>,
 }
