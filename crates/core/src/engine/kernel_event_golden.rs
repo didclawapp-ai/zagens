@@ -168,6 +168,13 @@ mod tests {
             verify_memory_projection_chain(&events).is_none(),
             "memory projection mismatch in scratchpad_compaction.json"
         );
+        assert!(
+            crate::engine::turn_loop::memory_plane_projection_policy::verify_memory_plane_layer_coherence(
+                &events
+            )
+            .is_none(),
+            "memory plane layer mismatch in scratchpad_compaction.json"
+        );
     }
 
     #[test]
@@ -179,6 +186,27 @@ mod tests {
             verify_memory_projection_chain(&events).is_none(),
             "memory projection mismatch in manual_compaction.json"
         );
+        assert!(
+            crate::engine::turn_loop::memory_plane_archival_policy::verify_archival_artifact_field_coherence(
+                &events
+            )
+            .is_none(),
+            "archival field mismatch in manual_compaction.json"
+        );
+    }
+
+    #[test]
+    fn golden_memory_projection_pure_read_working_layer() {
+        let events = load_fixture("pure_read.json");
+        assert!(
+            crate::engine::turn_loop::memory_plane_working_policy::verify_working_layer_tool_coherence(
+                &events
+            )
+            .is_none(),
+            "working layer mismatch in pure_read.json"
+        );
+        let p = TurnKernelProjection::from_events(&events);
+        assert_eq!(p.working_set_path_touch_count, 1);
     }
 
     #[test]

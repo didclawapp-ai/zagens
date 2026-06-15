@@ -1040,6 +1040,8 @@ export type components = {
             readonly notify_lsp: number;
             /** Format: uint32 */
             readonly sleep: number;
+            /** Format: uint32 */
+            readonly query_memory: number;
         };
         readonly ResumeSessionKernelReplay: {
             /** Format: uint */

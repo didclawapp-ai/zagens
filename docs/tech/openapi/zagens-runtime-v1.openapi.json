@@ -297,6 +297,11 @@
             "type": "integer",
             "format": "uint32",
             "minimum": 0
+          },
+          "query_memory": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
           }
         },
         "required": [
@@ -306,7 +311,8 @@
           "inject_steer",
           "run_compaction",
           "notify_lsp",
-          "sleep"
+          "sleep",
+          "query_memory"
         ]
       },
       "ResumeSessionKernelReplay": {

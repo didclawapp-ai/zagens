@@ -89,6 +89,8 @@ pub struct TurnKernelProjection {
     // ── Scratchpad step counters (reset at ModelRequestIssued) ───────────────
     pub readonly_tool_successes: u32,
     pub scratchpad_writes_this_step: u32,
+    /// Successful tool calls whose planned input carried path-like candidates (turn cumulative).
+    pub working_set_path_touch_count: u32,
 
     // ── Continuation counters ────────────────────────────────────────────────
     pub step_limit_continuations: u32,
@@ -227,7 +229,27 @@ impl TurnKernelProjection {
     /// Rebuild a projection from a sequence of events (for replay / testing).
     pub fn from_events(events: &[KernelEvent]) -> Self {
         let mut p = Self::default();
+        let mut planned: std::collections::HashMap<String, (String, String)> =
+            std::collections::HashMap::new();
         for ev in events {
+            if let KernelEvent::ToolCallPlanned {
+                call_id,
+                tool_name,
+                input_json,
+                ..
+            } = ev
+            {
+                planned.insert(call_id.clone(), (tool_name.clone(), input_json.clone()));
+            }
+            if let KernelEvent::ToolCallFinished {
+                call_id, outcome, ..
+            } = ev
+            {
+                crate::engine::turn_loop::memory_plane_working_policy::record_working_set_path_touch(
+                    &mut p, &planned, call_id, outcome,
+                );
+                planned.remove(call_id);
+            }
             p.apply(ev);
         }
         p
@@ -336,6 +358,11 @@ pub enum Effect {
     NotifyLsp { tool_name: String },
     /// Sleep until a deadline (capacity back-off).
     Sleep { millis: u64 },
+    /// Read from the memory plane before model context assembly (batch 4).
+    QueryMemory {
+        layer: crate::engine::turn_loop::memory_plane_query_policy::MemoryPlaneQueryLayer,
+        query_key: String,
+    },
 }
 
 // ── StepOutput ────────────────────────────────────────────────────────────────
@@ -393,6 +420,13 @@ impl TurnMachine for ReplayTurnMachine {
                 out.halt = Some(outcome.clone());
             }
             KernelEvent::ModelRequestIssued { token_budget, .. } => {
+                for effect in
+                    crate::engine::turn_loop::memory_plane_query_policy::query_memory_effects_before_model_call(
+                        projection,
+                    )
+                {
+                    out.effects.push(effect);
+                }
                 out.effects.push(Effect::CallModel {
                     token_budget: *token_budget,
                 });
@@ -664,6 +698,27 @@ pub fn verify_memory_projection_chain(events: &[KernelEvent]) -> Option<String> 
             "cycle_briefing_count proj={} events={cycle_briefings}",
             projection.cycle_briefing_count
         ));
+    }
+    if let Some(summary) =
+        crate::engine::turn_loop::memory_plane_projection_policy::verify_memory_plane_layer_coherence(
+            events,
+        )
+    {
+        diffs.push(format!("memory_plane_layers: {summary}"));
+    }
+    if let Some(summary) =
+        crate::engine::turn_loop::memory_plane_archival_policy::verify_archival_artifact_field_coherence(
+            events,
+        )
+    {
+        diffs.push(format!("archival_fields: {summary}"));
+    }
+    if let Some(summary) =
+        crate::engine::turn_loop::memory_plane_working_policy::verify_working_layer_tool_coherence(
+            events,
+        )
+    {
+        diffs.push(format!("working_layer_tools: {summary}"));
     }
     if diffs.is_empty() {
         None
@@ -2162,8 +2217,31 @@ pub fn kernel_resume_hints_from_thread_projection(
 pub fn replay_turn_effects(events: &[KernelEvent]) -> Vec<Effect> {
     let mut machine = ReplayTurnMachine;
     let mut projection = TurnKernelProjection::default();
+    let mut planned: std::collections::HashMap<String, (String, String)> =
+        std::collections::HashMap::new();
     let mut effects = Vec::new();
     for event in events {
+        if let KernelEvent::ToolCallPlanned {
+            call_id,
+            tool_name,
+            input_json,
+            ..
+        } = &event
+        {
+            planned.insert(call_id.clone(), (tool_name.clone(), input_json.clone()));
+        }
+        if let KernelEvent::ToolCallFinished {
+            call_id, outcome, ..
+        } = &event
+        {
+            crate::engine::turn_loop::memory_plane_working_policy::record_working_set_path_touch(
+                &mut projection,
+                &planned,
+                call_id,
+                outcome,
+            );
+            planned.remove(call_id);
+        }
         let out = machine.step(&projection, event.clone());
         projection.apply(&event);
         effects.extend(out.effects);
@@ -2191,6 +2269,7 @@ pub struct ReplayEffectCounts {
     pub run_compaction: u32,
     pub notify_lsp: u32,
     pub sleep: u32,
+    pub query_memory: u32,
 }
 
 impl ReplayEffectCounts {
@@ -2226,6 +2305,7 @@ pub fn replay_effect_counts(events: &[KernelEvent]) -> ReplayEffectCounts {
             Effect::RunCompaction => counts.run_compaction += 1,
             Effect::NotifyLsp { .. } => counts.notify_lsp += 1,
             Effect::Sleep { .. } => counts.sleep += 1,
+            Effect::QueryMemory { .. } => counts.query_memory += 1,
         }
     }
     counts
@@ -2246,6 +2326,7 @@ pub fn replay_thread_effect_counts(
         total.run_compaction += counts.run_compaction;
         total.notify_lsp += counts.notify_lsp;
         total.sleep += counts.sleep;
+        total.query_memory += counts.query_memory;
     }
     total
 }
@@ -2483,6 +2564,7 @@ impl Effect {
             Effect::RunCompaction => "run_compaction",
             Effect::NotifyLsp { .. } => "notify_lsp",
             Effect::Sleep { .. } => "sleep",
+            Effect::QueryMemory { .. } => "query_memory",
         }
     }
 }

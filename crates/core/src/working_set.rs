@@ -670,6 +670,12 @@ fn extract_paths_from_message(message: &Message) -> Vec<String> {
     paths
 }
 
+/// Count path-like candidates in a tool input value (kernel replay substrate).
+#[must_use]
+pub fn path_candidates_from_tool_input(tool_name: &str, input: &Value) -> usize {
+    extract_paths_from_value(input, Some(tool_name)).len()
+}
+
 fn extract_paths_from_value(value: &Value, tool_hint: Option<&str>) -> Vec<String> {
     let mut out = Vec::new();
     extract_paths_from_value_inner(value, tool_hint, None, &mut out);
@@ -686,9 +692,12 @@ fn extract_paths_from_value_inner(
         Value::String(s) => {
             let key_suggests_path = key_hint.map(key_is_path_like).unwrap_or(false);
             if key_suggests_path || looks_like_path(s) {
+                let before = out.len();
                 out.extend(extract_paths_from_text(s));
                 if key_suggests_path && !s.contains('/') && !s.contains('\\') {
                     out.push(s.to_string());
+                } else if out.len() == before && key_suggests_path && looks_like_path(s) {
+                    out.push(s.trim().to_string());
                 }
             } else if tool_hint == Some("exec_shell") && s.len() < 400 {
                 out.extend(extract_paths_from_text(s));

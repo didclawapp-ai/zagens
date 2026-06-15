@@ -268,6 +268,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `capacity_flow/v3_routing.rs`: unified `dispatch_capacity_decision` routes trim/handoff/replay/cooldown through v3 effect plan (`RunCompaction` / `Sleep`) or legacy IO.
   - `run_capacity_*_checkpoint` delegates interventions to dispatcher; post-tool `TargetedContextRefresh` now routes trim; tool replay gains v3 anchor-only gating.
 
+- **Runtime (kernel-v2 Phase 3b batch 8a — Memory Plane layer projection):**
+  - `memory_plane_projection_policy.rs`: Working / Episodic (reserved) / Archival layer taxonomy from kernel events.
+  - `verify_memory_plane_layer_coherence()` cross-checks layer totals vs `TurnKernelProjection`; wired into `verify_memory_projection_chain` + `kernel_memory_shadow`.
+  - Fix `engine.rs` module declarations for `approval_ops`, `sleep_ops`, and `kernel_request_approval_anchor_shadow` (6zh wiring).
+
+- **Runtime (kernel-v2 Phase 3b batch 8b — archival compaction cross-check):**
+  - `memory_plane_archival_policy.rs`: archival anchor rebuild, field invariants, and session-store cross-check via `verify_archival_layer_vs_session`.
+  - Wired into `verify_memory_projection_chain`; golden `manual_compaction.json` / `scratchpad_compaction.json` archival tests.
+
+- **Runtime (kernel-v2 Phase 3b batch 8c — QueryMemory effect skeleton):**
+  - `Effect::QueryMemory { layer, query_key }` + `memory_plane_query_policy.rs` derive pre-`CallModel` reads from projection.
+  - `memory_plane_query_ops.rs`: v3 interpreter route with anchor-only short-circuit; `ReplayEffectCounts.query_memory`.
+
+- **Runtime (kernel-v2 Phase 3b batch 8d — Working layer / WorkingSet substrate):**
+  - `memory_plane_working_policy.rs`: replay readonly/scratchpad step counters and path-touch substrate from `ToolCallPlanned`/`ToolCallFinished` pairs.
+  - `TurnKernelProjection.working_set_path_touch_count` (turn cumulative); `working_set::path_candidates_from_tool_input` helper.
+  - `QUERY_WORKING_SET` pre-`CallModel` query when path touches material present; wired into `verify_memory_projection_chain` + golden `pure_read.json`.
+
 ### Removed
 
 - **Runtime (kernel-v2 Phase 2 legacy cleanup — G-PR):** Legacy and Shadow context injection paths removed; `ContextCompiler` V2 is now the sole request-assembly path:

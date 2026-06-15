@@ -441,6 +441,10 @@ impl<'a> EffectInterpreter<'a> {
                 self.engine.run_sleep_effect(millis).await;
                 InterpretOutcome::Executed
             }
+            Effect::QueryMemory { layer, query_key } => {
+                self.engine.run_query_memory_effect(layer, &query_key).await;
+                InterpretOutcome::Executed
+            }
             _ => InterpretOutcome::NotImplemented,
         }
     }
