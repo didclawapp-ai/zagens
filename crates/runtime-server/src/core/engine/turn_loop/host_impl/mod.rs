@@ -74,6 +74,23 @@ impl KernelTurnHost for Engine {
         ext.kernel_active_turn_id = Some(turn.id.clone());
         ext.kernel_active_step = turn.step;
     }
+
+    fn apply_kernel_resume_hints(&mut self, hints: &zagens_core::engine::KernelResumeHints) {
+        let ext = self.runtime_ext_mut();
+        if let Some(ref turn_id) = hints.latest_turn_id {
+            ext.kernel_active_turn_id = Some(turn_id.clone());
+        }
+        ext.kernel_active_step = hints.step_idx;
+        tracing::info!(
+            target: "kernel_resume",
+            latest_turn_id = ?hints.latest_turn_id,
+            step_idx = hints.step_idx,
+            max_steps = hints.max_steps,
+            scratchpad_summary_injected = hints.scratchpad_summary_injected,
+            active_tool_count = hints.active_tool_count,
+            "restored kernel turn frame from event log"
+        );
+    }
 }
 
 #[async_trait]
@@ -1085,22 +1102,37 @@ impl TurnLoopHost for Engine {
     }
 
     async fn finish_kernel_turn_shadow(&mut self, live: &LiveTurnSnapshot) {
-        let (events, writer, do_shadow) = {
+        let (events, writer, do_full_shadow, do_replay_verify) = {
             let ext = self.runtime_ext_mut();
-            let do_shadow = ext.kernel_machine_mode.uses_effect_replay_shadow();
+            let mode = ext.kernel_machine_mode;
+            let do_full_shadow = mode.uses_effect_replay_shadow();
+            let do_replay_verify = mode.uses_replay_verification();
             let events = ext.kernel_projection_shadow.turn_events().to_vec();
             let writer = ext.kernel_event_writer.clone();
-            if do_shadow {
+            if do_full_shadow {
                 ext.kernel_effect_shadow.verify_turn(&events);
                 ext.kernel_guard_shadow.verify_turn(&events);
                 ext.kernel_memory_shadow.verify_turn(&events);
+            }
+            if do_replay_verify {
                 ext.kernel_replay_shadow
                     .verify_turn_in_memory(&events, live);
             }
+            if ext.kernel_machine_mode.uses_v3_turn_loop() {
+                let (call_model, execute_batch) =
+                    zagens_core::engine::replay_effect_counts(&events);
+                tracing::info!(
+                    target: "kernel_v3",
+                    turn_id = %live.turn_id,
+                    call_model,
+                    execute_batch,
+                    "v3 turn effect replay counts"
+                );
+            }
             ext.kernel_projection_shadow.finish_turn(live);
-            (events, writer, do_shadow)
+            (events, writer, do_full_shadow, do_replay_verify)
         };
-        if do_shadow {
+        if do_replay_verify {
             if let Some(writer) = writer {
                 self.runtime_ext()
                     .kernel_replay_shadow
@@ -1108,6 +1140,7 @@ impl TurnLoopHost for Engine {
                     .await;
             }
         }
+        let _ = do_full_shadow;
     }
 }
 

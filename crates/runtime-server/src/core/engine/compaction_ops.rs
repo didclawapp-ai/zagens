@@ -2,6 +2,9 @@
 
 use super::*;
 
+use zagens_core::engine::kernel_event::{KernelEvent, MessageRange};
+use zagens_core::engine::turn_machine::emit_kernel_event;
+
 impl Engine {
     pub(super) async fn handle_manual_compaction(&mut self) {
         let id = format!("compact_{}", &uuid::Uuid::new_v4().to_string()[..8]);
@@ -74,6 +77,7 @@ impl Engine {
                             "Compaction complete: {messages_before} → {messages_after} messages ({removed} removed)"
                         )
                     };
+                    let compaction_id = id.clone();
                     self.emit_compaction_completed(
                         id,
                         false,
@@ -82,6 +86,29 @@ impl Engine {
                         Some(messages_after),
                     )
                     .await;
+                    if let Some(artifact) = result.artifact {
+                        let turn_id = self
+                            .runtime_ext()
+                            .kernel_active_turn_id
+                            .clone()
+                            .unwrap_or_else(|| format!("manual-{compaction_id}"));
+                        emit_kernel_event(
+                            self,
+                            KernelEvent::CompactionArtifactCreated {
+                                turn_id,
+                                artifact_id: artifact.id,
+                                replaced_range: MessageRange {
+                                    from: artifact.replaced_start as u32,
+                                    to: artifact
+                                        .replaced_end
+                                        .saturating_sub(1)
+                                        .max(artifact.replaced_start)
+                                        as u32,
+                                },
+                                summary_token_count: artifact.summary_tokens,
+                            },
+                        );
+                    }
                     self.fire_post_compact(
                         self.runtime_ext().turn_app_mode,
                         true,
@@ -118,5 +145,10 @@ impl Engine {
                 end_reason: turn_error,
             })
             .await;
+    }
+
+    /// v3 effect interpreter entry for [`Effect::RunCompaction`].
+    pub(in crate::core::engine) async fn run_compaction_effect(&mut self) {
+        self.handle_manual_compaction().await;
     }
 }

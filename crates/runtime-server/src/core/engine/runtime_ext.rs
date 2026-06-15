@@ -65,6 +65,8 @@ pub struct EngineRuntimeExt {
     pub kernel_memory_shadow: KernelMemoryShadow,
     /// Phase 3b: unified replay coherence (`[kernel] machine = "shadow"`).
     pub kernel_replay_shadow: KernelReplayShadow,
+    /// Phase 3b: per-step v3 effect replay parity (`[kernel] machine = "v3"`).
+    pub kernel_v3_effect_shadow: super::kernel_v3_effect_shadow::KernelV3EffectShadow,
     /// Resolved `[kernel] machine` kill switch.
     pub kernel_machine_mode: crate::config::KernelMachineMode,
     /// Active turn frame for kernel events emitted outside `run.rs`.

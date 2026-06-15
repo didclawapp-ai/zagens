@@ -1,0 +1,25 @@
+[
+  {
+    "event_type": "turn_started",
+    "turn_id": "manual-compact-001",
+    "mode": "agent",
+    "input_text": "User invoked /compact outside an active step",
+    "max_steps": 1
+  },
+  {
+    "event_type": "compaction_artifact_created",
+    "turn_id": "manual-compact-001",
+    "artifact_id": "art-manual-001",
+    "replaced_range": {
+      "from": 4,
+      "to": 19
+    },
+    "summary_token_count": 512
+  },
+  {
+    "event_type": "turn_ended",
+    "turn_id": "manual-compact-001",
+    "outcome": "completed",
+    "total_steps": 0
+  }
+]

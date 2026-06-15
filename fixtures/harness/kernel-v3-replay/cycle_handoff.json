@@ -1,0 +1,29 @@
+[
+  {
+    "event_type": "turn_started",
+    "turn_id": "golden-cycle-handoff-001",
+    "mode": "agent",
+    "input_text": "Implement feature across long context cycles",
+    "max_steps": 30
+  },
+  {
+    "event_type": "cycle_advanced",
+    "turn_id": "golden-cycle-handoff-001",
+    "from_cycle": 1,
+    "to_cycle": 2,
+    "reason": "step budget exhausted with pending objective"
+  },
+  {
+    "event_type": "context_overflow_recovered",
+    "turn_id": "golden-cycle-handoff-001",
+    "step_idx": 18,
+    "strategy": "cycle_handoff",
+    "source_budget_cap": 28000
+  },
+  {
+    "event_type": "turn_ended",
+    "turn_id": "golden-cycle-handoff-001",
+    "outcome": "completed",
+    "total_steps": 19
+  }
+]

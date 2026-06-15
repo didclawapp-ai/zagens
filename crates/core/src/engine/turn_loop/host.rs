@@ -401,7 +401,7 @@ pub trait TurnLoopHost: KernelTurnHost + Send {
         None
     }
 
-    /// Turn-end kernel shadow: projection compare + optional SQLite persist replay.
+    /// Turn-end kernel shadow: projection-only default; runtime overrides for full replay pipeline.
     async fn finish_kernel_turn_shadow(
         &mut self,
         live: &crate::engine::turn_machine::LiveTurnSnapshot,

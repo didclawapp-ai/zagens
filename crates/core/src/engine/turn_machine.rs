@@ -661,6 +661,287 @@ pub fn verify_turn_replay_coherence(
     }
 }
 
+/// Per-turn replay summary for thread-level aggregation (Phase 3b batch 6c).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThreadTurnReplaySummary {
+    pub turn_id: String,
+    pub event_count: usize,
+    pub coherence_ok: bool,
+    pub coherence_error: Option<String>,
+    pub outcome: Option<TurnOutcome>,
+}
+
+/// Thread-level replay report built from persisted turn event logs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThreadReplayReport {
+    pub thread_id: String,
+    pub turn_count: usize,
+    pub turns_with_events: usize,
+    pub turns_coherent: usize,
+    pub all_coherent: bool,
+    pub turns: Vec<ThreadTurnReplaySummary>,
+}
+
+/// Build a thread replay report from `(turn_id, events)` pairs.
+///
+/// Turns with empty event logs are omitted; coherence is evaluated only when
+/// events are present.
+#[must_use]
+pub fn build_thread_replay_report(
+    thread_id: &str,
+    turn_events: &[(String, Vec<KernelEvent>)],
+) -> ThreadReplayReport {
+    let mut turns = Vec::new();
+    let mut turns_with_events = 0usize;
+    let mut turns_coherent = 0usize;
+
+    for (turn_id, events) in turn_events {
+        if events.is_empty() {
+            continue;
+        }
+        turns_with_events += 1;
+        let report = replay_turn_projection(events);
+        let coherence_error = verify_turn_replay_coherence(events, None);
+        let coherence_ok = coherence_error.is_none();
+        if coherence_ok {
+            turns_coherent += 1;
+        }
+        turns.push(ThreadTurnReplaySummary {
+            turn_id: turn_id.clone(),
+            event_count: report.event_count,
+            coherence_ok,
+            coherence_error,
+            outcome: report.outcome,
+        });
+    }
+
+    ThreadReplayReport {
+        thread_id: thread_id.to_string(),
+        turn_count: turn_events.len(),
+        turns_with_events,
+        turns_coherent,
+        all_coherent: turns_with_events > 0 && turns_coherent == turns_with_events,
+        turns,
+    }
+}
+
+/// Thread-level replay substrate: per-turn coherence report plus latest turn projection.
+#[derive(Debug, Clone)]
+pub struct ThreadReplayProjection {
+    pub report: ThreadReplayReport,
+    pub latest_turn_id: Option<String>,
+    pub latest_projection: TurnKernelProjection,
+    pub message_stats: ThreadMessageReplayStats,
+}
+
+/// Aggregated message-plane counters rebuildable from kernel event logs (not full text).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ThreadMessageReplayStats {
+    pub turns_with_events: usize,
+    pub model_request_count: u32,
+    pub model_message_count: u32,
+    pub tool_call_planned_count: u32,
+    pub steer_injection_count: u32,
+    pub compaction_artifact_count: u32,
+}
+
+/// Count message-plane events across all turns on a thread.
+#[must_use]
+pub fn replay_thread_message_stats(
+    turn_events: &[(String, Vec<KernelEvent>)],
+) -> ThreadMessageReplayStats {
+    let mut stats = ThreadMessageReplayStats::default();
+    for (_, events) in turn_events {
+        if events.is_empty() {
+            continue;
+        }
+        stats.turns_with_events += 1;
+        for event in events {
+            match event {
+                KernelEvent::ModelRequestIssued { .. } => stats.model_request_count += 1,
+                KernelEvent::ModelMessage { .. } => stats.model_message_count += 1,
+                KernelEvent::ToolCallPlanned { .. } => stats.tool_call_planned_count += 1,
+                KernelEvent::SteerInjected { .. } => stats.steer_injection_count += 1,
+                KernelEvent::CompactionArtifactCreated { .. } => {
+                    stats.compaction_artifact_count += 1
+                }
+                _ => {}
+            }
+        }
+    }
+    stats
+}
+
+/// Best-effort coverage check: session JSON message count vs kernel log counters (observability).
+#[must_use]
+pub fn verify_session_message_coverage(
+    session_message_count: usize,
+    stats: &ThreadMessageReplayStats,
+) -> Option<String> {
+    if stats.model_message_count == 0 {
+        return None;
+    }
+    // Assistant turns in session often pair with model messages; allow slack for system/user-only rows.
+    let expected_min = stats.model_message_count as usize;
+    if session_message_count >= expected_min {
+        return None;
+    }
+    Some(format!(
+        "session messages ({session_message_count}) below kernel model_message events ({expected_min})"
+    ))
+}
+
+/// Build thread replay report and the latest non-empty turn projection (resume substrate).
+#[must_use]
+pub fn replay_thread_projection(
+    thread_id: &str,
+    turn_events: &[(String, Vec<KernelEvent>)],
+) -> ThreadReplayProjection {
+    let report = build_thread_replay_report(thread_id, turn_events);
+    let message_stats = replay_thread_message_stats(turn_events);
+    let (latest_turn_id, latest_projection) = turn_events
+        .iter()
+        .rev()
+        .find(|(_, events)| !events.is_empty())
+        .map(|(turn_id, events)| {
+            (
+                Some(turn_id.clone()),
+                TurnKernelProjection::from_events(events),
+            )
+        })
+        .unwrap_or((None, TurnKernelProjection::default()));
+    ThreadReplayProjection {
+        report,
+        latest_turn_id,
+        latest_projection,
+        message_stats,
+    }
+}
+
+/// Host-visible fields restored from a thread's latest kernel projection on engine load.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct KernelResumeHints {
+    pub latest_turn_id: Option<String>,
+    pub step_idx: u32,
+    pub max_steps: u32,
+    pub scratchpad_summary_injected: bool,
+    pub active_tool_count: u32,
+}
+
+/// Extract resume hints from the latest turn projection (log-driven resume substrate).
+#[must_use]
+pub fn kernel_resume_hints_from_projection(proj: &TurnKernelProjection) -> KernelResumeHints {
+    KernelResumeHints {
+        latest_turn_id: if proj.turn_id.is_empty() {
+            None
+        } else {
+            Some(proj.turn_id.clone())
+        },
+        step_idx: proj.step_idx,
+        max_steps: proj.max_steps,
+        scratchpad_summary_injected: proj.scratchpad_summary_injected,
+        active_tool_count: proj.active_tool_names.len() as u32,
+    }
+}
+
+/// Replay all IO effects implied by a turn's event log via [`ReplayTurnMachine`].
+#[must_use]
+pub fn replay_turn_effects(events: &[KernelEvent]) -> Vec<Effect> {
+    let mut machine = ReplayTurnMachine;
+    let mut projection = TurnKernelProjection::default();
+    let mut effects = Vec::new();
+    for event in events {
+        let out = machine.step(&projection, event.clone());
+        projection.apply(&event);
+        effects.extend(out.effects);
+    }
+    effects
+}
+
+/// Count CallModel / ExecuteBatch effects from a replay chain (shadow/v3 observability).
+#[must_use]
+pub fn replay_effect_counts(events: &[KernelEvent]) -> (u32, u32) {
+    let effects = replay_turn_effects(events);
+    let mut call_model = 0u32;
+    let mut execute_batch = 0u32;
+    for effect in effects {
+        match effect {
+            Effect::CallModel { .. } => call_model += 1,
+            Effect::ExecuteBatch { .. } => execute_batch += 1,
+            _ => {}
+        }
+    }
+    (call_model, execute_batch)
+}
+
+/// Slice a turn log down to one step's events (from `ModelRequestIssued` through tool work).
+#[must_use]
+pub fn events_for_step(events: &[KernelEvent], step_idx: u32) -> Vec<KernelEvent> {
+    let mut in_step = false;
+    let mut out = Vec::new();
+    for event in events {
+        match event {
+            KernelEvent::ModelRequestIssued { step_idx: s, .. } if *s == step_idx => {
+                in_step = true;
+                out.push(event.clone());
+            }
+            KernelEvent::ModelRequestIssued { .. } if in_step => break,
+            KernelEvent::TurnEnded { .. } if in_step => break,
+            _ if in_step => out.push(event.clone()),
+            _ => {}
+        }
+    }
+    out
+}
+
+/// Replay IO effects for a single step slice.
+#[must_use]
+pub fn replay_step_effects(events: &[KernelEvent], step_idx: u32) -> Vec<Effect> {
+    replay_turn_effects(&events_for_step(events, step_idx))
+}
+
+/// Planned v3 step effects before tool outcomes are known (`ExecuteBatch` when tools planned).
+#[must_use]
+pub fn plan_v3_step_effects(token_budget: u32, tool_call_ids: &[String]) -> Vec<Effect> {
+    let mut effects = vec![Effect::CallModel { token_budget }];
+    for call_id in tool_call_ids {
+        effects.push(Effect::ExecuteBatch {
+            call_ids: vec![call_id.clone()],
+        });
+    }
+    effects
+}
+
+/// Verify replay effect counts for one step match the executed tool batch size.
+#[must_use]
+pub fn verify_step_effect_parity(
+    turn_events: &[KernelEvent],
+    step_idx: u32,
+    executed_tool_count: u32,
+) -> Option<String> {
+    let step_events = events_for_step(turn_events, step_idx);
+    if step_events.is_empty() {
+        return None;
+    }
+    let (call_model, execute_batch) = replay_effect_counts(&step_events);
+    let mut diffs = Vec::new();
+    if call_model != 1 {
+        diffs.push(format!(
+            "step {step_idx} CallModel replay count {call_model} != 1"
+        ));
+    }
+    if execute_batch != executed_tool_count {
+        diffs.push(format!(
+            "step {step_idx} ExecuteBatch replay count {execute_batch} != executed {executed_tool_count}"
+        ));
+    }
+    if diffs.is_empty() {
+        None
+    } else {
+        Some(diffs.join("; "))
+    }
+}
+
 impl Effect {
     #[must_use]
     pub fn kind_str(&self) -> &'static str {
@@ -694,6 +975,8 @@ pub fn outcome_from_status(status: TurnOutcomeStatus, error: Option<String>) -> 
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
     use crate::engine::kernel_event::{KernelEvent, ToolOutcome, TurnOutcome};
     use crate::engine::request_fingerprint::RequestFingerprint;
@@ -934,5 +1217,151 @@ mod tests {
         }];
         let msg = verify_effect_replay_chain(&events).expect("diff");
         assert!(msg.contains("TurnEnded"));
+    }
+
+    #[test]
+    fn replay_turn_effects_matches_pure_read_fixture() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/harness/kernel-v3-replay/pure_read.json");
+        let raw = std::fs::read_to_string(&path).expect("read fixture");
+        let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
+        let (call_model, execute_batch) = replay_effect_counts(&events);
+        assert_eq!(call_model, 1);
+        assert_eq!(execute_batch, 1);
+        assert!(verify_effect_replay_chain(&events).is_none());
+    }
+
+    #[test]
+    fn events_for_step_and_parity_on_pure_read_fixture() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/harness/kernel-v3-replay/pure_read.json");
+        let raw = std::fs::read_to_string(&path).expect("read fixture");
+        let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
+        let step_events = events_for_step(&events, 1);
+        assert_eq!(step_events.len(), 5);
+        assert!(verify_step_effect_parity(&events, 1, 1).is_none());
+        let planned = plan_v3_step_effects(8192, &["call-read-1".into()]);
+        assert_eq!(planned.len(), 2);
+    }
+
+    #[test]
+    fn kernel_resume_hints_from_latest_projection() {
+        let events = vec![
+            KernelEvent::TurnStarted {
+                turn_id: "t-resume".into(),
+                mode: TurnLoopMode::Agent,
+                input_text: "hi".into(),
+                max_steps: 12,
+            },
+            KernelEvent::TurnEnded {
+                turn_id: "t-resume".into(),
+                outcome: TurnOutcome::Completed,
+                total_steps: 3,
+            },
+        ];
+        let proj = TurnKernelProjection::from_events(&events);
+        let hints = kernel_resume_hints_from_projection(&proj);
+        assert_eq!(hints.latest_turn_id.as_deref(), Some("t-resume"));
+        assert_eq!(hints.max_steps, 12);
+    }
+
+    #[test]
+    fn replay_thread_message_stats_on_pure_read_fixture() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/harness/kernel-v3-replay/pure_read.json");
+        let raw = std::fs::read_to_string(&path).expect("read fixture");
+        let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
+        let stats = replay_thread_message_stats(&[("t1".into(), events)]);
+        assert_eq!(stats.model_message_count, 1);
+        assert_eq!(stats.tool_call_planned_count, 1);
+        assert_eq!(stats.model_request_count, 1);
+    }
+
+    #[test]
+    fn verify_session_message_coverage_allows_equal_or_greater() {
+        let stats = ThreadMessageReplayStats {
+            turns_with_events: 1,
+            model_message_count: 2,
+            ..Default::default()
+        };
+        assert!(verify_session_message_coverage(3, &stats).is_none());
+        assert!(verify_session_message_coverage(1, &stats).is_some());
+    }
+
+    #[test]
+    fn replay_thread_projection_picks_latest_non_empty_turn() {
+        let good = vec![
+            KernelEvent::TurnStarted {
+                turn_id: "t1".into(),
+                mode: TurnLoopMode::Agent,
+                input_text: "a".into(),
+                max_steps: 5,
+            },
+            KernelEvent::TurnEnded {
+                turn_id: "t1".into(),
+                outcome: TurnOutcome::Completed,
+                total_steps: 1,
+            },
+        ];
+        let later = vec![
+            KernelEvent::TurnStarted {
+                turn_id: "t2".into(),
+                mode: TurnLoopMode::Agent,
+                input_text: "b".into(),
+                max_steps: 8,
+            },
+            KernelEvent::StepLimitContinuation {
+                turn_id: "t2".into(),
+                step_idx: 8,
+                lht_objective_injected: true,
+            },
+            KernelEvent::TurnEnded {
+                turn_id: "t2".into(),
+                outcome: TurnOutcome::Completed,
+                total_steps: 9,
+            },
+        ];
+        let projection =
+            replay_thread_projection("thread-x", &[("t1".into(), good), ("t2".into(), later)]);
+        assert_eq!(projection.latest_turn_id.as_deref(), Some("t2"));
+        assert_eq!(projection.latest_projection.turn_id, "t2");
+        assert_eq!(projection.latest_projection.step_limit_continuations, 1);
+        assert!(projection.report.all_coherent);
+    }
+
+    #[test]
+    fn build_thread_replay_report_skips_empty_and_aggregates_coherence() {
+        let good = vec![
+            KernelEvent::TurnStarted {
+                turn_id: "t-good".into(),
+                mode: TurnLoopMode::Agent,
+                input_text: "hi".into(),
+                max_steps: 5,
+            },
+            KernelEvent::TurnEnded {
+                turn_id: "t-good".into(),
+                outcome: TurnOutcome::Completed,
+                total_steps: 1,
+            },
+        ];
+        let bad = vec![KernelEvent::TurnStarted {
+            turn_id: "t-bad".into(),
+            mode: TurnLoopMode::Agent,
+            input_text: "x".into(),
+            max_steps: 5,
+        }];
+        let report = build_thread_replay_report(
+            "thread-1",
+            &[
+                ("t-empty".into(), vec![]),
+                ("t-good".into(), good),
+                ("t-bad".into(), bad),
+            ],
+        );
+        assert_eq!(report.turn_count, 3);
+        assert_eq!(report.turns_with_events, 2);
+        assert_eq!(report.turns_coherent, 1);
+        assert!(!report.all_coherent);
+        assert_eq!(report.turns.len(), 2);
     }
 }

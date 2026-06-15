@@ -38,6 +38,12 @@ impl KernelMachineMode {
         matches!(self, Self::Shadow)
     }
 
+    /// Unified replay coherence + SQLite persist checks (shadow bake and v3 observability).
+    #[must_use]
+    pub fn uses_replay_verification(self) -> bool {
+        matches!(self, Self::Shadow | Self::V3)
+    }
+
     #[must_use]
     pub fn uses_v3_turn_loop(self) -> bool {
         matches!(self, Self::V3)
@@ -60,5 +66,8 @@ mod tests {
             KernelMachineMode::parse(Some("unknown")),
             KernelMachineMode::Legacy
         );
+        assert!(KernelMachineMode::Shadow.uses_replay_verification());
+        assert!(KernelMachineMode::V3.uses_replay_verification());
+        assert!(!KernelMachineMode::Legacy.uses_replay_verification());
     }
 }

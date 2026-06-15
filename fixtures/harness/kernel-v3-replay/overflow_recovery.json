@@ -1,0 +1,42 @@
+[
+  {
+    "event_type": "turn_started",
+    "turn_id": "golden-overflow-recovery-001",
+    "mode": "agent",
+    "input_text": "Recover from context overflow during model call",
+    "max_steps": 12
+  },
+  {
+    "event_type": "model_request_issued",
+    "turn_id": "golden-overflow-recovery-001",
+    "step_idx": 1,
+    "request_fp": {
+      "static_prefix_sha256": "11112222",
+      "full_prefix_sha256": "33334444"
+    },
+    "token_budget": 32000
+  },
+  {
+    "event_type": "context_overflow_recovered",
+    "turn_id": "golden-overflow-recovery-001",
+    "step_idx": 1,
+    "strategy": "budget_recompile",
+    "source_budget_cap": 24000
+  },
+  {
+    "event_type": "model_message",
+    "turn_id": "golden-overflow-recovery-001",
+    "step_idx": 2,
+    "usage": {
+      "input_tokens": 18000,
+      "output_tokens": 120
+    },
+    "block_count": 1
+  },
+  {
+    "event_type": "turn_ended",
+    "turn_id": "golden-overflow-recovery-001",
+    "outcome": "completed",
+    "total_steps": 2
+  }
+]

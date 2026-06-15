@@ -103,6 +103,13 @@ impl RuntimeThreadManager {
         &self,
         thread: &ThreadRecord,
     ) -> Result<crate::core::engine::EngineHandle> {
-        zagens_runtime_orchestrator::runtime_threads::ensure_engine_loaded(self, self, thread).await
+        let handle =
+            zagens_runtime_orchestrator::runtime_threads::ensure_engine_loaded(self, self, thread)
+                .await?;
+        crate::runtime_threads::kernel_resume::push_kernel_resume_to_engine(
+            self, &thread.id, &handle,
+        )
+        .await?;
+        Ok(handle)
     }
 }

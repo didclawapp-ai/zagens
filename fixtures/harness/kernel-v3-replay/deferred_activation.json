@@ -1,0 +1,31 @@
+[
+  {
+    "event_type": "turn_started",
+    "turn_id": "golden-deferred-001",
+    "mode": "agent",
+    "input_text": "Search then activate deferred tool",
+    "max_steps": 10
+  },
+  {
+    "event_type": "model_request_issued",
+    "turn_id": "golden-deferred-001",
+    "step_idx": 1,
+    "request_fp": {
+      "static_prefix_sha256": "deadbeef",
+      "full_prefix_sha256": "cafebabe"
+    },
+    "token_budget": 8192
+  },
+  {
+    "event_type": "deferred_tool_activated",
+    "turn_id": "golden-deferred-001",
+    "step_idx": 1,
+    "tool_name": "tool_search_tool_regex"
+  },
+  {
+    "event_type": "turn_ended",
+    "turn_id": "golden-deferred-001",
+    "outcome": "completed",
+    "total_steps": 1
+  }
+]

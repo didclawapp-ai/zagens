@@ -1,4 +1,4 @@
-//! Golden replay fixtures — Phase 3a P3A-6.
+//! Golden replay fixtures — Phase 3a P3A-6 / Phase 3b 6c.
 //!
 //! Loads synthetic event logs from `fixtures/harness/kernel-v3-replay/` and
 //! verifies deserialize + projection invariants.
@@ -9,10 +9,23 @@ mod tests {
 
     use crate::engine::kernel_event::KernelEvent;
     use crate::engine::turn_machine::{
-        TurnKernelProjection, replay_turn_projection, verify_effect_replay_chain,
-        verify_guard_projection_chain, verify_memory_projection_chain,
+        TurnKernelProjection, build_thread_replay_report, replay_turn_projection,
+        verify_effect_replay_chain, verify_guard_projection_chain, verify_memory_projection_chain,
         verify_turn_replay_coherence,
     };
+
+    const ALL_FIXTURES: &[&str] = &[
+        "pure_read.json",
+        "write_batch.json",
+        "lht_continue.json",
+        "loop_guard.json",
+        "scratchpad_compaction.json",
+        "cycle_handoff.json",
+        "overflow_recovery.json",
+        "capacity_checkpoint.json",
+        "manual_compaction.json",
+        "deferred_activation.json",
+    ];
 
     fn fixture_path(name: &str) -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -67,14 +80,33 @@ mod tests {
     }
 
     #[test]
+    fn golden_guard_projection_cycle_handoff() {
+        let events = load_fixture("cycle_handoff.json");
+        let p = TurnKernelProjection::from_events(&events);
+        assert_eq!(p.cycle_handoff_attempts, 2);
+        assert!(
+            verify_guard_projection_chain(&events).is_none(),
+            "guard projection mismatch in cycle_handoff.json"
+        );
+    }
+
+    #[test]
+    fn golden_capacity_checkpoint_projection() {
+        let events = load_fixture("capacity_checkpoint.json");
+        let p = TurnKernelProjection::from_events(&events);
+        assert_eq!(
+            p.last_capacity_action,
+            Some(crate::engine::kernel_event::CapacityAction::Trim)
+        );
+        assert!(
+            verify_guard_projection_chain(&events).is_none(),
+            "guard projection mismatch in capacity_checkpoint.json"
+        );
+    }
+
+    #[test]
     fn golden_effect_replay_chain_all_fixtures() {
-        for name in [
-            "pure_read.json",
-            "write_batch.json",
-            "lht_continue.json",
-            "loop_guard.json",
-            "scratchpad_compaction.json",
-        ] {
+        for name in ALL_FIXTURES {
             let events = load_fixture(name);
             assert!(
                 verify_effect_replay_chain(&events).is_none(),
@@ -98,14 +130,19 @@ mod tests {
     }
 
     #[test]
+    fn golden_memory_projection_manual_compaction() {
+        let events = load_fixture("manual_compaction.json");
+        let p = TurnKernelProjection::from_events(&events);
+        assert_eq!(p.compaction_artifact_count, 1);
+        assert!(
+            verify_memory_projection_chain(&events).is_none(),
+            "memory projection mismatch in manual_compaction.json"
+        );
+    }
+
+    #[test]
     fn golden_replay_coherence_all_fixtures() {
-        for name in [
-            "pure_read.json",
-            "write_batch.json",
-            "lht_continue.json",
-            "loop_guard.json",
-            "scratchpad_compaction.json",
-        ] {
+        for name in ALL_FIXTURES {
             let events = load_fixture(name);
             let report = replay_turn_projection(&events);
             assert!(
@@ -121,17 +158,31 @@ mod tests {
 
     #[test]
     fn golden_replay_all_fixtures_round_trip() {
-        for name in [
-            "pure_read.json",
-            "write_batch.json",
-            "lht_continue.json",
-            "loop_guard.json",
-            "scratchpad_compaction.json",
-        ] {
+        for name in ALL_FIXTURES {
             let events = load_fixture(name);
             let json = serde_json::to_string(&events).expect("serialize");
             let back: Vec<KernelEvent> = serde_json::from_str(&json).expect("deserialize");
             assert_eq!(back.len(), events.len(), "round-trip length for {name}");
         }
+    }
+
+    #[test]
+    fn golden_thread_replay_report_aggregates_fixtures() {
+        let pairs: Vec<(String, Vec<KernelEvent>)> = ALL_FIXTURES
+            .iter()
+            .map(|name| {
+                let events = load_fixture(name);
+                let turn_id = events
+                    .first()
+                    .and_then(|e| e.turn_id())
+                    .unwrap_or("unknown")
+                    .to_string();
+                (turn_id, events)
+            })
+            .collect();
+        let report = build_thread_replay_report("golden-thread", &pairs);
+        assert_eq!(report.turn_count, ALL_FIXTURES.len());
+        assert_eq!(report.turns_with_events, ALL_FIXTURES.len());
+        assert!(report.all_coherent);
     }
 }

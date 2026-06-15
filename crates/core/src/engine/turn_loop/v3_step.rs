@@ -99,6 +99,63 @@ pub async fn run_v3_step<H: TurnLoopHost>(
     V3StepOutcome { stream, tools }
 }
 
+/// v3 turn step entry: runtime [`EffectInterpreter`] when provided, else core fallback.
+#[allow(clippy::too_many_arguments)]
+pub async fn run_v3_turn_step_unified<H: TurnLoopHost>(
+    host: &mut H,
+    turn: &mut TurnContext,
+    client: &dyn LlmClient,
+    mode: TurnLoopMode,
+    tool_catalog: &mut [Tool],
+    active_tool_names: &mut HashSet<String>,
+    force_update_plan_first: bool,
+    stream_retry_attempts: &mut u32,
+    context_recovery_attempts: &mut u8,
+    length_continuations: &mut u32,
+    turn_error: &mut Option<String>,
+    loop_guard: &mut LoopGuard,
+    consecutive_tool_error_steps: u32,
+    tool_registry: Option<&H::ToolRegistry>,
+) -> V3StepOutcome {
+    if let Some(out) = host
+        .try_run_v3_turn_step(
+            turn,
+            client,
+            mode,
+            tool_catalog,
+            active_tool_names,
+            force_update_plan_first,
+            stream_retry_attempts,
+            context_recovery_attempts,
+            length_continuations,
+            turn_error,
+            loop_guard,
+            consecutive_tool_error_steps,
+            tool_registry,
+        )
+        .await
+    {
+        return out;
+    }
+    run_v3_step(
+        host,
+        turn,
+        client,
+        mode,
+        tool_catalog,
+        active_tool_names,
+        force_update_plan_first,
+        stream_retry_attempts,
+        context_recovery_attempts,
+        length_continuations,
+        turn_error,
+        loop_guard,
+        consecutive_tool_error_steps,
+        tool_registry,
+    )
+    .await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

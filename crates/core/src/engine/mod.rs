@@ -121,9 +121,14 @@ pub use turn_loop::{
     resolve_auto_effort,
 };
 pub use turn_machine::{
-    Effect, KernelEventSink, LiveTurnSnapshot, ReplayTurnMachine, StepOutput, TurnKernelProjection,
-    TurnMachine, TurnReplayReport, compare_projection_to_live, emit_kernel, emit_kernel_event,
-    outcome_from_status, replay_turn_projection, verify_effect_replay_chain,
-    verify_guard_projection_chain, verify_memory_projection_chain, verify_turn_replay_coherence,
+    Effect, KernelEventSink, KernelResumeHints, LiveTurnSnapshot, ReplayTurnMachine, StepOutput,
+    ThreadMessageReplayStats, ThreadReplayProjection, ThreadReplayReport, ThreadTurnReplaySummary,
+    TurnKernelProjection, TurnMachine, TurnReplayReport, build_thread_replay_report,
+    compare_projection_to_live, emit_kernel, emit_kernel_event, events_for_step,
+    kernel_resume_hints_from_projection, outcome_from_status, plan_v3_step_effects,
+    replay_effect_counts, replay_step_effects, replay_thread_message_stats,
+    replay_thread_projection, replay_turn_effects, replay_turn_projection,
+    verify_effect_replay_chain, verify_guard_projection_chain, verify_memory_projection_chain,
+    verify_session_message_coverage, verify_step_effect_parity, verify_turn_replay_coherence,
 };
 pub use turn_port::TurnEnginePort;

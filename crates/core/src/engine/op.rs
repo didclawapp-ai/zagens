@@ -86,6 +86,11 @@ pub enum Op {
         workspace: PathBuf,
     },
 
+    /// Restore kernel turn frame from persisted event-log projection (Phase 3b 6e).
+    ApplyKernelResume {
+        hints: crate::engine::turn_machine::KernelResumeHints,
+    },
+
     /// Run context compaction immediately.
     CompactContext,
 

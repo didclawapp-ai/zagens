@@ -293,44 +293,23 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
 
         let (stream_out, phase) = if host.kernel_machine_mode().uses_v3_turn_loop() {
             let v3 = async {
-                if let Some(v3) = host
-                    .try_run_v3_turn_step(
-                        turn,
-                        client.as_ref(),
-                        mode,
-                        &mut tool_catalog,
-                        &mut active_tool_names,
-                        force_update_plan_first,
-                        &mut stream_retry_attempts,
-                        &mut context_recovery_attempts,
-                        &mut length_continuations,
-                        &mut turn_error,
-                        &mut loop_guard,
-                        consecutive_tool_error_steps,
-                        tool_registry,
-                    )
-                    .await
-                {
-                    v3
-                } else {
-                    super::v3_step::run_v3_step(
-                        host,
-                        turn,
-                        client.as_ref(),
-                        mode,
-                        &mut tool_catalog,
-                        &mut active_tool_names,
-                        force_update_plan_first,
-                        &mut stream_retry_attempts,
-                        &mut context_recovery_attempts,
-                        &mut length_continuations,
-                        &mut turn_error,
-                        &mut loop_guard,
-                        consecutive_tool_error_steps,
-                        tool_registry,
-                    )
-                    .await
-                }
+                super::v3_step::run_v3_turn_step_unified(
+                    host,
+                    turn,
+                    client.as_ref(),
+                    mode,
+                    &mut tool_catalog,
+                    &mut active_tool_names,
+                    force_update_plan_first,
+                    &mut stream_retry_attempts,
+                    &mut context_recovery_attempts,
+                    &mut length_continuations,
+                    &mut turn_error,
+                    &mut loop_guard,
+                    consecutive_tool_error_steps,
+                    tool_registry,
+                )
+                .await
             }
             .instrument(stream_span)
             .await;

@@ -1,6 +1,7 @@
-//! Phase 3b batch 2 — v3 turn loop observability.
+//! Phase 3b batch 6g — v3 turn loop driver helpers.
 
 use crate::engine::kernel_mode::KernelMachineMode;
+use crate::engine::turn_machine::plan_v3_step_effects;
 
 use super::host::TurnLoopHost;
 
@@ -13,4 +14,17 @@ pub fn log_v3_turn_start<H: TurnLoopHost>(host: &H, turn_id: &str) {
             "v3 turn loop active (CallModel / ExecuteBatch via effect interpreter)"
         );
     }
+}
+
+/// Log the planned effect chain for a v3 step (observability before IO).
+pub fn log_v3_step_effect_plan(turn_id: &str, step: u32, token_budget: u32, call_ids: &[String]) {
+    let plan = plan_v3_step_effects(token_budget, call_ids);
+    tracing::debug!(
+        target: "kernel_v3",
+        turn_id = %turn_id,
+        step,
+        effect_count = plan.len(),
+        tool_count = call_ids.len(),
+        "v3 step effect plan"
+    );
 }

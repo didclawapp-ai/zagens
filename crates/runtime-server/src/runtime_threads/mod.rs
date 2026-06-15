@@ -77,6 +77,7 @@ pub(crate) use {
 mod background_slots;
 mod engine_host;
 mod engine_spawn;
+mod kernel_resume;
 mod manager;
 mod monitor_host;
 mod task_port;

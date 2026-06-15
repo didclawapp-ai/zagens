@@ -214,7 +214,10 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
         kernel_event_writer.is_some() && kernel_machine_mode.uses_effect_replay_shadow(),
     );
     let kernel_replay_shadow = KernelReplayShadow::new(
-        kernel_event_writer.is_some() && kernel_machine_mode.uses_effect_replay_shadow(),
+        kernel_event_writer.is_some() && kernel_machine_mode.uses_replay_verification(),
+    );
+    let kernel_v3_effect_shadow = super::kernel_v3_effect_shadow::KernelV3EffectShadow::new(
+        kernel_event_writer.is_some() && kernel_machine_mode.uses_v3_turn_loop(),
     );
     if kernel_event_writer.is_some() {
         super::kernel_projection_shadow::register_global_projection_shadow_stats(
@@ -231,8 +234,15 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
         super::kernel_memory_shadow::register_global_memory_shadow_stats(
             kernel_memory_shadow.stats.clone(),
         );
+    }
+    if kernel_event_writer.is_some() && kernel_machine_mode.uses_replay_verification() {
         super::kernel_replay_shadow::register_global_replay_shadow_stats(
             kernel_replay_shadow.stats.clone(),
+        );
+    }
+    if kernel_event_writer.is_some() && kernel_machine_mode.uses_v3_turn_loop() {
+        super::kernel_v3_effect_shadow::register_global_v3_effect_shadow_stats(
+            kernel_v3_effect_shadow.stats.clone(),
         );
     }
 
@@ -261,6 +271,7 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
         kernel_guard_shadow,
         kernel_memory_shadow,
         kernel_replay_shadow,
+        kernel_v3_effect_shadow,
         kernel_machine_mode,
         kernel_active_turn_id: None,
         kernel_active_step: 0,

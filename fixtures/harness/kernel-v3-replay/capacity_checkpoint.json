@@ -1,0 +1,43 @@
+[
+  {
+    "event_type": "turn_started",
+    "turn_id": "golden-capacity-checkpoint-001",
+    "mode": "agent",
+    "input_text": "Run with capacity guardrails enabled",
+    "max_steps": 8
+  },
+  {
+    "event_type": "model_request_issued",
+    "turn_id": "golden-capacity-checkpoint-001",
+    "step_idx": 1,
+    "request_fp": {
+      "static_prefix_sha256": "abcd1234",
+      "full_prefix_sha256": "efgh5678"
+    },
+    "token_budget": 32768
+  },
+  {
+    "event_type": "capacity_checkpoint",
+    "turn_id": "golden-capacity-checkpoint-001",
+    "step_idx": 1,
+    "kind": "pre_request",
+    "tokens_used": 26000,
+    "token_budget": 32768,
+    "action": "continue"
+  },
+  {
+    "event_type": "capacity_checkpoint",
+    "turn_id": "golden-capacity-checkpoint-001",
+    "step_idx": 1,
+    "kind": "post_tool",
+    "tokens_used": 29500,
+    "token_budget": 32768,
+    "action": "trim"
+  },
+  {
+    "event_type": "turn_ended",
+    "turn_id": "golden-capacity-checkpoint-001",
+    "outcome": "completed",
+    "total_steps": 1
+  }
+]

@@ -4,8 +4,9 @@ use std::collections::HashSet;
 
 use zagens_core::chat::{LlmClient, Tool};
 use zagens_core::engine::TurnLoopHost;
+use zagens_core::engine::kernel_event::KernelEvent;
 use zagens_core::engine::loop_guard::LoopGuard;
-use zagens_core::engine::turn_loop::v3_step::{V3StepOutcome, execute_batch_call_ids};
+use zagens_core::engine::turn_loop::v3_step::V3StepOutcome;
 use zagens_core::turn::{TurnContext, TurnLoopMode};
 
 use super::Engine;
@@ -29,25 +30,9 @@ pub(super) async fn run_v3_turn_step(
     consecutive_tool_error_steps: u32,
     tool_registry: Option<&ToolRegistry>,
 ) -> V3StepOutcome {
-    let model = engine.session_mut().model.clone();
-    let token_budget = zagens_core::engine::context::context_input_budget(
-        &model,
-        zagens_core::engine::context::TURN_MAX_OUTPUT_TOKENS,
-    )
-    .map(|b| b.min(u32::MAX as usize) as u32)
-    .unwrap_or(zagens_core::engine::context::TURN_MAX_OUTPUT_TOKENS);
-
-    tracing::info!(
-        target: "kernel_v3",
-        turn_id = %turn.id,
-        step = turn.step,
-        token_budget,
-        "v3 step: CallModel (effect interpreter)"
-    );
-
     let mut interpreter = EffectInterpreter::new(engine);
-    let mut stream = interpreter
-        .run_call_model_step(
+    let outcome = interpreter
+        .run_v3_turn_step(
             turn,
             client,
             mode,
@@ -58,35 +43,31 @@ pub(super) async fn run_v3_turn_step(
             context_recovery_attempts,
             length_continuations,
             turn_error,
-            token_budget,
+            loop_guard,
+            consecutive_tool_error_steps,
+            tool_registry,
         )
         .await;
 
-    let tools = if stream.tool_uses.is_empty() {
-        zagens_core::engine::turn_loop::control::TurnLoopToolPhaseOutcome::default()
-    } else {
-        let call_ids = execute_batch_call_ids(&stream.tool_uses);
-        tracing::info!(
-            target: "kernel_v3",
-            turn_id = %turn.id,
-            step = turn.step,
-            call_count = call_ids.len(),
-            "v3 step: ExecuteBatch (effect interpreter)"
-        );
-        interpreter
-            .run_execute_batch_step(
-                turn,
-                mode,
-                &mut stream.tool_uses,
-                tool_catalog,
-                active_tool_names,
-                loop_guard,
-                consecutive_tool_error_steps,
-                tool_registry,
-                call_ids,
+    let turn_events = engine
+        .runtime_ext()
+        .kernel_projection_shadow
+        .turn_events()
+        .to_vec();
+    let executed_tool_count = turn_events
+        .iter()
+        .filter(|event| {
+            matches!(
+                event,
+                KernelEvent::ToolCallPlanned { step_idx, .. } if *step_idx == turn.step
             )
-            .await
-    };
+        })
+        .count() as u32;
+    engine.runtime_ext().kernel_v3_effect_shadow.verify_step(
+        &turn_events,
+        turn.step,
+        executed_tool_count,
+    );
 
-    V3StepOutcome { stream, tools }
+    outcome
 }

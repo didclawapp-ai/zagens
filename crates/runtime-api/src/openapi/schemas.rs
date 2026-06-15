@@ -29,11 +29,33 @@ pub struct SessionDetailResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ResumeSessionKernelReplay {
+    pub turn_count: usize,
+    pub turns_with_events: usize,
+    pub turns_coherent: usize,
+    pub all_coherent: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub latest_turn_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub latest_step_idx: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub latest_max_steps: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active_tool_count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_message_count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_call_planned_count: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ResumeSessionResponse {
     pub thread_id: String,
     pub session_id: String,
     pub message_count: usize,
     pub state: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kernel_replay: Option<ResumeSessionKernelReplay>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -112,6 +134,9 @@ pub const SCHEMA_EXPORTS: &[(&str, SchemaExportFn)] = &[
     }),
     ("SessionDetailResponse", || {
         schemars::schema_for!(SessionDetailResponse)
+    }),
+    ("ResumeSessionKernelReplay", || {
+        schemars::schema_for!(ResumeSessionKernelReplay)
     }),
     ("ResumeSessionResponse", || {
         schemars::schema_for!(ResumeSessionResponse)

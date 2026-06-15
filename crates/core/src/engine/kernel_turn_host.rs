@@ -26,7 +26,15 @@ pub trait KernelTurnHost {
         Vec::new()
     }
 
+    /// Projection-only turn-end compare (runtime engines extend via [`TurnLoopHost::finish_kernel_turn_shadow`]).
     fn finish_kernel_projection_shadow(&mut self, _live: &LiveTurnSnapshot) {}
 
     fn sync_kernel_turn_frame(&mut self, _turn: &TurnContext) {}
+
+    /// Apply persisted projection hints when a thread engine is loaded (Phase 3b 6e).
+    fn apply_kernel_resume_hints(
+        &mut self,
+        _hints: &crate::engine::turn_machine::KernelResumeHints,
+    ) {
+    }
 }

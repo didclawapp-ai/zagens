@@ -36,6 +36,8 @@ pub(crate) mod kernel_guard_shadow;
 pub(crate) mod kernel_memory_shadow;
 pub(crate) mod kernel_projection_shadow;
 pub(crate) mod kernel_replay_shadow;
+mod kernel_resume;
+pub(crate) mod kernel_v3_effect_shadow;
 mod layered_context;
 mod loop_guard;
 mod lsp_hooks;

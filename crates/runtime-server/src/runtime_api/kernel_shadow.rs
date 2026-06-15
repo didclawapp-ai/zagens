@@ -10,6 +10,7 @@ use crate::core::engine::kernel_guard_shadow::kernel_guard_shadow_stats;
 use crate::core::engine::kernel_memory_shadow::kernel_memory_shadow_stats;
 use crate::core::engine::kernel_projection_shadow::kernel_projection_shadow_stats;
 use crate::core::engine::kernel_replay_shadow::kernel_replay_shadow_stats;
+use crate::core::engine::kernel_v3_effect_shadow::kernel_v3_effect_shadow_stats;
 
 use super::{ApiError, RuntimeApiState};
 
@@ -47,6 +48,8 @@ pub(crate) struct KernelShadowResponse {
     memory_shadow: Option<ShadowCounterBlock>,
     #[serde(skip_serializing_if = "Option::is_none")]
     replay_shadow: Option<ReplayShadowBlock>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    v3_effect_shadow: Option<ShadowCounterBlock>,
 }
 
 pub(crate) async fn kernel_shadow_stats(
@@ -63,6 +66,7 @@ pub(crate) fn collect_kernel_shadow_stats(config: &crate::config::Config) -> Ker
     let guard_shadow = probe_guard_shadow(config);
     let memory_shadow = probe_memory_shadow(config);
     let replay_shadow = probe_replay_shadow(config);
+    let v3_effect_shadow = probe_v3_effect_shadow(config);
     KernelShadowResponse {
         policy_shadow,
         scheduler_shadow,
@@ -71,6 +75,7 @@ pub(crate) fn collect_kernel_shadow_stats(config: &crate::config::Config) -> Ker
         guard_shadow,
         memory_shadow,
         replay_shadow,
+        v3_effect_shadow,
     }
 }
 
@@ -176,7 +181,7 @@ fn probe_memory_shadow(config: &crate::config::Config) -> Option<ShadowCounterBl
 
 fn probe_replay_shadow(config: &crate::config::Config) -> Option<ReplayShadowBlock> {
     let mode = config.kernel_machine_mode();
-    if mode != KernelMachineMode::Shadow {
+    if !mode.uses_replay_verification() {
         return None;
     }
     let (comparisons, diffs, persist_diffs) = kernel_replay_shadow_stats();
@@ -190,6 +195,23 @@ fn probe_replay_shadow(config: &crate::config::Config) -> Option<ReplayShadowBlo
         persist_diffs,
         diff_rate_pct: shadow_diff_rate_pct(comparisons, diffs),
         persist_diff_rate_pct: shadow_diff_rate_pct(comparisons, persist_diffs),
+    })
+}
+
+fn probe_v3_effect_shadow(config: &crate::config::Config) -> Option<ShadowCounterBlock> {
+    let mode = config.kernel_machine_mode();
+    if !mode.uses_v3_turn_loop() {
+        return None;
+    }
+    let (comparisons, diffs) = kernel_v3_effect_shadow_stats();
+    if comparisons == 0 && diffs == 0 {
+        return None;
+    }
+    Some(ShadowCounterBlock {
+        mode: mode.as_str().to_string(),
+        comparisons,
+        diffs,
+        diff_rate_pct: shadow_diff_rate_pct(comparisons, diffs),
     })
 }
 

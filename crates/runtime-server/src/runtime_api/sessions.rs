@@ -196,11 +196,16 @@ pub(crate) async fn resume_session_thread(
                         eprintln!(
                             "[resume-session] reusing runtime thread {stored_tid} (events present)"
                         );
-                        if let Ok(thread) = state.runtime_threads.load_thread_sync(stored_tid) {
-                            if let Some(ref turn_id) = thread.latest_turn_id {
-                                super::kernel_replay::log_kernel_replay_for_turn(turn_id);
-                            }
-                        }
+                        super::kernel_replay::log_kernel_replay_for_thread(
+                            state.runtime_threads.as_ref(),
+                            stored_tid,
+                        );
+                        let kernel_replay =
+                            super::kernel_replay::resume_session_kernel_replay_summary(
+                                state.runtime_threads.as_ref(),
+                                stored_tid,
+                                Some(session.messages.len()),
+                            );
                         return Ok((
                             StatusCode::OK,
                             Json(ResumeSessionResponse {
@@ -208,6 +213,7 @@ pub(crate) async fn resume_session_thread(
                                 session_id: id,
                                 message_count: session.messages.len(),
                                 state: "ready".to_string(),
+                                kernel_replay,
                             }),
                         ));
                     }
@@ -310,6 +316,7 @@ pub(crate) async fn resume_session_thread(
             session_id: id,
             message_count: msg_count,
             state: "seeding".to_string(),
+            kernel_replay: None,
         }),
     ))
 }

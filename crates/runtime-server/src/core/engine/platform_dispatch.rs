@@ -99,6 +99,9 @@ impl EnginePlatformExt<crate::sandbox::SandboxPolicy, crate::tools::user_input::
                     .sync_session_from_op(messages, system_prompt, model, workspace)
                     .await;
             }
+            Op::ApplyKernelResume { hints } => {
+                engine.apply_kernel_resume_hints(&hints);
+            }
             Op::CompactContext => {
                 engine.handle_compact_context_op().await;
             }

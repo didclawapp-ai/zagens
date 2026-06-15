@@ -1,4 +1,4 @@
-//! Effect interpreter — Phase 3b batch 2/3.
+//! Effect interpreter — Phase 3b batch 2/3/6f.
 //!
 //! When `[kernel] machine = "v3"`, turn-step IO is routed through this module
 //! instead of direct `run_streaming_phase` / `run_tool_execution_phase` calls.
@@ -6,13 +6,15 @@
 use std::collections::HashSet;
 
 use zagens_core::chat::{LlmClient, Tool};
+use zagens_core::engine::context::{TURN_MAX_OUTPUT_TOKENS, context_input_budget};
 use zagens_core::engine::loop_guard::LoopGuard;
 use zagens_core::engine::streaming::ToolUseState;
 use zagens_core::engine::turn_loop::control::{
     TurnLoopStreamingPhaseOutcome, TurnLoopToolPhaseOutcome,
 };
+use zagens_core::engine::turn_loop::v3_step::{V3StepOutcome, execute_batch_call_ids};
 use zagens_core::engine::turn_loop::{TurnLoopHost, streaming_phase, tool_phase};
-use zagens_core::engine::turn_machine::Effect;
+use zagens_core::engine::turn_machine::{Effect, plan_v3_step_effects};
 use zagens_core::turn::{TurnContext, TurnLoopMode};
 
 use super::Engine;
@@ -28,6 +30,26 @@ pub enum InterpretOutcome {
     NotImplemented,
 }
 
+/// Mutable v3 step IO context while interpreting a [`plan_v3_step_effects`] chain.
+struct V3StepInterpretContext<'a> {
+    turn: &'a mut TurnContext,
+    client: &'a dyn LlmClient,
+    mode: TurnLoopMode,
+    tool_catalog: &'a mut [Tool],
+    active_tool_names: &'a mut HashSet<String>,
+    force_update_plan_first: bool,
+    stream_retry_attempts: &'a mut u32,
+    context_recovery_attempts: &'a mut u8,
+    length_continuations: &'a mut u32,
+    turn_error: &'a mut Option<String>,
+    loop_guard: &'a mut LoopGuard,
+    consecutive_tool_error_steps: u32,
+    tool_registry: Option<&'a <Engine as TurnLoopHost>::ToolRegistry>,
+    stream: Option<TurnLoopStreamingPhaseOutcome>,
+    tools: Option<TurnLoopToolPhaseOutcome>,
+    execute_batch_ran: bool,
+}
+
 /// Executes kernel [`Effect`] values against the runtime engine.
 pub struct EffectInterpreter<'a> {
     engine: &'a mut Engine,
@@ -36,6 +58,167 @@ pub struct EffectInterpreter<'a> {
 impl<'a> EffectInterpreter<'a> {
     pub fn new(engine: &'a mut Engine) -> Self {
         Self { engine }
+    }
+
+    /// Run one v3 turn step: `CallModel` then optional `ExecuteBatch` effects.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn run_v3_turn_step(
+        &mut self,
+        turn: &mut TurnContext,
+        client: &dyn LlmClient,
+        mode: TurnLoopMode,
+        tool_catalog: &mut [Tool],
+        active_tool_names: &mut HashSet<String>,
+        force_update_plan_first: bool,
+        stream_retry_attempts: &mut u32,
+        context_recovery_attempts: &mut u8,
+        length_continuations: &mut u32,
+        turn_error: &mut Option<String>,
+        loop_guard: &mut LoopGuard,
+        consecutive_tool_error_steps: u32,
+        tool_registry: Option<&<Engine as TurnLoopHost>::ToolRegistry>,
+    ) -> V3StepOutcome
+    where
+        Engine: TurnLoopHost,
+    {
+        let model = self.engine.session_mut().model.clone();
+        let token_budget = context_input_budget(&model, TURN_MAX_OUTPUT_TOKENS)
+            .map(|b| b.min(u32::MAX as usize) as u32)
+            .unwrap_or(TURN_MAX_OUTPUT_TOKENS);
+
+        let mut ctx = V3StepInterpretContext {
+            turn,
+            client,
+            mode,
+            tool_catalog,
+            active_tool_names,
+            force_update_plan_first,
+            stream_retry_attempts,
+            context_recovery_attempts,
+            length_continuations,
+            turn_error,
+            loop_guard,
+            consecutive_tool_error_steps,
+            tool_registry,
+            stream: None,
+            tools: None,
+            execute_batch_ran: false,
+        };
+
+        let call_outcome = self
+            .interpret_v3_step_effect(Effect::CallModel { token_budget }, &mut ctx)
+            .await;
+        debug_assert_eq!(call_outcome, InterpretOutcome::Executed);
+
+        let stream = ctx
+            .stream
+            .take()
+            .expect("CallModel effect must populate stream outcome");
+        let call_ids = execute_batch_call_ids(&stream.tool_uses);
+        zagens_core::engine::turn_loop::v3_driver::log_v3_step_effect_plan(
+            &ctx.turn.id,
+            ctx.turn.step,
+            token_budget,
+            &call_ids,
+        );
+
+        let plan = plan_v3_step_effects(token_budget, &call_ids);
+        debug_assert!(
+            matches!(plan.first(), Some(Effect::CallModel { .. })),
+            "v3 step plan must begin with CallModel"
+        );
+
+        let mut plan_outcomes = vec![call_outcome];
+        for effect in plan.into_iter().skip(1) {
+            plan_outcomes.push(self.interpret_v3_step_effect(effect, &mut ctx).await);
+        }
+
+        if !call_ids.is_empty() {
+            debug_assert!(
+                plan_outcomes
+                    .iter()
+                    .skip(1)
+                    .all(|o| *o == InterpretOutcome::Executed),
+                "ExecuteBatch plan tail must execute"
+            );
+        }
+
+        let tools = ctx.tools.take().unwrap_or_default();
+        V3StepOutcome { stream, tools }
+    }
+
+    /// Interpret one v3 step effect against live turn-loop IO (`CallModel` / `ExecuteBatch`).
+    async fn interpret_v3_step_effect(
+        &mut self,
+        effect: Effect,
+        ctx: &mut V3StepInterpretContext<'_>,
+    ) -> InterpretOutcome
+    where
+        Engine: TurnLoopHost,
+    {
+        match effect {
+            Effect::CallModel { token_budget } => {
+                tracing::info!(
+                    target: "kernel_v3",
+                    turn_id = %ctx.turn.id,
+                    step = ctx.turn.step,
+                    token_budget,
+                    "v3 step: CallModel (effect plan)"
+                );
+                let stream = self
+                    .run_call_model_step(
+                        ctx.turn,
+                        ctx.client,
+                        ctx.mode,
+                        ctx.tool_catalog,
+                        ctx.active_tool_names,
+                        ctx.force_update_plan_first,
+                        ctx.stream_retry_attempts,
+                        ctx.context_recovery_attempts,
+                        ctx.length_continuations,
+                        ctx.turn_error,
+                        token_budget,
+                    )
+                    .await;
+                ctx.stream = Some(stream);
+                InterpretOutcome::Executed
+            }
+            Effect::ExecuteBatch { call_ids } => {
+                if ctx.execute_batch_ran {
+                    return InterpretOutcome::Executed;
+                }
+                let Some(stream) = ctx.stream.as_mut() else {
+                    return InterpretOutcome::NotImplemented;
+                };
+                if stream.tool_uses.is_empty() {
+                    return InterpretOutcome::Executed;
+                }
+                tracing::info!(
+                    target: "kernel_v3",
+                    turn_id = %ctx.turn.id,
+                    step = ctx.turn.step,
+                    call_count = call_ids.len(),
+                    "v3 step: ExecuteBatch (effect plan)"
+                );
+                let tools = self
+                    .run_execute_batch_step(
+                        ctx.turn,
+                        ctx.mode,
+                        &mut stream.tool_uses,
+                        ctx.tool_catalog,
+                        ctx.active_tool_names,
+                        ctx.loop_guard,
+                        ctx.consecutive_tool_error_steps,
+                        ctx.tool_registry,
+                        call_ids,
+                    )
+                    .await;
+                ctx.tools = Some(tools);
+                ctx.execute_batch_ran = true;
+                InterpretOutcome::Executed
+            }
+            _ => self.interpret(effect).await,
+        }
     }
 
     /// Run the streaming phase as a `CallModel` effect.
@@ -106,7 +289,7 @@ impl<'a> EffectInterpreter<'a> {
         .await
     }
 
-    /// Interpret one effect.  Standalone API for future full event-driven loop.
+    /// Interpret one effect. Standalone API for stateless effects (compaction, steer stub).
     pub async fn interpret(&mut self, effect: Effect) -> InterpretOutcome {
         match effect {
             Effect::CallModel { .. } | Effect::ExecuteBatch { .. } => {
@@ -117,14 +300,17 @@ impl<'a> EffectInterpreter<'a> {
                 let _ = text;
                 InterpretOutcome::DelegatedLegacy
             }
-            Effect::RunCompaction => InterpretOutcome::NotImplemented,
+            Effect::RunCompaction => {
+                self.engine.run_compaction_effect().await;
+                InterpretOutcome::Executed
+            }
             Effect::NotifyLsp { .. } => InterpretOutcome::NotImplemented,
             Effect::Sleep { .. } => InterpretOutcome::NotImplemented,
             _ => InterpretOutcome::NotImplemented,
         }
     }
 
-    /// Interpret a batch of effects in order (future full v3 loop entry point).
+    /// Interpret a batch of stateless effects in order.
     pub async fn interpret_all(&mut self, effects: Vec<Effect>) -> Vec<InterpretOutcome> {
         let mut out = Vec::with_capacity(effects.len());
         for effect in effects {
@@ -137,6 +323,7 @@ impl<'a> EffectInterpreter<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use zagens_core::engine::turn_machine::{Effect, plan_v3_step_effects};
 
     #[test]
     fn interpret_outcome_variants_distinct() {
@@ -145,5 +332,30 @@ mod tests {
             InterpretOutcome::DelegatedLegacy,
             InterpretOutcome::NotImplemented
         );
+    }
+
+    #[test]
+    fn plan_v3_step_effects_matches_call_and_batch_shape() {
+        let effects = plan_v3_step_effects(8192, &["c1".into(), "c2".into()]);
+        assert_eq!(effects.len(), 3);
+        assert!(matches!(effects[0], Effect::CallModel { .. }));
+        assert!(matches!(effects[1], Effect::ExecuteBatch { .. }));
+        assert!(matches!(effects[2], Effect::ExecuteBatch { .. }));
+    }
+
+    #[test]
+    fn v3_step_plan_execute_tail_matches_call_ids() {
+        let call_ids = ["c1".to_string(), "c2".to_string()];
+        let plan = plan_v3_step_effects(8192, &call_ids);
+        let execute_tail: Vec<_> = plan.into_iter().skip(1).collect();
+        assert_eq!(execute_tail.len(), call_ids.len());
+        for (effect, call_id) in execute_tail.iter().zip(call_ids.iter()) {
+            match effect {
+                Effect::ExecuteBatch { call_ids: ids } => {
+                    assert_eq!(ids, std::slice::from_ref(call_id));
+                }
+                other => panic!("expected ExecuteBatch, got {other:?}"),
+            }
+        }
     }
 }

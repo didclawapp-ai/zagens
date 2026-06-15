@@ -81,6 +81,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `GET /v1/runtime/kernel-replay/{turn_id}` returns projection + coherence for a persisted turn.
   - Session resume reuses linked thread: logs kernel replay coherence for `latest_turn_id` when present.
   - `NOTICE.md`: records engine divergence from CodeWhale upstream from v0.7.x (Kernel v3).
+- **Runtime (kernel-v2 Phase 3b batch 6c — thread replay + resume breadth):**
+  - `build_thread_replay_report()` aggregates per-turn coherence across a thread's event logs.
+  - `GET /v1/runtime/kernel-replay/thread/{thread_id}` returns per-turn replay + thread-level coherence summary.
+  - Session resume reuses linked thread: logs kernel replay coherence for **all** persisted turns (not only `latest_turn_id`).
+  - Manual `/compact` (`Op::CompactContext`) double-writes `CompactionArtifactCreated` when compaction produces an artifact.
+  - Five new golden fixtures (`cycle_handoff`, `overflow_recovery`, `capacity_checkpoint`, `manual_compaction`, `deferred_activation`) — **10** total in `fixtures/harness/kernel-v3-replay/`.
+- **Runtime (kernel-v2 Phase 3b batch 6d — thread replay substrate + v3 verify):**
+  - `replay_thread_projection()` returns per-turn coherence report plus latest turn [`TurnKernelProjection`] (resume substrate).
+  - `ResumeSessionResponse.kernel_replay` populated when reusing a linked thread with kernel events.
+  - `[kernel] machine = "v3"` enables unified replay coherence + SQLite persist checks at turn end (effect/guard/memory shadow remains shadow-only).
+  - `EffectInterpreter::interpret(RunCompaction)` routes through `run_compaction_effect()` (manual compaction IO).
+- **Runtime (kernel-v2 Phase 3b batch 6e — log-driven resume frame + effect replay):**
+  - `KernelResumeHints` + `kernel_resume_hints_from_projection()` extract restorable turn frame from latest projection.
+  - `Op::ApplyKernelResume` sent after `ensure_engine_loaded` to restore `kernel_active_turn_id` / step frame from persisted kernel log.
+  - `replay_turn_effects()` / `replay_effect_counts()` rebuild CallModel/ExecuteBatch chains from event logs (v3/event-interpreter substrate).
+  - v3 turn end logs replay effect counts for observability.
+- **Runtime (kernel-v2 Phase 3b batch 6f — v3 step effect replay + interpreter consolidation):**
+  - `events_for_step()` / `replay_step_effects()` / `verify_step_effect_parity()` slice per-step effect chains from the log.
+  - `plan_v3_step_effects()` models v3 `CallModel` + per-tool `ExecuteBatch` plans.
+  - `EffectInterpreter::run_v3_turn_step()` consolidates v3 step IO; `kernel_v3_effect_shadow` verifies step parity when `machine = "v3"`.
+  - `GET /v1/runtime/kernel-replay/thread/{id}` adds `latest_projection`; session `kernel_replay` adds step/tool summary fields.
+  - `GET /v1/runtime/kernel-shadow` adds `v3_effect_shadow` when v3 mode is active.
+- **Runtime (kernel-v2 Phase 3b batch 6g — v3 unified step + message replay stats):**
+  - `run_v3_turn_step_unified()` (core `v3_step`) collapses runtime interpreter + core fallback; `run.rs` v3 branch is a single call.
+  - `ThreadMessageReplayStats` + `replay_thread_message_stats()` aggregate model/tool counters rebuildable from kernel logs (text remains in session store).
+  - `verify_session_message_coverage()` logs resume observability when session JSON looks thinner than kernel `ModelMessage` events.
+  - Thread replay API + session `kernel_replay` expose model/tool counters; resume path logs coverage diffs.
+- **Runtime (kernel-v2 Phase 3b batch 6h — v3 step effect-plan driver):**
+  - `EffectInterpreter::run_v3_turn_step()` drives IO via `plan_v3_step_effects()` + `interpret_v3_step_effect()` instead of inline phase calls.
+  - Per-tool `ExecuteBatch` plan entries collapse to one runtime batch while preserving replay parity counts.
 
 ### Removed
 
