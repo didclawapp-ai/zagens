@@ -840,27 +840,6 @@ impl TurnLoopHost for Engine {
         request: &zagens_core::chat::MessageRequest,
     ) -> Option<zagens_core::engine::RequestFingerprint> {
         let fp = crate::request_fingerprint::fingerprint_message_request(request);
-
-        // Kernel-v2 Phase 2 / P2-Switch prep: shadow compare when
-        // `[context] compiler = "shadow"`.  Uses a real engine-state snapshot
-        // so the compiler independently assembles the system text from
-        // registered ContextSources (meaningful diff tracking).
-        if let Ok(config) = crate::config::Config::load(None, None) {
-            if config.context_compiler_mode() == zagens_core::engine::ContextCompilerMode::Shadow {
-                let snapshot =
-                    crate::context_compiler_shadow::ContextCompilerStateSnapshot::from_session(
-                        &self.session,
-                        0, // step_idx not available here; 0 is safe (closures are self-contained)
-                    );
-                crate::context_compiler_shadow::shadow_compare_with_snapshot(
-                    request,
-                    &snapshot,
-                    &fp.static_prefix_sha256,
-                    &fp.full_prefix_sha256,
-                );
-            }
-        }
-
         Some(fp)
     }
 
@@ -868,17 +847,9 @@ impl TurnLoopHost for Engine {
         &mut self,
         active_tools: Option<&[zagens_core::chat::Tool]>,
     ) -> Option<zagens_core::engine::turn_loop::CompilerRequestContext> {
-        use zagens_core::engine::ContextCompilerMode;
         use zagens_core::engine::ContextProjection;
         use zagens_core::engine::token_estimate::estimate_text_tokens;
         use zagens_core::engine::turn_loop::CompilerRequestContext;
-
-        let Ok(config) = crate::config::Config::load(None, None) else {
-            return None;
-        };
-        if config.context_compiler_mode() != ContextCompilerMode::V2 {
-            return None;
-        }
 
         let mut snapshot =
             crate::context_compiler_shadow::ContextCompilerStateSnapshot::from_session(

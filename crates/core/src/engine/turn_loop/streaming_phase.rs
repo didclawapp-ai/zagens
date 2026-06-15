@@ -77,9 +77,7 @@ pub async fn run_streaming_phase<H: TurnLoopHost>(
             max_tokens: session
                 .max_output_tokens
                 .unwrap_or_else(|| effective_max_output_tokens(&session.model)),
-            system: compiler_ctx
-                .and_then(|c| c.system_prompt)
-                .or_else(|| session.system_prompt.clone()),
+            system: compiler_ctx.and_then(|c| c.system_prompt),
             tools: active_tools.clone(),
             tool_choice: if active_tools.is_some() {
                 if strict_tool_mode {

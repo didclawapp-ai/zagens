@@ -22,17 +22,6 @@ pub(crate) struct KernelShadowResponse {
     policy_shadow: Option<ShadowCounterBlock>,
     #[serde(skip_serializing_if = "Option::is_none")]
     scheduler_shadow: Option<ShadowCounterBlock>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    context_compiler_shadow: Option<ContextCompilerShadowBlock>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub(crate) struct ContextCompilerShadowBlock {
-    mode: String,
-    comparisons: u64,
-    static_diffs: u64,
-    full_diffs: u64,
-    static_diff_rate_pct: f64,
 }
 
 pub(crate) async fn kernel_shadow_stats(
@@ -44,11 +33,9 @@ pub(crate) async fn kernel_shadow_stats(
 pub(crate) fn collect_kernel_shadow_stats(config: &crate::config::Config) -> KernelShadowResponse {
     let policy_shadow = probe_policy_shadow(config);
     let scheduler_shadow = probe_scheduler_shadow(config);
-    let context_compiler_shadow = probe_context_compiler_shadow(config);
     KernelShadowResponse {
         policy_shadow,
         scheduler_shadow,
-        context_compiler_shadow,
     }
 }
 
@@ -80,28 +67,6 @@ fn probe_scheduler_shadow(config: &crate::config::Config) -> Option<ShadowCounte
     })
 }
 
-fn probe_context_compiler_shadow(
-    config: &crate::config::Config,
-) -> Option<ContextCompilerShadowBlock> {
-    let mode = config.context_compiler_mode();
-    if mode != zagens_core::engine::ContextCompilerMode::Shadow {
-        return None;
-    }
-    let stats = crate::context_compiler_shadow::context_compiler_shadow_stats();
-    let static_diff_rate_pct = if stats.comparisons == 0 {
-        0.0
-    } else {
-        (stats.static_diffs as f64 / stats.comparisons as f64) * 100.0
-    };
-    Some(ContextCompilerShadowBlock {
-        mode: mode.as_str().to_string(),
-        comparisons: stats.comparisons,
-        static_diffs: stats.static_diffs,
-        full_diffs: stats.full_diffs,
-        static_diff_rate_pct,
-    })
-}
-
 fn shadow_diff_rate_pct(comparisons: u64, diffs: u64) -> f64 {
     if comparisons == 0 {
         0.0
@@ -116,11 +81,10 @@ mod tests {
     use crate::config::Config;
 
     #[test]
-    fn kernel_shadow_omits_all_blocks_when_no_shadow_mode() {
-        // Default config: policy=Engine, scheduler=Shadow, compiler=V2.
+    fn kernel_shadow_omits_policy_shadow_when_engine_is_default() {
+        // Default config: policy=Engine, scheduler=Shadow.
         // - policy_shadow: None (Engine is default, not Shadow)
         // - scheduler_shadow: Some (Shadow IS the scheduler default — M4 bake active)
-        // - context_compiler_shadow: None (V2 is default; shadow block only when compiler=shadow)
         let config = Config::default();
         let resp = collect_kernel_shadow_stats(&config);
         assert!(
@@ -130,10 +94,6 @@ mod tests {
         assert!(
             resp.scheduler_shadow.is_some(),
             "scheduler shadow present (shadow is the M4 bake default)"
-        );
-        assert!(
-            resp.context_compiler_shadow.is_none(),
-            "context_compiler shadow absent (v2 is default)"
         );
     }
 }

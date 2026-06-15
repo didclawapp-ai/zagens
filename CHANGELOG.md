@@ -20,6 +20,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **Runtime (kernel-v2 Phase 2 legacy cleanup — G-PR):** Legacy and Shadow context injection paths removed; `ContextCompiler` V2 is now the sole request-assembly path:
+  - `ContextCompilerMode::Legacy` and `ContextCompilerMode::Shadow` variants deleted from the enum. `"legacy"` and `"shadow"` config values still accepted in `config.toml` (silently mapped to V2 for parse compatibility) but have no behavioural effect.
+  - `streaming_phase`: removed `.or_else(|| session.system_prompt.clone())` legacy fallback — system prompt now comes exclusively from the compiler snapshot.
+  - `context_recovery::try_budget_recompile`: removed `ContextCompilerMode::Legacy` kill-switch guard; budget solver always active.
+  - `host_impl::model_request_fingerprint`: removed Shadow comparison block (`shadow_compare_with_snapshot` call).
+  - `host_impl::compiler_request_context`: removed `!= V2` guard; always runs V2 path.
+  - `context_compiler_shadow`: removed global shadow atomics (`SHADOW_COMPARISONS`, `SHADOW_STATIC_DIFFS`, `SHADOW_FULL_DIFFS`), `ContextCompilerShadowStats`, `context_compiler_shadow_stats()`, `record_context_compiler_shadow_diff()`, `shadow_compare()`, `shadow_compare_with_snapshot()`, `compute_compiler_fingerprint_from_snapshot()`, `SessionProxy`, `compiler_source_layer()`, and related tests. Module renamed in purpose to V2 state-snapshot + source-graph construction only.
+  - `GET /v1/runtime/kernel-shadow`: `context_compiler_shadow` field removed from response (was `None` in V2 mode anyway).
+  - `diagnostics` tool: `context_compiler_shadow` section removed.
+
 ### Changed
 
 - **Runtime (kernel-v2 G-PR — M3 policy default + Phase 2 compiler default):**

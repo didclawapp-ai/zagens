@@ -272,46 +272,34 @@ impl std::fmt::Display for CompileError {
 
 impl std::error::Error for CompileError {}
 
-/// Kill-switch mode for the context compiler (`[context] compiler` in config.toml).
+/// Mode for the context compiler (`[context] compiler` in config.toml).
 ///
-/// Mirrors the `ToolsPolicyMode` / `ToolsSchedulerMode` pattern.
+/// Phase 2 P2-Switch: V2 is the only active mode.  The `"legacy"` and
+/// `"shadow"` config values are still accepted (mapped to V2) so existing
+/// config files do not cause parse errors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ContextCompilerMode {
-    /// Kill-switch: existing injection-point code runs unmodified.
-    /// Set `[context] compiler = "legacy"` in config.toml to restore pre-Phase-2 behaviour.
-    Legacy,
-    /// ContextCompiler runs in parallel; fingerprint diffs are logged but the
-    /// existing path still controls the request.
-    /// Set `[context] compiler = "shadow"` to re-enter the observation period.
-    Shadow,
-    /// ContextCompiler controls the request (default).
-    /// Diff rate held at 0% in bake; legacy injection code no longer called for
-    /// system-prompt assembly.
+    /// ContextCompiler controls the request (default and only active mode).
     #[default]
     V2,
 }
 
 impl ContextCompilerMode {
     /// Parse from an optional string value (e.g. from `config.toml`).
+    ///
+    /// `"legacy"` and `"shadow"` are accepted but silently mapped to `V2`
+    /// (Phase 2 bake complete; legacy injection path removed).
     #[must_use]
-    pub fn parse(value: Option<&str>) -> Self {
-        match value.map(str::trim).map(str::to_ascii_lowercase).as_deref() {
-            Some("legacy") => Self::Legacy,
-            Some("shadow") => Self::Shadow,
-            Some("v2") => Self::V2,
-            // Unknown / missing values → V2 (same as code default).
-            _ => Self::V2,
-        }
+    pub fn parse(_value: Option<&str>) -> Self {
+        // All values → V2.  Legacy/Shadow bake is complete; the config key
+        // is kept for parse compatibility only.
+        Self::V2
     }
 
-    /// Canonical string representation (round-trips with `parse`).
+    /// Canonical string representation.
     #[must_use]
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Legacy => "legacy",
-            Self::Shadow => "shadow",
-            Self::V2 => "v2",
-        }
+        "v2"
     }
 }
 
@@ -630,22 +618,22 @@ mod tests {
     }
 
     #[test]
-    fn context_compiler_mode_parse_roundtrip() {
-        // Default (None / unknown) → V2 since P2-Switch (2026-06-14).
-        // Legacy and Shadow are retained as explicit config values.
-        for (input, expected) in [
-            (Some("shadow"), ContextCompilerMode::Shadow),
-            (Some("v2"), ContextCompilerMode::V2),
-            (Some("legacy"), ContextCompilerMode::Legacy),
-            (None, ContextCompilerMode::V2),
-            (Some("SHADOW"), ContextCompilerMode::Shadow),
-            (Some("unknown"), ContextCompilerMode::V2),
+    fn context_compiler_mode_parse_all_map_to_v2() {
+        // Phase 2 bake complete: all config values → V2.
+        for input in [
+            Some("v2"),
+            Some("legacy"),
+            Some("shadow"),
+            None,
+            Some("unknown"),
         ] {
-            let mode = ContextCompilerMode::parse(input);
-            assert_eq!(mode, expected, "input={input:?}");
-            // Round-trip: parse(mode.as_str()) == mode for all explicit values.
-            assert_eq!(ContextCompilerMode::parse(Some(mode.as_str())), mode);
+            assert_eq!(
+                ContextCompilerMode::parse(input),
+                ContextCompilerMode::V2,
+                "input={input:?}"
+            );
         }
+        assert_eq!(ContextCompilerMode::V2.as_str(), "v2");
     }
 
     // ── P2-D budget-solver tests ──────────────────────────────────────────────

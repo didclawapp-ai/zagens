@@ -142,16 +142,7 @@ impl Engine {
         &self,
         total_budget: u32,
     ) -> Option<zagens_core::engine::CompiledContext> {
-        use zagens_core::engine::{
-            ContextCompilerMode, ContextProjection, estimate_input_tokens_conservative,
-        };
-
-        let Ok(config) = crate::config::Config::load(None, None) else {
-            return None;
-        };
-        if config.context_compiler_mode() == ContextCompilerMode::Legacy {
-            return None;
-        }
+        use zagens_core::engine::{ContextProjection, estimate_input_tokens_conservative};
 
         let snapshot = crate::context_compiler_shadow::ContextCompilerStateSnapshot::from_session(
             &self.session,

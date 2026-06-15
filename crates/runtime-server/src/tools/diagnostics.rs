@@ -71,18 +71,6 @@ struct DiagnosticsOutput {
     /// Kernel-v2 M4 shadow counters when `[tools] scheduler = "shadow"`.
     #[serde(skip_serializing_if = "Option::is_none")]
     scheduler_shadow: Option<SchedulerShadowDiagnostics>,
-    /// Kernel-v2 Phase 2-A shadow counters when `[tools] compiler = "shadow"`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    context_compiler_shadow: Option<ContextCompilerShadowDiagnostics>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ContextCompilerShadowDiagnostics {
-    context_compiler: String,
-    comparisons: u64,
-    static_diffs: u64,
-    full_diffs: u64,
-    static_diff_rate_pct: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -166,7 +154,6 @@ impl ToolSpec for DiagnosticsTool {
         let sandbox_posture = probe_sandbox_posture(context);
         let policy_shadow = probe_policy_shadow();
         let scheduler_shadow = probe_scheduler_shadow();
-        let context_compiler_shadow = probe_context_compiler_shadow();
         let diagnostics = DiagnosticsOutput {
             workspace_root,
             current_dir,
@@ -182,7 +169,6 @@ impl ToolSpec for DiagnosticsTool {
             trusted_external_paths,
             policy_shadow,
             scheduler_shadow,
-            context_compiler_shadow,
         };
 
         ToolResult::json(&diagnostics).map_err(|e| ToolError::execution_failed(e.to_string()))
@@ -235,27 +221,6 @@ fn probe_scheduler_shadow() -> Option<SchedulerShadowDiagnostics> {
         comparisons: stats.comparisons,
         diffs: stats.diffs,
         diff_rate_pct,
-    })
-}
-
-fn probe_context_compiler_shadow() -> Option<ContextCompilerShadowDiagnostics> {
-    let config = crate::config::Config::load(None, None).ok()?;
-    let mode = config.context_compiler_mode();
-    if mode != zagens_core::engine::ContextCompilerMode::Shadow {
-        return None;
-    }
-    let stats = crate::context_compiler_shadow::context_compiler_shadow_stats();
-    let static_diff_rate_pct = if stats.comparisons == 0 {
-        0.0
-    } else {
-        (stats.static_diffs as f64 / stats.comparisons as f64) * 100.0
-    };
-    Some(ContextCompilerShadowDiagnostics {
-        context_compiler: mode.as_str().to_string(),
-        comparisons: stats.comparisons,
-        static_diffs: stats.static_diffs,
-        full_diffs: stats.full_diffs,
-        static_diff_rate_pct,
     })
 }
 
