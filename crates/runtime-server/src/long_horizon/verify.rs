@@ -1,4 +1,4 @@
-//! `[verify: cmd]` checklist prefix (LHT Phase 2).
+//! `[verify: cmd]` and `[req: ID]` checklist prefixes (LHT Phase 2 / C11).
 
 /// Normalize a shell command for fuzzy comparison.
 #[must_use]
@@ -69,6 +69,70 @@ pub fn parse_verify_command(content: &str) -> Option<String> {
     } else {
         Some(cmd.to_string())
     }
+}
+
+// ── C11: [req: ID] traceability tag ────────────────────────────────────────
+
+/// Parse a `[req: ID]` traceability tag from checklist item content.
+///
+/// Items may carry zero or more `[req: ID]` tags anywhere in the text to bind
+/// them back to named requirements written via `blackboard::write_task_requirements`.
+/// Only the **first** tag is returned here; use [`parse_all_req_tags`] for
+/// multi-requirement items.
+///
+/// # Examples
+/// ```text
+/// "[verify: cargo test] [req: R2] all auth tests pass" → Some("R2")
+/// "implement login handler [req: AUTH-1]"               → Some("AUTH-1")
+/// "refactor module"                                     → None
+/// ```
+#[must_use]
+pub fn parse_req_tag(content: &str) -> Option<String> {
+    parse_all_req_tags(content).into_iter().next()
+}
+
+/// Parse **all** `[req: ID]` tags from checklist item content (order-preserving,
+/// deduplicated).
+#[must_use]
+pub fn parse_all_req_tags(content: &str) -> Vec<String> {
+    let mut results = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let mut rest = content;
+    while let Some(start) = rest.find("[req:") {
+        let after = &rest[start + 5..];
+        if let Some(end) = after.find(']') {
+            let id = after[..end].trim().to_string();
+            if !id.is_empty() && seen.insert(id.clone()) {
+                results.push(id);
+            }
+            rest = &after[end + 1..];
+        } else {
+            break;
+        }
+    }
+    results
+}
+
+/// Strip all `[req: ID]` tags from content for display purposes.
+#[must_use]
+pub fn strip_req_tags(content: &str) -> String {
+    let mut result = content.to_string();
+    loop {
+        if let Some(start) = result.find("[req:") {
+            if let Some(end) = result[start..].find(']') {
+                result = format!(
+                    "{}{}",
+                    &result[..start],
+                    result[start + end + 1..].trim_start()
+                );
+            } else {
+                break;
+            }
+        } else {
+            break;
+        }
+    }
+    result.trim().to_string()
 }
 
 /// English phrases that mark a checklist item as a *runnable* acceptance —
@@ -208,6 +272,34 @@ mod tests {
         assert!(unverified_acceptance_suffix("创建 lexer 包", "zh").is_none());
         // Already a [verify:] item → handled by the matched-exec gate, not here.
         assert!(unverified_acceptance_suffix("[verify: go test ./...] tests pass", "en").is_none());
+    }
+
+    #[test]
+    fn req_tag_parses_single() {
+        assert_eq!(
+            parse_req_tag("[verify: cargo test] [req: R2] auth tests"),
+            Some("R2".to_string())
+        );
+        assert_eq!(
+            parse_req_tag("implement login [req: AUTH-1]"),
+            Some("AUTH-1".to_string())
+        );
+        assert_eq!(parse_req_tag("refactor module"), None);
+    }
+
+    #[test]
+    fn req_tag_parses_multiple_deduped() {
+        let tags = parse_all_req_tags("[req: R1] implement X [req: R2] also [req: R1] again");
+        assert_eq!(tags, vec!["R1", "R2"]);
+    }
+
+    #[test]
+    fn req_tag_strip() {
+        assert_eq!(
+            strip_req_tags("[verify: go test ./...] [req: R1] tests pass"),
+            "[verify: go test ./...] tests pass"
+        );
+        assert_eq!(strip_req_tags("plain item"), "plain item");
     }
 
     #[test]

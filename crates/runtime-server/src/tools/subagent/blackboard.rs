@@ -106,6 +106,42 @@ pub fn read_blackboard_section(
             {
                 sections.push(s);
             }
+            // C11: requirements traceability report (omitted when no requirements registered)
+            if let Some(task_id) = board.get("task_id").and_then(|v| v.as_str()) {
+                // checklist items are not available here; we surface the raw
+                // requirements list so the Reviewer can cross-check manually.
+                let reqs = board
+                    .get("requirements")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|e| {
+                                let id = e.get("id")?.as_str()?.trim().to_string();
+                                let text = e.get("text")?.as_str()?.trim().to_string();
+                                if id.is_empty() {
+                                    None
+                                } else {
+                                    Some(RequirementEntry { id, text })
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+                if !reqs.is_empty() {
+                    let _ = task_id; // task_id already consumed above for the check
+                    let mut lines = vec!["### Requirements to verify against".to_string()];
+                    for r in &reqs {
+                        lines.push(format!("- `{}`: {}", r.id, r.text));
+                    }
+                    lines.push(String::new());
+                    lines.push(
+                        "> Check each requirement above is addressed by the implementation. \
+                         Raise a BLOCKER for any requirement with no evidence of coverage."
+                            .to_string(),
+                    );
+                    sections.push(lines.join("\n"));
+                }
+            }
         }
         SubAgentType::Verifier => {
             // Verifier needs implementer changes (to know what to test)
@@ -660,6 +696,173 @@ pub fn write_scratchpad_mirror(
         "high_note_ids": high_note_ids,
     });
     merge_board_partition(workspace, task_id, "scratchpad", partition);
+}
+
+// ── C11: requirements partition (traceability matrix) ───────────
+
+/// A single requirement entry in the `requirements` blackboard partition.
+///
+/// Written by the main agent before CRAFT begins; checklist items can then
+/// carry `[req: id]` tags to bind themselves back to a requirement.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct RequirementEntry {
+    /// Short stable ID (e.g. `"R1"`, `"AUTH-1"`, `"perf-budget"`).
+    pub id: String,
+    /// Human-readable description of the requirement.
+    pub text: String,
+}
+
+/// Write (or overwrite) the `requirements` partition in the blackboard.
+///
+/// Call this once per CRAFT task, typically at the start of the Explorer
+/// phase, to record the authoritative requirement list for the task.
+/// Later, `check_requirement_coverage` / `format_requirements_for_reviewer`
+/// use this list to compute traceability.
+pub fn write_task_requirements(workspace: &Path, task_id: &str, requirements: &[RequirementEntry]) {
+    if requirements.is_empty() {
+        return;
+    }
+    let entries: Vec<Value> = requirements
+        .iter()
+        .map(|r| json!({ "id": r.id, "text": r.text }))
+        .collect();
+    merge_board_partition(workspace, task_id, "requirements", Value::Array(entries));
+}
+
+/// Read the `requirements` partition from the blackboard.
+///
+/// Returns an empty `Vec` when no requirements have been registered.
+#[must_use]
+pub fn read_task_requirements(workspace: &Path, task_id: &str) -> Vec<RequirementEntry> {
+    let board = match read_blackboard_raw(workspace, task_id) {
+        Some(b) => b,
+        None => return Vec::new(),
+    };
+    board
+        .get("requirements")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|e| {
+                    let id = e.get("id")?.as_str()?.trim().to_string();
+                    let text = e.get("text")?.as_str()?.trim().to_string();
+                    if id.is_empty() {
+                        None
+                    } else {
+                        Some(RequirementEntry { id, text })
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// A requirement entry paired with the checklist items that claim to implement it.
+#[derive(Debug, Clone)]
+pub struct RequirementCoverage {
+    pub requirement: RequirementEntry,
+    /// Content of checklist items carrying `[req: <id>]` for this requirement.
+    pub covered_by: Vec<String>,
+}
+
+impl RequirementCoverage {
+    /// `true` when at least one checklist item references this requirement.
+    #[must_use]
+    pub fn is_covered(&self) -> bool {
+        !self.covered_by.is_empty()
+    }
+}
+
+/// Compute coverage of registered requirements against a set of checklist items.
+///
+/// Each checklist item that carries a `[req: ID]` tag counts as evidence that
+/// requirement `ID` is addressed. Requirements with zero covering items are
+/// returned as uncovered — these are the actionable traceability gaps.
+///
+/// # Example
+/// ```ignore
+/// let coverage = check_requirement_coverage(workspace, task_id, &checklist.items);
+/// let orphans: Vec<_> = coverage.iter().filter(|c| !c.is_covered()).collect();
+/// ```
+#[must_use]
+pub fn check_requirement_coverage(
+    workspace: &Path,
+    task_id: &str,
+    checklist_items: &[crate::tools::todo::TodoItem],
+) -> Vec<RequirementCoverage> {
+    let requirements = read_task_requirements(workspace, task_id);
+    if requirements.is_empty() {
+        return Vec::new();
+    }
+
+    requirements
+        .into_iter()
+        .map(|req| {
+            let covered_by: Vec<String> = checklist_items
+                .iter()
+                .filter(|item| {
+                    crate::long_horizon::parse_all_req_tags(&item.content)
+                        .iter()
+                        .any(|tag| tag == &req.id)
+                })
+                .map(|item| item.content.clone())
+                .collect();
+            RequirementCoverage {
+                requirement: req,
+                covered_by,
+            }
+        })
+        .collect()
+}
+
+/// Format the requirements coverage report for injection into the Reviewer prompt.
+///
+/// When requirements have been registered for this task, the Reviewer receives
+/// a compact table showing which requirements have checklist coverage and which
+/// are orphaned (no `[req: ID]` tag on any checklist item).
+///
+/// Returns `None` when no requirements are registered (backwards-compatible — no
+/// change to existing CRAFT workflows that don't use requirements).
+#[must_use]
+pub fn format_requirements_for_reviewer(
+    workspace: &Path,
+    task_id: &str,
+    checklist_items: &[crate::tools::todo::TodoItem],
+) -> Option<String> {
+    let coverage = check_requirement_coverage(workspace, task_id, checklist_items);
+    if coverage.is_empty() {
+        return None;
+    }
+
+    let mut lines = vec!["### Requirements traceability".to_string()];
+    let orphan_count = coverage.iter().filter(|c| !c.is_covered()).count();
+
+    for cov in &coverage {
+        if cov.is_covered() {
+            lines.push(format!(
+                "- ✅ `{}`: {} — covered by {} checklist item(s)",
+                cov.requirement.id,
+                cov.requirement.text,
+                cov.covered_by.len()
+            ));
+        } else {
+            lines.push(format!(
+                "- ⚠️  `{}`: {} — **NO checklist item carries `[req: {}]`**",
+                cov.requirement.id, cov.requirement.text, cov.requirement.id
+            ));
+        }
+    }
+
+    if orphan_count > 0 {
+        lines.push(String::new());
+        lines.push(format!(
+            "> {orphan_count} requirement(s) above have no traceability link. \
+             Add `[req: ID]` to the relevant checklist item(s) or raise a BLOCKER \
+             if the requirement was never addressed."
+        ));
+    }
+
+    Some(lines.join("\n"))
 }
 
 fn merge_board_partition(
@@ -1424,4 +1627,114 @@ fn parse_changes_from_result_text(result: &SubAgentResult) -> Vec<(String, Strin
     }
 
     out
+}
+
+// ── C11 requirement traceability tests ─────────────────────────
+
+#[cfg(test)]
+mod requirement_tests {
+    use super::*;
+    use crate::tools::todo::{TodoItem, TodoStatus};
+
+    fn test_workspace() -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("deepseek-req-test-{}", std::process::id()))
+    }
+
+    fn make_item(id: u32, content: &str) -> TodoItem {
+        TodoItem {
+            id,
+            content: content.to_string(),
+            status: TodoStatus::Completed,
+        }
+    }
+
+    #[test]
+    fn write_and_read_requirements() {
+        let ws = test_workspace();
+        let task_id = "req-test-001";
+        let reqs = vec![
+            RequirementEntry {
+                id: "R1".to_string(),
+                text: "must handle auth".to_string(),
+            },
+            RequirementEntry {
+                id: "R2".to_string(),
+                text: "must return 404 on missing resource".to_string(),
+            },
+        ];
+        write_task_requirements(&ws, task_id, &reqs);
+
+        let read_back = read_task_requirements(&ws, task_id);
+        assert_eq!(read_back.len(), 2);
+        assert_eq!(read_back[0].id, "R1");
+        assert_eq!(read_back[1].text, "must return 404 on missing resource");
+        let _ = std::fs::remove_file(blackboard_path_write(&ws, task_id).expect("valid id"));
+    }
+
+    #[test]
+    fn coverage_check_identifies_orphaned() {
+        let ws = test_workspace();
+        let task_id = "req-test-002";
+        let reqs = vec![
+            RequirementEntry {
+                id: "R1".to_string(),
+                text: "auth".to_string(),
+            },
+            RequirementEntry {
+                id: "R2".to_string(),
+                text: "404 handling".to_string(),
+            },
+        ];
+        write_task_requirements(&ws, task_id, &reqs);
+
+        let items = vec![
+            make_item(1, "[verify: cargo test] [req: R1] auth tests pass"),
+            make_item(2, "implement router"),
+        ];
+        let coverage = check_requirement_coverage(&ws, task_id, &items);
+        assert_eq!(coverage.len(), 2);
+
+        let r1 = coverage.iter().find(|c| c.requirement.id == "R1").unwrap();
+        assert!(r1.is_covered(), "R1 should be covered");
+
+        let r2 = coverage.iter().find(|c| c.requirement.id == "R2").unwrap();
+        assert!(!r2.is_covered(), "R2 should be orphaned");
+
+        let _ = std::fs::remove_file(blackboard_path_write(&ws, task_id).expect("valid id"));
+    }
+
+    #[test]
+    fn format_reviewer_shows_orphan_warning() {
+        let ws = test_workspace();
+        let task_id = "req-test-003";
+        let reqs = vec![
+            RequirementEntry {
+                id: "R1".to_string(),
+                text: "auth".to_string(),
+            },
+            RequirementEntry {
+                id: "R2".to_string(),
+                text: "404".to_string(),
+            },
+        ];
+        write_task_requirements(&ws, task_id, &reqs);
+
+        let items = vec![make_item(1, "[req: R1] implement auth handler")];
+        let section =
+            format_requirements_for_reviewer(&ws, task_id, &items).expect("should produce section");
+        assert!(section.contains("✅"), "covered R1 should show checkmark");
+        assert!(section.contains("⚠️"), "orphaned R2 should show warning");
+        assert!(section.contains("R2"), "should mention R2");
+
+        let _ = std::fs::remove_file(blackboard_path_write(&ws, task_id).expect("valid id"));
+    }
+
+    #[test]
+    fn empty_requirements_returns_none_for_reviewer() {
+        let ws = test_workspace();
+        let task_id = "req-test-004-empty";
+        // No requirements written at all
+        let section = format_requirements_for_reviewer(&ws, task_id, &[]);
+        assert!(section.is_none(), "should return None when no requirements");
+    }
 }

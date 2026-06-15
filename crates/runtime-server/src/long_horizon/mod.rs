@@ -33,7 +33,7 @@ pub use cycle_band::{context_pressure_ratio, in_lht_warning_band, should_lht_ear
 pub use cycles::build_cycles_value;
 pub(crate) use nudge::VERIFICATION_RE;
 pub use reinject::{build_objective_reinject_message, should_reinject_this_step};
-pub(crate) use verify::verify_gate_verdict;
+pub(crate) use verify::{parse_all_req_tags, verify_gate_verdict};
 
 pub use completion_gate_panel::CompletionGatePanelJson;
 pub use graph::CodeTaskGraph;
