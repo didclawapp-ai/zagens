@@ -121,41 +121,68 @@ impl Engine {
         )
     }
 
-    /// **P2-D caller contract:** Before invoking the LLM-backed compaction or
-    /// partition-aware message drain, callers SHOULD first attempt
-    /// `compile_with_budget_override` on the registered `ContextCompiler`.
+    /// Attempt to reduce the context footprint via the `ContextCompiler` budget
+    /// solver before falling back to LLM-backed compaction.
     ///
-    /// When the compiler has sources registered (mode ≥ Shadow + sources > 0),
-    /// the budget solver can evict Volatile and shrink SemiStatic Elastic sources
-    /// without touching session messages at all.  Only when the solver returns
-    /// `Err(CompileError::Overflow)` should callers fall through to the LLM
-    /// compaction step or cycle handoff.
+    /// **P2-D caller contract:** callers invoke this before the compaction /
+    /// partition-drain path.  When the compiler has sources registered and the
+    /// solver successfully evicts Volatile or shrinks SemiStatic Elastic sources
+    /// to fit within `total_budget`, returns `Some(compiled)` with
+    /// `overflow_recovered = true`.  The caller MUST set
+    /// `self.0.overflow_source_budget_cap` to the resulting source-token total
+    /// so that the next `compiler_request_context` call applies the eviction.
     ///
-    /// This stub is the designated call site — wired to the real compiler once
-    /// all three overflow paths have been migrated (P2-Switch).
-    #[allow(dead_code)]
+    /// Returns `None` in any of these cases:
+    /// - `context.compiler = "legacy"` (kill-switch active)
+    /// - compiler has no registered sources
+    /// - eviction alone is not enough (`Err(CompileError::Overflow)`) — caller
+    ///   should fall through to the LLM compaction path
+    /// - message tokens alone already exceed `total_budget`
     pub(super) fn try_budget_recompile(
         &self,
-        budget: u32,
+        total_budget: u32,
     ) -> Option<zagens_core::engine::CompiledContext> {
         use zagens_core::engine::{
-            BudgetOverride, ContextCompiler, ContextCompilerMode, ContextProjection,
+            ContextCompilerMode, ContextProjection, estimate_input_tokens_conservative,
         };
-        // Guard: compiler must be in Shadow or V2 mode AND have sources registered.
-        // In P2-D the compiler is still shadow-only; once P2-Switch promotes it to
-        // V2, this call will also drive request assembly.
-        let _ = (
-            budget,
-            ContextCompiler::new(),
-            ContextCompilerMode::Shadow,
-            BudgetOverride {
-                source_id: zagens_core::engine::SourceId("stub"),
-                new_budget: zagens_core::engine::BudgetPolicy::Fixed(0),
-            },
+
+        let Ok(config) = crate::config::Config::load(None, None) else {
+            return None;
+        };
+        if config.context_compiler_mode() == ContextCompilerMode::Legacy {
+            return None;
+        }
+
+        let snapshot = crate::context_compiler_shadow::ContextCompilerStateSnapshot::from_session(
+            &self.session,
+            0,
         );
-        let _proj = ContextProjection::from_session(&self.session, 0);
-        // No sources registered yet — always return None (fall through to legacy path).
-        None
+        let compiler = crate::context_compiler_shadow::build_compiler_from_snapshot(&snapshot);
+        if compiler.source_count() == 0 {
+            return None;
+        }
+
+        // Estimate message-only tokens (system prompt is a compiler source, not messages).
+        let message_tokens =
+            estimate_input_tokens_conservative(&self.session.messages, None) as u32;
+        // If messages alone already exceed the total budget, source eviction won't help.
+        let source_budget = total_budget.checked_sub(message_tokens)?;
+
+        let proj = ContextProjection::from_session(&self.session, 0);
+        match compiler.compile_with_budget_override(&proj, source_budget, &[]) {
+            Ok(ctx) if ctx.overflow_recovered => {
+                tracing::debug!(
+                    target = "context_compiler",
+                    source_tokens = ctx.total_tokens,
+                    source_budget,
+                    message_tokens,
+                    "budget solver evicted volatile sources to fit context window"
+                );
+                Some(ctx)
+            }
+            // No eviction needed at source level, or even max eviction is insufficient.
+            Ok(_) | Err(_) => None,
+        }
     }
 
     pub(super) async fn recover_context_overflow(
@@ -171,11 +198,13 @@ impl Engine {
         };
 
         // P2-D: attempt compiler budget solver first.  When sources are
-        // registered this avoids any LLM call.  Currently returns None
-        // (no sources) and falls through to the existing compaction path.
-        if let Some(_recompiled) = self.try_budget_recompile(target_budget as u32) {
-            // TODO(P2-Switch): when compiler drives request assembly, apply
-            // `_recompiled` directly and skip the LLM compaction step below.
+        // registered and eviction is sufficient, set the budget cap so that the
+        // next `compiler_request_context` call applies the eviction and return
+        // immediately (skip LLM compaction entirely for this overflow).
+        if let Some(recompiled) = self.try_budget_recompile(target_budget as u32) {
+            // Store the source-token total as the budget cap for the next request.
+            self.0.overflow_source_budget_cap = Some(recompiled.total_tokens);
+            return true;
         }
 
         let id = format!("compact_{}", &uuid::Uuid::new_v4().to_string()[..8]);

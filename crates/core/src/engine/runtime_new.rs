@@ -83,6 +83,7 @@ where
             long_horizon_continue_injected_this_turn: false,
             long_horizon_auto_continue_rounds: 0,
             topic_memory,
+            overflow_source_budget_cap: None,
         };
 
         let handle = EngineHandle::new(

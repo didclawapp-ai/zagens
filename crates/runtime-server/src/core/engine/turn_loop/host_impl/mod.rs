@@ -865,10 +865,11 @@ impl TurnLoopHost for Engine {
     }
 
     fn compiler_request_context(
-        &self,
+        &mut self,
         active_tools: Option<&[zagens_core::chat::Tool]>,
     ) -> Option<zagens_core::engine::turn_loop::CompilerRequestContext> {
         use zagens_core::engine::ContextCompilerMode;
+        use zagens_core::engine::ContextProjection;
         use zagens_core::engine::token_estimate::estimate_text_tokens;
         use zagens_core::engine::turn_loop::CompilerRequestContext;
 
@@ -891,19 +892,60 @@ impl TurnLoopHost for Engine {
             snapshot.tool_catalog_est_tokens = estimate_text_tokens(&json) as u32;
         }
 
-        let system_text = crate::context_compiler_shadow::assemble_system_text_for_v2(&snapshot);
+        // Scratchpad reminder budget estimate (pure-logic, no I/O).
+        snapshot.scratchpad_reminder_est_tokens =
+            crate::context_compiler_shadow::scratchpad_reminder_est_tokens(
+                &self.config.scratchpad,
+                &self.scratchpad_step,
+            );
+
+        // Build compiler and compile.  If an overflow-recovery budget cap was set
+        // by `try_budget_recompile`, use it for `compile_with_budget_override` so
+        // Volatile / SemiStatic sources are evicted on this retry request.
+        // Consume the cap first (before borrowing `self.session`) so the mutable
+        // borrow of `self.0` does not alias the immutable borrow via `proj`.
+        let overflow_budget_cap = self.0.overflow_source_budget_cap.take();
+
+        let compiler = crate::context_compiler_shadow::build_compiler_from_snapshot(&snapshot);
+        let proj = ContextProjection::from_session(&self.session, snapshot.step_idx);
+
+        let compiled = if let Some(budget_cap) = overflow_budget_cap {
+            // Applies for exactly one request retry; cap was already consumed above.
+            match compiler.compile_with_budget_override(&proj, budget_cap, &[]) {
+                Ok(ctx) => ctx,
+                Err(_) => compiler.compile(&proj),
+            }
+        } else {
+            compiler.compile(&proj)
+        };
+
+        // Determine which sources survived compilation (for eviction-aware assembly).
+        let has_compaction = compiled
+            .contributions
+            .iter()
+            .any(|c| c.source_id.0 == "memory.compaction" && c.token_count > 0);
+        let has_working_set = compiled
+            .contributions
+            .iter()
+            .any(|c| c.source_id.0 == "working_set" && c.token_count > 0);
+
+        // system_prompt: static base always included; compaction text only if not evicted.
+        let system_text = if has_compaction {
+            crate::context_compiler_shadow::assemble_system_text_for_v2(&snapshot)
+        } else {
+            snapshot.static_base_text.clone()
+        };
         let system_prompt = if system_text.is_empty() {
             None
         } else {
             Some(zagens_core::chat::SystemPrompt::Text(system_text))
         };
 
-        // V2 message path: turn_meta_text comes from the compiler snapshot
-        // (byte-identical to the legacy working_set_turn_meta computation).
-        let turn_meta_text = if snapshot.working_set_text.is_empty() {
-            None
-        } else {
+        // turn_meta_text: only when working_set source survived eviction.
+        let turn_meta_text = if has_working_set && !snapshot.working_set_text.is_empty() {
             Some(snapshot.working_set_text.clone())
+        } else {
+            None
         };
 
         Some(CompilerRequestContext {

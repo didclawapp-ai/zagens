@@ -64,4 +64,12 @@ pub struct Engine<P, R> {
     /// user message alongside the other per-turn LHT guards.
     pub long_horizon_auto_continue_rounds: u32,
     pub topic_memory: Box<dyn TopicMemoryHost>,
+    /// **P2-D overflow recovery**: source-only token budget cap set by
+    /// `try_budget_recompile` when the compiler budget solver successfully
+    /// evicts Volatile / shrinks SemiStatic sources to fit within the context
+    /// window.  On the next `compiler_request_context` call the compiler runs
+    /// `compile_with_budget_override(cap)` instead of `compile()`, applying
+    /// the eviction.  Consumed (set back to `None`) immediately after use so
+    /// it only applies for one request retry.  Reset to `None` at turn start.
+    pub overflow_source_budget_cap: Option<u32>,
 }

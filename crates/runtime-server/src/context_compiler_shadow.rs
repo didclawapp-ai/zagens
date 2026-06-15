@@ -103,6 +103,44 @@ pub struct ContextCompilerStateSnapshot {
     pub tool_catalog_est_tokens: u32,
     /// Current step index within the turn (0-based).
     pub step_idx: u32,
+    /// Estimated token count for the scratchpad reminder that *may* be injected
+    /// at the end of the current step (pure-logic, no filesystem I/O).
+    ///
+    /// Non-zero when `scratchpad_step.readonly_tool_successes >=
+    /// config.remind_after_readonly_tools` AND no scratchpad writes this step.
+    /// Populated by `compiler_request_context` (L2) after calling
+    /// [`scratchpad_reminder_est_tokens`].  Used for budget accounting only;
+    /// actual reminder injection still happens via the legacy
+    /// `maybe_inject_scratchpad_reminder` path.
+    pub scratchpad_reminder_est_tokens: u32,
+}
+
+/// Approximate token footprint of a scratchpad reminder message.
+///
+/// The actual message is a short sentence with an area path; 80 tokens is a
+/// conservative upper bound.  Used exclusively for budget-solver accounting;
+/// the real message size is determined at injection time.
+pub const SCRATCHPAD_REMINDER_TOKEN_ESTIMATE: u32 = 80;
+
+/// Pure-logic predicate for whether a scratchpad reminder would be injected.
+///
+/// Returns [`SCRATCHPAD_REMINDER_TOKEN_ESTIMATE`] when the reminder threshold
+/// is crossed, `0` otherwise.  No filesystem I/O — all inputs come from
+/// in-memory step state and config.
+#[must_use]
+pub fn scratchpad_reminder_est_tokens(
+    config: &zagens_core::scratchpad::ScratchpadConfig,
+    step: &zagens_core::engine::scratchpad_state::ScratchpadStepState,
+) -> u32 {
+    if config.enabled
+        && config.remind_enabled
+        && step.scratchpad_writes_this_step == 0
+        && step.readonly_tool_successes >= config.remind_after_readonly_tools
+    {
+        SCRATCHPAD_REMINDER_TOKEN_ESTIMATE
+    } else {
+        0
+    }
 }
 
 /// Default tool-catalog token budget (StaticPrefix placeholder).
@@ -152,6 +190,8 @@ impl ContextCompilerStateSnapshot {
             working_set_text,
             tool_catalog_est_tokens: TOOL_CATALOG_BUDGET_TOKENS,
             step_idx,
+            // Not computable from session alone — populated by compiler_request_context (L2).
+            scratchpad_reminder_est_tokens: 0,
         }
     }
 }
@@ -183,6 +223,7 @@ pub fn build_compiler_from_snapshot(snapshot: &ContextCompilerStateSnapshot) -> 
     let cycle_text = snapshot.cycle_briefings_text.clone();
     let working_set_text = snapshot.working_set_text.clone();
     let tool_catalog_tokens = snapshot.tool_catalog_est_tokens;
+    let scratchpad_reminder_tokens = snapshot.scratchpad_reminder_est_tokens;
 
     ContextCompiler::new()
         .register(ContextSource {
@@ -253,9 +294,17 @@ pub fn build_compiler_from_snapshot(snapshot: &ContextCompilerStateSnapshot) -> 
             layer: ContextLayer::Volatile,
             priority: 140,
             budget: BudgetPolicy::Elastic { min: 0, max: 800 },
-            // Actual reminder message is injected by legacy `maybe_inject_scratchpad_reminder`.
-            // Cannot be pre-rendered at snapshot time (depends on scratchpad runtime state).
-            render: Arc::new(|_| vec![]),
+            // Budget-accounting placeholder derived from step state (no I/O).
+            // Non-zero only when the reminder threshold is crossed; actual
+            // text is still injected by the legacy `maybe_inject_scratchpad_reminder`
+            // path (as a persistent session message).
+            render: Arc::new(move |_| {
+                if scratchpad_reminder_tokens > 0 {
+                    vec![RenderedBlock::placeholder(scratchpad_reminder_tokens)]
+                } else {
+                    vec![]
+                }
+            }),
         })
         .register(ContextSource {
             id: SourceId("steer"),
@@ -575,6 +624,7 @@ mod tests {
             cycle_briefings_text: String::new(),
             working_set_text: "Current local date: 2099-01-01".into(),
             tool_catalog_est_tokens: TOOL_CATALOG_BUDGET_TOKENS,
+            scratchpad_reminder_est_tokens: 0,
             step_idx: 0,
         };
         let compiler = build_compiler_from_snapshot(&snapshot);
@@ -597,6 +647,7 @@ mod tests {
             cycle_briefings_text: String::new(),
             working_set_text: String::new(),
             tool_catalog_est_tokens: TOOL_CATALOG_BUDGET_TOKENS,
+            scratchpad_reminder_est_tokens: 0,
             step_idx: 0,
         };
         let compiler = build_compiler_from_snapshot(&snapshot);

@@ -233,11 +233,14 @@ pub trait TurnLoopHost: Send {
     /// L2 (Phase 2 / P2-Switch): return the system prompt assembled by
     /// `ContextCompiler` when `[context] compiler = "v2"`.
     ///
+    /// Takes `&mut self` so the implementation can consume the per-retry
+    /// `overflow_source_budget_cap` set by `try_budget_recompile` (P2-D).
+    ///
     /// Returns `None` in `Legacy` and `Shadow` modes, in which case
     /// `streaming_phase` falls back to `session.system_prompt`.  The default
     /// implementation always returns `None` (all non-L2 hosts).
     fn compiler_request_context(
-        &self,
+        &mut self,
         active_tools: Option<&[Tool]>,
     ) -> Option<CompilerRequestContext> {
         let _ = active_tools;
