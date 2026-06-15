@@ -11,15 +11,18 @@ use crate::engine::dispatch::{
     should_stop_after_plan_tool,
 };
 use crate::engine::emit_tool_audit;
+use crate::engine::kernel_event::{KernelEvent, PolicyDecision, ToolOutcome as KernelToolOutcome};
 use crate::engine::loop_guard::{AttemptDecision, LoopGuard, OutcomeDecision};
 use crate::engine::streaming::ToolUseState;
 use crate::engine::tool_catalog::{
     CODE_EXECUTION_TOOL_NAME, REQUEST_USER_INPUT_NAME, is_audit_scratchpad_bind_tool,
     is_tool_search_tool, missing_tool_error_message, scratchpad_defer_set_area_batch_error,
 };
+use crate::engine::tool_effects::tool_writes_state;
 use crate::engine::turn_loop::control::TurnLoopToolPhaseOutcome;
 use crate::engine::turn_loop::exec::ToolExecutionPlan;
 use crate::engine::turn_loop::host::TurnLoopHost;
+use crate::engine::turn_machine::emit_kernel_event;
 use crate::error_taxonomy::ErrorEnvelope;
 use crate::turn::{TurnContext, TurnLoopMode, TurnToolCall};
 
@@ -76,6 +79,14 @@ pub async fn run_tool_execution_phase<H: TurnLoopHost>(
                     "Auto-loaded deferred tool '{tool_name}' after model request."
                 )))
                 .await;
+            emit_kernel_event(
+                host,
+                KernelEvent::DeferredToolActivated {
+                    turn_id: turn.id.clone(),
+                    step_idx: turn.step,
+                    tool_name: tool_name.clone(),
+                },
+            );
         }
 
         let mut tool_def = tool_catalog.iter().find(|def| def.name == tool_name);
@@ -94,6 +105,14 @@ pub async fn run_tool_execution_phase<H: TurnLoopHost>(
                 tool_name = canonical;
                 tool.name = tool_name.clone();
                 if host.maybe_activate_deferred_tool(&tool_name, tool_catalog, active_tool_names) {
+                    emit_kernel_event(
+                        host,
+                        KernelEvent::DeferredToolActivated {
+                            turn_id: turn.id.clone(),
+                            step_idx: turn.step,
+                            tool_name: tool_name.clone(),
+                        },
+                    );
                     let _ = host
                         .tx_event()
                         .send(crate::events::Event::status(format!(
@@ -138,6 +157,14 @@ pub async fn run_tool_execution_phase<H: TurnLoopHost>(
             && let Some(err) = scratchpad_defer_set_area_batch_error(defer_set_area_batch_count)
         {
             blocked_error = Some(err);
+            emit_kernel_event(
+                host,
+                KernelEvent::LoopGuardTriggered {
+                    turn_id: turn.id.clone(),
+                    call_id: tool_id.clone(),
+                    reason: "deferred_set_area_batch".into(),
+                },
+            );
         }
 
         if blocked_error.is_none()
@@ -145,6 +172,14 @@ pub async fn run_tool_execution_phase<H: TurnLoopHost>(
                 loop_guard.record_attempt(&tool_name, &tool_input)
         {
             tracing::warn!("{}", message);
+            emit_kernel_event(
+                host,
+                KernelEvent::LoopGuardTriggered {
+                    turn_id: turn.id.clone(),
+                    call_id: tool_id.clone(),
+                    reason: "identical_tool_call".into(),
+                },
+            );
             guard_result = Some(
                 ToolResult::success(message)
                     .with_metadata(json!({"loop_guard": "identical_tool_call"})),
@@ -165,6 +200,32 @@ pub async fn run_tool_execution_phase<H: TurnLoopHost>(
             blocked_error,
             guard_result,
         });
+    }
+
+    for plan in &plans {
+        emit_kernel_event(
+            host,
+            KernelEvent::ToolCallPlanned {
+                turn_id: turn.id.clone(),
+                step_idx: turn.step,
+                call_id: plan.id.clone(),
+                tool_name: plan.name.clone(),
+                input_json: serde_json::to_string(&plan.input).unwrap_or_else(|_| "{}".into()),
+                decision: PolicyDecision::new(
+                    plan.approval_required,
+                    plan.supports_parallel,
+                    plan.read_only,
+                ),
+            },
+        );
+        emit_kernel_event(
+            host,
+            KernelEvent::ToolCallStarted {
+                turn_id: turn.id.clone(),
+                call_id: plan.id.clone(),
+                wave_idx: 0,
+            },
+        );
     }
 
     let outcomes = host
@@ -225,6 +286,14 @@ pub async fn run_tool_execution_phase<H: TurnLoopHost>(
                             .await;
                     }
                     OutcomeDecision::Halt(message) => {
+                        emit_kernel_event(
+                            host,
+                            KernelEvent::LoopGuardTriggered {
+                                turn_id: turn.id.clone(),
+                                call_id: outcome.id.clone(),
+                                reason: "failure_halt".into(),
+                            },
+                        );
                         loop_guard_halt.get_or_insert(message);
                     }
                 }
@@ -287,6 +356,14 @@ pub async fn run_tool_execution_phase<H: TurnLoopHost>(
                             .await;
                     }
                     OutcomeDecision::Halt(message) => {
+                        emit_kernel_event(
+                            host,
+                            KernelEvent::LoopGuardTriggered {
+                                turn_id: turn.id.clone(),
+                                call_id: outcome.id.clone(),
+                                reason: "failure_halt".into(),
+                            },
+                        );
                         loop_guard_halt.get_or_insert(message);
                     }
                 }
@@ -322,6 +399,32 @@ pub async fn run_tool_execution_phase<H: TurnLoopHost>(
                 })
                 .await;
             }
+        }
+
+        // Phase 3a double-write: ToolCallFinished.
+        {
+            let wrote = tool_writes_state(&tool_call.name);
+            let kernel_outcome = if tool_call.result.is_some() {
+                KernelToolOutcome::Success
+            } else {
+                KernelToolOutcome::ToolError {
+                    message: tool_call.error.clone().unwrap_or_default(),
+                }
+            };
+            emit_kernel_event(
+                host,
+                KernelEvent::ToolCallFinished {
+                    turn_id: turn.id.clone(),
+                    call_id: tool_call.id.clone(),
+                    tool_name: tool_call.name.clone(),
+                    outcome: kernel_outcome,
+                    duration_ms: tool_call
+                        .duration
+                        .map(|d| d.as_millis() as u32)
+                        .unwrap_or(0),
+                    wrote_state: wrote,
+                },
+            );
         }
 
         turn.record_tool_call(tool_call);

@@ -7,7 +7,7 @@
 use sha2::{Digest, Sha256};
 
 /// Two-level fingerprint attached to diagnostics / turn metadata.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RequestFingerprint {
     /// System static layer (through compaction template) + tool catalog bytes.
     pub static_prefix_sha256: String,

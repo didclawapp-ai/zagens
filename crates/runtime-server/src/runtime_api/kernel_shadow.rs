@@ -4,7 +4,12 @@ use axum::Json;
 use axum::extract::State;
 use serde::Serialize;
 
-use crate::config::{ToolsPolicyMode, ToolsSchedulerMode};
+use crate::config::{KernelMachineMode, ToolsPolicyMode, ToolsSchedulerMode};
+use crate::core::engine::kernel_effect_shadow::kernel_effect_shadow_stats;
+use crate::core::engine::kernel_guard_shadow::kernel_guard_shadow_stats;
+use crate::core::engine::kernel_memory_shadow::kernel_memory_shadow_stats;
+use crate::core::engine::kernel_projection_shadow::kernel_projection_shadow_stats;
+use crate::core::engine::kernel_replay_shadow::kernel_replay_shadow_stats;
 
 use super::{ApiError, RuntimeApiState};
 
@@ -17,11 +22,31 @@ pub(crate) struct ShadowCounterBlock {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub(crate) struct ReplayShadowBlock {
+    mode: String,
+    comparisons: u64,
+    diffs: u64,
+    persist_diffs: u64,
+    diff_rate_pct: f64,
+    persist_diff_rate_pct: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub(crate) struct KernelShadowResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     policy_shadow: Option<ShadowCounterBlock>,
     #[serde(skip_serializing_if = "Option::is_none")]
     scheduler_shadow: Option<ShadowCounterBlock>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    projection_shadow: Option<ShadowCounterBlock>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    effect_shadow: Option<ShadowCounterBlock>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    guard_shadow: Option<ShadowCounterBlock>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    memory_shadow: Option<ShadowCounterBlock>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    replay_shadow: Option<ReplayShadowBlock>,
 }
 
 pub(crate) async fn kernel_shadow_stats(
@@ -33,9 +58,19 @@ pub(crate) async fn kernel_shadow_stats(
 pub(crate) fn collect_kernel_shadow_stats(config: &crate::config::Config) -> KernelShadowResponse {
     let policy_shadow = probe_policy_shadow(config);
     let scheduler_shadow = probe_scheduler_shadow(config);
+    let projection_shadow = probe_projection_shadow();
+    let effect_shadow = probe_effect_shadow(config);
+    let guard_shadow = probe_guard_shadow(config);
+    let memory_shadow = probe_memory_shadow(config);
+    let replay_shadow = probe_replay_shadow(config);
     KernelShadowResponse {
         policy_shadow,
         scheduler_shadow,
+        projection_shadow,
+        effect_shadow,
+        guard_shadow,
+        memory_shadow,
+        replay_shadow,
     }
 }
 
@@ -73,6 +108,89 @@ fn shadow_diff_rate_pct(comparisons: u64, diffs: u64) -> f64 {
     } else {
         (diffs as f64 / comparisons as f64) * 100.0
     }
+}
+
+fn probe_projection_shadow() -> Option<ShadowCounterBlock> {
+    let (comparisons, diffs) = kernel_projection_shadow_stats();
+    if comparisons == 0 && diffs == 0 {
+        return None;
+    }
+    Some(ShadowCounterBlock {
+        mode: "shadow".to_string(),
+        comparisons,
+        diffs,
+        diff_rate_pct: shadow_diff_rate_pct(comparisons, diffs),
+    })
+}
+
+fn probe_effect_shadow(config: &crate::config::Config) -> Option<ShadowCounterBlock> {
+    let mode = config.kernel_machine_mode();
+    if mode != KernelMachineMode::Shadow {
+        return None;
+    }
+    let (comparisons, diffs) = kernel_effect_shadow_stats();
+    if comparisons == 0 && diffs == 0 {
+        return None;
+    }
+    Some(ShadowCounterBlock {
+        mode: mode.as_str().to_string(),
+        comparisons,
+        diffs,
+        diff_rate_pct: shadow_diff_rate_pct(comparisons, diffs),
+    })
+}
+
+fn probe_guard_shadow(config: &crate::config::Config) -> Option<ShadowCounterBlock> {
+    let mode = config.kernel_machine_mode();
+    if mode != KernelMachineMode::Shadow {
+        return None;
+    }
+    let (comparisons, diffs) = kernel_guard_shadow_stats();
+    if comparisons == 0 && diffs == 0 {
+        return None;
+    }
+    Some(ShadowCounterBlock {
+        mode: mode.as_str().to_string(),
+        comparisons,
+        diffs,
+        diff_rate_pct: shadow_diff_rate_pct(comparisons, diffs),
+    })
+}
+
+fn probe_memory_shadow(config: &crate::config::Config) -> Option<ShadowCounterBlock> {
+    let mode = config.kernel_machine_mode();
+    if mode != KernelMachineMode::Shadow {
+        return None;
+    }
+    let (comparisons, diffs) = kernel_memory_shadow_stats();
+    if comparisons == 0 && diffs == 0 {
+        return None;
+    }
+    Some(ShadowCounterBlock {
+        mode: mode.as_str().to_string(),
+        comparisons,
+        diffs,
+        diff_rate_pct: shadow_diff_rate_pct(comparisons, diffs),
+    })
+}
+
+fn probe_replay_shadow(config: &crate::config::Config) -> Option<ReplayShadowBlock> {
+    let mode = config.kernel_machine_mode();
+    if mode != KernelMachineMode::Shadow {
+        return None;
+    }
+    let (comparisons, diffs, persist_diffs) = kernel_replay_shadow_stats();
+    if comparisons == 0 && diffs == 0 && persist_diffs == 0 {
+        return None;
+    }
+    Some(ReplayShadowBlock {
+        mode: mode.as_str().to_string(),
+        comparisons,
+        diffs,
+        persist_diffs,
+        diff_rate_pct: shadow_diff_rate_pct(comparisons, diffs),
+        persist_diff_rate_pct: shadow_diff_rate_pct(comparisons, persist_diffs),
+    })
 }
 
 #[cfg(test)]

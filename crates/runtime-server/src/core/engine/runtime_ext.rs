@@ -12,7 +12,15 @@ use crate::tools::large_output_router::WorkshopVariables;
 use crate::tools::shell::SharedShellManager;
 use crate::tools::subagent::{SharedSubAgentManager, SubAgentCompletion};
 
+use zagens_runtime_adapters::persist::KernelEventWriter;
+
 use crate::long_horizon::LongHorizonSessionState;
+
+use super::kernel_effect_shadow::KernelEffectShadow;
+use super::kernel_guard_shadow::KernelGuardShadow;
+use super::kernel_memory_shadow::KernelMemoryShadow;
+use super::kernel_projection_shadow::KernelProjectionShadow;
+use super::kernel_replay_shadow::KernelReplayShadow;
 
 use super::types::EngineConfigExt;
 
@@ -45,4 +53,21 @@ pub struct EngineRuntimeExt {
     pub tools_scheduler: crate::config::ToolsSchedulerMode,
     /// Per-resource lock slots for DAG fine-grained execution.
     pub resource_lock_registry: Arc<crate::tools::resource_locks::ResourceLockRegistry>,
+    /// Phase 3a/3b: append-only KernelEvent double-write (None = disabled).
+    pub kernel_event_writer: Option<std::sync::Arc<KernelEventWriter>>,
+    /// Phase 3b: live vs projection shadow compare (enabled when writer is Some).
+    pub kernel_projection_shadow: KernelProjectionShadow,
+    /// Phase 3b: ReplayTurnMachine effect-chain sanity (`[kernel] machine = "shadow"`).
+    pub kernel_effect_shadow: KernelEffectShadow,
+    /// Phase 3b: guard/continuation projection sanity (`[kernel] machine = "shadow"`).
+    pub kernel_guard_shadow: KernelGuardShadow,
+    /// Phase 3b: memory-plane projection sanity (`[kernel] machine = "shadow"`).
+    pub kernel_memory_shadow: KernelMemoryShadow,
+    /// Phase 3b: unified replay coherence (`[kernel] machine = "shadow"`).
+    pub kernel_replay_shadow: KernelReplayShadow,
+    /// Resolved `[kernel] machine` kill switch.
+    pub kernel_machine_mode: crate::config::KernelMachineMode,
+    /// Active turn frame for kernel events emitted outside `run.rs`.
+    pub kernel_active_turn_id: Option<String>,
+    pub kernel_active_step: u32,
 }

@@ -774,6 +774,14 @@ impl Config {
         )
     }
 
+    /// Resolved kernel-v3 turn machine mode (`[kernel] machine`, default `legacy`).
+    #[must_use]
+    pub fn kernel_machine_mode(&self) -> crate::config::KernelMachineMode {
+        crate::config::KernelMachineMode::parse(
+            self.kernel.as_ref().and_then(|k| k.machine.as_deref()),
+        )
+    }
+
     /// Resolved kernel-v2 context compiler mode (`[tools] compiler`, default `legacy`).
     #[must_use]
     pub fn context_compiler_mode(&self) -> zagens_core::engine::ContextCompilerMode {

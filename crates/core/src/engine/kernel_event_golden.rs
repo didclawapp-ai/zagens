@@ -1,0 +1,137 @@
+//! Golden replay fixtures — Phase 3a P3A-6.
+//!
+//! Loads synthetic event logs from `fixtures/harness/kernel-v3-replay/` and
+//! verifies deserialize + projection invariants.
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use crate::engine::kernel_event::KernelEvent;
+    use crate::engine::turn_machine::{
+        TurnKernelProjection, replay_turn_projection, verify_effect_replay_chain,
+        verify_guard_projection_chain, verify_memory_projection_chain,
+        verify_turn_replay_coherence,
+    };
+
+    fn fixture_path(name: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/harness/kernel-v3-replay")
+            .join(name)
+    }
+
+    fn load_fixture(name: &str) -> Vec<KernelEvent> {
+        let path = fixture_path(name);
+        let raw = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("read fixture {}: {e}", path.display()));
+        serde_json::from_str(&raw)
+            .unwrap_or_else(|e| panic!("parse fixture {}: {e}", path.display()))
+    }
+
+    #[test]
+    fn golden_replay_pure_read() {
+        let events = load_fixture("pure_read.json");
+        assert_eq!(events.len(), 7);
+        let p = TurnKernelProjection::from_events(&events);
+        assert_eq!(p.turn_id, "golden-pure-read-001");
+        assert_eq!(p.readonly_tool_successes, 1);
+        assert!(p.outcome.is_some());
+    }
+
+    #[test]
+    fn golden_replay_write_batch() {
+        let events = load_fixture("write_batch.json");
+        let p = TurnKernelProjection::from_events(&events);
+        assert!(
+            p.active_tool_names.contains("tool_search_tool_regex"),
+            "deferred tool must appear in projection"
+        );
+    }
+
+    #[test]
+    fn golden_replay_lht_continue() {
+        let events = load_fixture("lht_continue.json");
+        let p = TurnKernelProjection::from_events(&events);
+        assert_eq!(p.step_limit_continuations, 1);
+        assert_eq!(p.loop_guard_continuations, 1);
+        assert_eq!(p.steer_injection_count, 1);
+    }
+
+    #[test]
+    fn golden_guard_projection_lht_continue() {
+        let events = load_fixture("lht_continue.json");
+        assert!(
+            verify_guard_projection_chain(&events).is_none(),
+            "guard projection mismatch in lht_continue.json"
+        );
+    }
+
+    #[test]
+    fn golden_effect_replay_chain_all_fixtures() {
+        for name in [
+            "pure_read.json",
+            "write_batch.json",
+            "lht_continue.json",
+            "loop_guard.json",
+            "scratchpad_compaction.json",
+        ] {
+            let events = load_fixture(name);
+            assert!(
+                verify_effect_replay_chain(&events).is_none(),
+                "effect replay mismatch in {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn golden_memory_projection_scratchpad_compaction() {
+        let events = load_fixture("scratchpad_compaction.json");
+        let p = TurnKernelProjection::from_events(&events);
+        assert!(p.scratchpad_summary_injected);
+        assert_eq!(p.scratchpad_reminder_count, 1);
+        assert_eq!(p.compaction_artifact_count, 1);
+        assert_eq!(p.cycle_briefing_count, 1);
+        assert!(
+            verify_memory_projection_chain(&events).is_none(),
+            "memory projection mismatch in scratchpad_compaction.json"
+        );
+    }
+
+    #[test]
+    fn golden_replay_coherence_all_fixtures() {
+        for name in [
+            "pure_read.json",
+            "write_batch.json",
+            "lht_continue.json",
+            "loop_guard.json",
+            "scratchpad_compaction.json",
+        ] {
+            let events = load_fixture(name);
+            let report = replay_turn_projection(&events);
+            assert!(
+                report.outcome.is_some(),
+                "fixture {name} should end with TurnEnded outcome"
+            );
+            assert!(
+                verify_turn_replay_coherence(&events, None).is_none(),
+                "replay coherence mismatch in {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn golden_replay_all_fixtures_round_trip() {
+        for name in [
+            "pure_read.json",
+            "write_batch.json",
+            "lht_continue.json",
+            "loop_guard.json",
+            "scratchpad_compaction.json",
+        ] {
+            let events = load_fixture(name);
+            let json = serde_json::to_string(&events).expect("serialize");
+            let back: Vec<KernelEvent> = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(back.len(), events.len(), "round-trip length for {name}");
+        }
+    }
+}

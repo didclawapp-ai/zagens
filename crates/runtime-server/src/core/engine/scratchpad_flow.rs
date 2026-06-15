@@ -219,7 +219,7 @@ pub fn build_readonly_reminder_message(
     run_id: Option<&str>,
     config: &ScratchpadConfig,
     step: &ScratchpadStepState,
-) -> Option<Message> {
+) -> Option<(Message, String)> {
     if !config.enabled || !config.remind_enabled {
         return None;
     }
@@ -238,13 +238,16 @@ pub fn build_readonly_reminder_message(
         step.readonly_tool_successes,
         display_run_path(store.run_id())
     );
-    Some(Message {
-        role: "user".to_string(),
-        content: vec![ContentBlock::Text {
-            text,
-            cache_control: None,
-        }],
-    })
+    Some((
+        Message {
+            role: "user".to_string(),
+            content: vec![ContentBlock::Text {
+                text,
+                cache_control: None,
+            }],
+        },
+        area_path,
+    ))
 }
 
 /// Inject summary before a final answer when inventory is complete and no tools were called.

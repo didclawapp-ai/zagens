@@ -5,8 +5,9 @@ use std::sync::Arc;
 use tokio::sync::{Mutex as AsyncMutex, RwLock};
 
 use crate::mcp::McpPool;
+use zagens_core::engine::kernel_event::CapacityCheckpointKind;
 use zagens_core::engine::turn_loop::should_run_capacity_error_escalation;
-use zagens_core::turn::TurnLoopMode;
+use zagens_core::turn::{TurnContext, TurnLoopMode};
 
 use super::super::*;
 
@@ -23,8 +24,13 @@ impl Engine {
             .0
             .capacity_controller
             .decide(self.0.turn_counter, snapshot.as_ref());
-        self.emit_capacity_decision(turn, snapshot.as_ref(), &decision)
-            .await;
+        self.emit_capacity_decision(
+            turn,
+            snapshot.as_ref(),
+            &decision,
+            CapacityCheckpointKind::PreRequest,
+        )
+        .await;
 
         if decision.action != GuardrailAction::TargetedContextRefresh {
             return false;
@@ -51,8 +57,13 @@ impl Engine {
             .0
             .capacity_controller
             .decide(self.0.turn_counter, snapshot.as_ref());
-        self.emit_capacity_decision(turn, snapshot.as_ref(), &decision)
-            .await;
+        self.emit_capacity_decision(
+            turn,
+            snapshot.as_ref(),
+            &decision,
+            CapacityCheckpointKind::PostTool,
+        )
+        .await;
 
         match decision.action {
             GuardrailAction::VerifyWithToolReplay => {
@@ -116,8 +127,13 @@ impl Engine {
             .0
             .capacity_controller
             .decide(self.0.turn_counter, Some(&forced));
-        self.emit_capacity_decision(turn, Some(&forced), &decision)
-            .await;
+        self.emit_capacity_decision(
+            turn,
+            Some(&forced),
+            &decision,
+            CapacityCheckpointKind::ErrorEscalation,
+        )
+        .await;
 
         if decision.action != GuardrailAction::VerifyAndReplan {
             return false;

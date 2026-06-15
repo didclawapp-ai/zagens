@@ -1,0 +1,87 @@
+[
+  {
+    "event_type": "turn_started",
+    "turn_id": "golden-write-001",
+    "mode": "agent",
+    "input_text": "Search tools then edit lib.rs",
+    "max_steps": 20
+  },
+  {
+    "event_type": "model_request_issued",
+    "turn_id": "golden-write-001",
+    "step_idx": 1,
+    "request_fp": {
+      "static_prefix_sha256": "11111111",
+      "full_prefix_sha256": "22222222"
+    },
+    "token_budget": 16384
+  },
+  {
+    "event_type": "deferred_tool_activated",
+    "turn_id": "golden-write-001",
+    "step_idx": 1,
+    "tool_name": "tool_search_tool_regex"
+  },
+  {
+    "event_type": "tool_call_planned",
+    "turn_id": "golden-write-001",
+    "step_idx": 1,
+    "call_id": "call-search-1",
+    "tool_name": "tool_search_tool_regex",
+    "input_json": "{\"query\":\"edit\"}",
+    "decision": {
+      "approval_required": false,
+      "parallel_eligible": true,
+      "read_only": true
+    }
+  },
+  {
+    "event_type": "tool_call_started",
+    "turn_id": "golden-write-001",
+    "call_id": "call-search-1",
+    "wave_idx": 0
+  },
+  {
+    "event_type": "tool_call_finished",
+    "turn_id": "golden-write-001",
+    "call_id": "call-search-1",
+    "tool_name": "tool_search_tool_regex",
+    "outcome": "success",
+    "duration_ms": 30,
+    "wrote_state": false
+  },
+  {
+    "event_type": "tool_call_planned",
+    "turn_id": "golden-write-001",
+    "step_idx": 1,
+    "call_id": "call-write-1",
+    "tool_name": "edit_file",
+    "input_json": "{\"path\":\"lib.rs\"}",
+    "decision": {
+      "approval_required": true,
+      "parallel_eligible": false,
+      "read_only": false
+    }
+  },
+  {
+    "event_type": "tool_call_started",
+    "turn_id": "golden-write-001",
+    "call_id": "call-write-1",
+    "wave_idx": 0
+  },
+  {
+    "event_type": "tool_call_finished",
+    "turn_id": "golden-write-001",
+    "call_id": "call-write-1",
+    "tool_name": "edit_file",
+    "outcome": "success",
+    "duration_ms": 120,
+    "wrote_state": true
+  },
+  {
+    "event_type": "turn_ended",
+    "turn_id": "golden-write-001",
+    "outcome": "completed",
+    "total_steps": 1
+  }
+]

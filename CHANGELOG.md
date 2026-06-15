@@ -20,6 +20,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Runtime (kernel-v2 Phase 3a — KernelEvent schema + completeness verification):**
+  - `crates/core/src/engine/kernel_event.rs` (new): defines `KernelEvent` enum (22 variants, v1 schema). Covers turn lifecycle, model request/delta/message, tool calls, context & compaction, memory injections (steer/scratchpad/cycle), guard decisions (loop-guard/capacity), and LHT continuation events. `#[non_exhaustive]` on all variants; `#[serde(tag = "event_type")]` for stable JSON shape.
+  - `RequestFingerprint` and `TurnLoopMode` gain `serde::Serialize`/`Deserialize` derives (required by `KernelEvent` fields).
+  - 6 projection functions + 7 completeness verification tests prove all A-class host-state fields (`scratchpad_summary_injected`, `active_tool_names`, `ScratchpadStepState` counters, LHT continuation count, steer injection, capacity state) are rebuildable from the event log — precondition for Phase 3b `TurnMachine::step` purity.
+  - `DeferredToolActivated` event variant added (schema-gap fix): captures `maybe_activate_deferred_tool` calls so `active_tool_names` set is fully rebuildable.
+  - `ToolCallFinished` gains `tool_name` field for scratchpad-write projection.
+  - 4 schema drift ("golden shape") tests + `all_variants_have_kind_str` count guard: CI fails immediately on tag rename, field rename, or silent variant addition.
+  - `crates/runtime-adapters/src/persist/kernel_event_log.rs` (new): `KernelEventLog` append-only SQLite writer + `ensure_kernel_events_table` migration. `append_batch` for transaction-coalesced multi-event writes; `load_turn_events` for Phase 3b replay. Tested with in-memory SQLite (4 tests: round-trip, batch, null-turn-id sentinel, idempotent migration).
+- **Runtime (kernel-v2 Phase 3b batch 1 — TurnMachine skeleton + double-write wiring):**
+  - `crates/core/src/engine/turn_machine.rs` (new): `TurnKernelProjection` (pure projection rebuilt from `KernelEvent` log), `TurnMachine` trait, `Effect` enum, `KernelEventSink` type alias, `emit_kernel` helper. 7 tests cover projection correctness and channel plumbing.
+  - `TurnLoopHost::kernel_event_sink()` default method (returns `None`); L2 `host_impl` can override to activate double-write.
+  - `run.rs`: double-write at turn start (`TurnStarted`), all turn-end paths (`TurnEnded` with correct outcome), step-limit continuation (`StepLimitContinuation`), loop-guard continuation (`LoopGuardContinuation`), and steer injection (`SteerInjected`).
+  - `streaming_phase.rs`: double-write `ModelRequestIssued` (with `RequestFingerprint`) after request assembly; `ModelMessage` (with `Usage`, `block_count`) after session update.
+  - `tool_phase.rs`: double-write `ToolCallFinished` (with `tool_name`, `wrote_state`, `outcome`, `duration_ms`) after each tool completes; `DeferredToolActivated` at both deferred-tool activation sites.
+  - `RequestFingerprint` and `TurnLoopMode` have `Serialize`/`Deserialize`; all existing tests pass. Total new tests: 25 passing.
+- **Runtime (kernel-v2 Phase 3b batch 2 — live double-write + golden replay):**
+  - `crates/runtime-adapters/src/persist/kernel_event_writer.rs` (new): `KernelEventWriter` opens `sessions.db`, seeds `SchemaVersion`, spawns async drain task (batched `spawn_blocking` appends). `KernelEventLog::peek_next_seq` / `with_next_seq` for restart-safe sequence numbers.
+  - `EngineRuntimeExt::kernel_event_writer` wired in `build_engine`; `TurnLoopHost::kernel_event_sink()` overridden in L2 `host_impl` — turn loop events now persist when sessions dir is available.
+  - Golden replay fixtures: `fixtures/harness/kernel-v3-replay/{pure_read,write_batch,lht_continue}.json` + `kernel_event_golden.rs` CI tests (4 tests).
+- **Runtime (kernel-v2 Phase 3b batch 2 cont. — projection shadow + EffectInterpreter skeleton):**
+  - `LiveTurnSnapshot` + `compare_projection_to_live()` + `ReplayTurnMachine` in `turn_machine.rs`; `emit_kernel_event()` records events for shadow compare alongside SQLite double-write.
+  - `kernel_projection_shadow.rs`: per-turn event accumulator; at turn end compares live host snapshot vs log projection; stats exposed via `GET /v1/runtime/kernel-shadow` `projection_shadow` block.
+  - `effect_interpreter.rs` skeleton (not yet wired to production turn path).
+  - `TurnLoopHost` hooks: `record_kernel_event`, `reset_kernel_projection_shadow`, `finish_kernel_projection_shadow`.
+- **Runtime (kernel-v2 Phase 3b batch 3 — kill switch + effect replay shadow):**
+  - `[kernel] machine = "legacy" | "shadow" | "v3"` config (`KernelMachineMode`); default `legacy`. Shadow mode runs `ReplayTurnMachine` effect-chain sanity at turn end via `kernel_effect_shadow.rs`; stats on `GET /v1/runtime/kernel-shadow` `effect_shadow` block.
+  - `ToolCallPlanned` double-write in `tool_phase.rs` (before execution); golden fixtures updated; `verify_effect_replay_chain()` in `turn_machine.rs`.
+  - `ReplayTurnMachine` extended: `ToolCallPlanned` → `ExecuteBatch`, `ToolCallFinished` (state-mutating) → `NotifyLsp`.
+  - `EffectInterpreter::ExecuteBatch` returns `DelegatedLegacy` (production path unchanged until `[kernel] machine = "v3"`).
+- **Runtime (kernel-v2 Phase 3b batch 2 cont. — v3 seam + ToolCallStarted):**
+  - `KernelMachineMode` moved to `zagens-core` (`kernel_mode.rs`); `TurnLoopHost::kernel_machine_mode()` wired in L2 `host_impl`.
+  - `turn_loop/v3_driver.rs`: observability when `machine = "v3"` (legacy IO until effect interpreter owns path).
+  - `ToolCallStarted` double-write in `tool_phase.rs` (`wave_idx = 0` until DAG wave events land).
+  - `EffectInterpreter::interpret_all` batch entry point.
+- **Runtime (kernel-v2 Phase 3b batch 3 — v3 IO path via EffectInterpreter):**
+  - `[kernel] machine = "v3"`: turn step routes through `engine_v3_step.rs` → `EffectInterpreter::run_call_model_step` / `run_execute_batch_step` instead of inline `run_streaming_phase` / `run_tool_execution_phase` in `run.rs`.
+  - `TurnLoopHost::try_run_v3_turn_step` hook (L2 returns `Some`; core fallback for non-runtime hosts).
+  - `turn_loop/v3_step.rs`: core fallback orchestration (CallModel → ExecuteBatch ordering + logging).
+- **Runtime (kernel-v2 Phase 3b batch 4 — guard ruling event double-write):**
+  - `LoopGuardTriggered` from `tool_phase`; `CapacityCheckpoint` from capacity guardrails; `ContextOverflowRecovered` on overflow recovery in `run.rs`.
+  - `verify_guard_projection_chain()` + `kernel_guard_shadow.rs`; `GET /v1/runtime/kernel-shadow` adds `guard_shadow`.
+  - Golden fixture `fixtures/harness/kernel-v3-replay/loop_guard.json`.
+- **Runtime (kernel-v2 Phase 3b batch 5 — Memory Plane event double-write):**
+  - `ScratchpadSummaryInjected` / `ScratchpadReminderInjected` from scratchpad inject hooks; `CompactionArtifactCreated` on auto-compaction success; `CycleBriefingInjected` on cycle advance.
+  - `TurnLoopHost::sync_kernel_turn_frame` keeps active turn frame for out-of-loop memory events; scratchpad/reminder/compaction hooks take `&TurnContext`.
+  - `verify_memory_projection_chain()` + `kernel_memory_shadow.rs`; `GET /v1/runtime/kernel-shadow` adds `memory_shadow`.
+  - Golden fixture `fixtures/harness/kernel-v3-replay/scratchpad_compaction.json`.
+- **Runtime (kernel-v2 Phase 3b batch 6a — turn replay foundation):**
+  - `replay_turn_projection()` + `verify_turn_replay_coherence()` unify projection/effect/guard/memory replay gates (resume substrate).
+  - `KernelEventWriter::load_turn_events_sync()` + `verify_persisted_turn_matches()` for SQLite round-trip checks.
+  - `kernel_replay_shadow.rs` runs unified coherence at turn end (`[kernel] machine = "shadow"`); `GET /v1/runtime/kernel-shadow` adds `replay_shadow`.
+  - Golden test `golden_replay_coherence_all_fixtures` over all kernel-v3-replay JSON fixtures.
+- **Runtime (kernel-v2 Phase 3b batch 6b — replay persist + TurnLoopHost seam):**
+  - Turn end runs async `finish_kernel_turn_shadow()` (SQLite persist replay after 50ms drain); `KernelEventWriter` held as `Arc` on `EngineRuntimeExt`.
+  - `KernelTurnHost` trait extracted from `TurnLoopHost` (kernel double-write / shadow / replay seam).
+  - `op_loop.rs` removes `unsafe` dispatch — uses `ext.take()` / restore pattern already documented on `Engine::ext`.
+  - `GET /v1/runtime/kernel-replay/{turn_id}` returns projection + coherence for a persisted turn.
+  - Session resume reuses linked thread: logs kernel replay coherence for `latest_turn_id` when present.
+  - `NOTICE.md`: records engine divergence from CodeWhale upstream from v0.7.x (Kernel v3).
+
 ### Removed
 
 - **Runtime (kernel-v2 Phase 2 legacy cleanup — G-PR):** Legacy and Shadow context injection paths removed; `ContextCompiler` V2 is now the sole request-assembly path:

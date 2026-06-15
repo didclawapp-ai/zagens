@@ -1,0 +1,52 @@
+[
+  {
+    "event_type": "turn_started",
+    "turn_id": "golden-scratchpad-compaction-001",
+    "mode": "agent",
+    "input_text": "Audit the codebase and compact context",
+    "max_steps": 12
+  },
+  {
+    "event_type": "model_request_issued",
+    "turn_id": "golden-scratchpad-compaction-001",
+    "step_idx": 1,
+    "request_fp": {
+      "static_prefix_sha256": "aaaa1111",
+      "full_prefix_sha256": "bbbb2222"
+    },
+    "token_budget": 8192
+  },
+  {
+    "event_type": "scratchpad_reminder_injected",
+    "turn_id": "golden-scratchpad-compaction-001",
+    "step_idx": 1,
+    "area_path": "src/main.rs"
+  },
+  {
+    "event_type": "compaction_artifact_created",
+    "turn_id": "golden-scratchpad-compaction-001",
+    "artifact_id": "art-golden-001",
+    "replaced_range": {
+      "from": 2,
+      "to": 8
+    },
+    "summary_token_count": 256
+  },
+  {
+    "event_type": "scratchpad_summary_injected",
+    "turn_id": "golden-scratchpad-compaction-001",
+    "at_step": 2
+  },
+  {
+    "event_type": "cycle_briefing_injected",
+    "turn_id": "golden-scratchpad-compaction-001",
+    "cycle": 2,
+    "step_idx": 2
+  },
+  {
+    "event_type": "turn_ended",
+    "turn_id": "golden-scratchpad-compaction-001",
+    "outcome": "completed",
+    "total_steps": 2
+  }
+]

@@ -256,6 +256,25 @@ impl Engine {
         self.refresh_system_prompt(mode);
         self.emit_session_updated().await;
 
+        {
+            use zagens_core::engine::kernel_event::KernelEvent;
+            use zagens_core::engine::turn_machine::emit_kernel_event;
+            let turn_id = self
+                .runtime_ext()
+                .kernel_active_turn_id
+                .clone()
+                .unwrap_or_else(|| self.session.id.clone());
+            let step_idx = self.runtime_ext().kernel_active_step;
+            emit_kernel_event(
+                self,
+                KernelEvent::CycleBriefingInjected {
+                    turn_id,
+                    cycle: to,
+                    step_idx,
+                },
+            );
+        }
+
         let _ = self
             .tx_event
             .send(Event::CycleAdvanced {

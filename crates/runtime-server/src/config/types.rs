@@ -675,6 +675,10 @@ pub struct Config {
     /// Tool-plane kernel-v2 knobs (`[tools]` table).
     #[serde(default)]
     pub tools: Option<ToolsConfigToml>,
+
+    /// Agent kernel-v3 turn machine kill switch (`[kernel]` table).
+    #[serde(default)]
+    pub kernel: Option<KernelConfigToml>,
 }
 
 /// `[tools]` table — kernel-v2 tool plane kill switches.
@@ -694,6 +698,17 @@ pub struct ToolsConfigToml {
     /// - `v2`:      `ContextCompiler` controls the request (Phase 2-Switch).
     #[serde(default)]
     pub compiler: Option<String>,
+}
+
+/// Resolved turn-machine mode — see `zagens_core::engine::KernelMachineMode`.
+pub use zagens_core::engine::KernelMachineMode;
+
+/// `[kernel]` table — Phase 3b turn-machine kill switch.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct KernelConfigToml {
+    /// Turn machine mode: `"legacy"` (default), `"shadow"`, or `"v3"`.
+    #[serde(default)]
+    pub machine: Option<String>,
 }
 
 /// Resolved `tools.policy` mode (kernel-v2 M3).

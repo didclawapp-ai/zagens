@@ -15,6 +15,10 @@ pub mod dispatch;
 pub mod handle;
 pub mod host_bundle;
 pub mod hosts;
+pub mod kernel_event;
+pub mod kernel_event_golden;
+pub mod kernel_mode;
+pub mod kernel_turn_host;
 pub mod loop_guard;
 pub mod lsp_edit_paths;
 pub mod op;
@@ -35,6 +39,7 @@ pub mod tool_effects;
 pub mod tool_parser;
 pub mod tool_progress;
 pub mod turn_loop;
+pub mod turn_machine;
 mod turn_port;
 
 pub use crate::session::{Session, SessionUsage};
@@ -68,6 +73,13 @@ pub use hosts::{
     LspHost, McpHost, SandboxHost, SeamError, SeamHost, ShellHost, SubAgentHost, TopicMemoryHost,
     WorkshopHost,
 };
+pub use kernel_event::{
+    ArtifactId, CallId, CapacityAction, CapacityCheckpointKind, DeltaKind, KernelEvent,
+    KernelEventEnvelope, MessageRange, OverflowStrategy, PolicyDecision, ToolOutcome, TurnId,
+    TurnOutcome,
+};
+pub use kernel_mode::KernelMachineMode;
+pub use kernel_turn_host::KernelTurnHost;
 pub use loop_guard::{AttemptDecision, LoopGuard, OutcomeDecision};
 pub use lsp_edit_paths::{edited_paths_for_tool, parse_patch_paths};
 pub use op::Op;
@@ -107,5 +119,11 @@ pub use turn_loop::{
     TurnLoopToolExecutor, TurnLoopToolPhaseOutcome, TurnLoopToolRegistry,
     build_edit_file_approval_desc, handle_deepseek_turn, messages_with_turn_metadata,
     resolve_auto_effort,
+};
+pub use turn_machine::{
+    Effect, KernelEventSink, LiveTurnSnapshot, ReplayTurnMachine, StepOutput, TurnKernelProjection,
+    TurnMachine, TurnReplayReport, compare_projection_to_live, emit_kernel, emit_kernel_event,
+    outcome_from_status, replay_turn_projection, verify_effect_replay_chain,
+    verify_guard_projection_chain, verify_memory_projection_chain, verify_turn_replay_coherence,
 };
 pub use turn_port::TurnEnginePort;

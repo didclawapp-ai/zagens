@@ -11,6 +11,7 @@ use crate::engine::context::{
     MAX_CONTEXT_RECOVERY_ATTEMPTS, TURN_MAX_OUTPUT_TOKENS, effective_max_output_tokens,
     is_context_length_error_message, summarize_text,
 };
+use crate::engine::kernel_event::KernelEvent;
 use crate::engine::streaming::{
     ContentBlockKind, FAKE_WRAPPER_NOTICE, MAX_LENGTH_CONTINUATIONS, MAX_STREAM_ERRORS_BEFORE_FAIL,
     MAX_STREAM_RETRIES, MAX_TRANSPARENT_STREAM_RETRIES, STREAM_CHUNK_TIMEOUT_SECS,
@@ -18,6 +19,7 @@ use crate::engine::streaming::{
     filter_tool_call_delta, should_transparently_retry_stream,
 };
 use crate::engine::tool_parser;
+use crate::engine::turn_machine::emit_kernel_event;
 use crate::error_taxonomy::{ErrorEnvelope, StreamError, is_stream_failure_retryable};
 use crate::events::Event;
 use crate::turn::{TurnContext, TurnLoopMode, TurnOutcomeStatus};
@@ -107,10 +109,36 @@ pub async fn run_streaming_phase<H: TurnLoopHost>(
         let _ = host
             .tx_event()
             .send(Event::ModelRequestPrepared {
-                static_prefix_sha256: fp.static_prefix_sha256,
-                full_prefix_sha256: fp.full_prefix_sha256,
+                static_prefix_sha256: fp.static_prefix_sha256.clone(),
+                full_prefix_sha256: fp.full_prefix_sha256.clone(),
             })
             .await;
+        // Phase 3a double-write.
+        emit_kernel_event(
+            host,
+            KernelEvent::ModelRequestIssued {
+                turn_id: turn.id.clone(),
+                step_idx: turn.step,
+                request_fp: fp,
+                token_budget: request.max_tokens,
+            },
+        );
+    } else {
+        // No fingerprint available (non-L2 host); still emit with a zero fp
+        // so the event log has a complete record for projection testing.
+        use crate::engine::request_fingerprint::RequestFingerprint;
+        emit_kernel_event(
+            host,
+            KernelEvent::ModelRequestIssued {
+                turn_id: turn.id.clone(),
+                step_idx: turn.step,
+                request_fp: RequestFingerprint {
+                    static_prefix_sha256: String::new(),
+                    full_prefix_sha256: String::new(),
+                },
+                token_budget: request.max_tokens,
+            },
+        );
     }
 
     // Stream the response. Keep the request around (cloned into the
@@ -741,10 +769,21 @@ pub async fn run_streaming_phase<H: TurnLoopHost>(
     if has_sendable_assistant_content {
         host.add_session_message(Message {
             role: "assistant".to_string(),
-            content: content_blocks,
+            content: content_blocks.clone(),
         })
         .await;
     }
+
+    // Phase 3a double-write: ModelMessage (after session is updated).
+    emit_kernel_event(
+        host,
+        KernelEvent::ModelMessage {
+            turn_id: turn.id.clone(),
+            step_idx: turn.step,
+            usage: usage.clone(),
+            block_count: content_blocks.len() as u32,
+        },
+    );
 
     // Length-truncation auto-recovery. The provider sets `finish_reason=length`
     // when the model hit the output `max_tokens` cap mid-output (a very long

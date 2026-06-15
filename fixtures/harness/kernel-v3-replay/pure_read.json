@@ -1,0 +1,63 @@
+[
+  {
+    "event_type": "turn_started",
+    "turn_id": "golden-pure-read-001",
+    "mode": "agent",
+    "input_text": "List files in src/",
+    "max_steps": 20
+  },
+  {
+    "event_type": "model_request_issued",
+    "turn_id": "golden-pure-read-001",
+    "step_idx": 1,
+    "request_fp": {
+      "static_prefix_sha256": "a1b2c3d4",
+      "full_prefix_sha256": "e5f6g7h8"
+    },
+    "token_budget": 8192
+  },
+  {
+    "event_type": "model_message",
+    "turn_id": "golden-pure-read-001",
+    "step_idx": 1,
+    "usage": {
+      "input_tokens": 1200,
+      "output_tokens": 80
+    },
+    "block_count": 2
+  },
+  {
+    "event_type": "tool_call_planned",
+    "turn_id": "golden-pure-read-001",
+    "step_idx": 1,
+    "call_id": "call-read-1",
+    "tool_name": "list_dir",
+    "input_json": "{\"path\":\"src/\"}",
+    "decision": {
+      "approval_required": false,
+      "parallel_eligible": true,
+      "read_only": true
+    }
+  },
+  {
+    "event_type": "tool_call_started",
+    "turn_id": "golden-pure-read-001",
+    "call_id": "call-read-1",
+    "wave_idx": 0
+  },
+  {
+    "event_type": "tool_call_finished",
+    "turn_id": "golden-pure-read-001",
+    "call_id": "call-read-1",
+    "tool_name": "list_dir",
+    "outcome": "success",
+    "duration_ms": 45,
+    "wrote_state": false
+  },
+  {
+    "event_type": "turn_ended",
+    "turn_id": "golden-pure-read-001",
+    "outcome": "completed",
+    "total_steps": 1
+  }
+]

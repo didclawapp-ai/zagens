@@ -1,0 +1,64 @@
+[
+  {
+    "event_type": "turn_started",
+    "turn_id": "golden-loop-guard-001",
+    "mode": "agent",
+    "input_text": "Read the same file repeatedly",
+    "max_steps": 10
+  },
+  {
+    "event_type": "model_request_issued",
+    "turn_id": "golden-loop-guard-001",
+    "step_idx": 1,
+    "request_fp": {
+      "static_prefix_sha256": "aaaa1111",
+      "full_prefix_sha256": "bbbb2222"
+    },
+    "token_budget": 8192
+  },
+  {
+    "event_type": "tool_call_planned",
+    "turn_id": "golden-loop-guard-001",
+    "step_idx": 1,
+    "call_id": "call-dup-1",
+    "tool_name": "read_file",
+    "input_json": "{\"path\":\"src/main.rs\"}",
+    "decision": {
+      "approval_required": false,
+      "parallel_eligible": true,
+      "read_only": true
+    }
+  },
+  {
+    "event_type": "loop_guard_triggered",
+    "turn_id": "golden-loop-guard-001",
+    "call_id": "call-dup-2",
+    "reason": "identical_tool_call"
+  },
+  {
+    "event_type": "tool_call_started",
+    "turn_id": "golden-loop-guard-001",
+    "call_id": "call-dup-2",
+    "wave_idx": 0
+  },
+  {
+    "event_type": "tool_call_finished",
+    "turn_id": "golden-loop-guard-001",
+    "call_id": "call-dup-2",
+    "tool_name": "read_file",
+    "outcome": "success",
+    "duration_ms": 12,
+    "wrote_state": false
+  },
+  {
+    "event_type": "loop_guard_continuation",
+    "turn_id": "golden-loop-guard-001",
+    "step_idx": 2
+  },
+  {
+    "event_type": "turn_ended",
+    "turn_id": "golden-loop-guard-001",
+    "outcome": "completed",
+    "total_steps": 2
+  }
+]

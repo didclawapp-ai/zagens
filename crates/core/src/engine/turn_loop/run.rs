@@ -6,11 +6,15 @@ use crate::chat::{ContentBlock, Message, Tool};
 use crate::engine::context::{
     MAX_CONTEXT_RECOVERY_ATTEMPTS, TURN_MAX_OUTPUT_TOKENS, context_input_budget, summarize_text,
 };
+use crate::engine::kernel_event::{
+    KernelEvent, OverflowStrategy, TurnOutcome as KernelTurnOutcome,
+};
 use crate::engine::loop_guard::LoopGuard;
 use crate::engine::streaming::{
     MAX_CONTEXT_CYCLE_HANDOFFS, MAX_IN_TURN_CYCLE_ADVANCES, MAX_LOOP_GUARD_CONTINUATIONS,
     MAX_STEP_LIMIT_CONTINUATIONS,
 };
+use crate::engine::turn_machine::{LiveTurnSnapshot, emit_kernel_event};
 use crate::error_taxonomy::ErrorEnvelope;
 use crate::events::Event;
 use crate::turn::{TurnContext, TurnLoopMode, TurnOutcomeStatus};
@@ -28,11 +32,50 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
 ) -> (TurnOutcomeStatus, Option<String>) {
     tracing::info!(turn_id = %turn.id, "turn loop start");
 
-    let Some(client) = host.llm_client() else {
-        return (
-            TurnOutcomeStatus::Failed,
-            Some("DeepSeek client is not configured".to_string()),
+    host.reset_kernel_projection_shadow();
+    super::v3_driver::log_v3_turn_start(host, &turn.id);
+
+    // Phase 3a double-write: emit TurnStarted.
+    {
+        let input_preview = host
+            .session_mut()
+            .messages
+            .last()
+            .and_then(|m| {
+                m.content.iter().find_map(|b| {
+                    if let crate::chat::ContentBlock::Text { text, .. } = b {
+                        Some(summarize_text(text, 256))
+                    } else {
+                        None
+                    }
+                })
+            })
+            .unwrap_or_default();
+        emit_kernel_event(
+            host,
+            KernelEvent::TurnStarted {
+                turn_id: turn.id.clone(),
+                mode,
+                input_text: input_preview,
+                max_steps: turn.max_steps,
+            },
         );
+    }
+
+    let Some(client) = host.llm_client() else {
+        let err = "DeepSeek client is not configured".to_string();
+        end_turn(
+            host,
+            turn,
+            0,
+            0,
+            0,
+            KernelTurnOutcome::Failed {
+                message: err.clone(),
+            },
+        )
+        .await;
+        return (TurnOutcomeStatus::Failed, Some(err));
     };
 
     let mut consecutive_tool_error_steps = 0u32;
@@ -69,12 +112,22 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
         tracing::debug!(turn_id = %turn.id, step = turn.step, "turn step");
 
         host.reset_scratchpad_step();
+        host.sync_kernel_turn_frame(turn);
 
         if host.cancel_token().is_cancelled() {
             let _ = host
                 .tx_event()
                 .send(Event::status("Request cancelled"))
                 .await;
+            end_turn(
+                host,
+                turn,
+                step_limit_continuations,
+                loop_guard_continuations,
+                cycle_handoff_attempts,
+                KernelTurnOutcome::Interrupted,
+            )
+            .await;
             return (TurnOutcomeStatus::Interrupted, None);
         }
 
@@ -102,6 +155,14 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
                     summarize_text(&steer, 120)
                 )))
                 .await;
+            emit_kernel_event(
+                host,
+                KernelEvent::SteerInjected {
+                    turn_id: turn.id.clone(),
+                    step_idx: turn.step,
+                    text: summarize_text(&steer, 512),
+                },
+            );
         }
 
         host.refresh_system_prompt(mode).await;
@@ -126,6 +187,14 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
                         step_limit_continuations, MAX_STEP_LIMIT_CONTINUATIONS
                     )))
                     .await;
+                emit_kernel_event(
+                    host,
+                    KernelEvent::StepLimitContinuation {
+                        turn_id: turn.id.clone(),
+                        step_idx: turn.step,
+                        lht_objective_injected: true,
+                    },
+                );
                 continue;
             }
             let _ = host
@@ -135,7 +204,7 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
             break;
         }
 
-        host.run_auto_compaction(client.as_ref()).await;
+        host.run_auto_compaction(client.as_ref(), turn).await;
 
         if host
             .run_capacity_pre_request_checkpoint(turn, Some(client.as_ref()), mode)
@@ -162,6 +231,15 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
                             .await
                     {
                         cycle_handoff_attempts = cycle_handoff_attempts.saturating_add(1);
+                        emit_kernel_event(
+                            host,
+                            KernelEvent::ContextOverflowRecovered {
+                                turn_id: turn.id.clone(),
+                                step_idx: turn.step,
+                                strategy: OverflowStrategy::CycleHandoff,
+                                source_budget_cap: Some(input_budget.min(u32::MAX as usize) as u32),
+                            },
+                        );
                         // The fresh cycle starts small, so grant it its own
                         // emergency-recovery budget rather than carrying over
                         // the spent attempts from the overflowing buffer.
@@ -190,6 +268,15 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
                     .await
                 {
                     context_recovery_attempts = context_recovery_attempts.saturating_add(1);
+                    emit_kernel_event(
+                        host,
+                        KernelEvent::ContextOverflowRecovered {
+                            turn_id: turn.id.clone(),
+                            step_idx: turn.step,
+                            strategy: OverflowStrategy::BudgetRecompile,
+                            source_budget_cap: Some(input_budget.min(u32::MAX as usize) as u32),
+                        },
+                    );
                     continue;
                 }
             }
@@ -203,24 +290,108 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
             turn_id = %turn.id,
             step = turn.step,
         );
-        let stream_out = async {
-            super::streaming_phase::run_streaming_phase(
-                host,
-                turn,
-                client.as_ref(),
-                mode,
-                &tool_catalog,
-                &active_tool_names,
-                force_update_plan_first,
-                &mut stream_retry_attempts,
-                &mut context_recovery_attempts,
-                &mut length_continuations,
-                &mut turn_error,
+
+        let (stream_out, phase) = if host.kernel_machine_mode().uses_v3_turn_loop() {
+            let v3 = async {
+                if let Some(v3) = host
+                    .try_run_v3_turn_step(
+                        turn,
+                        client.as_ref(),
+                        mode,
+                        &mut tool_catalog,
+                        &mut active_tool_names,
+                        force_update_plan_first,
+                        &mut stream_retry_attempts,
+                        &mut context_recovery_attempts,
+                        &mut length_continuations,
+                        &mut turn_error,
+                        &mut loop_guard,
+                        consecutive_tool_error_steps,
+                        tool_registry,
+                    )
+                    .await
+                {
+                    v3
+                } else {
+                    super::v3_step::run_v3_step(
+                        host,
+                        turn,
+                        client.as_ref(),
+                        mode,
+                        &mut tool_catalog,
+                        &mut active_tool_names,
+                        force_update_plan_first,
+                        &mut stream_retry_attempts,
+                        &mut context_recovery_attempts,
+                        &mut length_continuations,
+                        &mut turn_error,
+                        &mut loop_guard,
+                        consecutive_tool_error_steps,
+                        tool_registry,
+                    )
+                    .await
+                }
+            }
+            .instrument(stream_span)
+            .await;
+            (v3.stream, v3.tools)
+        } else {
+            let stream_out = async {
+                super::streaming_phase::run_streaming_phase(
+                    host,
+                    turn,
+                    client.as_ref(),
+                    mode,
+                    &tool_catalog,
+                    &active_tool_names,
+                    force_update_plan_first,
+                    &mut stream_retry_attempts,
+                    &mut context_recovery_attempts,
+                    &mut length_continuations,
+                    &mut turn_error,
+                )
+                .await
+            }
+            .instrument(stream_span)
+            .await;
+
+            let mut tool_uses = stream_out.tool_uses;
+            let pending_steers = stream_out.pending_steers;
+            let continue_outer_loop = stream_out.continue_outer_loop;
+            let break_outer_loop = stream_out.break_outer_loop;
+            let return_early = stream_out.return_early;
+            let tools_span = tracing::info_span!(
+                "turn_tools",
+                turn_id = %turn.id,
+                step = turn.step,
+            );
+            let phase = async {
+                super::tool_phase::run_tool_execution_phase(
+                    host,
+                    turn,
+                    mode,
+                    &mut tool_uses,
+                    &mut tool_catalog,
+                    &mut active_tool_names,
+                    &mut loop_guard,
+                    consecutive_tool_error_steps,
+                    tool_registry,
+                )
+                .await
+            }
+            .instrument(tools_span)
+            .await;
+            (
+                super::control::TurnLoopStreamingPhaseOutcome {
+                    tool_uses,
+                    pending_steers,
+                    continue_outer_loop,
+                    break_outer_loop,
+                    return_early,
+                },
+                phase,
             )
-            .await
-        }
-        .instrument(stream_span)
-        .await;
+        };
 
         if let Some((status, err)) = stream_out.return_early {
             return (status, err);
@@ -232,30 +403,7 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
             continue;
         }
 
-        let mut tool_uses = stream_out.tool_uses;
         let mut pending_steers = stream_out.pending_steers;
-
-        let tools_span = tracing::info_span!(
-            "turn_tools",
-            turn_id = %turn.id,
-            step = turn.step,
-        );
-        let phase = async {
-            super::tool_phase::run_tool_execution_phase(
-                host,
-                turn,
-                mode,
-                &mut tool_uses,
-                &mut tool_catalog,
-                &mut active_tool_names,
-                &mut loop_guard,
-                consecutive_tool_error_steps,
-                tool_registry,
-            )
-            .await
-        }
-        .instrument(tools_span)
-        .await;
 
         if phase.break_outer_loop {
             // A loop-guard halt (model stuck repeating a failing tool) would
@@ -279,6 +427,13 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
                         loop_guard_continuations, MAX_LOOP_GUARD_CONTINUATIONS
                     )))
                     .await;
+                emit_kernel_event(
+                    host,
+                    KernelEvent::LoopGuardContinuation {
+                        turn_id: turn.id.clone(),
+                        step_idx: turn.step,
+                    },
+                );
                 turn.next_step();
                 continue;
             }
@@ -332,7 +487,7 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
             continue;
         }
 
-        host.maybe_inject_scratchpad_reminder().await;
+        host.maybe_inject_scratchpad_reminder(turn).await;
 
         // Per-step safe boundary (#5): a long-horizon turn can loop many tool
         // steps without returning to the between-turns boundary where the cycle
@@ -342,7 +497,7 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
         // re-request with the fresh context. Bounded against pathological seeds.
         if !mode.is_plan()
             && in_turn_cycle_advances < MAX_IN_TURN_CYCLE_ADVANCES
-            && host.maybe_advance_cycle_at_checkpoint(mode).await
+            && host.maybe_advance_cycle_at_checkpoint(mode, turn).await
         {
             in_turn_cycle_advances = in_turn_cycle_advances.saturating_add(1);
             turn.next_step();
@@ -353,14 +508,88 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
     }
 
     if host.cancel_token().is_cancelled() {
+        end_turn(
+            host,
+            turn,
+            step_limit_continuations,
+            loop_guard_continuations,
+            cycle_handoff_attempts,
+            KernelTurnOutcome::Interrupted,
+        )
+        .await;
         return (TurnOutcomeStatus::Interrupted, None);
     }
     if let Some(err) = turn_error {
+        end_turn(
+            host,
+            turn,
+            step_limit_continuations,
+            loop_guard_continuations,
+            cycle_handoff_attempts,
+            KernelTurnOutcome::Failed {
+                message: err.clone(),
+            },
+        )
+        .await;
         return (TurnOutcomeStatus::Failed, Some(err));
     }
     // Defense-in-depth: every `break` above converges here as `Completed`,
     // regardless of whether a long-horizon task graph is actually finished.
     // Surface an incomplete give-up so the outcome isn't a silent false green.
     host.note_incomplete_stop_if_lht().await;
+    end_turn(
+        host,
+        turn,
+        step_limit_continuations,
+        loop_guard_continuations,
+        cycle_handoff_attempts,
+        KernelTurnOutcome::Completed,
+    )
+    .await;
     (TurnOutcomeStatus::Completed, None)
+}
+
+fn live_turn_snapshot(
+    turn: &TurnContext,
+    scratchpad_summary_injected: bool,
+    step_limit_continuations: u32,
+    loop_guard_continuations: u32,
+    cycle_handoff_attempts: u32,
+) -> LiveTurnSnapshot {
+    LiveTurnSnapshot {
+        turn_id: turn.id.clone(),
+        step_idx: turn.step,
+        max_steps: turn.max_steps,
+        scratchpad_summary_injected,
+        step_limit_continuations,
+        loop_guard_continuations,
+        cycle_handoff_attempts,
+    }
+}
+
+async fn end_turn<H: TurnLoopHost>(
+    host: &mut H,
+    turn: &TurnContext,
+    step_limit_continuations: u32,
+    loop_guard_continuations: u32,
+    cycle_handoff_attempts: u32,
+    outcome: KernelTurnOutcome,
+) {
+    let scratchpad_summary_injected = *host.scratchpad_summary_injected_mut();
+    emit_kernel_event(
+        host,
+        KernelEvent::TurnEnded {
+            turn_id: turn.id.clone(),
+            outcome,
+            total_steps: turn.step,
+        },
+    );
+    host.finish_kernel_turn_shadow(&live_turn_snapshot(
+        turn,
+        scratchpad_summary_injected,
+        step_limit_continuations,
+        loop_guard_continuations,
+        cycle_handoff_attempts,
+    ))
+    .await;
 }

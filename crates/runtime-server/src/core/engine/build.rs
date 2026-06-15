@@ -21,6 +21,11 @@ use crate::tools::subagent::{new_shared_subagent_manager, spawn_subagent_mainten
 use super::Engine;
 use super::cycle_hooks;
 use super::handle::EngineHandle;
+use super::kernel_effect_shadow::KernelEffectShadow;
+use super::kernel_guard_shadow::KernelGuardShadow;
+use super::kernel_memory_shadow::KernelMemoryShadow;
+use super::kernel_projection_shadow::KernelProjectionShadow;
+use super::kernel_replay_shadow::KernelReplayShadow;
 use super::runtime_ext::EngineRuntimeExt;
 use super::types::EngineConfig;
 use crate::core::capacity::CapacityController;
@@ -194,6 +199,43 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
     config_ext.runtime_services.shell_env =
         Some(Arc::new(HookShellEnvHost(Arc::clone(&hook_executor))) as Arc<dyn ToolShellEnvHost>);
 
+    let kernel_event_writer =
+        zagens_runtime_adapters::persist::KernelEventWriter::try_open_default()
+            .map(std::sync::Arc::new);
+    let kernel_machine_mode = api_config.kernel_machine_mode();
+    let kernel_projection_shadow = KernelProjectionShadow::new(kernel_event_writer.is_some());
+    let kernel_effect_shadow = KernelEffectShadow::new(
+        kernel_event_writer.is_some() && kernel_machine_mode.uses_effect_replay_shadow(),
+    );
+    let kernel_guard_shadow = KernelGuardShadow::new(
+        kernel_event_writer.is_some() && kernel_machine_mode.uses_effect_replay_shadow(),
+    );
+    let kernel_memory_shadow = KernelMemoryShadow::new(
+        kernel_event_writer.is_some() && kernel_machine_mode.uses_effect_replay_shadow(),
+    );
+    let kernel_replay_shadow = KernelReplayShadow::new(
+        kernel_event_writer.is_some() && kernel_machine_mode.uses_effect_replay_shadow(),
+    );
+    if kernel_event_writer.is_some() {
+        super::kernel_projection_shadow::register_global_projection_shadow_stats(
+            kernel_projection_shadow.stats.clone(),
+        );
+    }
+    if kernel_event_writer.is_some() && kernel_machine_mode.uses_effect_replay_shadow() {
+        super::kernel_effect_shadow::register_global_effect_shadow_stats(
+            kernel_effect_shadow.stats.clone(),
+        );
+        super::kernel_guard_shadow::register_global_guard_shadow_stats(
+            kernel_guard_shadow.stats.clone(),
+        );
+        super::kernel_memory_shadow::register_global_memory_shadow_stats(
+            kernel_memory_shadow.stats.clone(),
+        );
+        super::kernel_replay_shadow::register_global_replay_shadow_stats(
+            kernel_replay_shadow.stats.clone(),
+        );
+    }
+
     let runtime_ext = EngineRuntimeExt {
         config_ext,
         long_horizon_state: LongHorizonSessionState::default(),
@@ -213,6 +255,15 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
         tools_policy: api_config.tools_policy_mode(),
         tools_scheduler: api_config.tools_scheduler_mode(),
         resource_lock_registry: Arc::new(crate::tools::resource_locks::ResourceLockRegistry::new()),
+        kernel_event_writer,
+        kernel_projection_shadow,
+        kernel_effect_shadow,
+        kernel_guard_shadow,
+        kernel_memory_shadow,
+        kernel_replay_shadow,
+        kernel_machine_mode,
+        kernel_active_turn_id: None,
+        kernel_active_step: 0,
     };
 
     let hosts = EngineHostBundle {

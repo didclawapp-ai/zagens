@@ -1,5 +1,9 @@
 //! Capacity and compaction event emission for the engine loop.
 
+use zagens_core::engine::kernel_event::{CapacityAction, CapacityCheckpointKind, KernelEvent};
+use zagens_core::engine::turn_machine::emit_kernel_event;
+use zagens_core::turn::TurnContext;
+
 use super::super::*;
 
 impl Engine {
@@ -84,10 +88,25 @@ impl Engine {
         turn: &TurnContext,
         snapshot: Option<&CapacitySnapshot>,
         decision: &CapacityDecision,
+        kind: CapacityCheckpointKind,
     ) {
         let Some(snapshot) = snapshot else {
             return;
         };
+        let kernel_action = CapacityAction::from_guardrail(decision.action, &decision.reason);
+        let tokens_used = snapshot.h_hat.max(0.0).min(u32::MAX as f64) as u32;
+        let token_budget = snapshot.c_hat.max(0.0).min(u32::MAX as f64) as u32;
+        emit_kernel_event(
+            self,
+            KernelEvent::CapacityCheckpoint {
+                turn_id: turn.id.clone(),
+                step_idx: turn.step,
+                kind,
+                tokens_used,
+                token_budget,
+                action: kernel_action.clone(),
+            },
+        );
         let _ = self
             .tx_event
             .send(Event::CapacityDecision {

@@ -9,6 +9,8 @@ pub mod run;
 pub mod streaming_phase;
 pub mod tool_exec;
 pub mod tool_phase;
+pub mod v3_driver;
+pub mod v3_step;
 
 pub use capacity_policy::should_run_capacity_error_escalation;
 pub use control::{TurnLoopControl, TurnLoopStreamingPhaseOutcome, TurnLoopToolPhaseOutcome};

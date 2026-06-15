@@ -196,6 +196,11 @@ pub(crate) async fn resume_session_thread(
                         eprintln!(
                             "[resume-session] reusing runtime thread {stored_tid} (events present)"
                         );
+                        if let Ok(thread) = state.runtime_threads.load_thread_sync(stored_tid) {
+                            if let Some(ref turn_id) = thread.latest_turn_id {
+                                super::kernel_replay::log_kernel_replay_for_turn(turn_id);
+                            }
+                        }
                         return Ok((
                             StatusCode::OK,
                             Json(ResumeSessionResponse {

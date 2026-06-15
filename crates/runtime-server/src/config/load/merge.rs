@@ -121,6 +121,7 @@ pub(crate) fn merge_config(base: Config, override_cfg: Config) -> Config {
         compaction: override_cfg.compaction.or(base.compaction),
         windows: override_cfg.windows.or(base.windows),
         tools: merge_tools_config(base.tools, override_cfg.tools),
+        kernel: override_cfg.kernel.or(base.kernel),
     }
 }
 

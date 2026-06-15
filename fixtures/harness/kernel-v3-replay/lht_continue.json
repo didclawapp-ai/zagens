@@ -1,0 +1,42 @@
+[
+  {
+    "event_type": "turn_started",
+    "turn_id": "golden-lht-001",
+    "mode": "agent",
+    "input_text": "Refactor the auth module across multiple steps",
+    "max_steps": 20
+  },
+  {
+    "event_type": "steer_injected",
+    "turn_id": "golden-lht-001",
+    "step_idx": 5,
+    "text": "Focus on token refresh logic first"
+  },
+  {
+    "event_type": "step_limit_continuation",
+    "turn_id": "golden-lht-001",
+    "step_idx": 20,
+    "lht_objective_injected": true
+  },
+  {
+    "event_type": "model_request_issued",
+    "turn_id": "golden-lht-001",
+    "step_idx": 21,
+    "request_fp": {
+      "static_prefix_sha256": "aaaabbbb",
+      "full_prefix_sha256": "ccccdddd"
+    },
+    "token_budget": 32768
+  },
+  {
+    "event_type": "loop_guard_continuation",
+    "turn_id": "golden-lht-001",
+    "step_idx": 22
+  },
+  {
+    "event_type": "turn_ended",
+    "turn_id": "golden-lht-001",
+    "outcome": "completed",
+    "total_steps": 23
+  }
+]

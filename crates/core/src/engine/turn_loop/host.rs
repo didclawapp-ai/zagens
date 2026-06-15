@@ -13,6 +13,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::chat::{LlmClient, Message, MessageRequest, Tool};
 use crate::compaction::CompactionConfig;
+use crate::engine::kernel_turn_host::KernelTurnHost;
 use crate::error_taxonomy::ErrorCategory;
 use crate::events::Event;
 use crate::scratchpad::ScratchpadConfig;
@@ -73,7 +74,7 @@ pub trait TurnLoopMcpPool: Send + Sync {}
 impl<T: crate::engine::hosts::McpHost + ?Sized> TurnLoopMcpPool for T {}
 
 #[async_trait]
-pub trait TurnLoopHost: Send {
+pub trait TurnLoopHost: KernelTurnHost + Send {
     type ToolRegistry: TurnLoopToolRegistry;
     type McpPool: crate::engine::hosts::McpHost;
 
@@ -155,7 +156,7 @@ pub trait TurnLoopHost: Send {
 
     async fn emit_session_updated(&mut self);
 
-    async fn run_auto_compaction(&mut self, client: &dyn LlmClient);
+    async fn run_auto_compaction(&mut self, client: &dyn LlmClient, turn: &TurnContext);
 
     fn estimated_input_tokens(&self) -> usize;
 
@@ -339,7 +340,11 @@ pub trait TurnLoopHost: Send {
     /// Returns `true` when a handoff happened (the caller bounds the count and
     /// re-loops with the fresh, in-budget context); `false` otherwise. Default:
     /// no-op (non-LHT / cycle-disabled hosts are unaffected).
-    async fn maybe_advance_cycle_at_checkpoint(&mut self, _mode: TurnLoopMode) -> bool {
+    async fn maybe_advance_cycle_at_checkpoint(
+        &mut self,
+        _mode: TurnLoopMode,
+        _turn: &TurnContext,
+    ) -> bool {
         false
     }
 
@@ -361,9 +366,9 @@ pub trait TurnLoopHost: Send {
     ) {
     }
 
-    async fn maybe_inject_scratchpad_summary(&mut self) -> bool;
+    async fn maybe_inject_scratchpad_summary(&mut self, turn: &TurnContext) -> bool;
 
-    async fn maybe_inject_scratchpad_reminder(&mut self);
+    async fn maybe_inject_scratchpad_reminder(&mut self, turn: &TurnContext);
 
     async fn handle_no_tool_uses(
         &mut self,
@@ -374,4 +379,33 @@ pub trait TurnLoopHost: Send {
     ) -> TurnLoopControl;
 
     fn pre_tool_snapshot(&self, workspace: &Path, tool_id: &str);
+
+    /// Optional v3 turn step via runtime [`EffectInterpreter`] (default: `None` → core fallback).
+    #[allow(clippy::too_many_arguments)]
+    async fn try_run_v3_turn_step(
+        &mut self,
+        _turn: &mut TurnContext,
+        _client: &dyn LlmClient,
+        _mode: TurnLoopMode,
+        _tool_catalog: &mut [Tool],
+        _active_tool_names: &mut HashSet<String>,
+        _force_update_plan_first: bool,
+        _stream_retry_attempts: &mut u32,
+        _context_recovery_attempts: &mut u8,
+        _length_continuations: &mut u32,
+        _turn_error: &mut Option<String>,
+        _loop_guard: &mut crate::engine::loop_guard::LoopGuard,
+        _consecutive_tool_error_steps: u32,
+        _tool_registry: Option<&Self::ToolRegistry>,
+    ) -> Option<super::v3_step::V3StepOutcome> {
+        None
+    }
+
+    /// Turn-end kernel shadow: projection compare + optional SQLite persist replay.
+    async fn finish_kernel_turn_shadow(
+        &mut self,
+        live: &crate::engine::turn_machine::LiveTurnSnapshot,
+    ) {
+        self.finish_kernel_projection_shadow(live);
+    }
 }

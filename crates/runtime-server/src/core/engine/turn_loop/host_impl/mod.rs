@@ -7,15 +7,18 @@ use async_trait::async_trait;
 use serde_json::Value;
 use tokio::sync::{Mutex as AsyncMutex, RwLock, mpsc};
 use zagens_core::chat::{ContentBlock, LlmClient, Message, Tool};
+use zagens_core::engine::KernelTurnHost;
 use zagens_core::engine::TurnLoopHost;
 use zagens_core::engine::context::estimate_input_tokens_conservative;
 use zagens_core::engine::hosts::McpHost;
+use zagens_core::engine::kernel_event::{KernelEvent, MessageRange};
 use zagens_core::engine::streaming::ToolUseState;
 use zagens_core::engine::turn_loop::TurnLoopToolRegistry;
 use zagens_core::engine::turn_loop::control::TurnLoopControl;
 use zagens_core::engine::turn_loop::exec::{
     ToolExecOutcome, ToolExecutionPlan, ToolPlanApprovalMeta,
 };
+use zagens_core::engine::turn_machine::{KernelEventSink, LiveTurnSnapshot, emit_kernel_event};
 use zagens_core::turn::{TurnContext, TurnLoopMode};
 use zagens_tools::{ToolError, ToolResult};
 
@@ -36,6 +39,43 @@ impl TurnLoopToolRegistry for ToolRegistry {}
 
 mod capacity;
 mod no_tool_uses;
+
+impl KernelTurnHost for Engine {
+    fn kernel_machine_mode(&self) -> zagens_core::engine::KernelMachineMode {
+        self.runtime_ext().kernel_machine_mode
+    }
+
+    fn kernel_event_sink(&self) -> Option<&KernelEventSink> {
+        self.runtime_ext()
+            .kernel_event_writer
+            .as_ref()
+            .map(|writer| writer.tx())
+    }
+
+    fn record_kernel_event(&mut self, event: &KernelEvent) {
+        self.runtime_ext_mut()
+            .kernel_projection_shadow
+            .record(event.clone());
+    }
+
+    fn reset_kernel_projection_shadow(&mut self) {
+        self.runtime_ext_mut().kernel_projection_shadow.reset_turn();
+    }
+
+    fn kernel_shadow_turn_events(&self) -> Vec<KernelEvent> {
+        self.runtime_ext()
+            .kernel_projection_shadow
+            .turn_events()
+            .to_vec()
+    }
+
+    fn sync_kernel_turn_frame(&mut self, turn: &TurnContext) {
+        let ext = self.runtime_ext_mut();
+        ext.kernel_active_turn_id = Some(turn.id.clone());
+        ext.kernel_active_step = turn.step;
+    }
+}
+
 #[async_trait]
 impl TurnLoopHost for Engine {
     type ToolRegistry = ToolRegistry;
@@ -153,7 +193,7 @@ impl TurnLoopHost for Engine {
         Engine::emit_session_updated(self).await;
     }
 
-    async fn run_auto_compaction(&mut self, client: &dyn LlmClient) {
+    async fn run_auto_compaction(&mut self, client: &dyn LlmClient, turn: &TurnContext) {
         let compaction_pins = self
             .session
             .working_set
@@ -233,6 +273,24 @@ impl TurnLoopHost for Engine {
                         auto_messages_before,
                         auto_messages_after,
                     );
+                    if let Some(artifact) = result.artifact {
+                        emit_kernel_event(
+                            self,
+                            KernelEvent::CompactionArtifactCreated {
+                                turn_id: turn.id.clone(),
+                                artifact_id: artifact.id,
+                                replaced_range: MessageRange {
+                                    from: artifact.replaced_start as u32,
+                                    to: artifact
+                                        .replaced_end
+                                        .saturating_sub(1)
+                                        .max(artifact.replaced_start)
+                                        as u32,
+                                },
+                                summary_token_count: artifact.summary_tokens,
+                            },
+                        );
+                    }
                     let _ = self.tx_event.send(Event::status(status)).await;
                 } else {
                     let message = "Auto-compaction skipped: empty result".to_string();
@@ -635,7 +693,11 @@ impl TurnLoopHost for Engine {
         Engine::force_cycle_handoff_for_overflow(self, turn_loop_to_app_mode(mode)).await
     }
 
-    async fn maybe_advance_cycle_at_checkpoint(&mut self, mode: TurnLoopMode) -> bool {
+    async fn maybe_advance_cycle_at_checkpoint(
+        &mut self,
+        mode: TurnLoopMode,
+        _turn: &TurnContext,
+    ) -> bool {
         // Only long-horizon code tasks evaluate the cycle gate mid-turn; the
         // between-turns boundary still covers everything else. Plan mode never
         // rolls a cycle, and there's no point without the cycle machinery.
@@ -713,7 +775,7 @@ impl TurnLoopHost for Engine {
         );
     }
 
-    async fn maybe_inject_scratchpad_summary(&mut self) -> bool {
+    async fn maybe_inject_scratchpad_summary(&mut self, turn: &TurnContext) -> bool {
         if self.scratchpad_summary_injected_this_turn {
             return false;
         }
@@ -726,17 +788,32 @@ impl TurnLoopHost for Engine {
         };
         Engine::add_session_message(self, summary_msg).await;
         self.scratchpad_summary_injected_this_turn = true;
+        emit_kernel_event(
+            self,
+            KernelEvent::ScratchpadSummaryInjected {
+                turn_id: turn.id.clone(),
+                at_step: turn.step,
+            },
+        );
         true
     }
 
-    async fn maybe_inject_scratchpad_reminder(&mut self) {
-        if let Some(reminder) = scratchpad_flow::build_readonly_reminder_message(
+    async fn maybe_inject_scratchpad_reminder(&mut self, turn: &TurnContext) {
+        if let Some((reminder, area_path)) = scratchpad_flow::build_readonly_reminder_message(
             &self.session.workspace,
             self.scratchpad_run_id.as_deref(),
             &self.config.scratchpad,
             &self.scratchpad_step,
         ) {
             Engine::add_session_message(self, reminder).await;
+            emit_kernel_event(
+                self,
+                KernelEvent::ScratchpadReminderInjected {
+                    turn_id: turn.id.clone(),
+                    step_idx: turn.step,
+                    area_path,
+                },
+            );
         }
     }
 
@@ -968,6 +1045,69 @@ impl TurnLoopHost for Engine {
             consecutive_tool_error_steps,
         )
         .await
+    }
+
+    async fn try_run_v3_turn_step(
+        &mut self,
+        turn: &mut TurnContext,
+        client: &dyn LlmClient,
+        mode: TurnLoopMode,
+        tool_catalog: &mut [Tool],
+        active_tool_names: &mut HashSet<String>,
+        force_update_plan_first: bool,
+        stream_retry_attempts: &mut u32,
+        context_recovery_attempts: &mut u8,
+        length_continuations: &mut u32,
+        turn_error: &mut Option<String>,
+        loop_guard: &mut zagens_core::engine::loop_guard::LoopGuard,
+        consecutive_tool_error_steps: u32,
+        tool_registry: Option<&Self::ToolRegistry>,
+    ) -> Option<zagens_core::engine::turn_loop::v3_step::V3StepOutcome> {
+        Some(
+            super::super::engine_v3_step::run_v3_turn_step(
+                self,
+                turn,
+                client,
+                mode,
+                tool_catalog,
+                active_tool_names,
+                force_update_plan_first,
+                stream_retry_attempts,
+                context_recovery_attempts,
+                length_continuations,
+                turn_error,
+                loop_guard,
+                consecutive_tool_error_steps,
+                tool_registry,
+            )
+            .await,
+        )
+    }
+
+    async fn finish_kernel_turn_shadow(&mut self, live: &LiveTurnSnapshot) {
+        let (events, writer, do_shadow) = {
+            let ext = self.runtime_ext_mut();
+            let do_shadow = ext.kernel_machine_mode.uses_effect_replay_shadow();
+            let events = ext.kernel_projection_shadow.turn_events().to_vec();
+            let writer = ext.kernel_event_writer.clone();
+            if do_shadow {
+                ext.kernel_effect_shadow.verify_turn(&events);
+                ext.kernel_guard_shadow.verify_turn(&events);
+                ext.kernel_memory_shadow.verify_turn(&events);
+                ext.kernel_replay_shadow
+                    .verify_turn_in_memory(&events, live);
+            }
+            ext.kernel_projection_shadow.finish_turn(live);
+            (events, writer, do_shadow)
+        };
+        if do_shadow {
+            if let Some(writer) = writer {
+                self.runtime_ext()
+                    .kernel_replay_shadow
+                    .verify_turn_persisted(writer.as_ref(), &live.turn_id, &events)
+                    .await;
+            }
+        }
     }
 }
 

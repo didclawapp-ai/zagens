@@ -594,7 +594,7 @@ impl Engine {
         current_text_visible: &str,
         has_sendable_assistant_content: bool,
     ) -> TurnLoopControl {
-        if self.maybe_inject_scratchpad_summary().await && !pending_steers.is_empty() {
+        if self.maybe_inject_scratchpad_summary(turn).await && !pending_steers.is_empty() {
             for steer in pending_steers.drain(..) {
                 let workspace = self.0.session.workspace.clone();
                 self.0

@@ -2,6 +2,8 @@
 
 pub mod compaction_artifact_store;
 pub mod context_reference;
+pub mod kernel_event_log;
+pub mod kernel_event_writer;
 pub mod session_manager;
 pub mod session_store_sqlite;
 
@@ -10,6 +12,8 @@ pub use compaction_artifact_store::{
     load_compaction_artifacts, save_compaction_artifact,
 };
 pub use context_reference::{ContextReference, ContextReferenceKind, ContextReferenceSource};
+pub use kernel_event_log::{KernelEventLog, ensure_kernel_events_table};
+pub use kernel_event_writer::KernelEventWriter;
 pub use session_manager::{
     SavedSession, SessionContextReference, SessionManager, SessionMetadata,
     prune_workspace_snapshots,
